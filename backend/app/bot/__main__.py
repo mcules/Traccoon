@@ -20,7 +20,7 @@ from ..models.notification import Notification
 from ..models.nexus import PermAction, PermGrant, Permission, PermRequest
 from ..models.ticket import Issue
 from ..models.user import User
-from ..services.comments import apply_user_comment
+from ..services.comments import add_system_comment, apply_user_comment
 from .mdtg import safe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -55,8 +55,16 @@ async def run_bot() -> None:
     bot = Bot(TOKEN)
     dp = Dispatcher()
 
-    def _allowed(uid: int) -> bool:
-        return not ALLOWED or uid in ALLOWED
+    async def _allowed(uid: int) -> bool:
+        # Erlaubt: Env-Bootstrap (TELEGRAM_ALLOWED_IDS) ODER jeder User, der seine
+        # Chat-ID in der WebUI hinterlegt hat. DB-Lookup pro Aufruf → neue User
+        # greifen sofort, ohne Bot-Neustart / Env-Edit.
+        if uid in ALLOWED:
+            return True
+        async with SessionLocal() as db:
+            u = (await db.execute(
+                select(User).where(User.telegram_chat_id == str(uid)))).scalar_one_or_none()
+            return u is not None
 
     def _kb_for(kind: str, issue_key: str, req_id: int | None) -> InlineKeyboardMarkup | None:
         if kind == "plan_review":
@@ -112,7 +120,7 @@ async def run_bot() -> None:
 
     @dp.message(Command("tasks"))
     async def _tasks(m: Message):
-        if not _allowed(m.from_user.id):
+        if not await _allowed(m.from_user.id):
             return
         async with SessionLocal() as db:
             rows = (await db.execute(select(Issue).where(Issue.assigned_agent.isnot(None))
@@ -124,7 +132,7 @@ async def run_bot() -> None:
 
     @dp.message(Command("comment"))
     async def _comment(m: Message):
-        if not _allowed(m.from_user.id):
+        if not await _allowed(m.from_user.id):
             return
         parts = (m.text or "").split(maxsplit=2)
         if len(parts) < 3:
@@ -142,7 +150,7 @@ async def run_bot() -> None:
 
     @dp.message(F.reply_to_message)
     async def _reply(m: Message):
-        if not _allowed(m.from_user.id):
+        if not await _allowed(m.from_user.id):
             return
         rt = m.reply_to_message.text or m.reply_to_message.html_text or ""
         match = re.search(r"\[([A-Z][A-Z0-9]*-\d+)\]", rt)
@@ -159,7 +167,7 @@ async def run_bot() -> None:
 
     @dp.callback_query()
     async def _cb(cq: CallbackQuery):
-        if not _allowed(cq.from_user.id):
+        if not await _allowed(cq.from_user.id):
             await cq.answer("Nicht erlaubt")
             return
         data = cq.data or ""
@@ -168,11 +176,14 @@ async def run_bot() -> None:
                 key = data.split(":", 1)[1]
                 iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
                 if iss and iss.agent_status == TicketAgentStatus.plan_review:
+                    who = f"{cq.from_user.first_name or cq.from_user.id} (Telegram)"
                     if data.startswith("approve:"):
                         iss.agent_status = TicketAgentStatus.approved
+                        await add_system_comment(db, iss.id, f"✅ Plan freigegeben von {who}")
                     else:
                         iss.plan = None
                         iss.agent_status = None
+                        await add_system_comment(db, iss.id, f"✖ Plan abgelehnt von {who}")
                     iss.hold_reason = None
                     await db.commit()
                     await cq.answer("OK")
