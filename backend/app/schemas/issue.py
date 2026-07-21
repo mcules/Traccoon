@@ -58,6 +58,8 @@ class IssueOut(BaseModel):
     story_points: int | None
     rank: str
     agent_working: bool
+    archived: bool = False
+    archived_at: dt.datetime | None = None
     testenv_status: str | None = None
     testenv_url: str | None = None
     resolved_at: dt.datetime | None = None

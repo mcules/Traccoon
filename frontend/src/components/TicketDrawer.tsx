@@ -114,7 +114,18 @@ export default function TicketDrawer({
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["issues", project.id] }); onClose(); },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
+  const archive = useMutation({
+    mutationFn: () => api.post(`/issues/${issueKey}/${issue?.archived ? "unarchive" : "archive"}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["issues", project.id] });
+      qc.invalidateQueries({ queryKey: ["issues-archived", project.id] });
+      invalidate();
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+  });
   const kannVerwalten = project.my_role === "maintainer" || project.my_role === "owner";
+  const canWrite = kannVerwalten || project.my_role === "member";
+  const isDone = issue && meta.statuses.find((s) => s.id === issue.status_id)?.category === "done";
 
   // Split-Beziehungen (aus der geladenen Ticket-Liste).
   const children = issue
@@ -423,6 +434,22 @@ export default function TicketDrawer({
               <button onClick={() => comment.trim() && addComment.mutate()}
                 className="rounded bg-brand px-3 py-1.5 text-white">Senden</button>
             </div>
+
+            {/* Archivieren: fertige Tickets aus Board/Liste nehmen (eigene Archiv-Liste) */}
+            {canWrite && (issue.archived || isDone) && (
+              <div className="mt-6 flex items-center gap-2 border-t border-line pt-3">
+                {issue.archived ? (
+                  <>
+                    <span className="rounded bg-line px-1.5 text-xs text-muted">🗄 archiviert</span>
+                    <button onClick={() => archive.mutate()}
+                      className="text-sm text-muted hover:text-brand">♻ Wiederherstellen</button>
+                  </>
+                ) : (
+                  <button onClick={() => archive.mutate()}
+                    className="text-sm text-muted hover:text-brand">🗄 Ticket archivieren</button>
+                )}
+              </div>
+            )}
 
             {kannVerwalten && (
               <div className="mt-6 border-t border-line pt-3">

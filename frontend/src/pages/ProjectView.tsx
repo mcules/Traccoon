@@ -14,7 +14,7 @@ import Board from "../components/Board";
 import PmChat from "../components/PmChat";
 import AgentMonitor from "../components/AgentMonitor";
 
-type Tab = "board" | "list" | "backlog" | "dashboard" | "pm" | "monitor" | "members" | "hardware" | "settings";
+type Tab = "board" | "list" | "backlog" | "archiv" | "dashboard" | "pm" | "monitor" | "members" | "hardware" | "settings";
 
 export default function ProjectView() {
   const { key } = useParams();
@@ -35,6 +35,11 @@ export default function ProjectView() {
     queryFn: () => api.get<Issue[]>(`/projects/${project!.id}/issues`),
     enabled: !!project,
     refetchInterval: 8000, // Fallback, falls WS nicht verfügbar
+  });
+  const { data: archivedIssues } = useQuery({
+    queryKey: ["issues-archived", project?.id],
+    queryFn: () => api.get<Issue[]>(`/projects/${project!.id}/issues?archived=true`),
+    enabled: !!project && tab === "archiv",
   });
 
   // Live-Updates über den echten WebSocket (Dispatcher/Runner-Events)
@@ -62,6 +67,7 @@ export default function ProjectView() {
     ["board", "Board"],
     ["list", "Liste"],
     ["backlog", "Backlog"],
+    ["archiv", "Archiv"],
     ["dashboard", "Dashboard"],
     ...(project.my_ai_assign && project.pm_chat_enabled ? ([["pm", "PM-Chat"]] as [Tab, string][]) : []),
     ...(project.my_ai_assign ? ([["monitor", "Monitor"]] as [Tab, string][]) : []),
@@ -104,6 +110,11 @@ export default function ProjectView() {
       {tab === "backlog" && meta && issues && (
         <Backlog project={project} meta={meta} issues={issues} onOpen={setOpenKey} />
       )}
+      {tab === "archiv" && meta && (
+        (archivedIssues && archivedIssues.length > 0)
+          ? <IssueList project={project} meta={meta} issues={archivedIssues} onOpen={setOpenKey} />
+          : <div className="text-sm text-muted">Keine archivierten Tickets.</div>
+      )}
       {tab === "dashboard" && <Dashboard project={project} />}
       {tab === "pm" && <PmChat project={project} />}
       {tab === "monitor" && <AgentMonitor project={project} />}
@@ -126,7 +137,6 @@ export default function ProjectView() {
           project={project}
           meta={meta}
           onClose={() => setNewOpen(false)}
-          onCreated={(k) => setOpenKey(k)}
         />
       )}
     </div>
