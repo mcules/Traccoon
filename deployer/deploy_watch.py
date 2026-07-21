@@ -115,6 +115,10 @@ def do_check(conn, dep):
 
 def do_self_deploy(conn, dep):
     dep_id, issue_id = dep["id"], dep["issue_id"]
+    # Update = neuen Code holen (best effort). Schlägt der Pull fehl (Auth/Netz), wird der
+    # aktuelle Stand gebaut — der Deploy bricht deswegen nicht ab.
+    pr, pout = sh(["git", "-C", SELF_STACK_DIR, "-c", "safe.directory=*", "pull", "--ff-only"], timeout=120)
+    print(f"[deployer] self-deploy git pull rc={pr}: {pout[-300:]}", flush=True)
     # laufendes Image sichern
     sh(["docker", "tag", "traccoon-backend:latest", "traccoon-backend:rollback"])
     rc, out = compose(SELF_STACK_DIR, "build", *SELF_SERVICES, timeout=1200)
