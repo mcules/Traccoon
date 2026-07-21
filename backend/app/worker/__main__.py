@@ -38,7 +38,7 @@ DEFAULT_CODEX_MODEL = os.getenv("DEFAULT_CODEX_MODEL", "gpt-5")
 
 # Default-Rollen-Fähigkeiten, falls keine AgentDefinition existiert.
 _DEFAULTS: dict[str, dict] = {
-    "project_manager": {"can_delegate": True, "mp": 10, "me": 40},
+    "project_manager": {"can_delegate": True, "can_read_code": True, "mp": 10, "me": 40},
     "architect":       {"can_read_code": True, "mp": 12, "me": 40},
     "developer":       {"can_code": True, "mp": 10, "me": 80},
     "code_reviewer":   {"can_read_code": True, "mp": 8, "me": 30},
