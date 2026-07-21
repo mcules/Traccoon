@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../auth";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
+import UpdateFooter from "./UpdateFooter";
 
 function toggleTheme() {
   const cur = document.documentElement.getAttribute("data-theme") || "dark";
@@ -35,6 +36,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         </button>
       </header>
       <main className="mx-auto max-w-[1400px] p-5">{children}</main>
+      <UpdateFooter />
     </div>
   );
 }
