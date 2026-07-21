@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
-from sqlalchemy import select
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.security import hash_password
 from ..db import get_session
 from ..models.enums import GlobalRole, UserStatus
 from ..models.user import SYSTEM_USER_ID, User
-from ..schemas.auth import UserOut
+from ..schemas.auth import UserOut, _valid_email
 from .auth import user_out
 from .deps import require_admin
 
@@ -15,6 +16,19 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 class McpServersIn(BaseModel):
     servers: list[str]
+
+
+class UserUpdateIn(BaseModel):
+    email: str | None = Field(default=None, min_length=1)
+    username: str | None = Field(default=None, min_length=2, max_length=100)
+    display_name: str | None = None
+    max_runners: int | None = Field(default=None, ge=0, le=20)
+
+    _norm_email = field_validator("email")(lambda v: _valid_email(v) if v is not None else v)
+
+
+class PasswordResetIn(BaseModel):
+    new_password: str = Field(min_length=8)
 
 
 @router.get("/{user_id}/mcp")
@@ -73,6 +87,60 @@ async def disable(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nicht sich selbst deaktivieren")
     u = await _get_manageable(user_id, db)
     u.status = UserStatus.disabled
+    await db.commit()
+    await db.refresh(u)
+    return user_out(u)
+
+
+@router.put("/{user_id}", response_model=UserOut)
+async def update_user(
+    user_id: int,
+    data: UserUpdateIn,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+):
+    u = await _get_manageable(user_id, db)
+    if data.email is not None:
+        conflict = (
+            await db.execute(
+                select(User).where(User.id != user_id, User.email == data.email)
+            )
+        ).scalars().first()
+        if conflict is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "E-Mail bereits vergeben")
+    if data.username is not None:
+        conflict = (
+            await db.execute(
+                select(User).where(User.id != user_id, User.username == data.username)
+            )
+        ).scalars().first()
+        if conflict is not None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Benutzername bereits vergeben")
+    if data.email is not None:
+        u.email = data.email
+    if data.username is not None:
+        u.username = data.username
+    if data.display_name is not None:
+        u.display_name = data.display_name
+    if data.max_runners is not None:
+        u.max_runners = data.max_runners
+    await db.commit()
+    await db.refresh(u)
+    return user_out(u)
+
+
+@router.post("/{user_id}/reset-password", response_model=UserOut)
+async def reset_password(
+    user_id: int,
+    data: PasswordResetIn,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+):
+    import datetime as dt
+
+    u = await _get_manageable(user_id, db)
+    u.password_hash = hash_password(data.new_password)
+    u.password_changed_at = dt.datetime.now(tz=dt.timezone.utc)
     await db.commit()
     await db.refresh(u)
     return user_out(u)

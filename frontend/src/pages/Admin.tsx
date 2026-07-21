@@ -71,8 +71,14 @@ function Users() {
     mutationFn: (v: { id: number; path: string }) => api.post(`/users/${v.id}/${v.path}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
   });
+  const role = useMutation({
+    mutationFn: (v: { id: number; role: string }) => api.post(`/users/${v.id}/role?role=${v.role}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+  });
   const [mcpFor, setMcpFor] = useState<number | null>(null);
+  const [editUser, setEditUser] = useState<any | null>(null);
   return (
+    <>
     <table className="w-full text-sm">
       <thead><tr className="border-b border-line text-left text-xs uppercase text-muted">
         <th className="py-2">Nutzer</th><th>Rolle</th><th>Status</th><th></th></tr></thead>
@@ -81,11 +87,20 @@ function Users() {
           <>
           <tr key={u.id} className="border-b border-line">
             <td className="py-2">{u.display_name} <span className="text-muted">({u.email})</span></td>
-            <td>{u.global_role}</td><td>{u.status}</td>
+            <td>
+              <select value={u.global_role} onChange={(e) => role.mutate({ id: u.id, role: e.target.value })}
+                className="rounded border border-line bg-surface px-1 py-0.5 text-ink">
+                <option value="user">user</option>
+                <option value="admin">admin</option>
+              </select>
+            </td>
+            <td>{u.status}</td>
             <td className="space-x-3 text-right">
+              <button onClick={() => setEditUser(u)} className="text-muted hover:text-ink">bearbeiten</button>
               <button onClick={() => setMcpFor(mcpFor === u.id ? null : u.id)} className="text-muted hover:text-ink">MCP</button>
               {u.status === "pending" && <button onClick={() => act.mutate({ id: u.id, path: "approve" })} className="text-brand">freischalten</button>}
               {u.status === "active" && <button onClick={() => act.mutate({ id: u.id, path: "disable" })} className="text-muted hover:text-red-400">sperren</button>}
+              {u.status === "disabled" && <button onClick={() => act.mutate({ id: u.id, path: "approve" })} className="text-brand">entsperren</button>}
             </td>
           </tr>
           {mcpFor === u.id && (
@@ -95,6 +110,87 @@ function Users() {
         ))}
       </tbody>
     </table>
+    {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)}
+      onSaved={() => { setEditUser(null); qc.invalidateQueries({ queryKey: ["admin-users"] }); }} />}
+    </>
+  );
+}
+
+function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => void; onSaved: () => void }) {
+  const [email, setEmail] = useState(user.email);
+  const [username, setUsername] = useState(user.username);
+  const [displayName, setDisplayName] = useState(user.display_name);
+  const [maxRunners, setMaxRunners] = useState(user.max_runners);
+  const [newPassword, setNewPassword] = useState("");
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+
+  const save = async () => {
+    setErr("");
+    try {
+      await api.put(`/users/${user.id}`, {
+        email, username, display_name: displayName, max_runners: Number(maxRunners),
+      });
+      onSaved();
+    } catch (e: any) { setErr(e?.message || "Speichern fehlgeschlagen"); }
+  };
+  const resetPw = async () => {
+    setErr(""); setMsg("");
+    if (newPassword.length < 8) { setErr("Mindestens 8 Zeichen."); return; }
+    try {
+      await api.post(`/users/${user.id}/reset-password`, { new_password: newPassword });
+      setNewPassword(""); setMsg("Passwort gesetzt.");
+    } catch (e: any) { setErr(e?.message || "Fehlgeschlagen"); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-xl border border-line bg-card p-5 shadow-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-base font-semibold">Nutzer bearbeiten</h2>
+          <button onClick={onClose} className="text-muted hover:text-ink">✕</button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-muted">Anzeigename</label>
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
+          </div>
+          <div>
+            <label className="text-xs text-muted">E-Mail</label>
+            <input value={email} onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
+          </div>
+          <div>
+            <label className="text-xs text-muted">Benutzername</label>
+            <input value={username} onChange={(e) => setUsername(e.target.value)}
+              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
+          </div>
+          <div>
+            <label className="text-xs text-muted">Max. gleichzeitige Agenten-Läufe</label>
+            <input type="number" min={0} max={20} value={maxRunners}
+              onChange={(e) => setMaxRunners(e.target.value)}
+              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
+          </div>
+          <div className="border-t border-line pt-3">
+            <label className="text-xs text-muted">Neues Passwort setzen</label>
+            <div className="mt-1 flex gap-2">
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="mind. 8 Zeichen"
+                className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
+              <button onClick={resetPw} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">Setzen</button>
+            </div>
+          </div>
+          {err && <div className="text-sm text-red-400">{err}</div>}
+          {msg && <div className="text-sm text-green-400">{msg}</div>}
+        </div>
+        <div className="mt-4 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">Schließen</button>
+          <button onClick={save} className="rounded bg-brand px-4 py-1.5 text-sm text-white">Speichern</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
