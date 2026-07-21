@@ -137,6 +137,14 @@ class JobRun(Base):
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class AppSetting(Base):
+    """Globaler Key-Value-Store für App-weite Admin-Einstellungen (z. B. Wartungsprojekt)."""
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+
+
 class Deployment(Base):
     __tablename__ = "deployments"
 
@@ -146,6 +154,9 @@ class Deployment(Base):
     stack_dir: Mapped[str] = mapped_column(String(500), default="")
     worktree: Mapped[str] = mapped_column(String(500), default="")
     check_only: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Self-Deploy (Host-Stack recreaten) NUR wenn explizit gesetzt — nie implizit durch
+    # leeren stack_dir. Agenten/Auto-Deploy erzeugen immer self_deploy=False.
+    self_deploy: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|pending-check|building|ok|failed|rolledback
     log: Mapped[str] = mapped_column(Text, default="")
     chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

@@ -155,12 +155,22 @@ def do_generic_deploy(conn, dep):
 def process(conn, dep):
     try:
         mark_building(conn, dep["id"])
+        targets_self = SELF_STACK_DIR and dep["stack_dir"] \
+            and os.path.abspath(dep["stack_dir"]) == os.path.abspath(SELF_STACK_DIR)
         if dep["status_prev"] == "pending-check" or dep["check_only"]:
             do_check(conn, dep)
-        elif not dep["stack_dir"] or os.path.abspath(dep["stack_dir"]) == os.path.abspath(SELF_STACK_DIR):
+        elif dep.get("self_deploy"):
+            # Nur der explizit angeforderte Wartungs-Update recreated den Host-Stack.
             do_self_deploy(conn, dep)
-        else:
+        elif dep["stack_dir"] and not targets_self:
             do_generic_deploy(conn, dep)
+        else:
+            # Leerer stack_dir ODER self-zielend ohne self_deploy-Flag → NIE implizit
+            # den Host recreaten (verhinderte den Self-Deploy-Loop).
+            set_status(conn, dep["id"], "failed",
+                       "Abgelehnt: Self-Deploy nur über das explizite Wartungs-Update. "
+                       "Impliziter Host-Deploy (leerer/self-stack_dir) ist gesperrt.")
+            finalize_issue(conn, dep["issue_id"], False)
     except Exception:  # noqa: BLE001
         set_status(conn, dep["id"], "failed", "Deployer-Ausnahme:\n" + traceback.format_exc())
 
@@ -319,12 +329,12 @@ def main():
         try:
             conn = db()
             with conn.cursor() as cur:
-                cur.execute("SELECT id, project_id, issue_id, stack_dir, worktree, check_only, status "
+                cur.execute("SELECT id, project_id, issue_id, stack_dir, worktree, check_only, status, self_deploy "
                             "FROM deployments WHERE status IN ('pending','pending-check') ORDER BY id LIMIT 1")
                 row = cur.fetchone()
             if row:
                 dep = {"id": row[0], "project_id": row[1], "issue_id": row[2], "stack_dir": row[3],
-                       "worktree": row[4], "check_only": row[5], "status_prev": row[6]}
+                       "worktree": row[4], "check_only": row[5], "status_prev": row[6], "self_deploy": row[7]}
                 print(f"[deployer] processing #{dep['id']} ({dep['status_prev']})", flush=True)
                 process(conn, dep)
             conn.close()

@@ -8,11 +8,11 @@ import asyncio
 import datetime as dt
 import logging
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
 from zoneinfo import ZoneInfo
 
-from ..core.redis import enqueue_task, get_flag, get_user_flag, publish_event, wait_result
+from ..core.redis import enqueue_task, get_flag, get_user_flag, publish_event, set_flag, wait_result
 from ..db import SessionLocal
 from ..models.agents import Run
 from ..models.enums import HoldReason, StatusCategory, TicketAgentStatus
@@ -258,6 +258,24 @@ async def _promote_split(db, child: Issue, project: Project) -> None:
 
 
 async def _tick() -> None:
+    # Wartungs-Update: keine neuen Agenten starten; wenn der letzte Agent fertig ist,
+    # das Wartungsprojekt über den Deployer-Sidecar self-deployen.
+    if await get_flag("update_pending") or await get_flag("update_in_progress"):
+        if await get_flag("update_pending"):
+            from ..models.predecessor import Deployment
+            from .appsettings import get_setting
+            async with SessionLocal() as db:
+                running = (await db.execute(
+                    select(func.count()).select_from(Issue).where(Issue.agent_working.is_(True)))).scalar() or 0
+                if running == 0:
+                    mp = await get_setting(db, "maintenance_project_id", "")
+                    if mp.isdigit():
+                        db.add(Deployment(project_id=int(mp), stack_dir="", self_deploy=True, status="pending"))
+                        await db.commit()
+                        log.info("Wartungs-Update: letzter Agent fertig → Self-Deploy eingereiht (Projekt %s)", mp)
+                    await set_flag("update_pending", False)
+                    await set_flag("update_in_progress", True)
+        return  # während des Updates keine neuen Agenten dispatchen
     if await get_flag("global_pause"):
         return
     async with SessionLocal() as db:
@@ -309,6 +327,12 @@ async def run_dispatcher() -> None:
 
 async def recover_on_start() -> None:
     """Hängende in_progress-Tickets nach Neustart lösen."""
+    # Kam der Backend-Container gerade aus einem Wartungs-Update (Self-Deploy) zurück,
+    # den Update-Zustand löschen → Betrieb läuft mit neuem Code weiter.
+    if await get_flag("update_in_progress") or await get_flag("update_pending"):
+        await set_flag("update_in_progress", False)
+        await set_flag("update_pending", False)
+        log.info("Wartungs-Update abgeschlossen — Betrieb fortgesetzt.")
     async with SessionLocal() as db:
         rows = (
             await db.execute(select(Issue).where(Issue.agent_status == TicketAgentStatus.in_progress))

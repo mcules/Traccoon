@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 
-type Tab = "users" | "cost";
+type Tab = "users" | "cost" | "maintenance";
 const TABS: [Tab, string][] = [
-  ["users", "Nutzer"], ["cost", "Kosten"],
+  ["users", "Nutzer"], ["cost", "Kosten"], ["maintenance", "Wartung"],
 ];
 
 export default function Admin() {
@@ -21,6 +21,45 @@ export default function Admin() {
       </div>
       {tab === "users" && <Users />}
       {tab === "cost" && <Cost />}
+      {tab === "maintenance" && <Maintenance />}
+    </div>
+  );
+}
+
+function Maintenance() {
+  const qc = useQueryClient();
+  const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: () => api.get<any[]>("/projects") });
+  const { data: status } = useQuery({ queryKey: ["admin-status"], queryFn: () => api.get<any>("/admin/status") });
+  const [msg, setMsg] = useState("");
+  const save = useMutation({
+    mutationFn: (project_id: number | null) => api.put("/admin/maintenance", { project_id }),
+    onSuccess: () => { setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); qc.invalidateQueries({ queryKey: ["admin-status"] }); },
+  });
+
+  return (
+    <div className="max-w-xl space-y-4 rounded-lg border border-line bg-card p-4">
+      <div>
+        <div className="text-sm font-medium">Wartungsprojekt</div>
+        <p className="mt-1 text-xs text-muted">
+          Nur das hier gewählte Projekt darf sich selbst deployen — und ausschließlich über den
+          Update-Button (🤖-Icon oben). Agenten und Auto-Deploy lösen <b>niemals</b> einen Self-Deploy aus.
+        </p>
+      </div>
+      <div>
+        <label className="text-xs text-muted">Projekt, das den laufenden Traccoon-Stack aktualisiert</label>
+        <select value={status?.maintenance_project_id ?? ""}
+          onChange={(e) => save.mutate(e.target.value ? Number(e.target.value) : null)}
+          className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink">
+          <option value="">— keins (Self-Deploy komplett aus) —</option>
+          {projects?.map((p) => <option key={p.id} value={p.id}>{p.key} · {p.name}</option>)}
+        </select>
+      </div>
+      {msg && <div className="text-sm text-green-400">{msg}</div>}
+      <div className="border-t border-line pt-3 text-xs text-muted">
+        Aktuell laufende Agenten: <b>{status?.running_agents ?? 0}</b>
+        {status?.update_pending && " · Update eingereiht"}
+        {status?.update_in_progress && " · Update läuft"}
+      </div>
     </div>
   );
 }
