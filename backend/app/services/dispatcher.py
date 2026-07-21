@@ -15,9 +15,9 @@ from zoneinfo import ZoneInfo
 from ..core.redis import enqueue_task, get_flag, get_user_flag, publish_event, wait_result
 from ..db import SessionLocal
 from ..models.agents import Run
-from ..models.enums import HoldReason, TicketAgentStatus
+from ..models.enums import HoldReason, StatusCategory, TicketAgentStatus
 from ..models.project import Project
-from ..models.ticket import Comment, Issue
+from ..models.ticket import Comment, Issue, WorkflowStatus
 from ..models.user import User
 
 log = logging.getLogger("dispatcher")
@@ -53,6 +53,39 @@ async def _gate_ok(db, issue: Issue) -> bool:
 
 def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
+
+
+# Agent-Status → Board-Spalte (per Name). Fehler/Rückfrage/Freigabe-Gate/zu-testen → „Warten",
+# aktive Bearbeitung → „In Arbeit", fertig → „Fertig". open/None lässt die Spalte unangetastet.
+_AGENT_STATUS_TO_BOARD = {
+    TicketAgentStatus.failed: "Warten",
+    TicketAgentStatus.hold: "Warten",
+    TicketAgentStatus.plan_review: "Warten",
+    TicketAgentStatus.to_test: "Warten",
+    TicketAgentStatus.testing: "Warten",
+    TicketAgentStatus.planning: "In Arbeit",
+    TicketAgentStatus.approved: "In Arbeit",
+    TicketAgentStatus.in_progress: "In Arbeit",
+    TicketAgentStatus.done: "Fertig",
+}
+
+
+async def sync_board_status(db, issue: Issue) -> None:
+    """Board-Spalte an den Agent-Status koppeln (verschiebt das Ticket in die passende Spalte,
+    falls sie im Projekt existiert). So landen Fehler/Rückfragen/zu-testende Tickets in „Warten"
+    statt in „To Do" zu bleiben. Ein manuell in eine „done"-Spalte gesetztes Ticket wird nie
+    zurückgezogen (menschliche Abnahme hat Vorrang)."""
+    target = _AGENT_STATUS_TO_BOARD.get(issue.agent_status)
+    if not target:
+        return
+    stats = (await db.execute(select(WorkflowStatus).where(
+        WorkflowStatus.project_id == issue.project_id))).scalars().all()
+    cur = next((s for s in stats if s.id == issue.status_id), None)
+    if cur and cur.category == StatusCategory.done and target != "Fertig":
+        return  # bereits (manuell) abgenommen — nicht nach „Warten" zurückziehen
+    st = next((s for s in stats if s.name == target), None)
+    if st and issue.status_id != st.id:
+        issue.status_id = st.id
 
 
 async def _plan_role(issue: Issue, project: Project) -> str:
@@ -179,6 +212,7 @@ async def _process(issue_id: int) -> None:
             await notify_issue(db, issue, "blocked", f"{issue.key}: blockiert ({hr})",
                                (result or {}).get("summary", ""))
 
+        await sync_board_status(db, issue)   # Board-Spalte an den neuen Agent-Status koppeln
         await db.commit()
         if enqueue_after_commit:
             await enqueue_task(enqueue_after_commit)
@@ -197,6 +231,7 @@ async def _promote_split(db, child: Issue, project: Project) -> None:
     nxt = next((s for s in sibs if s.agent_status is None), None)
     if nxt is not None:
         nxt.agent_status = TicketAgentStatus.approved
+        await sync_board_status(db, nxt)
         db.add(Comment(
             issue_id=nxt.id, author_id=None, author_label="System", kind="internal",
             body=f"▶️ Automatisch freigegeben — Vorgänger #{child.number} ({child.key}) ist fertig.",
@@ -214,6 +249,7 @@ async def _promote_split(db, child: Issue, project: Project) -> None:
                 await enqueue_task({"kind": "accept", "task_id": f"accept-{umbrella.key}",
                                     "issue_id": umbrella.id, "project_id": project.id})
             umbrella.hold_reason = None
+            await sync_board_status(db, umbrella)
             done_lbl = "zur Abnahme bereit" if needs_review else "abgeschlossen"
             db.add(Comment(
                 issue_id=umbrella.id, author_id=None, author_label="System", kind="internal",
