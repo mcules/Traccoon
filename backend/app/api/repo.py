@@ -6,11 +6,13 @@ Branch-Anzeige sowie Pull/Push des aktuellen Branches. Nur für Maintainer, nur 
 from __future__ import annotations
 
 import json
+import mimetypes
 import os
 import re
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -106,6 +108,20 @@ async def repo_read(path: str, access: Access = Depends(require_role(ProjectRole
     except UnicodeDecodeError:
         raise HTTPException(415, "Binärdatei — nicht editierbar")
     return {"path": path, "content": content}
+
+
+@router.get("/projects/{project_id}/repo/raw")
+async def repo_raw(path: str, access: Access = Depends(require_role(ProjectRole.maintainer)),
+                   db: AsyncSession = Depends(get_session)):
+    """Rohe Datei-Bytes (für Bild-Vorschau) mit erratenem Content-Type."""
+    full = _safe_path(_require_git(access.project), path)
+    if not os.path.isfile(full):
+        raise HTTPException(404, "Datei nicht gefunden")
+    if os.path.getsize(full) > 5_000_000:
+        raise HTTPException(413, "Datei zu groß für die Vorschau")
+    ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+    with open(full, "rb") as fh:
+        return Response(content=fh.read(), media_type=ctype)
 
 
 class WriteIn(BaseModel):
