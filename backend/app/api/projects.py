@@ -1,0 +1,311 @@
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..db import get_session
+from ..models.enums import IssueTypeCategory, ProjectRole, StatusCategory
+from ..models.project import Project, ProjectMember, default_ai_assign
+from ..models.ticket import Board, BoardColumn, IssueCounter, IssueType, WorkflowStatus
+from ..models.user import User
+from ..schemas.project import (
+    MemberCreate, MemberOut, MemberUpdate, ProjectCreate, ProjectOut,
+    ProjectSettings, ProjectSettingsOut, ProjectUpdate,
+)
+from .deps import Access, get_current_user, get_project_access, require_role
+
+router = APIRouter(tags=["projects"])
+
+
+def project_out(project: Project, access: Access) -> ProjectOut:
+    return ProjectOut(
+        id=project.id, key=project.key, name=project.name, description=project.description,
+        parent_id=project.parent_id, avatar_color=project.avatar_color, managed=project.managed,
+        pm_chat_enabled=project.pm_chat_enabled, has_hardware=project.has_hardware,
+        my_role=access.role, my_ai_assign=access.ai_assign,
+    )
+
+
+async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
+    types = [
+        ("Aufgabe", "task", "#4BADE8", IssueTypeCategory.standard),
+        ("Bug", "bug", "#E5493A", IssueTypeCategory.standard),
+        ("Epic", "epic", "#904EE2", IssueTypeCategory.epic),
+        ("Unteraufgabe", "subtask", "#4BADE8", IssueTypeCategory.subtask),
+        ("Hardware", "cpu", "#00857A", IssueTypeCategory.hardware),
+    ]
+    for i, (name, icon, color, cat) in enumerate(types):
+        db.add(IssueType(project_id=project.id, name=name, icon=icon, color=color, category=cat, order=i))
+
+    statuses = [
+        ("To Do", StatusCategory.todo),
+        ("In Arbeit", StatusCategory.in_progress),
+        ("Warten", StatusCategory.in_progress),
+        ("Fertig", StatusCategory.done),
+    ]
+    status_objs = []
+    for i, (name, cat) in enumerate(statuses):
+        s = WorkflowStatus(project_id=project.id, name=name, category=cat, order=i)
+        db.add(s)
+        status_objs.append(s)
+
+    board = Board(project_id=project.id, name="Board")
+    db.add(board)
+    db.add(IssueCounter(project_id=project.id, last_number=0))
+    await db.flush()  # IDs für Board-Spalten
+    for i, s in enumerate(status_objs):
+        db.add(BoardColumn(board_id=board.id, status_id=s.id, order=i))
+
+
+@router.get("/projects", response_model=list[ProjectOut])
+async def list_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    # Projekte, in denen der User Mitglied ist (Admin sieht alle).
+    from ..models.enums import GlobalRole
+    if user.global_role == GlobalRole.admin:
+        projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
+    else:
+        projects = (
+            await db.execute(
+                select(Project)
+                .join(ProjectMember, ProjectMember.project_id == Project.id)
+                .where(ProjectMember.user_id == user.id)
+                .order_by(Project.id)
+            )
+        ).scalars().all()
+    out = []
+    for p in projects:
+        m = (
+            await db.execute(
+                select(ProjectMember).where(
+                    ProjectMember.project_id == p.id, ProjectMember.user_id == user.id
+                )
+            )
+        ).scalar_one_or_none()
+        role = m.role if m else ProjectRole.owner
+        ai = m.ai_assign if m else True
+        out.append(ProjectOut(
+            id=p.id, key=p.key, name=p.name, description=p.description, parent_id=p.parent_id,
+            avatar_color=p.avatar_color, managed=p.managed, pm_chat_enabled=p.pm_chat_enabled,
+            has_hardware=p.has_hardware, my_role=role, my_ai_assign=ai,
+        ))
+    return out
+
+
+async def _gen_project_key(db: AsyncSession, name: str) -> str:
+    """Global eindeutiger, IMMER dreistelliger Projekt-Key aus dem Namen (A-Z0-9)."""
+    import re
+    alnum = re.sub(r"[^A-Z0-9]", "", name.upper()) or "PRJ"
+    if alnum[0].isdigit():
+        alnum = "P" + alnum  # muss mit Buchstabe beginnen
+    base = alnum[:3].ljust(3, "X")   # exakt 3 Zeichen
+
+    async def free(k: str) -> bool:
+        return not (await db.execute(select(Project.id).where(Project.key == k))).first()
+
+    if await free(base):
+        return base
+    # Bei Kollision: nummerierte 3-Zeichen-Varianten (UN2…UN9, U10…U99, 100…999)
+    for n in range(2, 1000):
+        suf = str(n)
+        cand = (base[: 3 - len(suf)] + suf)[:3]
+        if await free(cand):
+            return cand
+    raise HTTPException(status.HTTP_409_CONFLICT, "Kein freier Projekt-Key")
+
+
+@router.post("/projects", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
+async def create_project(
+    data: ProjectCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)
+):
+    if data.parent_id is not None and await db.get(Project, data.parent_id) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Übergeordnetes Projekt existiert nicht")
+
+    project = Project(
+        key=await _gen_project_key(db, data.name), name=data.name, description=data.description,
+        parent_id=data.parent_id, managed=data.managed, lead_user_id=user.id,
+    )
+    db.add(project)
+    await db.flush()
+    # Ersteller = Owner mit KI-Recht
+    db.add(ProjectMember(
+        project_id=project.id, user_id=user.id, role=ProjectRole.owner, ai_assign=True
+    ))
+    await _seed_project_defaults(project, db)
+    await db.commit()
+    await db.refresh(project)
+    access = Access(user, project, ProjectRole.owner, True, True)
+    return project_out(project, access)
+
+
+@router.get("/projects/{project_id}", response_model=ProjectOut)
+async def get_project(access: Access = Depends(get_project_access)):
+    return project_out(access.project, access)
+
+
+@router.put("/projects/{project_id}", response_model=ProjectOut)
+async def update_project(
+    data: ProjectUpdate,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    p = access.project
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(p, field, value)
+    await db.commit()
+    await db.refresh(p)
+    return project_out(p, access)
+
+
+_SETTINGS_FIELDS = tuple(ProjectSettings.model_fields)
+
+
+def _settings_out(p: Project) -> ProjectSettingsOut:
+    return ProjectSettingsOut(**{f: getattr(p, f) for f in _SETTINGS_FIELDS},
+                              git_token_set=bool(p.git_token_enc),
+                              testenv_env_set=bool(p.testenv_env_enc))
+
+
+class TestenvEnvIn(BaseModel):
+    env: dict[str, str]
+
+
+@router.put("/projects/{project_id}/testenv-env", status_code=204)
+async def set_testenv_env(
+    data: TestenvEnvIn,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    """Env der Testumgebung verschlüsselt ablegen (wird nie wieder ausgeliefert)."""
+    from ..core.security import encrypt_secret
+    access.project.testenv_env_enc = encrypt_secret(json.dumps(data.env)) if data.env else ""
+    await db.commit()
+
+
+@router.get("/projects/{project_id}/settings", response_model=ProjectSettingsOut)
+async def get_settings(access: Access = Depends(require_role(ProjectRole.maintainer))):
+    return _settings_out(access.project)
+
+
+@router.put("/projects/{project_id}/settings", response_model=ProjectSettingsOut)
+async def update_settings(
+    data: ProjectSettings,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    p = access.project
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(p, field, value)
+    await db.commit()
+    await db.refresh(p)
+    return _settings_out(p)
+
+
+@router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project(
+    access: Access = Depends(require_role(ProjectRole.owner)),
+    db: AsyncSession = Depends(get_session),
+):
+    await db.delete(access.project)
+    await db.commit()
+
+
+# ---------- Mitglieder ----------
+
+@router.get("/projects/{project_id}/members", response_model=list[MemberOut])
+async def list_members(
+    access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session)
+):
+    rows = (
+        await db.execute(
+            select(ProjectMember, User)
+            .join(User, User.id == ProjectMember.user_id)
+            .where(ProjectMember.project_id == access.project.id)
+            .order_by(ProjectMember.id)
+        )
+    ).all()
+    return [
+        MemberOut(id=m.id, user_id=u.id, username=u.username, display_name=u.display_name,
+                  role=m.role, ai_assign=m.ai_assign)
+        for m, u in rows
+    ]
+
+
+@router.post("/projects/{project_id}/members", response_model=MemberOut,
+             status_code=status.HTTP_201_CREATED)
+async def add_member(
+    data: MemberCreate,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    target = await db.get(User, data.user_id)
+    if target is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    dup = (
+        await db.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == access.project.id,
+                ProjectMember.user_id == data.user_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if dup is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Bereits Mitglied")
+    ai = data.ai_assign if data.ai_assign is not None else default_ai_assign(data.role)
+    m = ProjectMember(project_id=access.project.id, user_id=data.user_id, role=data.role, ai_assign=ai)
+    db.add(m)
+    await db.commit()
+    await db.refresh(m)
+    return MemberOut(id=m.id, user_id=target.id, username=target.username,
+                     display_name=target.display_name, role=m.role, ai_assign=m.ai_assign)
+
+
+@router.put("/projects/{project_id}/members/{user_id}", response_model=MemberOut)
+async def update_member(
+    user_id: int,
+    data: MemberUpdate,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    m = (
+        await db.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == access.project.id, ProjectMember.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if m is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kein Mitglied")
+    if data.role is not None:
+        m.role = data.role
+        if data.ai_assign is None:
+            m.ai_assign = default_ai_assign(data.role)
+    if data.ai_assign is not None:
+        m.ai_assign = data.ai_assign
+    await db.commit()
+    await db.refresh(m)
+    target = await db.get(User, user_id)
+    return MemberOut(id=m.id, user_id=user_id, username=target.username,
+                     display_name=target.display_name, role=m.role, ai_assign=m.ai_assign)
+
+
+@router.delete("/projects/{project_id}/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(
+    user_id: int,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    m = (
+        await db.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == access.project.id, ProjectMember.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if m is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kein Mitglied")
+    if m.role == ProjectRole.owner and access.role != ProjectRole.owner:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Owner darf nur von Owner entfernt werden")
+    await db.delete(m)
+    await db.commit()
