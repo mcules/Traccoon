@@ -1,0 +1,60 @@
+# Isolierte Wegwerf-Preview eines Tickets (Testumgebung).
+# Der Deployer startet:  docker compose -p <name> -f compose.preview.yml up -d --build
+# und published das Frontend auf ${PREVIEW_PORT}. Bewusst OHNE Traefik-Labels, ohne
+# Host-Bind-Mounts, ohne externe Netze und ohne persistente Volumes — jede Preview ist
+# eigenständig und wird nach der Abnahme wieder abgeräumt.
+#
+# Alle Werte sind Dev-Platzhalter für einen EPHEMEREN, isolierten Stack (keine echten
+# Zugangsdaten). Login der Preview: admin / preview.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${PREVIEW_DB_USER:-preview}
+      POSTGRES_PASSWORD: ${PREVIEW_DB_PASSWORD:-preview}
+      POSTGRES_DB: ${PREVIEW_DB_NAME:-traccoon}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PREVIEW_DB_USER:-preview}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  backend:
+    build: ./backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${PREVIEW_DB_USER:-preview}:${PREVIEW_DB_PASSWORD:-preview}@db:5432/${PREVIEW_DB_NAME:-traccoon}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${PREVIEW_JWT_SECRET:-preview-insecure-jwt}
+      SECRET_ENCRYPTION_KEY: ""          # leer = Klartext, nur Preview
+      ALLOWED_ORIGINS: "*"
+      DEV_CREATE_ALL: "true"             # Tabellen per create_all, kein Alembic in der Preview
+      INTERNAL_TOKEN: preview-internal
+      WORKSPACE_ROOT: /workspace
+      # Bootstrap-Admin, damit man sich in der Preview einloggen kann.
+      BOOTSTRAP_ADMIN_EMAIL: admin@preview.local
+      BOOTSTRAP_ADMIN_USERNAME: ${PREVIEW_ADMIN_USER:-admin}
+      BOOTSTRAP_ADMIN_PASSWORD: ${PREVIEW_ADMIN_PASS:-preview}
+    networks:
+      default:
+        aliases:
+          - traccoon-backend   # das Frontend-nginx proxyt /api hierhin
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8800"]
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "${PREVIEW_PORT:-8100}:80"
+
+networks:
+  default:
