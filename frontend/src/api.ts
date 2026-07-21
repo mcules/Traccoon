@@ -89,7 +89,8 @@ export interface User {
 }
 export interface Project {
   id: number; key: string; name: string; description: string;
-  managed: boolean; pm_chat_enabled: boolean; has_hardware: boolean; my_role: string; my_ai_assign: boolean;
+  managed: boolean; pm_chat_enabled: boolean; has_hardware: boolean; git_enabled?: boolean;
+  my_role: string; my_ai_assign: boolean;
 }
 export interface IssueType { id: number; name: string; icon: string; color: string; category: string; order: number; }
 export interface Status { id: number; name: string; category: string; order: number; }

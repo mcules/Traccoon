@@ -24,6 +24,7 @@ def project_out(project: Project, access: Access) -> ProjectOut:
         id=project.id, key=project.key, name=project.name, description=project.description,
         parent_id=project.parent_id, avatar_color=project.avatar_color, managed=project.managed,
         pm_chat_enabled=project.pm_chat_enabled, has_hardware=project.has_hardware,
+        git_enabled=project.git_enabled,
         my_role=access.role, my_ai_assign=access.ai_assign,
     )
 
@@ -88,7 +89,7 @@ async def list_projects(user: User = Depends(get_current_user), db: AsyncSession
         out.append(ProjectOut(
             id=p.id, key=p.key, name=p.name, description=p.description, parent_id=p.parent_id,
             avatar_color=p.avatar_color, managed=p.managed, pm_chat_enabled=p.pm_chat_enabled,
-            has_hardware=p.has_hardware, my_role=role, my_ai_assign=ai,
+            has_hardware=p.has_hardware, git_enabled=p.git_enabled, my_role=role, my_ai_assign=ai,
         ))
     return out
 
