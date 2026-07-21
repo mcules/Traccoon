@@ -47,6 +47,12 @@ export default function TicketDrawer({
   const [confirmDel, setConfirmDel] = useState(false);
   const [agent, setAgent] = useState("project_manager");
   const [err, setErr] = useState("");
+  const [showDiff, setShowDiff] = useState(false);
+  const diff = useQuery({
+    queryKey: ["diff", issueKey],
+    queryFn: () => api.get<{ diff: string }>(`/issues/${issueKey}/diff`),
+    enabled: showDiff,
+  });
 
   // Gepufferte Bearbeitung: Änderungen erst beim Klick auf „Speichern" übernehmen (TRA-2).
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -363,7 +369,12 @@ export default function TicketDrawer({
                     ) : issue.hold_reason === "permission" ? (
                       <div className="mt-1 text-muted">Berechtigung im <b>Monitor</b>-Tab oder per Telegram entscheiden.</div>
                     ) : issue.hold_reason === "review" ? (
-                      <div className="mt-1 text-muted">Review-Befunde offen — kommentiere Korrekturen, um fortzusetzen.</div>
+                      <div className="mt-2 space-y-2">
+                        <div className="text-muted">Review-Befunde offen — prüfe den Diff (unten „Diff ansehen"),
+                          dann abnehmen oder eine Korrektur kommentieren.</div>
+                        <button onClick={() => life.mutate("complete")}
+                          className="rounded bg-green-600 px-3 py-1 text-sm text-white">✅ Abnehmen</button>
+                      </div>
                     ) : (
                       <button onClick={() => life.mutate("plan")}
                         className="mt-2 rounded bg-brand px-3 py-1 text-white">↻ Neu planen</button>
@@ -374,9 +385,17 @@ export default function TicketDrawer({
               </div>
             )}
 
-            {/* Vom Agenten geänderte Dateien + manuelle Anhänge */}
+            {/* Vom Agenten geänderte Dateien + Diff + Testumgebung + Anhänge */}
             <div className="mb-4 rounded-lg border border-line p-3">
-              <div className="mb-2 text-sm font-medium">Dateien</div>
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-sm font-medium">Dateien</span>
+                <div className="flex-1" />
+                {fileChanges && fileChanges.length > 0 && (
+                  <button onClick={() => setShowDiff((v) => !v)}
+                    className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-brand">
+                    {showDiff ? "Diff ausblenden" : "Diff ansehen"}</button>
+                )}
+              </div>
               {fileChanges && fileChanges.length > 0 ? (
                 <div className="mb-3 space-y-1">
                   {fileChanges.map((f) => (
@@ -394,6 +413,46 @@ export default function TicketDrawer({
                 </div>
               ) : (
                 <div className="mb-3 text-xs text-muted">Noch keine Code-Änderungen.</div>
+              )}
+
+              {showDiff && (
+                <div className="mb-3 max-h-96 overflow-auto rounded bg-surface p-2">
+                  {diff.isLoading ? <div className="text-xs text-muted">Lädt…</div>
+                    : !diff.data?.diff ? <div className="text-xs text-muted">Kein Diff.</div>
+                    : <pre className="whitespace-pre font-mono text-[11px] leading-tight">
+                        {diff.data.diff.split("\n").map((ln, i) => (
+                          <div key={i} className={
+                            ln.startsWith("+") && !ln.startsWith("+++") ? "text-green-400"
+                              : ln.startsWith("-") && !ln.startsWith("---") ? "text-red-400"
+                              : ln.startsWith("@@") ? "text-brand"
+                              : ln.startsWith("diff ") || ln.startsWith("index ") ? "text-muted" : ""}>
+                            {ln || " "}</div>
+                        ))}
+                      </pre>}
+                </div>
+              )}
+
+              {/* Testumgebung: sichtbar sobald es Code-Änderungen gibt */}
+              {project.my_ai_assign && fileChanges && fileChanges.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 border-t border-line pt-2 text-xs">
+                  <span className="font-medium">Testumgebung:</span>
+                  {issue.testenv_status === "running" && issue.testenv_url ? (
+                    <>
+                      <a href={issue.testenv_url} target="_blank" rel="noreferrer"
+                        className="text-brand hover:underline">🖥 {issue.testenv_url}</a>
+                      <button onClick={() => life.mutate("testenv/stop")}
+                        className="rounded border border-line px-2 py-0.5 text-muted hover:text-red-400">Stoppen</button>
+                    </>
+                  ) : issue.testenv_status === "starting" ? (
+                    <span className="text-muted">startet… (Build dauert ein paar Minuten)</span>
+                  ) : (
+                    <button onClick={() => life.mutate("testenv/start")}
+                      className="rounded border border-line px-2 py-0.5 text-muted hover:text-brand">🖥 Starten</button>
+                  )}
+                  {issue.testenv_status === "error" && (
+                    <span className="text-red-400">Fehler{issue.testenv_error ? `: ${issue.testenv_error.slice(0, 120)}` : ""}</span>
+                  )}
+                </div>
               )}
 
               <div className="space-y-1">
