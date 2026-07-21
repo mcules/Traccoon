@@ -11,6 +11,7 @@ Zweigleisig:
   - Generisches Projekt-Deploy: compose build+up im Projekt-Stack, Container-Health, KEIN Rollback.
   - check-only: nur build, kein up (billiger Verify).
 """
+import re
 import json
 import os
 import subprocess
@@ -118,6 +119,7 @@ def do_self_deploy(conn, dep):
     # Update = neuen Code holen (best effort). Schlägt der Pull fehl (Auth/Netz), wird der
     # aktuelle Stand gebaut — der Deploy bricht deswegen nicht ab.
     pr, pout = sh(["git", "-C", SELF_STACK_DIR, "-c", "safe.directory=*", "pull", "--ff-only"], timeout=120)
+    pout = re.sub(r"x-access-token:[^@\s]+@", "x-access-token:***@", pout)  # Token nie loggen
     print(f"[deployer] self-deploy git pull rc={pr}: {pout[-300:]}", flush=True)
     # laufendes Image sichern
     sh(["docker", "tag", "traccoon-backend:latest", "traccoon-backend:rollback"])
