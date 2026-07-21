@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth";
 import NotificationBell from "./NotificationBell";
+import AgentsBadge from "./AgentsBadge";
 
 function toggleTheme() {
   const cur = document.documentElement.getAttribute("data-theme") || "dark";
@@ -23,6 +24,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         {user?.global_role === "admin" && (
           <Link to="/admin" className="text-muted hover:text-ink">Admin</Link>
         )}
+        <AgentsBadge />
         <NotificationBell />
         <button onClick={toggleTheme} className="rounded px-2 py-1 text-muted hover:text-ink" title="Theme">
           ◑
