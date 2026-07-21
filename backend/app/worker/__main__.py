@@ -238,9 +238,10 @@ async def handle(job: dict, redis: Redis) -> None:
             result = await _review_gate(db, project, issue, agent, ws_root, gate_on, tokens,
                                         permissions, result, ctx, owner_id)
 
-        # Bei erfolgreicher Ausführung committen + Datei-Änderungen erfassen
+        # Agenten-Änderungen IMMER committen (nicht nur bei 'done') — sonst sitzt die Arbeit
+        # bei Review-Hold/Rückfrage uncommittet im Worktree und ist nicht review-/testbar.
         merge_status = ""
-        if mode == "execute" and result.status == "done" and ctx is not None:
+        if mode == "execute" and ctx is not None:
             changes = await gitops.file_changes(ctx)
             cmsg = await gitops.commit(ctx, f"ticket {issue.key}: {issue.summary}")
             log.info("git commit %s: %s", issue.key, cmsg)
