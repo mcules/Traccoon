@@ -1,6 +1,9 @@
-from pydantic import BaseModel, Field
+import datetime as dt
+
+from pydantic import BaseModel, Field, field_validator
 
 from ..models.enums import ProjectRole
+from .auth import _valid_email
 
 
 class ProjectCreate(BaseModel):
@@ -76,6 +79,8 @@ class ProjectOut(BaseModel):
     # Sicht des aktuellen Nutzers auf dieses Projekt
     my_role: ProjectRole
     my_ai_assign: bool
+    is_member: bool = True     # False = fremdes Projekt (nur Admin sieht das)
+    is_new: bool = False       # kürzlich (≤7 Tage) hinzugefügtes Mitglied
 
     model_config = {"from_attributes": True}
 
@@ -100,3 +105,34 @@ class MemberOut(BaseModel):
     ai_assign: bool
 
     model_config = {"from_attributes": True}
+
+
+# ---------- Einladungen ----------
+
+class InvitationCreate(BaseModel):
+    email: str = Field(max_length=320)
+    role: ProjectRole = ProjectRole.member
+
+    _norm_email = field_validator("email")(_valid_email)
+
+
+class InvitationOut(BaseModel):
+    id: int
+    project_id: int
+    email: str
+    role: ProjectRole
+    status: str
+    created_at: dt.datetime
+    expires_at: dt.datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class InvitationPreview(BaseModel):
+    """Was der Einladungslink vor dem Login/Register anzeigt."""
+    project_key: str
+    project_name: str
+    email: str
+    role: ProjectRole
+    valid: bool
+    reason: str | None = None
