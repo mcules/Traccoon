@@ -5,6 +5,7 @@ from .enums import (  # noqa: F401
 )
 from .user import SYSTEM_USER_ID, User  # noqa: F401
 from .project import Project, ProjectMember, default_ai_assign  # noqa: F401
+from .invitation import ProjectInvitation  # noqa: F401
 from .ticket import (  # noqa: F401
     ActivityLog, Attachment, Blocker, Board, BoardColumn, Comment, Issue, IssueCounter,
     IssueLink, IssueTag, IssueType, SavedFilter, Sprint, Tag, TicketFileChange, WorkflowStatus,
@@ -27,6 +28,7 @@ from .plugins import McpServer, Plugin, PluginData, PluginFile, Skill  # noqa: F
 
 __all__ = [
     "User", "SYSTEM_USER_ID", "Project", "ProjectMember", "default_ai_assign",
+    "ProjectInvitation",
     "IssueType", "WorkflowStatus", "IssueCounter", "Board", "BoardColumn", "Sprint",
     "Tag", "IssueTag", "Issue", "IssueLink", "Comment", "ActivityLog", "SavedFilter",
     "Blocker", "Location", "HardwareModel", "HardwareAsset", "HardwareWorkflow",

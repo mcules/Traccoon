@@ -26,6 +26,7 @@ def project_out(project: Project, access: Access) -> ProjectOut:
         pm_chat_enabled=project.pm_chat_enabled, has_hardware=project.has_hardware,
         git_enabled=project.git_enabled,
         my_role=access.role, my_ai_assign=access.ai_assign,
+        is_member=access.is_member, is_new=access.is_new,
     )
 
 
@@ -62,7 +63,7 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
 
 @router.get("/projects", response_model=list[ProjectOut])
 async def list_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    # Projekte, in denen der User Mitglied ist (Admin sieht alle).
+    # Admin sieht ALLE Projekte (auch fremde, als is_member=False markiert), sonst nur die eigenen.
     from ..models.enums import GlobalRole
     if user.global_role == GlobalRole.admin:
         projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
@@ -84,13 +85,11 @@ async def list_projects(user: User = Depends(get_current_user), db: AsyncSession
                 )
             )
         ).scalar_one_or_none()
-        role = m.role if m else ProjectRole.owner
-        ai = m.ai_assign if m else True
-        out.append(ProjectOut(
-            id=p.id, key=p.key, name=p.name, description=p.description, parent_id=p.parent_id,
-            avatar_color=p.avatar_color, managed=p.managed, pm_chat_enabled=p.pm_chat_enabled,
-            has_hardware=p.has_hardware, git_enabled=p.git_enabled, my_role=role, my_ai_assign=ai,
-        ))
+        if m is not None:
+            access = Access(user, p, m.role, m.ai_assign, True, m.created_at)
+        else:
+            access = Access(user, p, ProjectRole.owner, True, False)
+        out.append(project_out(p, access))
     return out
 
 

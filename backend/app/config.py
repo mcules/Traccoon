@@ -26,6 +26,17 @@ class Settings(BaseSettings):
     # Dev: Tabellen per create_all statt Alembic
     dev_create_all: bool = True
 
+    # Öffentliche Basis-URL (für Einladungslinks etc.), z. B. https://traccoon.example.com
+    app_base_url: str = ""
+
+    # --- SMTP (E-Mail-Versand, z. B. Projekt-Einladungen) ---
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""       # Absenderadresse, Default = smtp_user
+    smtp_use_tls: bool = True
+
     @property
     def cors_origins(self) -> list[str]:
         raw = self.allowed_origins.strip()
