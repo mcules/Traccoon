@@ -204,10 +204,22 @@ async def prepare(ctx: GitCtx) -> str:
     await refresh_main(ctx)
     if ctx.worktree:
         os.makedirs(os.path.dirname(ctx.worktree), exist_ok=True)
+        # Verwaiste Registrierungen (Verzeichnis gelöscht) entfernen, damit unten kein
+        # leerer/fehlender Worktree fälschlich „wiederverwendet" wird.
+        await _git(ctx.workdir, "worktree", "prune")
         rc, out = await _git(ctx.workdir, "worktree", "list", "--porcelain")
-        if rc == 0 and ctx.worktree in out:
-            ctx.base_commit = await _head(ctx.workdir)
-            return f"git: Worktree wiederverwendet ({ctx.branch})"
+        registered = rc == 0 and ctx.worktree in out
+        # Nur wiederverwenden, wenn das Verzeichnis existiert, ein echtes Working-Tree ist
+        # UND ausgecheckte Dateien enthält (sonst ist es eine Leiche → frisch anlegen).
+        if registered and os.path.isdir(ctx.worktree) and await _is_repo(ctx.worktree):
+            rc_f, files = await _git(ctx.worktree, "ls-files")
+            if rc_f == 0 and files.strip():
+                ctx.base_commit = await _head(ctx.workdir)
+                return f"git: Worktree wiederverwendet ({ctx.branch})"
+        # Kaputte/leere Registrierung sauber entfernen, bevor wir neu anlegen.
+        if registered:
+            await _git(ctx.workdir, "worktree", "remove", "--force", ctx.worktree)
+            await _git(ctx.workdir, "worktree", "prune")
         rc_b, _ = await _git(ctx.workdir, "rev-parse", "--verify", ctx.branch)
         if rc_b == 0:
             rc, out = await _git(ctx.workdir, "worktree", "add", ctx.worktree, ctx.branch)
