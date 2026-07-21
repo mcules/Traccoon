@@ -66,36 +66,46 @@ def http_ok(url, tries=30, delay=3):
     return False
 
 
+def _run(sql, params):
+    """Kurzlebige, eigene Verbindung je Write — der lange Build/Recreate killt sonst die
+    dauerhaft gehaltene Verbindung, und Status/Finalize gehen verloren (building bleibt hängen)."""
+    c = db()
+    try:
+        with c.cursor() as cur:
+            cur.execute(sql, params)
+    finally:
+        try:
+            c.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def set_status(conn, dep_id, status, log=""):
-    with conn.cursor() as cur:
-        cur.execute("UPDATE deployments SET status=%s, log=left(coalesce(log,'')||%s, 20000), "
-                    "finished_at=now() WHERE id=%s", (status, "\n" + log[-8000:], dep_id))
+    _run("UPDATE deployments SET status=%s, log=left(coalesce(log,'')||%s, 20000), "
+         "finished_at=now() WHERE id=%s", (status, "\n" + log[-8000:], dep_id))
 
 
 def mark_building(conn, dep_id):
-    with conn.cursor() as cur:
-        cur.execute("UPDATE deployments SET status='building', started_at=now() WHERE id=%s", (dep_id,))
+    _run("UPDATE deployments SET status='building', started_at=now() WHERE id=%s", (dep_id,))
 
 
 def finalize_issue(conn, issue_id, ok):
     """Self-Deploy-Race-Closer: der auslösende Run wurde vom Recreate gekillt → hier abschließen."""
     if not issue_id:
         return
-    with conn.cursor() as cur:
-        if ok:
-            cur.execute("UPDATE issues SET agent_status='to_test', agent_working=false WHERE id=%s "
-                        "AND agent_status IN ('in_progress','approved')", (issue_id,))
-        else:
-            cur.execute("UPDATE issues SET agent_status='hold', hold_reason='merge', agent_working=false "
-                        "WHERE id=%s", (issue_id,))
+    if ok:
+        _run("UPDATE issues SET agent_status='to_test', agent_working=false WHERE id=%s "
+             "AND agent_status IN ('in_progress','approved')", (issue_id,))
+    else:
+        _run("UPDATE issues SET agent_status='hold', hold_reason='merge', agent_working=false "
+             "WHERE id=%s", (issue_id,))
 
 
 def add_comment(conn, issue_id, body):
     if not issue_id:
         return
-    with conn.cursor() as cur:
-        cur.execute("INSERT INTO comments(issue_id,author_id,author_label,body,kind,created_at,updated_at) "
-                    "VALUES(%s,NULL,'deployer',%s,'agent',now(),now())", (issue_id, body[:4000]))
+    _run("INSERT INTO comments(issue_id,author_id,author_label,body,kind,created_at,updated_at) "
+         "VALUES(%s,NULL,'deployer',%s,'agent',now(),now())", (issue_id, body[:4000]))
 
 
 def compose(stack_dir, *args, timeout=900):
