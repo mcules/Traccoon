@@ -62,6 +62,17 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
     onSuccess: (r: any) => { setNote(`${r?.synced ?? 0} verknüpfte Kopie(n) aktualisiert.`); setTimeout(() => setNote(""), 3000); inv(); },
     onError: fail,
   });
+  const fetchModels = useMutation({
+    mutationFn: () => api.post<Record<string, any>>("/providers/models/fetch"),
+    onSuccess: (r) => {
+      const parts = Object.entries(r).map(([p, v]: [string, any]) =>
+        v.error ? `${p}: Fehler` : `${p}: ${v.total} (${v.added} neu)`);
+      setNote(parts.length ? `Modelle aktualisiert — ${parts.join(", ")}` : "Keine Provider-Tokens hinterlegt.");
+      setTimeout(() => setNote(""), 5000);
+      qc.invalidateQueries({ queryKey: ["provider-models"] });
+    },
+    onError: fail,
+  });
 
   return (
     <div>
@@ -75,6 +86,10 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
           <button onClick={() => seed.mutate()} className="rounded border border-line px-3 py-1.5 text-sm">
             Standard-Agenten anlegen</button>
         )}
+        <button onClick={() => fetchModels.mutate()} disabled={fetchModels.isPending}
+          title="Verfügbare Modelle live bei den Providern abrufen (nutzt deine Tokens)"
+          className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink disabled:opacity-50">
+          {fetchModels.isPending ? "Lädt…" : "↻ Modelle abrufen"}</button>
         <button onClick={newAgent} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
           + Agent</button>
       </div>
