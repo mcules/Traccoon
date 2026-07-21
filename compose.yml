@@ -1,0 +1,165 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER erforderlich (siehe .env)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD erforderlich (siehe .env)}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB erforderlich (siehe .env)}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-720}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      DEV_CREATE_ALL: ${DEV_CREATE_ALL:-true}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN erforderlich (siehe .env)}
+      DEPLOYER_URL: ${DEPLOYER_URL:-http://deployer:8661}
+      SHOTTER_URL: ${SHOTTER_URL:-http://shotter:8700}
+      WORKSPACE_ROOT: /workspace
+      WORKSPACE_HOST_PATH: ${WORKSPACE_HOST_PATH:?WORKSPACE_HOST_PATH erforderlich (siehe .env)}
+      TESTENV_HOST: ${TESTENV_HOST:-localhost}
+      TESTENV_PORT_RANGE: ${TESTENV_PORT_RANGE:-8100-8199}
+      TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
+    ports:
+      - "${BACKEND_PORT:-8800}:8800"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+      - ./backend/alembic.ini:/app/alembic.ini
+    networks:
+      default:
+        aliases:
+          - traccoon-backend   # eindeutig, damit das Frontend am proxy-Netz nicht kollidiert
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8800", "--reload"]
+
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
+      WORKSPACE_ROOT: /workspace
+      DEPLOYER_URL: ${DEPLOYER_URL:-http://deployer:8661}
+      SHOTTER_URL: ${SHOTTER_URL:-http://shotter:8700}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN erforderlich (siehe .env)}
+      MCP_GATEWAY_URL: ${MCP_GATEWAY_URL:-}
+      MCP_GATEWAY_TOKEN: ${MCP_GATEWAY_TOKEN:-}
+      MCPJUNGLE_BASE: ${MCPJUNGLE_BASE:-http://mcpjungle:8080}
+      DEFAULT_CLAUDE_MODEL: ${DEFAULT_CLAUDE_MODEL:-claude-sonnet-4-5}
+      DEFAULT_CODEX_MODEL: ${DEFAULT_CODEX_MODEL:-gpt-5}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
+    volumes:
+      - ./backend/app:/app/app
+      - ./data/workspace:/workspace
+    networks: [default, mcp-backends]
+    command: ["python", "-m", "app.worker"]
+
+  telegram-bot:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_ENCRYPTION_KEY: ${SECRET_ENCRYPTION_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_ALLOWED_IDS: ${TELEGRAM_ALLOWED_IDS:-}
+      TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
+    volumes:
+      - ./backend/app:/app/app
+    command: ["python", "-m", "app.bot"]
+
+  shotter:
+    build: ./shotter
+    restart: unless-stopped
+    environment:
+      SHOTTER_PORT: "8700"
+      SHOT_BASE_URL: ${SHOT_BASE_URL:-}
+      SHOT_LOGIN_EMAIL: ${SHOT_LOGIN_EMAIL:-}
+      SHOT_LOGIN_PASSWORD: ${SHOT_LOGIN_PASSWORD:-}
+      SHOT_TOKEN_KEY: ${SHOT_TOKEN_KEY:-}
+
+  deployer:
+    build: ./deployer
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PG_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      SELF_STACK_DIR: ${SELF_STACK_DIR:?SELF_STACK_DIR erforderlich (siehe .env)}
+      SELF_SERVICES: "backend worker frontend"
+      HEALTH_URL: http://backend:8800/api/health
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN erforderlich (siehe .env)}
+      PREVIEW_MEMORY: ${PREVIEW_MEMORY:-2g}
+      PREVIEW_CPUS: ${PREVIEW_CPUS:-2}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKER_STACKS_DIR:?DOCKER_STACKS_DIR erforderlich (siehe .env)}:${DOCKER_STACKS_DIR}
+      - ./deployer/deploy_watch.py:/deploy_watch.py:ro
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    networks:
+      - default
+      - proxy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.traccoon.rule=Host(`${TRACCOON_HOST:?TRACCOON_HOST erforderlich (siehe .env)}`)"
+      - "traefik.http.routers.traccoon.entrypoints=websecure"
+      - "traefik.http.routers.traccoon.tls.certresolver=le"
+      - "traefik.http.services.traccoon.loadbalancer.server.port=80"
+
+networks:
+  default:
+  mcp-backends:
+    external: true
+  proxy:
+    external: true
