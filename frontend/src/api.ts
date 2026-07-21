@@ -119,7 +119,7 @@ export interface Issue {
   reporter_id: number; assignee_user_id: number | null;
   assigned_agent: string | null; assigned_by_user_id: number | null; assigned_at: string | null;
   plan: string | null;
-  testenv_status?: string | null; testenv_url?: string | null;
+  testenv_status?: string | null; testenv_url?: string | null; testenv_error?: string | null;
   parent_ticket_id: number | null; split_order: number | null;
   sprint_id: number | null; story_points: number | null; rank: string; agent_working: boolean;
   archived?: boolean;
