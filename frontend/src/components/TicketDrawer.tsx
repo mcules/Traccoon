@@ -500,9 +500,10 @@ export default function TicketDrawer({
             </div>
             <div className="space-y-2">
               {comments?.map((c) => (
-                <div key={c.id} className="rounded border border-line bg-surface p-2 text-sm">
+                <div key={c.id} className={`rounded border p-2 text-sm ${
+                  c.kind === "system" ? "border-dashed border-line bg-surface/50" : "border-line bg-surface"}`}>
                   <div className="mb-1 flex items-center gap-2 text-xs text-muted">
-                    <span>{c.author_id ? c.author_label : "🤖 " + c.author_label}</span>
+                    <span>{c.kind === "system" ? "ⓘ System" : c.author_id ? c.author_label : "🤖 " + c.author_label}</span>
                     {c.kind === "internal" && <span className="rounded bg-line px-1">intern</span>}
                   </div>
                   <div className="whitespace-pre-wrap">{c.body}</div>

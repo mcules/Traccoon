@@ -11,6 +11,7 @@ from ..models.enums import HoldReason, TicketAgentStatus
 from ..models.project import Project
 from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from ..schemas.issue import IssueOut
+from ..services.comments import add_system_comment
 from ..services.dispatcher import sync_board_status
 from .deps import Access
 from .issues import get_issue_access
@@ -21,6 +22,10 @@ router = APIRouter(tags=["lifecycle"])
 def _require_ai(access: Access) -> None:
     if not access.ai_assign:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "KI-Recht (ai_assign) erforderlich")
+
+
+def _who(access: Access) -> str:
+    return access.user.display_name or access.user.username
 
 
 @router.post("/issues/{key}/plan", response_model=IssueOut)
@@ -53,6 +58,7 @@ async def approve_plan(
         raise HTTPException(status.HTTP_409_CONFLICT, "Kein Plan vorhanden")
     issue.agent_status = TicketAgentStatus.approved
     issue.hold_reason = None
+    await add_system_comment(db, issue.id, f"✅ Plan freigegeben von {_who(access)}")
     await sync_board_status(db, issue)
     await db.commit()
     await db.refresh(issue)
@@ -104,6 +110,8 @@ async def approve_split(pair: tuple[Issue, Access] = Depends(get_issue_access),
     # Umbrella wartet auf die Kinder (nicht selbst ausgeführt)
     umbrella.agent_status = None
     umbrella.hold_reason = None
+    await add_system_comment(db, umbrella.id,
+                             f"✅ Aufteilung freigegeben von {_who(access)} — {len(children)} Teilaufgaben")
     for c in children:  # Teil 1 (approved) → „In Arbeit", die geparkten bleiben unangetastet
         await sync_board_status(db, c)
     await db.commit()
@@ -124,6 +132,7 @@ async def reject_plan(
     issue.plan = None
     issue.agent_status = None  # geparkt; /plan startet neu
     issue.hold_reason = None
+    await add_system_comment(db, issue.id, f"✖ Plan abgelehnt von {_who(access)}")
     await db.commit()
     await db.refresh(issue)
     return issue

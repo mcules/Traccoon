@@ -16,6 +16,17 @@ RUNNING = (TicketAgentStatus.planning, TicketAgentStatus.approved,
            TicketAgentStatus.in_progress, TicketAgentStatus.testing)
 
 
+async def add_system_comment(db: AsyncSession, issue_id: int, text: str,
+                             author_label: str = "System") -> None:
+    """Ereignis-Notiz im Ticket (Plan-Freigabe/-Ablehnung, Agent-Zwischenstand …).
+
+    kind="system" → im Verlauf als neutraler Eintrag gerendert. Kein Commit;
+    der Aufrufer committet (die Endpoints/Dispatcher tun das ohnehin).
+    """
+    db.add(Comment(issue_id=issue_id, author_id=None, author_label=author_label,
+                   body=text, kind="system"))
+
+
 async def apply_user_comment(db: AsyncSession, issue: Issue, text: str,
                              user_id: int | None, label: str, kind: str = "agent") -> None:
     db.add(Comment(issue_id=issue.id, author_id=user_id, author_label=label, body=text, kind=kind))
