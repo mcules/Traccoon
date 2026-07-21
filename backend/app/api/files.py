@@ -24,6 +24,30 @@ async def file_changes(pair: tuple[Issue, Access] = Depends(get_issue_access),
              "deletions": f.deletions} for f in rows]
 
 
+@router.get("/issues/{key}/diff")
+async def issue_diff(pair: tuple[Issue, Access] = Depends(get_issue_access),
+                     db: AsyncSession = Depends(get_session)):
+    """Kompletter Git-Diff des Ticket-Branches (für den Review)."""
+    from urllib.parse import urlsplit
+
+    from ..models.project import Project
+    from ..worker import gitops
+    from ..worker.secrets import resolve_git_token
+    issue, _ = pair
+    if not issue.branch_name:
+        return {"diff": ""}
+    project = await db.get(Project, issue.project_id)
+    host = urlsplit(project.github_repo).hostname or ""
+    owner = issue.assigned_by_user_id or issue.reporter_id or project.lead_user_id
+    token = await resolve_git_token(db, project.git_token_enc, owner, host) or ""
+    ctx = gitops.GitCtx(
+        workdir=gitops.project_workdir(project.key), branch=issue.branch_name,
+        remote=project.github_repo, token=token,
+        worktree=gitops.worktree_path(project.key, issue.key),
+        base_commit=issue.git_base_sha, main=project.merge_target or "main", enabled=True)
+    return {"diff": await gitops.diff_text(ctx, max_chars=80000)}
+
+
 @router.get("/issues/{key}/attachments")
 async def list_attachments(pair: tuple[Issue, Access] = Depends(get_issue_access),
                            db: AsyncSession = Depends(get_session)):
