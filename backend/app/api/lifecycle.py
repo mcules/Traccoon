@@ -11,6 +11,7 @@ from ..models.enums import HoldReason, TicketAgentStatus
 from ..models.project import Project
 from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from ..schemas.issue import IssueOut
+from ..services.dispatcher import sync_board_status
 from .deps import Access
 from .issues import get_issue_access
 
@@ -33,6 +34,7 @@ async def start_planning(
         raise HTTPException(status.HTTP_409_CONFLICT, "Kein Agent zugewiesen")
     issue.agent_status = TicketAgentStatus.planning
     issue.hold_reason = None
+    await sync_board_status(db, issue)
     await db.commit()
     await db.refresh(issue)
     return issue
@@ -51,6 +53,7 @@ async def approve_plan(
         raise HTTPException(status.HTTP_409_CONFLICT, "Kein Plan vorhanden")
     issue.agent_status = TicketAgentStatus.approved
     issue.hold_reason = None
+    await sync_board_status(db, issue)
     await db.commit()
     await db.refresh(issue)
     return issue
@@ -101,6 +104,8 @@ async def approve_split(pair: tuple[Issue, Access] = Depends(get_issue_access),
     # Umbrella wartet auf die Kinder (nicht selbst ausgeführt)
     umbrella.agent_status = None
     umbrella.hold_reason = None
+    for c in children:  # Teil 1 (approved) → „In Arbeit", die geparkten bleiben unangetastet
+        await sync_board_status(db, c)
     await db.commit()
     for c in children:
         await db.refresh(c)
@@ -136,6 +141,7 @@ async def complete(
     issue.agent_status = TicketAgentStatus.done
     issue.resolved_at = dt.datetime.now(tz=dt.timezone.utc)
     issue.hold_reason = None
+    await sync_board_status(db, issue)
     await db.commit()
     await db.refresh(issue)
     # Testenv abbauen (falls aktiv)
@@ -162,6 +168,7 @@ async def stop_agent(pair: tuple[Issue, Access] = Depends(get_issue_access),
     issue.agent_working = False
     issue.agent_status = TicketAgentStatus.hold
     issue.hold_reason = HoldReason.interrupted
+    await sync_board_status(db, issue)
     await db.commit()
     await db.refresh(issue)
     return issue

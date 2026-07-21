@@ -194,6 +194,8 @@ async def assign_agent(
     # Direktzuweisung plant der plan_agent, danach führt der zugewiesene Agent aus.
     if issue.agent_status is None:
         issue.agent_status = TicketAgentStatus.planning
+    from ..services.dispatcher import sync_board_status
+    await sync_board_status(db, issue)   # Planung startet → „In Arbeit" (raus aus To Do)
     await db.commit()
     await db.refresh(issue)
     return issue

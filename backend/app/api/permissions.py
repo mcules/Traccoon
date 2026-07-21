@@ -75,6 +75,8 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
         issue.agent_status = TicketAgentStatus.approved
         issue.hold_reason = None
         issue.continuation_count += 1
+        from ..services.dispatcher import sync_board_status
+        await sync_board_status(db, issue)   # Resume → „In Arbeit"
     await db.commit()
     return {"ok": True, "resumed": dec != "never"}
 
@@ -104,5 +106,7 @@ async def answer_blocker(data: AnswerIn, pair: tuple[Issue, Access] = Depends(ge
     issue.agent_status = TicketAgentStatus.approved
     issue.hold_reason = None
     issue.continuation_count += 1
+    from ..services.dispatcher import sync_board_status
+    await sync_board_status(db, issue)   # Rückfrage beantwortet → „In Arbeit"
     await db.commit()
     return {"ok": True}
