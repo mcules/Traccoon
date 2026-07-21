@@ -20,7 +20,7 @@ from ..models.project import Project
 from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import SYSTEM_USER_ID
 from ..worker.providers.router import router
-from ..worker.secrets import resolve_claude_token
+from ..worker.secrets import resolve_provider_token
 
 log = logging.getLogger("traccoon.pm")
 MAX_ROUNDS = 10
@@ -127,7 +127,9 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
     db.add(Message(project_id=project_id, user_id=user_id, role="user", author_label="User", content=text))
     await db.commit()
 
-    token = await resolve_claude_token(db, user_id)
+    # Default-ProviderToken des Nutzers für Claude (Secret-Tresor) auflösen — inkl.
+    # Rückfall auf Alt-Feld/System-Secret. Zuvor las der PM nur das Alt-Feld → „Tresor leer".
+    token = await resolve_provider_token(db, user_id, "claude_code")
     tokens = {"claude_code": token}
 
     hist = (await db.execute(select(Message).where(Message.project_id == project_id)
