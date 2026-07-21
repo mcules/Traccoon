@@ -329,11 +329,15 @@ async def recover_on_start() -> None:
     """Hängende in_progress-Tickets nach Neustart lösen."""
     # Kam der Backend-Container gerade aus einem Wartungs-Update (Self-Deploy) zurück,
     # den Update-Zustand löschen → Betrieb läuft mit neuem Code weiter.
-    if await get_flag("update_in_progress") or await get_flag("update_pending"):
+    just_updated = await get_flag("update_in_progress") or await get_flag("update_pending")
+    if just_updated:
         await set_flag("update_in_progress", False)
         await set_flag("update_pending", False)
         log.info("Wartungs-Update abgeschlossen — Betrieb fortgesetzt.")
     async with SessionLocal() as db:
+        if just_updated:
+            from .appsettings import set_setting
+            await set_setting(db, "last_update_completed_at", _now().isoformat())
         rows = (
             await db.execute(select(Issue).where(Issue.agent_status == TicketAgentStatus.in_progress))
         ).scalars().all()

@@ -35,6 +35,7 @@ async def _status(db: AsyncSession) -> dict:
         "running_agents": await _running_agents(db),
         "update_pending": await get_flag("update_pending"),
         "update_in_progress": await get_flag("update_in_progress"),
+        "last_update_completed_at": await get_setting(db, "last_update_completed_at", "") or None,
         "maintenance_project_id": mp_id,
         "maintenance_project_key": mp_key,
     }
