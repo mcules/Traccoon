@@ -110,6 +110,7 @@ export interface Issue {
   testenv_status?: string | null; testenv_url?: string | null;
   parent_ticket_id: number | null; split_order: number | null;
   sprint_id: number | null; story_points: number | null; rank: string; agent_working: boolean;
+  archived?: boolean;
   resolved_at?: string | null;
 }
 export interface FileChange { id: number; path: string; status: string; additions: number; deletions: number; }

@@ -14,17 +14,6 @@ from .deps import Access, get_current_user, get_project_access, require_admin
 
 router = APIRouter(tags=["cost"])
 
-# Default-Modellpreise (USD / 1M Tokens) — per PATCH anpassbar.
-_DEFAULT_PRICES = [
-    ("claude_code", "claude-sonnet-4-5", "Claude Sonnet 4.5", 3.0, 15.0),
-    ("claude_code", "claude-opus-4-1", "Claude Opus 4.1", 15.0, 75.0),
-    ("claude_code", "claude-haiku-4-5", "Claude Haiku 4.5", 0.8, 4.0),
-    ("codex", "gpt-5", "GPT-5 (Codex)", 1.25, 10.0),
-    ("openai", "gpt-4o", "GPT-4o", 2.5, 10.0),
-    ("openai", "gpt-4o-mini", "GPT-4o mini", 0.15, 0.6),
-    ("openai", "o3", "o3", 2.0, 8.0),
-]
-
 
 @router.get("/projects/{project_id}/costs")
 async def project_costs(access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session)):
@@ -148,18 +137,3 @@ async def fetch_models(user: User = Depends(get_current_user), db: AsyncSession 
         results[provider] = {"total": len(models), "added": added, "updated": updated}
     await db.commit()
     return results
-
-
-@router.post("/providers/refresh")
-async def refresh_catalog(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """Seedet/aktualisiert den Modellkatalog mit Default-Preisen (falls noch nicht vorhanden)."""
-    added = 0
-    for prov, model, name, pin, pout in _DEFAULT_PRICES:
-        exists = (await db.execute(select(ProviderModel).where(
-            ProviderModel.provider == prov, ProviderModel.model == model))).scalar_one_or_none()
-        if exists is None:
-            db.add(ProviderModel(provider=prov, model=model, display_name=name,
-                                 price_input=pin, price_output=pout))
-            added += 1
-    await db.commit()
-    return {"added": added}

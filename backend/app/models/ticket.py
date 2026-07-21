@@ -185,6 +185,10 @@ class Issue(TimestampMixin, Base):
     source: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Archiv: archivierte Tickets erscheinen weder im Board noch in der Liste.
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
 
 class Blocker(Base):
     """Strukturierte ask_human-Rückfrage für Resume."""

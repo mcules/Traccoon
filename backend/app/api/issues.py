@@ -46,8 +46,9 @@ async def list_issues(
     db: AsyncSession = Depends(get_session),
     sprint_id: int | None = None,
     assignee_user_id: int | None = None,
+    archived: bool = False,
 ):
-    q = select(Issue).where(Issue.project_id == access.project.id)
+    q = select(Issue).where(Issue.project_id == access.project.id, Issue.archived == archived)
     if sprint_id is not None:
         q = q.where(Issue.sprint_id == sprint_id)
     if assignee_user_id is not None:
@@ -145,6 +146,34 @@ async def delete_issue(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Löschen erfordert maintainer")
     await db.delete(issue)
     await db.commit()
+
+
+@router.post("/issues/{key}/archive", response_model=IssueOut)
+async def archive_issue(
+    pair: tuple[Issue, Access] = Depends(get_issue_access),
+    db: AsyncSession = Depends(get_session),
+):
+    issue, access = pair
+    _require_write(access)
+    issue.archived = True
+    issue.archived_at = dt.datetime.now(tz=dt.timezone.utc)
+    await db.commit()
+    await db.refresh(issue)
+    return issue
+
+
+@router.post("/issues/{key}/unarchive", response_model=IssueOut)
+async def unarchive_issue(
+    pair: tuple[Issue, Access] = Depends(get_issue_access),
+    db: AsyncSession = Depends(get_session),
+):
+    issue, access = pair
+    _require_write(access)
+    issue.archived = False
+    issue.archived_at = None
+    await db.commit()
+    await db.refresh(issue)
+    return issue
 
 
 # ---------- Agent-Zuweisung (Kern-Feature, nur mit KI-Recht) ----------
