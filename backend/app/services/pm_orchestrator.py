@@ -127,9 +127,10 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
     db.add(Message(project_id=project_id, user_id=user_id, role="user", author_label="User", content=text))
     await db.commit()
 
-    # Default-ProviderToken des Nutzers für Claude (Secret-Tresor) auflösen — inkl.
-    # Rückfall auf Alt-Feld/System-Secret. Zuvor las der PM nur das Alt-Feld → „Tresor leer".
-    token = await resolve_provider_token(db, user_id, "claude_code")
+    # Claude-Token auflösen: Projekt-Standard-Subscription überschreibt den persönlichen
+    # Default (nur wenn sie für claude_code gesetzt ist). Rückfall auf Alt-Feld/System-Secret.
+    pm_token_name = project.default_token_name if project.default_provider == "claude_code" else ""
+    token = await resolve_provider_token(db, user_id, "claude_code", pm_token_name)
     tokens = {"claude_code": token}
 
     hist = (await db.execute(select(Message).where(Message.project_id == project_id)

@@ -6,6 +6,9 @@ import StatusManager from "./StatusManager";
 import AgentsPanel from "./AgentsPanel";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
+const PROVIDER_LABEL: Record<string, string> = {
+  claude_code: "Claude", codex: "Codex", openai: "OpenAI",
+};
 
 type Tab = "allgemein" | "agenten" | "board" | "git" | "testenv" | "deploy";
 const TABS: [Tab, string][] = [
@@ -16,7 +19,8 @@ const TABS: [Tab, string][] = [
 type Settings = {
   managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; verify_command: string; review_enabled: boolean;
   auto_continue: boolean; auto_deploy: boolean; screenshot_enabled: boolean;
-  plan_agent: string; exec_agent: string; vault_moc_path: string; system_prompt: string;
+  plan_agent: string; exec_agent: string; default_provider: string; default_token_name: string;
+  vault_moc_path: string; system_prompt: string;
   workspace_dir: string; git_enabled: boolean; github_repo: string; work_in_branches: boolean;
   merge_target: string; push_after_merge: boolean; use_pull_request: boolean;
   testenv_mode: string; testenv_container_port: number; testenv_prestart: string;
@@ -29,6 +33,10 @@ export default function ProjectSettings({ project }: { project: Project }) {
   const { data, refetch } = useQuery({
     queryKey: ["project-settings", project.id],
     queryFn: () => api.get<Settings>(`/projects/${project.id}/settings`),
+  });
+  const { data: myTokens } = useQuery({
+    queryKey: ["provider-tokens"],
+    queryFn: () => api.get<{ id: number; provider: string; name: string; is_default: boolean }[]>("/me/provider-tokens"),
   });
   const [s, setS] = useState<Settings | null>(null);
   const [tab, setTab] = useState<Tab>("allgemein");
@@ -139,6 +147,28 @@ export default function ProjectSettings({ project }: { project: Project }) {
             <div className="grid grid-cols-2 gap-2">
               <Select label="Planender Agent" value={s.plan_agent} onChange={(v) => set({ plan_agent: v })} />
               <Select label="Ausführender Agent" value={s.exec_agent} onChange={(v) => set({ exec_agent: v })} />
+            </div>
+            <div>
+              <label className="text-xs text-muted">Standard-Subscription (überschreibt deinen persönlichen Default)</label>
+              <select
+                value={s.default_provider && s.default_token_name ? `${s.default_provider}|${s.default_token_name}` : ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!v) { set({ default_provider: "", default_token_name: "" }); return; }
+                  const i = v.indexOf("|");
+                  set({ default_provider: v.slice(0, i), default_token_name: v.slice(i + 1) });
+                }}
+                className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 text-ink">
+                <option value="">— Persönlicher Default —</option>
+                {myTokens?.map((t) => (
+                  <option key={t.id} value={`${t.provider}|${t.name}`}>
+                    {PROVIDER_LABEL[t.provider] || t.provider} · {t.name}{t.is_default ? " (dein Default)" : ""}
+                  </option>
+                ))}
+              </select>
+              <div className="mt-0.5 text-xs text-muted">
+                Welche Subscription/Token dieses Projekt nutzt, wenn ein Agent keinen eigenen wählt.
+              </div>
             </div>
             <button onClick={save} className="rounded bg-brand px-4 py-2 text-sm text-white">Zuordnung speichern</button>
             {msg && <span className="ml-2 text-sm text-green-400">{msg}</span>}
