@@ -62,6 +62,7 @@ class IssueOut(BaseModel):
     archived_at: dt.datetime | None = None
     testenv_status: str | None = None
     testenv_url: str | None = None
+    testenv_error: str | None = None
     resolved_at: dt.datetime | None = None
     created_at: dt.datetime
     updated_at: dt.datetime

@@ -136,7 +136,9 @@ async def complete(
 ):
     issue, access = pair
     _require_ai(access)
-    if issue.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing):
+    # Abnahme auch aus hold (z. B. Review-Befunde offen) — der Mensch hat die Hoheit.
+    if issue.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing,
+                                  TicketAgentStatus.hold):
         raise HTTPException(status.HTTP_409_CONFLICT, "Ticket ist nicht zur Abnahme bereit")
     issue.agent_status = TicketAgentStatus.done
     issue.resolved_at = dt.datetime.now(tz=dt.timezone.utc)
