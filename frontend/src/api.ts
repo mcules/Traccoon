@@ -73,10 +73,21 @@ async function download(path: string, filename: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+/** Authentifiziert laden und als Object-URL zurückgeben (z. B. für <img src>). */
+async function blobUrl(path: string): Promise<string> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const res = await fetch(`/api${path}`, { headers });
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  return URL.createObjectURL(await res.blob());
+}
+
 export const api = {
   get: <T = any>(p: string) => request<T>(p),
   upload,
   download,
+  blobUrl,
   post: <T = any>(p: string, body?: any) => request<T>(p, { method: "POST", body }),
   put: <T = any>(p: string, body?: any) => request<T>(p, { method: "PUT", body }),
   del: <T = any>(p: string) => request<T>(p, { method: "DELETE" }),
