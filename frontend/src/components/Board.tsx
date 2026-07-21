@@ -1,16 +1,17 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Issue, Project, ProjectMeta, Status } from "../api";
+import { waitInfo } from "../lib/waitReason";
 
 const PRIO_COLOR: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400", medium: "text-yellow-400",
   low: "text-sky-400", lowest: "text-slate-400",
 };
 
-const HOLD_LABEL: Record<string, string> = {
-  plan_review: "Plan-Freigabe", plan_split: "Aufteilung", question: "Rückfrage",
-  review: "Review", permission: "Berechtigung", merge: "Merge", verify: "Verifikation",
-  incomplete: "unvollständig", stuck: "steckt fest", cap: "Limit", interrupted: "gestoppt",
+const WAIT_KIND_COLOR: Record<string, string> = {
+  error: "bg-red-500/20 text-red-300",
+  question: "bg-yellow-500/20 text-yellow-300",
+  external: "bg-sky-500/20 text-sky-300",
 };
 
 export default function Board({
@@ -117,7 +118,7 @@ export default function Board({
                   const isUmbrella = !!kids && kids.length > 0;
                   const sibs = i.parent_ticket_id != null ? childrenByParent.get(i.parent_ticket_id) : undefined;
                   const isChild = !!sibs;
-                  const holdBadge = i.hold_reason && (HOLD_LABEL[i.hold_reason] || i.hold_reason);
+                  const wait = waitInfo(i);
                   const showDropBefore = dragOverThisCol && overIdx === idx && dragKey !== i.key;
                   return (
                     <div key={i.id}>
@@ -165,8 +166,11 @@ export default function Board({
                               🧩 Teil {(i.split_order ?? 0) + 1}/{sibs!.length}
                             </span>
                           )}
-                          {holdBadge && (
-                            <span className="rounded bg-yellow-500/20 px-1 text-yellow-300">⏸ {holdBadge}</span>
+                          {wait && (
+                            <span title={`${wait.title}: ${wait.label}`}
+                              className={`rounded px-1 ${WAIT_KIND_COLOR[wait.kind]}`}>
+                              {wait.icon} {wait.label}
+                            </span>
                           )}
                           <div className="flex-1" />
                           {project.my_ai_assign && i.assigned_agent && (
