@@ -37,6 +37,9 @@ class ProjectSettings(BaseModel):
     screenshot_enabled: bool | None = None
     plan_agent: str | None = None
     exec_agent: str | None = None
+    # Standard-Subscription des Projekts (überschreibt den persönlichen Default)
+    default_provider: str | None = None
+    default_token_name: str | None = None
     vault_moc_path: str | None = None
     system_prompt: str | None = None
     workspace_dir: str | None = None

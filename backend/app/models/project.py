@@ -48,6 +48,10 @@ class Project(TimestampMixin, Base):
     pm_chat_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     plan_agent: Mapped[str] = mapped_column(String(100), default="architect")
     exec_agent: Mapped[str] = mapped_column(String(100), default="developer")
+    # Standard-Subscription/Token dieses Projekts — überschreibt den persönlichen
+    # Default-ProviderToken des Nutzers (greift, wenn ein Agent keinen eigenen Token wählt).
+    default_provider: Mapped[str] = mapped_column(String(50), default="")
+    default_token_name: Mapped[str] = mapped_column(String(120), default="")
     verify_command: Mapped[str] = mapped_column(Text, default="")
     review_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     review_agent: Mapped[str] = mapped_column(String(100), default="code_reviewer")

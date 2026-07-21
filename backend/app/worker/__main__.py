@@ -74,17 +74,31 @@ def _default_agent_def(role: str, provider: str, model: str, mode: str) -> Agent
     )
 
 
-async def _build_tokens(db, owner_id, agent) -> dict:
+async def _build_tokens(db, owner_id, agent, project=None) -> dict:
     """Token-Dict je Provider aus der Agent-Auswahl: Primär (provider/token_name) +
-    Fallback (fallback/fallback_token_name). Legacy-Keys claude_code/codex als Default-Rückfall."""
+    Fallback (fallback/fallback_token_name). Legacy-Keys claude_code/codex als Default-Rückfall.
+
+    Projekt-Standard-Subscription (project.default_provider/-token_name) überschreibt den
+    persönlichen Default des Nutzers — greift nur, wenn der Agent selbst keinen Token wählt."""
+    proj_provider = getattr(project, "default_provider", "") or ""
+    proj_name = getattr(project, "default_token_name", "") or ""
+
+    def eff_name(provider: str, agent_name: str) -> str:
+        if agent_name:
+            return agent_name                       # Agent-Wahl hat Vorrang
+        if proj_name and proj_provider == provider:  # sonst Projekt-Standard
+            return proj_name
+        return ""                                    # sonst persönlicher Default
+
     tokens = {
-        "claude_code": await resolve_claude_token(db, owner_id),
-        "codex": await resolve_codex_token(db, owner_id),
+        "claude_code": await resolve_provider_token(db, owner_id, "claude_code", eff_name("claude_code", "")),
+        "codex": await resolve_provider_token(db, owner_id, "codex", eff_name("codex", "")),
     }
-    tokens[agent.provider] = await resolve_provider_token(db, owner_id, agent.provider, agent.token_name)
+    tokens[agent.provider] = await resolve_provider_token(
+        db, owner_id, agent.provider, eff_name(agent.provider, agent.token_name))
     if agent.fallback and agent.fallback != agent.provider:
         tokens[agent.fallback] = await resolve_provider_token(
-            db, owner_id, agent.fallback, agent.fallback_token_name)
+            db, owner_id, agent.fallback, eff_name(agent.fallback, agent.fallback_token_name))
     return tokens
 
 
@@ -143,7 +157,7 @@ async def handle(job: dict, redis: Redis) -> None:
         owner_id = issue.assigned_by_user_id or issue.reporter_id or project.lead_user_id
         agent = await _load_agent(db, role, project.id, mode, owner_id)
         # Skill-Laden passiert jetzt zentral in run_agent (autoload + on-demand, beide Pfade).
-        tokens = await _build_tokens(db, owner_id, agent)
+        tokens = await _build_tokens(db, owner_id, agent, project)
 
         # Git-Kontext / Workspace
         ws_root = None
