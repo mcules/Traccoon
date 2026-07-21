@@ -131,6 +131,13 @@ def do_self_deploy(conn, dep):
     pr, pout = sh(["git", "-C", SELF_STACK_DIR, "-c", "safe.directory=*", "pull", "--ff-only"], timeout=120)
     pout = re.sub(r"x-access-token:[^@\s]+@", "x-access-token:***@", pout)  # Token nie loggen
     print(f"[deployer] self-deploy git pull rc={pr}: {pout[-300:]}", flush=True)
+    # Der Pull lief als root → .git-Dateien gehoeren sonst root und blockieren den Host-Git.
+    # Ownership auf den Repo-Owner zuruecksetzen.
+    try:
+        stt = os.stat(SELF_STACK_DIR)
+        sh(["chown", "-R", f"{stt.st_uid}:{stt.st_gid}", os.path.join(SELF_STACK_DIR, ".git")])
+    except Exception:  # noqa: BLE001
+        pass
     # laufendes Image sichern
     sh(["docker", "tag", "traccoon-backend:latest", "traccoon-backend:rollback"])
     rc, out = compose(SELF_STACK_DIR, "build", *SELF_SERVICES, timeout=1200)
