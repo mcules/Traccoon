@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Issue, Project, ProjectMeta } from "../api";
 import TicketDrawer from "../components/TicketDrawer";
 import NewTicketModal from "../components/NewTicketModal";
+// Monaco ist groß → nur laden, wenn der Code-Tab geöffnet wird.
+const FilesPanel = lazy(() => import("../components/FilesPanel"));
 import Members from "../components/Members";
 import Hardware from "../components/Hardware";
 import ProjectSettings from "../components/ProjectSettings";
@@ -14,7 +16,7 @@ import Board from "../components/Board";
 import PmChat from "../components/PmChat";
 import AgentMonitor from "../components/AgentMonitor";
 
-type Tab = "board" | "list" | "backlog" | "archiv" | "dashboard" | "pm" | "monitor" | "members" | "hardware" | "settings";
+type Tab = "board" | "list" | "backlog" | "archiv" | "code" | "dashboard" | "pm" | "monitor" | "members" | "hardware" | "settings";
 
 export default function ProjectView() {
   const { key } = useParams();
@@ -68,6 +70,7 @@ export default function ProjectView() {
     ["list", "Liste"],
     ["backlog", "Backlog"],
     ["archiv", "Archiv"],
+    ...(canManage && project.git_enabled ? ([["code", "Code"]] as [Tab, string][]) : []),
     ["dashboard", "Dashboard"],
     ...(project.my_ai_assign && project.pm_chat_enabled ? ([["pm", "PM-Chat"]] as [Tab, string][]) : []),
     ...(project.my_ai_assign ? ([["monitor", "Monitor"]] as [Tab, string][]) : []),
@@ -114,6 +117,11 @@ export default function ProjectView() {
         (archivedIssues && archivedIssues.length > 0)
           ? <IssueList project={project} meta={meta} issues={archivedIssues} onOpen={setOpenKey} />
           : <div className="text-sm text-muted">Keine archivierten Tickets.</div>
+      )}
+      {tab === "code" && (
+        <Suspense fallback={<div className="text-sm text-muted">Editor lädt…</div>}>
+          <FilesPanel project={project} />
+        </Suspense>
       )}
       {tab === "dashboard" && <Dashboard project={project} />}
       {tab === "pm" && <PmChat project={project} />}

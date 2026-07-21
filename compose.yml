@@ -59,6 +59,7 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
+      - ./data/workspace:/workspace   # Repo-Browser/Editor (api/repo.py) liest/schreibt hier
     networks:
       default:
         aliases:

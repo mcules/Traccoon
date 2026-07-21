@@ -72,6 +72,7 @@ class ProjectOut(BaseModel):
     managed: bool
     pm_chat_enabled: bool
     has_hardware: bool
+    git_enabled: bool = False
     # Sicht des aktuellen Nutzers auf dieses Projekt
     my_role: ProjectRole
     my_ai_assign: bool
