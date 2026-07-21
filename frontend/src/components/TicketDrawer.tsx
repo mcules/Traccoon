@@ -475,6 +475,12 @@ export default function TicketDrawer({
             </div>
 
             <div className="mb-2 text-sm font-medium">Kommentare</div>
+            <div className="mb-2 flex gap-2">
+              <input value={comment} onChange={(e) => setComment(e.target.value)}
+                placeholder="Kommentar…" className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
+              <button onClick={() => comment.trim() && addComment.mutate()}
+                className="rounded bg-brand px-3 py-1.5 text-white">Senden</button>
+            </div>
             <div className="space-y-2">
               {comments?.map((c) => (
                 <div key={c.id} className="rounded border border-line bg-surface p-2 text-sm">
@@ -486,12 +492,6 @@ export default function TicketDrawer({
                 </div>
               ))}
               {comments?.length === 0 && <div className="text-xs text-muted">Noch keine Kommentare.</div>}
-            </div>
-            <div className="mt-2 flex gap-2">
-              <input value={comment} onChange={(e) => setComment(e.target.value)}
-                placeholder="Kommentar…" className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
-              <button onClick={() => comment.trim() && addComment.mutate()}
-                className="rounded bg-brand px-3 py-1.5 text-white">Senden</button>
             </div>
 
             {/* Archivieren: fertige Tickets aus Board/Liste nehmen (eigene Archiv-Liste) */}
