@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, AttachmentInfo, Comment, FileChange, Issue, Project, ProjectMeta } from "../api";
 import Markdown from "./Markdown";
+import { waitInfo } from "../lib/waitReason";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
@@ -147,6 +148,12 @@ export default function TicketDrawer({
   const planText = (issue?.plan || "").replace(/<subtickets>[\s\S]*?<\/subtickets>/g, "").trim();
   const planLabel = isUmbrella ? "Begründung / Überblick" : "Plan";
   const preApproval = issue?.agent_status === "planning" || issue?.agent_status === "plan_review";
+  const wait = issue ? waitInfo(issue) : null;
+  const WAIT_KIND_COLOR: Record<string, string> = {
+    error: "border-red-500/40 bg-red-500/10 text-red-300",
+    question: "border-yellow-500/40 bg-yellow-500/10 text-yellow-300",
+    external: "border-sky-500/40 bg-sky-500/10 text-sky-300",
+  };
 
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -160,6 +167,14 @@ export default function TicketDrawer({
           <div className="text-muted">Lädt…</div>
         ) : (
           <>
+            {wait && (
+              <div className={`mb-3 flex items-center gap-2 rounded border px-3 py-1.5 text-sm ${WAIT_KIND_COLOR[wait.kind]}`}>
+                <span>{wait.icon}</span>
+                <span className="font-medium">{wait.title}:</span>
+                <span>{wait.label}</span>
+              </div>
+            )}
+
             {/* Rückverweis Sub-Ticket → Sammelticket */}
             {parent && (
               <button onClick={() => onOpen(parent.key)}
