@@ -245,6 +245,12 @@ async def handle(job: dict, redis: Redis) -> None:
             changes = await gitops.file_changes(ctx)
             cmsg = await gitops.commit(ctx, f"ticket {issue.key}: {issue.summary}")
             log.info("git commit %s: %s", issue.key, cmsg)
+            # 0 Änderungen sichtbar machen — sonst landet ein Ticket stumm auf to_test.
+            if not changes:
+                db.add(Comment(
+                    issue_id=issue.id, author_id=None, author_label="System", kind="internal",
+                    body="⚠️ Keine Code-Änderungen vorgenommen. Der Agent hat nichts umgesetzt "
+                         "(Anforderung evtl. bereits erfüllt oder nicht erkannt) — bitte prüfen."))
             from ..models.ticket import TicketFileChange
             for o in (await db.execute(select(TicketFileChange).where(
                     TicketFileChange.issue_id == issue.id))).scalars().all():
