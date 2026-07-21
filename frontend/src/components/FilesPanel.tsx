@@ -184,7 +184,7 @@ export default function FilesPanel({ project }: { project: Project }) {
         </div>
 
         {/* Editor / Vorschau */}
-        <div className="flex flex-1 flex-col overflow-hidden rounded-lg border border-line bg-card">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-card">
           {!sel ? (
             <div className="flex h-full items-center justify-center text-sm text-muted">Datei links auswählen.</div>
           ) : (
@@ -203,12 +203,11 @@ export default function FilesPanel({ project }: { project: Project }) {
                     className="rounded bg-brand px-3 py-1 text-white disabled:opacity-40">{save.isPending ? "…" : "Speichern (⌘S)"}</button>
                 )}
               </div>
-              <div className="flex-1 overflow-auto">
+              <div className="min-h-0 flex-1">
                 {img ? (
                   imgUrl
-                    ? <div className="flex h-full items-center justify-center p-4">
-                        <img src={imgUrl} alt={sel} className="max-h-full max-w-full object-contain"
-                          style={{ imageRendering: ext(sel) === "svg" ? "auto" : "auto" }} />
+                    ? <div className="flex h-full items-center justify-center overflow-auto p-4">
+                        <img src={imgUrl} alt={sel} className="max-h-full max-w-full object-contain" />
                       </div>
                     : <div className="p-3 text-sm text-muted">Bild lädt…</div>
                 ) : file.isLoading ? (
@@ -216,7 +215,7 @@ export default function FilesPanel({ project }: { project: Project }) {
                 ) : file.isError ? (
                   <div className="p-3 text-sm text-red-400">{file.error instanceof ApiError ? file.error.message : "Datei nicht lesbar"}</div>
                 ) : isMarkdown(sel) && preview ? (
-                  <div className="p-4"><Markdown text={value} /></div>
+                  <div className="h-full overflow-auto p-4"><Markdown text={value} /></div>
                 ) : (
                   <Editor height="100%" theme="vs-dark" path={sel} language={langOf(sel)}
                     value={value} onChange={(v) => setValue(v ?? "")}

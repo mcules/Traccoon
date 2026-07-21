@@ -1,7 +1,8 @@
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // Schlanker Markdown-Renderer für Pläne/Beschreibungen (ohne Typography-Plugin,
-// Styling über Arbitrary-Variants). Nutzer-Texte werden nie gekürzt.
+// Styling über Arbitrary-Variants). GFM aktiv → Tabellen, Task-Listen, ~~Strike~~.
 export default function Markdown({ text }: { text: string }) {
   return (
     <div className="text-sm leading-relaxed
@@ -17,8 +18,12 @@ export default function Markdown({ text }: { text: string }) {
       [&_pre_code]:bg-transparent [&_pre_code]:p-0
       [&_a]:text-brand [&_a]:underline
       [&_strong]:font-semibold
-      [&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-3 [&_blockquote]:text-muted">
-      <ReactMarkdown>{text}</ReactMarkdown>
+      [&_blockquote]:border-l-2 [&_blockquote]:border-line [&_blockquote]:pl-3 [&_blockquote]:text-muted
+      [&_table]:my-2 [&_table]:block [&_table]:w-max [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:border-collapse
+      [&_th]:border [&_th]:border-line [&_th]:bg-surface [&_th]:px-2 [&_th]:py-1 [&_th]:text-left
+      [&_td]:border [&_td]:border-line [&_td]:px-2 [&_td]:py-1
+      [&_hr]:my-3 [&_hr]:border-line">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
     </div>
   );
 }
