@@ -123,9 +123,11 @@ export default function TicketDrawer({
   const archive = useMutation({
     mutationFn: () => api.post(`/issues/${issueKey}/${issue?.archived ? "unarchive" : "archive"}`),
     onSuccess: () => {
+      const wasArchiving = !issue?.archived;
       qc.invalidateQueries({ queryKey: ["issues", project.id] });
       qc.invalidateQueries({ queryKey: ["issues-archived", project.id] });
-      invalidate();
+      if (wasArchiving) onClose();   // beim Archivieren das Modal direkt schließen
+      else invalidate();
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
@@ -494,25 +496,21 @@ export default function TicketDrawer({
               {comments?.length === 0 && <div className="text-xs text-muted">Noch keine Kommentare.</div>}
             </div>
 
-            {/* Archivieren: fertige Tickets aus Board/Liste nehmen (eigene Archiv-Liste) */}
-            {canWrite && (issue.archived || isDone) && (
-              <div className="mt-6 flex items-center gap-2 border-t border-line pt-3">
-                {issue.archived ? (
+            {/* Archivieren (Icon + Tooltip) neben Löschen (Icon) */}
+            {(canWrite || kannVerwalten) && (
+              <div className="mt-6 flex items-center gap-3 border-t border-line pt-3">
+                {canWrite && issue.archived && (
                   <>
-                    <span className="rounded bg-line px-1.5 text-xs text-muted">🗄 archiviert</span>
-                    <button onClick={() => archive.mutate()}
-                      className="text-sm text-muted hover:text-brand">♻ Wiederherstellen</button>
+                    <span className="rounded bg-line px-1.5 text-xs text-muted">archiviert</span>
+                    <button onClick={() => archive.mutate()} title="Wiederherstellen"
+                      className="text-lg leading-none text-muted hover:text-brand">♻</button>
                   </>
-                ) : (
-                  <button onClick={() => archive.mutate()}
-                    className="text-sm text-muted hover:text-brand">🗄 Ticket archivieren</button>
                 )}
-              </div>
-            )}
-
-            {kannVerwalten && (
-              <div className="mt-6 border-t border-line pt-3">
-                {confirmDel ? (
+                {canWrite && !issue.archived && isDone && (
+                  <button onClick={() => archive.mutate()} title="Ticket archivieren"
+                    className="text-lg leading-none text-muted hover:text-brand">🗄</button>
+                )}
+                {kannVerwalten && (confirmDel ? (
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-red-400">
                       Ticket {issueKey} wirklich löschen?
@@ -524,9 +522,9 @@ export default function TicketDrawer({
                       className="rounded border border-line px-3 py-1 text-muted">Abbrechen</button>
                   </div>
                 ) : (
-                  <button onClick={() => setConfirmDel(true)}
-                    className="text-sm text-muted hover:text-red-400">🗑 Ticket löschen</button>
-                )}
+                  <button onClick={() => setConfirmDel(true)} title="Ticket löschen"
+                    className="text-lg leading-none text-muted hover:text-red-400">🗑</button>
+                ))}
               </div>
             )}
           </>
