@@ -101,6 +101,21 @@ export default function TicketDrawer({
     mutationFn: () => api.post(`/issues/${issueKey}/assign-agent`, { agent }),
     onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
+  const [newPersonName, setNewPersonName] = useState("");
+  const setAssignee = useMutation({
+    mutationFn: (body: { user_id?: number; display_name?: string }) =>
+      api.post(`/issues/${issueKey}/assignee`, body),
+    onSuccess: () => {
+      setNewPersonName("");
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["meta", project.id] });
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+  });
+  const clearAssignee = useMutation({
+    mutationFn: () => api.del(`/issues/${issueKey}/assignee`),
+    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+  });
   const unassign = useMutation({
     mutationFn: () => api.del(`/issues/${issueKey}/assign-agent`),
     onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
@@ -214,6 +229,39 @@ export default function TicketDrawer({
                   {meta.types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </select>
               </label>
+            </div>
+
+            {/* Personen-Zuweisung — unabhängig von der KI-Bearbeitung (ABC-20) */}
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <label className="text-xs text-muted">Zugewiesen an
+                <select
+                  value={issue.assignee_user_id ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === "") clearAssignee.mutate();
+                    else if (v === "__new__") { /* Eingabefeld unten nutzen */ }
+                    else setAssignee.mutate({ user_id: Number(v) });
+                  }}
+                  className="mt-1 block rounded border border-line bg-surface px-2 py-1 text-ink">
+                  <option value="">— niemand —</option>
+                  {meta.members.map((m) => (
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.display_name || m.username}{m.status === "placeholder" ? " (Platzhalter)" : ""}
+                    </option>
+                  ))}
+                  <option value="__new__" disabled>— neue Person unten eintragen —</option>
+                </select>
+              </label>
+              <input value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)}
+                placeholder="Neue Person (Name)…"
+                onKeyDown={(e) => { if (e.key === "Enter" && newPersonName.trim())
+                  setAssignee.mutate({ display_name: newPersonName.trim() }); }}
+                className="mt-1 w-40 rounded border border-line bg-surface px-2 py-1 text-sm" />
+              <button disabled={!newPersonName.trim() || setAssignee.isPending}
+                onClick={() => setAssignee.mutate({ display_name: newPersonName.trim() })}
+                className="mt-1 rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink disabled:opacity-40">
+                + Zuweisen
+              </button>
             </div>
 
             <details open className="mb-3 rounded border border-line">

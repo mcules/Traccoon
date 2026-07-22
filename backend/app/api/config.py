@@ -60,7 +60,7 @@ async def project_meta(
     ).all()
     members = [
         MemberLite(user_id=u.id, username=u.username, display_name=u.display_name,
-                   role=m.role.value, ai_assign=m.ai_assign)
+                   role=m.role.value, ai_assign=m.ai_assign, status=u.status.value)
         for m, u in member_rows
     ]
     return ProjectMeta(

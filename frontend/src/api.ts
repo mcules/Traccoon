@@ -108,7 +108,8 @@ export interface IssueType { id: number; name: string; icon: string; color: stri
 export interface Status { id: number; name: string; category: string; order: number; }
 export interface Board { id: number; name: string; columns: { status_id: number; order: number }[]; }
 export interface Sprint { id: number; name: string; state: string; }
-export interface MemberLite { user_id: number; username: string; display_name: string; role: string; ai_assign: boolean; }
+export interface MemberLite { user_id: number; username: string; display_name: string; role: string; ai_assign: boolean; status: string; }
+export interface PlaceholderUser { id: number; username: string; display_name: string; status: string; }
 export interface ProjectMeta {
   types: IssueType[]; statuses: Status[]; boards: Board[]; sprints: Sprint[];
   members: MemberLite[]; my_ai_assign: boolean; my_role: string;

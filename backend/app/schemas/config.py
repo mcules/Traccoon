@@ -79,6 +79,7 @@ class MemberLite(BaseModel):
     display_name: str
     role: str
     ai_assign: bool
+    status: str
 
 
 class ProjectMeta(BaseModel):
