@@ -240,7 +240,9 @@ export default function TicketDrawer({
                   className="mt-1 block rounded border border-line bg-surface px-2 py-1 text-ink">
                   <option value="">— niemand —</option>
                   {meta.members.map((m) => (
-                    <option key={m.user_id} value={m.user_id}>{m.display_name || m.username}</option>
+                    <option key={m.user_id} value={m.user_id}>
+                      {m.display_name || m.username}{m.status === "placeholder" ? " (Platzhalter)" : ""}
+                    </option>
                   ))}
                   <option value="__new__" disabled>— neue Person unten eintragen —</option>
                 </select>

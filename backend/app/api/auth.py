@@ -68,6 +68,8 @@ async def login(data: LoginIn, db: AsyncSession = Depends(get_session)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Konto wartet auf Freischaltung")
     if user.status == UserStatus.disabled:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Konto deaktiviert")
+    if user.status == UserStatus.placeholder:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Platzhalter-Konto hat keinen Login")
     return TokenOut(access_token=create_access_token(user.id))
 
 

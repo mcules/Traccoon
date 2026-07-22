@@ -1,8 +1,9 @@
 import datetime as dt
+import hashlib
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -107,7 +108,7 @@ async def create_issue(
         project_id=project.id, number=number, key=f"{project.key}-{number}",
         type_id=type_id, status_id=status_id, priority=data.priority,
         summary=data.summary, description=data.description, reporter_id=access.user.id,
-        assignee_user_id=data.assignee_user_id, parent_id=data.parent_id,
+        parent_id=data.parent_id,
         sprint_id=data.sprint_id, story_points=data.story_points, rank=f"{number:08d}",
     )
     db.add(issue)
@@ -225,16 +226,41 @@ async def unassign_agent(
 
 # ---------- Personen-Zuweisung (Mensch, orthogonal zur KI-Zuweisung) ----------
 
-async def _get_or_create_placeholder(db: AsyncSession, display_name: str) -> User:
-    """Findet ein bestehendes Platzhalter-Konto mit gleichem Namen (case-insensitive)
-    oder legt ein neues an. Platzhalter haben keinen Login (leerer Passwort-Hash,
-    Status placeholder) und dienen nur als Zuweisungsziel."""
+# Slug-Länge so begrenzt, dass "placeholder+{slug}.{suffix}@traccoon.local"
+# (<=255, email) und "{slug}.{suffix}" (<=100, username) mit 8-stelligem
+# Hex-Suffix und Fixteilen sicher passen — auch bei display_name bis 255 Zeichen.
+# Slug wird VOR dem Anhängen des Suffix gekappt (nicht danach), sonst würde bei
+# langen Namen der Suffix mit abgeschnitten und die Randomisierung entfällt.
+_PLACEHOLDER_SLUG_MAX = 60
+
+
+async def _get_or_create_placeholder(db: AsyncSession, project_id: int, display_name: str) -> User:
+    """Findet ein bestehendes Platzhalter-Konto mit gleichem Namen (case-insensitive),
+    das bereits Mitglied DIESES Projekts ist, oder legt ein neues an. Platzhalter
+    haben keinen Login (leerer Passwort-Hash, Status placeholder) und dienen nur
+    als Zuweisungsziel. Suche ist auf Projekt-Mitgliedschaft gescoped, damit
+    Platzhalter nicht projektübergreifend wiederverwendet werden (sonst Bruch der
+    sonst strikt durchgesetzten Multi-Tenancy-Isolation, vgl. build_access)."""
     name = display_name.strip()
+
+    # Transaktionsweiter Advisory-Lock auf (project_id, lower(name)), damit zwei
+    # parallele Requests mit identischem Namen serialisiert werden — sonst sehen
+    # beide "kein Treffer" (Select-then-Insert-Race) und legen zwei Platzhalter
+    # mit gleichem Namen an. Lock wird automatisch beim Commit/Rollback frei.
+    lock_key = int(
+        hashlib.sha256(f"placeholder:{project_id}:{name.lower()}".encode()).hexdigest()[:15],
+        16,
+    )
+    await db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+
     existing = (
         await db.execute(
-            select(User).where(
+            select(User)
+            .join(ProjectMember, ProjectMember.user_id == User.id)
+            .where(
                 User.status == UserStatus.placeholder,
                 func.lower(User.display_name) == name.lower(),
+                ProjectMember.project_id == project_id,
             )
         )
     ).scalar_one_or_none()
@@ -242,17 +268,31 @@ async def _get_or_create_placeholder(db: AsyncSession, display_name: str) -> Use
         return existing
 
     slug = "".join(c for c in name.lower().replace(" ", ".") if c.isalnum() or c == ".") or "person"
-    suffix = secrets.token_hex(4)
-    user = User(
-        email=f"placeholder+{slug}.{suffix}@traccoon.local",
-        username=f"{slug}.{suffix}"[:100],
-        display_name=name,
-        password_hash="",
-        status=UserStatus.placeholder,
+    slug = slug[:_PLACEHOLDER_SLUG_MAX]
+    # Race-sicher: Savepoint + Auffangen der UniqueConstraint-Verletzung mit neuem
+    # Zufalls-Suffix erneut versuchen (analog zu _ensure_member), statt unbehandelt
+    # 500 zu werfen. Der Advisory-Lock oben deckt bereits den Normalfall ab; dies
+    # ist zusätzliche Absicherung gegen exotische Kollisionen (z. B. Suffix-Treffer
+    # aus anderem Namen).
+    for _ in range(5):
+        suffix = secrets.token_hex(4)
+        user = User(
+            email=f"placeholder+{slug}.{suffix}@traccoon.local",
+            username=f"{slug}.{suffix}",
+            display_name=name,
+            password_hash="",
+            status=UserStatus.placeholder,
+        )
+        try:
+            async with db.begin_nested():
+                db.add(user)
+                await db.flush()
+        except IntegrityError:
+            continue
+        return user
+    raise HTTPException(
+        status.HTTP_500_INTERNAL_SERVER_ERROR, "Platzhalter-Konto konnte nicht angelegt werden"
     )
-    db.add(user)
-    await db.flush()
-    return user
 
 
 async def _ensure_member(db: AsyncSession, project_id: int, user_id: int) -> None:
@@ -307,7 +347,7 @@ async def set_assignee(
         if target is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Person nicht gefunden")
     elif data.display_name:
-        target = await _get_or_create_placeholder(db, data.display_name)
+        target = await _get_or_create_placeholder(db, issue.project_id, data.display_name)
         await _ensure_member(db, issue.project_id, target.id)
     else:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "user_id oder display_name erforderlich")
