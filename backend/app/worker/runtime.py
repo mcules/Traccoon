@@ -562,7 +562,8 @@ LOAD_SKILL_TOOL = {
 async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: dict,
                     mode: str = "execute", permissions: list[dict] | None = None,
                     ws_root: str | None = None, gate_on: bool = False,
-                    tokens: dict[str, str | None] | None = None, verify_command: str = "",
+                    tokens: dict[str, str | None] | None = None,
+                    base_urls: dict[str, str | None] | None = None, verify_command: str = "",
                     strict_success: bool = False, owner_id: int | None = None,
                     screenshot_enabled: bool = False, testenv_url: str = "",
                     continuation_index: int = 0, continuation_hint: str = "",
@@ -571,6 +572,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     depth: int = 0, delegate_loader=None) -> RunResult:
     permissions = permissions or []
     tokens = tokens or {}
+    base_urls = base_urls or {}
     issue_id = issue["id"]
 
     run_id = await _start_run(db, issue_id, agent.name, mode, agent.provider,
@@ -666,7 +668,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              tools=openai_tools, temperature=agent.temperature,
                                              max_tokens=agent.max_tokens, fallback=agent.fallback,
                                              fallback_model=agent.fallback_model,
-                                             web_search=agent.web_search, tokens=tokens)
+                                             web_search=agent.web_search, tokens=tokens,
+                                             base_urls=base_urls)
                 except ProviderError as exc:
                     await log("system", None, f"Provider-Fehler: {exc}")
                     await _end_run(db, run_id, "failed", error=str(exc), iterations=iteration)
@@ -803,7 +806,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 issue={"id": issue_id, "key": issue["key"], "summary": sub_task,
                                        "description": sub_task, "plan": None},
                                 project=project, mode="execute", permissions=permissions, ws_root=ws_root,
-                                gate_on=gate_on, tokens=tokens, verify_command=verify_command,
+                                gate_on=gate_on, tokens=tokens, base_urls=base_urls, verify_command=verify_command,
                                 strict_success=strict_success, owner_id=owner_id,
                                 screenshot_enabled=screenshot_enabled, testenv_url=testenv_url,
                                 depth=depth + 1, delegate_loader=delegate_loader, parent_run_id=run_id,

@@ -38,15 +38,26 @@ class Router:
             "codex": CodexProvider(),
             "openai": OpenAIProvider(),
         }
+        # OpenAI-kompatible Provider mit eigener Base-URL, nach URL gecacht (der globale
+        # Default-OpenAIProvider bleibt unangetastet → api.openai.com).
+        self._openai_by_url: dict[str, OpenAIProvider] = {}
         self._cooldown: dict[str, float] = {}
 
-    def _impl(self, provider: str) -> Provider | None:
+    def _openai_for(self, base_url: str) -> OpenAIProvider:
+        impl = self._openai_by_url.get(base_url)
+        if impl is None:
+            impl = OpenAIProvider(base_url=base_url)
+            self._openai_by_url[base_url] = impl
+        return impl
+
+    def _impl(self, provider: str, base_url: str | None = None) -> Provider | None:
         if provider in _ANTHROPIC:
             return self._providers["claude_code"]
         if provider in _CODEX:
             return self._providers["codex"]
         if provider in _OPENAI:
-            return self._providers["openai"]
+            # Eigener Endpoint (lokales litellm o. Ä.) nur für die OpenAI-Familie.
+            return self._openai_for(base_url) if base_url else self._providers["openai"]
         return None
 
     def _cooling(self, prov: str) -> bool:
@@ -66,13 +77,17 @@ class Router:
                    temperature: float = 0.3, max_tokens: int = 4096,
                    fallback: str | None = None, fallback_model: str = "",
                    web_search: bool = False,
-                   tokens: dict[str, str | None] | None = None) -> ChatResponse:
+                   tokens: dict[str, str | None] | None = None,
+                   base_urls: dict[str, str | None] | None = None) -> ChatResponse:
         tokens = tokens or {}
+        base_urls = base_urls or {}
         raw_chain = [provider] + ([fallback] if fallback and fallback != provider else [])
         chain = [p for p in raw_chain if not self._cooling(p)] or raw_chain
         last_err: ProviderError | None = None
         for prov in chain:
-            impl = self._impl(prov)
+            # Base-URL strikt per Provider; Legacy-Key-Rückfall analog zum Token unten.
+            base_url = base_urls.get(prov)
+            impl = self._impl(prov, base_url)
             if impl is None:
                 last_err = ProviderError(f"Provider '{prov}' nicht verfügbar")
                 continue

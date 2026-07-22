@@ -21,6 +21,9 @@ class ProviderToken(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     value_enc: Mapped[str] = mapped_column(Text, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Optionale eigene Base-URL (OpenAI-kompatibler Endpoint, z. B. lokales litellm).
+    # Nur für die OpenAI-Familie relevant; leer/NULL → Provider-Default (api.openai.com).
+    base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

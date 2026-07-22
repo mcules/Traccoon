@@ -78,6 +78,22 @@ async def resolve_provider_token(db: AsyncSession, owner_id: int | None, provide
     return await _system_secret(db, provider)
 
 
+async def resolve_provider_base_url(db: AsyncSession, owner_id: int | None, provider: str,
+                                    token_name: str = "") -> str | None:
+    """Eigene Base-URL des zu (User, Provider, token_name) gehörenden ProviderToken-Rows
+    (benannt → Default). Nur echte ProviderToken-Rows tragen eine Base-URL; ohne Row bzw.
+    ohne gesetzte URL → None (Provider nutzt seinen Default-Endpoint)."""
+    if not owner_id:
+        return None
+    q = select(ProviderToken).where(ProviderToken.user_id == owner_id,
+                                    ProviderToken.provider == provider)
+    if token_name:
+        row = (await db.execute(q.where(ProviderToken.name == token_name))).scalar_one_or_none()
+    else:
+        row = (await db.execute(q.where(ProviderToken.is_default.is_(True)))).scalar_one_or_none()
+    return (row.base_url or None) if row else None
+
+
 async def resolve_git_token(db: AsyncSession, project_git_token_enc: str, owner_id: int | None,
                             host: str) -> str | None:
     if project_git_token_enc:

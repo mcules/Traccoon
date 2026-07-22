@@ -29,6 +29,8 @@ async def lifespan(app: FastAPI):
             # Tabellen an, nicht auf bestehenden). Reihenfolge/Stil wie ADD COLUMN IF NOT EXISTS.
             for _ddl in (
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cap_baseline_run_id INTEGER",
+                # Eigene Base-URL je Provider-Token (OpenAI-kompatibler Endpoint, z. B. litellm).
+                "ALTER TABLE provider_tokens ADD COLUMN IF NOT EXISTS base_url VARCHAR(500)",
                 # Person-Zuweisung (TRA-20): Platzhalter-Konten ohne Login. create_all/ADD
                 # COLUMN zieht keine Enum-Werte nach → ADD VALUE explizit (PG 12+ erlaubt das
                 # in-Tx, solange der Wert nicht in derselben Tx genutzt wird).
