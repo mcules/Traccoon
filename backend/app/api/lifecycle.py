@@ -40,6 +40,12 @@ async def start_planning(
         raise HTTPException(status.HTTP_409_CONFLICT, "Kein Agent zugewiesen")
     issue.agent_status = TicketAgentStatus.planning
     issue.hold_reason = None
+    # Cap-Fenster auch beim Neu-Planen zurücksetzen: eine frische Planung startet einen
+    # neuen Zyklus — alte Runs (z. B. frühere Versuche) dürfen den Runaway-Cap nicht sofort
+    # auslösen. Baseline = aktuelle Max-Run-Id (None, falls noch keine Runs existieren).
+    issue.cap_baseline_run_id = (
+        await db.execute(select(func.max(Run.id)).where(Run.issue_id == issue.id))
+    ).scalar()
     await sync_board_status(db, issue)
     await db.commit()
     await db.refresh(issue)
