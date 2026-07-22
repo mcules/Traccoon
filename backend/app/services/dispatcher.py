@@ -133,10 +133,18 @@ async def _process(issue_id: int) -> None:
         # pro Ticket prüfen. Greift für JEDEN Dispatch-Pfad, weil alle durch _process
         # laufen — im Gegensatz zur continuation_count-Prüfung, die nur loop_exhausted
         # abdeckt. Über der Schwelle → hold statt erneutem Agent-Lauf.
+        # Cap-Fenster: nur Runs SEIT der letzten Plan-Freigabe zählen. Ist cap_baseline_run_id
+        # gesetzt, gehen ausschließlich Run.id > Baseline in Cap UND Kosten-Frühwarnung ein —
+        # so belasten alte Fehlversuche (z. B. 429-Abbrüche) legitime Neu-Arbeit nicht. Ohne
+        # Baseline (None) zählen wie bisher alle Runs des Tickets. Die Kosten-/Statistik-
+        # Aggregation in cost.py (CostEntry) bleibt davon unberührt (volle Historie).
+        run_cond = [Run.issue_id == issue.id]
+        if issue.cap_baseline_run_id:
+            run_cond.append(Run.id > issue.cap_baseline_run_id)
         agg = (
             await db.execute(
                 select(func.count(Run.id), func.coalesce(func.sum(Run.input_tokens), 0))
-                .where(Run.issue_id == issue.id)
+                .where(*run_cond)
             )
         ).one()
         run_count, in_tok = int(agg[0]), int(agg[1] or 0)

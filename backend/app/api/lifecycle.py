@@ -3,10 +3,11 @@ import json
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
+from ..models.agents import Run
 from ..models.enums import HoldReason, TicketAgentStatus
 from ..models.project import Project
 from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
@@ -58,6 +59,12 @@ async def approve_plan(
         raise HTTPException(status.HTTP_409_CONFLICT, "Kein Plan vorhanden")
     issue.agent_status = TicketAgentStatus.approved
     issue.hold_reason = None
+    # Cap-Fenster setzen: ab jetzt zählt die Runaway-Bremse nur Runs NACH dieser Freigabe.
+    # Baseline = aktuelle Max-Run-Id des Tickets (None, falls noch keine Runs existieren) —
+    # alte Fehlversuche (z. B. 429-Abbrüche) vor der Freigabe zählen nicht mehr gegen den Cap.
+    issue.cap_baseline_run_id = (
+        await db.execute(select(func.max(Run.id)).where(Run.issue_id == issue.id))
+    ).scalar()
     await add_system_comment(db, issue.id, f"✅ Plan freigegeben von {_who(access)}")
     await sync_board_status(db, issue)
     await db.commit()
