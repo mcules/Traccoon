@@ -425,9 +425,18 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
         # Auto-Deploy NUR bei echtem Merge in den Ziel-Branch (nicht bei Sub-Tickets,
         # die in den Sammelticket-Branch mergen, und nicht bei conflict/push_failed/pr).
         if project.auto_deploy and issue.merge_status == "merged" and not issue.parent_ticket_id:
-            db.add(Deployment(project_id=project.id, issue_id=issue.id,
-                              stack_dir=project.workspace_dir or "", status="pending"))
-            await db.commit()
+            # Tickets dürfen NICHT das Host-/Wartungsprojekt selbst deployen. Ein leerer
+            # (self-zielender) stack_dir würde vom Deployer ohnehin abgelehnt und bei jedem
+            # Loop-Durchlauf nur einen Deploy-Sturm erzeugen (siehe ABC-19). Der Host-Stack
+            # wird ausschließlich über das explizite, idle-gegatete Wartungs-Update recreated
+            # (dispatcher self_deploy, nur wenn kein Agent läuft).
+            if project.workspace_dir:
+                db.add(Deployment(project_id=project.id, issue_id=issue.id,
+                                  stack_dir=project.workspace_dir, status="pending"))
+                await db.commit()
+            else:
+                log.info("accept %s: Self-/Host-Projekt — kein Ticket-Deploy "
+                         "(Host-Stack nur via Wartungs-Update)", job["issue_id"])
         # Sub-Ticket fertig gemergt → nächstes geparktes Geschwister freigeben bzw.
         # Sammelticket abschließen (erst NACH dem Merge, damit Teil n+1 auf n aufbaut).
         if issue.parent_ticket_id:
