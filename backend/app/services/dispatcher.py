@@ -108,6 +108,14 @@ async def _exec_role(issue: Issue, project: Project) -> str:
 
 MAX_CONTINUATIONS = 30
 
+# Harte Runaway-Bremse pro Ticket, UNABHÄNGIG von continuation_count. Fängt jeden
+# Re-Dispatch-Pfad ab (Review/Kommentar/Accept-Konflikt/…) — auch wenn der Zähler
+# nie erhöht wurde. Beleg: ABC-19 lief 41 Runs / 11,9 Mio Input-Tokens bei
+# continuation_count=0, weil die Cap-Prüfung bisher nur im loop_exhausted-Zweig
+# griff. Beim Erreichen → hold (Mensch), statt weiter Tokens zu verbrennen.
+MAX_RUNS_PER_TICKET = 30
+MAX_INPUT_TOKENS_PER_TICKET = 8_000_000
+
 
 async def _process(issue_id: int) -> None:
     async with SessionLocal() as db:
@@ -115,6 +123,30 @@ async def _process(issue_id: int) -> None:
         if issue is None or issue.assigned_agent is None:
             return
         project = await db.get(Project, issue.project_id)
+
+        # Runaway-Bremse: bevor ein (weiterer) Run gestartet wird, harte Obergrenze
+        # pro Ticket prüfen. Greift für JEDEN Dispatch-Pfad, weil alle durch _process
+        # laufen — im Gegensatz zur continuation_count-Prüfung, die nur loop_exhausted
+        # abdeckt. Über der Schwelle → hold statt erneutem Agent-Lauf.
+        agg = (
+            await db.execute(
+                select(func.count(Run.id), func.coalesce(func.sum(Run.input_tokens), 0))
+                .where(Run.issue_id == issue.id)
+            )
+        ).one()
+        run_count, in_tok = int(agg[0]), int(agg[1] or 0)
+        if run_count >= MAX_RUNS_PER_TICKET or in_tok >= MAX_INPUT_TOKENS_PER_TICKET:
+            issue.agent_working = False
+            issue.agent_status = TicketAgentStatus.hold
+            issue.hold_reason = HoldReason.cap
+            await sync_board_status(db, issue)
+            await db.commit()
+            log.warning(
+                "Ticket %s: Runaway-Cap erreicht (%d Runs / %d Input-Tokens) → hold",
+                issue.key, run_count, in_tok,
+            )
+            return
+
         planning = issue.agent_status == TicketAgentStatus.planning
         phase = "planning" if planning else "execution"
         role = await (_plan_role if planning else _exec_role)(issue, project)
