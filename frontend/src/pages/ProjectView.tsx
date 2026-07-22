@@ -7,6 +7,7 @@ import NewTicketModal from "../components/NewTicketModal";
 // Monaco ist groß → nur laden, wenn der Code-Tab geöffnet wird.
 const FilesPanel = lazy(() => import("../components/FilesPanel"));
 import Members from "../components/Members";
+import ResourceGrants from "../components/ResourceGrants";
 import Hardware from "../components/Hardware";
 import ProjectSettings from "../components/ProjectSettings";
 import Backlog from "../components/Backlog";
@@ -126,7 +127,17 @@ export default function ProjectView() {
       {tab === "dashboard" && <Dashboard project={project} />}
       {tab === "pm" && <PmChat project={project} />}
       {tab === "monitor" && <AgentMonitor project={project} />}
-      {tab === "members" && canManage && <Members project={project} />}
+      {tab === "members" && canManage && (
+        <div className="space-y-8">
+          <Members project={project} />
+          {project.has_hardware && (
+            <div>
+              <h2 className="mb-2 text-sm font-semibold">Granulare Freigaben</h2>
+              <ResourceGrants project={project} />
+            </div>
+          )}
+        </div>
+      )}
       {tab === "hardware" && <Hardware project={project} />}
       {tab === "settings" && canManage && <ProjectSettings project={project} />}
 
