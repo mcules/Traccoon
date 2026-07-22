@@ -33,6 +33,11 @@ log = logging.getLogger("traccoon.runtime")
 _FS_MAX_READ = 30000
 MAX_BUILD_GATE = 3
 MAX_DELEGATION_DEPTH = 2
+# Harter Per-Run-Input-Token-Budget: verhindert, dass ein einzelner Run durch die
+# quadratisch wachsende Message-History den Kontext/Verbrauch explodieren lässt.
+# Bei Überschreitung wird der Run wie beim Iterations-Limit als loop_exhausted
+# finalisiert (Continuation greift in frischem Run; Per-Ticket-Cap deckelt gesamt).
+MAX_RUN_INPUT_TOKENS = int(os.getenv("MAX_RUN_INPUT_TOKENS", "2000000"))
 
 DEPLOYER_URL = os.getenv("DEPLOYER_URL", "http://deployer:8661")
 SHOTTER_URL = os.getenv("SHOTTER_URL", "http://shotter:8700")
@@ -658,6 +663,17 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
 
                 in_tok += int(resp.usage.get("input_tokens", 0) or 0)
                 out_tok += int(resp.usage.get("output_tokens", 0) or 0)
+                if in_tok >= MAX_RUN_INPUT_TOKENS:
+                    # Hartes Token-Budget erreicht → Run exakt wie beim Iterations-Limit
+                    # abbrechen: `break` fällt auf die loop_exhausted-Finalisierung unten
+                    # (gleicher _end_run/RunResult-Pfad), damit die Continuation-Semantik greift.
+                    logging.getLogger("traccoon.runtime").warning(
+                        "Run %s: Token-Budget erreicht (%d ≥ %d) → loop_exhausted",
+                        run_id, in_tok, MAX_RUN_INPUT_TOKENS)
+                    await log("system", None,
+                              f"⚠️ Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS}) "
+                              f"→ loop_exhausted (Fortsetzung in frischem Run)")
+                    break
                 await log("assistant", None, resp.text or "(Tool-Call)")
                 if resp.text:
                     last_text = resp.text
