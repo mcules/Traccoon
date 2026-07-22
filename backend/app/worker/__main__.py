@@ -150,6 +150,9 @@ async def handle(job: dict, redis: Redis) -> None:
     if kind == "job":
         await _handle_job(job, redis)
         return
+    if kind == "assistant":
+        await _handle_assistant_task(job, redis)
+        return
     if kind:  # Infra-Task (testenv_start etc.) — später
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps({"status": "failed",
                         "output": f"Infra-Task {kind} noch nicht implementiert"}), ex=3600)
@@ -515,6 +518,73 @@ async def _handle_job(job: dict, redis: Redis) -> None:
             db.add(Notification(kind="job", title=title, body=body[:4000], chat_id=notify_chat))
         await db.commit()
     log.info("job %s → %s", job["job_id"], status)
+
+
+async def _handle_assistant_task(job: dict, redis: Redis) -> None:
+    """Freigegebenes Assistent-Item (z. B. Mail) über den vollen Tool-Loop des Owners abarbeiten.
+
+    Projektlos wie `_handle_job`: run_agent mit issue.id=None/project.id=None, Owner-Token +
+    Owner-MCP-Gruppe. Der Prompt trägt die GESCHWÄRZTE Zusammenfassung + Mail-Metadaten; den
+    Volltext holt sich der Assistent bei Bedarf selbst über die IMAP-Tools (die Freigabe des
+    Menschen war zugleich die Freigabe für diesen Zugriff).
+    """
+    from ..models.assistant import AssistantTask
+    from ..models.notification import Notification
+    from .runtime import run_agent
+    tid = job["assistant_task_id"]
+    async with SessionLocal() as db:
+        t = await db.get(AssistantTask, tid)
+        if t is None or t.status not in ("approved",):
+            return
+        t.status = "running"
+        await db.commit()
+
+        owner_id = t.owner_user_id
+        meta = t.meta or {}
+        acc, uid = meta.get("account", ""), meta.get("uid", "")
+        prompt = (
+            "Eingang für deinen Menschen (lokal vorklassifiziert, Rohtext bewusst nicht "
+            "mitgeschickt).\n"
+            f"Von: {meta.get('from', '')}\nBetreff: {meta.get('subject', '')}\n"
+            f"Kategorie: {t.category} · Priorität: {t.priority}\n\n"
+            f"Zusammenfassung (geschwärzt):\n{t.redacted_summary}\n\n"
+            f"Der Volltext liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies ihn NUR über die "
+            "imap-Tools, falls du ihn zum Handeln wirklich brauchst. Entscheide dann eigenständig "
+            "und im Sinne deines Menschen, was zu tun ist (im Vault vermerken, einen Entwurf "
+            "vorbereiten, einen Termin anlegen, ablegen …) und führe es aus. Fasse am Ende knapp "
+            "zusammen, was du getan hast."
+        )
+        out, status, err, run_id = "", "done", "", None
+        try:
+            agent = await _load_agent(db, settings.mail_assistant_agent or "assistent",
+                                      0, "execute", owner_id)
+            tokens, base_urls = await _build_tokens(db, owner_id, agent)
+            result = await run_agent(
+                db=db, agent=agent,
+                issue={"id": None, "key": f"assistant-{t.id}", "summary": t.title,
+                       "description": prompt, "plan": None},
+                project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
+                mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
+                base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"])
+            out = result.summary or result.text or ""
+            run_id = getattr(result, "run_id", None)
+            if result.status not in ("done",):
+                status, err = "error", (result.text or result.status)
+        except Exception as exc:  # noqa: BLE001
+            status, err = "error", str(exc)
+
+        t.status = status
+        t.result = out[:20000]
+        t.error = err[:2000]
+        t.run_id = run_id
+        t.finished_at = _now_dt()
+        owner = await db.get(User, owner_id) if owner_id else None
+        title = f"Assistent: {t.title}" + (" — Fehler" if status == "error" else "")
+        db.add(Notification(kind="assistant", title=title[:200],
+                            body=(err if status == "error" else out)[:4000],
+                            chat_id=owner.telegram_chat_id if owner else None))
+        await db.commit()
+    log.info("assistant-task %s → %s", tid, status)
 
 
 def _now_dt():

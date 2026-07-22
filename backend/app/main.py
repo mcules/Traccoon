@@ -8,7 +8,8 @@ from sqlalchemy import text
 from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
     admin, agents, auth, config, cost, dashboard, files, hardware, invitations, issues, lifecycle,
-    me, nexus, notifications, permissions, plugins, projects, repo, runs, secrets, skills, users, ws,
+    mail, me, nexus, notifications, permissions, plugins, projects, repo, runs, secrets, skills,
+    users, ws,
 )
 from .config import settings
 from .db import Base, SessionLocal, engine
@@ -74,6 +75,7 @@ api.include_router(issues.router)
 api.include_router(lifecycle.router)
 api.include_router(hardware.router)
 api.include_router(nexus.router)
+api.include_router(mail.router)
 api.include_router(secrets.router)
 api.include_router(permissions.router)
 api.include_router(notifications.router)
