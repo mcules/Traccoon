@@ -22,6 +22,9 @@ class ChatResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     raw: dict[str, Any] = field(default_factory=dict)
     usage: dict[str, Any] = field(default_factory=dict)
+    # Gecachte (per Prompt-Caching ~0,1x berechnete) Input-Tokens dieses Calls.
+    # Default 0 → Provider ohne Caching (codex/openai) bleiben unberührt.
+    cache_read_tokens: int = 0
 
 
 class ProviderError(RuntimeError):

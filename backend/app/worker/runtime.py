@@ -373,7 +373,7 @@ async def _add_step(db: AsyncSession, run_id: int, seq: int, role: str, tool: st
 
 async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = "", error: str = "",
                    iterations: int = 0, wt_fp: str | None = None,
-                   in_tok: int = 0, out_tok: int = 0) -> None:
+                   in_tok: int = 0, out_tok: int = 0, cache_read: int = 0) -> None:
     from ..models.agents import CostEntry
     from ..models.predecessor import ProviderModel
     from ..models.ticket import Issue
@@ -388,9 +388,11 @@ async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = ""
         run.output_tokens = out_tok
         run.last_text = summary[:2000] if summary else run.last_text
         run.finished_at = _now()
-        # Kosten aus Modellpreisen (falls im Katalog)
+        # Kosten aus Modellpreisen (falls im Katalog). cache_read = per Prompt-Caching
+        # verbilligter (gecachter) Input-Anteil, separat mit price_cache_read (~0,1x)
+        # bepreist, damit die Ersparnis sichtbar und die Gesamtkosten korrekt sind.
         cost = 0.0
-        if in_tok or out_tok:
+        if in_tok or out_tok or cache_read:
             pm = (
                 await db.execute(
                     select(ProviderModel).where(ProviderModel.provider == run.provider,
@@ -398,14 +400,17 @@ async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = ""
                 )
             ).scalar_one_or_none()
             if pm:
-                cost = in_tok / 1e6 * pm.price_input + out_tok / 1e6 * pm.price_output
+                cost = (in_tok / 1e6 * pm.price_input
+                        + out_tok / 1e6 * pm.price_output
+                        + cache_read / 1e6 * pm.price_cache_read)
             run.cost_usd = cost
             project_id = (
                 await db.execute(select(Issue.project_id).where(Issue.id == run.issue_id))
             ).scalar_one_or_none()
             db.add(CostEntry(run_id=run.id, issue_id=run.issue_id, agent=run.agent,
                              provider=run.provider, model=run.model, input_tokens=in_tok,
-                             output_tokens=out_tok, cost_usd=cost, project_id=project_id))
+                             output_tokens=out_tok, cache_read_tokens=cache_read,
+                             cost_usd=cost, project_id=project_id))
         await db.commit()
 
 
@@ -644,7 +649,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             last_text = ""
             empties = 0
             build_gate_fails = 0
-            in_tok = out_tok = 0
+            in_tok = out_tok = cache_read = 0
             for iteration in range(1, agent.max_iterations + 1):
                 if iteration == max(2, agent.max_iterations - 2):
                     messages.append({"role": "system", "content":
@@ -663,6 +668,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
 
                 in_tok += int(resp.usage.get("input_tokens", 0) or 0)
                 out_tok += int(resp.usage.get("output_tokens", 0) or 0)
+                # Gecachte Input-Tokens getrennt akkumulieren (NICHT in in_tok, denn
+                # usage.input_tokens ist bereits der ungecachte Rest; die Runaway-Cap
+                # in dispatcher._process wertet weiter runs.input_tokens aus).
+                cache_read += int(resp.cache_read_tokens or 0)
                 if in_tok >= MAX_RUN_INPUT_TOKENS:
                     # Hartes Token-Budget erreicht → Run exakt wie beim Iterations-Limit
                     # abbrechen: `break` fällt auf die loop_exhausted-Finalisierung unten
@@ -686,7 +695,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             err = ("Strenge Abnahme ist aktiv, aber das Projekt hat keinen verify_command. "
                                    "Ohne grünen Prüflauf gilt der Lauf nicht als erfolgreich.")
                             await _end_run(db, run_id, "failed", error=err, iterations=iteration,
-                                           in_tok=in_tok, out_tok=out_tok)
+                                           in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                             return RunResult("failed", err, iteration, run_id=run_id)
                         if agent.can_code and mode != "plan" and ws_root and verify_command:
                             verdict = await _do_check(ws_root, verify_command)
@@ -694,14 +703,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 build_gate_fails += 1
                                 if build_gate_fails > MAX_BUILD_GATE:
                                     await _end_run(db, run_id, "loop_exhausted", error=verdict,
-                                                   iterations=iteration, in_tok=in_tok, out_tok=out_tok)
+                                                   iterations=iteration, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                                     return RunResult("loop_exhausted", verdict, iteration, run_id=run_id)
                                 messages.append({"role": "system", "content":
                                     "⛔ ABSCHLUSS BLOCKIERT: Build ist ROT. Behebe die Ursache (nichts weglöschen) "
                                     "und arbeite weiter:\n\n" + verdict})
                                 continue
                         await _end_run(db, run_id, "success", summary=resp.text, iterations=iteration,
-                                       in_tok=in_tok, out_tok=out_tok)
+                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                         return RunResult("done", resp.text, iteration, summary=resp.text, run_id=run_id)
                     empties += 1
                     if empties >= 2:
@@ -726,14 +735,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         await db.commit()
                         await _add_comment(db, issue_id, agent.name, question)
                         await _end_run(db, run_id, "blocked", summary=question, iterations=iteration,
-                                       in_tok=in_tok, out_tok=out_tok)
+                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                         return RunResult("blocked", question, iteration, run_id=run_id, blocker_kind="ask_human")
 
                     if call.name == "continue_later":
                         s = (call.arguments.get("summary") or "").strip()
                         fp = await _gitops.worktree_fingerprint(ws_root) if ws_root else None
                         await _end_run(db, run_id, "loop_exhausted", summary=s, iterations=iteration,
-                                       wt_fp=fp, in_tok=in_tok, out_tok=out_tok)
+                                       wt_fp=fp, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                         return RunResult("loop_exhausted", s, iteration, run_id=run_id)
 
                     if call.name == "submit_plan" and mode == "plan":
@@ -744,7 +753,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             continue
                         psum = (call.arguments.get("summary") or "").strip()
                         await _end_run(db, run_id, "planned", summary="Plan erstellt", iterations=iteration,
-                                       in_tok=in_tok, out_tok=out_tok)
+                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                         return RunResult("planned", plan, iteration, summary=psum, run_id=run_id)
 
                     # Permission-Gate für mutierende externe Tools
@@ -762,7 +771,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 await _add_comment(db, issue_id, agent.name,
                                                    f"⚙️ Berechtigung nötig: `{call.name}` auf `{resource or '—'}`")
                                 await _end_run(db, run_id, "blocked", summary=f"Berechtigung: {call.name}",
-                                               iterations=iteration, in_tok=in_tok, out_tok=out_tok)
+                                               iterations=iteration, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                                 return RunResult("blocked", f"Berechtigung: {call.name}", iteration,
                                                  run_id=run_id, blocker_kind="permission")
 
@@ -796,7 +805,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             if sub.status == "blocked":
                                 # Sub-Agent blockiert → Rückfrage an den Menschen weiterreichen
                                 await _end_run(db, run_id, "blocked", summary=sub.text, iterations=iteration,
-                                               in_tok=in_tok, out_tok=out_tok)
+                                               in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                                 return RunResult("blocked", sub.text, iteration, run_id=run_id,
                                                  blocker_kind=sub.blocker_kind or "question")
                             result = f"[Sub-Agent {sub_role} → {sub.status}]\n{sub.text[:2000]}"
@@ -834,7 +843,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             exhausted = "Iterations-Limit erreicht.\n\nLetzter Stand:\n" + (last_text or "(kein Text)")
             fp = await _gitops.worktree_fingerprint(ws_root) if ws_root else None
             await _end_run(db, run_id, "loop_exhausted", summary=exhausted, iterations=agent.max_iterations,
-                           wt_fp=fp, in_tok=in_tok, out_tok=out_tok)
+                           wt_fp=fp, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
             return RunResult("loop_exhausted", exhausted, agent.max_iterations, run_id=run_id)
 
     except Exception as exc:  # noqa: BLE001
