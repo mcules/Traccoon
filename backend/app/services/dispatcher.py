@@ -9,7 +9,7 @@ import datetime as dt
 import logging
 import uuid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 
 from zoneinfo import ZoneInfo
 
@@ -117,6 +117,10 @@ MAX_CONTINUATIONS = 30
 MAX_RUNS_PER_TICKET = 30
 MAX_INPUT_TOKENS_PER_TICKET = 8_000_000
 
+# Frühwarnung unter dem Hard-Cap: einmal pro Ticket eine Kostenwarnung an den User
+# (gleicher Notify-Pfad wie plan_review/to_test), ohne den Dispatch zu blockieren.
+WARN_INPUT_TOKENS_PER_TICKET = 3_000_000
+
 
 async def _process(issue_id: int) -> None:
     async with SessionLocal() as db:
@@ -148,11 +152,54 @@ async def _process(issue_id: int) -> None:
             )
             return
 
+        # Kosten-Frühwarnung (unter dem Hard-Cap, EINMAL pro Ticket): benachrichtigt den
+        # User über denselben Notify-Pfad wie plan_review/to_test, blockiert den Dispatch
+        # aber NICHT. Dedup über einen eigenen Comment-kind ("cost_warn"): existiert er
+        # schon, wird nur weiterdispatcht. Vor dem Claim committet, damit Marker +
+        # Notification unabhängig vom Claim-Ausgang persistieren.
+        if in_tok >= WARN_INPUT_TOKENS_PER_TICKET:
+            warned = (
+                await db.execute(
+                    select(Comment.id).where(
+                        Comment.issue_id == issue.id, Comment.kind == "cost_warn"
+                    ).limit(1)
+                )
+            ).first()
+            if warned is None:
+                warn_text = (
+                    f"⚠️ Kostenwarnung {issue.key}: {run_count} Runs / {in_tok} Input-Tokens. "
+                    f"Hard-Cap bei {MAX_RUNS_PER_TICKET} Runs / "
+                    f"{MAX_INPUT_TOKENS_PER_TICKET} Tokens → hold."
+                )
+                db.add(Comment(issue_id=issue.id, author_id=None, author_label="System",
+                               body=warn_text, kind="cost_warn"))
+                from .notify import notify_issue
+                await notify_issue(db, issue, "cost_warn", f"{issue.key}: Kostenwarnung", warn_text)
+                await db.commit()
+                log.warning("Ticket %s: Kostenwarnung (%d Runs / %d Input-Tokens)",
+                            issue.key, run_count, in_tok)
+
+        # Atomarer agent_working-Claim gegen Parallel-Doppel-Dispatch: nur wer das Ticket
+        # von agent_working=false auf true flippt, gewinnt den Claim und dispatcht. Ist der
+        # Claim verloren (0 Zeilen betroffen), dispatcht bereits ein anderer Pfad → return
+        # OHNE Enqueue. Ersetzt das frühere nicht-atomare `issue.agent_working = True`
+        # (Beleg: ABC-19 lief 3 Runs parallel).
+        claimed = (
+            await db.execute(
+                update(Issue).where(Issue.id == issue.id, Issue.agent_working.is_(False))
+                .values(agent_working=True).returning(Issue.id)
+            )
+        ).first()
+        if claimed is None:
+            log.info("Ticket %s: agent_working-Claim verloren — anderer Pfad dispatcht bereits",
+                     issue.key)
+            return
+        await db.refresh(issue)  # Session-State nach dem Bulk-UPDATE auffrischen
+
         planning = issue.agent_status == TicketAgentStatus.planning
         phase = "planning" if planning else "execution"
         role = await (_plan_role if planning else _exec_role)(issue, project)
 
-        issue.agent_working = True
         if not planning:
             issue.agent_status = TicketAgentStatus.in_progress
         # Sobald ein Agent zu arbeiten beginnt, muss das Ticket in „In Arbeit" stehen
