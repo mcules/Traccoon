@@ -13,7 +13,10 @@ class Notification(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     issue_id: Mapped[int | None] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"), nullable=True)
-    kind: Mapped[str] = mapped_column(String(40), default="")   # done|failed|plan_review|to_test|blocked|permission
+    # Projektlose Assistent-Freigaben (Telegram-Karte): Bezug aufs Inbox-Item statt aufs Issue.
+    assistant_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assistant_tasks.id", ondelete="CASCADE"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(40), default="")   # done|failed|plan_review|to_test|blocked|permission|assistant_review
     title: Mapped[str] = mapped_column(String(500), default="")
     body: Mapped[str] = mapped_column(Text, default="")
     chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

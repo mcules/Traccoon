@@ -15,11 +15,13 @@ import re
 from sqlalchemy import select
 
 from ..db import SessionLocal
+from ..models.assistant import AssistantTask
 from ..models.enums import GlobalRole, TicketAgentStatus
 from ..models.notification import Notification
 from ..models.predecessor import PermAction, PermGrant, Permission, PermRequest
 from ..models.ticket import Issue
 from ..models.user import User
+from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
 from ..services.comments import add_system_comment, apply_user_comment
 from .mdtg import safe
 
@@ -81,6 +83,15 @@ async def run_bot() -> None:
                 InlineKeyboardButton(text="Nie", callback_data=f"perm:never:{req_id}")]])
         return None
 
+    def _atask_kb(tid: int) -> InlineKeyboardMarkup:
+        # Freigabe eines Assistent-Eingangs. Schnellfreigabe ist geschwärzt (sicher);
+        # ungeschwärzt/feineres regelt die Web-Inbox.
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Freigeben", callback_data=f"atask:approve:{tid}"),
+             InlineKeyboardButton(text="❌ Verwerfen", callback_data=f"atask:reject:{tid}")],
+            [InlineKeyboardButton(text="♾️ Immer Absender", callback_data=f"atask:sender:{tid}"),
+             InlineKeyboardButton(text="♾️ Immer Kategorie", callback_data=f"atask:category:{tid}")]])
+
     async def notifier() -> None:
         while True:
             try:
@@ -102,9 +113,13 @@ async def run_bot() -> None:
                                     .order_by(PermRequest.id.desc()))).scalars().first()
                                 req_id = pr.id if pr else None
                         text = f"<b>{safe(n.title)}</b>\n{safe(n.body)}" + (f"\n[{issue_key}]" if issue_key else "")
+                        if n.kind == "assistant_review" and n.assistant_task_id:
+                            markup = _atask_kb(n.assistant_task_id)
+                        else:
+                            markup = _kb_for(n.kind, issue_key, req_id)
                         try:
                             await bot.send_message(int(n.chat_id), text, parse_mode="HTML",
-                                                   reply_markup=_kb_for(n.kind, issue_key, req_id))
+                                                   reply_markup=markup)
                             n.notified_at = _now()
                         except Exception:  # noqa: BLE001
                             log.exception("Send an %s fehlgeschlagen", n.chat_id)
@@ -219,6 +234,21 @@ async def run_bot() -> None:
                         iss.continuation_count += 1
                     await db.commit()
                     await cq.answer(f"Berechtigung: {dec}")
+            elif data.startswith("atask:"):
+                _, action, sid = data.split(":", 2)
+                t = await db.get(AssistantTask, int(sid))
+                if t is None:
+                    await cq.answer("Nicht gefunden")
+                elif t.status not in ("new", "error"):
+                    await cq.answer(f"schon erledigt ({t.status})")
+                elif action == "reject":
+                    await reject_assistant_task(db, t)
+                    await cq.answer("Verworfen")
+                else:
+                    scope = {"sender": "sender", "category": "category"}.get(action, "once")
+                    # Schnellfreigabe per Telegram ist geschwärzt (sicher); ungeschwärzt regelt die Web-Inbox.
+                    await approve_assistant_task(db, t, scope=scope, redaction="redacted")
+                    await cq.answer("Freigegeben" + ("" if scope == "once" else " + gemerkt"))
         await cq.answer()
 
     log.info("Traccoon-Bot gestartet (allowed=%s)", ALLOWED or "alle")
