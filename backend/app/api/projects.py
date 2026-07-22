@@ -6,13 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models.enums import IssueTypeCategory, ProjectRole, StatusCategory
-from ..models.project import Project, ProjectMember, default_ai_assign
+from ..models.enums import IssueTypeCategory, ProjectRole, ResourceType, StatusCategory
+from ..models.hardware import HardwareAsset, Location
+from ..models.project import Project, ProjectMember, ResourceGrant, default_ai_assign
 from ..models.ticket import Board, BoardColumn, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import User
 from ..schemas.project import (
     MemberCreate, MemberOut, MemberUpdate, ProjectCreate, ProjectOut,
-    ProjectSettings, ProjectSettingsOut, ProjectUpdate,
+    ProjectSettings, ProjectSettingsOut, ProjectUpdate, ResourceGrantIn, ResourceGrantOut,
 )
 from .deps import Access, get_current_user, get_project_access, require_role
 
@@ -22,10 +23,12 @@ router = APIRouter(tags=["projects"])
 def project_out(project: Project, access: Access) -> ProjectOut:
     return ProjectOut(
         id=project.id, key=project.key, name=project.name, description=project.description,
-        parent_id=project.parent_id, avatar_color=project.avatar_color, managed=project.managed,
+        parent_id=project.parent_id, inherit_members=project.inherit_members,
+        avatar_color=project.avatar_color, managed=project.managed,
         pm_chat_enabled=project.pm_chat_enabled, has_hardware=project.has_hardware,
         git_enabled=project.git_enabled,
         my_role=access.role, my_ai_assign=access.ai_assign,
+        my_role_inherited=access.inherited,
     )
 
 
@@ -62,35 +65,23 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
 
 @router.get("/projects", response_model=list[ProjectOut])
 async def list_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    # Projekte, in denen der User Mitglied ist (Admin sieht alle).
     from ..models.enums import GlobalRole
+    from .deps import build_access
+    all_projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
     if user.global_role == GlobalRole.admin:
-        projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
-    else:
-        projects = (
-            await db.execute(
-                select(Project)
-                .join(ProjectMember, ProjectMember.project_id == Project.id)
-                .where(ProjectMember.user_id == user.id)
-                .order_by(Project.id)
-            )
-        ).scalars().all()
+        return [
+            project_out(p, Access(user, p, ProjectRole.owner, True, True))
+            for p in all_projects
+        ]
+    # Direkte Mitgliedschaft ODER geerbt vom Eltern-Baum (Sub-Projekte ohne eigene
+    # Mitgliedschaft, z. B. "Wart" unter "Königsberg").
     out = []
-    for p in projects:
-        m = (
-            await db.execute(
-                select(ProjectMember).where(
-                    ProjectMember.project_id == p.id, ProjectMember.user_id == user.id
-                )
-            )
-        ).scalar_one_or_none()
-        role = m.role if m else ProjectRole.owner
-        ai = m.ai_assign if m else True
-        out.append(ProjectOut(
-            id=p.id, key=p.key, name=p.name, description=p.description, parent_id=p.parent_id,
-            avatar_color=p.avatar_color, managed=p.managed, pm_chat_enabled=p.pm_chat_enabled,
-            has_hardware=p.has_hardware, git_enabled=p.git_enabled, my_role=role, my_ai_assign=ai,
-        ))
+    for p in all_projects:
+        try:
+            access = await build_access(p, user, db)
+        except HTTPException:
+            continue
+        out.append(project_out(p, access))
     return out
 
 
@@ -309,4 +300,88 @@ async def remove_member(
     if m.role == ProjectRole.owner and access.role != ProjectRole.owner:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Owner darf nur von Owner entfernt werden")
     await db.delete(m)
+    await db.commit()
+
+
+# ---------- Granulare Freigaben (Wart-Fall: einzelnes Wasserhäuschen/Asset ohne volle Mitgliedschaft) ----------
+
+async def _resource_label(rt: ResourceType, rid: int, db: AsyncSession) -> str:
+    if rt == ResourceType.location:
+        loc = await db.get(Location, rid)
+        return loc.full_path if loc else f"#{rid}"
+    asset = await db.get(HardwareAsset, rid)
+    return f"Exemplar #{asset.id}" if asset else f"#{rid}"
+
+
+async def _grant_out(g: ResourceGrant, db: AsyncSession) -> ResourceGrantOut:
+    user = await db.get(User, g.user_id)
+    return ResourceGrantOut(
+        id=g.id, project_id=g.project_id, user_id=g.user_id,
+        username=user.username if user else "?", display_name=user.display_name if user else "?",
+        resource_type=g.resource_type, resource_id=g.resource_id,
+        resource_label=await _resource_label(g.resource_type, g.resource_id, db),
+        level=g.level, recursive=g.recursive,
+    )
+
+
+@router.get("/projects/{project_id}/resource-grants", response_model=list[ResourceGrantOut])
+async def list_resource_grants(
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    rows = (
+        await db.execute(
+            select(ResourceGrant).where(ResourceGrant.project_id == access.project.id)
+            .order_by(ResourceGrant.id)
+        )
+    ).scalars().all()
+    return [await _grant_out(g, db) for g in rows]
+
+
+@router.post("/projects/{project_id}/resource-grants", response_model=ResourceGrantOut,
+             status_code=status.HTTP_201_CREATED)
+async def add_resource_grant(
+    data: ResourceGrantIn,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    if await db.get(User, data.user_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if data.resource_type == ResourceType.location:
+        exists = await db.get(Location, data.resource_id)
+    else:
+        exists = await db.get(HardwareAsset, data.resource_id)
+    if exists is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Objekt existiert nicht")
+    dup = (
+        await db.execute(
+            select(ResourceGrant).where(
+                ResourceGrant.user_id == data.user_id,
+                ResourceGrant.resource_type == data.resource_type,
+                ResourceGrant.resource_id == data.resource_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if dup is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Freigabe existiert bereits")
+    g = ResourceGrant(
+        project_id=access.project.id, user_id=data.user_id, resource_type=data.resource_type,
+        resource_id=data.resource_id, level=data.level, recursive=data.recursive,
+    )
+    db.add(g)
+    await db.commit()
+    await db.refresh(g)
+    return await _grant_out(g, db)
+
+
+@router.delete("/projects/{project_id}/resource-grants/{grant_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_resource_grant(
+    grant_id: int,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    g = await db.get(ResourceGrant, grant_id)
+    if g is None or g.project_id != access.project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Freigabe nicht gefunden")
+    await db.delete(g)
     await db.commit()

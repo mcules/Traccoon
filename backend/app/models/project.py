@@ -3,7 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
 from .base import TimestampMixin
-from .enums import ProjectRole, pg_enum_values
+from .enums import GrantLevel, ProjectRole, ResourceType, pg_enum_values
 
 
 class Project(TimestampMixin, Base):
@@ -16,6 +16,9 @@ class Project(TimestampMixin, Base):
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Vererbung von Mitgliedschaften des Eltern-Baums abschalten (z. B. "Wart" soll NICHT
+    # automatisch für jeden Freifunk-Owner sichtbar sein). Default an = gängiges Verhalten.
+    inherit_members: Mapped[bool] = mapped_column(Boolean, default=True)
     avatar_color: Mapped[str] = mapped_column(String(20), default="#0052CC")
     lead_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -92,3 +95,35 @@ class ProjectMember(TimestampMixin, Base):
 def default_ai_assign(role: ProjectRole) -> bool:
     """Rollenbasierte Vorbelegung des KI-Rechts (überschreibbar)."""
     return role in (ProjectRole.owner, ProjectRole.maintainer)
+
+
+class ResourceGrant(TimestampMixin, Base):
+    """Granulare Freigabe eines einzelnen Objekts (Location/Asset) an einen User,
+    unabhängig von dessen Projekt-Rolle. Deckt den "Wart"-Fall: User sieht/verwaltet
+    NUR das Wasserhäuschen + seine Masten, ohne volle Projekt-Mitgliedschaft.
+    """
+    __tablename__ = "resource_grants"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "resource_type", "resource_id", name="uq_resource_grant"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Projekt, in dessen Kontext die Freigabe gilt (Sichtbarkeit im Hardware-Tab etc.)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    resource_type: Mapped[ResourceType] = mapped_column(
+        SAEnum(ResourceType, name="resourcetype", values_callable=pg_enum_values), nullable=False,
+    )
+    resource_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    level: Mapped[GrantLevel] = mapped_column(
+        SAEnum(GrantLevel, name="grantlevel", values_callable=pg_enum_values),
+        default=GrantLevel.view, nullable=False,
+    )
+    # Gilt die Freigabe auch für Kind-Locations (Mast unterm Wasserhäuschen)?
+    recursive: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -10,18 +10,22 @@ export default function Projects() {
   const [show, setShow] = useState(false);
   const [name, setName] = useState("");
   const [managed, setManaged] = useState(false);
+  const [parentId, setParentId] = useState("");
   const [err, setErr] = useState("");
 
   const create = useMutation({
-    mutationFn: () => api.post<Project>("/projects", { name, managed }),  // Key generiert der Server
+    mutationFn: () => api.post<Project>("/projects", {
+      name, managed, parent_id: parentId ? Number(parentId) : null,
+    }),  // Key generiert der Server
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["projects"] });
-      setShow(false); setName(""); setManaged(false); setErr("");
+      setShow(false); setName(""); setManaged(false); setParentId(""); setErr("");
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
 
   function submit(e: FormEvent) { e.preventDefault(); create.mutate(); }
+  const parentName = (id?: number | null) => (id ? projects?.find((p) => p.id === id)?.name : null);
 
   return (
     <div>
@@ -38,6 +42,13 @@ export default function Projects() {
           <label className="flex flex-1 flex-col text-xs text-muted">Name
             <input className="mt-1 rounded border border-line bg-surface px-2 py-1.5 text-ink"
               value={name} onChange={(e) => setName(e.target.value)} placeholder="Projektname" />
+          </label>
+          <label className="flex flex-col text-xs text-muted">Übergeordnetes Projekt
+            <select value={parentId} onChange={(e) => setParentId(e.target.value)}
+              className="mt-1 rounded border border-line bg-surface px-2 py-1.5 text-ink">
+              <option value="">— Eigenständig —</option>
+              {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
           </label>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={managed} onChange={(e) => setManaged(e.target.checked)} />
@@ -56,10 +67,15 @@ export default function Projects() {
               <span className="font-mono text-xs text-muted">{p.key}</span>
               <div className="flex gap-1">
                 {p.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">KI</span>}
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{p.my_role}</span>
+                <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
+                  {p.my_role}{p.my_role_inherited ? " (geerbt)" : ""}
+                </span>
               </div>
             </div>
             <div className="mt-1 font-medium">{p.name}</div>
+            {parentName(p.parent_id) && (
+              <div className="text-xs text-muted">↳ Sub-Projekt von {parentName(p.parent_id)}</div>
+            )}
             {!p.my_ai_assign && (
               <div className="mt-2 text-xs text-muted">Ticketsystem (kein KI-Recht)</div>
             )}

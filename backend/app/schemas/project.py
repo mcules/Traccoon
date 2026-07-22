@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 
-from ..models.enums import ProjectRole
+from ..models.enums import GrantLevel, ProjectRole, ResourceType
 
 
 class ProjectCreate(BaseModel):
@@ -15,6 +15,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     parent_id: int | None = None
+    inherit_members: bool | None = None
     managed: bool | None = None
     pm_chat_enabled: bool | None = None
     verify_command: str | None = None
@@ -68,6 +69,7 @@ class ProjectOut(BaseModel):
     name: str
     description: str
     parent_id: int | None
+    inherit_members: bool = True
     avatar_color: str
     managed: bool
     pm_chat_enabled: bool
@@ -76,6 +78,8 @@ class ProjectOut(BaseModel):
     # Sicht des aktuellen Nutzers auf dieses Projekt
     my_role: ProjectRole
     my_ai_assign: bool
+    # War die Rolle direkt (Mitgliedschaft dieses Projekts) oder vom Eltern-Baum geerbt?
+    my_role_inherited: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -98,5 +102,28 @@ class MemberOut(BaseModel):
     display_name: str
     role: ProjectRole
     ai_assign: bool
+
+    model_config = {"from_attributes": True}
+
+
+class ResourceGrantIn(BaseModel):
+    user_id: int
+    resource_type: ResourceType
+    resource_id: int
+    level: GrantLevel = GrantLevel.view
+    recursive: bool = True
+
+
+class ResourceGrantOut(BaseModel):
+    id: int
+    project_id: int
+    user_id: int
+    username: str
+    display_name: str
+    resource_type: ResourceType
+    resource_id: int
+    resource_label: str
+    level: GrantLevel
+    recursive: bool
 
     model_config = {"from_attributes": True}
