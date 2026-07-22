@@ -6,6 +6,7 @@ import Projects from "./pages/Projects";
 import ProjectView from "./pages/ProjectView";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
+import Inbox from "./pages/Inbox";
 import Layout from "./components/Layout";
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
     <Layout>
       <Routes>
         <Route path="/" element={<Projects />} />
+        <Route path="/inbox" element={<Inbox />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/projects/:key" element={<ProjectView />} />
