@@ -40,6 +40,9 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS redaction VARCHAR(20) DEFAULT 'redacted' NOT NULL",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS raw_body TEXT",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS action_hint TEXT DEFAULT '' NOT NULL",
+                # Telegram-Freigabekarte für projektlose Assistent-Items.
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS assistant_task_id INTEGER "
+                "REFERENCES assistant_tasks(id) ON DELETE CASCADE",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:

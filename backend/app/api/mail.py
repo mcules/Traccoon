@@ -18,7 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..config import settings
 from ..db import get_session
 from ..models.assistant import AssistantPolicy, AssistantTask
+from ..models.notification import Notification
 from ..models.user import User
+from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
 from ..services.assistant_policy import match_policy, note_hit, parse_sender, upsert_policy
 from ..services.mail_classify import classify_email
 from .deps import get_current_user, is_owner_or_admin
@@ -102,6 +104,15 @@ async def new_email(request: Request, db: AsyncSession = Depends(get_session)):
         from ..core.redis import enqueue_task
         await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
                             "assistant_task_id": task.id})
+    elif owner_id:
+        # Freigabe-Karte per Telegram (falls eingerichtet) — parallel zur Inbox-Seite.
+        owner = await db.get(User, owner_id)
+        if owner and owner.telegram_chat_id:
+            db.add(Notification(
+                user_id=owner_id, assistant_task_id=task.id, kind="assistant_review",
+                chat_id=owner.telegram_chat_id, title=f"📥 {task.title}"[:200],
+                body=(f"von {sender}\n{cls['redacted_summary']}")[:1000]))
+            await db.commit()
     return {"accepted": True, "id": task.id, "status": task.status, "auto": auto}
 
 
@@ -164,26 +175,8 @@ async def approve_inbox(tid: int, data: ApproveIn | None = None,
     t = await _get_owned(tid, user, db)
     if t.status not in ("new", "error"):
         raise HTTPException(409, f"Item ist nicht freigebbar (Status {t.status})")
-    redaction = d.redaction if d.redaction in ("redacted", "unredacted") else "redacted"
-    t.redaction = redaction
-    if d.action_note:
-        t.action_hint = d.action_note
-    t.error = ""
-
-    # „Immer …" → Regel lernen. match_value aus dem Item ableiten.
-    if d.scope in ("sender", "domain", "category"):
-        sender_email, domain = parse_sender((t.meta or {}).get("from") or "")
-        value = {"sender": sender_email, "domain": domain, "category": t.category}.get(d.scope, "")
-        if value:
-            await upsert_policy(db, t.owner_user_id, match_kind=d.scope, match_value=value,
-                                auto_approve=True, redaction=redaction,
-                                action_hint=d.action_note or t.action_hint or "")
-
-    t.status = "approved"
-    await db.commit()
-    from ..core.redis import enqueue_task
-    await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
-                        "assistant_task_id": t.id})
+    await approve_assistant_task(db, t, scope=d.scope, redaction=d.redaction, action_note=d.action_note)
+    await db.refresh(t)
     return _out(t)
 
 
@@ -191,10 +184,8 @@ async def approve_inbox(tid: int, data: ApproveIn | None = None,
 async def reject_inbox(tid: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     t = await _get_owned(tid, user, db)
-    t.status = "done"
-    t.result = "(verworfen)"
-    t.finished_at = dt.datetime.now(tz=dt.timezone.utc)
-    await db.commit()
+    await reject_assistant_task(db, t)
+    await db.refresh(t)
     return _out(t)
 
 
