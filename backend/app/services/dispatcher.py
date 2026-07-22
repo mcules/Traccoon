@@ -7,8 +7,9 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import uuid
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 
 from zoneinfo import ZoneInfo
 
@@ -108,6 +109,18 @@ async def _exec_role(issue: Issue, project: Project) -> str:
 
 MAX_CONTINUATIONS = 30
 
+# Harte Runaway-Bremse pro Ticket, UNABHÄNGIG von continuation_count. Fängt jeden
+# Re-Dispatch-Pfad ab (Review/Kommentar/Accept-Konflikt/…) — auch wenn der Zähler
+# nie erhöht wurde. Beleg: ABC-19 lief 41 Runs / 11,9 Mio Input-Tokens bei
+# continuation_count=0, weil die Cap-Prüfung bisher nur im loop_exhausted-Zweig
+# griff. Beim Erreichen → hold (Mensch), statt weiter Tokens zu verbrennen.
+MAX_RUNS_PER_TICKET = 30
+MAX_INPUT_TOKENS_PER_TICKET = 8_000_000
+
+# Frühwarnung unter dem Hard-Cap: einmal pro Ticket eine Kostenwarnung an den User
+# (gleicher Notify-Pfad wie plan_review/to_test), ohne den Dispatch zu blockieren.
+WARN_INPUT_TOKENS_PER_TICKET = 3_000_000
+
 
 async def _process(issue_id: int) -> None:
     async with SessionLocal() as db:
@@ -115,11 +128,86 @@ async def _process(issue_id: int) -> None:
         if issue is None or issue.assigned_agent is None:
             return
         project = await db.get(Project, issue.project_id)
+
+        # Runaway-Bremse: bevor ein (weiterer) Run gestartet wird, harte Obergrenze
+        # pro Ticket prüfen. Greift für JEDEN Dispatch-Pfad, weil alle durch _process
+        # laufen — im Gegensatz zur continuation_count-Prüfung, die nur loop_exhausted
+        # abdeckt. Über der Schwelle → hold statt erneutem Agent-Lauf.
+        # Cap-Fenster: nur Runs SEIT der letzten Plan-Freigabe zählen. Ist cap_baseline_run_id
+        # gesetzt, gehen ausschließlich Run.id > Baseline in Cap UND Kosten-Frühwarnung ein —
+        # so belasten alte Fehlversuche (z. B. 429-Abbrüche) legitime Neu-Arbeit nicht. Ohne
+        # Baseline (None) zählen wie bisher alle Runs des Tickets. Die Kosten-/Statistik-
+        # Aggregation in cost.py (CostEntry) bleibt davon unberührt (volle Historie).
+        run_cond = [Run.issue_id == issue.id]
+        if issue.cap_baseline_run_id:
+            run_cond.append(Run.id > issue.cap_baseline_run_id)
+        agg = (
+            await db.execute(
+                select(func.count(Run.id), func.coalesce(func.sum(Run.input_tokens), 0))
+                .where(*run_cond)
+            )
+        ).one()
+        run_count, in_tok = int(agg[0]), int(agg[1] or 0)
+        if run_count >= MAX_RUNS_PER_TICKET or in_tok >= MAX_INPUT_TOKENS_PER_TICKET:
+            issue.agent_working = False
+            issue.agent_status = TicketAgentStatus.hold
+            issue.hold_reason = HoldReason.cap
+            await sync_board_status(db, issue)
+            await db.commit()
+            log.warning(
+                "Ticket %s: Runaway-Cap erreicht (%d Runs / %d Input-Tokens) → hold",
+                issue.key, run_count, in_tok,
+            )
+            return
+
+        # Kosten-Frühwarnung (unter dem Hard-Cap, EINMAL pro Ticket): benachrichtigt den
+        # User über denselben Notify-Pfad wie plan_review/to_test, blockiert den Dispatch
+        # aber NICHT. Dedup über einen eigenen Comment-kind ("cost_warn"): existiert er
+        # schon, wird nur weiterdispatcht. Vor dem Claim committet, damit Marker +
+        # Notification unabhängig vom Claim-Ausgang persistieren.
+        if in_tok >= WARN_INPUT_TOKENS_PER_TICKET:
+            warned = (
+                await db.execute(
+                    select(Comment.id).where(
+                        Comment.issue_id == issue.id, Comment.kind == "cost_warn"
+                    ).limit(1)
+                )
+            ).first()
+            if warned is None:
+                warn_text = (
+                    f"⚠️ Kostenwarnung {issue.key}: {run_count} Runs / {in_tok} Input-Tokens. "
+                    f"Hard-Cap bei {MAX_RUNS_PER_TICKET} Runs / "
+                    f"{MAX_INPUT_TOKENS_PER_TICKET} Tokens → hold."
+                )
+                db.add(Comment(issue_id=issue.id, author_id=None, author_label="System",
+                               body=warn_text, kind="cost_warn"))
+                from .notify import notify_issue
+                await notify_issue(db, issue, "cost_warn", f"{issue.key}: Kostenwarnung", warn_text)
+                await db.commit()
+                log.warning("Ticket %s: Kostenwarnung (%d Runs / %d Input-Tokens)",
+                            issue.key, run_count, in_tok)
+
+        # Atomarer agent_working-Claim gegen Parallel-Doppel-Dispatch: nur wer das Ticket
+        # von agent_working=false auf true flippt, gewinnt den Claim und dispatcht. Ist der
+        # Claim verloren (0 Zeilen betroffen), dispatcht bereits ein anderer Pfad → return
+        # OHNE Enqueue. Ersetzt das frühere nicht-atomare `issue.agent_working = True`
+        # (Beleg: ABC-19 lief 3 Runs parallel).
+        claimed = (
+            await db.execute(
+                update(Issue).where(Issue.id == issue.id, Issue.agent_working.is_(False))
+                .values(agent_working=True).returning(Issue.id)
+            )
+        ).first()
+        if claimed is None:
+            log.info("Ticket %s: agent_working-Claim verloren — anderer Pfad dispatcht bereits",
+                     issue.key)
+            return
+        await db.refresh(issue)  # Session-State nach dem Bulk-UPDATE auffrischen
+
         planning = issue.agent_status == TicketAgentStatus.planning
         phase = "planning" if planning else "execution"
         role = await (_plan_role if planning else _exec_role)(issue, project)
 
-        issue.agent_working = True
         if not planning:
             issue.agent_status = TicketAgentStatus.in_progress
         # Sobald ein Agent zu arbeiten beginnt, muss das Ticket in „In Arbeit" stehen
@@ -129,7 +217,12 @@ async def _process(issue_id: int) -> None:
         await db.commit()
 
         cont = issue.continuation_count
-        task_id = f"{issue.key}-{phase}-{cont}"
+        # EINDEUTIG pro Dispatch: key/phase/cont bleiben lesbar (Logs/Reattach), der uuid-Suffix
+        # verhindert, dass mehrere Runs desselben Tickets denselben result:{task_id}-Key teilen.
+        # Sonst könnte wait_result ein VERALTETES/fremdes Ergebnis sofort zurückliefern und einen
+        # Spurious-Re-Dispatch auslösen (Beleg: ABC-19, 41 Runs alle mit task_id ABC-19-execution-0,
+        # weil continuation_count auf 0 einfror). continuation_index im Payload bleibt = cont.
+        task_id = f"{issue.key}-{phase}-{cont}-{uuid.uuid4().hex[:8]}"
         # Continuation-Hinweis = Zusammenfassung des letzten Runs
         hint = ""
         if cont > 0:

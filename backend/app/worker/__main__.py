@@ -230,7 +230,7 @@ async def handle(job: dict, redis: Redis) -> None:
             testenv_url=issue.testenv_url or "",
             continuation_index=job.get("continuation_index", 0),
             continuation_hint=job.get("continuation_hint", ""),
-            comment_history=comment_history,
+            comment_history=comment_history, task_id=task_id,
             delegate_loader=(lambda r: _load_agent(db, r, project.id, "execute", owner_id)
                              if r in _DEFAULTS else _none()),
         )
@@ -239,7 +239,7 @@ async def handle(job: dict, redis: Redis) -> None:
         if (mode == "execute" and result.status == "done" and project.review_enabled
                 and ctx is not None and ws_root):
             result = await _review_gate(db, project, issue, agent, ws_root, gate_on, tokens,
-                                        permissions, result, ctx, owner_id)
+                                        permissions, result, ctx, owner_id, task_id=task_id)
 
         # Agenten-Änderungen IMMER committen (nicht nur bei 'done') — sonst sitzt die Arbeit
         # bei Review-Hold/Rückfrage uncommittet im Worktree und ist nicht review-/testbar.
@@ -285,7 +285,7 @@ async def handle(job: dict, redis: Redis) -> None:
 
 
 async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens, permissions,
-                       result, ctx, owner_id=None):
+                       result, ctx, owner_id=None, task_id=""):
     """Review-Agent prüft den kumulativen Diff. <review-ok/> = bestanden. Sonst max 2
     Korrektur-Runden durch den Ausführungs-Agenten; danach hold_review."""
     reviewer = await _load_agent(db, project.review_agent or "code_reviewer", project.id, "execute", owner_id)
@@ -304,7 +304,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                    "description": rev_prompt, "plan": None},
             project={"id": project.id, "key": project.key, "system_prompt": "", "stack_dir": "", "live_url": ""},
             mode="execute", permissions=permissions, ws_root=ws_root, gate_on=gate_on, tokens=tokens,
-            verify_command="", screenshot_enabled=False, owner_id=owner_id)
+            verify_command="", screenshot_enabled=False, owner_id=owner_id, task_id=task_id)
         if "<review-ok/>" in (rev.text or ""):
             log.info("review %s: bestanden (Runde %d)", issue.key, attempt + 1)
             return result
@@ -318,7 +318,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                      "stack_dir": project.workspace_dir, "live_url": ""},
             mode="execute", permissions=permissions, ws_root=ws_root, gate_on=gate_on, tokens=tokens,
             verify_command=project.verify_command, screenshot_enabled=project.screenshot_enabled,
-            strict_success=await get_flag("strict_success"), owner_id=owner_id,
+            strict_success=await get_flag("strict_success"), owner_id=owner_id, task_id=task_id,
             continuation_index=99, continuation_hint="REVIEW-BEFUNDE (beheben):\n" + (rev.text or ""))
         if result.status != "done":
             return result
@@ -361,6 +361,7 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
             pre = await gitops.precheck_merge(ctx)
             if pre and pre.conflict:
                 from ..models.enums import HoldReason as _HR, TicketAgentStatus as _TS
+                from ..services.dispatcher import sync_board_status
                 issue.merge_status = "conflict"
                 issue.merge_error = "Merge-Konflikt: " + ", ".join(pre.conflict_files[:8])
                 issue.resolved_at = None
@@ -381,6 +382,10 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
                     issue.continuation_count += 1
                     log.info("accept %s → Konflikt (Runde %d), zurück an Agenten",
                              job["issue_id"], issue.merge_conflict_rounds)
+                # Board-Spalte an den neuen Agent-Status koppeln: hold → „Warten",
+                # approved → „In Arbeit". Ohne diesen Sync blieb ein per Merge-Brake
+                # eskaliertes Ticket in „In Arbeit" hängen (inkonsistent mit hold/merge).
+                await sync_board_status(db, issue)
                 await db.commit()
                 await redis.publish(f"{PREFIX}events:{project.id}",
                                     json.dumps({"type": "issue_update", "issue_key": issue.key}))
@@ -425,9 +430,18 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
         # Auto-Deploy NUR bei echtem Merge in den Ziel-Branch (nicht bei Sub-Tickets,
         # die in den Sammelticket-Branch mergen, und nicht bei conflict/push_failed/pr).
         if project.auto_deploy and issue.merge_status == "merged" and not issue.parent_ticket_id:
-            db.add(Deployment(project_id=project.id, issue_id=issue.id,
-                              stack_dir=project.workspace_dir or "", status="pending"))
-            await db.commit()
+            # Tickets dürfen NICHT das Host-/Wartungsprojekt selbst deployen. Ein leerer
+            # (self-zielender) stack_dir würde vom Deployer ohnehin abgelehnt und bei jedem
+            # Loop-Durchlauf nur einen Deploy-Sturm erzeugen (siehe ABC-19). Der Host-Stack
+            # wird ausschließlich über das explizite, idle-gegatete Wartungs-Update recreated
+            # (dispatcher self_deploy, nur wenn kein Agent läuft).
+            if project.workspace_dir:
+                db.add(Deployment(project_id=project.id, issue_id=issue.id,
+                                  stack_dir=project.workspace_dir, status="pending"))
+                await db.commit()
+            else:
+                log.info("accept %s: Self-/Host-Projekt — kein Ticket-Deploy "
+                         "(Host-Stack nur via Wartungs-Update)", job["issue_id"])
         # Sub-Ticket fertig gemergt → nächstes geparktes Geschwister freigeben bzw.
         # Sammelticket abschließen (erst NACH dem Merge, damit Teil n+1 auf n aufbaut).
         if issue.parent_ticket_id:
@@ -471,7 +485,7 @@ async def _handle_job(job: dict, redis: Redis) -> None:
                        "description": j.prompt, "plan": None},
                 project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
                 mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
-                owner_id=owner_id)
+                owner_id=owner_id, task_id=job["task_id"])
             out = result.summary or result.text or ""
             if result.status not in ("done",):
                 status, err = "error", (result.text or result.status)

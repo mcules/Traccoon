@@ -346,9 +346,15 @@ class RunResult:
 # ---------- DB-Helfer ----------
 
 async def _start_run(db: AsyncSession, issue_id: int, agent: str, phase: str, provider: str,
-                     model: str, parent_run_id: int | None, continuation_index: int) -> int:
+                     model: str, parent_run_id: int | None, continuation_index: int,
+                     task_id: str = "") -> int:
+    # task_id MUSS exakt die sein, unter der der Worker result:{task_id} schreibt und der
+    # Dispatcher wait_result/peek_result prüft — sonst bricht die Reattach-Korrelation
+    # (recover_on_start liest run.task_id, um einen laufenden Worker-Run nach Backend-Reload
+    # wieder anzubinden statt ihn zu verwaisen).
     run = Run(issue_id=issue_id, agent=agent, phase=phase, provider=provider, model=model,
-              status="running", parent_run_id=parent_run_id, continuation_index=continuation_index)
+              status="running", parent_run_id=parent_run_id, continuation_index=continuation_index,
+              task_id=task_id)
     db.add(run)
     await db.commit()
     await db.refresh(run)
@@ -548,14 +554,15 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     screenshot_enabled: bool = False, testenv_url: str = "",
                     continuation_index: int = 0, continuation_hint: str = "",
                     comment_history: list[dict] | None = None,
-                    parent_run_id: int | None = None,
+                    parent_run_id: int | None = None, task_id: str = "",
                     depth: int = 0, delegate_loader=None) -> RunResult:
     permissions = permissions or []
     tokens = tokens or {}
     issue_id = issue["id"]
 
     run_id = await _start_run(db, issue_id, agent.name, mode, agent.provider,
-                              agent.model or agent.provider, parent_run_id, continuation_index)
+                              agent.model or agent.provider, parent_run_id, continuation_index,
+                              task_id=task_id)
     seq = 0
 
     async def log(role: str, tool: str | None, content: str) -> None:
@@ -768,7 +775,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 gate_on=gate_on, tokens=tokens, verify_command=verify_command,
                                 strict_success=strict_success, owner_id=owner_id,
                                 screenshot_enabled=screenshot_enabled, testenv_url=testenv_url,
-                                depth=depth + 1, delegate_loader=delegate_loader, parent_run_id=run_id)
+                                depth=depth + 1, delegate_loader=delegate_loader, parent_run_id=run_id,
+                                task_id=task_id)
                             if sub.status == "blocked":
                                 # Sub-Agent blockiert → Rückfrage an den Menschen weiterreichen
                                 await _end_run(db, run_id, "blocked", summary=sub.text, iterations=iteration,

@@ -161,6 +161,11 @@ class Issue(TimestampMixin, Base):
     base_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     git_base_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
     continuation_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Cap-Fenster: Max-Run-Id zum Zeitpunkt der letzten Plan-Freigabe. Die Runaway-Bremse
+    # (dispatcher._process) zählt nur Runs/Tokens mit Run.id > diesem Wert, damit alte
+    # Fehlversuche (z. B. 429-Abbrüche) nicht gegen legitime Neu-Arbeit zählen. NULL = alle
+    # Runs zählen. Die Kosten-/Statistik-Aggregation (cost.py) bleibt davon unberührt.
+    cap_baseline_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     agent_working: Mapped[bool] = mapped_column(Boolean, default=False)
     merge_status: Mapped[str] = mapped_column(String(20), default="")
     merge_commit: Mapped[str | None] = mapped_column(String(64), nullable=True)

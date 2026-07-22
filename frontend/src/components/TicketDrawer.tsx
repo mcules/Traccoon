@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, AttachmentInfo, Comment, FileChange, Issue, Project, ProjectMeta } from "../api";
+import { api, ApiError, AttachmentInfo, Comment, FileChange, Issue, IssueCosts, Project, ProjectMeta } from "../api";
 import Markdown from "./Markdown";
 import { waitInfo } from "../lib/waitReason";
 import { formatTime } from "../lib/formatTime";
@@ -44,6 +44,11 @@ export default function TicketDrawer({
   const { data: attachments } = useQuery({
     queryKey: ["attachments", issueKey],
     queryFn: () => api.get<AttachmentInfo[]>(`/issues/${issueKey}/attachments`),
+  });
+  const { data: costs } = useQuery({
+    queryKey: ["issue-costs", issueKey],
+    queryFn: () => api.get<IssueCosts>(`/issues/${issueKey}/costs`),
+    refetchInterval: 10000,
   });
   const [comment, setComment] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
@@ -445,6 +450,21 @@ export default function TicketDrawer({
                       <button onClick={() => life.mutate("plan")}
                         className="mt-2 rounded bg-brand px-3 py-1 text-white">↻ Neu planen</button>
                     )}
+                  </div>
+                )}
+                {costs && costs.total_usd > 0 && (
+                  <div className="mt-3 border-t border-brand/20 pt-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted">KI-Kosten</span>
+                      <span className="text-ink">${costs.total_usd.toFixed(2)} · {costs.input_tokens}/{costs.output_tokens} tok</span>
+                    </div>
+                    <div className="mt-1 space-y-0.5 text-xs text-muted">
+                      {costs.by_model.map((m) => (
+                        <div key={`${m.provider}/${m.model}`}>
+                          {m.model || m.provider}: <span className="text-ink">${m.usd.toFixed(2)}</span> · {m.input_tokens}/{m.output_tokens} tok
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {err && <div className="mt-2 text-sm text-red-400">{err}</div>}
