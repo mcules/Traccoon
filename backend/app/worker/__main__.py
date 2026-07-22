@@ -361,6 +361,7 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
             pre = await gitops.precheck_merge(ctx)
             if pre and pre.conflict:
                 from ..models.enums import HoldReason as _HR, TicketAgentStatus as _TS
+                from ..services.dispatcher import sync_board_status
                 issue.merge_status = "conflict"
                 issue.merge_error = "Merge-Konflikt: " + ", ".join(pre.conflict_files[:8])
                 issue.resolved_at = None
@@ -381,6 +382,10 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
                     issue.continuation_count += 1
                     log.info("accept %s → Konflikt (Runde %d), zurück an Agenten",
                              job["issue_id"], issue.merge_conflict_rounds)
+                # Board-Spalte an den neuen Agent-Status koppeln: hold → „Warten",
+                # approved → „In Arbeit". Ohne diesen Sync blieb ein per Merge-Brake
+                # eskaliertes Ticket in „In Arbeit" hängen (inkonsistent mit hold/merge).
+                await sync_board_status(db, issue)
                 await db.commit()
                 await redis.publish(f"{PREFIX}events:{project.id}",
                                     json.dumps({"type": "issue_update", "issue_key": issue.key}))
