@@ -11,7 +11,9 @@ class IssueCreate(BaseModel):
     type_id: int | None = None      # None = Default-Typ des Projekts
     status_id: int | None = None    # None = erster Status
     priority: Priority = Priority.medium
-    assignee_user_id: int | None = None
+    # Personen-Zuweisung NICHT hier — nur über POST /issues/{key}/assignee
+    # (set_assignee), da dort Membership validiert bzw. Platzhalter angelegt
+    # werden. Ein Feld hier würde diesen Schutz umgehen.
     parent_id: int | None = None
     sprint_id: int | None = None
     story_points: int | None = None
@@ -23,7 +25,7 @@ class IssueUpdate(BaseModel):
     type_id: int | None = None
     status_id: int | None = None
     priority: Priority | None = None
-    assignee_user_id: int | None = None
+    # Personen-Zuweisung NICHT hier — nur über POST/DELETE /issues/{key}/assignee.
     parent_id: int | None = None
     sprint_id: int | None = None
     story_points: int | None = None

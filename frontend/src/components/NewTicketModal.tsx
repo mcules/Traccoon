@@ -55,8 +55,9 @@ export default function NewTicketModal({
         priority,
         type_id: typeId,
         status_id: statusId,
-        assignee_user_id: assigneeId ? Number(assigneeId) : null,
       });
+      // Zuweisung separat über den eigenen (Membership-geprüften) Endpoint setzen.
+      if (assigneeId) await api.post(`/issues/${issue.key}/assignee`, { user_id: Number(assigneeId) });
       // Anhänge erst nach dem Anlegen hochladen — brauchen den Ticket-Key.
       for (const f of files) await api.upload(`/issues/${issue.key}/attachments`, f);
       return issue;
@@ -115,7 +116,9 @@ export default function NewTicketModal({
               className="mt-1 block rounded border border-line bg-surface px-2 py-1 text-ink">
               <option value="">— niemand —</option>
               {meta.members.map((m) => (
-                <option key={m.user_id} value={m.user_id}>{m.display_name || m.username}</option>
+                <option key={m.user_id} value={m.user_id}>
+                  {m.display_name || m.username}{m.status === "placeholder" ? " (Platzhalter)" : ""}
+                </option>
               ))}
             </select>
           </label>
