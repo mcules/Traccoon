@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
+import AssistantChat from "../components/AssistantChat";
 
 interface InboxItem {
   id: number; kind: string; source: string; title: string;
@@ -14,7 +15,7 @@ interface InboxItem {
   created_at: string; finished_at: string | null;
 }
 
-type Tab = "inbox" | "rules";
+type Tab = "chat" | "inbox" | "rules";
 type Filter = "offen" | "erledigt" | "alle";
 const OPEN = ["new", "approved", "running"];
 
@@ -39,7 +40,7 @@ function senderEmail(from: string | null): string {
 }
 
 export default function Inbox() {
-  const [tab, setTab] = useState<Tab>("inbox");
+  const [tab, setTab] = useState<Tab>("chat");
   return (
     <div className="max-w-3xl">
       <h1 className="mb-1 text-lg font-semibold">🗂️ Persönlicher Assistent</h1>
@@ -48,13 +49,13 @@ export default function Inbox() {
         handeln — und du kannst dabei <b>Regeln lernen</b> lassen („ab jetzt immer …").
       </p>
       <div className="mb-4 flex gap-1 border-b border-line">
-        {([["inbox", "Eingänge"], ["rules", "Gelernte Regeln"]] as [Tab, string][]).map(([t, l]) => (
+        {([["chat", "Chat"], ["inbox", "Eingänge"], ["rules", "Gelernte Regeln"]] as [Tab, string][]).map(([t, l]) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-3 py-2 text-sm ${tab === t ? "border-b-2 border-brand text-ink" : "text-muted"}`}>
             {l}</button>
         ))}
       </div>
-      {tab === "inbox" ? <InboxList /> : <AssistantPolicies />}
+      {tab === "chat" ? <AssistantChat /> : tab === "inbox" ? <InboxList /> : <AssistantPolicies />}
     </div>
   );
 }

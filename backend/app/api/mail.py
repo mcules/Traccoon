@@ -259,3 +259,61 @@ async def delete_policy(pid: int, user: User = Depends(get_current_user),
     p = await _pol_owned(pid, user, db)
     await db.delete(p)
     await db.commit()
+
+
+# ================= Chat mit dem Assistenten (Web, parallel zu Telegram) =================
+
+def _chat_out(t: AssistantTask) -> dict:
+    return {
+        "id": t.id, "text": (t.meta or {}).get("chat_text") or t.title,
+        "status": t.status, "result": t.result, "error": t.error,
+        "pending_tool": t.pending_tool, "created_at": t.created_at, "finished_at": t.finished_at,
+    }
+
+
+class ChatIn(BaseModel):
+    text: str
+
+
+class DecideIn(BaseModel):
+    decision: str   # once | always | never
+
+
+@router.get("/assistant/chat")
+async def chat_history(user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    rows = (await db.execute(select(AssistantTask).where(
+        AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat")
+        .order_by(AssistantTask.id.desc()).limit(50))).scalars().all()
+    return [_chat_out(t) for t in reversed(rows)]  # ältester zuerst (Gesprächsverlauf)
+
+
+@router.post("/assistant/chat")
+async def chat_send(data: ChatIn, user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)):
+    text = (data.text or "").strip()
+    if not text:
+        raise HTTPException(400, "Leere Nachricht")
+    t = AssistantTask(owner_user_id=user.id, kind="chat", source="web", status="approved",
+                      title=text[:200], meta={"chat_text": text})
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    from ..core.redis import enqueue_task
+    await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
+                        "assistant_task_id": t.id})
+    return _chat_out(t)
+
+
+@router.post("/assistant/chat/{tid}/decide")
+async def chat_decide(tid: int, data: DecideIn, user: User = Depends(get_current_user),
+                      db: AsyncSession = Depends(get_session)):
+    t = await _get_owned(tid, user, db)
+    if t.status != "awaiting":
+        raise HTTPException(409, "Keine offene Freigabe")
+    if data.decision not in ("once", "always", "never"):
+        raise HTTPException(400, "Ungültige Entscheidung")
+    from ..worker.assistant_gate import apply_perm_decision
+    await apply_perm_decision(db, t, data.decision)
+    await db.refresh(t)
+    return _chat_out(t)
