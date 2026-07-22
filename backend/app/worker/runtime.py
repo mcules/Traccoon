@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.agents import AgentDefinition, Run, RunStep
 from ..models.ticket import Blocker, Comment
+from . import codegraph as _codegraph
 from . import gitops as _gitops
 from . import perms
 from .mcp_client import mcp_session
@@ -99,6 +100,20 @@ SCREENSHOT_TOOL = {"type": "function", "function": {
 OPEN_TASKS_TOOL = {"type": "function", "function": {
     "name": "open_tasks", "description": "Offene, einem Agenten zugewiesene Tickets (read-only).",
     "parameters": {"type": "object", "properties": {}}}}
+CODEGRAPH_TOOL = {"type": "function", "function": {
+    "name": "codegraph",
+    "description": (
+        "Code-Wissensgraph dieses Projekts abfragen — nutze das ZUERST, um Symbole, Aufrufwege und "
+        "Blast-Radius zu verstehen, statt viele Dateien einzeln zu lesen (spart Tokens). `explore` gibt "
+        "die relevanten Symbol-Quellen VERBATIM zurück; dort gezeigte Dateien musst du NICHT nochmal "
+        "fs_read. commands: explore=<Frage> (relevante Quellen+Aufrufpfade+Blast-Radius in einem Schuss), "
+        "query=<Symbolsuche>, node=<Symbol|Datei>, callers=<Symbol>, callees=<Symbol>, "
+        "impact=<Symbol> (Was bricht bei Änderung?), files=<Pfad> (Struktur), affected=<Datei> (betroffene Tests)."),
+    "parameters": {"type": "object", "properties": {
+        "command": {"type": "string",
+                    "enum": ["explore", "query", "node", "callers", "callees", "impact", "files", "affected"]},
+        "query": {"type": "string", "description": "Frage/Symbol/Datei/Pfad je nach command"}},
+        "required": ["command", "query"]}}}
 
 
 def _delegate_tool(roles: list[str]) -> dict:
@@ -114,8 +129,10 @@ def _delegate_tool(roles: list[str]) -> dict:
 
 CODE_WORKFLOW = (
     "## Code-Workflow (Projekt-Workspace)\n"
-    "1. Verstehe den Code (fs_read/fs_list) BEVOR du änderst — auch ähnliche Stellen, damit Änderungen "
-    "KONSISTENT sind.\n2. Ändere mit fs_write/fs_edit — CHIRURGISCH. LÖSCHE NIEMALS große Blöcke/Funktionen "
+    "1. Verstehe den Code BEVOR du änderst — auch ähnliche Stellen, damit Änderungen KONSISTENT sind. "
+    "Nutze wenn verfügbar ZUERST `codegraph` (explore/impact) für Symbole, Aufrufwege & Blast-Radius — das "
+    "spart viele fs_read; erst danach fs_read/fs_list für Details.\n2. Ändere mit fs_write/fs_edit — "
+    "CHIRURGISCH. LÖSCHE NIEMALS große Blöcke/Funktionen "
     "nur, damit ein Fehler verschwindet; behebe die Ursache.\n3. Rufe nach JEDER Änderung `check` und behebe "
     "die Fehler, bis der Build GRÜN ist.\n4. ERST bei grünem Build: `deploy`.\n"
     "Bei hartnäckigem Build-Fehler (2-3 rote checks): `ask_human` statt blind weiter.\n"
@@ -588,6 +605,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     openai_tools.append(_delegate_tool(agent.delegate_to))
             if ws_root and (agent.can_code or agent.can_read_code):
                 openai_tools += [FS_READ_TOOL, FS_LIST_TOOL]
+                if await _codegraph.available():
+                    openai_tools.append(CODEGRAPH_TOOL)
                 if screenshot_enabled:
                     openai_tools.append(SCREENSHOT_TOOL)
                 if mode != "plan" and agent.can_code:
@@ -759,6 +778,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             result = f"[Sub-Agent {sub_role} → {sub.status}]\n{sub.text[:2000]}"
                     elif call.name in FS_TOOL_NAMES:
                         result = _fs_dispatch(call.name, ws_root, call.arguments)
+                    elif call.name == "codegraph":
+                        result = await _codegraph.query(
+                            ws_root, (call.arguments.get("command") or "explore").strip(),
+                            (call.arguments.get("query") or "").strip())
                     elif call.name == "check":
                         result = await _do_check(ws_root, verify_command)
                     elif call.name == "deploy":

@@ -166,6 +166,9 @@ class Issue(TimestampMixin, Base):
     merge_commit: Mapped[str | None] = mapped_column(String(64), nullable=True)
     merged_into: Mapped[str | None] = mapped_column(String(255), nullable=True)
     merge_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Zähler für aufeinanderfolgende Merge-Konflikt-Runden beim Accept. Bremst den
+    # accept→conflict→approved→re-dispatch-Loop: nach zu vielen Runden → hold (Mensch).
+    merge_conflict_rounds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Splitting
     parent_ticket_id: Mapped[int | None] = mapped_column(

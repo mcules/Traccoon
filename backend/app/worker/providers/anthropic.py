@@ -176,11 +176,17 @@ class AnthropicProvider(Provider):
                 calls.append(ToolCall(id=block.get("id", ""), name=orig, arguments=inp))
                 oai_calls.append({"id": block.get("id", ""), "type": "function",
                                   "function": {"name": orig, "arguments": json.dumps(inp, ensure_ascii=False)}})
-        if data.get("stop_reason") == "max_tokens" and calls:
-            raise ProviderError(
-                "claude: Antwort bei max_tokens abgeschnitten – Tool-Argumente unvollständig. "
-                "max_tokens erhöhen.", retryable=True)
         text = "".join(text_parts)
+        # max_tokens-Abbruch: entweder mitten im Tool-Argument (calls vorhanden, JSON
+        # unvollständig) ODER das Budget wurde vom (server-seitigen) Thinking aufgebraucht,
+        # bevor überhaupt Text/Tool-Use kam → leere Nutzlast. Beide Fälle sind KEINE gültige
+        # „leere Antwort", sondern eine abgeschnittene → klar (retrybar) melden statt still
+        # als Leerlauf durchzureichen (sonst Fehldiagnose „Leere Modell-Antwort").
+        if data.get("stop_reason") == "max_tokens" and (calls or not text.strip()):
+            raise ProviderError(
+                "claude: Antwort bei max_tokens abgeschnitten – unvollständig "
+                "(Tool-Argumente oder komplett leer, Budget im Thinking verbraucht). "
+                "max_tokens erhöhen.", retryable=True)
         raw_msg: dict[str, Any] = {"role": "assistant", "content": text or None}
         if oai_calls:
             raw_msg["tool_calls"] = oai_calls

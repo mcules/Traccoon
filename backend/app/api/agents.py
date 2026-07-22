@@ -172,8 +172,11 @@ async def delete_agent(agent_id: int, user: User = Depends(get_current_user), db
 DEFAULT_ROLES = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"]
 _CAPS = {
     # PM plant/splittet Code-Tickets → braucht Lesezugriff auf den Code (schreibt aber nicht).
-    "project_manager": dict(can_delegate=True, can_read_code=True, max_turns_execution=40),
-    "architect": dict(can_read_code=True),
+    # Planer geben den kompletten Plan als EIN Tool-Argument (submit_plan) aus → hoher
+    # max_tokens, sonst wird die Antwort abgeschnitten und die Tool-Argumente sind unvollständig.
+    "project_manager": dict(can_delegate=True, can_read_code=True, max_turns_execution=40,
+                            max_tokens=16384, max_turns_planning=20),
+    "architect": dict(can_read_code=True, max_tokens=16384, max_turns_planning=20),
     "developer": dict(can_code=True),
     "code_reviewer": dict(can_read_code=True),
     "tester": dict(can_code=True),

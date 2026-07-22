@@ -33,13 +33,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("traccoon.worker")
 
 MAX_CONCURRENT = int(os.getenv("WORKER_CONCURRENCY", "3"))
+# Wie oft ein Merge-Konflikt beim Accept an den Agenten zurückgeht, bevor an den Menschen
+# eskaliert wird (Loop-Bremse gegen accept→conflict→approved→re-dispatch-Endlosschleifen).
+MAX_CONFLICT_ROUNDS = int(os.getenv("MAX_CONFLICT_ROUNDS", "3"))
 DEFAULT_CLAUDE_MODEL = os.getenv("DEFAULT_CLAUDE_MODEL", "claude-sonnet-4-5")
 DEFAULT_CODEX_MODEL = os.getenv("DEFAULT_CODEX_MODEL", "gpt-5")
 
 # Default-Rollen-Fähigkeiten, falls keine AgentDefinition existiert.
 _DEFAULTS: dict[str, dict] = {
-    "project_manager": {"can_delegate": True, "can_read_code": True, "mp": 10, "me": 40},
-    "architect":       {"can_read_code": True, "mp": 12, "me": 40},
+    "project_manager": {"can_delegate": True, "can_read_code": True, "mp": 20, "me": 40},
+    "architect":       {"can_read_code": True, "mp": 20, "me": 80},
     "developer":       {"can_code": True, "mp": 10, "me": 80},
     "code_reviewer":   {"can_read_code": True, "mp": 8, "me": 30},
     "tester":          {"can_code": True, "mp": 8, "me": 40},
@@ -333,6 +336,12 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
         project = await db.get(Project, job["project_id"])
         if issue is None or project is None:
             return
+        # Idempotenz: ein bereits gemergtes Ticket NICHT erneut mergen. Verhindert, dass
+        # Duplikat-/Nachzügler-Accept-Jobs (z. B. aus Queue-Recovery) einen sauber gemergten
+        # Branch erneut anfassen und in einen Scheinkonflikt laufen (Loop-Quelle).
+        if issue.merge_status == "merged":
+            log.info("accept %s → bereits gemerged, übersprungen", job["issue_id"])
+            return
         if project.git_enabled and issue.branch_name:
             host = urlsplit(project.github_repo).hostname or ""
             owner_id = issue.assigned_by_user_id or issue.reporter_id or project.lead_user_id
@@ -351,17 +360,30 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
             # Pre-Merge-Gate: frisches main in den Worktree; Konflikt → an den Agenten zurück
             pre = await gitops.precheck_merge(ctx)
             if pre and pre.conflict:
-                await gitops.setup_conflict_resolution(ctx)
-                from ..models.enums import TicketAgentStatus as _TS
+                from ..models.enums import HoldReason as _HR, TicketAgentStatus as _TS
                 issue.merge_status = "conflict"
                 issue.merge_error = "Merge-Konflikt: " + ", ".join(pre.conflict_files[:8])
-                issue.agent_status = _TS.approved   # Continuation löst die Marker
                 issue.resolved_at = None
-                issue.continuation_count += 1
+                issue.merge_conflict_rounds += 1
+                if issue.merge_conflict_rounds > MAX_CONFLICT_ROUNDS:
+                    # Loop-Bremse: der Konflikt konvergiert nicht (Agent löst ihn wiederholt
+                    # nicht) → NICHT endlos re-dispatchen, sondern an den Menschen eskalieren.
+                    issue.agent_status = _TS.hold
+                    issue.hold_reason = _HR.merge
+                    db.add(Comment(issue_id=issue.id, author_id=None, kind="internal",
+                                   body=f"⛔ Merge-Konflikt nach {issue.merge_conflict_rounds - 1} "
+                                        f"Auflösungsversuchen ungelöst — an den Menschen eskaliert. "
+                                        f"Konflikt in: {', '.join(pre.conflict_files[:8])}"))
+                    log.info("accept %s → Konflikt-Limit erreicht, hold (Mensch)", job["issue_id"])
+                else:
+                    await gitops.setup_conflict_resolution(ctx)
+                    issue.agent_status = _TS.approved   # Continuation löst die Marker
+                    issue.continuation_count += 1
+                    log.info("accept %s → Konflikt (Runde %d), zurück an Agenten",
+                             job["issue_id"], issue.merge_conflict_rounds)
                 await db.commit()
                 await redis.publish(f"{PREFIX}events:{project.id}",
                                     json.dumps({"type": "issue_update", "issue_key": issue.key}))
-                log.info("accept %s → Konflikt, zurück an Agenten", job["issue_id"])
                 return
             if project.use_pull_request and not issue.parent_ticket_id:
                 # Statt zu mergen: Branch pushen, PR öffnen, Entscheidung bleibt auf GitHub.
@@ -389,6 +411,8 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
                 issue.merge_status = "merged"
                 issue.merge_commit = res.split(":", 1)[1]
                 issue.merged_into = ctx.main
+                issue.merge_error = None
+                issue.merge_conflict_rounds = 0   # sauber durch → Konflikt-Zähler zurücksetzen
                 await gitops.remove_worktree(ctx)
             elif res.startswith("conflict:"):
                 issue.merge_status = "conflict"
