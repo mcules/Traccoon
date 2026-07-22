@@ -62,6 +62,7 @@ function ProviderTokens() {
   const [provider, setProvider] = useState("claude_code");
   const [name, setName] = useState("");
   const [token, setToken] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [isDefault, setIsDefault] = useState(false);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["provider-tokens"] });
@@ -71,8 +72,13 @@ function ProviderTokens() {
   };
   const add = () => {
     if (!token.trim()) return;
-    guard(async () => { await api.post("/me/provider-tokens", { provider, name, token, is_default: isDefault });
-      setName(""); setToken(""); setIsDefault(false); });
+    guard(async () => {
+      await api.post("/me/provider-tokens", {
+        provider, name, token, is_default: isDefault,
+        base_url: provider === "openai" ? baseUrl.trim() || null : null,
+      });
+      setName(""); setToken(""); setBaseUrl(""); setIsDefault(false);
+    });
   };
   const del = (id: number) => guard(() => api.del(`/me/provider-tokens/${id}`));
   const makeDefault = (id: number) => guard(() => api.post(`/me/provider-tokens/${id}/default`));
@@ -85,6 +91,7 @@ function ProviderTokens() {
           <div key={t.id} className="flex items-center gap-2 text-sm">
             <span className="w-40 text-muted">{PROVIDER_LABEL[t.provider] || t.provider}</span>
             <span className="font-medium">{t.name}</span>
+            {t.base_url && <span className="text-xs text-muted">→ {t.base_url}</span>}
             {t.is_default
               ? <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">Standard</span>
               : <button onClick={() => makeDefault(t.id)}
@@ -104,6 +111,11 @@ function ProviderTokens() {
           className="w-32 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Token / sk-…"
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
+        {provider === "openai" && (
+          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}
+            placeholder="Base-URL (optional, z. B. http://litellm:4000/v1)"
+            className="w-64 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
+        )}
         <label className="flex items-center gap-1 text-xs text-muted">
           <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> Standard
         </label>

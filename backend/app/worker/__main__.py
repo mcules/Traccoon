@@ -26,7 +26,8 @@ from ..models.user import User
 from . import gitops
 from .runtime import AgentDef, agent_def_from_row, run_agent
 from .secrets import (
-    resolve_claude_token, resolve_codex_token, resolve_git_token, resolve_provider_token,
+    resolve_claude_token, resolve_codex_token, resolve_git_token, resolve_provider_base_url,
+    resolve_provider_token,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -77,9 +78,11 @@ def _default_agent_def(role: str, provider: str, model: str, mode: str) -> Agent
     )
 
 
-async def _build_tokens(db, owner_id, agent, project=None) -> dict:
-    """Token-Dict je Provider aus der Agent-Auswahl: Primär (provider/token_name) +
+async def _build_tokens(db, owner_id, agent, project=None) -> tuple[dict, dict]:
+    """(tokens, base_urls) je Provider aus der Agent-Auswahl: Primär (provider/token_name) +
     Fallback (fallback/fallback_token_name). Legacy-Keys claude_code/codex als Default-Rückfall.
+    base_urls trägt die optionale eigene Endpoint-URL des jeweils gewählten Provider-Tokens
+    (nur openai relevant); analog zu tokens durch dieselbe eff_name-Auswahl bestimmt.
 
     Projekt-Standard-Subscription (project.default_provider/-token_name) überschreibt den
     persönlichen Default des Nutzers — greift nur, wenn der Agent selbst keinen Token wählt."""
@@ -97,12 +100,15 @@ async def _build_tokens(db, owner_id, agent, project=None) -> dict:
         "claude_code": await resolve_provider_token(db, owner_id, "claude_code", eff_name("claude_code", "")),
         "codex": await resolve_provider_token(db, owner_id, "codex", eff_name("codex", "")),
     }
-    tokens[agent.provider] = await resolve_provider_token(
-        db, owner_id, agent.provider, eff_name(agent.provider, agent.token_name))
+    base_urls: dict[str, str | None] = {}
+    prim_name = eff_name(agent.provider, agent.token_name)
+    tokens[agent.provider] = await resolve_provider_token(db, owner_id, agent.provider, prim_name)
+    base_urls[agent.provider] = await resolve_provider_base_url(db, owner_id, agent.provider, prim_name)
     if agent.fallback and agent.fallback != agent.provider:
-        tokens[agent.fallback] = await resolve_provider_token(
-            db, owner_id, agent.fallback, eff_name(agent.fallback, agent.fallback_token_name))
-    return tokens
+        fb_name = eff_name(agent.fallback, agent.fallback_token_name)
+        tokens[agent.fallback] = await resolve_provider_token(db, owner_id, agent.fallback, fb_name)
+        base_urls[agent.fallback] = await resolve_provider_base_url(db, owner_id, agent.fallback, fb_name)
+    return tokens, base_urls
 
 
 async def _none():
@@ -160,7 +166,7 @@ async def handle(job: dict, redis: Redis) -> None:
         owner_id = issue.assigned_by_user_id or issue.reporter_id or project.lead_user_id
         agent = await _load_agent(db, role, project.id, mode, owner_id)
         # Skill-Laden passiert jetzt zentral in run_agent (autoload + on-demand, beide Pfade).
-        tokens = await _build_tokens(db, owner_id, agent, project)
+        tokens, base_urls = await _build_tokens(db, owner_id, agent, project)
 
         # Git-Kontext / Workspace
         ws_root = None
@@ -225,6 +231,7 @@ async def handle(job: dict, redis: Redis) -> None:
                      "stack_dir": project.workspace_dir, "live_url": "",
                      "vault_moc_path": project.vault_moc_path},
             mode=mode, permissions=permissions, ws_root=ws_root, gate_on=gate_on, tokens=tokens,
+            base_urls=base_urls,
             verify_command=project.verify_command, screenshot_enabled=project.screenshot_enabled,
             strict_success=await get_flag("strict_success"), owner_id=owner_id,
             testenv_url=issue.testenv_url or "",
@@ -239,7 +246,8 @@ async def handle(job: dict, redis: Redis) -> None:
         if (mode == "execute" and result.status == "done" and project.review_enabled
                 and ctx is not None and ws_root):
             result = await _review_gate(db, project, issue, agent, ws_root, gate_on, tokens,
-                                        permissions, result, ctx, owner_id, task_id=task_id)
+                                        permissions, result, ctx, owner_id, task_id=task_id,
+                                        base_urls=base_urls)
 
         # Agenten-Änderungen IMMER committen (nicht nur bei 'done') — sonst sitzt die Arbeit
         # bei Review-Hold/Rückfrage uncommittet im Worktree und ist nicht review-/testbar.
@@ -285,7 +293,7 @@ async def handle(job: dict, redis: Redis) -> None:
 
 
 async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens, permissions,
-                       result, ctx, owner_id=None, task_id=""):
+                       result, ctx, owner_id=None, task_id="", base_urls=None):
     """Review-Agent prüft den kumulativen Diff. <review-ok/> = bestanden. Sonst max 2
     Korrektur-Runden durch den Ausführungs-Agenten; danach hold_review."""
     reviewer = await _load_agent(db, project.review_agent or "code_reviewer", project.id, "execute", owner_id)
@@ -304,6 +312,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                    "description": rev_prompt, "plan": None},
             project={"id": project.id, "key": project.key, "system_prompt": "", "stack_dir": "", "live_url": ""},
             mode="execute", permissions=permissions, ws_root=ws_root, gate_on=gate_on, tokens=tokens,
+            base_urls=base_urls,
             verify_command="", screenshot_enabled=False, owner_id=owner_id, task_id=task_id)
         if "<review-ok/>" in (rev.text or ""):
             log.info("review %s: bestanden (Runde %d)", issue.key, attempt + 1)
@@ -317,6 +326,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             project={"id": project.id, "key": project.key, "system_prompt": project.system_prompt,
                      "stack_dir": project.workspace_dir, "live_url": ""},
             mode="execute", permissions=permissions, ws_root=ws_root, gate_on=gate_on, tokens=tokens,
+            base_urls=base_urls,
             verify_command=project.verify_command, screenshot_enabled=project.screenshot_enabled,
             strict_success=await get_flag("strict_success"), owner_id=owner_id, task_id=task_id,
             continuation_index=99, continuation_hint="REVIEW-BEFUNDE (beheben):\n" + (rev.text or ""))
@@ -475,7 +485,7 @@ async def _handle_job(job: dict, redis: Redis) -> None:
         try:
             # Token-/Agent-Auflösung im try — sonst bleibt JobRun bei Fehler ewig „running".
             agent = await _load_agent(db, j.agent or "assistent", 0, "execute", owner_id)
-            tokens = await _build_tokens(db, owner_id, agent)
+            tokens, base_urls = await _build_tokens(db, owner_id, agent)
             if not notify_chat and owner_id:
                 owner = await db.get(User, owner_id)
                 notify_chat = owner.telegram_chat_id if owner else None
@@ -485,7 +495,7 @@ async def _handle_job(job: dict, redis: Redis) -> None:
                        "description": j.prompt, "plan": None},
                 project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
                 mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
-                owner_id=owner_id, task_id=job["task_id"])
+                base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"])
             out = result.summary or result.text or ""
             if result.status not in ("done",):
                 status, err = "error", (result.text or result.status)

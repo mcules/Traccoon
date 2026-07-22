@@ -21,6 +21,7 @@ class ProviderTokenIn(BaseModel):
     name: str = ""          # optional — leer = „Standard"
     token: str = ""
     is_default: bool = False
+    base_url: str | None = None   # optional — nur openai: eigener OpenAI-kompatibler Endpoint
 
 
 @router.get("/me/provider-tokens")
@@ -29,7 +30,8 @@ async def list_provider_tokens(user: User = Depends(get_current_user),
     """Benannte Tokens des Users je Provider — nur Metadaten, nie der Wert."""
     rows = (await db.execute(select(ProviderToken).where(ProviderToken.user_id == user.id)
                              .order_by(ProviderToken.provider, ProviderToken.name))).scalars().all()
-    return [{"id": t.id, "provider": t.provider, "name": t.name, "is_default": t.is_default}
+    return [{"id": t.id, "provider": t.provider, "name": t.name, "is_default": t.is_default,
+             "base_url": t.base_url}
             for t in rows]
 
 
@@ -46,6 +48,8 @@ async def add_provider_token(data: ProviderTokenIn, user: User = Depends(get_cur
     existing = next((t for t in provider_rows if t.name == name), None)
     row = existing or ProviderToken(user_id=user.id, provider=data.provider, name=name, value_enc="")
     row.value_enc = encrypt_secret(data.token.strip())
+    # Eigene Base-URL nur für die OpenAI-Familie sinnvoll; sonst ignorieren/leeren.
+    row.base_url = (data.base_url or "").strip() or None if data.provider == "openai" else None
     # Erster Token eines Providers wird automatisch Default; sonst nur wenn angehakt.
     make_default = data.is_default or not provider_rows
     if make_default:
