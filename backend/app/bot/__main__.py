@@ -180,6 +180,29 @@ async def run_bot() -> None:
             await apply_user_comment(db, iss, m.text or "", user.id if user else None, "Telegram")
         await m.answer(f"↳ Kommentar zu {key} gespeichert.")
 
+    @dp.message(F.text)
+    async def _assistant_chat(m: Message):
+        # Klartext (kein Command, keine Ticket-Antwort) → Chat mit dem persönlichen Assistenten.
+        # Er bedient Traccoon (traccoon_*-Tools, in deinen Rechten) und deine MCP; Antwort kommt
+        # als Notification zurück. Registriert NACH Commands/Reply → die haben Vorrang.
+        if not await _allowed(m.from_user.id):
+            return
+        text = (m.text or "").strip()
+        if not text or text.startswith("/"):
+            return
+        async with SessionLocal() as db:
+            user = await _acting_user(db, m.chat.id)
+            t = AssistantTask(owner_user_id=user.id if user else None, kind="chat",
+                              source="telegram", title=text[:200], status="approved",
+                              meta={"chat_text": text, "chat_id": str(m.chat.id)})
+            db.add(t)
+            await db.commit()
+            await db.refresh(t)
+        from ..core.redis import enqueue_task
+        await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
+                            "assistant_task_id": t.id})
+        await m.answer("🤖 …")
+
     @dp.callback_query()
     async def _cb(cq: CallbackQuery):
         if not await _allowed(cq.from_user.id):

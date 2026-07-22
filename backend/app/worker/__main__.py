@@ -542,6 +542,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         owner_id = t.owner_user_id
         meta = t.meta or {}
         acc, uid = meta.get("account", ""), meta.get("uid", "")
+        is_chat = t.kind == "chat"
         head = (f"Von: {meta.get('from', '')}\nBetreff: {meta.get('subject', '')}\n"
                 f"Kategorie: {t.category} · Priorität: {t.priority}\n\n")
         if t.redaction == "unredacted" and t.raw_body:
@@ -553,12 +554,18 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                        "die imap-Tools, falls du ihn zum Handeln wirklich brauchst.\n\n")
         learned = (f"Gelernte Vorgabe deines Menschen für solche Eingänge: {t.action_hint}\n\n"
                    if t.action_hint else "")
-        prompt = (
-            "Eingang für deinen Menschen (lokal vorklassifiziert).\n" + head + content + learned +
-            "Entscheide eigenständig und im Sinne deines Menschen, was zu tun ist (im Vault "
-            "vermerken, einen Entwurf vorbereiten, einen Termin anlegen, ablegen …) und führe es "
-            "aus. Fasse am Ende knapp zusammen, was du getan hast."
-        )
+        if is_chat:
+            # Direkter Chat: die Nachricht IST der Auftrag. Traccoon steuerst du über die
+            # traccoon_*-Tools (in den Rechten deines Menschen), Persönliches über deine MCP.
+            prompt = (meta.get("chat_text") or t.title) + (
+                f"\n\n(Kontext: gelernte Vorgabe — {t.action_hint})" if t.action_hint else "")
+        else:
+            prompt = (
+                "Eingang für deinen Menschen (lokal vorklassifiziert).\n" + head + content + learned +
+                "Entscheide eigenständig und im Sinne deines Menschen, was zu tun ist (im Vault "
+                "vermerken, einen Entwurf vorbereiten, einen Termin anlegen, ablegen …) und führe es "
+                "aus. Fasse am Ende knapp zusammen, was du getan hast."
+            )
         out, status, err, run_id = "", "done", "", None
         try:
             agent = await _load_agent(db, settings.mail_assistant_agent or "assistent",
@@ -584,7 +591,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         t.run_id = run_id
         t.finished_at = _now_dt()
         owner = await db.get(User, owner_id) if owner_id else None
-        title = f"Assistent: {t.title}" + (" — Fehler" if status == "error" else "")
+        title = ("🤖 Assistent" if is_chat else f"Assistent: {t.title}") + (" — Fehler" if status == "error" else "")
         db.add(Notification(kind="assistant", title=title[:200],
                             body=(err if status == "error" else out)[:4000],
                             chat_id=owner.telegram_chat_id if owner else None))
