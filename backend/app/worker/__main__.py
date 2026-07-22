@@ -542,17 +542,22 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         owner_id = t.owner_user_id
         meta = t.meta or {}
         acc, uid = meta.get("account", ""), meta.get("uid", "")
+        head = (f"Von: {meta.get('from', '')}\nBetreff: {meta.get('subject', '')}\n"
+                f"Kategorie: {t.category} · Priorität: {t.priority}\n\n")
+        if t.redaction == "unredacted" and t.raw_body:
+            # Quelle ist per Regel als vertrauenswürdig markiert → Volltext direkt.
+            content = f"Volltext (für diese Quelle freigegeben):\n{t.raw_body}\n\n"
+        else:
+            content = (f"Zusammenfassung (geschwärzt):\n{t.redacted_summary}\n\n"
+                       f"Der Volltext liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies ihn NUR über "
+                       "die imap-Tools, falls du ihn zum Handeln wirklich brauchst.\n\n")
+        learned = (f"Gelernte Vorgabe deines Menschen für solche Eingänge: {t.action_hint}\n\n"
+                   if t.action_hint else "")
         prompt = (
-            "Eingang für deinen Menschen (lokal vorklassifiziert, Rohtext bewusst nicht "
-            "mitgeschickt).\n"
-            f"Von: {meta.get('from', '')}\nBetreff: {meta.get('subject', '')}\n"
-            f"Kategorie: {t.category} · Priorität: {t.priority}\n\n"
-            f"Zusammenfassung (geschwärzt):\n{t.redacted_summary}\n\n"
-            f"Der Volltext liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies ihn NUR über die "
-            "imap-Tools, falls du ihn zum Handeln wirklich brauchst. Entscheide dann eigenständig "
-            "und im Sinne deines Menschen, was zu tun ist (im Vault vermerken, einen Entwurf "
-            "vorbereiten, einen Termin anlegen, ablegen …) und führe es aus. Fasse am Ende knapp "
-            "zusammen, was du getan hast."
+            "Eingang für deinen Menschen (lokal vorklassifiziert).\n" + head + content + learned +
+            "Entscheide eigenständig und im Sinne deines Menschen, was zu tun ist (im Vault "
+            "vermerken, einen Entwurf vorbereiten, einen Termin anlegen, ablegen …) und führe es "
+            "aus. Fasse am Ende knapp zusammen, was du getan hast."
         )
         out, status, err, run_id = "", "done", "", None
         try:
