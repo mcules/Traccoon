@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, AttachmentInfo, Comment, FileChange, Issue, Project, ProjectMeta } from "../api";
 import Markdown from "./Markdown";
 import { waitInfo } from "../lib/waitReason";
+import { formatTime } from "../lib/formatTime";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
@@ -499,12 +500,13 @@ export default function TicketDrawer({
                 className="rounded bg-brand px-3 py-1.5 text-white">Senden</button>
             </div>
             <div className="space-y-2">
-              {comments?.map((c) => (
+              {[...(comments || [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((c) => (
                 <div key={c.id} className={`rounded border p-2 text-sm ${
                   c.kind === "system" ? "border-dashed border-line bg-surface/50" : "border-line bg-surface"}`}>
                   <div className="mb-1 flex items-center gap-2 text-xs text-muted">
                     <span>{c.kind === "system" ? "ⓘ System" : c.author_id ? c.author_label : "🤖 " + c.author_label}</span>
                     {c.kind === "internal" && <span className="rounded bg-line px-1">intern</span>}
+                    <span className="ml-auto">{formatTime(c.created_at)}</span>
                   </div>
                   <div className="whitespace-pre-wrap">{c.body}</div>
                 </div>
