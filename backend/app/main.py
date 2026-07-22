@@ -43,6 +43,11 @@ async def lifespan(app: FastAPI):
                 # Telegram-Freigabekarte für projektlose Assistent-Items.
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS assistant_task_id INTEGER "
                 "REFERENCES assistant_tasks(id) ON DELETE CASCADE",
+                # Tool-Gate des Assistenten: wartende Freigabe + Einmal-Grant je Item.
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS pending_tool VARCHAR(150)",
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS pending_resource VARCHAR(500)",
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS grant_tool VARCHAR(150)",
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS grant_resource VARCHAR(500)",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:

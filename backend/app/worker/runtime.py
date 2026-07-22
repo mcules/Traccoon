@@ -20,6 +20,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.agents import AgentDefinition, Run, RunStep
+from ..models.assistant import AssistantTask
 from ..models.ticket import Blocker, Comment
 from . import codegraph as _codegraph
 from . import gitops as _gitops
@@ -27,6 +28,7 @@ from . import perms
 from .mcp_client import mcp_session
 from .providers.base import ProviderError
 from .providers.router import router
+from .assistant_gate import gate_check
 from .tools_traccoon import TRACCOON_TOOL_NAMES, TRACCOON_TOOLS, call_traccoon_tool
 
 log = logging.getLogger("traccoon.runtime")
@@ -570,7 +572,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     continuation_index: int = 0, continuation_hint: str = "",
                     comment_history: list[dict] | None = None,
                     parent_run_id: int | None = None, task_id: str = "",
-                    depth: int = 0, delegate_loader=None) -> RunResult:
+                    depth: int = 0, delegate_loader=None,
+                    assistant_task_id: int | None = None) -> RunResult:
     permissions = permissions or []
     tokens = tokens or {}
     base_urls = base_urls or {}
@@ -789,6 +792,24 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                                iterations=iteration, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                                 return RunResult("blocked", f"Berechtigung: {call.name}", iteration,
                                                  run_id=run_id, blocker_kind="permission")
+
+                    # Assistent-Tool-Gate: externe mutierende MCP-Aktionen brauchen Freigabe.
+                    # traccoon_*-Steuertools sind ausgenommen (schon auf Owner-Rechte begrenzt).
+                    if assistant_task_id and perms.is_gated(call.name) \
+                            and call.name not in TRACCOON_TOOL_NAMES:
+                        _atask = await db.get(AssistantTask, assistant_task_id)
+                        if _atask is not None:
+                            _res = perms.resource_of(call.name, call.arguments)
+                            _dec = await gate_check(db, _atask, owner_id, call.name, _res)
+                            if _dec == "deny":
+                                messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
+                                                 "content": f"FEHLER: Freigabe verweigert (nie) für `{call.name}`."})
+                                continue
+                            if _dec == "ask":
+                                await _end_run(db, run_id, "blocked", summary=f"Freigabe nötig: {call.name}",
+                                               iterations=iteration, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                return RunResult("blocked", f"Freigabe nötig: {call.name}", iteration,
+                                                 run_id=run_id, blocker_kind="assistant_perm")
 
                     if call.name == "open_tasks":
                         result: Any = await _open_tasks(db)

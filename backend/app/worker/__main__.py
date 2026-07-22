@@ -577,7 +577,13 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                        "description": prompt, "plan": None},
                 project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
                 mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
-                base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"])
+                base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"],
+                assistant_task_id=t.id)
+            if result.status == "blocked":
+                # Tool-Gate: Item wartet auf Freigabe (Status awaiting + Telegram-Karte gesetzt).
+                # NICHT finalisieren — der Lauf wird nach der Entscheidung neu angestoßen.
+                log.info("assistant-task %s → wartet auf Freigabe (%s)", tid, result.text)
+                return
             out = result.summary or result.text or ""
             run_id = getattr(result, "run_id", None)
             if result.status not in ("done",):
