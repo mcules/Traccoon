@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
@@ -24,6 +25,12 @@ async def lifespan(app: FastAPI):
     if settings.dev_create_all:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # Additive Spalten idempotent nachziehen (create_all legt sie nur auf FRISCHEN
+            # Tabellen an, nicht auf bestehenden). Reihenfolge/Stil wie ADD COLUMN IF NOT EXISTS.
+            for _ddl in (
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cap_baseline_run_id INTEGER",
+            ):
+                await conn.execute(text(_ddl))
     async with SessionLocal() as db:
         await seed(db)
     await recover_on_start()

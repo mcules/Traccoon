@@ -11,6 +11,7 @@ from ..models.ticket import Issue
 from ..models.user import User
 from ..worker.secrets import resolve_provider_token
 from .deps import Access, get_current_user, get_project_access, require_admin
+from .issues import get_issue_access
 
 router = APIRouter(tags=["cost"])
 
@@ -40,8 +41,49 @@ async def project_costs(access: Access = Depends(get_project_access), db: AsyncS
             .where(cond).group_by(CostEntry.agent)
         )
     ).all()
+    by_model = (
+        await db.execute(
+            select(CostEntry.provider, CostEntry.model,
+                   func.sum(CostEntry.cost_usd), func.sum(CostEntry.input_tokens),
+                   func.sum(CostEntry.output_tokens), func.count())
+            .outerjoin(Issue, Issue.id == CostEntry.issue_id)
+            .where(cond).group_by(CostEntry.provider, CostEntry.model)
+        )
+    ).all()
     return {"total_usd": round(total[0], 4), "input_tokens": total[1], "output_tokens": total[2],
-            "by_agent": [{"agent": a, "usd": round(c, 4), "calls": n} for a, c, n in by_agent]}
+            "by_agent": [{"agent": a, "usd": round(c, 4), "calls": n} for a, c, n in by_agent],
+            "by_model": [{"provider": p, "model": m, "usd": round(c, 4),
+                          "input_tokens": it, "output_tokens": ot, "calls": n}
+                         for p, m, c, it, ot, n in by_model]}
+
+
+@router.get("/issues/{key}/costs")
+async def issue_costs(
+    pair: tuple[Issue, Access] = Depends(get_issue_access),
+    db: AsyncSession = Depends(get_session),
+):
+    issue, _access = pair
+    total = (
+        await db.execute(
+            select(func.coalesce(func.sum(CostEntry.cost_usd), 0.0),
+                   func.coalesce(func.sum(CostEntry.input_tokens), 0),
+                   func.coalesce(func.sum(CostEntry.output_tokens), 0))
+            .where(CostEntry.issue_id == issue.id)
+        )
+    ).one()
+    by_model = (
+        await db.execute(
+            select(CostEntry.provider, CostEntry.model,
+                   func.sum(CostEntry.cost_usd), func.sum(CostEntry.input_tokens),
+                   func.sum(CostEntry.output_tokens), func.count())
+            .where(CostEntry.issue_id == issue.id)
+            .group_by(CostEntry.provider, CostEntry.model)
+        )
+    ).all()
+    return {"total_usd": round(total[0], 4), "input_tokens": total[1], "output_tokens": total[2],
+            "by_model": [{"provider": p, "model": m, "usd": round(c, 4),
+                          "input_tokens": it, "output_tokens": ot, "calls": n}
+                         for p, m, c, it, ot, n in by_model]}
 
 
 @router.get("/costs/global")
