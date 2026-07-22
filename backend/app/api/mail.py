@@ -11,13 +11,15 @@ import hmac
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
 from ..db import get_session
-from ..models.assistant import AssistantTask
+from ..models.assistant import AssistantPolicy, AssistantTask
 from ..models.user import User
+from ..services.assistant_policy import match_policy, note_hit, parse_sender, upsert_policy
 from ..services.mail_classify import classify_email
 from .deps import get_current_user, is_owner_or_admin
 
@@ -67,22 +69,40 @@ async def new_email(request: Request, db: AsyncSession = Depends(get_session)):
     cls = await classify_email(db, owner_id, account=account, sender=sender,
                                subject=subject, body=body)
 
+    # Gelernte Regel suchen (Absender > Domain > Kategorie). Treffer kann automatisch
+    # freigeben, die Schwärzung bestimmen und einen Handlungs-Hinweis mitgeben.
+    sender_email, domain = parse_sender(sender)
+    policy = await match_policy(db, owner_id, sender_email=sender_email, domain=domain,
+                                category=cls["category"])
+    redaction, action_hint, auto = "redacted", "", False
+    if policy is not None:
+        await note_hit(db, policy)
+        redaction, action_hint, auto = policy.redaction, policy.action_hint, policy.auto_approve
+
     task = AssistantTask(
         owner_user_id=owner_id, kind="email", source=source, source_ref=src_ref,
         title=(subject or "(kein Betreff)")[:500],
         category=cls["category"], priority=cls["priority"],
         redacted_summary=cls["redacted_summary"],
-        # Nur Metadaten für den späteren IMAP-Volltextzugriff — KEIN Rohtext gespeichert.
+        # Nur Metadaten für den späteren IMAP-Volltextzugriff — KEIN Rohtext gespeichert,
+        # AUSSER eine Regel erlaubt ausdrücklich 'unredacted' (dann liegt der Volltext bereit).
         meta={"account": account, "uid": uid, "from": sender, "subject": subject,
               "sensitive": cls["sensitive"]},
-        status="new",
+        redaction=redaction, action_hint=action_hint or "",
+        raw_body=(body if redaction == "unredacted" else None),
+        status=("approved" if auto else "new"),
     )
     db.add(task)
     await db.commit()
     await db.refresh(task)
-    log.info("Mail-Item #%s angelegt (%s, prio=%s, sensitive=%s)",
-             task.id, cls["category"], cls["priority"], cls["sensitive"])
-    return {"accepted": True, "id": task.id, "status": task.status}
+    log.info("Mail-Item #%s angelegt (%s, prio=%s, sensitive=%s, regel=%s, auto=%s)",
+             task.id, cls["category"], cls["priority"], cls["sensitive"],
+             policy.id if policy else None, auto)
+    if auto:
+        from ..core.redis import enqueue_task
+        await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
+                            "assistant_task_id": task.id})
+    return {"accepted": True, "id": task.id, "status": task.status, "auto": auto}
 
 
 # ================= Assistent-Inbox (auth) =================
@@ -94,6 +114,7 @@ def _out(t: AssistantTask) -> dict:
         "sensitive": bool((t.meta or {}).get("sensitive")),
         "redacted_summary": t.redacted_summary, "status": t.status,
         "from": (t.meta or {}).get("from"), "subject": (t.meta or {}).get("subject"),
+        "redaction": t.redaction, "action_hint": t.action_hint,
         "result": t.result, "error": t.error,
         "created_at": t.created_at, "finished_at": t.finished_at,
     }
@@ -126,15 +147,39 @@ async def get_inbox(tid: int, user: User = Depends(get_current_user),
     return _out(await _get_owned(tid, user, db))
 
 
+class ApproveIn(BaseModel):
+    # once = nur dieses Item; sender|domain|category = Regel „ab jetzt immer" anlegen.
+    scope: str = "once"
+    redaction: str = "redacted"   # redacted | unredacted
+    action_note: str = ""         # optionaler gelernter Handlungs-Hinweis
+
+
 @router.post("/assistant/inbox/{tid}/approve")
-async def approve_inbox(tid: int, user: User = Depends(get_current_user),
+async def approve_inbox(tid: int, data: ApproveIn | None = None,
+                        user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    """Freigabe = zugleich die Freigabe für den Volltextzugriff. Startet den Assistenten."""
+    """Freigabe = zugleich die Freigabe für den Volltextzugriff. Startet den Assistenten.
+    `scope` != once lernt eine AssistantPolicy (immer für Absender/Domain/Kategorie)."""
+    d = data or ApproveIn()
     t = await _get_owned(tid, user, db)
     if t.status not in ("new", "error"):
         raise HTTPException(409, f"Item ist nicht freigebbar (Status {t.status})")
-    t.status = "approved"
+    redaction = d.redaction if d.redaction in ("redacted", "unredacted") else "redacted"
+    t.redaction = redaction
+    if d.action_note:
+        t.action_hint = d.action_note
     t.error = ""
+
+    # „Immer …" → Regel lernen. match_value aus dem Item ableiten.
+    if d.scope in ("sender", "domain", "category"):
+        sender_email, domain = parse_sender((t.meta or {}).get("from") or "")
+        value = {"sender": sender_email, "domain": domain, "category": t.category}.get(d.scope, "")
+        if value:
+            await upsert_policy(db, t.owner_user_id, match_kind=d.scope, match_value=value,
+                                auto_approve=True, redaction=redaction,
+                                action_hint=d.action_note or t.action_hint or "")
+
+    t.status = "approved"
     await db.commit()
     from ..core.redis import enqueue_task
     await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
@@ -151,3 +196,75 @@ async def reject_inbox(tid: int, user: User = Depends(get_current_user),
     t.finished_at = dt.datetime.now(tz=dt.timezone.utc)
     await db.commit()
     return _out(t)
+
+
+# ================= Gelernte Regeln (AssistantPolicy) =================
+
+def _pol_out(p: AssistantPolicy) -> dict:
+    return {
+        "id": p.id, "match_kind": p.match_kind, "match_value": p.match_value,
+        "auto_approve": p.auto_approve, "redaction": p.redaction,
+        "action_hint": p.action_hint, "enabled": p.enabled,
+        "hit_count": p.hit_count, "last_used_at": p.last_used_at, "created_at": p.created_at,
+    }
+
+
+class PolicyIn(BaseModel):
+    match_kind: str = "sender"       # sender | domain | category
+    match_value: str
+    auto_approve: bool = True
+    redaction: str = "redacted"      # redacted | unredacted
+    action_hint: str = ""
+    enabled: bool = True
+
+
+async def _pol_owned(pid: int, user: User, db: AsyncSession) -> AssistantPolicy:
+    p = await db.get(AssistantPolicy, pid)
+    if p is None or not is_owner_or_admin(p.owner_user_id, user):
+        raise HTTPException(404, "Regel nicht gefunden")
+    return p
+
+
+@router.get("/assistant/policies")
+async def list_policies(user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    q = select(AssistantPolicy).order_by(AssistantPolicy.match_kind, AssistantPolicy.match_value)
+    if user.global_role != "admin":
+        q = q.where(AssistantPolicy.owner_user_id == user.id)
+    rows = (await db.execute(q)).scalars().all()
+    return [_pol_out(p) for p in rows]
+
+
+@router.post("/assistant/policies")
+async def create_policy(data: PolicyIn, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    p = await upsert_policy(db, user.id, match_kind=data.match_kind, match_value=data.match_value,
+                            auto_approve=data.auto_approve, redaction=data.redaction,
+                            action_hint=data.action_hint)
+    p.enabled = data.enabled
+    await db.commit()
+    await db.refresh(p)
+    return _pol_out(p)
+
+
+@router.put("/assistant/policies/{pid}")
+async def update_policy(pid: int, data: PolicyIn, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    p = await _pol_owned(pid, user, db)
+    p.match_kind = data.match_kind if data.match_kind in ("sender", "domain", "category") else p.match_kind
+    p.match_value = (data.match_value or "").strip().lower()
+    p.auto_approve = data.auto_approve
+    p.redaction = data.redaction if data.redaction in ("redacted", "unredacted") else "redacted"
+    p.action_hint = data.action_hint
+    p.enabled = data.enabled
+    await db.commit()
+    await db.refresh(p)
+    return _pol_out(p)
+
+
+@router.delete("/assistant/policies/{pid}", status_code=204)
+async def delete_policy(pid: int, user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    p = await _pol_owned(pid, user, db)
+    await db.delete(p)
+    await db.commit()

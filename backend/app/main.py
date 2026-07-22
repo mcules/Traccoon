@@ -36,6 +36,10 @@ async def lifespan(app: FastAPI):
                 # COLUMN zieht keine Enum-Werte nach → ADD VALUE explizit (PG 12+ erlaubt das
                 # in-Tx, solange der Wert nicht in derselben Tx genutzt wird).
                 "ALTER TYPE userstatus ADD VALUE IF NOT EXISTS 'placeholder'",
+                # Lern-Policy des Assistenten: Schwärzung/Rohtext/gelernte Aktion pro Item.
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS redaction VARCHAR(20) DEFAULT 'redacted' NOT NULL",
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS raw_body TEXT",
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS action_hint TEXT DEFAULT '' NOT NULL",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:
