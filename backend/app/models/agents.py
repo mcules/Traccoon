@@ -26,7 +26,7 @@ class AgentDefinition(TimestampMixin, Base):
     fallback_token_name: Mapped[str] = mapped_column(String(120), default="")
     effort: Mapped[str] = mapped_column(String(10), default="")
     temperature: Mapped[float] = mapped_column(Float, default=0.3)
-    max_tokens: Mapped[int] = mapped_column(Integer, default=4096)
+    max_tokens: Mapped[int] = mapped_column(Integer, default=16384)
     max_context_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     max_turns_planning: Mapped[int] = mapped_column(Integer, default=10)
     max_turns_execution: Mapped[int] = mapped_column(Integer, default=80)

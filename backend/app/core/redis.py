@@ -44,6 +44,12 @@ async def wait_result(task_id: str, timeout: float = 1800.0, poll: float = 0.4) 
     return None
 
 
+async def peek_result(task_id: str) -> bool:
+    """True, wenn ein Ergebnis für task_id in Redis liegt (ohne es zu konsumieren).
+    Für den Reattach nach Backend-Neustart: erkennt Läufe, die schon fertig sind."""
+    return await get_redis().get(f"{PREFIX}result:{task_id}") is not None
+
+
 async def publish_kill(issue_key: str) -> None:
     """Laufenden Agenten-Lauf abbrechen (Worker hört auf traccoon:kill)."""
     await get_redis().publish(PREFIX + "kill", issue_key)

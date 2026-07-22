@@ -12,9 +12,11 @@ from sqlalchemy import func, or_, select
 
 from zoneinfo import ZoneInfo
 
-from ..core.redis import enqueue_task, get_flag, get_user_flag, publish_event, set_flag, wait_result
+from ..core.redis import (
+    enqueue_task, get_flag, get_user_flag, peek_result, publish_event, set_flag, wait_result,
+)
 from ..db import SessionLocal
-from ..models.agents import Run
+from ..models.agents import Run, RunStep
 from ..models.enums import HoldReason, StatusCategory, TicketAgentStatus
 from ..models.project import Project
 from ..models.ticket import Comment, Issue, WorkflowStatus
@@ -89,14 +91,18 @@ async def sync_board_status(db, issue: Issue) -> None:
 
 
 async def _plan_role(issue: Issue, project: Project) -> str:
-    if issue.assigned_agent == "project_manager":
-        return "project_manager"
+    # Planung erstellt IMMER der Architekt — auch bei PM-Zuweisung. Der PM plant nie
+    # selbst, sondern delegiert nach dem Standard-Muster: Architekt plant, Developer
+    # setzt um. (issue.plan_agent kann pro Ticket abweichen, project.plan_agent ist der
+    # Projekt-Default = "architect".)
     return issue.plan_agent or project.plan_agent or "architect"
 
 
 async def _exec_role(issue: Issue, project: Project) -> str:
+    # Umsetzung (Code) macht der Developer. Bei PM-Zuweisung bewusst NICHT der PM,
+    # sondern der Projekt-Ausführungsagent (Default "developer").
     if issue.assigned_agent == "project_manager":
-        return project.exec_agent or "developer"
+        return issue.exec_agent or project.exec_agent or "developer"
     return issue.assigned_agent or issue.exec_agent or project.exec_agent or "developer"
 
 
@@ -116,6 +122,10 @@ async def _process(issue_id: int) -> None:
         issue.agent_working = True
         if not planning:
             issue.agent_status = TicketAgentStatus.in_progress
+        # Sobald ein Agent zu arbeiten beginnt, muss das Ticket in „In Arbeit" stehen
+        # (planning wie in_progress mappen beide dorthin). Ohne diesen Sync bliebe es in
+        # der Spalte, in der es vorher lag (z. B. „Warten" nach plan_review/Continuation).
+        await sync_board_status(db, issue)
         await db.commit()
 
         cont = issue.continuation_count
@@ -135,8 +145,16 @@ async def _process(issue_id: int) -> None:
         await publish_event(project.id, {"type": "agent_status", "agent": role, "status": "working",
                                          "issue_key": issue.key})
         await enqueue_task(payload)
-        result = await wait_result(task_id, timeout=1800)
 
+    result = await wait_result(task_id, timeout=1800)
+    await _finalize(issue_id, result, role=role, phase=phase, task_id=task_id)
+
+
+async def _finalize(issue_id: int, result: dict | None, *, role: str, phase: str,
+                    task_id: str) -> None:
+    """Nachbearbeitung eines abgeschlossenen Runs (Status/Board/Notiz/Notify). Ausgelagert
+    aus _process, damit auch ein nach Backend-Neustart wieder-angebundener Lauf (_reattach)
+    dieselbe Logik durchläuft."""
     async with SessionLocal() as db:
         issue = await db.get(Issue, issue_id)
         project = await db.get(Project, issue.project_id)
@@ -174,8 +192,12 @@ async def _process(issue_id: int) -> None:
                 issue.agent_status = TicketAgentStatus.hold
                 issue.hold_reason = HoldReason.stuck if stalled else HoldReason.cap
             else:
-                # Zurück in Ausführung (nächster Tick nimmt es als Continuation)
-                issue.agent_status = TicketAgentStatus.approved
+                # Continuation: DIESELBE Phase fortsetzen. Ein in der PLANUNG ausgelaufener
+                # Lauf muss WEITER PLANEN (zurück auf planning) — sonst würde ohne fertigen
+                # Plan in die Ausführung gesprungen (Developer ohne Plan). Ausführung setzt
+                # via approved fort.
+                issue.agent_status = (TicketAgentStatus.planning if phase == "planning"
+                                      else TicketAgentStatus.approved)
         elif status == "done":
             issue.hold_reason = None
             if result.get("merge_status") == "conflict":
@@ -345,15 +367,33 @@ async def run_dispatcher() -> None:
         await asyncio.sleep(TICK_SECONDS)
 
 
+# Läuft ein Worker-Run noch, wenn sein letzter run_step jünger als dies ist? Der Worker
+# ist ein eigener Container und überlebt einen Backend-Reload (uvicorn --reload) — dann
+# darf sein Lauf NICHT als „interrupted" abgeschossen werden, sondern wird wieder angebunden.
+REATTACH_FRESH_SECONDS = 300
+
+
+async def _reattach(issue_id: int, task_id: str, role: str, phase: str) -> None:
+    """Bindet einen laufenden/fertigen Worker-Run nach Backend-Neustart wieder an: wartet auf
+    sein Ergebnis (persistiert in Redis) und fährt die normale Nachbearbeitung."""
+    try:
+        result = await wait_result(task_id, timeout=1800)
+        await _finalize(issue_id, result, role=role, phase=phase, task_id=task_id)
+        log.info("reattach finalisiert %s → %s", task_id, (result or {}).get("status"))
+    except Exception:  # noqa: BLE001
+        log.exception("reattach fehlgeschlagen für %s", task_id)
+
+
 async def recover_on_start() -> None:
-    """Hängende in_progress-Tickets nach Neustart lösen."""
-    # Kam der Backend-Container gerade aus einem Wartungs-Update (Self-Deploy) zurück,
-    # den Update-Zustand löschen → Betrieb läuft mit neuem Code weiter.
+    """Nach Backend-Neustart aufräumen. Läufe mit noch lebendem Worker (frische run_steps)
+    oder bereits vorliegendem Ergebnis werden WIEDER ANGEBUNDEN statt unterbrochen — sonst
+    würde ein reiner Backend-Reload den unabhängig weiterlaufenden Worker-Run verwaisen."""
     just_updated = await get_flag("update_in_progress") or await get_flag("update_pending")
     if just_updated:
         await set_flag("update_in_progress", False)
         await set_flag("update_pending", False)
         log.info("Wartungs-Update abgeschlossen — Betrieb fortgesetzt.")
+    reattach: list[tuple[int, str, str, str]] = []
     async with SessionLocal() as db:
         if just_updated:
             from .appsettings import set_setting
@@ -362,11 +402,31 @@ async def recover_on_start() -> None:
             await db.execute(select(Issue).where(Issue.agent_status == TicketAgentStatus.in_progress))
         ).scalars().all()
         for issue in rows:
+            run = (await db.execute(
+                select(Run).where(Run.issue_id == issue.id).order_by(Run.id.desc()))).scalars().first()
+            alive = False
+            if run and run.task_id:
+                if run.finished_at is None:
+                    last_step = (await db.execute(
+                        select(func.max(RunStep.created_at)).where(RunStep.run_id == run.id))).scalar()
+                    ref = last_step or run.started_at
+                    if ref and (_now() - ref).total_seconds() < REATTACH_FRESH_SECONDS:
+                        alive = True
+                if not alive and await peek_result(run.task_id):
+                    alive = True  # Worker war fertig, Ergebnis liegt noch in Redis
+            if alive:
+                reattach.append((issue.id, run.task_id, run.agent, run.phase))
+                continue
             issue.agent_status = TicketAgentStatus.hold
             issue.hold_reason = HoldReason.interrupted
             issue.agent_working = False
-        # verwaiste agent_working-Flags
+        # verwaiste agent_working-Flags (nur die NICHT wieder angebundenen)
+        keep = {r[0] for r in reattach}
         stuck = (await db.execute(select(Issue).where(Issue.agent_working.is_(True)))).scalars().all()
         for issue in stuck:
-            issue.agent_working = False
+            if issue.id not in keep:
+                issue.agent_working = False
         await db.commit()
+    for issue_id, task_id, role, phase in reattach:
+        log.info("reattach: Lauf %s lebt/hat Ergebnis — binde wieder an statt zu unterbrechen", task_id)
+        asyncio.create_task(_reattach(issue_id, task_id, role, phase))
