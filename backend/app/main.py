@@ -29,6 +29,10 @@ async def lifespan(app: FastAPI):
             # Tabellen an, nicht auf bestehenden). Reihenfolge/Stil wie ADD COLUMN IF NOT EXISTS.
             for _ddl in (
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cap_baseline_run_id INTEGER",
+                # Person-Zuweisung (TRA-20): Platzhalter-Konten ohne Login. create_all/ADD
+                # COLUMN zieht keine Enum-Werte nach → ADD VALUE explizit (PG 12+ erlaubt das
+                # in-Tx, solange der Wert nicht in derselben Tx genutzt wird).
+                "ALTER TYPE userstatus ADD VALUE IF NOT EXISTS 'placeholder'",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:
