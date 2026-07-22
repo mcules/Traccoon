@@ -1,18 +1,20 @@
 import datetime as dt
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models.enums import ProjectRole, TicketAgentStatus
-from ..models.project import Project
+from ..models.enums import ProjectRole, TicketAgentStatus, UserStatus
+from ..models.project import Project, ProjectMember, default_ai_assign
 from ..models.ticket import (
     Comment, Issue, IssueCounter, IssueTag, IssueType, Tag, WorkflowStatus,
 )
 from ..models.user import User
 from ..schemas.issue import (
-    AssignAgentIn, CommentCreate, CommentOut, IssueCreate, IssueOut, IssueUpdate,
+    AssignAgentIn, AssigneeIn, CommentCreate, CommentOut, IssueCreate, IssueOut, IssueUpdate,
     MoveIn, TagIn,
 )
 from .deps import Access, build_access, get_current_user, get_project_access, require_role
@@ -216,6 +218,114 @@ async def unassign_agent(
     issue.assigned_at = None
     issue.agent_status = None
     issue.hold_reason = None
+    await db.commit()
+    await db.refresh(issue)
+    return issue
+
+
+# ---------- Personen-Zuweisung (Mensch, orthogonal zur KI-Zuweisung) ----------
+
+async def _get_or_create_placeholder(db: AsyncSession, display_name: str) -> User:
+    """Findet ein bestehendes Platzhalter-Konto mit gleichem Namen (case-insensitive)
+    oder legt ein neues an. Platzhalter haben keinen Login (leerer Passwort-Hash,
+    Status placeholder) und dienen nur als Zuweisungsziel."""
+    name = display_name.strip()
+    existing = (
+        await db.execute(
+            select(User).where(
+                User.status == UserStatus.placeholder,
+                func.lower(User.display_name) == name.lower(),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing
+
+    slug = "".join(c for c in name.lower().replace(" ", ".") if c.isalnum() or c == ".") or "person"
+    suffix = secrets.token_hex(4)
+    user = User(
+        email=f"placeholder+{slug}.{suffix}@traccoon.local",
+        username=f"{slug}.{suffix}"[:100],
+        display_name=name,
+        password_hash="",
+        status=UserStatus.placeholder,
+    )
+    db.add(user)
+    await db.flush()
+    return user
+
+
+async def _ensure_member(db: AsyncSession, project_id: int, user_id: int) -> None:
+    """Stellt sicher, dass die zugewiesene Person Projektmitglied ist (sonst sieht
+    sie das Ticket nicht in ihrer Liste / hat keinen Zugriff). Idempotent/racesicher
+    via Savepoint + Auffangen der UniqueConstraint-Verletzung (statt Select-then-Insert)."""
+    dup = (
+        await db.execute(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project_id, ProjectMember.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if dup is not None:
+        return
+    try:
+        async with db.begin_nested():
+            db.add(ProjectMember(
+                project_id=project_id, user_id=user_id, role=ProjectRole.viewer,
+                ai_assign=default_ai_assign(ProjectRole.viewer),
+            ))
+    except IntegrityError:
+        # Paralleler Request hat die Mitgliedschaft zwischenzeitlich angelegt — ok.
+        pass
+
+
+@router.post("/issues/{key}/assignee", response_model=IssueOut)
+async def set_assignee(
+    data: AssigneeIn,
+    pair: tuple[Issue, Access] = Depends(get_issue_access),
+    db: AsyncSession = Depends(get_session),
+):
+    issue, access = pair
+    _require_write(access)
+
+    if data.user_id is not None:
+        # Zuweisung per user_id NUR auf bereits existierende Projektmitglieder erlauben.
+        # Sonst könnte jedes Member fremde/erratene User-IDs (auch aus anderen Projekten)
+        # als Assignee setzen und sie dadurch automatisch (ohne Einladung/Zustimmung)
+        # als ProjectMember hinzufügen — das umgeht den Invite-Flow (require_role(maintainer))
+        # und erlaubt zudem User-ID-Enumeration über 200/404.
+        target = (
+            await db.execute(
+                select(User)
+                .join(ProjectMember, ProjectMember.user_id == User.id)
+                .where(
+                    ProjectMember.project_id == issue.project_id,
+                    User.id == data.user_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Person nicht gefunden")
+    elif data.display_name:
+        target = await _get_or_create_placeholder(db, data.display_name)
+        await _ensure_member(db, issue.project_id, target.id)
+    else:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "user_id oder display_name erforderlich")
+
+    issue.assignee_user_id = target.id
+    await db.commit()
+    await db.refresh(issue)
+    return issue
+
+
+@router.delete("/issues/{key}/assignee", response_model=IssueOut)
+async def unset_assignee(
+    pair: tuple[Issue, Access] = Depends(get_issue_access),
+    db: AsyncSession = Depends(get_session),
+):
+    issue, access = pair
+    _require_write(access)
+    issue.assignee_user_id = None
     await db.commit()
     await db.refresh(issue)
     return issue
