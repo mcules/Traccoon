@@ -151,6 +151,56 @@ async def build_access(project: Project, user: User, db: AsyncSession) -> Access
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
 
 
+def _find_inherited_membership_bulk(
+    project: Project,
+    members_by_project: dict[int, ProjectMember],
+    projects_by_id: dict[int, Project],
+) -> ProjectMember | None:
+    """Wie `_find_inherited_membership`, aber ohne DB-Zugriffe — läuft den parent_id-Baum
+    anhand vorab geladener Maps (project_id -> Project / ProjectMember) hoch."""
+    if not project.inherit_members:
+        return None
+    seen = {project.id}
+    parent_id = project.parent_id
+    while parent_id is not None and parent_id not in seen:
+        parent = projects_by_id.get(parent_id)
+        if parent is None:
+            break
+        seen.add(parent.id)
+        member = members_by_project.get(parent.id)
+        if member is not None:
+            return member
+        if not parent.inherit_members:
+            break
+        parent_id = parent.parent_id
+    return None
+
+
+def build_access_bulk(
+    project: Project,
+    user: User,
+    members_by_project: dict[int, ProjectMember],
+    projects_by_id: dict[int, Project],
+) -> Access | None:
+    """Wie `build_access`, aber ohne DB-Roundtrips: nutzt vorab (in einer Query) geladene
+    Maps für Mitgliedschaften des Users (project_id -> ProjectMember) und alle Projekte
+    (project_id -> Project). Für Massenabfragen (z. B. list_projects) zur Vermeidung von
+    N+1-Queries beim Hochlaufen des parent_id-Baums. Liefert None statt 404-Exception,
+    damit der Aufrufer nicht-zugängliche Projekte einfach herausfiltern kann."""
+    member = members_by_project.get(project.id)
+    if member is not None:
+        return Access(user, project, member.role, member.ai_assign, True)
+    inherited = _find_inherited_membership_bulk(project, members_by_project, projects_by_id)
+    if inherited is not None:
+        return Access(
+            user, project, _cap_inherited_role(inherited.role), inherited.ai_assign, False,
+            inherited=True,
+        )
+    if user.global_role == GlobalRole.admin:
+        return Access(user, project, ProjectRole.owner, True, False)
+    return None
+
+
 async def get_project_access(
     project_id: int,
     user: User = Depends(get_current_user),

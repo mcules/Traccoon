@@ -66,7 +66,7 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
 @router.get("/projects", response_model=list[ProjectOut])
 async def list_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     from ..models.enums import GlobalRole
-    from .deps import build_access
+    from .deps import build_access_bulk
     all_projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
     if user.global_role == GlobalRole.admin:
         return [
@@ -74,12 +74,17 @@ async def list_projects(user: User = Depends(get_current_user), db: AsyncSession
             for p in all_projects
         ]
     # Direkte Mitgliedschaft ODER geerbt vom Eltern-Baum (Sub-Projekte ohne eigene
-    # Mitgliedschaft, z. B. "Wart" unter "Königsberg").
+    # Mitgliedschaft, z. B. "Wart" unter "Königsberg"). Alle Mitgliedschaften des Users
+    # UND alle Projekte in je einer Query vorladen, um N+1 beim Baum-Hochlaufen zu vermeiden.
+    projects_by_id = {p.id: p for p in all_projects}
+    memberships = (
+        await db.execute(select(ProjectMember).where(ProjectMember.user_id == user.id))
+    ).scalars().all()
+    members_by_project = {m.project_id: m for m in memberships}
     out = []
     for p in all_projects:
-        try:
-            access = await build_access(p, user, db)
-        except HTTPException:
+        access = build_access_bulk(p, user, members_by_project, projects_by_id)
+        if access is None:
             continue
         out.append(project_out(p, access))
     return out
@@ -353,6 +358,12 @@ async def add_resource_grant(
         exists = await db.get(HardwareAsset, data.resource_id)
     if exists is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Objekt existiert nicht")
+    # Objekt muss zum freigebenden Projekt gehören — sonst könnte ein Maintainer
+    # Grants für fremde Locations/Assets aus anderen Projekten vergeben (Privilege Escalation).
+    if exists.project_id != access.project.id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Objekt gehört nicht zu diesem Projekt"
+        )
     dup = (
         await db.execute(
             select(ResourceGrant).where(
