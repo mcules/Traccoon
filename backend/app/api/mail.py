@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -19,10 +20,12 @@ from ..config import settings
 from ..db import get_session
 from ..models.assistant import AssistantPolicy, AssistantTask
 from ..models.notification import Notification
+from ..models.secrets import ProviderToken
 from ..models.user import User
 from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
 from ..services.assistant_policy import match_policy, note_hit, parse_sender, upsert_policy
-from ..services.mail_classify import classify_email
+from ..services.mail_classify import classify_config, classify_email, set_classify_config
+from ..worker.secrets import resolve_provider_base_url, resolve_provider_token
 from .deps import get_current_user, is_owner_or_admin
 
 log = logging.getLogger("traccoon.mail")
@@ -259,6 +262,54 @@ async def delete_policy(pid: int, user: User = Depends(get_current_user),
     p = await _pol_owned(pid, user, db)
     await db.delete(p)
     await db.commit()
+
+
+# ================= Mail-Webhook-Konfiguration (sichtbar + Klassifizier-Modell wählbar) =================
+
+async def _mail_config(db: AsyncSession, user: User) -> dict:
+    provider, model, token_name = await classify_config(db)
+    base = (settings.app_base_url or "").rstrip("/")
+    webhook_url = (f"{base}/api/webhooks/new-email") if base else "/api/webhooks/new-email"
+    toks = (await db.execute(select(ProviderToken).where(
+        ProviderToken.user_id == user.id, ProviderToken.provider == provider))).scalars().all()
+    # Modelle best-effort vom Endpoint (litellm /models) holen — für das Dropdown.
+    models: list[str] = []
+    try:
+        tok = await resolve_provider_token(db, user.id, provider, token_name)
+        url = await resolve_provider_base_url(db, user.id, provider, token_name)
+        if tok and url:
+            async with httpx.AsyncClient(timeout=8) as c:
+                r = await c.get(url.rstrip("/") + "/models", headers={"Authorization": f"Bearer {tok}"})
+            models = [m.get("id") for m in (r.json().get("data") or []) if m.get("id")]
+    except Exception:  # noqa: BLE001
+        pass
+    return {
+        "webhook_url": webhook_url, "secret_set": bool(settings.mail_webhook_secret),
+        "provider": provider, "model": model, "token_name": token_name,
+        "token_options": [t.name for t in toks], "model_options": models,
+        "can_edit": user.global_role == "admin",
+    }
+
+
+class MailConfigIn(BaseModel):
+    provider: str = "openai"
+    model: str
+    token_name: str = "local"
+
+
+@router.get("/assistant/mail-config")
+async def get_mail_config(user: User = Depends(get_current_user),
+                          db: AsyncSession = Depends(get_session)):
+    return await _mail_config(db, user)
+
+
+@router.put("/assistant/mail-config")
+async def put_mail_config(data: MailConfigIn, user: User = Depends(get_current_user),
+                          db: AsyncSession = Depends(get_session)):
+    if user.global_role != "admin":
+        raise HTTPException(403, "Nur Admin darf die Mail-Klassifizierung ändern")
+    await set_classify_config(db, data.provider, data.model, data.token_name)
+    return await _mail_config(db, user)
 
 
 # ================= Chat mit dem Assistenten (Web, parallel zu Telegram) =================

@@ -13,11 +13,35 @@ import re
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import settings
+from ..models.nexus import AppSetting
 from ..worker.providers.base import ProviderError
 from ..worker.providers.openai import OpenAIProvider
 from ..worker.secrets import resolve_provider_base_url, resolve_provider_token
 
 log = logging.getLogger("traccoon.mail")
+
+
+async def classify_config(db: AsyncSession) -> tuple[str, str, str]:
+    """(provider, model, token_name) für die Vorklassifizierung — DB-Override (AppSetting,
+    UI-editierbar) vor env-Default. So bleibt qwen für den Webhook, ohne Redeploy änderbar."""
+    async def _s(key: str, dflt: str) -> str:
+        row = await db.get(AppSetting, f"mail_classify_{key}")
+        return (row.value if row and row.value else "") or dflt
+    return (
+        await _s("provider", settings.mail_classify_provider or "openai"),
+        await _s("model", settings.mail_classify_model),
+        await _s("token_name", settings.mail_classify_token_name or "local"),
+    )
+
+
+async def set_classify_config(db: AsyncSession, provider: str, model: str, token_name: str) -> None:
+    for key, val in (("provider", provider), ("model", model), ("token_name", token_name)):
+        row = await db.get(AppSetting, f"mail_classify_{key}")
+        if row is None:
+            db.add(AppSetting(key=f"mail_classify_{key}", value=val or ""))
+        else:
+            row.value = val or ""
+    await db.commit()
 
 _ALLOWED_PRIORITY = {"low", "normal", "high", "urgent"}
 
@@ -60,10 +84,11 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
     fallback = {"category": "sonstiges", "priority": "normal",
                 "sensitive": True, "redacted_summary": ""}
 
-    provider = settings.mail_classify_provider or "openai"
-    token = await resolve_provider_token(db, owner_id, provider, settings.mail_classify_token_name)
-    base_url = await resolve_provider_base_url(db, owner_id, provider, settings.mail_classify_token_name)
-    if not token or not base_url or not settings.mail_classify_model:
+    # Laufzeit-Konfig: DB-Override (AppSetting, in der UI editierbar) → env-Default.
+    provider, model, token_name = await classify_config(db)
+    token = await resolve_provider_token(db, owner_id, provider, token_name)
+    base_url = await resolve_provider_base_url(db, owner_id, provider, token_name)
+    if not token or not base_url or not model:
         log.warning("Mail-Klassifizierung nicht konfiguriert (token/base_url/model fehlt) → Fallback")
         return fallback
 
@@ -73,7 +98,7 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
                 f"--- Mailtext ---\n{(body or '')[:8000]}")
     try:
         resp = await impl.chat(
-            model=settings.mail_classify_model,
+            model=model,
             messages=[{"role": "system", "content": _SYSTEM},
                       {"role": "user", "content": user_msg}],
             temperature=0.1, max_tokens=1500, auth_token=token)
