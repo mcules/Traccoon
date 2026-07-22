@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { api, Project } from "../api";
+import { api, Project, ProjectCosts } from "../api";
 
 const KAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
 const KAT_FARBE: Record<string, string> = { todo: "bg-slate-400", in_progress: "bg-sky-400", done: "bg-green-400" };
@@ -8,6 +8,11 @@ export default function Dashboard({ project }: { project: Project }) {
   const { data } = useQuery({
     queryKey: ["dashboard", project.id],
     queryFn: () => api.get<any>(`/projects/${project.id}/dashboard`),
+    refetchInterval: 8000,
+  });
+  const { data: costs } = useQuery({
+    queryKey: ["project-costs", project.id],
+    queryFn: () => api.get<ProjectCosts>(`/projects/${project.id}/costs`),
     refetchInterval: 8000,
   });
   if (!data) return <div className="text-muted">Lädt…</div>;
@@ -85,6 +90,36 @@ export default function Dashboard({ project }: { project: Project }) {
           ) : <Leer text="Kein Agent hat offene Tickets." />}
         </Karte>
       </div>
+
+      {costs && costs.by_model.length > 0 && (
+        <Karte titel={`Kosten nach Modell (gesamt $${costs.total_usd.toFixed(2)})`}>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted">
+                  <th className="py-1 pr-3 font-medium">Modell</th>
+                  <th className="py-1 pr-3 text-right font-medium">Kosten</th>
+                  <th className="py-1 pr-3 text-right font-medium">In</th>
+                  <th className="py-1 text-right font-medium">Out</th>
+                </tr>
+              </thead>
+              <tbody>
+                {costs.by_model
+                  .slice()
+                  .sort((a, b) => b.usd - a.usd)
+                  .map((m) => (
+                    <tr key={`${m.provider}/${m.model}`} className="border-t border-line">
+                      <td className="py-1 pr-3 text-ink">{m.model || m.provider}</td>
+                      <td className="py-1 pr-3 text-right text-ink">${m.usd.toFixed(2)}</td>
+                      <td className="py-1 pr-3 text-right text-muted">{m.input_tokens}</td>
+                      <td className="py-1 text-right text-muted">{m.output_tokens}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </Karte>
+      )}
     </div>
   );
 }
