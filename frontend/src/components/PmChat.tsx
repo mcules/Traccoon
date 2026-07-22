@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, getToken, Project } from "../api";
+import { formatTime } from "../lib/formatTime";
 
-interface Msg { id?: number; role: string; author?: string; content: string; }
+interface Msg { id?: number; role: string; author?: string; content: string; created_at?: string; }
 
 export default function PmChat({ project }: { project: Project }) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -25,7 +26,7 @@ export default function PmChat({ project }: { project: Project }) {
     ws.onmessage = (e) => {
       try {
         const m = JSON.parse(e.data);
-        if (m.type === "pm_chat") setMessages((prev) => [...prev, { role: m.role, content: m.content }]);
+        if (m.type === "pm_chat") setMessages((prev) => [...prev, { role: m.role, content: m.content, created_at: m.created_at }]);
       } catch { /* ignore */ }
     };
     wsRef.current = ws;
@@ -36,7 +37,7 @@ export default function PmChat({ project }: { project: Project }) {
 
   function send() {
     if (!text.trim() || wsRef.current?.readyState !== WebSocket.OPEN) return;
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    setMessages((prev) => [...prev, { role: "user", content: text, created_at: new Date().toISOString() }]);
     wsRef.current.send(JSON.stringify({ type: "chat", content: text }));
     setText("");
   }
@@ -47,7 +48,10 @@ export default function PmChat({ project }: { project: Project }) {
         {messages.map((m, i) => (
           <div key={i} className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
             m.role === "user" ? "ml-auto bg-brand/20" : m.role === "system" ? "bg-red-500/10 text-red-300" : "bg-surface"}`}>
-            <div className="mb-1 text-xs text-muted">{m.role === "user" ? "Du" : m.role === "pm" ? "🤖 PM" : "System"}</div>
+            <div className="mb-1 flex items-center gap-2 text-xs text-muted">
+              <span>{m.role === "user" ? "Du" : m.role === "pm" ? "🤖 PM" : "System"}</span>
+              {m.created_at && <span className="ml-auto">{formatTime(m.created_at)}</span>}
+            </div>
             <div className="whitespace-pre-wrap">{m.content}</div>
           </div>
         ))}
