@@ -204,5 +204,11 @@ class AnthropicProvider(Provider):
         if oai_calls:
             raw_msg["tool_calls"] = oai_calls
         usage = data.get("usage") or {}
+        # Prompt-Caching-Anteile: cache_read = gecachter Prefix (~0,1x berechnet),
+        # cache_creation = neu in den Cache geschriebener Anteil (informativ). Beide
+        # explizit greifbar machen, damit die Runtime cache_read in Kosten + CostEntry
+        # aufnehmen kann.
+        cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
         return ChatResponse(text=text, tool_calls=calls,
-                            raw={"choices": [{"message": raw_msg}]}, usage=usage)
+                            raw={"choices": [{"message": raw_msg}]}, usage=usage,
+                            cache_read_tokens=cache_read)
