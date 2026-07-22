@@ -23,7 +23,7 @@ from ..models.ticket import Issue
 from ..models.user import User
 from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
 from ..services.comments import add_system_comment, apply_user_comment
-from ..worker.assistant_gate import learn_permission
+from ..worker.assistant_gate import apply_perm_decision
 from .mdtg import safe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -288,19 +288,7 @@ async def run_bot() -> None:
                 if t is None or t.status != "awaiting":
                     await cq.answer("schon entschieden")
                 else:
-                    tool, res = t.pending_tool or "*", t.pending_resource or "*"
-                    if dec == "once":
-                        t.grant_tool, t.grant_resource = tool, res   # nur dieser Aufruf
-                    elif dec == "always":
-                        await learn_permission(db, t.owner_user_id, tool, "*", "allow")  # tool-weit
-                    elif dec == "never":
-                        await learn_permission(db, t.owner_user_id, tool, "*", "deny")
-                    t.pending_tool = t.pending_resource = None
-                    t.status = "approved"
-                    await db.commit()
-                    from ..core.redis import enqueue_task
-                    await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
-                                        "assistant_task_id": t.id})
+                    await apply_perm_decision(db, t, dec)
                     await cq.answer(f"Freigabe: {dec}")
         await cq.answer()
 

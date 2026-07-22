@@ -54,6 +54,24 @@ async def gate_check(db: AsyncSession, task: AssistantTask, owner_id: int | None
     return "ask"
 
 
+async def apply_perm_decision(db: AsyncSession, task: AssistantTask, decision: str) -> None:
+    """Gate-Entscheidung anwenden (geteilt von Telegram-Bot und Web): 'once' = Einmal-Grant,
+    'always'/'never' = tool-weite Regel; danach den Lauf neu anstoßen."""
+    tool, res = task.pending_tool or "*", task.pending_resource or "*"
+    if decision == "once":
+        task.grant_tool, task.grant_resource = tool, res
+    elif decision == "always":
+        await learn_permission(db, task.owner_user_id, tool, "*", "allow")
+    elif decision == "never":
+        await learn_permission(db, task.owner_user_id, tool, "*", "deny")
+    task.pending_tool = task.pending_resource = None
+    task.status = "approved"
+    await db.commit()
+    from ..core.redis import enqueue_task
+    await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
+                        "assistant_task_id": task.id})
+
+
 async def learn_permission(db: AsyncSession, owner_id: int | None, tool: str,
                            resource: str, action: str) -> None:
     """'immer' (allow) / 'nie' (deny) dauerhaft merken (upsert je owner+tool+resource)."""
