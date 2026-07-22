@@ -16,6 +16,7 @@ export default function NewTicketModal({
   const [priority, setPriority] = useState("medium");
   const [typeId, setTypeId] = useState<number | undefined>(meta.types[0]?.id);
   const [statusId, setStatusId] = useState<number | undefined>(meta.statuses[0]?.id);
+  const [assigneeId, setAssigneeId] = useState<string>("");
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [err, setErr] = useState("");
@@ -54,6 +55,7 @@ export default function NewTicketModal({
         priority,
         type_id: typeId,
         status_id: statusId,
+        assignee_user_id: assigneeId ? Number(assigneeId) : null,
       });
       // Anhänge erst nach dem Anlegen hochladen — brauchen den Ticket-Key.
       for (const f of files) await api.upload(`/issues/${issue.key}/attachments`, f);
@@ -106,6 +108,15 @@ export default function NewTicketModal({
             <select value={priority} onChange={(e) => setPriority(e.target.value)}
               className="mt-1 block rounded border border-line bg-surface px-2 py-1 text-ink">
               {PRIOS.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </label>
+          <label className="text-xs text-muted">Zugewiesen an
+            <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}
+              className="mt-1 block rounded border border-line bg-surface px-2 py-1 text-ink">
+              <option value="">— niemand —</option>
+              {meta.members.map((m) => (
+                <option key={m.user_id} value={m.user_id}>{m.display_name || m.username}</option>
+              ))}
             </select>
           </label>
         </div>

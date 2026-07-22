@@ -10,6 +10,7 @@ class UserStatus(str, enum.Enum):
     pending = "pending"
     active = "active"
     disabled = "disabled"
+    placeholder = "placeholder"  # Person ohne echtes Konto — nur als Zuweisungsziel nutzbar, kein Login
 
 
 class ProjectRole(str, enum.Enum):

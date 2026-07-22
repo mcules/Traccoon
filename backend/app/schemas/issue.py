@@ -1,6 +1,6 @@
 import datetime as dt
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..models.enums import Priority, TicketAgentStatus
 
@@ -31,6 +31,23 @@ class IssueUpdate(BaseModel):
 
 class AssignAgentIn(BaseModel):
     agent: str = "project_manager"
+
+
+class AssigneeIn(BaseModel):
+    """Person-Zuweisung: entweder bestehenden User (user_id) ODER neue Person per
+    Namen (display_name) — für Letztere wird ein Platzhalter-Konto angelegt."""
+    user_id: int | None = None
+    display_name: str | None = Field(default=None, max_length=255)
+
+    @field_validator("display_name")
+    @classmethod
+    def _strip_display_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError("display_name darf nicht leer sein")
+        return v
 
 
 class IssueOut(BaseModel):
