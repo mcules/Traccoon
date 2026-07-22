@@ -67,9 +67,12 @@ class WebhookSub(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     route: Mapped[str] = mapped_column(String(120), nullable=False)  # Label (nicht mehr global eindeutig)
     secret: Mapped[str] = mapped_column(String(200), default="")
-    mode: Mapped[str] = mapped_column(String(20), default="task")  # task | notify
+    mode: Mapped[str] = mapped_column(String(20), default="task")  # task | notify | assistant
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Modus 'assistant' (E-Mail): projektlose AssistantTask + lokale Vorklassifizierung durch
+    # diesen Agenten (dessen Provider/Modell/Token). Leer = keine Klassifizierung (Passthrough).
+    classify_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status_new: Mapped[str] = mapped_column(String(20), default="planning")
     title_template: Mapped[str] = mapped_column(String(500), default="{title}")
     body_template: Mapped[str] = mapped_column(Text, default="{body}")

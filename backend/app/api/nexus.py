@@ -29,6 +29,7 @@ class WebhookIn(BaseModel):
     mode: str = "task"
     project_id: int | None = None
     agent: str | None = None
+    classify_agent: str | None = None
     title_template: str = "{title}"
     body_template: str = "{body}"
     silent: bool = False
@@ -44,7 +45,8 @@ class WebhookIn(BaseModel):
 
 class WebhookOut(BaseModel):
     id: int; public_id: str; route: str; mode: str; project_id: int | None
-    owner_user_id: int | None; agent: str | None; silent: bool; enabled: bool; secret_set: bool
+    owner_user_id: int | None; agent: str | None; classify_agent: str | None
+    silent: bool; enabled: bool; secret_set: bool
     event_header: str | None = None; event_filter: str | None = None
     event_key_header: str | None = None; event_cooldowns: dict = {}
     alert_events: list = []; ref_field: str | None = None; notify_chat: str | None = None
@@ -53,7 +55,7 @@ class WebhookOut(BaseModel):
 def _wh_out(w: WebhookSub) -> WebhookOut:
     return WebhookOut(
         id=w.id, public_id=w.public_id, route=w.route, mode=w.mode, project_id=w.project_id,
-        owner_user_id=w.owner_user_id, agent=w.agent,
+        owner_user_id=w.owner_user_id, agent=w.agent, classify_agent=w.classify_agent,
         silent=w.silent, enabled=w.enabled, secret_set=bool(w.secret),
         event_header=w.event_header, event_filter=w.event_filter,
         event_key_header=w.event_key_header, event_cooldowns=w.event_cooldowns or {},
@@ -176,6 +178,20 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         # Erste Zustellung läuft normal durch, öffnet aber das Fenster für Folge-Events.
         db.add(WebhookCoalesce(route=route, event_key=ekey,
                                window_until=now + dt.timedelta(seconds=cooldown), payloads=[]))
+
+    if sub.mode == "assistant":
+        # E-Mail → projektlose AssistantTask (lokale Vorklassifizierung durch classify_agent).
+        from ..services.mail_intake import intake_mail
+        task, auto = await intake_mail(
+            db, sub.owner_user_id, payload if isinstance(payload, dict) else {},
+            source=f"webhook:{route}", classify_agent=sub.classify_agent or "")
+        if task is None:
+            return {"accepted": True, "ignored": True}
+        if auto:
+            from ..core.redis import enqueue_task
+            await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
+                                "assistant_task_id": task.id})
+        return {"accepted": True, "id": task.id, "status": task.status, "auto": auto}
 
     if sub.mode == "notify":
         # Gerendertes Template als Notification (Telegram-Bot liefert aus).
