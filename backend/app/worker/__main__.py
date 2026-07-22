@@ -541,10 +541,29 @@ async def pull_loop(redis: Redis) -> None:
     ist vor dem ACK abgestürzt) zurück in QUEUE schieben, damit sie nicht verloren gehen.
     """
     recovered = 0
-    while await redis.lmove(PROCESSING, QUEUE, "RIGHT", "LEFT"):
+    duplicates = 0
+    seen: set[str] = set()
+    while True:
+        raw = await redis.rpop(PROCESSING)
+        if raw is None:
+            break
+        try:
+            tid = json.loads(raw).get("task_id")
+        except Exception:  # noqa: BLE001
+            tid = None  # unparsbar → behandeln wie task_id-los, nie als Duplikat verwerfen
+        # Nur echte, task_id-tragende Run-Jobs deduplizieren. Bei wiederholten Restarts
+        # kann dieselbe task_id mehrfach in PROCESSING liegen → nur DISTINCT zurück in QUEUE,
+        # weitere Vorkommen verwerfen (nicht erneut einreihen). task_id-lose Jobs immer requeuen.
+        if tid and tid in seen:
+            duplicates += 1
+            continue
+        if tid:
+            seen.add(tid)
+        await redis.lpush(QUEUE, raw)
         recovered += 1
-    if recovered:
-        log.info("Recovery: %d Job(s) aus PROCESSING zurück in QUEUE geschoben", recovered)
+    if recovered or duplicates:
+        log.info("Recovery: %d Job(s) aus PROCESSING zurück in QUEUE, %d Duplikat(e) verworfen",
+                 recovered, duplicates)
     while True:
         await asyncio.sleep(PULL_INTERVAL)
         try:
@@ -573,6 +592,13 @@ async def pull_loop(redis: Redis) -> None:
 RUNNING: dict[str, asyncio.Task] = {}
 # Spiegel derselben Information in Redis, damit das Backend sie anzeigen kann.
 ACTIVE = f"{PREFIX}active_processes"
+
+# In-flight-Dedup: task_ids, die gerade verarbeitet werden. Ein Restart-Sturm kann
+# über die PROCESSING→QUEUE-Recovery denselben Job (gleiche task_id) mehrfach in die
+# Queue schieben; ohne diese Sperre würde der Worker (concurrency>1) ihn parallel
+# fahren → RPM-Burst → HTTP 429. Zugriff nur aus dem einen Event-Loop → kein Lock nötig,
+# solange Prüfen+Hinzufügen ohne await dazwischen (atomar) vor dem Start passiert.
+_inflight_task_ids: set[str] = set()
 
 
 async def kill_listener(redis: Redis) -> None:
@@ -636,6 +662,9 @@ async def main() -> None:
             finally:
                 RUNNING.pop(key, None)
                 await redis.hdel(ACTIVE, key)
+                # In-flight-Sperre zuverlässig lösen — auch bei Exception/Abbruch,
+                # sonst bliebe die task_id für immer als „läuft bereits" markiert.
+                _inflight_task_ids.discard(job.get("task_id"))
 
     while True:
         try:
@@ -646,6 +675,17 @@ async def main() -> None:
             if not raw:
                 continue
             job = json.loads(raw)
+            # In-flight-Dedup nach task_id: läuft derselbe Dispatch schon (z.B. durch die
+            # Restart-Recovery doppelt eingereiht), diesen Job aus PROCESSING tilgen und NICHT
+            # verarbeiten. Prüfen+Hinzufügen ohne await dazwischen → atomar im Event-Loop.
+            # task_id-lose Jobs (falls je welche) laufen unverändert, werden nie geblockt.
+            task_id = job.get("task_id")
+            if task_id:
+                if task_id in _inflight_task_ids:
+                    await redis.lrem(PROCESSING, 1, raw)
+                    log.warning("Duplikat-Job task_id=%s verworfen (läuft bereits)", task_id)
+                    continue
+                _inflight_task_ids.add(task_id)
             asyncio.create_task(_run(job, raw))
         except Exception:  # noqa: BLE001
             log.exception("loop-Fehler")
