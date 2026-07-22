@@ -122,7 +122,8 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
     if user is None or not (await build_access(project, user, db)).ai_assign:
         log.warning("PM-Chat ohne KI-Recht abgewiesen (user=%s, projekt=%s)", user_id, project_id)
         await publish_event(project_id, {"type": "pm_chat", "role": "system",
-                                         "content": "KI-Recht (ai_assign) erforderlich."})
+                                         "content": "KI-Recht (ai_assign) erforderlich.",
+                                         "created_at": _now().isoformat()})
         return
     db.add(Message(project_id=project_id, user_id=user_id, role="user", author_label="User", content=text))
     await db.commit()
@@ -148,10 +149,13 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
             resp = await router.chat(provider="claude_code", model="claude-sonnet-4-5",
                                      messages=messages, temperature=0.3, max_tokens=4096, tokens=tokens)
         except Exception as exc:  # noqa: BLE001
-            db.add(Message(project_id=project_id, role="system", author_label="System",
-                           content=f"PM-Fehler: {exc}"))
+            err_time = _now()
+            msg = Message(project_id=project_id, role="system", author_label="System",
+                          content=f"PM-Fehler: {exc}", created_at=err_time)
+            db.add(msg)
             await db.commit()
-            await publish_event(project_id, {"type": "pm_chat", "role": "system", "content": f"PM-Fehler: {exc}"})
+            await publish_event(project_id, {"type": "pm_chat", "role": "system", "content": f"PM-Fehler: {exc}",
+                                             "created_at": err_time.isoformat()})
             return
 
         clean, ops, done = _parse_ops(resp.text)
@@ -175,10 +179,13 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
             except Exception:  # noqa: BLE001
                 log.exception("PM-Op fehlgeschlagen")
         pm_text = clean + (f"\n\n🎫 {', '.join(created_keys)}" if created_keys else "")
-        db.add(Message(project_id=project_id, role="pm", author_label="PM", content=pm_text, round=rnd))
+        pm_created_at = _now()
+        db.add(Message(project_id=project_id, role="pm", author_label="PM", content=pm_text, round=rnd,
+                       created_at=pm_created_at))
         await db.commit()
         convo.append({"role": "assistant", "content": resp.text})
-        await publish_event(project_id, {"type": "pm_chat", "role": "pm", "content": pm_text})
+        await publish_event(project_id, {"type": "pm_chat", "role": "pm", "content": pm_text,
+                                         "created_at": pm_created_at.isoformat()})
         if done:
             break
         if not ops:
