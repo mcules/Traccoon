@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
+import { waitInfo } from "../lib/waitReason";
 
 const PRIO_FARBE: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400",
@@ -47,6 +48,9 @@ export default function Backlog({
     <div key={i.id} className="flex items-center gap-3 rounded border border-line bg-card px-2 py-1.5 text-sm">
       <button onClick={() => onOpen(i.key)} className="font-mono text-xs text-muted hover:text-brand">{i.key}</button>
       <span className="flex-1 truncate">{i.summary}</span>
+      {(() => { const w = waitInfo(i); return w && (
+        <span title={`${w.title}: ${w.label}`} className="text-xs">{w.icon}</span>
+      ); })()}
       {i.assigned_agent && <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">🤖 {i.assigned_agent}</span>}
       <span className={`text-xs ${PRIO_FARBE[i.priority] || "text-muted"}`}>{i.priority}</span>
       <select value={i.sprint_id ?? ""} onChange={(e) =>

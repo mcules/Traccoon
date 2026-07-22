@@ -6,8 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
-    admin, agents, auth, config, cost, dashboard, files, hardware, issues, lifecycle, me, nexus,
-    notifications, permissions, plugins, projects, repo, runs, secrets, skills, users, ws,
+    admin, agents, auth, config, cost, dashboard, files, hardware, invitations, issues, lifecycle,
+    me, nexus, notifications, permissions, plugins, projects, repo, runs, secrets, skills, users, ws,
 )
 from .config import settings
 from .db import Base, SessionLocal, engine
@@ -55,6 +55,7 @@ api.include_router(auth.router)
 api.include_router(me.router)
 api.include_router(users.router)
 api.include_router(projects.router)
+api.include_router(invitations.router)
 api.include_router(config.router)
 api.include_router(issues.router)
 api.include_router(lifecycle.router)

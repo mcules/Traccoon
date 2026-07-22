@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 
-type Tab = "users" | "cost" | "maintenance";
+type Tab = "users" | "cost" | "maintenance" | "mail";
 const TABS: [Tab, string][] = [
-  ["users", "Nutzer"], ["cost", "Kosten"], ["maintenance", "Wartung"],
+  ["users", "Nutzer"], ["cost", "Kosten"], ["maintenance", "Wartung"], ["mail", "E-Mail"],
 ];
 
 export default function Admin() {
@@ -22,6 +22,59 @@ export default function Admin() {
       {tab === "users" && <Users />}
       {tab === "cost" && <Cost />}
       {tab === "maintenance" && <Maintenance />}
+      {tab === "mail" && <MailConfig />}
+    </div>
+  );
+}
+
+function MailConfig() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["mail-config"], queryFn: () => api.get<any>("/admin/mail-config") });
+  const [form, setForm] = useState<any>({});
+  const [msg, setMsg] = useState("");
+  const val = (k: string) => form[k] ?? data?.[k] ?? (k === "smtp_port" ? 587 : "");
+  const save = useMutation({
+    mutationFn: () => api.put("/admin/mail-config", form),
+    onSuccess: () => {
+      setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setForm({});
+      qc.invalidateQueries({ queryKey: ["mail-config"] });
+    },
+  });
+  return (
+    <div className="max-w-xl space-y-3 rounded-lg border border-line bg-card p-4">
+      <p className="text-xs text-muted">
+        SMTP-Server für ausgehende Mails (z. B. Projekt-Einladungen). Ohne Host wird nicht
+        versendet — nur geloggt.
+      </p>
+      <label className="block text-xs text-muted">Host
+        <input value={val("smtp_host")} onChange={(e) => setForm({ ...form, smtp_host: e.target.value })}
+          className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
+      </label>
+      <label className="block text-xs text-muted">Port
+        <input type="number" value={val("smtp_port")}
+          onChange={(e) => setForm({ ...form, smtp_port: Number(e.target.value) })}
+          className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
+      </label>
+      <label className="block text-xs text-muted">Benutzer
+        <input value={val("smtp_user")} onChange={(e) => setForm({ ...form, smtp_user: e.target.value })}
+          className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
+      </label>
+      <label className="block text-xs text-muted">Passwort {data?.smtp_password_set && <span className="text-green-400">(gesetzt)</span>}
+        <input type="password" placeholder="unverändert lassen = leer"
+          value={form.smtp_password ?? ""} onChange={(e) => setForm({ ...form, smtp_password: e.target.value })}
+          className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
+      </label>
+      <label className="block text-xs text-muted">Absender (From)
+        <input value={val("smtp_from")} onChange={(e) => setForm({ ...form, smtp_from: e.target.value })}
+          className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={val("smtp_use_tls")}
+          onChange={(e) => setForm({ ...form, smtp_use_tls: e.target.checked })} />
+        STARTTLS verwenden
+      </label>
+      <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-white">Speichern</button>
+      {msg && <span className="ml-3 text-sm text-green-400">{msg}</span>}
     </div>
   );
 }
