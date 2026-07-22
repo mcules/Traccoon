@@ -53,6 +53,30 @@ class AssistantTask(TimestampMixin, Base):
     error: Mapped[str] = mapped_column(Text, default="")
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # Tool-Gate: worauf der Lauf gerade auf Freigabe wartet (status='awaiting').
+    pending_tool: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    pending_resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Einmal-Freigabe für die nächste Wiederaufnahme (wird beim Gate konsumiert).
+    grant_tool: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    grant_resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class AssistantPermission(TimestampMixin, Base):
+    """Gelernte Tool-Berechtigung des Assistenten (owner-scoped, projektlos): 'immer erlauben'
+    / 'nie' pro Tool(+Ressource). Wird vom Freigabe-Gate gelesen (perms.evaluate). Inhalt
+    persönlich → DB-only, nicht im git."""
+    __tablename__ = "assistant_permissions"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "tool", "resource", name="uq_assistant_perm"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    tool: Mapped[str] = mapped_column(String(150), default="")     # glob
+    resource: Mapped[str] = mapped_column(String(500), default="*")  # glob
+    action: Mapped[str] = mapped_column(String(10), default="ask")  # allow | ask | deny
+
 
 class AssistantPolicy(TimestampMixin, Base):
     """Gelernte Regel des persönlichen Assistenten für eingehende Items (v. a. Mail).
