@@ -129,3 +129,10 @@ export interface Issue {
 export interface FileChange { id: number; path: string; status: string; additions: number; deletions: number; }
 export interface AttachmentInfo { id: number; filename: string; mime_type: string; size: number; created_at: string; }
 export interface Comment { id: number; issue_id: number; author_id: number | null; author_label: string; body: string; kind: string; created_at: string; }
+export interface CostByModel { provider: string; model: string; usd: number; input_tokens: number; output_tokens: number; calls: number; }
+export interface IssueCosts { total_usd: number; input_tokens: number; output_tokens: number; by_model: CostByModel[]; }
+export interface ProjectCosts {
+  total_usd: number; input_tokens: number; output_tokens: number;
+  by_agent: { agent: string; usd: number; calls: number }[];
+  by_model: CostByModel[];
+}
