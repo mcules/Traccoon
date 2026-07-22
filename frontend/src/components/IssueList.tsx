@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Issue, Project, ProjectMeta } from "../api";
+import { waitInfo } from "../lib/waitReason";
 
 const PRIO_FARBE: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400", medium: "text-yellow-400",
@@ -89,6 +90,9 @@ export default function IssueList({
                   {t && <span className="mr-1.5" style={{ color: t.color }}>{t.icon === "bug" ? "🐞" : "•"}</span>}
                   {i.summary}
                   {i.agent_working && <span className="ml-2 text-xs text-yellow-400">läuft…</span>}
+                  {(() => { const w = waitInfo(i); return w && (
+                    <span title={`${w.title}: ${w.label}`} className="ml-2 text-xs">{w.icon}</span>
+                  ); })()}
                 </td>
                 <td className="py-1.5 text-xs">
                   {i.assigned_agent

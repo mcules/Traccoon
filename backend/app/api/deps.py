@@ -81,9 +81,18 @@ class Access:
     role: ProjectRole
     ai_assign: bool
     is_member: bool
+    member_since: dt.datetime | None = None
 
     def has_role(self, minimum: ProjectRole) -> bool:
         return ROLE_RANK[self.role] >= ROLE_RANK[minimum]
+
+    @property
+    def is_new(self) -> bool:
+        """Kürzlich (≤ 7 Tage) hinzugefügtes Mitglied — für die 'Neu'-Kennzeichnung im UI."""
+        if not self.is_member or self.member_since is None:
+            return False
+        now = dt.datetime.now(tz=dt.timezone.utc)
+        return (now - self.member_since) <= dt.timedelta(days=7)
 
 
 async def build_access(project: Project, user: User, db: AsyncSession) -> Access:
@@ -96,8 +105,8 @@ async def build_access(project: Project, user: User, db: AsyncSession) -> Access
         )
     ).scalar_one_or_none()
     if member is not None:
-        return Access(user, project, member.role, member.ai_assign, True)
-    # Admin-Override: globaler Admin darf auch ohne Mitgliedschaft zugreifen
+        return Access(user, project, member.role, member.ai_assign, True, member.created_at)
+    # Admin-Override: globaler Admin darf auch ohne Mitgliedschaft zugreifen (fremdes Projekt)
     if user.global_role == GlobalRole.admin:
         return Access(user, project, ProjectRole.owner, True, False)
     # Strikte Isolation: fremdes Projekt = 404 (nicht 403)

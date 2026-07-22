@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, AttachmentInfo, Comment, FileChange, Issue, Project, ProjectMeta } from "../api";
 import Markdown from "./Markdown";
+import { waitInfo } from "../lib/waitReason";
+import { formatTime } from "../lib/formatTime";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
@@ -149,6 +151,12 @@ export default function TicketDrawer({
   const planText = (issue?.plan || "").replace(/<subtickets>[\s\S]*?<\/subtickets>/g, "").trim();
   const planLabel = isUmbrella ? "Begründung / Überblick" : "Plan";
   const preApproval = issue?.agent_status === "planning" || issue?.agent_status === "plan_review";
+  const wait = issue ? waitInfo(issue) : null;
+  const WAIT_KIND_COLOR: Record<string, string> = {
+    error: "border-red-500/40 bg-red-500/10 text-red-300",
+    question: "border-yellow-500/40 bg-yellow-500/10 text-yellow-300",
+    external: "border-sky-500/40 bg-sky-500/10 text-sky-300",
+  };
 
   return (
     <div className="fixed inset-0 z-20 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
@@ -162,6 +170,14 @@ export default function TicketDrawer({
           <div className="text-muted">Lädt…</div>
         ) : (
           <>
+            {wait && (
+              <div className={`mb-3 flex items-center gap-2 rounded border px-3 py-1.5 text-sm ${WAIT_KIND_COLOR[wait.kind]}`}>
+                <span>{wait.icon}</span>
+                <span className="font-medium">{wait.title}:</span>
+                <span>{wait.label}</span>
+              </div>
+            )}
+
             {/* Rückverweis Sub-Ticket → Sammelticket */}
             {parent && (
               <button onClick={() => onOpen(parent.key)}
@@ -484,11 +500,13 @@ export default function TicketDrawer({
                 className="rounded bg-brand px-3 py-1.5 text-white">Senden</button>
             </div>
             <div className="space-y-2">
-              {comments?.map((c) => (
-                <div key={c.id} className="rounded border border-line bg-surface p-2 text-sm">
+              {[...(comments || [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((c) => (
+                <div key={c.id} className={`rounded border p-2 text-sm ${
+                  c.kind === "system" ? "border-dashed border-line bg-surface/50" : "border-line bg-surface"}`}>
                   <div className="mb-1 flex items-center gap-2 text-xs text-muted">
-                    <span>{c.author_id ? c.author_label : "🤖 " + c.author_label}</span>
+                    <span>{c.kind === "system" ? "ⓘ System" : c.author_id ? c.author_label : "🤖 " + c.author_label}</span>
                     {c.kind === "internal" && <span className="rounded bg-line px-1">intern</span>}
+                    <span className="ml-auto">{formatTime(c.created_at)}</span>
                   </div>
                   <div className="whitespace-pre-wrap">{c.body}</div>
                 </div>

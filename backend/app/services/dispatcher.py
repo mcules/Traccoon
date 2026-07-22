@@ -197,6 +197,26 @@ async def _process(issue_id: int) -> None:
         else:
             issue.agent_status = TicketAgentStatus.failed
 
+        # Agent-Notiz ins Ticket: jeder abgeschlossene Run hinterlässt eine kurze
+        # Spur (wer = role, was = Zusammenfassung). „blocked" schreibt der Worker
+        # bereits selbst (Rückfrage/Berechtigung) — hier nicht doppeln.
+        summary = ((result or {}).get("summary") or (result or {}).get("output") or "").strip()
+        note = None
+        if status == "planned":
+            note = "📋 Plan erstellt — bereit zur Freigabe." + (f"\n{summary}" if summary else "")
+        elif status == "done":
+            tail = " — bereit zur Abnahme" if issue.agent_status == TicketAgentStatus.to_test else " — erledigt"
+            note = (summary or "Arbeit abgeschlossen.") + tail
+        elif status == "loop_exhausted":
+            note = ("⏸ Pausiert (Limit/Feststecker)" if issue.agent_status == TicketAgentStatus.hold
+                    else "⏭ Zwischenstand, arbeite weiter") + (f":\n{summary}" if summary else ".")
+        elif status == "failed" or result is None:
+            err = ((result or {}).get("output") or summary or "unbekannter Fehler").strip()
+            note = f"❌ Fehlgeschlagen: {err}"
+        if note:
+            db.add(Comment(issue_id=issue.id, author_id=None, author_label=role,
+                           body=note[:1500], kind="agent"))
+
         # Benachrichtigungen bei relevanten Zuständen
         from .notify import notify_issue
         st = issue.agent_status

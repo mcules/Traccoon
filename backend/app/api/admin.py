@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +12,7 @@ from ..models.project import Project
 from ..models.ticket import Issue
 from ..models.user import User
 from ..services.appsettings import get_setting, set_setting
+from ..services.mail import get_mail_config, set_mail_config
 from .deps import get_current_user, require_admin
 
 router = APIRouter(tags=["admin"])
@@ -80,3 +81,30 @@ async def cancel_update(_: User = Depends(require_admin), db: AsyncSession = Dep
     await set_flag("update_pending", False)
     await set_flag("update_in_progress", False)
     return await _status(db)
+
+
+class SmtpConfigIn(BaseModel):
+    smtp_host: str | None = Field(default=None, max_length=255)
+    smtp_port: int | None = Field(default=None, ge=1, le=65535)
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = Field(default=None, max_length=255)
+    smtp_use_tls: bool | None = None
+
+
+@router.get("/admin/mail-config")
+async def get_mail_settings(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
+    """SMTP-Konfiguration für den Mailversand (z. B. Projekt-Einladungen)."""
+    cfg = await get_mail_config(db)
+    cfg["smtp_password_set"] = bool(cfg.pop("smtp_password", ""))
+    return cfg
+
+
+@router.put("/admin/mail-config")
+async def put_mail_settings(
+    data: SmtpConfigIn, _: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
+):
+    await set_mail_config(db, data.model_dump(exclude_unset=True))
+    cfg = await get_mail_config(db)
+    cfg["smtp_password_set"] = bool(cfg.pop("smtp_password", ""))
+    return cfg
