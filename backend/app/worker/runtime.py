@@ -27,6 +27,7 @@ from . import perms
 from .mcp_client import mcp_session
 from .providers.base import ProviderError
 from .providers.router import router
+from .tools_traccoon import TRACCOON_TOOL_NAMES, TRACCOON_TOOLS, call_traccoon_tool
 
 log = logging.getLogger("traccoon.runtime")
 
@@ -637,6 +638,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 if mode != "plan" and agent.can_code:
                     _maybe(FS_WRITE_TOOL); _maybe(FS_EDIT_TOOL); _maybe(CHECK_TOOL); _maybe(DEPLOY_TOOL)
                     messages.append({"role": "system", "content": CODE_WORKFLOW})
+            # Traccoon-Steuer-Tools: nur mit Nutzerkontext (Rechte-Prüfung) + `traccoon_*`
+            # in der Allowlist. Brauchen keinen Worktree.
+            if owner_id:
+                for _t in TRACCOON_TOOLS:
+                    _maybe(_t)
             if mode == "plan":
                 openai_tools.append(SUBMIT_PLAN_TOOL)
 
@@ -831,6 +837,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                                   project.get("stack_dir", ""), ws_root)
                     elif call.name == "screenshot":
                         result = await _do_screenshot(call.arguments, testenv_url or project.get("live_url", ""))
+                    elif call.name in TRACCOON_TOOL_NAMES:
+                        result = await call_traccoon_tool(db, owner_id, call.name, call.arguments)
                     elif not agent.tool_allowed(call.name):
                         result = f"FEHLER: Tool '{call.name}' ist für diesen Agenten nicht erlaubt."
                     else:
