@@ -22,6 +22,7 @@ from .predecessor import (  # noqa: F401
     ProviderModel, WebhookCoalesce, WebhookSub,
 )
 from .secrets import UserSecret  # noqa: F401
+from .assistant import AssistantTask  # noqa: F401
 from .chat import Message  # noqa: F401
 from .notification import Notification  # noqa: F401
 from .plugins import McpServer, Plugin, PluginData, PluginFile, Skill  # noqa: F401
@@ -37,4 +38,5 @@ __all__ = [
     "Permission", "PermAction", "PermRequest", "PermGrant", "WebhookSub",
     "WebhookCoalesce", "Job", "JobRun", "Deployment", "ProviderModel",
     "UserSecret", "Message", "Notification", "Skill", "McpServer", "Plugin", "PluginFile",
+    "AssistantTask",
 ]
