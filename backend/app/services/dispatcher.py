@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import uuid
 
 from sqlalchemy import func, or_, select
 
@@ -161,7 +162,12 @@ async def _process(issue_id: int) -> None:
         await db.commit()
 
         cont = issue.continuation_count
-        task_id = f"{issue.key}-{phase}-{cont}"
+        # EINDEUTIG pro Dispatch: key/phase/cont bleiben lesbar (Logs/Reattach), der uuid-Suffix
+        # verhindert, dass mehrere Runs desselben Tickets denselben result:{task_id}-Key teilen.
+        # Sonst könnte wait_result ein VERALTETES/fremdes Ergebnis sofort zurückliefern und einen
+        # Spurious-Re-Dispatch auslösen (Beleg: TRA-19, 41 Runs alle mit task_id TRA-19-execution-0,
+        # weil continuation_count auf 0 einfror). continuation_index im Payload bleibt = cont.
+        task_id = f"{issue.key}-{phase}-{cont}-{uuid.uuid4().hex[:8]}"
         # Continuation-Hinweis = Zusammenfassung des letzten Runs
         hint = ""
         if cont > 0:
