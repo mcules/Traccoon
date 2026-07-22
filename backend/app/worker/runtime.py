@@ -49,6 +49,9 @@ def _now() -> dt.datetime:
 
 # ---------- Tool-Schemas (Port) ----------
 
+# Loop-/Steuer-Tools sind Agent-Mechanik, nicht durch die Allowlist beschränkt (IMMER verfügbar).
+_ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "submit_plan", "delegate"}
+
 SUBMIT_PLAN_TOOL = {"type": "function", "function": {
     "name": "submit_plan",
     "description": "Reiche den fertigen Umsetzungsplan (Markdown) ein. Beendet die Planungsphase "
@@ -314,13 +317,13 @@ class AgentDef:
     delegate_to: list[str]
 
     def tool_allowed(self, name: str) -> bool:
-        # Leere Whitelist = alle geladenen Tools erlaubt (Registry-Tools sind schon durch die
-        # Agent-Instanzen gescopt, Gateway durch die User-Gruppe). Gesetzt = Glob-Feinfilter.
-        from fnmatch import fnmatch
-        pats = self.allowed_tools or []
-        if not pats:
+        # Loop-/Steuer-Tools sind Agent-Mechanik, nicht durch die Allowlist beschränkt.
+        if name in _ALWAYS_ALLOWED:
             return True
-        return any(fnmatch(name, p) for p in pats)
+        # Capability- & MCP-Tools: NUR wenn per allowed_tools (Glob) explizit erlaubt.
+        # Leere Liste = nichts (deny-by-default). MCP-Server via "server__*".
+        from fnmatch import fnmatch
+        return any(fnmatch(name, p) for p in (self.allowed_tools or []))
 
 
 def agent_def_from_row(row: AgentDefinition, mode: str) -> AgentDef:
@@ -620,14 +623,17 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 openai_tools.append(OPEN_TASKS_TOOL)
                 if agent.can_delegate and delegate_loader is not None and depth < MAX_DELEGATION_DEPTH:
                     openai_tools.append(_delegate_tool(agent.delegate_to))
+            # Native Capability-Tools: grobes Fähigkeits-Gate (can_code/can_read_code/screenshot)
+            # UND zusätzlich deny-by-default über die Allowlist (tool_allowed).
+            _maybe = lambda t: openai_tools.append(t) if agent.tool_allowed(t["function"]["name"]) else None
             if ws_root and (agent.can_code or agent.can_read_code):
-                openai_tools += [FS_READ_TOOL, FS_LIST_TOOL]
+                _maybe(FS_READ_TOOL); _maybe(FS_LIST_TOOL)
                 if await _codegraph.available():
-                    openai_tools.append(CODEGRAPH_TOOL)
+                    _maybe(CODEGRAPH_TOOL)
                 if screenshot_enabled:
-                    openai_tools.append(SCREENSHOT_TOOL)
+                    _maybe(SCREENSHOT_TOOL)
                 if mode != "plan" and agent.can_code:
-                    openai_tools += [FS_WRITE_TOOL, FS_EDIT_TOOL, CHECK_TOOL, DEPLOY_TOOL]
+                    _maybe(FS_WRITE_TOOL); _maybe(FS_EDIT_TOOL); _maybe(CHECK_TOOL); _maybe(DEPLOY_TOOL)
                     messages.append({"role": "system", "content": CODE_WORKFLOW})
             if mode == "plan":
                 openai_tools.append(SUBMIT_PLAN_TOOL)
