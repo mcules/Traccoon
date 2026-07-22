@@ -96,6 +96,19 @@ def _translate(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | Non
     if a_tools:
         a_tools[-1]["cache_control"] = {"type": "ephemeral"}
     system_blocks[-1]["cache_control"] = {"type": "ephemeral"}
+    # Auch die (wachsende) Message-History cachen — DER Hebel gegen den quadratischen
+    # Verbrauch: Breakpoint auf den letzten Block der letzten Nachricht, damit jede
+    # Folge-Iteration den kompletten Prefix (system + tools + bisherige Turns) als
+    # Cache-Hit (~0,1x) liest statt ihn voll zu bezahlen. String-Content wird in einen
+    # Text-Block gewandelt (cache_control geht nur auf strukturierte Blöcke).
+    if a_msgs:
+        _last = a_msgs[-1]
+        _c = _last.get("content")
+        if isinstance(_c, list) and _c:
+            _c[-1]["cache_control"] = {"type": "ephemeral"}
+        elif isinstance(_c, str):
+            _last["content"] = [{"type": "text", "text": _c or "(leer)",
+                                 "cache_control": {"type": "ephemeral"}}]
     return system_blocks, a_msgs, a_tools
 
 
