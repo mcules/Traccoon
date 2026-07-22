@@ -27,7 +27,9 @@ GRANT_RANK = {GrantLevel.view: 0, GrantLevel.manage: 1}
 
 async def _location_grant_level(loc_id: int, user: User, db: AsyncSession) -> GrantLevel | None:
     """Höchste Freigabe für einen Ort — direkt ODER geerbt von einem Vorfahren-Ort
-    mit recursive=True (Wart bekommt Grant aufs Wasserhäuschen → gilt auch für Masten drunter)."""
+    mit recursive=True (Wart bekommt Grant aufs Wasserhäuschen → gilt auch für Masten drunter).
+    Grant muss zum aktuellen Projekt des Orts gehören (project_id-Scope) — Defense-in-Depth
+    gegen projektübergreifende Grants (siehe add_resource_grant-Validierung)."""
     best: GrantLevel | None = None
     loc = await db.get(Location, loc_id)
     seen: set[int] = set()
@@ -40,6 +42,7 @@ async def _location_grant_level(loc_id: int, user: User, db: AsyncSession) -> Gr
                     ResourceGrant.user_id == user.id,
                     ResourceGrant.resource_type == ResourceType.location,
                     ResourceGrant.resource_id == loc.id,
+                    ResourceGrant.project_id == loc.project_id,
                 )
             )
         ).scalar_one_or_none()
@@ -141,6 +144,15 @@ async def update_location(
     if loc is None:
         raise HTTPException(404, "Ort nicht gefunden")
     await _require_location_manage(loc, user, db)
+    # Verschieben in ein anderes Projekt erfordert zusätzlich maintainer+ im ZIELPROJEKT —
+    # sonst könnte ein Maintainer von Projekt A einen Ort einfach in Projekt B umhängen.
+    if data.project_id != loc.project_id:
+        if data.project_id is not None:
+            target_proj = await db.get(Project, data.project_id)
+            if target_proj is None:
+                raise HTTPException(400, "Projekt existiert nicht")
+            if not (await build_access(target_proj, user, db)).has_role(ProjectRole.maintainer):
+                raise HTTPException(403, "Kein Zugriff auf das Zielprojekt")
     loc.name, loc.type, loc.parent_id = data.name, data.type, data.parent_id
     loc.project_id, loc.notes = data.project_id, data.notes
     await db.flush()
@@ -202,16 +214,19 @@ async def delete_model(
 
 # ---------- Exemplare (Assets) ----------
 
-async def _asset_grant_level(asset_id: int, user: User, db: AsyncSession) -> GrantLevel | None:
-    g = (
-        await db.execute(
-            select(ResourceGrant).where(
-                ResourceGrant.user_id == user.id,
-                ResourceGrant.resource_type == ResourceType.asset,
-                ResourceGrant.resource_id == asset_id,
-            )
-        )
-    ).scalar_one_or_none()
+async def _asset_grant_level(
+    asset_id: int, user: User, db: AsyncSession, project_id: int | None = None
+) -> GrantLevel | None:
+    """Grant muss zum aktuellen Projekt des Assets gehören (project_id-Scope), wenn bekannt —
+    Defense-in-Depth gegen projektübergreifende Grants."""
+    q = select(ResourceGrant).where(
+        ResourceGrant.user_id == user.id,
+        ResourceGrant.resource_type == ResourceType.asset,
+        ResourceGrant.resource_id == asset_id,
+    )
+    if project_id is not None:
+        q = q.where(ResourceGrant.project_id == project_id)
+    g = (await db.execute(q)).scalar_one_or_none()
     return g.level if g is not None else None
 
 
@@ -227,7 +242,7 @@ async def _can_view_asset(asset: HardwareAsset, user: User, db: AsyncSession) ->
             return True
         except HTTPException:
             pass
-    if (await _asset_grant_level(asset.id, user, db)) is not None:
+    if (await _asset_grant_level(asset.id, user, db, asset.project_id)) is not None:
         return True
     if asset.location_id is not None:
         loc = await db.get(Location, asset.location_id)
@@ -279,7 +294,7 @@ async def _require_asset_manage(asset: HardwareAsset, user: User, db: AsyncSessi
         access = None
     if access is not None and access.has_role(ProjectRole.member):
         return
-    if (await _asset_grant_level(asset.id, user, db)) == GrantLevel.manage:
+    if (await _asset_grant_level(asset.id, user, db, asset.project_id)) == GrantLevel.manage:
         return
     if asset.location_id is not None:
         loc = await db.get(Location, asset.location_id)
@@ -311,7 +326,12 @@ async def update_asset(
     if a is None:
         raise HTTPException(404, "Exemplar nicht gefunden")
     await _require_asset_manage(a, user, db)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    fields = data.model_dump(exclude_unset=True)
+    # Verschieben in ein anderes Projekt erfordert zusätzlich member+ im ZIELPROJEKT —
+    # sonst könnte ein Projekt-Mitglied ein Exemplar einfach in ein fremdes Projekt umhängen.
+    if "project_id" in fields and fields["project_id"] != a.project_id:
+        await _require_project_member(fields["project_id"], user, db)
+    for field, value in fields.items():
         setattr(a, field, value)
     await db.commit()
     await db.refresh(a)
