@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Project } from "../api";
 
 const EMPTY = {
-  route: "", mode: "task", secret: "", project_id: "", agent: "",
+  route: "", mode: "task", secret: "", project_id: "", agent: "", classify_agent: "",
   title_template: "{title}", body_template: "{body}",
   event_header: "", event_filter: "", event_key_header: "",
   event_cooldowns: "", alert_events: "", ref_field: "", notify_chat: "",
@@ -34,6 +34,7 @@ export default function WebhooksPanel() {
   const body = () => ({
     route: f.route, mode: f.mode, secret: f.secret,
     project_id: f.project_id ? +f.project_id : null, agent: f.agent || null,
+    classify_agent: f.classify_agent || null,
     title_template: f.title_template, body_template: f.body_template,
     event_header: f.event_header || null, event_filter: f.event_filter || null,
     event_key_header: f.event_key_header || null,
@@ -52,7 +53,7 @@ export default function WebhooksPanel() {
     setOpen(true);
     setF({
       route: w.route, mode: w.mode, secret: "", project_id: w.project_id ? String(w.project_id) : "",
-      agent: w.agent || "", title_template: w.title_template || "{title}",
+      agent: w.agent || "", classify_agent: w.classify_agent || "", title_template: w.title_template || "{title}",
       body_template: w.body_template || "{body}", event_header: w.event_header || "",
       event_filter: w.event_filter || "", event_key_header: w.event_key_header || "",
       event_cooldowns: fmtCooldowns(w.event_cooldowns),
@@ -65,8 +66,9 @@ export default function WebhooksPanel() {
     <div>
       <p className="mb-3 text-sm text-muted">Deine Webhooks. Aufruf-URL trägt eine <b>GUID</b> (kein Nutzername):
         {" "}<span className="font-mono">POST /api/hooks/&lt;guid&gt;</span> mit HMAC-SHA256 im Header
-        {" "}<span className="font-mono">X-Webhook-Signature</span>. Modus <b>task</b> lässt <b>deinen</b> Assistenten
-        arbeiten, <b>notify</b> schickt dir eine Benachrichtigung.</p>
+        {" "}<span className="font-mono">X-Webhook-Signature</span>. Modus <b>task</b> legt ein Ticket an,
+        {" "}<b>notify</b> benachrichtigt dich, <b>assistant</b> nimmt E-Mails an (lokale Vorklassifizierung
+        durch den gewählten Klassifizier-Agenten → Assistent-Inbox).</p>
       <div className="mb-4 space-y-2">
         {hooks?.map((w) => (
           <div key={w.id} className="rounded border border-line bg-card p-2 text-sm">
@@ -74,6 +76,7 @@ export default function WebhooksPanel() {
             <span className="font-medium">{w.route}</span><span className="text-muted">{w.mode}</span>
             {w.secret_set && <span className="text-xs">🔒</span>}
             {w.agent && <span className="rounded bg-surface px-1 text-xs">→ {w.agent}</span>}
+            {w.classify_agent && <span className="rounded bg-surface px-1 text-xs">🔒 {w.classify_agent}</span>}
             {w.event_filter && <span className="rounded bg-surface px-1 text-xs">Filter: {w.event_filter}</span>}
             {(w.alert_events || []).length > 0 &&
               <span className="rounded bg-surface px-1 text-xs">🚨 {w.alert_events.join(", ")}</span>}
@@ -100,12 +103,18 @@ export default function WebhooksPanel() {
           <button onClick={() => { setEditId(null); setF(EMPTY); }} className="ml-1 underline">abbrechen</button></div>}
         <input value={f.route} onChange={(e) => setF({ ...f, route: e.target.value })} placeholder="route" className={inp} />
         <select value={f.mode} onChange={(e) => setF({ ...f, mode: e.target.value })} className={inp}>
-          <option value="task">task (Ticket)</option><option value="notify">notify</option></select>
+          <option value="task">task (Ticket)</option><option value="notify">notify</option>
+          <option value="assistant">assistant (Mail)</option></select>
         <input value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value })}
           placeholder={editId ? "HMAC-Secret (leer = unverändert)" : "HMAC-Secret"} className={inp} />
-        <select value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })} className={inp}>
-          <option value="">— Projekt (für task) —</option>
-          {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        {f.mode === "assistant" ? (
+          <input value={f.classify_agent} onChange={(e) => setF({ ...f, classify_agent: e.target.value })}
+            placeholder="Klassifizier-Agent (z. B. mail_classifier)" className={inp} />
+        ) : (
+          <select value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })} className={inp}>
+            <option value="">— Projekt (für task) —</option>
+            {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+        )}
         <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} placeholder="Agent (optional)" className={inp} />
         <input value={f.title_template} onChange={(e) => setF({ ...f, title_template: e.target.value })} placeholder="Titel-Template {feld}" className={inp} />
 

@@ -1,122 +1,24 @@
-"""E-Mail-Webhook → persönlicher Assistent (projektlos).
+"""Assistent-Inbox, gelernte Regeln (Policy) und Web-Chat.
 
-Portiert das nexus-Verhalten (POST /webhooks/new-email, roher Body, HMAC-SHA256 im
-Header X-Webhook-Signature ohne Prefix, Idempotenz über account:uid), ERGÄNZT um eine
-LOKALE Vorklassifizierung: der Rohtext geht nur an das hausinterne Modell, nach außen
-(Claude) reicht nur die geschwärzte Zusammenfassung. Nichts läuft ohne Freigabe.
+Der E-Mail-Eingang selbst läuft über den NORMALEN Webhook (WebhookSub, Modus 'assistant',
+api/nexus.py → services/mail_intake.py). Hier nur die UI-/Verwaltungs-Endpoints.
 """
-import datetime as dt
-import hashlib
-import hmac
 import logging
 
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import settings
 from ..db import get_session
 from ..models.assistant import AssistantPolicy, AssistantTask
-from ..models.notification import Notification
-from ..models.secrets import ProviderToken
 from ..models.user import User
 from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
-from ..services.assistant_policy import match_policy, note_hit, parse_sender, upsert_policy
-from ..services.mail_classify import classify_config, classify_email, set_classify_config
-from ..worker.secrets import resolve_provider_base_url, resolve_provider_token
+from ..services.assistant_policy import upsert_policy
 from .deps import get_current_user, is_owner_or_admin
 
 log = logging.getLogger("traccoon.mail")
 router = APIRouter(tags=["assistant"])
-
-
-# ================= Inbound-Webhook (öffentlich, HMAC-geschützt) =================
-
-@router.post("/webhooks/new-email", status_code=202)
-async def new_email(request: Request, db: AsyncSession = Depends(get_session)):
-    raw = await request.body()
-    secret = settings.mail_webhook_secret
-    if not secret:
-        raise HTTPException(503, "Mail-Webhook nicht konfiguriert")
-    sig = request.headers.get("X-Webhook-Signature", "")
-    expected = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(sig.strip(), expected):
-        raise HTTPException(401, "Signatur ungültig")
-
-    try:
-        payload = await request.json()
-    except Exception:  # noqa: BLE001
-        payload = {}
-    if not isinstance(payload, dict):
-        payload = {}
-
-    account = str(payload.get("account") or "")
-    subject = str(payload.get("subject") or "")
-    sender = str(payload.get("from") or "")
-    uid = payload.get("uid")
-    body = str(payload.get("body") or "")
-
-    # Idempotenz: dieselbe Mail (account:uid) erzeugt kein zweites Item.
-    source = "webhook:new-email"
-    src_ref = f"{account}:{uid}" if uid is not None else None
-    if src_ref:
-        dup = (await db.execute(select(AssistantTask).where(
-            AssistantTask.source == source,
-            AssistantTask.source_ref == src_ref))).scalar_one_or_none()
-        if dup is not None:
-            return {"accepted": True, "duplicate": True, "id": dup.id}
-
-    owner_id = settings.mail_assistant_owner_id or None
-
-    # LOKAL vorklassifizieren + schwärzen (Rohtext verlässt das Haus nicht).
-    cls = await classify_email(db, owner_id, account=account, sender=sender,
-                               subject=subject, body=body)
-
-    # Gelernte Regel suchen (Absender > Domain > Kategorie). Treffer kann automatisch
-    # freigeben, die Schwärzung bestimmen und einen Handlungs-Hinweis mitgeben.
-    sender_email, domain = parse_sender(sender)
-    policy = await match_policy(db, owner_id, sender_email=sender_email, domain=domain,
-                                category=cls["category"])
-    redaction, action_hint, auto = "redacted", "", False
-    if policy is not None:
-        await note_hit(db, policy)
-        redaction, action_hint, auto = policy.redaction, policy.action_hint, policy.auto_approve
-
-    task = AssistantTask(
-        owner_user_id=owner_id, kind="email", source=source, source_ref=src_ref,
-        title=(subject or "(kein Betreff)")[:500],
-        category=cls["category"], priority=cls["priority"],
-        redacted_summary=cls["redacted_summary"],
-        # Nur Metadaten für den späteren IMAP-Volltextzugriff — KEIN Rohtext gespeichert,
-        # AUSSER eine Regel erlaubt ausdrücklich 'unredacted' (dann liegt der Volltext bereit).
-        meta={"account": account, "uid": uid, "from": sender, "subject": subject,
-              "sensitive": cls["sensitive"]},
-        redaction=redaction, action_hint=action_hint or "",
-        raw_body=(body if redaction == "unredacted" else None),
-        status=("approved" if auto else "new"),
-    )
-    db.add(task)
-    await db.commit()
-    await db.refresh(task)
-    log.info("Mail-Item #%s angelegt (%s, prio=%s, sensitive=%s, regel=%s, auto=%s)",
-             task.id, cls["category"], cls["priority"], cls["sensitive"],
-             policy.id if policy else None, auto)
-    if auto:
-        from ..core.redis import enqueue_task
-        await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
-                            "assistant_task_id": task.id})
-    elif owner_id:
-        # Freigabe-Karte per Telegram (falls eingerichtet) — parallel zur Inbox-Seite.
-        owner = await db.get(User, owner_id)
-        if owner and owner.telegram_chat_id:
-            db.add(Notification(
-                user_id=owner_id, assistant_task_id=task.id, kind="assistant_review",
-                chat_id=owner.telegram_chat_id, title=f"📥 {task.title}"[:200],
-                body=(f"von {sender}\n{cls['redacted_summary']}")[:1000]))
-            await db.commit()
-    return {"accepted": True, "id": task.id, "status": task.status, "auto": auto}
 
 
 # ================= Assistent-Inbox (auth) =================
@@ -262,54 +164,6 @@ async def delete_policy(pid: int, user: User = Depends(get_current_user),
     p = await _pol_owned(pid, user, db)
     await db.delete(p)
     await db.commit()
-
-
-# ================= Mail-Webhook-Konfiguration (sichtbar + Klassifizier-Modell wählbar) =================
-
-async def _mail_config(db: AsyncSession, user: User) -> dict:
-    provider, model, token_name = await classify_config(db)
-    base = (settings.app_base_url or "").rstrip("/")
-    webhook_url = (f"{base}/api/webhooks/new-email") if base else "/api/webhooks/new-email"
-    toks = (await db.execute(select(ProviderToken).where(
-        ProviderToken.user_id == user.id, ProviderToken.provider == provider))).scalars().all()
-    # Modelle best-effort vom Endpoint (litellm /models) holen — für das Dropdown.
-    models: list[str] = []
-    try:
-        tok = await resolve_provider_token(db, user.id, provider, token_name)
-        url = await resolve_provider_base_url(db, user.id, provider, token_name)
-        if tok and url:
-            async with httpx.AsyncClient(timeout=8) as c:
-                r = await c.get(url.rstrip("/") + "/models", headers={"Authorization": f"Bearer {tok}"})
-            models = [m.get("id") for m in (r.json().get("data") or []) if m.get("id")]
-    except Exception:  # noqa: BLE001
-        pass
-    return {
-        "webhook_url": webhook_url, "secret_set": bool(settings.mail_webhook_secret),
-        "provider": provider, "model": model, "token_name": token_name,
-        "token_options": [t.name for t in toks], "model_options": models,
-        "can_edit": user.global_role == "admin",
-    }
-
-
-class MailConfigIn(BaseModel):
-    provider: str = "openai"
-    model: str
-    token_name: str = "local"
-
-
-@router.get("/assistant/mail-config")
-async def get_mail_config(user: User = Depends(get_current_user),
-                          db: AsyncSession = Depends(get_session)):
-    return await _mail_config(db, user)
-
-
-@router.put("/assistant/mail-config")
-async def put_mail_config(data: MailConfigIn, user: User = Depends(get_current_user),
-                          db: AsyncSession = Depends(get_session)):
-    if user.global_role != "admin":
-        raise HTTPException(403, "Nur Admin darf die Mail-Klassifizierung ändern")
-    await set_classify_config(db, data.provider, data.model, data.token_name)
-    return await _mail_config(db, user)
 
 
 # ================= Chat mit dem Assistenten (Web, parallel zu Telegram) =================

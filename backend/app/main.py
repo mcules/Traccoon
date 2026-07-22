@@ -48,6 +48,8 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS pending_resource VARCHAR(500)",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS grant_tool VARCHAR(150)",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS grant_resource VARCHAR(500)",
+                # Mail-Webhook als normaler WebhookSub (Modus assistant): Klassifizier-Agent.
+                "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS classify_agent VARCHAR(100)",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:

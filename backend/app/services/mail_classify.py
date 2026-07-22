@@ -12,8 +12,10 @@ import re
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import or_, select
+
 from ..config import settings
-from ..models.nexus import AppSetting
+from ..models.agents import AgentDefinition
 from ..worker.providers.base import ProviderError
 from ..worker.providers.openai import OpenAIProvider
 from ..worker.secrets import resolve_provider_base_url, resolve_provider_token
@@ -21,27 +23,20 @@ from ..worker.secrets import resolve_provider_base_url, resolve_provider_token
 log = logging.getLogger("traccoon.mail")
 
 
-async def classify_config(db: AsyncSession) -> tuple[str, str, str]:
-    """(provider, model, token_name) für die Vorklassifizierung — DB-Override (AppSetting,
-    UI-editierbar) vor env-Default. So bleibt qwen für den Webhook, ohne Redeploy änderbar."""
-    async def _s(key: str, dflt: str) -> str:
-        row = await db.get(AppSetting, f"mail_classify_{key}")
-        return (row.value if row and row.value else "") or dflt
-    return (
-        await _s("provider", settings.mail_classify_provider or "openai"),
-        await _s("model", settings.mail_classify_model),
-        await _s("token_name", settings.mail_classify_token_name or "local"),
-    )
-
-
-async def set_classify_config(db: AsyncSession, provider: str, model: str, token_name: str) -> None:
-    for key, val in (("provider", provider), ("model", model), ("token_name", token_name)):
-        row = await db.get(AppSetting, f"mail_classify_{key}")
-        if row is None:
-            db.add(AppSetting(key=f"mail_classify_{key}", value=val or ""))
-        else:
-            row.value = val or ""
-    await db.commit()
+async def resolve_classify_from_agent(db: AsyncSession, owner_id: int | None,
+                                      role: str) -> tuple[str, str, str] | None:
+    """(provider, model, token_name) aus der AgentDefinition mit dieser Rolle (eigene vor
+    globaler, projektlos). None, wenn es die Rolle nicht gibt → Aufrufer nutzt env-Fallback."""
+    if not role:
+        return None
+    q = select(AgentDefinition).where(
+        AgentDefinition.role == role, AgentDefinition.project_id.is_(None),
+        or_(AgentDefinition.user_id == owner_id, AgentDefinition.user_id.is_(None)))
+    rows = (await db.execute(q)).scalars().all()
+    if not rows:
+        return None
+    row = next((r for r in rows if r.user_id == owner_id), rows[0])
+    return (row.provider or "openai", row.model or "", row.token_name or "")
 
 _ALLOWED_PRIORITY = {"low", "normal", "high", "urgent"}
 
@@ -78,14 +73,21 @@ def _parse_json(text: str) -> dict:
 
 
 async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str,
-                         sender: str, subject: str, body: str) -> dict:
+                         sender: str, subject: str, body: str,
+                         classify_agent: str = "") -> dict:
     """→ {category, priority, sensitive, redacted_summary}. Bei jedem Fehler ein sicherer
-    Fallback (sensitive=True, leere Summary) — im Zweifel NICHTS nach außen geben."""
+    Fallback (sensitive=True, leere Summary) — im Zweifel NICHTS nach außen geben.
+    Provider/Modell/Token kommen aus dem Klassifizier-Agenten (falls gesetzt) → env-Fallback."""
     fallback = {"category": "sonstiges", "priority": "normal",
                 "sensitive": True, "redacted_summary": ""}
 
-    # Laufzeit-Konfig: DB-Override (AppSetting, in der UI editierbar) → env-Default.
-    provider, model, token_name = await classify_config(db)
+    cfg = await resolve_classify_from_agent(db, owner_id, classify_agent)
+    if cfg is not None:
+        provider, model, token_name = cfg
+    else:
+        provider = settings.mail_classify_provider or "openai"
+        model = settings.mail_classify_model
+        token_name = settings.mail_classify_token_name or "local"
     token = await resolve_provider_token(db, owner_id, provider, token_name)
     base_url = await resolve_provider_base_url(db, owner_id, provider, token_name)
     if not token or not base_url or not model:

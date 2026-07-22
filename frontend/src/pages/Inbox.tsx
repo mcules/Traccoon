@@ -4,7 +4,6 @@ import { api, ApiError } from "../api";
 import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
 import AssistantChat from "../components/AssistantChat";
-import AssistantSetup from "../components/AssistantSetup";
 
 interface InboxItem {
   id: number; kind: string; source: string; title: string;
@@ -16,7 +15,7 @@ interface InboxItem {
   created_at: string; finished_at: string | null;
 }
 
-type Tab = "chat" | "inbox" | "rules" | "setup";
+type Tab = "chat" | "inbox" | "rules";
 type Filter = "offen" | "erledigt" | "alle";
 const OPEN = ["new", "approved", "running"];
 
@@ -50,14 +49,13 @@ export default function Inbox() {
         handeln — und du kannst dabei <b>Regeln lernen</b> lassen („ab jetzt immer …").
       </p>
       <div className="mb-4 flex gap-1 border-b border-line">
-        {([["chat", "Chat"], ["inbox", "Eingänge"], ["rules", "Gelernte Regeln"], ["setup", "Webhook & Modell"]] as [Tab, string][]).map(([t, l]) => (
+        {([["chat", "Chat"], ["inbox", "Eingänge"], ["rules", "Gelernte Regeln"]] as [Tab, string][]).map(([t, l]) => (
           <button key={t} onClick={() => setTab(t)}
             className={`px-3 py-2 text-sm ${tab === t ? "border-b-2 border-brand text-ink" : "text-muted"}`}>
             {l}</button>
         ))}
       </div>
-      {tab === "chat" ? <AssistantChat /> : tab === "inbox" ? <InboxList />
-        : tab === "rules" ? <AssistantPolicies /> : <AssistantSetup />}
+      {tab === "chat" ? <AssistantChat /> : tab === "inbox" ? <InboxList /> : <AssistantPolicies />}
     </div>
   );
 }
