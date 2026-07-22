@@ -1,10 +1,10 @@
 from .enums import (  # noqa: F401
-    BoardType, GlobalRole, HoldReason, IssueTypeCategory, LinkType, LocationType,
-    Priority, ProjectRole, PurchaseStatus, SprintState, StatusCategory,
+    BoardType, GlobalRole, GrantLevel, HoldReason, IssueTypeCategory, LinkType, LocationType,
+    Priority, ProjectRole, PurchaseStatus, ResourceType, SprintState, StatusCategory,
     TicketAgentStatus, UserStatus,
 )
 from .user import SYSTEM_USER_ID, User  # noqa: F401
-from .project import Project, ProjectMember, default_ai_assign  # noqa: F401
+from .project import Project, ProjectMember, ResourceGrant, default_ai_assign  # noqa: F401
 from .ticket import (  # noqa: F401
     ActivityLog, Attachment, Blocker, Board, BoardColumn, Comment, Issue, IssueCounter,
     IssueLink, IssueTag, IssueType, SavedFilter, Sprint, Tag, TicketFileChange, WorkflowStatus,
@@ -26,7 +26,7 @@ from .notification import Notification  # noqa: F401
 from .plugins import McpServer, Plugin, PluginData, PluginFile, Skill  # noqa: F401
 
 __all__ = [
-    "User", "SYSTEM_USER_ID", "Project", "ProjectMember", "default_ai_assign",
+    "User", "SYSTEM_USER_ID", "Project", "ProjectMember", "ResourceGrant", "default_ai_assign",
     "IssueType", "WorkflowStatus", "IssueCounter", "Board", "BoardColumn", "Sprint",
     "Tag", "IssueTag", "Issue", "IssueLink", "Comment", "ActivityLog", "SavedFilter",
     "Blocker", "Location", "HardwareModel", "HardwareAsset", "HardwareWorkflow",

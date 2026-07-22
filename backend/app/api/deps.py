@@ -81,13 +81,54 @@ class Access:
     role: ProjectRole
     ai_assign: bool
     is_member: bool
+    inherited: bool = False  # Rolle vom Eltern-Baum geerbt statt direkte Mitgliedschaft
 
     def has_role(self, minimum: ProjectRole) -> bool:
         return ROLE_RANK[self.role] >= ROLE_RANK[minimum]
 
 
+def _cap_inherited_role(role: ProjectRole) -> ProjectRole:
+    """Owner-Rechte werden bei Vererbung gecappt (keine automatischen Lösch-/Board-Umbau-Rechte
+    im Sub-Projekt) — andere Rollen werden 1:1 übernommen."""
+    return ProjectRole.maintainer if role == ProjectRole.owner else role
+
+
+async def _find_inherited_membership(
+    project: Project, user: User, db: AsyncSession
+) -> ProjectMember | None:
+    """Läuft den parent_id-Baum nach oben und liefert die erste gefundene Mitgliedschaft
+    eines Vorfahren-Projekts. Bricht ab, sobald ein Projekt inherit_members=False hat
+    (dieses Projekt will keine geerbten Rechte von oben), sowie bei Zyklen."""
+    if not project.inherit_members:
+        return None
+    seen = {project.id}
+    parent_id = project.parent_id
+    while parent_id is not None and parent_id not in seen:
+        parent = await db.get(Project, parent_id)
+        if parent is None:
+            break
+        seen.add(parent.id)
+        member = (
+            await db.execute(
+                select(ProjectMember).where(
+                    ProjectMember.project_id == parent.id, ProjectMember.user_id == user.id
+                )
+            )
+        ).scalar_one_or_none()
+        if member is not None:
+            return member
+        if not parent.inherit_members:
+            break
+        parent_id = parent.parent_id
+    return None
+
+
 async def build_access(project: Project, user: User, db: AsyncSession) -> Access:
-    """Ermittelt die effektive Zugriffs-/Rechte-Sicht eines Users auf ein Projekt."""
+    """Ermittelt die effektive Zugriffs-/Rechte-Sicht eines Users auf ein Projekt.
+
+    Reihenfolge: eigene Mitgliedschaft im Projekt selbst (voll) > geerbt vom nächsten
+    Vorfahren mit Mitgliedschaft (Owner auf maintainer gecappt) > Admin-Override > 404.
+    """
     member = (
         await db.execute(
             select(ProjectMember).where(
@@ -97,6 +138,12 @@ async def build_access(project: Project, user: User, db: AsyncSession) -> Access
     ).scalar_one_or_none()
     if member is not None:
         return Access(user, project, member.role, member.ai_assign, True)
+    inherited = await _find_inherited_membership(project, user, db)
+    if inherited is not None:
+        return Access(
+            user, project, _cap_inherited_role(inherited.role), inherited.ai_assign, False,
+            inherited=True,
+        )
     # Admin-Override: globaler Admin darf auch ohne Mitgliedschaft zugreifen
     if user.global_role == GlobalRole.admin:
         return Access(user, project, ProjectRole.owner, True, False)
