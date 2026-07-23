@@ -163,7 +163,10 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
                             body=(fill(sub.body_template) or fill(sub.title_template))[:4000],
                             chat_id=sub.notify_chat))
         await db.commit()
-        return {"accepted": True, "alert": True, "event": event}
+        # mode=assistant: Alert UND Agent-Lauf (z. B. uniwar-Angriff → Autopilot reagiert).
+        # Nur notify/task: hier fertig (reine Sofort-Meldung).
+        if sub.mode != "assistant":
+            return {"accepted": True, "alert": True, "event": event}
 
     # Coalescing: innerhalb des Cooldown-Fensters nur sammeln, der Scheduler fasst zusammen.
     cooldown = int((sub.event_cooldowns or {}).get(event, 0)) if event else 0

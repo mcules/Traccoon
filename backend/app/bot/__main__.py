@@ -178,6 +178,23 @@ async def run_bot() -> None:
         if not await _allowed(m.from_user.id):
             return
         rt = m.reply_to_message.text or m.reply_to_message.html_text or ""
+
+        # Banking-2FA: Antwort auf die „Banking-Sync braucht einen 2FA-Code für <source>"-Karte
+        # → OTP über das banking-MCP an submit_auth weiterreichen (ersetzt den Hermes-Relay).
+        bm = re.search(r"2FA-Code für (.+?) \(Auth-Request", rt)
+        if bm and "Banking-Sync" in rt:
+            source, code = bm.group(1).strip(), (m.text or "").strip()
+            try:
+                from ..worker.mcp_client import mcp_session
+                spec = {"name": "banking", "transport": "http",
+                        "url": "http://banking-mcp:3010/mcp", "headers": {}}
+                async with mcp_session("bot", servers=[spec], gateway_url="", gateway_token="") as mcp:
+                    await mcp.call("banking__submit_auth", {"source": source, "code": code})
+                await m.answer(f"✅ 2FA-Code an {source} weitergeleitet.")
+            except Exception as exc:  # noqa: BLE001
+                await m.answer(f"⚠ Weiterleitung an {source} fehlgeschlagen: {exc}")
+            return
+
         match = re.search(r"\[([A-Z][A-Z0-9]*-\d+)\]", rt)
         if not match:
             return
