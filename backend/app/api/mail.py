@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models.assistant import AssistantPolicy, AssistantTask
+from ..models.assistant import AssistantPermission, AssistantPolicy, AssistantTask
 from ..models.user import User
 from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
 from ..services.assistant_policy import upsert_policy
@@ -162,6 +162,43 @@ async def update_policy(pid: int, data: PolicyIn, user: User = Depends(get_curre
 async def delete_policy(pid: int, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
     p = await _pol_owned(pid, user, db)
+    await db.delete(p)
+    await db.commit()
+
+
+# ================= Gelernte Tool-Freigaben (AssistantPermission) =================
+
+class PermIn(BaseModel):
+    tool: str
+    resource: str = "*"
+    action: str = "allow"   # allow | ask | deny
+
+
+@router.get("/assistant/tool-permissions")
+async def list_tool_perms(user: User = Depends(get_current_user),
+                          db: AsyncSession = Depends(get_session)):
+    q = select(AssistantPermission).order_by(AssistantPermission.tool)
+    if user.global_role != "admin":
+        q = q.where(AssistantPermission.owner_user_id == user.id)
+    rows = (await db.execute(q)).scalars().all()
+    return [{"id": p.id, "tool": p.tool, "resource": p.resource, "action": p.action} for p in rows]
+
+
+@router.post("/assistant/tool-permissions")
+async def upsert_tool_perm(data: PermIn, user: User = Depends(get_current_user),
+                           db: AsyncSession = Depends(get_session)):
+    from ..worker.assistant_gate import learn_permission
+    action = data.action if data.action in ("allow", "ask", "deny") else "allow"
+    await learn_permission(db, user.id, data.tool.strip(), (data.resource or "*").strip(), action)
+    return {"ok": True}
+
+
+@router.delete("/assistant/tool-permissions/{pid}", status_code=204)
+async def delete_tool_perm(pid: int, user: User = Depends(get_current_user),
+                           db: AsyncSession = Depends(get_session)):
+    p = await db.get(AssistantPermission, pid)
+    if p is None or not is_owner_or_admin(p.owner_user_id, user):
+        raise HTTPException(404, "Nicht gefunden")
     await db.delete(p)
     await db.commit()
 
