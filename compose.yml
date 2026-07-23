@@ -66,6 +66,8 @@ services:
       MAIL_CLASSIFY_PROVIDER: ${MAIL_CLASSIFY_PROVIDER:-openai}
       MAIL_CLASSIFY_TOKEN_NAME: ${MAIL_CLASSIFY_TOKEN_NAME:-local}
       MAIL_CLASSIFY_MODEL: ${MAIL_CLASSIFY_MODEL:-}
+      MCPJUNGLE_BASE: ${MCPJUNGLE_BASE:-http://mcpjungle:8080}
+      MCPJUNGLE_ADMIN_TOKEN: ${MCPJUNGLE_ADMIN_TOKEN:-}
     ports:
       - "${BACKEND_PORT:-8800}:8800"
     volumes:
@@ -77,6 +79,7 @@ services:
       default:
         aliases:
           - traccoon-backend   # eindeutig, damit das Frontend am proxy-Netz nicht kollidiert
+      mcp-backends: {}         # erreicht mcpjungle:8080 (Self-Service-MCP-Provisionierung)
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8800", "--reload"]
 
   worker:

@@ -73,6 +73,37 @@ async def set_default_view(d: StrIn, u: User = Depends(get_current_user), db: As
     await db.commit()
 
 
+class McpReachIn(BaseModel):
+    servers: list[str]
+
+
+@router.get("/me/mcp")
+async def my_mcp(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """Eigene MCP-Reichweite (MCPJungle-Gruppe) + wählbare Server. Self-Service konfigurierbar."""
+    from ..services.mcp_provision import list_available_servers
+    available: list[str] = []
+    try:
+        available = await list_available_servers()
+    except Exception:  # noqa: BLE001  (MCPJungle nicht erreichbar / kein Admin-Token)
+        pass
+    return {"group": u.mcp_group or "", "servers": list(u.mcp_servers or []),
+            "provisioned": bool(u.mcp_group and u.mcp_token_enc), "available": available}
+
+
+@router.put("/me/mcp")
+async def set_my_mcp(d: McpReachIn, u: User = Depends(get_current_user),
+                     db: AsyncSession = Depends(get_session)):
+    """MCP-Reichweite selbst setzen: Gruppe + gescopeten Token (neu) provisionieren."""
+    from ..services.mcp_provision import McpProvisionError, provision_user_mcp
+    try:
+        await provision_user_mcp(db, u, d.servers)
+    except McpProvisionError as exc:
+        from fastapi import HTTPException
+        raise HTTPException(503, str(exc))
+    return {"group": u.mcp_group or "", "servers": list(u.mcp_servers or []),
+            "provisioned": bool(u.mcp_group and u.mcp_token_enc)}
+
+
 @router.get("/me/onboarding")
 async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     """Was fehlt noch, damit echte Agentenläufe möglich sind — geprüft, nicht geraten."""
