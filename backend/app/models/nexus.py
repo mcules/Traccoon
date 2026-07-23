@@ -77,6 +77,8 @@ class WebhookSub(TimestampMixin, Base):
     # Platzhalter {account}/{uid}/{from}/{subject}/{body_text}… werden aus dem Payload gefüllt.
     # Leer = eingebauter Standard-Prompt. Portiert aus nexus webhook_subs.prompt_tmpl.
     prompt_tmpl: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Chatloser Sofortlauf ohne Freigabe (z. B. paperless-linked Link-back). Default: Review-Gate.
+    auto_run: Mapped[bool] = mapped_column(Boolean, default=False)
     status_new: Mapped[str] = mapped_column(String(20), default="planning")
     title_template: Mapped[str] = mapped_column(String(500), default="{title}")
     body_template: Mapped[str] = mapped_column(Text, default="{body}")

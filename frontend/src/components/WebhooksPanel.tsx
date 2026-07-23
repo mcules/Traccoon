@@ -4,7 +4,7 @@ import { api, Project } from "../api";
 
 const EMPTY = {
   route: "", mode: "task", secret: "", project_id: "", agent: "", classify_agent: "", prompt_tmpl: "",
-  title_template: "{title}", body_template: "{body}",
+  auto_run: false, title_template: "{title}", body_template: "{body}",
   event_header: "", event_filter: "", event_key_header: "",
   event_cooldowns: "", alert_events: "", ref_field: "", notify_chat: "",
 };
@@ -34,7 +34,7 @@ export default function WebhooksPanel() {
   const body = () => ({
     route: f.route, mode: f.mode, secret: f.secret,
     project_id: f.project_id ? +f.project_id : null, agent: f.agent || null,
-    classify_agent: f.classify_agent || null, prompt_tmpl: f.prompt_tmpl || null,
+    classify_agent: f.classify_agent || null, prompt_tmpl: f.prompt_tmpl || null, auto_run: f.auto_run,
     title_template: f.title_template, body_template: f.body_template,
     event_header: f.event_header || null, event_filter: f.event_filter || null,
     event_key_header: f.event_key_header || null,
@@ -54,7 +54,7 @@ export default function WebhooksPanel() {
     setF({
       route: w.route, mode: w.mode, secret: "", project_id: w.project_id ? String(w.project_id) : "",
       agent: w.agent || "", classify_agent: w.classify_agent || "", prompt_tmpl: w.prompt_tmpl || "",
-      title_template: w.title_template || "{title}",
+      auto_run: !!w.auto_run, title_template: w.title_template || "{title}",
       body_template: w.body_template || "{body}", event_header: w.event_header || "",
       event_filter: w.event_filter || "", event_key_header: w.event_key_header || "",
       event_cooldowns: fmtCooldowns(w.event_cooldowns),
@@ -123,6 +123,12 @@ export default function WebhooksPanel() {
             rows={8} className={`col-span-2 ${inp} font-mono text-xs`} />
         ) : (
           <input value={f.title_template} onChange={(e) => setF({ ...f, title_template: e.target.value })} placeholder="Titel-Template {feld}" className={inp} />
+        )}
+        {f.mode === "assistant" && (
+          <label className="col-span-2 flex items-center gap-2 text-sm text-muted">
+            <input type="checkbox" checked={f.auto_run} onChange={(e) => setF({ ...f, auto_run: e.target.checked })} />
+            Chatlos sofort ausführen (ohne Freigabe) — z. B. paperless-linked Link-back
+          </label>
         )}
 
         <button onClick={() => setOpen(!open)} className="col-span-2 text-left text-xs text-muted hover:text-ink">

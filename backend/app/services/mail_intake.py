@@ -16,25 +16,24 @@ from .mail_classify import classify_email
 
 log = logging.getLogger("traccoon.mail")
 
-# Payload-Felder, die im prompt_tmpl als {platzhalter} gefüllt werden (nexus-kompatibel).
-_TMPL_KEYS = ("account", "folder", "uid", "from", "to", "cc", "reply_to", "subject",
-              "date", "message_id", "filter_decision", "has_attachments",
-              "body_html_as_text", "attachments")
-
-
 def _fill_prompt(tmpl: str, payload: dict) -> str:
-    """{platzhalter} aus dem Payload füllen (fehlende → leer). Sichere Ersetzung (kein str.format,
-    damit Code-Beispiele mit { } im Prompt nicht brechen)."""
+    """{platzhalter} aus dem Payload füllen — JEDES Payload-Feld (mail ODER paperless-linked:
+    {document_id}/{url}/{note}/{hinweis}…). Fehlende bleiben leer. Sichere Ersetzung (kein
+    str.format, damit Code-Beispiele mit { } im Prompt nicht brechen)."""
     out = tmpl
-    for k in _TMPL_KEYS:
-        out = out.replace("{" + k + "}", str(payload.get(k, "") if payload.get(k) is not None else ""))
-    body = payload.get("body_text", payload.get("body", "")) or ""
-    return out.replace("{body_text}", str(body))
+    for k, v in (payload or {}).items():
+        out = out.replace("{" + k + "}", "" if v is None else str(v))
+    # body_text als Alias für body (nexus-Mail-Prompt).
+    out = out.replace("{body_text}", str(payload.get("body_text", payload.get("body", "")) or ""))
+    # Übrige, nicht gelieferte Platzhalter neutralisieren (leeren).
+    import re
+    return re.sub(r"\{[a-z_]+\}", "", out)
 
 
 async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
                       source: str, classify_agent: str = "", agent: str = "assistent",
-                      prompt_tmpl: str = "") -> tuple[AssistantTask | None, bool]:
+                      prompt_tmpl: str = "", ref_field: str = "",
+                      auto_run: bool = False) -> tuple[AssistantTask | None, bool]:
     """(task, auto). Idempotent über (source, account:uid). Committet selbst; enqueued NICHT.
     Ohne `classify_agent` = 1:1-nexus-Passthrough (KEINE Klassifizierung; der Agent liest die
     Mail selbst per IMAP und handelt). Mit `classify_agent` = lokale Vorklassifizierung/Schwärzung.
@@ -45,7 +44,12 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
     uid = payload.get("uid")
     body = str(payload.get("body") or "")
 
-    src_ref = f"{account}:{uid}" if uid is not None else None
+    # Idempotenz-Schlüssel: konfiguriertes Feld (z. B. document_id für paperless-linked) → sonst account:uid.
+    if ref_field:
+        rv = payload.get(ref_field)
+        src_ref = str(rv) if rv not in (None, "") else None
+    else:
+        src_ref = f"{account}:{uid}" if uid is not None else None
     if src_ref:
         from sqlalchemy import select
         dup = (await db.execute(select(AssistantTask).where(
@@ -68,6 +72,8 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
     if policy is not None:
         await note_hit(db, policy)
         redaction, action_hint, auto = policy.redaction, policy.action_hint, policy.auto_approve
+    if auto_run:  # Webhook erzwingt chatlosen Sofortlauf (z. B. paperless-linked Link-back).
+        auto = True
 
     task = AssistantTask(
         owner_user_id=owner_id, kind="email", source=source, source_ref=src_ref,
