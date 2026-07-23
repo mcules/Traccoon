@@ -7,3 +7,4 @@ node_modules/
 dist/
 .DS_Store
 *.egg-info/
+MIGRATION_ROLLBACK.md
