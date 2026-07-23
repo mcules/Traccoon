@@ -119,6 +119,7 @@ services:
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
     volumes:
       - ./backend/app:/app/app
+    networks: [default, mcp-backends]   # mcp-backends: banking-mcp für 2FA-OTP-Reply erreichbar
     command: ["python", "-m", "app.bot"]
 
   shotter:
