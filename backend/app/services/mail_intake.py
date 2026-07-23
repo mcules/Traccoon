@@ -16,10 +16,25 @@ from .mail_classify import classify_email
 
 log = logging.getLogger("traccoon.mail")
 
+# Payload-Felder, die im prompt_tmpl als {platzhalter} gefüllt werden (predecessor-kompatibel).
+_TMPL_KEYS = ("account", "folder", "uid", "from", "to", "cc", "reply_to", "subject",
+              "date", "message_id", "filter_decision", "has_attachments",
+              "body_html_as_text", "attachments")
+
+
+def _fill_prompt(tmpl: str, payload: dict) -> str:
+    """{platzhalter} aus dem Payload füllen (fehlende → leer). Sichere Ersetzung (kein str.format,
+    damit Code-Beispiele mit { } im Prompt nicht brechen)."""
+    out = tmpl
+    for k in _TMPL_KEYS:
+        out = out.replace("{" + k + "}", str(payload.get(k, "") if payload.get(k) is not None else ""))
+    body = payload.get("body_text", payload.get("body", "")) or ""
+    return out.replace("{body_text}", str(body))
+
 
 async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
-                      source: str, classify_agent: str = "",
-                      agent: str = "assistent") -> tuple[AssistantTask | None, bool]:
+                      source: str, classify_agent: str = "", agent: str = "assistent",
+                      prompt_tmpl: str = "") -> tuple[AssistantTask | None, bool]:
     """(task, auto). Idempotent über (source, account:uid). Committet selbst; enqueued NICHT.
     Ohne `classify_agent` = 1:1-predecessor-Passthrough (KEINE Klassifizierung; der Agent liest die
     Mail selbst per IMAP und handelt). Mit `classify_agent` = lokale Vorklassifizierung/Schwärzung.
@@ -59,7 +74,9 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
         title=(subject or "(kein Betreff)")[:500],
         category=cls["category"], priority=cls["priority"], redacted_summary=cls["redacted_summary"],
         meta={"account": account, "uid": uid, "from": sender, "subject": subject,
-              "sensitive": cls["sensitive"], "agent": agent or "assistent"},
+              "sensitive": cls["sensitive"], "agent": agent or "assistent",
+              # Voller Task-Prompt aus dem Webhook (Mail-Wissen), Platzhalter gefüllt.
+              **({"prompt": _fill_prompt(prompt_tmpl, payload)} if prompt_tmpl else {})},
         redaction=redaction, action_hint=action_hint or "",
         raw_body=(body if redaction == "unredacted" else None),
         status=("approved" if auto else "new"),
