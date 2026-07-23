@@ -46,6 +46,8 @@ export default function WebhooksPanel() {
     mutationFn: () => editId ? api.put(`/webhooks/${editId}`, body()) : api.post("/webhooks", body()),
     onSuccess: () => { setF(EMPTY); setEditId(null); inv(); },
   });
+  const toggle = useMutation({
+    mutationFn: (w: any) => api.post(`/webhooks/${w.id}/enabled`, { enabled: !w.enabled }), onSuccess: inv });
   const del = useMutation({ mutationFn: (id: number) => api.del(`/webhooks/${id}`), onSuccess: inv });
 
   const edit = (w: any) => {
@@ -72,9 +74,10 @@ export default function WebhooksPanel() {
         durch den gewählten Klassifizier-Agenten → Assistent-Inbox).</p>
       <div className="mb-4 space-y-2">
         {hooks?.map((w) => (
-          <div key={w.id} className="rounded border border-line bg-card p-2 text-sm">
+          <div key={w.id} className={`rounded border border-line bg-card p-2 text-sm ${w.enabled ? "" : "opacity-50"}`}>
           <div className="flex flex-wrap items-center gap-3">
             <span className="font-medium">{w.route}</span><span className="text-muted">{w.mode}</span>
+            {!w.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">aus</span>}
             {w.secret_set && <span className="text-xs">🔒</span>}
             {w.agent && <span className="rounded bg-surface px-1 text-xs">→ {w.agent}</span>}
             {w.classify_agent && <span className="rounded bg-surface px-1 text-xs">🔒 {w.classify_agent}</span>}
@@ -85,15 +88,16 @@ export default function WebhooksPanel() {
               <span className="rounded bg-surface px-1 text-xs">⏳ {fmtCooldowns(w.event_cooldowns)}</span>}
             {w.ref_field && <span className="rounded bg-surface px-1 text-xs">ref: {w.ref_field}</span>}
             <div className="flex-1" />
-            <button onClick={() => edit(w)} className="text-muted hover:text-ink">bearbeiten</button>
-            <button onClick={() => del.mutate(w.id)} className="text-muted hover:text-red-400">löschen</button>
+            <button title={w.enabled ? "Deaktivieren" : "Aktivieren"} onClick={() => toggle.mutate(w)} className={ico}>{w.enabled ? "⏸" : "⏵"}</button>
+            <button title="Bearbeiten" onClick={() => edit(w)} className={ico}>✎</button>
+            <button title="Löschen" onClick={() => del.mutate(w.id)} className={ico + " hover:text-red-400"}>🗑</button>
           </div>
           <div className="mt-1 flex items-center gap-2">
             <code className="flex-1 truncate rounded bg-surface px-1.5 py-0.5 text-xs">
               {location.origin}/api/hooks/{w.public_id}
             </code>
-            <button onClick={() => navigator.clipboard?.writeText(`${location.origin}/api/hooks/${w.public_id}`)}
-              className="text-xs text-brand hover:underline">kopieren</button>
+            <button title="URL kopieren" onClick={() => navigator.clipboard?.writeText(`${location.origin}/api/hooks/${w.public_id}`)}
+              className={ico + " hover:text-brand"}>⧉</button>
           </div>
           </div>
         ))}
@@ -162,3 +166,4 @@ export default function WebhooksPanel() {
   );
 }
 const inp = "rounded border border-line bg-surface px-2 py-1.5 text-ink";
+const ico = "text-base leading-none text-muted hover:text-ink";

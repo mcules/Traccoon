@@ -114,6 +114,23 @@ async def update_webhook(wid: int, data: WebhookIn, user: User = Depends(get_cur
     return _wh_out(w)
 
 
+class EnabledIn(BaseModel):
+    enabled: bool
+
+
+@router.post("/webhooks/{wid}/enabled", response_model=WebhookOut)
+async def set_webhook_enabled(wid: int, data: EnabledIn, user: User = Depends(get_current_user),
+                             db: AsyncSession = Depends(get_session)):
+    """An/Aus ohne Löschen — deaktiviert weist der Inbound-Endpoint ab (404)."""
+    w = await db.get(WebhookSub, wid)
+    if w is None or not is_owner_or_admin(w.owner_user_id, user):
+        raise HTTPException(404, "Webhook nicht gefunden")
+    w.enabled = data.enabled
+    await db.commit()
+    await db.refresh(w)
+    return _wh_out(w)
+
+
 @router.delete("/webhooks/{wid}", status_code=204)
 async def delete_webhook(wid: int, user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
@@ -276,7 +293,9 @@ class JobIn(BaseModel):
 
 class JobOut(BaseModel):
     id: int; name: str; type: str; schedule: str; kind: str; agent: str | None
-    notify_mode: str; result_html: bool
+    prompt: str = ""; command: str = ""; args: list = []; project_id: int | None = None
+    notify_mode: str; notify_chat: str | None = None; result_html: bool
+    pause_on_success: bool = False; run_timeout: int = 600
     enabled: bool; paused: bool; last_run_at: dt.datetime | None
     model_config = {"from_attributes": True}
 
@@ -298,6 +317,19 @@ async def create_job(data: JobIn, user: User = Depends(get_current_user),
     return job
 
 
+@router.put("/jobs/{jid}", response_model=JobOut)
+async def update_job(jid: int, data: JobIn, user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)):
+    job = await db.get(Job, jid)
+    if job is None or not is_owner_or_admin(job.user_id, user):
+        raise HTTPException(404, "Job nicht gefunden")
+    for field, value in data.model_dump().items():
+        setattr(job, field, value)
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
 @router.post("/jobs/{jid}/run", response_model=JobOut)
 async def run_job_now(jid: int, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
@@ -314,6 +346,22 @@ async def run_job_now(jid: int, user: User = Depends(get_current_user),
         await _run_script(db, job, jr)
     else:
         await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}", "job_id": job.id, "job_run_id": jr.id})
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.post("/jobs/{jid}/enabled", response_model=JobOut)
+async def set_job_enabled(jid: int, data: EnabledIn, user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    """An/Aus ohne Löschen — deaktivierte Jobs überspringt der Scheduler.
+    Reaktivieren hebt zugleich ein pause_on_success-`paused` wieder auf."""
+    job = await db.get(Job, jid)
+    if job is None or not is_owner_or_admin(job.user_id, user):
+        raise HTTPException(404, "Job nicht gefunden")
+    job.enabled = data.enabled
+    if data.enabled:
+        job.paused = False
     await db.commit()
     await db.refresh(job)
     return job
