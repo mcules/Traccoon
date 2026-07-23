@@ -1,4 +1,4 @@
-"""Einheitliches Provider-Interface (Port aus predecessor).
+"""Einheitliches Provider-Interface (Port aus dem Vorläufer).
 
 Messages/Tools im OpenAI-Format (interner Lingua-Franca); Provider, die anders
 sprechen (Anthropic, Codex), übersetzen in ihrem Adapter.

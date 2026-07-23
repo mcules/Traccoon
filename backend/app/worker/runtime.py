@@ -1,8 +1,8 @@
-"""Agenten-Tool-Loop (Port aus predecessor/agent/runtime.py, auf SQLAlchemy+Traccoon).
+"""Agenten-Tool-Loop (Port aus dem Vorläufer (agent/runtime.py), auf SQLAlchemy+Traccoon).
 
 mode=plan|execute. Eingebaute Tools: fs_read/list/write/edit, check, deploy,
 screenshot, ask_human, submit_plan, continue_later, open_tasks, delegate.
-Permission-Laufzeit-Gate, Build-Gate, max_iterations-Verhalten wie in predecessor.
+Permission-Laufzeit-Gate, Build-Gate, max_iterations-Verhalten wie im Vorläufer.
 """
 from __future__ import annotations
 
@@ -257,7 +257,7 @@ async def _do_check(ws_root: str | None, verify_command: str) -> str:
 async def _do_deploy(db: AsyncSession, issue_id: int, project_id: int, stack_dir: str,
                      worktree: str | None, check_only: bool = False) -> str:
     """Deployment einreihen (deployments-Tabelle) und auf das Ergebnis des Deployer-Sidecars warten."""
-    from ..models.predecessor import Deployment
+    from ..models.ops import Deployment
     dep = Deployment(issue_id=issue_id, project_id=project_id, stack_dir=stack_dir,
                      worktree=worktree or "", check_only=check_only,
                      status="pending-check" if check_only else "pending")
@@ -381,7 +381,7 @@ async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = ""
                    iterations: int = 0, wt_fp: str | None = None,
                    in_tok: int = 0, out_tok: int = 0, cache_read: int = 0) -> None:
     from ..models.agents import CostEntry
-    from ..models.predecessor import ProviderModel
+    from ..models.ops import ProviderModel
     from ..models.ticket import Issue
     run = await db.get(Run, run_id)
     if run:

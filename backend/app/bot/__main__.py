@@ -18,7 +18,7 @@ from ..db import SessionLocal
 from ..models.assistant import AssistantTask
 from ..models.enums import GlobalRole, TicketAgentStatus
 from ..models.notification import Notification
-from ..models.predecessor import PermAction, PermGrant, Permission, PermRequest
+from ..models.ops import PermAction, PermGrant, Permission, PermRequest
 from ..models.ticket import Issue
 from ..models.user import User
 from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task

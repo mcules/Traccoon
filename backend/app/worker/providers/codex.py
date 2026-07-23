@@ -1,6 +1,6 @@
 """Codex / OpenAI über ChatGPT-Subscription (Responses-Format).
 
-Port aus predecessor. Token (JWT) kommt über `auth_token` (Secret-Tresor). Account-ID
+Port aus dem Vorläufer. Token (JWT) kommt über `auth_token` (Secret-Tresor). Account-ID
 wird aus dem JWT-Claim gelesen. Bild-Blocks → Platzhalter (Codex kann kein Vision).
 """
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """Anthropic / Claude über OAuth-Subscription (sk-ant-oat setup-token).
 
-Port aus predecessor. Token kommt ausschließlich über `auth_token` (Secret-Tresor);
+Port aus dem Vorläufer. Token kommt ausschließlich über `auth_token` (Secret-Tresor);
 kein Datei-AuthStore. Die OAuth-Details sind zwingend für den Subscription-Token.
 """
 from __future__ import annotations

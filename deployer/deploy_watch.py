@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Traccoon Deployer-Watchdog (Port des predecessor-Musters auf Postgres, pure stdlib + psycopg2).
+"""Traccoon Deployer-Watchdog (Port des Vorläufer-Musters auf Postgres, pure stdlib + psycopg2).
 
 Pollt die `deployments`-Tabelle. Bewusst getrennt + build-unabhängiges Image, damit ein
 Self-Deploy den Deployer nicht mitkillt (sonst kein Rollback). Spricht Postgres DIREKT

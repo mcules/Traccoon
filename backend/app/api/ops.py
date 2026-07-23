@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..models.enums import ProjectRole, TicketAgentStatus
-from ..models.predecessor import Job, JobRun, PermAction, Permission, WebhookCoalesce, WebhookSub
+from ..models.ops import Job, JobRun, PermAction, Permission, WebhookCoalesce, WebhookSub
 from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import User
 from .deps import (
@@ -18,7 +18,7 @@ from .deps import (
     require_admin, require_role,
 )
 
-router = APIRouter(tags=["predecessor"])
+router = APIRouter(tags=["ops"])
 
 
 # ================= Webhooks =================

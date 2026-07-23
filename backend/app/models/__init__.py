@@ -17,7 +17,7 @@ from .hardware import (  # noqa: F401
 from .agents import (  # noqa: F401
     AgentDefinition, CostEntry, Run, RunStep,
 )
-from .predecessor import (  # noqa: F401
+from .ops import (  # noqa: F401
     Deployment, Job, JobRun, PermAction, PermGrant, PermRequest, Permission,
     ProviderModel, WebhookCoalesce, WebhookSub,
 )

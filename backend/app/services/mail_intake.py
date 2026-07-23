@@ -23,7 +23,7 @@ def _fill_prompt(tmpl: str, payload: dict) -> str:
     out = tmpl
     for k, v in (payload or {}).items():
         out = out.replace("{" + k + "}", "" if v is None else str(v))
-    # body_text als Alias für body (predecessor-Mail-Prompt).
+    # body_text als Alias für body (Mail-Prompt).
     out = out.replace("{body_text}", str(payload.get("body_text", payload.get("body", "")) or ""))
     # Übrige, nicht gelieferte Platzhalter neutralisieren (leeren).
     import re
@@ -35,7 +35,7 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
                       prompt_tmpl: str = "", ref_field: str = "",
                       auto_run: bool = False) -> tuple[AssistantTask | None, bool]:
     """(task, auto). Idempotent über (source, account:uid). Committet selbst; enqueued NICHT.
-    Ohne `classify_agent` = 1:1-predecessor-Passthrough (KEINE Klassifizierung; der Agent liest die
+    Ohne `classify_agent` = 1:1-Passthrough (KEINE Klassifizierung; der Agent liest die
     Mail selbst per IMAP und handelt). Mit `classify_agent` = lokale Vorklassifizierung/Schwärzung.
     `agent` = welcher Agent die Mail bearbeitet (aus dem Webhook, Default 'assistent')."""
     account = str(payload.get("account") or "")
@@ -62,7 +62,7 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
         cls = await classify_email(db, owner_id, account=account, sender=sender,
                                    subject=subject, body=body, classify_agent=classify_agent)
     else:
-        # Passthrough wie predecessor: keine Klassifizierung, keine Schwärzung.
+        # Passthrough wie im Vorläufer: keine Klassifizierung, keine Schwärzung.
         cls = {"category": "", "priority": "normal", "sensitive": False, "redacted_summary": ""}
 
     sender_email, domain = parse_sender(sender)

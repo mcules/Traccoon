@@ -2,7 +2,7 @@
 
 Vereintes **Agenten-Ticketsystem**: ein vollwertiges Jira-artiges Projekt-/Ticketsystem
 (inkl. Hardware-Beschaffung) **plus** darübergelegte Multi-Agent-Entwicklung. Vereint die
-Konzepte von DevTeam Agents, Predecessor und dem früheren Traccoon-Test-Stack.
+Konzepte von DevTeam Agents und dem früheren Traccoon-Test-Stack.
 
 Bauvorlage / Spezifikation: Obsidian-Vault `02 Projekte/Traccoon/Pflichtenheft 2026-07-17.md`.
 
@@ -49,17 +49,17 @@ Preview-Server :8661) · `shotter` (Playwright :8700) · `telegram-bot` (aiogram
 - **Tickets/Board:** hierarchische Projekte, konfigurierbare Typen/Status, Kanban, Sprints,
   Kommentare (agent/internal, Kommentar-Trigger), Tags, Board-Move, LexoRank.
 - **Hardware:** Katalog → Exemplar → Lagerort-Baum, Beschaffungs-Workflow mit Personen-Übergabe.
-- **Echtes Agenten-Gehirn:** eigener Python-Tool-Loop (Predecessor-Stil) gegen Anthropic-OAuth + Codex,
+- **Echtes Agenten-Gehirn:** eigener Python-Tool-Loop gegen Anthropic-OAuth + Codex,
   Provider-Router (Cooldown/Circuit-Breaker), Tools fs_read/write/edit/check/deploy/screenshot/
   ask_human/submit_plan/continue_later, **Permission-Laufzeit-Gate** (allow/ask/deny, permreq/grant),
   **Git-Worktree-Engine** (prepare/commit/accept, Pre-Merge-Gate, Konflikt-an-Agent), Build-Gate,
   Continuation/Stall-Erkennung, Kosten-Tracking. Dispatcher verarbeitet **nur zugewiesene** Tickets.
 - **PM-Chat:** WS-Orchestrierung (`<tickets>`-Ops → legt Tickets an + delegiert), Menschenhoheit bei Freigabe/Abnahme.
 - **Deployer:** Auto-Deploy bei Abnahme, zweigleisig (Self-Deploy + Rollback / generisch), check-Build, Testenvs pro Ticket.
-- **Predecessor:** Webhooks (HMAC, task/notify, Idempotenz), Job-Scheduler (cron/interval/once, prompt/script, /digest),
+- **Automatisierung:** Webhooks (HMAC, task/notify, Idempotenz), Job-Scheduler (cron/interval/once, prompt/script, /digest),
   **Telegram-Bot** (Notifier, Reply→Kommentar, Buttons), In-App-Notifications, **Skills** (versioniert),
   **MCP-Registry**, **Plugin-System** (Zip-in-DB, Table-CRUD, SSRF-Fetch-Proxy).
-- **Frontend:** Board, Ticket-Drawer (Lifecycle), PM-Chat, Secret-Tresor, Notifications-Glocke, Admin (Nutzer/Kosten/Predecessor), Hardware.
+- **Frontend:** Board, Ticket-Drawer (Lifecycle), PM-Chat, Secret-Tresor, Notifications-Glocke, Admin (Nutzer/Kosten/Betrieb), Hardware.
 - **Alembic:** Baseline-Migration vorhanden; Dev nutzt `DEV_CREATE_ALL=true` (create_all).
 
 ## Echte Läufe aktivieren

@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..models.enums import PurchaseStatus, TicketAgentStatus  # noqa: F401
-from ..models.predecessor import PermAction, PermGrant, Permission, PermRequest
+from ..models.ops import PermAction, PermGrant, Permission, PermRequest
 from ..models.ticket import Blocker, Comment, Issue
 from .deps import Access, get_current_user, get_project_access
 from .issues import get_issue_access

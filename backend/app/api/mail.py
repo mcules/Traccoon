@@ -1,7 +1,7 @@
 """Assistent-Inbox, gelernte Regeln (Policy) und Web-Chat.
 
 Der E-Mail-Eingang selbst läuft über den NORMALEN Webhook (WebhookSub, Modus 'assistant',
-api/predecessor.py → services/mail_intake.py). Hier nur die UI-/Verwaltungs-Endpoints.
+api/ops.py → services/mail_intake.py). Hier nur die UI-/Verwaltungs-Endpoints.
 """
 import logging
 

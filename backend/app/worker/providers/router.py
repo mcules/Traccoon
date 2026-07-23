@@ -1,4 +1,4 @@
-"""Provider-Router mit Cooldown/Circuit-Breaker (Port aus predecessor, self-contained).
+"""Provider-Router mit Cooldown/Circuit-Breaker (Port aus dem Vorläufer, self-contained).
 
 Provider-Map ist schlank: claude_code→Anthropic, codex→Codex. Token pro Provider
 kommen aus dem Secret-Tresor (im Worker aufgelöst, hier durchgereicht).

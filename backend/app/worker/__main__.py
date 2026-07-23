@@ -19,7 +19,7 @@ from ..config import settings
 from ..core.redis import PREFIX, PROCESSING, QUEUE, get_flag
 from ..db import SessionLocal
 from ..models.agents import AgentDefinition
-from ..models.predecessor import Permission
+from ..models.ops import Permission
 from ..models.project import Project
 from ..models.ticket import Comment, Issue
 from ..models.user import User
@@ -343,7 +343,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
 
 async def _handle_accept(job: dict, redis: Redis) -> None:
     """Bei Abnahme: Ticket-Branch → main mergen (+ push), optional Auto-Deploy einreihen."""
-    from ..models.predecessor import Deployment
+    from ..models.ops import Deployment
     async with SessionLocal() as db:
         issue = await db.get(Issue, job["issue_id"])
         project = await db.get(Project, job["project_id"])
@@ -472,7 +472,7 @@ async def _handle_job(job: dict, redis: Redis) -> None:
 
     Eigenständig, nicht im Board (kein ws_root, keine Permission-Gates). notify_mode → Notification.
     """
-    from ..models.predecessor import Job, JobRun
+    from ..models.ops import Job, JobRun
     from ..models.notification import Notification
     from .runtime import run_agent
     job_run_id = job["job_run_id"]
@@ -553,7 +553,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                        f"Der Volltext liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies ihn NUR über "
                        "die imap-Tools, falls du ihn zum Handeln wirklich brauchst.\n\n")
         else:
-            # Passthrough (keine Vorklassifizierung, wie predecessor): der Agent liest die Mail selbst.
+            # Passthrough (keine Vorklassifizierung, wie im Vorläufer): der Agent liest die Mail selbst.
             content = (f"Die Mail liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies sie über die "
                        "imap-Tools.\n\n")
         learned = (f"Gelernte Vorgabe deines Menschen für solche Eingänge: {t.action_hint}\n\n"

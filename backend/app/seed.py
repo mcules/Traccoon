@@ -36,7 +36,7 @@ async def seed(db: AsyncSession) -> None:
             await db.commit()
 
     # Provider-Modellkatalog seeden (Default-Preise für Kostenberechnung)
-    from .models.predecessor import ProviderModel
+    from .models.ops import ProviderModel
     prices = [
         ("claude_code", "claude-sonnet-4-5", "Claude Sonnet 4.5", 3.0, 15.0),
         ("claude_code", "claude-opus-4-1", "Claude Opus 4.1", 15.0, 75.0),

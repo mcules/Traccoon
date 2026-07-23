@@ -397,7 +397,7 @@ async def _tick() -> None:
     # das Wartungsprojekt über den Deployer-Sidecar self-deployen.
     if await get_flag("update_pending") or await get_flag("update_in_progress"):
         if await get_flag("update_pending"):
-            from ..models.predecessor import Deployment
+            from ..models.ops import Deployment
             from .appsettings import get_setting
             async with SessionLocal() as db:
                 running = (await db.execute(
