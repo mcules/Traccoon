@@ -8,6 +8,15 @@ const EMPTY = { id: 0, name: "", display_name: "", transport: "http", url: "", v
 export default function McpPanel() {
   const qc = useQueryClient();
   const { data: servers } = useQuery({ queryKey: ["mcp"], queryFn: () => api.get<any[]>("/mcp-servers") });
+  const { data: myMcp } = useQuery({ queryKey: ["my-mcp"], queryFn: () => api.get<any>("/me/mcp") });
+  const [reach, setReach] = useState<string[] | null>(null);
+  const sel = reach ?? (myMcp?.servers as string[] | undefined) ?? [];
+  const toggle = (s: string) => setReach(sel.includes(s) ? sel.filter((x) => x !== s) : [...sel, s]);
+  const saveReach = useMutation({
+    mutationFn: () => api.put("/me/mcp", { servers: sel }),
+    onSuccess: () => { setReach(null); setErr(""); qc.invalidateQueries({ queryKey: ["my-mcp"] }); },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+  });
   const [form, setForm] = useState<typeof EMPTY | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["mcp"] });
@@ -24,7 +33,48 @@ export default function McpPanel() {
 
   return (
     <div>
-      <p className="mb-3 text-sm text-muted">MCP-Server (Tool-Anbieter für Agenten). Tools erreichbar unter
+      {/* Eigene MCP-Reichweite (MCPJungle-Gruppe) — self-service konfigurierbar */}
+      <div className="mb-4 rounded-lg border border-line bg-card p-3">
+        <div className="mb-1 flex items-center gap-2 text-sm font-medium text-ink">
+          🔌 Meine MCP-Reichweite
+          {myMcp?.provisioned
+            ? <span className="rounded bg-green-600/15 px-1.5 text-xs text-green-400">aktiv{myMcp.group ? ` · ${myMcp.group}` : ""}</span>
+            : <span className="rounded bg-yellow-500/15 px-1.5 text-xs text-yellow-400">nicht provisioniert</span>}
+        </div>
+        <p className="mb-2 text-xs text-muted">
+          Diese Server stehen deinen Agenten/dem Assistenten zur Verfügung. Wähle aus, was du freigibst
+          — beim Speichern wird deine Gruppe + ein <b>gescopeter</b> Token neu provisioniert.
+        </p>
+        {(myMcp?.available?.length ?? 0) > 0 ? (
+          <>
+            <div className="flex flex-wrap gap-1.5">
+              {myMcp.available.map((s: string) => {
+                const on = sel.includes(s);
+                return (
+                  <button key={s} onClick={() => toggle(s)}
+                    className={`rounded border px-2 py-0.5 text-xs ${on ? "border-brand bg-brand/15 text-brand" : "border-line text-muted hover:text-ink"}`}>
+                    {on ? "✓ " : ""}{s}</button>
+                );
+              })}
+            </div>
+            {reach !== null && (
+              <div className="mt-2 flex items-center gap-2">
+                <button onClick={() => saveReach.mutate()} disabled={saveReach.isPending}
+                  className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50">
+                  {saveReach.isPending ? "Provisioniere…" : "Speichern & provisionieren"}</button>
+                <button onClick={() => setReach(null)} className="text-xs text-muted hover:text-ink">verwerfen</button>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-xs text-muted">
+            Keine Server-Liste verfügbar (MCPJungle nicht erreichbar oder kein Admin-Token).
+            {(myMcp?.servers?.length ?? 0) > 0 && <> Aktuell: {myMcp.servers.join(", ")}</>}
+          </div>
+        )}
+      </div>
+
+      <p className="mb-3 text-sm text-muted">Eigene MCP-Server (Tool-Anbieter für Agenten). Tools erreichbar unter
         <span className="font-mono"> &lt;name&gt;__&lt;tool&gt;</span>. Definiere <b>Variablen</b> (z. B. Auth) —
         pro Agent legst du dann eine <b>Instanz</b> an und füllst sie aus.</p>
       <p className="mb-3 text-xs text-yellow-400">Nur <b>http</b>/<b>sse</b> werden bedient (kein stdio).</p>

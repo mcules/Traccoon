@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     mail_classify_token_name: str = "local"  # MAIL_CLASSIFY_TOKEN_NAME
     mail_classify_model: str = ""            # MAIL_CLASSIFY_MODEL (z. B. qwen3.6-35b-q3)
 
+    # MCPJungle — Self-Service-Provisionierung der User-MCP-Gruppe (backend am mcp-backends-Netz).
+    mcpjungle_base: str = "http://mcpjungle:8080"   # MCPJUNGLE_BASE
+    mcpjungle_admin_token: str = ""                 # MCPJUNGLE_ADMIN_TOKEN
+
     # --- SMTP (E-Mail-Versand, z. B. Projekt-Einladungen) ---
     smtp_host: str = ""
     smtp_port: int = 587
