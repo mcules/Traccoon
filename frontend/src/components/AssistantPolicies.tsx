@@ -29,7 +29,10 @@ export default function AssistantPolicies() {
   });
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-6">
+      <ToolPermissions />
+      <div className="space-y-3">
+      <div className="text-sm font-medium text-ink">📥 Eingangs-Regeln (Mail)</div>
       <p className="text-sm text-muted">
         Regeln, die der Assistent gelernt hat. Passt eine Regel auf einen Eingang, kann er automatisch
         (geschwärzt/ungeschwärzt) laufen und bekommt die gelernte Aktion mit. Priorität: Absender &gt; Domain &gt; Kategorie.
@@ -75,6 +78,53 @@ export default function AssistantPolicies() {
       </div>
 
       <NewPolicy onSave={(p) => save.mutate(p)} />
+      </div>
+    </div>
+  );
+}
+
+interface Perm { id: number; tool: string; resource: string; action: string; }
+
+function ToolPermissions() {
+  const qc = useQueryClient();
+  const [tool, setTool] = useState("");
+  const [action, setAction] = useState("allow");
+  const { data = [] } = useQuery({ queryKey: ["tool-perms"], queryFn: () => api.get<Perm[]>("/assistant/tool-permissions") });
+  const inv = () => qc.invalidateQueries({ queryKey: ["tool-perms"] });
+  const save = useMutation({ mutationFn: (p: { tool: string; resource?: string; action: string }) => api.post("/assistant/tool-permissions", p), onSuccess: inv });
+  const del = useMutation({ mutationFn: (id: number) => api.del(`/assistant/tool-permissions/${id}`), onSuccess: inv });
+  const A: Record<string, string> = { allow: "bg-green-600/15 text-green-400", deny: "bg-red-500/15 text-red-400", ask: "bg-surface text-muted" };
+
+  return (
+    <div className="space-y-2">
+      <div className="text-sm font-medium text-ink">🔐 Tool-Freigaben</div>
+      <p className="text-sm text-muted">
+        Was der Assistent ohne Rückfrage darf. <code>allow</code> = immer erlaubt, <code>deny</code> = nie,
+        sonst fragt er nach (einmal/immer/nie). Glob wie <code>obsidian__*</code>.
+      </p>
+      <div className="space-y-1">
+        {data.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 rounded border border-line bg-card p-2 text-sm">
+            <code className="text-ink">{p.tool}</code>
+            {p.resource !== "*" && <code className="text-xs text-muted">{p.resource}</code>}
+            <span className={`rounded px-1.5 text-xs ${A[p.action] || A.ask}`}>{p.action}</span>
+            <div className="flex-1" />
+            {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className="text-xs text-muted hover:text-green-400">→ allow</button>}
+            {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className="text-xs text-muted hover:text-red-400">→ deny</button>}
+            <button onClick={() => del.mutate(p.id)} className="text-xs text-muted hover:text-red-400">löschen</button>
+          </div>
+        ))}
+        {data.length === 0 && <div className="text-xs text-muted">Keine — der Assistent fragt bei jeder heiklen Aktion nach.</div>}
+      </div>
+      <div className="flex gap-2">
+        <input value={tool} onChange={(e) => setTool(e.target.value)} placeholder="Tool-Glob, z. B. obsidian__*"
+          className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-ink outline-none" />
+        <select value={action} onChange={(e) => setAction(e.target.value)} className="rounded border border-line bg-surface px-2 py-1.5 text-ink">
+          <option value="allow">allow</option><option value="deny">deny</option><option value="ask">ask</option>
+        </select>
+        <button onClick={() => { if (tool.trim()) { save.mutate({ tool: tool.trim(), action }); setTool(""); } }}
+          className="rounded bg-brand px-3 py-1 text-sm text-white">+ Regel</button>
+      </div>
     </div>
   );
 }
