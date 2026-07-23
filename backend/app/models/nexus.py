@@ -73,6 +73,10 @@ class WebhookSub(TimestampMixin, Base):
     # Modus 'assistant' (E-Mail): projektlose AssistantTask + lokale Vorklassifizierung durch
     # diesen Agenten (dessen Provider/Modell/Token). Leer = keine Klassifizierung (Passthrough).
     classify_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Vollständiger Task-Prompt (Mail-Verarbeitungs-Wissen: Kategorien, Ablage-Regeln …).
+    # Platzhalter {account}/{uid}/{from}/{subject}/{body_text}… werden aus dem Payload gefüllt.
+    # Leer = eingebauter Standard-Prompt. Portiert aus nexus webhook_subs.prompt_tmpl.
+    prompt_tmpl: Mapped[str | None] = mapped_column(Text, nullable=True)
     status_new: Mapped[str] = mapped_column(String(20), default="planning")
     title_template: Mapped[str] = mapped_column(String(500), default="{title}")
     body_template: Mapped[str] = mapped_column(Text, default="{body}")

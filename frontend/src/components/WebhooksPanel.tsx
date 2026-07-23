@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Project } from "../api";
 
 const EMPTY = {
-  route: "", mode: "task", secret: "", project_id: "", agent: "", classify_agent: "",
+  route: "", mode: "task", secret: "", project_id: "", agent: "", classify_agent: "", prompt_tmpl: "",
   title_template: "{title}", body_template: "{body}",
   event_header: "", event_filter: "", event_key_header: "",
   event_cooldowns: "", alert_events: "", ref_field: "", notify_chat: "",
@@ -34,7 +34,7 @@ export default function WebhooksPanel() {
   const body = () => ({
     route: f.route, mode: f.mode, secret: f.secret,
     project_id: f.project_id ? +f.project_id : null, agent: f.agent || null,
-    classify_agent: f.classify_agent || null,
+    classify_agent: f.classify_agent || null, prompt_tmpl: f.prompt_tmpl || null,
     title_template: f.title_template, body_template: f.body_template,
     event_header: f.event_header || null, event_filter: f.event_filter || null,
     event_key_header: f.event_key_header || null,
@@ -53,7 +53,8 @@ export default function WebhooksPanel() {
     setOpen(true);
     setF({
       route: w.route, mode: w.mode, secret: "", project_id: w.project_id ? String(w.project_id) : "",
-      agent: w.agent || "", classify_agent: w.classify_agent || "", title_template: w.title_template || "{title}",
+      agent: w.agent || "", classify_agent: w.classify_agent || "", prompt_tmpl: w.prompt_tmpl || "",
+      title_template: w.title_template || "{title}",
       body_template: w.body_template || "{body}", event_header: w.event_header || "",
       event_filter: w.event_filter || "", event_key_header: w.event_key_header || "",
       event_cooldowns: fmtCooldowns(w.event_cooldowns),
@@ -116,7 +117,13 @@ export default function WebhooksPanel() {
             {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         )}
         <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} placeholder="Agent (optional)" className={inp} />
-        <input value={f.title_template} onChange={(e) => setF({ ...f, title_template: e.target.value })} placeholder="Titel-Template {feld}" className={inp} />
+        {f.mode === "assistant" ? (
+          <textarea value={f.prompt_tmpl} onChange={(e) => setF({ ...f, prompt_tmpl: e.target.value })}
+            placeholder="Task-Prompt (Mail-Verarbeitungs-Wissen) — leer = Standard. Platzhalter {account} {uid} {from} {subject} {body_text} …"
+            rows={8} className={`col-span-2 ${inp} font-mono text-xs`} />
+        ) : (
+          <input value={f.title_template} onChange={(e) => setF({ ...f, title_template: e.target.value })} placeholder="Titel-Template {feld}" className={inp} />
+        )}
 
         <button onClick={() => setOpen(!open)} className="col-span-2 text-left text-xs text-muted hover:text-ink">
           {open ? "▾" : "▸"} Filter, Alarme &amp; Zusammenfassung

@@ -563,6 +563,9 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             # traccoon_*-Tools (in den Rechten deines Menschen), Persönliches über deine MCP.
             prompt = (meta.get("chat_text") or t.title) + (
                 f"\n\n(Kontext: gelernte Vorgabe — {t.action_hint})" if t.action_hint else "")
+        elif meta.get("prompt"):
+            # Voller Task-Prompt aus dem Webhook (portiertes Mail-Verarbeitungs-Wissen).
+            prompt = meta["prompt"] + (learned if t.action_hint else "")
         else:
             prompt = (
                 "Eingang für deinen Menschen (lokal vorklassifiziert).\n" + head + content + learned +

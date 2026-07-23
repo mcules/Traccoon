@@ -30,6 +30,7 @@ class WebhookIn(BaseModel):
     project_id: int | None = None
     agent: str | None = None
     classify_agent: str | None = None
+    prompt_tmpl: str | None = None
     title_template: str = "{title}"
     body_template: str = "{body}"
     silent: bool = False
@@ -46,6 +47,7 @@ class WebhookIn(BaseModel):
 class WebhookOut(BaseModel):
     id: int; public_id: str; route: str; mode: str; project_id: int | None
     owner_user_id: int | None; agent: str | None; classify_agent: str | None
+    prompt_tmpl: str | None = None
     silent: bool; enabled: bool; secret_set: bool
     event_header: str | None = None; event_filter: str | None = None
     event_key_header: str | None = None; event_cooldowns: dict = {}
@@ -56,6 +58,7 @@ def _wh_out(w: WebhookSub) -> WebhookOut:
     return WebhookOut(
         id=w.id, public_id=w.public_id, route=w.route, mode=w.mode, project_id=w.project_id,
         owner_user_id=w.owner_user_id, agent=w.agent, classify_agent=w.classify_agent,
+        prompt_tmpl=w.prompt_tmpl,
         silent=w.silent, enabled=w.enabled, secret_set=bool(w.secret),
         event_header=w.event_header, event_filter=w.event_filter,
         event_key_header=w.event_key_header, event_cooldowns=w.event_cooldowns or {},
@@ -185,7 +188,7 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         task, auto = await intake_mail(
             db, sub.owner_user_id, payload if isinstance(payload, dict) else {},
             source=f"webhook:{route}", classify_agent=sub.classify_agent or "",
-            agent=sub.agent or "assistent")
+            agent=sub.agent or "assistent", prompt_tmpl=sub.prompt_tmpl or "")
         if task is None:
             return {"accepted": True, "ignored": True}
         if auto:
