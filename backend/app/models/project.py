@@ -58,7 +58,7 @@ class Project(TimestampMixin, Base):
     auto_continue: Mapped[bool] = mapped_column(Boolean, default=True)
     comment_triggers_agent: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    # Deploy / Nexus
+    # Deploy / Betrieb
     auto_deploy: Mapped[bool] = mapped_column(Boolean, default=False)
     screenshot_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     vault_moc_path: Mapped[str] = mapped_column(String(500), default="")

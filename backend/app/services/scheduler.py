@@ -12,7 +12,7 @@ from sqlalchemy import select
 
 from ..core.redis import enqueue_task
 from ..db import SessionLocal
-from ..models.nexus import Job, JobRun
+from ..models.ops import Job, JobRun
 from ..models.notification import Notification
 
 log = logging.getLogger("scheduler")
@@ -102,7 +102,7 @@ async def _tick() -> None:
 
 async def _flush_coalesced() -> None:
     """Abgelaufene Coalescing-Fenster zu je einer Sammel-Notification zusammenfassen."""
-    from ..models.nexus import WebhookCoalesce, WebhookSub
+    from ..models.ops import WebhookCoalesce, WebhookSub
 
     now = _now()
     async with SessionLocal() as db:

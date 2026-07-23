@@ -8,7 +8,7 @@ from sqlalchemy import text
 from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
     admin, agents, auth, config, cost, dashboard, files, hardware, invitations, issues, lifecycle,
-    mail, me, nexus, notifications, permissions, plugins, projects, repo, runs, secrets, skills,
+    mail, me, notifications, ops, permissions, plugins, projects, repo, runs, secrets, skills,
     users, ws,
 )
 from .config import settings
@@ -50,7 +50,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS grant_resource VARCHAR(500)",
                 # Mail-Webhook als normaler WebhookSub (Modus assistant): Klassifizier-Agent.
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS classify_agent VARCHAR(100)",
-                # Mail-Task-Prompt (Verarbeitungs-Wissen) je Webhook — portiert aus nexus.
+                # Mail-Task-Prompt (Verarbeitungs-Wissen) je Webhook — portiert aus dem Vorläufer.
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS prompt_tmpl TEXT",
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS auto_run BOOLEAN DEFAULT FALSE NOT NULL",
             ):
@@ -91,7 +91,7 @@ api.include_router(config.router)
 api.include_router(issues.router)
 api.include_router(lifecycle.router)
 api.include_router(hardware.router)
-api.include_router(nexus.router)
+api.include_router(ops.router)
 api.include_router(mail.router)
 api.include_router(secrets.router)
 api.include_router(permissions.router)
@@ -126,7 +126,7 @@ async def root_health():
 async def digest(run_id: int):
     from fastapi.responses import HTMLResponse
     from .db import SessionLocal
-    from .models.nexus import JobRun
+    from .models.ops import JobRun
     async with SessionLocal() as db:
         jr = await db.get(JobRun, run_id)
     if jr is None:

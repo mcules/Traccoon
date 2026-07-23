@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.nexus import AppSetting
+from ..models.ops import AppSetting
 
 
 async def get_setting(db: AsyncSession, key: str, default: str = "") -> str:

@@ -1,4 +1,4 @@
-"""Berechtigungs-Gate (Port aus nexus/perms.py) + DB-Grant/Request-Helfer.
+"""Berechtigungs-Gate (Port aus dem Vorläufer (perms.py)) + DB-Grant/Request-Helfer.
 
 Regeln kommen aus der Permission-Tabelle (als Liste [{tool,resource,action}]).
 Präzedenz deny > allow > ask; Default ask für mutierende Tools.
@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.nexus import PermGrant, PermRequest
+from ..models.ops import PermGrant, PermRequest
 
 _MUTATING = (
     "write", "edit", "delete", "create", "update", "patch", "append",

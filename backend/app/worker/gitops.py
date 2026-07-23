@@ -1,4 +1,4 @@
-"""Git-Worktree-Engine (Port aus nexus/gitops.py, self-contained).
+"""Git-Worktree-Engine (Port aus dem Vorläufer (gitops.py), self-contained).
 
 Worktree pro Ticket unter <WORKSPACE_ROOT>/.traccoon-worktrees/<key>/<issue-key>.
 Token kommt vom Aufrufer (Secret-Tresor) und wird nur in die ephemere Push-URL

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..models.agents import CostEntry, Run
-from ..models.nexus import ProviderModel
+from ..models.ops import ProviderModel
 from ..models.ticket import Issue
 from ..models.user import User
 from ..worker.secrets import resolve_provider_token

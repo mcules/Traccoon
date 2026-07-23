@@ -75,7 +75,7 @@ class WebhookSub(TimestampMixin, Base):
     classify_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Vollständiger Task-Prompt (Mail-Verarbeitungs-Wissen: Kategorien, Ablage-Regeln …).
     # Platzhalter {account}/{uid}/{from}/{subject}/{body_text}… werden aus dem Payload gefüllt.
-    # Leer = eingebauter Standard-Prompt. Portiert aus nexus webhook_subs.prompt_tmpl.
+    # Leer = eingebauter Standard-Prompt. Portiert aus dem Vorläufer (webhook_subs.prompt_tmpl).
     prompt_tmpl: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Chatloser Sofortlauf ohne Freigabe (z. B. paperless-linked Link-back). Default: Review-Gate.
     auto_run: Mapped[bool] = mapped_column(Boolean, default=False)
