@@ -52,6 +52,7 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS classify_agent VARCHAR(100)",
                 # Mail-Task-Prompt (Verarbeitungs-Wissen) je Webhook — portiert aus predecessor.
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS prompt_tmpl TEXT",
+                "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS auto_run BOOLEAN DEFAULT FALSE NOT NULL",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:
