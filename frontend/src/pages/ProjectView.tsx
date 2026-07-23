@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Issue, Project, ProjectMeta } from "../api";
 import TicketDrawer from "../components/TicketDrawer";
@@ -20,9 +20,20 @@ type Tab = "board" | "list" | "backlog" | "archiv" | "code" | "dashboard" | "pm"
 
 export default function ProjectView() {
   const { key } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [tab, setTab] = useState<Tab>("board");
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
+
+  // Deep-Link: /projects/:key?ticket=KEY öffnet direkt den Ticket-Drawer (z. B. vom Start-Dashboard).
+  useEffect(() => {
+    const t = searchParams.get("ticket");
+    if (t) {
+      setOpenKey(t);
+      searchParams.delete("ticket");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, []);
 
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
   const project = useMemo(() => projects?.find((p) => p.key === key), [projects, key]);

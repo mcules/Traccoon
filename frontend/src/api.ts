@@ -137,3 +137,15 @@ export interface ProjectCosts {
   by_agent: { agent: string; usd: number; calls: number }[];
   by_model: CostByModel[];
 }
+export interface MyTicket {
+  key: string; summary: string; priority: string;
+  agent_status: string | null; hold_reason: string | null;
+  assigned_agent: string | null; agent_working: boolean;
+  category: string; updated_at: string;
+  project_id: number; project_key: string; project_name: string;
+}
+export interface MyDashboard {
+  action: MyTicket[]; assigned: MyTicket[];
+  stats: { projects: number; action: number; assigned: number;
+    working: number; unread: number; done_7d: number };
+}

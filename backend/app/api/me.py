@@ -169,6 +169,81 @@ async def dismiss_onboarding(u: User = Depends(get_current_user),
     await db.commit()
 
 
+# Ticket-Agent-Zustände, die eine menschliche Reaktion erfordern (Arbeitsliste).
+_WAIT_STATES = ["plan_review", "to_test", "hold", "failed"]
+
+
+@router.get("/me/dashboard")
+async def my_dashboard(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """Persönliches Start-Dashboard: projektübergreifend meine offenen/wartenden Tickets
+    plus Eckdaten. Alles zur Abfragezeit aggregiert — keine gespeicherten Gadgets.
+
+    Zwei Listen:
+    - `action`: Tickets, die MEINE Interaktion brauchen (Agent wartet auf mich — Plan-Freigabe,
+      Test-Abnahme, Rückfrage/Hold, Fehler). „Meine" = ich habe den Agenten zugewiesen
+      (`assigned_by_user_id`) ODER das Ticket ist mir als Person zugewiesen (`assignee_user_id`).
+    - `assigned`: mir zugewiesene, noch offene Tickets, die NICHT schon in `action` stehen.
+    """
+    from sqlalchemy import and_, func, or_, select
+
+    from ..models.notification import Notification
+    from ..models.project import Project, ProjectMember
+    from ..models.ticket import Issue, WorkflowStatus
+
+    mine = or_(Issue.assigned_by_user_id == u.id, Issue.assignee_user_id == u.id)
+
+    def _serialize(issue: Issue, proj: Project, cat) -> dict:
+        return {
+            "key": issue.key, "summary": issue.summary, "priority": issue.priority,
+            "agent_status": issue.agent_status, "hold_reason": issue.hold_reason,
+            "assigned_agent": issue.assigned_agent, "agent_working": issue.agent_working,
+            "category": cat.value if hasattr(cat, "value") else str(cat),
+            "updated_at": issue.updated_at,
+            "project_id": proj.id, "project_key": proj.key, "project_name": proj.name,
+        }
+
+    base = (select(Issue, Project, WorkflowStatus.category)
+            .join(Project, Project.id == Issue.project_id)
+            .join(WorkflowStatus, WorkflowStatus.id == Issue.status_id)
+            .where(Issue.archived.is_(False)))
+
+    # Braucht meine Interaktion — Agent wartet auf mich.
+    action_rows = (await db.execute(
+        base.where(mine, Issue.agent_status.in_(_WAIT_STATES))
+        .order_by(Issue.updated_at.desc()))).all()
+    action = [_serialize(i, p, c) for i, p, c in action_rows]
+    action_keys = {a["key"] for a in action}
+
+    # Mir zugewiesen und noch offen (nicht erledigt), ohne die bereits oben gelisteten.
+    assigned_rows = (await db.execute(
+        base.where(Issue.assignee_user_id == u.id, Issue.resolved_at.is_(None),
+                   WorkflowStatus.category != "done")
+        .order_by(Issue.updated_at.desc()))).all()
+    assigned = [_serialize(i, p, c) for i, p, c in assigned_rows if i.key not in action_keys]
+
+    # Eckdaten
+    projects = (await db.execute(
+        select(func.count()).select_from(ProjectMember)
+        .where(ProjectMember.user_id == u.id))).scalar_one()
+    working = (await db.execute(
+        select(func.count()).select_from(Issue)
+        .where(mine, Issue.agent_working.is_(True)))).scalar_one()
+    unread = (await db.execute(
+        select(func.count()).select_from(Notification)
+        .where(or_(Notification.user_id == u.id, Notification.user_id.is_(None)),
+               Notification.read_at.is_(None)))).scalar_one()
+    since = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=7)
+    done_recent = (await db.execute(
+        select(func.count()).select_from(Issue)
+        .where(mine, Issue.resolved_at.isnot(None), Issue.resolved_at >= since))).scalar_one()
+
+    return {
+        "action": action, "assigned": assigned,
+        "stats": {"projects": projects, "action": len(action), "assigned": len(assigned),
+                  "working": working, "unread": unread, "done_7d": done_recent},
+    }
+
+
 @router.get("/me/flags")
 async def my_flags(u: User = Depends(get_current_user)):
     out = {f: await get_user_flag(f, u.id) for f in USER_FLAGS}
