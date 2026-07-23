@@ -16,6 +16,14 @@ from .base import ChatResponse, Provider, ProviderError, ToolCall
 IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude."
 _BETAS = "oauth-2025-04-20,claude-code-20250219"
 _ANTHROPIC_VERSION = "2023-06-01"
+# Web-Suche: neuere Modelle nutzen web_search_20260209 (dynamic filtering); ältere die
+# Basis-Variante web_search_20250305 (der neue Typ gäbe dort 400). Model-abhängig wählen.
+_WS_NEW_MODELS = ("opus-4-8", "opus-4-7", "opus-4-6", "sonnet-5", "sonnet-4-6", "fable-5", "mythos-5")
+
+
+def _web_search_tool(model: str) -> dict:
+    ws_type = "web_search_20260209" if any(k in (model or "") for k in _WS_NEW_MODELS) else "web_search_20250305"
+    return {"type": ws_type, "name": "web_search", "max_uses": 8}
 
 
 def _wire(name: str) -> str:
@@ -146,7 +154,7 @@ class AnthropicProvider(Provider):
         }
         all_tools = list(a_tools or [])
         if web_search:
-            all_tools.append({"type": "web_search_20250305", "name": "web_search", "max_uses": 8})
+            all_tools.append(_web_search_tool(model or self.model))
         if all_tools:
             body["tools"] = all_tools
             body["tool_choice"] = {"type": "auto"}
