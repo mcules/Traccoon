@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import Onboarding from "../components/Onboarding";
+import MyWork from "../components/MyWork";
 
 export default function Projects() {
   const qc = useQueryClient();
@@ -26,6 +27,7 @@ export default function Projects() {
   return (
     <div>
       <Onboarding />
+      <MyWork />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">Projekte</h1>
         <button onClick={() => setShow(!show)} className="rounded bg-brand px-3 py-1.5 text-white">
