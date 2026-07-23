@@ -10,9 +10,15 @@ from __future__ import annotations
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from ..config import settings
 from ..core.security import encrypt_secret
+from ..models.plugins import McpServer
 from ..models.user import User
+
+# MCPJungle-Transport → McpServer-Transport (der Worker bedient http[streamable]/sse).
+_TRANSPORT = {"streamable_http": "http", "http": "http", "sse": "sse"}
 
 
 class McpProvisionError(RuntimeError):
@@ -27,6 +33,43 @@ def _headers() -> dict[str, str]:
     if not settings.mcpjungle_admin_token:
         raise McpProvisionError("MCPJUNGLE_ADMIN_TOKEN nicht gesetzt — Provisionierung nicht möglich.")
     return {"Authorization": f"Bearer {settings.mcpjungle_admin_token}"}
+
+
+async def _jungle_servers() -> list[dict]:
+    async with httpx.AsyncClient(timeout=10) as c:
+        r = await c.get(f"{_base()}/api/v0/servers", headers=_headers())
+    r.raise_for_status()
+    return r.json() or []
+
+
+async def import_registry_from_jungle(db: AsyncSession, user: User) -> dict:
+    """Die in MCPJungle registrierten Server als ECHTE McpServer-Registry-Einträge des Users
+    anlegen (Name/Transport/URL — editierbar wie manuell eingerichtet). Der Assistent nutzt sie
+    dann direkt. Um Tool-Duplikate zu vermeiden, wird die Gateway-Gruppe abgeschaltet.
+    `enabled` = ob der Server aktuell in der Reichweite des Users ist (banking etc. bleibt aus)."""
+    active = set(user.mcp_servers or [])
+    existing = {m.name: m for m in (await db.execute(select(McpServer).where(
+        McpServer.user_id == user.id))).scalars().all()}
+    created, updated = [], []
+    for s in await _jungle_servers():
+        name = s.get("name")
+        if not name:
+            continue
+        transport = _TRANSPORT.get(s.get("transport", ""), "http")
+        url = s.get("url") or ""
+        enabled = (name in active) if active else True
+        m = existing.get(name)
+        if m is None:
+            db.add(McpServer(user_id=user.id, name=name, display_name=name,
+                             transport=transport, url=url, variables=[], enabled=enabled))
+            created.append(name)
+        else:
+            m.transport, m.url = transport, url  # URL/Transport nachziehen, enabled belassen
+            updated.append(name)
+    await db.commit()
+    # Gateway-Gruppe abschalten (Registry ersetzt sie) → keine doppelten Tools.
+    await provision_user_mcp(db, user, [])
+    return {"created": created, "updated": updated}
 
 
 async def list_available_servers() -> list[str]:
