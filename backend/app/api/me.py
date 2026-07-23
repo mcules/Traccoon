@@ -104,6 +104,18 @@ async def set_my_mcp(d: McpReachIn, u: User = Depends(get_current_user),
             "provisioned": bool(u.mcp_group and u.mcp_token_enc)}
 
 
+@router.post("/me/mcp/import")
+async def import_mcp(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """Die MCPJungle-Server als echte McpServer-Registry-Einträge übernehmen (editierbar wie
+    manuell). Schaltet die Gateway-Gruppe ab (Registry ersetzt sie)."""
+    from ..services.mcp_provision import McpProvisionError, import_registry_from_jungle
+    try:
+        return await import_registry_from_jungle(db, u)
+    except McpProvisionError as exc:
+        from fastapi import HTTPException
+        raise HTTPException(503, str(exc))
+
+
 @router.get("/me/onboarding")
 async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     """Was fehlt noch, damit echte Agentenläufe möglich sind — geprüft, nicht geraten."""
