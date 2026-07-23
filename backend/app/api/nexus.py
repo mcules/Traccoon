@@ -184,7 +184,8 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         from ..services.mail_intake import intake_mail
         task, auto = await intake_mail(
             db, sub.owner_user_id, payload if isinstance(payload, dict) else {},
-            source=f"webhook:{route}", classify_agent=sub.classify_agent or "")
+            source=f"webhook:{route}", classify_agent=sub.classify_agent or "",
+            agent=sub.agent or "assistent")
         if task is None:
             return {"accepted": True, "ignored": True}
         if auto:

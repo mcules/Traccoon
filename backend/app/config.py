@@ -29,17 +29,8 @@ class Settings(BaseSettings):
     # Öffentliche Basis-URL (für Einladungslinks etc.), z. B. https://traccoon.example.com
     app_base_url: str = ""
 
-    # --- Mail-Webhook → persönlicher Assistent ---
-    # HMAC-Secret (X-Webhook-Signature, hex, ohne Prefix). 1:1 aus predecessor wiederverwendet.
-    mail_webhook_secret: str = ""            # MAIL_WEBHOOK_SECRET
-    # Owner des Assistenten: dessen ProviderToken + MCP-Gruppe tragen den Lauf.
-    mail_assistant_owner_id: int = 0         # MAIL_ASSISTANT_OWNER_ID (User-ID)
-    mail_assistant_agent: str = "assistent"  # MAIL_ASSISTANT_AGENT (Rollen-String)
-    # LOKALE Vorklassifizierung (qwen via litellm, OpenAI-kompatibel). Der Provider-Token
-    # (mit base_url) wird über (owner, provider=openai, token_name) aufgelöst.
-    mail_classify_provider: str = "openai"   # MAIL_CLASSIFY_PROVIDER
-    mail_classify_token_name: str = "local"  # MAIL_CLASSIFY_TOKEN_NAME
-    mail_classify_model: str = ""            # MAIL_CLASSIFY_MODEL (z. B. qwen3.6-35b-q3)
+    # Mail-Webhook/Assistent werden vollständig über die WebUI/DB konfiguriert (WebhookSub +
+    # Klassifizier-/Handler-Agent) — bewusst KEINE MAIL_*-Env/Datei-Konfig mehr.
 
     # MCPJungle — Self-Service-Provisionierung der User-MCP-Gruppe (backend am mcp-backends-Netz).
     mcpjungle_base: str = "http://mcpjungle:8080"   # MCPJUNGLE_BASE

@@ -548,10 +548,14 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         if t.redaction == "unredacted" and t.raw_body:
             # Quelle ist per Regel als vertrauenswürdig markiert → Volltext direkt.
             content = f"Volltext (für diese Quelle freigegeben):\n{t.raw_body}\n\n"
-        else:
+        elif t.redacted_summary:
             content = (f"Zusammenfassung (geschwärzt):\n{t.redacted_summary}\n\n"
                        f"Der Volltext liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies ihn NUR über "
                        "die imap-Tools, falls du ihn zum Handeln wirklich brauchst.\n\n")
+        else:
+            # Passthrough (keine Vorklassifizierung, wie predecessor): der Agent liest die Mail selbst.
+            content = (f"Die Mail liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies sie über die "
+                       "imap-Tools.\n\n")
         learned = (f"Gelernte Vorgabe deines Menschen für solche Eingänge: {t.action_hint}\n\n"
                    if t.action_hint else "")
         if is_chat:
@@ -568,7 +572,8 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             )
         out, status, err, run_id = "", "done", "", None
         try:
-            agent = await _load_agent(db, settings.mail_assistant_agent or "assistent",
+            # Bearbeitender Agent aus dem Item (Webhook-Config), Default 'assistent'. Kein Env.
+            agent = await _load_agent(db, meta.get("agent") or "assistent",
                                       0, "execute", owner_id)
             tokens, base_urls = await _build_tokens(db, owner_id, agent)
             result = await run_agent(
