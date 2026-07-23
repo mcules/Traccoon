@@ -18,9 +18,12 @@ log = logging.getLogger("traccoon.mail")
 
 
 async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
-                      source: str, classify_agent: str = "") -> tuple[AssistantTask | None, bool]:
-    """(task, auto). Idempotent über (source, account:uid). Committet selbst; enqueued NICHT
-    (das macht der Aufrufer, um Redis-Import im Request-Pfad zu halten)."""
+                      source: str, classify_agent: str = "",
+                      agent: str = "assistent") -> tuple[AssistantTask | None, bool]:
+    """(task, auto). Idempotent über (source, account:uid). Committet selbst; enqueued NICHT.
+    Ohne `classify_agent` = 1:1-nexus-Passthrough (KEINE Klassifizierung; der Agent liest die
+    Mail selbst per IMAP und handelt). Mit `classify_agent` = lokale Vorklassifizierung/Schwärzung.
+    `agent` = welcher Agent die Mail bearbeitet (aus dem Webhook, Default 'assistent')."""
     account = str(payload.get("account") or "")
     subject = str(payload.get("subject") or "")
     sender = str(payload.get("from") or "")
@@ -36,8 +39,12 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
         if dup is not None:
             return dup, False
 
-    cls = await classify_email(db, owner_id, account=account, sender=sender,
-                               subject=subject, body=body, classify_agent=classify_agent)
+    if classify_agent:
+        cls = await classify_email(db, owner_id, account=account, sender=sender,
+                                   subject=subject, body=body, classify_agent=classify_agent)
+    else:
+        # Passthrough wie nexus: keine Klassifizierung, keine Schwärzung.
+        cls = {"category": "", "priority": "normal", "sensitive": False, "redacted_summary": ""}
 
     sender_email, domain = parse_sender(sender)
     policy = await match_policy(db, owner_id, sender_email=sender_email, domain=domain,
@@ -52,7 +59,7 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
         title=(subject or "(kein Betreff)")[:500],
         category=cls["category"], priority=cls["priority"], redacted_summary=cls["redacted_summary"],
         meta={"account": account, "uid": uid, "from": sender, "subject": subject,
-              "sensitive": cls["sensitive"]},
+              "sensitive": cls["sensitive"], "agent": agent or "assistent"},
         redaction=redaction, action_hint=action_hint or "",
         raw_body=(body if redaction == "unredacted" else None),
         status=("approved" if auto else "new"),
