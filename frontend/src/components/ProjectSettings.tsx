@@ -4,15 +4,16 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError, Project } from "../api";
 import StatusManager from "./StatusManager";
 import AgentsPanel from "./AgentsPanel";
+import Members from "./Members";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PROVIDER_LABEL: Record<string, string> = {
   claude_code: "Claude", codex: "Codex", openai: "OpenAI",
 };
 
-type Tab = "allgemein" | "agenten" | "board" | "git" | "testenv" | "deploy";
+type Tab = "allgemein" | "mitglieder" | "agenten" | "board" | "git" | "testenv" | "deploy";
 const TABS: [Tab, string][] = [
-  ["allgemein", "Allgemein"], ["agenten", "Agenten"], ["board", "Board"],
+  ["allgemein", "Allgemein"], ["mitglieder", "Mitglieder"], ["agenten", "Agenten"], ["board", "Board"],
   ["git", "Git"], ["testenv", "Testumgebung"], ["deploy", "Deployment"],
 ];
 
@@ -85,9 +86,9 @@ export default function ProjectSettings({ project }: { project: Project }) {
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
   };
 
-  const showSave = tab !== "board" && tab !== "agenten";
+  const showSave = tab !== "board" && tab !== "agenten" && tab !== "mitglieder";
   return (
-    <div className="max-w-2xl">
+    <div className="mx-auto max-w-2xl">
       <div className="mb-4 flex flex-wrap gap-1 border-b border-line">
         {(TABS as [Tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)}
@@ -97,6 +98,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
       </div>
 
       <div className="space-y-4">
+      {tab === "mitglieder" && <Members project={project} />}
       {tab === "allgemein" && (
       <Section title="Allgemein">
         <Check label="Projekt hat Hardware" hint="Blendet den Hardware-Tab (Katalog, Exemplare, Beschaffung) ein."

@@ -42,7 +42,7 @@ function senderEmail(from: string | null): string {
 export default function Inbox() {
   const [tab, setTab] = useState<Tab>("chat");
   return (
-    <div className="max-w-3xl">
+    <div className="mx-auto max-w-3xl">
       <h1 className="mb-1 text-lg font-semibold">🗂️ Persönlicher Assistent</h1>
       <p className="mb-4 text-sm text-muted">
         Eingänge lokal vorklassifiziert &amp; geschwärzt. Erst deine <b>Freigabe</b> lässt den Assistenten

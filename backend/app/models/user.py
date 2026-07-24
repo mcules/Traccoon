@@ -14,7 +14,9 @@ class User(TimestampMixin, Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    # E-Mail optional: login-lose Konten (Admin-Anlage ohne E-Mail) sind erlaubt.
+    # UNIQUE bleibt — Postgres wertet mehrere NULL nicht als Kollision.
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), default="")
     password_hash: Mapped[str] = mapped_column(String(255), default="")
@@ -44,6 +46,10 @@ class User(TimestampMixin, Base):
     max_runners: Mapped[int] = mapped_column(Integer, default=3)
     onboarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     default_project_view: Mapped[str] = mapped_column(String(10), default="board")
+    # Wie ein Ticket per Linksklick geöffnet wird: popup (Drawer) oder page (volle Seite).
+    ticket_open_mode: Mapped[str] = mapped_column(String(10), default="popup")
+    # Nutzerspezifische Block-Anordnung der vollen Ticket-Seite: {"left":[...keys], "right":[...keys]}.
+    ticket_layout: Mapped[dict] = mapped_column(JSON, default=dict)
 
     # Nacht-Fenster (Europe/Berlin) für night_task-Tickets
     night_start_hour: Mapped[int] = mapped_column(Integer, default=22)

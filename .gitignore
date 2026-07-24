@@ -8,3 +8,8 @@ dist/
 .DS_Store
 *.egg-info/
 MIGRATION_ROLLBACK.md
+# Build-Artefakte (aus tsc/npm-Läufen)
+*.tsbuildinfo
+frontend/vite.config.d.ts
+frontend/vite.config.js
+frontend/package-lock.json

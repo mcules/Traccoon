@@ -279,6 +279,36 @@ async def asset_steps(
     return list(rows)
 
 
+# ---------- Beschaffung auf der generischen Workflow-Engine (Etappe 4, additiv) ----------
+
+@router.post("/projects/{project_id}/hardware-workflow/definition")
+async def ensure_hw_workflow_definition(
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    """Erzeugt (idempotent) die veröffentlichte „Hardware-Beschaffung"-Workflow-Definition des
+    Projekts aus den vorhandenen Schritten. Danach im Prozess-Editor sicht-/erweiterbar."""
+    from ..services.hardware_workflow import ensure_hardware_definition
+    d = await ensure_hardware_definition(db, access.project.id, access.user.id)
+    return {"definition_id": d.id, "key": d.key, "current_version_id": d.current_version_id}
+
+
+@router.post("/hardware/assets/{asset_id}/workflow")
+async def start_asset_workflow(
+    asset_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Startet (idempotent) eine Beschaffungs-Workflow-Instanz für ein Exemplar."""
+    a = await db.get(HardwareAsset, asset_id)
+    if a is None:
+        raise HTTPException(404, "Exemplar nicht gefunden")
+    await _require_project_member(a.project_id, user, db)
+    if a.project_id is None:
+        raise HTTPException(409, "Vorrat/Lager ohne Projekt hat keinen Beschaffungs-Workflow")
+    from ..services.hardware_workflow import start_hardware_instance
+    inst = await start_hardware_instance(db, a, user.id)
+    return {"instance_id": inst.id, "status": inst.status.value, "definition_id": inst.definition_id}
+
+
 @router.post("/hardware/assets/{asset_id}/steps/{step_id}/complete", response_model=list[StepOut])
 async def complete_step(
     asset_id: int, step_id: int, data: StepComplete,

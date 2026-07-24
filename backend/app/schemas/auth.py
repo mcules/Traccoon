@@ -40,7 +40,7 @@ class PasswordChangeIn(BaseModel):
 
 class UserOut(BaseModel):
     id: int
-    email: str
+    email: str | None = None
     username: str
     display_name: str
     avatar_color: str
@@ -50,6 +50,8 @@ class UserOut(BaseModel):
     max_runners: int
     onboarded: bool
     default_project_view: str
+    ticket_open_mode: str = "popup"
+    ticket_layout: dict = {}
     claude_token_set: bool
     created_at: dt.datetime
 

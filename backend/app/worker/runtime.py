@@ -108,6 +108,12 @@ SCREENSHOT_TOOL = {"type": "function", "function": {
     "name": "screenshot", "description": "Screenshot der gerenderten Projekt-Seite (Vision) zur UI-Kontrolle. "
     "`target` = Hash-Route, z.B. 'q/NA101' oder leer.",
     "parameters": {"type": "object", "properties": {"target": {"type": "string"}}, "required": []}}}
+READ_ATTACHMENT_TOOL = {"type": "function", "function": {
+    "name": "read_attachment", "description": "Liest einen an DIESES Ticket angehängten Anhang. "
+    "Bilder/Screenshots werden dir als Bild gezeigt (Vision), Text-Dateien als Text. "
+    "`name` = Dateiname des Anhangs (siehe die Anhang-Liste im Auftrag).",
+    "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "Dateiname des Anhangs"}},
+                   "required": ["name"]}}}
 OPEN_TASKS_TOOL = {"type": "function", "function": {
     "name": "open_tasks", "description": "Offene, einem Agenten zugewiesene Tickets (read-only).",
     "parameters": {"type": "object", "properties": {}}}}
@@ -291,6 +297,38 @@ async def _do_screenshot(args: dict[str, Any], base_url: str) -> Any:
         {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": b64}},
         {"type": "text", "text": f"Screenshot #{target or '(Startseite)'}. Prüfe Position/Größe/Dubletten."},
     ]
+
+
+_IMG_MEDIA = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+_TEXT_EXT = (".txt", ".md", ".log", ".json", ".csv", ".yaml", ".yml", ".xml", ".ini", ".toml", ".env")
+
+
+async def _do_read_attachment(db: AsyncSession, issue_id: int, args: dict[str, Any]) -> Any:
+    """Liest einen Ticket-Anhang: Bilder → Vision-Block, Text → Text, sonst Hinweis."""
+    from ..models.ticket import Attachment
+    name = (args.get("name") or "").strip()
+    rows = (await db.execute(
+        select(Attachment).where(Attachment.issue_id == issue_id).order_by(Attachment.id)
+    )).scalars().all()
+    if not rows:
+        return "Dieses Ticket hat keine Anhänge."
+    att = (next((a for a in rows if a.filename == name), None)
+           or next((a for a in rows if name and name.lower() in a.filename.lower()), None))
+    if att is None:
+        return f"Anhang '{name}' nicht gefunden. Verfügbar: {', '.join(a.filename for a in rows)}"
+    mime = (att.mime_type or "application/octet-stream").lower()
+    data = att.data or b""
+    if mime.startswith("image/"):
+        media = mime if mime in _IMG_MEDIA else "image/png"
+        return [
+            {"type": "image", "source": {"type": "base64", "media_type": media,
+                                         "data": base64.b64encode(data).decode()}},
+            {"type": "text", "text": f"Anhang „{att.filename}“ ({mime}, {len(data)} Bytes)."},
+        ]
+    if mime.startswith("text/") or mime in ("application/json", "application/xml", "application/x-yaml") \
+            or att.filename.lower().endswith(_TEXT_EXT):
+        return f"Anhang „{att.filename}“ ({mime}):\n\n{data.decode('utf-8', errors='replace')[:16000]}"
+    return f"Anhang „{att.filename}“ ist eine Binärdatei ({mime}, {len(data)} Bytes) — nicht als Text/Bild lesbar."
 
 
 # ---------- Agent-Definition ----------
@@ -579,6 +617,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     base_urls = base_urls or {}
     issue_id = issue["id"]
 
+    # Anhänge des Tickets (Metadaten) — für Kontext-Hinweis + read_attachment-Tool.
+    from ..models.ticket import Attachment
+    _att_rows = (await db.execute(
+        select(Attachment.filename, Attachment.mime_type, Attachment.size)
+        .where(Attachment.issue_id == issue_id).order_by(Attachment.id))).all()
+
     run_id = await _start_run(db, issue_id, agent.name, mode, agent.provider,
                               agent.model or agent.provider, parent_run_id, continuation_index,
                               task_id=task_id)
@@ -613,6 +657,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         messages.append({"role": "user", "content":
                          "# Kommentar-Verlauf (Rückfragen & Antworten)\n" + thread +
                          "\n\nBerücksichtige besonders die Antworten des Nutzers (role=user)."})
+    if _att_rows:
+        _lst = "\n".join(f"- {fn} ({mt or 'unbekannt'}, {sz} Bytes)" for fn, mt, sz in _att_rows)
+        messages.append({"role": "system", "content":
+                         "# Anhänge am Ticket\nDieses Ticket hat Datei-Anhänge. Nutze das Tool "
+                         "`read_attachment` mit dem Dateinamen, um einen Anhang anzusehen — "
+                         "Bilder/Screenshots werden dir als Bild gezeigt.\n" + _lst})
 
     gw_url, gw_token = await _owner_gateway(db, owner_id)
     # Leerer String (nicht None) → KEIN Gateway; kein Rückfall auf globalen Gateway (harte Trennung).
@@ -622,6 +672,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             mcp_tools = await mcp.list_tools()
             openai_tools = [t.to_openai() for t in mcp_tools if agent.tool_allowed(t.name)]
             openai_tools.append(ASK_HUMAN_TOOL)
+            if _att_rows:  # Ticket hat Anhänge → Lese-Tool anbieten (read-only, immer erlaubt)
+                openai_tools.append(READ_ATTACHMENT_TOOL)
             if skill_menu:  # es gibt verfügbare, nicht-auto Skills → Nachlade-Tool anbieten
                 openai_tools.append(LOAD_SKILL_TOOL)
             if mode != "plan":
@@ -858,6 +910,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                                   project.get("stack_dir", ""), ws_root)
                     elif call.name == "screenshot":
                         result = await _do_screenshot(call.arguments, testenv_url or project.get("live_url", ""))
+                    elif call.name == "read_attachment":
+                        result = await _do_read_attachment(db, issue_id, call.arguments)
                     elif call.name in TRACCOON_TOOL_NAMES:
                         result = await call_traccoon_tool(db, owner_id, call.name, call.arguments)
                     elif not agent.tool_allowed(call.name):

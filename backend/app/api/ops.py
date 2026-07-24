@@ -227,6 +227,39 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         await db.commit()
         return {"accepted": True, "mode": "notify"}
 
+    if sub.mode == "workflow":
+        # Startet eine Workflow-Instanz. context_map = {context_key: payload_pfad} (dot-Pfade);
+        # ohne Mapping wird der komplette Payload als Kontext übernommen.
+        from ..models.workflow import WorkflowDefinition
+        from ..services.jsonlogic import _dig
+        from ..services.workflow_engine import start_workflow
+        if sub.workflow_definition_id is None:
+            raise HTTPException(400, "Webhook ohne workflow_definition_id")
+        definition = await db.get(WorkflowDefinition, sub.workflow_definition_id)
+        if definition is None or definition.current_version_id is None:
+            raise HTTPException(400, "Workflow-Definition fehlt oder ist nicht veröffentlicht")
+        # Idempotenz via ref_field → source_ref.
+        src_ref = None
+        if sub.ref_field and isinstance(payload, dict):
+            src_ref = str(payload.get(sub.ref_field) or "") or None
+            if src_ref:
+                from ..models.workflow import WorkflowInstance
+                dup = (await db.execute(select(WorkflowInstance).where(
+                    WorkflowInstance.source == f"webhook:{route}",
+                    WorkflowInstance.source_ref == src_ref))).scalar_one_or_none()
+                if dup is not None:
+                    return {"accepted": True, "duplicate": True, "instance_id": dup.id}
+        cmap = sub.context_map or {}
+        if cmap and isinstance(payload, dict):
+            ctx = {k: _dig(payload, path) for k, path in cmap.items()}
+        else:
+            ctx = payload if isinstance(payload, dict) else {"payload": payload}
+        inst = await start_workflow(
+            db, definition, subject_kind=definition.subject_kind, context=ctx,
+            actor_id=sub.owner_user_id, source=f"webhook:{route}", source_ref=src_ref,
+        )
+        return {"accepted": True, "mode": "workflow", "instance_id": inst.id, "status": inst.status.value}
+
     # Idempotenz: ref_field → source_ref; Doppel-Delivery erzeugt kein zweites Ticket.
     src_ref = None
     if sub.ref_field and isinstance(payload, dict):
