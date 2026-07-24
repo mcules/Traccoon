@@ -25,27 +25,56 @@ DEFAULT_STEPS = ["Bestellen", "Erhalten", "Einlagern", "Einbauen"]
 GRANT_RANK = {GrantLevel.view: 0, GrantLevel.manage: 1}
 
 
+async def _user_matches_role_grant(g: ResourceGrant, user: User, db: AsyncSession) -> bool:
+    """Greift eine rollenbasierte Freigabe für diesen User? Prüft die effektive (auch
+    geerbte, s. Teil A) Rolle des Users im Kontext-Projekt der Freigabe gegen die
+    Mindest-Rolle des Grants."""
+    if g.role is None:
+        return False
+    proj = await db.get(Project, g.project_id)
+    if proj is None:
+        return False
+    try:
+        access = await build_access(proj, user, db)
+    except HTTPException:
+        return False
+    return access.has_role(g.role)
+
+
+async def _matching_grants(rt: ResourceType, resource_id: int, user: User, db: AsyncSession) -> list[ResourceGrant]:
+    """Alle Freigaben (user- ODER rollenbasiert), die für diesen User auf dieses Objekt greifen."""
+    rows = (
+        await db.execute(
+            select(ResourceGrant).where(
+                ResourceGrant.resource_type == rt,
+                ResourceGrant.resource_id == resource_id,
+            )
+        )
+    ).scalars().all()
+    out = []
+    for g in rows:
+        if g.user_id is not None:
+            if g.user_id == user.id:
+                out.append(g)
+        elif await _user_matches_role_grant(g, user, db):
+            out.append(g)
+    return out
+
+
 async def _location_grant_level(loc_id: int, user: User, db: AsyncSession) -> GrantLevel | None:
     """Höchste Freigabe für einen Ort — direkt ODER geerbt von einem Vorfahren-Ort
-    mit recursive=True (Wart bekommt Grant aufs Wasserhäuschen → gilt auch für Masten drunter)."""
+    mit recursive=True (Wart bekommt Grant aufs Wasserhäuschen → gilt auch für Masten drunter).
+    Berücksichtigt sowohl user- als auch rollenbasierte Freigaben."""
     best: GrantLevel | None = None
     loc = await db.get(Location, loc_id)
     seen: set[int] = set()
     first = True
     while loc is not None and loc.id not in seen:
         seen.add(loc.id)
-        g = (
-            await db.execute(
-                select(ResourceGrant).where(
-                    ResourceGrant.user_id == user.id,
-                    ResourceGrant.resource_type == ResourceType.location,
-                    ResourceGrant.resource_id == loc.id,
-                )
-            )
-        ).scalar_one_or_none()
-        if g is not None and (first or g.recursive):
-            if best is None or GRANT_RANK[g.level] > GRANT_RANK[best]:
-                best = g.level
+        for g in await _matching_grants(ResourceType.location, loc.id, user, db):
+            if first or g.recursive:
+                if best is None or GRANT_RANK[g.level] > GRANT_RANK[best]:
+                    best = g.level
         first = False
         loc = await db.get(Location, loc.parent_id) if loc.parent_id is not None else None
     return best
@@ -64,6 +93,23 @@ async def _can_view_location(loc: Location, user: User, db: AsyncSession) -> boo
         except HTTPException:
             pass
     return (await _location_grant_level(loc.id, user, db)) is not None
+
+
+async def _require_target_project_maintainer(project_id: int | None, user: User, db: AsyncSession) -> None:
+    """Validiert das ZIEL-Projekt einer Zuordnung (create/move): existiert es, und ist der
+    Aufrufer dort mind. maintainer? Verhindert, dass ein Nutzer mit Rechten in Projekt A
+    (oder nur Grant auf den alten Ort/Asset) ein Objekt in ein fremdes Projekt B verschiebt."""
+    if project_id is None:
+        return
+    proj = await db.get(Project, project_id)
+    if proj is None:
+        raise HTTPException(400, "Projekt existiert nicht")
+    try:
+        access = await build_access(proj, user, db)
+    except HTTPException:
+        raise HTTPException(403, "Kein Zugriff auf dieses Projekt")
+    if not access.has_role(ProjectRole.maintainer):
+        raise HTTPException(403, "Kein Zugriff auf dieses Projekt")
 
 
 async def _require_location_manage(loc: Location, user: User, db: AsyncSession) -> None:
@@ -118,7 +164,11 @@ async def create_location(
         proj = await db.get(Project, data.project_id)
         if proj is None:
             raise HTTPException(400, "Projekt existiert nicht")
-        if not (await build_access(proj, user, db)).has_role(ProjectRole.maintainer):
+        try:
+            access = await build_access(proj, user, db)
+        except HTTPException:
+            raise HTTPException(403, "Kein Zugriff auf dieses Projekt")
+        if not access.has_role(ProjectRole.maintainer):
             raise HTTPException(403, "Kein Zugriff auf dieses Projekt")
     loc = Location(
         name=data.name, type=data.type, parent_id=data.parent_id,
@@ -203,16 +253,12 @@ async def delete_model(
 # ---------- Exemplare (Assets) ----------
 
 async def _asset_grant_level(asset_id: int, user: User, db: AsyncSession) -> GrantLevel | None:
-    g = (
-        await db.execute(
-            select(ResourceGrant).where(
-                ResourceGrant.user_id == user.id,
-                ResourceGrant.resource_type == ResourceType.asset,
-                ResourceGrant.resource_id == asset_id,
-            )
-        )
-    ).scalar_one_or_none()
-    return g.level if g is not None else None
+    """Höchste Freigabe (user- oder rollenbasiert) für dieses Exemplar."""
+    best: GrantLevel | None = None
+    for g in await _matching_grants(ResourceType.asset, asset_id, user, db):
+        if best is None or GRANT_RANK[g.level] > GRANT_RANK[best]:
+            best = g.level
+    return best
 
 
 async def _can_view_asset(asset: HardwareAsset, user: User, db: AsyncSession) -> bool:

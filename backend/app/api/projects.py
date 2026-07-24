@@ -314,10 +314,11 @@ async def _resource_label(rt: ResourceType, rid: int, db: AsyncSession) -> str:
 
 
 async def _grant_out(g: ResourceGrant, db: AsyncSession) -> ResourceGrantOut:
-    user = await db.get(User, g.user_id)
+    user = await db.get(User, g.user_id) if g.user_id is not None else None
     return ResourceGrantOut(
         id=g.id, project_id=g.project_id, user_id=g.user_id,
-        username=user.username if user else "?", display_name=user.display_name if user else "?",
+        username=user.username if user else None, display_name=user.display_name if user else None,
+        role=g.role,
         resource_type=g.resource_type, resource_id=g.resource_id,
         resource_label=await _resource_label(g.resource_type, g.resource_id, db),
         level=g.level, recursive=g.recursive,
@@ -345,7 +346,9 @@ async def add_resource_grant(
     access: Access = Depends(require_role(ProjectRole.maintainer)),
     db: AsyncSession = Depends(get_session),
 ):
-    if await db.get(User, data.user_id) is None:
+    if (data.user_id is None) == (data.role is None):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Entweder user_id oder role angeben")
+    if data.user_id is not None and await db.get(User, data.user_id) is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     if data.resource_type == ResourceType.location:
         exists = await db.get(Location, data.resource_id)
@@ -353,10 +356,16 @@ async def add_resource_grant(
         exists = await db.get(HardwareAsset, data.resource_id)
     if exists is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Objekt existiert nicht")
+    # Objekt muss zu DIESEM Projekt gehören (oder projektlos/Lager sein) — sonst könnte ein
+    # Maintainer Zugriff auf Ressourcen fremder Projekte vergeben ("innerhalb eines Projekts").
+    if exists.project_id is not None and exists.project_id != access.project.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Objekt gehört zu einem anderen Projekt")
     dup = (
         await db.execute(
             select(ResourceGrant).where(
+                ResourceGrant.project_id == access.project.id,
                 ResourceGrant.user_id == data.user_id,
+                ResourceGrant.role == data.role,
                 ResourceGrant.resource_type == data.resource_type,
                 ResourceGrant.resource_id == data.resource_id,
             )
@@ -365,8 +374,9 @@ async def add_resource_grant(
     if dup is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Freigabe existiert bereits")
     g = ResourceGrant(
-        project_id=access.project.id, user_id=data.user_id, resource_type=data.resource_type,
-        resource_id=data.resource_id, level=data.level, recursive=data.recursive,
+        project_id=access.project.id, user_id=data.user_id, role=data.role,
+        resource_type=data.resource_type, resource_id=data.resource_id,
+        level=data.level, recursive=data.recursive,
     )
     db.add(g)
     await db.commit()

@@ -33,18 +33,24 @@ def upgrade() -> None:
     resourcetype.create(op.get_bind(), checkfirst=True)
     grantlevel.create(op.get_bind(), checkfirst=True)
 
+    projectrole = sa.Enum('owner', 'maintainer', 'member', 'viewer', name='projectrole')
+
     op.create_table(
         'resource_grants',
         sa.Column('id', sa.Integer(), primary_key=True),
         sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column('project_id', sa.Integer(), sa.ForeignKey('projects.id', ondelete='CASCADE'), nullable=False, index=True),
-        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True),
+        # Genau eines von user_id/role ist gesetzt (Freigabe an einen User ODER an alle
+        # Träger einer Projekt-Rolle).
+        sa.Column('user_id', sa.Integer(), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True),
+        sa.Column('role', projectrole, nullable=True),
         sa.Column('resource_type', resourcetype, nullable=False),
         sa.Column('resource_id', sa.Integer(), nullable=False),
         sa.Column('level', grantlevel, nullable=False, server_default='view'),
         sa.Column('recursive', sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.UniqueConstraint('user_id', 'resource_type', 'resource_id', name='uq_resource_grant'),
+        sa.UniqueConstraint('user_id', 'role', 'resource_type', 'resource_id', name='uq_resource_grant'),
+        sa.CheckConstraint('(user_id IS NOT NULL) <> (role IS NOT NULL)', name='ck_resource_grant_target'),
     )
 
 
