@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 
 interface Grant {
-  id: number; project_id: number; user_id: number; username: string; display_name: string;
+  id: number; project_id: number; user_id: number | null; username: string | null; display_name: string | null;
+  role: string | null;
   resource_type: "location" | "asset"; resource_id: number; resource_label: string;
   level: "view" | "manage"; recursive: boolean;
 }
@@ -11,6 +12,7 @@ interface Location { id: number; full_path: string; }
 interface Asset { id: number; model_id: number; }
 
 const LEVELS = ["view", "manage"];
+const ROLES = ["viewer", "member", "maintainer", "owner"];
 
 /** Granulare Freigabe eines einzelnen Orts/Exemplars an einen User — ohne volle
  * Projekt-Mitgliedschaft (Wart-Fall: sieht/verwaltet nur sein Wasserhäuschen + Masten). */
@@ -24,7 +26,9 @@ export default function ResourceGrants({ project }: { project: Project }) {
     queryFn: () => api.get<Asset[]>(`/hardware/assets?project_id=${project.id}`),
   });
 
+  const [target, setTarget] = useState<"user" | "role">("user");
   const [uid, setUid] = useState("");
+  const [role, setRole] = useState("member");
   const [rtype, setRtype] = useState<"location" | "asset">("location");
   const [rid, setRid] = useState("");
   const [level, setLevel] = useState("view");
@@ -34,7 +38,9 @@ export default function ResourceGrants({ project }: { project: Project }) {
 
   const add = useMutation({
     mutationFn: () => api.post(`/projects/${project.id}/resource-grants`, {
-      user_id: Number(uid), resource_type: rtype, resource_id: Number(rid),
+      user_id: target === "user" ? Number(uid) : null,
+      role: target === "role" ? role : null,
+      resource_type: rtype, resource_id: Number(rid),
       level, recursive,
     }),
     onSuccess: () => { setUid(""); setRid(""); setErr(""); inv(); },
@@ -49,18 +55,23 @@ export default function ResourceGrants({ project }: { project: Project }) {
     <div className="max-w-3xl">
       <p className="mb-3 text-xs text-muted">
         Feingranularer Zugriff auf einen einzelnen Ort oder ein Exemplar — ohne dass der Nutzer
-        volles Projekt-Mitglied wird (z. B. „Wart“ nur fürs Wasserhäuschen samt Masten).
+        volles Projekt-Mitglied wird (z. B. „Wart“ nur fürs Wasserhäuschen samt Masten). Kann an
+        einen einzelnen Nutzer ODER an alle Träger einer Projekt-Rolle vergeben werden.
       </p>
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase text-muted">
-            <th className="py-2">Nutzer</th><th>Objekt</th><th>Stufe</th><th>Rekursiv</th><th></th>
+            <th className="py-2">Nutzer/Rolle</th><th>Objekt</th><th>Stufe</th><th>Rekursiv</th><th></th>
           </tr>
         </thead>
         <tbody>
           {grants?.map((g) => (
             <tr key={g.id} className="border-b border-line">
-              <td className="py-2">{g.display_name || g.username} <span className="text-muted">#{g.user_id}</span></td>
+              <td className="py-2">
+                {g.role
+                  ? <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">Rolle: {g.role}</span>
+                  : <>{g.display_name || g.username} <span className="text-muted">#{g.user_id}</span></>}
+              </td>
               <td>
                 <span className="rounded bg-surface px-1.5 py-0.5 text-xs">{g.resource_type}</span> {g.resource_label}
               </td>
@@ -78,10 +89,26 @@ export default function ResourceGrants({ project }: { project: Project }) {
       </table>
 
       <div className="mt-4 flex flex-wrap items-end gap-2">
-        <label className="text-xs text-muted">User-ID
-          <input value={uid} onChange={(e) => setUid(e.target.value)}
-            className="mt-1 block w-24 rounded border border-line bg-surface px-2 py-1" />
+        <label className="text-xs text-muted">Ziel
+          <select value={target} onChange={(e) => setTarget(e.target.value as "user" | "role")}
+            className="mt-1 block rounded border border-line bg-surface px-2 py-1">
+            <option value="user">Nutzer</option>
+            <option value="role">Rolle (alle Träger)</option>
+          </select>
         </label>
+        {target === "user" ? (
+          <label className="text-xs text-muted">User-ID
+            <input value={uid} onChange={(e) => setUid(e.target.value)}
+              className="mt-1 block w-24 rounded border border-line bg-surface px-2 py-1" />
+          </label>
+        ) : (
+          <label className="text-xs text-muted">Rolle
+            <select value={role} onChange={(e) => setRole(e.target.value)}
+              className="mt-1 block rounded border border-line bg-surface px-2 py-1">
+              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+            </select>
+          </label>
+        )}
         <label className="text-xs text-muted">Objektart
           <select value={rtype} onChange={(e) => { setRtype(e.target.value as "location" | "asset"); setRid(""); }}
             className="mt-1 block rounded border border-line bg-surface px-2 py-1">
@@ -110,7 +137,8 @@ export default function ResourceGrants({ project }: { project: Project }) {
             gilt auch für Kind-Orte
           </label>
         )}
-        <button onClick={() => uid && rid && add.mutate()} className="rounded bg-brand px-3 py-1.5 text-white">
+        <button onClick={() => (target === "user" ? !!uid : !!role) && rid && add.mutate()}
+          className="rounded bg-brand px-3 py-1.5 text-white">
           Freigeben
         </button>
         {err && <span className="text-sm text-red-400">{err}</span>}

@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Enum as SAEnum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    Boolean, CheckConstraint, Enum as SAEnum, ForeignKey, Integer, String, Text, UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..db import Base
@@ -98,24 +100,37 @@ def default_ai_assign(role: ProjectRole) -> bool:
 
 
 class ResourceGrant(TimestampMixin, Base):
-    """Granulare Freigabe eines einzelnen Objekts (Location/Asset) an einen User,
-    unabhängig von dessen Projekt-Rolle. Deckt den "Wart"-Fall: User sieht/verwaltet
-    NUR das Wasserhäuschen + seine Masten, ohne volle Projekt-Mitgliedschaft.
+    """Granulare Freigabe eines einzelnen Objekts (Location/Asset) an einen User ODER
+    eine ganze Projekt-Rolle, unabhängig von voller Projekt-Mitgliedschaft. Deckt den
+    "Wart"-Fall: User (oder z. B. alle "member" des Projekts) sehen/verwalten NUR das
+    Wasserhäuschen + seine Masten, ohne volle Projekt-Mitgliedschaft im Sub-Baum.
+
+    Genau eines von user_id/role ist gesetzt (siehe CheckConstraint). Bei role gilt die
+    Freigabe für jeden, dessen effektive (auch geerbte) Rolle im project_id-Kontext
+    mindestens dieser Rolle entspricht.
     """
     __tablename__ = "resource_grants"
     __table_args__ = (
         UniqueConstraint(
-            "user_id", "resource_type", "resource_id", name="uq_resource_grant"
+            "user_id", "role", "resource_type", "resource_id", name="uq_resource_grant"
+        ),
+        CheckConstraint(
+            "(user_id IS NOT NULL) <> (role IS NOT NULL)", name="ck_resource_grant_target"
         ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Projekt, in dessen Kontext die Freigabe gilt (Sichtbarkeit im Hardware-Tab etc.)
+    # Projekt, in dessen Kontext die Freigabe gilt (Sichtbarkeit im Hardware-Tab etc.
+    # sowie Bezugsrahmen für eine rollenbasierte Freigabe).
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    # Genau eines von user_id/role ist gesetzt.
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    role: Mapped[ProjectRole | None] = mapped_column(
+        SAEnum(ProjectRole, name="projectrole", values_callable=pg_enum_values), nullable=True,
     )
     resource_type: Mapped[ResourceType] = mapped_column(
         SAEnum(ResourceType, name="resourcetype", values_callable=pg_enum_values), nullable=False,

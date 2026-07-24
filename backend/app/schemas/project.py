@@ -107,7 +107,10 @@ class MemberOut(BaseModel):
 
 
 class ResourceGrantIn(BaseModel):
-    user_id: int
+    # Genau eines von user_id/role angeben — Freigabe an einen einzelnen Nutzer
+    # ODER an alle Träger einer Projekt-Rolle (auch geerbt, siehe Teil A).
+    user_id: int | None = None
+    role: ProjectRole | None = None
     resource_type: ResourceType
     resource_id: int
     level: GrantLevel = GrantLevel.view
@@ -117,9 +120,10 @@ class ResourceGrantIn(BaseModel):
 class ResourceGrantOut(BaseModel):
     id: int
     project_id: int
-    user_id: int
-    username: str
-    display_name: str
+    user_id: int | None
+    username: str | None = None
+    display_name: str | None = None
+    role: ProjectRole | None = None
     resource_type: ResourceType
     resource_id: int
     resource_label: str
