@@ -20,6 +20,21 @@ import { loader } from "@monaco-editor/react";
 
 loader.config({ monaco });
 
+// Vorwärmen im Hintergrund: startet die größten Worker einmal, damit ihre JS-Chunks
+// (ts.worker ~6 MB, editor.worker) heruntergeladen und vom Browser gecacht werden —
+// so ist der erste echte Öffnen von „Code" nicht mehr durch den Worker-Download blockiert.
+// Läuft in Web-Worker-Threads, blockiert also die UI nicht; nach kurzer Zeit wieder beendet.
+let _warmed = false;
+export function prewarmMonaco(): void {
+  if (_warmed) return;
+  _warmed = true;
+  try {
+    const ts = new tsWorker();
+    const ed = new editorWorker();
+    setTimeout(() => { try { ts.terminate(); ed.terminate(); } catch { /* egal */ } }, 5000);
+  } catch { /* Vorwärmen ist optional */ }
+}
+
 // Sprache aus Dateiendung (Monaco leitet vieles über den Pfad ab; hier die häufigsten).
 export function langOf(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() || "";

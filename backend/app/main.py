@@ -9,13 +9,14 @@ from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
     admin, agents, auth, config, cost, dashboard, files, hardware, invitations, issues, lifecycle,
     mail, me, notifications, ops, permissions, plugins, projects, repo, runs, secrets, skills,
-    users, ws,
+    users, workflows, ws,
 )
 from .config import settings
 from .db import Base, SessionLocal, engine
 from .seed import seed
 from .services.dispatcher import recover_on_start, run_dispatcher
 from .services.scheduler import run_scheduler
+from .services.workflow_engine import run_workflow_engine
 from .api.ws import event_bridge
 
 VERSION = "0.1.0"
@@ -53,6 +54,19 @@ async def lifespan(app: FastAPI):
                 # Mail-Task-Prompt (Verarbeitungs-Wissen) je Webhook — portiert aus dem Vorläufer.
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS prompt_tmpl TEXT",
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS auto_run BOOLEAN DEFAULT FALSE NOT NULL",
+                # Workflow-Trigger: Webhook/Job starten eine Workflow-Instanz (Etappe 3).
+                "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS workflow_definition_id INTEGER "
+                "REFERENCES workflow_definitions(id) ON DELETE SET NULL",
+                "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS context_map JSON DEFAULT '{}'::json NOT NULL",
+                "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS workflow_definition_id INTEGER "
+                "REFERENCES workflow_definitions(id) ON DELETE SET NULL",
+                # E-Mail optional (login-lose Konten): NOT NULL entfernen (UNIQUE bleibt).
+                "ALTER TABLE users ALTER COLUMN email DROP NOT NULL",
+                # Ticket-Öffnen-Modus je Nutzer (popup|page).
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS ticket_open_mode VARCHAR(10) "
+                "DEFAULT 'popup' NOT NULL",
+                # Nutzerspezifische Block-Anordnung der Ticket-Seite.
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS ticket_layout JSON DEFAULT '{}'::json NOT NULL",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:
@@ -64,6 +78,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(cleanup_orphan_previews()),
         asyncio.create_task(run_dispatcher()),
         asyncio.create_task(run_scheduler()),
+        asyncio.create_task(run_workflow_engine()),
         asyncio.create_task(event_bridge()),
     ]
     yield
@@ -91,6 +106,7 @@ api.include_router(config.router)
 api.include_router(issues.router)
 api.include_router(lifecycle.router)
 api.include_router(hardware.router)
+api.include_router(workflows.router)
 api.include_router(ops.router)
 api.include_router(mail.router)
 api.include_router(secrets.router)

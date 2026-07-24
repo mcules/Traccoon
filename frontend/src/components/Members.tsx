@@ -25,6 +25,7 @@ export default function Members({ project }: { project: Project }) {
   const [role, setRole] = useState("member");
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
+  const [q, setQ] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: key });
   const invInv = () => qc.invalidateQueries({ queryKey: invKey });
 
@@ -54,8 +55,25 @@ export default function Members({ project }: { project: Project }) {
     onSuccess: inv,
   });
 
+  // Nutzersuche (Benutzername/Anzeigename) zum Direkt-Hinzufügen bestehender Konten.
+  const search = useQuery({
+    queryKey: ["user-search", q],
+    queryFn: () => api.get<{ id: number; username: string; display_name: string; status: string }[]>(
+      `/users/search?q=${encodeURIComponent(q.trim())}`),
+    enabled: q.trim().length >= 1,
+  });
+  const addExisting = useMutation({
+    mutationFn: (user_id: number) => api.post(`/projects/${project.id}/members`, { user_id, role }),
+    onSuccess: () => {
+      setErr(""); setInfo("Nutzer hinzugefügt."); setTimeout(() => setInfo(""), 3000); setQ(""); inv();
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+  });
+
   const pending = invitations?.filter((i) => i.status === "pending") || [];
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const memberIds = new Set(members?.map((m) => m.user_id) || []);
+  const matches = (search.data || []).filter((u) => !memberIds.has(u.id));
 
   return (
     <div className="max-w-3xl">
@@ -89,8 +107,35 @@ export default function Members({ project }: { project: Project }) {
         </tbody>
       </table>
 
+      {/* Bestehenden Nutzer per Benutzername/Anzeigename suchen und direkt hinzufügen */}
+      <div className="mt-5">
+        <label className="text-xs text-muted">Bestehenden Nutzer hinzufügen (Benutzername oder Anzeigename)
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name eingeben…"
+            className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1" />
+        </label>
+        {q.trim().length >= 1 && (
+          <div className="mt-1 divide-y divide-line rounded border border-line bg-card">
+            {matches.length === 0 && (
+              <div className="px-2 py-1.5 text-xs text-muted">
+                {search.isFetching ? "Suche…" : "Keine passenden Nutzer."}
+              </div>
+            )}
+            {matches.map((u) => (
+              <div key={u.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                <span className="flex-1 truncate">
+                  {u.display_name || u.username} <span className="text-muted">@{u.username}</span>
+                  {u.status !== "active" && <span className="ml-1 text-xs text-muted">({u.status})</span>}
+                </span>
+                <button onClick={() => addExisting.mutate(u.id)}
+                  className="rounded bg-brand px-2 py-1 text-xs text-white">+ als {role}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="mt-4 flex items-end gap-2">
-        <label className="flex-1 text-xs text-muted">E-Mail-Adresse
+        <label className="flex-1 text-xs text-muted">…oder per E-Mail einladen
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com"
             className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1" />
         </label>

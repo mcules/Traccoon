@@ -1,13 +1,15 @@
 """Persönliche Settings (/me/*) + Redis-Flags (Layer C) + Admin-Toggles."""
 import datetime as dt
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.redis import get_flag, get_user_flag, set_flag, set_user_flag
 from ..db import get_session
 from ..models.user import User
+from ..schemas.auth import _valid_email
 from .deps import get_current_user, require_admin
 
 router = APIRouter(tags=["me"])
@@ -67,9 +69,47 @@ async def set_theme(d: StrIn, u: User = Depends(get_current_user), db: AsyncSess
     await db.commit()
 
 
+@router.put("/me/email", status_code=204)
+async def set_email(d: StrIn, u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
+    """Eigene E-Mail ändern (Self-Service). Leer = E-Mail entfernen (dann kein E-Mail-Login)."""
+    raw = (d.value or "").strip()
+    if not raw:
+        u.email = None
+        await db.commit()
+        return
+    email = _valid_email(raw)  # wirft bei ungültigem Format
+    other = (await db.execute(
+        select(User).where(User.email == email, User.id != u.id))).scalar_one_or_none()
+    if other is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "E-Mail bereits vergeben")
+    u.email = email
+    await db.commit()
+
+
 @router.put("/me/default-view", status_code=204)
 async def set_default_view(d: StrIn, u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     u.default_project_view = d.value if d.value in ("board", "chat") else "board"
+    await db.commit()
+
+
+@router.put("/me/ticket-open-mode", status_code=204)
+async def set_ticket_open_mode(d: StrIn, u: User = Depends(get_current_user),
+                               db: AsyncSession = Depends(get_session)):
+    """Wie ein Ticket per Linksklick öffnet: popup (Drawer) oder page (volle Seite)."""
+    u.ticket_open_mode = d.value if d.value in ("popup", "page") else "popup"
+    await db.commit()
+
+
+class TicketLayoutIn(BaseModel):
+    left: list[str] = []
+    right: list[str] = []
+
+
+@router.put("/me/ticket-layout", status_code=204)
+async def set_ticket_layout(d: TicketLayoutIn, u: User = Depends(get_current_user),
+                            db: AsyncSession = Depends(get_session)):
+    """Nutzerspezifische Block-Anordnung der vollen Ticket-Seite speichern."""
+    u.ticket_layout = {"left": d.left[:40], "right": d.right[:40]}
     await db.commit()
 
 

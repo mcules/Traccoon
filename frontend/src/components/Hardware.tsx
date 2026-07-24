@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { api, ApiError, Project } from "../api";
 import AssetProcurement from "./AssetProcurement";
+import AssetWorkflow from "./AssetWorkflow";
 
 interface Model { id: number; name: string; category: string | null; manufacturer: string | null; }
 interface Location { id: number; name: string; type: string; parent_id: number | null; full_path: string; }
@@ -32,6 +34,7 @@ export default function Hardware({ project }: { project: Project }) {
   const [aLoc, setALoc] = useState("");
   const [aStatus, setAStatus] = useState("planned");
   const [offen, setOffen] = useState<number | null>(null);
+  const [ansicht, setAnsicht] = useState<"klassisch" | "workflow">("klassisch");
   const [err, setErr] = useState("");
   const fehler = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
@@ -90,7 +93,25 @@ export default function Hardware({ project }: { project: Project }) {
                 </div>
                 {offen === a.id && (
                   <div className="border-t border-line p-2.5">
-                    <AssetProcurement assetId={a.id} project={project} onChange={invAssets} />
+                    <div className="mb-2.5 inline-flex rounded border border-line bg-surface p-0.5 text-xs">
+                      <button
+                        onClick={() => setAnsicht("klassisch")}
+                        className={`rounded px-2 py-0.5 ${ansicht === "klassisch" ? "bg-brand text-white" : "text-muted hover:text-ink"}`}
+                      >
+                        Klassische Schritte
+                      </button>
+                      <button
+                        onClick={() => setAnsicht("workflow")}
+                        className={`rounded px-2 py-0.5 ${ansicht === "workflow" ? "bg-brand text-white" : "text-muted hover:text-ink"}`}
+                      >
+                        🧭 Workflow
+                      </button>
+                    </div>
+                    {ansicht === "klassisch" ? (
+                      <AssetProcurement assetId={a.id} project={project} onChange={invAssets} />
+                    ) : (
+                      <AssetWorkflow assetId={a.id} projectId={a.project_id} assetLabel={modelName(a.model_id)} />
+                    )}
                   </div>
                 )}
               </div>
@@ -178,6 +199,7 @@ export default function Hardware({ project }: { project: Project }) {
 /** Standard-Beschaffungsschritte je Projekt (Vorlage für neue Exemplare). */
 function WorkflowConfig({ project }: { project: Project }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ["hw-workflow", project.id],
     queryFn: () => api.get<{ name: string }[]>(`/projects/${project.id}/hardware-workflow`),
@@ -190,14 +212,34 @@ function WorkflowConfig({ project }: { project: Project }) {
     }),
     onSuccess: () => { setText(null); qc.invalidateQueries({ queryKey: ["hw-workflow", project.id] }); },
   });
+  // „Als Prozess bearbeiten“: erzeugt (idempotent) die Workflow-Definition und öffnet den Editor.
+  const alsProzess = useMutation({
+    mutationFn: () =>
+      api.post<{ definition_id: number; current_version_id: number }>(
+        `/projects/${project.id}/hardware-workflow/definition`,
+      ),
+    onSuccess: (res) => navigate(`/projects/${project.key}/workflows/${res.definition_id}`),
+  });
   return (
     <div className="rounded-lg border border-line bg-card p-3">
       <h3 className="mb-1 font-medium">Beschaffungsprozess</h3>
       <p className="mb-2 text-xs text-muted">Schritte (eine Zeile je Schritt), die jedes neue Exemplar durchläuft.</p>
       <textarea value={wert} onChange={(e) => setText(e.target.value)} rows={4}
         className="w-full rounded border border-line bg-surface px-2 py-1.5 font-mono text-xs" />
-      <button onClick={() => speichern.mutate()}
-        className="mt-2 rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">Speichern</button>
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button onClick={() => speichern.mutate()}
+          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">Speichern</button>
+        <button onClick={() => alsProzess.mutate()} disabled={alsProzess.isPending}
+          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
+          title="Diese Schrittliste als grafischen Workflow-Prozess bearbeiten">
+          🧭 Als Prozess bearbeiten
+        </button>
+      </div>
+      {alsProzess.error && (
+        <p className="mt-1 text-xs text-red-400">
+          {alsProzess.error instanceof ApiError ? alsProzess.error.message : "Konnte Prozess nicht öffnen."}
+        </p>
+      )}
       <p className="mt-1 text-xs text-muted">Wirkt auf künftige Exemplare; bereits angelegte behalten ihre Schritte.</p>
     </div>
   );

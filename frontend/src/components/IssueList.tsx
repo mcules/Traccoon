@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Issue, Project, ProjectMeta } from "../api";
 import { waitInfo } from "../lib/waitReason";
+import { ticketOpenHandlers, type OnOpenTicket } from "../ticketOpen";
 
 const PRIO_FARBE: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400", medium: "text-yellow-400",
@@ -13,7 +14,7 @@ type SortKey = "key" | "summary" | "priority" | "status" | "agent";
 export default function IssueList({
   project, meta, issues, onOpen,
 }: {
-  project: Project; meta: ProjectMeta; issues: Issue[]; onOpen: (k: string) => void;
+  project: Project; meta: ProjectMeta; issues: Issue[]; onOpen: OnOpenTicket;
 }) {
   const statusMap = useMemo(() => new Map(meta.statuses.map((s) => [s.id, s.name])), [meta]);
   const typeMap = useMemo(() => new Map(meta.types.map((t) => [t.id, t])), [meta]);
@@ -83,7 +84,7 @@ export default function IssueList({
           {gefiltert.map((i) => {
             const t = typeMap.get(i.type_id);
             return (
-              <tr key={i.id} onClick={() => onOpen(i.key)}
+              <tr key={i.id} {...ticketOpenHandlers(i.key, onOpen)}
                 className="cursor-pointer border-b border-line/50 hover:bg-card">
                 <td className="py-1.5 font-mono text-xs text-muted">{i.key}</td>
                 <td className="py-1.5">

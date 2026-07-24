@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Issue, Project, ProjectMeta, Status } from "../api";
 import { waitInfo } from "../lib/waitReason";
+import { ticketOpenHandlers, type OnOpenTicket } from "../ticketOpen";
 
 const PRIO_COLOR: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400", medium: "text-yellow-400",
@@ -17,7 +18,7 @@ const WAIT_KIND_COLOR: Record<string, string> = {
 export default function Board({
   project, meta, issues, onOpen,
 }: {
-  project: Project; meta: ProjectMeta; issues: Issue[]; onOpen: (k: string) => void;
+  project: Project; meta: ProjectMeta; issues: Issue[]; onOpen: OnOpenTicket;
 }) {
   const board = meta.boards[0];
   const statusMap = new Map(meta.statuses.map((s) => [s.id, s] as const));
@@ -124,7 +125,7 @@ export default function Board({
                     <div key={i.id}>
                       {showDropBefore && <div className="mb-2 h-1.5 rounded bg-brand" />}
                       <button
-                        onClick={() => onOpen(i.key)}
+                        {...ticketOpenHandlers(i.key, onOpen)}
                         draggable={canDrag}
                         onDragStart={(e) => {
                           e.dataTransfer.effectAllowed = "move";

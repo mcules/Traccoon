@@ -76,6 +76,33 @@ async def set_default_provider_token(tid: int, user: User = Depends(get_current_
     await db.commit()
 
 
+class ProviderTokenPatch(BaseModel):
+    token: str | None = None       # nur setzen, wenn nicht-leer (sonst Wert unverändert)
+    base_url: str | None = None    # nur openai; "" → zurücksetzen auf Provider-Default
+    is_default: bool | None = None
+
+
+@router.patch("/me/provider-tokens/{tid}", status_code=204)
+async def update_provider_token(tid: int, data: ProviderTokenPatch,
+                                user: User = Depends(get_current_user),
+                                db: AsyncSession = Depends(get_session)):
+    """Bestehenden Key bearbeiten OHNE Token-Zwang: Base-URL/Default ändern; Token nur, wenn
+    ein neuer Wert mitgegeben wird (Werte werden nie zurückgeliefert)."""
+    row = await db.get(ProviderToken, tid)
+    if row is None or row.user_id != user.id:
+        raise HTTPException(404, "Token nicht gefunden")
+    if data.token is not None and data.token.strip():
+        row.value_enc = encrypt_secret(data.token.strip())
+    if data.base_url is not None:
+        row.base_url = ((data.base_url.strip() or None) if row.provider == "openai" else None)
+    if data.is_default:
+        for other in (await db.execute(select(ProviderToken).where(
+                ProviderToken.user_id == user.id,
+                ProviderToken.provider == row.provider))).scalars().all():
+            other.is_default = (other.id == tid)
+    await db.commit()
+
+
 @router.delete("/me/provider-tokens/{tid}", status_code=204)
 async def del_provider_token(tid: int, user: User = Depends(get_current_user),
                              db: AsyncSession = Depends(get_session)):

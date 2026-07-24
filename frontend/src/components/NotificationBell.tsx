@@ -30,7 +30,9 @@ export default function NotificationBell() {
         )}
       </button>
       {open && (
-        <div className="absolute right-0 top-8 z-20 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-lg">
+        <>
+        <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+        <div className="absolute right-0 top-8 z-30 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-lg">
           <div className="mb-2 flex items-center justify-between px-1">
             <span className="text-xs font-medium text-muted">Benachrichtigungen</span>
             <button onClick={readAll} className="text-xs text-brand">alle gelesen</button>
@@ -43,6 +45,7 @@ export default function NotificationBell() {
           ))}
           {list?.length === 0 && <div className="px-1 text-xs text-muted">Nichts Neues.</div>}
         </div>
+        </>
       )}
     </div>
   );

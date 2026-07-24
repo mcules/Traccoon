@@ -9,7 +9,7 @@ from ..models.enums import GlobalRole, UserStatus
 from ..models.user import SYSTEM_USER_ID, User
 from ..schemas.auth import UserOut, _valid_email
 from .auth import user_out
-from .deps import require_admin
+from .deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -29,6 +29,28 @@ class UserUpdateIn(BaseModel):
 
 class PasswordResetIn(BaseModel):
     new_password: str = Field(min_length=8)
+
+
+class UserCreateIn(BaseModel):
+    email: str | None = None                       # optional — ohne E-Mail kein E-Mail-Login
+    username: str = Field(min_length=1, max_length=100)
+    display_name: str = ""
+    password: str | None = None                    # optional — ohne Passwort kein Login
+    global_role: str = "user"    # user | admin
+    status: str = "active"       # active | pending
+
+    @field_validator("email")
+    @classmethod
+    def _norm_email(cls, v):
+        v = (v or "").strip()
+        return _valid_email(v) if v else None
+
+    @field_validator("password")
+    @classmethod
+    def _check_password(cls, v):
+        if v and len(v) < 8:
+            raise ValueError("Passwort muss mindestens 8 Zeichen haben")
+        return v or None
 
 
 @router.get("/{user_id}/mcp")
@@ -60,12 +82,69 @@ async def _get_manageable(user_id: int, db: AsyncSession) -> User:
     return u
 
 
+@router.get("/search")
+async def search_users(q: str = "", _: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    """Nutzer nach Benutzername ODER Anzeigename suchen (für Mitglied-Hinzufügen).
+    Minimaldaten, jedem eingeloggten Nutzer zugänglich."""
+    q = (q or "").strip()
+    if not q:
+        return []
+    like = f"%{q}%"
+    rows = (await db.execute(
+        select(User).where(
+            User.id != SYSTEM_USER_ID,
+            User.username.ilike(like) | User.display_name.ilike(like),
+        ).order_by(User.username).limit(20)
+    )).scalars().all()
+    return [{"id": u.id, "username": u.username, "display_name": u.display_name,
+             "status": u.status.value} for u in rows]
+
+
 @router.get("", response_model=list[UserOut])
 async def list_users(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
     rows = (
         await db.execute(select(User).where(User.id != SYSTEM_USER_ID).order_by(User.id))
     ).scalars().all()
     return [user_out(u) for u in rows]
+
+
+@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+async def create_user(data: UserCreateIn, _: User = Depends(require_admin),
+                      db: AsyncSession = Depends(get_session)):
+    """Admin legt direkt einen Nutzer an. E-Mail und Passwort sind optional — ohne Passwort ist
+    das Konto login-los (leerer Hash → Login schlägt fehl). Standard-Agenten werden nur bei einem
+    aktiven Konto MIT Passwort geseedet (login-lose Konten brauchen keine)."""
+    email = data.email  # bereits normalisiert/validiert (oder None)
+    # Kollisionsprüfung: Benutzername immer, E-Mail nur wenn gesetzt.
+    cond = User.username == data.username
+    if email is not None:
+        cond = cond | (User.email == email)
+    exists = (await db.execute(select(User).where(cond))).scalar_one_or_none()
+    if exists is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "E-Mail oder Benutzername bereits vergeben")
+    try:
+        role = GlobalRole(data.global_role)
+    except ValueError:
+        role = GlobalRole.user
+    try:
+        st = UserStatus(data.status)
+    except ValueError:
+        st = UserStatus.active
+    if st not in (UserStatus.active, UserStatus.pending):
+        st = UserStatus.active
+    user = User(
+        email=email, username=data.username, display_name=data.display_name or data.username,
+        password_hash=hash_password(data.password) if data.password else "",
+        global_role=role, status=st,
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    if st == UserStatus.active and data.password:
+        from .agents import seed_default_agents
+        await seed_default_agents(db, user.id)
+    return user_out(user)
 
 
 @router.post("/{user_id}/approve", response_model=UserOut)

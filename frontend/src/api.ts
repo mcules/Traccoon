@@ -90,13 +90,16 @@ export const api = {
   blobUrl,
   post: <T = any>(p: string, body?: any) => request<T>(p, { method: "POST", body }),
   put: <T = any>(p: string, body?: any) => request<T>(p, { method: "PUT", body }),
+  patch: <T = any>(p: string, body?: any) => request<T>(p, { method: "PATCH", body }),
   del: <T = any>(p: string) => request<T>(p, { method: "DELETE" }),
 };
 
 // ---------- Typen ----------
 export interface User {
-  id: number; email: string; username: string; display_name: string;
+  id: number; email: string | null; username: string; display_name: string;
   global_role: string; status: string; onboarded: boolean; theme: string;
+  ticket_open_mode?: string;   // popup | page — wie ein Ticket per Linksklick öffnet
+  ticket_layout?: { left?: string[]; right?: string[] };  // nutzerspez. Block-Anordnung
 }
 export interface Project {
   id: number; key: string; name: string; description: string;
@@ -149,3 +152,54 @@ export interface MyDashboard {
   stats: { projects: number; action: number; assigned: number;
     working: number; unread: number; done_7d: number };
 }
+
+// ---------- Workflow-Engine ----------
+// Vertrag liegt in components/workflow/types.ts; hier für Bequemlichkeit re-exportiert.
+export type {
+  WorkflowDefinition, WorkflowVersion, WorkflowInstance, WorkflowStepRun,
+  WorkflowTokenLite, WorkflowTaskLite, WorkflowGraph, WorkflowNode, WorkflowEdge,
+  NodeConfig, WorkflowSubjectKind, WorkflowNodeType, WorkflowVersionStatus,
+  WorkflowInstanceStatus, WorkflowStepStatus, AssigneeSpec, FormField,
+  DecisionBranch, AutoActionConfig, JsonLogic,
+} from "./components/workflow/types";
+
+import type {
+  WorkflowDefinition as WfDef, WorkflowVersion as WfVer, WorkflowInstance as WfInst,
+  WorkflowTaskLite as WfTask, WorkflowGraph as WfGraph, WorkflowSubjectKind as WfSubject,
+} from "./components/workflow/types";
+
+export const workflowApi = {
+  list: (projectId: number) => api.get<WfDef[]>(`/workflows?project_id=${projectId}`),
+  create: (body: {
+    project_id?: number | null; key: string; name: string;
+    description?: string; subject_kind: WfSubject;
+  }) => api.post<WfDef>("/workflows", body),
+  get: (id: number) => api.get<WfDef>(`/workflows/${id}`),
+  update: (id: number, body: { name?: string; description?: string; enabled?: boolean }) =>
+    api.put<WfDef>(`/workflows/${id}`, body),
+  del: (id: number) => api.del(`/workflows/${id}`),
+
+  versions: (id: number) => api.get<WfVer[]>(`/workflows/${id}/versions`),
+  editable: (id: number) => api.get<WfVer>(`/workflows/${id}/editable`),
+  saveVersion: (id: number, vid: number, body: { graph: WfGraph; notes?: string }) =>
+    api.put<WfVer>(`/workflows/${id}/versions/${vid}`, body),
+  validate: (id: number, vid: number) =>
+    api.post<{ ok: boolean; errors: string[] }>(`/workflows/${id}/versions/${vid}/validate`),
+  publish: (id: number, vid: number) => api.post<WfVer>(`/workflows/${id}/versions/${vid}/publish`),
+
+  createInstance: (id: number, body: {
+    subject_kind: WfSubject; issue_id?: number; hardware_asset_id?: number;
+    context?: Record<string, any>;
+  }) => api.post<WfInst>(`/workflows/${id}/instances`, body),
+  instance: (iid: number) => api.get<WfInst>(`/workflow-instances/${iid}`),
+  instancesForSubject: (subject: string) =>
+    api.get<WfInst[]>(`/workflow-instances?subject=${encodeURIComponent(subject)}`),
+  completeStep: (iid: number, sid: number, body: { form_data?: Record<string, any>; next_assignee?: number }) =>
+    api.post<WfInst>(`/workflow-instances/${iid}/steps/${sid}/complete`, body),
+  approveStep: (iid: number, sid: number, body: { reason?: string }) =>
+    api.post<WfInst>(`/workflow-instances/${iid}/steps/${sid}/approve`, body),
+  rejectStep: (iid: number, sid: number, body: { reason: string }) =>
+    api.post<WfInst>(`/workflow-instances/${iid}/steps/${sid}/reject`, body),
+  cancel: (iid: number) => api.post<WfInst>(`/workflow-instances/${iid}/cancel`),
+  myTasks: () => api.get<WfTask[]>(`/workflow-instances/tasks?assignee=me`),
+};

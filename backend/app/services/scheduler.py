@@ -93,11 +93,37 @@ async def _tick() -> None:
             await db.flush()
             if job.kind == "script":
                 await _run_script(db, job, jr)
+            elif job.kind == "workflow":
+                await _start_workflow_job(db, job, jr)
             else:  # prompt → Worker
                 await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}",
                                     "job_id": job.id, "job_run_id": jr.id})
             log.info("job %s ausgelöst (%s)", job.name, job.kind)
         await db.commit()
+
+
+async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
+    """kind=workflow: startet bei Fälligkeit eine Workflow-Instanz (subject standalone)."""
+    from ..models.workflow import WorkflowDefinition
+    from ..services.workflow_engine import start_workflow
+    if job.workflow_definition_id is None:
+        jr.status = "error"; jr.error = "Job ohne workflow_definition_id"; jr.finished_at = _now()
+        return
+    definition = await db.get(WorkflowDefinition, job.workflow_definition_id)
+    if definition is None or definition.current_version_id is None:
+        jr.status = "error"; jr.error = "Definition fehlt oder nicht veröffentlicht"
+        jr.finished_at = _now()
+        return
+    try:
+        inst = await start_workflow(
+            db, definition, subject_kind=definition.subject_kind, context={},
+            actor_id=job.user_id, source=f"job:{job.id}",
+        )
+        jr.status = "ok"; jr.output = f"Workflow-Instanz #{inst.id} gestartet"
+    except Exception as e:  # noqa: BLE001
+        jr.status = "error"; jr.error = str(e)[:2000]
+        log.exception("workflow-job %s fehlgeschlagen", job.name)
+    jr.finished_at = _now()
 
 
 async def _flush_coalesced() -> None:

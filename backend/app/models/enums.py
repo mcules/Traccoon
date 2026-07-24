@@ -104,6 +104,55 @@ class PurchaseStatus(str, enum.Enum):
     retired = "retired"
 
 
+# ── Workflow-Engine ──────────────────────────────────────────────────────────
+# Generische, deklarative Prozess-Engine (visueller Node-Graph). Läuft NEBEN dem
+# KI-Ticket-Lifecycle (TicketAgentStatus) — siehe services/workflow_engine.py.
+
+class WorkflowSubjectKind(str, enum.Enum):
+    issue = "issue"                  # Instanz an ein Ticket gebunden (Voraussetzung für agent_task)
+    hardware_asset = "hardware_asset"  # Instanz an ein Hardware-Exemplar gebunden
+    standalone = "standalone"        # freistehend (kein Subject)
+
+
+class WorkflowVersionStatus(str, enum.Enum):
+    draft = "draft"          # editierbar
+    published = "published"  # unveränderlich (Instanzen pinnen darauf)
+    archived = "archived"
+
+
+class WorkflowInstanceStatus(str, enum.Enum):
+    running = "running"      # Token aktiv, schaltet weiter
+    waiting = "waiting"      # Token wartet (Human-Task/Approval/Agent)
+    completed = "completed"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class WorkflowNodeType(str, enum.Enum):
+    start = "start"
+    end = "end"
+    human_task = "human_task"
+    decision = "decision"
+    approval = "approval"
+    auto_action = "auto_action"
+    agent_task = "agent_task"
+
+
+class WorkflowTokenState(str, enum.Enum):
+    active = "active"        # steht auf einem Knoten, bereit zum Weiterschalten
+    waiting = "waiting"      # wartet auf externes Ereignis
+    consumed = "consumed"    # aufgebraucht (End erreicht / Zweig beendet)
+
+
+class WorkflowStepStatus(str, enum.Enum):
+    pending = "pending"
+    running = "running"
+    waiting = "waiting"
+    done = "done"
+    failed = "failed"
+    skipped = "skipped"
+
+
 def pg_enum_values(e):
     """values_callable-Helfer: speichert die .value-Strings (lowercase) in PG."""
     return [member.value for member in e]

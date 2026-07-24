@@ -1,0 +1,115 @@
+import type { NodeConfig, DecisionBranch, JsonLogic } from "../types";
+
+const OPS = ["==", "!=", ">", ">=", "<", "<="];
+
+type Simple = { field: string; op: string; value: string };
+
+/** JSONLogic → einfacher Feld/Operator/Wert-Builder (best effort). */
+function parseGuard(g: JsonLogic | undefined): Simple {
+  if (!g || typeof g === "boolean") return { field: "", op: "==", value: "" };
+  const op = Object.keys(g)[0];
+  const args = (g as any)[op];
+  if (OPS.includes(op) && Array.isArray(args) && args[0] && typeof args[0] === "object" && "var" in args[0]) {
+    const v = args[1];
+    return { field: String(args[0].var), op, value: v == null ? "" : String(v) };
+  }
+  return { field: "", op: "==", value: "" };
+}
+
+/** Builder → JSONLogic. Zahlwerte werden als Zahl kodiert. */
+function buildGuard(s: Simple): JsonLogic | undefined {
+  if (!s.field) return undefined;
+  const num = s.value !== "" && !isNaN(Number(s.value)) ? Number(s.value) : s.value;
+  return { [s.op]: [{ var: s.field }, num] };
+}
+
+let handleSeq = 0;
+
+export default function DecisionConfig({
+  config,
+  onChange,
+}: {
+  config: NodeConfig;
+  onChange: (c: NodeConfig) => void;
+}) {
+  const branches = config.branches || [];
+  const setBranches = (b: DecisionBranch[]) => onChange({ ...config, branches: b });
+  const patch = (i: number, p: Partial<DecisionBranch>) =>
+    setBranches(branches.map((b, j) => (j === i ? { ...b, ...p } : b)));
+  const remove = (i: number) => {
+    const gone = branches[i];
+    setBranches(branches.filter((_, j) => j !== i));
+    if (config.default_handle === gone.handle) onChange({ ...config, default_handle: undefined });
+  };
+  const add = () =>
+    setBranches([...branches, { handle: `b${Date.now()}_${handleSeq++}`, label: "Neuer Zweig" }]);
+
+  const inp = "rounded border border-line bg-card px-2 py-1 text-xs text-ink";
+  return (
+    <div className="space-y-3">
+      <div className="mb-1 text-xs font-medium text-muted">Zweige</div>
+      <div className="space-y-2">
+        {branches.map((b, i) => {
+          const s = parseGuard(b.guard);
+          const upd = (p: Partial<Simple>) => patch(i, { guard: buildGuard({ ...s, ...p }) });
+          return (
+            <div key={b.handle} className="rounded border border-line bg-surface p-2">
+              <div className="mb-1 flex items-center gap-1.5">
+                <input
+                  value={b.label}
+                  onChange={(e) => patch(i, { label: e.target.value })}
+                  placeholder="Beschriftung"
+                  className={`flex-1 ${inp}`}
+                />
+                <button onClick={() => remove(i)} className="text-muted hover:text-red-400" title="Zweig entfernen">
+                  ✕
+                </button>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <input
+                  value={s.field}
+                  onChange={(e) => upd({ field: e.target.value })}
+                  placeholder="Kontext-Feld"
+                  className={`w-28 font-mono ${inp}`}
+                />
+                <select value={s.op} onChange={(e) => upd({ op: e.target.value })} className={inp}>
+                  {OPS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={s.value}
+                  onChange={(e) => upd({ value: e.target.value })}
+                  placeholder="Wert"
+                  className={`w-24 ${inp}`}
+                />
+                <span className="text-[10px] text-muted">leeres Feld = immer wahr</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={add} className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+        + Zweig
+      </button>
+
+      <label className="block text-xs font-medium text-muted">
+        Standard-Zweig (wenn keine Bedingung greift)
+        <select
+          value={config.default_handle || ""}
+          onChange={(e) => onChange({ ...config, default_handle: e.target.value || undefined })}
+          className={`mt-1 w-full ${inp}`}
+        >
+          <option value="">— keiner —</option>
+          {branches.map((b) => (
+            <option key={b.handle} value={b.handle}>
+              {b.label || b.handle}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}

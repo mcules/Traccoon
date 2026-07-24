@@ -21,7 +21,8 @@ def user_out(u: User) -> UserOut:
         id=u.id, email=u.email, username=u.username, display_name=u.display_name,
         avatar_color=u.avatar_color, theme=u.theme, global_role=u.global_role,
         status=u.status, max_runners=u.max_runners, onboarded=u.onboarded_at is not None,
-        default_project_view=u.default_project_view,
+        default_project_view=u.default_project_view, ticket_open_mode=u.ticket_open_mode,
+        ticket_layout=u.ticket_layout or {},
         claude_token_set=bool(u.claude_oauth_token_enc), created_at=u.created_at,
     )
 

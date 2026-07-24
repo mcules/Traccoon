@@ -1,24 +1,22 @@
 import { useState } from "react";
+import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, ApiError } from "../api";
+import { usePageChrome } from "../pageChrome";
 
 type Tab = "users" | "cost" | "maintenance" | "mail";
 const TABS: [Tab, string][] = [
   ["users", "Nutzer"], ["cost", "Kosten"], ["maintenance", "Wartung"], ["mail", "E-Mail"],
 ];
+const TAB_KEYS = TABS.map(([k]) => k);
 
 export default function Admin() {
-  const [tab, setTab] = useState<Tab>("users");
+  const { tab: tabParam } = useParams();
+  // Aktiven Tab aus der URL ableiten; unbekannt → Default "users".
+  const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "users") as Tab;
+  usePageChrome("Admin", TABS.map(([key, label]) => ({ key, label, to: `/admin/${key}` })));
   return (
     <div>
-      <h1 className="mb-4 text-lg font-semibold">Administration</h1>
-      <div className="mb-4 flex gap-1 border-b border-line">
-        {TABS.map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm ${tab === t ? "border-b-2 border-brand text-ink" : "text-muted"}`}>
-            {label}</button>
-        ))}
-      </div>
       {tab === "users" && <Users />}
       {tab === "cost" && <Cost />}
       {tab === "maintenance" && <Maintenance />}
@@ -132,6 +130,7 @@ function Users() {
   const [editUser, setEditUser] = useState<any | null>(null);
   return (
     <>
+    <CreateUserForm onCreated={() => qc.invalidateQueries({ queryKey: ["admin-users"] })} />
     <table className="w-full text-sm">
       <thead><tr className="border-b border-line text-left text-xs uppercase text-muted">
         <th className="py-2">Nutzer</th><th>Rolle</th><th>Status</th><th></th></tr></thead>
@@ -166,6 +165,78 @@ function Users() {
     {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)}
       onSaved={() => { setEditUser(null); qc.invalidateQueries({ queryKey: ["admin-users"] }); }} />}
     </>
+  );
+}
+
+function CreateUserForm({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [password, setPassword] = useState("");
+  const [globalRole, setGlobalRole] = useState("user");
+  const [statusVal, setStatusVal] = useState("active");
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  const reset = () => {
+    setEmail(""); setUsername(""); setDisplayName(""); setPassword("");
+    setGlobalRole("user"); setStatusVal("active"); setErr("");
+  };
+  const submit = async () => {
+    setErr(""); setOk("");
+    // Pflicht ist nur noch der Benutzername (≥1). E-Mail + Passwort sind optional;
+    // wenn ein Passwort gesetzt wird, muss es ≥8 Zeichen haben.
+    if (username.trim().length < 1) {
+      setErr("Benutzername erforderlich."); return;
+    }
+    if (password && password.length < 8) {
+      setErr("Passwort muss mindestens 8 Zeichen haben (oder leer lassen)."); return;
+    }
+    try {
+      const u = await api.post<any>("/users", {
+        username: username.trim(), display_name: displayName.trim(),
+        global_role: globalRole, status: statusVal,
+        ...(email.trim() ? { email: email.trim() } : {}),
+        ...(password ? { password } : {}),
+      });
+      setOk(`Nutzer „${u.username}" angelegt.`); reset(); onCreated();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Fehler beim Anlegen");
+    }
+  };
+  const inp = "rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
+  return (
+    <div className="mb-4 rounded-lg border border-line bg-card p-3">
+      <button onClick={() => setOpen(!open)} className="text-sm font-medium text-brand">
+        {open ? "▾" : "▸"} Nutzer anlegen
+      </button>
+      {open && (
+        <div className="mt-3 space-y-2">
+          {err && <div className="text-sm text-red-400">{err}</div>}
+          {ok && <div className="text-sm text-brand">{ok}</div>}
+          <div className="flex flex-wrap gap-2">
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-Mail (optional)" className={`flex-1 ${inp}`} />
+            <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Benutzername" className={`w-40 ${inp}`} />
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Anzeigename (optional)" className={`w-48 ${inp}`} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="Passwort (optional, ≥8 Zeichen)" className={`flex-1 ${inp}`} />
+            <select value={globalRole} onChange={(e) => setGlobalRole(e.target.value)} className={inp}>
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+            <select value={statusVal} onChange={(e) => setStatusVal(e.target.value)} className={inp}>
+              <option value="active">aktiv</option>
+              <option value="pending">wartend</option>
+            </select>
+            <button onClick={submit} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Anlegen</button>
+          </div>
+          <p className="text-xs text-muted">Aktive Nutzer können sich sofort anmelden; „wartend" muss noch freigeschaltet werden.
+            Ohne Passwort kann sich der Nutzer nicht anmelden. Ohne E-Mail keine E-Mail-Anmeldung.</p>
+        </div>
+      )}
+    </div>
   );
 }
 

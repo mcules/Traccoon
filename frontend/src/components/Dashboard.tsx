@@ -21,7 +21,7 @@ export default function Dashboard({ project }: { project: Project }) {
   const kats: [string, number][] = Object.entries(t.by_category);
 
   return (
-    <div className="max-w-4xl space-y-5">
+    <div className="mx-auto max-w-4xl space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kachel label="Tickets" wert={t.total} />
         <Kachel label="Wartet auf dich" wert={t.waiting_for_human}

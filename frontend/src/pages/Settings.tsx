@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import AgentsPanel from "../components/AgentsPanel";
@@ -8,26 +9,23 @@ import PreferencesPanel from "../components/PreferencesPanel";
 import WebhooksPanel from "../components/WebhooksPanel";
 import JobsPanel from "../components/JobsPanel";
 import { useAuth } from "../auth";
+import { usePageChrome } from "../pageChrome";
 
 type Tab = "secrets" | "prefs" | "agents" | "mcp" | "jobs" | "webhooks" | "skills";
 const TABS: [Tab, string][] = [
   ["secrets", "Secret-Tresor"], ["prefs", "Persönlich"], ["agents", "Mein Assistent"],
   ["mcp", "MCP-Server"], ["jobs", "Jobs"], ["webhooks", "Webhooks"], ["skills", "Skills"],
 ];
+const TAB_KEYS = TABS.map(([k]) => k);
 
 export default function Settings() {
-  const [tab, setTab] = useState<Tab>("secrets");
+  const { tab: tabParam } = useParams();
+  // Aktiven Tab aus der URL ableiten; unbekannt → Default "secrets".
+  const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "secrets") as Tab;
   const { user } = useAuth();
+  usePageChrome("Einstellungen", TABS.map(([key, label]) => ({ key, label, to: `/settings/${key}` })));
   return (
-    <div className="max-w-3xl">
-      <h1 className="mb-4 text-lg font-semibold">Einstellungen</h1>
-      <div className="mb-4 flex gap-1 border-b border-line">
-        {TABS.map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm ${tab === t ? "border-b-2 border-brand text-ink" : "text-muted"}`}>
-            {label}</button>
-        ))}
-      </div>
+    <div className="mx-auto max-w-3xl">
       {tab === "secrets" && <Secrets />}
       {tab === "prefs" && <PreferencesPanel isAdmin={user?.global_role === "admin"} />}
       {tab === "agents" && <AgentsPanel />}
@@ -45,11 +43,76 @@ const PROVIDER_LABEL: Record<string, string> = {
 
 function Secrets() {
   return (
-    <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <p className="text-sm text-muted">Hinterlege deine <b>LLM-Keys</b>: Provider wählen, Key eingeben, optional
-        einen Namen vergeben (um mehrere Keys je Provider zu unterscheiden). Pro Agent wählst du dann,
-        welcher Key genutzt wird. Der als <b>Standard</b> markierte Key gilt, wenn ein Agent keinen bestimmten wählt.</p>
-      <ProviderTokens />
+    <div className="space-y-4">
+      <div className="space-y-3 rounded-lg border border-line bg-card p-4">
+        <p className="text-sm text-muted">Hinterlege deine <b>LLM-Keys</b>: Provider wählen, Key eingeben, optional
+          einen Namen vergeben (um mehrere Keys je Provider zu unterscheiden). Pro Agent wählst du dann,
+          welcher Key genutzt wird. Der als <b>Standard</b> markierte Key gilt, wenn ein Agent keinen bestimmten wählt.</p>
+        <ProviderTokens />
+      </div>
+      <div className="space-y-3 rounded-lg border border-line bg-card p-4">
+        <p className="text-sm text-muted">Allgemeiner <b>Secret-Tresor</b>: beliebige Tokens/Geheimnisse (API-Keys,
+          Webhook-Secrets …). Verschlüsselt gespeichert, der Wert wird nie wieder angezeigt. Referenzierbar
+          als <code className="rounded bg-surface px-1">secret:&lt;name&gt;</code>.</p>
+        <NamedSecrets />
+      </div>
+    </div>
+  );
+}
+
+function NamedSecrets() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["named-secrets"], queryFn: () => api.get<any>("/me/secrets"),
+  });
+  const [name, setName] = useState("");
+  const [value, setValue] = useState("");
+  const [description, setDescription] = useState("");
+  const [err, setErr] = useState("");
+  const inv = () => qc.invalidateQueries({ queryKey: ["named-secrets"] });
+  const guard = async (fn: () => Promise<any>) => {
+    try { setErr(""); await fn(); inv(); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
+  };
+  const save = () => {
+    const n = name.trim();
+    if (!n || !value.trim()) { setErr("Name und Wert erforderlich"); return; }
+    guard(async () => {
+      await api.put(`/me/secrets/${encodeURIComponent(n)}`, { value: value.trim(), description: description.trim() });
+      setName(""); setValue(""); setDescription("");
+    });
+  };
+  const remove = (n: string) =>
+    guard(() => api.put(`/me/secrets/${encodeURIComponent(n)}`, { value: "", description: "" }));
+  const prefill = (s: { name: string; description: string }) => {
+    setName(s.name); setDescription(s.description); setValue("");
+  };
+  const vault: { name: string; description: string }[] = data?.vault || [];
+
+  return (
+    <div>
+      {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
+      <div className="mb-2 space-y-1">
+        {vault.map((s) => (
+          <div key={s.name} className="flex items-center gap-2 text-sm">
+            <code className="rounded bg-surface px-1.5 py-0.5 text-xs text-brand">secret:{s.name}</code>
+            {s.description && <span className="text-xs text-muted">{s.description}</span>}
+            <div className="flex-1" />
+            <button onClick={() => prefill(s)} className="text-xs text-muted hover:text-brand">Wert ersetzen</button>
+            <button onClick={() => remove(s.name)} className="text-muted hover:text-red-400">✕</button>
+          </div>
+        ))}
+        {vault.length === 0 && <div className="text-xs text-muted">Noch keine Secrets im Tresor.</div>}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (z. B. github_pat)"
+          className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
+        <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Wert / Token"
+          className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
+        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Beschreibung (optional)"
+          className="w-48 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
+        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Speichern</button>
+      </div>
     </div>
   );
 }
@@ -64,21 +127,43 @@ function ProviderTokens() {
   const [token, setToken] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [isDefault, setIsDefault] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["provider-tokens"] });
   const guard = async (fn: () => Promise<any>) => {
     try { setErr(""); await fn(); inv(); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
   };
-  const add = () => {
-    if (!token.trim()) return;
+  const reset = () => {
+    setName(""); setToken(""); setBaseUrl(""); setIsDefault(false); setEditing(null); setEditingId(null);
+  };
+  const save = () => {
+    if (editingId !== null) {
+      // Bearbeiten per ID: Base-URL/Default ändern; Token nur, wenn neu eingegeben.
+      guard(async () => {
+        await api.patch(`/me/provider-tokens/${editingId}`, {
+          token: token.trim() || undefined,
+          base_url: provider === "openai" ? baseUrl.trim() || null : null,
+          is_default: isDefault,
+        });
+        reset();
+      });
+      return;
+    }
+    if (!token.trim()) { setErr("Bitte den Token-Wert eingeben."); return; }
     guard(async () => {
       await api.post("/me/provider-tokens", {
         provider, name, token, is_default: isDefault,
         base_url: provider === "openai" ? baseUrl.trim() || null : null,
       });
-      setName(""); setToken(""); setBaseUrl(""); setIsDefault(false);
+      reset();
     });
+  };
+  const edit = (t: any) => {
+    setProvider(t.provider); setName(t.name === "Standard" ? "" : t.name);
+    setBaseUrl(t.base_url || ""); setToken(""); setIsDefault(t.is_default);
+    setEditing(t.name); setEditingId(t.id); setErr("");
   };
   const del = (id: number) => guard(() => api.del(`/me/provider-tokens/${id}`));
   const makeDefault = (id: number) => guard(() => api.post(`/me/provider-tokens/${id}/default`));
@@ -97,19 +182,29 @@ function ProviderTokens() {
               : <button onClick={() => makeDefault(t.id)}
                   className="text-xs text-muted hover:text-brand">als Standard</button>}
             <div className="flex-1" />
+            <button onClick={() => edit(t)} className="text-xs text-muted hover:text-brand">Bearbeiten</button>
             <button onClick={() => del(t.id)} className="text-muted hover:text-red-400">✕</button>
           </div>
         ))}
         {toks?.length === 0 && <div className="text-xs text-muted">Noch keine Keys hinterlegt.</div>}
       </div>
+      {editing !== null && (
+        <div className="mb-2 rounded border border-brand/40 bg-brand/10 px-2 py-1 text-xs text-muted">
+          Bearbeite <b>{PROVIDER_LABEL[provider] || provider}</b> / <b>{editing}</b> — Base-URL/Standard
+          kannst du direkt ändern. Das <b>Token-Feld leer lassen</b> behält den bestehenden Wert; zum
+          Wechseln einfach einen neuen Wert eingeben.
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
-        <select value={provider} onChange={(e) => setProvider(e.target.value)}
-          className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
+        <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={editing !== null}
+          className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink disabled:opacity-50">
           {Object.entries(PROVIDER_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)"
-          className="w-32 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="Token / sk-…"
+          disabled={editing !== null}
+          className="w-32 rounded border border-line bg-surface px-2 py-1.5 text-sm disabled:opacity-50" />
+        <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
+          placeholder={editing !== null ? "Neuer Wert (leer = behalten)" : "Token / sk-…"}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         {provider === "openai" && (
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}
@@ -119,7 +214,12 @@ function ProviderTokens() {
         <label className="flex items-center gap-1 text-xs text-muted">
           <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> Standard
         </label>
-        <button onClick={add} className="rounded bg-brand px-3 py-1.5 text-sm text-white">+ Token</button>
+        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+          {editing !== null ? "Speichern" : "+ Token"}
+        </button>
+        {editing !== null && (
+          <button onClick={reset} className="text-xs text-muted hover:text-ink">Abbrechen</button>
+        )}
       </div>
     </div>
   );
