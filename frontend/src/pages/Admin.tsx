@@ -14,7 +14,10 @@ export default function Admin() {
   const { tab: tabParam } = useParams();
   // Aktiven Tab aus der URL ableiten; unbekannt → Default "users".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "users") as Tab;
-  usePageChrome("Admin", TABS.map(([key, label]) => ({ key, label, to: `/admin/${key}` })));
+  usePageChrome("Admin", TABS.map(([key, label]) => ({
+    key, label, to: `/admin/${key}`,
+    icon: { users: "👥", cost: "💶", maintenance: "🔧", mail: "✉️" }[key],
+  })));
   return (
     <div>
       {tab === "users" && <Users />}

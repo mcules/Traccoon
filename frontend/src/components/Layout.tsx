@@ -3,20 +3,19 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, Project } from "../api";
 import { useAuth } from "../auth";
-import { useChrome } from "../pageChrome";
+import { useChrome, type ChromeTab } from "../pageChrome";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
 import InboxBadge from "./InboxBadge";
 import UpdateFooter from "./UpdateFooter";
 
-function ProjectsMenu() {
+// Projekt-Titel (Name + Untertitel) — zugleich Schnellwechsler. Auf Projektseiten zeigt er das
+// aktuelle Projekt; sonst kompakt „Projekte ▾". Klick öffnet die Projektliste.
+function ProjectSwitcher() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
   const loc = useLocation();
-  // Aktuelles Projekt aus der URL (/projects/:key…) — der Dropdown-Knopf zeigt es direkt an,
-  // damit der Projektname nicht zusätzlich als Titel im Header stehen muss.
   const curKey = loc.pathname.match(/^\/projects\/([^/]+)/)?.[1];
-  // Key ["projects"] – ggf. bereits durch die Projekte-Seite gecached.
   const { data: projects } = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.get<Project[]>("/projects"),
@@ -24,18 +23,27 @@ function ProjectsMenu() {
   const cur = projects?.find((p) => p.key === curKey);
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex max-w-[16rem] items-center gap-1 truncate rounded-md border border-line px-2.5 py-1 text-ink hover:bg-surface"
+        className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-surface"
         title={cur?.name}
       >
-        {cur ? (
-          <><span className="text-xs text-muted">{cur.key}</span><span className="truncate">{cur.name}</span></>
-        ) : (
-          <span className="text-muted">Projekte</span>
-        )}
-        <span className="text-muted">▾</span>
+        <div className="min-w-0">
+          {cur ? (
+            <>
+              <div className="truncate text-sm font-semibold leading-tight text-ink">{cur.name}</div>
+              {cur.description && (
+                <div className="max-w-[46vw] truncate text-[11px] leading-tight text-muted sm:max-w-[260px]">
+                  {cur.description}
+                </div>
+              )}
+            </>
+          ) : (
+            <span className="text-sm text-muted">Projekte</span>
+          )}
+        </div>
+        <span className="shrink-0 text-xs text-muted">▾</span>
       </button>
       {open && (
         <>
@@ -47,10 +55,7 @@ function ProjectsMenu() {
             {projects?.map((p) => (
               <button
                 key={p.key}
-                onClick={() => {
-                  navigate("/projects/" + p.key);
-                  setOpen(false);
-                }}
+                onClick={() => { navigate("/projects/" + p.key); setOpen(false); }}
                 className={`block w-full truncate rounded px-2 py-1.5 text-left hover:bg-surface ${
                   p.key === curKey ? "bg-surface text-ink" : "text-ink"
                 }`}
@@ -70,49 +75,83 @@ function UserMenu() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const isAdmin = user?.global_role === "admin";
+  const name = user?.display_name || user?.username || "";
+  const initials = name.trim().slice(0, 2).toUpperCase() || "?";
 
   return (
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="rounded px-2 py-1 text-muted hover:text-ink"
+        title={name}
+        className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface text-xs font-medium text-ink hover:bg-card"
       >
-        👤 {user?.display_name || user?.username} ▾
+        {initials}
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-30 mt-2 w-48 rounded-lg border border-line bg-card p-1 text-sm shadow-2xl">
-            <Link
-              to="/profil"
-              onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface"
-            >
-              Profil
-            </Link>
-            <Link
-              to="/settings"
-              onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface"
-            >
-              Einstellungen
-            </Link>
+            <div className="truncate px-2 py-1.5 text-xs text-muted">{name}</div>
+            <div className="my-1 border-t border-line" />
+            <Link to="/profil" onClick={() => setOpen(false)}
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Profil</Link>
+            <Link to="/settings" onClick={() => setOpen(false)}
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Einstellungen</Link>
             {isAdmin && (
-              <Link
-                to="/admin"
-                onClick={() => setOpen(false)}
-                className="block rounded px-2 py-1.5 text-ink hover:bg-surface"
-              >
-                Admin
-              </Link>
+              <Link to="/admin" onClick={() => setOpen(false)}
+                className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Admin</Link>
             )}
             <div className="my-1 border-t border-line" />
-            <button
-              onClick={logout}
-              className="block w-full rounded px-2 py-1.5 text-left text-ink hover:bg-surface"
-            >
-              Abmelden
-            </button>
+            <button onClick={logout}
+              className="block w-full rounded px-2 py-1.5 text-left text-ink hover:bg-surface">Abmelden</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Mobiles Burger-Menü: bündelt das Untermenü (Reiter) + Schnellzugriffe, damit auf dem
+// Handy alles bequem erreichbar ist. Nur < md sichtbar; Desktop nutzt die Pill-Nav.
+function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: string) => boolean }) {
+  const [open, setOpen] = useState(false);
+  const { user, logout } = useAuth();
+  const isAdmin = user?.global_role === "admin";
+  const close = () => setOpen(false);
+  const item = "flex items-center gap-2 rounded px-2 py-2 text-sm";
+  return (
+    <div className="md:hidden">
+      <button onClick={() => setOpen((v) => !v)} aria-label="Menü" title="Menü"
+        className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-surface text-lg leading-none text-ink hover:bg-card">
+        ☰
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={close} />
+          <div className="absolute inset-x-2 top-full z-40 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-2xl">
+            {tabs.length > 0 && (
+              <>
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted">Navigation</div>
+                {tabs.map((t) => (
+                  <Link key={t.key} to={t.to} onClick={close}
+                    className={`${item} ${isActive(t.to) ? "bg-surface text-ink" : "text-muted hover:bg-surface hover:text-ink"}`}>
+                    {t.icon && <span className="text-base">{t.icon}</span>}
+                    <span>{t.label}</span>
+                  </Link>
+                ))}
+                <div className="my-1 border-t border-line" />
+              </>
+            )}
+            <Link to="/" onClick={close} className={`${item} text-ink hover:bg-surface`}>🦝 <span>Projekte</span></Link>
+            <Link to="/inbox" onClick={close} className={`${item} text-ink hover:bg-surface`}>📥 <span>Inbox</span></Link>
+            <Link to="/profil" onClick={close} className={`${item} text-ink hover:bg-surface`}>👤 <span>Profil</span></Link>
+            <Link to="/settings" onClick={close} className={`${item} text-ink hover:bg-surface`}>⚙️ <span>Einstellungen</span></Link>
+            {isAdmin && (
+              <Link to="/admin" onClick={close} className={`${item} text-ink hover:bg-surface`}>🛠️ <span>Admin</span></Link>
+            )}
+            <div className="my-1 border-t border-line" />
+            <button onClick={() => { close(); logout(); }}
+              className={`${item} w-full text-left text-ink hover:bg-surface`}>🚪 <span>Abmelden</span></button>
           </div>
         </>
       )}
@@ -124,57 +163,60 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { chrome } = useChrome();
   const loc = useLocation();
   const current = loc.pathname + loc.search;
-  // aktiv = exakter Pfad-Treffer ODER voller Treffer inkl. Query (z.B. ?tab=board)
   const isActive = (to: string) => loc.pathname === to || current === to;
-  // Auf Projektseiten zeigt bereits das Projekte-Dropdown den Projektnamen → Titel unterdrücken.
   const onProjectPage = /^\/projects\//.test(loc.pathname);
 
   return (
     <div className="min-h-full">
-      <header className="sticky top-0 z-10 flex items-center gap-4 border-b border-line bg-card px-5 py-3">
-        {/* Linker Block */}
-        <div className="flex shrink-0 items-center gap-3">
-          <Link to="/" className="flex items-center gap-2 font-semibold">
-            <span className="text-lg">🦝</span> Traccoon
-          </Link>
-          <ProjectsMenu />
+      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
+        {/* Links: Marke + Projekt-Titel/Switcher bzw. Seitentitel */}
+        <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
+          <Link to="/" className="shrink-0 text-xl" title="Traccoon — Start">🦝</Link>
           {!onProjectPage && chrome.title && (
-            <span className="font-medium text-ink">{chrome.title}</span>
+            <span className="hidden shrink-0 font-semibold text-ink sm:inline">{chrome.title}</span>
           )}
+          <ProjectSwitcher />
         </div>
 
-        {/* Zentrierter Block: Untermenü als Buttons */}
-        <div className="flex flex-1 justify-center">
-          {chrome.tabs.length > 0 && (
-            <nav className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
-              {chrome.tabs.map((tab) => (
+        {/* Mitte: Icon-Pill-Navigation — nur ab md; auf dem Handy übernimmt das Burger-Menü. */}
+        {chrome.tabs.length > 0 && (
+          <nav className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-surface p-1 md:flex">
+            {chrome.tabs.map((tab) => {
+              const active = isActive(tab.to);
+              return (
                 <Link
                   key={tab.key}
                   to={tab.to}
-                  className={`shrink-0 whitespace-nowrap rounded-md border px-3 py-1 text-sm ${
-                    isActive(tab.to)
-                      ? "border-brand bg-brand text-white"
-                      : "border-line text-muted hover:bg-surface hover:text-ink"
+                  title={tab.label}
+                  className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm ${
+                    active
+                      ? "bg-card font-medium text-ink shadow-sm"
+                      : "text-muted hover:bg-card/60 hover:text-ink"
                   }`}
                 >
-                  {tab.label}
+                  {tab.icon && <span className="text-base leading-none">{tab.icon}</span>}
+                  <span className="hidden lg:inline">{tab.label}</span>
                 </Link>
-              ))}
-            </nav>
-          )}
-        </div>
+              );
+            })}
+          </nav>
+        )}
+        {/* Spacer: auf dem Handy immer (Pill-Nav versteckt); Desktop nur ohne Tabs. */}
+        <div className={`flex-1 ${chrome.tabs.length > 0 ? "md:hidden" : ""}`} />
 
-        {/* Rechter Block */}
-        <div className="flex shrink-0 items-center gap-3">
-          <InboxBadge />
-          <AgentsBadge />
+        {/* Rechts: Badges (ab sm) + Nutzer + Burger (mobil) */}
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="hidden items-center gap-2 sm:flex sm:gap-3">
+            <InboxBadge />
+            <AgentsBadge />
+          </div>
           <NotificationBell />
           <UserMenu />
+          <MobileMenu tabs={chrome.tabs} isActive={isActive} />
         </div>
       </header>
-      {/* [&>*]:mx-auto zentriert begrenzte Seiten-Spalten (z.B. Dashboard max-w-4xl); volle
-          Breite (w-full Tabellen/Board) bleibt unberührt, da mx-auto bei Auto-Breite wirkungslos ist. */}
-      <main className="mx-auto max-w-[1400px] p-5 [&>*]:mx-auto">{children}</main>
+      {/* [&>*]:mx-auto zentriert begrenzte Seiten-Spalten; volle Breite bleibt unberührt. */}
+      <main className="mx-auto max-w-[1400px] p-3 [&>*]:mx-auto sm:p-5">{children}</main>
       <UpdateFooter />
     </div>
   );

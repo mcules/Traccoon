@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 
-export type ChromeTab = { key: string; label: string; to: string };
+export type ChromeTab = { key: string; label: string; to: string; icon?: string };
 type Chrome = { title: string; tabs: ChromeTab[] };
 
 interface ChromeCtx {

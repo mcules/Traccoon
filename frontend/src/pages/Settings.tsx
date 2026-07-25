@@ -23,7 +23,10 @@ export default function Settings() {
   // Aktiven Tab aus der URL ableiten; unbekannt → Default "secrets".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "secrets") as Tab;
   const { user } = useAuth();
-  usePageChrome("Einstellungen", TABS.map(([key, label]) => ({ key, label, to: `/settings/${key}` })));
+  usePageChrome("Einstellungen", TABS.map(([key, label]) => ({
+    key, label, to: `/settings/${key}`,
+    icon: { secrets: "🔐", prefs: "👤", agents: "🤖", mcp: "🧩", jobs: "⏱️", webhooks: "🪝", skills: "✨" }[key],
+  })));
   return (
     <div className="mx-auto max-w-3xl">
       {tab === "secrets" && <Secrets />}
