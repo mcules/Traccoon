@@ -70,6 +70,11 @@ class Run(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Läufe folgen dem Ticket (TRA-29): Ticket archivieren → Läufe archivieren.
+    # Archivierte Läufe verschwinden aus dem Monitor und werden nach der
+    # Aufbewahrungsfrist (AppSetting run_retention_days) endgültig gelöscht.
+    archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RunStep(Base):

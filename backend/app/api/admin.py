@@ -83,6 +83,27 @@ async def cancel_update(_: User = Depends(require_admin), db: AsyncSession = Dep
     return await _status(db)
 
 
+class RunRetentionIn(BaseModel):
+    days: int = Field(ge=0, le=3650)  # 0 = nie löschen
+
+
+@router.get("/admin/run-retention")
+async def get_run_retention(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
+    """Aufbewahrung archivierter Agentenläufe in Tagen (TRA-29)."""
+    from ..services.scheduler import RUN_RETENTION_DEFAULT, RUN_RETENTION_KEY
+    raw = await get_setting(db, RUN_RETENTION_KEY, str(RUN_RETENTION_DEFAULT))
+    return {"days": int(raw) if raw.isdigit() else RUN_RETENTION_DEFAULT}
+
+
+@router.put("/admin/run-retention")
+async def put_run_retention(
+    data: RunRetentionIn, _: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
+):
+    from ..services.scheduler import RUN_RETENTION_KEY
+    await set_setting(db, RUN_RETENTION_KEY, str(data.days))
+    return {"days": data.days}
+
+
 class SmtpConfigIn(BaseModel):
     smtp_host: str | None = Field(default=None, max_length=255)
     smtp_port: int | None = Field(default=None, ge=1, le=65535)

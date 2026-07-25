@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Project } from "../api";
 
@@ -6,10 +7,24 @@ const ST_COLOR: Record<string, string> = {
   failed: "text-red-400", blocked: "text-orange-400", planned: "text-sky-400",
 };
 
+interface Run {
+  id: number; issue_key: string; agent: string; phase: string; status: string;
+  iterations: number; output_tokens: number; cost_usd: number; summary: string;
+}
+interface RunGroup {
+  issue_key: string; issue_summary: string; issue_archived: boolean;
+  runs: Run[]; cost_usd: number; output_tokens: number;
+}
+
 export default function AgentMonitor({ project }: { project: Project }) {
   const qc = useQueryClient();
-  const { data: runs } = useQuery({
-    queryKey: ["runs", project.id], queryFn: () => api.get<any[]>(`/projects/${project.id}/runs`),
+  // Archivierte Läufe (Ticket archiviert) sind standardmäßig ausgeblendet — TRA-29.
+  const [zeigeArchiv, setZeigeArchiv] = useState(false);
+  const [zu, setZu] = useState<Record<string, boolean>>({});
+  const { data: grouped } = useQuery({
+    queryKey: ["runs-grouped", project.id, zeigeArchiv],
+    queryFn: () => api.get<{ groups: RunGroup[]; truncated: boolean }>(
+      `/projects/${project.id}/runs/grouped?archived=${zeigeArchiv}`),
     refetchInterval: 4000,
   });
   const { data: perms } = useQuery({
@@ -80,19 +95,58 @@ export default function AgentMonitor({ project }: { project: Project }) {
       )}
 
       <section>
-        <h3 className="mb-2 font-medium">Agenten-Läufe</h3>
-        <div className="space-y-1">
-          {runs?.map((r) => (
-            <div key={r.id} className="flex items-center gap-3 rounded border border-line bg-card p-2 text-sm">
-              <span className="font-mono text-xs text-muted">{r.issue_key}</span>
-              <span>{r.agent}</span>
-              <span className="text-xs text-muted">{r.phase}</span>
-              <span className={ST_COLOR[r.status] || "text-muted"}>{r.status}</span>
-              <span className="text-xs text-muted">{r.iterations}it · {r.output_tokens}tok{r.cost_usd ? ` · $${r.cost_usd.toFixed(4)}` : ""}</span>
-              <div className="flex-1 truncate text-xs text-muted">{r.summary}</div>
+        <div className="mb-2 flex items-center gap-3">
+          <h3 className="font-medium">Agenten-Läufe</h3>
+          <label className="flex items-center gap-1.5 text-xs text-muted">
+            <input type="checkbox" checked={zeigeArchiv}
+              onChange={(e) => setZeigeArchiv(e.target.checked)} />
+            Archivierte anzeigen
+          </label>
+        </div>
+        <div className="space-y-2">
+          {grouped?.groups.map((g) => {
+            const eingeklappt = zu[g.issue_key] ?? false;
+            return (
+              <div key={g.issue_key} className="rounded border border-line bg-card">
+                <button
+                  onClick={() => setZu({ ...zu, [g.issue_key]: !eingeklappt })}
+                  className="flex w-full items-center gap-2 p-2 text-left text-sm">
+                  <span className="text-muted">{eingeklappt ? "▸" : "▾"}</span>
+                  <span className="font-mono text-xs text-brand">{g.issue_key}</span>
+                  <span className={`flex-1 truncate ${g.issue_archived ? "text-muted line-through" : ""}`}>
+                    {g.issue_summary}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {g.runs.length} {g.runs.length === 1 ? "Lauf" : "Läufe"} · {g.output_tokens}tok
+                    {g.cost_usd ? ` · $${g.cost_usd.toFixed(4)}` : ""}
+                  </span>
+                </button>
+                {!eingeklappt && (
+                  <div className="space-y-1 border-t border-line p-2">
+                    {g.runs.map((r) => (
+                      <div key={r.id} className="flex items-center gap-3 text-sm">
+                        <span>{r.agent}</span>
+                        <span className="text-xs text-muted">{r.phase}</span>
+                        <span className={ST_COLOR[r.status] || "text-muted"}>{r.status}</span>
+                        <span className="text-xs text-muted">
+                          {r.iterations}it · {r.output_tokens}tok{r.cost_usd ? ` · $${r.cost_usd.toFixed(4)}` : ""}
+                        </span>
+                        <div className="flex-1 truncate text-xs text-muted">{r.summary}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {grouped?.groups.length === 0 && (
+            <div className="text-sm text-muted">
+              {zeigeArchiv ? "Keine archivierten Läufe." : "Noch keine Läufe."}
             </div>
-          ))}
-          {runs?.length === 0 && <div className="text-sm text-muted">Noch keine Läufe.</div>}
+          )}
+          {grouped?.truncated && (
+            <div className="text-xs text-muted">Ältere Läufe sind ausgeblendet (Anzeigegrenze erreicht).</div>
+          )}
         </div>
       </section>
     </div>

@@ -3,7 +3,7 @@ import hashlib
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -177,8 +177,15 @@ async def archive_issue(
 ):
     issue, access = pair
     _require_write(access)
+    now = dt.datetime.now(tz=dt.timezone.utc)
     issue.archived = True
-    issue.archived_at = dt.datetime.now(tz=dt.timezone.utc)
+    issue.archived_at = now
+    # Agentenläufe folgen dem Ticket (TRA-29).
+    from ..models.agents import Run
+    await db.execute(
+        sa_update(Run).where(Run.issue_id == issue.id, Run.archived.is_(False))
+        .values(archived=True, archived_at=now)
+    )
     await db.commit()
     await db.refresh(issue)
     return issue
@@ -193,6 +200,11 @@ async def unarchive_issue(
     _require_write(access)
     issue.archived = False
     issue.archived_at = None
+    from ..models.agents import Run
+    await db.execute(
+        sa_update(Run).where(Run.issue_id == issue.id, Run.archived.is_(True))
+        .values(archived=False, archived_at=None)
+    )
     await db.commit()
     await db.refresh(issue)
     return issue

@@ -150,12 +150,51 @@ async def _flush_coalesced() -> None:
         await db.commit()
 
 
+RUN_RETENTION_KEY = "run_retention_days"
+RUN_RETENTION_DEFAULT = 30
+_purge_after = 0.0  # Monotonic-Marke: Aufräumen läuft höchstens stündlich
+
+
+async def _purge_archived_runs() -> None:
+    """Archivierte Agentenläufe nach Ablauf der Aufbewahrungsfrist löschen (TRA-29).
+
+    Frist in Tagen aus dem AppSetting `run_retention_days` (Default 30, 0 = nie löschen).
+    RunSteps hängen per ON DELETE CASCADE dran.
+    """
+    from sqlalchemy import delete
+
+    from ..models.agents import Run
+    from .appsettings import get_setting
+
+    async with SessionLocal() as db:
+        raw = await get_setting(db, RUN_RETENTION_KEY, str(RUN_RETENTION_DEFAULT))
+        try:
+            days = int(raw)
+        except ValueError:
+            days = RUN_RETENTION_DEFAULT
+        if days <= 0:
+            return
+        cutoff = _now() - dt.timedelta(days=days)
+        res = await db.execute(
+            delete(Run).where(Run.archived.is_(True), Run.archived_at.isnot(None),
+                              Run.archived_at < cutoff)
+        )
+        await db.commit()
+        if res.rowcount:
+            log.info("%d archivierte Agentenläufe älter als %d Tage gelöscht", res.rowcount, days)
+
+
 async def run_scheduler() -> None:
+    global _purge_after
     await asyncio.sleep(8)
+    loop = asyncio.get_running_loop()
     while True:
         try:
             await _tick()
             await _flush_coalesced()
+            if loop.time() >= _purge_after:
+                _purge_after = loop.time() + 3600
+                await _purge_archived_runs()
         except Exception:  # noqa: BLE001
             log.exception("scheduler tick failed")
         await asyncio.sleep(INTERVAL)
