@@ -9,7 +9,7 @@ from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
     admin, agents, auth, config, cost, dashboard, files, hardware, invitations, issues, lifecycle,
     mail, me, notifications, ops, permissions, plugins, projects, repo, runs, secrets, skills,
-    users, workflows, ws,
+    testenv, users, workflows, ws,
 )
 from .config import settings
 from .db import Base, SessionLocal, engine
@@ -85,6 +85,15 @@ async def lifespan(app: FastAPI):
                 # Zuständige je Beschaffungsschritt (ABC-26).
                 "ALTER TABLE hardware_workflow_steps ADD COLUMN IF NOT EXISTS assignee "
                 "JSON DEFAULT '{}'::json NOT NULL",
+                # Testumgebungs-Lebenszyklus je Projekt (ABC-18).
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS testenv_enabled BOOLEAN "
+                "DEFAULT TRUE NOT NULL",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS testenv_compose_file "
+                "VARCHAR(255) DEFAULT 'compose.preview.yml' NOT NULL",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS testenv_dockerfile "
+                "VARCHAR(255) DEFAULT 'Dockerfile' NOT NULL",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS testenv_url_template "
+                "VARCHAR(255) DEFAULT 'http://{host}:{port}' NOT NULL",
                 # Ticket an Hardware-Exemplar hängen (ABC-25).
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS asset_id INTEGER "
                 "REFERENCES hardware_assets(id) ON DELETE SET NULL",
@@ -138,6 +147,7 @@ api.include_router(skills.router)
 api.include_router(plugins.router)
 api.include_router(agents.router)
 api.include_router(runs.router)
+api.include_router(testenv.router)
 api.include_router(dashboard.router)
 api.include_router(files.router)
 api.include_router(repo.router)

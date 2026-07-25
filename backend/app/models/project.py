@@ -34,7 +34,12 @@ class Project(TimestampMixin, Base):
     # Statt direkt zu mergen: Branch pushen und einen Pull Request öffnen (GitHub).
     use_pull_request: Mapped[bool] = mapped_column(Boolean, default=False)
     # Testumgebungen: compose.preview.yml (Standard) oder Dockerfile-Build
+    # An: fertige Umsetzung landet auf „Testen" statt direkt gemergt zu werden (ABC-18).
+    testenv_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     testenv_mode: Mapped[str] = mapped_column(String(20), default="compose")
+    testenv_compose_file: Mapped[str] = mapped_column(String(255), default="compose.preview.yml")
+    testenv_dockerfile: Mapped[str] = mapped_column(String(255), default="Dockerfile")
+    testenv_url_template: Mapped[str] = mapped_column(String(255), default="http://{host}:{port}")
     testenv_container_port: Mapped[int] = mapped_column(Integer, default=8080)  # nur dockerfile-Modus
     testenv_prestart: Mapped[str] = mapped_column(Text, default="")   # im Worktree vor dem Start
     testenv_env_enc: Mapped[str] = mapped_column(Text, default="")    # Fernet-JSON, Env für die Preview

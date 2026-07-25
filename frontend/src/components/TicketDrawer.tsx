@@ -222,7 +222,10 @@ export default function TicketDrawer({
   });
   const life = useMutation({
     mutationFn: (path: string) => api.post(`/issues/${issueKey}/${path}`),
-    onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onSuccess: invalidate,
+    // Auch im Fehlerfall neu laden: /complete setzt das Ticket bei Merge-Problemen
+    // serverseitig zurück (testing/hold) — die Ansicht muss das zeigen.
+    onError: (e) => { setErr(e instanceof ApiError ? e.message : "Fehler"); invalidate(); },
   });
   const refreshAttachments = () => qc.invalidateQueries({ queryKey: ["attachments", issueKey] });
   const uploadAttachment = useMutation({
@@ -728,11 +731,40 @@ export default function TicketDrawer({
         </div>
       )}
       {(issue.agent_status === "to_test" || issue.agent_status === "testing") && (
-        <div className="mt-3 flex gap-2">
-          <button onClick={() => life.mutate("complete")}
-            className="rounded bg-green-600 px-3 py-1 text-sm text-white">✅ Abnehmen</button>
-          <button onClick={() => life.mutate("testenv/start")}
-            className="rounded border border-line px-3 py-1 text-sm text-muted">Testenv starten</button>
+        <div className="mt-3 space-y-2">
+          {project.testenv_enabled !== false && (
+            <div className="rounded border border-line bg-surface p-2.5 text-sm">
+              <div className="mb-1.5 font-medium">Testumgebung</div>
+              {issue.testenv_status === "starting" ? (
+                <div className="text-muted">⏳ Testumgebung startet… (Build dauert ein paar Minuten)</div>
+              ) : issue.testenv_status === "running" && issue.testenv_url ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <a href={issue.testenv_url} target="_blank" rel="noreferrer"
+                    className="rounded bg-brand px-3 py-1 text-sm text-white">🖥 Testumgebung öffnen</a>
+                  <button onClick={() => life.mutate("testenv/stop")}
+                    className="rounded border border-line px-3 py-1 text-sm text-muted hover:text-red-400">
+                    Stoppen</button>
+                  <span className="text-xs text-muted">{issue.testenv_url}</span>
+                </div>
+              ) : (
+                <button onClick={() => life.mutate("testenv/start")}
+                  className="rounded border border-line px-3 py-1 text-sm text-muted hover:text-brand">
+                  🖥 Testumgebung starten</button>
+              )}
+              {issue.testenv_status === "error" && issue.testenv_error && (
+                <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-card p-2 text-xs text-red-400">
+                  {issue.testenv_error}</pre>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <button onClick={() => life.mutate("complete")} disabled={life.isPending}
+              className="rounded bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-50">
+              ✅ Auf Fertig setzen</button>
+            <span className="text-xs text-muted">
+              stoppt die Testumgebung, mergt den Branch und setzt erst dann „Fertig".
+            </span>
+          </div>
         </div>
       )}
       {issue.agent_status === "hold" && (

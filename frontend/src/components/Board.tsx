@@ -63,6 +63,15 @@ export default function Board({
   const canDrag = project.my_role !== "viewer" && !move.isPending;
   const canMove = project.my_role !== "viewer";
 
+  /** Im Testumgebungs-Flow führt der Weg nach „Fertig" nur über „Auf Fertig setzen" am
+   * Ticket (stoppt Testumgebung, mergt, setzt dann erst done). Der Server lehnt den
+   * direkten Sprung mit 409 ab — hier blenden wir ihn zusätzlich aus. */
+  const inTestenvFlow = (i: Issue) =>
+    project.testenv_enabled !== false &&
+    (i.agent_status === "to_test" || i.agent_status === "testing");
+  const movableCols = (i: Issue) =>
+    inTestenvFlow(i) ? cols.filter((s) => s.category !== "done") : cols;
+
   const dropIn = (colId: number, idx: number) => {
     setOverCol(null);
     setOverIdx(null);
@@ -71,6 +80,11 @@ export default function Board({
     setDragKey(null);
     const dragIssue = issues.find((x) => x.key === key);
     if (!dragIssue) return;
+    if (inTestenvFlow(dragIssue) && statusMap.get(colId)?.category === "done") {
+      setMoveErr('Auf „Fertig" nur über „Auf Fertig setzen" am Ticket — dabei wird '
+        + "die Testumgebung gestoppt und der Branch gemergt.");
+      return;
+    }
     let targetIdx = idx;
     if (dragIssue.status_id === colId) {
       const sameColItems = (itemsByCol.get(colId) || []);
@@ -171,7 +185,7 @@ export default function Board({
                     value={i.status_id}
                     onChange={(e) => move.mutate({ key: i.key, status_id: Number(e.target.value), position: 0 })}
                     className="rounded border border-line bg-surface px-2 py-1 text-ink">
-                    {cols.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    {movableCols(i).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 ) : (
                   <span className="text-ink">{statusMap.get(i.status_id)?.name}</span>

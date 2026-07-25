@@ -55,7 +55,11 @@ class ProjectSettings(BaseModel):
     push_after_merge: bool | None = None
     use_pull_request: bool | None = None
     # Testumgebung
+    testenv_enabled: bool | None = None
     testenv_mode: str | None = None
+    testenv_compose_file: str | None = None
+    testenv_dockerfile: str | None = None
+    testenv_url_template: str | None = None
     testenv_container_port: int | None = None
     testenv_prestart: str | None = None
     testenv_demo_login: str | None = None
@@ -78,6 +82,7 @@ class ProjectOut(BaseModel):
     pm_chat_enabled: bool
     has_hardware: bool
     git_enabled: bool = False
+    testenv_enabled: bool = True
     # Sicht des aktuellen Nutzers auf dieses Projekt
     my_role: ProjectRole
     my_ai_assign: bool

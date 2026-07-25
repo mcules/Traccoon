@@ -28,7 +28,14 @@ PREVIEW_PORT = int(os.getenv("PREVIEW_SERVER_PORT", "8661"))
 # eine Testumgebung darf ihn nicht leerlaufen lassen.
 PREVIEW_MEMORY = os.getenv("PREVIEW_MEMORY", "2g")
 PREVIEW_CPUS = os.getenv("PREVIEW_CPUS", "2")
-PREVIEW_PREFIX = "traccoon-preview-"
+# Namensschema der Testumgebungen: test-<ticket-key> / test-b<id>. Der Altname bleibt in
+# den Aufraeum-Filtern, damit noch laufende Alt-Stacks abraeumbar bleiben.
+PREVIEW_PREFIXES = ("test-", "traccoon-preview-")
+# Gleichzeitige Docker-Builds deckeln — viele parallele Builds bringen den Host in die Knie.
+MAX_BUILDS = int(os.getenv("TESTENV_MAX_BUILDS", "2"))
+_build_sem = threading.BoundedSemaphore(MAX_BUILDS)
+# Wie lange nach dem Start geprueft wird, ob der Einstiegs-Container noch lebt.
+LIVENESS_WAIT = int(os.getenv("TESTENV_LIVENESS_WAIT", "6"))
 
 PG_DSN = os.getenv("PG_DSN", "")               # Zugangsdaten aus der Umgebung (.env/compose)
 SELF_STACK_DIR = os.getenv("SELF_STACK_DIR", "")  # Stack-Pfad aus der Umgebung
@@ -224,58 +231,205 @@ class PreviewHandler(BaseHTTPRequestHandler):
         except Exception:  # noqa: BLE001
             body = {}
         if self.path == "/preview/up":
-            name = body.get("project_name", "")
-            cfile = body.get("compose_file", "")
-            port = str(body.get("port", ""))
-            mode = body.get("mode", "compose")
-            workdir = body.get("workdir") or os.path.dirname(cfile)
-            env = {**os.environ, "PREVIEW_PORT": port,
-                   "PREVIEW_MEMORY": PREVIEW_MEMORY, "PREVIEW_CPUS": PREVIEW_CPUS,
-                   **{str(k): str(v) for k, v in (body.get("env") or {}).items()}}
-            log_parts = []
-
-            prestart = (body.get("prestart") or "").strip()
-            if prestart and os.path.isdir(workdir):
-                p = subprocess.run(prestart, shell=True, cwd=workdir, capture_output=True,
-                                   text=True, env=env, timeout=600)
-                log_parts.append(f"prestart rc={p.returncode}\n{p.stdout}{p.stderr}")
-                if p.returncode != 0:
-                    self._json(500, {"ok": False, "log": "\n".join(log_parts)[-2000:]})
-                    return
-
-            if mode == "dockerfile":
-                rc, out = build_and_run_dockerfile(name, workdir, port,
-                                                   int(body.get("container_port") or 8080), env)
-            elif cfile and os.path.isfile(cfile):
-                p = subprocess.run(["docker", "compose", "-p", name, "-f", cfile, "up", "-d", "--build"],
-                                   capture_output=True, text=True, env=env, timeout=900)
-                rc, out = p.returncode, (p.stdout + p.stderr)
-            else:
-                rc, out = 1, f"kein compose_file: {cfile}"
-            log_parts.append(out)
-            if rc == 0:
-                log_parts.append(cap_resources(name))
-            self._json(200 if rc == 0 else 500,
-                       {"ok": rc == 0, "log": "\n".join(log_parts)[-2000:]})
+            ok, log = preview_up(body)
+            self._json(200 if ok else 500, {"ok": ok, "log": log})
         elif self.path == "/preview/cleanup":
             keep = set(body.get("keep") or [])
             removed = cleanup_orphans(keep)
             self._json(200, {"ok": True, "removed": removed})
         elif self.path == "/preview/down":
             self._json(200, {"ok": teardown(body.get("project_name", ""), body.get("compose_file", ""))})
+        elif self.path == "/preview/logs":
+            self._json(200, preview_logs(body.get("project_name", ""), body.get("service"),
+                                         int(body.get("tail") or 200)))
+        elif self.path == "/preview/list":
+            self._json(200, {"stacks": preview_list()})
         else:
             self._json(404, {"error": "not found"})
 
 
-def build_and_run_dockerfile(name, workdir, host_port, container_port, env):
+def _run_prestart(prestart, workdir, env, log_parts):
+    """Prestart-Befehle: eine Zeile = ein Befehl, `#`-Kommentare werden übersprungen.
+    Der erste Fehlschlag bricht ab — dann wird gar nicht erst gebaut."""
+    for line in (prestart or "").splitlines():
+        cmd = line.strip()
+        if not cmd or cmd.startswith("#"):
+            continue
+        p = subprocess.run(cmd, shell=True, cwd=workdir, capture_output=True,
+                           text=True, env=env, timeout=600)
+        log_parts.append(f"$ {cmd}\nrc={p.returncode}\n{p.stdout}{p.stderr}")
+        if p.returncode != 0:
+            return False
+    return True
+
+
+def _ensure_branch_worktree(repo_dir, workdir, branch, log_parts):
+    """Worktree für einen beliebigen Branch anlegen bzw. auf dessen aktuellen Stand bringen.
+    Die Umgebung baut IMMER den Branch-Stand, nie den geteilten Integrations-Checkout."""
+    if not os.path.isdir(os.path.join(repo_dir, ".git")):
+        log_parts.append(f"kein Repo unter {repo_dir}")
+        return False
+    subprocess.run(["git", "-C", repo_dir, "fetch", "--all", "--prune"],
+                   capture_output=True, text=True, timeout=300)
+    if os.path.isdir(workdir):
+        r = subprocess.run(["git", "-C", workdir, "reset", "--hard", f"origin/{branch}"],
+                           capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            r = subprocess.run(["git", "-C", workdir, "reset", "--hard", branch],
+                               capture_output=True, text=True, timeout=120)
+        log_parts.append(f"worktree refresh rc={r.returncode}\n{r.stdout}{r.stderr}")
+        return r.returncode == 0
+    os.makedirs(os.path.dirname(workdir), exist_ok=True)
+    r = subprocess.run(["git", "-C", repo_dir, "worktree", "add", "--detach", workdir, branch],
+                       capture_output=True, text=True, timeout=300)
+    log_parts.append(f"worktree add rc={r.returncode}\n{r.stdout}{r.stderr}")
+    return r.returncode == 0
+
+
+def _write_env_file(workdir, env_vars, log_parts):
+    """Injizierte Werte als .env in den Worktree schreiben — nur so sehen `docker compose`
+    und ein `COPY`-Build sie; reine Prozess-Env reicht dafür nicht."""
+    try:
+        with open(os.path.join(workdir, ".env"), "w", encoding="utf-8") as fh:
+            for k, v in env_vars.items():
+                fh.write(f"{k}={v}\n")
+        return True
+    except OSError as exc:
+        log_parts.append(f".env konnte nicht geschrieben werden: {exc}")
+        return False
+
+
+def _connect_sidecars(name, sidecars, log_parts):
+    """Projekt-Services (z. B. ein zentraler Proxy) ins Testenv-Netz hängen.
+    Fehler sind tolerant: ein fehlender Sidecar darf die Umgebung nicht killen."""
+    net = f"{name}_default"
+    for sc in sidecars or []:
+        container, alias = sc.get("container"), sc.get("alias") or sc.get("container")
+        if not container:
+            continue
+        r = subprocess.run(["docker", "network", "connect", "--alias", alias, net, container],
+                           capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            log_parts.append(f"sidecar {container} nicht verbunden: {r.stderr.strip()[:200]}")
+
+
+def _alive(name):
+    """Läuft nach dem Start noch mindestens ein Container des Stacks?"""
+    p = subprocess.run(["docker", "ps", "-a", "--filter",
+                        f"label=com.docker.compose.project={name}", "--format", "{{.Status}}"],
+                       capture_output=True, text=True, timeout=30)
+    states = [x.strip() for x in p.stdout.splitlines() if x.strip()]
+    if not states:
+        return False, "kein Container gestartet"
+    dead = [s for s in states if s.startswith(("Exited", "Restarting", "Dead"))]
+    if len(dead) == len(states):
+        return False, "Container sofort beendet: " + "; ".join(dead[:5])
+    return True, ""
+
+
+def preview_up(body):
+    """Testumgebung starten: Worktree → .env → Prestart → Build/Start → Sidecars → Liveness."""
+    name = body.get("project_name", "")
+    cfile = body.get("compose_file", "")
+    port = str(body.get("port", ""))
+    mode = body.get("mode", "compose")
+    workdir = body.get("workdir") or os.path.dirname(cfile)
+    mem = str(body.get("mem_limit") or PREVIEW_MEMORY)
+    cpus = str(body.get("cpus") or PREVIEW_CPUS)
+    injected = {str(k): str(v) for k, v in (body.get("env") or {}).items()}
+    env = {**os.environ, "PREVIEW_PORT": port, "PREVIEW_MEMORY": mem, "PREVIEW_CPUS": cpus,
+           **injected}
+    log_parts = []
+
+    # Branch-Testumgebung: Worktree für den gewünschten Branch bereitstellen.
+    if body.get("branch"):
+        if not _ensure_branch_worktree(body.get("repo_dir", ""), workdir, body["branch"], log_parts):
+            return False, "\n".join(log_parts)[-4000:]
+
+    if not os.path.isdir(workdir):
+        return False, f"Arbeitsverzeichnis fehlt: {workdir}"
+
+    _write_env_file(workdir, injected, log_parts)
+
+    if not _run_prestart(body.get("prestart"), workdir, env, log_parts):
+        return False, "\n".join(log_parts)[-4000:]
+
+    with _build_sem:  # Build-Concurrency deckeln
+        if mode == "dockerfile":
+            rc, out = build_and_run_dockerfile(
+                name, workdir, port, int(body.get("container_port") or 8080), env,
+                dockerfile=body.get("dockerfile") or "Dockerfile", mem=mem, cpus=cpus)
+        elif cfile and os.path.isfile(cfile):
+            p = subprocess.run(["docker", "compose", "-p", name, "-f", cfile, "up", "-d", "--build"],
+                               capture_output=True, text=True, env=env, cwd=workdir, timeout=1800)
+            rc, out = p.returncode, (p.stdout + p.stderr)
+        else:
+            rc, out = 1, f"kein compose_file: {cfile}"
+    log_parts.append(out)
+    if rc != 0:
+        teardown(name, cfile)
+        return False, "\n".join(log_parts)[-4000:]
+
+    _connect_sidecars(name, body.get("sidecars"), log_parts)
+    log_parts.append(cap_resources(name, mem, cpus))
+
+    # Nachprüfung: kein „grün", das sofort tot ist.
+    time.sleep(LIVENESS_WAIT)
+    alive, why = _alive(name)
+    if not alive:
+        log_parts.append("Liveness-Prüfung fehlgeschlagen: " + why)
+        log_parts.append(preview_logs(name, None, 100).get("log", ""))
+        teardown(name, cfile)
+        return False, "\n".join(log_parts)[-4000:]
+    return True, "\n".join(log_parts)[-4000:]
+
+
+def preview_logs(project_name, service, tail):
+    """Logs eines Stacks (compose) bzw. des Einzel-Containers (Dockerfile-Modus)."""
+    tail = max(1, min(int(tail or 200), 2000))
+    cmd = ["docker", "compose", "-p", project_name, "logs", "--no-color", "--tail", str(tail)]
+    if service:
+        cmd.append(service)
+    p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    out = p.stdout + p.stderr
+    if p.returncode != 0 or not out.strip():
+        q = subprocess.run(["docker", "logs", "--tail", str(tail), f"{project_name}-app"],
+                           capture_output=True, text=True, timeout=120)
+        out = q.stdout + q.stderr
+    return {"project_name": project_name, "service": service, "log": out[-200000:]}
+
+
+def preview_list():
+    """Laufende Testumgebungen, gruppiert nach Compose-Projekt."""
+    fmt = '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Names}}\t{{.Status}}'
+    p = subprocess.run(["docker", "ps", "-a", "--format", fmt],
+                       capture_output=True, text=True, timeout=30)
+    stacks = {}
+    for line in p.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 4:
+            continue
+        proj, svc, cname, status = (x.strip() for x in parts[:4])
+        if not proj.startswith(PREVIEW_PREFIXES):
+            continue
+        stacks.setdefault(proj, {"project_name": proj, "services": []})["services"].append(
+            {"service": svc or cname, "container": cname, "status": status})
+    return list(stacks.values())
+
+
+def build_and_run_dockerfile(name, workdir, host_port, container_port, env,
+                             dockerfile="Dockerfile", mem=None, cpus=None):
     """Preview ohne compose.preview.yml: Dockerfile bauen und einzeln starten.
 
     Der Container bekommt dasselbe compose-Projekt-Label wie im compose-Modus,
     damit Deckel und Aufraeumen ihn genauso finden.
     """
-    if not os.path.isfile(os.path.join(workdir, "Dockerfile")):
-        return 1, f"kein Dockerfile in {workdir}"
-    b = subprocess.run(["docker", "build", "-t", f"{name}:preview", workdir],
+    mem = mem or PREVIEW_MEMORY
+    cpus = cpus or PREVIEW_CPUS
+    if not os.path.isfile(os.path.join(workdir, dockerfile)):
+        return 1, f"kein {dockerfile} in {workdir}"
+    b = subprocess.run(["docker", "build", "-f", os.path.join(workdir, dockerfile),
+                        "-t", f"{name}:preview", workdir],
                        capture_output=True, text=True, timeout=1800)
     if b.returncode != 0:
         return b.returncode, (b.stdout + b.stderr)
@@ -288,26 +442,28 @@ def build_and_run_dockerfile(name, workdir, host_port, container_port, env):
     r = subprocess.run(
         ["docker", "run", "-d", "--name", f"{name}-app",
          "--label", f"com.docker.compose.project={name}",
-         "--memory", PREVIEW_MEMORY, "--memory-swap", PREVIEW_MEMORY, "--cpus", PREVIEW_CPUS,
+         "--memory", mem, "--memory-swap", mem, "--cpus", cpus,
          "-p", f"{host_port}:{container_port}", *run_env, f"{name}:preview"],
         capture_output=True, text=True, timeout=300)
     return r.returncode, (b.stdout[-500:] + r.stdout + r.stderr)
 
 
-def cap_resources(project_name):
+def cap_resources(project_name, mem=None, cpus=None):
     """Speicher-/CPU-Deckel nachziehen — unabhaengig davon, was die compose.preview.yml sagt."""
     p = subprocess.run(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project_name}"],
                        capture_output=True, text=True, timeout=30)
     ids = [x for x in p.stdout.split() if x]
     if not ids:
         return "cap: keine Container gefunden"
-    u = subprocess.run(["docker", "update", "--memory", PREVIEW_MEMORY,
-                        "--memory-swap", PREVIEW_MEMORY, "--cpus", PREVIEW_CPUS, *ids],
+    mem = mem or PREVIEW_MEMORY
+    cpus = cpus or PREVIEW_CPUS
+    u = subprocess.run(["docker", "update", "--memory", mem,
+                        "--memory-swap", mem, "--cpus", cpus, *ids],
                        capture_output=True, text=True, timeout=60)
     if u.returncode != 0:
         # z. B. Kernel ohne Swap-Limit — kein Grund, die Preview scheitern zu lassen
         return f"cap: nicht gesetzt ({u.stderr.strip()[:200]})"
-    return f"cap: {PREVIEW_MEMORY} / {PREVIEW_CPUS} CPU auf {len(ids)} Container"
+    return f"cap: {mem} / {cpus} CPU auf {len(ids)} Container"
 
 
 def teardown(project_name, compose_file):
@@ -330,7 +486,7 @@ def cleanup_orphans(keep):
     p = subprocess.run(["docker", "ps", "-a", "--format", "{{.Label \"com.docker.compose.project\"}}"],
                        capture_output=True, text=True, timeout=30)
     projects = {x.strip() for x in p.stdout.splitlines()
-                if x.strip().startswith(PREVIEW_PREFIX)}
+                if x.strip().startswith(PREVIEW_PREFIXES)}
     removed = []
     for proj in sorted(projects - set(keep)):
         teardown(proj, "")

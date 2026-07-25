@@ -162,22 +162,53 @@ async def complete(
     if issue.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing,
                                   TicketAgentStatus.hold):
         raise HTTPException(status.HTTP_409_CONFLICT, "Ticket ist nicht zur Abnahme bereit")
+
+    from ..core.redis import enqueue_task, wait_result
+    from ..models.project import Project
+    from ..services.testenv import stop_testenv
+    project = await db.get(Project, issue.project_id)
+
+    # Reihenfolge ist bindend (ABC-18): erst Testumgebung abräumen (Container, Volumes,
+    # Worktree, Port), dann mergen, und erst bei sauberem Merge auf „Fertig".
+    if issue.testenv_status:
+        await stop_testenv(db, issue, project.key)
+
+    task_id = f"accept-{issue.key}"
+    await enqueue_task({"kind": "accept", "task_id": task_id,
+                        "issue_id": issue.id, "project_id": issue.project_id})
+    result = await wait_result(task_id, timeout=600)
+    await db.refresh(issue)
+
+    merge_state = (result or {}).get("status")
+    if result is None:
+        # Timeout: der Merge kann noch durchlaufen — Ticket bleibt „testing", niemand
+        # bekommt ein stilles „Fertig". Der Nutzer kann es gleich erneut versuchen.
+        issue.agent_status = TicketAgentStatus.testing
+        await sync_board_status(db, issue)
+        await db.commit()
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            'Merge dauert länger als erwartet — Ticket bleibt auf „Testen“. '
+            "Bitte gleich erneut versuchen.",
+        )
+    if merge_state not in ("merged", "pr_open", "no_git"):
+        reason = (result or {}).get("error") or merge_state or "unbekannt"
+        issue.agent_status = (TicketAgentStatus.hold if merge_state == "conflict"
+                              else TicketAgentStatus.testing)
+        issue.hold_reason = HoldReason.merge if merge_state == "conflict" else None
+        await sync_board_status(db, issue)
+        await add_system_comment(db, issue.id, f"⛔ Abnahme abgebrochen — Merge fehlgeschlagen: {reason}")
+        await db.commit()
+        from ..services.notify import notify_issue
+        await notify_issue(db, issue, "merge_failed", f"{issue.key}: Merge fehlgeschlagen", str(reason))
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Merge fehlgeschlagen: {reason}")
+
     issue.agent_status = TicketAgentStatus.done
     issue.resolved_at = dt.datetime.now(tz=dt.timezone.utc)
     issue.hold_reason = None
     await sync_board_status(db, issue)
     await db.commit()
     await db.refresh(issue)
-    # Testenv abbauen (falls aktiv)
-    from ..models.project import Project
-    from ..services.testenv import stop_testenv
-    project = await db.get(Project, issue.project_id)
-    if issue.testenv_status:
-        await stop_testenv(db, issue, project.key)
-    # Abnahme → Worker: Ticket-Branch nach main mergen (+ ggf. Auto-Deploy). Fire-and-forget.
-    from ..core.redis import enqueue_task
-    await enqueue_task({"kind": "accept", "task_id": f"accept-{issue.key}",
-                        "issue_id": issue.id, "project_id": issue.project_id})
     return issue
 
 

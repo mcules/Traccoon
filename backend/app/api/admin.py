@@ -83,6 +83,37 @@ async def cancel_update(_: User = Depends(require_admin), db: AsyncSession = Dep
     return await _status(db)
 
 
+class TestenvConfigIn(BaseModel):
+    testenv_host: str | None = Field(default=None, max_length=255)
+    testenv_port_lo: int | None = Field(default=None, ge=1024, le=65535)
+    testenv_port_hi: int | None = Field(default=None, ge=1024, le=65535)
+    testenv_max_concurrent: int | None = Field(default=None, ge=1, le=100)
+    testenv_max_builds: int | None = Field(default=None, ge=1, le=32)
+    testenv_mem_limit: str | None = Field(default=None, max_length=20)
+    testenv_cpus: str | None = Field(default=None, max_length=20)
+
+
+@router.get("/admin/testenv-config")
+async def get_testenv_config(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
+    """Globale Grenzen der Testumgebungen — zur Laufzeit wirksam, kein Neustart nötig (ABC-18)."""
+    from ..services.testenv import get_config
+    return await get_config(db)
+
+
+@router.put("/admin/testenv-config")
+async def put_testenv_config(
+    data: TestenvConfigIn, _: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
+):
+    from ..services.testenv import get_config
+    values = data.model_dump(exclude_unset=True, exclude_none=True)
+    lo, hi = values.get("testenv_port_lo"), values.get("testenv_port_hi")
+    if lo is not None and hi is not None and lo > hi:
+        raise HTTPException(400, "Portbereich: untere Grenze über der oberen")
+    for key, value in values.items():
+        await set_setting(db, key, str(value))
+    return await get_config(db)
+
+
 class RunRetentionIn(BaseModel):
     days: int = Field(ge=0, le=3650)  # 0 = nie löschen
 

@@ -166,6 +166,9 @@ async def delete_issue(
     issue, access = pair
     if not access.has_role(ProjectRole.maintainer):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Löschen erfordert maintainer")
+    if issue.testenv_status:
+        from ..services.testenv import stop_testenv
+        await stop_testenv(db, issue, access.project.key)
     await db.delete(issue)
     await db.commit()
 
@@ -180,6 +183,10 @@ async def archive_issue(
     now = dt.datetime.now(tz=dt.timezone.utc)
     issue.archived = True
     issue.archived_at = now
+    # Verwaiste Testumgebung mit abräumen (ABC-18) — Container, Volumes, Port.
+    if issue.testenv_status:
+        from ..services.testenv import stop_testenv
+        await stop_testenv(db, issue, access.project.key)
     # Agentenläufe folgen dem Ticket (ABC-29).
     from ..models.agents import Run
     await db.execute(
@@ -446,6 +453,25 @@ async def add_comment(
 RANK_STEP = 1000
 
 
+async def _guard_done_transition(issue: Issue, target: WorkflowStatus, db: AsyncSession) -> None:
+    """Im Testumgebungs-Flow darf „Fertig" NUR über POST /issues/{key}/complete gesetzt werden
+    (Stop → Merge → done). Ein direkter Board-Zug dorthin würde den Merge überspringen und ein
+    still un-gemergtes Ticket als erledigt zeigen (ABC-18)."""
+    from ..models.enums import StatusCategory
+    if target.category != StatusCategory.done:
+        return
+    if issue.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing):
+        return
+    project = await db.get(Project, issue.project_id)
+    if project is None or not project.testenv_enabled:
+        return
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        'Auf „Fertig" nur über „Auf Fertig setzen" — dabei wird die Testumgebung gestoppt '
+        "und der Branch gemergt.",
+    )
+
+
 @router.put("/issues/{key}/move", response_model=IssueOut)
 async def move_issue(
     data: MoveIn,
@@ -457,6 +483,7 @@ async def move_issue(
     target_status = await db.get(WorkflowStatus, data.status_id)
     if target_status is None or target_status.project_id != issue.project_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Status gehört nicht zum Projekt")
+    await _guard_done_transition(issue, target_status, db)
     issue.status_id = data.status_id
     await db.flush()
     # Alle Tickets der Zielspalte (ohne dieses) ordnen, neu einfügen, Ränge sequenziell.
