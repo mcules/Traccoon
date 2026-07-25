@@ -64,8 +64,10 @@ _AGENT_STATUS_TO_BOARD = {
     TicketAgentStatus.failed: "Warten",
     TicketAgentStatus.hold: "Warten",
     TicketAgentStatus.plan_review: "Warten",
-    TicketAgentStatus.to_test: "Warten",
-    TicketAgentStatus.testing: "Warten",
+    # Testumgebungs-Flow (TRA-18): eigene Spalte zwischen „In Arbeit" und „Fertig".
+    # Fehlt sie im Projekt, greift der Fallback auf „Warten" (s. sync_board_status).
+    TicketAgentStatus.to_test: "Testen",
+    TicketAgentStatus.testing: "Testen",
     TicketAgentStatus.planning: "In Arbeit",
     TicketAgentStatus.approved: "In Arbeit",
     TicketAgentStatus.in_progress: "In Arbeit",
@@ -87,8 +89,29 @@ async def sync_board_status(db, issue: Issue) -> None:
     if cur and cur.category == StatusCategory.done and target != "Fertig":
         return  # bereits (manuell) abgenommen — nicht nach „Warten" zurückziehen
     st = next((s for s in stats if s.name == target), None)
+    if st is None and target == "Testen":
+        # Bestandsprojekt ohne „Testen"-Spalte: einmalig anlegen (vor „Fertig" einsortiert),
+        # sonst Fallback auf „Warten" — der Übergang darf nie am fehlenden Status scheitern.
+        st = await _ensure_testing_status(db, issue.project_id, stats)
     if st and issue.status_id != st.id:
         issue.status_id = st.id
+
+
+async def _ensure_testing_status(db, project_id: int, stats: list[WorkflowStatus]):
+    """Legt die „Testen"-Spalte für ein Bestandsprojekt an (idempotent) und hängt sie ans Board."""
+    from ..models.ticket import Board, BoardColumn
+    done = next((s for s in stats if s.category == StatusCategory.done), None)
+    order = (done.order if done else max([s.order for s in stats], default=0) + 1)
+    st = WorkflowStatus(project_id=project_id, name="Testen",
+                        category=StatusCategory.in_progress, order=order)
+    db.add(st)
+    if done is not None:
+        done.order = order + 1
+    await db.flush()
+    board = (await db.execute(select(Board).where(Board.project_id == project_id))).scalars().first()
+    if board is not None:
+        db.add(BoardColumn(board_id=board.id, status_id=st.id, order=order))
+    return st
 
 
 async def _plan_role(issue: Issue, project: Project) -> str:
@@ -305,7 +328,11 @@ async def _finalize(issue_id: int, result: dict | None, *, role: str, phase: str
                 enqueue_after_commit = {"kind": "accept", "task_id": f"accept-{issue.key}",
                                         "issue_id": issue.id, "project_id": project.id}
             else:
-                needs_review = project.managed or bool(project.verify_command)
+                # Testumgebungs-Flow (TRA-18): ist er am Projekt an, geht JEDES fertige Ticket
+                # erst nach „Testen" — kein Auto-Merge. Der Merge passiert kontrolliert in
+                # /complete. Ist er aus, gilt das alte Verhalten (managed/verify_command).
+                needs_review = (project.testenv_enabled or project.managed
+                                or bool(project.verify_command))
                 issue.agent_status = TicketAgentStatus.to_test if needs_review else TicketAgentStatus.done
                 if issue.agent_status == TicketAgentStatus.done:
                     issue.resolved_at = _now()
@@ -376,7 +403,8 @@ async def _promote_split(db, child: Issue, project: Project) -> None:
     if all(s.agent_status == TicketAgentStatus.done for s in sibs):
         umbrella = await db.get(Issue, umbrella_id)
         if umbrella:
-            needs_review = project.managed or bool(project.verify_command)
+            needs_review = (project.testenv_enabled or project.managed
+                            or bool(project.verify_command))
             umbrella.agent_status = TicketAgentStatus.to_test if needs_review else TicketAgentStatus.done
             if umbrella.agent_status == TicketAgentStatus.done:
                 umbrella.resolved_at = _now()

@@ -115,6 +115,63 @@ function Maintenance() {
         {status?.update_in_progress && " · Update läuft"}
       </div>
       <RunRetention />
+      <TestenvConfig />
+    </div>
+  );
+}
+
+/** Globale Grenzen der Testumgebungen — zur Laufzeit wirksam (TRA-18). */
+function TestenvConfig() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["testenv-config"], queryFn: () => api.get<Record<string, string>>("/admin/testenv-config"),
+  });
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [msg, setMsg] = useState("");
+  const val = (k: string) => form[k] ?? data?.[k] ?? "";
+  const save = useMutation({
+    mutationFn: () => api.put("/admin/testenv-config", {
+      ...form,
+      ...Object.fromEntries(["testenv_port_lo", "testenv_port_hi", "testenv_max_concurrent",
+                             "testenv_max_builds"]
+        .filter((k) => k in form).map((k) => [k, Number(form[k])])),
+    }),
+    onSuccess: () => {
+      setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setForm({});
+      qc.invalidateQueries({ queryKey: ["testenv-config"] });
+    },
+  });
+  const feld = (k: string, label: string, hint?: string) => (
+    <label className="block text-xs text-muted">{label}
+      <input value={val(k)} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
+        className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
+      {hint && <span className="mt-0.5 block text-[11px] opacity-70">{hint}</span>}
+    </label>
+  );
+  return (
+    <div className="border-t border-line pt-3">
+      <div className="text-sm font-medium">Testumgebungen (global)</div>
+      <p className="mt-1 text-xs text-muted">
+        Gilt für alle Projekte. Änderungen greifen sofort — kein Neustart nötig.
+      </p>
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {feld("testenv_host", "Erreichbarer Host", "füllt {host} in der URL-Vorlage")}
+        {feld("testenv_max_concurrent", "Max. parallele Umgebungen")}
+        {feld("testenv_port_lo", "Portbereich von")}
+        {feld("testenv_port_hi", "Portbereich bis")}
+        {feld("testenv_mem_limit", "RAM je Umgebung", "z. B. 2g")}
+        {feld("testenv_cpus", "CPUs je Umgebung", "z. B. 2")}
+        {feld("testenv_max_builds", "Gleichzeitige Builds")}
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+          Speichern</button>
+        {msg && <span className="text-sm text-green-400">{msg}</span>}
+        {save.error && (
+          <span className="text-sm text-red-400">
+            {save.error instanceof ApiError ? save.error.message : "Fehler"}</span>
+        )}
+      </div>
     </div>
   );
 }

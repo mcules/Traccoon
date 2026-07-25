@@ -24,6 +24,7 @@ from .ops import (  # noqa: F401
     ProviderModel, WebhookCoalesce, WebhookSub,
 )
 from .secrets import UserSecret  # noqa: F401
+from .testenv import BranchTestenv  # noqa: F401
 from .assistant import AssistantPermission, AssistantPolicy, AssistantTask  # noqa: F401
 from .chat import Message  # noqa: F401
 from .notification import Notification  # noqa: F401
@@ -45,5 +46,5 @@ __all__ = [
     "UserSecret", "Message", "Notification", "Skill", "McpServer", "Plugin", "PluginFile",
     "AssistantTask", "AssistantPolicy", "AssistantPermission",
     "WorkflowDefinition", "WorkflowVersion", "WorkflowInstance", "WorkflowToken",
-    "WorkflowStepRun",
+    "WorkflowStepRun", "BranchTestenv",
 ]

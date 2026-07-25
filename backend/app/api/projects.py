@@ -26,7 +26,7 @@ def project_out(project: Project, access: Access) -> ProjectOut:
         parent_id=project.parent_id, inherit_members=project.inherit_members,
         avatar_color=project.avatar_color, managed=project.managed,
         pm_chat_enabled=project.pm_chat_enabled, has_hardware=project.has_hardware,
-        git_enabled=project.git_enabled,
+        git_enabled=project.git_enabled, testenv_enabled=project.testenv_enabled,
         my_role=access.role, my_ai_assign=access.ai_assign,
         is_member=access.is_member, is_new=access.is_new,
         my_role_inherited=access.inherited,
@@ -48,6 +48,8 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
         ("To Do", StatusCategory.todo),
         ("In Arbeit", StatusCategory.in_progress),
         ("Warten", StatusCategory.in_progress),
+        # Testumgebungs-Flow (TRA-18): fertige Umsetzung wartet hier auf die Abnahme.
+        ("Testen", StatusCategory.in_progress),
         ("Fertig", StatusCategory.done),
     ]
     status_objs = []

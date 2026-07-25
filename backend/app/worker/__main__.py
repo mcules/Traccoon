@@ -145,7 +145,15 @@ async def handle(job: dict, redis: Redis) -> None:
     task_id = job["task_id"]
     kind = job.get("kind")
     if kind == "accept":
-        await _handle_accept(job, redis)
+        # Ergebnis IMMER nach Redis schreiben: /complete wartet darauf und darf ein Ticket
+        # nur bei sauberem Merge auf „Fertig" setzen (TRA-18).
+        try:
+            res = await _handle_accept(job, redis)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("accept fehlgeschlagen")
+            res = {"status": "failed", "error": str(exc)[:500]}
+        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(res or {"status": "failed"}), ex=3600)
+        await redis.publish(f"{PREFIX}results", task_id)
         return
     if kind == "job":
         await _handle_job(job, redis)
@@ -341,20 +349,24 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                      blocker_kind="review")
 
 
-async def _handle_accept(job: dict, redis: Redis) -> None:
-    """Bei Abnahme: Ticket-Branch → main mergen (+ push), optional Auto-Deploy einreihen."""
+async def _handle_accept(job: dict, redis: Redis) -> dict:
+    """Bei Abnahme: Ticket-Branch → main mergen (+ push), optional Auto-Deploy einreihen.
+
+    Liefert den Ausgang als {"status": merged|conflict|push_failed|pr_open|pr_failed|no_git|gone,
+    "error"?: str} — `/complete` entscheidet daran, ob das Ticket „Fertig" werden darf.
+    """
     from ..models.ops import Deployment
     async with SessionLocal() as db:
         issue = await db.get(Issue, job["issue_id"])
         project = await db.get(Project, job["project_id"])
         if issue is None or project is None:
-            return
+            return {"status": "gone", "error": "Ticket oder Projekt existiert nicht mehr"}
         # Idempotenz: ein bereits gemergtes Ticket NICHT erneut mergen. Verhindert, dass
         # Duplikat-/Nachzügler-Accept-Jobs (z. B. aus Queue-Recovery) einen sauber gemergten
         # Branch erneut anfassen und in einen Scheinkonflikt laufen (Loop-Quelle).
         if issue.merge_status == "merged":
             log.info("accept %s → bereits gemerged, übersprungen", job["issue_id"])
-            return
+            return {"status": "merged"}
         if project.git_enabled and issue.branch_name:
             host = urlsplit(project.github_repo).hostname or ""
             owner_id = issue.assigned_by_user_id or issue.reporter_id or project.lead_user_id
@@ -402,7 +414,7 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
                 await db.commit()
                 await redis.publish(f"{PREFIX}events:{project.id}",
                                     json.dumps({"type": "issue_update", "issue_key": issue.key}))
-                return
+                return {"status": "conflict", "error": issue.merge_error}
             if project.use_pull_request and not issue.parent_ticket_id:
                 # Statt zu mergen: Branch pushen, PR öffnen, Entscheidung bleibt auf GitHub.
                 # (Sub-Tickets mergen immer direkt in den Sammelticket-Branch, kein PR.)
@@ -423,7 +435,8 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
                 await redis.publish(f"{PREFIX}events:{project.id}",
                                     json.dumps({"type": "issue_update", "issue_key": issue.key}))
                 log.info("accept %s → %s", job["issue_id"], res.split(":", 1)[0])
-                return
+                return ({"status": "pr_open"} if issue.merge_status == "pr_open"
+                        else {"status": "pr_failed", "error": issue.merge_error})
             res = await gitops.accept(ctx)
             if res.startswith("merged:"):
                 issue.merge_status = "merged"
@@ -464,6 +477,11 @@ async def _handle_accept(job: dict, redis: Redis) -> None:
         await redis.publish(f"{PREFIX}events:{project.id}",
                             json.dumps({"type": "issue_update", "issue_key": issue.key}))
     log.info("accept %s → merge=%s deploy=%s", job["issue_id"], issue.merge_status, project.auto_deploy)
+    if not (project.git_enabled and issue.branch_name):
+        return {"status": "no_git"}   # Projekt ohne Git: nichts zu mergen, Abnahme ist frei
+    if issue.merge_status == "merged":
+        return {"status": "merged"}
+    return {"status": issue.merge_status or "failed", "error": issue.merge_error}
 
 
 async def _handle_job(job: dict, redis: Redis) -> None:

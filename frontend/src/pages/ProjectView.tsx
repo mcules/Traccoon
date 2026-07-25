@@ -9,6 +9,7 @@ import NewTicketModal from "../components/NewTicketModal";
 // Monaco ist groß → nur laden, wenn der Code-Tab geöffnet wird.
 const FilesPanel = lazy(() => import("../components/FilesPanel"));
 import Hardware from "../components/Hardware";
+import TestenvsPanel from "../components/TestenvsPanel";
 import ProjectSettings from "../components/ProjectSettings";
 import Backlog from "../components/Backlog";
 import IssueList from "../components/IssueList";
@@ -18,7 +19,7 @@ import PmChat from "../components/PmChat";
 import AgentMonitor from "../components/AgentMonitor";
 import WorkflowList from "../components/workflow/WorkflowList";
 
-type Tab = "board" | "list" | "backlog" | "archiv" | "code" | "dashboard" | "pm" | "monitor" | "workflows" | "members" | "hardware" | "settings";
+type Tab = "board" | "list" | "backlog" | "archiv" | "code" | "dashboard" | "pm" | "monitor" | "workflows" | "members" | "hardware" | "testenvs" | "settings";
 
 // Ticket-Ansichten unter „Board" — im Untermenü nur als „Board" vertreten, darunter als Buttons.
 const BOARD_VIEWS: [Tab, string][] = [
@@ -28,7 +29,7 @@ const BOARD_VIEWS: [Tab, string][] = [
 // Icon je Reiter für die Pill-Navigation im Header.
 const TAB_ICONS: Record<string, string> = {
   pm: "💬", board: "🗂️", code: "📁", dashboard: "📊",
-  monitor: "⚡", workflows: "🔀", hardware: "🖥️", settings: "⚙️",
+  monitor: "⚡", workflows: "🔀", hardware: "🖥️", testenvs: "🧪", settings: "⚙️",
 };
 
 export default function ProjectView() {
@@ -127,10 +128,12 @@ export default function ProjectView() {
       ...(project.my_ai_assign ? ([["monitor", "Monitor"]] as [Tab, string][]) : []),
       ...(canManage ? ([["workflows", "Prozesse"]] as [Tab, string][]) : []),
       ...(project.has_hardware ? ([["hardware", "Hardware"]] as [Tab, string][]) : []),
+      ...(project.testenv_enabled !== false && canWrite
+        ? ([["testenvs", "Testumgebungen"]] as [Tab, string][]) : []),
       // Mitglieder liegen jetzt in den Projekt-Einstellungen (ProjectSettings-Reiter)
       ...(canManage ? ([["settings", "Einstellungen"]] as [Tab, string][]) : []),
     ];
-  }, [project, canManage]);
+  }, [project, canManage, canWrite]);
 
   // Gültige Tabs = Untermenü-Tabs + die Board-Ansichten (list/backlog/archiv sind nicht im
   // Untermenü, aber gültige Ziele der Board-Buttons).
@@ -224,6 +227,7 @@ export default function ProjectView() {
       {tab === "monitor" && <AgentMonitor project={project} />}
       {tab === "workflows" && canManage && <WorkflowList project={project} />}
       {tab === "hardware" && <Hardware project={project} />}
+      {tab === "testenvs" && canWrite && <TestenvsPanel project={project} />}
       {tab === "settings" && canManage && <ProjectSettings project={project} />}
 
       {openKey && meta && (

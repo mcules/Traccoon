@@ -25,8 +25,9 @@ type Settings = {
   vault_moc_path: string; system_prompt: string;
   workspace_dir: string; git_enabled: boolean; github_repo: string; work_in_branches: boolean;
   merge_target: string; push_after_merge: boolean; use_pull_request: boolean;
-  testenv_mode: string; testenv_container_port: number; testenv_prestart: string;
-  testenv_demo_login: string;
+  testenv_enabled: boolean; testenv_mode: string; testenv_container_port: number;
+  testenv_compose_file: string; testenv_dockerfile: string; testenv_url_template: string;
+  testenv_prestart: string; testenv_demo_login: string;
   git_token_set: boolean; testenv_env_set: boolean;
 };
 
@@ -247,6 +248,9 @@ export default function ProjectSettings({ project }: { project: Project }) {
 
       {tab === "testenv" && (
       <Section title="Testumgebung">
+        <Check label="Testumgebungs-Schritt"
+          hint="An: Fertige Umsetzungen landen auf „Testen“ statt direkt gemergt zu werden — der Merge passiert erst bei „Auf Fertig setzen“. Aus: altes Verhalten (Auto-Merge → Fertig)."
+          on={s.testenv_enabled} onChange={(v) => set({ testenv_enabled: v })} />
         <div className="grid grid-cols-2 gap-2">
           <div>
             <label className="text-xs text-muted">Startart</label>
@@ -265,7 +269,16 @@ export default function ProjectSettings({ project }: { project: Project }) {
             </div>
           )}
         </div>
-        <Field label="Vorbereitungsbefehl" hint="Läuft im Worktree vor dem Start, z. B. „cp .env.example .env“."
+        <div className="grid grid-cols-2 gap-2">
+          <Field label="Compose-Datei" hint="Relativ zum Worktree."
+            value={s.testenv_compose_file} onChange={(v) => set({ testenv_compose_file: v })} />
+          <Field label="Dockerfile" hint="Nur im Dockerfile-Modus."
+            value={s.testenv_dockerfile} onChange={(v) => set({ testenv_dockerfile: v })} />
+        </div>
+        <Field label="URL-Vorlage" hint="Platzhalter {host} (globales Setting) und {port} (zugeteilt)."
+          value={s.testenv_url_template} onChange={(v) => set({ testenv_url_template: v })} />
+        <Field label="Vorbereitungsbefehle" textarea
+          hint="Laufen im Worktree vor dem Bauen — eine Zeile je Befehl, #-Kommentare erlaubt. Der erste Fehlschlag bricht ab."
           value={s.testenv_prestart} onChange={(v) => set({ testenv_prestart: v })} />
         <Field label="Demo-Login (JSON)" hint='Für Screenshots, z. B. {"user":"demo","pass":"demo"}.'
           value={s.testenv_demo_login} onChange={(v) => set({ testenv_demo_login: v })} />

@@ -51,7 +51,6 @@ services:
       WORKSPACE_ROOT: /workspace
       WORKSPACE_HOST_PATH: ${WORKSPACE_HOST_PATH:?WORKSPACE_HOST_PATH erforderlich (siehe .env)}
       TESTENV_HOST: ${TESTENV_HOST:-localhost}
-      TESTENV_PORT_RANGE: ${TESTENV_PORT_RANGE:-8100-8199}
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
       SMTP_HOST: ${SMTP_HOST:-}
@@ -146,6 +145,10 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN erforderlich (siehe .env)}
       PREVIEW_MEMORY: ${PREVIEW_MEMORY:-2g}
       PREVIEW_CPUS: ${PREVIEW_CPUS:-2}
+      # Testumgebungen (TRA-18): Build-Deckel + Wartezeit der Liveness-Nachpruefung.
+      # Portbereich/Grenzen kommen zur Laufzeit aus den globalen Einstellungen (Admin).
+      TESTENV_MAX_BUILDS: ${TESTENV_MAX_BUILDS:-2}
+      TESTENV_LIVENESS_WAIT: ${TESTENV_LIVENESS_WAIT:-6}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ${DOCKER_STACKS_DIR:?DOCKER_STACKS_DIR erforderlich (siehe .env)}:${DOCKER_STACKS_DIR}
