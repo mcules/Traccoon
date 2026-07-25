@@ -46,13 +46,23 @@ export default function ProjectSettings({ project }: { project: Project }) {
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
   const [delConfirm, setDelConfirm] = useState("");
+  const [inheritMembers, setInheritMembers] = useState(project.inherit_members ?? true);
   const nav = useNavigate();
   const delProject = async () => {
     try { await api.del(`/projects/${project.id}`); nav("/"); }
     catch (e) { setErr(e instanceof ApiError ? e.message : "Löschen fehlgeschlagen"); }
   };
+  const saveInherit = async (v: boolean) => {
+    setInheritMembers(v);
+    try {
+      await api.put(`/projects/${project.id}`, { inherit_members: v });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+      flash("Gespeichert.");
+    } catch (e) { setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen"); }
+  };
 
   useEffect(() => { if (data) setS(data); }, [data]);
+  useEffect(() => { setInheritMembers(project.inherit_members ?? true); }, [project.id, project.inherit_members]);
   if (!s) return <div className="text-muted">Lädt…</div>;
 
   const set = (patch: Partial<Settings>) => setS({ ...s, ...patch });
@@ -124,6 +134,14 @@ export default function ProjectSettings({ project }: { project: Project }) {
           hint="Projektregeln, die jedem Agenten vorangestellt werden."
           value={s.system_prompt} onChange={(v) => set({ system_prompt: v })} />
       </Section>
+      )}
+
+      {tab === "allgemein" && project.parent_id != null && (
+        <Section title="Vererbung">
+          <Check label="Rechte vom übergeordneten Projekt übernehmen"
+            hint="Aus: Mitglieder des Eltern-Projekts sehen dieses Sub-Projekt NICHT automatisch — nur direkt hinzugefügte Mitglieder. An: Owner-Rechte werden dabei auf Maintainer begrenzt."
+            on={inheritMembers} onChange={saveInherit} />
+        </Section>
       )}
 
       {tab === "allgemein" && project.my_role === "owner" && (

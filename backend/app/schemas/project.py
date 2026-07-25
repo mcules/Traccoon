@@ -2,7 +2,7 @@ import datetime as dt
 
 from pydantic import BaseModel, Field, field_validator
 
-from ..models.enums import ProjectRole
+from ..models.enums import GrantLevel, ProjectRole, ResourceType
 from .auth import _valid_email
 
 
@@ -18,6 +18,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     parent_id: int | None = None
+    inherit_members: bool | None = None
     managed: bool | None = None
     pm_chat_enabled: bool | None = None
     verify_command: str | None = None
@@ -71,6 +72,7 @@ class ProjectOut(BaseModel):
     name: str
     description: str
     parent_id: int | None
+    inherit_members: bool = True
     avatar_color: str
     managed: bool
     pm_chat_enabled: bool
@@ -81,6 +83,8 @@ class ProjectOut(BaseModel):
     my_ai_assign: bool
     is_member: bool = True     # False = fremdes Projekt (nur Admin sieht das)
     is_new: bool = False       # kürzlich (≤7 Tage) hinzugefügtes Mitglied
+    # War die Rolle direkt (Mitgliedschaft dieses Projekts) oder vom Eltern-Baum geerbt?
+    my_role_inherited: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -136,3 +140,28 @@ class InvitationPreview(BaseModel):
     role: ProjectRole
     valid: bool
     reason: str | None = None
+
+
+# ---------- Resource-Grants (granulare Freigaben) ----------
+
+class ResourceGrantIn(BaseModel):
+    user_id: int
+    resource_type: ResourceType
+    resource_id: int
+    level: GrantLevel = GrantLevel.view
+    recursive: bool = True
+
+
+class ResourceGrantOut(BaseModel):
+    id: int
+    project_id: int
+    user_id: int
+    username: str
+    display_name: str
+    resource_type: ResourceType
+    resource_id: int
+    resource_label: str
+    level: GrantLevel
+    recursive: bool
+
+    model_config = {"from_attributes": True}

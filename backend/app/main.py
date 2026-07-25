@@ -67,6 +67,11 @@ async def lifespan(app: FastAPI):
                 "DEFAULT 'popup' NOT NULL",
                 # Nutzerspezifische Block-Anordnung der Ticket-Seite.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS ticket_layout JSON DEFAULT '{}'::json NOT NULL",
+                # Sub-Projekte (ABC-8/22): Vererbungs-Schalter + optionaler Projektbezug am Ort.
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS inherit_members BOOLEAN "
+                "DEFAULT TRUE NOT NULL",
+                "ALTER TABLE locations ADD COLUMN IF NOT EXISTS project_id INTEGER "
+                "REFERENCES projects(id) ON DELETE SET NULL",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:
