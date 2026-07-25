@@ -17,7 +17,7 @@ const PRIOS = ["lowest", "low", "medium", "high", "highest"];
 // Neue Blöcke hier ergänzen, damit sie bei bestehenden Nutzer-Layouts automatisch
 // an ihre Default-Spalte angehängt werden (siehe useMemo unten).
 const DEFAULT_LEFT = ["wait", "parent", "summary", "description", "save", "split", "plan", "umbrella", "lifecycle", "comments"];
-const DEFAULT_RIGHT = ["meta", "person", "ai", "files", "workflows"];
+const DEFAULT_RIGHT = ["meta", "person", "hardware", "ai", "files", "workflows"];
 
 type LayoutCol = "left" | "right";
 type Layout = { left: string[]; right: string[] };
@@ -66,6 +66,22 @@ export default function TicketDrawer({
     queryFn: () => api.get<IssueCosts>(`/issues/${issueKey}/costs`),
     refetchInterval: 10000,
   });
+  // Hardware-Bezug (ABC-25): Exemplare + Modellnamen nur in Hardware-Projekten laden.
+  const hwAssets = useQuery({
+    queryKey: ["hw-assets", project.id],
+    queryFn: () => api.get<{ id: number; model_id: number; serial_number: string | null }[]>(
+      `/hardware/assets?project_id=${project.id}`),
+    enabled: !!project.has_hardware,
+  });
+  const hwModels = useQuery({
+    queryKey: ["hw-models"],
+    queryFn: () => api.get<{ id: number; name: string }[]>("/hardware/models"),
+    enabled: !!project.has_hardware,
+  });
+  const assetLabel = (a: { id: number; model_id: number; serial_number: string | null }) =>
+    [hwModels.data?.find((m) => m.id === a.model_id)?.name || `Modell #${a.model_id}`,
+     a.serial_number, `#${a.id}`].filter(Boolean).join(" · ");
+
   const [comment, setComment] = useState("");
   const [confirmDel, setConfirmDel] = useState(false);
   const [agent, setAgent] = useState("project_manager");
@@ -191,6 +207,14 @@ export default function TicketDrawer({
   const clearAssignee = useMutation({
     mutationFn: () => api.del(`/issues/${issueKey}/assignee`),
     onSuccess: invalidate, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+  });
+  const setAsset = useMutation({
+    mutationFn: (asset_id: number | null) => api.put(`/issues/${issueKey}`, { asset_id }),
+    onSuccess: () => {
+      invalidate();
+      qc.invalidateQueries({ queryKey: ["asset-issues"] });
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
   const unassign = useMutation({
     mutationFn: () => api.del(`/issues/${issueKey}/assign-agent`),
@@ -619,6 +643,30 @@ export default function TicketDrawer({
     </div>
   );
 
+  // Hardware-Bezug (ABC-25): Ticket an ein Exemplar des Projekts hängen.
+  const bHardware = project.has_hardware && (
+    <div className="mb-3 rounded-lg border border-line p-3">
+      <div className="mb-2 text-sm font-medium">Hardware</div>
+      <select
+        value={issue.asset_id ?? ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          setAsset.mutate(v === "" ? null : Number(v));
+        }}
+        className="block w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink">
+        <option value="">— kein Exemplar —</option>
+        {hwAssets.data?.map((a) => (
+          <option key={a.id} value={a.id}>{assetLabel(a)}</option>
+        ))}
+      </select>
+      {issue.asset_id != null && (
+        <p className="mt-1 text-xs text-muted">
+          Dieses Ticket ist am Exemplar vermerkt und dort unter „Tickets" sichtbar.
+        </p>
+      )}
+    </div>
+  );
+
   const bAI = project.my_ai_assign && (
     <div className="mb-4 rounded-lg border border-brand/40 bg-brand/5 p-3">
       <div className="mb-2 text-sm font-medium">KI-Bearbeitung</div>
@@ -766,6 +814,7 @@ export default function TicketDrawer({
     summary: bSummary,
     meta: <div className="rounded-lg border border-line p-3">{bMeta}</div>,
     person: <div className="rounded-lg border border-line p-3">{bPerson}</div>,
+    hardware: bHardware,
     description: bDescription,
     save: bSave,
     split: bSplit,
