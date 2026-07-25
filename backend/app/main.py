@@ -72,6 +72,13 @@ async def lifespan(app: FastAPI):
                 "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE locations ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE SET NULL",
+                # Agentenläufe folgen dem Ticket ins Archiv (ABC-29).
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE NOT NULL",
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
+                # Bestandsdaten nachziehen: Läufe bereits archivierter Tickets mitarchivieren.
+                "UPDATE runs SET archived = TRUE, archived_at = COALESCE(issues.archived_at, now()) "
+                "FROM issues WHERE runs.issue_id = issues.id AND issues.archived "
+                "AND NOT runs.archived",
                 # Ticket an Hardware-Exemplar hängen (ABC-25).
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS asset_id INTEGER "
                 "REFERENCES hardware_assets(id) ON DELETE SET NULL",

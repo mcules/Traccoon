@@ -114,6 +114,43 @@ function Maintenance() {
         {status?.update_pending && " · Update eingereiht"}
         {status?.update_in_progress && " · Update läuft"}
       </div>
+      <RunRetention />
+    </div>
+  );
+}
+
+/** Aufbewahrung archivierter Agentenläufe (ABC-29). */
+function RunRetention() {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["run-retention"], queryFn: () => api.get<{ days: number }>("/admin/run-retention"),
+  });
+  const [days, setDays] = useState<number | null>(null);
+  const [msg, setMsg] = useState("");
+  const wert = days ?? data?.days ?? 30;
+  const save = useMutation({
+    mutationFn: () => api.put("/admin/run-retention", { days: wert }),
+    onSuccess: () => {
+      setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setDays(null);
+      qc.invalidateQueries({ queryKey: ["run-retention"] });
+    },
+  });
+  return (
+    <div className="border-t border-line pt-3">
+      <div className="text-sm font-medium">Agentenläufe aufbewahren</div>
+      <p className="mt-1 text-xs text-muted">
+        Wird ein Ticket archiviert, wandern seine Agentenläufe mit ins Archiv. Nach dieser
+        Frist werden sie samt Schritten endgültig gelöscht. <b>0 = nie löschen.</b>
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <input type="number" min={0} value={wert}
+          onChange={(e) => setDays(Number(e.target.value))}
+          className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
+        <span className="text-xs text-muted">Tage</span>
+        <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+          Speichern</button>
+        {msg && <span className="text-sm text-green-400">{msg}</span>}
+      </div>
     </div>
   );
 }

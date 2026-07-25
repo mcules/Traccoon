@@ -14,21 +14,59 @@ from .deps import Access, build_access, get_current_user, get_project_access
 router = APIRouter(tags=["runs"])
 
 
+def _run_out(r: Run, issue_key: str) -> dict:
+    return {"id": r.id, "issue_key": issue_key, "agent": r.agent, "phase": r.phase,
+            "status": r.status, "provider": r.provider, "model": r.model,
+            "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
+            "cost_usd": r.cost_usd, "iterations": r.iterations,
+            "started_at": r.started_at, "finished_at": r.finished_at, "archived": r.archived,
+            "summary": (r.summary or r.last_text or "")[:200]}
+
+
 @router.get("/projects/{project_id}/runs")
 async def project_runs(access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session),
-                       limit: int = 40):
+                       limit: int = 40, archived: bool = False):
+    """Flache Liste (Alt-Verhalten). `archived=true` zeigt die archivierten Läufe."""
     rows = (
         await db.execute(
             select(Run, Issue.key).join(Issue, Issue.id == Run.issue_id)
-            .where(Issue.project_id == access.project.id)
+            .where(Issue.project_id == access.project.id, Run.archived.is_(archived))
             .order_by(Run.id.desc()).limit(limit)
         )
     ).all()
-    return [{"id": r.id, "issue_key": key, "agent": r.agent, "phase": r.phase, "status": r.status,
-             "provider": r.provider, "model": r.model, "input_tokens": r.input_tokens,
-             "output_tokens": r.output_tokens, "cost_usd": r.cost_usd, "iterations": r.iterations,
-             "started_at": r.started_at, "finished_at": r.finished_at,
-             "summary": (r.summary or r.last_text or "")[:200]} for r, key in rows]
+    return [_run_out(r, key) for r, key in rows]
+
+
+@router.get("/projects/{project_id}/runs/grouped")
+async def project_runs_grouped(
+    access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session),
+    limit: int = 200, archived: bool = False,
+):
+    """Agentenläufe nach Ticket gruppiert (ABC-29) — eine Gruppe je Ticket, jüngstes zuerst.
+
+    `limit` begrenzt die betrachteten Läufe (nicht die Gruppen); wird er erreicht,
+    meldet `truncated`, dass ältere Läufe außen vor blieben.
+    """
+    rows = (
+        await db.execute(
+            select(Run, Issue.key, Issue.summary, Issue.archived)
+            .join(Issue, Issue.id == Run.issue_id)
+            .where(Issue.project_id == access.project.id, Run.archived.is_(archived))
+            .order_by(Run.id.desc()).limit(limit)
+        )
+    ).all()
+    groups: dict[str, dict] = {}
+    for r, key, summary, issue_archived in rows:
+        g = groups.get(key)
+        if g is None:
+            g = groups[key] = {
+                "issue_key": key, "issue_summary": summary, "issue_archived": issue_archived,
+                "runs": [], "cost_usd": 0.0, "output_tokens": 0,
+            }
+        g["runs"].append(_run_out(r, key))
+        g["cost_usd"] += r.cost_usd or 0.0
+        g["output_tokens"] += r.output_tokens or 0
+    return {"groups": list(groups.values()), "truncated": len(rows) >= limit}
 
 
 @router.get("/projects/{project_id}/active-runs")
