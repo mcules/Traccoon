@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, getToken, Project } from "../api";
+import { useAuth } from "../auth";
 import { formatTime } from "../lib/formatTime";
 
 interface Msg { id?: number; role: string; author?: string; content: string; created_at?: string; }
@@ -10,6 +11,9 @@ export default function PmChat({ project }: { project: Project }) {
   const [text, setText] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  // Darstellung ist eine Nutzer-Einstellung (Profil) und gilt projektübergreifend — TRA-21.
+  const { user } = useAuth();
+  const cli = user?.pm_chat_style === "cli";
 
   useQuery({
     queryKey: ["pm-history", project.id],
@@ -42,6 +46,18 @@ export default function PmChat({ project }: { project: Project }) {
     setText("");
   }
 
+  return cli
+    ? <CliChat messages={messages} text={text} setText={setText} send={send} boxRef={boxRef} project={project} />
+    : <BubbleChat messages={messages} text={text} setText={setText} send={send} boxRef={boxRef} />;
+}
+
+type ViewProps = {
+  messages: Msg[]; text: string; setText: (v: string) => void; send: () => void;
+  boxRef: React.RefObject<HTMLDivElement>;
+};
+
+/** Bisherige Darstellung: Sprechblasen im App-Theme. */
+function BubbleChat({ messages, text, setText, send, boxRef }: ViewProps) {
   return (
     <div className="flex h-[70vh] flex-col rounded-lg border border-line bg-card">
       <div ref={boxRef} className="flex-1 space-y-3 overflow-y-auto p-4">
@@ -62,6 +78,72 @@ export default function PmChat({ project }: { project: Project }) {
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder="Nachricht an den PM…" className="flex-1 rounded border border-line bg-surface px-3 py-2" />
         <button onClick={send} className="rounded bg-brand px-4 py-2 text-white">Senden</button>
+      </div>
+    </div>
+  );
+}
+
+// Terminal-Palette (fest, unabhängig vom App-Theme — ein Terminal ist immer dunkel).
+const T = {
+  bg: "#1b1a17", border: "#33302b", ink: "#e6e2db", dim: "#8b857a",
+  accent: "#d97757", user: "#87b7c9", err: "#e0685f",
+};
+
+/** Terminal-Look wie die Claude-Code-CLI im Darkmode. */
+function CliChat({ messages, text, setText, send, boxRef, project }: ViewProps & { project: Project }) {
+  return (
+    <div className="flex h-[70vh] flex-col overflow-hidden rounded-lg border font-mono text-[13px] leading-relaxed"
+      style={{ background: T.bg, borderColor: T.border, color: T.ink }}>
+      <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs"
+        style={{ borderColor: T.border, color: T.dim }}>
+        <span style={{ color: T.accent }}>✻</span>
+        <span>projektmanager — {project.key}</span>
+      </div>
+
+      <div ref={boxRef} className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
+        {messages.length === 0 && (
+          <div style={{ color: T.dim }}>
+            <div><span style={{ color: T.accent }}>✻</span> Willkommen beim Projektmanager.</div>
+            <div className="mt-1">Sag, was zu tun ist — er legt Tickets an und delegiert an Agenten.</div>
+          </div>
+        )}
+        {messages.map((m, i) => {
+          if (m.role === "user") {
+            return (
+              <div key={i} className="whitespace-pre-wrap break-words">
+                <span style={{ color: T.dim }}>&gt; </span>
+                <span style={{ color: T.user }}>{m.content}</span>
+                {m.created_at && (
+                  <span className="ml-2 text-[11px]" style={{ color: T.dim }}>{formatTime(m.created_at)}</span>
+                )}
+              </div>
+            );
+          }
+          const system = m.role === "system";
+          return (
+            <div key={i} className="flex gap-2">
+              <span style={{ color: system ? T.err : T.accent }}>{system ? "✗" : "⏺"}</span>
+              <div className="min-w-0 flex-1">
+                <div className="whitespace-pre-wrap break-words" style={system ? { color: T.err } : undefined}>
+                  {m.content}
+                </div>
+                {m.created_at && (
+                  <div className="mt-0.5 text-[11px]" style={{ color: T.dim }}>{formatTime(m.created_at)}</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-2 border-t px-3 py-2" style={{ borderColor: T.border }}>
+        <span style={{ color: T.accent }}>&gt;</span>
+        <input value={text} onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder="Nachricht an den PM…"
+          className="flex-1 bg-transparent font-mono text-[13px] outline-none placeholder:opacity-50"
+          style={{ color: T.ink }} />
+        <span className="text-[11px]" style={{ color: T.dim }}>⏎ senden</span>
       </div>
     </div>
   );

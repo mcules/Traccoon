@@ -100,6 +100,14 @@ async def set_ticket_open_mode(d: StrIn, u: User = Depends(get_current_user),
     await db.commit()
 
 
+@router.put("/me/pm-chat-style", status_code=204)
+async def set_pm_chat_style(d: StrIn, u: User = Depends(get_current_user),
+                            db: AsyncSession = Depends(get_session)):
+    """Darstellung des PM-Chats: bubbles (Sprechblasen) oder cli (Terminal-Look)."""
+    u.pm_chat_style = d.value if d.value in ("bubbles", "cli") else "bubbles"
+    await db.commit()
+
+
 class TicketLayoutIn(BaseModel):
     left: list[str] = []
     right: list[str] = []

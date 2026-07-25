@@ -100,6 +100,7 @@ export interface User {
   global_role: string; status: string; onboarded: boolean; theme: string;
   ticket_open_mode?: string;   // popup | page — wie ein Ticket per Linksklick öffnet
   ticket_layout?: { left?: string[]; right?: string[] };  // nutzerspez. Block-Anordnung
+  pm_chat_style?: string;      // bubbles | cli — Darstellung des PM-Chats
 }
 export interface Project {
   id: number; key: string; name: string; description: string;
