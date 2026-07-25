@@ -22,6 +22,11 @@ class Location(Base):
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Optional: Ort fest an ein Projekt hängen (NICHT Pflicht — viele Orte bleiben
+    # projektlos/global, nur die zugehörigen Assets tragen project_id).
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     full_path: Mapped[str] = mapped_column(String, default="")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

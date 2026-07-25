@@ -104,6 +104,17 @@ class PurchaseStatus(str, enum.Enum):
     retired = "retired"
 
 
+class ResourceType(str, enum.Enum):
+    """Objektart einer granularen Freigabe (resource_grants)."""
+    location = "location"
+    asset = "asset"
+
+
+class GrantLevel(str, enum.Enum):
+    view = "view"
+    manage = "manage"
+
+
 # ── Workflow-Engine ──────────────────────────────────────────────────────────
 # Generische, deklarative Prozess-Engine (visueller Node-Graph). Läuft NEBEN dem
 # KI-Ticket-Lifecycle (TicketAgentStatus) — siehe services/workflow_engine.py.

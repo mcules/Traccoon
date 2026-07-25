@@ -6,13 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models.enums import IssueTypeCategory, ProjectRole, StatusCategory
-from ..models.project import Project, ProjectMember, default_ai_assign
+from ..models.enums import IssueTypeCategory, ProjectRole, ResourceType, StatusCategory
+from ..models.hardware import HardwareAsset, Location
+from ..models.project import Project, ProjectMember, ResourceGrant, default_ai_assign
 from ..models.ticket import Board, BoardColumn, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import User
 from ..schemas.project import (
     MemberCreate, MemberOut, MemberUpdate, ProjectCreate, ProjectOut,
-    ProjectSettings, ProjectSettingsOut, ProjectUpdate,
+    ProjectSettings, ProjectSettingsOut, ProjectUpdate, ResourceGrantIn, ResourceGrantOut,
 )
 from .deps import Access, get_current_user, get_project_access, require_role
 
@@ -22,11 +23,13 @@ router = APIRouter(tags=["projects"])
 def project_out(project: Project, access: Access) -> ProjectOut:
     return ProjectOut(
         id=project.id, key=project.key, name=project.name, description=project.description,
-        parent_id=project.parent_id, avatar_color=project.avatar_color, managed=project.managed,
+        parent_id=project.parent_id, inherit_members=project.inherit_members,
+        avatar_color=project.avatar_color, managed=project.managed,
         pm_chat_enabled=project.pm_chat_enabled, has_hardware=project.has_hardware,
         git_enabled=project.git_enabled,
         my_role=access.role, my_ai_assign=access.ai_assign,
         is_member=access.is_member, is_new=access.is_new,
+        my_role_inherited=access.inherited,
     )
 
 
@@ -63,32 +66,29 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
 
 @router.get("/projects", response_model=list[ProjectOut])
 async def list_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    # Admin sieht ALLE Projekte (auch fremde, als is_member=False markiert), sonst nur die eigenen.
+    # Admin sieht ALLE Projekte (auch fremde, als is_member=False markiert), sonst die eigenen
+    # plus die vom Eltern-Baum geerbten.
     from ..models.enums import GlobalRole
+    from .deps import build_access_bulk
+    all_projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
     if user.global_role == GlobalRole.admin:
-        projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
-    else:
-        projects = (
-            await db.execute(
-                select(Project)
-                .join(ProjectMember, ProjectMember.project_id == Project.id)
-                .where(ProjectMember.user_id == user.id)
-                .order_by(Project.id)
-            )
-        ).scalars().all()
+        return [
+            project_out(p, Access(user, p, ProjectRole.owner, True, True))
+            for p in all_projects
+        ]
+    # Direkte Mitgliedschaft ODER geerbt vom Eltern-Baum (Sub-Projekte ohne eigene
+    # Mitgliedschaft, z. B. "Wart" unter "Königsberg"). Alle Mitgliedschaften des Users
+    # UND alle Projekte in je einer Query vorladen, um N+1 beim Baum-Hochlaufen zu vermeiden.
+    projects_by_id = {p.id: p for p in all_projects}
+    memberships = (
+        await db.execute(select(ProjectMember).where(ProjectMember.user_id == user.id))
+    ).scalars().all()
+    members_by_project = {m.project_id: m for m in memberships}
     out = []
-    for p in projects:
-        m = (
-            await db.execute(
-                select(ProjectMember).where(
-                    ProjectMember.project_id == p.id, ProjectMember.user_id == user.id
-                )
-            )
-        ).scalar_one_or_none()
-        if m is not None:
-            access = Access(user, p, m.role, m.ai_assign, True, m.created_at)
-        else:
-            access = Access(user, p, ProjectRole.owner, True, False)
+    for p in all_projects:
+        access = build_access_bulk(p, user, members_by_project, projects_by_id)
+        if access is None:
+            continue
         out.append(project_out(p, access))
     return out
 
@@ -115,12 +115,36 @@ async def _gen_project_key(db: AsyncSession, name: str) -> str:
     raise HTTPException(status.HTTP_409_CONFLICT, "Kein freier Projekt-Key")
 
 
+async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db: AsyncSession) -> None:
+    """Übergeordnetes Projekt muss existieren und darf kein Nachfahre sein (Zyklus-Schutz).
+    `project_id=None` beim Anlegen — dann entfällt die Nachfahren-Prüfung."""
+    if parent_id is None:
+        return
+    if await db.get(Project, parent_id) is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Übergeordnetes Projekt existiert nicht")
+    if project_id is None:
+        return
+    if parent_id == project_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ein Projekt kann sich nicht selbst übergeordnet sein")
+    # Vom neuen Elternteil nach oben laufen: taucht das Projekt selbst auf, wäre es ein Zyklus.
+    seen: set[int] = set()
+    cur = parent_id
+    while cur is not None and cur not in seen:
+        seen.add(cur)
+        if cur == project_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Übergeordnetes Projekt liegt unterhalb dieses Projekts (Zyklus)",
+            )
+        node = await db.get(Project, cur)
+        cur = node.parent_id if node is not None else None
+
+
 @router.post("/projects", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 async def create_project(
     data: ProjectCreate, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)
 ):
-    if data.parent_id is not None and await db.get(Project, data.parent_id) is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Übergeordnetes Projekt existiert nicht")
+    await _assert_valid_parent(None, data.parent_id, db)
 
     project = Project(
         key=await _gen_project_key(db, data.name), name=data.name, description=data.description,
@@ -151,7 +175,10 @@ async def update_project(
     db: AsyncSession = Depends(get_session),
 ):
     p = access.project
-    for field, value in data.model_dump(exclude_unset=True).items():
+    fields = data.model_dump(exclude_unset=True)
+    if "parent_id" in fields and fields["parent_id"] != p.parent_id:
+        await _assert_valid_parent(p.id, fields["parent_id"], db)
+    for field, value in fields.items():
         setattr(p, field, value)
     await db.commit()
     await db.refresh(p)
@@ -308,4 +335,94 @@ async def remove_member(
     if m.role == ProjectRole.owner and access.role != ProjectRole.owner:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Owner darf nur von Owner entfernt werden")
     await db.delete(m)
+    await db.commit()
+
+
+# ---------- Granulare Freigaben (Wart-Fall: einzelnes Wasserhäuschen/Asset ohne volle Mitgliedschaft) ----------
+
+async def _resource_label(rt: ResourceType, rid: int, db: AsyncSession) -> str:
+    if rt == ResourceType.location:
+        loc = await db.get(Location, rid)
+        return loc.full_path if loc else f"#{rid}"
+    asset = await db.get(HardwareAsset, rid)
+    return f"Exemplar #{asset.id}" if asset else f"#{rid}"
+
+
+async def _grant_out(g: ResourceGrant, db: AsyncSession) -> ResourceGrantOut:
+    user = await db.get(User, g.user_id)
+    return ResourceGrantOut(
+        id=g.id, project_id=g.project_id, user_id=g.user_id,
+        username=user.username if user else "?", display_name=user.display_name if user else "?",
+        resource_type=g.resource_type, resource_id=g.resource_id,
+        resource_label=await _resource_label(g.resource_type, g.resource_id, db),
+        level=g.level, recursive=g.recursive,
+    )
+
+
+@router.get("/projects/{project_id}/resource-grants", response_model=list[ResourceGrantOut])
+async def list_resource_grants(
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    rows = (
+        await db.execute(
+            select(ResourceGrant).where(ResourceGrant.project_id == access.project.id)
+            .order_by(ResourceGrant.id)
+        )
+    ).scalars().all()
+    return [await _grant_out(g, db) for g in rows]
+
+
+@router.post("/projects/{project_id}/resource-grants", response_model=ResourceGrantOut,
+             status_code=status.HTTP_201_CREATED)
+async def add_resource_grant(
+    data: ResourceGrantIn,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    if await db.get(User, data.user_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if data.resource_type == ResourceType.location:
+        exists = await db.get(Location, data.resource_id)
+    else:
+        exists = await db.get(HardwareAsset, data.resource_id)
+    if exists is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Objekt existiert nicht")
+    # Objekt muss zum freigebenden Projekt gehören — sonst könnte ein Maintainer
+    # Grants für fremde Locations/Assets aus anderen Projekten vergeben (Privilege Escalation).
+    if exists.project_id != access.project.id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Objekt gehört nicht zu diesem Projekt"
+        )
+    dup = (
+        await db.execute(
+            select(ResourceGrant).where(
+                ResourceGrant.user_id == data.user_id,
+                ResourceGrant.resource_type == data.resource_type,
+                ResourceGrant.resource_id == data.resource_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if dup is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Freigabe existiert bereits")
+    g = ResourceGrant(
+        project_id=access.project.id, user_id=data.user_id, resource_type=data.resource_type,
+        resource_id=data.resource_id, level=data.level, recursive=data.recursive,
+    )
+    db.add(g)
+    await db.commit()
+    await db.refresh(g)
+    return await _grant_out(g, db)
+
+
+@router.delete("/projects/{project_id}/resource-grants/{grant_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_resource_grant(
+    grant_id: int,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    g = await db.get(ResourceGrant, grant_id)
+    if g is None or g.project_id != access.project.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Freigabe nicht gefunden")
+    await db.delete(g)
     await db.commit()

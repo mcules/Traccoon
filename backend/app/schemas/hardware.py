@@ -9,6 +9,7 @@ class LocationIn(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     type: LocationType = LocationType.other
     parent_id: int | None = None
+    project_id: int | None = None
     notes: str | None = None
 
 
@@ -17,6 +18,7 @@ class LocationOut(BaseModel):
     name: str
     type: LocationType
     parent_id: int | None
+    project_id: int | None
     full_path: str
     notes: str | None
     model_config = {"from_attributes": True}
