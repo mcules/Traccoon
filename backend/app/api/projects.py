@@ -345,7 +345,12 @@ async def _resource_label(rt: ResourceType, rid: int, db: AsyncSession) -> str:
         loc = await db.get(Location, rid)
         return loc.full_path if loc else f"#{rid}"
     asset = await db.get(HardwareAsset, rid)
-    return f"Exemplar #{asset.id}" if asset else f"#{rid}"
+    if asset is None:
+        return f"#{rid}"
+    from ..models.hardware import HardwareModel
+    model = await db.get(HardwareModel, asset.model_id)
+    parts = [model.name if model else f"Modell #{asset.model_id}", asset.serial_number, f"#{asset.id}"]
+    return " · ".join(p for p in parts if p)
 
 
 async def _grant_out(g: ResourceGrant, db: AsyncSession) -> ResourceGrantOut:
@@ -405,9 +410,12 @@ async def add_resource_grant(
     ).scalar_one_or_none()
     if dup is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Freigabe existiert bereits")
+    # `recursive` ergibt nur bei Orten Sinn (Vererbung auf Kind-Orte). Bei Exemplaren
+    # normalisieren, damit gleichwertige Freigaben nicht unterschiedlich abgelegt werden.
+    recursive = data.recursive if data.resource_type == ResourceType.location else False
     g = ResourceGrant(
         project_id=access.project.id, user_id=data.user_id, resource_type=data.resource_type,
-        resource_id=data.resource_id, level=data.level, recursive=data.recursive,
+        resource_id=data.resource_id, level=data.level, recursive=recursive,
     )
     db.add(g)
     await db.commit()

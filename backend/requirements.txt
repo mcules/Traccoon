@@ -14,3 +14,7 @@ alembic==1.14.0
 python-multipart==0.0.20
 croniter==5.0.1
 aiogram>=3.13,<4
+# Tests (laufen im selben Image; Prod-Pfade unberührt)
+pytest==8.3.4
+pytest-asyncio==0.25.0
+aiosqlite==0.20.0
