@@ -5,6 +5,7 @@ import { api, ApiError, Project } from "../api";
 import StatusManager from "./StatusManager";
 import AgentsPanel from "./AgentsPanel";
 import Members from "./Members";
+import ResourceGrants from "./ResourceGrants";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PROVIDER_LABEL: Record<string, string> = {
@@ -108,7 +109,19 @@ export default function ProjectSettings({ project }: { project: Project }) {
       </div>
 
       <div className="space-y-4">
-      {tab === "mitglieder" && <Members project={project} />}
+      {tab === "mitglieder" && (
+        <div className="space-y-8">
+          <Members project={project} />
+          {s.has_hardware && (
+            <div>
+              <h2 className="mb-1 text-sm font-semibold">Granulare Freigaben</h2>
+              <p className="mb-2 text-xs text-muted">Einzelne Orte/Exemplare für jemanden freigeben,
+                ohne ihn ins ganze Projekt aufzunehmen.</p>
+              <ResourceGrants project={project} />
+            </div>
+          )}
+        </div>
+      )}
       {tab === "allgemein" && (
       <Section title="Allgemein">
         <Check label="Projekt hat Hardware" hint="Blendet den Hardware-Tab (Katalog, Exemplare, Beschaffung) ein."

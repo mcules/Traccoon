@@ -92,8 +92,12 @@ class Access:
         """Kürzlich (≤ 7 Tage) hinzugefügtes Mitglied — für die 'Neu'-Kennzeichnung im UI."""
         if not self.is_member or self.member_since is None:
             return False
+        since = self.member_since
+        # Postgres liefert tz-aware; andere Backends (Tests/SQLite) naiv → als UTC lesen.
+        if since.tzinfo is None:
+            since = since.replace(tzinfo=dt.timezone.utc)
         now = dt.datetime.now(tz=dt.timezone.utc)
-        return (now - self.member_since) <= dt.timedelta(days=7)
+        return (now - since) <= dt.timedelta(days=7)
 
 
 def _cap_inherited_role(role: ProjectRole) -> ProjectRole:
