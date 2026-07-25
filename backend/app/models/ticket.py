@@ -146,6 +146,11 @@ class Issue(TimestampMixin, Base):
     sprint_id: Mapped[int | None] = mapped_column(
         ForeignKey("sprints.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    # Hardware-Bezug (TRA-25): Ticket hängt an einem Exemplar. Ein Exemplar sammelt über
+    # seine Lebenszeit mehrere Tickets (Defekt, Wartung, Umbau) — daher n:1, nicht 1:1.
+    asset_id: Mapped[int | None] = mapped_column(
+        ForeignKey("hardware_assets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     story_points: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rank: Mapped[str] = mapped_column(String(64), default="")
     due_date: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

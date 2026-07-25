@@ -41,6 +41,19 @@ def _require_write(access: Access) -> None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Schreibrecht (member) erforderlich")
 
 
+async def _assert_asset_in_project(asset_id: int, project_id: int, db: AsyncSession) -> None:
+    """Hardware-Bezug (TRA-25) darf nur auf Exemplare des eigenen Projekts zeigen —
+    sonst würde ein Ticket ein fremdes Exemplar referenzieren und dessen Existenz leaken."""
+    from ..models.hardware import HardwareAsset
+    asset = await db.get(HardwareAsset, asset_id)
+    if asset is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Exemplar existiert nicht")
+    if asset.project_id != project_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "Exemplar gehört nicht zu diesem Projekt"
+        )
+
+
 # ---------- Liste / Anlegen ----------
 
 @router.get("/projects/{project_id}/issues", response_model=list[IssueOut])
@@ -104,11 +117,14 @@ async def create_issue(
     counter.last_number += 1
     number = counter.last_number
 
+    if data.asset_id is not None:
+        await _assert_asset_in_project(data.asset_id, project.id, db)
+
     issue = Issue(
         project_id=project.id, number=number, key=f"{project.key}-{number}",
         type_id=type_id, status_id=status_id, priority=data.priority,
         summary=data.summary, description=data.description, reporter_id=access.user.id,
-        parent_id=data.parent_id,
+        parent_id=data.parent_id, asset_id=data.asset_id,
         sprint_id=data.sprint_id, story_points=data.story_points, rank=f"{number:08d}",
     )
     db.add(issue)
@@ -132,7 +148,10 @@ async def update_issue(
 ):
     issue, access = pair
     _require_write(access)
-    for field, value in data.model_dump(exclude_unset=True).items():
+    fields = data.model_dump(exclude_unset=True)
+    if fields.get("asset_id") is not None:
+        await _assert_asset_in_project(fields["asset_id"], issue.project_id, db)
+    for field, value in fields.items():
         setattr(issue, field, value)
     await db.commit()
     await db.refresh(issue)

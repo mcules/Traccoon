@@ -17,6 +17,7 @@ class IssueCreate(BaseModel):
     parent_id: int | None = None
     sprint_id: int | None = None
     story_points: int | None = None
+    asset_id: int | None = None     # Hardware-Bezug (TRA-25)
 
 
 class IssueUpdate(BaseModel):
@@ -29,6 +30,7 @@ class IssueUpdate(BaseModel):
     parent_id: int | None = None
     sprint_id: int | None = None
     story_points: int | None = None
+    asset_id: int | None = None     # Hardware-Bezug (TRA-25)
 
 
 class AssignAgentIn(BaseModel):
@@ -75,6 +77,7 @@ class IssueOut(BaseModel):
     split_order: int | None = None
     sprint_id: int | None
     story_points: int | None
+    asset_id: int | None = None   # Hardware-Bezug; Beschriftung löst das Frontend auf
     rank: str
     agent_working: bool
     archived: bool = False

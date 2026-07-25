@@ -112,6 +112,7 @@ export default function Hardware({ project }: { project: Project }) {
                     ) : (
                       <AssetWorkflow assetId={a.id} projectId={a.project_id} assetLabel={modelName(a.model_id)} />
                     )}
+                    <AssetIssues assetId={a.id} projectKey={project.key} />
                   </div>
                 )}
               </div>
@@ -192,6 +193,37 @@ export default function Hardware({ project }: { project: Project }) {
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+/** Tickets, die an diesem Exemplar hängen (TRA-25) — Gegenrichtung zum Hardware-Feld im Ticket. */
+function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: string }) {
+  const navigate = useNavigate();
+  const { data } = useQuery({
+    queryKey: ["asset-issues", assetId],
+    queryFn: () => api.get<{ key: string; summary: string; status: string; archived: boolean }[]>(
+      `/hardware/assets/${assetId}/issues`),
+  });
+  return (
+    <div className="mt-3 border-t border-line pt-2.5">
+      <div className="mb-1 text-xs font-medium text-muted">Tickets</div>
+      {data?.length ? (
+        <ul className="space-y-1">
+          {data.map((i) => (
+            <li key={i.key}>
+              <button onClick={() => navigate(`/projects/${projectKey}/tickets/${i.key}`)}
+                className="flex w-full items-center gap-2 text-left text-xs hover:underline">
+                <span className="font-mono text-brand">{i.key}</span>
+                <span className={`flex-1 truncate ${i.archived ? "text-muted line-through" : ""}`}>{i.summary}</span>
+                <span className="rounded bg-surface px-1.5 py-0.5 text-muted">{i.status}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <div className="text-xs text-muted">Keine Tickets an diesem Exemplar.</div>
+      )}
     </div>
   );
 }

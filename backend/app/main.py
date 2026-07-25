@@ -72,6 +72,9 @@ async def lifespan(app: FastAPI):
                 "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE locations ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE SET NULL",
+                # Ticket an Hardware-Exemplar hängen (TRA-25).
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS asset_id INTEGER "
+                "REFERENCES hardware_assets(id) ON DELETE SET NULL",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:

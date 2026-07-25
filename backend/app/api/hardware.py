@@ -350,6 +350,32 @@ async def delete_asset(
     await db.commit()
 
 
+@router.get("/hardware/assets/{asset_id}/issues")
+async def asset_issues(
+    asset_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)
+):
+    """Tickets, die an diesem Exemplar hängen (TRA-25) — Gegenrichtung zu Issue.asset_id."""
+    from ..models.ticket import Issue, WorkflowStatus
+    a = await db.get(HardwareAsset, asset_id)
+    if a is None:
+        raise HTTPException(404, "Exemplar nicht gefunden")
+    if not await _can_view_asset(a, user, db):
+        raise HTTPException(403, "Kein Zugriff auf dieses Exemplar")
+    rows = (
+        await db.execute(
+            select(Issue).where(Issue.asset_id == asset_id).order_by(Issue.number.desc())
+        )
+    ).scalars().all()
+    out = []
+    for i in rows:
+        st = await db.get(WorkflowStatus, i.status_id)
+        out.append({
+            "key": i.key, "summary": i.summary, "status": st.name if st else "",
+            "archived": i.archived,
+        })
+    return out
+
+
 # ---------- Beschaffungs-Workflow + Schritte ----------
 
 async def _ensure_workflow(project_id: int, db: AsyncSession) -> HardwareWorkflow:
