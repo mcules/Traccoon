@@ -52,6 +52,7 @@ class UserOut(BaseModel):
     default_project_view: str
     ticket_open_mode: str = "popup"
     ticket_layout: dict = {}
+    pm_chat_style: str = "bubbles"
     claude_token_set: bool
     created_at: dt.datetime
 

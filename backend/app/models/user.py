@@ -50,6 +50,9 @@ class User(TimestampMixin, Base):
     ticket_open_mode: Mapped[str] = mapped_column(String(10), default="popup")
     # Nutzerspezifische Block-Anordnung der vollen Ticket-Seite: {"left":[...keys], "right":[...keys]}.
     ticket_layout: Mapped[dict] = mapped_column(JSON, default=dict)
+    # Darstellung des PM-Chats: bubbles (Sprechblasen) oder cli (Terminal-Look wie die
+    # Claude-Code-CLI). Gilt global für den Nutzer über alle Projekte (ABC-21).
+    pm_chat_style: Mapped[str] = mapped_column(String(10), default="bubbles")
 
     # Nacht-Fenster (Europe/Berlin) für night_task-Tickets
     night_start_hour: Mapped[int] = mapped_column(Integer, default=22)

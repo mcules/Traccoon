@@ -11,7 +11,47 @@ export default function Profile() {
       <PasswordPanel />
       <ThemePanel />
       <TicketOpenPanel />
+      <PmChatStylePanel />
     </div>
+  );
+}
+
+/** Darstellung des PM-Chats — gilt global über alle Projekte (ABC-21). */
+function PmChatStylePanel() {
+  const { user, refresh } = useAuth();
+  const current = user?.pm_chat_style === "cli" ? "cli" : "bubbles";
+  const [err, setErr] = useState("");
+  const setStyle = async (value: "bubbles" | "cli") => {
+    if (value === current) return;
+    setErr("");
+    try {
+      await api.put("/me/pm-chat-style", { value });
+      await refresh();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Konnte nicht gespeichert werden.");
+    }
+  };
+  const btn = (value: "bubbles" | "cli", label: string) => (
+    <button onClick={() => setStyle(value)}
+      className={`rounded border px-3 py-1.5 text-sm ${
+        current === value ? "border-brand bg-brand/20 text-ink" : "border-line bg-surface text-muted hover:text-ink"
+      }`}>
+      {label}
+    </button>
+  );
+  return (
+    <section className="space-y-3 rounded-lg border border-line bg-card p-4">
+      <div className="text-sm font-medium text-ink">PM-Chat</div>
+      <p className="text-xs text-muted">
+        Darstellung des Projektmanager-Chats. „Terminal" zeichnet den Verlauf wie eine
+        Kommandozeile (Monospace, dunkler Hintergrund, Prompt-Zeile) — unabhängig vom Theme.
+      </p>
+      <div className="flex gap-2">
+        {btn("bubbles", "Sprechblasen")}
+        {btn("cli", "Terminal")}
+      </div>
+      {err && <div className="text-sm text-red-400">{err}</div>}
+    </section>
   );
 }
 
