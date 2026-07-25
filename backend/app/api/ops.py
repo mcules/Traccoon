@@ -43,6 +43,10 @@ class WebhookIn(BaseModel):
     alert_events: list = []
     ref_field: str | None = None
     notify_chat: str | None = None
+    # mode=workflow: welche Definition wird gestartet und wie wird der Payload gemappt
+    # ({context_key: payload.dot.pfad}; leer = kompletter Payload als Kontext).
+    workflow_definition_id: int | None = None
+    context_map: dict = {}
 
 
 class WebhookOut(BaseModel):
@@ -53,6 +57,7 @@ class WebhookOut(BaseModel):
     event_header: str | None = None; event_filter: str | None = None
     event_key_header: str | None = None; event_cooldowns: dict = {}
     alert_events: list = []; ref_field: str | None = None; notify_chat: str | None = None
+    workflow_definition_id: int | None = None; context_map: dict = {}
 
 
 def _wh_out(w: WebhookSub) -> WebhookOut:
@@ -63,7 +68,8 @@ def _wh_out(w: WebhookSub) -> WebhookOut:
         silent=w.silent, enabled=w.enabled, secret_set=bool(w.secret),
         event_header=w.event_header, event_filter=w.event_filter,
         event_key_header=w.event_key_header, event_cooldowns=w.event_cooldowns or {},
-        alert_events=w.alert_events or [], ref_field=w.ref_field, notify_chat=w.notify_chat)
+        alert_events=w.alert_events or [], ref_field=w.ref_field, notify_chat=w.notify_chat,
+        workflow_definition_id=w.workflow_definition_id, context_map=w.context_map or {})
 
 
 @router.get("/webhooks", response_model=list[WebhookOut])
@@ -311,7 +317,8 @@ class JobIn(BaseModel):
     name: str
     type: str = "interval"
     schedule: str = "60"
-    kind: str = "prompt"          # prompt | script
+    kind: str = "prompt"          # prompt | script | workflow
+    workflow_definition_id: int | None = None   # nur kind=workflow
     agent: str | None = None
     prompt: str = ""
     command: str = ""
@@ -326,6 +333,7 @@ class JobIn(BaseModel):
 
 class JobOut(BaseModel):
     id: int; name: str; type: str; schedule: str; kind: str; agent: str | None
+    workflow_definition_id: int | None = None
     prompt: str = ""; command: str = ""; args: list = []; project_id: int | None = None
     notify_mode: str; notify_chat: str | None = None; result_html: bool
     pause_on_success: bool = False; run_timeout: int = 600

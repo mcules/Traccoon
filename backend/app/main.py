@@ -82,6 +82,9 @@ async def lifespan(app: FastAPI):
                 "UPDATE runs SET archived = TRUE, archived_at = COALESCE(issues.archived_at, now()) "
                 "FROM issues WHERE runs.issue_id = issues.id AND issues.archived "
                 "AND NOT runs.archived",
+                # Zuständige je Beschaffungsschritt (ABC-26).
+                "ALTER TABLE hardware_workflow_steps ADD COLUMN IF NOT EXISTS assignee "
+                "JSON DEFAULT '{}'::json NOT NULL",
                 # Ticket an Hardware-Exemplar hängen (ABC-25).
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS asset_id INTEGER "
                 "REFERENCES hardware_assets(id) ON DELETE SET NULL",

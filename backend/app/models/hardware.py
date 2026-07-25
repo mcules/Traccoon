@@ -1,7 +1,7 @@
 import datetime as dt
 
 from sqlalchemy import (
-    DateTime, Enum as SAEnum, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint,
+    DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -87,6 +87,9 @@ class HardwareWorkflowStep(Base):
     workflow_id: Mapped[int] = mapped_column(ForeignKey("hardware_workflows.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     order: Mapped[int] = mapped_column(Integer, default=0)
+    # Wer ist für diesen Schritt zuständig (ABC-26)? Gleiche Form wie der AssigneeSpec der
+    # Workflow-Engine: {"mode": user|role|context|reporter, ...}. Leer = niemand vorbelegt.
+    assignee: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
 class HardwareAssetStep(Base):

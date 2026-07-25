@@ -13,7 +13,7 @@ from ..models.project import Project, ResourceGrant
 from ..models.user import User
 from ..schemas.hardware import (
     AssetIn, AssetOut, AssetUpdate, LocationIn, LocationOut, ModelIn, ModelOut,
-    StepComplete, StepOut, WorkflowIn,
+    StepComplete, StepOut, WorkflowIn, WorkflowStepOut,
 )
 from ..models.enums import GlobalRole, GrantLevel, ProjectRole, ResourceType
 from .deps import Access, build_access, get_current_user, get_project_access, require_role
@@ -393,7 +393,7 @@ async def _ensure_workflow(project_id: int, db: AsyncSession) -> HardwareWorkflo
     return wf
 
 
-@router.get("/projects/{project_id}/hardware-workflow", response_model=list[StepOut])
+@router.get("/projects/{project_id}/hardware-workflow", response_model=list[WorkflowStepOut])
 async def get_workflow(
     access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session),
 ):
@@ -402,9 +402,8 @@ async def get_workflow(
     rows = (await db.execute(
         select(HardwareWorkflowStep).where(HardwareWorkflowStep.workflow_id == wf.id)
         .order_by(HardwareWorkflowStep.order))).scalars().all()
-    # Als StepOut ausgeben (Vorlagenschritte haben keine Zuständigen/Status)
-    return [StepOut(id=s.id, name=s.name, order=s.order, assignee_id=None,
-                    status="", note=None, completed_at=None, completed_by_id=None) for s in rows]
+    return [WorkflowStepOut(id=s.id, name=s.name, order=s.order, assignee=s.assignee or {})
+            for s in rows]
 
 
 @router.put("/projects/{project_id}/hardware-workflow", status_code=204)
@@ -420,8 +419,13 @@ async def set_workflow(
     for s in old:
         await db.delete(s)
     for i, step in enumerate(data.steps):
-        db.add(HardwareWorkflowStep(workflow_id=wf.id, name=step.name, order=step.order or i))
+        db.add(HardwareWorkflowStep(workflow_id=wf.id, name=step.name, order=step.order or i,
+                                    assignee=step.assignee or {}))
     await db.commit()
+    # Existiert bereits eine generische Beschaffungs-Definition, eine neue Version daraus
+    # veröffentlichen — sonst liefe der Prozess weiter mit den alten Schritten (ABC-26).
+    from ..services.hardware_workflow import sync_hardware_definition
+    await sync_hardware_definition(db, access.project.id, access.user.id)
 
 
 async def _instantiate_steps(asset: HardwareAsset, db: AsyncSession) -> None:
@@ -440,7 +444,12 @@ async def _instantiate_steps(asset: HardwareAsset, db: AsyncSession) -> None:
         )
     ).scalars().all()
     for s in steps:
-        db.add(HardwareAssetStep(asset_id=asset.id, name=s.name, order=s.order))
+        # Zuständigen aus der Vorlage vorbelegen, wenn dort ein konkreter Nutzer steht
+        # (Rollen-/Kontext-Zuweisung löst erst die Workflow-Engine auf) — ABC-26.
+        spec = s.assignee or {}
+        assignee_id = spec.get("user_id") if spec.get("mode") == "user" else None
+        db.add(HardwareAssetStep(asset_id=asset.id, name=s.name, order=s.order,
+                                 assignee_id=assignee_id))
     await db.commit()
 
 

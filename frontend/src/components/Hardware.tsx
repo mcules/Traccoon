@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { api, ApiError, Project } from "../api";
+import { api, ApiError, MemberLite, Project } from "../api";
 import AssetProcurement from "./AssetProcurement";
 import AssetWorkflow from "./AssetWorkflow";
+import { AssigneeEditor } from "./workflow/assignee";
+import type { AssigneeSpec } from "./workflow/types";
 
 interface Model { id: number; name: string; category: string | null; manufacturer: string | null; }
 interface Location { id: number; name: string; type: string; parent_id: number | null; full_path: string; }
@@ -228,21 +230,31 @@ function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: str
   );
 }
 
-/** Standard-Beschaffungsschritte je Projekt (Vorlage für neue Exemplare). */
+interface WfStep { name: string; order: number; assignee: AssigneeSpec }
+
+/** Standard-Beschaffungsschritte je Projekt (Vorlage für neue Exemplare) inkl. Zuständigen. */
 function WorkflowConfig({ project }: { project: Project }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ["hw-workflow", project.id],
-    queryFn: () => api.get<{ name: string }[]>(`/projects/${project.id}/hardware-workflow`),
+    queryFn: () => api.get<WfStep[]>(`/projects/${project.id}/hardware-workflow`),
   });
-  const [text, setText] = useState<string | null>(null);
-  const wert = text ?? (data ? data.map((s) => s.name).join("\n") : "");
+  const { data: members } = useQuery({
+    queryKey: ["members", project.id],
+    queryFn: () => api.get<MemberLite[]>(`/projects/${project.id}/members`),
+  });
+  // Entwurf erst beim ersten Bearbeiten anlegen — bis dahin gilt der Serverstand.
+  const [entwurf, setEntwurf] = useState<WfStep[] | null>(null);
+  const schritte: WfStep[] = entwurf ?? data ?? [];
+  const aendern = (next: WfStep[]) => setEntwurf(next.map((s, i) => ({ ...s, order: i })));
   const speichern = useMutation({
     mutationFn: () => api.put(`/projects/${project.id}/hardware-workflow`, {
-      steps: wert.split("\n").map((n) => n.trim()).filter(Boolean).map((name, order) => ({ name, order })),
+      steps: schritte
+        .filter((s) => s.name.trim())
+        .map((s, order) => ({ name: s.name.trim(), order, assignee: s.assignee || {} })),
     }),
-    onSuccess: () => { setText(null); qc.invalidateQueries({ queryKey: ["hw-workflow", project.id] }); },
+    onSuccess: () => { setEntwurf(null); qc.invalidateQueries({ queryKey: ["hw-workflow", project.id] }); },
   });
   // „Als Prozess bearbeiten“: erzeugt (idempotent) die Workflow-Definition und öffnet den Editor.
   const alsProzess = useMutation({
@@ -255,12 +267,48 @@ function WorkflowConfig({ project }: { project: Project }) {
   return (
     <div className="rounded-lg border border-line bg-card p-3">
       <h3 className="mb-1 font-medium">Beschaffungsprozess</h3>
-      <p className="mb-2 text-xs text-muted">Schritte (eine Zeile je Schritt), die jedes neue Exemplar durchläuft.</p>
-      <textarea value={wert} onChange={(e) => setText(e.target.value)} rows={4}
-        className="w-full rounded border border-line bg-surface px-2 py-1.5 font-mono text-xs" />
+      <p className="mb-2 text-xs text-muted">
+        Schritte, die jedes neue Exemplar durchläuft — je Schritt lässt sich festlegen, wer
+        zuständig ist.
+      </p>
+      <div className="space-y-2">
+        {schritte.map((s, i) => (
+          <div key={i} className="rounded border border-line bg-surface p-2">
+            <div className="flex items-center gap-2">
+              <span className="w-5 text-xs text-muted">{i + 1}.</span>
+              <input value={s.name}
+                onChange={(e) => aendern(schritte.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
+                placeholder="Schrittname"
+                className="flex-1 rounded border border-line bg-card px-2 py-1 text-sm" />
+              <button title="nach oben" disabled={i === 0}
+                onClick={() => { const n = [...schritte]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; aendern(n); }}
+                className="text-muted hover:text-ink disabled:opacity-30">↑</button>
+              <button title="nach unten" disabled={i === schritte.length - 1}
+                onClick={() => { const n = [...schritte]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; aendern(n); }}
+                className="text-muted hover:text-ink disabled:opacity-30">↓</button>
+              <button title="Schritt entfernen"
+                onClick={() => aendern(schritte.filter((_, j) => j !== i))}
+                className="text-muted hover:text-red-400">✕</button>
+            </div>
+            <div className="mt-1.5 flex items-center gap-2 pl-7">
+              <span className="text-xs text-muted">Zuständig</span>
+              <AssigneeEditor value={s.assignee?.mode ? s.assignee : undefined}
+                members={members || []}
+                onChange={(v) => aendern(schritte.map((x, j) => j === i ? { ...x, assignee: v } : x))} />
+              {s.assignee?.mode && (
+                <button onClick={() => aendern(schritte.map((x, j) => j === i ? { ...x, assignee: {} as AssigneeSpec } : x))}
+                  className="text-xs text-muted hover:text-ink">zurücksetzen</button>
+              )}
+            </div>
+          </div>
+        ))}
+        {schritte.length === 0 && <div className="text-xs text-muted">Noch keine Schritte.</div>}
+      </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        <button onClick={() => speichern.mutate()}
-          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">Speichern</button>
+        <button onClick={() => aendern([...schritte, { name: "", order: schritte.length, assignee: {} as AssigneeSpec }])}
+          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">+ Schritt</button>
+        <button onClick={() => speichern.mutate()} disabled={!entwurf}
+          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-40">Speichern</button>
         <button onClick={() => alsProzess.mutate()} disabled={alsProzess.isPending}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
           title="Diese Schrittliste als grafischen Workflow-Prozess bearbeiten">
@@ -272,7 +320,11 @@ function WorkflowConfig({ project }: { project: Project }) {
           {alsProzess.error instanceof ApiError ? alsProzess.error.message : "Konnte Prozess nicht öffnen."}
         </p>
       )}
-      <p className="mt-1 text-xs text-muted">Wirkt auf künftige Exemplare; bereits angelegte behalten ihre Schritte.</p>
+      <p className="mt-1 text-xs text-muted">
+        Wirkt auf künftige Exemplare; bereits angelegte behalten ihre Schritte. Existiert schon
+        ein grafischer Prozess, wird beim Speichern eine neue Version daraus veröffentlicht —
+        laufende Beschaffungen bleiben auf ihrer alten Version.
+      </p>
     </div>
   );
 }
