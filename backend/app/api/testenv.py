@@ -58,18 +58,22 @@ async def list_branches(access: Access = Depends(get_project_access)):
     if not os.path.isdir(os.path.join(workdir, ".git")):
         return []
     p = await asyncio.create_subprocess_exec(
-        "git", "-C", workdir, "for-each-ref", "--format=%(refname:short)",
+        "git", "-C", workdir, "for-each-ref", "--format=%(refname)",
         "refs/heads", "refs/remotes/origin",
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
     out, _ = await p.communicate()
     names: list[str] = []
     for raw in out.decode("utf-8", "replace").splitlines():
-        name = raw.strip()
-        if not name or name.endswith("/HEAD"):
+        ref = raw.strip()
+        if ref.startswith("refs/heads/"):
+            name = ref[len("refs/heads/"):]
+        elif ref.startswith("refs/remotes/origin/"):
+            name = ref[len("refs/remotes/origin/"):]
+        else:
+            continue  # z. B. der Remote-Kopf `refs/remotes/origin` selbst
+        if not name or name == "HEAD" or name in names:
             continue
-        name = name[len("origin/"):] if name.startswith("origin/") else name
-        if name and name not in names:
-            names.append(name)
+        names.append(name)
     return sorted(names)
 
 

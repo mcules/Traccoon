@@ -54,9 +54,13 @@ def upgrade() -> None:
         WHERE NOT EXISTS (SELECT 1 FROM workflow_statuses s
                           WHERE s.project_id = p.id AND s.name = 'Testen')
     """)
+    # „Fertig" hinter „Testen" schieben — absolut statt inkrementell, damit ein
+    # wiederholter Lauf die Reihenfolge nicht weiter aufbläht.
     op.execute("""
-        UPDATE workflow_statuses SET "order" = "order" + 1
-        WHERE category = 'done' AND name <> 'Testen'
+        UPDATE workflow_statuses d SET "order" = t."order" + 1
+        FROM workflow_statuses t
+        WHERE t.project_id = d.project_id AND t.name = 'Testen'
+          AND d.category = 'done' AND d."order" <= t."order"
     """)
     op.execute("""
         INSERT INTO board_columns (board_id, status_id, "order")
@@ -66,6 +70,12 @@ def upgrade() -> None:
         WHERE s.name = 'Testen'
           AND NOT EXISTS (SELECT 1 FROM board_columns c
                           WHERE c.board_id = b.id AND c.status_id = s.id)
+    """)
+    # Spaltenreihenfolge am Status ausrichten (sonst kollidiert „Testen" mit „Fertig").
+    op.execute("""
+        UPDATE board_columns c SET "order" = s."order"
+        FROM workflow_statuses s
+        WHERE s.id = c.status_id AND c."order" <> s."order"
     """)
 
 

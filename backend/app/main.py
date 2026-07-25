@@ -94,6 +94,28 @@ async def lifespan(app: FastAPI):
                 "VARCHAR(255) DEFAULT 'Dockerfile' NOT NULL",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS testenv_url_template "
                 "VARCHAR(255) DEFAULT 'http://{host}:{port}' NOT NULL",
+                # „Testen"-Spalte für Bestandsprojekte anlegen und vor „Fertig" einsortieren.
+                # Beide Statements sind idempotent (NOT EXISTS bzw. nur wenn done davor liegt).
+                "INSERT INTO workflow_statuses (project_id, name, category, \"order\") "
+                "SELECT p.id, 'Testen', 'in_progress', "
+                "COALESCE((SELECT MIN(s.\"order\") FROM workflow_statuses s "
+                "          WHERE s.project_id = p.id AND s.category = 'done'), 99) "
+                "FROM projects p "
+                "WHERE NOT EXISTS (SELECT 1 FROM workflow_statuses s "
+                "                  WHERE s.project_id = p.id AND s.name = 'Testen')",
+                "UPDATE workflow_statuses d SET \"order\" = t.\"order\" + 1 "
+                "FROM workflow_statuses t "
+                "WHERE t.project_id = d.project_id AND t.name = 'Testen' "
+                "  AND d.category = 'done' AND d.\"order\" <= t.\"order\"",
+                "INSERT INTO board_columns (board_id, status_id, \"order\") "
+                "SELECT b.id, s.id, s.\"order\" FROM workflow_statuses s "
+                "JOIN boards b ON b.project_id = s.project_id "
+                "WHERE s.name = 'Testen' AND NOT EXISTS ("
+                "  SELECT 1 FROM board_columns c WHERE c.board_id = b.id AND c.status_id = s.id)",
+                # Spaltenreihenfolge am Status ausrichten — sonst kollidiert die neue
+                # „Testen"-Spalte mit dem alten Platz von „Fertig".
+                "UPDATE board_columns c SET \"order\" = s.\"order\" FROM workflow_statuses s "
+                "WHERE s.id = c.status_id AND c.\"order\" <> s.\"order\"",
                 # Ticket an Hardware-Exemplar hängen (ABC-25).
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS asset_id INTEGER "
                 "REFERENCES hardware_assets(id) ON DELETE SET NULL",
