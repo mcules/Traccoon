@@ -95,6 +95,16 @@ class StepOut(BaseModel):
 class WorkflowStepIn(BaseModel):
     name: str
     order: int = 0
+    # AssigneeSpec der Workflow-Engine: {"mode": user|role|context|reporter, ...}
+    assignee: dict = {}
+
+
+class WorkflowStepOut(BaseModel):
+    id: int
+    name: str
+    order: int
+    assignee: dict = {}
+    model_config = {"from_attributes": True}
 
 
 class WorkflowIn(BaseModel):

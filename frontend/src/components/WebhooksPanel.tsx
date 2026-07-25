@@ -7,6 +7,7 @@ const EMPTY = {
   auto_run: false, title_template: "{title}", body_template: "{body}",
   event_header: "", event_filter: "", event_key_header: "",
   event_cooldowns: "", alert_events: "", ref_field: "", notify_chat: "",
+  workflow_definition_id: "", context_map: "",
 };
 
 /** "push:300, issue:60" → {push: 300, issue: 60} */
@@ -22,10 +23,31 @@ function fmtCooldowns(o: Record<string, number> | undefined): string {
   return Object.entries(o || {}).map(([k, v]) => `${k}:${v}`).join(", ");
 }
 
+/** "asset_id: data.id, ort: data.location.name" → {asset_id: "data.id", ort: "data.location.name"} */
+function parseContextMap(s: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of s.split(",")) {
+    const i = part.indexOf(":");
+    if (i <= 0) continue;
+    const k = part.slice(0, i).trim();
+    const v = part.slice(i + 1).trim();
+    if (k && v) out[k] = v;
+  }
+  return out;
+}
+function fmtContextMap(o: Record<string, string> | undefined): string {
+  return Object.entries(o || {}).map(([k, v]) => `${k}: ${v}`).join(", ");
+}
+
 export default function WebhooksPanel() {
   const qc = useQueryClient();
   const { data: hooks } = useQuery({ queryKey: ["webhooks"], queryFn: () => api.get<any[]>("/webhooks") });
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
+  // Für mode=workflow: veröffentlichte Prozess-Definitionen zur Auswahl.
+  const { data: defs } = useQuery({
+    queryKey: ["workflow-defs"],
+    queryFn: () => api.get<{ id: number; name: string; key: string; current_version_id: number | null }[]>("/workflows"),
+  });
   const [f, setF] = useState(EMPTY);
   const [editId, setEditId] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
@@ -41,6 +63,8 @@ export default function WebhooksPanel() {
     event_cooldowns: parseCooldowns(f.event_cooldowns),
     alert_events: f.alert_events.split(",").map((x) => x.trim()).filter(Boolean),
     ref_field: f.ref_field || null, notify_chat: f.notify_chat || null,
+    workflow_definition_id: f.workflow_definition_id ? +f.workflow_definition_id : null,
+    context_map: parseContextMap(f.context_map),
   });
   const save = useMutation({
     mutationFn: () => editId ? api.put(`/webhooks/${editId}`, body()) : api.post("/webhooks", body()),
@@ -62,6 +86,8 @@ export default function WebhooksPanel() {
       event_cooldowns: fmtCooldowns(w.event_cooldowns),
       alert_events: (w.alert_events || []).join(", "),
       ref_field: w.ref_field || "", notify_chat: w.notify_chat || "",
+      workflow_definition_id: w.workflow_definition_id ? String(w.workflow_definition_id) : "",
+      context_map: fmtContextMap(w.context_map),
     });
   };
 
@@ -71,7 +97,8 @@ export default function WebhooksPanel() {
         {" "}<span className="font-mono">POST /api/hooks/&lt;guid&gt;</span> mit HMAC-SHA256 im Header
         {" "}<span className="font-mono">X-Webhook-Signature</span>. Modus <b>task</b> legt ein Ticket an,
         {" "}<b>notify</b> benachrichtigt dich, <b>assistant</b> nimmt E-Mails an (lokale Vorklassifizierung
-        durch den gewählten Klassifizier-Agenten → Assistent-Inbox).</p>
+        durch den gewählten Klassifizier-Agenten → Assistent-Inbox), <b>workflow</b> startet eine
+        Prozess-Instanz aus dem Prozess-Editor.</p>
       <div className="mb-4 space-y-2">
         {hooks?.map((w) => (
           <div key={w.id} className={`rounded border border-line bg-card p-2 text-sm ${w.enabled ? "" : "opacity-50"}`}>
@@ -109,7 +136,8 @@ export default function WebhooksPanel() {
         <input value={f.route} onChange={(e) => setF({ ...f, route: e.target.value })} placeholder="route" className={inp} />
         <select value={f.mode} onChange={(e) => setF({ ...f, mode: e.target.value })} className={inp}>
           <option value="task">task (Ticket)</option><option value="notify">notify</option>
-          <option value="assistant">assistant (Mail)</option></select>
+          <option value="assistant">assistant (Mail)</option>
+          <option value="workflow">workflow (Prozess starten)</option></select>
         <input value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value })}
           placeholder={editId ? "HMAC-Secret (leer = unverändert)" : "HMAC-Secret"} className={inp} />
         {f.mode === "assistant" ? (
@@ -127,6 +155,22 @@ export default function WebhooksPanel() {
             rows={8} className={`col-span-2 ${inp} font-mono text-xs`} />
         ) : (
           <input value={f.title_template} onChange={(e) => setF({ ...f, title_template: e.target.value })} placeholder="Titel-Template {feld}" className={inp} />
+        )}
+        {f.mode === "workflow" && (
+          <>
+            <select value={f.workflow_definition_id}
+              onChange={(e) => setF({ ...f, workflow_definition_id: e.target.value })} className={inp}>
+              <option value="">— Prozess wählen —</option>
+              {defs?.filter((d) => d.current_version_id).map((d) => (
+                <option key={d.id} value={d.id}>{d.name} ({d.key})</option>
+              ))}
+            </select>
+            <input value={f.context_map} onChange={(e) => setF({ ...f, context_map: e.target.value })}
+              placeholder="Kontext-Mapping: asset_id: data.id, ort: data.location.name" className={inp} />
+            <div className="col-span-2 text-xs text-muted">
+              Ohne Mapping wandert der komplette Payload als Kontext in die Instanz.
+            </div>
+          </>
         )}
         {f.mode === "assistant" && (
           <label className="col-span-2 flex items-center gap-2 text-sm text-muted">

@@ -32,21 +32,28 @@ STEP_STATUS_MAP = {
 }
 
 
-def build_hardware_graph(steps: list[str]) -> dict:
-    """Linearer Graph: start → (human_task[ → auto_action set_purchase_status])* → end."""
+def build_hardware_graph(steps: list[str] | list[tuple[str, dict]]) -> dict:
+    """Linearer Graph: start → (human_task[ → auto_action set_purchase_status])* → end.
+
+    `steps` sind entweder reine Namen oder (Name, AssigneeSpec)-Paare. Ohne Spec bleibt
+    der Schritt unzugewiesen und die Übergabe im Prozess setzt die Zuständigen.
+    """
+    pairs: list[tuple[str, dict]] = [
+        (s, {}) if isinstance(s, str) else (s[0], s[1] or {}) for s in steps
+    ]
     nodes: list[dict] = [
         {"id": "s", "type": "start", "position": {"x": 0, "y": 0}, "data": {"config": {}}},
     ]
     edges: list[dict] = []
     prev = "s"
     x = 200
-    for i, name in enumerate(steps):
+    for i, (name, assignee) in enumerate(pairs):
         ht = f"ht{i}"
         nodes.append({
             "id": ht, "type": "human_task", "position": {"x": x, "y": 0},
             "data": {"config": {
                 "label": name,
-                "assignee": {"mode": "user"},   # unassigned; Übergabe setzt Zuständige
+                "assignee": assignee or {"mode": "user"},  # leer = Übergabe setzt Zuständige
                 "form": [{"key": "note", "label": "Notiz", "type": "text"}],
                 "handover": True,
             }},
@@ -73,8 +80,8 @@ def build_hardware_graph(steps: list[str]) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-async def _project_step_names(db, project_id: int) -> list[str]:
-    """Schrittnamen des Projekt-Beschaffungs-Workflows (oder Default-Satz)."""
+async def _project_steps(db, project_id: int) -> list[tuple[str, dict]]:
+    """Schritte (Name + AssigneeSpec) des Projekt-Beschaffungs-Workflows, sonst Default-Satz."""
     wf = (await db.execute(
         select(HardwareWorkflow).where(HardwareWorkflow.project_id == project_id)
     )).scalar_one_or_none()
@@ -84,8 +91,8 @@ async def _project_step_names(db, project_id: int) -> list[str]:
             .order_by(HardwareWorkflowStep.order)
         )).scalars().all()
         if rows:
-            return [s.name for s in rows]
-    return list(DEFAULT_STEPS)
+            return [(s.name, s.assignee or {}) for s in rows]
+    return [(name, {}) for name in DEFAULT_STEPS]
 
 
 async def ensure_hardware_definition(db, project_id: int, actor_id: int | None = None
@@ -102,7 +109,7 @@ async def ensure_hardware_definition(db, project_id: int, actor_id: int | None =
     if existing is not None:
         return existing
 
-    steps = await _project_step_names(db, project_id)
+    steps = await _project_steps(db, project_id)
     graph = build_hardware_graph(steps)
     definition = WorkflowDefinition(
         project_id=project_id, key=HARDWARE_DEF_KEY, name="Hardware-Beschaffung",
@@ -113,6 +120,43 @@ async def ensure_hardware_definition(db, project_id: int, actor_id: int | None =
     await db.flush()
     version = WorkflowVersion(
         definition_id=definition.id, version=1, graph=graph,
+        status=WorkflowVersionStatus.published,
+        published_at=dt.datetime.now(tz=dt.timezone.utc), created_by=actor_id,
+    )
+    db.add(version)
+    await db.flush()
+    definition.current_version_id = version.id
+    await db.commit()
+    await db.refresh(definition)
+    return definition
+
+
+async def sync_hardware_definition(db, project_id: int, actor_id: int | None = None
+                                   ) -> WorkflowDefinition | None:
+    """Schrittliste geändert → neue veröffentlichte Version der Beschaffungs-Definition.
+
+    Tut nichts, wenn für das Projekt noch keine Definition existiert (dann wird sie erst
+    beim „Als Prozess bearbeiten" erzeugt) oder wenn der Graph unverändert ist. Laufende
+    Instanzen bleiben auf ihrer alten Version gepinnt — nur neue starten mit der neuen.
+    """
+    definition = (await db.execute(
+        select(WorkflowDefinition).where(
+            WorkflowDefinition.project_id == project_id,
+            WorkflowDefinition.key == HARDWARE_DEF_KEY)
+    )).scalar_one_or_none()
+    if definition is None:
+        return None
+    graph = build_hardware_graph(await _project_steps(db, project_id))
+    current = (await db.get(WorkflowVersion, definition.current_version_id)
+               if definition.current_version_id else None)
+    if current is not None and current.graph == graph:
+        return definition
+    last = (await db.execute(
+        select(WorkflowVersion).where(WorkflowVersion.definition_id == definition.id)
+        .order_by(WorkflowVersion.version.desc())
+    )).scalars().first()
+    version = WorkflowVersion(
+        definition_id=definition.id, version=(last.version + 1) if last else 1, graph=graph,
         status=WorkflowVersionStatus.published,
         published_at=dt.datetime.now(tz=dt.timezone.utc), created_by=actor_id,
     )
