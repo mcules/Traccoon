@@ -25,6 +25,12 @@ const BOARD_VIEWS: [Tab, string][] = [
   ["board", "Board"], ["list", "Liste"], ["backlog", "Backlog"], ["archiv", "Archiv"],
 ];
 
+// Icon je Reiter für die Pill-Navigation im Header.
+const TAB_ICONS: Record<string, string> = {
+  pm: "💬", board: "🗂️", code: "📁", dashboard: "📊",
+  monitor: "⚡", workflows: "🔀", hardware: "🖥️", settings: "⚙️",
+};
+
 export default function ProjectView() {
   const { key } = useParams();
   const navigate = useNavigate();
@@ -148,6 +154,7 @@ export default function ProjectView() {
     tabs.map(([key, label]) => ({
       key,
       label,
+      icon: TAB_ICONS[key],
       to: key === "board" && inBoardGroup
         ? `/projects/${project?.key}?tab=${tab}`
         : `/projects/${project?.key}?tab=${key}`,
@@ -162,6 +169,14 @@ export default function ProjectView() {
         {project.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">KI-gemanagt</span>}
         {!project.my_ai_assign && (
           <span className="rounded bg-surface px-2 py-0.5 text-xs text-muted">Ticketsystem (kein KI-Recht)</span>
+        )}
+        {issues && meta && (
+          <div className="flex items-center gap-3 text-xs text-muted">
+            <span>◷ {issues.length} gesamt</span>
+            <span>⚡ {issues.filter((i) => i.agent_working).length} aktiv</span>
+            <span className="text-green-400">✓ {issues.filter((i) =>
+              meta.statuses.find((s) => s.id === i.status_id)?.category === "done").length} fertig</span>
+          </div>
         )}
         {/* Ticket-Ansichten unter „Board" als Buttons */}
         {inBoardGroup && (

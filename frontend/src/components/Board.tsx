@@ -36,12 +36,19 @@ export default function Board({
       childrenByParent.set(i.parent_ticket_id, arr);
     }
   }
+  // Sortierte Tickets je Spalte (für Desktop-Board UND mobile Einzelspalte).
+  const itemsByCol = new Map<number, Issue[]>();
+  for (const s of cols) {
+    itemsByCol.set(s.id, issues.filter((i) => i.status_id === s.id)
+      .sort((a, b) => a.rank.localeCompare(b.rank)));
+  }
 
   const qc = useQueryClient();
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [moveErr, setMoveErr] = useState<string | null>(null);
+  const [mobileCol, setMobileCol] = useState<number | null>(null);
 
   const move = useMutation({
     mutationFn: (v: { key: string; status_id: number; position: number }) =>
@@ -54,6 +61,7 @@ export default function Board({
   });
 
   const canDrag = project.my_role !== "viewer" && !move.isPending;
+  const canMove = project.my_role !== "viewer";
 
   const dropIn = (colId: number, idx: number) => {
     setOverCol(null);
@@ -65,17 +73,59 @@ export default function Board({
     if (!dragIssue) return;
     let targetIdx = idx;
     if (dragIssue.status_id === colId) {
-      // Ziel = Ursprungsspalte: Index muss sich auf die "anderen" Tickets
-      // beziehen (Backend zählt ohne das gezogene Ticket selbst).
-      const sameColItems = issues
-        .filter((x) => x.status_id === colId)
-        .sort((a, b) => a.rank.localeCompare(b.rank));
+      const sameColItems = (itemsByCol.get(colId) || []);
       const originalIdx = sameColItems.findIndex((x) => x.key === key);
       if (originalIdx !== -1 && idx > originalIdx) targetIdx = idx - 1;
-      if (originalIdx === targetIdx) return; // No-Op: keine tatsächliche Verschiebung
+      if (originalIdx === targetIdx) return;
     }
     move.mutate({ key, status_id: colId, position: targetIdx });
   };
+
+  // Inhalt einer Karte (Titel + Meta-Zeile) — in Desktop-Karte UND mobiler Karte genutzt.
+  const cardContent = (i: Issue) => {
+    const kids = childrenByParent.get(i.id);
+    const isUmbrella = !!kids && kids.length > 0;
+    const sibs = i.parent_ticket_id != null ? childrenByParent.get(i.parent_ticket_id) : undefined;
+    const isChild = !!sibs;
+    const wait = waitInfo(i);
+    return (
+      <>
+        <div className="text-sm">{i.summary}</div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-mono text-muted">{i.key}</span>
+          <span style={{ color: typeMap.get(i.type_id)?.color }}>{typeMap.get(i.type_id)?.name}</span>
+          <span className={PRIO_COLOR[i.priority]}>●</span>
+          {isUmbrella && (
+            <span className="rounded bg-purple-500/20 px-1 text-purple-300">
+              🧩 Sammelticket {kids!.filter((k) => k.agent_status === "done").length}/{kids!.length}
+            </span>
+          )}
+          {isChild && (
+            <span className="rounded bg-purple-500/20 px-1 text-purple-300">
+              🧩 Teil {(i.split_order ?? 0) + 1}/{sibs!.length}
+            </span>
+          )}
+          {wait && (
+            <span title={`${wait.title}: ${wait.label}`} className={`rounded px-1 ${WAIT_KIND_COLOR[wait.kind]}`}>
+              {wait.icon} {wait.label}
+            </span>
+          )}
+          <div className="flex-1" />
+          {project.my_ai_assign && i.assigned_agent && (
+            <span className="rounded bg-brand/20 px-1 text-brand">
+              🤖 {i.agent_working ? "läuft" : i.agent_status || i.assigned_agent}
+            </span>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  // Mobile Spalten-Auswahl: aktive Spalte (Default = erste nicht-leere, sonst erste).
+  const firstNonEmpty = cols.find((s) => (itemsByCol.get(s.id)?.length ?? 0) > 0)?.id;
+  const activeCol = mobileCol ?? firstNonEmpty ?? cols[0]?.id ?? null;
+  const activeItems = activeCol != null ? (itemsByCol.get(activeCol) || []) : [];
+  const activeName = cols.find((s) => s.id === activeCol)?.name || "";
 
   return (
     <div>
@@ -85,11 +135,57 @@ export default function Board({
           <button onClick={() => setMoveErr(null)} className="text-red-400 hover:text-red-300">✕</button>
         </div>
       )}
-      <div className="flex gap-3 overflow-x-auto pb-4">
+
+      {/* ── Mobil (< md): Status-Chips + eine Spalte, Status-Wechsel per Dropdown ── */}
+      <div className="md:hidden">
+        <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1">
+          {cols.map((s) => {
+            const n = itemsByCol.get(s.id)?.length ?? 0;
+            const active = s.id === activeCol;
+            return (
+              <button key={s.id} onClick={() => setMobileCol(s.id)}
+                className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+                  active ? "border-brand bg-brand text-white" : "border-line text-muted hover:text-ink"
+                }`}>
+                <span>{s.name}</span>
+                <span className={`rounded-full px-1 ${active ? "bg-white/20" : "bg-surface"}`}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="space-y-2">
+          {activeItems.length === 0 && (
+            <div className="rounded border border-line bg-surface px-3 py-6 text-center text-sm text-muted">
+              Keine Tickets in „{activeName}".
+            </div>
+          )}
+          {activeItems.map((i) => (
+            <div key={i.id} className="rounded-lg border border-line bg-card">
+              <button {...ticketOpenHandlers(i.key, onOpen)} className="block w-full p-3 text-left">
+                {cardContent(i)}
+              </button>
+              <div className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs">
+                <span className="text-muted">Status</span>
+                {canMove ? (
+                  <select
+                    value={i.status_id}
+                    onChange={(e) => move.mutate({ key: i.key, status_id: Number(e.target.value), position: 0 })}
+                    className="rounded border border-line bg-surface px-2 py-1 text-ink">
+                    {cols.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
+                ) : (
+                  <span className="text-ink">{statusMap.get(i.status_id)?.name}</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Desktop (md+): klassisches Mehrspalten-Board mit Drag & Drop ── */}
+      <div className="hidden gap-3 overflow-x-auto pb-4 md:flex">
         {cols.map((s) => {
-          const items = issues
-            .filter((i) => i.status_id === s.id)
-            .sort((a, b) => a.rank.localeCompare(b.rank));
+          const items = itemsByCol.get(s.id) || [];
           const dragOverThisCol = overCol === s.id;
           return (
             <div
@@ -101,10 +197,7 @@ export default function Board({
                 setOverCol(s.id);
                 if (items.length === 0) setOverIdx(0);
               }}
-              onDrop={(e) => {
-                e.preventDefault();
-                dropIn(s.id, overIdx ?? items.length);
-              }}
+              onDrop={(e) => { e.preventDefault(); dropIn(s.id, overIdx ?? items.length); }}
             >
               <div className="mb-2 flex items-center justify-between px-1 text-xs font-medium uppercase text-muted">
                 <span>{s.name}</span>
@@ -115,11 +208,7 @@ export default function Board({
                   <div className="h-10 rounded border-2 border-dashed border-brand/60" />
                 )}
                 {items.map((i, idx) => {
-                  const kids = childrenByParent.get(i.id);
-                  const isUmbrella = !!kids && kids.length > 0;
-                  const sibs = i.parent_ticket_id != null ? childrenByParent.get(i.parent_ticket_id) : undefined;
-                  const isChild = !!sibs;
-                  const wait = waitInfo(i);
+                  const isChild = i.parent_ticket_id != null && childrenByParent.has(i.parent_ticket_id);
                   const showDropBefore = dragOverThisCol && overIdx === idx && dragKey !== i.key;
                   return (
                     <div key={i.id}>
@@ -142,44 +231,11 @@ export default function Board({
                           setOverCol(s.id);
                           setOverIdx(before ? idx : idx + 1);
                         }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          dropIn(s.id, overIdx ?? idx);
-                        }}
+                        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); dropIn(s.id, overIdx ?? idx); }}
                         className={`block w-full rounded border bg-card p-2.5 text-left hover:border-brand ${
                           isChild ? "border-l-2 border-l-brand/60 border-line" : "border-line"} ${
                           dragKey === i.key ? "opacity-40" : ""} ${canDrag ? "cursor-grab active:cursor-grabbing" : ""}`}>
-                        <div className="text-sm">{i.summary}</div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                          <span className="font-mono text-muted">{i.key}</span>
-                          <span style={{ color: typeMap.get(i.type_id)?.color }}>
-                            {typeMap.get(i.type_id)?.name}
-                          </span>
-                          <span className={PRIO_COLOR[i.priority]}>●</span>
-                          {isUmbrella && (
-                            <span className="rounded bg-purple-500/20 px-1 text-purple-300">
-                              🧩 Sammelticket {kids!.filter((k) => k.agent_status === "done").length}/{kids!.length}
-                            </span>
-                          )}
-                          {isChild && (
-                            <span className="rounded bg-purple-500/20 px-1 text-purple-300">
-                              🧩 Teil {(i.split_order ?? 0) + 1}/{sibs!.length}
-                            </span>
-                          )}
-                          {wait && (
-                            <span title={`${wait.title}: ${wait.label}`}
-                              className={`rounded px-1 ${WAIT_KIND_COLOR[wait.kind]}`}>
-                              {wait.icon} {wait.label}
-                            </span>
-                          )}
-                          <div className="flex-1" />
-                          {project.my_ai_assign && i.assigned_agent && (
-                            <span className="rounded bg-brand/20 px-1 text-brand">
-                              🤖 {i.agent_working ? "läuft" : i.agent_status || i.assigned_agent}
-                            </span>
-                          )}
-                        </div>
+                        {cardContent(i)}
                       </button>
                     </div>
                   );
