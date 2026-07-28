@@ -186,6 +186,7 @@ export interface Destination {
   hmac_header: string; hmac_algo: string; hmac_prefix: string;
   oauth_token_url: string; oauth_client_id: string; oauth_scope: string; oauth_audience: string;
   default_headers: Record<string, any>; timeout_sec: number; verify_tls: boolean;
+  max_response_chars: number;
   enabled: boolean; allow_agents: boolean;
   last_used_at: string | null; created_at: string;
 }

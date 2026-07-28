@@ -408,9 +408,15 @@ async def run_job_now(jid: int, user: User = Depends(get_current_user),
     await db.flush()
     if job.kind == "script":
         await _run_script(db, job, jr)
+        await db.commit()
     else:
-        await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}", "job_id": job.id, "job_run_id": jr.id})
-    await db.commit()
+        # ERST committen, DANN einreihen. Andersherum liegt der Auftrag in Redis, bevor es
+        # den JobRun in der Datenbank gibt — ein freier Worker greift ihn in Millisekunden,
+        # findet `jr is None` und kehrt STILL zurück (worker/__main__.py:494). Der Job-Run
+        # bleibt dann für immer auf „running", ohne Fehler und ohne Lauf.
+        await db.commit()
+        await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}", "job_id": job.id,
+                            "job_run_id": jr.id})
     await db.refresh(job)
     return job
 

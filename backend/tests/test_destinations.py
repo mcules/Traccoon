@@ -231,3 +231,55 @@ async def test_systemweites_ziel_nur_admin(client, db):
     r = await client.post("/destinations", headers=auth(normal), json={
         "name": "p", "base_url": "https://api.test", "project_id": proj.id})
     assert r.status_code == 403
+
+
+# ── Antwortgrenze je Ziel (TRA-31) ───────────────────────────────────────────
+
+GROSSE_ANTWORT = json.dumps({"lage": "z" * 9000})
+
+
+@pytest.fixture
+def grosse_antwort(monkeypatch):
+    """Schein-Server, der bewusst mehr liefert, als der alte Pauschal-Deckel durchliess."""
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _mock([], body=GROSSE_ANTWORT))
+    return GROSSE_ANTWORT
+
+
+async def test_antwortgrenze_standard_kuerzt(db, grosse_antwort):
+    """Ohne eigene Angabe bleibt es bei 4000 Zeichen — bestehende Ziele ändern sich nicht."""
+    d = await _dest(db, name="klein")
+    assert d.max_response_chars == 4000
+    res = await svc.call(db, d, method="GET")
+    assert res["max_chars"] == 4000
+    assert "text" not in res          # zu lang → nur als json, Volltext unterdrückt
+
+
+async def test_antwortgrenze_je_ziel_greift(db, grosse_antwort):
+    """Ein Ziel darf mehr durchlassen — sonst plante ein Agent auf abgeschnittenem JSON."""
+    d = await _dest(db, name="gross", max_response_chars=40000)
+    res = await svc.call(db, d, method="GET")
+    assert res["max_chars"] == 40000
+    assert res["text"] == grosse_antwort
+
+
+async def test_http_call_kuerzt_nicht_nochmal(db, grosse_antwort):
+    """Das Agenten-Werkzeug darf die Erlaubnis des Ziels nicht wieder einkassieren."""
+    from app.worker.tools_traccoon import call_traccoon_tool
+    u = await make_user(db, "zielnutzer")
+    await _dest(db, name="uniwar-bot", user_id=u.id, allow_agents=True,
+                max_response_chars=40000)
+    out = await call_traccoon_tool(db, u.id, "traccoon_http_call",
+                                   {"destination": "uniwar-bot", "method": "GET"})
+    assert "ABGESCHNITTEN" not in out
+    assert len(out) > 9000
+
+
+async def test_http_call_meldet_den_schnitt(db, grosse_antwort):
+    """Wird doch gekürzt, muss der Agent es sehen — ein stiller Schnitt ist schlimmer
+    als eine kurze Antwort, weil er auf Bruchstücken weiterplant."""
+    from app.worker.tools_traccoon import call_traccoon_tool
+    u = await make_user(db, "knappnutzer")
+    await _dest(db, name="knapp", user_id=u.id, allow_agents=True, max_response_chars=500)
+    out = await call_traccoon_tool(db, u.id, "traccoon_http_call",
+                                   {"destination": "knapp", "method": "GET"})
+    assert "ABGESCHNITTEN bei 500 Zeichen" in out

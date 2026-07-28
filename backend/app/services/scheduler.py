@@ -84,6 +84,7 @@ async def _tick() -> None:
         jobs = (
             await db.execute(select(Job).where(Job.enabled.is_(True), Job.paused.is_(False)))
         ).scalars().all()
+        nachreichen: list[dict] = []
         for job in jobs:
             if not _due(job, now):
                 continue
@@ -98,10 +99,16 @@ async def _tick() -> None:
             elif job.kind == "http":
                 await _run_http_job(db, job, jr)
             else:  # prompt → Worker
-                await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}",
+                nachreichen.append({"kind": "job", "task_id": f"job-{jr.id}",
                                     "job_id": job.id, "job_run_id": jr.id})
             log.info("job %s ausgelöst (%s)", job.name, job.kind)
         await db.commit()
+        # ERST committen, DANN einreihen. Andersherum liegt der Auftrag in Redis, bevor es
+        # den JobRun in der Datenbank gibt — ein freier Worker greift ihn in Millisekunden,
+        # findet `jr is None` und kehrt STILL zurück (worker/__main__.py:494). Der Job-Run
+        # bleibt dann für immer auf „running", ohne Fehler und ohne Lauf.
+        for auftrag in nachreichen:
+            await enqueue_task(auftrag)
 
 
 async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
