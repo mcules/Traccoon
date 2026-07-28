@@ -80,6 +80,11 @@ class Destination(TimestampMixin, Base):
     # Bei jedem Aufruf mitgesendet (der Aufruf darf einzelne überschreiben).
     default_headers: Mapped[dict] = mapped_column(JSON, default=dict)
     timeout_sec: Mapped[int] = mapped_column(Integer, default=30)
+    # Wie viel der Antwort ein Aufrufer (v. a. ein KI-Agent) höchstens zu sehen bekommt.
+    # Bewusst je Ziel: der Standard schützt den Kontext, aber eine Gegenstelle, die ihre
+    # Lage absichtlich in EINEM Abruf liefert (GameProj-Bot-API), wäre mit 4000 Zeichen
+    # unbrauchbar — der Agent plante dann auf abgeschnittenem JSON.
+    max_response_chars: Mapped[int] = mapped_column(Integer, default=4000)
     verify_tls: Mapped[bool] = mapped_column(Boolean, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     # Darf ein KI-Agent dieses Ziel über `http_call` nutzen? Standard: nein.

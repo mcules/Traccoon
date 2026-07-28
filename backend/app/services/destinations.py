@@ -33,6 +33,8 @@ log = logging.getLogger("destinations")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 BODYLESS = ("GET", "HEAD", "DELETE", "OPTIONS")
 AUTH_TYPES = ("none", "basic", "bearer", "api_key", "hmac", "oauth2_cc")
+# Rückfall, wenn ein Ziel keine eigene Grenze trägt. Die maßgebliche Grenze steht seit
+# ABC-31 am Ziel (`Destination.max_response_chars`).
 MAX_RESPONSE_CHARS = 4000
 # Zugriffstoken so lange vor dem echten Ablauf erneuern (Uhren-Drift, Laufzeit).
 TOKEN_SKEW_SECONDS = 60
@@ -220,12 +222,16 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
         "ok": 200 <= resp.status_code < 300,
     }
     text = resp.text or ""
+    # Die Grenze kommt vom Ziel (ABC-31). Sie steht auch im Ergebnis, damit der Aufrufer
+    # nicht ein zweites Mal kürzt und dabei die Erlaubnis des Ziels wieder einkassiert.
+    grenze = dest.max_response_chars or MAX_RESPONSE_CHARS
+    ergebnis["max_chars"] = grenze
     try:
         ergebnis["json"] = resp.json()
     except Exception:  # noqa: BLE001 — kein JSON: Text reicht
-        ergebnis["text"] = text[:MAX_RESPONSE_CHARS]
+        ergebnis["text"] = text[:grenze]
     else:
-        if len(text) <= MAX_RESPONSE_CHARS:
+        if len(text) <= grenze:
             ergebnis["text"] = text
     if not ergebnis["ok"]:
         ergebnis["error"] = text[:500] or f"HTTP {resp.status_code}"

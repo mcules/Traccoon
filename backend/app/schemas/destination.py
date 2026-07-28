@@ -24,6 +24,9 @@ class _DestinationBase(BaseModel):
     verify_tls: bool = True
     enabled: bool = True
     allow_agents: bool = False
+    # Wie viel der Antwort der Aufrufer höchstens sieht. Standard schützt den Kontext;
+    # anheben nur für Gegenstellen, die ihre Lage bewusst in einem Abruf liefern.
+    max_response_chars: int = Field(default=4000, ge=500, le=60000)
 
 
 class DestinationCreate(_DestinationBase):
@@ -60,6 +63,7 @@ class DestinationUpdate(BaseModel):
     verify_tls: bool | None = None
     enabled: bool | None = None
     allow_agents: bool | None = None
+    max_response_chars: int | None = Field(default=None, ge=500, le=60000)
     # Leer/weggelassen = bestehendes Geheimnis bleibt unangetastet.
     password: str | None = None
     token: str | None = None

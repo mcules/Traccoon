@@ -45,6 +45,11 @@ MAX_DELEGATION_DEPTH = 2
 # finalisiert (Continuation greift in frischem Run; Per-Ticket-Cap deckelt gesamt).
 MAX_RUN_INPUT_TOKENS = int(os.getenv("MAX_RUN_INPUT_TOKENS", "2000000"))
 
+# Obergrenze für Antworten von `traccoon_http_call`. Die eigentliche Grenze setzt das Ziel
+# (Destination.max_response_chars); dies ist nur der Riegel dagegen, dass ein falsch
+# konfiguriertes Ziel einen ganzen Lauf-Kontext flutet.
+MAX_HTTP_TOOL_CHARS = int(os.getenv("MAX_HTTP_TOOL_CHARS", "60000"))
+
 DEPLOYER_URL = os.getenv("DEPLOYER_URL", "http://deployer:8661")
 SHOTTER_URL = os.getenv("SHOTTER_URL", "http://shotter:8700")
 
@@ -1035,10 +1040,15 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result})
                     else:
+                        # `traccoon_http_call` hat seine Grenze schon vom Ziel bekommen
+                        # (Destination.max_response_chars, ABC-31) und bringt sie in der
+                        # Antwort mit. Der pauschale Deckel würde sie hier wieder
+                        # einkassieren — deshalb für dieses Tool der weitere Rahmen.
+                        cap = MAX_HTTP_TOOL_CHARS if call.name == "traccoon_http_call" else 8000
                         await log("tool", call.name,
                                   f"args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {result[:2000]}")
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
-                                         "content": result[:8000]})
+                                         "content": result[:cap]})
 
             exhausted = "Iterations-Limit erreicht.\n\nLetzter Stand:\n" + (last_text or "(kein Text)")
             fp = await _gitops.worktree_fingerprint(ws_root) if ws_root else None

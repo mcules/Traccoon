@@ -26,7 +26,7 @@ const LEER = {
   api_key_name: "X-API-Key", api_key_in: "header",
   hmac_header: "X-Webhook-Signature", hmac_algo: "sha256", hmac_prefix: "",
   oauth_token_url: "", oauth_client_id: "", oauth_scope: "", oauth_audience: "",
-  timeout_sec: 30, verify_tls: true, allow_agents: false, secret: "",
+  timeout_sec: 30, verify_tls: true, allow_agents: false, max_response_chars: 4000, secret: "",
 };
 
 /**
@@ -161,6 +161,10 @@ export default function DestinationsPanel({
           <input type="number" min={1} max={600} value={f.timeout_sec}
             onChange={(e) => setF({ ...f, timeout_sec: Number(e.target.value) })}
             placeholder="Zeitlimit (s)" className={inp} />
+          <input type="number" min={500} max={60000} step={500} value={f.max_response_chars}
+            onChange={(e) => setF({ ...f, max_response_chars: Number(e.target.value) })}
+            title="Wie viel der Antwort der Aufrufer höchstens sieht. Nur anheben, wenn die Gegenstelle ihre Lage bewusst in einem Abruf liefert."
+            placeholder="Antwort max. (Zeichen)" className={inp} />
 
           {f.auth_type === "basic" && (
             <input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })}

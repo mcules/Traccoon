@@ -230,6 +230,10 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE agent_definitions ADD COLUMN IF NOT EXISTS learns BOOLEAN "
                 "DEFAULT TRUE NOT NULL",
+                # Antwortgrenze je Ziel (ABC-31): Gegenstellen, die ihre Lage bewusst in
+                # einem Abruf liefern, brauchen mehr als die pauschalen 4000 Zeichen.
+                "ALTER TABLE destinations ADD COLUMN IF NOT EXISTS max_response_chars "
+                "INTEGER DEFAULT 4000 NOT NULL",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:

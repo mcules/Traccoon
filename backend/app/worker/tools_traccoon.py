@@ -260,11 +260,18 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             return f"FEHLER: {e}"
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben
         kopf = f"{res['method']} {res['url']} → HTTP {res['status_code']}"
+        # Die Grenze hat das Ziel gesetzt (ABC-31) — hier NICHT erneut pauschal kürzen,
+        # sonst bekäme ein Agent von einer bewusst großen Antwort doch nur den Anfang und
+        # plante auf abgeschnittenem JSON, ohne dass der Schnitt auffällt.
+        grenze = int(res.get("max_chars") or 4000)
         inhalt = res.get("text")
         if inhalt is None and "json" in res:
             import json as _json
-            inhalt = _json.dumps(res["json"], ensure_ascii=False)[:4000]
-        return f"{kopf}\n{inhalt or ''}".strip()
+            inhalt = _json.dumps(res["json"], ensure_ascii=False)
+        inhalt = inhalt or ""
+        if len(inhalt) > grenze:
+            inhalt = inhalt[:grenze] + f"\n… ABGESCHNITTEN bei {grenze} Zeichen."
+        return f"{kopf}\n{inhalt}".strip()
 
     if name == "traccoon_issue_costs":
         iss, acc, err = await _issue_access(db, user, args.get("key", ""))

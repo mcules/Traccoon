@@ -492,6 +492,11 @@ async def _handle_job(job: dict, redis: Redis) -> None:
         jr = await db.get(JobRun, job_run_id)
         j = await db.get(Job, job["job_id"]) if job.get("job_id") else None
         if jr is None or j is None:
+            # Früher ein stilles `return`: der Job-Run blieb für immer auf „running", ohne
+            # Fehler und ohne Lauf. Passierte, wenn der Auftrag vor dem Commit eingereiht
+            # wurde und ein freier Worker schneller war als die Transaktion.
+            log.warning("Job-Auftrag %s ohne Datensatz (job_run=%s, job=%s) — übersprungen",
+                        job.get("task_id"), job_run_id, job.get("job_id"))
             return
         # Eigentümer des Jobs → sein Token, sein Assistent-Agent, seine MCP-Server, seine Zustellung.
         owner_id = j.user_id
