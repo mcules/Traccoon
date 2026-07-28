@@ -11,7 +11,7 @@ from ..db import get_session
 from ..models.agents import AgentDefinition
 from ..models.plugins import McpServer, Skill
 from ..models.user import User
-from .deps import get_current_user, is_owner_or_admin, require_admin
+from .deps import get_current_user, is_owner_or_admin
 
 router = APIRouter(tags=["skills-mcp"])
 

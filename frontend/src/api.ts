@@ -130,6 +130,8 @@ export interface Issue {
   testenv_status?: string | null; testenv_url?: string | null; testenv_error?: string | null;
   parent_ticket_id: number | null; split_order: number | null;
   sprint_id: number | null; story_points: number | null; rank: string; agent_working: boolean;
+  workflow_instance_id?: number | null;   // laufender Lebenszyklus-Prozess
+  artifact_id?: number | null;            // gemeinsame Artefakt-Identität (freie Felder)
   asset_id?: number | null;   // Hardware-Bezug (Exemplar), nur in Hardware-Projekten
   archived?: boolean;
   resolved_at?: string | null;
@@ -170,7 +172,42 @@ export type {
 import type {
   WorkflowDefinition as WfDef, WorkflowVersion as WfVer, WorkflowInstance as WfInst,
   WorkflowTaskLite as WfTask, WorkflowGraph as WfGraph, WorkflowSubjectKind as WfSubject,
+  WorkflowSet as WfSet, WorkflowSlotInfo as WfSlot,
 } from "./components/workflow/types";
+
+export type DestinationScope = "global" | "user" | "project";
+
+/** Externe Gegenstelle mit hinterlegter Anmeldung (Geheimnisse kommen nie zurück). */
+export interface Destination {
+  id: number; name: string; label: string; description: string;
+  user_id: number | null; project_id: number | null; scope: DestinationScope;
+  base_url: string; auth_type: string; username: string; has_secret: boolean;
+  api_key_name: string; api_key_in: string;
+  hmac_header: string; hmac_algo: string; hmac_prefix: string;
+  oauth_token_url: string; oauth_client_id: string; oauth_scope: string; oauth_audience: string;
+  default_headers: Record<string, any>; timeout_sec: number; verify_tls: boolean;
+  enabled: boolean; allow_agents: boolean;
+  last_used_at: string | null; created_at: string;
+}
+
+export interface HttpCallResult {
+  destination: string; method: string; url: string;
+  status_code: number; ok: boolean; json?: any; text?: string; error?: string;
+}
+
+export const destinationApi = {
+  /** `usable` liefert die im Zusammenhang aufrufbaren (je Name das vorrangige). */
+  list: (projectId?: number, usable = false) =>
+    api.get<Destination[]>(
+      `/destinations${projectId ? `?project_id=${projectId}` : ""}${
+        usable ? `${projectId ? "&" : "?"}usable=true` : ""}`),
+  create: (body: Record<string, any>) => api.post<Destination>("/destinations", body),
+  update: (id: number, body: Record<string, any>) => api.put<Destination>(`/destinations/${id}`, body),
+  del: (id: number) => api.del(`/destinations/${id}`),
+  test: (id: number, body: { method?: string; path?: string; query?: Record<string, any>;
+                             headers?: Record<string, any>; body?: any }) =>
+    api.post<HttpCallResult>(`/destinations/${id}/test`, body),
+};
 
 export const workflowApi = {
   list: (projectId: number) => api.get<WfDef[]>(`/workflows?project_id=${projectId}`),
@@ -206,4 +243,75 @@ export const workflowApi = {
     api.post<WfInst>(`/workflow-instances/${iid}/steps/${sid}/reject`, body),
   cancel: (iid: number) => api.post<WfInst>(`/workflow-instances/${iid}/cancel`),
   myTasks: () => api.get<WfTask[]>(`/workflow-instances/tasks?assignee=me`),
+
+  /** Abstand (px) fürs „Anordnen" im Editor — global vom Admin gesetzt. */
+  layout: () => api.get<{ gap: number }>("/workflow-layout"),
+  setLayout: (gap: number) => api.put<{ gap: number }>("/admin/workflow-layout", { gap }),
+
+  // ── Prozess-Sätze & Slots ──────────────────────────────────────────────────
+  sets: () => api.get<WfSet[]>("/workflow-sets"),
+  setSlots: (setId: number) => api.get<WfSlot[]>(`/workflow-sets/${setId}/slots`),
+  createMySet: (body: { name?: string; source_set_id?: number | null }) =>
+    api.post<WfSet>("/me/workflow-set", body),
+  dropMySet: () => api.del("/me/workflow-set"),
+
+  projectSlots: (projectId: number) => api.get<WfSlot[]>(`/projects/${projectId}/workflow-slots`),
+  customizeSlot: (projectId: number, slot: string, issueTypeId?: number) =>
+    api.post<WfDef>(`/projects/${projectId}/workflow-slots/${slot}/customize`
+      + (issueTypeId ? `?issue_type_id=${issueTypeId}` : "")),
+  resetSlot: (projectId: number, slot: string, issueTypeId?: number) =>
+    api.post<{ reset: boolean }>(`/projects/${projectId}/workflow-slots/${slot}/reset`
+      + (issueTypeId ? `?issue_type_id=${issueTypeId}` : "")),
+  setProjectSet: (projectId: number, setId: number | null) =>
+    api.put<WfSlot[]>(`/projects/${projectId}/workflow-set${setId === null ? "" : `?set_id=${setId}`}`),
+
+  rollback: (id: number, vid: number) =>
+    api.post<WfVer>(`/workflows/${id}/versions/${vid}/rollback`),
+};
+
+// ── Prozess-Verwaltung (übergreifend) ────────────────────────────────────────
+
+export interface ProcAbweichung {
+  project_id: number; project_key: string; project_name: string;
+  definition_id: number; published: boolean;
+}
+
+export interface ProcSlot {
+  slot: string; name: string; description: string; subject_kind: WfSubject;
+  definition_id: number | null; definition_name: string | null;
+  version: number | null; published: boolean; updated_at: string | null;
+  abweichungen: ProcAbweichung[];
+}
+
+export interface ProcLauf {
+  id: number; definition_id: number; definition_name: string; slot: string | null;
+  project_id: number | null; project_key: string | null;
+  subject_kind: WfSubject; subject_ref: string | null;
+  status: "running" | "waiting" | "completed" | "failed" | "cancelled";
+  node_label: string | null; waiting_for: string | null;
+  seit: string | null; stunden: number | null; haengt: boolean;
+  error: string | null; started_at: string;
+}
+
+export interface ProcAusloeser {
+  definition_id: number; definition_name: string; slot: string | null;
+  project_id: number | null; project_key: string | null;
+  kind: "event" | "webhook" | "job" | "subflow" | "manual";
+  source: string; label: string; only_project_id: number | null; enabled: boolean;
+}
+
+export interface ProcEreignis { event: string; label: string; listeners: number }
+
+export const processApi = {
+  slots: (setId?: number) =>
+    api.get<ProcSlot[]>(`/processes/slots${setId ? `?set_id=${setId}` : ""}`),
+  running: (opts?: { includeDone?: boolean; onlyStuck?: boolean }) => {
+    const q = new URLSearchParams();
+    if (opts?.includeDone) q.set("include_done", "true");
+    if (opts?.onlyStuck) q.set("only_stuck", "true");
+    const s = q.toString();
+    return api.get<ProcLauf[]>(`/processes/running${s ? `?${s}` : ""}`);
+  },
+  triggers: () => api.get<ProcAusloeser[]>("/processes/triggers"),
+  events: () => api.get<ProcEreignis[]>("/processes/events"),
 };

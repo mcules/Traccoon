@@ -22,6 +22,7 @@ from ..models.ops import PermAction, PermGrant, Permission, PermRequest
 from ..models.ticket import Issue
 from ..models.user import User
 from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
+from ..services.artifacts import set_ticket_status
 from ..services.comments import add_system_comment, apply_user_comment
 from ..worker.assistant_gate import apply_perm_decision
 from .mdtg import safe
@@ -141,7 +142,7 @@ async def run_bot() -> None:
 
     @dp.message(Command("start"))
     async def _start(m: Message):
-        await m.answer("🦝 Traccoon-Bot. /tasks · /comment &lt;KEY&gt; &lt;Text&gt;")
+        await m.answer("🦝 Traccoon-Bot. /tasks · /comment &lt;KEY&gt; &lt;Text&gt; · /uniwar &lt;Text&gt;")
 
     @dp.message(Command("tasks"))
     async def _tasks(m: Message):
@@ -172,6 +173,32 @@ async def run_bot() -> None:
             user = await _acting_user(db, m.chat.id)
             await apply_user_comment(db, iss, text, user.id if user else None, "Telegram")
         await m.answer(f"Kommentar zu {key} gespeichert.")
+
+    @dp.message(Command("uniwar"))
+    async def _uniwar_chat(m: Message):
+        # Chat mit dem UniWar-Operator statt mit dem persönlichen Assistenten. Gleicher Weg wie
+        # `_assistant_chat`, nur mit gesetztem meta.agent — `_handle_assistant_task` löst den
+        # Agenten daraus auf (sonst fällt es auf 'assistent' zurück).
+        if not await _allowed(m.from_user.id):
+            return
+        text = (m.text or "").split(maxsplit=1)
+        text = text[1].strip() if len(text) > 1 else ""
+        if not text:
+            await m.answer("Nutzung: /uniwar &lt;Frage oder Auftrag&gt;")
+            return
+        async with SessionLocal() as db:
+            user = await _acting_user(db, m.chat.id)
+            t = AssistantTask(owner_user_id=user.id if user else None, kind="chat",
+                              source="telegram", title=text[:200], status="approved",
+                              meta={"chat_text": text, "chat_id": str(m.chat.id),
+                                    "agent": "uniwar-operator"})
+            db.add(t)
+            await db.commit()
+            await db.refresh(t)
+        from ..core.redis import enqueue_task
+        await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
+                            "assistant_task_id": t.id})
+        await m.answer("🛰 …")
 
     @dp.message(F.reply_to_message)
     async def _reply(m: Message):
@@ -243,11 +270,11 @@ async def run_bot() -> None:
                 if iss and iss.agent_status == TicketAgentStatus.plan_review:
                     who = f"{cq.from_user.first_name or cq.from_user.id} (Telegram)"
                     if data.startswith("approve:"):
-                        iss.agent_status = TicketAgentStatus.approved
+                        await set_ticket_status(db, iss, TicketAgentStatus.approved)
                         await add_system_comment(db, iss.id, f"✅ Plan freigegeben von {who}")
                     else:
                         iss.plan = None
-                        iss.agent_status = None
+                        await set_ticket_status(db, iss, None, board=False)
                         await add_system_comment(db, iss.id, f"✖ Plan abgelehnt von {who}")
                     iss.hold_reason = None
                     await db.commit()
@@ -256,7 +283,7 @@ async def run_bot() -> None:
                 key = data.split(":", 1)[1]
                 iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
                 if iss and iss.agent_status in (TicketAgentStatus.to_test, TicketAgentStatus.testing):
-                    iss.agent_status = TicketAgentStatus.done
+                    await set_ticket_status(db, iss, TicketAgentStatus.done)
                     iss.resolved_at = _now()
                     iss.hold_reason = None
                     await db.commit()
@@ -279,7 +306,7 @@ async def run_bot() -> None:
                     pr.decision = dec
                     pr.decided_at = _now()
                     if iss and iss.agent_status == TicketAgentStatus.hold and dec != "never":
-                        iss.agent_status = TicketAgentStatus.approved
+                        await set_ticket_status(db, iss, TicketAgentStatus.approved)
                         iss.hold_reason = None
                         iss.continuation_count += 1
                     await db.commit()

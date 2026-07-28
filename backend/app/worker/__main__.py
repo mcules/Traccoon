@@ -26,7 +26,7 @@ from ..models.user import User
 from . import gitops
 from .runtime import AgentDef, agent_def_from_row, run_agent
 from .secrets import (
-    resolve_claude_token, resolve_codex_token, resolve_git_token, resolve_provider_base_url,
+    resolve_git_token, resolve_provider_base_url,
     resolve_provider_token,
 )
 
@@ -385,36 +385,30 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
             # Pre-Merge-Gate: frisches main in den Worktree; Konflikt → an den Agenten zurück
             pre = await gitops.precheck_merge(ctx)
             if pre and pre.conflict:
-                from ..models.enums import HoldReason as _HR, TicketAgentStatus as _TS
-                from ..services.dispatcher import sync_board_status
                 issue.merge_status = "conflict"
                 issue.merge_error = "Merge-Konflikt: " + ", ".join(pre.conflict_files[:8])
                 issue.resolved_at = None
                 issue.merge_conflict_rounds += 1
-                if issue.merge_conflict_rounds > MAX_CONFLICT_ROUNDS:
-                    # Loop-Bremse: der Konflikt konvergiert nicht (Agent löst ihn wiederholt
-                    # nicht) → NICHT endlos re-dispatchen, sondern an den Menschen eskalieren.
-                    issue.agent_status = _TS.hold
-                    issue.hold_reason = _HR.merge
+                # Loop-Bremse: konvergiert der Konflikt nicht, wird eskaliert statt endlos
+                # an den Agenten zurückgereicht. Ob das „hold" oder ein neuer Anlauf heißt,
+                # entscheidet der Abnahme-Prozess — hier wird nur der Befund gemeldet.
+                escalate = issue.merge_conflict_rounds > MAX_CONFLICT_ROUNDS
+                if escalate:
                     db.add(Comment(issue_id=issue.id, author_id=None, kind="internal",
                                    body=f"⛔ Merge-Konflikt nach {issue.merge_conflict_rounds - 1} "
                                         f"Auflösungsversuchen ungelöst — an den Menschen eskaliert. "
                                         f"Konflikt in: {', '.join(pre.conflict_files[:8])}"))
-                    log.info("accept %s → Konflikt-Limit erreicht, hold (Mensch)", job["issue_id"])
+                    log.info("accept %s → Konflikt-Limit erreicht, eskaliert", job["issue_id"])
                 else:
+                    # Konfliktmarker in den Worktree legen, damit der Agent sie auflösen kann.
                     await gitops.setup_conflict_resolution(ctx)
-                    issue.agent_status = _TS.approved   # Continuation löst die Marker
-                    issue.continuation_count += 1
-                    log.info("accept %s → Konflikt (Runde %d), zurück an Agenten",
+                    log.info("accept %s → Konflikt (Runde %d), zurück an den Agenten",
                              job["issue_id"], issue.merge_conflict_rounds)
-                # Board-Spalte an den neuen Agent-Status koppeln: hold → „Warten",
-                # approved → „In Arbeit". Ohne diesen Sync blieb ein per Merge-Brake
-                # eskaliertes Ticket in „In Arbeit" hängen (inkonsistent mit hold/merge).
-                await sync_board_status(db, issue)
                 await db.commit()
                 await redis.publish(f"{PREFIX}events:{project.id}",
                                     json.dumps({"type": "issue_update", "issue_key": issue.key}))
-                return {"status": "conflict", "error": issue.merge_error}
+                return {"status": "conflict", "error": issue.merge_error,
+                        "escalate": escalate, "rounds": issue.merge_conflict_rounds}
             if project.use_pull_request and not issue.parent_ticket_id:
                 # Statt zu mergen: Branch pushen, PR öffnen, Entscheidung bleibt auf GitHub.
                 # (Sub-Tickets mergen immer direkt in den Sammelticket-Branch, kein PR.)
@@ -470,9 +464,9 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                          "(Host-Stack nur via Wartungs-Update)", job["issue_id"])
         # Sub-Ticket fertig gemergt → nächstes geparktes Geschwister freigeben bzw.
         # Sammelticket abschließen (erst NACH dem Merge, damit Teil n+1 auf n aufbaut).
-        if issue.parent_ticket_id:
-            from ..services.dispatcher import _promote_split
-            await _promote_split(db, issue, project)
+        if issue.parent_ticket_id and issue.merge_status == "merged":
+            from ..services.lifecycle_flow import promote_split
+            await promote_split(db, issue)
             await db.commit()
         await redis.publish(f"{PREFIX}events:{project.id}",
                             json.dumps({"type": "issue_update", "issue_key": issue.key}))
@@ -538,6 +532,52 @@ async def _handle_job(job: dict, redis: Redis) -> None:
     log.info("job %s → %s", job["job_id"], status)
 
 
+# Gesprächsverlauf im Chat (TRA-30): Ein Chat war bisher eine Folge voneinander unabhängiger
+# Läufe — der Mensch musste sich schon innerhalb eines Gesprächs wiederholen. Bewusst ein
+# Zeitfenster statt eines Thread-Modells: kein zusätzliches Feld, kein Knopf, und ein Gespräch
+# nach einer längeren Pause fängt von selbst neu an.
+CHAT_HISTORY_MAX = 8
+CHAT_HISTORY_HOURS = 12
+
+
+async def _chat_history(db, t) -> list[dict]:
+    """Die letzten Wortwechsel desselben Menschen mit demselben Agenten."""
+    import datetime as _dt
+
+    from ..models.assistant import AssistantTask
+    seit = _now_dt() - _dt.timedelta(hours=CHAT_HISTORY_HOURS)
+    agent_name = (t.meta or {}).get("agent") or "assistent"
+    rows = (await db.execute(
+        select(AssistantTask).where(
+            AssistantTask.owner_user_id == t.owner_user_id,
+            AssistantTask.kind == "chat",
+            AssistantTask.id != t.id,
+            AssistantTask.status == "done",
+            AssistantTask.created_at >= seit,
+        ).order_by(AssistantTask.id.desc()).limit(CHAT_HISTORY_MAX))).scalars().all()
+    verlauf: list[dict] = []
+    for r in reversed(rows):
+        meta = r.meta or {}
+        if (meta.get("agent") or "assistent") != agent_name:
+            continue          # anderer Fach-Agent → anderes Gespräch
+        frage = (meta.get("chat_text") or r.title or "").strip()
+        if frage:
+            verlauf.append({"label": "Dein Mensch", "role": "user", "body": frage[:2000]})
+        if (r.result or "").strip():
+            verlauf.append({"label": "Du", "role": "agent", "body": r.result.strip()[:2000]})
+    return verlauf
+
+
+# Die Spielregel fürs Melden — der Lauf selbst ist keine Nachricht wert.
+MELDE_REGEL = (
+    "WICHTIG — Melden: Deine Abschluss-Zusammenfassung geht NICHT an deinen Menschen, sie "
+    "landet nur still im Posteingang. Soll er etwas erfahren (Frist, Geldbetrag, "
+    "Entscheidung, Störung, etwas das er beantworten muss), rufe `traccoon_notify_human` "
+    "mit einer kurzen, konkreten Meldung. Für Erledigtes ohne Handlungsbedarf (abgelegt, "
+    "vermerkt, nichts zu tun) meldest du dich NICHT."
+)
+
+
 async def _handle_assistant_task(job: dict, redis: Redis) -> None:
     """Freigegebenes Assistent-Item (z. B. Mail) über den vollen Tool-Loop des Owners abarbeiten.
 
@@ -583,14 +623,17 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 f"\n\n(Kontext: gelernte Vorgabe — {t.action_hint})" if t.action_hint else "")
         elif meta.get("prompt"):
             # Voller Task-Prompt aus dem Webhook (portiertes Mail-Verarbeitungs-Wissen).
-            prompt = meta["prompt"] + (learned if t.action_hint else "")
+            prompt = meta["prompt"] + (learned if t.action_hint else "") + "\n\n" + MELDE_REGEL
         else:
             prompt = (
                 "Eingang für deinen Menschen (lokal vorklassifiziert).\n" + head + content + learned +
                 "Entscheide eigenständig und im Sinne deines Menschen, was zu tun ist (im Vault "
                 "vermerken, einen Entwurf vorbereiten, einen Termin anlegen, ablegen …) und führe es "
-                "aus. Fasse am Ende knapp zusammen, was du getan hast."
+                "aus. Fasse am Ende knapp zusammen, was du getan hast.\n\n" + MELDE_REGEL
             )
+        # Im Chat trägt der Lauf das bisherige Gespräch mit — sonst müsste der Mensch jeden
+        # Bezug in jeder Nachricht wiederholen.
+        verlauf = await _chat_history(db, t) if is_chat else []
         out, status, err, run_id = "", "done", "", None
         try:
             # Bearbeitender Agent aus dem Item (Webhook-Config), Default 'assistent'. Kein Env.
@@ -604,6 +647,8 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
                 mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
                 base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"],
+                comment_history=verlauf,
+                history_title="# Bisheriges Gespräch (älteste Nachricht zuerst)",
                 assistant_task_id=t.id)
             if result.status == "blocked":
                 # Tool-Gate: Item wartet auf Freigabe (Status awaiting + Telegram-Karte gesetzt).
@@ -623,10 +668,37 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         t.run_id = run_id
         t.finished_at = _now_dt()
         owner = await db.get(User, owner_id) if owner_id else None
-        title = ("🤖 Assistent" if is_chat else f"Assistent: {t.title}") + (" — Fehler" if status == "error" else "")
-        db.add(Notification(kind="assistant", title=title[:200],
-                            body=(err if status == "error" else out)[:4000],
-                            chat_id=owner.telegram_chat_id if owner else None))
+        # Wann sich der Assistent überhaupt meldet. Voreinstellung „needed": nur wenn es
+        # etwas zu wissen gibt — der Lauf selbst ist keine Nachricht wert. Sonst wäre jede
+        # abgelegte Werbemail ein Telegram-Ping.
+        modus = (owner.assistant_notify if owner else "needed") or "needed"
+        if is_chat:
+            melden = True          # eine gestellte Frage wird immer beantwortet
+        elif modus == "never":
+            melden = False
+        elif status == "error":
+            melden = True          # eine Panne muss man wissen
+        elif modus == "always":
+            melden = True
+        else:
+            # needed/errors: der Assistent meldet selbst, wenn es etwas zu wissen gibt
+            # (`traccoon_notify_human`) — der Abschlussbericht schweigt dann, sonst käme
+            # dieselbe Sache zweimal an.
+            melden = False
+        if melden:
+            # Wer geantwortet hat, gehört in den Titel — sonst sind Antworten des persönlichen
+            # Assistenten und die eines Fach-Agenten (z. B. uniwar-operator) nicht zu unterscheiden.
+            label = "🤖 Assistent" if (meta.get("agent") or "assistent") == "assistent" \
+                else f"🛰 {meta['agent']}"
+            title = (label if is_chat else f"{label}: {t.title}") + (
+                " — Fehler" if status == "error" else "")
+            db.add(Notification(kind="assistant", title=title[:200],
+                                body=(err if status == "error" else out)[:4000],
+                                chat_id=owner.telegram_chat_id if owner else None))
+        elif not t.notified:
+            # Still erledigt: das Ergebnis steht im Posteingang des Assistenten. Als
+            # ungelesene Glocken-Meldung ohne chat_id wäre es Lärm, also gar nichts.
+            log.info("assistant-task %s still erledigt (Modus %s)", tid, modus)
         await db.commit()
     log.info("assistant-task %s → %s", tid, status)
 

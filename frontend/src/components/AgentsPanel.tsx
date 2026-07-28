@@ -9,6 +9,7 @@ interface Agent {
   temperature: number; max_tokens: number; max_context_tokens: number | null;
   max_turns_planning: number; max_turns_execution: number;
   can_code: boolean; can_read_code: boolean; can_delegate: boolean; web_search: boolean;
+  learns: boolean;
   allowed_tools: string[]; allowed_skills: string[]; autoload_skills: string[]; delegate_to: string[]; active: boolean;
   project_id: number | null; origin_agent_id: number | null; customized: boolean;
 }
@@ -18,7 +19,7 @@ const EMPTY: Partial<Agent> = {
   role: "", display_name: "", system_prompt: "", provider: "claude_code", model: "", token_name: "", effort: "",
   fallback: null, fallback_model: "", fallback_token_name: "", max_context_tokens: null,
   temperature: 0.3, max_tokens: 8192, max_turns_planning: 10, max_turns_execution: 80,
-  can_code: false, can_read_code: false, can_delegate: false, web_search: false,
+  can_code: false, can_read_code: false, can_delegate: false, web_search: false, learns: true,
   allowed_tools: [], allowed_skills: [], autoload_skills: [], delegate_to: [], active: true,
 };
 
@@ -109,6 +110,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
               {a.can_read_code && <span className="rounded bg-surface px-1 text-xs">read</span>}
               {a.can_delegate && <span className="rounded bg-surface px-1 text-xs">delegate</span>}
               {a.web_search && <span className="rounded bg-surface px-1 text-xs">web</span>}
+              {a.learns && <span className="rounded bg-surface px-1 text-xs" title="Liest das Gedächtnis und lernt aus jedem Lauf dazu">lernt</span>}
             </div>
             {a.origin_agent_id && <span className="rounded bg-surface px-1 text-xs">{a.customized ? "bearbeitet" : "verknüpft"}</span>}
             <div className="flex-1" />
@@ -191,7 +193,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
               {showAdv && (
                 <div className="space-y-2 rounded border border-line bg-surface/50 p-2">
                   <div className="flex flex-wrap gap-3">
-                    {(["can_code", "can_read_code", "can_delegate", "web_search"] as const).map((c) => (
+                    {(["can_code", "can_read_code", "can_delegate", "web_search", "learns"] as const).map((c) => (
                       <label key={c} className="flex items-center gap-1.5 text-xs">
                         <input type="checkbox" checked={!!edit[c]} onChange={(e) => setEdit({ ...edit, [c]: e.target.checked })} /> {c}
                       </label>

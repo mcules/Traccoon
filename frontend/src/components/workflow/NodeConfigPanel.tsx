@@ -6,6 +6,9 @@ import DecisionConfig from "./config/DecisionConfig";
 import ApprovalConfig from "./config/ApprovalConfig";
 import AutoActionConfig from "./config/AutoActionConfig";
 import AgentTaskConfig from "./config/AgentTaskConfig";
+import WaitEventConfig from "./config/WaitEventConfig";
+import SubflowConfig from "./config/SubflowConfig";
+import StartConfig from "./config/StartConfig";
 
 const OUTCOMES: [WorkflowInstanceStatus, string][] = [
   ["completed", "abgeschlossen"],
@@ -18,11 +21,16 @@ export default function NodeConfigPanel({
   members,
   onChange,
   onDelete,
+  projectId,
+  subjectKind,
 }: {
   node: FlowNode | null;
   members: MemberLite[];
   onChange: (nodeId: string, config: NodeConfig) => void;
   onDelete: (nodeId: string) => void;
+  projectId?: number;
+  /** Subjekt des Ablaufs (issue|hardware_asset|standalone) — steuert Aktionen und Zustände. */
+  subjectKind?: string;
 }) {
   if (!node) {
     return <div className="p-3 text-sm text-muted">Knoten anklicken, um ihn zu konfigurieren.</div>;
@@ -60,8 +68,15 @@ export default function NodeConfigPanel({
       {node.type === "human_task" && <HumanTaskConfig config={config} onChange={set} members={members} />}
       {node.type === "decision" && <DecisionConfig config={config} onChange={set} />}
       {node.type === "approval" && <ApprovalConfig config={config} onChange={set} members={members} />}
-      {node.type === "auto_action" && <AutoActionConfig config={config} onChange={set} />}
-      {node.type === "agent_task" && <AgentTaskConfig config={config} onChange={set} />}
+      {node.type === "auto_action" && (
+        <AutoActionConfig config={config} onChange={set} members={members}
+          projectId={projectId} subjectKind={subjectKind} />
+      )}
+      {node.type === "agent_task" && (
+        <AgentTaskConfig config={config} onChange={set} projectId={projectId} />
+      )}
+      {node.type === "wait_event" && <WaitEventConfig config={config} onChange={set} />}
+      {node.type === "subflow" && <SubflowConfig config={config} onChange={set} />}
 
       {node.type === "end" && (
         <label className="block text-xs font-medium text-muted">
@@ -80,12 +95,7 @@ export default function NodeConfigPanel({
         </label>
       )}
 
-      {node.type === "start" && (
-        <div className="text-xs text-muted">
-          Der Start-Knoten empfängt den Kontext beim Anlegen der Instanz. Kontext-Felder werden im Backend-Schema
-          gepflegt.
-        </div>
-      )}
+      {node.type === "start" && <StartConfig config={config} onChange={set} />}
     </div>
   );
 }

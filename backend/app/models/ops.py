@@ -77,6 +77,8 @@ class WebhookSub(TimestampMixin, Base):
     # Modus 'assistant' (E-Mail): projektlose AssistantTask + lokale Vorklassifizierung durch
     # diesen Agenten (dessen Provider/Modell/Token). Leer = keine Klassifizierung (Passthrough).
     classify_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # mode='event': unter welchem Namen das Ereignis gemeldet wird (leer = webhook.<route>).
+    event_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     # Vollständiger Task-Prompt (Mail-Verarbeitungs-Wissen: Kategorien, Ablage-Regeln …).
     # Platzhalter {account}/{uid}/{from}/{subject}/{body_text}… werden aus dem Payload gefüllt.
     # Leer = eingebauter Standard-Prompt. Portiert aus dem Vorläufer (webhook_subs.prompt_tmpl).
@@ -120,11 +122,16 @@ class Job(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     type: Mapped[str] = mapped_column(String(20), default="interval")   # cron | interval | once
     schedule: Mapped[str] = mapped_column(String(120), default="")
-    kind: Mapped[str] = mapped_column(String(20), default="prompt")     # prompt | script | workflow
+    kind: Mapped[str] = mapped_column(String(20), default="prompt")  # prompt|script|workflow|http
     agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # kind 'workflow': startet bei Fälligkeit eine Instanz dieser Definition (subject standalone).
     workflow_definition_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_definitions.id", ondelete="SET NULL"), nullable=True)
+    # kind 'http': ruft bei Fälligkeit dieses Ziel auf. `http_request` trägt
+    # {method, path, query, headers, body} — dieselbe Form wie die Prozess-Aktion.
+    destination_id: Mapped[int | None] = mapped_column(
+        ForeignKey("destinations.id", ondelete="SET NULL"), nullable=True)
+    http_request: Mapped[dict] = mapped_column(JSON, default=dict)
     prompt: Mapped[str] = mapped_column(Text, default="")
     command: Mapped[str] = mapped_column(String(500), default="")       # script-Pfad
     args: Mapped[list] = mapped_column(JSON, default=list)

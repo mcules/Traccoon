@@ -28,7 +28,12 @@ export function usePageChrome(title: string, tabs: ChromeTab[]): void {
   const tabsKey = JSON.stringify(tabs);
   useEffect(() => {
     setChrome({ title, tabs });
-    // Kein Reset beim Unmount: die nächste Seite überschreibt den Chrome-State ohnehin.
+    // Beim Verlassen zurücksetzen. Früher stand hier die Annahme, die nächste Seite
+    // überschreibe den Zustand ohnehin — das gilt aber nur für Seiten, die den Hook
+    // benutzen. Auf Startseite, Inbox und im Editor blieb dadurch das Untermenü der
+    // zuletzt besuchten Seite stehen. React räumt vor dem Effekt der neuen Seite auf,
+    // ein Wechsel zwischen zwei Seiten mit Untermenü flackert also nicht.
+    return () => setChrome({ title: "", tabs: [] });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [title, tabsKey]);
 }

@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, Integer, JSON, String
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -43,7 +43,22 @@ class User(TimestampMixin, Base):
     mcp_token_enc: Mapped[str] = mapped_column(String, default="")           # Fernet, Client-Token
     mcp_servers: Mapped[list] = mapped_column(JSON, default=list)            # erlaubte Server (Doku/UI)
 
+    # Gedächtnis-Ordner im Obsidian-Vault (TRA-30): darunter legen die Agenten ihre gelernten
+    # Erkenntnisse als Notizen ab (Mensch.md, Agent-<rolle>.md, Projekt-<KEY>.md) und lesen sie
+    # zu Beginn jedes Laufs wieder. Der Zugriff läuft über die MCP-Gruppe DIESES Nutzers, das
+    # Gedächtnis ist also zwingend persönlich. Leer = kein Gedächtnis (Funktion aus).
+    vault_memory_path: Mapped[str] = mapped_column(String(500), default="")
+
     max_runners: Mapped[int] = mapped_column(Integer, default=3)
+    # Wann der persönliche Assistent per Telegram/Glocke meldet:
+    #   needed = nur wenn er selbst meldet, bei Fehlern und im Chat (Default)
+    #   always = jedes erledigte Item · errors = nur Fehler · never = gar nicht
+    assistant_notify: Mapped[str] = mapped_column(String(10), default="needed")
+    # Eigener Prozess-Satz: gilt für ALLE Projekte, in denen dieser Nutzer die Owner-Rolle
+    # hat (sofern das Projekt keinen eigenen Satz referenziert). NULL = globaler Standard.
+    workflow_set_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workflow_sets.id", ondelete="SET NULL"), nullable=True
+    )
     onboarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     default_project_view: Mapped[str] = mapped_column(String(10), default="board")
     # Wie ein Ticket per Linksklick geöffnet wird: popup (Drawer) oder page (volle Seite).

@@ -23,6 +23,7 @@ def user_out(u: User) -> UserOut:
         status=u.status, max_runners=u.max_runners, onboarded=u.onboarded_at is not None,
         default_project_view=u.default_project_view, ticket_open_mode=u.ticket_open_mode,
         ticket_layout=u.ticket_layout or {}, pm_chat_style=u.pm_chat_style,
+        workflow_set_id=u.workflow_set_id,
         claude_token_set=bool(u.claude_oauth_token_enc), created_at=u.created_at,
     )
 

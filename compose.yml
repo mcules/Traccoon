@@ -67,6 +67,9 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
+      # Ohne diese Zeile testet `docker compose exec backend pytest` die Kopie aus dem Image
+      # — die veraltet still und meldet Grün für Code, der so gar nicht mehr existiert.
+      - ./backend/tests:/app/tests
       - ./data/workspace:/workspace   # Repo-Browser/Editor (api/repo.py) liest/schreibt hier
     networks:
       default:

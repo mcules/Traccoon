@@ -11,13 +11,13 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..models.enums import (
-    ProjectRole, WorkflowNodeType, WorkflowStepStatus, WorkflowSubjectKind,
-    WorkflowVersionStatus,
+    ProjectRole, WorkflowNodeType, WorkflowStepStatus, WorkflowVersionStatus,
 )
 from ..models.project import Project
 from ..models.user import User
@@ -25,11 +25,13 @@ from ..models.workflow import (
     WorkflowDefinition, WorkflowInstance, WorkflowStepRun, WorkflowToken, WorkflowVersion,
 )
 from ..schemas.workflow import (
-    ApproveIn, InstanceCreate, InstanceOut, RejectIn, StepCompleteIn, StepRunOut, TokenLite,
-    ValidateOut, WorkflowDefinitionCreate, WorkflowDefinitionOut, WorkflowDefinitionUpdate,
-    WorkflowTaskLite, WorkflowVersionOut, WorkflowVersionUpdate,
+    ApproveIn, InstanceCreate, InstanceOut, RejectIn, SlotOut, StepCompleteIn, StepRunOut,
+    TokenLite, ValidateOut, WorkflowDefinitionCreate, WorkflowDefinitionOut,
+    WorkflowDefinitionUpdate, WorkflowSetCreate, WorkflowSetOut, WorkflowTaskLite,
+    WorkflowVersionOut, WorkflowVersionUpdate,
 )
 from ..services import workflow_engine as engine
+from ..services import workflow_sets as sets
 from ..services.workflow_engine import node_config
 from .deps import build_access, get_current_user
 
@@ -53,6 +55,17 @@ async def _require_def_write(db: AsyncSession, user: User, project_id: int | Non
     if not (access.has_role(ProjectRole.maintainer) or access.ai_assign):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             "Rolle owner|maintainer oder KI-Recht (ai_assign) erforderlich")
+
+
+async def _require_write(db: AsyncSession, user: User, d) -> None:
+    """Schreibrecht auf eine konkrete Definition.
+
+    Gehört sie zu einem Prozess-Satz, entscheidet der Satz (persönlich = Eigentümer,
+    global = Admin); sonst gelten die Projekt-Regeln.
+    """
+    if d.set_id:
+        return await _require_set_write(db, user, await _get_set(db, d.set_id))
+    await _require_def_write(db, user, d.project_id)
 
 
 async def _require_project_read(db: AsyncSession, user: User, project_id: int | None) -> None:
@@ -114,6 +127,190 @@ async def _instance_access(db: AsyncSession, user: User, inst: WorkflowInstance,
     return access
 
 
+@router.get("/workflow-events")
+async def workflow_events(user: User = Depends(get_current_user)):
+    """Ereignisse, die Traccoon selbst meldet — Vorschlagsliste für den Auslöser."""
+    from ..services.events import BUILTIN_EVENTS
+    return [{"event": e, "label": l} for e, l in BUILTIN_EVENTS]
+
+
+class EventIn(BaseModel):
+    event: str = Field(min_length=1, max_length=120)
+    project_id: int | None = None
+    payload: dict = {}
+    source_ref: str | None = None
+
+
+@router.post("/events")
+async def post_event(
+    data: EventIn,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Ereignis von Hand melden. Startet jeden Ablauf, dessen Start-Knoten darauf hört."""
+    if data.project_id is not None:
+        await _require_project_read(db, user, data.project_id)
+    from ..services.events import emit
+    ids = await emit(db, data.event, project_id=data.project_id, payload=data.payload,
+                     actor_id=user.id, source_ref=data.source_ref)
+    return {"event": data.event, "instances": ids}
+
+
+@router.get("/workflow-layout")
+async def workflow_layout(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Abstand (px) für „Anordnen" im Editor. Lesbar für alle — gesetzt wird er vom Admin
+    unter `PUT /admin/workflow-layout`."""
+    from ..services.appsettings import get_layout_gap
+    return {"gap": await get_layout_gap(db)}
+
+
+# ── Prozess-Sätze ────────────────────────────────────────────────────────────
+
+async def _get_set(db: AsyncSession, set_id: int):
+    from ..models.workflow import WorkflowSet
+    s = await db.get(WorkflowSet, set_id)
+    if s is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Prozess-Satz nicht gefunden")
+    return s
+
+
+async def _require_set_write(db: AsyncSession, user: User, s) -> None:
+    """Globale Sätze darf nur ein Admin ändern, persönliche nur ihr Eigentümer."""
+    from ..models.enums import GlobalRole, WorkflowSetScope
+    if s.scope == WorkflowSetScope.user:
+        if s.user_id != user.id and user.global_role != GlobalRole.admin:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Fremder persönlicher Prozess-Satz")
+        return
+    if user.global_role != GlobalRole.admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Globale Prozess-Sätze darf nur ein Admin ändern")
+
+
+@router.get("/workflow-sets", response_model=list[WorkflowSetOut])
+async def list_sets(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Sichtbare Sätze: alle globalen plus die eigenen (Admins sehen alle)."""
+    from ..models.enums import GlobalRole, WorkflowSetScope
+    from ..models.workflow import WorkflowSet
+    q = select(WorkflowSet)
+    if user.global_role != GlobalRole.admin:
+        q = q.where(or_(WorkflowSet.scope == WorkflowSetScope.global_,
+                        WorkflowSet.user_id == user.id))
+    return list((await db.execute(q.order_by(WorkflowSet.id))).scalars().all())
+
+
+@router.get("/workflow-sets/{set_id}/slots", response_model=list[SlotOut])
+async def set_slots(
+    set_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Belegung eines Satzes — je Slot die hinterlegte Vorlage."""
+    s = await _get_set(db, set_id)
+    out = []
+    for slot, meta in sets.SLOT_META.items():
+        d = await sets.set_definition(db, s.id, slot)
+        out.append(SlotOut(
+            slot=slot, name=meta["name"], description=meta["description"],
+            subject_kind=meta["subject_kind"],
+            origin="builtin" if s.is_builtin else s.scope.value,
+            set_id=s.id, set_name=s.name,
+            definition_id=d.id if d else None, definition_name=d.name if d else None,
+            published=bool(d and d.current_version_id),
+        ))
+    return out
+
+
+@router.post("/me/workflow-set", response_model=WorkflowSetOut, status_code=201)
+async def create_my_set(
+    data: WorkflowSetCreate,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Eigenen Standard-Satz anlegen (Kopie des globalen) — gilt danach für alle Projekte,
+    in denen ich die Owner-Rolle habe und die keinen eigenen Satz gewählt haben."""
+    if user.workflow_set_id:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Es gibt bereits einen persönlichen Satz")
+    return await sets.create_user_set(db, user, data.name, data.source_set_id)
+
+
+@router.delete("/me/workflow-set", status_code=204)
+async def drop_my_set(
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Persönlichen Satz aufgeben → meine Projekte folgen wieder dem globalen Standard."""
+    from ..models.workflow import WorkflowSet
+    sid = user.workflow_set_id
+    user.workflow_set_id = None
+    if sid:
+        s = await db.get(WorkflowSet, sid)
+        if s is not None and not s.is_builtin:
+            await db.delete(s)
+    await db.commit()
+
+
+# ── Slots eines Projekts (anpassen / zurücksetzen) ───────────────────────────
+
+@router.get("/projects/{project_id}/workflow-slots", response_model=list[SlotOut])
+async def project_slots(
+    project_id: int, user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    await _require_project_read(db, user, project_id)
+    project = await db.get(Project, project_id)
+    return [SlotOut(**row) for row in await sets.slot_overview(db, project)]
+
+
+@router.post("/projects/{project_id}/workflow-slots/{slot}/customize",
+             response_model=WorkflowDefinitionOut, status_code=201)
+async def customize_slot(
+    project_id: int, slot: str, issue_type_id: int | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Projekt-eigene Kopie des geltenden Ablaufs anlegen (copy-on-write).
+
+    Mit `issue_type_id` gilt die Kopie nur für diese Vorgangsart — alle anderen Tickets des
+    Projekts folgen weiter dem Satz.
+    """
+    await _require_def_write(db, user, project_id)
+    project = await db.get(Project, project_id)
+    try:
+        return await sets.customize(db, project, slot, user.id, issue_type_id)
+    except ValueError as e:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(e))
+
+
+@router.post("/projects/{project_id}/workflow-slots/{slot}/reset", status_code=200)
+async def reset_slot(
+    project_id: int, slot: str, issue_type_id: int | None = None,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+):
+    """Anpassung verwerfen → wieder der Satz gilt. Laufende Instanzen bleiben unberührt.
+
+    Mit `issue_type_id` betrifft es nur den Ablauf dieser Vorgangsart.
+    """
+    await _require_def_write(db, user, project_id)
+    project = await db.get(Project, project_id)
+    done = await sets.reset(db, project, slot, issue_type_id)
+    return {"reset": done}
+
+
+@router.put("/projects/{project_id}/workflow-set", response_model=list[SlotOut])
+async def set_project_set(
+    project_id: int, set_id: int | None = None,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Satz wählen, dem dieses Projekt folgt (NULL = Owner-Satz bzw. globaler Standard)."""
+    await _require_def_write(db, user, project_id)
+    project = await db.get(Project, project_id)
+    if set_id is not None:
+        await _get_set(db, set_id)
+    project.workflow_set_id = set_id
+    await db.commit()
+    return [SlotOut(**row) for row in await sets.slot_overview(db, project)]
+
+
 # ── Definitionen ─────────────────────────────────────────────────────────────
 
 @router.get("/workflows", response_model=list[WorkflowDefinitionOut])
@@ -127,6 +324,9 @@ async def list_workflows(
             or_(WorkflowDefinition.project_id == project_id, WorkflowDefinition.project_id.is_(None)))
     else:
         q = select(WorkflowDefinition)
+    # Zurückgesetzte Projekt-Kopien bleiben zwar in der DB (Instanzen hängen dran),
+    # gehören aber nicht mehr in die Auswahl.
+    q = q.where(WorkflowDefinition.archived_at.is_(None))
     rows = (await db.execute(q.order_by(WorkflowDefinition.id))).scalars().all()
     return list(rows)
 
@@ -172,7 +372,7 @@ async def update_workflow(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
     d = await _get_def(db, def_id)
-    await _require_def_write(db, user, d.project_id)
+    await _require_write(db, user, d)
     if data.name is not None:
         d.name = data.name
     if data.description is not None:
@@ -189,7 +389,7 @@ async def delete_workflow(
     def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
     d = await _get_def(db, def_id)
-    await _require_def_write(db, user, d.project_id)
+    await _require_write(db, user, d)
     await db.delete(d)
     await db.commit()
 
@@ -214,7 +414,7 @@ async def editable_version(
     """Aktuelle Draft-Version für den Editor. Existiert keine, wird eine neue Draft aus der
     veröffentlichten current_version geklont (oder leer angelegt)."""
     d = await _get_def(db, def_id)
-    await _require_def_write(db, user, d.project_id)
+    await _require_write(db, user, d)
     draft = (await db.execute(
         select(WorkflowVersion).where(
             WorkflowVersion.definition_id == def_id,
@@ -248,7 +448,7 @@ async def update_version(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
     d = await _get_def(db, def_id)
-    await _require_def_write(db, user, d.project_id)
+    await _require_write(db, user, d)
     v = await _get_draft(db, def_id, vid)
     if v.status != WorkflowVersionStatus.draft:
         raise HTTPException(status.HTTP_409_CONFLICT, "Veröffentlichte Version ist unveränderlich")
@@ -278,7 +478,7 @@ async def publish_version(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
     d = await _get_def(db, def_id)
-    await _require_def_write(db, user, d.project_id)
+    await _require_write(db, user, d)
     v = await _get_draft(db, def_id, vid)
     errors = engine.validate_graph(d.subject_kind, v.graph or {})
     if errors:
@@ -290,6 +490,47 @@ async def publish_version(
     await db.commit()
     await db.refresh(v)
     return v
+
+
+@router.post("/workflows/{def_id}/versions/{vid}/rollback", response_model=WorkflowVersionOut)
+async def rollback_version(
+    def_id: int, vid: int,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Auf eine frühere Fassung zurück — als NEUE Version, nicht durch Umbiegen.
+
+    Die alte Version bleibt unangetastet: laufende Instanzen hängen an ihrer Version, und
+    die Historie soll zeigen, dass zurückgerollt wurde, statt so auszusehen, als wäre die
+    Zwischenzeit nie passiert.
+    """
+    d = await _get_def(db, def_id)
+    await _require_write(db, user, d)
+    alt = await db.get(WorkflowVersion, vid)
+    if alt is None or alt.definition_id != def_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Version nicht gefunden")
+    if alt.status != WorkflowVersionStatus.published:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Nur auf eine veröffentlichte Fassung lässt sich zurückrollen")
+    if d.current_version_id == vid:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Diese Fassung ist bereits die aktuelle")
+    errors = engine.validate_graph(d.subject_kind, alt.graph or {})
+    if errors:
+        # Kann passieren, wenn die Prüfregeln seither strenger wurden.
+        raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                            {"message": "Diese Fassung erfüllt die heutigen Regeln nicht mehr",
+                             "errors": errors})
+    neu = WorkflowVersion(
+        definition_id=def_id, version=await _next_version_number(db, def_id),
+        graph=alt.graph, status=WorkflowVersionStatus.published,
+        published_at=dt.datetime.now(tz=dt.timezone.utc), created_by=user.id,
+        notes=f"Zurückgerollt auf Fassung {alt.version}",
+    )
+    db.add(neu)
+    await db.flush()
+    d.current_version_id = neu.id
+    await db.commit()
+    await db.refresh(neu)
+    return neu
 
 
 # ── Instanzen ────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { workflowApi, getToken, type WorkflowInstance } from "../../api";
 import WorkflowCanvas from "./WorkflowCanvas";
 import { graphToFlow } from "./convert";
 import { runtimeStates } from "./runtimeState";
-import { needsLayout, layoutGraph } from "./layout";
+import { needsLayout, layoutGraph, DEFAULT_GAP } from "./layout";
 
 const STATUS_LABEL: Record<string, string> = {
   running: "läuft",

@@ -1,15 +1,22 @@
 import { BaseNode, type FlowNodeProps } from "./shared";
 
-export default function StartNode({ data, selected }: FlowNodeProps) {
+export default function StartNode({ id, data, selected }: FlowNodeProps) {
+  const t = data.config.trigger;
   return (
     <BaseNode
+      nodeId={id}
       title={data.config.label || "Start"}
-      icon="▶"
-      accent="border-l-green-500"
+      icon={t?.event ? "⚡" : "▶"}
+      accent="border-t-green-500"
       selected={selected}
       runtimeState={data.runtimeState}
       hasTarget={false}
     >
+      {/* Der Auslöser gehört auf die Karte — sonst sieht man einem Ablauf nicht an,
+          wodurch er überhaupt startet. */}
+      <div>{t?.event ? t.event : "manueller Start"}</div>
+      {t?.project_id && <div>nur Projekt #{t.project_id}</div>}
+      {t?.filter && <div>mit Bedingung</div>}
       {(data.config.context_schema?.length ?? 0) > 0 && (
         <div>Kontext: {data.config.context_schema!.map((c) => c.key).join(", ")}</div>
       )}

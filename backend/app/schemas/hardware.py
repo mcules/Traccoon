@@ -21,6 +21,8 @@ class LocationOut(BaseModel):
     project_id: int | None
     full_path: str
     notes: str | None
+    # Gemeinsame Artefakt-Identität — daran hängen die freien Felder.
+    artifact_id: int | None = None
     model_config = {"from_attributes": True}
 
 

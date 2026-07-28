@@ -1,18 +1,20 @@
-"""Generische Workflow-Ausführungs-Engine (Token-basiert, React-Flow-Graph).
+"""Ausführungs-Engine für Prozesse (Token-basiert, React-Flow-Graph).
 
-Läuft NEBEN dem KI-Ticket-Lifecycle (dispatcher.py). Ein Workflow ist ein Node-Graph
+Hier läuft inzwischen ALLES, was Traccoon an Abläufen kennt — auch der KI-Ticket-
+Lebenszyklus, der früher fest im Dispatcher verdrahtet war. Ein Prozess ist ein Node-Graph
 (`version.graph = {"nodes":[...], "edges":[...]}`); eine Instanz trägt genau EIN aktives
-Token, das synchron von Knoten zu Knoten geschaltet wird, bis es wartet (human_task/
-approval) oder ein end-Knoten erreicht ist.
+Token, das synchron von Knoten zu Knoten schaltet, bis es wartet (Mensch, Genehmigung,
+Agentenlauf, Ereignis, Unter-Prozess) oder ein end-Knoten erreicht ist.
 
-Absicherungen analog dispatcher.py:
+Absicherungen:
 - atomarer `advancing`-Claim (UPDATE … WHERE advancing=false RETURNING) gegen Doppel-Advance
   (Tick ↔ Request-Event),
 - `MAX_STEPS`-Bremse gegen zyklische Auto-Advance,
+- `routed_at` je Schritt: ein erledigter Warte-Knoten wird genau EINMAL in eine Kante
+  übersetzt — sonst drehte sich eine Rückkante (Fortsetzung!) endlos im Kreis,
+- Torwächter vor jedem Agentenlauf (`services/agent_gate.py`) — Zeitfenster, Runner-Limit
+  und Runaway-Bremse gelten unabhängig vom gezeichneten Graphen,
 - eigene DB-Session (SessionLocal), niemals die Request-Session.
-
-agent_task ist in v1 bewusst NICHT ausführbar (Etappe 3): der Handler markiert den Schritt
-als fehlgeschlagen und beendet die Instanz, damit v1 lauffähig bleibt.
 """
 from __future__ import annotations
 
@@ -41,13 +43,17 @@ from .jsonlogic import ALLOWED_OPS, JsonLogicError, collect_operators, safe_eval
 log = logging.getLogger("workflow_engine")
 
 MAX_STEPS = 50          # Zyklus-Bremse pro advance-Durchlauf
+MAX_DRIVE_ROUNDS = 5    # Nachfassen, wenn während des Durchlaufs ein Ergebnis eintraf
 TICK_SECONDS = 30       # Sicherheitsnetz-Loop (Crash-Recovery)
+MAX_SUBFLOW_DEPTH = 3   # Schachtelungs-Bremse für subflow-Knoten
 
 # Knoten, die auf ein externes Ereignis warten. Beim Wiedereintritt (Token wieder aktiv)
-# NICHT erneut ausführen, sondern die Kante gemäß hinterlegter decision nehmen.
-WAIT_NODES = ("human_task", "approval", "agent_task")
+# NICHT erneut ausführen, sondern die Kante gemäß hinterlegter decision nehmen — aber nur
+# EINMAL je Durchlauf (`routed_at`), sonst dreht sich eine Rückkante endlos im Kreis.
+WAIT_NODES = ("human_task", "approval", "agent_task", "wait_event", "subflow")
 
-# Standard-Abbildung Worker-Ergebnis → Ausgang (falls node.config.outcomes_map nichts sagt).
+# Standard-Abbildung Worker-Ergebnis → Ausgang. Greift nur, wenn weder `outcomes_map` noch
+# ein gleichnamiger Ausgang (z. B. „loop_exhausted") am Knoten verdrahtet ist.
 _DEFAULT_AGENT_MAP = {
     "planned": "ok", "done": "ok", "failed": "err",
     "blocked": "blocked", "loop_exhausted": "blocked",
@@ -109,6 +115,28 @@ def _outgoing_handles(edges: list[dict], node_id: str) -> set[str]:
 
 def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
+
+
+# Wächter-Tasks (Agentenlauf, asynchrone Aktion) brauchen eine starke Referenz — sonst
+# darf der Garbage Collector sie mitten im Warten einsammeln und der Prozess bliebe still
+# stehen. Tests warten über `drain()` auf sie.
+_BACKGROUND: set[asyncio.Task] = set()
+
+
+def _spawn(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _BACKGROUND.add(task)
+    task.add_done_callback(_BACKGROUND.discard)
+    return task
+
+
+async def drain(timeout: float = 5.0) -> None:
+    """Auf alle laufenden Wächter warten (Tests; im Betrieb nicht nötig)."""
+    for _ in range(20):
+        pending = {t for t in _BACKGROUND if not t.done()}
+        if not pending:
+            return
+        await asyncio.wait(pending, timeout=timeout)
 
 
 def _to_instance_status(name) -> IStatus:
@@ -241,7 +269,7 @@ async def _ensure_wait_step(db, inst, node, ntype, token, waiting_for) -> None:
 
 # ── Node-Handler ─────────────────────────────────────────────────────────────
 
-async def _run_node(db, inst, node, ntype, token, edges) -> Outcome:
+async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> Outcome:
     cfg = node_config(node)
 
     if ntype == "start":
@@ -273,8 +301,30 @@ async def _run_node(db, inst, node, ntype, token, edges) -> Outcome:
 
     if ntype == "auto_action":
         from .workflow_actions import run_action
+        # Idempotenz: eine asynchrone Aktion (z. B. Merge) läuft bereits → nicht neu starten.
+        running = await _latest_step(db, inst.id, node["id"])
+        if running is not None and running.status == SStatus.running:
+            return Outcome(wait=True, waiting_for="action")
         try:
             result = await run_action(db, inst, node)
+            wait_spec = result.pop("_wait", None) if isinstance(result, dict) else None
+            if wait_spec:
+                # Asynchrone Aktion: Schritt bleibt „running", ein Wächter schaltet weiter.
+                step = WorkflowStepRun(
+                    instance_id=inst.id, token_id=token.id, node_id=node["id"],
+                    node_type=NType.auto_action, status=SStatus.running,
+                    result={**result, "task_id": wait_spec["task_id"],
+                            "context_key": str(wait_spec.get("context_key") or "action")},
+                )
+                db.add(step)
+                await db.flush()
+                spawn_after.append(_await_action(
+                    inst.id, token.id, step.id, wait_spec["task_id"],
+                    int(wait_spec.get("timeout") or 900),
+                    str(wait_spec.get("context_key") or "action"),
+                    dict(cfg.get("outcomes_map") or {}),
+                ))
+                return Outcome(wait=True, waiting_for="action")
             db.add(WorkflowStepRun(
                 instance_id=inst.id, token_id=token.id, node_id=node["id"],
                 node_type=NType.auto_action, status=SStatus.done, result=result,
@@ -294,17 +344,259 @@ async def _run_node(db, inst, node, ntype, token, edges) -> Outcome:
                            error=f"auto_action '{node['id']}' fehlgeschlagen: {e}")
 
     if ntype == "agent_task":
-        return await _start_agent_task(db, inst, node, token, cfg)
+        return await _start_agent_task(db, inst, node, token, cfg, spawn_after)
+
+    if ntype == "wait_event":
+        return await _wait_for_event(db, inst, node, token, cfg)
+
+    if ntype == "subflow":
+        return await _start_subflow(db, inst, node, token, cfg)
 
     return Outcome(terminal=True, instance_status="failed",
                    error=f"Unbekannter Knotentyp '{ntype}'")
 
 
+# ── wait_event: auf ein externes Ereignis warten ─────────────────────────────
+
+DEFAULT_EVENTS = ("comment", "manual")
+
+
+def _accepted_events(cfg: dict) -> list[str]:
+    ev = cfg.get("events")
+    if isinstance(ev, str):
+        ev = [ev]
+    return [str(e) for e in (ev or DEFAULT_EVENTS)]
+
+
+async def _wait_for_event(db, inst, node, token, cfg) -> Outcome:
+    """Hält den Lauf an, bis `resume_on_event` ein passendes Ereignis meldet.
+
+    Damit hängen Rückfragen, abgelehnte Pläne und Fehlversuche im Ticket-Lebenszyklus am
+    Kommentar des Menschen, statt über einen versteckten Status-Sprung neu zu starten.
+    """
+    existing = await _latest_step(db, inst.id, node["id"])
+    if existing is not None and existing.status == SStatus.waiting:
+        return Outcome(wait=True, waiting_for="event")
+    step = WorkflowStepRun(
+        instance_id=inst.id, token_id=token.id, node_id=node["id"],
+        node_type=NType.wait_event, status=SStatus.waiting,
+        result={"events": _accepted_events(cfg)},
+    )
+    db.add(step)
+    await db.flush()
+    await publish_event(inst.project_id or 0, {
+        "type": "workflow_step", "instance_id": inst.id, "node_id": node["id"],
+        "node_type": "wait_event", "status": "waiting",
+    })
+    return Outcome(wait=True, waiting_for="event")
+
+
+async def resume_on_event(issue_id: int, event: str, payload: dict | None = None) -> bool:
+    """Meldet ein Ereignis (comment|answer|manual|…) an die Lebenszyklus-Instanz eines Tickets.
+
+    Liefert True, wenn ein wartender wait_event-Knoten das Ereignis angenommen hat. Der
+    Aufrufer (z. B. `services/comments.apply_user_comment`) muss vorher committet haben.
+    """
+    async with SessionLocal() as db:
+        from ..models.ticket import Issue
+        issue = await db.get(Issue, issue_id)
+        if issue is None or issue.workflow_instance_id is None:
+            return False
+        inst = await db.get(WorkflowInstance, issue.workflow_instance_id)
+        if inst is None or inst.status not in (IStatus.running, IStatus.waiting):
+            return False
+        version = await db.get(WorkflowVersion, inst.version_id)
+        graph = (version.graph if version else None) or {}
+        token = (await db.execute(
+            select(WorkflowToken).where(
+                WorkflowToken.instance_id == inst.id,
+                WorkflowToken.state == TState.waiting,
+                WorkflowToken.waiting_for == "event",
+            ).with_for_update())).scalars().first()
+        if token is None:
+            return False
+        node = _node_by_id(graph, token.node_id)
+        if node is None:
+            return False
+        accepted = _accepted_events(node_config(node))
+        if event not in accepted and "any" not in accepted:
+            return False
+        step = await _latest_step(db, inst.id, token.node_id)
+        if step is not None and step.status == SStatus.waiting:
+            step.status = SStatus.done
+            step.decision = event
+            step.result = {**(step.result or {}), "event": event, "payload": payload or {}}
+            step.completed_at = _now()
+        ctx = dict(inst.context or {})
+        ctx["event"] = {"name": event, **(payload or {})}
+        inst.context = ctx
+        token.state = TState.active
+        token.waiting_for = None
+        inst.status = IStatus.running
+        instance_id = inst.id
+        await db.commit()
+    await advance(instance_id)
+    return True
+
+
+# ── subflow: anderen Ablauf als Kind-Instanz ausführen ───────────────────────
+
+async def _instance_depth(db, inst: WorkflowInstance) -> int:
+    depth, cur = 0, inst
+    while cur is not None and cur.parent_instance_id and depth <= MAX_SUBFLOW_DEPTH:
+        cur = await db.get(WorkflowInstance, cur.parent_instance_id)
+        depth += 1
+    return depth
+
+
+async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
+    """Startet die für den Slot aufgelöste Definition als Kind-Instanz und wartet auf sie.
+
+    So ruft der Ticket-Lebenszyklus den eigenständigen „Abnahme"-Ablauf auf, ohne ihn zu
+    duplizieren — und ein angepasster Abnahme-Prozess wirkt überall, wo er aufgerufen wird.
+    """
+    from .workflow_sets import resolve_definition
+
+    existing = await _latest_step(db, inst.id, node["id"])
+    if existing is not None and existing.status == SStatus.running:
+        return Outcome(wait=True, waiting_for="subflow")
+
+    slot = cfg.get("slot") or cfg.get("workflow_slot")
+    if not slot:
+        return Outcome(terminal=True, instance_status="failed",
+                       error=f"subflow-Knoten '{node['id']}' ohne Slot")
+    if await _instance_depth(db, inst) >= MAX_SUBFLOW_DEPTH:
+        return Outcome(terminal=True, instance_status="failed",
+                       error=f"subflow zu tief verschachtelt (> {MAX_SUBFLOW_DEPTH})")
+
+    # Auch ein Unterprozess folgt der Vorgangsart des Tickets, an dem er hängt.
+    vorgangsart = None
+    if inst.issue_id:
+        from ..models.ticket import Issue
+        issue = await db.get(Issue, inst.issue_id)
+        vorgangsart = issue.type_id if issue else None
+    definition = await resolve_definition(db, inst.project_id, slot, vorgangsart)
+    if definition is None or definition.current_version_id is None:
+        return Outcome(terminal=True, instance_status="failed",
+                       error=f"Kein veröffentlichter Ablauf für Slot '{slot}'")
+
+    step = WorkflowStepRun(
+        instance_id=inst.id, token_id=token.id, node_id=node["id"],
+        node_type=NType.subflow, status=SStatus.running, result={"slot": slot},
+    )
+    db.add(step)
+    await db.flush()
+
+    ctx = dict(inst.context or {}) if cfg.get("inherit_context", True) else {}
+    child = await start_workflow(
+        db, definition, subject_kind=definition.subject_kind, issue_id=inst.issue_id,
+        hardware_asset_id=inst.hardware_asset_id, context=ctx, actor_id=inst.started_by,
+        source=f"subflow:{inst.id}", parent_instance_id=inst.id, parent_node_id=node["id"],
+    )
+    step.result = {"slot": slot, "child_instance_id": child.id}
+    return Outcome(wait=True, waiting_for="subflow")
+
+
+async def _finish_subflow(parent_id: int, node_id: str, child_status: str,
+                          child_context: dict, error: str | None) -> None:
+    """Weckt den wartenden subflow-Schritt der Eltern-Instanz, wenn das Kind endet."""
+    async with SessionLocal() as db:
+        inst = await db.get(WorkflowInstance, parent_id)
+        if inst is None or inst.status not in (IStatus.running, IStatus.waiting):
+            return
+        step = await _latest_step(db, parent_id, node_id)
+        if step is None or step.status != SStatus.running:
+            return
+        step.status = SStatus.done
+        step.decision = child_status
+        step.result = {**(step.result or {}), "child_status": child_status}
+        step.error = error[:2000] if error else None
+        step.completed_at = _now()
+        # Der Kind-Kontext (z. B. Merge-Ergebnis) fließt zurück nach oben.
+        inst.context = {**(inst.context or {}), **(child_context or {})}
+        token = (await db.execute(
+            select(WorkflowToken).where(
+                WorkflowToken.instance_id == parent_id,
+                WorkflowToken.state == TState.waiting,
+                WorkflowToken.node_id == node_id,
+            ).with_for_update())).scalars().first()
+        if token is not None:
+            token.state = TState.active
+            token.waiting_for = None
+        if inst.status == IStatus.waiting:
+            inst.status = IStatus.running
+        await db.commit()
+    await advance(parent_id)
+
+
 # ── agent_task: Brücke zur bestehenden Agent-Queue (Worker) ──────────────────
 
-async def _start_agent_task(db, inst, node, token, cfg) -> Outcome:
-    """Startet einen KI-Agenten-Lauf über dieselbe Redis-Queue wie der Dispatcher und
-    wartet asynchron auf das Ergebnis (Token wartet, `_await_agent` schaltet weiter).
+async def _resolve_agent_role(db, issue, cfg: dict) -> str:
+    """Rolle des Laufs. Symbolische Werte binden den Graphen an die Projekt-Einstellungen,
+    statt eine Besetzung fest einzubacken (`plan_agent`, `exec_agent`, `review_agent`,
+    `assigned`); alles andere gilt als konkreter Rollenname.
+
+    Entspricht `dispatcher._plan_role`/`_exec_role`: geplant wird immer vom Architekten
+    (auch bei PM-Zuweisung — der PM plant nie selbst), umgesetzt vom Ausführungs-Agenten.
+    """
+    from ..models.project import Project
+    role = str(cfg.get("agent_role") or "exec_agent")
+    if role not in ("plan_agent", "exec_agent", "review_agent", "assigned"):
+        return role
+    project = await db.get(Project, issue.project_id)
+    if role == "plan_agent":
+        return issue.plan_agent or (project.plan_agent if project else "") or "architect"
+    if role == "review_agent":
+        return (project.review_agent if project else "") or "code_reviewer"
+    exec_default = issue.exec_agent or (project.exec_agent if project else "") or "developer"
+    if role == "assigned":
+        return issue.assigned_agent or exec_default
+    # exec_agent: bei PM-Zuweisung bewusst NICHT der PM, sondern der Ausführungs-Agent.
+    if issue.assigned_agent == "project_manager":
+        return exec_default
+    return issue.assigned_agent or exec_default
+
+
+async def _park_on_gate(db, inst, issue, node, token, verdict) -> Outcome:
+    """Lauf vertagen, weil ein Tor zu ist. Das Token bleibt auf dem Knoten stehen
+    (`waiting_for="gate"`), der Engine-Tick versucht es zyklisch erneut.
+
+    Bei der Runaway-Bremse (`hold`) wird zusätzlich das Ticket angehalten — es geht erst
+    weiter, wenn ein Mensch eingreift (z. B. neue Plan-Freigabe setzt das Cap-Fenster neu).
+    """
+    from ..models.enums import TicketAgentStatus
+
+    issue.agent_working = False
+    detail = f"{verdict.reason}: {verdict.detail}" if verdict.detail else verdict.reason
+    if verdict.hold:
+        from .artifacts import set_ticket_status
+        await set_ticket_status(db, issue, TicketAgentStatus.hold,
+                                reason=verdict.hold_reason)
+
+    step = await _latest_step(db, inst.id, node["id"])
+    if step is None or step.status not in (SStatus.pending,):
+        step = WorkflowStepRun(
+            instance_id=inst.id, token_id=token.id, node_id=node["id"],
+            node_type=NType.agent_task, status=SStatus.pending,
+        )
+        db.add(step)
+    step.token_id = token.id
+    step.error = detail[:2000]
+    step.result = {**(step.result or {}), "gate": verdict.reason}
+    await db.flush()
+    log.info("Instanz %s: Agentenlauf vertagt (%s)", inst.id, detail)
+    await publish_event(inst.project_id or 0, {
+        "type": "workflow_step", "instance_id": inst.id, "node_id": node["id"],
+        "node_type": "agent_task", "status": "gate", "reason": verdict.reason,
+    })
+    return Outcome(wait=True, waiting_for="gate")
+
+async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Outcome:
+    """Startet einen KI-Agenten-Lauf über die Redis-Queue und wartet asynchron auf das
+    Ergebnis (Token wartet, `_await_agent` schaltet weiter).
+
+    Vor dem Einreihen entscheidet `services/agent_gate` — Zeitfenster, Nutzer-Limit und
+    Runaway-Bremse gelten unabhängig davon, wie der Prozess gezeichnet ist.
 
     Voraussetzung (durch validate erzwungen): subject_kind=issue, issue_id gesetzt.
     """
@@ -335,24 +627,41 @@ async def _start_agent_task(db, inst, node, token, cfg) -> Outcome:
         ))
         return Outcome(terminal=True, instance_status="failed", error="Ticket nicht gefunden")
 
-    role = cfg.get("agent_role") or "developer"
+    # ── Torwächter (Policy, nicht Graph) ────────────────────────────────────
+    from . import agent_gate
+    verdict = await agent_gate.check(db, issue)
+    if not verdict.ok:
+        return await _park_on_gate(db, inst, issue, node, token, verdict)
+
+    role = await _resolve_agent_role(db, issue, cfg)
     phase = "planning" if cfg.get("phase") == "planning" else "execution"
     timeout = int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT)
     outcomes_map = cfg.get("outcomes_map") or {}
     task_id = f"wf-{inst.id}-{token.id}-{node['id']}-{uuid.uuid4().hex[:8]}"
 
-    step = WorkflowStepRun(
-        instance_id=inst.id, token_id=token.id, node_id=node["id"],
-        node_type=NType.agent_task, status=SStatus.running,
-        assignee_user_id=None, result={"task_id": task_id},  # task_id für Reattach hinterlegt
-    )
-    db.add(step)
+    # Ein wartender Gate-Schritt desselben Knotens wird wiederverwendet, damit ein
+    # mehrfach vertagter Lauf keine Schritt-Historie aufbläht.
+    step = existing if (existing is not None and existing.status == SStatus.pending) else None
+    if step is None:
+        step = WorkflowStepRun(
+            instance_id=inst.id, token_id=token.id, node_id=node["id"],
+            node_type=NType.agent_task, assignee_user_id=None,
+        )
+        db.add(step)
+    step.status = SStatus.running
+    step.token_id = token.id
+    step.error = None
+    step.result = {"task_id": task_id}  # task_id für Reattach hinterlegt
     await db.flush()
 
+    # Dieselbe Marke wie im Monitor/„Läuft gerade" und im Pro-Nutzer-Limit.
+    issue.agent_working = True
+    cont = int((inst.context or {}).get("continuation") or 0)
+    hint = str((inst.context or {}).get("continuation_hint") or "")
     payload = {
         "task_id": task_id, "issue_id": issue.id, "issue_key": issue.key,
         "project_id": inst.project_id, "role": role, "phase": phase,
-        "continuation_index": 0, "continuation_hint": "",
+        "continuation_index": cont, "continuation_hint": hint,
     }
     await enqueue_task(payload)
     await publish_event(inst.project_id or 0, {
@@ -366,9 +675,54 @@ async def _start_agent_task(db, inst, node, token, cfg) -> Outcome:
             db, inst.issue_id, f"🤖 Workflow startet KI-Agent „{role}“ für Schritt „{label}“",
             author_label="Workflow",
         )
-    # Ergebnis-Wächter als eigene Task (eigene Session). Bei Timeout/Neustart übernimmt der Tick.
-    asyncio.create_task(_await_agent(inst.id, token.id, step.id, task_id, dict(outcomes_map), timeout))
+    # Ergebnis-Wächter erst NACH dem Commit starten: er liest Schritt und Token in
+    # einer EIGENEN Session — vor dem Commit sähe er sie gar nicht (und ein danach
+    # nachziehender Commit dieses Durchlaufs würde seine Änderungen überschreiben).
+    spawn_after.append(_await_agent(inst.id, token.id, step.id, task_id,
+                                    dict(outcomes_map), timeout))
     return Outcome(wait=True, waiting_for="agent")
+
+
+async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: str,
+                        timeout: int, context_key: str, outcomes_map: dict) -> None:
+    """Wächter für asynchrone Auto-Aktionen (Merge & Co.): wartet auf das Worker-Ergebnis,
+    legt es unter `context.<context_key>` ab und schaltet über den passenden Ausgang weiter.
+
+    Analog `_await_agent` — nur so bleibt die Engine während eines minutenlangen Merges
+    ansprechbar, statt Session und Advance-Claim zu blockieren.
+    """
+    try:
+        result = await wait_result(task_id, timeout=timeout)
+    except Exception:  # noqa: BLE001
+        log.exception("wait_result (Aktion) für %s fehlgeschlagen", task_id)
+        result = None
+    status = (result or {}).get("status", "failed")
+
+    async with SessionLocal() as db:
+        step = await db.get(WorkflowStepRun, step_id)
+        if step is None or step.status != SStatus.running:
+            return
+        inst = await db.get(WorkflowInstance, instance_id)
+        version = await db.get(WorkflowVersion, inst.version_id) if inst else None
+        edges = _edges((version.graph if version else None) or {})
+        handle = outcomes_map.get(status)
+        if not handle:
+            handle = status if next_node(edges, step.node_id, status) is not None else "out"
+        step.status = SStatus.done
+        step.decision = handle
+        step.result = {**(step.result or {}), "result": result or {"status": "failed"}}
+        step.error = (result or {}).get("error")
+        step.completed_at = _now()
+        if inst is not None:
+            inst.context = {**(inst.context or {}), context_key: result or {"status": "failed"}}
+            if inst.status == IStatus.waiting:
+                inst.status = IStatus.running
+        tok = await db.get(WorkflowToken, token_id)
+        if tok is not None and tok.state == TState.waiting:
+            tok.state = TState.active
+            tok.waiting_for = None
+        await db.commit()
+    await advance(instance_id)
 
 
 async def _lookup_run_id(db, task_id: str) -> int | None:
@@ -379,36 +733,147 @@ async def _lookup_run_id(db, task_id: str) -> int | None:
     return r.id if r else None
 
 
+async def _stalled(db, issue_id: int, fingerprint: str | None) -> bool:
+    """Steckt der Agent fest? Wahr, wenn der Worktree seit dem VORHERIGEN Lauf unverändert
+    ist (Fingerprint-Vergleich) — 1:1 die Stall-Erkennung des früheren Dispatchers."""
+    if not fingerprint:
+        return False
+    from ..models.agents import Run
+    rows = (await db.execute(
+        select(Run.worktree_fingerprint)
+        .where(Run.issue_id == issue_id, Run.worktree_fingerprint.isnot(None))
+        .order_by(Run.id.desc()).limit(2))).scalars().all()
+    prev = rows[1:2]  # vorletzter Lauf (der letzte ist der gerade beendete)
+    return bool(prev) and prev[0] == fingerprint
+
+
+def _agent_handle(edges: list[dict], node_id: str, status: str, outcomes_map: dict) -> str:
+    """Ausgang eines agent_task: explizite Abbildung → gleichnamiger Ausgang → Default.
+
+    Der mittlere Schritt macht Graphen lesbar: wer eine Kante „loop_exhausted" zeichnet,
+    bekommt sie auch, ohne outcomes_map pflegen zu müssen.
+    """
+    mapped = outcomes_map.get(status)
+    if mapped:
+        return mapped
+    if next_node(edges, node_id, status) is not None:
+        return status
+    return _DEFAULT_AGENT_MAP.get(status, "err")
+
+
+async def _agent_note(db, issue_id: int, status: str, summary: str, stalled: bool) -> None:
+    """Kurze Spur jedes abgeschlossenen Laufs im Ticket-Verlauf (wer/was).
+
+    „blocked" schreibt der Worker bereits selbst (Rückfrage/Berechtigung) — hier nicht doppeln.
+    """
+    from ..models.ticket import Comment
+    note = None
+    if status == "planned":
+        note = "📋 Plan erstellt — bereit zur Freigabe." + (f"\n{summary}" if summary else "")
+    elif status == "done":
+        note = summary or "Arbeit abgeschlossen."
+    elif status == "loop_exhausted":
+        head = "⏸ Pausiert (Feststecker)" if stalled else "⏭ Zwischenstand, arbeite weiter"
+        note = head + (f":\n{summary}" if summary else ".")
+    elif status == "failed":
+        note = f"❌ Fehlgeschlagen: {summary or 'unbekannter Fehler'}"
+    if note:
+        db.add(Comment(issue_id=issue_id, author_id=None, author_label="Agent",
+                       body=note[:1500], kind="agent"))
+
+
 async def _await_agent(instance_id: int, token_id: int, step_id: int, task_id: str,
                        outcomes_map: dict, timeout: int) -> None:
     """Wartet auf das Agent-Ergebnis, markiert den Schritt done + decision (Outcome-Handle),
     reaktiviert das Token und schaltet weiter. Der agent_task-Knoten schließt IMMER ab
-    (done) — der Agent-Ausgang bestimmt nur den Zweig."""
+    (done) — der Agent-Ausgang bestimmt nur den Zweig.
+
+    Das Ergebnis landet zusätzlich unter `context.agent`, damit Entscheidungs-Knoten darauf
+    prüfen können (Status, Zusammenfassung, Blocker-Art, Feststecker-Erkennung, Merge-Stand).
+    """
     try:
         result = await wait_result(task_id, timeout=timeout)
     except Exception:  # noqa: BLE001
         log.exception("wait_result für %s fehlgeschlagen", task_id)
         result = None
     status = (result or {}).get("status", "failed")
-    handle = outcomes_map.get(status) or _DEFAULT_AGENT_MAP.get(status, "err")
 
     async with SessionLocal() as db:
         step = await db.get(WorkflowStepRun, step_id)
         if step is None or step.status != SStatus.running:
             return  # schon anderweitig finalisiert (Reattach-Doppelung)
+        inst = await db.get(WorkflowInstance, instance_id)
+        version = await db.get(WorkflowVersion, inst.version_id) if inst else None
+        edges = _edges((version.graph if version else None) or {})
+        handle = _agent_handle(edges, step.node_id, status, outcomes_map)
+
         step.status = SStatus.done
         step.decision = handle
         step.result = result or {"status": "failed", "output": "kein Ergebnis (Timeout)"}
         step.error = None if status in ("done", "planned") else f"Agent-Status: {status}"
         step.completed_at = _now()
         step.agent_run_id = await _lookup_run_id(db, task_id)
+
+        if inst is not None:
+            ctx = dict(inst.context or {})
+            summary = (result or {}).get("summary") or (result or {}).get("output") or ""
+            stalled = False
+            cont = int(ctx.get("continuation") or 0)
+            if inst.issue_id:
+                from ..models.ticket import Issue
+                issue = await db.get(Issue, inst.issue_id)
+                if issue is not None:
+                    issue.agent_working = False
+                    stalled = await _stalled(db, issue.id, (result or {}).get("worktree_fingerprint"))
+                    if status == "planned":
+                        # Der Plan ist das Artefakt des Laufs, keine Prozess-Entscheidung —
+                        # er wird immer geschrieben, unabhängig vom gezeichneten Graphen.
+                        issue.plan = (result or {}).get("output", "")
+                    if (result or {}).get("merge_status") == "conflict":
+                        issue.merge_status = "conflict"
+                    if status == "loop_exhausted":
+                        cont += 1
+                        issue.continuation_count = cont
+                        ctx["continuation_hint"] = summary[:2000]
+                    await _agent_note(db, issue.id, status, summary, stalled)
+            ctx["continuation"] = cont
+            blocker = ((result or {}).get("blocker") or {}).get("kind")
+            has_subtickets = "<subtickets>" in ((result or {}).get("output") or "")
+            ctx["agent"] = {
+                "status": status,
+                "summary": summary[:2000],
+                "run_id": (result or {}).get("run_id"),
+                "blocker": blocker,
+                "merge_status": (result or {}).get("merge_status") or "",
+                "stalled": stalled,
+                "continuation": cont,
+                # Vorgekaute Werte für Entscheidungs-Knoten und Status-Vorlagen, damit
+                # Graphen ohne Textanalyse auskommen:
+                "has_subtickets": has_subtickets,
+                "hold_hint": "plan_split" if has_subtickets else "plan_review",
+                "stuck_reason": "stuck" if stalled else "cap",
+                "blocker_reason": {"permission": "permission", "review": "review"}.get(
+                    blocker or "", "question"),
+                # Für den gemeinsamen Störungs-Knoten je Phase: welchen Zustand das Ticket
+                # annimmt und warum. Ein Fehlschlag ist „failed" (ohne Grund), alles andere
+                # ein „hold" mit passendem Grund — dieselben Anzeigen wie mit den früheren
+                # Einzelknoten, nur an einer Stelle bestimmt.
+                "hold_status": "failed" if status == "failed" else "hold",
+                "hold_reason": (
+                    "" if status == "failed"
+                    else {"permission": "permission", "review": "review"}.get(blocker or "", "question")
+                    if status == "blocked"
+                    else ("stuck" if stalled else "cap") if status == "loop_exhausted"
+                    else "plan_review" if status == "planned"
+                    else "question"),
+            }
+            inst.context = ctx
+            if inst.status == IStatus.waiting:
+                inst.status = IStatus.running
         tok = await db.get(WorkflowToken, token_id)
         if tok is not None and tok.state == TState.waiting:
             tok.state = TState.active
             tok.waiting_for = None
-        inst = await db.get(WorkflowInstance, instance_id)
-        if inst is not None and inst.status == IStatus.waiting:
-            inst.status = IStatus.running
         await db.commit()
     await advance(instance_id)
 
@@ -419,6 +884,8 @@ async def start_workflow(
     db, definition: WorkflowDefinition, *, subject_kind, issue_id: int | None = None,
     hardware_asset_id: int | None = None, context: dict | None = None,
     actor_id: int | None = None, source: str = "manual", source_ref: str | None = None,
+    parent_instance_id: int | None = None, parent_node_id: str | None = None,
+    advance_now: bool = True,
 ) -> WorkflowInstance:
     """Einziger Einstiegspunkt: legt Instanz + Start-Token an und schaltet einmal durch.
 
@@ -436,17 +903,40 @@ async def start_workflow(
         raise ValueError("Graph hat keinen Start-Knoten")
 
     sk = subject_kind if isinstance(subject_kind, WorkflowSubjectKind) else WorkflowSubjectKind(subject_kind)
+    # Vorlagen aus einem Satz sind projektlos — die Instanz gehört trotzdem zum Projekt
+    # des Subjekts, sonst greifen Rechteprüfung, Live-Events und Zuständigen-Auflösung nicht.
+    project_id = definition.project_id
+    if project_id is None and issue_id is not None:
+        from ..models.ticket import Issue
+        subj = await db.get(Issue, issue_id)
+        project_id = subj.project_id if subj else None
+    if project_id is None and hardware_asset_id is not None:
+        from ..models.hardware import HardwareAsset
+        asset = await db.get(HardwareAsset, hardware_asset_id)
+        project_id = asset.project_id if asset else None
     inst = WorkflowInstance(
-        definition_id=definition.id, version_id=version.id, project_id=definition.project_id,
+        definition_id=definition.id, version_id=version.id, project_id=project_id,
         subject_kind=sk, issue_id=issue_id, hardware_asset_id=hardware_asset_id,
         status=IStatus.running, context=dict(context or {}),
         source=source, source_ref=source_ref, started_by=actor_id,
+        parent_instance_id=parent_instance_id, parent_node_id=parent_node_id,
     )
     db.add(inst)
     await db.flush()
     db.add(WorkflowToken(instance_id=inst.id, node_id=start["id"], state=TState.active))
+    # Der oberste Lauf eines Tickets ist sein Lebenszyklus — Ereignisse (Kommentar, Stopp)
+    # und die UI finden ihn über issues.workflow_instance_id. Kind-Läufe (subflow) nicht.
+    if issue_id is not None and parent_instance_id is None:
+        from ..models.ticket import Issue
+        subj = await db.get(Issue, issue_id)
+        if subj is not None and definition.slot == "ticket_lifecycle":
+            subj.workflow_instance_id = inst.id
     await db.commit()
     inst_id = inst.id
+    if not advance_now:
+        # Instanz steht bereit, läuft aber noch nicht los — für den Umstieg von
+        # Bestandstickets, deren Token gezielt auf einen Warteknoten gesetzt wird.
+        return inst
     await advance(inst_id)
     # Request-Session-Sicht auffrischen (advance hat in eigener Session committet)
     fresh = await db.get(WorkflowInstance, inst_id)
@@ -500,7 +990,14 @@ async def advance(instance_id: int) -> None:
     if claimed is None:
         return  # anderer Advance läuft bereits ODER Instanz bereits terminal
     try:
-        await _drive(instance_id)
+        # Erneut fahren, solange wieder ein Token aktiv ist: ein Agenten- oder
+        # Aktions-Ergebnis kann eintreffen, WÄHREND dieser Durchlauf noch den Anspruch
+        # hält (schnelle Queue, wieder-angebundener Lauf). Ohne diese Schleife bliebe die
+        # Instanz bis zum nächsten 30-s-Tick stehen, obwohl alles bereit ist.
+        for _ in range(MAX_DRIVE_ROUNDS):
+            await _drive(instance_id)
+            if not await _has_active_token(instance_id):
+                break
     finally:
         async with SessionLocal() as db:
             await db.execute(
@@ -508,6 +1005,18 @@ async def advance(instance_id: int) -> None:
                 .values(advancing=False)
             )
             await db.commit()
+
+
+async def _has_active_token(instance_id: int) -> bool:
+    async with SessionLocal() as db:
+        row = (await db.execute(
+            select(WorkflowToken.id)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowToken.instance_id)
+            .where(WorkflowToken.instance_id == instance_id,
+                   WorkflowToken.state == TState.active,
+                   WorkflowInstance.status.in_([IStatus.running, IStatus.waiting]))
+            .limit(1))).first()
+    return row is not None
 
 
 async def _move(db, inst, token, edges, node, handle) -> bool:
@@ -533,6 +1042,9 @@ async def _drive(instance_id: int) -> None:
         version = await db.get(WorkflowVersion, inst.version_id)
         graph = version.graph or {} if version else {}
         edges = _edges(graph)
+        # Ergebnis-Wächter werden erst nach dem Commit gestartet — sonst könnten sie einen
+        # Schritt lesen wollen, den diese Session noch gar nicht festgeschrieben hat.
+        spawn_after: list = []
 
         steps_taken = 0
         while steps_taken < MAX_STEPS:
@@ -555,26 +1067,27 @@ async def _drive(instance_id: int) -> None:
                 break
             ntype = node_type(node)
 
-            # Wiedereintritt: erledigtes human_task/approval → Kante gemäß decision nehmen,
-            # OHNE den Knoten erneut auszuführen (kein neuer Wait).
-            if ntype in WAIT_NODES:
-                last = await _latest_step(db, inst.id, token.node_id)
-                if last is not None and last.status == SStatus.done:
-                    if ntype == "human_task":
-                        handle = "out"
-                    elif ntype == "agent_task":
-                        # Outcome-Handle falls verdrahtet, sonst Fallback auf „out"
-                        # (v1-Editor zeichnet oft nur einen out-Ausgang).
-                        dec = last.decision or "out"
-                        handle = dec if next_node(edges, token.node_id, dec) is not None else "out"
-                    else:  # approval
-                        handle = last.decision or "out"
-                    if not await _move(db, inst, token, edges, node, handle):
-                        break
-                    steps_taken += 1
-                    continue
+            # Wiedereintritt: Ein Schritt, der fertig ist und eine Entscheidung trägt
+            # (Genehmigung, Agent-Ausgang, Ereignis, Unter-Prozess, asynchrone Aktion),
+            # bestimmt die Kante — der Knoten wird NICHT erneut ausgeführt. `routed_at`
+            # stempelt das ab; ohne diesen Stempel würde eine Rückkante auf denselben
+            # Knoten (Fortsetzungs-Schleife!) beim nächsten Durchlauf sofort wieder routen,
+            # statt neu auszuführen. Synchrone Aktionen tragen keine Entscheidung und
+            # laufen in einer Schleife bewusst erneut.
+            last = await _latest_step(db, inst.id, token.node_id)
+            if (last is not None and last.status == SStatus.done and last.routed_at is None
+                    and (last.decision or ntype in WAIT_NODES)):
+                # Ausgang laut Entscheidung, sonst Fallback auf „out" (der Editor zeichnet
+                # oft nur einen out-Ausgang).
+                dec = last.decision or "out"
+                handle = dec if next_node(edges, token.node_id, dec) is not None else "out"
+                last.routed_at = _now()
+                if not await _move(db, inst, token, edges, node, handle):
+                    break
+                steps_taken += 1
+                continue
 
-            outcome = await _run_node(db, inst, node, ntype, token, edges)
+            outcome = await _run_node(db, inst, node, ntype, token, edges, spawn_after)
 
             if outcome.terminal:
                 token.state = TState.consumed
@@ -607,9 +1120,17 @@ async def _drive(instance_id: int) -> None:
             log.warning("Instanz %s: MAX_STEPS erreicht → failed", inst.id)
 
         await db.commit()
+        for watcher in spawn_after:
+            _spawn(watcher)
         await publish_event(inst.project_id or 0, {
             "type": "workflow_update", "instance_id": inst.id, "status": inst.status.value,
         })
+        # Kind-Lauf beendet → wartenden subflow-Schritt der Eltern-Instanz wecken.
+        parent_id, parent_node = inst.parent_instance_id, inst.parent_node_id
+        if parent_id and parent_node and inst.status in (
+                IStatus.completed, IStatus.failed, IStatus.cancelled):
+            await _finish_subflow(parent_id, parent_node, inst.status.value,
+                                  dict(inst.context or {}), inst.error)
 
 
 # ── Validierung ──────────────────────────────────────────────────────────────
@@ -671,6 +1192,13 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
             handles = _outgoing_handles(edges, nid)
             branch_handles = {b.get("handle") for b in (cfg.get("branches") or [])}
             default_h = cfg.get("default_handle", "default")
+            # Der Standard-Zweig MUSS einer der Zweige sein. Sonst zeigt der Knoten einen
+            # Ausgang, den die Konfiguration nicht kennt — beim nächsten Bearbeiten wäre er
+            # weg und die Kante hinge in der Luft.
+            if cfg.get("branches") and default_h not in branch_handles:
+                errors.append(
+                    f"Decision-Knoten '{nid}': Standard-Zweig '{default_h}' ist keiner der "
+                    f"Zweige ({', '.join(sorted(h for h in branch_handles if h))})")
             needed = {h for h in branch_handles if h} | {default_h}
             for h in sorted(needed):
                 if h not in handles:
@@ -685,6 +1213,22 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
 
         if ntype == "agent_task" and sk != "issue":
             errors.append(f"agent_task-Knoten '{nid}' erfordert subject_kind=issue")
+
+        if ntype == "subflow":
+            cfg = node_config(n)
+            slot = cfg.get("slot") or cfg.get("workflow_slot")
+            if not slot:
+                errors.append(f"Subflow-Knoten '{nid}': kein Ablauf (Slot) gewählt")
+            else:
+                from ..models.enums import WorkflowSlot
+                if slot not in {s.value for s in WorkflowSlot}:
+                    errors.append(f"Subflow-Knoten '{nid}': unbekannter Slot '{slot}'")
+
+        if ntype == "wait_event":
+            cfg = node_config(n)
+            bad = [e for e in _accepted_events(cfg) if not str(e).strip()]
+            if bad:
+                errors.append(f"Ereignis-Knoten '{nid}': leerer Ereignisname")
 
     # Optional: Erreichbarkeit eines End-Knotens vom Start via BFS
     if starts and ends and not dupes:
@@ -709,14 +1253,53 @@ def _reachable(start_id, edges: list[dict]) -> set[str]:
 
 # ── Sicherheitsnetz-Loop (Crash-Recovery) ────────────────────────────────────
 
+async def _retry_gated() -> list[int]:
+    """Vertagte Agentenläufe (`waiting_for="gate"`) wieder scharf schalten.
+
+    Das ersetzt den alten Dispatcher-Pickup: Tickets, die wegen Nacht-Fenster, Feierabend,
+    Runner-Limit oder Cap nicht starten durften, kommen hier zyklisch erneut ans Tor.
+    """
+    async with SessionLocal() as db:
+        tokens = (await db.execute(
+            select(WorkflowToken)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowToken.instance_id)
+            .where(
+                WorkflowToken.state == TState.waiting,
+                WorkflowToken.waiting_for == "gate",
+                WorkflowInstance.status.in_([IStatus.running, IStatus.waiting]),
+                WorkflowInstance.advancing.is_(False),
+            )
+            .order_by(WorkflowToken.updated_at)
+            .limit(50))).scalars().all()
+        ids = []
+        for tok in tokens:
+            tok.state = TState.active
+            tok.waiting_for = None
+            ids.append(tok.instance_id)
+        if ids:
+            await db.commit()
+    return ids
+
+
 async def _engine_tick() -> None:
+    # Artefakt-Zeilen angleichen: `agent_status` wird an vielen Stellen gesetzt (Endpunkte,
+    # Bot, PM-Chat, Worker) — der Abgleich holt das binnen eines Ticks nach, statt jede
+    # dieser Stellen einzeln pflegen zu müssen.
+    try:
+        from .artifacts import reconcile
+        async with SessionLocal() as db:
+            await reconcile(db)
+    except Exception:  # noqa: BLE001 — der Abgleich darf den Tick nie blockieren
+        log.exception("Artefakt-Abgleich fehlgeschlagen")
+
+    gated = await _retry_gated()
     async with SessionLocal() as db:
         ids = (
             await db.execute(
                 select(WorkflowInstance.id)
                 .join(WorkflowToken, WorkflowToken.instance_id == WorkflowInstance.id)
                 .where(
-                    WorkflowInstance.status == IStatus.running,
+                    WorkflowInstance.status.in_([IStatus.running, IStatus.waiting]),
                     WorkflowInstance.advancing.is_(False),
                     WorkflowToken.state == TState.active,
                 )
@@ -724,7 +1307,7 @@ async def _engine_tick() -> None:
                 .limit(50)
             )
         ).scalars().all()
-    for iid in ids:
+    for iid in dict.fromkeys([*gated, *ids]):
         try:
             await advance(iid)
         except Exception:  # noqa: BLE001
@@ -732,19 +1315,19 @@ async def _engine_tick() -> None:
 
 
 async def recover_workflow_agents() -> None:
-    """Nach Backend-Neustart: wartende agent_task-Schritte (StepRun.running) wieder an ihren
-    Redis-Lauf anbinden. `_await_agent` greift ein bereits vorliegendes Ergebnis via
-    wait_result sofort ab, sonst wartet es weiter — 1:1 die recover_on_start-Philosophie
-    des Dispatchers."""
+    """Nach Backend-Neustart: laufende agent_task- und Aktions-Schritte (StepRun.running)
+    wieder an ihren Redis-Lauf anbinden. `_await_agent`/`_await_action` greifen ein bereits
+    vorliegendes Ergebnis via wait_result sofort ab, sonst warten sie weiter — sonst hinge
+    ein Ticket nach einem simplen Backend-Reload für immer im „läuft"-Zustand."""
     async with SessionLocal() as db:
         rows = (
             await db.execute(
                 select(WorkflowStepRun)
                 .where(WorkflowStepRun.status == SStatus.running,
-                       WorkflowStepRun.node_type == NType.agent_task)
+                       WorkflowStepRun.node_type.in_([NType.agent_task, NType.auto_action]))
             )
         ).scalars().all()
-        pending = []
+        agents, actions = [], []
         for s in rows:
             task_id = (s.result or {}).get("task_id")
             if not task_id or s.token_id is None:
@@ -755,12 +1338,21 @@ async def recover_workflow_agents() -> None:
             version = await db.get(WorkflowVersion, inst.version_id)
             node = _node_by_id(version.graph or {}, s.node_id) if version else None
             cfg = node_config(node) if node else {}
-            pending.append((s.instance_id, s.token_id, s.id, task_id,
-                            dict(cfg.get("outcomes_map") or {}),
-                            int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT)))
-    for instance_id, token_id, step_id, task_id, omap, timeout in pending:
+            omap = dict(cfg.get("outcomes_map") or {})
+            if s.node_type == NType.agent_task:
+                agents.append((s.instance_id, s.token_id, s.id, task_id, omap,
+                               int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT)))
+            else:
+                actions.append((s.instance_id, s.token_id, s.id, task_id,
+                                int(cfg.get("timeout_sec") or 900), omap,
+                                str((s.result or {}).get("context_key") or "action")))
+    for instance_id, token_id, step_id, task_id, omap, timeout in agents:
         log.info("workflow reattach: agent-Schritt %s (task %s)", step_id, task_id)
-        asyncio.create_task(_await_agent(instance_id, token_id, step_id, task_id, omap, timeout))
+        _spawn(_await_agent(instance_id, token_id, step_id, task_id, omap, timeout))
+    for instance_id, token_id, step_id, task_id, timeout, omap, ckey in actions:
+        log.info("workflow reattach: Aktions-Schritt %s (task %s)", step_id, task_id)
+        _spawn(_await_action(instance_id, token_id, step_id, task_id, timeout,
+                                          ckey, omap))
 
 
 async def run_workflow_engine() -> None:

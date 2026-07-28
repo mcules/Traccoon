@@ -38,6 +38,10 @@ class AgentDefinition(TimestampMixin, Base):
     allowed_skills: Mapped[list] = mapped_column(JSON, default=list)  # verfügbare Skill-Keys
     autoload_skills: Mapped[list] = mapped_column(JSON, default=list) # Teilmenge: immer in den Prompt
     delegate_to: Mapped[list] = mapped_column(JSON, default=list)     # Sub-Agenten-Rollen
+    # Lernt dazu (TRA-30): liest zu Beginn das Gedächtnis aus dem Vault des Owners und hält nach
+    # einem erfolgreichen Lauf Rückschau, um dauerhaft Gültiges dort abzulegen. Braucht einen
+    # gesetzten User.vault_memory_path — ohne den passiert nichts.
+    learns: Mapped[bool] = mapped_column(Boolean, default=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Verknüpfung (Workstream B): aus welchem globalen Agenten kopiert + ob seither bearbeitet
     origin_agent_id: Mapped[int | None] = mapped_column(

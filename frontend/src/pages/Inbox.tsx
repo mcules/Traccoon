@@ -4,6 +4,7 @@ import { api, ApiError } from "../api";
 import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
 import AssistantChat from "../components/AssistantChat";
+import { usePageChrome } from "../pageChrome";
 
 interface InboxItem {
   id: number; kind: string; source: string; title: string;
@@ -40,6 +41,8 @@ function senderEmail(from: string | null): string {
 }
 
 export default function Inbox() {
+  // Eigene Reiter im Seiteninhalt — im Kopf nur der Titel, kein Untermenü.
+  usePageChrome("Assistent", []);
   const [tab, setTab] = useState<Tab>("chat");
   return (
     <div className="mx-auto max-w-3xl">

@@ -25,3 +25,18 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
 }
+
+/* Bildlaufleisten am Theme ausrichten — sonst zeichnet der Browser im Dark-Mode
+   die weiße Default-Leiste (z.B. am waagerecht scrollenden Board). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--line)) transparent;
+}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--line));
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted)); }
+::-webkit-scrollbar-corner { background: transparent; }

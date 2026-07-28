@@ -7,13 +7,14 @@ const GATE_LABEL: Record<string, string> = {
   none: "ohne Gate",
 };
 
-export default function ApprovalNode({ data, selected }: FlowNodeProps) {
+export default function ApprovalNode({ id, data, selected }: FlowNodeProps) {
   const c = data.config;
   return (
     <BaseNode
+      nodeId={id}
       title={c.label || "Freigabe"}
       icon="✅"
-      accent="border-l-emerald-500"
+      accent="border-t-emerald-500"
       selected={selected}
       runtimeState={data.runtimeState}
       sources={[

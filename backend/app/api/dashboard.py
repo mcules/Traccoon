@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
 from ..models.agents import Run
-from ..models.enums import StatusCategory, TicketAgentStatus
+from ..models.enums import TicketAgentStatus
 from ..models.ticket import Issue, WorkflowStatus
 from .deps import Access, get_project_access
 

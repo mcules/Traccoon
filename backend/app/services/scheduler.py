@@ -95,6 +95,8 @@ async def _tick() -> None:
                 await _run_script(db, job, jr)
             elif job.kind == "workflow":
                 await _start_workflow_job(db, job, jr)
+            elif job.kind == "http":
+                await _run_http_job(db, job, jr)
             else:  # prompt → Worker
                 await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}",
                                     "job_id": job.id, "job_run_id": jr.id})
@@ -123,6 +125,41 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
     except Exception as e:  # noqa: BLE001
         jr.status = "error"; jr.error = str(e)[:2000]
         log.exception("workflow-job %s fehlgeschlagen", job.name)
+    jr.finished_at = _now()
+
+
+async def _run_http_job(db, job: Job, jr: JobRun) -> None:
+    """kind=http: ruft bei Fälligkeit ein hinterlegtes Ziel auf.
+
+    Der Aufruf steht in `job.http_request` ({method, path, query, headers, body}) — dieselbe
+    Form wie die Prozess-Aktion, damit ein Ablauf mühelos zwischen Zeitplan und Prozess
+    wandern kann. Fehler landen als Job-Fehler (und damit im gewohnten Notify-Pfad).
+    """
+    from ..models.destination import Destination
+    from . import destinations
+    if job.destination_id is None:
+        jr.status = "error"; jr.error = "Job ohne Ziel"; jr.finished_at = _now()
+        return
+    dest = await db.get(Destination, job.destination_id)
+    if dest is None or not dest.enabled:
+        jr.status = "error"; jr.error = "Ziel fehlt oder ist deaktiviert"; jr.finished_at = _now()
+        return
+    req = job.http_request or {}
+    try:
+        res = await destinations.call(
+            db, dest,
+            method=req.get("method") or "POST", path=req.get("path") or "",
+            query=req.get("query") or {}, headers=req.get("headers") or {},
+            body=req.get("body"), timeout=job.run_timeout or None,
+        )
+        jr.status = "ok" if res["ok"] else "error"
+        jr.exit_code = res["status_code"]
+        jr.output = (res.get("text") or json.dumps(res.get("json", ""), ensure_ascii=False))[:20000]
+        if not res["ok"]:
+            jr.error = f"HTTP {res['status_code']}: {res.get('error', '')[:500]}"
+    except Exception as e:  # noqa: BLE001
+        jr.status = "error"; jr.error = str(e)[:2000]
+        log.exception("http-job %s fehlgeschlagen", job.name)
     jr.finished_at = _now()
 
 

@@ -3,6 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, Project } from "../api";
 import StatusManager from "./StatusManager";
+import DestinationsPanel from "./DestinationsPanel";
+import ProjectFields from "./ProjectFields";
 import AgentsPanel from "./AgentsPanel";
 import Members from "./Members";
 import ResourceGrants from "./ResourceGrants";
@@ -12,10 +14,12 @@ const PROVIDER_LABEL: Record<string, string> = {
   claude_code: "Claude", codex: "Codex", openai: "OpenAI",
 };
 
-type Tab = "allgemein" | "mitglieder" | "agenten" | "board" | "git" | "testenv" | "deploy";
+type Tab = "allgemein" | "mitglieder" | "agenten" | "board" | "felder" | "git" | "testenv"
+  | "deploy" | "destinations";
 const TABS: [Tab, string][] = [
   ["allgemein", "Allgemein"], ["mitglieder", "Mitglieder"], ["agenten", "Agenten"], ["board", "Board"],
-  ["git", "Git"], ["testenv", "Testumgebung"], ["deploy", "Deployment"],
+  ["felder", "Felder"],
+  ["git", "Git"], ["testenv", "Testumgebung"], ["deploy", "Deployment"], ["destinations", "Ziele"],
 ];
 
 type Settings = {
@@ -98,7 +102,8 @@ export default function ProjectSettings({ project }: { project: Project }) {
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
   };
 
-  const showSave = tab !== "board" && tab !== "agenten" && tab !== "mitglieder";
+  const showSave = tab !== "board" && tab !== "agenten" && tab !== "mitglieder"
+    && tab !== "destinations";
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-4 flex flex-wrap gap-1 border-b border-line">
@@ -214,6 +219,9 @@ export default function ProjectSettings({ project }: { project: Project }) {
       )}
 
       {tab === "board" && <StatusManager project={project} />}
+      {tab === "felder" && <ProjectFields project={project} />}
+
+      {tab === "destinations" && <DestinationsPanel scope="project" projectId={project.id} />}
 
       {tab === "git" && (
       <Section title="Git">

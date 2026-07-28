@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api";
+import { api, ApiError, workflowApi } from "../api";
 import { usePageChrome } from "../pageChrome";
+import DestinationsPanel from "../components/DestinationsPanel";
+import ArtifactTypesPanel from "../components/ArtifactTypesPanel";
 
-type Tab = "users" | "cost" | "maintenance" | "mail";
+type Tab = "users" | "cost" | "maintenance" | "mail" | "destinations" | "artifacts";
 const TABS: [Tab, string][] = [
   ["users", "Nutzer"], ["cost", "Kosten"], ["maintenance", "Wartung"], ["mail", "E-Mail"],
+  ["destinations", "Ziele"], ["artifacts", "Artefakte"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -16,7 +19,8 @@ export default function Admin() {
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "users") as Tab;
   usePageChrome("Admin", TABS.map(([key, label]) => ({
     key, label, to: `/admin/${key}`,
-    icon: { users: "👥", cost: "💶", maintenance: "🔧", mail: "✉️" }[key],
+    icon: { users: "👥", cost: "💶", maintenance: "🔧", mail: "✉️", destinations: "🎯",
+            artifacts: "📦" }[key],
   })));
   return (
     <div>
@@ -24,6 +28,8 @@ export default function Admin() {
       {tab === "cost" && <Cost />}
       {tab === "maintenance" && <Maintenance />}
       {tab === "mail" && <MailConfig />}
+      {tab === "destinations" && <DestinationsPanel scope="global" />}
+      {tab === "artifacts" && <ArtifactTypesPanel />}
     </div>
   );
 }
@@ -115,7 +121,42 @@ function Maintenance() {
         {status?.update_in_progress && " · Update läuft"}
       </div>
       <RunRetention />
+      <WorkflowLayout />
       <TestenvConfig />
+    </div>
+  );
+}
+
+/** Abstand der Knoten beim „Anordnen" im Prozess-Editor. */
+function WorkflowLayout() {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["workflow-layout"], queryFn: workflowApi.layout });
+  const [gap, setGap] = useState<number | null>(null);
+  const [msg, setMsg] = useState("");
+  const wert = gap ?? data?.gap ?? 40;
+  const save = useMutation({
+    mutationFn: () => workflowApi.setLayout(wert),
+    onSuccess: () => {
+      setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setGap(null);
+      qc.invalidateQueries({ queryKey: ["workflow-layout"] });
+    },
+  });
+  return (
+    <div className="border-t border-line pt-3">
+      <div className="text-sm font-medium">Prozess-Editor: Knotenabstand</div>
+      <p className="mt-1 text-xs text-muted">
+        Gilt für „Anordnen" — derselbe Abstand waagerecht wie senkrecht, gemessen zwischen den
+        Kartenrändern. Kleinere Werte packen lange Abläufe enger zusammen.
+      </p>
+      <div className="mt-2 flex items-center gap-2">
+        <input type="number" min={8} max={400} value={wert}
+          onChange={(e) => setGap(Number(e.target.value))}
+          className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
+        <span className="text-xs text-muted">px</span>
+        <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+          Speichern</button>
+        {msg && <span className="text-sm text-green-400">{msg}</span>}
+      </div>
     </div>
   );
 }

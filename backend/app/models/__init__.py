@@ -2,8 +2,8 @@ from .enums import (  # noqa: F401
     BoardType, GlobalRole, GrantLevel, HoldReason, IssueTypeCategory, LinkType, LocationType,
     Priority, ProjectRole, PurchaseStatus, ResourceType, SprintState, StatusCategory,
     TicketAgentStatus, UserStatus,
-    WorkflowInstanceStatus, WorkflowNodeType, WorkflowStepStatus, WorkflowSubjectKind,
-    WorkflowTokenState, WorkflowVersionStatus,
+    WorkflowInstanceStatus, WorkflowNodeType, WorkflowSetScope, WorkflowSlot,
+    WorkflowStepStatus, WorkflowSubjectKind, WorkflowTokenState, WorkflowVersionStatus,
 )
 from .user import SYSTEM_USER_ID, User  # noqa: F401
 from .project import Project, ProjectMember, ResourceGrant, default_ai_assign  # noqa: F401
@@ -24,13 +24,18 @@ from .ops import (  # noqa: F401
     ProviderModel, WebhookCoalesce, WebhookSub,
 )
 from .secrets import UserSecret  # noqa: F401
+from .destination import Destination  # noqa: F401
+from .artifact import (  # noqa: F401
+    Artifact, ArtifactField, ArtifactFieldOption, ArtifactType, ArtifactValue,
+)
 from .testenv import BranchTestenv  # noqa: F401
 from .assistant import AssistantPermission, AssistantPolicy, AssistantTask  # noqa: F401
 from .chat import Message  # noqa: F401
 from .notification import Notification  # noqa: F401
 from .plugins import McpServer, Plugin, PluginData, PluginFile, Skill  # noqa: F401
 from .workflow import (  # noqa: F401
-    WorkflowDefinition, WorkflowInstance, WorkflowStepRun, WorkflowToken, WorkflowVersion,
+    WorkflowDefinition, WorkflowInstance, WorkflowSet, WorkflowStepRun, WorkflowToken,
+    WorkflowVersion,
 )
 
 __all__ = [
@@ -46,5 +51,6 @@ __all__ = [
     "UserSecret", "Message", "Notification", "Skill", "McpServer", "Plugin", "PluginFile",
     "AssistantTask", "AssistantPolicy", "AssistantPermission",
     "WorkflowDefinition", "WorkflowVersion", "WorkflowInstance", "WorkflowToken",
-    "WorkflowStepRun", "BranchTestenv",
+    "WorkflowStepRun", "WorkflowSet", "BranchTestenv", "Destination",
+    "ArtifactType", "Artifact",
 ]

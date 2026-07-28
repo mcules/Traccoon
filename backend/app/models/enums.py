@@ -147,6 +147,29 @@ class WorkflowNodeType(str, enum.Enum):
     approval = "approval"
     auto_action = "auto_action"
     agent_task = "agent_task"
+    wait_event = "wait_event"  # wartet auf ein externes Ereignis (Kommentar/Antwort/manuell)
+    subflow = "subflow"        # startet die Definition eines Slots als Kind-Instanz
+
+
+class WorkflowSetScope(str, enum.Enum):
+    """Geltungsbereich eines Prozess-Satzes.
+
+    global_ = der eine ausgelieferte Standard-Satz (is_builtin) oder ein weiterer
+    systemweiter Satz (Admin); user = persönlicher Satz, gilt für alle Projekte, in
+    denen der Nutzer die Owner-Rolle hat.
+    """
+    global_ = "global"
+    user = "user"
+
+
+class WorkflowSlot(str, enum.Enum):
+    """Fest benannte Abläufe, die Traccoon selbst auslöst. Ein Satz belegt je Slot
+    höchstens eine Definition; Projekte können einen Slot mit einer eigenen Kopie
+    überschreiben (copy-on-write) und jederzeit zurücksetzen."""
+    ticket_lifecycle = "ticket_lifecycle"          # KI-Ticket-Lebenszyklus
+    acceptance = "acceptance"                      # Abnahme: Testenv abräumen → Merge → Deploy
+    hardware_procurement = "hardware_procurement"  # Beschaffung eines Exemplars
+    ticket_intake = "ticket_intake"                # Eingang (Webhook/Mail) → Ticket
 
 
 class WorkflowTokenState(str, enum.Enum):

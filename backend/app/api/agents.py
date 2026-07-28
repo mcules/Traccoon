@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_session
 from ..models.agents import AgentDefinition
 from ..models.user import User
-from .deps import get_current_user, is_owner_or_admin, require_role
+from .deps import get_current_user, is_owner_or_admin
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 
@@ -31,6 +31,7 @@ class AgentIn(BaseModel):
     can_read_code: bool = False
     can_delegate: bool = False
     web_search: bool = False
+    learns: bool = True
     allowed_tools: list = []
     allowed_skills: list = []
     autoload_skills: list = []
@@ -41,6 +42,10 @@ class AgentIn(BaseModel):
 
 class AgentOut(AgentIn):
     id: int
+    # Woher die Definition kommt: NULL = systemweit ausgeliefert, sonst der Eigentümer.
+    # Zusammen mit project_id macht das in der Oberfläche unterscheidbar, welche von
+    # mehreren gleichnamigen Rollen tatsächlich greift.
+    user_id: int | None = None
     origin_agent_id: int | None = None
     customized: bool = False
     model_config = {"from_attributes": True}
@@ -89,7 +94,7 @@ _COPY_FIELDS = (
     "display_name", "system_prompt", "provider", "model", "token_name", "fallback",
     "fallback_model", "fallback_token_name", "effort", "temperature", "max_tokens",
     "max_context_tokens", "max_turns_planning", "max_turns_execution", "can_code",
-    "can_read_code", "can_delegate", "web_search", "allowed_tools", "allowed_skills",
+    "can_read_code", "can_delegate", "web_search", "learns", "allowed_tools", "allowed_skills",
     "autoload_skills", "delegate_to", "active",
 )
 

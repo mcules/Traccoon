@@ -12,7 +12,7 @@ import datetime as dt
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -29,6 +29,9 @@ from .mcp_client import mcp_session
 from .providers.base import ProviderError
 from .providers.router import router
 from .assistant_gate import gate_check
+from .tools_memory import (
+    MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLEXION_PROMPT, call_memory_tool, memory_root, read_memory,
+)
 from .tools_traccoon import TRACCOON_TOOL_NAMES, TRACCOON_TOOLS, call_traccoon_tool
 
 log = logging.getLogger("traccoon.runtime")
@@ -53,7 +56,15 @@ def _now() -> dt.datetime:
 # ---------- Tool-Schemas (Port) ----------
 
 # Loop-/Steuer-Tools sind Agent-Mechanik, nicht durch die Allowlist beschränkt (IMMER verfügbar).
-_ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "submit_plan", "delegate"}
+# `traccoon_notify_human` gehört dazu: seit der Assistent nur noch auf ausdrückliche
+# Meldung hin benachrichtigt, wäre eine fehlende Allowlist-Freigabe gleichbedeutend mit
+# „meldet nie" — dann bliebe auch Wichtiges stumm. Das Tool schreibt ausschließlich eine
+# Nachricht an den eigenen Menschen, greift also nichts an.
+# Die Gedächtnis-Tools gehören ebenfalls dazu: `allowed_tools` ist deny-by-default, eine
+# fehlende Freigabe hieße also „lernt still nie" — genau der Zustand, den TRA-30 beendet.
+# Sie schreiben ausschließlich in den Gedächtnis-Ordner des eigenen Menschen.
+_ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "submit_plan",
+                   "delegate", "traccoon_notify_human"} | MEMORY_TOOL_NAMES
 
 SUBMIT_PLAN_TOOL = {"type": "function", "function": {
     "name": "submit_plan",
@@ -356,6 +367,9 @@ class AgentDef:
     allowed_skills: list[str]
     autoload_skills: list[str]
     delegate_to: list[str]
+    # Liest zu Beginn das Gedächtnis und hält nach dem Lauf Rückschau (TRA-30). Default an;
+    # ohne gesetzten Vault-Ordner beim Owner passiert trotzdem nichts.
+    learns: bool = True
 
     def tool_allowed(self, name: str) -> bool:
         # Loop-/Steuer-Tools sind Agent-Mechanik, nicht durch die Allowlist beschränkt.
@@ -379,6 +393,7 @@ def agent_def_from_row(row: AgentDefinition, mode: str) -> AgentDef:
         web_search=row.web_search, allowed_tools=list(row.allowed_tools or []),
         allowed_skills=list(row.allowed_skills or []),
         autoload_skills=list(row.autoload_skills or []), delegate_to=list(row.delegate_to or []),
+        learns=bool(row.learns),
     )
 
 
@@ -600,6 +615,57 @@ LOAD_SKILL_TOOL = {
     }}
 
 
+# Wie viele Züge die Rückschau höchstens bekommt: einer zum Merken, einer zum Abschließen.
+MAX_REFLEXION_TURNS = 2
+
+
+async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | None,
+                   project_key: str, messages: list[dict[str, Any]], summary: str, log,
+                   tokens: dict, base_urls: dict) -> tuple[int, int, int]:
+    """Rückschau nach einem erfolgreichen Lauf: Dauerhaftes ins Gedächtnis (TRA-30).
+
+    Ein zusätzlicher Modellzug über den gelaufenen Verlauf, dem NUR die Gedächtnis-Tools
+    angeboten werden — der Agent kann hier also nichts mehr tun als lernen. Der Regelfall
+    ist „nichts gelernt", das kostet einen kurzen Zug.
+
+    Rückgabe: (input, output, cache_read) zum Aufaddieren auf die Zähler des Laufs.
+    """
+    in_tok = out_tok = cache_read = 0
+    # Die Abschluss-Antwort steht noch nicht im Verlauf (im tool-call-freien Zweig wird sie
+    # nicht angehängt) — die Rückschau braucht sie aber, sie ist das Ergebnis des Laufs.
+    # Der Auftrag geht als `user`-Zug hinein, NICHT als `system`: role=system wird bei
+    # Anthropic zu einem System-Block umgebaut (providers/anthropic.py) und stünde damit
+    # nicht am Ende des Gesprächs, sondern in der Systemanweisung.
+    msgs = list(messages)
+    if (summary or "").strip():
+        msgs.append({"role": "assistant", "content": summary})
+    msgs.append({"role": "user", "content": REFLEXION_PROMPT})
+    for _ in range(MAX_REFLEXION_TURNS):
+        resp = await router.chat(provider=agent.provider, model=agent.model, messages=msgs,
+                                 tools=list(MEMORY_TOOLS), temperature=agent.temperature,
+                                 max_tokens=1024, fallback=agent.fallback,
+                                 fallback_model=agent.fallback_model, tokens=tokens,
+                                 base_urls=base_urls)
+        in_tok += int(resp.usage.get("input_tokens", 0) or 0)
+        out_tok += int(resp.usage.get("output_tokens", 0) or 0)
+        cache_read += int(resp.cache_read_tokens or 0)
+        if not resp.tool_calls:
+            break
+        msgs.append((resp.raw.get("choices") or [{}])[0].get("message") or {
+            "role": "assistant", "content": resp.text, "tool_calls": []})
+        for call in resp.tool_calls:
+            if call.name in MEMORY_TOOL_NAMES:
+                out = await call_memory_tool(db, mcp, owner_id, call.name, call.arguments,
+                                             agent.role, project_key)
+            else:
+                out = f"FEHLER: In der Rückschau ist nur '{', '.join(sorted(MEMORY_TOOL_NAMES))}' erlaubt."
+            await log("tool", call.name,
+                      f"Rückschau: args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {out[:500]}")
+            msgs.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
+                         "content": out[:2000]})
+    return in_tok, out_tok, cache_read
+
+
 async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: dict,
                     mode: str = "execute", permissions: list[dict] | None = None,
                     ws_root: str | None = None, gate_on: bool = False,
@@ -608,7 +674,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     strict_success: bool = False, owner_id: int | None = None,
                     screenshot_enabled: bool = False, testenv_url: str = "",
                     continuation_index: int = 0, continuation_hint: str = "",
-                    comment_history: list[dict] | None = None,
+                    comment_history: list[dict] | None = None, history_title: str = "",
                     parent_run_id: int | None = None, task_id: str = "",
                     depth: int = 0, delegate_loader=None,
                     assistant_task_id: int | None = None) -> RunResult:
@@ -655,7 +721,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     if comment_history:
         thread = "\n".join(f"- **{c['label']}** ({c['role']}): {c['body']}" for c in comment_history)
         messages.append({"role": "user", "content":
-                         "# Kommentar-Verlauf (Rückfragen & Antworten)\n" + thread +
+                         (history_title or "# Kommentar-Verlauf (Rückfragen & Antworten)") +
+                         "\n" + thread +
                          "\n\nBerücksichtige besonders die Antworten des Nutzers (role=user)."})
     if _att_rows:
         _lst = "\n".join(f"- {fn} ({mt or 'unbekannt'}, {sz} Bytes)" for fn, mt, sz in _att_rows)
@@ -700,6 +767,25 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     _maybe(_t)
             if mode == "plan":
                 openai_tools.append(SUBMIT_PLAN_TOOL)
+
+            # Gedächtnis (TRA-30): gelernte Vorgaben aus dem Vault des Owners. Gelesen wird
+            # SERVERSEITIG — die `oneOf`-Adressierung des obsidian-MCP hängt damit nicht am
+            # Modell (Begründung in tools_memory). Ohne Vault-Ordner passiert nichts.
+            mem_root = await memory_root(db, owner_id) if agent.learns else ""
+            if mem_root:
+                for _t in MEMORY_TOOLS:
+                    openai_tools.append(_t)
+                try:
+                    _mem = await read_memory(mcp, mem_root, agent.role, project.get("key") or "")
+                except Exception:  # noqa: BLE001
+                    _mem = ""      # kein Vault erreichbar → Lauf ohne Gedächtnis, nicht abbrechen
+                if _mem:
+                    messages.append({"role": "system", "content":
+                        "# Gedächtnis (früher gelernt, gilt weiter)\n" + _mem +
+                        "\n\nDas hat dir dein Mensch beigebracht — halte dich daran, ohne dass er "
+                        "es wiederholen muss. Widerspricht der aktuelle Auftrag einer Erinnerung, "
+                        "gilt der Auftrag: korrigiere die Erinnerung dann mit `vergiss` und "
+                        "`erinnere_dich`."})
 
             # Vault-Projektkontext (MOC + Dateibaum) laden, falls konfiguriert (via obsidian-MCP)
             moc_path = project.get("vault_moc_path")
@@ -779,6 +865,19 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                     "⛔ ABSCHLUSS BLOCKIERT: Build ist ROT. Behebe die Ursache (nichts weglöschen) "
                                     "und arbeite weiter:\n\n" + verdict})
                                 continue
+                        # Rückschau: was war eine dauerhafte Vorgabe? (TRA-30) Nur bei Erfolg —
+                        # ein abgebrochener Lauf hat keine belastbare Lehre. Fehler bleiben
+                        # hier liegen: der Lauf war erfolgreich, daran ändert die Rückschau nichts.
+                        if mem_root:
+                            try:
+                                _ri, _ro, _rc = await _reflect(
+                                    db=db, mcp=mcp, agent=agent, owner_id=owner_id,
+                                    project_key=project.get("key") or "", messages=messages,
+                                    summary=resp.text, log=log, tokens=tokens,
+                                    base_urls=base_urls)
+                                in_tok += _ri; out_tok += _ro; cache_read += _rc
+                            except Exception as exc:  # noqa: BLE001
+                                await log("system", None, f"Rückschau übersprungen: {exc}")
                         await _end_run(db, run_id, "success", summary=resp.text, iterations=iteration,
                                        in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                         return RunResult("done", resp.text, iteration, summary=resp.text, run_id=run_id)
@@ -846,9 +945,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                                  run_id=run_id, blocker_kind="permission")
 
                     # Assistent-Tool-Gate: externe mutierende MCP-Aktionen brauchen Freigabe.
-                    # traccoon_*-Steuertools sind ausgenommen (schon auf Owner-Rechte begrenzt).
-                    if assistant_task_id and perms.is_gated(call.name) \
-                            and call.name not in TRACCOON_TOOL_NAMES:
+                    # traccoon_*-Steuertools sind ausgenommen (schon auf Owner-Rechte begrenzt) —
+                    # AUSSER dem Ziel-Aufruf: der wirkt auf ein fremdes System, und ob er
+                    # verändert, steht erst in der Methode (GET liest, POST/PUT/DELETE schreiben).
+                    _gated = perms.is_gated(call.name) and call.name not in TRACCOON_TOOL_NAMES
+                    if call.name == "traccoon_http_call":
+                        _gated = str(call.arguments.get("method") or "GET").upper() not in (
+                            "GET", "HEAD", "OPTIONS")
+                    if assistant_task_id and _gated:
                         _atask = await db.get(AssistantTask, assistant_task_id)
                         if _atask is not None:
                             _res = perms.resource_of(call.name, call.arguments)
@@ -913,7 +1017,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     elif call.name == "read_attachment":
                         result = await _do_read_attachment(db, issue_id, call.arguments)
                     elif call.name in TRACCOON_TOOL_NAMES:
-                        result = await call_traccoon_tool(db, owner_id, call.name, call.arguments)
+                        result = await call_traccoon_tool(db, owner_id, call.name, call.arguments,
+                                                          assistant_task_id)
+                    elif call.name in MEMORY_TOOL_NAMES:
+                        result = await call_memory_tool(db, mcp, owner_id, call.name, call.arguments,
+                                                        agent.role, project.get("key") or "")
                     elif not agent.tool_allowed(call.name):
                         result = f"FEHLER: Tool '{call.name}' ist für diesen Agenten nicht erlaubt."
                     else:

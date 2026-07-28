@@ -23,6 +23,8 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
 
   const [runners, setRunners] = useState(3);
   const [chat, setChat] = useState("");
+  const [notify, setNotify] = useState("needed");
+  const [gedaechtnis, setGedaechtnis] = useState("");
   const [nightStart, setNightStart] = useState(22);
   const [nightEnd, setNightEnd] = useState(6);
   const [msg, setMsg] = useState("");
@@ -31,6 +33,8 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
     if (!flags) return;
     setRunners(flags.max_runners ?? 3);
     setChat(flags.telegram_chat_id || "");
+    setNotify(flags.assistant_notify || "needed");
+    setGedaechtnis(flags.vault_memory_path || "");
     setNightStart(flags.night_start_hour ?? 22);
     setNightEnd(flags.night_end_hour ?? 6);
   }, [flags]);
@@ -67,6 +71,53 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
           <button onClick={async () => { await api.put("/me/telegram-chat", { value: chat }); inv(); flash("Chat-ID gespeichert."); }}
             className="rounded bg-brand px-3 py-1 text-white">Speichern</button>
         </div>
+      </div>
+
+      <div className="rounded-lg border border-line bg-card p-4">
+        <div className="mb-1 text-sm font-medium">Meldungen des Assistenten</div>
+        <p className="mb-3 text-xs text-muted">
+          Der persönliche Assistent arbeitet den Posteingang still ab. Ob er sich meldet,
+          entscheidet er selbst: nur wenn du etwas wissen musst oder willst (Frist, Betrag,
+          Entscheidung, Störung). Das Ergebnis jedes Laufs steht ohnehin im Posteingang.
+        </p>
+        <div className="flex items-center gap-3 text-sm">
+          <select value={notify} onChange={async (e) => {
+            setNotify(e.target.value);
+            await api.put("/me/assistant-notify", { value: e.target.value });
+            inv(); flash("Gespeichert.");
+          }} className="rounded border border-line bg-surface px-2 py-1">
+            <option value="needed">Nur wenn ich etwas wissen muss (empfohlen)</option>
+            <option value="always">Jeder erledigte Eingang</option>
+            <option value="errors">Nur Pannen</option>
+            <option value="never">Gar nicht</option>
+          </select>
+        </div>
+        <p className="mt-2 text-[11px] text-muted">
+          Fragen, die du im Chat stellst, werden immer beantwortet.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-line bg-card p-4">
+        <div className="mb-1 text-sm font-medium">Gedächtnis der Agenten</div>
+        <p className="mb-3 text-xs text-muted">
+          Ordner in deinem Obsidian-Vault, in dem die Agenten festhalten, was du ihnen beibringst —
+          damit du es nicht wiederholen musst. Sie legen dort <code>Mensch.md</code>,{" "}
+          <code>Agent-&lt;rolle&gt;.md</code> und <code>Projekt-&lt;KEY&gt;.md</code> an und lesen
+          es zu Beginn jedes Laufs. Du kannst die Notizen jederzeit selbst korrigieren.
+        </p>
+        <div className="flex items-center gap-3 text-sm">
+          <input value={gedaechtnis} onChange={(e) => setGedaechtnis(e.target.value)}
+            placeholder="z. B. 04 Traccoon/Gedächtnis"
+            className="w-72 rounded border border-line bg-surface px-2 py-1" />
+          <button onClick={async () => {
+            await api.put("/me/vault-memory-path", { value: gedaechtnis });
+            inv(); flash(gedaechtnis ? "Gedächtnis-Ordner gespeichert." : "Gedächtnis abgeschaltet.");
+          }} className="rounded bg-brand px-3 py-1 text-white">Speichern</button>
+        </div>
+        <p className="mt-2 text-[11px] text-muted">
+          Leer = kein Gedächtnis. Der Zugriff läuft über deine eigene MCP-Gruppe, das Gelernte
+          bleibt also persönlich.
+        </p>
       </div>
 
       <div className="rounded-lg border border-line bg-card p-4">

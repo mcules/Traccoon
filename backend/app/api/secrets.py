@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -183,7 +183,6 @@ async def set_git_token(data: TokenIn, access: Access = Depends(require_role(Pro
 async def agent_requirements(access: Access = Depends(require_role(ProjectRole.member)),
                              db: AsyncSession = Depends(get_session)):
     """Meldet fehlende Secrets vor einem Lauf (Claude/Codex-Token, Git-Token)."""
-    from ..models.user import SYSTEM_USER_ID
     user = access.user
     missing: list[str] = []
     # welche Provider nutzen die Projekt-Agenten?

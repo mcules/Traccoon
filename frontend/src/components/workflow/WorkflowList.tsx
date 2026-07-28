@@ -15,10 +15,13 @@ const EMPTY = { key: "", name: "", subject_kind: "issue" as WorkflowSubjectKind,
 export default function WorkflowList({ project }: { project: Project }) {
   const qc = useQueryClient();
   const nav = useNavigate();
-  const { data: defs } = useQuery({
+  const { data: alle } = useQuery({
     queryKey: ["workflows", project.id],
     queryFn: () => workflowApi.list(project.id),
   });
+  // Abläufe mit Slot stehen oben in der Slot-Übersicht (mit Herkunft und Zurücksetzen) —
+  // hier nur die frei angelegten.
+  const defs = alle?.filter((d) => !d.slot);
   const [f, setF] = useState(EMPTY);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["workflows", project.id] });
@@ -57,8 +60,9 @@ export default function WorkflowList({ project }: { project: Project }) {
   return (
     <div>
       <p className="mb-3 text-sm text-muted">
-        Visuelle Prozesse für dieses Projekt. Ein Prozess wird als <b>Entwurf</b> bearbeitet und muss{" "}
-        <b>veröffentlicht</b> werden, bevor Instanzen daraus starten können.
+        Zusätzliche Prozesse dieses Projekts — etwa für Webhooks oder geplante Jobs. Ein Prozess
+        wird als <b>Entwurf</b> bearbeitet und muss <b>veröffentlicht</b> werden, bevor Vorgänge
+        daraus starten können.
       </p>
 
       <div className="mb-4 space-y-2">
@@ -100,7 +104,7 @@ export default function WorkflowList({ project }: { project: Project }) {
             </button>
           </div>
         ))}
-        {defs?.length === 0 && <div className="text-xs text-muted">Noch keine Prozesse.</div>}
+        {defs?.length === 0 && <div className="text-xs text-muted">Noch keine eigenen Prozesse.</div>}
       </div>
 
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3">
