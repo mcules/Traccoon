@@ -6,6 +6,7 @@ import Projects from "./pages/Projects";
 import ProjectView from "./pages/ProjectView";
 import TicketView from "./pages/TicketView";
 import WorkflowEditor from "./pages/WorkflowEditor";
+import Processes from "./pages/Processes";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Profile from "./pages/Profile";
@@ -36,9 +37,13 @@ export default function App() {
         <Route path="/profil" element={<Profile />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/:tab" element={<Settings />} />
+        <Route path="/processes" element={<Processes />} />
+        <Route path="/processes/:tab" element={<Processes />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/:tab" element={<Admin />} />
         <Route path="/projects/:key/workflows/:id" element={<WorkflowEditor />} />
+        {/* Vorlagen eines Prozess-Satzes gehören zu keinem Projekt. */}
+        <Route path="/workflows/:id" element={<WorkflowEditor />} />
         <Route path="/projects/:key/tickets/:ticketKey" element={<TicketView />} />
         <Route path="/projects/:key" element={<ProjectView />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />

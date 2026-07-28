@@ -70,15 +70,13 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
     pr.decision = dec
     pr.decided_at = _now()
     pr.decided_by = user.id
-    # Resume: zurück in Ausführung (nächster Dispatcher-Tick nimmt es als Continuation)
-    if issue.agent_status == TicketAgentStatus.hold:
-        issue.agent_status = TicketAgentStatus.approved
-        issue.hold_reason = None
-        issue.continuation_count += 1
-        from ..services.dispatcher import sync_board_status
-        await sync_board_status(db, issue)   # Resume → „In Arbeit"
     await db.commit()
-    return {"ok": True, "resumed": dec != "never"}
+    # Weiter geht es über den Lebenszyklus-Prozess: der wartende Ereignis-Knoten nimmt die
+    # Entscheidung an und schaltet auf den Zweig, den der Graph dafür vorsieht.
+    from ..services.workflow_engine import resume_on_event
+    resumed = await resume_on_event(issue.id, "answer",
+                                    {"kind": "permission", "tool": pr.tool, "decision": dec})
+    return {"ok": True, "resumed": resumed and dec != "never"}
 
 
 @router.post("/issues/{key}/blocker/answer")
@@ -102,11 +100,9 @@ async def answer_blocker(data: AnswerIn, pair: tuple[Issue, Access] = Depends(ge
     db.add(Comment(issue_id=issue.id, author_id=access.user.id,
                    author_label=access.user.display_name or access.user.username,
                    body=data.answer, kind="agent"))
-    # Resume
-    issue.agent_status = TicketAgentStatus.approved
-    issue.hold_reason = None
-    issue.continuation_count += 1
-    from ..services.dispatcher import sync_board_status
-    await sync_board_status(db, issue)   # Rückfrage beantwortet → „In Arbeit"
     await db.commit()
-    return {"ok": True}
+    # Der Prozess wartet an einem Ereignis-Knoten auf genau diese Antwort.
+    from ..services.workflow_engine import resume_on_event
+    resumed = await resume_on_event(issue.id, "answer",
+                                    {"kind": "question", "text": data.answer[:2000]})
+    return {"ok": True, "resumed": resumed}

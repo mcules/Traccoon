@@ -1,19 +1,27 @@
+"""Die vertrauten Ticket-Aktionen — jetzt als Adapter auf die Prozess-Engine.
+
+Planen, Plan freigeben/ablehnen, Aufteilung freigeben, abnehmen, stoppen: die URLs sind
+unverändert (Frontend, Telegram-Bot und Webhooks hängen daran), der Ablauf dahinter steckt
+aber im Prozess „KI-Ticket-Lebenszyklus" und ist damit pro Projekt gestaltbar.
+
+Konkret heißt das: `approve-plan` sucht den wartenden Genehmigungs-Schritt der Instanz und
+entscheidet ihn — welcher Knoten danach kommt, bestimmt der Graph, nicht dieser Code.
+"""
 import datetime as dt
-import json
-import re
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models.agents import Run
-from ..models.enums import HoldReason, TicketAgentStatus
-from ..models.project import Project
-from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
+from ..models.enums import (
+    HoldReason, TicketAgentStatus, WorkflowNodeType, WorkflowStepStatus,
+)
+from ..models.ticket import Issue
+from ..models.workflow import WorkflowStepRun
 from ..schemas.issue import IssueOut
 from ..services.comments import add_system_comment
-from ..services.dispatcher import sync_board_status
+from ..services.lifecycle_flow import live_instance, start_lifecycle
 from .deps import Access
 from .issues import get_issue_access
 
@@ -29,24 +37,65 @@ def _who(access: Access) -> str:
     return access.user.display_name or access.user.username
 
 
+async def _waiting_approval(db: AsyncSession, issue: Issue) -> tuple[int, WorkflowStepRun]:
+    """Offene Genehmigung im Lebenszyklus des Tickets — sonst 409 mit klarer Ansage."""
+    inst = await live_instance(db, issue)
+    if inst is None:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Für dieses Ticket läuft kein Prozess — bitte Agent zuweisen")
+    step = (await db.execute(
+        select(WorkflowStepRun).where(
+            WorkflowStepRun.instance_id == inst.id,
+            WorkflowStepRun.status == WorkflowStepStatus.waiting,
+            WorkflowStepRun.node_type == WorkflowNodeType.approval,
+        ).order_by(WorkflowStepRun.id.desc()))).scalars().first()
+    if step is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Es wartet gerade keine Freigabe")
+    return inst.id, step
+
+
+async def _decide(db: AsyncSession, issue: Issue, decision: str, reason: str | None = None):
+    """Wartende Genehmigung entscheiden und den Prozess weiterschalten."""
+    from ..services import workflow_engine as engine
+    from ..models.enums import WorkflowInstanceStatus, WorkflowTokenState
+    from ..models.workflow import WorkflowInstance, WorkflowToken
+
+    inst_id, step = await _waiting_approval(db, issue)
+    step.status = WorkflowStepStatus.done
+    step.decision = decision
+    step.result = {"reason": reason} if reason else None
+    step.completed_at = dt.datetime.now(tz=dt.timezone.utc)
+    token = (await db.execute(select(WorkflowToken).where(
+        WorkflowToken.instance_id == inst_id,
+        WorkflowToken.state == WorkflowTokenState.waiting).with_for_update())).scalars().first()
+    if token is not None:
+        token.state = WorkflowTokenState.active
+        token.waiting_for = None
+    inst = await db.get(WorkflowInstance, inst_id)
+    if inst is not None:
+        inst.status = WorkflowInstanceStatus.running
+    await db.commit()
+    await engine.advance(inst_id)
+    await db.refresh(issue)
+
+
 @router.post("/issues/{key}/plan", response_model=IssueOut)
 async def start_planning(
     pair: tuple[Issue, Access] = Depends(get_issue_access),
     db: AsyncSession = Depends(get_session),
 ):
+    """Planung (neu) starten — bricht einen laufenden Prozess ab und beginnt von vorn."""
     issue, access = pair
     _require_ai(access)
     if issue.assigned_agent is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Kein Agent zugewiesen")
-    issue.agent_status = TicketAgentStatus.planning
-    issue.hold_reason = None
-    # Cap-Fenster auch beim Neu-Planen zurücksetzen: eine frische Planung startet einen
-    # neuen Zyklus — alte Runs (z. B. frühere Versuche) dürfen den Runaway-Cap nicht sofort
-    # auslösen. Baseline = aktuelle Max-Run-Id (None, falls noch keine Runs existieren).
-    issue.cap_baseline_run_id = (
-        await db.execute(select(func.max(Run.id)).where(Run.issue_id == issue.id))
-    ).scalar()
-    await sync_board_status(db, issue)
+    from ..services.artifacts import set_ticket_status
+    await set_ticket_status(db, issue, TicketAgentStatus.planning)
+    await db.commit()
+    inst = await start_lifecycle(db, issue, access.user.id, entry="plan", restart=True)
+    if inst is None:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Kein veröffentlichter Lebenszyklus-Prozess für dieses Projekt")
     await db.commit()
     await db.refresh(issue)
     return issue
@@ -63,74 +112,28 @@ async def approve_plan(
         raise HTTPException(status.HTTP_409_CONFLICT, "Ticket ist nicht in Plan-Freigabe")
     if not issue.plan:
         raise HTTPException(status.HTTP_409_CONFLICT, "Kein Plan vorhanden")
-    issue.agent_status = TicketAgentStatus.approved
-    issue.hold_reason = None
-    # Cap-Fenster setzen: ab jetzt zählt die Runaway-Bremse nur Runs NACH dieser Freigabe.
-    # Baseline = aktuelle Max-Run-Id des Tickets (None, falls noch keine Runs existieren) —
-    # alte Fehlversuche (z. B. 429-Abbrüche) vor der Freigabe zählen nicht mehr gegen den Cap.
-    issue.cap_baseline_run_id = (
-        await db.execute(select(func.max(Run.id)).where(Run.issue_id == issue.id))
-    ).scalar()
     await add_system_comment(db, issue.id, f"✅ Plan freigegeben von {_who(access)}")
-    await sync_board_status(db, issue)
-    await db.commit()
-    await db.refresh(issue)
+    await _decide(db, issue, "approved")
     return issue
-
-
-async def _new_child(db: AsyncSession, umbrella: Issue, project: Project, sub: dict,
-                     order: int, exec_agent: str, by_user: int) -> Issue:
-    t = (await db.execute(select(IssueType).where(IssueType.project_id == project.id)
-                          .order_by(IssueType.order))).scalars().first()
-    s = (await db.execute(select(WorkflowStatus).where(WorkflowStatus.project_id == project.id)
-                          .order_by(WorkflowStatus.order))).scalars().first()
-    counter = (await db.execute(select(IssueCounter).where(IssueCounter.project_id == project.id)
-                                .with_for_update())).scalar_one()
-    counter.last_number += 1
-    n = counter.last_number
-    child = Issue(
-        project_id=project.id, number=n, key=f"{project.key}-{n}", type_id=t.id, status_id=s.id,
-        summary=(sub.get("summary") or f"Teil {order + 1}")[:500], description=sub.get("description", ""),
-        reporter_id=by_user, rank=f"{n:08d}", parent_ticket_id=umbrella.id, split_order=order,
-        plan=sub.get("plan", ""), assigned_agent=exec_agent, assigned_by_user_id=by_user,
-        assigned_at=dt.datetime.now(tz=dt.timezone.utc),
-        # Kind 0 startet sofort (approved), Rest geparkt bis zur Reihe
-        agent_status=(TicketAgentStatus.approved if order == 0 else None),
-    )
-    db.add(child)
-    return child
 
 
 @router.post("/issues/{key}/approve-split", response_model=list[IssueOut])
 async def approve_split(pair: tuple[Issue, Access] = Depends(get_issue_access),
                         db: AsyncSession = Depends(get_session)):
-    umbrella, access = pair
+    """Aufteilung freigeben. Die Teilaufgaben legt der Prozess an (`split_tickets`)."""
+    issue, access = pair
     _require_ai(access)
-    if umbrella.hold_reason != HoldReason.plan_split:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Kein Split-Vorschlag zur Freigabe")
-    m = re.search(r"<subtickets>\s*(\[.*?\])\s*</subtickets>", umbrella.plan or "", re.DOTALL)
-    if not m:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Kein <subtickets>-Block im Plan")
-    try:
-        subs = json.loads(m.group(1))
-    except json.JSONDecodeError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "subtickets-JSON ungültig")
-    project = await db.get(Project, umbrella.project_id)
-    exec_agent = umbrella.exec_agent or project.exec_agent or "developer"
-    children = []
-    for i, sub in enumerate(subs):
-        children.append(await _new_child(db, umbrella, project, sub, i, exec_agent, access.user.id))
-    # Umbrella wartet auf die Kinder (nicht selbst ausgeführt)
-    umbrella.agent_status = None
-    umbrella.hold_reason = None
-    await add_system_comment(db, umbrella.id,
-                             f"✅ Aufteilung freigegeben von {_who(access)} — {len(children)} Teilaufgaben")
-    for c in children:  # Teil 1 (approved) → „In Arbeit", die geparkten bleiben unangetastet
-        await sync_board_status(db, c)
-    await db.commit()
-    for c in children:
-        await db.refresh(c)
-    return children
+    if issue.hold_reason != HoldReason.plan_split:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Kein Aufteilungs-Vorschlag zur Freigabe")
+    await add_system_comment(db, issue.id, f"✅ Aufteilung freigegeben von {_who(access)}")
+    await _decide(db, issue, "approved")
+    children = (await db.execute(
+        select(Issue).where(Issue.parent_ticket_id == issue.id).order_by(Issue.split_order)
+    )).scalars().all()
+    if not children:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "Der Prozess hat keine Teilaufgaben angelegt — Plan prüfen")
+    return list(children)
 
 
 @router.post("/issues/{key}/reject-plan", response_model=IssueOut)
@@ -143,11 +146,8 @@ async def reject_plan(
     if issue.agent_status != TicketAgentStatus.plan_review:
         raise HTTPException(status.HTTP_409_CONFLICT, "Ticket ist nicht in Plan-Freigabe")
     issue.plan = None
-    issue.agent_status = None  # geparkt; /plan startet neu
-    issue.hold_reason = None
     await add_system_comment(db, issue.id, f"✖ Plan abgelehnt von {_who(access)}")
-    await db.commit()
-    await db.refresh(issue)
+    await _decide(db, issue, "rejected")
     return issue
 
 
@@ -156,74 +156,37 @@ async def complete(
     pair: tuple[Issue, Access] = Depends(get_issue_access),
     db: AsyncSession = Depends(get_session),
 ):
+    """Abnahme: entscheidet die wartende Abnahme-Genehmigung des Prozesses.
+
+    Was danach passiert (Testumgebung abräumen, mergen bzw. PR öffnen, deployen), steht im
+    Prozess „Abnahme & Auslieferung" — dort ist es auch anpassbar.
+    """
     issue, access = pair
     _require_ai(access)
-    # Abnahme auch aus hold (z. B. Review-Befunde offen) — der Mensch hat die Hoheit.
     if issue.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing,
                                   TicketAgentStatus.hold):
         raise HTTPException(status.HTTP_409_CONFLICT, "Ticket ist nicht zur Abnahme bereit")
-
-    from ..core.redis import enqueue_task, wait_result
-    from ..models.project import Project
-    from ..services.testenv import stop_testenv
-    project = await db.get(Project, issue.project_id)
-
-    # Reihenfolge ist bindend (ABC-18): erst Testumgebung abräumen (Container, Volumes,
-    # Worktree, Port), dann mergen, und erst bei sauberem Merge auf „Fertig".
-    if issue.testenv_status:
-        await stop_testenv(db, issue, project.key)
-
-    task_id = f"accept-{issue.key}"
-    await enqueue_task({"kind": "accept", "task_id": task_id,
-                        "issue_id": issue.id, "project_id": issue.project_id})
-    result = await wait_result(task_id, timeout=600)
-    await db.refresh(issue)
-
-    merge_state = (result or {}).get("status")
-    if result is None:
-        # Timeout: der Merge kann noch durchlaufen — Ticket bleibt „testing", niemand
-        # bekommt ein stilles „Fertig". Der Nutzer kann es gleich erneut versuchen.
-        issue.agent_status = TicketAgentStatus.testing
-        await sync_board_status(db, issue)
-        await db.commit()
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            'Merge dauert länger als erwartet — Ticket bleibt auf „Testen“. '
-            "Bitte gleich erneut versuchen.",
-        )
-    if merge_state not in ("merged", "pr_open", "no_git"):
-        reason = (result or {}).get("error") or merge_state or "unbekannt"
-        issue.agent_status = (TicketAgentStatus.hold if merge_state == "conflict"
-                              else TicketAgentStatus.testing)
-        issue.hold_reason = HoldReason.merge if merge_state == "conflict" else None
-        await sync_board_status(db, issue)
-        await add_system_comment(db, issue.id, f"⛔ Abnahme abgebrochen — Merge fehlgeschlagen: {reason}")
-        await db.commit()
-        from ..services.notify import notify_issue
-        await notify_issue(db, issue, "merge_failed", f"{issue.key}: Merge fehlgeschlagen", str(reason))
-        raise HTTPException(status.HTTP_409_CONFLICT, f"Merge fehlgeschlagen: {reason}")
-
-    issue.agent_status = TicketAgentStatus.done
-    issue.resolved_at = dt.datetime.now(tz=dt.timezone.utc)
-    issue.hold_reason = None
-    await sync_board_status(db, issue)
-    await db.commit()
-    await db.refresh(issue)
+    await add_system_comment(db, issue.id, f"✅ Abnahme durch {_who(access)}")
+    await _decide(db, issue, "approved")
     return issue
 
 
 @router.post("/issues/{key}/stop", response_model=IssueOut)
 async def stop_agent(pair: tuple[Issue, Access] = Depends(get_issue_access),
                      db: AsyncSession = Depends(get_session)):
-    """Laufenden Agenten-Lauf abbrechen (kill-Kanal) und Ticket auf hold setzen."""
+    """Laufenden Agenten-Lauf abbrechen (kill-Kanal) und Ticket auf hold setzen.
+
+    Der Prozess bleibt bestehen und wartet — ein Kommentar oder „Planung starten" nimmt ihn
+    wieder auf.
+    """
     issue, access = pair
     _require_ai(access)
     from ..core.redis import publish_kill
     await publish_kill(issue.key)
     issue.agent_working = False
-    issue.agent_status = TicketAgentStatus.hold
-    issue.hold_reason = HoldReason.interrupted
-    await sync_board_status(db, issue)
+    from ..services.artifacts import set_ticket_status
+    await set_ticket_status(db, issue, TicketAgentStatus.hold,
+                            reason=HoldReason.interrupted)
     await db.commit()
     await db.refresh(issue)
     return issue

@@ -53,6 +53,8 @@ class UserOut(BaseModel):
     ticket_open_mode: str = "popup"
     ticket_layout: dict = {}
     pm_chat_style: str = "bubbles"
+    # Persönlicher Prozess-Satz (gilt für alle Projekte, in denen der Nutzer Owner ist).
+    workflow_set_id: int | None = None
     claude_token_set: bool
     created_at: dt.datetime
 

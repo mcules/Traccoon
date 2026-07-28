@@ -1,0 +1,116 @@
+import { useQuery } from "@tanstack/react-query";
+import { destinationApi } from "../../../api";
+import { KeyValueEditor } from "../kv";
+
+const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+
+/**
+ * Aufruf eines hinterlegten Ziels: Basis-URL und Anmeldung kommen von dort, hier stehen
+ * Methode, Pfad-Ergänzung, Query, Kopfzeilen und Body. Alle Textfelder verstehen
+ * `{{pfad}}` aus dem Prozess-Kontext.
+ */
+export default function HttpRequestConfig({
+  params,
+  onChange,
+  projectId,
+}: {
+  params: Record<string, any>;
+  onChange: (p: Record<string, any>) => void;
+  projectId?: number;
+}) {
+  const { data: ziele } = useQuery({
+    queryKey: ["destinations-usable", projectId ?? null],
+    queryFn: () => destinationApi.list(projectId, true),
+  });
+  const set = (k: string, v: any) => onChange({ ...params, [k]: v });
+  const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
+  const gewaehlt = ziele?.find((d) => d.name === params.destination);
+
+  return (
+    <div className="space-y-3">
+      <label className="block text-xs font-medium text-muted">
+        Ziel
+        <input
+          list="ziele"
+          value={params.destination || ""}
+          onChange={(e) => set("destination", e.target.value)}
+          placeholder="Name des Ziels"
+          className={`mt-1 ${inp}`}
+        />
+        <datalist id="ziele">
+          {ziele?.map((d) => (
+            <option key={d.id} value={d.name}>
+              {d.label || d.base_url}
+            </option>
+          ))}
+        </datalist>
+        <span className="mt-1 block text-[10px] text-muted">
+          {gewaehlt
+            ? `${gewaehlt.base_url} · ${gewaehlt.auth_type === "none" ? "ohne Anmeldung" : gewaehlt.auth_type}`
+            : "Ziele werden in Administration, Einstellungen oder den Projekt-Einstellungen gepflegt."}
+        </span>
+      </label>
+
+      <div className="grid grid-cols-3 gap-2">
+        <label className="block text-xs font-medium text-muted">
+          Methode
+          <select value={params.method || "POST"} onChange={(e) => set("method", e.target.value)}
+            className={`mt-1 ${inp}`}>
+            {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+        </label>
+        <label className="col-span-2 block text-xs font-medium text-muted">
+          Pfad (an die Basis-URL angehängt)
+          <input value={params.path || ""} onChange={(e) => set("path", e.target.value)}
+            placeholder="/api/v2/orders/{{created_ticket.key}}" className={`mt-1 ${inp}`} />
+        </label>
+      </div>
+
+      <div>
+        <div className="mb-1 text-xs font-medium text-muted">Query-Parameter (an die URL)</div>
+        <KeyValueEditor value={params.query || {}} onChange={(q) => set("query", q)} />
+      </div>
+
+      <div>
+        <div className="mb-1 text-xs font-medium text-muted">Zusätzliche Kopfzeilen</div>
+        <KeyValueEditor value={params.headers || {}} onChange={(h) => set("headers", h)} />
+      </div>
+
+      <label className="block text-xs font-medium text-muted">
+        Body (JSON oder Text — bei GET/HEAD/DELETE ignoriert)
+        <textarea
+          rows={4}
+          value={typeof params.body === "string" ? params.body : JSON.stringify(params.body ?? "", null, 2)}
+          onChange={(e) => {
+            const roh = e.target.value;
+            try {
+              set("body", JSON.parse(roh));
+            } catch {
+              set("body", roh);
+            }
+          }}
+          placeholder='{"ticket": "{{issue_key}}"}'
+          className={`mt-1 ${inp} font-mono`}
+        />
+      </label>
+
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block text-xs font-medium text-muted">
+          Ergebnis im Kontext unter
+          <input value={params.context_key || ""} onChange={(e) => set("context_key", e.target.value)}
+            placeholder="http" className={`mt-1 ${inp}`} />
+        </label>
+        <label className="mt-5 flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={!!params.fail_on_error}
+            onChange={(e) => set("fail_on_error", e.target.checked)} />
+          Fehlerstatus = Schritt scheitert
+        </label>
+      </div>
+      <p className="text-[10px] text-muted">
+        Ohne den Haken läuft der Prozess weiter und kann selbst über
+        <code className="mx-1 rounded bg-surface px-1">{"{{http.status_code}}"}</code>
+        bzw. <code className="rounded bg-surface px-1">{"{{http.ok}}"}</code> verzweigen.
+      </p>
+    </div>
+  );
+}

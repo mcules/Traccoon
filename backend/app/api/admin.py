@@ -114,6 +114,20 @@ async def put_testenv_config(
     return await get_config(db)
 
 
+class LayoutGapIn(BaseModel):
+    gap: int = Field(ge=8, le=400)
+
+
+@router.put("/admin/workflow-layout")
+async def put_workflow_layout(
+    data: LayoutGapIn, _: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
+):
+    """Abstand (px) zwischen den Knoten beim „Anordnen" im Prozess-Editor."""
+    from ..services.appsettings import LAYOUT_GAP_KEY
+    await set_setting(db, LAYOUT_GAP_KEY, str(data.gap))
+    return {"gap": data.gap}
+
+
 class RunRetentionIn(BaseModel):
     days: int = Field(ge=0, le=3650)  # 0 = nie löschen
 

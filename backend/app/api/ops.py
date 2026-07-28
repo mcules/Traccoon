@@ -3,7 +3,7 @@ import hashlib
 import hmac
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +15,7 @@ from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import User
 from .deps import (
     Access, build_access, get_current_user, is_owner_or_admin, owned_or_global,
-    require_admin, require_role,
+    require_role,
 )
 
 router = APIRouter(tags=["ops"])
@@ -47,6 +47,8 @@ class WebhookIn(BaseModel):
     # ({context_key: payload.dot.pfad}; leer = kompletter Payload als Kontext).
     workflow_definition_id: int | None = None
     context_map: dict = {}
+    # mode=event: Name des gemeldeten Ereignisses (leer = webhook.<route>).
+    event_name: str | None = None
 
 
 class WebhookOut(BaseModel):
@@ -58,6 +60,7 @@ class WebhookOut(BaseModel):
     event_key_header: str | None = None; event_cooldowns: dict = {}
     alert_events: list = []; ref_field: str | None = None; notify_chat: str | None = None
     workflow_definition_id: int | None = None; context_map: dict = {}
+    event_name: str | None = None
 
 
 def _wh_out(w: WebhookSub) -> WebhookOut:
@@ -233,6 +236,20 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         await db.commit()
         return {"accepted": True, "mode": "notify"}
 
+    if sub.mode == "event":
+        # Meldet ein Ereignis; wer darauf hört, entscheiden die Abläufe selbst über den
+        # Trigger an ihrem Start-Knoten. `event_name` am Webhook oder `event` im Payload.
+        from ..services.events import emit
+        name = (sub.event_name or (payload.get("event") if isinstance(payload, dict) else "")
+                or f"webhook.{route}")
+        ref = None
+        if sub.ref_field and isinstance(payload, dict):
+            ref = str(payload.get(sub.ref_field) or "") or None
+        ids = await emit(db, str(name), project_id=sub.project_id,
+                         payload=payload if isinstance(payload, dict) else {"payload": payload},
+                         actor_id=sub.owner_user_id, source_ref=ref)
+        return {"accepted": True, "mode": "event", "event": name, "instances": ids}
+
     if sub.mode == "workflow":
         # Startet eine Workflow-Instanz. context_map = {context_key: payload_pfad} (dot-Pfade);
         # ohne Mapping wird der komplette Payload als Kontext übernommen.
@@ -304,7 +321,8 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         issue.assigned_agent = sub.agent
         issue.assigned_by_user_id = sub.owner_user_id  # Owner-Token-Auflösung im Worker
         issue.assigned_at = dt.datetime.now(tz=dt.timezone.utc)
-        issue.agent_status = TicketAgentStatus.planning
+        from ..services.artifacts import set_ticket_status
+        await set_ticket_status(db, issue, TicketAgentStatus.planning)
     db.add(issue)
     await db.commit()
     await db.refresh(issue)
@@ -317,8 +335,11 @@ class JobIn(BaseModel):
     name: str
     type: str = "interval"
     schedule: str = "60"
-    kind: str = "prompt"          # prompt | script | workflow
+    kind: str = "prompt"          # prompt | script | workflow | http
     workflow_definition_id: int | None = None   # nur kind=workflow
+    # nur kind=http: Ziel + Aufruf ({method, path, query, headers, body})
+    destination_id: int | None = None
+    http_request: dict = {}
     agent: str | None = None
     prompt: str = ""
     command: str = ""
@@ -334,6 +355,8 @@ class JobIn(BaseModel):
 class JobOut(BaseModel):
     id: int; name: str; type: str; schedule: str; kind: str; agent: str | None
     workflow_definition_id: int | None = None
+    destination_id: int | None = None
+    http_request: dict = {}
     prompt: str = ""; command: str = ""; args: list = []; project_id: int | None = None
     notify_mode: str; notify_chat: str | None = None; result_html: bool
     pause_on_success: bool = False; run_timeout: int = 600

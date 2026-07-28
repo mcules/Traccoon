@@ -4,7 +4,7 @@ from sqlalchemy import (
     Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, LargeBinary, String, Text,
     UniqueConstraint, func,
 )
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
 from .base import TimestampMixin
@@ -107,6 +107,12 @@ class Issue(TimestampMixin, Base):
     __tablename__ = "issues"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Gemeinsame Artefakt-Identität (Titel, Projekt, Zustand) — dieselbe Konstruktion wie
+    # beim Hardware-Exemplar. Diese Tabelle bleibt die Detailtabelle des Tickets: Board,
+    # Sprint, Plan, Agent, Merge und Testumgebung hängen hier.
+    artifact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("artifacts.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
+    )
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), index=True)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     key: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
@@ -171,6 +177,11 @@ class Issue(TimestampMixin, Base):
     # Fehlversuche (z. B. 429-Abbrüche) nicht gegen legitime Neu-Arbeit zählen. NULL = alle
     # Runs zählen. Die Kosten-/Statistik-Aggregation (cost.py) bleibt davon unberührt.
     cap_baseline_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Laufende Lebenszyklus-Instanz (workflow_instances.id). Bewusst ohne FK: die Instanz
+    # zeigt ihrerseits auf das Ticket, ein echter FK ergäbe einen Tabellen-Zyklus. Die
+    # Instanz ist die Wahrheit über den Ablauf, `agent_status` nur noch die Projektion
+    # für Board/Telegram/Drawer.
+    workflow_instance_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     agent_working: Mapped[bool] = mapped_column(Boolean, default=False)
     merge_status: Mapped[str] = mapped_column(String(20), default="")
     merge_commit: Mapped[str | None] = mapped_column(String(64), nullable=True)

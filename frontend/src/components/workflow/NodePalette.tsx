@@ -8,6 +8,8 @@ const ICONS: Record<WorkflowNodeType, string> = {
   approval: "✅",
   auto_action: "⚙",
   agent_task: "🤖",
+  wait_event: "⏳",
+  subflow: "🔗",
 };
 
 const ORDER: WorkflowNodeType[] = [
@@ -17,6 +19,8 @@ const ORDER: WorkflowNodeType[] = [
   "approval",
   "auto_action",
   "agent_task",
+  "wait_event",
+  "subflow",
   "end",
 ];
 

@@ -7,9 +7,11 @@ from sqlalchemy import text
 
 from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
-    admin, agents, auth, config, cost, dashboard, files, hardware, invitations, issues, lifecycle,
-    mail, me, notifications, ops, permissions, plugins, projects, repo, runs, secrets, skills,
-    testenv, users, workflows, ws,
+    admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, destinations,
+    files, hardware, invitations,
+    issues, lifecycle, mail, me, notifications, ops, permissions, plugins, processes,
+    projects, repo,
+    runs, secrets, skills, testenv, users, workflows, ws,
 )
 from .config import settings
 from .db import Base, SessionLocal, engine
@@ -119,11 +121,148 @@ async def lifespan(app: FastAPI):
                 # Ticket an Hardware-Exemplar hängen (ABC-25).
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS asset_id INTEGER "
                 "REFERENCES hardware_assets(id) ON DELETE SET NULL",
+                # Prozess-Sätze: Slot/Archiv an den Definitionen, Satz-Referenz an
+                # Projekt/Nutzer, Routing-Stempel am Schritt, Instanz am Ticket.
+                "ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS set_id INTEGER "
+                "REFERENCES workflow_sets(id) ON DELETE CASCADE",
+                "ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS slot VARCHAR(40)",
+                "ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_workflow_def_set_slot ON workflow_definitions "
+                "(set_id, slot) WHERE archived_at IS NULL",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_workflow_def_project_slot ON workflow_definitions "
+                "(project_id, slot) WHERE archived_at IS NULL",
+                "ALTER TABLE workflow_instances ADD COLUMN IF NOT EXISTS parent_instance_id INTEGER "
+                "REFERENCES workflow_instances(id) ON DELETE SET NULL",
+                "ALTER TABLE workflow_instances ADD COLUMN IF NOT EXISTS parent_node_id VARCHAR(80)",
+                "ALTER TABLE workflow_step_runs ADD COLUMN IF NOT EXISTS routed_at TIMESTAMPTZ",
+                "UPDATE workflow_step_runs SET routed_at = completed_at "
+                "WHERE completed_at IS NOT NULL AND routed_at IS NULL",
+                "ALTER TABLE projects ADD COLUMN IF NOT EXISTS workflow_set_id INTEGER "
+                "REFERENCES workflow_sets(id) ON DELETE SET NULL",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS workflow_set_id INTEGER "
+                "REFERENCES workflow_sets(id) ON DELETE SET NULL",
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS workflow_instance_id INTEGER",
+                "CREATE INDEX IF NOT EXISTS ix_issues_workflow_instance_id ON issues "
+                "(workflow_instance_id)",
+                # Bestehende Beschaffungs-Definitionen dem Slot zuordnen, damit sie als
+                # Projekt-Anpassung erkannt werden (statt neben dem Satz zu stehen).
+                "UPDATE workflow_definitions SET slot = 'hardware_procurement' "
+                "WHERE key = 'hardware-beschaffung' AND slot IS NULL AND project_id IS NOT NULL",
+                # Webhook meldet ein Ereignis statt einen festen Ablauf zu starten.
+                # Hardware bekommt eine gemeinsame Artefakt-Identität; Prozesse binden
+                # allgemein an ein Artefakt statt an ein Exemplar.
+                "ALTER TABLE hardware_assets ADD COLUMN IF NOT EXISTS artifact_id INTEGER "
+                "REFERENCES artifacts(id) ON DELETE CASCADE",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_hardware_asset_artifact ON hardware_assets "
+                "(artifact_id) WHERE artifact_id IS NOT NULL",
+                "ALTER TABLE workflow_instances ADD COLUMN IF NOT EXISTS artifact_id INTEGER "
+                "REFERENCES artifacts(id) ON DELETE SET NULL",
+                "CREATE INDEX IF NOT EXISTS ix_workflow_instances_artifact ON workflow_instances "
+                "(artifact_id)",
+                # Tickets bekommen dieselbe gemeinsame Artefakt-Identität wie die Hardware.
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS artifact_id INTEGER "
+                "REFERENCES artifacts(id) ON DELETE SET NULL",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_issue_artifact ON issues "
+                "(artifact_id) WHERE artifact_id IS NOT NULL",
+                # Die beiden JSON-Platzhalter sind durch das echte Feld-Modell abgelöst
+                # (`artifact_fields`/`artifact_values`). Sie waren nie befüllt, stehen aber
+                # als NOT NULL ohne Vorgabe in der Tabelle — ohne DROP schlüge jedes INSERT fehl.
+                "ALTER TABLE artifact_types DROP COLUMN IF EXISTS fields",
+                "ALTER TABLE artifacts DROP COLUMN IF EXISTS data",
+                # Felder tragen ihre Herkunft (echte Spalte) und sind ggf. eingebaut;
+                # Werte tragen Kategorie und „wartet" — beides wanderte aus dem
+                # früheren Zustands-Modell hierher.
+                "ALTER TABLE artifact_fields ADD COLUMN IF NOT EXISTS source VARCHAR(40) "
+                "DEFAULT '' NOT NULL",
+                "ALTER TABLE artifact_fields ADD COLUMN IF NOT EXISTS options_source "
+                "VARCHAR(30) DEFAULT '' NOT NULL",
+                "ALTER TABLE artifact_fields ADD COLUMN IF NOT EXISTS builtin BOOLEAN "
+                "DEFAULT FALSE NOT NULL",
+                "ALTER TABLE artifact_field_options ADD COLUMN IF NOT EXISTS category "
+                "VARCHAR(20) DEFAULT '' NOT NULL",
+                "ALTER TABLE artifact_field_options ADD COLUMN IF NOT EXISTS waiting BOOLEAN "
+                "DEFAULT FALSE NOT NULL",
+                # Ein Ablauf darf an eine Vorgangsart gebunden sein (Bug ≠ Aufgabe).
+                # Der Unique-Index wird dafür neu gezogen: COALESCE, weil NULLs sonst als
+                # verschieden gelten und beliebig viele allgemeine Kopien entstünden.
+                "ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS issue_type_id "
+                "INTEGER REFERENCES issue_types(id) ON DELETE CASCADE",
+                "CREATE INDEX IF NOT EXISTS ix_workflow_definitions_issue_type "
+                "ON workflow_definitions (issue_type_id)",
+                "DROP INDEX IF EXISTS uq_workflow_def_project_slot",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_workflow_def_project_slot "
+                "ON workflow_definitions (project_id, slot, COALESCE(issue_type_id, 0)) "
+                "WHERE archived_at IS NULL",
+                # Ein Projekt darf seine Artefakte um eigene Felder erweitern.
+                "ALTER TABLE artifact_fields ADD COLUMN IF NOT EXISTS project_id INTEGER "
+                "REFERENCES projects(id) ON DELETE CASCADE",
+                "CREATE INDEX IF NOT EXISTS ix_artifact_fields_project "
+                "ON artifact_fields (project_id)",
+                "ALTER TABLE artifact_fields DROP CONSTRAINT IF EXISTS uq_artifact_field",
+                "DROP INDEX IF EXISTS uq_artifact_field",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_artifact_field "
+                "ON artifact_fields (type_id, COALESCE(project_id, 0), key)",
+                # Die Ordnungsebene „Artefakt-Typ" ist wieder weg: Ticket und Hardware sind
+                # beide einfach Artefakte, ihre Bedeutung kommt aus den Feldern.
+                "ALTER TABLE artifact_types DROP COLUMN IF EXISTS group_id",
+                "DROP TABLE IF EXISTS artifact_groups",
+                "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS event_name VARCHAR(120)",
+                # Assistent meldet sich nur noch, wenn es nötig ist.
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS notified BOOLEAN "
+                "DEFAULT FALSE NOT NULL",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS assistant_notify VARCHAR(10) "
+                "DEFAULT 'needed' NOT NULL",
+                # Ziele (externe Gegenstellen) + Job-Art „http".
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_destination_global ON destinations "
+                "(name) WHERE user_id IS NULL AND project_id IS NULL",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_destination_user ON destinations "
+                "(user_id, name) WHERE user_id IS NOT NULL AND project_id IS NULL",
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_destination_project ON destinations "
+                "(project_id, name) WHERE project_id IS NOT NULL",
+                "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS destination_id INTEGER "
+                "REFERENCES destinations(id) ON DELETE SET NULL",
+                "ALTER TABLE jobs ADD COLUMN IF NOT EXISTS http_request JSON "
+                "DEFAULT '{}'::json NOT NULL",
+                "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'wait_event'",
+                "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'subflow'",
+                # Gedächtnis im Vault (ABC-30): Ordner am Nutzer, Lern-Schalter am Agenten.
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS vault_memory_path VARCHAR(500) "
+                "DEFAULT '' NOT NULL",
+                "ALTER TABLE agent_definitions ADD COLUMN IF NOT EXISTS learns BOOLEAN "
+                "DEFAULT TRUE NOT NULL",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:
         await seed(db)
+        # Ausgelieferte Abläufe (Ticket-Lebenszyklus, Abnahme, Beschaffung, Eingang) als
+        # globalen Standard-Satz nachziehen — idempotent, veröffentlicht nur bei Änderung.
+        from .services.workflow_seed import ensure_builtin_set
+        await ensure_builtin_set(db)
+        # Automatisch erzeugte Beschaffungs-Ketten der Projekte auf dieselbe Bauform heben.
+        from .services.hardware_workflow import refresh_generated_definitions
+        await refresh_generated_definitions(db)
+        # Artefakt-Register (Ticket, Hardware) — im Admin pflegbar, fehlende Zustände
+        # werden nachgetragen, bestehende Beschriftungen bleiben.
+        from .services.artifacts import backfill_hardware_artifacts, ensure_builtin_types
+        # Erst die Beschriftungen aus dem früheren Zustands-Modell übernehmen — danach legt
+        # `ensure_builtin_types` die eingebauten Felder an, ohne sie zu überschreiben.
+        from .services.artifact_fields import uebernimm_alte_zustaende
+        await uebernimm_alte_zustaende(db)
+        await ensure_builtin_types(db)
+        # Erst jetzt fällt das alte Zustands-Modell — vorher hätte die Übernahme
+        # nichts mehr zu lesen gehabt.
+        await db.execute(text("DROP TABLE IF EXISTS artifact_statuses"))
+        await db.commit()
+        # Bestehende Exemplare bekommen ihre Artefakt-Zeile (idempotent).
+        await backfill_hardware_artifacts(db)
+        # Tickets ebenso — und alles, was auseinandergelaufen ist, wird angeglichen.
+        from .services.artifacts import reconcile
+        await reconcile(db)
     await recover_on_start()
+    # Tickets ohne Prozess-Instanz einsammeln (Umstieg auf die Engine, idempotent).
+    async with SessionLocal() as db:
+        from .services.lifecycle_flow import adopt_orphans
+        await adopt_orphans(db)
     # Previews aus einem abgestürzten Vorleben abräumen (blockiert den Start nicht).
     from .services.testenv import cleanup_orphan_previews
     tasks = [
@@ -159,7 +298,10 @@ api.include_router(issues.router)
 api.include_router(lifecycle.router)
 api.include_router(hardware.router)
 api.include_router(workflows.router)
+api.include_router(processes.router)
 api.include_router(ops.router)
+api.include_router(destinations.router)
+api.include_router(artifacts_api.router)
 api.include_router(mail.router)
 api.include_router(secrets.router)
 api.include_router(permissions.router)

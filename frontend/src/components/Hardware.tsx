@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { api, ApiError, MemberLite, Project } from "../api";
 import AssetProcurement from "./AssetProcurement";
 import AssetWorkflow from "./AssetWorkflow";
+import ArtifactFields from "./ArtifactFields";
 import { AssigneeEditor } from "./workflow/assignee";
 import type { AssigneeSpec } from "./workflow/types";
 
@@ -12,6 +13,7 @@ interface Location { id: number; name: string; type: string; parent_id: number |
 interface Asset {
   id: number; model_id: number; project_id: number | null; location_id: number | null;
   purchase_status: string; serial_number: string | null; vendor: string | null;
+  artifact_id: number | null;
 }
 const STATUS = ["planned", "ordered", "delivered", "installed", "stored", "retired"];
 const LOC_TYPES = ["room", "rack", "shelf", "slot", "server", "other"];
@@ -113,6 +115,12 @@ export default function Hardware({ project }: { project: Project }) {
                       <AssetProcurement assetId={a.id} project={project} onChange={invAssets} />
                     ) : (
                       <AssetWorkflow assetId={a.id} projectId={a.project_id} assetLabel={modelName(a.model_id)} />
+                    )}
+                    {a.artifact_id && (
+                      <div className="mt-3 rounded-lg border border-line p-3">
+                        <div className="mb-2 text-xs font-medium text-muted">Felder</div>
+                        <ArtifactFields artifactId={a.artifact_id} compact />
+                      </div>
                     )}
                     <AssetIssues assetId={a.id} projectKey={project.key} />
                   </div>

@@ -12,7 +12,7 @@ export default function EndNode({ data, selected }: FlowNodeProps) {
     <BaseNode
       title={data.config.label || "Ende"}
       icon="⏹"
-      accent="border-l-slate-500"
+      accent="border-t-slate-500"
       selected={selected}
       runtimeState={data.runtimeState}
       sources={[]}

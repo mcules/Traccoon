@@ -80,6 +80,11 @@ class IssueOut(BaseModel):
     asset_id: int | None = None   # Hardware-Bezug; Beschriftung löst das Frontend auf
     rank: str
     agent_working: bool
+    # Laufender Lebenszyklus-Prozess (die Wahrheit über den Ablauf; agent_status ist die
+    # Projektion davon). NULL = für dieses Ticket läuft gerade keiner.
+    workflow_instance_id: int | None = None
+    # Gemeinsame Artefakt-Identität — daran hängen die freien Felder.
+    artifact_id: int | None = None
     archived: bool = False
     archived_at: dt.datetime | None = None
     testenv_status: str | None = None

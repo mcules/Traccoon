@@ -1,7 +1,7 @@
 import datetime as dt
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func,
+    Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -59,6 +59,12 @@ class AssistantTask(TimestampMixin, Base):
     # Einmal-Freigabe für die nächste Wiederaufnahme (wird beim Gate konsumiert).
     grant_tool: Mapped[str | None] = mapped_column(String(150), nullable=True)
     grant_resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    # Hat der Assistent während des Laufs ausdrücklich gemeldet („der Mensch soll das
+    # sehen", Werkzeug `notify_human`)? Nur dann verschickt der Abschluss eine Nachricht —
+    # sonst steht das Ergebnis still im Posteingang. Ein erledigtes „nichts zu tun" soll
+    # niemanden stören.
+    notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class AssistantPermission(TimestampMixin, Base):

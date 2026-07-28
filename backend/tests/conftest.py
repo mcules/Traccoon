@@ -33,8 +33,17 @@ from app.models.enums import (  # noqa: E402
 )
 
 
+# Module, die sich ihre eigene Session holen (Engine, Tick, Testumgebungen). Damit sie im
+# Test dieselbe In-Memory-DB sehen wie der HTTP-Client, wird ihr `SessionLocal` umgehängt —
+# sonst liefe die Prozess-Engine gegen eine leere zweite Datenbank.
+_SESSION_MODULES = (
+    "app.db", "app.services.workflow_engine", "app.services.dispatcher",
+    "app.services.scheduler", "app.services.testenv", "app.worker.__main__",
+)
+
+
 @pytest_asyncio.fixture
-async def db():
+async def db(monkeypatch):
     """Frische In-Memory-DB pro Test (StaticPool = alle Sessions auf derselben Verbindung)."""
     engine = create_async_engine(
         "sqlite+aiosqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool,
@@ -42,10 +51,90 @@ async def db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    import importlib
+    for name in _SESSION_MODULES:
+        mod = importlib.import_module(name)
+        if hasattr(mod, "SessionLocal"):
+            monkeypatch.setattr(mod, "SessionLocal", session_factory)
     async with session_factory() as session:
         session.__test_factory__ = session_factory
         yield session
+    # Wächter-Tasks der Engine beenden, bevor die DB verschwindet — sonst warten sie im
+    # nächsten Test auf eine längst geschlossene Verbindung und der Lauf hängt.
+    import app.services.workflow_engine as enginemod
+    for task in list(enginemod._BACKGROUND):
+        task.cancel()
+    enginemod._BACKGROUND.clear()
     await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def seeded(db):
+    """DB mit dem ausgelieferten Standard-Satz (Ticket-Lebenszyklus, Abnahme, …)."""
+    from app.services.workflow_seed import ensure_builtin_set
+    return await ensure_builtin_set(db)
+
+
+@pytest.fixture(autouse=True)
+def redis_stub(monkeypatch):
+    """Redis/Worker-Ersatz für alle Tests.
+
+    Ohne das würden Prozess-Schritte (Ereignis senden, Agentenlauf einreihen) in einen
+    echten Redis laufen und minutenlang in Timeouts hängen. `results` füllt der Test:
+    `results["*"] = {...}` beantwortet jeden Lauf, `results["<task_id>"]` einen bestimmten.
+    Eine LISTE wird der Reihe nach abgearbeitet, der letzte Eintrag bleibt stehen — damit
+    lässt sich „erst Zwischenstand, dann fertig" abbilden, ohne dass ein Prozess in einer
+    Fortsetzungs-Schleife bis zum Cap dreht.
+    """
+    import app.core.redis as redismod
+    results: dict[str, object] = {}
+
+    def _next(key: str):
+        val = results.get(key, results.get("*"))
+        if isinstance(val, list) and val:
+            return val.pop(0) if len(val) > 1 else val[0]
+        return val
+
+    async def publish_event(*a, **k):
+        return None
+
+    async def enqueue_task(payload):
+        return None
+
+    async def wait_result(task_id, timeout=1800.0, poll=0.4):
+        return _next(task_id)
+
+    async def peek_result(task_id):
+        return _next(task_id)
+
+    async def get_flag(name):
+        return False
+
+    async def get_user_flag(name, user_id=None):
+        return False
+
+    async def set_flag(name, value):
+        return None
+
+    async def publish_kill(key):
+        return None
+
+    stubs = {
+        "publish_event": publish_event, "enqueue_task": enqueue_task,
+        "wait_result": wait_result, "peek_result": peek_result, "get_flag": get_flag,
+        "get_user_flag": get_user_flag, "set_flag": set_flag, "publish_kill": publish_kill,
+    }
+    for name, fn in stubs.items():
+        monkeypatch.setattr(redismod, name, fn, raising=False)
+    # Module, die die Funktionen beim Import gebunden haben, brauchen denselben Ersatz.
+    import importlib
+    for modname in ("app.services.workflow_engine", "app.services.dispatcher",
+                    "app.services.scheduler"):
+        mod = importlib.import_module(modname)
+        for name, fn in stubs.items():
+            if hasattr(mod, name):
+                monkeypatch.setattr(mod, name, fn)
+    return results
 
 
 @pytest_asyncio.fixture

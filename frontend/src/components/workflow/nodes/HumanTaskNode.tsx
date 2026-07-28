@@ -1,13 +1,14 @@
 import { BaseNode, type FlowNodeProps } from "./shared";
 import { assigneeLabel } from "../assignee";
 
-export default function HumanTaskNode({ data, selected }: FlowNodeProps) {
+export default function HumanTaskNode({ id, data, selected }: FlowNodeProps) {
   const c = data.config;
   return (
     <BaseNode
+      nodeId={id}
       title={c.label || "Aufgabe"}
       icon="🧑"
-      accent="border-l-brand"
+      accent="border-t-brand"
       selected={selected}
       runtimeState={data.runtimeState}
     >

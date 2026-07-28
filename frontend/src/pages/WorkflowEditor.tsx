@@ -23,6 +23,7 @@ import WorkflowCanvas from "../components/workflow/WorkflowCanvas";
 import NodePalette from "../components/workflow/NodePalette";
 import NodeConfigPanel from "../components/workflow/NodeConfigPanel";
 import { graphToFlow, flowToGraph } from "../components/workflow/convert";
+import { needsLayout, layoutGraph, DEFAULT_GAP } from "../components/workflow/layout";
 import { validateGraph } from "../components/workflow/validate";
 import type { FlowNode } from "../components/workflow/nodes/shared";
 
@@ -39,7 +40,11 @@ function defaultConfig(type: WorkflowNodeType): NodeConfig {
     case "auto_action":
       return { action: { action: "notify", params: {} } };
     case "agent_task":
-      return { agent_role: "", phase: "execution" };
+      return { agent_role: "exec_agent", phase: "execution" };
+    case "wait_event":
+      return { events: ["comment", "manual"] };
+    case "subflow":
+      return { inherit_context: true };
     default:
       return {};
   }
@@ -68,10 +73,22 @@ export default function WorkflowEditor() {
   const project = useMemo(() => projects?.find((p) => p.key === key), [projects, key]);
 
   const { data: def } = useQuery({ queryKey: ["workflow", wfId], queryFn: () => workflowApi.get(wfId) });
-  const { data: version } = useQuery({
+  // Bearbeitbare Draft-Version. Fehlt das Schreibrecht (z. B. ein Ablauf aus dem
+  // ausgelieferten Satz, den nur ein Admin ändern darf), fällt die Ansicht auf die
+  // veröffentlichte Version zurück — schauen darf jeder, ändern nicht.
+  const { data: version, error: versionError } = useQuery({
     queryKey: ["workflow-editable", wfId],
     queryFn: () => workflowApi.editable(wfId),
+    retry: false,
   });
+  const nurLesen = versionError instanceof ApiError && versionError.status === 403;
+  const { data: veroeffentlicht } = useQuery({
+    queryKey: ["workflow-versions", wfId],
+    queryFn: () => workflowApi.versions(wfId),
+    enabled: nurLesen,
+  });
+  const ansicht = version
+    || (nurLesen ? veroeffentlicht?.find((v) => v.id === def?.current_version_id) : undefined);
   const { data: meta } = useQuery({
     queryKey: ["meta", project?.id],
     queryFn: () => api.get<ProjectMeta>(`/projects/${project!.id}/meta`),
@@ -81,21 +98,58 @@ export default function WorkflowEditor() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  /** Wird ein Knoten per Taste gelöscht, müssen seine Kanten AUS DEM VOLLEN Graphen weg —
+   *  in der gefilterten Sicht kennt React Flow die ausgeblendeten Kanten nicht und ließe
+   *  sonst Verweise ins Leere zurück. */
+  const handleNodesChange = useCallback(
+    (changes: Parameters<typeof onNodesChange>[0]) => {
+      const weg = changes.filter((c) => c.type === "remove").map((c) => c.id);
+      if (weg.length) {
+        setEdges((eds) => eds.filter((e) => !weg.includes(e.source) && !weg.includes(e.target)));
+        setMsg(`${weg.length === 1 ? "Schritt" : `${weg.length} Schritte`} gelöscht — noch nicht gespeichert.`);
+      }
+      onNodesChange(changes);
+    },
+    [onNodesChange, setEdges],
+  );
+
+  /** Gelöschte Verbindungen sind eine echte Änderung — das muss man auch sehen. */
+  const handleEdgesChange = useCallback(
+    (changes: Parameters<typeof onEdgesChange>[0]) => {
+      const weg = changes.filter((c) => c.type === "remove").length;
+      if (weg) setMsg(`${weg === 1 ? "Verbindung" : `${weg} Verbindungen`} gelöscht — noch nicht gespeichert.`);
+      onEdgesChange(changes);
+    },
+    [onEdgesChange],
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** „Hauptweg" blendet die Störungs-Zweige aus — der rote Faden bleibt übrig. */
+  const [nurHauptweg, setNurHauptweg] = useState(false);
+  /** Ziel für den Blick nach dem Anordnen (Start-Knoten, oben mittig). */
+  const [fokus, setFokus] = useState<{ x: number; y: number; token: number } | undefined>();
   const [errors, setErrors] = useState<string[]>([]);
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const seeded = useRef(false);
 
+  // Abstand für „Anordnen" — global vom Admin gesetzt.
+  const { data: layoutCfg } = useQuery({
+    queryKey: ["workflow-layout"],
+    queryFn: workflowApi.layout,
+    staleTime: 5 * 60_000,
+  });
+  const gap = layoutCfg?.gap ?? DEFAULT_GAP;
+
   // Graph einmalig aus der Draft-Version übernehmen.
   useEffect(() => {
-    if (version && !seeded.current) {
-      const flow = graphToFlow(version.graph);
+    if (ansicht && !seeded.current) {
+      const graph = needsLayout(ansicht.graph) ? layoutGraph(ansicht.graph, { gap }) : ansicht.graph;
+      const flow = graphToFlow(graph);
       setNodes(flow.nodes);
       setEdges(flow.edges);
       seeded.current = true;
     }
-  }, [version]);
+  }, [ansicht]);
 
   const onConnect = useCallback(
     (c: Connection) => {
@@ -142,7 +196,41 @@ export default function WorkflowEditor() {
     [selectedId, setNodes, setEdges]
   );
 
+  /** Alle Knoten neu von oben nach unten anordnen (auch alte LR-Graphen).
+   *  Rechnet mit den GEMESSENEN Kartengrößen, damit der Abstand überall gleich ausfällt. */
+  const autoLayout = useCallback(() => {
+    const sizes = new Map(
+      nodes
+        .filter((n) => n.measured?.width && n.measured?.height)
+        .map((n) => [n.id, { width: n.measured!.width!, height: n.measured!.height! }]),
+    );
+    const laid = layoutGraph(flowToGraph(nodes, edges), { gap, sizes });
+    const pos = new Map(laid.nodes.map((n) => [n.id, n.position]));
+    setNodes((ns) => ns.map((n) => (pos.has(n.id) ? { ...n, position: pos.get(n.id)! } : n)));
+    // Blick auf den Anfang setzen: die neuen Koordinaten stehen hier schon fest, deshalb
+    // brauchen wir nicht auf das Neuzeichnen zu warten.
+    const start = nodes.find((n) => n.type === "start");
+    const ziel = start && pos.get(start.id);
+    if (ziel) {
+      const breite = sizes.get(start!.id)?.width ?? 220;
+      setFokus({ x: ziel.x + breite / 2, y: ziel.y, token: Date.now() });
+    }
+    setMsg("Neu angeordnet — noch nicht gespeichert.");
+  }, [nodes, edges, setNodes, gap]);
+
   const clientErrors = useMemo(() => validateGraph(flowToGraph(nodes, edges)), [nodes, edges]);
+
+  // Gefilterte Sicht: ausgeblendete Knoten samt ihrer Kanten verschwinden nur optisch —
+  // gespeichert wird IMMER der vollständige Graph (`nodes`/`edges`).
+  const hatGruppen = useMemo(() => nodes.some((n) => n.data.config.group), [nodes]);
+  const sichtbar = useMemo(() => {
+    if (!nurHauptweg) return { nodes, edges };
+    const weg = new Set(nodes.filter((n) => n.data.config.group === "stoerung").map((n) => n.id));
+    return {
+      nodes: nodes.filter((n) => !weg.has(n.id)),
+      edges: edges.filter((e) => !weg.has(e.source) && !weg.has(e.target)),
+    };
+  }, [nurHauptweg, nodes, edges]);
   const selected = nodes.find((n) => n.id === selectedId) || null;
 
   const save = async () => {
@@ -196,18 +284,36 @@ export default function WorkflowEditor() {
       {/* Kopfzeile */}
       <div className="flex items-center gap-3 border-b border-line bg-card px-4 py-2">
         <button
-          onClick={() => nav(`/projects/${key}`)}
+          // Zurück dorthin, wo der Prozess herkommt: in die Prozess-Übersicht des Projekts
+          // (?tab=workflows) bzw. in die persönlichen Prozesse — nicht auf das Board.
+          onClick={() => nav(key ? `/projects/${key}?tab=workflows` : "/settings/processes")}
           className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
         >
-          ← Zurück zum Projekt
+          ← Zurück zu den Prozessen
         </button>
         <span className="font-mono text-xs text-muted">{def?.key}</span>
         <h1 className="text-sm font-semibold">{def?.name || "Prozess"}</h1>
+        {nurLesen && (
+          <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
+            title="Dieser Ablauf gehört zu einem Prozess-Satz. Zum Ändern im Projekt „Anpassen“ wählen.">
+            nur ansehen
+          </span>
+        )}
         <div className="flex-1" />
         {msg && <span className="text-xs text-muted">{msg}</span>}
         <button
+          onClick={autoLayout}
+          disabled={nodes.length === 0}
+          hidden={nurLesen}
+          title={`Knoten von oben nach unten anordnen (Abstand ${gap} px)`}
+          className="rounded border border-line px-3 py-1 text-sm text-ink hover:border-brand disabled:opacity-50"
+        >
+          Anordnen
+        </button>
+        <button
           onClick={save}
           disabled={saving || !version}
+          hidden={nurLesen}
           className="rounded border border-line px-3 py-1 text-sm text-ink hover:border-brand disabled:opacity-50"
         >
           {saving ? "Speichert…" : "Speichern"}
@@ -215,6 +321,7 @@ export default function WorkflowEditor() {
         <button
           onClick={validateServer}
           disabled={!version}
+          hidden={nurLesen}
           className="rounded border border-line px-3 py-1 text-sm text-ink hover:border-brand disabled:opacity-50"
         >
           Validieren
@@ -222,6 +329,7 @@ export default function WorkflowEditor() {
         <button
           onClick={publish}
           disabled={!version || clientErrors.length > 0}
+          hidden={nurLesen}
           title={clientErrors.length ? "Erst Fehler beheben" : "Veröffentlichen"}
           className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50"
         >
@@ -231,25 +339,43 @@ export default function WorkflowEditor() {
 
       {/* Arbeitsfläche */}
       <div className="flex min-h-0 flex-1">
-        <div className="w-52 shrink-0 overflow-y-auto border-r border-line bg-card p-3">
-          <NodePalette />
-        </div>
+        {!nurLesen && (
+          <div className="w-52 shrink-0 overflow-y-auto border-r border-line bg-card p-3">
+            <NodePalette />
+            <p className="mt-4 border-t border-line pt-3 text-[10px] leading-relaxed text-muted">
+              Verbindung ziehen: von einem Ausgang auf den Eingang des nächsten Knotens.<br />
+              Verbindung löschen: Linie überfahren und auf ✕ klicken — oder anklicken und Entf.
+            </p>
+          </div>
+        )}
 
         <div className="relative min-w-0 flex-1">
           <WorkflowCanvas
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            nodes={sichtbar.nodes}
+            edges={sichtbar.edges}
+            readOnly={nurLesen}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
             onNodeClick={setSelectedId}
             onDropNode={onDropNode}
+            fokus={fokus}
           />
         </div>
 
         <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line bg-card">
           <div className="border-b border-line px-3 py-2 text-xs font-medium text-muted">Konfiguration</div>
-          <NodeConfigPanel node={selected} members={members} onChange={updateConfig} onDelete={deleteNode} />
+          {nurLesen ? (
+            <p className="p-3 text-sm text-muted">
+              Dieser Ablauf gehört zu einem Prozess-Satz und wird hier nur angezeigt. Zum Ändern
+              im Projekt unter <b>Prozesse</b> auf <b>Anpassen</b> gehen — das legt eine Kopie
+              für dieses Projekt an.
+            </p>
+          ) : (
+            <NodeConfigPanel node={selected} members={members} onChange={updateConfig}
+              onDelete={deleteNode} projectId={project?.id}
+              subjectKind={def?.subject_kind} />
+          )}
 
           {allErrors.length > 0 && (
             <div className="mt-auto border-t border-line p-3">

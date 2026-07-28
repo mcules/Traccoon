@@ -6,7 +6,6 @@ import os
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.notification import Notification
-from ..models.project import Project
 from ..models.ticket import Issue
 from ..models.user import User
 

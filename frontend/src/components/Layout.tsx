@@ -97,6 +97,8 @@ function UserMenu() {
               className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Profil</Link>
             <Link to="/settings" onClick={() => setOpen(false)}
               className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Einstellungen</Link>
+            <Link to="/processes" onClick={() => setOpen(false)}
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Prozesse</Link>
             {isAdmin && (
               <Link to="/admin" onClick={() => setOpen(false)}
                 className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Admin</Link>
@@ -144,6 +146,7 @@ function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: stri
             )}
             <Link to="/" onClick={close} className={`${item} text-ink hover:bg-surface`}>🦝 <span>Projekte</span></Link>
             <Link to="/inbox" onClick={close} className={`${item} text-ink hover:bg-surface`}>📥 <span>Inbox</span></Link>
+            <Link to="/processes" onClick={close} className={`${item} text-ink hover:bg-surface`}>🔀 <span>Prozesse</span></Link>
             <Link to="/profil" onClick={close} className={`${item} text-ink hover:bg-surface`}>👤 <span>Profil</span></Link>
             <Link to="/settings" onClick={close} className={`${item} text-ink hover:bg-surface`}>⚙️ <span>Einstellungen</span></Link>
             {isAdmin && (
@@ -180,7 +183,7 @@ export default function Layout({ children }: { children: ReactNode }) {
 
         {/* Mitte: Icon-Pill-Navigation — nur ab md; auf dem Handy übernimmt das Burger-Menü. */}
         {chrome.tabs.length > 0 && (
-          <nav className="hidden min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-surface p-1 md:flex">
+          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto rounded-lg border border-line bg-surface p-1 md:flex">
             {chrome.tabs.map((tab) => {
               const active = isActive(tab.to);
               return (

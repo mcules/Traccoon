@@ -18,7 +18,7 @@ from ..schemas.issue import (
     AssignAgentIn, AssigneeIn, CommentCreate, CommentOut, IssueCreate, IssueOut, IssueUpdate,
     MoveIn, TagIn,
 )
-from .deps import Access, build_access, get_current_user, get_project_access, require_role
+from .deps import Access, build_access, get_current_user, get_project_access
 
 router = APIRouter(tags=["issues"])
 
@@ -130,6 +130,11 @@ async def create_issue(
     db.add(issue)
     await db.commit()
     await db.refresh(issue)
+    from ..services.events import emit
+    await emit(db, "issue.created", project_id=project.id, issue_id=issue.id,
+               actor_id=access.user.id,
+               payload={"issue": {"key": issue.key, "summary": issue.summary,
+                                  "priority": issue.priority.value}})
     return issue
 
 
@@ -234,10 +239,20 @@ async def assign_agent(
     # Zuweisung startet die Planung: bei PM plant/orchestriert der PM, bei
     # Direktzuweisung plant der plan_agent, danach führt der zugewiesene Agent aus.
     if issue.agent_status is None:
-        issue.agent_status = TicketAgentStatus.planning
-    from ..services.dispatcher import sync_board_status
-    await sync_board_status(db, issue)   # Planung startet → „In Arbeit" (raus aus To Do)
+        from ..services.artifacts import set_ticket_status
+        # Planung startet → „In Arbeit" (raus aus To Do); Artefakt-Zeile zieht mit.
+        await set_ticket_status(db, issue, TicketAgentStatus.planning)
     await db.commit()
+    # Der Ablauf selbst steckt im Prozess „KI-Ticket-Lebenszyklus" (Projekt-Kopie, Satz des
+    # Nutzers oder globaler Standard) — hier wird er nur angestoßen.
+    from ..services.lifecycle_flow import start_lifecycle
+    await start_lifecycle(db, issue, access.user.id,
+                          entry="exec" if issue.plan else "plan")
+    await db.commit()
+    from ..services.events import emit
+    await emit(db, "issue.assigned", project_id=issue.project_id, issue_id=issue.id,
+               actor_id=access.user.id,
+               payload={"issue": {"key": issue.key, "agent": data.agent}})
     await db.refresh(issue)
     return issue
 
@@ -252,11 +267,16 @@ async def unassign_agent(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "KI-Recht (ai_assign) erforderlich")
     if issue.agent_working:
         raise HTTPException(status.HTTP_409_CONFLICT, "Agent arbeitet gerade — erst stoppen")
+    # Ohne Agent gibt es keinen Lebenszyklus mehr — laufende Instanz beenden, sonst
+    # würde sie beim nächsten Tick weiterlaufen wollen.
+    from ..services.lifecycle_flow import cancel_lifecycle
+    await cancel_lifecycle(db, issue)
     issue.assigned_agent = None
     issue.assigned_by_user_id = None
     issue.assigned_at = None
-    issue.agent_status = None
-    issue.hold_reason = None
+    from ..services.artifacts import set_ticket_status
+    # Board-Spalte bleibt, wo sie ist — das Ticket verliert nur seinen Agenten.
+    await set_ticket_status(db, issue, None, board=False)
     await db.commit()
     await db.refresh(issue)
     return issue

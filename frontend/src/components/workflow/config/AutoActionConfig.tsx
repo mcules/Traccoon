@@ -1,54 +1,106 @@
-import type { NodeConfig, AutoActionConfig as AutoAction } from "../types";
-import { KeyValueEditor } from "../kv";
+import type { NodeConfig, AutoActionConfig as AutoAction, AutoActionName } from "../types";
+import type { MemberLite } from "../../../api";
+import HttpRequestConfig from "./HttpRequestConfig";
+import ActionParams from "./ActionParams";
+import { ACTION_SPECS } from "./actionFields";
 
-const ACTIONS: [AutoAction["action"], string][] = [
-  ["create_ticket", "Ticket anlegen"],
-  ["notify", "Benachrichtigen"],
-  ["webhook", "Webhook aufrufen"],
-  ["set_context", "Kontext setzen"],
-  ["set_board_status", "Board-Status setzen"],
+/** Aktionen nach Themen gruppiert — sonst wird die Liste unübersichtlich. */
+const GROUPS: [string, [AutoActionName, string][]][] = [
+  ["Artefakt", [
+    ["set_status", "Zustand setzen"],
+  ]],
+  ["Allgemein", [
+    ["http_request", "Ziel aufrufen (HTTP)"],
+    ["set_context", "Kontext setzen"],
+    ["comment", "Kommentar schreiben"],
+    ["notify", "Benachrichtigen"],
+    ["webhook", "Freie URL aufrufen"],
+    ["create_ticket", "Ticket anlegen"],
+    ["refresh_facts", "Projekt-Fakten lesen"],
+  ]],
+  ["Ticket", [
+    ["set_board_status", "Board-Spalte setzen"],
+    ["assign_agent", "Agent zuweisen"],
+    ["set_cap_baseline", "Kostenfenster zurücksetzen"],
+    ["split_tickets", "Teilaufgaben anlegen"],
+    ["stop_agent", "Laufenden Agenten stoppen"],
+  ]],
+  ["Auslieferung", [
+    ["start_testenv", "Testumgebung starten"],
+    ["stop_testenv", "Testumgebung abräumen"],
+    ["accept_merge", "Branch mergen / PR öffnen"],
+    ["deploy", "Deployment einreihen"],
+  ]],
 ];
-
-const HINTS: Record<string, string> = {
-  create_ticket: "params: summary, description, priority, type …",
-  notify: "params: to, message …",
-  webhook: "params: url, method, payload …",
-  set_context: "params: <schlüssel> = <wert> (Werte dürfen {var:\"key\"} referenzieren)",
-  set_board_status: "params: status …",
-};
 
 export default function AutoActionConfig({
   config,
   onChange,
+  members,
+  projectId,
+  subjectKind,
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
+  members: MemberLite[];
+  projectId?: number;
+  subjectKind?: string;
 }) {
   const action: AutoAction = config.action || { action: "notify", params: {} };
-  const setAction = (a: AutoAction) => onChange({ ...config, action: a });
+  // Nur zeigen, was zum Subjekt des Ablaufs passt — ein Hardware-Prozess braucht kein
+  // „Branch mergen", ein Ticket-Prozess keinen Beschaffungs-Status. Die aktuell gewählte
+  // Aktion bleibt immer sichtbar, auch wenn sie (noch) nicht passt.
+  const passt = (name: AutoActionName) => {
+    const s = ACTION_SPECS[name]?.subjects;
+    return !s || !subjectKind || s.includes(subjectKind as any);
+  };
+  const gruppen = GROUPS
+    .map(([g, items]) => [g, items.filter(([k]) => passt(k) || k === action.action)] as const)
+    .filter(([, items]) => items.length);
+  // Aktion gewechselt → Parameter der alten nicht mitschleppen.
+  const setAction = (name: AutoActionName) =>
+    onChange({ ...config, action: { action: name, params: {} } });
+  const setParams = (params: Record<string, any>) =>
+    onChange({ ...config, action: { ...action, params } });
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
+
   return (
     <div className="space-y-3">
       <label className="block text-xs font-medium text-muted">
         Aktion
         <select
           value={action.action}
-          onChange={(e) => setAction({ ...action, action: e.target.value as AutoAction["action"] })}
+          onChange={(e) => setAction(e.target.value as AutoActionName)}
           className={`mt-1 ${inp}`}
         >
-          {ACTIONS.map(([k, l]) => (
-            <option key={k} value={k}>
-              {l}
-            </option>
+          {gruppen.map(([gruppe, items]) => (
+            <optgroup key={gruppe} label={gruppe}>
+              {items.map(([k, l]) => (
+                <option key={k} value={k}>
+                  {l}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </label>
 
-      <div>
-        <div className="mb-1 text-xs font-medium text-muted">Parameter</div>
-        <KeyValueEditor value={action.params || {}} onChange={(p) => setAction({ ...action, params: p })} />
-        <div className="mt-1 text-[10px] text-muted">{HINTS[action.action]}</div>
-      </div>
+      {action.action === "http_request" ? (
+        <HttpRequestConfig
+          params={action.params || {}}
+          onChange={setParams}
+          projectId={projectId}
+        />
+      ) : (
+        <ActionParams
+          action={action.action}
+          params={action.params || {}}
+          onChange={setParams}
+          members={members}
+          projectId={projectId}
+          subjectKind={subjectKind}
+        />
+      )}
     </div>
   );
 }

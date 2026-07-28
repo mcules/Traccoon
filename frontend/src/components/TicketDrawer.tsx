@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import Markdown from "./Markdown";
 import { waitInfo } from "../lib/waitReason";
 import { formatTime } from "../lib/formatTime";
+import ArtifactFields from "./ArtifactFields";
 import WorkflowInstanceView from "./workflow/WorkflowInstanceView";
 import LifecycleView from "./workflow/LifecycleView";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
@@ -17,7 +18,7 @@ const PRIOS = ["lowest", "low", "medium", "high", "highest"];
 // Neue Blöcke hier ergänzen, damit sie bei bestehenden Nutzer-Layouts automatisch
 // an ihre Default-Spalte angehängt werden (siehe useMemo unten).
 const DEFAULT_LEFT = ["wait", "parent", "summary", "description", "save", "split", "plan", "umbrella", "lifecycle", "comments"];
-const DEFAULT_RIGHT = ["meta", "person", "hardware", "ai", "files", "workflows"];
+const DEFAULT_RIGHT = ["meta", "person", "felder", "hardware", "ai", "files", "workflows"];
 
 type LayoutCol = "left" | "right";
 type Layout = { left: string[]; right: string[] };
@@ -814,20 +815,28 @@ export default function TicketDrawer({
     </div>
   );
 
-  // KI-Lebenszyklus als festes Flussdiagramm (read-only, Etappe 5).
-  // Nur zeigen, wenn ein Agent zugewiesen ist ODER ein KI-Zustand existiert.
+  // KI-Lebenszyklus. Läuft ein Prozess, wird GENAU DIESER Graph gezeigt (inklusive
+  // Anpassungen des Projekts) — sonst das ausgelieferte Schema als Orientierung.
   const bLifecycle = (issue.assigned_agent || issue.agent_status != null) && (
     <details open className="mb-4 rounded-lg border border-line">
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-muted">
         KI-Lebenszyklus
       </summary>
       <div className="px-3 pb-3">
-        <LifecycleView
-          agentStatus={issue.agent_status}
-          holdReason={issue.hold_reason}
-          agentWorking={issue.agent_working}
-          height={asPage ? "360px" : "240px"}
-        />
+        {issue.workflow_instance_id ? (
+          <WorkflowInstanceView
+            iid={issue.workflow_instance_id}
+            projectId={issue.project_id}
+            height={asPage ? "360px" : "240px"}
+          />
+        ) : (
+          <LifecycleView
+            agentStatus={issue.agent_status}
+            holdReason={issue.hold_reason}
+            agentWorking={issue.agent_working}
+            height={asPage ? "360px" : "240px"}
+          />
+        )}
       </div>
     </details>
   );
@@ -836,6 +845,15 @@ export default function TicketDrawer({
   const bWorkflows = <IssueWorkflows issueId={issue.id} project={project} meta={meta} />;
 
   // (Archivieren/Löschen liegen jetzt oben im Header — siehe headerActions.)
+
+  // Freie Felder des Artefakts (Administration → Artefakte). Ohne gepflegte Felder
+  // rendert die Komponente nichts, der Block bleibt dann leer.
+  const bFelder = issue.artifact_id ? (
+    <div className="rounded-lg border border-line p-3">
+      <div className="mb-2 text-xs font-medium text-muted">Felder</div>
+      <ArtifactFields artifactId={issue.artifact_id} />
+    </div>
+  ) : null;
 
   // Key → Block-Node. Nur im asPage-Modus verwendet. Meta/Person behalten hier ihren
   // dezenten Karten-Rahmen (wie zuvor in der Sidebar). Falsy Nodes (bedingt gerenderte
@@ -846,6 +864,7 @@ export default function TicketDrawer({
     summary: bSummary,
     meta: <div className="rounded-lg border border-line p-3">{bMeta}</div>,
     person: <div className="rounded-lg border border-line p-3">{bPerson}</div>,
+    felder: bFelder,
     hardware: bHardware,
     description: bDescription,
     save: bSave,
@@ -936,6 +955,7 @@ export default function TicketDrawer({
             {bSummary}
             {bMeta}
             {bPerson}
+            {bFelder}
             {bDescription}
             {bSave}
             {bSplit}

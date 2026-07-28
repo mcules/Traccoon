@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Issue, Project, ProjectMeta, Status } from "../api";
 import { waitInfo } from "../lib/waitReason";
@@ -14,6 +14,18 @@ const WAIT_KIND_COLOR: Record<string, string> = {
   question: "bg-yellow-500/20 text-yellow-300",
   external: "bg-sky-500/20 text-sky-300",
 };
+
+// Eingeklappte Spalten pro Projekt merken (rein lokal — keine Server-Einstellung).
+const collapseKey = (projectId: number) => `traccoon.board.collapsed.${projectId}`;
+
+function loadCollapsed(projectId: number): Set<number> {
+  try {
+    const raw = localStorage.getItem(collapseKey(projectId));
+    return new Set<number>(raw ? (JSON.parse(raw) as number[]) : []);
+  } catch {
+    return new Set<number>();
+  }
+}
 
 export default function Board({
   project, meta, issues, onOpen,
@@ -49,6 +61,22 @@ export default function Board({
   const [overIdx, setOverIdx] = useState<number | null>(null);
   const [moveErr, setMoveErr] = useState<string | null>(null);
   const [mobileCol, setMobileCol] = useState<number | null>(null);
+
+  // Eingeklappte Spalten (nur Desktop-Board); beim Projektwechsel neu laden.
+  const [collapsed, setCollapsed] = useState<Set<number>>(() => loadCollapsed(project.id));
+  useEffect(() => { setCollapsed(loadCollapsed(project.id)); }, [project.id]);
+  const toggleCol = (id: number) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        localStorage.setItem(collapseKey(project.id), JSON.stringify([...next]));
+      } catch {
+        /* z.B. privater Modus ohne Storage — Zustand bleibt dann nur für diese Sitzung */
+      }
+      return next;
+    });
 
   const move = useMutation({
     mutationFn: (v: { key: string; status_id: number; position: number }) =>
@@ -201,6 +229,34 @@ export default function Board({
         {cols.map((s) => {
           const items = itemsByCol.get(s.id) || [];
           const dragOverThisCol = overCol === s.id;
+
+          // Eingeklappt: schmale Säule mit senkrechtem Namen + Anzahl. Bleibt Drop-Ziel
+          // (Karte landet am Ende der Spalte); Klick klappt wieder auf.
+          if (collapsed.has(s.id)) {
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => toggleCol(s.id)}
+                title={`„${s.name}" ausklappen`}
+                className={`flex w-10 shrink-0 cursor-pointer flex-col items-center gap-2 rounded-lg bg-surface py-2 text-muted hover:text-ink ${
+                  dragOverThisCol ? "ring-1 ring-brand" : ""
+                }`}
+                onDragOver={(e) => {
+                  if (!dragKey) return;
+                  e.preventDefault();
+                  setOverCol(s.id);
+                  setOverIdx(items.length);
+                }}
+                onDrop={(e) => { e.preventDefault(); dropIn(s.id, items.length); }}
+              >
+                <span className="text-xs">›</span>
+                <span className="rounded bg-card px-1 text-xs">{items.length}</span>
+                <span className="text-xs font-medium uppercase [writing-mode:vertical-rl]">{s.name}</span>
+              </button>
+            );
+          }
+
           return (
             <div
               key={s.id}
@@ -213,8 +269,17 @@ export default function Board({
               }}
               onDrop={(e) => { e.preventDefault(); dropIn(s.id, overIdx ?? items.length); }}
             >
-              <div className="mb-2 flex items-center justify-between px-1 text-xs font-medium uppercase text-muted">
-                <span>{s.name}</span>
+              <div className="mb-2 flex items-center gap-1 px-1 text-xs font-medium uppercase text-muted">
+                <button
+                  type="button"
+                  onClick={() => toggleCol(s.id)}
+                  title={`„${s.name}" einklappen`}
+                  className="shrink-0 rounded px-1 hover:bg-card hover:text-ink"
+                >
+                  ⌄
+                </button>
+                <span className="truncate">{s.name}</span>
+                <div className="flex-1" />
                 <span>{items.length}</span>
               </div>
               <div className="space-y-2">

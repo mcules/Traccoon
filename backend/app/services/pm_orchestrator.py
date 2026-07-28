@@ -82,7 +82,8 @@ async def _create_ticket(db: AsyncSession, project: Project, summary: str, descr
         issue.assigned_agent = assign
         issue.assigned_by_user_id = by_user
         issue.assigned_at = _now()
-        issue.agent_status = TicketAgentStatus.planning
+        from .artifacts import set_ticket_status
+        await set_ticket_status(db, issue, TicketAgentStatus.planning)
     db.add(issue)
     await db.flush()
     return issue
@@ -180,7 +181,8 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
                         iss.assigned_by_user_id = user_id
                         iss.assigned_at = _now()
                         if iss.agent_status is None:
-                            iss.agent_status = TicketAgentStatus.planning
+                            from .artifacts import set_ticket_status
+                            await set_ticket_status(db, iss, TicketAgentStatus.planning)
                         created_keys.append(iss.key)
             except Exception:  # noqa: BLE001
                 log.exception("PM-Op fehlgeschlagen")

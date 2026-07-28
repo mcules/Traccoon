@@ -5,7 +5,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models.agents import CostEntry, Run
+from ..models.agents import CostEntry
 from ..models.ops import ProviderModel
 from ..models.ticket import Issue
 from ..models.user import User

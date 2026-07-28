@@ -85,7 +85,9 @@ export default function DecisionConfig({
                   placeholder="Wert"
                   className={`w-24 ${inp}`}
                 />
-                <span className="text-[10px] text-muted">leeres Feld = immer wahr</span>
+                <span className="text-[10px] text-muted">
+                  leeres Feld = greift immer (Auffang-Zweig, gehört ans Ende)
+                </span>
               </div>
             </div>
           );
@@ -108,7 +110,20 @@ export default function DecisionConfig({
               {b.label || b.handle}
             </option>
           ))}
+          {/* Zeigt einen Standard, der (noch) kein Zweig ist — sonst stünde hier stumm
+              „keiner", und beim nächsten Speichern wäre die zugehörige Kante verwaist. */}
+          {config.default_handle && !branches.some((b) => b.handle === config.default_handle) && (
+            <option value={config.default_handle}>
+              {config.default_handle} — kein Zweig, bitte anlegen
+            </option>
+          )}
         </select>
+        {config.default_handle && !branches.some((b) => b.handle === config.default_handle) && (
+          <span className="mt-1 block text-[10px] text-amber-400">
+            Dieser Ausgang ist verdrahtet, aber nicht als Zweig beschrieben. Lege einen Zweig
+            mit dieser Kennung an (ohne Bedingung = greift immer).
+          </span>
+        )}
       </label>
     </div>
   );

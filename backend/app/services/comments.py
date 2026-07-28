@@ -1,16 +1,21 @@
 """Geteilte Kommentar-Logik (Dashboard-API + Telegram-Bot).
 
-Legt den Kommentar an und löst — bei comment_triggers_agent — eine Status-Transition
-aus (kein Direkt-Spawn; die Dispatcher-Gates greifen). Nur echte User-Kommentare
-(author_id gesetzt, kind=agent) triggern.
+Legt den Kommentar an und meldet ihn — bei `comment_triggers_agent` — als Ereignis an den
+Lebenszyklus-Prozess des Tickets. Wo der Prozess daraufhin weiterläuft (neu planen, weiter
+umsetzen, Konflikt auflösen), steht im Graphen an den `wait_event`-Knoten und nicht mehr
+hier. Nur echte User-Kommentare (author_id gesetzt, kind=agent) lösen aus.
 """
 from __future__ import annotations
 
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.enums import HoldReason, TicketAgentStatus
+from ..models.enums import TicketAgentStatus
 from ..models.project import Project
 from ..models.ticket import Comment, Issue
+
+log = logging.getLogger("comments")
 
 RUNNING = (TicketAgentStatus.planning, TicketAgentStatus.approved,
            TicketAgentStatus.in_progress, TicketAgentStatus.testing)
@@ -34,20 +39,28 @@ async def apply_user_comment(db: AsyncSession, issue: Issue, text: str,
         await db.commit()
         return
     project = await db.get(Project, issue.project_id)
-    if project and project.comment_triggers_agent:
-        st = issue.agent_status
-        if st in RUNNING:
-            pass  # läuft bereits — nichts
-        elif st == TicketAgentStatus.hold:
-            issue.agent_status = TicketAgentStatus.planning
-            issue.hold_reason = None
-            issue.continuation_count += 1
-        elif st == TicketAgentStatus.plan_review:
-            issue.agent_status = TicketAgentStatus.planning  # Plan revidieren
-        elif st in (TicketAgentStatus.done, TicketAgentStatus.failed, TicketAgentStatus.to_test) and issue.plan:
-            issue.agent_status = TicketAgentStatus.approved  # Continuation liest Kommentar
-            issue.hold_reason = None
-            issue.continuation_count += 1
-        else:
-            issue.agent_status = TicketAgentStatus.planning
-    await db.commit()
+    trigger = bool(project and project.comment_triggers_agent
+                   and issue.agent_status not in RUNNING)
+    issue_id, issue_key = issue.id, issue.key
+    await db.commit()   # erst festschreiben — der Prozess liest den Kommentar gleich mit
+
+    from .events import emit
+    await emit(db, "comment.added", project_id=issue.project_id, issue_id=issue_id,
+               actor_id=user_id,
+               payload={"comment": {"text": text[:2000], "label": label},
+                        "issue": {"key": issue_key}})
+    if not trigger:
+        return
+
+    from .lifecycle_flow import live_instance, start_lifecycle
+    from .workflow_engine import resume_on_event
+    if await resume_on_event(issue_id, "comment", {"text": text[:2000], "user_id": user_id}):
+        log.info("Ticket %s: Kommentar hat den Prozess fortgesetzt", issue_key)
+        return
+    # Kein wartender Ereignis-Knoten: entweder läuft gar kein Prozess (dann starten wir
+    # einen) oder er wartet gerade auf eine Freigabe — die soll ein Kommentar NICHT
+    # überspringen, sonst wäre die Menschenhoheit umgehbar.
+    if await live_instance(db, issue) is None:
+        await start_lifecycle(db, issue, user_id,
+                              entry="exec" if issue.plan else "plan")
+        await db.commit()

@@ -4,8 +4,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import Onboarding from "../components/Onboarding";
 import MyWork from "../components/MyWork";
+import { usePageChrome } from "../pageChrome";
 
 export default function Projects() {
+  // Titel ohne Untermenü — sonst bliebe das der zuletzt besuchten Seite stehen.
+  usePageChrome("Projekte", []);
   const qc = useQueryClient();
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
   const [show, setShow] = useState(false);

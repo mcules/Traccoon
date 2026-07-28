@@ -1,6 +1,6 @@
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -312,6 +312,11 @@ async def create_asset(
     await _require_project_member(data.project_id, user, db)
     a = HardwareAsset(**data.model_dump())
     db.add(a)
+    await db.flush()
+    # Jedes Exemplar ist ein Artefakt: gemeinsame Identität und Zustand entstehen sofort,
+    # sonst hinge das Objekt bis zum nächsten Start ohne Artefakt-Zeile in der Luft.
+    from ..services.artifacts import ensure_for_asset
+    await ensure_for_asset(db, a)
     await db.commit()
     await db.refresh(a)
     return a
@@ -333,6 +338,9 @@ async def update_asset(
         await _require_project_member(fields["project_id"], user, db)
     for field, value in fields.items():
         setattr(a, field, value)
+    # Artefakt-Zeile mitziehen (Titel, Projekt, Zustand) — sie ist die gemeinsame Sicht.
+    from ..services.artifacts import sync_asset_artifact
+    await sync_asset_artifact(db, a)
     await db.commit()
     await db.refresh(a)
     return a

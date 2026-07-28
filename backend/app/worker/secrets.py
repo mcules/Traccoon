@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.security import decrypt_secret
 from ..models.secrets import ProviderToken, UserSecret
-from ..models.user import SYSTEM_USER_ID, User
+from ..models.user import User
 
 
 async def _system_secret(db: AsyncSession, name: str) -> str | None:

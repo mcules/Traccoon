@@ -1,7 +1,7 @@
 import datetime as dt
 
 from sqlalchemy import (
-    DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, Numeric, String, Text, UniqueConstraint,
+    DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, Numeric, String, Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -46,6 +46,12 @@ class HardwareAsset(TimestampMixin, Base):
     __tablename__ = "hardware_assets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    # Gemeinsame Identität aller Artefakte: Zustand, Projekt und Titel stehen dort, und
+    # Prozesse/Verweise/Freigaben zeigen darauf. Diese Tabelle hält nur noch die
+    # hardware-spezifischen Details (Modell, Ort, Kosten, Seriennummer, Garantie).
+    artifact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("artifacts.id", ondelete="CASCADE"), nullable=True, unique=True, index=True
+    )
     model_id: Mapped[int] = mapped_column(ForeignKey("hardware_models.id", ondelete="RESTRICT"), index=True)
     issue_id: Mapped[int | None] = mapped_column(
         ForeignKey("issues.id", ondelete="SET NULL"), nullable=True, unique=True
@@ -54,6 +60,8 @@ class HardwareAsset(TimestampMixin, Base):
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )  # NULL = Vorrat/Lager
     serial_number: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Zustand: führend ist `artifacts.status_key`. Diese Spalte wird mitgeschrieben,
+    # solange Oberfläche und Filter darauf laufen (Umstellung in Etappen).
     purchase_status: Mapped[PurchaseStatus] = mapped_column(
         SAEnum(PurchaseStatus, name="purchasestatus", values_callable=pg_enum_values),
         default=PurchaseStatus.planned, index=True,

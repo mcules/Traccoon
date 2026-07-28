@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -11,6 +11,7 @@ import {
   type OnConnect,
   type OnNodesChange,
   type OnEdgesChange,
+  useStore,
 } from "@xyflow/react";
 import type { WorkflowNodeType } from "./types";
 import type { FlowNode } from "./nodes/shared";
@@ -22,7 +23,11 @@ import DecisionNode from "./nodes/DecisionNode";
 import ApprovalNode from "./nodes/ApprovalNode";
 import AutoActionNode from "./nodes/AutoActionNode";
 import AgentTaskNode from "./nodes/AgentTaskNode";
+import WaitEventNode from "./nodes/WaitEventNode";
+import SubflowNode from "./nodes/SubflowNode";
 import ConditionEdge from "./ConditionEdge";
+import { CanvasModeProvider } from "./canvasMode";
+import PhaseBands from "./PhaseBands";
 
 // Stabile Referenzen (nicht im Render neu erzeugen — sonst React-Flow-Warnung).
 const nodeTypes: NodeTypes = {
@@ -33,6 +38,8 @@ const nodeTypes: NodeTypes = {
   approval: ApprovalNode,
   auto_action: AutoActionNode,
   agent_task: AgentTaskNode,
+  wait_event: WaitEventNode,
+  subflow: SubflowNode,
 };
 const edgeTypes: EdgeTypes = { condition: ConditionEdge };
 
@@ -45,11 +52,26 @@ export interface WorkflowCanvasProps {
   onConnect?: OnConnect;
   onNodeClick?: (id: string) => void;
   onDropNode?: (type: WorkflowNodeType, pos: { x: number; y: number }) => void;
+  /** Diesen Punkt (Flächen-Koordinaten) oben mittig zeigen. `token` löst aus. */
+  fokus?: { x: number; y: number; token: number };
 }
 
 function Inner(props: WorkflowCanvasProps) {
-  const { nodes, edges, readOnly, onNodesChange, onEdgesChange, onConnect, onNodeClick, onDropNode } = props;
+  const { nodes, edges, readOnly, onNodesChange, onEdgesChange, onConnect, onNodeClick,
+          onDropNode, fokus } = props;
   const rf = useReactFlow();
+  const hoehe = useStore((st) => st.height);
+
+  // Nach dem Anordnen soll der Blick dort stehen, wo der Ablauf beginnt — sonst schaut man
+  // nach dem Klick auf einen beliebigen Ausschnitt der neu verteilten Karten.
+  useEffect(() => {
+    if (!fokus || !hoehe) return;
+    const zoom = rf.getZoom();
+    const rand = 60;
+    rf.setCenter(fokus.x, fokus.y - rand + hoehe / (2 * zoom), { zoom, duration: 400 });
+    // Absichtlich nur auf `token`: dasselbe Ziel erneut anzusteuern ist ein neuer Wunsch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fokus?.token]);
 
   const onDrop = useCallback(
     (ev: React.DragEvent) => {
@@ -81,10 +103,14 @@ function Inner(props: WorkflowCanvasProps) {
       nodesDraggable={!readOnly}
       nodesConnectable={!readOnly}
       elementsSelectable
+      // Entf UND Rücktaste löschen die Auswahl (Kante oder Knoten). React Flow ignoriert
+      // die Tasten, während in einem Eingabefeld getippt wird.
+      deleteKeyCode={readOnly ? null : ["Delete", "Backspace"]}
       fitView
       proOptions={{ hideAttribution: true }}
       defaultEdgeOptions={{ type: "condition" }}
     >
+      <PhaseBands nodes={nodes} />
       <Background className="!bg-surface" />
       <Controls />
       <MiniMap pannable zoomable className="!bg-card" />
@@ -96,7 +122,9 @@ function Inner(props: WorkflowCanvasProps) {
 export default function WorkflowCanvas(props: WorkflowCanvasProps) {
   return (
     <ReactFlowProvider>
-      <Inner {...props} />
+      <CanvasModeProvider value={!!props.readOnly}>
+        <Inner {...props} />
+      </CanvasModeProvider>
     </ReactFlowProvider>
   );
 }

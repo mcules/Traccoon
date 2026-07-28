@@ -8,8 +8,8 @@ import datetime as dt
 from pydantic import BaseModel, Field
 
 from ..models.enums import (
-    WorkflowInstanceStatus, WorkflowNodeType, WorkflowStepStatus, WorkflowSubjectKind,
-    WorkflowTokenState, WorkflowVersionStatus,
+    WorkflowInstanceStatus, WorkflowNodeType, WorkflowSetScope, WorkflowStepStatus,
+    WorkflowSubjectKind, WorkflowTokenState, WorkflowVersionStatus,
 )
 
 
@@ -32,6 +32,11 @@ class WorkflowDefinitionUpdate(BaseModel):
 class WorkflowDefinitionOut(BaseModel):
     id: int
     project_id: int | None
+    set_id: int | None = None
+    slot: str | None = None
+    # Gesetzt, wenn dieser Ablauf nur für eine Vorgangsart gilt (Bug ≠ Aufgabe).
+    issue_type_id: int | None = None
+    archived_at: dt.datetime | None = None
     key: str
     name: str
     description: str
@@ -42,6 +47,42 @@ class WorkflowDefinitionOut(BaseModel):
     created_at: dt.datetime
     updated_at: dt.datetime
     model_config = {"from_attributes": True}
+
+
+# ── Prozess-Sätze ────────────────────────────────────────────────────────────
+
+class WorkflowSetOut(BaseModel):
+    id: int
+    scope: WorkflowSetScope
+    user_id: int | None
+    key: str
+    name: str
+    description: str
+    is_builtin: bool
+    model_config = {"from_attributes": True}
+
+
+class WorkflowSetCreate(BaseModel):
+    """Neuer Satz — immer als Kopie einer Vorlage (Default: globaler Standard)."""
+    name: str = Field(default="", max_length=200)
+    source_set_id: int | None = None
+
+
+class SlotOut(BaseModel):
+    """Ein Ablauf-Platz eines Projekts inklusive Herkunft des geltenden Graphen."""
+    slot: str
+    name: str
+    description: str
+    subject_kind: str
+    origin: str                     # project | user | global | builtin | none
+    set_id: int | None = None
+    set_name: str | None = None
+    definition_id: int | None = None
+    definition_name: str | None = None
+    published: bool = False
+    customizable: bool = True
+    # Abläufe, die nur für eine Vorgangsart gelten (Bug ≠ Aufgabe).
+    per_issue_type: list[dict] = []
 
 
 # ── Versionen ────────────────────────────────────────────────────────────────

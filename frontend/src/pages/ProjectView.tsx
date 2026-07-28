@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Issue, Project, ProjectMeta } from "../api";
 import { usePageChrome } from "../pageChrome";
+import { BOARD_VIEWS, projectChromeTabs, projectTabs, type ProjectTab } from "../projectTabs";
 import { useAuth } from "../auth";
 import TicketDrawer from "../components/TicketDrawer";
 import NewTicketModal from "../components/NewTicketModal";
@@ -18,19 +19,11 @@ import Board from "../components/Board";
 import PmChat from "../components/PmChat";
 import AgentMonitor from "../components/AgentMonitor";
 import WorkflowList from "../components/workflow/WorkflowList";
+import SlotList from "../components/workflow/SlotList";
 
-type Tab = "board" | "list" | "backlog" | "archiv" | "code" | "dashboard" | "pm" | "monitor" | "workflows" | "members" | "hardware" | "testenvs" | "settings";
-
-// Ticket-Ansichten unter „Board" — im Untermenü nur als „Board" vertreten, darunter als Buttons.
-const BOARD_VIEWS: [Tab, string][] = [
-  ["board", "Board"], ["list", "Liste"], ["backlog", "Backlog"], ["archiv", "Archiv"],
-];
-
-// Icon je Reiter für die Pill-Navigation im Header.
-const TAB_ICONS: Record<string, string> = {
-  pm: "💬", board: "🗂️", code: "📁", dashboard: "📊",
-  monitor: "⚡", workflows: "🔀", hardware: "🖥️", testenvs: "🧪", settings: "⚙️",
-};
+// Reiter-Liste/Icons liegen in ../projectTabs, damit die Ticket-Seite dasselbe
+// Untermenü rendern kann.
+type Tab = ProjectTab;
 
 export default function ProjectView() {
   const { key } = useParams();
@@ -115,25 +108,9 @@ export default function ProjectView() {
     return () => { if (ric && cic) cic(id); else clearTimeout(id); };
   }, [project?.id, canManage]);
 
-  // Rollen-/Flag-abhängige Tab-Liste. Vor dem Projekt-Guard berechnet, damit usePageChrome
-  // (ein Hook) unbedingt aufgerufen wird; ohne Projekt bleibt die Liste leer.
-  const tabs = useMemo<[Tab, string][]>(() => {
-    if (!project) return [];
-    return [
-      // PM-Chat zuerst
-      ...(project.my_ai_assign && project.pm_chat_enabled ? ([["pm", "PM-Chat"]] as [Tab, string][]) : []),
-      ["board", "Board"],   // Liste/Backlog/Archiv liegen als Buttons UNTER Board (BOARD_VIEWS)
-      ...(canManage && project.git_enabled ? ([["code", "Code"]] as [Tab, string][]) : []),
-      ["dashboard", "Dashboard"],
-      ...(project.my_ai_assign ? ([["monitor", "Monitor"]] as [Tab, string][]) : []),
-      ...(canManage ? ([["workflows", "Prozesse"]] as [Tab, string][]) : []),
-      ...(project.has_hardware ? ([["hardware", "Hardware"]] as [Tab, string][]) : []),
-      ...(project.testenv_enabled !== false && canWrite
-        ? ([["testenvs", "Testumgebungen"]] as [Tab, string][]) : []),
-      // Mitglieder liegen jetzt in den Projekt-Einstellungen (ProjectSettings-Reiter)
-      ...(canManage ? ([["settings", "Einstellungen"]] as [Tab, string][]) : []),
-    ];
-  }, [project, canManage, canWrite]);
+  // Rollen-/Flag-abhängige Tab-Liste (geteilt mit der Ticket-Seite). Vor dem Projekt-Guard
+  // berechnet, damit usePageChrome (ein Hook) unbedingt aufgerufen wird.
+  const tabs = useMemo<[Tab, string][]>(() => projectTabs(project), [project]);
 
   // Gültige Tabs = Untermenü-Tabs + die Board-Ansichten (list/backlog/archiv sind nicht im
   // Untermenü, aber gültige Ziele der Board-Buttons).
@@ -154,14 +131,7 @@ export default function ProjectView() {
     project?.name ?? "",
     // „Board" bleibt im Untermenü hervorgehoben, solange eine Board-Ansicht (auch Liste/…) aktiv ist:
     // dazu zeigt sein Link auf die aktuelle URL, wenn wir in der Board-Gruppe sind.
-    tabs.map(([key, label]) => ({
-      key,
-      label,
-      icon: TAB_ICONS[key],
-      to: key === "board" && inBoardGroup
-        ? `/projects/${project?.key}?tab=${tab}`
-        : `/projects/${project?.key}?tab=${key}`,
-    }))
+    projectChromeTabs(project, inBoardGroup ? tab : undefined)
   );
 
   if (!project) return <div className="text-muted">Projekt nicht gefunden.</div>;
@@ -225,7 +195,15 @@ export default function ProjectView() {
       {tab === "dashboard" && <Dashboard project={project} />}
       {tab === "pm" && <PmChat project={project} />}
       {tab === "monitor" && <AgentMonitor project={project} />}
-      {tab === "workflows" && canManage && <WorkflowList project={project} />}
+      {tab === "workflows" && canManage && (
+        <div className="space-y-8">
+          <SlotList project={project} />
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">Eigene Prozesse</h3>
+            <WorkflowList project={project} />
+          </div>
+        </div>
+      )}
       {tab === "hardware" && <Hardware project={project} />}
       {tab === "testenvs" && canWrite && <TestenvsPanel project={project} />}
       {tab === "settings" && canManage && <ProjectSettings project={project} />}

@@ -23,6 +23,11 @@ class Project(TimestampMixin, Base):
     lead_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    # Prozess-Satz dieses Projekts (Referenz, keine Kopie). NULL = Satz eines Owners bzw.
+    # der globale Standard-Satz — siehe services/workflow_sets.resolve_definition.
+    workflow_set_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workflow_sets.id", ondelete="SET NULL"), nullable=True
+    )
 
     # Repo / Workspace
     workspace_dir: Mapped[str] = mapped_column(String(500), default="")

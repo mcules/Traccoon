@@ -1,4 +1,4 @@
-import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
+import { Handle, Position, useStore, type Node, type NodeProps } from "@xyflow/react";
 import type { NodeConfig, WorkflowNodeType } from "../types";
 
 /** Laufzeit-Zustand eines Knotens für die Read-only-Instanz-Ansicht. */
@@ -29,8 +29,31 @@ export interface SourceHandleDef {
 
 const handleDot = "!h-2.5 !w-2.5 !border !border-card";
 
+/**
+ * Ausgänge, die ein Knoten zeigen muss.
+ *
+ * Entscheidend ist die zweite Quelle: React Flow zeichnet eine Kante NUR, wenn es den
+ * benannten Ausgang am Knoten wirklich gibt. Fehlt er, verschwindet die Verbindung
+ * kommentarlos — der Zielknoten sieht dann aus, als hinge er in der Luft. Deshalb werden
+ * hier auch alle Ausgänge ergänzt, die vorhandene Kanten tatsächlich benutzen.
+ */
+export function useSourceHandles(nodeId: string, vorgabe: SourceHandleDef[]): SourceHandleDef[] {
+  const genutzt = useStore((st) => {
+    const namen = new Set<string>();
+    for (const e of st.edges) if (e.source === nodeId) namen.add(e.sourceHandle || "out");
+    return [...namen].sort().join("\u0000");
+  });
+  const zusatz = genutzt ? genutzt.split("\u0000") : [];
+  const out = [...vorgabe];
+  for (const name of zusatz) {
+    if (!out.some((h) => h.id === name)) out.push({ id: name, label: name });
+  }
+  return out.length ? out : [{ id: "out" }];
+}
+
 /** Gemeinsamer Rahmen für alle Custom-Nodes: Titelzeile, Konfig-Auszug, Handles. */
 export function BaseNode({
+  nodeId,
   title,
   icon,
   accent,
@@ -40,9 +63,11 @@ export function BaseNode({
   sources = [{ id: "out" }],
   children,
 }: {
+  /** Ohne die Kennung können fehlende Ausgänge nicht ergänzt werden (s. useSourceHandles). */
+  nodeId?: string;
   title: string;
   icon?: string;
-  accent: string; // Tailwind-border-Klasse für die linke Akzentkante
+  accent: string; // Tailwind-border-Klasse für die obere Akzentkante
   selected?: boolean;
   runtimeState?: RuntimeState;
   hasTarget?: boolean;
@@ -51,12 +76,22 @@ export function BaseNode({
 }) {
   const rs = runtimeState ? RS[runtimeState] : null;
   const border = rs ? rs.ring : selected ? "border-brand" : "border-line";
+  // Jeder Ausgang, den eine vorhandene Kante benutzt, MUSS gezeichnet werden — sonst
+  // verschluckt React Flow die Kante und der Zielknoten hängt scheinbar in der Luft.
+  // Zentral hier, damit das für jeden Knotentyp gilt (auch selbstgebaute Graphen).
+  const alle = useSourceHandles(nodeId ?? "", sources);
+  sources = sources.length ? alle : sources;
+  // Fluss läuft von oben nach unten: Eingang oben, Ausgänge nebeneinander unten.
+  const labeled = sources.filter((s) => s.label).length;
   return (
     <div
-      className={`relative min-w-[140px] max-w-[220px] border-l-4 ${accent} rounded-md border ${border} bg-card px-3 py-2 text-ink shadow-sm`}
+      className={`relative max-w-[280px] border-t-4 ${accent} rounded-md border ${border} bg-card px-3 py-2 text-ink shadow-sm ${
+        labeled ? "pb-5" : ""
+      }`}
+      style={{ minWidth: Math.max(160, labeled * 92) }}
     >
       {hasTarget && (
-        <Handle type="target" position={Position.Left} className={`${handleDot} !bg-muted`} />
+        <Handle type="target" position={Position.Top} className={`${handleDot} !bg-muted`} />
       )}
       <div className="flex items-center gap-1.5 text-xs font-medium">
         {icon && <span>{icon}</span>}
@@ -66,20 +101,20 @@ export function BaseNode({
       {children && <div className="mt-1 space-y-0.5 text-[10px] text-muted">{children}</div>}
 
       {sources.map((s, i) => {
-        const top = sources.length === 1 ? 0.5 : (i + 1) / (sources.length + 1);
+        const left = sources.length === 1 ? 0.5 : (i + 1) / (sources.length + 1);
         return (
           <div key={s.id}>
             <Handle
               type="source"
               id={s.id}
-              position={Position.Right}
-              style={{ top: `${top * 100}%` }}
+              position={Position.Bottom}
+              style={{ left: `${left * 100}%` }}
               className={`${handleDot} ${s.color || "!bg-brand"}`}
             />
             {s.label && (
               <span
-                className="pointer-events-none absolute right-1 -translate-y-1/2 text-[9px] text-muted"
-                style={{ top: `${top * 100}%` }}
+                className="pointer-events-none absolute bottom-0.5 max-w-[88px] -translate-x-1/2 truncate text-center text-[9px] text-muted"
+                style={{ left: `${left * 100}%` }}
               >
                 {s.label}
               </span>

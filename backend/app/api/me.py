@@ -57,6 +57,27 @@ async def set_runner_limit(d: IntIn, u: User = Depends(get_current_user), db: As
     await db.commit()
 
 
+ASSISTANT_NOTIFY = ("needed", "always", "errors", "never")
+
+
+@router.put("/me/assistant-notify", status_code=204)
+async def set_assistant_notify(d: StrIn, u: User = Depends(get_current_user),
+                               db: AsyncSession = Depends(get_session)):
+    """Wann der persönliche Assistent sich meldet. Voreinstellung `needed`: nur wenn er
+    ausdrücklich etwas meldet, bei Fehlern und im Chat — erledigte Ablage bleibt still."""
+    u.assistant_notify = d.value if d.value in ASSISTANT_NOTIFY else "needed"
+    await db.commit()
+
+
+@router.put("/me/vault-memory-path", status_code=204)
+async def set_vault_memory_path(d: StrIn, u: User = Depends(get_current_user),
+                                db: AsyncSession = Depends(get_session)):
+    """Gedächtnis-Ordner im Obsidian-Vault (ABC-30). Darunter legen die Agenten ihre gelernten
+    Vorgaben ab und lesen sie bei jedem Lauf wieder. Leer = kein Gedächtnis."""
+    u.vault_memory_path = (d.value or "").strip().strip("/")[:500]
+    await db.commit()
+
+
 @router.put("/me/telegram-chat", status_code=204)
 async def set_telegram(d: StrIn, u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     u.telegram_chat_id = d.value or None
@@ -232,7 +253,7 @@ async def my_dashboard(u: User = Depends(get_current_user), db: AsyncSession = D
       (`assigned_by_user_id`) ODER das Ticket ist mir als Person zugewiesen (`assignee_user_id`).
     - `assigned`: mir zugewiesene, noch offene Tickets, die NICHT schon in `action` stehen.
     """
-    from sqlalchemy import and_, func, or_, select
+    from sqlalchemy import func, or_, select
 
     from ..models.notification import Notification
     from ..models.project import Project, ProjectMember
@@ -298,7 +319,8 @@ async def my_flags(u: User = Depends(get_current_user)):
     out.update({f: await get_flag(f) for f in GLOBAL_FLAGS})
     out.update(night_start_hour=u.night_start_hour, night_end_hour=u.night_end_hour,
                night_days=u.night_days, night_override=u.night_override, max_runners=u.max_runners,
-               telegram_chat_id=u.telegram_chat_id)
+               telegram_chat_id=u.telegram_chat_id, assistant_notify=u.assistant_notify,
+               vault_memory_path=u.vault_memory_path)
     return out
 
 

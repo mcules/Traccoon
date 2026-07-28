@@ -6,15 +6,19 @@ import AgentsPanel from "../components/AgentsPanel";
 import SkillsPanel from "../components/SkillsPanel";
 import McpPanel from "../components/McpPanel";
 import PreferencesPanel from "../components/PreferencesPanel";
+import MySetPanel from "../components/workflow/MySetPanel";
+import DestinationsPanel from "../components/DestinationsPanel";
 import WebhooksPanel from "../components/WebhooksPanel";
 import JobsPanel from "../components/JobsPanel";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 
-type Tab = "secrets" | "prefs" | "agents" | "mcp" | "jobs" | "webhooks" | "skills";
+type Tab = "secrets" | "prefs" | "processes" | "destinations" | "agents" | "mcp"
+  | "jobs" | "webhooks" | "skills";
 const TABS: [Tab, string][] = [
-  ["secrets", "Secret-Tresor"], ["prefs", "Persönlich"], ["agents", "Mein Assistent"],
-  ["mcp", "MCP-Server"], ["jobs", "Jobs"], ["webhooks", "Webhooks"], ["skills", "Skills"],
+  ["secrets", "Secret-Tresor"], ["prefs", "Persönlich"], ["processes", "Meine Prozesse"],
+  ["destinations", "Ziele"], ["agents", "Mein Assistent"], ["mcp", "MCP-Server"],
+  ["jobs", "Jobs"], ["webhooks", "Webhooks"], ["skills", "Skills"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -25,12 +29,17 @@ export default function Settings() {
   const { user } = useAuth();
   usePageChrome("Einstellungen", TABS.map(([key, label]) => ({
     key, label, to: `/settings/${key}`,
-    icon: { secrets: "🔐", prefs: "👤", agents: "🤖", mcp: "🧩", jobs: "⏱️", webhooks: "🪝", skills: "✨" }[key],
+    icon: { secrets: "🔐", prefs: "👤", processes: "🔀", destinations: "🎯", agents: "🤖",
+            mcp: "🧩", jobs: "⏱️", webhooks: "🪝", skills: "✨" }[key],
   })));
   return (
     <div className="mx-auto max-w-3xl">
       {tab === "secrets" && <Secrets />}
       {tab === "prefs" && <PreferencesPanel isAdmin={user?.global_role === "admin"} />}
+      {tab === "processes" && <MySetPanel />}
+      {tab === "destinations" && user && (
+        <DestinationsPanel scope="user" userId={user.id} />
+      )}
       {tab === "agents" && <AgentsPanel />}
       {tab === "mcp" && <McpPanel />}
       {tab === "jobs" && <JobsPanel />}

@@ -1,6 +1,6 @@
 import { BaseNode, type FlowNodeProps, type SourceHandleDef } from "./shared";
 
-export default function DecisionNode({ data, selected }: FlowNodeProps) {
+export default function DecisionNode({ id, data, selected }: FlowNodeProps) {
   const branches = data.config.branches || [];
   const sources: SourceHandleDef[] = branches.length
     ? branches.map((b) => ({
@@ -11,9 +11,10 @@ export default function DecisionNode({ data, selected }: FlowNodeProps) {
     : [{ id: "out" }];
   return (
     <BaseNode
+      nodeId={id}
       title={data.config.label || "Verzweigung"}
       icon="◈"
-      accent="border-l-amber-500"
+      accent="border-t-amber-500"
       selected={selected}
       runtimeState={data.runtimeState}
       sources={sources}

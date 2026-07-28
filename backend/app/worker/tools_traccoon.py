@@ -50,6 +50,28 @@ TRACCOON_TOOLS = [
          {"key": {"type": "string"}}, ["key"]),
     _def("traccoon_issue_costs", "Kosten (USD, Tokens) eines Tickets.",
          {"key": {"type": "string"}}, ["key"]),
+    _def("traccoon_notify_human",
+         "Melde deinem Menschen etwas, das er wissen MUSS oder ausdrücklich wissen WILL "
+         "(Frist, Geldbetrag, Entscheidung, Störung, etwas das er beantworten muss). "
+         "Ohne diesen Aufruf bleibt dein Lauf still — ein erledigtes „nichts zu tun\" oder "
+         "eine reine Ablage sind KEIN Grund zu melden. Sparsam einsetzen.",
+         {"title": {"type": "string", "description": "Eine Zeile, worum es geht"},
+          "text": {"type": "string", "description": "Was der Mensch wissen muss"},
+          "urgency": {"type": "string", "description": "normal (Standard) oder high"}},
+         ["title"]),
+    _def("traccoon_list_destinations",
+         "Freigegebene externe Ziele auflisten (Name, Zweck, Basis-URL). Zugangsdaten sieht "
+         "niemand — sie werden beim Aufruf serverseitig gesetzt.", {}, []),
+    _def("traccoon_http_call",
+         "Ein freigegebenes Ziel aufrufen. Basis-URL und Anmeldung kommen aus dem Ziel; du "
+         "gibst nur Methode, Pfad-Ergänzung, Query, Kopfzeilen und Body an.",
+         {"destination": {"type": "string", "description": "Name des Ziels"},
+          "method": {"type": "string", "description": "GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS"},
+          "path": {"type": "string", "description": "Ergänzung der Basis-URL, z. B. /api/v2/orders"},
+          "query": {"type": "object", "description": "Query-Parameter"},
+          "headers": {"type": "object", "description": "zusätzliche Kopfzeilen"},
+          "body": {"description": "JSON-Objekt/Liste oder Text"}},
+         ["destination"]),
 ]
 TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 
@@ -71,7 +93,8 @@ async def _issue_access(db: AsyncSession, user: User, key: str):
     return iss, acc, project
 
 
-async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, args: dict) -> str:
+async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, args: dict,
+                             assistant_task_id: int | None = None) -> str:
     user = await _user(db, owner_id)
     if user is None:
         return "FEHLER: kein Nutzerkontext — Steuerung nicht möglich."
@@ -176,7 +199,8 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         if name == "traccoon_start_planning":
             if iss.assigned_agent is None:
                 return f"{iss.key}: kein Agent zugewiesen."
-            iss.agent_status = TicketAgentStatus.planning
+            from ..services.artifacts import set_ticket_status
+            await set_ticket_status(db, iss, TicketAgentStatus.planning)
             iss.hold_reason = None
             iss.cap_baseline_run_id = (await db.execute(
                 select(func.max(Run.id)).where(Run.issue_id == iss.id))).scalar()
@@ -186,13 +210,61 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         else:
             if iss.agent_status != TicketAgentStatus.plan_review or not iss.plan:
                 return f"{iss.key}: kein Plan zur Freigabe (Status {iss.agent_status})."
-            iss.agent_status = TicketAgentStatus.approved
+            from ..services.artifacts import set_ticket_status
+            await set_ticket_status(db, iss, TicketAgentStatus.approved)
             iss.hold_reason = None
             iss.cap_baseline_run_id = (await db.execute(
                 select(func.max(Run.id)).where(Run.issue_id == iss.id))).scalar()
             await sync_board_status(db, iss)
             await db.commit()
             return f"{iss.key}: Plan freigegeben."
+
+    if name == "traccoon_notify_human":
+        # Ausdrückliche Meldung an den Menschen. Sie ist der EINZIGE reguläre Weg, aus einem
+        # Assistenten-Lauf heraus eine Telegram-/Glocken-Nachricht auszulösen — der
+        # Abschlussbericht schweigt sonst (Ausnahme: Fehler und Chat).
+        from ..models.notification import Notification
+        titel = str(args.get("title") or "").strip() or "Hinweis deines Assistenten"
+        dringend = str(args.get("urgency") or "").lower() == "high"
+        db.add(Notification(
+            user_id=user.id, kind="assistant",
+            title=(("❗ " if dringend else "") + titel)[:200],
+            body=str(args.get("text") or "")[:4000],
+            chat_id=user.telegram_chat_id))
+        if assistant_task_id:
+            from ..models.assistant import AssistantTask
+            t = await db.get(AssistantTask, assistant_task_id)
+            if t is not None:
+                t.notified = True
+        await db.commit()
+        return "Gemeldet."
+
+    if name == "traccoon_list_destinations":
+        from ..services import destinations as dests
+        rows = await dests.visible(db, owner_id=user.id, agents_only=True)
+        if not rows:
+            return ("Keine für KI-Agenten freigegebenen Ziele. Ein Mensch muss ein Ziel anlegen "
+                    "und dort „für Agenten freigeben\" setzen.")
+        return "\n".join(
+            f"- {d.name}: {d.label or d.description or '—'} → {d.base_url}" for d in rows)
+
+    if name == "traccoon_http_call":
+        from ..services import destinations as dests
+        try:
+            res = await dests.call_by_name(
+                db, str(args.get("destination") or ""), owner_id=user.id, agents_only=True,
+                method=str(args.get("method") or "GET"), path=str(args.get("path") or ""),
+                query=args.get("query") or {}, headers=args.get("headers") or {},
+                body=args.get("body"))
+        except Exception as e:  # noqa: BLE001
+            return f"FEHLER: {e}"
+        await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben
+        kopf = f"{res['method']} {res['url']} → HTTP {res['status_code']}"
+        inhalt = res.get("text")
+        if inhalt is None and "json" in res:
+            import json as _json
+            inhalt = _json.dumps(res["json"], ensure_ascii=False)[:4000]
+        return f"{kopf}\n{inhalt or ''}".strip()
 
     if name == "traccoon_issue_costs":
         iss, acc, err = await _issue_access(db, user, args.get("key", ""))
