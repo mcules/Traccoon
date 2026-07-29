@@ -640,6 +640,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         # Bezug in jeder Nachricht wiederholen.
         verlauf = await _chat_history(db, t) if is_chat else []
         out, status, err, run_id = "", "done", "", None
+        frage_offen = False
         try:
             # Bearbeitender Agent aus dem Item (Webhook-Config), Default 'assistent'. Kein Env.
             agent = await _load_agent(db, meta.get("agent") or "assistent",
@@ -655,14 +656,19 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 comment_history=verlauf,
                 history_title="# Bisheriges Gespräch (älteste Nachricht zuerst)",
                 assistant_task_id=t.id)
-            if result.status == "blocked":
+            if result.status == "blocked" and getattr(result, "blocker_kind", None) == "assistant_perm":
                 # Tool-Gate: Item wartet auf Freigabe (Status awaiting + Telegram-Karte gesetzt).
                 # NICHT finalisieren — der Lauf wird nach der Entscheidung neu angestoßen.
                 log.info("assistant-task %s → wartet auf Freigabe (%s)", tid, result.text)
                 return
             out = result.summary or result.text or ""
             run_id = getattr(result, "run_id", None)
-            if result.status not in ("done",):
+            if result.status == "blocked":
+                # Rückfrage (ask_human) — projektlos gibt es kein Ticket, an dem sie hängen
+                # könnte. Im Gespräch IST die Frage die Antwort: fertig melden, damit sie
+                # den Menschen erreicht und im Verlauf (`_chat_history`) stehen bleibt.
+                frage_offen = True
+            elif result.status not in ("done",):
                 status, err = "error", (result.text or result.status)
         except Exception as exc:  # noqa: BLE001
             status, err = "error", str(exc)
@@ -679,6 +685,8 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         modus = (owner.assistant_notify if owner else "needed") or "needed"
         if is_chat:
             melden = True          # eine gestellte Frage wird immer beantwortet
+        elif frage_offen:
+            melden = True          # der Assistent fragt zurück — sonst wartet er auf niemanden
         elif modus == "never":
             melden = False
         elif status == "error":
@@ -696,7 +704,8 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             label = "🤖 Assistent" if (meta.get("agent") or "assistent") == "assistent" \
                 else f"🛰 {meta['agent']}"
             title = (label if is_chat else f"{label}: {t.title}") + (
-                " — Fehler" if status == "error" else "")
+                " — Fehler" if status == "error"
+                else " — Rückfrage" if frage_offen and not is_chat else "")
             db.add(Notification(kind="assistant", title=title[:200],
                                 body=(err if status == "error" else out)[:4000],
                                 chat_id=owner.telegram_chat_id if owner else None))
