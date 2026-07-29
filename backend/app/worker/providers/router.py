@@ -78,7 +78,8 @@ class Router:
                    fallback: str | None = None, fallback_model: str = "",
                    web_search: bool = False,
                    tokens: dict[str, str | None] | None = None,
-                   base_urls: dict[str, str | None] | None = None) -> ChatResponse:
+                   base_urls: dict[str, str | None] | None = None,
+                   extra_body: dict | None = None) -> ChatResponse:
         tokens = tokens or {}
         base_urls = base_urls or {}
         raw_chain = [provider] + ([fallback] if fallback and fallback != provider else [])
@@ -101,9 +102,13 @@ class Router:
                 token = tokens.get(legacy)
             for attempt in range(_MAX_ATTEMPTS):
                 try:
+                    # `extra_body` kennt nur der OpenAI-kompatible Provider (endpoint-eigene
+                    # Felder wie `chat_template_kwargs`). Die Subscription-Provider bekommen
+                    # es NICHT — dort wäre es ein unbekanntes Feld und damit ein 400er.
+                    zusatz = {"extra_body": extra_body} if extra_body and prov in _OPENAI else {}
                     return await impl.chat(model=use_model, messages=messages, tools=tools,
                                            temperature=temperature, max_tokens=max_tokens,
-                                           web_search=web_search, auth_token=token)
+                                           web_search=web_search, auth_token=token, **zusatz)
                 except ProviderError as exc:
                     last_err = exc
                     is_last = attempt >= _MAX_ATTEMPTS - 1

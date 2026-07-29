@@ -30,13 +30,20 @@ class OpenAIProvider(Provider):
     async def chat(self, *, model: str, messages: list[dict[str, Any]],
                    tools: list[dict[str, Any]] | None = None,
                    temperature: float = 0.3, max_tokens: int = 4096,
-                   web_search: bool = False, auth_token: str | None = None) -> ChatResponse:
+                   web_search: bool = False, auth_token: str | None = None,
+                   extra_body: dict[str, Any] | None = None) -> ChatResponse:
         body: dict[str, Any] = {
             "model": model or self.model,
             "messages": messages,               # bereits OpenAI-Format
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        # Endpoint-eigene Felder (z. B. `chat_template_kwargs` für lokale Modelle hinter
+        # LiteLLM). Ohne das verbrät ein denkendes Modell wie qwen3.6 sein ganzes
+        # Ausgabe-Budget im `reasoning_content` und liefert leeren Text zurück — 231
+        # Completion-Tokens für ein „OK", davon 229 Denken.
+        if extra_body:
+            body.update(extra_body)
         if tools:
             body["tools"] = tools               # bereits {type:function, function:{…}}
             body["tool_choice"] = "auto"
