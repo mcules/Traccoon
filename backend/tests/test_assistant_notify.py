@@ -15,7 +15,8 @@ from sqlalchemy import select
 
 
 async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
-                status: str = "done", meldet: bool = False, titel: str = "Bestellung 123"):
+                status: str = "done", meldet: bool = False, titel: str = "Bestellung 123",
+                blocker_kind: str | None = None):
     """Ein Assistenten-Item durchlaufen lassen; `meldet` = der Agent ruft notify_human."""
     t = AssistantTask(owner_user_id=owner.id, kind=kind, title=titel, status="approved",
                       redacted_summary="Zusammenfassung", meta={"chat_text": "Wie spät?"})
@@ -25,10 +26,13 @@ async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
 
     class Ergebnis:
         def __init__(self):
-            self.status = "done" if status == "done" else "failed"
-            self.text = "Erledigt. Kein Statuswechsel, keine Telegram-Nachricht."
-            self.summary = self.text
+            self.status = {"done": "done", "error": "failed"}.get(status, status)
+            # ask_human liefert die Frage als `text`, ohne Zusammenfassung.
+            self.text = ("Ticket oder API-Freigabe?" if self.status == "blocked"
+                         else "Erledigt. Kein Statuswechsel, keine Telegram-Nachricht.")
+            self.summary = "" if self.status == "blocked" else self.text
             self.run_id = None
+            self.blocker_kind = blocker_kind
 
     async def fake_run_agent(**kwargs):
         if meldet:
@@ -115,6 +119,37 @@ async def test_modus_gar_nicht_schweigt_auch_bei_pannen(db, owner, monkeypatch):
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner, status="error")
     assert await _nachrichten(db) == []
+
+
+async def test_rueckfrage_im_chat_kommt_an(db, owner, monkeypatch):
+    """Anlass: `ask_human` endete als 'blocked' und wurde als Tool-Gate missdeutet — die
+    Rückfrage verschwand still, der Mensch sah nur ein ewiges 'running'."""
+    t = await _lauf(db, monkeypatch, owner=owner, kind="chat", status="blocked",
+                    blocker_kind="ask_human")
+    n = await _nachrichten(db)
+    assert len(n) == 1 and "Ticket oder API-Freigabe?" in n[0].body
+    await db.refresh(t)
+    # Erledigt, nicht 'running' — sonst fehlt der Wortwechsel später im Verlauf.
+    assert t.status == "done" and t.result == "Ticket oder API-Freigabe?"
+
+
+async def test_rueckfrage_ohne_chat_meldet_trotz_modus_bedarf(db, owner, monkeypatch):
+    """Auch außerhalb des Chats (Mail-Eingang): eine Frage ohne Empfänger ist sinnlos."""
+    owner.assistant_notify = "needed"
+    await db.commit()
+    await _lauf(db, monkeypatch, owner=owner, status="blocked", blocker_kind="ask_human")
+    n = await _nachrichten(db)
+    assert len(n) == 1 and "Rückfrage" in n[0].title
+
+
+async def test_tool_freigabe_bleibt_still_und_offen(db, owner, monkeypatch):
+    """Das Gegenstück: beim Tool-Gate wartet das Item auf die Freigabekarte — es darf
+    weder finalisiert noch doppelt gemeldet werden."""
+    t = await _lauf(db, monkeypatch, owner=owner, status="blocked",
+                    blocker_kind="assistant_perm")
+    assert await _nachrichten(db) == []
+    await db.refresh(t)
+    assert t.status == "running"
 
 
 async def test_meldewerkzeug_braucht_keine_freigabe(db, owner):

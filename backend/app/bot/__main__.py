@@ -257,6 +257,15 @@ async def run_bot() -> None:
                             "assistant_task_id": t.id})
         await m.answer("🤖 …")
 
+    @dp.message()
+    async def _unsupported(m: Message):
+        # Alles ohne Text (Sprachnachricht, Foto, Sticker, Dokument) fiel bisher durch alle
+        # Handler und wurde KOMMENTARLOS verworfen — von außen nicht von „ignoriert" zu
+        # unterscheiden. Lieber ehrlich absagen.
+        if not m.from_user or not await _allowed(m.from_user.id):
+            return
+        await m.answer("🙉 Damit kann ich noch nichts anfangen — schick es mir als Text.")
+
     @dp.callback_query()
     async def _cb(cq: CallbackQuery):
         if not await _allowed(cq.from_user.id):

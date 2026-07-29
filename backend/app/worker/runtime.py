@@ -905,9 +905,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                              "content": "Keine Rückfrage nötig – antworte direkt."})
                             continue
-                        db.add(Blocker(issue_id=issue_id, run_id=run_id, question=question))
-                        await db.commit()
-                        await _add_comment(db, issue_id, agent.name, question)
+                        # Blocker/Kommentar hängen am Ticket — der projektlose Lauf (Assistent,
+                        # Job) hat keins. Ohne diese Bremse schlägt der Insert auf NOT NULL
+                        # (blockers.issue_id) fehl, die Session stirbt am PendingRollbackError
+                        # und die Rückfrage erreicht den Menschen NIE (Task bleibt 'running').
+                        if issue_id:
+                            db.add(Blocker(issue_id=issue_id, run_id=run_id, question=question))
+                            await db.commit()
+                            await _add_comment(db, issue_id, agent.name, question)
                         await _end_run(db, run_id, "blocked", summary=question, iterations=iteration,
                                        in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                         return RunResult("blocked", question, iteration, run_id=run_id, blocker_kind="ask_human")
