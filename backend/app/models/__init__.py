@@ -29,7 +29,9 @@ from .artifact import (  # noqa: F401
     Artifact, ArtifactField, ArtifactFieldOption, ArtifactType, ArtifactValue,
 )
 from .testenv import BranchTestenv  # noqa: F401
-from .assistant import AssistantPermission, AssistantPolicy, AssistantTask  # noqa: F401
+from .assistant import (  # noqa: F401
+    AssistantPermission, AssistantPolicy, AssistantTask, ChatSummary,
+)
 from .chat import Message  # noqa: F401
 from .notification import Notification  # noqa: F401
 from .plugins import McpServer, Plugin, PluginData, PluginFile, Skill  # noqa: F401
