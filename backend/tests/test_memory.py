@@ -300,8 +300,10 @@ async def test_chat_verlauf(db):
         return AssistantTask(**d)
 
     db.add_all([
+        # Zu alt ist jetzt eine Frage von Wochen, nicht von Stunden: seit dem Gesprächs-
+        # gedächtnis wandert Älteres in die Zusammenfassung, statt ersatzlos wegzufallen.
         task(title="alt", meta={"chat_text": "Uraltes"}, result="Uralte Antwort",
-             created_at=jetzt - dt.timedelta(hours=30)),           # zu alt
+             created_at=jetzt - dt.timedelta(days=30)),
         task(title="fremd", meta={"chat_text": "Fremdes"}, result="A", owner_user_id=fremd.id),
         task(title="anderer", meta={"chat_text": "UniWar", "agent": "uniwar-operator"}, result="A"),
         task(title="laufend", meta={"chat_text": "Noch offen"}, status="running"),

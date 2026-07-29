@@ -112,3 +112,27 @@ class AssistantPolicy(TimestampMixin, Base):
 
     hit_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ChatSummary(TimestampMixin, Base):
+    """Fortgeschriebene Zusammenfassung eines Gesprächsfadens (Mensch ↔ ein Agent).
+
+    Der Verlauf war ein reines Zeitfenster: die letzten Wortwechsel wörtlich, alles davor
+    ersatzlos weg. Nach zwölf Stunden wusste der Assistent nichts mehr — nicht allmählich
+    schwächer, sondern schlagartig nichts. Jetzt wandern ältere Wortwechsel hierher, in eine
+    Zusammenfassung, die mitwächst; sie ersetzt nichts Jüngeres, sondern trägt das Ältere.
+
+    Genau EINE Zeile je (Mensch, Agent) — sie wird fortgeschrieben, nicht vermehrt.
+    `bis_task_id` merkt sich, bis wohin sie reicht; alles danach ist noch wörtlich im Verlauf.
+    """
+    __tablename__ = "chat_summaries"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "agent", name="uq_chat_summary_faden"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    agent: Mapped[str] = mapped_column(String(100), default="assistent")
+    bis_task_id: Mapped[int] = mapped_column(Integer, default=0)
+    text: Mapped[str] = mapped_column(Text, default="")

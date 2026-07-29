@@ -161,6 +161,9 @@ async def handle(job: dict, redis: Redis) -> None:
     if kind == "assistant":
         await _handle_assistant_task(job, redis)
         return
+    if kind == "curator":
+        await _handle_curator(job)
+        return
     if kind:  # Infra-Task (testenv_start etc.) — später
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps({"status": "failed",
                         "output": f"Infra-Task {kind} noch nicht implementiert"}), ex=3600)
@@ -549,38 +552,100 @@ async def _handle_job(job: dict, redis: Redis) -> None:
 
 
 # Gesprächsverlauf im Chat (TRA-30): Ein Chat war bisher eine Folge voneinander unabhängiger
-# Läufe — der Mensch musste sich schon innerhalb eines Gesprächs wiederholen. Bewusst ein
-# Zeitfenster statt eines Thread-Modells: kein zusätzliches Feld, kein Knopf, und ein Gespräch
-# nach einer längeren Pause fängt von selbst neu an.
+# Läufe — der Mensch musste sich schon innerhalb eines Gesprächs wiederholen.
+#
+# Das reine Zeitfenster (8 Wortwechsel / 12 h) hat den Bezug allerdings SCHLAGARTIG gekappt:
+# der Mensch bezog sich auf gestern, der Assistent kannte nur die letzte Stunde. Jetzt bleiben
+# die jüngsten Wortwechsel wörtlich, alles Ältere wandert in eine mitwachsende Zusammenfassung
+# (`chat_summaries`) — Vorbild ist die Kontext-Kompaktierung von Hermes.
 CHAT_HISTORY_MAX = 8
 CHAT_HISTORY_HOURS = 12
+# Wie weit zurück überhaupt noch zum selben Gespräch gezählt wird. Großzügiger als das
+# wörtliche Fenster, weil Zusammengefasstes fast nichts kostet.
+CHAT_MEMORY_DAYS = 14
+# So viele Wortwechsel sammeln sich über dem wörtlichen Fenster an, bevor zusammengefasst
+# wird. Ohne diesen Puffer liefe ab dem neunten Wortwechsel bei JEDER Nachricht ein
+# Aux-Lauf mit — Wartezeit für den Menschen, ohne dass sich das Gedächtnis nennenswert ändert.
+CHAT_SUMMARY_BLOCK = 4
+
+_ZUSAMMENFASSEN = (
+    "Du führst das Gedächtnis eines persönlichen Assistenten. Fasse das bisherige Gespräch so "
+    "zusammen, dass er es später fortsetzen kann, ohne dass sein Mensch sich wiederholen muss.\n\n"
+    "Nimm auf: was der Mensch will und entschieden hat, seine Vorlieben und Vorgaben, offene "
+    "Fragen, vereinbarte nächste Schritte, konkrete Fakten (Namen, Zahlen, Pfade, IDs). Lass "
+    "weg: Höflichkeiten, Wiederholungen, alles Erledigte ohne Nachwirkung.\n\n"
+    "Stichpunkte, deutsch, ohne Vorrede. Halte dich kurz, aber verliere keine Zusage."
+)
 
 
 async def _chat_history(db, t) -> list[dict]:
-    """Die letzten Wortwechsel desselben Menschen mit demselben Agenten."""
+    """Der Gesprächsfaden: Zusammenfassung des Älteren + die jüngsten Wortwechsel wörtlich."""
     import datetime as _dt
 
-    from ..models.assistant import AssistantTask
-    seit = _now_dt() - _dt.timedelta(hours=CHAT_HISTORY_HOURS)
+    from ..models.assistant import AssistantTask, ChatSummary
     agent_name = (t.meta or {}).get("agent") or "assistent"
-    rows = (await db.execute(
+    seit = _now_dt() - _dt.timedelta(days=CHAT_MEMORY_DAYS)
+    alle = (await db.execute(
         select(AssistantTask).where(
             AssistantTask.owner_user_id == t.owner_user_id,
             AssistantTask.kind == "chat",
             AssistantTask.id != t.id,
             AssistantTask.status == "done",
             AssistantTask.created_at >= seit,
-        ).order_by(AssistantTask.id.desc()).limit(CHAT_HISTORY_MAX))).scalars().all()
-    verlauf: list[dict] = []
-    for r in reversed(rows):
+        ).order_by(AssistantTask.id))).scalars().all()
+    # Fach-Agenten führen eigene Gespräche — der UniWar-Operator hat mit dem Assistenten nichts zu tun.
+    alle = [r for r in alle if ((r.meta or {}).get("agent") or "assistent") == agent_name]
+
+    def wortwechsel(r) -> list[dict]:
         meta = r.meta or {}
-        if (meta.get("agent") or "assistent") != agent_name:
-            continue          # anderer Fach-Agent → anderes Gespräch
-        frage = (meta.get("chat_text") or r.title or "").strip()
-        if frage:
-            verlauf.append({"label": "Dein Mensch", "role": "user", "body": frage[:2000]})
-        if (r.result or "").strip():
-            verlauf.append({"label": "Du", "role": "agent", "body": r.result.strip()[:2000]})
+        raus = []
+        if (frage := (meta.get("chat_text") or r.title or "").strip()):
+            raus.append({"label": "Dein Mensch", "role": "user", "body": frage[:2000]})
+        if (antwort := (r.result or "").strip()):
+            raus.append({"label": "Du", "role": "agent", "body": antwort[:2000]})
+        return raus
+
+    summary = (await db.execute(select(ChatSummary).where(
+        ChatSummary.owner_user_id == t.owner_user_id,
+        ChatSummary.agent == agent_name))).scalar_one_or_none()
+
+    # Noch nicht zusammengefasst = steht wörtlich im Verlauf. Zusammengefasst wird in Blöcken,
+    # nicht bei jedem Nachrücken: sonst liefe zu JEDER Nachricht ein Aux-Lauf, sobald das
+    # Gespräch einmal über acht Wortwechsel hinaus ist.
+    offen = [r for r in alle if r.id > (summary.bis_task_id if summary else 0)]
+    neu_zu_fassen: list = []
+    if len(offen) > CHAT_HISTORY_MAX + CHAT_SUMMARY_BLOCK:
+        neu_zu_fassen = offen[:-CHAT_HISTORY_MAX]
+    jung = offen[-CHAT_HISTORY_MAX:] if neu_zu_fassen else offen
+    if neu_zu_fassen:
+        bisher = (summary.text if summary else "").strip()
+        roh = "\n".join(f"{w['label']}: {w['body']}" for r in neu_zu_fassen for w in wortwechsel(r))
+        auftrag = (_ZUSAMMENFASSEN
+                   + ("\n\n--- Bisheriges Gedächtnis (fortschreiben, nichts verlieren) ---\n" + bisher
+                      if bisher else "")
+                   + "\n\n--- Neue Wortwechsel ---\n" + roh)
+        from .aux import aux_chat
+        agent = await _load_agent(db, agent_name, 0, "execute", t.owner_user_id)
+        tokens, base_urls = await _build_tokens(db, t.owner_user_id, agent)
+        text = await aux_chat(db, owner_id=t.owner_user_id, task="compression",
+                              messages=[{"role": "user", "content": auftrag}],
+                              agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1500)
+        if text:
+            if summary is None:
+                summary = ChatSummary(owner_user_id=t.owner_user_id, agent=agent_name)
+                db.add(summary)
+            summary.text = text
+            summary.bis_task_id = neu_zu_fassen[-1].id
+            await db.commit()
+        # Kein Ergebnis (Aux nicht erreichbar): die alte Zusammenfassung gilt weiter. Lieber ein
+        # etwas veraltetes Gedächtnis als gar keins — der Faden reißt dadurch nicht.
+
+    verlauf: list[dict] = []
+    if summary and summary.text.strip():
+        verlauf.append({"label": "Woran du dich erinnerst", "role": "agent",
+                        "body": "# Früheres aus diesem Gespräch\n" + summary.text.strip()})
+    for r in jung:
+        verlauf.extend(wortwechsel(r))
     return verlauf
 
 
@@ -726,6 +791,49 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             log.info("assistant-task %s still erledigt (Modus %s)", tid, modus)
         await db.commit()
     log.info("assistant-task %s → %s", tid, status)
+    # Gedächtnis-Pflege anstoßen — nach getaner Arbeit, als eigener Auftrag. `kuratiere`
+    # entscheidet selbst, ob überhaupt etwas fällig ist (höchstens einmal je Tag und Notiz).
+    if owner_id:
+        from ..core.redis import enqueue_task
+        await enqueue_task({"kind": "curator", "task_id": f"curator-{owner_id}-{tid}",
+                            "owner_id": owner_id,
+                            "agent_role": (meta.get("agent") or "assistent")})
+
+
+async def _handle_curator(job: dict) -> None:
+    """Gedächtnis aufräumen — als eigener Auftrag, nicht im Gespräch.
+
+    Hermes stößt seinen Curator bei Untätigkeit an. Hier ist der Auslöser das Ende eines
+    Assistenten-Laufs; die Arbeit selbst läuft aber getrennt, damit niemand auf sie wartet.
+    Fällt sie aus, ist das folgenlos: das Gedächtnis bleibt dann eben, wie es war.
+    """
+    from .aux import aux_config
+    from .curator import kuratiere
+    from .mcp_client import mcp_session
+    from .runtime import _agent_mcp, _owner_gateway
+    owner_id = job.get("owner_id")
+    rolle = job.get("agent_role") or "assistent"
+    if not owner_id:
+        return
+    async with SessionLocal() as db:
+        # Ohne eigenes Modell für die Gedächtnispflege bleibt sie AUS. Sonst liefe im
+        # Hintergrund unbemerkt das Arbeitsmodell — teuer für Fleißarbeit, und es würde
+        # ungefragt am Vault des Menschen schreiben. Die Kompaktierung darf `auto` nutzen
+        # (dort ist die Alternative ein abgebrochener Lauf), das Aufräumen nicht.
+        if not await aux_config(db, "curator"):
+            return
+        try:
+            agent = await _load_agent(db, rolle, 0, "execute", owner_id)
+            tokens, base_urls = await _build_tokens(db, owner_id, agent)
+            gw_url, gw_token = await _owner_gateway(db, owner_id)
+            async with mcp_session(agent.name, servers=await _agent_mcp(db, agent, owner_id),
+                                   gateway_url=gw_url or "", gateway_token=gw_token or "") as mcp:
+                berichte = await kuratiere(db, mcp, owner_id=owner_id, agent_role=rolle,
+                                           agent=agent, tokens=tokens, base_urls=base_urls)
+            for b in berichte:
+                log.info("Curator: %s", b)
+        except Exception:  # noqa: BLE001
+            log.exception("Curator fehlgeschlagen (folgenlos)")
 
 
 def _now_dt():
