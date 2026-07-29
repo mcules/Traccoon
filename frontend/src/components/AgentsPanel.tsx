@@ -38,7 +38,8 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   const [showAdv, setShowAdv] = useState(false);
   const inv = () => qc.invalidateQueries({ queryKey: key });
   const tokensFor = (p?: string) => (tokens || []).filter((t) => t.provider === p);
-  const modelsFor = (p?: string) => (models || []).filter((m) => m.provider === p);
+  // Deaktivierte Modelle (Endpoint kennt sie nicht mehr) raus aus den Vorschlägen.
+  const modelsFor = (p?: string) => (models || []).filter((m) => m.provider === p && m.enabled !== false);
 
   // Im Projekt-Modus nur die projekt-eigenen Agenten anzeigen; projektlose sind „geerbt".
   const agents = projectId ? (allAgents || []).filter((a) => a.project_id === projectId) : allAgents;
