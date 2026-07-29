@@ -174,3 +174,38 @@ async def put_mail_settings(
     cfg = await get_mail_config(db)
     cfg["smtp_password_set"] = bool(cfg.pop("smtp_password", ""))
     return cfg
+
+
+# ---------- Modelle für Nebenaufgaben (Aux) ----------
+
+class AuxTaskIn(BaseModel):
+    """Ein Modell für eine Nebenaufgabe. `provider` leer = zurück auf `auto`."""
+    provider: str | None = Field(default=None, max_length=50)
+    model: str | None = Field(default=None, max_length=150)
+    token_name: str | None = Field(default=None, max_length=100)
+    base_url: str | None = Field(default=None, max_length=255)
+    timeout: int | None = Field(default=None, ge=10, le=900)
+
+
+@router.get("/admin/aux-models")
+async def get_aux_models(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
+    """Welche Nebenaufgabe auf welchem Modell läuft. Ohne Eintrag gilt `auto` — dann macht
+    sie der Agent selbst, auf seinem eigenen (teuren) Modell."""
+    from ..worker.aux import AUX_TASKS, aux_config
+    return [{"task": t, "beschreibung": beschreibung, "config": await aux_config(db, t) or None}
+            for t, beschreibung in AUX_TASKS.items()]
+
+
+@router.put("/admin/aux-models/{task}")
+async def put_aux_model(task: str, data: AuxTaskIn, _: User = Depends(require_admin),
+                        db: AsyncSession = Depends(get_session)):
+    import json as _json
+
+    from ..worker.aux import AUX_TASKS, setting_key
+    if task not in AUX_TASKS:
+        raise HTTPException(404, f"Unbekannte Nebenaufgabe '{task}'")
+    werte = {k: v for k, v in data.model_dump().items() if v not in (None, "")}
+    # Kein Provider = die Einstellung löschen, nicht ein halbes Fragment stehen lassen.
+    await set_setting(db, setting_key(task), _json.dumps(werte) if werte.get("provider") else "")
+    from ..worker.aux import aux_config
+    return {"task": task, "config": await aux_config(db, task) or None}
