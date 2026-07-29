@@ -32,6 +32,7 @@ from .assistant_gate import gate_check
 from .tools_memory import (
     MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLEXION_PROMPT, call_memory_tool, memory_root, read_memory,
 )
+from .compaction import kompaktiere as _kompaktiere
 from .tools_traccoon import (
     TRACCOON_GATED_TOOLS,
     TRACCOON_TOOL_NAMES,
@@ -815,11 +816,25 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             empties = 0
             build_gate_fails = 0
             in_tok = out_tok = cache_read = 0
+            letzter_kontext = 0      # echte Kontextgröße des letzten Aufrufs (für die Kompaktierung)
             for iteration in range(1, agent.max_iterations + 1):
                 if iteration == max(2, agent.max_iterations - 2):
                     messages.append({"role": "system", "content":
                         "⚠️ Du näherst dich dem Iterations-Limit. Wenn du NICHT unmittelbar vor dem Abschluss "
                         "stehst: `continue_later` mit Zusammenfassung. Nur bei echter Blockade: `ask_human`."})
+                # Kontext kürzen, BEVOR er den Provider sprengt. Gemessen wird die echte
+                # Kontextgröße des letzten Aufrufs; ohne `max_context_tokens` passiert nichts.
+                if agent.max_context_tokens and letzter_kontext:
+                    _neu = await _kompaktiere(
+                        db, messages=messages, grenze_tokens=agent.max_context_tokens,
+                        gemessen=letzter_kontext, owner_id=owner_id, agent=agent,
+                        tokens=tokens, base_urls=base_urls)
+                    if _neu is not None:
+                        await log("system", None,
+                                  f"Verlauf kompaktiert: {len(messages)} → {len(_neu)} Nachrichten "
+                                  f"(Kontext {letzter_kontext} von {agent.max_context_tokens}).")
+                        messages = _neu
+                        letzter_kontext = 0     # Messung verbraucht — erst neu messen, dann wieder kürzen
                 try:
                     resp = await router.chat(provider=agent.provider, model=agent.model, messages=messages,
                                              tools=openai_tools, temperature=agent.temperature,
@@ -838,6 +853,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 # usage.input_tokens ist bereits der ungecachte Rest; die Runaway-Cap
                 # in dispatcher._process wertet weiter runs.input_tokens aus).
                 cache_read += int(resp.cache_read_tokens or 0)
+                # Für die Kompaktierung zählt der GESAMTE Kontext dieses Aufrufs, also
+                # ungecachter Rest PLUS gecachter Anteil. Nur `input_tokens` zu nehmen wäre
+                # bei gutem Cache-Treffer fast null — und die Grenze würde nie greifen.
+                letzter_kontext = (int(resp.usage.get("input_tokens", 0) or 0)
+                                   + int(resp.cache_read_tokens or 0))
                 if in_tok >= MAX_RUN_INPUT_TOKENS:
                     # Hartes Token-Budget erreicht → Run exakt wie beim Iterations-Limit
                     # abbrechen: `break` fällt auf die loop_exhausted-Finalisierung unten
