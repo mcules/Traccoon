@@ -42,9 +42,9 @@ async def seed(db: AsyncSession) -> None:
         ("claude_code", "claude-opus-4-1", "Claude Opus 4.1", 15.0, 75.0),
         ("claude_code", "claude-haiku-4-5", "Claude Haiku 4.5", 0.8, 4.0),
         ("codex", "gpt-5", "GPT-5 (Codex)", 1.25, 10.0),
-        ("openai", "gpt-4o", "GPT-4o", 2.5, 10.0),
-        ("openai", "gpt-4o-mini", "GPT-4o mini", 0.15, 0.6),
-        ("openai", "o3", "o3", 2.0, 8.0),
+        # Kein openai-Seed: der Provider ist bei uns meist ein eigener OpenAI-kompatibler
+        # Endpoint (LiteLLM & Co.) mit ganz anderen Modellnamen — Katalog kommt aus
+        # POST /providers/models/fetch.
     ]
     for prov, model, name, pin, pout in prices:
         exists = (await db.execute(

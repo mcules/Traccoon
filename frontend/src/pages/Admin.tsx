@@ -5,11 +5,12 @@ import { api, ApiError, workflowApi } from "../api";
 import { usePageChrome } from "../pageChrome";
 import DestinationsPanel from "../components/DestinationsPanel";
 import ArtifactTypesPanel from "../components/ArtifactTypesPanel";
+import ProviderModelsPanel from "../components/ProviderModelsPanel";
 
-type Tab = "users" | "cost" | "maintenance" | "mail" | "destinations" | "artifacts";
+type Tab = "users" | "cost" | "models" | "maintenance" | "mail" | "destinations" | "artifacts";
 const TABS: [Tab, string][] = [
-  ["users", "Nutzer"], ["cost", "Kosten"], ["maintenance", "Wartung"], ["mail", "E-Mail"],
-  ["destinations", "Ziele"], ["artifacts", "Artefakte"],
+  ["users", "Nutzer"], ["cost", "Kosten"], ["models", "Modelle"], ["maintenance", "Wartung"],
+  ["mail", "E-Mail"], ["destinations", "Ziele"], ["artifacts", "Artefakte"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -19,13 +20,14 @@ export default function Admin() {
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "users") as Tab;
   usePageChrome("Admin", TABS.map(([key, label]) => ({
     key, label, to: `/admin/${key}`,
-    icon: { users: "👥", cost: "💶", maintenance: "🔧", mail: "✉️", destinations: "🎯",
-            artifacts: "📦" }[key],
+    icon: { users: "👥", cost: "💶", models: "🧠", maintenance: "🔧", mail: "✉️",
+            destinations: "🎯", artifacts: "📦" }[key],
   })));
   return (
     <div>
       {tab === "users" && <Users />}
       {tab === "cost" && <Cost />}
+      {tab === "models" && <ProviderModelsPanel />}
       {tab === "maintenance" && <Maintenance />}
       {tab === "mail" && <MailConfig />}
       {tab === "destinations" && <DestinationsPanel scope="global" />}
