@@ -62,6 +62,40 @@ TRACCOON_TOOLS = [
     _def("traccoon_list_destinations",
          "Freigegebene externe Ziele auflisten (Name, Zweck, Basis-URL). Zugangsdaten sieht "
          "niemand — sie werden beim Aufruf serverseitig gesetzt.", {}, []),
+    _def("traccoon_list_jobs",
+         "Geplante Jobs deines Menschen auflisten (Nummer, Name, Zeitplan, Agent, an/aus, "
+         "letzter Lauf). Erst hier nachsehen, bevor du einen Job für nicht vorhanden hältst.",
+         {}, []),
+    _def("traccoon_get_job",
+         "Ein Job im Detail: Prompt, Parameter, Zeitplan, Meldeweg und die letzten Läufe.",
+         {"job_id": {"type": "integer"}}, ["job_id"]),
+    _def("traccoon_job_templates",
+         "Verfügbare Job-Vorlagen samt ihrer Parameter (z. B. 'recherche-digest' für einen "
+         "wiederkehrenden Themen-Rückblick).", {}, []),
+    _def("traccoon_create_job",
+         "Einen wiederkehrenden Job anlegen. Am besten über `template` + `params` — dann "
+         "kommen Prompt und Voreinstellungen aus der Vorlage. Zeitplan: type 'cron' "
+         "(z. B. '0 6 * * *', UTC), 'interval' (Sekunden) oder 'once' (ISO-Zeit).",
+         {"name": {"type": "string"},
+          "template": {"type": "string", "description": "Schlüssel einer Vorlage"},
+          "params": {"type": "object", "description": "Parameter der Vorlage bzw. Werte für "
+                     "die {{platzhalter}} im Prompt"},
+          "prompt": {"type": "string", "description": "nur ohne Vorlage"},
+          "agent": {"type": "string"}, "type": {"type": "string"},
+          "schedule": {"type": "string"},
+          "enabled": {"type": "boolean", "description": "Standard: an"}},
+         ["name"]),
+    _def("traccoon_update_job",
+         "Einen Job ändern — auch an-/abschalten (enabled) oder Parameter nachziehen. "
+         "Nur die übergebenen Felder werden angefasst.",
+         {"job_id": {"type": "integer"}, "name": {"type": "string"},
+          "prompt": {"type": "string"}, "params": {"type": "object"},
+          "agent": {"type": "string"}, "type": {"type": "string"},
+          "schedule": {"type": "string"}, "enabled": {"type": "boolean"},
+          "notify_mode": {"type": "string", "description": "always|on_output|on_error|never"}},
+         ["job_id"]),
+    _def("traccoon_run_job", "Einen Job sofort ausführen (zusätzlich zum Zeitplan).",
+         {"job_id": {"type": "integer"}}, ["job_id"]),
     _def("traccoon_http_call",
          "Ein freigegebenes Ziel aufrufen. Basis-URL und Anmeldung kommen aus dem Ziel; du "
          "gibst nur Methode, Pfad-Ergänzung, Query, Kopfzeilen und Body an.",
@@ -74,6 +108,12 @@ TRACCOON_TOOLS = [
          ["destination"]),
 ]
 TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
+
+# Steuer-Tools sind vom Assistenten-Gate ausgenommen, weil sie ohnehin nur in den Rechten des
+# Menschen wirken. Für Jobs gilt das nicht: ein Job ist eine DAUERHAFTE, selbsttätige und
+# kostenpflichtige Abmachung — die soll ein Mensch einmal bestätigt haben („immer" merkt sich
+# das Gate dann). Lesen bleibt frei.
+TRACCOON_GATED_TOOLS = {"traccoon_create_job", "traccoon_update_job", "traccoon_run_job"}
 
 
 async def _user(db: AsyncSession, owner_id: int | None) -> User | None:
@@ -91,6 +131,128 @@ async def _issue_access(db: AsyncSession, user: User, key: str):
     except HTTPException:
         return None, None, f"Kein Zugriff auf das Projekt von '{key}'."
     return iss, acc, project
+
+
+_JOB_FELDER = ("name", "prompt", "agent", "type", "schedule", "enabled", "notify_mode")
+
+
+async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
+    """Jobs des Menschen lesen und pflegen — strikt seine eigenen.
+
+    Anlass: der Assistent konnte Jobs nicht sehen und hielt einen längst umgezogenen Job für
+    nicht existent. Lesen ist frei, Schreiben geht über das Gate (TRACCOON_GATED_TOOLS).
+    """
+    from ..models.ops import Job, JobRun
+    from ..services.job_params import offene_platzhalter, parameter
+    from ..services.job_templates import JOB_TEMPLATES, anwenden, liste
+
+    async def _job(jid) -> Job | None:
+        j = await db.get(Job, int(jid or 0))
+        # Fremde Jobs existieren für den Assistenten schlicht nicht — auch nicht als „verboten".
+        return j if j is not None and j.user_id == user.id else None
+
+    if name == "traccoon_job_templates":
+        return "\n".join(
+            f"- {v['key']}: {v['label']} — {v['beschreibung']}\n"
+            f"  Parameter: {', '.join(v['params'])}" for v in liste()) or "Keine Vorlagen."
+
+    if name == "traccoon_list_jobs":
+        rows = (await db.execute(select(Job).where(Job.user_id == user.id)
+                                 .order_by(Job.id))).scalars().all()
+        if not rows:
+            return "Keine geplanten Jobs."
+        return "\n".join(
+            f"- #{j.id} {j.name} [{'an' if j.enabled else 'AUS'}"
+            f"{', pausiert' if j.paused else ''}] {j.type}:{j.schedule} · {j.kind}"
+            f" · Agent {j.agent or '—'}"
+            f" · zuletzt {j.last_run_at.strftime('%Y-%m-%d %H:%M') if j.last_run_at else 'nie'}"
+            for j in rows)
+
+    if name == "traccoon_get_job":
+        j = await _job(args.get("job_id"))
+        if j is None:
+            return "Job nicht gefunden."
+        laeufe = (await db.execute(select(JobRun).where(JobRun.job_id == j.id)
+                                   .order_by(JobRun.id.desc()).limit(5))).scalars().all()
+        p = parameter(j.args)
+        return (f"#{j.id} {j.name}\n"
+                f"Zeitplan: {j.type}:{j.schedule} · {'an' if j.enabled else 'AUS'} · "
+                f"Art {j.kind} · Agent {j.agent or '—'} · Meldung {j.notify_mode}\n"
+                + (f"Parameter: {p}\n" if p else "")
+                + (f"Offene Platzhalter (ohne Wert!): {', '.join(o)}\n"
+                   if (o := offene_platzhalter(j.prompt, j.args)) else "")
+                + f"Prompt:\n{(j.prompt or '')[:2000]}\n"
+                + "Letzte Läufe: " + (", ".join(
+                    f"{r.started_at:%Y-%m-%d %H:%M} {r.status}" for r in laeufe) or "keine"))
+
+    if name == "traccoon_create_job":
+        felder: dict = {}
+        if args.get("template"):
+            try:
+                felder = anwenden(str(args["template"]), args.get("params") or {})
+            except KeyError:
+                return (f"Vorlage '{args['template']}' gibt es nicht. Verfügbar: "
+                        f"{', '.join(JOB_TEMPLATES)}.")
+        elif args.get("params"):
+            felder["args"] = dict(args["params"])
+        for f in _JOB_FELDER:
+            if args.get(f) is not None:
+                felder[f] = args[f]
+        if not (felder.get("prompt") or "").strip():
+            return "Ohne Prompt (oder Vorlage) kein Job."
+        felder.setdefault("kind", "prompt")
+        felder.setdefault("type", "cron")
+        felder.setdefault("schedule", "0 6 * * *")
+        felder.setdefault("agent", "assistent")
+        felder["name"] = str(args.get("name") or "Namenloser Job")[:255]
+        # Meldung geht an denselben Chat wie alles andere von ihm.
+        felder.setdefault("notify_chat", user.telegram_chat_id)
+        j = Job(user_id=user.id, **felder)
+        db.add(j)
+        await db.commit()
+        await db.refresh(j)
+        offen = offene_platzhalter(j.prompt, j.args)
+        return (f"Job #{j.id} '{j.name}' angelegt ({j.type}:{j.schedule}, "
+                f"{'an' if j.enabled else 'aus'})."
+                + (f" ACHTUNG: Platzhalter ohne Wert: {', '.join(offen)}." if offen else ""))
+
+    if name == "traccoon_update_job":
+        j = await _job(args.get("job_id"))
+        if j is None:
+            return "Job nicht gefunden."
+        geaendert = []
+        for f in _JOB_FELDER:
+            if args.get(f) is not None and getattr(j, f) != args[f]:
+                setattr(j, f, args[f])
+                geaendert.append(f)
+        if args.get("params"):
+            # Nachziehen, nicht ersetzen — sonst verliert ein Job beim Ändern eines Wertes
+            # alle übrigen Parameter.
+            j.args = {**parameter(j.args), **args["params"]}
+            geaendert.append("params")
+        if not geaendert:
+            return f"Job #{j.id}: nichts zu ändern."
+        if "enabled" in geaendert and j.enabled:
+            j.paused = False
+        await db.commit()
+        return f"Job #{j.id} geändert: {', '.join(geaendert)}."
+
+    if name == "traccoon_run_job":
+        j = await _job(args.get("job_id"))
+        if j is None:
+            return "Job nicht gefunden."
+        jr = JobRun(job_id=j.id, status="running")
+        db.add(jr)
+        j.last_run_at = _now()
+        # ERST committen, DANN einreihen — sonst greift ein freier Worker den Auftrag, bevor
+        # es den JobRun gibt, und der Lauf bleibt für immer auf „running" (vgl. api/ops.py).
+        await db.commit()
+        from ..core.redis import enqueue_task
+        await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}", "job_id": j.id,
+                            "job_run_id": jr.id})
+        return f"Job #{j.id} '{j.name}' läuft (Lauf {jr.id}). Das Ergebnis kommt getrennt."
+
+    return f"FEHLER: unbekanntes Job-Tool '{name}'."
 
 
 async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, args: dict,
@@ -272,6 +434,10 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         if len(inhalt) > grenze:
             inhalt = inhalt[:grenze] + f"\n… ABGESCHNITTEN bei {grenze} Zeichen."
         return f"{kopf}\n{inhalt}".strip()
+
+    if name in ("traccoon_list_jobs", "traccoon_get_job", "traccoon_job_templates",
+                "traccoon_create_job", "traccoon_update_job", "traccoon_run_job"):
+        return await _job_tool(db, user, name, args)
 
     if name == "traccoon_issue_costs":
         iss, acc, err = await _issue_access(db, user, args.get("key", ""))

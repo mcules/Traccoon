@@ -509,10 +509,21 @@ async def _handle_job(job: dict, redis: Redis) -> None:
             if not notify_chat and owner_id:
                 owner = await db.get(User, owner_id)
                 notify_chat = owner.telegram_chat_id if owner else None
+            # Platzhalter im Prompt aus den Job-Parametern füllen (`jobs.args` als Objekt) —
+            # `last_run_at` steht hier schon auf JETZT, der vorige Lauf kommt daher aus dem
+            # vorletzten JobRun. Ohne das fragte ein täglicher Digest nach „seit gerade eben".
+            # Nur ERFOLGREICHE Läufe zählen: war der Job gestern kaputt, muss das Zeitfenster
+            # die Lücke mitnehmen, sonst fällt ein Tag stillschweigend unter den Tisch.
+            from ..services.job_params import rendere
+            vorlauf = (await db.execute(
+                select(JobRun.started_at).where(JobRun.job_id == j.id, JobRun.id != jr.id,
+                                                JobRun.status == "ok")
+                .order_by(JobRun.id.desc()).limit(1))).scalar()
+            prompt_text = rendere(j.prompt, j.args, letzter_lauf=vorlauf)
             result = await run_agent(
                 db=db, agent=agent,
                 issue={"id": None, "key": f"job-{jr.id}", "summary": j.name,
-                       "description": j.prompt, "plan": None},
+                       "description": prompt_text, "plan": None},
                 project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
                 mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
                 base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"])
