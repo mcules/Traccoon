@@ -343,7 +343,9 @@ class JobIn(BaseModel):
     agent: str | None = None
     prompt: str = ""
     command: str = ""
-    args: list = []
+    # Liste = Argumente eines script-Jobs (wie bisher). Objekt = Parametersatz eines
+    # prompt-Jobs; seine Werte füllen die `{{platzhalter}}` im Prompt (services/job_params).
+    args: list | dict = []
     project_id: int | None = None
     notify_mode: str = "on_output"
     notify_chat: str | None = None
@@ -357,7 +359,7 @@ class JobOut(BaseModel):
     workflow_definition_id: int | None = None
     destination_id: int | None = None
     http_request: dict = {}
-    prompt: str = ""; command: str = ""; args: list = []; project_id: int | None = None
+    prompt: str = ""; command: str = ""; args: list | dict = []; project_id: int | None = None
     notify_mode: str; notify_chat: str | None = None; result_html: bool
     pause_on_success: bool = False; run_timeout: int = 600
     enabled: bool; paused: bool; last_run_at: dt.datetime | None
@@ -369,6 +371,14 @@ async def list_jobs(user: User = Depends(get_current_user), db: AsyncSession = D
     rows = (await db.execute(select(Job).where(owned_or_global(Job.user_id, user))
                              .order_by(Job.id))).scalars().all()
     return list(rows)
+
+
+@router.get("/jobs/templates")
+async def job_templates(user: User = Depends(get_current_user)):
+    """Vorlagen für neue Jobs. Sie füllen das Formular vor — ein angelegter Job trägt danach
+    seine eigenen Felder und Parameter, keine Bindung an die Vorlage."""
+    from ..services.job_templates import liste
+    return liste()
 
 
 @router.post("/jobs", response_model=JobOut, status_code=201)

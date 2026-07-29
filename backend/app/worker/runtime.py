@@ -32,7 +32,12 @@ from .assistant_gate import gate_check
 from .tools_memory import (
     MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLEXION_PROMPT, call_memory_tool, memory_root, read_memory,
 )
-from .tools_traccoon import TRACCOON_TOOL_NAMES, TRACCOON_TOOLS, call_traccoon_tool
+from .tools_traccoon import (
+    TRACCOON_GATED_TOOLS,
+    TRACCOON_TOOL_NAMES,
+    TRACCOON_TOOLS,
+    call_traccoon_tool,
+)
 
 log = logging.getLogger("traccoon.runtime")
 
@@ -958,7 +963,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # traccoon_*-Steuertools sind ausgenommen (schon auf Owner-Rechte begrenzt) —
                     # AUSSER dem Ziel-Aufruf: der wirkt auf ein fremdes System, und ob er
                     # verändert, steht erst in der Methode (GET liest, POST/PUT/DELETE schreiben).
-                    _gated = perms.is_gated(call.name) and call.name not in TRACCOON_TOOL_NAMES
+                    # Und ausser den Job-Schreibtools: ein Zeitplan wirkt dauerhaft weiter,
+                    # auch wenn der Lauf, der ihn angelegt hat, längst vorbei ist.
+                    _gated = (perms.is_gated(call.name) and call.name not in TRACCOON_TOOL_NAMES) \
+                        or call.name in TRACCOON_GATED_TOOLS
                     if call.name == "traccoon_http_call":
                         _gated = str(call.arguments.get("method") or "GET").upper() not in (
                             "GET", "HEAD", "OPTIONS")

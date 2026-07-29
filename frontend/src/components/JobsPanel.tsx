@@ -4,7 +4,9 @@ import { api } from "../api";
 
 const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "prompt",
                 agent: "", prompt: "", command: "", notify_mode: "on_output", notify_chat: "",
-                result_html: false, pause_on_success: false, run_timeout: 600, args: [] as any[],
+                result_html: false, pause_on_success: false, run_timeout: 600,
+                // Liste = Script-Argumente, Objekt = Parameter eines prompt-Jobs.
+                args: [] as any[] | Record<string, any>,
                 project_id: null as number | null,
                 workflow_definition_id: null as number | null };
 
@@ -16,12 +18,46 @@ export default function JobsPanel() {
     queryKey: ["workflow-defs"],
     queryFn: () => api.get<{ id: number; name: string; key: string; current_version_id: number | null }[]>("/workflows"),
   });
+  // Vorlagen füllen das Formular nur vor — der Job trägt danach seine eigenen Felder.
+  const { data: templates } = useQuery({
+    queryKey: ["job-templates"],
+    queryFn: () => api.get<{ key: string; label: string; beschreibung: string;
+                             params: Record<string, any>; felder: Record<string, any> }[]>("/jobs/templates"),
+  });
   const [f, setF] = useState(EMPTY);
   const [editId, setEditId] = useState<number | null>(null);
+  // Parameter als JSON-Text, damit ein Tippfehler beim Bearbeiten nicht sofort den Wert frisst.
+  const [paramText, setParamText] = useState("");
+  const paramFehler = (() => {
+    if (!paramText.trim()) return "";
+    try {
+      const v = JSON.parse(paramText);
+      return v && typeof v === "object" && !Array.isArray(v) ? "" : "Objekt erwartet, z.B. {\"thema\": \"…\"}";
+    } catch { return "Kein gültiges JSON"; }
+  })();
+  const setParams = (text: string) => {
+    setParamText(text);
+    if (!text.trim()) { setF((p) => ({ ...p, args: [] })); return; }
+    try {
+      const v = JSON.parse(text);
+      if (v && typeof v === "object" && !Array.isArray(v)) setF((p) => ({ ...p, args: v }));
+    } catch { /* ungültig: Text stehen lassen, Job-Feld unverändert */ }
+  };
+  // Platzhalter ohne Wert — dieselbe Regel wie serverseitig (services/job_params).
+  const EINGEBAUT = ["heute", "jetzt", "seit", "zeitfenster"];
+  const fehlend = Array.from(new Set(
+    [...(f.prompt || "").matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g)].map((m) => m[1]),
+  )).filter((k) => !EINGEBAUT.includes(k) && !(f.args && !Array.isArray(f.args) && k in (f.args as any)));
+  const useTemplate = (key: string) => {
+    const t = templates?.find((x) => x.key === key);
+    if (!t) return;
+    setF((p) => ({ ...p, ...t.felder, args: t.params }));
+    setParamText(JSON.stringify(t.params, null, 2));
+  };
   const inv = () => qc.invalidateQueries({ queryKey: ["jobs"] });
   const save = useMutation({
     mutationFn: () => editId ? api.put(`/jobs/${editId}`, f) : api.post("/jobs", f),
-    onSuccess: () => { setF(EMPTY); setEditId(null); inv(); },
+    onSuccess: () => { setF(EMPTY); setEditId(null); setParamText(""); inv(); },
   });
   const run = useMutation({ mutationFn: (id: number) => api.post(`/jobs/${id}/run`), onSuccess: inv });
   const toggle = useMutation({
@@ -30,6 +66,8 @@ export default function JobsPanel() {
 
   const edit = (j: any) => {
     setEditId(j.id);
+    const p = j.args && !Array.isArray(j.args) ? j.args : null;
+    setParamText(p ? JSON.stringify(p, null, 2) : "");
     setF({ name: j.name, type: j.type, schedule: j.schedule, kind: j.kind, agent: j.agent || "",
            prompt: j.prompt || "", command: j.command || "", notify_mode: j.notify_mode,
            notify_chat: j.notify_chat || "", result_html: !!j.result_html,
@@ -63,7 +101,14 @@ export default function JobsPanel() {
       </div>
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3 text-sm">
         {editId && <div className="col-span-2 text-xs text-brand">Bearbeite Job #{editId} —
-          <button onClick={() => { setEditId(null); setF(EMPTY); }} className="ml-1 underline">abbrechen</button></div>}
+          <button onClick={() => { setEditId(null); setF(EMPTY); setParamText(""); }} className="ml-1 underline">abbrechen</button></div>}
+        {!editId && !!templates?.length && (
+          <select value="" onChange={(e) => e.target.value && useTemplate(e.target.value)}
+            className={inp + " col-span-2"} title="Füllt das Formular vor">
+            <option value="">— aus Vorlage —</option>
+            {templates.map((t) => <option key={t.key} value={t.key}>{t.label}: {t.beschreibung}</option>)}
+          </select>
+        )}
         <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Name" className={inp} />
         <div className="flex gap-2">
           <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} className={inp + " flex-1"}>
@@ -90,7 +135,22 @@ export default function JobsPanel() {
           </select>
         )}
         {f.kind === "prompt" && (
-          <textarea value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} rows={2} placeholder="Prompt" className={inp + " col-span-2"} />
+          <textarea value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} rows={6}
+            placeholder="Prompt — {{platzhalter}} kommen aus den Parametern" className={inp + " col-span-2 font-mono text-xs"} />
+        )}
+        {f.kind === "prompt" && (
+          <div className="col-span-2">
+            <textarea value={paramText} onChange={(e) => setParams(e.target.value)} rows={4}
+              placeholder={'Parameter (JSON), z.B. {"thema": "IT-Sicherheit"}'}
+              className={inp + " w-full font-mono text-xs"} />
+            <div className="mt-1 text-xs">
+              {paramFehler
+                ? <span className="text-red-400">{paramFehler} — Parameter werden nicht übernommen.</span>
+                : fehlend.length
+                  ? <span className="text-amber-400">Ohne Wert: {fehlend.join(", ")} — bleibt wörtlich im Prompt stehen.</span>
+                  : <span className="text-muted">Eingebaut: heute, jetzt, seit, zeitfenster.</span>}
+            </div>
+          </div>
         )}
         <select value={f.notify_mode} onChange={(e) => setF({ ...f, notify_mode: e.target.value })} className={inp}>
           <option value="on_output">notify bei Output</option><option value="always">immer</option>
