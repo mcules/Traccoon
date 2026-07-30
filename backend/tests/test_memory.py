@@ -401,7 +401,7 @@ async def test_rueckschau_merkt_und_zaehlt_tokens(db, monkeypatch):
 
     ein, aus, cache = await _reflect(db=db, mcp=mcp, agent=agent, owner_id=u.id,
                                      project_key="", messages=[{"role": "user", "content": "x"}],
-                                     summary="Habe alles erledigt.", log=log,
+                                     summary="Habe alles erledigt.", protokoll=log,
                                      tokens={}, base_urls={})
     assert (ein, aus, cache) == (20, 10, 0)          # zwei Züge
     assert "Deutsche Commits." in mcp.notes[f"{ROOT}/Mensch.md"]
@@ -439,7 +439,7 @@ async def test_rueckschau_ohne_lehre_schreibt_nichts(db, monkeypatch):
         pass
 
     await _reflect(db=db, mcp=mcp, agent=agent, owner_id=u.id, project_key="",
-                   messages=[], summary="", log=log, tokens={}, base_urls={})
+                   messages=[], summary="", protokoll=log, tokens={}, base_urls={})
     assert mcp.calls == []
 
 
@@ -471,7 +471,7 @@ async def test_rueckschau_verweigert_fremde_tools(db, monkeypatch):
         gemeldet.append(content)
 
     await _reflect(db=db, mcp=mcp, agent=agent, owner_id=u.id, project_key="",
-                   messages=[], summary="", log=log, tokens={}, base_urls={})
+                   messages=[], summary="", protokoll=log, tokens={}, base_urls={})
     assert any("FEHLER" in g for g in gemeldet)
     assert mcp.calls == []
 
