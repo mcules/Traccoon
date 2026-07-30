@@ -7,6 +7,7 @@ import SkillsPanel from "../components/SkillsPanel";
 import McpPanel from "../components/McpPanel";
 import PreferencesPanel from "../components/PreferencesPanel";
 import MySetPanel from "../components/workflow/MySetPanel";
+import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 import DestinationsPanel from "../components/DestinationsPanel";
 import WebhooksPanel from "../components/WebhooksPanel";
 import JobsPanel from "../components/JobsPanel";
@@ -36,7 +37,12 @@ export default function Settings() {
     <div className="mx-auto max-w-3xl">
       {tab === "secrets" && <Secrets />}
       {tab === "prefs" && <PreferencesPanel isAdmin={user?.global_role === "admin"} />}
-      {tab === "processes" && <MySetPanel />}
+      {tab === "processes" && (
+        <div className="space-y-4">
+          <MySetPanel />
+          <OwnWorkflowsPanel isAdmin={user?.global_role === "admin"} />
+        </div>
+      )}
       {tab === "destinations" && user && (
         <DestinationsPanel scope="user" userId={user.id} />
       )}

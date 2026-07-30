@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import build_access
@@ -96,6 +96,18 @@ TRACCOON_TOOLS = [
          ["job_id"]),
     _def("traccoon_run_job", "Einen Job sofort ausführen (zusätzlich zum Zeitplan).",
          {"job_id": {"type": "integer"}}, ["job_id"]),
+    _def("traccoon_list_workflows",
+         "Veröffentlichte Prozesse (Workflows) auflisten, die dein Mensch starten darf — "
+         "projektlose und die seiner Projekte. Liefert id, key, Name und Gegenstandsart.",
+         {"project_key": {"type": "string", "description": "optional: nur dieses Projekt"}}, []),
+    _def("traccoon_start_workflow",
+         "Eine Instanz eines veröffentlichten Prozesses starten. `context` sind die "
+         "Startwerte des Graphen (frei belegbares Objekt). Ein Prozess mit Gegenstand "
+         "'issue' braucht `issue_key`.",
+         {"workflow_id": {"type": "integer", "description": "id aus traccoon_list_workflows"},
+          "issue_key": {"type": "string", "description": "nur bei Prozessen auf Tickets"},
+          "context": {"type": "object", "description": "Startwerte für den Graphen"}},
+         ["workflow_id"]),
     _def("traccoon_http_call",
          "Ein freigegebenes Ziel aufrufen. Basis-URL und Anmeldung kommen aus dem Ziel; du "
          "gibst nur Methode, Pfad-Ergänzung, Query, Kopfzeilen und Body an.",
@@ -113,7 +125,11 @@ TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 # Menschen wirken. Für Jobs gilt das nicht: ein Job ist eine DAUERHAFTE, selbsttätige und
 # kostenpflichtige Abmachung — die soll ein Mensch einmal bestätigt haben („immer" merkt sich
 # das Gate dann). Lesen bleibt frei.
-TRACCOON_GATED_TOOLS = {"traccoon_create_job", "traccoon_update_job", "traccoon_run_job"}
+# `traccoon_start_workflow` ist aus demselben Grund dabei: ein Prozess kann Agentenläufe,
+# Freigaben und Aufrufe nach außen anstoßen — nicht etwas, das ein Agent unbemerkt auslöst.
+# Auflisten bleibt frei.
+TRACCOON_GATED_TOOLS = {"traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
+                        "traccoon_start_workflow"}
 
 
 async def _user(db: AsyncSession, owner_id: int | None) -> User | None:
@@ -244,6 +260,15 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         jr = JobRun(job_id=j.id, status="running")
         db.add(jr)
         j.last_run_at = _now()
+        await db.flush()
+        # script/workflow/http hier direkt ausführen (wie Scheduler und API). Ohne das lief
+        # ein Workflow-Job als Prompt-Job beim Assistenten — ohne Workflow, ohne Fehler.
+        from ..services.scheduler import run_job_kind
+        if await run_job_kind(db, j, jr):
+            await db.commit()
+            return (f"Job #{j.id} '{j.name}' ({j.kind}) ausgeführt: {jr.status}"
+                    + (f" — {jr.output[:500]}" if jr.output else "")
+                    + (f" — FEHLER: {jr.error[:500]}" if jr.error else ""))
         # ERST committen, DANN einreihen — sonst greift ein freier Worker den Auftrag, bevor
         # es den JobRun gibt, und der Lauf bleibt für immer auf „running" (vgl. api/ops.py).
         await db.commit()
@@ -253,6 +278,91 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         return f"Job #{j.id} '{j.name}' läuft (Lauf {jr.id}). Das Ergebnis kommt getrennt."
 
     return f"FEHLER: unbekanntes Job-Tool '{name}'."
+
+
+async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
+    """Prozesse auflisten und starten — in den Rechten des Menschen, nicht des Agenten.
+
+    Bis hierher konnte ein Agent einen Workflow überhaupt nicht anstoßen: Job und Webhook
+    können es, das Tool fehlte. Zugriff wie in api/workflows.py: projektlose Prozesse für
+    jeden angemeldeten Nutzer, projektgebundene ab Mitgliedschaft (member).
+    """
+    from ..models.enums import ProjectRole
+    from ..models.workflow import WorkflowDefinition
+    from ..services.workflow_engine import start_workflow
+
+    async def _erlaubt(d: WorkflowDefinition) -> bool:
+        """Darf der Mensch diesen Prozess starten?"""
+        if d.project_id is None:
+            return True
+        project = await db.get(Project, d.project_id)
+        if project is None:
+            return False
+        try:
+            acc = await build_access(project, user, db)
+        except HTTPException:
+            return False
+        return acc.has_role(ProjectRole.member)
+
+    if name == "traccoon_list_workflows":
+        q = select(WorkflowDefinition).where(
+            WorkflowDefinition.archived_at.is_(None),
+            WorkflowDefinition.enabled.is_(True),
+            # Ohne veröffentlichte Version gibt es nichts zu starten — Entwürfe verschweigen.
+            WorkflowDefinition.current_version_id.is_not(None))
+        if args.get("project_key"):
+            p = (await db.execute(select(Project).where(
+                Project.key == args["project_key"]))).scalar_one_or_none()
+            if p is None:
+                return f"Projekt '{args['project_key']}' nicht gefunden."
+            q = q.where(or_(WorkflowDefinition.project_id == p.id,
+                            WorkflowDefinition.project_id.is_(None)))
+        rows = (await db.execute(q.order_by(WorkflowDefinition.id))).scalars().all()
+        zeilen = []
+        for d in rows:
+            if not await _erlaubt(d):
+                continue
+            projekt = "projektlos"
+            if d.project_id is not None:
+                p = await db.get(Project, d.project_id)
+                projekt = p.key if p else f"Projekt {d.project_id}"
+            zeilen.append(f"- id {d.id} · {d.key}: {d.name} ({projekt}, "
+                          f"Gegenstand {d.subject_kind.value if hasattr(d.subject_kind, 'value') else d.subject_kind})")
+        return "\n".join(zeilen) or "Keine startbaren Prozesse."
+
+    if name == "traccoon_start_workflow":
+        d = await db.get(WorkflowDefinition, int(args.get("workflow_id") or 0))
+        if d is None or d.archived_at is not None:
+            return "Prozess nicht gefunden."
+        if not await _erlaubt(d):
+            return "Kein Zugriff auf diesen Prozess."
+        if not d.enabled:
+            return f"Prozess '{d.key}' ist abgeschaltet."
+        if d.current_version_id is None:
+            return f"Prozess '{d.key}' hat keine veröffentlichte Version."
+        sk = d.subject_kind.value if hasattr(d.subject_kind, "value") else str(d.subject_kind)
+        issue_id = None
+        if args.get("issue_key"):
+            iss, _acc, fehler = await _issue_access(db, user, args["issue_key"])
+            if iss is None:
+                return fehler
+            issue_id = iss.id
+        elif sk == "issue":
+            return f"Prozess '{d.key}' läuft auf einem Ticket — issue_key angeben."
+        kontext = args.get("context")
+        try:
+            inst = await start_workflow(
+                db, d, subject_kind=d.subject_kind, issue_id=issue_id,
+                context=kontext if isinstance(kontext, dict) else {},
+                actor_id=user.id, source=f"agent:{user.id}",
+            )
+        except ValueError as e:
+            return f"FEHLER: {e}"
+        return (f"Prozess '{d.key}' gestartet — Instanz #{inst.id}, Status "
+                f"{inst.status.value if hasattr(inst.status, 'value') else inst.status}. "
+                "Wartende Schritte (Freigaben, Aufgaben) laufen ohne dich weiter.")
+
+    return f"FEHLER: unbekanntes Workflow-Tool '{name}'."
 
 
 async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, args: dict,
@@ -438,6 +548,9 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
     if name in ("traccoon_list_jobs", "traccoon_get_job", "traccoon_job_templates",
                 "traccoon_create_job", "traccoon_update_job", "traccoon_run_job"):
         return await _job_tool(db, user, name, args)
+
+    if name in ("traccoon_list_workflows", "traccoon_start_workflow"):
+        return await _workflow_tool(db, user, name, args)
 
     if name == "traccoon_issue_costs":
         iss, acc, err = await _issue_access(db, user, args.get("key", ""))

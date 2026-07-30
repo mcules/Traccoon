@@ -212,6 +212,8 @@ export const destinationApi = {
 
 export const workflowApi = {
   list: (projectId: number) => api.get<WfDef[]>(`/workflows?project_id=${projectId}`),
+  /** Alle Definitionen — ohne project_id-Filter; für die projektlosen (eigene Prozesse). */
+  listAll: () => api.get<WfDef[]>("/workflows"),
   create: (body: {
     project_id?: number | null; key: string; name: string;
     description?: string; subject_kind: WfSubject;

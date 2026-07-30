@@ -501,6 +501,16 @@ async def _handle_job(job: dict, redis: Redis) -> None:
             log.warning("Job-Auftrag %s ohne Datensatz (job_run=%s, job=%s) — übersprungen",
                         job.get("task_id"), job_run_id, job.get("job_id"))
             return
+        # Sicherheitsnetz: script/workflow/http laufen bei ihrem Auslöser (Scheduler, API,
+        # Agent-Tool) und dürfen hier nicht ankommen. Kämen sie doch, liefe der Assistent auf
+        # dem Prompt-Feld eines Jobs, der gar keinen Prompt hat — lieber ein sichtbarer Fehler.
+        if j.kind not in ("", "prompt"):
+            jr.status = "error"
+            jr.error = f"Job-Art '{j.kind}' gehört nicht in den Worker (Auslöser hat nicht verzweigt)"
+            jr.finished_at = _now_dt()
+            await db.commit()
+            log.error("Job %s (%s) fiel in den Prompt-Pfad", j.name, j.kind)
+            return
         # Eigentümer des Jobs → sein Token, sein Assistent-Agent, seine MCP-Server, seine Zustellung.
         owner_id = j.user_id
         notify_chat = j.notify_chat
