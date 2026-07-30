@@ -381,6 +381,10 @@ class AgentDef:
     # Liest zu Beginn das Gedächtnis und hält nach dem Lauf Rückschau (TRA-30). Default an;
     # ohne gesetzten Vault-Ordner beim Owner passiert trotzdem nichts.
     learns: bool = True
+    # Schwelle für die Kompaktierung des Verlaufs (worker/compaction.py). None = aus.
+    # Fehlte hier, obwohl der Lauf den Wert liest — jeder Lauf, der die Stelle erreichte,
+    # starb an AttributeError.
+    max_context_tokens: int | None = None
 
     def tool_allowed(self, name: str) -> bool:
         # Loop-/Steuer-Tools sind Agent-Mechanik, nicht durch die Allowlist beschränkt.
@@ -404,7 +408,7 @@ def agent_def_from_row(row: AgentDefinition, mode: str) -> AgentDef:
         web_search=row.web_search, allowed_tools=list(row.allowed_tools or []),
         allowed_skills=list(row.allowed_skills or []),
         autoload_skills=list(row.autoload_skills or []), delegate_to=list(row.delegate_to or []),
-        learns=bool(row.learns),
+        learns=bool(row.learns), max_context_tokens=row.max_context_tokens,
     )
 
 
@@ -631,7 +635,7 @@ MAX_REFLEXION_TURNS = 2
 
 
 async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | None,
-                   project_key: str, messages: list[dict[str, Any]], summary: str, log,
+                   project_key: str, messages: list[dict[str, Any]], summary: str, protokoll,
                    tokens: dict, base_urls: dict) -> tuple[int, int, int]:
     """Rückschau nach einem erfolgreichen Lauf: Dauerhaftes ins Gedächtnis (TRA-30).
 
@@ -670,7 +674,7 @@ async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | No
                                              agent.role, project_key)
             else:
                 out = f"FEHLER: In der Rückschau ist nur '{', '.join(sorted(MEMORY_TOOL_NAMES))}' erlaubt."
-            await log("tool", call.name,
+            await protokoll("tool", call.name,
                       f"Rückschau: args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {out[:500]}")
             msgs.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                          "content": out[:2000]})
@@ -705,7 +709,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                               task_id=task_id)
     seq = 0
 
-    async def log(role: str, tool: str | None, content: str) -> None:
+    async def protokoll(role: str, tool: str | None, content: str) -> None:
         nonlocal seq
         seq += 1
         await _add_step(db, run_id, seq, role, tool, content)
@@ -830,7 +834,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         gemessen=letzter_kontext, owner_id=owner_id, agent=agent,
                         tokens=tokens, base_urls=base_urls)
                     if _neu is not None:
-                        await log("system", None,
+                        await protokoll("system", None,
                                   f"Verlauf kompaktiert: {len(messages)} → {len(_neu)} Nachrichten "
                                   f"(Kontext {letzter_kontext} von {agent.max_context_tokens}).")
                         messages = _neu
@@ -843,7 +847,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              web_search=agent.web_search, tokens=tokens,
                                              base_urls=base_urls)
                 except ProviderError as exc:
-                    await log("system", None, f"Provider-Fehler: {exc}")
+                    await protokoll("system", None, f"Provider-Fehler: {exc}")
                     await _end_run(db, run_id, "failed", error=str(exc), iterations=iteration)
                     return RunResult("failed", str(exc), iteration, run_id=run_id)
 
@@ -862,14 +866,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # Hartes Token-Budget erreicht → Run exakt wie beim Iterations-Limit
                     # abbrechen: `break` fällt auf die loop_exhausted-Finalisierung unten
                     # (gleicher _end_run/RunResult-Pfad), damit die Continuation-Semantik greift.
-                    logging.getLogger("traccoon.runtime").warning(
-                        "Run %s: Token-Budget erreicht (%d ≥ %d) → loop_exhausted",
-                        run_id, in_tok, MAX_RUN_INPUT_TOKENS)
-                    await log("system", None,
+                    log.warning("Run %s: Token-Budget erreicht (%d ≥ %d) → loop_exhausted",
+                                run_id, in_tok, MAX_RUN_INPUT_TOKENS)
+                    await protokoll("system", None,
                               f"⚠️ Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS}) "
                               f"→ loop_exhausted (Fortsetzung in frischem Run)")
                     break
-                await log("assistant", None, resp.text or "(Tool-Call)")
+                await protokoll("assistant", None, resp.text or "(Tool-Call)")
                 if resp.text:
                     last_text = resp.text
 
@@ -903,11 +906,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 _ri, _ro, _rc = await _reflect(
                                     db=db, mcp=mcp, agent=agent, owner_id=owner_id,
                                     project_key=project.get("key") or "", messages=messages,
-                                    summary=resp.text, log=log, tokens=tokens,
+                                    summary=resp.text, protokoll=protokoll, tokens=tokens,
                                     base_urls=base_urls)
                                 in_tok += _ri; out_tok += _ro; cache_read += _rc
                             except Exception as exc:  # noqa: BLE001
-                                await log("system", None, f"Rückschau übersprungen: {exc}")
+                                await protokoll("system", None, f"Rückschau übersprungen: {exc}")
                         await _end_run(db, run_id, "success", summary=resp.text, iterations=iteration,
                                        in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
                         return RunResult("done", resp.text, iteration, summary=resp.text, run_id=run_id)
@@ -1069,7 +1072,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             result = f"TOOL-FEHLER: {exc}"
 
                     if isinstance(result, list):
-                        await log("tool", call.name, "(Bild/Block-Ergebnis)")
+                        await protokoll("tool", call.name, "(Bild/Block-Ergebnis)")
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result})
                     else:
@@ -1078,7 +1081,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         # Antwort mit. Der pauschale Deckel würde sie hier wieder
                         # einkassieren — deshalb für dieses Tool der weitere Rahmen.
                         cap = MAX_HTTP_TOOL_CHARS if call.name == "traccoon_http_call" else 8000
-                        await log("tool", call.name,
+                        await protokoll("tool", call.name,
                                   f"args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {result[:2000]}")
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result[:cap]})
