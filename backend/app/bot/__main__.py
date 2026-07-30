@@ -21,7 +21,9 @@ from ..models.notification import Notification
 from ..models.ops import PermAction, PermGrant, Permission, PermRequest
 from ..models.ticket import Issue
 from ..models.user import User
-from ..services.assistant_inbox import approve_assistant_task, reject_assistant_task
+from ..services.assistant_inbox import (
+    approve_assistant_task, create_chat_task, reject_assistant_task,
+)
 from ..services.artifacts import set_ticket_status
 from ..services.comments import add_system_comment, apply_user_comment
 from ..worker.assistant_gate import apply_perm_decision
@@ -217,16 +219,8 @@ async def run_bot() -> None:
             return
         async with SessionLocal() as db:
             user = await _acting_user(db, m.chat.id)
-            t = AssistantTask(owner_user_id=user.id if user else None, kind="chat",
-                              source="telegram", title=text[:200], status="approved",
-                              meta={"chat_text": text, "chat_id": str(m.chat.id),
-                                    "agent": "uniwar-operator"})
-            db.add(t)
-            await db.commit()
-            await db.refresh(t)
-        from ..core.redis import enqueue_task
-        await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
-                            "assistant_task_id": t.id})
+            await create_chat_task(db, user.id if user else None, text, str(m.chat.id),
+                                   agent="uniwar-operator")
         await m.answer("🛰 …")
 
     @dp.message(F.reply_to_message)
@@ -251,40 +245,44 @@ async def run_bot() -> None:
                 await m.answer(f"⚠ Weiterleitung an {source} fehlgeschlagen: {exc}")
             return
 
+        # Ohne Ticket-Bezug ist die Antwort schlicht eine Chat-Nachricht an den Assistenten.
         match = re.search(r"\[([A-Z][A-Z0-9]*-\d+)\]", rt)
         if not match:
+            await _chat_auftrag(m)
             return
         key = match.group(1)
         async with SessionLocal() as db:
             iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
             if iss is None:
+                await _chat_auftrag(m)
                 return
             user = await _acting_user(db, m.chat.id)
             await apply_user_comment(db, iss, m.text or "", user.id if user else None, "Telegram")
         await m.answer(f"↳ Kommentar zu {key} gespeichert.")
 
-    @dp.message(F.text)
-    async def _assistant_chat(m: Message):
-        # Klartext (kein Command, keine Ticket-Antwort) → Chat mit dem persönlichen Assistenten.
-        # Er bedient Traccoon (traccoon_*-Tools, in deinen Rechten) und deine MCP; Antwort kommt
-        # als Notification zurück. Registriert NACH Commands/Reply → die haben Vorrang.
-        if not await _allowed(m.from_user.id):
-            return
+    async def _chat_auftrag(m: Message) -> bool:
+        """Klartext an den persönlichen Assistenten übergeben. True = angenommen.
+
+        Auch der Reply-Zweig landet hier: eine Antwort auf eine Assistenten-Nachricht ist im
+        Chat das Natürlichste — vorher fiel sie durch alle Handler und wurde kommentarlos
+        verworfen, von außen nicht von „ignoriert" zu unterscheiden.
+        """
         text = (m.text or "").strip()
         if not text or text.startswith("/"):
-            return
+            return False
         async with SessionLocal() as db:
             user = await _acting_user(db, m.chat.id)
-            t = AssistantTask(owner_user_id=user.id if user else None, kind="chat",
-                              source="telegram", title=text[:200], status="approved",
-                              meta={"chat_text": text, "chat_id": str(m.chat.id)})
-            db.add(t)
-            await db.commit()
-            await db.refresh(t)
-        from ..core.redis import enqueue_task
-        await enqueue_task({"kind": "assistant", "task_id": f"assistant-{t.id}",
-                            "assistant_task_id": t.id})
+            await create_chat_task(db, user.id if user else None, text, str(m.chat.id))
         await m.answer("🤖 …")
+        return True
+
+    @dp.message(F.text)
+    async def _assistant_chat(m: Message):
+        # Klartext (kein Command, keine Ticket-Antwort) → Chat mit dem Assistenten.
+        # Registriert NACH Commands/Reply → die haben Vorrang.
+        if not await _allowed(m.from_user.id):
+            return
+        await _chat_auftrag(m)
 
     @dp.message()
     async def _unsupported(m: Message):
