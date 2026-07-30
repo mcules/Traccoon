@@ -108,6 +108,8 @@ class PriceIn(BaseModel):
     price_input: float = 0.0
     price_output: float = 0.0
     price_cache_read: float = 0.0
+    context_tokens: int | None = None
+    speed_tps: float | None = None
     enabled: bool = True
 
 
@@ -118,6 +120,7 @@ async def list_models(_: User = Depends(get_current_user), db: AsyncSession = De
     return [{"id": m.id, "provider": m.provider, "model": m.model, "display_name": m.display_name,
              "price_input": m.price_input, "price_output": m.price_output,
              "price_cache_read": m.price_cache_read, "enabled": m.enabled,
+             "context_tokens": m.context_tokens, "speed_tps": m.speed_tps,
              "updated_at": m.updated_at} for m in rows]
 
 
@@ -132,6 +135,8 @@ async def upsert_model(data: PriceIn, _: User = Depends(require_admin), db: Asyn
     m.price_input = data.price_input
     m.price_output = data.price_output
     m.price_cache_read = data.price_cache_read
+    m.context_tokens = data.context_tokens
+    m.speed_tps = data.speed_tps
     m.enabled = data.enabled
     await db.commit()
     return {"ok": True}
@@ -189,7 +194,7 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
                                                             ProviderModel.model))).scalars().all()
     changed: list[dict] = []
     unknown: list[str] = []
-    unchanged = 0
+    unchanged = kontexte = 0
     for row in rows:
         entry = _modelsdev_entry(catalog, row.provider, row.model)
         cost = (entry or {}).get("cost")
@@ -201,6 +206,13 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
         alt = (row.price_input, row.price_output, row.price_cache_read)
         if not row.display_name and entry.get("name"):
             row.display_name = str(entry["name"])[:150]
+        # Kontextfenster nur setzen, wenn es noch fehlt oder sich geändert hat — ein von Hand
+        # gepflegter Wert (lokales Modell mit kleinerem Fenster) wird nicht überschrieben,
+        # solange models.dev das Modell gar nicht kennt (dann sind wir hier nie).
+        kontext = ((entry.get("limit") or {}).get("context")) if isinstance(entry.get("limit"), dict) else None
+        if kontext and row.context_tokens != int(kontext):
+            row.context_tokens = int(kontext)
+            kontexte += 1
         if alt == neu:
             unchanged += 1
             continue
@@ -209,7 +221,8 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
                         "from": {"input": alt[0], "output": alt[1], "cache_read": alt[2]},
                         "to": {"input": neu[0], "output": neu[1], "cache_read": neu[2]}})
     await db.commit()
-    return {"source": "models.dev", "updated": changed, "unchanged": unchanged, "unknown": unknown}
+    return {"source": "models.dev", "updated": changed, "unchanged": unchanged,
+            "context_set": kontexte, "unknown": unknown}
 
 
 # Nicht-Chat-Modelle, die OpenAI-kompatible Endpoints (LiteLLM, Ollama, vLLM …) mitliefern.
