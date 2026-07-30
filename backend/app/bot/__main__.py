@@ -35,6 +35,35 @@ ALLOWED = {int(x) for x in os.getenv("TELEGRAM_ALLOWED_IDS", "").replace(" ", ""
 OWNER_CHAT = os.getenv("TELEGRAM_OWNER_CHAT", "")
 
 
+# Entscheidungen der Freigabe-Knöpfe im Klartext, für den Vermerk an der Nachricht.
+_DEC_TEXT = {"once": "einmal", "always": "immer", "never": "nie"}
+
+
+async def _erledigt(cq: CallbackQuery, vermerk: str) -> None:
+    """Tastatur entfernen und den Ausgang an die Frage schreiben.
+
+    Damit sieht man im Verlauf sofort, was noch offen ist: beantwortete Fragen tragen
+    keine Knöpfe mehr, sondern eine Zeile mit Entscheidung und Zeitpunkt. Auch bei
+    „schon erledigt" (anderswo entschieden) müssen die Knöpfe weg — sonst laden sie
+    weiter zum Drücken ein.
+    """
+    msg = cq.message
+    if msg is None:
+        return
+    zeile = f"<i>{safe(vermerk)} · {_now().strftime('%d.%m. %H:%M')}</i>"
+    try:
+        # html_text erhält die Formatierung der Ursprungsnachricht (Fettung, Zeilen).
+        await msg.edit_text(f"{msg.html_text}\n\n{zeile}", parse_mode="HTML")
+        return
+    except Exception:  # noqa: BLE001
+        # Zu alt zum Bearbeiten, ohne Text (Foto) oder unverändert — dann wenigstens
+        # die Knöpfe abräumen, das ist der eigentliche Zweck.
+        try:
+            await msg.edit_reply_markup(reply_markup=None)
+        except Exception:  # noqa: BLE001
+            log.warning("Konnte Tastatur an Nachricht %s nicht entfernen", msg.message_id)
+
+
 def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
@@ -288,6 +317,11 @@ async def run_bot() -> None:
                     iss.hold_reason = None
                     await db.commit()
                     await cq.answer("OK")
+                    await _erledigt(cq, "✅ Plan freigegeben" if data.startswith("approve:")
+                                    else "✖ Plan abgelehnt")
+                else:
+                    await cq.answer("nicht mehr offen")
+                    await _erledigt(cq, "⏭ nicht mehr offen (anderswo entschieden)")
             elif data.startswith("accept:"):
                 key = data.split(":", 1)[1]
                 iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
@@ -300,6 +334,10 @@ async def run_bot() -> None:
                     await enqueue_task({"kind": "accept", "task_id": f"accept-{iss.key}",
                                         "issue_id": iss.id, "project_id": iss.project_id})
                     await cq.answer("Abgenommen")
+                    await _erledigt(cq, "✅ Abgenommen")
+                else:
+                    await cq.answer("nicht mehr offen")
+                    await _erledigt(cq, "⏭ nicht mehr offen (anderswo entschieden)")
             elif data.startswith("perm:"):
                 _, dec, rid = data.split(":", 2)
                 pr = await db.get(PermRequest, int(rid))
@@ -320,29 +358,41 @@ async def run_bot() -> None:
                         iss.continuation_count += 1
                     await db.commit()
                     await cq.answer(f"Berechtigung: {dec}")
+                    await _erledigt(cq, f"🔑 Berechtigung: {_DEC_TEXT.get(dec, dec)}")
+                else:
+                    await cq.answer("schon entschieden")
+                    await _erledigt(cq, "⏭ schon entschieden")
             elif data.startswith("atask:"):
                 _, action, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))
                 if t is None:
                     await cq.answer("Nicht gefunden")
+                    await _erledigt(cq, "⏭ Aufgabe nicht mehr vorhanden")
                 elif t.status not in ("new", "error"):
                     await cq.answer(f"schon erledigt ({t.status})")
+                    await _erledigt(cq, f"⏭ schon erledigt ({t.status})")
                 elif action == "reject":
                     await reject_assistant_task(db, t)
                     await cq.answer("Verworfen")
+                    await _erledigt(cq, "❌ Verworfen")
                 else:
                     scope = {"sender": "sender", "category": "category"}.get(action, "once")
                     # Schnellfreigabe per Telegram ist geschwärzt (sicher); ungeschwärzt regelt die Web-Inbox.
                     await approve_assistant_task(db, t, scope=scope, redaction="redacted")
                     await cq.answer("Freigegeben" + ("" if scope == "once" else " + gemerkt"))
+                    await _erledigt(cq, "✅ Freigegeben" + {
+                        "sender": " · Absender künftig automatisch",
+                        "category": " · Kategorie künftig automatisch"}.get(scope, ""))
             elif data.startswith("aperm:"):
                 _, dec, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))
                 if t is None or t.status != "awaiting":
                     await cq.answer("schon entschieden")
+                    await _erledigt(cq, "⏭ schon entschieden")
                 else:
                     await apply_perm_decision(db, t, dec)
                     await cq.answer(f"Freigabe: {dec}")
+                    await _erledigt(cq, f"🔑 Freigabe: {_DEC_TEXT.get(dec, dec)}")
         await cq.answer()
 
     log.info("Traccoon-Bot gestartet (allowed=%s)", ALLOWED or "alle")
