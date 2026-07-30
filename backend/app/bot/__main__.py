@@ -245,34 +245,37 @@ async def run_bot() -> None:
                 await m.answer(f"⚠ Weiterleitung an {source} fehlgeschlagen: {exc}")
             return
 
-        # Ohne Ticket-Bezug ist die Antwort schlicht eine Chat-Nachricht an den Assistenten.
+        # Ohne Ticket-Bezug ist die Antwort ein Auftrag an den Assistenten — und zwar zu
+        # GENAU dieser Nachricht. Der zitierte Text geht deshalb als Bezug mit, sonst müsste
+        # der Mensch in jeder Antwort wiederholen, worum es ging.
         match = re.search(r"\[([A-Z][A-Z0-9]*-\d+)\]", rt)
         if not match:
-            await _chat_auftrag(m)
+            await _chat_auftrag(m, bezug=rt)
             return
         key = match.group(1)
         async with SessionLocal() as db:
             iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
             if iss is None:
-                await _chat_auftrag(m)
+                await _chat_auftrag(m, bezug=rt)
                 return
             user = await _acting_user(db, m.chat.id)
             await apply_user_comment(db, iss, m.text or "", user.id if user else None, "Telegram")
         await m.answer(f"↳ Kommentar zu {key} gespeichert.")
 
-    async def _chat_auftrag(m: Message) -> bool:
+    async def _chat_auftrag(m: Message, bezug: str = "") -> bool:
         """Klartext an den persönlichen Assistenten übergeben. True = angenommen.
 
-        Auch der Reply-Zweig landet hier: eine Antwort auf eine Assistenten-Nachricht ist im
-        Chat das Natürlichste — vorher fiel sie durch alle Handler und wurde kommentarlos
-        verworfen, von außen nicht von „ignoriert" zu unterscheiden.
+        `bezug` ist der Text der Nachricht, auf die geantwortet wurde. Eine Antwort meint
+        immer GENAU diese Nachricht — ohne den Bezug wäre sie nur eine weitere Zeile im
+        Gesprächsfaden, und der Assistent müsste raten, worauf sich „mach das" bezieht.
         """
         text = (m.text or "").strip()
         if not text or text.startswith("/"):
             return False
         async with SessionLocal() as db:
             user = await _acting_user(db, m.chat.id)
-            await create_chat_task(db, user.id if user else None, text, str(m.chat.id))
+            await create_chat_task(db, user.id if user else None, text, str(m.chat.id),
+                                   bezug=bezug)
         await m.answer("🤖 …")
         return True
 

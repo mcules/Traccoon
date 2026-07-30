@@ -676,6 +676,21 @@ MELDE_REGEL = (
 )
 
 
+async def _bezug_quelle(db, task_id) -> str:
+    """Zusatzkontext zur zitierten Nachricht: worum ging es im ursprünglichen Eingang?"""
+    if not task_id:
+        return ""
+    from ..models.assistant import AssistantTask
+    quelle = await db.get(AssistantTask, int(task_id))
+    if quelle is None:
+        return ""
+    teile = [f"Diese Nachricht gehört zu deinem Vorgang „{quelle.title}\" "
+             f"({quelle.kind}, Stand {quelle.status})."]
+    if quelle.result:
+        teile.append(f"Was du dort zuletzt berichtet hast:\n{quelle.result[:1500]}")
+    return "\n".join(teile) + "\n\n"
+
+
 async def _handle_assistant_task(job: dict, redis: Redis) -> None:
     """Freigegebenes Assistent-Item (z. B. Mail) über den vollen Tool-Loop des Owners abarbeiten.
 
@@ -719,6 +734,18 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             # traccoon_*-Tools (in den Rechten deines Menschen), Persönliches über deine MCP.
             prompt = (meta.get("chat_text") or t.title) + (
                 f"\n\n(Kontext: gelernte Vorgabe — {t.action_hint})" if t.action_hint else "")
+            # Antwort auf eine bestimmte Nachricht: sie ist der Bezug, nicht das Gespräch im
+            # Allgemeinen. Ohne das bliebe „mach das" ohne Gegenstand — und der frühere
+            # Eingang (Mail, Freigabe) wäre nur noch als Erinnerungsfetzen vorhanden.
+            if meta.get("bezug_text"):
+                quelle = await _bezug_quelle(db, meta.get("bezug_task_id"))
+                prompt = (
+                    "Dein Mensch antwortet DIREKT auf diese deine Nachricht:\n"
+                    f"---\n{meta['bezug_text']}\n---\n"
+                    + quelle +
+                    "Seine Antwort darauf ist dein Auftrag — arbeite an genau dieser Sache "
+                    "weiter, statt sie nur zur Kenntnis zu nehmen:\n\n" + prompt
+                )
         elif meta.get("prompt"):
             # Voller Task-Prompt aus dem Webhook (portiertes Mail-Verarbeitungs-Wissen).
             prompt = meta["prompt"] + (learned if t.action_hint else "") + "\n\n" + MELDE_REGEL
