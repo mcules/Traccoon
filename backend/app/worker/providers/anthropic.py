@@ -6,6 +6,7 @@ kein Datei-AuthStore. Die OAuth-Details sind zwingend für den Subscription-Toke
 from __future__ import annotations
 
 import json
+import os
 from typing import Any
 
 import httpx
@@ -122,7 +123,12 @@ def _translate(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | Non
 class AnthropicProvider(Provider):
     name = "claude"
 
-    def __init__(self, model: str = "", claude_code_version: str = "2.1.74", timeout: float = 180.0):
+    # 300 s wie bei codex und openai. Die früheren 180 s waren der Ausreißer und rissen
+    # Läufe ab, sobald EIN Modellzug länger brauchte — bei einem großen Zustand und einem
+    # Zug, der 40 Bauaufträge ausformuliert, ist das erreichbar. Der Lauf starb dann mit
+    # „Verbindungsfehler", was auf ein Netzproblem zeigt statt auf das Zeitlimit.
+    def __init__(self, model: str = "", claude_code_version: str = "2.1.74",
+                 timeout: float = float(os.getenv("ANTHROPIC_TIMEOUT_SEC", "300"))):
         self.model = model
         self._ver = claude_code_version
         self._timeout = timeout
