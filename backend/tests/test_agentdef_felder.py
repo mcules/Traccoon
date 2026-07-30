@@ -88,3 +88,34 @@ async def test_modellkatalog_traegt_kontext_und_tempo(db):
     assert row["context_tokens"] == 131072 and row["speed_tps"] == 42.5
     assert row["price_input"] == 0.0        # lokal: kostet nichts, taugt trotzdem etwas
     assert isinstance(admin, _User)
+
+
+async def test_modellabruf_ueberschreibt_gepflegte_namen_nicht(db, monkeypatch):
+    """OpenAI-kompatible Endpoints geben als „Namen" die Modell-ID zurück — ohne Schutz
+    hätte jeder Abruf einen von Hand vergebenen Anzeigenamen wieder plattgemacht."""
+    from app.api import cost as cost_api
+    from app.models.ops import ProviderModel
+    from app.models.secrets import ProviderToken
+    from app.core.security import encrypt_secret
+    from conftest import make_user
+    from sqlalchemy import select as _select
+
+    admin = await make_user(db, "chef2", admin=True)
+    db.add(ProviderToken(user_id=admin.id, provider="openai", name="local",
+                         value_enc=encrypt_secret("k"), base_url="http://litellm/v1",
+                         is_default=True))
+    db.add(ProviderModel(provider="openai", model="qwen3.6-35b-q8",
+                         display_name="Qwen3.6 35B q8 (lokal)"))
+    db.add(ProviderModel(provider="openai", model="frisch", display_name="frisch"))
+    await db.commit()
+
+    async def fake_fetch(provider, token, base_url=None):
+        return [("qwen3.6-35b-q8", "qwen3.6-35b-q8"), ("frisch", "Frisch benannt")]
+
+    monkeypatch.setattr(cost_api, "_fetch_provider_models", fake_fetch)
+    await cost_api.fetch_models(admin, db)
+
+    rows = {r.model: r.display_name for r in
+            (await db.execute(_select(ProviderModel))).scalars().all()}
+    assert rows["qwen3.6-35b-q8"] == "Qwen3.6 35B q8 (lokal)"   # gepflegt → bleibt
+    assert rows["frisch"] == "Frisch benannt"                    # war = Modell-ID → darf mit

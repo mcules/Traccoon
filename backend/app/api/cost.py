@@ -316,7 +316,10 @@ async def fetch_models(user: User = Depends(get_current_user), db: AsyncSession 
                 db.add(ProviderModel(provider=provider, model=mid, display_name=name))
                 added += 1
             else:
-                if name and row.display_name != name:
+                # Einen von Hand vergebenen Namen NICHT überschreiben: OpenAI-kompatible
+                # Endpoints liefern als „Namen" nur die Modell-ID zurück, jeder Abruf hätte
+                # „Qwen3.6 35B q8 (lokal)" wieder zu „qwen3.6-35b-q8" gemacht.
+                if name and row.display_name in ("", row.model) and row.display_name != name:
                     row.display_name = name
                     updated += 1
                 if not row.enabled:      # wieder aufgetaucht → wieder nutzbar
