@@ -63,3 +63,56 @@ async def test_langer_text_kuerzt_nur_den_titel(db, anna, monkeypatch):
     assert t.meta["chat_text"] == lang
     rows = (await db.execute(select(AssistantTask))).scalars().all()
     assert len(rows) == 1
+
+
+async def test_antwort_traegt_den_bezug_mit(db, anna, monkeypatch):
+    """Eine Antwort meint GENAU die zitierte Nachricht — sonst fehlt „mach das" der Gegenstand."""
+    import app.core.redis as redis_mod
+    monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
+
+    t = await create_chat_task(db, anna.id, "ja, mach das", "277",
+                               bezug="Rücksendung erfasst\nSoll ich die Erstattung überwachen?")
+    assert t.meta["bezug_text"].startswith("Rücksendung erfasst")
+    assert "bezug_task_id" not in t.meta      # keine passende Benachrichtigung → kein Vorgang
+
+
+async def test_antwort_findet_den_ursprungsvorgang(db, anna, monkeypatch):
+    """Zitierte Assistenten-Nachrichten stammen aus Notifications — darüber führt der Weg
+    zurück zum Eingang, an dem weitergearbeitet werden soll."""
+    from app.models.notification import Notification
+    import app.core.redis as redis_mod
+    monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
+
+    eingang = AssistantTask(owner_user_id=anna.id, kind="email", source="mail",
+                            title="Rücksendung Bias Tee", status="done",
+                            result="Bestellung auf retourniert gesetzt.")
+    db.add(eingang)
+    await db.commit()
+    await db.refresh(eingang)
+    db.add(Notification(user_id=anna.id, kind="assistant", title="Rücksendung Bias Tee",
+                        body="Bestellung auf retourniert gesetzt.", chat_id="277",
+                        assistant_task_id=eingang.id))
+    await db.commit()
+
+    t = await create_chat_task(db, anna.id, "und die Erstattung?", "277",
+                               bezug="Rücksendung Bias Tee\nBestellung auf retourniert gesetzt.")
+    assert t.meta["bezug_task_id"] == eingang.id
+
+
+async def test_fremder_chat_wird_nicht_verknuepft(db, anna, monkeypatch):
+    """Die Benachrichtigung eines anderen Chats darf keinen Bezug stiften."""
+    from app.models.notification import Notification
+    import app.core.redis as redis_mod
+    monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
+
+    fremd = AssistantTask(owner_user_id=anna.id, kind="email", source="mail",
+                          title="Fremde Sache", status="done")
+    db.add(fremd)
+    await db.commit()
+    await db.refresh(fremd)
+    db.add(Notification(user_id=anna.id, kind="assistant", title="Fremde Sache",
+                        body="…", chat_id="999", assistant_task_id=fremd.id))
+    await db.commit()
+
+    t = await create_chat_task(db, anna.id, "hm?", "277", bezug="Fremde Sache\n…")
+    assert "bezug_task_id" not in t.meta
