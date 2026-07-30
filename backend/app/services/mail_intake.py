@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.assistant import AssistantTask
 from ..models.notification import Notification
 from ..models.user import User
-from .assistant_policy import match_policy, note_hit, parse_sender
+from .assistant_policy import agent_laeuft_lokal, match_policy, note_hit, parse_sender
 from .mail_classify import classify_email
 
 log = logging.getLogger("traccoon.mail")
@@ -72,6 +72,12 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
     if policy is not None:
         await note_hit(db, policy)
         redaction, action_hint, auto = policy.redaction, policy.action_hint, policy.auto_approve
+    # Schwärzen schützt davor, dass Rohtext das Haus verlässt. Bearbeitet die Mail ein
+    # Modell auf dem eigenen Endpoint, verlässt nichts das Haus — dann ist die Schwärzung
+    # kein Schutz mehr, sondern nur noch Informationsverlust (und ein Umweg über die
+    # IMAP-Tools, der denselben Text ohnehin wieder heranholt).
+    if await agent_laeuft_lokal(db, owner_id, agent or "assistent"):
+        redaction = "unredacted"
     if auto_run:  # Webhook erzwingt chatlosen Sofortlauf (z. B. paperless-linked Link-back).
         auto = True
 
