@@ -200,5 +200,10 @@ class ProviderModel(Base):
     price_input: Mapped[float] = mapped_column(Float, default=0.0)         # USD / 1M
     price_output: Mapped[float] = mapped_column(Float, default=0.0)
     price_cache_read: Mapped[float] = mapped_column(Float, default=0.0)
+    # Damit sichtbar ist, WOFÜR ein Modell taugt, nicht nur was es kostet: das Kontextfenster
+    # (Tokens) und die ungefähre Ausgabegeschwindigkeit (Tokens/s). Bei lokalen Modellen ist
+    # die Geschwindigkeit gemessen und der eigentliche Auswahlgrund — Preis ist dort 0.
+    context_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    speed_tps: Mapped[float | None] = mapped_column(Float, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -72,3 +72,19 @@ async def test_watchdog_meldet_stillstand_genau_einmal(monkeypatch, caplog):
     # Loop läuft wieder → Entwarnung, Zustand zurück.
     worker._loop_tick()
     assert worker.watchdog_pruefe(True) is False
+
+
+async def test_modellkatalog_traegt_kontext_und_tempo(db):
+    """Bei lokalen Modellen ist der Preis 0 — die Wahl entscheidet sich an Fenster und Tempo."""
+    from app.api.cost import PriceIn, list_models, upsert_model
+    from app.models.user import User as _User
+    from conftest import make_user
+
+    admin = await make_user(db, "chef", admin=True)
+    await upsert_model(PriceIn(provider="openai", model="qwen3.6-35b-q8",
+                               display_name="Qwen3.6 35B q8", context_tokens=131072,
+                               speed_tps=42.5), admin, db)
+    row = next(r for r in await list_models(admin, db) if r["model"] == "qwen3.6-35b-q8")
+    assert row["context_tokens"] == 131072 and row["speed_tps"] == 42.5
+    assert row["price_input"] == 0.0        # lokal: kostet nichts, taugt trotzdem etwas
+    assert isinstance(admin, _User)

@@ -5,6 +5,7 @@ import { ApiError, api } from "../api";
 interface Modell {
   id: number; provider: string; model: string; display_name: string;
   price_input: number; price_output: number; price_cache_read: number; enabled: boolean;
+  context_tokens: number | null; speed_tps: number | null;
 }
 
 const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
@@ -45,6 +46,7 @@ export default function ProviderModelsPanel() {
       provider: m.provider, model: m.model, display_name: m.display_name,
       price_input: m.price_input, price_output: m.price_output,
       price_cache_read: m.price_cache_read, enabled: m.enabled,
+      context_tokens: m.context_tokens, speed_tps: m.speed_tps,
     }),
     onSuccess: (_r, m) => { setErr(""); setEdit((e) => { const n = { ...e }; delete n[m.id]; return n; }); inv(); },
     onError: fail,
@@ -58,10 +60,12 @@ export default function ProviderModelsPanel() {
     onSuccess: (r) => {
       const n = r.updated?.length ?? 0;
       const namen = (r.updated || []).slice(0, 4).map((u: any) => u.model).join(", ");
-      flash(n
+      const kontext = r.context_set ? ` · ${r.context_set} Kontextfenster gesetzt` : "";
+      flash((n
         ? `${n} Preis(e) aus models.dev übernommen: ${namen}${n > 4 ? " …" : ""}`
-          + (r.unknown?.length ? ` · ${r.unknown.length} ohne Eintrag (unverändert)` : "")
-        : `Alle Preise aktuell${r.unknown?.length ? ` · ${r.unknown.length} ohne Eintrag` : ""}.`);
+        : "Alle Preise aktuell")
+        + kontext
+        + (r.unknown?.length ? ` · ${r.unknown.length} ohne Eintrag (unverändert)` : ""));
       setErr(""); inv();
     },
     onError: fail,
@@ -95,10 +99,13 @@ export default function ProviderModelsPanel() {
         <p className="text-sm text-muted">
           Welcher Provider welche Modelle bereitstellt. Preise in <b>USD je 1 Mio. Token</b> —
           sie bestimmen die Kostenrechnung der Läufe; <b>0</b> heißt „zählt nichts" (z. B. lokale
-          Modelle). Deaktivierte Modelle verschwinden aus der Auswahl im Agent-Editor, bleiben
-          aber für die Abrechnung alter Läufe erhalten. <b>Modelle abrufen</b> fragt deine
-          Endpoints, <b>Preise</b> holt sie aus models.dev — lokale Modelle stehen dort nicht
-          und bleiben unangetastet.
+          Modelle). <b>Kontext</b> ist das größte Fenster in Tokens, <b>≈ t/s</b> die
+          gemessene Ausgabegeschwindigkeit — bei lokalen Modellen ist genau das der
+          Auswahlgrund, denn der Preis ist dort 0. Deaktivierte Modelle verschwinden aus der
+          Auswahl im Agent-Editor, bleiben aber für die Abrechnung alter Läufe erhalten.
+          <b> Modelle abrufen</b> fragt deine Endpoints, <b>Preise</b> holt Preise und
+          Kontextfenster aus models.dev — lokale Modelle stehen dort nicht und bleiben
+          unangetastet, deren t/s misst du selbst.
         </p>
         <div className="flex shrink-0 gap-2">
           <button onClick={() => abrufen.mutate()} disabled={abrufen.isPending}
@@ -123,7 +130,9 @@ export default function ProviderModelsPanel() {
                 <tr className="border-b border-line text-left text-xs uppercase text-muted">
                   <th className="py-2">Modell-ID</th><th>Anzeigename</th>
                   <th className="text-right">Input</th><th className="text-right">Output</th>
-                  <th className="text-right">Cache-Read</th><th className="text-center">Aktiv</th><th />
+                  <th className="text-right">Cache-Read</th>
+                  <th className="text-right">Kontext</th><th className="text-right">≈ t/s</th>
+                  <th className="text-center">Aktiv</th><th />
                 </tr>
               </thead>
               <tbody>
@@ -147,6 +156,16 @@ export default function ProviderModelsPanel() {
                       <td className="pr-2">
                         <input type="number" step="0.01" min="0" value={m.price_cache_read} className={num}
                           onChange={(e) => setzen(roh, { price_cache_read: Number(e.target.value) })} />
+                      </td>
+                      <td className="pr-2">
+                        <input type="number" step="1024" min="0" value={m.context_tokens ?? ""}
+                          placeholder="—" className={num} title="Maximales Kontextfenster in Tokens"
+                          onChange={(e) => setzen(roh, { context_tokens: e.target.value ? Number(e.target.value) : null })} />
+                      </td>
+                      <td className="pr-2">
+                        <input type="number" step="1" min="0" value={m.speed_tps ?? ""}
+                          placeholder="—" className={num} title="Gemessene Ausgabegeschwindigkeit (Tokens/s)"
+                          onChange={(e) => setzen(roh, { speed_tps: e.target.value ? Number(e.target.value) : null })} />
                       </td>
                       <td className="text-center">
                         <input type="checkbox" checked={m.enabled}

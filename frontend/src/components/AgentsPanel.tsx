@@ -40,6 +40,14 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   const tokensFor = (p?: string) => (tokens || []).filter((t) => t.provider === p);
   // Deaktivierte Modelle (Endpoint kennt sie nicht mehr) raus aus den Vorschlägen.
   const modelsFor = (p?: string) => (models || []).filter((m) => m.provider === p && m.enabled !== false);
+  // Was das Modell trägt und wie schnell es schreibt — die Auswahl entscheidet sich daran,
+  // nicht am Namen. Bei lokalen Modellen ist es die einzige Unterscheidung (Preis ist 0).
+  const modelLabel = (m: any) => {
+    const teile = [m.display_name || m.model];
+    if (m.context_tokens) teile.push(`${Math.round(m.context_tokens / 1000)}k Kontext`);
+    if (m.speed_tps) teile.push(`≈${m.speed_tps} t/s`);
+    return teile.join(" · ");
+  };
 
   // Im Projekt-Modus nur die projekt-eigenen Agenten anzeigen; projektlose sind „geerbt".
   const agents = projectId ? (allAgents || []).filter((a) => a.project_id === projectId) : allAgents;
@@ -149,7 +157,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                   <F label="Provider"><select value={edit.provider} onChange={(e) => setEdit({ ...edit, provider: e.target.value, model: "", token_name: "" })} className={inp}>{PROVIDERS.map((p) => <option key={p}>{p}</option>)}</select></F>
                   <F label="Modell (leer = Default)">
                     <input list="models-primary" value={edit.model || ""} onChange={(e) => setEdit({ ...edit, model: e.target.value })} placeholder="claude-sonnet-4-5" className={inp} />
-                    <datalist id="models-primary">{modelsFor(edit.provider).map((m) => <option key={m.model} value={m.model}>{m.display_name}</option>)}</datalist>
+                    <datalist id="models-primary">{modelsFor(edit.provider).map((m) => <option key={m.model} value={m.model}>{modelLabel(m)}</option>)}</datalist>
                   </F>
                   <F label="Token"><select value={edit.token_name || ""} onChange={(e) => setEdit({ ...edit, token_name: e.target.value })} className={inp}>
                     <option value="">Standard</option>
@@ -163,7 +171,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                   </select></F>
                   <F label="Fallback-Modell">
                     <input list="models-fallback" value={edit.fallback_model || ""} onChange={(e) => setEdit({ ...edit, fallback_model: e.target.value })} disabled={!edit.fallback} className={inp} />
-                    <datalist id="models-fallback">{modelsFor(edit.fallback || "").map((m) => <option key={m.model} value={m.model}>{m.display_name}</option>)}</datalist>
+                    <datalist id="models-fallback">{modelsFor(edit.fallback || "").map((m) => <option key={m.model} value={m.model}>{modelLabel(m)}</option>)}</datalist>
                   </F>
                   <F label="Fallback-Token"><select value={edit.fallback_token_name || ""} onChange={(e) => setEdit({ ...edit, fallback_token_name: e.target.value })} disabled={!edit.fallback} className={inp}>
                     <option value="">Standard</option>
