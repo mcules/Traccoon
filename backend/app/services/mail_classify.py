@@ -100,7 +100,12 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
             model=model,
             messages=[{"role": "system", "content": _SYSTEM},
                       {"role": "user", "content": user_msg}],
-            temperature=0.1, max_tokens=1500, auth_token=token)
+            temperature=0.1, max_tokens=1500, auth_token=token,
+            # Denkende Modelle (qwen3.6 & Co.) verbrauchen sonst das ganze Ausgabe-Budget im
+            # Reasoning und liefern leeren Text — die Klassifizierung fiel damit JEDES Mal
+            # auf den Notnagel zurück (sensitive=True, keine Zusammenfassung), ohne dass es
+            # jemandem auffiel. Für Triage ist das Denken ohnehin verschenkt.
+            extra_body={"chat_template_kwargs": {"enable_thinking": False}})
     except ProviderError as exc:
         log.warning("Mail-Klassifizierung fehlgeschlagen: %s → Fallback", exc)
         return fallback
