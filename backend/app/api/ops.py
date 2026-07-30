@@ -408,7 +408,7 @@ async def update_job(jid: int, data: JobIn, user: User = Depends(get_current_use
 async def run_job_now(jid: int, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     from ..core.redis import enqueue_task
-    from ..services.scheduler import _run_script
+    from ..services.scheduler import run_job_kind
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
         raise HTTPException(404, "Job nicht gefunden")
@@ -416,8 +416,9 @@ async def run_job_now(jid: int, user: User = Depends(get_current_user),
     db.add(jr)
     job.last_run_at = dt.datetime.now(tz=dt.timezone.utc)
     await db.flush()
-    if job.kind == "script":
-        await _run_script(db, job, jr)
+    # script/workflow/http laufen hier direkt (wie im Scheduler); nur Prompt-Jobs brauchen
+    # den Worker. Ohne die kind-Verzweigung landete ein Workflow-Job als Prompt beim Agenten.
+    if await run_job_kind(db, job, jr):
         await db.commit()
     else:
         # ERST committen, DANN einreihen. Andersherum liegt der Auftrag in Redis, bevor es

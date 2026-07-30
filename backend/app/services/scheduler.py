@@ -78,6 +78,29 @@ async def _run_script(db, job: Job, jr: JobRun) -> None:
                             chat_id=job.notify_chat))
 
 
+async def run_job_kind(db, job: Job, jr: JobRun) -> bool:
+    """Führt die Nicht-Prompt-Arten eines Jobs aus.
+
+    Rückgabe `True` = erledigt (JobRun ist fertig gesetzt), `False` = Prompt-Job, gehört
+    in die Redis-Warteschlange des Workers.
+
+    Einzige Stelle, an der `kind` verzweigt wird — vorher stand die Verzweigung nur im
+    Scheduler, weshalb „jetzt ausführen" (API und Agent-Tool) workflow- und http-Jobs
+    stillschweigend als Prompt-Job an den Assistenten gab: statt der Workflow-Instanz lief
+    ein Agent auf einem leeren Prompt.
+    """
+    if job.kind == "script":
+        await _run_script(db, job, jr)
+        return True
+    if job.kind == "workflow":
+        await _start_workflow_job(db, job, jr)
+        return True
+    if job.kind == "http":
+        await _run_http_job(db, job, jr)
+        return True
+    return False
+
+
 async def _tick() -> None:
     now = _now()
     async with SessionLocal() as db:
@@ -92,13 +115,7 @@ async def _tick() -> None:
             jr = JobRun(job_id=job.id, status="running")
             db.add(jr)
             await db.flush()
-            if job.kind == "script":
-                await _run_script(db, job, jr)
-            elif job.kind == "workflow":
-                await _start_workflow_job(db, job, jr)
-            elif job.kind == "http":
-                await _run_http_job(db, job, jr)
-            else:  # prompt → Worker
+            if not await run_job_kind(db, job, jr):  # prompt → Worker
                 nachreichen.append({"kind": "job", "task_id": f"job-{jr.id}",
                                     "job_id": job.id, "job_run_id": jr.id})
             log.info("job %s ausgelöst (%s)", job.name, job.kind)
