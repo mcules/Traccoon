@@ -75,3 +75,27 @@ async def upsert_policy(db: AsyncSession, owner_id: int | None, *, match_kind: s
                         auto_approve=auto_approve, redaction=redaction, action_hint=action_hint)
     db.add(p)
     return p
+
+
+async def agent_laeuft_lokal(db: AsyncSession, owner_id: int | None, role: str) -> bool:
+    """Läuft dieser Agent auf einem Modell im eigenen Haus?
+
+    Merkmal ist nicht der Provider-Name, sondern die eigene Endpoint-URL des Tokens: `openai`
+    heißt hier meist nicht OpenAI, sondern ein eigener OpenAI-kompatibler Endpoint (LiteLLM &
+    Co.). Ohne Base-URL geht der Aufruf zum Anbieter — dann verlässt der Text das Haus, und
+    die Schwärzung ist genau dafür da.
+    """
+    from sqlalchemy import or_, select
+
+    from ..models.agents import AgentDefinition
+    from ..worker.secrets import resolve_provider_base_url
+
+    row = (await db.execute(
+        select(AgentDefinition).where(
+            AgentDefinition.role == role, AgentDefinition.project_id.is_(None),
+            or_(AgentDefinition.user_id == owner_id, AgentDefinition.user_id.is_(None)))
+        .order_by(AgentDefinition.user_id.is_(None)))).scalars().first()
+    if row is None or row.provider in ("claude_code", "claude", "anthropic", "codex"):
+        return False       # Subscriptions laufen immer auswärts
+    base = await resolve_provider_base_url(db, owner_id, row.provider, row.token_name or "")
+    return bool(base)
