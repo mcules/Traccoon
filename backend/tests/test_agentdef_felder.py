@@ -45,3 +45,30 @@ def test_fehlerzweig_meldet_den_echten_fehler(caplog):
     with caplog.at_level(logging.ERROR):
         runtime.log.exception("Probe")
     assert "Probe" in caplog.text
+
+
+async def test_watchdog_meldet_stillstand_genau_einmal(monkeypatch, caplog):
+    """Steht der Loop, hilft keine Coroutine mehr beim Melden — der Wächter ist ein Thread.
+
+    Anlass: Der Worker stand über eine Stunde ohne eine einzige Logzeile; von außen sah der
+    Container gesund aus.
+    """
+    from app.worker import __main__ as worker
+
+    dumps = []
+    monkeypatch.setattr(worker.faulthandler, "dump_traceback", lambda: dumps.append(1))
+    monkeypatch.setattr(worker, "LOOP_STALL_SEC", 10.0)
+    monkeypatch.setattr(worker, "_LETZTER_TICK", worker.time.monotonic() - 60)
+
+    with caplog.at_level(logging.ERROR):
+        gemeldet = worker.watchdog_pruefe(False)
+    assert gemeldet and dumps == [1]
+    assert "tickt seit" in caplog.text
+
+    # Zweiter Durchgang bei anhaltendem Stillstand: kein zweiter Dump (kein Log-Fluten).
+    assert worker.watchdog_pruefe(True) is True
+    assert dumps == [1]
+
+    # Loop läuft wieder → Entwarnung, Zustand zurück.
+    worker._loop_tick()
+    assert worker.watchdog_pruefe(True) is False

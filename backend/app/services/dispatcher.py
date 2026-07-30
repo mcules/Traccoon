@@ -91,12 +91,50 @@ async def _ensure_testing_status(db, project_id: int, stats: list[WorkflowStatus
     return st
 
 
+# ── Puls des Workers ─────────────────────────────────────────────────────────
+# Der Worker schreibt alle 5 s `runner:heartbeat` (ex=10). Bleibt der aus, während Aufträge
+# in der Warteschlange liegen, steht der Worker — genau das passierte am 2026-07-30 über
+# eine Stunde lang, ohne dass es irgendwo aufgefallen wäre: der Assistent schwieg einfach,
+# und das ist von „hat nichts zu sagen" nicht zu unterscheiden. Lieber einmal melden.
+WORKER_STILL_SEC = 180
+_puls_gemeldet = False
+
+
+async def _pruefe_worker_puls() -> None:
+    global _puls_gemeldet
+    from ..core.redis import PREFIX, QUEUE, get_redis
+    from ..models.notification import Notification
+    from ..models.user import User
+    r = get_redis()
+    puls = await r.get(f"{PREFIX}runner:heartbeat")
+    wartend = await r.llen(QUEUE)
+    steht = puls is None and wartend > 0
+    if steht and not _puls_gemeldet:
+        log.error("Worker ohne Puls, %s Auftrag/Aufträge warten", wartend)
+        async with SessionLocal() as db:
+            # An den Betreiber: ohne Worker läuft weder Assistent noch Agent.
+            admin = (await db.execute(select(User).where(User.telegram_chat_id.isnot(None))
+                                      .order_by(User.id))).scalars().first()
+            if admin:
+                db.add(Notification(
+                    user_id=admin.id, kind="worker_down", title="⚠ Worker steht",
+                    body=f"Kein Lebenszeichen des Workers, {wartend} Auftrag/Aufträge warten. "
+                         "Assistent und Agenten laufen gerade nicht.",
+                    chat_id=admin.telegram_chat_id))
+                await db.commit()
+        _puls_gemeldet = True
+    elif not steht and _puls_gemeldet:
+        log.info("Worker wieder da")
+        _puls_gemeldet = False
+
+
 # ── Betriebs-Tick ────────────────────────────────────────────────────────────
 
 async def _tick() -> None:
     """Wartungs-Update: sobald der letzte Agent fertig ist, das Wartungsprojekt über den
     Deployer-Sidecar self-deployen. Während des Updates startet `agent_gate` ohnehin
     keine neuen Läufe."""
+    await _pruefe_worker_puls()
     if not await get_flag("update_pending"):
         return
     from ..models.ops import Deployment

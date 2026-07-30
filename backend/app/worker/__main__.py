@@ -6,13 +6,16 @@ eine eigene SessionLocal (Postgres erlaubt Nebenläufigkeit).
 from __future__ import annotations
 
 import asyncio
+import faulthandler
 import json
 import logging
 import os
+import threading
 import time
 from urllib.parse import urlsplit
 
 from redis.asyncio import Redis
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import or_, select
 
 from ..config import settings
@@ -34,6 +37,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("traccoon.worker")
 
 MAX_CONCURRENT = int(os.getenv("WORKER_CONCURRENCY", "3"))
+# Wartezeit von BLMOVE (serverseitig) und die Redis-Optionen gegen stille Hänger.
+BLOCK_TIMEOUT = 5
+_REDIS_KW = {"decode_responses": True, "socket_keepalive": True,
+             "health_check_interval": 30, "retry_on_timeout": True}
 # Wie oft ein Merge-Konflikt beim Accept an den Agenten zurückgeht, bevor an den Menschen
 # eskaliert wird (Loop-Bremse gegen accept→conflict→approved→re-dispatch-Endlosschleifen).
 MAX_CONFLICT_ROUNDS = int(os.getenv("MAX_CONFLICT_ROUNDS", "3"))
@@ -857,7 +864,47 @@ async def heartbeat(redis: Redis) -> None:
             await redis.set(f"{PREFIX}runner:heartbeat", int(time.time() * 1000), ex=10)
         except Exception:  # noqa: BLE001
             pass
+        _loop_tick()
         await asyncio.sleep(5)
+
+
+# ── Wächter über den Event-Loop ──────────────────────────────────────────────
+# Am 2026-07-30 stand der Worker über eine Stunde: kein Heartbeat, elf Aufträge in der
+# Warteschlange, keiner abgeholt — und KEINE Zeile im Log. Von außen sah der Container
+# gesund aus, der Assistent schwieg einfach. Steht der Loop, hilft keine Coroutine mehr
+# beim Melden; deshalb wacht hier ein echter Thread und schreibt die Stacks aller Threads
+# ins Log, sobald der Loop nicht mehr tickt. Damit ist der nächste Fall diagnostizierbar,
+# statt wieder nur Stille zu hinterlassen.
+_LETZTER_TICK = time.monotonic()
+LOOP_STALL_SEC = float(os.getenv("WORKER_STALL_SEC", "60"))
+
+
+def _loop_tick() -> None:
+    global _LETZTER_TICK
+    _LETZTER_TICK = time.monotonic()
+
+
+def watchdog_pruefe(gemeldet: bool) -> bool:
+    """Ein Durchgang des Wächters. Rückgabe: ist der Stillstand (weiterhin) gemeldet?"""
+    steht_seit = time.monotonic() - _LETZTER_TICK
+    if steht_seit > LOOP_STALL_SEC:
+        if not gemeldet:
+            log.error("Event-Loop tickt seit %.0fs nicht mehr — Thread-Stacks folgen", steht_seit)
+            faulthandler.dump_traceback()   # nach stderr → Container-Log
+        return True
+    if gemeldet:
+        log.warning("Event-Loop läuft wieder (Stillstand %.0fs)", steht_seit)
+    return False
+
+
+def start_loop_watchdog() -> None:
+    def lauf() -> None:
+        gemeldet = False
+        while True:
+            time.sleep(5)
+            gemeldet = watchdog_pruefe(gemeldet)
+
+    threading.Thread(target=lauf, name="loop-watchdog", daemon=True).start()
 
 
 PULL_INTERVAL = 60
@@ -945,9 +992,13 @@ async def kill_listener(redis: Redis) -> None:
 
 
 async def main() -> None:
-    redis = Redis.from_url(settings.redis_url, decode_responses=True)
-    blocking = Redis.from_url(settings.redis_url, decode_responses=True)
-    killer = Redis.from_url(settings.redis_url, decode_responses=True)
+    # socket_keepalive + health_check_interval: ohne sie wartet der Client auf einer
+    # halb toten Verbindung endlos auf Antwort — kein Fehler, kein Timeout, kein Log.
+    # Der blockierende Client braucht zusätzlich ein Socket-Limit ÜBER der BLMOVE-Zeit,
+    # sonst deckt das serverseitige Timeout den Fall gar nicht ab.
+    redis = Redis.from_url(settings.redis_url, **_REDIS_KW)
+    blocking = Redis.from_url(settings.redis_url, socket_timeout=BLOCK_TIMEOUT + 10, **_REDIS_KW)
+    killer = Redis.from_url(settings.redis_url, **_REDIS_KW)
     sem = asyncio.Semaphore(MAX_CONCURRENT)
     # Eintraege aus einem abgestuerzten Vorleben verwerfen — sonst zeigt die
     # Oberflaeche Laeufe an, die es nicht mehr gibt.
@@ -955,6 +1006,7 @@ async def main() -> None:
     asyncio.create_task(heartbeat(redis))
     asyncio.create_task(kill_listener(killer))
     asyncio.create_task(pull_loop(redis))
+    start_loop_watchdog()
     log.info("Traccoon-Worker gestartet (concurrency=%d)", MAX_CONCURRENT)
 
     async def _run(job: dict, raw: str) -> None:
@@ -1000,7 +1052,9 @@ async def main() -> None:
             # blmove statt brpop: der Job wandert atomar von QUEUE nach PROCESSING statt
             # nur zu verschwinden — stirbt der Worker vor dem ACK, findet ihn die
             # Recovery in pull_loop() beim naechsten Start wieder (Reliable Queue).
-            raw = await blocking.blmove(QUEUE, PROCESSING, timeout=5, src="RIGHT", dest="LEFT")
+            raw = await blocking.blmove(QUEUE, PROCESSING, timeout=BLOCK_TIMEOUT,
+                                        src="RIGHT", dest="LEFT")
+            _loop_tick()
             if not raw:
                 continue
             job = json.loads(raw)
@@ -1016,6 +1070,8 @@ async def main() -> None:
                     continue
                 _inflight_task_ids.add(task_id)
             asyncio.create_task(_run(job, raw))
+        except RedisTimeoutError:
+            continue      # Socket-Limit griff vor der Antwort — nichts Besonderes
         except Exception:  # noqa: BLE001
             log.exception("loop-Fehler")
             await asyncio.sleep(1)

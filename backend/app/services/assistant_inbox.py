@@ -10,6 +10,27 @@ from ..models.assistant import AssistantTask
 from .assistant_policy import parse_sender, upsert_policy
 
 
+async def create_chat_task(db: AsyncSession, owner_user_id: int | None, text: str,
+                           chat_id: str, agent: str = "") -> AssistantTask:
+    """Chat-Nachricht an den Assistenten übergeben (angelegt + eingereiht).
+
+    Geteilt, damit jeder Einstieg dasselbe tut — im Bot hing das an einem einzigen
+    Handler, und eine ANTWORT auf eine Assistenten-Nachricht fiel dadurch aus dem Chat
+    heraus und wurde kommentarlos verworfen."""
+    meta = {"chat_text": text, "chat_id": str(chat_id)}
+    if agent:
+        meta["agent"] = agent        # sonst fällt der Lauf auf 'assistent' zurück
+    task = AssistantTask(owner_user_id=owner_user_id, kind="chat", source="telegram",
+                         title=text[:200], status="approved", meta=meta)
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+    from ..core.redis import enqueue_task
+    await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
+                        "assistant_task_id": task.id})
+    return task
+
+
 async def approve_assistant_task(db: AsyncSession, task: AssistantTask, *, scope: str = "once",
                                  redaction: str = "redacted", action_note: str = "") -> None:
     """Item freigeben (Freigabe = Volltext-Freigabe) und starten. `scope` != once lernt eine
