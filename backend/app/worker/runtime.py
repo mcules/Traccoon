@@ -50,6 +50,12 @@ MAX_DELEGATION_DEPTH = 2
 # Bei Überschreitung wird der Run wie beim Iterations-Limit als loop_exhausted
 # finalisiert (Continuation greift in frischem Run; Per-Ticket-Cap deckelt gesamt).
 MAX_RUN_INPUT_TOKENS = int(os.getenv("MAX_RUN_INPUT_TOKENS", "2000000"))
+# Wanduhr-Grenze je Lauf. Der Loop-Wächter im Worker sieht nur einen BLOCKIERTEN Event-Loop;
+# ein Agent, der munter weiter Werkzeuge ruft und trotzdem nie fertig wird, tickt sauber und
+# lief bisher unbegrenzt (`run_timeout` gilt nur für Shell-/HTTP-Jobs im Scheduler). Ende wie
+# beim Iterations-Limit: loop_exhausted → Continuation im frischen Lauf, Caps deckeln gesamt.
+# 0 schaltet die Grenze ab.
+MAX_RUN_SECONDS = float(os.getenv("AGENT_RUN_TIMEOUT_SEC", "1800"))
 
 # Obergrenze für Antworten von `traccoon_http_call`. Die eigentliche Grenze setzt das Ziel
 # (Destination.max_response_chars); dies ist nur der Riegel dagegen, dass ein falsch
@@ -821,7 +827,18 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             build_gate_fails = 0
             in_tok = out_tok = cache_read = 0
             letzter_kontext = 0      # echte Kontextgröße des letzten Aufrufs (für die Kompaktierung)
+            frist = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
+            grenze_grund = "Iterations-Limit erreicht."
+            iteration = 0       # falls max_iterations 0 ist, läuft die Schleife nie
             for iteration in range(1, agent.max_iterations + 1):
+                if frist and asyncio.get_running_loop().time() > frist:
+                    # Wie beim Token-Budget: `break` fällt auf die loop_exhausted-Finalisierung.
+                    gelaufen = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - frist)
+                    grenze_grund = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(MAX_RUN_SECONDS)}s)."
+                    log.warning("Run %s: Zeitlimit erreicht (%ds) → loop_exhausted", run_id, gelaufen)
+                    await protokoll("system", None,
+                              f"⚠️ {grenze_grund} → loop_exhausted (Fortsetzung in frischem Run)")
+                    break
                 if iteration == max(2, agent.max_iterations - 2):
                     messages.append({"role": "system", "content":
                         "⚠️ Du näherst dich dem Iterations-Limit. Wenn du NICHT unmittelbar vor dem Abschluss "
@@ -866,6 +883,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # Hartes Token-Budget erreicht → Run exakt wie beim Iterations-Limit
                     # abbrechen: `break` fällt auf die loop_exhausted-Finalisierung unten
                     # (gleicher _end_run/RunResult-Pfad), damit die Continuation-Semantik greift.
+                    grenze_grund = f"Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS})."
                     log.warning("Run %s: Token-Budget erreicht (%d ≥ %d) → loop_exhausted",
                                 run_id, in_tok, MAX_RUN_INPUT_TOKENS)
                     await protokoll("system", None,
@@ -1086,11 +1104,15 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result[:cap]})
 
-            exhausted = "Iterations-Limit erreicht.\n\nLetzter Stand:\n" + (last_text or "(kein Text)")
+            # `grenze_grund` benennt, WELCHE Grenze den Lauf beendet hat — bisher stand hier
+            # auch nach dem Token-Budget „Iterations-Limit", was die Ursachensuche verdreht.
+            exhausted = grenze_grund + "\n\nLetzter Stand:\n" + (last_text or "(kein Text)")
             fp = await _gitops.worktree_fingerprint(ws_root) if ws_root else None
-            await _end_run(db, run_id, "loop_exhausted", summary=exhausted, iterations=agent.max_iterations,
+            # Die TATSAECHLICHE Rundenzahl melden: Zeit- und Token-Grenze beenden den Lauf
+            # frueh, und „40 Runden" nach zwei Runden schickt die Ursachensuche in die Irre.
+            await _end_run(db, run_id, "loop_exhausted", summary=exhausted, iterations=iteration,
                            wt_fp=fp, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
-            return RunResult("loop_exhausted", exhausted, agent.max_iterations, run_id=run_id)
+            return RunResult("loop_exhausted", exhausted, iteration, run_id=run_id)
 
     except Exception as exc:  # noqa: BLE001
         log.exception("run_agent(%s) Laufzeitfehler", agent.name)
