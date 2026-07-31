@@ -51,6 +51,11 @@ def _kopf_ende(messages: list[dict]) -> int:
     return i
 
 
+def _schnittfaehig(m: dict) -> bool:
+    """Darf VOR dieser Nachricht geschnitten werden?"""
+    return m.get("role") in ("user", "system") and not m.get("tool_call_id")
+
+
 def _sichere_grenze(messages: list[dict], ab: int) -> int:
     """Nächster Index ab `ab`, an dem geschnitten werden darf.
 
@@ -58,10 +63,22 @@ def _sichere_grenze(messages: list[dict], ab: int) -> int:
     an einem vorausgehenden `assistant` mit `tool_calls` und dürfen nie davon getrennt werden.
     """
     for i in range(ab, len(messages)):
-        m = messages[i]
-        if m.get("role") in ("user", "system") and not m.get("tool_call_id"):
+        if _schnittfaehig(messages[i]):
             return i
     return len(messages)
+
+
+def _sichere_grenze_rueckwaerts(messages: list[dict], bis_hoechstens: int) -> int | None:
+    """Größter zulässiger Schnitt, der NICHT hinter `bis_hoechstens` liegt — oder None.
+
+    Braucht es, weil die Vorwärtssuche einen Block nie kleiner machen kann: liegt zwischen
+    Wunschstelle und aktueller Grenze keine `user`/`system`-Nachricht, springt sie über die
+    Grenze hinaus. Wer damit einen Block verkleinern will, dreht sich im Kreis.
+    """
+    for i in range(min(bis_hoechstens, len(messages)) - 1, -1, -1):
+        if _schnittfaehig(messages[i]):
+            return i
+    return None
 
 
 def plan(messages: list[dict], grenze_tokens: int, gemessen: int) -> tuple[int, int] | None:
@@ -111,11 +128,16 @@ async def kompaktiere(db, *, messages: list[dict], grenze_tokens: int, gemessen:
     # Nur so viel in einen Auftrag, wie das (kleine) Aux-Modell fassen kann. Lieber den
     # ältesten Teil zusammenfassen und den Rest wörtlich stehen lassen, als einen Auftrag
     # zu schicken, den das Modell abweist.
+    # Am 2026-07-31 stand der Worker 8 Stunden bei 100 % CPU genau hier: die Verkleinerung
+    # lief über die VORWÄRTS-Suche, und die gibt bei einem langen Block aus lauter
+    # assistant/tool-Nachrichten (ein Agent, der nur Werkzeuge ruft) immer wieder dieselbe
+    # Grenze zurück. `bis` schrumpfte nie, der 50k-Text wurde endlos neu gebaut. Deshalb:
+    # rückwärts suchen und jede Runde auf echten Fortschritt prüfen.
     while bis > von + MINDEST_BLOCK and len(_als_text(messages[von:bis])) > MAX_AUX_ZEICHEN:
-        bis = _sichere_grenze(messages, von + (bis - von) // 2)
-        if bis <= von + MINDEST_BLOCK:
-            bis = _sichere_grenze(messages, von + MINDEST_BLOCK)
-            break
+        neu = _sichere_grenze_rueckwaerts(messages, von + (bis - von) // 2)
+        if neu is None or neu <= von + MINDEST_BLOCK or neu >= bis:
+            break       # kein kleinerer Schnitt möglich — lieber ein zu großer Auftrag als kein Ende
+        bis = neu
 
     from .aux import aux_chat
     zusammenfassung = await aux_chat(

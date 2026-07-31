@@ -10,6 +10,7 @@ import faulthandler
 import json
 import logging
 import os
+import sys
 import threading
 import time
 from urllib.parse import urlsplit
@@ -904,6 +905,12 @@ async def heartbeat(redis: Redis) -> None:
 # statt wieder nur Stille zu hinterlassen.
 _LETZTER_TICK = time.monotonic()
 LOOP_STALL_SEC = float(os.getenv("WORKER_STALL_SEC", "60"))
+# Am 2026-07-31 hat der Wächter seine Aufgabe erfüllt und trotzdem nichts genützt: Stacks im
+# Log, danach acht Stunden Stillstand bei 100 % CPU (Endlosschleife in der Kompaktierung),
+# keine Telegram-Antwort. Melden allein reicht nicht. Steht der Loop so lange, ist er tot —
+# dann lieber aussteigen und den Container (restart: unless-stopped) neu starten lassen.
+# 0 schaltet das Beenden ab.
+LOOP_KILL_SEC = float(os.getenv("WORKER_STALL_KILL_SEC", "300"))
 
 
 def _loop_tick() -> None:
@@ -918,6 +925,12 @@ def watchdog_pruefe(gemeldet: bool) -> bool:
         if not gemeldet:
             log.error("Event-Loop tickt seit %.0fs nicht mehr — Thread-Stacks folgen", steht_seit)
             faulthandler.dump_traceback()   # nach stderr → Container-Log
+        if LOOP_KILL_SEC and steht_seit > LOOP_KILL_SEC:
+            log.error("Event-Loop steht seit %.0fs — Worker beendet sich für den Neustart", steht_seit)
+            faulthandler.dump_traceback()   # letzter Stand vor dem Abgang
+            sys.stderr.flush()
+            sys.stdout.flush()
+            os._exit(1)                     # kein sauberer Shutdown möglich: der Loop reagiert ja nicht
         return True
     if gemeldet:
         log.warning("Event-Loop läuft wieder (Stillstand %.0fs)", steht_seit)
