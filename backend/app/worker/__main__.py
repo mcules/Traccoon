@@ -23,6 +23,7 @@ from ..config import settings
 from ..core.redis import PREFIX, PROCESSING, QUEUE, get_flag
 from ..db import SessionLocal
 from ..models.agents import AgentDefinition
+from ..models.enums import GlobalRole
 from ..models.ops import Permission
 from ..models.project import Project
 from ..models.ticket import Comment, Issue
@@ -947,6 +948,69 @@ def start_loop_watchdog() -> None:
     threading.Thread(target=lauf, name="loop-watchdog", daemon=True).start()
 
 
+# ── Aufräumen nach hartem Abgang ─────────────────────────────────────────────
+# Wer beim Absturz lief, läuft nicht mehr — nur wusste das bisher niemand: Läufe standen
+# tagelang auf `running`, Assistent-Aufgaben ebenso. Und weil der Handler nur `approved`
+# annimmt, wurde die aus PROCESSING zurückgeholte Aufgabe beim Neustart stillschweigend
+# verworfen. Aus einem Ausfall wurde so ein unsichtbarer Ausfall.
+#
+# Annahme: es läuft genau EIN Worker-Container (compose.yml kennt keine Replicas). Die
+# Karenzzeit schützt trotzdem vor dem Grenzfall, dass nebenan gerade ein Lauf angelegt
+# wurde — was der Wächter killt, steht ohnehin seit Minuten.
+STALE_GRACE_SEC = 60
+
+
+async def raeume_leichen_und_melde() -> None:
+    """Einmal beim Start: verwaiste Läufe/Aufgaben abschließen und den Menschen informieren."""
+    from ..models.agents import Run
+    from ..models.assistant import AssistantTask
+    from ..models.notification import Notification
+    import datetime as _dt
+    grenze = _now_dt() - _dt.timedelta(seconds=STALE_GRACE_SEC)
+    hinweis = "Worker-Neustart: der Lauf war beim Abbruch nicht zu Ende und wird nicht fortgesetzt."
+    async with SessionLocal() as db:
+        runs = (await db.execute(select(Run).where(
+            Run.status == "running", Run.started_at < grenze))).scalars().all()
+        for r in runs:
+            r.status, r.error, r.finished_at = "failed", (r.error or "") + hinweis, _now_dt()
+
+        tasks = (await db.execute(select(AssistantTask).where(
+            AssistantTask.status == "running", AssistantTask.updated_at < grenze))).scalars().all()
+        for t in tasks:
+            t.status, t.error, t.finished_at = "error", (t.error or "") + hinweis, _now_dt()
+
+        if not runs and not tasks:
+            await db.commit()
+            return
+
+        # Empfänger: wem die Aufgaben gehören, plus die Admins (Läufe tragen keinen Owner).
+        # Nur Konten mit Telegram — ein Ausfall, den niemand liest, ist kein Ausfall weniger,
+        # und schlafende Admin-Konten mit ungelesenen Glocken zuzuschütten hilft keinem.
+        empfaenger = {t.owner_user_id for t in tasks if t.owner_user_id}
+        admins = (await db.execute(select(User).where(
+            User.global_role == GlobalRole.admin))).scalars().all()
+        empfaenger |= {u.id for u in admins}
+        users = [u for u in (await db.execute(select(User).where(
+            User.id.in_(empfaenger)))).scalars().all() if (u.telegram_chat_id or "").strip()]
+
+        def _liste(ids: list[int]) -> str:
+            return ", ".join(str(i) for i in ids[:10]) + (" …" if len(ids) > 10 else "")
+
+        body = (f"Der Worker wurde neu gestartet. Abgebrochen: {len(runs)} Lauf/Läufe"
+                f"{' (' + _liste([r.id for r in runs]) + ')' if runs else ''}"
+                f", {len(tasks)} Assistent-Aufgabe(n)"
+                f"{' (' + _liste([t.id for t in tasks]) + ')' if tasks else ''}.\n\n"
+                "Diese Arbeit wird NICHT automatisch wiederholt — wenn sie noch gebraucht wird, "
+                "schick sie bitte erneut.")
+        for u in users:
+            db.add(Notification(user_id=u.id, kind="failed",
+                                title="⚠️ Worker nach Abbruch neu gestartet",
+                                body=body[:4000], chat_id=u.telegram_chat_id))
+        await db.commit()
+    log.warning("Aufräumen nach Neustart: %d Lauf/Läufe und %d Assistent-Aufgabe(n) abgeschlossen",
+                len(runs), len(tasks))
+
+
 PULL_INTERVAL = 60
 
 
@@ -1043,6 +1107,12 @@ async def main() -> None:
     # Eintraege aus einem abgestuerzten Vorleben verwerfen — sonst zeigt die
     # Oberflaeche Laeufe an, die es nicht mehr gibt.
     await redis.delete(ACTIVE)
+    # Vor dem ersten Job: was aus dem Vorleben noch auf `running` steht, ist tot. Aufräumen und
+    # melden — sonst bleibt ein Ausfall unsichtbar (der Handler verwirft `running`-Aufgaben still).
+    try:
+        await raeume_leichen_und_melde()
+    except Exception:  # noqa: BLE001
+        log.exception("Aufräumen nach Neustart fehlgeschlagen (Worker läuft trotzdem an)")
     asyncio.create_task(heartbeat(redis))
     asyncio.create_task(kill_listener(killer))
     asyncio.create_task(pull_loop(redis))
