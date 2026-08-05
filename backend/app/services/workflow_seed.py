@@ -130,6 +130,17 @@ def build_ticket_lifecycle() -> dict:
         # Einmal je Freigabe-Runde gelesen — beide Ausgänge der Umsetzung greifen darauf zu.
         _p("facts", "auto_action", 0, 8,
            _action("refresh_facts", "Projekt-Einstellungen lesen"), "umsetzung"),
+        # Sitzt bewusst direkt hinter der Freigabe und NICHT vor `exec`: dorthin führt auch
+        # der Abnahme-Zweig (`entry --abnehmen--> facts`), und ein abgenommenes Ticket darf
+        # nicht wieder auf „freigegeben" zurückfallen.
+        #
+        # Zwischen Freigabe und Start kann Zeit vergehen — der Lauf wartet am Torwächter
+        # (Nutzer-Limit, Nachtfenster, Cap). Ohne diesen Knoten bliebe das Ticket derweil auf
+        # `plan_review` stehen: die Oberfläche böte weiter „Plan freigeben" an, und der
+        # Endpunkt antwortete zu Recht „es wartet gerade keine Freigabe". Auf `in_progress`
+        # schaltet erst der tatsächliche Start (`workflow_engine._start_agent_task`).
+        _p("st_approved", "auto_action", 0, 7,
+           _action("set_status", "Status: freigegeben", status="approved"), "umsetzung"),
         _p("exec", "agent_task", 0, 9, {
             "label": "Umsetzung", "agent_role": "exec_agent", "phase": "execution",
         }, "umsetzung"),
@@ -210,7 +221,8 @@ def build_ticket_lifecycle() -> dict:
         _e("approve_plan", "is_split", "approved", "freigegeben"),
         _e("approve_plan", "st_plan_stop", "rejected", "abgelehnt"),
         _e("is_split", "do_split", "split"),
-        _e("is_split", "cap_baseline", "single"),
+        _e("is_split", "st_approved", "single"),
+        _e("st_approved", "cap_baseline"),
         _e("do_split", "end_split"),
         _e("st_plan_stop", "wait_plan"),
         _e("wait_plan", "st_planning"),

@@ -656,6 +656,16 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
 
     # Dieselbe Marke wie im Monitor/„Läuft gerade" und im Pro-Nutzer-Limit.
     issue.agent_working = True
+    # Und der sichtbare Zustand: hier — beim tatsächlichen Einreihen — arbeitet der Agent
+    # wirklich. Der Graph setzt vorher nur „freigegeben", weil zwischen Freigabe und Start
+    # der Torwächter beliebig lange dazwischenstehen kann. Nur die Umsetzung; die Planung
+    # hat ihren eigenen Zustand, den `st_planning` schon gesetzt hat.
+    if phase == "execution":
+        from ..models.enums import TicketAgentStatus
+        from .artifacts import set_ticket_status
+        if issue.agent_status in (TicketAgentStatus.approved, TicketAgentStatus.plan_review,
+                                  TicketAgentStatus.open, None):
+            await set_ticket_status(db, issue, TicketAgentStatus.in_progress, board=False)
     cont = int((inst.context or {}).get("continuation") or 0)
     hint = str((inst.context or {}).get("continuation_hint") or "")
     payload = {
