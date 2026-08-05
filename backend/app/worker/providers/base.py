@@ -25,6 +25,12 @@ class ChatResponse:
     # Gecachte (per Prompt-Caching ~0,1x berechnete) Input-Tokens dieses Calls.
     # Default 0 → Provider ohne Caching (codex/openai) bleiben unberührt.
     cache_read_tokens: int = 0
+    # Wer tatsächlich geantwortet hat. Bei einem Fallback ist das NICHT der am Agenten
+    # eingestellte Provider/Modell — und genau damit wurde der ganze Lauf bisher bepreist.
+    # Die Adapter füllen das nicht, der Router setzt es: Default leer, damit sich für
+    # niemanden sonst etwas ändert.
+    provider: str = ""
+    model: str = ""
 
 
 class ProviderError(RuntimeError):

@@ -54,6 +54,14 @@ class Run(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     issue_id: Mapped[int | None] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"), nullable=True, index=True)
+    # Projekt/Owner liegen redundant am Lauf, weil das Büro (roundtable) jedes Ereignis ohne
+    # DB-Rückfrage autorisieren muss — der Weg über das Ticket wäre pro Ereignis ein JOIN, und
+    # projektlose Läufe (Assistent, Job) hätten gar keinen. SET NULL, damit ein gelöschtes
+    # Projekt die Kostenhistorie des Laufs nicht mitnimmt.
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    owner_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     task_id: Mapped[str] = mapped_column(String(200), default="")
     agent: Mapped[str] = mapped_column(String(100), default="")
@@ -61,13 +69,22 @@ class Run(Base):
     provider: Mapped[str] = mapped_column(String(50), default="")
     model: Mapped[str] = mapped_column(String(150), default="")
     claude_sub_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="running")  # running|success|failed|blocked|planned
+    # running|success|failed|blocked|planned|loop_exhausted
+    status: Mapped[str] = mapped_column(String(20), default="running")
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     iterations: Mapped[int] = mapped_column(Integer, default=0)
     continuation_index: Mapped[int] = mapped_column(Integer, default=0)
     parent_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Der Verbund-Schlüssel zwischen Eltern- und Kindlauf: beim Werkzeugstart (`delegate`) ist
+    # die Kind-Lauf-ID noch unbekannt, die Werkzeug-ID dagegen schon. Das Kind bringt sie mit,
+    # der Raum kann Spawn-Linie und Übergabe damit ohne Rückwärtssuche zeichnen.
+    parent_tool_use_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    spawn_depth: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Woran der Lauf hängt, wenn status='blocked' — sonst wäre „blockiert" ohne Nachlesen im
+    # Text nicht unterscheidbar: ask_human|permission|assistant_perm|question.
+    blocker_kind: Mapped[str | None] = mapped_column(String(24), nullable=True)
     worktree_fingerprint: Mapped[str | None] = mapped_column(String(100), nullable=True)
     last_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -87,9 +104,28 @@ class RunStep(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     run_id: Mapped[int] = mapped_column(ForeignKey("runs.id", ondelete="CASCADE"), index=True)
     seq: Mapped[int] = mapped_column(Integer, default=0)
-    role: Mapped[str] = mapped_column(String(20), default="")       # assistant|tool|system
+    role: Mapped[str] = mapped_column(String(20), default="")       # assistant|tool|system|user
     tool_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
     content: Mapped[str] = mapped_column(Text, default="")
+    # Ereignis-Art des Schritts (services/roundtable.KINDS). Leer = Altzeile aus der Zeit vor
+    # der Instrumentierung; die wird beim Lesen aus `role`+`content` rekonstruiert, damit die
+    # Historie nicht bei null anfängt.
+    kind: Mapped[str] = mapped_column(String(24), default="", nullable=False)
+    tool_use_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Das, worauf das Werkzeug wirkt (Pfad, Rolle, URL) — dieselbe Beschriftung wie im
+    # Berechtigungsdialog. Bei user_message steht hier stattdessen die Quelle.
+    target: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # Dreiwertig mit Absicht: True=belegt erfolgreich, False=belegt fehlgeschlagen,
+    # NULL=unbekannt. Ein geratenes True würde die Ansicht grün malen, wo niemand nachgesehen hat.
+    ok: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Tokens des einzelnen Modellzugs — die Summen am `Run` sagen nicht, WANN sie anfielen.
+    in_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    out_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Wer tatsächlich geantwortet hat: bei Fallback ist das nicht der Provider am `Run`.
+    provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(150), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -107,4 +143,8 @@ class CostEntry(Base):
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    # Dreiwertig: True=es gab einen Katalogeintrag (0,00 heißt dann *gratis*, nicht *unbekannt*),
+    # False=kein Eintrag, die 0,00 ist bloß mangels Preis entstanden, NULL=Altzeile, die die
+    # Unterscheidung nie kannte. Ohne das liest sich jede Lücke im Katalog als „kostenlos".
+    priced: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

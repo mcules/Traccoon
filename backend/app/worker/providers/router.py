@@ -106,9 +106,14 @@ class Router:
                     # Felder wie `chat_template_kwargs`). Die Subscription-Provider bekommen
                     # es NICHT — dort wäre es ein unbekanntes Feld und damit ein 400er.
                     zusatz = {"extra_body": extra_body} if extra_body and prov in _OPENAI else {}
-                    return await impl.chat(model=use_model, messages=messages, tools=tools,
+                    resp = await impl.chat(model=use_model, messages=messages, tools=tools,
                                            temperature=temperature, max_tokens=max_tokens,
                                            web_search=web_search, auth_token=token, **zusatz)
+                    # Erst hier steht fest, WER geantwortet hat: nach einem Fallback ist das
+                    # weder der eingestellte Provider noch dessen Modell. Ohne diese Zeilen
+                    # bepreist der Aufrufer den ganzen Lauf mit dem Primärmodell.
+                    resp.provider, resp.model = prov, use_model
+                    return resp
                 except ProviderError as exc:
                     last_err = exc
                     is_last = attempt >= _MAX_ATTEMPTS - 1
