@@ -21,8 +21,11 @@ TS = dt.datetime(2026, 8, 5, 11, 22, 33, 412000, tzinfo=dt.timezone.utc)
 # Umschlag — an JEDEM Ereignis, unabhängig von der Art.
 BASE_KEYS = {"v", "seq", "ts", "sid", "project_id", "owner_id", "run_id", "agent_id", "kind"}
 
-# Die kind-eigenen Felder. Diese Tabelle IST der Vertrag; sie zu ändern heißt,
-# `EVENT_VERSION` zu erhöhen.
+# Die kind-eigenen Felder. Diese Tabelle IST der Vertrag. Eine Art *hinzuzufügen* ist
+# additiv — eine Oberfläche, die `deploy` nicht kennt, ignoriert es und zeigt alles andere
+# weiter. Ein Feld *umzudeuten* ist es nicht: dann muss `EVENT_VERSION` steigen, damit die
+# Ansicht lieber verweigert als falsch zeichnet (`services/office.py` sagt dasselbe und
+# ist die Quelle).
 FIELD_KEYS = {
     "session_seen": {"title", "issue_key", "project_key", "started_at"},
     "run_start": {"agent", "phase", "provider", "model", "parent_run_id",
@@ -39,6 +42,7 @@ FIELD_KEYS = {
     "run_end": {"ok", "status", "blocker_kind", "summary", "error", "iterations",
                 "in_tokens", "out_tokens", "cache_read_tokens", "cost_usd", "cost_priced"},
     "system": {"text"},
+    "deploy": {"deployment_id", "state", "target", "log_head"},
 }
 
 
@@ -93,6 +97,8 @@ class RunZeile:
                        target="reviewer", content='{"role": "reviewer", "task": "prüfen"}')),
     ("run_end", mk(18, kind="run_end", role="system", content='{"status": "success"}')),
     ("system", mk(19, kind="system", role="system", content="Hinweis")),
+    ("deploy", mk(40, kind="deploy", role="system", target="/opt/docker/stacks/traccoon",
+                  content='{"deployment_id": 187, "state": "ok", "log_head": "gebaut"}')),
 ])
 def test_schluesselmenge_je_kind(kind, step):
     events = step_events(step, ctx())

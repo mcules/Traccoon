@@ -7,8 +7,8 @@ from sqlalchemy import text
 
 from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
-    admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, destinations,
-    files, hardware, invitations,
+    admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, deployments,
+    destinations, files, hardware, invitations,
     issues, lifecycle, mail, me, notifications, ops, permissions, plugins, processes,
     projects, repo, office,
     runs, secrets, skills, testenv, users, workflows, ws,
@@ -17,6 +17,7 @@ from .config import settings
 from .db import Base, SessionLocal, engine
 from .seed import seed
 from .services.dispatcher import recover_on_start, run_dispatcher
+from .services.deploy_watch import run_deploy_watch
 from .services.scheduler import run_scheduler
 from .services.workflow_engine import run_workflow_engine
 from .api.ws import event_bridge
@@ -286,6 +287,25 @@ async def lifespan(app: FastAPI):
                 # Dreiwertig: NULL=Altzeile, False=kein Katalogeintrag (die 0,00 ist bloß eine
                 # Lücke), True=bepreist. Ohne das liest sich jede Katalog-Lücke als „gratis".
                 "ALTER TABLE cost_entries ADD COLUMN IF NOT EXISTS priced BOOLEAN",
+                # Deployments (`api/deployments.py`): 186 Zeilen, die bisher niemand lesen
+                # konnte. `source` beantwortet die Frage, die `requested_by`/`chat_id` nie
+                # beantwortet haben (bei 0 von 186 Zeilen gefüllt) — bewusst OHNE Backfill,
+                # die Herkunft der Bestandszeilen bleibt leer statt geraten.
+                "ALTER TABLE deployments ADD COLUMN IF NOT EXISTS source VARCHAR(20) "
+                "DEFAULT '' NOT NULL",
+                # Merkposten des Bühnen-Watchers (nächste Welle): welcher Status wurde schon
+                # gemeldet. Spalte statt Prozessgedächtnis = neustartfest und doppelfrei.
+                "ALTER TABLE deployments ADD COLUMN IF NOT EXISTS announced_status VARCHAR(20) "
+                "DEFAULT '' NOT NULL",
+                "CREATE INDEX IF NOT EXISTS ix_deployments_project_created ON deployments "
+                "(project_id, created_at DESC)",
+                "CREATE INDEX IF NOT EXISTS ix_deployments_issue ON deployments (issue_id)",
+                # Der Partialindex hat mit der neuen Oberfläche nichts zu tun und gehört
+                # trotzdem hierher: der `deployer`-Sidecar sucht alle 3 Sekunden die nächste
+                # offene Zeile und macht daraus heute einen Seq-Scan über die ganze Tabelle.
+                # Derselbe Index bedient den kommenden Bühnen-Watcher.
+                "CREATE INDEX IF NOT EXISTS ix_deployments_open ON deployments (id) "
+                "WHERE status IN ('pending','pending-check','building')",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:
@@ -330,6 +350,10 @@ async def lifespan(app: FastAPI):
         # Eigener Kanal für die Büro-Ansicht: ein Nutzer-Socket statt N Projekt-Sockets,
         # weil projektlose Läufe (Job/Assistent) gar keinen Projektraum haben.
         asyncio.create_task(office_bridge()),
+        # Deployments in den Büro-Ereignisstrom: eigener 3-s-Takt, weil der Betriebs-Tick
+        # (30 s) länger ist als ein mittlerer Deploy — der Auftakt wäre sonst regelmäßig
+        # vorbei, bevor jemand hinsieht.
+        asyncio.create_task(run_deploy_watch()),
     ]
     yield
     for t in tasks:
@@ -370,6 +394,7 @@ api.include_router(skills.router)
 api.include_router(plugins.router)
 api.include_router(agents.router)
 api.include_router(office.router)
+api.include_router(deployments.router)
 api.include_router(runs.router)
 api.include_router(testenv.router)
 api.include_router(dashboard.router)

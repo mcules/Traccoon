@@ -192,7 +192,10 @@ function calmFrame(f: Frame): Frame {
   }
   // Die Reihenfolge bleibt die der Engine (nach `y` sortiert) — der Maler-Algorithmus der
   // Zeichenschicht hängt daran.
-  return { t: CALM_CLOCK, actors, fx: [] };
+  // Der Serverschrank bleibt, wie er ist — er ist kein Partikel, sondern ein Zustand des Raums.
+  // `since` wird auf `CALM_CLOCK` gezogen: bei eingefrorener Uhr stünde ein steigender Balken
+  // sonst auf einer beliebigen Phase des letzten echten Zeitpunkts.
+  return { t: CALM_CLOCK, actors, fx: [], rack: { ...f.rack, since: CALM_CLOCK } };
 }
 
 // ═══ Die Bühne ═══════════════════════════════════════════════════════════════════════════════

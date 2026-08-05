@@ -32,7 +32,7 @@ import { Recorder } from "../src/components/office/recorder.ts";
 import { Replay, frameAt } from "../src/components/office/replay.ts";
 import { ROOM } from "../src/components/office/room.ts";
 import { NATIVE_TOOLS, TOOL_ACT, toolAct } from "../src/components/office/toolAct.ts";
-import { CAM_FULL, SEATS_PX, renderFrame } from "../src/components/office/pixel/scene.ts";
+import { CAM_FULL, RACK_PX, SEATS_PX, renderFrame } from "../src/components/office/pixel/scene.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FRONTEND = dirname(HERE);
@@ -789,6 +789,52 @@ function checkSeatGeometry() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
+// ═══ Prüfung 11 — Rack-Geometrie (Regel 4) ════════════════════════════════════
+//
+// Dieselbe Doppelung wie bei den Sitzen und derselbe Zwang dahinter: `pixel/scene.ts` darf
+// `room.ts` nicht sehen und hält den Standplatz vor dem Serverschrank deshalb ein zweites Mal.
+// Läuft er auseinander, geht die auslösende Figur an eine Stelle, an der kein Schrank steht,
+// und das Urteil („✓"/„✗") schwebt daneben in der Luft. Beides sieht nach einem Zeichenfehler
+// aus und ist eine Zahl in einer von zwei Dateien.
+
+function checkRackGeometry() {
+  const bad = [];
+  const soll = ROOM.rack;
+  if (!soll) {
+    bad.push("room.ts: ROOM.rack fehlt");
+  } else {
+    const wx = Math.round(soll.x * POS_SCALE);
+    const wy = Math.round(soll.y * POS_SCALE);
+    if (RACK_PX.x !== wx || RACK_PX.y !== wy) {
+      bad.push(`pixel/scene.ts RACK_PX = (${RACK_PX.x}, ${RACK_PX.y}) — `
+        + `room.ts ROOM.rack × POS_SCALE = (${wx}, ${wy})`);
+    }
+  }
+  report("Rack-Geometrie room ≡ scene", bad.length === 0,
+    soll ? `ROOM.rack = (${soll.x}, ${soll.y}), ${bad.length} Verstöße` : `${bad.length} Verstöße`);
+  for (const b of bad) console.log(`            ${b}`);
+}
+
+// ═══ Prüfung 12 — das Rack leuchtet in der Fixture wirklich ═══════════════════
+//
+// Die Ops-Hashes (Prüfung 8) sind blind dafür, ob sie den neuen Zeichenzweig je betreten haben:
+// sie melden nur „dieselben Aufrufe wie beim letzten Bless". Ohne einen goldenen Rahmen mit
+// leuchtendem Rack wäre die ganze LED-Zeichnung ungeprüft und der Bless-Diff bedeutungslos.
+// Diese Prüfung sagt, dass die Fixture den Code auch wirklich ausführt.
+
+function checkRackImFrame() {
+  const gesehen = new Set();
+  for (const ts of AT) gesehen.add(frameAt(LOG, ts).rack.state);
+  const leuchtend = [...gesehen].filter((s) => s !== "idle").sort();
+  const ok = leuchtend.length >= 2;
+  report("Rack leuchtet in der Fixture", ok,
+    `Zustände über 8 Bilder: ${[...gesehen].sort().join(", ")}`);
+  if (!ok) {
+    console.log("            tools/fixture.mjs braucht `deploy`-Ereignisse VOR einem goldenen");
+    console.log("            Zeitpunkt — sonst prüfen die Ops-Hashes die neue Zeichnung nie.");
+  }
+}
+
 // ── golden.json ──────────────────────────────────────────────────────────────
 
 const GOLDEN_WARNUNG = [
@@ -848,6 +894,8 @@ checkCtxProxy();
 checkPixelOpHashes(GOLDEN);
 checkToolTable();
 checkSeatGeometry();
+checkRackGeometry();
+checkRackImFrame();
 
 if (failed > 0) {
   console.log(`\n${failed} Prüfung(en) fehlgeschlagen — siehe PIXEL-CONTRACT.md`);

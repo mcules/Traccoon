@@ -210,6 +210,73 @@ export const destinationApi = {
     api.post<HttpCallResult>(`/destinations/${id}/test`, body),
 };
 
+// ---------- Deployments ----------
+// Vertrag der Lese-API (`backend/app/api/deployments.py`). Außer `id` und `status` ist alles
+// optional: die Liste muss auch dann etwas Ehrliches zeigen, wenn ein Feld fehlt. Die API
+// liefert Textfelder als leere Zeichenkette statt `null` — beides wird hier gleich behandelt.
+
+/** Filter der Lese-API. `other` = alles, was weder läuft noch ok/failed ist (v. a. `cancelled`). */
+export type DeploymentStatusFilter = "all" | "running" | "ok" | "failed" | "other";
+
+export interface DeploymentRow {
+  id: number;
+  /** Rohstatus aus der DB: ok | failed | cancelled | building | pending | pending-check | rolledback. */
+  status: string;
+  project_id?: number | null;
+  project_key?: string | null;
+  issue_id?: number | null;
+  issue_key?: string | null;
+  /** Grobphase, aus dem Status abgeleitet. */
+  phase?: "queued" | "running" | "done" | "aborted" | null;
+  /** Dreiwertig: true = geklappt, false = nicht geklappt, null = **unbekannt** (nicht „ok“). */
+  ok?: boolean | null;
+  /** agent | merge | workflow | maintenance; bei Altzeilen leer → Anzeige „unbekannt“. */
+  source?: string | null;
+  kind?: "self" | "check" | "stack" | null;
+  stack_dir?: string | null;
+  created_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  /** Wartezeit in der Warteschlange; `null`, wenn ein Zeitstempel fehlt — nie gerechnete 0. */
+  wait_ms?: number | null;
+  /** Reine Arbeitszeit; ebenfalls `null` bei fehlendem Zeitstempel. */
+  duration_ms?: number | null;
+  log_bytes?: number | null;
+  /** Erste ~240 Zeichen des Logs. Ohne den wäre „fehlgeschlagen“ irreführend. */
+  log_head?: string | null;
+}
+
+export interface DeploymentListe {
+  items: DeploymentRow[];
+  count: number;
+  truncated?: boolean;
+  by_status?: Record<string, number>;
+}
+
+/** Nur der Detail-Endpunkt liefert den Volltext-Log (bis ~20 000 Zeichen). */
+export interface DeploymentDetail extends DeploymentRow {
+  log?: string | null;
+}
+
+export const deploymentApi = {
+  /** Ohne `projectId` die globale Liste — die Wartungs-Updates gehören zu keinem Projekt. */
+  list: (opts: {
+    projectId?: number; issueId?: number; limit?: number;
+    sinceHours?: number; status?: DeploymentStatusFilter;
+  } = {}) => {
+    const q = new URLSearchParams();
+    if (opts.limit) q.set("limit", String(opts.limit));
+    if (opts.sinceHours) q.set("since_hours", String(opts.sinceHours));
+    if (opts.status && opts.status !== "all") q.set("status", opts.status);
+    // `issue_id` kennt laut Vertrag nur die projektbezogene Route; global ist es wirkungslos.
+    if (opts.issueId) q.set("issue_id", String(opts.issueId));
+    const pfad = opts.projectId != null ? `/projects/${opts.projectId}/deployments` : "/deployments";
+    const s = q.toString();
+    return api.get<DeploymentListe>(`${pfad}${s ? `?${s}` : ""}`);
+  },
+  get: (id: number) => api.get<DeploymentDetail>(`/deployments/${id}`),
+};
+
 export const workflowApi = {
   list: (projectId: number) => api.get<WfDef[]>(`/workflows?project_id=${projectId}`),
   /** Alle Definitionen — ohne project_id-Filter; für die projektlosen (eigene Prozesse). */

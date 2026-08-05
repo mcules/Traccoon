@@ -25,7 +25,7 @@
 // pro Bild — Variation kommt aus `rnd01(mix(seed, SALT))`.
 
 import type {
-  ActorState, Cmd, Frame, Fx, Pt, Room, RunStatus, Seat, Verdict,
+  ActorState, Cmd, Frame, Fx, Pt, Rack, Room, RunStatus, Seat, Verdict,
 } from "./types.ts";
 import { hash32, mix, rnd01 } from "./ids.ts";
 import { POD_SEATS, ROOM, SEAT_DX, seatOf } from "./room.ts";
@@ -138,6 +138,11 @@ export class Engine {
   private priv = new Map<string, Priv>();
   private fxs: Fx[] = [];
   private _t = 0;
+
+  /** Der Serverschrank. Der einzige Zustand der Engine, der an keiner Figur hängt — deshalb
+   *  steht er hier und nicht in `ActorState`: ein Deployment gehört dem Raum, nicht dem Lauf,
+   *  der es angestoßen hat (der geht längst durch die Tür, während noch gebaut wird). */
+  private rack: Rack = { state: "idle", since: 0, label: "" };
 
   /** Belegte Pod-Plätze und der Chefplatz. Wird beim Abgang wieder freigegeben — sonst wäre
    *  eine lange Sitzung nach dreizehn Läufen ein Raum voller Geister am Fenster. */
@@ -299,6 +304,50 @@ export class Engine {
         this.touch(a);
         break;
       }
+      case "deploy": {
+        // **Kein Verfall.** Der Rack-Zustand wird vom `start` gesetzt und vom `ok`/`fail`/`back`
+        // abgelöst — kein `until`, keine Ersatzdauer. Das ist der ausdrückliche Gegensatz zu
+        // `TOOL_BUSY_MS`: das gibt es nur, weil eine Werkzeugzeile aus Altdaten kein Intervall
+        // kennt. Hier haben wir **beide Enden als echte Ereignisse**, also muss nichts geraten
+        // werden.
+        //
+        // Kommt das Ende nie (Deployer tot, Container weg, Watcher gestorben), leuchtet das Rack
+        // weiter. **Das ist die Wahrheit, kein Fehler**: es läuft ein Deployment, von dem niemand
+        // weiß, wie es ausging. Ein Zeitablauf würde diesen Zustand in ein „fertig" umlügen, das
+        // im Log nirgends steht.
+        this.rack = { state: cmd.state, since: this._t, label: cmd.label };
+
+        if (cmd.by !== undefined) {
+          // Die Geste: hin und zurück. Ein `deliver` mit **Zielpunkt statt Ziel-Aktor** — kein
+          // sechster `TripKind`, kein Aktor ohne Lauf. `onArrive` liest `targetId` nur im
+          // `deliver`-Zweig und findet hier keinen; damit passiert bei der Ankunft nichts außer
+          // dem Stehenbleiben (`SPEAK_HOLD_MS`). Türerkennung, Fußstaub, Tempostreuung und
+          // dt-Split-Invarianz kommen gratis mit.
+          //
+          // Gelaufen wird bei **jedem** Zustandswechsel, nicht nur beim `start`. Das ist keine
+          // Nachlässigkeit: 130 der 186 Deployments stammen aus der Zeit vor dem Watcher und
+          // erzählen nur ihr **Ende** (`deployment_events` synthetisiert genau ein Ereignis).
+          // Eine Regel „nur bei start" ließe die Mehrheit aller Deployments ohne jede Geste.
+          const a = this.wake(cmd.by);
+          const rack = this.room.rack;
+          this.enqueue(a, {
+            kind: "deliver", work: true, queuedAt: this._t,
+            from: { x: 0, y: 0 }, to: { x: rack.x, y: rack.y }, home: { x: 0, y: 0 },
+            t0: 0, tArrive: 0, holdUntil: 0, tBack: 0, back: true, fired: false,
+          });
+          this.touch(a);
+        }
+
+        // Das Urteil: dieselbe `emote`-Art, die `done` schon benutzt — kein fünftes `FxKind`.
+        // `back` bekommt „✗", weil das Deployment gescheitert **ist**; dass es auch geheilt
+        // wurde, erzählen die LED-Reihen (unten `ok`), nicht das Zeichen über dem Schrank.
+        if (cmd.state !== "start") {
+          const rack = this.room.rack;
+          this.emitAt("emote", { x: rack.x, y: rack.y, seed: hash32(cmd.label) },
+            this._t, LINK_MS, cmd.state === "ok" ? "✓" : "✗");
+        }
+        break;
+      }
     }
   }
 
@@ -330,7 +379,10 @@ export class Engine {
   frame(): Frame {
     const actors = [...this.actors.values()];
     actors.sort((x, y) => x.y - y.y); // stabil (ES2019) → Gleichstand behält Einfügereihenfolge
-    return { t: this._t, actors, fx: this.fxs.slice() };
+    // `rack` als Kopie, aus demselben Grund wie `actors`: die Engine gibt ihren eigenen
+    // Zustand nie heraus — ein Aufrufer, der `frame().rack.state` überschriebe, änderte sonst
+    // den Raum, und beim nächsten Abspielen stünde er wieder anders da.
+    return { t: this._t, actors, fx: this.fxs.slice(), rack: { ...this.rack } };
   }
 
   // ── Aktoren ────────────────────────────────────────────────────────────────
@@ -506,8 +558,12 @@ export class Engine {
     this.fxs.push({ kind, x: a.x, y: a.y, t0, until: t0 + ms, seed: a.seed });
   }
 
-  private emitAt(kind: "emote", a: ActorState, t0: number, ms: number, text: string): void {
-    this.fxs.push({ kind, x: a.x, y: a.y, t0, until: t0 + ms, text, seed: a.seed });
+  /** Ein Emote über einem **Ort**, nicht zwingend über einer Figur. `ActorState` erfüllt die
+   *  Form von selbst — deshalb reicht ein Parameter für beide Fälle, und der Serverschrank
+   *  braucht keine eigene Emit-Funktion. */
+  private emitAt(kind: "emote", at: { x: number; y: number; seed: number },
+                 t0: number, ms: number, text: string): void {
+    this.fxs.push({ kind, x: at.x, y: at.y, t0, until: t0 + ms, text, seed: at.seed });
   }
 
   // ── Huddle ─────────────────────────────────────────────────────────────────

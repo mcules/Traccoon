@@ -77,6 +77,14 @@ function schrittText(c: Cmd): { text: string; css?: string } | null {
     case "status": return { text: `● ${statusText(c.status)}`, css: statusFarbe(c.status) };
     case "done": return c.ok ? { text: "✅ fertig", css: "text-green-400" }
       : { text: "❌ abgebrochen", css: "text-red-400" };
+    // Der Serverschrank. `back` bekommt seine eigene Zeile statt „fehlgeschlagen": gescheitert
+    // **und** geheilt ist die einzige gute Nachricht im Fehlerfall, und die Liste ist der Ort,
+    // an dem man sie im Klartext lesen kann.
+    case "deploy":
+      return c.state === "start" ? { text: `🖥 Deployment läuft · ${c.label}` }
+        : c.state === "ok" ? { text: `🖥 Deployment live · ${c.label}`, css: "text-green-400" }
+          : c.state === "fail" ? { text: `🖥 Deployment fehlgeschlagen · ${c.label}`, css: "text-red-400" }
+            : { text: `🖥 Deployment zurückgerollt · ${c.label}`, css: "text-orange-400" };
   }
 }
 
@@ -96,7 +104,9 @@ function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id:
   for (const e of log) {
     if (bis !== null && e.ts > bis) continue;
     e.cmds.forEach((c, i) => {
-      if (c.id !== id) return;
+      // `deploy` ist das einzige Kommando ohne `id`: es gehört dem Raum, nicht der Figur.
+      // Die auslösende Figur steht in `by` — für den Inspektor ist das dieselbe Zugehörigkeit.
+      if ((c.k === "deploy" ? c.by : c.id) !== id) return;
       if (c.k === "tool") {
         werkzeug = { tool: c.tool, target: c.target, ts: e.ts, dauer: null, ok: undefined };
       } else if (c.k === "toolEnd" && werkzeug && werkzeug.ok === undefined) {

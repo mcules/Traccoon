@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, Project, ProjectCosts } from "../api";
+import DeploymentsPanel from "./DeploymentsPanel";
 
 const KAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
 const KAT_FARBE: Record<string, string> = { todo: "bg-slate-400", in_progress: "bg-sky-400", done: "bg-green-400" };
@@ -90,6 +91,12 @@ export default function Dashboard({ project }: { project: Project }) {
           ) : <Leer text="Kein Agent hat offene Tickets." />}
         </Karte>
       </div>
+
+      {/* Ungegatet: wer ein Ticket gemergt hat, will wissen, ob es draußen ist — und ist nicht
+          zwangsläufig Maintainer. Die volle Liste steht unter Einstellungen → Deployment. */}
+      <Karte titel="Letzte Deployments">
+        <DeploymentsPanel projectId={project.id} variante="kompakt" limit={5} />
+      </Karte>
 
       {costs && costs.by_model.length > 0 && (
         <Karte titel={`Kosten nach Modell (gesamt $${costs.total_usd.toFixed(2)})`}>

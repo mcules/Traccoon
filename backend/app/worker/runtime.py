@@ -294,7 +294,7 @@ async def _do_deploy(db: AsyncSession, issue_id: int, project_id: int, stack_dir
     """Deployment einreihen (deployments-Tabelle) und auf das Ergebnis des Deployer-Sidecars warten."""
     from ..models.ops import Deployment
     dep = Deployment(issue_id=issue_id, project_id=project_id, stack_dir=stack_dir,
-                     worktree=worktree or "", check_only=check_only,
+                     worktree=worktree or "", check_only=check_only, source="agent",
                      status="pending-check" if check_only else "pending")
     db.add(dep)
     await db.commit()

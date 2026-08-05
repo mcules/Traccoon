@@ -488,7 +488,7 @@ async def _deploy(db, inst: WorkflowInstance, params: dict) -> dict:
     if not project.workspace_dir:
         return {"action": "deploy", "queued": False, "reason": "Self-/Host-Projekt"}
     db.add(Deployment(project_id=project.id, issue_id=issue.id if issue else None,
-                      stack_dir=project.workspace_dir, status="pending"))
+                      stack_dir=project.workspace_dir, status="pending", source="workflow"))
     return {"action": "deploy", "queued": True}
 
 

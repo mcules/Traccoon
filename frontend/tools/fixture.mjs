@@ -22,6 +22,10 @@
 //   · **gleiche Zeitstempel** (`agent_text` + `usage`, `tool_start` + `agent_spawn`) — sie
 //     müssen zusammen wirken, bevor die Uhr weiterläuft.
 //   · **genau ein `run_end` je Lauf.** Fehlt er, bleibt die Figur für immer stehen.
+//   · **ein Deployment mit beiden Enden** (`deploy` `start` → `fail`) — der Serverschrank ist
+//     der einzige Zustand im `Frame`, der an keiner Figur hängt, und ohne diese zwei Zeilen
+//     enthielte kein goldener Rahmen ein leuchtendes Rack. Die Ops-Hashes prüften die neue
+//     Zeichnung dann nie: eine Prüfung, die den neuen Code nicht ausführt, ist Theater.
 //
 // Wer hier etwas ändert, ändert `tools/golden.json` mit — und zwar bewusst (`--bless`).
 
@@ -155,27 +159,36 @@ export const EVENTS = [
     result_preview: "review_agent: Kodierung auf utf-8 umgestellt, Testfall ergänzt.",
   }),
 
-  // ── Lücke: 32,8 s ohne ein Ereignis (über MAX_GAP_MS = 20 s) ───────────────
+  // ── Der Serverschrank geht an ──────────────────────────────────────────────
+  // Echte Zeile des Watchers (`services/deploy_watch.py`), Slot 1, Felder exakt
+  // `services/office.py::deploy_fields`. `log_head` ist beim Start leer — es gibt noch kein Log.
+  // Die auslösende Figur ist der Wurzellauf: er hat gerade das Review zurückbekommen.
+  ev(8871, 114, 1, 13500, "deploy", {
+    deployment_id: 341, state: "start",
+    target: "/opt/docker/stacks/traccoon", log_head: "",
+  }),
+
+  // ── Lücke: 31,5 s ohne ein Ereignis (über MAX_GAP_MS = 20 s) ───────────────
 
   // ── Zweiter Wurzellauf 8873 (Assistent) ────────────────────────────────────
-  ev(8873, 114, 1, 45000, "run_start", {
+  ev(8873, 115, 1, 45000, "run_start", {
     agent: "assistant", phase: "execute", provider: "claude_code", model: "sonnet",
     parent_run_id: null, parent_tool_use_id: null, spawn_depth: 0,
     continuation_index: 0, task_id: null, issue_key: "TRA-412",
   }),
-  ev(8873, 115, 1, 45500, "user_message", {
+  ev(8873, 116, 1, 45500, "user_message", {
     source: "chat", text: "Wie viele Tickets hängen noch an diesem Fehler?",
   }),
-  ev(8873, 116, 1, 46200, "tool_start", {
+  ev(8873, 117, 1, 46200, "tool_start", {
     tool: "traccoon_list_issues", target: null, tool_use_id: "tu-5",
     args_preview: '{"project": "TRA"}',
   }),
   // `ok: null` — Altzeile ohne erkennbares Präfix. Unbekannt, NICHT Erfolg.
-  ev(8873, 117, 1, 46900, "tool_result", {
+  ev(8873, 118, 1, 46900, "tool_result", {
     tool: "traccoon_list_issues", tool_use_id: "tu-5", ok: null, error: "",
     duration_ms: null, result_preview: "TRA-412, TRA-418",
   }),
-  ev(8873, 118, 1, 48000, "run_end", {
+  ev(8873, 119, 1, 48000, "run_end", {
     ok: null, status: "blocked", blocker_kind: "ask_human",
     summary: "Soll TRA-418 mit erledigt werden?", error: "",
     iterations: 2, in_tokens: 3100, out_tokens: 240, cache_read_tokens: 2900,
@@ -183,13 +196,24 @@ export const EVENTS = [
   }),
 
   // Systemmeldung: löst bewusst kein Kommando aus (`mapEvent` gibt `[]` zurück).
-  ev(8871, 119, 1, 48500, "system", {
+  ev(8871, 120, 1, 48500, "system", {
     text: "Kontext kompaktiert (42 Nachrichten → 12).",
   }),
 
   // ── Abschluss des Wurzellaufs ──────────────────────────────────────────────
-  ev(8871, 120, 1, 52000, "agent_text", { text: "Fix ist drin, Prüfung läuft grün." }),
-  ev(8871, 121, 1, 54000, "run_end", {
+  ev(8871, 121, 1, 52000, "agent_text", { text: "Fix ist drin, Prüfung läuft grün." }),
+
+  // Das Gegenstück zum `start` von oben — **dasselbe** `deployment_id`. Genau deshalb braucht
+  // der Rack-Zustand keinen Verfall: beide Enden sind echte Ereignisse. `log_head` trägt den
+  // Wächter-Text, den in der Wirklichkeit alle 56 fehlgeschlagenen Deployments tragen
+  // (`api/deployments.py`) — gekürzt schickt ihn schon das Backend (240 Zeichen).
+  ev(8871, 122, 1, 52500, "deploy", {
+    deployment_id: 341, state: "fail",
+    target: "/opt/docker/stacks/traccoon",
+    log_head: "Abgelehnt: Self-Deploy nur über das explizite Wartungs-Kommando.",
+  }),
+
+  ev(8871, 123, 1, 54000, "run_end", {
     ok: true, status: "success", blocker_kind: null,
     summary: "Login akzeptiert jetzt Umlaute; Regressionstest ergänzt.", error: "",
     iterations: 9, in_tokens: 52000, out_tokens: 3400, cache_read_tokens: 47000,
@@ -239,11 +263,14 @@ export const T_TO = T0 + 54000;
  *    1200   mitten im Hereinlaufen — der einzige Punkt, an dem eine Interpolation geprüft wird
  *    7200   der Unterlauf betritt den Raum: Spawn-Linie, Funke am Werkzeug
  *    12000  `run_end` des Unterlaufs: Urteil, Emote, der Zettel fällt, die Übergabe wird geplant
- *    15300  Ankunft an der Übergabe — im `SETTLE_MS`-Fenster, in dem noch getrippelt wird
- *    25200  durch die Tür: `retired`, Sitzplatz wieder frei
- *    48000  nach der 32,8-s-Lücke: Simulationszeit steht bei 35,2 s, weil `MAX_GAP_MS` klemmt;
+ *    15500  Ankunft an der Übergabe — im `SETTLE_MS`-Fenster, in dem noch getrippelt wird;
+ *           zugleich steht der Wurzellauf am Rack, das seit 2 s `start` zeigt (steigender Balken)
+ *    25200  durch die Tür: `retired`, Sitzplatz wieder frei; das Rack leuchtet weiter, weil das
+ *           Deployment noch läuft — genau der Zustand ohne Verfall
+ *    48000  nach der 31,5-s-Lücke: Simulationszeit steht bei 36,5 s, weil `MAX_GAP_MS` klemmt;
  *           dazu die erhobene Hand des Gates
- *    54000  Ende des Logs: beide Wurzelläufe abgeschlossen bzw. wartend
+ *    54000  Ende des Logs: beide Wurzelläufe abgeschlossen bzw. wartend, das Rack steht auf
+ *           `fail` (drei rote Reihen) und das „✗" über dem Schrank ist noch nicht verklungen
  *
  *  Ein Punkt, der bei einer geänderten Konstante NICHT umkippt, prüft nichts — wer hier etwas
  *  streicht, sollte vorher wissen, welche Zeile im Code dann ungeprüft bleibt. */

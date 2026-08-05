@@ -171,6 +171,35 @@ function isRunStatus(s: string): s is RunStatus {
  *  ist still — und eine stille Zeile im Textstrom ist der kleinere Schaden. */
 const SAY_SOURCES: readonly string[] = ["ticket", "user", "human", "chat", "mail", "pm"];
 
+// ── Deployments ──────────────────────────────────────────────────────────────
+
+/** Die vier Zustände des Serverschranks — wortgleich `services/office.py::DEPLOY_STATES`. */
+const DEPLOY_STATES: readonly string[] = ["start", "ok", "fail", "back"];
+
+/** Wie `isRunStatus`, und aus demselben Grund: `deploy_fields` baut `state` mit
+ *  `str(state or "")` aus einem JSON-Rumpf. Eine beschädigte Zeile liefert `""`, und ein
+ *  Rack-Kommando mit leerem Zustand ließe den Schrank in einer Farbe leuchten, die niemand
+ *  vergeben hat. */
+function isDeployState(s: string): s is "start" | "ok" | "fail" | "back" {
+  return DEPLOY_STATES.indexOf(s) >= 0;
+}
+
+/** Der Bauzeit-Wächter für `mapEvent`.
+ *
+ *  Der Parameter ist `never`: solange jede Art der `Ev`-Union oben ihren eigenen `case` hat,
+ *  ist `ev` im `default`-Zweig `never` und der Aufruf übersetzt. Kommt eine Art dazu, ohne dass
+ *  jemand hier einen Zweig ergänzt, bricht **`tsc`** — genau das leistete bisher der
+ *  erschöpfende `switch` ohne `default`.
+ *
+ *  Zur Laufzeit gibt er `[]` zurück, und das ist der eigentliche Punkt: ein Backend darf der
+ *  Oberfläche vorauseilen. Ohne diesen Zweig liefert `mapEvent` für eine unbekannte Art
+ *  `undefined`, `recorder.push` legt das ungeprüft als `cmds` ins Log, und der Raum stirbt beim
+ *  nächsten `advance` an `for (const c of undefined)`. Ein unbekanntes Ereignis soll still
+ *  sein, nicht tödlich. */
+function unbekannt(_ev: never): Cmd[] {
+  return [];
+}
+
 // ── Die Übersetzung ──────────────────────────────────────────────────────────
 
 /** Ein Ereignis → seine Kommandos. Leeres Feld heißt: im Raum passiert dazu nichts. */
@@ -318,5 +347,22 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
     // gesagt hat.
     case "system":
       return [];
+
+    // Der Serverschrank. Genau ein Kommando je Zustandswechsel — die Geste (hinlaufen,
+    // zurücklaufen) und das Urteil (`emote`) baut die Engine daraus, nicht diese Datei.
+    //
+    // `ensure` steht wie überall davor: die Zeile kann aus einem Fenster kommen, dessen
+    // `run_start` vorn weggekappt wurde, und ein Bestands-Deployment hängt seine geliehene
+    // `seq` sogar an eine **fremde** Schrittzeile.
+    case "deploy": {
+      if (!isDeployState(ev.state)) return [];
+      return [ensure(ev, roster), {
+        k: "deploy", state: ev.state, by: ev.agent_id,
+        label: clip(ev.target || "", TARGET_CHARS),
+      }];
+    }
+
+    default:
+      return unbekannt(ev);
   }
 }

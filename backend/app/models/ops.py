@@ -169,11 +169,37 @@ class AppSetting(Base):
 
 
 class Deployment(Base):
+    """Ein eingereihter Deploy: der Sidecar `deployer` holt sich die Zeile, baut, schreibt
+    Log und Status zurück.
+
+    **`status='cancelled'` schreibt kein Codepfad.** Nachgeprüft, damit der nächste Leser
+    die Stunde spart: `grep -rn cancelled` findet im ganzen Repo (Backend, Worker,
+    `deployer/`, Skripte, Frontend) nur `WorkflowInstanceStatus.cancelled` — nichts davon
+    berührt diese Tabelle; `git log -S cancelled` zeigt keinen Commit, der es je getan
+    hätte. Die 69 Zeilen mit diesem Status stammen alle vom **21.07.2026 zwischen 19:08
+    und 19:31** — 23 Minuten, leerer Log bei allen 69, kein `finished_at` bei allen 69,
+    kein `started_at` bei 58 davon. Das ist eine von Hand ausgeführte Aufräumaktion an
+    einer festgefahrenen Warteschlange (ein `UPDATE … WHERE status IN ('pending',
+    'building')`), keine Funktion.
+
+    Die Lese-API (`api/deployments.py`) zeigt sie deshalb, **kanonisiert sie aber nicht**:
+    ihre `phase` ist `aborted`, ihr `ok` ist `None`. Erst wenn es ein
+    `POST /deployments/{id}/cancel` gibt, gehört der Status ins Modell.
+
+    Zwei Spalten sind **tot und bleiben es**: `chat_id` und `requested_by` sind bei 0 von
+    186 Zeilen gefüllt, keine der vier Schreibstellen (`services/dispatcher.py`,
+    `services/workflow_actions.py`, `worker/__main__.py`, `worker/runtime.py`) setzt sie.
+    Sie werden nicht gelöscht (nichts hängt daran, aber auch nichts gewinnt dabei) und
+    tauchen in keiner Antwort auf. Wer den Auslöser wissen will, liest `source`.
+    """
+
     __tablename__ = "deployments"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
-    issue_id: Mapped[int | None] = mapped_column(ForeignKey("issues.id", ondelete="SET NULL"), nullable=True)
+    project_id: Mapped[int | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    issue_id: Mapped[int | None] = mapped_column(
+        ForeignKey("issues.id", ondelete="SET NULL"), nullable=True, index=True)
     stack_dir: Mapped[str] = mapped_column(String(500), default="")
     worktree: Mapped[str] = mapped_column(String(500), default="")
     check_only: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -182,6 +208,16 @@ class Deployment(Base):
     self_deploy: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|pending-check|building|ok|failed|rolledback
     log: Mapped[str] = mapped_column(Text, default="")
+    # Wer den Deploy ausgelöst hat: agent | merge | workflow | maintenance. Leer =
+    # unbekannt, und zwar ehrlich — die Bestandszeilen werden NICHT nachgetragen. Die
+    # Regel `self_deploy → maintenance` wäre heute korrekt und würde in dem Moment falsch,
+    # in dem `merge`/`workflow` das erste Mal feuern; eine geratene Herkunft in einer
+    # Historienansicht ist schlimmer als ein Leerfeld.
+    source: Mapped[str] = mapped_column(String(20), default="")
+    # Idempotenz-Merkposten des Bühnen-Watchers: welcher Status wurde schon als Ereignis
+    # gemeldet. Bewusst eine Spalte und kein Prozessgedächtnis — neustartfest und
+    # doppelfrei. Wird von der Lese-API weder gelesen noch ausgeliefert.
+    announced_status: Mapped[str] = mapped_column(String(20), default="")
     chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     requested_by: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
