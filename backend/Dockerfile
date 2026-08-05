@@ -14,6 +14,18 @@ RUN curl -fsSL https://raw.githubusercontent.com/colbymchenry/codegraph/main/ins
     && codegraph version
 ENV CODEGRAPH_NO_DAEMON=1 CODEGRAPH_TELEMETRY=0 DO_NOT_TRACK=1
 
+# node/npm für das Build-Gate: `verify_command` läuft als Shell IM Worker, mit dem Worktree
+# als Arbeitsverzeichnis. Ohne node kann ein Agent bei einem TypeScript-Projekt nicht prüfen,
+# ob sein Code überhaupt übersetzt — der Fehler fiele erst beim Deploy auf.
+# Kopiert statt paketiert: Debian liefert ein zu altes node, und eine zweite Paketquelle
+# einzurichten wäre mehr Angriffsfläche als drei COPY-Zeilen. Node ist gegen ein älteres
+# glibc gebaut als das Basis-Image — das läuft, umgekehrt nicht.
+COPY --from=node:22-bookworm-slim /usr/local/bin/node /usr/local/bin/node
+COPY --from=node:22-bookworm-slim /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

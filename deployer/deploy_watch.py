@@ -167,9 +167,37 @@ def do_self_deploy(conn, dep):
         add_comment(conn, issue_id, "Deploy: Health rot → automatischer Rollback auf Vorversion.")
 
 
+def pull_stack(stack_dir):
+    """Neuen Stand in den Deploy-Checkout holen — best effort, mit Log-Zeile.
+
+    Der Agent arbeitet in einem eigenen Klon (`<WORKSPACE_ROOT>/<key>`) und pusht dorthin;
+    der Stack-Ordner ist ein ZWEITER Checkout desselben Repos. Ohne diesen Pull baut der
+    Deploy stur den Stand, der zufaellig im Ordner liegt — der Fehler faellt nicht auf,
+    weil der Build gelingt und der Container startet. Er liefert nur alten Code aus.
+
+    Fehlschlaege (kein Repo, kein Netz, keine Auth, nicht vorspulbar) sind KEIN Deploy-Abbruch:
+    dann wird der vorhandene Stand gebaut, so wie es der Self-Deploy auch haelt. Was passiert
+    ist, steht im Log der Deployment-Zeile.
+    """
+    if not os.path.isdir(os.path.join(stack_dir, ".git")):
+        return "kein Git-Checkout — Pull uebersprungen"
+    rc, out = sh(["git", "-C", stack_dir, "-c", "safe.directory=*", "pull", "--ff-only"], timeout=180)
+    out = re.sub(r"(x-access-token|[A-Za-z0-9_.-]+):[^@\s]+@", r"\1:***@", out)  # Token nie loggen
+    # Der Pull lief als root → .git wuerde sonst root gehoeren und den Host-Git blockieren.
+    try:
+        stt = os.stat(stack_dir)
+        sh(["chown", "-R", f"{stt.st_uid}:{stt.st_gid}", os.path.join(stack_dir, ".git")])
+    except Exception:  # noqa: BLE001
+        pass
+    print(f"[deployer] git pull {stack_dir} rc={rc}: {out[-300:]}", flush=True)
+    return f"git pull rc={rc}: {out.strip()[-500:]}"
+
+
 def do_generic_deploy(conn, dep):
     dep_id, issue_id, stack_dir = dep["id"], dep["issue_id"], dep["stack_dir"]
+    pull_log = pull_stack(stack_dir)
     rc, out = sh(["docker", "compose", "--project-directory", stack_dir, "build"], timeout=1200)
+    out = pull_log + "\n" + out
     if rc != 0:
         set_status(conn, dep_id, "failed", out)
         finalize_issue(conn, issue_id, False)
@@ -178,7 +206,10 @@ def do_generic_deploy(conn, dep):
     time.sleep(6)
     rc3, ps = sh(["docker", "compose", "--project-directory", stack_dir, "ps"], timeout=60)
     ok = rc2 == 0 and "Exit" not in ps and "Restarting" not in ps
-    set_status(conn, dep_id, "ok" if ok else "failed", out2 + "\n" + ps)
+    # Der Pull gehoert auch in den Erfolgsfall: „Already up to date" statt „Fast-forward"
+    # ist der Unterschied zwischen „nichts Neues" und „falscher Ordner" — und genau den
+    # will man sehen koennen, ohne im Deployer-Log zu graben.
+    set_status(conn, dep_id, "ok" if ok else "failed", pull_log + "\n" + out2 + "\n" + ps)
     finalize_issue(conn, issue_id, ok)
 
 
