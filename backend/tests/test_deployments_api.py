@@ -451,3 +451,180 @@ async def test_statusfilter(db, client):
     kaputt = await client.get(f"/projects/{projekt.id}/deployments?status=quatsch",
                               headers=auth(nutzer))
     assert kaputt.status_code == 400
+
+
+# ── Der Knopf: von Hand einreihen ───────────────────────────────────────────
+
+STACK = "/opt/docker/stacks/gameproj"
+
+
+async def mit_stack(db, projekt, pfad: str = STACK):
+    """Das Stack-Verzeichnis nachtragen — `make_project` kennt es nicht, und ohne es
+    lehnt der Knopf zu Recht ab."""
+    projekt.workspace_dir = pfad
+    await db.commit()
+    await db.refresh(projekt)
+    return projekt
+
+
+@pytest.mark.asyncio
+async def test_knopf_braucht_maintainer(db, client):
+    """Lesen darf jedes Mitglied („ist mein Merge draußen?"), Auslösen nicht: der Knopf
+    baut und startet einen laufenden Stack neu. `viewer`/`member` bekommen 403 — sie
+    kennen das Projekt ja bereits, eine 404 wäre hier keine Verschwiegenheit, sondern eine
+    Lüge. Nur der **Fremde** bekommt 404, wie überall in dieser Datei."""
+    fremder = await make_user(db, "fremder")
+    seher = await make_user(db, "seher")
+    mitglied = await make_user(db, "mitglied")
+    pfleger = await make_user(db, "pfleger")
+    projekt = await make_project(db, "TRA", "Traccoon", inherit_members=False)
+    await mit_stack(db, projekt)
+    await add_member(db, projekt, seher, ProjectRole.viewer)
+    await add_member(db, projekt, mitglied, ProjectRole.member)
+    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
+    pfad = f"/projects/{projekt.id}/deployments"
+
+    assert (await client.post(pfad, json={}, headers=auth(fremder))).status_code == 404
+    assert (await client.post(pfad, json={}, headers=auth(seher))).status_code == 403
+    assert (await client.post(pfad, json={}, headers=auth(mitglied))).status_code == 403
+
+    # Und die Leseroute bleibt für den Viewer offen — die beiden Rechte sind getrennt.
+    assert (await client.get(pfad, headers=auth(seher))).status_code == 200
+
+    r = await client.post(pfad, json={}, headers=auth(pfleger))
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_ohne_stack_verzeichnis_400(db, client):
+    """Ein leerer `workspace_dir` zielt auf das Host-/Wartungsprojekt selbst. Der Deployer
+    lehnt das ohnehin ab, die Zeile entstünde aber trotzdem — im Auto-Deploy-Pfad war
+    genau das einmal ein Deploy-Sturm (ABC-19). Der Knopf darf da nicht erst hinführen:
+    **keine Zeile**, 400, und die Meldung sagt, wo man das Verzeichnis einträgt."""
+    pfleger = await make_user(db, "pfleger")
+    projekt = await make_project(db, "TRA", "Traccoon")
+    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
+
+    r = await client.post(f"/projects/{projekt.id}/deployments", json={},
+                          headers=auth(pfleger))
+    assert r.status_code == 400
+    assert "Stack-Verzeichnis" in r.json()["detail"]
+
+    liste = await client.get(f"/projects/{projekt.id}/deployments", headers=auth(pfleger))
+    assert liste.json()["items"] == [], "eine abgelehnte Anfrage hinterlässt keine Zeile"
+
+
+@pytest.mark.asyncio
+async def test_zweiter_deploy_bei_offenem_ist_409(db, client):
+    """Zwei `docker compose up` im selben Verzeichnis sind ein Datenrennen. Gesperrt wird
+    gegen die **offenen** Status, nicht gegen „zuletzt gebaut" — ein Fehlschlag von vorhin
+    darf den nächsten Versuch nicht blockieren, sonst ist der Knopf nach dem ersten
+    Problem tot."""
+    pfleger = await make_user(db, "pfleger")
+    projekt = await make_project(db, "TRA", "Traccoon")
+    await mit_stack(db, projekt)
+    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
+    pfad = f"/projects/{projekt.id}/deployments"
+
+    erste = await client.post(pfad, json={}, headers=auth(pfleger))
+    assert erste.status_code == 200
+    erste_id = erste.json()["id"]
+
+    zweite = await client.post(pfad, json={}, headers=auth(pfleger))
+    assert zweite.status_code == 409
+    assert f"#{erste_id}" in zweite.json()["detail"], "die laufende Zeile wird benannt"
+
+    # Nur eine Zeile ist entstanden.
+    assert (await client.get(pfad, headers=auth(pfleger))).json()["count"] == 1
+
+    # Fertig (auch fehlgeschlagen) hebt die Sperre auf.
+    lauf = await db.get(Deployment, erste_id)
+    lauf.status = "failed"
+    await db.commit()
+    dritte = await client.post(pfad, json={}, headers=auth(pfleger))
+    assert dritte.status_code == 200
+
+    # Ein offener Deploy eines **anderen** Projekts sperrt nicht mit.
+    anderes = await make_project(db, "UNI", "GameProj")
+    await mit_stack(db, anderes, "/opt/docker/stacks/anderes")
+    await add_member(db, anderes, pfleger, ProjectRole.maintainer)
+    r = await client.post(f"/projects/{anderes.id}/deployments", json={}, headers=auth(pfleger))
+    assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_eingereihte_zeile_ist_pending_und_manual(db, client):
+    """Was in der Zeile landet, ist der ganze Punkt der Route: `pending` (sonst greift der
+    Sidecar sie nie auf), `manual` als fünfte Herkunft (nicht `agent` — die Historie soll
+    den Menschen vom Automatismus unterscheiden können) und das Stack-Verzeichnis **aus
+    dem Projekt**, nicht aus dem Rumpf. Die Antwort hat die Form der Liste, damit das
+    Frontend sie ohne zweiten Abruf einsortieren kann."""
+    pfleger = await make_user(db, "pfleger")
+    projekt = await make_project(db, "TRA", "Traccoon")
+    await mit_stack(db, projekt)
+    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
+
+    r = await client.post(f"/projects/{projekt.id}/deployments", json={},
+                          headers=auth(pfleger))
+    assert r.status_code == 200
+    zeile = r.json()
+
+    assert set(zeile) == {
+        "id", "project_id", "project_key", "issue_id", "issue_key", "status", "phase",
+        "ok", "source", "kind", "stack_dir", "created_at", "started_at", "finished_at",
+        "wait_ms", "duration_ms", "log_bytes", "log_head",
+    }
+    assert zeile["status"] == "pending"
+    assert zeile["phase"] == "queued" and zeile["ok"] is None
+    assert zeile["source"] == "manual"
+    assert zeile["kind"] == "stack", "kein Self-Deploy und keine bloße Prüfung"
+    assert zeile["stack_dir"] == STACK
+    assert zeile["project_key"] == "TRA"
+    assert zeile["issue_id"] is None and zeile["issue_key"] == ""
+    assert zeile["started_at"] is None and zeile["finished_at"] is None
+
+    gespeichert = await db.get(Deployment, zeile["id"])
+    assert gespeichert.status == "pending"
+    assert gespeichert.source == "manual"
+    assert gespeichert.stack_dir == STACK
+    assert gespeichert.self_deploy is False and gespeichert.check_only is False
+
+    # Und sie steht danach in derselben Liste, aus der die Ansicht liest.
+    liste = await client.get(f"/projects/{projekt.id}/deployments?status=running",
+                             headers=auth(pfleger))
+    assert [i["id"] for i in liste.json()["items"]] == [zeile["id"]]
+
+
+@pytest.mark.asyncio
+async def test_issue_id_wird_uebernommen_fremdes_ticket_404(db, client):
+    """Mit Ticket hängt der Deploy am Vorgang (wie beim Auto-Deploy nach Merge), ohne
+    bleibt er projektweit. Ein Ticket aus einem **anderen** Projekt wird abgelehnt — sonst
+    stünde in der Liste eine Zeile, deren `issue_key` auf ein Projekt zeigt, in dem sie
+    nichts zu suchen hat."""
+    pfleger = await make_user(db, "pfleger")
+    projekt = await make_project(db, "TRA", "Traccoon")
+    await mit_stack(db, projekt)
+    await add_member(db, projekt, pfleger, ProjectRole.maintainer)
+    t = await ticket(db, projekt, 7)
+
+    r = await client.post(f"/projects/{projekt.id}/deployments", json={"issue_id": t.id},
+                          headers=auth(pfleger))
+    assert r.status_code == 200
+    assert r.json()["issue_id"] == t.id
+    assert r.json()["issue_key"] == "ABC-7"
+    assert (await db.get(Deployment, r.json()["id"])).issue_id == t.id
+
+    # Aufräumen, damit die 409-Sperre den nächsten Aufruf nicht überlagert.
+    fertig = await db.get(Deployment, r.json()["id"])
+    fertig.status = "ok"
+    await db.commit()
+
+    fremdes = await make_project(db, "UNI", "GameProj")
+    ft = await ticket(db, fremdes, 1)
+    falsch = await client.post(f"/projects/{projekt.id}/deployments",
+                               json={"issue_id": ft.id}, headers=auth(pfleger))
+    assert falsch.status_code == 404
+    erfunden = await client.post(f"/projects/{projekt.id}/deployments",
+                                 json={"issue_id": ft.id + 999}, headers=auth(pfleger))
+    assert erfunden.status_code == 404
+    assert falsch.json() == erfunden.json()

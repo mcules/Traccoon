@@ -230,7 +230,7 @@ export interface DeploymentRow {
   phase?: "queued" | "running" | "done" | "aborted" | null;
   /** Dreiwertig: true = geklappt, false = nicht geklappt, null = **unbekannt** (nicht „ok“). */
   ok?: boolean | null;
-  /** agent | merge | workflow | maintenance; bei Altzeilen leer → Anzeige „unbekannt“. */
+  /** agent | merge | workflow | maintenance | manual; bei Altzeilen leer → „unbekannt“. */
   source?: string | null;
   kind?: "self" | "check" | "stack" | null;
   stack_dir?: string | null;
@@ -275,6 +275,12 @@ export const deploymentApi = {
     return api.get<DeploymentListe>(`${pfad}${s ? `?${s}` : ""}`);
   },
   get: (id: number) => api.get<DeploymentDetail>(`/deployments/${id}`),
+  /** Von Hand einreihen (Knopf unter Einstellungen → Deployment). Nur projektbezogen —
+   *  ein Deployment ohne Projekt hätte kein Stack-Verzeichnis, das man drücken könnte.
+   *  Das Ziel bestimmt der Server aus `workspace_dir`; der Client schickt keinen Pfad.
+   *  400 = kein Stack-Verzeichnis, 409 = es läuft schon eins, 403 = Rolle reicht nicht. */
+  create: (projectId: number, body: { issue_id?: number } = {}) =>
+    api.post<DeploymentRow>(`/projects/${projectId}/deployments`, body),
 };
 
 export const workflowApi = {

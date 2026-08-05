@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   ApiError, DeploymentListe, DeploymentRow, DeploymentStatusFilter, deploymentApi,
@@ -33,6 +33,8 @@ const KIND_LABEL: Record<string, string> = {
 };
 const QUELLE_LABEL: Record<string, string> = {
   agent: "Agent", merge: "Merge", workflow: "Prozess", maintenance: "Wartung",
+  // Der einzige Wert, hinter dem ein Mensch steht — der Knopf unten.
+  manual: "von Hand",
 };
 const FILTER: [DeploymentStatusFilter, string][] = [
   // `running` umfasst serverseitig die Warteschlange mit („noch nicht entschieden“) —
@@ -60,16 +62,25 @@ export interface DeploymentsPanelProps {
   variante?: DeploymentVariante;
   /** Anfangs-Obergrenze; Standard 5 (kompakt) bzw. 50 (voll). */
   limit?: number;
+  /** Knopf „Jetzt deployen“ — nur in der vollen Liste und nur projektbezogen.
+   *
+   *  Beides kommt von außen, weil es hier nicht zu holen ist: die Rolle steht am Projekt
+   *  (`my_role`), das Stack-Verzeichnis in den Projekt-Einstellungen. Der Pfad ist kein
+   *  Beiwerk — er steht in der Rückfrage, und ohne ihn wäre „dieser Stack wird neu
+   *  gebaut“ eine Behauptung, die niemand nachprüfen kann. Fehlt die Eigenschaft ganz,
+   *  gibt es keinen Knopf (Dashboard-Karte, Ticket-Ansicht). */
+  ausloesen?: { stackDir?: string | null; erlaubt: boolean };
 }
 
 export default function DeploymentsPanel(
-  { projectId, issueId, variante = "voll", limit }: DeploymentsPanelProps,
+  { projectId, issueId, variante = "voll", limit, ausloesen }: DeploymentsPanelProps,
 ) {
   const kompakt = variante === "kompakt";
   const [status, setStatus] = useState<DeploymentStatusFilter>("all");
   const [seit, setSeit] = useState(FENSTER_STANDARD);   // Stunden, immer explizit
   const [max, setMax] = useState(limit ?? (kompakt ? 5 : 50));
   const [offen, setOffen] = useState<number | null>(null);
+  const qc = useQueryClient();
 
   const { data, error, isLoading } = useQuery<DeploymentListe>({
     queryKey: ["deployments", projectId ?? null, issueId ?? null, status, seit, max],
@@ -92,9 +103,26 @@ export default function DeploymentsPanel(
   if (isLoading || !data) return <div className="text-xs text-muted">Lädt…</div>;
 
   const items = data.items || [];
+  // „Läuft schon eins?“ wird aus `by_status` beantwortet und **nicht** aus `items`: die
+  // Zählung geht gegen das Zeitfenster, die Liste dagegen durch den Statusfilter. Bei
+  // „Erfolgreich“ stünde sonst kein offener Deploy in `items` — und der Knopf wäre frei,
+  // obwohl der Server mit 409 antwortet.
+  const laufend = ["pending", "pending-check", "building"]
+    .reduce((n, s) => n + ((data.by_status || {})[s] || 0), 0);
 
   return (
     <div className="space-y-3">
+      {!kompakt && projectId != null && ausloesen && (
+        <Ausloeser projectId={projectId} issueId={issueId}
+          stackDir={ausloesen.stackDir} erlaubt={ausloesen.erlaubt} laufend={laufend > 0}
+          nachziehen={() => {
+            // Der frische Deploy ist `pending` — bei einem engeren Filter fiele er aus der
+            // Liste und der Knopf sähe folgenlos aus. „Alle“ zeigt ihn ohnehin.
+            if (status !== "all") setStatus("running");
+            qc.invalidateQueries({ queryKey: ["deployments"] });
+          }} />
+      )}
+
       {!kompakt && (
         <div className="flex flex-wrap items-center gap-2">
           {FILTER.map(([f, label]) => (
@@ -136,6 +164,110 @@ export default function DeploymentsPanel(
           Mehr laden
         </button>
       )}
+    </div>
+  );
+}
+
+/** Der Knopf samt Rückfrage.
+ *
+ *  Zwei Stufen, weil ein Klick hier einen laufenden Dienst neu startet: der erste Klick
+ *  öffnet nur die Rückfrage, erst der zweite reiht ein. Die Rückfrage nennt **den Ordner**
+ *  und **die drei Folgen** (neu bauen, kurze Auszeit, kein Rollback) — ein „Wirklich?“
+ *  ohne Inhalt ist eine Klickübung, keine Zustimmung.
+ *
+ *  Der Knopf ist gesperrt, solange etwas läuft oder die Rolle nicht reicht; der Server
+ *  antwortet in beiden Fällen ohnehin mit 409 bzw. 403, aber ein Knopf, der sicher
+ *  scheitert, gehört nicht angeboten. Der Grund steht als Text daneben, nicht nur als
+ *  `title` — sonst ist eine graue Fläche ohne Erklärung. */
+function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen }: {
+  projectId: number; issueId?: number; stackDir?: string | null;
+  erlaubt: boolean; laufend: boolean; nachziehen: () => void;
+}) {
+  const [frage, setFrage] = useState(false);
+  const [sendet, setSendet] = useState(false);
+  const [fehler, setFehler] = useState("");
+  const [eingereiht, setEingereiht] = useState<number | null>(null);
+
+  const ordner = (stackDir || "").trim();
+  // Reihenfolge = Dringlichkeit: kein Recht schlägt alles, dann das fehlende Ziel, dann
+  // der laufende Deploy (der geht von allein vorbei).
+  const grund = !erlaubt
+    ? "Zum Deployen brauchst du mindestens die Rolle „Maintainer“."
+    : !ordner
+      ? "Für dieses Projekt ist kein Arbeitsverzeichnis hinterlegt (Einstellungen → Git). "
+        + "Ohne Stack-Ordner gibt es nichts zu bauen."
+      : laufend
+        ? "Es läuft bereits ein Deployment für dieses Projekt — zwei gleichzeitige Builds "
+          + "im selben Ordner kommen sich in die Quere."
+        : "";
+
+  const ausloesen = async () => {
+    setSendet(true); setFehler("");
+    try {
+      const d = await deploymentApi.create(projectId, issueId ? { issue_id: issueId } : {});
+      setEingereiht(d.id);
+      setFrage(false);
+      nachziehen();
+    } catch (e) {
+      setFehler(e instanceof ApiError ? e.message : "Deployment konnte nicht eingereiht werden.");
+    } finally {
+      setSendet(false);
+    }
+  };
+
+  return (
+    <div className="rounded border border-line p-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => { setFrage(true); setFehler(""); setEingereiht(null); }}
+          disabled={!!grund || frage || sendet}
+          className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-40">
+          Jetzt deployen
+        </button>
+        <span className="text-xs text-muted">
+          {grund || `Baut und startet den Stack in ${ordner} neu.`}
+        </span>
+      </div>
+
+      {frage && (
+        <div className="mt-3 space-y-2 rounded border border-yellow-400/40 bg-surface p-3">
+          <div className="text-sm text-ink">Diesen Stand wirklich ausrollen?</div>
+          <div className="text-xs text-muted">
+            Der Deployer holt im Ordner{" "}
+            <span className="font-mono text-ink">{ordner}</span>{" "}
+            den aktuellen Stand des Branches (<span className="font-mono">git pull --ff-only</span>),
+            baut die Images neu und startet die Container neu.
+          </div>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
+            <li>Der Dienst ist während des Neustarts <b className="text-ink">kurz nicht erreichbar</b>.</li>
+            <li>
+              Es gibt <b className="text-ink">keinen automatischen Rollback</b>: geht der Bau oder
+              der Start schief, bleibt der neue Stand stehen und muss von Hand zurückgeholt werden.
+            </li>
+            <li>
+              Deployt wird der Stand, der dort im ausgecheckten Branch liegt — nicht dein
+              lokaler Arbeitsstand und kein Worktree eines Tickets.
+            </li>
+          </ul>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button onClick={ausloesen} disabled={sendet}
+              className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-40">
+              {sendet ? "Wird eingereiht…" : "Ja, jetzt deployen"}
+            </button>
+            <button onClick={() => setFrage(false)} disabled={sendet}
+              className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {eingereiht !== null && (
+        <div className="mt-2 text-xs text-green-400">
+          Eingereiht als #{eingereiht}. Der Deployer greift die Zeile innerhalb weniger Sekunden
+          auf; der Fortschritt steht unten in der Liste.
+        </div>
+      )}
+      {fehler && <div className="mt-2 text-xs text-red-400">{fehler}</div>}
     </div>
   );
 }

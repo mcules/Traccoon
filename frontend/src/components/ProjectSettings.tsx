@@ -317,9 +317,17 @@ export default function ProjectSettings({ project }: { project: Project }) {
           </div>
         )}
       </Section>
-      {/* Der Schalter und seine Folgen auf einer Seite — die volle Liste direkt darunter. */}
+      {/* Der Schalter und seine Folgen auf einer Seite — die volle Liste direkt darunter.
+          Der Knopf steht bewusst hier und nicht im Dashboard: wer von Hand ausrollt, soll
+          den Auto-Deploy-Schalter und die bisherigen Läufe im selben Blick haben.
+          `workspace_dir` kommt aus den geladenen Einstellungen (nicht aus `project`), die
+          Rolle aus dem Projekt — der Server prüft beides noch einmal. */}
       <Section title="Bisherige Deployments">
-        <DeploymentsPanel projectId={project.id} variante="voll" />
+        <DeploymentsPanel projectId={project.id} variante="voll"
+          ausloesen={{
+            stackDir: s.workspace_dir,
+            erlaubt: project.my_role === "maintainer" || project.my_role === "owner",
+          }} />
       </Section>
       </>
       )}

@@ -1,5 +1,9 @@
-"""Deployments — die Lese-API. Drei Routen auf eine Tabelle, die 186 Zeilen lang
-geschrieben und nie gelesen wurde.
+"""Deployments — die Lese-API plus **der eine Schreibweg von Hand**: der Knopf.
+
+Drei Leseroute auf eine Tabelle, die 186 Zeilen lang geschrieben und nie gelesen wurde —
+und seit dem Knopf eine vierte Route, die schreibt (`POST /projects/{id}/deployments`,
+siehe `create_deployment`). Sie ist die fünfte Schreibstelle der Tabelle und die einzige,
+hinter der ein Mensch steht statt eines Automatismus; deshalb trägt sie `source="manual"`.
 
 Muster durchgehend `api/office.py`: nackte Dicts statt Pydantic-Schemata, **404 statt
 403**, und die Berechtigung kommt aus der **Zeile** (ihrem `project_id`), nicht aus dem
@@ -36,6 +40,7 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy import and_, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -45,7 +50,7 @@ from ..models.ops import Deployment
 from ..models.project import Project
 from ..models.ticket import Issue
 from ..models.user import User
-from .deps import Access, build_access, get_current_user, get_project_access
+from .deps import Access, build_access, get_current_user, get_project_access, require_role
 # Dieselbe Definition von „darf sehen" wie Büro und Projektliste. Es soll genau eine
 # geben, nicht drei, die irgendwann auseinanderlaufen.
 from .office_ws import compute_acl
@@ -394,3 +399,111 @@ async def deployment_detail(
     ))
     row["log"] = log
     return row
+
+
+# ── Der Knopf ───────────────────────────────────────────────────────────────
+
+class DeployIn(BaseModel):
+    """Rumpf des Knopfes — heute genau ein Feld, und das ist optional.
+
+    Bewusst **kein** `stack_dir`: das Ziel kommt aus `project.workspace_dir` und darf nie
+    vom Client kommen. Ein Pfad aus dem Rumpf wäre ein `docker compose` auf ein beliebiges
+    Hostverzeichnis, ausgelöst über eine HTTP-Route. Ebenso wenig `self_deploy` oder
+    `check_only`: der Host-Stack wird ausschließlich über das idle-gegatete
+    Wartungs-Update recreated (siehe `services/dispatcher.py`), nicht über einen Knopf in
+    einem Projekt.
+    """
+
+    issue_id: int | None = None
+
+
+@router.post("/projects/{project_id}/deployments")
+async def create_deployment(
+    data: DeployIn | None = None,
+    access: Access = Depends(require_role(ProjectRole.maintainer)),
+    db: AsyncSession = Depends(get_session),
+):
+    """Ein Deployment von Hand einreihen — der Knopf unter Einstellungen → Deployment.
+
+    Der Grund für die Route: Deployments entstanden bisher nur automatisch (`merge` nach
+    Abnahme bei `auto_deploy`, `workflow`, `agent`, `maintenance`). Für ein Projekt mit
+    echten Nutzern ist `auto_deploy` bewusst aus — es gibt im generischen Pfad **kein
+    Rollback**, anders als beim Self-Deploy. Wer dort ausrollt, will den Zeitpunkt selbst
+    bestimmen; genau das und nichts weiter tut diese Route: sie schreibt eine `pending`-
+    Zeile, die der Sidecar (`deployer/deploy_watch.py`) beim nächsten Poll aufgreift.
+
+    **`maintainer`, nicht `viewer`** (und damit 403 für ein Mitglied, 404 für einen
+    Fremden — beides erledigt `require_role`): die Leseseite ist bewusst für jedes
+    Mitglied offen („ist mein Merge draußen?"), das Auslösen ist es nicht. Es baut und
+    startet einen laufenden Stack neu.
+
+    Vier Regeln, jede mit einem Vorfall oder einem Datenrennen dahinter:
+
+    1. **Leerer `workspace_dir` → 400.** Ein leeres Stack-Verzeichnis zielt auf das
+       Host-/Wartungsprojekt selbst. Der Deployer lehnt das ohnehin ab („Impliziter
+       Host-Deploy … ist gesperrt"), aber die Zeile entstünde trotzdem — im Auto-Deploy-
+       Pfad war genau das einmal ein Deploy-Sturm (ABC-19, kommentiert in
+       `worker/__main__.py`). Ein Knopf, der garantiert scheitert, ist kein Knopf.
+    2. **Höchstens ein offener Deploy je Projekt → 409.** Zwei `docker compose up` im
+       selben Verzeichnis sind ein Datenrennen um Container und Netze, kein zweiter
+       Deploy. Der Sidecar arbeitet ohnehin nur eine Zeile zur Zeit ab; ohne diese Sperre
+       stünde die zweite bloß in der Schlange und liefe unbemerkt hinterher.
+    3. **`issue_id` muss zum Projekt gehören** — sonst 404 in derselben Formulierung wie
+       überall hier. Ein fremdes Ticket anzuhängen, wäre eine Zeile, deren `issue_key` im
+       Frontend auf ein Projekt zeigt, in dem sie nichts zu suchen hat.
+    4. **`source="manual"`**, der fünfte Wert der Spalte. Nicht `agent` und nicht
+       `merge` — die Historienansicht soll den Menschen vom Automatismus unterscheiden
+       können; das ist der einzige Grund, warum es die Spalte gibt.
+
+    Die Antwort ist die **Zeilenform der Liste** (`_row`), damit das Frontend sie ohne
+    zweiten Abruf einsortieren kann. Ein Log gibt es zu diesem Zeitpunkt naturgemäß nicht.
+    """
+    project = access.project
+    stack_dir = (project.workspace_dir or "").strip()
+    if not stack_dir:
+        raise HTTPException(
+            400,
+            "Dieses Projekt hat kein Stack-Verzeichnis (Einstellungen → Git → "
+            "Arbeitsverzeichnis). Ohne Ziel würde der Deploy auf den Traccoon-Stack "
+            "selbst zeigen — den baut nur das Wartungs-Update, nie ein Projekt.",
+        )
+
+    issue_id = data.issue_id if data else None
+    if issue_id is not None:
+        issue = await db.get(Issue, issue_id)
+        if issue is None or issue.project_id != project.id:
+            raise HTTPException(404, "Ticket nicht gefunden")
+
+    # Nur gegen die **offenen** Status, nicht gegen „zuletzt gebaut": ein fehlgeschlagener
+    # Deploy von vorhin darf einen neuen Versuch nicht blockieren.
+    laufend = (await db.execute(
+        select(Deployment.id)
+        .where(and_(Deployment.project_id == project.id,
+                    Deployment.status.in_(OPEN_STATUS)))
+        .order_by(Deployment.id.desc()).limit(1)
+    )).scalar_one_or_none()
+    if laufend is not None:
+        raise HTTPException(
+            409,
+            f"Für dieses Projekt läuft bereits ein Deployment (#{laufend}). "
+            "Warte, bis es durch ist — zwei gleichzeitige Builds im selben "
+            "Stack-Verzeichnis kommen sich in die Quere.",
+        )
+
+    # `self_deploy`/`check_only`/`worktree` bleiben auf ihren Vorgaben (False/False/""):
+    # gebaut wird der Stack des Projekts aus seinem eigenen Verzeichnis, sonst nichts.
+    dep = Deployment(project_id=project.id, issue_id=issue_id, stack_dir=stack_dir,
+                     status="pending", source="manual")
+    db.add(dep)
+    await db.commit()
+    await db.refresh(dep)
+
+    issue_key = ""
+    if dep.issue_id:
+        issue = await db.get(Issue, dep.issue_id)
+        issue_key = issue.key if issue else ""
+    return _row((
+        dep.id, dep.project_id, project.key, dep.issue_id, issue_key, dep.status,
+        dep.source, dep.self_deploy, dep.check_only, dep.stack_dir,
+        dep.created_at, dep.started_at, dep.finished_at, 0, "",
+    ))
