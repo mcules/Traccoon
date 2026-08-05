@@ -560,6 +560,43 @@ async def _add_comment(db: AsyncSession, issue_id: int, label: str, body: str) -
 
 # ---------- Hauptschleife ----------
 
+# Hausordnung des Projekts: Konventionsdateien, wie sie Code-Agenten überall erwarten.
+# Bewusst aus dem WORKTREE gelesen und nicht in die Datenbank kopiert — eine Kopie driftet
+# vom Repo weg, und zwar unbemerkt: der Agent hielte sich dann an Regeln, die der Mensch
+# vor drei Wochen geändert hat. So gilt immer der Stand des Branches, an dem gearbeitet wird.
+CONVENTION_FILES = ("CLAUDE.md", "AGENTS.md", "AGENT.md", "CONVENTIONS.md")
+MAX_CONVENTION_CHARS = 12000
+
+
+def _read_conventions(ws_root: str | None) -> str:
+    """Die erste vorhandene Konventionsdatei des Worktrees, gekappt.
+
+    Nur die erste: zwei Dateien nebeneinander sind fast immer eine Kopie der anderen, und
+    zwei Hausordnungen im selben Prompt sind schlimmer als keine. Gekappt wird am Ende und
+    sichtbar — ein stillschweigend halbierter Regelsatz wäre die schlechteste Variante.
+    """
+    if not ws_root:
+        return ""
+    for name in CONVENTION_FILES:
+        pfad = os.path.join(ws_root, name)
+        try:
+            if not os.path.isfile(pfad):
+                continue
+            with open(pfad, encoding="utf-8", errors="replace") as fh:
+                text = fh.read().strip()
+        except OSError:
+            continue
+        if not text:
+            continue
+        if len(text) > MAX_CONVENTION_CHARS:
+            text = text[:MAX_CONVENTION_CHARS] + "\n\n… (gekürzt)"
+        return (f"# Hausordnung des Projekts ({name})\n\n"
+                "Diese Datei liegt im Repo und gilt für diesen Auftrag. Widerspricht sie einer "
+                "Anweisung aus den Projekt-Hinweisen weiter unten, gilt die Projekt-Anweisung — "
+                "die kennt die Traccoon-Umgebung, die Datei nicht.\n\n" + text)
+    return ""
+
+
 def _build_system_prompt(agent: AgentDef) -> str:
     heute = dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     parts = [agent.system_prompt or f"Du bist {agent.role}.",
@@ -803,6 +840,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         messages.append({"role": "system", "content": autoload_text})
     if skill_menu:
         messages.append({"role": "system", "content": skill_menu})
+    # Erst die Hausordnung aus dem Repo, dann die Projekt-Hinweise: das letzte Wort hat die
+    # Datenbank, weil dort steht, was NUR in Traccoon gilt (Worktree statt Live-Ordner,
+    # `check` statt Host-Befehle, kein Deploy von Hand).
+    konventionen = _read_conventions(ws_root)
+    if konventionen:
+        messages.append({"role": "system", "content": konventionen})
     if project.get("system_prompt"):
         messages.append({"role": "system", "content": project["system_prompt"]})
     if mode == "plan" and issue.get("plan"):
