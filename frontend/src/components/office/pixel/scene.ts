@@ -210,6 +210,19 @@ const CLOCK_X = 246;
 const CABINET_X = 196;
 const CABINET_Y = 60;
 
+/**
+ * Der Standplatz vor dem Serverschrank, in Pufferpixeln.
+ *
+ * Dieselbe Doppelung wie bei `SEATS_PX` und aus demselben Grund: Schicht 1 darf `room.ts` nicht
+ * sehen (Regel 4), hält die Geometrie also zwangsläufig ein zweites Mal. Prüfung 11 hält
+ * `RACK_PX ≡ round(ROOM.rack × POS_SCALE)` — läuft es auseinander, läuft die Figur an eine
+ * Stelle, an der kein Schrank steht, und das Urteil (`emote`) schwebt daneben in der Luft.
+ *
+ * Die 18 Pixel Versatz nach rechts sind kein Geschmack: eine Figur ist 16 Pufferpixel breit und
+ * verdeckte mittig genau die LED-Reihen, die sie gerade angeschaltet hat.
+ */
+export const RACK_PX: Pt = { x: CABINET_X + 18, y: CABINET_Y + 8 };
+
 // ═══ Monitorbild und Stimmung ════════════════════════════════════════════════
 //
 // `toolAct.ts` ist Schicht 0 und für Schicht 1 nicht sichtbar (Regel 4). Die zwei Tabellen
@@ -295,7 +308,10 @@ export function renderFrame(
   drawClock(v, CLOCK_X, 26, env);
   drawDoor(v, DOOR.x, WALL_H, env, { open: anyoneTravelling(frame) });
   drawFloor(v, env);
-  drawCabinet(v, CABINET_X, CABINET_Y, env);
+  // Der Schrank ist die einzige Kulisse, die etwas erzählt: bei `idle` zeichnet er sich
+  // unverändert, sonst leuchten seine drei Schlitze als LED-Reihen.
+  drawCabinet(v, CABINET_X, CABINET_Y, env,
+    { state: frame.rack.state, since: frame.rack.since, t });
   drawPlant(v, CABINET_X, CABINET_Y - SIZE.cabinet.h, env, { small: true });
 
   // ── 2 Licht ───────────────────────────────────────────────────────────────

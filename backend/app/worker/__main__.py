@@ -469,7 +469,8 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
             # (dispatcher self_deploy, nur wenn kein Agent läuft).
             if project.workspace_dir:
                 db.add(Deployment(project_id=project.id, issue_id=issue.id,
-                                  stack_dir=project.workspace_dir, status="pending"))
+                                  stack_dir=project.workspace_dir, status="pending",
+                                  source="merge"))
                 await db.commit()
             else:
                 log.info("accept %s: Self-/Host-Projekt — kein Ticket-Deploy "

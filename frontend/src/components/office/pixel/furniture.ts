@@ -18,7 +18,7 @@
 // Als Art wären sie zusammen größer als das gesamte übrige Kunstbudget und ließen sich nicht
 // auf beliebige Raumbreiten ziehen.
 
-import type { Ctx } from "../types.ts";
+import type { Ctx, RackState } from "../types.ts";
 import { PIX } from "../const.ts";
 import { mix } from "../ids.ts";
 import type { Pal, PalKey } from "./palette.ts";
@@ -219,9 +219,13 @@ const PLANT_SMALL = defineArt([
   "..KKKKK..",
 ], { G: "plant", g: "plantLo", O: "soil", K: "clay" });
 
-// ── Aktenschrank ─────────────────────────────────────────────────────────────
-// 22×20, also gut kopfhoch neben einer 24 Pixel hohen Figur. Drei Schubladen mit Griffen;
-// die waagerechten Fugen sind das, was ihn vom Blech-Quader unterscheidet.
+// ── Serverschrank ────────────────────────────────────────────────────────────
+// 22×20, also gut kopfhoch neben einer 24 Pixel hohen Figur: Pixel für Pixel ein 19-Zoll-Rack
+// an der Rückwand. Die waagerechten Fugen sind das, was es vom Blech-Quader unterscheidet.
+//
+// Die drei dunklen `ink`-Schlitze (Zeilen 5 · 10 · 15, Spalten 7..14) sind die LED-Reihen. Sie
+// bleiben `ink`, solange nichts läuft — der Schrank ist dann exakt die Kulisse, die er immer
+// war, und `drawCabinet` setzt bei `idle` byteweise dieselben `fillRect` ab wie vor dieser Welle.
 
 const CABINET = defineArt([
   "MMMMMMMMMMMMMMMMMMMMMM",
@@ -623,10 +627,76 @@ export function drawPlant(
   drawArt(ctx, art, cx, yBase, pal, { flip: opts?.flip });
 }
 
-export function drawCabinet(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
+// ── Der Serverschrank als Deployment-Anzeige ─────────────────────────────────
+
+/** Die drei `ink`-Schlitze des `CABINET`-Arts, in Art-Koordinaten. Abgeleitet aus dem Sprite
+ *  oben — wer dort eine Zeile einfügt, muss diese Zahlen mitziehen; deshalb stehen sie direkt
+ *  neben der Zeichenfunktion und nicht in `const.ts`. Index 0 ist die **oberste** Reihe. */
+const LED_ROWS: readonly number[] = [5, 10, 15];
+const LED_X = 7;
+const LED_W = 8;
+
+/** Ein Schritt des steigenden Balkens. Drei Schritte ergeben einen Durchlauf von 1,26 s — das
+ *  liest sich als „hier arbeitet etwas", ohne zu flackern. */
+const LED_STEP_MS = 420;
+
+/** Der Serverschrank, wie ihn ein `Frame` beschreibt. `t - since` ist die Phase; einen Zähler
+ *  gibt es nicht (PIXEL-CONTRACT.md 3.4). */
+export interface RackOpts {
+  state: RackState;
+  since: number;
+  t: number;
+}
+
+/** Welche Farbe eine LED-Reihe trägt. Keine neue Palettenfarbe nötig — `lamp`, `ok`, `err` und
+ *  `blocked` sind dieselben vier, die Blasenränder und Dock-Kacheln schon benutzen, und damit
+ *  widersprechen Rack und Zeitleiste einander nie.
+ *
+ *  `back` ist der Grund, warum es vier Zustände sind und nicht drei: oben `blocked`
+ *  (gescheitert), unten `ok` (zurückgerollt, der Dienst läuft wieder). Mit `fail` zusammengelegt
+ *  ginge genau die gute Hälfte dieser Nachricht verloren. */
+function ledKey(state: RackState, row: number): PalKey {
+  if (state === "start") return "lamp";
+  if (state === "ok") return "ok";
+  if (state === "fail") return "err";
+  return row === 0 ? "blocked" : "ok";
+}
+
+/**
+ * Der Serverschrank. Ohne `rack` (oder bei `idle`) ist er genau die Kulisse, die er immer war.
+ *
+ * **Die Bauregel, an der die goldenen Ops-Hashes hängen**: der LED-Block wird ausschließlich
+ * betreten, wenn wirklich ein Deployment leuchtet. Bei `idle` fallen exakt dieselben drei
+ * Zeichenaufrufe in derselben Reihenfolge an wie vor dieser Welle — sonst änderten sich alle
+ * 16 goldenen Bilder und die Absicht des Bless-Diffs verschwände im Rauschen.
+ */
+export function drawCabinet(
+  ctx: Ctx, cx: number, yBase: number, pal: Pal, rack?: RackOpts,
+): void {
   contactShadow(ctx, pal, cx, yBase, SIZE.cabinet.w);
   drawArt(ctx, CABINET, cx, yBase, pal);
   fillA(ctx, pal, "wallHi", 0.20, artLeft(CABINET, cx), yBase - SIZE.cabinet.h, SIZE.cabinet.w, 1);
+
+  if (rack === undefined || rack.state === "idle") return;
+
+  const x0 = artLeft(CABINET, cx) + LED_X;
+  const yTop = yBase - SIZE.cabinet.h;
+  // Der steigende Balken: ein Schritt je `LED_STEP_MS`, von unten nach oben, dann von vorn.
+  // Die Phase kommt aus `t - since` — bei einem Sprung in der Zeitleiste steht sie damit
+  // sofort richtig, statt sich von Bild zu Bild neu hochzuzählen.
+  const stufe = Math.floor(Math.max(0, rack.t - rack.since) / LED_STEP_MS);
+  const an = rack.state === "start" ? 1 + (stufe % LED_ROWS.length) : LED_ROWS.length;
+
+  for (let i = 0; i < LED_ROWS.length; i++) {
+    if (LED_ROWS.length - i > an) continue;
+    const key = ledKey(rack.state, i);
+    const y = yTop + LED_ROWS[i];
+    // Streulicht zuerst, dann die LED selbst: umgekehrt läge der blasse Schleier über der
+    // Leuchtzeile und nähme ihr genau die Farbe, um die es geht. Ohne den Schein sind acht
+    // Pixel in 480×270 aus zwei Metern schlicht nicht zu sehen.
+    fillA(ctx, pal, key, 0.22, x0 - 1, y - 1, LED_W + 2, 3);
+    fill(ctx, pal, key, x0, y, LED_W, 1);
+  }
 }
 
 export function drawCoffee(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {

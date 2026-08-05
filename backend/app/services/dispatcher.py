@@ -146,7 +146,8 @@ async def _tick() -> None:
             return
         mp = await get_setting(db, "maintenance_project_id", "")
         if mp.isdigit():
-            db.add(Deployment(project_id=int(mp), stack_dir="", self_deploy=True, status="pending"))
+            db.add(Deployment(project_id=int(mp), stack_dir="", self_deploy=True,
+                              status="pending", source="maintenance"))
             await db.commit()
             log.info("Wartungs-Update: letzter Agent fertig → Self-Deploy eingereiht (Projekt %s)", mp)
     await set_flag("update_pending", False)

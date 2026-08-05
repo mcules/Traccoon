@@ -200,6 +200,29 @@ export interface EvSystem extends EvBase {
   text: string;
 }
 
+/** Der Serverschrank an der Rückwand wird zum Deployment.
+ *
+ *  **Genau diese vier Felder** — die Menge ist der Vertrag, nicht eine Auswahl daraus:
+ *  `services/office.py::deploy_fields` ist der eine Ort, an dem sie entstehen (Watcher-Zeile
+ *  und beim Lesen synthetisiertes Bestands-Deployment gehen beide dort durch), und
+ *  `test_office_normalize.py::FIELD_KEYS["deploy"]` nagelt sie im Backend fest.
+ *
+ *  `state` hat **beide Enden als echte Ereignisse** — anders als eine Werkzeugzeile aus
+ *  Altdaten, die nur einen Zeitpunkt kennt. Deshalb braucht der Raum hier keine Ersatzdauer
+ *  (siehe `TOOL_BUSY_MS`); er wartet auf das Gegenstück.
+ *
+ *  `back` (zurückgerollt) steht bewusst neben `fail`: gescheitert **und** geheilt ist die
+ *  einzige gute Nachricht im Fehlerfall, und beim Zusammenlegen ginge genau sie verloren. */
+export interface EvDeploy extends EvBase {
+  kind: "deploy";
+  deployment_id: number;
+  state: "start" | "ok" | "fail" | "back";
+  /** Woran gearbeitet wurde: Stack-Verzeichnis, ersatzweise Worktree. Beschriftung, nicht mehr. */
+  target: string;
+  /** Anriss des Logs (240 Zeichen). Für den Inspektor, nicht für die Bühne. */
+  log_head: string;
+}
+
 /** RESERVIERT — wird vom Backend **nie** geschickt.
  *
  *  Kein Provider-Adapter in Traccoon liefert Denkblöcke; Anthropic-Thinking wird im Worker gar
@@ -216,7 +239,7 @@ export interface EvThinking extends EvBase {
 export type Ev =
   | EvSessionSeen | EvRunStart | EvUserMessage | EvAgentText | EvUsage
   | EvToolStart | EvToolResult | EvFileEdit | EvAgentSpawn | EvRunEnd
-  | EvSystem | EvThinking;
+  | EvSystem | EvThinking | EvDeploy;
 
 export type EvKind = Ev["kind"];
 
@@ -263,7 +286,11 @@ export type Cmd =
   /** Statuswechsel ohne Ortswechsel (färbt Dock und Blasenrand). */
   | { k: "status"; id: string; status: RunStatus }
   /** Fertig: Abschlussblase, dann durch die Tür (`DONE_LINGER_MS`). */
-  | { k: "done"; id: string; ok: boolean; text?: string };
+  | { k: "done"; id: string; ok: boolean; text?: string }
+  /** Der Serverschrank leuchtet. `by` ist die auslösende Figur — sie geht zum Rack und zurück;
+   *  fehlt sie, leuchtet das Rack ohne Geste (ein Deployment ohne Lauf ist denkbar).
+   *  `label` ist das Ziel (Stack/Worktree), für Schicht 2 — die Bühne zeigt nur Farbe. */
+  | { k: "deploy"; state: "start" | "ok" | "fail" | "back"; by?: string; label: string };
 
 export type CmdKind = Cmd["k"];
 
@@ -366,6 +393,22 @@ export interface Fx {
  *  `link` = Spawn-/Übergabelinie · `drop` = Zettel fällt auf den Tisch. */
 export type FxKind = "emote" | "spark" | "link" | "drop";
 
+/** Was der Serverschrank zeigt. `idle` ist der Anfangszustand und wird von **keinem** Ereignis
+ *  gesetzt — er heißt „seit dem Öffnen dieses Raums hat kein Deployment stattgefunden". */
+export type RackState = "idle" | "start" | "ok" | "fail" | "back";
+
+/** Der Serverschrank — der einzige Zustand im `Frame`, der an keiner Figur hängt.
+ *
+ *  `since` ist `engine.t` des Wechsels; jede Animationsphase ist `(t - since)` und **nie** ein
+ *  hochgezählter Zähler (PIXEL-CONTRACT.md 3.4). Es gibt bewusst kein `until`: der Zustand
+ *  verfällt nicht, er wird abgelöst. Siehe `engine.ts::apply({k:"deploy"})`. */
+export interface Rack {
+  state: RackState;
+  since: number;
+  /** Ziel des Deployments (Stack/Worktree). Die Bühne zeigt es nicht, Schicht 2 darf. */
+  label: string;
+}
+
 /** Das Einzige, was Schicht 1 zu sehen bekommt. `actors` ist **nach `y` sortiert**
  *  (Maler-Algorithmus) und eine Kopie — die Engine gibt nie ihre eigene Sammlung heraus. */
 export interface Frame {
@@ -373,6 +416,8 @@ export interface Frame {
   t: number;
   actors: ActorState[];
   fx: Fx[];
+  /** Der Serverschrank. Steht neben `actors`, weil er an keinen Aktor gebunden ist. */
+  rack: Rack;
 }
 
 /** Eine Zeile des Logs, in **Ankunftsreihenfolge** (`seq`), nie nach `ts` sortiert.
@@ -454,6 +499,11 @@ export interface Room {
   coffee: Pt;
   /** Sammelpunkt außerhalb des Bildes für `deskIndex === -2`. */
   away: Pt;
+  /** Standplatz **vor** dem Serverschrank — kein Sitz, kein Aktor, nur ein Zielpunkt.
+   *  Genau deshalb braucht die Deploy-Geste keinen sechsten `TripKind`: sie ist ein `deliver`
+   *  ohne Ziel-Aktor und erbt damit Türerkennung, Fußstaub, Tempostreuung und
+   *  dt-Split-Invarianz gratis. */
+  rack: Pt;
 }
 
 // ── Roster & Zeitleiste ──────────────────────────────────────────────────────

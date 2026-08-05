@@ -8,6 +8,7 @@ import ProjectFields from "./ProjectFields";
 import AgentsPanel from "./AgentsPanel";
 import Members from "./Members";
 import ResourceGrants from "./ResourceGrants";
+import DeploymentsPanel from "./DeploymentsPanel";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PROVIDER_LABEL: Record<string, string> = {
@@ -306,6 +307,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
       )}
 
       {tab === "deploy" && (
+      <>
       <Section title="Deployment">
         <Check label="Automatisch deployen" hint="Nach Abnahme und Merge baut und startet der Deployer."
           on={s.auto_deploy} onChange={(v) => set({ auto_deploy: v })} />
@@ -315,6 +317,11 @@ export default function ProjectSettings({ project }: { project: Project }) {
           </div>
         )}
       </Section>
+      {/* Der Schalter und seine Folgen auf einer Seite — die volle Liste direkt darunter. */}
+      <Section title="Bisherige Deployments">
+        <DeploymentsPanel projectId={project.id} variante="voll" />
+      </Section>
+      </>
       )}
       </div>
 

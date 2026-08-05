@@ -298,6 +298,30 @@ nicht davon abhängen.
 | goldene Pixel-Ops-Hashes (8 Bilder × Tag/Abend) | 2 | gebaut |
 | Vollständigkeit der Werkzeug-Tabelle (Sollliste aus `backend/app/worker`) | — | gebaut |
 | Sitzgeometrie: `SEATS_PX[i]` ≡ `round(ROOM.seats[i].sit × POS_SCALE)` | 4 | gebaut |
+| Rack-Geometrie: `RACK_PX` ≡ `round(ROOM.rack × POS_SCALE)` | 4 | gebaut |
+| Das Rack leuchtet in der Fixture (≥ 2 Zustände über die 8 goldenen Bilder) | — | gebaut |
+
+Die letzte Prüfung ist keine Geometrie, sondern eine Aussage über die Prüfung selbst: die
+Ops-Hashes melden nur „dieselben Aufrufe wie beim letzten Bless" und sind blind dafür, ob sie
+einen Zeichenzweig je betreten haben. Enthielte kein goldenes Bild ein leuchtendes Rack, wäre
+die LED-Zeichnung ungeprüft — eine Prüfung, die den neuen Code nicht ausführt, ist Theater.
+
+### Der Serverschrank — der einzige nicht-aktorgebundene Zustand im `Frame`
+
+`Frame.rack` (`{ state, since, label }`) steht neben `actors`, weil ein Deployment dem **Raum**
+gehört und keiner Figur: der Lauf, der es angestoßen hat, geht längst durch die Tür, während
+noch gebaut wird. Zwei Folgerungen sind Vertrag, nicht Geschmack:
+
+- **Die Phase kommt aus `(t - since)`**, wie bei jedem `Fx` (Regel 3.4). `since` ist `engine.t`.
+- **Kein Verfall.** Der Zustand wird vom `start` gesetzt und vom `ok`/`fail`/`back` abgelöst —
+  es gibt kein `until`. Das ist der ausdrückliche Gegensatz zu `TOOL_BUSY_MS`, das nur
+  existiert, weil eine Werkzeugzeile aus Altdaten kein Intervall kennt; beim Deployment sind
+  **beide Enden echte Ereignisse**. Kommt das Ende nie (Deployer tot), leuchtet das Rack weiter.
+  Das ist die Wahrheit, kein Fehler: es läuft etwas, von dem niemand weiß, wie es ausging.
+
+`drawCabinet` betritt den LED-Block **ausschließlich** bei `state !== "idle"`. Bei `idle` fallen
+byteweise dieselben `fillRect` in derselben Reihenfolge an wie vor Welle 3-4 — sonst änderten
+sich alle 16 Ops-Hashes und die Absicht eines Bless-Diffs verschwände im Rauschen.
 
 Die Fixture dazu steht in `frontend/tools/fixture.mjs` und ist der Form von
 `services/office.py::step_events` nachgebaut, nicht ausgedacht. Ändert sich das erwartete

@@ -25,7 +25,9 @@ deckt den ganzen Baum also in EINER Abfrage ab.
 der Instrumentierung haben `kind=''`-Zeilen und keine `run_start`/`run_end`-Zeilen. Der
 Lesepfad geht deshalb immer durch `services.office.step_events` (die den Altpfad
 kennt) und ergänzt fehlende Grenzen über `run_boundary_events`. Von Welle B profitiert
-dieselbe Route danach ohne eine Zeile Änderung.
+dieselbe Route danach ohne eine Zeile Änderung. **Deployments von vor dem Watcher**
+kommen auf demselben Weg dazu (`deployment_events`, geliehene `seq`) — eine zusätzliche
+Abfrage für die ganze Sitzung, nicht eine je Lauf, und nur wenn die Sitzung Tickets hat.
 
 **Unautorisiert ist 404, nie 403.** `build_access` macht das im ganzen Repo so
 (`deps.py:165-166`); eine neue Fläche, die 403 sagt, verriete die Existenz fremder
@@ -46,12 +48,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_session
 from ..models.agents import CostEntry, Run, RunStep
 from ..models.enums import GlobalRole, ProjectRole
+from ..models.ops import Deployment
 from ..models.project import Project
 from ..models.ticket import Issue
 from ..models.user import User
 from ..services.office import (
     EVENT_CAP_DEFAULT, EVENT_CAP_MAX, EVENT_VERSION, LIVE_WINDOW_MS, SEQ_SLOTS,
-    PriceTable, RunCtx, run_boundary_events, session_id, session_seen_event, step_events,
+    PriceTable, RunCtx, deploy_anchor_step_id, deploy_step_id, deployment_events,
+    run_boundary_events, session_id, session_seen_event, step_events,
 )
 from .deps import Access, build_access, get_current_user, get_project_access
 # Die erlaubte Projektmenge kommt aus DERSELBEN Funktion wie beim Live-Socket, und die
@@ -583,6 +587,54 @@ def _agent_row(run: Run, billed: dict | None) -> dict:
     }
 
 
+async def _legacy_deploy_events(db: AsyncSession, *, issue_ids: set[int], steps: list[RunStep],
+                                ctxs: dict[int, RunCtx], bounds: dict[int, dict]) -> list[dict]:
+    """Bestands-Deployments mit geliehener `seq` — **eine** Abfrage, nicht eine je Lauf.
+
+    Seit dem Watcher (`services/deploy_watch.py`) schreibt jedes Deployment seine eigene
+    Zeile. Davor tat es das nicht: 130 der 186 Bestandszeilen haben gar keine, und die 56
+    mit einer sind ausgerechnet die abgelehnten. Ohne diesen Pfad fehlten sie im Replay
+    genau dort, wo etwas passiert ist.
+
+    Greift nur, wenn die Sitzung überhaupt Tickets hat — `ix_deployments_issue` deckt die
+    Abfrage. Wo der Watcher schon erzählt hat, wird nichts geliehen: sonst stünde derselbe
+    Deploy zweimal im Raum.
+    """
+    if not issue_ids or not steps:
+        return []
+    deps = (await db.execute(
+        select(Deployment).where(Deployment.issue_id.in_(issue_ids))
+        .order_by(Deployment.id))).scalars().all()
+    if not deps:
+        return []
+    step_by_id = {s.id: s for s in steps}
+    # Slot 3 ist vergeben, wo eine Grenze synthetisiert wird: `run_end` sitzt auf
+    # `last*4+3`, `run_start` auf `first*4-1` — und das ist Slot 3 der Zeile davor.
+    belegt: set[int] = set()
+    for b in bounds.values():
+        if b["last"] and not b["has_end"]:
+            belegt.add(b["last"])
+        if b["first"] and not b["has_start"]:
+            belegt.add(b["first"] - 1)
+    erzaehlt = {deploy_step_id(s) for s in steps} - {0}
+
+    out: list[dict] = []
+    for dep in deps:
+        if dep.id in erzaehlt:
+            continue
+        anchor = deploy_anchor_step_id(steps, dep.created_at, blocked=belegt)
+        ctx = ctxs.get(step_by_id[anchor].run_id) if anchor else None
+        if ctx is None:
+            continue
+        events = deployment_events(dep, ctx, anchor_step_id=anchor)
+        if events:
+            # Zwei Deployments teilen sich keinen Slot — sonst verlöre der Recorder eines
+            # von beiden (er entdoppelt ausschließlich über `seq`).
+            belegt.add(anchor)
+            out.extend(events)
+    return out
+
+
 @router.get("/office/sessions/{kind}/{ref}/events")
 async def session_events(
     kind: str, ref: int,
@@ -657,12 +709,16 @@ async def session_events(
             first_step_id=None if b["has_start"] else b["first"],
             last_step_id=None if b["has_end"] else b["last"],
         ))
+    # Deployments aus der Zeit vor dem Watcher — geliehene `seq`, kein Backfill.
+    events.extend(await _legacy_deploy_events(
+        db, issue_ids=issue_ids, steps=steps, ctxs=ctxs, bounds=bounds))
 
     events = [e for e in events if e["seq"] > after_seq]
     if truncated and steps:
         # Was unterhalb der Kappung liegt, fliegt auch dann raus, wenn es eine
-        # synthetisierte Grenze ist — sonst stünde ein `run_start` unter `seq_from` und
-        # der Client hielte sein Log für vollständig. Wer dort fehlt, steht im Roster.
+        # synthetisierte Grenze oder ein geliehenes Deploy-Ereignis ist — sonst stünde ein
+        # `run_start` unter `seq_from` und der Client hielte sein Log für vollständig. Wer
+        # dort fehlt, steht im Roster.
         floor = _seq(steps[0].id, 0) - 1
         events = [e for e in events if e["seq"] >= floor]
     events.sort(key=lambda e: e["seq"])

@@ -17,6 +17,15 @@ zweite Wahrheit. Vier Slots je Zeile, damit eine Zeile mehr als ein Ereignis tra
 
 `2e9 * 4 < 2^53`, die Zahl bleibt in JavaScript exakt.
 
+**Slot 3 hat zwei Bewerber, und die Vorrangregel steht hier:** die synthetisierte
+`run_end`-Grenze gewinnt, ein **Bestands**-Deployment weicht auf Slot 3 der
+vorhergehenden Schrittzeile aus (`deploy_anchor_step_id`). Das betrifft ausschließlich
+den Altpfad — ein neues Deployment schreibt über den Watcher (`services/deploy_watch.py`)
+eine echte `run_steps`-Zeile und bekommt Slot 1 wie alles andere. Ein nachträglich
+eingefügter Schritt kam nicht in Frage: neue SERIAL-Ids liegen oberhalb *jedes*
+existierenden Schritts, ein Juli-Deploy sortierte damit ans Ende jeder Sitzung — `seq`
+**ist** die Ankunftsreihenfolge, und ein Backfill löge über sie.
+
 **`thinking` ist reserviert und wird nie emittiert.** Kein Provider-Adapter liefert
 Denkblöcke; ein erfundenes Denken würde die Farben der Zeitleiste vergiften und Zeit
 behaupten, die niemand gemessen hat. Die Art steht im Vertrag, damit sie später ohne
@@ -45,7 +54,10 @@ from ..models.agents import RunStep
 log = logging.getLogger("office")
 
 # Version des Umschlags. Erhöhen, wenn ein Feld seine Bedeutung ändert — das Frontend
-# verweigert dann die Anzeige, statt eine falsche Deutung zu zeichnen.
+# verweigert dann die Anzeige, statt eine falsche Deutung zu zeichnen. Eine Art
+# *hinzuzufügen* ist dagegen additiv und bleibt bei 1: `deploy` deutet kein bestehendes
+# Feld um, und ein Sprung auf 2 ließe jede laufende Oberfläche die Anzeige verweigern —
+# für einen Zweig, den sie schlicht ignorieren kann.
 EVENT_VERSION = 1
 # EIN globaler Kanal; Fan-out und Autorisierung macht die WS-Brücke. Ein Kanal je Projekt
 # hätte projektlose Läufe nicht abbilden können und 40 Abos je Nutzer bedeutet.
@@ -60,12 +72,25 @@ SEQ_SLOTS = 4
 SLOT_BEFORE = 0
 SLOT_MAIN = 1
 SLOT_DERIVED = 2
+SLOT_TAIL = 3   # `run_end`-Grenze; im Altpfad geliehen für ein Bestands-Deployment
 
 # Der vollständige Vertrag. `thinking` steht bewusst dabei und wird nie erzeugt.
 KINDS = (
     "session_seen", "run_start", "user_message", "agent_text", "thinking", "usage",
     "tool_start", "tool_result", "file_edit", "agent_spawn", "run_end", "system",
+    "deploy",
 )
+
+# Die vier Zustände, die der Serverschrank zeigen kann. `back` (rolledback) ist bewusst
+# nicht mit `fail` zusammengelegt: gescheitert UND geheilt ist die einzige gute Nachricht
+# im Fehlerfall, und beim Zusammenlegen ginge genau sie verloren.
+DEPLOY_STATES = ("start", "ok", "fail", "back")
+DEPLOY_STATE_BY_STATUS = {
+    "building": "start", "ok": "ok", "failed": "fail", "rolledback": "back",
+}
+# Dieselbe Breite wie die Liste in `api/deployments.py` — beide zeigen denselben Anriss
+# desselben Logs, und zwei Breiten wären zwei Wahrheiten über „was stand am Anfang".
+DEPLOY_LOG_HEAD_CHARS = 240
 
 # Kürzungsgrenzen — der Raum zeigt Vorschauen, nicht Volltexte.
 ARGS_PREVIEW_CHARS = 400
@@ -201,6 +226,14 @@ def tool_ok(result: str) -> bool | None:
 
 # ── Umschlag ────────────────────────────────────────────────────────────────
 
+def _as_utc(value: dt.datetime | None) -> dt.datetime | None:
+    """Naive Zeitstempel als UTC lesen (SQLite liefert sie ohne Zone). Ohne das wirft ein
+    Vergleich zwischen zwei Zeilen je nach Datenbank einen TypeError oder Stunden."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=dt.timezone.utc) if value.tzinfo is None else value
+
+
 def _ts(value: dt.datetime | None) -> str:
     """ISO-8601 in UTC mit Millisekunden. Naive Zeitstempel gelten als UTC (SQLite liefert
     sie ohne Zone) — sonst verschöbe dieselbe Zeile je nach Datenbank um Stunden."""
@@ -329,6 +362,17 @@ def step_events(step, ctx: RunCtx) -> list[dict]:
                           prompt=str(args.get("task") or step.content or ""),
                           tool_use_id=step.tool_use_id, background=False))
 
+    elif kind == "deploy":
+        # Der Inhalt ist JSON — dieselbe Bauform wie bei `run_end`, und aus demselben
+        # Grund: die Zeile trägt Felder, für die es keine Spalte gibt und für die eine
+        # eigene Spalte in `run_steps` (eine von zwölf Arten) nicht zu rechtfertigen wäre.
+        src = _args_of(step)
+        out.append(_event(ctx, seq=main, ts=ts, kind="deploy",
+                          **deploy_fields(deployment_id=src.get("deployment_id"),
+                                          state=src.get("state"),
+                                          target=step.target or "",
+                                          log_head=src.get("log_head"))))
+
     elif kind == "run_end":
         # Der Inhalt einer run_end-Zeile ist der Abschlussbericht als JSON — dieselben
         # Felder, die `run_boundary_events` aus der `runs`-Zeile zieht.
@@ -456,6 +500,96 @@ def run_boundary_events(run, ctx: RunCtx, *, first_step_id: int | None,
                               "cost_priced": cost_priced,
                           })))
     return out
+
+
+# ── Deployments ─────────────────────────────────────────────────────────────
+
+def deploy_state(status: str) -> str:
+    """`building|ok|failed|rolledback` → der Zustand, den der Raum zeigt. Sonst `""`.
+
+    Was hier leer herausfällt, hat im Raum nichts verloren: `pending`/`pending-check` ist
+    eine Warteschlange, nicht ein Vorgang, und `cancelled` schreibt kein Codepfad (siehe
+    `models/ops.Deployment`) — eine handgeschriebene Aufräumaktion zu animieren, hieße,
+    eine Handlung zu behaupten, die nie stattgefunden hat.
+    """
+    return DEPLOY_STATE_BY_STATUS.get((status or "").strip(), "")
+
+
+def deploy_target(dep) -> str:
+    """Woran gearbeitet wurde — der Stack, ersatzweise der Worktree. Beschriftung des
+    Racks, nicht mehr; der Pfad ist das Einzige, was die Zeile darüber sicher weiß."""
+    return (getattr(dep, "stack_dir", "") or getattr(dep, "worktree", "") or "")[:500]
+
+
+def deploy_fields(*, deployment_id: Any, state: Any, target: str, log_head: Any) -> dict:
+    """Die Felder eines `deploy` — der EINE Ort, an dem sie entstehen.
+
+    Beide Wege gehen hier durch: die echte Zeile des Watchers (Live und Nachlese) und das
+    beim Lesen synthetisierte Bestands-Deployment. Zwei Stellen könnten auseinanderlaufen,
+    und die Ansicht sähe je nach Alter des Deployments etwas anderes.
+    """
+    return {
+        "deployment_id": int(deployment_id or 0),
+        "state": str(state or ""),
+        "target": target or "",
+        "log_head": str(log_head or "")[:DEPLOY_LOG_HEAD_CHARS],
+    }
+
+
+def deploy_content(deployment_id: int, state: str, log_head: str = "") -> str:
+    """Der JSON-Rumpf einer `deploy`-Schrittzeile (Schreibseite zu `deploy_fields`)."""
+    return json.dumps({"deployment_id": int(deployment_id), "state": state,
+                       "log_head": (log_head or "")[:DEPLOY_LOG_HEAD_CHARS]},
+                      ensure_ascii=False)
+
+
+def deploy_step_id(step) -> int:
+    """Zu welchem Deployment eine `deploy`-Zeile gehört (0, wenn es keine ist).
+
+    Der Lesepfad braucht das, um ein Bestands-Deployment NICHT ein zweites Mal zu
+    synthetisieren, wenn der Watcher es längst als echte Zeile erzählt hat.
+    """
+    if (getattr(step, "kind", "") or "") != "deploy":
+        return 0
+    return int(_args_of(step).get("deployment_id") or 0)
+
+
+def deploy_anchor_step_id(steps, created_at: dt.datetime | None, *,
+                          blocked: set[int] | frozenset[int] = frozenset()) -> int | None:
+    """An welche Schrittzeile ein **Bestands**-Deployment seine geliehene `seq` hängt.
+
+    Anker ist die letzte Zeile vor `created_at` — dort stand die Sitzung, als der Deploy
+    losging, und dorthin gehört er in der Erzählung. Ist deren Slot 3 schon vergeben (die
+    synthetisierte `run_end`-Grenze hat Vorrang, und zwei Deployments teilen sich keinen
+    Slot), rutscht er auf die vorhergehende Zeile. Findet sich keine, gibt es kein
+    Ereignis: lieber eine Lücke als ein Deploy, der vor seinem eigenen Auslöser steht.
+    """
+    cutoff = _as_utc(created_at)
+    frei = [s.id for s in steps
+            if cutoff is None or (_as_utc(s.created_at) or cutoff) <= cutoff]
+    for step_id in reversed(frei):
+        if step_id not in blocked:
+            return step_id
+    return None
+
+
+def deployment_events(dep, ctx: RunCtx, *, anchor_step_id: int | None) -> list[dict]:
+    """Ein Deployment aus der Zeit vor dem Watcher → sein Ereignis, mit geliehener `seq`.
+
+    Dasselbe Muster wie `run_boundary_events`: nichts wird geschrieben, die Ordnung
+    entsteht beim Lesen aus einer fremden Zeilen-ID. Anders als dort gibt es nur EIN
+    Ereignis (den Ausgang) — für den Auftakt wäre kein zweiter Slot frei, und ein
+    erfundener Startzeitpunkt zwischen fremden Schritten wäre geraten.
+    """
+    state = deploy_state(getattr(dep, "status", "") or "")
+    if not state or not anchor_step_id:
+        return []
+    ts = _ts(getattr(dep, "finished_at", None) or getattr(dep, "started_at", None)
+             or getattr(dep, "created_at", None))
+    return [_event(ctx, seq=_seq(anchor_step_id, SLOT_TAIL), ts=ts, kind="deploy",
+                   **deploy_fields(deployment_id=getattr(dep, "id", 0), state=state,
+                                   target=deploy_target(dep),
+                                   log_head=getattr(dep, "log", "") or ""))]
 
 
 def session_seen_event(ctx: RunCtx, *, title: str, project_key: str,

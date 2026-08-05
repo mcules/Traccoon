@@ -5,7 +5,7 @@
   "hat sich das Verhalten geändert — erneuern ist eine Entscheidung, keine Reparatur, und die",
   "Begründung gehört in die Commit-Nachricht."
  ],
- "fixture": "62ccd7c8",
+ "fixture": "e75d05cb",
  "frames": [
   {
    "at": 0,
@@ -38,6 +38,11 @@
      }
     ],
     "fx": [],
+    "rack": {
+     "label": "",
+     "since": 0,
+     "state": "idle"
+    },
     "t": 0
    }
   },
@@ -74,6 +79,11 @@
      }
     ],
     "fx": [],
+    "rack": {
+     "label": "",
+     "since": 0,
+     "state": "idle"
+    },
     "t": 1200
    }
   },
@@ -165,6 +175,11 @@
       "y": 302
      }
     ],
+    "rack": {
+     "label": "",
+     "since": 0,
+     "state": "idle"
+    },
     "t": 7200
    }
   },
@@ -250,6 +265,11 @@
       "y": 536
      }
     ],
+    "rack": {
+     "label": "",
+     "since": 0,
+     "state": "idle"
+    },
     "t": 12000
    }
   },
@@ -270,7 +290,7 @@
       "lastOk": true,
       "model": "sonnet",
       "phase": "execute",
-      "pose": "sit",
+      "pose": "walk",
       "resolved": 2,
       "role": "exec_agent",
       "seed": 1262586480,
@@ -281,8 +301,8 @@
       },
       "verdict": null,
       "waiting": false,
-      "x": 976,
-      "y": 302
+      "x": 713,
+      "y": 227
      },
      {
       "away": false,
@@ -335,6 +355,11 @@
       "y": 302
      }
     ],
+    "rack": {
+     "label": "/opt/docker/stacks/traccoon",
+     "since": 13500,
+     "state": "start"
+    },
     "t": 15500
    }
   },
@@ -401,6 +426,11 @@
      }
     ],
     "fx": [],
+    "rack": {
+     "label": "/opt/docker/stacks/traccoon",
+     "since": 13500,
+     "state": "start"
+    },
     "t": 25200
    }
   },
@@ -482,7 +512,7 @@
       "resolved": 0,
       "role": "assistant",
       "say": "Soll ABC-418 mit erledigt werden?",
-      "sayAt": 35200,
+      "sayAt": 36500,
       "seed": 2537979714,
       "status": "blocked",
       "sub": {
@@ -499,14 +529,19 @@
      {
       "kind": "emote",
       "seed": 2537979714,
-      "t0": 35200,
+      "t0": 36500,
       "text": "!",
-      "until": 38800,
+      "until": 40100,
       "x": 1172,
       "y": 347
      }
     ],
-    "t": 35200
+    "rack": {
+     "label": "/opt/docker/stacks/traccoon",
+     "since": 13500,
+     "state": "start"
+    },
+    "t": 36500
    }
   },
   {
@@ -548,7 +583,7 @@
       "away": false,
       "busy": 0,
       "deskIndex": -1,
-      "done": 41200,
+      "done": 42500,
       "doneOk": true,
       "edits": 0,
       "fails": 1,
@@ -558,21 +593,21 @@
       "lastOk": true,
       "model": "sonnet",
       "phase": "execute",
-      "pose": "sit",
+      "pose": "walk",
       "resolved": 2,
       "role": "exec_agent",
       "say": "Login akzeptiert jetzt Umlaute; Regressionstest ergänzt.",
-      "sayAt": 41200,
+      "sayAt": 42500,
       "seed": 1262586480,
       "status": "success",
       "sub": {
-       "x": 0,
-       "y": 0
+       "x": 0.29515307873168695,
+       "y": 0.346526543364547
       },
       "verdict": "ok",
       "waiting": false,
-      "x": 976,
-      "y": 302
+      "x": 756,
+      "y": 239
      },
      {
       "away": false,
@@ -605,15 +640,29 @@
     "fx": [
      {
       "kind": "emote",
+      "seed": 2860942646,
+      "t0": 41000,
+      "text": "✗",
+      "until": 43200,
+      "x": 713,
+      "y": 227
+     },
+     {
+      "kind": "emote",
       "seed": 1262586480,
-      "t0": 41200,
+      "t0": 42500,
       "text": "✓",
-      "until": 43400,
-      "x": 976,
-      "y": 302
+      "until": 44700,
+      "x": 756,
+      "y": 239
      }
     ],
-    "t": 41200
+    "rack": {
+     "label": "/opt/docker/stacks/traccoon",
+     "since": 41000,
+     "state": "fail"
+    },
+    "t": 42500
    }
   }
  ],
@@ -665,45 +714,45 @@
   {
    "at": 15500,
    "day": {
-    "n": 3404,
-    "hash": "f94642ca"
+    "n": 3433,
+    "hash": "7e653884"
    },
    "night": {
-    "n": 3174,
-    "hash": "83b5a8dc"
+    "n": 3201,
+    "hash": "2de15be6"
    }
   },
   {
    "at": 25200,
    "day": {
-    "n": 3073,
-    "hash": "d3355b04"
+    "n": 3075,
+    "hash": "0d699d52"
    },
    "night": {
-    "n": 2843,
-    "hash": "aa05e854"
+    "n": 2845,
+    "hash": "1d75f392"
    }
   },
   {
    "at": 48000,
    "day": {
-    "n": 3238,
-    "hash": "cf7743f1"
+    "n": 3240,
+    "hash": "fb034a3e"
    },
    "night": {
-    "n": 3008,
-    "hash": "95e02377"
+    "n": 3010,
+    "hash": "ca0c3288"
    }
   },
   {
    "at": 54000,
    "day": {
-    "n": 3245,
-    "hash": "6acec69f"
+    "n": 3279,
+    "hash": "61769914"
    },
    "night": {
-    "n": 3017,
-    "hash": "84209608"
+    "n": 3049,
+    "hash": "2c5f3c67"
    }
   }
  ]
