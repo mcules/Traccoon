@@ -40,3 +40,16 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted)); }
 ::-webkit-scrollbar-corner { background: transparent; }
+
+/* Der Pixelpuffer der Büro-Bühne. Der Rückspeicher des Canvas ist ein ganzzahliges Vielfaches
+   von 480×270 (siehe office/PIXEL-CONTRACT.md Regel 1); auf die sichtbare Fläche skaliert ihn
+   der Browser — und zwar **hart**, ohne Weichzeichner. Ohne diese Regel interpoliert er beim
+   Hochskalieren bilinear und macht aus jeder Pixelkante einen Farbverlauf.
+
+   Zwei Deklarationen, weil ältere Firefox-Fassungen `pixelated` nicht kennen; wer beide
+   versteht, nimmt die letzte. In React nicht als `style`-Objekt möglich — dort trüge eine
+   Eigenschaft nur einen Wert, und der Rückfall fiele lautlos weg. */
+.pixel-canvas {
+  image-rendering: -moz-crisp-edges;
+  image-rendering: pixelated;
+}

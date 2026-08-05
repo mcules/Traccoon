@@ -39,7 +39,7 @@ import type { Pal } from "./palette.ts";
 import { GRADES, lookOf, palFor, rollenSeed } from "./palette.ts";
 import {
   SIZE, WALL_H, WINDOW_STEP, drawBoard, drawCabinet, drawChair, drawClock, drawCoffee,
-  drawDesk, drawDoor, drawFloor, drawMonitor, drawPlant, drawMeetingTable, drawRug,
+  drawDesk, drawDoor, drawFloor, drawMonitor, drawPlant, drawMeetingTable, drawRack, drawRug,
   drawTableChair, drawWall, drawWindow, drawWindowLight,
 } from "./furniture.ts";
 import { FIG_H, FIG_W, actorBox, drawActor, drawGhost } from "./person.ts";
@@ -207,8 +207,26 @@ const WIN_RIGHT_X = 396;
 const WIN_RIGHT_N = 3;
 const BOARD_X = 190;
 const CLOCK_X = 246;
+
+/** Aktenschrank mit Topfpflanze, unter dem Whiteboard. Reine Einrichtung. */
 const CABINET_X = 196;
 const CABINET_Y = 60;
+
+/**
+ * Der Serverschrank: 20×34, steht an der Rückwand **zwischen Whiteboard und Uhr**.
+ *
+ * Der Platz ist gerechnet, nicht gewählt. Das Board belegt `BOARD_X ± 17` (also bis 207), die
+ * Uhr `CLOCK_X ± 4` (ab 242), das linke Fensterband endet bei 147, die Tür beginnt bei 340.
+ * Der 20 Pixel breite Schrank passt mit `RACK_X = 224` genau in die Lücke (214..233) — und
+ * nur dort, ohne ein anderes Wandstück zu verdecken.
+ *
+ * `RACK_Y` bleibt die alte Bodenlinie: der Schrank ist nach oben gewachsen, nicht nach vorn.
+ * Seine Oberkante liegt damit bei 26, also **über** der Sockelleiste (`WALL_H - 4`) in der
+ * Wandfläche — genau so, wie ein zwei Meter hohes Rack vor einer Wand aussieht. Er verdeckt
+ * dort nichts: zwischen Board (bis 207) und Uhr (ab 242) hängt nichts an der Wand.
+ */
+const RACK_X = 224;
+const RACK_Y = 60;
 
 /**
  * Der Standplatz vor dem Serverschrank, in Pufferpixeln.
@@ -219,9 +237,15 @@ const CABINET_Y = 60;
  * Stelle, an der kein Schrank steht, und das Urteil (`emote`) schwebt daneben in der Luft.
  *
  * Die 18 Pixel Versatz nach rechts sind kein Geschmack: eine Figur ist 16 Pufferpixel breit und
- * verdeckte mittig genau die LED-Reihen, die sie gerade angeschaltet hat.
+ * stünde mittig **vor** dem Schrank, statt daneben. Mit dem Versatz beginnt sie bei 234, einen
+ * Pixel rechts der Schrankkante (233) — sie steht am Rack, nicht davor.
+ *
+ * Rechts, nicht links: links liegen Aktenschrank und Topfpflanze (188..203). Und weil die
+ * Sprechblase um die Figurenmitte zentriert ist, sitzt das LED-Feld auf der **anderen**
+ * Frontseite (`LED_X = 3`, hier 217..220) — sonst verdeckte die Blase genau die Anzeige,
+ * derentwegen die Figur hergelaufen ist.
  */
-export const RACK_PX: Pt = { x: CABINET_X + 18, y: CABINET_Y + 8 };
+export const RACK_PX: Pt = { x: RACK_X + 18, y: RACK_Y + 8 };
 
 // ═══ Monitorbild und Stimmung ════════════════════════════════════════════════
 //
@@ -308,11 +332,11 @@ export function renderFrame(
   drawClock(v, CLOCK_X, 26, env);
   drawDoor(v, DOOR.x, WALL_H, env, { open: anyoneTravelling(frame) });
   drawFloor(v, env);
-  // Der Schrank ist die einzige Kulisse, die etwas erzählt: bei `idle` zeichnet er sich
-  // unverändert, sonst leuchten seine drei Schlitze als LED-Reihen.
-  drawCabinet(v, CABINET_X, CABINET_Y, env,
-    { state: frame.rack.state, since: frame.rack.since, t });
+  drawCabinet(v, CABINET_X, CABINET_Y, env);
   drawPlant(v, CABINET_X, CABINET_Y - SIZE.cabinet.h, env, { small: true });
+  // Das Rack ist die einzige Kulisse, die etwas erzählt: bei `idle` zeichnet es sich
+  // unverändert, sonst leuchtet je Höheneinheit ein LED-Feld.
+  drawRack(v, RACK_X, RACK_Y, env, { state: frame.rack.state, since: frame.rack.since, t });
 
   // ── 2 Licht ───────────────────────────────────────────────────────────────
   if (day) {
