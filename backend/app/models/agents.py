@@ -54,7 +54,7 @@ class Run(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     issue_id: Mapped[int | None] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"), nullable=True, index=True)
-    # Projekt/Owner liegen redundant am Lauf, weil das Büro (roundtable) jedes Ereignis ohne
+    # Projekt/Owner liegen redundant am Lauf, weil das Büro (office) jedes Ereignis ohne
     # DB-Rückfrage autorisieren muss — der Weg über das Ticket wäre pro Ereignis ein JOIN, und
     # projektlose Läufe (Assistent, Job) hätten gar keinen. SET NULL, damit ein gelöschtes
     # Projekt die Kostenhistorie des Laufs nicht mitnimmt.
@@ -107,7 +107,7 @@ class RunStep(Base):
     role: Mapped[str] = mapped_column(String(20), default="")       # assistant|tool|system|user
     tool_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
     content: Mapped[str] = mapped_column(Text, default="")
-    # Ereignis-Art des Schritts (services/roundtable.KINDS). Leer = Altzeile aus der Zeit vor
+    # Ereignis-Art des Schritts (services/office.KINDS). Leer = Altzeile aus der Zeit vor
     # der Instrumentierung; die wird beim Lesen aus `role`+`content` rekonstruiert, damit die
     # Historie nicht bei null anfängt.
     kind: Mapped[str] = mapped_column(String(24), default="", nullable=False)

@@ -137,7 +137,7 @@ function band(w: number, n: number, ch: string): string {
 }
 
 const TABLE_W = 52;
-const ROUNDTABLE = defineArt([
+const OFFICE = defineArt([
   band(TABLE_W, 32, "D"),
   band(TABLE_W, 44, "D"),
   band(TABLE_W, 50, "D"),
@@ -439,7 +439,7 @@ export const SIZE = {
   desk: { w: artW(DESK), h: artH(DESK) },
   chair: { w: artW(CHAIR_FREE), h: artH(CHAIR_FREE) },
   monitor: { w: artW(MONITOR), h: artH(MONITOR) },
-  roundtable: { w: artW(ROUNDTABLE), h: artH(ROUNDTABLE) },
+  office: { w: artW(OFFICE), h: artH(OFFICE) },
   tableChair: { w: artW(TABLE_CHAIR), h: artH(TABLE_CHAIR) },
   plantTall: { w: artW(PLANT_TALL), h: artH(PLANT_TALL) },
   plantSmall: { w: artW(PLANT_SMALL), h: artH(PLANT_SMALL) },
@@ -601,10 +601,10 @@ export function drawMonitor(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?
   fill(ctx, pal, mood, x0 + 13, y0 + 8, 1, 1);
 }
 
-export function drawRoundtable(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
-  contactShadow(ctx, pal, cx, yBase, SIZE.roundtable.w - 8);
-  drawArt(ctx, ROUNDTABLE, cx, yBase, pal);
-  fillA(ctx, pal, "wallHi", 0.16, cx - 14, yBase - SIZE.roundtable.h + 1, 28, 1);
+export function drawMeetingTable(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
+  contactShadow(ctx, pal, cx, yBase, SIZE.office.w - 8);
+  drawArt(ctx, OFFICE, cx, yBase, pal);
+  fillA(ctx, pal, "wallHi", 0.16, cx - 14, yBase - SIZE.office.h + 1, 28, 1);
 }
 
 export function drawTableChair(
@@ -674,7 +674,7 @@ const PLANK_W = 92;
 const PLANK_H = 10;
 /** Mindestversatz zweier benachbarter Reihen. Ohne diese Schranke fallen Stöße gelegentlich
  *  untereinander und der Boden bekommt eine durchgehende Fuge — ein verlegter Boden hat das
- *  nie, und das Auge sieht die Reihe sofort. Roundtable erzwingt denselben Mindestversatz. */
+ *  nie, und das Auge sieht die Reihe sofort. */
 const MIN_STAGGER = 26;
 
 /**

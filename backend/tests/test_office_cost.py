@@ -13,7 +13,7 @@ import datetime as dt
 
 import pytest
 
-from app.api import roundtable as rt_api
+from app.api import office as rt_api
 from app.main import api
 from app.models.agents import CostEntry, Run, RunStep
 from app.models.enums import ProjectRole, StatusCategory
@@ -27,9 +27,9 @@ MIO = 1_000_000
 
 @pytest.fixture(autouse=True)
 def router_registriert():
-    """Siehe `test_roundtable_api.py`: Welle C registriert ihren Router nicht in
+    """Siehe `test_office_api.py`: Welle C registriert ihren Router nicht in
     `main.py`, weil zwei Wellen parallel an der Datei hängen."""
-    if not any(getattr(r, "path", "") == "/roundtable/sessions" for r in api.routes):
+    if not any(getattr(r, "path", "") == "/office/sessions" for r in api.routes):
         api.include_router(rt_api.router)
 
 
@@ -88,7 +88,7 @@ async def katalog(db, provider, model, *, ein=0.0, aus=0.0, cache=0.0):
 
 
 async def kosten(client, user, issue):
-    r = await client.get(f"/roundtable/sessions/issue/{issue.id}/cost", headers=auth(user))
+    r = await client.get(f"/office/sessions/issue/{issue.id}/cost", headers=auth(user))
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -231,5 +231,5 @@ async def test_fremder_bekommt_404_auf_die_kosten(client, db):
     fremd = await make_user(db, "fremd")
     await lauf(db, issue)
 
-    r = await client.get(f"/roundtable/sessions/issue/{issue.id}/cost", headers=auth(fremd))
+    r = await client.get(f"/office/sessions/issue/{issue.id}/cost", headers=auth(fremd))
     assert r.status_code == 404

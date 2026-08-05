@@ -11,7 +11,7 @@ import datetime as dt
 import pytest
 
 from app.models.agents import RunStep
-from app.services.roundtable import (
+from app.services.office import (
     ERROR_PREFIXES, EVENT_VERSION, RunCtx, run_boundary_events, session_seen_event,
     step_events, tool_ok, tool_target,
 )

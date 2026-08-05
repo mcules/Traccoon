@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..models.agents import AgentDefinition, Run
 from ..models.assistant import AssistantTask
 from ..models.ticket import Blocker, Comment
-from ..services import roundtable
+from ..services import office
 from . import codegraph as _codegraph
 from . import gitops as _gitops
 from . import perms
@@ -454,33 +454,33 @@ async def _start_run(db: AsyncSession, issue_id: int, agent: str, phase: str, pr
     return run
 
 
-async def _add_step(db: AsyncSession, ctx: roundtable.RunCtx, role: str, tool: str | None,
+async def _add_step(db: AsyncSession, ctx: office.RunCtx, role: str, tool: str | None,
                     content: str, *, kind: str = "", tool_use_id: str | None = None,
                     target: str | None = None, ok: bool | None = None,
                     duration_ms: int | None = None, in_tokens: int = 0, out_tokens: int = 0,
                     cache_read_tokens: int = 0, provider: str = "", model: str = "") -> None:
     """Eine Schrittzeile schreiben und sofort in den Live-Kanal geben.
 
-    Geschrieben wird über `roundtable.add_step` — denselben Weg, den auch `open_room`
+    Geschrieben wird über `office.add_step` — denselben Weg, den auch `open_room`
     nimmt. Es soll keine zweite Stelle geben, an der eine Zeile ohne die Ereignisfelder
     entstehen könnte. Gesendet wird ERST nach dem Commit: vorher hat die Zeile keine `id`
     und damit keine `seq`. Ein zweiter Sendeweg wäre falsch — `publish_step` schluckt
     jeden Fehler selbst, ein ausgefallener Redis darf keinen Agentenlauf töten.
     """
-    step = await roundtable.add_step(
+    step = await office.add_step(
         db, ctx, role=role, kind=kind, content=content, tool=tool, target=target,
         tool_use_id=tool_use_id, ok=ok, duration_ms=duration_ms, in_tokens=in_tokens,
         out_tokens=out_tokens, cache_read_tokens=cache_read_tokens, provider=provider,
         model=model)
     # `SessionLocal` läuft mit expire_on_commit=False, `step.id` steht also ohne Nachfrage.
-    await roundtable.publish_step(ctx, step)
+    await office.publish_step(ctx, step)
 
 
 async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = "", error: str = "",
                    iterations: int = 0, wt_fp: str | None = None,
                    in_tok: int = 0, out_tok: int = 0, cache_read: int = 0, *,
                    blocker_kind: str | None = None,
-                   ctx: roundtable.RunCtx | None = None) -> None:
+                   ctx: office.RunCtx | None = None) -> None:
     from ..models.agents import CostEntry
     from ..models.ops import ProviderModel
     from ..models.ticket import Issue
@@ -538,7 +538,7 @@ async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = ""
     if ctx is None:
         return
     # Die Abschlusszeile im Raum: ohne sie geht der Agent nie durch die Tür. Der Inhalt ist
-    # das Mapping, das `roundtable._run_end_fields` liest — dieselben Felder, die die
+    # das Mapping, das `office._run_end_fields` liest — dieselben Felder, die die
     # Lese-API aus der `runs`-Zeile zieht, damit beide Wege nicht auseinanderlaufen.
     try:
         await _add_step(db, ctx, "system", None, json.dumps({
@@ -783,7 +783,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     # Der Kontext trägt den seq-Zähler des Laufs: `_end_run` schreibt die Abschlusszeile,
     # nachdem die Schleife (und mit ihr `protokoll`) längst verlassen ist — ein Zähler in
     # der Closure könnte dort nicht weitergezählt werden.
-    ctx = roundtable.RunCtx.from_run(run, issue_key=str(issue.get("key") or ""))
+    ctx = office.RunCtx.from_run(run, issue_key=str(issue.get("key") or ""))
 
     async def protokoll(role: str, tool: str | None, content: str, *, kind: str = "",
                         **felder: Any) -> None:
@@ -791,7 +791,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
 
     # Der Agent kommt in den Raum, und es steht dabei, warum: `run_start` + der Auftrag als
     # `user_message`, beides in einer Transaktion.
-    await roundtable.open_room(db, ctx, agent=agent, mode=mode, issue=issue)
+    await office.open_room(db, ctx, agent=agent, mode=mode, issue=issue)
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _build_system_prompt(agent)},
@@ -1136,7 +1136,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # vor der Ausführung. Jedes Gate darüber macht `continue` oder `return`;
                     # ein Start davor hinterließe ein Werkzeug, das nie geschlossen wird, und
                     # im Raum säße ein Agent für immer tippend da.
-                    _ziel = roundtable.tool_target(call.name, call.arguments)
+                    _ziel = office.tool_target(call.name, call.arguments)
                     _args_json = json.dumps(call.arguments, ensure_ascii=False)
                     # Monotone Uhr, dieselbe wie die Laufzeitgrenze oben: die Wanduhr darf
                     # springen, eine gemessene Dauer nicht.
@@ -1234,7 +1234,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         # Ausnahme wäre oben zu „TOOL-FEHLER:" geworden. Also gilt „kein
                         # Fehlerpräfix" als Erfolg — und nur ein belegtes True lässt
                         # `step_events` überhaupt einen `file_edit` daraus ableiten.
-                        _ok = roundtable.tool_ok(result)
+                        _ok = office.tool_ok(result)
                         await protokoll("tool", call.name, result[:2000], kind="tool_result",
                                         tool_use_id=call.id, target=_ziel,
                                         ok=True if _ok is None else _ok, duration_ms=_dauer_ms)

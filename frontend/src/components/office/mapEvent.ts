@@ -13,7 +13,7 @@ import type { Cmd, Ev, GateKind, Roster, RosterEntry, RunStatus } from "./types.
 
 // ── Kürzungen ────────────────────────────────────────────────────────────────
 //
-// Übernommen von Roundtable: eine Blase, die man nicht in einem Blick liest, ist keine Blase
+// Grundregel: eine Blase, die man nicht in einem Blick liest, ist keine Blase
 // mehr, sondern ein Textfeld über einer 16×24-Figur.
 
 /** Gedankenblase. */
@@ -72,7 +72,7 @@ function firstSentence(text: string, max: number): string {
 
 // ── Kleine Nachschlagehilfen ─────────────────────────────────────────────────
 
-/** Aktor-Id eines Laufs. Muss zu `services/roundtable.py::_event` passen (`f"run:{run_id}"`) —
+/** Aktor-Id eines Laufs. Muss zu `services/office.py::_event` passen (`f"run:{run_id}"`) —
  *  sonst zeigt der Raum zwei Figuren für denselben Lauf. */
 function actorId(runId: number): string {
   return `run:${runId}`;
@@ -113,7 +113,7 @@ function ensure(ev: Ev, roster: Roster): Cmd {
 // ── Werkzeug-Ergebnis ────────────────────────────────────────────────────────
 
 /** Was die Laufzeit wirklich als Fehler zurückgibt — dieselbe Liste wie
- *  `services/roundtable.py::ERROR_PREFIXES`. */
+ *  `services/office.py::ERROR_PREFIXES`. */
 const ERROR_PREFIXES = ["FEHLER:", "FEHLER ", "TOOL-FEHLER:", "FS-FEHLER:", "CHECK-FEHLER:",
                         "❌", "⛔"];
 
@@ -274,7 +274,7 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
       const cmds: Cmd[] = [ensure(ev, roster)];
       if (isRunStatus(ev.status)) cmds.push({ k: "status", id, status: ev.status });
 
-      // Übergabe an den Elternlauf — der Kern der Roundtable-Choreografie: die Figur läuft
+      // Übergabe an den Elternlauf — der Kern der Choreografie: die Figur läuft
       // hinüber und reicht ihr Ergebnis weiter. Nur mit Roster, denn das `run_end` selbst kennt
       // seinen Elternteil nicht.
       //

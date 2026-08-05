@@ -66,10 +66,10 @@ export class Recorder {
 
   /** Gibt eine **Kopie** heraus.
    *
-   *  Roundtable dokumentiert den Fehler, den das verhindert: ein lebender Cursor lief über ein
-   *  Log, dessen `shift()` unter ihm wegrutschte. Jeder Verwurf am Kopf verschob alle Indizes
-   *  um eins, der Cursor übersprang die verschobenen Einträge — 59 Bearbeitungen und ein
-   *  kompletter Agent tauchten nie im Raum auf. Der Fehler sieht aus wie ein Engine-Fehler und
+   *  Der Fehler, den das verhindert: ein lebender Cursor läuft über ein
+   *  Log, dessen `shift()` unter ihm wegrutscht. Jeder Verwurf am Kopf verschiebt alle Indizes
+   *  um eins, der Cursor überspringt die verschobenen Einträge — Bearbeitungen und ganze
+   *  Agenten tauchen nie im Raum auf. Der Fehler sieht aus wie ein Engine-Fehler und
    *  ist ein Aliasing-Fehler; deshalb verlässt die eigene Sammlung dieses Objekt nie.
    *
    *  Die `LogEntry` selbst werden geteilt, nicht kopiert — sie sind nach dem Anlegen

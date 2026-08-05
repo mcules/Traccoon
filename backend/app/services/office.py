@@ -1,4 +1,4 @@
-"""Büro (roundtable) — die Naht zwischen Datenbank und Ansicht.
+"""Büro (office) — die Naht zwischen Datenbank und Ansicht.
 
 Alles, was das Büro je zu sehen bekommt, geht durch `step_events`. Die Historie-API liest
 `run_steps` und ruft sie; der Worker schreibt eine Zeile und ruft sie über `publish_step`.
@@ -42,14 +42,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.redis import PREFIX
 from ..models.agents import RunStep
 
-log = logging.getLogger("roundtable")
+log = logging.getLogger("office")
 
 # Version des Umschlags. Erhöhen, wenn ein Feld seine Bedeutung ändert — das Frontend
 # verweigert dann die Anzeige, statt eine falsche Deutung zu zeichnen.
 EVENT_VERSION = 1
 # EIN globaler Kanal; Fan-out und Autorisierung macht die WS-Brücke. Ein Kanal je Projekt
 # hätte projektlose Läufe nicht abbilden können und 40 Abos je Nutzer bedeutet.
-CHANNEL = f"{PREFIX}roundtable"
+CHANNEL = f"{PREFIX}office"
 # Wie weit ein Ereignis „gerade eben" ist (Anschluss an den Live-Strom nach dem Snapshot).
 LIVE_WINDOW_MS = 90_000
 EVENT_CAP_DEFAULT = 4_000

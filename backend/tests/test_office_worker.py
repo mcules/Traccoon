@@ -2,7 +2,7 @@
 
 Geprüft wird der Weg vom Modellzug bis zur `run_steps`-Zeile — mit gescriptetem Provider
 und ohne echten MCP-Server. Die Umformung Zeile → Ereignis ist anderswo geprüft
-(`test_roundtable_normalize`); hier interessiert, ob die Zeilen ÜBERHAUPT die richtigen
+(`test_office_normalize`); hier interessiert, ob die Zeilen ÜBERHAUPT die richtigen
 Felder tragen und in der richtigen Reihenfolge entstehen.
 
 Die harten Regressionen dieser Welle stehen ausdrücklich als eigene Tests da:
@@ -18,7 +18,7 @@ from app.models.agents import CostEntry, Run, RunStep
 from app.models.ops import ProviderModel
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from app.models.enums import StatusCategory
-from app.services import roundtable
+from app.services import office
 from app.worker import runtime as rt
 from app.worker.providers.base import ChatResponse, ProviderError, ToolCall
 from conftest import make_project, make_user
@@ -125,10 +125,10 @@ async def letzter_lauf(db) -> Run:
 
 
 def ereignisse(steps: list[RunStep], run: Run) -> list[dict]:
-    ctx = roundtable.RunCtx.from_run(run)
+    ctx = office.RunCtx.from_run(run)
     out: list[dict] = []
     for s in steps:
-        out += roundtable.step_events(s, ctx)
+        out += office.step_events(s, ctx)
     return out
 
 
@@ -191,7 +191,7 @@ async def test_reiner_werkzeugzug_sagt_nichts_im_raum(db, lauf):
     run = await letzter_lauf(db)
     zug = (await schritte(db))[2]
     assert zug.kind == "usage" and zug.content == "(Tool-Call)"     # Inhalt wie bisher
-    assert [e["kind"] for e in roundtable.step_events(zug, roundtable.RunCtx.from_run(run))] == ["usage"]
+    assert [e["kind"] for e in office.step_events(zug, office.RunCtx.from_run(run))] == ["usage"]
 
 
 async def test_fehlerhaftes_werkzeug_ist_belegt_gescheitert(db, lauf):
@@ -352,7 +352,7 @@ async def test_run_end_traegt_den_abschlussbericht(db, lauf):
     run = await letzter_lauf(db)
     ende = (await schritte(db))[-1]
     assert ende.kind == "run_end"
-    ereignis = roundtable.step_events(ende, roundtable.RunCtx.from_run(run))[0]
+    ereignis = office.step_events(ende, office.RunCtx.from_run(run))[0]
     assert ereignis["status"] == "success" and ereignis["ok"] is True
     assert ereignis["in_tokens"] == 10 and ereignis["out_tokens"] == 2
     assert ereignis["cost_priced"] is False      # kein Katalogeintrag im Test
@@ -367,11 +367,11 @@ async def test_blockierter_lauf_nennt_den_grund(db, lauf):
     assert ergebnis.status == "blocked" and run.blocker_kind == "ask_human"
     ende = (await schritte(db))[-1]
     assert ende.kind == "run_end"
-    assert roundtable.step_events(ende, roundtable.RunCtx.from_run(run))[0]["blocker_kind"] == "ask_human"
+    assert office.step_events(ende, office.RunCtx.from_run(run))[0]["blocker_kind"] == "ask_human"
 
 
 async def test_ereignisse_gehen_auch_live_raus(db, lauf, kein_redis):
     await lauf([antwort("fertig")])
     kanaele = {k for k, _ in kein_redis}
-    assert kanaele == {roundtable.CHANNEL}
+    assert kanaele == {office.CHANNEL}
     assert len(kein_redis) >= 3      # run_start, user_message, agent_text, run_end

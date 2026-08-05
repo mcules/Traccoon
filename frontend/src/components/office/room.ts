@@ -5,10 +5,10 @@
 // Sprites werden nie mitskaliert (PIXEL-CONTRACT.md Regel 1). Wer hier eine Größe in
 // Pufferpixeln hinterlegte, verrechnete die halbe Zeichenschicht um den Faktor 3,3.
 //
-// Die Verhältnisse folgen Roundtables Grundriss, weil der sich bewährt hat: zwei Schreibtisch-
+// Der Grundriss ist bewusst schlicht und lesbar: zwei Schreibtisch-
 // bänke links und rechts, dazwischen ein freier Gang für den runden Tisch, der Chefplatz oben
-// rechts als Blickfang, Tür oben, Kaffee links außen. Wo Roundtable keinen Wert vorgibt, steht
-// unten die Begründung des gewählten.
+// rechts als Blickfang, Tür oben, Kaffee links außen. Zu jedem gewählten Wert steht unten
+// die Begründung.
 
 import { MAX_SEATS, SCENE } from "./const.ts";
 import { hash32 } from "./ids.ts";

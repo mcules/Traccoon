@@ -1,7 +1,7 @@
 """Live-Transport des Büros — EIN Socket je Nutzer statt N Sockets je Projekt.
 
 Der Socket ist `GET /api/ws?token=`; er trägt ausschließlich Büro-Ereignisse aus dem
-einen Redis-Kanal `traccoon:roundtable` (`services.roundtable.CHANNEL`). Warum nicht
+einen Redis-Kanal `traccoon:office` (`services.office.CHANNEL`). Warum nicht
 einfach die vorhandenen Projekt-Sockets mitbenutzen:
 
 1. **Projektlose Läufe haben gar keinen Projektraum.** Job- und Assistentenläufe tragen
@@ -25,12 +25,12 @@ dort ebenfalls an).
     Client verbindet   → Server: {"type":"hello", …}
     Client:  {"type":"subscribe","scopes":[{"kind":"project","id":27}]}
              {"type":"subscribe","scopes":[{"kind":"global"}]}
-    Server:  {"type":"roundtable_ev","ev":{…}}
+    Server:  {"type":"office_ev","ev":{…}}
 
 **Wiederverbindungsprotokoll** (determinismuskritisch, deshalb hier festgehalten):
 
     verbinden → subscriben → eingehende Ereignisse PUFFERN
-    → Snapshot über GET /api/roundtable/sessions/{kind}/{ref}/events holen
+    → Snapshot über GET /api/office/sessions/{kind}/{ref}/events holen
     → gepufferte Ereignisse mit seq <= seq_to verwerfen → live gehen
 
 Der Client darf **nie** inkrementell mit `after_seq` pollen: `seq` stammt aus einer
@@ -71,10 +71,10 @@ from ..db import SessionLocal
 from ..models.enums import GlobalRole, UserStatus
 from ..models.project import Project, ProjectMember
 from ..models.user import User
-from ..services.roundtable import CHANNEL, EVENT_VERSION
+from ..services.office import CHANNEL, EVENT_VERSION
 from .deps import build_access_bulk
 
-log = logging.getLogger("roundtable.ws")
+log = logging.getLogger("office.ws")
 router = APIRouter()
 
 # Wie lange die einmal gerechnete Projektmenge gilt. 60 s ist der Kompromiss: eine
@@ -197,7 +197,7 @@ class UserConnectionManager:
 
     async def dispatch(self, ev: dict) -> None:
         """Ein Büro-Ereignis an alle, die es sehen dürfen UND sehen wollen."""
-        message = {"type": "roundtable_ev", "ev": ev}
+        message = {"type": "office_ev", "ev": ev}
         for conn in list(self.conns):
             if visible(ev, conn) and in_scope(ev, conn):
                 self.send(conn, message)
@@ -311,7 +311,7 @@ async def authenticate(token: str, db: AsyncSession) -> tuple[User | None, int]:
 # ── Der Socket ──────────────────────────────────────────────────────────────
 
 @router.websocket("/ws")
-async def roundtable_ws(websocket: WebSocket, token: str = "") -> None:
+async def office_ws(websocket: WebSocket, token: str = "") -> None:
     async with SessionLocal() as db:
         user, code = await authenticate(token, db)
         if user is None:
@@ -362,8 +362,8 @@ async def roundtable_ws(websocket: WebSocket, token: str = "") -> None:
 
 # ── Brücke und Sweeper ──────────────────────────────────────────────────────
 
-async def roundtable_bridge() -> None:
-    """Abonniert `traccoon:roundtable` und verteilt ACL-gefiltert an die Nutzer-Sockets.
+async def office_bridge() -> None:
+    """Abonniert `traccoon:office` und verteilt ACL-gefiltert an die Nutzer-Sockets.
 
     Der ACL-Sweeper hängt hier mit dran, damit das Lifespan nur EINEN Task kennt und der
     Sweeper garantiert mit der Brücke lebt und stirbt. Der Redis-Zugriff wird erst im
