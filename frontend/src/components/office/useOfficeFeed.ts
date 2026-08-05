@@ -41,6 +41,22 @@
 //   könnte. Fortgeschrieben wird er über den Socket, nicht über ein Neuladen.
 // · Bei `ApiError` mit Status 401 leitet `src/api.ts` bereits hart weiter — hier steht bewusst
 //   keine zweite Behandlung.
+//
+// ══ Zwei Betriebsarten, ein Weg ═════════════════════════════════════════════════════════════
+//
+// Mit `sid` ist der Raum **eine** Sitzung; Ereignisse fremder Sitzungen werden verworfen, weil
+// der Server nach Projekt filtert und nicht nach Raum.
+//
+// Ohne `sid` und mit `opts.alleSitzungen` ist der Raum das **Fenster**: der Schnappschuss kommt
+// aus `GET /office/events`, und live wird jedes Ereignis angenommen, das der Socket liefert —
+// der filtert bereits serverseitig auf das, was dieser Nutzer sehen darf (`api/office_ws.py`).
+// Das geht nur, weil `seq` aus `run_steps.id` stammt, einer SERIAL-Spalte: über Läufe **und**
+// Projekte hinweg monoton, also ergeben zwanzig Sitzungen EINE Folge und `Recorder.push`
+// entdoppelt sie mit derselben Regel wie eine einzelne. Der Sitzplatz (`hash32(run_id) % 12`)
+// ist ohnehin sitzungsunabhängig.
+//
+// Beide Arten nehmen denselben Weg durch diese Datei — es gibt einen Recorder, eine
+// Blätterschleife und einen Übergang von Puffer zu Live, nicht zwei.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -127,6 +143,24 @@ export interface FeedTotals {
   cost_partial: boolean;
 }
 
+/** Vorgabefenster des Modus „alle Sitzungen", in Stunden.
+ *
+ *  Muss zu `api/office.py::EVENTS_SINCE_HOURS_DEFAULT` passen — die Oberfläche schreibt die
+ *  Zahl in die Kopfzeile („der letzten 12 Stunden"), und eine Überschrift, die ein anderes
+ *  Fenster nennt als das gemessene, wäre schlimmer als gar keine. Warum zwölf: am Bestand
+ *  gemessen liegen darin 14 Läufe, bei 24 h sind es 23 und `office/const.ts` lässt
+ *  `MAX_ACTORS = 24` Figuren gleichzeitig zu — der Raum stünde dauerhaft an der Kante und
+ *  verdrängte bei jedem neuen Lauf eine Figur. */
+export const ALLE_FENSTER_H = 12;
+
+/** Zusatzschalter des Feeds. */
+export interface OfficeFeedOpts {
+  /** Ohne `sid` **alle** Sitzungen in einen Raum mischen, statt leer zu bleiben. */
+  alleSitzungen?: boolean;
+  /** Fenster dieses Modus in Stunden. */
+  sinceHours?: number;
+}
+
 export interface OfficeFeed {
   /** Lebt in einem Ref und wechselt nur bei einem Sitzungswechsel die Identität. */
   recorder: RecorderApi;
@@ -157,15 +191,19 @@ interface Snapshot {
  *  Das Blättern benutzt `after_seq` — und das ist der eine erlaubte Gebrauch: es läuft
  *  innerhalb **eines** Vorgangs vorwärts, und was dabei nachträglich mit kleinerer `seq`
  *  sichtbar wird, liegt bereits im Puffer des Sockets (der lief vorher an). Der Recorder
- *  fügt es an seinem Platz ein und wirft den Doppler weg. */
-async function fetchSnapshot(sid: Sid): Promise<Snapshot> {
+ *  fügt es an seinem Platz ein und wirft den Doppler weg.
+ *
+ *  `lade` ist der einzige Unterschied zwischen „eine Sitzung" und „alle Sitzungen": beide
+ *  Endpunkte liefern dieselbe Form, also blättert **eine** Schleife durch beide. Zwei
+ *  Schleifen wären zwei Gelegenheiten, die Reihenfolge unterschiedlich zu verlieren. */
+async function fetchSnapshot(lade: (afterSeq?: number) => Promise<EventPage>): Promise<Snapshot> {
   const events: Ev[] = [];
   let agents: Roster = [];
   let page: EventPage | null = null;
   let afterSeq: number | undefined;
 
   for (let i = 0; i < MAX_PAGES; i++) {
-    const p = await officeApi.events(sid, { limit: EVENT_PAGE_LIMIT, afterSeq });
+    const p = await lade(afterSeq);
     const batch = p.events ?? [];
     // Der Roster steht nur auf der ersten Seite; spätere Seiten überschreiben ihn nicht mit
     // einem leeren Feld — sonst wäre der Raum nach dem Blättern besetzungslos.
@@ -213,9 +251,17 @@ function rosterFromRunEnd(prev: RosterEntry | undefined, ev: EvRunEnd): RosterEn
 
 // ── Der Feed ────────────────────────────────────────────────────────────────────────────────
 
-export function useOfficeFeed(scope: Scope, sid?: Sid): OfficeFeed {
-  const key = sid ? sidKey(sid) : null;
+export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): OfficeFeed {
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
+  const sinceHours = opts?.sinceHours ?? ALLE_FENSTER_H;
+  /** „Alle Sitzungen": kein Raum gewählt **und** der Aufrufer will diesen Modus. Das
+   *  zweite Stück ist kein Zierrat — ohne `sid` ist auch der Projekt-Reiter, solange seine
+   *  Sitzungsliste noch unterwegs ist, und der soll dann nicht für einen Wimpernschlag das
+   *  ganze Projekt laden, um es sofort wieder wegzuwerfen. */
+  const alle = !sid && !!opts?.alleSitzungen;
+  // Die Identität des Logs. Sie wechselt beim Raumwechsel **und** beim Wechsel des
+  // Fensters — beides ist ein anderes Log, und der Recorder muss dazwischen leer sein.
+  const key = sid ? sidKey(sid) : (alle ? `alle:${scopeKey}:${sinceHours}` : null);
 
   // ── Refs: alles, was pro Ereignis angefasst wird, aber kein Rendern auslösen darf ─────────
   const recorderRef = useRef<RecorderApi | null>(null);
@@ -226,9 +272,14 @@ export function useOfficeFeed(scope: Scope, sid?: Sid): OfficeFeed {
   const bufferRef = useRef<Ev[]>([]);
   /** `false`, solange der Schnappschuss läuft — dann wird gepuffert statt aufgenommen. */
   const liveRef = useRef(false);
-  /** Aktuelle Sitzung, damit der Nachrichtenempfänger ohne Neuanmeldung mitzieht. */
-  const sidRef = useRef<string | null>(key);
-  sidRef.current = key;
+  /** Aktuelle Sitzung, damit der Nachrichtenempfänger ohne Neuanmeldung mitzieht.
+   *  Im Modus „alle Sitzungen" bleibt sie leer — dort trennt niemand. */
+  const sidRef = useRef<string | null>(sid ? sidKey(sid) : null);
+  sidRef.current = sid ? sidKey(sid) : null;
+  /** Spiegel für `accept`: der Empfänger hängt am Socket-Effekt und darf nicht bei jedem
+   *  Moduswechsel neu angemeldet werden. */
+  const alleRef = useRef(alle);
+  alleRef.current = alle;
 
   const wsRef = useRef<WebSocket | null>(null);
   const bumpTimerRef = useRef<number | null>(null);
@@ -264,7 +315,21 @@ export function useOfficeFeed(scope: Scope, sid?: Sid): OfficeFeed {
     const prev = map.get(ev.agent_id);
     if (ev.kind === "run_start") {
       if (prev) return;                       // der Schnappschuss kennt ihn schon
-      map.set(ev.agent_id, rosterFromRunStart(ev));
+      const neu = rosterFromRunStart(ev);
+      // Das Ereignis trägt die Projekt-**Id**, nicht den Schlüssel — den kennt nur der
+      // Schnappschuss. Steht schon jemand aus demselben Projekt im Raum, ist der Schlüssel
+      // damit belegt und nicht geraten; sonst bleibt er leer, und die Figur sitzt bis zum
+      // nächsten Schnappschuss unter „(ohne Projekt)". Das ist im Modus „alle Sitzungen"
+      // sichtbar, weil die Reiter dort nach Projekt gruppieren.
+      if (neu.project_id !== null) {
+        for (const r of map.values()) {
+          if (r.project_id === neu.project_id && r.project_key) {
+            neu.project_key = r.project_key;
+            break;
+          }
+        }
+      }
+      map.set(ev.agent_id, neu);
     } else {
       map.set(ev.agent_id, rosterFromRunEnd(prev, ev));
     }
@@ -276,7 +341,11 @@ export function useOfficeFeed(scope: Scope, sid?: Sid): OfficeFeed {
     // Vertragsversion: lieber nichts zeigen als etwas Falsches (siehe `EVENT_VERSION`).
     if (ev.v !== EVENT_VERSION) return;
     // Der Server filtert nach Projekt, nicht nach Raum — die Sitzung trennt der Client.
-    if (!sidRef.current || ev.sid !== sidRef.current) return;
+    // Im Modus „alle Sitzungen" gibt es nichts zu trennen: was der Socket liefert, ist
+    // bereits genau das, was dieser Nutzer sehen darf (`api/office_ws.py::visible`), und
+    // der Raum zeigt es zusammen. Es hier trotzdem wegzuwerfen war die eine Zeile, die
+    // die Übersicht bisher unmöglich machte.
+    if (!alleRef.current && (!sidRef.current || ev.sid !== sidRef.current)) return;
     if (!liveRef.current) {
       const buf = bufferRef.current;
       buf.push(ev);
@@ -402,8 +471,15 @@ export function useOfficeFeed(scope: Scope, sid?: Sid): OfficeFeed {
   // also bei einem Loch, und ein Loch ist jede Wiederverbindung.
   const snapshot = useQuery({
     queryKey: ["office", "events", key, generation],
-    queryFn: () => fetchSnapshot(sid!),
-    enabled: !!sid && generation > 0,
+    queryFn: () => fetchSnapshot(sid
+      ? (afterSeq) => officeApi.events(sid, { limit: EVENT_PAGE_LIMIT, afterSeq })
+      // Der Umfang reist als `project_id` mit — er **verengt** serverseitig und
+      // autorisiert nie; die erlaubte Menge rechnet das Backend ohnehin selbst.
+      : (afterSeq) => officeApi.allEvents({
+        limit: EVENT_PAGE_LIMIT, afterSeq, sinceHours,
+        ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
+      })),
+    enabled: (!!sid || alle) && generation > 0,
     staleTime: Infinity,
     gcTime: 5 * 60_000,
     refetchOnWindowFocus: false,
@@ -415,7 +491,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid): OfficeFeed {
   // und genau deshalb braucht der Übergang keine Sperre.
   useEffect(() => {
     const data = snapshot.data;
-    if (!data || !sid) return;
+    if (!data) return;
     const rec = recorderRef.current;
     if (!rec) return;
 
@@ -442,6 +518,12 @@ export function useOfficeFeed(scope: Scope, sid?: Sid): OfficeFeed {
   //
   // Eine ganz normale Abfrage: Kosten ändern sich am Laufende, nicht je Schritt. Solange etwas
   // läuft, wird nachgesehen; danach nicht mehr.
+  //
+  // Im Modus „alle Sitzungen" gibt es sie **nicht**: der Roll-up ist je Raum gebaut, und ein
+  // Aufruf je gezeigter Sitzung wären zwanzig Runden für eine Summe. `computeTotals` fällt
+  // dann auf den Roster zurück — Tokens stehen dort ohnehin autoritativ, die Kosten sind die
+  // abgerechneten je Lauf, und `cost_priced` trägt das „≥" wie überall sonst. Die Kopfzeile
+  // meint damit die Summe über genau die Sitzungen, die im Raum stehen.
   const sessionRunning = roster.some((r) => r.status === "running");
   const cost = useQuery({
     queryKey: ["office", "cost", key],

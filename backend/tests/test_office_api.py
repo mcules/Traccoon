@@ -300,3 +300,221 @@ async def test_issue_sid_enthaelt_delegierte_kindlaeufe(client, db):
     liste = await client.get(f"/projects/{proj.id}/office/sessions", headers=auth(anna))
     session = liste.json()["sessions"][0]
     assert session["runs"] == 3 and session["agents"] == 3 and session["events"] == 6
+
+
+# ── Ereignisse ALLER Sitzungen (`GET /office/events`) ─────────────────────────
+
+async def test_alle_ereignisse_mischen_sitzungen_in_ein_log(client, db):
+    """Der Raum der globalen Seite: mehrere Sitzungen, EIN Log, streng nach `seq`.
+
+    Das trägt nur, weil `seq` aus `run_steps.id` kommt — einer SERIAL-Spalte, die über
+    Läufe und Projekte hinweg monoton ist. Dass die Folge streng aufsteigend und
+    doppelfrei ist, ist deshalb keine Kosmetik: `Recorder.push` entdoppelt genau über
+    diese Zahl und verwürfe sonst still ein Ereignis.
+    """
+    anna = await make_user(db, "anna")
+    a = await make_project(db, "AAA", "Alpha")
+    b = await make_project(db, "BBB", "Beta")
+    await add_member(db, a, anna, ProjectRole.member)
+    await add_member(db, b, anna, ProjectRole.member)
+    ia, ib = await ticket(db, a), await ticket(db, b)
+    ra = await lauf(db, issue=ia, agent="developer")
+    rb = await lauf(db, issue=ib, agent="architect")
+    eigen = await lauf(db, owner=anna, agent="assistant")
+    for run in (ra, rb, eigen):
+        await schritte(db, run, 3)
+
+    r = await client.get("/office/events", headers=auth(anna))
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    seqs = [e["seq"] for e in body["events"]]
+    assert seqs == sorted(seqs) and len(seqs) == len(set(seqs))
+    assert {e["sid"] for e in body["events"]} == {
+        f"issue:{ia.id}", f"issue:{ib.id}", f"run:{eigen.id}"}
+    assert body["sessions"] == 3 and body["runs"] == 3
+    assert body["seq_from"] == seqs[0] and body["seq_to"] == seqs[-1]
+    assert body["count"] == len(seqs) and body["truncated"] is False
+    # Statt einer `sid` trägt die Antwort das Fenster.
+    assert "sid" not in body
+    assert body["since_hours"] == rt_api.EVENTS_SINCE_HOURS_DEFAULT
+    assert body["window_from"] < body["window_to"]
+    # Keine Kopfzeile: vierzehn Titel für einen Raum wären vierzehn Widersprüche.
+    assert "session_seen" not in {e["kind"] for e in body["events"]}
+    # Jede Figur kommt herein und geht wieder — über alle drei Sitzungen hinweg.
+    assert {e["run_id"] for e in body["events"] if e["kind"] == "run_start"} == {
+        ra.id, rb.id, eigen.id}
+    assert {e["run_id"] for e in body["events"] if e["kind"] == "run_end"} == {
+        ra.id, rb.id, eigen.id}
+
+    roster = {a_["run_id"]: a_ for a_ in body["agents"]}
+    assert set(roster) == {ra.id, rb.id, eigen.id}
+    # Ohne `project_key`/`issue_key` fiele in der Kopfzeile jede Figur in „(ohne Projekt)"
+    # und die Sitzungsreiter blieben unsichtbar.
+    assert roster[ra.id]["project_key"] == "AAA" and roster[ra.id]["issue_key"] == "AAA-1"
+    assert roster[rb.id]["project_key"] == "BBB"
+    assert roster[eigen.id]["project_key"] == "" and roster[eigen.id]["project_id"] is None
+
+
+async def test_alle_ereignisse_zeigen_nur_erlaubtes(client, db):
+    """Dieselbe Sichtbarkeitsmenge wie `/office/sessions` — es gibt genau eine Definition
+    von „darf sehen" (`_visible_runs`). Der projektlose Lauf eines anderen bleibt draußen,
+    der Admin sieht beides."""
+    anna = await make_user(db, "anna")
+    bert = await make_user(db, "bert")
+    chef = await make_user(db, "chef", admin=True)
+    meins = await make_project(db, "AAA", "Alpha")
+    fremd = await make_project(db, "BBB", "Beta")
+    await add_member(db, meins, anna, ProjectRole.member)
+    i1, i2 = await ticket(db, meins), await ticket(db, fremd)
+    r1 = await lauf(db, issue=i1)
+    r2 = await lauf(db, issue=i2)
+    r3 = await lauf(db, owner=bert, agent="assistant")
+    for run in (r1, r2, r3):
+        await schritte(db, run, 2)
+
+    body = (await client.get("/office/events", headers=auth(anna))).json()
+    assert {e["run_id"] for e in body["events"]} == {r1.id}
+    assert {a_["run_id"] for a_ in body["agents"]} == {r1.id}
+
+    alles = (await client.get("/office/events", headers=auth(chef))).json()
+    assert {a_["run_id"] for a_ in alles["agents"]} == {r1.id, r2.id, r3.id}
+
+
+async def test_alle_ereignisse_project_id_verengt_und_autorisiert_nicht(client, db):
+    """`?project_id=` ist ein Filter, kein Schlüssel. Ein fremdes Projekt liefert Stille —
+    keinen Zugang und auch keine 403, die dessen Existenz verriete."""
+    anna = await make_user(db, "anna")
+    meins = await make_project(db, "AAA", "Alpha")
+    fremd = await make_project(db, "BBB", "Beta")
+    await add_member(db, meins, anna, ProjectRole.member)
+    await add_member(db, fremd, anna, ProjectRole.member)
+    i1, i2 = await ticket(db, meins), await ticket(db, fremd)
+    r1, r2 = await lauf(db, issue=i1), await lauf(db, issue=i2)
+    await schritte(db, r1, 2)
+    await schritte(db, r2, 2)
+
+    beide = (await client.get("/office/events", headers=auth(anna))).json()
+    assert {a_["run_id"] for a_ in beide["agents"]} == {r1.id, r2.id}
+
+    eng = (await client.get(f"/office/events?project_id={meins.id}", headers=auth(anna))).json()
+    assert {a_["run_id"] for a_ in eng["agents"]} == {r1.id}
+
+    bert = await make_user(db, "bert")
+    stille = await client.get(f"/office/events?project_id={meins.id}", headers=auth(bert))
+    assert stille.status_code == 200
+    assert stille.json()["events"] == [] and stille.json()["agents"] == []
+
+
+async def test_alle_ereignisse_klemmen_das_run_start_auf_den_fensteranfang(client, db):
+    """Ein Lauf, der VOR dem Fenster begann, bekommt seine `run_start`-Grenze mit
+    `run.started_at` — also mit einem Zeitstempel von gestern. Ungeklemmt zöge die
+    Zeitleiste den ganzen Raum dorthin auf, und das sähe aus wie ein Engine-Fehler."""
+    anna = await make_user(db, "anna")
+    proj = await make_project(db, "AAA", "Alpha")
+    await add_member(db, proj, anna, ProjectRole.member)
+    issue = await ticket(db, proj)
+    # Startet vor 30 Stunden, arbeitet aber noch — die Schritte liegen im Fenster.
+    alt = await lauf(db, issue=issue, minuten=30 * 60)
+    await schritte(db, alt, 2)
+
+    body = (await client.get("/office/events?since_hours=12", headers=auth(anna))).json()
+    start = next(e for e in body["events"] if e["kind"] == "run_start")
+    geklemmt = dt.datetime.fromisoformat(start["ts"].replace("Z", "+00:00"))
+    assert geklemmt >= NOW - dt.timedelta(hours=12, minutes=2)
+    assert geklemmt < NOW - dt.timedelta(hours=11)
+
+
+async def test_alle_ereignisse_ohne_seq_kollision_am_laufuebergang(client, db):
+    """Zwei Läufe mit benachbarten Zeilen-IDs: das `run_end` des einen (`letzte*4+3`) und
+    das `run_start` des nächsten (`erste*4-1`) sind DIESELBE Zahl. Über Sitzungen hinweg
+    ist das der Normalfall, nicht der Ausreißer — und `Recorder.push` verwürfe das zweite
+    Ereignis still. Also muss die Antwort die Kollision selbst auflösen."""
+    anna = await make_user(db, "anna")
+    proj = await make_project(db, "AAA", "Alpha")
+    await add_member(db, proj, anna, ProjectRole.member)
+    a = await make_project(db, "BBB", "Beta")
+    await add_member(db, a, anna, ProjectRole.member)
+    i1, i2 = await ticket(db, proj), await ticket(db, a)
+    erst = await lauf(db, issue=i1, agent="developer")
+    zeilen_erst = await schritte(db, erst, 2)
+    zweit = await lauf(db, issue=i2, agent="architect")
+    zeilen_zweit = await schritte(db, zweit, 2)
+    # Der Aufbau muss die Kollision überhaupt erzeugen, sonst prüft der Test nichts.
+    assert zeilen_zweit[0].id == zeilen_erst[-1].id + 1
+
+    body = (await client.get("/office/events", headers=auth(anna))).json()
+    seqs = [e["seq"] for e in body["events"]]
+    assert len(seqs) == len(set(seqs)) and seqs == sorted(seqs)
+    grenzen = [(e["kind"], e["run_id"]) for e in body["events"]
+               if e["kind"] in ("run_start", "run_end")]
+    assert ("run_end", erst.id) in grenzen and ("run_start", zweit.id) in grenzen
+    # Das Ende geht dem nächsten Anfang voraus: erst geht jemand, dann kommt der Nächste.
+    assert grenzen.index(("run_end", erst.id)) < grenzen.index(("run_start", zweit.id))
+
+
+async def test_alle_ereignisse_kappen_vom_aeltesten_ende_und_behalten_den_roster(client, db):
+    """Gekappt wird vom ÄLTESTEN Ende — der Raum zeigt die Gegenwart.
+
+    Damit fällt zuerst das `run_start` weg, und ohne Gegenmaßnahme fehlte die Figur im
+    Raum, obwohl sie noch arbeitet. Zwei Dinge fangen das: die Fenstergrenzen werden aus
+    den GELADENEN Zeilen gerechnet (der Lauf bekommt also ein frisches `run_start` an
+    seinem ersten sichtbaren Schritt), und `agents[]` kommt aus `runs`, nicht aus den
+    Ereignissen.
+
+    Wer gar keinen sichtbaren Schritt mehr hat, steht auch nicht im Roster — anders als
+    bei `session_events` ist der Roster hier die Besetzung des **gezeigten** Fensters, und
+    die Kopfzeile soll die Summe über das zählen, was im Raum steht.
+    """
+    anna = await make_user(db, "anna")
+    proj = await make_project(db, "AAA", "Alpha")
+    await add_member(db, proj, anna, ProjectRole.member)
+    zwei = await make_project(db, "BBB", "Beta")
+    drei = await make_project(db, "CCC", "Gamma")
+    await add_member(db, zwei, anna, ProjectRole.member)
+    await add_member(db, drei, anna, ProjectRole.member)
+    i1, i2, i3 = await ticket(db, proj), await ticket(db, zwei), await ticket(db, drei)
+    ganz_raus = await lauf(db, issue=i1, agent="planner")
+    halb = await lauf(db, issue=i2, agent="developer")
+    neu_ = await lauf(db, issue=i3, agent="architect")
+    await schritte(db, ganz_raus, 3)
+    zeilen_halb = await schritte(db, halb, 3)
+    await schritte(db, neu_, 3)
+
+    voll = (await client.get("/office/events", headers=auth(anna))).json()
+    aeltestes = min(e["seq"] for e in voll["events"])
+
+    # Vier Zeilen: der letzte Schritt von `halb` plus die drei von `neu_`.
+    body = (await client.get("/office/events?limit=4", headers=auth(anna))).json()
+    assert body["truncated"] is True
+    assert body["seq_from"] > aeltestes
+    assert all(e["seq"] >= body["seq_from"] for e in body["events"])
+    assert zeilen_halb[0].id * 4 + 1 < body["seq_from"]
+
+    # `halb` hat noch einen sichtbaren Schritt — also kommt die Figur herein, obwohl ihr
+    # echtes `run_start` unter der Kappung liegt.
+    assert {e["run_id"] for e in body["events"] if e["kind"] == "run_start"} == {
+        halb.id, neu_.id}
+    assert {a_["run_id"] for a_ in body["agents"]} == {halb.id, neu_.id}
+    assert ganz_raus.id not in {e["run_id"] for e in body["events"]}
+
+
+async def test_alle_ereignisse_halten_sich_ans_fenster(client, db):
+    """`since_hours` ist die ganze Aussage: was älter ist, gehört nicht in den Raum."""
+    anna = await make_user(db, "anna")
+    proj = await make_project(db, "AAA", "Alpha")
+    await add_member(db, proj, anna, ProjectRole.member)
+    issue = await ticket(db, proj)
+    run = await lauf(db, issue=issue)
+    zeilen = await schritte(db, run, 2)
+    for zeile in zeilen:
+        zeile.created_at = NOW - dt.timedelta(hours=30)
+        db.add(zeile)
+    await db.commit()
+
+    eng = (await client.get("/office/events?since_hours=12", headers=auth(anna))).json()
+    assert eng["events"] == [] and eng["agents"] == [] and eng["sessions"] == 0
+
+    weit = (await client.get("/office/events?since_hours=48", headers=auth(anna))).json()
+    assert {a_["run_id"] for a_ in weit["agents"]} == {run.id}
+    assert weit["since_hours"] == 48

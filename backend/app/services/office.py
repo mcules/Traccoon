@@ -245,6 +245,12 @@ def _ts(value: dt.datetime | None) -> str:
     return f"{value:%Y-%m-%dT%H:%M:%S}.{value.microsecond // 1000:03d}Z"
 
 
+# Öffentlicher Name für `_ts`. Wer eine Zeit **in** ein fertiges Ereignis schreibt (die
+# Fensterklemmung von `GET /office/events`), muss exakt denselben Text erzeugen wie der, der
+# das Ereignis gebaut hat — zwei Schreibweisen desselben Moments wären zwei Zeitachsen.
+ts_text = _ts
+
+
 def _event(ctx: RunCtx, *, seq: int, ts: str, kind: str, **fields: Any) -> dict:
     """Der gemeinsame Umschlag. `project_id`/`owner_id` hängen an JEDEM Ereignis, damit die
     WS-Brücke ohne DB-Zugriff entscheiden kann, wer es sehen darf."""
@@ -460,6 +466,40 @@ def _run_end_fields(src: dict) -> dict:
         "cost_usd": float(src.get("cost_usd") or 0.0),
         "cost_priced": src.get("cost_priced"),
     }
+
+
+def entdoppeln_seq(events: list[dict]) -> int:
+    """Doppelte `seq` in einer **bereits sortierten** Liste auflösen — die Falle jedes
+    sitzungsübergreifenden Logs. Rückgabe: wie viele verschoben wurden.
+
+    Die nachgereichten Grenzen sitzen zwischen den Zeilen: `run_end` auf `letzte*4 + 3`,
+    `run_start` auf `erste*4 - 1`. Das ist dieselbe Zahl, sobald der nächste Lauf mit der
+    unmittelbar folgenden Zeilen-ID anfängt — und weil Läufe hintereinander laufen, ist das
+    der Normalfall, nicht der Ausreißer (gemessen 13 Kollisionen an einem echten Tag mit 21
+    Läufen). Innerhalb EINER Sitzung fällt das kaum auf, über Sitzungen hinweg trifft es
+    fast jeden Übergang.
+
+    Und es wäre nicht sichtbar, sondern still: der Recorder entdoppelt über `seq`
+    (`office/recorder.ts`) und verwürfe das zweite Ereignis — ein Agent käme nie herein oder
+    ginge nie. Deshalb rückt der Nachzügler auf die nächste freie Zahl. Die ist `erste*4 + 0`
+    und damit der reservierte Slot 0 seiner eigenen ersten Zeile: noch immer vor deren
+    Hauptereignis, also bleibt die Erzählung heil.
+
+    Verschoben wird nur nach oben und nur bei Gleichstand — die Reihenfolge der bereits
+    sortierten Liste bleibt dadurch unangetastet.
+
+    Steht hier und nicht beim Aufrufer, weil `seq` diesem Modul gehört: Film (`office_film`)
+    und Raum (`api/office.GET /office/events`) mischen dieselben Sitzungen und dürfen die
+    Kollision nicht zweimal — womöglich verschieden — auflösen.
+    """
+    vorher = -1
+    verschoben = 0
+    for ev in events:
+        if ev["seq"] <= vorher:
+            ev["seq"] = vorher + 1
+            verschoben += 1
+        vorher = ev["seq"]
+    return verschoben
 
 
 def run_boundary_events(run, ctx: RunCtx, *, first_step_id: int | None,

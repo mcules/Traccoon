@@ -29,6 +29,15 @@ dieselbe Route danach ohne eine Zeile Änderung. **Deployments von vor dem Watch
 kommen auf demselben Weg dazu (`deployment_events`, geliehene `seq`) — eine zusätzliche
 Abfrage für die ganze Sitzung, nicht eine je Lauf, und nur wenn die Sitzung Tickets hat.
 
+**Und ein Raum, der ALLE Sitzungen zeigt.** `GET /office/events` mischt das Fenster der
+letzten Stunden sitzungsübergreifend in EIN Log. Das geht nur, weil `seq` aus einer
+SERIAL-Spalte kommt und damit über Läufe **und** Projekte hinweg monoton ist; die Fallen
+(Fensterklemmung der nachgereichten Grenzen, `seq`-Kollision an jedem Laufübergang) sind
+dieselben, die `services/office_film.py` für den Tagesfilm schon gelöst hat — die
+Entdopplung ist deshalb nach `services/office.entdoppeln_seq` gewandert und wird von
+beiden gelesen. Die Rechte kommen unverändert aus `_visible_runs`; `tages_ereignisse`
+selbst ist **keine** Vorlage für den Rechteweg, die Funktion kennt gar keine ACL.
+
 **Unautorisiert ist 404, nie 403.** `build_access` macht das im ganzen Repo so
 (`deps.py:165-166`); eine neue Fläche, die 403 sagt, verriete die Existenz fremder
 Tickets. Bei Ereignis- und Kostenabruf wird die Berechtigung aus der **Session** abgeleitet
@@ -55,7 +64,8 @@ from ..models.user import User
 from ..services.office import (
     EVENT_CAP_DEFAULT, EVENT_CAP_MAX, EVENT_VERSION, LIVE_WINDOW_MS, SEQ_SLOTS,
     PriceTable, RunCtx, deploy_anchor_step_id, deploy_step_id, deployment_events,
-    run_boundary_events, session_id, session_seen_event, step_events,
+    entdoppeln_seq, run_boundary_events, session_id, session_seen_event, step_events,
+    ts_text,
 )
 from .deps import Access, build_access, get_current_user, get_project_access
 # Die erlaubte Projektmenge kommt aus DERSELBEN Funktion wie beim Live-Socket, und die
@@ -270,6 +280,15 @@ async def _step_bounds(db: AsyncSession, run_ids: list[int]) -> dict[int, dict]:
                  "has_start": bool(starts or 0), "has_end": bool(ends or 0)}
         for run_id, first, last, count, starts, ends in rows
     }
+
+
+async def _project_keys(db: AsyncSession, project_ids) -> dict[int, str]:
+    """`project_id → key` in EINER Abfrage. `None` und 0 fallen unterwegs weg."""
+    ids = {int(p) for p in project_ids if p}
+    if not ids:
+        return {}
+    return dict((await db.execute(
+        select(Project.id, Project.key).where(Project.id.in_(ids)))).all())
 
 
 def _entry_priced(priced: bool | None, provider: str, model: str, prices: PriceTable) -> bool:
@@ -560,16 +579,27 @@ async def global_sessions(
 
 # ── Ereignisse ──────────────────────────────────────────────────────────────
 
-def _agent_row(run: Run, billed: dict | None) -> dict:
+def _agent_row(run: Run, billed: dict | None, *,
+               issue_key: str = "", project_key: str = "") -> dict:
     """Eine Zeile des `agents[]`-Rosters — direkt aus `runs`, nicht aus den Ereignissen.
 
     Der Roster verdient seinen Platz genau dann, wenn gekappt wird: abgeschnitten wird vom
     ÄLTESTEN Ende (der Raum soll die Gegenwart zeigen), und damit fielen zuerst die
     `run_start`-Ereignisse weg — das Büro bliebe leer, obwohl alle Agenten da sind.
+
+    **`issue_key`/`project_key` gehören dazu, seit ein Raum mehrere Sitzungen zeigt.** Die
+    Sitzungsreiter der Kopfzeile gruppieren den Roster danach (`TopBar.sitzungsSchluessel`:
+    im Projekt nach Ticket, global nach Projekt) und dimmen, was nicht dazugehört. Ohne
+    diese beiden Felder fiele **jede** Figur in „(ohne Projekt)" — die Reiterzeile bliebe
+    einelementig und damit unsichtbar, und genau so sah sie bisher aus. Leerer Text heißt
+    „nicht bekannt"; der Aufrufer reicht nach, was er ohnehin geladen hat, statt dass hier
+    eine Runde je Lauf entstünde.
     """
     tokens = billed or {}
     return {
         "run_id": run.id, "agent_id": f"run:{run.id}", "agent": run.agent or "",
+        "issue_key": issue_key or "", "project_id": run.project_id,
+        "project_key": project_key or "",
         "phase": run.phase or "", "provider": run.provider or "", "model": run.model or "",
         "parent_run_id": run.parent_run_id, "parent_tool_use_id": run.parent_tool_use_id,
         "spawn_depth": int(run.spawn_depth or 0), "status": run.status or "",
@@ -691,6 +721,8 @@ async def session_events(
     if issue_ids:
         issue_keys = dict((await db.execute(
             select(Issue.id, Issue.key).where(Issue.id.in_(issue_ids)))).all())
+    project_keys = await _project_keys(
+        db, {r.project_id for r in runs} | {issue.project_id if issue else None})
 
     ctxs = {r.id: RunCtx.from_run(r, issue_key=issue_keys.get(r.issue_id or 0, "")) for r in runs}
     events: list[dict] = []
@@ -728,10 +760,7 @@ async def session_events(
         # unter dem ersten echten Ereignis. Nur beim Vollabruf — beim Nachfassen mit
         # `after_seq` hat der Client sie längst und bekäme sie sonst mit neuer `seq`
         # ein zweites Mal (die Entdopplung des Recorders läuft über `seq`).
-        project_key = ""
-        if root.project_id or (issue and issue.project_id):
-            project = await db.get(Project, root.project_id or issue.project_id)
-            project_key = project.key if project else ""
+        project_key = project_keys.get(root.project_id or (issue.project_id if issue else 0) or 0, "")
         title = (issue.summary if issue else "") or root.agent or f"Lauf {root.id}"
         events.insert(0, session_seen_event(
             ctxs[root.id], title=title, project_key=project_key,
@@ -744,9 +773,195 @@ async def session_events(
         "seq_to": events[-1]["seq"] if events else 0,
         "count": len(events), "truncated": truncated,
         "purged": total_steps == 0,
-        "agents": [_agent_row(r, billed.get(r.id)) for r in runs],
+        "agents": [_agent_row(r, billed.get(r.id),
+                              issue_key=issue_keys.get(r.issue_id or 0, ""),
+                              project_key=project_keys.get(r.project_id or 0, ""))
+                   for r in runs],
         "events": events,
     }
+
+
+# ── Ereignisse ALLER Sitzungen (ein Raum für die globale Seite) ─────────────
+#
+# Warum das überhaupt zusammengeht: `seq = run_steps.id * SEQ_SLOTS + slot`, und
+# `run_steps.id` ist SERIAL — global monoton über **alle** Läufe und Projekte. Ereignisse
+# verschiedener Sitzungen ergeben damit EINE aufsteigende Folge, und `Recorder.push`
+# entdoppelt genau über diese Zahl. Auch der Sitzplatz trägt: `seatOf` rechnet
+# `hash32(run_id) % 12`, also sitzungsunabhängig.
+#
+# Was hier NICHT passiert und warum:
+#
+# · **Kein `session_seen`.** Die Kopfzeile ist ein Titel je Raum; vierzehn Titel für einen
+#   Raum wären vierzehn Widersprüche. Der Film macht es aus demselben Grund nicht
+#   (`services/office_film.py`, Falle 3), und `mapEvent` erzeugt daraus ohnehin nichts.
+# · **Keine Bestands-Deployments** (`_legacy_deploy_events`). Die leihen sich die `seq`
+#   einer fremden Schrittzeile, die zeitlich am nächsten liegt — über Sitzungen hinweg
+#   wäre das mit hoher Wahrscheinlichkeit die Zeile eines *anderen* Laufs, und der Deploy
+#   stünde mit fremder `sid` im falschen Zimmer. Deployments seit dem Watcher haben eine
+#   echte Zeile und kommen ganz normal durch `step_events`.
+
+# Vorgabefenster. Gemessen am Bestand (05.08.2026): 1 h → 1 Lauf, 6 h → 6, **12 h → 14**,
+# 24 h → 23, 72 h → 69. `office/const.ts` lässt `MAX_ACTORS = 24` Figuren gleichzeitig zu
+# und verdrängt darüber (erst `retired`, dann `done`, dann die älteste) — bei 24 h stünde
+# der Raum also dauerhaft an der Kante und verlöre bei jedem neuen Lauf eine Figur, bei
+# 72 h flackerte er. Zwölf Stunden lassen reichlich Luft und decken trotzdem einen ganzen
+# Arbeitstag rückwärts ab. Die Oberfläche nennt das Fenster ausdrücklich („der letzten
+# 12 Stunden") — ein stiller Ausschnitt wäre eine Behauptung über den Tag.
+EVENTS_SINCE_HOURS_DEFAULT = 12
+
+
+@router.get("/office/events")
+async def all_events(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+    since_hours: int = EVENTS_SINCE_HOURS_DEFAULT,
+    limit: int = EVENT_CAP_DEFAULT,
+    after_seq: int = 0,
+    project_id: int | None = None,
+):
+    """Ein Schnappschuss über **alle** Sitzungen eines Zeitfensters — die globale Seite.
+
+    Antwortform ist die von `session_events`, damit das Frontend denselben Weg nimmt; statt
+    der `sid` trägt sie das Fenster (`since_hours`, `window_from`, `window_to`) und sagt,
+    wie viele Sitzungen und Läufe darin zusammenkamen.
+
+    **Rechte kommen aus `_visible_runs`** — derselben Funktion wie bei `/office/sessions`
+    und damit letztlich aus `compute_acl`. Es gibt keine zweite Definition von „darf
+    sehen". `project_id` **verengt** die ohnehin erlaubte Menge und autorisiert nie: es
+    steht als zusätzliches UND daneben, nicht an ihrer Stelle. Ein fremdes Projekt liefert
+    deshalb eine leere Antwort, keinen Zugang und auch keine 403 (die verriete die
+    Existenz).
+
+    Gekappt wird wie dort vom **ältesten** Ende — der Raum soll die Gegenwart zeigen. Der
+    Roster (`agents[]`) bleibt trotzdem vollständig: er kommt aus `runs`, nicht aus den
+    Ereignissen, und ohne ihn fehlten genau die Figuren, deren `run_start` der Kappung zum
+    Opfer fiel.
+    """
+    cap = _clamp(limit, 1, EVENT_CAP_MAX)
+    since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
+    now = dt.datetime.now(dt.timezone.utc)
+    cutoff = now - dt.timedelta(hours=since_hours)
+
+    where = await _visible_runs(db, user)
+    if project_id is not None:
+        where = and_(where, Run.project_id == project_id)
+
+    def leer(agents=(), events=(), truncated=False) -> dict:
+        return {
+            "v": EVENT_VERSION, "scope": "all",
+            "since_hours": since_hours,
+            "window_from": _iso(cutoff), "window_to": _iso(now),
+            "sessions": 0, "runs": len(agents),
+            "seq_from": 0, "seq_to": 0, "count": 0,
+            "truncated": truncated, "purged": False,
+            "agents": list(agents), "events": list(events),
+        }
+
+    # Absteigend holen und danach umdrehen (wie in `session_events`): aufsteigend mit LIMIT
+    # bekäme man den ANFANG des Fensters — also ausgerechnet das, was niemand sehen will,
+    # wenn gerade etwas läuft. `cap + 1` verrät die Kappung ohne ein zweites COUNT.
+    after_id = max(0, after_seq // SEQ_SLOTS)
+    step_rows = (await db.execute(
+        select(RunStep).join(Run, Run.id == RunStep.run_id)
+        .where(where, RunStep.created_at >= cutoff, RunStep.id >= after_id)
+        .order_by(RunStep.id.desc()).limit(cap + 1)
+    )).scalars().all()
+    truncated = len(step_rows) > cap
+    steps = sorted(step_rows[:cap] if truncated else list(step_rows), key=lambda s: s.id)
+    if not steps:
+        return leer(truncated=truncated)
+
+    run_ids = sorted({s.run_id for s in steps})
+    runs = sorted(
+        (await db.execute(select(Run).where(Run.id.in_(run_ids)))).scalars().all(),
+        key=lambda r: r.id)
+
+    issue_ids = {r.issue_id for r in runs if r.issue_id}
+    issue_keys: dict[int, str] = {}
+    if issue_ids:
+        issue_keys = dict((await db.execute(
+            select(Issue.id, Issue.key).where(Issue.id.in_(issue_ids)))).all())
+    project_keys = await _project_keys(db, {r.project_id for r in runs})
+
+    ctxs = {r.id: RunCtx.from_run(r, issue_key=issue_keys.get(r.issue_id or 0, ""))
+            for r in runs}
+
+    # Grenzen des **Fensters** je Lauf, bewusst aus den GELADENEN Zeilen und nicht aus
+    # `_step_bounds` über den ganzen Lauf: ob ein `run_start` da ist, muss sich auf das
+    # Fenster beziehen. Ein Lauf, dessen Startzeile gestern liegt, hätte sonst heute keinen
+    # Auftritt — sein Agent säße nie am Schreibtisch. Nebenbei liegen damit alle
+    # synthetisierten Grenzen zwischen `steps[0]` und `steps[-1]`, weshalb hier (anders als
+    # in `session_events`) kein zusätzlicher Kappungsboden nötig ist.
+    fenster: dict[int, dict] = {}
+    for s in steps:
+        b = fenster.setdefault(s.run_id, {"first": s.id, "last": s.id,
+                                          "has_start": False, "has_end": False})
+        b["last"] = s.id
+        art = (getattr(s, "kind", "") or "").strip()
+        if art == "run_start":
+            b["has_start"] = True
+        elif art == "run_end":
+            b["has_end"] = True
+
+    events: list[dict] = []
+    for s in steps:
+        ctx = ctxs.get(s.run_id)
+        if ctx is not None:
+            events.extend(step_events(s, ctx))
+
+    fensteranfang = ts_text(cutoff)
+    for run in runs:
+        b = fenster.get(run.id)
+        if b is None:
+            continue
+        grenzen = run_boundary_events(
+            run, ctxs[run.id],
+            first_step_id=None if b["has_start"] else b["first"],
+            last_step_id=None if b["has_end"] else b["last"],
+        )
+        start = _aware(run.started_at)
+        ende = _aware(run.finished_at) or start
+        for ev in grenzen:
+            if ev["kind"] == "run_start" and start is not None and start < cutoff:
+                # Falle 1: die nachgereichte Grenze trägt `run.started_at` — bei einem Lauf,
+                # der vor dem Fenster begann, also einen Zeitstempel von gestern. Ungeklemmt
+                # zöge die Zeitleiste den ganzen Raum auf gestern auf, und das sähe aus wie
+                # ein Fehler der Engine.
+                ev["ts"] = fensteranfang
+            elif ev["kind"] == "run_end" and ende is not None and ende > now:
+                # Falle 2: ein Ende jenseits des Fensterrands gehört nicht hinein. Erst hier
+                # zu filtern ist Absicht — vorher steht nicht fest, ob überhaupt eine
+                # `run_end`-Grenze entsteht (ein laufender Lauf bekommt keine). Bei einem
+                # nachlaufenden Fenster (Rand = jetzt) ist das der Ausnahmefall; die Regel
+                # steht trotzdem, weil das Fenster sonst nur solange stimmt, wie niemand
+                # `window_to` in die Vergangenheit legt.
+                continue
+            events.append(ev)
+
+    events = [e for e in events if e["seq"] > after_seq]
+    # `seq` ist die Ankunftsreihenfolge, nie `ts`. Bei Gleichstand geht das ENDE vor den
+    # Anfang: erst verlässt jemand den Raum, dann kommt der Nächste herein.
+    events.sort(key=lambda e: (e["seq"], 0 if e["kind"] == "run_end" else 1))
+    # Und dann die Kollision auflösen: `run_end` auf `letzte*4+3` und `run_start` auf
+    # `erste*4-1` sind dieselbe Zahl, sobald zwei Läufe mit benachbarten Zeilen-IDs
+    # aufeinanderfolgen — über Sitzungen hinweg der Normalfall. Ohne das verwürfe
+    # `Recorder.push` still das zweite Ereignis, und ein Agent käme nie herein.
+    entdoppeln_seq(events)
+
+    billed = await _billed_by_run(db, run_ids, await PriceTable.load(db))
+    antwort = leer(
+        agents=[_agent_row(r, billed.get(r.id),
+                           issue_key=issue_keys.get(r.issue_id or 0, ""),
+                           project_key=project_keys.get(r.project_id or 0, ""))
+                for r in runs],
+        events=events, truncated=truncated)
+    antwort.update({
+        "sessions": len({ctx.sid for ctx in ctxs.values()}),
+        "seq_from": events[0]["seq"] if events else 0,
+        "seq_to": events[-1]["seq"] if events else 0,
+        "count": len(events),
+    })
+    return antwort
 
 
 # ── Kosten ──────────────────────────────────────────────────────────────────

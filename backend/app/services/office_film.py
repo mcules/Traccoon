@@ -47,7 +47,8 @@ from ..models.agents import CostEntry, Run, RunStep
 from ..models.notification import Notification
 from ..models.ticket import Issue
 from .office import (
-    EVENT_CAP_MAX, FAIL_STATUS, PriceTable, RunCtx, run_boundary_events, step_events,
+    EVENT_CAP_MAX, FAIL_STATUS, PriceTable, RunCtx, entdoppeln_seq, run_boundary_events,
+    step_events,
 )
 
 log = logging.getLogger("office_film")
@@ -276,30 +277,12 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
 def _entdoppeln(ereignisse: list[dict]) -> int:
     """Doppelte `seq` auflösen — **die** Falle des sitzungsübergreifenden Films.
 
-    Die nachgereichten Grenzen sitzen zwischen den Zeilen: `run_end` auf `letzte*4 + 3`,
-    `run_start` auf `erste*4 - 1`. Das ist dieselbe Zahl, sobald der nächste Lauf mit der
-    unmittelbar folgenden Zeilen-ID anfängt — und weil Läufe hintereinander laufen, ist
-    das der Normalfall, nicht der Ausreißer (gemessen 13 Kollisionen an einem echten Tag
-    mit 21 Läufen). In einer Sitzung fällt das kaum auf, im Tagesfilm trifft es fast jeden
-    Übergang.
-
-    Und es wäre nicht sichtbar, sondern still: der Recorder entdoppelt über `seq`
-    (`office/recorder.ts`) und verwürfe das zweite Ereignis — ein Agent käme nie herein
-    oder ginge nie. Deshalb rückt der Nachzügler auf die nächste freie Zahl. Die ist
-    `erste*4 + 0` und damit der reservierte Slot 0 seiner eigenen ersten Zeile: noch immer
-    vor deren Hauptereignis, also bleibt die Erzählung heil.
-
-    Verschoben wird nur nach oben und nur bei Gleichstand — die Reihenfolge der bereits
-    sortierten Liste bleibt dadurch unangetastet.
+    Der Rumpf steht in `services/office.entdoppeln_seq`: seit `GET /office/events` mischt
+    auch der Raum mehrere Sitzungen in EIN Log, und zwei Auflösungen derselben Kollision
+    wären zwei Erzählungen desselben Übergangs. Der Name bleibt hier, weil der Film ihn an
+    dieser Stelle liest.
     """
-    vorher = -1
-    verschoben = 0
-    for ev in ereignisse:
-        if ev["seq"] <= vorher:
-            ev["seq"] = vorher + 1
-            verschoben += 1
-        vorher = ev["seq"]
-    return verschoben
+    return entdoppeln_seq(ereignisse)
 
 
 def _laengster(laeufe: list[Run], tickets: dict[int, tuple[str, str]]) -> dict | None:
