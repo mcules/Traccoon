@@ -12,6 +12,15 @@
 /** Sechs Bilder statt vierzig Werkzeugnamen. Zuordnung: `toolAct.ts` (Tabelle, keine Heuristik). */
 export type ToolAct = "read" | "write" | "run" | "browse" | "delegate" | "other";
 
+/** Was auf dem Monitor der Figur steht. Abgeleitet aus `ToolAct` (`toolAct.ts::screenFor`),
+ *  nicht aus dem Werkzeugnamen — sonst behauptete der Bildschirm mehr, als das Log hergibt.
+ *  `blank` = dunkler Schirm (kein laufendes Werkzeug). */
+export type ScreenKind = "code" | "log" | "page" | "search" | "link" | "wait" | "blank";
+
+/** Grundstimmung einer Anzeige (Monitorrahmen, Dock-Kachel). Vier Zustände, vier Farben —
+ *  dieselben wie in der Zeitleiste, damit zwei Ansichten desselben Laufs nie widersprechen. */
+export type MoodKind = "work" | "wait" | "error" | "done";
+
 /** Spiegelt `Run.status` im Backend. */
 export type RunStatus =
   | "running" | "success" | "failed" | "blocked" | "planned" | "loop_exhausted";
@@ -26,6 +35,20 @@ export type Pose = "sit" | "walk" | "stand";
 export type GateKind = "question" | "permission" | "plan";
 
 export interface Pt { x: number; y: number }
+
+/** Der Zeichenkontext, so viel davon wie der Pixel-Vertrag erlaubt — und **nur** so viel
+ *  (Regel 2.1: `fillStyle`, `globalAlpha`, `fillRect`).
+ *
+ *  Absichtlich ein eigener, struktureller Typ statt `CanvasRenderingContext2D`: damit ist das
+ *  Regelwerk **im Typsystem** verankert, ein `ctx.beginPath()` in Schicht 1 also schon ein
+ *  Typfehler und nicht erst ein Prüferfehler. Ein echter `CanvasRenderingContext2D` erfüllt die
+ *  Form (deshalb ist `fillStyle` als `string | object` weit genug für `CanvasGradient`), und der
+ *  Stub des Prüfers erfüllt sie ebenfalls — er sammelt einfach die `fillRect`-Aufrufe ein. */
+export interface Ctx {
+  fillStyle: string | object;
+  globalAlpha: number;
+  fillRect(x: number, y: number, w: number, h: number): void;
+}
 
 // ── Ereignis-Strom (Backend → Frontend) ──────────────────────────────────────
 //
@@ -276,6 +299,9 @@ export interface ActorState {
   /** Färbt nur den Blasenrand. */
   verdict: Verdict;
   think?: string;
+  /** Startzeit der Denkblase (`engine.t`). Ohne sie hätte eine Denkblase keinen Ablauf und
+   *  bliebe für immer stehen — dieselbe Rolle, die `sayAt` für die Sprechblase spielt. */
+  thinkAt?: number;
 
   status: RunStatus;
   /** Sitzplatz: `0..11` = Pod (`hash32(runId) % 12`, deterministisch), `-1` = Chefplatz,
@@ -383,6 +409,22 @@ export interface Gait {
   bob: number;
   /** Startphase des 4-Bild-Laufzyklus, 0..1. */
   phase: number;
+
+  // Ergänzt in Welle G. Grund: mit `speed/bob/phase` allein laufen zwölf Leute im selben
+  // Takt und unterscheiden sich nur in der Geschwindigkeit — aus zwei Metern Abstand sieht
+  // das aus wie eine einzige Animation. Die vier Felder unten sind die Silhouetten-Merkmale,
+  // die man wirklich sieht. Alle stammen aus eigenen Salzen (Regel 3.2), erzeugt von
+  // `pixel/palette.ts::gaitOf`, dem einzigen Hersteller eines `Gait`.
+
+  /** Beinausschlag des Laufzyklus in **Pufferpixeln** (2..4). */
+  stride: number;
+  /** Vorlage des Oberkörpers in Laufrichtung, 0..1 (0 = kerzengerade). */
+  lean: number;
+  /** Armausschlag in **Pufferpixeln** (1..2). */
+  swing: number;
+  /** Startphase des Armzyklus, 0..1 — gegen `phase` versetzt, weil Arme und Beine
+   *  gegenläufig schwingen; ohne Versatz sieht der Gang aus wie Marschieren. */
+  armPhase: number;
 }
 
 // ── Raum (statische Geometrie, Szenen-Koordinaten) ──────────────────────────

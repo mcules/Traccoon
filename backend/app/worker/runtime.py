@@ -19,9 +19,10 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.agents import AgentDefinition, Run, RunStep
+from ..models.agents import AgentDefinition, Run
 from ..models.assistant import AssistantTask
 from ..models.ticket import Blocker, Comment
+from ..services import roundtable
 from . import codegraph as _codegraph
 from . import gitops as _gitops
 from . import perms
@@ -432,66 +433,124 @@ class RunResult:
 
 async def _start_run(db: AsyncSession, issue_id: int, agent: str, phase: str, provider: str,
                      model: str, parent_run_id: int | None, continuation_index: int,
-                     task_id: str = "") -> int:
+                     task_id: str = "", *, project_id: int | None = None,
+                     owner_id: int | None = None, parent_tool_use_id: str | None = None,
+                     spawn_depth: int = 0) -> Run:
     # task_id MUSS exakt die sein, unter der der Worker result:{task_id} schreibt und der
     # Dispatcher wait_result/peek_result prüft — sonst bricht die Reattach-Korrelation
     # (recover_on_start liest run.task_id, um einen laufenden Worker-Run nach Backend-Reload
     # wieder anzubinden statt ihn zu verwaisen).
+    # Projekt/Owner hängen zusätzlich am Lauf, damit das Büro jedes Ereignis ohne Rückfrage
+    # ans Ticket autorisieren kann — projektlose Läufe (Job, Assistent) hätten dort ohnehin
+    # nichts zu holen. Der ganze Lauf wird zurückgegeben statt nur der id: der Aufrufer baut
+    # daraus den `RunCtx`, und ein zweites Nachladen wäre nur eine zweite Wahrheit.
     run = Run(issue_id=issue_id, agent=agent, phase=phase, provider=provider, model=model,
               status="running", parent_run_id=parent_run_id, continuation_index=continuation_index,
-              task_id=task_id)
+              task_id=task_id, project_id=project_id, owner_id=owner_id,
+              parent_tool_use_id=parent_tool_use_id, spawn_depth=spawn_depth)
     db.add(run)
     await db.commit()
     await db.refresh(run)
-    return run.id
+    return run
 
 
-async def _add_step(db: AsyncSession, run_id: int, seq: int, role: str, tool: str | None, content: str) -> None:
-    db.add(RunStep(run_id=run_id, seq=seq, role=role, tool_name=tool, content=content[:8000]))
-    await db.commit()
+async def _add_step(db: AsyncSession, ctx: roundtable.RunCtx, role: str, tool: str | None,
+                    content: str, *, kind: str = "", tool_use_id: str | None = None,
+                    target: str | None = None, ok: bool | None = None,
+                    duration_ms: int | None = None, in_tokens: int = 0, out_tokens: int = 0,
+                    cache_read_tokens: int = 0, provider: str = "", model: str = "") -> None:
+    """Eine Schrittzeile schreiben und sofort in den Live-Kanal geben.
+
+    Geschrieben wird über `roundtable.add_step` — denselben Weg, den auch `open_room`
+    nimmt. Es soll keine zweite Stelle geben, an der eine Zeile ohne die Ereignisfelder
+    entstehen könnte. Gesendet wird ERST nach dem Commit: vorher hat die Zeile keine `id`
+    und damit keine `seq`. Ein zweiter Sendeweg wäre falsch — `publish_step` schluckt
+    jeden Fehler selbst, ein ausgefallener Redis darf keinen Agentenlauf töten.
+    """
+    step = await roundtable.add_step(
+        db, ctx, role=role, kind=kind, content=content, tool=tool, target=target,
+        tool_use_id=tool_use_id, ok=ok, duration_ms=duration_ms, in_tokens=in_tokens,
+        out_tokens=out_tokens, cache_read_tokens=cache_read_tokens, provider=provider,
+        model=model)
+    # `SessionLocal` läuft mit expire_on_commit=False, `step.id` steht also ohne Nachfrage.
+    await roundtable.publish_step(ctx, step)
 
 
 async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = "", error: str = "",
                    iterations: int = 0, wt_fp: str | None = None,
-                   in_tok: int = 0, out_tok: int = 0, cache_read: int = 0) -> None:
+                   in_tok: int = 0, out_tok: int = 0, cache_read: int = 0, *,
+                   blocker_kind: str | None = None,
+                   ctx: roundtable.RunCtx | None = None) -> None:
     from ..models.agents import CostEntry
     from ..models.ops import ProviderModel
     from ..models.ticket import Issue
     run = await db.get(Run, run_id)
-    if run:
-        run.status = status
-        run.summary = summary[:4000] if summary else run.summary
-        run.error = error[:4000] if error else run.error
-        run.iterations = iterations
-        run.worktree_fingerprint = wt_fp
-        run.input_tokens = in_tok
-        run.output_tokens = out_tok
-        run.last_text = summary[:2000] if summary else run.last_text
-        run.finished_at = _now()
-        # Kosten aus Modellpreisen (falls im Katalog). cache_read = per Prompt-Caching
-        # verbilligter (gecachter) Input-Anteil, separat mit price_cache_read (~0,1x)
-        # bepreist, damit die Ersparnis sichtbar und die Gesamtkosten korrekt sind.
-        cost = 0.0
-        if in_tok or out_tok or cache_read:
-            pm = (
-                await db.execute(
-                    select(ProviderModel).where(ProviderModel.provider == run.provider,
-                                                ProviderModel.model == run.model)
-                )
-            ).scalar_one_or_none()
-            if pm:
-                cost = (in_tok / 1e6 * pm.price_input
-                        + out_tok / 1e6 * pm.price_output
-                        + cache_read / 1e6 * pm.price_cache_read)
-            run.cost_usd = cost
+    if not run:
+        return
+    run.status = status
+    run.summary = summary[:4000] if summary else run.summary
+    run.error = error[:4000] if error else run.error
+    run.iterations = iterations
+    run.worktree_fingerprint = wt_fp
+    run.input_tokens = in_tok
+    run.output_tokens = out_tok
+    run.last_text = summary[:2000] if summary else run.last_text
+    run.finished_at = _now()
+    # Woran der Lauf hängt, wenn er blockiert endet — „blockiert" allein zwingt sonst
+    # jeden Leser, die Ursache aus dem Text zu erraten.
+    if blocker_kind:
+        run.blocker_kind = blocker_kind
+    # Kosten aus Modellpreisen (falls im Katalog). cache_read = per Prompt-Caching
+    # verbilligter (gecachter) Input-Anteil, separat mit price_cache_read (~0,1x)
+    # bepreist, damit die Ersparnis sichtbar und die Gesamtkosten korrekt sind.
+    cost = 0.0
+    priced: bool | None = None      # None = es gab nichts zu bepreisen (kein Token)
+    if in_tok or out_tok or cache_read:
+        pm = (
+            await db.execute(
+                select(ProviderModel).where(ProviderModel.provider == run.provider,
+                                            ProviderModel.model == run.model)
+            )
+        ).scalar_one_or_none()
+        priced = pm is not None
+        if pm:
+            cost = (in_tok / 1e6 * pm.price_input
+                    + out_tok / 1e6 * pm.price_output
+                    + cache_read / 1e6 * pm.price_cache_read)
+        # Das Projekt steht seit dem Büro am Lauf selbst; die Abfrage über das Ticket ist
+        # nur noch der Rückfall für Läufe, die vor der Spalte begonnen haben.
+        project_id = run.project_id
+        if project_id is None and run.issue_id:
             project_id = (
                 await db.execute(select(Issue.project_id).where(Issue.id == run.issue_id))
             ).scalar_one_or_none()
-            db.add(CostEntry(run_id=run.id, issue_id=run.issue_id, agent=run.agent,
-                             provider=run.provider, model=run.model, input_tokens=in_tok,
-                             output_tokens=out_tok, cache_read_tokens=cache_read,
-                             cost_usd=cost, project_id=project_id))
-        await db.commit()
+        # `priced` trennt „kein Katalogeintrag" von „bepreist und gratis" — beides ergab
+        # bisher dieselbe 0,00, und jede Lücke im Katalog las sich wie ein Geschenk.
+        db.add(CostEntry(run_id=run.id, issue_id=run.issue_id, agent=run.agent,
+                         provider=run.provider, model=run.model, input_tokens=in_tok,
+                         output_tokens=out_tok, cache_read_tokens=cache_read,
+                         cost_usd=cost, project_id=project_id, priced=priced))
+    # Ausdrücklich AUSSERHALB des Token-`if`: ein Lauf ohne Tokens bekam bisher nicht
+    # einmal eine ausgeschriebene 0,00, sondern behielt, was zufällig dastand.
+    run.cost_usd = cost
+    await db.commit()
+
+    if ctx is None:
+        return
+    # Die Abschlusszeile im Raum: ohne sie geht der Agent nie durch die Tür. Der Inhalt ist
+    # das Mapping, das `roundtable._run_end_fields` liest — dieselben Felder, die die
+    # Lese-API aus der `runs`-Zeile zieht, damit beide Wege nicht auseinanderlaufen.
+    try:
+        await _add_step(db, ctx, "system", None, json.dumps({
+            "status": status, "blocker_kind": blocker_kind,
+            "summary": (summary or "")[:2000], "error": (error or "")[:2000],
+            "iterations": iterations, "in_tokens": in_tok, "out_tokens": out_tok,
+            "cache_read_tokens": cache_read, "cost_usd": cost, "cost_priced": priced,
+        }, ensure_ascii=False), kind="run_end")
+    except Exception:  # noqa: BLE001
+        # Der Raum ist Zuschauer, nicht Beteiligter: eine nicht geschriebene Abschlusszeile
+        # darf das Ergebnis des Laufs nicht verschlucken (der Status ist oben schon fest).
+        log.warning("Büro: run_end von Lauf %s nicht geschrieben", run_id, exc_info=True)
 
 
 async def _add_comment(db: AsyncSession, issue_id: int, label: str, body: str) -> None:
@@ -680,6 +739,9 @@ async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | No
                                              agent.role, project_key)
             else:
                 out = f"FEHLER: In der Rückschau ist nur '{', '.join(sorted(MEMORY_TOOL_NAMES))}' erlaubt."
+            # Bleibt bewusst eine zusammengefasste Zeile ohne `kind`: die Rückschau ist die
+            # Nachbereitung des Laufs, keine Arbeit am Auftrag — sie soll den Raum nicht mit
+            # Werkzeugen füllen. Der Altdaten-Pfad spaltet sie beim Lesen trotzdem sauber auf.
             await protokoll("tool", call.name,
                       f"Rückschau: args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {out[:500]}")
             msgs.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
@@ -696,7 +758,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     screenshot_enabled: bool = False, testenv_url: str = "",
                     continuation_index: int = 0, continuation_hint: str = "",
                     comment_history: list[dict] | None = None, history_title: str = "",
-                    parent_run_id: int | None = None, task_id: str = "",
+                    parent_run_id: int | None = None, parent_tool_use_id: str | None = None,
+                    task_id: str = "",
                     depth: int = 0, delegate_loader=None,
                     assistant_task_id: int | None = None) -> RunResult:
     permissions = permissions or []
@@ -710,15 +773,25 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         select(Attachment.filename, Attachment.mime_type, Attachment.size)
         .where(Attachment.issue_id == issue_id).order_by(Attachment.id))).all()
 
-    run_id = await _start_run(db, issue_id, agent.name, mode, agent.provider,
-                              agent.model or agent.provider, parent_run_id, continuation_index,
-                              task_id=task_id)
-    seq = 0
+    # `project["id"]` ist bei Job- und Assistentenläufen None — die Spalte ist genau dafür
+    # nullable; solche Läufe gehören keinem Projekt, sondern nur ihrem Menschen.
+    run = await _start_run(db, issue_id, agent.name, mode, agent.provider,
+                           agent.model or agent.provider, parent_run_id, continuation_index,
+                           task_id=task_id, project_id=project.get("id"), owner_id=owner_id,
+                           parent_tool_use_id=parent_tool_use_id, spawn_depth=depth)
+    run_id = run.id
+    # Der Kontext trägt den seq-Zähler des Laufs: `_end_run` schreibt die Abschlusszeile,
+    # nachdem die Schleife (und mit ihr `protokoll`) längst verlassen ist — ein Zähler in
+    # der Closure könnte dort nicht weitergezählt werden.
+    ctx = roundtable.RunCtx.from_run(run, issue_key=str(issue.get("key") or ""))
 
-    async def protokoll(role: str, tool: str | None, content: str) -> None:
-        nonlocal seq
-        seq += 1
-        await _add_step(db, run_id, seq, role, tool, content)
+    async def protokoll(role: str, tool: str | None, content: str, *, kind: str = "",
+                        **felder: Any) -> None:
+        await _add_step(db, ctx, role, tool, content, kind=kind, **felder)
+
+    # Der Agent kommt in den Raum, und es steht dabei, warum: `run_start` + der Auftrag als
+    # `user_message`, beides in einer Transaktion.
+    await roundtable.open_room(db, ctx, agent=agent, mode=mode, issue=issue)
 
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": _build_system_prompt(agent)},
@@ -753,6 +826,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                          "Bilder/Screenshots werden dir als Bild gezeigt.\n" + _lst})
 
     gw_url, gw_token = await _owner_gateway(db, owner_id)
+    # Die Token-Zähler leben AUSSERHALB des `try`: der äußere `except` unten gibt sie an
+    # `_end_run` weiter, und wären sie erst im `async with` gebunden, würfe genau der
+    # Rettungspfad ein NameError statt die Tokens zu retten.
+    in_tok = out_tok = cache_read = 0
     # Leerer String (nicht None) → KEIN Gateway; kein Rückfall auf globalen Gateway (harte Trennung).
     try:
         async with mcp_session(agent.name, servers=await _agent_mcp(db, agent, owner_id),
@@ -825,8 +902,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             last_text = ""
             empties = 0
             build_gate_fails = 0
-            in_tok = out_tok = cache_read = 0
-            letzter_kontext = 0      # echte Kontextgröße des letzten Aufrufs (für die Kompaktierung)
+            letzter_kontext = 0     # echte Kontextgröße des letzten Aufrufs (für die Kompaktierung)
             frist = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
             grenze_grund = "Iterations-Limit erreicht."
             iteration = 0       # falls max_iterations 0 ist, läuft die Schleife nie
@@ -837,7 +913,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     grenze_grund = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(MAX_RUN_SECONDS)}s)."
                     log.warning("Run %s: Zeitlimit erreicht (%ds) → loop_exhausted", run_id, gelaufen)
                     await protokoll("system", None,
-                              f"⚠️ {grenze_grund} → loop_exhausted (Fortsetzung in frischem Run)")
+                              f"⚠️ {grenze_grund} → loop_exhausted (Fortsetzung in frischem Run)",
+                              kind="system")
                     break
                 if iteration == max(2, agent.max_iterations - 2):
                     messages.append({"role": "system", "content":
@@ -853,7 +930,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     if _neu is not None:
                         await protokoll("system", None,
                                   f"Verlauf kompaktiert: {len(messages)} → {len(_neu)} Nachrichten "
-                                  f"(Kontext {letzter_kontext} von {agent.max_context_tokens}).")
+                                  f"(Kontext {letzter_kontext} von {agent.max_context_tokens}).",
+                                  kind="system")
                         messages = _neu
                         letzter_kontext = 0     # Messung verbraucht — erst neu messen, dann wieder kürzen
                 try:
@@ -864,8 +942,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              web_search=agent.web_search, tokens=tokens,
                                              base_urls=base_urls)
                 except ProviderError as exc:
-                    await protokoll("system", None, f"Provider-Fehler: {exc}")
-                    await _end_run(db, run_id, "failed", error=str(exc), iterations=iteration)
+                    await protokoll("system", None, f"Provider-Fehler: {exc}", kind="system")
+                    # Die bisherigen Züge sind bezahlt, auch wenn der letzte scheiterte —
+                    # ohne die Tokens hier verlor ein Provider-Fehler den ganzen Lauf aus
+                    # der Kostenrechnung.
+                    await _end_run(db, run_id, "failed", error=str(exc), iterations=iteration,
+                                   in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
                     return RunResult("failed", str(exc), iteration, run_id=run_id)
 
                 in_tok += int(resp.usage.get("input_tokens", 0) or 0)
@@ -888,9 +970,22 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 run_id, in_tok, MAX_RUN_INPUT_TOKENS)
                     await protokoll("system", None,
                               f"⚠️ Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS}) "
-                              f"→ loop_exhausted (Fortsetzung in frischem Run)")
+                              f"→ loop_exhausted (Fortsetzung in frischem Run)", kind="system")
                     break
-                await protokoll("assistant", None, resp.text or "(Tool-Call)")
+                # Der Inhalt bleibt wörtlich wie bisher (`AgentMonitor` liest ihn so), aber die
+                # Zeile trägt jetzt die Tokens DIESES Zuges: erst damit wächst die Kostenkurve
+                # sekündlich mit, statt am Ende des Laufs in einem Sprung aufzutauchen.
+                # `kind` trennt echten Text von einem reinen Werkzeugzug — der kostet zwar
+                # auch, hat aber nichts gesagt und soll im Raum nichts sagen.
+                # Provider/Modell kommen aus der ANTWORT: bei einem Fallback ist das nicht der
+                # am Agenten eingestellte, und mit dem falschen wäre der Zug falsch bepreist.
+                await protokoll("assistant", None, resp.text or "(Tool-Call)",
+                                kind="agent_text" if (resp.text or "").strip() else "usage",
+                                in_tokens=int(resp.usage.get("input_tokens", 0) or 0),
+                                out_tokens=int(resp.usage.get("output_tokens", 0) or 0),
+                                cache_read_tokens=int(resp.cache_read_tokens or 0),
+                                provider=resp.provider or agent.provider,
+                                model=resp.model or agent.model)
                 if resp.text:
                     last_text = resp.text
 
@@ -902,7 +997,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             err = ("Strenge Abnahme ist aktiv, aber das Projekt hat keinen verify_command. "
                                    "Ohne grünen Prüflauf gilt der Lauf nicht als erfolgreich.")
                             await _end_run(db, run_id, "failed", error=err, iterations=iteration,
-                                           in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                           in_tok=in_tok, out_tok=out_tok, cache_read=cache_read,
+                                           ctx=ctx)
                             return RunResult("failed", err, iteration, run_id=run_id)
                         if agent.can_code and mode != "plan" and ws_root and verify_command:
                             verdict = await _do_check(ws_root, verify_command)
@@ -910,7 +1006,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 build_gate_fails += 1
                                 if build_gate_fails > MAX_BUILD_GATE:
                                     await _end_run(db, run_id, "loop_exhausted", error=verdict,
-                                                   iterations=iteration, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                                   iterations=iteration, in_tok=in_tok, out_tok=out_tok,
+                                                   cache_read=cache_read, ctx=ctx)
                                     return RunResult("loop_exhausted", verdict, iteration, run_id=run_id)
                                 messages.append({"role": "system", "content":
                                     "⛔ ABSCHLUSS BLOCKIERT: Build ist ROT. Behebe die Ursache (nichts weglöschen) "
@@ -928,13 +1025,17 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                     base_urls=base_urls)
                                 in_tok += _ri; out_tok += _ro; cache_read += _rc
                             except Exception as exc:  # noqa: BLE001
-                                await protokoll("system", None, f"Rückschau übersprungen: {exc}")
+                                await protokoll("system", None, f"Rückschau übersprungen: {exc}",
+                                                kind="system")
                         await _end_run(db, run_id, "success", summary=resp.text, iterations=iteration,
-                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
                         return RunResult("done", resp.text, iteration, summary=resp.text, run_id=run_id)
                     empties += 1
                     if empties >= 2:
-                        await _end_run(db, run_id, "failed", error="Leere Modell-Antwort.", iterations=iteration)
+                        # Auch der Fehlschlag hat gekostet — die Züge davor sind bezahlt.
+                        await _end_run(db, run_id, "failed", error="Leere Modell-Antwort.",
+                                       iterations=iteration, in_tok=in_tok, out_tok=out_tok,
+                                       cache_read=cache_read, ctx=ctx)
                         return RunResult("failed", "Leere Modell-Antwort.", iteration, run_id=run_id)
                     messages.append({"role": "system", "content":
                         "Deine letzte Antwort war leer. Rufe ein Tool auf oder liefere eine Abschluss-Zusammenfassung."})
@@ -960,14 +1061,16 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             await db.commit()
                             await _add_comment(db, issue_id, agent.name, question)
                         await _end_run(db, run_id, "blocked", summary=question, iterations=iteration,
-                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read,
+                                       blocker_kind="ask_human", ctx=ctx)
                         return RunResult("blocked", question, iteration, run_id=run_id, blocker_kind="ask_human")
 
                     if call.name == "continue_later":
                         s = (call.arguments.get("summary") or "").strip()
                         fp = await _gitops.worktree_fingerprint(ws_root) if ws_root else None
                         await _end_run(db, run_id, "loop_exhausted", summary=s, iterations=iteration,
-                                       wt_fp=fp, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                       wt_fp=fp, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read,
+                                       ctx=ctx)
                         return RunResult("loop_exhausted", s, iteration, run_id=run_id)
 
                     if call.name == "submit_plan" and mode == "plan":
@@ -978,7 +1081,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             continue
                         psum = (call.arguments.get("summary") or "").strip()
                         await _end_run(db, run_id, "planned", summary="Plan erstellt", iterations=iteration,
-                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                       in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
                         return RunResult("planned", plan, iteration, summary=psum, run_id=run_id)
 
                     # Permission-Gate für mutierende externe Tools
@@ -996,7 +1099,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 await _add_comment(db, issue_id, agent.name,
                                                    f"⚙️ Berechtigung nötig: `{call.name}` auf `{resource or '—'}`")
                                 await _end_run(db, run_id, "blocked", summary=f"Berechtigung: {call.name}",
-                                               iterations=iteration, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                               iterations=iteration, in_tok=in_tok, out_tok=out_tok,
+                                               cache_read=cache_read, blocker_kind="permission", ctx=ctx)
                                 return RunResult("blocked", f"Berechtigung: {call.name}", iteration,
                                                  run_id=run_id, blocker_kind="permission")
 
@@ -1022,9 +1126,23 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 continue
                             if _dec == "ask":
                                 await _end_run(db, run_id, "blocked", summary=f"Freigabe nötig: {call.name}",
-                                               iterations=iteration, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                               iterations=iteration, in_tok=in_tok, out_tok=out_tok,
+                                               cache_read=cache_read, blocker_kind="assistant_perm",
+                                               ctx=ctx)
                                 return RunResult("blocked", f"Freigabe nötig: {call.name}", iteration,
                                                  run_id=run_id, blocker_kind="assistant_perm")
+
+                    # Der Werkzeugstart steht bewusst HIER — nach allen Gates und unmittelbar
+                    # vor der Ausführung. Jedes Gate darüber macht `continue` oder `return`;
+                    # ein Start davor hinterließe ein Werkzeug, das nie geschlossen wird, und
+                    # im Raum säße ein Agent für immer tippend da.
+                    _ziel = roundtable.tool_target(call.name, call.arguments)
+                    _args_json = json.dumps(call.arguments, ensure_ascii=False)
+                    # Monotone Uhr, dieselbe wie die Laufzeitgrenze oben: die Wanduhr darf
+                    # springen, eine gemessene Dauer nicht.
+                    _t0 = asyncio.get_running_loop().time()
+                    await protokoll("tool", call.name, _args_json[:400], kind="tool_start",
+                                    tool_use_id=call.id, target=_ziel)
 
                     if call.name == "open_tasks":
                         result: Any = await _open_tasks(db)
@@ -1052,11 +1170,17 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 strict_success=strict_success, owner_id=owner_id,
                                 screenshot_enabled=screenshot_enabled, testenv_url=testenv_url,
                                 depth=depth + 1, delegate_loader=delegate_loader, parent_run_id=run_id,
+                                # Der Verbund-Schlüssel: `delegate` wartet den Unterlauf inline
+                                # ab, die Werkzeugzeile entsteht also erst bei dessen ENDE. Der
+                                # Moment des Spawns kommt deshalb aus dem `run_start` des Kindes
+                                # — und der braucht die Werkzeug-ID des Elternteils.
+                                parent_tool_use_id=call.id,
                                 task_id=task_id)
                             if sub.status == "blocked":
                                 # Sub-Agent blockiert → Rückfrage an den Menschen weiterreichen
                                 await _end_run(db, run_id, "blocked", summary=sub.text, iterations=iteration,
-                                               in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                                               in_tok=in_tok, out_tok=out_tok, cache_read=cache_read,
+                                               blocker_kind=sub.blocker_kind or "question", ctx=ctx)
                                 return RunResult("blocked", sub.text, iteration, run_id=run_id,
                                                  blocker_kind=sub.blocker_kind or "question")
                             result = f"[Sub-Agent {sub_role} → {sub.status}]\n{sub.text[:2000]}"
@@ -1089,8 +1213,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         except Exception as exc:  # noqa: BLE001
                             result = f"TOOL-FEHLER: {exc}"
 
+                    # Die Gegenzeile zum Start oben: erst sie schließt das Werkzeug wieder.
+                    _dauer_ms = max(0, int((asyncio.get_running_loop().time() - _t0) * 1000))
                     if isinstance(result, list):
-                        await protokoll("tool", call.name, "(Bild/Block-Ergebnis)")
+                        # Bild-/Block-Ergebnis: der Aufruf ist zurückgekommen, ein Fehler wäre
+                        # ein String geworden — hier ist der Erfolg also belegt.
+                        await protokoll("tool", call.name, "(Bild/Block-Ergebnis)",
+                                        kind="tool_result", tool_use_id=call.id, target=_ziel,
+                                        ok=True, duration_ms=_dauer_ms)
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result})
                     else:
@@ -1099,8 +1229,15 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         # Antwort mit. Der pauschale Deckel würde sie hier wieder
                         # einkassieren — deshalb für dieses Tool der weitere Rahmen.
                         cap = MAX_HTTP_TOOL_CHARS if call.name == "traccoon_http_call" else 8000
-                        await protokoll("tool", call.name,
-                                  f"args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {result[:2000]}")
+                        # `tool_ok` kennt nur den BELEGTEN Fehler (Präfix) und sonst „unbekannt".
+                        # Die Laufzeit weiß hier mehr: der Aufruf ist zurückgekommen, jede
+                        # Ausnahme wäre oben zu „TOOL-FEHLER:" geworden. Also gilt „kein
+                        # Fehlerpräfix" als Erfolg — und nur ein belegtes True lässt
+                        # `step_events` überhaupt einen `file_edit` daraus ableiten.
+                        _ok = roundtable.tool_ok(result)
+                        await protokoll("tool", call.name, result[:2000], kind="tool_result",
+                                        tool_use_id=call.id, target=_ziel,
+                                        ok=True if _ok is None else _ok, duration_ms=_dauer_ms)
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result[:cap]})
 
@@ -1111,12 +1248,15 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             # Die TATSAECHLICHE Rundenzahl melden: Zeit- und Token-Grenze beenden den Lauf
             # frueh, und „40 Runden" nach zwei Runden schickt die Ursachensuche in die Irre.
             await _end_run(db, run_id, "loop_exhausted", summary=exhausted, iterations=iteration,
-                           wt_fp=fp, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read)
+                           wt_fp=fp, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
             return RunResult("loop_exhausted", exhausted, iteration, run_id=run_id)
 
     except Exception as exc:  # noqa: BLE001
         log.exception("run_agent(%s) Laufzeitfehler", agent.name)
-        await _end_run(db, run_id, "failed", error=str(exc))
+        # Auch hier die Tokens: der Lauf ist irgendwo mittendrin gestorben, bezahlt ist er
+        # trotzdem. Deshalb stehen die Zähler oben VOR dem `try`.
+        await _end_run(db, run_id, "failed", error=str(exc), in_tok=in_tok, out_tok=out_tok,
+                       cache_read=cache_read, ctx=ctx)
         return RunResult("failed", str(exc), 0, run_id=run_id)
 
 
