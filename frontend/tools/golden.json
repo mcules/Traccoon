@@ -1,0 +1,710 @@
+{
+ "_warnung": [
+  "ERZEUGT von tools/office-check.mjs --bless. NICHT von Hand ändern.",
+  "Dies ist das eingefrorene Bild, das tools/fixture.mjs ergeben MUSS. Weicht ein Lauf ab,",
+  "hat sich das Verhalten geändert — erneuern ist eine Entscheidung, keine Reparatur, und die",
+  "Begründung gehört in die Commit-Nachricht."
+ ],
+ "fixture": "62ccd7c8",
+ "frames": [
+  {
+   "at": 0,
+   "frame": {
+    "actors": [
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": -1,
+      "edits": 0,
+      "fails": 0,
+      "flip": false,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "stand",
+      "resolved": 0,
+      "role": "exec_agent",
+      "seed": 1262586480,
+      "status": "running",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": null,
+      "waiting": false,
+      "x": 1168,
+      "y": 122
+     }
+    ],
+    "fx": [],
+    "t": 0
+   }
+  },
+  {
+   "at": 1200,
+   "frame": {
+    "actors": [
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": -1,
+      "edits": 0,
+      "fails": 0,
+      "flip": true,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "walk",
+      "resolved": 0,
+      "role": "exec_agent",
+      "say": "Beim Login mit Umlauten im Passwort kommt ein 500er.",
+      "sayAt": 1200,
+      "seed": 1262586480,
+      "status": "running",
+      "sub": {
+       "x": 0.6617653276139208,
+       "y": 0.004595005361835547
+      },
+      "verdict": null,
+      "waiting": false,
+      "x": 1034,
+      "y": 247
+     }
+    ],
+    "fx": [],
+    "t": 1200
+   }
+  },
+  {
+   "at": 7200,
+   "frame": {
+    "actors": [
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": 3,
+      "edits": 0,
+      "fails": 0,
+      "flip": false,
+      "id": "run:8872",
+      "issue": "ABC-412",
+      "model": "gpt-5-codex",
+      "parent": "run:8871",
+      "phase": "execute",
+      "pose": "stand",
+      "resolved": 0,
+      "role": "review_agent",
+      "seed": 3175676331,
+      "status": "running",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": null,
+      "waiting": false,
+      "x": 1168,
+      "y": 122
+     },
+     {
+      "act": "delegate",
+      "away": false,
+      "busy": 8400,
+      "deskIndex": -1,
+      "edits": 0,
+      "fails": 1,
+      "flip": true,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "lastOk": false,
+      "link": {
+       "to": "run:8872",
+       "until": 9400
+      },
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "sit",
+      "resolved": 1,
+      "role": "exec_agent",
+      "say": "Ich schaue mir zuerst den Login-Handler an.",
+      "sayAt": 3400,
+      "seed": 1262586480,
+      "status": "running",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "target": "review_agent",
+      "tool": "delegate",
+      "verdict": null,
+      "waiting": false,
+      "x": 976,
+      "y": 302
+     }
+    ],
+    "fx": [
+     {
+      "kind": "spark",
+      "seed": 1262586480,
+      "t0": 7000,
+      "until": 8400,
+      "x": 976,
+      "y": 302
+     },
+     {
+      "kind": "link",
+      "seed": 1262586480,
+      "t0": 7200,
+      "to": {
+       "x": 1168,
+       "y": 122
+      },
+      "until": 9400,
+      "x": 976,
+      "y": 302
+     }
+    ],
+    "t": 7200
+   }
+  },
+  {
+   "at": 12000,
+   "frame": {
+    "actors": [
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": -1,
+      "edits": 0,
+      "fails": 1,
+      "flip": true,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "lastOk": false,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "sit",
+      "resolved": 1,
+      "role": "exec_agent",
+      "seed": 1262586480,
+      "status": "running",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": null,
+      "waiting": false,
+      "x": 976,
+      "y": 302
+     },
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": 3,
+      "done": 12000,
+      "doneOk": true,
+      "edit": "backend/app/api/auth.py",
+      "edits": 1,
+      "fails": 0,
+      "flip": true,
+      "id": "run:8872",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "gpt-5-codex",
+      "parent": "run:8871",
+      "phase": "execute",
+      "pose": "sit",
+      "resolved": 1,
+      "role": "review_agent",
+      "say": "Kodierung auf utf-8 umgestellt, Testfall ergänzt.",
+      "sayAt": 12000,
+      "seed": 3175676331,
+      "status": "success",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": "ok",
+      "waiting": false,
+      "x": 460,
+      "y": 536
+     }
+    ],
+    "fx": [
+     {
+      "kind": "drop",
+      "seed": 3175676331,
+      "t0": 10900,
+      "until": 13100,
+      "x": 617,
+      "y": 444
+     },
+     {
+      "kind": "emote",
+      "seed": 3175676331,
+      "t0": 12000,
+      "text": "✓",
+      "until": 14200,
+      "x": 460,
+      "y": 536
+     }
+    ],
+    "t": 12000
+   }
+  },
+  {
+   "at": 15500,
+   "frame": {
+    "actors": [
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": -1,
+      "edits": 0,
+      "fails": 1,
+      "flip": true,
+      "heard": 18808.814662835524,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "sit",
+      "resolved": 2,
+      "role": "exec_agent",
+      "seed": 1262586480,
+      "status": "running",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": null,
+      "waiting": false,
+      "x": 976,
+      "y": 302
+     },
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": 3,
+      "done": 12000,
+      "doneOk": true,
+      "edit": "backend/app/api/auth.py",
+      "edits": 1,
+      "fails": 0,
+      "flip": false,
+      "id": "run:8872",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "link": {
+       "to": "run:8871",
+       "until": 17008.814662835524
+      },
+      "model": "gpt-5-codex",
+      "parent": "run:8871",
+      "phase": "execute",
+      "pose": "stand",
+      "resolved": 1,
+      "role": "review_agent",
+      "say": "Kodierung auf utf-8 umgestellt, Testfall ergänzt.",
+      "sayAt": 14808.814662835523,
+      "seed": 3175676331,
+      "status": "success",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": "ok",
+      "waiting": false,
+      "x": 884,
+      "y": 302
+     }
+    ],
+    "fx": [
+     {
+      "kind": "link",
+      "seed": 3175676331,
+      "t0": 14808.814662835523,
+      "to": {
+       "x": 976,
+       "y": 302
+      },
+      "until": 17008.814662835524,
+      "x": 884,
+      "y": 302
+     }
+    ],
+    "t": 15500
+   }
+  },
+  {
+   "at": 25200,
+   "frame": {
+    "actors": [
+     {
+      "away": true,
+      "busy": 0,
+      "deskIndex": -2,
+      "done": 12000,
+      "doneOk": true,
+      "edit": "backend/app/api/auth.py",
+      "edits": 1,
+      "fails": 0,
+      "flip": false,
+      "id": "run:8872",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "gpt-5-codex",
+      "parent": "run:8871",
+      "phase": "execute",
+      "pose": "walk",
+      "resolved": 1,
+      "retired": true,
+      "role": "review_agent",
+      "seed": 3175676331,
+      "status": "success",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": "ok",
+      "waiting": false,
+      "x": 1168,
+      "y": 122
+     },
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": -1,
+      "edits": 0,
+      "fails": 1,
+      "flip": true,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "sit",
+      "resolved": 2,
+      "role": "exec_agent",
+      "seed": 1262586480,
+      "status": "running",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": null,
+      "waiting": false,
+      "x": 976,
+      "y": 302
+     }
+    ],
+    "fx": [],
+    "t": 25200
+   }
+  },
+  {
+   "at": 48000,
+   "frame": {
+    "actors": [
+     {
+      "away": true,
+      "busy": 0,
+      "deskIndex": -2,
+      "done": 12000,
+      "doneOk": true,
+      "edit": "backend/app/api/auth.py",
+      "edits": 1,
+      "fails": 0,
+      "flip": false,
+      "id": "run:8872",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "gpt-5-codex",
+      "parent": "run:8871",
+      "phase": "execute",
+      "pose": "walk",
+      "resolved": 1,
+      "retired": true,
+      "role": "review_agent",
+      "seed": 3175676331,
+      "status": "success",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": "ok",
+      "waiting": false,
+      "x": 1168,
+      "y": 122
+     },
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": -1,
+      "edits": 0,
+      "fails": 1,
+      "flip": true,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "sit",
+      "resolved": 2,
+      "role": "exec_agent",
+      "seed": 1262586480,
+      "status": "running",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": null,
+      "waiting": false,
+      "x": 976,
+      "y": 302
+     },
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": 6,
+      "edits": 0,
+      "fails": 0,
+      "flip": false,
+      "gate": "question",
+      "id": "run:8873",
+      "issue": "ABC-412",
+      "lastOk": null,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "stand",
+      "resolved": 0,
+      "role": "assistant",
+      "say": "Soll ABC-418 mit erledigt werden?",
+      "sayAt": 35200,
+      "seed": 2537979714,
+      "status": "blocked",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": "blocked",
+      "waiting": true,
+      "x": 1172,
+      "y": 347
+     }
+    ],
+    "fx": [
+     {
+      "kind": "emote",
+      "seed": 2537979714,
+      "t0": 35200,
+      "text": "!",
+      "until": 38800,
+      "x": 1172,
+      "y": 347
+     }
+    ],
+    "t": 35200
+   }
+  },
+  {
+   "at": 54000,
+   "frame": {
+    "actors": [
+     {
+      "away": true,
+      "busy": 0,
+      "deskIndex": -2,
+      "done": 12000,
+      "doneOk": true,
+      "edit": "backend/app/api/auth.py",
+      "edits": 1,
+      "fails": 0,
+      "flip": false,
+      "id": "run:8872",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "gpt-5-codex",
+      "parent": "run:8871",
+      "phase": "execute",
+      "pose": "walk",
+      "resolved": 1,
+      "retired": true,
+      "role": "review_agent",
+      "seed": 3175676331,
+      "status": "success",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": "ok",
+      "waiting": false,
+      "x": 1168,
+      "y": 122
+     },
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": -1,
+      "done": 41200,
+      "doneOk": true,
+      "edits": 0,
+      "fails": 1,
+      "flip": true,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "sit",
+      "resolved": 2,
+      "role": "exec_agent",
+      "say": "Login akzeptiert jetzt Umlaute; Regressionstest ergänzt.",
+      "sayAt": 41200,
+      "seed": 1262586480,
+      "status": "success",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": "ok",
+      "waiting": false,
+      "x": 976,
+      "y": 302
+     },
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": 6,
+      "edits": 0,
+      "fails": 0,
+      "flip": false,
+      "gate": "question",
+      "id": "run:8873",
+      "issue": "ABC-412",
+      "lastOk": null,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "sit",
+      "resolved": 0,
+      "role": "assistant",
+      "seed": 2537979714,
+      "status": "blocked",
+      "sub": {
+       "x": 0,
+       "y": 0
+      },
+      "verdict": "blocked",
+      "waiting": true,
+      "x": 1172,
+      "y": 347
+     }
+    ],
+    "fx": [
+     {
+      "kind": "emote",
+      "seed": 1262586480,
+      "t0": 41200,
+      "text": "✓",
+      "until": 43400,
+      "x": 976,
+      "y": 302
+     }
+    ],
+    "t": 41200
+   }
+  }
+ ],
+ "ops": [
+  {
+   "at": 0,
+   "day": {
+    "n": 3084,
+    "hash": "e9f4a9e8"
+   },
+   "night": {
+    "n": 2852,
+    "hash": "91a77b5c"
+   }
+  },
+  {
+   "at": 1200,
+   "day": {
+    "n": 3103,
+    "hash": "60afdabe"
+   },
+   "night": {
+    "n": 2871,
+    "hash": "69aa688a"
+   }
+  },
+  {
+   "at": 7200,
+   "day": {
+    "n": 3524,
+    "hash": "864fadb3"
+   },
+   "night": {
+    "n": 3294,
+    "hash": "f9297030"
+   }
+  },
+  {
+   "at": 12000,
+   "day": {
+    "n": 3233,
+    "hash": "284c7912"
+   },
+   "night": {
+    "n": 3005,
+    "hash": "fbdbb559"
+   }
+  },
+  {
+   "at": 15500,
+   "day": {
+    "n": 3409,
+    "hash": "f906f2bb"
+   },
+   "night": {
+    "n": 3179,
+    "hash": "0996a6f4"
+   }
+  },
+  {
+   "at": 25200,
+   "day": {
+    "n": 3073,
+    "hash": "24132454"
+   },
+   "night": {
+    "n": 2843,
+    "hash": "92278c24"
+   }
+  },
+  {
+   "at": 48000,
+   "day": {
+    "n": 3238,
+    "hash": "1bdb0b4f"
+   },
+   "night": {
+    "n": 3008,
+    "hash": "023ec889"
+   }
+  },
+  {
+   "at": 54000,
+   "day": {
+    "n": 3245,
+    "hash": "39b03a07"
+   },
+   "night": {
+    "n": 3017,
+    "hash": "f44b9b9a"
+   }
+  }
+ ]
+}

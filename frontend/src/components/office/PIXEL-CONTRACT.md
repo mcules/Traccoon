@@ -212,9 +212,14 @@ Es gibt im Frontend keinen Test-Runner, und vitest lohnt nicht (das Dockerfile m
 `npm install` ohne Lockfile). Stattdessen laufen die Schichten 0 und 1 **direkt** unter Node:
 
 ```bash
-docker run --rm -v "$PWD/frontend":/w -w /w node:22-alpine \
+docker run --rm -v "$PWD/frontend":/w -v "$PWD/backend":/backend -w /w node:22-alpine \
   node --experimental-strip-types tools/office-check.mjs
 ```
+
+`backend/` wird mit eingehängt, weil die Vollständigkeitsprüfung der Werkzeug-Tabelle ihre
+Sollliste aus `backend/app/worker/*.py` **zieht**. Eine abgeschriebene Liste prüfte nur, ob die
+Abschrift zu sich selbst passt — die Drift, um die es geht, sähe sie nie. Fehlt der Mount,
+bricht der Prüfer und sagt, was zu tun ist.
 
 `--experimental-strip-types` ersetzt Typen durch Leerzeichen — es transpiliert nicht. Daraus folgen
 vier Verbote für die Schichten 0 und 1:
@@ -241,19 +246,26 @@ Das kostet nichts und schenkt uns einen Test-Runner mit null Abhängigkeiten.
 
 ## Was der Prüfer prüft
 
-`frontend/tools/office-check.mjs`, `npm run check:office`. Bewusst **nicht** Teil von `npm run build` —
-der Docker-Bau darf nicht davon abhängen.
+`frontend/tools/office-check.mjs`, `npm run check:office` (aus `frontend/`, dort liegt das
+Backend unter `../backend`). Bewusst **nicht** Teil von `npm run build` — der Docker-Bau darf
+nicht davon abhängen.
 
 | Prüfung | Regel | Stand |
 |---|---|---|
 | Reinheits-Grep (verbotene Bezeichner) | 3.1 | gebaut |
 | Schicht-Import-Regel + `.ts`-Endung + keine Pakete | 4, 5 | gebaut |
-| goldenes Bild: `frameAt` an 8 Zeitpunkten gegen `tools/golden.json` | 3 | Welle M |
-| Seek-Idempotenz (`seek(t)` zweimal = einmal) | 3 | Welle M |
-| `seek ≡ advance` | 3 | Welle M |
-| dt-Split-Invarianz `tick(200) ≡ tick(25)×8` | 3.4 | Welle M |
-| Pixel-Vertrag als `ctx`-Proxy (alles außer `fillStyle`/`globalAlpha`/`fillRect` wirft) | 2.1 | Welle M |
-| goldene Pixel-Ops-Hashes | 2 | Welle M |
-| Vollständigkeit der Werkzeug-Tabelle (jedes native Traccoon-Werkzeug) | — | Welle M |
+| goldenes Bild: `frameAt` an 8 Zeitpunkten gegen `tools/golden.json` | 3 | gebaut |
+| Seek-Idempotenz (`seek(t)` zweimal = einmal, und `frameAt` ≡ `seek`) | 3 | gebaut |
+| `seek ≡ advance` (5 Schrittweiten, auch krumme) | 3 | gebaut |
+| dt-Split-Invarianz `tick(200) ≡ tick(25)×8`, nackt und über das Kommando-Skript | 3.4 | gebaut |
+| Pixel-Vertrag als `ctx`-Proxy (alles außer `fillStyle`/`globalAlpha`/`fillRect` wirft, dazu ganzzahlige Koordinaten) | 2.1, 2.3 | gebaut |
+| goldene Pixel-Ops-Hashes (8 Bilder × Tag/Abend) | 2 | gebaut |
+| Vollständigkeit der Werkzeug-Tabelle (Sollliste aus `backend/app/worker`) | — | gebaut |
+| Sitzgeometrie: `SEATS_PX[i]` ≡ `round(ROOM.seats[i].sit × POS_SCALE)` | 4 | gebaut |
+
+Die Fixture dazu steht in `frontend/tools/fixture.mjs` und ist der Form von
+`services/office.py::step_events` nachgebaut, nicht ausgedacht. Ändert sich das erwartete
+Verhalten, schreibt `--bless` die goldenen Bilder neu — **eine Entscheidung, keine Reparatur**,
+und die Begründung gehört in die Commit-Nachricht.
 
 Dazu, außerhalb des Prüfers: `tsc -b` muss durchlaufen (`strict: true`).

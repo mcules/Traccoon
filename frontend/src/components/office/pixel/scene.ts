@@ -95,6 +95,31 @@ function viewOf(base: Ctx, fit: CamFit): Ctx {
   };
 }
 
+/** Deckkraft einer Figur, die nicht zum gewählten Sitzungsreiter gehört. Kräftig genug, dass
+ *  man sie noch als Figur erkennt — der Filter blendet aus, er entfernt nicht. */
+const DIM_ALPHA = 0.35;
+
+/**
+ * Blasse Hülle: jede gesetzte Deckkraft wird mit `k` multipliziert.
+ *
+ * Warum eine Hülle und nicht ein `globalAlpha` um den Block herum: `fillA` und `drawArt` setzen
+ * `globalAlpha` am Ende **selbst** auf 1 zurück (Regel 2.1: es gibt kein `restore`, das
+ * Zurücksetzen ist Pflicht des Zeichners). Ein einmal gesetztes Alpha hielte also nur bis zum
+ * ersten Aufruf. Die Hülle fängt genau diese Zuweisungen ab.
+ *
+ * Der Aufrufer setzt `hülle.globalAlpha = 1` vor dem Block (das legt die Basis auf `k`) und
+ * `basis.globalAlpha = 1` danach.
+ */
+function dimOf(base: Ctx, k: number): Ctx {
+  return {
+    get fillStyle(): string | object { return base.fillStyle; },
+    set fillStyle(v: string | object) { base.fillStyle = v; },
+    get globalAlpha(): number { return base.globalAlpha; },
+    set globalAlpha(v: number) { base.globalAlpha = v * k; },
+    fillRect(x: number, y: number, w: number, h: number): void { base.fillRect(x, y, w, h); },
+  };
+}
+
 // ═══ Der Grundriss ═══════════════════════════════════════════════════════════
 //
 // Szenenmaße wie in `room.ts`, danach **einmal** mit `POS_SCALE` in Pufferpixel gerundet.
@@ -240,6 +265,10 @@ export interface RenderOpts {
   selected?: string;
   /** Agent unter dem Zeiger. */
   hover?: string;
+  /** Agenten, die der Sitzungsreiter gerade **nicht** meint. Sie werden blass gezeichnet und
+   *  **nicht** entfernt: ein entfernter Agent gäbe seinen Sitzplatz frei, die Übergabelinien
+   *  zeigten ins Nichts und derselbe Raum sähe je nach Reiter anders aus. */
+  dimmed?: ReadonlySet<string>;
 }
 
 /**
@@ -395,6 +424,8 @@ function buildActors(
 ): void {
   const sel = opts?.selected;
   const hov = opts?.hover;
+  const blassSet = opts?.dimmed;
+  const blassV = blassSet !== undefined ? dimOf(v, DIM_ALPHA) : v;
   for (const a of frame.actors) {
     if (a.retired === true) continue;
     const cx = px(a.x);
@@ -407,6 +438,7 @@ function buildActors(
     const pal = palFor(grade, lookOf(a.seed));
     const ring = a.id === sel ? "acc" : a.id === hov ? "wallHi" : undefined;
     const ghost = a.deskIndex === -2;
+    const blass = blassSet !== undefined && blassSet.has(a.id);
     world.push({
       y: yBase,
       draw(): void {
@@ -419,8 +451,14 @@ function buildActors(
           fillA(v, env, ring, 0.35, cx + 7, yBase - 1, 1, 2);
           fillA(v, env, ring, 0.25, cx - 6, yBase - 2, 12, 1);
         }
-        if (ghost) drawGhost(v, cx, yBase, pal, frame.t, a.seed);
-        else drawActor(v, a, frame.t, pal);
+        // Die blasse Hülle wird **nach** dem Ring scharfgestellt: `fillA` setzt die Deckkraft
+        // am Ende auf 1 zurück und löschte die Hülle sonst gleich wieder. Der Ring bleibt
+        // hell — dass etwas ausgewählt ist, gilt auch dann, wenn der Filter es ausblendet.
+        const c = blass ? blassV : v;
+        if (blass) c.globalAlpha = 1;
+        if (ghost) drawGhost(c, cx, yBase, pal, frame.t, a.seed);
+        else drawActor(c, a, frame.t, pal);
+        if (blass) v.globalAlpha = 1;
       },
     });
   }
@@ -484,6 +522,8 @@ function drawOverlays(
   const t = frame.t;
   const sel = opts?.selected;
   const hov = opts?.hover;
+  const blassSet = opts?.dimmed;
+  const blassV = blassSet !== undefined ? dimOf(v, DIM_ALPHA) : v;
 
   for (const a of frame.actors) {
     if (a.retired === true) continue;
@@ -493,9 +533,16 @@ function drawOverlays(
 
     const chosen = a.id === sel;
     const hovered = a.id === hov;
+    // Schild und Blase teilen das Schicksal der Figur: gehört sie nicht zum Sitzungsreiter,
+    // wird auch ihr Etikett blass. Ein helles Schild über einer blassen Figur läse sich als
+    // Zeichenfehler.
+    const blass = blassSet !== undefined && blassSet.has(a.id);
+    const c = blass ? blassV : v;
+    if (blass) c.globalAlpha = 1;
+
     // Schilder für alle, aber blass: ein Raum mit zwölf gleich hellen Etiketten liest sich als
     // Tabelle, nicht als Raum. Hell wird nur, wonach gefragt wurde.
-    nameplate(v, cx, yBase + 11, env, shortRole(a.role), {
+    nameplate(c, cx, yBase + 11, env, shortRole(a.role), {
       sub: chosen ? (a.issue ?? a.model ?? undefined) : undefined,
       selected: chosen,
       dim: !chosen && !hovered,
@@ -503,13 +550,14 @@ function drawOverlays(
 
     const top = yBase - FIG_H - 2;
     if (a.say !== undefined) {
-      speechBubble(v, cx, top, env, a.say, {
+      speechBubble(c, cx, top, env, a.say, {
         reveal: revealOf(a.say, a.sayAt !== undefined ? t - a.sayAt : 0),
         verdict: a.verdict,
       });
     } else if (a.think !== undefined) {
-      thoughtBubble(v, cx, top, env, a.think, t);
+      thoughtBubble(c, cx, top, env, a.think, t);
     }
+    if (blass) v.globalAlpha = 1;
   }
 
   // Emotes zuletzt: sie sind das Kurzsignal und dürfen von nichts überdeckt werden.

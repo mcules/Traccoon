@@ -507,7 +507,7 @@ async def global_sessions(
     status: str = "all",
     project_id: int | None = None,
 ):
-    """Alle Sessions, die dieser Nutzer sehen darf — die Vollbildseite `/office`.
+    """Alle Sessions, die dieser Nutzer sehen darf — die Vollbildseite `/buero`.
 
     `project_id` **verengt** die ohnehin erlaubte Menge und autorisiert nie: ein fremdes
     Projekt einzutragen liefert eine leere Liste, keinen Zugang. Der Filter steht deshalb
