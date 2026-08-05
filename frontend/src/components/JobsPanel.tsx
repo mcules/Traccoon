@@ -115,7 +115,7 @@ export default function JobsPanel() {
             <option value="cron">cron</option><option value="interval">interval</option><option value="once">once</option></select>
           <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={inp + " flex-1"}>
             <option value="prompt">prompt</option><option value="script">script</option>
-            <option value="workflow">workflow</option></select>
+            <option value="workflow">workflow</option><option value="film">film</option></select>
         </div>
         <input value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })} placeholder="Schedule" className={inp} />
         {f.kind === "prompt" && (

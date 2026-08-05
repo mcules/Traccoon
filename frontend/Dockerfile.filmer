@@ -1,0 +1,25 @@
+# Der filmer — der Renderer des Feierabendfilms als eigener Sidecar.
+#
+# Warum nicht im `shotter`: das ist ein 1,5-GB-Playwright-Bild mit residentem Chromium, es wird
+# aus einem anderen Kontext gebaut und hält Zugangsdaten. Warum nicht per `docker run` aus dem
+# Scheduler: der backend-Container hat bewusst **keinen** Docker-Socket.
+#
+# Und warum ohne `package.json`: die Schichten 0 und 1 unter `src/components/office/` importieren
+# kein einziges Paket (nachgeprüft — nur `useTheme`, `useOfficeFeed` und `api.ts` sehen React,
+# und die lädt hier niemand). Damit gibt es kein `npm install`, kein Lockfile und keinen
+# Build-Schritt; das Bild ist das Basis-Image plus ein paar hundert Kilobyte Quelltext.
+#
+# `--experimental-strip-types` lässt Node die `.ts`-Dateien direkt laden: die Typen werden
+# gestrichen, nicht übersetzt. Genau deshalb hält der Pixel-Vertrag „nichts, was das Streichen
+# der Typen überlebt" (Regel 5) — hier wird die Regel eingelöst.
+FROM node:22-alpine
+
+WORKDIR /app
+
+COPY src/components/office/ ./src/components/office/
+COPY tools/film/ ./tools/film/
+
+ENV FILMER_PORT=8710
+EXPOSE 8710
+
+CMD ["node", "--experimental-strip-types", "tools/film/server.mjs"]

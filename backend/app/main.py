@@ -306,6 +306,13 @@ async def lifespan(app: FastAPI):
                 # Derselbe Index bedient den kommenden Bühnen-Watcher.
                 "CREATE INDEX IF NOT EXISTS ix_deployments_open ON deployments (id) "
                 "WHERE status IN ('pending','pending-check','building')",
+                # Medienausgang der Notification: dem backend-Container fehlt
+                # `TELEGRAM_BOT_TOKEN` vollständig (nur `TELEGRAM_OWNER_CHAT` ist gesetzt),
+                # nur der telegram-bot-Prozess spricht mit Telegram. Wer eine Datei
+                # mitschicken will, legt den Pfad hierher — beide Spalten nullable, damit
+                # sich für Bestandszeilen nichts ändert.
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS media_path VARCHAR(500)",
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS media_kind VARCHAR(20)",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:

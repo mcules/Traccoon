@@ -98,6 +98,15 @@ async def run_job_kind(db, job: Job, jr: JobRun) -> bool:
     if job.kind == "http":
         await _run_http_job(db, job, jr)
         return True
+    if job.kind == "film":
+        # Der Feierabend-Film baut 15–20 s lang und hält den Tick (15 s) genau so lange
+        # auf. In Kauf genommen aus demselben Grund wie bei `_run_script`: ein zweiter
+        # Ausführungsweg neben diesem hier wäre ein zweiter Zeitplan, eine zweite
+        # Historie und ein zweiter Pause-Schalter. Der httpx-Timeout im Job liegt unter
+        # `job.run_timeout`, damit der JobRun seinen Fehler noch selbst schreiben kann.
+        from .office_film import run_film_job
+        await run_film_job(db, job, jr)
+        return True
     return False
 
 
