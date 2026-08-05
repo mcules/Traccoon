@@ -61,6 +61,12 @@ export function parseSid(raw: string | null | undefined): Sid | null {
 
 // ── Antwortformen ───────────────────────────────────────────────────────────────────────────
 
+/** Welche Räume die Liste überhaupt zurückgibt (`services`/`api/office.py::SESSION_STATUS`).
+ *  `live` heißt dort **nicht** „Status running in der Datenbank", sondern „running **und**
+ *  jünger als das Live-Fenster" — nach einem Worker-Absturz bliebe `running` sonst für immer
+ *  stehen und der Kiosk zeigte einen Raum, in dem nie wieder etwas passiert. */
+export type SessionStatus = "all" | "live" | "recent";
+
 /** Eine Sitzung in der Liste — ein Raum, noch nicht betreten. */
 export interface SessionSummary {
   /** ⚠ `"issue:412"` / `"run:8871"`. */
@@ -77,6 +83,10 @@ export interface SessionSummary {
   runs?: number;
   started_at?: string | null;
   ended_at?: string | null;
+  /** Jüngster Zeitstempel dieses Raums (ISO). Das Backend liefert ihn seit jeher und
+   *  sortiert die Liste danach; deklariert war er hier bloß nie. Der Kiosk braucht ihn:
+   *  ein Raum, in dem 90 s nichts geschah, ist der falsche für einen Wandschirm. */
+  last_event_at?: string | null;
   /** Mindestens ein Lauf ist `running`. */
   live?: boolean;
   /** Die Schritte sind der Aufbewahrung zum Opfer gefallen — der Raum bleibt leer,
@@ -167,10 +177,11 @@ export const officeApi = {
    *  `get_project_access`, Fremde bekommen 404), die globale Seite fragt übergreifend.
    *  `projectId` **verengt** dort nur — autorisiert wird es nie. */
   sessions: (scope: Scope,
-             opts?: { limit?: number; projectId?: number; sinceHours?: number }): Promise<SessionList> => {
+             opts?: { limit?: number; projectId?: number; sinceHours?: number;
+                      status?: SessionStatus }): Promise<SessionList> => {
     const path = scope.kind === "project"
-      ? `/projects/${scope.projectId}/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours })}`
-      : `/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours, project_id: opts?.projectId })}`;
+      ? `/projects/${scope.projectId}/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours, status: opts?.status })}`
+      : `/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours, project_id: opts?.projectId, status: opts?.status })}`;
     // Ob der Umschlag `{sessions: […]}` heißt oder ein nacktes Feld ist, entscheidet Welle C.
     // Beides wird hier zum selben Ergebnis — das ist billiger als eine Rückfrage und
     // überlebt die Abstimmung in beide Richtungen.

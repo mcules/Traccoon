@@ -17,6 +17,10 @@
 //    die nicht dazugehören; sie entfernt sie **nicht**. Entfernen verschöbe die Sitzplatzvergabe
 //    (`hash32(runId) % 12` bleibt zwar, aber der Raum bliebe halb leer und die Übergaben zeigten
 //    ins Nichts) und machte den Replay unrund.
+// 3. **`kiosk` ist ein Schalter, keine zweite Kopfzeile.** Der Wandschirm zeigt dieselben
+//    Summen, dieselbe Pille, denselben Fehlerkasten — nur ohne alles Anklickbare.
+
+
 
 import type { Scope } from "./api.ts";
 import type { GateKind, Roster, RosterEntry, RunStatus } from "./types.ts";
@@ -187,6 +191,10 @@ export interface TopBarProps {
   /** Ist die Ansicht bereits die Vollbildseite? Dann heißt der Knopf „Verlassen". */
   fullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  /** Wandschirm: alles Bedienbare fällt weg, die Kopfzeile bleibt eine reine Anzeige.
+   *  **Keine zweite Komponente** dafür — zwei Kopfzeilen drifteten garantiert auseinander,
+   *  und die Frage „warum zeigt der Kiosk andere Summen als der Tab" will niemand haben. */
+  kiosk?: boolean;
   /** Fehlermeldung des Feeds — sie gehört sichtbar nach oben, nicht in die Konsole. */
   error?: string;
 }
@@ -196,7 +204,7 @@ export interface TopBarProps {
 export default function TopBar({
   scope, titel, roster, totals, live, seekTs, onBackToLive,
   speed, onSpeedChange, filter, onFilterChange,
-  fullscreen, onToggleFullscreen, error,
+  fullscreen, onToggleFullscreen, error, kiosk,
 }: TopBarProps) {
   const reiter = reiterAus(scope, roster);
   const tokenSumme = totals.in_tokens + totals.out_tokens;
@@ -236,10 +244,12 @@ export default function TopBar({
             <span className="rounded-full border border-orange-400/50 bg-orange-400/10 px-2 py-0.5 text-xs text-orange-400">
               ⏪ Wiedergabe {uhrText(seekTs)}
             </span>
-            <button type="button" onClick={onBackToLive}
-              className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">
-              Zurück zu Live
-            </button>
+            {!kiosk && (
+              <button type="button" onClick={onBackToLive}
+                className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">
+                Zurück zu Live
+              </button>
+            )}
           </span>
         ) : live ? (
           <span className="rounded-full border border-green-400/50 bg-green-400/10 px-2 py-0.5 text-xs text-green-400"
@@ -254,19 +264,21 @@ export default function TopBar({
         )}
 
         {/* Geschwindigkeit */}
-        <span role="group" aria-label="Geschwindigkeit" className="flex overflow-hidden rounded border border-line">
-          {TEMPI.map((t) => (
-            <button key={t} type="button" onClick={() => onSpeedChange(t)}
-              aria-pressed={speed === t}
-              title={`Wiedergabe in ${t}-facher Geschwindigkeit`}
-              className={"px-2 py-0.5 text-xs "
-                + (speed === t ? "bg-brand text-white" : "text-muted hover:bg-surface")}>
-              {t}×
-            </button>
-          ))}
-        </span>
+        {!kiosk && (
+          <span role="group" aria-label="Geschwindigkeit" className="flex overflow-hidden rounded border border-line">
+            {TEMPI.map((t) => (
+              <button key={t} type="button" onClick={() => onSpeedChange(t)}
+                aria-pressed={speed === t}
+                title={`Wiedergabe in ${t}-facher Geschwindigkeit`}
+                className={"px-2 py-0.5 text-xs "
+                  + (speed === t ? "bg-brand text-white" : "text-muted hover:bg-surface")}>
+                {t}×
+              </button>
+            ))}
+          </span>
+        )}
 
-        {onToggleFullscreen && (
+        {!kiosk && onToggleFullscreen && (
           <button type="button" onClick={onToggleFullscreen}
             className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand"
             title={fullscreen ? "Zurück zum Projekt-Reiter" : "Büro auf der ganzen Seite öffnen"}>
@@ -275,8 +287,10 @@ export default function TopBar({
         )}
       </div>
 
-      {/* Sitzungsreiter — ein Filter auf den Roster, kein zweites Log. */}
-      {reiter.length > 1 && (
+      {/* Sitzungsreiter — ein Filter auf den Roster, kein zweites Log.
+          Im Kiosk weg: ein Filter, den niemand umstellen kann, ist eine Behauptung über
+          den Raum, keine Bedienung. */}
+      {!kiosk && reiter.length > 1 && (
         <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" role="group"
           aria-label={scope.kind === "project" ? "Tickets dieser Ansicht" : "Projekte dieser Ansicht"}>
           <ReiterKnopf aktiv={filter === null} onClick={() => onFilterChange(null)}
