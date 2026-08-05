@@ -25,17 +25,29 @@
 // Bild — die stecken in Refs innerhalb von `Stage` bzw. `useOfficeFeed`, und genau deshalb
 // kostet ein laufender Raum keinen einzigen Renderdurchlauf dieser Komponente.
 //
-// ══ Die eine Naht, die der Plan offen ließ ═══════════════════════════════════════════════════
+// ══ Ein Raum oder alle — und warum das global die Vorgabe ist ════════════════════════════════
 //
-// `useOfficeFeed(scope, sid)` bedient **eine** Sitzung; ohne `sid` verwirft `accept()` jedes
-// Ereignis und der Raum bliebe für immer leer. Der Umfang (`Scope`) sagt aber nur, *welche*
-// Sitzungen in Frage kommen. Also wählt diese Ansicht eine aus: sie holt die Sitzungsliste
-// (`officeApi.sessions`, im Backend ausdrücklich als „der Inhalt des Projekt-Reiters" geführt)
-// und nimmt die oberste — die Liste kommt bereits nach letztem Ereignis absteigend sortiert.
-// Gibt es mehrere, steht darüber ein Wähler.
+// `useOfficeFeed(scope, sid)` bedient **eine** Sitzung. Der Umfang (`Scope`) sagt nur, *welche*
+// Sitzungen in Frage kommen; also wählt diese Ansicht eine aus: sie holt die Sitzungsliste
+// (`officeApi.sessions`) und nimmt die oberste — die Liste kommt bereits nach letztem Ereignis
+// absteigend sortiert. Darüber steht ein Wähler.
 //
-// Das ist **nicht** dasselbe wie die Sitzungsreiter der Kopfzeile: die sind ein Filter auf den
-// Roster **einer** Sitzung (dimmen, nicht entfernen), der Wähler hier wechselt den Raum.
+// **Global ist „Alle Sitzungen" die Vorgabe** (`ALLE`). Die Vollbildseite `/buero` beantwortet
+// „was tut das Haus gerade"; ein einzelner Raum ist dafür der falsche Ausschnitt — 516 von 632
+// Läufen sind unter fünf Minuten fertig, der gewählte Raum ist die meiste Zeit tot, während
+// nebenan gearbeitet wird. Der Feed nimmt dann `GET /office/events` als Schnappschuss und live
+// jedes Ereignis, das der Socket liefert (der filtert bereits serverseitig auf das Erlaubte).
+// Das Fenster ist `ALLE_FENSTER_H` Stunden und steht **sichtbar** in der Kopfzeile: ein
+// stiller Ausschnitt wäre eine Behauptung über den Tag.
+//
+// **Im Projekt-Reiter bleibt es bei einer Sitzung.** Dort ist ein Ticket der Raum, und der
+// Reiter ist die Ansicht dieses einen Tickets — nicht die des Projekts. Deshalb hängt der
+// Modus an `scope.kind`, und `useOfficeFeed` verlangt für ihn ein ausdrückliches `opts`:
+// „kein `sid`" allein heißt im Reiter bloß „Liste noch unterwegs".
+//
+// Der Wähler ist **nicht** dasselbe wie die Sitzungsreiter der Kopfzeile: die sind ein Filter
+// auf den Roster (dimmen, nicht entfernen) und werden mit „Alle" erst richtig nützlich — sie
+// gruppieren dann nach Projekt statt nach dem einen Projekt, das ohnehin überall stand.
 //
 // ══ Die Tastaturkarte ════════════════════════════════════════════════════════════════════════
 //
@@ -60,10 +72,15 @@ import Dock, { DOCK_TABS, type DockTab } from "./Dock.tsx";
 import Inspector from "./Inspector.tsx";
 import TopBar, { passtZumFilter, type Tempo } from "./TopBar.tsx";
 import { officeApi, parseSid, sidKey, type Scope, type SessionSummary } from "./api.ts";
-import { useOfficeFeed } from "./useOfficeFeed.ts";
+import { ALLE_FENSTER_H, useOfficeFeed } from "./useOfficeFeed.ts";
 import { useTheme } from "./useTheme.ts";
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
+
+/** Der Wert des Wählers für „alle Sitzungen". Bewusst keine gültige `Sid` — `parseSid` gibt
+ *  dafür `null`, und genau daran erkennt der Feed den Modus. Er steht auch in der URL
+ *  (`?sid=alle`), damit ein geteilter Link denselben Raum zeigt. */
+const ALLE = "alle";
 
 /** Ein Pfeiltastendruck spult so weit, mit Umschalt zehnmal so weit. */
 const STEP_MS = 1000;
@@ -151,7 +168,13 @@ export default function OfficeView({
   const [paused, setPaused] = useState(false);
   const [sessionFilter, setSessionFilter] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [sidStr, setSidStr] = useState<string | null>(initialSid ?? null);
+  /** Gibt es hier überhaupt „Alle Sitzungen"? Global ja, im Projekt-Reiter nicht (dort ist
+   *  ein Ticket der Raum), und am Wandschirm auch nicht — der rotiert selbst durch die
+   *  laufenden Räume und braucht dafür einen konkreten. */
+  const alleMoeglich = scope.kind === "global" && !kiosk;
+  const [sidStr, setSidStr] = useState<string | null>(
+    initialSid ?? (alleMoeglich ? ALLE : null));
+  const alleModus = alleMoeglich && sidStr === ALLE;
 
   const grade = useTheme();
 
@@ -187,17 +210,22 @@ export default function OfficeView({
   // Raum steht also von selbst oben. Verschwindet die gewählte Sitzung aus dem Fenster
   // (`since_hours`), wird ebenfalls nachgerückt statt auf einen toten Raum zu zeigen.
   useEffect(() => {
+    // „Alle" ist eine Wahl, kein fehlender Wert — hier wird nichts nachgerückt.
+    if (alleModus) return;
+    // …es sei denn, der Umfang kann ihn gar nicht: `?sid=alle` im Projekt-Reiter (oder am
+    // Wandschirm) muss auf einen echten Raum fallen, sonst bliebe die Bühne leer.
     if (!liste.length) return;
-    if (sidStr && liste.some((s) => s.sid === sidStr)) return;
+    if (sidStr && sidStr !== ALLE && liste.some((s) => s.sid === sidStr)) return;
     const naechste = liste.find((s) => s.live) ?? liste[0];
     setSidStr(naechste.sid);
     onSidChangeRef.current?.(naechste.sid);
-  }, [liste, sidStr]);
+  }, [liste, sidStr, alleModus]);
 
   const sid = useMemo(() => parseSid(sidStr) ?? undefined, [sidStr]);
   const gewaehlt = liste.find((s) => s.sid === sidStr) ?? null;
 
-  const { recorder, revision, roster, totals, live, error } = useOfficeFeed(scope, sid);
+  const { recorder, revision, roster, totals, live, error } = useOfficeFeed(
+    scope, sid, { alleSitzungen: alleModus, sinceHours: ALLE_FENSTER_H });
 
   // ── Sprungpunkt ───────────────────────────────────────────────────────────────────────────
   //
@@ -402,9 +430,11 @@ export default function OfficeView({
     () => (selectedId === null ? null : roster.find((r) => r.agent_id === selectedId) ?? null),
     [roster, selectedId],
   );
-  const titel = gewaehlt
-    ? [gewaehlt.issue_key, gewaehlt.title].filter(Boolean).join(" · ")
-    : undefined;
+  // Das Fenster gehört in die Überschrift, nicht in eine Fußnote: der Raum zeigt einen
+  // Ausschnitt, und ein ungenannter Ausschnitt sähe aus wie „mehr war nicht los".
+  const titel = alleModus
+    ? `Alle Sitzungen · der letzten ${ALLE_FENSTER_H} Stunden`
+    : (gewaehlt ? [gewaehlt.issue_key, gewaehlt.title].filter(Boolean).join(" · ") : undefined);
   const fehler = error
     ?? (sessions.error ? `Sitzungen nicht ladbar: ${(sessions.error as Error).message}` : undefined);
 
@@ -439,7 +469,7 @@ export default function OfficeView({
 
   const werkzeugleiste = (
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      {liste.length > 1 && (
+      {(alleMoeglich || liste.length > 1) && (
         <label className="flex min-w-0 items-center gap-1.5 text-muted">
           <span className="shrink-0">Sitzung</span>
           <select
@@ -448,6 +478,10 @@ export default function OfficeView({
             title="Welcher Raum gezeigt wird. Die Reiter darüber filtern innerhalb dieses Raums."
             className="max-w-[22rem] truncate rounded border border-line bg-surface px-2 py-1 text-ink"
           >
+            {/* Erste Option und Vorgabe: der ganze Betrieb in einem Raum. */}
+            {alleMoeglich && (
+              <option value={ALLE}>{`Alle Sitzungen (der letzten ${ALLE_FENSTER_H} Stunden)`}</option>
+            )}
             {liste.map((s) => (
               <option key={s.sid} value={s.sid}>
                 {(s.live ? "● " : "") + [s.issue_key, s.title].filter(Boolean).join(" · ")}

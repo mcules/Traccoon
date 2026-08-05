@@ -124,6 +124,20 @@ export interface EventPage {
   truncated?: boolean;
   purged?: boolean;
   live?: boolean;
+
+  // ── Nur bei `GET /office/events` (alle Sitzungen) ────────────────────────────────────────
+  // Dieser Schnappschuss hat keine `sid`; an ihrer Stelle steht das Fenster. Die Felder
+  // liegen hier und nicht in einem eigenen Typ, weil das Frontend beide Schnappschüsse durch
+  // **denselben** Weg schickt — zwei Formen wären zwei Wege durch `useOfficeFeed`.
+  /** `"all"`, wenn die Antwort mehrere Sitzungen mischt. */
+  scope?: string;
+  /** Das gemessene Fenster in Stunden — vom Server geklemmt, deshalb kommt es zurück. */
+  since_hours?: number;
+  window_from?: string | null;
+  window_to?: string | null;
+  /** Wie viele Sitzungen bzw. Läufe im Fenster zusammenkamen. */
+  sessions?: number;
+  runs?: number;
 }
 
 /** Kosten je Modell. `priced` ist die Unterscheidung, die Traccoon heute fehlt:
@@ -274,6 +288,22 @@ export const officeApi = {
     api.get<EventPage>(
       `/office/sessions/${sid.kind}/${sid.ref}/events`
       + qs({ limit: opts?.limit ?? EVENT_PAGE_LIMIT, after_seq: opts?.afterSeq })),
+
+  /** Eine Seite Ereignisse über **alle** Sitzungen eines Zeitfensters.
+   *
+   *  Der Raum der globalen Seite. Möglich ist das, weil `seq` aus `run_steps.id` kommt —
+   *  einer SERIAL-Spalte, die über Läufe und Projekte hinweg monoton ist; Ereignisse
+   *  verschiedener Sitzungen ergeben damit EINE Folge, und der Sitzplatz (`hash32(run_id) % 12`)
+   *  ist ohnehin sitzungsunabhängig.
+   *
+   *  Antwortform ist die von `events()`, nur ohne `sid` und dafür mit dem Fenster. Die Rechte
+   *  sind dieselben wie bei `sessions()`; `projectId` **verengt** und autorisiert nie. */
+  allEvents: (opts?: { sinceHours?: number; limit?: number; afterSeq?: number;
+                       projectId?: number }): Promise<EventPage> =>
+    api.get<EventPage>("/office/events" + qs({
+      since_hours: opts?.sinceHours, limit: opts?.limit ?? EVENT_PAGE_LIMIT,
+      after_seq: opts?.afterSeq, project_id: opts?.projectId,
+    })),
 
   /** Kosten des Raums — eigener Aufruf, weil sie eine ganz andere Änderungsrate haben als
    *  die Ereignisse und den Schnappschuss sonst dauernd entwerten würden. */
