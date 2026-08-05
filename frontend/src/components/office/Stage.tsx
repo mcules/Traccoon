@@ -33,7 +33,28 @@
 // Das `drawImage` unten (Puffer → sichtbarer Canvas) ist die einzige vom Zeichenvertrag
 // ausgenommene Stelle, und sie lebt laut PIXEL-CONTRACT.md Regel 4 genau hier. Alles andere in
 // dieser Datei zeichnet nichts: `renderFrame` malt in den 480×270-Puffer, diese Datei blittet
-// ihn ganzzahlig hoch und füllt den Rest als Briefkasten.
+// ihn ganzzahlig hoch.
+//
+// ══ Ganzzahlig im Rückspeicher, eingepasst per CSS ══════════════════════════════════════════
+//
+// Zwei getrennte Größen, und sie zu verwechseln ist der teure Fehler:
+//
+//   · **Rückspeicher** (`canvas.width/height`) = `480·s × 270·s` mit ganzzahligem `s`. Nur hier
+//     gilt Regel 1: ein Blit mit Faktor 1,5 liefe über halbe Spalten und machte aus Pixelkunst
+//     Matsch.
+//   · **CSS-Fläche** (`canvas.style.width/height`) = das größte 16:9-Rechteck, das in den
+//     Container passt. 480×270 **ist** 16:9, also verzerrt nichts, und eine Richtung füllt
+//     immer vollständig. Das Hochziehen auf diese Fläche macht der Browser, hart gerastert
+//     (`.pixel-canvas`, `image-rendering: pixelated`).
+//
+// Vorher wurde beides in einem Schritt erledigt: ganzzahlig blitten **und** den Rest als
+// Briefkasten stehen lassen. Auf 1920×1080 ergab das Faktor 3 statt 3,76 — ringsum breite leere
+// Flächen, gerade im Wandschirm, für den die Fläche der ganze Punkt ist.
+//
+// Was daran hängt: **die Trefferprüfung**. Die Zeigerposition kommt in CSS-Pixeln, `hitTest`
+// will Pufferpixel — und dazwischen stehen jetzt **zwei** Faktoren (CSS → Rückspeicher → Puffer),
+// nicht mehr nur der Blit-Faktor. Wer einen davon vergisst, wählt eine Figur zu weit rechts.
+// `toBuffer` rechnet deshalb konsequent über `getBoundingClientRect()` des Canvas.
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent,
@@ -55,6 +76,12 @@ import { CAM_FULL, actorAt, hitTest, renderFrame } from "./pixel/scene.ts";
 /** Höchster Zoom. Bei 4 zeigt der Puffer noch 120×67 Pixel — darunter sieht man einzelne
  *  Sprites und sonst nichts mehr, und die Ansicht verliert genau das, wofür es sie gibt. */
 const MAX_ZOOM = 4;
+
+/** Deckel für den ganzzahligen Rückspeicher-Faktor. Bei 8 ist der Canvas 3840×2160 — genau ein
+ *  4K-Schirm bei `devicePixelRatio = 1`. Darüber wächst nur der Speicher: was der Browser aus
+ *  dem Rückspeicher hochzieht, sieht ab dieser Feinheit nicht mehr schärfer aus, weil die
+ *  Quelle 480×270 bleibt. */
+const MAX_BLIT = 8;
 
 /** Zeitkonstante der Kamerabewegung. `dt/220` heißt: nach ~220 ms ist der Rest der Strecke
  *  einmal ausgeglichen — schnell genug, um zu folgen, langsam genug, um nicht zu zucken. */
@@ -228,9 +255,14 @@ export default function Stage(props: StageProps): JSX.Element {
   const prevNowRef = useRef(0);
   const dirtyRef = useRef(true);
 
-  /** Blit-Geometrie, einmal je Größenänderung gerechnet: ganzzahliger Faktor und der
-   *  Briefkasten-Versatz, beides in **Geräte**pixeln, dazu das Verhältnis zu CSS-Pixeln. */
-  const blitRef = useRef({ scale: 1, ox: 0, oy: 0, ratio: 1 });
+  /** Die Geometrie der Bühne, einmal je Größenänderung gerechnet.
+   *
+   *  · `scale` — ganzzahliger Faktor des **Rückspeichers**: `canvas.width === PIX.w * scale`.
+   *  · `unit`  — **CSS**-Pixel je Pufferpixel. Das ist der Faktor, mit dem die DOM-Schilder
+   *              rechnen, und er ist im Allgemeinen krumm (genau darum geht es).
+   *  · `offX/offY` — Lage des Canvas **im Host**, in CSS-Pixeln. Die Bühne ist mittig
+   *              eingepasst; die Schilder liegen im Host, nicht im Canvas. */
+  const blitRef = useRef({ scale: 1, unit: 1, offX: 0, offY: 0 });
 
   // ── Ruhezustände ───────────────────────────────────────────────────────────────────────────
   const shownRef = useRef(true);      // im Sichtfeld?
@@ -273,7 +305,13 @@ export default function Stage(props: StageProps): JSX.Element {
   useEffect(() => {
     seekRef.current = seekTs;
     speedRef.current = speed;
-    if (gradeRef.current !== grade) { gradeRef.current = grade; palRef.current = GRADES[grade]; }
+    if (gradeRef.current !== grade) {
+      gradeRef.current = grade;
+      palRef.current = GRADES[grade];
+      // Der Rand um die eingepasste Bühne liegt im Host, also wechselt er hier die Farbe mit —
+      // `layout()` läuft bei einem Themawechsel nicht, weil sich keine Größe ändert.
+      if (hostRef.current) hostRef.current.style.backgroundColor = palRef.current.wallLo;
+    }
     selRef.current = selected;
     hovRef.current = hover;
     dimRef.current = dimmed;
@@ -354,18 +392,41 @@ export default function Stage(props: StageProps): JSX.Element {
     const layout = (): void => {
       const r = host.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      const w = Math.max(1, Math.round(r.width * dpr));
-      const h = Math.max(1, Math.round(r.height * dpr));
-      if (cvs.width !== w || cvs.height !== h) { cvs.width = w; cvs.height = h; }
+      const hostW = Math.max(1, r.width);
+      const hostH = Math.max(1, r.height);
+
+      // ── Einpassen (CSS) ───────────────────────────────────────────────────────────────────
+      // Das größte 16:9-Rechteck im Container. Weil 480×270 selbst 16:9 ist, reicht dafür ein
+      // gemeinsamer Faktor — es gibt keine Verzerrung zu verhindern, nur eine Richtung, die
+      // vollständig füllt, und eine, die den Rest teilt.
+      const fit = Math.min(hostW / PIX.w, hostH / PIX.h);
+      const cssW = Math.max(1, Math.round(PIX.w * fit));
+      const cssH = Math.max(1, Math.round(PIX.h * fit));
+      const offX = Math.round((hostW - cssW) / 2);
+      const offY = Math.round((hostH - cssH) / 2);
+
+      // ── Zeichnen (Rückspeicher) ───────────────────────────────────────────────────────────
       // Ganzzahlig, sonst wird Pixelkunst zu Matsch: ein 1 Pixel breiter Strich liefe bei
-      // Faktor 1,5 über zwei Spalten mit halber Deckkraft.
-      const scale = Math.max(1, Math.floor(Math.min(w / PIX.w, h / PIX.h)));
-      blitRef.current = {
-        scale,
-        ox: Math.round((w - PIX.w * scale) / 2),
-        oy: Math.round((h - PIX.h * scale) / 2),
-        ratio: r.width > 0 ? w / r.width : dpr,
-      };
+      // Faktor 1,5 über zwei Spalten mit halber Deckkraft. **Abgerundet**, nie aufgerundet:
+      // ein zu großer Rückspeicher müsste vom Browser verkleinert werden, und `pixelated` wirft
+      // dabei ganze Quellzeilen weg — eine ein Pixel breite Kante verschwände einfach. Beim
+      // Vergrößern geht nichts verloren, einzelne Pixel werden nur unterschiedlich breit.
+      const scale = Math.max(1, Math.min(MAX_BLIT, Math.floor(cssW * dpr / PIX.w)));
+      const bw = PIX.w * scale;
+      const bh = PIX.h * scale;
+      if (cvs.width !== bw || cvs.height !== bh) { cvs.width = bw; cvs.height = bh; }
+
+      cvs.style.width = `${cssW}px`;
+      cvs.style.height = `${cssH}px`;
+      cvs.style.left = `${offX}px`;
+      cvs.style.top = `${offY}px`;
+      // Der Rand um die eingepasste Bühne gehört zum Raum, nicht zur Anwendung — deshalb eine
+      // Palettenfarbe und nicht `bg-surface`. Früher malte ihn der Canvas selbst; jetzt liegt
+      // er außerhalb, also trägt ihn der Host.
+      host.style.backgroundColor = palRef.current.wallLo;
+
+      blitRef.current = { scale, unit: cssW / PIX.w, offX, offY };
+      // Eine Größenänderung setzt den Kontextzustand zurück — die Glättung muss danach neu aus.
       vctx.imageSmoothingEnabled = false;
       dirtyRef.current = true;
     };
@@ -384,12 +445,14 @@ export default function Stage(props: StageProps): JSX.Element {
       if (!p) { el.style.visibility = "hidden"; return; }
       const { z, ox, oy } = camOffset(cam);
       const b = blitRef.current;
-      const cssScale = b.scale / b.ratio;
-      const sx = (b.ox + (p.x * z + ox) * b.scale) / b.ratio;
-      const sy = (b.oy + (p.y * z + oy) * b.scale) / b.ratio;
+      // Pufferpixel → CSS-Pixel im Host: der Einpass-Faktor, dazu die Lage des Canvas im Host.
+      // Der ganzzahlige Rückspeicher-Faktor kommt hier **nicht** vor — er beschreibt, wie fein
+      // gemalt wird, nicht, wie groß das Bild auf dem Schirm ist.
+      const sx = b.offX + (p.x * z + ox) * b.unit;
+      const sy = b.offY + (p.y * z + oy) * b.unit;
       // Über dem Kopf, mittig. `translate(-50%, -100%)` steht im Stil des Elements.
       el.style.left = `${Math.round(sx)}px`;
-      el.style.top = `${Math.round(sy - FIG_H * z * cssScale)}px`;
+      el.style.top = `${Math.round(sy - FIG_H * z * b.unit)}px`;
       // Stapelung wie im Canvas: wer weiter unten steht, steht vorn. Damit deckt das Schild
       // einer vorderen Figur das einer hinteren ab — und nicht umgekehrt.
       el.style.zIndex = String(Math.max(0, Math.round(sy)));
@@ -411,13 +474,12 @@ export default function Stage(props: StageProps): JSX.Element {
       });
 
       // ── Die eine ausgenommene Stelle (PIXEL-CONTRACT.md Regel 4) ───────────────────────────
+      // Der Rückspeicher ist per Bau genau `PIX × scale` groß, also deckt der Blit ihn
+      // vollständig ab: kein Briefkasten mehr, kein Vorabfüllen. Den Rand um die eingepasste
+      // Fläche trägt der Host (siehe `layout`).
       const b = blitRef.current;
       vctx.imageSmoothingEnabled = false;
-      // Briefkasten in einer Palettenfarbe: der Rand gehört zum Raum, nicht zur Anwendung.
-      // Schwarz sähe im Tagbüro aus wie ein Defekt.
-      vctx.fillStyle = palRef.current.wallLo;
-      vctx.fillRect(0, 0, cvs.width, cvs.height);
-      vctx.drawImage(buf, 0, 0, PIX.w, PIX.h, b.ox, b.oy, PIX.w * b.scale, PIX.h * b.scale);
+      vctx.drawImage(buf, 0, 0, PIX.w, PIX.h, 0, 0, PIX.w * b.scale, PIX.h * b.scale);
 
       place(selTagRef.current, selRef.current, f, cam);
       place(hovTagRef.current, hovRef.current !== selRef.current ? hovRef.current : undefined,
@@ -638,18 +700,27 @@ export default function Stage(props: StageProps): JSX.Element {
 
   // ── Zeiger → Puffer ────────────────────────────────────────────────────────────────────────
   //
-  // Nur die Bühne kennt den Blit-Faktor, also rechnet sie die Zeigerposition um; `hitTest`
+  // Nur die Bühne kennt ihre Geometrie, also rechnet sie die Zeigerposition um; `hitTest`
   // erwartet Pufferkoordinaten und macht die Kameraumkehr selbst.
+  //
+  // **Zwei Faktoren, nicht einer.** Seit die Fläche per CSS eingepasst wird, ist die CSS-Größe
+  // des Canvas kein Vielfaches von 480×270 mehr — sie hängt am Container. Der Weg geht deshalb
+  // CSS-Pixel → Rückspeicher (`canvas.width / rect.width`) → Pufferpixel (`/ scale`). Beide
+  // Faktoren kommen aus derselben Messung, also stimmt die Rechnung auch dann noch, wenn
+  // zwischen `layout()` und dem Klick etwas an der Größe gerückt hat.
+  //
+  // Ein Versatz ist nicht mehr abzuziehen: der Blit deckt den Rückspeicher vollständig ab, und
+  // `rect` ist der Canvas selbst — der Rand ums Bild liegt außerhalb und liefert von sich aus
+  // Werte außerhalb von 0..480, die `hitTest` als „nichts getroffen" beantwortet.
   const toBuffer = useCallback((clientX: number, clientY: number) => {
     const cvs = canvasRef.current;
     if (!cvs) return null;
     const r = cvs.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) return null;
     const b = blitRef.current;
-    const ratio = cvs.width / r.width;
     return {
-      x: ((clientX - r.left) * ratio - b.ox) / b.scale,
-      y: ((clientY - r.top) * ratio - b.oy) / b.scale,
+      x: (clientX - r.left) * (cvs.width / r.width) / b.scale,
+      y: (clientY - r.top) * (cvs.height / r.height) / b.scale,
     };
   }, []);
 
@@ -790,9 +861,14 @@ export default function Stage(props: StageProps): JSX.Element {
       onPointerLeave={onPointerLeave}
       onClick={onClick}
     >
+      {/* Absolut gesetzt, weil Größe und Lage aus `layout()` kommen: die Bühne ist das größte
+          16:9-Rechteck im Host und sitzt mittig darin. Aus dem Fluss genommen kann sie den Host
+          nicht auseinanderdrücken — sonst zöge der `ResizeObserver` sich selbst am Schopf.
+          `.pixel-canvas` hält den Browser beim Hochskalieren vom Weichzeichnen ab. */}
       <canvas
         ref={canvasRef}
-        className="block h-full w-full"
+        className="pixel-canvas absolute block"
+        style={{ left: 0, top: 0 }}
         role="img"
         aria-label={
           empty

@@ -11,6 +11,8 @@
 //   runder Tisch   52 × 13
 //   Tür            20 × 34     — reicht von der Bodenlinie bis fast an die Decke
 //   Fenster        30 × 22     — kachelbar, siehe `WINDOW_STEP`
+//   Aktenschrank   16 × 15     — hüfthoch, Ablage für die kleine Pflanze
+//   Serverschrank  20 × 34     — anderthalb Figurenhöhen; hoch **statt** breit, siehe dort
 //
 // Die Wand nimmt die obersten `WALL_H = 38` Zeilen ein, der Boden die restlichen 232.
 //
@@ -219,36 +221,98 @@ const PLANT_SMALL = defineArt([
   "..KKKKK..",
 ], { G: "plant", g: "plantLo", O: "soil", K: "clay" });
 
-// ── Serverschrank ────────────────────────────────────────────────────────────
-// 22×20, also gut kopfhoch neben einer 24 Pixel hohen Figur: Pixel für Pixel ein 19-Zoll-Rack
-// an der Rückwand. Die waagerechten Fugen sind das, was es vom Blech-Quader unterscheidet.
+// ── Aktenschrank ─────────────────────────────────────────────────────────────
+// 16×15, hüfthoch neben einer 24 Pixel hohen Figur: drei Schubladen mit Griffmulde, heller
+// Blechkorpus, kleine Füße. Er ist reine Einrichtung und trägt **keine** Bedeutung mehr —
+// genau das ist der Punkt. Solange er die Deployment-Anzeige war, hat der Zuschauer den
+// Serverschrank in einem Möbel gesucht, das aussieht wie ein Rollcontainer.
 //
-// Die drei dunklen `ink`-Schlitze (Zeilen 5 · 10 · 15, Spalten 7..14) sind die LED-Reihen. Sie
-// bleiben `ink`, solange nichts läuft — der Schrank ist dann exakt die Kulisse, die er immer
-// war, und `drawCabinet` setzt bei `idle` byteweise dieselben `fillRect` ab wie vor dieser Welle.
+// Er bleibt trotzdem im Raum: auf ihm steht die Topfpflanze (die sonst auf dem Boden stünde
+// und dort wie ein vergessener Blumentopf läge), und ein Büro ohne ein einziges Stauraummöbel
+// liest sich als Möbelhaus-Ausstellung, nicht als Arbeitsplatz.
 
-const CABINET = defineArt([
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "cccccccccccccccccccccc",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "MMMMMMMIIIIIIIIMMMMMMM",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "cccccccccccccccccccccc",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "MMMMMMMIIIIIIIIMMMMMMM",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "cccccccccccccccccccccc",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "MMMMMMMIIIIIIIIMMMMMMM",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "MMMMMMMMMMMMMMMMMMMMMM",
-  "cccccccccccccccccccccc",
-  ".c..................c.",
+const FILE_CABINET = defineArt([
+  "MMMMMMMMMMMMMMMM",
+  "MMMMMMMMMMMMMMMM",
+  "cccccccccccccccc",
+  "MMMMMMMMMMMMMMMM",
+  "MMMMMIIIIIIMMMMM",
+  "MMMMMMMMMMMMMMMM",
+  "cccccccccccccccc",
+  "MMMMMMMMMMMMMMMM",
+  "MMMMMIIIIIIMMMMM",
+  "MMMMMMMMMMMMMMMM",
+  "cccccccccccccccc",
+  "MMMMMMMMMMMMMMMM",
+  "MMMMMIIIIIIMMMMM",
+  "MMMMMMMMMMMMMMMM",
+  ".c............c.",
 ], { M: "metal", c: "chairLo", I: "ink" });
+
+// ── Serverschrank ────────────────────────────────────────────────────────────
+// 20×34: **hoch statt breit**, gut anderthalb Figurenhöhen. Das Seitenverhältnis ist der
+// erste und wichtigste Träger der Aussage — ein Rack steht, ein Aktenschrank hockt. Bei 22×20
+// (der alten Fassung) las sich dasselbe Möbel unweigerlich als Schrank mit Schubladen, und
+// die drei dunklen Schlitze darin als Griffe.
+//
+// Was es zum Rack macht, in der Reihenfolge, in der das Auge es aufnimmt:
+//
+//   · **Zwei helle Rahmenholme** (`metal`, je 2 Spalten außen) über die volle Höhe. Sie
+//     rahmen eine **dunkle** Front (`chair`) — die Umkehr des alten Blechquaders, und der
+//     Grund, warum die Silhouette schon aus drei Metern nicht mehr nach Möbel aussieht.
+//   · **Höheneinheiten mit eigenen Blenden**, getrennt durch dunkle Fugen (`chairLo`):
+//     ein Patchfeld oben (Portpaare), drei Geräte, unten eine Blindblende. Gestapelte
+//     Geräte sind das, was ein Rack von einem Kasten unterscheidet.
+//   · **Lüftungsgitter** als versetztes Schachbrett aus `ink`-Pixeln (nicht als voller
+//     Balken): eine perforierte Fläche kann man nicht als Griff missverstehen.
+//   · **Sockel und vier Füße** unten, damit er auf dem Boden steht statt zu schweben.
+//
+// Die `L`-Blöcke (Zeilen 7·8 / 13·14 / 19·20, Spalten 3..6) sind die LED-Felder — je Gerät
+// eines, 4×2 Pixel. Sie sind `ink` wie das Gitter, also im Ruhezustand dunkel, und werden von
+// `drawRack` überschrieben, sobald ein Deployment läuft.
+//
+// Sie sitzen an der **linken** Frontkante, und das ist gemessen, nicht dekoriert: die Figur,
+// die das Deployment auslöst, steht rechts vom Schrank (`RACK_PX`), und ihre Sprechblase ist
+// um ihre Mitte zentriert. Auf der rechten Frontseite lag das Leuchtfeld damit genau unter der
+// Blase — im einzigen Moment, in dem jemand hinsieht, war die Anzeige verdeckt. Links ist es
+// so weit vom Sprecher entfernt, wie der Schrank breit ist.
+
+const RACK = defineArt([
+  "MMMMMMMMMMMMMMMMMMMM",
+  "MMNNNNNNNNNNNNNNNNMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMCIICIICIICIICIICMM",
+  "MMCIICIICIICIICIICMM",
+  "MMccccccccccccccccMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMCLLLLCICICICICICMM",
+  "MMCLLLLCCICICICICCMM",
+  "MMCCCCCCICICICICICMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMccccccccccccccccMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMCLLLLCICICICICICMM",
+  "MMCLLLLCCICICICICCMM",
+  "MMCCCCCCICICICICICMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMccccccccccccccccMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMCLLLLCICICICICICMM",
+  "MMCLLLLCCICICICICCMM",
+  "MMCCCCCCICICICICICMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMccccccccccccccccMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMCCCCCCCCCCCCCCCCMM",
+  "MMccccccccccccccccMM",
+  "MMMMMMMMMMMMMMMMMMMM",
+  ".NNNNNNNNNNNNNNNNNN.",
+  ".NNNNNNNNNNNNNNNNNN.",
+  ".MM..............MM.",
+  ".MM..............MM.",
+], { M: "metal", C: "chair", c: "chairLo", N: "screen", I: "ink", L: "ink" });
 
 // ── Kaffeeecke ───────────────────────────────────────────────────────────────
 // Maschine auf einer kleinen Theke, mit Tasse in der Nische. Das ist der Ort, an den eine
@@ -447,7 +511,8 @@ export const SIZE = {
   tableChair: { w: artW(TABLE_CHAIR), h: artH(TABLE_CHAIR) },
   plantTall: { w: artW(PLANT_TALL), h: artH(PLANT_TALL) },
   plantSmall: { w: artW(PLANT_SMALL), h: artH(PLANT_SMALL) },
-  cabinet: { w: artW(CABINET), h: artH(CABINET) },
+  cabinet: { w: artW(FILE_CABINET), h: artH(FILE_CABINET) },
+  rack: { w: artW(RACK), h: artH(RACK) },
   coffee: { w: artW(COFFEE), h: artH(COFFEE) },
   door: { w: artW(DOOR_SHUT), h: artH(DOOR_SHUT) },
   window: { w: artW(WINDOW), h: artH(WINDOW) },
@@ -627,14 +692,29 @@ export function drawPlant(
   drawArt(ctx, art, cx, yBase, pal, { flip: opts?.flip });
 }
 
+/** Der Aktenschrank. Einrichtung, sonst nichts — die Deployment-Anzeige ist `drawRack`. */
+export function drawCabinet(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
+  contactShadow(ctx, pal, cx, yBase, SIZE.cabinet.w);
+  drawArt(ctx, FILE_CABINET, cx, yBase, pal);
+  fillA(ctx, pal, "wallHi", 0.20, artLeft(FILE_CABINET, cx), yBase - SIZE.cabinet.h,
+    SIZE.cabinet.w, 1);
+}
+
 // ── Der Serverschrank als Deployment-Anzeige ─────────────────────────────────
 
-/** Die drei `ink`-Schlitze des `CABINET`-Arts, in Art-Koordinaten. Abgeleitet aus dem Sprite
- *  oben — wer dort eine Zeile einfügt, muss diese Zahlen mitziehen; deshalb stehen sie direkt
- *  neben der Zeichenfunktion und nicht in `const.ts`. Index 0 ist die **oberste** Reihe. */
-const LED_ROWS: readonly number[] = [5, 10, 15];
-const LED_X = 7;
-const LED_W = 8;
+/** Die `L`-Felder des `RACK`-Arts, in Art-Koordinaten: je Höheneinheit ein 4×2-Feld. Abgeleitet
+ *  aus dem Sprite oben — wer dort eine Zeile einfügt, muss diese Zahlen mitziehen; deshalb
+ *  stehen sie direkt neben der Zeichenfunktion und nicht in `const.ts`. Index 0 ist das
+ *  **oberste** Gerät.
+ *
+ *  Vier Pixel breit und zwei hoch statt des früheren 8×1-Balkens: ein Balken über die halbe
+ *  Frontbreite war genau das, was den Schrank nach Schublade aussehen ließ. Ein kompakter
+ *  Block neben dem Lüftungsgitter liest sich als Betriebsanzeige des Geräts, in dessen
+ *  Blende er sitzt — und acht leuchtende Pixel bleiben es in beiden Fassungen. */
+const LED_ROWS: readonly number[] = [7, 13, 19];
+const LED_X = 3;
+const LED_W = 4;
+const LED_H = 2;
 
 /** Ein Schritt des steigenden Balkens. Drei Schritte ergeben einen Durchlauf von 1,26 s — das
  *  liest sich als „hier arbeitet etwas", ohne zu flackern. */
@@ -648,7 +728,7 @@ export interface RackOpts {
   t: number;
 }
 
-/** Welche Farbe eine LED-Reihe trägt. Keine neue Palettenfarbe nötig — `lamp`, `ok`, `err` und
+/** Welche Farbe ein LED-Feld trägt. Keine neue Palettenfarbe nötig — `lamp`, `ok`, `err` und
  *  `blocked` sind dieselben vier, die Blasenränder und Dock-Kacheln schon benutzen, und damit
  *  widersprechen Rack und Zeitleiste einander nie.
  *
@@ -663,39 +743,50 @@ function ledKey(state: RackState, row: number): PalKey {
 }
 
 /**
- * Der Serverschrank. Ohne `rack` (oder bei `idle`) ist er genau die Kulisse, die er immer war.
+ * Der Serverschrank. Ohne `rack` (oder bei `idle`) ist er stille Kulisse: ein Rack, in dem
+ * gerade nichts leuchtet.
  *
  * **Die Bauregel, an der die goldenen Ops-Hashes hängen**: der LED-Block wird ausschließlich
  * betreten, wenn wirklich ein Deployment leuchtet. Bei `idle` fallen exakt dieselben drei
- * Zeichenaufrufe in derselben Reihenfolge an wie vor dieser Welle — sonst änderten sich alle
- * 16 goldenen Bilder und die Absicht des Bless-Diffs verschwände im Rauschen.
+ * Zeichenaufrufe in derselben Reihenfolge an wie ohne `rack` — sonst hinge jedes der 16
+ * goldenen Bilder am Zustand des Schranks und die Absicht eines Bless-Diffs verschwände im
+ * Rauschen.
  */
-export function drawCabinet(
+export function drawRack(
   ctx: Ctx, cx: number, yBase: number, pal: Pal, rack?: RackOpts,
 ): void {
-  contactShadow(ctx, pal, cx, yBase, SIZE.cabinet.w);
-  drawArt(ctx, CABINET, cx, yBase, pal);
-  fillA(ctx, pal, "wallHi", 0.20, artLeft(CABINET, cx), yBase - SIZE.cabinet.h, SIZE.cabinet.w, 1);
+  contactShadow(ctx, pal, cx, yBase, SIZE.rack.w);
+  drawArt(ctx, RACK, cx, yBase, pal);
+  fillA(ctx, pal, "wallHi", 0.20, artLeft(RACK, cx), yBase - SIZE.rack.h, SIZE.rack.w, 1);
 
   if (rack === undefined || rack.state === "idle") return;
 
-  const x0 = artLeft(CABINET, cx) + LED_X;
-  const yTop = yBase - SIZE.cabinet.h;
+  const xLeft = artLeft(RACK, cx);
+  const x0 = xLeft + LED_X;
+  const yTop = yBase - SIZE.rack.h;
   // Der steigende Balken: ein Schritt je `LED_STEP_MS`, von unten nach oben, dann von vorn.
   // Die Phase kommt aus `t - since` — bei einem Sprung in der Zeitleiste steht sie damit
   // sofort richtig, statt sich von Bild zu Bild neu hochzuzählen.
   const stufe = Math.floor(Math.max(0, rack.t - rack.since) / LED_STEP_MS);
   const an = rack.state === "start" ? 1 + (stufe % LED_ROWS.length) : LED_ROWS.length;
 
+  // Ein schwacher Lichthauch über die ganze Front, in der Farbe des **untersten** leuchtenden
+  // Geräts: aus zwei Metern sieht man auf 480×270 zuerst, *dass* der Schrank lebt, und erst
+  // dann, welche Reihen. Die Farbe ist die des Zustands, nicht die der Reihe — bei `back`
+  // wäre das oberste (`blocked`) die falsche Nachricht für die Fläche.
+  const flaeche = ledKey(rack.state, LED_ROWS.length - 1);
+  fillA(ctx, pal, flaeche, 0.05, xLeft + 2, yTop + 2, SIZE.rack.w - 4, SIZE.rack.h - 6);
+
   for (let i = 0; i < LED_ROWS.length; i++) {
     if (LED_ROWS.length - i > an) continue;
     const key = ledKey(rack.state, i);
     const y = yTop + LED_ROWS[i];
-    // Streulicht zuerst, dann die LED selbst: umgekehrt läge der blasse Schleier über der
-    // Leuchtzeile und nähme ihr genau die Farbe, um die es geht. Ohne den Schein sind acht
+    // Streulicht zuerst, dann die LED selbst: umgekehrt läge der blasse Schleier über dem
+    // Leuchtfeld und nähme ihm genau die Farbe, um die es geht. Ohne den Schein sind acht
     // Pixel in 480×270 aus zwei Metern schlicht nicht zu sehen.
-    fillA(ctx, pal, key, 0.22, x0 - 1, y - 1, LED_W + 2, 3);
-    fill(ctx, pal, key, x0, y, LED_W, 1);
+    fillA(ctx, pal, key, 0.30, x0 - 2, y - 2, LED_W + 4, LED_H + 4);
+    fillA(ctx, pal, key, 0.55, x0 - 1, y - 1, LED_W + 2, LED_H + 2);
+    fill(ctx, pal, key, x0, y, LED_W, LED_H);
   }
 }
 

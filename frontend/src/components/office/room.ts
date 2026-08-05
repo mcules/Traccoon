@@ -93,14 +93,14 @@ const TABLE: Pt = { x: Math.round(SCENE.w * 0.51), y: Math.round(SCENE.h * 0.55)
 /** Standplatz vor dem Serverschrank, **in Pufferpixeln gedacht und zurückgerechnet**.
  *
  *  Alle anderen Punkte dieser Datei sind Bruchteile von `SCENE` — der Schrank nicht: er ist
- *  ein Möbel und steht in `pixel/scene.ts` an einer Pufferkoordinate (`CABINET_X`/`CABINET_Y`),
+ *  ein Möbel und steht in `pixel/scene.ts` an einer Pufferkoordinate (`RACK_X`/`RACK_Y`),
  *  weil die Rückwand Kulisse ist und kein Ort, an dem ein Prozentwert etwas bedeutete. Ein
  *  ausgedachter Prozentwert hier träfe den Schrank nur zufällig.
  *
  *  Die 18 Pixel Versatz nach rechts sind das eigentliche Maß: eine Figur ist 16 Pufferpixel
- *  breit und stünde mittig **vor** den LED-Reihen, die sie zeigen soll. Prüfung 11
- *  (`RACK_PX ≡ round(ROOM.rack × POS_SCALE)`) hält beide Zahlen zusammen. */
-const RACK_BUF = { x: 196 + 18, y: 60 + 8 };
+ *  breit und stünde mittig **vor** dem Schrank, den sie zeigen soll — mit dem Versatz steht sie
+ *  daneben. Prüfung 11 (`RACK_PX ≡ round(ROOM.rack × POS_SCALE)`) hält beide Zahlen zusammen. */
+const RACK_BUF = { x: 224 + 18, y: 60 + 8 };
 const RACK: Pt = {
   x: Math.round(RACK_BUF.x / POS_SCALE),
   y: Math.round(RACK_BUF.y / POS_SCALE),

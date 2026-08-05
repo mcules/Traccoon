@@ -15,6 +15,23 @@ Es gibt genau eine Auflösung, in der gezeichnet wird: **480×270 Pufferpixel**.
 Canvas ist beliebig groß; er bekommt den Puffer ganzzahlig hochskaliert
 (`imageSmoothingEnabled = false`).
 
+> **Ganzzahlig ist die Zeichnung im Rückspeicher — das Einpassen in den Viewport macht CSS.**
+>
+> Der Rückspeicher (`canvas.width/height`) bleibt ein ganzzahliges Vielfaches von 480×270; nur
+> dort gilt die Regel, denn ein Blit mit Faktor 1,5 liefe über halbe Spalten. Die **CSS-Größe**
+> des Canvas dagegen ist das größte 16:9-Rechteck, das in den Container passt — 480×270 *ist*
+> 16:9, also verzerrt nichts, und eine Richtung füllt immer vollständig. Hochgezogen wird per
+> `image-rendering: pixelated` (Klasse `.pixel-canvas` in `src/index.css`), nicht bilinear.
+>
+> Wer das zu „der sichtbare Canvas muss ein ganzzahliges Vielfaches sein" verkürzt, holt den
+> Fehler zurück, der hier stand: auf 1920×1080 ergab das Faktor 3 statt 3,76 und ringsum breite
+> leere Flächen — im Wandschirm, für den die Fläche der ganze Zweck ist.
+>
+> Was daran hängt: **die Trefferprüfung**. `hitTest` will Pufferkoordinaten, die Zeigerposition
+> kommt in CSS-Pixeln, und dazwischen stehen jetzt zwei Faktoren (CSS → Rückspeicher → Puffer)
+> statt nur des Blit-Faktors. `Stage.toBuffer` rechnet deshalb über `getBoundingClientRect()`
+> **des Canvas** und beide Faktoren; wer einen vergisst, wählt eine Figur zu weit rechts.
+
 Die Simulation dagegen läuft in **`SCENE = 1600×900`**. Zwischen beiden steht `POS_SCALE = 0.3`:
 
 > **`POS_SCALE` gilt für Positionen. Für Sprites gilt es nicht.**
@@ -234,8 +251,11 @@ Das Blitten des 480×270-Puffers auf den sichtbaren Canvas braucht genau ein `dr
 ```ts
 // Stage.tsx (Schicht 2) — die einzige vom Pixel-Vertrag ausgenommene Stelle.
 vis.imageSmoothingEnabled = false;
-vis.drawImage(buffer, 0, 0, PIX.w, PIX.h, ox, oy, PIX.w * z, PIX.h * z);
+vis.drawImage(buffer, 0, 0, PIX.w, PIX.h, 0, 0, PIX.w * z, PIX.h * z);
 ```
+
+Der Blit deckt den Rückspeicher **vollständig** ab (kein Versatz, kein Briefkasten): auf die
+sichtbare Fläche zieht ihn CSS, siehe Regel 1.
 
 Dieses `drawImage` lebt in **`Stage.tsx`, Schicht 2**, und ist vom Vertrag ausdrücklich ausgenommen.
 Es ist die einzige Ausnahme; ein zweites `drawImage` irgendwo anders ist ein Fehler, kein Präzedenzfall.
@@ -319,9 +339,15 @@ noch gebaut wird. Zwei Folgerungen sind Vertrag, nicht Geschmack:
   **beide Enden echte Ereignisse**. Kommt das Ende nie (Deployer tot), leuchtet das Rack weiter.
   Das ist die Wahrheit, kein Fehler: es läuft etwas, von dem niemand weiß, wie es ausging.
 
-`drawCabinet` betritt den LED-Block **ausschließlich** bei `state !== "idle"`. Bei `idle` fallen
-byteweise dieselben `fillRect` in derselben Reihenfolge an wie vor Welle 3-4 — sonst änderten
-sich alle 16 Ops-Hashes und die Absicht eines Bless-Diffs verschwände im Rauschen.
+`drawRack` betritt den LED-Block **ausschließlich** bei `state !== "idle"`. Bei `idle` fallen
+byteweise dieselben `fillRect` in derselben Reihenfolge an wie ohne `rack` — sonst hinge jedes
+der 16 Ops-Hashes am Zustand des Schranks und die Absicht eines Bless-Diffs verschwände im
+Rauschen.
+
+Der Serverschrank ist **20×34** (hoch statt breit) und steht in der Wandlücke zwischen
+Whiteboard und Uhr; der alte 22×20-Kasten mit drei Schlitzen las sich als Aktenschrank mit
+Schubladengriffen und trug die Bedeutung damit nicht. Der Aktenschrank ist er selbst geblieben —
+16×15, `drawCabinet`, ohne jede Bedeutung, Ablage für die Topfpflanze.
 
 Die Fixture dazu steht in `frontend/tools/fixture.mjs` und ist der Form von
 `services/office.py::step_events` nachgebaut, nicht ausgedacht. Ändert sich das erwartete
