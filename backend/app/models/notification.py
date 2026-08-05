@@ -20,6 +20,14 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(500), default="")
     body: Mapped[str] = mapped_column(Text, default="")
     chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Medienausgang: der Notifier ist der EINZIGE Weg nach Telegram — dem backend-Container
+    # fehlt `TELEGRAM_BOT_TOKEN` vollständig (er hat nur `TELEGRAM_OWNER_CHAT`), nur der
+    # telegram-bot-Prozess spricht mit Telegram. Wer eine Datei mitschicken will, legt sie
+    # an einen für BEIDE Dienste sichtbaren Pfad und schreibt ihn hierher; ein zweiter
+    # Ausgang wäre die Doppelung, gegen die dieses Repo sonst durchgehend argumentiert.
+    # Beide Spalten nullable und ohne Vorgabe: Bestandszeilen ändern ihr Verhalten nicht.
+    media_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    media_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)   # animation|photo|document
     read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # Telegram gesendet
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

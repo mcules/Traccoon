@@ -1,6 +1,7 @@
 """Traccoon Telegram-Bot (aiogram v3). Teilt das Backend-Image (python -m app.bot).
 
-Notifier-Poll (Notification → Telegram), Reply→Kommentar (geteilte apply_user_comment),
+Notifier-Poll (Notification → Telegram, mit Medium falls `media_path` gesetzt),
+Reply→Kommentar (geteilte apply_user_comment),
 Inline-Buttons (approve/reject/accept/perm), Commands /tasks /comment.
 No-op (stabiler Sleep) wenn kein TELEGRAM_BOT_TOKEN gesetzt.
 """
@@ -68,6 +69,113 @@ async def _erledigt(cq: CallbackQuery, vermerk: str) -> None:
 
 def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
+
+
+# --- Medienausgang ---------------------------------------------------------------------
+# Dieser Prozess ist der EINZIGE Weg nach Telegram: dem backend-Container fehlt
+# `TELEGRAM_BOT_TOKEN` vollständig (er hat nur `TELEGRAM_OWNER_CHAT`), und ein Sendeaufruf
+# an Telegram steht im ganzen Backend an genau einer Stelle — der hier. Wer eine Datei
+# mitschicken will, legt sie an einen für backend UND telegram-bot sichtbaren Pfad und
+# schreibt ihn in `Notification.media_path`. Ein zweiter Ausgang wäre die Sorte Doppelung,
+# gegen die dieses Repo sonst durchgehend argumentiert.
+
+def _teilbloecke_ende(roh: bytes, i: int) -> int:
+    """Ende einer GIF-Teilblockkette (Längenbyte, Daten, …, 0x00)."""
+    while i < len(roh) and roh[i]:
+        i += roh[i] + 1
+    return i + 1
+
+
+def _gif_masse(roh: bytes) -> dict[str, int]:
+    """Breite/Höhe/Dauer aus dem GIF selbst — leeres Dict, wenn es keins ist.
+
+    Warum überhaupt messen statt feste Werte einzutragen: dieser Ausgang kennt nur „eine
+    Datei", nicht ihren Absender. Feste Maße wären eine Behauptung über einen Inhalt, den
+    der Notifier nicht kennen darf — beim ersten anderen Format stünde eine Lüge im Code.
+    Warum es sich lohnt: Telegram dimensioniert die Blase aus genau diesen Angaben, BEVOR
+    die Datei geladen ist. Ohne sie springt das Layout beim Eintreffen.
+    Unlesbar/kein GIF → nichts behaupten, Telegram misst dann selbst nach dem Laden.
+    """
+    try:
+        if not roh.startswith(b"GIF") or len(roh) < 13:
+            return {}
+        breite = int.from_bytes(roh[6:8], "little")
+        hoehe = int.from_bytes(roh[8:10], "little")
+        i = 13
+        if roh[10] & 0x80:                       # globale Farbtabelle überspringen
+            i += 3 * (2 ** ((roh[10] & 7) + 1))
+        hundertstel = 0
+        while i < len(roh):
+            marke = roh[i]
+            if marke == 0x21:                    # Erweiterung
+                label = roh[i + 1]
+                i += 2
+                if label == 0xF9 and i + 4 <= len(roh):
+                    # Bildsteuerung: Blockgröße, Kennzeichen, Verzögerung (1/100 s).
+                    hundertstel += int.from_bytes(roh[i + 2:i + 4], "little")
+                i = _teilbloecke_ende(roh, i)
+            elif marke == 0x2C:                  # Bildbeschreibung
+                kennzeichen = roh[i + 9]
+                i += 10
+                if kennzeichen & 0x80:           # lokale Farbtabelle
+                    i += 3 * (2 ** ((kennzeichen & 7) + 1))
+                i += 1                           # LZW-Mindestcodegröße
+                i = _teilbloecke_ende(roh, i)
+            else:                                # 0x3B (Ende) oder Unerwartetes
+                break
+        masse = {"width": breite, "height": hoehe}
+        if hundertstel:
+            # Telegram will ganze Sekunden; ein Film unter einer Sekunde ist trotzdem einer.
+            masse["duration"] = max(1, round(hundertstel / 100))
+        return masse
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+async def _zustellen(bot, n, text: str, markup) -> None:
+    """Eine Notification zustellen — mit Medium, wenn eines daliegt, sonst als Text.
+
+    Drei Festlegungen, die hier zusammenkommen:
+    * `send_animation` und nicht `send_video` (das erzwingt Ton-Container-Semantik) und
+      nicht `send_photo` (Standbild). APNG scheidet ohnehin aus: Telegram zeigt es nicht
+      als Animation, sondern nur als Sticker.
+    * Fehlende Datei → stiller Rückfall auf Text. Ein Film, der nicht da ist, darf keine
+      Nachricht verschlucken — die Nachricht ist der Zweck, das Medium die Zugabe.
+      (Häufigste Ursache: der `./data/film`-Mount fehlt in DIESEM Dienst.)
+    * `notified_at` wird IMMER gesetzt, auch im Fehlerfall. Es ist die einzige Bremse des
+      Pollers; ohne sie versucht er dieselbe Zeile alle drei Sekunden endlos erneut.
+    Die Tastatur geht auf beiden Wegen unverändert mit — die Knöpfe (Freigeben/Ablehnen/
+    Abnehmen/Berechtigungen) sind am Medium genauso gültig wie am Text.
+    """
+    try:
+        pfad = n.media_path or ""
+        if pfad and os.path.isfile(pfad):
+            from aiogram.types import BufferedInputFile
+            with open(pfad, "rb") as fh:
+                roh = fh.read()
+            datei = BufferedInputFile(roh, filename=os.path.basename(pfad))
+            # Telegram kappt Bildunterschriften bei 1024 Zeichen — ungekürzt wird die
+            # Nachricht abgewiesen statt bloß beschnitten.
+            beschriftung = text[:1024]
+            art = (n.media_kind or "").strip() or "animation"
+            if art == "photo":
+                await bot.send_photo(int(n.chat_id), photo=datei, caption=beschriftung,
+                                     parse_mode="HTML", reply_markup=markup)
+            elif art == "document":
+                await bot.send_document(int(n.chat_id), document=datei, caption=beschriftung,
+                                        parse_mode="HTML", reply_markup=markup)
+            else:
+                await bot.send_animation(int(n.chat_id), animation=datei, caption=beschriftung,
+                                         parse_mode="HTML", reply_markup=markup,
+                                         **_gif_masse(roh))
+        else:
+            if pfad:
+                log.warning("Medium %s nicht lesbar — Notification %s geht als Text", pfad, n.id)
+            await bot.send_message(int(n.chat_id), text, parse_mode="HTML", reply_markup=markup)
+    except Exception:  # noqa: BLE001
+        log.exception("Send an %s fehlgeschlagen", n.chat_id)
+    finally:
+        n.notified_at = _now()
 
 
 async def _acting_user(db, chat_id: str) -> User | None:
@@ -159,13 +267,9 @@ async def run_bot() -> None:
                             markup = _aperm_kb(n.assistant_task_id)
                         else:
                             markup = _kb_for(n.kind, issue_key, req_id)
-                        try:
-                            await bot.send_message(int(n.chat_id), text, parse_mode="HTML",
-                                                   reply_markup=markup)
-                            n.notified_at = _now()
-                        except Exception:  # noqa: BLE001
-                            log.exception("Send an %s fehlgeschlagen", n.chat_id)
-                            n.notified_at = _now()  # nicht endlos retry
+                        # Text oder Medium entscheidet `_zustellen` — und setzt in jedem
+                        # Fall `notified_at` (sonst endlos retry).
+                        await _zustellen(bot, n, text, markup)
                     await db.commit()
             except Exception:  # noqa: BLE001
                 log.exception("notifier-Fehler")

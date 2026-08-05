@@ -335,7 +335,12 @@ class JobIn(BaseModel):
     name: str
     type: str = "interval"
     schedule: str = "60"
-    kind: str = "prompt"          # prompt | script | workflow | http
+    # prompt | script | workflow | http | film. Bewusst ein freies `str` ohne Validierung:
+    # verzweigt wird an genau EINER Stelle (`services/scheduler.run_job_kind`), und eine
+    # zweite Aufzählung hier wäre eine zweite Wahrheit darüber, welche Arten es gibt.
+    # `film` = Feierabend-Film des Büros; seine Optionen stehen in `args`
+    # ({tz, sekunden, fps, grade, kapitel, behalten_tage}).
+    kind: str = "prompt"
     workflow_definition_id: int | None = None   # nur kind=workflow
     # nur kind=http: Ziel + Aufruf ({method, path, query, headers, body})
     destination_id: int | None = None

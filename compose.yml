@@ -48,6 +48,7 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN erforderlich (siehe .env)}
       DEPLOYER_URL: ${DEPLOYER_URL:-http://deployer:8661}
       SHOTTER_URL: ${SHOTTER_URL:-http://shotter:8700}
+      FILMER_URL: ${FILMER_URL:-http://filmer:8710}
       WORKSPACE_ROOT: /workspace
       WORKSPACE_HOST_PATH: ${WORKSPACE_HOST_PATH:?WORKSPACE_HOST_PATH erforderlich (siehe .env)}
       TESTENV_HOST: ${TESTENV_HOST:-localhost}
@@ -71,6 +72,10 @@ services:
       # — die veraltet still und meldet Grün für Code, der so gar nicht mehr existiert.
       - ./backend/tests:/app/tests
       - ./data/workspace:/workspace   # Repo-Browser/Editor (api/repo.py) liest/schreibt hier
+      # Medienablage für Telegram: hier SCHREIBT das Backend, der telegram-bot LIEST.
+      # Beide Mounts gehören zusammen — fehlt er drüben, findet der Bot die Datei nie
+      # und die Nachricht geht (still, aber ohne Film) als Text raus.
+      - ./data/film:/data/film
     networks:
       default:
         aliases:
@@ -121,6 +126,10 @@ services:
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
     volumes:
       - ./backend/app:/app/app
+      # Lesend: `Notification.media_path` zeigt hierher. Ohne diesen Mount fällt der
+      # Notifier bei JEDER Medien-Nachricht auf Text zurück, ohne dass irgendwo etwas
+      # kaputtgeht — genau deshalb steht der Hinweis hier und nicht nur drüben.
+      - ./data/film:/data/film:ro
     networks: [default, mcp-backends]   # mcp-backends: banking-mcp für 2FA-OTP-Reply erreichbar
     command: ["python", "-m", "app.bot"]
 
@@ -133,6 +142,16 @@ services:
       SHOT_LOGIN_EMAIL: ${SHOT_LOGIN_EMAIL:-}
       SHOT_LOGIN_PASSWORD: ${SHOT_LOGIN_PASSWORD:-}
       SHOT_TOKEN_KEY: ${SHOT_TOKEN_KEY:-}
+
+  # Der Renderer des Feierabendfilms. Gebaut aus dem `frontend/`-Kontext, weil er genau dessen
+  # Schichten 0 und 1 ausführt (Engine, Replay, Pixelzeichnung) — dieselben Dateien, die im
+  # Browser das Büro malen, ohne Browser. Kein npm, kein Port nach außen, keine Zugangsdaten:
+  # das Backend schickt den Ereignis-Log mit und bekommt ein GIF zurück.
+  filmer:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.filmer
+    restart: unless-stopped
 
   deployer:
     build: ./deployer
