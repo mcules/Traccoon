@@ -238,6 +238,48 @@ async def lifespan(app: FastAPI):
                 # einem Abruf liefern, brauchen mehr als die pauschalen 4000 Zeichen.
                 "ALTER TABLE destinations ADD COLUMN IF NOT EXISTS max_response_chars "
                 "INTEGER DEFAULT 4000 NOT NULL",
+                # Büro (roundtable): Projekt/Owner wandern an den Lauf, damit die Live-Brücke
+                # jedes Ereignis ohne DB-Rückfrage autorisieren kann — und damit projektlose
+                # Läufe (Assistent, Job) überhaupt eine Zugehörigkeit haben.
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS project_id INTEGER "
+                "REFERENCES projects(id) ON DELETE SET NULL",
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS owner_id INTEGER "
+                "REFERENCES users(id) ON DELETE SET NULL",
+                # Verbund Eltern→Kind: beim `delegate`-Werkzeugstart ist die Kind-Lauf-ID noch
+                # unbekannt, die Werkzeug-ID schon. Das Kind bringt sie mit.
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS parent_tool_use_id VARCHAR(64)",
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS spawn_depth SMALLINT DEFAULT 0 NOT NULL",
+                "ALTER TABLE runs ADD COLUMN IF NOT EXISTS blocker_kind VARCHAR(24)",
+                # Bestandsläufe bekommen ihr Projekt aus dem Ticket — ohne das startet die
+                # Ansicht leer, weil kein Altlauf autorisierbar wäre.
+                "UPDATE runs SET project_id = i.project_id FROM issues i "
+                "WHERE runs.issue_id = i.id AND runs.project_id IS NULL",
+                "CREATE INDEX IF NOT EXISTS ix_runs_project_started ON runs (project_id, started_at DESC)",
+                "CREATE INDEX IF NOT EXISTS ix_runs_owner_started ON runs (owner_id, started_at DESC)",
+                "CREATE INDEX IF NOT EXISTS ix_runs_parent_run_id ON runs (parent_run_id)",
+                "CREATE INDEX IF NOT EXISTS ix_runs_issue_started ON runs (issue_id, started_at)",
+                # Der Schritt trägt sein Ereignis selbst: Art, Werkzeug-ID, Ziel, Erfolg, Dauer
+                # und die Tokens des einzelnen Modellzugs. `ok` ist dreiwertig (NULL=unbekannt),
+                # `provider`/`model` halten fest, WER geantwortet hat — bei Fallback ist das
+                # nicht der Provider am Lauf.
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS kind VARCHAR(24) DEFAULT '' NOT NULL",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS tool_use_id VARCHAR(64)",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS target VARCHAR(500)",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS ok BOOLEAN",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS duration_ms INTEGER",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS in_tokens INTEGER DEFAULT 0 NOT NULL",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS out_tokens INTEGER DEFAULT 0 NOT NULL",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER DEFAULT 0 NOT NULL",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS provider VARCHAR(50)",
+                "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS model VARCHAR(150)",
+                # Tragend, nicht kosmetisch: die Ansicht liest immer „ein Lauf, in
+                # Ankunftsreihenfolge". Ohne diesen Index sortiert Postgres dafür bis zu
+                # 20 000 Zeilen je Abruf. Läuft in engine.begin(), also ohne CONCURRENTLY —
+                # bei bereits großer Tabelle vorher von Hand anlegen, dann ist das hier ein No-op.
+                "CREATE INDEX IF NOT EXISTS ix_run_steps_run_id_id ON run_steps (run_id, id)",
+                # Dreiwertig: NULL=Altzeile, False=kein Katalogeintrag (die 0,00 ist bloß eine
+                # Lücke), True=bepreist. Ohne das liest sich jede Katalog-Lücke als „gratis".
+                "ALTER TABLE cost_entries ADD COLUMN IF NOT EXISTS priced BOOLEAN",
             ):
                 await conn.execute(text(_ddl))
     async with SessionLocal() as db:
