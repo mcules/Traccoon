@@ -1,16 +1,15 @@
 // Schicht 0 — Werkzeugname → Bild.
 //
 // `ToolAct = read | write | run | browse | delegate | other`: **sechs Bilder statt vierzig Namen**.
-// Roundtables Begründung, und sie gilt hier unverändert: einen Agenten ans Fenster laufen zu
+// Der Grund: einen Agenten ans Fenster laufen zu
 // lassen, weil ein Werkzeugname zufällig „web" enthält, ist eine Lüge, die der Zuschauer nicht
 // überprüfen kann. Er sieht eine Figur browsen und hat keine Möglichkeit festzustellen, dass in
 // Wahrheit eine Datei gelesen wurde. Lieber kein Bild als ein falsches.
 //
 // ── Der Kompromiss, offen benannt ────────────────────────────────────────────
 //
-// Roundtables Grundsatz lautet „eine Tabelle, keine Heuristik". Der hält dort, weil dessen
-// Werkzeugmenge geschlossen ist: Claude Code hat ein festes Dutzend Tools. Traccoons Menge ist
-// es nicht — jeder MCP-Server, den ein Nutzer registriert, bringt beliebig benannte Werkzeuge
+// Der saubere Grundsatz wäre „eine Tabelle, keine Heuristik". Der hielte nur bei geschlossener
+// Werkzeugmenge. Traccoons Menge ist offen — jeder MCP-Server, den ein Nutzer registriert, bringt beliebig benannte Werkzeuge
 // mit (`obsidian__obsidian_get_note`, `homeassistant__call_service`, …). Eine erschöpfende
 // Tabelle dafür kann es nicht geben.
 //

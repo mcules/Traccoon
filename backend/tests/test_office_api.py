@@ -14,7 +14,7 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
-from app.api import roundtable as rt_api
+from app.api import office as rt_api
 from app.main import api
 from app.models.agents import Run, RunStep
 from app.models.enums import ProjectRole, StatusCategory
@@ -29,7 +29,7 @@ def router_registriert():
     """Welle C hängt ihren Router nicht selbst in `main.py` ein (zwei Wellen arbeiten
     parallel an der Datei). Für die Tests wird er hier registriert — idempotent, damit
     er nach der Registrierung in `main.py` nicht ein zweites Mal landet."""
-    if not any(getattr(r, "path", "") == "/roundtable/sessions" for r in api.routes):
+    if not any(getattr(r, "path", "") == "/office/sessions" for r in api.routes):
         api.include_router(rt_api.router)
 
 
@@ -93,7 +93,7 @@ async def test_projektliste_zeigt_nur_dieses_projekt(client, db):
     await schritte(db, ra, 3)
     await schritte(db, rb, 3)
 
-    r = await client.get(f"/projects/{a.id}/roundtable/sessions", headers=auth(user))
+    r = await client.get(f"/projects/{a.id}/office/sessions", headers=auth(user))
     assert r.status_code == 200, r.text
     assert sids(r.json()) == {f"issue:{ia.id}"}
     assert f"issue:{ib.id}" not in sids(r.json())
@@ -113,7 +113,7 @@ async def test_nichtmitglied_bekommt_404_statt_403(client, db):
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, owner, ProjectRole.owner)
 
-    r = await client.get(f"/projects/{proj.id}/roundtable/sessions", headers=auth(fremd))
+    r = await client.get(f"/projects/{proj.id}/office/sessions", headers=auth(fremd))
     assert r.status_code == 404
 
 
@@ -134,7 +134,7 @@ async def test_globale_liste_zeigt_eigene_projekte_und_eigene_projektlose_laeufe
     for run in (eigen, meins, fremd):
         await schritte(db, run, 2)
 
-    r = await client.get("/roundtable/sessions", headers=auth(anna))
+    r = await client.get("/office/sessions", headers=auth(anna))
     assert r.status_code == 200, r.text
     assert sids(r.json()) == {f"issue:{issue.id}", f"run:{meins.id}"}
     assert f"run:{fremd.id}" not in sids(r.json())
@@ -150,7 +150,7 @@ async def test_admin_sieht_alles(client, db):
     await schritte(db, a, 2)
     await schritte(db, b, 2)
 
-    r = await client.get("/roundtable/sessions", headers=auth(admin))
+    r = await client.get("/office/sessions", headers=auth(admin))
     assert sids(r.json()) == {f"issue:{issue.id}", f"run:{b.id}"}
 
 
@@ -165,9 +165,9 @@ async def test_project_id_verengt_und_autorisiert_nicht(client, db):
     await schritte(db, await lauf(db, issue=i1), 2)
     await schritte(db, await lauf(db, issue=i2), 2)
 
-    r = await client.get(f"/roundtable/sessions?project_id={fremd.id}", headers=auth(anna))
+    r = await client.get(f"/office/sessions?project_id={fremd.id}", headers=auth(anna))
     assert r.status_code == 200 and r.json()["sessions"] == []
-    r = await client.get(f"/roundtable/sessions?project_id={meins.id}", headers=auth(anna))
+    r = await client.get(f"/office/sessions?project_id={meins.id}", headers=auth(anna))
     assert sids(r.json()) == {f"issue:{i1.id}"}
 
 
@@ -181,7 +181,7 @@ async def test_ereignisse_streng_nach_seq_und_after_seq_schliesst_aus(client, db
     run = await lauf(db, issue=issue)
     rows = await schritte(db, run, 4)
 
-    r = await client.get(f"/roundtable/sessions/issue/{issue.id}/events", headers=auth(anna))
+    r = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(anna))
     assert r.status_code == 200, r.text
     body = r.json()
     seqs = [e["seq"] for e in body["events"]]
@@ -194,7 +194,7 @@ async def test_ereignisse_streng_nach_seq_und_after_seq_schliesst_aus(client, db
 
     grenze = rows[1].id * 4 + 1     # das Hauptereignis der zweiten Zeile
     r = await client.get(
-        f"/roundtable/sessions/issue/{issue.id}/events?after_seq={grenze}", headers=auth(anna))
+        f"/office/sessions/issue/{issue.id}/events?after_seq={grenze}", headers=auth(anna))
     weiter = [e["seq"] for e in r.json()["events"]]
     assert weiter and min(weiter) > grenze
     assert weiter == sorted(weiter)
@@ -216,10 +216,10 @@ async def test_kappung_meldet_truncated_und_behaelt_den_roster(client, db):
     alt = await schritte(db, eltern, 3)
     await schritte(db, kind, 3)
 
-    voll = await client.get(f"/roundtable/sessions/issue/{issue.id}/events", headers=auth(anna))
+    voll = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(anna))
     aeltestes = min(e["seq"] for e in voll.json()["events"])
 
-    r = await client.get(f"/roundtable/sessions/issue/{issue.id}/events?limit=2",
+    r = await client.get(f"/office/sessions/issue/{issue.id}/events?limit=2",
                          headers=auth(anna))
     body = r.json()
     assert body["truncated"] is True
@@ -243,7 +243,7 @@ async def test_run_session_eigentuemer_fremder_admin(client, db):
     run = await lauf(db, owner=anna, agent="assistant")
     await schritte(db, run, 2)
 
-    pfad = f"/roundtable/sessions/run/{run.id}/events"
+    pfad = f"/office/sessions/run/{run.id}/events"
     assert (await client.get(pfad, headers=auth(anna))).status_code == 200
     assert (await client.get(pfad, headers=auth(bert))).status_code == 404
     assert (await client.get(pfad, headers=auth(chef))).status_code == 200
@@ -257,9 +257,9 @@ async def test_kindlauf_ist_nicht_selbst_adressierbar(client, db):
     kind = await lauf(db, owner=anna, agent="reviewer", parent=wurzel, spawn_depth=1)
     await schritte(db, kind, 2)
 
-    r = await client.get(f"/roundtable/sessions/run/{kind.id}/events", headers=auth(anna))
+    r = await client.get(f"/office/sessions/run/{kind.id}/events", headers=auth(anna))
     assert r.status_code == 404
-    r = await client.get(f"/roundtable/sessions/run/{wurzel.id}/events", headers=auth(anna))
+    r = await client.get(f"/office/sessions/run/{wurzel.id}/events", headers=auth(anna))
     assert {a["run_id"] for a in r.json()["agents"]} == {wurzel.id, kind.id}
 
 
@@ -271,7 +271,7 @@ async def test_aufgeraeumte_session_meldet_purged(client, db):
     await add_member(db, proj, anna, ProjectRole.member)
     issue = await ticket(db, proj)
 
-    r = await client.get(f"/roundtable/sessions/issue/{issue.id}/events", headers=auth(anna))
+    r = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(anna))
     assert r.status_code == 200, r.text
     assert r.json()["purged"] is True
     assert r.json()["events"] == [] and r.json()["agents"] == []
@@ -291,12 +291,12 @@ async def test_issue_sid_enthaelt_delegierte_kindlaeufe(client, db):
     for run in (plan, exe, sub):
         await schritte(db, run, 2)
 
-    r = await client.get(f"/roundtable/sessions/issue/{issue.id}/events", headers=auth(anna))
+    r = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(anna))
     roster = {a["agent"]: a for a in r.json()["agents"]}
     assert set(roster) == {"planner", "developer", "reviewer"}
     assert roster["reviewer"]["spawn_depth"] == 1
     assert roster["reviewer"]["parent_run_id"] == exe.id
 
-    liste = await client.get(f"/projects/{proj.id}/roundtable/sessions", headers=auth(anna))
+    liste = await client.get(f"/projects/{proj.id}/office/sessions", headers=auth(anna))
     session = liste.json()["sessions"][0]
     assert session["runs"] == 3 and session["agents"] == 3 and session["events"] == 6

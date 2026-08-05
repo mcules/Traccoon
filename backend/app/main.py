@@ -10,7 +10,7 @@ from .api import (
     admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, destinations,
     files, hardware, invitations,
     issues, lifecycle, mail, me, notifications, ops, permissions, plugins, processes,
-    projects, repo, roundtable,
+    projects, repo, office,
     runs, secrets, skills, testenv, users, workflows, ws,
 )
 from .config import settings
@@ -20,7 +20,7 @@ from .services.dispatcher import recover_on_start, run_dispatcher
 from .services.scheduler import run_scheduler
 from .services.workflow_engine import run_workflow_engine
 from .api.ws import event_bridge
-from .api.roundtable_ws import roundtable_bridge, router as roundtable_ws_router
+from .api.office_ws import office_bridge, router as office_ws_router
 
 VERSION = "0.1.0"
 
@@ -239,7 +239,7 @@ async def lifespan(app: FastAPI):
                 # einem Abruf liefern, brauchen mehr als die pauschalen 4000 Zeichen.
                 "ALTER TABLE destinations ADD COLUMN IF NOT EXISTS max_response_chars "
                 "INTEGER DEFAULT 4000 NOT NULL",
-                # Büro (roundtable): Projekt/Owner wandern an den Lauf, damit die Live-Brücke
+                # Büro (office): Projekt/Owner wandern an den Lauf, damit die Live-Brücke
                 # jedes Ereignis ohne DB-Rückfrage autorisieren kann — und damit projektlose
                 # Läufe (Assistent, Job) überhaupt eine Zugehörigkeit haben.
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS project_id INTEGER "
@@ -324,7 +324,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(event_bridge()),
         # Eigener Kanal für die Büro-Ansicht: ein Nutzer-Socket statt N Projekt-Sockets,
         # weil projektlose Läufe (Job/Assistent) gar keinen Projektraum haben.
-        asyncio.create_task(roundtable_bridge()),
+        asyncio.create_task(office_bridge()),
     ]
     yield
     for t in tasks:
@@ -364,7 +364,7 @@ api.include_router(cost.router)
 api.include_router(skills.router)
 api.include_router(plugins.router)
 api.include_router(agents.router)
-api.include_router(roundtable.router)
+api.include_router(office.router)
 api.include_router(runs.router)
 api.include_router(testenv.router)
 api.include_router(dashboard.router)
@@ -372,7 +372,7 @@ api.include_router(files.router)
 api.include_router(repo.router)
 api.include_router(admin.router)
 api.include_router(ws.router)
-api.include_router(roundtable_ws_router)
+api.include_router(office_ws_router)
 
 
 @api.get("/health", tags=["health"])

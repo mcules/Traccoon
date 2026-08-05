@@ -53,7 +53,7 @@ export interface Ctx {
 // ── Ereignis-Strom (Backend → Frontend) ──────────────────────────────────────
 //
 // snake_case, weil das ganze Repo snake_case spricht und das Backend die Felder genau so
-// baut (`services/roundtable.py::step_events`). Eine camelCase-Übersetzungsschicht wäre
+// baut (`services/office.py::step_events`). Eine camelCase-Übersetzungsschicht wäre
 // dreißig Zeilen ohne einen einzigen gewonnenen Gedanken — es gibt sie deshalb nicht.
 
 /** Umschlag, den jedes Ereignis trägt. */
@@ -225,17 +225,17 @@ export type EvKind = Ev["kind"];
 // Zwölf Stück, mehr gibt es nicht. Alles, was der Raum tun kann, ist eine Folge davon.
 // `mapEvent(ev, ctx) -> Cmd[]` ist rein; die Engine kennt `Ev` überhaupt nicht.
 //
-// Gegenüber Roundtable **weggefallen**:
-//   · `confront` — Roundtable lässt Agenten Behauptungen gegeneinander prüfen (CONFIRMED/REFUTED).
+// Bewusst **nicht** vorhanden:
+//   · `confront` — ein Kommando, das zwei Agenten einander widersprechen lässt.
 //     Traccoon hat kein solches Streitmodell: Läufe widersprechen einander nicht, sie scheitern
 //     oder gelingen. Ein Kommando ohne Datenquelle wäre Dekoration.
-//   · `prompt` — Roundtable zeigt den Anweisungstext eines Spawns als eigene Geste. Bei uns steckt
+//   · `prompt` — den Anweisungstext eines Spawns als eigene Geste zeigen. Bei uns steckt
 //     er in `agent_spawn.prompt` und gehört in den Inspektor, nicht auf die Bühne.
 //
-// **Neu** gegenüber Roundtable:
+// Eigene Zutat:
 //   · `gate` / `resume` — die Mensch-im-Kreis-Form. `ask_human`, Berechtigungsanfragen und
-//     Planfreigaben halten einen Lauf an, bis ein Mensch antwortet. Roundtable kennt das nicht,
-//     weil dort niemand wartet. Bei uns ist es der häufigste Grund, warum ein Raum still steht —
+//     Planfreigaben halten einen Lauf an, bis ein Mensch antwortet. Das ist der häufigste
+//     Grund, warum ein Raum still steht —
 //     und genau deshalb muss man es sehen (`GATE_PULSE_MS`).
 
 export type Cmd =
@@ -254,7 +254,7 @@ export type Cmd =
   | { k: "edit"; id: string; path: string }
   /** Spawn-Linie von `parent` zu `id`. Die Figur `id` entsteht erst mit ihrem `ensureActor`. */
   | { k: "spawn"; id: string; parent: string; role: string }
-  /** `id` läuft zu `to` und übergibt ein Ergebnis. Der Kern der Roundtable-Choreografie. */
+  /** `id` läuft zu `to` und übergibt ein Ergebnis. Der Kern der Choreografie. */
   | { k: "deliver"; id: string; to: string; text?: string }
   /** Wartet auf einen Menschen. Hält die Figur an, bis `resume` kommt. */
   | { k: "gate"; id: string; kind: GateKind; text: string }
@@ -362,7 +362,7 @@ export interface Fx {
   seed: number;
 }
 
-/** `emote` = Pop über dem Kopf (ersetzt Roundtables cheer/slump) · `spark` = Werkzeugfunke ·
+/** `emote` = Pop über dem Kopf (statt eigener Jubel-/Frust-Posen) · `spark` = Werkzeugfunke ·
  *  `link` = Spawn-/Übergabelinie · `drop` = Zettel fällt auf den Tisch. */
 export type FxKind = "emote" | "spark" | "link" | "drop";
 

@@ -1,16 +1,16 @@
-// Prüfer für das „Büro" (src/components/roundtable). Null Abhängigkeiten.
+// Prüfer für das „Büro" (src/components/office). Null Abhängigkeiten.
 //
 //   docker run --rm -v "$PWD/frontend":/w -w /w node:22-alpine \
-//     node --experimental-strip-types tools/rt-check.mjs
+//     node --experimental-strip-types tools/office-check.mjs
 //
-// bzw. `npm run check:rt`. Bewusst **nicht** Teil von `npm run build`: der Docker-Bau darf
+// bzw. `npm run check:office`. Bewusst **nicht** Teil von `npm run build`: der Docker-Bau darf
 // nicht davon abhängen, und eine devDependency scheidet aus, weil das Dockerfile bei jedem
 // Bau `npm install` ohne Lockfile macht.
 //
 // `--experimental-strip-types` ist nötig, sobald der Prüfer die Schichten 0 und 1 direkt lädt
 // (die goldenen Prüfungen der Welle M). Für die zwei bereits gebauten Prüfungen genügt Lesen.
 //
-// Regelwerk: src/components/roundtable/PIXEL-CONTRACT.md
+// Regelwerk: src/components/office/PIXEL-CONTRACT.md
 //
 // Stand: Welle A′ liefert das Gerüst mit zwei fertigen Prüfungen. Die übrigen sind unten als
 // ausgeschaltete, benannte Platzhalter eingetragen — Welle M füllt sie.
@@ -21,21 +21,21 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const FRONTEND = dirname(HERE);
-const RT_DIR = join(FRONTEND, "src", "components", "roundtable");
+const OFFICE_DIR = join(FRONTEND, "src", "components", "office");
 
 // ── Schichten (PIXEL-CONTRACT.md Regel 4) ────────────────────────────────────
 
 /** Schicht 2, obwohl `.ts`: die React-nahen Bausteine ohne JSX. */
-const LAYER2_TS = new Set(["api", "useRoundtableFeed", "useTheme"]);
+const LAYER2_TS = new Set(["api", "useOfficeFeed", "useTheme"]);
 
 /** Was Schicht 1 aus Schicht 0 sehen darf — und sonst nichts. */
 const LAYER1_MAY_IMPORT_FROM_LAYER0 = new Set(["types", "ids", "const"]);
 
 /**
  * Ordnet eine Datei ihrer Schicht zu. Fail-closed: eine unbekannte `.ts` direkt in
- * `roundtable/` gilt als Schicht 0 und muss also rein sein. Wer bewusst Schicht 2 baut,
+ * `office/` gilt als Schicht 0 und muss also rein sein. Wer bewusst Schicht 2 baut,
  * nimmt `.tsx` oder trägt den Namen in LAYER2_TS ein.
- * @param {string} rel POSIX-Pfad relativ zu RT_DIR, z. B. "pixel/art.ts"
+ * @param {string} rel POSIX-Pfad relativ zu OFFICE_DIR, z. B. "pixel/art.ts"
  * @returns {0|1|2}
  */
 function layerOf(rel) {
@@ -49,7 +49,7 @@ function layerOf(rel) {
 
 // ── Dateien einsammeln ───────────────────────────────────────────────────────
 
-/** @returns {string[]} POSIX-Pfade relativ zu RT_DIR */
+/** @returns {string[]} POSIX-Pfade relativ zu OFFICE_DIR */
 function collect(dir, out = [], base = dir) {
   let entries;
   try {
@@ -65,8 +65,8 @@ function collect(dir, out = [], base = dir) {
   return out;
 }
 
-const FILES = collect(RT_DIR).map((rel) => {
-  const src = readFileSync(join(RT_DIR, rel), "utf8");
+const FILES = collect(OFFICE_DIR).map((rel) => {
+  const src = readFileSync(join(OFFICE_DIR, rel), "utf8");
   return { rel, src, layer: layerOf(rel), code: stripComments(src) };
 });
 
@@ -192,7 +192,7 @@ function checkLayers() {
       }
       const target = posix.normalize(posix.join(posix.dirname(f.rel), spec));
       if (target.startsWith("..")) {
-        bad.push(`${where}  "${spec}" verlässt roundtable/ — Schicht ${f.layer} bleibt drinnen`);
+        bad.push(`${where}  "${spec}" verlässt office/ — Schicht ${f.layer} bleibt drinnen`);
         continue;
       }
       const tl = layerOf(target);
@@ -245,7 +245,7 @@ function checkToolTable() { pending("Werkzeug-Tabelle vollständig", "Welle M");
 
 // ── Lauf ─────────────────────────────────────────────────────────────────────
 
-console.log(`rt-check — ${FILES.length} Dateien unter src/components/roundtable`);
+console.log(`office-check — ${FILES.length} Dateien unter src/components/office`);
 console.log(`  Schicht 0: ${FILES.filter((f) => f.layer === 0).length} · ` +
   `Schicht 1: ${FILES.filter((f) => f.layer === 1).length} · ` +
   `Schicht 2: ${FILES.filter((f) => f.layer === 2).length}`);

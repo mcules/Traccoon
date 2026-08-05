@@ -8,13 +8,13 @@
 // Die Antwort-Typen leben hier und **nicht** in `types.ts`: das ist Schicht 0 und kennt keine
 // API. Was von der Leitung kommt, ist eine Transportform; was der Raum daraus baut, ist der
 // Vertrag. Genau ein Feld überquert die Grenze unverändert — `Ev` —, und das ist Absicht:
-// Historie und Live-Strom entstehen im Backend in derselben Funktion (`services/roundtable.py`
+// Historie und Live-Strom entstehen im Backend in derselben Funktion (`services/office.py`
 // `step_events`), also gibt es auch im Frontend nur eine Form.
 //
 // ── Stand der Abstimmung mit dem Backend ────────────────────────────────────────────────────
-// Der Live-Socket (Welle D, `api/roundtable_ws.py`) ist **gegen echten Code** gebaut:
-// `/api/ws?token=`, `{"type":"subscribe","scopes":[…]}`, `{"type":"roundtable_ev","ev":{…}}`.
-// Die Lese-Endpunkte (Welle C, `api/roundtable.py`) existierten beim Schreiben dieser Datei
+// Der Live-Socket (Welle D, `api/office_ws.py`) ist **gegen echten Code** gebaut:
+// `/api/ws?token=`, `{"type":"subscribe","scopes":[…]}`, `{"type":"office_ev","ev":{…}}`.
+// Die Lese-Endpunkte (Welle C, `api/office.py`) existierten beim Schreiben dieser Datei
 // noch nicht — Pfade und Feldnamen stehen deshalb nach Plan. Alles, was der Feed nicht selbst
 // braucht, ist `?`-optional; so bricht eine Abweichung im Nebenfeld nicht den Bau, sondern
 // fehlt bloß. Die Stellen, die zwingend passen müssen, sind mit ⚠ markiert.
@@ -22,7 +22,7 @@
 import { api } from "../../api";
 import type { Ev, Roster, RunStatus } from "./types.ts";
 
-/** Version des Ereignis-Umschlags (`services/roundtable.py::EVENT_VERSION`). Ändert sich die
+/** Version des Ereignis-Umschlags (`services/office.py::EVENT_VERSION`). Ändert sich die
  *  Bedeutung eines Feldes, zählt das Backend hoch — und die Ansicht verweigert die Darstellung,
  *  statt eine falsche Deutung zu zeichnen. Lieber ein Hinweis als ein gelogener Raum. */
 export const EVENT_VERSION = 1;
@@ -36,7 +36,7 @@ export type Scope =
   | { kind: "project"; projectId: number; projectKey: string }
   | { kind: "global" };
 
-/** Adresse eines Raums. Genau zwei Formen, siehe `services/roundtable.py::session_id`:
+/** Adresse eines Raums. Genau zwei Formen, siehe `services/office.py::session_id`:
  *  `issue:{id}` = der Raum eines Tickets (Planung, Ausführung, Fortsetzungen, Unteragenten),
  *  `run:{root}` = ein Lauf ohne Ticket (Job, Assistent). */
 export interface Sid {
@@ -160,7 +160,7 @@ function qs(params: Record<string, string | number | boolean | undefined>): stri
   return s ? `?${s}` : "";
 }
 
-export const roundtableApi = {
+export const officeApi = {
   /** Räume, die dieser Nutzer sehen darf.
    *
    *  Zwei Pfade, ein Ergebnis: der Projekt-Reiter fragt unter dem Projekt (Zugriff prüft
@@ -168,8 +168,8 @@ export const roundtableApi = {
    *  `projectId` **verengt** dort nur — autorisiert wird es nie. */
   sessions: (scope: Scope, opts?: { limit?: number; projectId?: number }): Promise<SessionList> => {
     const path = scope.kind === "project"
-      ? `/projects/${scope.projectId}/roundtable/sessions${qs({ limit: opts?.limit })}`
-      : `/roundtable/sessions${qs({ limit: opts?.limit, project_id: opts?.projectId })}`;
+      ? `/projects/${scope.projectId}/office/sessions${qs({ limit: opts?.limit })}`
+      : `/office/sessions${qs({ limit: opts?.limit, project_id: opts?.projectId })}`;
     // Ob der Umschlag `{sessions: […]}` heißt oder ein nacktes Feld ist, entscheidet Welle C.
     // Beides wird hier zum selben Ergebnis — das ist billiger als eine Rückfrage und
     // überlebt die Abstimmung in beide Richtungen.
@@ -180,23 +180,23 @@ export const roundtableApi = {
   /** Eine Seite Ereignisse.
    *
    *  `afterSeq` ist **ausschließlich** Seitenblättern und Lückenfüllung direkt nach einer
-   *  Wiederverbindung — **nie** ein Poller. Warum, steht ausführlich in `useRoundtableFeed.ts`
-   *  und im Modul-Docstring von `api/roundtable_ws.py`: `seq` kommt aus einer `SERIAL`-Spalte,
+   *  Wiederverbindung — **nie** ein Poller. Warum, steht ausführlich in `useOfficeFeed.ts`
+   *  und im Modul-Docstring von `api/office_ws.py`: `seq` kommt aus einer `SERIAL`-Spalte,
    *  die **vor** dem Commit vergeben wird. */
   events: (sid: Sid, opts?: { limit?: number; afterSeq?: number }): Promise<EventPage> =>
     api.get<EventPage>(
-      `/roundtable/sessions/${sid.kind}/${sid.ref}/events`
+      `/office/sessions/${sid.kind}/${sid.ref}/events`
       + qs({ limit: opts?.limit ?? EVENT_PAGE_LIMIT, after_seq: opts?.afterSeq })),
 
   /** Kosten des Raums — eigener Aufruf, weil sie eine ganz andere Änderungsrate haben als
    *  die Ereignisse und den Schnappschuss sonst dauernd entwerten würden. */
   cost: (sid: Sid): Promise<CostRollup> =>
-    api.get<CostRollup>(`/roundtable/sessions/${sid.kind}/${sid.ref}/cost`),
+    api.get<CostRollup>(`/office/sessions/${sid.kind}/${sid.ref}/cost`),
 };
 
 // ── Der Live-Socket ─────────────────────────────────────────────────────────────────────────
 //
-// Gegen echten Code gebaut (`backend/app/api/roundtable_ws.py`, Welle D): EIN Nutzer-Socket
+// Gegen echten Code gebaut (`backend/app/api/office_ws.py`, Welle D): EIN Nutzer-Socket
 // bedient Projekt-Reiter **und** globale Seite; gefiltert wird serverseitig. Der Client kann
 // per `subscribe` nur **verengen**, nie erweitern — ein Abo auf ein fremdes Projekt ergibt
 // Stille, keinen Fehler.
@@ -205,7 +205,7 @@ export const roundtableApi = {
 export type WsIn =
   | { type: "hello"; v: number; user_id: number; is_admin: boolean; projects: number[]; acl_ttl_s: number }
   | { type: "subscribed"; scope: number[] | null }
-  | { type: "roundtable_ev"; ev: Ev }
+  | { type: "office_ev"; ev: Ev }
   | { type: "pong" };
 
 /** Was der Client schickt. */
@@ -215,7 +215,7 @@ export type WsOut =
 
 /** Adresse des Nutzer-Sockets. Ein Socket je Sitzung im Browser reicht — die Trennung nach
  *  Projekt macht der Server, nicht die Anzahl der Verbindungen. */
-export function roundtableWsUrl(token: string | null): string {
+export function officeWsUrl(token: string | null): string {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${location.host}/api/ws?token=${encodeURIComponent(token ?? "")}`;
 }

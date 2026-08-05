@@ -12,7 +12,7 @@
 //     parallel laufende Worker erzeugen nicht-monotone Zeitstempel; ein Sortieren nach `ts`
 //     setzte die Wirkung vor die Ursache — das Werkzeugergebnis vor den Werkzeugstart.
 //  2. **Lücken werden beidseitig geklemmt**: `dt = min(MAX_GAP_MS, max(0, ts - prev))`.
-//     Roundtable klemmt nur oben, weil dort nur ein Prozess schreibt. Bei uns kann `ts`
+//     Nach oben allein reicht nicht: bei mehreren Workern kann `ts`
 //     gegenüber `seq` rückwärts laufen, und ein negatives `dt` drehte die Engine zurück.
 //  3. **Gleiche Zeitstempel wirken zusammen.** Ein Werkzeugstart und der abgeleitete
 //     `file_edit` derselben Zeile tragen dieselbe Uhrzeit; liefe die Uhr dazwischen weiter,

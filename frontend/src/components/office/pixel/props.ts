@@ -233,7 +233,7 @@ export function drawText(
 }
 
 /** Bricht Text auf `maxW` Pufferpixel um. Zu lange Wörter (Pfade!) werden hart getrennt —
- *  ein einzelnes `services/roundtable.py` sprengte sonst jede Blase. */
+ *  ein einzelnes `services/office.py` sprengte sonst jede Blase. */
 export function wrap(text: string, maxW: number): string[] {
   const out: string[] = [];
   let line = "";
@@ -452,7 +452,7 @@ export function nameplate(
 
 // ═══ Emote ═══════════════════════════════════════════════════════════════════
 //
-// Ersetzt Roundtables Reaktionsposen `cheer`/`slump`. Begründung steht im Plan und hält der
+// Statt eigener Reaktionsposen (Jubel/Frust). Begründung steht im Plan und hält der
 // Prüfung stand: eine Jubelpose ist bei 16×24 von einer Streckübung nicht zu unterscheiden,
 // ein Häkchen über dem Kopf dagegen auf 480×270 aus jeder Entfernung eindeutig — und es kostet
 // drei Arts statt zwölf mal zwei.

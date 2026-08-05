@@ -4,7 +4,7 @@
 //
 //   1. WebSocket öffnen und `subscribe` senden.
 //   2. Eingehende Ereignisse **puffern**, solange der Backfill läuft.
-//   3. Schnappschuss über `roundtableApi.events(…)` holen — seitenweise, bis eine Seite kürzer
+//   3. Schnappschuss über `officeApi.events(…)` holen — seitenweise, bis eine Seite kürzer
 //      ist als `limit`.
 //   4. Gepufferte Ereignisse nachziehen. Doppler verwirft `Recorder.push` anhand der `seq`
 //      von selbst; hier wird nichts verglichen.
@@ -46,7 +46,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getToken } from "../../api";
 import {
-  EVENT_PAGE_LIMIT, EVENT_VERSION, roundtableApi, roundtableWsUrl, sidKey, subscribeMessage,
+  EVENT_PAGE_LIMIT, EVENT_VERSION, officeApi, officeWsUrl, sidKey, subscribeMessage,
   type CostRollup, type EventPage, type Scope, type Sid, type WsIn,
 } from "./api.ts";
 import { REPLAY_CAP } from "./const.ts";
@@ -56,7 +56,7 @@ import type { Ev, EvRunEnd, EvRunStart, LogEntry, Roster, RosterEntry } from "./
 // den Bau grün; die Zeile darunter ist bereits die endgültige. Beim Landen von Welle E: den
 // Kommentar löschen und prüfen, dass `RecorderApi` unten zur Klasse passt — dann ist auch
 // `RecorderApi` überflüssig und wird durch `import type { Recorder }` ersetzt.
-// @ts-ignore -- Modul folgt mit Welle E (roundtable/recorder.ts)
+// @ts-ignore -- Modul folgt mit Welle E (office/recorder.ts)
 import { Recorder } from "./recorder.ts";
 
 // ── Die Oberfläche, gegen die hier gebaut wird ──────────────────────────────────────────────
@@ -127,7 +127,7 @@ export interface FeedTotals {
   cost_partial: boolean;
 }
 
-export interface RoundtableFeed {
+export interface OfficeFeed {
   /** Lebt in einem Ref und wechselt nur bei einem Sitzungswechsel die Identität. */
   recorder: RecorderApi;
   /** Das einzige Rendersignal. Steigt gedrosselt. */
@@ -165,7 +165,7 @@ async function fetchSnapshot(sid: Sid): Promise<Snapshot> {
   let afterSeq: number | undefined;
 
   for (let i = 0; i < MAX_PAGES; i++) {
-    const p = await roundtableApi.events(sid, { limit: EVENT_PAGE_LIMIT, afterSeq });
+    const p = await officeApi.events(sid, { limit: EVENT_PAGE_LIMIT, afterSeq });
     const batch = p.events ?? [];
     // Der Roster steht nur auf der ersten Seite; spätere Seiten überschreiben ihn nicht mit
     // einem leeren Feld — sonst wäre der Raum nach dem Blättern besetzungslos.
@@ -213,7 +213,7 @@ function rosterFromRunEnd(prev: RosterEntry | undefined, ev: EvRunEnd): RosterEn
 
 // ── Der Feed ────────────────────────────────────────────────────────────────────────────────
 
-export function useRoundtableFeed(scope: Scope, sid?: Sid): RoundtableFeed {
+export function useOfficeFeed(scope: Scope, sid?: Sid): OfficeFeed {
   const key = sid ? sidKey(sid) : null;
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
 
@@ -324,7 +324,7 @@ export function useRoundtableFeed(scope: Scope, sid?: Sid): RoundtableFeed {
       if (closingRef.current) return;
       let ws: WebSocket;
       try {
-        ws = new WebSocket(roundtableWsUrl(getToken()));
+        ws = new WebSocket(officeWsUrl(getToken()));
       } catch {
         // Kein Socket möglich (z. B. blockierter Upgrade): der Schnappschuss allein muss reichen.
         armSnapshot();
@@ -348,7 +348,7 @@ export function useRoundtableFeed(scope: Scope, sid?: Sid): RoundtableFeed {
       ws.onmessage = (e) => {
         let msg: WsIn;
         try { msg = JSON.parse(e.data as string) as WsIn; } catch { return; }
-        if (msg.type === "roundtable_ev") { accept(msg.ev); return; }
+        if (msg.type === "office_ev") { accept(msg.ev); return; }
         if (msg.type === "hello" && msg.v !== EVENT_VERSION) {
           // Das Backend spricht einen anderen Vertrag. Nicht raten, nicht wiederverbinden.
           closingRef.current = true;
@@ -401,7 +401,7 @@ export function useRoundtableFeed(scope: Scope, sid?: Sid): RoundtableFeed {
   // Fortgeschrieben wird über den Socket. Neu geholt wird er nur, wenn `generation` steigt —
   // also bei einem Loch, und ein Loch ist jede Wiederverbindung.
   const snapshot = useQuery({
-    queryKey: ["roundtable", "events", key, generation],
+    queryKey: ["office", "events", key, generation],
     queryFn: () => fetchSnapshot(sid!),
     enabled: !!sid && generation > 0,
     staleTime: Infinity,
@@ -444,8 +444,8 @@ export function useRoundtableFeed(scope: Scope, sid?: Sid): RoundtableFeed {
   // läuft, wird nachgesehen; danach nicht mehr.
   const sessionRunning = roster.some((r) => r.status === "running");
   const cost = useQuery({
-    queryKey: ["roundtable", "cost", key],
-    queryFn: () => roundtableApi.cost(sid!),
+    queryKey: ["office", "cost", key],
+    queryFn: () => officeApi.cost(sid!),
     enabled: !!sid && generation > 0,
     staleTime: 30_000,
     refetchInterval: sessionRunning ? 60_000 : false,

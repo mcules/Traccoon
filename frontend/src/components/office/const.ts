@@ -70,7 +70,7 @@ export const DONE_LINGER_SPREAD_MS = 4200;
 
 /** Ersatzdauer eines Werkzeugschritts.
  *
- *  **Nicht von Roundtable.** Beim Altdaten-Pfad (`kind=''`-Zeilen aus der Zeit vor der
+ *  Beim Altdaten-Pfad (`kind=''`-Zeilen aus der Zeit vor der
  *  Worker-Instrumentierung) kennt ein Werkzeugaufruf nur *einen* Zeitpunkt: `tool_start` und
  *  `tool_result` werden aus derselben Zeile synthetisiert, `duration_ms` ist `null`. Ohne eine
  *  Ersatzdauer blitzte die Werkzeugpose für 0 ms auf und der Raum sähe aus, als täte niemand
@@ -79,8 +79,8 @@ export const TOOL_BUSY_MS = 1400;
 
 /** Pulsdauer des „wartet auf einen Menschen"-Signals über der Figur.
  *
- *  **Neu gegenüber Roundtable** — dort wartet niemand. Bei uns ist ein Gate (`ask_human`,
- *  Berechtigungsanfrage, Planfreigabe) der häufigste Grund für einen stillen Raum, und ein
+ *  Ein Gate (`ask_human`, Berechtigungsanfrage, Planfreigabe) ist der häufigste Grund
+ *  für einen stillen Raum, und ein
  *  stiller Raum ohne sichtbaren Grund liest sich wie ein Absturz. */
 export const GATE_PULSE_MS = 1200;
 
@@ -88,9 +88,8 @@ export const GATE_PULSE_MS = 1200;
 
 /** Obergrenze für die Pause zwischen zwei Ereignissen.
  *
- *  **Bewusst anders als Roundtable** (dort 120 s). Ein `check`-Build in Traccoon erzeugt
- *  regelmäßig minutenlange Stille an einer einzigen `run`-Werkzeugzeile; mit 120 s säße man
- *  zwei Minuten vor einem toten Bild. Ein gekürzter Zeitsprung ist das kleinere Übel.
+ *  Bewusst knapp. Ein `check`-Build erzeugt regelmäßig minutenlange Stille an einer einzigen
+ *  `run`-Werkzeugzeile; großzügiger gewählt säße man Minuten vor einem toten Bild. Ein gekürzter Zeitsprung ist das kleinere Übel.
  *
  *  Wird **beidseitig** angewandt: `dt = min(MAX_GAP_MS, max(0, ts - prev))`. Das `max(0, …)`
  *  ist nicht theoretisch — unter `WORKER_CONCURRENCY > 1` kann `ts` gegenüber `seq` rückwärts

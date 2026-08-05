@@ -39,7 +39,7 @@ import type { Pal } from "./palette.ts";
 import { GRADES, lookOf, palFor } from "./palette.ts";
 import {
   SIZE, WALL_H, WINDOW_STEP, drawBoard, drawCabinet, drawChair, drawClock, drawCoffee,
-  drawDesk, drawDoor, drawFloor, drawMonitor, drawPlant, drawRoundtable, drawRug,
+  drawDesk, drawDoor, drawFloor, drawMonitor, drawPlant, drawMeetingTable, drawRug,
   drawTableChair, drawWall, drawWindow, drawWindowLight,
 } from "./furniture.ts";
 import { FIG_H, FIG_W, actorBox, drawActor, drawGhost } from "./person.ts";
@@ -377,7 +377,7 @@ function buildRoom(world: Piece[], v: Ctx, env: Pal, frame: Frame): void {
   // die vorderen dahinter — beides ergibt sich aus ihrem Fußpunkt, nicht aus der Reihenfolge.
   world.push({ y: TABLE.y - 6, draw: () => drawTableChair(v, TABLE.x - 26, TABLE.y - 6, env) });
   world.push({ y: TABLE.y - 6, draw: () => drawTableChair(v, TABLE.x + 26, TABLE.y - 6, env) });
-  world.push({ y: TABLE.y, draw: () => drawRoundtable(v, TABLE.x, TABLE.y, env) });
+  world.push({ y: TABLE.y, draw: () => drawMeetingTable(v, TABLE.x, TABLE.y, env) });
   world.push({
     y: TABLE.y + 14,
     draw: () => drawTableChair(v, TABLE.x - 30, TABLE.y + 14, env, { flip: true }),

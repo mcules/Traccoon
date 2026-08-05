@@ -1,7 +1,7 @@
 # Pixel-Vertrag — Traccoon „Büro"
 
-Dies ist das Regelwerk für alles unter `src/components/roundtable/`. Es ist kein Stilratgeber,
-sondern die Zusage, auf der sieben parallel gebaute Teile zusammenpassen. `frontend/tools/rt-check.mjs`
+Dies ist das Regelwerk für alles unter `src/components/office/`. Es ist kein Stilratgeber,
+sondern die Zusage, auf der sieben parallel gebaute Teile zusammenpassen. `frontend/tools/office-check.mjs`
 erzwingt die Regeln maschinell — was hier steht, bricht dort den Lauf.
 
 Jede Regel steht mit ihrer Begründung da. Wer eine Regel brechen will, muss die Begründung
@@ -167,9 +167,9 @@ Aktoren, Werkzeuge, Effekte leben in `Map`, und es wird über `map.values()` ite
 aussieht (`"12"` wandert vor `"run:8871"`); mit `run:`-Ids ginge das lange gut und bräche genau
 dann, wenn eine Id einmal rein numerisch ist.
 
-Wer eine Sammlung nach außen gibt, gibt eine **Kopie** (`[...map.values()]`). Roundtable dokumentiert
-den Bug, den ein lebender Cursor auf einer `shift()`-Warteschlange verursacht hat: 59 verlorene Edits
-und ein ganzer Agent, der nie im Raum erschien.
+Wer eine Sammlung nach außen gibt, gibt eine **Kopie** (`[...map.values()]`). Ein lebender Cursor auf einer
+`shift()`-Warteschlange verschluckt sonst Einträge, sobald der Kopf verworfen wird — die Indizes
+rutschen unter ihm weg, und ein ganzer Agent erscheint nie im Raum.
 
 ---
 
@@ -179,7 +179,7 @@ und ein ganzer Agent, der nie im Raum erschien.
 |---|---|---|
 | **0** reine Domäne | `types`, `ids`, `const`, `toolAct`, `mapEvent`, `room`, `engine`, `recorder`, `replay`, `timeline` | nur Schicht 0 |
 | **1** reine Pixel | `pixel/palette`, `pixel/art`, `pixel/person`, `pixel/furniture`, `pixel/props`, `pixel/scene` | Schicht 1 + `types`/`ids`/`const` — **nie** Engine |
-| **2** React | `api`, `useRoundtableFeed`, `useTheme`, `RoundtableView`, `Stage`, `TopBar`, `Timeline`, `Dock`, `Inspector` | alles |
+| **2** React | `api`, `useOfficeFeed`, `useTheme`, `OfficeView`, `Stage`, `TopBar`, `Timeline`, `Dock`, `Inspector` | alles |
 
 Zusätzlich: **Schicht 0 und 1 importieren keine Pakete.** Kein `react`, kein `@tanstack/*`, nichts
 aus `node_modules` — sonst wären sie nicht mehr ohne Bundler ausführbar (Regel 5).
@@ -213,7 +213,7 @@ Es gibt im Frontend keinen Test-Runner, und vitest lohnt nicht (das Dockerfile m
 
 ```bash
 docker run --rm -v "$PWD/frontend":/w -w /w node:22-alpine \
-  node --experimental-strip-types tools/rt-check.mjs
+  node --experimental-strip-types tools/office-check.mjs
 ```
 
 `--experimental-strip-types` ersetzt Typen durch Leerzeichen — es transpiliert nicht. Daraus folgen
@@ -241,7 +241,7 @@ Das kostet nichts und schenkt uns einen Test-Runner mit null Abhängigkeiten.
 
 ## Was der Prüfer prüft
 
-`frontend/tools/rt-check.mjs`, `npm run check:rt`. Bewusst **nicht** Teil von `npm run build` —
+`frontend/tools/office-check.mjs`, `npm run check:office`. Bewusst **nicht** Teil von `npm run build` —
 der Docker-Bau darf nicht davon abhängen.
 
 | Prüfung | Regel | Stand |
@@ -257,16 +257,3 @@ der Docker-Bau darf nicht davon abhängen.
 | Vollständigkeit der Werkzeug-Tabelle (jedes native Traccoon-Werkzeug) | — | Welle M |
 
 Dazu, außerhalb des Prüfers: `tsc -b` muss durchlaufen (`strict: true`).
-
----
-
-## Herkunft
-
-Die Architektur dieser Ansicht folgt <https://github.com/kostakurta8/roundtable> (MIT) — der
-Ereignis-Strom als einzige Naht, die reine Engine mit `tick(dt)`, das Zurückspulen ohne Snapshots,
-die zwölf Kommandos, das Pixel-Büro als Darstellungsform.
-
-Der Code hier ist **neu geschrieben**, nicht portiert: Traccoons Datenquelle ist eine ganz andere
-(`runs` / `run_steps` / `cost_entries` aus Postgres statt Claude-Code-Sitzungsdateien), und mit ihr
-ändern sich Kommandovokabular (`confront` fällt weg, `gate`/`resume` kommen dazu), Zeitverhalten
-(`MAX_GAP_MS` 20 s statt 120 s) und die Werkzeug-Taxonomie. Namensnennung steht in der README.

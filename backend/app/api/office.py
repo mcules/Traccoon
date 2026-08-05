@@ -1,4 +1,4 @@
-"""Büro (roundtable) — die Lese-API: Sessionlisten, Ereignis-Schnappschuss, Kosten.
+"""Büro (office) — die Lese-API: Sessionlisten, Ereignis-Schnappschuss, Kosten.
 
 Eine **Session** ist ein Laufbaum, nicht ein Lauf und nicht ein Projekt. Ein einzelner
 `Run` wäre zu klein — Planung, Ausführung, jede Fortsetzung und der Review-Agent sind
@@ -23,7 +23,7 @@ deckt den ganzen Baum also in EINER Abfrage ab.
 
 **Altdaten sind kein Sonderfall, sondern der Normalfall am ersten Tag.** Läufe von vor
 der Instrumentierung haben `kind=''`-Zeilen und keine `run_start`/`run_end`-Zeilen. Der
-Lesepfad geht deshalb immer durch `services.roundtable.step_events` (die den Altpfad
+Lesepfad geht deshalb immer durch `services.office.step_events` (die den Altpfad
 kennt) und ergänzt fehlende Grenzen über `run_boundary_events`. Von Welle B profitiert
 dieselbe Route danach ohne eine Zeile Änderung.
 
@@ -47,7 +47,7 @@ from ..models.enums import GlobalRole, ProjectRole
 from ..models.project import Project
 from ..models.ticket import Issue
 from ..models.user import User
-from ..services.roundtable import (
+from ..services.office import (
     EVENT_CAP_DEFAULT, EVENT_CAP_MAX, EVENT_VERSION, LIVE_WINDOW_MS, SEQ_SLOTS,
     PriceTable, RunCtx, run_boundary_events, session_id, session_seen_event, step_events,
 )
@@ -56,9 +56,9 @@ from .deps import Access, build_access, get_current_user, get_project_access
 # ist ihrerseits `api/projects.py:74-91` (zwei Queries + `build_access_bulk`, keine Runde
 # je Projekt). Es soll genau eine Definition von „darf sehen" geben, nicht drei, die
 # irgendwann auseinanderlaufen.
-from .roundtable_ws import compute_acl
+from .office_ws import compute_acl
 
-router = APIRouter(tags=["roundtable"])
+router = APIRouter(tags=["office"])
 
 SESSION_LIMIT_DEFAULT = 50
 SESSION_LIMIT_MAX = 200
@@ -102,7 +102,7 @@ def _iso(value: dt.datetime | None) -> str | None:
 
 
 def _seq(step_id: int, slot: int) -> int:
-    """`seq` einer Zeile — dieselbe Rechnung wie in `services/roundtable`."""
+    """`seq` einer Zeile — dieselbe Rechnung wie in `services/office`."""
     return int(step_id) * SEQ_SLOTS + slot
 
 
@@ -475,7 +475,7 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
     return {"live_window_ms": LIVE_WINDOW_MS, "sessions": sessions[:limit]}
 
 
-@router.get("/projects/{project_id}/roundtable/sessions")
+@router.get("/projects/{project_id}/office/sessions")
 async def project_sessions(
     access: Access = Depends(get_project_access),
     db: AsyncSession = Depends(get_session),
@@ -498,7 +498,7 @@ async def project_sessions(
                                    status=status, archived=archived)
 
 
-@router.get("/roundtable/sessions")
+@router.get("/office/sessions")
 async def global_sessions(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
@@ -507,7 +507,7 @@ async def global_sessions(
     status: str = "all",
     project_id: int | None = None,
 ):
-    """Alle Sessions, die dieser Nutzer sehen darf — die Vollbildseite `/roundtable`.
+    """Alle Sessions, die dieser Nutzer sehen darf — die Vollbildseite `/office`.
 
     `project_id` **verengt** die ohnehin erlaubte Menge und autorisiert nie: ein fremdes
     Projekt einzutragen liefert eine leere Liste, keinen Zugang. Der Filter steht deshalb
@@ -549,7 +549,7 @@ def _agent_row(run: Run, billed: dict | None) -> dict:
     }
 
 
-@router.get("/roundtable/sessions/{kind}/{ref}/events")
+@router.get("/office/sessions/{kind}/{ref}/events")
 async def session_events(
     kind: str, ref: int,
     user: User = Depends(get_current_user),
@@ -661,7 +661,7 @@ async def session_events(
 
 # ── Kosten ──────────────────────────────────────────────────────────────────
 
-@router.get("/roundtable/sessions/{kind}/{ref}/cost")
+@router.get("/office/sessions/{kind}/{ref}/cost")
 async def session_cost(
     kind: str, ref: int,
     user: User = Depends(get_current_user),

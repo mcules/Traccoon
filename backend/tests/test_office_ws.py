@@ -17,9 +17,9 @@ import time
 import pytest
 from fastapi import WebSocketDisconnect
 
-from app.api.roundtable_ws import (
+from app.api.office_ws import (
     ACL_TTL_S, CLOSE_FORBIDDEN, CLOSE_TOO_SLOW, CLOSE_UNAUTHENTICATED, QUEUE_MAX,
-    UserConnectionManager, _Conn, compute_acl, in_scope, parse_scopes, roundtable_ws,
+    UserConnectionManager, _Conn, compute_acl, in_scope, parse_scopes, office_ws,
     visible,
 )
 from app.api.ws import project_ws
@@ -70,7 +70,7 @@ def use_test_db(monkeypatch, db) -> None:
     """Die WS-Endpunkte holen sich ihre eigene Session (kein `Depends`), und sie haben
     `SessionLocal` beim Import gebunden — der conftest-Patch auf `app.db` erreicht sie
     deshalb nicht."""
-    import app.api.roundtable_ws as rtws
+    import app.api.office_ws as rtws
     import app.api.ws as wsmod
     factory = db.__test_factory__
     monkeypatch.setattr(rtws, "SessionLocal", factory)
@@ -211,7 +211,7 @@ async def test_fanout_trifft_nur_berechtigte():
     ereignis = ev(27, 3)
     await m.dispatch(ereignis)
 
-    assert mitglied.queue.get_nowait() == {"type": "roundtable_ev", "ev": ereignis}
+    assert mitglied.queue.get_nowait() == {"type": "office_ev", "ev": ereignis}
     assert admin.queue.get_nowait()["ev"] is ereignis
     assert fremd.queue.empty()
 
@@ -288,7 +288,7 @@ async def test_sweeper_wirft_deaktivierte_nutzer_raus(db, monkeypatch):
 async def test_socket_lehnt_kaputtes_token_ab(db, monkeypatch):
     use_test_db(monkeypatch, db)
     ws = FakeWS()
-    await roundtable_ws(ws, token="kein.echtes.token")
+    await office_ws(ws, token="kein.echtes.token")
     assert ws.closed == CLOSE_UNAUTHENTICATED
     assert ws.accepted is False
 
@@ -305,7 +305,7 @@ async def test_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch):
     await db.commit()
 
     ws = FakeWS()
-    await roundtable_ws(ws, token=token)
+    await office_ws(ws, token=token)
     assert ws.closed == CLOSE_FORBIDDEN
     assert ws.accepted is False
 
@@ -335,7 +335,7 @@ async def test_socket_lehnt_inaktiven_nutzer_ab(db, monkeypatch):
     await db.commit()
 
     ws = FakeWS()
-    await roundtable_ws(ws, token=token)
+    await office_ws(ws, token=token)
     assert ws.closed == CLOSE_FORBIDDEN
 
 
@@ -360,7 +360,7 @@ async def test_hello_und_subscribe(db, monkeypatch):
     Die Bestätigung läuft durch dieselbe Warteschlange wie die Ereignisse — auf einem
     Socket schreibt nur die Pumpe."""
     use_test_db(monkeypatch, db)
-    import app.api.roundtable_ws as rtws
+    import app.api.office_ws as rtws
     user = await make_user(db, "hallo")
     proj = await make_project(db, "HAL", "Hallo")
     await add_member(db, proj, user, ProjectRole.member)
@@ -372,7 +372,7 @@ async def test_hello_und_subscribe(db, monkeypatch):
     monkeypatch.setattr(rtws.manager, "add",
                         lambda c: (gesehen.append(c), echtes_add(c))[1])
 
-    await roundtable_ws(ws, token=token)   # endet mit WebSocketDisconnect
+    await office_ws(ws, token=token)   # endet mit WebSocketDisconnect
 
     assert ws.accepted is True
     assert ws.sent[0]["type"] == "hello"
