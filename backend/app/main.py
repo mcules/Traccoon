@@ -10,7 +10,7 @@ from .api import (
     admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, destinations,
     files, hardware, invitations,
     issues, lifecycle, mail, me, notifications, ops, permissions, plugins, processes,
-    projects, repo,
+    projects, repo, roundtable,
     runs, secrets, skills, testenv, users, workflows, ws,
 )
 from .config import settings
@@ -20,6 +20,7 @@ from .services.dispatcher import recover_on_start, run_dispatcher
 from .services.scheduler import run_scheduler
 from .services.workflow_engine import run_workflow_engine
 from .api.ws import event_bridge
+from .api.roundtable_ws import roundtable_bridge, router as roundtable_ws_router
 
 VERSION = "0.1.0"
 
@@ -321,6 +322,9 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_scheduler()),
         asyncio.create_task(run_workflow_engine()),
         asyncio.create_task(event_bridge()),
+        # Eigener Kanal für die Büro-Ansicht: ein Nutzer-Socket statt N Projekt-Sockets,
+        # weil projektlose Läufe (Job/Assistent) gar keinen Projektraum haben.
+        asyncio.create_task(roundtable_bridge()),
     ]
     yield
     for t in tasks:
@@ -360,6 +364,7 @@ api.include_router(cost.router)
 api.include_router(skills.router)
 api.include_router(plugins.router)
 api.include_router(agents.router)
+api.include_router(roundtable.router)
 api.include_router(runs.router)
 api.include_router(testenv.router)
 api.include_router(dashboard.router)
@@ -367,6 +372,7 @@ api.include_router(files.router)
 api.include_router(repo.router)
 api.include_router(admin.router)
 api.include_router(ws.router)
+api.include_router(roundtable_ws_router)
 
 
 @api.get("/health", tags=["health"])
