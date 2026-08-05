@@ -99,6 +99,11 @@ function UserMenu() {
               className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Einstellungen</Link>
             <Link to="/processes" onClick={() => setOpen(false)}
               className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Prozesse</Link>
+            {/* Die Pillenleiste gehört der jeweiligen Seite — eine globale Ansicht hat dort
+                keinen Platz. Das Büro steht deshalb hier, neben „Prozesse": beides sind
+                projektübergreifende Seiten, keine Einstellungen. */}
+            <Link to="/buero" onClick={() => setOpen(false)}
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">🏢 Büro</Link>
             {isAdmin && (
               <Link to="/admin" onClick={() => setOpen(false)}
                 className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Admin</Link>
@@ -147,6 +152,7 @@ function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: stri
             <Link to="/" onClick={close} className={`${item} text-ink hover:bg-surface`}>🦝 <span>Projekte</span></Link>
             <Link to="/inbox" onClick={close} className={`${item} text-ink hover:bg-surface`}>📥 <span>Inbox</span></Link>
             <Link to="/processes" onClick={close} className={`${item} text-ink hover:bg-surface`}>🔀 <span>Prozesse</span></Link>
+            <Link to="/buero" onClick={close} className={`${item} text-ink hover:bg-surface`}>🏢 <span>Büro</span></Link>
             <Link to="/profil" onClick={close} className={`${item} text-ink hover:bg-surface`}>👤 <span>Profil</span></Link>
             <Link to="/settings" onClick={close} className={`${item} text-ink hover:bg-surface`}>⚙️ <span>Einstellungen</span></Link>
             {isAdmin && (

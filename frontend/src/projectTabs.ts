@@ -4,7 +4,7 @@ import type { ChromeTab } from "./pageChrome";
 /** Reiter-Schlüssel des Projekt-Untermenüs (inkl. der Board-Unteransichten). */
 export type ProjectTab =
   | "board" | "list" | "backlog" | "archiv" | "code" | "dashboard" | "pm"
-  | "monitor" | "workflows" | "members" | "hardware" | "testenvs" | "settings";
+  | "monitor" | "buero" | "workflows" | "members" | "hardware" | "testenvs" | "settings";
 
 /** Ticket-Ansichten unter „Board" — im Untermenü nur als „Board" vertreten,
  *  darunter im Board selbst als Buttons. */
@@ -15,7 +15,7 @@ export const BOARD_VIEWS: [ProjectTab, string][] = [
 /** Icon je Reiter für die Pill-Navigation im Header. */
 export const TAB_ICONS: Record<string, string> = {
   pm: "💬", board: "🗂️", code: "📁", dashboard: "📊",
-  monitor: "⚡", workflows: "🔀", hardware: "🖥️", testenvs: "🧪", settings: "⚙️",
+  monitor: "⚡", buero: "🏢", workflows: "🔀", hardware: "🖥️", testenvs: "🧪", settings: "⚙️",
 };
 
 /** Rollen-/Flag-abhängige Reiter des Projekts. Ohne Projekt leer, damit Aufrufer
@@ -31,6 +31,8 @@ export function projectTabs(project: Project | undefined): [ProjectTab, string][
     ...(canManage && project.git_enabled ? ([["code", "Code"]] as [ProjectTab, string][]) : []),
     ["dashboard", "Dashboard"],
     ...(project.my_ai_assign ? ([["monitor", "Monitor"]] as [ProjectTab, string][]) : []),
+    // Das Büro zeigt dieselben Läufe wie der Monitor, nur als Raum — also dasselbe Gate.
+    ...(project.my_ai_assign ? ([["buero", "Büro"]] as [ProjectTab, string][]) : []),
     ...(canManage ? ([["workflows", "Prozesse"]] as [ProjectTab, string][]) : []),
     ...(project.has_hardware ? ([["hardware", "Hardware"]] as [ProjectTab, string][]) : []),
     ...(project.testenv_enabled !== false && canWrite

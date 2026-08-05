@@ -1,3 +1,4 @@
+import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
 import Login from "./pages/Login";
@@ -11,6 +12,9 @@ import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Profile from "./pages/Profile";
 import Inbox from "./pages/Inbox";
+// Canvas, Pixelwelt und Engine des Büros sind ein eigener Brocken. Statisch importiert läge
+// er im Haupt-Bundle und die Aufteilung im Projekt-Reiter (ProjectView) wäre umsonst.
+const Office = lazy(() => import("./pages/Office"));
 import Layout from "./components/Layout";
 import { PageChromeProvider } from "./pageChrome";
 
@@ -46,6 +50,11 @@ export default function App() {
         <Route path="/workflows/:id" element={<WorkflowEditor />} />
         <Route path="/projects/:key/tickets/:ticketKey" element={<TicketView />} />
         <Route path="/projects/:key" element={<ProjectView />} />
+        <Route path="/buero" element={
+          <Suspense fallback={<div className="p-4 text-sm text-muted">Büro lädt…</div>}>
+            <Office />
+          </Suspense>
+        } />
         <Route path="/accept-invite" element={<AcceptInvite />} />
         <Route path="/login" element={<Navigate to="/" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
