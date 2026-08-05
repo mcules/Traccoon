@@ -41,7 +41,7 @@ import Stage from "./Stage.tsx";
 import Timeline from "./Timeline.tsx";
 import Dock, { DOCK_TABS, type DockTab } from "./Dock.tsx";
 import Inspector from "./Inspector.tsx";
-import TopBar, { type Tempo } from "./TopBar.tsx";
+import TopBar, { passtZumFilter, type Tempo } from "./TopBar.tsx";
 import { officeApi, parseSid, sidKey, type Scope, type SessionSummary } from "./api.ts";
 import { useOfficeFeed } from "./useOfficeFeed.ts";
 import { useTheme } from "./useTheme.ts";
@@ -252,6 +252,17 @@ export default function OfficeView({
   }, [setSeek]);
 
   // ── Abgeleitetes ──────────────────────────────────────────────────────────────────────────
+  // Der Sitzungsreiter ist ein Filter, kein Kanalwechsel (`TopBar.tsx`, Punkt 2): wer nicht
+  // dazugehört, wird auf der Bühne **blass**, nicht entfernt. Entfernen gäbe seinen Sitzplatz
+  // frei, ließe die Übergabelinien ins Nichts zeigen und zeigte je Reiter einen anderen Raum.
+  // Ohne aktiven Filter bleibt die Menge `undefined` — dann kostet das Dimmen keinen Handgriff.
+  const gedimmt = useMemo(() => {
+    if (sessionFilter === null) return undefined;
+    const out = new Set<string>();
+    for (const r of roster) if (!passtZumFilter(scope, r, sessionFilter)) out.add(r.agent_id);
+    return out;
+  }, [roster, scope, sessionFilter]);
+
   const eintrag = useMemo(
     () => (selectedId === null ? null : roster.find((r) => r.agent_id === selectedId) ?? null),
     [roster, selectedId],
@@ -349,6 +360,7 @@ export default function OfficeView({
       grade={grade}
       selected={selectedId ?? undefined}
       hover={hoverId}
+      dimmed={gedimmt}
       onSelect={(id) => setSelectedId(id ?? null)}
       onHover={setHoverId}
       className={voll

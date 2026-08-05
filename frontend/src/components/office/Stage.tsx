@@ -97,6 +97,9 @@ export interface StageProps {
   selected?: string;
   /** Agent unter dem Zeiger. */
   hover?: string;
+  /** Agenten, die der Sitzungsreiter gerade nicht meint — sie werden blass gezeichnet.
+   *  `undefined` = kein Filter aktiv. Bewusst kein Entfernen: siehe `TopBar.tsx`, Punkt 2. */
+  dimmed?: ReadonlySet<string>;
   onSelect(id: string | undefined): void;
   onHover(id: string | undefined): void;
   className?: string;
@@ -190,7 +193,8 @@ function calmFrame(f: Frame): Frame {
 
 export default function Stage(props: StageProps): JSX.Element {
   const {
-    recorder, revision, seekTs, speed, grade, selected, hover, onSelect, onHover, className,
+    recorder, revision, seekTs, speed, grade, selected, hover, dimmed, onSelect, onHover,
+    className,
   } = props;
 
   // ── DOM ────────────────────────────────────────────────────────────────────────────────────
@@ -230,6 +234,7 @@ export default function Stage(props: StageProps): JSX.Element {
   const palRef = useRef<Pal>(GRADES[grade]);
   const selRef = useRef<string | undefined>(selected);
   const hovRef = useRef<string | undefined>(hover);
+  const dimRef = useRef<ReadonlySet<string> | undefined>(dimmed);
   const onSelectRef = useRef(onSelect);
   const onHoverRef = useRef(onHover);
 
@@ -249,6 +254,7 @@ export default function Stage(props: StageProps): JSX.Element {
     if (gradeRef.current !== grade) { gradeRef.current = grade; palRef.current = GRADES[grade]; }
     selRef.current = selected;
     hovRef.current = hover;
+    dimRef.current = dimmed;
     onSelectRef.current = onSelect;
     onHoverRef.current = onHover;
     dirtyRef.current = true;
@@ -372,6 +378,7 @@ export default function Stage(props: StageProps): JSX.Element {
       renderFrame(bctx, calmRef.current ? calmFrame(f) : f, cam, gradeRef.current, {
         selected: selRef.current,
         hover: hovRef.current,
+        dimmed: dimRef.current,
       });
 
       // ── Die eine ausgenommene Stelle (PIXEL-CONTRACT.md Regel 4) ───────────────────────────
