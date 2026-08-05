@@ -33,7 +33,7 @@ import { mix } from "../ids.ts";
 import type { Art } from "./art.ts";
 import { defineArt, drawArt, fill, fillA } from "./art.ts";
 import type { Pal } from "./palette.ts";
-import { gaitOf, lookOf } from "./palette.ts";
+import { gaitOf, lookOf, rollenSeed } from "./palette.ts";
 
 // ═══ Maße ════════════════════════════════════════════════════════════════════
 
@@ -664,13 +664,23 @@ function drawBody(
  * **Position**, keine Größe (Regel 1). Gerundet wird hier, nicht in der Engine: die rechnet
  * mit einem Subpixel-Akkumulator weiter, damit auch winzige `dt` vorankommen.
  *
- * `pal` ist die **bereits aufgelöste Palette dieser Figur** (`palFor(grade, lookOf(a.seed))`).
- * Sie hier selbst aufzulösen wäre ein Objekt-Spread über 36 Schlüssel je Figur und Bild.
+ * `pal` ist die **bereits aufgelöste Palette dieser Figur**
+ * (`palFor(grade, lookOf(a.seed, rollenSeed(a.role, a.seed)))`). Sie hier selbst aufzulösen
+ * wäre ein Objekt-Spread über 36 Schlüssel je Figur und Bild.
+ *
+ * Das Aussehen wird **beim Zeichnen** aufgelöst, nicht beim Anlegen des Aktors. Das ist der
+ * Grund, warum der Nachtrag-der-Rolle-Fall keine Sonderbehandlung braucht: `engine.ts` setzt
+ * `a.role` erst nach `ensureActor`, und `wake(id)` ruft `ensureActor` ganz ohne Rolle. Wäre
+ * das Aussehen einmalig in einen Seed geschrieben worden, müsste ihn jemand nachträglich
+ * überschreiben — so bekommt die Figur ihr Rollenaussehen einfach im ersten Bild, in dem die
+ * Rolle bekannt ist.
  */
 export function drawActor(ctx: Ctx, a: ActorState, t: number, pal: Pal): void {
   const cx = Math.round(a.x * POS_SCALE);
   const yBase = Math.round(a.y * POS_SCALE);
-  const look = lookOf(a.seed);
+  const look = lookOf(a.seed, rollenSeed(a.role, a.seed));
+  // Die Gangart bleibt **ganz** am Laufseed: sie ist das, was zwölf Rollengenossen im Bild
+  // auseinanderhält, wenn Hemd und Haar sie gerade zusammenfassen (Regel 3.2).
   const gait = gaitOf(a.seed);
   const act = actOf(a);
   const s = stanceOf(act, a.pose, t, look, gait, a.seed);
@@ -691,11 +701,15 @@ export function drawActor(ctx: Ctx, a: ActorState, t: number, pal: Pal): void {
  * Raum. Ihn wie alle anderen zu zeichnen wäre eine Lüge (er hat keinen Stuhl), ihn wegzulassen
  * eine zweite (er arbeitet ja). Der Geist ist die einzige ehrliche Darstellung — und man sieht
  * sofort, dass der Raum voll ist.
+ *
+ * `look` kommt **fertig** herein statt aus `seed` gezogen zu werden: er ist derselbe, aus dem
+ * der Aufrufer schon `pal` gebaut hat. Ihn hier ein zweites Mal zu ziehen hieße, die Rolle ein
+ * zweites Mal aufzulösen — und beim kleinsten Auseinanderdriften trüge der Geist ein anderes
+ * Hemd als seine Palette. `seed` bleibt trotzdem nötig: Gangart und Atemphase sind individuell.
  */
 export function drawGhost(
-  ctx: Ctx, cx: number, yBase: number, pal: Pal, t: number, seed: number,
+  ctx: Ctx, cx: number, yBase: number, pal: Pal, t: number, seed: number, look: Look,
 ): void {
-  const look = lookOf(seed);
   const gait = gaitOf(seed);
   const s = stanceOf("idle", "stand", t, look, gait, seed);
   // Zusätzliches Schweben, damit der Geist auch im Standbild als Geist liest.

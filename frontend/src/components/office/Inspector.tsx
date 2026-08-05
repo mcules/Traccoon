@@ -40,6 +40,11 @@ export interface InspectorProps {
   seekTs: number | null;
   onSelect?: (id: string) => void;
   onClose?: () => void;
+  /** Öffnet den Akte-Reiter im Dock für die Rolle dieses Laufs. Optional — ohne Dock (im
+   *  Projekt-Reiter) gibt es keinen Ort, an den der Sprung führen könnte, und dann fehlt der
+   *  Einstieg lieber, als ins Leere zu zeigen. Der Inspektor **bleibt** dabei beim einzelnen
+   *  Lauf: er reicht die Rolle weiter, er wird nicht selbst zur Akte. */
+  onOpenAkte?: (agent: string) => void;
   className?: string;
 }
 
@@ -113,7 +118,7 @@ function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id:
 // ── Die Komponente ──────────────────────────────────────────────────────────────────────────
 
 export default function Inspector({
-  scope, entry, roster, recorder, revision, seekTs, onSelect, onClose, className,
+  scope, entry, roster, recorder, revision, seekTs, onSelect, onClose, onOpenAkte, className,
 }: InspectorProps) {
   const log = useMemo(() => recorder.entries(), [recorder, revision]);
   const auszug = useMemo(
@@ -244,6 +249,13 @@ export default function Inspector({
         </div>
 
         <div className="flex flex-wrap gap-2 border-t border-line pt-2">
+          {onOpenAkte && entry.agent && (
+            <button type="button" onClick={() => onOpenAkte(entry.agent)}
+              title={`Alle Läufe der Rolle ${entry.agent} im Dock — dieser Lauf bleibt hier stehen.`}
+              className="rounded border border-line px-2 py-0.5 hover:border-brand">
+              📇 Personalakte: {entry.agent}
+            </button>
+          )}
           {projektKey && entry.issue_key && (
             <Link to={`/projects/${projektKey}/tickets/${entry.issue_key}`}
               className="rounded border border-line px-2 py-0.5 hover:border-brand">

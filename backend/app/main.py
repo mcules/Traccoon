@@ -259,6 +259,11 @@ async def lifespan(app: FastAPI):
                 "CREATE INDEX IF NOT EXISTS ix_runs_owner_started ON runs (owner_id, started_at DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_runs_parent_run_id ON runs (parent_run_id)",
                 "CREATE INDEX IF NOT EXISTS ix_runs_issue_started ON runs (issue_id, started_at)",
+                # Personalakte (`/office/agents`): jede ihrer fünf Abfragen gruppiert nach
+                # `runs.agent` innerhalb eines Zeitfensters — die Werkzeugtabelle joint dafür
+                # sogar `run_steps` gegen `runs`. Ohne diesen Index ist das ein Seq-Scan über
+                # inzwischen 13 000 Laufzeilen, und zwar bei jedem Öffnen des Reiters.
+                "CREATE INDEX IF NOT EXISTS ix_runs_agent_started ON runs (agent, started_at DESC)",
                 # Der Schritt trägt sein Ereignis selbst: Art, Werkzeug-ID, Ziel, Erfolg, Dauer
                 # und die Tokens des einzelnen Modellzugs. `ok` ist dreiwertig (NULL=unbekannt),
                 # `provider`/`model` halten fest, WER geantwortet hat — bei Fallback ist das

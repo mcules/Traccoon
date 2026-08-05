@@ -36,6 +36,8 @@ und ihn eine tragen zu lassen hieße, dem Client die Autorisierung zu überlasse
 from __future__ import annotations
 
 import datetime as dt
+import math
+from typing import Callable
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, case, func, or_, select, true
@@ -78,6 +80,38 @@ RUN_SCAN_MAX = 3000
 TREE_LEVELS = 2
 
 SESSION_STATUS = ("all", "live", "recent")
+
+# ── Personalakte: Konstanten ────────────────────────────────────────────────
+
+TOOL_LIMIT_DEFAULT = 8
+TOOL_LIMIT_MAX = 50
+
+# **Drei Balken statt einer Erfolgsquote.** `office/engine.ts::verdictOf` behandelt
+# `planned` schon heute als „ok" — ein Planungslauf, der einen Plan abgeliefert hat, IST
+# fertig, er heißt nur nicht `success`. Eine Quote `success/runs` wiese den
+# `project_manager` mit 0 % aus (0 success, 7 planned) und den `architect` mit 6 %
+# (3 success, 36 planned); beides widerspricht dem eigenen Code des Hauses. Die drei
+# Mengen sind disjunkt und werden nie zu einer Zahl verrechnet.
+DELIVERED_STATUS = ("success", "planned")
+WAITING_STATUS = ("blocked",)                        # wartet auf einen Menschen
+ABORTED_STATUS = ("failed", "loop_exhausted")
+
+# Die Eimer, die die Ansicht zeigt: <1 min · <5 min · <20 min · <80 min · darüber.
+DURATION_DISPLAY_EDGES_MS = (60_000, 300_000, 1_200_000, 4_800_000)
+
+# Die feine Leiter, aus der p50/p90 abgelesen werden. Sie enthält jede Anzeige-Grenze,
+# damit BEIDE Ausgaben aus derselben einen Abfrage fallen (die Anzeige-Eimer sind Summen
+# von Leiter-Eimern). Warum überhaupt Eimer: `percentile_cont` gibt es nur unter Postgres,
+# die Tests laufen auf SQLite — dieselbe Rücksicht, aus der `office.py` schon auf
+# `WITH RECURSIVE` verzichtet. Die Leiter ist unten fein (dort liegen 516 von 632 Läufen)
+# und oben grob (ein Lauf dauerte 36,5 Stunden).
+DURATION_LADDER_MS = (
+    1_000, 2_000, 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 45_000, 60_000,
+    90_000, 120_000, 180_000, 240_000, 300_000,
+    450_000, 600_000, 900_000, 1_200_000,
+    1_800_000, 2_400_000, 3_600_000, 4_800_000,
+    7_200_000, 14_400_000, 28_800_000, 86_400_000, 172_800_000,
+)
 
 
 # ── Kleinkram ───────────────────────────────────────────────────────────────
@@ -755,3 +789,317 @@ async def session_cost(
         "by_agent": sorted(by_agent.values(), key=lambda r: r["agent"]),
         "by_model": sorted(by_model.values(), key=lambda r: (r["provider"], r["model"])),
     }
+
+
+# ── Personalakte (Kennzahlen je Rolle) ──────────────────────────────────────
+
+def _duration_ms_expr(db: AsyncSession):
+    """`finished_at - started_at` in Millisekunden — dialektabhängig, weil es dafür keinen
+    gemeinsamen Ausdruck gibt.
+
+    Postgres kann `extract(epoch from a - b)`, SQLite kennt weder Intervalle noch
+    `extract`; dort rechnet `julianday()` in Tagen (Fließkomma, ~0,1 ms genau). Ein
+    Vergleich `finished_at < started_at + INTERVAL` scheidet aus: SQLAlchemy kann
+    Datumsarithmetik auf SQLite nicht abbilden (`TypeError: fromisoformat`). Also genau
+    eine Verzweigung, an genau einer Stelle — der Rest der Auswertung ist dialektfrei.
+    """
+    if db.get_bind().dialect.name == "sqlite":
+        return (func.julianday(Run.finished_at) - func.julianday(Run.started_at)) * 86_400_000.0
+    return func.extract("epoch", Run.finished_at - Run.started_at) * 1000.0
+
+
+def _bucket_expr(duration_ms):
+    """Leiter-Index eines Laufs als `CASE WHEN`-Kette (0 … len(LADDER))."""
+    return case(*[(duration_ms < edge, i) for i, edge in enumerate(DURATION_LADDER_MS)],
+                else_=len(DURATION_LADDER_MS))
+
+
+def _percentile_ms(counts: list[int], q: float, max_ms: int | None) -> int | None:
+    """Perzentil aus Eimerzahlen — als **Obergrenze** des Eimers, in dem es liegt.
+
+    Aus Eimerzahlen lässt sich nicht mehr ablesen. Eine Interpolation innerhalb des Eimers
+    erfände Genauigkeit, die die Zahlen nicht haben; die Obergrenze ist dagegen eine wahre
+    Aussage („der Median liegt unter X"). `max_ms` klemmt sie zusätzlich: bei einem
+    einzigen 30-s-Lauf ist der Median nicht „unter 45 s", sondern genau 30 s.
+    Der Überlauf-Eimer (jenseits der Leiter) hat keine Obergrenze → `None`; wie lang es
+    wirklich war, steht in `max_ms`.
+    """
+    total = sum(counts)
+    if total <= 0:
+        return None
+    rang = max(1, math.ceil(q * total))          # nächster Rang, nicht Interpolation
+    gesehen = 0
+    for i, n in enumerate(counts):
+        gesehen += n
+        if gesehen >= rang:
+            if i >= len(DURATION_LADDER_MS):
+                return None
+            edge = DURATION_LADDER_MS[i]
+            return min(edge, max_ms) if max_ms is not None else edge
+    return None
+
+
+def _display_buckets(counts: list[int]) -> list[dict]:
+    """Die fünf Anzeige-Eimer als Summen der Leiter-Eimer. `lt_ms: None` heißt „darüber"."""
+    out: list[dict] = []
+    unten = 0
+    for edge in DURATION_DISPLAY_EDGES_MS:
+        bis = sum(n for i, n in enumerate(counts)
+                  if i < len(DURATION_LADDER_MS) and DURATION_LADDER_MS[i] <= edge)
+        out.append({"lt_ms": edge, "n": bis - unten})
+        unten = bis
+    out.append({"lt_ms": None, "n": sum(counts) - unten})
+    return out
+
+
+def _agent_slot(agents: dict[str, dict], name: str) -> dict:
+    """Die Zeile einer Rolle — angelegt, sobald sie das erste Mal irgendwo auftaucht."""
+    return agents.setdefault(name, {
+        "agent": name, "runs": 0, "running": 0, "by_status": {},
+        "delivered": 0, "waiting": 0, "aborted": 0,
+        "cost_usd": 0.0, "cost_partial": False,
+        "in_tokens": 0, "out_tokens": 0, "cache_read_tokens": 0,
+        "iterations_avg": 0.0, "iterations_max": 0,
+        "steps_avg": 0.0, "steps_max": 0,
+        "duration": {"p50_ms": None, "p90_ms": None, "max_ms": None,
+                     "buckets": _display_buckets([])},
+        "tools": [], "last_run_at": None,
+        "_iter_sum": 0, "_step_sum": 0, "_step_runs": 0,
+        "_buckets": [0] * (len(DURATION_LADDER_MS) + 1),
+    })
+
+
+async def _agents_payload(
+    db: AsyncSession, *,
+    scope_runs: Callable, scope_costs: Callable,
+    since_hours: int, agent: str | None, tool_limit: int,
+) -> dict:
+    """Der gemeinsame Rumpf beider Personalakten — fünf gruppierte Abfragen, keine je Rolle.
+
+    Die Autorisierung steckt in `scope_runs`/`scope_costs`: beide bekommen ein `select`
+    und hängen JOIN und WHERE der jeweiligen Sicht daran. Damit ist die globale und die
+    projektbezogene Akte **dieselbe** Rechnung, und es gibt keine zweite Stelle, an der
+    „darf sehen" definiert wird.
+
+    **Kosten werden nach `cost_entries.agent` gruppiert, nicht nach `runs.agent`.** Die
+    beiden Spalten sind heute identisch, aber nicht per Fremdschlüssel gekoppelt — und
+    genau dafür gibt es die Spalte: `cost_entries.run_id` ist `SET NULL`, ein Kostenposten
+    überlebt also die Lauflöschung durch die Aufbewahrungsfrist. Über `runs.agent` gerechnet
+    verschwände die Rechnung mit dem Lauf, und die Akte behauptete, es sei nichts angefallen.
+    Eine Rolle kann deshalb mit `runs: 0` und Kosten > 0 in der Liste stehen; das ist keine
+    Panne, sondern die Tatsache.
+    """
+    since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
+    tool_limit = _clamp(tool_limit, 1, TOOL_LIMIT_MAX)
+    cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=since_hours)
+
+    def _runs(stmt):
+        stmt = scope_runs(stmt).where(Run.started_at >= cutoff)
+        return stmt.where(Run.agent == agent) if agent else stmt
+
+    def _costs(stmt):
+        stmt = scope_costs(stmt).where(CostEntry.created_at >= cutoff)
+        return stmt.where(CostEntry.agent == agent) if agent else stmt
+
+    agents: dict[str, dict] = {}
+
+    # (1) Läufe je (Rolle, Status). Die Gruppierung nach Status statt fester Zähler hält
+    # auch einen Status fest, den dieser Code noch nicht kennt — `by_status` ist die rohe
+    # Wahrheit, die drei Balken sind die Deutung darüber.
+    for name, status, n, it_sum, it_max, letzter in (await db.execute(
+        _runs(select(Run.agent, Run.status, func.count(),
+                     func.sum(Run.iterations), func.max(Run.iterations),
+                     func.max(Run.started_at)))
+        .group_by(Run.agent, Run.status)
+    )).all():
+        row = _agent_slot(agents, name or "")
+        status = status or ""
+        row["runs"] += int(n or 0)
+        row["by_status"][status] = row["by_status"].get(status, 0) + int(n or 0)
+        row["_iter_sum"] += int(it_sum or 0)
+        row["iterations_max"] = max(row["iterations_max"], int(it_max or 0))
+        if status == "running":
+            row["running"] += int(n or 0)
+        if status in DELIVERED_STATUS:
+            row["delivered"] += int(n or 0)
+        elif status in WAITING_STATUS:
+            row["waiting"] += int(n or 0)
+        elif status in ABORTED_STATUS:
+            row["aborted"] += int(n or 0)
+        iso = _iso(letzter)
+        if iso and (row["last_run_at"] is None or iso > row["last_run_at"]):
+            row["last_run_at"] = iso
+
+    # (2) Dauer-Eimer. Nur abgeschlossene Läufe: ein laufender Lauf hat noch keine Dauer,
+    # und die bis jetzt vergangene Zeit als Dauer auszugeben wäre eine Zahl, die sich beim
+    # nächsten Abruf ändert, ohne dass etwas passiert ist.
+    dauer = _duration_ms_expr(db)
+    eimer = _bucket_expr(dauer)
+    for name, idx, n, max_ms in (await db.execute(
+        _runs(select(Run.agent, eimer, func.count(), func.max(dauer)))
+        .where(Run.finished_at.is_not(None))
+        .group_by(Run.agent, eimer)
+    )).all():
+        row = _agent_slot(agents, name or "")
+        row["_buckets"][int(idx)] += int(n or 0)
+        gemessen = int(round(float(max_ms or 0.0)))
+        d = row["duration"]
+        d["max_ms"] = gemessen if d["max_ms"] is None else max(d["max_ms"], gemessen)
+
+    # (3) Schritte je Lauf. `iterations` (Runden des Agenten) und Schritte (Zeilen in
+    # `run_steps`) sind zwei verschiedene Dinge — der Inspektor beschriftet `iterations`
+    # bereits als „Runden", und ein gemeinsames Feld hätte beide Zahlen unlesbar gemacht.
+    # Nenner des Schnitts sind die Läufe MIT Schritten: ein Lauf, dessen Schritte die
+    # Aufbewahrungsfrist schon gelöscht hat, hatte nicht „0 Schritte".
+    je_lauf = _runs(
+        select(Run.agent.label("agent"), RunStep.run_id.label("rid"), func.count().label("n"))
+        .select_from(RunStep).join(Run, Run.id == RunStep.run_id)
+    ).group_by(Run.agent, RunStep.run_id).subquery()
+    for name, s_sum, s_max, s_runs in (await db.execute(
+        select(je_lauf.c.agent, func.sum(je_lauf.c.n), func.max(je_lauf.c.n), func.count())
+        .group_by(je_lauf.c.agent)
+    )).all():
+        row = _agent_slot(agents, name or "")
+        row["_step_sum"] += int(s_sum or 0)
+        row["_step_runs"] += int(s_runs or 0)
+        row["steps_max"] = max(row["steps_max"], int(s_max or 0))
+
+    # (4) Kosten und Tokens aus den Kostenposten. Tokens kommen aus derselben Quelle wie
+    # der Betrag, damit beide dieselbe Geschichte erzählen („was abgerechnet wurde") —
+    # `runs.input_tokens` kennt die gecachten Tokens gar nicht.
+    for name, usd, ein, aus, cache, offen in (await db.execute(
+        _costs(select(CostEntry.agent, func.sum(CostEntry.cost_usd),
+                      func.sum(CostEntry.input_tokens), func.sum(CostEntry.output_tokens),
+                      func.sum(CostEntry.cache_read_tokens),
+                      func.sum(case((CostEntry.priced.is_(True), 0), else_=1))))
+        .group_by(CostEntry.agent)
+    )).all():
+        row = _agent_slot(agents, name or "")
+        row["cost_usd"] += float(usd or 0.0)
+        row["in_tokens"] += int(ein or 0)
+        row["out_tokens"] += int(aus or 0)
+        row["cache_read_tokens"] += int(cache or 0)
+        # `priced` ist dreiwertig; hier zählt nur bewiesen-bepreist als vollständig.
+        # NULL (Altzeile — heute ALLE 411 Posten) heißt „nie festgehalten, ob es einen
+        # Katalogeintrag gab". `_entry_priced` löst NULL für einen EINZELNEN Lauf gegen den
+        # heutigen Katalog auf; über Monate und mehrere Provider hinweg wäre dieselbe
+        # Rückrechnung eine Behauptung. Die Akte sagt deshalb schlicht: Untergrenze.
+        if int(offen or 0) > 0:
+            row["cost_partial"] = True
+
+    # (5) Werkzeugtabelle: `run_steps ⋈ runs` über `runs.agent` — der Schritt selbst weiß
+    # nicht, welche Rolle ihn ausgelöst hat. Dafür gibt es `ix_runs_agent_started`.
+    # `ok` ist dreiwertig, deshalb gilt `ok + failed ≤ n` und **nicht** `ok + failed = n`:
+    # der Rest sind Zeilen, bei denen niemand nachgesehen hat (in der laufenden Instanz ist
+    # das die Mehrheit, `fs_read` hat 1531 Aufrufe und 0 belegte Urteile). Wer daraus eine
+    # Quote `ok/n` rechnete, malte die halbe Tabelle grundlos rot — die Differenz ist
+    # „unbekannt", nicht „fehlgeschlagen".
+    werkzeuge: dict[str, list[dict]] = {}
+    for name, tool, n, ok, schlecht in (await db.execute(
+        _runs(select(Run.agent, RunStep.tool_name, func.count(),
+                     func.sum(case((RunStep.ok.is_(True), 1), else_=0)),
+                     func.sum(case((RunStep.ok.is_(False), 1), else_=0)))
+              .select_from(RunStep).join(Run, Run.id == RunStep.run_id))
+        .where(RunStep.tool_name.is_not(None), RunStep.tool_name != "")
+        .group_by(Run.agent, RunStep.tool_name)
+    )).all():
+        _agent_slot(agents, name or "")
+        werkzeuge.setdefault(name or "", []).append(
+            {"tool": tool, "n": int(n or 0), "ok": int(ok or 0), "failed": int(schlecht or 0)})
+
+    for name, row in agents.items():
+        row["iterations_avg"] = round(row["_iter_sum"] / row["runs"], 1) if row["runs"] else 0.0
+        row["steps_avg"] = (round(row["_step_sum"] / row["_step_runs"], 1)
+                            if row["_step_runs"] else 0.0)
+        d = row["duration"]
+        d["buckets"] = _display_buckets(row["_buckets"])
+        d["p50_ms"] = _percentile_ms(row["_buckets"], 0.5, d["max_ms"])
+        d["p90_ms"] = _percentile_ms(row["_buckets"], 0.9, d["max_ms"])
+        row["cost_usd"] = round(row["cost_usd"], 6)
+        row["tools"] = sorted(werkzeuge.get(name, []),
+                              key=lambda t: (-t["n"], t["tool"]))[:tool_limit]
+        for hilf in ("_iter_sum", "_step_sum", "_step_runs", "_buckets"):
+            row.pop(hilf)
+
+    return {
+        # Das Fenster gehört in die Antwort: `run_retention_days` löscht ältere Läufe, die
+        # Ansicht darf also nicht „Lieblingswerkzeuge" sagen, sondern nur „der letzten N".
+        "since_hours": since_hours,
+        "tool_limit": tool_limit,
+        "agents": sorted(agents.values(),
+                         key=lambda r: (-r["runs"], -r["cost_usd"], r["agent"])),
+    }
+
+
+@router.get("/projects/{project_id}/office/agents")
+async def project_agents(
+    access: Access = Depends(get_project_access),
+    db: AsyncSession = Depends(get_session),
+    since_hours: int = SINCE_HOURS_DEFAULT,
+    agent: str | None = None,
+    tool_limit: int = TOOL_LIMIT_DEFAULT,
+):
+    """Die Personalakte eines Projekts — der vierte Dock-Reiter im Projekt-Büro.
+
+    Fremdes Projekt = 404, das erledigt `get_project_access` (`build_access` wirft 404,
+    nie 403). Ein Viewer genügt: die Akte ist eine Lesefläche über die eigenen Läufe, und
+    `/costs/global` (das `require_admin` trägt) ist ausdrücklich NICHT das Vorbild — sonst
+    stünde im Büro jedes Viewers ein leerer Reiter.
+    """
+    pid = access.project.id
+
+    def scope_runs(stmt):
+        # Wie `project_sessions`: bevorzugt über `Run.project_id` (überlebt die
+        # Ticket-Löschung), Altzeilen ohne `project_id` weiter über das Ticket.
+        return stmt.outerjoin(Issue, Issue.id == Run.issue_id).where(
+            or_(Run.project_id == pid,
+                and_(Run.project_id.is_(None), Issue.project_id == pid)))
+
+    def scope_costs(stmt):
+        return stmt.select_from(CostEntry).outerjoin(
+            Issue, Issue.id == CostEntry.issue_id).where(
+            or_(CostEntry.project_id == pid,
+                and_(CostEntry.project_id.is_(None), Issue.project_id == pid)))
+
+    return await _agents_payload(db, scope_runs=scope_runs, scope_costs=scope_costs,
+                                 since_hours=since_hours, agent=agent, tool_limit=tool_limit)
+
+
+@router.get("/office/agents")
+async def global_agents(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_session),
+    since_hours: int = SINCE_HOURS_DEFAULT,
+    agent: str | None = None,
+    tool_limit: int = TOOL_LIMIT_DEFAULT,
+):
+    """Die Personalakte über alle sichtbaren Projekte — der Reiter auf `/buero`.
+
+    Sichtbarkeit kommt aus `_visible_runs`, also aus derselben Definition wie die
+    Sessionliste und der Live-Socket. Ein Nicht-Mitglied bekommt keine 403, sondern eine
+    leere Liste: es gibt keinen Pfad, dessen Existenz hier verraten werden könnte.
+    """
+    sichtbar = await _visible_runs(db, user)
+
+    def scope_runs(stmt):
+        return stmt.where(sichtbar)
+
+    if user.global_role == GlobalRole.admin:
+        kosten_cond = true()
+    else:
+        # Kostenposten tragen kein `owner_id`. Projektgebundene decken die Projektmenge ab;
+        # projektlose (Assistent, Job) hängen am Lauf — deshalb der äußere Join. Ein
+        # projektloser Posten, dessen Lauf schon gelöscht ist, bleibt für Nicht-Admins
+        # unsichtbar: lieber eine Lücke als eine fremde Rechnung.
+        erlaubt = await compute_acl(db, user)
+        kosten_cond = or_(
+            CostEntry.project_id.in_(erlaubt),
+            and_(CostEntry.project_id.is_(None), Run.owner_id == user.id),
+        )
+
+    def scope_costs(stmt):
+        return stmt.select_from(CostEntry).outerjoin(
+            Run, Run.id == CostEntry.run_id).where(kosten_cond)
+
+    return await _agents_payload(db, scope_runs=scope_runs, scope_costs=scope_costs,
+                                 since_hours=since_hours, agent=agent, tool_limit=tool_limit)

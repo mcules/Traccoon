@@ -1,5 +1,13 @@
-// Schicht 2 — das Dock unter der Bühne. Drei Reiter auf dieselben Daten:
-// **Chat** (was gesagt wurde), **Agenten** (wer da ist) und **Werkzeuge** (was getan wurde).
+// Schicht 2 — das Dock unter der Bühne. Vier Reiter: drei auf dieselben Daten —
+// **Chat** (was gesagt wurde), **Agenten** (wer da ist) und **Werkzeuge** (was getan wurde) —
+// und einer daneben: die **Personalakte** (was eine Rolle über alle Läufe hinweg tut).
+//
+// Die Akte ist bewusst der Fremdkörper hier. Die ersten drei Reiter lesen das Log dieser
+// Sitzung und frieren mit dem Raum ein; die Akte fragt selbst beim Server nach und hat ihr
+// eigenes Zeitfenster über Läufe **und** Sitzungen hinweg. Sie sitzt trotzdem im Dock und
+// nicht im Inspektor: der Inspektor sagt in seinem Kopf ausdrücklich zu, ohne eigene Abfrage
+// auszukommen, und hätte in seiner 45 %-Kachel auch keinen Platz dafür. Der Reiter ist eine
+// Liste von **Rollen** — genau die Achse, die dem `agents`-Reiter fehlt.
 //
 // ── Woher der Text kommt, und was das kostet ────────────────────────────────────────────────
 //
@@ -21,6 +29,7 @@
 // zwei Ansichten desselben Laufs, die sich widersprechen.
 
 import { useEffect, useMemo, useRef } from "react";
+import Personalakte from "./Personalakte.tsx";
 import type { Scope } from "./api.ts";
 import type { Cmd, Roster, RosterEntry } from "./types.ts";
 import type { LogQuelle } from "./Timeline.tsx";
@@ -39,12 +48,13 @@ const AGENT_CAP = 80;
 
 // ── Oberfläche ──────────────────────────────────────────────────────────────────────────────
 
-export type DockTab = "chat" | "agents" | "tools";
+export type DockTab = "chat" | "agents" | "tools" | "akte";
 
 export const DOCK_TABS: readonly { key: DockTab; label: string; icon: string }[] = [
   { key: "chat", label: "Chat", icon: "💬" },
   { key: "agents", label: "Agenten", icon: "🤖" },
   { key: "tools", label: "Werkzeuge", icon: "🔧" },
+  { key: "akte", label: "Personalakte", icon: "📇" },
 ];
 
 export interface DockProps {
@@ -173,11 +183,18 @@ export default function Dock({
     return kopie;
   }, [roster]);
 
+  /** Die **Rolle** der ausgewählten Figur — der Sprungpunkt der Akte. Ein Lauf ohne Rolle
+   *  (Job, Assistent) ergibt `null`: dann bleibt die Wahl in der Akte beim Betrachter, statt
+   *  auf eine leere Rolle zu zeigen. */
+  const gewaehlteRolle = selectedId ? (nachId.get(selectedId)?.agent || null) : null;
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   // Im Livebetrieb ans Ende scrollen; beim Zurückspulen ausdrücklich **nicht** — dort hat der
   // Betrachter eine Stelle gewählt und will sie behalten.
+  // Die Akte ist keine Liste, die nach unten wächst — sie ans Ende zu scrollen zeigte den
+  // letzten Werkzeugbalken der letzten Rolle statt der Überschrift mit dem Zeitfenster.
   useEffect(() => {
-    if (seekTs !== null) return;
+    if (seekTs !== null || tab === "akte") return;
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [revision, tab, seekTs]);
@@ -202,13 +219,20 @@ export default function Dock({
             className={"rounded-t border-b-2 px-2.5 py-1 text-xs "
               + (tab === t.key ? "border-brand text-ink" : "border-transparent text-muted hover:text-ink")}>
             {t.icon} {t.label}
-            <span className="ml-1 text-[10px] text-muted">
-              {t.key === "chat" ? chat.length : t.key === "agents" ? roster.length : werkzeuge.length}
-            </span>
+            {/* Die Akte bekommt keine Zahl: wie viele Rollen es gibt, weiß erst ihre eigene
+                Abfrage — eine Zahl aus dem Roster wäre eine andere Menge mit demselben
+                Aussehen. */}
+            {t.key !== "akte" && (
+              <span className="ml-1 text-[10px] text-muted">
+                {t.key === "chat" ? chat.length : t.key === "agents" ? roster.length : werkzeuge.length}
+              </span>
+            )}
           </button>
         ))}
         <div className="flex-1" />
-        {seekTs !== null && (
+        {/* Der Einfrierhinweis gilt für die drei Log-Reiter. Die Akte friert nicht ein — sie
+            nennt ihr eigenes Fenster in der eigenen Überschrift. */}
+        {seekTs !== null && tab !== "akte" && (
           <span className="self-center pb-1 text-[10px] text-orange-400"
             title="Das Dock zeigt denselben Moment wie der Raum.">
             eingefroren auf {uhrText(seekTs)}
@@ -226,6 +250,12 @@ export default function Dock({
         )}
         {tab === "tools" && (
           <WerkzeugListe zeilen={werkzeuge} name={name} gedimmt={gedimmt} onSelect={onSelect} />
+        )}
+        {tab === "akte" && (
+          // Die Rolle der ausgewählten Figur, nicht die Figur selbst: der Inspektor darunter
+          // zeigt weiter den einzelnen Lauf, die Akte die Rolle. Zwei Wahrheiten nebeneinander,
+          // keine gibt sich für die andere aus.
+          <Personalakte scope={scope} focusAgent={gewaehlteRolle} />
         )}
       </div>
     </div>

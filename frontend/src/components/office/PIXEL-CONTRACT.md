@@ -130,6 +130,42 @@ const gait = 1 + (rnd01(mix(seed, SALT_PACE)) - 0.5) * 2 * PACE_SPREAD;
 benannte Konstante; zwei Stellen mit demselben Salz sind korreliert (alle Langsamen haben rote
 Haare), und das fällt erst spät und peinlich auf.
 
+**Zwei Seeds, nicht einer: `ActorState.seed` (individuell) und der Aussehen-Seed (Rolle).**
+
+`ActorState.seed` ist `hash32("run:8871")` — die **Lauf**-Id. Alles daraus ist damit pro Lauf neu,
+und genau das war zu viel: derselbe `developer` sah gestern anders aus als heute, wiedererkennen
+konnte man niemanden. Deshalb gibt es daneben `rollenSeed(role, seed)` = `mix(hash32(role), SALT_ROLLE)`
+(`pixel/palette.ts`). Die Aufteilung ist **nicht** verhandelbare Kosmetik, sondern folgt der
+Sichtbarkeit bei 16×24 Pixeln:
+
+| Merkmal | Quelle | Warum |
+|---|---|---|
+| Hemdfarbe | **Rolle** | größte zusammenhängende Farbfläche eines Sprites — aus drei Metern *die* Information |
+| Haarfarbe | **Rolle** | zweitgrößte Fläche; mit dem Hemd zusammen ein Wappen |
+| Torso (Form) | **Rolle** | Schultersilhouette, trägt die Rolle auch von hinten (der Chefplatz zeigt `DIR_BACK`) |
+| Kopf, Haut, Arme, Beine, Haarform, Hosenfarbe | **`seed`** | damit zwölf `developer` unterscheidbar bleiben |
+| alle sieben `gaitOf`-Felder | **`seed`** | die Bewegung sieht man vor der Frisur — sie ist der eigentliche Träger der Individualität |
+| `Priv.pace`, Abgangsstreuung, Atem, `fx.seed` | **`seed`** | sonst gehen alle gleichzeitig durch dieselbe Tür |
+| Sitzplatz (`seatOf(a.id)`) | **Lauf-Id** | `seatOf` sondiert linear — zwölf `developer` bekämen zwölf **aufeinanderfolgende** Plätze, die linke Bank wäre eine Monokultur |
+
+Drei Dinge daran sind Vertrag, nicht Geschmack:
+
+- **Es gibt keine Rollen-Farbtabelle.** Rollen sind Daten (`developer`, `assistent`, `architect`,
+  `code_reviewer`, `project_manager`, `gameproj-operator`, `news` — und morgen eine achte), keine
+  Aufzählung. Eine Tabelle bräuchte Pflege bei jedem neuen Agenten und hätte für unbekannte Rollen
+  gar keinen Eintrag; `hash32(role)` gibt jeder Rolle für immer eine stabile Farbe.
+- **Leere Rolle → der Laufseed.** Eine namenlose Figur soll nicht alle namenlosen Figuren einander
+  gleichmachen. Weil `rolle === seed` dabei genau die alten Salze trifft, ist der rollenlose Fall
+  bitgleich zum Verhalten vor der Aufteilung.
+- **Das Aussehen wird beim Zeichnen aufgelöst, nie in einen Seed zurückgeschrieben.** `engine.ts`
+  setzt `a.role` erst *nach* `ensureActor`, und `wake(id)` ruft `ensureActor` ganz ohne Rolle. Ein
+  einmalig gespeicherter Aussehen-Seed müsste also nachträglich überschrieben werden — mit der
+  Auflösung in Schicht 1 bekommt die Figur ihr Rollenaussehen einfach im ersten Bild, in dem die
+  Rolle bekannt ist. Deshalb lebt das Ganze in `pixel/palette.ts` (Schicht 1, darf `ids.ts`
+  importieren) und **nicht** in Schicht 0: `ActorState.role` steht bereits im `Frame`, es braucht
+  kein neues Feld — und damit bleibt Prüfung 3 (goldenes Frame-JSON) bytegleich, während nur
+  Prüfung 8 (Pixel-Ops) sich ändert.
+
 ### 3.3 Subpixel-Akkumulator
 
 Positionen werden als Fließkomma integriert und **nur beim Rendern** gerundet:
