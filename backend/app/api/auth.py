@@ -75,6 +75,31 @@ async def login(data: LoginIn, db: AsyncSession = Depends(get_session)):
     return TokenOut(access_token=create_access_token(user.id))
 
 
+@router.post("/refresh", response_model=TokenOut)
+async def refresh(user: User = Depends(get_current_user)):
+    """Verlängert eine **bestehende** Sitzung — und gibt kein neues Recht.
+
+    Warum es den Endpunkt gibt: `jwt_expire_minutes` ist 720, und das Frontend wirft bei 401
+    hart auf `/login`. Jeder lange offene Tab (der Kiosk-Wandschirm ist nur der auffälligste)
+    ist damit nach spätestens zwölf Stunden ein Anmeldeformular.
+
+    Warum er keine Sicherheitsfläche aufmacht:
+
+    * Er hängt an `get_current_user` — also **denselben** zwei Prüfungen wie jeder andere
+      Aufruf: `iat` vor `password_changed_at` fliegt raus (Sitzungs-Invalidierung nach
+      Passwortwechsel), `status != active` ebenfalls. Sie hier zu wiederholen wäre eine
+      zweite Wahrheit, die beim nächsten Nachziehen einer der beiden Stellen kippt.
+    * Ein abgelaufenes Token kommt gar nicht bis hierher: `decode_access_token` wirft, und
+      `get_current_user` macht daraus 401. Ein Refresh kann eine tote Sitzung also nicht
+      wiederbeleben, nur eine lebende verlängern.
+    * Das neue Token enthält exakt dieselben Ansprüche wie ein frisch erlogintes
+      (`sub`/`iat`/`exp`, siehe `core/security.py`) — Rollen stehen nicht im Token, sondern
+      werden bei jedem Aufruf aus der Datenbank gelesen. Ein Rechtezuwachs ist hier also
+      nicht bloß nicht implementiert, er ist strukturell unmöglich.
+    """
+    return TokenOut(access_token=create_access_token(user.id))
+
+
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
     return user_out(user)

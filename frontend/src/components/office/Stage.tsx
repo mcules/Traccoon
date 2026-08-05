@@ -39,7 +39,9 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent } from "react";
 import type { ActorState, Frame, Grade } from "./types.ts";
-import { LINK_MS, MAX_FRAME_MS, PIX } from "./const.ts";
+import { LINK_MS, MAX_FRAME_MS, PIX, POS_SCALE } from "./const.ts";
+import type { KioskCam } from "./kiosk.ts";
+import { newKioskCam, pickTarget } from "./kiosk.ts";
 import { Replay } from "./replay.ts";
 import type { RecorderApi } from "./useOfficeFeed.ts";
 import { GRADES } from "./pixel/palette.ts";
@@ -100,6 +102,10 @@ export interface StageProps {
   /** Agenten, die der Sitzungsreiter gerade nicht meint — sie werden blass gezeichnet.
    *  `undefined` = kein Filter aktiv. Bewusst kein Entfernen: siehe `TopBar.tsx`, Punkt 2. */
   dimmed?: ReadonlySet<string>;
+  /** Wandschirm-Betrieb: die Kamera sucht sich ihr Ziel selbst (`kiosk.ts`), Tastatur, Mausrad
+   *  und Überfahren sind aus. Das einzige, was diese Datei nach außen dazu braucht — alles
+   *  Weitere (Rahmen, Kopfzeile, Raumwechsel) gehört der Ansicht darüber. */
+  kiosk?: boolean;
   onSelect(id: string | undefined): void;
   onHover(id: string | undefined): void;
   className?: string;
@@ -193,7 +199,7 @@ function calmFrame(f: Frame): Frame {
 
 export default function Stage(props: StageProps): JSX.Element {
   const {
-    recorder, revision, seekTs, speed, grade, selected, hover, dimmed, onSelect, onHover,
+    recorder, revision, seekTs, speed, grade, selected, hover, dimmed, kiosk, onSelect, onHover,
     className,
   } = props;
 
@@ -202,6 +208,7 @@ export default function Stage(props: StageProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const selTagRef = useRef<HTMLSpanElement | null>(null);
   const hovTagRef = useRef<HTMLSpanElement | null>(null);
+  const midTagRef = useRef<HTMLSpanElement | null>(null);
 
   // ── Alles Bewegliche ───────────────────────────────────────────────────────────────────────
   const replayRef = useRef<Replay | null>(null);
@@ -235,8 +242,20 @@ export default function Stage(props: StageProps): JSX.Element {
   const selRef = useRef<string | undefined>(selected);
   const hovRef = useRef<string | undefined>(hover);
   const dimRef = useRef<ReadonlySet<string> | undefined>(dimmed);
+  const kioskRef = useRef(kiosk === true);
   const onSelectRef = useRef(onSelect);
   const onHoverRef = useRef(onHover);
+
+  // ── Kiosk ──────────────────────────────────────────────────────────────────────────────────
+  //
+  // Der Kamerazustand des Wandschirms lebt in einem Ref, nicht im React-Zustand: ein Ziel im
+  // Zustand kostete einen Renderdurchlauf **je Kamerabewegung**, und die ganze Datei ist darum
+  // herum gebaut, das nie zu tun. Die Wahl selbst trifft `kiosk.ts` (Schicht 0, prüfbar rein);
+  // hier steht nur, was sie mit der Kamera macht.
+  const kioskStRef = useRef<KioskCam>(newKioskCam());
+  /** Zuletzt geschriebene Beschriftung der Bildmitte — das DOM wird nur bei echter Änderung
+   *  angefasst, nicht sechzigmal je Sekunde. */
+  const midTextRef = useRef<string>("");
 
   // ── Zeiger ─────────────────────────────────────────────────────────────────────────────────
   const hoverPtRef = useRef<{ x: number; y: number } | null>(null);
@@ -255,6 +274,13 @@ export default function Stage(props: StageProps): JSX.Element {
     selRef.current = selected;
     hovRef.current = hover;
     dimRef.current = dimmed;
+    if (kioskRef.current !== (kiosk === true)) {
+      kioskRef.current = kiosk === true;
+      // Das Schild der Bildmitte ist ein anderes DOM-Element, sobald der Kiosk ein- oder
+      // ausgeschaltet wird. Ohne das Zurücksetzen hielte der Merker einen Text fest, der im
+      // neuen (leeren) Element gar nicht steht — und die Zeile bliebe für immer versteckt.
+      midTextRef.current = "";
+    }
     onSelectRef.current = onSelect;
     onHoverRef.current = onHover;
     dirtyRef.current = true;
@@ -393,7 +419,25 @@ export default function Stage(props: StageProps): JSX.Element {
       place(selTagRef.current, selRef.current, f, cam);
       place(hovTagRef.current, hovRef.current !== selRef.current ? hovRef.current : undefined,
         f, cam);
+      if (kioskRef.current) midTag(f, cam);
       return true;
+    };
+
+    // ── Wer steht in der Bildmitte? ──────────────────────────────────────────────────────────
+    //
+    // Der Wandschirm soll sagen, wen er gerade zeigt — aber **ohne auszuwählen**: ein gesetztes
+    // `selected` zöge den hellen Ring, das DOM-Schild und die Kameraverfolgung nach sich und
+    // wäre außerdem ein Renderdurchlauf. `hitTest` auf die Bildmitte ist vorhandener Code und
+    // beantwortet genau die Frage, die hier gestellt ist. Der Text wird imperativ gesetzt, wie
+    // die Lage der anderen Schilder auch.
+    const midTag = (f: Frame, cam: Cam): void => {
+      const el = midTagRef.current;
+      if (!el) return;
+      const text = tagOf(f, hitTest(f, cam, PIX.w / 2, PIX.h / 2)) ?? "";
+      if (text === midTextRef.current) return;
+      midTextRef.current = text;
+      el.textContent = text;
+      el.style.visibility = text === "" ? "hidden" : "visible";
     };
 
     // ── Kamera je Bild ───────────────────────────────────────────────────────────────────────
@@ -402,7 +446,9 @@ export default function Stage(props: StageProps): JSX.Element {
       // Verfolgung: nur bei Zoom, und nur wenn die Figur aus der Mitte läuft. Ein Nachziehen
       // bei jedem Schritt nähme dem Nutzer das Schwenken aus der Hand.
       const sel = selRef.current;
-      if (c.zoom > 1 && sel !== undefined && f) {
+      // Im Kiosk führt `kioskCam` die Kamera. Ein gleichzeitiges Nachziehen auf eine (etwa durch
+      // eine Berührung des Wandschirms) ausgewählte Figur wären zwei Hände am selben Lenkrad.
+      if (c.zoom > 1 && sel !== undefined && f && !kioskRef.current) {
         const p = actorAt(f, sel);
         if (p) {
           const halfW = PIX.w / (2 * c.zoom) * 0.7;
@@ -423,6 +469,32 @@ export default function Stage(props: StageProps): JSX.Element {
       }
       c.x += dx * k;
       c.y += dy * k;
+      return true;
+    };
+
+    // ── Kiosk-Kamera je Bild ─────────────────────────────────────────────────────────────────
+    //
+    // Läuft **in dieser Schleife**, direkt vor `moveCam` — dann trägt die vorhandene Easing
+    // (`CAM_EASE_MS`) den Schwenk noch im selben Bild an.
+    //
+    // `zoomAt` wird bewusst **nicht** gerufen: das setzt `wantX = x` und ließe die Kamera
+    // springen. Hier stattdessen `c.zoom` direkt, dann das Ziel in `wantX/wantY`, dann
+    // `clampCam` — der Zoom sitzt sofort, der Weg dorthin bleibt weich.
+    //
+    // **Ruhemodus (`prefers-reduced-motion`) hält das aus**, und das ist kein Zufall:
+    // `calmFrame` wirft `fx` weg, aber es wird erst in `paint` angewandt. Hier steht
+    // `frameRef.current`, der **echte** Frame samt Effektstrom — die Fx-Kamera funktioniert
+    // also auch dort. Wer `calmFrame` eines Tages nach vorn zieht, blendet den Wandschirm.
+    const kioskCam = (f: Frame | null): boolean => {
+      if (!kioskRef.current || !f) return false;
+      const tgt = pickTarget(f, kioskStRef.current);
+      if (tgt === null) return false;
+      const c = camRef.current;
+      // `Fx.x/y` sind Szenen-Koordinaten (1600×900), die Kamera rechnet in Pufferpixeln.
+      c.zoom = kioskStRef.current.zoom;
+      c.wantX = Math.round(tgt.x * POS_SCALE);
+      c.wantY = Math.round(tgt.y * POS_SCALE);
+      clampCam(c);
       return true;
     };
 
@@ -465,6 +537,7 @@ export default function Stage(props: StageProps): JSX.Element {
       // Nichts bewegt, Kamera steht, nichts angefragt → auch nichts malen. Bei `speed === 0`
       // ist das der Normalfall, und ein angehaltenes Bild soll keine 60 Vollbilder je Sekunde
       // kosten. Der Merker fällt erst, wenn wirklich gemalt wurde.
+      if (kioskCam(frameRef.current)) dirtyRef.current = true;
       const cammoved = moveCam(dt, frameRef.current);
       if ((moved || cammoved || dirtyRef.current) && paint()) dirtyRef.current = false;
     };
@@ -531,6 +604,10 @@ export default function Stage(props: StageProps): JSX.Element {
     // passiv anmeldet und `preventDefault` dort wirkungslos bliebe — die Seite scrollte dann
     // unter der Bühne weg.
     const onWheel = (e: WheelEvent): void => {
+      // Im Kiosk gehört die Kamera dem Raum. Auch das `preventDefault` fällt weg: die Seite
+      // scrollt dort ohnehin nicht, und ein stiller Fänger auf einem Wandschirm ist nur eine
+      // Stelle, an der jemand später einen Fehler sucht.
+      if (kioskRef.current) return;
       e.preventDefault();
       zoomAt(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
     };
@@ -591,6 +668,9 @@ export default function Stage(props: StageProps): JSX.Element {
   }, []);
 
   const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    // Im Kiosk gar nicht erst anfangen: die 250-ms-Drosselung soll nie feuern, sonst weckte
+    // eine Fliege auf dem Touchscreen alle vier Sekunden Dock und Inspektor auf.
+    if (kioskRef.current) return;
     hoverPtRef.current = toBuffer(e.clientX, e.clientY);
     // Vorn und hinten im Fenster: der erste Zug meldet sofort, der letzte des Fensters kommt
     // am Ende nach. Ohne den Nachzügler bliebe ein Zeiger, der zwischen zwei Fenstern stehen
@@ -649,6 +729,9 @@ export default function Stage(props: StageProps): JSX.Element {
   // gehört der Ansicht darüber; ein `window`-Listener hier würde ihr in die Quere kommen und
   // wäre außerdem in jedem Textfeld der Seite aktiv.
   const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
+    // Im Kiosk keine Bühnentasten. Die Ansicht darüber lässt dort nur `Escape` gelten, und ein
+    // Schwenk, den niemand zurücknehmen kann, bliebe bis zum nächsten Ziel stehen.
+    if (kioskRef.current) return;
     const c = camRef.current;
     const pan = (dx: number, dy: number): void => {
       c.wantX += dx / c.zoom;
@@ -694,9 +777,11 @@ export default function Stage(props: StageProps): JSX.Element {
     <div
       ref={hostRef}
       className={`relative overflow-hidden bg-surface outline-none ${className ?? ""}`}
-      tabIndex={0}
+      tabIndex={kiosk === true ? -1 : 0}
       role="group"
-      aria-label="Büro-Bühne. Alt und Pfeiltasten schwenken, Plus und Minus zoomen, Pos1 zentriert."
+      aria-label={kiosk === true
+        ? "Büro-Bühne im Wandschirm-Betrieb. Die Kamera folgt dem Geschehen von selbst."
+        : "Büro-Bühne. Alt und Pfeiltasten schwenken, Plus und Minus zoomen, Pos1 zentriert."}
       onKeyDown={onKeyDown}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
@@ -736,6 +821,19 @@ export default function Stage(props: StageProps): JSX.Element {
         >
           {hovText}
         </span>
+      )}
+
+      {/* Wandschirm: wer gerade in der Bildmitte steht. Dezent unten, nicht am Kopf der Figur —
+          aus drei Metern liest man eine feste Zeile, kein wanderndes Schild. Text und
+          Sichtbarkeit setzt die Schleife imperativ, deshalb steht hier nichts drin. */}
+      {kiosk === true && (
+        <span
+          ref={midTagRef}
+          className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap
+                     rounded border border-line bg-card/70 px-2 py-1 text-sm text-muted"
+          style={{ visibility: "hidden" }}
+          aria-live="off"
+        />
       )}
 
       {/* Leerer Zustand: ein ruhiger, leerer Raum und ein Satz. Kein Spinner, keine

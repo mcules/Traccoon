@@ -1,5 +1,22 @@
-// Schicht 2 — der Zusammenbau. Eine Ansicht, zwei Einsatzorte: als Projekt-Reiter (begrenzt,
-// ohne Dock und Inspektor) und als Vollbildseite.
+// Schicht 2 — der Zusammenbau. Eine Ansicht, drei Einsatzorte: als Projekt-Reiter (begrenzt,
+// ohne Dock und Inspektor), als Vollbildseite und als Wandschirm (`?kiosk=1`).
+//
+// ══ Der Kiosk ist eine Variante, keine Route ═════════════════════════════════════════════════
+//
+// `variant="kiosk"` blendet aus, statt neu zu bauen: Werkzeugleiste, Dock, Inspektor,
+// Zeitleiste und alles Bedienbare der Kopfzeile fallen weg, der Rest ist derselbe Code. Eine
+// eigene Route wäre eine Kopie von `pages/Office.tsx` gewesen — und `?project=`, `?sid=` und
+// `?at=` hätten in beiden gepflegt werden müssen.
+//
+// Zwei Dinge unterscheiden ihn im Verhalten:
+//
+//   · **Raumrotation.** Der gewöhnliche Nachrück-Effekt greift nur, wenn gar keine Sitzung
+//     gewählt ist oder die gewählte aus dem Fenster fällt. Ein Wandschirm braucht mehr: 516
+//     von 632 Läufen sind unter fünf Minuten fertig, ein einmal gewählter Raum ist also die
+//     meiste Zeit tot. Also: passiert `KIOSK_SWITCH_AFTER_MS` lang nichts und ein anderer Raum
+//     ist live, wird gewechselt.
+//   · **Tastatur auf `Escape`.** Vor der Wand steht keine Tastatur; was trotzdem eine anfasst,
+//     soll den Kiosk verlassen können und sonst nichts auslösen.
 //
 // ══ Was diese Datei besitzt — und was ausdrücklich nicht ═════════════════════════════════════
 //
@@ -67,20 +84,42 @@ const SESSION_REFETCH_MS = 30_000;
  *  von selbst — archivierte Läufe verschwinden nach `run_retention_days` (Standard 30 Tage). */
 const SESSION_WINDOW_H = 24 * 180;
 
+/** Kiosk: passiert im gezeigten Raum so lange nichts und ist ein anderer `live`, wird
+ *  gewechselt. Anderthalb Minuten sind länger als jede Denkpause eines Agenten (das Backend
+ *  nennt einen Raum nach 90 s ohne Ereignis selbst nicht mehr „live") und kurz genug, dass
+ *  die Wand nicht minutenlang einen leeren Schreibtisch zeigt. */
+const KIOSK_SWITCH_AFTER_MS = 90_000;
+
+/** So oft sieht der Kiosk nach, ob er weiterrücken sollte. Rein rechnerisch, ohne Netz. */
+const KIOSK_ROTATE_TICK_MS = 5000;
+
+/** Kiosk: die Sitzungsliste **ist** hier die Steuerung — sie entscheidet, welcher Raum an der
+ *  Wand steht. Deshalb dichter als die 30 s der bedienten Ansicht. */
+const KIOSK_SESSION_REFETCH_MS = 15_000;
+
+/** Nach so langer Zeigerruhe verschwindet der ⛶-Knopf. Er ist die einzige Bedienung, die der
+ *  Kiosk braucht (Vollbild verlangt eine Nutzergeste) — und die einzige, die stört. */
+const KIOSK_KNOPF_MS = 5000;
+
 // ── Oberfläche ──────────────────────────────────────────────────────────────────────────────
 
 export interface OfficeViewProps {
   scope: Scope;
-  /** `"tab"` = im Projekt-Reiter (kein Dock, kein Inspektor), `"full"` = Vollbildseite. */
-  variant: "tab" | "full";
+  /** `"tab"` = im Projekt-Reiter (kein Dock, kein Inspektor), `"full"` = Vollbildseite,
+   *  `"kiosk"` = Wandschirm ohne Bedienung. */
+  variant: "tab" | "full" | "kiosk";
   /** Startpunkt der Wiedergabe in Epoch-ms, `null`/fehlt = live. Nur beim Einhängen gelesen. */
   initialAt?: number | null;
   /** Meldet jeden Wechsel des Sprungpunkts — die Vollbildseite schreibt ihn in die URL. */
   onAtChange?: (ts: number | null) => void;
   /** Nur `variant="tab"`: „⤢ Vollbild". */
   onFullscreen?: () => void;
-  /** Nur `variant="full"`: „⤡ Vollbild verlassen" und das letzte Esc. */
+  /** `variant="full"`: „⤡ Vollbild verlassen" und das letzte Esc.
+   *  `variant="kiosk"`: das **einzige** Esc — es verlässt den Wandschirm. */
   onClose?: () => void;
+  /** Meldet die aktuelle Fehlermeldung (oder `undefined`) nach außen. Der Wachhund der
+   *  Kioskseite hängt daran: er kann nur neu laden, was er auch sieht. */
+  onErrorChange?: (fehler: string | undefined) => void;
   /** Vorgewählte Sitzung (`"issue:412"`), z. B. aus der URL. Nur beim Einhängen gelesen. */
   initialSid?: string | null;
   /** Meldet den Wechsel des Raums — die Vollbildseite schreibt ihn in die URL, damit ein
@@ -93,9 +132,12 @@ export interface OfficeViewProps {
 
 export default function OfficeView({
   scope, variant, initialAt, onAtChange, onFullscreen, onClose,
-  initialSid, onSidChange, className,
+  initialSid, onSidChange, onErrorChange, className,
 }: OfficeViewProps): JSX.Element {
   const voll = variant === "full";
+  const kiosk = variant === "kiosk";
+  /** Bühne füllt die Fläche statt im 16:9-Kasten zu sitzen — gilt für beide großen Formen. */
+  const grossflaechig = voll || kiosk;
 
   // ── Zustand ────────────────────────────────────────────────────────────────────────────────
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -124,11 +166,19 @@ export default function OfficeView({
   // ── Sitzungsliste und die gewählte Sitzung ────────────────────────────────────────────────
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
   const sessions = useQuery({
-    queryKey: ["office", "sessions", scopeKey],
-    queryFn: () => officeApi.sessions(scope, { limit: SESSION_LIMIT, sinceHours: SESSION_WINDOW_H }),
-    refetchInterval: SESSION_REFETCH_MS,
+    queryKey: ["office", "sessions", scopeKey, kiosk ? "kiosk" : "bedient"],
+    queryFn: async () => {
+      const basis = { limit: SESSION_LIMIT, sinceHours: SESSION_WINDOW_H };
+      if (!kiosk) return officeApi.sessions(scope, basis);
+      // Kiosk: erst die laufenden Räume — die sind das, was ein Wandschirm beantworten soll.
+      // Läuft gerade nichts (nachts der Normalfall), fällt er auf die volle Liste zurück und
+      // zeigt den zuletzt aktiven Raum, statt schwarz zu werden.
+      const live = await officeApi.sessions(scope, { ...basis, status: "live" });
+      return live.sessions.length ? live : officeApi.sessions(scope, basis);
+    },
+    refetchInterval: kiosk ? KIOSK_SESSION_REFETCH_MS : SESSION_REFETCH_MS,
     refetchOnWindowFocus: false,
-    staleTime: 10_000,
+    staleTime: kiosk ? 5000 : 10_000,
     retry: 1,
   });
   const liste: SessionSummary[] = sessions.data?.sessions ?? [];
@@ -176,14 +226,81 @@ export default function OfficeView({
     setSeek(null);
   }, [setSeek]);
 
+  // ── Raumrotation (nur Kiosk) ──────────────────────────────────────────────────────────────
+  //
+  // Der Effekt weiter oben rückt nur nach, wenn **keine** Sitzung gewählt ist oder die
+  // gewählte aus dem Fenster fällt — richtig für einen Menschen, der sich einen Raum
+  // ausgesucht hat. Der Wandschirm hat niemanden, der auswählt: er soll zeigen, wo gerade
+  // etwas passiert. Also die zweite Regel, und sie ist bewusst schmal gehalten:
+  // gewechselt wird nur, wenn hier lange nichts geschah **und** anderswo etwas läuft.
+  // Ohne die zweite Hälfte tanzte die Wand nachts zwischen lauter toten Räumen hin und her.
+  useEffect(() => {
+    if (!kiosk || liste.length < 2) return;
+    const tick = () => {
+      const jetzt = Date.now();
+      const aktuell = liste.find((s) => s.sid === sidStr);
+      const zuletzt = aktuell?.last_event_at ? Date.parse(aktuell.last_event_at) : NaN;
+      // Kein Zeitstempel = kein Beweis für Leben. Dann zählt der Raum als still.
+      const still = !Number.isFinite(zuletzt) || jetzt - zuletzt > KIOSK_SWITCH_AFTER_MS;
+      if (!still) return;
+      // Die Liste kommt nach letztem Ereignis absteigend — der erste Treffer ist der
+      // frischeste laufende Raum.
+      const naechster = liste.find((s) => s.live && s.sid !== sidStr);
+      if (naechster) waehleSitzung(naechster.sid);
+    };
+    const timer = window.setInterval(tick, KIOSK_ROTATE_TICK_MS);
+    return () => window.clearInterval(timer);
+  }, [kiosk, liste, sidStr, waehleSitzung]);
+
+  // ── Der ⛶-Knopf (nur Kiosk) ───────────────────────────────────────────────────────────────
+  //
+  // `requestFullscreen()` braucht eine Nutzergeste und scheitert sonst **still** — automatisch
+  // anfordern ist also keine Option, sondern nur eine, die nie funktioniert. Der Knopf ist die
+  // Geste; nach `KIOSK_KNOPF_MS` Zeigerruhe verschwindet er wieder. In der Praxis startet die
+  // Wand ohnehin als `chromium --kiosk` und braucht ihn nie.
+  const [knopfSichtbar, setKnopfSichtbar] = useState(true);
+  const knopfRef = useRef(true);
+  useEffect(() => {
+    if (!kiosk) return;
+    let timer: number | null = null;
+    const zeigen = (v: boolean) => {
+      if (knopfRef.current === v) return;   // je Mausbewegung ein Renderdurchlauf wäre absurd
+      knopfRef.current = v;
+      setKnopfSichtbar(v);
+    };
+    const wach = () => {
+      zeigen(true);
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => zeigen(false), KIOSK_KNOPF_MS);
+    };
+    wach();
+    window.addEventListener("pointermove", wach, { passive: true });
+    window.addEventListener("pointerdown", wach, { passive: true });
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener("pointermove", wach);
+      window.removeEventListener("pointerdown", wach);
+    };
+  }, [kiosk]);
+
+  const vollbildUmschalten = useCallback(() => {
+    try {
+      if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
+      else void document.documentElement.requestFullscreen?.().catch(() => {});
+    } catch {
+      // Manche Browser werfen synchron statt abzulehnen. Ein Wandschirm ohne Vollbild ist
+      // immer noch ein Wandschirm.
+    }
+  }, []);
+
   // ── Tastaturkarte ─────────────────────────────────────────────────────────────────────────
   //
   // Der Listener wird **einmal** angemeldet. Alles, was er wissen muss, liest er aus einem
   // Spiegel-Ref — sonst müsste er bei jedem Überfahren einer Figur neu registriert werden.
   const stand = useRef({
-    voll, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose,
+    voll, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose,
   });
-  stand.current = { voll, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose };
+  stand.current = { voll, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -198,6 +315,14 @@ export default function OfficeView({
         if (e.key === " " && ziel.closest("button, a, [role='button']")) return;
       }
       const s = stand.current;
+
+      // Kiosk: genau eine Taste. Alles andere (Dock, Tempo, Spulen, Hilfe) steuert etwas,
+      // das dort gar nicht sichtbar ist — es wäre eine unsichtbare Bedienung, und die
+      // hinterlässt einen Wandschirm, den niemand mehr versteht.
+      if (s.kiosk) {
+        if (e.key === "Escape" && s.onClose) { s.onClose(); e.preventDefault(); }
+        return;
+      }
 
       switch (e.key) {
         case "?":
@@ -281,6 +406,13 @@ export default function OfficeView({
   const fehler = error
     ?? (sessions.error ? `Sitzungen nicht ladbar: ${(sessions.error as Error).message}` : undefined);
 
+  // Der Wachhund der Kioskseite lebt außerhalb dieser Komponente (er lädt die Seite neu, das
+  // ist keine Zuständigkeit einer Ansicht). Über den Spiegel-Ref bleibt der Effekt an `fehler`
+  // hängen und nicht an der Identität des Rückrufs.
+  const onErrorChangeRef = useRef(onErrorChange);
+  onErrorChangeRef.current = onErrorChange;
+  useEffect(() => { onErrorChangeRef.current?.(fehler); }, [fehler]);
+
   const kopf = (
     <TopBar
       scope={scope}
@@ -299,6 +431,7 @@ export default function OfficeView({
       fullscreen={voll}
       onToggleFullscreen={voll ? onClose : onFullscreen}
       error={fehler}
+      kiosk={kiosk}
     />
   );
 
@@ -371,7 +504,10 @@ export default function OfficeView({
       dimmed={gedimmt}
       onSelect={(id) => setSelectedId(id ?? null)}
       onHover={setHoverId}
-      className={voll
+      // Kiosk: die Bühne führt selbst Kamera (Welle „Kiosk-Kamera", `office/kiosk.ts`) —
+      // sie folgt dem Geschehen, statt starr den ganzen Raum zu zeigen.
+      kiosk={kiosk}
+      className={grossflaechig
         ? "min-h-0 flex-1 rounded border border-line"
         : "aspect-[16/9] w-full rounded border border-line"}
     />
@@ -386,6 +522,29 @@ export default function OfficeView({
       className="shrink-0"
     />
   );
+
+  // Der Wandschirm: Kopfzeile (schreibgeschützt), Bühne, ein einziger Knopf. Keine
+  // Werkzeugleiste, kein Dock, kein Inspektor, keine Zeitleiste — nichts davon kann dort
+  // jemand bedienen, und was niemand bedienen kann, verschenkt nur Fläche.
+  if (kiosk) {
+    return (
+      <div className={`relative flex min-h-0 flex-col gap-2 ${className ?? ""}`}>
+        {kopf}
+        {buehne}
+        <button
+          type="button"
+          onClick={vollbildUmschalten}
+          title="Vollbild ein- oder ausschalten"
+          aria-label="Vollbild umschalten"
+          className={"absolute right-3 top-3 z-10 rounded border border-line bg-card/80 px-2 py-1 "
+            + "text-sm text-muted transition-opacity hover:border-brand hover:text-ink "
+            + (knopfSichtbar ? "opacity-80" : "pointer-events-none opacity-0")}
+        >
+          ⛶
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex min-h-0 flex-col gap-2 ${className ?? ""}`}>

@@ -105,6 +105,21 @@ export const LIVE_STEP_MS = 100;
 /** Obergrenze für ein einzelnes `tick(dt)` — schützt gegen einen Tab, der im Hintergrund lag. */
 export const MAX_FRAME_MS = 100;
 
+// ── Kiosk (Wandschirm) ───────────────────────────────────────────────────────
+
+/** So lange gilt ein einmal gewähltes Kameraziel unverändert.
+ *
+ *  Ohne diese Sperre zappelte die Kamera zwölfmal je Sekunde zwischen zwei Funken hin und her —
+ *  aus drei Metern Abstand ist das kein Bild mehr, sondern ein Zucken. 6 s sind rund vier
+ *  `TOOL_BUSY_MS`, also lang genug, dass man einen Werkzeugschritt zu Ende sieht. */
+export const KIOSK_HOLD_MS = 6000;
+
+/** So lange ohne ein einziges neues `Fx`, dann zieht sich die Kamera auf den ganzen Raum zurück.
+ *
+ *  Bewusst großzügiger als `MAX_GAP_MS`: erst danach ist wirklich nichts mehr los, und dann ist
+ *  der ganze stille Raum das ehrliche Bild — nicht ein zufällig herangezoomter leerer Tisch. */
+export const KIOSK_IDLE_MS = 20_000;
+
 // ── Kapazitäten ──────────────────────────────────────────────────────────────
 
 /** Mehr Figuren zeigt der Raum nicht gleichzeitig; die ältesten fertigen gehen zuerst. */
