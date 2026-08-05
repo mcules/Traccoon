@@ -11,6 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from ..core.redis import PREFIX, get_redis
 from ..core.security import decode_access_token
 from ..db import SessionLocal
+from ..models.enums import UserStatus
 from ..models.project import Project
 from ..models.user import User
 from .deps import build_access
@@ -56,6 +57,16 @@ async def project_ws(websocket: WebSocket, project_id: int, token: str = ""):
         project = await db.get(Project, project_id)
         if user is None or project is None:
             await websocket.close(code=4404)
+            return
+        # Fehlerbehebung: Der Socket war bisher der einzige Eingang ohne diese beiden
+        # Prüfungen — ein deaktiviertes Konto und ein durch Passwortwechsel widerrufenes
+        # Token kamen hier noch herein, während `deps.get_current_user` sie an jedem
+        # Request abwies. Ein Token allein ist kein Zugang, solange das Konto dahinter
+        # gesperrt oder das Token entwertet ist.
+        revoked = (user.password_changed_at is not None
+                   and int(payload.get("iat", 0) or 0) < int(user.password_changed_at.timestamp()))
+        if user.status != UserStatus.active or revoked:
+            await websocket.close(code=4403)
             return
         try:
             access = await build_access(project, user, db)
