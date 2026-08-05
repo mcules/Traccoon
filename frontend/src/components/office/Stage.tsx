@@ -743,7 +743,10 @@ export default function Stage(props: StageProps): JSX.Element {
       {empty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <p className="rounded border border-line bg-card/90 px-3 py-2 text-sm text-muted">
-            Noch kein Agentenlauf in diesem Projekt.
+            {/* Bewusst ohne „in diesem Projekt": die Bühne steht auch auf der
+                projektübergreifenden Seite, und leer heißt hier nur „im geladenen
+                Fenster ist nichts passiert" — nicht „es gab hier nie einen Agenten". */}
+            Noch kein Agentenlauf zu sehen.
           </p>
         </div>
       )}

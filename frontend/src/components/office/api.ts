@@ -166,10 +166,11 @@ export const officeApi = {
    *  Zwei Pfade, ein Ergebnis: der Projekt-Reiter fragt unter dem Projekt (Zugriff prüft
    *  `get_project_access`, Fremde bekommen 404), die globale Seite fragt übergreifend.
    *  `projectId` **verengt** dort nur — autorisiert wird es nie. */
-  sessions: (scope: Scope, opts?: { limit?: number; projectId?: number }): Promise<SessionList> => {
+  sessions: (scope: Scope,
+             opts?: { limit?: number; projectId?: number; sinceHours?: number }): Promise<SessionList> => {
     const path = scope.kind === "project"
-      ? `/projects/${scope.projectId}/office/sessions${qs({ limit: opts?.limit })}`
-      : `/office/sessions${qs({ limit: opts?.limit, project_id: opts?.projectId })}`;
+      ? `/projects/${scope.projectId}/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours })}`
+      : `/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours, project_id: opts?.projectId })}`;
     // Ob der Umschlag `{sessions: […]}` heißt oder ein nacktes Feld ist, entscheidet Welle C.
     // Beides wird hier zum selben Ergebnis — das ist billiger als eine Rückfrage und
     // überlebt die Abstimmung in beide Richtungen.

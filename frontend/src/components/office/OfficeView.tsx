@@ -59,6 +59,14 @@ const SESSION_LIMIT = 30;
  *  oder endet, nicht im Sekundentakt. Der Live-Strom hängt an der **gewählten** Sitzung. */
 const SESSION_REFETCH_MS = 30_000;
 
+/** Rückblick der Sitzungsliste. Das Backend gibt sich mit einer Woche zufrieden — für einen
+ *  Live-Monitor die richtige Vorgabe, für diese Ansicht die falsche: ein Projekt, dessen
+ *  letzter Lauf zwölf Tage her ist, zeigte sonst einen leeren Raum samt der Behauptung, es
+ *  habe dort nie einen Agenten gegeben. Das Büro ist ein Rückblick, kein Wecker; wie frisch
+ *  eine Sitzung ist, sagt ohnehin ihr `live`-Kennzeichen. Die Aufbewahrung deckelt das Fenster
+ *  von selbst — archivierte Läufe verschwinden nach `run_retention_days` (Standard 30 Tage). */
+const SESSION_WINDOW_H = 24 * 180;
+
 // ── Oberfläche ──────────────────────────────────────────────────────────────────────────────
 
 export interface OfficeViewProps {
@@ -117,7 +125,7 @@ export default function OfficeView({
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
   const sessions = useQuery({
     queryKey: ["office", "sessions", scopeKey],
-    queryFn: () => officeApi.sessions(scope, { limit: SESSION_LIMIT }),
+    queryFn: () => officeApi.sessions(scope, { limit: SESSION_LIMIT, sinceHours: SESSION_WINDOW_H }),
     refetchInterval: SESSION_REFETCH_MS,
     refetchOnWindowFocus: false,
     staleTime: 10_000,
