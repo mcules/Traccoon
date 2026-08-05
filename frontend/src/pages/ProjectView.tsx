@@ -9,6 +9,10 @@ import TicketDrawer from "../components/TicketDrawer";
 import NewTicketModal from "../components/NewTicketModal";
 // Monaco ist groß → nur laden, wenn der Code-Tab geöffnet wird.
 const FilesPanel = lazy(() => import("../components/FilesPanel"));
+// Canvas, Pixelwelt und Engine des Büros gehören nicht ins Haupt-Bundle: wer nie auf den
+// Reiter klickt, lädt sie nie. Kein Vorwärmen wie bei Monaco — das Büro ist ein eigener,
+// kleiner Brocken und beim ersten Klick sofort da.
+const OfficeTab = lazy(() => import("../components/office/OfficeTab"));
 import Hardware from "../components/Hardware";
 import TestenvsPanel from "../components/TestenvsPanel";
 import ProjectSettings from "../components/ProjectSettings";
@@ -195,6 +199,11 @@ export default function ProjectView() {
       {tab === "dashboard" && <Dashboard project={project} />}
       {tab === "pm" && <PmChat project={project} />}
       {tab === "monitor" && <AgentMonitor project={project} />}
+      {tab === "buero" && (
+        <Suspense fallback={<div className="text-sm text-muted">Büro lädt…</div>}>
+          <OfficeTab project={project} />
+        </Suspense>
+      )}
       {tab === "workflows" && canManage && (
         <div className="space-y-8">
           <SlotList project={project} />
