@@ -509,6 +509,17 @@ def teardown(project_name, compose_file):
     ids = [x for x in p.stdout.split() if x]
     if ids:
         subprocess.run(["docker", "rm", "-f", *ids], capture_output=True, text=True, timeout=120)
+    # Das gebaute Preview-Image mitnehmen. `down -v` raeumt Container und Volumes, aber
+    # nie Images — und ein Preview-Image ist kein Kleinkram: eine Node-App mit Vite-Build
+    # liegt bei ~600 MB. Wer taeglich Tickets testet, fuellt damit stillschweigend die
+    # Platte. Die Images heissen <projectname>-<service>; per Label eingesammelt, damit
+    # kein fremdes Image erwischt wird.
+    q = subprocess.run(["docker", "images", "-q", "--filter",
+                        f"label=com.docker.compose.project={project_name}"],
+                       capture_output=True, text=True, timeout=30)
+    imgs = sorted({x for x in q.stdout.split() if x})
+    if imgs:
+        subprocess.run(["docker", "rmi", "-f", *imgs], capture_output=True, text=True, timeout=180)
     return True
 
 

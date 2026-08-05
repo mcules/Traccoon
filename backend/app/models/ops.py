@@ -208,11 +208,15 @@ class Deployment(Base):
     self_deploy: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|pending-check|building|ok|failed|rolledback
     log: Mapped[str] = mapped_column(Text, default="")
-    # Wer den Deploy ausgelöst hat: agent | merge | workflow | maintenance. Leer =
+    # Wer den Deploy ausgelöst hat: agent | merge | workflow | maintenance | manual. Leer =
     # unbekannt, und zwar ehrlich — die Bestandszeilen werden NICHT nachgetragen. Die
     # Regel `self_deploy → maintenance` wäre heute korrekt und würde in dem Moment falsch,
     # in dem `merge`/`workflow` das erste Mal feuern; eine geratene Herkunft in einer
     # Historienansicht ist schlimmer als ein Leerfeld.
+    # `manual` ist der einzige Wert, hinter dem ein Mensch steht: der Knopf unter
+    # Einstellungen → Deployment (`api/deployments.create_deployment`). Er zählt bewusst
+    # nicht als `agent` — „hat jemand gedrückt" ist die Frage, die die Spalte beantworten
+    # soll, wenn ein Stand draußen ist, den keine Abnahme erklärt.
     source: Mapped[str] = mapped_column(String(20), default="")
     # Idempotenz-Merkposten des Bühnen-Watchers: welcher Status wurde schon als Ereignis
     # gemeldet. Bewusst eine Spalte und kein Prozessgedächtnis — neustartfest und
