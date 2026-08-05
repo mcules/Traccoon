@@ -20,7 +20,7 @@
 // nicht den Feierabend.
 
 import type { Gait, Grade, Look } from "../types.ts";
-import { mix, rnd01 } from "../ids.ts";
+import { hash32, mix, rnd01 } from "../ids.ts";
 import { PACE_SPREAD } from "../const.ts";
 
 // ── Die Schlüssel ────────────────────────────────────────────────────────────
@@ -192,7 +192,8 @@ export const GRADES: Record<Grade, Pal> = {
 // auf, wenn zwölf Figuren im Raum stehen.
 
 const SALT_HEAD = 0x4b4f5046;   // "KOPF"
-const SALT_HAIR = 0x48414152;   // "HAAR" — wählt Form **und** Farbe in einem Zug, s.u.
+const SALT_HAIR = 0x48414152;   // "HAAR" — die **Form** der Frisur (individuell)
+const SALT_HAIRC = 0x48414146;  // "HAAF" — die **Farbe** des Haars (aus der Rolle)
 const SALT_TORSO = 0x544f5253;  // "TORS"
 const SALT_ARMS = 0x41524d45;   // "ARME"
 const SALT_LEGS = 0x4245494e;   // "BEIN"
@@ -208,31 +209,72 @@ const SALT_LEAN = 0x4e454947;   // "NEIG"
 const SALT_SWING = 0x53434857;  // "SCHW"
 const SALT_ARMPH = 0x41524d50;  // "ARMP"
 
-/** Anzahl Haarformen (Art-Teile) und Haarfarben. Das Produkt ist der Vorrat an Frisuren. */
+/** Anzahl Haarformen (Art-Teile) und Haarfarben. Das Produkt war früher der Vorrat an
+ *  Frisuren; seit Form und Farbe aus zwei verschiedenen Quellen kommen (s. `lookOf`), sind es
+ *  zwei unabhängige Vorräte. */
 const HAIR_SHAPES = 5;
 const HAIR_COLORS = 8;
 
+// ── Der Aussehen-Seed: was die Rolle bestimmt ────────────────────────────────
+
+const SALT_ROLLE = 0x524f4c4c;  // "ROLL"
+
 /**
- * Das Aussehen einer Figur — reine Funktion des Seeds, also über Live und Replay identisch.
+ * Der Seed, aus dem das **Aussehen** kommt — nicht zu verwechseln mit `ActorState.seed`, aus
+ * dem alles Individuelle kommt.
  *
- * Der einzige nicht offensichtliche Griff steckt im Haar: Form und Farbe kommen aus **einem**
- * Hash, aufgeteilt in Rest und Quotient über `HAIR_SHAPES × HAIR_COLORS`. Damit ist jede der
- * 40 Kombinationen genau ein Hashwert, statt zweier unabhängiger Würfe — die Silhouette variiert
- * also zwangsläufig mit, nicht nur die Farbe. Das ist wichtig, weil sich zwei Figuren mit
- * ähnlichem Hemd und ähnlichem Haarton bei 16×24 Pixeln sonst nur noch über die Kopfform
- * unterscheiden lassen, und die ist mit drei Varianten der schwächste Unterschied im Bild.
+ * Warum überhaupt zwei Seeds: `ActorState.seed` ist `hash32("run:8871")`, also die **Lauf**-Id.
+ * Damit sah derselbe `developer` gestern anders aus als heute — wiedererkennen konnte man
+ * niemanden. Aus `hash32(role)` dagegen fällt für jede Rolle für immer dieselbe Farbe.
+ *
+ * Bewusst **keine Rollen-Farbtabelle**: die echten Rollen (`developer`, `assistent`,
+ * `architect`, `code_reviewer`, `project_manager`, `uniwar-operator`, `news`) sind Daten, keine
+ * Aufzählung — eine Tabelle bräuchte Pflege bei jedem neuen Agenten und hätte für die
+ * Prüf-Fixture (`exec_agent`/`plan_agent`/`review_agent`) gar keinen Eintrag.
+ *
+ * Leere Rolle → der Laufseed. Eine namenlose Figur soll nicht alle namenlosen Figuren einander
+ * gleichmachen; und weil `rolle === seed` genau die alten Salze wieder trifft, ist der
+ * rollenlose Fall bitgleich zum bisherigen Verhalten.
  */
-export function lookOf(seed: number): Look {
-  const hairPair = mix(seed, SALT_HAIR) % (HAIR_SHAPES * HAIR_COLORS);
+export function rollenSeed(role: string, seed: number): number {
+  return role ? mix(hash32(role), SALT_ROLLE) : seed;
+}
+
+/**
+ * Das Aussehen einer Figur — reine Funktion aus zwei Seeds, also über Live und Replay identisch.
+ *
+ * **Die Aufteilung ist der ganze Punkt.** Aus `rolle` kommen genau die drei Merkmale, die man
+ * aus drei Metern Entfernung überhaupt lesen kann:
+ *
+ *   · **Hemdfarbe** — die größte zusammenhängende Farbfläche eines 16×24-Sprites,
+ *   · **Haarfarbe** — die zweitgrößte; zusammen mit dem Hemd ein Wappen,
+ *   · **Torsoform** — die Schultersilhouette, die die Rolle auch von hinten trägt
+ *     (der Chefplatz sitzt mit `DIR_BACK` zum Betrachter).
+ *
+ * Alles andere hängt am Laufseed: Kopf, Haut, Arme, Beine, **Haarform**, Hosenfarbe. Sonst
+ * stünden zwölf `developer` als zwölf Klone im Raum — und Wiedererkennung, die keine Individuen
+ * mehr zulässt, ist keine Wiedererkennung, sondern eine Uniform.
+ *
+ * Der frühere Griff, Haarform und -farbe aus **einem** Hash zu ziehen (Rest/Quotient über
+ * `HAIR_SHAPES × HAIR_COLORS`), ist damit hinfällig: die beiden liegen jetzt ohnehin auf
+ * verschiedenen Seeds und variieren zwangsläufig unabhängig. Sie brauchen dafür aber **eigene
+ * Salze** — mit demselben Salz wären sie im rollenlosen Fall (`rolle === seed`) perfekt
+ * korreliert, und dann hätte jede Frisurform genau eine Farbe.
+ *
+ * Der Sitzplatz bleibt bewusst an der Lauf-Id (`seatOf(a.id)`, Schicht 0): `seatOf` sondiert
+ * linear, zwölf `developer` bekämen sonst zwölf **aufeinanderfolgende** Plätze und die linke
+ * Bank wäre eine Monokultur.
+ */
+export function lookOf(seed: number, rolle: number): Look {
   return {
     head: mix(seed, SALT_HEAD) % 3,
-    hair: hairPair % HAIR_SHAPES,
-    torso: mix(seed, SALT_TORSO) % 3,
+    hair: mix(seed, SALT_HAIR) % HAIR_SHAPES,
+    torso: mix(rolle, SALT_TORSO) % 3,
     arms: mix(seed, SALT_ARMS) % 4,
     legs: mix(seed, SALT_LEGS) % 4,
     skin: "skin" + (mix(seed, SALT_SKIN) % 6),
-    hairCol: "hair" + ((hairPair / HAIR_SHAPES) | 0),
-    shirtCol: "shirt" + (mix(seed, SALT_SHIRT) % 8),
+    hairCol: "hair" + (mix(rolle, SALT_HAIRC) % HAIR_COLORS),
+    shirtCol: "shirt" + (mix(rolle, SALT_SHIRT) % 8),
     pantsCol: "pants" + (mix(seed, SALT_PANTS) % 5),
   };
 }
@@ -299,6 +341,14 @@ const PAL_CACHE = new Map<string, Pal>();
  * über 64 Einträge wächst — mehr als `MAX_ACTORS` verschiedene Farbsätze kann es zwar auf der
  * Bühne nicht geben, wohl aber über eine lange Sitzung hinweg mit vielen kommenden und
  * gehenden Läufen. Eine Map, die nie leert, ist ein Leck mit Anlauf.
+ *
+ * **Der 64er-Deckel hält auch mit rollenfesten Farben.** `lookKey` sieht vier Schlüssel; zwei
+ * davon (Hemd, Haar) sind je Rolle konstant, die anderen beiden variieren individuell über
+ * 6 Hauttöne × 5 Hosen = **30 Paletten je Rolle und Abstufung**. Entscheidend ist aber nicht
+ * die Obergrenze über die Sitzung, sondern die je **Bild**: dort fragen höchstens
+ * `MAX_ACTORS = 24` Figuren an, also passen die Einträge eines Bildes immer unter 64. Ein
+ * `clear()` kann deshalb nie mitten im Bild zuschlagen und sich Bild für Bild wiederholen —
+ * sonst wäre aus dem Zwischenspeicher still eine Allokation je Bild geworden.
  */
 export function palFor(grade: Grade, look: Look): Pal {
   const key = lookKey(grade, look);

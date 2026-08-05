@@ -154,6 +154,81 @@ export interface CostRollup {
   purged?: boolean;
 }
 
+// ── Personalakte: Kennzahlen je Rolle ───────────────────────────────────────────────────────
+//
+// Ein Aggregat über **Rollen**, nicht über Läufe — die eine Achse, die dem Roster fehlt. Alles
+// darin ist **fertig gerechnet vom Server**, und das ist keine Bequemlichkeit, sondern der
+// ganze Punkt: sobald irgendwo hier `success / runs` stünde, wäre die alte Lüge zurück
+// (`architect` 6 % statt 78 %, `project_manager` 0 % statt 64 %, weil `planned` und `blocked`
+// dort als Fehlschlag gezählt würden). Das Frontend darf diese Zahlen **anzeigen** und
+// nebeneinanderstellen — nicht herleiten.
+//
+// ⚠ Stand: `GET /office/agents` entsteht in der Nebenwelle (`api/office.py`) und existierte
+// beim Schreiben dieser Datei noch nicht. Alles außer `agent` ist deshalb `?`-optional: eine
+// Abweichung im Nebenfeld lässt die Akte lückenhaft, aber nicht kaputt.
+
+/** Dauerverteilung einer Rolle. **Kein Mittelwert** — eine Sitzung lief 36,5 Stunden und zöge
+ *  jeden Durchschnitt in die Sinnlosigkeit. Median, p90, Maximum und ein Histogramm sagen
+ *  stattdessen, wie die Läufe wirklich verteilt sind. */
+export interface AgentDuration {
+  p50_ms?: number | null;
+  p90_ms?: number | null;
+  max_ms?: number | null;
+  /** Feste Eimer, aufsteigend. `lt_ms` ist die **obere** Grenze; fehlt sie, ist es der
+   *  offene Eimer ganz oben („darüber"). Serverseitig als `CASE WHEN` gezählt, weil die
+   *  Tests auf SQLite laufen und dort kein `percentile_cont` existiert. */
+  buckets?: { lt_ms?: number | null; n?: number }[];
+}
+
+/** Ein Werkzeug in der Rangliste einer Rolle. `failed` ist eine eigene Zahl und keine
+ *  Ableitung aus `n - ok`: „unbekannt" (Altdaten ohne gemessenes Ergebnis) ist weder das eine
+ *  noch das andere. */
+export interface AgentTool {
+  tool: string;
+  n?: number;
+  ok?: number;
+  failed?: number;
+}
+
+/** Die Akte einer Rolle. */
+export interface AgentRecord {
+  /** ⚠ Der Rollenname (`runs.agent`), z. B. `developer`. Die Identität der Zeile. */
+  agent: string;
+  runs?: number;
+  running?: number;
+  /** Rohe Statuszählung, unverdichtet — damit sichtbar bleibt, woher die drei Balken kommen. */
+  by_status?: Record<string, number>;
+  /** Abgeliefert (`success` + `planned`). */
+  delivered?: number;
+  /** Wartet auf einen Menschen (`blocked`). */
+  waiting?: number;
+  /** Abgebrochen (`failed` + `loop_exhausted`). */
+  aborted?: number;
+  cost_usd?: number;
+  /** Mindestens ein Posten ist unbepreist → die Anzeige stellt ein „≥" davor. */
+  cost_partial?: boolean;
+  in_tokens?: number;
+  out_tokens?: number;
+  cache_read_tokens?: number;
+  /** **Runden** der Agentenschleife (Ø 6,9 im Bestand) — nicht dasselbe wie Schritte. */
+  iterations_avg?: number;
+  iterations_max?: number;
+  /** **Schritte** im Ereignisstrom (Ø 21,5 im Bestand). */
+  steps_avg?: number;
+  steps_max?: number;
+  duration?: AgentDuration;
+  tools?: AgentTool[];
+  last_run_at?: string | null;
+}
+
+/** Umschlag der Akte. `since_hours` kommt **zurück**, weil der Server klemmt
+ *  (`SINCE_HOURS_MAX`) — die Überschrift soll das Fenster nennen, das gemessen wurde, nicht
+ *  das, das erbeten war. */
+export interface AgentRecordList {
+  agents: AgentRecord[];
+  since_hours?: number;
+}
+
 // ── Die Aufrufe ─────────────────────────────────────────────────────────────────────────────
 
 /** Obergrenze einer Ereignisseite. Das Backend deckelt selbst (`EVENT_CAP_MAX = 20 000`);
@@ -204,6 +279,26 @@ export const officeApi = {
    *  die Ereignisse und den Schnappschuss sonst dauernd entwerten würden. */
   cost: (sid: Sid): Promise<CostRollup> =>
     api.get<CostRollup>(`/office/sessions/${sid.kind}/${sid.ref}/cost`),
+
+  /** Die Personalakte: Kennzahlen je **Rolle**, über Läufe und Sitzungen hinweg.
+   *
+   *  Zwei Pfade wie bei `sessions()` — unter dem Projekt (Zugriff prüft `get_project_access`)
+   *  oder global. Das Zeitfenster ist hier **Teil der Aussage** und deshalb ein Pflichtfeld
+   *  der Anzeige, kein stiller Vorgabewert: `run_retention_days` löscht ältere Läufe, „jemals"
+   *  wäre schlicht gelogen.
+   *
+   *  `agent` verengt auf eine Rolle, `toolLimit` deckelt die Werkzeug-Rangliste je Rolle. */
+  agents: (scope: Scope,
+           opts?: { sinceHours?: number; agent?: string; toolLimit?: number }): Promise<AgentRecordList> => {
+    const q = qs({ since_hours: opts?.sinceHours, agent: opts?.agent, tool_limit: opts?.toolLimit });
+    const path = scope.kind === "project"
+      ? `/projects/${scope.projectId}/office/agents${q}`
+      : `/office/agents${q}`;
+    // Wie bei `sessions()`: ob der Umschlag `{agents: […]}` heißt oder ein nacktes Feld ist,
+    // entscheidet die Nebenwelle. Beides landet hier auf derselben Form.
+    return api.get<AgentRecordList | AgentRecord[]>(path)
+      .then((r) => (Array.isArray(r) ? { agents: r } : r));
+  },
 };
 
 // ── Der Live-Socket ─────────────────────────────────────────────────────────────────────────

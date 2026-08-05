@@ -36,7 +36,7 @@ import type {
 import { LINK_MS, PIX, POS_SCALE, SCENE } from "../const.ts";
 import { fillA } from "./art.ts";
 import type { Pal } from "./palette.ts";
-import { GRADES, lookOf, palFor } from "./palette.ts";
+import { GRADES, lookOf, palFor, rollenSeed } from "./palette.ts";
 import {
   SIZE, WALL_H, WINDOW_STEP, drawBoard, drawCabinet, drawChair, drawClock, drawCoffee,
   drawDesk, drawDoor, drawFloor, drawMonitor, drawPlant, drawMeetingTable, drawRug,
@@ -435,7 +435,10 @@ function buildActors(
     // Zeichenschleife für jede abgeschobene Figur einmal komplett durch.
     if (cx < -FIG_W || cx > PIX.w + FIG_W || yBase < -FIG_H || yBase > PIX.h + FIG_H) continue;
 
-    const pal = palFor(grade, lookOf(a.seed));
+    // Hemd, Haar und Schultern kommen aus der **Rolle**, alles übrige aus dem Laufseed —
+    // `a.role` steht schon im `Frame`, es braucht also kein neues Feld in Schicht 0.
+    const look = lookOf(a.seed, rollenSeed(a.role, a.seed));
+    const pal = palFor(grade, look);
     const ring = a.id === sel ? "acc" : a.id === hov ? "wallHi" : undefined;
     const ghost = a.deskIndex === -2;
     const blass = blassSet !== undefined && blassSet.has(a.id);
@@ -456,7 +459,7 @@ function buildActors(
         // hell — dass etwas ausgewählt ist, gilt auch dann, wenn der Filter es ausblendet.
         const c = blass ? blassV : v;
         if (blass) c.globalAlpha = 1;
-        if (ghost) drawGhost(c, cx, yBase, pal, frame.t, a.seed);
+        if (ghost) drawGhost(c, cx, yBase, pal, frame.t, a.seed, look);
         else drawActor(c, a, frame.t, pal);
         if (blass) v.globalAlpha = 1;
       },

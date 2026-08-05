@@ -330,7 +330,9 @@ export default function OfficeView({
           e.preventDefault();
           return;
 
-        case "1": case "2": case "3": {
+        // Die Zuordnung ist generisch (`DOCK_TABS[Ziffer - 1]`) — ein fünfter Reiter bräuchte
+        // hier nur seine Ziffer. `4` ist die Personalakte.
+        case "1": case "2": case "3": case "4": {
           if (!s.voll) return;                       // im Reiter gibt es kein Dock
           const t = DOCK_TABS[Number(e.key) - 1];
           if (!t) return;
@@ -581,6 +583,11 @@ export default function OfficeView({
                 seekTs={seekTs}
                 onSelect={setSelectedId}
                 onClose={() => setSelectedId(null)}
+                // Der Einstieg in die Akte: der Reiter darüber springt zur **Rolle** dieses
+                // Laufs (die Rolle liest das Dock aus `selectedId`), der Inspektor bleibt beim
+                // **einzelnen Lauf** stehen. Beide Wahrheiten gleichzeitig, keine ersetzt die
+                // andere.
+                onOpenAkte={() => { setDockTab("akte"); setDockOpen(true); }}
                 className="max-h-[45%] shrink-0"
               />
             </aside>
@@ -605,7 +612,7 @@ function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.E
   const zeilen: [string, string][] = [
     ["?", "Diese Hilfe ein- und ausblenden"],
     ...(voll ? ([
-      ["1 2 3", "Dock: Chat, Agenten, Werkzeuge"],
+      ["1 2 3 4", "Dock: Chat, Agenten, Werkzeuge, Personalakte"],
       ["B", "Dock ein- oder ausblenden"],
     ] as [string, string][]) : []),
     ["L", "Zurück zu Live"],
