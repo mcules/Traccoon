@@ -20,7 +20,8 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import or_, select
 
 from ..config import settings
-from ..core.redis import PREFIX, PROCESSING, QUEUE, get_flag
+from ..core.redis import (ACTIVE, ERGEBNIS_TTL, PREFIX, PROCESSING, PULS_TAKT, PULS_TTL,
+                          QUEUE, get_flag, puls_key)
 from ..db import SessionLocal
 from ..models.agents import AgentDefinition
 from ..models.enums import GlobalRole
@@ -161,7 +162,7 @@ async def handle(job: dict, redis: Redis) -> None:
         except Exception as exc:  # noqa: BLE001
             log.exception("accept fehlgeschlagen")
             res = {"status": "failed", "error": str(exc)[:500]}
-        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(res or {"status": "failed"}), ex=3600)
+        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(res or {"status": "failed"}), ex=ERGEBNIS_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
         return
     if kind == "job":
@@ -175,7 +176,7 @@ async def handle(job: dict, redis: Redis) -> None:
         return
     if kind:  # Infra-Task (testenv_start etc.) — später
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps({"status": "failed",
-                        "output": f"Infra-Task {kind} noch nicht implementiert"}), ex=3600)
+                        "output": f"Infra-Task {kind} noch nicht implementiert"}), ex=ERGEBNIS_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
         return
 
@@ -308,7 +309,7 @@ async def handle(job: dict, redis: Redis) -> None:
             "blocker": {"kind": result.blocker_kind} if result.blocker_kind else None,
             "merge_status": merge_status,
         }
-        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(payload), ex=3600)
+        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(payload), ex=ERGEBNIS_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
         await redis.publish(f"{PREFIX}events:{project.id}",
                             json.dumps({"type": "issue_update", "issue_key": issue.key}))
@@ -898,6 +899,24 @@ async def heartbeat(redis: Redis) -> None:
         await asyncio.sleep(5)
 
 
+async def _puls(redis: Redis, task_id: str) -> None:
+    """Lebenszeichen EINES Auftrags, solange er verarbeitet wird.
+
+    Der Runner-Heartbeat sagt nur „ein Worker läuft" — nicht, ob DIESER Auftrag noch
+    jemandem gehört. Der Wächter im Backend wartet an diesem Puls entlang und darf deshalb
+    beliebig lange warten: ein Agentenlauf mit mehreren Review-Runden dauert schon mal
+    Stunden, verschwinden tut er nur, wenn der Puls ausbleibt.
+    """
+    if not task_id:
+        return
+    while True:
+        try:
+            await redis.set(puls_key(task_id), int(time.time()), ex=PULS_TTL)
+        except Exception:  # noqa: BLE001
+            pass
+        await asyncio.sleep(PULS_TAKT)
+
+
 # ── Wächter über den Event-Loop ──────────────────────────────────────────────
 # Am 2026-07-30 stand der Worker über eine Stunde: kein Heartbeat, elf Aufträge in der
 # Warteschlange, keiner abgeholt — und KEINE Zeile im Log. Von außen sah der Container
@@ -1071,8 +1090,7 @@ async def pull_loop(redis: Redis) -> None:
 
 # Laufende Läufe je Ticket-Key → für den kill-Kanal (Abbruch aus der UI)
 RUNNING: dict[str, asyncio.Task] = {}
-# Spiegel derselben Information in Redis, damit das Backend sie anzeigen kann.
-ACTIVE = f"{PREFIX}active_processes"
+# Der Spiegel in Redis (ACTIVE) kommt aus core.redis — das Backend prüft denselben Key.
 
 # In-flight-Dedup: task_ids, die gerade verarbeitet werden. Ein Restart-Sturm kann
 # über die PROCESSING→QUEUE-Recovery denselben Job (gleiche task_id) mehrfach in die
@@ -1128,6 +1146,10 @@ async def main() -> None:
                 "issue_key": key, "task_id": job.get("task_id", ""), "role": job.get("role", ""),
                 "phase": job.get("phase", ""), "project_id": job.get("project_id"),
                 "started_at": time.time()}))
+            # Puls: solange dieser Auftrag hier verarbeitet wird, weiß das Backend, dass er
+            # lebt — egal ob er zwei Minuten oder fünf Stunden braucht. Der Wächter dort
+            # wartet daran entlang, statt nach fester Zeit aufzugeben.
+            puls = asyncio.create_task(_puls(redis, job.get("task_id", "")))
             try:
                 await handle(job, redis)
                 # Sauberer Durchlauf → ACK: den exakt gepoppten Eintrag aus PROCESSING tilgen.
@@ -1135,7 +1157,8 @@ async def main() -> None:
             except asyncio.CancelledError:
                 log.info("Lauf %s abgebrochen (kill)", key)
                 await redis.set(f"{PREFIX}result:{job['task_id']}", json.dumps(
-                    {"status": "failed", "success": False, "output": "Abgebrochen (Stopp durch Nutzer)"}), ex=3600)
+                    {"status": "failed", "success": False,
+                     "output": "Abgebrochen (Stopp durch Nutzer)"}), ex=ERGEBNIS_TTL)
                 await redis.publish(f"{PREFIX}results", job["task_id"])
                 # Kein ACK: Eintrag bleibt in PROCESSING → Recovery holt ihn beim naechsten
                 # Worker-Start zurueck in QUEUE (kein Datenverlust bei Abbruch/Absturz).
@@ -1147,13 +1170,17 @@ async def main() -> None:
                 if tid:
                     await redis.set(f"{PREFIX}result:{tid}", json.dumps(
                         {"status": "failed", "success": False,
-                         "output": f"Interner Worker-Fehler: {exc}"[:500]}), ex=3600)
+                         "output": f"Interner Worker-Fehler: {exc}"[:500]}), ex=ERGEBNIS_TTL)
                     await redis.publish(f"{PREFIX}results", tid)
                 # Kein ACK: Eintrag bleibt in PROCESSING → Recovery holt ihn beim naechsten
                 # Worker-Start zurueck in QUEUE, statt ihn hier stillschweigend zu verlieren.
             finally:
                 RUNNING.pop(key, None)
+                puls.cancel()
                 await redis.hdel(ACTIVE, key)
+                # Puls sofort löschen statt auslaufen lassen: das Ergebnis liegt bereits in
+                # Redis, und ein Nachhall würde den Wächter unnötig weiterwarten lassen.
+                await redis.delete(puls_key(job.get("task_id", "")))
                 # In-flight-Sperre zuverlässig lösen — auch bei Exception/Abbruch,
                 # sonst bliebe die task_id für immer als „läuft bereits" markiert.
                 _inflight_task_ids.discard(job.get("task_id"))

@@ -20,7 +20,7 @@ import logging
 
 from sqlalchemy import func, select
 
-from ..core.redis import get_flag, peek_result, set_flag
+from ..core.redis import get_flag, lauf_lebt, peek_result, set_flag
 from ..db import SessionLocal
 from ..models.agents import Run, RunStep
 from ..models.enums import HoldReason, StatusCategory, TicketAgentStatus
@@ -195,7 +195,12 @@ async def recover_on_start() -> None:
                                     .order_by(Run.id.desc()))).scalars().first()
             alive = False
             if run and run.task_id:
-                if run.finished_at is None:
+                # Erste und beste Auskunft: der Puls des Workers zu genau diesem Auftrag.
+                # Ohne ihn galt ein Lauf schon als tot, wenn er länger als fünf Minuten an
+                # einer einzigen Antwort saß — die Engine hing derweil weiter am selben Lauf.
+                if await lauf_lebt(run.task_id):
+                    alive = True
+                if not alive and run.finished_at is None:
                     last_step = (await db.execute(select(func.max(RunStep.created_at))
                                                   .where(RunStep.run_id == run.id))).scalar()
                     ref = last_step or run.started_at

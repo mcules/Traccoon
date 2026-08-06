@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import os
 from dataclasses import dataclass
 
 from sqlalchemy import select, update
@@ -37,7 +38,7 @@ from ..models.enums import (
 from ..models.workflow import (
     WorkflowDefinition, WorkflowInstance, WorkflowStepRun, WorkflowToken, WorkflowVersion,
 )
-from ..core.redis import enqueue_task, publish_event, wait_result
+from ..core.redis import GNADENFRIST, enqueue_task, peek_result, publish_event, wait_result
 from .jsonlogic import ALLOWED_OPS, JsonLogicError, collect_operators, safe_eval
 
 log = logging.getLogger("workflow_engine")
@@ -58,7 +59,19 @@ _DEFAULT_AGENT_MAP = {
     "planned": "ok", "done": "ok", "failed": "err",
     "blocked": "blocked", "loop_exhausted": "blocked",
 }
-AGENT_DEFAULT_TIMEOUT = 1800
+# Harter Deckel für das Warten auf einen Agentenlauf: standardmäßig KEINER.
+#
+# Bis 2026-08-05 stand hier 1800 s, und der Wächter gab nach 30 Minuten auf — obwohl der
+# Lauf weiterarbeitete. Ein exec-Schritt umfasst Umsetzung UND Review-Runden in EINEM
+# Auftrag; das dauert regelmäßig länger. Ergebnis: Ticket „fehlgeschlagen: unbekannter
+# Fehler", während der Agent kurz darauf sauber committete (ABC-2, ABC-6). Gewartet wird
+# jetzt am Lebenszeichen des Laufs (`wait_result`), nicht an der Uhr. Wer für einen
+# einzelnen Knoten trotzdem eine Grenze will, setzt `timeout_sec` in dessen Konfiguration;
+# AGENT_WAIT_LIMIT_SEC ist der globale Notnagel (0 = aus).
+AGENT_DEFAULT_TIMEOUT = int(os.getenv("AGENT_WAIT_LIMIT_SEC", "0"))
+# Deckel für asynchrone Auto-Aktionen (Merge, Testumgebung). Die sind kurz und begrenzt,
+# hier bleibt eine Uhr sinnvoll — aber großzügig, ein Preview-Build zieht sich.
+ACTION_DEFAULT_TIMEOUT = int(os.getenv("ACTION_WAIT_LIMIT_SEC", "3600"))
 
 
 # ── Graph-Helfer ─────────────────────────────────────────────────────────────
@@ -320,7 +333,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                 await db.flush()
                 spawn_after.append(_await_action(
                     inst.id, token.id, step.id, wait_spec["task_id"],
-                    int(wait_spec.get("timeout") or 900),
+                    int(wait_spec.get("timeout") or ACTION_DEFAULT_TIMEOUT),
                     str(wait_spec.get("context_key") or "action"),
                     dict(cfg.get("outcomes_map") or {}),
                 ))
@@ -635,6 +648,7 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
 
     role = await _resolve_agent_role(db, issue, cfg)
     phase = "planning" if cfg.get("phase") == "planning" else "execution"
+    # 0/None = kein Deckel: gewartet wird am Lebenszeichen des Laufs, nicht an der Uhr.
     timeout = int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT)
     outcomes_map = cfg.get("outcomes_map") or {}
     task_id = f"wf-{inst.id}-{token.id}-{node['id']}-{uuid.uuid4().hex[:8]}"
@@ -693,6 +707,35 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
     return Outcome(wait=True, waiting_for="agent")
 
 
+async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dict]:
+    """Wartet auf ein Worker-Ergebnis und benennt im Fehlerfall, WAS schiefging.
+
+    Ohne Ergebnis kommt ein Ersatz-Ergebnis zurück, das den Grund trägt („Lauf verschwunden"
+    vs. „Zeitgrenze") und für die Nachzügler-Abholung markiert ist (`verloren`). Vorher stand
+    an dieser Stelle „kein Ergebnis (Timeout)" — im Ticket las sich das als „fehlgeschlagen:
+    unbekannter Fehler", obwohl gar nichts fehlgeschlagen war.
+    """
+    uhr = asyncio.get_running_loop().time
+    start = uhr()
+    try:
+        result = await wait_result(task_id, timeout=timeout or None)
+    except Exception:  # noqa: BLE001
+        log.exception("wait_result (%s) für %s fehlgeschlagen", was, task_id)
+        result = None
+    if result is not None:
+        return result, result
+    dauer = int(uhr() - start)
+    if timeout and dauer >= timeout:
+        text = (f"Zeitgrenze dieses Schrittes erreicht ({dauer}s ≥ {timeout}s). "
+                "Der Lauf selbst kann noch arbeiten.")
+    else:
+        text = (f"Lauf verschwunden — seit {int(GNADENFRIST / 60)} Minuten kein Lebenszeichen "
+                "(kein Worker-Puls, nicht mehr in der Warteschlange).")
+    log.warning("Wächter %s (%s) ohne Ergebnis nach %ds: %s", task_id, was, dauer, text)
+    return None, {"status": "failed", "success": False, "output": text, "summary": text,
+                  "verloren": True, "task_id": task_id}
+
+
 async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: str,
                         timeout: int, context_key: str, outcomes_map: dict) -> None:
     """Wächter für asynchrone Auto-Aktionen (Merge & Co.): wartet auf das Worker-Ergebnis,
@@ -701,11 +744,7 @@ async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: 
     Analog `_await_agent` — nur so bleibt die Engine während eines minutenlangen Merges
     ansprechbar, statt Session und Advance-Claim zu blockieren.
     """
-    try:
-        result = await wait_result(task_id, timeout=timeout)
-    except Exception:  # noqa: BLE001
-        log.exception("wait_result (Aktion) für %s fehlgeschlagen", task_id)
-        result = None
+    result, ersatz = await _warte(task_id, timeout, "Aktion")
     status = (result or {}).get("status", "failed")
 
     async with SessionLocal() as db:
@@ -720,11 +759,11 @@ async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: 
             handle = status if next_node(edges, step.node_id, status) is not None else "out"
         step.status = SStatus.done
         step.decision = handle
-        step.result = {**(step.result or {}), "result": result or {"status": "failed"}}
-        step.error = (result or {}).get("error")
+        step.result = {**(step.result or {}), "result": ersatz, "verloren": result is None}
+        step.error = result.get("error") if result else ersatz["output"]
         step.completed_at = _now()
         if inst is not None:
-            inst.context = {**(inst.context or {}), context_key: result or {"status": "failed"}}
+            inst.context = {**(inst.context or {}), context_key: ersatz}
             if inst.status == IStatus.waiting:
                 inst.status = IStatus.running
         tok = await db.get(WorkflowToken, token_id)
@@ -801,11 +840,7 @@ async def _await_agent(instance_id: int, token_id: int, step_id: int, task_id: s
     Das Ergebnis landet zusätzlich unter `context.agent`, damit Entscheidungs-Knoten darauf
     prüfen können (Status, Zusammenfassung, Blocker-Art, Feststecker-Erkennung, Merge-Stand).
     """
-    try:
-        result = await wait_result(task_id, timeout=timeout)
-    except Exception:  # noqa: BLE001
-        log.exception("wait_result für %s fehlgeschlagen", task_id)
-        result = None
+    result, ersatz = await _warte(task_id, timeout, "Agent")
     status = (result or {}).get("status", "failed")
 
     async with SessionLocal() as db:
@@ -819,14 +854,17 @@ async def _await_agent(instance_id: int, token_id: int, step_id: int, task_id: s
 
         step.status = SStatus.done
         step.decision = handle
-        step.result = result or {"status": "failed", "output": "kein Ergebnis (Timeout)"}
-        step.error = None if status in ("done", "planned") else f"Agent-Status: {status}"
+        step.result = ersatz
+        # Ohne Ergebnis den GRUND hinschreiben, nicht bloß „Agent-Status: failed" — genau
+        # diese Zeile hat die Ursachensuche bei ABC-2/ABC-6 in die Irre geführt.
+        step.error = (None if status in ("done", "planned")
+                      else f"Agent-Status: {status}" if result else ersatz["output"])
         step.completed_at = _now()
         step.agent_run_id = await _lookup_run_id(db, task_id)
 
         if inst is not None:
             ctx = dict(inst.context or {})
-            summary = (result or {}).get("summary") or (result or {}).get("output") or ""
+            summary = ersatz.get("summary") or ersatz.get("output") or ""
             stalled = False
             cont = int(ctx.get("continuation") or 0)
             if inst.issue_id:
@@ -1291,6 +1329,97 @@ async def _retry_gated() -> list[int]:
     return ids
 
 
+async def nachzuegler_einsammeln() -> None:
+    """Ergebnisse einsammeln, die NACH dem Aufgeben des Wächters doch noch eintreffen.
+
+    Der Wächter gibt nur auf, wenn ein Lauf nachweislich verschwunden ist — aber „weg" heißt
+    nicht „für immer weg": ein neu gestarteter Worker holt seinen Auftrag aus der
+    Verarbeitungsliste zurück und legt Stunden später doch ein Ergebnis ab. Ohne diesen
+    Einsammler wäre die Arbeit verloren: der Prozess stünde auf dem Störungs-Zweig, das
+    Ticket auf „fehlgeschlagen", während der Branch die fertige Arbeit trägt.
+
+    Statt die Verbuchung zu kopieren, wird der Schritt wieder auf „läuft" gesetzt, das Token
+    auf seinen Knoten zurückgeholt und derselbe Wächter erneut angehängt — der findet das
+    Ergebnis sofort in Redis und schaltet weiter, als wäre nie etwas gewesen.
+    """
+    wieder: list[tuple] = []
+    async with SessionLocal() as db:
+        kandidaten = (await db.execute(
+            select(WorkflowStepRun)
+            .join(WorkflowInstance, WorkflowInstance.id == WorkflowStepRun.instance_id)
+            .where(WorkflowStepRun.status == SStatus.done,
+                   WorkflowStepRun.node_type.in_([NType.agent_task, NType.auto_action]),
+                   WorkflowInstance.status.in_([IStatus.running, IStatus.waiting]))
+            .order_by(WorkflowStepRun.id.desc()).limit(200))).scalars().all()
+        for s in kandidaten:
+            res = s.result or {}
+            if not res.get("verloren"):
+                continue
+            task_id = res.get("task_id")
+            if not task_id or not await peek_result(task_id):
+                continue
+            # Läuft für diese Instanz schon wieder etwas, gilt das Neue — nicht der Nachzügler.
+            laeuft = (await db.execute(
+                select(WorkflowStepRun.id).where(
+                    WorkflowStepRun.instance_id == s.instance_id,
+                    WorkflowStepRun.status == SStatus.running).limit(1))).first()
+            if laeuft:
+                continue
+            token = (await db.execute(
+                select(WorkflowToken).where(
+                    WorkflowToken.instance_id == s.instance_id,
+                    WorkflowToken.state == TState.waiting).with_for_update())).scalars().first()
+            if token is None:
+                continue
+            inst = await db.get(WorkflowInstance, s.instance_id)
+            version = await db.get(WorkflowVersion, inst.version_id) if inst else None
+            node = _node_by_id((version.graph if version else None) or {}, s.node_id)
+            if inst is None or node is None:
+                continue
+            cfg = node_config(node)
+            # Den Umweg über den Störungs-Zweig zurückbauen: wartende Schritte verwerfen,
+            # den Agenten-Schritt wieder scharf machen.
+            for w in (await db.execute(
+                    select(WorkflowStepRun).where(
+                        WorkflowStepRun.instance_id == s.instance_id,
+                        WorkflowStepRun.status == SStatus.waiting))).scalars().all():
+                w.status = SStatus.skipped
+                w.completed_at = _now()
+            s.status = SStatus.running
+            s.decision = None
+            s.error = None
+            s.routed_at = None
+            s.completed_at = None
+            s.result = {**res, "verloren": False, "nachgetragen": True}
+            token.node_id = s.node_id
+            token.state = TState.waiting
+            token.waiting_for = "agent" if s.node_type == NType.agent_task else "action"
+            inst.status = IStatus.waiting
+            if inst.issue_id:
+                from .comments import add_system_comment
+                await add_system_comment(
+                    db, inst.issue_id,
+                    "↩ Das Ergebnis des verloren geglaubten Laufs ist doch noch eingetroffen "
+                    "— der Prozess läuft an dieser Stelle weiter.", author_label="Workflow")
+            omap = dict(cfg.get("outcomes_map") or {})
+            if s.node_type == NType.agent_task:
+                wieder.append(("agent", s.instance_id, token.id, s.id, task_id, omap,
+                               int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT), ""))
+            else:
+                wieder.append(("aktion", s.instance_id, token.id, s.id, task_id, omap,
+                               int(cfg.get("timeout_sec") or ACTION_DEFAULT_TIMEOUT),
+                               str(res.get("context_key") or "action")))
+        if wieder:
+            await db.commit()
+    for art, iid, tok_id, step_id, task_id, omap, timeout, ckey in wieder:
+        log.info("Nachzügler: Ergebnis für %s doch noch da → Schritt %s wird verbucht",
+                 task_id, step_id)
+        if art == "agent":
+            _spawn(_await_agent(iid, tok_id, step_id, task_id, omap, timeout))
+        else:
+            _spawn(_await_action(iid, tok_id, step_id, task_id, timeout, ckey, omap))
+
+
 async def _engine_tick() -> None:
     # Artefakt-Zeilen angleichen: `agent_status` wird an vielen Stellen gesetzt (Endpunkte,
     # Bot, PM-Chat, Worker) — der Abgleich holt das binnen eines Ticks nach, statt jede
@@ -1301,6 +1430,11 @@ async def _engine_tick() -> None:
             await reconcile(db)
     except Exception:  # noqa: BLE001 — der Abgleich darf den Tick nie blockieren
         log.exception("Artefakt-Abgleich fehlgeschlagen")
+
+    try:
+        await nachzuegler_einsammeln()
+    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+        log.exception("Nachzügler-Abholung fehlgeschlagen")
 
     gated = await _retry_gated()
     async with SessionLocal() as db:
@@ -1354,7 +1488,7 @@ async def recover_workflow_agents() -> None:
                                int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT)))
             else:
                 actions.append((s.instance_id, s.token_id, s.id, task_id,
-                                int(cfg.get("timeout_sec") or 900), omap,
+                                int(cfg.get("timeout_sec") or ACTION_DEFAULT_TIMEOUT), omap,
                                 str((s.result or {}).get("context_key") or "action")))
     for instance_id, token_id, step_id, task_id, omap, timeout in agents:
         log.info("workflow reattach: agent-Schritt %s (task %s)", step_id, task_id)

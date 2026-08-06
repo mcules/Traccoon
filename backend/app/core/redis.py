@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from redis.asyncio import Redis
 
 from ..config import settings
+
+log = logging.getLogger(__name__)
 
 PREFIX = "traccoon:"
 QUEUE = PREFIX + "task_queue"
@@ -14,6 +17,24 @@ QUEUE = PREFIX + "task_queue"
 # damit ein abgestuerzter Worker sie beim naechsten Start aus PROCESSING zurueck in QUEUE
 # holen kann, statt sie zu verlieren (siehe worker/__main__.py: pull_loop-Recovery + ACK).
 PROCESSING = QUEUE + ":processing"
+# Was der Worker gerade in der Mangel hat (Hash issue_key → Job-Infos). Der Worker leert den
+# Hash beim Start; als alleiniges Lebenszeichen taugt er deshalb nicht (ein hart gekillter
+# Worker laesst seine Eintraege stehen) — dafuer gibt es den Puls mit Verfallszeit.
+ACTIVE = PREFIX + "active_processes"
+# Puls je Auftrag: der Worker frischt `alive:<task_id>` waehrend der Verarbeitung auf. Faellt
+# er weg, ist der Lauf nachweislich tot — genau das unterscheidet „arbeitet noch lange" von
+# „ist verschwunden". Verfallszeit klar ueber dem Auffrisch-Takt, damit ein GC-Hickser im
+# Worker keinen Fehlalarm ausloest.
+PULS_TAKT = 15
+PULS_TTL = 90
+# Ergebnisse bleiben einen Tag liegen. Frueher eine Stunde — zu kurz: ein Ergebnis, das erst
+# nach einem Backend-Ausfall abgeholt wird, war damit weg und die Arbeit verloren.
+ERGEBNIS_TTL = 86400
+# So lange darf ein Lauf ohne JEDES Lebenszeichen bleiben, bevor er als verschwunden gilt.
+GNADENFRIST = 300
+# Takt der Lebenszeichen-Prüfung (der Ergebnis-Poll läuft schneller, kostet aber nur eine
+# Abfrage). Als Modul-Konstante, damit Tests ihn auf 0 ziehen können.
+PRUEF_TAKT = 5.0
 
 _redis: Redis | None = None
 
@@ -29,19 +50,83 @@ async def enqueue_task(payload: dict) -> None:
     await get_redis().lpush(QUEUE, json.dumps(payload))
 
 
-async def wait_result(task_id: str, timeout: float = 1800.0, poll: float = 0.4) -> dict | None:
-    """Pollt result:{task_id}; löscht den Key bei Fund. None bei Timeout."""
+def puls_key(task_id: str) -> str:
+    """Key des Lebenszeichens. Der Worker schreibt ihn (mit seiner eigenen Verbindung),
+    das Backend liest ihn — der Name gehört deshalb hierher, nicht in eines der beiden."""
+    return f"{PREFIX}alive:{task_id}"
+
+
+async def lauf_lebt(task_id: str) -> bool:
+    """Gibt es diesen Auftrag noch — egal wie lange er schon läuft?
+
+    Drei Quellen, jede für sich ausreichend:
+    * Puls des Workers (er verarbeitet den Auftrag gerade),
+    * Warteschlange (noch nicht drangekommen),
+    * Verarbeitungsliste (Worker abgestürzt, die Recovery legt ihn beim nächsten Start
+      zurück in die Warteschlange — der Auftrag ist also nicht verloren, nur verzögert).
+
+    Der Hash der aktiven Prozesse zählt zusätzlich, hilft aber nur bei einem Worker, der
+    noch läuft; ein gekillter Worker hinterlässt dort Karteileichen (deshalb der Puls).
+    """
+    r = get_redis()
+    if await r.get(puls_key(task_id)) is not None:
+        return True
+    for liste in (QUEUE, PROCESSING):
+        for raw in await r.lrange(liste, 0, -1):
+            if task_id in raw:
+                return True
+    for raw in (await r.hvals(ACTIVE)) or []:
+        if task_id in raw:
+            return True
+    return False
+
+
+async def wait_result(task_id: str, timeout: float | None = None, poll: float = 0.4,
+                      gnadenfrist: float = GNADENFRIST) -> dict | None:
+    """Wartet auf result:{task_id} — solange der Lauf lebt, nicht nach der Uhr.
+
+    Ein Agentenlauf darf Stunden dauern (Umsetzung + Review-Runden hängen an EINEM Auftrag).
+    Eine feste Wanduhr-Grenze hat genau das kaputtgemacht: der Wächter gab nach 30 Minuten
+    auf, das Ticket stand auf „fehlgeschlagen", während der Agent weiterarbeitete und seine
+    Arbeit sauber committete. Deshalb wird hier auf ein LEBENSZEICHEN geprüft statt auf die
+    verstrichene Zeit — aufgegeben wird nur, wenn der Auftrag `gnadenfrist` Sekunden lang
+    nirgends mehr auftaucht (Worker weg, Auftrag nicht in der Queue).
+
+    `timeout` ist ein optionaler harter Deckel (None/0 = keiner) für Knoten, die bewusst
+    nicht ewig warten sollen. None bei beidem: verschwundener Lauf oder Deckel erreicht —
+    welcher Fall vorlag, unterscheidet der Aufrufer über die verstrichene Zeit.
+    """
     r = get_redis()
     key = f"{PREFIX}result:{task_id}"
-    waited = 0.0
-    while waited < timeout:
+    uhr = asyncio.get_running_loop().time
+    start = uhr()
+    tot_seit: float | None = None
+    naechste_pruefung = 0.0
+    letzte_meldung = start
+    while True:
         raw = await r.get(key)
         if raw is not None:
             await r.delete(key)
             return json.loads(raw)
+        jetzt = uhr()
+        if timeout and jetzt - start >= timeout:
+            return None
+        # Lebenszeichen nur alle paar Sekunden prüfen — der Ergebnis-Poll läuft schnell,
+        # die Prüfung kostet mehrere Redis-Abfragen.
+        if jetzt >= naechste_pruefung:
+            naechste_pruefung = jetzt + PRUEF_TAKT
+            if await lauf_lebt(task_id):
+                tot_seit = None
+            elif tot_seit is None:
+                tot_seit = jetzt
+            elif jetzt - tot_seit >= gnadenfrist:
+                log.warning("Lauf %s seit %.0fs ohne Lebenszeichen — gilt als verschwunden",
+                            task_id, jetzt - tot_seit)
+                return None
+        if jetzt - letzte_meldung >= 1800:
+            letzte_meldung = jetzt
+            log.info("warte weiter auf %s (%.0f min, Lauf lebt)", task_id, (jetzt - start) / 60)
         await asyncio.sleep(poll)
-        waited += poll
-    return None
 
 
 async def peek_result(task_id: str) -> bool:
