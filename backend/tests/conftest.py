@@ -101,8 +101,11 @@ def redis_stub(monkeypatch):
     async def enqueue_task(payload):
         return None
 
-    async def wait_result(task_id, timeout=1800.0, poll=0.4):
+    async def wait_result(task_id, timeout=None, poll=0.4, gnadenfrist=300.0):
         return _next(task_id)
+
+    async def lauf_lebt(task_id):
+        return False
 
     async def peek_result(task_id):
         return _next(task_id)
@@ -122,6 +125,7 @@ def redis_stub(monkeypatch):
     stubs = {
         "publish_event": publish_event, "enqueue_task": enqueue_task,
         "wait_result": wait_result, "peek_result": peek_result, "get_flag": get_flag,
+        "lauf_lebt": lauf_lebt,
         "get_user_flag": get_user_flag, "set_flag": set_flag, "publish_kill": publish_kill,
     }
     for name, fn in stubs.items():

@@ -469,7 +469,7 @@ async def _accept_merge(db, inst: WorkflowInstance, params: dict) -> dict:
     await enqueue_task({"kind": "accept", "task_id": task_id,
                         "issue_id": issue.id, "project_id": issue.project_id})
     return {"action": "accept_merge",
-            "_wait": {"task_id": task_id, "timeout": int(params.get("timeout_sec") or 900),
+            "_wait": {"task_id": task_id, "timeout": int(params.get("timeout_sec") or 0),
                       "context_key": "merge"}}
 
 
