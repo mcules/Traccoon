@@ -25,9 +25,15 @@ _PLATZHALTER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 # kaputt), soll die Lücke zwar mitgenommen werden (s. u.), aber nicht unbegrenzt wachsen.
 # Anlass: der KI-&-Tech-News-Job scheiterte ab dem 03.08. jeden Tag — jeder Fehltag machte
 # das Fenster für den nächsten Lauf größer, der dadurch mehr recherchieren musste, dadurch
-# öfter das Zeitlimit riss und wieder scheiterte (selbstverstärkend). Ohne Deckel wächst ein
-# fünf Tage kaputter Job auf ein Fenster, das ihn beim nächsten Versuch endgültig sprengt.
-MAX_FENSTER_TAGE = 4
+# öfter das Zeitlimit riss und wieder scheiterte (selbstverstärkend).
+#
+# 4 Tage waren zu knapp gegriffen: ein Job, der übers Wochenende plus zwei, drei Fehltage
+# kaputt war, verlor dann STILL die ältesten Tage aus dem Rückblick — genau der Verlust, den
+# das Fenster eigentlich verhindern soll (Review-Befund 2026-08-07). 14 Tage geben der
+# Fehlersuche/Reparatur eines Jobs Luft, ohne dass das Fenster unbegrenzt wächst; wird
+# trotzdem gekürzt, steht das nicht mehr STILL im Prompt — `eingebaute_werte` hängt dann
+# einen Hinweis an `zeitfenster` an, den das Modell in den Digest übernehmen kann.
+MAX_FENSTER_TAGE = 14
 
 
 def _als_text(wert) -> str:
@@ -54,14 +60,22 @@ def eingebaute_werte(*, jetzt: dt.datetime | None = None,
     jetzt = (jetzt or dt.datetime.now(tz=dt.timezone.utc)).astimezone(TZ)
     seit = (letzter_lauf.astimezone(TZ) if letzter_lauf else jetzt - dt.timedelta(days=1))
     fruehste = jetzt - dt.timedelta(days=MAX_FENSTER_TAGE)
-    if seit < fruehste:
+    # Deckel greift → die älteren Tage fallen aus dem Rückblick. Das darf nicht STILL
+    # passieren (s. Kommentar oben) — der Hinweis geht ins `zeitfenster` selbst, weil genau
+    # das der Platzhalter ist, den der Digest-Prompt in seine Überschrift übernimmt.
+    gekuerzt = seit < fruehste
+    if gekuerzt:
         seit = fruehste
+    zeitfenster = f"{seit.strftime('%Y-%m-%d %H:%M')} bis {jetzt.strftime('%Y-%m-%d %H:%M')} ({TZ.key})"
+    if gekuerzt:
+        zeitfenster += (" — HINWEIS: der Job war länger als "
+                         f"{MAX_FENSTER_TAGE} Tage ohne erfolgreichen Lauf, das Fenster wurde "
+                         "auf diesen Zeitraum gekürzt; ältere Meldungen fehlen im Rückblick")
     return {
         "heute": jetzt.strftime("%Y-%m-%d"),
         "jetzt": jetzt.strftime("%Y-%m-%d %H:%M"),
         "seit": seit.strftime("%Y-%m-%d %H:%M"),
-        "zeitfenster": f"{seit.strftime('%Y-%m-%d %H:%M')} bis {jetzt.strftime('%Y-%m-%d %H:%M')} "
-                       f"({TZ.key})",
+        "zeitfenster": zeitfenster,
     }
 
 
