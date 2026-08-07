@@ -29,7 +29,7 @@ from ..services.assistant_inbox import (
 from ..services.artifacts import set_ticket_status
 from ..services.comments import add_system_comment, apply_user_comment
 from ..worker.assistant_gate import apply_perm_decision
-from .mdtg import safe
+from .mdtg import clip, safe
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("traccoon.bot")
@@ -351,7 +351,13 @@ async def _voice_transkript(bot, m) -> str | None:
     if not text:
         await m.answer("🙉 Ich konnte darin keine Sprache erkennen — bitte als Text schicken.")
         return ""
-    await m.answer(f"🎙 verstanden: {safe(text)}")
+    # Roh (ohne `safe()`/HTML-Escaping) senden: `safe()` escaped & wandelt Markdown-artige
+    # Sequenzen in <b>/<i>/<code>-Tags um, aber dieser Bot läuft OHNE
+    # `parse_mode="HTML"` (weder hier per Aufruf noch als Bot-Default) — ein HTML-escapter
+    # String käme dann ungeparst an: `&`/`<`/`>` erschienen als literale Entities und
+    # umgewandelte Tags als sichtbarer `<b>…</b>`-Text statt Fettung. Hier ist ohnehin keine
+    # Formatierung gewünscht, nur die reine, auf Telegram-Länge gekappte Transkription.
+    await m.answer(f"🎙 verstanden: {clip(text)}")
     return text
 
 
