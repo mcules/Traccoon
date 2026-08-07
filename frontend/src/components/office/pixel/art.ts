@@ -159,3 +159,24 @@ export function fillA(
   ctx.fillRect(x, y, w, h);
   ctx.globalAlpha = 1;
 }
+
+/**
+ * Ein Art in doppelter Auflösung — jeder Pixel wird ein 2×2-Block.
+ *
+ * Die Brücke der Auflösungs-Etappen: eine Familie, die noch nicht fein gezeichnet ist, wird
+ * damit im HD-Raster gezeichnet und sieht **exakt** aus wie vorher. So kann eine Figur schon
+ * einen fein gezeichneten Kopf tragen, während ihre Beine noch grob sind — statt dass erst
+ * alle sechzehn Arts fertig sein müssen, bevor irgendetwas besser aussieht.
+ *
+ * Wer ein Art hier durchreicht, gewinnt kein Detail. Er gewinnt nur das Recht, danebenstehende
+ * Teile fein zu zeichnen.
+ */
+export function verdoppelt(art: Art): Art {
+  const rows: string[] = [];
+  for (const row of art.rows) {
+    let breit = "";
+    for (const ch of row) breit += ch + ch;
+    rows.push(breit, breit);
+  }
+  return { rows, map: art.map };
+}

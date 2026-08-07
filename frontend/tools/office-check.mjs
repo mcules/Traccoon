@@ -558,7 +558,7 @@ function checkCtxProxy() {
       // Einmal mit der Vollbildkamera (der Kontext wird unverändert durchgereicht) und einmal
       // gezoomt (die `viewOf`-Hülle rechnet jedes Rechteck um) — beide müssen den Vertrag
       // halten, und nur der zweite Fall prüft die Hülle.
-      for (const cam of [CAM_FULL, { x: 160, y: 120, zoom: 3 }]) {
+      for (const cam of [CAM_FULL, { x: 160, y: 120, zoom: 4 }]) {
         // Der Sitzungsfilter dimmt über eine zweite `Ctx`-Hülle — die muss den Vertrag
         // genauso halten wie der nackte Kontext, sonst wäre der Filter das eine Loch darin.
         for (const dimmed of [undefined, new Set(["run:8872", "run:8873"])]) {
