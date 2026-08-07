@@ -368,7 +368,89 @@ const TORSO_HOOD = defineArt([
   "PPPPPPPP",
 ], { T: "T", t: "t", P: "P" });
 
-const TORSOS: readonly Art[] = [TORSO_PLAIN, TORSO_SHIRT, TORSO_HOOD].map(verdoppelt);
+
+// ── Oberkörper, fein gezeichnet ──────────────────────────────────────────────
+// Verdoppelt las sich die Knopfleiste des Hemds als Hosenträger: zwei Pufferpixel breit auf
+// einem 16 Pixel breiten Rumpf ist ein Gurt, kein Saum. Im feinen Raster ist sie eine Linie.
+// Dazu kommt, was eine Farbfläche erst zu einem Körper macht: eine Schattenspalte auf der
+// lichtabgewandten Seite (die Fenster stehen links), ein Saum und ein Bund.
+//
+// 16 breit × 20 hoch — dieselbe Fläche wie die alten 8×10, nur eben doppelt aufgelöst.
+
+const TORSO_MAP = { T: "T", t: "t", P: "P", S: "S", s: "s" } as const;
+
+const TORSO_PLAIN_HD = defineArt([
+  "...tTTTTTTTTt...",
+  ".tTTTTTTTTTTTTt.",
+  "tTTTTTTTTTTTTTTt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "ttTTTTTTTTTTTttt",
+  "tttttttttttttttt",
+  "PPPPPPPPPPPPPPPP",
+], TORSO_MAP);
+
+/** Hemd: Kragen (Haut am Ausschnitt) und eine EINE Einheit breite Knopfleiste. */
+const TORSO_SHIRT_HD = defineArt([
+  "...tTTTTTTTTt...",
+  ".tTTTtSSSStTTTt.",
+  "tTTTTtsSSstTTTTt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "tTTTTTTtTTTTTTtt",
+  "ttTTTTTtTTTTTttt",
+  "tttttttttttttttt",
+  "PPPPPPPPPPPPPPPP",
+], TORSO_MAP);
+
+/** Kapuzenpulli: breitere Schulter, Kapuzenkante, Bauchtasche. */
+const TORSO_HOOD_HD = defineArt([
+  "..tTTTTTTTTTTt..",
+  ".tTTTTTTTTTTTTt.",
+  "tTTTTTTTTTTTTTTt",
+  "tTTttttttttTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "tTTttttttttTTTtt",
+  "tTTtTTTTTTttTTtt",
+  "tTTtTTTTTTttTTtt",
+  "tTTttttttttTTTtt",
+  "tTTTTTTTTTTTTTtt",
+  "ttTTTTTTTTTTTttt",
+  "tttttttttttttttt",
+  "PPPPPPPPPPPPPPPP",
+], TORSO_MAP);
+
+const TORSOS: readonly Art[] = [TORSO_PLAIN_HD, TORSO_SHIRT_HD, TORSO_HOOD_HD];
 
 // ── Arme ─────────────────────────────────────────────────────────────────────
 // Gezeichnet als **rechter** Arm (Spalte 0 liegt am Torso); der linke ist derselbe Art,
@@ -411,7 +493,75 @@ const ARM_REACH = defineArt([
   "....",
 ], { T: "T", t: "t", S: "S" });
 
-const ARMS: readonly Art[] = [ARM_REST, ARM_TYPE_A, ARM_TYPE_B, ARM_REACH].map(verdoppelt);
+
+// ── Arme, fein gezeichnet ────────────────────────────────────────────────────
+// Verdoppelt war der Arm ein hautfarbener Block ohne Hand. Im feinen Raster (8×12) ist Platz
+// für Ärmel, Handgelenk und eine Hand mit Schattenkante — und genau die Hand ist es, die aus
+// „Klotz mit Ausleger" eine Figur macht, die etwas TUT.
+
+const ARM_MAP = { T: "T", t: "t", S: "S", s: "s" } as const;
+
+const ARM_REST_HD = defineArt([
+  "TTTtt...",
+  "TTTtt...",
+  "TTTtt...",
+  "TTTtt...",
+  "TTTtt...",
+  "TTTtt...",
+  ".TTtt...",
+  ".TTtt...",
+  ".SSSs...",
+  ".SSSs...",
+  "..sSs...",
+  "........",
+], ARM_MAP);
+
+const ARM_TYPE_A_HD = defineArt([
+  "TTTtt...",
+  "TTTtt...",
+  "TTTtt...",
+  "TTTtt...",
+  ".TTTtt..",
+  ".TTTtt..",
+  "..TTTtt.",
+  "..TTtt..",
+  "..SSSs..",
+  "..SSSs..",
+  "...ss...",
+  "........",
+], ARM_MAP);
+
+const ARM_TYPE_B_HD = defineArt([
+  "TTTtt...",
+  "TTTtt...",
+  "TTTtt...",
+  "TTTtt...",
+  ".TTTtt..",
+  ".TTTtt..",
+  "..TTTtt.",
+  "..SSSs..",
+  "..SSSs..",
+  "...ss...",
+  "........",
+  "........",
+], ARM_MAP);
+
+const ARM_REACH_HD = defineArt([
+  "TTTtt...",
+  "TTTTtt..",
+  "TTTTTtt.",
+  ".TTTTSs.",
+  "..SSSSs.",
+  "...sSs..",
+  "........",
+  "........",
+  "........",
+  "........",
+  "........",
+  "........",
+], ARM_MAP);
+
+const ARMS: readonly Art[] = [ARM_REST_HD, ARM_TYPE_A_HD, ARM_TYPE_B_HD, ARM_REACH_HD];
 
 const ARM_REST_I = 0;
 const ARM_TYPE_A_I = 1;
@@ -424,13 +574,14 @@ const ARM_REACH_I = 3;
  *  wird ein zweites Mal gezeichnet, diesmal komplett in Hautfarbe (`tint`). Vier weitere Arme
  *  wären zwar auch bezahlbar, aber sie müssten bei jeder Formänderung mitgepflegt werden —
  *  und genau das vergisst man. */
-const ARM_CUFF: readonly number[] = [3, 3, 3, 2];
+/** Ab welcher HD-Zeile der Unterarm beginnt (kurzer Ärmel zeigt ab hier Haut). */
+const ARM_CUFF: readonly number[] = [6, 6, 6, 4];
 
 /** Der Unterarm-Teil jedes Arms, einmal beim Laden abgeschnitten. Erlaubt ist das, weil
  *  `drawArt` am **Fußpunkt** ankert: ein von oben gekürztes Art landet an derselben Stelle
  *  wie das Original. */
 const ARM_FORE: readonly Art[] = ARMS.map((a, i) => ({
-  rows: a.rows.slice(ARM_CUFF[i] * HD), map: a.map,
+  rows: a.rows.slice(ARM_CUFF[i]), map: a.map,
 }));
 
 // ── Beine ────────────────────────────────────────────────────────────────────
@@ -784,13 +935,6 @@ function drawBody(
   }
 
   drawArt(ctx, TORSOS[look.torso], bodyX, torsoY, pal, { flip, alpha });
-  // Eine schmale Schattenspalte auf der lichtabgewandten Seite. Kein neues Art: die Torsi
-  // sind alle 16 HD-Einheiten breit und 20 hoch, die Spalte sitzt also immer gleich — und
-  // aus ihr wird aus einer flachen Farbfläche ein Körper mit Vorder- und Rückseite.
-  // Das Licht kommt von den Fenstern, also von oben links; geschattet wird rechts.
-  if (alpha < 1) ctx.globalAlpha = alpha;
-  fillA(ctx, pal, "t", 0.35, bodyX + 6, torsoY - 17, 2, 14);
-  if (alpha < 1) ctx.globalAlpha = 1;
   arm(ctx, pal, s.armFar, armXFar, armY, !flip, look.arms, alpha);
   drawArt(ctx, HEADS[s.dir], bodyX, headY, pal, { flip, alpha });
   if (alpha >= 1) face(ctx, pal, bodyX, headY - 9 * HD, look.head, s.dir);
