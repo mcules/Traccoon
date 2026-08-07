@@ -183,7 +183,10 @@ _CAPS = {
                             max_tokens=16384, max_turns_planning=20),
     "architect": dict(can_read_code=True, max_tokens=16384, max_turns_planning=20),
     "developer": dict(can_code=True),
-    "code_reviewer": dict(can_read_code=True),
+    # Der Prüfer liest viel und schreibt wenig (`<review-ok/>` oder eine Befundliste).
+    # Auf sonnet-5/opus-5 teilt sich das Denken `max_tokens` mit der Antwort — mit der
+    # Standardstufe fraß es das Budget und der Lauf starb abgeschnitten (Lauf 744).
+    "code_reviewer": dict(can_read_code=True, effort="medium"),
     "tester": dict(can_code=True),
     "devops": dict(can_code=True),
 }

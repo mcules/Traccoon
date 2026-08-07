@@ -49,4 +49,6 @@ class Provider(Protocol):
                    tools: list[dict[str, Any]] | None = None,
                    temperature: float = 0.3, max_tokens: int = 4096,
                    web_search: bool = False, auth_token: str | None = None) -> ChatResponse:
+        # `effort` (Denk-Tiefe) kennt nur der Anthropic-Adapter; der Router reicht es
+        # ausschließlich dorthin durch — anderswo wäre es ein unbekanntes Feld.
         ...
