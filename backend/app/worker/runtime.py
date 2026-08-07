@@ -53,9 +53,16 @@ MAX_DELEGATION_DEPTH = 2
 MAX_RUN_INPUT_TOKENS = int(os.getenv("MAX_RUN_INPUT_TOKENS", "2000000"))
 # Wanduhr-Grenze je Lauf. Der Loop-Wächter im Worker sieht nur einen BLOCKIERTEN Event-Loop;
 # ein Agent, der munter weiter Werkzeuge ruft und trotzdem nie fertig wird, tickt sauber und
-# lief bisher unbegrenzt (`run_timeout` gilt nur für Shell-/HTTP-Jobs im Scheduler). Ende wie
-# beim Iterations-Limit: loop_exhausted → Continuation im frischen Lauf, Caps deckeln gesamt.
-# 0 schaltet die Grenze ab.
+# lief bisher unbegrenzt. Ende wie beim Iterations-Limit: loop_exhausted → Continuation im
+# frischen Lauf, Caps deckeln gesamt. 0 schaltet die Grenze ab.
+#
+# Gilt für JEDEN run_agent-Aufruf — auch Job- und Assistenten-Läufe, nicht nur Ticket-Läufe
+# (ein früherer Kommentar hier behauptete fälschlich, `run_timeout` gelte „nur für Shell-/
+# HTTP-Jobs im Scheduler" — der Wanduhr-Riegel liegt aber IM Agent-Loop und trifft damit alle).
+# Anlass: Job #3 (KI-&-Tech-News) lief ab dem 03.08. jeden Tag genau hier in `loop_exhausted`
+# und wurde vom Job-Pfad (`_handle_job`) als endgültiges `error` gewertet. Job-Läufe können
+# sich seither über `run_seconds` eine ANDERE (höhere) Wanduhr-Grenze geben, ohne diesen
+# Default für Ticket-/Assistenten-Läufe zu verändern.
 MAX_RUN_SECONDS = float(os.getenv("AGENT_RUN_TIMEOUT_SEC", "1800"))
 
 # Obergrenze für Antworten von `traccoon_http_call`. Die eigentliche Grenze setzt das Ziel
@@ -798,7 +805,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     parent_run_id: int | None = None, parent_tool_use_id: str | None = None,
                     task_id: str = "",
                     depth: int = 0, delegate_loader=None,
-                    assistant_task_id: int | None = None) -> RunResult:
+                    assistant_task_id: int | None = None,
+                    run_seconds: float | None = None) -> RunResult:
     permissions = permissions or []
     tokens = tokens or {}
     base_urls = base_urls or {}
@@ -946,14 +954,18 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             empties = 0
             build_gate_fails = 0
             letzter_kontext = 0     # echte Kontextgröße des letzten Aufrufs (für die Kompaktierung)
-            frist = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
+            # `run_seconds` erlaubt EINEM Aufrufer (Job-Läufe, s. `_handle_job`) eine andere
+            # Wanduhr-Grenze als den globalen Default — ohne Default bleibt jeder andere
+            # Aufrufer (Ticket-/Assistenten-Läufe) unverändert bei `MAX_RUN_SECONDS`.
+            grenze_sekunden = MAX_RUN_SECONDS if run_seconds is None else run_seconds
+            frist = (asyncio.get_running_loop().time() + grenze_sekunden) if grenze_sekunden else 0.0
             grenze_grund = "Iterations-Limit erreicht."
             iteration = 0       # falls max_iterations 0 ist, läuft die Schleife nie
             for iteration in range(1, agent.max_iterations + 1):
                 if frist and asyncio.get_running_loop().time() > frist:
                     # Wie beim Token-Budget: `break` fällt auf die loop_exhausted-Finalisierung.
-                    gelaufen = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - frist)
-                    grenze_grund = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(MAX_RUN_SECONDS)}s)."
+                    gelaufen = int(grenze_sekunden + asyncio.get_running_loop().time() - frist)
+                    grenze_grund = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(grenze_sekunden)}s)."
                     log.warning("Run %s: Zeitlimit erreicht (%ds) → loop_exhausted", run_id, gelaufen)
                     await protokoll("system", None,
                               f"⚠️ {grenze_grund} → loop_exhausted (Fortsetzung in frischem Run)",

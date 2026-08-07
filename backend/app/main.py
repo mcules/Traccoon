@@ -440,7 +440,14 @@ async def digest(run_id: int):
     # Seite (jr.output ist ''), und der Grund (jr.error) stand nirgends sichtbar. Von außen
     # war der Job damit nicht diagnostizierbar (siehe Job #3 seit 2026-08-03).
     if jr.status == "error":
-        body = _html.escape(jr.error or "Kein Fehlertext hinterlegt.")
+        # Diese Seite ist ABSICHTLICH ohne Login erreichbar (der Telegram-Link muss ohne
+        # Browser-Session klickbar sein) — `run_id` ist zudem eine erratbare fortlaufende
+        # Ganzzahl. Darum darf hier NICHT der volle Fehlertext raus: `jr.error` kann interne
+        # Exception-Texte, HTTP-Fehlerkörper des Providers oder Prompt-Ausschnitte enthalten.
+        # Nur die erste Zeile — mehr geht ohnehin schon (genauso knapp) per Telegram/MCP an
+        # den Job-Eigentümer; wer mehr Diagnose braucht, hat Zugriff auf einen der beiden Wege.
+        kurz = (jr.error or "Kein Fehlertext hinterlegt.").splitlines()[0][:300]
+        body = _html.escape(kurz)
         page = (f"<!doctype html><html><head><meta charset='utf-8'><title>Digest #{run_id} — Fehler</title>"
                 "<style>body{max-width:800px;margin:2rem auto;padding:0 1rem;font-family:system-ui;"
                 "line-height:1.6;color:#172b4d}pre{white-space:pre-wrap;word-wrap:break-word}"
