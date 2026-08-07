@@ -22,6 +22,11 @@ _COOLDOWN_MAX = 3600.0
 _RATE_LIMIT_WAIT = float(os.getenv("PROVIDER_RATE_LIMIT_WAIT", "60"))
 _RATE_LIMIT_WAIT_MAX = 180.0
 _MAX_ATTEMPTS = int(os.getenv("PROVIDER_MAX_ATTEMPTS", "4"))
+# Deckel für die max_tokens-Eskalation (Anthropic `stop_reason=max_tokens`-Abbruch): ein
+# Retry mit UNVERÄNDERTEM max_tokens würde denselben Fehler reproduzieren, darum wird das
+# Budget vor dem nächsten Versuch verdoppelt — aber nicht grenzenlos, sonst kostet ein
+# hartnäckiger Fall (z. B. Endlos-Thinking) beliebig viel pro Zug.
+_MAX_TOKENS_ESCALATION_CEILING = int(os.getenv("PROVIDER_MAX_TOKENS_CEILING", "64000"))
 
 # Traccoon-Provider-Namen (AgentDefinition.provider) → Impl.
 # claude_code = Anthropic-OAuth-Subscription, codex = ChatGPT-Subscription,
@@ -100,6 +105,9 @@ class Router:
             if token is None:
                 legacy = "claude_code" if prov in _ANTHROPIC else "codex" if prov in _CODEX else prov
                 token = tokens.get(legacy)
+            # Eigene Kopie je Provider: die Eskalation (s. u.) darf das Budget des NÄCHSTEN
+            # Providers in der Kette nicht mit hochziehen.
+            cur_max_tokens = max_tokens
             for attempt in range(_MAX_ATTEMPTS):
                 try:
                     # `extra_body` kennt nur der OpenAI-kompatible Provider (endpoint-eigene
@@ -107,7 +115,7 @@ class Router:
                     # es NICHT — dort wäre es ein unbekanntes Feld und damit ein 400er.
                     zusatz = {"extra_body": extra_body} if extra_body and prov in _OPENAI else {}
                     resp = await impl.chat(model=use_model, messages=messages, tools=tools,
-                                           temperature=temperature, max_tokens=max_tokens,
+                                           temperature=temperature, max_tokens=cur_max_tokens,
                                            web_search=web_search, auth_token=token, **zusatz)
                     # Erst hier steht fest, WER geantwortet hat: nach einem Fallback ist das
                     # weder der eingestellte Provider noch dessen Modell. Ohne diese Zeilen
@@ -117,6 +125,17 @@ class Router:
                 except ProviderError as exc:
                     last_err = exc
                     is_last = attempt >= _MAX_ATTEMPTS - 1
+                    # Anlass: der KI-&-Tech-News-Job riss ab dem 03.08. jeden Tag an `stop_reason
+                    # =max_tokens` — ein Retry mit UNVERÄNDERTEM Budget hätte denselben Fehler
+                    # reproduziert (kein Verbindungsproblem, sondern ein zu knappes Budget für
+                    # einen langen Recherche-Digest). Vor dem nächsten Versuch verdoppeln, bis
+                    # zum Deckel — erst danach gilt der Fehler als endgültig.
+                    if (exc.escalate_max_tokens and not is_last
+                            and cur_max_tokens < _MAX_TOKENS_ESCALATION_CEILING):
+                        cur_max_tokens = min(cur_max_tokens * 2, _MAX_TOKENS_ESCALATION_CEILING)
+                        log.warning("Provider '%s': max_tokens-Abbruch → Eskalation auf %d",
+                                    prov, cur_max_tokens)
+                        continue
                     if exc.status == 529 and not is_last:
                         await asyncio.sleep(1.5 * (attempt + 1))
                         continue

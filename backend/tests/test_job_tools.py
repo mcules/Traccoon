@@ -43,6 +43,22 @@ async def test_fremde_jobs_sind_unsichtbar(db, anna):
     assert await _tool(db, anna, "traccoon_get_job", job_id=j.id) == "Job nicht gefunden."
 
 
+async def test_get_job_zeigt_fehlergrund_eines_laufs(db, anna):
+    """Anlass: Job #3 stand seit dem 03.08. jeden Tag auf `error` — weder `traccoon_get_job`
+    noch die Telegram-Meldung nannten den Grund, nur „error". Auf die Frage „warum
+    funktioniert der nicht?" muss der Assistent den Fehlertext zitieren können."""
+    import datetime as dt
+    j = Job(user_id=anna.id, name="KI- & Tech-News", kind="prompt", agent="news", prompt="x")
+    db.add(j)
+    await db.commit()
+    db.add(JobRun(job_id=j.id, status="error",
+                  started_at=dt.datetime(2026, 8, 7, 6, 0, tzinfo=dt.timezone.utc),
+                  error="Nach 4 Fortsetzungsrunde(n) noch nicht fertig (loop_exhausted)"))
+    await db.commit()
+    out = await _tool(db, anna, "traccoon_get_job", job_id=j.id)
+    assert "error — Nach 4 Fortsetzungsrunde(n)" in out
+
+
 async def test_anlegen_ueber_vorlage(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="Security-News",
                       template="recherche-digest",
