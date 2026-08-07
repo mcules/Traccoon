@@ -51,6 +51,22 @@ async def test_fehlgeschlagener_lauf_ohne_fehlertext_bleibt_lesbar(db):
     assert "Kein Fehlertext hinterlegt" in resp.body.decode()
 
 
+async def test_erschoepfter_lauf_zeigt_teilergebnis_und_grund(db):
+    """Review-Befund 2026-08-07: `loop_exhausted` füllt `jr.output` mit einem Teilergebnis
+    (s. `_handle_job`) — nur den Fehler zu zeigen und das Teilergebnis zu verschlucken wäre
+    wieder das Ausgangssymptom (Link zeigt „kein Digest", obwohl einer da ist)."""
+    jr = JobRun(job_id=1, status="error",
+                output="# Die Nachrichten von heute\n\nEiniges gefunden, aber nicht alles.",
+                error="Nach 4 Fortsetzungsrunde(n) noch nicht fertig (loop_exhausted)")
+    db.add(jr)
+    await db.commit()
+    resp = await digest(jr.id)
+    text = resp.body.decode()
+    assert "Einiges gefunden" in text                          # Teilergebnis bleibt sichtbar
+    assert "Nach 4 Fortsetzungsrunde(n)" in text                # Grund steht dabei
+    assert "unvollständig" in text.lower()
+
+
 async def test_unbekannter_lauf_bleibt_404(db):
     resp = await digest(999999)
     assert resp.status_code == 404

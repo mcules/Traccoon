@@ -436,9 +436,15 @@ async def digest(run_id: int):
     if jr is None:
         return HTMLResponse("<h1>404</h1>", status_code=404)
     import html as _html
-    # Ein fehlgeschlagener Lauf hat KEINEN Digest — bisher zeigte die Seite dann eine leere
-    # Seite (jr.output ist ''), und der Grund (jr.error) stand nirgends sichtbar. Von außen
-    # war der Job damit nicht diagnostizierbar (siehe Job #3 seit 2026-08-03).
+    # Ein fehlgeschlagener Lauf hat oft KEINEN Digest — bisher zeigte die Seite dann eine
+    # leere Seite (jr.output ist ''), und der Grund (jr.error) stand nirgends sichtbar. Von
+    # außen war der Job damit nicht diagnostizierbar (siehe Job #3 seit 2026-08-03).
+    #
+    # `loop_exhausted` (nach allen Fortsetzungsrunden) füllt `jr.output` aber durchaus mit
+    # einem Teilergebnis (s. `_handle_job`) — das NUR den Fehler zu zeigen und das
+    # Teilergebnis zu verschlucken wäre wieder dasselbe Symptom (Review-Befund 2026-08-07):
+    # der Link zeigt „kein Digest", obwohl tatsächlich einer (unvollständig) da ist. Darum:
+    # bei vorhandenem Output BEIDES zeigen, bei leerem Output nur den Fehler.
     if jr.status == "error":
         # Diese Seite ist ABSICHTLICH ohne Login erreichbar (der Telegram-Link muss ohne
         # Browser-Session klickbar sein) — `run_id` ist zudem eine erratbare fortlaufende
@@ -447,12 +453,16 @@ async def digest(run_id: int):
         # Nur die erste Zeile — mehr geht ohnehin schon (genauso knapp) per Telegram/MCP an
         # den Job-Eigentümer; wer mehr Diagnose braucht, hat Zugriff auf einen der beiden Wege.
         kurz = (jr.error or "Kein Fehlertext hinterlegt.").splitlines()[0][:300]
-        body = _html.escape(kurz)
-        page = (f"<!doctype html><html><head><meta charset='utf-8'><title>Digest #{run_id} — Fehler</title>"
+        hinweis = (f"<h1>⚠️ Lauf unvollständig</h1><p>{_html.escape(kurz)}</p>"
+                   "<p>Teilergebnis unten — der Digest ist nicht vollständig.</p><hr>"
+                   if jr.output else
+                   f"<h1>⚠️ Lauf fehlgeschlagen</h1><pre>{_html.escape(kurz)}</pre>")
+        titel = "Digest #{} — {}".format(run_id, "unvollständig" if jr.output else "Fehler")
+        page = (f"<!doctype html><html><head><meta charset='utf-8'><title>{titel}</title>"
                 "<style>body{max-width:800px;margin:2rem auto;padding:0 1rem;font-family:system-ui;"
                 "line-height:1.6;color:#172b4d}pre{white-space:pre-wrap;word-wrap:break-word}"
                 "h1{color:#ae2e24}</style></head>"
-                f"<body><h1>⚠️ Lauf fehlgeschlagen</h1><pre>{body}</pre></body></html>")
+                f"<body>{hinweis}<pre>{_html.escape(jr.output or '')}</pre></body></html>")
         return HTMLResponse(page, status_code=200)
     body = _html.escape(jr.output or "")
     page = (f"<!doctype html><html><head><meta charset='utf-8'><title>Digest #{run_id}</title>"

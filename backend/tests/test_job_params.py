@@ -43,13 +43,37 @@ def test_fenster_deckelt_sich_bei_langer_fehlserie():
     """Anlass: Job #3 scheiterte ab dem 03.08. jeden Tag — jeder Fehltag ließ `{{seit}}`
     weiter zurückwandern, das Fenster wuchs, die Recherche dauerte länger, riss öfter das
     Zeitlimit (selbstverstärkend). Ohne Deckel würde ein Lauf, der eine ganze Woche kaputt
-    war, beim nächsten Versuch ein Fenster von Tagen bekommen statt maximal vier."""
+    war, beim nächsten Versuch ein beliebig großes Fenster bekommen statt maximal
+    `MAX_FENSTER_TAGE`."""
     jetzt = dt.datetime(2026, 8, 7, 6, 0, tzinfo=dt.timezone.utc)
-    letzter = dt.datetime(2026, 7, 20, 6, 0, tzinfo=dt.timezone.utc)   # 18 Tage zurück
+    letzter = dt.datetime(2026, 7, 1, 6, 0, tzinfo=dt.timezone.utc)   # 37 Tage zurück
     text = rendere("{{seit}}", {}, jetzt=jetzt, letzter_lauf=letzter)
     seit = dt.datetime.strptime(text, "%Y-%m-%d %H:%M")
     jetzt_lokal = jetzt.astimezone(TZ).replace(tzinfo=None)
-    assert (jetzt_lokal - seit).days <= 4
+    from app.services.job_params import MAX_FENSTER_TAGE
+    assert (jetzt_lokal - seit).days <= MAX_FENSTER_TAGE
+
+
+def test_zeitfenster_ueberspringt_kaputte_laeufe_ohne_deckel():
+    """Der Deckel (14 Tage) darf ein normales, kurz unterbrochenes Fenster NICHT kürzen —
+    sonst fällt ein einzelner Fehltag wieder still unter den Tisch (das Gegenteil dessen,
+    was das Fenster leisten soll)."""
+    jetzt = dt.datetime(2026, 8, 7, 6, 0, tzinfo=dt.timezone.utc)
+    letzter = dt.datetime(2026, 8, 3, 6, 0, tzinfo=dt.timezone.utc)   # 4 Tage zurück
+    text = rendere("{{seit}}", {}, jetzt=jetzt, letzter_lauf=letzter)
+    assert text == "2026-08-03 08:00"                                 # Europe/Berlin, unverändert
+
+
+def test_fenster_deckel_meldet_sich_im_zeitfenster_statt_still_zu_kuerzen():
+    """Review-Befund: still gekürzt hätte der älteste Teil des Ausfalls lautlos gefehlt.
+    Der Hinweis muss im `{{zeitfenster}}`-Text stehen, den der Digest-Prompt übernimmt."""
+    jetzt = dt.datetime(2026, 8, 7, 6, 0, tzinfo=dt.timezone.utc)
+    letzter = dt.datetime(2026, 7, 1, 6, 0, tzinfo=dt.timezone.utc)   # weit über dem Deckel
+    text = rendere("{{zeitfenster}}", {}, jetzt=jetzt, letzter_lauf=letzter)
+    assert "HINWEIS" in text and "gekürzt" in text
+    ohne_deckel = rendere("{{zeitfenster}}", {}, jetzt=jetzt,
+                          letzter_lauf=dt.datetime(2026, 8, 3, 6, 0, tzinfo=dt.timezone.utc))
+    assert "HINWEIS" not in ohne_deckel
 
 
 def test_ohne_letzten_lauf_24_stunden_zurueck():
