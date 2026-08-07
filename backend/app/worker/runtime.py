@@ -340,9 +340,34 @@ async def _do_check(ws_root: str | None, verify_command: str) -> str:
         return f"❌ CHECK-FEHLER: {exc}"
 
 
+def deploy_gesperrt(stack_dir: str) -> str:
+    """Warum ein Deploy hier gar nicht erst eingereiht wird — leer, wenn er möglich ist.
+
+    Der Deployer lehnt einen Auftrag ohne eigenes Stack-Verzeichnis grundsätzlich ab
+    (impliziter Host-Deploy ist gesperrt, sonst recreated sich Traccoon selbst mitten im
+    Lauf). Bisher merkte das erst er: der Agent legte eine Deployment-Zeile an, wartete
+    im 3-Sekunden-Takt und bekam nach dem Umweg eine Absage. **56 der 186 Zeilen in
+    `deployments` sind genau diese Absage** — und in jedem dieser Läufe hat ein Agent einen
+    Zug dafür verbraucht. Wer die Antwort schon kennt, soll sie sofort geben.
+    """
+    selbst = (os.getenv("SELF_STACK_DIR") or "").rstrip("/")
+    ziel = (stack_dir or "").rstrip("/")
+    if not ziel:
+        return ("Dieses Projekt hat kein eigenes Stack-Verzeichnis — ein Deploy ist hier "
+                "nicht vorgesehen und würde abgelehnt. Prüfe deine Änderung mit `check`; "
+                "live geht sie über Abnahme und Merge, das Wartungs-Update löst ein Mensch aus.")
+    if selbst and ziel == selbst:
+        return ("Das Ziel ist Traccoon selbst. Ein Self-Deploy läuft ausschließlich über das "
+                "explizite Wartungs-Update (ein Mensch löst es aus) — er würde den eigenen "
+                "Lauf mitten im Arbeiten neu starten. Prüfe mit `check` und schließe ab.")
+    return ""
+
+
 async def _do_deploy(db: AsyncSession, issue_id: int, project_id: int, stack_dir: str,
                      worktree: str | None, check_only: bool = False) -> str:
     """Deployment einreihen (deployments-Tabelle) und auf das Ergebnis des Deployer-Sidecars warten."""
+    if not check_only and (grund := deploy_gesperrt(stack_dir)):
+        return f"❌ NICHT MÖGLICH\n{grund}"
     from ..models.ops import Deployment
     dep = Deployment(issue_id=issue_id, project_id=project_id, stack_dir=stack_dir,
                      worktree=worktree or "", check_only=check_only, source="agent",
@@ -989,7 +1014,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 if screenshot_enabled:
                     _maybe(SCREENSHOT_TOOL)
                 if mode != "plan" and agent.can_code:
-                    _maybe(FS_WRITE_TOOL); _maybe(FS_EDIT_TOOL); _maybe(CHECK_TOOL); _maybe(DEPLOY_TOOL)
+                    _maybe(FS_WRITE_TOOL); _maybe(FS_EDIT_TOOL); _maybe(CHECK_TOOL)
+                    # Kein Werkzeug anbieten, dessen Antwort schon feststeht: ohne eigenes
+                    # Stack-Verzeichnis (oder mit Traccoon selbst als Ziel) lehnt der
+                    # Deployer jeden Auftrag ab. Ein Werkzeug, das nur scheitern kann, ist
+                    # eine Einladung, einen Zug dafür zu verbrennen.
+                    if not deploy_gesperrt(project.get("stack_dir", "")):
+                        _maybe(DEPLOY_TOOL)
                     messages.append({"role": "system", "content": CODE_WORKFLOW})
             # Traccoon-Steuer-Tools: nur mit Nutzerkontext (Rechte-Prüfung) + `traccoon_*`
             # in der Allowlist. Brauchen keinen Worktree.

@@ -105,6 +105,9 @@ services:
       DEFAULT_CLAUDE_MODEL: ${DEFAULT_CLAUDE_MODEL:-claude-sonnet-4-5}
       DEFAULT_CODEX_MODEL: ${DEFAULT_CODEX_MODEL:-gpt-5}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
+      # Damit der Worker eine aussichtslose Anfrage erkennt, bevor er sie einreiht: ein
+      # Deploy auf Traccoon selbst lehnt der Deployer grundsätzlich ab (`runtime.deploy_gesperrt`).
+      SELF_STACK_DIR: ${SELF_STACK_DIR:-}
     volumes:
       - ./backend/app:/app/app
       - ./data/workspace:/workspace
