@@ -113,6 +113,7 @@ async def test_vokabular_geht_als_initial_prompt_mit(monkeypatch):
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     monkeypatch.setattr(bot, "VOICE_VOKABULAR", "Traccoon, GameProj, ABC-31.")
+    monkeypatch.setattr(bot, "_vokabular_cache", (0.0, ""))
 
     assert await bot._transkribieren(b"x", "voice", None) == "fertig"
     assert gesehen[0]["initial_prompt"] == "Traccoon, GameProj, ABC-31."
@@ -150,6 +151,7 @@ async def test_ohne_vokabular_kein_feld(monkeypatch):
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
     monkeypatch.setattr(bot, "VOICE_VOKABULAR", "")
+    monkeypatch.setattr(bot, "_vokabular_cache", (0.0, ""))
 
     await bot._transkribieren(b"x", "voice", None)
     assert "initial_prompt" not in gesehen[0]
