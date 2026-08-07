@@ -213,7 +213,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                     <F label="max_turns Exec"><input type="number" value={edit.max_turns_execution} onChange={(e) => setEdit({ ...edit, max_turns_execution: +e.target.value })} className={inp} /></F>
                     <F label="max_tokens"><input type="number" value={edit.max_tokens} onChange={(e) => setEdit({ ...edit, max_tokens: +e.target.value })} className={inp} /></F>
                   </div>
-                  <F label="Reasoning-Effort (codex/openai: leer/low/medium/high)">
+                  <F label="Denk-Tiefe (leer=Standard, low/medium/high/xhigh/max) — teilt sich max_tokens mit der Antwort">
                     <input value={edit.effort || ""} onChange={(e) => setEdit({ ...edit, effort: e.target.value })} placeholder="leer = Default" className={inp} />
                   </F>
                 </div>

@@ -443,6 +443,10 @@ class AgentDef:
     # Fehlte hier, obwohl der Lauf den Wert liest — jeder Lauf, der die Stelle erreichte,
     # starb an AttributeError.
     max_context_tokens: int | None = None
+    # Denk-Tiefe (low|medium|high|xhigh|max, leer = Anbieter-Standard `high`). Das Denken
+    # teilt sich `max_tokens` mit der sichtbaren Antwort — wer viel zu lesen, aber wenig zu
+    # schreiben hat (der Prüfer), fährt mit einer niedrigeren Stufe sicherer.
+    effort: str = ""
 
     def tool_allowed(self, name: str) -> bool:
         # Loop-/Steuer-Tools sind Agent-Mechanik, nicht durch die Allowlist beschränkt.
@@ -467,6 +471,7 @@ def agent_def_from_row(row: AgentDefinition, mode: str) -> AgentDef:
         allowed_skills=list(row.allowed_skills or []),
         autoload_skills=list(row.autoload_skills or []), delegate_to=list(row.delegate_to or []),
         learns=bool(row.learns), max_context_tokens=row.max_context_tokens,
+        effort=(row.effort or "").strip(),
     )
 
 
@@ -830,7 +835,10 @@ async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | No
                                  tools=list(MEMORY_TOOLS), temperature=agent.temperature,
                                  max_tokens=1024, fallback=agent.fallback,
                                  fallback_model=agent.fallback_model, tokens=tokens,
-                                 base_urls=base_urls)
+                                 # 1024 Tokens sind für Denken + Notiz zu wenig: mit der
+                                 # Standardstufe verbraucht das Denken allein das Budget und
+                                 # die Rückschau kommt leer zurück.
+                                 base_urls=base_urls, effort="low")
         in_tok += int(resp.usage.get("input_tokens", 0) or 0)
         out_tok += int(resp.usage.get("output_tokens", 0) or 0)
         cache_read += int(resp.cache_read_tokens or 0)
@@ -1074,7 +1082,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              max_tokens=agent.max_tokens, fallback=agent.fallback,
                                              fallback_model=agent.fallback_model,
                                              web_search=agent.web_search, tokens=tokens,
-                                             base_urls=base_urls)
+                                             base_urls=base_urls, effort=agent.effort)
                 except ProviderError as exc:
                     await protokoll("system", None, f"Provider-Fehler: {exc}", kind="system")
                     # Die bisherigen Züge sind bezahlt, auch wenn der letzte scheiterte —

@@ -6,12 +6,22 @@ kein Datei-AuthStore. Die OAuth-Details sind zwingend für den Subscription-Toke
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 
 import httpx
 
 from .base import ChatResponse, Provider, ProviderError, ToolCall
+
+log = logging.getLogger("traccoon.providers.claude")
+
+
+class _Abgeschnitten(ProviderError):
+    """Antwort lief in `max_tokens` (Denken hat das Budget gefressen) — intern, damit der
+    Rettungsversuch sie von echten Provider-Fehlern unterscheiden kann. Nach außen bleibt
+    es ein gewöhnlicher (retrybarer) ProviderError."""
+
 
 IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude."
 _BETAS = "oauth-2025-04-20,claude-code-20250219"
@@ -149,7 +159,8 @@ class AnthropicProvider(Provider):
     async def chat(self, *, model: str, messages: list[dict[str, Any]],
                    tools: list[dict[str, Any]] | None = None,
                    temperature: float = 0.3, max_tokens: int = 4096,
-                   web_search: bool = False, auth_token: str | None = None) -> ChatResponse:
+                   web_search: bool = False, auth_token: str | None = None,
+                   effort: str = "") -> ChatResponse:
         system_blocks, a_msgs, a_tools = _translate(messages, tools)
         body: dict[str, Any] = {
             "model": model or self.model,
@@ -157,6 +168,12 @@ class AnthropicProvider(Provider):
             "system": system_blocks,
             "messages": a_msgs,
         }
+        # Denk-Tiefe. Ohne dieses Feld denkt sonnet-5/opus-5 mit der Standardstufe `high`
+        # — und das Denken teilt sich `max_tokens` mit der sichtbaren Antwort. Genau daran
+        # starben die Läufe 744 (Prüfer) und 752 (Entwickler): Budget im Denken verbraucht,
+        # Antwort abgeschnitten. Eine niedrigere Stufe am Agenten ist der saubere Hebel.
+        if effort:
+            body["output_config"] = {"effort": effort}
         all_tools = list(a_tools or [])
         if web_search:
             all_tools.append(_web_search_tool(model or self.model))
@@ -164,6 +181,22 @@ class AnthropicProvider(Provider):
             body["tools"] = all_tools
             body["tool_choice"] = {"type": "auto"}
 
+        data = await self._post(body, auth_token)
+        try:
+            return self._parse(data)
+        except _Abgeschnitten:
+            # Rettungsversuch: dasselbe Budget, aber ohne Denken — dann geht es vollständig
+            # in die sichtbare Antwort. Besser eine Antwort ohne Denkschritt als ein Lauf,
+            # der nach 41 Iterationen an einem Formatfehler stirbt.
+            zweiter = dict(body)                  # eigener Body: der erste bleibt unverändert
+            zweiter["thinking"] = {"type": "disabled"}
+            if effort in ("xhigh", "max"):
+                zweiter.pop("output_config", None)   # „disabled" ist oberhalb `high` ein 400er
+            log.warning("claude: Antwort bei max_tokens (%d) abgeschnitten — zweiter Versuch ohne Denken",
+                        max_tokens)
+            return self._parse(await self._post(zweiter, auth_token), gerettet=True)
+
+    async def _post(self, body: dict[str, Any], auth_token: str | None) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post("https://api.anthropic.com/v1/messages",
@@ -182,9 +215,9 @@ class AnthropicProvider(Provider):
             retryable = resp.status_code in (429, 500, 502, 503, 504, 529)
             raise ProviderError(f"claude: HTTP {resp.status_code}: {resp.text[:400]}",
                                 status=resp.status_code, retryable=retryable, retry_after=retry_after)
-        return self._parse(resp.json())
+        return resp.json()
 
-    def _parse(self, data: dict[str, Any]) -> ChatResponse:
+    def _parse(self, data: dict[str, Any], *, gerettet: bool = False) -> ChatResponse:
         text_parts: list[str] = []
         calls: list[ToolCall] = []
         oai_calls: list[dict[str, Any]] = []
@@ -209,10 +242,11 @@ class AnthropicProvider(Provider):
         # „leere Antwort", sondern eine abgeschnittene → klar (retrybar) melden statt still
         # als Leerlauf durchzureichen (sonst Fehldiagnose „Leere Modell-Antwort").
         if data.get("stop_reason") == "max_tokens" and (calls or not text.strip()):
-            raise ProviderError(
+            raise _Abgeschnitten(
                 "claude: Antwort bei max_tokens abgeschnitten – unvollständig "
-                "(Tool-Argumente oder komplett leer, Budget im Thinking verbraucht). "
-                "max_tokens erhöhen.", retryable=True)
+                "(Tool-Argumente oder komplett leer, Budget im Thinking verbraucht)"
+                + (" — auch ohne Denken. max_tokens erhöhen oder Aufgabe kleiner schneiden."
+                   if gerettet else "."), retryable=True)
         raw_msg: dict[str, Any] = {"role": "assistant", "content": text or None}
         if oai_calls:
             raw_msg["tool_calls"] = oai_calls

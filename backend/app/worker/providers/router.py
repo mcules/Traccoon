@@ -79,7 +79,7 @@ class Router:
                    web_search: bool = False,
                    tokens: dict[str, str | None] | None = None,
                    base_urls: dict[str, str | None] | None = None,
-                   extra_body: dict | None = None) -> ChatResponse:
+                   extra_body: dict | None = None, effort: str = "") -> ChatResponse:
         tokens = tokens or {}
         base_urls = base_urls or {}
         raw_chain = [provider] + ([fallback] if fallback and fallback != provider else [])
@@ -106,6 +106,10 @@ class Router:
                     # Felder wie `chat_template_kwargs`). Die Subscription-Provider bekommen
                     # es NICHT — dort wäre es ein unbekanntes Feld und damit ein 400er.
                     zusatz = {"extra_body": extra_body} if extra_body and prov in _OPENAI else {}
+                    # Denk-Tiefe versteht nur Anthropic (`output_config.effort`). Bei einem
+                    # Fallback auf codex/openai fällt sie ersatzlos weg statt zu einem 400er.
+                    if effort and prov in _ANTHROPIC:
+                        zusatz["effort"] = effort
                     resp = await impl.chat(model=use_model, messages=messages, tools=tools,
                                            temperature=temperature, max_tokens=max_tokens,
                                            web_search=web_search, auth_token=token, **zusatz)
