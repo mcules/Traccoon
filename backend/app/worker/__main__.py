@@ -260,6 +260,11 @@ async def handle(job: dict, redis: Redis) -> None:
         crows = (
             await db.execute(select(Comment).where(Comment.issue_id == issue.id).order_by(Comment.created_at))
         ).scalars().all()
+        # `agent_fail` bleibt draußen: das sind Pannenmeldungen (Worker-Neustart, Deadlock,
+        # abgeschnittene Antwort), kein Arbeitsstand. Im Ticket stehen sie weiterhin — im
+        # Prompt haben sie nichts verloren, denn ein Agent sucht darin nach seiner Aufgabe.
+        # Genau so entstand am 2026-08-07 die Eskalation im Provider-Router: gelesen als
+        # Auftrag, umgesetzt, in den Branch committet, mit dem Ticket nichts zu tun.
         comment_history = [
             {"label": c.author_label or ("User" if c.author_id else "Agent"),
              "role": "user" if c.author_id else "agent", "body": c.body}

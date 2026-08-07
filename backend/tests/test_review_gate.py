@@ -219,3 +219,32 @@ async def test_fortschritt_darf_weiterlaufen(db, monkeypatch):
 
     assert ergebnis.blocker_kind is None, "bestandenes Review darf nicht blockieren"
     assert runde["n"] == 4
+
+
+async def test_pannenmeldungen_erreichen_den_prompt_nicht(db):
+    """Eine Fehlermeldung der Infrastruktur ist kein Arbeitsauftrag.
+
+    Am 2026-08-07 las ein Agent „❌ Fehlgeschlagen: claude: Antwort bei max_tokens
+    abgeschnitten – max_tokens erhöhen" im Kommentarverlauf seines Tickets, hielt das für
+    seine Aufgabe und baute eine Eskalation in den Provider-Router — in einem Ticket über
+    einen fehlschlagenden Job. Solche Meldungen bleiben im Ticket sichtbar, aber aus dem
+    Prompt draußen.
+    """
+    from app.models.ticket import Comment
+    from app.services.workflow_engine import _agent_note
+
+    _, _, issue, _ = await _projekt_mit_ticket(db)
+    await _agent_note(db, issue.id, "failed", "Worker-Neustart: der Lauf war nicht zu Ende", False)
+    await _agent_note(db, issue.id, "loop_exhausted", "Erkenntnisse: der Job-Pfad hat eine Wanduhr", False)
+    await db.commit()
+
+    from sqlalchemy import select
+    rows = (await db.execute(select(Comment).where(Comment.issue_id == issue.id))).scalars().all()
+    arten = {c.kind: c.body for c in rows}
+
+    assert "agent_fail" in arten and "Worker-Neustart" in arten["agent_fail"]
+    assert "agent" in arten and "Erkenntnisse" in arten["agent"]
+    # Der Prompt-Verlauf filtert exakt auf `kind == "agent"` (siehe worker/__main__.py).
+    verlauf = [c.body for c in rows if c.kind == "agent"]
+    assert not any("Worker-Neustart" in b for b in verlauf)
+    assert any("Erkenntnisse" in b for b in verlauf)
