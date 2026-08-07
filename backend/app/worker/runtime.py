@@ -444,6 +444,23 @@ async def _start_run(db: AsyncSession, issue_id: int, agent: str, phase: str, pr
     # ans Ticket autorisieren kann — projektlose Läufe (Job, Assistent) hätten dort ohnehin
     # nichts zu holen. Der ganze Lauf wird zurückgegeben statt nur der id: der Aufrufer baut
     # daraus den `RunCtx`, und ein zweites Nachladen wäre nur eine zweite Wahrheit.
+    # Ein älterer Lauf zur SELBEN task_id kann nicht mehr leben: die In-flight-Sperre lässt
+    # eine task_id nur einmal gleichzeitig zu. Steht dort noch „running", ist es eine
+    # Karteileiche aus einem abgebrochenen Worker — sie hier zu schließen ist genauer als
+    # jede Zeitgrenze. Die Aufräumung beim Worker-Start greift erst nach `STALE_GRACE_SEC`
+    # und ließ genau die Fälle stehen, die der Neustart selbst erzeugt hat (Lauf 714 am
+    # 2026-08-07: acht Sekunden alt, damit unter der Frist, danach für immer „läuft").
+    # ABER nur für einen Lauf der obersten Ebene: ein delegierter Unterlauf trägt dieselbe
+    # task_id wie sein Elternteil (Verbund-Schlüssel fürs Büro) und startet, WÄHREND der
+    # Elternlauf läuft — der darf hier auf keinen Fall abgeräumt werden.
+    if task_id and parent_run_id is None and not spawn_depth:
+        alt = (await db.execute(select(Run).where(
+            Run.task_id == task_id, Run.status == "running"))).scalars().all()
+        for r in alt:
+            r.status = "failed"
+            r.finished_at = _now()
+            r.error = ((r.error or "") + " Abgebrochen: derselbe Auftrag wurde neu "
+                       "gestartet (Worker-Neustart).").strip()
     run = Run(issue_id=issue_id, agent=agent, phase=phase, provider=provider, model=model,
               status="running", parent_run_id=parent_run_id, continuation_index=continuation_index,
               task_id=task_id, project_id=project_id, owner_id=owner_id,
