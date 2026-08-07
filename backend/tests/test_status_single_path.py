@@ -176,3 +176,49 @@ async def test_beendeter_lauf_ruehrt_den_zustand_nicht_an(db):
     await reconcile(db)
     await db.refresh(issue)
     assert issue.agent_status == TicketAgentStatus.hold
+
+
+async def test_stehengebliebene_spalte_wird_nachgezogen(db):
+    """Der Zustand kann stimmen und die SPALTE trotzdem falsch stehen.
+
+    TRA-32 am 2026-08-07: das Ticket wurde aus dem Störungs-Zweig heraus fortgesetzt, der
+    Agent lief mit `in_progress` — die Board-Spalte blieb auf „Warten", weil sie beim Parken
+    gesetzt und nie wieder angefasst wurde. Ein Abgleich, der nur `agent_status` prüft, sieht
+    daran nichts Falsches.
+    """
+    from app.models.agents import Run
+    from app.models.enums import TicketAgentStatus
+    from app.services.artifacts import reconcile
+    from test_lifecycle_process import _projekt_mit_ticket
+
+    _, _, issue, stats = await _projekt_mit_ticket(db, TicketAgentStatus.in_progress)
+    issue.status_id = stats["Warten"].id           # Spalte hinkt hinterher
+    db.add(Run(issue_id=issue.id, agent="developer", phase="execution", status="running"))
+    await db.commit()
+
+    await reconcile(db)
+    await db.refresh(issue)
+
+    assert issue.status_id == stats["In Arbeit"].id
+    assert issue.agent_status == TicketAgentStatus.in_progress
+    assert issue.agent_working is True
+
+
+async def test_abgenommenes_ticket_bleibt_fertig(db):
+    """Gegenprobe: ein manuell abgenommenes Ticket zieht der Abgleich nicht zurück in die
+    Arbeit, auch wenn noch ein Lauf nachläuft."""
+    from app.models.agents import Run
+    from app.models.enums import TicketAgentStatus
+    from app.services.artifacts import reconcile
+    from test_lifecycle_process import _projekt_mit_ticket
+
+    _, _, issue, stats = await _projekt_mit_ticket(db, TicketAgentStatus.done)
+    issue.status_id = stats["Fertig"].id
+    db.add(Run(issue_id=issue.id, agent="developer", phase="execution", status="running"))
+    await db.commit()
+
+    await reconcile(db)
+    await db.refresh(issue)
+
+    assert issue.status_id == stats["Fertig"].id
+    assert issue.agent_status == TicketAgentStatus.done
