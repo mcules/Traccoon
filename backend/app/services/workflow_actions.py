@@ -420,6 +420,10 @@ async def _set_cap_baseline(db, inst: WorkflowInstance) -> dict:
 
     Gehört an jede menschliche Freigabe — alte Fehlversuche (z. B. 429-Abbrüche) dürfen
     legitime Neu-Arbeit nicht sofort in den Cap laufen lassen.
+
+    Aus demselben Grund beginnt hier auch die Fortsetzungs-Zählung von vorn: Planung und
+    Umsetzung teilen sich einen Zähler, und eine zähe Planung würde der Umsetzung sonst
+    ihr Budget wegessen, bevor sie die erste Zeile geschrieben hat.
     """
     from sqlalchemy import func, select
 
@@ -429,7 +433,10 @@ async def _set_cap_baseline(db, inst: WorkflowInstance) -> dict:
         return {"action": "set_cap_baseline", "applied": False}
     issue.cap_baseline_run_id = (
         await db.execute(select(func.max(Run.id)).where(Run.issue_id == issue.id))).scalar()
-    return {"action": "set_cap_baseline", "baseline": issue.cap_baseline_run_id}
+    issue.continuation_count = 0
+    inst.context = {**(inst.context or {}), "continuation": 0, "continuation_hint": ""}
+    return {"action": "set_cap_baseline", "baseline": issue.cap_baseline_run_id,
+            "continuation": 0}
 
 
 async def _testenv(db, inst: WorkflowInstance, start: bool) -> dict:

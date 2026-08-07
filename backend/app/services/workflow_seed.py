@@ -30,7 +30,14 @@ log = logging.getLogger("workflow_seed")
 
 # Steigt, sobald sich ein ausgelieferter Graph ändert (nur zur Nachvollziehbarkeit —
 # veröffentlicht wird ohnehin nur bei echtem Graph-Unterschied).
-BUILTIN_REVISION = 7
+BUILTIN_REVISION = 8
+
+# So oft darf ein Agent an derselben Sache weitermachen, nachdem ihn eine Grenze
+# (Iterationen, Zeit, Token) beendet hat. Umsetzung darf länger dranbleiben als Planung:
+# sie hinterlässt Arbeit im Worktree, während eine Planung, die nach zehn Anläufen keinen
+# Plan hat, einen Menschen braucht — nicht den elften Anlauf.
+EXEC_FORTSETZUNGEN = 30
+PLAN_FORTSETZUNGEN = 10
 
 _COL = 260   # Spaltenabstand für Zweige
 _ROW = 130   # Zeilenabstand
@@ -94,6 +101,23 @@ def build_ticket_lifecycle() -> dict:
             "label": "Planung durch den Architekten",
             "agent_role": "plan_agent", "phase": "planning",
         }, "planung"),
+        # Dieselbe Bremse wie in der Umsetzung — sie fehlte hier schlicht. Die Rückkante
+        # „weiter planen" führte ungebremst auf `plan` zurück: TRA-31 riss am 2026-08-07
+        # jedes Mal nach 20 Iterationen (~90 s) das Limit und startete sofort den nächsten
+        # Lauf, ohne dass irgendetwas mitgezählt hätte. Gebremst hat das nur noch der
+        # Torwächter. Planung ist billiger als Umsetzung, aber nicht umsonst: Deckel
+        # niedriger (10 statt 30 Fortsetzungen).
+        _p("may_plan_continue", "decision", 1, 4, {
+            "label": "Weiterplanen?",
+            "branches": [
+                {"handle": "stop", "label": "anhalten", "guard": {"or": [
+                    {"==": [{"var": "project.auto_continue"}, False]},
+                    {">=": [{"var": "continuation"}, PLAN_FORTSETZUNGEN]},
+                ]}},
+                {"handle": "continue", "label": "weiter"},
+            ],
+            "default_handle": "continue",
+        }, "planung"),
         _p("st_plan_review", "auto_action", 0, 4,
            _action("set_status", "Status: Plan-Freigabe", status="plan_review",
                    reason="{{agent.hold_hint}}"), "planung"),
@@ -150,7 +174,7 @@ def build_ticket_lifecycle() -> dict:
                 {"handle": "stop", "label": "anhalten", "guard": {"or": [
                     {"==": [{"var": "agent.stalled"}, True]},
                     {"==": [{"var": "project.auto_continue"}, False]},
-                    {">=": [{"var": "continuation"}, 30]},
+                    {">=": [{"var": "continuation"}, EXEC_FORTSETZUNGEN]},
                 ]}},
                 {"handle": "continue", "label": "weiter"},
             ],
@@ -212,7 +236,9 @@ def build_ticket_lifecycle() -> dict:
 
         _e("st_planning", "plan"),
         _e("plan", "st_plan_review", "planned", "Plan da"),
-        _e("plan", "st_planning", "loop_exhausted", "weiter planen"),
+        _e("plan", "may_plan_continue", "loop_exhausted", "Limit erreicht"),
+        _e("may_plan_continue", "st_planning", "continue", "weiter planen"),
+        _e("may_plan_continue", "st_plan_stop", "stop", "anhalten"),
         _e("plan", "st_plan_stop", "blocked", "Rückfrage"),
         _e("plan", "st_plan_stop", "failed", "Fehler"),
         # Auffangnetz für unbekannte Lauf-Ergebnisse (Standard-Abbildung → „err").

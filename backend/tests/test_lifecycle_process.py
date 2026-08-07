@@ -197,3 +197,52 @@ async def test_freigabe_bleibt_dem_menschen_vorbehalten(client, db, seeded, redi
     offen = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.status == WorkflowStepStatus.waiting))).scalars().all()
     assert [s.node_id for s in offen] == ["approve_plan"]
+
+
+async def test_planung_laeuft_nicht_endlos_im_kreis(db, seeded, redis_stub):
+    """Auch die Planung hat ein Fortsetzungs-Budget.
+
+    Die Rückkante „weiter planen" führte ungebremst auf `plan` zurück: ein Architekt, der
+    jedes Mal sein Iterations-Limit reißt, startete im Neunzig-Sekunden-Takt den nächsten
+    Lauf, und gezählt hat das niemand (TRA-31 am 2026-08-07). Nach `PLAN_FORTSETZUNGEN`
+    Anläufen ist Schluss — dann braucht es einen Menschen, nicht den elften Versuch.
+    """
+    from app.services.workflow_seed import PLAN_FORTSETZUNGEN
+
+    owner, proj, issue, _ = await _projekt_mit_ticket(db)
+    redis_stub["*"] = {"status": "loop_exhausted", "summary": "komme nicht weiter"}
+
+    from app.services.lifecycle_flow import start_lifecycle
+    await start_lifecycle(db, issue, owner.id)
+    await enginemod.drain()
+    await db.refresh(issue)
+
+    plan_schritte = await _schritte(db, "plan")
+    assert len(plan_schritte) <= PLAN_FORTSETZUNGEN + 1, "Planung dreht sich ungebremst"
+    assert issue.continuation_count >= PLAN_FORTSETZUNGEN
+    assert issue.agent_status == TicketAgentStatus.hold      # wartet auf einen Menschen
+    wartend = (await db.execute(select(WorkflowStepRun).where(
+        WorkflowStepRun.status == WorkflowStepStatus.waiting))).scalars().all()
+    assert [s.node_id for s in wartend] == ["wait_plan"]
+
+
+async def test_freigabe_setzt_die_fortsetzungs_zaehlung_zurueck(db, seeded, redis_stub):
+    """Planung und Umsetzung teilen sich einen Zähler — eine zähe Planung darf der
+    Umsetzung nicht ihr Budget wegessen, bevor sie die erste Zeile geschrieben hat."""
+    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
+    issue.plan = "Plan"
+    issue.continuation_count = 7
+    await db.commit()
+    redis_stub["*"] = {"status": "done", "summary": "fertig", "worktree_fingerprint": "bbb"}
+
+    from app.services.lifecycle_flow import start_lifecycle
+    from app.services.workflow_actions import run_action
+    inst = await start_lifecycle(db, issue, owner.id, entry="exec")
+    await enginemod.drain()
+
+    await run_action(db, inst, {"id": "cap_baseline", "type": "auto_action", "data": {
+        "config": {"action": {"action": "set_cap_baseline", "params": {}}}}})
+    await db.commit()
+    await db.refresh(issue)
+    assert issue.continuation_count == 0
+    assert (inst.context or {}).get("continuation") == 0
