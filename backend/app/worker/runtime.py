@@ -966,6 +966,19 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     if mode == "plan" and issue.get("plan"):
         messages.append({"role": "user", "content":
                          "# Bestehender Plan (überarbeite ihn anhand der Kommentare)\n\n" + issue["plan"]})
+    elif (plan_text := (issue.get("plan") or "").strip()):
+        # DER PLAN GEHÖRT IN DIE AUSFÜHRUNG. Er wurde bisher zwar an `run_agent` übergeben,
+        # aber nur im Planungsmodus benutzt — der Entwickler arbeitete aus der
+        # Ticket-Beschreibung. Bei TRA-31 war die ein Symptombericht („finde die Ursache,
+        # werte job_runs aus"), während der freigegebene Plan die Ursache längst benannte,
+        # mit Datei und Zeilennummer. Ergebnis am 2026-08-07: drei Läufe, 155 Züge, keine
+        # Zeile Code — der Agent erarbeitete sich die fertige Analyse selbst noch einmal.
+        messages.append({"role": "user", "content":
+            "# Freigegebener Umsetzungsplan — das ist dein Auftrag\n\n" + plan_text +
+            "\n\nDieser Plan ist geprüft und freigegeben: seine Fundstellen sind belegt, "
+            "die Analyse ist getan. Arbeite ihn ab, statt sie zu wiederholen. Weiche nur ab, "
+            "wo der Code dem Plan widerspricht — und schreibe dann ins Ergebnis, was du "
+            "anders gemacht hast und warum."})
     if continuation_index > 0 and continuation_hint:
         messages.append({"role": "system", "content":
             f"## Fortsetzung (Runde {continuation_index})\nWorktree-Stand ist erhalten. Letzter Stand:\n"
