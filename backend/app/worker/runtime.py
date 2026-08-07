@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.agents import AgentDefinition, Run
@@ -970,6 +970,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         messages.append({"role": "system", "content":
             f"## Fortsetzung (Runde {continuation_index})\nWorktree-Stand ist erhalten. Letzter Stand:\n"
             f"{continuation_hint}\nArbeite direkt weiter, prüfe den Build-Status, schließe offene Schritte ab."})
+    elif mode != "plan" and issue.get("id"):
+        # Kein geordnetes Ende, keine Übergabe — und der Nachfolger fängt bei null an, obwohl
+        # der Worktree die halbe Arbeit schon trägt. Für den Abbruch (Worker-Neustart,
+        # Absturz) lässt sich die Übergabe aus den Daten bauen: welche Dateien der Vorgänger
+        # angefasst hat, steht in seinen Schrittzeilen. Kostet keinen Modellzug.
+        if (abbruch := await _abbruch_uebergabe(db, int(issue["id"]), run_id)):
+            messages.append({"role": "system", "content": abbruch})
     if comment_history:
         thread = "\n".join(f"- **{c['label']}** ({c['role']}): {c['body']}" for c in comment_history)
         messages.append({"role": "user", "content":
@@ -1454,6 +1461,51 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         await _end_run(db, run_id, "failed", error=str(exc), in_tok=in_tok, out_tok=out_tok,
                        cache_read=cache_read, ctx=ctx)
         return RunResult("failed", str(exc), 0, run_id=run_id)
+
+
+ABBRUCH_FENSTER_MIN = 120
+
+
+async def _abbruch_uebergabe(db: AsyncSession, issue_id: int, run_id: int) -> str:
+    """Was der abgebrochene Vorgänger schon getan hat — aus den Schrittzeilen, ohne Modellzug.
+
+    Ein Lauf, der geordnet endet, übergibt (`compaction.uebergabe`). Ein abgebrochener nicht:
+    beim Worker-Neustart am 2026-08-07 verloren die Läufe 753/754 ihren Verlauf, die
+    Nachfolger begannen bei null — und lasen dieselben Dateien noch einmal, obwohl ihre
+    Änderungen längst im Worktree standen. Die Fakten dazu liegen in der Datenbank; sie zu
+    lesen kostet eine Abfrage statt einer Zusammenfassung.
+
+    Bewusst nur Fakten (Dateien, Rundenzahl, letzter Satz) und kein gedeuteter Zwischenstand:
+    was der Vorgänger vorhatte, weiß niemand mehr — was er angefasst hat, steht fest.
+    """
+    import datetime as _dt
+
+    from ..models.agents import Run, RunStep
+    grenze = _dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=ABBRUCH_FENSTER_MIN)
+    vor = (await db.execute(
+        select(Run).where(Run.issue_id == issue_id, Run.id != run_id, Run.status == "failed",
+                          Run.finished_at.isnot(None), Run.finished_at > grenze)
+        .order_by(Run.id.desc()).limit(1))).scalars().first()
+    if vor is None:
+        return ""
+    schritte = (await db.execute(
+        select(RunStep.tool_name, RunStep.target).where(
+            RunStep.run_id == vor.id, RunStep.kind == "tool_result",
+            RunStep.tool_name.in_(("fs_write", "fs_edit")), RunStep.ok.is_(True)))).all()
+    dateien = sorted({t for _, t in schritte if t})
+    if not dateien:
+        return ""      # nichts geschrieben → nichts zu übergeben, der Nachfolger sucht selbst
+    zuege = (await db.scalar(select(func.count()).select_from(RunStep).where(
+        RunStep.run_id == vor.id, RunStep.role == "assistant"))) or 0
+    letzter = (vor.last_text or "").strip()[:600]
+    return ("## Vorlauf abgebrochen — der Worktree trägt seine Arbeit bereits\n"
+            f"Der vorige Lauf (#{vor.id}) endete nach {zuege} Zügen unfreiwillig "
+            f"({(vor.error or 'ohne Meldung').strip()[:160]}).\n"
+            "Bereits geänderte Dateien (Stand liegt im Worktree, NICHT neu schreiben ohne "
+            "vorher zu lesen):\n" + "\n".join(f"- {d}" for d in dateien[:40]) +
+            (f"\n\nSein letzter Satz war:\n{letzter}" if letzter else "") +
+            "\n\nLies diese Dateien, bevor du sie erneut änderst, und mache dort weiter, "
+            "statt von vorn anzufangen.")
 
 
 async def _open_tasks(db: AsyncSession) -> str:
