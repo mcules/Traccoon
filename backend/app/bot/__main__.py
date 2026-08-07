@@ -47,9 +47,36 @@ WHISPER_URL = os.getenv("WHISPER_URL", "http://whisper:9000")
 VOICE_MAX_SECONDS = int(os.getenv("TELEGRAM_VOICE_MAX_SECONDS", "600"))
 # Fallback-Obergrenze über die Dateigröße, falls Telegram kein `duration` mitliefert (kommt
 # bei manchen `audio`-Uploads ohne Metadaten vor) — ohne sie wäre die Längenprüfung dann
-# wirkungslos. Grober Anhalt: OGG/Opus-Sprachnachrichten liegen bei ~1 MB je Minute; 25 MB
-# deckt die 10-Minuten-Grenze mit reichlich Luft für andere Codecs/Bitraten ab.
-VOICE_MAX_BYTES = int(os.getenv("TELEGRAM_VOICE_MAX_BYTES", str(25 * 1024 * 1024)))
+# wirkungslos. Grober Anhalt: OGG/Opus-Sprachnachrichten liegen bei ~1 MB je Minute.
+# WICHTIG: die Bot-API (ohne eigenen lokalen Bot-API-Server) lehnt `getFile`/den Download
+# JEDER Datei über 20 MB ab — ein Default darüber (z. B. 25 MB) würde Dateien zwischen 20
+# und 25 MB die Größenprüfung passieren lassen, die dann erst beim Download mit einer
+# technischen Exception scheitern und die irreführende „konnte nicht geladen werden"-Meldung
+# statt der beabsichtigten „zu groß"-Meldung auslösen. Deshalb 19 MB Default (Sicherheits-
+# abstand zum harten 20-MB-Limit).
+VOICE_MAX_BYTES = int(os.getenv("TELEGRAM_VOICE_MAX_BYTES", str(19 * 1024 * 1024)))
+
+
+# Whitelist bekannter Audio-Container für `audio`-Uploads (mime_type → Dateiendung).
+# `mime_type` ist ein vom SENDENDEN CLIENT frei befülltes Metadatum aus der Telegram-Nachricht
+# — keine verifizierte serverseitige Eigenschaft. Würde der Rohwert ungeprüft als HTTP-
+# Content-Type des Multipart-Teils an den Whisper-Container weitergereicht, könnte ein
+# präparierter `mime_type` (Kontroll-/Sonderzeichen, beliebiger String) dort landen. Deshalb
+# nur bekannte, harmlose Werte durchlassen — alles andere fällt auf einen sicheren Default.
+_AUDIO_MIME_WHITELIST: dict[str, str] = {
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/mp4": "m4a",
+    "audio/x-m4a": "m4a",
+    "audio/aac": "aac",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+    "audio/opus": "opus",
+    "audio/webm": "weba",
+    "audio/flac": "flac",
+    "audio/x-flac": "flac",
+}
 
 
 def _upload_name_typ(medienart: str, mime_type: str | None) -> tuple[str, str]:
@@ -60,16 +87,20 @@ def _upload_name_typ(medienart: str, mime_type: str | None) -> tuple[str, str]:
     falschen Erweiterung/eines falschen Content-Type nicht, schlägt die Transkription
     fehl oder liefert Müll — und der Nutzer bekommt fälschlich „keine Sprache erkannt"
     statt der wahren Ursache.
+
+    `mime_type` kommt UNGEPRÜFT von Telegram (letztlich vom sendenden Client) — deshalb
+    gegen `_AUDIO_MIME_WHITELIST` prüfen statt den Rohwert direkt als HTTP-Content-Type
+    zu übernehmen. Unbekannter/verdächtiger Wert → sicherer Default statt Weiterreichen.
     """
     if medienart == "video_note":
         return "video_note.mp4", "video/mp4"
     if medienart == "audio":
-        # Telegram liefert bei `audio` i. d. R. den echten `mime_type` (z. B. audio/mpeg,
-        # audio/mp4) mit — Dateiendung passend zum Subtyp ableiten, sonst generisch lassen.
-        mime = mime_type or "audio/mpeg"
-        endung = mime.split("/", 1)[-1].split(";")[0] or "mp3"
-        if endung == "mpeg":
-            endung = "mp3"
+        mime = (mime_type or "").strip().lower()
+        endung = _AUDIO_MIME_WHITELIST.get(mime)
+        if endung is None:
+            # Nicht gelistet (unbekanntes Format ODER manipulierter Wert) — sicherer
+            # Default statt Rohwert ungeprüft in den Multipart-Header zu übernehmen.
+            return "audio.mp3", "audio/mpeg"
         return f"audio.{endung}", mime
     return "voice.ogg", "audio/ogg"
 
@@ -260,6 +291,70 @@ async def _acting_user(db, chat_id: str) -> User | None:
     return (await db.execute(select(User).where(User.global_role == GlobalRole.admin).order_by(User.id))).scalars().first()
 
 
+async def _voice_transkript(bot, m) -> str | None:
+    """Sprachnachricht (voice/audio/video_note) in Text auflösen — inkl. sichtbarer
+    Rückmeldung, damit Fehlhörungen sofort auffallen (Lehre aus 2026-07-29: lieber
+    ehrlich absagen als still bleiben).
+
+    Rückgabe: None = `m` ist gar keine Sprachnachricht (Aufrufer macht normal weiter).
+    "" = Sprachnachricht, aber nicht verarbeitbar — diese Funktion hat SELBST schon die
+    Absage mit Grund geschickt, der Aufrufer bricht einfach ab. Nichtleerer String =
+    Transkript, exakt wie eingehender Text weiterzureichen.
+
+    `bot` als expliziter Parameter (statt Closure-Zugriff aus `run_bot()`) — sonst wäre
+    diese Funktion nur mit einem echten aiogram-Bot testbar, genau das Gegenteil vom
+    Muster `_zustellen`/`_gif_masse`.
+    """
+    media = m.voice or m.audio or m.video_note
+    if media is None:
+        return None
+    dauer = getattr(media, "duration", 0) or 0
+    groesse = getattr(media, "file_size", 0) or 0
+    # Beide Signale sind UNABHÄNGIG voneinander zu prüfen, nicht als Alternative: eine
+    # (ggf. gefälschte oder schlicht falsche) kurze `duration` bei tatsächlich sehr
+    # großer `file_size` darf die Größenprüfung nicht überspringen — sonst würde genau
+    # das Speicher-/CPU-Risiko eintreten, das diese Prüfung verhindern soll.
+    if dauer and dauer > VOICE_MAX_SECONDS:
+        await m.answer(f"🙉 Sprachnachricht zu lang ({dauer // 60} Min., Grenze "
+                       f"{VOICE_MAX_SECONDS // 60} Min.) — bitte kürzer aufnehmen oder "
+                       f"als Text schicken.")
+        return ""
+    if groesse and groesse > VOICE_MAX_BYTES:
+        await m.answer(f"🙉 Datei zu groß ({groesse // (1024 * 1024)} MB, Grenze "
+                       f"{VOICE_MAX_BYTES // (1024 * 1024)} MB) — bitte kürzer "
+                       f"aufnehmen oder als Text schicken.")
+        return ""
+    if not dauer and not groesse:
+        # Weder `duration` noch `file_size` verwertbar — OHNE eine der beiden
+        # Prüfungen wäre eine beliebig große Datei ungebremst komplett in den
+        # Speicher geladen und an Whisper weitergereicht (Speicher-/CPU-Risiko).
+        # Lieber ehrlich absagen statt ungeprüft zu laden.
+        await m.answer("🙉 Länge/Größe der Datei nicht bestimmbar — bitte als Text "
+                       "schicken oder als reguläre Sprachnachricht erneut aufnehmen.")
+        return ""
+    try:
+        datei = await bot.get_file(media.file_id)
+        puffer = await bot.download_file(datei.file_path)
+        roh = puffer.read() if hasattr(puffer, "read") else bytes(puffer)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Sprachnachricht %s nicht ladbar: %s", media.file_id, exc)
+        await m.answer("🙉 Sprachnachricht konnte nicht geladen werden — bitte als Text schicken.")
+        return ""
+    medienart = "voice" if m.voice else ("video_note" if m.video_note else "audio")
+    mime_type = getattr(media, "mime_type", None)
+    try:
+        text = await _transkribieren(roh, medienart=medienart, mime_type=mime_type)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Transkription fehlgeschlagen: %s", exc)
+        await m.answer(f"🙉 Transkription nicht möglich ({exc}) — bitte als Text schicken.")
+        return ""
+    if not text:
+        await m.answer("🙉 Ich konnte darin keine Sprache erkennen — bitte als Text schicken.")
+        return ""
+    await m.answer(f"🎙 verstanden: {safe(text)}")
+    return text
+
+
 async def run_bot() -> None:
     if not TOKEN:
         log.warning("Kein TELEGRAM_BOT_TOKEN — Bot im Ruhemodus.")
@@ -402,65 +497,6 @@ async def run_bot() -> None:
                                    agent="gameproj-operator")
         await m.answer("🛰 …")
 
-    async def _voice_transkript(m: Message) -> str | None:
-        """Sprachnachricht (voice/audio/video_note) in Text auflösen — inkl. sichtbarer
-        Rückmeldung, damit Fehlhörungen sofort auffallen (Lehre aus 2026-07-29: lieber
-        ehrlich absagen als still bleiben).
-
-        Rückgabe: None = `m` ist gar keine Sprachnachricht (Aufrufer macht normal weiter).
-        "" = Sprachnachricht, aber nicht verarbeitbar — diese Funktion hat SELBST schon die
-        Absage mit Grund geschickt, der Aufrufer bricht einfach ab. Nichtleerer String =
-        Transkript, exakt wie eingehender Text weiterzureichen.
-        """
-        media = m.voice or m.audio or m.video_note
-        if media is None:
-            return None
-        dauer = getattr(media, "duration", 0) or 0
-        groesse = getattr(media, "file_size", 0) or 0
-        # Beide Signale sind UNABHÄNGIG voneinander zu prüfen, nicht als Alternative: eine
-        # (ggf. gefälschte oder schlicht falsche) kurze `duration` bei tatsächlich sehr
-        # großer `file_size` darf die Größenprüfung nicht überspringen — sonst würde genau
-        # das Speicher-/CPU-Risiko eintreten, das diese Prüfung verhindern soll.
-        if dauer and dauer > VOICE_MAX_SECONDS:
-            await m.answer(f"🙉 Sprachnachricht zu lang ({dauer // 60} Min., Grenze "
-                           f"{VOICE_MAX_SECONDS // 60} Min.) — bitte kürzer aufnehmen oder "
-                           f"als Text schicken.")
-            return ""
-        if groesse and groesse > VOICE_MAX_BYTES:
-            await m.answer(f"🙉 Datei zu groß ({groesse // (1024 * 1024)} MB, Grenze "
-                           f"{VOICE_MAX_BYTES // (1024 * 1024)} MB) — bitte kürzer "
-                           f"aufnehmen oder als Text schicken.")
-            return ""
-        if not dauer and not groesse:
-            # Weder `duration` noch `file_size` verwertbar — OHNE eine der beiden
-            # Prüfungen wäre eine beliebig große Datei ungebremst komplett in den
-            # Speicher geladen und an Whisper weitergereicht (Speicher-/CPU-Risiko).
-            # Lieber ehrlich absagen statt ungeprüft zu laden.
-            await m.answer("🙉 Länge/Größe der Datei nicht bestimmbar — bitte als Text "
-                           "schicken oder als reguläre Sprachnachricht erneut aufnehmen.")
-            return ""
-        try:
-            datei = await bot.get_file(media.file_id)
-            puffer = await bot.download_file(datei.file_path)
-            roh = puffer.read() if hasattr(puffer, "read") else bytes(puffer)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Sprachnachricht %s nicht ladbar: %s", media.file_id, exc)
-            await m.answer("🙉 Sprachnachricht konnte nicht geladen werden — bitte als Text schicken.")
-            return ""
-        medienart = "voice" if m.voice else ("video_note" if m.video_note else "audio")
-        mime_type = getattr(media, "mime_type", None)
-        try:
-            text = await _transkribieren(roh, medienart=medienart, mime_type=mime_type)
-        except Exception as exc:  # noqa: BLE001
-            log.warning("Transkription fehlgeschlagen: %s", exc)
-            await m.answer(f"🙉 Transkription nicht möglich ({exc}) — bitte als Text schicken.")
-            return ""
-        if not text:
-            await m.answer("🙉 Ich konnte darin keine Sprache erkennen — bitte als Text schicken.")
-            return ""
-        await m.answer(f"🎙 verstanden: {safe(text)}")
-        return text
-
     @dp.message(F.reply_to_message)
     async def _reply(m: Message):
         if not await _allowed(m.from_user.id):
@@ -470,7 +506,7 @@ async def run_bot() -> None:
         # Antwort per Sprachnachricht: gleicher Zitat-Bezug wie bei Text, nur transkribiert.
         text = m.text
         if text is None:
-            gehoert = await _voice_transkript(m)
+            gehoert = await _voice_transkript(bot, m)
             if gehoert is None:
                 await m.answer("🙉 Damit kann ich noch nichts anfangen — schick es mir als "
                                "Text oder Sprachnachricht.")
@@ -545,7 +581,7 @@ async def run_bot() -> None:
         # Assistenten. Lokal transkribiert (faster-whisper), kein Cloud-Aufruf.
         if not await _allowed(m.from_user.id):
             return
-        text = await _voice_transkript(m)
+        text = await _voice_transkript(bot, m)
         if not text:
             return   # None kommt hier nie vor (Filter greift nur bei Audio); "" = schon abgesagt
         await _chat_auftrag(m, text=text)

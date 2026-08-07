@@ -128,7 +128,10 @@ services:
       # unten) — kein Audio verlässt das Haus.
       WHISPER_URL: ${WHISPER_URL:-http://whisper:9000}
       TELEGRAM_VOICE_MAX_SECONDS: ${TELEGRAM_VOICE_MAX_SECONDS:-600}
-      TELEGRAM_VOICE_MAX_BYTES: ${TELEGRAM_VOICE_MAX_BYTES:-26214400}
+      # 19 MB Default (< Telegram-Bot-API-Hardlimit 20 MB für getFile/Download ohne eigenen
+      # Bot-API-Server) — darüber würde der Download scheitern statt der klaren "zu groß"-
+      # Meldung, siehe Kommentar in app/bot/__main__.py.
+      TELEGRAM_VOICE_MAX_BYTES: ${TELEGRAM_VOICE_MAX_BYTES:-19922944}
     volumes:
       - ./backend/app:/app/app
       # Lesend: `Notification.media_path` zeigt hierher. Ohne diesen Mount fällt der
@@ -150,7 +153,23 @@ services:
       ASR_ENGINE: faster_whisper
       ASR_MODEL: ${WHISPER_MODEL:-small}
     volumes:
+      # Modell-Cache: ohne diesen Mount lädt der Container das Modell (small ≈ 500 MB) bei
+      # JEDEM Neustart neu aus dem Netz — mit Mount bleibt es über Neustarts erhalten.
       - ./data/whisper:/root/.cache/whisper
+    # Explizit im `default`-Netz (kein eigener Eintrag nötig, Compose würde das auch ohne
+    # diese Zeile so setzen — hier bewusst sichtbar, weil genau darüber `telegram-bot` den
+    # Container unter `http://whisper:9000` erreicht; kein Port nach außen, kein Cloud-Zugriff).
+    networks:
+      - default
+    # `/docs` statt eines dedizierten `/health`: das Image (FastAPI/Swagger) garantiert diesen
+    # Pfad immer, ein `/health`-Endpunkt ist beim faster-whisper-Image nicht dokumentiert.
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:9000/docs', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
   shotter:
     build: ./shotter
