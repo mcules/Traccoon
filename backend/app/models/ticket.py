@@ -190,6 +190,11 @@ class Issue(TimestampMixin, Base):
     # Zähler für aufeinanderfolgende Merge-Konflikt-Runden beim Accept. Bremst den
     # accept→conflict→approved→re-dispatch-Loop: nach zu vielen Runden → hold (Mensch).
     merge_conflict_rounds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Verbrauchte Korrektur-Runden des Review-Gates. Stand bisher nur als Schleifenzähler im
+    # Worker-Prozess — ein Neustart mitten in Runde 2 begann wieder bei 1 (TRA-32 am
+    # 2026-08-07: prüfen → korrigieren → Neustart → prüfen → korrigieren …, ohne Ende in
+    # Sicht). Ein Zähler, der eine Grenze durchsetzen soll, gehört an das Ticket.
+    review_rounds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Splitting
     parent_ticket_id: Mapped[int | None] = mapped_column(

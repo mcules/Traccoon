@@ -15,8 +15,11 @@ class _Ctx:
     pass
 
 
-async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x"):
+async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x", runden=0):
     _, proj, issue, _ = await _projekt_mit_ticket(db)
+    if runden:
+        issue.review_rounds = runden
+        await db.commit()
     laeufe = []
 
     async def fake_run_agent(**kw):
@@ -81,3 +84,26 @@ async def test_bestandener_review_laesst_alles_stehen(db, monkeypatch):
     ergebnis, laeufe, _ = await _gate(db, monkeypatch, RunResult("done", "<review-ok/>"))
     assert laeufe == ["code_reviewer"]
     assert ergebnis.text == "fertig"
+
+
+async def test_verbrauchte_runden_ueberleben_den_neustart(db, monkeypatch):
+    """Der Runden-Zähler gehört ans Ticket, nicht in die Schleife.
+
+    TRA-32 am 2026-08-07: der Worker wurde mitten in Korrektur-Runde 2 neu gestartet, das
+    Gate begann wieder bei Runde 1 — prüfen → korrigieren → Neustart → prüfen → korrigieren.
+    Die Grenze, die den Menschen holen soll, wurde nie erreicht.
+    """
+    ergebnis, laeufe, _ = await _gate(
+        db, monkeypatch, RunResult("done", "1. Befund"), runden=worker.REVIEW_RUNDEN)
+
+    assert laeufe == [], "verbrauchte Runden dürfen keinen weiteren Lauf starten"
+    assert ergebnis.blocker_kind == "review"
+
+
+async def test_begonnene_runde_wird_sofort_verbucht(db, monkeypatch):
+    """Verbucht wird beim Start der Korrektur, nicht bei ihrem Ende — sonst zählt genau die
+    Runde nicht, die der Neustart trifft."""
+    _, laeufe, issue = await _gate(db, monkeypatch, RunResult("done", "1. Befund"))
+
+    assert "developer" in laeufe
+    assert issue.review_rounds >= 1
