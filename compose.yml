@@ -140,6 +140,9 @@ services:
       # Bot-API-Server) — darüber würde der Download scheitern statt der klaren "zu groß"-
       # Meldung, siehe Kommentar in app/bot/__main__.py.
       TELEGRAM_VOICE_MAX_BYTES: ${TELEGRAM_VOICE_MAX_BYTES:-19922944}
+      # Eigennamen, die Whisper nicht kennen kann (Produkte, Projekte, Ticket-Präfixe) —
+      # gehen als `initial_prompt` mit. Ohne sie hört auch das große Modell „Trakon".
+      TELEGRAM_VOICE_VOKABULAR: ${TELEGRAM_VOICE_VOKABULAR:-}
     volumes:
       - ./backend/app:/app/app
       # Lesend: `Notification.media_path` zeigt hierher. Ohne diesen Mount fällt der

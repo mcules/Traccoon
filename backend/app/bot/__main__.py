@@ -55,6 +55,12 @@ VOICE_MAX_SECONDS = int(os.getenv("TELEGRAM_VOICE_MAX_SECONDS", "600"))
 # statt der beabsichtigten „zu groß"-Meldung auslösen. Deshalb 19 MB Default (Sicherheits-
 # abstand zum harten 20-MB-Limit).
 VOICE_MAX_BYTES = int(os.getenv("TELEGRAM_VOICE_MAX_BYTES", str(19 * 1024 * 1024)))
+# Hauseigene Wörter, die kein Sprachmodell kennen kann: Produkt- und Projektnamen,
+# Ticket-Präfixe, Fachbegriffe. Sie gehen als `initial_prompt` mit — ohne sie hört auch ein
+# großes Modell „Trakon" statt „Traccoon" und „Terra 1 und 30" statt „ABC-31". Leer =
+# aus. Erweitern, sobald ein Name regelmäßig falsch ankommt; das ist billiger als jede
+# Nachbearbeitung.
+VOICE_VOKABULAR = os.getenv("TELEGRAM_VOICE_VOKABULAR", "").strip()
 
 
 # Whitelist bekannter Audio-Container für `audio`-Uploads (mime_type → Dateiendung).
@@ -132,6 +138,13 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
             params = {"output": "json"}
             if sprache:
                 params["language"] = sprache
+            if VOICE_VOKABULAR:
+                # Whisper nimmt `initial_prompt` als Vorlauf-Text und richtet seine
+                # Worterwartung danach aus. Für Eigennamen ist das DER Hebel — am
+                # 2026-08-07 auf diesem Host gemessen, derselbe Satz, dasselbe Modell:
+                #   ohne: „Ticket Terra 1 und 30 in Trakon … Digist … Univer"
+                #   mit:  „Ticket ABC-31 in Traccoon … Digest … GameProj"
+                params["initial_prompt"] = VOICE_VOKABULAR
             # Ein technischer Fehler (nicht erreichbar, abgelehntes Format, 4xx/5xx) wird
             # NICHT abgefangen, sondern reicht bis zum Aufrufer durch — ein zweiter Versuch
             # würde denselben Fehler nur wiederholen und zusätzlich Zeit kosten.
