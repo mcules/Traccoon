@@ -40,9 +40,26 @@ _redis: Redis | None = None
 
 
 def get_redis() -> Redis:
+    """Der gemeinsame Redis-Client — mit denselben Sicherungen wie im Worker.
+
+    Ohne `socket_keepalive`/`health_check_interval`/`socket_timeout` wartet der Client auf
+    einer halb toten Verbindung endlos auf Antwort: kein Fehler, kein Timeout, kein Log.
+    Der Worker weiß das seit jeher (`_REDIS_KW`), das Backend nicht — und dort hängen die
+    Wächter, die auf das Ergebnis eines Agentenlaufs warten.
+
+    Am 2026-08-07 kostete das eine Stunde Stillstand: das Ergebnis für TRA-31 lag um 19:54
+    fertig in Redis, der Wächter hing in einem `get`, das nie zurückkam, und niemand holte
+    es ab. Von außen sah es aus, als arbeite der Agent noch — er war längst fertig.
+    """
     global _redis
     if _redis is None:
-        _redis = Redis.from_url(settings.redis_url, decode_responses=True)
+        _redis = Redis.from_url(
+            settings.redis_url, decode_responses=True,
+            socket_keepalive=True, health_check_interval=30,
+            # Harte Obergrenze pro Kommando: lieber ein Fehler, den der Aufrufer sieht, als
+            # ein Warten, das niemand bemerkt. Die Wächter pollen im Sekundentakt — 30 s
+            # sind großzügig für ein `get`.
+            socket_timeout=30, socket_connect_timeout=10, retry_on_timeout=True)
     return _redis
 
 
@@ -104,10 +121,17 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
     naechste_pruefung = 0.0
     letzte_meldung = start
     while True:
-        raw = await r.get(key)
-        if raw is not None:
-            await r.delete(key)
-            return json.loads(raw)
+        try:
+            raw = await r.get(key)
+            if raw is not None:
+                await r.delete(key)
+                return json.loads(raw)
+        except Exception:  # noqa: BLE001 — eine Störung darf den Wächter nicht töten
+            # Ein Aussetzer (Timeout, Verbindungsabriss) ist kein Grund, das Warten
+            # aufzugeben: das Ergebnis kommt später trotzdem, und ein gestorbener Wächter
+            # lässt das Ticket für immer stehen. Beim nächsten Umlauf neu versuchen.
+            log.warning("Ergebnis-Abfrage für %s gescheitert — erneuter Versuch", task_id,
+                        exc_info=True)
         jetzt = uhr()
         if timeout and jetzt - start >= timeout:
             return None

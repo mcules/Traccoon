@@ -136,6 +136,12 @@ def _now() -> dt.datetime:
 _BACKGROUND: set[asyncio.Task] = set()
 
 
+# Schritt-IDs, für die in DIESEM Prozess gerade ein Wächter wartet. Ohne dieses Wissen
+# könnte das erneute Anbinden (siehe `recover_workflow_agents`) einen zweiten Wächter auf
+# dasselbe Ergebnis setzen — beide würden schalten.
+_WAECHTER: set[int] = set()
+
+
 def _spawn(coro) -> asyncio.Task:
     task = asyncio.create_task(coro)
     _BACKGROUND.add(task)
@@ -749,6 +755,16 @@ async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: 
     Analog `_await_agent` — nur so bleibt die Engine während eines minutenlangen Merges
     ansprechbar, statt Session und Advance-Claim zu blockieren.
     """
+    _WAECHTER.add(step_id)
+    try:
+        await _await_action_inner(instance_id, token_id, step_id, task_id, timeout,
+                                  context_key, outcomes_map)
+    finally:
+        _WAECHTER.discard(step_id)
+
+
+async def _await_action_inner(instance_id: int, token_id: int, step_id: int, task_id: str,
+                              timeout: int, context_key: str, outcomes_map: dict) -> None:
     result, ersatz = await _warte(task_id, timeout, "Aktion")
     status = (result or {}).get("status", "failed")
 
@@ -845,6 +861,15 @@ async def _await_agent(instance_id: int, token_id: int, step_id: int, task_id: s
     Das Ergebnis landet zusätzlich unter `context.agent`, damit Entscheidungs-Knoten darauf
     prüfen können (Status, Zusammenfassung, Blocker-Art, Feststecker-Erkennung, Merge-Stand).
     """
+    _WAECHTER.add(step_id)
+    try:
+        await _await_agent_inner(instance_id, token_id, step_id, task_id, outcomes_map, timeout)
+    finally:
+        _WAECHTER.discard(step_id)
+
+
+async def _await_agent_inner(instance_id: int, token_id: int, step_id: int, task_id: str,
+                             outcomes_map: dict, timeout: int) -> None:
     result, ersatz = await _warte(task_id, timeout, "Agent")
     status = (result or {}).get("status", "failed")
 
@@ -1474,6 +1499,14 @@ async def _engine_tick() -> None:
     except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
         log.exception("Schließen toter Läufe fehlgeschlagen")
 
+    # Verlorene Wächter wieder anbinden. Ein Wächter lebt im Backend-Prozess; geht er
+    # verloren (Reload, Ausnahme, hängende Verbindung), wartet niemand mehr auf das
+    # Ergebnis — und das Ticket steht, ohne dass es jemandem auffällt.
+    try:
+        await recover_workflow_agents()
+    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+        log.exception("Wiederanbinden der Wächter fehlgeschlagen")
+
     # Artefakt-Zeilen angleichen: `agent_status` wird an vielen Stellen gesetzt (Endpunkte,
     # Bot, PM-Chat, Worker) — der Abgleich holt das binnen eines Ticks nach, statt jede
     # dieser Stellen einzeln pflegen zu müssen.
@@ -1525,10 +1558,18 @@ async def _engine_tick() -> None:
 
 
 async def recover_workflow_agents() -> None:
-    """Nach Backend-Neustart: laufende agent_task- und Aktions-Schritte (StepRun.running)
-    wieder an ihren Redis-Lauf anbinden. `_await_agent`/`_await_action` greifen ein bereits
-    vorliegendes Ergebnis via wait_result sofort ab, sonst warten sie weiter — sonst hinge
-    ein Ticket nach einem simplen Backend-Reload für immer im „läuft"-Zustand."""
+    """Laufende agent_task- und Aktions-Schritte wieder an ihren Redis-Lauf anbinden.
+
+    `_await_agent`/`_await_action` greifen ein bereits vorliegendes Ergebnis via wait_result
+    sofort ab, sonst warten sie weiter — sonst hinge ein Ticket nach einem simplen
+    Backend-Reload für immer im „läuft"-Zustand.
+
+    Läuft beim Start UND in jedem Tick. Nur beim Start reichte nicht: ein Wächter kann auch
+    im laufenden Betrieb verloren gehen — am 2026-08-07 hing einer in einer halb toten
+    Redis-Verbindung fest, das fertige Ergebnis für TRA-31 lag ab 19:54 unabgeholt in Redis,
+    und das Ticket stand eine Stunde still, ohne dass irgendetwas es bemerkte. Wer schon
+    einen Wächter hat, bekommt keinen zweiten (`_WAECHTER`).
+    """
     async with SessionLocal() as db:
         rows = (
             await db.execute(
@@ -1540,8 +1581,8 @@ async def recover_workflow_agents() -> None:
         agents, actions = [], []
         for s in rows:
             task_id = (s.result or {}).get("task_id")
-            if not task_id or s.token_id is None:
-                continue
+            if not task_id or s.token_id is None or s.id in _WAECHTER:
+                continue      # es wartet schon einer — kein zweiter auf dasselbe Ergebnis
             inst = await db.get(WorkflowInstance, s.instance_id)
             if inst is None or inst.status not in (IStatus.running, IStatus.waiting):
                 continue
