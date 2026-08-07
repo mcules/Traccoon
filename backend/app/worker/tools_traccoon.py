@@ -458,8 +458,17 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         iss.assigned_agent = (args.get("role") or "").strip()
         iss.assigned_by_user_id = user.id
         iss.assigned_at = _now()
+        # Zuweisen heißt anfangen — genau wie über die Oberfläche (`/issues/{key}/assign-agent`).
+        # Ohne diese Zeilen setzte der Assistent nur Felder, und das Ticket lag mit Agent und
+        # Status da, ohne dass ein Prozess lief (TRA-32 am 2026-08-07).
+        from ..services.lifecycle_flow import start_lifecycle
+        inst = await start_lifecycle(db, iss, user.id, advance_now=False,
+                                     entry="exec" if iss.plan else "plan")
         await db.commit()
-        return f"{iss.key}: Agent '{iss.assigned_agent}' zugewiesen."
+        if inst is None:
+            return (f"{iss.key}: Agent '{iss.assigned_agent}' zugewiesen — aber KEIN Prozess "
+                    "gestartet (kein veröffentlichter Lebenszyklus für dieses Projekt).")
+        return f"{iss.key}: Agent '{iss.assigned_agent}' zugewiesen, Lebenszyklus läuft an."
 
     if name in ("traccoon_start_planning", "traccoon_approve_plan"):
         iss, acc, err = await _issue_access(db, user, args.get("key", ""))
@@ -477,8 +486,17 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             iss.cap_baseline_run_id = (await db.execute(
                 select(func.max(Run.id)).where(Run.issue_id == iss.id))).scalar()
             await sync_board_status(db, iss)
+            # Der Status allein plant nichts. Weitergeschaltet wird NICHT hier: `advance`
+            # gehört in den Backend-Prozess, dessen 30-s-Tick das frische Token findet —
+            # aus dem Worker heraus hingen die Wächter der Folgeschritte im falschen Prozess.
+            from ..services.lifecycle_flow import start_lifecycle
+            inst = await start_lifecycle(db, iss, user.id, advance_now=False, entry="plan",
+                                         restart=True)
             await db.commit()
-            return f"{iss.key}: Planung gestartet."
+            if inst is None:
+                return (f"{iss.key}: Status auf Planung gesetzt, aber KEIN Prozess gestartet "
+                        "(kein veröffentlichter Lebenszyklus für dieses Projekt).")
+            return f"{iss.key}: Planung gestartet (Prozess-Instanz {inst.id})."
         else:
             if iss.agent_status != TicketAgentStatus.plan_review or not iss.plan:
                 return f"{iss.key}: kein Plan zur Freigabe (Status {iss.agent_status})."
@@ -488,8 +506,16 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             iss.cap_baseline_run_id = (await db.execute(
                 select(func.max(Run.id)).where(Run.issue_id == iss.id))).scalar()
             await sync_board_status(db, iss)
+            # Die Freigabe ist ein SCHRITT im Prozess, kein Feld am Ticket: der Graph steht
+            # auf `approve_plan` und wartet. Nur den Status zu setzen ließ das Ticket
+            # freigegeben aussehen, während niemand anfing.
+            from ..services.lifecycle_flow import entscheide_offene_genehmigung
+            entschieden = await entscheide_offene_genehmigung(db, iss, "approved", user.id)
             await db.commit()
-            return f"{iss.key}: Plan freigegeben."
+            if not entschieden:
+                return (f"{iss.key}: Status auf freigegeben gesetzt — im Prozess wartete "
+                        "aber keine Genehmigung (läuft dort gerade etwas anderes?).")
+            return f"{iss.key}: Plan freigegeben, der Prozess läuft weiter."
 
     if name == "traccoon_notify_human":
         # Ausdrückliche Meldung an den Menschen. Sie ist der EINZIGE reguläre Weg, aus einem

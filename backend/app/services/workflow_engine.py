@@ -677,8 +677,13 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
     if phase == "execution":
         from ..models.enums import TicketAgentStatus
         from .artifacts import set_ticket_status
+        # `hold`/`failed` gehören ausdrücklich dazu: läuft wieder ein Agent, ist der alte
+        # Grund überholt. Ohne das zeigte TRA-31 stundenlang „hold — merge", während der
+        # Entwickler längst wieder arbeitete — das Etikett log, nicht der Prozess.
         if issue.agent_status in (TicketAgentStatus.approved, TicketAgentStatus.plan_review,
-                                  TicketAgentStatus.open, None):
+                                  TicketAgentStatus.open, TicketAgentStatus.hold,
+                                  TicketAgentStatus.failed, None):
+            issue.hold_reason = None
             await set_ticket_status(db, issue, TicketAgentStatus.in_progress, board=False)
     cont = int((inst.context or {}).get("continuation") or 0)
     hint = str((inst.context or {}).get("continuation_hint") or "")
@@ -1435,6 +1440,19 @@ async def _engine_tick() -> None:
         await nachzuegler_einsammeln()
     except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
         log.exception("Nachzügler-Abholung fehlgeschlagen")
+
+    # Tickets ohne Prozess-Instanz einsammeln. Das lief bisher NUR beim Backend-Start, und
+    # damit war ein Ticket, das zwischendurch verwaiste, bis zum nächsten Neustart tot —
+    # die unangenehmste Sorte Fehler, weil der Neustart ihn behebt und die Ursache verdeckt
+    # (TRA-32 am 2026-08-07: vom Assistenten zugewiesen, nie gestartet).
+    try:
+        from .lifecycle_flow import adopt_orphans
+        async with SessionLocal() as db:
+            n = await adopt_orphans(db)
+        if n:
+            log.info("Tick: %d verwaiste(s) Ticket(s) in den Lebenszyklus geholt", n)
+    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+        log.exception("Einsammeln verwaister Tickets fehlgeschlagen")
 
     gated = await _retry_gated()
     async with SessionLocal() as db:

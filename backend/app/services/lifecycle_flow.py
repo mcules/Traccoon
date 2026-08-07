@@ -12,6 +12,7 @@ Drei Einstiege (`context.entry`, ausgewertet vom `entry`-Knoten des Standard-Gra
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 
 from sqlalchemy import select
@@ -22,6 +23,10 @@ from ..models.ticket import Issue
 from ..models.workflow import WorkflowInstance
 from .workflow_engine import start_workflow
 from .workflow_sets import resolve_definition
+
+
+def _now() -> dt.datetime:
+    return dt.datetime.now(tz=dt.timezone.utc)
 
 log = logging.getLogger("lifecycle_flow")
 
@@ -82,6 +87,57 @@ async def start_lifecycle(db: AsyncSession, issue: Issue, actor_id: int | None =
     log.info("Ticket %s: Lebenszyklus gestartet (Instanz %s, Einstieg %s)",
              issue.key, inst.id, entry)
     return inst
+
+
+async def entscheide_offene_genehmigung(
+    db: AsyncSession, issue: Issue, decision: str, actor_id: int | None,
+    reason: str | None = None,
+) -> bool:
+    """Die offene Genehmigung eines Tickets entscheiden — ohne HTTP.
+
+    Der Assistent bedient Traccoon über native Werkzeuge im Worker, nicht über die API. Ohne
+    diesen Weg setzte `traccoon_approve_plan` nur `agent_status = approved` und ließ den
+    Prozess an seinem Genehmigungs-Knoten stehen: das Ticket sah freigegeben aus, und niemand
+    fing an. Dieselbe Falle wie bei der Zuweisung (TRA-32 am 2026-08-07).
+
+    Weitergeschaltet wird bewusst NICHT hier: `advance` gehört in den Backend-Prozess, dessen
+    30-s-Tick ein aktives Token ohnehin findet. Ein `advance` aus dem Worker würde die Wächter
+    der Folgeschritte in einem fremden Prozess aufhängen.
+
+    Liefert False, wenn es gerade nichts zu entscheiden gibt — der Aufrufer soll das sagen
+    können, statt Erfolg zu melden.
+    """
+    from ..models.enums import WorkflowNodeType, WorkflowStepStatus, WorkflowTokenState
+    from ..models.workflow import WorkflowStepRun, WorkflowToken
+
+    inst = await live_instance(db, issue)
+    if inst is None:
+        return False
+    step = (await db.execute(
+        select(WorkflowStepRun).where(
+            WorkflowStepRun.instance_id == inst.id,
+            WorkflowStepRun.node_type == WorkflowNodeType.approval,
+            WorkflowStepRun.status == WorkflowStepStatus.waiting)
+        .order_by(WorkflowStepRun.id.desc()))).scalars().first()
+    if step is None:
+        return False
+    step.status = WorkflowStepStatus.done
+    step.decision = decision
+    step.result = {"reason": reason} if reason else None
+    step.completed_by = actor_id
+    step.completed_at = _now()
+    token = (await db.execute(
+        select(WorkflowToken).where(
+            WorkflowToken.instance_id == inst.id,
+            WorkflowToken.node_id == step.node_id,
+            WorkflowToken.state == WorkflowTokenState.waiting).with_for_update()
+        )).scalars().first()
+    if token is not None:
+        token.state = WorkflowTokenState.active
+        token.waiting_for = None
+    inst.status = WorkflowInstanceStatus.running
+    await db.flush()
+    return True
 
 
 # Wo ein Bestandsticket im Standard-Graphen steht. Nur Zustände, die WARTEN — laufende
