@@ -492,6 +492,17 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
     return {"status": issue.merge_status or "failed", "error": issue.merge_error}
 
 
+# Wanduhr-/Iterations-Limit (`MAX_RUN_SECONDS`/`max_iterations`) trifft JEDEN run_agent-Aufruf,
+# auch den eines Jobs — anders als Tickets bekam ein Job dafür bisher keine Fortsetzung: der
+# EINE run_agent-Aufruf lief nach 1800s in `loop_exhausted`, `_handle_job` wertete das als
+# `error`, fertig. Der News-Digest griff das ab dem 03.08.: ein toter Lauf lässt den nächsten
+# `{{seit}}`-Zeitfenster wachsen (`job_params.MAX_FENSTER_TAGE` deckelt das jetzt zusätzlich),
+# eine tiefere Recherche braucht noch mehr Zeit — selbstverstärkend. Jetzt: bei `loop_exhausted`
+# in einem FRISCHEN run_agent-Aufruf weiterarbeiten (wie die Workflow-Engine es für Ticket-Läufe
+# schon tut), bis zu dieser Rundenzahl.
+JOB_MAX_CONTINUATIONS = int(os.getenv("JOB_MAX_CONTINUATIONS", "4"))
+
+
 async def _handle_job(job: dict, redis: Redis) -> None:
     """Prompt-Job: läuft über den vollen Agenten-Tool-Loop des Eigentümers (run_agent) —
     mit dessen Token, seinem Assistenten und seinen MCP-Servern (owner-gescoped).
@@ -544,16 +555,30 @@ async def _handle_job(job: dict, redis: Redis) -> None:
                                                 JobRun.status == "ok")
                 .order_by(JobRun.id.desc()).limit(1))).scalar()
             prompt_text = rendere(j.prompt, j.args, letzter_lauf=vorlauf)
-            result = await run_agent(
-                db=db, agent=agent,
-                issue={"id": None, "key": f"job-{jr.id}", "summary": j.name,
-                       "description": prompt_text, "plan": None},
-                project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
-                mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
-                base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"])
+            cont_index, cont_hint = 0, ""
+            result = None
+            for _ in range(JOB_MAX_CONTINUATIONS + 1):
+                result = await run_agent(
+                    db=db, agent=agent,
+                    issue={"id": None, "key": f"job-{jr.id}", "summary": j.name,
+                           "description": prompt_text, "plan": None},
+                    project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
+                    mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
+                    base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"],
+                    continuation_index=cont_index, continuation_hint=cont_hint)
+                if result.status != "loop_exhausted":
+                    break
+                cont_index += 1
+                cont_hint = (result.summary or result.text or "")[:2000]
+                log.info("Job %s: loop_exhausted, Fortsetzung Runde %d", j.name, cont_index)
             out = result.summary or result.text or ""
             if result.status not in ("done",):
-                status, err = "error", (result.text or result.status)
+                # `loop_exhausted` nach allen Fortsetzungsrunden ist so gut wie ein echter
+                # Fehler — der Grund gehört sichtbar in `jr.error`, nicht nur ins Log.
+                grund = (result.text or result.status)
+                status, err = "error", (
+                    f"Nach {cont_index} Fortsetzungsrunde(n) noch nicht fertig ({grund})"
+                    if result.status == "loop_exhausted" else grund)
         except Exception as exc:  # noqa: BLE001
             status, err = "error", str(exc)
         jr.status = status
@@ -564,6 +589,11 @@ async def _handle_job(job: dict, redis: Redis) -> None:
         if j.notify_mode == "always" or (j.notify_mode == "on_output" and out) or \
                 (j.notify_mode == "on_error" and status == "error"):
             title = f"Job: {j.name}" + (" fehlgeschlagen" if status == "error" else "")
+            # Bei Fehlern die erste Zeile des Grundes MIT in die Meldung — „fehlgeschlagen"
+            # ohne Grund ist von außen nicht diagnostizierbar (der Assistent kann dann nicht
+            # einmal auf Nachfrage sagen, woran es lag).
+            if status == "error" and err:
+                title += f": {err.splitlines()[0][:200]}"
             body = err if status == "error" else out
             if j.result_html:
                 body = f"/digest/{jr.id}"

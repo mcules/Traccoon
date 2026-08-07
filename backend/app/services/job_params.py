@@ -21,6 +21,14 @@ TZ = ZoneInfo("Europe/Berlin")
 
 _PLATZHALTER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
+# Deckel für das Zeitfenster: war der letzte ERFOLGREICHE Lauf schon Tage her (Job war
+# kaputt), soll die Lücke zwar mitgenommen werden (s. u.), aber nicht unbegrenzt wachsen.
+# Anlass: der KI-&-Tech-News-Job scheiterte ab dem 03.08. jeden Tag — jeder Fehltag machte
+# das Fenster für den nächsten Lauf größer, der dadurch mehr recherchieren musste, dadurch
+# öfter das Zeitlimit riss und wieder scheiterte (selbstverstärkend). Ohne Deckel wächst ein
+# fünf Tage kaputter Job auf ein Fenster, das ihn beim nächsten Versuch endgültig sprengt.
+MAX_FENSTER_TAGE = 4
+
 
 def _als_text(wert) -> str:
     """Parameterwert → Prompt-Text. Listen als Aufzählung in einer Zeile, Objekte als JSON."""
@@ -45,6 +53,9 @@ def eingebaute_werte(*, jetzt: dt.datetime | None = None,
     """
     jetzt = (jetzt or dt.datetime.now(tz=dt.timezone.utc)).astimezone(TZ)
     seit = (letzter_lauf.astimezone(TZ) if letzter_lauf else jetzt - dt.timedelta(days=1))
+    fruehste = jetzt - dt.timedelta(days=MAX_FENSTER_TAGE)
+    if seit < fruehste:
+        seit = fruehste
     return {
         "heute": jetzt.strftime("%Y-%m-%d"),
         "jetzt": jetzt.strftime("%Y-%m-%d %H:%M"),

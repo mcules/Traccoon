@@ -191,6 +191,15 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         laeufe = (await db.execute(select(JobRun).where(JobRun.job_id == j.id)
                                    .order_by(JobRun.id.desc()).limit(5))).scalars().all()
         p = parameter(j.args)
+
+        def _lauf_zeile(r: JobRun) -> str:
+            # Bei `error` den Grund GLEICH mitliefern — sonst kann der Assistent auf die
+            # Frage „warum funktioniert der nicht?" nur „error" sagen (nicht diagnostizierbar).
+            zeile = f"{r.started_at:%Y-%m-%d %H:%M} {r.status}"
+            if r.status == "error" and r.error:
+                zeile += f" — {r.error.splitlines()[0][:300]}"
+            return zeile
+
         return (f"#{j.id} {j.name}\n"
                 f"Zeitplan: {j.type}:{j.schedule} · {'an' if j.enabled else 'AUS'} · "
                 f"Art {j.kind} · Agent {j.agent or '—'} · Meldung {j.notify_mode}\n"
@@ -198,8 +207,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
                 + (f"Offene Platzhalter (ohne Wert!): {', '.join(o)}\n"
                    if (o := offene_platzhalter(j.prompt, j.args)) else "")
                 + f"Prompt:\n{(j.prompt or '')[:2000]}\n"
-                + "Letzte Läufe: " + (", ".join(
-                    f"{r.started_at:%Y-%m-%d %H:%M} {r.status}" for r in laeufe) or "keine"))
+                + "Letzte Läufe:\n" + ("\n".join(f"- {_lauf_zeile(r)}" for r in laeufe) or "keine"))
 
     if name == "traccoon_create_job":
         felder: dict = {}
