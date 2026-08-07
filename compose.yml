@@ -124,6 +124,11 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALLOWED_IDS: ${TELEGRAM_ALLOWED_IDS:-}
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
+      # Sprachnachrichten: lokaler Transkriptions-Container (kein Cloud-Aufruf, siehe `whisper`
+      # unten) — kein Audio verlässt das Haus.
+      WHISPER_URL: ${WHISPER_URL:-http://whisper:9000}
+      TELEGRAM_VOICE_MAX_SECONDS: ${TELEGRAM_VOICE_MAX_SECONDS:-600}
+      TELEGRAM_VOICE_MAX_BYTES: ${TELEGRAM_VOICE_MAX_BYTES:-26214400}
     volumes:
       - ./backend/app:/app/app
       # Lesend: `Notification.media_path` zeigt hierher. Ohne diesen Mount fällt der
@@ -132,6 +137,20 @@ services:
       - ./data/film:/data/film:ro
     networks: [default, mcp-backends]   # mcp-backends: banking-mcp für 2FA-OTP-Reply erreichbar
     command: ["python", "-m", "app.bot"]
+
+  # Lokale Sprache→Text für Telegram-Sprachnachrichten (faster-whisper unter der Haube).
+  # Bewusst im eigenen Haus statt Cloud-API: kein Audio verlässt den Server, keine laufenden
+  # Kosten pro Minute. `ASR_ENGINE=faster_whisper` ist der schnelle CPU-Pfad des Images.
+  # Modell per WHISPER_MODEL wählbar (default "small" — guter Deutsch-Kompromiss aus
+  # Genauigkeit und CPU-Zeit ohne GPU).
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    restart: unless-stopped
+    environment:
+      ASR_ENGINE: faster_whisper
+      ASR_MODEL: ${WHISPER_MODEL:-small}
+    volumes:
+      - ./data/whisper:/root/.cache/whisper
 
   shotter:
     build: ./shotter
