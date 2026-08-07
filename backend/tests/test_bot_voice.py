@@ -74,3 +74,82 @@ async def test_ohne_whisper_url_bricht_sofort_ab(monkeypatch):
 
     with pytest.raises(RuntimeError):
         await bot_main._transkribieren(b"fake-bytes")
+
+
+async def test_vokabular_geht_als_initial_prompt_mit(monkeypatch):
+    """Eigennamen sind der Unterschied zwischen brauchbar und unbrauchbar.
+
+    Am 2026-08-07 auf diesem Host gemessen, derselbe Satz, dasselbe Modell (large-v3-turbo):
+    ohne Vokabelliste „Ticket Terra 1 und 30 in Trakon … Digist … Univer", mit Liste
+    wortgenau „Ticket TRA-31 in Traccoon … Digest … UniWar".
+    """
+    import app.bot.__main__ as bot
+
+    gesehen: list[dict] = []
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"text": "fertig"}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, params=None, files=None):
+            gesehen.append(dict(params or {}))
+            return _Resp()
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(bot, "VOICE_VOKABULAR", "Traccoon, UniWar, TRA-31.")
+
+    assert await bot._transkribieren(b"x", "voice", None) == "fertig"
+    assert gesehen[0]["initial_prompt"] == "Traccoon, UniWar, TRA-31."
+
+
+async def test_ohne_vokabular_kein_feld(monkeypatch):
+    """Leer heißt aus — kein leerer `initial_prompt`, der die Erkennung nur verwirrt."""
+    import app.bot.__main__ as bot
+
+    gesehen: list[dict] = []
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"text": "fertig"}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, params=None, files=None):
+            gesehen.append(dict(params or {}))
+            return _Resp()
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(bot, "VOICE_VOKABULAR", "")
+
+    await bot._transkribieren(b"x", "voice", None)
+    assert "initial_prompt" not in gesehen[0]
