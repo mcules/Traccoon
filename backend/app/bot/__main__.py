@@ -2,6 +2,7 @@
 
 Notifier-Poll (Notification → Telegram, mit Medium falls `media_path` gesetzt),
 Reply→Kommentar (geteilte apply_user_comment),
+Sprachnachrichten (voice/audio/video_note → lokale Transkription → derselbe Weg wie Text),
 Inline-Buttons (approve/reject/accept/perm), Commands /tasks /comment.
 No-op (stabiler Sleep) wenn kein TELEGRAM_BOT_TOKEN gesetzt.
 """
@@ -36,6 +37,80 @@ log = logging.getLogger("traccoon.bot")
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ALLOWED = {int(x) for x in os.getenv("TELEGRAM_ALLOWED_IDS", "").replace(" ", "").split(",") if x.strip().isdigit()}
 OWNER_CHAT = os.getenv("TELEGRAM_OWNER_CHAT", "")
+
+# Sprachnachrichten: lokaler faster-whisper-Container (kein Cloud-Aufruf, kein Audio verlässt
+# das Haus — Vorgabe des Nutzers). `/asr` ist der native Endpunkt von
+# onerahmet/openai-whisper-asr-webservice mit ASR_ENGINE=faster_whisper.
+WHISPER_URL = os.getenv("WHISPER_URL", "http://whisper:9000")
+# 10 Minuten Standardgrenze — länger ist am Handy ungewöhnlich und würde den CPU-Container
+# lange blockieren. Bewusst konfigurierbar statt fest, falls sich das als zu eng erweist.
+VOICE_MAX_SECONDS = int(os.getenv("TELEGRAM_VOICE_MAX_SECONDS", "600"))
+# Fallback-Obergrenze über die Dateigröße, falls Telegram kein `duration` mitliefert (kommt
+# bei manchen `audio`-Uploads ohne Metadaten vor) — ohne sie wäre die Längenprüfung dann
+# wirkungslos. Grober Anhalt: OGG/Opus-Sprachnachrichten liegen bei ~1 MB je Minute; 25 MB
+# deckt die 10-Minuten-Grenze mit reichlich Luft für andere Codecs/Bitraten ab.
+VOICE_MAX_BYTES = int(os.getenv("TELEGRAM_VOICE_MAX_BYTES", str(25 * 1024 * 1024)))
+
+
+def _upload_name_typ(medienart: str, mime_type: str | None) -> tuple[str, str]:
+    """Dateiname+Content-Type passend zum tatsächlichen Medientyp — NICHT pauschal
+    `audio.ogg`/`application/octet-stream`: `voice` ist tatsächlich OGG/Opus, aber
+    `audio`-Uploads sind häufig MP3/M4A/WAV und `video_note` ist ein MP4-Container
+    (Video+Audio-Spur). Erkennt ffmpeg im Whisper-Image das Format anhand einer
+    falschen Erweiterung/eines falschen Content-Type nicht, schlägt die Transkription
+    fehl oder liefert Müll — und der Nutzer bekommt fälschlich „keine Sprache erkannt"
+    statt der wahren Ursache.
+    """
+    if medienart == "video_note":
+        return "video_note.mp4", "video/mp4"
+    if medienart == "audio":
+        # Telegram liefert bei `audio` i. d. R. den echten `mime_type` (z. B. audio/mpeg,
+        # audio/mp4) mit — Dateiendung passend zum Subtyp ableiten, sonst generisch lassen.
+        mime = mime_type or "audio/mpeg"
+        endung = mime.split("/", 1)[-1].split(";")[0] or "mp3"
+        if endung == "mpeg":
+            endung = "mp3"
+        return f"audio.{endung}", mime
+    return "voice.ogg", "audio/ogg"
+
+
+async def _transkribieren(audio: bytes, medienart: str = "voice",
+                           mime_type: str | None = None) -> str:
+    """Sprachnachricht lokal transkribieren. Erst Deutsch (häufigster Fall), bei LEEREM
+    Ergebnis (nicht bei technischem Fehler) ein zweiter Versuch ohne Sprachangabe
+    (Auto-Erkennung) — ein 4xx/5xx vom Container oder ein Verbindungsfehler bricht sofort ab,
+    denn eine erneute komplette Übertragung derselben Datei würde die Verarbeitungszeit bei
+    einer langen Nachricht verdoppeln, ohne dass sich am Fehler etwas ändert.
+    Leer nach dem ersten Versuch → zweiter Versuch; leer nach beiden → leerer String, kein
+    Fehler. Ein wirklicher Fehler wird weitergereicht, damit der Aufrufer ehrlich absagen
+    kann statt stumm zu bleiben.
+
+    Timeout an `VOICE_MAX_SECONDS` gekoppelt statt fest: eine erlaubte 10-Minuten-Nachricht
+    braucht auf CPU (Modell "small") durchaus mehrere Minuten Transkriptionszeit — ein
+    fixer 120s-Timeout würde genau die Nachrichten abbrechen, die der Längen-Check erlaubt.
+    Faktor 1.0 der Nachrichtenlänge plus 60s Sockel für Modell-Ladezeit/Overhead, mindestens
+    120s für kurze Nachrichten.
+    """
+    import httpx
+    if not WHISPER_URL:
+        raise RuntimeError("kein WHISPER_URL konfiguriert (lokaler Whisper-Container fehlt)")
+    timeout = max(120.0, VOICE_MAX_SECONDS + 60.0)
+    dateiname, content_type = _upload_name_typ(medienart, mime_type)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for sprache in ("de", None):
+            params = {"output": "json"}
+            if sprache:
+                params["language"] = sprache
+            # Ein technischer Fehler (nicht erreichbar, abgelehntes Format, 4xx/5xx) wird
+            # NICHT abgefangen, sondern reicht bis zum Aufrufer durch — ein zweiter Versuch
+            # würde denselben Fehler nur wiederholen und zusätzlich Zeit kosten.
+            resp = await client.post(f"{WHISPER_URL}/asr", params=params,
+                                     files={"audio_file": (dateiname, audio, content_type)})
+            resp.raise_for_status()
+            text = (resp.json().get("text") or "").strip()
+            if text:
+                return text
+    return ""
 
 
 # Entscheidungen der Freigabe-Knöpfe im Klartext, für den Vermerk an der Nachricht.
@@ -327,17 +402,88 @@ async def run_bot() -> None:
                                    agent="gameproj-operator")
         await m.answer("🛰 …")
 
+    async def _voice_transkript(m: Message) -> str | None:
+        """Sprachnachricht (voice/audio/video_note) in Text auflösen — inkl. sichtbarer
+        Rückmeldung, damit Fehlhörungen sofort auffallen (Lehre aus 2026-07-29: lieber
+        ehrlich absagen als still bleiben).
+
+        Rückgabe: None = `m` ist gar keine Sprachnachricht (Aufrufer macht normal weiter).
+        "" = Sprachnachricht, aber nicht verarbeitbar — diese Funktion hat SELBST schon die
+        Absage mit Grund geschickt, der Aufrufer bricht einfach ab. Nichtleerer String =
+        Transkript, exakt wie eingehender Text weiterzureichen.
+        """
+        media = m.voice or m.audio or m.video_note
+        if media is None:
+            return None
+        dauer = getattr(media, "duration", 0) or 0
+        groesse = getattr(media, "file_size", 0) or 0
+        # Beide Signale sind UNABHÄNGIG voneinander zu prüfen, nicht als Alternative: eine
+        # (ggf. gefälschte oder schlicht falsche) kurze `duration` bei tatsächlich sehr
+        # großer `file_size` darf die Größenprüfung nicht überspringen — sonst würde genau
+        # das Speicher-/CPU-Risiko eintreten, das diese Prüfung verhindern soll.
+        if dauer and dauer > VOICE_MAX_SECONDS:
+            await m.answer(f"🙉 Sprachnachricht zu lang ({dauer // 60} Min., Grenze "
+                           f"{VOICE_MAX_SECONDS // 60} Min.) — bitte kürzer aufnehmen oder "
+                           f"als Text schicken.")
+            return ""
+        if groesse and groesse > VOICE_MAX_BYTES:
+            await m.answer(f"🙉 Datei zu groß ({groesse // (1024 * 1024)} MB, Grenze "
+                           f"{VOICE_MAX_BYTES // (1024 * 1024)} MB) — bitte kürzer "
+                           f"aufnehmen oder als Text schicken.")
+            return ""
+        if not dauer and not groesse:
+            # Weder `duration` noch `file_size` verwertbar — OHNE eine der beiden
+            # Prüfungen wäre eine beliebig große Datei ungebremst komplett in den
+            # Speicher geladen und an Whisper weitergereicht (Speicher-/CPU-Risiko).
+            # Lieber ehrlich absagen statt ungeprüft zu laden.
+            await m.answer("🙉 Länge/Größe der Datei nicht bestimmbar — bitte als Text "
+                           "schicken oder als reguläre Sprachnachricht erneut aufnehmen.")
+            return ""
+        try:
+            datei = await bot.get_file(media.file_id)
+            puffer = await bot.download_file(datei.file_path)
+            roh = puffer.read() if hasattr(puffer, "read") else bytes(puffer)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Sprachnachricht %s nicht ladbar: %s", media.file_id, exc)
+            await m.answer("🙉 Sprachnachricht konnte nicht geladen werden — bitte als Text schicken.")
+            return ""
+        medienart = "voice" if m.voice else ("video_note" if m.video_note else "audio")
+        mime_type = getattr(media, "mime_type", None)
+        try:
+            text = await _transkribieren(roh, medienart=medienart, mime_type=mime_type)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Transkription fehlgeschlagen: %s", exc)
+            await m.answer(f"🙉 Transkription nicht möglich ({exc}) — bitte als Text schicken.")
+            return ""
+        if not text:
+            await m.answer("🙉 Ich konnte darin keine Sprache erkennen — bitte als Text schicken.")
+            return ""
+        await m.answer(f"🎙 verstanden: {safe(text)}")
+        return text
+
     @dp.message(F.reply_to_message)
     async def _reply(m: Message):
         if not await _allowed(m.from_user.id):
             return
         rt = m.reply_to_message.text or m.reply_to_message.html_text or ""
 
+        # Antwort per Sprachnachricht: gleicher Zitat-Bezug wie bei Text, nur transkribiert.
+        text = m.text
+        if text is None:
+            gehoert = await _voice_transkript(m)
+            if gehoert is None:
+                await m.answer("🙉 Damit kann ich noch nichts anfangen — schick es mir als "
+                               "Text oder Sprachnachricht.")
+                return
+            if not gehoert:
+                return   # _voice_transkript hat die Absage schon geschickt
+            text = gehoert
+
         # Banking-2FA: Antwort auf die „Banking-Sync braucht einen 2FA-Code für <source>"-Karte
         # → OTP über das banking-MCP an submit_auth weiterreichen (ersetzt den Predecessor-Relay).
         bm = re.search(r"2FA-Code für (.+?) \(Auth-Request", rt)
         if bm and "Banking-Sync" in rt:
-            source, code = bm.group(1).strip(), (m.text or "").strip()
+            source, code = bm.group(1).strip(), text.strip()
             try:
                 from ..worker.mcp_client import mcp_session
                 spec = {"name": "banking", "transport": "http",
@@ -354,26 +500,28 @@ async def run_bot() -> None:
         # der Mensch in jeder Antwort wiederholen, worum es ging.
         match = re.search(r"\[([A-Z][A-Z0-9]*-\d+)\]", rt)
         if not match:
-            await _chat_auftrag(m, bezug=rt)
+            await _chat_auftrag(m, bezug=rt, text=text)
             return
         key = match.group(1)
         async with SessionLocal() as db:
             iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
             if iss is None:
-                await _chat_auftrag(m, bezug=rt)
+                await _chat_auftrag(m, bezug=rt, text=text)
                 return
             user = await _acting_user(db, m.chat.id)
-            await apply_user_comment(db, iss, m.text or "", user.id if user else None, "Telegram")
+            await apply_user_comment(db, iss, text, user.id if user else None, "Telegram")
         await m.answer(f"↳ Kommentar zu {key} gespeichert.")
 
-    async def _chat_auftrag(m: Message, bezug: str = "") -> bool:
+    async def _chat_auftrag(m: Message, bezug: str = "", text: str | None = None) -> bool:
         """Klartext an den persönlichen Assistenten übergeben. True = angenommen.
 
         `bezug` ist der Text der Nachricht, auf die geantwortet wurde. Eine Antwort meint
         immer GENAU diese Nachricht — ohne den Bezug wäre sie nur eine weitere Zeile im
         Gesprächsfaden, und der Assistent müsste raten, worauf sich „mach das" bezieht.
+        `text` überschreibt `m.text` — genutzt für bereits transkribierte Sprachnachrichten,
+        die ab hier GENAUSO behandelt werden wie eingehender Text, kein Sonderweg.
         """
-        text = (m.text or "").strip()
+        text = (text if text is not None else (m.text or "")).strip()
         if not text or text.startswith("/"):
             return False
         async with SessionLocal() as db:
@@ -391,14 +539,26 @@ async def run_bot() -> None:
             return
         await _chat_auftrag(m)
 
+    @dp.message(F.voice | F.audio | F.video_note)
+    async def _voice_chat(m: Message):
+        # Sprachnachricht (kein Reply — das fängt `_reply` schon ab) → wie Klartext an den
+        # Assistenten. Lokal transkribiert (faster-whisper), kein Cloud-Aufruf.
+        if not await _allowed(m.from_user.id):
+            return
+        text = await _voice_transkript(m)
+        if not text:
+            return   # None kommt hier nie vor (Filter greift nur bei Audio); "" = schon abgesagt
+        await _chat_auftrag(m, text=text)
+
     @dp.message()
     async def _unsupported(m: Message):
-        # Alles ohne Text (Sprachnachricht, Foto, Sticker, Dokument) fiel bisher durch alle
+        # Alles ohne Text/Sprachnachricht (Foto, Sticker, Dokument) fiel bisher durch alle
         # Handler und wurde KOMMENTARLOS verworfen — von außen nicht von „ignoriert" zu
         # unterscheiden. Lieber ehrlich absagen.
         if not m.from_user or not await _allowed(m.from_user.id):
             return
-        await m.answer("🙉 Damit kann ich noch nichts anfangen — schick es mir als Text.")
+        await m.answer("🙉 Damit kann ich noch nichts anfangen — schick es mir als Text oder "
+                       "Sprachnachricht.")
 
     @dp.callback_query()
     async def _cb(cq: CallbackQuery):
