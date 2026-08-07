@@ -327,12 +327,22 @@ async def handle(job: dict, redis: Redis) -> None:
     log.info("verarbeitet %s → %s", task_id, result.status)
 
 
+# Korrektur-Runden des Review-Gates, bevor der Mensch geholt wird.
+REVIEW_RUNDEN = 2
+
+
 async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens, permissions,
                        result, ctx, owner_id=None, task_id="", base_urls=None):
     """Review-Agent prüft den kumulativen Diff. <review-ok/> = bestanden. Sonst max 2
-    Korrektur-Runden durch den Ausführungs-Agenten; danach hold_review."""
+    Korrektur-Runden durch den Ausführungs-Agenten; danach hold_review.
+
+    Die verbrauchten Runden stehen AM TICKET, nicht in dieser Schleife. Ein Zähler im
+    Prozess ist nach jedem Worker-Neustart wieder null — ABC-32 lief am 2026-08-07 genau
+    hinein: prüfen → korrigieren → Neustart → prüfen → korrigieren, und die Grenze, die
+    den Menschen holen soll, wurde nie erreicht.
+    """
     reviewer = await _load_agent(db, project.review_agent or "code_reviewer", project.id, "execute", owner_id)
-    for attempt in range(2):
+    for attempt in range(int(issue.review_rounds or 0), REVIEW_RUNDEN):
         diff = await gitops.diff_text(ctx)
         if not diff.strip():
             return result  # nichts geändert → nichts zu prüfen
@@ -370,7 +380,12 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                       "eine Fehlermeldung anzusetzen wäre eine erfundene Aufgabe.")))
             await db.commit()
             return result
-        log.info("review %s: Befunde (Runde %d) → Korrektur", issue.key, attempt + 1)
+        log.info("review %s: Befunde (Runde %d von %d) → Korrektur",
+                 issue.key, attempt + 1, REVIEW_RUNDEN)
+        # Die Runde ist verbraucht, sobald sie beginnt — und zwar committet, damit sie einen
+        # Neustart mitten in der Korrektur überlebt.
+        issue.review_rounds = attempt + 1
+        await db.commit()
         # Korrektur-Runde durch den Ausführungs-Agenten
         result = await run_agent(
             db=db, agent=exec_agent,
@@ -385,10 +400,10 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             continuation_index=99, continuation_hint="REVIEW-BEFUNDE (beheben):\n" + (rev.text or ""))
         if result.status != "done":
             return result
-    # nach 2 Runden immer noch Befunde → an den Menschen
+    # Runden verbraucht und immer noch Befunde → an den Menschen
     from .runtime import RunResult
-    return RunResult("blocked", "Review-Gate: Befunde nach 2 Runden offen", run_id=result.run_id,
-                     blocker_kind="review")
+    return RunResult("blocked", f"Review-Gate: Befunde nach {REVIEW_RUNDEN} Runden offen",
+                     run_id=result.run_id, blocker_kind="review")
 
 
 async def _handle_accept(job: dict, redis: Redis) -> dict:

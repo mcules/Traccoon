@@ -42,14 +42,24 @@ async def _fehlt_noch(conn, ddl: str) -> bool:
     Vorher nachsehen kostet einen billigen Katalog-Lesezugriff und nimmt im Regelfall — die
     Spalte ist längst da — gar keine Sperre mehr.
     """
-    m = re.match(r"ALTER TABLE (\w+) ADD COLUMN IF NOT EXISTS (\w+)\b", ddl, re.I)
-    if not m:
-        return True                       # alles andere (Index, ENUM, UPDATE) läuft wie gehabt
-    tabelle, spalte = m.group(1), m.group(2)
-    da = await conn.scalar(text(
-        "SELECT 1 FROM information_schema.columns "
-        "WHERE table_name = :t AND column_name = :c"), {"t": tabelle, "c": spalte})
-    return da is None
+    if m := re.match(r"ALTER TABLE (\w+) ADD COLUMN IF NOT EXISTS (\w+)\b", ddl, re.I):
+        da = await conn.scalar(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = :t AND column_name = :c"), {"t": m.group(1), "c": m.group(2)})
+        return da is None
+    # `CREATE INDEX IF NOT EXISTS` nimmt eine ShareLock und blockiert damit jeden Schreiber
+    # auf der Tabelle — auf `run_steps` also den laufenden Agenten. Auch hier gilt: erst
+    # nachsehen, ob es den Index überhaupt noch anzulegen gilt.
+    if m := re.match(r"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+)\b", ddl, re.I):
+        return await conn.scalar(text("SELECT to_regclass(:n)"), {"n": m.group(1)}) is None
+    # Wiederholt sich sonst bei jedem Start: die Spalte ist längst nullable, die Sperre wird
+    # trotzdem angefordert (und lief am 2026-08-07 prompt in den frischen lock_timeout).
+    if m := re.match(r"ALTER TABLE (\w+) ALTER COLUMN (\w+) DROP NOT NULL", ddl, re.I):
+        nullable = await conn.scalar(text(
+            "SELECT is_nullable FROM information_schema.columns "
+            "WHERE table_name = :t AND column_name = :c"), {"t": m.group(1), "c": m.group(2)})
+        return nullable == "NO"
+    return True                           # alles andere (ENUM-Werte, UPDATE) läuft wie gehabt
 
 
 @asynccontextmanager
@@ -66,6 +76,10 @@ async def lifespan(app: FastAPI):
             # Tabellen an, nicht auf bestehenden). Reihenfolge/Stil wie ADD COLUMN IF NOT EXISTS.
             for _ddl in (
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cap_baseline_run_id INTEGER",
+                # Verbrauchte Korrektur-Runden des Review-Gates — am Ticket statt im
+                # Worker-Prozess, damit ein Neustart die Grenze nicht zurücksetzt.
+                "ALTER TABLE issues ADD COLUMN IF NOT EXISTS review_rounds INTEGER "
+                "DEFAULT 0 NOT NULL",
                 # Modellkatalog: Kontextfenster + ungefähre Ausgabegeschwindigkeit. Bei
                 # lokalen Modellen ist genau das der Auswahlgrund — der Preis ist dort 0.
                 "ALTER TABLE provider_models ADD COLUMN IF NOT EXISTS context_tokens INTEGER",
