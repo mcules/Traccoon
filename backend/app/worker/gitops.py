@@ -127,7 +127,14 @@ async def _push(ctx: GitCtx, workdir: str, branch: str) -> bool:
 
 
 async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
-    """Kumulativer Diff des Ticket-Stands gegen die Abzweig-Basis (für Review-Gate)."""
+    """Kumulativer Diff des Ticket-Stands gegen die Abzweig-Basis (für Review-Gate).
+
+    Wird gekappt, dann an einer Zeilengrenze und mit Ansage. Der stumme Schnitt mitten im
+    Wort hat sich am 2026-08-07 gerächt: der Prüfer sah bei TRA-32 einen compose-Block, der
+    „mittendrin abbricht (`v` als letzte Zeile)", und meldete das als unvollständige
+    Service-Definition — ein Befund über den Boten, nicht über den Code. Ein Prüfer, der
+    nicht weiß, dass ihm etwas vorenthalten wird, erfindet Erklärungen dafür.
+    """
     wd = ctx.worktree or ctx.workdir
     if not await _is_repo(wd):
         return ""
@@ -135,7 +142,18 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
     rc, out = await _git(wd, "diff", f"{base}...HEAD")
     if rc != 0 or not out.strip():
         rc, out = await _git(wd, "diff", "HEAD")  # uncommittete Änderungen
-    return out[:max_chars]
+    if len(out) <= max_chars:
+        return out
+    kopf = out[:max_chars]
+    kopf = kopf[:kopf.rfind("\n") + 1] or kopf      # nie mitten in einer Zeile enden
+    fehlt = sorted({z.split(" b/", 1)[1].strip() for z in out[len(kopf):].splitlines()
+                    if z.startswith("diff --git ") and " b/" in z})
+    hinweis = (f"\n[... Diff gekappt: {len(kopf)} von {len(out)} Zeichen gezeigt. Der Rest "
+               "fehlt hier — das ist eine Grenze der Anzeige, KEIN unvollständiger Code.")
+    if fehlt:
+        hinweis += (" Nicht enthaltene Dateien (bei Bedarf mit `fs_read` selbst ansehen): "
+                    + ", ".join(fehlt[:25]) + (", …" if len(fehlt) > 25 else ""))
+    return kopf + hinweis + "]\n"
 
 
 async def file_changes(ctx: GitCtx) -> list[dict]:
