@@ -50,7 +50,7 @@ def test_schnitt_trennt_nie_werkzeugaufruf_von_seiner_antwort():
             {"id": f"c{i}", "function": {"name": "lies", "arguments": "{}"}}]})
         m.append({"role": "tool", "tool_call_id": f"c{i}", "name": "lies", "content": "Ergebnis"})
     von, bis = plan(m, grenze_tokens=1000, gemessen=900)
-    assert m[bis]["role"] in ("user", "system")
+    assert m[bis]["role"] != "tool"          # vor einer tool-Antwort darf nie geschnitten werden
     assert "tool_call_id" not in m[bis]
     # Und der Rest bleibt ein gültiges Wechselspiel: kein `tool` ohne seinen `assistant`.
     rest = m[bis:]
@@ -84,7 +84,7 @@ async def test_ohne_aux_wird_trotzdem_gekuerzt_aber_ehrlich(db, monkeypatch):
     neu = await kompaktiere(db, messages=m, grenze_tokens=100_000, gemessen=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
     assert neu is not None and len(neu) < len(m)
-    assert "NICHT mehr bekannt" in neu[2]["content"]
+    assert "nicht möglich" in neu[2]["content"] and "verloren" in neu[2]["content"]
 
 
 async def test_nichts_zu_tun_gibt_none(db):
@@ -105,11 +105,13 @@ def test_anthropic_blockformat_wird_lesbar_zusammengefuehrt():
 
 async def test_grosser_verlauf_wird_haeppchenweise_gefasst(db, monkeypatch):
     """Das Aux-Modell ist bewusst klein (lokal, 32k). Bekommt es den ganzen Verlauf eines
-    200k-Modells, weist es ab — und die Kompaktierung liefe immer in den harten Schnitt."""
-    gesehen = {}
+    200k-Modells, weist es ab — und der Agent stünde ohne Zusammenfassung da. Also: in
+    Häppchen schneiden und Stück für Stück fassen, jedes für sich klein genug."""
+    gesehen = {"laengen": []}
 
     async def fake_aux(*a, **kw):
-        gesehen["laenge"] = len(kw["messages"][0]["content"])
+        gesehen["laengen"].append(len(kw["messages"][0]["content"]))
+        gesehen["laenge"] = gesehen["laengen"][-1]
         return "- gefasst"
 
     monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
@@ -120,6 +122,41 @@ async def test_grosser_verlauf_wird_haeppchenweise_gefasst(db, monkeypatch):
     neu = await kompaktiere(db, messages=m, grenze_tokens=100_000, gemessen=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
     assert neu is not None
-    assert gesehen["laenge"] <= compaction.MAX_AUX_ZEICHEN + len(compaction.AUFTRAG)
-    # Was nicht mehr hineinpasste, steht weiterhin wörtlich da (und kommt beim nächsten Mal).
+    # Kein einziger Auftrag sprengt das Aux-Modell ...
+    assert gesehen["laengen"] and max(gesehen["laengen"]) <= (
+        compaction.MAX_AUX_ZEICHEN + len(compaction.AUFTRAG) + 40)
+    # ... und es waren mehrere, statt einmal alles auf einmal zu versuchen.
+    assert len(gesehen["laengen"]) > 1
+    assert "gefasst" in neu[2]["content"]
+    # Das Jüngste bleibt wörtlich stehen — der Agent verliert nicht seinen Arbeitsfaden.
     assert len(neu) > compaction.BEHALTEN
+
+
+async def test_reiner_werkzeugverlauf_behaelt_kopf_und_juengstes(db, monkeypatch):
+    """Der Fall UNI-4: 60 Runden nur Werkzeug-Aufrufe, keine einzige user/system-Nachricht
+    dazwischen. Früher kannte die Kürzung hier nur „alles" — Verlauf auf drei Nachrichten,
+    Agent ohne Gedächtnis, fängt von vorn an und schreibt in zwei Läufen keine Zeile Code."""
+    async def fake_aux(*a, **kw):
+        return "- Dateien X und Y gelesen"
+
+    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
+    for i in range(40):
+        m.append({"role": "assistant", "content": "", "tool_calls": [
+            {"id": f"c{i}", "function": {"name": "fs_read", "arguments": "{}"}}]})
+        m.append({"role": "tool", "tool_call_id": f"c{i}", "name": "fs_read",
+                  "content": "Dateiinhalt " * 200})
+
+    neu = await kompaktiere(db, messages=m, grenze_tokens=100_000, gemessen=90_000,
+                            owner_id=1, agent=None, tokens={}, base_urls={})
+
+    assert neu is not None
+    assert neu[0] == m[0] and neu[1] == m[1]                  # Auftrag überlebt
+    assert "Dateien X und Y" in neu[2]["content"]             # echte Zusammenfassung
+    # Und eben NICHT nur Kopf + Zusammenfassung: der jüngste Arbeitszusammenhang bleibt.
+    assert len(neu) >= 3 + compaction.BEHALTEN - 1
+    assert neu[-1] == m[-1]
+    # Der Rest muss ein gültiges Wechselspiel bleiben, sonst antwortet der Provider mit 400.
+    for i, nachricht in enumerate(neu):
+        if nachricht.get("role") == "tool":
+            assert neu[i - 1].get("tool_calls"), "tool-Antwort ohne ihren Aufruf"
