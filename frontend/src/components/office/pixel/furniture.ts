@@ -32,6 +32,11 @@ import { artH, artLeft, artW, defineArt, drawArt, fill, fillA } from "./art.ts";
  *  Bodenlinie, auf der Tür, Schränke und die hintere Schreibtischreihe stehen. */
 export const WALL_H = 38;
 
+/** Kulisse in Pufferpixeln: Wand, Boden und Licht sind seit Etappe 3 fein gezeichnet und
+ *  bekommen die HD-Sicht. Alles übrige Mobiliar zeichnet weiter in Kunsteinheiten — beides
+ *  nebeneinander ist der Zweck der Trennung (PIXEL-CONTRACT Regel 1). */
+const HD = 2;
+
 /** Schrittweite beim Aneinanderreihen von Fenstern: zwei Fenster teilen sich den Pfosten,
  *  sonst stünde eine 4 Pixel breite Rahmennaht zwischen ihnen. */
 export const WINDOW_STEP = 28;
@@ -845,16 +850,29 @@ const MIN_STAGGER = 26;
  * sieht man den Unterschied ohnehin nicht, und Bänder bleiben golden prüfbar.
  */
 export function drawWall(ctx: Ctx, pal: Pal): void {
-  fill(ctx, pal, "wall", 0, 0, ART.w, WALL_H);
-  fill(ctx, pal, "wallHi", 0, 0, ART.w, 2);
-  fillA(ctx, pal, "wallLo", 0.25, 0, WALL_H - 12, ART.w, 6);
-  fillA(ctx, pal, "wallLo", 0.45, 0, WALL_H - 6, ART.w, 2);
-  // Sockelleiste mit heller Oberkante.
-  fill(ctx, pal, "wallLo", 0, WALL_H - 4, ART.w, 4);
-  fillA(ctx, pal, "wallHi", 0.35, 0, WALL_H - 4, ART.w, 1);
-  // Plattenstöße der Wandverkleidung: eine Linie alle 80 Pixel, sehr blass. Sie geben der
-  // Wand einen Maßstab — ohne sie wirkt die Fläche wie ein Farbfeld, nicht wie ein Raum.
-  for (let x = 40; x < ART.w; x += 80) fillA(ctx, pal, "wallLo", 0.30, x, 2, 1, WALL_H - 6);
+  // Fein gezeichnet (Etappe 3): `ctx` ist die HD-Sicht, gerechnet wird in Pufferpixeln.
+  // Was das bringt, sieht man an den Fugen — eine Kunsteinheit breit waren sie Balken, eine
+  // HD-Einheit breit sind sie Linien. Dieselbe Wand, halb so grob.
+  const W = ART.w * HD, H = WALL_H * HD;
+  fill(ctx, pal, "wall", 0, 0, W, H);
+  fill(ctx, pal, "wallHi", 0, 0, W, 3);
+  // Der Abfall nach unten in sechs Stufen statt drei Bändern: im feinen Raster ist jede
+  // Stufe halb so hoch, und aus Streifen wird ein Verlauf, den man nicht mehr als Stufen liest.
+  for (let i = 0; i < 6; i++) {
+    fillA(ctx, pal, "wallLo", 0.06 + i * 0.05, 0, H - 26 + i * 4, W, 4);
+  }
+  // Sockelleiste: Schattenfuge, Leiste, helle Oberkante — drei Zeilen, die die Wand auf den
+  // Boden stellen, statt sie an ihn zu stoßen.
+  fillA(ctx, pal, "wallLo", 0.55, 0, H - 9, W, 1);
+  fill(ctx, pal, "wallLo", 0, H - 8, W, 8);
+  fillA(ctx, pal, "wallHi", 0.30, 0, H - 8, W, 1);
+  fillA(ctx, pal, "shadow", 0.18, 0, H - 2, W, 2);
+  // Plattenstöße der Wandverkleidung: eine HAARLINIE alle 80 Kunsteinheiten, mit einer
+  // hellen Kante daneben — so liest sie sich als Stoß zweier Platten statt als Kratzer.
+  for (let x = 40 * HD; x < W; x += 80 * HD) {
+    fillA(ctx, pal, "wallLo", 0.28, x, 3, 1, H - 12);
+    fillA(ctx, pal, "wallHi", 0.16, x + 1, 3, 1, H - 12);
+  }
 }
 
 /**
@@ -863,45 +881,81 @@ export function drawWall(ctx: Ctx, pal: Pal): void {
  * Tönungen — dieselbe Fläche in einer Farbe sieht aus wie Linoleum.
  */
 export function drawFloor(ctx: Ctx, pal: Pal): void {
-  fill(ctx, pal, "floor", 0, WALL_H, ART.w, ART.h - WALL_H);
+  // Fein gezeichnet (Etappe 3), in Pufferpixeln. Der Boden ist siebzig Prozent des Bildes —
+  // er entscheidet, ob der Raum nach Diele aussieht oder nach Mauerwerk. Grob gerastert war
+  // beides gleich breit: Fuge und Maserung waren zwei Pufferpixel dick wie das Brett selbst.
+  const W = ART.w * HD, H = ART.h * HD, TOP = WALL_H * HD;
+  const PW = PLANK_W * HD, PH = PLANK_H * HD;
+  fill(ctx, pal, "floor", 0, TOP, W, H - TOP);
 
   let prev = -1000;
   let r = 0;
-  for (let y = WALL_H; y < ART.h; y += PLANK_H, r++) {
-    const rowH = Math.min(PLANK_H, ART.h - y);
-    const raw = mix(r, SALT_PLANK) % PLANK_W;
+  for (let y = TOP; y < H; y += PH, r++) {
+    const rowH = Math.min(PH, H - y);
+    const raw = (mix(r, SALT_PLANK) % PLANK_W) * HD;
     let off = raw;
     if (prev >= 0) {
       const d = Math.abs(off - prev);
       // Der Abstand ist zyklisch: 1 und 45 liegen bei `PLANK_W = 46` nebeneinander.
-      if (Math.min(d, PLANK_W - d) < MIN_STAGGER) {
-        off = (prev + MIN_STAGGER + (raw % (PLANK_W - 2 * MIN_STAGGER))) % PLANK_W;
+      if (Math.min(d, PW - d) < MIN_STAGGER * HD) {
+        off = (prev + MIN_STAGGER * HD + (raw % (PW - 2 * MIN_STAGGER * HD))) % PW;
       }
     }
     prev = off;
 
     // Bretttönung, Maserung und senkrechte Stöße in einem Durchgang.
     let p = 0;
-    for (let x = off - PLANK_W; x < ART.w; x += PLANK_W, p++) {
+    for (let x = off - PW; x < W; x += PW, p++) {
       const v = mix(r * 131 + p, SALT_SHADE) % 4;
       // Schwach: ein Brett soll sich vom Nachbarn abheben, nicht von ihm abstechen.
-      if (v === 1) fillA(ctx, pal, "floorHi", 0.11, x, y, PLANK_W, rowH - 1);
-      else if (v === 2) fillA(ctx, pal, "floorLo", 0.09, x, y, PLANK_W, rowH - 1);
-      // Eine Maserungslinie je Brett, Lage aus demselben Hash — das ist der Unterschied
-      // zwischen „Holz" und „braune Kacheln".
-      else if (v === 3) fillA(ctx, pal, "floorLo", 0.12, x + 6, y + 2, PLANK_W - 18, 1);
-      if (x >= 0) fillA(ctx, pal, "floorLo", 0.75, x, y, 1, rowH - 1);
+      if (v === 1) fillA(ctx, pal, "floorHi", 0.11, x, y, PW, rowH - 1);
+      else if (v === 2) fillA(ctx, pal, "floorLo", 0.09, x, y, PW, rowH - 1);
+      // Zwei Maserungslinien je Brett statt einer, beide nur einen Pufferpixel hoch: die
+      // eine dicke Linie las sich als Fuge mitten im Brett.
+      else if (v === 3) {
+        fillA(ctx, pal, "floorLo", 0.10, x + 12, y + 4, PW - 36, 1);
+        fillA(ctx, pal, "floorLo", 0.07, x + 24, y + rowH - 6, PW - 60, 1);
+      }
+      // Der Stoß: eine Haarlinie plus eine helle Kante rechts daneben. Zusammen liest sich
+      // das als Kante zweier Bretter — die nackte dunkle Linie las sich als Mörtelfuge.
+      if (x >= 0) {
+        fillA(ctx, pal, "floorLo", 0.60, x, y, 1, rowH - 1);
+        fillA(ctx, pal, "floorHi", 0.18, x + 1, y, 1, rowH - 1);
+      }
     }
     // Waagerechte Fuge am unteren Rand der Reihe — deutlich schwächer als der Stoß,
     // sonst gewinnt die Reihe optisch über das Brett und der Boden kippt ins Gemauerte.
-    if (rowH === PLANK_H) fillA(ctx, pal, "floorLo", 0.28, 0, y + rowH - 1, ART.w, 1);
+    if (rowH === PH) fillA(ctx, pal, "floorLo", 0.20, 0, y + rowH - 1, W, 1);
   }
 
   // Schattenband unter der Wand: der Boden bekommt dort kein Streiflicht ab. Vier Zeilen
   // reichen, damit die Wand auf dem Boden aufsitzt statt an ihn angeklebt zu sein.
-  fillA(ctx, pal, "shadow", 0.22, 0, WALL_H, ART.w, 1);
-  fillA(ctx, pal, "shadow", 0.14, 0, WALL_H + 1, ART.w, 1);
-  fillA(ctx, pal, "shadow", 0.08, 0, WALL_H + 2, ART.w, 2);
+  for (let i = 0; i < 7; i++) {
+    fillA(ctx, pal, "shadow", 0.20 - i * 0.026, 0, TOP + i, W, 1);
+  }
+}
+
+/**
+ * Lichtfelder auf dem Boden — das, was einen Raum beleuchtet aussehen lässt statt bemalt.
+ *
+ * Vor jedem Fenster liegt ein Trapez, das nach unten breiter und schwächer wird: Licht fällt
+ * schräg ein, also wandert es zum Betrachter hin auseinander. Ein Rechteck täte es nicht —
+ * es läse sich als heller Teppich, nicht als Sonne.
+ *
+ * Nachts ist der Aufheller aus (draußen ist es dunkel) und stattdessen liegt ein sehr
+ * schwacher kalter Schimmer da: eine Stadt vor dem Fenster wirft Licht, nur wenig davon.
+ */
+export function drawLicht(ctx: Ctx, pal: Pal, xs: readonly number[], day: boolean): void {
+  const TOP = WALL_H * HD;
+  const stufen = 14;
+  for (const cx0 of xs) {
+    const cx = cx0 * HD;
+    for (let i = 0; i < stufen; i++) {
+      const halb = 9 * HD + i * 3;
+      const a = (day ? 0.085 : 0.05) * (1 - i / stufen);
+      fillA(ctx, pal, day ? "floorHi" : "glass", a, cx - halb, TOP + i * 4, halb * 2, 4);
+    }
+  }
 }
 
 /**
