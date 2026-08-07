@@ -246,3 +246,57 @@ async def test_freigabe_setzt_die_fortsetzungs_zaehlung_zurueck(db, seeded, redi
     await db.refresh(issue)
     assert issue.continuation_count == 0
     assert (inst.context or {}).get("continuation") == 0
+
+
+async def test_zuweisen_ueber_den_assistenten_startet_den_prozess(db, seeded, redis_stub):
+    """Der Assistent bedient Traccoon über native Werkzeuge, nicht über die API. Setzte er nur
+    Felder, lag das Ticket mit Agent und Status da, ohne dass ein Prozess lief — und nur ein
+    Backend-Neustart holte es je wieder ein (ABC-32 am 2026-08-07)."""
+    from app.services.lifecycle_flow import live_instance, start_lifecycle
+
+    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.planning)
+    assert await live_instance(db, issue) is None
+
+    inst = await start_lifecycle(db, issue, owner.id, advance_now=False, entry="plan")
+    await db.commit()
+
+    assert inst is not None
+    assert await live_instance(db, issue) is not None
+    # Das Token ist AKTIV, nicht wartend: genau daran erkennt der 30-s-Tick des Backends,
+    # dass es hier weitergehen muss — advance läuft bewusst nicht im Worker.
+    tok = (await db.execute(select(WorkflowToken).where(
+        WorkflowToken.instance_id == inst.id))).scalars().first()
+    assert tok.state == WorkflowTokenState.active
+
+
+async def test_verwaistes_ticket_wird_im_tick_eingesammelt(db, seeded, redis_stub):
+    """Das Sicherheitsnetz: was ohne Instanz dasteht, holt der Tick — nicht erst der Neustart."""
+    from app.services.lifecycle_flow import adopt_orphans, live_instance
+
+    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.planning)
+    redis_stub["*"] = {"status": "planned", "output": "Plan", "summary": "Plan"}
+    assert await live_instance(db, issue) is None
+
+    n = await adopt_orphans(db)
+    await enginemod.drain()
+
+    assert n == 1
+    assert await live_instance(db, issue) is not None
+
+
+async def test_startender_agent_hebt_ueberholten_hold_auf(db, seeded, redis_stub):
+    """Läuft wieder ein Agent, ist der alte Hold-Grund Geschichte — sonst zeigt das Board
+    „hold — merge", während gearbeitet wird."""
+    owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.hold)
+    issue.hold_reason = HoldReason.merge
+    issue.plan = "Plan"
+    await db.commit()
+    redis_stub["*"] = {"status": "done", "summary": "fertig", "worktree_fingerprint": "x"}
+
+    from app.services.lifecycle_flow import start_lifecycle
+    await start_lifecycle(db, issue, owner.id, entry="exec")
+    await enginemod.drain()
+    await db.refresh(issue)
+
+    assert issue.agent_status != TicketAgentStatus.hold
+    assert issue.hold_reason is None
