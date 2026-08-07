@@ -436,6 +436,17 @@ async def digest(run_id: int):
     if jr is None:
         return HTMLResponse("<h1>404</h1>", status_code=404)
     import html as _html
+    # Ein fehlgeschlagener Lauf hat KEINEN Digest — bisher zeigte die Seite dann eine leere
+    # Seite (jr.output ist ''), und der Grund (jr.error) stand nirgends sichtbar. Von außen
+    # war der Job damit nicht diagnostizierbar (siehe Job #3 seit 2026-08-03).
+    if jr.status == "error":
+        body = _html.escape(jr.error or "Kein Fehlertext hinterlegt.")
+        page = (f"<!doctype html><html><head><meta charset='utf-8'><title>Digest #{run_id} — Fehler</title>"
+                "<style>body{max-width:800px;margin:2rem auto;padding:0 1rem;font-family:system-ui;"
+                "line-height:1.6;color:#172b4d}pre{white-space:pre-wrap;word-wrap:break-word}"
+                "h1{color:#ae2e24}</style></head>"
+                f"<body><h1>⚠️ Lauf fehlgeschlagen</h1><pre>{body}</pre></body></html>")
+        return HTMLResponse(page, status_code=200)
     body = _html.escape(jr.output or "")
     page = (f"<!doctype html><html><head><meta charset='utf-8'><title>Digest #{run_id}</title>"
             "<style>body{max-width:800px;margin:2rem auto;padding:0 1rem;font-family:system-ui;"
