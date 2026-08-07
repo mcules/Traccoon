@@ -39,6 +39,19 @@ def test_zeitfenster_kommt_aus_dem_letzten_lauf():
     assert "2026-07-29" in text and TZ.key == "Europe/Berlin"
 
 
+def test_fenster_deckelt_sich_bei_langer_fehlserie():
+    """Anlass: Job #3 scheiterte ab dem 03.08. jeden Tag — jeder Fehltag ließ `{{seit}}`
+    weiter zurückwandern, das Fenster wuchs, die Recherche dauerte länger, riss öfter das
+    Zeitlimit (selbstverstärkend). Ohne Deckel würde ein Lauf, der eine ganze Woche kaputt
+    war, beim nächsten Versuch ein Fenster von Tagen bekommen statt maximal vier."""
+    jetzt = dt.datetime(2026, 8, 7, 6, 0, tzinfo=dt.timezone.utc)
+    letzter = dt.datetime(2026, 7, 20, 6, 0, tzinfo=dt.timezone.utc)   # 18 Tage zurück
+    text = rendere("{{seit}}", {}, jetzt=jetzt, letzter_lauf=letzter)
+    seit = dt.datetime.strptime(text, "%Y-%m-%d %H:%M")
+    jetzt_lokal = jetzt.astimezone(TZ).replace(tzinfo=None)
+    assert (jetzt_lokal - seit).days <= 4
+
+
 def test_ohne_letzten_lauf_24_stunden_zurueck():
     """Erster Lauf oder Job war aus: ein Digest braucht trotzdem eine Untergrenze."""
     jetzt = dt.datetime(2026, 7, 29, 6, 0, tzinfo=dt.timezone.utc)

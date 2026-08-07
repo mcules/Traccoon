@@ -35,11 +35,16 @@ class ChatResponse:
 
 class ProviderError(RuntimeError):
     def __init__(self, message: str, *, status: int | None = None, retryable: bool = False,
-                 retry_after: float | None = None):
+                 retry_after: float | None = None, escalate_max_tokens: bool = False):
         super().__init__(message)
         self.status = status
         self.retryable = retryable
         self.retry_after = retry_after
+        # Speziell für den max_tokens-Abbruch (Anthropic): ein Retry mit UNVERÄNDERTEM
+        # max_tokens würde denselben Fehler reproduzieren (das Budget reicht strukturell
+        # nicht). Der Router verdoppelt max_tokens vor dem nächsten Versuch, statt den
+        # Fehler wie einen normalen Verbindungsfehler sofort durchzureichen.
+        self.escalate_max_tokens = escalate_max_tokens
 
 
 class Provider(Protocol):

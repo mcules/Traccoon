@@ -212,7 +212,7 @@ class AnthropicProvider(Provider):
             raise ProviderError(
                 "claude: Antwort bei max_tokens abgeschnitten – unvollständig "
                 "(Tool-Argumente oder komplett leer, Budget im Thinking verbraucht). "
-                "max_tokens erhöhen.", retryable=True)
+                "max_tokens erhöhen.", retryable=True, escalate_max_tokens=True)
         raw_msg: dict[str, Any] = {"role": "assistant", "content": text or None}
         if oai_calls:
             raw_msg["tool_calls"] = oai_calls

@@ -6,6 +6,7 @@ Stelle, an der sie wirkt — und um das Zeitfenster, das aus den vorigen Läufen
 import datetime as dt
 
 import pytest
+from app.models.notification import Notification
 from app.models.ops import Job, JobRun
 from app.worker import __main__ as worker
 from conftest import make_user
@@ -91,3 +92,86 @@ async def test_job_run_wird_abgeschlossen(db, anna, monkeypatch):
     await _lauf(db, monkeypatch, j)
     jr = (await db.execute(select(JobRun).order_by(JobRun.id.desc()))).scalars().first()
     assert jr.status == "ok" and jr.output == "fertig"
+
+
+async def test_loop_exhausted_bekommt_fortsetzung_statt_sofort_fehler(db, anna, monkeypatch):
+    """Anlass: der News-Digest riss ab dem 03.08. jeden Tag das Wanduhr-Limit (`loop_exhausted`)
+    und `_handle_job` wertete das sofort als `error` — ohne einen zweiten Versuch, wie es die
+    Workflow-Engine für Ticket-Läufe längst tut. Bricht der erste Anlauf ab, muss ein frischer
+    `run_agent`-Aufruf weiterarbeiten dürfen und bei Erfolg `ok` liefern."""
+    j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news", prompt="x", args={})
+    db.add(j)
+    await db.commit()
+    jr = JobRun(job_id=j.id, status="running")
+    db.add(jr)
+    await db.commit()
+
+    class Erschoepft:
+        status, text, summary, run_id, blocker_kind = "loop_exhausted", "", "Zwischenstand", None, None
+
+    class Fertig:
+        status, text, summary, run_id, blocker_kind = "done", "fertig", "fertig", None, None
+
+    rufe = {"n": 0}
+
+    async def fake_run_agent(**kw):
+        rufe["n"] += 1
+        return Erschoepft() if rufe["n"] == 1 else Fertig()
+
+    async def fake_load_agent(*a, **kw):
+        class A:
+            role = name = "news"
+        return A()
+
+    async def fake_tokens(*a, **kw):
+        return {}, {}
+
+    import app.worker.runtime as rt
+    monkeypatch.setattr(rt, "run_agent", fake_run_agent, raising=False)
+    monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
+    monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
+    await worker._handle_job({"job_id": j.id, "job_run_id": jr.id, "task_id": f"job-{jr.id}"}, None)
+
+    await db.refresh(jr)
+    assert rufe["n"] == 2                  # ein Fortsetzungsversuch, dann fertig
+    assert jr.status == "ok" and jr.output == "fertig"
+
+
+async def test_fehlgeschlagener_job_nennt_den_grund_in_der_meldung(db, anna, monkeypatch):
+    """„Job … fehlgeschlagen" ohne Grund ist von außen nicht diagnostizierbar — die erste
+    Zeile des Fehlers muss in Titel/Body der Telegram-Meldung stehen."""
+    anna.telegram_chat_id = "123"
+    j = Job(user_id=anna.id, name="KI- & Tech-News", kind="prompt", agent="news", prompt="x",
+            args={}, notify_mode="always")
+    db.add(j)
+    await db.commit()   # inkl. telegram_chat_id — `_handle_job` öffnet eine EIGENE Session
+    jr = JobRun(job_id=j.id, status="running")
+    db.add(jr)
+    await db.commit()
+
+    class Ergebnis:
+        status, text, summary, run_id, blocker_kind = (
+            "loop_exhausted", "Web-Suche brach mit Rate-Limit ab", "", None, None)
+
+    async def fake_run_agent(**kw):
+        return Ergebnis()
+
+    async def fake_load_agent(*a, **kw):
+        class A:
+            role = name = "news"
+        return A()
+
+    async def fake_tokens(*a, **kw):
+        return {}, {}
+
+    import app.worker.runtime as rt
+    monkeypatch.setattr(rt, "run_agent", fake_run_agent, raising=False)
+    monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
+    monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
+    monkeypatch.setattr(worker, "JOB_MAX_CONTINUATIONS", 0)
+    await worker._handle_job({"job_id": j.id, "job_run_id": jr.id, "task_id": f"job-{jr.id}"}, None)
+
+    await db.refresh(jr)
+    assert jr.status == "error" and "Web-Suche brach mit Rate-Limit ab" in jr.error
+    n = (await db.execute(select(Notification))).scalars().one()
+    assert "fehlgeschlagen" in n.title and "Web-Suche brach mit Rate-Limit ab" in n.title
