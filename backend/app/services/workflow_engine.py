@@ -848,8 +848,16 @@ async def _agent_note(db, issue_id: int, status: str, summary: str, stalled: boo
     elif status == "failed":
         note = f"❌ Fehlgeschlagen: {summary or 'unbekannter Fehler'}"
     if note:
+        # `kind` trennt Arbeitsstand von Pannenprotokoll. Der Ticket-Verlauf zeigt beides,
+        # der Prompt des nächsten Agenten nur den Arbeitsstand: eine Meldung über einen
+        # Worker-Neustart oder einen Deadlock ist nichts, woran er weiterarbeiten könnte —
+        # aber genau so hat er sie gelesen. Am 2026-08-07 setzte ein Agent daraufhin
+        # „claude: Antwort bei max_tokens abgeschnitten – max_tokens erhöhen" als Aufgabe
+        # um und schrieb dafür eine Eskalation in den Provider-Router; das Ticket ging über
+        # den Job-Fehler, um den es eigentlich ging.
+        art = "agent_fail" if status == "failed" else "agent"
         db.add(Comment(issue_id=issue_id, author_id=None, author_label="Agent",
-                       body=note[:1500], kind="agent"))
+                       body=note[:1500], kind=art))
 
 
 async def _await_agent(instance_id: int, token_id: int, step_id: int, task_id: str,
