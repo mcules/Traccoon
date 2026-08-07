@@ -8,8 +8,24 @@
 
 // ── Auflösung ────────────────────────────────────────────────────────────────
 
-/** Der Bildpuffer. Fest. Alle Sprites, Blasen und Schriften sind in **diesen** Pixeln gemessen. */
-export const PIX = { w: 480, h: 270 } as const;
+/** Die **Kunstebene**: das Koordinatensystem, in dem gezeichnet wird. Sprites, Blasen,
+ *  Schriften, Möbel und die Kamera rechnen in diesen Einheiten. Bis 2026-08-07 war sie
+ *  identisch mit dem Bildpuffer — daher hieß hier alles „Pufferpixel". */
+export const ART = { w: 480, h: 270 } as const;
+
+/** Wie viele Pufferpixel eine Kunsteinheit breit ist.
+ *
+ *  Der Grund für die Trennung: bei 480×270 füllt ein gezeichneter Pixel auf einem 1080p-Schirm
+ *  einen 4×4-Klotz, und eine Figur ist 16×24 groß — aus drei Metern ein Daumennagel. Mit
+ *  ART_SCALE = 2 hat der Puffer 960×540; wer weiterhin in Kunsteinheiten zeichnet, bekommt
+ *  exakt dasselbe Bild (jede Einheit wird ein 2×2-Block), wer feiner zeichnen will, hat ab
+ *  jetzt die doppelte Auflösung dafür. Genau so wandert das Büro in Etappen von grob nach fein,
+ *  ohne dass zwischendurch etwas kaputt ist. */
+export const ART_SCALE = 2;
+
+/** Der Bildpuffer in echten Pixeln. Ergibt sich aus Kunstebene × Maßstab — nie von Hand
+ *  setzen, sonst driften Kamera, Trefferprüfung und Blit auseinander. */
+export const PIX = { w: ART.w * ART_SCALE, h: ART.h * ART_SCALE } as const;
 
 /** Der Raum, in dem die Simulation rechnet. Positionen leben hier. */
 export const SCENE = { w: 1600, h: 900 } as const;

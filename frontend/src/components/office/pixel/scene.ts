@@ -33,7 +33,7 @@
 import type {
   ActorState, Ctx, Frame, Fx, Grade, MoodKind, Pt, ScreenKind, ToolAct,
 } from "../types.ts";
-import { LINK_MS, PIX, POS_SCALE, SCENE } from "../const.ts";
+import { ART, ART_SCALE, LINK_MS, PIX, POS_SCALE, SCENE } from "../const.ts";
 import { fillA } from "./art.ts";
 import type { Pal } from "./palette.ts";
 import { GRADES, lookOf, palFor, rollenSeed } from "./palette.ts";
@@ -56,7 +56,7 @@ import {
 export type Cam = { x: number; y: number; zoom: number };
 
 /** Die Kamera, die den ganzen Raum zeigt. */
-export const CAM_FULL: Cam = { x: PIX.w / 2, y: PIX.h / 2, zoom: 1 };
+export const CAM_FULL: Cam = { x: ART.w / 2, y: ART.h / 2, zoom: ART_SCALE };
 
 interface CamFit { z: number; ox: number; oy: number }
 
@@ -455,7 +455,7 @@ function buildRoom(world: Piece[], v: Ctx, env: Pal, frame: Frame): void {
 
   world.push({ y: COFFEE.y - 6, draw: () => drawCoffee(v, COFFEE.x, COFFEE.y - 6, env) });
   world.push({ y: 214, draw: () => drawPlant(v, 12, 214, env) });
-  world.push({ y: 258, draw: () => drawPlant(v, PIX.w - 14, 258, env) });
+  world.push({ y: 258, draw: () => drawPlant(v, ART.w - 14, 258, env) });
 }
 
 /** Figuren in dieselbe Sortierliste legen — das ist der Kern von Schicht 4. */
@@ -473,7 +473,7 @@ function buildActors(
     // Außerhalb des Puffers wird nicht gezeichnet. Der Sammelpunkt für „auswärts" liegt in
     // `room.ts` bei `y = -100`, also weit über der Decke — ohne diese Prüfung liefe die
     // Zeichenschleife für jede abgeschobene Figur einmal komplett durch.
-    if (cx < -FIG_W || cx > PIX.w + FIG_W || yBase < -FIG_H || yBase > PIX.h + FIG_H) continue;
+    if (cx < -FIG_W || cx > ART.w + FIG_W || yBase < -FIG_H || yBase > ART.h + FIG_H) continue;
 
     // Hemd, Haar und Schultern kommen aus der **Rolle**, alles übrige aus dem Laufseed —
     // `a.role` steht schon im `Frame`, es braucht also kein neues Feld in Schicht 0.
@@ -572,7 +572,7 @@ function drawOverlays(
     if (a.retired === true) continue;
     const cx = px(a.x);
     const yBase = px(a.y);
-    if (cx < -FIG_W || cx > PIX.w + FIG_W || yBase < 0 || yBase > PIX.h + FIG_H) continue;
+    if (cx < -FIG_W || cx > ART.w + FIG_W || yBase < 0 || yBase > ART.h + FIG_H) continue;
 
     const chosen = a.id === sel;
     const hovered = a.id === hov;

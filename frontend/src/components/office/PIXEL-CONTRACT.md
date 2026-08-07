@@ -9,15 +9,34 @@ widerlegen, nicht die Regel übersehen.
 
 ---
 
-## Regel 1 — Der Bildpuffer ist fest 480×270 (die wichtigste Regel)
+## Regel 1 — Kunstebene 480×270, Bildpuffer 960×540 (die wichtigste Regel)
 
-Es gibt genau eine Auflösung, in der gezeichnet wird: **480×270 Pufferpixel**. Der sichtbare
-Canvas ist beliebig groß; er bekommt den Puffer ganzzahlig hochskaliert
+Es gibt genau ein Koordinatensystem, in dem gezeichnet wird: die **Kunstebene**, 480×270
+Einheiten (`ART`). Der Bildpuffer ist doppelt so fein — **960×540** (`PIX = ART × ART_SCALE`,
+`ART_SCALE = 2`). Zwischen beiden steht dieselbe Kamera-Hülle, die auch das Zoomen macht:
+`CAM_FULL` hat `zoom: ART_SCALE`.
+
+> **Warum die Trennung, seit wann, und was sie soll**
+>
+> Bis 2026-08-07 waren Kunstebene und Puffer dasselbe: 480×270. Auf einem 1080p-Schirm wurde
+> daraus ein 4×4-Klotz je gezeichnetem Pixel, und eine Figur von 16×24 war aus drei Metern ein
+> Daumennagel — „extrem pixelig", und zwar nicht als Stil, sondern als Nebenwirkung.
+>
+> Die Kunstebene bleibt, damit **nichts umgerechnet werden muss**: jede vorhandene
+> Zeichenfunktion malt weiter in denselben Zahlen und liefert dasselbe Bild (jede Einheit wird
+> ein 2×2-Block). Der feinere Puffer ist der Platz, in den neue Kunst hineinwächst — Etappe für
+> Etappe, Objektfamilie für Objektfamilie, ohne dass zwischendurch etwas kaputt ist.
+>
+> **Wer feiner zeichnen will, zeichnet in Pufferpixeln** — also unter Umgehung der
+> Kamera-Hülle, mit `ART_SCALE` als Umrechnung. Solange eine Familie noch grob ist, bleibt sie
+> in Kunsteinheiten. Beides nebeneinander ist ausdrücklich erlaubt; das ist der ganze Zweck.
+
+Der sichtbare Canvas ist beliebig groß; er bekommt den Puffer ganzzahlig hochskaliert
 (`imageSmoothingEnabled = false`).
 
 > **Ganzzahlig ist die Zeichnung im Rückspeicher — das Einpassen in den Viewport macht CSS.**
 >
-> Der Rückspeicher (`canvas.width/height`) bleibt ein ganzzahliges Vielfaches von 480×270; nur
+> Der Rückspeicher (`canvas.width/height`) bleibt ein ganzzahliges Vielfaches von `PIX`; nur
 > dort gilt die Regel, denn ein Blit mit Faktor 1,5 liefe über halbe Spalten. Die **CSS-Größe**
 > des Canvas dagegen ist das größte 16:9-Rechteck, das in den Container passt — 480×270 *ist*
 > 16:9, also verzerrt nichts, und eine Richtung füllt immer vollständig. Hochgezogen wird per
@@ -36,7 +55,7 @@ Die Simulation dagegen läuft in **`SCENE = 1600×900`**. Zwischen beiden steht 
 
 > **`POS_SCALE` gilt für Positionen. Für Sprites gilt es nicht.**
 
-Eine Figur ist **16×24 Pufferpixel** — ein knappes Elftel der Bildhöhe. Sie ist *nicht* 16×24
+Eine Figur ist **16×24 Kunsteinheiten** — ein knappes Elftel der Bildhöhe. Sie ist *nicht* 16×24
 Szenenpixel, die dann auf 5×7 schrumpfen. Wer die Sprites mitskaliert, malt Figuren mit 35 statt
 384 Pixeln und rechnet damit das gesamte Kunstbudget (≤20 KB, ~36 Arts) um den Faktor 3 falsch —
 und merkt es erst, wenn die Arts fertig und unbrauchbar sind.
@@ -49,7 +68,8 @@ const py = Math.round(actor.y * POS_SCALE);   // Position: skaliert
 drawPerson(ctx, px, py, look, pose);          // Sprite: 16×24 Pufferpixel, ungeskaliert
 ```
 
-Möbel, Blasen, Schrift, Partikel: ebenfalls in Pufferpixeln. `POS_SCALE` taucht in Schicht 1
+Möbel, Blasen, Schrift, Partikel: ebenfalls in Kunsteinheiten (bzw., wo eine Familie schon fein
+gezeichnet ist, in Pufferpixeln — Regel 1). `POS_SCALE` taucht in Schicht 1
 höchstens auf, um eine Szenenkoordinate hereinzuholen — nie, um eine Größe zu berechnen.
 
 ---
