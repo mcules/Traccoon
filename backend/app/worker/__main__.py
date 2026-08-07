@@ -501,6 +501,18 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
 # in einem FRISCHEN run_agent-Aufruf weiterarbeiten (wie die Workflow-Engine es für Ticket-Läufe
 # schon tut), bis zu dieser Rundenzahl.
 JOB_MAX_CONTINUATIONS = int(os.getenv("JOB_MAX_CONTINUATIONS", "4"))
+# Wanduhr-Grenze JE Runde für Job-Läufe (eigener Wert statt `MAX_RUN_SECONDS`/1800s): ein
+# Recherche-Digest mit mehreren Web-Suchen + Dedup braucht öfter länger als 30 Minuten — mit
+# dem globalen Default riss genau das regelmäßig ab. `run_agent` bekommt diese Grenze über
+# `run_seconds`; der Default für Ticket-/Assistenten-Läufe (`MAX_RUN_SECONDS`) bleibt unberührt.
+JOB_RUN_TIMEOUT_SEC = float(os.getenv("JOB_RUN_TIMEOUT_SEC", "3600"))
+# Deckelt die GESAMTE Fortsetzungskette eines Job-Laufs (alle Runden zusammen), nicht nur die
+# einzelne Runde. Ohne diesen Deckel könnte ein hartnäckig scheiternder Job bis zu
+# (JOB_MAX_CONTINUATIONS+1) * JOB_RUN_TIMEOUT_SEC lang einen Worker-Slot blockieren — bei
+# Default-Werten bis zu 5 Stunden, während `WORKER_CONCURRENCY` standardmäßig nur 3 Slots hat.
+# Andere Jobs/Tickets würden in dieser Zeit verhungern. 2h sind genug für einen aufwendigen
+# Digest, ohne dass ein einzelner Job einen Slot über Gebühr belegt.
+JOB_MAX_TOTAL_SECONDS = float(os.getenv("JOB_MAX_TOTAL_SECONDS", "7200"))
 
 
 async def _handle_job(job: dict, redis: Redis) -> None:
@@ -557,7 +569,14 @@ async def _handle_job(job: dict, redis: Redis) -> None:
             prompt_text = rendere(j.prompt, j.args, letzter_lauf=vorlauf)
             cont_index, cont_hint = 0, ""
             result = None
-            for _ in range(JOB_MAX_CONTINUATIONS + 1):
+            # Gesamtzeitbudget über ALLE Fortsetzungsrunden — ohne das könnte die Kette bis zu
+            # (JOB_MAX_CONTINUATIONS+1) * JOB_RUN_TIMEOUT_SEC einen Worker-Slot blockieren.
+            gesamt_frist = time.monotonic() + JOB_MAX_TOTAL_SECONDS
+            for versuch in range(JOB_MAX_CONTINUATIONS + 1):
+                rest = gesamt_frist - time.monotonic()
+                # Der ERSTE Versuch läuft immer (sonst bliebe `result` None, falls
+                # JOB_MAX_TOTAL_SECONDS versehentlich zu klein/0 konfiguriert wäre) — das
+                # Gesamtbudget deckelt nur WEITERE Fortsetzungsrunden (s. u.).
                 result = await run_agent(
                     db=db, agent=agent,
                     issue={"id": None, "key": f"job-{jr.id}", "summary": j.name,
@@ -565,8 +584,19 @@ async def _handle_job(job: dict, redis: Redis) -> None:
                     project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
                     mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
                     base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"],
-                    continuation_index=cont_index, continuation_hint=cont_hint)
+                    continuation_index=cont_index, continuation_hint=cont_hint,
+                    run_seconds=min(JOB_RUN_TIMEOUT_SEC, rest) if rest > 0 else JOB_RUN_TIMEOUT_SEC)
                 if result.status != "loop_exhausted":
+                    break
+                # NUR erhöhen (und damit noch eine Runde starten), wenn (a) noch Fortsetzungs-
+                # runden erlaubt sind UND (b) das Gesamtzeitbudget eine weitere Runde noch
+                # zulässt. Beide Prüfungen MÜSSEN hier, VOR dem Inkrement, passieren — sonst
+                # zählt `cont_index` eine Runde, die mangels Budget gar nicht mehr startet
+                # (Off-by-one aus dem Review: „Nach 1" statt „Nach 0" bei sofort leerem Budget).
+                if versuch >= JOB_MAX_CONTINUATIONS or gesamt_frist - time.monotonic() <= 0:
+                    if versuch < JOB_MAX_CONTINUATIONS:
+                        log.warning("Job %s: Gesamtzeitbudget (%ds) vor weiterer Runde aufgebraucht",
+                                    j.name, int(JOB_MAX_TOTAL_SECONDS))
                     break
                 cont_index += 1
                 cont_hint = (result.summary or result.text or "")[:2000]
@@ -575,6 +605,9 @@ async def _handle_job(job: dict, redis: Redis) -> None:
             if result.status not in ("done",):
                 # `loop_exhausted` nach allen Fortsetzungsrunden ist so gut wie ein echter
                 # Fehler — der Grund gehört sichtbar in `jr.error`, nicht nur ins Log.
+                # `cont_index` zählt an dieser Stelle exakt die Runden, die NACH der ersten
+                # tatsächlich noch gestartet wurden (s. o.) — nicht mehr, auch wenn die
+                # `for`-Schleife durch Erschöpfung von `range` statt durch `break` endet.
                 grund = (result.text or result.status)
                 status, err = "error", (
                     f"Nach {cont_index} Fortsetzungsrunde(n) noch nicht fertig ({grund})"
@@ -596,7 +629,11 @@ async def _handle_job(job: dict, redis: Redis) -> None:
                 title += f": {err.splitlines()[0][:200]}"
             body = err if status == "error" else out
             if j.result_html:
-                body = f"/digest/{jr.id}"
+                # Der Link allein war das eigentliche Symptom: bei `error` gibt es (vorher)
+                # keinen Digest unter dem Link — der Fehlergrund muss darum WÖRTLICH im
+                # Body stehen, nicht nur im (bei langen Namen ggf. abgeschnittenen) Titel.
+                link = f"/digest/{jr.id}"
+                body = f"{err.splitlines()[0][:200]}\n{link}" if status == "error" and err else link
             db.add(Notification(kind="job", title=title, body=body[:4000], chat_id=notify_chat))
         await db.commit()
     log.info("job %s → %s", job["job_id"], status)

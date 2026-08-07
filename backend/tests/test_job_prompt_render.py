@@ -137,6 +137,126 @@ async def test_loop_exhausted_bekommt_fortsetzung_statt_sofort_fehler(db, anna, 
     assert jr.status == "ok" and jr.output == "fertig"
 
 
+async def test_dauerhaft_erschoepfter_job_nennt_korrekte_rundenzahl(db, anna, monkeypatch):
+    """Anlass Review-Befund: `cont_index` wurde nach JEDER `loop_exhausted`-Runde erhöht,
+    auch nach der letzten (die Schleife endet dort durch Erschöpfung von `range`, nicht durch
+    `break`) — bei `JOB_MAX_CONTINUATIONS=2` und drei `loop_exhausted`-Versuchen in Folge stand
+    fälschlich „Nach 3" statt „Nach 2" in `jr.error` (eine Runde zu viel gemeldet)."""
+    j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news", prompt="x", args={})
+    db.add(j)
+    await db.commit()
+    jr = JobRun(job_id=j.id, status="running")
+    db.add(jr)
+    await db.commit()
+
+    class Erschoepft:
+        status, text, summary, run_id, blocker_kind = "loop_exhausted", "immer noch nicht fertig", "", None, None
+
+    rufe = {"n": 0}
+
+    async def fake_run_agent(**kw):
+        rufe["n"] += 1
+        return Erschoepft()
+
+    async def fake_load_agent(*a, **kw):
+        class A:
+            role = name = "news"
+        return A()
+
+    async def fake_tokens(*a, **kw):
+        return {}, {}
+
+    import app.worker.runtime as rt
+    monkeypatch.setattr(rt, "run_agent", fake_run_agent, raising=False)
+    monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
+    monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
+    monkeypatch.setattr(worker, "JOB_MAX_CONTINUATIONS", 2)
+    await worker._handle_job({"job_id": j.id, "job_run_id": jr.id, "task_id": f"job-{jr.id}"}, None)
+
+    await db.refresh(jr)
+    assert rufe["n"] == 3                          # 1 Erstversuch + 2 Fortsetzungsrunden
+    assert jr.status == "error"
+    assert "Nach 2 Fortsetzungsrunde(n)" in jr.error   # NICHT "Nach 3"
+
+
+async def test_ohne_fortsetzung_erlaubt_zaehlt_null_runden(db, anna, monkeypatch):
+    """`JOB_MAX_CONTINUATIONS=0`: ein einziger Versuch, keine Fortsetzung — die Meldung muss
+    „Nach 0 Fortsetzungsrunde(n)" sagen, nicht „Nach 1" (Off-by-one aus dem Review)."""
+    j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news", prompt="x", args={})
+    db.add(j)
+    await db.commit()
+    jr = JobRun(job_id=j.id, status="running")
+    db.add(jr)
+    await db.commit()
+
+    class Erschoepft:
+        status, text, summary, run_id, blocker_kind = "loop_exhausted", "nicht fertig", "", None, None
+
+    async def fake_run_agent(**kw):
+        return Erschoepft()
+
+    async def fake_load_agent(*a, **kw):
+        class A:
+            role = name = "news"
+        return A()
+
+    async def fake_tokens(*a, **kw):
+        return {}, {}
+
+    import app.worker.runtime as rt
+    monkeypatch.setattr(rt, "run_agent", fake_run_agent, raising=False)
+    monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
+    monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
+    monkeypatch.setattr(worker, "JOB_MAX_CONTINUATIONS", 0)
+    await worker._handle_job({"job_id": j.id, "job_run_id": jr.id, "task_id": f"job-{jr.id}"}, None)
+
+    await db.refresh(jr)
+    assert "Nach 0 Fortsetzungsrunde(n)" in jr.error
+
+
+async def test_gesamtzeitbudget_bricht_weitere_fortsetzungsrunden_ab(db, anna, monkeypatch):
+    """Ohne Gesamtzeitbudget könnte die Fortsetzungskette bis zu
+    (JOB_MAX_CONTINUATIONS+1) * JOB_RUN_TIMEOUT_SEC einen Worker-Slot blockieren. Ist das
+    Gesamtbudget schon vor einer weiteren Runde aufgebraucht, darf `run_agent` kein weiteres
+    Mal aufgerufen werden — der erste Versuch läuft aber immer."""
+    j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news", prompt="x", args={})
+    db.add(j)
+    await db.commit()
+    jr = JobRun(job_id=j.id, status="running")
+    db.add(jr)
+    await db.commit()
+
+    class Erschoepft:
+        status, text, summary, run_id, blocker_kind = "loop_exhausted", "nicht fertig", "", None, None
+
+    rufe = {"n": 0}
+
+    async def fake_run_agent(**kw):
+        rufe["n"] += 1
+        return Erschoepft()
+
+    async def fake_load_agent(*a, **kw):
+        class A:
+            role = name = "news"
+        return A()
+
+    async def fake_tokens(*a, **kw):
+        return {}, {}
+
+    import app.worker.runtime as rt
+    monkeypatch.setattr(rt, "run_agent", fake_run_agent, raising=False)
+    monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
+    monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
+    monkeypatch.setattr(worker, "JOB_MAX_CONTINUATIONS", 4)
+    monkeypatch.setattr(worker, "JOB_MAX_TOTAL_SECONDS", 0)   # sofort aufgebraucht
+    await worker._handle_job({"job_id": j.id, "job_run_id": jr.id, "task_id": f"job-{jr.id}"}, None)
+
+    await db.refresh(jr)
+    assert rufe["n"] == 1                          # nur der erste (garantierte) Versuch
+    assert jr.status == "error"
+    assert "Nach 0 Fortsetzungsrunde(n)" in jr.error
+
+
 async def test_fehlgeschlagener_job_nennt_den_grund_in_der_meldung(db, anna, monkeypatch):
     """„Job … fehlgeschlagen" ohne Grund ist von außen nicht diagnostizierbar — die erste
     Zeile des Fehlers muss in Titel/Body der Telegram-Meldung stehen."""
@@ -175,3 +295,43 @@ async def test_fehlgeschlagener_job_nennt_den_grund_in_der_meldung(db, anna, mon
     assert jr.status == "error" and "Web-Suche brach mit Rate-Limit ab" in jr.error
     n = (await db.execute(select(Notification))).scalars().one()
     assert "fehlgeschlagen" in n.title and "Web-Suche brach mit Rate-Limit ab" in n.title
+
+
+async def test_fehlgeschlagener_digest_job_zeigt_grund_nicht_nur_den_link(db, anna, monkeypatch):
+    """Anlass Job #3: `result_html`-Jobs (Digests) überschrieben den Body IMMER mit dem
+    nackten `/digest/<id>`-Link — bei `error` verlinkte das auf eine Seite ohne Digest, der
+    Fehlergrund ging in der Telegram-Meldung komplett verloren. Der Body muss ihn tragen."""
+    anna.telegram_chat_id = "123"
+    j = Job(user_id=anna.id, name="KI- & Tech-News", kind="prompt", agent="news", prompt="x",
+            args={}, notify_mode="always", result_html=True)
+    db.add(j)
+    await db.commit()
+    jr = JobRun(job_id=j.id, status="running")
+    db.add(jr)
+    await db.commit()
+
+    class Ergebnis:
+        status, text, summary, run_id, blocker_kind = (
+            "loop_exhausted", "Web-Suche brach mit Rate-Limit ab", "", None, None)
+
+    async def fake_run_agent(**kw):
+        return Ergebnis()
+
+    async def fake_load_agent(*a, **kw):
+        class A:
+            role = name = "news"
+        return A()
+
+    async def fake_tokens(*a, **kw):
+        return {}, {}
+
+    import app.worker.runtime as rt
+    monkeypatch.setattr(rt, "run_agent", fake_run_agent, raising=False)
+    monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
+    monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
+    monkeypatch.setattr(worker, "JOB_MAX_CONTINUATIONS", 0)
+    await worker._handle_job({"job_id": j.id, "job_run_id": jr.id, "task_id": f"job-{jr.id}"}, None)
+
+    n = (await db.execute(select(Notification))).scalars().one()
+    assert "Web-Suche brach mit Rate-Limit ab" in n.body
+    assert "/digest/" in n.body
