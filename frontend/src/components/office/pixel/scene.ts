@@ -40,7 +40,7 @@ import { GRADES, lookOf, palFor, rollenSeed } from "./palette.ts";
 import {
   SIZE, WALL_H, WINDOW_STEP, drawBoard, drawCabinet, drawChair, drawClock, drawCoffee,
   drawDesk, drawDoor, drawFloor, drawMonitor, drawPlant, drawMeetingTable, drawRack, drawRug,
-  drawTableChair, drawWall, drawWindow, drawWindowLight,
+  drawLicht, drawTableChair, drawWall, drawWindow, drawWindowLight,
 } from "./furniture.ts";
 import { FIG_H, FIG_W, actorBox, drawActor, drawGhost } from "./person.ts";
 import {
@@ -228,6 +228,14 @@ const WIN_LEFT_X = 20;
 const WIN_LEFT_N = 5;
 const WIN_RIGHT_X = 396;
 const WIN_RIGHT_N = 3;
+
+/** Die Mitten aller Fenster — für die Lichtfelder auf dem Boden. Aus denselben Konstanten
+ *  gebaut wie die Fenster selbst; eine zweite Liste wäre die erste Stelle, an der Fenster
+ *  und Licht auseinanderlaufen. */
+const WIN_XS: readonly number[] = [
+  ...Array.from({ length: WIN_LEFT_N }, (_, i) => WIN_LEFT_X + i * WINDOW_STEP + 11),
+  ...Array.from({ length: WIN_RIGHT_N }, (_, i) => WIN_RIGHT_X + i * WINDOW_STEP + 11),
+];
 const BOARD_X = 190;
 const CLOCK_X = 246;
 
@@ -351,13 +359,16 @@ export function renderFrame(
   const t = frame.t;
 
   // ── 1 Hülle ───────────────────────────────────────────────────────────────
-  drawWall(v, env);
+  drawWall(vh, env);
   for (let i = 0; i < WIN_LEFT_N; i++) drawWindow(v, WIN_LEFT_X + i * WINDOW_STEP, WIN_Y, env);
   for (let i = 0; i < WIN_RIGHT_N; i++) drawWindow(v, WIN_RIGHT_X + i * WINDOW_STEP, WIN_Y, env);
   drawBoard(v, BOARD_X, 34, env);
   drawClock(v, CLOCK_X, 26, env);
   drawDoor(v, DOOR.x, WALL_H, env, { open: anyoneTravelling(frame) });
-  drawFloor(v, env);
+  drawFloor(vh, env);
+  // Licht kommt nach dem Boden und vor den Möbeln: es liegt auf den Dielen, aber unter allem,
+  // was darauf steht — sonst leuchteten Schreibtische von innen.
+  drawLicht(vh, env, WIN_XS, day);
   drawCabinet(v, CABINET_X, CABINET_Y, env);
   drawPlant(v, CABINET_X, CABINET_Y - SIZE.cabinet.h, env, { small: true });
   // Das Rack ist die einzige Kulisse, die etwas erzählt: bei `idle` zeichnet es sich
