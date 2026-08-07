@@ -336,24 +336,37 @@ async def reconcile(db: AsyncSession) -> dict:
     # Am 2026-08-07 lief genau das schief: nach einem Worker-Neustart holte die Recovery zwei
     # Aufträge zurück, die Agenten arbeiteten — und das Board zeigte „Warten", weil den
     # Zustand niemand angefasst hatte.
+    # Geprüft wird der ZUSTAND UND DIE SPALTE. Die Regel gilt dem Board, und das kann auch
+    # dann falsch stehen, wenn `agent_status` längst stimmt: ABC-32 am 2026-08-07 wurde aus
+    # dem Störungs-Zweig heraus fortgesetzt, der Agent lief mit `in_progress` — die Spalte
+    # blieb auf „Warten", weil sie beim Parken gesetzt und nie wieder angefasst wurde. Ein
+    # Abgleich, der nur auf `agent_status` schaut, sieht daran nichts Falsches.
     from ..models.agents import Run
     from ..models.enums import TicketAgentStatus as _TS
-    ARBEITET = (_TS.in_progress, _TS.planning, _TS.done)
+    from .dispatcher import sync_board_status
     laufend = (await db.execute(
         select(Issue, Run.phase)
         .join(Run, Run.issue_id == Issue.id)
         .where(Run.status == "running", Run.finished_at.is_(None),
-               Issue.agent_status.not_in(ARBEITET)))).all()
+               # `done` bleibt unangetastet: ein abgenommenes Ticket wird nicht
+               # zurückgezogen, nur weil noch ein Lauf nachläuft.
+               Issue.agent_status.is_distinct_from(_TS.done)))).all()
     gesehen: set[int] = set()
     for issue, phase in laufend:
         if issue.id in gesehen:
             continue
         gesehen.add(issue.id)
         ziel = _TS.planning if phase == "planning" else _TS.in_progress
-        log.info("Abgleich: %s läuft (%s) und stand auf %s → %s",
-                 issue.key, phase, getattr(issue.agent_status, "value", "—"), ziel.value)
-        await set_ticket_status(db, issue, ziel)
+        vorher = (getattr(issue.agent_status, "value", "—"), issue.status_id)
+        if issue.agent_status in (_TS.planning, _TS.in_progress):
+            await sync_board_status(db, issue)   # Zustand stimmt, nur die Spalte hinkt
+        else:
+            await set_ticket_status(db, issue, ziel)
         issue.agent_working = True
+        if vorher != (getattr(issue.agent_status, "value", "—"), issue.status_id):
+            log.info("Abgleich: %s läuft (%s), stand auf %s/Spalte %s → %s/Spalte %s",
+                     issue.key, phase, vorher[0], vorher[1],
+                     getattr(issue.agent_status, "value", "—"), issue.status_id)
     ergebnis["laufende_richtiggestellt"] = len(gesehen)
 
     # 4) Prozess-Instanzen an ihr Artefakt binden (löst die Spezial-Spalten ab).
