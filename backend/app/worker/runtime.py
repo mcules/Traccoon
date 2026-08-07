@@ -176,6 +176,10 @@ def _delegate_tool(roles: list[str]) -> dict:
 
 CODE_WORKFLOW = (
     "## Code-Workflow (Projekt-Workspace)\n"
+    "0. Lesen ist Mittel, nicht Zweck. Verschaffe dir einen Überblick und fang dann mit der KLEINSTEN "
+    "sinnvollen Änderung an — weiterlesen kannst du danach jederzeit, und eine begonnene Änderung "
+    "überlebt das Ende des Laufs, reine Leserei nicht. Wer eine halbe Stunde nur liest, hat nichts "
+    "geliefert.\n"
     "1. Verstehe den Code BEVOR du änderst — auch ähnliche Stellen, damit Änderungen KONSISTENT sind. "
     "Nutze wenn verfügbar ZUERST `codegraph` (explore/impact) für Symbole, Aufrufwege & Blast-Radius — das "
     "spart viele fs_read; erst danach fs_read/fs_list für Details.\n2. Ändere mit fs_write/fs_edit — "
@@ -188,6 +192,52 @@ CODE_WORKFLOW = (
 )
 
 FS_TOOL_NAMES = {"fs_read", "fs_list", "fs_write", "fs_edit"}
+# Womit ein Lauf sein Ergebnis abliefert. Alles andere ist Vorbereitung — nützlich, aber
+# nach dem Ende des Laufs weg (der Worktree überlebt, der Gesprächsverlauf nicht).
+ERGEBNIS_TOOLS = {"execute": {"fs_write", "fs_edit"}, "plan": {"submit_plan"}}
+# Nach welchem Anteil des Iterations- bzw. Zeitbudgets ohne Ergebnis nachgehakt wird.
+# Zweimal, dann ist gut: eine Ermahnung übersieht man, drei sind Nörgeln.
+ERMAHNUNG_BEI = (0.35, 0.65)
+
+
+def ermahnungen_faellig(verbraucht: float, bereits: int) -> int:
+    """Wie viele Ermahnungen nach diesem Budget-Stand ausgesprochen sein sollten."""
+    n = bereits
+    while n < len(ERMAHNUNG_BEI) and verbraucht >= ERMAHNUNG_BEI[n]:
+        n += 1
+    return n
+
+
+def ermahnung_text(mode: str, verbraucht: float, scharf: bool) -> str:
+    """Nachhaken, wenn ein Lauf sein Budget verbraucht, ohne etwas abzuliefern.
+
+    Der Ton steigt einmal: erst ein Prüfauftrag, dann eine Aufforderung. Beides benennt
+    denselben Punkt — Recherche überlebt das Ende des Laufs nicht, die Änderung im Worktree
+    schon. Die einzige Ermahnung, die es vorher gab, kam bei Runde 78 von 80 und war damit
+    nur noch eine Nachricht an den Nachlassverwalter.
+    """
+    if mode == "plan":
+        was = "noch keinen Plan eingereicht"
+        bleibt = "ein eingereichter Plan schon"
+        nachsatz = ("Reiche JETZT einen Plan ein (`submit_plan`), auch wenn Details offen "
+                    "sind — benenne die offenen Punkte darin. Nur bei echter Blockade: "
+                    "`ask_human`."
+                    if scharf else
+                    "Prüfe, ob du genug weißt, um den Plan zu schreiben — im Zweifel ja: "
+                    "ein Plan mit benannten Unsicherheiten ist mehr wert als keiner.")
+    else:
+        was = "noch keine Änderung geschrieben"
+        bleibt = "eine begonnene Änderung schon"
+        nachsatz = ("Fang JETZT mit der kleinsten sinnvollen Änderung an, statt weiterzulesen. "
+                    "Fehlt dir eine Entscheidung, die du nicht selbst treffen kannst: "
+                    "`ask_human`. Kannst du wirklich nur übergeben: `continue_later` mit "
+                    "allem, was du weißt."
+                    if scharf else
+                    "Prüfe, ob du genug weißt, um anzufangen — im Zweifel ja: die kleinste "
+                    "sinnvolle Änderung zuerst, den Rest danach.")
+    return (f"⚠️ {int(verbraucht * 100)} % deines Budgets für diesen Lauf sind weg und du hast "
+            f"{was}. Recherche allein überlebt das Ende des Laufs nicht — "
+            f"{bleibt}.\n{nachsatz}")
 
 
 # ---------- FS-Tools ----------
@@ -965,6 +1015,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             build_gate_fails = 0
             letzter_kontext = 0     # echte Kontextgröße des letzten Aufrufs (für die Kompaktierung)
             frist = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
+            # Hat dieser Lauf schon etwas abgeliefert (Änderung bzw. Plan)? Danach richtet
+            # sich, ob nachgehakt wird — nicht danach, wie viel er gelesen hat.
+            ergebnis_tools = ERGEBNIS_TOOLS["plan" if mode == "plan" else "execute"] & {
+                t["function"]["name"] for t in openai_tools}
+            ergebnis_da = False
+            ermahnt = 0
             grenze_grund = "Iterations-Limit erreicht."
             iteration = 0       # falls max_iterations 0 ist, läuft die Schleife nie
             for iteration in range(1, agent.max_iterations + 1):
@@ -981,6 +1037,23 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     messages.append({"role": "system", "content":
                         "⚠️ Du näherst dich dem Iterations-Limit. Wenn du NICHT unmittelbar vor dem Abschluss "
                         "stehst: `continue_later` mit Zusammenfassung. Nur bei echter Blockade: `ask_human`."})
+                # Nachhaken, solange es noch etwas nützt: verbrauchtes Budget ohne jedes
+                # Ergebnis. ABC-12 hat am 2026-08-07 in drei Läufen 190 Dateien gelesen und
+                # keine Zeile geschrieben — die einzige Ermahnung kam bei Runde 78 von 80,
+                # also lange nachdem die Zeit weg war.
+                if ergebnis_tools and not ergebnis_da:
+                    verbraucht = max(
+                        iteration / max(1, agent.max_iterations),
+                        ((MAX_RUN_SECONDS - (frist - asyncio.get_running_loop().time()))
+                         / MAX_RUN_SECONDS) if frist else 0.0)
+                    faellig = ermahnungen_faellig(verbraucht, ermahnt)
+                    while ermahnt < faellig:
+                        ermahnt += 1
+                        text = ermahnung_text(mode, verbraucht, scharf=ermahnt >= len(ERMAHNUNG_BEI))
+                        messages.append({"role": "system", "content": text})
+                        await protokoll("system", None,
+                                        f"⚠️ {int(verbraucht * 100)} % Budget ohne Ergebnis — nachgehakt",
+                                        kind="system")
                 # Kontext kürzen, BEVOR er den Provider sprengt. Gemessen wird die echte
                 # Kontextgröße des letzten Aufrufs; ohne `max_context_tokens` passiert nichts.
                 if agent.max_context_tokens and letzter_kontext:
@@ -1247,6 +1320,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             result = f"[Sub-Agent {sub_role} → {sub.status}]\n{sub.text[:2000]}"
                     elif call.name in FS_TOOL_NAMES:
                         result = _fs_dispatch(call.name, ws_root, call.arguments)
+                        # Geliefert ist erst, was auch geklappt hat — ein abgewiesener
+                        # Schreibversuch darf das Nachhaken nicht abschalten.
+                        if call.name in ergebnis_tools and not result.startswith("FEHLER"):
+                            ergebnis_da = True
                     elif call.name == "codegraph":
                         result = await _codegraph.query(
                             ws_root, (call.arguments.get("command") or "explore").strip(),
