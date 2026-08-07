@@ -55,12 +55,60 @@ VOICE_MAX_SECONDS = int(os.getenv("TELEGRAM_VOICE_MAX_SECONDS", "600"))
 # statt der beabsichtigten „zu groß"-Meldung auslösen. Deshalb 19 MB Default (Sicherheits-
 # abstand zum harten 20-MB-Limit).
 VOICE_MAX_BYTES = int(os.getenv("TELEGRAM_VOICE_MAX_BYTES", str(19 * 1024 * 1024)))
-# Hauseigene Wörter, die kein Sprachmodell kennen kann: Produkt- und Projektnamen,
-# Ticket-Präfixe, Fachbegriffe. Sie gehen als `initial_prompt` mit — ohne sie hört auch ein
-# großes Modell „Trakon" statt „Traccoon" und „Terra 1 und 30" statt „TRA-31". Leer =
-# aus. Erweitern, sobald ein Name regelmäßig falsch ankommt; das ist billiger als jede
-# Nachbearbeitung.
+# Zusätzliche Wörter von Hand — für alles, was NICHT in der Datenbank steht (Namen aus
+# anderen Stacks, Fachbegriffe, Abkürzungen). Der Regelfall braucht das nicht: die Liste
+# baut sich aus den eigenen Daten (siehe `_vokabular`).
 VOICE_VOKABULAR = os.getenv("TELEGRAM_VOICE_VOKABULAR", "").strip()
+# Whisper schneidet den `initial_prompt` bei ~224 Tokens ab und nimmt dann das ENDE — eine
+# zu lange Liste verliert also genau die Wörter, die vorne stehen. Lieber kurz halten.
+VOKABULAR_MAX_WOERTER = int(os.getenv("TELEGRAM_VOICE_VOKABULAR_MAX", "60"))
+_vokabular_cache: tuple[float, str] = (0.0, "")
+
+
+async def _vokabular() -> str:
+    """Die hauseigenen Eigennamen — aus der Datenbank, nicht aus einer gepflegten Liste.
+
+    Whisper hört „Trakon" statt „Traccoon" und „Terra 1 und 30" statt „TRA-31", weil kein
+    Sprachmodell diese Wörter kennen kann. Man muss sie ihm sagen — aber niemand soll dafür
+    eine Liste pflegen: Projekte, Ticket-Präfixe, Agentenrollen und Personen stehen längst
+    in der Datenbank, und ein neues Projekt bringt sein Wort damit von selbst mit.
+
+    Zehn Minuten gecacht: die Namen ändern sich selten, und jede Sprachnachricht soll nicht
+    drei Abfragen kosten.
+    """
+    global _vokabular_cache
+    alter, text = _vokabular_cache
+    jetzt = asyncio.get_running_loop().time()
+    if text and jetzt - alter < 600:
+        return text
+
+    from ..models.agents import AgentDefinition
+    from ..models.enums import UserStatus
+    from ..models.project import Project
+    woerter: list[str] = []
+    try:
+        async with SessionLocal() as db:
+            for p in (await db.execute(select(Project))).scalars().all():
+                # Beides: der Schlüssel wird buchstabiert diktiert („TRA 31"), der Name
+                # ausgesprochen. Ein Beispiel-Ticket bringt Whisper die Schreibweise bei.
+                woerter += [p.name, f"Ticket {p.key}-31"]
+            for a in (await db.execute(
+                    select(AgentDefinition.role).distinct())).scalars().all():
+                woerter.append(a.replace("_", " "))
+            for u in (await db.execute(select(User).where(
+                    User.status == UserStatus.active))).scalars().all():
+                woerter.append((u.display_name or u.username or "").strip())
+    except Exception:  # noqa: BLE001 — ohne Vokabular transkribieren ist besser als gar nicht
+        log.exception("Vokabular konnte nicht gebildet werden — Transkription läuft ohne")
+
+    if VOICE_VOKABULAR:
+        woerter += [w.strip() for w in VOICE_VOKABULAR.replace(".", ",").split(",")]
+    gesehen: set[str] = set()
+    sauber = [w for w in woerter
+              if w and len(w) > 1 and not (w.lower() in gesehen or gesehen.add(w.lower()))]
+    text = ", ".join(sauber[:VOKABULAR_MAX_WOERTER]) + ("." if sauber else "")
+    _vokabular_cache = (jetzt, text)
+    return text
 
 
 # Whitelist bekannter Audio-Container für `audio`-Uploads (mime_type → Dateiendung).
@@ -133,18 +181,19 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
         raise RuntimeError("kein WHISPER_URL konfiguriert (lokaler Whisper-Container fehlt)")
     timeout = max(120.0, VOICE_MAX_SECONDS + 60.0)
     dateiname, content_type = _upload_name_typ(medienart, mime_type)
+    vokabular = await _vokabular()
     async with httpx.AsyncClient(timeout=timeout) as client:
         for sprache in ("de", None):
             params = {"output": "json"}
             if sprache:
                 params["language"] = sprache
-            if VOICE_VOKABULAR:
+            if vokabular:
                 # Whisper nimmt `initial_prompt` als Vorlauf-Text und richtet seine
                 # Worterwartung danach aus. Für Eigennamen ist das DER Hebel — am
                 # 2026-08-07 auf diesem Host gemessen, derselbe Satz, dasselbe Modell:
                 #   ohne: „Ticket Terra 1 und 30 in Trakon … Digist … Univer"
                 #   mit:  „Ticket TRA-31 in Traccoon … Digest … UniWar"
-                params["initial_prompt"] = VOICE_VOKABULAR
+                params["initial_prompt"] = vokabular
             # Ein technischer Fehler (nicht erreichbar, abgelehntes Format, 4xx/5xx) wird
             # NICHT abgefangen, sondern reicht bis zum Aufrufer durch — ein zweiter Versuch
             # würde denselben Fehler nur wiederholen und zusätzlich Zeit kosten.
