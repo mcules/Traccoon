@@ -58,12 +58,22 @@ export type Cam = { x: number; y: number; zoom: number };
 /** Die Kamera, die den ganzen Raum zeigt. */
 export const CAM_FULL: Cam = { x: ART.w / 2, y: ART.h / 2, zoom: ART_SCALE };
 
-interface CamFit { z: number; ox: number; oy: number }
+interface CamFit { z: number; hz: number; ox: number; oy: number }
 
+/**
+ * Maßstab und Versatz der Kamera.
+ *
+ * `z` ist ein **Vielfaches von `ART_SCALE`**, nicht bloß ganzzahlig. Das ist die Bedingung
+ * dafür, dass fein gezeichnete Familien überhaupt möglich sind: sie rechnen in HD-Einheiten
+ * (halbe Kunsteinheiten), und `hz = z / ART_SCALE` muss dabei ganzzahlig bleiben. Bei einem
+ * ungeraden Zoom liefe eine HD-Kante über eine halbe Pufferspalte — genau das Flimmern, das
+ * Regel 2.3 verbietet.
+ */
 function camFit(cam: Cam): CamFit {
-  const z = Math.max(1, Math.round(cam.zoom));
+  const hz = Math.max(1, Math.round(cam.zoom / ART_SCALE));
+  const z = hz * ART_SCALE;
   return {
-    z,
+    z, hz,
     ox: Math.round(PIX.w / 2 - cam.x * z),
     oy: Math.round(PIX.h / 2 - cam.y * z),
   };
@@ -82,8 +92,21 @@ function camFit(cam: Cam): CamFit {
  * Kontexts.
  */
 function viewOf(base: Ctx, fit: CamFit): Ctx {
-  if (fit.z === 1 && fit.ox === 0 && fit.oy === 0) return base;
-  const { z, ox, oy } = fit;
+  return skaliert(base, fit.z, fit.ox, fit.oy);
+}
+
+/**
+ * Dieselbe Kamera, aber in **HD-Einheiten**: eine Einheit ist ein Pufferpixel bei voller
+ * Ansicht, statt der zwei einer Kunsteinheit. Fein gezeichnete Familien (seit Etappe 2 die
+ * Figuren) bekommen diesen Kontext und rechnen in doppelt so feinem Raster; ihre Koordinaten
+ * sind entsprechend die doppelten.
+ */
+function viewHiOf(base: Ctx, fit: CamFit): Ctx {
+  return skaliert(base, fit.hz, fit.ox, fit.oy);
+}
+
+function skaliert(base: Ctx, z: number, ox: number, oy: number): Ctx {
+  if (z === 1 && ox === 0 && oy === 0) return base;
   return {
     get fillStyle(): string | object { return base.fillStyle; },
     set fillStyle(v: string | object) { base.fillStyle = v; },
@@ -320,6 +343,9 @@ export function renderFrame(
 ): void {
   const fit = camFit(cam);
   const v = viewOf(ctx, fit);
+  // Die Figuren sind fein gezeichnet (Etappe 2) und bekommen die HD-Sicht; alles übrige
+  // zeichnet weiter in Kunsteinheiten. Beides nebeneinander ist der Zweck der Trennung.
+  const vh = viewHiOf(ctx, fit);
   const env = GRADES[grade];
   const day = grade === "day";
   const t = frame.t;
@@ -362,7 +388,7 @@ export function renderFrame(
   // ── 4 Bodenschicht ────────────────────────────────────────────────────────
   const world: Piece[] = [];
   buildRoom(world, v, env, frame);
-  buildActors(world, v, env, frame, grade, opts);
+  buildActors(world, v, vh, env, frame, grade, opts);
   // Stabil (ES2019): bei gleichem Fußpunkt gewinnt die Einfügereihenfolge — und die ist
   // „erst der Stuhl, dann die Figur darauf".
   world.sort((a, b) => a.y - b.y);
@@ -460,12 +486,15 @@ function buildRoom(world: Piece[], v: Ctx, env: Pal, frame: Frame): void {
 
 /** Figuren in dieselbe Sortierliste legen — das ist der Kern von Schicht 4. */
 function buildActors(
-  world: Piece[], v: Ctx, env: Pal, frame: Frame, grade: Grade, opts?: RenderOpts,
+  world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame, grade: Grade, opts?: RenderOpts,
 ): void {
   const sel = opts?.selected;
   const hov = opts?.hover;
   const blassSet = opts?.dimmed;
   const blassV = blassSet !== undefined ? dimOf(v, DIM_ALPHA) : v;
+  // Dieselbe Blässe noch einmal für die feine Sicht — die Figur wird darüber gezeichnet,
+  // ihr Markierungsring darunter in Kunsteinheiten.
+  const blassVh = blassSet !== undefined ? dimOf(vh, DIM_ALPHA) : vh;
   for (const a of frame.actors) {
     if (a.retired === true) continue;
     const cx = px(a.x);
@@ -497,11 +526,11 @@ function buildActors(
         // Die blasse Hülle wird **nach** dem Ring scharfgestellt: `fillA` setzt die Deckkraft
         // am Ende auf 1 zurück und löschte die Hülle sonst gleich wieder. Der Ring bleibt
         // hell — dass etwas ausgewählt ist, gilt auch dann, wenn der Filter es ausblendet.
-        const c = blass ? blassV : v;
+        const c = blass ? blassVh : vh;
         if (blass) c.globalAlpha = 1;
-        if (ghost) drawGhost(c, cx, yBase, pal, frame.t, a.seed, look);
+        if (ghost) drawGhost(c, cx * 2, yBase * 2, pal, frame.t, a.seed, look);
         else drawActor(c, a, frame.t, pal);
-        if (blass) v.globalAlpha = 1;
+        if (blass) c.globalAlpha = 1;
       },
     });
   }

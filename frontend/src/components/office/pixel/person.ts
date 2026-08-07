@@ -31,7 +31,7 @@ import type { ActorState, Ctx, Gait, Look, Pose } from "../types.ts";
 import { GATE_PULSE_MS, POS_SCALE } from "../const.ts";
 import { mix } from "../ids.ts";
 import type { Art } from "./art.ts";
-import { defineArt, drawArt, fill, fillA } from "./art.ts";
+import { defineArt, drawArt, fill, fillA, verdoppelt } from "./art.ts";
 import type { Pal } from "./palette.ts";
 import { gaitOf, lookOf, rollenSeed } from "./palette.ts";
 
@@ -42,6 +42,15 @@ import { gaitOf, lookOf, rollenSeed } from "./palette.ts";
  *  Blasenbreite, Mindestabstand zweier Figuren. */
 export const FIG_W = 16;
 export const FIG_H = 24;
+
+/** Die Figuren sind die erste **fein gezeichnete** Familie (Etappe 2): sie rechnen in
+ *  HD-Einheiten — eine Einheit ist ein Pufferpixel bei voller Ansicht, halb so groß wie eine
+ *  Kunsteinheit. `scene.ts` gibt ihnen dafür `viewHiOf` und die doppelten Koordinaten.
+ *
+ *  `FIG_W`/`FIG_H` bleiben in KUNSTeinheiten: daran hängen Trefferprüfung, Blasenbreite und
+ *  der Mindestabstand zweier Figuren — alles Dinge der Szene, nicht des Sprites. Wer die
+ *  beiden verdoppelt, verschiebt jede Sprechblase und jeden Klick. */
+const HD = 2;
 
 /** Wie tief der Oberkörper beim Sitzen absackt. Drei Pixel sind wenig und genügen: zusammen
  *  mit den Sitzbeinen (Oberschenkel waagerecht) liest die Figur sofort als sitzend, und mehr
@@ -101,7 +110,43 @@ const HEAD_BACK = defineArt([
   "...sSSs...",
 ], { S: "S", s: "s" });
 
-const HEADS: readonly Art[] = [HEAD_FRONT, HEAD_SIDE, HEAD_BACK];
+
+/**
+ * Der Kopf von vorn — das erste von Hand im **feinen Raster** gezeichnete Teil (Etappe 2).
+ *
+ * Verdoppelt man den alten 10×9-Kopf, bekommt man dieselbe Fläche in größeren Klötzen: zwei
+ * schwarze Punkte in einem Oval. Erst im 20×18-Raster ist Platz für das, woran ein Gesicht
+ * erkannt wird — Augenweiß neben der Pupille, eine Nase, ein Mund, Ohren, und eine Kante, die
+ * den Kopf vom Holzboden trennt. Genau das unterscheidet „Pixelfigur" von „Klotz".
+ *
+ * Die Kante ist `s` (Hautschatten), nicht `ink`: ein tiefschwarzer Umriss um einen 20 Pixel
+ * breiten Kopf frisst das halbe Gesicht und lässt jede Figur wie eine Zeichentrickmaske
+ * aussehen. Dieselbe Farbe schattiert auch Nase und Kinn — ein Ton, drei Aufgaben.
+ */
+const HEAD_FRONT_HD = defineArt([
+  "......ssssssss......",
+  "....ssSSSSSSSSss....",
+  "...sSSSSSSSSSSSSs...",
+  "..sSSSSSSSSSSSSSSs..",
+  "..sSSSSSSSSSSSSSSs..",
+  ".sSSSSSSSSSSSSSSSSs.",
+  ".sSSSSSSSSSSSSSSSSs.",
+  ".sSSSSSSSSSSSSSSSSs.",
+  ".sSSppiiSSSSiippSSs.",
+  "ssSSSSiiSSSSiiSSSSss",
+  "ssSSSSSSSssSSSSSSSss",
+  ".sSSSSSSSssSSSSSSSs.",
+  ".sSSSSSSSSSSSSSSSSs.",
+  ".sSSSSSSssssSSSSSSs.",
+  ".sSSSSSSSSSSSSSSSSs.",
+  "..sSSSSSSSSSSSSSSs..",
+  "...ssSSSSSSSSSSss...",
+  ".....ssssssssss.....",
+], { S: "S", s: "s", i: "ink", p: "paper" });
+
+// Vorn von Hand fein, Seite und Rücken vorerst verdoppelt: die Vorderansicht ist die, die man
+// fast immer sieht (stehend, tippend, sprechend) — Rücken zeigt nur der Chefplatz.
+const HEADS: readonly Art[] = [HEAD_FRONT_HD, verdoppelt(HEAD_SIDE), verdoppelt(HEAD_BACK)];
 
 /** Kopfrichtung. Zahlen statt Zeichenketten, weil sie direkt in `HEADS` indizieren. */
 const DIR_FRONT = 0;
@@ -186,7 +231,97 @@ const HAIR_CURL = defineArt([
   "............",
 ], { H: "H", h: "h" });
 
-const HAIRS: readonly Art[] = [HAIR_SHORT, HAIR_PART, HAIR_LONG, HAIR_TAIL, HAIR_CURL];
+
+// ── Haar, fein gezeichnet ────────────────────────────────────────────────────
+// Der verdoppelte Kopfschmuck sass als kantige Kappe auf dem runden Schaedel: die alte
+// Silhouette kannte die Rundung nicht, die es im feinen Raster jetzt gibt. Nachgezogen wird
+// deshalb die KANTE — Zeile fuer Zeile dieselbe Rundung wie der Kopf darunter, plus eine
+// Zeile `h` an der Unterkante des Ponys. Diese eine Schattenzeile macht aus einer Flaeche
+// eine Straehne: ohne sie klebt das Haar wie ein aufgemalter Fleck auf der Stirn.
+//
+// 24 breit gegen 20 des Kopfes (Haar darf ueberstehen, Spalte n ist Kopfspalte n-2), 22 hoch.
+
+/** Zeile ohne Haar — die unteren Zeilen sind bei jeder Frisur leer bzw. fast leer. */
+const H_LEER = "........................";
+
+/** Die Rundung, die alle Frisuren teilen: sie folgt dem Schaedel von HEAD_FRONT_HD. */
+const H_KAPPE: readonly string[] = [
+  "........HHHHHHHH........",
+  "......HHHHHHHHHHHH......",
+  ".....HHHHHHHHHHHHHH.....",
+  "....HHHHHHHHHHHHHHHH....",
+  "....HHHHHHHHHHHHHHHH....",
+  "...HHHHHHHHHHHHHHHHHH...",
+  "...HHHHHHHHHHHHHHHHHH...",
+];
+
+const HAAR_MAP = { H: "H", h: "h" } as const;
+
+const HAIR_SHORT_HD = defineArt([
+  ...H_KAPPE,
+  "...HHhhhhhhhhhhhhhhHH...",
+  "...HH..............HH...",
+  "...HH..............HH...",
+  "...H................H...",
+  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
+], HAAR_MAP);
+
+/** Scheitel: eine Schattenrinne links, und rechts faellt das Deckhaar tiefer. */
+const HAIR_PART_HD = defineArt([
+  ...H_KAPPE.map((r, i) => (i >= 2 ? r.slice(0, 7) + "h" + r.slice(8) : r)),
+  "...HHhhhhhhhhhhhhhhHH...",
+  "...HH.............HHH...",
+  "...HH..............HH...",
+  "...H................HH..",
+  "....................H...",
+  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
+], HAAR_MAP);
+
+/** Lang: faellt beidseitig bis auf die Schultern. */
+const HAIR_LONG_HD = defineArt([
+  ...H_KAPPE,
+  "...HHhhhhhhhhhhhhhhHH...",
+  "..HHH..............HHH..",
+  "..HHH..............HHH..",
+  "..HHH..............HHH..",
+  "..HHh..............hHH..",
+  "..HHh..............hHH..",
+  "...Hh..............hH...",
+  "...h................h...",
+  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
+], HAAR_MAP);
+
+/** Zopf: kurz an den Seiten, hinten ein Buendel, das ueber die Schulter faellt. */
+const HAIR_TAIL_HD = defineArt([
+  ...H_KAPPE,
+  "...HHhhhhhhhhhhhhhhHH...",
+  "...HH..............HHHH.",
+  "...HH...............HHHH",
+  "...H.................HHH",
+  "......................HH",
+  ".......................h",
+  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
+], HAAR_MAP);
+
+/** Locken: die Kante franst aus, statt glatt zu laufen. */
+const HAIR_CURL_HD = defineArt([
+  "........HHHHHHHH........",
+  "......HHHHHHHHHHHH......",
+  ".....HHHHhHHHHhHHHHH....",
+  "....HHHHHHHHHHHHHHHHH...",
+  "...HHHhHHHHHHHHhHHHHHH..",
+  "...HHHHHHHHHHHHHHHHHHH..",
+  "..HHHHHHHHHHHHHHHHHHHH..",
+  "..HHhhhhhhhhhhhhhhhhHH..",
+  "..HHH..............HHH..",
+  "..HHh..............hHH..",
+  "...H................H...",
+  H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER, H_LEER,
+], HAAR_MAP);
+
+const HAIRS: readonly Art[] = [
+  HAIR_SHORT_HD, HAIR_PART_HD, HAIR_LONG_HD, HAIR_TAIL_HD, HAIR_CURL_HD,
+];
 
 // ── Torso ────────────────────────────────────────────────────────────────────
 // Die unterste Zeile ist Hose (`P`) und nicht Oberteil: sie ist der Bund, auf dem die Beine
@@ -233,7 +368,7 @@ const TORSO_HOOD = defineArt([
   "PPPPPPPP",
 ], { T: "T", t: "t", P: "P" });
 
-const TORSOS: readonly Art[] = [TORSO_PLAIN, TORSO_SHIRT, TORSO_HOOD];
+const TORSOS: readonly Art[] = [TORSO_PLAIN, TORSO_SHIRT, TORSO_HOOD].map(verdoppelt);
 
 // ── Arme ─────────────────────────────────────────────────────────────────────
 // Gezeichnet als **rechter** Arm (Spalte 0 liegt am Torso); der linke ist derselbe Art,
@@ -276,7 +411,7 @@ const ARM_REACH = defineArt([
   "....",
 ], { T: "T", t: "t", S: "S" });
 
-const ARMS: readonly Art[] = [ARM_REST, ARM_TYPE_A, ARM_TYPE_B, ARM_REACH];
+const ARMS: readonly Art[] = [ARM_REST, ARM_TYPE_A, ARM_TYPE_B, ARM_REACH].map(verdoppelt);
 
 const ARM_REST_I = 0;
 const ARM_TYPE_A_I = 1;
@@ -295,7 +430,7 @@ const ARM_CUFF: readonly number[] = [3, 3, 3, 2];
  *  `drawArt` am **Fußpunkt** ankert: ein von oben gekürztes Art landet an derselben Stelle
  *  wie das Original. */
 const ARM_FORE: readonly Art[] = ARMS.map((a, i) => ({
-  rows: a.rows.slice(ARM_CUFF[i]), map: a.map,
+  rows: a.rows.slice(ARM_CUFF[i] * HD), map: a.map,
 }));
 
 // ── Beine ────────────────────────────────────────────────────────────────────
@@ -349,7 +484,7 @@ const LEGS_WALK_B = defineArt([
   ".ii...ii",
 ], { P: "P", i: "ink" });
 
-const LEGS: readonly Art[] = [LEGS_SIT, LEGS_STAND, LEGS_WALK_A, LEGS_WALK_B];
+const LEGS: readonly Art[] = [LEGS_SIT, LEGS_STAND, LEGS_WALK_A, LEGS_WALK_B].map(verdoppelt);
 
 const LEGS_SIT_I = 0;
 const LEGS_STAND_I = 1;
@@ -561,10 +696,15 @@ function stanceOf(
  * wäre bei 480×270 ohnehin Matsch.
  */
 export function drawShadow(ctx: Ctx, cx: number, yBase: number, pal: Pal, w: number): void {
+  // Fünf Stufen statt drei: im feinen Raster ist eine Stufe halb so hoch, drei davon wären
+  // ein Strich. Die Breiten laufen von innen nach außen auf — ein gestufter Fleck, das
+  // Nächste an einem weichen Schatten, das `fillRect` allein hergibt (Regel 2.1).
   const half = w >> 1;
-  fillA(ctx, pal, "shadow", 0.22, cx - half + 1, yBase - 1, w - 2, 1);
+  fillA(ctx, pal, "shadow", 0.26, cx - half + 3, yBase - 2, w - 6, 1);
+  fillA(ctx, pal, "shadow", 0.20, cx - half + 1, yBase - 1, w - 2, 1);
   fillA(ctx, pal, "shadow", 0.14, cx - half, yBase, w, 1);
-  fillA(ctx, pal, "shadow", 0.07, cx - half - 1, yBase + 1, w + 2, 1);
+  fillA(ctx, pal, "shadow", 0.09, cx - half + 1, yBase + 1, w - 2, 1);
+  fillA(ctx, pal, "shadow", 0.05, cx - half + 3, yBase + 2, w - 6, 1);
 }
 
 /** Gesichtsdetail aus `look.head`.
@@ -574,14 +714,18 @@ export function drawShadow(ctx: Ctx, cx: number, yBase: number, pal: Pal, w: num
  *  Mund und Bart kosten zwei `fillRect` und geben jeder zweiten Figur ein eigenes Gesicht. */
 function face(ctx: Ctx, pal: Pal, cx: number, headTop: number, variant: number, dir: number): void {
   if (dir === DIR_BACK) return;
-  const hx = cx - 5;
+  const hx = cx - 5 * HD;
   if (variant === 1) {
-    fill(ctx, pal, "s", hx + 4, headTop + 6, 2, 1);
+    // Der fein gezeichnete Vorderkopf hat seinen Mund schon im Art; hier käme ein zweiter
+    // eine Zeile darüber heraus — aus zwei Metern ein Schnurrbart. Die Variante zeigt sich
+    // deshalb nur da, wo der Kopf noch grob ist (Seitenansicht).
+    if (dir === DIR_FRONT) return;
+    fill(ctx, pal, "s", hx + 4 * HD, headTop + 6 * HD, 2 * HD, HD);
   } else if (variant === 2) {
     // Kinnbart: **eine** Zeile am Kinn, vier Pixel breit. Zwei Zeilen über sechs Spalten
     // (erste Fassung) lasen sich aus der Entfernung als schwarzer Balken quer durchs Gesicht —
     // bei einem 10 Pixel breiten Kopf ist jede zweite Spalte ein Drittel des Gesichts.
-    fill(ctx, pal, "h", hx + 3, headTop + 7, 4, 1);
+    fill(ctx, pal, "h", hx + 3 * HD, headTop + 7 * HD, 4 * HD, HD);
   }
 }
 
@@ -610,18 +754,21 @@ function drawBody(
   ctx: Ctx, cx: number, yBase: number, pal: Pal, look: Look, s: Stance,
   flip: boolean, alpha: number,
 ): void {
+  // `cx`/`yBase` kommen in HD-Einheiten herein; `Stance` rechnet weiter in Kunsteinheiten
+  // (sie beschreibt eine Haltung, keine Pixel). Umgerechnet wird deshalb genau hier, an der
+  // Naht zwischen beiden — nicht verstreut in `stanceOf`.
   const dirSign = flip ? -1 : 1;
-  const bodyY = yBase + s.drop + s.lift;
+  const bodyY = yBase + (s.drop + s.lift) * HD;
   const legsY = yBase;
 
-  const torsoY = bodyY - 5;
-  const headY = torsoY - 10;
-  const armY = torsoY - 3;
-  const hairY = headY + 2;
+  const torsoY = bodyY - 5 * HD;
+  const headY = torsoY - 10 * HD;
+  const armY = torsoY - 3 * HD;
+  const hairY = headY + 2 * HD;
 
-  const bodyX = cx + s.leanX * dirSign;
-  const armXNear = bodyX + (5 + s.armX) * dirSign;
-  const armXFar = bodyX - (5 - s.armX) * dirSign;
+  const bodyX = cx + s.leanX * HD * dirSign;
+  const armXNear = bodyX + (5 + s.armX) * HD * dirSign;
+  const armXFar = bodyX - (5 - s.armX) * HD * dirSign;
 
   // Beine: der führende Schuh wird um `shoe` Pixel verlängert — die Schrittweite aus dem Seed,
   // ohne dafür ein zweites Bein-Art zu brauchen.
@@ -630,26 +777,33 @@ function drawBody(
     // Nach links laufend wächst der Schuh nach links: eine mit `dirSign` multiplizierte
     // Breite wäre negativ, und `fill` verwirft negative Breiten stillschweigend — der
     // Schritt der linkslaufenden Hälfte des Raums wäre dann einfach kürzer.
-    const sx = flip ? cx - 4 - s.shoe : cx + 4;
+    const sx = flip ? cx - (4 + s.shoe) * HD : cx + 4 * HD;
     if (alpha < 1) ctx.globalAlpha = alpha;
-    fill(ctx, pal, "ink", sx, legsY - 1, s.shoe, 1);
+    fill(ctx, pal, "ink", sx, legsY - HD, s.shoe * HD, HD);
     if (alpha < 1) ctx.globalAlpha = 1;
   }
 
   drawArt(ctx, TORSOS[look.torso], bodyX, torsoY, pal, { flip, alpha });
+  // Eine schmale Schattenspalte auf der lichtabgewandten Seite. Kein neues Art: die Torsi
+  // sind alle 16 HD-Einheiten breit und 20 hoch, die Spalte sitzt also immer gleich — und
+  // aus ihr wird aus einer flachen Farbfläche ein Körper mit Vorder- und Rückseite.
+  // Das Licht kommt von den Fenstern, also von oben links; geschattet wird rechts.
+  if (alpha < 1) ctx.globalAlpha = alpha;
+  fillA(ctx, pal, "t", 0.35, bodyX + 6, torsoY - 17, 2, 14);
+  if (alpha < 1) ctx.globalAlpha = 1;
   arm(ctx, pal, s.armFar, armXFar, armY, !flip, look.arms, alpha);
   drawArt(ctx, HEADS[s.dir], bodyX, headY, pal, { flip, alpha });
-  if (alpha >= 1) face(ctx, pal, bodyX, headY - 9, look.head, s.dir);
+  if (alpha >= 1) face(ctx, pal, bodyX, headY - 9 * HD, look.head, s.dir);
 
   if (s.paper) {
     // Das Blatt in der Hand. Ein einzelnes helles Rechteck vor der Brust reicht: „liest" ist
     // sonst von „tippt" nicht zu unterscheiden, weil beide Arme nach vorn zeigen.
     // Vor dem Körper, nicht auf ihm: auf der Brust läse es sich als Namensschild.
-    const px = bodyX + dirSign * 5 - 2;
+    const px = bodyX + (dirSign * 5 - 2) * HD;
     if (alpha < 1) ctx.globalAlpha = alpha;
-    fill(ctx, pal, "paper", px, torsoY - 8, 5, 5);
-    fill(ctx, pal, "ink", px + 1, torsoY - 7, 3, 1);
-    fill(ctx, pal, "ink", px + 1, torsoY - 5, 2, 1);
+    fill(ctx, pal, "paper", px, torsoY - 8 * HD, 5 * HD, 5 * HD);
+    fill(ctx, pal, "ink", px + HD, torsoY - 7 * HD, 3 * HD, HD);
+    fill(ctx, pal, "ink", px + HD, torsoY - 5 * HD, 2 * HD, HD);
     if (alpha < 1) ctx.globalAlpha = 1;
   }
 
@@ -676,8 +830,10 @@ function drawBody(
  * Rolle bekannt ist.
  */
 export function drawActor(ctx: Ctx, a: ActorState, t: number, pal: Pal): void {
-  const cx = Math.round(a.x * POS_SCALE);
-  const yBase = Math.round(a.y * POS_SCALE);
+  // In HD gerundet: die Figur kann damit auf halben Kunsteinheiten stehen, und das Gehen
+  // läuft doppelt so fein — dieselbe Bewegung, halb so grobe Stufen.
+  const cx = Math.round(a.x * POS_SCALE * HD);
+  const yBase = Math.round(a.y * POS_SCALE * HD);
   const look = lookOf(a.seed, rollenSeed(a.role, a.seed));
   // Die Gangart bleibt **ganz** am Laufseed: sie ist das, was zwölf Rollengenossen im Bild
   // auseinanderhält, wenn Hemd und Haar sie gerade zusammenfassen (Regel 3.2).
@@ -690,7 +846,7 @@ export function drawActor(ctx: Ctx, a: ActorState, t: number, pal: Pal): void {
   // ist keine Stilentscheidung, sondern die Geometrie des Raums.
   if (a.pose === "sit" && a.deskIndex === -1) s.dir = DIR_BACK;
 
-  drawShadow(ctx, cx, yBase, pal, a.pose === "sit" ? 10 : 12);
+  drawShadow(ctx, cx, yBase, pal, (a.pose === "sit" ? 10 : 12) * HD);
   drawBody(ctx, cx, yBase, pal, look, s, a.flip, 1);
 }
 
