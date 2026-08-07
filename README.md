@@ -57,7 +57,8 @@ Preview-Server :8661) · `shotter` (Playwright :8700) · `telegram-bot` (aiogram
 - **PM-Chat:** WS-Orchestrierung (`<tickets>`-Ops → legt Tickets an + delegiert), Menschenhoheit bei Freigabe/Abnahme.
 - **Deployer:** Auto-Deploy bei Abnahme, zweigleisig (Self-Deploy + Rollback / generisch), check-Build, Testenvs pro Ticket.
 - **Automatisierung:** Webhooks (HMAC, task/notify, Idempotenz), Job-Scheduler (cron/interval/once, prompt/script, /digest),
-  **Telegram-Bot** (Notifier, Reply→Kommentar, Buttons), In-App-Notifications, **Skills** (versioniert),
+  **Telegram-Bot** (Notifier, Reply→Kommentar, Buttons, Sprachnachrichten → lokal per faster-whisper
+  transkribiert, kein Cloud-Aufruf), In-App-Notifications, **Skills** (versioniert),
   **MCP-Registry**, **Plugin-System** (Zip-in-DB, Table-CRUD, SSRF-Fetch-Proxy).
 - **Frontend:** Board, Ticket-Drawer (Lifecycle), PM-Chat, Secret-Tresor, Notifications-Glocke, Admin (Nutzer/Kosten/Betrieb), Hardware.
 - **Alembic:** Baseline-Migration vorhanden; Dev nutzt `DEV_CREATE_ALL=true` (create_all).
