@@ -160,3 +160,61 @@ async def test_reiner_werkzeugverlauf_behaelt_kopf_und_juengstes(db, monkeypatch
     for i, nachricht in enumerate(neu):
         if nachricht.get("role") == "tool":
             assert neu[i - 1].get("tool_calls"), "tool-Antwort ohne ihren Aufruf"
+
+
+async def test_uebergabe_traegt_den_faden_weiter(db, monkeypatch):
+    """Die Fortsetzung bekommt Erkenntnisse, Erledigtes und den nächsten Schritt — nicht
+    den letzten Satz. UNI-12 begann am 2026-08-07 drei Läufe hintereinander mit derselben
+    Suchanfrage, weil die Übergabe aus „Zeitlimit erreicht … (kein Text)" bestand."""
+    gesehen = []
+
+    async def fake_aux(*a, **kw):
+        gesehen.append(kw["messages"][0]["content"])
+        return ("**Erkenntnisse** fleets.ts trägt dispatchExpedition\n"
+                "**Erledigt** nichts geändert\n**Nächster Schritt** computeSammeln anlegen")
+
+    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
+    for i in range(30):
+        m.append({"role": "assistant", "content": f"Ich lese Datei {i}"})
+        m.append({"role": "user", "content": f"Ergebnis {i}"})
+
+    text = await compaction.uebergabe(
+        db, messages=m, grund="Zeitlimit erreicht (1800s).", letzter_text="",
+        owner_id=1, agent=None, tokens={}, base_urls={})
+
+    assert text.startswith("Zeitlimit erreicht")          # WELCHE Grenze, bleibt vorn
+    assert "Nächster Schritt" in text and "computeSammeln" in text
+    assert any("Übergabe" in g or "Erkenntnisse" in g for g in gesehen)
+
+
+async def test_uebergabe_faellt_ehrlich_zurueck(db, monkeypatch):
+    """Ohne Aux-Modell lieber die alte, magere Notlösung als gar nichts."""
+    async def fake_aux(*a, **kw):
+        return None
+
+    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
+    for i in range(10):
+        m.append({"role": "assistant", "content": f"Schritt {i}"})
+        m.append({"role": "user", "content": f"Weiter {i}"})
+
+    text = await compaction.uebergabe(
+        db, messages=m, grund="Iterations-Limit erreicht.", letzter_text="war gerade bei X",
+        owner_id=1, agent=None, tokens={}, base_urls={})
+    assert "Iterations-Limit erreicht." in text
+    assert "war gerade bei X" in text or "nicht möglich" in text
+
+
+async def test_uebergabe_bei_kurzem_lauf_bleibt_schlicht(db, monkeypatch):
+    """Ein Lauf mit zwei Zügen braucht keine Aux-Runde — die Notlösung sagt schon alles."""
+    async def fake_aux(*a, **kw):
+        raise AssertionError("Aux darf hier gar nicht erst gefragt werden")
+
+    monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
+    m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"},
+         {"role": "assistant", "content": "einmal geschaut"}]
+    text = await compaction.uebergabe(
+        db, messages=m, grund="Zeitlimit erreicht.", letzter_text="einmal geschaut",
+        owner_id=1, agent=None, tokens={}, base_urls={})
+    assert text == "Zeitlimit erreicht.\n\nLetzter Stand:\neinmal geschaut"

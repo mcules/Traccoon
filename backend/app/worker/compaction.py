@@ -145,6 +145,57 @@ AUFTRAG = (
 )
 
 
+UEBERGABE_AUFTRAG = (
+    "Der folgende Agenten-Lauf wurde an einer Grenze beendet (Zeit, Iterationen oder Tokens) "
+    "und wird gleich in einem FRISCHEN Lauf fortgesetzt — der weiß nichts außer dem, was du "
+    "jetzt aufschreibst. Schreib die Übergabe an ihn, in genau diesen drei Abschnitten:\n\n"
+    "**Erkenntnisse** — was ich über den Code herausgefunden habe, mit Datei-Pfaden, "
+    "Funktions- und Feldnamen. Das erspart dem nächsten Lauf das erneute Suchen.\n"
+    "**Erledigt** — welche Dateien ich bereits geändert habe und was darin steht. Wenn "
+    "nichts geändert wurde: schreib genau das hin.\n"
+    "**Nächster Schritt** — was der nächste Lauf ALS ERSTES tun soll, konkret.\n\n"
+    "Keine Vorrede, deutsch, dicht. Erfinde nichts: was nicht im Ausschnitt steht, gehört "
+    "nicht in die Übergabe.\n\n--- Lauf ---\n"
+)
+
+
+async def uebergabe(db, *, messages: list[dict], grund: str, letzter_text: str,
+                    owner_id, agent, tokens: dict, base_urls: dict) -> str:
+    """Übergabe an den Fortsetzungs-Lauf: was gelernt, was getan, was als Nächstes.
+
+    Bis hierher stand in der Fortsetzung nur `grund` plus der letzte Satz des Agenten. Das
+    reichte nicht einmal, um zu wissen, welche Dateien schon gelesen waren: UNI-12 begann
+    am 2026-08-07 drei Läufe hintereinander mit `open_tasks` und derselben Suchanfrage und
+    schrieb in anderthalb Stunden keine Zeile Code. Der Lauf endet an einer Grenze — der
+    Faden muss deshalb aus dem Verlauf gerettet werden, nicht aus seinem letzten Satz.
+
+    Fällt das Aux-Modell aus, bleibt die alte, ehrliche Notlösung.
+    """
+    from .aux import aux_chat
+
+    notloesung = f"{grund}\n\nLetzter Stand:\n{letzter_text or '(kein Text)'}"
+    von = _kopf_ende(messages)
+    if len(messages) - von < MINDEST_BLOCK:
+        return notloesung
+    stuecke = _haeppchen(messages, von, len(messages))[:MAX_STUECKE]
+    roh = await _zusammenfassen(db, messages, stuecke, owner_id=owner_id, agent=agent,
+                                tokens=tokens, base_urls=base_urls)
+    if not roh.strip():
+        return notloesung
+    # Zweiter Durchgang: aus den Stück-Zusammenfassungen wird die eigentliche Übergabe.
+    # Bei einem einzigen Stück wäre das eine Zusammenfassung der Zusammenfassung — dann
+    # lieber direkt am Verlauf arbeiten.
+    quelle = roh if len(stuecke) > 1 else _als_text(messages[von:])[:MAX_AUX_ZEICHEN]
+    text = await aux_chat(
+        db, owner_id=owner_id, task="compression",
+        messages=[{"role": "user", "content": UEBERGABE_AUFTRAG + quelle}],
+        agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1500)
+    if not text:
+        log.warning("Übergabe ohne Aux-Modell — es bleibt beim letzten Stand")
+        return f"{grund}\n\nStand aus dem Verlauf:\n{roh}"
+    return f"{grund}\n\n{text.strip()}"
+
+
 def _haeppchen(messages: list[dict], von: int, bis: int) -> list[tuple[int, int]]:
     """Den Block in Stücke schneiden, die das Aux-Modell fassen kann.
 
