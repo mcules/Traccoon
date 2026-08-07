@@ -342,6 +342,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
     den Menschen holen soll, wurde nie erreicht.
     """
     reviewer = await _load_agent(db, project.review_agent or "code_reviewer", project.id, "execute", owner_id)
+    rev = None      # kein Prüflauf in dieser Runde (Budget schon verbraucht) → kein Befundtext
     for attempt in range(int(issue.review_rounds or 0), REVIEW_RUNDEN):
         diff = await gitops.diff_text(ctx)
         if not diff.strip():
@@ -400,7 +401,21 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             continuation_index=99, continuation_hint="REVIEW-BEFUNDE (beheben):\n" + (rev.text or ""))
         if result.status != "done":
             return result
-    # Runden verbraucht und immer noch Befunde → an den Menschen
+    # Runden verbraucht und immer noch Befunde → an den Menschen. MIT den Befunden: das
+    # Ticket trug bisher nur „hold: review", und wer nachsehen wollte, woran es liegt,
+    # musste den Lauf in der Datenbank suchen (ABC-32 am 2026-08-07). Ein Mensch, der
+    # entscheiden soll, braucht den Grund am selben Ort wie die Entscheidung.
+    offene = (getattr(rev, "text", "") or "").strip()
+    db.add(Comment(
+        issue_id=issue.id, author_id=None, author_label="Prüfer", kind="internal",
+        body=(f"🛑 Nach {REVIEW_RUNDEN} Korrektur-Runden sind noch Befunde offen — "
+              "das Ticket wartet auf dich.\n\n" +
+              (offene[:4000] if offene else
+               "(das Korrektur-Budget war schon vor diesem Durchgang verbraucht — die "
+               "Befunde stehen im vorigen Prüfer-Eintrag)") +
+              "\n\nWeiterarbeiten lassen: Ticket erneut anstoßen (das Korrektur-Budget "
+              "beginnt dann von vorn). Abnehmen: die Befunde bewusst überstimmen.")))
+    await db.commit()
     from .runtime import RunResult
     return RunResult("blocked", f"Review-Gate: Befunde nach {REVIEW_RUNDEN} Runden offen",
                      run_id=result.run_id, blocker_kind="review")

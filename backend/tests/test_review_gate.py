@@ -107,3 +107,22 @@ async def test_begonnene_runde_wird_sofort_verbucht(db, monkeypatch):
 
     assert "developer" in laeufe
     assert issue.review_rounds >= 1
+
+
+async def test_offene_befunde_landen_am_ticket(db, monkeypatch):
+    """Wer entscheiden soll, braucht den Grund am selben Ort wie die Entscheidung.
+
+    ABC-32 am 2026-08-07: das Gate gab das Ticket nach zwei Runden an den Menschen — am
+    Ticket stand „hold: review" und sonst nichts. Die Befunde steckten im Lauf.
+    """
+    from sqlalchemy import select
+
+    from app.models.ticket import Comment
+
+    ergebnis, _, issue = await _gate(db, monkeypatch, RunResult("done", "1. Der Timeout ist zu kurz."),
+                                     runden=worker.REVIEW_RUNDEN - 1)
+
+    assert ergebnis.blocker_kind == "review"
+    texte = [c.body for c in (await db.execute(
+        select(Comment).where(Comment.issue_id == issue.id))).scalars().all()]
+    assert any("Der Timeout ist zu kurz." in t for t in texte), "die Befunde fehlen am Ticket"
