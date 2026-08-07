@@ -341,6 +341,24 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
         if "<review-ok/>" in (rev.text or ""):
             log.info("review %s: bestanden (Runde %d)", issue.key, attempt + 1)
             return result
+        # Ein ABGEBROCHENER Prüfer hat keine Befunde — er hat gar nicht geprüft. Ohne diese
+        # Unterscheidung wurde seine Fehlermeldung als Arbeitsauftrag weitergereicht: ABC-31
+        # schickte am 2026-08-07 den Entwickler los, „claude: Antwort bei max_tokens
+        # abgeschnitten … max_tokens erhöhen" zu beheben. Das kostet eine der zwei
+        # Korrektur-Runden, verbrennt einen vollen Lauf und endet danach im Review-Hold —
+        # wegen eines Befunds, den es nie gab.
+        if rev.status != "done":
+            log.warning("review %s: Prüfer-Lauf %s (Runde %d) — keine Befunde, kein Auftrag",
+                        issue.key, rev.status, attempt + 1)
+            db.add(Comment(
+                issue_id=issue.id, author_id=None, author_label="System", kind="internal",
+                body=(f"⚠️ Prüfer-Lauf abgebrochen ({rev.status}): "
+                      f"{(rev.text or '(ohne Meldung)')[:400]}\n\n"
+                      "Der Diff ist damit UNGEPRÜFT. Das Ergebnis geht trotzdem weiter — "
+                      "eine abgebrochene Prüfung ist kein Befund, und den Entwickler auf "
+                      "eine Fehlermeldung anzusetzen wäre eine erfundene Aufgabe.")))
+            await db.commit()
+            return result
         log.info("review %s: Befunde (Runde %d) → Korrektur", issue.key, attempt + 1)
         # Korrektur-Runde durch den Ausführungs-Agenten
         result = await run_agent(
