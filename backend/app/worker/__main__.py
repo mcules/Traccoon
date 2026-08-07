@@ -187,6 +187,17 @@ async def handle(job: dict, redis: Redis) -> None:
             return
         mode = "plan" if job.get("phase") == "planning" else "execute"
         role = job["role"]
+        # Wer arbeitet, steht auf „In Arbeit" — und zwar ab jetzt, nicht erst nach dem
+        # nächsten Abgleich. Der Prozess setzt das beim Start eines Schrittes; ein Auftrag,
+        # den die Reliable-Queue nach einem Neustart wiedervorlegt, kommt aber NICHT durch
+        # den Graphen und liefe sonst mit einem „Warten"-Etikett (2026-08-07).
+        from ..models.enums import TicketAgentStatus as _TS
+        from ..services.artifacts import set_ticket_status as _set_status
+        _ziel = _TS.planning if mode == "plan" else _TS.in_progress
+        if issue.agent_status not in (_TS.done, _ziel):
+            await _set_status(db, issue, _ziel)
+        issue.agent_working = True
+        await db.commit()
         owner_id = issue.assigned_by_user_id or issue.reporter_id or project.lead_user_id
         agent = await _load_agent(db, role, project.id, mode, owner_id)
         # Skill-Laden passiert jetzt zentral in run_agent (autoload + on-demand, beide Pfade).
