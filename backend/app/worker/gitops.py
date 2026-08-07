@@ -138,13 +138,16 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
     wd = ctx.worktree or ctx.workdir
     if not await _is_repo(wd):
         return ""
-    base = ctx.base_commit
-    if not base:
-        # Nicht `ctx.main` als Basis nehmen: der Branch hängt an einem ÄLTEREN Stand, und ein
-        # Zwei-Punkt-Diff gegen den heutigen main zeigt dessen Fortschritt als „gelöscht" —
-        # der Prüfer bekäme fremde Änderungen als Befund vorgesetzt.
-        rc, mb = await _git(wd, "merge-base", ctx.main, "HEAD")
-        base = mb.strip() if rc == 0 and mb.strip() else ctx.main
+    # IMMER über `merge-base` gehen, auch wenn ein `base_commit` vorliegt: der ist der
+    # main-Stand beim letzten Vorbereiten des Worktrees, nicht der Abzweigpunkt des Branches
+    # (`prepare` schreibt ihn bei jeder Wiederverwendung neu). Ein Zwei-Punkt-Diff gegen
+    # diesen Stand zeigt alles, was main seit dem echten Abzweig dazubekommen hat, als
+    # „gelöscht" — bei TRA-31 am 2026-08-07 waren das 1993 Zeilen, und der Prüfer meldete
+    # pflichtbewusst, der Agent habe den `may_plan_continue`-Knoten entfernt. Er hatte ihn
+    # nie angefasst. `merge-base` liefert den Abzweigpunkt auch dann, wenn die Gegenseite
+    # weitergelaufen ist.
+    rc, mb = await _git(wd, "merge-base", ctx.base_commit or ctx.main, "HEAD")
+    base = mb.strip() if rc == 0 and mb.strip() else (ctx.base_commit or ctx.main)
     # Zwei Punkte, nicht drei: `base...HEAD` zeigt nur COMMITTETE Arbeit. Im Review-Gate ist
     # die Korrektur aber noch uncommittet (committet wird erst nach dem Gate) — der Prüfer
     # sah damit den Stand VOR seinen eigenen Befunden, und die Stillstands-Erkennung fand

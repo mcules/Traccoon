@@ -92,3 +92,38 @@ async def test_diff_zeigt_auch_uncommittete_korrekturen(monkeypatch, tmp_path):
     assert diffs, "es wurde gar kein Diff gebildet"
     assert "..." not in " ".join(diffs[0]), "Drei-Punkt-Diff übersieht die uncommittete Korrektur"
     assert diffs[0] == ("diff", "abc123"), "Basis muss der Abzweigpunkt sein, nicht der heutige main"
+
+
+async def test_basis_ist_der_abzweigpunkt_auch_mit_base_commit(monkeypatch):
+    """`git_base_sha` ist der main-Stand beim letzten Vorbereiten, NICHT der Abzweigpunkt.
+
+    `prepare` schreibt ihn bei jeder Wiederverwendung des Worktrees neu. Ein Zwei-Punkt-Diff
+    gegen diesen Stand zeigt alles, was main seit dem echten Abzweig dazubekommen hat, als
+    „gelöscht": bei TRA-31 am 2026-08-07 waren das 1993 Zeilen, und der Prüfer meldete, der
+    Agent habe den `may_plan_continue`-Knoten entfernt — den er nie angefasst hatte.
+    """
+    befehle: list[tuple] = []
+
+    async def fake_is_repo(_wd):
+        return True
+
+    async def fake_git(_wd, *args):
+        befehle.append(args)
+        if args[0] == "merge-base":
+            return 0, "abzweig456\n"
+        return 0, "--- a\n+++ b\n+neu\n"
+
+    monkeypatch.setattr(gitops, "_is_repo", fake_is_repo)
+    monkeypatch.setattr(gitops, "_git", fake_git)
+
+    class _C:
+        worktree = "/ws"
+        workdir = "/ws"
+        base_commit = "c489052"      # main-Stand, nicht der Abzweig
+        main = "main"
+
+    await gitops.diff_text(_C())
+
+    assert ("merge-base", "c489052", "HEAD") in befehle, "merge-base wurde übersprungen"
+    assert ("diff", "abzweig456") in befehle, "es wurde gegen den falschen Stand verglichen"
+    assert ("diff", "c489052") not in befehle
