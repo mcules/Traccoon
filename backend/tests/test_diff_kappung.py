@@ -56,3 +56,39 @@ async def test_fehlende_dateien_werden_benannt(monkeypatch):
     text = await _text(monkeypatch, _diff(4, 60), 1000)
 
     assert "datei_3.py" in text.split("Diff gekappt")[1]
+
+
+async def test_diff_zeigt_auch_uncommittete_korrekturen(monkeypatch, tmp_path):
+    """Das Review-Gate muss den ARBEITSSTAND sehen, nicht nur die Commits.
+
+    Committet wird erst NACH dem Gate. Mit `base...HEAD` sah der Prüfer deshalb den Stand vor
+    seinen eigenen Befunden, und die Stillstands-Erkennung meldete „nichts verändert" — beide
+    Tickets vom 2026-08-07 endeten so nach genau einer Korrekturrunde, obwohl die Korrektur
+    längst geschrieben war.
+    """
+    befehle: list[tuple] = []
+
+    async def fake_is_repo(_wd):
+        return True
+
+    async def fake_git(_wd, *args):
+        befehle.append(args)
+        if args[0] == "merge-base":
+            return 0, "abc123\n"
+        return 0, "--- a\n+++ b\n+neu\n"
+
+    monkeypatch.setattr(gitops, "_is_repo", fake_is_repo)
+    monkeypatch.setattr(gitops, "_git", fake_git)
+
+    class _C:
+        worktree = "/ws"
+        workdir = "/ws"
+        base_commit = None
+        main = "main"
+
+    await gitops.diff_text(_C())
+
+    diffs = [a for a in befehle if a[0] == "diff"]
+    assert diffs, "es wurde gar kein Diff gebildet"
+    assert "..." not in " ".join(diffs[0]), "Drei-Punkt-Diff übersieht die uncommittete Korrektur"
+    assert diffs[0] == ("diff", "abc123"), "Basis muss der Abzweigpunkt sein, nicht der heutige main"

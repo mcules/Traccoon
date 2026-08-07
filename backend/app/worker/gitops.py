@@ -138,10 +138,21 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
     wd = ctx.worktree or ctx.workdir
     if not await _is_repo(wd):
         return ""
-    base = ctx.base_commit or ctx.main
-    rc, out = await _git(wd, "diff", f"{base}...HEAD")
-    if rc != 0 or not out.strip():
-        rc, out = await _git(wd, "diff", "HEAD")  # uncommittete Änderungen
+    base = ctx.base_commit
+    if not base:
+        # Nicht `ctx.main` als Basis nehmen: der Branch hängt an einem ÄLTEREN Stand, und ein
+        # Zwei-Punkt-Diff gegen den heutigen main zeigt dessen Fortschritt als „gelöscht" —
+        # der Prüfer bekäme fremde Änderungen als Befund vorgesetzt.
+        rc, mb = await _git(wd, "merge-base", ctx.main, "HEAD")
+        base = mb.strip() if rc == 0 and mb.strip() else ctx.main
+    # Zwei Punkte, nicht drei: `base...HEAD` zeigt nur COMMITTETE Arbeit. Im Review-Gate ist
+    # die Korrektur aber noch uncommittet (committet wird erst nach dem Gate) — der Prüfer
+    # sah damit den Stand VOR seinen eigenen Befunden, und die Stillstands-Erkennung fand
+    # zwangsläufig „nichts verändert". Beide Tickets vom 2026-08-07 endeten so nach genau
+    # einer Korrekturrunde, obwohl die Korrektur längst geschrieben war.
+    rc, out = await _git(wd, "diff", base)
+    if rc != 0:
+        rc, out = await _git(wd, "diff", "HEAD")  # letzter Rückfall: nur der Arbeitsstand
     if len(out) <= max_chars:
         return out
     kopf = out[:max_chars]
