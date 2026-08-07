@@ -21,7 +21,7 @@
 // dieselbe Sekunde des Laufs beim Zurückspulen einen anderen Raum.
 
 import type { Ctx, Pt, Verdict } from "../types.ts";
-import { PIX, TYPE_CPS } from "../const.ts";
+import { ART, TYPE_CPS } from "../const.ts";
 import { mix } from "../ids.ts";
 import { fill, fillA } from "./art.ts";
 import type { Pal, PalKey } from "./palette.ts";
@@ -318,7 +318,7 @@ export function speechBubble(
   const y0 = yBase - TAIL_H - h;
   // Am Bildrand rutscht die Blase herein, statt abgeschnitten zu werden. Der Zipfel bleibt,
   // wo er ist — er zeigt auf den Sprecher, nicht auf die Blase.
-  const x0 = Math.max(1, Math.min(PIX.w - w - 1, cx - (w >> 1)));
+  const x0 = Math.max(1, Math.min(ART.w - w - 1, cx - (w >> 1)));
 
   const edge: PalKey = o.verdict ? VERDICT_KEY[o.verdict] : "ink";
   panel(ctx, pal, x0, y0, w, h, "paper", edge, 1);
@@ -374,7 +374,7 @@ export function thoughtBubble(
   const w = inner + 2 * PAD + 2;
   const h = GH + (lines.length - 1) * LINE_H + 2 * PAD + 2;
   const y0 = yBase - 9 - h;
-  const x0 = Math.max(1, Math.min(PIX.w - w - 1, cx - (w >> 1)));
+  const x0 = Math.max(1, Math.min(ART.w - w - 1, cx - (w >> 1)));
 
   panel(ctx, pal, x0, y0, w, h, "paper", "ink", 1);
 
@@ -438,7 +438,7 @@ export function nameplate(
   const wSub = sub ? textW(sub) : 0;
   const w = Math.max(wName, wSub) + 6;
   const h = sub ? GH * 2 + 7 : GH + 4;
-  const x0 = Math.max(1, Math.min(PIX.w - w - 1, cx - (w >> 1)));
+  const x0 = Math.max(1, Math.min(ART.w - w - 1, cx - (w >> 1)));
   const y0 = yBase - h;
 
   const dim = o?.dim === true;
@@ -618,8 +618,8 @@ export function dust(ctx: Ctx, pal: Pal, t: number, seed: number): void {
   for (let i = 0; i < n; i++) {
     const h = mix(seed + i * 7919, SALT_DUST);
     const speed = 220 + (h % 260);
-    const drift = ((t / speed) | 0) + (h % PIX.w);
-    const x = drift % PIX.w;
+    const drift = ((t / speed) | 0) + (h % ART.w);
+    const x = drift % ART.w;
     const y = 44 + ((h >>> 9) % 190) + tri(((t / 700) | 0) + i, 9, 3) - 1;
     fillA(ctx, pal, "wallHi", 0.13, x, y, 1, 1);
   }

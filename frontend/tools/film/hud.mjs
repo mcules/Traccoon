@@ -10,7 +10,7 @@
 // `toLocaleTimeString` an dieser Stelle machte das Bild von der ICU-Version des Basis-Images
 // abhängig — und damit den goldenen Hash von einem Bibliotheks-Update.
 
-import { PIX } from "../../src/components/office/const.ts";
+import { ART } from "../../src/components/office/const.ts";
 import { fill, fillA } from "../../src/components/office/pixel/art.ts";
 import { GRADES } from "../../src/components/office/pixel/palette.ts";
 import { drawText, textW } from "../../src/components/office/pixel/props.ts";
@@ -26,10 +26,10 @@ const BAND_H = 11;
  */
 export function hudZeile(ctx, grade, text) {
   const pal = GRADES[grade];
-  const y = PIX.h - BAND_H;
-  fillA(ctx, pal, "shadow", 0.62, 0, y, PIX.w, BAND_H);
+  const y = ART.h - BAND_H;
+  fillA(ctx, pal, "shadow", 0.62, 0, y, ART.w, BAND_H);
   // Eine Kante nach oben, sonst schwimmt der Balken über dem Boden statt auf ihm zu liegen.
-  fill(ctx, pal, "ink", 0, y, PIX.w, 1);
+  fill(ctx, pal, "ink", 0, y, ART.w, 1);
   drawText(ctx, pal, "paper", 4, y + 3, text);
 }
 
@@ -48,18 +48,18 @@ export function kapitelKarte(ctx, grade, titel, zeit, k) {
   if (a <= 0) return;
   const pal = GRADES[grade];
 
-  fillA(ctx, pal, "shadow", 0.82 * a, 0, 0, PIX.w, PIX.h);
+  fillA(ctx, pal, "shadow", 0.82 * a, 0, 0, ART.w, ART.h);
 
   // Ein Kasten hinter der Schrift, nicht nur ein Schleier: der Raum hat helle Monitore und
   // einen gemusterten Teppich, und eine 3×5-Schrift darüber liest sich aus drei Metern nicht.
   const breite = Math.max(textW(titel), textW(zeit)) + 22;
   const hoehe = 26;
-  const x0 = (PIX.w - breite) >> 1;
-  const y0 = (PIX.h - hoehe) >> 1;
+  const x0 = (ART.w - breite) >> 1;
+  const y0 = (ART.h - hoehe) >> 1;
   fillA(ctx, pal, "ink", 0.92 * a, x0, y0, breite, hoehe);
   fillA(ctx, pal, "acc", 0.9 * a, x0, y0, breite, 1);
   fillA(ctx, pal, "acc", 0.9 * a, x0, y0 + hoehe - 1, breite, 1);
 
-  drawText(ctx, pal, "paper", (PIX.w - textW(titel)) >> 1, y0 + 6, titel, a);
-  drawText(ctx, pal, "acc", (PIX.w - textW(zeit)) >> 1, y0 + 15, zeit, a);
+  drawText(ctx, pal, "paper", (ART.w - textW(titel)) >> 1, y0 + 6, titel, a);
+  drawText(ctx, pal, "acc", (ART.w - textW(zeit)) >> 1, y0 + 15, zeit, a);
 }

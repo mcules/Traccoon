@@ -19,10 +19,10 @@
 // ganzzahlig aus `ts + tz_offset_min·60000`. Python kennt den Versatz des Tages und schickt ihn
 // mit; `toLocale*` oder `Intl` machten das Bild von der ICU-Version des Basis-Images abhängig.
 
-import { PIX } from "../../src/components/office/const.ts";
+import { ART } from "../../src/components/office/const.ts";
 import { Recorder } from "../../src/components/office/recorder.ts";
 import { Replay } from "../../src/components/office/replay.ts";
-import { CAM_FULL, renderFrame } from "../../src/components/office/pixel/scene.ts";
+import { renderFrame } from "../../src/components/office/pixel/scene.ts";
 import { bildplan } from "./schnitt.mjs";
 import { hudZeile, kapitelKarte } from "./hud.mjs";
 import { rasterCtx } from "./raster.mjs";
@@ -31,6 +31,11 @@ import { gif } from "./gif.mjs";
 /** Wie viele Bilder eine Trennkarte stehen bleibt (bei 12 fps ein Drittel einer Sekunde).
  *  Weniger und man liest die Uhrzeit nicht, mehr und acht Karten fressen ein Sechstel des Films. */
 const KARTEN_BILDER = 4;
+
+// Der Film bleibt vorerst auf der Kunstebene (480×270): sein Bild ist heute so grob,
+// wie die Kunst es ist, und ein vierfach so großes GIF brächte keinen Strich mehr
+// Detail. Sobald die Kunst fein gezeichnet ist, wandert auch er auf den Puffer.
+const CAM_FILM = { x: ART.w / 2, y: ART.h / 2, zoom: 1 };
 /** Unter so vielen Bildern ist ein Kapitel kein Kapitel mehr, sondern ein Zucken. */
 const MIN_BILDER = 6;
 
@@ -70,7 +75,7 @@ export function baueFilm(auftrag) {
 
   const marken = sitzungsMarken(events);
   const replay = new Replay(log);
-  const { ctx, buf, reset } = rasterCtx(PIX.w, PIX.h);
+  const { ctx, buf, reset } = rasterCtx(ART.w, ART.h);
   const bilder = [];
 
   // Der erste Sprung ist ein `seek`, kein `advance`: ein frischer `Replay` steht auf dem
@@ -86,7 +91,7 @@ export function baueFilm(auftrag) {
 
     reset();
     const frame = replay.frame();
-    renderFrame(ctx, frame, CAM_FULL, grade);
+    renderFrame(ctx, frame, CAM_FILM, grade);
 
     const zeit = uhrzeit(b.ts, versatz);
     hudZeile(ctx, grade, zeile(zeit, marken, b.ts, frame));
@@ -107,7 +112,7 @@ export function baueFilm(auftrag) {
 
   const verzoegerung = Math.max(20, Math.round(1000 / (fps > 0 ? fps : 12)));
   const kodiert = gif(bilder, {
-    w: PIX.w, h: PIX.h,
+    w: ART.w, h: ART.h,
     delaysMs: bilder.map(() => verzoegerung),
     loop: 0,
   });

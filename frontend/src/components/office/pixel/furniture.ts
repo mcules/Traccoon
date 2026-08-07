@@ -21,7 +21,7 @@
 // auf beliebige Raumbreiten ziehen.
 
 import type { Ctx, RackState } from "../types.ts";
-import { PIX } from "../const.ts";
+import { ART } from "../const.ts";
 import { mix } from "../ids.ts";
 import type { Pal, PalKey } from "./palette.ts";
 import { artH, artLeft, artW, defineArt, drawArt, fill, fillA } from "./art.ts";
@@ -845,16 +845,16 @@ const MIN_STAGGER = 26;
  * sieht man den Unterschied ohnehin nicht, und Bänder bleiben golden prüfbar.
  */
 export function drawWall(ctx: Ctx, pal: Pal): void {
-  fill(ctx, pal, "wall", 0, 0, PIX.w, WALL_H);
-  fill(ctx, pal, "wallHi", 0, 0, PIX.w, 2);
-  fillA(ctx, pal, "wallLo", 0.25, 0, WALL_H - 12, PIX.w, 6);
-  fillA(ctx, pal, "wallLo", 0.45, 0, WALL_H - 6, PIX.w, 2);
+  fill(ctx, pal, "wall", 0, 0, ART.w, WALL_H);
+  fill(ctx, pal, "wallHi", 0, 0, ART.w, 2);
+  fillA(ctx, pal, "wallLo", 0.25, 0, WALL_H - 12, ART.w, 6);
+  fillA(ctx, pal, "wallLo", 0.45, 0, WALL_H - 6, ART.w, 2);
   // Sockelleiste mit heller Oberkante.
-  fill(ctx, pal, "wallLo", 0, WALL_H - 4, PIX.w, 4);
-  fillA(ctx, pal, "wallHi", 0.35, 0, WALL_H - 4, PIX.w, 1);
+  fill(ctx, pal, "wallLo", 0, WALL_H - 4, ART.w, 4);
+  fillA(ctx, pal, "wallHi", 0.35, 0, WALL_H - 4, ART.w, 1);
   // Plattenstöße der Wandverkleidung: eine Linie alle 80 Pixel, sehr blass. Sie geben der
   // Wand einen Maßstab — ohne sie wirkt die Fläche wie ein Farbfeld, nicht wie ein Raum.
-  for (let x = 40; x < PIX.w; x += 80) fillA(ctx, pal, "wallLo", 0.30, x, 2, 1, WALL_H - 6);
+  for (let x = 40; x < ART.w; x += 80) fillA(ctx, pal, "wallLo", 0.30, x, 2, 1, WALL_H - 6);
 }
 
 /**
@@ -863,12 +863,12 @@ export function drawWall(ctx: Ctx, pal: Pal): void {
  * Tönungen — dieselbe Fläche in einer Farbe sieht aus wie Linoleum.
  */
 export function drawFloor(ctx: Ctx, pal: Pal): void {
-  fill(ctx, pal, "floor", 0, WALL_H, PIX.w, PIX.h - WALL_H);
+  fill(ctx, pal, "floor", 0, WALL_H, ART.w, ART.h - WALL_H);
 
   let prev = -1000;
   let r = 0;
-  for (let y = WALL_H; y < PIX.h; y += PLANK_H, r++) {
-    const rowH = Math.min(PLANK_H, PIX.h - y);
+  for (let y = WALL_H; y < ART.h; y += PLANK_H, r++) {
+    const rowH = Math.min(PLANK_H, ART.h - y);
     const raw = mix(r, SALT_PLANK) % PLANK_W;
     let off = raw;
     if (prev >= 0) {
@@ -882,7 +882,7 @@ export function drawFloor(ctx: Ctx, pal: Pal): void {
 
     // Bretttönung, Maserung und senkrechte Stöße in einem Durchgang.
     let p = 0;
-    for (let x = off - PLANK_W; x < PIX.w; x += PLANK_W, p++) {
+    for (let x = off - PLANK_W; x < ART.w; x += PLANK_W, p++) {
       const v = mix(r * 131 + p, SALT_SHADE) % 4;
       // Schwach: ein Brett soll sich vom Nachbarn abheben, nicht von ihm abstechen.
       if (v === 1) fillA(ctx, pal, "floorHi", 0.11, x, y, PLANK_W, rowH - 1);
@@ -894,14 +894,14 @@ export function drawFloor(ctx: Ctx, pal: Pal): void {
     }
     // Waagerechte Fuge am unteren Rand der Reihe — deutlich schwächer als der Stoß,
     // sonst gewinnt die Reihe optisch über das Brett und der Boden kippt ins Gemauerte.
-    if (rowH === PLANK_H) fillA(ctx, pal, "floorLo", 0.28, 0, y + rowH - 1, PIX.w, 1);
+    if (rowH === PLANK_H) fillA(ctx, pal, "floorLo", 0.28, 0, y + rowH - 1, ART.w, 1);
   }
 
   // Schattenband unter der Wand: der Boden bekommt dort kein Streiflicht ab. Vier Zeilen
   // reichen, damit die Wand auf dem Boden aufsitzt statt an ihn angeklebt zu sein.
-  fillA(ctx, pal, "shadow", 0.22, 0, WALL_H, PIX.w, 1);
-  fillA(ctx, pal, "shadow", 0.14, 0, WALL_H + 1, PIX.w, 1);
-  fillA(ctx, pal, "shadow", 0.08, 0, WALL_H + 2, PIX.w, 2);
+  fillA(ctx, pal, "shadow", 0.22, 0, WALL_H, ART.w, 1);
+  fillA(ctx, pal, "shadow", 0.14, 0, WALL_H + 1, ART.w, 1);
+  fillA(ctx, pal, "shadow", 0.08, 0, WALL_H + 2, ART.w, 2);
 }
 
 /**

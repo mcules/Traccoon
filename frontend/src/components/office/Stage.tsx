@@ -60,7 +60,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent } from "react";
 import type { ActorState, Frame, Grade } from "./types.ts";
-import { LINK_MS, MAX_FRAME_MS, PIX, POS_SCALE } from "./const.ts";
+import { ART, LINK_MS, MAX_FRAME_MS, PIX, POS_SCALE } from "./const.ts";
 import type { KioskCam } from "./kiosk.ts";
 import { newKioskCam, pickTarget } from "./kiosk.ts";
 import { Replay } from "./replay.ts";
@@ -155,12 +155,15 @@ interface CamState { x: number; y: number; zoom: number; wantX: number; wantY: n
  * auf der das Nicht-Leeren beruht.
  */
 function clampCam(c: CamState): void {
+  // Die halbe Sichtbreite kommt aus dem PUFFER (so viele Kunsteinheiten zeigt er bei diesem
+  // Maßstab), die Grenze aus der KUNSTEBENE (so weit reicht der Raum). Beides war dasselbe,
+  // solange ART_SCALE = 1 galt — seit der Puffer doppelt so fein ist, sind es zwei Dinge.
   const halfW = PIX.w / (2 * c.zoom);
   const halfH = PIX.h / (2 * c.zoom);
-  c.x = Math.min(PIX.w - halfW, Math.max(halfW, c.x));
-  c.y = Math.min(PIX.h - halfH, Math.max(halfH, c.y));
-  c.wantX = Math.min(PIX.w - halfW, Math.max(halfW, c.wantX));
-  c.wantY = Math.min(PIX.h - halfH, Math.max(halfH, c.wantY));
+  c.x = Math.min(ART.w - halfW, Math.max(halfW, c.x));
+  c.y = Math.min(ART.h - halfH, Math.max(halfH, c.y));
+  c.wantX = Math.min(ART.w - halfW, Math.max(halfW, c.wantX));
+  c.wantY = Math.min(ART.h - halfH, Math.max(halfH, c.wantY));
 }
 
 /** Wo ein Pufferpunkt unter dieser Kamera landet — dieselbe Rechnung wie `camFit` in
