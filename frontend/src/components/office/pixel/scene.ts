@@ -398,7 +398,7 @@ export function renderFrame(
 
   // ── 4 Bodenschicht ────────────────────────────────────────────────────────
   const world: Piece[] = [];
-  buildRoom(world, v, env, frame);
+  buildRoom(world, v, vh, env, frame);
   buildActors(world, v, vh, env, frame, grade, opts);
   // Stabil (ES2019): bei gleichem Fußpunkt gewinnt die Einfügereihenfolge — und die ist
   // „erst der Stuhl, dann die Figur darauf".
@@ -447,7 +447,7 @@ function seatFor(a: ActorState): SeatPx | undefined {
 }
 
 /** Möbel und Arbeitsplätze in die Sortierliste legen. */
-function buildRoom(world: Piece[], v: Ctx, env: Pal, frame: Frame): void {
+function buildRoom(world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame): void {
   // Wer sitzt wo — für Stuhl (besetzt/frei) und Monitorbild.
   const byDesk = new Map<number, ActorState>();
   for (const a of frame.actors) {
@@ -465,7 +465,7 @@ function buildRoom(world: Piece[], v: Ctx, env: Pal, frame: Frame): void {
     world.push({
       y: s.desk.y,
       draw(): void {
-        drawDesk(v, s.desk.x, s.desk.y, env);
+        drawDesk(vh, s.desk.x, s.desk.y, env);
         drawMonitor(v, s.mon.x, deskTop(s.desk.y), env, { screen, mood, flip: s.flip });
       },
     });
@@ -474,7 +474,7 @@ function buildRoom(world: Piece[], v: Ctx, env: Pal, frame: Frame): void {
     world.push({
       y: s.sit.y,
       draw(): void {
-        drawChair(v, s.sit.x, s.sit.y, env, { occupied: who !== undefined, flip: s.flip });
+        drawChair(vh, s.sit.x, s.sit.y, env, { occupied: who !== undefined, flip: s.flip });
       },
     });
   }

@@ -24,7 +24,7 @@ import type { Ctx, RackState } from "../types.ts";
 import { ART } from "../const.ts";
 import { mix } from "../ids.ts";
 import type { Pal, PalKey } from "./palette.ts";
-import { artH, artLeft, artW, defineArt, drawArt, fill, fillA } from "./art.ts";
+import { artH, artLeft, artW, defineArt, drawArt, fill, fillA, verdoppelt } from "./art.ts";
 
 // ═══ Maße der Kulisse ════════════════════════════════════════════════════════
 
@@ -508,6 +508,13 @@ const CLOCK = defineArt([
 /** Die Maße aller Möbel in Pufferpixeln — abgeleitet, nicht getippt. Wer den Raum aufbaut
  *  (Welle F/H), rechnet damit Abstände aus, statt Zahlen aus diesem Kommentarkopf abzuschreiben,
  *  die beim nächsten Umbau eines Sprites still falsch würden. */
+/** Dieselben Arts im feinen Raster. `SIZE` unten bleibt an den groben hängen — daran rechnet
+ *  die Szene ihre Geometrie, und die ist in Kunsteinheiten. Wer hier `SIZE` verdoppelt,
+ *  verschiebt jeden Sitzplatz. */
+const DESK_HD = verdoppelt(DESK);
+const CHAIR_FREE_HD = verdoppelt(CHAIR_FREE);
+const CHAIR_TAKEN_HD = verdoppelt(CHAIR_TAKEN);
+
 export const SIZE = {
   desk: { w: artW(DESK), h: artH(DESK) },
   chair: { w: artW(CHAIR_FREE), h: artH(CHAIR_FREE) },
@@ -544,17 +551,36 @@ function contactShadow(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: number)
   fillA(ctx, pal, "shadow", 0.06, cx - (h >> 1) - h, yBase + 1, h * 2, 1);
 }
 
+/** Derselbe Schatten im feinen Raster: fünf Stufen statt drei, weil eine Stufe halb so hoch
+ *  ist. Er läuft nach hinten schmaler zu — das Licht kommt von den Fenstern, also von oben. */
+function kontaktSchattenHD(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: number): void {
+  const halb = w >> 1;
+  fillA(ctx, pal, "shadow", 0.24, cx - halb + 4, yBase - 3, w - 8, 1);
+  fillA(ctx, pal, "shadow", 0.20, cx - halb + 1, yBase - 2, w - 2, 2);
+  fillA(ctx, pal, "shadow", 0.13, cx - halb - 1, yBase, w + 2, 2);
+  fillA(ctx, pal, "shadow", 0.07, cx - halb + 2, yBase + 2, w - 4, 1);
+  fillA(ctx, pal, "shadow", 0.04, cx - halb + 8, yBase + 3, w - 16, 1);
+}
+
 export function drawDesk(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
-  const x0 = artLeft(DESK, cx);
-  contactShadow(ctx, pal, cx, yBase, SIZE.desk.w);
-  drawArt(ctx, DESK, cx, yBase, pal);
-  // Ein heller Streifen auf der Vorderkante der Platte: die Kante fängt das Licht, und ohne
-  // sie sieht die Platte aus wie ein aufgeklebtes Rechteck.
-  fillA(ctx, pal, "wallHi", 0.18, x0, yBase - SIZE.desk.h, SIZE.desk.w, 1);
+  // Fein gezeichnet (Etappe 4). `cx`/`yBase` bleiben Kunsteinheiten — die Szene stellt die
+  // Möbel weiter in ihrem Raster auf; nur gezeichnet wird doppelt so fein.
+  const X = cx * HD, Y = yBase * HD;
+  const w = SIZE.desk.w * HD, h = SIZE.desk.h * HD;
+  const x0 = X - (w >> 1);
+  kontaktSchattenHD(ctx, pal, X, Y, w);
+  drawArt(ctx, DESK_HD, X, Y, pal);
+  // Vorderkante: eine HAARLINIE Licht, darunter eine Linie Schatten. Zwei Pufferpixel dick
+  // war die Kante ein Balken; erst eine Linie mit ihrem eigenen Schatten liest sich als
+  // Plattenrand, den man anfassen könnte.
+  fillA(ctx, pal, "wallHi", 0.22, x0, Y - h, w, 1);
+  fillA(ctx, pal, "shadow", 0.16, x0, Y - h + 1, w, 1);
   // Die Sichtblende liegt im Eigenschatten der Platte. Ohne diesen Griff hat sie fast genau
   // den Ton des Dielenbodens und verschwindet darin — der Tisch sieht dann aus wie eine
   // Platte auf zwei Drähten.
-  fillA(ctx, pal, "shadow", 0.30, x0 + 3, yBase - SIZE.desk.h + 3, SIZE.desk.w - 6, 5);
+  fillA(ctx, pal, "shadow", 0.30, x0 + 6, Y - h + 6, w - 12, 10);
+  // Und ein Hauch Licht auf der Oberseite links, wo die Fenster stehen.
+  fillA(ctx, pal, "wallHi", 0.10, x0 + 2, Y - h + 2, (w >> 1) - 4, 3);
 }
 
 export interface ChairOpts {
@@ -565,9 +591,14 @@ export interface ChairOpts {
 }
 
 export function drawChair(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?: ChairOpts): void {
-  const art = opts?.occupied === true ? CHAIR_TAKEN : CHAIR_FREE;
-  contactShadow(ctx, pal, cx, yBase, SIZE.chair.w);
-  drawArt(ctx, art, cx, yBase, pal, { flip: opts?.flip });
+  const art = opts?.occupied === true ? CHAIR_TAKEN_HD : CHAIR_FREE_HD;
+  const X = cx * HD, Y = yBase * HD;
+  const w = SIZE.chair.w * HD, h = SIZE.chair.h * HD;
+  kontaktSchattenHD(ctx, pal, X, Y, w - 4);
+  drawArt(ctx, art, X, Y, pal, { flip: opts?.flip });
+  // Lichtkante auf der Oberkante der Lehne: sie trennt die Lehne von der Sitzfläche
+  // dahinter, die denselben Ton hat — sonst ist der Stuhl ein Klecks.
+  fillA(ctx, pal, "wallHi", 0.20, X - (w >> 1) + 4, Y - h, w - 8, 1);
 }
 
 // ── Monitor: Bildsorte und Stimmung ──────────────────────────────────────────
