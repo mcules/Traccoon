@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -24,6 +26,30 @@ from .api.ws import event_bridge
 from .api.office_ws import office_bridge, router as office_ws_router
 
 VERSION = "0.1.0"
+log = logging.getLogger("traccoon.start")
+
+
+async def _fehlt_noch(conn, ddl: str) -> bool:
+    """Muss dieses `ADD COLUMN IF NOT EXISTS` überhaupt laufen?
+
+    `IF NOT EXISTS` verhindert den Fehler, nicht die Sperre: Postgres nimmt für jedes ALTER
+    zuerst eine AccessExclusiveLock auf die Tabelle und schaut ERST DANN nach, ob die Spalte
+    schon da ist. Bei 83 Anweisungen pro Backend-Start heißt das 83 exklusive Sperren auf
+    Tabellen, in die nebenan gerade ein Agent schreibt — am 2026-08-07 um 18:00 hat genau
+    das den Lauf 753 (TRA-31, 37 Züge) erledigt: die Sperre auf `run_steps` gegen den
+    laufenden INSERT, Postgres löste den Deadlock auf, und das Opfer war der Agent.
+
+    Vorher nachsehen kostet einen billigen Katalog-Lesezugriff und nimmt im Regelfall — die
+    Spalte ist längst da — gar keine Sperre mehr.
+    """
+    m = re.match(r"ALTER TABLE (\w+) ADD COLUMN IF NOT EXISTS (\w+)\b", ddl, re.I)
+    if not m:
+        return True                       # alles andere (Index, ENUM, UPDATE) läuft wie gehabt
+    tabelle, spalte = m.group(1), m.group(2)
+    da = await conn.scalar(text(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_name = :t AND column_name = :c"), {"t": tabelle, "c": spalte})
+    return da is None
 
 
 @asynccontextmanager
@@ -31,6 +57,11 @@ async def lifespan(app: FastAPI):
     if settings.dev_create_all:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # Und falls doch etwas nachzuziehen ist: nach 3 Sekunden aufgeben statt sich in
+            # die Warteschlange vor eine laufende Schreiblast zu stellen. Eine wartende
+            # AccessExclusiveLock blockiert ihrerseits alle nachfolgenden Schreiber — der
+            # Selbstheilungs-Versuch legt sonst genau das lahm, was er reparieren soll.
+            await conn.execute(text("SET lock_timeout = '3s'"))
             # Additive Spalten idempotent nachziehen (create_all legt sie nur auf FRISCHEN
             # Tabellen an, nicht auf bestehenden). Reihenfolge/Stil wie ADD COLUMN IF NOT EXISTS.
             for _ddl in (
@@ -314,7 +345,12 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS media_path VARCHAR(500)",
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS media_kind VARCHAR(20)",
             ):
-                await conn.execute(text(_ddl))
+                if not await _fehlt_noch(conn, _ddl):
+                    continue
+                try:
+                    await conn.execute(text(_ddl))
+                except Exception as exc:  # noqa: BLE001 — Sperrkonflikt darf den Start nicht kippen
+                    log.warning("Schema-Nachzug übersprungen (%s): %s", _ddl[:60], exc)
     async with SessionLocal() as db:
         await seed(db)
         # Ausgelieferte Abläufe (Ticket-Lebenszyklus, Abnahme, Beschaffung, Eingang) als

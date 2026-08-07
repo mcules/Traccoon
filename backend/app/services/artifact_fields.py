@@ -397,11 +397,17 @@ async def uebernimm_alte_zustaende(db: AsyncSession) -> int:
     from sqlalchemy import text
 
     from ..models.artifact import ArtifactType
+    # Erst nachsehen, dann fragen. Der Fehlschlag war abgefangen, aber Postgres schreibt ihn
+    # trotzdem als ERROR ins Server-Log — bei jedem Start und jedem Reload. Diese Zeilen
+    # standen am 2026-08-07 direkt neben dem echten Deadlock und machen die Suche unnötig
+    # schwer; ein Log voller harmloser Fehler ist ein Log, in dem man den echten übersieht.
+    if await db.scalar(text("SELECT to_regclass('artifact_statuses')")) is None:
+        return 0
     try:
         rows = (await db.execute(text(
             "SELECT type_id, key, label, category, \"order\", waiting FROM artifact_statuses"
         ))).all()
-    except Exception:      # noqa: BLE001 — Tabelle gibt es (noch) nicht: nichts zu tun
+    except Exception:      # noqa: BLE001 — z. B. SQLite in den Tests: nichts zu tun
         await db.rollback()
         return 0
     if not rows:

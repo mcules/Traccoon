@@ -1425,7 +1425,55 @@ async def nachzuegler_einsammeln() -> None:
             _spawn(_await_action(iid, tok_id, step_id, task_id, timeout, ckey, omap))
 
 
+async def tote_laeufe_schliessen() -> int:
+    """Läufe abschließen, hinter denen niemand mehr steht.
+
+    Ein Lauf endet normalerweise selbst — außer der Prozess, der ihn führt, stirbt an einer
+    Stelle, an der er nicht mehr schreiben kann (Lauf 753 am 2026-08-07: Deadlock beim
+    Schreiben der Schrittzeile, die Sitzung war danach unbrauchbar, also blieb die Zeile
+    für immer auf „läuft"). Die Aufräumung beim Worker-Start greift erst beim nächsten
+    Neustart — bis dahin zählt der Lauf als lebend und hält über die Board-Regel („wer
+    arbeitet, steht auf In Arbeit") ein Ticket in der Arbeit, das in Wahrheit wartet.
+
+    Geprüft wird das echte Lebenszeichen, nicht die Uhr: Puls, Warteschlange,
+    Verarbeitungsliste. Erst wenn keine dieser Quellen den Auftrag kennt UND die Gnadenfrist
+    abgelaufen ist, wird geschlossen — ein Agent darf Stunden brauchen.
+    """
+    import datetime as _dt
+
+    from ..core.redis import GNADENFRIST, lauf_lebt
+    from ..models.agents import Run
+
+    grenze = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=GNADENFRIST)
+    geschlossen = 0
+    async with SessionLocal() as db:
+        offen = (await db.execute(select(Run).where(
+            Run.status == "running", Run.finished_at.is_(None),
+            Run.started_at < grenze))).scalars().all()
+        for run in offen:
+            if await lauf_lebt(run.task_id):
+                continue
+            run.status = "failed"
+            run.finished_at = _dt.datetime.now(_dt.UTC)
+            run.error = ((run.error or "") +
+                         "Kein Lebenszeichen mehr: der Lauf wurde abgebrochen, ohne sich "
+                         "abmelden zu können (z. B. Absturz beim Schreiben).").strip()
+            log.warning("Lauf %s (%s, Auftrag %s) ohne Lebenszeichen geschlossen",
+                        run.id, run.agent, run.task_id)
+            geschlossen += 1
+        if geschlossen:
+            await db.commit()
+    return geschlossen
+
+
 async def _engine_tick() -> None:
+    # Zuerst die Toten schließen, dann abgleichen: sonst hält ein Lauf, der nur noch auf dem
+    # Papier läuft, sein Ticket über die Board-Regel in der Arbeit fest.
+    try:
+        await tote_laeufe_schliessen()
+    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+        log.exception("Schließen toter Läufe fehlgeschlagen")
+
     # Artefakt-Zeilen angleichen: `agent_status` wird an vielen Stellen gesetzt (Endpunkte,
     # Bot, PM-Chat, Worker) — der Abgleich holt das binnen eines Ticks nach, statt jede
     # dieser Stellen einzeln pflegen zu müssen.

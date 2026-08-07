@@ -539,12 +539,26 @@ async def _add_step(db: AsyncSession, ctx: office.RunCtx, role: str, tool: str |
     entstehen könnte. Gesendet wird ERST nach dem Commit: vorher hat die Zeile keine `id`
     und damit keine `seq`. Ein zweiter Sendeweg wäre falsch — `publish_step` schluckt
     jeden Fehler selbst, ein ausgefallener Redis darf keinen Agentenlauf töten.
+
+    Dasselbe gilt für die Datenbank. Eine Schrittzeile ist Buchführung, kein Arbeitsergebnis
+    — ihr Ausfall darf nicht die Arbeit kosten. Am 2026-08-07 um 18:00 tat er genau das:
+    ein Deadlock gegen die Schema-Selbstheilung des Backends ließ diesen INSERT scheitern,
+    die Ausnahme schlug durch die Schleife durch und beendete Lauf 753 nach 37 Zügen. Ein
+    Rollback macht die Sitzung wieder benutzbar, der Lauf schreibt weiter.
     """
-    step = await office.add_step(
-        db, ctx, role=role, kind=kind, content=content, tool=tool, target=target,
-        tool_use_id=tool_use_id, ok=ok, duration_ms=duration_ms, in_tokens=in_tokens,
-        out_tokens=out_tokens, cache_read_tokens=cache_read_tokens, provider=provider,
-        model=model)
+    try:
+        step = await office.add_step(
+            db, ctx, role=role, kind=kind, content=content, tool=tool, target=target,
+            tool_use_id=tool_use_id, ok=ok, duration_ms=duration_ms, in_tokens=in_tokens,
+            out_tokens=out_tokens, cache_read_tokens=cache_read_tokens, provider=provider,
+            model=model)
+    except Exception as exc:  # noqa: BLE001 — Buchführung ist nie ein Grund aufzugeben
+        log.warning("Schrittzeile nicht geschrieben (%s/%s): %s", role, tool or "—", exc)
+        try:
+            await db.rollback()
+        except Exception:  # noqa: BLE001
+            log.exception("Rollback nach fehlgeschlagener Schrittzeile misslungen")
+        return
     # `SessionLocal` läuft mit expire_on_commit=False, `step.id` steht also ohne Nachfrage.
     await office.publish_step(ctx, step)
 
