@@ -10,6 +10,7 @@ import faulthandler
 import json
 import logging
 import os
+import signal
 import sys
 import threading
 import time
@@ -40,6 +41,13 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("traccoon.worker")
 
 MAX_CONCURRENT = int(os.getenv("WORKER_CONCURRENCY", "3"))
+# Auslaufzeit beim Beenden: so lange darf ein schon laufender Agent noch weiterarbeiten,
+# bevor der Prozess geht. Ein Lauf kann Stunden dauern — vollständig abwarten ginge nicht,
+# aber die zwei Minuten reichen für den laufenden Modellzug samt Werkzeug und dafür, dass
+# seine Schrittzeilen geschrieben sind. Genau daraus baut der Nachfolger seine Übergabe
+# (`runtime._abbruch_uebergabe`). Muss unter `stop_grace_period` in der compose.yml bleiben,
+# sonst schlägt Docker vorher zu.
+DRAIN_SEC = int(os.getenv("WORKER_DRAIN_SEC", "120"))
 # Wartezeit von BLMOVE (serverseitig) und die Redis-Optionen gegen stille Hänger.
 BLOCK_TIMEOUT = 5
 _REDIS_KW = {"decode_responses": True, "socket_keepalive": True,
@@ -1149,6 +1157,10 @@ async def pull_loop(redis: Redis) -> None:
 
 # Laufende Läufe je Ticket-Key → für den kill-Kanal (Abbruch aus der UI)
 RUNNING: dict[str, asyncio.Task] = {}
+# Gesetzt, sobald SIGTERM/SIGINT kam: keine neuen Aufträge mehr annehmen, laufende
+# auslaufen lassen. Ohne das riss jeder Deploy die Agenten mitten im Zug ab — am
+# 2026-08-07 zweimal TRA-31, jeweils nach knapp 40 Zügen Arbeit.
+_beenden = asyncio.Event()
 # Der Spiegel in Redis (ACTIVE) kommt aus core.redis — das Backend prüft denselben Key.
 
 # In-flight-Dedup: task_ids, die gerade verarbeitet werden. Ein Restart-Sturm kann
@@ -1195,7 +1207,9 @@ async def main() -> None:
     asyncio.create_task(kill_listener(killer))
     asyncio.create_task(pull_loop(redis))
     start_loop_watchdog()
-    log.info("Traccoon-Worker gestartet (concurrency=%d)", MAX_CONCURRENT)
+    _signale_annehmen()
+    log.info("Traccoon-Worker gestartet (concurrency=%d, Auslaufzeit %ds)",
+             MAX_CONCURRENT, DRAIN_SEC)
 
     async def _run(job: dict, raw: str) -> None:
         key = job.get("issue_key") or job.get("task_id", "")
@@ -1244,7 +1258,7 @@ async def main() -> None:
                 # sonst bliebe die task_id für immer als „läuft bereits" markiert.
                 _inflight_task_ids.discard(job.get("task_id"))
 
-    while True:
+    while not _beenden.is_set():
         try:
             # blmove statt brpop: der Job wandert atomar von QUEUE nach PROCESSING statt
             # nur zu verschwinden — stirbt der Worker vor dem ACK, findet ihn die
@@ -1254,6 +1268,14 @@ async def main() -> None:
             _loop_tick()
             if not raw:
                 continue
+            if _beenden.is_set():
+                # Zwischen blmove und hier kam das Signal: den Auftrag ZURÜCK in die
+                # Warteschlange legen, statt ihn in einem sterbenden Prozess zu starten.
+                # Er soll gleich vom neuen Worker geholt werden, nicht erst von dessen
+                # Recovery aus PROCESSING.
+                await redis.lrem(PROCESSING, 1, raw)
+                await redis.rpush(QUEUE, raw)
+                break
             job = json.loads(raw)
             # In-flight-Dedup nach task_id: läuft derselbe Dispatch schon (z.B. durch die
             # Restart-Recovery doppelt eingereiht), diesen Job aus PROCESSING tilgen und NICHT
@@ -1272,6 +1294,43 @@ async def main() -> None:
         except Exception:  # noqa: BLE001
             log.exception("loop-Fehler")
             await asyncio.sleep(1)
+
+    await _auslaufen()
+
+
+def _signale_annehmen() -> None:
+    """SIGTERM/SIGINT nicht mehr mitten in die Arbeit schlagen lassen.
+
+    Docker schickt beim Neustart erst SIGTERM und tötet nach der Gnadenfrist. Ohne Handler
+    starb der Prozess sofort — mitsamt jedem Agenten, der gerade dachte. Die Wiedervorlage
+    rettet den Auftrag, nicht das Gespräch: am 2026-08-07 kostete das TRA-31 zweimal knapp
+    40 Züge Arbeit.
+    """
+    schleife = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            schleife.add_signal_handler(sig, _beenden.set)
+        except NotImplementedError:      # Windows/Test-Umgebung: dann eben wie bisher
+            pass
+
+
+async def _auslaufen() -> None:
+    """Laufende Aufträge zu Ende bringen, so weit die Auslaufzeit reicht."""
+    laufend = [t for t in RUNNING.values() if not t.done()]
+    if not laufend:
+        log.info("Worker beendet sich — nichts läuft mehr")
+        return
+    log.info("Worker beendet sich: %d Lauf/Läufe aktiv, warte bis zu %d s "
+             "(neue Aufträge werden nicht mehr angenommen)", len(laufend), DRAIN_SEC)
+    _fertig, offen = await asyncio.wait(laufend, timeout=DRAIN_SEC)
+    if offen:
+        # Kein Abbruch von Hand: die Aufträge stehen noch in PROCESSING, die Recovery des
+        # nächsten Workers holt sie zurück, und der Nachfolger bekommt aus den Schrittzeilen
+        # seine Übergabe. Docker beendet den Prozess gleich ohnehin.
+        log.warning("Auslaufzeit vorbei, %d Lauf/Läufe unfertig — sie werden neu eingereiht",
+                    len(offen))
+    else:
+        log.info("Alle Läufe sauber beendet")
 
 
 if __name__ == "__main__":

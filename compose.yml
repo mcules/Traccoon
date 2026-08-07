@@ -108,6 +108,11 @@ services:
       # Damit der Worker eine aussichtslose Anfrage erkennt, bevor er sie einreiht: ein
       # Deploy auf Traccoon selbst lehnt der Deployer grundsätzlich ab (`runtime.deploy_gesperrt`).
       SELF_STACK_DIR: ${SELF_STACK_DIR:-}
+      WORKER_DRAIN_SEC: ${WORKER_DRAIN_SEC:-120}
+    # Muss über WORKER_DRAIN_SEC liegen: der Worker nimmt bei SIGTERM keine neuen Aufträge
+    # mehr an und lässt die laufenden auslaufen. Ohne diese Frist tötete Docker nach 10 s —
+    # und damit jeden Agenten mitten im Zug.
+    stop_grace_period: 150s
     volumes:
       - ./backend/app:/app/app
       - ./data/workspace:/workspace
