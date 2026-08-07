@@ -113,3 +113,66 @@ async def test_abgleich_findet_nichts_mehr_zu_tun(db, register):
     await db.commit()
 
     assert (await art.reconcile(db))["tickets_angeglichen"] == 0
+
+
+async def test_laufender_agent_steht_nie_auf_warten(db):
+    """Die Regel ohne Ausnahme: läuft für ein Ticket ein Agent, ist es „In Arbeit".
+
+    Ein Lauf startet auf mehreren Wegen — Prozess-Schritt, Review-Runde im Worker,
+    Wiedervorlage der Reliable-Queue nach einem Neustart — und nur der erste geht durch den
+    Graphen. Am 2026-08-07 arbeiteten nach einem Worker-Neustart zwei Agenten, während das
+    Board „Warten" zeigte, weil den Zustand niemand angefasst hatte.
+    """
+    from app.models.agents import Run
+    from app.models.enums import HoldReason, TicketAgentStatus
+    from app.services.artifacts import reconcile
+    from test_lifecycle_process import _projekt_mit_ticket
+
+    _, _, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.hold)
+    issue.hold_reason = HoldReason.merge
+    db.add(Run(issue_id=issue.id, agent="developer", phase="execution", status="running"))
+    await db.commit()
+
+    await reconcile(db)
+    await db.refresh(issue)
+
+    assert issue.agent_status == TicketAgentStatus.in_progress
+    assert issue.hold_reason is None
+    assert issue.agent_working is True
+
+
+async def test_planungslauf_steht_auf_planung(db):
+    """Der Plan-Lauf gehört auf `planning`, nicht auf `in_progress` — beide landen im Board
+    unter „In Arbeit", aber der Zustand soll die Phase benennen."""
+    from app.models.agents import Run
+    from app.models.enums import TicketAgentStatus
+    from app.services.artifacts import reconcile
+    from test_lifecycle_process import _projekt_mit_ticket
+
+    _, _, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.failed)
+    db.add(Run(issue_id=issue.id, agent="architect", phase="planning", status="running"))
+    await db.commit()
+
+    await reconcile(db)
+    await db.refresh(issue)
+    assert issue.agent_status == TicketAgentStatus.planning
+
+
+async def test_beendeter_lauf_ruehrt_den_zustand_nicht_an(db):
+    """Die Gegenprobe: ein FERTIGER Lauf ist kein Grund, ein wartendes Ticket anzufassen —
+    sonst risse der Abgleich jedes abgeschlossene Ticket zurück in die Arbeit."""
+    import datetime as dt
+
+    from app.models.agents import Run
+    from app.models.enums import TicketAgentStatus
+    from app.services.artifacts import reconcile
+    from test_lifecycle_process import _projekt_mit_ticket
+
+    _, _, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.hold)
+    db.add(Run(issue_id=issue.id, agent="developer", phase="execution", status="success",
+               finished_at=dt.datetime.now(tz=dt.timezone.utc)))
+    await db.commit()
+
+    await reconcile(db)
+    await db.refresh(issue)
+    assert issue.agent_status == TicketAgentStatus.hold

@@ -325,7 +325,38 @@ async def reconcile(db: AsyncSession) -> dict:
         art.project_id = asset.project_id
     ergebnis["hardware_angeglichen"] = len(hardware_drift)
 
-    # 3) Prozess-Instanzen an ihr Artefakt binden (löst die Spezial-Spalten ab).
+    # 3) Wer arbeitet, steht auf „In Arbeit".
+    #
+    # Die Regel ist einfach und gilt ohne Ausnahme: läuft für ein Ticket gerade ein Agent,
+    # dann ist es NICHT „Warten". Sie hier durchzusetzen statt an jeder Startstelle ist
+    # dieselbe Überlegung wie beim Rest dieses Abgleichs — ein Lauf startet an mehreren
+    # Wegen (Prozess-Schritt, Review-Runde im Worker, Wiedervorlage der Reliable-Queue nach
+    # einem Neustart), und nur der letzte davon geht durch den Graphen.
+    #
+    # Am 2026-08-07 lief genau das schief: nach einem Worker-Neustart holte die Recovery zwei
+    # Aufträge zurück, die Agenten arbeiteten — und das Board zeigte „Warten", weil den
+    # Zustand niemand angefasst hatte.
+    from ..models.agents import Run
+    from ..models.enums import TicketAgentStatus as _TS
+    ARBEITET = (_TS.in_progress, _TS.planning, _TS.done)
+    laufend = (await db.execute(
+        select(Issue, Run.phase)
+        .join(Run, Run.issue_id == Issue.id)
+        .where(Run.status == "running", Run.finished_at.is_(None),
+               Issue.agent_status.not_in(ARBEITET)))).all()
+    gesehen: set[int] = set()
+    for issue, phase in laufend:
+        if issue.id in gesehen:
+            continue
+        gesehen.add(issue.id)
+        ziel = _TS.planning if phase == "planning" else _TS.in_progress
+        log.info("Abgleich: %s läuft (%s) und stand auf %s → %s",
+                 issue.key, phase, getattr(issue.agent_status, "value", "—"), ziel.value)
+        await set_ticket_status(db, issue, ziel)
+        issue.agent_working = True
+    ergebnis["laufende_richtiggestellt"] = len(gesehen)
+
+    # 4) Prozess-Instanzen an ihr Artefakt binden (löst die Spezial-Spalten ab).
     from ..models.workflow import WorkflowInstance
     lose = (await db.execute(
         select(WorkflowInstance, Issue.artifact_id)
