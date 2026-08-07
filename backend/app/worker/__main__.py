@@ -335,8 +335,12 @@ async def handle(job: dict, redis: Redis) -> None:
     log.info("verarbeitet %s → %s", task_id, result.status)
 
 
-# Korrektur-Runden des Review-Gates, bevor der Mensch geholt wird.
-REVIEW_RUNDEN = 2
+# Sicherheitsnetz für die Korrektur-Runden des Review-Gates — NICHT der normale Halt.
+# Beendet wird an der Sache: bestanden, oder eine Korrektur, die am Code nichts mehr ändert
+# (Stillstand). Die frühere harte 2 holte den Menschen, während es noch voranging — bei
+# ABC-32 am 2026-08-07 sogar wegen eines Befunds, der aus der gekappten Diff-Anzeige stammte.
+# Ein Ticket soll durchlaufen, solange es vorankommt.
+REVIEW_RUNDEN = int(os.getenv("REVIEW_MAX_RUNDEN", "6"))
 
 
 async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens, permissions,
@@ -351,10 +355,27 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
     """
     reviewer = await _load_agent(db, project.review_agent or "code_reviewer", project.id, "execute", owner_id)
     rev = None      # kein Prüflauf in dieser Runde (Budget schon verbraucht) → kein Befundtext
+    vorheriger_diff: str | None = None
     for attempt in range(int(issue.review_rounds or 0), REVIEW_RUNDEN):
         diff = await gitops.diff_text(ctx)
         if not diff.strip():
             return result  # nichts geändert → nichts zu prüfen
+        # Solange sich etwas bewegt, wird weitergearbeitet — die Grenze ist Stillstand, nicht
+        # eine Rundenzahl. Hat die letzte Korrektur den Diff nicht angefasst, bringt die
+        # nächste Runde nichts: dann holt es den Menschen, und zwar mit diesem Grund.
+        if vorheriger_diff is not None and diff == vorheriger_diff:
+            log.warning("review %s: Runde %d hat nichts verändert → Stillstand",
+                        issue.key, attempt)
+            db.add(Comment(
+                issue_id=issue.id, author_id=None, author_label="Prüfer", kind="internal",
+                body=("🛑 Stillstand im Review: die letzte Korrektur hat am Code nichts "
+                      "geändert. Weitere Runden würden nur Tokens kosten.\n\nOffene "
+                      "Befunde:\n\n" + (getattr(rev, "text", "") or "(kein Text)")[:4000])))
+            await db.commit()
+            from .runtime import RunResult
+            return RunResult("blocked", "Review-Gate: Korrektur ohne Wirkung (Stillstand)",
+                             run_id=result.run_id, blocker_kind="review")
+        vorheriger_diff = diff
         rev_prompt = (
             "Prüfe den folgenden Diff strikt (Bugs, Security, Edge Cases). Antworte GENAU `<review-ok/>` "
             "(nichts sonst), wenn keine korrektur-erzwingenden Befunde vorliegen. Sonst nummeriere die "
@@ -1047,6 +1068,31 @@ def start_loop_watchdog() -> None:
 STALE_GRACE_SEC = 60
 
 
+async def _lauf_abschliessen(task_id: str, grund: str) -> None:
+    """Die Laufzeile eines abgebrochenen Auftrags schließen — mit der echten Ursache.
+
+    Wer abbricht, weiß warum. Bleibt die Zeile auf „läuft" stehen, findet sie später der
+    Wächter für tote Läufe und muss raten: Lauf 778 wurde am 2026-08-07 als „kein
+    Lebenszeichen … Absturz beim Schreiben" beerdigt, obwohl jemand auf Stopp gedrückt
+    hatte. Eine falsche Ursache ist schlimmer als keine — sie beendet die Suche.
+    """
+    if not task_id:
+        return
+    from ..models.agents import Run
+    try:
+        async with SessionLocal() as db:
+            run = (await db.execute(select(Run).where(
+                Run.task_id == task_id, Run.status == "running")
+                .order_by(Run.id.desc()).limit(1))).scalars().first()
+            if run is None:
+                return
+            run.status, run.finished_at = "failed", _now_dt()
+            run.error = ((run.error or "") + grund).strip()
+            await db.commit()
+    except Exception:  # noqa: BLE001 — das Aufräumen darf den Abbruch nicht verschlimmern
+        log.exception("Laufzeile nach Abbruch nicht geschlossen (task %s)", task_id)
+
+
 async def raeume_leichen_und_melde() -> None:
     """Einmal beim Start: verwaiste Läufe/Aufgaben abschließen und den Menschen informieren."""
     from ..models.agents import Run
@@ -1233,6 +1279,14 @@ async def main() -> None:
                     {"status": "failed", "success": False,
                      "output": "Abgebrochen (Stopp durch Nutzer)"}), ex=ERGEBNIS_TTL)
                 await redis.publish(f"{PREFIX}results", job["task_id"])
+                # Die Laufzeile hier selbst schließen. Ohne das blieb sie auf „läuft" stehen,
+                # und der Wächter für tote Läufe fand später eine Leiche, deren Ursache er
+                # nicht kannte: Lauf 778 wurde am 2026-08-07 mit „kein Lebenszeichen …
+                # Absturz beim Schreiben" beerdigt, obwohl jemand schlicht auf Stopp gedrückt
+                # hatte. Wer die Ursache kennt, soll sie hinschreiben.
+                await _lauf_abschliessen(job.get("task_id", ""),
+                                         "Abgebrochen: Stopp über den Kill-Kanal (Knopf, "
+                                         "Prozess-Schritt oder Wartungs-Update).")
                 # Kein ACK: Eintrag bleibt in PROCESSING → Recovery holt ihn beim naechsten
                 # Worker-Start zurueck in QUEUE (kein Datenverlust bei Abbruch/Absturz).
             except Exception as exc:  # noqa: BLE001
