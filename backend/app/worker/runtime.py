@@ -34,6 +34,7 @@ from .tools_memory import (
     MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLEXION_PROMPT, call_memory_tool, memory_root, read_memory,
 )
 from .compaction import kompaktiere as _kompaktiere
+from .compaction import uebergabe as _uebergabe
 from .tools_traccoon import (
     TRACCOON_GATED_TOOLS,
     TRACCOON_TOOL_NAMES,
@@ -1303,7 +1304,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
 
             # `grenze_grund` benennt, WELCHE Grenze den Lauf beendet hat — bisher stand hier
             # auch nach dem Token-Budget „Iterations-Limit", was die Ursachensuche verdreht.
-            exhausted = grenze_grund + "\n\nLetzter Stand:\n" + (last_text or "(kein Text)")
+            # Der Rest ist die Übergabe an die Fortsetzung: Erkenntnisse, Erledigtes,
+            # nächster Schritt — aus dem VERLAUF, nicht aus dem letzten Satz. Ohne sie fing
+            # jeder Fortsetzungs-Lauf bei null an (ABC-12: drei Läufe, keine Zeile Code).
+            exhausted = await _uebergabe(
+                db, messages=messages, grund=grenze_grund, letzter_text=last_text,
+                owner_id=owner_id, agent=agent, tokens=tokens, base_urls=base_urls)
             fp = await _gitops.worktree_fingerprint(ws_root) if ws_root else None
             # Die TATSAECHLICHE Rundenzahl melden: Zeit- und Token-Grenze beenden den Lauf
             # frueh, und „40 Runden" nach zwei Runden schickt die Ursachensuche in die Irre.
