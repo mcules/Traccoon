@@ -5,6 +5,10 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl git \
+        # ffmpeg: Telegram liefert Sprachnachrichten als OGG/Opus, der Audio-Pfad von
+        # llama.cpp (miniaudio) kann das nicht — er nimmt WAV/MP3/FLAC. Ohne Umwandlung
+        # antwortet der ASR-Server mit „Failed to load image or audio file".
+        ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # codegraph: Code-Wissensgraph pro Worktree (spart Agent-Tokens). Self-contained Binary

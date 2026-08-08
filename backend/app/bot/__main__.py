@@ -9,6 +9,7 @@ No-op (stabiler Sleep) wenn kein TELEGRAM_BOT_TOKEN gesetzt.
 from __future__ import annotations
 
 import asyncio
+import base64
 import datetime as dt
 import logging
 import os
@@ -42,6 +43,14 @@ OWNER_CHAT = os.getenv("TELEGRAM_OWNER_CHAT", "")
 # das Haus — Vorgabe des Nutzers). `/asr` ist der native Endpunkt von
 # onerahmet/openai-whisper-asr-webservice mit ASR_ENGINE=faster_whisper.
 WHISPER_URL = os.getenv("WHISPER_URL", "http://whisper:9000")
+# Erste Wahl: Qwen3-ASR auf der iGPU (llama.cpp/Vulkan). Kein reiner Transkribierer, sondern
+# ein Sprachmodell mit Audio-Eingang — es versteht Eigennamen, die man ihm im Prompt nennt,
+# statt sie nur zu streifen. Am 2026-08-07 auf diesem Host gemessen, 7 s deutsche Sprache:
+#   faster-whisper (CPU, large-v3-turbo)  3,1 s  „TRA-31 in Traccoon"      ✅
+#   whisper.cpp    (GPU, large-v3-turbo)  0,7 s  „TRA-31 in Trakong"       ✗
+#   Qwen3-ASR      (GPU, 1.7B Q8_0)       0,5 s  „TRA-31 in Traccoon"      ✅
+# Leer = aus, dann läuft alles wie zuvor über Whisper.
+ASR_URL = os.getenv("ASR_URL", "").strip().rstrip("/")
 # 10 Minuten Standardgrenze — länger ist am Handy ungewöhnlich und würde den CPU-Container
 # lange blockieren. Bewusst konfigurierbar statt fest, falls sich das als zu eng erweist.
 VOICE_MAX_SECONDS = int(os.getenv("TELEGRAM_VOICE_MAX_SECONDS", "600"))
@@ -159,6 +168,65 @@ def _upload_name_typ(medienart: str, mime_type: str | None) -> tuple[str, str]:
     return "voice.ogg", "audio/ogg"
 
 
+async def _nach_wav(audio: bytes) -> bytes:
+    """Telegram-Audio in 16-kHz-Mono-WAV wandeln.
+
+    Der Audio-Pfad von llama.cpp (miniaudio) nimmt WAV/MP3/FLAC — Telegram liefert aber
+    OGG/Opus, und der Server antwortet darauf mit „Failed to load image or audio file".
+    ffmpeg liest alles, was Telegram schickt (auch die MP4-Spur einer Videonachricht), und
+    16 kHz mono ist ohnehin das Format, mit dem jedes ASR-Modell arbeitet.
+    """
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
+        "-ar", "16000", "-ac", "1", "-f", "wav", "pipe:1",
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE)
+    wav, fehler = await proc.communicate(audio)
+    if proc.returncode != 0 or not wav:
+        raise RuntimeError(f"ffmpeg: {(fehler or b'').decode()[:200]}")
+    return wav
+
+
+def _asr_text(roh: str) -> str:
+    """Die Nutzlast aus der Modell-Antwort schälen.
+
+    Qwen3-ASR schreibt seine Steuermarken mit in den Text: „language German<asr_text>…".
+    Ohne diesen Schnitt stünde das als „🎙 verstanden" im Chat und ginge so auch an den
+    Assistenten weiter.
+    """
+    text = roh.split("<asr_text>")[-1]
+    for marke in ("</asr_text>", "<|im_end|>"):
+        text = text.split(marke)[0]
+    return text.strip()
+
+
+async def _transkribieren_qwen(audio: bytes, medienart: str, mime_type: str | None) -> str:
+    """Qwen3-ASR auf der iGPU — ein Sprachmodell mit Audio-Eingang.
+
+    Der Unterschied zu Whisper ist der Umgang mit Eigennamen: Whisper bekommt eine Wortliste
+    als Vorlauftext und gewichtet sie schwach, Qwen bekommt sie als Kontext eines Gesprächs.
+    Gemessen am 2026-08-07 mit derselben Aufnahme: „TRA-31 in Trakong" (whisper.cpp/GPU)
+    gegen „TRA-31 in Traccoon" (hier) — bei 0,5 s statt 3,1 s auf der CPU.
+    """
+    import httpx
+    wav = await _nach_wav(audio)
+    vokabular = await _vokabular()
+    hinweis = f"Eigennamen, die vorkommen können: {vokabular}\n" if vokabular else ""
+    body = {
+        "model": "qwen3-asr", "temperature": 0, "max_tokens": 2048,
+        "messages": [{"role": "user", "content": [
+            {"type": "text", "text": hinweis +
+             "Transkribiere die Sprachnachricht wörtlich auf Deutsch. Gib nur den Text aus."},
+            {"type": "input_audio",
+             "input_audio": {"data": base64.b64encode(wav).decode(), "format": "wav"}}]}],
+    }
+    async with httpx.AsyncClient(timeout=max(120.0, VOICE_MAX_SECONDS + 60.0)) as client:
+        resp = await client.post(f"{ASR_URL}/v1/chat/completions", json=body)
+        resp.raise_for_status()
+        inhalt = resp.json()["choices"][0]["message"]["content"]
+    return _asr_text(inhalt)
+
+
 async def _transkribieren(audio: bytes, medienart: str = "voice",
                            mime_type: str | None = None) -> str:
     """Sprachnachricht lokal transkribieren. Erst Deutsch (häufigster Fall), bei LEEREM
@@ -177,6 +245,14 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
     120s für kurze Nachrichten.
     """
     import httpx
+    if ASR_URL:
+        # Erste Wahl: Qwen3-ASR auf der GPU. Scheitert es (Container weg, Modell lädt noch,
+        # Audio unlesbar), fällt es auf Whisper zurück statt die Nachricht zu verlieren —
+        # ein zweiter Weg, der schon läuft, ist mehr wert als eine ehrliche Absage.
+        try:
+            return await _transkribieren_qwen(audio, medienart, mime_type)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("Qwen3-ASR gescheitert (%s) — weiter mit Whisper", exc)
     if not WHISPER_URL:
         raise RuntimeError("kein WHISPER_URL konfiguriert (lokaler Whisper-Container fehlt)")
     timeout = max(120.0, VOICE_MAX_SECONDS + 60.0)

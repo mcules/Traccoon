@@ -155,3 +155,62 @@ async def test_ohne_vokabular_kein_feld(monkeypatch):
 
     await bot._transkribieren(b"x", "voice", None)
     assert "initial_prompt" not in gesehen[0]
+
+
+def test_asr_text_schaelt_die_steuermarken():
+    """Qwen3-ASR schreibt seine Marken in den Text — ohne Schnitt stünde „language German
+    <asr_text>…" als „🎙 verstanden" im Chat und ginge so an den Assistenten weiter."""
+    import app.bot.__main__ as bot
+
+    assert bot._asr_text("language German<asr_text>Hallo Welt.") == "Hallo Welt."
+    assert bot._asr_text("<asr_text>Hallo</asr_text>") == "Hallo"
+    assert bot._asr_text("  schon sauber  ") == "schon sauber"
+
+
+async def test_qwen_ist_erste_wahl_whisper_faengt_auf(monkeypatch):
+    """Der Rückfall ist der Punkt: ein Nachrichtenverlust wäre teurer als eine langsamere
+    Erkennung. Scheitert die GPU (Container weg, Modell lädt noch), übernimmt Whisper."""
+    import app.bot.__main__ as bot
+
+    versuche: list[str] = []
+
+    async def qwen_kaputt(audio, medienart, mime_type):
+        versuche.append("qwen")
+        raise RuntimeError("Verbindung abgelehnt")
+
+    async def whisper_ok(*a, **k):
+        versuche.append("whisper")
+        return "über Whisper verstanden"
+
+    monkeypatch.setattr(bot, "ASR_URL", "http://asr-gpu:9100")
+    monkeypatch.setattr(bot, "_transkribieren_qwen", qwen_kaputt)
+    monkeypatch.setattr(bot, "_vokabular", whisper_ok)   # nur damit der Whisper-Pfad läuft
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"text": "über Whisper verstanden"}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, *a, **k):
+            versuche.append("whisper")
+            return _Resp()
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+
+    assert await bot._transkribieren(b"x", "voice", None) == "über Whisper verstanden"
+    assert versuche[0] == "qwen" and "whisper" in versuche[1:]
