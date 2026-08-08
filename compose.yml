@@ -143,6 +143,8 @@ services:
       # Eigennamen, die Whisper nicht kennen kann (Produkte, Projekte, Ticket-Präfixe) —
       # gehen als `initial_prompt` mit. Ohne sie hört auch das große Modell „Trakon".
       TELEGRAM_VOICE_VOKABULAR: ${TELEGRAM_VOICE_VOKABULAR:-}
+      # Qwen3-ASR auf der iGPU als erste Wahl; Whisper bleibt als Rückfall erreichbar.
+      ASR_URL: ${ASR_URL:-http://asr-gpu:9100}
     volumes:
       - ./backend/app:/app/app
       # Lesend: `Notification.media_path` zeigt hierher. Ohne diesen Mount fällt der
@@ -181,6 +183,63 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  # Dasselbe in schnell: whisper.cpp auf der iGPU (Radeon 8060S) statt faster-whisper auf der
+  # CPU. Der Grund für den zweiten Dienst ist der Unterbau — CTranslate2 (faster-whisper) kann
+  # nur CUDA, auf einer AMD-Karte bleibt ihm die CPU. ggml/Vulkan kann sie. Geräte-Einbindung
+  # 1:1 wie der bereits laufende llama.cpp-RPC-Container auf demselben Chip.
+  whisper-gpu:
+    build:
+      context: ./whisper-gpu
+    restart: unless-stopped
+    devices:
+      - /dev/dri
+    group_add:
+      - video
+    environment:
+      # Das große Modell — der ganze Sinn der GPU: Genauigkeit ohne die Wartezeit, die es
+      # auf der CPU kosten würde.
+      WHISPER_MODEL: ${WHISPER_GPU_MODEL:-large-v3}
+      WHISPER_LANG: ${WHISPER_GPU_LANG:-de}
+      # whisper.cpp sucht ab Werk GIERIG (`--beam-size -1`), faster-whisper mit Beam 5 —
+      # daran lag der erste Vergleich, nicht am Modell: „Drakon" statt „Traccoon",
+      # „Spermel" statt „Sperrmüll". Die GPU hat die Reserve dafür (sie war 3x schneller).
+      WHISPER_EXTRA_ARGS: ${WHISPER_GPU_ARGS:---beam-size 5 --best-of 5}
+    volumes:
+      # Modelle liegen neben den Daten, nicht im Image (large-v3 ≈ 3 GB).
+      - ./data/whisper-gpu:/models
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s      # erster Start lädt das Modell herunter
+
+  # Qwen3-ASR auf der iGPU — ein Sprachmodell mit Audio-Eingang statt eines reinen
+  # Transkribierers. Gemessen am 2026-08-07: whisper.cpp war auf derselben GPU zwar schnell,
+  # verhunzte aber Eigennamen; Qwen versteht den Kontext im Prompt, statt ihn zu streifen.
+  asr-gpu:
+    build:
+      context: ./asr-gpu
+    restart: unless-stopped
+    devices:
+      - /dev/dri
+    group_add:
+      - video
+    environment:
+      ASR_QUANT: ${ASR_QUANT:-Q8_0}
+    volumes:
+      - ./data/asr-gpu:/models
+    networks:
+      - default
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9100/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 300s      # erster Start lädt Modell + Audio-Projektor
 
   shotter:
     build: ./shotter
