@@ -55,7 +55,7 @@ export default function NodeConfigPanel({
   return (
     <div className="space-y-3 p-3">
       <div className="flex items-center gap-2">
-        <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{NODE_TYPE_LABELS[node.type]}</span>
+        <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{tr(NODE_TYPE_LABELS[node.type])}</span>
         <div className="flex-1" />
         {node.type !== "start" && (
           <button
@@ -73,7 +73,7 @@ export default function NodeConfigPanel({
         <input
           value={config.label || ""}
           onChange={(e) => set({ ...config, label: e.target.value })}
-          placeholder={NODE_TYPE_LABELS[node.type]}
+          placeholder={tr(NODE_TYPE_LABELS[node.type])}
           className={`mt-1 ${inp}`}
         />
       </label>

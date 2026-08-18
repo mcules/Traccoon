@@ -1002,7 +1002,7 @@ function IssueWorkflows({ issueId, project, meta }: { issueId: number; project: 
                     <div key={s.id} className="rounded border border-brand/40 bg-brand/5 p-2">
                       <div className="mb-1 flex items-center gap-2 text-xs text-muted">
                         <span className="rounded bg-surface px-1.5 py-0.5">
-                          {NODE_TYPE_LABELS[s.node_type]}
+                          {tr(NODE_TYPE_LABELS[s.node_type])}
                         </span>
                         <span className="text-ink">{node.data.config.label || "Offener Schritt"}</span>
                       </div>

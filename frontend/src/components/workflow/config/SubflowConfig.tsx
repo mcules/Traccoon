@@ -50,7 +50,7 @@ export default function SubflowConfig({
           <option value="">— wählen —</option>
           <optgroup label={tr("subflow_config.fest_benannte_ablaeufe_je_projekt_aufgel")}>
             {SLOTS.map((s) => (
-              <option key={s} value={`slot:${s}`}>{SLOT_LABELS[s]}</option>
+              <option key={s} value={`slot:${s}`}>{tr(SLOT_LABELS[s])}</option>
             ))}
           </optgroup>
           {abläufe.length > 0 && (

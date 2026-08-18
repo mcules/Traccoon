@@ -166,7 +166,7 @@ export default function ActionParams({
 
   return (
     <div className="space-y-3">
-      {spec.summary && <p className="text-[11px] text-muted">{spec.summary}</p>}
+      {spec.summary && <p className="text-[11px] text-muted">{tr(spec.summary)}</p>}
 
       {spec.fields.filter(sichtbar).map((f) => {
         const wert = f.key ? get(params, f.key) : undefined;
@@ -174,18 +174,18 @@ export default function ActionParams({
         if (f.type === "kv") {
           return (
             <div key={f.key || "kv"}>
-              <div className="mb-1 text-xs font-medium text-muted">{f.label}</div>
+              <div className="mb-1 text-xs font-medium text-muted">{tr(f.label)}</div>
               <KeyValueEditor
                 value={f.key ? (wert || {}) : params}
                 onChange={(v) => aendern(v)}
               />
-              {f.hint && <div className="mt-1 text-[10px] text-muted">{f.hint}</div>}
+              {f.hint && <div className="mt-1 text-[10px] text-muted">{tr(f.hint)}</div>}
             </div>
           );
         }
         return (
           <label key={f.key} className="block text-xs font-medium text-muted">
-            {f.label}
+            {tr(f.label)}
             {f.required && <span className="text-red-400"> *</span>}
             {f.type === "select" && !istVorlage(wert) && (
               <select value={wert ?? ""} onChange={(e) => aendern(e.target.value)}
@@ -209,10 +209,10 @@ export default function ActionParams({
             )}
             {f.type === "textarea" && (
               <textarea rows={3} value={wert ?? ""} onChange={(e) => aendern(e.target.value)}
-                placeholder={f.placeholder} className={`mt-1 ${inp}`} />
+                placeholder={f.placeholder ? tr(f.placeholder) : undefined} className={`mt-1 ${inp}`} />
             )}
             {f.type === "json" && (
-              <textarea rows={3} className={`mt-1 ${inp} font-mono`} placeholder={f.placeholder}
+              <textarea rows={3} className={`mt-1 ${inp} font-mono`} placeholder={f.placeholder ? tr(f.placeholder) : undefined}
                 value={typeof wert === "string" ? wert : JSON.stringify(wert ?? "", null, 2)}
                 onChange={(e) => {
                   try { aendern(JSON.parse(e.target.value)); }
@@ -220,7 +220,7 @@ export default function ActionParams({
                 }} />
             )}
             {f.type === "number" && (
-              <input type="number" value={wert ?? ""} placeholder={f.placeholder}
+              <input type="number" value={wert ?? ""} placeholder={f.placeholder ? tr(f.placeholder) : undefined}
                 onChange={(e) => aendern(e.target.value === "" ? "" : Number(e.target.value))}
                 className={`mt-1 ${inp}`} />
             )}
@@ -228,21 +228,21 @@ export default function ActionParams({
               <span className="mt-1 flex items-center gap-2 text-sm text-ink">
                 <input type="checkbox" checked={wert ?? f.default ?? false}
                   onChange={(e) => onChange(set(params, f.key, e.target.checked))} />
-                {f.hint || "aktiv"}
+                {f.hint ? tr(f.hint) : tr("action_params.aktiv")}
               </span>
             )}
             {f.type === "text" && (
-              <input value={wert ?? ""} placeholder={f.placeholder}
+              <input value={wert ?? ""} placeholder={f.placeholder ? tr(f.placeholder) : undefined}
                 onChange={(e) => aendern(e.target.value)} className={`mt-1 ${inp}`} />
             )}
             {f.hint && f.type !== "boolean" && (
-              <span className="mt-1 block text-[10px] text-muted">{f.hint}</span>
+              <span className="mt-1 block text-[10px] text-muted">{tr(f.hint)}</span>
             )}
           </label>
         );
       })}
 
-      {spec.outcomes && <div className="text-[10px] text-amber-400">{spec.outcomes}</div>}
+      {spec.outcomes && <div className="text-[10px] text-amber-400">{tr(spec.outcomes)}</div>}
 
       {spec.fields.length === 0 && (
         <div className="text-[11px] text-muted">{tr("action_params.diese_aktion_braucht_keine_einstellungen")}</div>
