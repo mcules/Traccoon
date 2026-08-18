@@ -1,9 +1,9 @@
-"""Git-Worktree-Engine (Port aus dem Vorläufer (gitops.py), self-contained).
+"""Git worktree engine (ported from the predecessor (gitops.py), self-contained).
 
-Worktree pro Ticket unter <WORKSPACE_ROOT>/.traccoon-worktrees/<key>/<issue-key>.
-Token kommt vom Aufrufer (Secret-Tresor) und wird nur in die ephemere Push-URL
-injiziert, nie in origin. `git -c safe.directory=*` (Container = root, Repo = Host-User).
-Alle Aufrufe weich — der Ticket-Lifecycle hängt nie an git.
+One worktree per ticket under <WORKSPACE_ROOT>/.traccoon-worktrees/<key>/<issue-key>.
+The token comes from the caller (secret vault) and is injected only into the ephemeral push
+URL, never into origin. `git -c safe.directory=*` (container = root, repo = host user).
+All calls are soft: the ticket lifecycle never depends on git.
 """
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ MAIN = "main"
 class GitCtx:
     workdir: str                       # Haupt-Repo-Checkout
     branch: str                        # Ticket-Branch
-    remote: str = ""                   # HTTPS-URL ohne Token
-    token: str = ""                    # aufgelöster Push-Token (userinfo)
+    remote: str = ""                   # HTTPS URL without a token
+    token: str = ""                    # resolved push token (userinfo)
     worktree: str | None = None        # Worktree-Pfad (worktree_per_task)
     base_commit: str | None = None
     main: str = MAIN
@@ -116,7 +116,7 @@ async def _ensure_repo(ctx: GitCtx) -> bool:
 
 
 async def _push(ctx: GitCtx, workdir: str, branch: str) -> bool:
-    """True bei Erfolg (oder ohne Remote — nichts zu tun); False bei Push-Fehler."""
+    """True on success (or without a remote, so nothing to do); False on a push error."""
     if not ctx.remote:
         return True
     rc, out = await _git(workdir, "push", _authed_url(ctx.remote, ctx.token), f"{branch}:{branch}")
@@ -127,35 +127,35 @@ async def _push(ctx: GitCtx, workdir: str, branch: str) -> bool:
 
 
 async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
-    """Kumulativer Diff des Ticket-Stands gegen die Abzweig-Basis (für Review-Gate).
+    """Cumulative diff of the ticket state against the branching base (for the review gate).
 
-    Wird gekappt, dann an einer Zeilengrenze und mit Ansage. Der stumme Schnitt mitten im
-    Wort hat sich am 2026-08-07 gerächt: der Prüfer sah bei ABC-32 einen compose-Block, der
-    „mittendrin abbricht (`v` als letzte Zeile)", und meldete das als unvollständige
-    Service-Definition — ein Befund über den Boten, nicht über den Code. Ein Prüfer, der
-    nicht weiß, dass ihm etwas vorenthalten wird, erfindet Erklärungen dafür.
+    It is truncated at a line boundary and with an announcement. The silent cut in the middle
+    of a word took revenge on 2026-08-07: with ABC-32 the reviewer saw a compose block that
+    "breaks off in the middle (`v` as the last line)" and reported that as an incomplete
+    service definition, which is a finding about the messenger, not about the code. A
+    reviewer who does not know that something is withheld invents explanations for it.
     """
     wd = ctx.worktree or ctx.workdir
     if not await _is_repo(wd):
         return ""
-    # IMMER über `merge-base` gehen, auch wenn ein `base_commit` vorliegt: der ist der
-    # main-Stand beim letzten Vorbereiten des Worktrees, nicht der Abzweigpunkt des Branches
-    # (`prepare` schreibt ihn bei jeder Wiederverwendung neu). Ein Zwei-Punkt-Diff gegen
-    # diesen Stand zeigt alles, was main seit dem echten Abzweig dazubekommen hat, als
-    # „gelöscht" — bei ABC-31 am 2026-08-07 waren das 1993 Zeilen, und der Prüfer meldete
-    # pflichtbewusst, der Agent habe den `may_plan_continue`-Knoten entfernt. Er hatte ihn
-    # nie angefasst. `merge-base` liefert den Abzweigpunkt auch dann, wenn die Gegenseite
+    # ALWAYS go over `merge-base`, even when a `base_commit` is present: that one is the main
+    # state at the last preparation of the worktree, not the branching point of the branch
+    # (`prepare` rewrites it on every reuse). A two dot diff against that state shows
+    # everything main has gained since the real branching as "deleted"; with ABC-31 on
+    # 2026-08-07 that was 1993 lines, and the reviewer dutifully reported that the agent had
+    # removed the `may_plan_continue` node. It had never touched it. `merge-base` delivers
+    # the branching point even when the other side has moved on.
     # weitergelaufen ist.
     rc, mb = await _git(wd, "merge-base", ctx.base_commit or ctx.main, "HEAD")
     base = mb.strip() if rc == 0 and mb.strip() else (ctx.base_commit or ctx.main)
-    # Zwei Punkte, nicht drei: `base...HEAD` zeigt nur COMMITTETE Arbeit. Im Review-Gate ist
-    # die Korrektur aber noch uncommittet (committet wird erst nach dem Gate) — der Prüfer
-    # sah damit den Stand VOR seinen eigenen Befunden, und die Stillstands-Erkennung fand
-    # zwangsläufig „nichts verändert". Beide Tickets vom 2026-08-07 endeten so nach genau
-    # einer Korrekturrunde, obwohl die Korrektur längst geschrieben war.
+    # Two dots, not three: `base...HEAD` shows only COMMITTED work. In the review gate the
+    # correction is still uncommitted (committing happens only after the gate), so the
+    # reviewer saw the state BEFORE its own findings, and the standstill detection
+    # necessarily found "nothing changed". Both tickets of 2026-08-07 ended that way after
+    # exactly one correction round although the correction had long been written.
     rc, out = await _git(wd, "diff", base)
     if rc != 0:
-        rc, out = await _git(wd, "diff", "HEAD")  # letzter Rückfall: nur der Arbeitsstand
+        rc, out = await _git(wd, "diff", "HEAD")  # last fallback: only the working state
     if len(out) <= max_chars:
         return out
     kopf = out[:max_chars]
@@ -171,7 +171,7 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
 
 
 async def file_changes(ctx: GitCtx) -> list[dict]:
-    """Geänderte Dateien seit der Abzweig-Basis: [{path, status, additions, deletions}]."""
+    """Changed files since the branching base: [{path, status, additions, deletions}]."""
     wd = ctx.worktree or ctx.workdir
     if not await _is_repo(wd):
         return []
@@ -207,16 +207,16 @@ async def worktree_fingerprint(wt: str | None) -> str:
 
 
 async def refresh_main(ctx: GitCtx) -> str:
-    """origin holen und main fast-forwarden — sonst zweigen Worktrees von veraltetem Stand ab.
+    """Fetch origin and fast-forward main; otherwise worktrees branch off a stale state.
 
-    Nur --ff-only: lokale Abweichungen auf main werden nie überschrieben.
+    Only --ff-only: local deviations on main are never overwritten.
     """
     if not ctx.enabled or not ctx.remote:
         return "kein Remote"
     rc, out = await _git(ctx.workdir, "fetch", _authed_url(ctx.remote, ctx.token), ctx.main)
     if rc != 0:
         return f"fetch fehlgeschlagen: {_redact(out, ctx.token)}"
-    # Nur wenn main auch ausgecheckt ist (Worktrees haben ihre eigenen Branches).
+    # Only when main is checked out as well (worktrees have their own branches).
     rc, cur = await _git(ctx.workdir, "rev-parse", "--abbrev-ref", "HEAD")
     if rc != 0 or cur.strip() != ctx.main:
         return "main nicht ausgecheckt — nur FETCH_HEAD aktualisiert"
@@ -236,13 +236,13 @@ async def prepare(ctx: GitCtx) -> str:
     await refresh_main(ctx)
     if ctx.worktree:
         os.makedirs(os.path.dirname(ctx.worktree), exist_ok=True)
-        # Verwaiste Registrierungen (Verzeichnis gelöscht) entfernen, damit unten kein
-        # leerer/fehlender Worktree fälschlich „wiederverwendet" wird.
+        # Remove orphaned registrations (directory deleted) so that no empty or missing
+        # worktree is wrongly "reused" below.
         await _git(ctx.workdir, "worktree", "prune")
         rc, out = await _git(ctx.workdir, "worktree", "list", "--porcelain")
         registered = rc == 0 and ctx.worktree in out
-        # Nur wiederverwenden, wenn das Verzeichnis existiert, ein echtes Working-Tree ist
-        # UND ausgecheckte Dateien enthält (sonst ist es eine Leiche → frisch anlegen).
+        # Only reuse when the directory exists, is a real working tree AND contains checked
+        # out files (otherwise it is a corpse and a fresh one is created).
         if registered and os.path.isdir(ctx.worktree) and await _is_repo(ctx.worktree):
             rc_f, files = await _git(ctx.worktree, "ls-files")
             if rc_f == 0 and files.strip():
@@ -265,21 +265,21 @@ async def prepare(ctx: GitCtx) -> str:
 
 
 async def ensure_branch(ctx: GitCtx, branch: str, base: str) -> str:
-    """Stellt sicher, dass `branch` existiert (lokal, ggf. vom Remote), abgezweigt von `base`.
-    Für Sammelticket-Branches, von denen Sub-Tickets abzweigen und in die sie mergen."""
+    """Makes sure `branch` exists (locally, from the remote if necessary), branched off `base`.
+    For collective ticket branches that sub-tickets branch off and merge into."""
     if not ctx.enabled or not await _ensure_repo(ctx):
         return "git: kein Repo"
     await refresh_main(ctx)  # base (= merge_target) aktualisieren
     rc, _ = await _git(ctx.workdir, "rev-parse", "--verify", f"refs/heads/{branch}")
     if rc == 0:
         return f"git: Branch {branch} vorhanden"
-    # Evtl. hat ein früherer Lauf ihn schon auf dem Remote angelegt.
+    # An earlier run may have created it on the remote already.
     if ctx.remote:
         rc_f, _ = await _git(ctx.workdir, "fetch", _authed_url(ctx.remote, ctx.token), branch)
         if rc_f == 0 and (await _git(ctx.workdir, "rev-parse", "--verify", "FETCH_HEAD"))[0] == 0:
             await _git(ctx.workdir, "branch", branch, "FETCH_HEAD")
             return f"git: Branch {branch} vom Remote geholt"
-    # Neu von base abzweigen (base existiert nach refresh_main; sonst HEAD).
+    # Branch anew from base (base exists after refresh_main; otherwise HEAD).
     rc_b, _ = await _git(ctx.workdir, "rev-parse", "--verify", base)
     base_ref = base if rc_b == 0 else "HEAD"
     rc, out = await _git(ctx.workdir, "branch", branch, base_ref)
@@ -342,7 +342,7 @@ async def precheck_merge(ctx: GitCtx) -> PremergeResult | None:
 
 
 async def setup_conflict_resolution(ctx: GitCtx) -> list[str] | None:
-    """Konflikt an den Agenten: main in Worktree mergen, Marker STEHEN LASSEN."""
+    """Conflict to the agent: merge main into the worktree, LEAVE the markers standing."""
     if not ctx.enabled or not ctx.worktree or not await _is_repo(ctx.worktree):
         return None
     if ctx.remote:
@@ -373,7 +373,7 @@ async def accept(ctx: GitCtx) -> str:
         if rc != 0:
             await _git(ctx.workdir, "merge", "--abort")
             return f"conflict:{ctx.branch}"
-    # Lokal gemergt; schlägt der Push fehl, NICHT als „merged" melden (Remote wäre veraltet).
+    # Merged locally; if the push fails, do NOT report "merged" (the remote would be stale).
     if not await _push(ctx, ctx.workdir, ctx.main):
         return "push_failed"
     head = await _head(ctx.workdir)
@@ -387,9 +387,9 @@ def _github_slug(remote: str) -> str | None:
 
 
 async def open_pull_request(ctx: GitCtx, title: str, body: str = "") -> str:
-    """Ticket-Branch pushen und einen Pull Request öffnen, statt direkt zu mergen.
+    """Push the ticket branch and open a pull request instead of merging directly.
 
-    Rückgabe: 'pr:<url>' bei Erfolg, sonst 'pr-fehler:<grund>'.
+    Returns: 'pr:<url>' on success, otherwise 'pr-fehler:<reason>'.
     """
     if not ctx.enabled or not ctx.remote:
         return "pr-fehler:kein Remote konfiguriert"
@@ -413,7 +413,7 @@ async def open_pull_request(ctx: GitCtx, title: str, body: str = "") -> str:
                 json={"title": title[:250], "body": body[:60000], "head": ctx.branch, "base": ctx.main})
             if resp.status_code == 201:
                 return f"pr:{resp.json().get('html_url', '')}"
-            # Ein bereits offener PR ist kein Fehler — den vorhandenen zurückgeben.
+            # An already open PR is not an error: return the existing one.
             if resp.status_code == 422:
                 existing = await client.get(
                     f"https://api.github.com/repos/{slug}/pulls",
