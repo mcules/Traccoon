@@ -1,5 +1,5 @@
-// Schema-Spiegel der Backend-Workflow-Engine (models/workflow.py + schemas/workflow.py).
-// Muss exakt zum Backend passen — der einzige Vertrag zwischen Editor, Runtime und API.
+// Schema mirror of the backend workflow engine (models/workflow.py plus schemas/workflow.py).
+// Has to match the backend exactly: the only contract between editor, runtime and API.
 
 export type WorkflowSubjectKind = "issue" | "hardware_asset" | "standalone";
 export type WorkflowVersionStatus = "draft" | "published" | "archived";
@@ -9,16 +9,16 @@ export type WorkflowNodeType =
   | "start" | "end" | "human_task" | "decision" | "approval" | "auto_action" | "agent_task"
   | "wait_event" | "subflow" | "loop" | "timer";
 
-/** Fest benannte Abläufe, die Traccoon selbst auslöst (Backend: WorkflowSlot). */
+/** Firmly named flows Traccoon triggers itself (backend: WorkflowSlot). */
 export type WorkflowSlot =
   | "ticket_lifecycle" | "acceptance" | "hardware_procurement" | "ticket_intake"
   | "mail_intake";
 export type WorkflowStepStatus =
   | "pending" | "running" | "waiting" | "done" | "failed" | "skipped";
 
-// ── Graph (React-Flow-nativ; wird 1:1 als version.graph gespeichert) ──────────
+// ── Graph (React Flow native; stored one to one as version.graph) ────────────
 
-/** Zuständigen-Auflösung für human_task / approval. */
+/** Resolution of the responsible person for human_task / approval. */
 export interface AssigneeSpec {
   mode: "user" | "role" | "context" | "reporter";
   user_id?: number;              // mode=user
@@ -26,7 +26,7 @@ export interface AssigneeSpec {
   context_key?: string;          // mode=context → context[context_key] = user_id
 }
 
-/** Ein dynamisches Formularfeld eines human_task. */
+/** One dynamic form field of a human_task. */
 export interface FormField {
   key: string;
   label: string;
@@ -64,25 +64,25 @@ export interface AutoActionConfig {
   params: Record<string, any>;   // action-spezifisch (Werte dürfen {{var}} referenzieren)
 }
 
-/** node.data.config — je Node-Typ eine Teilmenge der Felder. */
+/** node.data.config: a subset of the fields per node type. */
 export interface NodeConfig {
   label?: string;
-  /** Phase, der dieser Schritt angehört — nur für die Darstellung (Bänder/Filter). */
+  /** Phase this step belongs to, for the presentation only (bands, filter). */
   group?: string;
   // start
   context_schema?: { key: string; type: string; required?: boolean }[];
-  /** Auslöser: auf welches Ereignis dieser Ablauf hört (optional projektbegrenzt). */
+  /** Trigger: which event this flow listens for (optionally limited to a project). */
   trigger?: {
-    /** Ereignis-Auslöser: worauf der Ablauf hört. */
+    /** Event trigger: what the flow listens for. */
     event?: string;
     project_id?: number;
     filter?: Record<string, any>;
-    /** `webhook` = wird von außen gerufen, `ereignis` = hört auf ein Ereignis;
-     *  fehlt = von Hand bzw. über einen Job. */
+    /** `webhook` = called from outside, `ereignis` = listens for an event;
+     *  missing = by hand respectively over a job. */
     kind?: "webhook" | "ereignis";
-    /** Beispiel-Nutzlast — nur zur Feldableitung im Editor, nie zur Laufzeit. */
+    /** Example payload, only for deriving fields in the editor, never at runtime. */
     sample?: Record<string, any>;
-    /** Feld der Nutzlast, in dem das Artefakt steht (Ticket-Kennung/-Nummer, Exemplar). */
+    /** Field of the payload the artifact stands in (ticket key or number, unit). */
     subjekt_feld?: string;
   };
   // end
@@ -105,16 +105,16 @@ export interface NodeConfig {
   // wait_event
   events?: string[];             // comment | answer | manual | any
   // subflow
-  // Abgeschalteter Schritt: `ueberspringen` geht über den normalen Ausgang weiter,
-  // `abbrechen` beendet den Lauf an dieser Stelle.
+  // Switched off step: `ueberspringen` continues over the normal exit, `abbrechen` ends the
+  // run at this point.
   deaktiviert?: boolean;
   deaktiviert_modus?: "ueberspringen" | "abbrechen";
   slot?: WorkflowSlot;
-  /** Ausdrücklich benannter Ablauf statt eines Slots — auch ein eigener. */
+  /** An explicitly named flow instead of a slot, an own one as well. */
   definition_id?: number;
   inherit_context?: boolean;
-  // loop — geht `liste` Element für Element durch; der Körper hängt am Ausgang `element`
-  // und führt über eine Rückkante hierher zurück.
+  // loop: walks through `liste` element by element; the body hangs off the exit `element`
+  // and leads back here over a back edge.
   liste?: string;                // Kontext-Pfad auf die Liste
   element?: string;              // unter diesem Schlüssel steht das aktuelle Element
   index?: string;                // … und hier der Zähler
@@ -125,7 +125,7 @@ export interface NodeConfig {
   dauer?: number;                // Menge …
   einheit?: string;              // … in s | m | h | t
   bis?: string;                  // …oder ein fester Zeitpunkt (Vorlagen erlaubt)
-  // auto_action: Wiederholen statt aufgeben
+  // auto_action: retry instead of giving up
   wiederholungen?: number;
   warte_sek?: number;
   // agent_task
@@ -228,7 +228,7 @@ export interface WorkflowInstance {
   graph: WorkflowGraph;        // von der gepinnten Version, für die Read-only-Ansicht
 }
 
-/** Eintrag der persönlichen Aufgaben-Inbox (offene human_task/approval). */
+/** Entry of the personal task inbox (open human_task/approval). */
 export interface WorkflowTaskLite {
   step_id: number;
   instance_id: number;
@@ -265,7 +265,7 @@ export const SLOT_LABELS: Record<WorkflowSlot, string> = {
   mail_intake: "slot.mail_intake",
 };
 
-/** Prozess-Satz (global ausgeliefert oder persönlich). */
+/** Process set (shipped globally or personal). */
 export interface WorkflowSet {
   id: number;
   scope: "global" | "user";
@@ -276,7 +276,7 @@ export interface WorkflowSet {
   is_builtin: boolean;
 }
 
-/** Ein Ablauf-Platz eines Projekts samt Herkunft des geltenden Graphen. */
+/** One flow slot of a project including the origin of the applicable graph. */
 export interface WorkflowSlotInfo {
   slot: WorkflowSlot;
   name: string;
@@ -289,7 +289,7 @@ export interface WorkflowSlotInfo {
   definition_name: string | null;
   published: boolean;
   customizable: boolean;
-  /** Abläufe, die nur für eine Vorgangsart gelten (Bug ≠ Aufgabe). */
+  /** Flows that apply to one issue type only (bug is not task). */
   per_issue_type?: {
     issue_type_id: number; issue_type_name: string;
     definition_id: number; published: boolean;
