@@ -185,3 +185,122 @@ async def test_webhook_startet_den_ablauf_wirklich(client, db):
         WorkflowInstance.definition_id == d.id))).scalars().all()
     assert len(inst) == 1
     assert inst[0].context["vorgang"]["titel"] == "Störung"
+
+
+# ── Das Artefakt kommt aus der Nutzlast ──────────────────────────────────────
+
+async def _ticket(db, chef, key="TRA-1"):
+    from app.models.ticket import Issue, IssueType, WorkflowStatus
+
+    projekt = await make_project(db, key.split("-")[0], "Projekt")
+    await add_member(db, projekt, chef, ProjectRole.owner)
+    typ = IssueType(project_id=projekt.id, name="Aufgabe", order=0)
+    stat = WorkflowStatus(project_id=projekt.id, name="Offen", order=0)
+    db.add_all([typ, stat])
+    await db.flush()
+    issue = Issue(project_id=projekt.id, number=int(key.split("-")[1]), key=key,
+                  type_id=typ.id, status_id=stat.id, summary="Zielticket",
+                  reporter_id=chef.id, rank="1")
+    db.add(issue)
+    await db.commit()
+    return projekt, issue
+
+
+async def _mit_subjektfeld(db, besitzer, feld: str | None, subject=WorkflowSubjectKind.issue):
+    start_cfg = {"label": "Start", "trigger": {"kind": "webhook"}}
+    if feld:
+        start_cfg["trigger"]["subjekt_feld"] = feld
+    graph = {"nodes": [{"id": "s", "type": "start", "position": {"x": 0, "y": 0},
+                        "data": {"config": start_cfg}},
+                       {"id": "e", "type": "end", "position": {"x": 0, "y": 1},
+                        "data": {"config": {"outcome": "completed"}}}],
+             "edges": [{"id": "e1", "source": "s", "target": "e"}]}
+    d = WorkflowDefinition(project_id=None, key=f"mitsubjekt{feld or 'ohne'}",
+                           name="Mit Subjekt", created_by=besitzer.id, subject_kind=subject)
+    db.add(d)
+    await db.flush()
+    v = WorkflowVersion(definition_id=d.id, version=1, graph=graph,
+                        status=WorkflowVersionStatus.published)
+    db.add(v)
+    await db.flush()
+    d.current_version_id = v.id
+    await db.commit()
+    return d
+
+
+async def _rufen(client, hook, nutzlast: dict):
+    import hashlib
+    import hmac
+    import json as _json
+
+    roh = _json.dumps(nutzlast).encode()
+    sig = hmac.new(hook["secret"].encode(), roh, hashlib.sha256).hexdigest()
+    return await client.post(f"/hooks/{hook['public_id']}", content=roh,
+                             headers={"content-type": "application/json",
+                                      "X-Webhook-Signature": sig})
+
+
+async def test_webhook_bindet_das_ticket_aus_der_nutzlast(client, db):
+    """Das fremde System kennt Traccoons Nummern nicht — es nennt die Kennung, die es
+    kennt. Ohne diese Bindung liefen alle Ticket-Aktionen des Ablaufs ins Leere."""
+    chef = await make_user(db, "chef", admin=True)
+    _, issue = await _ticket(db, chef, "TRA-7")
+    d = await _mit_subjektfeld(db, chef, "vorgang.ticket")
+    hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(chef))).json()
+
+    r = await _rufen(client, hook, {"vorgang": {"ticket": "TRA-7"}})
+    assert r.status_code in (200, 202), r.text
+    assert r.json()["issue_id"] == issue.id
+
+    inst = (await db.execute(select(WorkflowInstance).where(
+        WorkflowInstance.definition_id == d.id))).scalars().one()
+    assert inst.issue_id == issue.id
+    # Das Projekt des Tickets wird mitgeführt — sonst greifen Rechte und Live-Ereignisse nicht.
+    assert inst.project_id == issue.project_id
+
+
+async def test_auch_die_nummer_geht(client, db):
+    chef = await make_user(db, "chef", admin=True)
+    _, issue = await _ticket(db, chef, "TRA-9")
+    d = await _mit_subjektfeld(db, chef, "id")
+    hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(chef))).json()
+    r = await _rufen(client, hook, {"id": issue.id})
+    assert r.json()["issue_id"] == issue.id
+
+
+async def test_fehlendes_feld_sagt_es_deutlich(client, db):
+    """Ein Ablauf, der ein Artefakt braucht, aber keines bekommt, darf nicht stumm
+    ins Leere starten."""
+    chef = await make_user(db, "chef", admin=True)
+    await _ticket(db, chef, "TRA-3")
+    d = await _mit_subjektfeld(db, chef, "vorgang.ticket")
+    hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(chef))).json()
+
+    r = await _rufen(client, hook, {"etwas": "anderes"})
+    assert r.status_code == 400 and "vorgang.ticket" in r.text
+
+    leer = await _mit_subjektfeld(db, chef, None)
+    hook2 = (await client.post(f"/workflows/{leer.id}/webhook", headers=auth(chef))).json()
+    r2 = await _rufen(client, hook2, {"vorgang": {"ticket": "TRA-3"}})
+    assert r2.status_code == 400 and "kein Feld" in r2.text
+
+
+async def test_fremdes_ticket_bleibt_fremd(client, db):
+    """Die Rechte kommen vom Besitzer des Auslösers, nicht vom Anrufer — eine
+    Webhook-Adresse kann jeder kennen."""
+    chef = await make_user(db, "chef", admin=True)
+    anna = await make_user(db, "anna")
+    _, issue = await _ticket(db, chef, "GEH-4")
+
+    d = await _mit_subjektfeld(db, anna, "vorgang.ticket")
+    hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(anna))).json()
+    r = await _rufen(client, hook, {"vorgang": {"ticket": "GEH-4"}})
+    assert r.status_code == 400 and "Rechte" in r.text
+
+
+async def test_ablauf_ohne_artefakt_braucht_kein_feld(client, db):
+    chef = await make_user(db, "chef", admin=True)
+    d = await _mit_subjektfeld(db, chef, None, subject=WorkflowSubjectKind.standalone)
+    hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(chef))).json()
+    r = await _rufen(client, hook, {"irgendwas": 1})
+    assert r.status_code in (200, 202), r.text

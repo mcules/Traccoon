@@ -275,11 +275,25 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
             ctx = {k: _dig(payload, path) for k, path in cmap.items()}
         else:
             ctx = payload if isinstance(payload, dict) else {"payload": payload}
+        # Woran der Lauf hängt, sagt die Nutzlast: der Start-Knoten benennt das Feld, in dem
+        # das Artefakt steht (Ticket-Kennung, Ticket-ID, Exemplar-ID). Ohne diese Bindung
+        # liefe ein Ablauf mit Ticket-Subjekt ins Leere — seine Aktionen (Zustand setzen,
+        # kommentieren, zuweisen) fänden nichts, worauf sie wirken könnten.
+        from ..services.workflow_subject import subjekt_aus_nutzlast
+        issue_id, asset_id, fehler = await subjekt_aus_nutzlast(
+            db, definition, payload if isinstance(payload, dict) else {}, ctx,
+            besitzer_id=sub.owner_user_id)
+        if fehler:
+            raise HTTPException(400, fehler)
         inst = await start_workflow(
             db, definition, subject_kind=definition.subject_kind, context=ctx,
+            issue_id=issue_id, hardware_asset_id=asset_id,
             actor_id=sub.owner_user_id, source=f"webhook:{route}", source_ref=src_ref,
         )
-        return {"accepted": True, "mode": "workflow", "instance_id": inst.id, "status": inst.status.value}
+        return {"accepted": True, "mode": "workflow", "instance_id": inst.id,
+                "status": inst.status.value,
+                **({"issue_id": issue_id} if issue_id else {}),
+                **({"hardware_asset_id": asset_id} if asset_id else {})}
 
     # Idempotenz: ref_field → source_ref; Doppel-Delivery erzeugt kein zweites Ticket.
     src_ref = None

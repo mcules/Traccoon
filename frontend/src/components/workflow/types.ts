@@ -72,7 +72,19 @@ export interface NodeConfig {
   // start
   context_schema?: { key: string; type: string; required?: boolean }[];
   /** Auslöser: auf welches Ereignis dieser Ablauf hört (optional projektbegrenzt). */
-  trigger?: { event: string; project_id?: number; filter?: Record<string, any> };
+  trigger?: {
+    /** Ereignis-Auslöser: worauf der Ablauf hört. */
+    event?: string;
+    project_id?: number;
+    filter?: Record<string, any>;
+    /** `webhook` = wird von außen gerufen, `ereignis` = hört auf ein Ereignis;
+     *  fehlt = von Hand bzw. über einen Job. */
+    kind?: "webhook" | "ereignis";
+    /** Beispiel-Nutzlast — nur zur Feldableitung im Editor, nie zur Laufzeit. */
+    sample?: Record<string, any>;
+    /** Feld der Nutzlast, in dem das Artefakt steht (Ticket-Kennung/-Nummer, Exemplar). */
+    subjekt_feld?: string;
+  };
   // end
   outcome?: WorkflowInstanceStatus;
   // human_task

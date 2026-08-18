@@ -115,7 +115,8 @@ export default function NodeConfigPanel({
       )}
 
       {node.type === "start" && (
-        <StartConfig config={config} onChange={set} defId={defId} />
+        <StartConfig config={config} onChange={set} defId={defId}
+          subjectKind={subjectKind} />
       )}
     </div>
   );
