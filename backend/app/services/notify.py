@@ -1,13 +1,13 @@
-"""Benachrichtigungen: die Glocke immer, der Weg nach draußen nach Wahl der Person.
+"""Notifications: the bell always, the way out chosen by the person.
 
-Bisher gab es genau einen Weg hinaus — Telegram, falls eine Chat-ID hinterlegt war. Wer
-eine Benachrichtigung auslöst, weiß aber selten, ob der Empfänger Telegram überhaupt
-benutzt; und in einem Ablauf steht der Empfänger oft erst zur Laufzeit fest. Deshalb
-entscheidet die **Person**, auf welchem Weg sie erreicht wird (`users.notify_default`),
-und der Absender darf einen Weg vorgeben, muss aber nicht.
+There used to be exactly one way out, the messenger, provided a chat id was on file. But
+whoever triggers a notification rarely knows whether the recipient uses it at all, and
+inside a flow the recipient is often only known at runtime. So the person decides how they
+are reached (`users.notify_default`), and the sender may name a channel but does not have
+to.
 
-Die Glocke bleibt unabhängig davon: jede Benachrichtigung ist auch eine Zeile in der
-Oberfläche. Der Weg entscheidet nur, was zusätzlich hinausgeht.
+The bell is independent of that: every notification is also a row in the UI. The channel
+only decides what goes out on top of it.
 """
 from __future__ import annotations
 
@@ -30,12 +30,12 @@ KANAELE = ("telegram", "email")
 
 
 def _mit_zone(ts: dt.datetime) -> dt.datetime:
-    """Zeitstempel ohne Zone als UTC lesen — SQLite gibt sie nackt zurück."""
+    """Read a naive timestamp as UTC. SQLite hands them back without a zone."""
     return ts if ts.tzinfo is not None else ts.replace(tzinfo=dt.timezone.utc)
 
 
 def kanal_adresse(user: User | None, kanal: str) -> str:
-    """Womit dieser Weg bei dieser Person erreichbar ist — leer, wenn gar nicht."""
+    """The address this channel uses for this person, empty when there is none."""
     if user is None:
         return OWNER_CHAT if kanal == "telegram" else ""
     if kanal == "telegram":
@@ -46,12 +46,12 @@ def kanal_adresse(user: User | None, kanal: str) -> str:
 
 
 def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
-    """Welcher Weg tatsächlich genommen wird.
+    """Which channel is actually used.
 
-    Vorgabe des Absenders schlägt Standard der Person; ist der gewählte Weg bei dieser
-    Person nicht hinterlegt, wird der andere genommen, statt die Nachricht still fallen
-    zu lassen. Eine Benachrichtigung, die niemanden erreicht, ist der schlechteste
-    Ausgang — schlechter als eine auf dem zweitliebsten Weg.
+    The sender's choice beats the person's default. If that channel has no address on
+    file, the other one is used instead of dropping the message silently. A notification
+    that reaches nobody is the worst outcome, worse than one on the second favourite
+    channel.
     """
     reihenfolge = [k for k in (gewuenscht, (user.notify_default if user else ""), "telegram")
                    if k in KANAELE]
@@ -66,32 +66,31 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
                     body: str = "", kanal: str = "", project_id: int | None = None,
                     issue_id: int | None = None,
                     drossel_key: str = "", drossel_minuten: float = 0) -> dict:
-    """Eine Benachrichtigung anlegen und auf dem passenden Weg hinausschicken.
+    """Create a notification and send it out on the fitting channel.
 
-    Telegram übernimmt wie bisher der Bot (er ist der einzige Prozess mit dem Bot-Token);
-    hier wird dafür nur die Chat-ID gesetzt. E-Mail geht sofort raus — dafür braucht es
-    keinen zweiten Prozess, und `notified_at` sagt der Glocke, dass draußen nichts mehr
-    offen ist.
+    The messenger is still handled by the bot process, the only one holding the bot token,
+    so all that happens here is setting the chat id. Email goes out right away: no second
+    process is needed, and `notified_at` tells the bell that nothing is pending outside.
 
-    Mit `drossel_key` und `drossel_minuten` wird dieselbe Nachricht innerhalb des Fensters
-    unterdrückt — **vollständig**, auch die Glocke. Sie nur dort abzulegen hieße, den Lärm
-    eine Etage tiefer zu schieben: 120 gleichlautende Zeilen machen eine Liste mit
-    Ungelesen-Zähler genauso unbrauchbar wie 120 Telegramme. Nachvollziehbar bleibt es
-    trotzdem — der Schritt im Ablauf protokolliert, dass gedrosselt wurde.
+    With `drossel_key` and `drossel_minuten` the same message is suppressed inside the
+    window, completely, including the bell. Putting it there only would push the noise one
+    floor down: 120 identical rows make a list with an unread counter as useless as 120
+    messages. It stays traceable anyway, because the step in the flow records that it was
+    throttled.
     """
     if drossel_key and drossel_minuten > 0:
         grenze = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=drossel_minuten)
         letzte = (await db.execute(
             select(Notification.created_at)
             .where(Notification.drossel_key == drossel_key,
-                   # Nach Empfänger getrennt: zwei Menschen mit gleichem Schlüssel dürfen
-                   # sich nicht gegenseitig stummschalten.
+                   # Separated by recipient: two people using the same key must not
+                   # mute each other.
                    Notification.user_id == (user.id if user else None),
                    Notification.created_at >= grenze)
             .order_by(Notification.created_at.desc()).limit(1))).scalars().first()
         if letzte is not None:
             wieder = _mit_zone(letzte) + dt.timedelta(minutes=drossel_minuten)
-            log.info("gedrosselt: %s (wieder ab %s)", drossel_key, wieder.isoformat())
+            log.info("throttled: %s (open again at %s)", drossel_key, wieder.isoformat())
             return {"kanal": "gedrosselt", "unterdrueckt": True, "drossel_key": drossel_key,
                     "wieder_ab": wieder.isoformat()}
 
@@ -105,7 +104,7 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
 
     if gewaehlt == "email":
         if not ziel:
-            log.warning("Keine E-Mail-Adresse für Nutzer %s — nur Glocke",
+            log.warning("no email address for user %s, bell only",
                         user.id if user else None)
             return {"kanal": "bell", "grund": "keine Adresse"}
         from . import mail
@@ -114,13 +113,13 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
         if ok:
             n.notified_at = dt.datetime.now(tz=dt.timezone.utc)
         else:
-            log.warning("E-Mail an %s fehlgeschlagen — bleibt in der Glocke", ziel)
+            log.warning("email to %s failed, stays in the bell", ziel)
         return {"kanal": "email", "ziel": ziel, "ok": ok}
     return {"kanal": "telegram", "ziel": n.chat_id or ""}
 
 
 def _html(title: str, body: str) -> str:
-    """Schlichtes HTML — der Text ist die Nachricht, nicht das Layout."""
+    """Plain HTML. The text is the message, not the layout."""
     from html import escape
     zeilen = "<br>".join(escape(z) for z in (body or "").splitlines())
     return f"<p><b>{escape(title)}</b></p><p>{zeilen}</p>"

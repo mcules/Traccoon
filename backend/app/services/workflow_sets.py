@@ -1,19 +1,19 @@
-"""Prozess-Sätze: welcher Ablauf gilt für welches Projekt — und wie man ihn anpasst.
+"""Process sets: which flow applies to which project, and how to adapt it.
 
-Ein **Satz** hält je Slot (ticket_lifecycle, acceptance, hardware_procurement,
-ticket_intake) höchstens eine Vorlage. Projekte *referenzieren* einen Satz; eine eigene
-Kopie entsteht erst beim Anpassen (copy-on-write). Damit greift eine Änderung am globalen
-oder persönlichen Satz sofort in allen Projekten, die nichts Eigenes haben — ohne
-Sync-Lauf und ohne dass laufende Instanzen brechen (die pinnen auf ihre Version).
+A set holds at most one template per slot (ticket_lifecycle, acceptance,
+hardware_procurement, ticket_intake). Projects reference a set; a copy of their own comes
+into existence only when they customize it (copy on write). A change to the global or
+personal set therefore takes effect immediately in every project without one of its own,
+with no sync run and without breaking running instances, which are pinned to their version.
 
-Auflösung (`resolve_definition`):
-    1. projekt-eigene, nicht archivierte Definition mit diesem Slot
-    2. Satz, den das Projekt referenziert (`Project.workflow_set_id`)
-    3. Satz eines Projekt-**Owners** (`ProjectMember.role == owner`, Lead zuerst)
-    4. globaler Standard-Satz (`is_builtin`)
+Resolution (`resolve_definition`):
+    1. a project-owned, unarchived definition for this slot
+    2. the set the project references (`Project.workflow_set_id`)
+    3. the set of a project owner (`ProjectMember.role == owner`, lead first)
+    4. the global default set (`is_builtin`)
 
-Zurücksetzen archiviert die Projekt-Kopie, statt sie zu löschen: an ihr hängen Instanzen
-(`workflow_instances.definition_id` ist CASCADE), und Historie darf nicht verschwinden.
+Resetting archives the project copy instead of deleting it: instances hang off it
+(`workflow_instances.definition_id` cascades), and history must not disappear.
 """
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ from ..models.workflow import WorkflowDefinition, WorkflowSet, WorkflowVersion
 
 log = logging.getLogger("workflow_sets")
 
-# Anzeigename + Subjekt je Slot — die einzige Stelle, an der das steht.
+# Display name and subject per slot, the only place this is written down.
 SLOT_META: dict[str, dict] = {
     WorkflowSlot.ticket_lifecycle.value: {
         "name": "KI-Ticket-Lebenszyklus",
@@ -69,14 +69,14 @@ def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
 
-# ── Auflösung ────────────────────────────────────────────────────────────────
+# -- resolution --------------------------------------------------------------
 
 async def owner_set_id(db: AsyncSession, project: Project) -> int | None:
-    """Satz des ersten Projekt-Owners, der einen eigenen hat.
+    """Set of the first project owner who has one.
 
-    Reihenfolge ist bewusst fest: Projekt-Lead zuerst (wenn er Owner ist), danach die
-    Owner-Mitgliedschaften nach `id`. Sonst wäre bei mehreren Ownern nicht vorhersehbar,
-    wessen persönlicher Satz gilt.
+    The order is fixed on purpose: project lead first (when they are owner), then owner
+    memberships by `id`. With several owners it would otherwise be unpredictable whose
+    personal set applies.
     """
     members = (await db.execute(
         select(ProjectMember).where(ProjectMember.project_id == project.id,
@@ -100,7 +100,7 @@ async def builtin_set(db: AsyncSession) -> WorkflowSet | None:
 
 
 async def effective_set(db: AsyncSession, project: Project | None) -> WorkflowSet | None:
-    """Satz, der für dieses Projekt gilt (ohne projekteigene Anpassungen zu betrachten)."""
+    """The set that applies to this project, ignoring project-owned customizations."""
     if project is not None:
         if project.workflow_set_id:
             s = await db.get(WorkflowSet, project.workflow_set_id)
@@ -125,11 +125,11 @@ async def set_definition(db: AsyncSession, set_id: int, slot: str) -> WorkflowDe
 
 async def project_override(db: AsyncSession, project_id: int, slot: str,
                            issue_type_id: int | None = None) -> WorkflowDefinition | None:
-    """Projekt-eigene Kopie eines Slots.
+    """Project-owned copy of a slot.
 
-    Zuerst die für genau diese Vorgangsart, sonst die allgemeine des Projekts — ein Bug darf
-    einen anderen Lebenszyklus fahren als eine Aufgabe, ohne dass man für jede Vorgangsart
-    eine Kopie anlegen muss.
+    First the one for exactly this issue type, otherwise the general one of the project. A
+    bug may run a different lifecycle than a task without forcing a copy for every issue
+    type.
     """
     if issue_type_id is not None:
         eigen = (await db.execute(
@@ -152,10 +152,10 @@ async def project_override(db: AsyncSession, project_id: int, slot: str,
 
 async def resolve_definition(db: AsyncSession, project_id: int | None, slot: str,
                              issue_type_id: int | None = None) -> WorkflowDefinition | None:
-    """Die Definition, die JETZT gilt: Vorgangsart → projekteigen → Satz → Owner → global.
+    """The definition that applies NOW: issue type, project copy, set, owner, global.
 
-    `issue_type_id` greift nur, wenn das Projekt für diese Vorgangsart einen eigenen Ablauf
-    hinterlegt hat; sonst ändert sich nichts.
+    `issue_type_id` only matters when the project has a flow of its own for that issue
+    type, otherwise nothing changes.
     """
     slot = slot.value if isinstance(slot, WorkflowSlot) else str(slot)
     project = await db.get(Project, project_id) if project_id else None
@@ -170,7 +170,7 @@ async def resolve_definition(db: AsyncSession, project_id: int | None, slot: str
 
 
 async def resolve_source(db: AsyncSession, project_id: int, slot: str) -> dict:
-    """Herkunft eines Slots für die Oberfläche: woher kommt der geltende Ablauf?"""
+    """Origin of a slot for the UI: where does the applicable flow come from?"""
     slot = slot.value if isinstance(slot, WorkflowSlot) else str(slot)
     project = await db.get(Project, project_id)
     own = await project_override(db, project_id, slot) if project else None
@@ -184,7 +184,7 @@ async def resolve_source(db: AsyncSession, project_id: int, slot: str) -> dict:
     return {"origin": origin, "definition": d, "set": s}
 
 
-# ── Anpassen / Zurücksetzen ──────────────────────────────────────────────────
+# -- customize and reset -----------------------------------------------------
 
 async def _next_version_number(db: AsyncSession, def_id: int) -> int:
     from sqlalchemy import func
@@ -198,12 +198,12 @@ async def _copy_definition(db: AsyncSession, source: WorkflowDefinition, *, proj
                            issue_type_id: int | None = None,
                            key: str | None = None, name: str | None = None,
                            publish: bool = True) -> WorkflowDefinition:
-    """Definition samt aktuellem Graph kopieren. Die Kopie startet als veröffentlichte v1,
-    damit sie sofort läuft; weitere Bearbeitung erzeugt wie gewohnt eine Draft-Version."""
+    """Copy a definition including its current graph. The copy starts as a published v1 so
+    it runs right away, further editing creates a draft version as usual."""
     base = (await db.get(WorkflowVersion, source.current_version_id)
             if source.current_version_id else None)
     graph = (base.graph if base else None) or {"nodes": [], "edges": []}
-    # Die Bindung an die Vorgangsart gehört ins INSERT: der Unique-Index greift sofort,
+    # The issue type binding belongs in the INSERT: the unique index applies at once,
     # und eine erst danach gesetzte Bindung kollidierte mit der allgemeinen Kopie.
     copy = WorkflowDefinition(
         project_id=project_id, set_id=set_id, slot=source.slot,
@@ -228,12 +228,12 @@ async def _copy_definition(db: AsyncSession, source: WorkflowDefinition, *, proj
 
 async def customize(db: AsyncSession, project: Project, slot: str, actor_id: int | None,
                     issue_type_id: int | None = None) -> WorkflowDefinition:
-    """Projekt-eigene Kopie des geltenden Ablaufs anlegen (copy-on-write).
+    """Create a project-owned copy of the applicable flow (copy on write).
 
-    Ab dann ist das Projekt vom Satz entkoppelt: Änderungen am globalen/persönlichen Satz
-    wirken hier nicht mehr, bis jemand `reset` aufruft. Mit `issue_type_id` gilt die Kopie
-    nur für diese Vorgangsart — so bekommt ein Bug einen anderen Lebenszyklus als eine
-    Aufgabe, während alle übrigen weiter dem Standard folgen.
+    From then on the project is decoupled from the set: changes to the global or personal
+    set no longer reach it until somebody calls `reset`. With `issue_type_id` the copy
+    applies to that issue type only, so a bug gets a different lifecycle than a task while
+    everything else keeps following the default.
     """
     slot = slot.value if isinstance(slot, WorkflowSlot) else str(slot)
     if issue_type_id is None:
@@ -251,8 +251,8 @@ async def customize(db: AsyncSession, project: Project, slot: str, actor_id: int
     source = await resolve_definition(db, project.id, slot, issue_type_id)
     if source is None:
         raise ValueError(f"Für den Slot '{slot}' gibt es keinen Ablauf zum Kopieren")
-    # Je Projekt ist der Schlüssel eindeutig — die Kopie für eine Vorgangsart braucht
-    # deshalb einen eigenen, und der Name soll auf einen Blick sagen, für wen sie gilt.
+    # The key is unique per project, so the copy for an issue type needs one of its own,
+    # and the name should say at a glance who it applies to.
     schluessel = name = None
     if issue_type_id is not None:
         from ..models.ticket import IssueType
@@ -270,11 +270,11 @@ async def customize(db: AsyncSession, project: Project, slot: str, actor_id: int
 
 async def reset(db: AsyncSession, project: Project, slot: str,
                 issue_type_id: int | None = None) -> bool:
-    """Projekt-Anpassung verwerfen → wieder der Satz gilt. Liefert False, wenn es keine gab.
+    """Drop the project customization so the set applies again. False when there was none.
 
-    Mit `issue_type_id` wird nur die Kopie dieser Vorgangsart verworfen; ohne sie die
-    allgemeine. Die Kopie wird archiviert, nicht gelöscht: laufende Instanzen zeigen auf
-    sie, und die Schritt-Historie abgeschlossener Läufe soll lesbar bleiben.
+    With `issue_type_id` only the copy for that issue type is dropped, without it the
+    general one. The copy is archived, not deleted: running instances point at it, and the
+    step history of finished runs should stay readable.
     """
     slot = slot.value if isinstance(slot, WorkflowSlot) else str(slot)
     if issue_type_id is not None:
@@ -299,8 +299,8 @@ async def reset(db: AsyncSession, project: Project, slot: str,
 
 async def create_user_set(db: AsyncSession, user: User, name: str = "",
                           source_set_id: int | None = None) -> WorkflowSet:
-    """Persönlichen Satz anlegen — als vollständige Kopie eines Vorlagen-Satzes
-    (standardmäßig des globalen Standards) und direkt als Satz des Nutzers aktivieren."""
+    """Create a personal set as a full copy of a template set (the global default unless
+    told otherwise) and activate it for that user right away."""
     source = (await db.get(WorkflowSet, source_set_id) if source_set_id
               else await builtin_set(db))
     s = WorkflowSet(
@@ -325,7 +325,7 @@ async def create_user_set(db: AsyncSession, user: User, name: str = "",
 
 
 async def slot_overview(db: AsyncSession, project: Project) -> list[dict]:
-    """Alle Slots eines Projekts mit geltendem Ablauf und Herkunft (für den Prozesse-Tab)."""
+    """All slots of a project with the applicable flow and its origin (for the process tab)."""
     out = []
     for slot in WorkflowSlot:
         info = await resolve_source(db, project.id, slot.value)
@@ -349,7 +349,7 @@ async def slot_overview(db: AsyncSession, project: Project) -> list[dict]:
 
 
 async def _je_vorgangsart(db: AsyncSession, project_id: int, slot: str) -> list[dict]:
-    """Kopien, die nur für eine Vorgangsart gelten — beim Lebenszyklus der übliche Fall."""
+    """Copies that apply to one issue type only, the usual case for the lifecycle."""
     from ..models.ticket import IssueType
     rows = (await db.execute(
         select(WorkflowDefinition, IssueType)

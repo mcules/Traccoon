@@ -1,13 +1,12 @@
-"""Woran ein von außen gestarteter Ablauf hängt.
+"""What a flow started from outside is attached to.
 
-Ein Ablauf mit Ticket-Subjekt kann Zustände setzen, kommentieren, Agenten zuweisen — aber
-nur, wenn er weiß, an welchem Ticket er das tut. Beim Start über einen Webhook wusste er es
-bisher nicht: die Instanz kam ohne Artefakt zur Welt, und jede dieser Aktionen fand nichts
-vor („keine Ticket-Bindung").
+A flow with a ticket subject can set states, comment and assign agents, but only if it
+knows which ticket it does that to. Started through a webhook it did not know: the instance
+was born without an artifact, and every one of those actions found nothing to work on.
 
-Das fremde System kennt Traccoons Nummern nicht — es kennt seine eigenen. Deshalb benennt
-der Start-Knoten das **Feld**, in dem das Artefakt steht, und hier wird daraus die Bindung:
-`TRA-31` (Kennung), `31` (ID) oder was auch immer im Pfad steht.
+The foreign system does not know Traccoon's numbers, it knows its own. So the start node
+names the field that holds the artifact, and this is where the binding comes from: a key
+like `TRA-31`, a plain id like `31`, or whatever sits at that path.
 """
 from __future__ import annotations
 
@@ -22,7 +21,7 @@ log = logging.getLogger("workflow_subject")
 
 
 def _feld(definition, version_graph: dict) -> str:
-    """Das im Start-Knoten benannte Feld (`trigger.subjekt_feld`) — leer, wenn keins."""
+    """The field named in the start node (`trigger.subjekt_feld`), empty when there is none."""
     for n in (version_graph or {}).get("nodes") or []:
         typ = n.get("type") or (n.get("data") or {}).get("type")
         if typ == "start":
@@ -45,10 +44,10 @@ def _dig(daten, pfad: str):
 
 async def subjekt_aus_nutzlast(db: AsyncSession, definition, payload: dict, ctx: dict, *,
                                besitzer_id: int | None) -> tuple[int | None, int | None, str]:
-    """(issue_id, hardware_asset_id, fehler). Fehler leer = alles in Ordnung.
+    """(issue_id, hardware_asset_id, error). An empty error means everything is fine.
 
-    Gesucht wird zuerst in der Nutzlast, dann im schon abgebildeten Kontext — wer eine
-    `context_map` benutzt, hat den Wert dort unter einem eigenen Namen stehen.
+    The lookup goes through the payload first, then through the mapped context: anyone
+    using a `context_map` has the value there under a name of their own.
     """
     from ..models.workflow import WorkflowVersion
 
@@ -57,7 +56,7 @@ async def subjekt_aus_nutzlast(db: AsyncSession, definition, payload: dict, ctx:
     version = await db.get(WorkflowVersion, definition.current_version_id)
     pfad = _feld(definition, (version.graph if version else {}) or {})
     if not pfad:
-        # Kein Feld benannt: der Ablauf verlangt ein Artefakt, der Auslöser liefert keins.
+        # No field named: the flow needs an artifact, the trigger delivers none.
         # Das ist ein Einrichtungsfehler und soll auffallen, nicht stumm ins Leere laufen.
         return None, None, (f"Dieser Ablauf hängt an einem Artefakt "
                             f"({definition.subject_kind.value}); im Start-Knoten ist aber "
@@ -94,10 +93,10 @@ async def subjekt_aus_nutzlast(db: AsyncSession, definition, payload: dict, ctx:
 
 
 async def _darf(db: AsyncSession, besitzer_id: int | None, project_id: int | None) -> bool:
-    """Darf der Besitzer des Auslösers an diesem Projekt arbeiten?
+    """May the owner of the trigger work on this project?
 
-    Ein Webhook ist eine Adresse, die jeder kennen kann — die Rechte kommen deshalb nicht
-    vom Anrufer, sondern von dem Menschen, dem der Auslöser gehört.
+    A webhook is an address anyone might know, so the permissions do not come from the
+    caller but from the person the trigger belongs to.
     """
     if project_id is None:
         return True
@@ -115,6 +114,6 @@ async def _darf(db: AsyncSession, besitzer_id: int | None, project_id: int | Non
         return True
     try:
         zugriff = await build_access(projekt, person, db)
-    except Exception:  # noqa: BLE001 — 403/404 = kein Zugriff
+    except Exception:  # noqa: BLE001, a 403 or 404 means no access
         return False
     return zugriff.has_role(ProjectRole.member)

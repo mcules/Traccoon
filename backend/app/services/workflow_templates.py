@@ -1,21 +1,21 @@
-"""Fertige Abläufe zum Kopieren.
+"""Ready-made flows to copy.
 
-Ein frischer Ablauf besteht aus Start und Ende — richtig so, aber es beantwortet die
-Frage nicht, die davor steht: *wie* baut man damit etwas, das wirklich läuft? Die vier
-Vorlagen hier sind keine Beispiele zum Anschauen, sondern Startpunkte: sie werden als
-Version 1 angelegt, sind sofort probelauffähig und tragen an jedem Knoten die Stelle,
-an der man den eigenen Fall einsetzt (Werkzeug, Ziel, Empfänger).
+A fresh flow is a start node and an end node. That is correct, but it does not answer the
+question that comes first: how do you build something from it that actually runs? The four
+templates here are not examples to look at, they are starting points. They are created as
+version 1, they survive a dry run right away, and every node marks the spot where you put
+your own case in (tool, destination, recipient).
 
-Sie decken die vier Muster ab, aus denen fast jeder eigene Ablauf besteht:
+They cover the four patterns almost every custom flow is made of:
 
-    außen → prüfen → melden          Meldung von außen verarbeiten
-    Uhr  → holen → Freigabe → tun    geplante Prüfung mit Freigabe
-    holen → Liste → je Element       Liste abarbeiten
-    tun  → Fehler → warten → nochmal Aufruf mit Wiederholung
+    outside -> check -> report        handle an incoming report
+    clock -> fetch -> approve -> act  scheduled check with approval
+    fetch -> list -> per item         work through a list
+    act -> error -> wait -> retry     call with retry
 
-Gehalten wird das bewusst hier und nicht in der Datenbank: eine Vorlage ist eine
-ausgelieferte Sache wie der Standard-Satz, keine Nutzerdatei. Wer sie ändern will,
-legt sie an und baut sie um — die Kopie gehört ihm.
+They live here and not in the database on purpose: a template is a shipped thing like the
+default process set, not a user file. Whoever wants to change one creates it and rebuilds
+it, and that copy belongs to them.
 """
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ def _e(source: str, target: str, handle: str | None = None, label: str = "") -> 
 
 
 def _action(name: str, label: str, **cfg) -> dict:
-    """auto_action-Konfiguration in der Form, die auch der Editor schreibt."""
+    """auto_action config in the same shape the editor writes."""
     params = {k: v for k, v in cfg.items() if k not in ("wiederholungen", "warte_sek")}
     rest = {k: v for k, v in cfg.items() if k in ("wiederholungen", "warte_sek")}
     return {"label": label, "action": {"action": name, "params": params}, **rest}
@@ -50,14 +50,14 @@ def _ende(node_id: str, col: int, row: int, label: str, outcome: str = "complete
     return _n(node_id, "end", col, row, {"label": label, "outcome": outcome})
 
 
-# ── 1) Meldung von außen ─────────────────────────────────────────────────────
+# -- 1) incoming report ------------------------------------------------------
 
 def _meldung_von_aussen() -> dict:
-    """Webhook rein, Weiche, Nachricht raus.
+    """Webhook in, decision, message out.
 
-    Die Beispiel-Nutzlast am Start ist mehr als Zierde: aus ihr baut der Editor die
-    Kontextfelder, die in der Weiche zur Auswahl stehen. Ohne sie stünde man an der
-    Verzweigung vor einem leeren Dropdown.
+    The sample payload on the start node is more than decoration: the editor builds the
+    context fields from it, and those are what the decision offers for selection. Without
+    it you face an empty dropdown at the branch.
     """
     nodes = [
         _n("start", "start", 0, 0, {
@@ -88,15 +88,14 @@ def _meldung_von_aussen() -> dict:
     ]}
 
 
-# ── 2) Geplante Prüfung mit Freigabe ─────────────────────────────────────────
+# -- 2) scheduled check with approval ----------------------------------------
 
 def _pruefung_mit_freigabe() -> dict:
-    """Etwas holen, hinsehen, und nur nach Freigabe handeln.
+    """Fetch something, look at it, and act only after approval.
 
-    Der Ablauf startet von Hand oder über einen Job (Einstellungen → Jobs, Art
-    `workflow`) — deshalb kein Auslöser-Ereignis. Die Freigabe steht bewusst *vor*
-    der wirksamen Aktion: was ein Automat nachts allein tut, will man morgens nicht
-    erklären müssen.
+    The flow starts by hand or through a job (Settings, Jobs, kind `workflow`), which is
+    why it has no trigger event. The approval sits before the effective action on purpose:
+    what a machine does alone at night, you do not want to explain in the morning.
     """
     nodes = [
         _n("start", "start", 0, 0, {"label": "Geplanter Lauf"}),
@@ -133,14 +132,14 @@ def _pruefung_mit_freigabe() -> dict:
     ]}
 
 
-# ── 3) Liste abarbeiten ──────────────────────────────────────────────────────
+# -- 3) Liste abarbeiten --------------------
 
 def _liste_abarbeiten() -> dict:
-    """Eine Liste holen und Element für Element etwas damit tun.
+    """Fetch a list and do something with it item by item.
 
-    Die Rückkante vom Körper zur Schleife ist der ganze Trick — sie macht aus einem
-    geraden Ablauf einen Durchlauf. `liste` zeigt auf den Pfad im Kontext, den der
-    vorige Schritt gefüllt hat; was je Element geschieht, steht im Körper.
+    The edge from the body back to the loop is the whole trick: it turns a straight flow
+    into a pass. `liste` points at the context path the previous step filled, and what
+    happens per item sits in the body.
     """
     nodes = [
         _n("start", "start", 0, 0, {
@@ -174,15 +173,15 @@ def _liste_abarbeiten() -> dict:
     ]}
 
 
-# ── 4) Aufruf mit Wiederholung ───────────────────────────────────────────────
+# -- 4) Aufruf mit Wiederholung --------------------
 
 def _aufruf_mit_wiederholung() -> dict:
-    """Nach außen rufen, und bei Ärger nicht sofort aufgeben.
+    """Call outside, and do not give up at the first trouble.
 
-    Zwei Netze übereinander: der Knoten wiederholt sich dreimal von selbst (mit
-    Abstand — sofort noch einmal wäre dieselbe Sekunde, derselbe Fehler), und erst
-    wenn auch das nicht hilft, geht es über den roten Ausgang weiter. Dort wird
-    gewartet und ein letztes Mal versucht, bevor jemand Bescheid bekommt.
+    Two nets on top of each other: the node retries three times on its own (with a delay,
+    because retrying at once means the same second and the same error), and only when that
+    does not help either does it continue through the red outlet. There it waits and tries
+    one last time before anyone gets told.
     """
     nodes = [
         _n("start", "start", 0, 0, {"label": "Start"}),
@@ -243,14 +242,14 @@ _NACH_KEY = {v["key"]: v for v in VORLAGEN}
 
 
 def liste() -> list[dict]:
-    """Was zur Auswahl steht — ohne die Graphen selbst (die Übersicht braucht sie nicht)."""
+    """What is on offer, without the graphs themselves (the overview does not need them)."""
     return [{k: (v.value if hasattr(v, "value") else v)
              for k, v in vorlage.items() if k != "build"}
             for vorlage in VORLAGEN]
 
 
 def graph(key: str) -> dict | None:
-    """Der Graph einer Vorlage — frisch gebaut, damit ihn niemand versehentlich teilt."""
+    """The graph of a template, built fresh so nobody shares it by accident."""
     vorlage = _NACH_KEY.get(key)
     return vorlage["build"]() if vorlage else None
 

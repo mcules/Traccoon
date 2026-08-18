@@ -1,14 +1,14 @@
-"""Ausdrücke in Vorlagen: `{{ pfad | filter:argument }}`.
+"""Expressions in templates: `{{ path | filter:argument }}`.
 
-Bisher konnte `{{…}}` genau eines: einen Kontextwert einsetzen. Damit lässt sich ein Text
-zusammenbauen, aber nichts damit anfangen — kein Datum formatieren, keinen Betreff kürzen,
-keinen Standardwert setzen, wenn das Feld leer ist. Genau daran scheitert „ohne
-Programmieren": man hat die Daten, kommt aber nicht an die Form, die das Zielsystem will.
+`{{…}}` used to do exactly one thing: insert a context value. That builds a text but does
+nothing with it. No formatting a date, no shortening a subject, no fallback when the field
+is empty. That is where "without programming" fails: you have the data but cannot get it
+into the shape the target system wants.
 
-**Bewusst keine Programmiersprache.** Kein `eval`, kein Jinja, keine Schleifen im Text —
-eine geschlossene Liste von Filtern, die von links nach rechts angewendet werden. Das ist
-lesbar für Menschen, die keine Entwickler sind, und es kann per Bauart nichts anrichten:
-Was hier nicht steht, geht nicht.
+**Deliberately not a programming language.** No `eval`, no template engine, no loops inside
+the text. A closed list of filters applied from left to right. That stays readable for
+people who are not developers, and by construction it cannot do damage: what is not listed
+here does not happen.
 
     {{ mail.subject | kurz:40 }}
     {{ spam.score | mal:100 | rund:1 }} %
@@ -64,8 +64,8 @@ def _zeit(wert) -> dt.datetime | None:
 
 
 # ── Filter ───────────────────────────────────────────────────────────────────
-# Jeder bekommt (wert, *argumente) und gibt einen Wert zurück. Fehler sind kein Abbruch:
-# eine Vorlage, die an einer Stelle nicht passt, soll den ganzen Lauf nicht kippen.
+# Each one takes (value, *arguments) and returns a value. An error is not fatal: a template
+# that does not fit in one spot must not bring down the whole run.
 
 def _f_kurz(wert, laenge="40", endung="…"):
     text = "" if wert is None else str(wert)
@@ -132,7 +132,7 @@ FILTER = {
     "plus": (lambda w, f="0": _zahl(w) + _zahl(f), "Addieren — plus:1"),
     "minus": (lambda w, f="0": _zahl(w) - _zahl(f), "Subtrahieren — minus:1"),
     "rund": (_f_rund, "Runden — rund:1 (Nachkommastellen)"),
-    # „verliert -1,95 % pro Tag" liest sich falsch: das Vorzeichen steckt schon im Verb.
+    # "loses -1.95 % per day" reads wrong: the sign is already in the verb.
     "betrag": (lambda w: abs(_zahl(w)), "Vorzeichen weglassen"),
     # Listen
     "anzahl": (_f_anzahl, "Wie viele Einträge (bzw. Zeichen)"),
@@ -150,7 +150,7 @@ FILTER = {
     "text": (lambda w: "" if w is None else str(w), "Als Text"),
 }
 
-# Quellen, die nicht aus dem Kontext kommen.
+# Sources that do not come from the context.
 SONDERQUELLEN = {
     "jetzt": lambda: dt.datetime.now(tz=dt.timezone.utc).isoformat(),
     "heute": lambda: dt.date.today().isoformat(),
@@ -158,7 +158,7 @@ SONDERQUELLEN = {
 
 
 def _teile(ausdruck: str) -> list[str]:
-    """Am `|` trennen, aber nicht innerhalb von Anführungszeichen."""
+    """Split on `|`, but not inside quotes."""
     teile, aktuell, quote = [], "", ""
     for zeichen in ausdruck:
         if quote:
@@ -178,14 +178,14 @@ def _teile(ausdruck: str) -> list[str]:
 
 
 def _argumente(roh: str) -> list[tuple[str, bool]]:
-    """`kurz:40,"…"` → [("40", False), ("…", True)] — Komma trennt, Anführungszeichen schützen.
+    """`kurz:40,"…"` becomes [("40", False), ("…", True)]. Comma splits, quotes protect.
 
-    Das zweite Feld sagt, ob das Argument zitiert war. Daran hängt mehr als Kosmetik:
-    zitiert heißt wörtlich, unzitiert darf ein Kontextpfad sein (siehe `auswerten`).
+    The second field says whether the argument was quoted, and that is more than cosmetics:
+    quoted means literal, unquoted may be a context path (see `auswerten`).
 
-    Ein *ausdrücklich* leeres Argument bleibt erhalten (`kurz:11,""` heißt „kürzen, aber
-    ohne Auslassungszeichen"); weggeworfen wird nur, was gar nicht dasteht. Ohne diese
-    Unterscheidung schluckt der Zerleger die Absicht und nimmt stillschweigend die Vorgabe.
+    An explicitly empty argument survives (`kurz:11,""` means "shorten, but without an
+    ellipsis"). Only what is not there at all gets dropped. Without that distinction the
+    parser swallows the intent and silently applies the default.
     """
     out: list[tuple[str, bool]] = []
     aktuell, quote, zitiert = "", "", False
@@ -209,7 +209,7 @@ def _argumente(roh: str) -> list[tuple[str, bool]]:
 
 
 def _quelle(text: str, ctx: dict):
-    """Erstes Glied einer Kette: Literal, Sonderquelle oder Kontext-Pfad."""
+    """First link of a chain: a literal, a special source, or a context path."""
     text = text.strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
         return text[1:-1]
@@ -223,7 +223,7 @@ def _quelle(text: str, ctx: dict):
 
 
 def auswerten(ausdruck: str, ctx: dict):
-    """Einen Ausdruck (ohne die geschweiften Klammern) auswerten. → Wert oder None."""
+    """Evaluate one expression (without the braces), returns a value or None."""
     glieder = _teile(ausdruck)
     if not glieder:
         return None
@@ -238,19 +238,19 @@ def auswerten(ausdruck: str, ctx: dict):
         fn = eintrag[0]
         try:
             wert = fn(wert, *_filterargumente(roh, ctx)) if roh else fn(wert)
-        except Exception:  # noqa: BLE001 — eine schiefe Vorlage kippt keinen Lauf
+        except Exception:  # noqa: BLE001, a broken template must not fail the run
             log.info("Filter %r auf %r fehlgeschlagen", name, wert)
     return wert
 
 
 def _filterargumente(roh: str, ctx: dict) -> list[str]:
-    """Argumente eines Filters — zitiert wörtlich, sonst gern aus dem Kontext.
+    """Arguments of a filter: quoted is literal, unquoted may come from the context.
 
-    `default:"–"` ist ein Text, `default:event.type` der Wert von dort. Ohne diese Regel
-    schrieb `{{ event.attributes.alarm | default:event.type }}` wörtlich „event.type" in
-    die Nachricht — und in den Drossel-Schlüssel, wo alle Störungsarten dann derselbe Fall
-    gewesen wären. Löst der Pfad nichts auf, bleibt der Text stehen: eine Vorgabe wie
-    `default:unbekannt` verhält sich unverändert.
+    `default:"-"` is a text, `default:event.type` is the value found there. Without that
+    rule `{{ event.attributes.alarm | default:event.type }}` wrote the literal text
+    "event.type" into the message, and into the throttle key, where every kind of fault
+    would then have been the same case. If the path resolves to nothing, the text stays, so
+    a fallback like `default:unknown` behaves as before.
     """
     fertig: list[str] = []
     for text, zitiert in _argumente(roh):
@@ -264,7 +264,7 @@ def _filterargumente(roh: str, ctx: dict) -> list[str]:
 
 
 def fuellen(text: str, ctx: dict) -> str:
-    """Alle `{{…}}` in einem Text ersetzen."""
+    """Replace every `{{…}}` inside a text."""
     def ersetzen(m: re.Match) -> str:
         wert = auswerten(m.group(1), ctx)
         if wert is None:
@@ -278,5 +278,5 @@ def fuellen(text: str, ctx: dict) -> str:
 
 
 def katalog() -> list[dict]:
-    """Die Filter, wie sie der Editor als Hilfe anzeigt."""
+    """The filters as the editor shows them in its help."""
     return [{"name": n, "hilfe": h} for n, (_, h) in sorted(FILTER.items())]

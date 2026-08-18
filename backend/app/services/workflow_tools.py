@@ -1,14 +1,13 @@
-"""MCP-Werkzeuge in einem Ablauf — Traccoons Antwort auf „400 Integrationen".
+"""MCP tools inside a flow.
 
-Traccoon betreibt längst ein Dutzend MCP-Server (Mail, Vault, Paperless, Nextcloud, Immich,
-Zeiterfassung, Hausautomation, …). Erreichbar waren sie bisher nur für Agenten: wer in einem
-Ablauf eine Notiz schreiben oder ein Dokument ablegen wollte, musste dafür einen
-Sprachmodell-Lauf starten — teuer und langsam für einen Handgriff, den ein Werkzeug direkt
-kann.
+Traccoon already runs a dozen MCP servers (mail, vault, documents, cloud storage, photos,
+time tracking, home automation). Until now only agents could reach them: writing a note or
+filing a document from a flow meant starting a language model run, which is expensive and
+slow for something a tool does directly.
 
-Die Rechte laufen über den **Eigentümer des Laufs**: aufgerufen wird über seinen
-MCPJungle-Gruppen-Endpoint, nicht über einen globalen Zugang. Wer selbst keinen Zugriff auf
-einen Dienst hat, bekommt ihn auch nicht über einen selbstgebauten Ablauf.
+Permissions run through the owner of the run. Calls go through their own group endpoint,
+not through a global account. Someone without access to a service does not gain it by
+building a flow.
 """
 from __future__ import annotations
 
@@ -21,14 +20,14 @@ log = logging.getLogger("workflow_tools")
 
 
 async def _server_des_besitzers(db: AsyncSession, owner_id: int | None) -> list[dict]:
-    """Die MCP-Server, die diesem Menschen gehören (plus die globalen).
+    """The MCP servers belonging to this person, plus the global ones.
 
-    Genau dieselbe Quelle wie beim Agenten: die **Registry** (Einstellungen → MCP-Server).
-    Damit ist das Anbinden eines fremden Systems Konfiguration und kein Programmieren —
-    wer einen Server einträgt, hat seine Werkzeuge sofort im Ablauf zur Auswahl.
+    Exactly the same source the agent uses: the registry under Settings, MCP servers. That
+    makes connecting a foreign system configuration instead of programming. Whoever
+    registers a server has its tools available in the flow right away.
 
-    Server mit Variablen-Schema brauchen eine ausgefüllte Instanz; die hängt heute am
-    Agenten. Ohne Instanz bleiben sie außen vor, statt mit halben Kopfzeilen zu scheitern.
+    Servers with a variable schema need a filled instance, which today hangs off the agent.
+    Without an instance they stay out rather than failing with half-filled headers.
     """
     from sqlalchemy import or_, select
 
@@ -49,10 +48,10 @@ async def _server_des_besitzers(db: AsyncSession, owner_id: int | None) -> list[
 
 
 async def _sitzung(db: AsyncSession, owner_id: int | None):
-    """Kontextmanager für die MCP-Sitzung des Eigentümers (oder None, wenn er keine hat).
+    """Context manager for the owner's MCP session, or None when they have none.
 
-    Zwei Quellen, beide über den Menschen hinter dem Lauf: seine Registry-Server und —
-    falls eingerichtet — sein MCPJungle-Gruppen-Endpoint.
+    Two sources, both tied to the person behind the run: their registry servers and, when
+    set up, their group endpoint.
     """
     from ..worker.mcp_client import mcp_session
     from ..worker.runtime import _owner_gateway
@@ -65,10 +64,10 @@ async def _sitzung(db: AsyncSession, owner_id: int | None):
 
 
 async def werkzeuge(db: AsyncSession, owner_id: int | None) -> list[dict]:
-    """Welche Werkzeuge dieser Mensch hat — Name, Beschreibung, Pflichtfelder.
+    """Which tools this person has: name, description, required fields.
 
-    Speist die Auswahl im Editor. Fällt der Gateway aus, ist die Liste leer statt kaputt:
-    ein Ablauf lässt sich auch ohne Werkzeugliste weiterbauen (Name von Hand eintragen).
+    Feeds the picker in the editor. When the gateway is down the list is empty instead of
+    broken: a flow can still be built by typing the tool name.
     """
     sitzung = await _sitzung(db, owner_id)
     if sitzung is None:
@@ -76,7 +75,7 @@ async def werkzeuge(db: AsyncSession, owner_id: int | None) -> list[dict]:
     try:
         async with sitzung as mcp:
             roh = await mcp.list_tools()
-    except Exception:  # noqa: BLE001 — Werkzeugliste ist Komfort, kein Betriebsmittel
+    except Exception:  # noqa: BLE001, the tool list is convenience, not infrastructure
         log.warning("MCP-Werkzeugliste für Nutzer %s nicht abrufbar", owner_id, exc_info=True)
         return []
     out = []
@@ -95,20 +94,20 @@ async def werkzeuge(db: AsyncSession, owner_id: int | None) -> list[dict]:
 
 async def aufrufen(db: AsyncSession, owner_id: int | None, name: str,
                    arguments: dict) -> dict:
-    """Ein Werkzeug aufrufen. → {ok, text, json?, error?}.
+    """Call a tool, returns {ok, text, json?, error?}.
 
-    Fehler werden zurückgegeben, nicht geworfen: der Ablauf soll selbst entscheiden können,
-    ob ein misslungener Aufruf ihn beendet (`fail_on_error`) oder ob er weiterläuft.
+    Errors are returned, not raised: the flow decides for itself whether a failed call ends
+    it (`fail_on_error`) or whether it keeps going.
     """
     if not name:
         return {"ok": False, "text": "", "error": "kein Werkzeug angegeben"}
     sitzung = await _sitzung(db, owner_id)
     if sitzung is None:
         return {"ok": False, "text": "",
-                "error": "kein MCP-Zugang für den Eigentümer dieses Ablaufs"}
-    # Unbekannter Server im Namen (`server__werkzeug`) und kein Gateway, das ihn auffangen
-    # könnte: dann antwortet die Sitzung mit einem Hinweis-TEXT statt mit einem Fehler, und
-    # der Ablauf liefe weiter, als wäre alles gut. Lieber vorher nachsehen.
+                "error": "no MCP access for the owner of this flow"}
+    # Unknown server in the name (`server__tool`) and no gateway to catch it: the session
+    # then answers with a hint as TEXT instead of an error, and the flow would carry on as
+    # if everything were fine. Better to look first.
     if "__" in name:
         server = name.split("__", 1)[0]
         from ..worker.runtime import _owner_gateway
@@ -116,27 +115,27 @@ async def aufrufen(db: AsyncSession, owner_id: int | None, name: str,
         if not url and server not in {
                 s["name"] for s in await _server_des_besitzers(db, owner_id)}:
             return {"ok": False, "text": "",
-                    "error": f"unbekannter MCP-Server {server!r} — in den Einstellungen "
-                             f"eintragen oder Namen prüfen"}
+                    "error": f"unknown MCP server {server!r}, register it in the settings "
+                             f"or check the name"}
     try:
         async with sitzung as mcp:
             text = await mcp.call(name, arguments or {})
     except Exception as exc:  # noqa: BLE001
-        log.warning("Werkzeug %s fehlgeschlagen: %s", name, exc)
+        log.warning("tool %s failed: %s", name, exc)
         return {"ok": False, "text": "", "error": str(exc)[:500]}
 
     text = text if isinstance(text, str) else str(text)
     ergebnis: dict = {"ok": True, "text": text[:20000]}
-    # Wer mit dem Ergebnis weiterrechnen will, braucht es zerlegt — die meisten Werkzeuge
-    # antworten ohnehin in JSON.
+    # Anyone computing with the result needs it parsed, and most tools answer in JSON
+    # anyway.
     try:
         daten = json.loads(text)
     except (ValueError, TypeError):
         daten = None
     if isinstance(daten, (dict, list)):
         ergebnis["json"] = daten
-    # Werkzeuge melden ihren eigenen Fehlschlag oft im Text — das ist kein Transportfehler,
-    # aber der Ablauf soll darauf verzweigen können.
+    # Tools often report their own failure inside the text. That is not a transport
+    # error, but the flow should be able to branch on it.
     if isinstance(daten, dict) and daten.get("error"):
         ergebnis["ok"] = False
         ergebnis["error"] = str(daten["error"])[:500]
