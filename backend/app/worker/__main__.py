@@ -1,7 +1,7 @@
-"""Traccoon Agenten-Worker: Redis-Consumer der task_queue mit echtem Tool-Loop.
+"""Traccoon agent worker: Redis consumer of the task queue with a real tool loop.
 
-Ersetzt den Node-Mock. Teilt das Backend-Image (`python -m app.worker`), öffnet
-eine eigene SessionLocal (Postgres erlaubt Nebenläufigkeit).
+Shares the backend image (`python -m app.worker`) and opens a SessionLocal of its own
+(Postgres allows the concurrency).
 """
 from __future__ import annotations
 
@@ -41,24 +41,24 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("traccoon.worker")
 
 MAX_CONCURRENT = int(os.getenv("WORKER_CONCURRENCY", "3"))
-# Auslaufzeit beim Beenden: so lange darf ein schon laufender Agent noch weiterarbeiten,
-# bevor der Prozess geht. Ein Lauf kann Stunden dauern — vollständig abwarten ginge nicht,
-# aber die zwei Minuten reichen für den laufenden Modellzug samt Werkzeug und dafür, dass
-# seine Schrittzeilen geschrieben sind. Genau daraus baut der Nachfolger seine Übergabe
-# (`runtime._abbruch_uebergabe`). Muss unter `stop_grace_period` in der compose.yml bleiben,
-# sonst schlägt Docker vorher zu.
+# Grace period on shutdown: this long an agent already running may keep working before the
+# process leaves. A run can take hours, so waiting for it completely is out, but the two
+# minutes are enough for the model turn in flight including its tool, and for its step rows
+# to be written. Exactly from those the successor builds its handover
+# (`runtime._abbruch_uebergabe`). Has to stay below `stop_grace_period` in the compose file,
+# otherwise Docker strikes first.
 DRAIN_SEC = int(os.getenv("WORKER_DRAIN_SEC", "120"))
-# Wartezeit von BLMOVE (serverseitig) und die Redis-Optionen gegen stille Hänger.
+# Wait of BLMOVE (server side) and the Redis options against silent hangs.
 BLOCK_TIMEOUT = 5
 _REDIS_KW = {"decode_responses": True, "socket_keepalive": True,
              "health_check_interval": 30, "retry_on_timeout": True}
-# Wie oft ein Merge-Konflikt beim Accept an den Agenten zurückgeht, bevor an den Menschen
-# eskaliert wird (Loop-Bremse gegen accept→conflict→approved→re-dispatch-Endlosschleifen).
+# How often a merge conflict goes back to the agent on accept before it escalates to a
+# person (a brake against accept → conflict → approved → re-dispatch loops).
 MAX_CONFLICT_ROUNDS = int(os.getenv("MAX_CONFLICT_ROUNDS", "3"))
 DEFAULT_CLAUDE_MODEL = os.getenv("DEFAULT_CLAUDE_MODEL", "claude-sonnet-4-5")
 DEFAULT_CODEX_MODEL = os.getenv("DEFAULT_CODEX_MODEL", "gpt-5")
 
-# Default-Rollen-Fähigkeiten, falls keine AgentDefinition existiert.
+# Default role abilities when no AgentDefinition exists.
 _DEFAULTS: dict[str, dict] = {
     "project_manager": {"can_delegate": True, "can_read_code": True, "mp": 20, "me": 40},
     "architect":       {"can_read_code": True, "mp": 20, "me": 80},
@@ -97,22 +97,22 @@ def _default_agent_def(role: str, provider: str, model: str, mode: str) -> Agent
 
 
 async def _build_tokens(db, owner_id, agent, project=None) -> tuple[dict, dict]:
-    """(tokens, base_urls) je Provider aus der Agent-Auswahl: Primär (provider/token_name) +
-    Fallback (fallback/fallback_token_name). Legacy-Keys claude_code/codex als Default-Rückfall.
-    base_urls trägt die optionale eigene Endpoint-URL des jeweils gewählten Provider-Tokens
-    (nur openai relevant); analog zu tokens durch dieselbe eff_name-Auswahl bestimmt.
+    """(tokens, base_urls) per provider from the agent's choice: primary (provider/token_name)
+    plus fallback (fallback/fallback_token_name). The legacy keys claude_code/codex serve as
+    the default. base_urls carries the optional endpoint of the chosen provider token (only
+    relevant for openai), determined by the same eff_name choice as the tokens.
 
-    Projekt-Standard-Subscription (project.default_provider/-token_name) überschreibt den
-    persönlichen Default des Nutzers — greift nur, wenn der Agent selbst keinen Token wählt."""
+    The project default subscription (project.default_provider/-token_name) overrides the
+    user's personal default, and only applies when the agent picks no token itself."""
     proj_provider = getattr(project, "default_provider", "") or ""
     proj_name = getattr(project, "default_token_name", "") or ""
 
     def eff_name(provider: str, agent_name: str) -> str:
         if agent_name:
             return agent_name                       # Agent-Wahl hat Vorrang
-        if proj_name and proj_provider == provider:  # sonst Projekt-Standard
+        if proj_name and proj_provider == provider:  # otherwise the project default
             return proj_name
-        return ""                                    # sonst persönlicher Default
+        return ""                                    # otherwise the personal default
 
     tokens = {
         "claude_code": await resolve_provider_token(db, owner_id, "claude_code", eff_name("claude_code", "")),
@@ -134,15 +134,15 @@ async def _none():
 
 
 async def _load_agent(db, role: str, project_id: int, mode: str, owner_id: int | None = None) -> AgentDef:
-    # Nur die eigene Definition des Owners oder eine globale (user_id IS NULL) ziehen — nie die eines
-    # fremden Users. Präzedenz: eigene vor global, projekt-scoped vor projektlos.
+    # Only the owner's own definition or a global one (user_id IS NULL), never that of a
+    # different user. Precedence: own before global, project scoped before projectless.
     row = (
         await db.execute(
             select(AgentDefinition).where(
                 AgentDefinition.role == role, AgentDefinition.active.is_(True),
                 or_(AgentDefinition.user_id == owner_id, AgentDefinition.user_id.is_(None))
                 if owner_id is not None else AgentDefinition.user_id.is_(None),
-                # Nur für DIESES Projekt scopte oder projektlose Definitionen — nie die eines
+                # Only definitions scoped to THIS project or projectless ones, never those of
                 # fremden Projekts.
                 or_(AgentDefinition.project_id == project_id, AgentDefinition.project_id.is_(None)),
             )
@@ -163,8 +163,8 @@ async def handle(job: dict, redis: Redis) -> None:
     task_id = job["task_id"]
     kind = job.get("kind")
     if kind == "accept":
-        # Ergebnis IMMER nach Redis schreiben: /complete wartet darauf und darf ein Ticket
-        # nur bei sauberem Merge auf „Fertig" setzen (TRA-18).
+        # ALWAYS write the result to Redis: /complete waits for it and may only set a ticket
+        # to done on a clean merge (TRA-18).
         try:
             res = await _handle_accept(job, redis)
         except Exception as exc:  # noqa: BLE001
@@ -182,7 +182,7 @@ async def handle(job: dict, redis: Redis) -> None:
     if kind == "curator":
         await _handle_curator(job)
         return
-    if kind:  # Infra-Task (testenv_start etc.) — später
+    if kind:  # infrastructure task (testenv_start and so on), later
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps({"status": "failed",
                         "output": f"Infra-Task {kind} noch nicht implementiert"}), ex=ERGEBNIS_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
@@ -195,10 +195,10 @@ async def handle(job: dict, redis: Redis) -> None:
             return
         mode = "plan" if job.get("phase") == "planning" else "execute"
         role = job["role"]
-        # Wer arbeitet, steht auf „In Arbeit" — und zwar ab jetzt, nicht erst nach dem
-        # nächsten Abgleich. Der Prozess setzt das beim Start eines Schrittes; ein Auftrag,
-        # den die Reliable-Queue nach einem Neustart wiedervorlegt, kommt aber NICHT durch
-        # den Graphen und liefe sonst mit einem „Warten"-Etikett (2026-08-07).
+        # Whoever works stands on "in progress", and from now on, not only after the next
+        # reconciliation. The process sets that when a step starts, but a task the reliable
+        # queue re-presents after a restart does NOT come through the graph and would
+        # otherwise run under a "waiting" label (2026-08-07).
         from ..models.enums import TicketAgentStatus as _TS
         from ..services.artifacts import set_ticket_status as _set_status
         _ziel = _TS.planning if mode == "plan" else _TS.in_progress
@@ -219,7 +219,7 @@ async def handle(job: dict, redis: Redis) -> None:
             token = await resolve_git_token(db, project.git_token_enc, owner_id, host) or ""
             wt = gitops.worktree_path(project.key, issue.key) if project.work_in_branches else None
             base_branch = project.merge_target or "main"
-            # Sub-Ticket: auf dem Branch des Sammeltickets basieren (und später dorthin mergen).
+            # Subticket: base it on the branch of the umbrella ticket (and merge back there).
             if issue.parent_ticket_id:
                 umbrella = await db.get(Issue, issue.parent_ticket_id)
                 if umbrella:
@@ -256,15 +256,15 @@ async def handle(job: dict, redis: Redis) -> None:
         permissions = [{"tool": p.tool, "resource": p.resource, "action": p.action.value} for p in perms_rows]
         gate_on = bool(project.managed or permissions)
 
-        # Kommentar-Verlauf (User-Kommentare + Agent-Rückfragen)
+        # Comment history (comments by people plus questions from the agent)
         crows = (
             await db.execute(select(Comment).where(Comment.issue_id == issue.id).order_by(Comment.created_at))
         ).scalars().all()
-        # `agent_fail` bleibt draußen: das sind Pannenmeldungen (Worker-Neustart, Deadlock,
-        # abgeschnittene Antwort), kein Arbeitsstand. Im Ticket stehen sie weiterhin — im
-        # Prompt haben sie nichts verloren, denn ein Agent sucht darin nach seiner Aufgabe.
-        # Genau so entstand am 2026-08-07 die Eskalation im Provider-Router: gelesen als
-        # Auftrag, umgesetzt, in den Branch committet, mit dem Ticket nichts zu tun.
+        # `agent_fail` stays out: those are mishap reports (worker restart, deadlock,
+        # truncated answer), not work in progress. They remain on the ticket, but they have no
+        # business in the prompt, because an agent reads it looking for its assignment. That is
+        # exactly how the escalation in the provider router came about on 2026-08-07: read as
+        # an assignment, implemented, committed to the branch, nothing to do with the ticket.
         comment_history = [
             {"label": c.author_label or ("User" if c.author_id else "Agent"),
              "role": "user" if c.author_id else "agent", "body": c.body}
@@ -290,21 +290,21 @@ async def handle(job: dict, redis: Redis) -> None:
                              if r in _DEFAULTS else _none()),
         )
 
-        # Review-Gate (max 2 Korrektur-Runden) vor dem Abschluss
+        # Review gate (at most 2 correction rounds) before finishing
         if (mode == "execute" and result.status == "done" and project.review_enabled
                 and ctx is not None and ws_root):
             result = await _review_gate(db, project, issue, agent, ws_root, gate_on, tokens,
                                         permissions, result, ctx, owner_id, task_id=task_id,
                                         base_urls=base_urls)
 
-        # Agenten-Änderungen IMMER committen (nicht nur bei 'done') — sonst sitzt die Arbeit
-        # bei Review-Hold/Rückfrage uncommittet im Worktree und ist nicht review-/testbar.
+        # ALWAYS commit the agent's changes (not only on 'done'), otherwise the work sits
+        # uncommitted in the worktree on a review hold or a question and cannot be reviewed.
         merge_status = ""
         if mode == "execute" and ctx is not None:
             changes = await gitops.file_changes(ctx)
             cmsg = await gitops.commit(ctx, f"ticket {issue.key}: {issue.summary}")
             log.info("git commit %s: %s", issue.key, cmsg)
-            # 0 Änderungen sichtbar machen — sonst landet ein Ticket stumm auf to_test.
+            # Make 0 changes visible, otherwise a ticket lands on to_test in silence.
             if not changes:
                 db.add(Comment(
                     issue_id=issue.id, author_id=None, author_label="System", kind="internal",
@@ -340,34 +340,34 @@ async def handle(job: dict, redis: Redis) -> None:
     log.info("verarbeitet %s → %s", task_id, result.status)
 
 
-# Sicherheitsnetz für die Korrektur-Runden des Review-Gates — NICHT der normale Halt.
-# Beendet wird an der Sache: bestanden, oder eine Korrektur, die am Code nichts mehr ändert
-# (Stillstand). Die frühere harte 2 holte den Menschen, während es noch voranging — bei
-# TRA-32 am 2026-08-07 sogar wegen eines Befunds, der aus der gekappten Diff-Anzeige stammte.
-# Ein Ticket soll durchlaufen, solange es vorankommt.
+# Safety net for the correction rounds of the review gate, NOT the normal stop. What ends it
+# is the matter itself: passing, or a correction that changes nothing in the code (a
+# standstill). The earlier hard limit of 2 fetched a person while things were still moving,
+# on TRA-32 (2026-08-07) even over a finding that came from the truncated diff display. A
+# ticket should run through as long as it makes progress.
 REVIEW_RUNDEN = int(os.getenv("REVIEW_MAX_RUNDEN", "6"))
 
 
 async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens, permissions,
                        result, ctx, owner_id=None, task_id="", base_urls=None):
-    """Review-Agent prüft den kumulativen Diff. <review-ok/> = bestanden. Sonst max 2
-    Korrektur-Runden durch den Ausführungs-Agenten; danach hold_review.
+    """The review agent checks the cumulative diff. <review-ok/> means it passed. Otherwise at
+    most 2 correction rounds by the executing agent, then hold_review.
 
-    Die verbrauchten Runden stehen AM TICKET, nicht in dieser Schleife. Ein Zähler im
-    Prozess ist nach jedem Worker-Neustart wieder null — TRA-32 lief am 2026-08-07 genau
-    hinein: prüfen → korrigieren → Neustart → prüfen → korrigieren, und die Grenze, die
-    den Menschen holen soll, wurde nie erreicht.
+    The rounds used up are kept ON THE TICKET, not in this loop. A counter in the process is
+    zero again after every worker restart, and TRA-32 ran straight into that on 2026-08-07:
+    check, correct, restart, check, correct, and the limit that should fetch a person was
+    never reached.
     """
     reviewer = await _load_agent(db, project.review_agent or "code_reviewer", project.id, "execute", owner_id)
-    rev = None      # kein Prüflauf in dieser Runde (Budget schon verbraucht) → kein Befundtext
+    rev = None      # no review run this round (budget spent), so no finding text
     vorheriger_diff: str | None = None
     for attempt in range(int(issue.review_rounds or 0), REVIEW_RUNDEN):
         diff = await gitops.diff_text(ctx)
         if not diff.strip():
-            return result  # nichts geändert → nichts zu prüfen
-        # Solange sich etwas bewegt, wird weitergearbeitet — die Grenze ist Stillstand, nicht
-        # eine Rundenzahl. Hat die letzte Korrektur den Diff nicht angefasst, bringt die
-        # nächste Runde nichts: dann holt es den Menschen, und zwar mit diesem Grund.
+            return result  # nothing changed, nothing to check
+        # As long as something moves, work continues: the limit is a standstill, not a number
+        # of rounds. If the last correction did not touch the diff, the next round brings
+        # nothing, and then it fetches a person, with exactly that reason.
         if vorheriger_diff is not None and diff == vorheriger_diff:
             log.warning("review %s: Runde %d hat nichts verändert → Stillstand",
                         issue.key, attempt)
@@ -397,12 +397,12 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
         if "<review-ok/>" in (rev.text or ""):
             log.info("review %s: bestanden (Runde %d)", issue.key, attempt + 1)
             return result
-        # Ein ABGEBROCHENER Prüfer hat keine Befunde — er hat gar nicht geprüft. Ohne diese
-        # Unterscheidung wurde seine Fehlermeldung als Arbeitsauftrag weitergereicht: TRA-31
-        # schickte am 2026-08-07 den Entwickler los, „claude: Antwort bei max_tokens
-        # abgeschnitten … max_tokens erhöhen" zu beheben. Das kostet eine der zwei
-        # Korrektur-Runden, verbrennt einen vollen Lauf und endet danach im Review-Hold —
-        # wegen eines Befunds, den es nie gab.
+        # An ABORTED reviewer has no findings, it did not review at all. Without this
+        # distinction its error message was passed on as an assignment: on 2026-08-07 TRA-31
+        # sent the developer off to fix "claude: answer truncated at max_tokens … raise
+        # max_tokens". That costs one of the two correction rounds, burns a full run and ends
+        # in a review hold afterwards, over a finding that never existed.
+
         if rev.status != "done":
             log.warning("review %s: Prüfer-Lauf %s (Runde %d) — keine Befunde, kein Auftrag",
                         issue.key, rev.status, attempt + 1)
@@ -417,11 +417,11 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             return result
         log.info("review %s: Befunde (Runde %d von %d) → Korrektur",
                  issue.key, attempt + 1, REVIEW_RUNDEN)
-        # Die Runde ist verbraucht, sobald sie beginnt — und zwar committet, damit sie einen
-        # Neustart mitten in der Korrektur überlebt.
+        # The round is spent the moment it begins, and committed, so that it survives a
+        # restart in the middle of the correction.
         issue.review_rounds = attempt + 1
         await db.commit()
-        # Korrektur-Runde durch den Ausführungs-Agenten
+        # Correction round by the executing agent
         result = await run_agent(
             db=db, agent=exec_agent,
             issue={"id": issue.id, "key": issue.key, "summary": issue.summary,
@@ -435,10 +435,10 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             continuation_index=99, continuation_hint="REVIEW-BEFUNDE (beheben):\n" + (rev.text or ""))
         if result.status != "done":
             return result
-    # Runden verbraucht und immer noch Befunde → an den Menschen. MIT den Befunden: das
-    # Ticket trug bisher nur „hold: review", und wer nachsehen wollte, woran es liegt,
-    # musste den Lauf in der Datenbank suchen (TRA-32 am 2026-08-07). Ein Mensch, der
-    # entscheiden soll, braucht den Grund am selben Ort wie die Entscheidung.
+    # Rounds spent and findings still open, so a person takes over. WITH the findings: the
+    # ticket used to carry only "hold: review", and whoever wanted to know why had to look
+    # the run up in the database (TRA-32 on 2026-08-07). Somebody who has to decide needs
+    # the reason in the same place as the decision.
     offene = (getattr(rev, "text", "") or "").strip()
     db.add(Comment(
         issue_id=issue.id, author_id=None, author_label="Prüfer", kind="internal",
@@ -456,10 +456,10 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
 
 
 async def _handle_accept(job: dict, redis: Redis) -> dict:
-    """Bei Abnahme: Ticket-Branch → main mergen (+ push), optional Auto-Deploy einreihen.
+    """On acceptance: merge the ticket branch into main (and push), optionally queue an
 
-    Liefert den Ausgang als {"status": merged|conflict|push_failed|pr_open|pr_failed|no_git|gone,
-    "error"?: str} — `/complete` entscheidet daran, ob das Ticket „Fertig" werden darf.
+    auto deploy. Returns the outcome as {"status": merged|conflict|push_failed|pr_open|
+    pr_failed|no_git|gone, "error"?: str}, and `/complete` decides from it whether the ticket
     """
     from ..models.ops import Deployment
     async with SessionLocal() as db:
@@ -467,9 +467,9 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
         project = await db.get(Project, job["project_id"])
         if issue is None or project is None:
             return {"status": "gone", "error": "Ticket oder Projekt existiert nicht mehr"}
-        # Idempotenz: ein bereits gemergtes Ticket NICHT erneut mergen. Verhindert, dass
-        # Duplikat-/Nachzügler-Accept-Jobs (z. B. aus Queue-Recovery) einen sauber gemergten
-        # Branch erneut anfassen und in einen Scheinkonflikt laufen (Loop-Quelle).
+        # Idempotence: do NOT merge an already merged ticket again. This prevents duplicate or
+        # late accept jobs (from queue recovery, for instance) from touching a cleanly merged
+        # branch and running into a phantom conflict, which is a source of loops.
         if issue.merge_status == "merged":
             log.info("accept %s → bereits gemerged, übersprungen", job["issue_id"])
             return {"status": "merged"}
@@ -477,7 +477,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
             host = urlsplit(project.github_repo).hostname or ""
             owner_id = issue.assigned_by_user_id or issue.reporter_id or project.lead_user_id
             token = await resolve_git_token(db, project.git_token_enc, owner_id, host) or ""
-            # Sub-Ticket mergt in den Sammelticket-Branch, sonst in den Ziel-Branch.
+            # A subticket merges into the umbrella branch, otherwise into the target branch.
             target = project.merge_target or "main"
             if issue.parent_ticket_id:
                 umbrella = await db.get(Issue, issue.parent_ticket_id)
@@ -488,16 +488,16 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                 remote=project.github_repo, token=token,
                 worktree=gitops.worktree_path(project.key, issue.key) if project.work_in_branches else None,
                 base_commit=issue.git_base_sha, main=target, enabled=True)
-            # Pre-Merge-Gate: frisches main in den Worktree; Konflikt → an den Agenten zurück
+            # Pre-merge gate: fresh main into the worktree, a conflict goes back to the agent
             pre = await gitops.precheck_merge(ctx)
             if pre and pre.conflict:
                 issue.merge_status = "conflict"
                 issue.merge_error = "Merge-Konflikt: " + ", ".join(pre.conflict_files[:8])
                 issue.resolved_at = None
                 issue.merge_conflict_rounds += 1
-                # Loop-Bremse: konvergiert der Konflikt nicht, wird eskaliert statt endlos
-                # an den Agenten zurückgereicht. Ob das „hold" oder ein neuer Anlauf heißt,
-                # entscheidet der Abnahme-Prozess — hier wird nur der Befund gemeldet.
+                # Loop brake: if the conflict does not converge it escalates instead of being
+                # handed back to the agent forever. Whether that means "hold" or another
+                # attempt is decided by the acceptance process; here only the finding is reported.
                 escalate = issue.merge_conflict_rounds > MAX_CONFLICT_ROUNDS
                 if escalate:
                     db.add(Comment(issue_id=issue.id, author_id=None, kind="internal",
@@ -506,7 +506,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                                         f"Konflikt in: {', '.join(pre.conflict_files[:8])}"))
                     log.info("accept %s → Konflikt-Limit erreicht, eskaliert", job["issue_id"])
                 else:
-                    # Konfliktmarker in den Worktree legen, damit der Agent sie auflösen kann.
+                    # Put the conflict markers into the worktree so the agent can resolve them.
                     await gitops.setup_conflict_resolution(ctx)
                     log.info("accept %s → Konflikt (Runde %d), zurück an den Agenten",
                              job["issue_id"], issue.merge_conflict_rounds)
@@ -516,8 +516,8 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                 return {"status": "conflict", "error": issue.merge_error,
                         "escalate": escalate, "rounds": issue.merge_conflict_rounds}
             if project.use_pull_request and not issue.parent_ticket_id:
-                # Statt zu mergen: Branch pushen, PR öffnen, Entscheidung bleibt auf GitHub.
-                # (Sub-Tickets mergen immer direkt in den Sammelticket-Branch, kein PR.)
+                # Instead of merging: push the branch, open a PR, the decision stays on GitHub.
+                # (Subtickets always merge straight into the umbrella branch, no PR.)
                 res = await gitops.open_pull_request(
                     ctx, title=f"{issue.key}: {issue.summary}",
                     body=(issue.plan or issue.description or "")[:60000])
@@ -543,24 +543,24 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                 issue.merge_commit = res.split(":", 1)[1]
                 issue.merged_into = ctx.main
                 issue.merge_error = None
-                issue.merge_conflict_rounds = 0   # sauber durch → Konflikt-Zähler zurücksetzen
+                issue.merge_conflict_rounds = 0   # came through cleanly, reset the counter
                 await gitops.remove_worktree(ctx)
             elif res.startswith("conflict:"):
                 issue.merge_status = "conflict"
                 issue.merge_error = res
             elif res == "push_failed":
-                # Lokal gemergt, Remote-Push fehlgeschlagen → Worktree behalten, nicht deployen.
+                # Merged locally, push to the remote failed: keep the worktree, do not deploy.
                 issue.merge_status = "push_failed"
                 issue.merge_error = "Push zum Remote fehlgeschlagen (Auth/Netz)."
             await db.commit()
-        # Auto-Deploy NUR bei echtem Merge in den Ziel-Branch (nicht bei Sub-Tickets,
-        # die in den Sammelticket-Branch mergen, und nicht bei conflict/push_failed/pr).
+        # Auto deploy ONLY on a real merge into the target branch (not for subtickets that
+        # merge into the umbrella branch, and not on conflict/push_failed/pr).
         if project.auto_deploy and issue.merge_status == "merged" and not issue.parent_ticket_id:
-            # Tickets dürfen NICHT das Host-/Wartungsprojekt selbst deployen. Ein leerer
-            # (self-zielender) stack_dir würde vom Deployer ohnehin abgelehnt und bei jedem
-            # Loop-Durchlauf nur einen Deploy-Sturm erzeugen (siehe TRA-19). Der Host-Stack
-            # wird ausschließlich über das explizite, idle-gegatete Wartungs-Update recreated
-            # (dispatcher self_deploy, nur wenn kein Agent läuft).
+            # Tickets must NOT deploy the host or maintenance project itself. An empty
+            # (self targeting) stack_dir would be rejected by the deployer anyway and would
+            # only produce a deploy storm on every pass through the loop (see TRA-19). The host
+            # stack is recreated exclusively through the explicit, idle gated maintenance
+            # update (dispatcher self_deploy, only when no agent is running).
             if project.workspace_dir:
                 db.add(Deployment(project_id=project.id, issue_id=issue.id,
                                   stack_dir=project.workspace_dir, status="pending",
@@ -569,8 +569,8 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
             else:
                 log.info("accept %s: Self-/Host-Projekt — kein Ticket-Deploy "
                          "(Host-Stack nur via Wartungs-Update)", job["issue_id"])
-        # Sub-Ticket fertig gemergt → nächstes geparktes Geschwister freigeben bzw.
-        # Sammelticket abschließen (erst NACH dem Merge, damit Teil n+1 auf n aufbaut).
+        # Subticket merged: release the next parked sibling or finish the umbrella ticket
+        # (only AFTER the merge, so that part n+1 builds on n).
         if issue.parent_ticket_id and issue.merge_status == "merged":
             from ..services.lifecycle_flow import promote_split
             await promote_split(db, issue)
@@ -579,17 +579,17 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                             json.dumps({"type": "issue_update", "issue_key": issue.key}))
     log.info("accept %s → merge=%s deploy=%s", job["issue_id"], issue.merge_status, project.auto_deploy)
     if not (project.git_enabled and issue.branch_name):
-        return {"status": "no_git"}   # Projekt ohne Git: nichts zu mergen, Abnahme ist frei
+        return {"status": "no_git"}   # project without git: nothing to merge, acceptance is free
     if issue.merge_status == "merged":
         return {"status": "merged"}
     return {"status": issue.merge_status or "failed", "error": issue.merge_error}
 
 
 async def _handle_job(job: dict, redis: Redis) -> None:
-    """Prompt-Job: läuft über den vollen Agenten-Tool-Loop des Eigentümers (run_agent) —
-    mit dessen Token, seinem Assistenten und seinen MCP-Servern (owner-gescoped).
+    """Prompt job: runs through the full agent tool loop of its owner (run_agent), with their
+    token, their assistant and their tool servers (scoped to the owner).
 
-    Eigenständig, nicht im Board (kein ws_root, keine Permission-Gates). notify_mode → Notification.
+    Standalone, not on the board (no ws_root, no permission gates). notify_mode drives the
     """
     from ..models.ops import Job, JobRun
     from ..models.notification import Notification
@@ -599,15 +599,15 @@ async def _handle_job(job: dict, redis: Redis) -> None:
         jr = await db.get(JobRun, job_run_id)
         j = await db.get(Job, job["job_id"]) if job.get("job_id") else None
         if jr is None or j is None:
-            # Früher ein stilles `return`: der Job-Run blieb für immer auf „running", ohne
-            # Fehler und ohne Lauf. Passierte, wenn der Auftrag vor dem Commit eingereiht
-            # wurde und ein freier Worker schneller war als die Transaktion.
+            # This used to be a silent `return`: the job run stayed on "running" forever,
+            # without an error and without a run. It happened when the task was queued before
+            # the commit and a free worker was faster than the transaction.
             log.warning("Job-Auftrag %s ohne Datensatz (job_run=%s, job=%s) — übersprungen",
                         job.get("task_id"), job_run_id, job.get("job_id"))
             return
-        # Sicherheitsnetz: script/workflow/http laufen bei ihrem Auslöser (Scheduler, API,
-        # Agent-Tool) und dürfen hier nicht ankommen. Kämen sie doch, liefe der Assistent auf
-        # dem Prompt-Feld eines Jobs, der gar keinen Prompt hat — lieber ein sichtbarer Fehler.
+        # Safety net: script, workflow and http run at their own trigger (scheduler, API, agent
+        # tool) and must not arrive here. If they did, the assistant would run on the prompt
+        # field of a job that has no prompt, so a visible error is preferable.
         if j.kind not in ("", "prompt"):
             jr.status = "error"
             jr.error = f"Job-Art '{j.kind}' gehört nicht in den Worker (Auslöser hat nicht verzweigt)"
@@ -615,22 +615,22 @@ async def _handle_job(job: dict, redis: Redis) -> None:
             await db.commit()
             log.error("Job %s (%s) fiel in den Prompt-Pfad", j.name, j.kind)
             return
-        # Eigentümer des Jobs → sein Token, sein Assistent-Agent, seine MCP-Server, seine Zustellung.
+        # Owner of the job: their token, their assistant agent, their tool servers, their delivery.
         owner_id = j.user_id
         notify_chat = j.notify_chat
         out, status, err = "", "ok", ""
         try:
-            # Token-/Agent-Auflösung im try — sonst bleibt JobRun bei Fehler ewig „running".
+            # Resolve token and agent inside the try, otherwise a JobRun stays on "running".
             agent = await _load_agent(db, j.agent or "assistent", 0, "execute", owner_id)
             tokens, base_urls = await _build_tokens(db, owner_id, agent)
             if not notify_chat and owner_id:
                 owner = await db.get(User, owner_id)
                 notify_chat = owner.telegram_chat_id if owner else None
-            # Platzhalter im Prompt aus den Job-Parametern füllen (`jobs.args` als Objekt) —
-            # `last_run_at` steht hier schon auf JETZT, der vorige Lauf kommt daher aus dem
-            # vorletzten JobRun. Ohne das fragte ein täglicher Digest nach „seit gerade eben".
-            # Nur ERFOLGREICHE Läufe zählen: war der Job gestern kaputt, muss das Zeitfenster
-            # die Lücke mitnehmen, sonst fällt ein Tag stillschweigend unter den Tisch.
+            # Fill placeholders in the prompt from the job parameters (`jobs.args` as an
+            # object). `last_run_at` already stands on NOW here, so the previous run comes from
+            # the one before it. Without that a daily digest would ask for "since a moment ago".
+            # Only SUCCESSFUL runs count: if the job was broken yesterday, the window has to
+            # take the gap along, otherwise a day falls silently under the table.
             from ..services.job_params import rendere
             vorlauf = (await db.execute(
                 select(JobRun.started_at).where(JobRun.job_id == j.id, JobRun.id != jr.id,
@@ -665,21 +665,21 @@ async def _handle_job(job: dict, redis: Redis) -> None:
     log.info("job %s → %s", job["job_id"], status)
 
 
-# Gesprächsverlauf im Chat (TRA-30): Ein Chat war bisher eine Folge voneinander unabhängiger
-# Läufe — der Mensch musste sich schon innerhalb eines Gesprächs wiederholen.
+# Conversation history in chat (TRA-30): a chat used to be a series of independent runs, so a
+# person had to repeat themselves inside one conversation.
 #
-# Das reine Zeitfenster (8 Wortwechsel / 12 h) hat den Bezug allerdings SCHLAGARTIG gekappt:
-# der Mensch bezog sich auf gestern, der Assistent kannte nur die letzte Stunde. Jetzt bleiben
-# die jüngsten Wortwechsel wörtlich, alles Ältere wandert in eine mitwachsende Zusammenfassung
-# (`chat_summaries`) — Vorbild ist die Kontext-Kompaktierung von Hermes.
+# The plain time window (8 exchanges / 12 h) cut the reference off ABRUPTLY: the person
+# referred to yesterday, the assistant knew only the last hour. Now the most recent exchanges
+# stay verbatim and everything older moves into a growing summary (`chat_summaries`), modelled
+# on context compaction.
 CHAT_HISTORY_MAX = 8
 CHAT_HISTORY_HOURS = 12
-# Wie weit zurück überhaupt noch zum selben Gespräch gezählt wird. Großzügiger als das
-# wörtliche Fenster, weil Zusammengefasstes fast nichts kostet.
+# How far back still counts as the same conversation. More generous than the verbatim window,
+# because what is summarised costs almost nothing.
 CHAT_MEMORY_DAYS = 14
-# So viele Wortwechsel sammeln sich über dem wörtlichen Fenster an, bevor zusammengefasst
-# wird. Ohne diesen Puffer liefe ab dem neunten Wortwechsel bei JEDER Nachricht ein
-# Aux-Lauf mit — Wartezeit für den Menschen, ohne dass sich das Gedächtnis nennenswert ändert.
+# This many exchanges pile up above the verbatim window before a summary is made. Without
+# this buffer an auxiliary run would happen on EVERY message from the ninth exchange on:
+# waiting time for the person, without the memory changing noticeably.
 CHAT_SUMMARY_BLOCK = 4
 
 _ZUSAMMENFASSEN = (
@@ -693,7 +693,7 @@ _ZUSAMMENFASSEN = (
 
 
 async def _chat_history(db, t) -> list[dict]:
-    """Der Gesprächsfaden: Zusammenfassung des Älteren + die jüngsten Wortwechsel wörtlich."""
+    """The thread of a conversation: a summary of the older part plus the recent exchanges verbatim."""
     import datetime as _dt
 
     from ..models.assistant import AssistantTask, ChatSummary
@@ -707,7 +707,7 @@ async def _chat_history(db, t) -> list[dict]:
             AssistantTask.status == "done",
             AssistantTask.created_at >= seit,
         ).order_by(AssistantTask.id))).scalars().all()
-    # Fach-Agenten führen eigene Gespräche — der UniWar-Operator hat mit dem Assistenten nichts zu tun.
+    # Specialised agents hold conversations of their own: the UniWar operator has nothing to do with the assistant.
     alle = [r for r in alle if ((r.meta or {}).get("agent") or "assistent") == agent_name]
 
     def wortwechsel(r) -> list[dict]:
@@ -723,9 +723,9 @@ async def _chat_history(db, t) -> list[dict]:
         ChatSummary.owner_user_id == t.owner_user_id,
         ChatSummary.agent == agent_name))).scalar_one_or_none()
 
-    # Noch nicht zusammengefasst = steht wörtlich im Verlauf. Zusammengefasst wird in Blöcken,
-    # nicht bei jedem Nachrücken: sonst liefe zu JEDER Nachricht ein Aux-Lauf, sobald das
-    # Gespräch einmal über acht Wortwechsel hinaus ist.
+    # Not summarised yet means it stands verbatim in the history. Summarising happens in
+    # blocks, not on every message moving up: otherwise an auxiliary run would happen on EVERY
+    # message once the conversation passes eight exchanges.
     offen = [r for r in alle if r.id > (summary.bis_task_id if summary else 0)]
     neu_zu_fassen: list = []
     if len(offen) > CHAT_HISTORY_MAX + CHAT_SUMMARY_BLOCK:
@@ -751,8 +751,8 @@ async def _chat_history(db, t) -> list[dict]:
             summary.text = text
             summary.bis_task_id = neu_zu_fassen[-1].id
             await db.commit()
-        # Kein Ergebnis (Aux nicht erreichbar): die alte Zusammenfassung gilt weiter. Lieber ein
-        # etwas veraltetes Gedächtnis als gar keins — der Faden reißt dadurch nicht.
+        # No result (the auxiliary run is unreachable): the old summary still applies. A
+        # slightly stale memory is better than none, and the thread does not tear.
 
     verlauf: list[dict] = []
     if summary and summary.text.strip():
@@ -763,7 +763,7 @@ async def _chat_history(db, t) -> list[dict]:
     return verlauf
 
 
-# Die Spielregel fürs Melden — der Lauf selbst ist keine Nachricht wert.
+# The rule for reporting: the run itself is not worth a message.
 MELDE_REGEL = (
     "WICHTIG — Melden: Deine Abschluss-Zusammenfassung geht NICHT an deinen Menschen, sie "
     "landet nur still im Posteingang. Soll er etwas erfahren (Frist, Geldbetrag, "
@@ -774,7 +774,7 @@ MELDE_REGEL = (
 
 
 async def _bezug_quelle(db, task_id) -> str:
-    """Zusatzkontext zur zitierten Nachricht: worum ging es im ursprünglichen Eingang?"""
+    """Extra context for the quoted message: what was the original mail about?"""
     if not task_id:
         return ""
     from ..models.assistant import AssistantTask
@@ -789,12 +789,12 @@ async def _bezug_quelle(db, task_id) -> str:
 
 
 async def _handle_assistant_task(job: dict, redis: Redis) -> None:
-    """Freigegebenes Assistent-Item (z. B. Mail) über den vollen Tool-Loop des Owners abarbeiten.
+    """Work through an approved assistant item (a mail, for instance) with the owner's full
 
-    Projektlos wie `_handle_job`: run_agent mit issue.id=None/project.id=None, Owner-Token +
-    Owner-MCP-Gruppe. Der Prompt trägt die GESCHWÄRZTE Zusammenfassung + Mail-Metadaten; den
-    Volltext holt sich der Assistent bei Bedarf selbst über die IMAP-Tools (die Freigabe des
-    Menschen war zugleich die Freigabe für diesen Zugriff).
+    tool loop. Projectless like `_handle_job`: run_agent with issue.id=None/project.id=None,
+    the owner's token and tool group. The prompt carries the REDACTED summary plus the mail
+    metadata; the assistant fetches the full text itself through the IMAP tools when it needs
+    it (the approval by the person was at the same time the approval for that access).
     """
     from ..models.assistant import AssistantTask
     from ..models.notification import Notification
@@ -814,26 +814,26 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         head = (f"Von: {meta.get('from', '')}\nBetreff: {meta.get('subject', '')}\n"
                 f"Kategorie: {t.category} · Priorität: {t.priority}\n\n")
         if t.redaction == "unredacted" and t.raw_body:
-            # Quelle ist per Regel als vertrauenswürdig markiert → Volltext direkt.
+            # The source is marked trustworthy by a rule, so the full text goes in directly.
             content = f"Volltext (für diese Quelle freigegeben):\n{t.raw_body}\n\n"
         elif t.redacted_summary:
             content = (f"Zusammenfassung (geschwärzt):\n{t.redacted_summary}\n\n"
                        f"Der Volltext liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies ihn NUR über "
                        "die imap-Tools, falls du ihn zum Handeln wirklich brauchst.\n\n")
         else:
-            # Passthrough (keine Vorklassifizierung, wie im Vorläufer): der Agent liest die Mail selbst.
+            # Passthrough (no pre-classification, as in the predecessor): the agent reads the mail itself.
             content = (f"Die Mail liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies sie über die "
                        "imap-Tools.\n\n")
         learned = (f"Gelernte Vorgabe deines Menschen für solche Eingänge: {t.action_hint}\n\n"
                    if t.action_hint else "")
         if is_chat:
-            # Direkter Chat: die Nachricht IST der Auftrag. Traccoon steuerst du über die
-            # traccoon_*-Tools (in den Rechten deines Menschen), Persönliches über deine MCP.
+            # Direct chat: the message IS the assignment. The system is operated through the
+            # traccoon_* tools (with the rights of your person), personal things through your own tools.
             prompt = (meta.get("chat_text") or t.title) + (
                 f"\n\n(Kontext: gelernte Vorgabe — {t.action_hint})" if t.action_hint else "")
-            # Antwort auf eine bestimmte Nachricht: sie ist der Bezug, nicht das Gespräch im
-            # Allgemeinen. Ohne das bliebe „mach das" ohne Gegenstand — und der frühere
-            # Eingang (Mail, Freigabe) wäre nur noch als Erinnerungsfetzen vorhanden.
+            # A reply to one particular message: that message is the reference, not the
+            # conversation in general. Without it "do that" would have no object, and the
+            # earlier item (mail, approval) would only exist as a scrap of memory.
             if meta.get("bezug_text"):
                 quelle = await _bezug_quelle(db, meta.get("bezug_task_id"))
                 prompt = (
@@ -844,7 +844,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                     "weiter, statt sie nur zur Kenntnis zu nehmen:\n\n" + prompt
                 )
         elif meta.get("prompt"):
-            # Voller Task-Prompt aus dem Webhook (portiertes Mail-Verarbeitungs-Wissen).
+            # The full task prompt from the webhook (ported knowledge about handling mail).
             prompt = meta["prompt"] + (learned if t.action_hint else "") + "\n\n" + MELDE_REGEL
         else:
             prompt = (
@@ -853,13 +853,13 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 "vermerken, einen Entwurf vorbereiten, einen Termin anlegen, ablegen …) und führe es "
                 "aus. Fasse am Ende knapp zusammen, was du getan hast.\n\n" + MELDE_REGEL
             )
-        # Im Chat trägt der Lauf das bisherige Gespräch mit — sonst müsste der Mensch jeden
-        # Bezug in jeder Nachricht wiederholen.
+        # In chat the run carries the conversation so far, otherwise a person would have to
+        # repeat every reference in every message.
         verlauf = await _chat_history(db, t) if is_chat else []
         out, status, err, run_id = "", "done", "", None
         frage_offen = False
         try:
-            # Bearbeitender Agent aus dem Item (Webhook-Config), Default 'assistent'. Kein Env.
+            # The handling agent comes from the item (webhook config), default 'assistent'. No env.
             agent = await _load_agent(db, meta.get("agent") or "assistent",
                                       0, "execute", owner_id)
             tokens, base_urls = await _build_tokens(db, owner_id, agent)
@@ -874,16 +874,16 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 history_title="# Bisheriges Gespräch (älteste Nachricht zuerst)",
                 assistant_task_id=t.id)
             if result.status == "blocked" and getattr(result, "blocker_kind", None) == "assistant_perm":
-                # Tool-Gate: Item wartet auf Freigabe (Status awaiting + Telegram-Karte gesetzt).
-                # NICHT finalisieren — der Lauf wird nach der Entscheidung neu angestoßen.
+                # Tool gate: the item waits for approval (status awaiting, chat card set).
+                # Do NOT finalise, the run is started again after the decision.
                 log.info("assistant-task %s → wartet auf Freigabe (%s)", tid, result.text)
                 return
             out = result.summary or result.text or ""
             run_id = getattr(result, "run_id", None)
             if result.status == "blocked":
-                # Rückfrage (ask_human) — projektlos gibt es kein Ticket, an dem sie hängen
-                # könnte. Im Gespräch IST die Frage die Antwort: fertig melden, damit sie
-                # den Menschen erreicht und im Verlauf (`_chat_history`) stehen bleibt.
+                # A question (ask_human): without a project there is no ticket it could hang
+                # on. In a conversation the question IS the answer: report done so it reaches
+                # the person and stays in the history (`_chat_history`).
                 frage_offen = True
             elif result.status not in ("done",):
                 status, err = "error", (result.text or result.status)
@@ -896,28 +896,28 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         t.run_id = run_id
         t.finished_at = _now_dt()
         owner = await db.get(User, owner_id) if owner_id else None
-        # Wann sich der Assistent überhaupt meldet. Voreinstellung „needed": nur wenn es
-        # etwas zu wissen gibt — der Lauf selbst ist keine Nachricht wert. Sonst wäre jede
-        # abgelegte Werbemail ein Telegram-Ping.
+        # When the assistant reports at all. The default "needed" means only when there is
+        # something to know, because the run itself is not worth a message. Otherwise every
+        # filed advertising mail would be a chat ping.
         modus = (owner.assistant_notify if owner else "needed") or "needed"
         if is_chat:
-            melden = True          # eine gestellte Frage wird immer beantwortet
+            melden = True          # a question that was asked is always answered
         elif frage_offen:
-            melden = True          # der Assistent fragt zurück — sonst wartet er auf niemanden
+            melden = True          # the assistant asks back, otherwise it waits for nobody
         elif modus == "never":
             melden = False
         elif status == "error":
-            melden = True          # eine Panne muss man wissen
+            melden = True          # a mishap has to be known
         elif modus == "always":
             melden = True
         else:
-            # needed/errors: der Assistent meldet selbst, wenn es etwas zu wissen gibt
-            # (`traccoon_notify_human`) — der Abschlussbericht schweigt dann, sonst käme
+            # needed/errors: the assistant reports on its own when there is something to know
+            # (`traccoon_notify_human`), and the closing report stays silent, otherwise the
             # dieselbe Sache zweimal an.
             melden = False
         if melden:
-            # Wer geantwortet hat, gehört in den Titel — sonst sind Antworten des persönlichen
-            # Assistenten und die eines Fach-Agenten (z. B. uniwar-operator) nicht zu unterscheiden.
+            # Who answered belongs in the title, otherwise answers from the personal assistant
+            # and from a specialised agent (uniwar-operator, say) cannot be told apart.
             label = "🤖 Assistent" if (meta.get("agent") or "assistent") == "assistent" \
                 else f"🛰 {meta['agent']}"
             title = (label if is_chat else f"{label}: {t.title}") + (
@@ -927,13 +927,13 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                                 body=(err if status == "error" else out)[:4000],
                                 chat_id=owner.telegram_chat_id if owner else None))
         elif not t.notified:
-            # Still erledigt: das Ergebnis steht im Posteingang des Assistenten. Als
-            # ungelesene Glocken-Meldung ohne chat_id wäre es Lärm, also gar nichts.
+            # Done quietly: the result stands in the assistant's inbox. As an unread bell
+            # entry without a chat id it would be noise, so nothing at all.
             log.info("assistant-task %s still erledigt (Modus %s)", tid, modus)
         await db.commit()
     log.info("assistant-task %s → %s", tid, status)
-    # Gedächtnis-Pflege anstoßen — nach getaner Arbeit, als eigener Auftrag. `kuratiere`
-    # entscheidet selbst, ob überhaupt etwas fällig ist (höchstens einmal je Tag und Notiz).
+    # Trigger the memory upkeep, after the work is done and as a task of its own. `kuratiere`
+    # decides for itself whether anything is due (at most once per day and note).
     if owner_id:
         from ..core.redis import enqueue_task
         await enqueue_task({"kind": "curator", "task_id": f"curator-{owner_id}-{tid}",
@@ -942,11 +942,11 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
 
 
 async def _handle_curator(job: dict) -> None:
-    """Gedächtnis aufräumen — als eigener Auftrag, nicht im Gespräch.
+    """Tidy the memory, as a task of its own and not inside the conversation.
 
-    Hermes stößt seinen Curator bei Untätigkeit an. Hier ist der Auslöser das Ende eines
-    Assistenten-Laufs; die Arbeit selbst läuft aber getrennt, damit niemand auf sie wartet.
-    Fällt sie aus, ist das folgenlos: das Gedächtnis bleibt dann eben, wie es war.
+    The trigger here is the end of an assistant run, but the work itself runs separately so
+    that nobody waits for it. If it fails that has no consequence: the memory simply stays as
+    it was.
     """
     from .aux import aux_config
     from .curator import kuratiere
@@ -957,10 +957,10 @@ async def _handle_curator(job: dict) -> None:
     if not owner_id:
         return
     async with SessionLocal() as db:
-        # Ohne eigenes Modell für die Gedächtnispflege bleibt sie AUS. Sonst liefe im
-        # Hintergrund unbemerkt das Arbeitsmodell — teuer für Fleißarbeit, und es würde
-        # ungefragt am Vault des Menschen schreiben. Die Kompaktierung darf `auto` nutzen
-        # (dort ist die Alternative ein abgebrochener Lauf), das Aufräumen nicht.
+        # Without a model of its own for memory upkeep it stays OFF. Otherwise the working
+        # model would run unnoticed in the background: expensive for busywork, and it would
+        # write into the person's vault unasked. Compaction may use `auto` (the alternative
+        # there is an aborted run), tidying may not.
         if not await aux_config(db, "curator"):
             return
         try:
@@ -993,12 +993,12 @@ async def heartbeat(redis: Redis) -> None:
 
 
 async def _puls(redis: Redis, task_id: str) -> None:
-    """Lebenszeichen EINES Auftrags, solange er verarbeitet wird.
+    """Sign of life for ONE task while it is being processed.
 
-    Der Runner-Heartbeat sagt nur „ein Worker läuft" — nicht, ob DIESER Auftrag noch
-    jemandem gehört. Der Wächter im Backend wartet an diesem Puls entlang und darf deshalb
-    beliebig lange warten: ein Agentenlauf mit mehreren Review-Runden dauert schon mal
-    Stunden, verschwinden tut er nur, wenn der Puls ausbleibt.
+    The runner heartbeat only says "a worker is running", not whether THIS task still belongs
+    to somebody. The watchdog in the backend waits along this pulse and may therefore wait
+    arbitrarily long: an agent run with several review rounds does take hours, and it only
+    disappears when the pulse stops.
     """
     if not task_id:
         return
@@ -1010,20 +1010,20 @@ async def _puls(redis: Redis, task_id: str) -> None:
         await asyncio.sleep(PULS_TAKT)
 
 
-# ── Wächter über den Event-Loop ──────────────────────────────────────────────
-# Am 2026-07-30 stand der Worker über eine Stunde: kein Heartbeat, elf Aufträge in der
-# Warteschlange, keiner abgeholt — und KEINE Zeile im Log. Von außen sah der Container
-# gesund aus, der Assistent schwieg einfach. Steht der Loop, hilft keine Coroutine mehr
-# beim Melden; deshalb wacht hier ein echter Thread und schreibt die Stacks aller Threads
-# ins Log, sobald der Loop nicht mehr tickt. Damit ist der nächste Fall diagnostizierbar,
-# statt wieder nur Stille zu hinterlassen.
+# ── Watchdog over the event loop ────────────────────────────────────────────
+# On 2026-07-30 the worker stood still for over an hour: no heartbeat, eleven tasks in the
+# queue, none picked up, and NOT a line in the log. From the outside the container looked
+# healthy, the assistant simply said nothing. Once the loop stands still no coroutine can
+# report it any more, so a real thread watches here and writes the stacks of all threads into
+# the log as soon as the loop stops ticking. That makes the next case diagnosable instead of
+# leaving silence behind again.
 _LETZTER_TICK = time.monotonic()
 LOOP_STALL_SEC = float(os.getenv("WORKER_STALL_SEC", "60"))
-# Am 2026-07-31 hat der Wächter seine Aufgabe erfüllt und trotzdem nichts genützt: Stacks im
-# Log, danach acht Stunden Stillstand bei 100 % CPU (Endlosschleife in der Kompaktierung),
-# keine Telegram-Antwort. Melden allein reicht nicht. Steht der Loop so lange, ist er tot —
-# dann lieber aussteigen und den Container (restart: unless-stopped) neu starten lassen.
-# 0 schaltet das Beenden ab.
+# On 2026-07-31 the watchdog did its job and still helped nothing: stacks in the log, then
+# eight hours of standstill at 100 % CPU (an endless loop in the compaction), no answer in
+# chat. Reporting alone is not enough. If the loop stands that long it is dead, and then it
+# is better to leave and let the container (restart: unless-stopped) start again. 0 switches
+# the exit off.
 LOOP_KILL_SEC = float(os.getenv("WORKER_STALL_KILL_SEC", "300"))
 
 
@@ -1033,18 +1033,18 @@ def _loop_tick() -> None:
 
 
 def watchdog_pruefe(gemeldet: bool) -> bool:
-    """Ein Durchgang des Wächters. Rückgabe: ist der Stillstand (weiterhin) gemeldet?"""
+    """One pass of the watchdog. Returns whether the standstill is (still) reported."""
     steht_seit = time.monotonic() - _LETZTER_TICK
     if steht_seit > LOOP_STALL_SEC:
         if not gemeldet:
             log.error("Event-Loop tickt seit %.0fs nicht mehr — Thread-Stacks folgen", steht_seit)
-            faulthandler.dump_traceback()   # nach stderr → Container-Log
+            faulthandler.dump_traceback()   # to stderr, so into the container log
         if LOOP_KILL_SEC and steht_seit > LOOP_KILL_SEC:
             log.error("Event-Loop steht seit %.0fs — Worker beendet sich für den Neustart", steht_seit)
-            faulthandler.dump_traceback()   # letzter Stand vor dem Abgang
+            faulthandler.dump_traceback()   # the last state before leaving
             sys.stderr.flush()
             sys.stdout.flush()
-            os._exit(1)                     # kein sauberer Shutdown möglich: der Loop reagiert ja nicht
+            os._exit(1)                     # no clean shutdown possible: the loop does not react
         return True
     if gemeldet:
         log.warning("Event-Loop läuft wieder (Stillstand %.0fs)", steht_seit)
@@ -1061,25 +1061,25 @@ def start_loop_watchdog() -> None:
     threading.Thread(target=lauf, name="loop-watchdog", daemon=True).start()
 
 
-# ── Aufräumen nach hartem Abgang ─────────────────────────────────────────────
-# Wer beim Absturz lief, läuft nicht mehr — nur wusste das bisher niemand: Läufe standen
-# tagelang auf `running`, Assistent-Aufgaben ebenso. Und weil der Handler nur `approved`
-# annimmt, wurde die aus PROCESSING zurückgeholte Aufgabe beim Neustart stillschweigend
-# verworfen. Aus einem Ausfall wurde so ein unsichtbarer Ausfall.
+# ── Cleaning up after a hard exit ───────────────────────────────────────────
+# Whoever was running during a crash is not running any more, only nobody knew that: runs
+# stood on `running` for days, assistant tasks likewise. And because the handler only accepts
+# `approved`, a task recovered from PROCESSING was silently dropped on restart. An outage
+# thereby became an invisible outage.
 #
-# Annahme: es läuft genau EIN Worker-Container (compose.yml kennt keine Replicas). Die
-# Karenzzeit schützt trotzdem vor dem Grenzfall, dass nebenan gerade ein Lauf angelegt
-# wurde — was der Wächter killt, steht ohnehin seit Minuten.
+# Assumption: exactly ONE worker container runs (the compose file knows no replicas). The
+# grace period still protects the edge case that a run was just being created next door:
+# whatever the watchdog kills has been standing for minutes anyway.
 STALE_GRACE_SEC = 60
 
 
 async def _lauf_abschliessen(task_id: str, grund: str) -> None:
-    """Die Laufzeile eines abgebrochenen Auftrags schließen — mit der echten Ursache.
+    """Close the run row of an aborted task, with the real cause.
 
-    Wer abbricht, weiß warum. Bleibt die Zeile auf „läuft" stehen, findet sie später der
-    Wächter für tote Läufe und muss raten: Lauf 778 wurde am 2026-08-07 als „kein
-    Lebenszeichen … Absturz beim Schreiben" beerdigt, obwohl jemand auf Stopp gedrückt
-    hatte. Eine falsche Ursache ist schlimmer als keine — sie beendet die Suche.
+    Whoever aborts knows why. If the row stays on "running", the watchdog for dead runs finds
+    it later and has to guess: run 778 was buried on 2026-08-07 as "no sign of life … crash
+    while writing", although somebody had pressed stop. A wrong cause is worse than none,
+    because it ends the search.
     """
     if not task_id:
         return
@@ -1094,12 +1094,12 @@ async def _lauf_abschliessen(task_id: str, grund: str) -> None:
             run.status, run.finished_at = "failed", _now_dt()
             run.error = ((run.error or "") + grund).strip()
             await db.commit()
-    except Exception:  # noqa: BLE001 — das Aufräumen darf den Abbruch nicht verschlimmern
+    except Exception:  # noqa: BLE001 — the cleanup must not make the abort worse
         log.exception("Laufzeile nach Abbruch nicht geschlossen (task %s)", task_id)
 
 
 async def raeume_leichen_und_melde() -> None:
-    """Einmal beim Start: verwaiste Läufe/Aufgaben abschließen und den Menschen informieren."""
+    """Once at startup: close orphaned runs and tasks and tell the people about it."""
     from ..models.agents import Run
     from ..models.assistant import AssistantTask
     from ..models.notification import Notification
@@ -1121,9 +1121,9 @@ async def raeume_leichen_und_melde() -> None:
             await db.commit()
             return
 
-        # Empfänger: wem die Aufgaben gehören, plus die Admins (Läufe tragen keinen Owner).
-        # Nur Konten mit Telegram — ein Ausfall, den niemand liest, ist kein Ausfall weniger,
-        # und schlafende Admin-Konten mit ungelesenen Glocken zuzuschütten hilft keinem.
+        # Recipients: whoever owns the tasks, plus the admins (runs carry no owner). Only
+        # accounts with chat: an outage nobody reads is not one outage less, and burying
+        # dormant admin accounts under unread bells helps nobody.
         empfaenger = {t.owner_user_id for t in tasks if t.owner_user_id}
         admins = (await db.execute(select(User).where(
             User.global_role == GlobalRole.admin))).scalars().all()
@@ -1153,10 +1153,10 @@ PULL_INTERVAL = 60
 
 
 async def pull_loop(redis: Redis) -> None:
-    """Hält die main-Checkouts aller Git-Projekte frisch (fetch + fast-forward).
+    """Keeps the main checkouts of all git projects fresh (fetch plus fast forward).
 
-    Einmalig beim Start: Reste aus PROCESSING (Job per blmove gepoppt, aber der Worker
-    ist vor dem ACK abgestürzt) zurück in QUEUE schieben, damit sie nicht verloren gehen.
+    Once at startup: push leftovers out of PROCESSING (a job popped by blmove while the worker
+    crashed before the ACK) back into QUEUE so that they are not lost.
     """
     recovered = 0
     duplicates = 0
@@ -1168,10 +1168,10 @@ async def pull_loop(redis: Redis) -> None:
         try:
             tid = json.loads(raw).get("task_id")
         except Exception:  # noqa: BLE001
-            tid = None  # unparsbar → behandeln wie task_id-los, nie als Duplikat verwerfen
-        # Nur echte, task_id-tragende Run-Jobs deduplizieren. Bei wiederholten Restarts
-        # kann dieselbe task_id mehrfach in PROCESSING liegen → nur DISTINCT zurück in QUEUE,
-        # weitere Vorkommen verwerfen (nicht erneut einreihen). task_id-lose Jobs immer requeuen.
+            tid = None  # unparsable: treat like having no task_id, never drop as a duplicate
+        # Deduplicate only real run jobs that carry a task_id. On repeated restarts the same
+        # task_id can lie in PROCESSING several times, so only DISTINCT goes back into QUEUE
+        # and further occurrences are dropped. Jobs without a task_id are always requeued.
         if tid and tid in seen:
             duplicates += 1
             continue
@@ -1198,7 +1198,7 @@ async def pull_loop(redis: Redis) -> None:
                         remote=project.github_repo, token=token, worktree=None,
                         main=project.merge_target or "main", enabled=True)
                     if not os.path.isdir(ctx.workdir):
-                        continue  # noch nie geklont — der erste Lauf erledigt das
+                        continue  # never cloned: the first run takes care of that
                     note = await gitops.refresh_main(ctx)
                     if note not in ("main aktualisiert", "kein Remote"):
                         log.debug("pull %s: %s", project.key, note)
@@ -1206,19 +1206,19 @@ async def pull_loop(redis: Redis) -> None:
             log.exception("pull-loop-Fehler")
 
 
-# Laufende Läufe je Ticket-Key → für den kill-Kanal (Abbruch aus der UI)
+# Running runs per ticket key, for the kill channel (aborting from the interface)
 RUNNING: dict[str, asyncio.Task] = {}
-# Gesetzt, sobald SIGTERM/SIGINT kam: keine neuen Aufträge mehr annehmen, laufende
-# auslaufen lassen. Ohne das riss jeder Deploy die Agenten mitten im Zug ab — am
-# 2026-08-07 zweimal TRA-31, jeweils nach knapp 40 Zügen Arbeit.
+# Set as soon as SIGTERM/SIGINT arrived: accept no new tasks, let running ones finish.
+# Without this every deploy tore the agents out mid turn: twice on TRA-31 on 2026-08-07,
+# each time after nearly 40 turns of work.
 _beenden = asyncio.Event()
-# Der Spiegel in Redis (ACTIVE) kommt aus core.redis — das Backend prüft denselben Key.
+# The mirror in Redis (ACTIVE) comes from core.redis, and the backend checks the same key.
 
-# In-flight-Dedup: task_ids, die gerade verarbeitet werden. Ein Restart-Sturm kann
-# über die PROCESSING→QUEUE-Recovery denselben Job (gleiche task_id) mehrfach in die
-# Queue schieben; ohne diese Sperre würde der Worker (concurrency>1) ihn parallel
-# fahren → RPM-Burst → HTTP 429. Zugriff nur aus dem einen Event-Loop → kein Lock nötig,
-# solange Prüfen+Hinzufügen ohne await dazwischen (atomar) vor dem Start passiert.
+# In-flight deduplication: task_ids currently being processed. A restart storm can put the
+# same job (same task_id) into the queue several times through the PROCESSING→QUEUE recovery;
+# without this lock the worker (concurrency>1) would run it in parallel, causing a burst of
+# requests per minute and HTTP 429. Access happens only from the one event loop, so no lock is
+# needed as long as check and add happen without an await in between (atomically) before the start.
 _inflight_task_ids: set[str] = set()
 
 
@@ -1237,19 +1237,19 @@ async def kill_listener(redis: Redis) -> None:
 
 
 async def main() -> None:
-    # socket_keepalive + health_check_interval: ohne sie wartet der Client auf einer
-    # halb toten Verbindung endlos auf Antwort — kein Fehler, kein Timeout, kein Log.
-    # Der blockierende Client braucht zusätzlich ein Socket-Limit ÜBER der BLMOVE-Zeit,
-    # sonst deckt das serverseitige Timeout den Fall gar nicht ab.
+    # socket_keepalive plus health_check_interval: without them the client waits forever for
+    # an answer on a half dead connection, with no error, no timeout and no log line. The
+    # blocking client additionally needs a socket limit ABOVE the BLMOVE wait, otherwise the
+    # server side timeout does not cover the case at all.
     redis = Redis.from_url(settings.redis_url, **_REDIS_KW)
     blocking = Redis.from_url(settings.redis_url, socket_timeout=BLOCK_TIMEOUT + 10, **_REDIS_KW)
     killer = Redis.from_url(settings.redis_url, **_REDIS_KW)
     sem = asyncio.Semaphore(MAX_CONCURRENT)
-    # Eintraege aus einem abgestuerzten Vorleben verwerfen — sonst zeigt die
-    # Oberflaeche Laeufe an, die es nicht mehr gibt.
+    # Drop entries from a crashed previous life, otherwise the interface shows runs that do
+    # not exist any more.
     await redis.delete(ACTIVE)
-    # Vor dem ersten Job: was aus dem Vorleben noch auf `running` steht, ist tot. Aufräumen und
-    # melden — sonst bleibt ein Ausfall unsichtbar (der Handler verwirft `running`-Aufgaben still).
+    # Before the first job: whatever still stands on `running` from the previous life is dead.
+    # Clean up and report, otherwise an outage stays invisible (the handler drops `running`
     try:
         await raeume_leichen_und_melde()
     except Exception:  # noqa: BLE001
@@ -1270,13 +1270,13 @@ async def main() -> None:
                 "issue_key": key, "task_id": job.get("task_id", ""), "role": job.get("role", ""),
                 "phase": job.get("phase", ""), "project_id": job.get("project_id"),
                 "started_at": time.time()}))
-            # Puls: solange dieser Auftrag hier verarbeitet wird, weiß das Backend, dass er
-            # lebt — egal ob er zwei Minuten oder fünf Stunden braucht. Der Wächter dort
-            # wartet daran entlang, statt nach fester Zeit aufzugeben.
+            # Pulse: as long as this task is being processed here the backend knows it is
+            # alive, whether it takes two minutes or five hours. The watchdog there waits
+            # along it instead of giving up after a fixed time.
             puls = asyncio.create_task(_puls(redis, job.get("task_id", "")))
             try:
                 await handle(job, redis)
-                # Sauberer Durchlauf → ACK: den exakt gepoppten Eintrag aus PROCESSING tilgen.
+                # Clean pass, so ACK: remove exactly the popped entry from PROCESSING.
                 await redis.lrem(PROCESSING, 1, raw)
             except asyncio.CancelledError:
                 log.info("Lauf %s abgebrochen (kill)", key)
@@ -1284,62 +1284,62 @@ async def main() -> None:
                     {"status": "failed", "success": False,
                      "output": "Abgebrochen (Stopp durch Nutzer)"}), ex=ERGEBNIS_TTL)
                 await redis.publish(f"{PREFIX}results", job["task_id"])
-                # Die Laufzeile hier selbst schließen. Ohne das blieb sie auf „läuft" stehen,
-                # und der Wächter für tote Läufe fand später eine Leiche, deren Ursache er
-                # nicht kannte: Lauf 778 wurde am 2026-08-07 mit „kein Lebenszeichen …
-                # Absturz beim Schreiben" beerdigt, obwohl jemand schlicht auf Stopp gedrückt
-                # hatte. Wer die Ursache kennt, soll sie hinschreiben.
+                # Close the run row here. Without that it stayed on "running", and the
+                # watchdog for dead runs later found a corpse whose cause it did not know:
+                # run 778 was buried on 2026-08-07 as "no sign of life … crash while writing",
+                # although somebody had simply pressed stop. Whoever knows the cause should
+                # write it down.
                 await _lauf_abschliessen(job.get("task_id", ""),
                                          "Abgebrochen: Stopp über den Kill-Kanal (Knopf, "
                                          "Prozess-Schritt oder Wartungs-Update).")
-                # Kein ACK: Eintrag bleibt in PROCESSING → Recovery holt ihn beim naechsten
-                # Worker-Start zurueck in QUEUE (kein Datenverlust bei Abbruch/Absturz).
+                # No ACK: the entry stays in PROCESSING, so recovery brings it back into QUEUE
+                # at the next worker start (no data loss on abort or crash).
             except Exception as exc:  # noqa: BLE001
                 log.exception("handle-Fehler")
-                # WICHTIG: Ergebnis publizieren, sonst hängt der Dispatcher bis zum 1800s-Timeout
-                # und das Ticket bleibt agent_working=True (blockiert einen Runner-Slot).
+                # IMPORTANT: publish the result, otherwise the dispatcher hangs until the
+                # 1800 s timeout and the ticket stays agent_working=True (blocking a slot).
                 tid = job.get("task_id")
                 if tid:
                     await redis.set(f"{PREFIX}result:{tid}", json.dumps(
                         {"status": "failed", "success": False,
                          "output": f"Interner Worker-Fehler: {exc}"[:500]}), ex=ERGEBNIS_TTL)
                     await redis.publish(f"{PREFIX}results", tid)
-                # Kein ACK: Eintrag bleibt in PROCESSING → Recovery holt ihn beim naechsten
-                # Worker-Start zurueck in QUEUE, statt ihn hier stillschweigend zu verlieren.
+                # No ACK: the entry stays in PROCESSING, so recovery brings it back into QUEUE
+                # at the next worker start instead of losing it silently here.
             finally:
                 RUNNING.pop(key, None)
                 puls.cancel()
                 await redis.hdel(ACTIVE, key)
-                # Puls sofort löschen statt auslaufen lassen: das Ergebnis liegt bereits in
-                # Redis, und ein Nachhall würde den Wächter unnötig weiterwarten lassen.
+                # Delete the pulse right away instead of letting it expire: the result is
+                # already in Redis, and an echo would make the watchdog wait for nothing.
                 await redis.delete(puls_key(job.get("task_id", "")))
-                # In-flight-Sperre zuverlässig lösen — auch bei Exception/Abbruch,
-                # sonst bliebe die task_id für immer als „läuft bereits" markiert.
+                # Release the in-flight lock reliably, including on an exception or an abort,
+                # otherwise the task_id would stay marked as "already running" forever.
                 _inflight_task_ids.discard(job.get("task_id"))
 
     while not _beenden.is_set():
         try:
-            # blmove statt brpop: der Job wandert atomar von QUEUE nach PROCESSING statt
-            # nur zu verschwinden — stirbt der Worker vor dem ACK, findet ihn die
-            # Recovery in pull_loop() beim naechsten Start wieder (Reliable Queue).
+            # blmove instead of brpop: the job moves atomically from QUEUE to PROCESSING
+            # instead of merely disappearing. If the worker dies before the ACK, recovery in
+            # pull_loop() finds it again at the next start (a reliable queue).
             raw = await blocking.blmove(QUEUE, PROCESSING, timeout=BLOCK_TIMEOUT,
                                         src="RIGHT", dest="LEFT")
             _loop_tick()
             if not raw:
                 continue
             if _beenden.is_set():
-                # Zwischen blmove und hier kam das Signal: den Auftrag ZURÜCK in die
-                # Warteschlange legen, statt ihn in einem sterbenden Prozess zu starten.
-                # Er soll gleich vom neuen Worker geholt werden, nicht erst von dessen
-                # Recovery aus PROCESSING.
+                # The signal arrived between blmove and here: put the task BACK into the
+                # queue instead of starting it in a dying process. It should be picked up by
+                # the new worker right away, not only by its recovery out of PROCESSING.
+
                 await redis.lrem(PROCESSING, 1, raw)
                 await redis.rpush(QUEUE, raw)
                 break
             job = json.loads(raw)
-            # In-flight-Dedup nach task_id: läuft derselbe Dispatch schon (z.B. durch die
-            # Restart-Recovery doppelt eingereiht), diesen Job aus PROCESSING tilgen und NICHT
-            # verarbeiten. Prüfen+Hinzufügen ohne await dazwischen → atomar im Event-Loop.
-            # task_id-lose Jobs (falls je welche) laufen unverändert, werden nie geblockt.
+            # In-flight deduplication by task_id: if the same dispatch is already running (for
+            # instance queued twice by the restart recovery), remove this job from PROCESSING
+            # and do NOT process it. Check and add without an await in between, so atomic in
+            # the event loop. Jobs without a task_id run unchanged and are never blocked.
             task_id = job.get("task_id")
             if task_id:
                 if task_id in _inflight_task_ids:
@@ -1349,7 +1349,7 @@ async def main() -> None:
                 _inflight_task_ids.add(task_id)
             asyncio.create_task(_run(job, raw))
         except RedisTimeoutError:
-            continue      # Socket-Limit griff vor der Antwort — nichts Besonderes
+            continue      # the socket limit hit before the answer, nothing special
         except Exception:  # noqa: BLE001
             log.exception("loop-Fehler")
             await asyncio.sleep(1)
@@ -1358,23 +1358,23 @@ async def main() -> None:
 
 
 def _signale_annehmen() -> None:
-    """SIGTERM/SIGINT nicht mehr mitten in die Arbeit schlagen lassen.
+    """Stop letting SIGTERM/SIGINT strike in the middle of the work.
 
-    Docker schickt beim Neustart erst SIGTERM und tötet nach der Gnadenfrist. Ohne Handler
-    starb der Prozess sofort — mitsamt jedem Agenten, der gerade dachte. Die Wiedervorlage
-    rettet den Auftrag, nicht das Gespräch: am 2026-08-07 kostete das TRA-31 zweimal knapp
-    40 Züge Arbeit.
+    On a restart Docker first sends SIGTERM and kills after the grace period. Without a
+    handler the process died at once, together with every agent that was thinking. The
+    requeue saves the task, not the conversation: on 2026-08-07 that cost TRA-31 nearly 40
+    turns of work, twice.
     """
     schleife = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
             schleife.add_signal_handler(sig, _beenden.set)
-        except NotImplementedError:      # Windows/Test-Umgebung: dann eben wie bisher
+        except NotImplementedError:      # Windows or a test environment: then as before
             pass
 
 
 async def _auslaufen() -> None:
-    """Laufende Aufträge zu Ende bringen, so weit die Auslaufzeit reicht."""
+    """Finish running tasks, as far as the grace period reaches."""
     laufend = [t for t in RUNNING.values() if not t.done()]
     if not laufend:
         log.info("Worker beendet sich — nichts läuft mehr")
@@ -1383,9 +1383,9 @@ async def _auslaufen() -> None:
              "(neue Aufträge werden nicht mehr angenommen)", len(laufend), DRAIN_SEC)
     _fertig, offen = await asyncio.wait(laufend, timeout=DRAIN_SEC)
     if offen:
-        # Kein Abbruch von Hand: die Aufträge stehen noch in PROCESSING, die Recovery des
-        # nächsten Workers holt sie zurück, und der Nachfolger bekommt aus den Schrittzeilen
-        # seine Übergabe. Docker beendet den Prozess gleich ohnehin.
+        # No abort by hand: the tasks still stand in PROCESSING, the recovery of the next
+        # worker fetches them back, and the successor builds its handover from the step rows.
+        # Docker ends the process in a moment anyway.
         log.warning("Auslaufzeit vorbei, %d Lauf/Läufe unfertig — sie werden neu eingereiht",
                     len(offen))
     else:

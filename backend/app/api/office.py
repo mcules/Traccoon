@@ -1,48 +1,48 @@
-"""Büro (office) — die Lese-API: Sessionlisten, Ereignis-Schnappschuss, Kosten.
+"""Office: the read API. Session lists, event snapshot, cost.
 
-Eine **Session** ist ein Laufbaum, nicht ein Lauf und nicht ein Projekt. Ein einzelner
-`Run` wäre zu klein — Planung, Ausführung, jede Fortsetzung und der Review-Agent sind
-eine zusammenhängende Geschichte, und ein delegierter Unteragent säße in seinem eigenen
-leeren Büro. Ein Projekt wäre zu groß zum Zurückspulen; das Projekt **ist** die Liste der
+A **session** is a run tree, not a run and not a project. A single `Run` would be too
+small: planning, execution, every continuation and the review agent are one connected
+story, and a delegated subagent would sit in an empty office of its own. A project would
+be too large to rewind; the project **is** the list of its sessions.
 Sessions. Zwei Adressformen:
 
-    issue:{issue_id}   jeder Lauf mit dieser issue_id — der Raum eines Tickets
-    run:{root_run_id}  der Baum unter einem Lauf ohne Ticket (Job, Assistent)
+    issue:{issue_id}   every run with this issue id, the room of one ticket
+    run:{root_run_id}  the tree under a run without a ticket (job, assistant)
 
-Der Pfad heißt deshalb `/sessions/{kind}/{ref}` und nicht `/sessions/{sid}`: ein
-literaler `:` in einem Pfadsegment ist zwar erlaubt, wird aber von Proxys, Clients und
-Testwerkzeugen unterschiedlich kodiert. Zwei Segmente sind billiger als diese Diskussion.
+The path is therefore `/sessions/{kind}/{ref}` and not `/sessions/{sid}`: a literal `:` in
+a path segment is allowed but encoded differently by proxies, clients and test tools. Two
+segments are cheaper than that discussion.
 
-**Die Baumschließung kostet zwei Abfragen, keine rekursive CTE.** Die Tiefe ist durch
+**Closing the tree costs two queries, not a recursive CTE.** The depth is bounded, so two
 `worker/runtime.MAX_DELEGATION_DEPTH` gedeckelt, also reichen zwei begrenzte
-`WHERE parent_run_id IN (…)` — und die laufen unter SQLite (Tests) wie unter Postgres
-identisch, während eine `WITH RECURSIVE` beide Dialekte auseinanderziehen würde.
-Für `issue:` entfällt selbst das: ein delegierter Unterlauf erbt die `issue_id` seines
-Elternlaufs (`worker/runtime.py`, `run_agent(issue=…)`), der Index `ix_runs_issue_started`
-deckt den ganzen Baum also in EINER Abfrage ab.
+`WHERE parent_run_id IN (…)` do it, and they behave identically under SQLite (tests) and
+Postgres, while a `WITH RECURSIVE` would pull the two dialects apart.
+For `issue:` even that falls away: a delegated subrun inherits the `issue_id` of its parent
+(`worker/runtime.py`, `run_agent(issue=…)`), so the index `ix_runs_issue_started` covers the
+whole tree in ONE query.
 
-**Altdaten sind kein Sonderfall, sondern der Normalfall am ersten Tag.** Läufe von vor
-der Instrumentierung haben `kind=''`-Zeilen und keine `run_start`/`run_end`-Zeilen. Der
-Lesepfad geht deshalb immer durch `services.office.step_events` (die den Altpfad
-kennt) und ergänzt fehlende Grenzen über `run_boundary_events`. Von Welle B profitiert
-dieselbe Route danach ohne eine Zeile Änderung. **Deployments von vor dem Watcher**
-kommen auf demselben Weg dazu (`deployment_events`, geliehene `seq`) — eine zusätzliche
-Abfrage für die ganze Sitzung, nicht eine je Lauf, und nur wenn die Sitzung Tickets hat.
+**Old data is not a special case, it is the normal case on day one.** Runs from before the
+instrumentation have `kind=''` rows and no `run_start`/`run_end` rows. The read path
+therefore always goes through `services.office.step_events` (which knows the old path) and
+adds missing boundaries through `run_boundary_events`. The same route profits from later
+work without a line of change. **Deployments from before the watcher** join the same way
+(`deployment_events`, borrowed `seq`): one extra query for the whole session, not one per
+run, and only when the session has tickets.
 
-**Und ein Raum, der ALLE Sitzungen zeigt.** `GET /office/events` mischt das Fenster der
-letzten Stunden sitzungsübergreifend in EIN Log. Das geht nur, weil `seq` aus einer
-SERIAL-Spalte kommt und damit über Läufe **und** Projekte hinweg monoton ist; die Fallen
-(Fensterklemmung der nachgereichten Grenzen, `seq`-Kollision an jedem Laufübergang) sind
-dieselben, die `services/office_film.py` für den Tagesfilm schon gelöst hat — die
-Entdopplung ist deshalb nach `services/office.entdoppeln_seq` gewandert und wird von
-beiden gelesen. Die Rechte kommen unverändert aus `_visible_runs`; `tages_ereignisse`
-selbst ist **keine** Vorlage für den Rechteweg, die Funktion kennt gar keine ACL.
+**And a room that shows ALL sessions.** `GET /office/events` mixes the window of the last
+hours across sessions into ONE log. That only works because `seq` comes from a SERIAL
+column and is therefore monotonic across runs **and** projects; the traps (clamping the
+added boundaries to the window, `seq` collisions at every run transition) are the same ones
+`services/office_film.py` already solved for the daily film, which is why deduplication
+moved to `services/office.entdoppeln_seq` and is read by both. Permissions come unchanged
+from `_visible_runs`; `tages_ereignisse` itself is **no** template for the permission path,
+that function knows no ACL at all.
 
-**Unautorisiert ist 404, nie 403.** `build_access` macht das im ganzen Repo so
-(`deps.py:165-166`); eine neue Fläche, die 403 sagt, verriete die Existenz fremder
-Tickets. Bei Ereignis- und Kostenabruf wird die Berechtigung aus der **Session** abgeleitet
-(Projekt/Eigentümer des Wurzellaufs), nicht aus dem Pfad — der Pfad trägt keine Projekt-ID,
-und ihn eine tragen zu lassen hieße, dem Client die Autorisierung zu überlassen.
+**Unauthorised is 404, never 403.** `build_access` does it that way across the repository
+(`deps.py:165-166`); a new surface answering 403 would betray the existence of other
+people's tickets. For events and cost the permission is derived from the **session** (the
+project or owner of the root run), not from the path: the path carries no project id, and
+letting it carry one would hand authorisation to the client.
 """
 from __future__ import annotations
 
@@ -68,9 +68,9 @@ from ..services.office import (
     ts_text,
 )
 from .deps import Access, build_access, get_current_user, get_project_access
-# Die erlaubte Projektmenge kommt aus DERSELBEN Funktion wie beim Live-Socket, und die
-# ist ihrerseits `api/projects.py:74-91` (zwei Queries + `build_access_bulk`, keine Runde
-# je Projekt). Es soll genau eine Definition von „darf sehen" geben, nicht drei, die
+# The set of allowed projects comes from THE SAME function as the live socket, and that one
+# in turn is `api/projects.py:74-91` (two queries plus `build_access_bulk`, no round per
+# project). There should be exactly one definition of "may see", not three that drift.
 # irgendwann auseinanderlaufen.
 from .office_ws import compute_acl
 
@@ -78,19 +78,19 @@ router = APIRouter(tags=["office"])
 
 SESSION_LIMIT_DEFAULT = 50
 SESSION_LIMIT_MAX = 200
-SINCE_HOURS_DEFAULT = 24 * 7      # eine Woche — das Büro ist Kurzzeitgedächtnis, kein Archiv
+SINCE_HOURS_DEFAULT = 24 * 7      # one week: the office is short term memory, not an archive
 SINCE_HOURS_MAX = 24 * 365
 
-# Wie viele Läufe für eine Sessionliste betrachtet werden. Die Grenze gilt für Sessions,
-# gefiltert wird aber über Läufe — ein Ticket bringt es leicht auf ein Dutzend (Planung,
-# Ausführung, Fortsetzungen, Review, Unteragenten). Der Faktor ist großzügig genug, dass
-# `limit` Sessions praktisch immer voll werden, und deckelt die Abfrage trotzdem hart.
+# How many runs are considered for a session list. The limit applies to sessions, but the
+# filtering runs over runs, and one ticket easily reaches a dozen (planning, execution,
+# continuations, review, subagents). The factor is generous enough that `limit` sessions
+# practically always fill up, and still caps the query hard.
 RUN_SCAN_FACTOR = 12
 RUN_SCAN_MAX = 3000
 
-# Ebenen der Baumschließung. Spiegelt `worker/runtime.MAX_DELEGATION_DEPTH = 2`; bewusst
-# als eigene Konstante, statt `worker.runtime` zu importieren — das zöge die halbe
-# Agentenlaufzeit (Provider-Adapter, MCP-Client) in einen Lese-Endpoint.
+# Levels of tree closure. Mirrors `worker/runtime.MAX_DELEGATION_DEPTH = 2`, deliberately as
+# a constant of its own instead of importing `worker.runtime`, which would drag half the
+# agent runtime (provider adapters, tool client) into a read endpoint.
 TREE_LEVELS = 2
 
 SESSION_STATUS = ("all", "live", "recent")
@@ -100,25 +100,24 @@ SESSION_STATUS = ("all", "live", "recent")
 TOOL_LIMIT_DEFAULT = 8
 TOOL_LIMIT_MAX = 50
 
-# **Drei Balken statt einer Erfolgsquote.** `office/engine.ts::verdictOf` behandelt
-# `planned` schon heute als „ok" — ein Planungslauf, der einen Plan abgeliefert hat, IST
-# fertig, er heißt nur nicht `success`. Eine Quote `success/runs` wiese den
-# `project_manager` mit 0 % aus (0 success, 7 planned) und den `architect` mit 6 %
-# (3 success, 36 planned); beides widerspricht dem eigenen Code des Hauses. Die drei
-# Mengen sind disjunkt und werden nie zu einer Zahl verrechnet.
+# **Three bars instead of one success rate.** `office/engine.ts::verdictOf` already treats
+# `planned` as ok: a planning run that delivered a plan IS finished, it is just not called
+# `success`. A rate of `success/runs` would show the `project_manager` at 0 % (0 success,
+# 7 planned) and the `architect` at 6 % (3 success, 36 planned); both contradict the house's
+# own code. The three sets are disjoint and are never combined into one number.
 DELIVERED_STATUS = ("success", "planned")
-WAITING_STATUS = ("blocked",)                        # wartet auf einen Menschen
+WAITING_STATUS = ("blocked",)                        # waiting for a person
 ABORTED_STATUS = ("failed", "loop_exhausted")
 
-# Die Eimer, die die Ansicht zeigt: <1 min · <5 min · <20 min · <80 min · darüber.
+# The buckets the view shows: <1 min · <5 min · <20 min · <80 min · above that.
 DURATION_DISPLAY_EDGES_MS = (60_000, 300_000, 1_200_000, 4_800_000)
 
-# Die feine Leiter, aus der p50/p90 abgelesen werden. Sie enthält jede Anzeige-Grenze,
-# damit BEIDE Ausgaben aus derselben einen Abfrage fallen (die Anzeige-Eimer sind Summen
-# von Leiter-Eimern). Warum überhaupt Eimer: `percentile_cont` gibt es nur unter Postgres,
-# die Tests laufen auf SQLite — dieselbe Rücksicht, aus der `office.py` schon auf
-# `WITH RECURSIVE` verzichtet. Die Leiter ist unten fein (dort liegen 516 von 632 Läufen)
-# und oben grob (ein Lauf dauerte 36,5 Stunden).
+# The fine ladder p50 and p90 are read from. It contains every display boundary so that BOTH
+# outputs fall out of the same single query (the display buckets are sums of ladder buckets).
+# Why buckets at all: `percentile_cont` exists only in Postgres and the tests run on SQLite,
+# the same consideration that already made `office.py` do without `WITH RECURSIVE`. The
+# ladder is fine at the bottom (516 of 632 runs are there) and coarse at the top (one run
+# took 36.5 hours).
 DURATION_LADDER_MS = (
     1_000, 2_000, 3_000, 5_000, 7_500, 10_000, 15_000, 20_000, 30_000, 45_000, 60_000,
     90_000, 120_000, 180_000, 240_000, 300_000,
@@ -135,22 +134,22 @@ def _clamp(value: int, low: int, high: int) -> int:
 
 
 def _aware(value: dt.datetime | None) -> dt.datetime | None:
-    """Naive Zeitstempel als UTC lesen. SQLite liefert sie ohne Zone; ohne diese Zeile
-    verschöbe sich dieselbe Zeile je nach Datenbank um Stunden."""
+    """Read naive timestamps as UTC. SQLite delivers them without a zone; without this line
+    the same row would shift by hours depending on the database."""
     if value is None:
         return None
     return value.replace(tzinfo=dt.timezone.utc) if value.tzinfo is None else value
 
 
 def _iso(value: dt.datetime | None) -> str | None:
-    """ISO-8601 mit expliziter Zone. Ein nacktes `datetime` würde als Ortszeit gelesen —
-    die Zeitleiste stünde dann je nach Browser um Stunden daneben."""
+    """ISO-8601 with an explicit zone. A bare `datetime` would be read as local time, and the
+    timeline would stand hours off depending on the browser."""
     aware = _aware(value)
     return None if aware is None else aware.astimezone(dt.timezone.utc).isoformat()
 
 
 def _seq(step_id: int, slot: int) -> int:
-    """`seq` einer Zeile — dieselbe Rechnung wie in `services/office`."""
+    """`seq` of a row, the same arithmetic as in `services/office`."""
     return int(step_id) * SEQ_SLOTS + slot
 
 
@@ -159,19 +158,18 @@ def _sid(kind: str, ref: int) -> str:
 
 
 def _not_found() -> HTTPException:
-    """Eine einzige Formulierung für „gibt es nicht" und „gehört dir nicht". Zwei
-    unterscheidbare Antworten wären ein Verzeichnis fremder Tickets."""
+    """One single wording for "does not exist" and "is not yours". Two distinguishable
+    answers would be a directory of other people's tickets."""
     return HTTPException(404, "Session nicht gefunden")
 
 
 # ── Autorisierung ───────────────────────────────────────────────────────────
 
 async def _visible_runs(db: AsyncSession, user: User):
-    """SQL-Bedingung: welche Läufe darf dieser Nutzer überhaupt sehen?
+    """SQL condition: which runs may this user see at all?
 
-    Admins ohne Filter. Sonst: Läufe der erlaubten Projekte plus die **eigenen**
-    projektlosen Läufe (Assistent, Job) — die haben keinen Projektraum, über den sie
-    sonst sichtbar würden.
+    Admins without a filter. Otherwise: runs of the allowed projects plus the user's **own**
+    projectless runs (assistant, job), which have no project room to become visible through.
     """
     if user.global_role == GlobalRole.admin:
         return true()
@@ -184,11 +182,11 @@ async def _visible_runs(db: AsyncSession, user: User):
 
 async def _authorize(db: AsyncSession, user: User, *, project_id: int | None,
                      owner_id: int | None) -> None:
-    """Darf der Nutzer diese Session lesen? Sonst 404.
+    """May the user read this session? Otherwise 404.
 
-    Die Werte stammen vom Wurzellauf bzw. vom Ticket, nicht aus dem Pfad. Ein projektloser
-    Lauf gehört seinem Eigentümer (und dem Admin); ohne beides ist er für niemanden außer
-    dem Admin lesbar — ein herrenloser Lauf ist kein öffentlicher Lauf.
+    The values come from the root run or the ticket, not from the path. A projectless run
+    belongs to its owner (and to an admin); without either it is readable by nobody but an
+    admin, because an ownerless run is not a public run.
     """
     if project_id is not None:
         project = await db.get(Project, project_id)
@@ -210,27 +208,27 @@ async def _authorize(db: AsyncSession, user: User, *, project_id: int | None,
 # ── Laufmenge einer Session ─────────────────────────────────────────────────
 
 async def _load_session_runs(db: AsyncSession, kind: str, ref: int) -> tuple[list[Run], Issue | None]:
-    """Alle Läufe einer Session, aufsteigend. Wirft 404, wenn die Adresse ins Leere zeigt.
+    """Every run of a session, ascending. Raises 404 when the address points nowhere.
 
-    `issue:` braucht keine Baumschließung — Unterläufe erben die `issue_id`, eine Abfrage
-    über `ix_runs_issue_started` hat den ganzen Baum. `run:` schließt in zwei Runden über
-    `parent_run_id`; tiefer kann der Baum nicht werden (`TREE_LEVELS`).
+    `issue:` needs no tree closure: subruns inherit the `issue_id`, so one query over
+    `ix_runs_issue_started` has the whole tree. `run:` closes in two rounds over
+    `parent_run_id`; the tree cannot get deeper (`TREE_LEVELS`).
     """
     if kind == "issue":
         issue = await db.get(Issue, ref)
         runs = (await db.execute(
             select(Run).where(Run.issue_id == ref).order_by(Run.id)
         )).scalars().all()
-        # Ticket weg UND kein Lauf mehr: da war nie etwas oder es ist restlos gelöscht.
-        # Ein noch vorhandenes Ticket ohne Läufe ist dagegen eine *aufgeräumte* Session
-        # und bekommt eine ehrliche 200 mit `purged: true`.
+        # Ticket gone AND no run left: there never was anything, or it is deleted for good.
+        # A ticket that still exists without runs is a *tidied* session instead and gets an
+        # honest 200 with `purged: true`.
         if issue is None and not runs:
             raise _not_found()
         return list(runs), issue
 
     root = await db.get(Run, ref)
-    # Nur echte Wurzeln sind adressierbar: hätte ein Kindlauf seine eigene `run:`-Adresse,
-    # gäbe es zwei Räume für denselben Baum und das Zurückspulen zeigte je nach Link
+    # Only real roots are addressable: if a child run had its own `run:` address there would
+    # be two rooms for the same tree, and rewinding would show something different per link.
     # etwas anderes.
     if root is None or root.issue_id is not None or root.parent_run_id is not None:
         raise _not_found()
@@ -249,22 +247,22 @@ async def _load_session_runs(db: AsyncSession, kind: str, ref: int) -> tuple[lis
 
 
 def _root_run(runs: list[Run]) -> Run | None:
-    """Der Lauf, an dem die Session hängt: die Wurzel, sonst der älteste."""
+    """The run the session hangs on: the root, otherwise the oldest."""
     for run in runs:
         if run.parent_run_id is None:
             return run
     return runs[0] if runs else None
 
 
-# ── Aggregate (je EINE Abfrage, nie eine je Lauf) ───────────────────────────
+# ── Aggregates (ONE query each, never one per run) ──────────────────────────
 
 async def _step_bounds(db: AsyncSession, run_ids: list[int]) -> dict[int, dict]:
-    """Je Lauf: erste/letzte Schritt-ID, Anzahl und ob eigene Grenzzeilen da sind.
+    """Per run: first and last step id, the count, and whether boundary rows of its own exist.
 
-    Die beiden `run_start`/`run_end`-Zähler entscheiden, ob `run_boundary_events` die
-    Grenzen synthetisieren muss. Sie hier mitzurechnen kostet nichts und erspart eine
-    zweite Runde — und vor allem: es rät nicht anhand der (womöglich gekappten) geladenen
-    Schritte, ob ein `run_start` existiert.
+    The two `run_start`/`run_end` counters decide whether `run_boundary_events` has to
+    synthesise the boundaries. Counting them here costs nothing and saves a second round,
+    and above all it does not guess from the (possibly truncated) loaded steps whether a
+    `run_start` exists.
     """
     if not run_ids:
         return {}
@@ -283,7 +281,7 @@ async def _step_bounds(db: AsyncSession, run_ids: list[int]) -> dict[int, dict]:
 
 
 async def _project_keys(db: AsyncSession, project_ids) -> dict[int, str]:
-    """`project_id → key` in EINER Abfrage. `None` und 0 fallen unterwegs weg."""
+    """`project_id → key` in ONE query. `None` and 0 drop out along the way."""
     ids = {int(p) for p in project_ids if p}
     if not ids:
         return {}
@@ -292,12 +290,12 @@ async def _project_keys(db: AsyncSession, project_ids) -> dict[int, str]:
 
 
 def _entry_priced(priced: bool | None, provider: str, model: str, prices: PriceTable) -> bool:
-    """Ist dieser Kostenposten bepreist?
+    """Is this cost entry priced?
 
-    Wo `priced` steht, gilt es — auch wenn der Katalogeintrag inzwischen gelöscht wurde.
-    `api/cost.py:148` hält ausdrücklich fest, dass ein gelöschter Katalogeintrag alte
-    Läufe nicht verändern darf. Nur die dreiwertige NULL (Altzeile, die die Unterscheidung
-    nie kannte) wird zur Lesezeit gegen den Katalog aufgelöst.
+    Where `priced` says so, it holds, even when the catalog entry has been deleted since.
+    `api/cost.py:148` states explicitly that a deleted catalog entry must not change old
+    runs. Only the three valued NULL (an old row that never knew the distinction) is
+    resolved against the catalog while reading.
     """
     if priced is not None:
         return bool(priced)
@@ -306,11 +304,10 @@ def _entry_priced(priced: bool | None, provider: str, model: str, prices: PriceT
 
 async def _billed_by_run(db: AsyncSession, run_ids: list[int],
                          prices: PriceTable) -> dict[int, dict]:
-    """Abgerechnete Kosten je Lauf aus `cost_entries` — der autoritative Betrag.
+    """Billed cost per run from `cost_entries`, the authoritative amount.
 
-    Gruppiert bis auf (Provider, Modell, priced) herunter, weil `unpriced_models`
-    benennen soll, WELCHES Modell keinen Preis hatte; eine reine Summe je Lauf könnte das
-    nicht mehr sagen.
+    Grouped down to (provider, model, priced), because `unpriced_models` should name WHICH
+    model had no price; a plain sum per run could no longer say that.
     """
     if not run_ids:
         return {}
@@ -340,12 +337,11 @@ async def _billed_by_run(db: AsyncSession, run_ids: list[int],
 
 
 async def _step_tokens(db: AsyncSession, run_ids: list[int]) -> dict[tuple[int, str, str], dict]:
-    """Tokens je (Lauf, Provider, Modell) **des Schritts**.
+    """Tokens per (run, provider, model) **of the step**.
 
-    Der Schritt weiß, wer tatsächlich geantwortet hat; `run.model` weiß nur, wer gefragt
-    wurde. Ist der Lauf mitten drin auf den Fallback-Provider gewechselt, ist die
-    Gruppierung nach `run.model` schlicht falsch — sie schriebe die Tokens des einen
-    Modells dem anderen zu.
+    The step knows who actually answered; `run.model` only knows who was asked. If the run
+    switched to the fallback provider halfway through, grouping by `run.model` is simply
+    wrong: it would attribute the tokens of one model to the other.
     """
     if not run_ids:
         return {}
@@ -360,7 +356,7 @@ async def _step_tokens(db: AsyncSession, run_ids: list[int]) -> dict[tuple[int, 
     for run_id, provider, model, in_tok, out_tok, cache_read in rows:
         tokens = (int(in_tok or 0), int(out_tok or 0), int(cache_read or 0))
         if not any(tokens):
-            continue    # Zeilen ohne Tokens (Werkzeuge, Systemtext) sind keine Modellzüge
+            continue    # rows without tokens (tools, system text) are not model turns
         key = (run_id, provider or "", model or "")
         agg = out.setdefault(key, {"in_tokens": 0, "out_tokens": 0, "cache_read_tokens": 0})
         agg["in_tokens"] += tokens[0]
@@ -370,12 +366,12 @@ async def _step_tokens(db: AsyncSession, run_ids: list[int]) -> dict[tuple[int, 
 
 
 def _token_groups(run: Run, by_key: dict[tuple[int, str, str], dict]) -> list[tuple[str, str, dict]]:
-    """Die Modellzüge eines Laufs — mit Rückfall auf die `runs`-Zeile.
+    """The model turns of a run, with a fallback to the `runs` row.
 
-    Ein Lauf von vor der Instrumentierung hat keine Tokens an den Schritten, wohl aber
-    seine Summen am Lauf. Ohne diesen Rückfall wäre die Schätzung am ersten Tag überall 0
-    und die ganze Kostenansicht nutzlos. Der Rückfall kennt naturgemäß nur EIN Modell —
-    ein Fallback-Wechsel bleibt in Altdaten unsichtbar, weil ihn damals niemand notiert hat.
+    A run from before the instrumentation has no tokens on its steps, but it does have its
+    totals on the run. Without this fallback the estimate would be 0 everywhere on day one
+    and the whole cost view useless. The fallback naturally knows only ONE model: a switch
+    to the fallback provider stays invisible in old data, because nobody recorded it then.
     """
     groups = [(provider, model, agg) for (rid, provider, model), agg in by_key.items()
               if rid == run.id]
@@ -391,18 +387,17 @@ def _token_groups(run: Run, by_key: dict[tuple[int, str, str], dict]) -> list[tu
 # ── Sessionliste ────────────────────────────────────────────────────────────
 
 async def _resolve_sids(db: AsyncSession, runs: list[Run]) -> tuple[dict[int, str], list[Run]]:
-    """run_id → `sid`, und die dafür nachgeladenen Elternläufe.
+    """run_id → `sid`, and the parent runs loaded for it.
 
-    Ein Kindlauf ohne Ticket muss beim WURZELLAUF landen, sonst bekäme ein delegierter
-    Unteragent in der Liste ein eigenes Büro — und dieses Büro wäre über
-    `/sessions/run/{id}` nicht einmal abrufbar (nur Wurzeln sind adressierbar).
-    `session_id()` springt nur einen Schritt nach oben, hier wird die Kette zu Ende
-    gegangen: fehlende Eltern werden je Runde in EINER Abfrage über den Primärschlüssel
-    nachgeladen, höchstens `TREE_LEVELS` Runden.
+    A child run without a ticket has to end up at the ROOT run, otherwise a delegated
+    subagent would get an office of its own in the list, and that office would not even be
+    reachable through `/sessions/run/{id}` (only roots are addressable). `session_id()`
+    jumps one step upwards, here the chain is walked to its end: missing parents are loaded
+    per round in ONE query over the primary key, at most `TREE_LEVELS` rounds.
 
-    Die nachgeladenen Eltern kommen als Mitglieder in die Session (sonst stimmten
-    `runs`, `started_at` und die Kosten nicht) — auch wenn sie außerhalb des Zeitfensters
-    oder anders archiviert sind. Der Baum ist die Einheit, nicht das Fenster.
+    The parents loaded this way join the session as members (otherwise `runs`, `started_at`
+    and the cost would be wrong), even when they lie outside the time window or are archived
+    differently. The tree is the unit, not the window.
     """
     by_id = {r.id: r for r in runs}
     extra: list[Run] = []
@@ -419,22 +414,22 @@ async def _resolve_sids(db: AsyncSession, runs: list[Run]) -> tuple[dict[int, st
     sids: dict[int, str] = {}
     for run in by_id.values():
         node = run
-        # Begrenzt, damit ein (durch Datenschaden) zyklischer parent_run_id nicht hängt.
+        # Bounded, so that a cyclic parent_run_id (from damaged data) cannot hang.
         for _ in range(TREE_LEVELS + 1):
             parent = by_id.get(node.parent_run_id) if node.parent_run_id else None
             if parent is None:
                 break
             node = parent
-        # `session_id` bleibt die eine Wahrheit über die Adressform — inklusive ihres
-        # eigenen Rückfalls, wenn der Elternlauf gar nicht mehr existiert.
+        # `session_id` stays the one truth about the address form, including its own
+        # fallback when the parent run does not exist any more.
         sids[run.id] = session_id(node)
     return sids, extra
 
 
 async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours: int,
                             status: str, archived: bool) -> dict:
-    """Der gemeinsame Rumpf beider Sessionlisten — Projekt-Reiter und globale Seite zeigen
-    dieselbe Form, weil sie durch dieselbe Funktion gehen."""
+    """The shared body of both session lists: the project tab and the global page show the
+    same shape, because they go through the same function."""
     limit = _clamp(limit, 1, SESSION_LIMIT_MAX)
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     if status not in SESSION_STATUS:
@@ -458,8 +453,8 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
     runs.extend(extra)
     run_ids = [r.id for r in runs]
 
-    # Projekt-Schlüssel in EINER Abfrage. Der Lauf trägt sein Projekt seit Welle A selbst;
-    # bei Altzeilen ohne `project_id` steht es noch am Ticket.
+    # Project keys in ONE query. The run carries its project itself now; on old rows without
+    # a `project_id` it still sits on the ticket.
     project_ids = {r.project_id for r in runs if r.project_id} | {
         pid for _k, _s, pid in issue_meta.values() if pid}
     project_keys: dict[int, str] = {}
@@ -482,8 +477,8 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
         root = _root_run(members)
         key, summary, issue_pid = issue_meta.get(root.id, ("", "", None))
         if not key:
-            # Der Wurzellauf kann außerhalb des Fensters nachgeladen worden sein — dann
-            # steht die Ticket-Beschriftung an einem der Mitglieder.
+            # The root run may have been loaded from outside the window, in which case the
+            # ticket label sits on one of the members.
             for member in members:
                 key, summary, issue_pid = issue_meta.get(member.id, ("", "", None))
                 if key:
@@ -494,9 +489,9 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
         ends = [_aware(r.finished_at) for r in members if r.finished_at]
         last_event = max([*starts, *ends], default=None)
         running = any((r.status or "") == "running" for r in members)
-        # Der DB-Status allein lügt nach einem Worker-Absturz: `status='running'` bleibt
-        # dann für immer stehen. `api/runs.py:72` musste deshalb den Redis-Hash lesen.
-        # Hier tut es das 90-s-Fenster — es kostet keine Runde und behauptet nichts.
+        # The database status alone lies after a worker crash: `status='running'` then stays
+        # forever. `api/runs.py:72` had to read the Redis hash for that reason. Here the 90 s
+        # window does the job: it costs no round and claims nothing.
         live = running and last_event is not None and (
             (now - last_event).total_seconds() * 1000 <= LIVE_WINDOW_MS)
         if status == "live" and not live:
@@ -516,12 +511,12 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
             "agents": len({r.agent or "" for r in members}),
             "events": events,
             "archived": all(r.archived for r in members),
-            # Kein einziger Schritt mehr: entweder von der Aufbewahrung gelöscht oder nie
-            # geschrieben. Beides heißt für den Raum dasselbe — es gibt nichts abzuspielen.
+            # Not a single step left: either removed by the retention or never written. For
+            # the room both mean the same, there is nothing to replay.
             "purged": events == 0,
             "status": "running" if running else (max(members, key=lambda r: r.id).status or ""),
-            # Tokens vom Lauf (die stehen dort immer), gecachte Tokens nur aus den
-            # Kostenposten — der Lauf führt sie nicht getrennt.
+            # Tokens from the run (they are always there), cached tokens only from the cost
+            # entries, because the run does not track them separately.
             "in_tokens": sum(int(r.input_tokens or 0) for r in members),
             "out_tokens": sum(int(r.output_tokens or 0) for r in members),
             "cache_read_tokens": sum(c["cache_read_tokens"] for c in cost),
@@ -541,14 +536,14 @@ async def project_sessions(
     status: str = "all",
     archived: bool = False,
 ):
-    """Die Sessions eines Projekts — der Inhalt des Projekt-Reiters „🏢 Büro".
+    """The sessions of one project, the content of the project tab "🏢 office".
 
-    Fremdes Projekt = 404, das erledigt `get_project_access`.
+    A foreign project is 404, which `get_project_access` takes care of.
     """
     pid = access.project.id
-    # Bevorzugt über `Run.project_id` (überlebt die Ticket-Löschung und trägt auch
-    # projektlose… nein: gerade die projektgebundenen Job-Läufe ohne Ticket). Alt-Zeilen
-    # ohne `project_id` weiter über das Ticket zählen — genau wie `api/cost.py:28-31`.
+    # Preferably over `Run.project_id` (it survives the deletion of a ticket and also carries
+    # the project bound job runs without a ticket). Old rows without a `project_id` are still
+    # counted through the ticket, exactly as `api/cost.py:28-31` does.
     where = or_(Run.project_id == pid,
                 and_(Run.project_id.is_(None), Issue.project_id == pid))
     return await _sessions_payload(db, where=where, limit=limit, since_hours=since_hours,
@@ -564,11 +559,11 @@ async def global_sessions(
     status: str = "all",
     project_id: int | None = None,
 ):
-    """Alle Sessions, die dieser Nutzer sehen darf — die Vollbildseite `/buero`.
+    """Every session this user may see, the full page `/buero`.
 
-    `project_id` **verengt** die ohnehin erlaubte Menge und autorisiert nie: ein fremdes
-    Projekt einzutragen liefert eine leere Liste, keinen Zugang. Der Filter steht deshalb
-    als zusätzliches UND neben der Sichtbarkeitsbedingung, nicht an ihrer Stelle.
+    `project_id` **narrows** the already allowed set and never authorises: entering a foreign
+    project yields an empty list, not access. That is why the filter stands as an additional
+    AND next to the visibility condition, not in its place.
     """
     where = await _visible_runs(db, user)
     if project_id is not None:
@@ -581,19 +576,19 @@ async def global_sessions(
 
 def _agent_row(run: Run, billed: dict | None, *,
                issue_key: str = "", project_key: str = "") -> dict:
-    """Eine Zeile des `agents[]`-Rosters — direkt aus `runs`, nicht aus den Ereignissen.
+    """One row of the `agents[]` roster, straight from `runs` instead of from the events.
 
-    Der Roster verdient seinen Platz genau dann, wenn gekappt wird: abgeschnitten wird vom
-    ÄLTESTEN Ende (der Raum soll die Gegenwart zeigen), und damit fielen zuerst die
-    `run_start`-Ereignisse weg — das Büro bliebe leer, obwohl alle Agenten da sind.
+    The roster earns its place exactly when truncation happens: it cuts from the OLDEST end
+    (the room should show the present), so the `run_start` events would go first, and the
+    office would stay empty although every agent is there.
 
-    **`issue_key`/`project_key` gehören dazu, seit ein Raum mehrere Sitzungen zeigt.** Die
-    Sitzungsreiter der Kopfzeile gruppieren den Roster danach (`TopBar.sitzungsSchluessel`:
-    im Projekt nach Ticket, global nach Projekt) und dimmen, was nicht dazugehört. Ohne
-    diese beiden Felder fiele **jede** Figur in „(ohne Projekt)" — die Reiterzeile bliebe
-    einelementig und damit unsichtbar, und genau so sah sie bisher aus. Leerer Text heißt
-    „nicht bekannt"; der Aufrufer reicht nach, was er ohnehin geladen hat, statt dass hier
-    eine Runde je Lauf entstünde.
+    **`issue_key`/`project_key` belong here since a room shows several sessions.** The
+    session tabs in the header group the roster by them (`TopBar.sitzungsSchluessel`: by
+    ticket inside a project, by project globally) and dim what does not belong. Without these
+    two fields **every** character would fall into "(no project)", the tab row would stay
+    single and therefore invisible, which is exactly how it used to look. Empty text means
+    "not known"; the caller fills in what it has loaded anyway, instead of creating a round
+    per run here.
     """
     tokens = billed or {}
     return {
@@ -610,24 +605,24 @@ def _agent_row(run: Run, billed: dict | None, *,
         "out_tokens": tokens.get("out_tokens", int(run.output_tokens or 0)),
         "cache_read_tokens": tokens.get("cache_read_tokens", 0),
         "cost_usd": round(tokens.get("cost_usd", float(run.cost_usd or 0.0)), 6),
-        # Dreiwertig: ohne Kostenposten ist nichts abgerechnet — das ist nicht „unbepreist",
-        # sondern „noch nicht bekannt". Ein `False` hier hätte jeden laufenden Lauf als
-        # Preislücke gemeldet.
+        # Three valued: without cost entries nothing is billed, and that is not "unpriced"
+        # but "not known yet". A `False` here would have reported every running run as a gap
+        # in the price catalog.
         "cost_priced": None if billed is None else billed["priced"],
     }
 
 
 async def _legacy_deploy_events(db: AsyncSession, *, issue_ids: set[int], steps: list[RunStep],
                                 ctxs: dict[int, RunCtx], bounds: dict[int, dict]) -> list[dict]:
-    """Bestands-Deployments mit geliehener `seq` — **eine** Abfrage, nicht eine je Lauf.
+    """Legacy deployments with a borrowed `seq`, in **one** query instead of one per run.
 
-    Seit dem Watcher (`services/deploy_watch.py`) schreibt jedes Deployment seine eigene
-    Zeile. Davor tat es das nicht: 130 der 186 Bestandszeilen haben gar keine, und die 56
-    mit einer sind ausgerechnet die abgelehnten. Ohne diesen Pfad fehlten sie im Replay
-    genau dort, wo etwas passiert ist.
+    Since the watcher (`services/deploy_watch.py`) every deployment writes its own row.
+    Before that it did not: 130 of the 186 legacy rows have none at all, and the 56 that do
+    are precisely the rejected ones. Without this path they would be missing from the replay
+    exactly where something happened.
 
-    Greift nur, wenn die Sitzung überhaupt Tickets hat — `ix_deployments_issue` deckt die
-    Abfrage. Wo der Watcher schon erzählt hat, wird nichts geliehen: sonst stünde derselbe
+    Only applies when the session has tickets at all; `ix_deployments_issue` covers the
+    query. Where the watcher already told the story nothing is borrowed, otherwise the same
     Deploy zweimal im Raum.
     """
     if not issue_ids or not steps:
@@ -638,8 +633,8 @@ async def _legacy_deploy_events(db: AsyncSession, *, issue_ids: set[int], steps:
     if not deps:
         return []
     step_by_id = {s.id: s for s in steps}
-    # Slot 3 ist vergeben, wo eine Grenze synthetisiert wird: `run_end` sitzt auf
-    # `last*4+3`, `run_start` auf `first*4-1` — und das ist Slot 3 der Zeile davor.
+    # Slot 3 is taken wherever a boundary is synthesised: `run_end` sits at `last*4+3`,
+    # `run_start` at `first*4-1`, and that is slot 3 of the row before it.
     belegt: set[int] = set()
     for b in bounds.values():
         if b["last"] and not b["has_end"]:
@@ -658,8 +653,8 @@ async def _legacy_deploy_events(db: AsyncSession, *, issue_ids: set[int], steps:
             continue
         events = deployment_events(dep, ctx, anchor_step_id=anchor)
         if events:
-            # Zwei Deployments teilen sich keinen Slot — sonst verlöre der Recorder eines
-            # von beiden (er entdoppelt ausschließlich über `seq`).
+            # Two deployments do not share a slot, otherwise the recorder would lose one of
+            # them (it deduplicates by `seq` alone).
             belegt.add(anchor)
             out.extend(events)
     return out
@@ -673,13 +668,13 @@ async def session_events(
     limit: int = EVENT_CAP_DEFAULT,
     after_seq: int = 0,
 ):
-    """Der Schnappschuss eines Raums: Roster plus Ereignisse, streng nach `seq` aufsteigend.
+    """The snapshot of a room: roster plus events, strictly ascending by `seq`.
 
-    `seq` ist die Ankunftsreihenfolge (`run_steps.id`), **nie** `ts` — unter
-    `WORKER_CONCURRENCY > 1` kann der Zeitstempel gegenüber der Reihenfolge rückwärts
-    laufen, und nach `ts` sortiert spielte der Raum dann Ereignisse ab, die es so nie gab.
+    `seq` is the arrival order (`run_steps.id`), **never** `ts`: under
+    `WORKER_CONCURRENCY > 1` the timestamp can run backwards against the order, and sorted by
+    `ts` the room would replay events that never happened that way.
 
-    Bei Kappung fällt das ÄLTESTE weg; `seq_from` sagt dem Client, wo sein Log anfängt.
+    On truncation the OLDEST falls away; `seq_from` tells the client where its log begins.
     """
     if kind not in ("issue", "run"):
         raise _not_found()
@@ -692,9 +687,9 @@ async def session_events(
                      project_id=(root.project_id if root else None) or (issue.project_id if issue else None),
                      owner_id=root.owner_id if root else None)
     if not runs:
-        # Aufgeräumt: das Ticket steht noch, seine Läufe sind der Aufbewahrung zum Opfer
-        # gefallen. Eine 404 wäre hier eine Lüge — die Session gab es, und die UI soll es
-        # sagen dürfen („dieser Raum wurde geräumt") statt „nicht gefunden".
+        # Tidied up: the ticket is still there, its runs fell victim to the retention. A 404
+        # would be a lie here, the session existed, and the interface should be allowed to
+        # say so ("this room was cleared") instead of "not found".
         return {"sid": sid, "v": EVENT_VERSION, "seq_from": 0, "seq_to": 0, "count": 0,
                 "truncated": False, "purged": True, "agents": [], "events": []}
 
@@ -702,13 +697,14 @@ async def session_events(
     bounds = await _step_bounds(db, run_ids)
     total_steps = sum(b["count"] for b in bounds.values())
 
-    # Ein Schritt trägt `seq = id * SEQ_SLOTS + slot`; die untere Schranke ist also
-    # `after_seq // SEQ_SLOTS`. Feiner filtert danach Python auf dem fertigen Ereignis —
-    # eine Zeile kann bis zu vier `seq` tragen, die SQL-Grenze kann das nicht auflösen.
+    # A step carries `seq = id * SEQ_SLOTS + slot`, so the lower bound is
+    # `after_seq // SEQ_SLOTS`. Python filters more finely afterwards on the finished event:
+    # one row can carry up to four `seq`, which the SQL bound cannot resolve.
     after_id = max(0, after_seq // SEQ_SLOTS)
-    # Absteigend holen und danach umdrehen: gekappt wird vom ältesten Ende. Aufsteigend
-    # mit LIMIT bekäme man den ANFANG des Logs — also ausgerechnet das, was niemand sehen
-    # will, wenn gerade etwas läuft. `cap + 1` verrät die Kappung ohne ein zweites COUNT.
+    # Fetch descending and turn it around afterwards: truncation happens at the oldest end.
+    # Ascending with LIMIT would give the BEGINNING of the log, which is exactly what nobody
+    # wants to see while something is running. `cap + 1` reveals the truncation without a
+    # second COUNT.
     step_rows = (await db.execute(
         select(RunStep).where(RunStep.run_id.in_(run_ids), RunStep.id >= after_id)
         .order_by(RunStep.id.desc()).limit(cap + 1)
@@ -730,8 +726,8 @@ async def session_events(
         ctx = ctxs.get(step.run_id)
         if ctx is not None:
             events.extend(step_events(step, ctx))
-    # Grenzen nur für Läufe, die keine eigenen haben (Altläufe). Welle B schreibt sie
-    # selbst; die hier zusätzlich zu synthetisieren gäbe jeden Agenten doppelt.
+    # Boundaries only for runs that have none of their own (old runs). Newer runs write them
+    # themselves; synthesising those here as well would show every agent twice.
     for run in runs:
         b = bounds.get(run.id)
         if b is None:
@@ -741,25 +737,24 @@ async def session_events(
             first_step_id=None if b["has_start"] else b["first"],
             last_step_id=None if b["has_end"] else b["last"],
         ))
-    # Deployments aus der Zeit vor dem Watcher — geliehene `seq`, kein Backfill.
+    # Deployments from the time before the watcher: borrowed `seq`, no backfill.
     events.extend(await _legacy_deploy_events(
         db, issue_ids=issue_ids, steps=steps, ctxs=ctxs, bounds=bounds))
 
     events = [e for e in events if e["seq"] > after_seq]
     if truncated and steps:
-        # Was unterhalb der Kappung liegt, fliegt auch dann raus, wenn es eine
-        # synthetisierte Grenze oder ein geliehenes Deploy-Ereignis ist — sonst stünde ein
-        # `run_start` unter `seq_from` und der Client hielte sein Log für vollständig. Wer
-        # dort fehlt, steht im Roster.
+        # Whatever lies below the truncation flies out even when it is a synthesised boundary
+        # or a borrowed deploy event, otherwise a `run_start` would sit under `seq_from` and
+        # the client would think its log complete. Whoever is missing there is in the roster.
         floor = _seq(steps[0].id, 0) - 1
         events = [e for e in events if e["seq"] >= floor]
     events.sort(key=lambda e: e["seq"])
 
     if events and after_seq <= 0:
-        # Die Kopfzeile des Raums: Titel, Ticket, Projekt. Sie steht ganz vorn, direkt
-        # unter dem ersten echten Ereignis. Nur beim Vollabruf — beim Nachfassen mit
-        # `after_seq` hat der Client sie längst und bekäme sie sonst mit neuer `seq`
-        # ein zweites Mal (die Entdopplung des Recorders läuft über `seq`).
+        # The header of the room: title, ticket, project. It stands at the very front, right
+        # under the first real event. Only on a full fetch: when catching up with `after_seq`
+        # the client has had it for a long time and would otherwise get it a second time with
+        # a new `seq` (the recorder deduplicates by `seq`).
         project_key = project_keys.get(root.project_id or (issue.project_id if issue else 0) or 0, "")
         title = (issue.summary if issue else "") or root.agent or f"Lauf {root.id}"
         events.insert(0, session_seen_event(
@@ -781,32 +776,32 @@ async def session_events(
     }
 
 
-# ── Ereignisse ALLER Sitzungen (ein Raum für die globale Seite) ─────────────
+# ── Events of ALL sessions (one room for the global page) ───────────────────
 #
-# Warum das überhaupt zusammengeht: `seq = run_steps.id * SEQ_SLOTS + slot`, und
-# `run_steps.id` ist SERIAL — global monoton über **alle** Läufe und Projekte. Ereignisse
-# verschiedener Sitzungen ergeben damit EINE aufsteigende Folge, und `Recorder.push`
-# entdoppelt genau über diese Zahl. Auch der Sitzplatz trägt: `seatOf` rechnet
-# `hash32(run_id) % 12`, also sitzungsunabhängig.
+# Why this holds together at all: `seq = run_steps.id * SEQ_SLOTS + slot`, and
+# `run_steps.id` is SERIAL, globally monotonic across **all** runs and projects. Events of
+# different sessions therefore form ONE ascending series, and `Recorder.push` deduplicates
+# by exactly that number. The seat holds too: `seatOf` computes `hash32(run_id) % 12`, which
+# is independent of the session.
 #
-# Was hier NICHT passiert und warum:
+# What does NOT happen here, and why:
 #
-# · **Kein `session_seen`.** Die Kopfzeile ist ein Titel je Raum; vierzehn Titel für einen
-#   Raum wären vierzehn Widersprüche. Der Film macht es aus demselben Grund nicht
-#   (`services/office_film.py`, Falle 3), und `mapEvent` erzeugt daraus ohnehin nichts.
-# · **Keine Bestands-Deployments** (`_legacy_deploy_events`). Die leihen sich die `seq`
-#   einer fremden Schrittzeile, die zeitlich am nächsten liegt — über Sitzungen hinweg
-#   wäre das mit hoher Wahrscheinlichkeit die Zeile eines *anderen* Laufs, und der Deploy
-#   stünde mit fremder `sid` im falschen Zimmer. Deployments seit dem Watcher haben eine
-#   echte Zeile und kommen ganz normal durch `step_events`.
+# · **No `session_seen`.** The header is one title per room; fourteen titles for one room
+#   would be fourteen contradictions. The film leaves it out for the same reason
+#   (`services/office_film.py`, trap 3), and `mapEvent` produces nothing from it anyway.
+# · **No legacy deployments** (`_legacy_deploy_events`). Those borrow the `seq` of a foreign
+#   step row that is closest in time, and across sessions that would with high probability
+#   be the row of a *different* run, so the deploy would stand in the wrong room under a
+#   foreign `sid`. Deployments since the watcher have a real row and come through
+#   `step_events` like everything else.
 
 # Vorgabefenster. Gemessen am Bestand (05.08.2026): 1 h → 1 Lauf, 6 h → 6, **12 h → 14**,
-# 24 h → 23, 72 h → 69. `office/const.ts` lässt `MAX_ACTORS = 24` Figuren gleichzeitig zu
-# und verdrängt darüber (erst `retired`, dann `done`, dann die älteste) — bei 24 h stünde
-# der Raum also dauerhaft an der Kante und verlöre bei jedem neuen Lauf eine Figur, bei
-# 72 h flackerte er. Zwölf Stunden lassen reichlich Luft und decken trotzdem einen ganzen
-# Arbeitstag rückwärts ab. Die Oberfläche nennt das Fenster ausdrücklich („der letzten
-# 12 Stunden") — ein stiller Ausschnitt wäre eine Behauptung über den Tag.
+# 24 h → 23, 72 h → 69. `office/const.ts` allows `MAX_ACTORS = 24` characters at once and
+# evicts above that (first `retired`, then `done`, then the oldest), so at 24 h the room
+# would permanently sit at the edge and lose a character with every new run, and at 72 h it
+# would flicker. Twelve hours leave plenty of room and still cover a whole working day
+# backwards. The interface names the window explicitly ("the last 12 hours"), because a
+# silent excerpt would be a claim about the day.
 EVENTS_SINCE_HOURS_DEFAULT = 12
 
 
@@ -819,22 +814,22 @@ async def all_events(
     after_seq: int = 0,
     project_id: int | None = None,
 ):
-    """Ein Schnappschuss über **alle** Sitzungen eines Zeitfensters — die globale Seite.
+    """A snapshot across **all** sessions of a time window, the global page.
 
-    Antwortform ist die von `session_events`, damit das Frontend denselben Weg nimmt; statt
-    der `sid` trägt sie das Fenster (`since_hours`, `window_from`, `window_to`) und sagt,
-    wie viele Sitzungen und Läufe darin zusammenkamen.
+    The answer has the shape of `session_events` so the frontend takes the same path; instead
+    of the `sid` it carries the window (`since_hours`, `window_from`, `window_to`) and says
+    how many sessions and runs came together in it.
 
-    **Rechte kommen aus `_visible_runs`** — derselben Funktion wie bei `/office/sessions`
-    und damit letztlich aus `compute_acl`. Es gibt keine zweite Definition von „darf
-    sehen". `project_id` **verengt** die ohnehin erlaubte Menge und autorisiert nie: es
-    steht als zusätzliches UND daneben, nicht an ihrer Stelle. Ein fremdes Projekt liefert
-    deshalb eine leere Antwort, keinen Zugang und auch keine 403 (die verriete die
+    **Permissions come from `_visible_runs`**, the same function as `/office/sessions` and
+    therefore ultimately from `compute_acl`. There is no second definition of "may see".
+    `project_id` **narrows** the already allowed set and never authorises: it stands as an
+    additional AND next to it, not in its place. A foreign project therefore yields an empty
+    answer, not access, and not a 403 either (which would betray the existence).
     Existenz).
 
-    Gekappt wird wie dort vom **ältesten** Ende — der Raum soll die Gegenwart zeigen. Der
-    Roster (`agents[]`) bleibt trotzdem vollständig: er kommt aus `runs`, nicht aus den
-    Ereignissen, und ohne ihn fehlten genau die Figuren, deren `run_start` der Kappung zum
+    Truncation happens at the **oldest** end as it does there, because the room should show
+    the present. The roster (`agents[]`) stays complete anyway: it comes from `runs`, not from
+    the events, and without it exactly those characters would be missing whose `run_start`
     Opfer fiel.
     """
     cap = _clamp(limit, 1, EVENT_CAP_MAX)
@@ -857,9 +852,9 @@ async def all_events(
             "agents": list(agents), "events": list(events),
         }
 
-    # Absteigend holen und danach umdrehen (wie in `session_events`): aufsteigend mit LIMIT
-    # bekäme man den ANFANG des Fensters — also ausgerechnet das, was niemand sehen will,
-    # wenn gerade etwas läuft. `cap + 1` verrät die Kappung ohne ein zweites COUNT.
+    # Fetch descending and turn it around afterwards (as in `session_events`): ascending with
+    # LIMIT would give the BEGINNING of the window, which is exactly what nobody wants to see
+    # while something is running. `cap + 1` reveals the truncation without a second COUNT.
     after_id = max(0, after_seq // SEQ_SLOTS)
     step_rows = (await db.execute(
         select(RunStep).join(Run, Run.id == RunStep.run_id)
@@ -886,12 +881,12 @@ async def all_events(
     ctxs = {r.id: RunCtx.from_run(r, issue_key=issue_keys.get(r.issue_id or 0, ""))
             for r in runs}
 
-    # Grenzen des **Fensters** je Lauf, bewusst aus den GELADENEN Zeilen und nicht aus
-    # `_step_bounds` über den ganzen Lauf: ob ein `run_start` da ist, muss sich auf das
-    # Fenster beziehen. Ein Lauf, dessen Startzeile gestern liegt, hätte sonst heute keinen
-    # Auftritt — sein Agent säße nie am Schreibtisch. Nebenbei liegen damit alle
-    # synthetisierten Grenzen zwischen `steps[0]` und `steps[-1]`, weshalb hier (anders als
-    # in `session_events`) kein zusätzlicher Kappungsboden nötig ist.
+    # Boundaries of the **window** per run, deliberately from the LOADED rows and not from
+    # `_step_bounds` over the whole run: whether a `run_start` is there has to refer to the
+    # window. A run whose start row lies yesterday would otherwise have no appearance today,
+    # and its agent would never sit at a desk. As a side effect all synthesised boundaries lie
+    # between `steps[0]` and `steps[-1]`, which is why no extra truncation floor is needed here
+    # (unlike in `session_events`).
     fenster: dict[int, dict] = {}
     for s in steps:
         b = fenster.setdefault(s.run_id, {"first": s.id, "last": s.id,
@@ -923,29 +918,28 @@ async def all_events(
         ende = _aware(run.finished_at) or start
         for ev in grenzen:
             if ev["kind"] == "run_start" and start is not None and start < cutoff:
-                # Falle 1: die nachgereichte Grenze trägt `run.started_at` — bei einem Lauf,
-                # der vor dem Fenster begann, also einen Zeitstempel von gestern. Ungeklemmt
-                # zöge die Zeitleiste den ganzen Raum auf gestern auf, und das sähe aus wie
-                # ein Fehler der Engine.
+                # Trap 1: the boundary added afterwards carries `run.started_at`, so for a run
+                # that began before the window that is a timestamp from yesterday. Unclamped,
+                # the timeline would stretch the whole room back to yesterday, and that would
+                # look like a bug in the engine.
                 ev["ts"] = fensteranfang
             elif ev["kind"] == "run_end" and ende is not None and ende > now:
-                # Falle 2: ein Ende jenseits des Fensterrands gehört nicht hinein. Erst hier
-                # zu filtern ist Absicht — vorher steht nicht fest, ob überhaupt eine
-                # `run_end`-Grenze entsteht (ein laufender Lauf bekommt keine). Bei einem
-                # nachlaufenden Fenster (Rand = jetzt) ist das der Ausnahmefall; die Regel
-                # steht trotzdem, weil das Fenster sonst nur solange stimmt, wie niemand
-                # `window_to` in die Vergangenheit legt.
+                # Trap 2: an end beyond the edge of the window does not belong inside. Filtering
+                # only here is deliberate: before this it is not settled whether a `run_end`
+                # boundary appears at all (a running run gets none). With a trailing window
+                # (edge = now) this is the exception; the rule stands anyway, because otherwise
+                # the window is only correct as long as nobody puts `window_to` in the past.
                 continue
             events.append(ev)
 
     events = [e for e in events if e["seq"] > after_seq]
-    # `seq` ist die Ankunftsreihenfolge, nie `ts`. Bei Gleichstand geht das ENDE vor den
-    # Anfang: erst verlässt jemand den Raum, dann kommt der Nächste herein.
+    # `seq` is the arrival order, never `ts`. On a tie the END goes before the beginning:
+    # first somebody leaves the room, then the next one comes in.
     events.sort(key=lambda e: (e["seq"], 0 if e["kind"] == "run_end" else 1))
-    # Und dann die Kollision auflösen: `run_end` auf `letzte*4+3` und `run_start` auf
-    # `erste*4-1` sind dieselbe Zahl, sobald zwei Läufe mit benachbarten Zeilen-IDs
-    # aufeinanderfolgen — über Sitzungen hinweg der Normalfall. Ohne das verwürfe
-    # `Recorder.push` still das zweite Ereignis, und ein Agent käme nie herein.
+    # And then resolve the collision: `run_end` at `last*4+3` and `run_start` at `first*4-1`
+    # are the same number as soon as two runs with neighbouring row ids follow each other,
+    # which across sessions is the normal case. Without this `Recorder.push` would silently
+    # drop the second event, and an agent would never enter.
     entdoppeln_seq(events)
 
     billed = await _billed_by_run(db, run_ids, await PriceTable.load(db))
@@ -972,19 +966,17 @@ async def session_cost(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """Zwei Zahlen mit Absicht — abgerechnet und geschätzt.
+    """Two numbers on purpose: billed and estimated.
 
-    `cost_usd_billed` ist die Summe der `cost_entries`: was zum Zeitpunkt des Laufs
-    tatsächlich in Rechnung ging. `cost_usd_estimated` rechnet die **Schritt**-Tokens
-    gegen den HEUTIGEN Katalog, gruppiert nach dem Modell des Schritts — das bleibt auch
-    dann richtig, wenn der Lauf mitten drin auf den Fallback-Provider gewechselt ist.
-    Beide stehen nebeneinander, keine überschreibt die andere: die eine sagt, was es
-    gekostet hat, die andere, was es heute kosten würde.
+    `cost_usd_billed` is the sum of the `cost_entries`, what was actually charged at the time
+    of the run. `cost_usd_estimated` prices the **step** tokens against TODAY's catalog,
+    grouped by the model of the step, which stays right even when the run switched to the
+    fallback provider halfway through. Both stand side by side and neither overwrites the
+    other: one says what it cost, the other what it would cost today.
 
-    `unpriced` unterscheidet, was Traccoon bisher nicht unterscheiden konnte: ein
-    Katalogeintrag mit Preis 0,00 ist *bepreist und gratis* (das lokale Modell), gar kein
-    Eintrag ist *unbekannt*. Beides ergab bisher dieselbe 0,00, und jede Katalog-Lücke sah
-    aus wie ein Geschenk.
+    `unpriced` makes a distinction that was not possible before: a catalog entry with price
+    0.00 is *priced and free* (the local model), no entry at all is *unknown*. Both used to
+    produce the same 0.00, and every gap in the catalog looked like a gift.
     """
     if kind not in ("issue", "run"):
         raise _not_found()
@@ -1020,9 +1012,9 @@ async def session_cost(
             row["cost_usd_billed"] += entry["cost_usd"]
             total["cost_usd_billed"] += entry["cost_usd"]
             if not entry["priced"]:
-                # Die Preislücke steht auf der ABRECHNUNGS-Seite: dieser Betrag ist ohne
-                # Katalogeintrag entstanden und damit nicht belastbar. Deshalb zeigt die
-                # UI hier ein „≥" statt einer Summe, die Genauigkeit vortäuscht.
+                # The price gap sits on the BILLING side: this amount came about without a
+                # catalog entry and is therefore not solid. That is why the interface shows a
+                # "≥" here instead of a sum that pretends to be exact.
                 row["unpriced"] = True
                 for label in entry["unpriced_models"]:
                     if label not in row["unpriced_models"]:
@@ -1052,9 +1044,9 @@ async def session_cost(
         model_row["cost_usd"] = round(model_row["cost_usd"], 6)
 
     return {
-        # Genau die Aussage „mindestens": irgendein abgerechneter Posten hatte keinen
-        # Preis hinter sich. Ein noch laufender Lauf ohne Kostenposten ist NICHT partial —
-        # der hat noch nicht abgerechnet, das ist kein Fehler.
+        # Exactly the statement "at least": some billed entry had no price behind it. A run
+        # still going without cost entries is NOT partial, it simply has not billed yet, and
+        # that is not an error.
         "cost_partial": any(row["unpriced"] for row in by_agent.values()),
         "total": total,
         "by_agent": sorted(by_agent.values(), key=lambda r: r["agent"]),
@@ -1065,14 +1057,14 @@ async def session_cost(
 # ── Personalakte (Kennzahlen je Rolle) ──────────────────────────────────────
 
 def _duration_ms_expr(db: AsyncSession):
-    """`finished_at - started_at` in Millisekunden — dialektabhängig, weil es dafür keinen
-    gemeinsamen Ausdruck gibt.
+    """`finished_at - started_at` in milliseconds, dialect dependent because there is no
+    common expression for it.
 
-    Postgres kann `extract(epoch from a - b)`, SQLite kennt weder Intervalle noch
-    `extract`; dort rechnet `julianday()` in Tagen (Fließkomma, ~0,1 ms genau). Ein
-    Vergleich `finished_at < started_at + INTERVAL` scheidet aus: SQLAlchemy kann
-    Datumsarithmetik auf SQLite nicht abbilden (`TypeError: fromisoformat`). Also genau
-    eine Verzweigung, an genau einer Stelle — der Rest der Auswertung ist dialektfrei.
+    Postgres can do `extract(epoch from a - b)`, SQLite knows neither intervals nor
+    `extract`; there `julianday()` counts in days (floating point, about 0.1 ms accurate). A
+    comparison `finished_at < started_at + INTERVAL` is out: SQLAlchemy cannot map date
+    arithmetic onto SQLite (`TypeError: fromisoformat`). So exactly one branch, in exactly one
+    place, and the rest of the evaluation is dialect free.
     """
     if db.get_bind().dialect.name == "sqlite":
         return (func.julianday(Run.finished_at) - func.julianday(Run.started_at)) * 86_400_000.0
@@ -1080,25 +1072,25 @@ def _duration_ms_expr(db: AsyncSession):
 
 
 def _bucket_expr(duration_ms):
-    """Leiter-Index eines Laufs als `CASE WHEN`-Kette (0 … len(LADDER))."""
+    """Ladder index of a run as a `CASE WHEN` chain (0 … len(LADDER))."""
     return case(*[(duration_ms < edge, i) for i, edge in enumerate(DURATION_LADDER_MS)],
                 else_=len(DURATION_LADDER_MS))
 
 
 def _percentile_ms(counts: list[int], q: float, max_ms: int | None) -> int | None:
-    """Perzentil aus Eimerzahlen — als **Obergrenze** des Eimers, in dem es liegt.
+    """A percentile from bucket counts, as the **upper bound** of the bucket it falls into.
 
-    Aus Eimerzahlen lässt sich nicht mehr ablesen. Eine Interpolation innerhalb des Eimers
-    erfände Genauigkeit, die die Zahlen nicht haben; die Obergrenze ist dagegen eine wahre
-    Aussage („der Median liegt unter X"). `max_ms` klemmt sie zusätzlich: bei einem
-    einzigen 30-s-Lauf ist der Median nicht „unter 45 s", sondern genau 30 s.
-    Der Überlauf-Eimer (jenseits der Leiter) hat keine Obergrenze → `None`; wie lang es
-    wirklich war, steht in `max_ms`.
+    Bucket counts do not allow more to be read out. Interpolating inside the bucket would
+    invent accuracy the numbers do not have; the upper bound on the other hand is a true
+    statement ("the median is below X"). `max_ms` clamps it further: with a single 30 s run
+    the median is not "below 45 s" but exactly 30 s.
+    The overflow bucket (beyond the ladder) has no upper bound, hence `None`; how long it
+    really was stands in `max_ms`.
     """
     total = sum(counts)
     if total <= 0:
         return None
-    rang = max(1, math.ceil(q * total))          # nächster Rang, nicht Interpolation
+    rang = max(1, math.ceil(q * total))          # the next rank, not interpolation
     gesehen = 0
     for i, n in enumerate(counts):
         gesehen += n
@@ -1111,7 +1103,7 @@ def _percentile_ms(counts: list[int], q: float, max_ms: int | None) -> int | Non
 
 
 def _display_buckets(counts: list[int]) -> list[dict]:
-    """Die fünf Anzeige-Eimer als Summen der Leiter-Eimer. `lt_ms: None` heißt „darüber"."""
+    """The five display buckets as sums of ladder buckets. `lt_ms: None` means "above"."""
     out: list[dict] = []
     unten = 0
     for edge in DURATION_DISPLAY_EDGES_MS:
@@ -1124,7 +1116,7 @@ def _display_buckets(counts: list[int]) -> list[dict]:
 
 
 def _agent_slot(agents: dict[str, dict], name: str) -> dict:
-    """Die Zeile einer Rolle — angelegt, sobald sie das erste Mal irgendwo auftaucht."""
+    """The row of a role, created as soon as it shows up anywhere for the first time."""
     return agents.setdefault(name, {
         "agent": name, "runs": 0, "running": 0, "by_status": {},
         "delivered": 0, "waiting": 0, "aborted": 0,
@@ -1145,20 +1137,18 @@ async def _agents_payload(
     scope_runs: Callable, scope_costs: Callable,
     since_hours: int, agent: str | None, tool_limit: int,
 ) -> dict:
-    """Der gemeinsame Rumpf beider Personalakten — fünf gruppierte Abfragen, keine je Rolle.
+    """The shared body of both personnel files: five grouped queries, none per role.
 
-    Die Autorisierung steckt in `scope_runs`/`scope_costs`: beide bekommen ein `select`
-    und hängen JOIN und WHERE der jeweiligen Sicht daran. Damit ist die globale und die
-    projektbezogene Akte **dieselbe** Rechnung, und es gibt keine zweite Stelle, an der
-    „darf sehen" definiert wird.
+    The authorisation sits in `scope_runs`/`scope_costs`: both receive a `select` and hang
+    the JOIN and WHERE of their view onto it. That makes the global and the project file
+    **the same** computation, and there is no second place where "may see" is defined.
 
-    **Kosten werden nach `cost_entries.agent` gruppiert, nicht nach `runs.agent`.** Die
-    beiden Spalten sind heute identisch, aber nicht per Fremdschlüssel gekoppelt — und
-    genau dafür gibt es die Spalte: `cost_entries.run_id` ist `SET NULL`, ein Kostenposten
-    überlebt also die Lauflöschung durch die Aufbewahrungsfrist. Über `runs.agent` gerechnet
-    verschwände die Rechnung mit dem Lauf, und die Akte behauptete, es sei nichts angefallen.
-    Eine Rolle kann deshalb mit `runs: 0` und Kosten > 0 in der Liste stehen; das ist keine
-    Panne, sondern die Tatsache.
+    **Cost is grouped by `cost_entries.agent`, not by `runs.agent`.** The two columns are
+    identical today but not coupled by a foreign key, and that is exactly what the column is
+    for: `cost_entries.run_id` is `SET NULL`, so a cost entry survives the deletion of its run
+    by the retention. Computed over `runs.agent` the bill would vanish with the run, and the
+    file would claim nothing had been spent. A role can therefore stand in the list with
+    `runs: 0` and cost > 0; that is not a glitch but the fact.
     """
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     tool_limit = _clamp(tool_limit, 1, TOOL_LIMIT_MAX)
@@ -1174,9 +1164,9 @@ async def _agents_payload(
 
     agents: dict[str, dict] = {}
 
-    # (1) Läufe je (Rolle, Status). Die Gruppierung nach Status statt fester Zähler hält
-    # auch einen Status fest, den dieser Code noch nicht kennt — `by_status` ist die rohe
-    # Wahrheit, die drei Balken sind die Deutung darüber.
+    # (1) Runs per (role, status). Grouping by status instead of fixed counters also records
+    # a status this code does not know yet: `by_status` is the raw truth, the three bars are
+    # the reading of it.
     for name, status, n, it_sum, it_max, letzter in (await db.execute(
         _runs(select(Run.agent, Run.status, func.count(),
                      func.sum(Run.iterations), func.max(Run.iterations),
@@ -1201,9 +1191,9 @@ async def _agents_payload(
         if iso and (row["last_run_at"] is None or iso > row["last_run_at"]):
             row["last_run_at"] = iso
 
-    # (2) Dauer-Eimer. Nur abgeschlossene Läufe: ein laufender Lauf hat noch keine Dauer,
-    # und die bis jetzt vergangene Zeit als Dauer auszugeben wäre eine Zahl, die sich beim
-    # nächsten Abruf ändert, ohne dass etwas passiert ist.
+    # (2) Duration buckets. Finished runs only: a running run has no duration yet, and
+    # reporting the time elapsed so far as a duration would be a number that changes on the
+    # next fetch without anything having happened.
     dauer = _duration_ms_expr(db)
     eimer = _bucket_expr(dauer)
     for name, idx, n, max_ms in (await db.execute(
@@ -1217,11 +1207,11 @@ async def _agents_payload(
         d = row["duration"]
         d["max_ms"] = gemessen if d["max_ms"] is None else max(d["max_ms"], gemessen)
 
-    # (3) Schritte je Lauf. `iterations` (Runden des Agenten) und Schritte (Zeilen in
-    # `run_steps`) sind zwei verschiedene Dinge — der Inspektor beschriftet `iterations`
-    # bereits als „Runden", und ein gemeinsames Feld hätte beide Zahlen unlesbar gemacht.
-    # Nenner des Schnitts sind die Läufe MIT Schritten: ein Lauf, dessen Schritte die
-    # Aufbewahrungsfrist schon gelöscht hat, hatte nicht „0 Schritte".
+    # (3) Steps per run. `iterations` (rounds of the agent) and steps (rows in `run_steps`)
+    # are two different things: the inspector already labels `iterations` as rounds, and one
+    # shared field would have made both numbers unreadable. The denominator of the average is
+    # the runs WITH steps: a run whose steps the retention has already deleted did not have
+    # "0 steps".
     je_lauf = _runs(
         select(Run.agent.label("agent"), RunStep.run_id.label("rid"), func.count().label("n"))
         .select_from(RunStep).join(Run, Run.id == RunStep.run_id)
@@ -1235,9 +1225,9 @@ async def _agents_payload(
         row["_step_runs"] += int(s_runs or 0)
         row["steps_max"] = max(row["steps_max"], int(s_max or 0))
 
-    # (4) Kosten und Tokens aus den Kostenposten. Tokens kommen aus derselben Quelle wie
-    # der Betrag, damit beide dieselbe Geschichte erzählen („was abgerechnet wurde") —
-    # `runs.input_tokens` kennt die gecachten Tokens gar nicht.
+    # (4) Cost and tokens from the cost entries. Tokens come from the same source as the
+    # amount so that both tell the same story ("what was billed"): `runs.input_tokens` does
+    # not know cached tokens at all.
     for name, usd, ein, aus, cache, offen in (await db.execute(
         _costs(select(CostEntry.agent, func.sum(CostEntry.cost_usd),
                       func.sum(CostEntry.input_tokens), func.sum(CostEntry.output_tokens),
@@ -1250,21 +1240,20 @@ async def _agents_payload(
         row["in_tokens"] += int(ein or 0)
         row["out_tokens"] += int(aus or 0)
         row["cache_read_tokens"] += int(cache or 0)
-        # `priced` ist dreiwertig; hier zählt nur bewiesen-bepreist als vollständig.
-        # NULL (Altzeile — heute ALLE 411 Posten) heißt „nie festgehalten, ob es einen
-        # Katalogeintrag gab". `_entry_priced` löst NULL für einen EINZELNEN Lauf gegen den
-        # heutigen Katalog auf; über Monate und mehrere Provider hinweg wäre dieselbe
-        # Rückrechnung eine Behauptung. Die Akte sagt deshalb schlicht: Untergrenze.
+        # `priced` is three valued; only proven priced counts as complete here. NULL (an old
+        # row, today ALL 411 entries) means "never recorded whether a catalog entry existed".
+        # `_entry_priced` resolves NULL for a SINGLE run against today's catalog; across
+        # months and several providers the same back calculation would be a claim. The file
+        # therefore simply says: lower bound.
         if int(offen or 0) > 0:
             row["cost_partial"] = True
 
-    # (5) Werkzeugtabelle: `run_steps ⋈ runs` über `runs.agent` — der Schritt selbst weiß
-    # nicht, welche Rolle ihn ausgelöst hat. Dafür gibt es `ix_runs_agent_started`.
-    # `ok` ist dreiwertig, deshalb gilt `ok + failed ≤ n` und **nicht** `ok + failed = n`:
-    # der Rest sind Zeilen, bei denen niemand nachgesehen hat (in der laufenden Instanz ist
-    # das die Mehrheit, `fs_read` hat 1531 Aufrufe und 0 belegte Urteile). Wer daraus eine
-    # Quote `ok/n` rechnete, malte die halbe Tabelle grundlos rot — die Differenz ist
-    # „unbekannt", nicht „fehlgeschlagen".
+    # (5) Tool table: `run_steps ⋈ runs` over `runs.agent`, because the step itself does not
+    # know which role triggered it. `ix_runs_agent_started` covers that.
+    # `ok` is three valued, so `ok + failed ≤ n` holds and **not** `ok + failed = n`: the rest
+    # are rows where nobody looked (in this instance that is the majority, `fs_read` has 1531
+    # calls and 0 proven verdicts). Computing a rate `ok/n` from that would paint half the
+    # table red for no reason, because the difference is "unknown", not "failed".
     werkzeuge: dict[str, list[dict]] = {}
     for name, tool, n, ok, schlecht in (await db.execute(
         _runs(select(Run.agent, RunStep.tool_name, func.count(),
@@ -1293,8 +1282,8 @@ async def _agents_payload(
             row.pop(hilf)
 
     return {
-        # Das Fenster gehört in die Antwort: `run_retention_days` löscht ältere Läufe, die
-        # Ansicht darf also nicht „Lieblingswerkzeuge" sagen, sondern nur „der letzten N".
+        # The window belongs in the answer: `run_retention_days` deletes older runs, so the
+        # view must not say "favourite tools" but only "of the last N".
         "since_hours": since_hours,
         "tool_limit": tool_limit,
         "agents": sorted(agents.values(),
@@ -1310,18 +1299,18 @@ async def project_agents(
     agent: str | None = None,
     tool_limit: int = TOOL_LIMIT_DEFAULT,
 ):
-    """Die Personalakte eines Projekts — der vierte Dock-Reiter im Projekt-Büro.
+    """The personnel file of one project, the fourth dock tab in the project office.
 
-    Fremdes Projekt = 404, das erledigt `get_project_access` (`build_access` wirft 404,
-    nie 403). Ein Viewer genügt: die Akte ist eine Lesefläche über die eigenen Läufe, und
-    `/costs/global` (das `require_admin` trägt) ist ausdrücklich NICHT das Vorbild — sonst
-    stünde im Büro jedes Viewers ein leerer Reiter.
+    A foreign project is 404, which `get_project_access` takes care of (`build_access` raises
+    404, never 403). A viewer is enough: the file is a reading surface over runs they can
+    already see, and `/costs/global` (which carries `require_admin`) is explicitly NOT the
+    template, otherwise every viewer's office would hold an empty tab.
     """
     pid = access.project.id
 
     def scope_runs(stmt):
-        # Wie `project_sessions`: bevorzugt über `Run.project_id` (überlebt die
-        # Ticket-Löschung), Altzeilen ohne `project_id` weiter über das Ticket.
+        # Like `project_sessions`: preferably over `Run.project_id` (it survives the deletion
+        # of a ticket), old rows without a `project_id` still through the ticket.
         return stmt.outerjoin(Issue, Issue.id == Run.issue_id).where(
             or_(Run.project_id == pid,
                 and_(Run.project_id.is_(None), Issue.project_id == pid)))
@@ -1344,11 +1333,11 @@ async def global_agents(
     agent: str | None = None,
     tool_limit: int = TOOL_LIMIT_DEFAULT,
 ):
-    """Die Personalakte über alle sichtbaren Projekte — der Reiter auf `/buero`.
+    """The personnel file across all visible projects, the tab on `/buero`.
 
-    Sichtbarkeit kommt aus `_visible_runs`, also aus derselben Definition wie die
-    Sessionliste und der Live-Socket. Ein Nicht-Mitglied bekommt keine 403, sondern eine
-    leere Liste: es gibt keinen Pfad, dessen Existenz hier verraten werden könnte.
+    Visibility comes from `_visible_runs`, so from the same definition as the session list and
+    the live socket. A non member gets no 403 but an empty list: there is no path whose
+    existence could be betrayed here.
     """
     sichtbar = await _visible_runs(db, user)
 
@@ -1358,10 +1347,10 @@ async def global_agents(
     if user.global_role == GlobalRole.admin:
         kosten_cond = true()
     else:
-        # Kostenposten tragen kein `owner_id`. Projektgebundene decken die Projektmenge ab;
-        # projektlose (Assistent, Job) hängen am Lauf — deshalb der äußere Join. Ein
-        # projektloser Posten, dessen Lauf schon gelöscht ist, bleibt für Nicht-Admins
-        # unsichtbar: lieber eine Lücke als eine fremde Rechnung.
+        # Cost entries carry no `owner_id`. Project bound ones cover the project set;
+        # projectless ones (assistant, job) hang on the run, hence the outer join. A
+        # projectless entry whose run is already deleted stays invisible to non admins:
+        # better a gap than somebody else's bill.
         erlaubt = await compute_acl(db, user)
         kosten_cond = or_(
             CostEntry.project_id.in_(erlaubt),

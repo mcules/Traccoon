@@ -1,8 +1,8 @@
-"""Agenten-Tool-Loop (Port aus dem Vorläufer (agent/runtime.py), auf SQLAlchemy+Traccoon).
+"""Agent tool loop (ported from the predecessor, agent/runtime.py, onto SQLAlchemy).
 
 mode=plan|execute. Eingebaute Tools: fs_read/list/write/edit, check, deploy,
 screenshot, ask_human, submit_plan, continue_later, open_tasks, delegate.
-Permission-Laufzeit-Gate, Build-Gate, max_iterations-Verhalten wie im Vorläufer.
+Runtime permission gate, build gate and max_iterations behave as in the predecessor.
 """
 from __future__ import annotations
 
@@ -47,21 +47,21 @@ log = logging.getLogger("traccoon.runtime")
 _FS_MAX_READ = 30000
 MAX_BUILD_GATE = 3
 MAX_DELEGATION_DEPTH = 2
-# Harter Per-Run-Input-Token-Budget: verhindert, dass ein einzelner Run durch die
-# quadratisch wachsende Message-History den Kontext/Verbrauch explodieren lässt.
-# Bei Überschreitung wird der Run wie beim Iterations-Limit als loop_exhausted
+# Hard input token budget per run: keeps a single run from blowing up context and spend
+# through the quadratically growing message history. On overrun the run ends like it does on
+# the iteration limit, as loop_exhausted.
 # finalisiert (Continuation greift in frischem Run; Per-Ticket-Cap deckelt gesamt).
 MAX_RUN_INPUT_TOKENS = int(os.getenv("MAX_RUN_INPUT_TOKENS", "2000000"))
-# Wanduhr-Grenze je Lauf. Der Loop-Wächter im Worker sieht nur einen BLOCKIERTEN Event-Loop;
-# ein Agent, der munter weiter Werkzeuge ruft und trotzdem nie fertig wird, tickt sauber und
-# lief bisher unbegrenzt (`run_timeout` gilt nur für Shell-/HTTP-Jobs im Scheduler). Ende wie
-# beim Iterations-Limit: loop_exhausted → Continuation im frischen Lauf, Caps deckeln gesamt.
-# 0 schaltet die Grenze ab.
+# Wall clock limit per run. The loop watchdog in the worker only sees a BLOCKED event loop;
+# an agent that cheerfully keeps calling tools and still never finishes ticks along fine and
+# used to run unbounded (`run_timeout` applies to shell and HTTP jobs in the scheduler only).
+# It ends like the iteration limit: loop_exhausted, continuation in a fresh run, and the caps
+# bound the whole thing. 0 switches the limit off.
 MAX_RUN_SECONDS = float(os.getenv("AGENT_RUN_TIMEOUT_SEC", "1800"))
 
-# Obergrenze für Antworten von `traccoon_http_call`. Die eigentliche Grenze setzt das Ziel
-# (Destination.max_response_chars); dies ist nur der Riegel dagegen, dass ein falsch
-# konfiguriertes Ziel einen ganzen Lauf-Kontext flutet.
+# Upper bound for answers of `traccoon_http_call`. The real limit is set by the destination
+# (Destination.max_response_chars); this is only the bar against a misconfigured destination
+# flooding a whole run context.
 MAX_HTTP_TOOL_CHARS = int(os.getenv("MAX_HTTP_TOOL_CHARS", "60000"))
 
 DEPLOYER_URL = os.getenv("DEPLOYER_URL", "http://deployer:8661")
@@ -74,14 +74,14 @@ def _now() -> dt.datetime:
 
 # ---------- Tool-Schemas (Port) ----------
 
-# Loop-/Steuer-Tools sind Agent-Mechanik, nicht durch die Allowlist beschränkt (IMMER verfügbar).
-# `traccoon_notify_human` gehört dazu: seit der Assistent nur noch auf ausdrückliche
-# Meldung hin benachrichtigt, wäre eine fehlende Allowlist-Freigabe gleichbedeutend mit
-# „meldet nie" — dann bliebe auch Wichtiges stumm. Das Tool schreibt ausschließlich eine
-# Nachricht an den eigenen Menschen, greift also nichts an.
-# Die Gedächtnis-Tools gehören ebenfalls dazu: `allowed_tools` ist deny-by-default, eine
-# fehlende Freigabe hieße also „lernt still nie" — genau der Zustand, den TRA-30 beendet.
-# Sie schreiben ausschließlich in den Gedächtnis-Ordner des eigenen Menschen.
+# Loop and control tools are agent mechanics, not bounded by the allowlist (ALWAYS available).
+# `traccoon_notify_human` belongs to them: since the assistant only reports when it explicitly
+# decides to, a missing allowlist entry would mean "never reports", and important things would
+# stay silent too. The tool writes a message to the agent's own person and attacks nothing.
+
+# The memory tools belong here as well: `allowed_tools` is deny by default, so a missing entry
+# would mean "silently never learns", exactly the state TRA-30 ended. They write only into the
+# memory folder of the agent's own person.
 _ALWAYS_ALLOWED = {"ask_human", "continue_later", "open_tasks", "load_skill", "submit_plan",
                    "delegate", "traccoon_notify_human"} | MEMORY_TOOL_NAMES
 
@@ -192,16 +192,16 @@ CODE_WORKFLOW = (
 )
 
 FS_TOOL_NAMES = {"fs_read", "fs_list", "fs_write", "fs_edit"}
-# Womit ein Lauf sein Ergebnis abliefert. Alles andere ist Vorbereitung — nützlich, aber
-# nach dem Ende des Laufs weg (der Worktree überlebt, der Gesprächsverlauf nicht).
+# How a run delivers its result. Everything else is preparation: useful, but gone after the
+# run ends (the worktree survives, the conversation does not).
 ERGEBNIS_TOOLS = {"execute": {"fs_write", "fs_edit"}, "plan": {"submit_plan"}}
-# Nach welchem Anteil des Iterations- bzw. Zeitbudgets ohne Ergebnis nachgehakt wird.
-# Zweimal, dann ist gut: eine Ermahnung übersieht man, drei sind Nörgeln.
+# After which share of the iteration or time budget without a result a reminder follows.
+# Twice, then enough: one reminder gets overlooked, three are nagging.
 ERMAHNUNG_BEI = (0.35, 0.65)
 
 
 def ermahnungen_faellig(verbraucht: float, bereits: int) -> int:
-    """Wie viele Ermahnungen nach diesem Budget-Stand ausgesprochen sein sollten."""
+    """How many reminders should have been given at this point of the budget."""
     n = bereits
     while n < len(ERMAHNUNG_BEI) and verbraucht >= ERMAHNUNG_BEI[n]:
         n += 1
@@ -209,12 +209,12 @@ def ermahnungen_faellig(verbraucht: float, bereits: int) -> int:
 
 
 def ermahnung_text(mode: str, verbraucht: float, scharf: bool) -> str:
-    """Nachhaken, wenn ein Lauf sein Budget verbraucht, ohne etwas abzuliefern.
+    """Remind a run that spends its budget without delivering anything.
 
-    Der Ton steigt einmal: erst ein Prüfauftrag, dann eine Aufforderung. Beides benennt
-    denselben Punkt — Recherche überlebt das Ende des Laufs nicht, die Änderung im Worktree
-    schon. Die einzige Ermahnung, die es vorher gab, kam bei Runde 78 von 80 und war damit
-    nur noch eine Nachricht an den Nachlassverwalter.
+    The tone rises once: first a request to check, then a demand. Both name the same point:
+    research does not survive the end of the run, a change in the worktree does. The single
+    reminder that existed before came at round 78 of 80 and was therefore only a message to
+    the executor of the estate.
     """
     if mode == "plan":
         was = "noch keinen Plan eingereicht"
@@ -341,14 +341,14 @@ async def _do_check(ws_root: str | None, verify_command: str) -> str:
 
 
 def deploy_gesperrt(stack_dir: str) -> str:
-    """Warum ein Deploy hier gar nicht erst eingereiht wird — leer, wenn er möglich ist.
+    """Why a deploy is not even queued here, empty when it is possible.
 
-    Der Deployer lehnt einen Auftrag ohne eigenes Stack-Verzeichnis grundsätzlich ab
-    (impliziter Host-Deploy ist gesperrt, sonst recreated sich Traccoon selbst mitten im
-    Lauf). Bisher merkte das erst er: der Agent legte eine Deployment-Zeile an, wartete
-    im 3-Sekunden-Takt und bekam nach dem Umweg eine Absage. **56 der 186 Zeilen in
-    `deployments` sind genau diese Absage** — und in jedem dieser Läufe hat ein Agent einen
-    Zug dafür verbraucht. Wer die Antwort schon kennt, soll sie sofort geben.
+    The deployer rejects a request without a stack directory of its own on principle (an
+    implicit host deploy is locked, otherwise Traccoon would recreate itself in the middle of
+    a run). Until now only it noticed: the agent created a deployment row, waited in three
+    second beats and got a refusal after the detour. **56 of the 186 rows in `deployments`
+    are exactly this refusal**, and in every one of those runs an agent spent a turn on it.
+    Whoever knows the answer already should give it right away.
     """
     selbst = (os.getenv("SELF_STACK_DIR") or "").rstrip("/")
     ziel = (stack_dir or "").rstrip("/")
@@ -365,7 +365,7 @@ def deploy_gesperrt(stack_dir: str) -> str:
 
 async def _do_deploy(db: AsyncSession, issue_id: int, project_id: int, stack_dir: str,
                      worktree: str | None, check_only: bool = False) -> str:
-    """Deployment einreihen (deployments-Tabelle) und auf das Ergebnis des Deployer-Sidecars warten."""
+    """Queue a deployment (deployments table) and wait for the result of the deployer sidecar."""
     if not check_only and (grund := deploy_gesperrt(stack_dir)):
         return f"❌ NICHT MÖGLICH\n{grund}"
     from ..models.ops import Deployment
@@ -409,7 +409,7 @@ _TEXT_EXT = (".txt", ".md", ".log", ".json", ".csv", ".yaml", ".yml", ".xml", ".
 
 
 async def _do_read_attachment(db: AsyncSession, issue_id: int, args: dict[str, Any]) -> Any:
-    """Liest einen Ticket-Anhang: Bilder → Vision-Block, Text → Text, sonst Hinweis."""
+    """Reads a ticket attachment: images as a vision block, text as text, otherwise a note."""
     from ..models.ticket import Attachment
     name = (args.get("name") or "").strip()
     rows = (await db.execute(
@@ -461,23 +461,23 @@ class AgentDef:
     allowed_skills: list[str]
     autoload_skills: list[str]
     delegate_to: list[str]
-    # Liest zu Beginn das Gedächtnis und hält nach dem Lauf Rückschau (TRA-30). Default an;
-    # ohne gesetzten Vault-Ordner beim Owner passiert trotzdem nichts.
+    # Reads the memory at the start and looks back after the run (TRA-30). On by default;
+    # without a vault folder set on the owner nothing happens anyway.
     learns: bool = True
-    # Schwelle für die Kompaktierung des Verlaufs (worker/compaction.py). None = aus.
-    # Fehlte hier, obwohl der Lauf den Wert liest — jeder Lauf, der die Stelle erreichte,
+    # Threshold for compacting the history (worker/compaction.py). None means off. It was
+    # missing here although the run reads the value, so every run that reached the place
     # starb an AttributeError.
     max_context_tokens: int | None = None
-    # Denk-Tiefe (low|medium|high|xhigh|max, leer = Anbieter-Standard `high`). Das Denken
-    # teilt sich `max_tokens` mit der sichtbaren Antwort — wer viel zu lesen, aber wenig zu
-    # schreiben hat (der Prüfer), fährt mit einer niedrigeren Stufe sicherer.
+    # Thinking depth (low|medium|high|xhigh|max, empty means the provider default `high`).
+    # Thinking shares `max_tokens` with the visible answer, so whoever has much to read but
+    # little to write (the reviewer) is safer with a lower level.
     effort: str = ""
 
     def tool_allowed(self, name: str) -> bool:
-        # Loop-/Steuer-Tools sind Agent-Mechanik, nicht durch die Allowlist beschränkt.
+        # Loop and control tools are agent mechanics, not bounded by the allowlist.
         if name in _ALWAYS_ALLOWED:
             return True
-        # Capability- & MCP-Tools: NUR wenn per allowed_tools (Glob) explizit erlaubt.
+        # Capability and tool server tools: ONLY when explicitly allowed by allowed_tools (glob).
         # Leere Liste = nichts (deny-by-default). MCP-Server via "server__*".
         from fnmatch import fnmatch
         return any(fnmatch(name, p) for p in (self.allowed_tools or []))
@@ -517,23 +517,23 @@ async def _start_run(db: AsyncSession, issue_id: int, agent: str, phase: str, pr
                      task_id: str = "", *, project_id: int | None = None,
                      owner_id: int | None = None, parent_tool_use_id: str | None = None,
                      spawn_depth: int = 0) -> Run:
-    # task_id MUSS exakt die sein, unter der der Worker result:{task_id} schreibt und der
-    # Dispatcher wait_result/peek_result prüft — sonst bricht die Reattach-Korrelation
-    # (recover_on_start liest run.task_id, um einen laufenden Worker-Run nach Backend-Reload
-    # wieder anzubinden statt ihn zu verwaisen).
-    # Projekt/Owner hängen zusätzlich am Lauf, damit das Büro jedes Ereignis ohne Rückfrage
-    # ans Ticket autorisieren kann — projektlose Läufe (Job, Assistent) hätten dort ohnehin
-    # nichts zu holen. Der ganze Lauf wird zurückgegeben statt nur der id: der Aufrufer baut
-    # daraus den `RunCtx`, und ein zweites Nachladen wäre nur eine zweite Wahrheit.
-    # Ein älterer Lauf zur SELBEN task_id kann nicht mehr leben: die In-flight-Sperre lässt
-    # eine task_id nur einmal gleichzeitig zu. Steht dort noch „running", ist es eine
-    # Karteileiche aus einem abgebrochenen Worker — sie hier zu schließen ist genauer als
-    # jede Zeitgrenze. Die Aufräumung beim Worker-Start greift erst nach `STALE_GRACE_SEC`
-    # und ließ genau die Fälle stehen, die der Neustart selbst erzeugt hat (Lauf 714 am
-    # 2026-08-07: acht Sekunden alt, damit unter der Frist, danach für immer „läuft").
-    # ABER nur für einen Lauf der obersten Ebene: ein delegierter Unterlauf trägt dieselbe
-    # task_id wie sein Elternteil (Verbund-Schlüssel fürs Büro) und startet, WÄHREND der
-    # Elternlauf läuft — der darf hier auf keinen Fall abgeräumt werden.
+    # The task_id MUST be exactly the one the worker writes result:{task_id} under and the
+    # dispatcher checks with wait_result/peek_result, otherwise the reattach correlation breaks
+    # (recover_on_start reads run.task_id to bind a running worker run again after a backend
+    # reload instead of orphaning it).
+    # Project and owner additionally hang on the run so the office can authorise every event
+    # without asking the ticket; projectless runs (job, assistant) would have nothing to fetch
+    # there anyway. The whole run is returned instead of only the id: the caller builds the
+    # `RunCtx` from it, and loading it a second time would only be a second truth.
+    # An older run under the SAME task_id cannot be alive any more: the in-flight lock allows
+    # a task_id only once at a time. If "running" still stands there it is a leftover from an
+    # aborted worker, and closing it here is more precise than any time limit. The cleanup at
+    # worker start only acts after `STALE_GRACE_SEC` and left exactly the cases standing that
+    # the restart itself produced (run 714 on 2026-08-07: eight seconds old, thus under the
+    # limit, and "running" forever afterwards).
+    # BUT only for a top level run: a delegated subrun carries the same task_id as its parent
+    # (a joint key for the office) and starts WHILE the parent runs, so that one must under no
+    # circumstances be cleared away here.
     if task_id and parent_run_id is None and not spawn_depth:
         alt = (await db.execute(select(Run).where(
             Run.task_id == task_id, Run.status == "running"))).scalars().all()
@@ -557,19 +557,19 @@ async def _add_step(db: AsyncSession, ctx: office.RunCtx, role: str, tool: str |
                     target: str | None = None, ok: bool | None = None,
                     duration_ms: int | None = None, in_tokens: int = 0, out_tokens: int = 0,
                     cache_read_tokens: int = 0, provider: str = "", model: str = "") -> None:
-    """Eine Schrittzeile schreiben und sofort in den Live-Kanal geben.
+    """Write a step row and put it into the live channel right away.
 
-    Geschrieben wird über `office.add_step` — denselben Weg, den auch `open_room`
-    nimmt. Es soll keine zweite Stelle geben, an der eine Zeile ohne die Ereignisfelder
-    entstehen könnte. Gesendet wird ERST nach dem Commit: vorher hat die Zeile keine `id`
-    und damit keine `seq`. Ein zweiter Sendeweg wäre falsch — `publish_step` schluckt
-    jeden Fehler selbst, ein ausgefallener Redis darf keinen Agentenlauf töten.
+    Writing goes through `office.add_step`, the same way `open_room` takes. There should be no
+    second place where a row without the event fields could come into being. Sending happens
+    ONLY after the commit: before it the row has no `id`
+    and therefore no `seq`. A second sending path would be wrong: `publish_step` swallows
+    every error itself, and a Redis outage must not kill an agent run.
 
-    Dasselbe gilt für die Datenbank. Eine Schrittzeile ist Buchführung, kein Arbeitsergebnis
-    — ihr Ausfall darf nicht die Arbeit kosten. Am 2026-08-07 um 18:00 tat er genau das:
-    ein Deadlock gegen die Schema-Selbstheilung des Backends ließ diesen INSERT scheitern,
-    die Ausnahme schlug durch die Schleife durch und beendete Lauf 753 nach 37 Zügen. Ein
-    Rollback macht die Sitzung wieder benutzbar, der Lauf schreibt weiter.
+    The same holds for the database. A step row is bookkeeping, not a work result, and its
+    failure must not cost the work. On 2026-08-07 at 18:00 it did exactly that: a deadlock
+    against the schema self healing of the backend made this INSERT fail, the exception broke
+    through the loop and ended run 753 after 37 turns. A rollback makes the session usable
+    again, and the run keeps writing.
     """
     try:
         step = await office.add_step(
@@ -577,14 +577,14 @@ async def _add_step(db: AsyncSession, ctx: office.RunCtx, role: str, tool: str |
             tool_use_id=tool_use_id, ok=ok, duration_ms=duration_ms, in_tokens=in_tokens,
             out_tokens=out_tokens, cache_read_tokens=cache_read_tokens, provider=provider,
             model=model)
-    except Exception as exc:  # noqa: BLE001 — Buchführung ist nie ein Grund aufzugeben
+    except Exception as exc:  # noqa: BLE001 — bookkeeping is never a reason to give up
         log.warning("Schrittzeile nicht geschrieben (%s/%s): %s", role, tool or "—", exc)
         try:
             await db.rollback()
         except Exception:  # noqa: BLE001
             log.exception("Rollback nach fehlgeschlagener Schrittzeile misslungen")
         return
-    # `SessionLocal` läuft mit expire_on_commit=False, `step.id` steht also ohne Nachfrage.
+    # `SessionLocal` runs with expire_on_commit=False, so `step.id` is there without asking.
     await office.publish_step(ctx, step)
 
 
@@ -608,15 +608,15 @@ async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = ""
     run.output_tokens = out_tok
     run.last_text = summary[:2000] if summary else run.last_text
     run.finished_at = _now()
-    # Woran der Lauf hängt, wenn er blockiert endet — „blockiert" allein zwingt sonst
-    # jeden Leser, die Ursache aus dem Text zu erraten.
+    # What the run hangs on when it ends blocked: "blocked" alone forces every reader to
+    # guess the cause from the text.
     if blocker_kind:
         run.blocker_kind = blocker_kind
-    # Kosten aus Modellpreisen (falls im Katalog). cache_read = per Prompt-Caching
-    # verbilligter (gecachter) Input-Anteil, separat mit price_cache_read (~0,1x)
-    # bepreist, damit die Ersparnis sichtbar und die Gesamtkosten korrekt sind.
+    # Cost from model prices (when they are in the catalog). cache_read is the input share
+    # made cheaper by prompt caching, priced separately with price_cache_read (about 0.1x) so
+    # that the saving is visible and the total is right.
     cost = 0.0
-    priced: bool | None = None      # None = es gab nichts zu bepreisen (kein Token)
+    priced: bool | None = None      # None means there was nothing to price (no token)
     if in_tok or out_tok or cache_read:
         pm = (
             await db.execute(
@@ -629,29 +629,29 @@ async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = ""
             cost = (in_tok / 1e6 * pm.price_input
                     + out_tok / 1e6 * pm.price_output
                     + cache_read / 1e6 * pm.price_cache_read)
-        # Das Projekt steht seit dem Büro am Lauf selbst; die Abfrage über das Ticket ist
-        # nur noch der Rückfall für Läufe, die vor der Spalte begonnen haben.
+        # The project sits on the run itself since the office exists; the query through the
+        # ticket is only the fallback for runs that began before the column.
         project_id = run.project_id
         if project_id is None and run.issue_id:
             project_id = (
                 await db.execute(select(Issue.project_id).where(Issue.id == run.issue_id))
             ).scalar_one_or_none()
-        # `priced` trennt „kein Katalogeintrag" von „bepreist und gratis" — beides ergab
-        # bisher dieselbe 0,00, und jede Lücke im Katalog las sich wie ein Geschenk.
+        # `priced` separates "no catalog entry" from "priced and free": both used to produce
+        # the same 0.00, and every gap in the catalog read like a gift.
         db.add(CostEntry(run_id=run.id, issue_id=run.issue_id, agent=run.agent,
                          provider=run.provider, model=run.model, input_tokens=in_tok,
                          output_tokens=out_tok, cache_read_tokens=cache_read,
                          cost_usd=cost, project_id=project_id, priced=priced))
-    # Ausdrücklich AUSSERHALB des Token-`if`: ein Lauf ohne Tokens bekam bisher nicht
-    # einmal eine ausgeschriebene 0,00, sondern behielt, was zufällig dastand.
+    # Deliberately OUTSIDE the token `if`: a run without tokens used to get not even a
+    # written out 0.00 but kept whatever happened to stand there.
     run.cost_usd = cost
     await db.commit()
 
     if ctx is None:
         return
-    # Die Abschlusszeile im Raum: ohne sie geht der Agent nie durch die Tür. Der Inhalt ist
-    # das Mapping, das `office._run_end_fields` liest — dieselben Felder, die die
-    # Lese-API aus der `runs`-Zeile zieht, damit beide Wege nicht auseinanderlaufen.
+    # The closing row in the room: without it the agent never walks through the door. The
+    # content is the mapping `office._run_end_fields` reads, the same fields the read API
+    # pulls from the `runs` row, so the two paths cannot drift apart.
     try:
         await _add_step(db, ctx, "system", None, json.dumps({
             "status": status, "blocker_kind": blocker_kind,
@@ -660,8 +660,8 @@ async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = ""
             "cache_read_tokens": cache_read, "cost_usd": cost, "cost_priced": priced,
         }, ensure_ascii=False), kind="run_end")
     except Exception:  # noqa: BLE001
-        # Der Raum ist Zuschauer, nicht Beteiligter: eine nicht geschriebene Abschlusszeile
-        # darf das Ergebnis des Laufs nicht verschlucken (der Status ist oben schon fest).
+        # The room is a spectator, not a participant: a closing row that was not written must
+        # not swallow the result of the run (the status is settled above already).
         log.warning("Büro: run_end von Lauf %s nicht geschrieben", run_id, exc_info=True)
 
 
@@ -672,20 +672,20 @@ async def _add_comment(db: AsyncSession, issue_id: int, label: str, body: str) -
 
 # ---------- Hauptschleife ----------
 
-# Hausordnung des Projekts: Konventionsdateien, wie sie Code-Agenten überall erwarten.
-# Bewusst aus dem WORKTREE gelesen und nicht in die Datenbank kopiert — eine Kopie driftet
-# vom Repo weg, und zwar unbemerkt: der Agent hielte sich dann an Regeln, die der Mensch
-# vor drei Wochen geändert hat. So gilt immer der Stand des Branches, an dem gearbeitet wird.
+# House rules of the project: convention files as code agents expect them everywhere.
+# Deliberately read from the WORKTREE and not copied into the database, because a copy drifts
+# away from the repository, and unnoticed at that: the agent would then follow rules a person
+# changed three weeks ago. This way the state of the branch being worked on always applies.
 CONVENTION_FILES = ("CLAUDE.md", "AGENTS.md", "AGENT.md", "CONVENTIONS.md")
 MAX_CONVENTION_CHARS = 12000
 
 
 def _read_conventions(ws_root: str | None) -> str:
-    """Die erste vorhandene Konventionsdatei des Worktrees, gekappt.
+    """The first convention file that exists in the worktree, truncated.
 
-    Nur die erste: zwei Dateien nebeneinander sind fast immer eine Kopie der anderen, und
-    zwei Hausordnungen im selben Prompt sind schlimmer als keine. Gekappt wird am Ende und
-    sichtbar — ein stillschweigend halbierter Regelsatz wäre die schlechteste Variante.
+    Only the first: two files next to each other are almost always a copy of one another, and
+    two sets of house rules in the same prompt are worse than none. Truncation happens at the
+    end and visibly, because a silently halved set of rules would be the worst variant.
     """
     if not ws_root:
         return ""
@@ -719,10 +719,10 @@ def _build_system_prompt(agent: AgentDef) -> str:
 
 
 async def _owner_gateway(db: AsyncSession, owner_id: int | None) -> tuple[str | None, str | None]:
-    """MCPJungle-Gruppen-Endpoint + Token des Owners (harte Per-User-Trennung).
+    """Tool gateway group endpoint plus the owner's token (a hard separation per user).
 
-    Kein MCP-Config beim User → (None, None) → kein Gateway (nur Registry-Server).
-    Fällt NICHT auf den globalen Gateway zurück, damit ein User nur seine Server sieht.
+    No tool configuration on the user means (None, None) and therefore no gateway (registry
+    servers only). Does NOT fall back to the global gateway, so a user sees only their servers.
     """
     import os
 
@@ -739,7 +739,7 @@ async def _owner_gateway(db: AsyncSession, owner_id: int | None) -> tuple[str | 
 
 
 def _server_spec(r, extra_headers: dict | None = None) -> dict | None:
-    """McpServer-Zeile → {name, url, headers}. stdio/ohne url → None (übersprungen)."""
+    """An McpServer row turned into {name, url, headers}. stdio or without a url yields None."""
     from ..core.security import decrypt_secret
 
     if r.transport not in ("http", "sse") or not r.url:
@@ -757,10 +757,10 @@ def _server_spec(r, extra_headers: dict | None = None) -> dict | None:
 
 
 async def _agent_mcp(db: AsyncSession, agent: AgentDef, owner_id: int | None = None) -> list[dict]:
-    """Registry-MCP-Server für DIESEN Agenten:
-    - agent-eigene Instanzen (Server + ausgefüllte Variablen als Header),
-    - plus globale/eigene Server OHNE Variablen-Schema (Zero-Config), abwärtskompatibel.
-    Server MIT Variablen ohne Instanz werden nicht geladen (brauchen Konfiguration)."""
+    """Registry tool servers for THIS agent:
+    - the agent's own instances (server plus filled in variables as headers),
+    - plus global or own servers WITHOUT a variable schema (zero configuration), for
+      backwards compatibility. Servers WITH variables but without an instance are not loaded."""
     from sqlalchemy import or_, select
 
     from ..core.security import decrypt_secret
@@ -786,14 +786,14 @@ async def _agent_mcp(db: AsyncSession, agent: AgentDef, owner_id: int | None = N
                 out.append(spec)
                 seen.add(srv.id if srv.id is not None else srv.name)
 
-    # 2) Zero-Config-Server (kein Variablen-Schema) — global + eigene
-    # Instanz hat Vorrang (bringt Header/Werte mit) → hier bereits erfasste Server überspringen,
-    # sonst landet derselbe Server doppelt in der Spec-Liste (doppelte Tools im Prompt).
+    # 2) Zero configuration servers (no variable schema), global plus own
+    # An instance takes precedence (it brings headers and values), so servers already covered
+    # here are skipped, otherwise the same server lands twice in the spec list (duplicate
     zc = select(McpServer).where(McpServer.enabled.is_(True))
     zc = zc.where(or_(McpServer.user_id.is_(None), McpServer.user_id == owner_id)
                   if owner_id is not None else McpServer.user_id.is_(None))
     for r in (await db.execute(zc)).scalars().all():
-        if r.variables:   # braucht Konfiguration → nur via Instanz
+        if r.variables:   # needs configuration, so only through an instance
             continue
         key = r.id if r.id is not None else r.name
         if key in seen:
@@ -814,7 +814,7 @@ async def _latest_skill(db: AsyncSession, key: str):
 
 
 async def _agent_skills(db: AsyncSession, agent: AgentDef) -> tuple[str, str]:
-    """(Volltext der autoload-Skills, Menü der übrigen verfügbaren Skills)."""
+    """(full text of the autoload skills, menu of the remaining available ones)."""
     autoload = set(agent.autoload_skills or [])
     parts, menu = [], []
     for key in (agent.allowed_skills or []):
@@ -844,27 +844,27 @@ LOAD_SKILL_TOOL = {
     }}
 
 
-# Wie viele Züge die Rückschau höchstens bekommt: einer zum Merken, einer zum Abschließen.
+# How many turns the look back gets at most: one to remember, one to close.
 MAX_REFLEXION_TURNS = 2
 
 
 async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | None,
                    project_key: str, messages: list[dict[str, Any]], summary: str, protokoll,
                    tokens: dict, base_urls: dict) -> tuple[int, int, int]:
-    """Rückschau nach einem erfolgreichen Lauf: Dauerhaftes ins Gedächtnis (TRA-30).
+    """Look back after a successful run: what lasts goes into the memory (TRA-30).
 
-    Ein zusätzlicher Modellzug über den gelaufenen Verlauf, dem NUR die Gedächtnis-Tools
-    angeboten werden — der Agent kann hier also nichts mehr tun als lernen. Der Regelfall
-    ist „nichts gelernt", das kostet einen kurzen Zug.
+    An extra model turn over the history of the run, offered ONLY the memory tools, so the
+    agent can do nothing here but learn. The normal case is "learned nothing", which costs one
+    short turn.
 
-    Rückgabe: (input, output, cache_read) zum Aufaddieren auf die Zähler des Laufs.
+    Returns (input, output, cache_read) to add onto the counters of the run.
     """
     in_tok = out_tok = cache_read = 0
-    # Die Abschluss-Antwort steht noch nicht im Verlauf (im tool-call-freien Zweig wird sie
-    # nicht angehängt) — die Rückschau braucht sie aber, sie ist das Ergebnis des Laufs.
-    # Der Auftrag geht als `user`-Zug hinein, NICHT als `system`: role=system wird bei
-    # Anthropic zu einem System-Block umgebaut (providers/anthropic.py) und stünde damit
-    # nicht am Ende des Gesprächs, sondern in der Systemanweisung.
+    # The closing answer is not in the history yet (in the branch without tool calls it is not
+    # appended), but the look back needs it, because it is the result of the run. The
+    # assignment goes in as a `user` turn, NOT as `system`: role=system is rebuilt into a
+    # system block for Anthropic (providers/anthropic.py) and would then not stand at the end
+    # of the conversation but in the system instruction.
     msgs = list(messages)
     if (summary or "").strip():
         msgs.append({"role": "assistant", "content": summary})
@@ -874,9 +874,9 @@ async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | No
                                  tools=list(MEMORY_TOOLS), temperature=agent.temperature,
                                  max_tokens=1024, fallback=agent.fallback,
                                  fallback_model=agent.fallback_model, tokens=tokens,
-                                 # 1024 Tokens sind für Denken + Notiz zu wenig: mit der
-                                 # Standardstufe verbraucht das Denken allein das Budget und
-                                 # die Rückschau kommt leer zurück.
+                                 # 1024 tokens are too few for thinking plus a note: at the
+                                 # default level the thinking alone eats the budget and the
+                                 # look back comes back empty.
                                  base_urls=base_urls, effort="low")
         in_tok += int(resp.usage.get("input_tokens", 0) or 0)
         out_tok += int(resp.usage.get("output_tokens", 0) or 0)
@@ -891,9 +891,9 @@ async def _reflect(*, db: AsyncSession, mcp, agent: AgentDef, owner_id: int | No
                                              agent.role, project_key)
             else:
                 out = f"FEHLER: In der Rückschau ist nur '{', '.join(sorted(MEMORY_TOOL_NAMES))}' erlaubt."
-            # Bleibt bewusst eine zusammengefasste Zeile ohne `kind`: die Rückschau ist die
-            # Nachbereitung des Laufs, keine Arbeit am Auftrag — sie soll den Raum nicht mit
-            # Werkzeugen füllen. Der Altdaten-Pfad spaltet sie beim Lesen trotzdem sauber auf.
+            # Deliberately stays one summarised row without a `kind`: the look back is the
+            # wrap up of the run, not work on the assignment, and it should not fill the room
+            # with tools. The old data path still splits it cleanly while reading.
             await protokoll("tool", call.name,
                       f"Rückschau: args={json.dumps(call.arguments, ensure_ascii=False)[:400]}\n→ {out[:500]}")
             msgs.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
@@ -919,29 +919,29 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     base_urls = base_urls or {}
     issue_id = issue["id"]
 
-    # Anhänge des Tickets (Metadaten) — für Kontext-Hinweis + read_attachment-Tool.
+    # Attachments of the ticket (metadata), for the context hint and the read_attachment tool.
     from ..models.ticket import Attachment
     _att_rows = (await db.execute(
         select(Attachment.filename, Attachment.mime_type, Attachment.size)
         .where(Attachment.issue_id == issue_id).order_by(Attachment.id))).all()
 
-    # `project["id"]` ist bei Job- und Assistentenläufen None — die Spalte ist genau dafür
-    # nullable; solche Läufe gehören keinem Projekt, sondern nur ihrem Menschen.
+    # `project["id"]` is None on job and assistant runs, which is exactly why the column is
+    # nullable: such runs belong to no project, only to their person.
     run = await _start_run(db, issue_id, agent.name, mode, agent.provider,
                            agent.model or agent.provider, parent_run_id, continuation_index,
                            task_id=task_id, project_id=project.get("id"), owner_id=owner_id,
                            parent_tool_use_id=parent_tool_use_id, spawn_depth=depth)
     run_id = run.id
-    # Der Kontext trägt den seq-Zähler des Laufs: `_end_run` schreibt die Abschlusszeile,
-    # nachdem die Schleife (und mit ihr `protokoll`) längst verlassen ist — ein Zähler in
-    # der Closure könnte dort nicht weitergezählt werden.
+    # The context carries the seq counter of the run: `_end_run` writes the closing row after
+    # the loop (and with it `protokoll`) has long been left, and a counter in the closure
+    # could not be counted on there.
     ctx = office.RunCtx.from_run(run, issue_key=str(issue.get("key") or ""))
 
     async def protokoll(role: str, tool: str | None, content: str, *, kind: str = "",
                         **felder: Any) -> None:
         await _add_step(db, ctx, role, tool, content, kind=kind, **felder)
 
-    # Der Agent kommt in den Raum, und es steht dabei, warum: `run_start` + der Auftrag als
+    # The agent enters the room, and it says why: `run_start` plus the assignment as
     # `user_message`, beides in einer Transaktion.
     await office.open_room(db, ctx, agent=agent, mode=mode, issue=issue)
 
@@ -949,15 +949,15 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         {"role": "system", "content": _build_system_prompt(agent)},
         {"role": "user", "content": f"# Auftrag: {issue['summary']}\n\n{issue.get('description') or ''}".strip()},
     ]
-    # Skills: autoload → Volltext; verfügbare (nicht-auto) → Menü + load_skill-Tool.
+    # Skills: autoload as full text, available (non auto) ones as a menu plus the load_skill tool.
     autoload_text, skill_menu = await _agent_skills(db, agent)
     if autoload_text:
         messages.append({"role": "system", "content": autoload_text})
     if skill_menu:
         messages.append({"role": "system", "content": skill_menu})
-    # Erst die Hausordnung aus dem Repo, dann die Projekt-Hinweise: das letzte Wort hat die
-    # Datenbank, weil dort steht, was NUR in Traccoon gilt (Worktree statt Live-Ordner,
-    # `check` statt Host-Befehle, kein Deploy von Hand).
+    # First the house rules from the repository, then the project hints: the database has the
+    # last word, because that is where what applies ONLY here stands (worktree instead of the
+    # live folder, `check` instead of host commands, no deploy by hand).
     konventionen = _read_conventions(ws_root)
     if konventionen:
         messages.append({"role": "system", "content": konventionen})
@@ -967,12 +967,12 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         messages.append({"role": "user", "content":
                          "# Bestehender Plan (überarbeite ihn anhand der Kommentare)\n\n" + issue["plan"]})
     elif (plan_text := (issue.get("plan") or "").strip()):
-        # DER PLAN GEHÖRT IN DIE AUSFÜHRUNG. Er wurde bisher zwar an `run_agent` übergeben,
-        # aber nur im Planungsmodus benutzt — der Entwickler arbeitete aus der
-        # Ticket-Beschreibung. Bei TRA-31 war die ein Symptombericht („finde die Ursache,
-        # werte job_runs aus"), während der freigegebene Plan die Ursache längst benannte,
-        # mit Datei und Zeilennummer. Ergebnis am 2026-08-07: drei Läufe, 155 Züge, keine
-        # Zeile Code — der Agent erarbeitete sich die fertige Analyse selbst noch einmal.
+        # THE PLAN BELONGS IN THE EXECUTION. It used to be passed to `run_agent` but only used
+        # in planning mode, so the developer worked from the ticket description. On TRA-31
+        # that description was a report of symptoms ("find the cause, evaluate job_runs"),
+        # while the approved plan had named the cause long before, with file and line number.
+        # The result on 2026-08-07: three runs, 155 turns, no
+        # agent worked out the finished analysis for itself all over again.
         messages.append({"role": "user", "content":
             "# Freigegebener Umsetzungsplan — das ist dein Auftrag\n\n" + plan_text +
             "\n\nDieser Plan ist geprüft und freigegeben: seine Fundstellen sind belegt, "
@@ -984,10 +984,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             f"## Fortsetzung (Runde {continuation_index})\nWorktree-Stand ist erhalten. Letzter Stand:\n"
             f"{continuation_hint}\nArbeite direkt weiter, prüfe den Build-Status, schließe offene Schritte ab."})
     elif mode != "plan" and issue.get("id"):
-        # Kein geordnetes Ende, keine Übergabe — und der Nachfolger fängt bei null an, obwohl
-        # der Worktree die halbe Arbeit schon trägt. Für den Abbruch (Worker-Neustart,
-        # Absturz) lässt sich die Übergabe aus den Daten bauen: welche Dateien der Vorgänger
-        # angefasst hat, steht in seinen Schrittzeilen. Kostet keinen Modellzug.
+        # No orderly end, no handover, and the successor starts from zero although the
+        # worktree already carries half the work. For an abort (worker restart, crash) the
+        # handover can be built from the data: which files the predecessor touched stands in
+        # its step rows. Costs no model turn.
         if (abbruch := await _abbruch_uebergabe(db, int(issue["id"]), run_id)):
             messages.append({"role": "system", "content": abbruch})
     if comment_history:
@@ -1004,28 +1004,28 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                          "Bilder/Screenshots werden dir als Bild gezeigt.\n" + _lst})
 
     gw_url, gw_token = await _owner_gateway(db, owner_id)
-    # Die Token-Zähler leben AUSSERHALB des `try`: der äußere `except` unten gibt sie an
-    # `_end_run` weiter, und wären sie erst im `async with` gebunden, würfe genau der
-    # Rettungspfad ein NameError statt die Tokens zu retten.
+    # The token counters live OUTSIDE the `try`: the outer `except` below passes them to
+    # `_end_run`, and if they were bound only inside the `async with`, the rescue path of all
+    # things would raise a NameError instead of saving the tokens.
     in_tok = out_tok = cache_read = 0
-    # Leerer String (nicht None) → KEIN Gateway; kein Rückfall auf globalen Gateway (harte Trennung).
+    # Empty string (not None) means NO gateway; no fallback to a global one (hard separation).
     try:
         async with mcp_session(agent.name, servers=await _agent_mcp(db, agent, owner_id),
                                gateway_url=gw_url or "", gateway_token=gw_token or "") as mcp:
             mcp_tools = await mcp.list_tools()
             openai_tools = [t.to_openai() for t in mcp_tools if agent.tool_allowed(t.name)]
             openai_tools.append(ASK_HUMAN_TOOL)
-            if _att_rows:  # Ticket hat Anhänge → Lese-Tool anbieten (read-only, immer erlaubt)
+            if _att_rows:  # the ticket has attachments, so offer the read tool (read only, always allowed)
                 openai_tools.append(READ_ATTACHMENT_TOOL)
-            if skill_menu:  # es gibt verfügbare, nicht-auto Skills → Nachlade-Tool anbieten
+            if skill_menu:  # there are available non auto skills, so offer the loading tool
                 openai_tools.append(LOAD_SKILL_TOOL)
             if mode != "plan":
                 openai_tools.append(CONTINUE_LATER_TOOL)
                 openai_tools.append(OPEN_TASKS_TOOL)
                 if agent.can_delegate and delegate_loader is not None and depth < MAX_DELEGATION_DEPTH:
                     openai_tools.append(_delegate_tool(agent.delegate_to))
-            # Native Capability-Tools: grobes Fähigkeits-Gate (can_code/can_read_code/screenshot)
-            # UND zusätzlich deny-by-default über die Allowlist (tool_allowed).
+            # Native capability tools: the coarse ability gate (can_code/can_read_code/
+            # screenshot) AND additionally deny by default through the allowlist (tool_allowed).
             _maybe = lambda t: openai_tools.append(t) if agent.tool_allowed(t["function"]["name"]) else None
             if ws_root and (agent.can_code or agent.can_read_code):
                 _maybe(FS_READ_TOOL); _maybe(FS_LIST_TOOL)
@@ -1035,24 +1035,24 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     _maybe(SCREENSHOT_TOOL)
                 if mode != "plan" and agent.can_code:
                     _maybe(FS_WRITE_TOOL); _maybe(FS_EDIT_TOOL); _maybe(CHECK_TOOL)
-                    # Kein Werkzeug anbieten, dessen Antwort schon feststeht: ohne eigenes
-                    # Stack-Verzeichnis (oder mit Traccoon selbst als Ziel) lehnt der
-                    # Deployer jeden Auftrag ab. Ein Werkzeug, das nur scheitern kann, ist
-                    # eine Einladung, einen Zug dafür zu verbrennen.
+                    # Offer no tool whose answer is settled already: without a stack directory
+                    # of its own (or with Traccoon itself as the target) the deployer rejects
+                    # every request. A tool that can only fail is an invitation to burn a turn
+                    # on it.
                     if not deploy_gesperrt(project.get("stack_dir", "")):
                         _maybe(DEPLOY_TOOL)
                     messages.append({"role": "system", "content": CODE_WORKFLOW})
-            # Traccoon-Steuer-Tools: nur mit Nutzerkontext (Rechte-Prüfung) + `traccoon_*`
-            # in der Allowlist. Brauchen keinen Worktree.
+            # Traccoon control tools: only with a user context (permission check) and
+            # `traccoon_*` in the allowlist. They need no worktree.
             if owner_id:
                 for _t in TRACCOON_TOOLS:
                     _maybe(_t)
             if mode == "plan":
                 openai_tools.append(SUBMIT_PLAN_TOOL)
 
-            # Gedächtnis (TRA-30): gelernte Vorgaben aus dem Vault des Owners. Gelesen wird
-            # SERVERSEITIG — die `oneOf`-Adressierung des obsidian-MCP hängt damit nicht am
-            # Modell (Begründung in tools_memory). Ohne Vault-Ordner passiert nichts.
+            # Memory (TRA-30): learned rules from the owner's vault. Reading happens ON THE
+            # SERVER, so the `oneOf` addressing of the vault tool server does not depend on the
+            # model (reasoning in tools_memory). Without a vault folder nothing happens.
             mem_root = await memory_root(db, owner_id) if agent.learns else ""
             if mem_root:
                 for _t in MEMORY_TOOLS:
@@ -1060,7 +1060,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 try:
                     _mem = await read_memory(mcp, mem_root, agent.role, project.get("key") or "")
                 except Exception:  # noqa: BLE001
-                    _mem = ""      # kein Vault erreichbar → Lauf ohne Gedächtnis, nicht abbrechen
+                    _mem = ""      # no vault reachable: run without memory, do not abort
                 if _mem:
                     messages.append({"role": "system", "content":
                         "# Gedächtnis (früher gelernt, gilt weiter)\n" + _mem +
@@ -1081,24 +1081,24 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     messages.append({"role": "user", "content":
                         f"# Projektkontext (Vault: {moc_path})\n{(moc or '')[:6000]}\n\n## Dateien\n{(tree or '')[:2000]}"})
                 except Exception:  # noqa: BLE001
-                    pass  # MCP nicht konfiguriert → kein Vault-Kontext
+                    pass  # tool servers not configured, so no vault context
 
             last_text = ""
             empties = 0
             build_gate_fails = 0
-            letzter_kontext = 0     # echte Kontextgröße des letzten Aufrufs (für die Kompaktierung)
+            letzter_kontext = 0     # real context size of the last call (for the compaction)
             frist = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
-            # Hat dieser Lauf schon etwas abgeliefert (Änderung bzw. Plan)? Danach richtet
-            # sich, ob nachgehakt wird — nicht danach, wie viel er gelesen hat.
+            # Has this run delivered anything yet (a change or a plan)? That decides whether a
+            # reminder follows, not how much it has read.
             ergebnis_tools = ERGEBNIS_TOOLS["plan" if mode == "plan" else "execute"] & {
                 t["function"]["name"] for t in openai_tools}
             ergebnis_da = False
             ermahnt = 0
             grenze_grund = "Iterations-Limit erreicht."
-            iteration = 0       # falls max_iterations 0 ist, läuft die Schleife nie
+            iteration = 0       # in case max_iterations is 0, the loop never runs
             for iteration in range(1, agent.max_iterations + 1):
                 if frist and asyncio.get_running_loop().time() > frist:
-                    # Wie beim Token-Budget: `break` fällt auf die loop_exhausted-Finalisierung.
+                    # As with the token budget: `break` falls into the loop_exhausted ending.
                     gelaufen = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - frist)
                     grenze_grund = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(MAX_RUN_SECONDS)}s)."
                     log.warning("Run %s: Zeitlimit erreicht (%ds) → loop_exhausted", run_id, gelaufen)
@@ -1110,10 +1110,9 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     messages.append({"role": "system", "content":
                         "⚠️ Du näherst dich dem Iterations-Limit. Wenn du NICHT unmittelbar vor dem Abschluss "
                         "stehst: `continue_later` mit Zusammenfassung. Nur bei echter Blockade: `ask_human`."})
-                # Nachhaken, solange es noch etwas nützt: verbrauchtes Budget ohne jedes
-                # Ergebnis. UNI-12 hat am 2026-08-07 in drei Läufen 190 Dateien gelesen und
-                # keine Zeile geschrieben — die einzige Ermahnung kam bei Runde 78 von 80,
-                # also lange nachdem die Zeit weg war.
+                # Remind while it still helps: budget spent without any result at all. On
+                # 2026-08-07 UNI-12 read 190 files across three runs and wrote not a line. The
+                # only reminder came at round 78 of 80, long after the time was gone.
                 if ergebnis_tools and not ergebnis_da:
                     verbraucht = max(
                         iteration / max(1, agent.max_iterations),
@@ -1127,8 +1126,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         await protokoll("system", None,
                                         f"⚠️ {int(verbraucht * 100)} % Budget ohne Ergebnis — nachgehakt",
                                         kind="system")
-                # Kontext kürzen, BEVOR er den Provider sprengt. Gemessen wird die echte
-                # Kontextgröße des letzten Aufrufs; ohne `max_context_tokens` passiert nichts.
+                # Shorten the context BEFORE it bursts the provider. What is measured is the
+                # real context size of the last call; without `max_context_tokens` nothing happens.
                 if agent.max_context_tokens and letzter_kontext:
                     _neu = await _kompaktiere(
                         db, messages=messages, grenze_tokens=agent.max_context_tokens,
@@ -1140,7 +1139,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                   f"(Kontext {letzter_kontext} von {agent.max_context_tokens}).",
                                   kind="system")
                         messages = _neu
-                        letzter_kontext = 0     # Messung verbraucht — erst neu messen, dann wieder kürzen
+                        letzter_kontext = 0     # measurement spent: measure again, then shorten again
                 try:
                     resp = await router.chat(provider=agent.provider, model=agent.model, messages=messages,
                                              tools=openai_tools, temperature=agent.temperature,
@@ -1150,28 +1149,27 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                              base_urls=base_urls, effort=agent.effort)
                 except ProviderError as exc:
                     await protokoll("system", None, f"Provider-Fehler: {exc}", kind="system")
-                    # Die bisherigen Züge sind bezahlt, auch wenn der letzte scheiterte —
-                    # ohne die Tokens hier verlor ein Provider-Fehler den ganzen Lauf aus
-                    # der Kostenrechnung.
+                    # The turns so far are paid for even when the last one failed. Without the
+                    # tokens here a provider error lost the whole run from the cost calculation.
                     await _end_run(db, run_id, "failed", error=str(exc), iterations=iteration,
                                    in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
                     return RunResult("failed", str(exc), iteration, run_id=run_id)
 
                 in_tok += int(resp.usage.get("input_tokens", 0) or 0)
                 out_tok += int(resp.usage.get("output_tokens", 0) or 0)
-                # Gecachte Input-Tokens getrennt akkumulieren (NICHT in in_tok, denn
-                # usage.input_tokens ist bereits der ungecachte Rest; die Runaway-Cap
-                # in dispatcher._process wertet weiter runs.input_tokens aus).
+                # Accumulate cached input tokens separately (NOT into in_tok, because
+                # usage.input_tokens is already the uncached remainder; the runaway cap in
+                # dispatcher._process keeps evaluating runs.input_tokens).
                 cache_read += int(resp.cache_read_tokens or 0)
-                # Für die Kompaktierung zählt der GESAMTE Kontext dieses Aufrufs, also
-                # ungecachter Rest PLUS gecachter Anteil. Nur `input_tokens` zu nehmen wäre
-                # bei gutem Cache-Treffer fast null — und die Grenze würde nie greifen.
+                # For the compaction the ENTIRE context of this call counts, so the uncached
+                # remainder PLUS the cached share. Taking only `input_tokens` would be almost
+                # zero on a good cache hit, and the limit would never take effect.
                 letzter_kontext = (int(resp.usage.get("input_tokens", 0) or 0)
                                    + int(resp.cache_read_tokens or 0))
                 if in_tok >= MAX_RUN_INPUT_TOKENS:
-                    # Hartes Token-Budget erreicht → Run exakt wie beim Iterations-Limit
-                    # abbrechen: `break` fällt auf die loop_exhausted-Finalisierung unten
-                    # (gleicher _end_run/RunResult-Pfad), damit die Continuation-Semantik greift.
+                    # Hard token budget reached: end the run exactly as on the iteration limit.
+                    # `break` falls into the loop_exhausted ending below (the same
+                    # _end_run/RunResult path) so that the continuation semantics apply.
                     grenze_grund = f"Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS})."
                     log.warning("Run %s: Token-Budget erreicht (%d ≥ %d) → loop_exhausted",
                                 run_id, in_tok, MAX_RUN_INPUT_TOKENS)
@@ -1179,13 +1177,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                               f"⚠️ Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS}) "
                               f"→ loop_exhausted (Fortsetzung in frischem Run)", kind="system")
                     break
-                # Der Inhalt bleibt wörtlich wie bisher (`AgentMonitor` liest ihn so), aber die
-                # Zeile trägt jetzt die Tokens DIESES Zuges: erst damit wächst die Kostenkurve
-                # sekündlich mit, statt am Ende des Laufs in einem Sprung aufzutauchen.
-                # `kind` trennt echten Text von einem reinen Werkzeugzug — der kostet zwar
-                # auch, hat aber nichts gesagt und soll im Raum nichts sagen.
-                # Provider/Modell kommen aus der ANTWORT: bei einem Fallback ist das nicht der
-                # am Agenten eingestellte, und mit dem falschen wäre der Zug falsch bepreist.
+                # The content stays verbatim as before (`AgentMonitor` reads it that way), but
+                # the row now carries the tokens of THIS turn: only then does the cost curve
+                # grow by the second instead of appearing in one jump at the end of the run.
+                # `kind` separates real text from a pure tool turn, which costs as well but
+                # said nothing and should say nothing in the room.
+                # Provider and model come from the ANSWER: on a fallback that is not the one
+                # configured on the agent, and with the wrong one the turn would be mispriced.
                 await protokoll("assistant", None, resp.text or "(Tool-Call)",
                                 kind="agent_text" if (resp.text or "").strip() else "usage",
                                 in_tokens=int(resp.usage.get("input_tokens", 0) or 0),
@@ -1200,7 +1198,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     if (resp.text or "").strip():
                         if (agent.can_code and mode != "plan" and ws_root
                                 and strict_success and not verify_command):
-                            # Strenge Abnahme ohne Prüfbefehl: Erfolg wäre nicht belegbar.
+                            # Strict acceptance without a verify command: success would not be provable.
                             err = ("Strenge Abnahme ist aktiv, aber das Projekt hat keinen verify_command. "
                                    "Ohne grünen Prüflauf gilt der Lauf nicht als erfolgreich.")
                             await _end_run(db, run_id, "failed", error=err, iterations=iteration,
@@ -1220,9 +1218,9 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                     "⛔ ABSCHLUSS BLOCKIERT: Build ist ROT. Behebe die Ursache (nichts weglöschen) "
                                     "und arbeite weiter:\n\n" + verdict})
                                 continue
-                        # Rückschau: was war eine dauerhafte Vorgabe? (TRA-30) Nur bei Erfolg —
-                        # ein abgebrochener Lauf hat keine belastbare Lehre. Fehler bleiben
-                        # hier liegen: der Lauf war erfolgreich, daran ändert die Rückschau nichts.
+                        # Look back: what was a lasting rule? (TRA-30) Only on success, because
+                        # an aborted run holds no solid lesson. Errors stay here: the run was
+                        # successful, and the look back does not change that.
                         if mem_root:
                             try:
                                 _ri, _ro, _rc = await _reflect(
@@ -1239,7 +1237,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         return RunResult("done", resp.text, iteration, summary=resp.text, run_id=run_id)
                     empties += 1
                     if empties >= 2:
-                        # Auch der Fehlschlag hat gekostet — die Züge davor sind bezahlt.
+                        # The failure cost something as well: the turns before it are paid for.
                         await _end_run(db, run_id, "failed", error="Leere Modell-Antwort.",
                                        iterations=iteration, in_tok=in_tok, out_tok=out_tok,
                                        cache_read=cache_read, ctx=ctx)
@@ -1259,10 +1257,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                              "content": "Keine Rückfrage nötig – antworte direkt."})
                             continue
-                        # Blocker/Kommentar hängen am Ticket — der projektlose Lauf (Assistent,
-                        # Job) hat keins. Ohne diese Bremse schlägt der Insert auf NOT NULL
-                        # (blockers.issue_id) fehl, die Session stirbt am PendingRollbackError
-                        # und die Rückfrage erreicht den Menschen NIE (Task bleibt 'running').
+                        # Blocker and comment hang on the ticket, and a projectless run
+                        # (assistant, job) has none. Without this brake the insert fails on NOT
+                        # NULL (blockers.issue_id), the session dies on a PendingRollbackError
+                        # and the question NEVER reaches the person (the task stays 'running').
                         if issue_id:
                             db.add(Blocker(issue_id=issue_id, run_id=run_id, question=question))
                             await db.commit()
@@ -1291,7 +1289,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                        in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
                         return RunResult("planned", plan, iteration, summary=psum, run_id=run_id)
 
-                    # Permission-Gate für mutierende externe Tools
+                    # Permission gate for mutating external tools
                     if gate_on and call.name not in ("open_tasks",) and perms.is_gated(call.name):
                         resource = perms.resource_of(call.name, call.arguments)
                         if not await perms.take_grant(db, issue_id, call.name, resource):
@@ -1312,11 +1310,11 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                                  run_id=run_id, blocker_kind="permission")
 
                     # Assistent-Tool-Gate: externe mutierende MCP-Aktionen brauchen Freigabe.
-                    # traccoon_*-Steuertools sind ausgenommen (schon auf Owner-Rechte begrenzt) —
-                    # AUSSER dem Ziel-Aufruf: der wirkt auf ein fremdes System, und ob er
-                    # verändert, steht erst in der Methode (GET liest, POST/PUT/DELETE schreiben).
-                    # Und ausser den Job-Schreibtools: ein Zeitplan wirkt dauerhaft weiter,
-                    # auch wenn der Lauf, der ihn angelegt hat, längst vorbei ist.
+                    # traccoon_* control tools are exempt (already bounded by the owner's
+                    # rights), EXCEPT the destination call: it acts on a foreign system, and
+                    # whether it changes anything is only visible in the method (GET reads,
+                    # POST/PUT/DELETE write). And except the job writing tools: a schedule keeps
+                    # acting long after the run that created it is over.
                     _gated = (perms.is_gated(call.name) and call.name not in TRACCOON_TOOL_NAMES) \
                         or call.name in TRACCOON_GATED_TOOLS
                     if call.name == "traccoon_http_call":
@@ -1339,14 +1337,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 return RunResult("blocked", f"Freigabe nötig: {call.name}", iteration,
                                                  run_id=run_id, blocker_kind="assistant_perm")
 
-                    # Der Werkzeugstart steht bewusst HIER — nach allen Gates und unmittelbar
-                    # vor der Ausführung. Jedes Gate darüber macht `continue` oder `return`;
-                    # ein Start davor hinterließe ein Werkzeug, das nie geschlossen wird, und
-                    # im Raum säße ein Agent für immer tippend da.
+                    # The tool start deliberately stands HERE, after every gate and immediately
+                    # before execution. Every gate above does `continue` or `return`; a start
+                    # before them would leave a tool that is never closed, and an agent would
+                    # sit in the room typing forever.
                     _ziel = office.tool_target(call.name, call.arguments)
                     _args_json = json.dumps(call.arguments, ensure_ascii=False)
-                    # Monotone Uhr, dieselbe wie die Laufzeitgrenze oben: die Wanduhr darf
-                    # springen, eine gemessene Dauer nicht.
+                    # A monotonic clock, the same one as the runtime limit above: the wall
+                    # clock may jump, a measured duration may not.
                     _t0 = asyncio.get_running_loop().time()
                     await protokoll("tool", call.name, _args_json[:400], kind="tool_start",
                                     tool_use_id=call.id, target=_ziel)
@@ -1377,14 +1375,14 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                                 strict_success=strict_success, owner_id=owner_id,
                                 screenshot_enabled=screenshot_enabled, testenv_url=testenv_url,
                                 depth=depth + 1, delegate_loader=delegate_loader, parent_run_id=run_id,
-                                # Der Verbund-Schlüssel: `delegate` wartet den Unterlauf inline
-                                # ab, die Werkzeugzeile entsteht also erst bei dessen ENDE. Der
-                                # Moment des Spawns kommt deshalb aus dem `run_start` des Kindes
-                                # — und der braucht die Werkzeug-ID des Elternteils.
+                                # The joint key: `delegate` awaits the subrun inline, so the
+                                # tool row only appears at its END. The moment of the spawn
+                                # therefore comes from the `run_start` of the child, and that
+                                # one needs the tool id of the parent.
                                 parent_tool_use_id=call.id,
                                 task_id=task_id)
                             if sub.status == "blocked":
-                                # Sub-Agent blockiert → Rückfrage an den Menschen weiterreichen
+                                # Subagent blocked: pass the question on to the person
                                 await _end_run(db, run_id, "blocked", summary=sub.text, iterations=iteration,
                                                in_tok=in_tok, out_tok=out_tok, cache_read=cache_read,
                                                blocker_kind=sub.blocker_kind or "question", ctx=ctx)
@@ -1393,8 +1391,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             result = f"[Sub-Agent {sub_role} → {sub.status}]\n{sub.text[:2000]}"
                     elif call.name in FS_TOOL_NAMES:
                         result = _fs_dispatch(call.name, ws_root, call.arguments)
-                        # Geliefert ist erst, was auch geklappt hat — ein abgewiesener
-                        # Schreibversuch darf das Nachhaken nicht abschalten.
+                        # Delivered means what actually worked: a rejected write attempt must
+                        # not switch the reminders off.
                         if call.name in ergebnis_tools and not result.startswith("FEHLER"):
                             ergebnis_da = True
                     elif call.name == "codegraph":
@@ -1424,27 +1422,27 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         except Exception as exc:  # noqa: BLE001
                             result = f"TOOL-FEHLER: {exc}"
 
-                    # Die Gegenzeile zum Start oben: erst sie schließt das Werkzeug wieder.
+                    # The counterpart to the start above: only this closes the tool again.
                     _dauer_ms = max(0, int((asyncio.get_running_loop().time() - _t0) * 1000))
                     if isinstance(result, list):
-                        # Bild-/Block-Ergebnis: der Aufruf ist zurückgekommen, ein Fehler wäre
-                        # ein String geworden — hier ist der Erfolg also belegt.
+                        # An image or block result: the call came back, an error would have
+                        # become a string, so success is proven here.
                         await protokoll("tool", call.name, "(Bild/Block-Ergebnis)",
                                         kind="tool_result", tool_use_id=call.id, target=_ziel,
                                         ok=True, duration_ms=_dauer_ms)
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result})
                     else:
-                        # `traccoon_http_call` hat seine Grenze schon vom Ziel bekommen
-                        # (Destination.max_response_chars, TRA-31) und bringt sie in der
-                        # Antwort mit. Der pauschale Deckel würde sie hier wieder
-                        # einkassieren — deshalb für dieses Tool der weitere Rahmen.
+                        # `traccoon_http_call` already got its limit from the destination
+                        # (Destination.max_response_chars, TRA-31) and brings it along in the
+                        # answer. The blanket cap would take it back here, hence the wider
+                        # frame for this tool.
                         cap = MAX_HTTP_TOOL_CHARS if call.name == "traccoon_http_call" else 8000
-                        # `tool_ok` kennt nur den BELEGTEN Fehler (Präfix) und sonst „unbekannt".
-                        # Die Laufzeit weiß hier mehr: der Aufruf ist zurückgekommen, jede
-                        # Ausnahme wäre oben zu „TOOL-FEHLER:" geworden. Also gilt „kein
-                        # Fehlerpräfix" als Erfolg — und nur ein belegtes True lässt
-                        # `step_events` überhaupt einen `file_edit` daraus ableiten.
+                        # `tool_ok` knows only the PROVEN error (the prefix) and otherwise
+                        # "unknown". The runtime knows more here: the call came back, and every
+                        # exception would have become "TOOL-FEHLER:" above. So "no error
+                        # prefix" counts as success, and only a proven True lets `step_events`
+                        # derive a `file_edit` from it at all.
                         _ok = office.tool_ok(result)
                         await protokoll("tool", call.name, result[:2000], kind="tool_result",
                                         tool_use_id=call.id, target=_ziel,
@@ -1452,25 +1450,25 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result[:cap]})
 
-            # `grenze_grund` benennt, WELCHE Grenze den Lauf beendet hat — bisher stand hier
-            # auch nach dem Token-Budget „Iterations-Limit", was die Ursachensuche verdreht.
-            # Der Rest ist die Übergabe an die Fortsetzung: Erkenntnisse, Erledigtes,
-            # nächster Schritt — aus dem VERLAUF, nicht aus dem letzten Satz. Ohne sie fing
-            # jeder Fortsetzungs-Lauf bei null an (UNI-12: drei Läufe, keine Zeile Code).
+            # `grenze_grund` names WHICH limit ended the run: this used to say "iteration
+            # limit" even after the token budget, which twists the search for a cause. The
+            # rest is the handover to the continuation: findings, what is done, the next step,
+            # taken from the HISTORY and not from the last sentence. Without it every
+            # continuation run started from zero (UNI-12: three runs, not a line of code).
             exhausted = await _uebergabe(
                 db, messages=messages, grund=grenze_grund, letzter_text=last_text,
                 owner_id=owner_id, agent=agent, tokens=tokens, base_urls=base_urls)
             fp = await _gitops.worktree_fingerprint(ws_root) if ws_root else None
-            # Die TATSAECHLICHE Rundenzahl melden: Zeit- und Token-Grenze beenden den Lauf
-            # frueh, und „40 Runden" nach zwei Runden schickt die Ursachensuche in die Irre.
+            # Report the ACTUAL number of rounds: the time and token limits end a run early,
+            # and "40 rounds" after two rounds sends the search for a cause astray.
             await _end_run(db, run_id, "loop_exhausted", summary=exhausted, iterations=iteration,
                            wt_fp=fp, in_tok=in_tok, out_tok=out_tok, cache_read=cache_read, ctx=ctx)
             return RunResult("loop_exhausted", exhausted, iteration, run_id=run_id)
 
     except Exception as exc:  # noqa: BLE001
         log.exception("run_agent(%s) Laufzeitfehler", agent.name)
-        # Auch hier die Tokens: der Lauf ist irgendwo mittendrin gestorben, bezahlt ist er
-        # trotzdem. Deshalb stehen die Zähler oben VOR dem `try`.
+        # The tokens here as well: the run died somewhere in the middle, but it is paid for
+        # all the same. That is why the counters stand above, BEFORE the `try`.
         await _end_run(db, run_id, "failed", error=str(exc), in_tok=in_tok, out_tok=out_tok,
                        cache_read=cache_read, ctx=ctx)
         return RunResult("failed", str(exc), 0, run_id=run_id)
@@ -1480,16 +1478,16 @@ ABBRUCH_FENSTER_MIN = 120
 
 
 async def _abbruch_uebergabe(db: AsyncSession, issue_id: int, run_id: int) -> str:
-    """Was der abgebrochene Vorgänger schon getan hat — aus den Schrittzeilen, ohne Modellzug.
+    """What the aborted predecessor already did, from the step rows and without a model turn.
 
-    Ein Lauf, der geordnet endet, übergibt (`compaction.uebergabe`). Ein abgebrochener nicht:
-    beim Worker-Neustart am 2026-08-07 verloren die Läufe 753/754 ihren Verlauf, die
-    Nachfolger begannen bei null — und lasen dieselben Dateien noch einmal, obwohl ihre
-    Änderungen längst im Worktree standen. Die Fakten dazu liegen in der Datenbank; sie zu
-    lesen kostet eine Abfrage statt einer Zusammenfassung.
+    A run that ends in order hands over (`compaction.uebergabe`). An aborted one does not: at
+    the worker restart on 2026-08-07 runs 753 and 754 lost their history, the successors began
+    from zero and read the same files again, although their changes had long been in the
+    worktree. The facts for it are in the database, and reading them costs one query instead
+    of a summary.
 
-    Bewusst nur Fakten (Dateien, Rundenzahl, letzter Satz) und kein gedeuteter Zwischenstand:
-    was der Vorgänger vorhatte, weiß niemand mehr — was er angefasst hat, steht fest.
+    Deliberately only facts (files, number of rounds, last sentence) and no interpreted state:
+    what the predecessor intended nobody knows any more, what it touched is settled.
     """
     import datetime as _dt
 
@@ -1507,7 +1505,7 @@ async def _abbruch_uebergabe(db: AsyncSession, issue_id: int, run_id: int) -> st
             RunStep.tool_name.in_(("fs_write", "fs_edit")), RunStep.ok.is_(True)))).all()
     dateien = sorted({t for _, t in schritte if t})
     if not dateien:
-        return ""      # nichts geschrieben → nichts zu übergeben, der Nachfolger sucht selbst
+        return ""      # nothing written, nothing to hand over, the successor searches itself
     zuege = (await db.scalar(select(func.count()).select_from(RunStep).where(
         RunStep.run_id == vor.id, RunStep.role == "assistant"))) or 0
     letzter = (vor.last_text or "").strip()[:600]
