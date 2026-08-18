@@ -193,9 +193,9 @@ export default function ActionParams({
                 {/* Ohne Vorbelegung zuerst einen leeren Eintrag, sonst zeigt das Feld einen
                     Wert an, der gar nicht gespeichert ist. */}
                 {(wert ?? "") === "" && !auswahl(f).some(([k]) => k === "") && (
-                  <option value="">— wählen —</option>
+                  <option value="">{tr("action_params.waehlen")}</option>
                 )}
-                {auswahl(f).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                {auswahl(f).map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
               </select>
             )}
             {f.type === "select" && istVorlage(wert) && (
@@ -203,7 +203,7 @@ export default function ActionParams({
                 <input value={wert} onChange={(e) => aendern(e.target.value)}
                   className={`mt-1 ${inp} font-mono`} />
                 <span className="mt-1 block text-[10px] text-amber-400">
-                  Wert kommt aus dem Kontext — zum Auswählen erst leeren.
+                  {tr("action_params.wert_aus_kontext")}
                 </span>
               </>
             )}
