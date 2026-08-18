@@ -1,16 +1,15 @@
-"""Der ausgelieferte Standard-Satz: das bisherige Verhalten, gezeichnet als Graph.
+"""The shipped default set: the previous behaviour, drawn as a graph.
 
-Diese Graphen sind die *Startaufstellung*, nicht die Wahrheit — jeder Nutzer darf sie
-kopieren und umbauen. Sie bilden 1:1 ab, was vorher fest im Dispatcher, in `lifecycle.py`
-und im Beschaffungsmodul verdrahtet war:
+These graphs are the *starting line-up*, not the truth: every user may copy and rebuild
+them. They map one to one what used to be wired firmly into the dispatcher, into
+`lifecycle.py` and into the procurement module:
 
-    Planung → Plan-Freigabe → Umsetzung → (Abnahme) → Merge/Deploy,
-    Fortsetzung mit Feststecker-Erkennung, Rückfragen als Wartepunkt am Kommentar,
-    Aufteilung in Teilaufgaben, Beschaffungskette, Ticket-Eingang, Mail-Eingang.
+    planning → plan approval → implementation → (acceptance) → merge/deploy,
+    continuation with stuck detection, questions as a waiting point on the comment,
+    splitting into sub-tasks, procurement chain, ticket inbox, mail inbox.
 
-`ensure_builtin_set` läuft beim Backend-Start und ist idempotent: nur wenn sich ein Graph
-tatsächlich geändert hat, wird eine neue Version veröffentlicht. Laufende Instanzen bleiben
-auf ihrer Version gepinnt.
+`ensure_builtin_set` runs at backend start and is idempotent: a new version is published
+only when a graph has actually changed. Running instances stay pinned to their version.
 """
 from __future__ import annotations
 
@@ -28,18 +27,18 @@ from .workflow_sets import BUILTIN_SET_KEY, SLOT_META
 
 log = logging.getLogger("workflow_seed")
 
-# Steigt, sobald sich ein ausgelieferter Graph ändert (nur zur Nachvollziehbarkeit —
-# veröffentlicht wird ohnehin nur bei echtem Graph-Unterschied).
+# Rises as soon as a shipped graph changes (only for traceability; publishing happens on a
+# real graph difference anyway).
 BUILTIN_REVISION = 14
 
-# So oft darf ein Agent an derselben Sache weitermachen, nachdem ihn eine Grenze
-# (Iterationen, Zeit, Token) beendet hat. Umsetzung darf länger dranbleiben als Planung:
-# sie hinterlässt Arbeit im Worktree, während eine Planung, die nach zehn Anläufen keinen
-# Plan hat, einen Menschen braucht — nicht den elften Anlauf.
+# This is how often an agent may continue on the same thing after a limit (iterations,
+# time, tokens) has ended it. Implementation may stay on it longer than planning: it leaves
+# work behind in the worktree, while a planning that has no plan after ten attempts needs a
+# human, not the eleventh attempt.
 EXEC_FORTSETZUNGEN = 30
 PLAN_FORTSETZUNGEN = 10
 
-_COL = 260   # Spaltenabstand für Zweige
+_COL = 260   # column spacing for branches
 _ROW = 130   # Zeilenabstand
 
 
@@ -59,23 +58,23 @@ def _e(source: str, target: str, handle: str | None = None, label: str = "") -> 
 
 
 def _action(name: str, label: str, **params) -> dict:
-    """auto_action-Konfiguration in der Form, die auch der Editor schreibt."""
+    """auto_action configuration in the shape the editor writes as well."""
     return {"label": label, "action": {"action": name, "params": params}}
 
 
 # ── Slot: KI-Ticket-Lebenszyklus ─────────────────────────────────────────────
 
 def build_ticket_lifecycle() -> dict:
-    """Der Ablauf, der bisher im Dispatcher steckte.
+    """The flow that used to sit in the dispatcher.
 
-    Drei Einstiege über `context.entry`: `plan` (Normalfall), `exec` (Teilaufgabe mit
-    fertigem Plan) und `accept` (Sammelticket, dessen Teile alle fertig sind).
+    Three entries over `context.entry`: `plan` (the normal case), `exec` (sub-task with a
+    finished plan) and `accept` (collective ticket whose parts are all done).
 
-    Bewusst knapp gehalten: je Phase EIN Wartepunkt für alle Störungen (Rückfrage, Fehler,
-    Feststecker, abgelehnte Freigabe) statt eines Paares je Fall. Der Zustand, den das
-    Ticket dabei annimmt, kommt aus dem Lauf selbst (`agent.hold_status`/`hold_reason`) —
-    dieselben Meldungen wie vorher, nur ohne fünf fast gleiche Knotenpaare. Jeder Knoten
-    trägt seine `group`, damit die Oberfläche Phasen als Bänder zeigen kann.
+    Deliberately kept terse: per phase ONE waiting point for all disturbances (question,
+    error, stuck, rejected approval) instead of a pair per case. The state the ticket takes
+    on comes from the run itself (`agent.hold_status`/`hold_reason`), so the same messages
+    as before, only without five almost identical node pairs. Every node carries its
+    `group` so that the interface can show phases as bands.
     """
     def _p(node_id, ntype, col, row, config, group):
         return _n(node_id, ntype, col, row, {**config, "group": group})
@@ -89,7 +88,7 @@ def build_ticket_lifecycle() -> dict:
                  "guard": {"==": [{"var": "entry"}, "exec"]}},
                 {"handle": "accept", "label": "nur Abnahme",
                  "guard": {"==": [{"var": "entry"}, "accept"]}},
-                {"handle": "plan", "label": "planen"},     # ohne Bedingung = Auffang
+                {"handle": "plan", "label": "planen"},     # without a condition = catch-all
             ],
             "default_handle": "plan",
         }, "start"),
@@ -101,12 +100,12 @@ def build_ticket_lifecycle() -> dict:
             "label": "Planung durch den Architekten",
             "agent_role": "plan_agent", "phase": "planning",
         }, "planung"),
-        # Dieselbe Bremse wie in der Umsetzung — sie fehlte hier schlicht. Die Rückkante
-        # „weiter planen" führte ungebremst auf `plan` zurück: TRA-31 riss am 2026-08-07
-        # jedes Mal nach 20 Iterationen (~90 s) das Limit und startete sofort den nächsten
-        # Lauf, ohne dass irgendetwas mitgezählt hätte. Gebremst hat das nur noch der
-        # Torwächter. Planung ist billiger als Umsetzung, aber nicht umsonst: Deckel
-        # niedriger (10 statt 30 Fortsetzungen).
+        # The same brake as in the implementation, it was simply missing here. The back edge
+        # "keep planning" led back to `plan` unbraked: on 2026-08-07 TRA-31 hit the limit
+        # every time after 20 iterations (~90 s) and immediately started the next run
+        # without anything counting along. The only thing braking that was the gatekeeper.
+        # Planning is cheaper than implementation but not free: a lower cap (10 instead of
+        # 30 continuations).
         _p("may_plan_continue", "decision", 1, 4, {
             "label": "Weiterplanen?",
             "branches": [
@@ -139,7 +138,7 @@ def build_ticket_lifecycle() -> dict:
         _p("end_split", "end", -1, 8, {"label": "Aufgeteilt", "outcome": "completed"},
            "aufteilung"),
 
-        # Störungen der Planung: ein Zustand, ein Wartepunkt.
+        # Disturbances of the planning: one state, one waiting point.
         _p("st_plan_stop", "auto_action", -2, 4,
            _action("set_status", "Planung angehalten",
                    status="{{agent.hold_status}}", reason="{{agent.hold_reason}}"),
@@ -151,18 +150,18 @@ def build_ticket_lifecycle() -> dict:
         # ── Umsetzung ────────────────────────────────────────────────────────
         _p("cap_baseline", "auto_action", 0, 7,
            _action("set_cap_baseline", "Kostenfenster zurücksetzen"), "umsetzung"),
-        # Einmal je Freigabe-Runde gelesen — beide Ausgänge der Umsetzung greifen darauf zu.
+        # Read once per approval round; both exits of the implementation access it.
         _p("facts", "auto_action", 0, 8,
            _action("refresh_facts", "Projekt-Einstellungen lesen"), "umsetzung"),
-        # Sitzt bewusst direkt hinter der Freigabe und NICHT vor `exec`: dorthin führt auch
-        # der Abnahme-Zweig (`entry --abnehmen--> facts`), und ein abgenommenes Ticket darf
-        # nicht wieder auf „freigegeben" zurückfallen.
+        # Deliberately sits right behind the approval and NOT before `exec`: the acceptance
+        # branch leads there as well (`entry --abnehmen--> facts`), and an accepted ticket
+        # must not fall back to "approved".
         #
-        # Zwischen Freigabe und Start kann Zeit vergehen — der Lauf wartet am Torwächter
-        # (Nutzer-Limit, Nachtfenster, Cap). Ohne diesen Knoten bliebe das Ticket derweil auf
-        # `plan_review` stehen: die Oberfläche böte weiter „Plan freigeben" an, und der
-        # Endpunkt antwortete zu Recht „es wartet gerade keine Freigabe". Auf `in_progress`
-        # schaltet erst der tatsächliche Start (`workflow_engine._start_agent_task`).
+        # Time can pass between approval and start: the run waits at the gatekeeper (user
+        # limit, night window, cap). Without this node the ticket would meanwhile stay on
+        # `plan_review`: the interface would keep offering "approve plan", and the endpoint
+        # would rightly answer "no approval is waiting right now". Only the actual start
+        # (`workflow_engine._start_agent_task`) switches to `in_progress`.
         _p("st_approved", "auto_action", 0, 7,
            _action("set_status", "Status: freigegeben", status="approved"), "umsetzung"),
         _p("exec", "agent_task", 0, 9, {
@@ -181,7 +180,7 @@ def build_ticket_lifecycle() -> dict:
             "default_handle": "continue",
         }, "umsetzung"),
 
-        # Störungen der Umsetzung: ein Zustand, ein Wartepunkt.
+        # Disturbances of the implementation: one state, one waiting point.
         _p("st_exec_stop", "auto_action", 2, 10,
            _action("set_status", "Umsetzung angehalten",
                    status="{{agent.hold_status}}", reason="{{agent.hold_reason}}"),
@@ -241,7 +240,7 @@ def build_ticket_lifecycle() -> dict:
         _e("may_plan_continue", "st_plan_stop", "stop", "anhalten"),
         _e("plan", "st_plan_stop", "blocked", "Rückfrage"),
         _e("plan", "st_plan_stop", "failed", "Fehler"),
-        # Auffangnetz für unbekannte Lauf-Ergebnisse (Standard-Abbildung → „err").
+        # Safety net for unknown run results (default mapping to "err").
         _e("plan", "st_plan_stop", "err"),
         _e("st_plan_review", "approve_plan"),
         _e("approve_plan", "is_split", "approved", "freigegeben"),
@@ -284,10 +283,10 @@ def build_ticket_lifecycle() -> dict:
 # ── Slot: Abnahme & Auslieferung ─────────────────────────────────────────────
 
 def build_acceptance() -> dict:
-    """Was bisher `/issues/{key}/complete` tat: Testumgebung abräumen, mergen, deployen.
+    """What `/issues/{key}/complete` used to do: clear the test environment, merge, deploy.
 
-    Die Reihenfolge ist bindend (TRA-18): erst Testumgebung weg (Container, Volumes,
-    Worktree, Port), dann mergen — und nur bei sauberem Merge weiter.
+    The order is binding (TRA-18): first the test environment goes (container, volumes,
+    worktree, port), then the merge, and only on a clean merge does it continue.
     """
     nodes = [
         _n("start", "start", 0, 0, {"label": "Abnahme"}),
@@ -318,8 +317,8 @@ def build_acceptance() -> dict:
 # ── Slot: Ticket-Eingang ─────────────────────────────────────────────────────
 
 def build_ticket_intake() -> dict:
-    """Eingehende Meldung (Webhook/Mail) → Ticket. Der Kontext kommt aus dem Auslöser:
-    `title`, `body`, optional `agent` (dann wird gleich zugewiesen) und `ignore`."""
+    """Incoming report (webhook, mail) turned into a ticket. The context comes from the
+    trigger: `title`, `body`, optionally `agent` (then it is assigned right away) and `ignore`."""
     nodes = [
         _n("start", "start", 0, 0, {"label": "Meldung eingegangen"}),
         _n("relevant", "decision", 0, 1, {
@@ -349,31 +348,31 @@ def build_ticket_intake() -> dict:
 # ── Slot: Mail-Eingang ───────────────────────────────────────────────────────
 
 def build_mail_intake() -> dict:
-    """Was mit einer eingegangenen Mail geschieht — vorher fest in `mail_intake.py`.
+    """What happens to an incoming mail, previously fixed in `mail_intake.py`.
 
-    Ausgelöst vom Ereignis `mail.received` (der Mail-Webhook meldet es). Der Kontext bringt
-    `mail` (Rohpayload des Watchers) und `eingang` (Einstellungen des Auslösers) mit; alles
-    Weitere schreiben die Schritte selbst (siehe `services/mail_actions.py`).
+    Triggered by the event `mail.received` (the mail webhook reports it). The context brings
+    `mail` (raw payload of the watcher) and `eingang` (settings of the trigger); everything
+    else is written by the steps themselves (see `services/mail_actions.py`).
 
-    Die Reihenfolge der Zweige ist die Leitplanke der Erkennung:
+    The order of the branches is the guard rail of the detection:
 
-        Erkennung aus       → durchlassen (Not-Aus geht allem vor)
-        bekannter Absender  → durchlassen (Freispruch aus dem Kontaktbestand)
-        gelernt: Spam       → melden und verschieben (ein Irrtum muss auffallen)
-        sicher genug        → verschieben, Karte trägt den Rückweg (ab Werk aus);
-                              greift über die Auto-Schwelle oder beim Serverurteil
-        gelernt: erwünscht  → durchlassen, ohne erneut zu fragen
-        Verdacht            → fragen und warten; erst die Antwort bewegt die Mail
-                              (beide Spam-Wege enden im selben Ausführ-Knoten)
-        unauffällig         → Assistent-Item, wie bei jeder normalen Mail
+        detection off        → let through (the emergency stop goes before everything)
+        known sender         → let through (acquittal from the contact list)
+        learned: spam        → report and move (an error has to be noticeable)
+        certain enough       → move, the card carries the way back (off by default);
+                               takes hold above the auto threshold or on the server verdict
+        learned: wanted      → let through without asking again
+        suspicion            → ask and wait; only the answer moves the mail
+                               (both spam paths end in the same execution node)
+        inconspicuous        → assistant item, as with every normal mail
 
-    Der Fälschungsverdacht ist schon im Urteil verrechnet: er hebt sowohl den Freispruch
-    des Kontaktbestands als auch den des Gedächtnisses auf (`spam_review.beurteilen`).
-    Ein bekannter Name ist das lohnende Ziel — genau da darf die Whitelist nicht greifen.
+    The forgery suspicion is already accounted for in the verdict: it lifts both the
+    acquittal of the contact list and that of the memory (`spam_review.beurteilen`). A known
+    name is the rewarding target, and exactly there the whitelist must not take hold.
 
-    „Kein Spam" führt bewusst NICHT ins Leere, sondern in den Assistenten-Zweig: eine Mail,
-    die zu Unrecht verdächtigt wurde, soll danach ganz normal bearbeitet werden können.
-    Vorher blieb sie als Item ohne Karte liegen.
+    "Not spam" deliberately leads NOT into nothing but into the assistant branch: a mail
+    that was suspected wrongly should be workable completely normally afterwards. Before, it
+    stayed lying around as an item without a card.
     """
     nodes = [
         _n("start", "start", 0, 0, {
@@ -384,11 +383,11 @@ def build_mail_intake() -> dict:
            _action("mail_classify", "Mail einordnen")),
         _n("evaluate", "auto_action", 0, 2,
            _action("spam_evaluate", "Spam beurteilen")),
-        # Jeder Grund bekommt seinen eigenen Ausgang, obwohl vier davon zum selben Schritt
-        # führen: am Verlauf einer Instanz soll ablesbar sein, WARUM eine Mail durchgelassen
-        # wurde („Absender bekannt" ist etwas anderes als „unauffällig"). Zwei Zweige mit
-        # demselben Ausgangsnamen wären außerdem zwei Ausgänge mit derselben Kennung am
-        # selben Knoten — welche Kante daran hängt, wäre Zufall.
+        # Every reason gets its own exit although four of them lead to the same step: the
+        # history of an instance should show WHY a mail was let through ("sender known" is
+        # something other than "inconspicuous"). Two branches with the same exit name would
+        # moreover be two exits with the same identifier on the same node, and which edge
+        # hangs off it would be a matter of chance.
         _n("weiche", "decision", 0, 3, {
             "label": "Spam?",
             "branches": [
@@ -402,14 +401,13 @@ def build_mail_intake() -> dict:
                 ]}},
                 {"handle": "geklaert_ham", "label": "gelernt: erwünscht",
                  "guard": {"==": [{"var": "spam.geklaert"}, True]}},
-                # Steht VOR der Rückfrage: was hier greift, wird nicht mehr gefragt,
-                # sondern verschoben — mit Rückweg auf der Karte. Zwei Wege dorthin:
-                # die Punktzahl über der Auto-Schwelle ODER das Urteil des eigenen
-                # Mailservers. Letzteres, weil es in der gewichteten Mischung untergeht:
-                # 13 Spam-Punkte vom eigenen Server ergeben ein Gesamturteil von ~0.55,
-                # und damit wäre jede sinnvolle Auto-Schwelle unerreichbar.
-                # Die Klammer `auto_ab <= 1` hält den ganzen Zweig aus, solange niemand
-                # die Schwelle bewusst gesetzt hat.
+                # Stands BEFORE the question: what takes hold here is no longer asked about
+                # but moved, with a way back on the card. Two paths there: the score above
+                # the auto threshold OR the verdict of one's own mail server. The latter
+                # because it goes under in the weighted mixture: 13 spam points from the own
+                # server give an overall verdict of ~0.55, and with that every sensible auto
+                # threshold would be out of reach. The bracket `auto_ab <= 1` keeps the whole
+                # branch out as long as nobody has deliberately set the threshold.
                 {"handle": "auto", "label": "sicher genug (Auto)", "guard": {"and": [
                     {"<=": [{"var": "spam.auto_ab"}, 1]},
                     {"or": [
@@ -424,7 +422,7 @@ def build_mail_intake() -> dict:
             "default_handle": "sauber",
         }),
 
-        # ── Geklärter Fall: verschieben, aber melden ─────────────────────────
+        # ── Settled case: move, but report ───────────────────────────────────
         _n("karte_gelernt", "auto_action", 3, 4,
            _action("spam_card", "Gelernten Fall melden", vorentschieden=True)),
 
@@ -432,26 +430,26 @@ def build_mail_intake() -> dict:
         _n("karte_auto", "auto_action", 3, 5,
            _action("spam_card", "Aussortierung melden", rueckholbar=True)),
 
-        # ── Verdacht: fragen, warten, ausführen ──────────────────────────────
+        # ── Suspicion: ask, wait, execute ────────────────────────────────────
         _n("karte", "auto_action", 1, 4, _action("spam_card", "Rückfrage stellen")),
         _n("rueckfrage", "approval", 1, 5, {
             "label": "Ist das Spam?",
             "instructions": "Freigabe verschiebt die Mail in den Spam-Ordner. "
                             "Ablehnung merkt den Absender als erwünscht.",
             "assignee": {"mode": "context", "path": "eingang.owner_id"},
-            # Die Frage ist schon gestellt — als Karte mit Knöpfen (Schritt davor bzw.
-            # Sammel-Karte des Scheduler-Takts). Eine zweite Meldung wäre nur Lärm.
+            # The question has already been asked, as a card with buttons (the step before
+            # respectively the digest card of the scheduler beat). A second report would be noise.
             "notify": False,
         }),
-        # EIN Ausführ-Knoten für beide Spam-Wege: die Antwort des Menschen und das
-        # Urteil des Gedächtnisses enden in derselben Handlung. `decided_by` bleibt
-        # bewusst leer — die Aktion nimmt es aus dem Kontext (`telegram`, wenn ein Mensch
-        # geantwortet hat, sonst `auto`). Stünde hier ein fester Wert, verbuchte das
-        # Gedächtnis jede menschliche Entscheidung als Automatik.
+        # ONE execution node for both spam paths: the answer of the human and the verdict of
+        # the memory end in the same action. `decided_by` deliberately stays empty; the
+        # action takes it from the context (`telegram` when a human answered, otherwise
+        # `auto`). With a fixed value here the memory would book every human decision as
+        # automatic.
         _n("weg", "auto_action", 2, 6,
            _action("spam_apply", "In den Spam-Ordner", entscheidung="spam")),
         _n("end_spam", "end", 2, 7, {"label": "Als Spam weggeräumt", "outcome": "completed"}),
-        # Steht auf dem Rückweg zur Mitte: von hier läuft die Mail in den Assistenten.
+        # Stands on the way back to the middle: from here the mail runs into the assistant.
         _n("kein_spam", "auto_action", 1, 7,
            _action("spam_apply", "Absender merken", entscheidung="ham")),
 
@@ -487,10 +485,10 @@ def build_mail_intake() -> dict:
         _e("rueckfrage", "weg", "approved", "ist Spam"),
         _e("rueckfrage", "kein_spam", "rejected", "kein Spam"),
         _e("weg", "end_spam"),
-        # Zu Unrecht verdächtigt: der Absender ist gemerkt, die Mail geht ihren normalen Weg.
+        # Suspected wrongly: the sender is remembered, the mail goes its normal way.
         _e("kein_spam", "item"),
 
-        # Vier Wege, ein Ziel: der Assistent bearbeitet die Mail wie jede andere.
+        # Four paths, one target: the assistant handles the mail like any other.
         _e("weiche", "item", "sauber"),
         _e("weiche", "item", "aus", "Erkennung aus"),
         _e("weiche", "item", "kontakt", "bekannt"),
@@ -523,10 +521,10 @@ BUILDERS = {
 # ── Seed ─────────────────────────────────────────────────────────────────────
 
 async def ensure_builtin_set(db: AsyncSession) -> WorkflowSet:
-    """Globalen Standard-Satz anlegen bzw. auf Stand bringen (idempotent).
+    """Create respectively bring up to date the global default set (idempotent).
 
-    Neue Versionen werden NUR bei echtem Graph-Unterschied veröffentlicht — sonst würde
-    jeder Backend-Start die Versionshistorie aufblähen.
+    New versions are published ONLY on a real graph difference; otherwise every backend
+    start would inflate the version history.
     """
     s = (await db.execute(select(WorkflowSet).where(WorkflowSet.is_builtin.is_(True))
                           .order_by(WorkflowSet.id))).scalars().first()
