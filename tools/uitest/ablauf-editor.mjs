@@ -124,6 +124,24 @@ try {
   }
   await page.screenshot({ path: "/w/04-werkzeug.png" });
 
+  // 6b) Probelauf — solange der Graph schlüssig ist
+  const probeKnopf = page.getByRole("button", { name: /Probelauf/i });
+  if (await probeKnopf.isVisible().catch(() => false)) {
+    await probeKnopf.click();
+    await page.waitForTimeout(3500);
+    const panel = page.getByText(/Probelauf — \d+ Schritt/i).first();
+    const sichtbar = await panel.isVisible().catch(() => false);
+    ok("Probelauf zeigt seine Schritte", sichtbar,
+       (await panel.textContent().catch(() => "") || "").trim());
+    const wuerde = await page.getByText(/würde ausführen/i).first().textContent().catch(() => "");
+    ok("Probelauf meldet, was er taete", !!wuerde, (wuerde || "").trim().slice(0, 70));
+    await page.screenshot({ path: "/w/07-probelauf.png" });
+    await page.getByTitle("schließen").first().click().catch(() => {});
+    await page.waitForTimeout(400);
+  } else {
+    ok("Probelauf-Knopf vorhanden", false);
+  }
+
   // 6) Verzweigung: Kontextfelder + Filter-Hilfe
   const verzweigung = page.getByText("Verzweigung", { exact: false }).first();
   const vorher = await page.locator(".react-flow__edge").count();
@@ -150,6 +168,7 @@ try {
     ok("Felder aus der Beispiel-Nutzlast stehen zur Auswahl", zeigtProbe);
   }
   await page.screenshot({ path: "/w/05-verzweigung.png" });
+
 
   // 7) Schließen → zurück zur Liste (der Punkt, der vorher in die Einstellungen führte)
   await page.getByRole("button", { name: /Zurück zu den Prozessen/i }).click();

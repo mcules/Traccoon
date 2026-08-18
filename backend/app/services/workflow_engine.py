@@ -297,6 +297,28 @@ async def _ensure_wait_step(db, inst, node, ntype, token, waiting_for) -> None:
     })
 
 
+# ── Probelauf ────────────────────────────────────────────────────────────────
+# Ein Ablauf ließ sich bauen, aber nicht ausprobieren: ob ein Ausdruck stimmt, ob die
+# Weiche in den gedachten Zweig führt, merkte man erst am ersten echten Lauf — mit allen
+# Wirkungen nach außen. Im Probelauf läuft der Graph vollständig durch, aber jede Aktion
+# meldet nur, was sie TÄTE.
+PROBE_KEY = "_probe"
+# Was auch im Probelauf laufen darf: beides bleibt im Kontext dieses Laufs. Ohne sie wäre
+# die Probe wertlos — die Folgeschritte hätten keine Daten, und Weichen prüften ins Leere.
+PROBE_ERLAUBT = ("set_context", "refresh_facts", "noop")
+
+
+def _ist_probe(inst) -> bool:
+    return bool((inst.context or {}).get(PROBE_KEY))
+
+
+def _probe_schritt(db, inst, node, token, ntype: str, text: str, decision: str | None = None):
+    db.add(WorkflowStepRun(
+        instance_id=inst.id, token_id=token.id, node_id=node["id"], node_type=NType(ntype),
+        status=SStatus.done, completed_at=_now(), decision=decision,
+        result={"probe": text}))
+
+
 # ── Node-Handler ─────────────────────────────────────────────────────────────
 
 async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> Outcome:
@@ -322,15 +344,34 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
         return Outcome(handle=cfg.get("default_handle", "default"))
 
     if ntype == "human_task":
+        if _ist_probe(inst):
+            _probe_schritt(db, inst, node, token, ntype, "würde auf einen Menschen warten")
+            return Outcome(handle="out")
         await _ensure_wait_step(db, inst, node, ntype, token, "human_task")
         return Outcome(wait=True, waiting_for="human_task")
 
     if ntype == "approval":
+        if _ist_probe(inst):
+            # Der Probelauf nimmt den freigegebenen Weg — den will man sehen; der abgelehnte
+            # ist eine eigene Probe wert und wird nicht heimlich mitgeprüft.
+            _probe_schritt(db, inst, node, token, ntype,
+                           "würde auf eine Freigabe warten (Probe nimmt „genehmigt\")",
+                           decision="approved")
+            return Outcome(handle="approved")
         await _ensure_wait_step(db, inst, node, ntype, token, "approval")
         return Outcome(wait=True, waiting_for="approval")
 
     if ntype == "auto_action":
         from .workflow_actions import run_action
+        if _ist_probe(inst):
+            from .workflow_actions import _normalize_action
+            name, params = _normalize_action(cfg)
+            if name not in PROBE_ERLAUBT:
+                ziel = params.get("tool") or params.get("destination") or params.get("status") \
+                    or params.get("agent") or ""
+                _probe_schritt(db, inst, node, token, "auto_action",
+                               f"würde ausführen: {name}" + (f" ({ziel})" if ziel else ""))
+                return Outcome(handle="out")
         # Idempotenz: eine asynchrone Aktion (z. B. Merge) läuft bereits → nicht neu starten.
         running = await _latest_step(db, inst.id, node["id"])
         if running is not None and running.status == SStatus.running:
@@ -399,18 +440,36 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                            error=f"auto_action '{node['id']}' fehlgeschlagen: {e}")
 
     if ntype == "agent_task":
+        if _ist_probe(inst):
+            _probe_schritt(db, inst, node, token, ntype,
+                           f"würde den Agenten „{cfg.get('agent_role') or '?'}\" starten",
+                           decision="done")
+            return Outcome(handle="done")
         return await _start_agent_task(db, inst, node, token, cfg, spawn_after)
 
     if ntype == "wait_event":
+        if _ist_probe(inst):
+            _probe_schritt(db, inst, node, token, ntype,
+                           f"würde warten auf: {', '.join(_accepted_events(cfg))}")
+            return Outcome(handle="out")
         return await _wait_for_event(db, inst, node, token, cfg)
 
     if ntype == "subflow":
+        if _ist_probe(inst):
+            _probe_schritt(db, inst, node, token, ntype,
+                           f"würde den Ablauf „{cfg.get('slot') or '?'}\" aufrufen",
+                           decision="completed")
+            return Outcome(handle="completed")
         return await _start_subflow(db, inst, node, token, cfg)
 
     if ntype == "loop":
         return await _schleife(db, inst, node, token, cfg)
 
     if ntype == "timer":
+        if _ist_probe(inst):
+            bis = cfg.get("bis") or f"{cfg.get('dauer', '?')} {cfg.get('einheit', 'm')}"
+            _probe_schritt(db, inst, node, token, ntype, f"würde warten: {bis}")
+            return Outcome(handle="out")
         return await _timer(db, inst, node, token, cfg)
 
     return Outcome(terminal=True, instance_status="failed",

@@ -732,6 +732,90 @@ async def start_instance(
 
 
 # WICHTIG: statische Route VOR /workflow-instances/{iid:int} deklarieren (sonst 422).
+class ProbelaufIn(BaseModel):
+    """Womit der Ablauf durchgespielt wird — üblicherweise die Beispiel-Nutzlast.
+
+    `graph` ist der Stand aus dem Editor. Ohne ihn liefe die Probe gegen das, was in der
+    Datenbank steht — beim Bauen ändert man aber ständig, ohne zu speichern, und geprüft
+    werden soll, was man vor sich sieht.
+    """
+    context: dict = {}
+    graph: dict | None = None
+
+
+@router.post("/workflows/{def_id}/probelauf", response_model=InstanceOut, status_code=201)
+async def probelauf(
+    def_id: int, data: ProbelaufIn,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Den Ablauf durchspielen, ohne dass etwas geschieht.
+
+    Der Graph läuft vollständig durch — echte Weichen, echte Ausdrücke, echte Schleifen —,
+    aber jede Aktion meldet nur, was sie täte. Wartepunkte (Freigabe, Ereignis, Timer) halten
+    nicht an, sondern nehmen ihren Weg, damit man den ganzen Ablauf sieht.
+
+    Genommen wird die **Entwurfsfassung**: geprüft werden soll, was man gerade gebaut hat,
+    nicht was zuletzt veröffentlicht wurde.
+    """
+    from ..models.workflow import WorkflowVersion
+
+    d = await _get_def(db, def_id)
+    await _require_write(db, user, d)
+
+    graph = data.graph
+    fluechtig = None
+    if graph is None:
+        version = (await db.execute(
+            select(WorkflowVersion).where(WorkflowVersion.definition_id == d.id)
+            .order_by(WorkflowVersion.version.desc()))).scalars().first()
+        if version is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Der Ablauf hat noch keine Fassung")
+        graph = version.graph or {}
+    fehler = engine.validate_graph(d.subject_kind, graph)
+    if fehler:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Der Ablauf ist noch nicht schlüssig: " + "; ".join(fehler[:3]))
+
+    if data.graph is not None:
+        # Eine Fassung nur für diesen Augenblick: die Engine hängt jede Instanz an eine
+        # Version, und der Editor-Stand ist noch keine. Sie verschwindet nach dem Lauf
+        # wieder — eine Probe soll keine Versionshistorie hinterlassen.
+        letzte = (await db.execute(
+            select(WorkflowVersion.version).where(WorkflowVersion.definition_id == d.id)
+            .order_by(WorkflowVersion.version.desc()))).scalars().first() or 0
+        fluechtig = WorkflowVersion(definition_id=d.id, version=letzte + 1, graph=graph,
+                                    status=WorkflowVersionStatus.draft, notes="Probelauf",
+                                    created_by=user.id)
+        db.add(fluechtig)
+        await db.flush()
+        version = fluechtig
+    else:
+        version = (await db.execute(
+            select(WorkflowVersion).where(WorkflowVersion.definition_id == d.id)
+            .order_by(WorkflowVersion.version.desc()))).scalars().first()
+
+    echte_version, d.current_version_id = d.current_version_id, version.id
+    try:
+        inst = await engine.start_workflow(
+            db, d, subject_kind=d.subject_kind,
+            context={**(data.context or {}), engine.PROBE_KEY: True},
+            actor_id=user.id, source="probelauf")
+        ergebnis = await _load_instance_out(db, await db.get(WorkflowInstance, inst.id))
+    finally:
+        d.current_version_id = echte_version
+        await db.commit()
+
+    if fluechtig is not None:
+        # Erst der Lauf, dann die Fassung — an ihr hängt der Fremdschlüssel der Instanz.
+        inst_row = await db.get(WorkflowInstance, inst.id)
+        if inst_row is not None:
+            await db.delete(inst_row)
+        await db.flush()
+        await db.delete(fluechtig)
+        await db.commit()
+    return ergebnis
+
+
 @router.get("/workflow-instances/tasks", response_model=list[WorkflowTaskLite])
 async def my_tasks(
     assignee: str = Query("me"),

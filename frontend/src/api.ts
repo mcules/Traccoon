@@ -295,6 +295,12 @@ export const workflowApi = {
   /** Eingehende Adresse eines Ablaufs (Webhook als Quelle) — lesen bzw. anlegen. */
   webhookGet: (id: number) => api.get<WfWebhook | null>(`/workflows/${id}/webhook`),
   webhookCreate: (id: number) => api.post<WfWebhook>(`/workflows/${id}/webhook`, {}),
+  /** Den Ablauf durchspielen, ohne dass etwas geschieht (Entwurfsfassung). */
+  probelauf: (id: number, context: Record<string, unknown>, graph?: unknown) =>
+    api.post<{ status: string; error?: string | null;
+               steps: { node_id: string; node_type: string; status: string;
+                        decision?: string | null; result?: Record<string, any> | null;
+                        error?: string | null }[] }>(`/workflows/${id}/probelauf`, { context, graph }),
   /** Welche Kontextfelder es gibt — je Auslöser, Aktion und Knotentyp (für den Editor). */
   contextFields: () => api.get<import("./components/workflow/contextFields").KontextKatalog>(
     "/workflow-context-fields"),
