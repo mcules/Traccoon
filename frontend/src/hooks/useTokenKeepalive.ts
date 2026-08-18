@@ -1,32 +1,32 @@
-// Verlängert das Zugangs-Token, solange ein Tab lange offen steht.
+// Extends the access token as long as a tab stands open for a long time.
 //
-// ── Warum es das braucht ────────────────────────────────────────────────────────────────────
+// ── Why it is needed ────────────────────────────────────────────────────────────────────────
 //
-// `jwt_expire_minutes` ist 720, und `src/api.ts` macht bei 401 `setToken(null)` plus harte
-// Weiterleitung nach `/login`. Ohne Erneuerung ist der Wandschirm also spätestens nach zwölf
-// Stunden ein Anmeldeformular — und davor steht nachts niemand. Der Endpunkt dahinter
-// (`POST /auth/refresh`) verlängert ausschließlich eine **bestehende** Sitzung und gibt kein
-// neues Recht; er prüft `status` und `password_changed_at` genau wie jeder andere Aufruf.
+// `jwt_expire_minutes` is 720, and `src/api.ts` does `setToken(null)` plus a hard redirect to
+// `/login` on a 401. Without renewal the wall screen is therefore a login form after twelve
+// hours at the latest, and nobody stands in front of it at night. The endpoint behind it
+// (`POST /auth/refresh`) extends exclusively an **existing** session and gives no new right;
+// it checks `status` and `password_changed_at` exactly like every other call.
 //
-// Der Aufruf geht über `/auth/…` — und genau dieser Pfad ist in `src/api.ts` von der harten
-// 401-Weiterleitung ausgenommen. Ein fehlgeschlagener Refresh wirft den Nutzer also nicht
-// hinaus; er bleibt einfach beim alten Token, und der nächste echte Aufruf entscheidet.
+// The call goes over `/auth/…`, and exactly that path is exempt from the hard 401 redirect in
+// `src/api.ts`. A failed refresh therefore does not throw the user out; they simply stay on
+// the old token, and the next real call decides.
 //
-// Nützt jedem lange offenen Tab, nicht nur dem Kiosk — deshalb ein eigener Hook und keine
-// Zeile im Büro.
+// Useful for every long open tab, not only for the kiosk, which is why it is a hook of its
+// own and not a line in the office.
 
 import { useEffect } from "react";
 import { api, setToken } from "../api";
 
-/** Alle sechs Stunden. Bei zwölf Stunden Laufzeit ist das zweimal Luft, bevor es eng wird —
- *  eine verpasste Erneuerung (Netz weg, Backend im Neustart) kostet damit nichts. */
+/** Every six hours. With a runtime of twelve hours that is twice the air before it gets
+ *  tight, so a missed renewal (network gone, backend restarting) costs nothing. */
 export const KEEPALIVE_MS = 6 * 60 * 60 * 1000;
 
 /**
- * Erneuert das Token beim Einhängen und danach im Takt.
+ * Renews the token on mounting and afterwards on the beat.
  *
- * Auch sofort beim Einhängen: ein Tab, der gerade aus einem elf Stunden alten Token
- * wiederkommt, hätte sonst noch eine Stunde und danach dieselbe Anmeldemaske.
+ * On mounting as well: a tab coming back from an eleven hour old token would otherwise have
+ * one hour left and then the same login mask.
  */
 export function useTokenKeepalive(aktiv: boolean, intervallMs: number = KEEPALIVE_MS): void {
   useEffect(() => {
@@ -38,8 +38,8 @@ export function useTokenKeepalive(aktiv: boolean, intervallMs: number = KEEPALIV
         const r = await api.post<{ access_token?: string }>("/auth/refresh");
         if (!entlassen && r?.access_token) setToken(r.access_token);
       } catch {
-        // Abgelaufen, Konto deaktiviert oder Backend gerade weg: hier ist nichts zu heilen.
-        // Der nächste gewöhnliche Aufruf läuft dann in die reguläre 401-Behandlung.
+        // Expired, account deactivated or the backend momentarily gone: there is nothing to
+        // heal here. The next ordinary call then runs into the regular 401 handling.
       }
     };
 
