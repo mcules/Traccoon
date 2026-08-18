@@ -137,6 +137,18 @@ actually have: where is this heading, and when do I have to act?
 - **Chat integration:** notifications land in the messenger, replies become comments,
   approvals are buttons, voice messages are transcribed **locally**
 
+### Language and devices
+
+- Every text comes from a catalog, German as the source and English shipped alongside. An
+  admin edits any of them at runtime, adds a language, and exports or imports a catalog as
+  JSON. A missing translation falls back to German, never to a raw key
+- The same catalog covers what the server writes: notifications and the setup checklist go
+  out in the language of the person who reads them
+- Usable on a phone: one column instead of three in the flow editor, blocks are added by
+  tapping instead of dragging, lists replace tables where columns would not fit.
+  `tools/uitest/bedienbarkeit.mjs` measures it (overflow, touch targets, font sizes) across
+  29 screens at three widths
+
 ### Operations
 
 - Deployer with access to the docker socket: build, health check, rollback, test
@@ -159,7 +171,8 @@ actually have: where is this heading, and when do I have to act?
 | `whisper`, `asr-gpu` | Python | local speech recognition (CPU or GPU) |
 | `filmer` | Node | end-of-day office film as a GIF |
 
-About 81,000 lines of code and 877 automated tests.
+About 89,000 lines of code and 893 automated tests, plus browser probes under
+`tools/uitest` for what only shows up in a browser.
 
 ## Getting started
 
@@ -202,7 +215,9 @@ Out of the box Traccoon is a complete ticket system. Everything else is opt-in:
   this on anything you care about.
 - **Multi-user yes, tenant isolation no.** Permissions apply per project and owner, an admin
   sees everything.
-- **The UI is German.** There is no translation.
+- **German and English.** Both catalogs ship complete, and every text can be changed or a
+  further language added under Administration, Translations. Each person picks their
+  language in their profile; the server writes its notifications in that language too.
 - The agent path needs a deployable project with `compose.preview.yml` for test
   environments and review to run end to end.
 - Model prices and identifiers in the catalog are defaults and editable in the UI.

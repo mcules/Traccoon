@@ -150,11 +150,59 @@ async def test_ohne_vokabular_kein_feld(monkeypatch):
 
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
+
+    # Leer heißt: nichts von Hand UND nichts in der Datenbank. Die Liste baut sich seit
+    # `_vokabular()` aus den eigenen Daten — die Umgebungsvariable allein leerzuräumen
+    # prüfte deshalb nur noch, dass die Testdatenbank leer ist, nicht das Verhalten.
+    async def _leer():
+        return ""
+
     monkeypatch.setattr(bot, "VOICE_VOKABULAR", "")
-    monkeypatch.setattr(bot, "_vokabular_cache", (0.0, ""))
+    monkeypatch.setattr(bot, "_vokabular", _leer)
 
     await bot._transkribieren(b"x", "voice", None)
     assert "initial_prompt" not in gesehen[0]
+
+
+async def test_vokabular_landet_im_prompt(monkeypatch):
+    """Und umgekehrt: was in der Liste steht, bekommt Whisper auch zu sehen. Ohne das hört
+    es „Trakon" statt „Traccoon" — der ganze Grund für die Liste."""
+    import app.bot.__main__ as bot
+
+    gesehen: list[dict] = []
+
+    class _Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"text": "fertig"}
+
+    class _Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, params=None, files=None):
+            gesehen.append(dict(params or {}))
+            return _Resp()
+
+    async def _worte():
+        return "Traccoon, Ticket TRA-31"
+
+    import httpx
+    monkeypatch.setattr(httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(bot, "_vokabular", _worte)
+
+    await bot._transkribieren(b"x", "voice", None)
+    assert gesehen[0]["initial_prompt"] == "Traccoon, Ticket TRA-31"
 
 
 def test_asr_text_schaelt_die_steuermarken():
