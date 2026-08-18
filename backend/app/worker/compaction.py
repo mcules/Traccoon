@@ -1,29 +1,29 @@
-"""Langen Verlauf zusammenfassen, statt in den Provider-Fehler zu laufen.
+"""Summarise a long history instead of running into the provider error.
 
-`agent_definitions.max_context_tokens` gab es schon — gelesen hat es niemand. Wer den Wert
-setzte, glaubte an eine Schutzgrenze, die nicht existierte: der Lauf wuchs weiter, bis das
-Modell den Request ablehnte, und dann war der ganze Lauf verloren.
+`agent_definitions.max_context_tokens` already existed; nobody read it. Whoever set the
+value believed in a protective limit that did not exist: the run kept growing until the
+model rejected the request, and then the whole run was lost.
 
-Jetzt wird nach jedem Modell-Aufruf die tatsächliche Kontextgröße (`usage.input_tokens`)
-gemessen. Reißt sie die Schwelle, wird der mittlere Teil des Verlaufs durch eine
-Zusammenfassung ersetzt — erzeugt vom Aux-Modell, nicht vom Arbeitsmodell.
+Now the actual context size (`usage.input_tokens`) is measured after every model call. If
+it tears the threshold, the middle part of the history is replaced by a summary, produced
+by the aux model, not by the working model.
 
-Die zwei Fallen, die das hier bestimmen:
+The two traps that determine what happens here:
 
-1. **Man darf nicht irgendwo schneiden.** Ein `assistant` mit `tool_calls` und die
-   zugehörigen `tool`-Antworten sind eine Einheit; trennt man sie, lehnt der Provider den
-   Request ab (HTTP 400) — aus einem drohenden Fehler wäre ein sicherer geworden. Verboten
-   ist deshalb genau eine Schnittstelle: vor einer `tool`-Antwort.
-2. **Der Auftrag bleibt.** System-Prompt und die erste Anweisung überleben jede Kompaktierung.
-   Wer den Auftrag wegkürzt, spart Tokens und verliert die Aufgabe.
-3. **Zusammengefasst wird stückweise.** Das Aux-Modell ist klein; ein 500k-Zeichen-Verlauf
-   passt nicht in einen Auftrag. Er wird darum an zulässigen Nähten in Häppchen geschnitten
-   und Stück für Stück zusammengefasst — statt es mit allem auf einmal zu versuchen und mit
-   leeren Händen dazustehen.
+1. **You must not cut just anywhere.** An `assistant` with `tool_calls` and the
+   corresponding `tool` answers are one unit; separating them makes the provider reject
+   the request (HTTP 400), which would turn a threatening error into a certain one. Exactly
+   one cutting point is therefore forbidden: before a `tool` answer.
+2. **The assignment stays.** The system prompt and the first instruction survive every
+   compaction. Whoever cuts the assignment away saves tokens and loses the task.
+3. **Summarising happens piece by piece.** The aux model is small; a history of 500k
+   characters does not fit into one assignment. It is therefore cut into pieces at
+   permitted seams and summarised piece by piece, instead of trying it with everything at
+   once and standing there empty handed.
 
-Schlägt das Aux-Modell für ein Häppchen fehl, steht an dessen Stelle ein ehrlicher Marker;
-der Rest der Zusammenfassung bleibt. Ein Lauf ohne Teile seiner Vorgeschichte ist unangenehm;
-ein abgebrochener Lauf ist schlimmer — ein Lauf ohne jede Vorgeschichte fängt von vorn an.
+If the aux model fails for a piece, an honest marker stands in its place; the rest of the
+summary stays. A run without parts of its history is unpleasant, but an aborted run is
+worse, and a run without any history at all starts from the beginning.
 """
 from __future__ import annotations
 
@@ -32,62 +32,62 @@ import logging
 
 log = logging.getLogger("traccoon.compaction")
 
-# Ab welchem Anteil des erlaubten Kontexts kompaktiert wird. Nicht erst bei 100 %: die
-# Zusammenfassung selbst und die nächste Antwort brauchen ebenfalls Platz.
+# From which share of the permitted context compaction happens. Not only at 100 %: the
+# summary itself and the next answer need room as well.
 SCHWELLE = 0.8
-# So viele Nachrichten am Ende bleiben unangetastet — der unmittelbare Arbeitszusammenhang.
+# This many messages at the end stay untouched, the immediate working context.
 BEHALTEN = 6
-# Weniger als das lohnt nicht: dann ist der Verlauf so kurz, dass die Zusammenfassung
-# ungefähr so lang würde wie das Original.
+# Less than that is not worth it: then the history is so short that the summary would be
+# about as long as the original.
 MINDEST_BLOCK = 4
-# Wie viel Text höchstens in EINEN Zusammenfassungs-Auftrag geht. Das Aux-Modell ist
-# bewusst klein (lokal, 32k Kontext) — schickt man ihm den ganzen Verlauf eines großen
-# Modells, lehnt es ab, und die Kompaktierung liefe immer in den harten Schnitt. Passt der
-# Block nicht, wird eben nur sein ältester Teil gefasst; der Rest kommt beim nächsten Mal.
+# How much text goes into ONE summarisation assignment at most. The aux model is
+# deliberately small (local, 32k context); sending it the whole history of a large model
+# makes it refuse, and the compaction would always run into the hard cut. If the block does
+# not fit, only its oldest part is caught; the rest comes next time.
 MAX_AUX_ZEICHEN = 50_000
-# So viele Häppchen höchstens pro Kompaktierung. Jedes ist ein eigener Aux-Aufruf; ohne
-# Deckel könnte ein sehr langer Verlauf einen großen Teil der Laufzeit im Zusammenfassen
-# verbringen. Was nicht mehr drankommt, bleibt wörtlich stehen und wird beim nächsten Mal
-# gefasst — nichts geht verloren, es dauert nur eine Runde länger.
+# This many pieces per compaction at most. Each is an aux call of its own; without a cap a
+# very long history could spend a large part of the runtime summarising. What does not get
+# its turn stays verbatim and is caught next time: nothing is lost, it only takes one round
+# longer.
 MAX_STUECKE = 12
-# Wie viele Häppchen gleichzeitig ans Aux-Modell gehen. Nacheinander wären zwölf Aufrufe
-# à bis zu zwei Minuten die halbe Laufzeit eines Agentenlaufs; alle auf einmal erschlagen
-# den kleinen lokalen Endpoint.
+# How many pieces go to the aux model at once. One after another, twelve calls of up to two
+# minutes each would be half the runtime of an agent run; all at once would overwhelm the
+# small local endpoint.
 AUX_PARALLEL = 3
 
 
 def _kopf_ende(messages: list[dict]) -> int:
-    """Index hinter dem unantastbaren Anfang (führende system-Nachrichten + erster Auftrag)."""
+    """Index behind the untouchable beginning (leading system messages plus first assignment)."""
     i = 0
     while i < len(messages) and messages[i].get("role") == "system":
         i += 1
     if i < len(messages) and messages[i].get("role") == "user":
-        i += 1                                  # der eigentliche Auftrag
+        i += 1                                  # the actual assignment
     return i
 
 
 def _schnittfaehig(m: dict) -> bool:
-    """Darf VOR dieser Nachricht geschnitten werden?
+    """May a cut be made BEFORE this message?
 
-    Unzulässig ist genau eine Sorte: die `tool`-Antwort. Sie hängt am vorausgehenden
-    `assistant` mit `tool_calls` und darf nie von ihm getrennt werden. Alles andere —
-    `user`, `system` UND `assistant` — beginnt einen neuen Zug und ist eine saubere Naht.
+    Exactly one sort is impermissible: the `tool` answer. It hangs off the preceding
+    `assistant` with `tool_calls` and must never be separated from it. Everything else,
+    `user`, `system` AND `assistant`, begins a new turn and is a clean seam.
 
-    Früher galten nur `user`/`system` als Naht. Bei einem Agenten, der 60 Runden lang
-    ausschließlich Werkzeuge ruft, gibt es die praktisch nicht: der Verlauf besteht aus
-    assistant/tool-Paaren. Damit kannte die Kürzung nur zwei Ausgänge — fast nichts
-    (die ältesten vier Nachrichten) oder alles (Verlauf auf drei Nachrichten eingedampft,
-    Agent ohne Gedächtnis, fängt von vorn an). Genau daran hing ABC-4 am 2026-08-06 zwei
-    volle Läufe lang fest, ohne eine einzige Datei zu schreiben.
+    Formerly only `user`/`system` counted as a seam. With an agent that calls nothing but
+    tools for 60 rounds those practically do not exist: the history consists of
+    assistant/tool pairs. The truncation therefore knew only two exits, almost nothing (the
+    oldest four messages) or everything (history boiled down to three messages, agent
+    without memory, starts from the beginning). On exactly that, ABC-4 hung for two full
+    runs on 2026-08-06 without writing a single file.
     """
     return m.get("role") != "tool" and not m.get("tool_call_id")
 
 
 def _sichere_grenze(messages: list[dict], ab: int) -> int:
-    """Nächster Index ab `ab`, an dem geschnitten werden darf.
+    """Next index from `ab` at which a cut may be made.
 
-    Sicher ist der Beginn jeder Nachricht, die keine `tool`-Antwort ist: die hängt an einem
-    vorausgehenden `assistant` mit `tool_calls` und darf nie davon getrennt werden.
+    Safe is the beginning of every message that is not a `tool` answer: that one hangs off a
+    preceding `assistant` with `tool_calls` and must never be separated from it.
     """
     for i in range(ab, len(messages)):
         if _schnittfaehig(messages[i]):
@@ -96,11 +96,11 @@ def _sichere_grenze(messages: list[dict], ab: int) -> int:
 
 
 def _sichere_grenze_rueckwaerts(messages: list[dict], bis_hoechstens: int) -> int | None:
-    """Größter zulässiger Schnitt, der NICHT hinter `bis_hoechstens` liegt — oder None.
+    """Largest permitted cut that does NOT lie behind `bis_hoechstens`, or None.
 
-    Braucht es, weil die Vorwärtssuche einen Block nie kleiner machen kann: liegt zwischen
-    Wunschstelle und aktueller Grenze keine Naht, springt sie über die Grenze hinaus. Wer
-    damit einen Block verkleinern will, dreht sich im Kreis.
+    Needed because the forward search can never make a block smaller: if there is no seam
+    between the desired place and the current limit, it jumps beyond the limit. Whoever
+    wants to shrink a block with that goes round in circles.
     """
     for i in range(min(bis_hoechstens, len(messages)) - 1, -1, -1):
         if _schnittfaehig(messages[i]):
@@ -109,7 +109,7 @@ def _sichere_grenze_rueckwaerts(messages: list[dict], bis_hoechstens: int) -> in
 
 
 def plan(messages: list[dict], grenze_tokens: int, gemessen: int) -> tuple[int, int] | None:
-    """(von, bis) des zusammenzufassenden Blocks — oder None, wenn nichts zu tun ist."""
+    """(from, to) of the block to be summarised, or None when there is nothing to do."""
     if not grenze_tokens or gemessen < grenze_tokens * SCHWELLE:
         return None
     von = _kopf_ende(messages)
@@ -124,7 +124,7 @@ def _als_text(messages: list[dict]) -> str:
     for m in messages:
         rolle = m.get("role", "?")
         inhalt = m.get("content")
-        if isinstance(inhalt, list):        # Anthropic-Blöcke → nur die Textanteile
+        if isinstance(inhalt, list):        # Anthropic blocks: only the text parts
             inhalt = " ".join(b.get("text", "") for b in inhalt if isinstance(b, dict))
         inhalt = (inhalt or "").strip()
         if not inhalt and m.get("tool_calls"):
@@ -161,15 +161,15 @@ UEBERGABE_AUFTRAG = (
 
 async def uebergabe(db, *, messages: list[dict], grund: str, letzter_text: str,
                     owner_id, agent, tokens: dict, base_urls: dict) -> str:
-    """Übergabe an den Fortsetzungs-Lauf: was gelernt, was getan, was als Nächstes.
+    """Handover to the continuation run: what was learned, what was done, what comes next.
 
-    Bis hierher stand in der Fortsetzung nur `grund` plus der letzte Satz des Agenten. Das
-    reichte nicht einmal, um zu wissen, welche Dateien schon gelesen waren: ABC-12 begann
-    am 2026-08-07 drei Läufe hintereinander mit `open_tasks` und derselben Suchanfrage und
-    schrieb in anderthalb Stunden keine Zeile Code. Der Lauf endet an einer Grenze — der
-    Faden muss deshalb aus dem Verlauf gerettet werden, nicht aus seinem letzten Satz.
+    Until now the continuation only held `grund` plus the last sentence of the agent. That
+    was not even enough to know which files had already been read: ABC-12 started three runs
+    in a row on 2026-08-07 with `open_tasks` and the same search query and wrote not a line
+    of code in an hour and a half. The run ends at a limit, so the thread has to be rescued
+    from the history, not from its last sentence.
 
-    Fällt das Aux-Modell aus, bleibt die alte, ehrliche Notlösung.
+    If the aux model drops out, the old, honest stopgap remains.
     """
     from .aux import aux_chat
 
@@ -182,9 +182,9 @@ async def uebergabe(db, *, messages: list[dict], grund: str, letzter_text: str,
                                 tokens=tokens, base_urls=base_urls)
     if not roh.strip():
         return notloesung
-    # Zweiter Durchgang: aus den Stück-Zusammenfassungen wird die eigentliche Übergabe.
-    # Bei einem einzigen Stück wäre das eine Zusammenfassung der Zusammenfassung — dann
-    # lieber direkt am Verlauf arbeiten.
+    # Second pass: the actual handover is made from the piece summaries. With a single piece
+    # that would be a summary of the summary, and then it is better to work on the history
+    # directly instead.
     quelle = roh if len(stuecke) > 1 else _als_text(messages[von:])[:MAX_AUX_ZEICHEN]
     text = await aux_chat(
         db, owner_id=owner_id, task="compression",
@@ -197,10 +197,10 @@ async def uebergabe(db, *, messages: list[dict], grund: str, letzter_text: str,
 
 
 def _haeppchen(messages: list[dict], von: int, bis: int) -> list[tuple[int, int]]:
-    """Den Block in Stücke schneiden, die das Aux-Modell fassen kann.
+    """Cut the block into pieces the aux model can hold.
 
-    Immer an zulässigen Nähten und immer mit Fortschritt: notfalls ist ein Stück eine
-    einzige Nachricht (deren Text `_als_text` ohnehin bei 4000 Zeichen kappt).
+    Always at permitted seams and always with progress: if need be a piece is a single
+    message (whose text `_als_text` truncates at 4000 characters anyway).
     """
     stuecke: list[tuple[int, int]] = []
     start = von
@@ -209,7 +209,7 @@ def _haeppchen(messages: list[dict], von: int, bis: int) -> list[tuple[int, int]
         while ende > start + 1 and len(_als_text(messages[start:ende])) > MAX_AUX_ZEICHEN:
             kleiner = _sichere_grenze_rueckwaerts(messages, start + (ende - start) // 2)
             if kleiner is None or kleiner <= start or kleiner >= ende:
-                ende = start + 1        # keine Naht mehr → eine Nachricht, aber Fortschritt
+                ende = start + 1        # no seam left: one message, but progress
                 break
             ende = kleiner
         stuecke.append((start, ende))
@@ -219,13 +219,13 @@ def _haeppchen(messages: list[dict], von: int, bis: int) -> list[tuple[int, int]
 
 async def _zusammenfassen(db, messages: list[dict], stuecke: list[tuple[int, int]], *,
                           owner_id, agent, tokens, base_urls) -> str:
-    """Jedes Stück einzeln zusammenfassen und die Teile aneinanderhängen.
+    """Summarise every piece on its own and append the parts to each other.
 
-    Früher wurde stattdessen der BLOCK verkleinert, bis er in einen Aux-Auftrag passte —
-    fand sich keine Naht, ging der ganze Verlauf in einem Rutsch an ein Modell mit 32k
-    Kontext. Das lehnte ab, `aux_chat` lieferte nichts, und der Agent bekam statt einer
-    Zusammenfassung den Hinweis, dass er nichts mehr weiß. Stückweise kommt die
-    Zusammenfassung auch für einen 500k-Zeichen-Verlauf zustande.
+    Formerly the BLOCK was shrunk instead until it fitted into one aux assignment, and if no
+    seam was found the whole history went to a model with 32k context in one go. That model
+    refused, `aux_chat` delivered nothing, and instead of a summary the agent got the note
+    that it does not know anything any more. Piece by piece the summary comes about even for
+    a history of 500k characters.
     """
     from .aux import aux_chat
     zaehler = asyncio.Semaphore(AUX_PARALLEL)
@@ -239,7 +239,7 @@ async def _zusammenfassen(db, messages: list[dict], stuecke: list[tuple[int, int
                     messages=[{"role": "user",
                                "content": AUFTRAG + von_wo + _als_text(messages[a:b])}],
                     agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1024)
-            except Exception:  # noqa: BLE001 — ein Aussetzer darf nicht den Lauf kosten
+            except Exception:  # noqa: BLE001 - one outage must not cost the run
                 log.exception("Kompaktierung: Stück %d/%d fehlgeschlagen", nr, len(stuecke))
                 text = None
         if text:
@@ -256,19 +256,19 @@ async def _zusammenfassen(db, messages: list[dict], stuecke: list[tuple[int, int
 
 async def kompaktiere(db, *, messages: list[dict], grenze_tokens: int, gemessen: int,
                       owner_id: int | None, agent, tokens: dict, base_urls: dict) -> list[dict] | None:
-    """Verlauf kürzen. Gibt die neue Nachrichtenliste zurück — oder None, wenn nichts zu tun war."""
+    """Truncate the history. Returns the new message list, or None when there was nothing to do."""
     bereich = plan(messages, grenze_tokens, gemessen)
     if bereich is None:
         return None
     von, bis = bereich
-    # Der ganze Block wird zusammengefasst — aber in Häppchen, die das (kleine, lokale)
-    # Aux-Modell auch annimmt. Am 2026-07-31 stand der Worker 8 Stunden bei 100 % CPU an
-    # dieser Stelle, weil die Verkleinerung über die VORWÄRTS-Suche lief und bei einem
-    # reinen Werkzeug-Verlauf immer dieselbe Grenze zurückgab; deshalb sucht `_haeppchen`
-    # rückwärts und erzwingt in jeder Runde Fortschritt.
+    # The whole block is summarised, but in pieces the (small, local) aux model accepts as
+    # well. On 2026-07-31 the worker stood at 100 % CPU for 8 hours at this place because the
+    # shrinking ran over the FORWARD search and always returned the same limit on a pure tool
+    # history; that is why `_haeppchen` searches backwards and forces progress in every
+    # round.
     stuecke = _haeppchen(messages, von, bis)
     if len(stuecke) > MAX_STUECKE:
-        # Nur den ältesten Teil fassen; der Rest bleibt wörtlich und kommt beim nächsten Mal.
+        # Catch only the oldest part; the rest stays verbatim and comes next time.
         stuecke = stuecke[:MAX_STUECKE]
         bis = stuecke[-1][1]
     zusammenfassung = await _zusammenfassen(db, messages, stuecke, owner_id=owner_id,
