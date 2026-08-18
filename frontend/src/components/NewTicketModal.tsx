@@ -106,13 +106,13 @@ export default function NewTicketModal({
               {meta.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
-          <label className="text-xs text-muted">Priorität
+          <label className="text-xs text-muted">{tr("new_ticket_modal.prioritaet")}
             <select value={priority} onChange={(e) => setPriority(e.target.value)}
               className="mt-1 block rounded border border-line bg-surface px-2 py-1 text-ink">
               {PRIOS.map((p) => <option key={p} value={p}>{p}</option>)}
             </select>
           </label>
-          <label className="text-xs text-muted">Zugewiesen an
+          <label className="text-xs text-muted">{tr("new_ticket_modal.zugewiesen_an")}
             <select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}
               className="mt-1 block rounded border border-line bg-surface px-2 py-1 text-ink">
               <option value="">— niemand —</option>
@@ -148,11 +148,11 @@ export default function NewTicketModal({
           )}
           <div className="flex items-center gap-3 text-xs text-muted">
             <label className="cursor-pointer rounded border border-line px-2 py-1 hover:text-ink">
-              + Datei wählen
+              + {tr("new_ticket_modal.datei_waehlen")}
               <input type="file" multiple accept="image/*" className="hidden"
                 onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
             </label>
-            <span>oder Screenshot mit <b>{tr("new_ticket_modal.strg_v")}</b> einfügen</span>
+            <span>{tr("new_ticket_modal.screenshot_einfuegen")}</span>
           </div>
         </div>
 
@@ -163,7 +163,7 @@ export default function NewTicketModal({
             className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">{tr("new_ticket_modal.abbrechen")}</button>
           <button disabled={!canSave} onClick={() => create.mutate()}
             className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">
-            {create.isPending ? "Legt an…" : "Speichern"}
+            {tr(create.isPending ? "new_ticket_modal.legt_an" : "common.speichern")}
           </button>
         </div>
       </div>

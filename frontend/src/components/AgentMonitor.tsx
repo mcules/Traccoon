@@ -82,12 +82,12 @@ export default function AgentMonitor({ project }: { project: Project }) {
             {perms.map((p) => (
               <div key={p.id} className="flex items-center gap-3 rounded border border-orange-400/40 bg-orange-400/5 p-2.5 text-sm">
                 <span className="font-mono">{p.issue_key}</span>
-                <span>Tool <b>{p.tool}</b> auf <span className="font-mono">{p.resource || "—"}</span></span>
+                <span>{tr("agent_monitor.tool")} <b>{p.tool}</b> {tr("agent_monitor.auf")} <span className="font-mono">{p.resource || "—"}</span></span>
                 <div className="flex-1" />
                 {["once", "always", "never"].map((d) => (
                   <button key={d} onClick={() => decide.mutate({ id: p.id, decision: d })}
                     className="rounded border border-line px-2 py-1 hover:border-brand">
-                    {d === "once" ? "Einmal" : d === "always" ? "Immer" : "Nie"}</button>
+                    {tr(d === "once" ? "agent_monitor.einmal" : d === "always" ? "agent_monitor.immer" : "agent_monitor.nie")}</button>
                 ))}
               </div>
             ))}
@@ -118,7 +118,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
                     {g.issue_summary}
                   </span>
                   <span className="text-xs text-muted">
-                    {g.runs.length} {g.runs.length === 1 ? "Lauf" : "Läufe"} · {g.output_tokens}tok
+                    {g.runs.length} {tr(g.runs.length === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")} · {g.output_tokens}tok
                     {g.cost_usd ? ` · $${g.cost_usd.toFixed(4)}` : ""}
                   </span>
                 </button>
@@ -142,7 +142,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
           })}
           {grouped?.groups.length === 0 && (
             <div className="text-sm text-muted">
-              {zeigeArchiv ? "Keine archivierten Läufe." : "Noch keine Läufe."}
+              {tr(zeigeArchiv ? "agent_monitor.keine_archivierten" : "agent_monitor.noch_keine_laeufe")}
             </div>
           )}
           {grouped?.truncated && (

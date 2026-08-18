@@ -110,8 +110,7 @@ export default function Board({
     const dragIssue = issues.find((x) => x.key === key);
     if (!dragIssue) return;
     if (inTestenvFlow(dragIssue) && statusMap.get(colId)?.category === "done") {
-      setMoveErr('Auf „Fertig" nur über „Auf Fertig setzen" am Ticket — dabei wird '
-        + "die Testumgebung gestoppt und der Branch gemergt.");
+      setMoveErr(tr("board.fertig_nur_ueber_knopf"));
       return;
     }
     let targetIdx = idx;
@@ -156,7 +155,7 @@ export default function Board({
           <div className="flex-1" />
           {project.my_ai_assign && i.assigned_agent && (
             <span className="rounded bg-brand/20 px-1 text-brand">
-              🤖 {i.agent_working ? "läuft" : i.agent_status || i.assigned_agent}
+              🤖 {i.agent_working ? tr("board.laeuft") : i.agent_status || i.assigned_agent}
             </span>
           )}
         </div>
@@ -199,7 +198,7 @@ export default function Board({
         <div className="space-y-2">
           {activeItems.length === 0 && (
             <div className="rounded border border-line bg-surface px-3 py-6 text-center text-sm text-muted">
-              Keine Tickets in „{activeName}".
+              {tr("board.keine_tickets_in", { spalte: activeName })}
             </div>
           )}
           {activeItems.map((i) => (

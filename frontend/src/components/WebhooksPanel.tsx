@@ -94,18 +94,13 @@ export default function WebhooksPanel() {
 
   return (
     <div>
-      <p className="mb-3 text-sm text-muted">Deine Webhooks. Aufruf-URL trägt eine <b>GUID</b> (kein Nutzername):
-        {" "}<span className="font-mono">POST /api/hooks/&lt;guid&gt;</span> mit HMAC-SHA256 im Header
-        {" "}<span className="font-mono">X-Webhook-Signature</span>. Modus <b>task</b> legt ein Ticket an,
-        {" "}<b>notify</b> benachrichtigt dich, <b>assistant</b> nimmt E-Mails an (lokale Vorklassifizierung
-        durch den gewählten Klassifizier-Agenten → Assistent-Inbox), <b>workflow</b> startet eine
-        Prozess-Instanz aus dem Prozess-Editor.</p>
+      <p className="mb-3 text-sm text-muted">{tr("webhooks_panel.einleitung")}</p>
       <div className="mb-4 space-y-2">
         {hooks?.map((w) => (
           <div key={w.id} className={`rounded border border-line bg-card p-2 text-sm ${w.enabled ? "" : "opacity-50"}`}>
           <div className="flex flex-wrap items-center gap-3">
             <span className="font-medium">{w.route}</span><span className="text-muted">{w.mode}</span>
-            {!w.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">aus</span>}
+            {!w.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("webhooks_panel.aus")}</span>}
             {w.secret_set && <span className="text-xs">🔒</span>}
             {w.agent && <span className="rounded bg-surface px-1 text-xs">→ {w.agent}</span>}
             {w.classify_agent && <span className="rounded bg-surface px-1 text-xs">🔒 {w.classify_agent}</span>}
@@ -140,28 +135,28 @@ export default function WebhooksPanel() {
           <option value="assistant">assistant (Mail)</option>
           <option value="workflow">workflow (Prozess starten)</option></select>
         <input value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value })}
-          placeholder={editId ? "HMAC-Secret (leer = unverändert)" : "HMAC-Secret"} className={inp} />
+          placeholder={tr(editId ? "webhooks_panel.secret_unveraendert" : "webhooks_panel.secret")} className={inp} />
         {f.mode === "assistant" ? (
           <input value={f.classify_agent} onChange={(e) => setF({ ...f, classify_agent: e.target.value })}
             placeholder={tr("webhooks_panel.klassifizier_agent_z_b_mail_classifier")} className={inp} />
         ) : (
           <select value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })} className={inp}>
-            <option value="">— Projekt (für task) —</option>
+            <option value="">{tr("webhooks_panel.projekt_fuer_task")}</option>
             {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         )}
         <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} placeholder={tr("webhooks_panel.agent_optional")} className={inp} />
         {f.mode === "assistant" ? (
           <textarea value={f.prompt_tmpl} onChange={(e) => setF({ ...f, prompt_tmpl: e.target.value })}
-            placeholder="Task-Prompt (Mail-Verarbeitungs-Wissen) — leer = Standard. Platzhalter {account} {uid} {from} {subject} {body_text} …"
+            placeholder={tr("webhooks_panel.task_prompt_platzhalter")}
             rows={8} className={`col-span-2 ${inp} font-mono text-xs`} />
         ) : (
-          <input value={f.title_template} onChange={(e) => setF({ ...f, title_template: e.target.value })} placeholder="Titel-Template {feld}" className={inp} />
+          <input value={f.title_template} onChange={(e) => setF({ ...f, title_template: e.target.value })} placeholder={tr("webhooks_panel.titel_vorlage")} className={inp} />
         )}
         {f.mode === "workflow" && (
           <>
             <select value={f.workflow_definition_id}
               onChange={(e) => setF({ ...f, workflow_definition_id: e.target.value })} className={inp}>
-              <option value="">— Prozess wählen —</option>
+              <option value="">{tr("webhooks_panel.prozess_waehlen")}</option>
               {defs?.filter((d) => d.current_version_id).map((d) => (
                 <option key={d.id} value={d.id}>{d.name} ({d.key})</option>
               ))}
@@ -169,14 +164,14 @@ export default function WebhooksPanel() {
             <input value={f.context_map} onChange={(e) => setF({ ...f, context_map: e.target.value })}
               placeholder={tr("webhooks_panel.kontext_mapping_asset_id_data_id_ort_dat")} className={inp} />
             <div className="col-span-2 text-xs text-muted">
-              Ohne Mapping wandert der komplette Payload als Kontext in die Instanz.
+              {tr("webhooks_panel.ohne_mapping")}
             </div>
           </>
         )}
         {f.mode === "assistant" && (
           <label className="col-span-2 flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" checked={f.auto_run} onChange={(e) => setF({ ...f, auto_run: e.target.checked })} />
-            Chatlos sofort ausführen (ohne Freigabe) — z. B. paperless-linked Link-back
+            {tr("webhooks_panel.sofort_ausfuehren")}
           </label>
         )}
 

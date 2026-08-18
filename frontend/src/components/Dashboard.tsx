@@ -30,11 +30,11 @@ export default function Dashboard({ project }: { project: Project }) {
           farbe={t.waiting_for_human ? "text-yellow-400" : undefined} />
         <Kachel label={tr("dashboard.laeuft_gerade")} wert={t.working}
           farbe={t.working ? "text-sky-400" : undefined} />
-        <Kachel label={`Erledigt (${data.window_days} T.)`} wert={data.throughput.done_in_window}
+        <Kachel label={tr("dashboard.erledigt_im_fenster", { tage: data.window_days })} wert={data.throughput.done_in_window}
           farbe="text-green-400" />
       </div>
 
-      <Karte titel="Tickets nach Status">
+      <Karte titel={tr("dashboard.tickets_nach_status")}>
         {t.total > 0 ? (
           <>
             <div className="flex h-3 overflow-hidden rounded">
@@ -57,7 +57,7 @@ export default function Dashboard({ project }: { project: Project }) {
       </Karte>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Karte titel={`Agentenläufe (${data.window_days} Tage)`}>
+        <Karte titel={tr("dashboard.agentenlaeufe", { tage: data.window_days })}>
           {r.total > 0 ? (
             <div className="space-y-2 text-sm">
               <Zeile label={tr("dashboard.laeufe_gesamt")} wert={r.total} />
@@ -72,10 +72,10 @@ export default function Dashboard({ project }: { project: Project }) {
                 ))}
               </div>
             </div>
-          ) : <Leer text="Noch keine Läufe im Zeitraum." />}
+          ) : <Leer text={tr("dashboard.keine_laeufe")} />}
         </Karte>
 
-        <Karte titel="Agenten-Auslastung">
+        <Karte titel={tr("dashboard.agenten_auslastung")}>
           {data.agents.length ? (
             <div className="space-y-2">
               {data.agents.map((a: any) => (
@@ -89,18 +89,18 @@ export default function Dashboard({ project }: { project: Project }) {
                 </div>
               ))}
             </div>
-          ) : <Leer text="Kein Agent hat offene Tickets." />}
+          ) : <Leer text={tr("dashboard.keine_offenen_tickets")} />}
         </Karte>
       </div>
 
       {/* Ungegatet: wer ein Ticket gemergt hat, will wissen, ob es draußen ist — und ist nicht
           zwangsläufig Maintainer. Die volle Liste steht unter Einstellungen → Deployment. */}
-      <Karte titel="Letzte Deployments">
+      <Karte titel={tr("dashboard.letzte_deployments")}>
         <DeploymentsPanel projectId={project.id} variante="kompakt" limit={5} />
       </Karte>
 
       {costs && costs.by_model.length > 0 && (
-        <Karte titel={`Kosten nach Modell (gesamt $${costs.total_usd.toFixed(2)})`}>
+        <Karte titel={tr("dashboard.kosten_nach_modell", { summe: costs.total_usd.toFixed(2) })}>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -159,6 +159,6 @@ function Zeile({ label, wert, farbe }: { label: string; wert: string | number; f
   );
 }
 
-function Leer({ text = "Noch keine Daten." }: { text?: string }) {
-  return <div className="text-xs text-muted">{text}</div>;
+function Leer({ text }: { text?: string }) {
+  return <div className="text-xs text-muted">{text || tr("dashboard.keine_daten")}</div>;
 }

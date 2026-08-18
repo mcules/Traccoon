@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { tr } from "../i18n";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 
@@ -7,11 +8,11 @@ type Status = { steps: Step[]; ready: boolean; projects: number; dismissed: bool
 
 /** Zielort je Schritt — sonst weiß niemand, wo er klicken soll. */
 const ZIEL: Record<string, { to: string; label: string }> = {
-  claude_token: { to: "/settings", label: "Zum Secret-Tresor" },
-  project: { to: "/", label: "Projekt anlegen" },
-  git: { to: "/", label: "Projekt öffnen" },
-  verify: { to: "/", label: "Projekt öffnen" },
-  telegram: { to: "/settings", label: "Zu den Einstellungen" },
+  claude_token: { to: "/settings", label: "onboarding.ziel_tresor" },
+  project: { to: "/", label: "onboarding.ziel_projekt_anlegen" },
+  git: { to: "/", label: "onboarding.ziel_projekt_oeffnen" },
+  verify: { to: "/", label: "onboarding.ziel_projekt_oeffnen" },
+  telegram: { to: "/settings", label: "onboarding.ziel_einstellungen" },
 };
 
 export default function Onboarding() {
@@ -36,15 +37,13 @@ export default function Onboarding() {
       <div className="mb-1 flex items-start gap-3">
         <div className="flex-1">
           <div className="font-medium">
-            {data.ready ? "Fast fertig eingerichtet" : "Einrichtung — so laufen echte Agenten"}
+            {tr(data.ready ? "onboarding.fast_fertig" : "onboarding.einrichtung")}
           </div>
           <p className="mt-0.5 text-xs text-muted">
-            {data.ready
-              ? "Das Nötigste steht. Der Rest ist optional."
-              : "Solange die Pflichtpunkte offen sind, bleibt jede Zuweisung an einen Agenten liegen."}
+            {tr(data.ready ? "onboarding.rest_optional" : "onboarding.pflicht_offen")}
           </p>
         </div>
-        <button onClick={dismiss} className="text-xs text-muted hover:text-ink">ausblenden</button>
+        <button onClick={dismiss} className="text-xs text-muted hover:text-ink">{tr("onboarding.ausblenden")}</button>
       </div>
 
       <div className="mt-3 space-y-2">
@@ -60,7 +59,7 @@ export default function Onboarding() {
             </div>
             {!s.done && ZIEL[s.key] && (
               <Link to={ZIEL[s.key].to} className="whitespace-nowrap text-xs text-brand hover:underline">
-                {ZIEL[s.key].label} →
+                {tr(ZIEL[s.key].label)} →
               </Link>
             )}
           </div>
