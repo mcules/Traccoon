@@ -39,38 +39,38 @@ export interface ActionSpec {
 }
 
 const AGENT_STATUS: [string, string][] = [
-  ["planning", "Planung läuft"],
-  ["plan_review", "Plan wartet auf Freigabe"],
-  ["approved", "Freigegeben (Umsetzung darf starten)"],
-  ["in_progress", "In Umsetzung"],
-  ["to_test", "Zur Abnahme bereit"],
-  ["testing", "In Abnahme"],
-  ["done", "Fertig"],
-  ["hold", "Angehalten (wartet auf Menschen)"],
-  ["failed", "Fehlgeschlagen"],
-  ["open", "Offen"],
+  ["planning", "option.planung_laeuft"],
+  ["plan_review", "option.plan_wartet_auf_freigabe"],
+  ["approved", "option.freigegeben_umsetzung_darf_starten"],
+  ["in_progress", "option.in_umsetzung"],
+  ["to_test", "option.zur_abnahme_bereit"],
+  ["testing", "option.in_abnahme"],
+  ["done", "option.fertig"],
+  ["hold", "option.angehalten_wartet_auf_menschen"],
+  ["failed", "option.fehlgeschlagen"],
+  ["open", "option.offen"],
 ];
 
 const HOLD_REASON: [string, string][] = [
-  ["", "— automatisch —"],
-  ["plan_review", "Plan-Freigabe"],
-  ["plan_split", "Aufteilungs-Freigabe"],
-  ["question", "Rückfrage"],
-  ["permission", "Berechtigung"],
-  ["review", "Review-Befunde"],
-  ["merge", "Merge-Konflikt"],
-  ["stuck", "Feststecker"],
-  ["cap", "Kostengrenze"],
-  ["interrupted", "Unterbrochen"],
-  ["incomplete", "Unvollständig"],
-  ["verify", "Prüfung offen"],
+  ["", "option.automatisch"],
+  ["plan_review", "option.plan_freigabe"],
+  ["plan_split", "option.aufteilungs_freigabe"],
+  ["question", "option.rueckfrage"],
+  ["permission", "option.berechtigung"],
+  ["review", "option.review_befunde"],
+  ["merge", "option.merge_konflikt"],
+  ["stuck", "option.feststecker"],
+  ["cap", "option.kostengrenze"],
+  ["interrupted", "option.unterbrochen"],
+  ["incomplete", "option.unvollstaendig"],
+  ["verify", "option.pruefung_offen"],
 ];
 
 const TO_MODE: [string, string][] = [
-  ["user", "Bestimmte Person"],
-  ["role", "Projekt-Rolle"],
-  ["reporter", "Melder des Tickets"],
-  ["context", "Aus dem Kontext (User-ID)"],
+  ["user", "option.bestimmte_person"],
+  ["role", "option.projekt_rolle"],
+  ["reporter", "option.melder_des_tickets"],
+  ["context", "option.aus_dem_kontext_user_id"],
 ];
 
 const KEINE: ActionSpec = { summary: "", fields: [] };
@@ -104,17 +104,13 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
       { key: "title", label: "Betreff", type: "text", placeholder: "action_fields.issue_key_hinweis" },
       { key: "text", label: "Text", type: "textarea" },
       { key: "drossel_minuten", label: "action_fields.hoechstens_alle_minuten", type: "number",
-        hint: "action_fields.0_aus_der_ablauf_laeuft_weiterhin_bei_jedem_"
-            + "Nachricht bleibt aus. Nötig, wo die Gegenstelle nicht selbst zusammenfasst: "
-            + "ein Tracker wiederholt seinen Alarm im Sekundentakt, solange er anliegt." },
+        hint: "action_fields.0_aus_der_ablauf_laeuft_weiterhin_bei_jedem_"},
       { key: "drossel_key", label: "action_fields.drossel_schluessel", type: "text",
         placeholder: "shelter.diebstahl",
-        hint: "action_fields.was_als_dieselbe_nachricht_gilt_leer_dieser_"
-            + "{{pfad}} trennt man nach Gerät oder Art." },
+        hint: "action_fields.was_als_dieselbe_nachricht_gilt_leer_dieser_"},
       { key: "channel", label: "Weg", type: "select",
-        options: [["", "Standard der Person"], ["telegram", "Telegram"], ["email", "E-Mail"]],
-        hint: "action_fields.leer_lassen_ist_der_normalfall_jeder_verwalt"
-            + "wird. Ist der gewählte Weg dort nicht hinterlegt, wird der andere genommen." },
+        options: [["", "option.standard_der_person"], ["telegram", "option.telegram"], ["email", "option.e_mail"]],
+        hint: "action_fields.leer_lassen_ist_der_normalfall_jeder_verwalt"},
     ],
   },
 
@@ -129,14 +125,12 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
       { key: "einheit", label: "Einheit", type: "text", placeholder: "%" },
       { key: "name", label: "Anzeigename", type: "text", placeholder: "action_fields.akku_shelter" },
       { key: "min", label: "action_fields.kleinster_gueltiger_wert", type: "number",
-        hint: "action_fields.geraete_melden_unsinn_wenn_sie_etwas_nicht_w"
-            + "nicht in die Reihe (der Tracker schickt z. B. 127 % für „unbekannt“)." },
+        hint: "action_fields.geraete_melden_unsinn_wenn_sie_etwas_nicht_w"},
       { key: "max", label: "action_fields.groesster_gueltiger_wert", type: "number" },
       { key: "ziel", label: "Zielwert", type: "number",
         hint: "action_fields.wert_auf_den_die_reihe_zulaeuft_0_heisst_lee" },
       { key: "vorwarn_tage", label: "action_fields.vorwarnung_tage", type: "number",
-        hint: "action_fields.wie_frueh_gewarnt_werden_soll_0_schaltet_die"
-            + "einmal je Auffüllung, nicht bei jedem Wert." },
+        hint: "action_fields.wie_frueh_gewarnt_werden_soll_0_schaltet_die"},
       { key: "fenster_tage", label: "action_fields.trendfenster_tage", type: "number",
         hint: "action_fields.wie_weit_zurueck_fuer_die_gerade_gelesen_wir" },
     ],
@@ -148,16 +142,13 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     fields: [
       { key: "reihe", label: "Reihe", type: "text", required: true,
         placeholder: "akku.shelter",
-        hint: "action_fields.pfad_erlaubt_so_prueft_derselbe_ablauf_mehre"
-            + "Startkontext des Jobs." },
+        hint: "action_fields.pfad_erlaubt_so_prueft_derselbe_ablauf_mehre"},
       { key: "still_stunden", label: "action_fields.verstummt_nach_stunden", type: "number",
-        hint: "action_fields.0_nicht_pruefen_gemeldet_wird_einmal_je_stil"
-            + "Wert kommt, zählt sie von vorn." },
+        hint: "action_fields.0_nicht_pruefen_gemeldet_wird_einmal_je_stil"},
       { key: "ziel", label: "Zielwert", type: "number" },
       { key: "fenster_tage", label: "action_fields.trendfenster_tage", type: "number" },
     ],
-    outcomes: "action_fields.kontext_danach_messreihe_wert_alter_stunden_"
-            + ".gefunden, .rest_tage, .leer_am",
+    outcomes: "action_fields.kontext_danach_messreihe_wert_alter_stunden_",
   },
 
   webhook: {
@@ -193,28 +184,25 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
 
   refresh_facts: {
     subjects: ["issue"],
-    summary: "action_fields.liest_projekt_und_ticket_einstellungen_in_de"
-      + "damit Verzweigungen darauf prüfen können.",
+    summary: "action_fields.liest_projekt_und_ticket_einstellungen_in_de",
     fields: [],
   },
 
   set_field: {
-    summary: "action_fields.setzt_ein_freies_feld_des_artefakts_an_dem_d"
-      + "gibt, sagt das Artefakt-Register (Administration → Artefakte).",
+    summary: "action_fields.setzt_ein_freies_feld_des_artefakts_an_dem_d",
     subjects: ["issue", "hardware_asset"],
     fields: [
       { key: "field", label: "Feld", type: "select", source: "artifact_field", required: true },
       { key: "values", label: "Wert(e)", type: "text", required: true,
         hint: "action_fields.mehrere_durch_komma_trennen_vorlagen_aus_dem" },
       { key: "mode", label: "Vorgehen", type: "select", options: [
-          ["set", "Ersetzen"], ["add", "Ergänzen"], ["remove", "Entfernen"]],
+          ["set", "option.ersetzen"], ["add", "option.ergaenzen"], ["remove", "option.entfernen"]],
         hint: "action_fields.ergaenzen_entfernen_lohnt_nur_bei_feldern_mi" },
     ],
   },
 
   set_status: {
-    summary: "action_fields.setzt_den_zustand_des_artefakts_an_dem_der_a"
-      + "Hardware. Die möglichen Werte kommen aus dem Artefakt-Register.",
+    summary: "action_fields.setzt_den_zustand_des_artefakts_an_dem_der_a",
     subjects: ["issue", "hardware_asset"],
     fields: [
       { key: "status", label: "Zustand", type: "select", source: "artifact_status",
@@ -234,7 +222,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     fields: [
       { key: "status", label: "Spalte", type: "select", source: "board_status" },
       { key: "category", label: "action_fields.oder_kategorie", type: "select",
-        options: [["", "—"], ["todo", "To Do"], ["in_progress", "In Arbeit"], ["done", "Fertig"]],
+        options: [["", "—"], ["todo", "To Do"], ["in_progress", "In Arbeit"], ["done", "option.fertig"]],
         hint: "action_fields.greift_wenn_keine_spalte_mit_passendem_namen" },
     ],
   },
@@ -247,22 +235,18 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
 
   set_cap_baseline: {
     subjects: ["issue"],
-    summary: "action_fields.setzt_das_kostenfenster_neu_ab_hier_zaehlt_d"
-      + "Gehört an jede menschliche Freigabe.",
+    summary: "action_fields.setzt_das_kostenfenster_neu_ab_hier_zaehlt_d",
     fields: [],
   },
 
   split_tickets: {
     subjects: ["issue"],
-    summary: "action_fields.legt_die_im_plan_vorgeschlagenen_teilaufgabe"
-      + "(Teil 1 startet, der Rest wartet auf seinen Vorgänger).",
+    summary: "action_fields.legt_die_im_plan_vorgeschlagenen_teilaufgabe",
     fields: [],
   },
 
   tool_call: {
-    summary: "action_fields.ruft_ein_mcp_werkzeug_auf_mail_vault_paperle"
-      + "und alles andere aus deiner MCP-Registry. Das Ergebnis steht danach unter tool.* "
-      + "im Kontext (tool.ok, tool.text, tool.json).",
+    summary: "action_fields.ruft_ein_mcp_werkzeug_auf_mail_vault_paperle",
     fields: [
       { key: "tool", label: "Werkzeug", type: "select", source: "mcp_tool", required: true,
         hint: "action_fields.die_liste_kommt_aus_deinen_mcp_servern_einst" },
@@ -277,9 +261,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
 
   mail_classify: {
     subjects: ["standalone"],
-    summary: "action_fields.ordnet_die_eingegangene_mail_im_haus_ein_kat"
-      + "Kurzfassung) und sucht die gelernte Regel zum Absender. Schreibt klasse.* "
-      + "und policy.* in den Kontext.",
+    summary: "action_fields.ordnet_die_eingegangene_mail_im_haus_ein_kat",
     fields: [
       { key: "classify_agent", label: "Klassifizier-Agent", type: "text",
         hint: "action_fields.leer_der_agent_aus_dem_ausloeser_ganz_ohne_a" },
@@ -288,15 +270,13 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
 
   spam_evaluate: {
     subjects: ["standalone"],
-    summary: "action_fields.zieht_regeln_lokales_modell_und_gedaechtnis_"
-      + "(spam.score, spam.geklaert, spam.frage_ab …). Entscheidet selbst nichts.",
+    summary: "action_fields.zieht_regeln_lokales_modell_und_gedaechtnis_",
     fields: [],
   },
 
   spam_card: {
     subjects: ["standalone"],
-    summary: "action_fields.legt_die_urteils_zeile_an_und_stellt_die_tel"
-      + "Sofort-Schwelle wartet der Fall auf die Sammel-Karte.",
+    summary: "action_fields.legt_die_urteils_zeile_an_und_stellt_die_tel",
     fields: [
       { key: "vorentschieden", label: "action_fields.schon_entschieden", type: "boolean", default: false,
         hint: "action_fields.meldet_einen_vom_gedaechtnis_geklaerten_fall" },
@@ -305,8 +285,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
 
   spam_apply: {
     subjects: ["standalone"],
-    summary: "action_fields.schreibt_das_urteil_fest_lernt_daraus_und_be"
-      + "bzw. zurück in den Posteingang).",
+    summary: "action_fields.schreibt_das_urteil_fest_lernt_daraus_und_be",
     fields: [
       { key: "entscheidung", label: "Entscheidung", type: "select",
         options: [["spam", "Ist Spam"], ["ham", "Kein Spam"]],
@@ -317,8 +296,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
 
   assistant_task: {
     subjects: ["standalone"],
-    summary: "action_fields.macht_aus_der_mail_ein_assistent_item_das_wa"
-      + "Doppelte Zustellung erzeugt kein zweites Item.",
+    summary: "action_fields.macht_aus_der_mail_ein_assistent_item_das_wa",
     fields: [],
   },
 
@@ -330,8 +308,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
 
   assistant_run: {
     subjects: ["standalone"],
-    summary: "action_fields.reiht_den_assistenten_lauf_ein_fuer_items_di"
-      + "freigegeben hat).",
+    summary: "action_fields.reiht_den_assistenten_lauf_ein_fuer_items_di",
     fields: [],
   },
 
@@ -339,8 +316,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
   start_testenv: { summary: "action_fields.startet_die_testumgebung_des_tickets", fields: [], subjects: ["issue"] },
   stop_testenv: {
     subjects: ["issue"],
-    summary: "action_fields.raeumt_die_testumgebung_ab_container_volumes"
-      + "Muss VOR dem Merge laufen.",
+    summary: "action_fields.raeumt_die_testumgebung_ab_container_volumes",
     fields: [],
   },
 
