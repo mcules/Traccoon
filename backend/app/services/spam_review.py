@@ -1,18 +1,18 @@
-"""Spam-Beurteilung eingehender Mails — Urteil bilden, nachfragen, ausführen, lernen.
+"""Spam assessment of incoming mail: forming a verdict, asking, executing, learning.
 
-Drei Stimmen entscheiden gemeinsam, keine allein:
+Three voices decide together, none of them alone:
 
-1. **Regeln** (`spam_rules`) — technische Tatsachen aus Adressen und Kopfzeilen.
-2. **Lokales Modell** (`mail_classify`) — der Text, im Haus beurteilt.
-3. **Gedächtnis** (`spam_learn`) — was der Mensch in vergleichbaren Fällen entschieden hat.
+1. **Rules** (`spam_rules`): technical facts from addresses and headers.
+2. **Local model** (`mail_classify`): the text, judged in house.
+3. **Memory** (`spam_learn`): what the human decided in comparable cases.
 
-Die dritte Stimme ist der Grund, warum die Erkennung mit der Zeit besser wird statt gleich
-schlecht zu bleiben: sie wächst mit jeder Bestätigung. Ist sie sich über einen Absender
-einig genug, entscheidet sie allein — dann wird nicht mehr gefragt.
+The third voice is the reason the detection gets better over time instead of staying
+equally bad: it grows with every confirmation. Once it agrees about a sender clearly
+enough it decides alone, and then nobody is asked any more.
 
-Leitplanke über allem: **ein Fehlalarm kostet mehr als ein durchgerutschter Werbebrief.**
-Es wird nie gelöscht, nur in den Spam-Ordner verschoben, und im jetzigen Ausbaustand nie
-ohne Bestätigung eines Menschen.
+The guard rail above all: **a false positive costs more than an advertising letter that
+slipped through.** Nothing is ever deleted, only moved to the spam folder, and at the
+current stage of development never without the confirmation of a human.
 """
 from __future__ import annotations
 
@@ -38,23 +38,23 @@ from .vault_contacts import bekannte_domains, kontakt_treffer, namens_kollision
 
 log = logging.getLogger("traccoon.spam")
 
-# --- Stellschrauben (AppSetting, damit sie ohne Neustart änderbar sind) ------------
+# --- Adjustable settings (AppSetting, so they can be changed without a restart) ------
 AKTIV_KEY = "spam_aktiv"                     # '1'/'0'
-FRAGE_AB_KEY = "spam_frage_ab"               # ab hier wird überhaupt nachgefragt
-SOFORT_AB_KEY = "spam_sofort_ab"             # ab hier sofort einzeln statt Sammel-Karte
-AUTO_AB_KEY = "spam_auto_ab"                 # ab hier ohne Rückfrage weg (Rückholfenster)
-DIGEST_MIN_KEY = "spam_digest_minuten"       # Takt der Sammel-Karte
+FRAGE_AB_KEY = "spam_frage_ab"               # from here on anything is asked at all
+SOFORT_AB_KEY = "spam_sofort_ab"             # from here on singly instead of a digest card
+AUTO_AB_KEY = "spam_auto_ab"                 # from here on away without asking (recall window)
+DIGEST_MIN_KEY = "spam_digest_minuten"       # beat of the digest card
 MEINE_ADRESSEN_KEY = "spam_meine_adressen"   # eigene Empfangsadressen, Komma-getrennt
-# Domains, über die nachweislich kein Vertragswesen läuft. Dort ist jede „Rechnung" eine
-# Behauptung — und zwar unabhängig davon, wie die Adresse davor heißt.
+# Domains over which demonstrably no contractual business runs. There, every "invoice" is a
+# claim, regardless of what the address in front of it is called.
 KEINE_GESCHAEFTSDOMAINS_KEY = "spam_keine_geschaeftsdomains"
 
 _VORGABE = {
     AKTIV_KEY: "1",
     FRAGE_AB_KEY: "0.45",
     SOFORT_AB_KEY: "0.9",
-    # Über 1.0 = aus. Auto-Verschieben ist kein Standard, sondern eine Entscheidung, die
-    # ein Mensch nach eigener Messung trifft (siehe `spam_report.rueckschau`).
+    # Above 1.0 = off. Auto-moving is not a default but a decision a human takes after
+    # their own measurement (see `spam_report.rueckschau`).
     AUTO_AB_KEY: "1.01",
     DIGEST_MIN_KEY: "120",
     MEINE_ADRESSEN_KEY: "",
@@ -72,26 +72,26 @@ async def _zahl(db: AsyncSession, key: str) -> float:
 
 
 async def meine_adressen(db: AsyncSession) -> frozenset[str]:
-    """Eigene Empfangsadressen/Aliase. Einträge dürfen `*@meine-domain.de` lauten."""
+    """Own receiving addresses and aliases. Entries may read `*@my-domain.de`."""
     roh = await get_setting(db, MEINE_ADRESSEN_KEY, "")
     return frozenset(t.strip().lower() for t in roh.replace(";", ",").split(",") if t.strip())
 
 
 async def geschaeftsfreie_domains(db: AsyncSession) -> frozenset[str]:
-    """Domains ohne Vertragswesen (Einstellung). `@` und Groß/Klein werden verziehen."""
+    """Domains without contractual business (setting). `@` and case are forgiven."""
     roh = await get_setting(db, KEINE_GESCHAEFTSDOMAINS_KEY, "")
     return frozenset(t.strip().lstrip("@").lower()
                      for t in roh.replace(";", ",").split(",") if t.strip())
 
 
 def _mischen(regel: float, modell: float, gelernt: float | None) -> float:
-    """Drei Teilurteile → ein Gesamturteil.
+    """Three partial verdicts into one overall verdict.
 
-    Gewichtet statt Maximum: das Maximum ließe jede einzelne Stimme allein durchentscheiden,
-    und jede von ihnen irrt auf ihre Weise — die Regeln bei sauber aufgesetztem Betrug, das
-    Modell bei nüchtern geschriebener Werbung, das Gedächtnis bei allem Neuen.
+    Weighted instead of maximum: the maximum would let every single voice decide on its own,
+    and each of them errs in its own way, the rules on cleanly set up fraud, the model on
+    soberly written advertising, the memory on everything new.
 
-    Ohne Beobachtungen fällt das Gedächtnis heraus, statt mit 0.5 zur Mitte zu ziehen.
+    Without observations the memory drops out instead of pulling towards the middle with 0.5.
     """
     if gelernt is None:
         return round(0.55 * regel + 0.45 * modell, 3)
@@ -100,17 +100,17 @@ def _mischen(regel: float, modell: float, gelernt: float | None) -> float:
 
 async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
                      cls: dict, regel=None) -> dict:
-    """Eine eingegangene Mail beurteilen — reines Urteil, ohne Nebenwirkung.
+    """Assess an incoming mail: a pure verdict, without side effects.
 
-    Schreibt nichts und fragt niemanden: das Ergebnis ist ein serialisierbares dict, das
-    in den Kontext einer Prozess-Instanz passt. Was daraus folgt (nachfragen, verschieben,
-    durchlassen), entscheidet der Ablauf im Graphen — hier steht nur, was *festgestellt*
-    wurde. Vorher war beides in einer Funktion verwoben, und damit war die Reihenfolge der
-    Behandlung nur im Code nachlesbar, nicht im Prozess.
+    Writes nothing and asks nobody: the result is a serialisable dict that fits into the
+    context of a process instance. What follows from it (asking, moving, letting through) is
+    decided by the flow in the graph; here stands only what was *established*. Before, both
+    were interwoven in one function, and the order of treatment could therefore only be read
+    in the code, not in the process.
 
-    `regel` kann fertig hereingereicht werden — der Aufrufer braucht die Befunde meist
-    schon vorher, um sie dem lokalen Modell mitzugeben; zweimal auswerten liefert dasselbe
-    und würde nur die Deutung der Befunde auf zwei Stellen verteilen.
+    `regel` can be handed in ready made: the caller usually needs the findings beforehand
+    anyway to pass them to the local model, and evaluating twice yields the same thing and
+    would only spread the interpretation of the findings over two places.
     """
     aktiv = (await get_setting(db, AKTIV_KEY, _VORGABE[AKTIV_KEY])) == "1"
 
@@ -121,9 +121,9 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
                          body=mail_text(payload))
     subject = str(payload.get("subject") or "")
 
-    # Chef-Masche: der Anzeigename ist ein bekannter Kontakt, die Adresse aber nicht seine.
-    # Technisch ist an so einer Mail nichts auszusetzen — nur der Kontaktbestand verrät sie,
-    # weshalb die Prüfung hier steht und nicht im regelbasierten Teil.
+    # Boss scam: the display name is a known contact but the address is not theirs.
+    # Technically there is nothing wrong with such a mail; only the contact list gives it
+    # away, which is why this check stands here and not in the rule based part.
     if regel.sender_name:
         opfer = await namens_kollision(db, owner_id, regel.sender_name, regel.sender_email)
         if opfer:
@@ -133,17 +133,17 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
             regel.score = min(1.0, regel.score)
 
     # --- Bekannter Absender ---------------------------------------------------
-    # Die Adresse wird immer geprüft, die Domain nur, wenn sie überhaupt etwas aussagt:
-    # ein Kontakt bei gmx.de spricht nicht alle anderen gmx-Adressen frei.
+    # The address is always checked, the domain only when it says anything at all: a contact
+    # at gmx.de does not exonerate all other gmx addresses.
     treffer = await kontakt_treffer(
         db, owner_id, regel.sender_email,
         "" if regel.sender_domain in FREEMAIL_DOMAINS else regel.sender_domain)
-    # Ein bekannter Absender spricht nur frei, solange die Technik stimmt. Gerade der
-    # bekannte Name ist das lohnende Ziel: eine gefälschte Mail „von der Hausbank" ist
-    # gefährlicher als jede Werbung, und sie fällt genau hier auf.
+    # A known sender only exonerates as long as the technical side is right. The known name
+    # in particular is the rewarding target: a forged mail "from the house bank" is more
+    # dangerous than any advertising, and it is noticed exactly here.
     faelschungsverdacht = ist_faelschungsverdacht(regel.signals)
-    # `sent` zählt wie ein Vault-Eintrag: wem ich selbst geschrieben habe, den kenne ich
-    # nachweislich — das ist die stärkste Aussage „erwünscht", die ein Postfach hergibt.
+    # `sent` counts like a vault entry: whoever I wrote to myself I demonstrably know, and
+    # that is the strongest "wanted" statement a mailbox can produce.
     bekannter_kontakt = treffer in ("frontmatter", "sent") and not faelschungsverdacht
     if bekannter_kontakt:
         log.debug("Mail von bekanntem Kontakt %s — kein Spam-Verdacht", regel.sender_email)
@@ -153,12 +153,12 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         regel.signals.append("kontakt_gefaelscht")
         regel.score = min(1.0, regel.score + 0.2)
     elif treffer in ("body", "domain"):
-        # Schwächerer Bekanntheitsgrad: Abschlag, kein Freispruch.
+        # Weaker degree of familiarity: a deduction, not an acquittal.
         regel.score = max(0.0, regel.score - 0.15)
 
     merkmale = features(regel, subject, kontakt_treffer=treffer)
 
-    # --- Gedächtnis -----------------------------------------------------------
+    # --- Memory ---------------------------------------------------------------
     gelernt_score, gelernt_gruende, sicher = await spam_learn.bewerten(db, owner_id, merkmale)
     hat_gedaechtnis = bool(gelernt_gruende) or sicher
 
@@ -168,8 +168,8 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
 
     score = _mischen(regel.score, modell, gelernt_score if hat_gedaechtnis else None)
 
-    # Bestellter Newsletter ist kein Spam. Ohne diese Bremse wandern
-    # Bestellbestätigungen und Rechnungen mit der Werbung in den Spam-Ordner.
+    # A subscribed newsletter is not spam. Without this brake, order confirmations and
+    # invoices would wander into the spam folder along with the advertising.
     if regel.ist_newsletter and not faelschungsverdacht:
         score = min(score, 0.4)
 
@@ -178,15 +178,15 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         gruende.append(str(cls["spam_reason"])[:200])
     gruende.extend(gelernt_gruende)
 
-    # Das Gedächtnis darf allein entscheiden, wenn es über den Absender einig ist — genau
-    # dafür wird gelernt. Sonst bliebe die immer gleiche Frage ewig stehen. Die Folge
-    # daraus zieht der Graph; hier steht nur, DASS die Sache geklärt ist und wie.
+    # The memory may decide alone when it agrees about the sender, which is exactly what the
+    # learning is for. Otherwise the same question would stand forever. The consequence is
+    # drawn by the graph; here stands only THAT the matter is settled and how.
     geklaert = bool(sicher and not faelschungsverdacht)
-    # Das Urteil des eigenen Mailservers steht für sich. In der gewichteten Mischung geht
-    # es unter: mit Regel = 1.0 und schweigendem Modell landet selbst eine Mail, der der
-    # eigene Server 13 Spam-Punkte gibt, bei ~0.55 — eine Auto-Schwelle wäre damit
-    # unerreichbar. Wer die eigene Infrastruktur befragt und ihr dann nicht glaubt, hätte
-    # sie nicht fragen müssen; die Rückholkarte bleibt das Sicherheitsnetz.
+    # The verdict of one's own mail server stands for itself. In the weighted mixture it
+    # would go under: with rule = 1.0 and a silent model, even a mail the own server gives 13
+    # spam points to lands at ~0.55, which would put an auto threshold out of reach. Whoever
+    # asks their own infrastructure and then does not believe it need not have asked; the
+    # recall card remains the safety net.
     serverurteil = any(str(sig).startswith("server_spam") or sig == "betreff_spam_markiert"
                        for sig in regel.signals)
     empfaenger = regel.recipients[0] if regel.recipients else ""
@@ -210,8 +210,8 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         "account": str(payload.get("account") or ""),
         "folder": str(payload.get("folder") or ""),
         "uid": payload.get("uid") if isinstance(payload.get("uid"), int) else None,
-        # Die Schwellen wandern mit ins Urteil: die Weiche steht im Graphen, und sie soll
-        # gegen die Einstellung von JETZT prüfen können, ohne selbst die Datenbank zu lesen.
+        # The thresholds travel into the verdict: the branch stands in the graph, and it
+        # should be able to check against the setting of NOW without reading the database.
         "frage_ab": await _zahl(db, FRAGE_AB_KEY),
         "sofort_ab": await _zahl(db, SOFORT_AB_KEY),
         "auto_ab": await _zahl(db, AUTO_AB_KEY),
@@ -224,11 +224,11 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
 
 async def anlegen(db: AsyncSession, owner_id: int | None, urteil: dict, *,
                   task_id: int | None = None, instance_id: int | None = None) -> SpamVerdict:
-    """Aus einem Urteil eine Zeile machen — Arbeitsvorrat und späterer Lehrstoff.
+    """Turn a verdict into a row: work stock and later learning material.
 
-    `instance_id` bindet die Zeile an den Ablauf, der sie erzeugt hat: der Telegram-Knopf
-    entscheidet damit nicht mehr an der Engine vorbei, sondern schaltet den Ablauf weiter
-    (siehe `entscheiden`).
+    `instance_id` binds the row to the flow that produced it: the Telegram button therefore
+    no longer decides past the engine but advances the flow
+    (see `entscheiden`).
     """
     verdict = SpamVerdict(
         owner_user_id=owner_id,
@@ -257,11 +257,11 @@ async def anlegen(db: AsyncSession, owner_id: int | None, urteil: dict, *,
 
 def karte(verdict: SpamVerdict, *, vorentschieden: bool = False,
           rueckholbar: bool = False) -> tuple[str, str]:
-    """(Titel, Text) der Einzelkarte.
+    """(Title, text) of the single card.
 
-    Drei Bauformen: die Frage, der gelernte Fall (schon entschieden) und der automatisch
-    verschobene (schon geschehen, mit Rückweg). Die dritte ist die einzige, bei der ein
-    Mensch nachträglich widerspricht — deshalb sagt sie zuerst, was passiert IST.
+    Three shapes: the question, the learned case (already decided) and the automatically
+    moved one (already happened, with a way back). The third is the only one where a human
+    objects afterwards, which is why it says first what HAS happened.
     """
     if rueckholbar:
         kopf = "🗑 Automatisch aussortiert"
@@ -290,16 +290,16 @@ def karte(verdict: SpamVerdict, *, vorentschieden: bool = False,
 async def melden(db: AsyncSession, owner_id: int | None, verdict: SpamVerdict, *,
                  sofort: bool, vorentschieden: bool = False,
                  rueckholbar: bool = False) -> None:
-    """Einzelkarte in die Benachrichtigungen legen (der Bot stellt zu und hängt die
-    Knöpfe an)."""
+    """Put a single card into the notifications (the bot delivers it and attaches the
+    buttons)."""
     if not owner_id:
         return
     owner = await db.get(User, owner_id)
     if owner is None or not owner.telegram_chat_id:
         return
     titel, text = karte(verdict, vorentschieden=vorentschieden, rueckholbar=rueckholbar)
-    # Die Art entscheidet, welche Knöpfe der Bot anhängt: eine Frage bekommt zwei, eine
-    # bereits ausgeführte Aussortierung genau einen — den Rückweg.
+    # The kind decides which buttons the bot attaches: a question gets two, an already
+    # executed sorting exactly one, the way back.
     db.add(Notification(
         user_id=owner_id, spam_verdict_id=verdict.id,
         kind="spam_auto" if rueckholbar else "spam_review",
@@ -309,11 +309,11 @@ async def melden(db: AsyncSession, owner_id: int | None, verdict: SpamVerdict, *
 
 
 async def digest_faellig(db: AsyncSession) -> int:
-    """Offene Verdachtsfälle unterhalb der Sofort-Schwelle zu EINER Karte bündeln.
+    """Bundle open suspected cases below the immediate threshold into ONE card.
 
-    Wird vom Scheduler getaktet. Ohne Bündelung würde bei nennenswertem Spam-Aufkommen
-    der halbe Tag aus Telegram-Nachrichten bestehen — und wer alle drei Minuten gefragt
-    wird, drückt irgendwann auf gut Glück.
+    Driven by the scheduler. Without bundling, half the day would consist of Telegram
+    messages at any notable spam volume, and whoever is asked every three minutes eventually
+    presses a button at random.
     """
     takt = int(await _zahl(db, DIGEST_MIN_KEY))
     if takt <= 0:
@@ -322,8 +322,8 @@ async def digest_faellig(db: AsyncSession) -> int:
     offen = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.status == "pending", SpamVerdict.digest_batch.is_(None),
         SpamVerdict.created_at <= grenze).order_by(SpamVerdict.id).limit(50))).scalars().all()
-    # Sofort gemeldete Fälle hängen schon an einer eigenen Karte — sie dürfen nicht
-    # doppelt gefragt werden.
+    # Cases reported immediately already hang off a card of their own; they must not be
+    # asked about twice.
     schon_gemeldet = set((await db.execute(select(Notification.spam_verdict_id).where(
         Notification.spam_verdict_id.in_([v.id for v in offen] or [0])))).scalars().all())
     offen = [v for v in offen if v.id not in schon_gemeldet]
@@ -350,9 +350,9 @@ async def digest_faellig(db: AsyncSession) -> int:
                           f"   {grund}")
             v.digest_batch = batch
         db.add(Notification(
-            # Der Bezug zeigt auf den ersten Fall der Sammlung; über dessen `digest_batch`
-            # findet der Bot die ganze Menge wieder. Die Kennung selbst passt nicht in die
-            # Rückmeldung eines Knopfes, wenn dort schon eine Aktion steht.
+            # The reference points at the first case of the collection; through its
+            # `digest_batch` the bot finds the whole set again. The identifier itself does
+            # not fit into the callback of a button when an action already stands there.
             user_id=owner_id, spam_verdict_id=faelle[0].id, kind="spam_digest",
             chat_id=owner.telegram_chat_id,
             title=(await tr(db, "server.notify.spam_verdacht", owner.locale,
@@ -363,21 +363,21 @@ async def digest_faellig(db: AsyncSession) -> int:
     return gesendet
 
 
-# --- Entscheidung + Ausführung ------------------------------------------------------
+# --- Decision and execution ---------------------------------------------------------
 
 async def entscheiden(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, *,
                       decided_by: str = "telegram") -> str:
-    """Die Antwort des Menschen entgegennehmen. → Klartext-Ergebnis für die Rückmeldung.
+    """Take the answer of the human. Returns a plain text result for the reply.
 
-    Hängt an der Zeile ein Ablauf (Normalfall seit dem Mail-Prozess), wird hier NICHT mehr
-    selbst verschoben: die Antwort schaltet den Genehmigungs-Knoten weiter, und was danach
-    geschieht — lernen, Absender merken, Mail bewegen — steht im Graphen. Sonst liefe der
-    Ablauf am Knopf vorbei und stünde ewig an seinem Wartepunkt.
+    If a flow hangs off the row (the normal case since the mail process), nothing is moved
+    here any more: the answer advances the approval node, and what happens afterwards
+    (learning, remembering the sender, moving the mail) stands in the graph. Otherwise the
+    flow would run past the button and stand at its waiting point forever.
 
-    Ohne Ablauf (Altbestand aus der Zeit vor dem Prozess) bleibt der direkte Weg: erst
-    lernen, dann verschieben. Scheitert das Verschieben (Mail schon weggeräumt, IMAP kurz
-    weg), bleibt die Entscheidung trotzdem im Gedächtnis — sie war ja richtig, nur nicht
-    ausführbar.
+    Without a flow (legacy from the time before the process) the direct way remains: first
+    learn, then move. If moving fails (mail already cleared away, IMAP briefly gone) the
+    decision still stays in the memory, because it was right, only not
+    executable.
     """
     if verdict.workflow_instance_id:
         return await _an_ablauf_melden(db, verdict, ist_spam, decided_by=decided_by)
@@ -390,7 +390,7 @@ async def entscheiden(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, *,
 
 async def festschreiben(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, *,
                         decided_by: str = "telegram") -> None:
-    """Urteil festhalten und daraus lernen (ohne IMAP). Committet NICHT."""
+    """Record the verdict and learn from it (without IMAP). Does NOT commit."""
     vorher = verdict.status if verdict.status in ("spam", "ham") else ""
     verdict.status = "spam" if ist_spam else "ham"
     verdict.decided_by = decided_by
@@ -398,8 +398,8 @@ async def festschreiben(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, 
     await spam_learn.merken(db, verdict, ist_spam, vorher=vorher)
 
     if not ist_spam:
-        # „Kein Spam" ist mehr als ein Nein: der Absender soll künftig gar nicht erst
-        # auffallen. Die gelernte Regel greift schon vor der Beurteilung.
+        # "Not spam" is more than a no: the sender should not even stand out in future. The
+        # learned rule takes hold before the assessment already.
         from .assistant_policy import upsert_policy
         if verdict.sender_email and verdict.sender_domain not in FREEMAIL_DOMAINS:
             await upsert_policy(db, verdict.owner_user_id, match_kind="sender",
@@ -408,12 +408,12 @@ async def festschreiben(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, 
 
 async def _an_ablauf_melden(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool, *,
                             decided_by: str) -> str:
-    """Antwort in den wartenden Ablauf geben und ihn weiterschalten.
+    """Give the answer to the waiting flow and advance it.
 
-    Die Entscheidung steht danach im Kontext (`spam.entschieden`) — der Graph liest sie an
-    seiner Weiche und führt die IMAP-Aktion aus. Wartet gerade kein Genehmigungs-Schritt
-    (Ablauf abgebrochen, Instanz weg), wird die Antwort auf dem direkten Weg ausgeführt:
-    eine beantwortete Frage darf nicht ins Leere laufen.
+    The decision then stands in the context (`spam.entschieden`), and the graph reads it at
+    its branch and executes the IMAP action. If no approval step is waiting (flow aborted,
+    instance gone), the answer is executed the direct way: an answered question must not run
+    into nothing.
     """
     from ..models.workflow import WorkflowInstance
     from .workflow_engine import advance, entscheide_genehmigung
@@ -436,15 +436,15 @@ async def _an_ablauf_melden(db: AsyncSession, verdict: SpamVerdict, ist_spam: bo
 
     await db.commit()
     await advance(inst.id)
-    # Der Ablauf hat inzwischen in einer eigenen Sitzung geschrieben — für die Rückmeldung
-    # an den Menschen zählt sein Ergebnis, nicht der Stand von vorhin.
+    # The flow has meanwhile written in a session of its own; for the reply to the human its
+    # result counts, not the state from before.
     await db.refresh(verdict)
     return verdict.action_result or "an den Ablauf übergeben"
 
 
 async def imap_aktion(verdict: SpamVerdict, ist_spam: bool) -> str:
-    """Mail über `imap-mcp` verschieben. Fehler werden gemeldet, nicht geworfen —
-    eine nicht verschiebbare Mail darf die Entscheidung nicht rückgängig machen."""
+    """Move mail through `imap-mcp`. Errors are reported, not raised: a mail that cannot be
+    moved must not undo the decision."""
     if not (verdict.account and verdict.folder and verdict.uid):
         return "keine Mailkennung hinterlegt — nichts verschoben"
     werkzeug = "mark_spam" if ist_spam else "mark_not_spam"
@@ -461,12 +461,12 @@ async def imap_aktion(verdict: SpamVerdict, ist_spam: bool) -> str:
 
 async def zurueckholen(db: AsyncSession, verdict: SpamVerdict, *,
                        decided_by: str = "telegram") -> str:
-    """Eine automatisch aussortierte Mail zurück in den Posteingang. → Klartext-Ergebnis.
+    """An automatically sorted out mail back into the inbox. Returns a plain text result.
 
-    Der Widerspruch zum Auto-Verschieben, und er ist mehr als ein Rückzug: der Absender
-    wird als erwünscht gelernt und bekommt eine Regel, damit derselbe Irrtum nicht morgen
-    wieder passiert. Ohne das wäre Stufe 2 ein Automat, der denselben Fehler beliebig oft
-    macht.
+    The objection to auto-moving, and it is more than a retreat: the sender is learned as
+    wanted and gets a rule so that the same error does not happen again tomorrow. Without
+    that, stage 2 would be a machine that makes the same mistake any number of
+    times.
     """
     if verdict.status not in ("spam", "pending"):
         return f"schon erledigt ({verdict.status})"
@@ -480,7 +480,7 @@ async def zurueckholen(db: AsyncSession, verdict: SpamVerdict, *,
 
 async def entscheide_batch(db: AsyncSession, batch: str, ist_spam: bool, *,
                            decided_by: str = "telegram") -> tuple[int, int]:
-    """Alle offenen Fälle einer Sammel-Karte auf einmal entscheiden. → (erledigt, Fehler)."""
+    """Decide all open cases of a digest card at once. Returns (done, errors)."""
     faelle = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.digest_batch == batch, SpamVerdict.status == "pending"))).scalars().all()
     fehler = 0
