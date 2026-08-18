@@ -107,9 +107,9 @@ class Issue(TimestampMixin, Base):
     __tablename__ = "issues"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Gemeinsame Artefakt-Identität (Titel, Projekt, Zustand) — dieselbe Konstruktion wie
-    # beim Hardware-Exemplar. Diese Tabelle bleibt die Detailtabelle des Tickets: Board,
-    # Sprint, Plan, Agent, Merge und Testumgebung hängen hier.
+    # Common artifact identity (title, project, state), the same construction as with the
+    # hardware unit. This table stays the detail table of the ticket: board, sprint, plan,
+    # agent, merge and test environment hang here.
     artifact_id: Mapped[int | None] = mapped_column(
         ForeignKey("artifacts.id", ondelete="SET NULL"), nullable=True, unique=True, index=True
     )
@@ -120,7 +120,7 @@ class Issue(TimestampMixin, Base):
     type_id: Mapped[int] = mapped_column(ForeignKey("issue_types.id", ondelete="CASCADE"))
     status_id: Mapped[int] = mapped_column(ForeignKey("workflow_statuses.id", ondelete="CASCADE"), index=True)
 
-    # KI-Lebenszyklus (orthogonal zur Board-Spalte status_id)
+    # AI lifecycle (orthogonal to the board column status_id)
     agent_status: Mapped[TicketAgentStatus | None] = mapped_column(
         SAEnum(TicketAgentStatus, name="ticketagentstatus", values_callable=pg_enum_values),
         nullable=True,
@@ -139,7 +139,7 @@ class Issue(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
 
-    # Agent-Assignment (Kern-Feature): NULL = kein KI-Zugriff
+    # Agent assignment (core feature): NULL = no AI access
     assigned_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     assigned_by_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -152,8 +152,8 @@ class Issue(TimestampMixin, Base):
     sprint_id: Mapped[int | None] = mapped_column(
         ForeignKey("sprints.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Hardware-Bezug (TRA-25): Ticket hängt an einem Exemplar. Ein Exemplar sammelt über
-    # seine Lebenszeit mehrere Tickets (Defekt, Wartung, Umbau) — daher n:1, nicht 1:1.
+    # Hardware reference (TRA-25): the ticket hangs off a unit. A unit collects several
+    # tickets over its lifetime (defect, maintenance, rebuild), hence n:1, not 1:1.
     asset_id: Mapped[int | None] = mapped_column(
         ForeignKey("hardware_assets.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -164,7 +164,7 @@ class Issue(TimestampMixin, Base):
     night_task: Mapped[bool] = mapped_column(Boolean, default=False)
     resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Agenten-Ausführung
+    # Agent execution
     plan: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     exec_agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -172,28 +172,28 @@ class Issue(TimestampMixin, Base):
     base_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     git_base_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
     continuation_count: Mapped[int] = mapped_column(Integer, default=0)
-    # Cap-Fenster: Max-Run-Id zum Zeitpunkt der letzten Plan-Freigabe. Die Runaway-Bremse
-    # (dispatcher._process) zählt nur Runs/Tokens mit Run.id > diesem Wert, damit alte
-    # Fehlversuche (z. B. 429-Abbrüche) nicht gegen legitime Neu-Arbeit zählen. NULL = alle
-    # Runs zählen. Die Kosten-/Statistik-Aggregation (cost.py) bleibt davon unberührt.
+    # Cap window: the maximum run id at the time of the last plan approval. The runaway brake
+    # (dispatcher._process) counts only runs and tokens with Run.id greater than this value,
+    # so that old failed attempts (429 aborts for instance) do not count against legitimate
+    # new work. NULL = all runs count. Cost and statistics aggregation (cost.py) is unaffected.
     cap_baseline_run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Laufende Lebenszyklus-Instanz (workflow_instances.id). Bewusst ohne FK: die Instanz
-    # zeigt ihrerseits auf das Ticket, ein echter FK ergäbe einen Tabellen-Zyklus. Die
-    # Instanz ist die Wahrheit über den Ablauf, `agent_status` nur noch die Projektion
-    # für Board/Telegram/Drawer.
+    # Running lifecycle instance (workflow_instances.id). Deliberately without an FK: the
+    # instance points at the ticket in turn, and a real FK would give a table cycle. The
+    # instance is the truth about the flow, `agent_status` only the projection for board,
+    # Telegram and drawer.
     workflow_instance_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     agent_working: Mapped[bool] = mapped_column(Boolean, default=False)
     merge_status: Mapped[str] = mapped_column(String(20), default="")
     merge_commit: Mapped[str | None] = mapped_column(String(64), nullable=True)
     merged_into: Mapped[str | None] = mapped_column(String(255), nullable=True)
     merge_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Zähler für aufeinanderfolgende Merge-Konflikt-Runden beim Accept. Bremst den
-    # accept→conflict→approved→re-dispatch-Loop: nach zu vielen Runden → hold (Mensch).
+    # Counter for consecutive merge conflict rounds at the accept. Brakes the
+    # accept-conflict-approved-redispatch loop: after too many rounds it goes to hold (human).
     merge_conflict_rounds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # Verbrauchte Korrektur-Runden des Review-Gates. Stand bisher nur als Schleifenzähler im
-    # Worker-Prozess — ein Neustart mitten in Runde 2 begann wieder bei 1 (TRA-32 am
-    # 2026-08-07: prüfen → korrigieren → Neustart → prüfen → korrigieren …, ohne Ende in
-    # Sicht). Ein Zähler, der eine Grenze durchsetzen soll, gehört an das Ticket.
+    # Correction rounds of the review gate used up. Until now it stood only as a loop counter
+    # in the worker process, and a restart in the middle of round 2 began at 1 again (TRA-32
+    # on 2026-08-07: check, correct, restart, check, correct …, with no end in sight). A
+    # counter that is meant to enforce a limit belongs on the ticket.
     review_rounds: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     # Splitting
@@ -214,7 +214,7 @@ class Issue(TimestampMixin, Base):
     source: Mapped[str | None] = mapped_column(String(64), nullable=True)
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    # Archiv: archivierte Tickets erscheinen weder im Board noch in der Liste.
+    # Archive: archived tickets appear neither on the board nor in the list.
     archived: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
