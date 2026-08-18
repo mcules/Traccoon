@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { tr } from "../i18n";
+import { useSchmal } from "../lib/useSchmal";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -191,6 +192,11 @@ export default function WorkflowEditor() {
     [nodes, setEdges]
   );
 
+  // Am Handy passen die drei Spalten nicht nebeneinander: gezeigt wird immer eine, und der
+  // Wechsel hängt an dieser Auswahl. Am Schreibtisch bleibt alles, wie es war.
+  const schmal = useSchmal();
+  const [spalte, setSpalte] = useState<"flaeche" | "baustein">("flaeche");
+
   const onDropNode = useCallback(
     (type: WorkflowNodeType, pos: { x: number; y: number }, edgeId?: string) => {
       const id2 = `${type}_${Date.now()}`;
@@ -246,6 +252,17 @@ export default function WorkflowEditor() {
     },
     [setNodes, setEdges, nodes, selectedId]
   );
+
+  /** Baustein per Tipp: er landet unter dem ausgewählten (oder unter dem letzten), den Rest
+   *  — Verbinden, Auswählen — erledigt `onDropNode`. */
+  const anhaengen = useCallback((type: WorkflowNodeType) => {
+    const bezug = nodes.find((n) => n.id === selectedId) || nodes[nodes.length - 1];
+    const pos = bezug
+      ? { x: bezug.position.x, y: bezug.position.y + gap }
+      : { x: 0, y: 0 };
+    onDropNode(type, pos);
+    if (schmal) setSpalte("baustein");
+  }, [nodes, selectedId, gap, onDropNode, schmal]);
 
   const updateConfig = useCallback(
     (nodeId: string, config: NodeConfig) => {
@@ -399,7 +416,7 @@ export default function WorkflowEditor() {
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-surface">
       {/* Kopfzeile */}
-      <div className="flex items-center gap-3 border-b border-line bg-card px-4 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-card px-3 py-2 sm:px-4">
         <button
           // Zurück dorthin, wo man hergekommen ist. Der Aufrufer gibt seine eigene Adresse
           // als `state.from` mit; nur wenn sie fehlt (Lesezeichen, neu geladene Seite), wird
@@ -412,9 +429,10 @@ export default function WorkflowEditor() {
           }}
           className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
         >
-          {tr("editor.zurueck")}
+          <span className="sm:hidden">←</span>
+          <span className="hidden sm:inline">{tr("editor.zurueck")}</span>
         </button>
-        <span className="font-mono text-xs text-muted">{def?.key}</span>
+        <span className="hidden font-mono text-xs text-muted sm:inline">{def?.key}</span>
         <h1 className="text-sm font-semibold">{def?.name || "Prozess"}</h1>
         {nurLesen && (
           <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
@@ -427,8 +445,8 @@ export default function WorkflowEditor() {
             geaendert ? "bg-amber-500/15 text-amber-300" : "text-muted"}`}
             title={geaendert
               ? tr("editor.ungespeichert_titel")
-              : "Alles gesichert."}>
-            {geaendert ? "● ungespeichert" : "gespeichert"}
+              : tr("editor.alles_gesichert")}>
+            {tr(geaendert ? "editor.ungespeichert" : "editor.gespeichert")}
           </span>
         )}
         <span className={`rounded px-1.5 py-0.5 text-xs ${veroeffentlichung.stil}`}
@@ -437,14 +455,26 @@ export default function WorkflowEditor() {
         </span>
         <div className="flex-1" />
         {msg && <span className="text-xs text-muted">{msg}</span>}
+        {schmal && (
+          <div className="flex overflow-hidden rounded border border-line">
+            {(["flaeche", "baustein"] as const).map((a) => (
+              <button key={a} type="button" onClick={() => setSpalte(a)}
+                className={`px-2 py-1 text-xs ${spalte === a
+                  ? "bg-brand text-white" : "text-muted hover:text-ink"}`}>
+                {tr(a === "flaeche" ? "editor.ansicht_flaeche" : "editor.ansicht_baustein")}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           onClick={autoLayout}
           disabled={nodes.length === 0}
           hidden={nurLesen}
-          title={`Knoten von oben nach unten anordnen (Abstand ${gap} px)`}
+          title={tr("editor.anordnen_titel", { abstand: gap })}
           className="rounded border border-line px-3 py-1 text-sm text-ink hover:border-brand disabled:opacity-50"
         >
-          Anordnen
+          <span className="sm:hidden">⇅</span>
+          <span className="hidden sm:inline">{tr("editor.anordnen")}</span>
         </button>
         <button
           onClick={save}
@@ -454,7 +484,10 @@ export default function WorkflowEditor() {
             geaendert ? "border-amber-400 text-amber-200 hover:border-amber-300"
                       : "border-line text-ink hover:border-brand"}`}
         >
-          {saving ? "Speichert…" : "Speichern"}
+          <span className="sm:hidden">💾</span>
+          <span className="hidden sm:inline">
+            {tr(saving ? "editor.speichert" : "common.speichern")}
+          </span>
         </button>
         <button
           onClick={validateServer}
@@ -462,7 +495,8 @@ export default function WorkflowEditor() {
           hidden={nurLesen}
           className="rounded border border-line px-3 py-1 text-sm text-ink hover:border-brand disabled:opacity-50"
         >
-          Validieren
+          <span className="sm:hidden">✓</span>
+          <span className="hidden sm:inline">{tr("editor.validieren")}</span>
         </button>
         <button
           onClick={publish}
@@ -471,15 +505,16 @@ export default function WorkflowEditor() {
           title={clientErrors.length ? tr("editor.erst_fehler_beheben") : tr("editor.veroeffentlichen")}
           className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50"
         >
-          {tr("editor.veroeffentlichen")}
+          <span className="sm:hidden">⬆</span>
+          <span className="hidden sm:inline">{tr("editor.veroeffentlichen")}</span>
         </button>
       </div>
 
       {/* Arbeitsfläche */}
       <div className="flex min-h-0 flex-1">
-        {!nurLesen && (
+        {!nurLesen && !schmal && (
           <div className="w-52 shrink-0 overflow-y-auto border-r border-line bg-card p-3">
-            <NodePalette />
+            <NodePalette onAdd={anhaengen} />
             <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-muted">
               {tr("editor.hilfe_verbinden")}<br />
               {tr("editor.hilfe_loeschen")}
@@ -487,7 +522,8 @@ export default function WorkflowEditor() {
           </div>
         )}
 
-        <div className="relative min-w-0 flex-1">
+        <div className={`relative min-w-0 flex-1 ${
+          schmal && spalte !== "flaeche" ? "hidden" : ""}`}>
           <WorkflowCanvas
             nodes={sichtbar.nodes}
             edges={sichtbar.edges}
@@ -495,13 +531,22 @@ export default function WorkflowEditor() {
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onConnect={onConnect}
-            onNodeClick={setSelectedId}
+            onNodeClick={(id) => { setSelectedId(id); if (schmal) setSpalte("baustein"); }}
             onDropNode={onDropNode}
             fokus={fokus}
           />
         </div>
 
-        <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line bg-card">
+        <div className={`flex flex-col overflow-y-auto border-l border-line bg-card ${
+          schmal ? `w-full ${spalte === "baustein" ? "" : "hidden"}` : "w-80 shrink-0"}`}>
+          {/* Am Handy steht die Palette hier oben: ohne sie käme man in dieser Ansicht an
+              keinen neuen Baustein, und die Fläche hat für eine Leiste keinen Platz. */}
+          {schmal && !nurLesen && (
+            <div className="border-b border-line p-2">
+              <div className="mb-1.5 text-xs font-medium text-muted">{tr("node_palette.bausteine")}</div>
+              <NodePalette onAdd={anhaengen} kompakt />
+            </div>
+          )}
           <div className="border-b border-line px-3 py-2 text-xs font-medium text-muted">{tr("workflow_editor.konfiguration")}</div>
           {nurLesen ? (
             <p className="p-3 text-sm text-muted">
