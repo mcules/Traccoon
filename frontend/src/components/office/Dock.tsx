@@ -1,32 +1,32 @@
-// Schicht 2 — das Dock unter der Bühne. Vier Reiter: drei auf dieselben Daten —
-// **Chat** (was gesagt wurde), **Agenten** (wer da ist) und **Werkzeuge** (was getan wurde) —
-// und einer daneben: die **Personalakte** (was eine Rolle über alle Läufe hinweg tut).
+// Layer 2, the dock below the stage. Four tabs: three on the same data, **chat** (what was
+// said), **agents** (who is there) and **tools** (what was done), and one beside them, the
+// **personnel file** (what a role does across all runs).
 //
-// Die Akte ist bewusst der Fremdkörper hier. Die ersten drei Reiter lesen das Log dieser
-// Sitzung und frieren mit dem Raum ein; die Akte fragt selbst beim Server nach und hat ihr
-// eigenes Zeitfenster über Läufe **und** Sitzungen hinweg. Sie sitzt trotzdem im Dock und
-// nicht im Inspektor: der Inspektor sagt in seinem Kopf ausdrücklich zu, ohne eigene Abfrage
-// auszukommen, und hätte in seiner 45 %-Kachel auch keinen Platz dafür. Der Reiter ist eine
-// Liste von **Rollen** — genau die Achse, die dem `agents`-Reiter fehlt.
+// The file is deliberately the foreign body here. The first three tabs read the log of this
+// session and freeze with the room; the file asks the server itself and has a time window of
+// its own across runs **and** sessions. It sits in the dock nevertheless and not in the
+// inspector: the inspector explicitly promises in its head to get by without a query of its
+// own, and would have no space for it in its 45 % tile either. The tab is a list of **roles**,
+// exactly the axis the `agents` tab lacks.
 //
-// ── Woher der Text kommt, und was das kostet ────────────────────────────────────────────────
+// ── Where the text comes from, and what that costs ──────────────────────────────────────────
 //
-// Der `Recorder` bewahrt **Kommandos** auf, keine Ereignisse (`LogEntry = {ts, seq, cmds}`) —
-// das ist die Naht, die den Replay ohne Momentaufnahmen möglich macht. Der Chat liest deshalb
-// aus den Kommandos `say`/`think`/`deliver`/`gate`/`done` und nicht aus `agent_text` &
-// Verwandtschaft. Praktisch ist das dasselbe: `user_message` und `agent_text` werden in
-// `mapEvent` genau zu diesen Kommandos.
+// The `Recorder` keeps **commands**, not events (`LogEntry = {ts, seq, cmds}`), which is the
+// seam that makes the replay without snapshots possible. The chat therefore reads from the
+// commands `say`/`think`/`deliver`/`gate`/`done` and not from `agent_text` and relatives. In
+// practice that is the same thing: `user_message` and `agent_text` become exactly these
+// commands in `mapEvent`.
 //
-// Eine Ausnahme gibt es, und sie ist bewusst: `system`-Meldungen (Abbruch, Kappung,
-// Kompaktierung) erzeugen laut `mapEvent` **kein** Kommando und erscheinen deshalb hier nicht.
-// Sie nachzureichen hieße, den Ereignisstrom ein zweites Mal vorzuhalten — dieselbe Datenlage
-// an zwei Orten, mit zwei Kappungsregeln. Wenn sie gebraucht werden, gehören sie in `mapEvent`.
+// There is one exception, and it is deliberate: `system` messages (abort, truncation,
+// compaction) produce **no** command according to `mapEvent` and therefore do not appear here.
+// Adding them would mean keeping the event stream a second time: the same data in two places,
+// with two truncation rules. If they are needed, they belong in `mapEvent`.
 //
-// ── Einfrieren ──────────────────────────────────────────────────────────────────────────────
+// ── Freezing ────────────────────────────────────────────────────────────────────────────────
 //
-// Beim Zurückspulen zeigt das Dock denselben Moment wie der Raum: alles mit `ts > seekTs` wird
-// weggelassen. Ein Dock, das weiterläuft, während die Bühne in der Vergangenheit steht, wäre
-// zwei Ansichten desselben Laufs, die sich widersprechen.
+// When rewinding, the dock shows the same moment as the room: everything with `ts > seekTs` is
+// left out. A dock that ran on while the stage stood in the past would be two views of the
+// same run contradicting each other.
 
 import { tr } from "../../i18n";
 import { useEffect, useMemo, useRef } from "react";
@@ -40,14 +40,14 @@ import {
 
 // ── Kappung ─────────────────────────────────────────────────────────────────────────────────
 //
-// Alle drei Listen können vierstellig werden. Gekappt wird vom **ältesten** Ende — dieselbe
-// Richtung wie Log und Ereignisfenster — und es wird gesagt, dass gekappt wurde.
+// All three lists can grow to four digits. Truncation happens from the **oldest** end, the
+// same direction as log and event window, and it is stated that truncation happened.
 
 const CHAT_CAP = 200;
 const WERKZEUG_CAP = 200;
 const AGENT_CAP = 80;
 
-// ── Oberfläche ──────────────────────────────────────────────────────────────────────────────
+// ── Interface ───────────────────────────────────────────────────────────────────────────────
 
 export type DockTab = "chat" | "agents" | "tools" | "akte";
 
@@ -63,12 +63,12 @@ export interface DockProps {
   tab: DockTab;
   onTabChange: (t: DockTab) => void;
   recorder: LogQuelle;
-  /** Neuberechnungssignal des Feeds. */
+  /** Recomputation signal of the feed. */
   revision: number;
   roster: Roster;
-  /** Sitzungsfilter, `null` = Alle. Dimmt, entfernt nicht. */
+  /** Session filter, `null` = all. Dims, does not remove. */
   filter: string | null;
-  /** `null` = Gegenwart, sonst Epoch-ms: das Dock friert auf diesen Moment ein. */
+  /** `null` = present, otherwise epoch ms: the dock freezes on this moment. */
   seekTs: number | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -83,7 +83,7 @@ interface ChatZeile {
   id: string;
   icon: string;
   text: string;
-  /** Klasse für den Text — Fehler und Gates heben sich ab. */
+  /** Class for the text: errors and gates stand out. */
   css?: string;
 }
 
@@ -115,20 +115,20 @@ interface WerkzeugZeile {
   id: string;
   tool: string;
   target?: string;
-  /** `null` = kein Ende im Fenster (läuft noch oder das Ende ist herausgekappt). */
+  /** `null` = no end in the window (still running or the end was truncated away). */
   dauer: number | null;
-  /** Dreiwertig **plus** `undefined` für „läuft noch". `null` heißt *unbekannt*, nicht *gut*. */
+  /** Three valued **plus** `undefined` for "still running". `null` means *unknown*, not *good*. */
   ok: boolean | null | undefined;
 }
 
-/** Paart `tool` mit dem nächsten `toolEnd` derselben Figur.
+/** Pairs `tool` with the next `toolEnd` of the same figure.
  *
- *  Die Kommandos tragen keine `tool_use_id` — die bleibt im Ereignis. Das genügt trotzdem: ein
- *  Lauf ruft seine Werkzeuge nacheinander auf (der Worker wartet jeden Aufruf ab), also ist
- *  „das nächste Ende derselben Figur" auch das richtige. Die Dauer ist damit der Abstand der
- *  Wanduhrzeiten, was beim Altdaten-Pfad (beide aus **einer** Zeile synthetisiert) korrekt 0
- *  ergibt und nicht die Ersatzdauer der Bühne — die ist eine Darstellungsentscheidung und keine
- *  Messung, und eine erfundene Dauer in einer Liste, die Dauern zeigt, wäre eine Lüge. */
+ *  The commands carry no `tool_use_id`, which stays in the event. That is enough anyway: a
+ *  run calls its tools one after another (the worker awaits every call), so "the next end of
+ *  the same figure" is also the right one. The duration is therefore the distance of the wall
+ *  clock times, which on the legacy path (both synthesised from **one** row) correctly gives
+ *  0 and not the substitute duration of the stage: that one is a display decision and not a
+ *  measurement, and an invented duration in a list showing durations would be a lie. */
 function werkzeugeAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: number | null): WerkzeugZeile[] {
   const offen = new Map<string, WerkzeugZeile>();
   const out: WerkzeugZeile[] = [];
@@ -140,8 +140,8 @@ function werkzeugeAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], 
           key: `${e.seq}:${i}`, ts: e.ts, id: c.id, tool: c.tool,
           target: c.target, dauer: null, ok: undefined,
         };
-        // Ein zweiter Start ohne Ende verdrängt den ersten nur aus der Paarung — in der Liste
-        // bleibt er stehen (er lief ja) und behält sein „läuft noch".
+        // A second start without an end only displaces the first from the pairing; in the
+        // list it stays (it did run) and keeps its "still running".
         offen.set(c.id, z);
         out.push(z);
       } else if (c.k === "toolEnd") {
@@ -153,11 +153,11 @@ function werkzeugeAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], 
       }
     });
   }
-  // `out` steht in Startreihenfolge; die offenen Einträge sind bereits darin enthalten.
+  // `out` stands in start order; the open entries are already contained in it.
   return out;
 }
 
-// ── Die Komponente ──────────────────────────────────────────────────────────────────────────
+// ── The component ───────────────────────────────────────────────────────────────────────────
 
 export default function Dock({
   scope, tab, onTabChange, recorder, revision, roster, filter, seekTs,
@@ -175,7 +175,7 @@ export default function Dock({
 
   const agenten = useMemo(() => {
     const kopie = [...roster];
-    // Laufendes zuerst, danach das Jüngste — die Reihenfolge, in der man hinsieht.
+    // Running first, then the most recent: the order in which one looks.
     kopie.sort((a, b) => {
       const la = a.status === "running", lb = b.status === "running";
       if (la !== lb) return la ? -1 : 1;
@@ -184,16 +184,16 @@ export default function Dock({
     return kopie;
   }, [roster]);
 
-  /** Die **Rolle** der ausgewählten Figur — der Sprungpunkt der Akte. Ein Lauf ohne Rolle
-   *  (Job, Assistent) ergibt `null`: dann bleibt die Wahl in der Akte beim Betrachter, statt
-   *  auf eine leere Rolle zu zeigen. */
+  /** The **role** of the selected figure, the jump point of the file. A run without a role
+   *  (job, assistant) gives `null`: then the choice in the file stays with the viewer instead
+   *  of pointing at an empty role. */
   const gewaehlteRolle = selectedId ? (nachId.get(selectedId)?.agent || null) : null;
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  // Im Livebetrieb ans Ende scrollen; beim Zurückspulen ausdrücklich **nicht** — dort hat der
-  // Betrachter eine Stelle gewählt und will sie behalten.
-  // Die Akte ist keine Liste, die nach unten wächst — sie ans Ende zu scrollen zeigte den
-  // letzten Werkzeugbalken der letzten Rolle statt der Überschrift mit dem Zeitfenster.
+  // Scroll to the end in live operation; when rewinding explicitly **not**, because there the
+  // viewer has chosen a place and wants to keep it.
+  // The file is not a list that grows downwards: scrolling it to the end would show the last
+  // tool bar of the last role instead of the heading with the time window.
   useEffect(() => {
     if (seekTs !== null || tab === "akte") return;
     const el = scrollRef.current;
@@ -253,9 +253,9 @@ export default function Dock({
           <WerkzeugListe zeilen={werkzeuge} name={name} gedimmt={gedimmt} onSelect={onSelect} />
         )}
         {tab === "akte" && (
-          // Die Rolle der ausgewählten Figur, nicht die Figur selbst: der Inspektor darunter
-          // zeigt weiter den einzelnen Lauf, die Akte die Rolle. Zwei Wahrheiten nebeneinander,
-          // keine gibt sich für die andere aus.
+          // The role of the selected figure, not the figure itself: the inspector below keeps
+          // showing the single run, the file the role. Two truths side by side, and neither
+          // pretends to be the other.
           <Personalakte scope={scope} focusAgent={gewaehlteRolle} />
         )}
       </div>
@@ -355,8 +355,8 @@ function AgentListe({ eintraege, scope, filter, selectedId, onSelect }: {
 
 // ── Werkzeuge ───────────────────────────────────────────────────────────────────────────────
 
-/** `ok === null` ist **unbekannt**, nicht grün: bei Altdaten hat niemand gemessen, ob der Aufruf
- *  durchlief. Ein Häkchen darauf wäre eine Behauptung über Daten, die es nicht gibt. */
+/** `ok === null` is **unknown**, not green: with old data nobody measured whether the call went
+ *  through. A tick on that would be a claim about data that does not exist. */
 function ergebnis(ok: boolean | null | undefined): { zeichen: string; css: string; titel: string } {
   if (ok === undefined) return { zeichen: "…", css: "text-muted", titel: tr("dock.laeuft_noch") };
   if (ok === true) return { zeichen: "✓", css: "text-green-400", titel: tr("buero.st_success") };
