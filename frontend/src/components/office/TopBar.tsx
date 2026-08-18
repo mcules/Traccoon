@@ -22,6 +22,7 @@
 
 
 
+import { tr } from "../../i18n";
 import type { Scope } from "./api.ts";
 import type { GateKind, Roster, RosterEntry, RunStatus } from "./types.ts";
 import type { FeedTotals } from "./useOfficeFeed.ts";
@@ -32,9 +33,9 @@ import type { FeedTotals } from "./useOfficeFeed.ts";
  *  `permission`, `assistant_perm`, `review`) ist schon in `mapEvent` zu diesen drei Arten
  *  verdichtet — hier steht nur noch, wie sie heißen. */
 export const GATE_TEXT: Record<GateKind, string> = {
-  question: "wartet auf Antwort",
-  permission: "wartet auf Berechtigung",
-  plan: "Plan wartet auf Freigabe",
+  question: "buero.gate_question",
+  permission: "buero.gate_permission",
+  plan: "buero.gate_plan",
 };
 
 // ── Statusfarben ────────────────────────────────────────────────────────────────────────────
@@ -47,15 +48,16 @@ export const ST_FARBE: Record<string, string> = {
   failed: "text-red-400", blocked: "text-orange-400", planned: "text-sky-400",
 };
 
-/** Dieselben Zustände auf Deutsch. */
+/** Dieselben Zustände als Schlüssel; übersetzt wird in statusText(). */
 export const ST_TEXT: Record<string, string> = {
-  running: "läuft", success: "erfolgreich", failed: "fehlgeschlagen",
-  blocked: "blockiert", planned: "geplant", loop_exhausted: "Schleife erschöpft",
+  running: "buero.st_running", success: "buero.st_success", failed: "buero.st_failed",
+  blocked: "buero.st_blocked", planned: "buero.st_planned",
+  loop_exhausted: "buero.st_loop_exhausted",
 };
 
 export function statusText(s: RunStatus | string | null | undefined): string {
-  if (!s) return "unbekannt";
-  return ST_TEXT[s] ?? s;
+  if (!s) return tr("buero.st_unbekannt");
+  return ST_TEXT[s] ? tr(ST_TEXT[s]) : s;
 }
 
 export function statusFarbe(s: RunStatus | string | null | undefined): string {
@@ -123,7 +125,7 @@ export function uhrText(ms: number | null | undefined): string {
 
 /** Ohne Ticket bzw. ohne Projekt — ein eigener Reiter statt „verschwindet aus der Liste".
  *  Job- und Assistentenläufe sind echte Bewohner des Raums. */
-export const OHNE_TICKET = "(ohne Ticket)";
+export const OHNE_TICKET = "(ohne Ticket)";   // Gruppierungsschlüssel, kein Anzeigetext
 export const OHNE_PROJEKT = "(ohne Projekt)";
 
 /** Zu welchem Reiter ein Lauf gehört: im Projektumfang sein Ticket, global sein Projekt. */
@@ -208,13 +210,11 @@ export default function TopBar({
 }: TopBarProps) {
   const reiter = reiterAus(scope, roster);
   const tokenSumme = totals.in_tokens + totals.out_tokens;
-  const tokenTitel = `Eingabe ${zahl(totals.in_tokens)} · Ausgabe ${zahl(totals.out_tokens)}`
-    + ` · Cache gelesen ${zahl(totals.cache_read_tokens)}`;
-  const kostenTitel = totals.cost_partial
-    ? "Für mindestens ein Modell fehlt ein Preis im Katalog. Die Summe ist eine Untergrenze — "
-      + "der wahre Betrag liegt darüber. (Ein Katalogeintrag mit 0,00 wäre bepreist und gratis; "
-      + `dieser hier ist unbekannt.) Abgerechnet: ${usdText(totals.cost_usd_billed)}`
-    : `Geschätzt gegen den aktuellen Preiskatalog. Abgerechnet: ${usdText(totals.cost_usd_billed)}`;
+  const tokenTitel = tr("buero.token_titel", {
+    ein: zahl(totals.in_tokens), aus: zahl(totals.out_tokens),
+    cache: zahl(totals.cache_read_tokens) });
+  const kostenTitel = tr(totals.cost_partial ? "buero.kosten_teilweise" : "buero.kosten_geschaetzt",
+    { abgerechnet: usdText(totals.cost_usd_billed) });
 
   return (
     <div className="rounded border border-line bg-card px-3 py-2">
@@ -224,16 +224,17 @@ export default function TopBar({
         )}
 
         <span className="text-muted" title={tokenTitel}>
-          🔢 <b className="text-ink">{tokenText(tokenSumme)}</b> Tokens
+          🔢 <b className="text-ink">{tokenText(tokenSumme)}</b> {tr("buero.tokens")}
         </span>
 
         <span className="text-muted" title={kostenTitel}>
           💵 <b className="text-ink">{usdText(totals.cost_usd_estimated, totals.cost_partial)}</b>
         </span>
 
-        <span className="text-muted" title={`${totals.running} von ${totals.runs} laufen gerade`}>
-          🤖 <b className="text-ink">{totals.runs}</b> {totals.runs === 1 ? "Lauf" : "Läufe"}
-          {totals.running > 0 && <span className="text-yellow-400"> · {totals.running} aktiv</span>}
+        <span className="text-muted"
+          title={tr("buero.laufen_gerade", { laufend: totals.running, gesamt: totals.runs })}>
+          🤖 <b className="text-ink">{totals.runs}</b> {tr(totals.runs === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}
+          {totals.running > 0 && <span className="text-yellow-400"> · {tr("buero.aktiv", { anzahl: totals.running })}</span>}
         </span>
 
         <div className="flex-1" />
@@ -242,23 +243,23 @@ export default function TopBar({
         {seekTs !== null ? (
           <span className="flex items-center gap-2">
             <span className="rounded-full border border-orange-400/50 bg-orange-400/10 px-2 py-0.5 text-xs text-orange-400">
-              ⏪ Wiedergabe {uhrText(seekTs)}
+              ⏪ {tr("buero.wiedergabe")} {uhrText(seekTs)}
             </span>
             {!kiosk && (
               <button type="button" onClick={onBackToLive}
                 className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">
-                Zurück zu Live
+                {tr("buero.zurueck_zu_live")}
               </button>
             )}
           </span>
         ) : live ? (
           <span className="rounded-full border border-green-400/50 bg-green-400/10 px-2 py-0.5 text-xs text-green-400"
-            title="Der Live-Strom hängt und der Verlauf ist nachgezogen.">
+            title={tr("buero.strom_haengt")}>
             ● Live
           </span>
         ) : (
           <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted"
-            title="Kein Live-Strom. Der bisherige Verlauf wird gezeigt, neue Ereignisse fehlen.">
+            title={tr("buero.kein_strom")}>
             ○ Getrennt
           </span>
         )}
@@ -281,7 +282,7 @@ export default function TopBar({
         {!kiosk && onToggleFullscreen && (
           <button type="button" onClick={onToggleFullscreen}
             className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand"
-            title={fullscreen ? "Zurück zum Projekt-Reiter" : "Büro auf der ganzen Seite öffnen"}>
+            title={tr(fullscreen ? "buero.zurueck_reiter" : "buero.ganze_seite")}>
             {fullscreen ? "⤡ Vollbild verlassen" : "⤢ Vollbild"}
           </button>
         )}
@@ -292,17 +293,17 @@ export default function TopBar({
           den Raum, keine Bedienung. */}
       {!kiosk && reiter.length > 1 && (
         <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" role="group"
-          aria-label={scope.kind === "project" ? "Tickets dieser Ansicht" : "Projekte dieser Ansicht"}>
+          aria-label={tr(scope.kind === "project" ? "buero.tickets_ansicht" : "buero.projekte_ansicht")}>
           <ReiterKnopf aktiv={filter === null} onClick={() => onFilterChange(null)}
-            titel="Alle Figuren zeigen">
-            Alle
+            titel={tr("buero.alle_figuren")}>
+            {tr("buero.alle")}
           </ReiterKnopf>
           {reiter.map((r) => (
             <ReiterKnopf key={r.key} aktiv={filter === r.key}
               onClick={() => onFilterChange(filter === r.key ? null : r.key)}
-              titel={`${r.anzahl} ${r.anzahl === 1 ? "Lauf" : "Läufe"}`
-                + (r.laeuft ? ", davon läuft gerade einer" : "")
-                + " — andere Figuren werden gedimmt, nicht entfernt"}>
+              titel={`${r.anzahl} ${tr(r.anzahl === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}`
+                + (r.laeuft ? `, ${tr("buero.davon_laeuft_einer")}` : "")
+                + ` — ${tr("buero.andere_gedimmt")}`}>
               {r.laeuft && <span className="mr-1 text-yellow-400">●</span>}
               {r.key}
             </ReiterKnopf>

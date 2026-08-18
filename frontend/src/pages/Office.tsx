@@ -239,11 +239,11 @@ export default function Office(): JSX.Element {
             onClick={zurueck}
             className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
           >
-            ← {projectKey ? "Zurück zum Projekt" : "Zurück zur Übersicht"}
+            ← {tr(projectKey ? "office.zurueck_projekt" : "office.zurueck_uebersicht")}
           </button>
           <h1 className="text-sm font-semibold">{tr("office.buero")}</h1>
           <span className="font-mono text-xs text-muted">
-            {projectKey ?? "alle Projekte"}
+            {projectKey ?? tr("office.alle_projekte")}
           </span>
           {!!projectKey && !isLoading && !project && (
             <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"

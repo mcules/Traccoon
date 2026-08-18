@@ -20,6 +20,7 @@
 // Wie viele Spalten hineinpassen, misst ein `ResizeObserver` — schmaler Reiter heißt weniger
 // Sekunden, nicht dünnere Balken. Genau deshalb steht `TIMELINE_COLUMNS` nur als Obergrenze da.
 
+import { tr } from "../../i18n";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { REPLAY_CAP, TIMELINE_BUCKET_MS, TIMELINE_COLUMNS } from "./const.ts";
 import { bucketize, labelOf } from "./timeline.ts";
@@ -67,10 +68,10 @@ interface Reihe {
 
 /** Reihenfolge der **Beschriftung** — „2 Werkzeugaufrufe, 1 Nachricht". */
 const REIHEN: readonly Reihe[] = [
-  { key: "tools", css: "bg-sky-400", ein: "Werkzeugaufruf", viele: "Werkzeugaufrufe" },
-  { key: "says", css: "bg-violet-400", ein: "Nachricht", viele: "Nachrichten" },
-  { key: "thinks", css: "bg-slate-400", ein: "Denkschritt", viele: "Denkschritte" },
-  { key: "errors", css: "bg-red-400", ein: "Fehler", viele: "Fehler" },
+  { key: "tools", css: "bg-sky-400", ein: "timeline.tool_ein", viele: "timeline.tool_viele" },
+  { key: "says", css: "bg-violet-400", ein: "timeline.says_ein", viele: "timeline.says_viele" },
+  { key: "thinks", css: "bg-slate-400", ein: "timeline.thinks_ein", viele: "timeline.thinks_viele" },
+  { key: "errors", css: "bg-red-400", ein: "timeline.errors_ein", viele: "timeline.errors_viele" },
 ];
 
 /** Reihenfolge im **Stapel**, von oben nach unten. Fehler liegen obenauf: sie sind das, was man
@@ -113,9 +114,9 @@ export function balkenLabel(b: Bucket): string {
   const teile: string[] = [];
   for (const r of REIHEN) {
     const n = l[r.key];
-    if (n > 0) teile.push(`${n} ${n === 1 ? r.ein : r.viele}`);
+    if (n > 0) teile.push(`${n} ${tr(n === 1 ? r.ein : r.viele)}`);
   }
-  return teile.length ? `${uhr} · ${teile.join(", ")}` : `${uhr} · keine Ereignisse`;
+  return teile.length ? `${uhr} · ${teile.join(", ")}` : `${uhr} · ${tr("timeline.keine_ereignisse")}`;
 }
 
 /** Nur die Uhrzeit, für die Randbeschriftung unter der Leiste. */

@@ -28,6 +28,7 @@
 // weggelassen. Ein Dock, das weiterläuft, während die Bühne in der Vergangenheit steht, wäre
 // zwei Ansichten desselben Laufs, die sich widersprechen.
 
+import { tr } from "../../i18n";
 import { useEffect, useMemo, useRef } from "react";
 import Personalakte from "./Personalakte.tsx";
 import type { Scope } from "./api.ts";
@@ -51,10 +52,10 @@ const AGENT_CAP = 80;
 export type DockTab = "chat" | "agents" | "tools" | "akte";
 
 export const DOCK_TABS: readonly { key: DockTab; label: string; icon: string }[] = [
-  { key: "chat", label: "Chat", icon: "💬" },
-  { key: "agents", label: "Agenten", icon: "🤖" },
-  { key: "tools", label: "Werkzeuge", icon: "🔧" },
-  { key: "akte", label: "Personalakte", icon: "📇" },
+  { key: "chat", label: "dock.chat", icon: "💬" },
+  { key: "agents", label: "dock.agenten", icon: "🤖" },
+  { key: "tools", label: "dock.werkzeuge", icon: "🔧" },
+  { key: "akte", label: "dock.akte", icon: "📇" },
 ];
 
 export interface DockProps {
@@ -94,8 +95,8 @@ function chatAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: 
       const key = `${e.seq}:${i}`;
       if (c.k === "say") out.push({ key, ts: e.ts, id: c.id, icon: "💬", text: c.text });
       else if (c.k === "think") out.push({ key, ts: e.ts, id: c.id, icon: "💭", text: c.text, css: "italic text-muted" });
-      else if (c.k === "deliver") out.push({ key, ts: e.ts, id: c.id, icon: "📨", text: c.text || "übergibt das Ergebnis" });
-      else if (c.k === "gate") out.push({ key, ts: e.ts, id: c.id, icon: "⏸", text: c.text || GATE_TEXT[c.kind], css: "text-orange-400" });
+      else if (c.k === "deliver") out.push({ key, ts: e.ts, id: c.id, icon: "📨", text: c.text || tr("dock.uebergibt_ergebnis") });
+      else if (c.k === "gate") out.push({ key, ts: e.ts, id: c.id, icon: "⏸", text: c.text || tr(GATE_TEXT[c.kind]), css: "text-orange-400" });
       else if (c.k === "done") {
         out.push({
           key, ts: e.ts, id: c.id, icon: c.ok ? "✅" : "❌",
@@ -218,7 +219,7 @@ export default function Dock({
             onClick={() => onTabChange(t.key)}
             className={"rounded-t border-b-2 px-2.5 py-1 text-xs "
               + (tab === t.key ? "border-brand text-ink" : "border-transparent text-muted hover:text-ink")}>
-            {t.icon} {t.label}
+            {t.icon} {tr(t.label)}
             {/* Die Akte bekommt keine Zahl: wie viele Rollen es gibt, weiß erst ihre eigene
                 Abfrage — eine Zahl aus dem Roster wäre eine andere Menge mit demselben
                 Aussehen. */}
@@ -234,8 +235,8 @@ export default function Dock({
             nennt ihr eigenes Fenster in der eigenen Überschrift. */}
         {seekTs !== null && tab !== "akte" && (
           <span className="self-center pb-1 text-[11px] text-orange-400"
-            title="Das Dock zeigt denselben Moment wie der Raum.">
-            eingefroren auf {uhrText(seekTs)}
+            title={tr("dock.selber_moment")}>
+            {tr("dock.eingefroren_auf")} {uhrText(seekTs)}
           </span>
         )}
       </div>
@@ -268,7 +269,7 @@ function Gekappt({ n }: { n: number }) {
   if (n <= 0) return null;
   return (
     <div className="mb-1 border-b border-dashed border-line pb-1 text-[11px] text-muted">
-      {zahl(n)} ältere {n === 1 ? "Eintrag ist" : "Einträge sind"} ausgeblendet (Anzeigegrenze).
+      {tr("dock.gekappt", { anzahl: zahl(n) })}
     </div>
   );
 }
@@ -285,7 +286,7 @@ function ChatListe({ zeilen, name, gedimmt, onSelect }: {
   gedimmt: (id: string) => boolean;
   onSelect: (id: string) => void;
 }) {
-  if (zeilen.length === 0) return <Leer text="Noch nichts gesagt." />;
+  if (zeilen.length === 0) return <Leer text={tr("dock.nichts_gesagt")} />;
   const zeige = zeilen.slice(-CHAT_CAP);
   return (
     <div className="space-y-1">
@@ -296,7 +297,7 @@ function ChatListe({ zeilen, name, gedimmt, onSelect }: {
           <span className="shrink-0">{z.icon}</span>
           <button type="button" onClick={() => onSelect(z.id)}
             className="shrink-0 max-w-[9rem] truncate text-left text-muted hover:text-brand"
-            title={`Figur ${name(z.id)} auswählen`}>
+            title={tr("dock.figur_waehlen", { name: name(z.id) })}>
             {name(z.id)}
           </button>
           <span className={`min-w-0 flex-1 break-words ${z.css ?? ""}`}>{z.text}</span>
@@ -315,7 +316,7 @@ function AgentListe({ eintraege, scope, filter, selectedId, onSelect }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  if (eintraege.length === 0) return <Leer text="Niemand im Raum." />;
+  if (eintraege.length === 0) return <Leer text={tr("dock.niemand_im_raum")} />;
   const zeige = eintraege.slice(0, AGENT_CAP);
   const jetzt = Date.now();
   return (
@@ -332,7 +333,7 @@ function AgentListe({ eintraege, scope, filter, selectedId, onSelect }: {
               + (selectedId === r.agent_id ? "border-brand bg-brand/5" : "border-transparent hover:border-line")
               + (aus ? " opacity-40" : "")}>
             <span className="font-medium">{r.agent || `Lauf ${r.run_id}`}</span>
-            {r.phase && <span className="text-muted">{r.phase === "plan" ? "Planung" : "Ausführung"}</span>}
+            {r.phase && <span className="text-muted">{tr(r.phase === "plan" ? "dock.planung" : "dock.ausfuehrung")}</span>}
             <span className={statusFarbe(r.status)}>{statusText(r.status)}</span>
             {r.issue_key && <span className="font-mono text-[11px] text-brand">{r.issue_key}</span>}
             <div className="flex-1" />
@@ -357,10 +358,10 @@ function AgentListe({ eintraege, scope, filter, selectedId, onSelect }: {
 /** `ok === null` ist **unbekannt**, nicht grün: bei Altdaten hat niemand gemessen, ob der Aufruf
  *  durchlief. Ein Häkchen darauf wäre eine Behauptung über Daten, die es nicht gibt. */
 function ergebnis(ok: boolean | null | undefined): { zeichen: string; css: string; titel: string } {
-  if (ok === undefined) return { zeichen: "…", css: "text-muted", titel: "läuft noch" };
-  if (ok === true) return { zeichen: "✓", css: "text-green-400", titel: "erfolgreich" };
-  if (ok === false) return { zeichen: "✕", css: "text-red-400", titel: "fehlgeschlagen" };
-  return { zeichen: "?", css: "text-muted", titel: "unbekannt — Altdaten ohne gemessenes Ergebnis" };
+  if (ok === undefined) return { zeichen: "…", css: "text-muted", titel: tr("dock.laeuft_noch") };
+  if (ok === true) return { zeichen: "✓", css: "text-green-400", titel: tr("buero.st_success") };
+  if (ok === false) return { zeichen: "✕", css: "text-red-400", titel: tr("buero.st_failed") };
+  return { zeichen: "?", css: "text-muted", titel: tr("dock.unbekannt_altdaten") };
 }
 
 function WerkzeugListe({ zeilen, name, gedimmt, onSelect }: {
@@ -369,7 +370,7 @@ function WerkzeugListe({ zeilen, name, gedimmt, onSelect }: {
   gedimmt: (id: string) => boolean;
   onSelect: (id: string) => void;
 }) {
-  if (zeilen.length === 0) return <Leer text="Noch kein Werkzeug benutzt." />;
+  if (zeilen.length === 0) return <Leer text={tr("dock.kein_werkzeug")} />;
   const zeige = zeilen.slice(-WERKZEUG_CAP);
   return (
     <div className="space-y-1">
@@ -382,7 +383,7 @@ function WerkzeugListe({ zeilen, name, gedimmt, onSelect }: {
             <span className={`shrink-0 ${e.css}`} title={e.titel}>{e.zeichen}</span>
             <button type="button" onClick={() => onSelect(z.id)}
               className="shrink-0 max-w-[8rem] truncate text-left text-muted hover:text-brand"
-              title={`Figur ${name(z.id)} auswählen`}>
+              title={tr("dock.figur_waehlen", { name: name(z.id) })}>
               {name(z.id)}
             </button>
             <span className="shrink-0 font-mono">{z.tool}</span>

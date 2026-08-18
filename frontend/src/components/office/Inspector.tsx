@@ -16,6 +16,7 @@
 //     mit 0,00 wäre dagegen *bepreist und gratis* — genau diese Unterscheidung ist der Grund,
 //     warum das Zeichen überhaupt existiert.
 
+import { tr } from "../../i18n";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { Scope } from "./api.ts";
@@ -70,10 +71,10 @@ function schrittText(c: Cmd): { text: string; css?: string } | null {
         : c.ok === false ? { text: "↩ Werkzeug fehlgeschlagen", css: "text-red-400" }
           : { text: "↩ Werkzeug beendet, Ergebnis unbekannt", css: "text-muted" };
     case "edit": return { text: `📝 ${c.path}` };
-    case "spawn": return { text: "🌱 als Unteragent gestartet" };
-    case "deliver": return { text: `📨 Übergabe${c.text ? `: ${c.text}` : ""}` };
-    case "gate": return { text: `⏸ ${GATE_TEXT[c.kind]}`, css: "text-orange-400" };
-    case "resume": return { text: "▶ Antwort da, geht weiter" };
+    case "spawn": return { text: `🌱 ${tr("inspector.als_unteragent")}` };
+    case "deliver": return { text: `📨 ${tr("inspector.uebergabe")}${c.text ? `: ${c.text}` : ""}` };
+    case "gate": return { text: `⏸ ${tr(GATE_TEXT[c.kind])}`, css: "text-orange-400" };
+    case "resume": return { text: `▶ ${tr("inspector.antwort_da")}` };
     case "status": return { text: `● ${statusText(c.status)}`, css: statusFarbe(c.status) };
     case "done": return c.ok ? { text: "✅ fertig", css: "text-green-400" }
       : { text: "❌ abgebrochen", css: "text-red-400" };
@@ -81,10 +82,10 @@ function schrittText(c: Cmd): { text: string; css?: string } | null {
     // **und** geheilt ist die einzige gute Nachricht im Fehlerfall, und die Liste ist der Ort,
     // an dem man sie im Klartext lesen kann.
     case "deploy":
-      return c.state === "start" ? { text: `🖥 Deployment läuft · ${c.label}` }
+      return c.state === "start" ? { text: `🖥 ${tr("inspector.deploy_laeuft")} · ${c.label}` }
         : c.state === "ok" ? { text: `🖥 Deployment live · ${c.label}`, css: "text-green-400" }
           : c.state === "fail" ? { text: `🖥 Deployment fehlgeschlagen · ${c.label}`, css: "text-red-400" }
-            : { text: `🖥 Deployment zurückgerollt · ${c.label}`, css: "text-orange-400" };
+            : { text: `🖥 ${tr("inspector.deploy_zurueckgerollt")} · ${c.label}`, css: "text-orange-400" };
   }
 }
 
@@ -139,7 +140,7 @@ export default function Inspector({
   if (!entry || !auszug) {
     return (
       <div className={`rounded border border-line bg-card px-3 py-4 text-center text-xs text-muted ${className ?? ""}`}>
-        Keine Figur ausgewählt. Klick auf jemanden im Raum oder im Dock.
+        {tr("inspector.keine_figur")}
       </div>
     );
   }
@@ -160,7 +161,7 @@ export default function Inspector({
   const projektKey = entry.project_key ?? (scope.kind === "project" ? scope.projectKey : null);
 
   const blockText = entry.status === "blocked"
-    ? (auszug.gate ? GATE_TEXT[auszug.gate] : "Grund nicht im Fenster")
+    ? (auszug.gate ? tr(GATE_TEXT[auszug.gate]) : tr("inspector.grund_nicht_im_fenster"))
     : (entry.status === "planned" ? GATE_TEXT.plan : null);
 
   return (
@@ -171,7 +172,7 @@ export default function Inspector({
         <div className="flex-1" />
         <span className="font-mono text-[11px] text-muted">#{entry.run_id}</span>
         {onClose && (
-          <button type="button" onClick={onClose} title="Inspektor schließen"
+          <button type="button" onClick={onClose} title={tr("inspector.schliessen")}
             className="rounded border border-line px-1.5 text-xs text-muted hover:border-brand">✕</button>
         )}
       </div>
@@ -184,34 +185,31 @@ export default function Inspector({
         )}
 
         <dl className="grid grid-cols-[8.5rem_1fr] gap-x-2 gap-y-1">
-          <Feld label="Lauf-Id">
+          <Feld label={tr("inspector.lauf_id")}>
             <span className="font-mono">{entry.agent_id}</span>
           </Feld>
-          <Feld label="Rolle">{entry.agent || "—"}</Feld>
-          <Feld label="Phase">
-            {entry.phase === "plan" ? "Planung" : entry.phase === "execute" ? "Ausführung" : (entry.phase || "—")}
+          <Feld label={tr("inspector.rolle")}>{entry.agent || "—"}</Feld>
+          <Feld label={tr("inspector.phase")}>
+            {entry.phase === "plan" ? tr("dock.planung") : entry.phase === "execute" ? tr("dock.ausfuehrung") : (entry.phase || "—")}
           </Feld>
-          <Feld label="Provider / Modell">
+          <Feld label={tr("inspector.provider_modell")}>
             {entry.provider || "—"} / <span className="font-mono">{entry.model || "—"}</span>
           </Feld>
-          <Feld label="Tokens">
+          <Feld label={tr("buero.tokens")}>
             <span title={`Cache gelesen ${zahl(entry.cache_read_tokens)}`}>
-              {zahl(entry.in_tokens)} ein · {zahl(entry.out_tokens)} aus
+              {zahl(entry.in_tokens)} {tr("akte.ein")} · {zahl(entry.out_tokens)} {tr("akte.aus")}
             </span>
           </Feld>
-          <Feld label="Kosten">
-            <span title={unbepreist
-              ? "Für dieses Modell fehlt ein Preis im Katalog (oder die Zeile stammt aus der Zeit "
-                + "davor). Der Betrag ist eine Untergrenze."
-              : "Gegen den Preiskatalog abgerechnet."}>
+          <Feld label={tr("akte.kosten")}>
+            <span title={tr(unbepreist ? "inspector.kosten_teilweise" : "inspector.kosten_voll")}>
               {usdText(entry.cost_usd, unbepreist)}
             </span>
           </Feld>
-          <Feld label="Start">{Number.isFinite(start) ? uhrText(start) : "—"}</Feld>
-          <Feld label="Dauer">{dauerText(dauer)}{entry.status === "running" && " (läuft)"}</Feld>
-          <Feld label="Runden">{entry.iterations || 0}</Feld>
-          <Feld label="Bearbeitungen">{auszug.edits}</Feld>
-          <Feld label="Elternlauf">
+          <Feld label={tr("inspector.start")}>{Number.isFinite(start) ? uhrText(start) : "—"}</Feld>
+          <Feld label={tr("akte.dauer")}>{dauerText(dauer)}{entry.status === "running" && ` (${tr("buero.st_running")})`}</Feld>
+          <Feld label={tr("akte.runden")}>{entry.iterations || 0}</Feld>
+          <Feld label={tr("inspector.bearbeitungen")}>{auszug.edits}</Feld>
+          <Feld label={tr("inspector.elternlauf")}>
             {elternId === null ? (
               <span className="text-muted">— (Wurzellauf)</span>
             ) : onSelect ? (
@@ -231,7 +229,7 @@ export default function Inspector({
                 {auszug.werkzeug.target && <span className="text-muted"> · {auszug.werkzeug.target}</span>}
                 <span className="text-muted">
                   {" · "}
-                  {auszug.werkzeug.ok === undefined ? "läuft"
+                  {auszug.werkzeug.ok === undefined ? tr("buero.st_running")
                     : auszug.werkzeug.ok === true ? "erfolgreich"
                       : auszug.werkzeug.ok === false ? "fehlgeschlagen"
                         : "Ergebnis unbekannt"}
@@ -245,7 +243,7 @@ export default function Inspector({
         <div>
           <div className="mb-1 font-medium">Letzte Schritte</div>
           {auszug.schritte.length === 0 ? (
-            <div className="text-muted">Nichts im Fenster.</div>
+            <div className="text-muted">{tr("inspector.nichts_im_fenster")}</div>
           ) : (
             <div className="space-y-0.5">
               {auszug.schritte.map((s) => (
@@ -261,7 +259,7 @@ export default function Inspector({
         <div className="flex flex-wrap gap-2 border-t border-line pt-2">
           {onOpenAkte && entry.agent && (
             <button type="button" onClick={() => onOpenAkte(entry.agent)}
-              title={`Alle Läufe der Rolle ${entry.agent} im Dock — dieser Lauf bleibt hier stehen.`}
+              title={tr("inspector.alle_laeufe", { rolle: entry.agent })}
               className="rounded border border-line px-2 py-0.5 hover:border-brand">
               📇 Personalakte: {entry.agent}
             </button>
