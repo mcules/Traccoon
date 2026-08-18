@@ -181,13 +181,59 @@ export default function WorkflowEditor() {
   );
 
   const onDropNode = useCallback(
-    (type: WorkflowNodeType, pos: { x: number; y: number }) => {
+    (type: WorkflowNodeType, pos: { x: number; y: number }, edgeId?: string) => {
       const id2 = `${type}_${Date.now()}`;
       const node: FlowNode = { id: id2, type, position: pos, data: { config: defaultConfig(type) } };
       setNodes((ns) => ns.concat(node));
       setSelectedId(id2);
+
+      // Ein Baustein, der in der Luft hängt, ist ein Validierungsfehler und Handarbeit
+      // obendrein: erst ziehen, dann zwei Verbindungen nachziehen. Also verbinden, wo die
+      // Absicht eindeutig ist — auf einer Linie abgelegt heißt „dazwischen", bei
+      // ausgewähltem Knoten heißt es „dahinter". Sonst bleibt er frei stehen.
+      setEdges((es) => {
+        /** Baustein in eine bestehende Verbindung schieben: sie endet jetzt bei ihm, und
+         *  von ihm geht sie weiter. Ein Ende-Baustein schließt den Weg ab. */
+        const einschieben = (kante: typeof es[number]) => {
+          const rest = es.filter((e) => e.id !== kante.id);
+          const hinein = { ...kante, id: `e-${kante.source}-${kante.sourceHandle || "out"}-${id2}`,
+                           target: id2, targetHandle: undefined };
+          const hinaus = { id: `e-${id2}-out-${kante.target}`, source: id2, target: kante.target,
+                           targetHandle: kante.targetHandle };
+          return type === "end" ? [...rest, hinein] : [...rest, hinein, hinaus];
+        };
+
+        if (edgeId) {
+          const treffer = es.find((e) => e.id === edgeId);
+          return treffer ? einschieben(treffer) : es;
+        }
+
+        // Kein Treffer auf einer Linie: hinter den ausgewählten Knoten. Hängt dort schon
+        // etwas, wird eingeschoben statt danebengestellt — „dahinter" ist die Erwartung,
+        // und ein Baustein in der Luft ist Handarbeit plus Validierungsfehler.
+        const quelle = nodes.find((n) => n.id === selectedId);
+        if (!quelle || quelle.id === id2 || quelle.type === "end") return es;
+
+        // Verzweigung, Freigabe und Schleife haben benannte Ausgänge — dort wird nicht
+        // geraten, sondern der erste noch freie genommen.
+        const benannt: Record<string, string[]> = {
+          decision: (quelle.data.config.branches || []).map((b) => b.handle),
+          approval: ["approved", "rejected"],
+          loop: ["element", "fertig"],
+        };
+        const kandidaten = benannt[quelle.type || ""] || ["out"];
+        const frei = kandidaten.find(
+          (h) => !es.some((e) => e.source === quelle.id && (e.sourceHandle || "out") === h));
+        if (frei) {
+          return es.concat({ id: `e-${quelle.id}-${frei}-${id2}`, source: quelle.id,
+                             target: id2, sourceHandle: frei === "out" ? undefined : frei });
+        }
+        // Alles belegt: in die erste ausgehende Verbindung einschieben.
+        const raus = es.find((e) => e.source === quelle.id);
+        return raus ? einschieben(raus) : es;
+      });
     },
-    [setNodes]
+    [setNodes, setEdges, nodes, selectedId]
   );
 
   const updateConfig = useCallback(
