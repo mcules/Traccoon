@@ -109,7 +109,7 @@ export default function MySetPanel() {
                 <div className="flex-1" />
                 {s.definition_id && (
                   <button
-                    onClick={() => nav(`/workflows/${s.definition_id}`)}
+                    onClick={() => nav(`/workflows/${s.definition_id}`, { state: { from: "/settings/processes" } })}
                     className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand"
                   >
                     Bearbeiten

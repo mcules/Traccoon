@@ -6,6 +6,7 @@ import {
   type ProcAusloeser, type ProcLauf, type ProcSlot, type User,
 } from "../api";
 import { usePageChrome } from "../pageChrome";
+import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 
 /**
  * Prozess-Verwaltung — die Sicht über alle Abläufe hinweg.
@@ -13,22 +14,30 @@ import { usePageChrome } from "../pageChrome";
  * Seit jeder Ablauf ein Graph ist, verteilt sich das Wissen darüber auf Sätze, Projekt-Kopien,
  * Versionen und laufende Vorgänge. Diese Seite führt es zusammen: was ist der Standard, wer
  * weicht ab, was läuft gerade, und was stößt es an.
+ *
+ * Der erste Reiter sind die **eigenen** Abläufe: frei angelegt, an keinen Slot und an kein
+ * Projekt gebunden. Sie standen früher in den Einstellungen — am falschen Ort, denn Abläufe
+ * sind neben dem Assistenten und den Projekten ein tragender Teil von Traccoon und keine
+ * Nebeneinstellung.
  */
-type Tab = "standard" | "betrieb" | "ausloeser";
+type Tab = "eigene" | "standard" | "betrieb" | "ausloeser";
 const TABS: [Tab, string][] = [
-  ["standard", "Standard-Satz"], ["betrieb", "Betrieb"], ["ausloeser", "Auslöser"],
+  ["eigene", "Eigene"], ["standard", "Standard-Satz"], ["betrieb", "Betrieb"],
+  ["ausloeser", "Auslöser"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
 export default function Processes() {
   const { tab: tabParam } = useParams();
-  const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "standard") as Tab;
+  const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "eigene") as Tab;
+  const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.get<User>("/auth/me") });
   usePageChrome("Prozesse", TABS.map(([key, label]) => ({
     key, label, to: `/processes/${key}`,
-    icon: { standard: "🔀", betrieb: "📡", ausloeser: "⚡" }[key],
+    icon: { eigene: "✍️", standard: "🔀", betrieb: "📡", ausloeser: "⚡" }[key],
   })));
   return (
     <div>
+      {tab === "eigene" && <OwnWorkflowsPanel isAdmin={me?.global_role === "admin"} />}
       {tab === "standard" && <StandardSatz />}
       {tab === "betrieb" && <Betrieb />}
       {tab === "ausloeser" && <Ausloeser />}
@@ -62,7 +71,7 @@ function StandardSatz() {
             key={s.slot} s={s} admin={admin}
             offen={offen === s.definition_id}
             onToggle={() => setOffen(offen === s.definition_id ? null : s.definition_id)}
-            onEdit={() => s.definition_id && nav(`/workflows/${s.definition_id}`)}
+            onEdit={() => s.definition_id && nav(`/workflows/${s.definition_id}`, { state: { from: "/processes/standard" } })}
           />
         ))}
         {slots?.length === 0 && (
@@ -116,7 +125,7 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
           {s.abweichungen.map((a) => (
             <button
               key={a.project_id}
-              onClick={() => nav(`/projects/${a.project_key}/workflows/${a.definition_id}`)}
+              onClick={() => nav(`/projects/${a.project_key}/workflows/${a.definition_id}`, { state: { from: "/processes/standard" } })}
               className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-300 hover:bg-amber-500/20"
               title={`${a.project_name} — eigene Fassung ansehen`}
             >

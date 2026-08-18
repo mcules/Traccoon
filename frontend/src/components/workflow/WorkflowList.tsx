@@ -40,7 +40,7 @@ export default function WorkflowList({ project }: { project: Project }) {
       setF(EMPTY);
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`);
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: `/projects/${project.key}?tab=workflows` } });
     },
     onError: fail,
   });
@@ -94,7 +94,7 @@ export default function WorkflowList({ project }: { project: Project }) {
             </button>
             <button
               title="Bearbeiten"
-              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`)}
+              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: `/projects/${project.key}?tab=workflows` } })}
               className={ico + " hover:text-brand"}
             >
               ✎

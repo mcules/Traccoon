@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import AgentsPanel from "../components/AgentsPanel";
@@ -7,7 +7,6 @@ import SkillsPanel from "../components/SkillsPanel";
 import McpPanel from "../components/McpPanel";
 import PreferencesPanel from "../components/PreferencesPanel";
 import MySetPanel from "../components/workflow/MySetPanel";
-import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 import DestinationsPanel from "../components/DestinationsPanel";
 import WebhooksPanel from "../components/WebhooksPanel";
 import JobsPanel from "../components/JobsPanel";
@@ -40,7 +39,12 @@ export default function Settings() {
       {tab === "processes" && (
         <div className="space-y-4">
           <MySetPanel />
-          <OwnWorkflowsPanel isAdmin={user?.global_role === "admin"} />
+          {/* Eigene Abläufe stehen jetzt unter Prozesse — hier bleibt nur die Einstellung,
+              welchen Satz man fährt. Der Verweis, damit niemand sie an der alten Stelle sucht. */}
+          <p className="rounded-lg border border-line bg-card p-4 text-sm text-muted">
+            Eigene Abläufe anlegen und bearbeiten: <Link to="/processes/eigene"
+              className="text-ink underline">Prozesse → Eigene</Link>.
+          </p>
         </div>
       )}
       {tab === "destinations" && user && (
