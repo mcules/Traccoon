@@ -1,68 +1,68 @@
-// Schicht 2 — der Zusammenbau. Eine Ansicht, drei Einsatzorte: als Projekt-Reiter (begrenzt,
-// ohne Dock und Inspektor), als Vollbildseite und als Wandschirm (`?kiosk=1`).
+// Layer 2, the assembly. One view, three places of use: as a project tab (bounded, without
+// dock and inspector), as a full page and as a wall screen (`?kiosk=1`).
 //
-// ══ Der Kiosk ist eine Variante, keine Route ═════════════════════════════════════════════════
+// ══ The kiosk is a variant, not a route ════════════════════════════════════════════════════
 //
-// `variant="kiosk"` blendet aus, statt neu zu bauen: Werkzeugleiste, Dock, Inspektor,
-// Zeitleiste und alles Bedienbare der Kopfzeile fallen weg, der Rest ist derselbe Code. Eine
-// eigene Route wäre eine Kopie von `pages/Office.tsx` gewesen — und `?project=`, `?sid=` und
-// `?at=` hätten in beiden gepflegt werden müssen.
+// `variant="kiosk"` hides instead of rebuilding: toolbar, dock, inspector, timeline and
+// everything operable in the header fall away, the rest is the same code. A route of its own
+// would have been a copy of `pages/Office.tsx`, and `?project=`, `?sid=` and `?at=` would have
+// had to be maintained in both.
 //
 // Zwei Dinge unterscheiden ihn im Verhalten:
 //
-//   · **Raumrotation.** Der gewöhnliche Nachrück-Effekt greift nur, wenn gar keine Sitzung
-//     gewählt ist oder die gewählte aus dem Fenster fällt. Ein Wandschirm braucht mehr: 516
-//     von 632 Läufen sind unter fünf Minuten fertig, ein einmal gewählter Raum ist also die
-//     meiste Zeit tot. Also: passiert `KIOSK_SWITCH_AFTER_MS` lang nichts und ein anderer Raum
-//     ist live, wird gewechselt.
-//   · **Tastatur auf `Escape`.** Vor der Wand steht keine Tastatur; was trotzdem eine anfasst,
-//     soll den Kiosk verlassen können und sonst nichts auslösen.
+//   · **Room rotation.** The ordinary follow up effect only applies when no session is chosen
+//     at all or the chosen one falls out of the window. A wall screen needs more: 516 of 632
+//     runs finish in under five minutes, so a room once chosen is dead most of the time. Hence:
+//     if nothing happens for `KIOSK_SWITCH_AFTER_MS` and another room is live, it switches.
+//     if nothing happens for `KIOSK_SWITCH_AFTER_MS` and another room is live, it switches.
+//   · **Keyboard on `Escape`.** There is no keyboard in front of the wall; whoever touches one
+//     anyway should be able to leave the kiosk and trigger nothing else.
 //
-// ══ Was diese Datei besitzt — und was ausdrücklich nicht ═════════════════════════════════════
+// ══ What this file owns, and what it explicitly does not ═══════════════════════════════════
 //
-// Sie hält den Zustand, der in Menschentempo wechselt: Auswahl, Überfahren, Sprungpunkt,
-// Dock-Reiter, Tempo, Sitzungsfilter, Hilfe. **Nicht** hier leben Recorder, Replay, Kamera und
-// Bild — die stecken in Refs innerhalb von `Stage` bzw. `useOfficeFeed`, und genau deshalb
-// kostet ein laufender Raum keinen einzigen Renderdurchlauf dieser Komponente.
+// It holds the state that changes at human pace: selection, hover, seek point, dock tab, speed,
+// session filter, help. **Not** here live recorder, replay, camera and image: those sit in refs
+// inside `Stage` and `useOfficeFeed`, and exactly for that reason a running room costs not a
+// single render pass of this component.
 //
-// ══ Ein Raum oder alle — und warum das global die Vorgabe ist ════════════════════════════════
+// ══ One room or all, and why all is the default globally ═══════════════════════════════════
 //
-// `useOfficeFeed(scope, sid)` bedient **eine** Sitzung. Der Umfang (`Scope`) sagt nur, *welche*
-// Sitzungen in Frage kommen; also wählt diese Ansicht eine aus: sie holt die Sitzungsliste
-// (`officeApi.sessions`) und nimmt die oberste — die Liste kommt bereits nach letztem Ereignis
-// absteigend sortiert. Darüber steht ein Wähler.
+// `useOfficeFeed(scope, sid)` serves **one** session. The scope only says *which* sessions come
+// into question, so this view picks one: it fetches the session list (`officeApi.sessions`) and
+// takes the top one, since the list already arrives sorted by the last event, descending. Above
+// it stands a picker.
 //
-// **Global ist „Alle Sitzungen" die Vorgabe** (`ALLE`). Die Vollbildseite `/buero` beantwortet
-// „was tut das Haus gerade"; ein einzelner Raum ist dafür der falsche Ausschnitt — 516 von 632
-// Läufen sind unter fünf Minuten fertig, der gewählte Raum ist die meiste Zeit tot, während
-// nebenan gearbeitet wird. Der Feed nimmt dann `GET /office/events` als Schnappschuss und live
-// jedes Ereignis, das der Socket liefert (der filtert bereits serverseitig auf das Erlaubte).
-// Das Fenster ist `ALLE_FENSTER_H` Stunden und steht **sichtbar** in der Kopfzeile: ein
-// stiller Ausschnitt wäre eine Behauptung über den Tag.
+// **Globally "all sessions" is the default** (`ALLE`). The full page `/buero` answers "what is
+// the house doing right now", and a single room is the wrong excerpt for that: 516 of 632 runs
+// finish in under five minutes, the chosen room is dead most of the time while work happens
+// next door. The feed then takes `GET /office/events` as the snapshot and live every event the
+// socket delivers (which already filters server side to what is allowed). The window is
+// `ALLE_FENSTER_H` hours and stands **visibly** in the header: a silent excerpt would be a claim
+// about the day.
 //
-// **Im Projekt-Reiter bleibt es bei einer Sitzung.** Dort ist ein Ticket der Raum, und der
-// Reiter ist die Ansicht dieses einen Tickets — nicht die des Projekts. Deshalb hängt der
-// Modus an `scope.kind`, und `useOfficeFeed` verlangt für ihn ein ausdrückliches `opts`:
-// „kein `sid`" allein heißt im Reiter bloß „Liste noch unterwegs".
+// **In the project tab it stays one session.** There a ticket is the room, and the tab is the
+// view of that one ticket, not of the project. So the mode hangs on `scope.kind`, and
+// `useOfficeFeed` demands an explicit `opts` for it: "no `sid`" alone only means "the list is
+// still on its way" in the tab.
 //
-// Der Wähler ist **nicht** dasselbe wie die Sitzungsreiter der Kopfzeile: die sind ein Filter
-// auf den Roster (dimmen, nicht entfernen) und werden mit „Alle" erst richtig nützlich — sie
-// gruppieren dann nach Projekt statt nach dem einen Projekt, das ohnehin überall stand.
+// The picker is **not** the same as the session tabs in the header: those are a filter on the
+// roster (dim, do not remove) and only become properly useful with "all", because they then
+// group by project instead of by the one project that stood everywhere anyway.
 //
-// ══ Die Tastaturkarte ════════════════════════════════════════════════════════════════════════
+// ══ The keyboard map ═══════════════════════════════════════════════════════════════════════
 //
-// Der erste globale Tastatur-Listener der Anwendung. Drei Regeln halten ihn verträglich:
+// The first global keyboard listener of the application. Three rules keep it compatible:
 //
-//   1. Nur solange die Ansicht hängt (`useEffect`-Aufräumer meldet ab).
-//   2. Früher Ausstieg bei `input`/`textarea`/`contentEditable` — das Dock hat ein Suchfeld,
-//      und niemand will beim Tippen von „bla" das Dock umschalten.
-//   3. Früher Ausstieg bei `e.defaultPrevented`. Der Listener sitzt am Ende der Blasenphase,
-//      also hat jede Komponente, die die Taste schon verbraucht hat, bereits `preventDefault`
-//      gerufen: die Bühne für Alt+Pfeile und `+ - 0 Pos1`, die Zeitleiste für ihren wandernden
-//      Fokus. Ohne diese Zeile spulte jeder Pfeiltastendruck in der Zeitleiste **zusätzlich**
-//      um eine Sekunde.
+//   1. Only while the view is mounted (the `useEffect` cleanup unregisters it).
+//   2. An early exit on `input`/`textarea`/`contentEditable`: the dock has a search field, and
+//      nobody wants to toggle the dock while typing "bla".
+//   3. An early exit on `e.defaultPrevented`. The listener sits at the end of the bubble phase,
+//      so every component that already consumed the key has called `preventDefault`: the stage
+//      for Alt plus arrows and `+ - 0 Home`, the timeline for its travelling focus. Without this
+//      line every arrow key press in the timeline would **additionally** seek by one second.
+//      line every arrow key press in the timeline would additionally seek by one second.
 //
-// Kein ⌘K/Strg+K (gehört dem Browser), und alles mit Strg/Cmd bleibt unangetastet.
+// No ⌘K/Ctrl+K (that belongs to the browser), and everything with Ctrl or Cmd stays untouched.
 
 import { tr } from "../../i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -78,75 +78,75 @@ import { useTheme } from "./useTheme.ts";
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
 
-/** Der Wert des Wählers für „alle Sitzungen". Bewusst keine gültige `Sid` — `parseSid` gibt
- *  dafür `null`, und genau daran erkennt der Feed den Modus. Er steht auch in der URL
- *  (`?sid=alle`), damit ein geteilter Link denselben Raum zeigt. */
+/** The value of the picker for "all sessions". Deliberately not a valid `Sid`: `parseSid`
+ *  returns `null` for it, and exactly by that the feed recognises the mode. It also stands in
+ *  the URL (`?sid=alle`), so a shared link shows the same room. */
 const ALLE = "alle";
 
-/** Ein Pfeiltastendruck spult so weit, mit Umschalt zehnmal so weit. */
+/** One arrow key press seeks this far, ten times as far with shift. */
 const STEP_MS = 1000;
 const STEP_GROSS_MS = 10_000;
 
-/** So viele Sitzungen holt der Wähler. Mehr als das sucht niemand mehr durch. */
+/** The picker fetches this many sessions. Nobody searches through more than that. */
 const SESSION_LIMIT = 30;
 
-/** Die Sitzungsliste ist eine gewöhnliche Abfrage — sie ändert sich, wenn ein Lauf beginnt
- *  oder endet, nicht im Sekundentakt. Der Live-Strom hängt an der **gewählten** Sitzung. */
+/** The session list is an ordinary query: it changes when a run begins or ends, not by the
+ *  second. The live stream hangs on the **chosen** session. */
 const SESSION_REFETCH_MS = 30_000;
 
-/** Rückblick der Sitzungsliste. Das Backend gibt sich mit einer Woche zufrieden — für einen
- *  Live-Monitor die richtige Vorgabe, für diese Ansicht die falsche: ein Projekt, dessen
- *  letzter Lauf zwölf Tage her ist, zeigte sonst einen leeren Raum samt der Behauptung, es
- *  habe dort nie einen Agenten gegeben. Das Büro ist ein Rückblick, kein Wecker; wie frisch
- *  eine Sitzung ist, sagt ohnehin ihr `live`-Kennzeichen. Die Aufbewahrung deckelt das Fenster
- *  von selbst — archivierte Läufe verschwinden nach `run_retention_days` (Standard 30 Tage). */
+/** How far the session list looks back. The backend is content with a week, which is the right
+ *  default for a live monitor and the wrong one for this view: a project whose last run was
+ *  twelve days ago would otherwise show an empty room plus the claim that there had never been
+ *  an agent there. The office is a look back, not an alarm clock; how fresh
+ *  a session is, is said by its `live` flag anyway. The retention caps the window by itself:
+ *  archived runs disappear after `run_retention_days` (30 days by default). */
 const SESSION_WINDOW_H = 24 * 180;
 
-/** Kiosk: passiert im gezeigten Raum so lange nichts und ist ein anderer `live`, wird
- *  gewechselt. Anderthalb Minuten sind länger als jede Denkpause eines Agenten (das Backend
- *  nennt einen Raum nach 90 s ohne Ereignis selbst nicht mehr „live") und kurz genug, dass
- *  die Wand nicht minutenlang einen leeren Schreibtisch zeigt. */
+/** Kiosk: if nothing happens in the room shown for this long and another one is `live`, it
+ *  switches. A minute and a half is longer than any thinking pause of an agent (the backend
+ *  itself stops calling a room "live" after 90 s without an event) and short enough that the
+ *  wall does not show an empty desk for minutes. */
 const KIOSK_SWITCH_AFTER_MS = 90_000;
 
-/** So oft sieht der Kiosk nach, ob er weiterrücken sollte. Rein rechnerisch, ohne Netz. */
+/** How often the kiosk checks whether it should move on. Purely computational, no network. */
 const KIOSK_ROTATE_TICK_MS = 5000;
 
-/** Kiosk: die Sitzungsliste **ist** hier die Steuerung — sie entscheidet, welcher Raum an der
- *  Wand steht. Deshalb dichter als die 30 s der bedienten Ansicht. */
+/** Kiosk: the session list **is** the control here, it decides which room stands on the wall.
+ *  Hence denser than the 30 s of the operated view. */
 const KIOSK_SESSION_REFETCH_MS = 15_000;
 
-/** Nach so langer Zeigerruhe verschwindet der ⛶-Knopf. Er ist die einzige Bedienung, die der
- *  Kiosk braucht (Vollbild verlangt eine Nutzergeste) — und die einzige, die stört. */
+/** After this long without pointer movement the ⛶ button disappears. It is the only control the
+ *  kiosk needs (full screen demands a user gesture) and the only one that disturbs. */
 const KIOSK_KNOPF_MS = 5000;
 
-// ── Oberfläche ──────────────────────────────────────────────────────────────────────────────
+// ── Interface ───────────────────────────────────────────────────────────────────────────────
 
 export interface OfficeViewProps {
   scope: Scope;
-  /** `"tab"` = im Projekt-Reiter (kein Dock, kein Inspektor), `"full"` = Vollbildseite,
-   *  `"kiosk"` = Wandschirm ohne Bedienung. */
+  /** `"tab"` is in the project tab (no dock, no inspector), `"full"` the full page, `"kiosk"`
+   *  the wall screen without controls. */
   variant: "tab" | "full" | "kiosk";
-  /** Startpunkt der Wiedergabe in Epoch-ms, `null`/fehlt = live. Nur beim Einhängen gelesen. */
+  /** Start of playback in epoch ms, `null` or missing means live. Read on mount only. */
   initialAt?: number | null;
-  /** Meldet jeden Wechsel des Sprungpunkts — die Vollbildseite schreibt ihn in die URL. */
+  /** Reports every change of the seek point: the full page writes it into the URL. */
   onAtChange?: (ts: number | null) => void;
-  /** Nur `variant="tab"`: „⤢ Vollbild". */
+  /** Only `variant="tab"`: "⤢ full screen". */
   onFullscreen?: () => void;
-  /** `variant="full"`: „⤡ Vollbild verlassen" und das letzte Esc.
-   *  `variant="kiosk"`: das **einzige** Esc — es verlässt den Wandschirm. */
+  /** `variant="full"`: "⤡ leave full screen" and the last Esc.
+   *  `variant="kiosk"`: the **only** Esc, and it leaves the wall screen. */
   onClose?: () => void;
-  /** Meldet die aktuelle Fehlermeldung (oder `undefined`) nach außen. Der Wachhund der
-   *  Kioskseite hängt daran: er kann nur neu laden, was er auch sieht. */
+  /** Reports the current error message (or `undefined`) outwards. The watchdog of the kiosk
+   *  page hangs on it: it can only reload what it also sees. */
   onErrorChange?: (fehler: string | undefined) => void;
-  /** Vorgewählte Sitzung (`"issue:412"`), z. B. aus der URL. Nur beim Einhängen gelesen. */
+  /** Preselected session (`"issue:412"`), from the URL for instance. Read on mount only. */
   initialSid?: string | null;
-  /** Meldet den Wechsel des Raums — die Vollbildseite schreibt ihn in die URL, damit ein
-   *  geteilter Link auf denselben Raum zeigt wie der Sprungpunkt darin. */
+  /** Reports the change of room: the full page writes it into the URL so that a shared link
+   *  points at the same room as the seek point inside it. */
   onSidChange?: (sid: string | null) => void;
   className?: string;
 }
 
-// ── Die Ansicht ─────────────────────────────────────────────────────────────────────────────
+// ── The view ────────────────────────────────────────────────────────────────────────────────
 
 export default function OfficeView({
   scope, variant, initialAt, onAtChange, onFullscreen, onClose,
@@ -154,7 +154,7 @@ export default function OfficeView({
 }: OfficeViewProps): JSX.Element {
   const voll = variant === "full";
   const kiosk = variant === "kiosk";
-  /** Bühne füllt die Fläche statt im 16:9-Kasten zu sitzen — gilt für beide großen Formen. */
+  /** The stage fills the area instead of sitting in a 16:9 box; applies to both large forms. */
   const grossflaechig = voll || kiosk;
 
   // ── Zustand ────────────────────────────────────────────────────────────────────────────────
@@ -163,15 +163,15 @@ export default function OfficeView({
   const [seekTs, setSeekTs] = useState<number | null>(initialAt ?? null);
   const [dockTab, setDockTab] = useState<DockTab>("chat");
   const [dockOpen, setDockOpen] = useState(true);
-  /** Das **gewählte** Tempo. Angehalten ist ein eigener Schalter, damit die Leertaste den
-   *  vorigen Wert zurückbringt und nicht stumpf auf 1× springt. */
+  /** The **chosen** speed. Paused is a switch of its own, so that the space bar brings the
+   *  previous value back instead of jumping bluntly to 1×. */
   const [speed, setSpeed] = useState<Tempo>(1);
   const [paused, setPaused] = useState(false);
   const [sessionFilter, setSessionFilter] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
-  /** Gibt es hier überhaupt „Alle Sitzungen"? Global ja, im Projekt-Reiter nicht (dort ist
-   *  ein Ticket der Raum), und am Wandschirm auch nicht — der rotiert selbst durch die
-   *  laufenden Räume und braucht dafür einen konkreten. */
+  /** Is there an "all sessions" here at all? Globally yes, in the project tab no (a ticket is
+   *  the room there), and on the wall screen no either: that one rotates through the running
+   *  rooms itself and needs a concrete one for that. */
   const alleMoeglich = scope.kind === "global" && !kiosk;
   const [sidStr, setSidStr] = useState<string | null>(
     initialSid ?? (alleMoeglich ? ALLE : null));
@@ -179,24 +179,24 @@ export default function OfficeView({
 
   const grade = useTheme();
 
-  // Rückrufe als Spiegel-Refs: sie werden aus Effekten und aus dem Tastatur-Listener gerufen,
-  // und keiner von beiden soll neu laufen, bloß weil der Aufrufer eine frische Funktion
+  // Callbacks as mirror refs: they are called from effects and from the keyboard listener, and
+  // neither should run again just because the caller passed a fresh function.
   // gereicht hat.
   const onAtChangeRef = useRef(onAtChange);
   onAtChangeRef.current = onAtChange;
   const onSidChangeRef = useRef(onSidChange);
   onSidChangeRef.current = onSidChange;
 
-  // ── Sitzungsliste und die gewählte Sitzung ────────────────────────────────────────────────
+  // ── Session list and the chosen session ───────────────────────────────────────────────────
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
   const sessions = useQuery({
     queryKey: ["office", "sessions", scopeKey, kiosk ? "kiosk" : "bedient"],
     queryFn: async () => {
       const basis = { limit: SESSION_LIMIT, sinceHours: SESSION_WINDOW_H };
       if (!kiosk) return officeApi.sessions(scope, basis);
-      // Kiosk: erst die laufenden Räume — die sind das, was ein Wandschirm beantworten soll.
-      // Läuft gerade nichts (nachts der Normalfall), fällt er auf die volle Liste zurück und
-      // zeigt den zuletzt aktiven Raum, statt schwarz zu werden.
+      // Kiosk: the running rooms first, because that is what a wall screen should answer. When
+      // nothing runs (the normal case at night) it falls back to the full list and shows the
+      // room that was active last instead of going black.
       const live = await officeApi.sessions(scope, { ...basis, status: "live" });
       return live.sessions.length ? live : officeApi.sessions(scope, basis);
     },
@@ -207,14 +207,14 @@ export default function OfficeView({
   });
   const liste: SessionSummary[] = sessions.data?.sessions ?? [];
 
-  // Ohne Wahl die oberste: die Liste kommt nach letztem Ereignis absteigend, ein laufender
-  // Raum steht also von selbst oben. Verschwindet die gewählte Sitzung aus dem Fenster
-  // (`since_hours`), wird ebenfalls nachgerückt statt auf einen toten Raum zu zeigen.
+  // Without a choice the top one: the list arrives sorted by the last event, descending, so a
+  // running room stands at the top by itself. When the chosen session drops out of the window
+  // (`since_hours`) it follows up as well instead of pointing at a dead room.
   useEffect(() => {
-    // „Alle" ist eine Wahl, kein fehlender Wert — hier wird nichts nachgerückt.
+    // "All" is a choice, not a missing value: nothing follows up here.
     if (alleModus) return;
-    // …es sei denn, der Umfang kann ihn gar nicht: `?sid=alle` im Projekt-Reiter (oder am
-    // Wandschirm) muss auf einen echten Raum fallen, sonst bliebe die Bühne leer.
+    // …unless the scope cannot do it at all: `?sid=alle` in the project tab (or on the wall
+    // screen) has to fall onto a real room, otherwise the stage would stay empty.
     if (!liste.length) return;
     if (sidStr && sidStr !== ALLE && liste.some((s) => s.sid === sidStr)) return;
     const naechste = liste.find((s) => s.live) ?? liste[0];
@@ -230,10 +230,10 @@ export default function OfficeView({
 
   // ── Sprungpunkt ───────────────────────────────────────────────────────────────────────────
   //
-  // Ein Setzer statt eines Effekts auf `seekTs`: der Effekt liefe auch beim Einhängen und
-  // schriebe den gerade gelesenen Wert sofort wieder in die URL zurück. Der Vergleich läuft
-  // über ein Spiegel-Ref und **nicht** in einem `setState`-Aktualisierer — der darf keine
-  // Nebenwirkung haben (React ruft ihn im Entwicklungsmodus absichtlich zweimal auf).
+  // A setter instead of an effect on `seekTs`: the effect would also run on mount and write the
+  // value just read straight back into the URL. The comparison runs through a mirror ref and
+  // **not** in a `setState` updater, which must have no side effect (React deliberately calls
+  // it twice in development mode).
   const seekRef = useRef<number | null>(seekTs);
   seekRef.current = seekTs;
 
@@ -247,32 +247,32 @@ export default function OfficeView({
   const waehleSitzung = useCallback((s: string) => {
     setSidStr(s);
     onSidChangeRef.current?.(s);
-    // Ein anderer Raum hat andere Figuren und eine andere Zeitachse — beides zurücksetzen,
-    // sonst zeigte der Inspektor auf jemanden, der hier nie war.
+    // Another room has other characters and another time axis: reset both, otherwise the
+    // inspector would point at somebody who was never here.
     setSelectedId(null);
     setHoverId(undefined);
     setSessionFilter(null);
     setSeek(null);
   }, [setSeek]);
 
-  // ── Raumrotation (nur Kiosk) ──────────────────────────────────────────────────────────────
+  // ── Room rotation (kiosk only) ────────────────────────────────────────────────────────────
   //
-  // Der Effekt weiter oben rückt nur nach, wenn **keine** Sitzung gewählt ist oder die
-  // gewählte aus dem Fenster fällt — richtig für einen Menschen, der sich einen Raum
-  // ausgesucht hat. Der Wandschirm hat niemanden, der auswählt: er soll zeigen, wo gerade
-  // etwas passiert. Also die zweite Regel, und sie ist bewusst schmal gehalten:
-  // gewechselt wird nur, wenn hier lange nichts geschah **und** anderswo etwas läuft.
-  // Ohne die zweite Hälfte tanzte die Wand nachts zwischen lauter toten Räumen hin und her.
+  // The effect further up only follows up when **no** session is chosen or the chosen one falls
+  // out of the window, which is right for a person who picked a room. The wall screen has
+  // nobody to pick: it should show where something is happening. Hence the second rule, and it
+  // is deliberately narrow: it switches only when nothing happened here for a long time **and**
+  // something runs elsewhere. Without the second half the wall would dance between dead rooms
+  // at night.
   useEffect(() => {
     if (!kiosk || liste.length < 2) return;
     const tick = () => {
       const jetzt = Date.now();
       const aktuell = liste.find((s) => s.sid === sidStr);
       const zuletzt = aktuell?.last_event_at ? Date.parse(aktuell.last_event_at) : NaN;
-      // Kein Zeitstempel = kein Beweis für Leben. Dann zählt der Raum als still.
+      // No timestamp means no proof of life. Then the room counts as quiet.
       const still = !Number.isFinite(zuletzt) || jetzt - zuletzt > KIOSK_SWITCH_AFTER_MS;
       if (!still) return;
-      // Die Liste kommt nach letztem Ereignis absteigend — der erste Treffer ist der
+      // The list arrives sorted by the last event, descending, so the first hit is the
       // frischeste laufende Raum.
       const naechster = liste.find((s) => s.live && s.sid !== sidStr);
       if (naechster) waehleSitzung(naechster.sid);
@@ -281,12 +281,12 @@ export default function OfficeView({
     return () => window.clearInterval(timer);
   }, [kiosk, liste, sidStr, waehleSitzung]);
 
-  // ── Der ⛶-Knopf (nur Kiosk) ───────────────────────────────────────────────────────────────
+  // ── The ⛶ button (kiosk only) ─────────────────────────────────────────────────────────────
   //
-  // `requestFullscreen()` braucht eine Nutzergeste und scheitert sonst **still** — automatisch
-  // anfordern ist also keine Option, sondern nur eine, die nie funktioniert. Der Knopf ist die
-  // Geste; nach `KIOSK_KNOPF_MS` Zeigerruhe verschwindet er wieder. In der Praxis startet die
-  // Wand ohnehin als `chromium --kiosk` und braucht ihn nie.
+  // `requestFullscreen()` needs a user gesture and fails **silently** otherwise, so requesting
+  // it automatically is not an option but only one that never works. The button is the gesture;
+  // after `KIOSK_KNOPF_MS` without pointer movement it disappears again. In practice the wall
+  // starts as `chromium --kiosk` anyway and never needs it.
   const [knopfSichtbar, setKnopfSichtbar] = useState(true);
   const knopfRef = useRef(true);
   useEffect(() => {
@@ -317,15 +317,15 @@ export default function OfficeView({
       if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
       else void document.documentElement.requestFullscreen?.().catch(() => {});
     } catch {
-      // Manche Browser werfen synchron statt abzulehnen. Ein Wandschirm ohne Vollbild ist
-      // immer noch ein Wandschirm.
+      // Some browsers throw synchronously instead of rejecting. A wall screen without full
+      // screen is still a wall screen.
     }
   }, []);
 
   // ── Tastaturkarte ─────────────────────────────────────────────────────────────────────────
   //
-  // Der Listener wird **einmal** angemeldet. Alles, was er wissen muss, liest er aus einem
-  // Spiegel-Ref — sonst müsste er bei jedem Überfahren einer Figur neu registriert werden.
+  // The listener is registered **once**. Everything it needs to know it reads from a mirror
+  // ref, otherwise it would have to be re-registered on every hover over a character.
   const stand = useRef({
     voll, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose,
   });
@@ -333,21 +333,21 @@ export default function OfficeView({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Schon verbraucht: Bühne (Alt+Pfeile, +/-/0/Pos1) und Zeitleiste (wandernder Fokus).
+      // Already consumed: the stage (Alt plus arrows, +/-/0/Home) and the timeline (travelling focus).
       if (e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const ziel = e.target as HTMLElement | null;
       if (ziel) {
         const tag = ziel.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || ziel.isContentEditable) return;
-        // Die Leertaste betätigt fokussierte Knöpfe — die gehört dann dem Knopf, nicht uns.
+        // The space bar activates focused buttons, and then it belongs to the button, not to us.
         if (e.key === " " && ziel.closest("button, a, [role='button']")) return;
       }
       const s = stand.current;
 
-      // Kiosk: genau eine Taste. Alles andere (Dock, Tempo, Spulen, Hilfe) steuert etwas,
-      // das dort gar nicht sichtbar ist — es wäre eine unsichtbare Bedienung, und die
-      // hinterlässt einen Wandschirm, den niemand mehr versteht.
+      // Kiosk: exactly one key. Everything else (dock, speed, seeking, help) controls something
+      // that is not visible there at all, so it would be an invisible control, and that leaves
+      // behind a wall screen nobody understands any more.
       if (s.kiosk) {
         if (e.key === "Escape" && s.onClose) { s.onClose(); e.preventDefault(); }
         return;
@@ -359,8 +359,8 @@ export default function OfficeView({
           e.preventDefault();
           return;
 
-        // Die Zuordnung ist generisch (`DOCK_TABS[Ziffer - 1]`) — ein fünfter Reiter bräuchte
-        // hier nur seine Ziffer. `4` ist die Personalakte.
+        // The mapping is generic (`DOCK_TABS[digit - 1]`): a fifth tab would only need its
+        // digit here. `4` is the personnel file.
         case "1": case "2": case "3": case "4": {
           if (!s.voll) return;                       // im Reiter gibt es kein Dock
           const t = DOCK_TABS[Number(e.key) - 1];
@@ -393,14 +393,14 @@ export default function OfficeView({
           const schritt = (e.shiftKey ? STEP_GROSS_MS : STEP_MS) * (e.key === "ArrowLeft" ? -1 : 1);
           const basis = s.seekTs ?? b.t1;
           const ziel2 = basis + schritt;
-          // Über das jüngste Ereignis hinaus gibt es nur einen sinnvollen Ort: die Gegenwart.
+          // Beyond the newest event there is only one sensible place: the present.
           setSeek(ziel2 >= b.t1 ? null : Math.max(b.t0, ziel2));
           e.preventDefault();
           return;
         }
 
         case "Escape":
-          // Von innen nach außen abwickeln — jede Ebene genau eine Esc.
+          // Unwind from the inside out, one Esc per level.
           if (s.helpOpen) { setHelpOpen(false); e.preventDefault(); return; }
           if (s.voll && s.dockOpen) { setDockOpen(false); e.preventDefault(); return; }
           if (s.seekTs !== null) { setSeek(null); e.preventDefault(); return; }
@@ -416,10 +416,10 @@ export default function OfficeView({
   }, [setSeek]);
 
   // ── Abgeleitetes ──────────────────────────────────────────────────────────────────────────
-  // Der Sitzungsreiter ist ein Filter, kein Kanalwechsel (`TopBar.tsx`, Punkt 2): wer nicht
-  // dazugehört, wird auf der Bühne **blass**, nicht entfernt. Entfernen gäbe seinen Sitzplatz
-  // frei, ließe die Übergabelinien ins Nichts zeigen und zeigte je Reiter einen anderen Raum.
-  // Ohne aktiven Filter bleibt die Menge `undefined` — dann kostet das Dimmen keinen Handgriff.
+  // The session tab is a filter, not a change of channel (`TopBar.tsx`, point 2): whoever does
+  // not belong goes **pale** on the stage, it is not removed. Removing would free its seat, let
+  // the handover lines point into nothing and show a different room per tab. Without an active
+  // filter the set stays `undefined`, and then the dimming costs no work at all.
   const gedimmt = useMemo(() => {
     if (sessionFilter === null) return undefined;
     const out = new Set<string>();
@@ -431,17 +431,17 @@ export default function OfficeView({
     () => (selectedId === null ? null : roster.find((r) => r.agent_id === selectedId) ?? null),
     [roster, selectedId],
   );
-  // Das Fenster gehört in die Überschrift, nicht in eine Fußnote: der Raum zeigt einen
-  // Ausschnitt, und ein ungenannter Ausschnitt sähe aus wie „mehr war nicht los".
+  // The window belongs in the heading, not in a footnote: the room shows an excerpt, and an
+  // unnamed excerpt would look like "there was nothing more going on".
   const titel = alleModus
     ? tr("office_view.alle_sitzungen_fenster", { stunden: ALLE_FENSTER_H })
     : (gewaehlt ? [gewaehlt.issue_key, gewaehlt.title].filter(Boolean).join(" · ") : undefined);
   const fehler = error
     ?? (sessions.error ? tr("office_view.sitzungen_nicht_ladbar", { fehler: (sessions.error as Error).message }) : undefined);
 
-  // Der Wachhund der Kioskseite lebt außerhalb dieser Komponente (er lädt die Seite neu, das
-  // ist keine Zuständigkeit einer Ansicht). Über den Spiegel-Ref bleibt der Effekt an `fehler`
-  // hängen und nicht an der Identität des Rückrufs.
+  // The watchdog of the kiosk page lives outside this component (it reloads the page, which is
+  // not the business of a view). Through the mirror ref the effect stays tied to `fehler` and
+  // not to the identity of the callback.
   const onErrorChangeRef = useRef(onErrorChange);
   onErrorChangeRef.current = onErrorChange;
   useEffect(() => { onErrorChangeRef.current?.(fehler); }, [fehler]);
@@ -452,8 +452,8 @@ export default function OfficeView({
       titel={titel || undefined}
       roster={roster}
       totals={totals}
-      // Die Pille sagt etwas über den **Strom**, nicht über die Wiedergabe: angehalten heißt
-      // nicht getrennt. Das Anhalten steht in der Werkzeugleiste darunter.
+      // The pill says something about the **stream**, not about playback: paused does not mean
+      // disconnected. Pausing stands in the toolbar below it.
       live={live}
       seekTs={seekTs}
       onBackToLive={() => setSeek(null)}
@@ -541,8 +541,8 @@ export default function OfficeView({
       dimmed={gedimmt}
       onSelect={(id) => setSelectedId(id ?? null)}
       onHover={setHoverId}
-      // Kiosk: die Bühne führt selbst Kamera (Welle „Kiosk-Kamera", `office/kiosk.ts`) —
-      // sie folgt dem Geschehen, statt starr den ganzen Raum zu zeigen.
+      // Kiosk: the stage steers the camera itself (`office/kiosk.ts`), following the action
+      // instead of rigidly showing the whole room.
       kiosk={kiosk}
       className={grossflaechig
         ? "min-h-0 flex-1 rounded border border-line"
@@ -560,9 +560,9 @@ export default function OfficeView({
     />
   );
 
-  // Der Wandschirm: Kopfzeile (schreibgeschützt), Bühne, ein einziger Knopf. Keine
-  // Werkzeugleiste, kein Dock, kein Inspektor, keine Zeitleiste — nichts davon kann dort
-  // jemand bedienen, und was niemand bedienen kann, verschenkt nur Fläche.
+  // The wall screen: header (read only), stage, one single button. No toolbar, no dock, no
+  // inspector, no timeline: nobody can operate any of that there, and what nobody can operate
+  // only wastes space.
   if (kiosk) {
     return (
       <div className={`relative flex min-h-0 flex-col gap-2 ${className ?? ""}`}>
@@ -618,9 +618,9 @@ export default function OfficeView({
                 seekTs={seekTs}
                 onSelect={setSelectedId}
                 onClose={() => setSelectedId(null)}
-                // Der Einstieg in die Akte: der Reiter darüber springt zur **Rolle** dieses
-                // Laufs (die Rolle liest das Dock aus `selectedId`), der Inspektor bleibt beim
-                // **einzelnen Lauf** stehen. Beide Wahrheiten gleichzeitig, keine ersetzt die
+                // The entry into the file: the tab above jumps to the **role** of this run (the
+                // dock reads the role from `selectedId`), the inspector stays on the **single
+                // run**. Both truths at once, neither replaces the other.
                 // andere.
                 onOpenAkte={() => { setDockTab("akte"); setDockOpen(true); }}
                 className="max-h-[45%] shrink-0"
@@ -642,7 +642,7 @@ export default function OfficeView({
 
 // ── Hilfe ───────────────────────────────────────────────────────────────────────────────────
 
-/** Dieselbe Tabelle, die oben im Kopf dieser Datei steht — nur eben dort, wo man sie sucht. */
+/** The same table that stands in the header of this file, only where one looks for it. */
 function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.Element {
   const zeilen: [string, string][] = [
     ["?", tr("office_view.hilfe_umschalten")],
