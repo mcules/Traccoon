@@ -7,23 +7,23 @@ import {
 } from "../api";
 import { formatTime } from "../lib/formatTime";
 
-// Eine Komponente für beide Orte (Dashboard-Karte und Einstellungen → Deployment), damit es
-// über Status, Dauern und Log-Kopf nicht zwei Wahrheiten gibt. Die Hülle (Karte/Section)
-// stellt die aufrufende Seite — hier steht nur der Inhalt.
+// One component for both places (dashboard card and Settings → Deployment), so that there
+// are no two truths about status, durations and log head. The shell (card, section) is
+// provided by the calling page; only the content stands here.
 
-/** Rohstatus → deutsche Beschriftung. Unbekannte Werte werden roh durchgereicht. */
+/** Raw status to label. Unknown values are passed through raw. */
 const ST_LABEL: Record<string, string> = {
   ok: "erfolgreich", failed: "fehlgeschlagen", cancelled: "abgebrochen",
   building: "deploy.status.baut", pending: "deploy.status.wartet", "pending-check": "deploy.status.wartet_pruefung",
   rolledback: "deploy.status.zurueckgerollt",
 };
-/** Textfarben aus dem vorhandenen Vorrat (AgentMonitor.ST_COLOR) — keine neue Farbsprache. */
+/** Text colours from the existing supply (AgentMonitor.ST_COLOR), no new colour language. */
 const ST_TEXT: Record<string, string> = {
   ok: "text-green-400", failed: "text-red-400", building: "text-yellow-400",
   pending: "text-sky-400", "pending-check": "text-sky-400",
   rolledback: "text-orange-400", cancelled: "text-muted",
 };
-/** Balkenfarben wie Dashboard.KAT_FARBE. „abgebrochen“ bewusst blass. */
+/** Bar colours like Dashboard.KAT_FARBE. "aborted" deliberately pale. */
 const ST_BAR: Record<string, string> = {
   ok: "bg-green-400", failed: "bg-red-400", building: "bg-yellow-400",
   pending: "bg-sky-400", "pending-check": "bg-sky-400",
@@ -35,44 +35,44 @@ const KIND_LABEL: Record<string, string> = {
 const QUELLE_LABEL: Record<string, string> = {
   agent: "deployments_panel.quelle_agent", merge: "deployments_panel.quelle_merge",
   workflow: "deployments_panel.quelle_workflow", maintenance: "deployments_panel.quelle_maintenance",
-  // Der einzige Wert, hinter dem ein Mensch steht — der Knopf unten.
+  // The only value with a human behind it, the button below.
   manual: "deployments_panel.quelle_manual",
 };
 const FILTER: [DeploymentStatusFilter, string][] = [
-  // `running` umfasst serverseitig die Warteschlange mit („noch nicht entschieden“) —
-  // deshalb „Offen“ und nicht „Läuft“.
+  // Server side, `running` includes the queue ("not decided yet"), which is why it is
+  // "open" and not "running".
   ["all", "deployments_panel.filter_alle"], ["running", "deployments_panel.filter_offen"],
   ["ok", "deployments_panel.filter_ok"], ["failed", "deployments_panel.filter_failed"],
   ["other", "deployments_panel.filter_other"],
 ];
-/** Die API kennt kein „ohne Fenster“: `since_hours` ist Pflicht mit Standard 720 h und
- *  Höchstwert 8760 h. Ein Eintrag „Alles“ wäre also eine Lüge über 30 Tage. */
+/** The API knows no "without a window": `since_hours` is mandatory with a default of 720 h
+ *  and a maximum of 8760 h. An entry "everything" would therefore be a lie about 30 days. */
 const FENSTER: [number, string][] = [
   [24, "deployments_panel.fenster_24h"], [168, "deployments_panel.fenster_7t"],
   [720, "deployments_panel.fenster_30t"], [8760, "deployments_panel.fenster_1j"],
 ];
 const FENSTER_STANDARD = 720;
-/** `LIMIT_MAX` der API. Darüber hinaus nachzuladen brächte nichts als denselben Ausschnitt. */
+/** `LIMIT_MAX` of the API. Loading more beyond that would bring nothing but the same excerpt. */
 const LIMIT_MAX = 200;
 
 export type DeploymentVariante = "kompakt" | "voll";
 
 export interface DeploymentsPanelProps {
-  /** Projektbezogene Liste. Fehlt sie, wird die globale gelesen (Wartungs-Updates ohne Projekt). */
+  /** Project bound list. Without it the global one is read (maintenance updates without a project). */
   projectId?: number;
-  /** Nur Deployments dieses Tickets (laut Vertrag nur projektbezogen wirksam). */
+  /** Only deployments of this ticket (by contract effective only project bound). */
   issueId?: number;
-  /** `kompakt` = Karte im Dashboard (wenige Zeilen, keine Filter), `voll` = Einstellungen. */
+  /** `kompakt` = card on the dashboard (few rows, no filters), `voll` = settings. */
   variante?: DeploymentVariante;
   /** Anfangs-Obergrenze; Standard 5 (kompakt) bzw. 50 (voll). */
   limit?: number;
-  /** Knopf „Jetzt deployen“ — nur in der vollen Liste und nur projektbezogen.
+  /** The button "deploy now", only in the full list and only project bound.
    *
-   *  Beides kommt von außen, weil es hier nicht zu holen ist: die Rolle steht am Projekt
-   *  (`my_role`), das Stack-Verzeichnis in den Projekt-Einstellungen. Der Pfad ist kein
-   *  Beiwerk — er steht in der Rückfrage, und ohne ihn wäre „dieser Stack wird neu
-   *  gebaut“ eine Behauptung, die niemand nachprüfen kann. Fehlt die Eigenschaft ganz,
-   *  gibt es keinen Knopf (Dashboard-Karte, Ticket-Ansicht). */
+   *  Both come from outside because they cannot be fetched here: the role stands on the
+   *  project (`my_role`), the stack directory in the project settings. The path is not an
+   *  accessory: it stands in the confirmation, and without it "this stack is rebuilt" would
+   *  be a claim nobody can check. If the property is missing entirely there is no button
+   *  (dashboard card, ticket view). */
   ausloesen?: { stackDir?: string | null; erlaubt: boolean };
 }
 
@@ -89,13 +89,13 @@ export default function DeploymentsPanel(
   const { data, error, isLoading } = useQuery<DeploymentListe>({
     queryKey: ["deployments", projectId ?? null, issueId ?? null, status, seit, max],
     queryFn: () => deploymentApi.list({ projectId, issueId, limit: max, sinceHours: seit, status }),
-    // Deployments sind selten; ein laufendes soll trotzdem von allein weiterzählen.
+    // Deployments are rare; a running one should still count on by itself.
     refetchInterval: 15000,
     retry: false,
   });
 
   if (error) {
-    // Solange die Lese-API fehlt (oder das Recht), lieber eine ruhige Zeile als ein roter Kasten.
+    // As long as the read API is missing (or the permission), a quiet line beats a red box.
     const st = error instanceof ApiError ? error.status : 0;
     return (
       <div className="text-xs text-muted">
@@ -107,10 +107,10 @@ export default function DeploymentsPanel(
   if (isLoading || !data) return <div className="text-xs text-muted">{tr("deployments_panel.laedt")}</div>;
 
   const items = data.items || [];
-  // „Läuft schon eins?“ wird aus `by_status` beantwortet und **nicht** aus `items`: die
-  // Zählung geht gegen das Zeitfenster, die Liste dagegen durch den Statusfilter. Bei
-  // „Erfolgreich“ stünde sonst kein offener Deploy in `items` — und der Knopf wäre frei,
-  // obwohl der Server mit 409 antwortet.
+  // "Is one already running?" is answered from `by_status` and **not** from `items`: the
+  // count goes against the time window, the list on the other hand through the status filter.
+  // With "successful" no open deploy would stand in `items`, and the button would be free
+  // although the server answers with 409.
   const laufend = ["pending", "pending-check", "building"]
     .reduce((n, s) => n + ((data.by_status || {})[s] || 0), 0);
 
@@ -120,8 +120,8 @@ export default function DeploymentsPanel(
         <Ausloeser projectId={projectId} issueId={issueId}
           stackDir={ausloesen.stackDir} erlaubt={ausloesen.erlaubt} laufend={laufend > 0}
           nachziehen={() => {
-            // Der frische Deploy ist `pending` — bei einem engeren Filter fiele er aus der
-            // Liste und der Knopf sähe folgenlos aus. „Alle“ zeigt ihn ohnehin.
+            // The fresh deploy is `pending`; with a narrower filter it would fall out of the
+            // list and the button would look without consequence. "All" shows it anyway.
             if (status !== "all") setStatus("running");
             qc.invalidateQueries({ queryKey: ["deployments"] });
           }} />
@@ -147,7 +147,7 @@ export default function DeploymentsPanel(
         kompakt={kompakt} fenster={seit} />
 
       {items.length === 0 ? (
-        // Leer wegen Filter oder leer wegen Bestand — das ist nicht dieselbe Nachricht.
+        // Empty because of the filter or empty because there is nothing: not the same message.
         <div className="text-xs text-muted">
           {Object.values(data.by_status || {}).some((n) => n > 0)
             ? tr("deploy.kein_treffer_filter")
@@ -172,17 +172,17 @@ export default function DeploymentsPanel(
   );
 }
 
-/** Der Knopf samt Rückfrage.
+/** The button including the confirmation.
  *
- *  Zwei Stufen, weil ein Klick hier einen laufenden Dienst neu startet: der erste Klick
- *  öffnet nur die Rückfrage, erst der zweite reiht ein. Die Rückfrage nennt **den Ordner**
- *  und **die drei Folgen** (neu bauen, kurze Auszeit, kein Rollback) — ein „Wirklich?“
- *  ohne Inhalt ist eine Klickübung, keine Zustimmung.
+ *  Two stages, because a click here restarts a running service: the first click only opens
+ *  the confirmation, and only the second queues. The confirmation names **the folder** and
+ *  **the three consequences** (rebuild, short downtime, no rollback); a "really?" without
+ *  content is a clicking exercise, not a consent.
  *
- *  Der Knopf ist gesperrt, solange etwas läuft oder die Rolle nicht reicht; der Server
- *  antwortet in beiden Fällen ohnehin mit 409 bzw. 403, aber ein Knopf, der sicher
- *  scheitert, gehört nicht angeboten. Der Grund steht als Text daneben, nicht nur als
- *  `title` — sonst ist eine graue Fläche ohne Erklärung. */
+ *  The button is locked as long as something is running or the role is not enough; the
+ *  server answers with 409 respectively 403 in both cases anyway, but a button that is
+ *  certain to fail should not be offered. The reason stands as text beside it, not only as a
+ *  `title`, because otherwise it is a grey area without an explanation. */
 function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen }: {
   projectId: number; issueId?: number; stackDir?: string | null;
   erlaubt: boolean; laufend: boolean; nachziehen: () => void;
@@ -193,8 +193,8 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
   const [eingereiht, setEingereiht] = useState<number | null>(null);
 
   const ordner = (stackDir || "").trim();
-  // Reihenfolge = Dringlichkeit: kein Recht schlägt alles, dann das fehlende Ziel, dann
-  // der laufende Deploy (der geht von allein vorbei).
+  // Order = urgency: no permission beats everything, then the missing target, then the
+  // running deploy (which passes by itself).
   const grund = !erlaubt
     ? tr("deploy.rolle_fehlt")
     : !ordner
@@ -265,13 +265,13 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
   );
 }
 
-/** Kopfzeile: `by_status` als Balken + Legende. Der Zusatz zu den abgebrochenen ist Pflicht —
- *  ohne ihn liest sich der große graue Block wie ein Fehlerbild, und er ist keiner.
+/** Header: `by_status` as bars plus a legend. The addition about the aborted ones is
+ *  mandatory: without it the large grey block reads like a picture of failure, and it is not.
  *
- *  `by_status` zählt gegen das **Zeitfenster**, nicht gegen den Statusfilter (so gebaut in
- *  `_payload`) — deshalb steht hier „im Fenster“ und getrennt davon, wie viele Zeilen die
- *  Liste darunter gerade zeigt. Beides zu verschmelzen wäre die Zahl, die niemand nachrechnen
- *  kann. */
+ *  `by_status` counts against the **time window**, not against the status filter (built that
+ *  way in `_payload`), which is why it says "in the window" here and, separately, how many
+ *  rows the list below is showing right now. Merging the two would be the number nobody can
+ *  recompute. */
 function Kopf({ by, count, truncated, kompakt, fenster }: {
   by?: Record<string, number>; count: number; truncated?: boolean;
   kompakt: boolean; fenster: number;
@@ -318,8 +318,8 @@ function Zeile({ d, kompakt, auf, toggle }: {
   d: DeploymentRow; kompakt: boolean; auf: boolean; toggle: () => void;
 }) {
   const laeuft = d.phase === "running";
-  // Der Log-Kopf ist der Grund, warum „fehlgeschlagen“ überhaupt verständlich wird — in der
-  // vollen Liste immer, in der Karte dort, wo es nicht offensichtlich gut ausging.
+  // The log head is the reason "failed" becomes understandable at all: always in the full
+  // list, and in the card where it did not obviously end well.
   const zeigeKopf = !!d.log_head && (!kompakt || d.ok !== true);
   return (
     <div>
@@ -365,8 +365,8 @@ function Zeile({ d, kompakt, auf, toggle }: {
   );
 }
 
-/** Dreiwertiges `ok`. `null` heißt **unbekannt** — deshalb ein eigenes Zeichen und eine eigene
- *  Farbe, nicht das grüne Häkchen. Läuft es gerade, gewinnt das laufende Kennzeichen. */
+/** Three valued `ok`. `null` means **unknown**, which is why it gets a sign and a colour of
+ *  its own, not the green tick. If it is running, the running mark wins. */
 function OkZeichen({ ok, laeuft }: { ok?: boolean | null; laeuft: boolean }) {
   if (laeuft) {
     return <span className="mt-0.5 animate-pulse text-yellow-400" title={tr("deployments_panel.laeuft_gerade")}>◐</span>;
@@ -376,7 +376,7 @@ function OkZeichen({ ok, laeuft }: { ok?: boolean | null; laeuft: boolean }) {
   return <span className="mt-0.5 text-muted" title="unbekannt">•</span>;
 }
 
-/** Volltext-Log — wird erst beim Aufklappen geholt (bis ~20 000 Zeichen je Zeile). */
+/** Full text log, fetched only on expanding (up to about 20 000 characters per row). */
 function LogAusklapper({ id, bytes }: { id: number; bytes?: number | null }) {
   const { data, error, isLoading } = useQuery({
     queryKey: ["deployment", id],
@@ -406,8 +406,8 @@ function LogAusklapper({ id, bytes }: { id: number; bytes?: number | null }) {
   );
 }
 
-/** Dauer in der Schreibweise von `AgentMonitor.fmtDauer`. `null`/fehlt = „—“, **nie** „0 s“:
- *  bei 71 von 186 Zeilen fehlt ein Zeitstempel, eine gerechnete Null wäre gelogen. */
+/** Duration in the notation of `AgentMonitor.fmtDauer`. `null` or missing = "-", **never**
+ *  "0 s": 71 of 186 rows lack a timestamp, and a computed zero would be a lie. */
 function dauerText(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
   if (ms < 1000) return `${Math.max(0, Math.round(ms))} ms`;
@@ -417,8 +417,8 @@ function dauerText(ms: number | null | undefined): string {
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;
 }
 
-/** `requested_by`/`chat_id` sind bei keiner einzigen Zeile gefüllt — der Auslöser kommt aus
- *  `source`, und bei Altzeilen gibt es ihn schlicht nicht. */
+/** `requested_by`/`chat_id` are filled on not a single row; the trigger comes from `source`,
+ *  and with old rows it simply does not exist. */
 function quelleText(source?: string | null): string {
   if (!source) return "deployments_panel.quelle_unbekannt";
   return QUELLE_LABEL[source] || source;
@@ -437,7 +437,7 @@ function fensterText(stunden: number): string {
     : tr("deployments_panel.fenster_stunden", { anzahl: stunden });
 }
 
-/** Der Log-Kopf enthält Zeilenumbrüche; in einer Tabellenzeile stört das nur. */
+/** The log head contains line breaks; in a table row those are only a nuisance. */
 function einzeilig(s?: string | null): string {
   return (s || "").replace(/\s+/g, " ").trim();
 }

@@ -1,7 +1,7 @@
-"""Artefakt-Typen und ihre Zustände — lesen für alle, ändern nur für Admins.
+"""Artifact types and their states: readable for everyone, changeable only for admins.
 
-Der Prozess-Editor liest hier, welche Zustände ein Ablauf setzen kann; die Administration
-pflegt Beschriftungen, Reihenfolge und eigene Typen.
+The process editor reads here which states a flow can set; the administration maintains
+labels, order and types of its own.
 """
 from __future__ import annotations
 
@@ -24,8 +24,8 @@ router = APIRouter(tags=["artifacts"])
 
 
 class StatusOut(BaseModel):
-    """Ein möglicher Zustand — seit dem Zusammenschluss ein Eintrag der Werteliste des
-    Feldes `status`. `key` ist der gespeicherte Wert."""
+    """One possible state, since the merge an entry of the value list of the field `status`.
+    `key` is the stored value."""
     id: int
     key: str
     label: str
@@ -42,8 +42,8 @@ class OptionOut(BaseModel):
     color: str
     order: int
     enabled: bool
-    # Nur beim Feld `status` von Bedeutung: steuert Board-Spalte bzw. hebt hervor,
-    # dass hier ein Mensch gebraucht wird.
+    # Only meaningful with the field `status`: controls the board column respectively
+    # highlights that a human is needed here.
     category: str = ""
     waiting: bool = False
     model_config = {"from_attributes": True}
@@ -59,16 +59,16 @@ class FieldOut(BaseModel):
     order: int
     description: str
     enabled: bool
-    # Leer = frei angelegt; sonst die echte Spalte, in die das Feld schreibt.
+    # Empty = freely created; otherwise the real column the field writes into.
     source: str = ""
-    # Gesetzt, wenn die Auswahlwerte am Projekt hängen (Vorgangsart, Sprint, Person …) —
-    # dann gibt es keine pflegbare Werteliste.
+    # Set when the selectable values hang off the project (issue type, sprint, person …);
+    # then there is no maintainable value list.
     options_source: str = ""
     builtin: bool = False
-    # Gesetzt = Ergänzung genau dieses Projekts; leer = gilt überall.
+    # Set = an addition of exactly this project; empty = applies everywhere.
     project_id: int | None = None
     options: list[OptionOut] = []
-    # Auswahlwerte, die am Projekt hängen (Vorgangsart, Sprint, Board-Spalte, Personen).
+    # Selectable values that hang off the project (issue type, sprint, board column, people).
     dynamic_options: list[tuple[str, str]] = []
 
 
@@ -114,11 +114,11 @@ def _admin(user: User) -> None:
 
 
 async def _darf_feld(db: AsyncSession, user: User, project_id: int | None) -> None:
-    """Wer darf Felder pflegen?
+    """Who may maintain fields?
 
-    Allgemeine Felder (ohne Projekt) gelten überall — die ändert nur ein Admin. Ein Feld
-    seines eigenen Projekts darf dessen Eigentümer bzw. Maintainer anlegen: so erweitert er
-    seine Tickets, ohne die aller anderen zu verändern.
+    General fields (without a project) apply everywhere, and only an admin changes those. A
+    field of one's own project may be created by its owner respectively maintainer: that way
+    they extend their tickets without changing those of everybody else.
     """
     if project_id is None:
         return _admin(user)
@@ -128,7 +128,7 @@ async def _darf_feld(db: AsyncSession, user: User, project_id: int | None) -> No
     projekt = await db.get(Project, project_id)
     if projekt is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Projekt nicht gefunden")
-    access = await build_access(projekt, user, db)     # 404 bei Fremdprojekt
+    access = await build_access(projekt, user, db)     # 404 on a foreign project
     if not access.has_role(ProjectRole.maintainer):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             "Rolle owner|maintainer erforderlich")
@@ -136,11 +136,11 @@ async def _darf_feld(db: AsyncSession, user: User, project_id: int | None) -> No
 
 async def _felder(db: AsyncSession, type_id: int,
                   project_id: int | None = None) -> list[FieldOut]:
-    """Felder eines Artefakts samt Werteliste — auch die abgeschalteten, damit die
-    Administration sie wieder einschalten kann.
+    """Fields of an artifact including the value list, the switched off ones as well, so that
+    the administration can switch them on again.
 
-    Mit `project_id` kommen auch die Auswahlwerte mit, die am Projekt hängen: Vorgangsart,
-    Board-Spalte, Sprint, Zuständige, Standorte.
+    With `project_id` the selectable values that hang off the project come along as well:
+    issue type, board column, sprint, responsible people, locations.
     """
     aus = []
     for f in await felder.fields_of(db, type_id, project_id, nur_aktive=False):
@@ -175,11 +175,11 @@ async def list_types(
     subject: str | None = None, project_id: int | None = None,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Alle Artefakte mit ihren Feldern und Zuständen.
+    """All artifacts with their fields and states.
 
-    `subject=issue|hardware_asset` liefert genau das Artefakt, das ein Ablauf mit diesem
-    Subjekt bearbeitet — das speist die Auswahl im Editor. Mit `project_id` kommen zusätzlich
-    die Felder dieses Projekts mit; ohne nur die überall geltenden.
+    `subject=issue|hardware_asset` delivers exactly the artifact a flow with this subject
+    works on, which feeds the selection in the editor. With `project_id` the fields of that
+    project come along in addition; without it only the ones applying everywhere.
     """
     if subject:
         t = await svc.type_for_subject(db, subject)
@@ -199,9 +199,9 @@ class ArtifactOut(BaseModel):
     status_label: str
     waiting: bool
     project_id: int | None
-    # Sprung zum Detail: Ticket-Schlüssel bzw. Exemplar-Kennung.
+    # Jump to the detail: ticket key respectively unit identifier.
     ref: str | None = None
-    # Nur bei `with_values=true` gefüllt: {feld_key: [werte]}.
+    # Filled only with `with_values=true`: {field_key: [values]}.
     values: dict[str, list] = {}
 
 
@@ -211,11 +211,11 @@ async def list_artifacts(
     with_values: bool = False, limit: int = 200,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Übergreifende Liste: Tickets und Hardware in einer Sicht.
+    """Cross-cutting list: tickets and hardware in one view.
 
-    Das ist der eigentliche Gewinn des gemeinsamen Modells — „was liegt gerade an?" lässt
-    sich stellen, ohne zwei getrennte Welten abzufragen. `waiting=true` zeigt nur, was auf
-    einen Menschen wartet (im Register je Zustand hinterlegt).
+    That is the actual gain of the common model: "what is pending right now?" can be asked
+    without querying two separate worlds. `waiting=true` shows only what is waiting for a
+    human (recorded per state in the register).
     """
     from ..models.artifact import Artifact
     from ..models.hardware import HardwareAsset
@@ -229,14 +229,14 @@ async def list_artifacts(
         q = q.where(ArtifactType.key == type_key)
     rows = (await db.execute(q.order_by(Artifact.id.desc()).limit(limit))).all()
 
-    # Zustände einmal je Typ nachschlagen (Beschriftung + „wartet").
+    # Look up the states once per type (label plus "waiting").
     zustand: dict[tuple[int, str], object] = {}
     for _, t in rows:
         if not any(k[0] == t.id for k in zustand):
             for st in await svc.statuses(db, t.id):
                 zustand[(t.id, st.value)] = st
 
-    # Sichtbarkeit: projektlose Artefakte sind frei, projektgebundene nur bei Zugriff.
+    # Visibility: project-less artifacts are free, project bound ones only with access.
     from ..models.project import Project
     erlaubt: dict[int, bool] = {}
     out: list[ArtifactOut] = []
@@ -247,7 +247,7 @@ async def list_artifacts(
                 try:
                     await build_access(projekt, user, db)
                     erlaubt[a.project_id] = True
-                except Exception:  # noqa: BLE001 — 404/403 bedeutet: nicht sichtbar
+                except Exception:  # noqa: BLE001 - 404/403 means: not visible
                     erlaubt[a.project_id] = False
             if not erlaubt[a.project_id]:
                 continue
@@ -268,7 +268,7 @@ async def list_artifacts(
             waiting=bool(st and st.waiting), project_id=a.project_id, ref=ref,
         ))
     if with_values and out:
-        # Eine Sammel-Abfrage für die ganze Liste statt einer je Zeile.
+        # One collective query for the whole list instead of one per row.
         alle = await felder.values_for(db, [o.id for o in out])
         for o in out:
             o.values = alle.get(o.id, {})
@@ -314,8 +314,8 @@ async def delete_type(
     if t is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Typ nicht gefunden")
     if t.builtin:
-        # Ticket und Hardware hängen an fest verdrahteten Spalten — ohne ihren Eintrag
-        # wüsste der Editor nicht mehr, welche Zustände es gibt.
+        # Ticket and hardware hang off hard wired columns; without their entry the editor
+        # would no longer know which states exist.
         raise HTTPException(status.HTTP_409_CONFLICT,
                             "Eingebaute Typen lassen sich nicht löschen (nur abschalten)")
     await db.delete(t)
@@ -360,10 +360,10 @@ async def add_field(
     tid: int, data: FieldIn, project_id: int | None = None,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Ein Feld am Artefakt anlegen — jederzeit, auch wenn es davon schon Exemplare gibt.
+    """Create a field on the artifact, at any time, even when units of it already exist.
 
-    Bestehende Exemplare bekommen dadurch keine Zeile in `artifact_values`; das Feld ist bei
-    ihnen schlicht leer, bis jemand einen Wert setzt.
+    Existing units get no row in `artifact_values` from that; the field is simply empty for
+    them until somebody sets a value.
     """
     await _darf_feld(db, user, project_id)
     t = await db.get(ArtifactType, tid)
@@ -372,8 +372,8 @@ async def add_field(
     if data.kind not in felder.KINDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             f"Unbekannter Feldtyp '{data.kind}' (erlaubt: {', '.join(felder.KINDS)})")
-    # Auch gegen die allgemeinen prüfen: ein Projekt-Feld darf ein ausgeliefertes nicht
-    # verdecken, sonst wüsste niemand mehr, welches gemeint ist.
+    # Check against the general ones as well: a project field must not cover a shipped one,
+    # because then nobody would know which one is meant.
     vorhanden = [f for f in await felder.fields_of(db, tid, project_id, nur_aktive=False)
                  if f.key == data.key]
     if vorhanden:
@@ -394,7 +394,7 @@ async def update_field(
     werte = data.model_dump(exclude_unset=True)
     if "kind" in werte and werte["kind"] not in felder.KINDS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unbekannter Feldtyp '{werte['kind']}'")
-    # Von „mehrere" auf „einer" zurück ist nur sauber, wenn niemand mehrere Werte trägt.
+    # Going back from "several" to "one" is only clean when nobody carries several values.
     if werte.get("multi") is False and f.multi:
         from sqlalchemy import func as _func
         from ..models.artifact import ArtifactValue
@@ -420,8 +420,8 @@ async def delete_field(
     fid: int, force: bool = False,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Feld löschen. Trägt noch jemand Werte darin, braucht es ein ausdrückliches `force=true`
-    — sonst verschwänden Daten still."""
+    """Delete a field. If somebody still carries values in it, an explicit `force=true` is
+    needed, because otherwise data would disappear silently."""
     f = await _get_field(db, fid)
     await _darf_feld(db, user, f.project_id)
     if f.builtin:
@@ -484,8 +484,7 @@ async def update_option(
     oid: int, data: OptionUpdate,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Beschriftung, Farbe und Reihenfolge — `value` bleibt unveränderlich, denn er IST der
-    gespeicherte Wert."""
+    """Label, colour and order. `value` stays immutable, because it IS the stored value."""
     _admin(user)
     o = await db.get(ArtifactFieldOption, oid)
     if o is None:
@@ -501,7 +500,7 @@ async def update_option(
 async def delete_option(
     oid: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Ein benutzter Listenwert wird nicht gelöscht, sondern mit Anzahl abgelehnt."""
+    """A used list value is not deleted but rejected with a count."""
     _admin(user)
     o = await db.get(ArtifactFieldOption, oid)
     if o is None:
@@ -519,12 +518,12 @@ async def delete_option(
 # ── Werte am einzelnen Artefakt ──────────────────────────────────────────────
 
 class ValuesIn(BaseModel):
-    """Werte je Feld-Schlüssel. Nicht genannte Felder bleiben unangetastet."""
+    """Values per field key. Fields not named stay untouched."""
     values: dict[str, list]
 
 
 async def _artifact_access(db: AsyncSession, user: User, aid: int) -> Artifact:
-    """Wer das Projekt des Artefakts sehen darf, darf seine Felder pflegen."""
+    """Whoever may see the project of the artifact may maintain its fields."""
     from .deps import build_access
     from ..models.project import Project
     a = await db.get(Artifact, aid)
@@ -532,7 +531,7 @@ async def _artifact_access(db: AsyncSession, user: User, aid: int) -> Artifact:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Artefakt nicht gefunden")
     if a.project_id is not None:
         projekt = await db.get(Project, a.project_id)
-        await build_access(projekt, user, db)   # 404/403 bei fehlendem Zugriff
+        await build_access(projekt, user, db)   # 404/403 when access is missing
     return a
 
 
@@ -540,8 +539,8 @@ async def _artifact_access(db: AsyncSession, user: User, aid: int) -> Artifact:
 async def read_values(
     aid: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Die Feldwerte eines Artefakts — samt der Feld-Definitionen, damit die Oberfläche auch
-    leere Felder anzeigen kann."""
+    """The field values of an artifact, including the field definitions, so that the interface
+    can show empty fields as well."""
     a = await _artifact_access(db, user, aid)
     return {
         "artifact_id": a.id,
@@ -559,8 +558,8 @@ async def write_values(
     artefakt_id = a.id
     bekannt = {f.key: f for f in await felder.fields_of(db, a.type_id, a.project_id)}
 
-    # Erst alles prüfen, dann alles schreiben: sonst stünde nach einem Fehler im dritten
-    # Feld schon die halbe Änderung fest.
+    # Check everything first, then write everything: otherwise half the change would stand
+    # after an error in the third field.
     geprueft = []
     for key, werte in data.values.items():
         f = bekannt.get(key)
