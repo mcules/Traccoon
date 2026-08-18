@@ -1,52 +1,52 @@
-// Schicht 0 — alle Zahlen des „Büros" an einem Ort.
+// Layer 0: all the numbers of the "office" in one place.
 //
-// Wer eine Zahl im Code findet, die hier fehlt, hat einen Fehler gefunden: gestreute Konstanten
-// sind der schnellste Weg, Bühne und Zeitleiste auseinanderlaufen zu lassen.
+// Whoever finds a number in the code that is missing here has found a bug: scattered constants
+// are the fastest way to let stage and timeline drift apart.
 //
-// Alle `*_MS` sind Millisekunden in **Simulationszeit** (`engine.t`), nicht Wanduhr.
-// Kein `enum` (PIXEL-CONTRACT.md Regel 5) — flache `const` und `as const`-Objekte.
+// All `*_MS` are milliseconds in **simulation time** (`engine.t`), not wall clock.
+// No `enum` (PIXEL-CONTRACT.md rule 5), only flat `const` and `as const` objects.
 
-// ── Auflösung ────────────────────────────────────────────────────────────────
+// ── Resolution ───────────────────────────────────────────────────────────────
 
-/** Die **Kunstebene**: das Koordinatensystem, in dem gezeichnet wird. Sprites, Blasen,
- *  Schriften, Möbel und die Kamera rechnen in diesen Einheiten. Bis 2026-08-07 war sie
- *  identisch mit dem Bildpuffer — daher hieß hier alles „Pufferpixel". */
+/** The **art level**: the coordinate system that is drawn in. Sprites, bubbles, fonts,
+ *  furniture and the camera compute in these units. Until 2026-08-07 it was identical to the
+ *  frame buffer, which is why everything here used to be called "buffer pixels". */
 export const ART = { w: 480, h: 270 } as const;
 
-/** Wie viele Pufferpixel eine Kunsteinheit breit ist.
+/** How many buffer pixels one art unit is wide.
  *
- *  Der Grund für die Trennung: bei 480×270 füllt ein gezeichneter Pixel auf einem 1080p-Schirm
- *  einen 4×4-Klotz, und eine Figur ist 16×24 groß — aus drei Metern ein Daumennagel. Mit
- *  ART_SCALE = 2 hat der Puffer 960×540; wer weiterhin in Kunsteinheiten zeichnet, bekommt
- *  exakt dasselbe Bild (jede Einheit wird ein 2×2-Block), wer feiner zeichnen will, hat ab
- *  jetzt die doppelte Auflösung dafür. Genau so wandert das Büro in Etappen von grob nach fein,
- *  ohne dass zwischendurch etwas kaputt ist. */
+ *  The reason for the separation: at 480x270 a drawn pixel fills a 4x4 block on a 1080p
+ *  screen, and a figure is 16x24, so from three metres away it is a thumbnail. With
+ *  ART_SCALE = 2 the buffer is 960x540; whoever keeps drawing in art units gets exactly the
+ *  same picture (every unit becomes a 2x2 block), and whoever wants to draw more finely now
+ *  has twice the resolution for it. That is exactly how the office moves from coarse to fine
+ *  in stages without anything being broken in between. */
 export const ART_SCALE = 2;
 
-/** Der Bildpuffer in echten Pixeln. Ergibt sich aus Kunstebene × Maßstab — nie von Hand
- *  setzen, sonst driften Kamera, Trefferprüfung und Blit auseinander. */
+/** The frame buffer in real pixels. Results from art level times scale, never set by hand,
+ *  otherwise camera, hit test and blit drift apart. */
 export const PIX = { w: ART.w * ART_SCALE, h: ART.h * ART_SCALE } as const;
 
-/** Der Raum, in dem die Simulation rechnet. Positionen leben hier. */
+/** The room the simulation computes in. Positions live here. */
 export const SCENE = { w: 1600, h: 900 } as const;
 
-/** `SCENE → PIX`, **nur für Positionen**. Sprites werden nicht mitskaliert — eine Figur ist
- *  16×24 Pufferpixel, nicht 16×24 Szenenpixel. Regel 1 des Pixel-Vertrags, und die Regel,
- *  deren Verletzung das ganze Kunstbudget um Faktor 3 verrechnet. */
+/** `SCENE → PIX`, **for positions only**. Sprites are not scaled along: a figure is 16x24
+ *  buffer pixels, not 16x24 scene pixels. Rule 1 of the pixel contract, and the rule whose
+ *  violation miscalculates the whole art budget by a factor of 3. */
 export const POS_SCALE = 0.3;
 
 // ── Bewegung ─────────────────────────────────────────────────────────────────
 
 /** Grundtempo in **Szenen**pixeln je Sekunde (≈45 Pufferpixel/s). */
 export const SPEED_PX_PER_S = 150;
-/** Streuung des Tempos je Figur: `1 ± 0.17`, aus dem Seed. */
+/** Spread of the pace per figure: `1 ± 0.17`, from the seed. */
 export const PACE_SPREAD = 0.17;
-/** Ankunft am Ziel: so lange wird noch getrippelt, bevor die Pose wechselt. */
+/** Arrival at the target: this long the figure keeps stepping before the pose changes. */
 export const SETTLE_MS = 600;
-/** Mehr als zwei vorgemerkte Wege werden verworfen — sonst rennt eine Figur nach einem
- *  Ereignisschwall minutenlang Aufträge ab, die längst überholt sind. */
+/** More than two queued paths are discarded; otherwise a figure would run off assignments for
+ *  minutes after a burst of events, long after they have been superseded. */
 export const MAX_QUEUED_TRIPS = 2;
-/** Betreten mehrere Läufe gleichzeitig den Raum, kommen sie gestaffelt durch die Tür. */
+/** If several runs enter the room at the same time, they come through the door staggered. */
 export const ARRIVE_STAGGER_MS = 2600;
 
 // ── Blasen & Aufmerksamkeit ──────────────────────────────────────────────────
@@ -55,99 +55,99 @@ export const ARRIVE_STAGGER_MS = 2600;
 export const BUBBLE_MS = 5000;
 /** Schreibmaschineneffekt: Zeichen je Sekunde. */
 export const TYPE_CPS = 40;
-/** Wie lange eine Figur nach dem Sprechen noch in Sprechpose bleibt. */
+/** How long a figure stays in the speaking pose after speaking. */
 export const SPEAK_HOLD_MS = 2500;
-/** Sichtbarkeit einer Spawn-/Übergabelinie. */
+/** Visibility of a spawn or handover line. */
 export const LINK_MS = 2200;
-/** Wie lange ein Zuhörer den Kopf gedreht hält. */
+/** How long a listener keeps their head turned. */
 export const HEARD_MS = 4000;
 
 // ── Huddle ───────────────────────────────────────────────────────────────────
 
-/** Ab drei gleichzeitig aktiven Läufen wird es ein Huddle am runden Tisch. */
+/** From three simultaneously active runs on it becomes a huddle at the round table. */
 export const HUDDLE_MIN = 3;
-/** Fenster, in dem diese drei zusammenkommen müssen. */
+/** Window in which those three have to come together. */
 export const HUDDLE_WINDOW_MS = 7500;
-/** Mindestdauer, bevor sich das Huddle wieder auflöst. */
+/** Minimum duration before the huddle breaks up again. */
 export const HUDDLE_HOLD_MS = 4000;
 
 // ── Leerlauf & Abgang ────────────────────────────────────────────────────────
 
-/** Nach anderthalb Minuten ohne Ereignis geht die Figur Kaffee holen — das einzige
- *  Lebenszeichen in einer langen Werkzeugkette. */
+/** After a minute and a half without an event the figure fetches coffee, the only sign of
+ *  life in a long tool chain. */
 export const IDLE_COFFEE_MS = 90_000;
 export const COFFEE_HOLD_MS = 4000;
-/** Nach `done` bleibt die Figur noch stehen, bevor sie durch die Tür geht … */
+/** After `done` the figure stands around a while before going through the door … */
 export const DONE_LINGER_MS = 1800;
-/** … um bis zu so viel je Figur gestreut (aus dem Seed), damit nicht alle gleichzeitig gehen. */
+/** … spread by up to this much per figure (from the seed), so that not everybody leaves at once. */
 export const DONE_LINGER_SPREAD_MS = 4200;
 
 // ── Werkzeuge & Gates ────────────────────────────────────────────────────────
 
 /** Ersatzdauer eines Werkzeugschritts.
  *
- *  Beim Altdaten-Pfad (`kind=''`-Zeilen aus der Zeit vor der
- *  Worker-Instrumentierung) kennt ein Werkzeugaufruf nur *einen* Zeitpunkt: `tool_start` und
- *  `tool_result` werden aus derselben Zeile synthetisiert, `duration_ms` ist `null`. Ohne eine
- *  Ersatzdauer blitzte die Werkzeugpose für 0 ms auf und der Raum sähe aus, als täte niemand
- *  etwas. Liegt ein echtes `duration_ms` vor, gewinnt das. */
+ *  On the legacy path (`kind=''` rows from the time before the worker instrumentation) a tool
+ *  call knows only *one* moment: `tool_start` and `tool_result` are synthesised from the same
+ *  row, and `duration_ms` is `null`. Without a substitute duration the tool pose would flash
+ *  for 0 ms and the room would look as if nobody were doing anything. If a real `duration_ms`
+ *  is present, that one wins. */
 export const TOOL_BUSY_MS = 1400;
 
-/** Pulsdauer des „wartet auf einen Menschen"-Signals über der Figur.
+/** Pulse duration of the "waiting for a human" signal above the figure.
  *
- *  Ein Gate (`ask_human`, Berechtigungsanfrage, Planfreigabe) ist der häufigste Grund
- *  für einen stillen Raum, und ein
+ *  A gate (`ask_human`, permission request, plan approval) is the most common reason for a
+ *  silent room, and a silent room without a visible reason reads like a crash. */
  *  stiller Raum ohne sichtbaren Grund liest sich wie ein Absturz. */
 export const GATE_PULSE_MS = 1200;
 
 // ── Zeit, Replay, Kappung ────────────────────────────────────────────────────
 
-/** Obergrenze für die Pause zwischen zwei Ereignissen.
+/** Upper bound for the pause between two events.
  *
- *  Bewusst knapp. Ein `check`-Build erzeugt regelmäßig minutenlange Stille an einer einzigen
- *  `run`-Werkzeugzeile; großzügiger gewählt säße man Minuten vor einem toten Bild. Ein gekürzter Zeitsprung ist das kleinere Übel.
+ *  Deliberately tight. A `check` build regularly produces minutes of silence on a single
+ *  `run` tool row; chosen more generously one would sit in front of a dead picture for minutes. A shortened time jump is the lesser evil.
  *
- *  Wird **beidseitig** angewandt: `dt = min(MAX_GAP_MS, max(0, ts - prev))`. Das `max(0, …)`
- *  ist nicht theoretisch — unter `WORKER_CONCURRENCY > 1` kann `ts` gegenüber `seq` rückwärts
- *  laufen, und ein negatives `dt` würde die Engine rückwärts drehen. */
+ *  Applied on **both sides**: `dt = min(MAX_GAP_MS, max(0, ts - prev))`. The `max(0, …)`
+ *  is not theoretical: under `WORKER_CONCURRENCY > 1` `ts` can run backwards relative to
+ *  `seq`, and a negative `dt` would turn the engine backwards. */
 export const MAX_GAP_MS = 20_000;
 
-/** Mehr Log-Zeilen spielt `seek` nicht ab; darüber wird vom **ältesten** Ende gekappt. */
+/** `seek` replays no more log rows than this; above it, truncation happens from the **oldest** end. */
 export const REPLAY_CAP = 20_000;
-/** Schrittweite beim Zurückspulen: `min(REPLAY_STEP_MS, timeToNextCmd)`. */
+/** Step size when rewinding: `min(REPLAY_STEP_MS, timeToNextCmd)`. */
 export const REPLAY_STEP_MS = 250;
 /** Schrittweite im Livebetrieb. */
 export const LIVE_STEP_MS = 100;
-/** Obergrenze für ein einzelnes `tick(dt)` — schützt gegen einen Tab, der im Hintergrund lag. */
+/** Upper bound for a single `tick(dt)`, protecting against a tab that lay in the background. */
 export const MAX_FRAME_MS = 100;
 
 // ── Kiosk (Wandschirm) ───────────────────────────────────────────────────────
 
-/** So lange gilt ein einmal gewähltes Kameraziel unverändert.
+/** This long a chosen camera target stays unchanged.
  *
- *  Ohne diese Sperre zappelte die Kamera zwölfmal je Sekunde zwischen zwei Funken hin und her —
- *  aus drei Metern Abstand ist das kein Bild mehr, sondern ein Zucken. 6 s sind rund vier
- *  `TOOL_BUSY_MS`, also lang genug, dass man einen Werkzeugschritt zu Ende sieht. */
+ *  Without this lock the camera would jitter between two sparks twelve times a second, and
+ *  from three metres away that is no longer a picture but a twitch. 6 s are about four
+ *  `TOOL_BUSY_MS`, so long enough to see a tool step through to the end. */
 export const KIOSK_HOLD_MS = 6000;
 
-/** So lange ohne ein einziges neues `Fx`, dann zieht sich die Kamera auf den ganzen Raum zurück.
+/** This long without a single new `Fx`, then the camera pulls back to the whole room.
  *
- *  Bewusst großzügiger als `MAX_GAP_MS`: erst danach ist wirklich nichts mehr los, und dann ist
- *  der ganze stille Raum das ehrliche Bild — nicht ein zufällig herangezoomter leerer Tisch. */
+ *  Deliberately more generous than `MAX_GAP_MS`: only after that is nothing really going on,
+ *  and then the whole silent room is the honest picture, not a table zoomed in on by chance. */
 export const KIOSK_IDLE_MS = 20_000;
 
-// ── Kapazitäten ──────────────────────────────────────────────────────────────
+// ── Capacities ───────────────────────────────────────────────────────────────
 
-/** Mehr Figuren zeigt der Raum nicht gleichzeitig; die ältesten fertigen gehen zuerst. */
+/** The room shows no more figures at once; the oldest finished ones leave first. */
 export const MAX_ACTORS = 24;
-/** 12 Pod-Plätze + Chefplatz. Sitzwahl ist `hash32(runId) % 12`, deterministisch, ohne Warteschlange. */
+/** 12 pod seats plus the chief's seat. The seat choice is `hash32(runId) % 12`, deterministic, without a queue. */
 export const MAX_SEATS = 13;
 
 // ── Zeitleiste ───────────────────────────────────────────────────────────────
 
-/** Ein Balken je Sekunde. */
+/** One bar per second. */
 export const TIMELINE_BUCKET_MS = 1000;
-/** Mehr Balken werden nicht vorgehalten. */
+/** No more bars than this are kept. */
 export const TIMELINE_CAP = 1200;
-/** Auf so viele Spalten wird für die Anzeige zusammengefasst. */
+/** This many columns are what the display summarises to. */
 export const TIMELINE_COLUMNS = 220;
