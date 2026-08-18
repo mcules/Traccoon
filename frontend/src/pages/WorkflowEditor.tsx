@@ -120,7 +120,7 @@ export default function WorkflowEditor() {
       const weg = changes.filter((c) => c.type === "remove").map((c) => c.id);
       if (weg.length) {
         setEdges((eds) => eds.filter((e) => !weg.includes(e.source) && !weg.includes(e.target)));
-        setMsg(`${weg.length === 1 ? "Schritt" : `${weg.length} Schritte`} gelöscht — noch nicht gespeichert.`);
+        setMsg(tr("editor.schritte_geloescht", { anzahl: weg.length }));
       }
       onNodesChange(changes);
     },
@@ -131,7 +131,7 @@ export default function WorkflowEditor() {
   const handleEdgesChange = useCallback(
     (changes: Parameters<typeof onEdgesChange>[0]) => {
       const weg = changes.filter((c) => c.type === "remove").length;
-      if (weg) setMsg(`${weg === 1 ? "Verbindung" : `${weg} Verbindungen`} gelöscht — noch nicht gespeichert.`);
+      if (weg) setMsg(tr("editor.verbindungen_geloescht", { anzahl: weg }));
       onEdgesChange(changes);
     },
     [onEdgesChange],
@@ -282,7 +282,7 @@ export default function WorkflowEditor() {
       const breite = sizes.get(start!.id)?.width ?? 220;
       setFokus({ x: ziel.x + breite / 2, y: ziel.y, token: Date.now() });
     }
-    setMsg("Neu angeordnet — noch nicht gespeichert.");
+    setMsg(tr("editor.neu_angeordnet"));
   }, [nodes, edges, setNodes, gap]);
 
   const clientErrors = useMemo(() => validateGraph(flowToGraph(nodes, edges)), [nodes, edges]);
@@ -344,13 +344,13 @@ export default function WorkflowEditor() {
       gesichert.current = graphSignatur(graph);
       setStand((n) => n + 1);
       setErrors([]);
-      setMsg("Veröffentlicht.");
+      setMsg(tr("editor.veroeffentlicht_meldung"));
       qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
       if (project) qc.invalidateQueries({ queryKey: ["workflows", project.id] });
     } catch (e) {
-      setMsg(e instanceof ApiError ? `Veröffentlichen abgelehnt: ${e.message}` : "Veröffentlichen fehlgeschlagen");
+      setMsg(e instanceof ApiError ? `Veröffentlichen abgelehnt: ${e.message}` : tr("editor.veroeffentlichen_fehlgeschlagen"));
     }
   };
 
@@ -370,13 +370,13 @@ export default function WorkflowEditor() {
   // als „nicht veröffentlicht" auszuweisen.
   const gleichWieLive = !!liveVersion && jetzt === graphSignatur(liveVersion.graph);
   const veroeffentlichung = !def?.current_version_id
-    ? { text: "nie veröffentlicht", stil: "text-muted",
-        titel: "Dieser Ablauf läuft noch nirgends — Veröffentlichen macht ihn startbar." }
+    ? { text: tr("editor.nie_veroeffentlicht"), stil: "text-muted",
+        titel: tr("editor.nie_veroeffentlicht_titel") }
     : gleichWieLive
       ? { text: `veröffentlicht (v${liveVersion?.version ?? "?"})`, stil: "text-green-400",
-          titel: "Was hier auf der Fläche steht, gilt auch draußen." }
+          titel: tr("editor.live_titel") }
       : { text: `weicht von v${liveVersion?.version ?? "?"} ab`, stil: "text-amber-300",
-          titel: "Draußen läuft die veröffentlichte Fassung. Veröffentlichen übernimmt diese hier." };
+          titel: tr("editor.abweichung_titel") };
 
   // Beim Verlassen des Fensters mit ungespeicherter Arbeit nachfragen — der Browser
   // erlaubt nur seinen eigenen Text, aber die Rückfrage selbst ist der Punkt.
@@ -407,26 +407,26 @@ export default function WorkflowEditor() {
           // Slot-Ablauf zum Standard-Satz, freier Ablauf zu den eigenen Prozessen. Vorher
           // landete ein Slot-Ablauf in den Einstellungen, wo er gar nicht steht.
           onClick={() => {
-            if (geaendert && !confirm("Ungespeicherte Änderungen — trotzdem zurück?")) return;
+            if (geaendert && !confirm(tr("editor.zurueck_trotz_aenderungen"))) return;
             nav(herkunft);
           }}
           className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
         >
-          ← Zurück zu den Prozessen
+          {tr("editor.zurueck")}
         </button>
         <span className="font-mono text-xs text-muted">{def?.key}</span>
         <h1 className="text-sm font-semibold">{def?.name || "Prozess"}</h1>
         {nurLesen && (
           <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
             title={tr("workflow_editor.dieser_ablauf_gehoert_zu_einem_prozess_s")}>
-            nur ansehen
+            {tr("editor.nur_ansehen")}
           </span>
         )}
         {!nurLesen && (
           <span className={`rounded px-1.5 py-0.5 text-xs ${
             geaendert ? "bg-amber-500/15 text-amber-300" : "text-muted"}`}
             title={geaendert
-              ? "Die Fläche weicht von der gespeicherten Fassung ab."
+              ? tr("editor.ungespeichert_titel")
               : "Alles gesichert."}>
             {geaendert ? "● ungespeichert" : "gespeichert"}
           </span>
@@ -468,10 +468,10 @@ export default function WorkflowEditor() {
           onClick={publish}
           disabled={!version || clientErrors.length > 0}
           hidden={nurLesen}
-          title={clientErrors.length ? "Erst Fehler beheben" : "Veröffentlichen"}
+          title={clientErrors.length ? tr("editor.erst_fehler_beheben") : tr("editor.veroeffentlichen")}
           className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50"
         >
-          Veröffentlichen
+          {tr("editor.veroeffentlichen")}
         </button>
       </div>
 
@@ -481,8 +481,8 @@ export default function WorkflowEditor() {
           <div className="w-52 shrink-0 overflow-y-auto border-r border-line bg-card p-3">
             <NodePalette />
             <p className="mt-4 border-t border-line pt-3 text-[10px] leading-relaxed text-muted">
-              Verbindung ziehen: von einem Ausgang auf den Eingang des nächsten Knotens.<br />
-              Verbindung löschen: Linie überfahren und auf ✕ klicken — oder anklicken und Entf.
+              {tr("editor.hilfe_verbinden")}<br />
+              {tr("editor.hilfe_loeschen")}
             </p>
           </div>
         )}
@@ -528,7 +528,7 @@ export default function WorkflowEditor() {
                 setNodes(flow.nodes);
                 setEdges(flow.edges);
                 setSelectedId(null);
-                setMsg("Entwurf übernommen — noch nicht gespeichert.");
+                setMsg(tr("editor.entwurf_uebernommen"));
               }} />}
 
           {allErrors.length > 0 && (

@@ -58,7 +58,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
   const nav = useNavigate();
   const delProject = async () => {
     try { await api.del(`/projects/${project.id}`); nav("/"); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : "Löschen fehlgeschlagen"); }
+    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.loeschen_fehlgeschlagen")); }
   };
   const saveInherit = async (v: boolean) => {
     setInheritMembers(v);
@@ -94,7 +94,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
     }
     try {
       await api.put(`/projects/${project.id}/testenv-env`, { env });
-      setEnvText(""); await refetch(); flash("Umgebungsvariablen verschlüsselt gespeichert.");
+      setEnvText(""); await refetch(); flash(tr("project_settings.env_gespeichert"));
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
   };
   const saveToken = async () => {
@@ -131,27 +131,27 @@ export default function ProjectSettings({ project }: { project: Project }) {
       )}
       {tab === "allgemein" && (
       <Section title={tr("project_settings.allgemein")}>
-        <Check label={tr("project_settings.projekt_hat_hardware")} hint="Blendet den Hardware-Tab (Katalog, Exemplare, Beschaffung) ein."
+        <Check label={tr("project_settings.projekt_hat_hardware")} hint={tr("project_settings.blendet_den_hardware_tab_katalog_exemplare_b")}
           on={s.has_hardware} onChange={(v) => set({ has_hardware: v })} />
-        <Check label={tr("project_settings.betreutes_projekt")} hint="Ergebnisse gehen erst zur Abnahme, nicht direkt auf fertig."
+        <Check label={tr("project_settings.betreutes_projekt")} hint={tr("project_settings.ergebnisse_gehen_erst_zur_abnahme_nicht_dire")}
           on={s.managed} onChange={(v) => set({ managed: v })} />
-        <Check label="PM-Chat" hint="Chat-Tab zum Delegieren an den Projektmanager."
+        <Check label="PM-Chat" hint={tr("project_settings.chat_tab_zum_delegieren_an_den_projektmanage")}
           on={s.pm_chat_enabled} onChange={(v) => set({ pm_chat_enabled: v })} />
-        <Check label={tr("project_settings.review_gate")} hint="Ein Prüf-Agent liest den Diff, bevor abgenommen wird."
+        <Check label={tr("project_settings.review_gate")} hint={tr("project_settings.ein_pruef_agent_liest_den_diff_bevor_abgenom")}
           on={s.review_enabled} onChange={(v) => set({ review_enabled: v })} />
-        <Check label={tr("project_settings.automatisch_fortsetzen")} hint="Erschöpfte Läufe laufen weiter, bis die Obergrenze greift."
+        <Check label={tr("project_settings.automatisch_fortsetzen")} hint={tr("project_settings.erschoepfte_laeufe_laufen_weiter_bis_die_obe")}
           on={s.auto_continue} onChange={(v) => set({ auto_continue: v })} />
-        <Check label={tr("project_settings.screenshots_erlauben")} hint="Agenten dürfen die Testumgebung ansehen."
+        <Check label={tr("project_settings.screenshots_erlauben")} hint={tr("project_settings.agenten_duerfen_die_testumgebung_ansehen")}
           on={s.screenshot_enabled} onChange={(v) => set({ screenshot_enabled: v })} />
         <Field label={tr("project_settings.pruefbefehl_verify_command")}
-          hint="Muss grün sein, bevor ein Lauf abschließt — z. B. „npm run build“."
+          hint={tr("project_settings.hint_verify")}
           value={s.verify_command} onChange={(v) => set({ verify_command: v })} />
-        <Field label={tr("project_settings.arbeitsverzeichnis")} hint="Stack-Ordner auf dem Host (für Deploy)."
+        <Field label={tr("project_settings.arbeitsverzeichnis")} hint={tr("project_settings.stack_ordner_auf_dem_host_fuer_deploy")}
           value={s.workspace_dir} onChange={(v) => set({ workspace_dir: v })} />
-        <Field label={tr("project_settings.vault_moc_pfad")} hint="Obsidian-Notiz, die Agenten als Projektkontext lesen."
+        <Field label={tr("project_settings.vault_moc_pfad")} hint={tr("project_settings.obsidian_notiz_die_agenten_als_projektkontex")}
           value={s.vault_moc_path} onChange={(v) => set({ vault_moc_path: v })} />
         <Field label={tr("project_settings.zusaetzlicher_system_prompt")} textarea
-          hint="Projektregeln, die jedem Agenten vorangestellt werden."
+          hint={tr("project_settings.hint_system_prompt")}
           value={s.system_prompt} onChange={(v) => set({ system_prompt: v })} />
       </Section>
       )}
@@ -159,7 +159,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
       {tab === "allgemein" && project.parent_id != null && (
         <Section title={tr("project_settings.vererbung")}>
           <Check label={tr("project_settings.rechte_vom_uebergeordneten_projekt_ueber")}
-            hint="Aus: Mitglieder des Eltern-Projekts sehen dieses Sub-Projekt NICHT automatisch — nur direkt hinzugefügte Mitglieder. An: Owner-Rechte werden dabei auf Maintainer begrenzt."
+            hint={tr("project_settings.aus_mitglieder_des_eltern_projekts_sehen_die")}
             on={inheritMembers} onChange={saveInherit} />
         </Section>
       )}
@@ -167,15 +167,15 @@ export default function ProjectSettings({ project }: { project: Project }) {
       {tab === "allgemein" && project.my_role === "owner" && (
         <div className="rounded-lg border border-red-500/40 bg-card p-4">
           <div className="mb-2 text-sm font-medium text-red-400">{tr("project_settings.gefahrenzone")}</div>
-          <p className="mb-2 text-xs text-muted">Projekt <b>{project.name}</b> mit allen Tickets, Agenten und
-            Einstellungen unwiderruflich löschen. Zum Bestätigen den Projektschlüssel
-            <span className="font-mono"> {project.key}</span> eintippen.</p>
+          <p className="mb-2 text-xs text-muted">
+            {tr("project_settings.loeschen_warnung", { projekt: project.name, key: project.key })}
+          </p>
           <div className="flex items-center gap-2">
             <input value={delConfirm} onChange={(e) => setDelConfirm(e.target.value)} placeholder={project.key}
               className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
             <button onClick={delProject} disabled={delConfirm !== project.key}
               className="rounded bg-red-500 px-3 py-1.5 text-sm text-white disabled:opacity-40">
-              Projekt löschen</button>
+              {tr("project_settings.projekt_loeschen")}</button>
           </div>
         </div>
       )}
@@ -199,7 +199,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
                   set({ default_provider: v.slice(0, i), default_token_name: v.slice(i + 1) });
                 }}
                 className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 text-ink">
-                <option value="">— Persönlicher Default —</option>
+                <option value="">{tr("project_settings.persoenlicher_default")}</option>
                 {myTokens?.map((t) => (
                   <option key={t.id} value={`${t.provider}|${t.name}`}>
                     {PROVIDER_LABEL[t.provider] || t.provider} · {t.name}{t.is_default ? " (dein Default)" : ""}
@@ -207,7 +207,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
                 ))}
               </select>
               <div className="mt-0.5 text-xs text-muted">
-                Welche Subscription/Token dieses Projekt nutzt, wenn ein Agent keinen eigenen wählt.
+                {tr("project_settings.subscription_hinweis")}
               </div>
             </div>
             <button onClick={save} className="rounded bg-brand px-4 py-2 text-sm text-white">{tr("project_settings.zuordnung_speichern")}</button>
@@ -226,13 +226,13 @@ export default function ProjectSettings({ project }: { project: Project }) {
 
       {tab === "git" && (
       <Section title={tr("project_settings.git")}>
-        <Check label={tr("project_settings.git_aktiv")} hint="Agenten arbeiten im Repo statt nur im Ticket."
+        <Check label={tr("project_settings.git_aktiv")} hint={tr("project_settings.agenten_arbeiten_im_repo_statt_nur_im_ticket")}
           on={s.git_enabled} onChange={(v) => set({ git_enabled: v })} />
-        <Field label={tr("project_settings.repository")} hint="z. B. https://github.com/nutzer/repo.git"
+        <Field label={tr("project_settings.repository")} hint={tr("project_settings.z_b_https_github_com_nutzer_repo_git")}
           value={s.github_repo} onChange={(v) => set({ github_repo: v })} />
         <div className="grid grid-cols-2 gap-2">
           <Field label={tr("project_settings.standard_branch_basis_ziel")}
-            hint="Ticket-Branches zweigen hiervon ab und werden hierhin gemergt. Meist „main“."
+            hint={tr("project_settings.hint_branch")}
             value={s.merge_target} onChange={(v) => set({ merge_target: v })} />
           <div>
             <label className="text-xs text-muted">Git-Token
@@ -245,12 +245,12 @@ export default function ProjectSettings({ project }: { project: Project }) {
           </div>
         </div>
         <Check label={tr("project_settings.in_branches_arbeiten")}
-          hint="Jedes Ticket bekommt einen eigenen Branch/Worktree. Sub-Tickets basieren auf dem Branch ihres Sammeltickets und mergen dorthin."
+          hint={tr("project_settings.jedes_ticket_bekommt_einen_eigenen_branch_wo")}
           on={s.work_in_branches} onChange={(v) => set({ work_in_branches: v })} />
-        <Check label={tr("project_settings.nach_dem_merge_pushen")} hint="Ergebnis landet direkt im Remote."
+        <Check label={tr("project_settings.nach_dem_merge_pushen")} hint={tr("project_settings.ergebnis_landet_direkt_im_remote")}
           on={s.push_after_merge} onChange={(v) => set({ push_after_merge: v })} />
         <Check label={tr("project_settings.pull_request_statt_merge")}
-          hint="Bei Abnahme wird der Branch gepusht und ein PR geöffnet (nur GitHub). Kein Auto-Deploy."
+          hint={tr("project_settings.hint_pr")}
           on={s.use_pull_request} onChange={(v) => set({ use_pull_request: v })} />
       </Section>
       )}
@@ -284,10 +284,10 @@ export default function ProjectSettings({ project }: { project: Project }) {
           <Field label={tr("project_settings.dockerfile")} hint="Nur im Dockerfile-Modus."
             value={s.testenv_dockerfile} onChange={(v) => set({ testenv_dockerfile: v })} />
         </div>
-        <Field label="URL-Vorlage" hint="Platzhalter {host} (globales Setting) und {port} (zugeteilt)."
+        <Field label={tr("project_settings.url_vorlage")} hint={tr("project_settings.hint_url_vorlage")}
           value={s.testenv_url_template} onChange={(v) => set({ testenv_url_template: v })} />
         <Field label={tr("project_settings.vorbereitungsbefehle")} textarea
-          hint="Laufen im Worktree vor dem Bauen — eine Zeile je Befehl, #-Kommentare erlaubt. Der erste Fehlschlag bricht ab."
+          hint={tr("project_settings.laufen_im_worktree_vor_dem_bauen_eine_zeile_")}
           value={s.testenv_prestart} onChange={(v) => set({ testenv_prestart: v })} />
         <Field label={tr("project_settings.demo_login_json")} hint='Für Screenshots, z. B. {"user":"demo","pass":"demo"}.'
           value={s.testenv_demo_login} onChange={(v) => set({ testenv_demo_login: v })} />
@@ -299,7 +299,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
             className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 font-mono text-xs" />
           <div className="mt-1 flex items-center gap-2">
             <button onClick={saveEnv} className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
-              Verschlüsselt speichern</button>
+              {tr("project_settings.verschluesselt_speichern")}</button>
             <span className="text-xs text-muted">{tr("project_settings.wird_nach_dem_speichern_nicht_mehr_angez")}</span>
           </div>
         </div>
