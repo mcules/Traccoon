@@ -1,29 +1,29 @@
-"""Regelbasierte Spam-Signale aus Adressen, Kopfzeilen, Links und Anhängen — ohne Modell.
+"""Rule based spam signals from addresses, headers, links and attachments, without a model.
 
-Warum überhaupt Regeln, wo doch ein Modell da ist: die verlässlichsten Spam-Anzeiger sind
-technischer, nicht sprachlicher Natur. Ob DKIM von einer fremden Domain unterschrieben wurde
-oder ein Link woandershin führt, als sein Text behauptet, ist eine Tatsache — ein
-Sprachmodell kann sie nur nacherzählen und dabei irren. Der Text entscheidet erst dort, wo
-die Technik sauber ist (und genau das ist der Grund, warum guter Betrug heute technisch
+Why rules at all when there is a model: the most reliable indicators of spam are technical,
+not linguistic. Whether DKIM was signed by a foreign domain, or a link leads somewhere other
+than its text claims, is a fact. A language model can only retell it and may get it wrong.
+The text decides only where the technique is clean (and that is exactly why good fraud today
+is technically clean).
 sauber ankommt).
 
-Die Signale folgen dem, was Mailfilter und Phishing-Forschung als tragfähig ausweisen:
+The signals follow what mail filtering and phishing research show to be solid:
 
-* **Echtheit** — SPF/DKIM/DMARC *und deren Ausrichtung* auf die Absenderdomain. Eine gültige
-  Signatur einer fremden Domain ist der häufigste Weg, mit „DKIM pass" zu fälschen.
-* **Täuschung am Namen** — Punycode/IDN, Schriftmischung (kyrillisches „о" in einem sonst
-  lateinischen Wort), unsichtbare Zeichen, bekannte Marke als Subdomain einer fremden.
+* **Authenticity** — SPF/DKIM/DMARC *and their alignment* with the sender domain. A valid
+  signature of a foreign domain is the most common way to forge with "DKIM pass".
+* **Deception in the name** — punycode/IDN, mixed scripts (a Cyrillic "о" in an otherwise
+  Latin word), invisible characters, a known brand as the subdomain of a foreign one.
 * **Kopfzeilen-Hygiene** — fehlende/kaputte Message-ID, Datumsversatz, Zufallsadressen,
-  vorgetäuschte Antworten (`Re:` ohne Bezug), aufgesetzte Dringlichkeit (SpamAssassin-Erbe).
-* **Links** — Text gegen Ziel, IP-Adressen statt Namen, `@`-Trick, Kürzungsdienste.
-* **Anhänge** — ausführbare und skriptfähige Formate, Doppelendungen, passwortgeschützte
-  Archive (die kein Scanner öffnen kann).
+  faked replies (`Re:` without a reference), manufactured urgency (a SpamAssassin legacy).
+* **Links** — text against target, IP addresses instead of names, the `@` trick, shorteners.
+* **Attachments** — executable and scriptable formats, double extensions, password protected
+  archives (which no scanner can open).
 
-Zweite Aufgabe des Moduls: die **Merkmale** zerlegen, über die gelernt wird (`spam_learn`).
-Urteil und Lehrstoff kommen damit aus derselben Quelle und können nicht auseinanderlaufen.
+The second job of this module: split out the **features** that are learned from
+(`spam_learn`). Verdict and teaching material thus come from one source and cannot drift.
 
-Reine Funktionen, keine DB, kein I/O — dadurch ohne Aufbau testbar. Alles, was den
-Kontaktbestand braucht (bekannte Domains, Namensgleichheit), reicht der Aufrufer herein.
+Pure functions, no database, no I/O, so testable without any setup. Everything that needs the
+contact store (known domains, matching names) is handed in by the caller.
 """
 from __future__ import annotations
 
@@ -35,9 +35,9 @@ from urllib.parse import urlsplit
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 
-# Adressen bei diesen Anbietern sagen über die Domain nichts aus: an gmx.de hängen ein
-# ehrlicher Nachbar und ein Betrüger gleichermaßen. Domain-Signale (Whitelist wie Verdacht)
-# müssen hier aussetzen, sonst spricht man mit einer Regel halbe Landstriche frei.
+# Addresses at these providers say nothing about the domain: an honest neighbour and a
+# fraudster both hang on gmx.de. Domain signals (whitelist as well as suspicion) have to pause
+# here, otherwise one rule acquits half the countryside.
 FREEMAIL_DOMAINS = frozenset({
     "gmail.com", "googlemail.com", "gmx.de", "gmx.net", "gmx.at", "gmx.ch",
     "web.de", "t-online.de", "freenet.de", "yahoo.com", "yahoo.de", "outlook.com",
@@ -46,23 +46,23 @@ FREEMAIL_DOMAINS = frozenset({
     "posteo.de", "mailbox.org", "arcor.de", "online.de", "gmx.com",
 })
 
-# Endungen, die im Massenversand auffällig überrepräsentiert sind. Kein Beweis — ein
-# Zuschlag, mehr nicht.
+# Endings that are noticeably overrepresented in bulk mail. No proof, a surcharge and no more.
+# a surcharge and no more.
 _BILLIG_TLDS = frozenset({
     "xyz", "top", "click", "link", "work", "loan", "bid", "win", "date", "stream",
     "download", "racing", "party", "review", "country", "kim", "gq", "cf", "tk", "ml",
     "zip", "mov", "rest", "cam", "quest", "sbs", "cfd", "lol",
-    # Aus dem echten Spam-Bestand nachgetragen: germasale.auction, declass.business,
-    # espanodeal.lat — Endungen, die dort auftauchen und in der Post sonst nirgends.
+    # Added from the real spam store: germasale.auction, declass.business, espanodeal.lat,
+    # endings that show up there and nowhere else in the post.
     "auction", "business", "lat", "beauty", "bond", "makeup", "hair", "skin", "monster",
     "autos", "boats", "yachts", "christmas", "fun", "one", "today", "life", "live",
 })
 
-# Kürzungsdienste verbergen das Ziel — für sich genommen üblich (Newsletter nutzen sie),
-# in Verbindung mit anderen Signalen aber ein Baustein.
-# Klick-Zähler der großen Versanddienste. Sie leiten in jedem Newsletter JEDEN Link um —
-# der sichtbare Text nennt die Marke, das Ziel den Dienstleister. Das ist der Normalfall
-# und darf nicht als Täuschung gelten, sonst ist jeder Newsletter verdächtig.
+# Shorteners hide the target. On their own that is common (newsletters use them), but combined
+# with other signals it is a building block.
+# Click counters of the large sending services. They redirect EVERY link in every newsletter:
+# the visible text names the brand, the target names the service provider. That is the normal
+# case and must not count as deception, otherwise every newsletter is suspicious.
 _TRACKING_DOMAINS = frozenset({
     "klclick.com", "klclick1.com", "mjt.lu", "mjtrk.com", "sendgrid.net", "sg-links.com",
     "list-manage.com", "mailchimp.com", "awstrack.me", "mailgun.org", "sparkpostmail.com",
@@ -80,20 +80,20 @@ _KUERZER = frozenset({
     "rebrand.ly", "shorturl.at", "rb.gy", "t.ly", "s.id", "tiny.cc", "bl.ink", "lnkd.in",
 })
 
-# Dateiendungen, die ausführen oder skripten können — oder eine Anmeldemaske mitbringen.
-# `.svg` und `.html` stehen hier, weil beide inzwischen als getarnte Anmeldeseiten
-# verschickt werden; `.iso`/`.img`/`.lnk`, weil sie Windows-Herkunftsmarkierungen umgehen.
+# File extensions that can execute or script, or that bring a sign in mask along. `.svg` and
+# `.html` stand here because both are now sent as disguised sign in pages; `.iso`/`.img`/`.lnk`
+# because they bypass the Windows mark of origin.
 _GEFAEHRLICHE_ENDUNGEN = frozenset({
     "exe", "scr", "com", "pif", "cpl", "msi", "msp", "bat", "cmd", "ps1", "vbs", "vbe",
     "js", "jse", "wsf", "wsh", "hta", "jar", "reg", "lnk", "inf", "scf", "iso", "img",
     "vhd", "vhdx", "ace", "docm", "xlsm", "xlsb", "pptm", "dotm", "xlam", "chm",
     "appx", "msix", "apk",
 })
-# Angehängte Webseiten sind ein bekannter Weg für nachgebaute Anmeldemasken — aber auch
-# Google hängt seine Nutzungsbedingungen als `.html` an. Deshalb eigener, leichter Posten
-# statt gemeinsamer Topf mit ausführbaren Dateien.
+# Attached web pages are a known route for rebuilt sign in masks, but Google also attaches its
+# terms of service as `.html`. Hence an entry of its own with little weight instead of one pot
+# together with executables.
 _WEBSEITEN_ENDUNGEN = frozenset({"html", "htm", "xht", "xhtml", "shtml", "svg", "mhtml"})
-# Endungen, die harmlos aussehen — die erste Hälfte einer Doppelendung.
+# Endings that look harmless, the first half of a double extension.
 _HARMLOS_WIRKEND = frozenset({
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "jpg", "jpeg", "png",
     "gif", "rtf", "csv", "odt", "zip",
@@ -101,19 +101,19 @@ _HARMLOS_WIRKEND = frozenset({
 _ARCHIVE = frozenset({"zip", "rar", "7z", "gz", "tar", "cab", "arj"})
 _PASSWORT_WORTE = re.compile(r"\b(passwor[dt]|kennwor[dt]|entsperrcode|pin\s*:)\b", re.IGNORECASE)
 
-# Unsichtbare Zeichen: sie brechen Muster für Filter, ohne dass ein Mensch etwas sieht.
-# In einer echten Mail haben sie nichts zu suchen (Ausnahme: Emoji-Verbinder, deshalb
-# steht U+200D hier nicht drin).
+# Invisible characters: they break patterns for filters without a person seeing anything. In a
+# real mail they have no business being there (the exception is the emoji joiner, which is why
+# U+200D does not stand here).
 _UNSICHTBAR = re.compile(r"[​‌‎‏⁠-⁤﻿­]")
 
 _ZWEITEILIGE_TLD_LABEL = ("co", "com", "org", "net", "gov", "ac")
 
-# Gewichte der Einzelsignale. Summe wird gedeckelt; keine Einzelregel darf allein
-# durchentscheiden — dafür sind die Signale zu unterschiedlich verlässlich, und ein
-# Fehlalarm kostet hier mehr als ein durchgerutschter Werbebrief.
+# Weights of the individual signals. The sum is capped; no single rule may decide on its own,
+# because the signals differ too much in reliability, and a false alarm costs more here than an
+# advertisement that slips through.
 _GEWICHT = {
-    # Urteil des eigenen Mailservers — an echter Post gemessen der mit Abstand
-    # aussagekräftigste Wert, der ohnehin schon im Kopf steht.
+    # The verdict of our own mail server: measured against real post by far the most meaningful
+    # value, and it stands in the header anyway.
     "server_spam_hoch": 0.70,
     "server_spam_mittel": 0.40,
     "server_spam_flag": 0.50,
@@ -128,32 +128,32 @@ _GEWICHT = {
     "absender_bin_ich": 0.40,
     "returnpath_mismatch": 0.30,
     "replyto_fremd": 0.30,
-    # Vorgetäuschter Massenversand: das Layout einer Werbemail, aber kein einziger echter
-    # Link. Eine Mail, die sich als Newsletter ausgibt und den Abmeldeweg nur behauptet,
-    # hat ihre eigene Bauform nicht verstanden (2026-08-18: Domain-Rechnungs-Phishing mit
+    # Faked bulk mail: the layout of an advertisement, but not a single real link. A mail that
+    # presents itself as a newsletter and only claims to have an unsubscribe path has not
+    # understood its own form (2026-08-18: domain invoice phishing with
     # 0 a-Tags in aufwendigem HTML).
     "abmeldung_nur_behauptet": 0.35,
     "html_ohne_links": 0.25,
-    # Geschäftsvorgang an eine Rolle: Rechnungen, Verträge und Kundenkonten gehören zu
-    # einer Person, nicht zu einem Postfach wie info@ oder fragen@. Wer an eine öffentliche
-    # Sammeladresse „Ihre Rechnung" schreibt, kennt die Beziehung nicht, die er behauptet.
+    # A business matter sent to a role: invoices, contracts and customer accounts belong to a
+    # person, not to a mailbox like info@ or fragen@. Whoever writes "your invoice" to a public
+    # collective address does not know the relationship they claim.
     "geschaeft_an_rollenadresse": 0.35,
-    # Keine Heuristik, sondern eine Auskunft des Menschen: über diese Domain läuft
-    # nachweislich kein Vertragswesen. Entsprechend schwerer.
+    # Not a heuristic but a statement by the person: this domain demonstrably runs no contracts.
+    # Accordingly heavier.
     "geschaeft_an_domain_ohne_geschaeft": 0.50,
-    # Täuschung am Namen
+    # Deception in the name
     "absender_name_taeuscht": 0.30,
     "punycode_absender": 0.35,
     "schriftmischung": 0.40,
     "unsichtbare_zeichen": 0.30,
     "marke_als_subdomain": 0.40,
-    # Wird von außen gesetzt (braucht den Kontaktbestand), das Gewicht gehört trotzdem
-    # hierher — sonst stünde die halbe Bewertung an einer anderen Stelle.
+    # Set from outside (it needs the contact store), but the weight belongs here anyway,
+    # otherwise half the scoring would sit somewhere else.
     #
-    # Bewusst NICHT stark: an echter Post gemessen schlägt die Regel auch dann an, wenn ein
-    # Bekannter schlicht von seiner zweiten Adresse schreibt (privat statt Arbeit) — der
-    # Vault kennt nie alle Adressen eines Menschen. Als Beitrag unter anderen taugt sie,
-    # als Urteil nicht; den Rest erledigt das Gedächtnis nach der ersten Rückmeldung.
+    # Deliberately NOT strong: measured against real post the rule also fires when an
+    # acquaintance simply writes from their second address (private instead of work), because
+    # the vault never knows all addresses of a person. As one contribution among others it is
+    # useful, as a verdict it is not; the memory does the rest after the first feedback.
     "namens_kollision": 0.25,
     # Kopfzeilen
     "msgid_fehlt": 0.20,
@@ -177,13 +177,13 @@ _GEWICHT = {
     "link_punycode": 0.35,
     "link_billig_tld": 0.15,
     "link_kuerzungsdienst": 0.10,
-    # Umleitung in einem Newsletter über einen unbekannten Dienst: erklärbar,
-    # aber nicht selbstverständlich — Verdachtspunkt, kein Urteil.
+    # A redirect in a newsletter through an unknown service: explicable, but not a matter of
+    # course. A point of suspicion, not a verdict.
     "link_text_umgeleitet": 0.10,
-    # Anhänge
+    # Attachments
     "anhang_ausfuehrbar": 0.50,
-    # Eine angehängte Webseite ist ein bekannter Weg für Anmeldemasken — aber auch
-    # Google verschickt seine Nutzungsbedingungen als .html. Eigener, leichter Posten.
+    # An attached web page is a known route for sign in masks, but Google also sends its terms
+    # of service as .html. An entry of its own, with little weight.
     "anhang_webseite": 0.15,
     "anhang_doppelendung": 0.45,
     "anhang_archiv_mit_passwort": 0.35,
@@ -193,8 +193,8 @@ _MAX_SCORE = 1.0
 
 
 def ist_meine(adresse: str, meine: frozenset[str]) -> bool:
-    """Gehört die Adresse mir? Einträge dürfen `*@meine-domain.de` lauten — wer eine ganze
-    Domain empfängt (Catch-all mit Wegwerf-Aliasen), kann seine Adressen nicht aufzählen."""
+    """Does the address belong to me? Entries may read `*@my-domain.de`: whoever receives a
+    whole domain (catch all with throwaway aliases) cannot enumerate their addresses."""
     adresse = (adresse or "").lower()
     if adresse in meine:
         return True
@@ -204,23 +204,23 @@ def ist_meine(adresse: str, meine: frozenset[str]) -> bool:
 
 @dataclass
 class RuleResult:
-    """Urteil der Regeln über eine Mail."""
+    """The verdict of the rules about one mail."""
 
     score: float = 0.0
-    # Menschenlesbare Begründungen — sie stehen später wörtlich in der Telegram-Karte.
+    # Human readable reasons: they later stand verbatim in the chat card.
     reasons: list[str] = field(default_factory=list)
-    # Signalschlüssel (stabil, maschinenlesbar) für Lernen und Auswertung.
+    # Signal keys (stable, machine readable) for learning and evaluation.
     signals: list[str] = field(default_factory=list)
     sender_email: str = ""
     sender_domain: str = ""
     sender_name: str = ""
     recipients: list[str] = field(default_factory=list)
-    # Bestellter Massenversand (gültiger Abmeldeweg, Technik sauber): eigene Kategorie.
-    # Ein Newsletter ist KEIN Spam — wer das gleichsetzt, verliert Bestellbestätigungen.
+    # Requested bulk mail (a valid unsubscribe path, clean technique) is a category of its own.
+    # A newsletter is NOT spam, and whoever equates the two loses order confirmations.
     ist_newsletter: bool = False
 
     def treffer(self, signal: str, text: str) -> None:
-        """Ein Signal vermerken (einmalig) und sein Gewicht aufschlagen."""
+        """Record a signal (once) and add its weight."""
         if signal in self.signals:
             return
         self.signals.append(signal)
@@ -229,8 +229,8 @@ class RuleResult:
 
 
 def _addr_list(value) -> list[tuple[str, str]]:
-    """Payload-Adressfeld → [(name, adresse)]. Der Watcher liefert [{'name','addr'}];
-    ältere Payloads (und Handeingaben) auch mal einen rohen String."""
+    """An address field of the payload turned into [(name, address)]. The watcher delivers
+    older payloads (and hand written input) sometimes a raw string."""
     out: list[tuple[str, str]] = []
     if isinstance(value, list):
         for item in value:
@@ -251,7 +251,7 @@ def _domain(email: str) -> str:
 
 
 def _header(headers: dict, name: str) -> str:
-    """Header-Wert als ein String (Mehrfach-Header werden verbunden)."""
+    """A header value as one string (repeated headers are joined)."""
     v = (headers or {}).get(name)
     if isinstance(v, list):
         return " ".join(str(x) for x in v)
@@ -259,9 +259,9 @@ def _header(headers: dict, name: str) -> str:
 
 
 def _wurzel(domain: str) -> str:
-    """`bounce.shop.de` → `shop.de`. Grobe Näherung ohne Public-Suffix-Liste: sie würde
-    eine gepflegte Datei brauchen, und für den Vergleich zweier Domains derselben Mail
-    reicht die Näherung — im Zweifel entsteht ein Verdachtspunkt, kein Urteil."""
+    """`bounce.shop.de` becomes `shop.de`. A rough approximation without a public suffix list:
+    that would need a maintained file, and for comparing two domains of the same mail the
+    approximation is enough. In doubt it yields a point of suspicion, not a verdict."""
     teile = (domain or "").lower().strip(".").split(".")
     if len(teile) <= 2:
         return ".".join(teile)
@@ -270,10 +270,10 @@ def _wurzel(domain: str) -> str:
     return ".".join(teile[-2:])
 
 
-# --- Schrift und Sichtbarkeit -------------------------------------------------------
+# --- Script and visibility ----------------------------------------------------------
 
 def _schriften(text: str) -> set[str]:
-    """Welche Schriftsysteme kommen in diesem Text vor (nur Buchstaben zählen)."""
+    """Which writing systems appear in this text (letters only)."""
     out: set[str] = set()
     for zeichen in text or "":
         if not zeichen.isalpha():
@@ -290,10 +290,10 @@ def _schriften(text: str) -> set[str]:
 
 
 def _mischt_schriften(text: str) -> bool:
-    """Mischt EIN Wort mehrere Schriftsysteme? Das ist die Homoglyph-Masche: ein
-    kyrillisches „о" in einem sonst lateinischen Namen sieht identisch aus, ist aber ein
-    anderes Zeichen. Wortweise geprüft — eine Mail darf natürlich griechische Zitate
-    neben deutschem Text enthalten, ein einzelnes Wort aber nicht beides mischen."""
+    """Does ONE word mix several writing systems? That is the homoglyph trick: a Cyrillic "о"
+    in an otherwise Latin name looks identical but is a different character. Checked word by
+    word, because a mail may of course contain Greek quotations next to German text, while a
+    single word must not mix the two."""
     for wort in re.split(r"[\s./@_-]+", text or ""):
         if len(wort) > 1 and len(_schriften(wort)) > 1:
             return True
@@ -304,15 +304,15 @@ def _hat_unsichtbare(text: str) -> bool:
     return bool(_UNSICHTBAR.search(text or ""))
 
 
-# --- Echtheitsprüfung ----------------------------------------------------------------
+# --- Authenticity ---------------------------------------------------------------------
 
 def _auth_ergebnisse(headers: dict) -> dict[str, str]:
-    """SPF/DKIM/DMARC-Ergebnis aus `Authentication-Results` (+ `Received-SPF`).
+    """SPF/DKIM/DMARC result from `Authentication-Results` (plus `Received-SPF`).
 
-    Der Header ist Fließtext (`spf=pass smtp.mailfrom=…; dkim=fail …`), deshalb wird
-    gesucht, nicht geparst. Nur der eigene Mailserver darf diesen Header schreiben —
-    fremde Kopien sind wertlos, aber auch harmlos, weil sie hier nur zu 'pass' führen
-    könnten, was wir nie als Freispruch verwenden.
+    The header is running text (`spf=pass smtp.mailfrom=…; dkim=fail …`), so it is searched,
+    not parsed. Only our own mail server may write this header; foreign copies are worthless
+    but also harmless, because they could only lead to 'pass' here, which we never use as an
+    acquittal.
     """
     roh = " ".join([
         _header(headers, "Authentication-Results"),
@@ -333,11 +333,11 @@ def _auth_ergebnisse(headers: dict) -> dict[str, str]:
 
 
 def _signaturdomains(headers: dict) -> list[str]:
-    """Domains, die diese Mail per DKIM unterschrieben haben (`d=`).
+    """Domains that signed this mail with DKIM (`d=`).
 
-    Der Watcher zieht sie aus den `DKIM-Signature`-Kopfzeilen; steht dort nichts, wird
-    ersatzweise `header.d=` aus `Authentication-Results` gelesen (das schreiben Google
-    und Microsoft mit).
+    The watcher pulls them from the `DKIM-Signature` headers; when nothing is there,
+    `header.d=` from `Authentication-Results` is read instead (Google and Microsoft write it
+    along).
     """
     roh = (headers or {}).get("DKIM-Domains")
     if isinstance(roh, list) and roh:
@@ -351,13 +351,13 @@ def _signaturdomains(headers: dict) -> list[str]:
 
 
 def _pruefe_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
-    """Was der eigene Mailserver schon entschieden hat.
+    """What our own mail server has already decided.
 
-    An echter Post gemessen ist das der mit Abstand aussagekräftigste Wert im ganzen Kopf —
-    und er steht ohnehin da. Ihn zu ignorieren und stattdessen eigene Heuristiken zu
-    bauen, hieße, eine fertige Bewertung wegzuwerfen und schlechter nachzubauen.
+    Measured against real post this is by far the most meaningful value in the whole header,
+    and it is there anyway. Ignoring it and building heuristics of our own would mean throwing
+    away a finished assessment and rebuilding it worse.
 
-    `X-Spam-Level` ist eine Sternenkette: ein Stern je Punkt der spamd-Bewertung.
+    `X-Spam-Level` is a chain of stars: one star per point of the spamd score.
     """
     sterne = len(re.match(r"^\**", _header(headers, "X-Spam-Level").strip()).group(0))
     punkte = None
@@ -379,7 +379,7 @@ def _pruefe_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
     status = _header(headers, "X-Spam-Status").strip().lower()
     if flag.startswith("yes") or status.startswith("yes"):
         res.treffer("server_spam_flag", "Mailserver hat die Mail selbst als Spam markiert")
-    # Manche Server schreiben ihr Urteil in den Betreff statt in eine Kopfzeile.
+    # Some servers write their verdict into the subject instead of into a header.
     if re.search(r"^\s*(\*{3}\s*)?spam[\s*]*[:\]]|\*{3}\s*spam\s*\*{3}|\[spam\]",
                  str(payload.get("subject") or ""), re.IGNORECASE):
         res.treffer("betreff_spam_markiert", "Betreff ist vom Mailserver als Spam markiert")
@@ -388,7 +388,7 @@ def _pruefe_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
 def _pruefe_echtheit(res: RuleResult, headers: dict, payload: dict, *,
                      ist_liste: bool, meine_domains: frozenset[str],
                      meine_adressen: frozenset[str]) -> None:
-    """SPF/DKIM/DMARC, Ausrichtung, Rückweg, Antwortadresse."""
+    """SPF/DKIM/DMARC, alignment, return path, reply address."""
     auth = _auth_ergebnisse(headers)
     if auth.get("dmarc") in ("fail", "permerror"):
         res.treffer("dmarc_fail", "DMARC fehlgeschlagen")
@@ -397,21 +397,21 @@ def _pruefe_echtheit(res: RuleResult, headers: dict, payload: dict, *,
     if auth.get("dkim") in ("fail", "permerror"):
         res.treffer("dkim_fail", "DKIM fehlgeschlagen")
     if not auth and headers:
-        # An echter Post gemessen ein starkes Signal: ehrliche Absender kommen über
-        # Server, die prüfen und das Ergebnis hinschreiben. Fehlt der Vermerk ganz,
-        # ist die Nachricht an dieser Prüfung vorbeigekommen.
+        # Measured against real post a strong signal: honest senders come through servers that
+        # check and write the result down. When the note is missing entirely, the message got
+        # past this check.
         res.treffer("auth_fehlt", "keine Prüfergebnisse (SPF/DKIM/DMARC) im Kopf")
     elif auth.get("dkim") == "none" and not ist_liste:
-        # Praktisch jeder ernsthafte Versender signiert heute. Keine Signatur heißt nicht
-        # „gefälscht", aber es unterscheidet erstaunlich gut.
+        # Practically every serious sender signs today. No signature does not mean "forged",
+        # but it separates surprisingly well.
         res.treffer("dkim_fehlt", "gar nicht signiert (kein DKIM)")
 
-    # Ausrichtung: eine gültige Signatur sagt nur, dass IRGENDWER unterschrieben hat.
-    # Erst der Abgleich mit der Absenderdomain macht daraus eine Aussage über DIESEN
-    # Absender. ABER: genau diese Prüfung ist DMARC. Besteht DMARC, IST etwas ausgerichtet
-    # (SPF oder DKIM) — dann hier stillhalten. Sonst schlägt die Regel bei jedem
-    # Mailinglisten-Beitrag und jedem Google-Workspace-Absender an, die beide
-    # regulär mit fremder Domain gegensignieren.
+    # Alignment: a valid signature only says that SOMEBODY signed. Only the comparison with the
+    # sender domain turns that into a statement about THIS sender. BUT: exactly that check is
+    # DMARC. If DMARC passes, something IS aligned (SPF or DKIM), and then this rule stays
+    # quiet. Otherwise it fires on every mailing list post and every Google Workspace sender,
+    # both of which regularly countersign with a foreign domain.
+    # both of which regularly countersign with a foreign domain.
     domains = _signaturdomains(headers)
     if (domains and res.sender_domain and auth.get("dkim") == "pass"
             and auth.get("dmarc") != "pass" and not ist_liste):
@@ -419,38 +419,38 @@ def _pruefe_echtheit(res: RuleResult, headers: dict, payload: dict, *,
             res.treffer("dkim_nicht_ausgerichtet",
                         f"DKIM unterschrieben von {domains[0]}, nicht von {res.sender_domain}")
 
-    # Die Nachricht gibt eine MEINER Adressen als Absender an, ohne bestandene Prüfung:
-    # der älteste Trick überhaupt („von dir an dich"). Eigene Post, die wirklich von hier
-    # kommt, besteht die Prüfung — deshalb nur bei fehlender oder gescheiterter.
+    # The message names one of MY addresses as the sender without passing a check: the oldest
+    # trick there is ("from you to you"). Own post that really comes from here passes the
+    # check, which is why this only applies when the check is missing or failed.
     if (res.sender_email and ist_meine(res.sender_email, meine_adressen)
             and auth.get("spf") != "pass" and auth.get("dkim") != "pass"):
         res.treffer("absender_bin_ich",
                     "gibt meine eigene Adresse als Absender an, ohne bestandene Prüfung")
 
-    # Roh lesen statt über die Adress-Regex: die kennt `=` nicht als Adresszeichen und
-    # würde `SRS0=…=absender.tld=name@meine-domain.de` genau an der Stelle abschneiden,
-    # an der die gesuchte Ursprungsdomain steht.
+    # Read raw instead of through the address regex: that one does not know `=` as an address
+    # character and would cut `SRS0=…=sender.tld=name@my-domain.de` exactly where the origin
+    # domain we are looking for stands.
     rp_roh = _header(headers, "Return-Path").strip().strip("<>").strip()
     rp_domain = _domain(rp_roh)
-    # Beim Weiterleiten schreibt der eigene Server den Rückweg auf sich selbst um (SRS:
-    # `SRS0=…=absender.tld=name@meine-domain.de`). Dann steht dort IMMER die eigene
-    # Domain, und ein Vergleich mit dem Absender liefert bei jeder einzelnen Mail einen
-    # Treffer — ein Signal, das immer feuert, ist keins.
+    # When forwarding, our own server rewrites the return path onto itself (SRS:
+    # `SRS0=…=sender.tld=name@my-domain.de`). Then our own domain ALWAYS stands there, and a
+    # comparison with the sender yields a hit on every single mail. A signal that always fires
+    # is no signal.
     if rp_domain and _wurzel(rp_domain) in meine_domains:
-        # Weitergeleitete Post: der eigene Server hat den Rückweg auf sich selbst
-        # umgeschrieben (SRS). Die ursprüngliche Domain steckt zwar in der Adresse, taugt
-        # aber nicht als Signal — an echter Post gemessen ist es die Bounce-Domain des
-        # Versanddienstes (`bounces+…-kickstarter@…`), die bei jedem seriösen Newsletter
-        # vom Absender abweicht. Hier ist schlicht nichts zu holen.
+        # Forwarded post: our own server rewrote the return path onto itself (SRS). The
+        # original domain is in the address, but it is useless as a signal: measured against
+        # real post it is the bounce domain of the sending service
+        # (`bounces+…-kickstarter@…`), which differs from the sender in every reputable
+        # newsletter. There is simply nothing to gain here.
         rp_domain = ""
 
     if rp_domain and res.sender_domain and _wurzel(rp_domain) != _wurzel(res.sender_domain):
-        # Getrennte Bounce-Domains sind bei großen Versendern üblich (`bounce.shop.de` zu
-        # `shop.de`), deshalb zählt nur ein Unterschied jenseits der gemeinsamen Wurzel.
+        # Separate bounce domains are common with large senders (`bounce.shop.de` for
+        # `shop.de`), so only a difference beyond the shared root counts.
         res.treffer("returnpath_mismatch",
                     f"Rückweg {rp_domain} ≠ Absender {res.sender_domain}")
 
-    # Mailinglisten und Shops leiten Antworten regulär woandershin — dort sagt eine
+    # Mailing lists and shops regularly direct replies elsewhere, so a
     # abweichende Antwortadresse nichts.
     reply_to = _addr_list(payload.get("reply_to")) or _addr_list(_header(headers, "Reply-To"))
     if reply_to and res.sender_domain and not ist_liste:
@@ -464,7 +464,7 @@ def _pruefe_echtheit(res: RuleResult, headers: dict, payload: dict, *,
 
 
 def _pruefe_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) -> None:
-    """Punycode, Schriftmischung, unsichtbare Zeichen, Marke als fremde Subdomain."""
+    """Punycode, mixed scripts, invisible characters, a brand as a foreign subdomain."""
     if any(label.startswith("xn--") for label in res.sender_domain.split(".")):
         res.treffer("punycode_absender",
                     f"Absender-Domain ist umgeschrieben (Punycode): {res.sender_domain}")
@@ -474,9 +474,9 @@ def _pruefe_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) 
     if _hat_unsichtbare(res.sender_name) or _hat_unsichtbare(res.sender_email):
         res.treffer("unsichtbare_zeichen", "unsichtbare Zeichen im Absender")
 
-    # Anzeigename gibt eine Adresse/Marke vor, die Absenderadresse hält sie nicht:
-    # „DHL Zustellung <noreply@dhl-tracking-de.xyz>". Nur prüfen, wenn der Name selbst
-    # eine Adresse oder Domain nennt — freie Namen ("Sparkasse") sind zu unscharf.
+    # The display name claims an address or brand the sender address does not keep: "DHL
+    # delivery <noreply@dhl-tracking-de.xyz>". Only checked when the name itself names an
+    # address or a domain: free names ("Sparkasse") are too vague.
     name_domains = {_domain(a) for _, a in _addr_list(res.sender_name)}
     name_domains |= {d.lower() for d in re.findall(r"\b([\w-]+\.[a-z]{2,})\b", res.sender_name or "")}
     name_domains = {d for d in name_domains if d}
@@ -486,9 +486,9 @@ def _pruefe_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) 
                         f"Anzeigename nennt {sorted(name_domains)[0]}, "
                         f"gesendet von {res.sender_domain}")
 
-    # Eine mir bekannte Domain steckt IM Absender, ist aber nicht die Absenderdomain:
-    # `sparkasse.de.sicherheit-pruefung.top` oder `sparkasse-de.top`. Das ist der Trick,
-    # der eine bekannte Marke in die sichtbare Adresse holt, ohne sie zu besitzen.
+    # A domain known to me is IN the sender but is not the sender domain:
+    # `sparkasse.de.sicherheit-pruefung.top` or `sparkasse-de.top`. That is the trick which
+    # brings a known brand into the visible address without owning it.
     if res.sender_domain and _wurzel(res.sender_domain) not in bekannte_domains:
         for bekannt in bekannte_domains:
             if bekannt in FREEMAIL_DOMAINS or len(bekannt) < 6:
@@ -500,30 +500,30 @@ def _pruefe_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) 
 
 
 def _pruefe_kopfhygiene(res: RuleResult, headers: dict, payload: dict) -> None:
-    """Message-ID, Datum, Zufallsadressen, Betreffs-Tricks, vorgetäuschte Antworten."""
+    """Message id, date, random addresses, subject tricks, faked replies."""
     msgid = str(payload.get("message_id") or "").strip()
     if not msgid:
         res.treffer("msgid_fehlt", "keine Message-ID (normale Mailprogramme setzen immer eine)")
     elif msgid.count("@") != 1 or not re.match(r"^<?[^<>@\s]+@[^<>@\s]+>?$", msgid):
         res.treffer("msgid_kaputt", "Message-ID ist nicht wohlgeformt")
 
-    # Datumsversatz: Versandwerkzeuge setzen gern ein Datum in der Zukunft, damit die Mail
-    # im Postfach oben steht.
+    # Date offset: sending tools like to set a date in the future so the mail stands at the top
+    # of the mailbox.
     gesendet, empfangen = _zeit(payload.get("date")), _zeit(payload.get("timestamp"))
     if gesendet and empfangen:
         versatz = (gesendet - empfangen).total_seconds()
-        # Nur die Zukunft zählt: ein vordatierter Kopf ist ein Trick, damit die Nachricht
-        # oben im Postfach steht. Ein altes Datum hat dagegen jede nachgelieferte,
-        # weitergeleitete oder aus dem Archiv zugestellte Mail — an echter Post gemessen
-        # war das reines Rauschen.
+        # Only the future counts: a post dated header is a trick to put the message at the top
+        # of the mailbox. An old date on the other hand belongs to every mail delivered late,
+        # forwarded or restored from an archive, and measured against real post that was pure
+        # noise.
         if versatz > 86400:
             res.treffer("datum_versatz", "Sendedatum liegt in der Zukunft")
 
     lokal = res.sender_email.split("@", 1)[0] if "@" in res.sender_email else ""
     if re.search(r"\d{11,}", lokal) or re.search(r"[0-9a-f]{16,}", lokal) or re.match(r"^\d{8,}$", lokal):
         res.treffer("absender_zufaellig", "Absenderadresse sieht maschinell erzeugt aus")
-    # `yffebnj@…` — gewürfelte Buchstaben ohne einen einzigen Vokal. Kein Mensch vergibt
-    # so eine Adresse, aber ein Skript, das für jede Sendung eine neue braucht.
+    # `yffebnj@…`, thrown together letters without a single vowel. No person hands out such an
+    # address, but a script that needs a new one for every send does.
     if re.fullmatch(r"[b-df-hj-np-tv-xz]{6,}", lokal, re.IGNORECASE):
         res.treffer("absender_vokallos", "Absenderadresse ohne jeden Vokal (gewürfelt)")
 
@@ -533,13 +533,13 @@ def _pruefe_kopfhygiene(res: RuleResult, headers: dict, payload: dict) -> None:
         res.treffer("betreff_geschrien", "Betreff komplett in Großbuchstaben")
     if re.search(r"!{3,}", betreff):
         res.treffer("betreff_geschrien", "Betreff mit mehrfachen Ausrufezeichen")
-    # G.e.w.i.n.n / G-e-w-i-n-n: Buchstaben werden gestreckt, um Wortfilter zu umgehen.
+    # G.e.w.i.n.n / G-e-w-i-n-n: letters are stretched to get past word filters.
     if re.search(r"\b\w(?:[.\-_*]\w){4,}\b", betreff):
         res.treffer("betreff_gestreckt", "Betreff mit gestreckten Wörtern (Filter-Umgehung)")
     if _hat_unsichtbare(betreff):
         res.treffer("unsichtbare_zeichen", "unsichtbare Zeichen im Betreff")
 
-    # „Re:" ohne jeden Bezug ist eine vorgetäuschte Antwort auf ein Gespräch, das es nie gab.
+    # "Re:" without any reference is a faked reply to a conversation that never happened.
     if re.match(r"^\s*(re|aw|antw|fwd?|wg)\s*:", betreff, re.IGNORECASE):
         if not _header(headers, "In-Reply-To").strip() and not _header(headers, "References").strip():
             res.treffer("fake_antwort", "„Re:“ ohne Bezug auf eine frühere Nachricht")
@@ -574,11 +574,11 @@ def _wirt(href: str) -> str:
 
 def _pruefe_links(res: RuleResult, payload: dict, *, ist_liste: bool,
                   bekannte_domains: frozenset[str]) -> None:
-    """Linkziele gegen ihren sichtbaren Text und gegen sich selbst prüfen.
+    """Check link targets against their visible text and against themselves.
 
-    Der Unterschied zwischen Text und Ziel ist der verlässlichste Phishing-Anzeiger
-    überhaupt — er kommt in ehrlicher Post praktisch nicht vor, denn wer „paypal.de“
-    schreibt und woandershin verlinkt, tut das nicht versehentlich.
+    The difference between text and target is the most reliable indicator of phishing there is:
+    it practically never occurs in honest post, because whoever writes "paypal.de" and links
+    somewhere else does not do that by accident.
     """
     links = payload.get("links")
     if not isinstance(links, list):
@@ -596,7 +596,7 @@ def _pruefe_links(res: RuleResult, payload: dict, *, ist_liste: bool,
             res.treffer("link_ip_adresse", f"Link führt auf eine nackte IP ({wirt})")
         if wirt.startswith("xn--") or ".xn--" in wirt:
             res.treffer("link_punycode", f"Linkziel ist umgeschrieben (Punycode): {wirt}")
-        # `https://paypal.de@boese.tld/` — alles vor dem @ ist Zierde, das Ziel ist boese.tld.
+        # `https://paypal.de@boese.tld/`: everything before the @ is decoration, the target is boese.tld.
         vor_wirt = href.split("://", 1)[-1].split("/", 1)[0]
         if "@" in vor_wirt:
             res.treffer("link_at_trick",
@@ -607,24 +607,24 @@ def _pruefe_links(res: RuleResult, payload: dict, *, ist_liste: bool,
         if tld in _BILLIG_TLDS:
             res.treffer("link_billig_tld", f"Linkziel auf .{tld}")
 
-        # Der sichtbare Text nennt selbst eine Domain — führt der Link woandershin?
+        # The visible text names a domain itself: does the link lead somewhere else?
         gezeigt = _gezeigte_domain(text)
         if not gezeigt or _wurzel(gezeigt) == _wurzel(wirt) or _marke(gezeigt) == _marke(wirt):
-            # Der Markenvergleich fängt den ehrlichen Fall ab: „obi.de“ verlinkt nach
-            # `email.obi.com` — verschiedene Domains, dieselbe Firma. Ohne ihn schlägt
-            # die Regel bei jedem Versandhaus an, das eine eigene Mail-Domain betreibt.
+            # The brand comparison catches the honest case: "obi.de" links to `email.obi.com`,
+            # different domains, same company. Without it the rule fires on every mail order
+            # house that runs a mail domain of its own.
             continue
         if _wurzel(wirt) == _wurzel(res.sender_domain):
-            # `emails.kickstarter.com` bei Absender `kickstarter.com`: derselbe Hof.
+            # `emails.kickstarter.com` with sender `kickstarter.com`: the same yard.
             continue
         if _wurzel(wirt) in _TRACKING_DOMAINS or _wurzel(wirt) in bekannte_domains:
-            # Klick-Zähler (Klaviyo, Mailjet, Sendgrid …) leiten in JEDEM Newsletter jeden
-            # Link um — das ist der Normalfall, nicht die Ausnahme. Und ein Ziel, mit dem
+            # Click counters (Klaviyo, Mailjet, Sendgrid …) redirect every link in EVERY
+            # newsletter: that is the normal case, not the exception. And a target that
             # ich ohnehin zu tun habe, verbirgt nichts.
             continue
         if ist_liste:
-            # In einer Liste bleibt die Umleitung erklärbar, auch wenn der Dienst
-            # unbekannt ist — als Verdachtspunkt reicht sie, als Urteil nicht.
+            # Inside a list the redirect stays explicable even when the service is unknown:
+            # enough for a point of suspicion, not for a verdict.
             res.treffer("link_text_umgeleitet",
                         f"Link zeigt „{gezeigt}“, führt über {wirt}")
         else:
@@ -633,21 +633,21 @@ def _pruefe_links(res: RuleResult, payload: dict, *, ist_liste: bool,
 
 
 def _marke(domain: str) -> str:
-    """Das Markenlabel einer Domain: `email.obi.com` → `obi`, `obi.de` → `obi`.
+    """The brand label of a domain: `email.obi.com` becomes `obi`, `obi.de` becomes `obi`.
 
-    Nur zum Entschärfen gedacht — zwei Domains derselben Firma unter verschiedenen
-    Endungen sollen nicht als Täuschung gelten. Als Verdachtsgrund taugt die Gleichheit
-    nicht, denn `obi-versand.top` trüge dieselbe Marke.
+    Meant only for defusing: two domains of the same company under different endings should
+    not count as deception. As a reason for suspicion the equality is useless, because
+    `obi-versand.top` would carry the same brand.
     """
     wurzel = _wurzel(domain)
     return wurzel.split(".", 1)[0] if wurzel else ""
 
 
 def _gezeigte_domain(text: str) -> str:
-    """Die Domain, die der sichtbare Linktext behauptet — oder ''.
+    """The domain the visible link text claims, or ''.
 
-    Nur wenn der Text WIE eine Adresse aussieht. „Hier klicken“ behauptet nichts, und
-    ein Fließtext mit einem Punkt darin ist keine Domainangabe.
+    Only when the text looks LIKE an address. "Click here" claims nothing, and running text
+    with a dot in it is not a statement of a domain.
     """
     text = (text or "").strip().strip("<>()[]").rstrip(".,;:")
     if not text or " " in text:
@@ -659,17 +659,17 @@ def _gezeigte_domain(text: str) -> str:
     return ""
 
 
-# --- Anhänge -------------------------------------------------------------------------
+# --- Attachments ---------------------------------------------------------------------
 
-# Öffentliche Sammelpostfächer. Bewusst OHNE `vorstand`, `buchhaltung`, `rechnung`,
-# `bestellung` — die bekommen sehr wohl Verträge.
+# Public collective mailboxes. Deliberately WITHOUT `vorstand`, `buchhaltung`, `rechnung`,
+# `bestellung`: those really do receive contracts.
 _ROLLEN_LOCALPARTS = frozenset({
     "info", "fragen", "kontakt", "contact", "hallo", "hello", "moin", "mail", "email",
     "office", "team", "service", "support", "help", "hilfe", "webmaster", "postmaster",
     "abuse", "noc", "presse", "press", "media", "marketing", "verein", "vorstandschaft",
     "list", "liste", "lists", "newsletter", "no-reply", "noreply", "mailer",
 })
-# Wörter, die einen persönlichen Geschäftsvorgang behaupten.
+# Words that claim a personal business matter.
 _GESCHAEFT_RE = re.compile(
     r"\b(rechnung|zahlung(sinformation)?|mahnung|vertrag|kündigung|kuendigung|abo|"
     r"abonnement|kundenkonto|kundennummer|lastschrift|gebühr|gebuehr|verlängerung|"
@@ -680,25 +680,25 @@ _GESCHAEFT_RE = re.compile(
 def _pruefe_rollenadresse(res: RuleResult, subject: str, body: str, *,
                           meine_adressen: frozenset[str],
                           geschaeftsfreie_domains: frozenset[str] = frozenset()) -> None:
-    """Geschäftsvorgang an eine Adresse, die keine Verträge hat.
+    """A business matter to an address that has no contracts.
 
-    Eine Rechnung, ein Vertrag, ein Kundenkonto — das hat immer einen Vertragspartner.
-    Zwei Stufen, die sich in ihrer Verlässlichkeit unterscheiden:
+    An invoice, a contract, a customer account: there is always a contracting party. Two
+    levels that differ in their reliability:
 
-    * **Sammelpostfach** (`info@`, `fragen@` …): Anlaufstellen für Fremde, keine
-      Vertragsadressen. Nur mittleres Gewicht — kleine Vereine führen ihr halbes Leben
-      über info@, und `buchhaltung@` ist ausdrücklich ausgenommen.
-    * **Geschäftsfreie Domain**: der Mensch hat hinterlegt, dass über diese Domain
-      überhaupt kein Vertragswesen läuft (AppSetting `spam_keine_geschaeftsdomains`).
-      Dann zählt jede Adresse darunter, nicht nur die generischen — bei
-      `mitmachverein.de` etwa gibt es weder Vorstand noch Buchhaltung, Bestellungen
-      laufen woanders. Das ist keine Vermutung, sondern eine Auskunft, und wiegt schwerer.
+    * **Collective mailbox** (`info@`, `fragen@` …): points of contact for strangers, not
+      contract addresses. Only medium weight, because small clubs run half their life through
+      info@, and `buchhaltung@` is explicitly excluded.
+    * **Domain without business**: the person recorded that no contracts run over this domain
+      at all (AppSetting `spam_keine_geschaeftsdomains`). Then every address under it counts,
+      not only the generic ones: at `mitmachverein.de` for instance there is neither a board
+      nor an accounting department, and orders run elsewhere. That is not a guess but a
+      statement, and it weighs more.
     """
     if not _GESCHAEFT_RE.search(f"{subject}\n{body[:2000]}"):
         return
-    # Bewusst ohne Prüfung, ob es MEINE Adresse ist: Sammelpostfächer werden oft
-    # weitergeleitet (`fragen@` einer Community landet im privaten Fach). Wer die Mail
-    # im Postfach hat, den betrifft sie — und die Rolle bleibt dieselbe.
+    # Deliberately without checking whether it is MY address: collective mailboxes are often
+    # forwarded (the `fragen@` of a community lands in a private box). Whoever has the mail in
+    # their box is concerned by it, and the role stays the same.
     for adresse in res.recipients:
         local, _, domain = adresse.lower().partition("@")
         local = local.split("+", 1)[0]
@@ -715,25 +715,25 @@ def _pruefe_rollenadresse(res: RuleResult, subject: str, body: str, *,
 
 
 def _pruefe_fassade(res: RuleResult, payload: dict, *, hat_unsubscribe: bool) -> None:
-    """Werbe-Layout ohne einen einzigen echten Link.
+    """Advertising layout without a single real link.
 
-    Massenversand lebt von Links: Angebot, Impressum, Abmeldung. Eine Mail mit aufwendigem
-    HTML, aber ohne `<a href>`, hat die Optik nachgebaut und die Funktion weggelassen —
-    der eigentliche Weg zum Opfer läuft dann über Antwort oder Telefon.
+    Bulk mail lives on links: the offer, the imprint, the unsubscribe. A mail with elaborate
+    HTML but without an `<a href>` has rebuilt the look and left out the function, and the real
+    path to the victim then runs through a reply or a phone call.
 
-    **Nur als Verstärker, nie allein.** An echter Post gemessen (2026-08-18) schlug das
-    Muster bei Google Play, OpenAI und eQSL an: große Versender melden per One-Click im
-    Kopf ab (RFC 8058) und brauchen im Rumpf keinen Link. Wer seine Echtheitsprüfungen
-    besteht, darf sein HTML bauen, wie er will — verdächtig wird die Fassade erst, wenn
-    die Technik ohnehin nicht stimmt.
+    **Only as an amplifier, never alone.** Measured against real post (2026-08-18) the pattern
+    fired on Google Play, OpenAI and eQSL: large senders unsubscribe by one click in the header
+    (RFC 8058) and need no link in the body. Whoever passes their authenticity checks may build
+    their HTML as they like; the facade only becomes suspicious once the technique is off
+    anyway.
     """
     if not (_FAELSCHUNG & set(res.signals)):
         return
     if "links" not in payload:
-        return                     # niemand hat nachgesehen — Schweigen ist keine Aussage
+        return                     # nobody looked, and silence is not a statement
     links = payload.get("links")
     if not isinstance(links, list) or links:
-        return                     # es gibt Links → nichts zu sagen
+        return                     # there are links, so nothing to say
     roh = str(payload.get("body_html") or payload.get("html") or "")
     hat_html = bool(roh) or "<table" in str(payload.get("body_text") or "").lower()
     if hat_unsubscribe:
@@ -759,12 +759,12 @@ def _pruefe_anhaenge(res: RuleResult, payload: dict, body: str) -> None:
             res.treffer("anhang_webseite", f"Anhang „{name[:60]}“ ist eine Webseite")
         elif endung in _GEFAEHRLICHE_ENDUNGEN:
             res.treffer("anhang_ausfuehrbar", f"Anhang „{name[:60]}“ kann ausgeführt werden")
-        # `rechnung.pdf.exe` — die harmlose Endung ist Tarnung, die letzte zählt.
+        # `rechnung.pdf.exe`: the harmless ending is camouflage, the last one counts.
         if vorletzte in _HARMLOS_WIRKEND and endung in _GEFAEHRLICHE_ENDUNGEN:
             res.treffer("anhang_doppelendung",
                         f"Anhang „{name[:60]}“ trägt zwei Endungen")
-        # Ein Archiv, dessen Passwort im Text steht, ist für jeden Scanner blind — und
-        # genau dafür wird es benutzt.
+        # An archive whose password stands in the text is blind to every scanner, and that is
+        # exactly what it is used for.
         if endung in _ARCHIVE and _PASSWORT_WORTE.search(body or ""):
             res.treffer("anhang_archiv_mit_passwort",
                         "passwortgeschütztes Archiv (kein Scanner kann hineinsehen)")
@@ -778,12 +778,12 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
              body: str = "") -> RuleResult:
     """Mail-Payload → Regelurteil.
 
-    `meine_adressen` sind die eigenen Empfangsadressen/Aliase (klein geschrieben, `*@domain`
-    erlaubt). `bekannte_domains` sind die Domains meiner Kontakte — sie machen aus einer
-    fremden Marke im Absender ein Signal. `geschaeftsfreie_domains` sind eigene Domains,
-    über die kein Vertragswesen läuft — dort ist jede Rechnung eine Behauptung. `body` wird
-    nur für den Passwort-Archiv-Fall gelesen. Fehlt eins davon, entfällt genau die
-    zugehörige Prüfung; alle anderen greifen.
+    `meine_adressen` are our own receiving addresses and aliases (lower case, `*@domain`
+    allowed). `bekannte_domains` are the domains of my contacts: they turn a foreign brand in
+    the sender into a signal. `geschaeftsfreie_domains` are own domains over which no contracts
+    run, where every invoice is a claim. `body` is read only for the password protected archive
+    case. If one of them is missing, exactly the corresponding check falls away and all others
+    still apply.
     """
     res = RuleResult()
     headers = payload.get("headers") if isinstance(payload.get("headers"), dict) else {}
@@ -795,15 +795,15 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
 
     an = _addr_list(payload.get("to"))
     cc = _addr_list(payload.get("cc"))
-    # Zustelladresse steht bei Aliasen oft NUR in diesen Kopfzeilen — `To` trägt dann den
-    # Verteiler, nicht mich.
+    # With aliases the delivery address often stands ONLY in these headers: `To` then carries
+    # the distribution list, not me.
     zustell = [a for _, a in _addr_list(_header(headers, "Delivered-To"))]
     zustell += [a for _, a in _addr_list(_header(headers, "X-Original-To"))]
     zustell += [a for _, a in _addr_list(_header(headers, "Envelope-To"))]
     res.recipients = list(dict.fromkeys([a for _, a in an + cc] + zustell))
 
-    # Mailinglisten-Merkmale zuerst: mehrere Prüfungen müssen bei Listen stillhalten,
-    # weil dort reguläre Umwege (Gegensignatur, umgeleitete Antwort) die Regel wären.
+    # Mailing list characteristics first: several checks have to stay quiet on lists, because
+    # regular detours there (countersigning, redirected replies) would otherwise be the rule.
     unsubscribe = _header(headers, "List-Unsubscribe").strip()
     list_id = _header(headers, "List-Id").strip()
     bulk = _header(headers, "Precedence").strip().lower() in ("bulk", "list", "junk")
@@ -831,12 +831,12 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
     if tld in _BILLIG_TLDS:
         res.treffer("billig_tld", f"Absender-Endung .{tld}")
 
-    # --- Massenversand: Newsletter oder Werbemüll -------------------------------
+    # --- Bulk mail: newsletter or advertising junk ------------------------------
     if (unsubscribe or list_id or bulk) and not unsubscribe:
         res.treffer("kein_unsubscribe_bei_bulk", "Massenversand ohne Abmeldeweg")
 
-    # Sauberer, abmeldbarer Massenversand ist ein Newsletter — der Vermerk hält die
-    # Bewertung später davon ab, „viel Werbung" mit „Spam" zu verwechseln.
+    # Clean bulk mail one can unsubscribe from is a newsletter, and the note keeps the scoring
+    # from confusing "a lot of advertising" with "spam" later.
     technik_sauber = not (_FAELSCHUNG & set(res.signals))
     res.ist_newsletter = bool(unsubscribe) and technik_sauber
 
@@ -844,31 +844,31 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
     return res
 
 
-# Signale, die eine Fälschung anzeigen. Wer eins davon trägt, ist kein „Newsletter" mehr
-# und wird auch durch einen bekannten Absender nicht freigesprochen — gerade der bekannte
+# Signals that indicate a forgery. Whatever carries one of them is no longer a "newsletter" and
+# is not acquitted by a known sender either: the known name is precisely the worthwhile target.
 # Name ist das lohnende Ziel.
 _FAELSCHUNG = frozenset({
     "dmarc_fail", "spf_fail", "dkim_fail", "dkim_nicht_ausgerichtet", "returnpath_mismatch",
-    # Hat der eigene Server schon Spam gesagt, ist es auch dann keine „bestellte Werbung",
-    # wenn ein Abmeldeknopf darunter steht — sonst deckelt die Newsletter-Bremse
-    # ausgerechnet den erkannten Müll.
+    # If our own server has already said spam, it is not "requested advertising" even when an
+    # unsubscribe button stands underneath, otherwise the newsletter brake caps exactly the junk
+    # that was recognised.
     "server_spam_flag", "server_spam_hoch", "server_spam_mittel", "betreff_spam_markiert",
     "punycode_absender", "schriftmischung", "marke_als_subdomain",
     "link_text_taeuscht", "link_at_trick", "anhang_doppelendung", "unsichtbare_zeichen",
     "absender_bin_ich",
-    # Ein behaupteter Abmeldeweg, den es im Rumpf nicht gibt, macht aus Müll keinen
-    # Newsletter — sonst deckelte die Newsletter-Bremse genau diese Tarnung.
+    # A claimed unsubscribe path that does not exist in the body does not turn junk into a
+    # newsletter, otherwise the newsletter brake would cap exactly that camouflage.
     "abmeldung_nur_behauptet",
 })
 
 
 def mail_text(payload: dict) -> str:
-    """Der Mailtext aus dem Payload — egal, welches Feld ihn trägt.
+    """The mail text from the payload, whichever field carries it.
 
-    Der Watcher liefert `body_text` (Nur-Text-Teil) ODER `body_html_as_text` (aus HTML
-    umgewandelt), ältere Quellen ein schlichtes `body`. Wer nur eins davon liest, bekommt
-    bei der Hälfte aller Mails einen leeren Text zurück — und merkt es nicht, weil eine
-    leere Zeichenkette überall widerspruchsfrei durchläuft.
+    The watcher delivers `body_text` (the plain text part) OR `body_html_as_text` (converted
+    from HTML), older sources a plain `body`. Whoever reads only one of them gets an empty text
+    for half of all mails, and does not notice, because an empty string passes everywhere
+    without contradiction.
     """
     for feld in ("body_text", "body", "body_html_as_text"):
         wert = payload.get(feld)
@@ -878,13 +878,13 @@ def mail_text(payload: dict) -> str:
 
 
 def ist_faelschungsverdacht(signals) -> bool:
-    """Trägt dieses Urteil ein Fälschungs-Signal?"""
+    """Does this verdict carry a signal of forgery?"""
     return bool(_FAELSCHUNG & set(signals or ()))
 
 
 _WORT_RE = re.compile(r"[a-zäöüß]{4,}", re.IGNORECASE)
-# Betreffe tragen Füllwörter, die in Spam wie in echter Post gleich häufig sind — sie
-# würden die Statistik nur verwässern.
+# Subjects carry filler words that are equally common in spam and in real post: they would only
+# dilute the statistics.
 _STOPWORTE = frozenset({
     "eine", "einen", "einer", "eines", "ihre", "ihren", "ihrem", "ihrer", "dein", "deine",
     "oder", "aber", "auch", "noch", "sich", "sind", "wird", "werden", "haben", "wurde",
@@ -895,11 +895,11 @@ _STOPWORTE = frozenset({
 
 
 def features(res: RuleResult, subject: str, *, kontakt_treffer: str = "") -> list[str]:
-    """Merkmalschlüssel für das Lernen (`spam_learn`).
+    """Feature keys for learning (`spam_learn`).
 
-    Ein Merkmal ist alles, was sich bei einer künftigen Mail wiedererkennen lässt: Absender,
-    Domain, angeschriebener Alias, die technischen Signale und markante Betreff-Wörter.
-    Absichtlich grob — feinere Merkmale bräuchten mehr Entscheidungen, als ein Mensch je
+    A feature is anything that can be recognised again in a future mail: sender, domain, the
+    alias written to, the technical signals and distinctive subject words. Deliberately coarse,
+    because finer features would need more decisions than a person ever
     trifft, um statistisch etwas zu bedeuten.
     """
     out: list[str] = []
@@ -919,5 +919,5 @@ def features(res: RuleResult, subject: str, *, kontakt_treffer: str = "") -> lis
         if w.lower() not in _STOPWORTE
     }
     out.extend(f"wort:{w}" for w in sorted(woerter)[:12])
-    # Reihenfolge stabil halten, Duplikate raus (Zähler dürfen nicht doppelt steigen).
+    # Keep the order stable, drop duplicates (counters must not rise twice).
     return list(dict.fromkeys(out))
