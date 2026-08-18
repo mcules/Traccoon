@@ -25,6 +25,7 @@ export default function NodeConfigPanel({
   projectId,
   subjectKind,
   kontextFelder,
+  defId,
 }: {
   node: FlowNode | null;
   members: MemberLite[];
@@ -35,6 +36,8 @@ export default function NodeConfigPanel({
   subjectKind?: string;
   /** Kontextfelder dieses Ablaufs — die Verzweigung bietet sie zur Auswahl an. */
   kontextFelder?: KontextFeld[];
+  /** Definition dieses Ablaufs — der Start-Knoten braucht sie für seine eigene Adresse. */
+  defId?: number;
 }) {
   if (!node) {
     return <div className="p-3 text-sm text-muted">Knoten anklicken, um ihn zu konfigurieren.</div>;
@@ -101,7 +104,9 @@ export default function NodeConfigPanel({
         </label>
       )}
 
-      {node.type === "start" && <StartConfig config={config} onChange={set} />}
+      {node.type === "start" && (
+        <StartConfig config={config} onChange={set} defId={defId} />
+      )}
     </div>
   );
 }

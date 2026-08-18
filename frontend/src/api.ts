@@ -283,10 +283,18 @@ export const deploymentApi = {
     api.post<DeploymentRow>(`/projects/${projectId}/deployments`, body),
 };
 
+export interface WfWebhook {
+  id: number; route: string; public_id: string; url: string;
+  secret: string; enabled: boolean; ref_field: string;
+}
+
 export const workflowApi = {
   list: (projectId: number) => api.get<WfDef[]>(`/workflows?project_id=${projectId}`),
   /** Alle Definitionen — ohne project_id-Filter; für die projektlosen (eigene Prozesse). */
   listAll: () => api.get<WfDef[]>("/workflows"),
+  /** Eingehende Adresse eines Ablaufs (Webhook als Quelle) — lesen bzw. anlegen. */
+  webhookGet: (id: number) => api.get<WfWebhook | null>(`/workflows/${id}/webhook`),
+  webhookCreate: (id: number) => api.post<WfWebhook>(`/workflows/${id}/webhook`, {}),
   /** Welche Kontextfelder es gibt — je Auslöser, Aktion und Knotentyp (für den Editor). */
   contextFields: () => api.get<import("./components/workflow/contextFields").KontextKatalog>(
     "/workflow-context-fields"),

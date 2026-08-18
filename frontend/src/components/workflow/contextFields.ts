@@ -56,6 +56,29 @@ export function verfuegbareFelder(
   // oder Job angestoßen werden — dessen Nutzlast steht als eigener Eintrag im Katalog.
   const start = nodes.find((n) => n.type === "start");
   const ev = start ? (cfgOf(start).trigger?.event as string | undefined) : undefined;
+
+  // Beispiel-Nutzlast am Start: was ein fremdes System schickt, weiß nur der Mensch.
+  // Einmal eingefügt, kennt der Editor die Felder — inklusive verschachtelter.
+  const probe = start ? cfgOf(start).trigger?.sample : undefined;
+  if (probe && typeof probe === "object") {
+    const wandern = (wert: any, pfad: string, tiefe: number) => {
+      if (tiefe > 4 || wert === null || wert === undefined) return;
+      if (Array.isArray(wert)) {
+        nimm([{ pfad, typ: "liste", beschreibung: `${wert.length} Einträge im Beispiel` }],
+             "Beispiel-Nutzlast");
+        if (wert.length) wandern(wert[0], `${pfad}.0`, tiefe + 1);
+        return;
+      }
+      if (typeof wert === "object") {
+        for (const [k, v] of Object.entries(wert)) wandern(v, pfad ? `${pfad}.${k}` : k, tiefe + 1);
+        return;
+      }
+      const typ = typeof wert === "number" ? "zahl" : typeof wert === "boolean" ? "ja/nein" : "text";
+      nimm([{ pfad, typ, beschreibung: `Beispiel: ${String(wert).slice(0, 40)}` }],
+           "Beispiel-Nutzlast");
+    };
+    wandern(probe, "", 0);
+  }
   if (ev && katalog.ausloeser[ev]) nimm(katalog.ausloeser[ev], `Auslöser ${ev}`);
   if (!ev && katalog.ausloeser["(Webhook/Job)"]) {
     nimm(katalog.ausloeser["(Webhook/Job)"], "Auslöser Webhook/Job");

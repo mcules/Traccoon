@@ -201,6 +201,74 @@ async def workflow_context_fields(user: User = Depends(get_current_user)):
     return katalog()
 
 
+@router.get("/workflows/{def_id}/webhook")
+async def workflow_webhook_lesen(
+    def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Die eingehende Adresse dieses Ablaufs (oder `null`, wenn er keine hat)."""
+    d = await _get_def(db, def_id)
+    await _require_project_read(db, user, d.project_id)
+    return await _webhook_von(db, d)
+
+
+@router.post("/workflows/{def_id}/webhook", status_code=201)
+async def workflow_webhook_anlegen(
+    def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Diesem Ablauf eine eigene Adresse geben, unter der ihn ein fremdes System anstößt.
+
+    Nicht jedes System spricht MCP, und die wenigsten kennen Traccoons Ereignisse — aber
+    einen Webhook kann fast jedes schicken. Bisher musste man ihn in den Einstellungen
+    anlegen und dort den Ablauf auswählen: die Quelle stand am anderen Ende, im Ablauf
+    selbst war sie unsichtbar. Jetzt entsteht sie dort, wo sie hingehört.
+
+    Der Aufruf ist idempotent — ein zweiter gibt dieselbe Adresse zurück.
+    """
+    import secrets as _secrets
+    import uuid as _uuid
+
+    from ..models.ops import WebhookSub
+
+    d = await _get_def(db, def_id)
+    await _require_write(db, user, d)
+    vorhanden = await _webhook_von(db, d)
+    if vorhanden:
+        return vorhanden
+
+    sub = WebhookSub(
+        public_id=str(_uuid.uuid4()), owner_user_id=user.id,
+        route=(d.key or f"ablauf-{d.id}")[:120], secret=_secrets.token_hex(24),
+        mode="workflow", project_id=d.project_id, workflow_definition_id=d.id,
+        context_map={},   # ohne Abbildung landet die ganze Nutzlast im Kontext
+    )
+    db.add(sub)
+    await db.commit()
+    await db.refresh(sub)
+    return await _webhook_von(db, d)
+
+
+async def _webhook_von(db: AsyncSession, d) -> dict | None:
+    """Der Webhook, der genau diesen Ablauf startet (samt Adresse und Geheimnis)."""
+    from ..config import settings
+    from ..models.ops import WebhookSub
+
+    sub = (await db.execute(select(WebhookSub).where(
+        WebhookSub.mode == "workflow",
+        WebhookSub.workflow_definition_id == d.id).order_by(WebhookSub.id))).scalars().first()
+    if sub is None:
+        return None
+    # Dieselbe Basis wie bei Einladungslinks — ohne sie bleibt der Pfad relativ, damit
+    # niemand eine URL kopiert, die von außen ins Leere zeigt.
+    basis = (settings.app_base_url or "").rstrip("/")
+    return {
+        "id": sub.id, "route": sub.route, "public_id": sub.public_id,
+        "url": f"{basis}/api/hooks/{sub.public_id}" if basis
+               else f"/api/hooks/{sub.public_id}",
+        "secret": sub.secret, "enabled": sub.enabled,
+        "ref_field": sub.ref_field or "",
+    }
+
+
 @router.get("/workflow-tools")
 async def workflow_tools(user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
