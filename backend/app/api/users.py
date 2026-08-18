@@ -32,10 +32,10 @@ class PasswordResetIn(BaseModel):
 
 
 class UserCreateIn(BaseModel):
-    email: str | None = None                       # optional — ohne E-Mail kein E-Mail-Login
+    email: str | None = None                       # optional: without an e-mail there is no e-mail login
     username: str = Field(min_length=1, max_length=100)
     display_name: str = ""
-    password: str | None = None                    # optional — ohne Passwort kein Login
+    password: str | None = None                    # optional: without a password there is no login
     global_role: str = "user"    # user | admin
     status: str = "active"       # active | pending
 
@@ -65,8 +65,8 @@ async def get_user_mcp(user_id: int, _: User = Depends(require_admin),
 @router.put("/{user_id}/mcp-servers")
 async def set_user_mcp_servers(user_id: int, data: McpServersIn, _: User = Depends(require_admin),
                                db: AsyncSession = Depends(get_session)):
-    """Admin legt fest, welche MCP-Server ein User nutzen darf. Der eigentliche
-    MCPJungle-Token entsteht per Operator-Skript (scripts/provision_mcp.py)."""
+    """An admin determines which MCP servers a user may use. The actual MCPJungle token
+    comes into being over the operator script (scripts/provision_mcp.py)."""
     u = await _get_manageable(user_id, db)
     u.mcp_servers = data.servers
     await db.commit()
@@ -85,8 +85,8 @@ async def _get_manageable(user_id: int, db: AsyncSession) -> User:
 @router.get("/search")
 async def search_users(q: str = "", _: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    """Nutzer nach Benutzername ODER Anzeigename suchen (für Mitglied-Hinzufügen).
-    Minimaldaten, jedem eingeloggten Nutzer zugänglich."""
+    """Search users by user name OR display name (for adding a member).
+    Minimal data, accessible to every logged-in user."""
     q = (q or "").strip()
     if not q:
         return []
@@ -104,13 +104,12 @@ async def search_users(q: str = "", _: User = Depends(get_current_user),
 @router.get("/visible")
 async def visible_users(user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    """Personen, die dieser Mensch sehen darf — Auswahl als Empfänger.
+    """People this human may see: the selection as recipients.
 
-    Sichtbar sind: er selbst, alle Mitglieder seiner Projekte und Platzhalter-Konten
-    (die existieren nur, um jemanden zu benennen). Ein Admin sieht alle. Damit lässt sich
-    in einem Ablauf ein Empfänger benennen, ohne dass der Ablauf zu einem Projekt gehören
-    muss — vorher stand dort die Mitgliederliste des Projekts, bei projektlosen Abläufen
-    also nichts.
+    Visible are: themselves, all members of their projects and placeholder accounts (which
+    exist only in order to name somebody). An admin sees everybody. That lets a recipient be
+    named in a flow without the flow having to belong to a project; before, the member list of
+    the project stood there, which meant nothing with project-less flows.
     """
     from ..models.project import ProjectMember
 
@@ -124,8 +123,8 @@ async def visible_users(user: User = Depends(get_current_user),
     rows = (await db.execute(q.order_by(User.display_name, User.username))).scalars().all()
     return [{"id": u.id, "username": u.username, "display_name": u.display_name,
              "status": u.status.value,
-             # Wie diese Person erreicht wird, gehört in die Auswahl: sonst wählt man
-             # jemanden und erfährt nie, dass bei ihm gar kein Weg hinterlegt ist.
+             # How this person is reached belongs in the selection: otherwise one chooses
+             # somebody and never learns that no channel is stored for them at all.
              "notify_default": u.notify_default,
              "kanaele": [k for k in ("telegram", "email")
                          if (u.telegram_chat_id if k == "telegram"
@@ -144,11 +143,11 @@ async def list_users(_: User = Depends(require_admin), db: AsyncSession = Depend
 @router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(data: UserCreateIn, _: User = Depends(require_admin),
                       db: AsyncSession = Depends(get_session)):
-    """Admin legt direkt einen Nutzer an. E-Mail und Passwort sind optional — ohne Passwort ist
-    das Konto login-los (leerer Hash → Login schlägt fehl). Standard-Agenten werden nur bei einem
-    aktiven Konto MIT Passwort geseedet (login-lose Konten brauchen keine)."""
-    email = data.email  # bereits normalisiert/validiert (oder None)
-    # Kollisionsprüfung: Benutzername immer, E-Mail nur wenn gesetzt.
+    """An admin creates a user directly. E-mail and password are optional; without a password
+    the account is login-less (an empty hash makes the login fail). Default agents are seeded
+    only with an active account WITH a password (login-less accounts need none)."""
+    email = data.email  # already normalised and validated (or None)
+    # Collision check: the user name always, the e-mail only when set.
     cond = User.username == data.username
     if email is not None:
         cond = cond | (User.email == email)

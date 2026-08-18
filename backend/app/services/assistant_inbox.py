@@ -1,5 +1,5 @@
-"""Freigabe/Verwerfen von Assistent-Eingängen — geteilt von Web-API und Telegram-Bot,
-damit beide Oberflächen exakt dasselbe tun (parallel nutzbar, immer synchron)."""
+"""Approving and discarding assistant inbox items, shared by the web API and the Telegram
+bot so that both interfaces do exactly the same (usable in parallel, always in sync)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -12,11 +12,11 @@ from .assistant_policy import parse_sender, upsert_policy
 
 async def _finde_quelle(db: AsyncSession, owner_user_id: int | None, chat_id: str,
                         bezug: str) -> int | None:
-    """Zu welchem Eingang gehört die zitierte Nachricht? → assistant_task_id oder None.
+    """Which inbox item does the quoted message belong to? Returns assistant_task_id or None.
 
-    Telegram-Nachrichten des Assistenten entstehen aus Notification-Zeilen
-    (`<b>{title}</b>\n{body}`). Die erste Zeile des Zitats ist also der Titel — darüber
-    findet sich die Benachrichtigung und mit ihr die Aufgabe."""
+    Telegram messages of the assistant come into being from notification rows
+    (`<b>{title}</b>\n{body}`). The first line of the quote is therefore the title, and over
+    it the notification and with it the task can be found."""
     from sqlalchemy import select
 
     from ..models.notification import Notification
@@ -34,19 +34,19 @@ async def _finde_quelle(db: AsyncSession, owner_user_id: int | None, chat_id: st
 
 async def create_chat_task(db: AsyncSession, owner_user_id: int | None, text: str,
                            chat_id: str, agent: str = "", bezug: str = "") -> AssistantTask:
-    """Chat-Nachricht an den Assistenten übergeben (angelegt + eingereiht).
+    """Hand a chat message to the assistant (created plus queued).
 
-    Geteilt, damit jeder Einstieg dasselbe tut — im Bot hing das an einem einzigen
-    Handler, und eine ANTWORT auf eine Assistenten-Nachricht fiel dadurch aus dem Chat
-    heraus und wurde kommentarlos verworfen.
+    Shared so that every entry does the same. In the bot it hung off a single handler, and an
+    ANSWER to a message of the assistant thereby fell out of the chat and was discarded
+    without a word.
 
-    `bezug` ist die zitierte Nachricht des Assistenten. Sie wird mitgeführt und im Lauf
-    vorangestellt: eine Antwort meint genau diese eine Nachricht, nicht das Gespräch im
-    Allgemeinen. Gehört sie zu einem früheren Eingang (Mail, Freigabe), wird auch dessen
-    Aufgabe verlinkt, damit der Assistent dort weiterarbeitet statt neu anzufangen."""
+    `bezug` is the quoted message of the assistant. It is carried along and put in front in
+    the run: an answer means exactly this one message, not the conversation in general. If it
+    belongs to an earlier inbox item (mail, approval), that task is linked as well, so that
+    the assistant works on there instead of starting anew."""
     meta = {"chat_text": text, "chat_id": str(chat_id)}
     if agent:
-        meta["agent"] = agent        # sonst fällt der Lauf auf 'assistent' zurück
+        meta["agent"] = agent        # otherwise the run falls back to 'assistent'
     if bezug.strip():
         meta["bezug_text"] = bezug.strip()[:2000]
         quelle = await _finde_quelle(db, owner_user_id, str(chat_id), bezug)
@@ -65,8 +65,8 @@ async def create_chat_task(db: AsyncSession, owner_user_id: int | None, text: st
 
 async def approve_assistant_task(db: AsyncSession, task: AssistantTask, *, scope: str = "once",
                                  redaction: str = "redacted", action_note: str = "") -> None:
-    """Item freigeben (Freigabe = Volltext-Freigabe) und starten. `scope` != once lernt eine
-    AssistantPolicy (immer für Absender/Domain/Kategorie). Committet + enqueued selbst."""
+    """Approve an item (approval = full text approval) and start it. `scope` != once learns an
+    AssistantPolicy (always for the sender, domain or category). Commits and enqueues itself."""
     redaction = redaction if redaction in ("redacted", "unredacted") else "redacted"
     task.redaction = redaction
     if action_note:

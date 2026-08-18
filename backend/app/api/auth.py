@@ -39,7 +39,7 @@ async def register(data: RegisterIn, db: AsyncSession = Depends(get_session)):
     if exists is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "E-Mail oder Benutzername bereits vergeben")
 
-    # Erster echter User (außer System) wird automatisch aktiver Admin.
+    # The first real user (except the system) automatically becomes an active admin.
     real_count = (
         await db.execute(select(func.count()).select_from(User).where(User.id != SYSTEM_USER_ID))
     ).scalar_one()
@@ -79,25 +79,25 @@ async def login(data: LoginIn, db: AsyncSession = Depends(get_session)):
 
 @router.post("/refresh", response_model=TokenOut)
 async def refresh(user: User = Depends(get_current_user)):
-    """Verlängert eine **bestehende** Sitzung — und gibt kein neues Recht.
+    """Extends an **existing** session and gives no new right.
 
-    Warum es den Endpunkt gibt: `jwt_expire_minutes` ist 720, und das Frontend wirft bei 401
-    hart auf `/login`. Jeder lange offene Tab (der Kiosk-Wandschirm ist nur der auffälligste)
-    ist damit nach spätestens zwölf Stunden ein Anmeldeformular.
+    Why the endpoint exists: `jwt_expire_minutes` is 720, and the frontend throws hard to
+    `/login` on a 401. Every long open tab (the kiosk wall screen is only the most
+    conspicuous one) is therefore a login form after twelve hours at the latest.
 
-    Warum er keine Sicherheitsfläche aufmacht:
+    Why it opens no security surface:
 
-    * Er hängt an `get_current_user` — also **denselben** zwei Prüfungen wie jeder andere
-      Aufruf: `iat` vor `password_changed_at` fliegt raus (Sitzungs-Invalidierung nach
-      Passwortwechsel), `status != active` ebenfalls. Sie hier zu wiederholen wäre eine
-      zweite Wahrheit, die beim nächsten Nachziehen einer der beiden Stellen kippt.
-    * Ein abgelaufenes Token kommt gar nicht bis hierher: `decode_access_token` wirft, und
-      `get_current_user` macht daraus 401. Ein Refresh kann eine tote Sitzung also nicht
-      wiederbeleben, nur eine lebende verlängern.
-    * Das neue Token enthält exakt dieselben Ansprüche wie ein frisch erlogintes
-      (`sub`/`iat`/`exp`, siehe `core/security.py`) — Rollen stehen nicht im Token, sondern
-      werden bei jedem Aufruf aus der Datenbank gelesen. Ein Rechtezuwachs ist hier also
-      nicht bloß nicht implementiert, er ist strukturell unmöglich.
+    * It hangs off `get_current_user`, so off the **same** two checks as every other call:
+      `iat` before `password_changed_at` flies out (session invalidation after a password
+      change), `status != active` as well. Repeating them here would be a second truth that
+      tips over the next time one of the two places is updated.
+    * An expired token does not even get here: `decode_access_token` raises, and
+      `get_current_user` turns that into a 401. A refresh therefore cannot revive a dead
+      session, only extend a living one.
+    * The new token contains exactly the same claims as a freshly logged-in one
+      (`sub`/`iat`/`exp`, see `core/security.py`): roles do not stand in the token but are
+      read from the database on every call. An increase of rights is therefore not merely
+      unimplemented here, it is structurally impossible.
     """
     return TokenOut(access_token=create_access_token(user.id))
 
