@@ -201,6 +201,18 @@ async def workflow_context_fields(user: User = Depends(get_current_user)):
     return katalog()
 
 
+@router.get("/workflow-tools")
+async def workflow_tools(user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    """Die MCP-Werkzeuge DIESES Menschen — Auswahl für den Knoten „Werkzeug aufrufen".
+
+    Bewusst die eigenen: ein Ablauf ruft später über den MCPJungle-Zugang seines
+    Eigentümers, nicht über einen globalen. Was hier nicht steht, kann er auch nicht rufen.
+    """
+    from ..services.workflow_tools import werkzeuge
+    return await werkzeuge(db, user.id)
+
+
 # ── Prozess-Sätze ────────────────────────────────────────────────────────────
 
 async def _get_set(db: AsyncSession, set_id: int):

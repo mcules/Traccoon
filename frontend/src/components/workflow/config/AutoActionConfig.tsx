@@ -11,6 +11,7 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
   ]],
   ["Allgemein", [
     ["http_request", "Ziel aufrufen (HTTP)"],
+    ["tool_call", "Werkzeug aufrufen (MCP)"],
     ["set_context", "Kontext setzen"],
     ["comment", "Kommentar schreiben"],
     ["notify", "Benachrichtigen"],

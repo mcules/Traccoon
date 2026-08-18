@@ -17,7 +17,8 @@ export interface FieldSpec {
   /** Auswahlwerte: [Wert, Beschriftung]. */
   options?: [string, string][];
   /** Laufzeit-Quelle für die Auswahl. */
-  source?: "board_status" | "agent_role" | "member" | "artifact_status" | "artifact_field";
+  source?: "board_status" | "agent_role" | "member" | "artifact_status" | "artifact_field"
+    | "mcp_tool";
   placeholder?: string;
   hint?: string;
   /** Vorbelegung, solange nichts gesetzt ist (wichtig bei Ja/Nein-Feldern). */
@@ -202,6 +203,22 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     summary: "Legt die im Plan vorgeschlagenen Teilaufgaben als Kind-Tickets an "
       + "(Teil 1 startet, der Rest wartet auf seinen Vorgänger).",
     fields: [],
+  },
+
+  tool_call: {
+    summary: "Ruft ein MCP-Werkzeug auf — Mail, Vault, Paperless, Nextcloud, Hausautomation "
+      + "und alles andere aus deiner MCP-Registry. Das Ergebnis steht danach unter tool.* "
+      + "im Kontext (tool.ok, tool.text, tool.json).",
+    fields: [
+      { key: "tool", label: "Werkzeug", type: "select", source: "mcp_tool", required: true,
+        hint: "Die Liste kommt aus deinen MCP-Servern (Einstellungen → MCP-Server)." },
+      { key: "arguments", label: "Argumente", type: "kv",
+        hint: "Werte dürfen {{pfad}} aus dem Kontext enthalten." },
+      { key: "context_key", label: "Ergebnis im Kontext unter", type: "text",
+        placeholder: "tool" },
+      { key: "fail_on_error", label: "Fehler bricht ab", type: "boolean", default: false,
+        hint: "Aus: der Ablauf entscheidet selbst über tool.ok an einer Weiche." },
+    ],
   },
 
   mail_classify: {

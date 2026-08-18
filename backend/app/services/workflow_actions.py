@@ -13,6 +13,7 @@ Unterstützte Aktionen:
                                                 (mode: set | add | remove)
   set_board_status    {status|category}       — Board-Spalte des gebundenen Tickets setzen
   create_ticket       {summary, ...}          — neues Ticket anlegen (analog Inbound-Webhook)
+  tool_call           {tool, arguments, context_key?, fail_on_error?} — MCP-Werkzeug aufrufen
   http_request        {destination, method, path, query, headers, body} — Aufruf über ein Ziel
   webhook             {url, method, headers, payload, secret} — ausgehender Aufruf an freie URL
   comment             {text}                  — System-Kommentar am gebundenen Issue
@@ -595,6 +596,48 @@ async def _stop_agent(db, inst: WorkflowInstance) -> dict:
     return {"action": "stop_agent", "applied": True}
 
 
+async def _besitzer(db, inst: WorkflowInstance) -> int | None:
+    """In wessen Namen der Lauf nach außen greift.
+
+    Der Starter, sonst der Mensch hinter dem Ticket. Daran hängen die MCP-Gruppe und die
+    Ziele — ein Ablauf kommt nirgends hin, wo sein Eigentümer nicht hindarf.
+    """
+    if inst.started_by is not None:
+        return inst.started_by
+    if inst.issue_id:
+        issue = await _issue_of(db, inst)
+        if issue is not None:
+            return issue.assigned_by_user_id or issue.reporter_id
+    return None
+
+
+async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Ein MCP-Werkzeug aufrufen — der direkte Weg zu allem, was Traccoon angebunden hat.
+
+    Parameter:
+      tool           Werkzeugname wie in der Auswahl (z. B. `obsidian_append_to_note`)
+      arguments      {schlüssel: wert} — Werte dürfen `{{pfad}}` aus dem Kontext enthalten
+      context_key    wohin das Ergebnis geschrieben wird (Default `tool`)
+      fail_on_error  true → misslungener Aufruf lässt den Schritt fehlschlagen
+
+    Ohne `fail_on_error` entscheidet der Ablauf selbst: `tool.ok` steht im Kontext und lässt
+    sich an einer Weiche abfragen.
+    """
+    from .workflow_tools import aufrufen
+
+    name = str(_interp(params.get("tool") or params.get("name") or "", ctx)).strip()
+    argumente = _interp_deep(params.get("arguments") or params.get("args") or {}, ctx)
+    if not isinstance(argumente, dict):
+        argumente = {}
+    ergebnis = await aufrufen(db, await _besitzer(db, inst), name, argumente)
+    key = str(params.get("context_key") or "tool")
+    inst.context = {**ctx, key: ergebnis}
+    if params.get("fail_on_error") and not ergebnis["ok"]:
+        raise ValueError(f"Werkzeug {name!r}: {ergebnis.get('error', 'fehlgeschlagen')}")
+    return {"action": "tool_call", "tool": name, "ok": ergebnis["ok"],
+            "error": ergebnis.get("error")}
+
+
 async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Ruft ein hinterlegtes **Ziel** auf (Basis-URL + Anmeldung stecken dort).
 
@@ -676,6 +719,9 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
 
     if action == "http_request":
         return await _http_request(db, inst, params, ctx)
+
+    if action == "tool_call":
+        return await _tool_call(db, inst, params, ctx)
 
     if action in _ALT_AKTIONEN or action == "set_status":
         return await _set_status(db, inst, params, ctx)
