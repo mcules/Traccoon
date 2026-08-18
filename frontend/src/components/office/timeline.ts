@@ -32,7 +32,6 @@ import { TIMELINE_BUCKET_MS, TIMELINE_CAP } from "./const.ts";
  *
  *  Beyond `TIMELINE_CAP` the **oldest** bars are discarded, the same direction `REPLAY_CAP`
  *  truncates in. The view is a short term memory; the most recent is what one opens it for. */
- *  wofür man sie öffnet. */
 export function bucketize(log: readonly LogEntry[], from?: number, to?: number): Bucket[] {
   if (log.length === 0) return [];
 
