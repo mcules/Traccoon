@@ -8,7 +8,6 @@
 // The floor plan is deliberately plain and legible: two desk banks left and right, a free
 // aisle between them for the round table, the chief's seat top right as an eye catcher, the
 // door at the top, coffee on the far left. The reasoning for every chosen value stands below.
-// die Begründung.
 
 import { MAX_SEATS, POS_SCALE, SCENE } from "./const.ts";
 import { hash32 } from "./ids.ts";
@@ -137,7 +136,6 @@ export const ROOM: Room = {
  *  arrival order does not replay identically. When rewinding, the same runs come in the same
  *  `seq` order, but a FIFO buffer would carry state across the reset, and then the same agent
  *  would sit somewhere else on the second viewing. Determinism goes before realism here.
- *  Determinismus geht hier vor Realismus.
  *
  *  If everything is taken there is no chair: `-2` means "away", and the figure stays outside
  *  the room. No special place, no stacked figures on the same chair.

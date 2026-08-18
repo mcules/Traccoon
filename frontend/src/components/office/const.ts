@@ -97,7 +97,6 @@ export const TOOL_BUSY_MS = 1400;
  *
  *  A gate (`ask_human`, permission request, plan approval) is the most common reason for a
  *  silent room, and a silent room without a visible reason reads like a crash. */
- *  stiller Raum ohne sichtbaren Grund liest sich wie ein Absturz. */
 export const GATE_PULSE_MS = 1200;
 
 // ── Zeit, Replay, Kappung ────────────────────────────────────────────────────
