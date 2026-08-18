@@ -1,24 +1,24 @@
-// Schicht 2 — die Kopfzeile des „Büros": Summen, Live-Zustand, Geschwindigkeit, Sitzungsreiter.
+// Layer 2, the header of the "office": totals, live state, speed, session tabs.
 //
-// Sie ist außerdem die Heimat der Formatierhilfen, die Dock und Inspektor mitbenutzen
-// (`zahl`, `tokenText`, `usdText`, `dauerText`, `uhrText`, `ST_FARBE`, `ST_TEXT`). Das ist kein
-// Zufall und keine Bequemlichkeit: Welle J besteht aus genau vier Dateien, eine fünfte für
-// „gemeinsame Kleinigkeiten" wäre eine Datei mehr im Vertrag. Wichtiger ist, dass es **eine**
-// Stelle gibt — zwei Dollar-Formatierungen driften garantiert auseinander.
+// It is also the home of the formatting helpers that dock and inspector use as well (`zahl`,
+// `tokenText`, `usdText`, `dauerText`, `uhrText`, `ST_FARBE`, `ST_TEXT`). That is neither
+// chance nor convenience: this wave consists of exactly four files, and a fifth one for
+// "shared trifles" would be one file more in the contract. More importantly there should be
+// **one** place: two dollar formattings are guaranteed to drift apart.
 //
-// ── Die zwei Entscheidungen, die man hier sehen muss ────────────────────────────────────────
+// ── The two decisions one has to see here ───────────────────────────────────────────────────
 //
-// 1. **„≥" vor dem Betrag.** Traccoon kann heute nicht sagen, ob „0,00 $" heißt *dieses Modell
-//    ist gratis* oder *für dieses Modell steht kein Preis im Katalog*. `cost_partial` ist genau
-//    diese Unterscheidung; das „≥" ist der einzige ehrliche Weg, sie anzuzeigen, ohne eine Zahl
-//    zu erfinden. Der `title` sagt dazu, warum.
-// 2. **Sitzungsreiter sind ein Filter, kein Kanalwechsel.** Traccoon kennt keine „Sessions" —
-//    eine Sitzung ist hier ein Ticket (bzw. ein Laufbaum). Die Auswahl dimmt Figuren,
-//    die nicht dazugehören; sie entfernt sie **nicht**. Entfernen verschöbe die Sitzplatzvergabe
-//    (`hash32(runId) % 12` bleibt zwar, aber der Raum bliebe halb leer und die Übergaben zeigten
-//    ins Nichts) und machte den Replay unrund.
-// 3. **`kiosk` ist ein Schalter, keine zweite Kopfzeile.** Der Wandschirm zeigt dieselben
-//    Summen, dieselbe Pille, denselben Fehlerkasten — nur ohne alles Anklickbare.
+// 1. **"≥" in front of the amount.** Traccoon cannot say today whether "$0.00" means *this
+//    model is free* or *there is no price for this model in the catalog*. `cost_partial` is
+//    exactly that distinction, and the "≥" is the only honest way to show it without inventing
+//    a number. The `title` says why.
+// 2. **Session tabs are a filter, not a channel switch.** Traccoon knows no "sessions": a
+//    session here is a ticket (respectively a run tree). The selection dims figures that do
+//    not belong to it; it does **not** remove them. Removing would shift the seat allocation
+//    (`hash32(runId) % 12` would stay, but the room would remain half empty and the handovers
+//    would point into nothing) and make the replay uneven.
+// 3. **`kiosk` is a switch, not a second header.** The wall screen shows the same totals, the
+//    same pill, the same error box, only without anything clickable.
 
 
 
@@ -29,9 +29,9 @@ import type { FeedTotals } from "./useOfficeFeed.ts";
 
 // ── Gates ───────────────────────────────────────────────────────────────────────────────────
 
-/** Warum jemand wartet, in Klartext. Der rohe `blocker_kind` des Backends (`ask_human`,
- *  `permission`, `assistant_perm`, `review`) ist schon in `mapEvent` zu diesen drei Arten
- *  verdichtet — hier steht nur noch, wie sie heißen. */
+/** Why somebody is waiting, in plain text. The raw `blocker_kind` of the backend
+ *  (`ask_human`, `permission`, `assistant_perm`, `review`) is already condensed to these
+ *  three kinds in `mapEvent`; here only their names stand. */
 export const GATE_TEXT: Record<GateKind, string> = {
   question: "buero.gate_question",
   permission: "buero.gate_permission",
@@ -40,15 +40,15 @@ export const GATE_TEXT: Record<GateKind, string> = {
 
 // ── Statusfarben ────────────────────────────────────────────────────────────────────────────
 
-/** **Wörtlich** aus `components/AgentMonitor.tsx:5-8`. Zwei Ansichten desselben Laufs dürfen
- *  sich nicht widersprechen — wer hier eine Farbe „verbessert", erzeugt genau das.
- *  `loop_exhausted` fehlt dort und bekommt deshalb auch hier nur den Rückfall `text-muted`. */
+/** **Verbatim** from `components/AgentMonitor.tsx:5-8`. Two views of the same run must not
+ *  contradict each other, and whoever "improves" a colour here produces exactly that.
+ *  `loop_exhausted` is missing there and therefore only gets the fallback `text-muted` here. */
 export const ST_FARBE: Record<string, string> = {
   running: "text-yellow-400", success: "text-green-400", done: "text-green-400",
   failed: "text-red-400", blocked: "text-orange-400", planned: "text-sky-400",
 };
 
-/** Dieselben Zustände als Schlüssel; übersetzt wird in statusText(). */
+/** The same states as keys; the translation happens in statusText(). */
 export const ST_TEXT: Record<string, string> = {
   running: "buero.st_running", success: "buero.st_success", failed: "buero.st_failed",
   blocked: "buero.st_blocked", planned: "buero.st_planned",
@@ -66,8 +66,8 @@ export function statusFarbe(s: RunStatus | string | null | undefined): string {
 
 // ── Zahlen ──────────────────────────────────────────────────────────────────────────────────
 
-/** Ganzzahl mit deutschen Tausenderpunkten. Von Hand, damit dieselbe Zahl in jedem Browser
- *  gleich aussieht — `toLocaleString()` ohne Sprachangabe folgt der Browsereinstellung. */
+/** Integer with German thousands separators. By hand, so that the same number looks the same
+ *  in every browser: `toLocaleString()` without a language follows the browser setting. */
 export function zahl(n: number): string {
   const s = Math.round(Math.abs(n)).toString();
   let out = "";
@@ -82,26 +82,26 @@ function komma(v: number, dez: number): string {
   return v.toFixed(dez).replace(".", ",");
 }
 
-/** Tokens kurz: unter 10 000 genau, darüber gerundet. Die genaue Zahl steht im `title`. */
+/** Tokens in short: exact below 10 000, rounded above. The exact number stands in the `title`. */
 export function tokenText(n: number): string {
   if (n < 10_000) return zahl(n);
   if (n < 1_000_000) return `${komma(n / 1000, 1)} Tsd.`;
   return `${komma(n / 1_000_000, 2)} Mio.`;
 }
 
-/** Dollarbetrag im Format des restlichen Repos (`Dashboard`, `AgentMonitor`: `$0.0123`).
- *  Bewusst **nicht** eingedeutscht: dieselbe Zahl steht an drei anderen Stellen der Anwendung
- *  mit Dezimalpunkt, und zwei Schreibweisen für denselben Betrag sind schlimmer als eine
- *  fremdsprachige. `unvollstaendig` stellt das „≥" davor. */
+/** Dollar amount in the format of the rest of the repository (`Dashboard`, `AgentMonitor`:
+ *  `$0.0123`). Deliberately **not** germanised: the same number stands in three other places
+ *  of the application with a decimal point, and two notations for the same amount are worse
+ *  than a foreign language one. `unvollstaendig` puts the "≥" in front. */
 export function usdText(v: number, unvollstaendig?: boolean): string {
   return `${unvollstaendig ? "≥ " : ""}$${(v || 0).toFixed(4)}`;
 }
 
-/** Dauer in der Schreibweise von `AgentMonitor.fmtDauer`. `null` = unbekannt. */
+/** Duration in the notation of `AgentMonitor.fmtDauer`. `null` = unknown. */
 export function dauerText(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
-  // Unter einer Sekunde in Millisekunden: Werkzeugaufrufe sind oft schneller als das, und
-  // „0s" verschweigt den Unterschied zwischen „sehr schnell" und „gar nicht gemessen".
+  // Below one second in milliseconds: tool calls are often faster than that, and "0s" hides
+  // the difference between "very fast" and "not measured at all".
   if (ms < 1000) return `${Math.max(0, Math.round(ms))} ms`;
   const s = Math.max(0, Math.round(ms / 1000));
   if (s < 60) return `${s}s`;
@@ -113,8 +113,8 @@ function zwei(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-/** `HH:MM:SS` in Ortszeit. Schicht 2 ist die einzige Schicht, die die Zeitzone kennen darf —
- *  und der Rest der Anwendung zeigt Zeiten ebenfalls örtlich (`lib/formatTime.ts`). */
+/** `HH:MM:SS` in local time. Layer 2 is the only layer that may know the time zone, and the
+ *  rest of the application shows times locally as well (`lib/formatTime.ts`). */
 export function uhrText(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—:—:—";
   const d = new Date(ms);
@@ -123,20 +123,20 @@ export function uhrText(ms: number | null | undefined): string {
 
 // ── Sitzungsreiter ──────────────────────────────────────────────────────────────────────────
 
-/** Ohne Ticket bzw. ohne Projekt — ein eigener Reiter statt „verschwindet aus der Liste".
- *  Job- und Assistentenläufe sind echte Bewohner des Raums. */
+/** Without a ticket respectively without a project: a tab of its own instead of "disappears
+ *  from the list". Job and assistant runs are real inhabitants of the room. */
 export const OHNE_TICKET = "(ohne Ticket)";   // Gruppierungsschlüssel, kein Anzeigetext
 export const OHNE_PROJEKT = "(ohne Projekt)";
 
-/** Zu welchem Reiter ein Lauf gehört: im Projektumfang sein Ticket, global sein Projekt. */
+/** Which tab a run belongs to: its ticket in the project scope, its project globally. */
 export function sitzungsSchluessel(scope: Scope, r: RosterEntry): string {
   return scope.kind === "project"
     ? (r.issue_key || OHNE_TICKET)
     : (r.project_key || OHNE_PROJEKT);
 }
 
-/** `null` = „Alle". Wird von Bühne, Dock und Inspektor mitbenutzt, damit „gedimmt" überall
- *  dasselbe heißt. */
+/** `null` = "all". Used by stage, dock and inspector as well, so that "dimmed" means the same
+ *  everywhere. */
 export function passtZumFilter(scope: Scope, r: RosterEntry, filter: string | null): boolean {
   return filter === null || sitzungsSchluessel(scope, r) === filter;
 }
@@ -162,46 +162,46 @@ function reiterAus(scope: Scope, roster: Roster): Reiter[] {
       if (seit > vorhanden.seit) vorhanden.seit = seit;
     }
   }
-  // Laufendes zuerst, danach das Jüngste — die Reihenfolge, in der man sie sucht.
+  // Running first, then the most recent: the order in which one looks for them.
   return [...map.values()].sort((a, b) =>
     (a.laeuft === b.laeuft ? b.seit - a.seit : (a.laeuft ? -1 : 1)));
 }
 
-// ── Oberfläche ──────────────────────────────────────────────────────────────────────────────
+// ── Interface ───────────────────────────────────────────────────────────────────────────────
 
-/** 1× / 2× / 4×. Mehr ist bei einem Replay, der von vorn rechnet, keine Hilfe mehr. */
+/** 1x / 2x / 4x. More is no help with a replay that computes from the start. */
 export type Tempo = 1 | 2 | 4;
 
 export const TEMPI: readonly Tempo[] = [1, 2, 4];
 
 export interface TopBarProps {
   scope: Scope;
-  /** Titel der Sitzung (Ticket bzw. Laufbaum), falls bekannt. */
+  /** Title of the session (ticket respectively run tree), when known. */
   titel?: string;
   roster: Roster;
   totals: FeedTotals;
-  /** Socket offen **und** Backfill durch. */
+  /** Socket open **and** backfill done. */
   live: boolean;
   /** Angesprungene Position in Epoch-ms, `null` = Gegenwart. */
   seekTs: number | null;
   onBackToLive: () => void;
   speed: Tempo;
   onSpeedChange: (t: Tempo) => void;
-  /** Sitzungsfilter, `null` = Alle. */
+  /** Session filter, `null` = all. */
   filter: string | null;
   onFilterChange: (f: string | null) => void;
-  /** Ist die Ansicht bereits die Vollbildseite? Dann heißt der Knopf „Verlassen". */
+  /** Is the view already the full screen page? Then the button says "leave". */
   fullscreen?: boolean;
   onToggleFullscreen?: () => void;
-  /** Wandschirm: alles Bedienbare fällt weg, die Kopfzeile bleibt eine reine Anzeige.
-   *  **Keine zweite Komponente** dafür — zwei Kopfzeilen drifteten garantiert auseinander,
-   *  und die Frage „warum zeigt der Kiosk andere Summen als der Tab" will niemand haben. */
+  /** Wall screen: everything operable falls away, the header stays a pure display.
+   *  **No second component** for that: two headers would be guaranteed to drift apart, and
+   *  nobody wants the question "why does the kiosk show different totals than the tab". */
   kiosk?: boolean;
-  /** Fehlermeldung des Feeds — sie gehört sichtbar nach oben, nicht in die Konsole. */
+  /** Error message of the feed; it belongs visibly at the top, not in the console. */
   error?: string;
 }
 
-// ── Die Komponente ──────────────────────────────────────────────────────────────────────────
+// ── The component ───────────────────────────────────────────────────────────────────────────
 
 export default function TopBar({
   scope, titel, roster, totals, live, seekTs, onBackToLive,
