@@ -72,7 +72,7 @@ SEQ_SLOTS = 4
 SLOT_BEFORE = 0
 SLOT_MAIN = 1
 SLOT_DERIVED = 2
-SLOT_TAIL = 3   # `run_end`-Grenze; im Altpfad geliehen für ein Bestands-Deployment
+SLOT_TAIL = 3   # `run_end` boundary; borrowed on the legacy path for an existing deployment
 
 # The full contract. `thinking` is deliberately listed and never produced.
 KINDS = (
@@ -155,7 +155,7 @@ class RunCtx:
     issue_key: str = ""
     continuation_index: int = 0
     task_id: str = ""
-    seq: int = 0   # laufende RunStep.seq (der Worker zählt hier hoch)
+    seq: int = 0   # the running RunStep.seq (the worker counts up here)
 
     @classmethod
     def from_run(cls, run, *, issue_key: str = "") -> RunCtx:
@@ -236,7 +236,7 @@ def _as_utc(value: dt.datetime | None) -> dt.datetime | None:
 
 def _ts(value: dt.datetime | None) -> str:
     """ISO-8601 in UTC with milliseconds. Naive timestamps count as UTC (SQLite delivers
-    sie ohne Zone) — sonst verschöbe dieselbe Zeile je nach Datenbank um Stunden."""
+    them without a zone); otherwise the same row would shift by hours depending on the database."""
     if value is None:
         value = dt.datetime.now(dt.timezone.utc)
     if value.tzinfo is None:
@@ -268,7 +268,7 @@ def _seq(step_id: int, slot: int) -> int:
 
 def _parse_args(raw: str) -> dict:
     """Read arguments out of a preview as far as they are readable. No error when they are not,
-    die Vorschau ist gekürzt und darf mitten im JSON abbrechen."""
+    the preview is truncated and may break off in the middle of the JSON."""
     text = (raw or "").strip()
     # "args=" is the formatting of the old tool row, not content.
     if text.startswith("args="):
@@ -409,9 +409,9 @@ def _usage_event(step, ctx: RunCtx, *, seq: int, ts: str) -> list[dict]:
 def _legacy_events(step, ctx: RunCtx) -> list[dict]:
     """Rows from the time before the instrumentation (`kind=''`).
 
-    Ohne diesen Pfad startet das Büro leer — die vorhandenen Läufe sind der einzige Grund,
-    warum am ersten Tag überhaupt etwas zu sehen ist. Was hier fehlt, fehlt ehrlich:
-    keine Dauer, keine Tokens je Zug, `ok` nur aus dem Fehlerpräfix.
+    Without this path the office starts empty: the existing runs are the only reason there is
+    anything to see on the first day at all. What is missing here is missing honestly: no
+    duration, no tokens per turn, `ok` only from the error prefix.
     """
     ts = _ts(step.created_at)
     role = (step.role or "").strip().lower()
@@ -453,7 +453,7 @@ def _legacy_events(step, ctx: RunCtx) -> list[dict]:
 
 def _run_end_fields(src: dict) -> dict:
     """The fields of a `run_end`, from one mapping so that the `runs` row and the JSON content
-    einer run_end-Zeile durch DIESELBE Stelle laufen und nicht auseinanderdriften können."""
+    of a run_end row go through the SAME place and cannot drift apart."""
     status = str(src.get("status") or "")
     ok: bool | None = True if status in OK_STATUS else False if status in FAIL_STATUS else None
     return {
@@ -564,9 +564,9 @@ def deploy_target(dep) -> str:
 def deploy_fields(*, deployment_id: Any, state: Any, target: str, log_head: Any) -> dict:
     """The fields of a `deploy`, the ONE place where they come into being.
 
-    Beide Wege gehen hier durch: die echte Zeile des Watchers (Live und Nachlese) und das
-    beim Lesen synthetisierte Bestands-Deployment. Zwei Stellen könnten auseinanderlaufen,
-    und die Ansicht sähe je nach Alter des Deployments etwas anderes.
+    Both ways go through here: the real row of the watcher (live and follow-up) and the
+    existing deployment synthesised while reading. Two places could drift apart, and the view
+    would show something different depending on the age of the deployment.
     """
     return {
         "deployment_id": int(deployment_id or 0),
@@ -586,8 +586,8 @@ def deploy_content(deployment_id: int, state: str, log_head: str = "") -> str:
 def deploy_step_id(step) -> int:
     """Which deployment a `deploy` row belongs to (0 when it is none).
 
-    Der Lesepfad braucht das, um ein Bestands-Deployment NICHT ein zweites Mal zu
-    synthetisieren, wenn der Watcher es längst als echte Zeile erzählt hat.
+    The read path needs that in order NOT to synthesise an existing deployment a second time
+    when the watcher has long told it as a real row.
     """
     if (getattr(step, "kind", "") or "") != "deploy":
         return 0
@@ -598,11 +598,11 @@ def deploy_anchor_step_id(steps, created_at: dt.datetime | None, *,
                           blocked: set[int] | frozenset[int] = frozenset()) -> int | None:
     """Which step row a **legacy** deployment hangs its borrowed `seq` on.
 
-    Anker ist die letzte Zeile vor `created_at` — dort stand die Sitzung, als der Deploy
-    losging, und dorthin gehört er in der Erzählung. Ist deren Slot 3 schon vergeben (die
-    synthetisierte `run_end`-Grenze hat Vorrang, und zwei Deployments teilen sich keinen
-    Slot), rutscht er auf die vorhergehende Zeile. Findet sich keine, gibt es kein
-    Ereignis: lieber eine Lücke als ein Deploy, der vor seinem eigenen Auslöser steht.
+    The anchor is the last row before `created_at`: that is where the session stood when the
+    deploy started, and that is where it belongs in the narration. If its slot 3 is already
+    taken (the synthesised `run_end` boundary takes precedence, and two deployments do not
+    share a slot), it slips onto the preceding row. If none is found there is no event:
+    better a gap than a deploy standing before its own trigger.
     """
     cutoff = _as_utc(created_at)
     frei = [s.id for s in steps
@@ -616,10 +616,10 @@ def deploy_anchor_step_id(steps, created_at: dt.datetime | None, *,
 def deployment_events(dep, ctx: RunCtx, *, anchor_step_id: int | None) -> list[dict]:
     """A deployment from the time before the watcher, turned into its event with a borrowed `seq`.
 
-    Dasselbe Muster wie `run_boundary_events`: nichts wird geschrieben, die Ordnung
-    entsteht beim Lesen aus einer fremden Zeilen-ID. Anders als dort gibt es nur EIN
-    Ereignis (den Ausgang) — für den Auftakt wäre kein zweiter Slot frei, und ein
-    erfundener Startzeitpunkt zwischen fremden Schritten wäre geraten.
+    The same pattern as `run_boundary_events`: nothing is written, and the order comes into
+    being while reading, from a foreign row id. Unlike there, there is only ONE event (the
+    outcome): no second slot would be free for the opening, and an invented starting time
+    between foreign steps would be guesswork.
     """
     state = deploy_state(getattr(dep, "status", "") or "")
     if not state or not anchor_step_id:
@@ -635,7 +635,7 @@ def deployment_events(dep, ctx: RunCtx, *, anchor_step_id: int | None) -> list[d
 def session_seen_event(ctx: RunCtx, *, title: str, project_key: str,
                        started_at: dt.datetime | None, seq: int) -> dict:
     """Header of a room: tells the view that the session exists before the first
-    Agent zur Tür hereinkommt."""
+    agent comes through the door."""
     return _event(ctx, seq=seq, ts=_ts(started_at), kind="session_seen",
                   title=title, issue_key=ctx.issue_key, project_key=project_key,
                   started_at=_ts(started_at))
