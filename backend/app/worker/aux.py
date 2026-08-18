@@ -1,20 +1,20 @@
-"""Nebenaufgaben laufen nicht auf dem Modell, das die eigentliche Arbeit macht.
+"""Side tasks do not run on the model that does the actual work.
 
-Zusammenfassen, Betiteln, Aufräumen — das ist Fleißarbeit ohne Urteilsvermögen, und sie auf
-demselben Sonnet/Opus laufen zu lassen, das gerade denkt, kostet Geld und Wartezeit. Der
-Vorläufer Hermes hatte dafür einen `auxiliary:`-Block mit eigenem Modell **je Aufgabe**
-(compression, title_generation, triage …); Default `auto` = Haupt-Provider. Genau das hier,
-mit Traccoons Bausteinen: benannte Provider-Tokens aus dem Tresor, Router mit Fallback.
+Summarising, titling, tidying up: that is diligence without judgement, and letting it run on
+the same Sonnet or Opus that is thinking right now costs money and waiting time. The
+predecessor Hermes had an `auxiliary:` block with a model of its own **per task**
+(compression, title_generation, triage …); the default `auto` meant the main provider. That
+is exactly what happens here, with Traccoon's building blocks: named provider tokens from the vault, router with a fallback.
 
 Bewusste Eigenschaften:
 
-* **Ohne Konfiguration ändert sich nichts.** Kein Eintrag → `auto` → derselbe Provider und
-  dasselbe Modell wie der aufrufende Agent. Wer nichts einstellt, merkt nichts.
-* **Eine Nebenaufgabe darf den Hauptlauf niemals reißen.** Jeder Aufruf ist gekapselt;
-  Fehler und Zeitüberschreitungen liefern `None`, und der Aufrufer arbeitet ohne das
-  Ergebnis weiter (bei der Kompaktierung heißt das: lieber hart kürzen als abbrechen).
-* **Keine Tools, kein Gedächtnis, kein Cache-Anfassen.** Ein Aux-Aufruf ist ein
-  Einweg-Gespräch; er darf den sorgfältig aufgebauten Prompt-Cache des Hauptlaufs nicht
+* **Without configuration nothing changes.** No entry means `auto`, so the same provider and
+  the same model as the calling agent. Whoever sets nothing notices nothing.
+* **A side task must never tear the main run.** Every call is encapsulated; errors and
+  timeouts deliver `None`, and the caller works on without the result (with the compaction
+  that means: better a hard truncation than an abort).
+* **No tools, no memory, no touching of the cache.** An aux call is a one-way conversation;
+  it must not touch the carefully built prompt cache of the main run (Traccoon's main lever against token burn).
   anfassen (Traccoons Haupthebel gegen Token-Verbrennung).
 """
 from __future__ import annotations
@@ -32,23 +32,23 @@ from .secrets import resolve_provider_base_url, resolve_provider_token
 
 log = logging.getLogger("traccoon.aux")
 
-# Die Nebenaufgaben, für die eine eigene Einstellung existiert. Bewusst wenige — jede weitere
-# will begründet sein, sonst zerfasert die Konfiguration in Einstellungen, die niemand pflegt.
+# The side tasks for which a setting of its own exists. Deliberately few: every further one
+# wants a justification, because otherwise the configuration frays into settings nobody maintains.
 AUX_TASKS = {
     "compression": "Langen Gesprächsverlauf zusammenfassen (Kontext-Kompaktierung)",
     "title": "Kurzen Titel für einen Eingang oder ein Gespräch bilden",
     "curator": "Gelerntes Gedächtnis sichten und aufräumen",
 }
 
-# Schlüssel in app_settings, z. B. `aux.compression`. Wert ist JSON:
+# Key in app_settings, for instance `aux.compression`. The value is JSON:
 #   {"provider": "openai", "model": "qwen3.6-35b-q3", "token_name": "aux", "timeout": 300}
-# Leer oder fehlend = `auto`.
+# Empty or missing means `auto`.
 def setting_key(task: str) -> str:
     return f"aux.{task}"
 
 
 async def aux_config(db: AsyncSession, task: str) -> dict:
-    """Eingestelltes Modell für eine Nebenaufgabe — leeres dict heißt `auto`."""
+    """The configured model for a side task; an empty dict means `auto`."""
     raw = (await get_setting(db, setting_key(task), "")).strip()
     if not raw:
         return {}
@@ -63,10 +63,10 @@ async def aux_config(db: AsyncSession, task: str) -> dict:
 async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, messages: list[dict],
                    agent=None, tokens: dict | None = None, base_urls: dict | None = None,
                    max_tokens: int = 2048, temperature: float = 0.2) -> str | None:
-    """Eine Nebenaufgabe an das dafür eingestellte Modell geben. `None` = hat nicht geklappt.
+    """Give a side task to the model configured for it. `None` = it did not work.
 
-    `agent`/`tokens`/`base_urls` sind der Kontext des laufenden Agenten; sie tragen den
-    `auto`-Fall (kein eigenes Modell eingestellt) ohne zusätzlichen Tresor-Zugriff.
+    `agent`/`tokens`/`base_urls` are the context of the running agent; they carry the `auto`
+    case (no model of its own configured) without an additional vault access.
     """
     cfg = await aux_config(db, task)
     if cfg:
@@ -78,25 +78,25 @@ async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, message
         use_tokens = {provider: token}
         use_base_urls = {provider: base_url}
         timeout = float(cfg.get("timeout") or 120)
-        # Endpoint-eigene Felder. Denkende Modelle (qwen3.6 & Co.) verbrauchen sonst ihr
-        # ganzes Ausgabe-Budget im Reasoning und liefern leeren Text — für Fleißarbeit wie
-        # Zusammenfassen ist das Denken ohnehin verschenkt. Voreinstellung deshalb: aus.
+        # Endpoint-owned fields. Thinking models (qwen3.6 and company) otherwise use up their
+        # whole output budget on reasoning and deliver empty text, and for diligence work like
+        # summarising the thinking is wasted anyway. The default is therefore: off.
         extra = cfg.get("extra_body")
         if extra is None:
             extra = {"chat_template_kwargs": {"enable_thinking": False}}
     elif agent is not None:
-        # `auto`: derselbe Weg wie der Hauptlauf — inklusive dessen Fallback-Kette.
+        # `auto`: the same way as the main run, including its fallback chain.
         provider, model = agent.provider, agent.model
         use_tokens, use_base_urls = tokens or {}, base_urls or {}
         timeout = 120.0
-        extra = None            # Haupt-Provider: nichts dazutun, der Lauf kennt seine Felder
+        extra = None            # main provider: add nothing, the run knows its fields
     else:
         return None
 
     try:
-        # Zeitdeckel: eine Nebenaufgabe darf den Hauptlauf nicht aufhalten. Hermes lief hier
-        # regelmäßig in 120s-Timeouts, weil die Kompaktierung auf dem großen Modell hing —
-        # deshalb ist die Frist konfigurierbar und der Fehlschlag folgenlos.
+        # Time cap: a side task must not hold the main run up. Hermes regularly ran into 120 s
+        # timeouts here because the compaction hung on the large model, which is why the
+        # deadline is configurable and the failure has no consequences.
         resp = await asyncio.wait_for(
             router.chat(provider=provider, model=model, messages=messages,
                         temperature=temperature, max_tokens=max_tokens,

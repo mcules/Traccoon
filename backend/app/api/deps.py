@@ -1,4 +1,4 @@
-"""FastAPI-Dependencies: Auth, Projekt-Zugriff, Rollen- und KI-Recht-Prüfung."""
+"""FastAPI dependencies: auth, project access, role and AI right checks."""
 from __future__ import annotations
 
 import datetime as dt
@@ -41,7 +41,7 @@ async def get_current_user(
     user = await db.get(User, int(payload.get("sub", 0)))
     if user is None:
         raise _unauth("Unknown user")
-    # Session-Invalidierung: JWTs vor letzter Passwortänderung sind ungültig
+    # Session invalidation: JWTs from before the last password change are invalid
     if user.password_changed_at is not None:
         iat = payload.get("iat", 0)
         if iat < int(user.password_changed_at.timestamp()):
@@ -58,17 +58,17 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
 
 
 def owned_or_global(column, user: User):
-    """SQLAlchemy-Filter für owner-gebundene Objekte: eigene + globale (Owner NULL).
-    Admins sehen alles (kein Filter). Für Jobs/Webhooks/… statt ad-hoc-Ausschreiben."""
+    """SQLAlchemy filter for owner bound objects: one's own plus the global ones (owner NULL).
+    Admins see everything (no filter). For jobs, webhooks and so on instead of ad hoc writing."""
     from sqlalchemy import or_
     if user.global_role == GlobalRole.admin:
-        return True  # Admin: kein Owner-Filter
+        return True  # admin: no owner filter
     return or_(column == user.id, column.is_(None))
 
 
 def is_owner_or_admin(owner_id: int | None, user: User) -> bool:
-    """Darf dieser User das owner-gebundene Objekt ändern/löschen?
-    Globale Objekte (owner NULL) darf NUR ein Admin schreiben/löschen — lesen bleibt frei."""
+    """May this user change or delete the owner bound object?
+    Global objects (owner NULL) may ONLY be written or deleted by an admin; reading stays free."""
     if user.global_role == GlobalRole.admin:
         return True
     return owner_id is not None and owner_id == user.id
@@ -82,18 +82,18 @@ class Access:
     ai_assign: bool
     is_member: bool
     member_since: dt.datetime | None = None
-    inherited: bool = False  # Rolle vom Eltern-Baum geerbt statt direkte Mitgliedschaft
+    inherited: bool = False  # role inherited from the parent tree instead of a direct membership
 
     def has_role(self, minimum: ProjectRole) -> bool:
         return ROLE_RANK[self.role] >= ROLE_RANK[minimum]
 
     @property
     def is_new(self) -> bool:
-        """Kürzlich (≤ 7 Tage) hinzugefügtes Mitglied — für die 'Neu'-Kennzeichnung im UI."""
+        """Recently (<= 7 days) added member, for the 'new' marking in the UI."""
         if not self.is_member or self.member_since is None:
             return False
         since = self.member_since
-        # Postgres liefert tz-aware; andere Backends (Tests/SQLite) naiv → als UTC lesen.
+        # Postgres delivers tz-aware; other backends (tests, SQLite) naive, so read as UTC.
         if since.tzinfo is None:
             since = since.replace(tzinfo=dt.timezone.utc)
         now = dt.datetime.now(tz=dt.timezone.utc)
@@ -101,17 +101,17 @@ class Access:
 
 
 def _cap_inherited_role(role: ProjectRole) -> ProjectRole:
-    """Owner-Rechte werden bei Vererbung gecappt (keine automatischen Lösch-/Board-Umbau-Rechte
-    im Sub-Projekt) — andere Rollen werden 1:1 übernommen."""
+    """Owner rights are capped on inheritance (no automatic deletion or board rebuilding
+    rights in the sub-project); other roles are taken over one to one."""
     return ProjectRole.maintainer if role == ProjectRole.owner else role
 
 
 async def _find_inherited_membership(
     project: Project, user: User, db: AsyncSession
 ) -> ProjectMember | None:
-    """Läuft den parent_id-Baum nach oben und liefert die erste gefundene Mitgliedschaft
-    eines Vorfahren-Projekts. Bricht ab, sobald ein Projekt inherit_members=False hat
-    (dieses Projekt will keine geerbten Rechte von oben), sowie bei Zyklen."""
+    """Walks up the parent_id tree and delivers the first membership of an ancestor project
+    found. Stops as soon as a project has inherit_members=False (that project wants no
+    inherited rights from above), and on cycles."""
     if not project.inherit_members:
         return None
     seen = {project.id}
@@ -137,10 +137,10 @@ async def _find_inherited_membership(
 
 
 async def build_access(project: Project, user: User, db: AsyncSession) -> Access:
-    """Ermittelt die effektive Zugriffs-/Rechte-Sicht eines Users auf ein Projekt.
+    """Determines the effective access and rights view of a user on a project.
 
-    Reihenfolge: eigene Mitgliedschaft im Projekt selbst (voll) > geerbt vom nächsten
-    Vorfahren mit Mitgliedschaft (Owner auf maintainer gecappt) > Admin-Override > 404.
+    Order: own membership in the project itself (full) > inherited from the nearest ancestor
+    with a membership (owner capped to maintainer) > admin override > 404.
     """
     member = (
         await db.execute(
@@ -153,16 +153,16 @@ async def build_access(project: Project, user: User, db: AsyncSession) -> Access
         return Access(user, project, member.role, member.ai_assign, True, member.created_at)
     inherited = await _find_inherited_membership(project, user, db)
     if inherited is not None:
-        # Geerbt zählt als Mitgliedschaft (is_member=True) — `inherited` unterscheidet sie
-        # vom direkten Mitglied; nur der Admin-Override bleibt is_member=False ("Fremd").
+        # Inherited counts as a membership (is_member=True); `inherited` tells it apart from
+        # a direct member, and only the admin override stays is_member=False ("foreign").
         return Access(
             user, project, _cap_inherited_role(inherited.role), inherited.ai_assign, True,
             inherited.created_at, inherited=True,
         )
-    # Admin-Override: globaler Admin darf auch ohne Mitgliedschaft zugreifen (fremdes Projekt)
+    # Admin override: a global admin may access even without a membership (foreign project)
     if user.global_role == GlobalRole.admin:
         return Access(user, project, ProjectRole.owner, True, False)
-    # Strikte Isolation: fremdes Projekt = 404 (nicht 403)
+    # Strict isolation: a foreign project is a 404 (not a 403)
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
 
 
@@ -171,8 +171,8 @@ def _find_inherited_membership_bulk(
     members_by_project: dict[int, ProjectMember],
     projects_by_id: dict[int, Project],
 ) -> ProjectMember | None:
-    """Wie `_find_inherited_membership`, aber ohne DB-Zugriffe — läuft den parent_id-Baum
-    anhand vorab geladener Maps (project_id -> Project / ProjectMember) hoch."""
+    """Like `_find_inherited_membership` but without database accesses: walks up the
+    parent_id tree using maps loaded in advance (project_id -> Project / ProjectMember)."""
     if not project.inherit_members:
         return None
     seen = {project.id}
@@ -197,11 +197,11 @@ def build_access_bulk(
     members_by_project: dict[int, ProjectMember],
     projects_by_id: dict[int, Project],
 ) -> Access | None:
-    """Wie `build_access`, aber ohne DB-Roundtrips: nutzt vorab (in einer Query) geladene
-    Maps für Mitgliedschaften des Users (project_id -> ProjectMember) und alle Projekte
-    (project_id -> Project). Für Massenabfragen (z. B. list_projects) zur Vermeidung von
-    N+1-Queries beim Hochlaufen des parent_id-Baums. Liefert None statt 404-Exception,
-    damit der Aufrufer nicht-zugängliche Projekte einfach herausfiltern kann."""
+    """Like `build_access` but without database round trips: uses maps loaded in advance (in
+    one query) for the memberships of the user (project_id -> ProjectMember) and all projects
+    (project_id -> Project). For bulk queries (list_projects for instance) to avoid N+1
+    queries while walking up the parent_id tree. Returns None instead of a 404 exception so
+    that the caller can simply filter out inaccessible projects."""
     member = members_by_project.get(project.id)
     if member is not None:
         return Access(user, project, member.role, member.ai_assign, True, member.created_at)

@@ -7,7 +7,6 @@ langsam und unzuverlässig — der Bot braucht einen direkten Draht zu `imap-mcp
 
 Deshalb hier das Nötigste vom Protokoll: `initialize`, Sitzungskennung merken, `tools/call`.
 Kein Werkzeug-Verzeichnis, keine Ressourcen, keine Wiederaufnahme — was fehlt, fehlt
-absichtlich.
 
 Die Server im `mcp-backends`-Netz sind intern unauthentifiziert (die Rechteprüfung sitzt in
 MCPJungle davor). Dieser Weg umgeht MCPJungle bewusst: er trägt keine Nutzer-Identität,
