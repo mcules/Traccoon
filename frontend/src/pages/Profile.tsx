@@ -8,6 +8,7 @@ export default function Profile() {
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <EmailPanel />
+      <BenachrichtigungenPanel />
       <PasswordPanel />
       <ThemePanel />
       <TicketOpenPanel />
@@ -120,6 +121,83 @@ function EmailPanel() {
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Speichern</button>
       </div>
+      {err && <div className="text-sm text-red-400">{err}</div>}
+      {ok && <div className="text-sm text-green-400">{ok}</div>}
+    </section>
+  );
+}
+
+/**
+ * Auf welchem Weg dieser Mensch erreicht wird.
+ *
+ * Der Weg gehört zur Person, nicht zur Nachricht: wer eine Benachrichtigung auslöst —
+ * ein Ablauf, ein Agent, ein anderer Mensch — weiß selten, ob der Empfänger Telegram
+ * überhaupt benutzt. Deshalb steht hier der Standard, und nur wer es besser weiß,
+ * übersteuert ihn in der Aktion.
+ */
+function BenachrichtigungenPanel() {
+  const { user, refresh } = useAuth();
+  const [standard, setStandard] = useState(user?.notify_default ?? "telegram");
+  const [chat, setChat] = useState(user?.telegram_chat_id ?? "");
+  const [mail, setMail] = useState(user?.notify_email ?? "");
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  const save = async () => {
+    setErr(""); setOk("");
+    try {
+      await api.put("/me/notify", {
+        notify_default: standard, telegram_chat_id: chat.trim(), notify_email: mail.trim(),
+      });
+      await refresh();
+      setOk("Gespeichert.");
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen.");
+    }
+  };
+
+  const feld = "w-full rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
+  const fehlt = standard === "telegram" ? !chat.trim()
+    : !(mail.trim() || user?.email);
+
+  return (
+    <section className="space-y-3 rounded-lg border border-line bg-card p-4">
+      <div className="text-sm font-medium text-ink">Benachrichtigungen</div>
+      <p className="text-xs text-muted">
+        In der Oberfläche siehst du ohnehin alles. Hier steht, was zusätzlich hinausgeht —
+        und wohin, wenn der Absender keinen Weg nennt (der Normalfall).
+      </p>
+
+      <label className="block text-xs font-medium text-muted">
+        Standard-Weg
+        <select value={standard} onChange={(e) => setStandard(e.target.value)} className={`mt-1 ${feld}`}>
+          <option value="telegram">Telegram</option>
+          <option value="email">E-Mail</option>
+        </select>
+      </label>
+
+      <label className="block text-xs font-medium text-muted">
+        Telegram-Chat-ID
+        <input value={chat} onChange={(e) => setChat(e.target.value)} placeholder="z. B. 277928204"
+          className={`mt-1 ${feld}`} />
+      </label>
+
+      <label className="block text-xs font-medium text-muted">
+        E-Mail für Benachrichtigungen
+        <input value={mail} onChange={(e) => setMail(e.target.value)}
+          placeholder={user?.email || "name@example.com"} className={`mt-1 ${feld}`} />
+        <span className="mt-1 block text-[10px] text-muted">
+          Leer lassen: es gilt deine Anmelde-Adresse{user?.email ? ` (${user.email})` : ""}.
+        </span>
+      </label>
+
+      {fehlt && (
+        <div className="text-xs text-amber-300">
+          Für den gewählten Standard-Weg ist nichts hinterlegt — Nachrichten gehen dann auf
+          dem anderen Weg hinaus, sonst nur in die Glocke.
+        </div>
+      )}
+      <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Speichern</button>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
     </section>

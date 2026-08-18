@@ -368,6 +368,12 @@ async def lifespan(app: FastAPI):
                 "INTEGER REFERENCES workflow_instances(id) ON DELETE SET NULL",
                 "CREATE INDEX IF NOT EXISTS ix_spam_verdicts_workflow_instance_id "
                 "ON spam_verdicts (workflow_instance_id)",
+                # Benachrichtigungsweg gehört zur Person: wer eine Nachricht auslöst, weiß
+                # selten, ob der Empfänger Telegram überhaupt benutzt. Der Absender darf
+                # einen Weg vorgeben, muss aber nicht — dann gilt dieser hier.
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_default VARCHAR(20) "
+                "DEFAULT 'telegram' NOT NULL",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email VARCHAR(255)",
             ):
                 if not await _fehlt_noch(conn, _ddl):
                     continue

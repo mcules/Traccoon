@@ -63,6 +63,15 @@ export default function ActionParams({
     enabled: braucht("agent_role"),
     staleTime: 5 * 60_000,
   });
+  // Empfänger: alle Personen, die dieser Mensch sehen darf (eigene Projekte, Platzhalter,
+  // er selbst) — samt der Wege, auf denen sie erreichbar sind.
+  const { data: personen } = useQuery({
+    queryKey: ["users-visible"],
+    queryFn: () => api.get<{ id: number; display_name: string; notify_default: string;
+                             kanaele: string[] }[]>("/users/visible"),
+    enabled: braucht("person"),
+    staleTime: 5 * 60_000,
+  });
   // Zustände des Artefakts, an dem der Ablauf hängt (Administration → Artefakte).
   const { data: typen } = useQuery({
     queryKey: ["artifact-types", subjectKind],
@@ -125,6 +134,15 @@ export default function ActionParams({
     if (f.source === "member") {
       return [["", "— niemand —"],
               ...members.map((m) => [String(m.user_id), m.display_name] as [string, string])];
+    }
+    if (f.source === "person") {
+      // Projekt-Mitglieder reichen hier nicht: ein eigener, projektloser Ablauf hat gar
+      // keine — die Auswahl blieb leer und man konnte niemanden benennen.
+      const liste = personen || [];
+      return [["", "— Betreiber —"],
+              ...liste.map((u) => [String(u.id),
+                `${u.display_name}${u.kanaele.length ? "" : " (kein Weg hinterlegt)"}`] as
+                [string, string])];
     }
     return f.options || [];
   };

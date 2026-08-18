@@ -1,6 +1,18 @@
-"""Notification-Erzeugung (In-App-Glocke + Telegram-Zustellung durch den Bot)."""
+"""Benachrichtigungen: die Glocke immer, der Weg nach draußen nach Wahl der Person.
+
+Bisher gab es genau einen Weg hinaus — Telegram, falls eine Chat-ID hinterlegt war. Wer
+eine Benachrichtigung auslöst, weiß aber selten, ob der Empfänger Telegram überhaupt
+benutzt; und in einem Ablauf steht der Empfänger oft erst zur Laufzeit fest. Deshalb
+entscheidet die **Person**, auf welchem Weg sie erreicht wird (`users.notify_default`),
+und der Absender darf einen Weg vorgeben, muss aber nicht.
+
+Die Glocke bleibt unabhängig davon: jede Benachrichtigung ist auch eine Zeile in der
+Oberfläche. Der Weg entscheidet nur, was zusätzlich hinausgeht.
+"""
 from __future__ import annotations
 
+import datetime as dt
+import logging
 import os
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +22,78 @@ from ..models.ticket import Issue
 from ..models.user import User
 
 OWNER_CHAT = os.getenv("TELEGRAM_OWNER_CHAT", "")
+
+log = logging.getLogger("traccoon.notify")
+
+KANAELE = ("telegram", "email")
+
+
+def kanal_adresse(user: User | None, kanal: str) -> str:
+    """Womit dieser Weg bei dieser Person erreichbar ist — leer, wenn gar nicht."""
+    if user is None:
+        return OWNER_CHAT if kanal == "telegram" else ""
+    if kanal == "telegram":
+        return user.telegram_chat_id or ""
+    if kanal == "email":
+        return (user.notify_email or user.email or "").strip()
+    return ""
+
+
+def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
+    """Welcher Weg tatsächlich genommen wird.
+
+    Vorgabe des Absenders schlägt Standard der Person; ist der gewählte Weg bei dieser
+    Person nicht hinterlegt, wird der andere genommen, statt die Nachricht still fallen
+    zu lassen. Eine Benachrichtigung, die niemanden erreicht, ist der schlechteste
+    Ausgang — schlechter als eine auf dem zweitliebsten Weg.
+    """
+    reihenfolge = [k for k in (gewuenscht, (user.notify_default if user else ""), "telegram")
+                   if k in KANAELE]
+    reihenfolge += [k for k in KANAELE if k not in reihenfolge]
+    for kanal in reihenfolge:
+        if kanal_adresse(user, kanal):
+            return kanal
+    return reihenfolge[0]
+
+
+async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: str,
+                    body: str = "", kanal: str = "", project_id: int | None = None,
+                    issue_id: int | None = None) -> dict:
+    """Eine Benachrichtigung anlegen und auf dem passenden Weg hinausschicken.
+
+    Telegram übernimmt wie bisher der Bot (er ist der einzige Prozess mit dem Bot-Token);
+    hier wird dafür nur die Chat-ID gesetzt. E-Mail geht sofort raus — dafür braucht es
+    keinen zweiten Prozess, und `notified_at` sagt der Glocke, dass draußen nichts mehr
+    offen ist.
+    """
+    gewaehlt = waehle_kanal(user, kanal)
+    ziel = kanal_adresse(user, gewaehlt)
+    n = Notification(user_id=(user.id if user else None), project_id=project_id,
+                     issue_id=issue_id, kind=kind, title=title[:500], body=(body or "")[:4000],
+                     chat_id=(ziel or OWNER_CHAT or None) if gewaehlt == "telegram" else None)
+    db.add(n)
+
+    if gewaehlt == "email":
+        if not ziel:
+            log.warning("Keine E-Mail-Adresse für Nutzer %s — nur Glocke",
+                        user.id if user else None)
+            return {"kanal": "bell", "grund": "keine Adresse"}
+        from . import mail
+        ok = await mail.send_mail(db, ziel, title[:200] or "Traccoon",
+                                  html_body=_html(title, body), text_body=body or title)
+        if ok:
+            n.notified_at = dt.datetime.now(tz=dt.timezone.utc)
+        else:
+            log.warning("E-Mail an %s fehlgeschlagen — bleibt in der Glocke", ziel)
+        return {"kanal": "email", "ziel": ziel, "ok": ok}
+    return {"kanal": "telegram", "ziel": n.chat_id or ""}
+
+
+def _html(title: str, body: str) -> str:
+    """Schlichtes HTML — der Text ist die Nachricht, nicht das Layout."""
+    from html import escape
+    zeilen = "<br>".join(escape(z) for z in (body or "").splitlines())
+    return f"<p><b>{escape(title)}</b></p><p>{zeilen}</p>"
 
 
 async def notify_issue(db: AsyncSession, issue: Issue, kind: str, title: str, body: str = "") -> None:

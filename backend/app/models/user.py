@@ -37,6 +37,12 @@ class User(TimestampMixin, Base):
     claude_oauth_token_enc: Mapped[str] = mapped_column(String, default="")
     codex_token_enc: Mapped[str] = mapped_column(String, default="")
     telegram_chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Auf welchem Weg dieser Mensch Nachrichten bekommt, wenn der Absender keinen nennt.
+    # Der Weg gehört zur Person, nicht zur Nachricht: wer eine Benachrichtigung auslöst,
+    # weiß selten, ob der Empfänger Telegram überhaupt benutzt.
+    notify_default: Mapped[str] = mapped_column(String(20), default="telegram")  # telegram|email
+    # Abweichende Adresse für Benachrichtigungen; leer = die Anmelde-Adresse (`email`).
+    notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # MCP-Gateway (MCPJungle) pro User — harte serverseitige Tool-Trennung.
     mcp_group: Mapped[str] = mapped_column(String(120), default="")          # MCPJungle-Gruppe

@@ -767,18 +767,17 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         target = await _resolve_target(db, inst, params.get("to") or {})
         title = _interp(params.get("title") or "Workflow-Benachrichtigung", ctx)
         body = _interp(params.get("text") or params.get("message") or "", ctx)
-        from ..models.notification import Notification
         from ..models.user import User
-        chat = None
-        if target is not None:
-            u = await db.get(User, target)
-            chat = (u.telegram_chat_id if u else None)
-        chat = chat or os.getenv("TELEGRAM_OWNER_CHAT", "") or None
-        db.add(Notification(
-            user_id=target, project_id=inst.project_id, issue_id=inst.issue_id,
-            kind="workflow_notify", title=title[:500], body=body[:4000], chat_id=chat,
-        ))
-        return {"action": "notify", "user_id": target}
+        from .notify import zustellen
+        # Der Weg ist optional: ohne Angabe entscheidet die Person, wie sie erreicht wird.
+        # Ein Ablauf kennt seinen Empfänger oft erst zur Laufzeit — er kann gar nicht
+        # wissen, ob der Telegram benutzt.
+        kanal = str(_interp(params.get("channel") or params.get("kanal") or "", ctx)).strip()
+        empfaenger = await db.get(User, target) if target is not None else None
+        weg = await zustellen(db, user=empfaenger, kind="workflow_notify", title=title,
+                              body=body, kanal=kanal, project_id=inst.project_id,
+                              issue_id=inst.issue_id)
+        return {"action": "notify", "user_id": target, **weg}
 
     # Unbekannte/absichtliche noop-Aktion: kein Fehler, damit der Workflow durchläuft.
     return {"action": "noop", "requested": action}
