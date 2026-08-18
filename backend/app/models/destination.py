@@ -1,13 +1,13 @@
-"""Ziele: benannte externe Gegenstellen mit hinterlegter Anmeldung.
+"""Destinations: named external counterparts with a stored login.
 
-Gedacht wie die Destinations in der SAP BTP: das **Ziel** kennt Basis-URL und
-Authentifizierung, der **Aufruf** (Prozess-Aktion, Job, Agenten-Werkzeug) nennt nur noch
-den Namen plus Methode, Pfad-Ergänzung, Query, Header und Body. Zugangsdaten stehen damit
-an genau einer Stelle, verschlüsselt, und tauchen weder in Prozessen noch in Logs auf.
+Thought of like the destinations in SAP BTP: the **destination** knows the base URL and the
+authentication, and the **call** (process action, job, agent tool) only names the name plus
+method, path addition, query, headers and body. Credentials therefore stand in exactly one
+place, encrypted, and appear neither in processes nor in logs.
 
-Geltungsbereich wie bei den Prozess-Sätzen: `project_id` gesetzt → nur dieses Projekt;
-`user_id` gesetzt → alle Projekte des Nutzers; beides NULL → systemweit. Aufgelöst wird
-nach Namen in genau dieser Reihenfolge (siehe `services/destinations.resolve`).
+The scope is as with the process sets: `project_id` set means this project only; `user_id`
+set means all projects of the user; both NULL means system wide. Resolution happens by name
+in exactly this order (see `services/destinations.resolve`).
 """
 import datetime as dt
 
@@ -23,8 +23,8 @@ from .base import TimestampMixin
 class Destination(TimestampMixin, Base):
     __tablename__ = "destinations"
     __table_args__ = (
-        # Ein Name je Geltungsbereich. NULL-Spalten gelten in Postgres als verschieden,
-        # deshalb partielle Indizes statt einer einzelnen UniqueConstraint.
+        # One name per scope. NULL columns count as different in Postgres, which is why
+        # there are partial indexes instead of a single UniqueConstraint.
         Index("uq_destination_global", "name", unique=True,
               postgresql_where=sa_text("user_id IS NULL AND project_id IS NULL"),
               sqlite_where=sa_text("user_id IS NULL AND project_id IS NULL")),
@@ -37,7 +37,7 @@ class Destination(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)  # Slug für Aufrufe
+    name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)  # slug for calls
     label: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
 
@@ -52,18 +52,18 @@ class Destination(TimestampMixin, Base):
 
     # basic
     username: Mapped[str] = mapped_column(String(200), default="")
-    # Fernet-verschlüsselt: Passwort · Bearer-Token · API-Key · HMAC-Secret · Client-Secret
+    # Fernet encrypted: password · bearer token · API key · HMAC secret · client secret
     secret_enc: Mapped[str] = mapped_column(Text, default="")
 
-    # api_key: Name und Ort des Schlüssels (Header oder Query-Parameter)
+    # api_key: name and place of the key (header or query parameter)
     api_key_name: Mapped[str] = mapped_column(String(120), default="X-API-Key")
     api_key_in: Mapped[str] = mapped_column(String(10), default="header")  # header | query
 
-    # hmac: Signatur über den gesendeten Body
+    # hmac: signature over the sent body
     hmac_header: Mapped[str] = mapped_column(String(120), default="X-Webhook-Signature")
     hmac_algo: Mapped[str] = mapped_column(String(20), default="sha256")
-    # Präfix vor dem Hex-Digest. Bewusst LEER als Default — manche Gegenstellen (z. B.
-    # Predecessor) weisen ein „sha256="-Präfix ab.
+    # Prefix before the hex digest. Deliberately EMPTY as the default: some counterparts
+    # (Predecessor for instance) reject a `sha256=` prefix.
     hmac_prefix: Mapped[str] = mapped_column(String(20), default="")
 
     # oauth2_cc (Client Credentials)
@@ -71,23 +71,23 @@ class Destination(TimestampMixin, Base):
     oauth_client_id: Mapped[str] = mapped_column(String(300), default="")
     oauth_scope: Mapped[str] = mapped_column(String(500), default="")
     oauth_audience: Mapped[str] = mapped_column(String(500), default="")
-    # Zwischengespeichertes Zugriffstoken (verschlüsselt) + Ablauf — spart einen
+    # Cached access token (encrypted) plus expiry; saves a round trip
     # Token-Roundtrip je Aufruf.
     oauth_token_enc: Mapped[str] = mapped_column(Text, default="")
     oauth_expires_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
 
-    # Bei jedem Aufruf mitgesendet (der Aufruf darf einzelne überschreiben).
+    # Sent along with every call (a call may override individual ones).
     default_headers: Mapped[dict] = mapped_column(JSON, default=dict)
     timeout_sec: Mapped[int] = mapped_column(Integer, default=30)
-    # Wie viel der Antwort ein Aufrufer (v. a. ein KI-Agent) höchstens zu sehen bekommt.
-    # Bewusst je Ziel: der Standard schützt den Kontext, aber eine Gegenstelle, die ihre
-    # Lage absichtlich in EINEM Abruf liefert (GameProj-Bot-API), wäre mit 4000 Zeichen
-    # unbrauchbar — der Agent plante dann auf abgeschnittenem JSON.
+    # How much of the answer a caller (an AI agent above all) gets to see at most.
+    # Deliberately per destination: the default protects the context, but a counterpart that
+    # deliberately delivers its whole state in ONE call (the GameProj bot API) would be
+    # unusable with 4000 characters, and the agent would plan on truncated JSON.
     max_response_chars: Mapped[int] = mapped_column(Integer, default=4000)
     verify_tls: Mapped[bool] = mapped_column(Boolean, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Darf ein KI-Agent dieses Ziel über `http_call` nutzen? Standard: nein.
+    # May an AI agent use this destination over `http_call`? Default: no.
     allow_agents: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_by: Mapped[int | None] = mapped_column(

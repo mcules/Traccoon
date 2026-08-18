@@ -8,11 +8,11 @@ import { BOARD_VIEWS, projectChromeTabs, projectTabs, type ProjectTab } from "..
 import { useAuth } from "../auth";
 import TicketDrawer from "../components/TicketDrawer";
 import NewTicketModal from "../components/NewTicketModal";
-// Monaco ist groß → nur laden, wenn der Code-Tab geöffnet wird.
+// Monaco is large, so load it only when the code tab is opened.
 const FilesPanel = lazy(() => import("../components/FilesPanel"));
-// Canvas, Pixelwelt und Engine des Büros gehören nicht ins Haupt-Bundle: wer nie auf den
-// Reiter klickt, lädt sie nie. Kein Vorwärmen wie bei Monaco — das Büro ist ein eigener,
-// kleiner Brocken und beim ersten Klick sofort da.
+// Canvas, pixel world and engine of the office do not belong in the main bundle: whoever
+// never clicks the tab never loads them. No prewarming as with Monaco: the office is a
+// separate, small chunk and there immediately on the first click.
 const OfficeTab = lazy(() => import("../components/office/OfficeTab"));
 import Hardware from "../components/Hardware";
 import TestenvsPanel from "../components/TestenvsPanel";
@@ -26,24 +26,24 @@ import AgentMonitor from "../components/AgentMonitor";
 import WorkflowList from "../components/workflow/WorkflowList";
 import SlotList from "../components/workflow/SlotList";
 
-// Reiter-Liste/Icons liegen in ../projectTabs, damit die Ticket-Seite dasselbe
-// Untermenü rendern kann.
+// The tab list and icons lie in ../projectTabs so that the ticket page can render the same
+// sub-menu.
 type Tab = ProjectTab;
 
 export default function ProjectView() {
   const { key } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  // Aktiver Tab kommt jetzt aus ?tab= (Header-Links). Rohwert früh ableiten, da die
-  // archiv-Query ihn braucht; die endgültige Validierung gegen die (rollenabhängige)
-  // Tab-Liste passiert weiter unten, sobald das Projekt geladen ist.
+  // The active tab now comes from ?tab= (header links). The raw value is derived early
+  // because the archive query needs it; the final validation against the (role dependent)
+  // tab list happens further below, as soon as the project is loaded.
   const rawTab = (searchParams.get("tab") || "board") as Tab;
   const [newOpen, setNewOpen] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const { user } = useAuth();
 
-  // Ticket öffnen: Linksklick per Präferenz (popup=Drawer, page=volle Seite);
-  // Mittelklick öffnet immer die volle Seite in neuem Tab.
+  // Opening a ticket: left click by preference (popup = drawer, page = full page);
+  // a middle click always opens the full page in a new tab.
   const openTicket = (k: string, e?: React.MouseEvent) => {
     const url = `/projects/${key}/tickets/${k}`;
     if (e && e.button === 1) { window.open(url, "_blank", "noopener"); return; }
@@ -51,7 +51,7 @@ export default function ProjectView() {
     else setOpenKey(k);
   };
 
-  // Alt-Deep-Link /projects/:key?ticket=KEY → auf die Ticket-Seite umleiten.
+  // Old deep link /projects/:key?ticket=KEY redirects to the ticket page.
   useEffect(() => {
     const t = searchParams.get("ticket");
     if (t) navigate(`/projects/${key}/tickets/${t}`, { replace: true });
@@ -77,7 +77,7 @@ export default function ProjectView() {
     enabled: !!project && rawTab === "archiv",
   });
 
-  // Live-Updates über den echten WebSocket (Dispatcher/Runner-Events)
+  // Live updates over the real WebSocket (dispatcher and runner events)
   const qc = useQueryClient();
   useEffect(() => {
     if (!project) return;
@@ -97,9 +97,9 @@ export default function ProjectView() {
   const canManage = project?.my_role === "owner" || project?.my_role === "maintainer";
   const canWrite = canManage || project?.my_role === "member";
 
-  // Monaco/FilesPanel ist ein ~3,3 MB-Chunk + Worker (ts.worker ~6 MB) und lädt sonst erst beim
-  // Klick auf „Code". Wenn der Code-Tab verfügbar ist, während die Seite schon steht im Leerlauf
-  // vollständig vorwärmen: erst den Editor-Chunk, dann die Worker-Chunks → erster Klick fast sofort.
+  // Monaco/FilesPanel is a chunk of about 3.3 MB plus workers (ts.worker about 6 MB) and
+  // would otherwise load only on a click on "code". When the code tab is available, prewarm
+  // it completely while the page is idle: first the editor chunk, then the worker chunks, so that the first click is almost immediate.
   useEffect(() => {
     if (!(project?.git_enabled && canManage)) return;
     const warm = async () => {
@@ -113,12 +113,12 @@ export default function ProjectView() {
     return () => { if (ric && cic) cic(id); else clearTimeout(id); };
   }, [project?.id, canManage]);
 
-  // Rollen-/Flag-abhängige Tab-Liste (geteilt mit der Ticket-Seite). Vor dem Projekt-Guard
-  // berechnet, damit usePageChrome (ein Hook) unbedingt aufgerufen wird.
+  // Role and flag dependent tab list (shared with the ticket page). Computed before the
+  // project guard so that usePageChrome (a hook) is called unconditionally.
   const tabs = useMemo<[Tab, string][]>(() => projectTabs(project), [project]);
 
-  // Gültige Tabs = Untermenü-Tabs + die Board-Ansichten (list/backlog/archiv sind nicht im
-  // Untermenü, aber gültige Ziele der Board-Buttons).
+  // Valid tabs = sub-menu tabs plus the board views (list, backlog and archive are not in
+  // the sub-menu but are valid targets of the board buttons).
   const validKeys = useMemo(
     () => new Set<string>([...tabs.map(([k]) => k), ...BOARD_VIEWS.map(([k]) => k)]),
     [tabs]
@@ -134,10 +134,10 @@ export default function ProjectView() {
 
   usePageChrome(
     project?.name ?? "",
-    // „Board" bleibt im Untermenü hervorgehoben, solange eine Board-Ansicht (auch Liste/…) aktiv ist:
-    // dazu zeigt sein Link auf die aktuelle URL, wenn wir in der Board-Gruppe sind.
+    // "Board" stays highlighted in the sub-menu as long as a board view (list and so on) is
+    // active: for that its link points at the current URL when we are in the board group.
     projectChromeTabs(project, inBoardGroup ? tab : undefined),
-    // Liste, Backlog und Archiv liegen unter „Board" — dort bleibt die Marke stehen.
+    // List, backlog and archive lie under "board", and the mark stays there.
     inBoardGroup ? "board" : tab,
   );
 

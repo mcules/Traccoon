@@ -1,12 +1,12 @@
-"""Torwächter vor jedem Agentenlauf — Zeitfenster, Nutzer-Limits und Runaway-Bremse.
+"""Gatekeeper before every agent run: time window, user limits and runaway brake.
 
-Diese Regeln sind **Policy, kein Graph**: sie gelten für jeden Agentenlauf, egal wie der
-Prozess gezeichnet ist. Ein Prozess-Designer kann sie also nicht versehentlich (oder
-absichtlich) wegklicken — genau das war die Lehre aus ABC-19 (41 Läufe / 11,9 Mio
-Input-Tokens, weil die Cap-Prüfung nur an einer Stelle hing).
+These rules are **policy, not a graph**: they apply to every agent run, no matter how the
+process is drawn. A process designer therefore cannot click them away accidentally (or
+deliberately), which was exactly the lesson of ABC-19 (41 runs, 11.9M input tokens, because
+the cap check hung in one place only).
 
-Herkunft: 1:1 aus `dispatcher._gate_ok` und dem Runaway-/Warn-Block in `dispatcher._process`
-herausgelöst, damit Workflow-Engine und (Rest-)Dispatcher dieselbe Wahrheit benutzen.
+Origin: lifted one to one out of `dispatcher._gate_ok` and the runaway and warning block in
+`dispatcher._process`, so that workflow engine and (remaining) dispatcher use the same truth.
 """
 from __future__ import annotations
 
@@ -29,21 +29,21 @@ TZ = ZoneInfo("Europe/Berlin")
 
 MAX_CONCURRENT = 3            # global gleichzeitig laufende Agenten
 MAX_CONTINUATIONS = 30        # Fortsetzungen je Ticket
-# Harte Runaway-Bremse pro Ticket, UNABHÄNGIG von continuation_count. Beim Erreichen →
-# hold (Mensch), statt weiter Tokens zu verbrennen.
+# Hard runaway brake per ticket, INDEPENDENT of continuation_count. On reaching it, hold
+# (human) instead of burning further tokens.
 MAX_RUNS_PER_TICKET = 30
 MAX_INPUT_TOKENS_PER_TICKET = 8_000_000
-# Frühwarnung unter dem Hard-Cap: einmal pro Ticket eine Kostenwarnung, ohne zu blockieren.
+# Early warning below the hard cap: one cost warning per ticket, without blocking.
 WARN_INPUT_TOKENS_PER_TICKET = 3_000_000
 
 
 @dataclass
 class GateVerdict:
-    """Ergebnis der Torprüfung.
+    """Result of the gate check.
 
     ok=True      → Lauf darf starten.
-    hold=True    → dauerhafter Stopp (Runaway-Cap); der Aufrufer setzt das Ticket auf hold.
-    sonst        → nur JETZT nicht (Zeitfenster/Limit); später erneut versuchen.
+    hold=True    means a permanent stop (runaway cap); the caller puts the ticket on hold.
+    otherwise    means not NOW (time window, limit); try again later.
     """
     ok: bool
     reason: str = ""
@@ -60,7 +60,7 @@ def _now() -> dt.datetime:
 
 
 async def system_paused() -> str:
-    """Globale Bremsen: Not-Aus und laufendes Wartungs-Update. '' = frei."""
+    """Global brakes: emergency stop and a running maintenance update. '' = free."""
     if await get_flag("update_pending") or await get_flag("update_in_progress"):
         return "update"
     if await get_flag("global_pause"):
@@ -69,12 +69,12 @@ async def system_paused() -> str:
 
 
 def owner_of(issue: Issue) -> int | None:
-    """Wessen Kontingent/Token der Lauf belastet: wer den Agenten zugewiesen hat."""
+    """Whose quota and token the run charges: whoever assigned the agent."""
     return issue.assigned_by_user_id or issue.reporter_id
 
 
 async def schedule_ok(db, issue: Issue) -> GateVerdict:
-    """Zeitliche Tore: geplanter Start, Feierabend des Eigentümers, Nacht-Fenster."""
+    """Time gates: planned start, end of the working day of the owner, night window."""
     if issue.start_at and issue.start_at > _now():
         return GateVerdict(False, "start_at", detail=f"geplant für {issue.start_at:%d.%m. %H:%M}")
     owner_id = owner_of(issue)
@@ -94,9 +94,9 @@ async def schedule_ok(db, issue: Issue) -> GateVerdict:
 
 
 async def runner_slot_free(db, issue: Issue) -> GateVerdict:
-    """Pro-Nutzer-Limit (`User.max_runners`) und globale Obergrenze gleichzeitiger Läufe.
+    """Per-user limit (`User.max_runners`) and the global upper bound of concurrent runs.
 
-    Gezählt wird `Issue.agent_working` — dieselbe Marke, die Engine und Monitor nutzen.
+    What is counted is `Issue.agent_working`, the same mark engine and monitor use.
     """
     running = (await db.execute(select(Issue).where(Issue.agent_working.is_(True)))).scalars().all()
     running = [r for r in running if r.id != issue.id]
@@ -112,10 +112,10 @@ async def runner_slot_free(db, issue: Issue) -> GateVerdict:
 
 
 async def cap_ok(db, issue: Issue) -> GateVerdict:
-    """Runaway-Bremse je Ticket + einmalige Kosten-Frühwarnung.
+    """Runaway brake per ticket plus a one-off early cost warning.
 
-    Cap-Fenster: ist `cap_baseline_run_id` gesetzt (letzte Plan-Freigabe), zählen nur Läufe
-    danach — alte Fehlversuche belasten legitime Neu-Arbeit nicht. Der Aufrufer committet.
+    Cap window: when `cap_baseline_run_id` is set (the last plan approval), only runs after
+    it count, so old failed attempts do not burden legitimate new work. The caller commits.
     """
     cond = [Run.issue_id == issue.id]
     if issue.cap_baseline_run_id:
@@ -150,11 +150,11 @@ async def cap_ok(db, issue: Issue) -> GateVerdict:
 
 
 async def check(db, issue: Issue) -> GateVerdict:
-    """Vollständige Torprüfung vor dem Einreihen eines Agentenlaufs."""
+    """Complete gate check before queueing an agent run."""
     paused = await system_paused()
     if paused:
         return GateVerdict(False, paused, detail="System pausiert (Not-Aus/Wartung)")
-    verdict = await cap_ok(db, issue)      # zuerst: kann dauerhaft stoppen
+    verdict = await cap_ok(db, issue)      # first: this one can stop permanently
     if not verdict.ok:
         return verdict
     verdict = await schedule_ok(db, issue)
