@@ -1,26 +1,26 @@
-"""Lehrstoff aus den Postfächern selbst — Lernen ohne zu fragen.
+"""Learning material from the mailboxes themselves: learning without asking.
 
-Das Gedächtnis der Erkennung wächst bisher nur, wenn jemand eine Rückfrage beantwortet.
-Am Anfang steht es damit leer da, obwohl die Antworten längst existieren: **jede Mail im
-Spam-Ordner ist bestätigter Spam, jede im Posteingang und im Archiv bestätigte Post.** Ein
-Mensch hat das entschieden, nur eben ohne Traccoon.
+The memory of the detection has so far only grown when somebody answered a question. At the
+beginning it therefore stands empty although the answers have long existed: **every mail in
+the spam folder is confirmed spam, every one in the inbox and in the archive confirmed
+post.** A human decided that, only without Traccoon.
 
-Zwei Anwendungen, ein Mechanismus:
+Two applications, one mechanism:
 
-* **Kaltstart** — einmal über Spam-Ordner und Posteingang/Archiv, damit die Erkennung von
-  Anfang an weiß, mit wem dieser Mensch verkehrt.
-* **Rückkopplung** — regelmäßig über den Spam-Ordner: was der Mensch selbst dorthin
-  verschiebt (am Handy, in der Webmail), ist eine Entscheidung, aus der gelernt gehört.
+* **Cold start**: once over the spam folder and the inbox or archive, so that the detection
+  knows from the beginning who this person deals with.
+* **Feedback**: regularly over the spam folder, because what the human moves there
+  themselves (on the phone, in the webmail) is a decision worth learning from.
 
-Beides läuft über denselben Merkstand je Konto und Ordner (höchste verarbeitete UID), damit
-kein Durchlauf doppelt zählt — doppelt gezählte Merkmale wären ein verzerrtes Gedächtnis.
+Both run over the same mark per account and folder (the highest processed UID) so that no
+pass counts twice: doubly counted features would be a distorted memory.
 
-**Nur die Absender-Identität.** Gelernt werden `from:` und `dom:` — sonst nichts. Die
-technischen Signale (`sig:`) fehlen dem Nachlauf ohnehin (er liest nur Kopfzeilen-Auszüge),
-und Betreff-Wörter wie der angeschriebene Alias sind aus dieser Quelle irreführend: ein
-Postfach enthält tausende erwünschte Mails und eine Handvoll Müll, also wird jedes
-Alltagswort zum Ham-Signal. Aus einer echten Entscheidung dürfen sie weiter gelernt
-werden — dort stehen beide Klassen in einem Verhältnis, das etwas bedeutet.
+**Only the sender identity.** What is learned are `from:` and `dom:`, nothing else. The
+technical signals (`sig:`) are missing from the follow-up anyway (it only reads header
+excerpts), and subject words like the addressed alias are misleading from this source: a
+mailbox contains thousands of wanted mails and a handful of rubbish, so every everyday word
+becomes a ham signal. From a real decision they may still be learned, because there both
+classes stand in a ratio that means something.
 """
 from __future__ import annotations
 
@@ -39,9 +39,9 @@ log = logging.getLogger("traccoon.spam")
 
 IMAP_MCP_URL = os.getenv("IMAP_MCP_URL", "http://imap-mcp:3010/mcp")
 
-# Merkstand je Konto/Ordner: bis zu welcher UID schon gelernt wurde.
+# Mark per account and folder: up to which UID learning has already happened.
 STAND_KEY = "spam_lernstand"
-# Wie viele Nachrichten ein Durchlauf je Ordner höchstens ansieht (imap-mcp deckelt bei 500).
+# How many messages one pass looks at per folder at most (imap-mcp caps at 500).
 STAPEL = 500
 
 
@@ -65,23 +65,23 @@ def _payload(treffer: dict) -> dict:
     }
 
 
-# Nur die Identität des Absenders wird nachgelernt. Betreff-Wörter und der angeschriebene
-# Alias sind aus einem Nachlauf heraus GIFT, und das ist teuer gelernt worden (2026-08-18):
-# Ein Postfach enthält tausende erwünschte Mails und eine Handvoll Müll. Wer daraus
-# Wortstatistik zieht, macht jedes Alltagswort zum Ham-Signal — „rechnung" stand danach
-# 55× auf erwünscht, „domain" 12×. Eine Phishing-Mail mit dem Betreff „Ihre Domain-Rechnung
-# wartet auf Bearbeitung" fiel dadurch von 0.55 auf 0.14 und wurde nicht mehr gefragt.
-# Dasselbe gilt für `to:`: an einen Catch-all-Alias geht ohnehin alles, das Merkmal trennt
-# nichts. Aus einer ECHTEN Entscheidung dürfen beide weiter gelernt werden — dort steht
-# beides in einem Verhältnis, das etwas bedeutet.
+# Only the identity of the sender is learned afterwards. Subject words and the addressed
+# alias are POISON out of a follow-up, and that was learned expensively (2026-08-18): a
+# mailbox contains thousands of wanted mails and a handful of rubbish. Whoever draws word
+# statistics from that makes every everyday word a ham signal: "rechnung" afterwards stood
+# 55 times on wanted, "domain" 12 times. A phishing mail with the subject "Ihre
+# Domain-Rechnung wartet auf Bearbeitung" thereby fell from 0.55 to 0.14 and was no longer
+# asked about. The same applies to `to:`: everything goes to a catch-all alias anyway, so the
+# feature separates nothing. From a REAL decision both may still be learned, because there
+# both stand in a ratio that means something.
 _NACHLAUF_ARTEN = ("from:", "dom:")
 
 
 def stabile_merkmale(treffer: dict, meine: frozenset[str]) -> list[str]:
-    """Merkmale, die auch ohne vollständige Kopfzeilen UND ohne Klassen-Gleichgewicht tragen.
+    """Features that carry even without complete headers AND without class balance.
 
-    Das ist die Absender-Identität und sonst nichts: Wer schreibt (Adresse, Domain) ist
-    unabhängig davon aussagekräftig, wie viele Mails der Nachlauf gerade liest.
+    That is the sender identity and nothing else: who writes (address, domain) is meaningful
+    independently of how many mails the follow-up is reading right now.
     """
     payload = _payload(treffer)
     res = evaluate(payload, meine_adressen=meine, body="")
@@ -100,9 +100,9 @@ async def nachlernen(db: AsyncSession, owner_id: int | None, account: str, folde
                      ist_spam: bool, limit: int = STAPEL) -> tuple[int, int]:
     """Neue Nachrichten eines Ordners lernen. → (gelesen, gelernt).
 
-    „Neu" heißt: UID größer als der Merkstand. Beim ersten Lauf ist der Merkstand leer,
-    dann zählen die jüngsten `limit` Nachrichten — für den Zweck (wer schreibt mir, was
-    liegt im Müll) reicht der jüngere Bestand, und die Postfächer bleiben unangetastet.
+    "New" means: UID greater than the mark. On the first pass the mark is empty, and then the
+    most recent `limit` messages count; for the purpose (who writes to me, what lies in the
+    rubbish) the more recent stock is enough, and the mailboxes stay untouched.
     """
     key = _stand_key(account, folder)
     try:
@@ -136,7 +136,7 @@ async def nachlernen(db: AsyncSession, owner_id: int | None, account: str, folde
 
 
 async def konten(db: AsyncSession) -> list[dict]:
-    """Konten des imap-mcp mit ihren Ordner-Rollen (Posteingang/Spam)."""
+    """Accounts of imap-mcp with their folder roles (inbox, spam)."""
     try:
         antwort = await call_tool(IMAP_MCP_URL, "list_accounts", {})
     except McpError as exc:
@@ -160,7 +160,7 @@ _SENT_NAMEN = ("sent", "gesendet", "sent items", "gesendete elemente", "sent mes
 
 
 def sent_ordner(namen: list[str]) -> str | None:
-    """Den Gesendet-Ordner aus einer Ordnerliste heraussuchen (Name je Server anders)."""
+    """Find the sent folder in a folder list (the name differs per server)."""
     for name in namen:
         letztes = name.split("/")[-1].strip().lower()
         if letztes in _SENT_NAMEN:
@@ -169,7 +169,7 @@ def sent_ordner(namen: list[str]) -> str | None:
 
 
 def empfaenger(treffer: dict, meine: frozenset[str]) -> list[tuple[str, str]]:
-    """(Adresse, Anzeigename) aller Empfänger einer gesendeten Mail — ohne eigene Adressen."""
+    """(Address, display name) of all recipients of a sent mail, without one's own addresses."""
     out: list[tuple[str, str]] = []
     for feld in ("to", "cc"):
         for eintrag in treffer.get(feld) or []:
@@ -182,12 +182,12 @@ def empfaenger(treffer: dict, meine: frozenset[str]) -> list[tuple[str, str]]:
 
 async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
                            limit: int = STAPEL) -> int:
-    """Wem ich geschrieben habe, der ist erwünscht. → Anzahl neuer Adressen.
+    """Whoever I have written to is wanted. Returns the number of new addresses.
 
-    Das stärkste Ham-Signal, das ein Postfach hergibt, und es kostet keine Rückfrage: wer
-    eine Antwort von mir bekommen hat, ist kein Fremder. Die Adressen landen als
-    `AssistantContact(source_kind='sent')` in derselben Freispruch-Liste wie die
-    Vault-Kontakte — der Vault-Abgleich lässt sie in Ruhe (er spiegelt nur seine eigenen).
+    The strongest ham signal a mailbox can produce, and it costs no question: whoever got an
+    answer from me is not a stranger. The addresses land as
+    `AssistantContact(source_kind='sent')` in the same acquittal list as the vault contacts,
+    and the vault reconciliation leaves them alone (it only mirrors its own).
     """
     from ..models.assistant import AssistantContact
     from sqlalchemy import select as _select
@@ -219,7 +219,7 @@ async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
                     AssistantContact.owner_user_id == owner_id,
                     AssistantContact.email == adresse))).scalar_one_or_none()
                 if vorhanden is not None:
-                    continue   # aus dem Vault oder schon gemerkt — nicht überschreiben
+                    continue   # from the vault or already noted: do not overwrite
                 db.add(AssistantContact(
                     owner_user_id=owner_id, email=adresse,
                     domain=adresse.split("@", 1)[1], name=name[:300],
@@ -232,12 +232,12 @@ async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
     return neu
 
 
-# Ordner, die kein Lehrstoff für „erwünscht" sind: Eigenes (dort bin ICH der Absender),
-# Entwürfe und Notizen. Der Spam-Ordner läuft getrennt als Gegenstück.
+# Folders that are no learning material for "wanted": one's own (I am the sender there),
+# drafts and notes. The spam folder runs separately as the counterpart.
 _KEIN_HAM = ("sent", "gesendet", "drafts", "entwürfe", "entwuerfe", "notes", "notizen",
              "templates", "vorlagen", "outbox", "postausgang")
-# Wie weit zurück Archive noch etwas über die heutige Post sagen. Ältere Jahrgänge tragen
-# Adressen, die längst tot sind — sie blähten das Gedächtnis, ohne je wieder aufzutauchen.
+# How far back archives still say something about today's post. Older years carry addresses
+# that have long been dead; they would inflate the memory without ever turning up again.
 JAHRE_ZURUECK = 3
 
 
@@ -255,7 +255,7 @@ def ist_ham_ordner(name: str, *, spam_folder: str | None, jetzt_jahr: int) -> bo
 
 
 async def spam_rueckkopplung(db: AsyncSession, owner_id: int | None) -> int:
-    """Was der Mensch selbst in den Spam-Ordner geschoben hat, als Spam lernen. → gelernt."""
+    """Learn what the human moved into the spam folder themselves as spam. Returns the count."""
     gesamt = 0
     for konto in await konten(db):
         if not konto.get("spam_folder"):
@@ -268,10 +268,10 @@ async def spam_rueckkopplung(db: AsyncSession, owner_id: int | None) -> int:
 
 async def kaltstart(db: AsyncSession, owner_id: int | None, *,
                     limit: int = STAPEL) -> dict[str, int]:
-    """Einmal über alles, was schon entschieden ist: Spam-Ordner und Posteingang/Archiv.
+    """Once over everything that is already decided: spam folder and inbox or archive.
 
-    Archive zählen mit — dort steht die Post, die jemand aufgehoben hat, und genau das ist
-    die stärkste Aussage „erwünscht", die ein Postfach zu bieten hat.
+    Archives count as well: the post somebody kept stands there, and that is exactly the
+    strongest "wanted" statement a mailbox has to offer.
     """
     import datetime as dt
 

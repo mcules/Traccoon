@@ -1,39 +1,38 @@
-"""Artefakte: die gemeinsame Sicht auf alles, was einen Zustand hat.
+"""Artifacts: the common view of everything that has a state.
 
-Ticket und Hardware-Exemplar waren bisher zwei unverbundene Welten mit je eigener
-Status-Achse (`TicketAgentStatus`, `PurchaseStatus`) — im Prozess-Editor führte das zu drei
-verschiedenen Status-Aktionen, von denen je nach Ablauf zwei sinnlos waren.
+Ticket and hardware unit used to be two unconnected worlds with a status axis each
+(`TicketAgentStatus`, `PurchaseStatus`), which in the process editor led to three different
+status actions of which two were pointless depending on the flow.
 
-Hier steht das Register: welche **Artefakt-Typen** es gibt und welche **Zustände** jeder
-kennt — pflegbar in der Administration. Woher die Daten kommen, sagt `backing`:
+Here stands the register: which **artifact types** exist and which **states** each of them
+knows, maintainable in the administration. Where the data comes from is said by `backing`:
 
-    issue           → Tabelle `issues` (Zustand in `agent_status`)
-    hardware_asset  → Tabelle `hardware_assets` (Zustand in `purchase_status`)
-    generic         → Tabelle `artifacts` (frei definierte Typen)
+    issue           → table `issues` (state in `agent_status`)
+    hardware_asset  → table `hardware_assets` (state in `purchase_status`)
+    generic         → table `artifacts` (freely defined types)
 
-Damit ist der Typ konfigurierbar, ohne dass Board, Sprints oder der KI-Lebenszyklus ihre
-gewachsenen Tabellen verlieren. Neue, selbst definierte Typen landen in `artifacts`.
+That makes the type configurable without board, sprints or the AI lifecycle losing their
+grown tables. New, self defined types land in `artifacts`.
 
-Darunter hängt das Feld-Modell nach Artefakt-Vorbild (`Artifacts → Fields → Values`): ein
-Artefakt trägt beliebig viele **Felder**, ein Feld vom Typ „Auswahl" eine gepflegte
-**Werteliste**, und am Feld steht, ob ein einzelnes Artefakt einen oder mehrere Werte daraus
-tragen darf.
+Below it hangs the field model following the Artefakt example (`Artifacts → Fields → Values`):
+an artifact carries any number of **fields**, a field of type "choice" a maintained **value
+list**, and the field says whether a single artifact may carry one or several values from
+it.
 
-Ein Artefakt ist zunächst etwas Undefiniertes — seine Bedeutung bekommt es erst durch seine
-Felder. Ticket und Hardware sind deshalb nichts Besonderes, sondern Artefakte mit einem
-ausgelieferten Satz fester Felder. Ein Projekt darf beliebig eigene ergänzen; die
-ausgelieferten lassen sich nicht entfernen, weil Board, Sprints und der KI-Lebenszyklus
-darauf laufen.
+An artifact is initially something undefined; it gets its meaning only through its fields.
+Ticket and hardware are therefore nothing special but artifacts with a shipped set of fixed
+fields. A project may add any fields of its own; the shipped ones cannot be removed, because
+board, sprints and the AI lifecycle run on them.
 
-Begriffe — die Oberfläche spricht anders als der Code, weil ein Umbenennen der Tabellen die
-Fremdschlüssel aus `issues`, `hardware_assets` und `workflow_instances` mitzöge:
+Terms: the interface speaks differently from the code, because renaming the tables would
+drag the foreign keys from `issues`, `hardware_assets` and `workflow_instances` along:
 
-    Oberfläche          Code / Tabelle                          Beispiel
-    Artefakt            ArtifactType / artifact_types           Ticket, Hardware
-    Feld                ArtifactField / artifact_fields         Priorität
-    Wert (Liste)        ArtifactFieldOption / …_field_options   niedrig, mittel, hoch
-    zugeordneter Wert   ArtifactValue / artifact_values         ABC-29 → hoch
-    die Sache selbst    Artifact / artifacts                    ABC-29, ABC-4
+    interface           code / table                            example
+    artifact type       ArtifactType / artifact_types           ticket, hardware
+    field               ArtifactField / artifact_fields         priority
+    value (list)        ArtifactFieldOption / …_field_options   low, medium, high
+    assigned value      ArtifactValue / artifact_values         ABC-29 → high
+    the thing itself    Artifact / artifacts                    ABC-29, ABC-4
 """
 import datetime as dt
 
@@ -48,7 +47,7 @@ from .base import TimestampMixin
 
 
 class ArtifactType(TimestampMixin, Base):
-    """Oberfläche: „Artefakt" — Ticket, Hardware-Exemplar oder ein selbst definiertes Ding."""
+    """Interface: "artifact", so a ticket, a hardware unit or a thing defined by oneself."""
     __tablename__ = "artifact_types"
     __table_args__ = (UniqueConstraint("key", name="uq_artifact_type_key"),)
 
@@ -58,13 +57,13 @@ class ArtifactType(TimestampMixin, Base):
     plural: Mapped[str] = mapped_column(String(100), default="")
     icon: Mapped[str] = mapped_column(String(16), default="📦")
     color: Mapped[str] = mapped_column(String(20), default="#58a6ff")
-    # issue | hardware_asset | generic — wo die Daten liegen.
+    # issue | hardware_asset | generic: where the data lies.
     backing: Mapped[str] = mapped_column(String(20), default="generic")
-    # Nur für `generic`: auf ein Projekt begrenzt (NULL = überall).
+    # Only for `generic`: limited to a project (NULL = everywhere).
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
-    # Eingebaute Typen (Ticket, Hardware) dürfen nicht gelöscht werden — ihre Zustände
-    # hängen an fest verdrahteten Spalten.
+    # Built-in types (ticket, hardware) must not be deleted: their states hang off hard wired
+    # columns.
     builtin: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     description: Mapped[str] = mapped_column(Text, default="")
@@ -72,15 +71,15 @@ class ArtifactType(TimestampMixin, Base):
 
 
 class ArtifactField(TimestampMixin, Base):
-    """Ein Feld eines Artefakts — gilt für alle Exemplare dieses Artefakts.
+    """One field of an artifact, applying to all units of this artifact.
 
-    `kind` benutzt dieselbe Sprache wie die Prozess-Formulare (`FormField` im Frontend),
-    damit nicht zwei Typ-Welten nebeneinander stehen. `multi` ist der Mehrfach-Schalter:
-    er entscheidet, ob ein einzelnes Ticket einen oder mehrere Werte tragen darf.
+    `kind` uses the same language as the process forms (`FormField` in the frontend) so that
+    two type worlds do not stand side by side. `multi` is the multiple switch: it decides
+    whether a single ticket may carry one or several values.
     """
     __tablename__ = "artifact_fields"
-    # Schlüssel eindeutig je Artefakt UND Projekt: zwei Projekte dürfen ein Feld
-    # gleichen Namens haben, ohne sich in die Quere zu kommen.
+    # The key is unique per artifact AND project: two projects may have a field of the same
+    # name without getting in each other's way.
     __table_args__ = (
         UniqueConstraint("type_id", "project_id", "key", name="uq_artifact_field"),
     )
@@ -97,48 +96,48 @@ class ArtifactField(TimestampMixin, Base):
     order: Mapped[int] = mapped_column(Integer, default=0)
     description: Mapped[str] = mapped_column(Text, default="")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Herkunft der Werte. Leer = frei (die Werte stehen in `artifact_values`); sonst der
-    # Name der echten Spalte der Detailtabelle, z. B. `agent_status` oder `serial_number`.
-    # Damit ist auch der Zustand nur noch ein Feld — es gibt kein zweites Zustands-Modell.
+    # Origin of the values. Empty = free (the values stand in `artifact_values`); otherwise
+    # the name of the real column of the detail table, for instance `agent_status` or
+    # `serial_number`. That makes the state a field as well: there is no second state model.
     source: Mapped[str] = mapped_column(String(40), default="")
-    # Woher die Auswahlwerte kommen, wenn sie nicht in der eigenen Liste stehen:
-    # issue_type | board_status | sprint | member | location (alle projektabhängig).
+    # Where the selectable values come from when they do not stand in the own list:
+    # issue_type | board_status | sprint | member | location (all project dependent).
     options_source: Mapped[str] = mapped_column(String(30), default="")
-    # Eingebaut: Schlüssel, Typ und Herkunft sind gesperrt, Löschen ist nicht möglich.
-    # Genau das macht die Namenskonvention für `status` verlässlich.
+    # Built in: key, type and origin are locked and deleting is impossible. Exactly that
+    # makes the naming convention for `status` reliable.
     builtin: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Ergänzung eines einzelnen Projekts (NULL = gilt überall). So erweitert ein
-    # Projekt-Eigentümer seine Tickets, ohne die aller anderen zu verändern.
+    # Addition of a single project (NULL = applies everywhere). That way a project owner
+    # extends their tickets without changing those of everybody else.
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
 
 
 class ArtifactFieldOption(Base):
-    """Ein Eintrag der Werteliste eines Feldes (nur bei `kind='select'` von Bedeutung)."""
+    """One entry of the value list of a field (only meaningful with `kind='select'`)."""
     __tablename__ = "artifact_field_options"
     __table_args__ = (UniqueConstraint("field_id", "value", name="uq_artifact_field_option"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     field_id: Mapped[int] = mapped_column(
         ForeignKey("artifact_fields.id", ondelete="CASCADE"), index=True)
-    # Der gespeicherte Wert; die Beschriftung darf sich ändern, ohne Daten anzufassen.
+    # The stored value; the label may change without touching data.
     value: Mapped[str] = mapped_column(String(200), nullable=False)
     label: Mapped[str] = mapped_column(String(200), default="")
     color: Mapped[str] = mapped_column(String(20), default="")
     order: Mapped[int] = mapped_column(Integer, default=0)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Nur beim Zustands-Feld von Bedeutung, aber am Wert richtig aufgehoben:
-    # todo | in_progress | done steuert Board-Spalte und Auswertungen …
+    # Only meaningful with the state field, but rightly kept on the value:
+    # todo | in_progress | done controls the board column and the evaluations …
     category: Mapped[str] = mapped_column(String(20), default="")
-    # … und `waiting` hebt hervor, dass hier ein Mensch gebraucht wird.
+    # … and `waiting` highlights that a human is needed here.
     waiting: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class ArtifactValue(Base):
-    """Ein am konkreten Artefakt zugeordneter Wert. Mehrere Werte = mehrere Zeilen.
+    """One value assigned to a concrete artifact. Several values = several rows.
 
-    Hängt an `artifacts.id` — und weil jedes Ticket und jedes Hardware-Exemplar dort eine
-    Zeile hat, tragen alle Artefakte ihre Felder auf demselben Weg.
+    Hangs off `artifacts.id`, and because every ticket and every hardware unit has a row
+    there, all artifacts carry their fields the same way.
     """
     __tablename__ = "artifact_values"
 
@@ -147,7 +146,7 @@ class ArtifactValue(Base):
         ForeignKey("artifacts.id", ondelete="CASCADE"), index=True)
     field_id: Mapped[int] = mapped_column(
         ForeignKey("artifact_fields.id", ondelete="CASCADE"), index=True)
-    # Bei Auswahl-Feldern der Verweis auf die Liste, sonst der freie Wert als Text.
+    # With choice fields the reference to the list, otherwise the free value as text.
     option_id: Mapped[int | None] = mapped_column(
         ForeignKey("artifact_field_options.id", ondelete="CASCADE"), nullable=True, index=True)
     value_text: Mapped[str] = mapped_column(Text, default="")
@@ -157,8 +156,8 @@ class ArtifactValue(Base):
 class Artifact(TimestampMixin, Base):
     """Instanz eines frei definierten Typs (`backing='generic'`).
 
-    Ticket und Hardware liegen bewusst NICHT hier — sie behalten ihre gewachsenen Tabellen
-    samt Board, Sprints, Lebenszyklus und Beschaffungskette.
+    Ticket and hardware deliberately do NOT lie here: they keep their grown tables including
+    board, sprints, lifecycle and procurement chain.
     """
     __tablename__ = "artifacts"
 
@@ -169,8 +168,8 @@ class Artifact(TimestampMixin, Base):
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     status_key: Mapped[str] = mapped_column(String(40), default="")
-    # Die freien Felder liegen in `artifact_values` — eine Zeile je Wert, damit
-    # Mehrfachwerte und die Werteliste referenzierbar bleiben.
+    # The free fields lie in `artifact_values`, one row per value, so that multiple values
+    # and the value list stay referenceable.
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     closed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
