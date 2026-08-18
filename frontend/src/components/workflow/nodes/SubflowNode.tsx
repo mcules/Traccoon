@@ -19,6 +19,7 @@ export default function SubflowNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-indigo-500"
       selected={selected}
       runtimeState={data.runtimeState}
+      aus={!!data.config.deaktiviert}
       sources={sources}
     >
       <div>{data.config.slot ? SLOT_LABELS[data.config.slot] : "kein Ablauf gewählt"}</div>

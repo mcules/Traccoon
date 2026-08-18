@@ -59,6 +59,7 @@ export default function AutoActionNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-sky-500"
       selected={selected}
       runtimeState={data.runtimeState}
+      aus={!!data.config.deaktiviert}
       sources={sources}
     >
       <div>{a ? ACTION_LABEL[a.action] || a.action : "keine Aktion"}</div>

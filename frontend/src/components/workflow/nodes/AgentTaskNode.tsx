@@ -38,6 +38,7 @@ export default function AgentTaskNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-purple-500"
       selected={selected}
       runtimeState={data.runtimeState}
+      aus={!!data.config.deaktiviert}
       sources={outcomes(c.phase)}
     >
       <div>Agent: {c.agent_role ? ROLE_LABEL[c.agent_role] || c.agent_role : "—"}</div>

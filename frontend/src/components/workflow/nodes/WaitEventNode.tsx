@@ -24,6 +24,7 @@ export default function WaitEventNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-cyan-500"
       selected={selected}
       runtimeState={data.runtimeState}
+      aus={!!data.config.deaktiviert}
       sources={sources}
     >
       <div>{events.map((e) => EVENT_LABEL[e] || e).join(" · ")}</div>

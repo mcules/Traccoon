@@ -59,6 +59,7 @@ export function BaseNode({
   accent,
   selected,
   runtimeState,
+  aus,
   hasTarget = true,
   sources = [{ id: "out" }],
   children,
@@ -70,6 +71,8 @@ export function BaseNode({
   accent: string; // Tailwind-border-Klasse für die obere Akzentkante
   selected?: boolean;
   runtimeState?: RuntimeState;
+  /** Abgeschalteter Schritt: sichtbar blass, damit man ihn im Graphen nicht übersieht. */
+  aus?: boolean;
   hasTarget?: boolean;
   sources?: SourceHandleDef[];
   children?: React.ReactNode;
@@ -87,7 +90,7 @@ export function BaseNode({
     <div
       className={`relative max-w-[280px] border-t-4 ${accent} rounded-md border ${border} bg-card px-3 py-2 text-ink shadow-sm ${
         labeled ? "pb-5" : ""
-      }`}
+      } ${aus ? "opacity-60 [border-style:dashed]" : ""}`}
       style={{ minWidth: Math.max(160, labeled * 92) }}
     >
       {hasTarget && (
@@ -96,6 +99,7 @@ export function BaseNode({
       <div className="flex items-center gap-1.5 text-xs font-medium">
         {icon && <span>{icon}</span>}
         <span className="truncate">{title}</span>
+        {aus && <span className="ml-auto text-[9px] uppercase text-amber-300">aus</span>}
         {rs && <span className={`ml-auto ${rs.text}`}>{rs.icon}</span>}
       </div>
       {children && <div className="mt-1 space-y-0.5 text-[10px] text-muted">{children}</div>}

@@ -175,11 +175,11 @@ def _to_instance_status(name) -> IStatus:
 
 @dataclass
 class Outcome:
-    handle: str | None = None          # zu nehmender Ausgang (bei Weiterschaltung)
-    wait: bool = False                 # Token wartet auf externes Ereignis
+    handle: str | None = None          # outlet to take when advancing
+    wait: bool = False                 # token waits for an external event
     waiting_for: str | None = None     # human_task | approval | agent
-    terminal: bool = False             # Instanz endet
-    instance_status: str | None = None  # bei terminal: completed | failed | …
+    terminal: bool = False             # the instance ends here
+    instance_status: str | None = None  # on terminal: completed | failed | cancelled
     error: str | None = None
 
 
@@ -323,6 +323,26 @@ def _probe_schritt(db, inst, node, token, ntype: str, text: str, decision: str |
 
 async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> Outcome:
     cfg = node_config(node)
+
+    # A switched-off step. Two reasons to want this, and they need different answers:
+    # while building you take a step out of the way and the rest should keep running
+    # (`ueberspringen`), and in an emergency you pull the handbrake on a flow that must not
+    # reach its next step at all (`abbrechen`). Silently skipping in the second case would
+    # be the dangerous one, so the mode is explicit and there is no default guessing.
+    if cfg.get("deaktiviert") and ntype not in ("start", "end"):
+        modus = str(cfg.get("deaktiviert_modus") or "ueberspringen")
+        label = cfg.get("label") or node["id"]
+        db.add(WorkflowStepRun(
+            instance_id=inst.id, token_id=token.id, node_id=node["id"],
+            node_type=NType(ntype), status=SStatus.skipped, completed_at=_now(),
+            result={"deaktiviert": True, "modus": modus}))
+        if modus == "abbrechen":
+            log.info("Instanz %s: abgeschalteter Schritt %s beendet den Lauf",
+                     inst.id, node["id"])
+            return Outcome(terminal=True, instance_status="cancelled",
+                           error=f"Schritt '{label}' ist abgeschaltet (Ablauf beendet)")
+        log.info("Instanz %s: Schritt %s übersprungen (abgeschaltet)", inst.id, node["id"])
+        return Outcome(handle="out")
 
     if ntype == "start":
         return Outcome(handle="out")

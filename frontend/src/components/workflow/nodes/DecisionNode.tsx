@@ -17,6 +17,7 @@ export default function DecisionNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-amber-500"
       selected={selected}
       runtimeState={data.runtimeState}
+      aus={!!data.config.deaktiviert}
       sources={sources}
     >
       {branches.length === 0 && <div>keine Zweige definiert</div>}
