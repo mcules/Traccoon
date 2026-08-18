@@ -111,7 +111,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
 
       <div className="space-y-2">
         {agents?.map((a) => (
-          <div key={a.id} className="flex items-center gap-3 rounded border border-line bg-card p-2.5 text-sm">
+          <div key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-line bg-card p-2.5 text-sm">
             <span className="font-mono font-medium">{a.role}</span>
             <span className="text-xs text-muted">{a.provider}{a.model ? ` · ${a.model}` : ""}</span>
             <div className="flex gap-1">
@@ -122,9 +122,9 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
               {a.learns && <span className="rounded bg-surface px-1 text-xs" title={tr("agents_panel.liest_das_gedaechtnis_und_lernt_aus_jede")}>lernt</span>}
             </div>
             {a.origin_agent_id && <span className="rounded bg-surface px-1 text-xs">{tr(a.customized ? "agents_panel.bearbeitet" : "agents_panel.verknuepft")}</span>}
-            <div className="flex-1" />
+            <div className="hidden flex-1 sm:block" />
             {!projectId && <button onClick={() => syncLinked.mutate(a.id)} className="text-xs text-muted hover:text-ink" title={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}>{tr("agents_panel.verknuepfte")}</button>}
-            <button onClick={() => setEdit(a)} className="text-brand">bearbeiten</button>
+            <button onClick={() => setEdit(a)} className="text-brand">{tr("common.bearbeiten")}</button>
             <button onClick={() => del.mutate(a.id)} className="text-muted hover:text-red-400">{tr("common.loeschen_klein")}</button>
           </div>
         ))}
@@ -132,7 +132,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
 
       {/* Projekt-Modus: geerbte (globale) Agenten mit „In Projekt laden" */}
       {projectId && inherited.map((a) => (
-        <div key={`inh-${a.id}`} className="mt-1 flex items-center gap-3 rounded border border-dashed border-line px-2.5 py-1.5 text-sm text-muted">
+        <div key={`inh-${a.id}`} className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-dashed border-line px-2.5 py-1.5 text-sm text-muted">
           <span className="font-mono">{a.role}</span><span className="text-xs">geerbt (global)</span>
           <div className="flex-1" />
           <button onClick={() => loadInto.mutate(a.id)} className="text-brand hover:underline">{tr("agents_panel.in_projekt_laden")}</button>

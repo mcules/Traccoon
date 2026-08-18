@@ -57,7 +57,7 @@ export default function MyWork() {
                 onClick={() => setOpenTask(t)}
                 className="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 text-left hover:border-brand"
               >
-                <span className="rounded bg-card px-1.5 py-0.5 text-[10px] text-muted">
+                <span className="rounded bg-card px-1.5 py-0.5 text-[11px] text-muted">
                   {tr(NODE_TYPE_LABELS[t.node_type])}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm">
@@ -155,7 +155,7 @@ function ProjektGruppen({ tickets }: { tickets: MyTicket[] }) {
             className="mb-1.5 flex min-h-[36px] items-center gap-2 text-xs font-medium text-muted hover:text-ink md:min-h-[28px]">
             <span className="font-mono">{g.key}</span>
             <span className="truncate">{g.name}</span>
-            <span className="rounded bg-surface px-1.5 py-0.5 text-[10px]">{g.items.length}</span>
+            <span className="rounded bg-surface px-1.5 py-0.5 text-[11px]">{g.items.length}</span>
           </Link>
           <div className="space-y-1.5">
             {g.items.map((t) => <TicketZeile key={t.key} t={t} />)}

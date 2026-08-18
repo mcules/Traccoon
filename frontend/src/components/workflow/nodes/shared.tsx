@@ -102,7 +102,7 @@ export function BaseNode({
         {aus && <span className="ml-auto text-[9px] uppercase text-amber-300">aus</span>}
         {rs && <span className={`ml-auto ${rs.text}`}>{rs.icon}</span>}
       </div>
-      {children && <div className="mt-1 space-y-0.5 text-[10px] text-muted">{children}</div>}
+      {children && <div className="mt-1 space-y-0.5 text-[11px] text-muted">{children}</div>}
 
       {sources.map((s, i) => {
         const left = sources.length === 1 ? 0.5 : (i + 1) / (sources.length + 1);

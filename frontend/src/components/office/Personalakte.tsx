@@ -235,7 +235,7 @@ export default function Personalakte({
         </span>
       </div>
 
-      <p className="text-[10px] text-muted">
+      <p className="text-[11px] text-muted">
         Ältere Läufe löscht die Aufbewahrung (<span className="font-mono">run_retention_days</span>),
         deshalb steht hier nie „jemals", sondern immer ein Fenster.
       </p>
@@ -289,7 +289,7 @@ function Rollenkarte({ r, jetzt, offen, onToggle }: {
       className={"rounded border px-2 py-1.5 " + (offen ? "border-brand bg-brand/5" : "border-line")}>
       <button type="button" onClick={onToggle} aria-expanded={offen}
         className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-xs">
-        <span className="shrink-0 text-[10px] text-muted">{offen ? "▾" : "▸"}</span>
+        <span className="shrink-0 text-[11px] text-muted">{offen ? "▾" : "▸"}</span>
         <span className="font-medium">{r.agent}</span>
         <span className="text-muted">{zahl(runs)} {runs === 1 ? "Lauf" : "Läufe"}</span>
         {(r.running ?? 0) > 0 && (
@@ -338,7 +338,7 @@ function Balkenband({ werte, rest, basis }: {
             title={`läuft noch oder ohne Urteil: ${zahl(rest)} von ${zahl(basis)}`} />
         )}
       </div>
-      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0 text-[10px]">
+      <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0 text-[11px]">
         {BALKEN.map((b) => (
           <span key={b.key} className={werte[b.key] > 0 ? statusFarbe(b.status) : "text-muted"}
             title={b.titel}>
@@ -441,7 +441,7 @@ function Details({ r, basis, werte, rest }: {
             max <b className="text-ink">{dauerText(dauer.max_ms)}</b>
           </span>
         </div>
-        <p className="mb-1 text-[10px] text-muted">
+        <p className="mb-1 text-[11px] text-muted">
           Kein Mittelwert: ein einzelner Lauf über 36 Stunden verschöbe ihn so weit, dass er
           über keinen einzigen echten Lauf mehr etwas aussagt.
         </p>
@@ -476,7 +476,7 @@ function Details({ r, basis, werte, rest }: {
           <div className="space-y-0.5">
             {werkzeuge.map((t) => (
               <div key={t.tool} className="flex items-center gap-1.5">
-                <span className="w-[8rem] shrink-0 truncate font-mono text-[10px]" title={t.tool}>
+                <span className="w-[8rem] shrink-0 truncate font-mono text-[11px]" title={t.tool}>
                   {t.tool}
                 </span>
                 <span className="h-2 min-w-0 flex-1 rounded-sm bg-line/40">

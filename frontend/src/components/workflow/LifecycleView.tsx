@@ -152,7 +152,7 @@ function LifecycleNode({ data }: NodeProps<Node<LifecycleNodeData>>) {
         <span>{icon}</span>
         <span className="truncate">{label}</span>
       </div>
-      {sub && <div className="mt-0.5 text-[10px] leading-tight opacity-90">{sub}</div>}
+      {sub && <div className="mt-0.5 text-[11px] leading-tight opacity-90">{sub}</div>}
     </div>
   );
 }

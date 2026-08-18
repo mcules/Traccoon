@@ -146,41 +146,33 @@ export default function TranslationsPanel() {
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
       {ok && <div className="text-xs text-green-400">{ok}</div>}
 
-      <div className="max-h-[60vh] overflow-auto rounded border border-line">
-        <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-card text-left text-[10px] uppercase text-muted">
-            <tr>
-              <th className="px-2 py-1">{tr("translations_panel.schluessel")}</th>
-              <th className="px-2 py-1">{tr("translations_panel.deutsch_quelle")}</th>
-              <th className="px-2 py-1">{locale}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {zeilen.map((z) => (
-              <tr key={z.key} className="border-t border-line/60">
-                <td className="px-2 py-1 align-top font-mono text-[10px] text-muted">{z.key}</td>
-                <td className="px-2 py-1 align-top text-ink">{z.deutsch}</td>
-                <td className="px-2 py-1">
-                  <input
-                    defaultValue={z.wert}
-                    placeholder={z.deutsch}
-                    onBlur={(e) => {
-                      if (e.target.value !== z.wert) {
-                        speichern.mutate({ key: z.key, text: e.target.value });
-                      }
-                    }}
-                    className={`w-full rounded border bg-surface px-1.5 py-1 text-ink ${
-                      z.geaendert ? "border-brand" : "border-line"}`} />
-                </td>
-              </tr>
-            ))}
-            {!zeilen.length && (
-              <tr><td colSpan={3} className="px-2 py-2 text-muted">
-                {nurOffene ? "Nichts offen in dieser Sprache." : "Kein Treffer."}
-              </td></tr>
-            )}
-          </tbody>
-        </table>
+      {/* Keine Tabelle: drei Spalten (Schlüssel, deutsche Quelle, Übersetzung) sind auf einem
+          Handy nicht zu halten — der Schlüssel allein ist breiter als der Bildschirm. Ab sm
+          stehen Quelle und Feld nebeneinander, darunter untereinander. */}
+      <div className="max-h-[60vh] divide-y divide-line/60 overflow-auto rounded border border-line text-xs">
+        {zeilen.map((z) => (
+          <div key={z.key} className="p-2">
+            <div className="break-all font-mono text-[11px] text-muted">{z.key}</div>
+            <div className="mt-1 gap-2 sm:flex">
+              <div className="min-w-0 flex-1 text-ink">{z.deutsch}</div>
+              <input
+                defaultValue={z.wert}
+                placeholder={z.deutsch}
+                onBlur={(e) => {
+                  if (e.target.value !== z.wert) {
+                    speichern.mutate({ key: z.key, text: e.target.value });
+                  }
+                }}
+                className={`mt-1 w-full rounded border bg-surface px-1.5 py-1 text-ink sm:mt-0 sm:flex-1 ${
+                  z.geaendert ? "border-brand" : "border-line"}`} />
+            </div>
+          </div>
+        ))}
+        {!zeilen.length && (
+          <div className="px-2 py-2 text-muted">
+            {tr(nurOffene ? "translations_panel.nichts_offen" : "translations_panel.kein_treffer")}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -231,32 +223,27 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
   return (
     <div className="space-y-2 border-t border-line pt-2">
       <div className="text-xs font-medium text-muted">{tr("translations_panel.sprachen")}</div>
-      <table className="w-full text-xs">
-        <tbody>
-          {sprachen.map((s) => (
-            <tr key={s.locale} className="border-t border-line/60">
-              <td className="py-1 pr-2 font-mono text-[10px] text-muted">{s.locale}</td>
-              <td className="py-1 pr-2">
-                <input defaultValue={s.name}
-                  onBlur={(e) => e.target.value !== s.name
-                    && aendern.mutate({ locale: s.locale, body: { name: e.target.value } })}
-                  className={`${inp} w-40`} />
-              </td>
-              <td className="py-1 pr-2 text-muted">
+      <div className="text-xs">
+        {sprachen.map((s) => (
+            <div key={s.locale} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line/60 py-1.5">
+              <span className="font-mono text-[11px] text-muted">{s.locale}</span>
+              <input defaultValue={s.name}
+                onBlur={(e) => e.target.value !== s.name
+                  && aendern.mutate({ locale: s.locale, body: { name: e.target.value } })}
+                className={`${inp} w-36`} />
+              <span className="text-muted">
                 {s.eingebaut ? tr("translations_panel.ausgeliefert") : tr("translations_panel.eigene")}
                 {" · "}
                 {tr("translations_panel.eigene_texte", { anzahl: s.eigene_texte })}
-              </td>
-              <td className="py-1 pr-2">
-                {s.locale !== QUELLSPRACHE && (
-                  <label className="flex items-center gap-1 text-muted">
-                    <input type="checkbox" checked={s.enabled}
-                      onChange={(e) => aendern.mutate({ locale: s.locale, body: { enabled: e.target.checked } })} />
-                    {tr("translations_panel.waehlbar")}
-                  </label>
-                )}
-              </td>
-              <td className="py-1 text-right">
+              </span>
+              {s.locale !== QUELLSPRACHE && (
+                <label className="flex items-center gap-1 text-muted">
+                  <input type="checkbox" checked={s.enabled}
+                    onChange={(e) => aendern.mutate({ locale: s.locale, body: { enabled: e.target.checked } })} />
+                  {tr("translations_panel.waehlbar")}
+                </label>
+              )}
+              <div className="ml-auto flex items-center gap-1">
                 <button onClick={() => onWaehlen(s.locale)} disabled={s.locale === QUELLSPRACHE}
                   className="rounded border border-line px-2 py-0.5 text-ink hover:bg-surface disabled:opacity-40">
                   {s.locale === gewaehlt ? tr("translations_panel.in_bearbeitung") : tr("translations_panel.bearbeiten")}
@@ -265,13 +252,12 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
                   <button
                     onClick={() => { if (confirm(tr("translations_panel.loeschen_frage", { sprache: s.name }))) loeschen.mutate(s.locale); }}
                     title={tr("translations_panel.loeschen_titel")}
-                    className="ml-1 rounded border border-line px-2 py-0.5 text-red-400 hover:bg-surface">✕</button>
+                    className="rounded border border-line px-2 py-0.5 text-red-400 hover:bg-surface">✕</button>
                 )}
-              </td>
-            </tr>
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
 
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <span className="text-muted">{tr("translations_panel.neue_sprache")}</span>

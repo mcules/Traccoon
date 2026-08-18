@@ -71,14 +71,16 @@ export default function IssueList({
         <span className="text-xs text-muted">{gefiltert.length} / {issues.length}</span>
       </div>
 
-      <table className="w-full text-sm">
+      {/* Fünf Spalten sind am Handy nicht zu halten: die Titelspalte blieb auf zwei Wörter je
+          Zeile zusammengequetscht. Ab sm die sortierbare Tabelle, darunter Karten. */}
+      <table className="hidden w-full text-sm sm:table">
         <thead>
           <tr className="border-b border-line text-left text-xs text-muted">
-            <Th onClick={() => klickSort("key")} className="w-24">Schlüssel<Pfeil k="key" /></Th>
-            <Th onClick={() => klickSort("summary")}>Titel<Pfeil k="summary" /></Th>
-            <Th onClick={() => klickSort("agent")} className="w-32">Agent<Pfeil k="agent" /></Th>
-            <Th onClick={() => klickSort("status")} className="w-32">Status<Pfeil k="status" /></Th>
-            <Th onClick={() => klickSort("priority")} className="w-20">Prio<Pfeil k="priority" /></Th>
+            <Th onClick={() => klickSort("key")} className="w-24">{tr("issue_list.schluessel")}<Pfeil k="key" /></Th>
+            <Th onClick={() => klickSort("summary")}>{tr("issue_list.titel")}<Pfeil k="summary" /></Th>
+            <Th onClick={() => klickSort("agent")} className="w-32">{tr("issue_list.agent")}<Pfeil k="agent" /></Th>
+            <Th onClick={() => klickSort("status")} className="w-32">{tr("issue_list.status")}<Pfeil k="status" /></Th>
+            <Th onClick={() => klickSort("priority")} className="w-20">{tr("issue_list.prio")}<Pfeil k="priority" /></Th>
           </tr>
         </thead>
         <tbody>
@@ -91,7 +93,7 @@ export default function IssueList({
                 <td className="py-1.5">
                   {t && <span className="mr-1.5" style={{ color: t.color }}>{t.icon === "bug" ? "🐞" : "•"}</span>}
                   {i.summary}
-                  {i.agent_working && <span className="ml-2 text-xs text-yellow-400">läuft…</span>}
+                  {i.agent_working && <span className="ml-2 text-xs text-yellow-400">{tr("issue_list.laeuft")}</span>}
                   {(() => { const w = waitInfo(i); return w && (
                     <span title={`${w.title}: ${w.label}`} className="ml-2 text-xs">{w.icon}</span>
                   ); })()}
@@ -111,6 +113,35 @@ export default function IssueList({
           )}
         </tbody>
       </table>
+
+      <div className="space-y-1.5 sm:hidden">
+        {gefiltert.map((i) => {
+          const t = typeMap.get(i.type_id);
+          const w = waitInfo(i);
+          return (
+            <div key={i.id} {...ticketOpenHandlers(i.key, onOpen)}
+              className="cursor-pointer rounded-lg border border-line bg-card p-2 text-sm">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-xs text-muted">{i.key}</span>
+                {t && <span style={{ color: t.color }}>{t.icon === "bug" ? "🐞" : "•"}</span>}
+                <span className="min-w-0 flex-1">{i.summary}</span>
+                {w && <span title={`${w.title}: ${w.label}`}>{w.icon}</span>}
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span className="text-muted">{statusMap.get(i.status_id) || "—"}</span>
+                <span className={PRIO_FARBE[i.priority] || "text-muted"}>{i.priority}</span>
+                {i.assigned_agent && (
+                  <span className="rounded bg-brand/20 px-1.5 text-brand">🤖 {i.assigned_agent}</span>
+                )}
+                {i.agent_working && <span className="text-yellow-400">{tr("issue_list.laeuft")}</span>}
+              </div>
+            </div>
+          );
+        })}
+        {!gefiltert.length && (
+          <div className="py-6 text-center text-sm text-muted">{tr("issue_list.keine_treffer")}</div>
+        )}
+      </div>
     </div>
   );
 }

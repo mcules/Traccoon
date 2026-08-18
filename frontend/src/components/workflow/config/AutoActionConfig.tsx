@@ -52,7 +52,7 @@ function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (
     <div className="space-y-2 rounded border border-line bg-surface p-2">
       <div className="text-xs font-medium text-muted">{tr("auto_action_config.wenn_es_schiefgeht")}</div>
       <div className="flex gap-2">
-        <label className="flex-1 text-[10px] text-muted">
+        <label className="flex-1 text-[11px] text-muted">
           Wiederholungen
           <input
             type="number" min={0} max={10}
@@ -63,7 +63,7 @@ function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (
             className={`mt-0.5 ${inp}`}
           />
         </label>
-        <label className="flex-1 text-[10px] text-muted">
+        <label className="flex-1 text-[11px] text-muted">
           Abstand (Sekunden)
           <input
             type="number" min={1}
@@ -75,7 +75,7 @@ function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (
           />
         </label>
       </div>
-      <p className="text-[10px] text-muted">
+      <p className="text-[11px] text-muted">
         Ein Fehlschlag nach außen ist meist einer des Augenblicks. Sind die Versuche
         aufgebraucht, geht es über den roten Ausgang <b>{tr("auto_action_config.fehler")}</b> weiter — ist der nicht
         verdrahtet, endet der Lauf.

@@ -87,10 +87,10 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
         <button onClick={umschalten} className="font-medium text-ink hover:text-brand">
           {offen ? "▾" : "▸"} {reihe.name}
         </button>
-        <code className="font-mono text-[10px] text-muted">{reihe.key}</code>
+        <code className="font-mono text-[11px] text-muted">{reihe.key}</code>
         <div className="flex-1" />
         <span className="text-sm text-ink">{reihe.last_value ?? "—"} {reihe.unit}</span>
-        <span className={`text-[10px] ${alt ? "text-amber-300" : "text-muted"}`}>
+        <span className={`text-[11px] ${alt ? "text-amber-300" : "text-muted"}`}>
           {reihe.last_at ? new Date(reihe.last_at).toLocaleString() : ""}
         </span>
       </div>
@@ -187,7 +187,7 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
 
       <div className="max-h-64 overflow-auto rounded border border-line">
         <table className="w-full text-xs">
-          <thead className="sticky top-0 bg-card text-left text-[10px] uppercase text-muted">
+          <thead className="sticky top-0 bg-card text-left text-[11px] uppercase text-muted">
             <tr>
               <th className="px-2 py-1">{tr("messreihen_panel.zeitpunkt")}</th>
               <th className="px-2 py-1">{tr("messreihen_panel.wert")}</th>
@@ -202,7 +202,7 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
                   {new Date(p.ts).toLocaleString()}
                 </td>
                 <td className="px-2 py-1 text-ink">{p.wert} {reihe.unit}</td>
-                <td className="px-2 py-1 text-[10px] text-muted">
+                <td className="px-2 py-1 text-[11px] text-muted">
                   {p.kontext?.quelle
                     || (p.kontext?.instanz ? `Lauf #${p.kontext.instanz}` : "—")}
                 </td>
@@ -224,10 +224,10 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-muted">{punkte.length} Werte im Zeitraum</span>
+        <span className="text-[11px] text-muted">{punkte.length} Werte im Zeitraum</span>
         <div className="flex-1" />
         <button onClick={loeschen}
-          className="rounded border border-line px-2 py-1 text-[10px] text-red-400 hover:bg-card">
+          className="rounded border border-line px-2 py-1 text-[11px] text-red-400 hover:bg-card">
           Ganze Reihe löschen
         </button>
       </div>
@@ -246,7 +246,7 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
   punkte: Punkt[]; einheit: string; trend?: Trend | null; ziel: number;
 }) {
   if (punkte.length < 2) {
-    return <div className="text-[10px] text-muted">{tr("messreihen_panel.noch_keine_linie_dafuer_braucht_es_zwei_")}</div>;
+    return <div className="text-[11px] text-muted">{tr("messreihen_panel.noch_keine_linie_dafuer_braucht_es_zwei_")}</div>;
   }
   const B = 900, H = 260, li = 46, re = 16, ob = 14, un = 26;
 
@@ -282,7 +282,7 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
             <line x1={li} y1={py(y)} x2={B - re} y2={py(y)}
                   className="stroke-line" strokeWidth="1" strokeDasharray="2 4" />
             <text x={li - 6} y={py(y) + 3} textAnchor="end"
-                  className="fill-current text-[10px] text-muted">
+                  className="fill-current text-[11px] text-muted">
               {Math.round(y * 100) / 100}
             </text>
           </g>
@@ -295,7 +295,7 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
                   opacity="0.85" />
             <circle cx={prognose.x2} cy={prognose.y2} r="4" className="fill-amber-400" />
             <text x={prognose.x2} y={prognose.y2 - 8} textAnchor="end"
-                  className="fill-current text-[10px] text-amber-300">
+                  className="fill-current text-[11px] text-amber-300">
               {ziel} {einheit} am {trend?.leer_am}
             </text>
           </>
@@ -309,10 +309,10 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
           </circle>
         ))}
 
-        <text x={li} y={H - 8} className="fill-current text-[10px] text-muted">{tag(x0)}</text>
+        <text x={li} y={H - 8} className="fill-current text-[11px] text-muted">{tag(x0)}</text>
         <text x={B - re} y={H - 8} textAnchor="end"
-              className="fill-current text-[10px] text-muted">{tag(x1)}</text>
-        <text x={li} y={ob + 2} className="fill-current text-[10px] text-muted">{einheit}</text>
+              className="fill-current text-[11px] text-muted">{tag(x1)}</text>
+        <text x={li} y={ob + 2} className="fill-current text-[11px] text-muted">{einheit}</text>
       </svg>
     </div>
   );

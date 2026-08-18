@@ -179,7 +179,7 @@ export default function ActionParams({
                 value={f.key ? (wert || {}) : params}
                 onChange={(v) => aendern(v)}
               />
-              {f.hint && <div className="mt-1 text-[10px] text-muted">{tr(f.hint)}</div>}
+              {f.hint && <div className="mt-1 text-[11px] text-muted">{tr(f.hint)}</div>}
             </div>
           );
         }
@@ -202,7 +202,7 @@ export default function ActionParams({
               <>
                 <input value={wert} onChange={(e) => aendern(e.target.value)}
                   className={`mt-1 ${inp} font-mono`} />
-                <span className="mt-1 block text-[10px] text-amber-400">
+                <span className="mt-1 block text-[11px] text-amber-400">
                   {tr("action_params.wert_aus_kontext")}
                 </span>
               </>
@@ -236,13 +236,13 @@ export default function ActionParams({
                 onChange={(e) => aendern(e.target.value)} className={`mt-1 ${inp}`} />
             )}
             {f.hint && f.type !== "boolean" && (
-              <span className="mt-1 block text-[10px] text-muted">{tr(f.hint)}</span>
+              <span className="mt-1 block text-[11px] text-muted">{tr(f.hint)}</span>
             )}
           </label>
         );
       })}
 
-      {spec.outcomes && <div className="text-[10px] text-amber-400">{tr(spec.outcomes)}</div>}
+      {spec.outcomes && <div className="text-[11px] text-amber-400">{tr(spec.outcomes)}</div>}
 
       {spec.fields.length === 0 && (
         <div className="text-[11px] text-muted">{tr("action_params.diese_aktion_braucht_keine_einstellungen")}</div>

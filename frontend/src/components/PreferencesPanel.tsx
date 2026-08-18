@@ -54,7 +54,7 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
     <div className="space-y-4">
       <div className="rounded-lg border border-line bg-card p-4">
         <div className="mb-3 text-sm font-medium">{tr("preferences_panel.agenten_betrieb")}</div>
-        <div className="mb-3 flex items-center gap-3 text-sm">
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm sm:gap-3">
           <label className="text-muted">{tr("preferences_panel.gleichzeitige_laeufe_max_20")}</label>
           <input type="number" min={1} max={20} value={runners}
             onChange={(e) => setRunners(+e.target.value)}
@@ -62,10 +62,11 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
           <button onClick={async () => { await api.put("/me/runner-limit", { value: runners }); inv(); flash("Limit gespeichert."); }}
             className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
         </div>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
           <label className="text-muted">{tr("preferences_panel.telegram_chat_id")}</label>
-          <input value={chat} onChange={(e) => setChat(e.target.value)} placeholder="z. B. 123456789"
-            className="w-48 rounded border border-line bg-surface px-2 py-1" />
+          <input value={chat} onChange={(e) => setChat(e.target.value)}
+            placeholder={tr("preferences_panel.chat_id_platzhalter")}
+            className="w-40 rounded border border-line bg-surface px-2 py-1 sm:w-48" />
           <button onClick={async () => { await api.put("/me/telegram-chat", { value: chat }); inv(); flash("Chat-ID gespeichert."); }}
             className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
         </div>
@@ -78,7 +79,7 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
           entscheidet er selbst: nur wenn du etwas wissen musst oder willst (Frist, Betrag,
           Entscheidung, Störung). Das Ergebnis jedes Laufs steht ohnehin im Posteingang.
         </p>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
           <select value={notify} onChange={async (e) => {
             setNotify(e.target.value);
             await api.put("/me/assistant-notify", { value: e.target.value });
@@ -103,7 +104,7 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
           <code>{tr("preferences_panel.agent_lt_rolle_gt_md")}</code> und <code>{tr("preferences_panel.projekt_lt_key_gt_md")}</code> an und lesen
           es zu Beginn jedes Laufs. Du kannst die Notizen jederzeit selbst korrigieren.
         </p>
-        <div className="flex items-center gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
           <input value={gedaechtnis} onChange={(e) => setGedaechtnis(e.target.value)}
             placeholder={tr("preferences_panel.z_b_04_traccoon_gedaechtnis")}
             className="w-72 rounded border border-line bg-surface px-2 py-1" />

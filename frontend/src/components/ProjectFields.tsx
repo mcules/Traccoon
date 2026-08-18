@@ -101,7 +101,7 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
       {fest.length > 0 && (
         <div className="mb-3 text-xs text-muted">
           Gilt überall: {fest.map((f) => f.label).join(" · ")}
-          <span className="ml-1 text-[10px]">{tr("project_fields.hier_nicht_aenderbar")}</span>
+          <span className="ml-1 text-[11px]">{tr("project_fields.hier_nicht_aenderbar")}</span>
         </div>
       )}
 
@@ -187,7 +187,7 @@ function Werteliste({ feld, onFail, onOk }: {
 
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-28">
-      <span className="text-[10px] text-muted">{tr("project_fields.werte")}</span>
+      <span className="text-[11px] text-muted">{tr("project_fields.werte")}</span>
       {feld.options.map((o) => (
         <span key={o.id}
           className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${

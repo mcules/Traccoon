@@ -169,7 +169,7 @@ export default function Inspector({
         <span className="font-medium">{entry.agent || `Lauf ${entry.run_id}`}</span>
         <span className={`text-xs ${statusFarbe(entry.status)}`}>{statusText(entry.status)}</span>
         <div className="flex-1" />
-        <span className="font-mono text-[10px] text-muted">#{entry.run_id}</span>
+        <span className="font-mono text-[11px] text-muted">#{entry.run_id}</span>
         {onClose && (
           <button type="button" onClick={onClose} title="Inspektor schließen"
             className="rounded border border-line px-1.5 text-xs text-muted hover:border-brand">✕</button>
@@ -250,7 +250,7 @@ export default function Inspector({
             <div className="space-y-0.5">
               {auszug.schritte.map((s) => (
                 <div key={s.key} className="flex gap-2">
-                  <span className="shrink-0 font-mono text-[10px] text-muted">{uhrText(s.ts)}</span>
+                  <span className="shrink-0 font-mono text-[11px] text-muted">{uhrText(s.ts)}</span>
                   <span className={`min-w-0 flex-1 break-words ${s.css ?? ""}`}>{s.text}</span>
                 </div>
               ))}

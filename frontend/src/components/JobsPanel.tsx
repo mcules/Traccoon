@@ -82,13 +82,13 @@ export default function JobsPanel() {
       <p className="mb-3 text-sm text-muted">{tr("jobs_panel.einleitung")}</p>
       <div className="mb-4 space-y-2">
         {jobs?.map((j) => (
-          <div key={j.id} className={`flex items-center gap-3 rounded border border-line bg-card p-2 text-sm ${j.enabled ? "" : "opacity-50"}`}>
+          <div key={j.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-line bg-card p-2 text-sm ${j.enabled ? "" : "opacity-50"}`}>
             <span>{j.name}</span>
             {!j.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.aus")}</span>}
             {j.enabled && j.paused && <span className="rounded bg-surface px-1 text-xs text-amber-400">{tr("jobs_panel.pausiert")}</span>}
             <span className="text-xs text-muted font-mono">{j.type}:{j.schedule} · {j.kind}</span>
             {j.last_run_at && <span className="text-xs text-muted">{tr("jobs_panel.zuletzt")} {new Date(j.last_run_at).toLocaleString()}</span>}
-            <div className="flex-1" />
+            <div className="hidden flex-1 sm:block" />
             <button title={tr(j.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} onClick={() => toggle.mutate(j)}
               className={ico}>{j.enabled ? "⏸" : "⏵"}</button>
             <button title={tr("jobs_panel.jetzt_ausfuehren")} onClick={() => run.mutate(j.id)} className={ico + " hover:text-brand"}>▶</button>
@@ -109,7 +109,7 @@ export default function JobsPanel() {
           </select>
         )}
         <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={tr("jobs_panel.name")} className={inp} />
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} className={inp + " flex-1"}>
             <option value="cron">cron</option><option value="interval">interval</option><option value="once">once</option></select>
           <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={inp + " flex-1"}>

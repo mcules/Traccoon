@@ -33,11 +33,11 @@ export default function WaitEventConfig({
           />
           <span>
             {label}
-            <span className="block text-[10px] text-muted">{hint}</span>
+            <span className="block text-[11px] text-muted">{hint}</span>
           </span>
         </label>
       ))}
-      <p className="text-[10px] text-muted">
+      <p className="text-[11px] text-muted">
         Wartet der Prozess hier, bleibt das Ticket in seinem aktuellen Zustand stehen. Eine
         Freigabe lässt sich damit <b>nicht</b> überspringen — dafür gibt es den Freigabe-Knoten.
       </p>

@@ -122,7 +122,7 @@ export default function ConditionEdge({
           onMouseLeave={() => setHover(false)}
         >
           {text && (
-            <span className="pointer-events-none rounded border border-line bg-card px-1.5 py-0.5 text-[10px] text-muted">
+            <span className="pointer-events-none rounded border border-line bg-card px-1.5 py-0.5 text-[11px] text-muted">
               {text}
             </span>
           )}

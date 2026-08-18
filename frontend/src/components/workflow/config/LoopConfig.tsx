@@ -43,7 +43,7 @@ export default function LoopConfig({
             ))}
           </datalist>
         )}
-        <span className="mt-1 block text-[10px] text-muted">
+        <span className="mt-1 block text-[11px] text-muted">
           Ein einzelner Wert zählt als Liste mit einem Element; fehlt der Pfad, wird der
           Körper übersprungen.
         </span>
@@ -78,7 +78,7 @@ export default function LoopConfig({
           placeholder="tool.json"
           className={`mt-1 font-mono ${inp}`}
         />
-        <span className="mt-1 block text-[10px] text-muted">
+        <span className="mt-1 block text-[11px] text-muted">
           Landet am Ende als Liste unter <code className="rounded bg-surface px-1">ergebnisse</code>.
         </span>
       </label>
@@ -94,7 +94,7 @@ export default function LoopConfig({
           placeholder="500"
           className={`mt-1 ${inp}`}
         />
-        <span className="mt-1 block text-[10px] text-muted">
+        <span className="mt-1 block text-[11px] text-muted">
           Schutz gegen die Liste, die aus Versehen sehr lang ist. Mehr als 500 geht nicht.
         </span>
       </label>

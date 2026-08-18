@@ -118,7 +118,7 @@ export default function StartConfig({
             <option key={e.event} value={e.event}>{e.label}</option>
           ))}
         </datalist>
-        <span className="mt-1 block text-[10px] text-muted">
+        <span className="mt-1 block text-[11px] text-muted">
           Eigene Namen sind erlaubt — ein Webhook im Modus <b>{tr("start_config.ereignis")}</b> oder
           <code className="mx-1 rounded bg-surface px-1">POST /api/events</code> meldet sie.
         </span>
@@ -132,12 +132,12 @@ export default function StartConfig({
         {hook ? (
           <div className="space-y-1">
             <div className="break-all font-mono text-[11px] text-ink">{hook.url}</div>
-            <div className="text-[10px] text-muted">
+            <div className="text-[11px] text-muted">
               Signatur: <code className="rounded bg-card px-1">X-Webhook-Signature</code> =
               HMAC-SHA256 des Rumpfes, hex, ohne Präfix. Geheimnis:{" "}
               <code className="break-all rounded bg-card px-1">{hook.secret}</code>
             </div>
-            <div className="text-[10px] text-muted">
+            <div className="text-[11px] text-muted">
               Die Nutzlast landet vollständig im Kontext. Feiner abbilden (nur bestimmte
               Felder) lässt sich das unter Einstellungen → Webhooks.
             </div>
@@ -153,7 +153,7 @@ export default function StartConfig({
         )}
 
         {subjectKind && subjectKind !== "standalone" && (
-          <label className="mt-2 block text-[10px] text-muted">
+          <label className="mt-2 block text-[11px] text-muted">
             {tr("start_config.artefakt_feld")}
             <input
               value={t.subjekt_feld || ""}
@@ -187,7 +187,7 @@ export default function StartConfig({
           placeholder={'{"vorgang": {"id": 42, "titel": "Störung"}, "quelle": "Zabbix"}'}
           className={`mt-1 ${inp} font-mono`}
         />
-        <span className="mt-1 block text-[10px] text-muted">
+        <span className="mt-1 block text-[11px] text-muted">
           Einmal einfügen, was das fremde System schickt — die Felder daraus stehen danach
           in jeder Verzweigung zur Auswahl.
         </span>
@@ -208,7 +208,7 @@ export default function StartConfig({
                 <option key={p.id} value={p.id}>{p.key} · {p.name}</option>
               ))}
             </select>
-            <span className="mt-1 block text-[10px] text-muted">
+            <span className="mt-1 block text-[11px] text-muted">
               Gehört der Ablauf schon zu einem Projekt, gilt das ohnehin — das hier grenzt
               zusätzlich ein (z. B. ein systemweiter Ablauf nur für ein bestimmtes Projekt).
             </span>
@@ -227,7 +227,7 @@ export default function StartConfig({
               placeholder={'{"==": [{"var": "issue.priority"}, "highest"]}'}
               className={`mt-1 ${inp} font-mono`}
             />
-            <span className="mt-1 block text-[10px] text-muted">
+            <span className="mt-1 block text-[11px] text-muted">
               Leer = immer. Geprüft wird der Inhalt des Ereignisses (im Ablauf als
               <code className="mx-1 rounded bg-surface px-1">{"{{…}}"}</code> verfügbar).
             </span>

@@ -112,7 +112,7 @@ export default function ArtifactTypesPanel() {
             <button onClick={() => neu.key.trim() && neu.name.trim() && anlegen.mutate()}
               className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("artifact_types_panel.anlegen")}</button>
           </div>
-          <p className="mt-2 text-[10px] text-muted">
+          <p className="mt-2 text-[11px] text-muted">
             Bekommt eine eigene Ablage und beliebige Zustände. Board, Sprints und der
             KI-Lebenszyklus bleiben den Tickets vorbehalten.
           </p>
@@ -239,7 +239,7 @@ function Felder({ t: typ, onFail, onOk, offen }: {
               )}
             </div>
             {f.options_source ? (
-              <div className="mt-1 pl-28 text-[10px] text-muted">
+              <div className="mt-1 pl-28 text-[11px] text-muted">
                 {tr("artifact_types_panel.werte_aus_projekt")} ({HERKUNFT[f.options_source] ? tr(HERKUNFT[f.options_source]) : f.options_source})
                 — hier gibt es deshalb nichts zu pflegen.
               </div>
@@ -298,7 +298,7 @@ function Werteliste({ feld, onFail, onOk }: {
 
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-28">
-      <span className="text-[10px] text-muted">{tr("artifact_types_panel.werte")}</span>
+      <span className="text-[11px] text-muted">{tr("artifact_types_panel.werte")}</span>
       {feld.options.map((o) => (
         <span key={o.id}
           className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${
@@ -308,7 +308,7 @@ function Werteliste({ feld, onFail, onOk }: {
             <>
               <select value={o.category || "in_progress"}
                 onChange={(e) => aendern.mutate({ id: o.id, category: e.target.value })}
-                title={tr("artifact_types_panel.board_kategorie")} className="bg-transparent text-[10px] text-muted">
+                title={tr("artifact_types_panel.board_kategorie")} className="bg-transparent text-[11px] text-muted">
                 {KATEGORIE.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
               </select>
               <button onClick={() => aendern.mutate({ id: o.id, waiting: !o.waiting })}

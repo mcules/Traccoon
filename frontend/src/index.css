@@ -109,6 +109,7 @@ body {
    das man verfehlt. 24 px kosten optisch nichts, weil die Zeile ohnehin so hoch steht. */
 @media (pointer: fine) {
   button,
+  select,
   summary,
   [role="button"] {
     min-height: 24px;
@@ -119,4 +120,17 @@ body {
   label:has(> input[type="radio"]) {
     min-height: 24px;
   }
+}
+
+/* Ein <select> ist von sich aus so breit wie seine längste Option. „Nur wenn ich etwas wissen
+   muss (empfohlen)" schob damit die ganze Seite über den Rand. Der Text wird dann gekürzt,
+   aufgeklappt steht er trotzdem vollständig da. */
+select {
+  max-width: 100%;
+}
+
+/* Lange Bezeichner ohne Leerzeichen (QUEUE_FULL/NOT_ENOUGH_RESOURCES, URLs, Hashes) brechen
+   sonst nicht und schieben ihren Absatz über den Rand. */
+p, li, td, dd, blockquote {
+  overflow-wrap: anywhere;
 }

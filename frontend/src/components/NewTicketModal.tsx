@@ -136,7 +136,7 @@ export default function NewTicketModal({
                     <img src={previews[i]} alt={f.name}
                       className="h-16 w-16 rounded border border-line object-cover" />
                   ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded border border-line bg-surface px-1 text-center text-[10px] text-muted">
+                    <div className="flex h-16 w-16 items-center justify-center rounded border border-line bg-surface px-1 text-center text-[11px] text-muted">
                       {f.name}
                     </div>
                   )}

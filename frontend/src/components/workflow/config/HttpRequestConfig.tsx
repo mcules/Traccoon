@@ -45,7 +45,7 @@ export default function HttpRequestConfig({
             </option>
           ))}
         </datalist>
-        <span className="mt-1 block text-[10px] text-muted">
+        <span className="mt-1 block text-[11px] text-muted">
           {gewaehlt
             ? `${gewaehlt.base_url} · ${gewaehlt.auth_type === "none" ? "ohne Anmeldung" : gewaehlt.auth_type}`
             : "Ziele werden in Administration, Einstellungen oder den Projekt-Einstellungen gepflegt."}
@@ -107,7 +107,7 @@ export default function HttpRequestConfig({
           Fehlerstatus = Schritt scheitert
         </label>
       </div>
-      <p className="text-[10px] text-muted">
+      <p className="text-[11px] text-muted">
         Ohne den Haken läuft der Prozess weiter und kann selbst über
         <code className="mx-1 rounded bg-surface px-1">{"{{http.status_code}}"}</code>
         bzw. <code className="rounded bg-surface px-1">{"{{http.ok}}"}</code> verzweigen.

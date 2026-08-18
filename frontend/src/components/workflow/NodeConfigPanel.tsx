@@ -155,7 +155,7 @@ function Abschalter({ config, onChange }: {
       </label>
       {aus && (
         <>
-          <label className="block text-[10px] font-medium text-muted">
+          <label className="block text-[11px] font-medium text-muted">
             {tr("abschalter.was_dann")}
             <select value={modus} className="mt-1 w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
               onChange={(e) => onChange({ ...config, deaktiviert_modus: e.target.value as NodeConfig["deaktiviert_modus"] })}>
@@ -163,7 +163,7 @@ function Abschalter({ config, onChange }: {
               <option value="abbrechen">{tr("abschalter.abbrechen")}</option>
             </select>
           </label>
-          <p className="text-[10px] text-muted">
+          <p className="text-[11px] text-muted">
             {modus === "abbrechen"
               ? tr("abschalter.hinweis_abbrechen")
               : tr("abschalter.hinweis_ueberspringen")}

@@ -223,7 +223,7 @@ export default function Dock({
                 Abfrage — eine Zahl aus dem Roster wäre eine andere Menge mit demselben
                 Aussehen. */}
             {t.key !== "akte" && (
-              <span className="ml-1 text-[10px] text-muted">
+              <span className="ml-1 text-[11px] text-muted">
                 {t.key === "chat" ? chat.length : t.key === "agents" ? roster.length : werkzeuge.length}
               </span>
             )}
@@ -233,7 +233,7 @@ export default function Dock({
         {/* Der Einfrierhinweis gilt für die drei Log-Reiter. Die Akte friert nicht ein — sie
             nennt ihr eigenes Fenster in der eigenen Überschrift. */}
         {seekTs !== null && tab !== "akte" && (
-          <span className="self-center pb-1 text-[10px] text-orange-400"
+          <span className="self-center pb-1 text-[11px] text-orange-400"
             title="Das Dock zeigt denselben Moment wie der Raum.">
             eingefroren auf {uhrText(seekTs)}
           </span>
@@ -267,7 +267,7 @@ export default function Dock({
 function Gekappt({ n }: { n: number }) {
   if (n <= 0) return null;
   return (
-    <div className="mb-1 border-b border-dashed border-line pb-1 text-[10px] text-muted">
+    <div className="mb-1 border-b border-dashed border-line pb-1 text-[11px] text-muted">
       {zahl(n)} ältere {n === 1 ? "Eintrag ist" : "Einträge sind"} ausgeblendet (Anzeigegrenze).
     </div>
   );
@@ -292,7 +292,7 @@ function ChatListe({ zeilen, name, gedimmt, onSelect }: {
       <Gekappt n={zeilen.length - zeige.length} />
       {zeige.map((z) => (
         <div key={z.key} className={`flex gap-2 text-xs ${gedimmt(z.id) ? "opacity-40" : ""}`}>
-          <span className="shrink-0 font-mono text-[10px] text-muted">{uhrText(z.ts)}</span>
+          <span className="shrink-0 font-mono text-[11px] text-muted">{uhrText(z.ts)}</span>
           <span className="shrink-0">{z.icon}</span>
           <button type="button" onClick={() => onSelect(z.id)}
             className="shrink-0 max-w-[9rem] truncate text-left text-muted hover:text-brand"
@@ -334,7 +334,7 @@ function AgentListe({ eintraege, scope, filter, selectedId, onSelect }: {
             <span className="font-medium">{r.agent || `Lauf ${r.run_id}`}</span>
             {r.phase && <span className="text-muted">{r.phase === "plan" ? "Planung" : "Ausführung"}</span>}
             <span className={statusFarbe(r.status)}>{statusText(r.status)}</span>
-            {r.issue_key && <span className="font-mono text-[10px] text-brand">{r.issue_key}</span>}
+            {r.issue_key && <span className="font-mono text-[11px] text-brand">{r.issue_key}</span>}
             <div className="flex-1" />
             <span className="text-muted" title={r.provider ? `${r.provider} · ${r.model ?? "—"}` : undefined}>
               {r.model || "—"}
@@ -378,7 +378,7 @@ function WerkzeugListe({ zeilen, name, gedimmt, onSelect }: {
         const e = ergebnis(z.ok);
         return (
           <div key={z.key} className={`flex items-center gap-2 text-xs ${gedimmt(z.id) ? "opacity-40" : ""}`}>
-            <span className="shrink-0 font-mono text-[10px] text-muted">{uhrText(z.ts)}</span>
+            <span className="shrink-0 font-mono text-[11px] text-muted">{uhrText(z.ts)}</span>
             <span className={`shrink-0 ${e.css}`} title={e.titel}>{e.zeichen}</span>
             <button type="button" onClick={() => onSelect(z.id)}
               className="shrink-0 max-w-[8rem] truncate text-left text-muted hover:text-brand"

@@ -202,7 +202,7 @@ export default function SlotList({ project }: { project: Project }) {
                   </select>
                 </div>
               )}
-              <div className="mt-0.5 text-[10px] text-muted">
+              <div className="mt-0.5 text-[11px] text-muted">
                 {o.hint}
                 {s.set_name && s.origin !== "project" ? ` (${s.set_name})` : ""}
               </div>
