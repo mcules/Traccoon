@@ -1,18 +1,18 @@
-// Schicht 0 — deterministischer „Zufall".
+// Layer 0: deterministic "randomness".
 //
-// Der Raum muss aus demselben Log identisch wiederherstellbar sein: Zurückspulen heißt
-// „neue Engine, Log von vorn abspielen". Damit ist jede Variation im Bild — Frisur, Hautton,
-// Schrittlänge, Wackelphase, Sitzplatz, welcher Spruch — eine **reine Funktion des Seeds**,
-// nie ein Wurf. `Math.random` kommt in den Schichten 0 und 1 nicht vor; der Prüfer erzwingt das.
+// The room has to be identically reconstructable from the same log: rewinding means "new
+// engine, replay the log from the start". Every variation in the picture (hairstyle, skin
+// tone, stride length, wobble phase, seat, which line) is therefore a **pure function of the
+// seed**, never a throw. `Math.random` does not occur in layers 0 and 1; the checker enforces that.
 //
-// Alles rechnet ganzzahlig (`Math.imul`, `>>> 0`). Fließkomma-Akkumulation wäre zwar in der
-// Praxis auch reproduzierbar, aber sie versteckt Rundungsdrift — Ganzzahlen tun das nicht.
+// Everything computes with integers (`Math.imul`, `>>> 0`). Floating point accumulation would
+// be reproducible in practice as well, but it hides rounding drift; integers do not.
 //
 // Siehe PIXEL-CONTRACT.md Regel 3.2.
 
-/** FNV-1a, 32 Bit. Jedes UTF-16-Code-Unit geht mit **beiden** Bytes ein — Traccoons Rollen- und
- *  Werkzeugnamen sind deutsch (`erinnere_dich`, `gedaechtnis_suchen`, Umlaute in Titeln), und
- *  ein `& 0xff` allein ließe „ä" und „ö" auf denselben Wert fallen. */
+/** FNV-1a, 32 bit. Every UTF-16 code unit goes in with **both** bytes: Traccoon's role and
+ *  tool names are German (`erinnere_dich`, `gedaechtnis_suchen`, umlauts in titles), and an
+ *  `& 0xff` alone would let "ä" and "ö" fall onto the same value. */
 export function hash32(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
@@ -23,11 +23,11 @@ export function hash32(s: string): number {
   return h >>> 0;
 }
 
-/** Streut einen Hash mit einem Salz neu (Finalizer aus MurmurHash3).
+/** Re-spreads a hash with a salt (the finalizer from MurmurHash3).
  *
- *  Jede Verwendungsstelle bekommt ihr **eigenes, benanntes** `SALT`. Zwei Stellen mit demselben
- *  Salz sind perfekt korreliert — dann haben alle langsamen Läufer rote Haare, und das fällt erst
- *  auf, wenn zwölf Figuren im Raum stehen. */
+ *  Every place of use gets its **own, named** `SALT`. Two places with the same salt are
+ *  perfectly correlated, and then all slow walkers have red hair, which only shows once
+ *  twelve figures stand in the room. */
 export function mix(h: number, salt: number): number {
   let x = (h ^ Math.imul(salt >>> 0, 0x9e3779b1)) >>> 0;
   x = Math.imul(x ^ (x >>> 16), 0x85ebca6b) >>> 0;
@@ -35,15 +35,15 @@ export function mix(h: number, salt: number): number {
   return (x ^ (x >>> 16)) >>> 0;
 }
 
-/** Hash → `[0, 1)`. Teilt durch 2^32, nicht durch `0xffffffff` — sonst wäre 1.0 erreichbar
- *  und `pick`-artige Rechnungen liefen einen Index zu weit. */
+/** Hash to `[0, 1)`. Divides by 2^32, not by `0xffffffff`; otherwise 1.0 would be reachable
+ *  and `pick`-like computations would run one index too far. */
 export function rnd01(h: number): number {
   return (h >>> 0) / 4294967296;
 }
 
-/** Wählt ein Element. Modulo auf der Ganzzahl, kein Umweg über `rnd01` — das spart die eine
- *  Fließkomma-Rundung, an der zwei Browser theoretisch auseinanderlaufen könnten.
- *  `arr` muss nicht leer sein; ein leeres Feld ist ein Aufruferfehler. */
+/** Chooses an element. Modulo on the integer, without the detour over `rnd01`, which saves
+ *  the one floating point rounding at which two browsers could theoretically drift apart.
+ *  `arr` must not be empty; an empty array is a caller error. */
 export function pick<T>(arr: readonly T[], h: number): T {
   return arr[(h >>> 0) % arr.length];
 }
