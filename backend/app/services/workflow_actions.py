@@ -1,48 +1,48 @@
-"""Auto-Action-Handler für auto_action-Knoten der Workflow-Engine.
+"""Handlers for the auto_action nodes of the workflow engine.
 
-Ein auto_action-Knoten trägt in `config` einen `action`-Typ + Parameter. `run_action`
-führt den Seiteneffekt aus und gibt ein Ergebnis-dict zurück (wird im StepRun.result
-persistiert). Nach außen wirkt nur, was ausdrücklich dafür da ist: `http_request` und
-`webhook` rufen fremde Systeme, alles andere bleibt in Traccoon.
+An auto_action node carries an `action` type plus parameters in its `config`. `run_action`
+performs the side effect and returns a result dict (persisted in StepRun.result). Only what
+is explicitly meant for it reaches the outside: `http_request` and `webhook` call foreign
+systems, everything else stays inside Traccoon.
 
-Unterstützte Aktionen:
-  set_context         {set:{key:val,...}}     — Variablen in instance.context schreiben
-  set_status          {status, reason?, notify?} — Zustand des gebundenen Artefakts setzen
-                                                (Ticket: + Board-Spalte, Meldung, Ereignis)
-  set_field           {field, values, mode?}    — freies Feld des Artefakts setzen
+Supported actions:
+  set_context         {set:{key:val,...}}       write variables into instance.context
+  set_status          {status, reason?, notify?} set the state of the bound artifact
+                                                (ticket: plus board column, message, event)
+  set_field           {field, values, mode?}    set a custom field of the artifact
                                                 (mode: set | add | remove)
-  set_board_status    {status|category}       — Board-Spalte des gebundenen Tickets setzen
-  create_ticket       {summary, ...}          — neues Ticket anlegen (analog Inbound-Webhook)
-  tool_call           {tool, arguments, context_key?, fail_on_error?} — MCP-Werkzeug aufrufen
-  http_request        {destination, method, path, query, headers, body} — Aufruf über ein Ziel
-  webhook             {url, method, headers, payload, secret} — ausgehender Aufruf an freie URL
-  comment             {text}                  — System-Kommentar am gebundenen Issue
-  notify              {to:{mode,...}, title, text} — In-App/Telegram-Benachrichtigung
-  noop                (Default)               — nichts (Platzhalter)
+  set_board_status    {status|category}         set the board column of the bound ticket
+  create_ticket       {summary, ...}            create a ticket (like the inbound webhook)
+  tool_call           {tool, arguments, context_key?, fail_on_error?}  call an MCP tool
+  http_request        {destination, method, path, query, headers, body}  call a destination
+  webhook             {url, method, headers, payload, secret}  outgoing call to a free URL
+  comment             {text}                    system comment on the bound issue
+  notify              {to:{mode,...}, title, text}  notification (bell plus channel)
+  noop                (default)                 nothing, a placeholder
 
-Ticket-Lebenszyklus (Etappe 5 — der Graph ist die Wahrheit, `agent_status` die Projektion):
-  refresh_facts       {}                      — Projekt-/Ticket-Fakten in den Kontext (für Guards)
-  assign_agent        {agent}                 — Agenten zuweisen (setzt assigned_by/at)
-  set_cap_baseline    {}                      — Cap-Fenster auf „ab jetzt" setzen
-  start_testenv       {}                      — Testumgebung des Tickets starten
-  stop_testenv        {}                      — Testumgebung abräumen (vor dem Merge!)
-  accept_merge        {timeout_sec?}          — Branch mergen/PR öffnen (asynchron, Worker)
-  deploy              {force?}                — Deployment einreihen
-  split_tickets       {}                      — <subtickets> aus dem Plan als Kinder anlegen
-  stop_agent          {}                      — laufenden Agentenlauf abbrechen
+Ticket lifecycle (the graph is the truth, `agent_status` is the projection):
+  refresh_facts       {}                        project and ticket facts into the context
+  assign_agent        {agent}                   assign an agent (sets assigned_by and at)
+  set_cap_baseline    {}                        move the cap window to "from now on"
+  start_testenv       {}                        start the test environment of the ticket
+  stop_testenv        {}                        tear the test environment down (before merge)
+  accept_merge        {timeout_sec?}            merge the branch or open a PR (async, worker)
+  deploy              {force?}                  queue a deployment
+  split_tickets       {}                        create <subtickets> from the plan as children
+  stop_agent          {}                        abort a running agent run
 
-Mail-Eingang (Slot `mail_intake`, Handler in `services/mail_actions.py`):
-  mail_classify       {classify_agent?}       — Mail einordnen + gelernte Absender-Regel
-  spam_evaluate       {}                      — Regeln + Modell + Gedächtnis → ein Urteil
-  spam_card           {vorentschieden?}       — Urteils-Zeile + Telegram-Rückfrage anlegen
-  spam_apply          {entscheidung?, decided_by?} — festschreiben, lernen, Mail bewegen
-  assistant_task      {}                      — Assistent-Item aus der Mail anlegen
-  assistant_card      {}                      — Freigabekarte für das Item
-  assistant_run       {}                      — Assistenten-Lauf einreihen (Auto-Freigabe)
+Mail intake (slot `mail_intake`, handlers in `services/mail_actions.py`):
+  mail_classify       {classify_agent?}         classify the mail and learn the sender rule
+  spam_evaluate       {}                        rules, model and memory into one verdict
+  spam_card           {vorentschieden?}         verdict row plus a question in the messenger
+  spam_apply          {entscheidung?, decided_by?}  commit it, learn, move the mail
+  assistant_task      {}                        create an assistant item from the mail
+  assistant_card      {}                        approval card for that item
+  assistant_run       {}                        queue an assistant run (auto approval)
 
-Aktionen unterstützen beide Config-Formen (Editor verschachtelt {action:{action,params}} und
-flach {action:"name",...}) via _normalize_action. Text-/Wert-Felder unterstützen einfaches
-{{var.pfad}}-Templating aus dem Kontext.
+Actions accept both config shapes (the editor nests {action:{action,params}}, flat
+{action:"name",...} works too) through _normalize_action. Text and value fields support
+`{{var.path}}` templating from the context.
 """
 from __future__ import annotations
 
@@ -70,11 +70,11 @@ def _dig(data, path: str):
 
 
 def _interp(value, ctx: dict):
-    """Ersetzt `{{…}}` in Strings. Nicht-Strings bleiben unverändert.
+    """Replace `{{…}}` inside strings. Non-strings are left alone.
 
-    Hinter den Klammern steht seit 2026-08-18 mehr als ein Pfad: eine Kette aus Filtern
-    (`{{ mail.subject | kurz:40 }}`, siehe `workflow_expr`). Ein reiner Pfad verhält sich
-    unverändert — alle bestehenden Vorlagen bleiben gültig.
+    Since 2026-08-18 the braces hold more than a path: a chain of filters
+    (`{{ mail.subject | kurz:40 }}`, see `workflow_expr`). A plain path behaves as before,
+    so every existing template stays valid.
     """
     if not isinstance(value, str):
         return value
@@ -103,8 +103,8 @@ def _as_int(value):
 
 
 async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Legt ein Ticket an (analog Inbound-Webhook mode=task). Das erzeugte Ticket wird unter
-    context[context_key] (Default 'created_ticket') = {id,key} abgelegt, für Folge-Knoten."""
+    """Create a ticket (like the inbound webhook in mode=task). The new ticket is stored
+    under context[context_key] (default 'created_ticket') as {id,key} for later nodes."""
     from sqlalchemy import select
 
     from ..models.enums import TicketAgentStatus
@@ -117,9 +117,9 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     pid = pid or inst.project_id
     if pid is None:
         raise ValueError("create_ticket: kein project_id (weder Parameter noch Instanz-Projekt)")
-    # Ein Ablauf darf nur dort anlegen, wo der Mensch hinter ihm selbst anlegen dürfte.
-    # Ohne diese Prüfung wäre ein eigener, freier Ablauf ein Weg, in fremde Projekte zu
-    # schreiben: die Definition gehört ihrem Ersteller, das Zielprojekt aber nicht.
+    # A flow may only create where the person behind it could create as well. Without this
+    # check a free-standing flow would be a way into foreign projects: the definition
+    # belongs to its creator, the target project does not.
     if fremdes_ziel and inst.started_by is not None:
         from ..api.deps import build_access
         from ..models.enums import GlobalRole, ProjectRole
@@ -166,7 +166,7 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
             issue.agent_status = TicketAgentStatus.planning
     db.add(issue)
     await db.flush()
-    # Frisches Ticket ist sofort ein Artefakt — nicht erst beim nächsten Abgleich.
+    # A fresh ticket is an artifact right away, not only at the next reconcile.
     from .artifacts import ensure_for_issue
     await ensure_for_issue(db, issue)
     key_out = params.get("context_key") or "created_ticket"
@@ -202,7 +202,7 @@ async def _set_board_status(db, inst: WorkflowInstance, params: dict, ctx: dict)
 
 
 def _interp_deep(value, ctx: dict):
-    """Rekursives {{var}}-Templating über Strings in dicts/Listen; Nicht-Strings bleiben."""
+    """Recursive {{var}} templating over strings in dicts and lists, non-strings stay."""
     if isinstance(value, str):
         return _interp(value, ctx)
     if isinstance(value, dict):
@@ -213,16 +213,18 @@ def _interp_deep(value, ctx: dict):
 
 
 async def _webhook(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Ausgehender HTTP-Aufruf. Params:
-      url (Pflicht), method (GET|POST|PUT|PATCH|DELETE, Default POST), headers {..}, payload {..}/text,
-      secret (Tresor-Name → als {{secret}} in url/headers/payload verfügbar, nie geloggt), timeout_sec.
-    Definitionen sind von Projekt-Maintainern autorisiert (wie die bestehende Job-/Webhook-Infra).
+    """Outgoing HTTP call. Parameters:
+      url (required), method (GET|POST|PUT|PATCH|DELETE, default POST), headers {..},
+      payload {..} or text, secret (vault name, available as {{secret}} in url, headers and
+      payload, never logged), timeout_sec.
+    Definitions are authorized by project maintainers, like the existing job and webhook
+    infrastructure.
     """
     import httpx
 
     from ..worker.secrets import resolve_ref
 
-    # Secret auflösen und NUR fürs Templating verfügbar machen (nicht in Kontext/Ergebnis).
+    # Resolve the secret and expose it ONLY for templating, never in context or result.
     tctx = dict(ctx)
     sref = params.get("secret") or params.get("secret_ref")
     if sref:
@@ -257,13 +259,13 @@ async def _webhook(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
 
 # ── Ticket-Lebenszyklus ──────────────────────────────────────────────────────
 
-# Vor dem Artefakt-Register gab es je Subjekt eine eigene Aktion. Beide sind heute
-# `set_status`; die Namen stehen aber noch in veröffentlichten Versionen, und die sind
-# unveränderlich (laufende Instanzen hängen daran). Darum: umbiegen statt doppelt pflegen.
+# Before the artifact registry there was one action per subject. Both are `set_status`
+# today, but the old names still sit in published versions, and those are immutable
+# (running instances hang off them). So they are redirected instead of maintained twice.
 _ALT_AKTIONEN = {"set_agent_status", "set_purchase_status"}
 
-# Welcher Agent-Status welche Benachrichtigung auslöst — identisch zur früheren
-# Nachbearbeitung im Dispatcher, damit Telegram/Glocke sich unverändert verhalten.
+# Which agent status triggers which notification, identical to the earlier post-processing
+# in the dispatcher so messenger and bell behave unchanged.
 _NOTIFY_ON = {
     "plan_review": ("plan_review", "Plan bereit"),
     "to_test": ("to_test", "bereit zur Abnahme"),
@@ -280,10 +282,10 @@ async def _issue_of(db, inst: WorkflowInstance):
 
 
 async def _artefakt_von(db, inst: WorkflowInstance):
-    """Die gemeinsame Artefakt-Zeile des Ablaufs — daran hängen die freien Felder.
+    """The shared artifact row of the flow, which the custom fields hang off.
 
-    Bevorzugt die Bindung an der Instanz; ältere Instanzen (vor der gemeinsamen Identität)
-    haben sie noch nicht und werden über Ticket bzw. Exemplar aufgelöst.
+    Prefers the binding on the instance. Older instances (from before the shared identity)
+    do not have it yet and are resolved through the ticket or the hardware item.
     """
     from ..models.artifact import Artifact
     from . import artifacts as art
@@ -301,14 +303,14 @@ async def _artefakt_von(db, inst: WorkflowInstance):
 
 
 async def _set_field(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Ein freies Feld des gebundenen Artefakts setzen (Administration → Artefakte).
+    """Set a custom field of the bound artifact (Administration, artifacts).
 
-    `mode` entscheidet, was mit vorhandenen Werten geschieht: `set` ersetzt sie, `add`
-    ergänzt, `remove` nimmt weg. Bei einem Feld ohne Mehrfachauswahl ist nur `set`
-    sinnvoll — die Prüfung im Register lehnt alles andere ohnehin ab.
+    `mode` decides what happens to existing values: `set` replaces them, `add` appends,
+    `remove` takes away. On a single-select field only `set` makes sense, and the registry
+    check rejects anything else anyway.
 
-    Die neuen Werte landen zusätzlich im Kontext unter `fields.<schlüssel>`, damit
-    nachgelagerte Bedingungen im selben Durchlauf darauf zugreifen können.
+    The new values also land in the context under `fields.<key>` so later conditions in the
+    same pass can read them.
     """
     from . import artifact_fields as af
 
@@ -324,7 +326,7 @@ async def _set_field(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     if feld is None:
         raise ValueError(f"Feld '{key}' gibt es an diesem Artefakt nicht")
 
-    # Werte dürfen als Liste, als einzelner Wert oder mit Komma getrennt kommen.
+    # Values may arrive as a list, as a single value or comma separated.
     roh = params.get("values", params.get("value"))
     if roh is None:
         neue = []
@@ -350,12 +352,12 @@ async def _set_field(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
 
 
 async def _set_status(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Zustand des gebundenen Artefakts setzen — Ticket, Hardware oder eigener Typ.
+    """Set the state of the bound artifact: ticket, hardware or a custom type.
 
-    Der EINE Weg im Graphen; welche Werte erlaubt sind, sagt das Artefakt-Register
-    (Administration → Artefakte), und der Editor zeigt nur die Zustände des Subjekts, an
-    dem der Ablauf hängt. Die Alt-Namen `set_agent_status`/`set_purchase_status` landen
-    über `_ALT_AKTIONEN` ebenfalls hier — sie stehen noch in veröffentlichten Versionen.
+    The ONE way inside the graph. Which values are allowed comes from the artifact registry
+    (Administration, artifacts), and the editor only shows the states of the subject the
+    flow hangs off. The old names `set_agent_status` and `set_purchase_status` end up here
+    through `_ALT_AKTIONEN` as well, because they still sit in published versions.
     """
     from . import artifacts as art
     from ..models.hardware import HardwareAsset
@@ -373,7 +375,7 @@ async def _set_status(db, inst: WorkflowInstance, params: dict, ctx: dict) -> di
         db, subject_kind=inst.subject_kind, issue=issue, asset=asset, status_key=wert,
         reason=str(_interp(params.get("reason") or params.get("hold_reason") or "", ctx)).strip(),
     )
-    # Meldungen bleiben am Ticket hängen (Board/Telegram/Glocke lesen agent_status).
+    # Messages stay on the ticket (board, messenger and bell read agent_status).
     if issue is not None and params.get("notify", True) and wert in _NOTIFY_ON:
         kind, label = _NOTIFY_ON[wert]
         from .notify import notify_issue
@@ -393,11 +395,11 @@ async def _set_status(db, inst: WorkflowInstance, params: dict, ctx: dict) -> di
 
 
 async def _refresh_facts(db, inst: WorkflowInstance, ctx: dict) -> dict:
-    """Aktuelle Projekt-/Ticket-Fakten in den Kontext schreiben — Futter für Entscheidungen.
+    """Write current project and ticket facts into the context as input for decisions.
 
-    Ohne diesen Knoten müssten Guards auf Werte prüfen, die beim Instanz-Start eingefroren
-    wurden; Einstellungen (Testumgebung, Auto-Deploy, Fortsetzen) sollen aber zum Zeitpunkt
-    der Entscheidung gelten.
+    Without this node guards would test values frozen at instance start, while settings
+    (test environment, auto deploy, continuation) should apply at the moment of the
+    decision.
     """
     from ..models.project import Project
     issue = await _issue_of(db, inst)
@@ -443,14 +445,14 @@ async def _assign_agent(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
 
 
 async def _set_cap_baseline(db, inst: WorkflowInstance) -> dict:
-    """Cap-Fenster neu setzen: ab hier zählt die Runaway-Bremse nur noch frische Läufe.
+    """Reset the cap window: from here the runaway brake only counts fresh runs.
 
-    Gehört an jede menschliche Freigabe — alte Fehlversuche (z. B. 429-Abbrüche) dürfen
-    legitime Neu-Arbeit nicht sofort in den Cap laufen lassen.
+    Belongs at every human approval. Old failed attempts (rate limit aborts, for example)
+    must not push legitimate new work straight into the cap.
 
-    Aus demselben Grund beginnt hier auch die Fortsetzungs-Zählung von vorn: Planung und
-    Umsetzung teilen sich einen Zähler, und eine zähe Planung würde der Umsetzung sonst
-    ihr Budget wegessen, bevor sie die erste Zeile geschrieben hat.
+    For the same reason the continuation count starts over here: planning and execution
+    share one counter, and a stubborn planning phase would otherwise eat the budget of the
+    execution before it wrote its first line.
     """
     from sqlalchemy import func, select
 
@@ -461,9 +463,9 @@ async def _set_cap_baseline(db, inst: WorkflowInstance) -> dict:
     issue.cap_baseline_run_id = (
         await db.execute(select(func.max(Run.id)).where(Run.issue_id == issue.id))).scalar()
     issue.continuation_count = 0
-    # Die Prüfrunden gehören zum selben Abschnitt: ein neuer Anlauf (Nacharbeit nach
-    # Rückfrage, erneute Zuweisung) beginnt mit frischem Korrektur-Budget — sonst stünde ein
-    # Ticket, das einmal zwei Runden gebraucht hat, beim nächsten Befund sofort wieder still.
+    # The review rounds belong to the same section: a new attempt (rework after a
+    # question, a fresh assignment) starts with a fresh correction budget. Otherwise a
+    # ticket that once needed two rounds would stall again on the next finding.
     issue.review_rounds = 0
     inst.context = {**(inst.context or {}), "continuation": 0, "continuation_hint": ""}
     return {"action": "set_cap_baseline", "baseline": issue.cap_baseline_run_id,
@@ -491,11 +493,11 @@ async def _testenv(db, inst: WorkflowInstance, start: bool) -> dict:
 
 
 async def _accept_merge(db, inst: WorkflowInstance, params: dict) -> dict:
-    """Abnahme-Merge beim Worker einreihen — asynchron.
+    """Queue the review merge on the worker, asynchronously.
 
-    Gibt `_wait` zurück: die Engine parkt den Schritt und schaltet erst weiter, wenn das
-    Ergebnis vorliegt (merged|conflict|pr_open|no_git|…). Ohne das würde der Merge die
-    Engine-Session minutenlang blockieren.
+    Returns `_wait`: the engine parks the step and only continues once the result is there
+    (merged, conflict, pr_open, no_git and so on). Without that the merge would block the
+    engine session for minutes.
     """
     import uuid
 
@@ -512,8 +514,8 @@ async def _accept_merge(db, inst: WorkflowInstance, params: dict) -> dict:
 
 
 async def _deploy(db, inst: WorkflowInstance, params: dict) -> dict:
-    """Deployment einreihen. Ohne `force` nur, wenn das Projekt Auto-Deploy anhat und ein
-    echtes Stack-Verzeichnis besitzt (nie das Wartungs-/Host-Projekt selbst — TRA-19)."""
+    """Queue a deployment. Without `force` only when the project has auto deploy enabled
+    and a real stack directory (never the maintenance or host project itself, TRA-19)."""
     from ..models.ops import Deployment
     from ..models.project import Project
     issue = await _issue_of(db, inst)
@@ -531,9 +533,8 @@ async def _deploy(db, inst: WorkflowInstance, params: dict) -> dict:
 
 
 async def _split_tickets(db, inst: WorkflowInstance, params: dict) -> dict:
-    """Legt die im Plan vorgeschlagenen Teilaufgaben als Kind-Tickets an (Teil 1 startet,
-    der Rest ist geparkt). Ausgelöst wird das aus dem Lebenszyklus-Graphen, nachdem ein
-    Mensch die Aufteilung freigegeben hat."""
+    """Create the subtasks proposed in the plan as child tickets (part 1 starts, the rest
+    is parked). Triggered from the lifecycle graph after a person approved the split."""
     import datetime as _dt
     import json
     import re
@@ -571,13 +572,13 @@ async def _split_tickets(db, inst: WorkflowInstance, params: dict) -> dict:
             plan=sub.get("plan", ""), assigned_agent=exec_agent,
             assigned_by_user_id=umbrella.assigned_by_user_id or umbrella.reporter_id,
             assigned_at=_dt.datetime.now(tz=_dt.timezone.utc),
-            # Kind 0 startet sofort, der Rest wartet auf seinen Vorgänger.
+            # Child 0 starts right away, the rest waits for its predecessor.
             agent_status=(TicketAgentStatus.approved if order == 0 else None),
         )
         db.add(child)
         keys.append(child.key)
     from .artifacts import set_ticket_status
-    # Sammelticket wartet auf seine Teile — kein Zustand, Board bleibt stehen.
+    # The parent ticket waits for its parts: no state, the board stays put.
     await set_ticket_status(db, umbrella, None, board=False)
     from .comments import add_system_comment
     await add_system_comment(
@@ -597,10 +598,10 @@ async def _stop_agent(db, inst: WorkflowInstance) -> dict:
 
 
 async def _besitzer(db, inst: WorkflowInstance) -> int | None:
-    """In wessen Namen der Lauf nach außen greift.
+    """On whose behalf the run reaches outside.
 
-    Der Starter, sonst der Mensch hinter dem Ticket. Daran hängen die MCP-Gruppe und die
-    Ziele — ein Ablauf kommt nirgends hin, wo sein Eigentümer nicht hindarf.
+    The starter, otherwise the person behind the ticket. The MCP group and the destinations
+    hang off that: a flow gets nowhere its owner is not allowed to go.
     """
     if inst.started_by is not None:
         return inst.started_by
@@ -612,16 +613,16 @@ async def _besitzer(db, inst: WorkflowInstance) -> int | None:
 
 
 async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Ein MCP-Werkzeug aufrufen — der direkte Weg zu allem, was Traccoon angebunden hat.
+    """Call an MCP tool, the direct way to everything Traccoon has connected.
 
-    Parameter:
-      tool           Werkzeugname wie in der Auswahl (z. B. `obsidian_append_to_note`)
-      arguments      {schlüssel: wert} — Werte dürfen `{{pfad}}` aus dem Kontext enthalten
-      context_key    wohin das Ergebnis geschrieben wird (Default `tool`)
-      fail_on_error  true → misslungener Aufruf lässt den Schritt fehlschlagen
+    Parameters:
+      tool           tool name as in the picker (for example `obsidian_append_to_note`)
+      arguments      {key: value}, values may contain `{{path}}` from the context
+      context_key    where the result is written (default `tool`)
+      fail_on_error  true means a failed call fails the step
 
-    Ohne `fail_on_error` entscheidet der Ablauf selbst: `tool.ok` steht im Kontext und lässt
-    sich an einer Weiche abfragen.
+    Without `fail_on_error` the flow decides for itself: `tool.ok` sits in the context and
+    can be tested at a decision.
     """
     from .workflow_tools import aufrufen
 
@@ -639,18 +640,18 @@ async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
 
 
 async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Ruft ein hinterlegtes **Ziel** auf (Basis-URL + Anmeldung stecken dort).
+    """Call a configured destination (base URL and authentication live there).
 
-    Parameter — alle mit `{{pfad}}`-Templating aus dem Kontext:
-      destination  Name des Ziels (Projekt → Nutzer → systemweit aufgelöst)
-      method       GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS (Default POST)
-      path         Ergänzung der Basis-URL, z. B. "/api/v2/orders"
-      query        {schlüssel: wert} → wird an die URL gehängt
-      headers      {schlüssel: wert} → zusätzlich zu den Standard-Kopfzeilen des Ziels
-      body         dict/Liste (→ JSON) oder Text; bei GET/HEAD/DELETE ignoriert
-      context_key  wohin das Ergebnis im Kontext geschrieben wird (Default "http")
-      fail_on_error  true → ein 4xx/5xx lässt den Schritt fehlschlagen (Default false:
-                     der Prozess entscheidet selbst über `status_code`/`ok`)
+    Parameters, all with `{{path}}` templating from the context:
+      destination  name of the destination (resolved project, then user, then system wide)
+      method       GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS (default POST)
+      path         appended to the base URL, for example "/api/v2/orders"
+      query        {key: value}, appended to the URL
+      headers      {key: value}, on top of the standard headers of the destination
+      body         dict or list (sent as JSON) or text, ignored on GET, HEAD and DELETE
+      context_key  where the result is written in the context (default "http")
+      fail_on_error  true means a 4xx or 5xx fails the step (default false: the process
+                     decides for itself using `status_code` and `ok`)
     """
     from . import destinations
 
@@ -684,12 +685,12 @@ async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
 
 
 def _zahl(params: dict, ctx: dict, *namen, default: float = 0.0) -> float:
-    """Ein Zahlen-Parameter, der auch aus dem Kontext kommen darf.
+    """A numeric parameter that may also come from the context.
 
-    Zahlen standen bisher wörtlich im Knoten. Sobald derselbe Ablauf mehrfach benutzt wird
-    — anderer Job, andere Messreihe, andere Schwelle —, kommen sie aber von außen und
-    stehen als `{{ still_stunden }}` da. Ohne Einsetzen scheitert der Schritt an einem
-    Text, der wie eine Zahl gemeint war.
+    Numbers used to sit literally in the node. As soon as the same flow is used more than
+    once (another job, another series, another threshold) they come from outside and read
+    as `{{ still_stunden }}`. Without substitution the step fails on a text that was meant
+    as a number.
     """
     for name in namen:
         if name in params and params[name] not in (None, ""):
@@ -705,12 +706,12 @@ def _zahl(params: dict, ctx: dict, *namen, default: float = 0.0) -> float:
 
 def _kein_messwert(inst: WorkflowInstance, ctx: dict, params: dict, key: str,
                    grund: str, roh=None, letzter=None, einheit: str = "") -> dict:
-    """Nichts festgehalten, aber auch nichts kaputt.
+    """Nothing recorded, but nothing broken either.
 
-    Zwei Fälle enden hier: der Wert fehlt (Ereignis ohne Messung) oder er ist unglaubwürdig
-    (Gerät meldet 127 %, wenn es den Ladestand nicht kennt). Beide Male bleibt im Kontext
-    der letzte *glaubwürdige* Stand stehen — sonst schreibt der nächste Knoten den Unsinn
-    in die Nachricht.
+    Two cases end up here: the value is missing (an event without a reading) or it is not
+    credible (the device reports 127 % when it does not know the charge). In both cases the
+    last credible reading stays in the context, otherwise the next node writes the nonsense
+    into the message.
     """
     key_ctx = str(params.get("context_key") or "messreihe")
     vorher = ctx.get(key_ctx) if isinstance(ctx.get(key_ctx), dict) else {}
@@ -722,25 +723,25 @@ def _kein_messwert(inst: WorkflowInstance, ctx: dict, params: dict, key: str,
 
 
 async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Einen Zahlenwert mitschreiben — und ablesen, wohin die Reihe läuft.
+    """Record a number, and read off where the series is heading.
 
-    Ein Ablauf sah bisher nur den Augenblick: „Akku 25 %" wurde zu einer Nachricht und war
-    weg. Erst die Reihe der letzten Wochen beantwortet die Frage, die man wirklich hat —
-    wie lange hält das noch, und wann muss ich handeln?
+    A flow used to see only the moment: "battery 25 %" became a message and was gone. Only
+    the series of the last weeks answers the question you really have, which is how long
+    this lasts and when you have to act.
 
-    Parameter:
-      reihe          Schlüssel der Reihe (z. B. `akku.shelter`)
-      wert           die Zahl; `{{ … }}` erlaubt, Kommas und Prozentzeichen werden geduldet
-      name/einheit   nur beim Anlegen der Reihe nötig
-      min/max        Gültigkeitsbereich; Werte außerhalb werden NICHT festgehalten
-      pflicht        true → ein fehlender Wert ist ein Fehler (Default: überspringen)
-      ziel           Wert, auf den die Reihe zuläuft (Default 0 — leer)
-      vorwarn_tage   wie früh gewarnt werden soll (Default 7); 0 schaltet die Warnung ab
-      fenster_tage   wie weit für den Trend zurückgesehen wird (Default 30)
+    Parameters:
+      reihe          key of the series (for example `akku.shelter`)
+      wert           the number, `{{ … }}` allowed, commas and percent signs tolerated
+      name/einheit   only needed when the series is created
+      min/max        valid range, values outside are NOT recorded
+      pflicht        true means a missing value is an error (default: skip)
+      ziel           value the series runs towards (default 0, meaning empty)
+      vorwarn_tage   how early to warn (default 7), 0 turns the warning off
+      fenster_tage   how far back the trend looks (default 30)
 
-    Im Kontext steht danach `messreihe.*` — Wert, Verbrauch pro Tag, Resttage, Datum des
-    Nullpunkts, Güte der Gerade und `warnen`. Damit entscheidet die nächste Weiche im
-    Ablauf, ob jemand etwas davon erfahren soll.
+    Afterwards the context holds `messreihe.*`: value, change per day, days left, the date
+    of the zero point, the quality of the line and `warnen`. The next decision in the flow
+    uses that to judge whether anybody should hear about it.
     """
     from . import metrics
 
@@ -750,14 +751,14 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     roh = _interp(params.get("wert", params.get("value")), ctx)
     if isinstance(roh, str):
         roh = roh.strip().replace("%", "").replace(",", ".")
-    # Fehlt der Wert ganz, ist das meist kein Defekt, sondern die Natur der Sache: ein
-    # Tracker meldet „bin online" oder „bin ausgefallen" ohne Position, und damit ohne
-    # Ladestand. Der Schritt hat dann nichts zu tun — und soll auch nicht so aussehen, als
-    # wäre etwas kaputt. Wer den Wert braucht, setzt `pflicht`.
+    # A missing value is usually not a defect but the nature of the thing: a tracker
+    # reports "I am online" or "I am down" without a position, and therefore without a
+    # charge level. The step then has nothing to do and should not look as if something
+    # broke. Whoever needs the value sets `pflicht`.
     fehlt = roh is None or (isinstance(roh, str) and roh.lower() in ("", "none", "null"))
     if fehlt and not params.get("pflicht"):
-        # Der letzte bekannte Stand bleibt im Kontext stehen — gerade bei einer
-        # Ausfallmeldung ist er die interessanteste Zahl, die es noch gibt.
+        # The last known reading stays in the context: on a failure notice it is the
+        # most interesting number still available.
         bekannt = await metrics.reihe(db, await _besitzer(db, inst), key)
         return _kein_messwert(inst, ctx, params, key, "kein Wert in der Nutzlast",
                               letzter=bekannt.last_value if bekannt else None,
@@ -767,10 +768,10 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     except (TypeError, ValueError):
         raise ValueError(f"messwert: '{roh}' ist keine Zahl")
 
-    # Geräte melden Unsinn, wenn sie etwas nicht wissen: der Tracker schickt `batteryLevel:
-    # 127`, sobald der Ladestand unbekannt ist. Ein einziger solcher Punkt verbiegt die
-    # Gerade so, dass aus „in zwei Wochen leer" ein „steigt leicht an" wird — deshalb geht
-    # ein Wert außerhalb der Grenzen gar nicht erst in die Reihe.
+    # Devices report nonsense when they do not know something: the tracker sends
+    # `batteryLevel: 127` as soon as the charge is unknown. A single point like that bends
+    # the line from "empty in two weeks" into "rising slightly", so a value outside the
+    # bounds never enters the series.
     hat_unten = params.get("min", params.get("minimum")) not in (None, "")
     hat_oben = params.get("max", params.get("maximum")) not in (None, "")
     unten = _zahl(params, ctx, "min", "minimum") if hat_unten else None
@@ -778,7 +779,7 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     ausserhalb = ((unten is not None and wert < unten)
                   or (oben is not None and wert > oben))
     if ausserhalb:
-        # Der Tracker meldete bei Alarmen „231 %" — ohne diese Grenze stünde das im Telegram.
+        # During alarms the tracker reported "231 %", and without this bound that went out.
         vorhanden = await metrics.reihe(db, await _besitzer(db, inst), key)
         return _kein_messwert(inst, ctx, params, key, f"außerhalb {unten}…{oben}", roh=wert,
                               letzter=vorhanden.last_value if vorhanden else None,
@@ -805,23 +806,23 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
 
 
 async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Eine Messreihe ansehen, ohne sie zu füttern — für Abläufe, die von der Uhr kommen.
+    """Look at a series without feeding it, for flows that come from the clock.
 
-    `messwert` beantwortet „wie steht es nach diesem Wert?"; hier lautet die Frage „wie
-    steht es überhaupt, und kommt eigentlich noch etwas?". Das ist der Gegenpol zur
-    Prognose: ein Gerät, das ausfällt, sagt nichts mehr — auch keine Störung. Stille sieht
-    dann aus wie ein ruhiger Tag, und genau deshalb muss jemand nachsehen.
+    `messwert` answers "where do we stand after this value", here the question is "where do
+    we stand at all, and is anything still coming?". That is the counterpart to the
+    forecast: a device that fails says nothing any more, not even about the fault. Silence
+    then looks like a quiet day, which is exactly why somebody has to look.
 
-    Parameter:
-      reihe          Schlüssel der Reihe (`{{ … }}` erlaubt, z. B. aus den Job-Parametern)
-      ziel           Zielwert für die Prognose (Default 0)
-      fenster_tage   Trendfenster (Default 30)
-      still_stunden  ab wann als verstummt gilt (Default 0 = nicht prüfen)
-      context_key    wohin im Kontext (Default `messreihe`)
+    Parameters:
+      reihe          key of the series (`{{ … }}` allowed, from job parameters for example)
+      ziel           target value for the forecast (default 0)
+      fenster_tage   trend window (default 30)
+      still_stunden  when it counts as quiet (default 0, meaning do not check)
+      context_key    where in the context (default `messreihe`)
 
-    Im Kontext danach: alles aus `messwert` plus `alter_stunden`, `still` (Zustand) und
-    `still_melden` (Entscheidung — genau einmal je Stille-Phase). Zwei Felder statt einem,
-    weil eine Anzeige etwas anderes ist als ein Auslöser.
+    Afterwards the context holds everything from `messwert` plus `alter_stunden`, `still`
+    (the state) and `still_melden` (the decision, exactly once per phase of silence). Two
+    fields instead of one, because a display is something else than a trigger.
     """
     from . import metrics
 
@@ -834,8 +835,8 @@ async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     owner = await _besitzer(db, inst)
     reihe = await metrics.reihe(db, owner, key)
     if reihe is None:
-        # Kein Fehler: ein Tippfehler im Schlüssel wäre sonst jede Stunde ein roter Lauf.
-        # Der Ablauf entscheidet selbst, ob ihn das kümmert (`gefunden`).
+        # Not an error: a typo in the key would otherwise be a red run every hour. The
+        # flow decides for itself whether it cares (`gefunden`).
         inst.context = {**ctx, key_ctx: {"reihe": key, "gefunden": False, "still": False,
                                          "still_melden": False, "wert": None}}
         return {"action": "messreihe_lesen", "reihe": key, "gefunden": False}
@@ -860,12 +861,12 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     ctx = dict(inst.context or {})
 
     if action == "set_context":
-        # Editor liefert die Zuweisungen direkt als params ({key:val}); explizites
-        # {set:{...}} wird ebenfalls unterstützt.
+        # The editor delivers the assignments directly as params ({key:val}), an explicit
+        # {set:{...}} is supported as well.
         raw = params.get("set") if isinstance(params.get("set"), dict) else params
         updates = {k: v for k, v in raw.items() if k != "set"}
         applied = {k: _interp(v, ctx) for k, v in updates.items()}
-        # Neues dict zuweisen, damit SQLAlchemy die JSON-Spalte als geändert erkennt.
+        # Assign a new dict so SQLAlchemy notices the JSON column changed.
         inst.context = {**ctx, **applied}
         return {"action": "set_context", "keys": list(applied.keys())}
 
@@ -927,9 +928,9 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     if action == "stop_agent":
         return await _stop_agent(db, inst)
 
-    # Mail-Eingang (Slot `mail_intake`): einordnen, beurteilen, nachfragen, wegräumen oder
-    # dem Assistenten geben. Liegt in einem eigenen Modul, weil dort das gesamte Mail-Wissen
-    # zusammenkommt — hier steht nur, dass es diese Schritte gibt.
+    # Mail intake (slot `mail_intake`): classify, judge, ask back, file away or hand to the
+    # assistant. It lives in a module of its own because that is where all the mail
+    # knowledge comes together, here we only record that these steps exist.
     from .mail_actions import HANDLER as MAIL_HANDLER
     if action in MAIL_HANDLER:
         return await MAIL_HANDLER[action](db, inst, params, ctx)
@@ -946,15 +947,15 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         body = _interp(params.get("text") or params.get("message") or "", ctx)
         from ..models.user import User
         from .notify import zustellen
-        # Der Weg ist optional: ohne Angabe entscheidet die Person, wie sie erreicht wird.
-        # Ein Ablauf kennt seinen Empfänger oft erst zur Laufzeit — er kann gar nicht
-        # wissen, ob der Telegram benutzt.
+        # The channel is optional: without one the person decides how they are reached. A
+        # flow often learns its recipient only at runtime and cannot know which messenger
+        # they use.
         kanal = str(_interp(params.get("channel") or params.get("kanal") or "", ctx)).strip()
         empfaenger = await db.get(User, target) if target is not None else None
-        # Drossel: „höchstens alle N Minuten dasselbe". Ohne eigenen Schlüssel drosselt der
-        # Knoten sich selbst — für den Normalfall soll eine Zahl genügen, ohne dass man
-        # sich einen Namen ausdenken muss. Ein Schlüssel mit `{{ … }}` trennt dagegen nach
-        # Gerät oder Alarmart, sodass zwei verschiedene Vorfälle sich nicht stummschalten.
+        # Throttle: "at most the same thing every N minutes". Without a key of its own the
+        # node throttles itself, because for the normal case a number should be enough
+        # without inventing a name. A key with `{{ … }}` separates by device or kind of
+        # alarm so two different incidents do not mute each other.
         drossel = float(params.get("drossel_minuten") or params.get("throttle_minutes") or 0)
         drossel_key = str(_interp(params.get("drossel_key") or "", ctx)).strip()
         if drossel > 0 and not drossel_key:
@@ -965,12 +966,12 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
                               drossel_key=drossel_key, drossel_minuten=drossel)
         return {"action": "notify", "user_id": target, **weg}
 
-    # Unbekannte/absichtliche noop-Aktion: kein Fehler, damit der Workflow durchläuft.
+    # Unknown or deliberate noop action: not an error, so the workflow keeps running.
     return {"action": "noop", "requested": action}
 
 
 async def _resolve_target(db, inst: WorkflowInstance, to: dict) -> int | None:
-    """Zielnutzer einer notify-Aktion (analog Assignee-Auflösung, minimal gehalten)."""
+    """Target user of a notify action (like the assignee resolution, kept minimal)."""
     mode = to.get("mode", "user")
     if mode == "user":
         uid = to.get("user_id")
