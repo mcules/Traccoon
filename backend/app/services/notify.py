@@ -15,6 +15,7 @@ import datetime as dt
 import logging
 import os
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.notification import Notification
@@ -26,6 +27,11 @@ OWNER_CHAT = os.getenv("TELEGRAM_OWNER_CHAT", "")
 log = logging.getLogger("traccoon.notify")
 
 KANAELE = ("telegram", "email")
+
+
+def _mit_zone(ts: dt.datetime) -> dt.datetime:
+    """Zeitstempel ohne Zone als UTC lesen — SQLite gibt sie nackt zurück."""
+    return ts if ts.tzinfo is not None else ts.replace(tzinfo=dt.timezone.utc)
 
 
 def kanal_adresse(user: User | None, kanal: str) -> str:
@@ -58,18 +64,42 @@ def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
 
 async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: str,
                     body: str = "", kanal: str = "", project_id: int | None = None,
-                    issue_id: int | None = None) -> dict:
+                    issue_id: int | None = None,
+                    drossel_key: str = "", drossel_minuten: float = 0) -> dict:
     """Eine Benachrichtigung anlegen und auf dem passenden Weg hinausschicken.
 
     Telegram übernimmt wie bisher der Bot (er ist der einzige Prozess mit dem Bot-Token);
     hier wird dafür nur die Chat-ID gesetzt. E-Mail geht sofort raus — dafür braucht es
     keinen zweiten Prozess, und `notified_at` sagt der Glocke, dass draußen nichts mehr
     offen ist.
+
+    Mit `drossel_key` und `drossel_minuten` wird dieselbe Nachricht innerhalb des Fensters
+    unterdrückt — **vollständig**, auch die Glocke. Sie nur dort abzulegen hieße, den Lärm
+    eine Etage tiefer zu schieben: 120 gleichlautende Zeilen machen eine Liste mit
+    Ungelesen-Zähler genauso unbrauchbar wie 120 Telegramme. Nachvollziehbar bleibt es
+    trotzdem — der Schritt im Ablauf protokolliert, dass gedrosselt wurde.
     """
+    if drossel_key and drossel_minuten > 0:
+        grenze = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=drossel_minuten)
+        letzte = (await db.execute(
+            select(Notification.created_at)
+            .where(Notification.drossel_key == drossel_key,
+                   # Nach Empfänger getrennt: zwei Menschen mit gleichem Schlüssel dürfen
+                   # sich nicht gegenseitig stummschalten.
+                   Notification.user_id == (user.id if user else None),
+                   Notification.created_at >= grenze)
+            .order_by(Notification.created_at.desc()).limit(1))).scalars().first()
+        if letzte is not None:
+            wieder = _mit_zone(letzte) + dt.timedelta(minutes=drossel_minuten)
+            log.info("gedrosselt: %s (wieder ab %s)", drossel_key, wieder.isoformat())
+            return {"kanal": "gedrosselt", "unterdrueckt": True, "drossel_key": drossel_key,
+                    "wieder_ab": wieder.isoformat()}
+
     gewaehlt = waehle_kanal(user, kanal)
     ziel = kanal_adresse(user, gewaehlt)
     n = Notification(user_id=(user.id if user else None), project_id=project_id,
                      issue_id=issue_id, kind=kind, title=title[:500], body=(body or "")[:4000],
+                     drossel_key=(drossel_key or None),
                      chat_id=(ziel or OWNER_CHAT or None) if gewaehlt == "telegram" else None)
     db.add(n)
 

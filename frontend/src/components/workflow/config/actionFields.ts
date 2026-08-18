@@ -103,6 +103,14 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
         placeholder: "freigeber_id" },
       { key: "title", label: "Betreff", type: "text", placeholder: "{{issue_key}}: Hinweis" },
       { key: "text", label: "Text", type: "textarea" },
+      { key: "drossel_minuten", label: "Höchstens alle … Minuten", type: "number",
+        hint: "0 = aus. Der Ablauf läuft weiterhin bei jedem Aufruf durch — nur die "
+            + "Nachricht bleibt aus. Nötig, wo die Gegenstelle nicht selbst zusammenfasst: "
+            + "ein Tracker wiederholt seinen Alarm im Sekundentakt, solange er anliegt." },
+      { key: "drossel_key", label: "Drossel-Schlüssel", type: "text",
+        placeholder: "shelter.diebstahl",
+        hint: "Was als „dieselbe Nachricht“ gilt. Leer = dieser Knoten für sich; mit "
+            + "{{pfad}} trennt man nach Gerät oder Art." },
       { key: "channel", label: "Weg", type: "select",
         options: [["", "Standard der Person"], ["telegram", "Telegram"], ["email", "E-Mail"]],
         hint: "Leer lassen ist der Normalfall — jeder verwaltet im Profil, wie er erreicht "
@@ -133,6 +141,23 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
         hint: "Wie weit zurück für die Gerade gelesen wird (Standard 30)." },
     ],
     outcomes: "Kontext danach: messreihe.wert, .pro_tag, .rest_tage, .leer_am, .guete, .warnen",
+  },
+
+  messreihe_lesen: {
+    summary: "Sieht eine Messreihe an, ohne sie zu füttern — und merkt, wenn sie verstummt.",
+    fields: [
+      { key: "reihe", label: "Reihe", type: "text", required: true,
+        placeholder: "akku.shelter",
+        hint: "{{pfad}} erlaubt — so prüft derselbe Ablauf mehrere Reihen, je nach "
+            + "Startkontext des Jobs." },
+      { key: "still_stunden", label: "Verstummt nach … Stunden", type: "number",
+        hint: "0 = nicht prüfen. Gemeldet wird einmal je Stille-Phase; sobald wieder ein "
+            + "Wert kommt, zählt sie von vorn." },
+      { key: "ziel", label: "Zielwert", type: "number" },
+      { key: "fenster_tage", label: "Trendfenster (Tage)", type: "number" },
+    ],
+    outcomes: "Kontext danach: messreihe.wert, .alter_stunden, .still, .still_melden, "
+            + ".gefunden, .rest_tage, .leer_am",
   },
 
   webhook: {

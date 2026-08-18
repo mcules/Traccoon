@@ -111,6 +111,17 @@ AKTIONEN: dict[str, list[dict]] = {
         _f("messreihe.punkte", "zahl", "Wieviele Messpunkte im Fenster liegen"),
         _f("messreihe.warnen", "ja/nein", "Vorwarnzeit erreicht — jetzt Bescheid geben"),
     ],
+    "messreihe_lesen": [
+        _f("messreihe.wert", "zahl", "Letzter Wert der Reihe"),
+        _f("messreihe.alter_stunden", "zahl", "Wie alt der letzte Wert ist (Stunden)"),
+        _f("messreihe.still", "ja/nein", "Reihe schweigt länger als erlaubt"),
+        _f("messreihe.still_melden", "ja/nein", "Jetzt melden — einmal je Stille-Phase"),
+        _f("messreihe.gefunden", "ja/nein", "Reihe existiert überhaupt"),
+        _f("messreihe.rest_tage", "zahl", "Tage bis zum Zielwert (leer, wenn unklar)"),
+        _f("messreihe.leer_am", "text", "Datum, an dem der Zielwert erreicht wird"),
+        _f("messreihe.pro_tag", "zahl", "Änderung pro Tag (negativ = fällt)"),
+        _f("messreihe.punkte", "zahl", "Wieviele Messpunkte im Fenster liegen"),
+    ],
     "tool_call": [
         _f("tool.ok", "ja/nein", "Werkzeug-Aufruf war erfolgreich"),
         _f("tool.text", "text", "Antwort des Werkzeugs im Klartext"),

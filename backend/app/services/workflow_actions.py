@@ -683,6 +683,44 @@ async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
                                                                 "status_code", "ok")}}
 
 
+def _zahl(params: dict, ctx: dict, *namen, default: float = 0.0) -> float:
+    """Ein Zahlen-Parameter, der auch aus dem Kontext kommen darf.
+
+    Zahlen standen bisher wörtlich im Knoten. Sobald derselbe Ablauf mehrfach benutzt wird
+    — anderer Job, andere Messreihe, andere Schwelle —, kommen sie aber von außen und
+    stehen als `{{ still_stunden }}` da. Ohne Einsetzen scheitert der Schritt an einem
+    Text, der wie eine Zahl gemeint war.
+    """
+    for name in namen:
+        if name in params and params[name] not in (None, ""):
+            roh = _interp(params[name], ctx)
+            if isinstance(roh, str):
+                roh = roh.strip().replace(",", ".")
+            try:
+                return float(roh)
+            except (TypeError, ValueError):
+                raise ValueError(f"'{name}': '{roh}' ist keine Zahl")
+    return default
+
+
+def _kein_messwert(inst: WorkflowInstance, ctx: dict, params: dict, key: str,
+                   grund: str, roh=None, letzter=None, einheit: str = "") -> dict:
+    """Nichts festgehalten, aber auch nichts kaputt.
+
+    Zwei Fälle enden hier: der Wert fehlt (Ereignis ohne Messung) oder er ist unglaubwürdig
+    (Gerät meldet 127 %, wenn es den Ladestand nicht kennt). Beide Male bleibt im Kontext
+    der letzte *glaubwürdige* Stand stehen — sonst schreibt der nächste Knoten den Unsinn
+    in die Nachricht.
+    """
+    key_ctx = str(params.get("context_key") or "messreihe")
+    vorher = ctx.get(key_ctx) if isinstance(ctx.get(key_ctx), dict) else {}
+    inst.context = {**ctx, key_ctx: {**vorher, "reihe": key, "ignoriert": True,
+                                     "warnen": False, "wert": letzter, "einheit": einheit,
+                                     "roh": roh}}
+    return {"action": "messwert", "reihe": key, "ignoriert": True, "uebersprungen": True,
+            "grund": grund, "letzter_guter": letzter}
+
+
 async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Einen Zahlenwert mitschreiben — und ablesen, wohin die Reihe läuft.
 
@@ -695,6 +733,7 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
       wert           die Zahl; `{{ … }}` erlaubt, Kommas und Prozentzeichen werden geduldet
       name/einheit   nur beim Anlegen der Reihe nötig
       min/max        Gültigkeitsbereich; Werte außerhalb werden NICHT festgehalten
+      pflicht        true → ein fehlender Wert ist ein Fehler (Default: überspringen)
       ziel           Wert, auf den die Reihe zuläuft (Default 0 — leer)
       vorwarn_tage   wie früh gewarnt werden soll (Default 7); 0 schaltet die Warnung ab
       fenster_tage   wie weit für den Trend zurückgesehen wird (Default 30)
@@ -711,6 +750,18 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     roh = _interp(params.get("wert", params.get("value")), ctx)
     if isinstance(roh, str):
         roh = roh.strip().replace("%", "").replace(",", ".")
+    # Fehlt der Wert ganz, ist das meist kein Defekt, sondern die Natur der Sache: ein
+    # Tracker meldet „bin online" oder „bin ausgefallen" ohne Position, und damit ohne
+    # Ladestand. Der Schritt hat dann nichts zu tun — und soll auch nicht so aussehen, als
+    # wäre etwas kaputt. Wer den Wert braucht, setzt `pflicht`.
+    fehlt = roh is None or (isinstance(roh, str) and roh.lower() in ("", "none", "null"))
+    if fehlt and not params.get("pflicht"):
+        # Der letzte bekannte Stand bleibt im Kontext stehen — gerade bei einer
+        # Ausfallmeldung ist er die interessanteste Zahl, die es noch gibt.
+        bekannt = await metrics.reihe(db, await _besitzer(db, inst), key)
+        return _kein_messwert(inst, ctx, params, key, "kein Wert in der Nutzlast",
+                              letzter=bekannt.last_value if bekannt else None,
+                              einheit=bekannt.unit if bekannt else "")
     try:
         wert = float(roh)
     except (TypeError, ValueError):
@@ -720,31 +771,23 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     # 127`, sobald der Ladestand unbekannt ist. Ein einziger solcher Punkt verbiegt die
     # Gerade so, dass aus „in zwei Wochen leer" ein „steigt leicht an" wird — deshalb geht
     # ein Wert außerhalb der Grenzen gar nicht erst in die Reihe.
-    unten = params.get("min", params.get("minimum"))
-    oben = params.get("max", params.get("maximum"))
-    ausserhalb = ((unten not in (None, "") and wert < float(unten))
-                  or (oben not in (None, "") and wert > float(oben)))
+    hat_unten = params.get("min", params.get("minimum")) not in (None, "")
+    hat_oben = params.get("max", params.get("maximum")) not in (None, "")
+    unten = _zahl(params, ctx, "min", "minimum") if hat_unten else None
+    oben = _zahl(params, ctx, "max", "maximum") if hat_oben else None
+    ausserhalb = ((unten is not None and wert < unten)
+                  or (oben is not None and wert > oben))
     if ausserhalb:
-        # `wert` bleibt der letzte *glaubwürdige* Stand aus der Reihe, der Rohwert wandert
-        # nach `roh`. Sonst schreibt der nächste Knoten den Unsinn in die Nachricht — der
-        # Tracker meldete bei Alarmen „231 %", und genau das stand dann im Telegram.
-        from . import metrics
+        # Der Tracker meldete bei Alarmen „231 %" — ohne diese Grenze stünde das im Telegram.
         vorhanden = await metrics.reihe(db, await _besitzer(db, inst), key)
-        key_ctx = str(params.get("context_key") or "messreihe")
-        vorher = ctx.get(key_ctx) if isinstance(ctx.get(key_ctx), dict) else {}
-        inst.context = {**ctx, key_ctx: {
-            **vorher, "reihe": key, "ignoriert": True, "warnen": False,
-            "wert": vorhanden.last_value if vorhanden else None,
-            "einheit": vorhanden.unit if vorhanden else "",
-            "roh": wert}}
-        return {"action": "messwert", "reihe": key, "wert": wert, "ignoriert": True,
-                "letzter_guter": vorhanden.last_value if vorhanden else None,
-                "grund": f"außerhalb {unten}…{oben}"}
+        return _kein_messwert(inst, ctx, params, key, f"außerhalb {unten}…{oben}", roh=wert,
+                              letzter=vorhanden.last_value if vorhanden else None,
+                              einheit=vorhanden.unit if vorhanden else "")
 
-    ziel = float(params.get("ziel", params.get("target", 0)) or 0)
-    vorwarn = float(params.get("vorwarn_tage", params.get("warn_days", 7)) or 0)
-    fenster = int(params.get("fenster_tage", params.get("window_days", metrics.FENSTER_TAGE)) or
-                  metrics.FENSTER_TAGE)
+    ziel = _zahl(params, ctx, "ziel", "target")
+    vorwarn = _zahl(params, ctx, "vorwarn_tage", "warn_days", default=7.0)
+    fenster = int(_zahl(params, ctx, "fenster_tage", "window_days",
+                        default=float(metrics.FENSTER_TAGE)))
 
     owner = await _besitzer(db, inst)
     reihe, _punkt = await metrics.erfassen(
@@ -759,6 +802,56 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     inst.context = {**ctx, key_ctx: stand}
     return {"action": "messwert", "reihe": key, "wert": wert,
             "pro_tag": stand["pro_tag"], "rest_tage": stand["rest_tage"], "warnen": warnen}
+
+
+async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Eine Messreihe ansehen, ohne sie zu füttern — für Abläufe, die von der Uhr kommen.
+
+    `messwert` beantwortet „wie steht es nach diesem Wert?"; hier lautet die Frage „wie
+    steht es überhaupt, und kommt eigentlich noch etwas?". Das ist der Gegenpol zur
+    Prognose: ein Gerät, das ausfällt, sagt nichts mehr — auch keine Störung. Stille sieht
+    dann aus wie ein ruhiger Tag, und genau deshalb muss jemand nachsehen.
+
+    Parameter:
+      reihe          Schlüssel der Reihe (`{{ … }}` erlaubt, z. B. aus den Job-Parametern)
+      ziel           Zielwert für die Prognose (Default 0)
+      fenster_tage   Trendfenster (Default 30)
+      still_stunden  ab wann als verstummt gilt (Default 0 = nicht prüfen)
+      context_key    wohin im Kontext (Default `messreihe`)
+
+    Im Kontext danach: alles aus `messwert` plus `alter_stunden`, `still` (Zustand) und
+    `still_melden` (Entscheidung — genau einmal je Stille-Phase). Zwei Felder statt einem,
+    weil eine Anzeige etwas anderes ist als ein Auslöser.
+    """
+    from . import metrics
+
+    key = str(_interp(params.get("reihe") or params.get("series") or "", ctx)).strip()
+    if not key:
+        raise ValueError("messreihe_lesen: keine Reihe angegeben")
+    still_ab = _zahl(params, ctx, "still_stunden", "still_ab")
+    key_ctx = str(params.get("context_key") or "messreihe")
+
+    owner = await _besitzer(db, inst)
+    reihe = await metrics.reihe(db, owner, key)
+    if reihe is None:
+        # Kein Fehler: ein Tippfehler im Schlüssel wäre sonst jede Stunde ein roter Lauf.
+        # Der Ablauf entscheidet selbst, ob ihn das kümmert (`gefunden`).
+        inst.context = {**ctx, key_ctx: {"reihe": key, "gefunden": False, "still": False,
+                                         "still_melden": False, "wert": None}}
+        return {"action": "messreihe_lesen", "reihe": key, "gefunden": False}
+
+    stand = await metrics.trend(
+        db, reihe, ziel=_zahl(params, ctx, "ziel", "target"),
+        fenster_tage=int(_zahl(params, ctx, "fenster_tage",
+                               default=float(metrics.FENSTER_TAGE))))
+    alter = stand.get("alter_stunden")
+    still = bool(still_ab > 0 and alter is not None and alter >= still_ab)
+    melden = metrics.stille_melden(reihe, alter, still_ab)
+    stand = {**stand, "reihe": key, "gefunden": True, "still_stunden": still_ab,
+             "still": still, "still_melden": melden}
+    inst.context = {**ctx, key_ctx: stand}
+    return {"action": "messreihe_lesen", "reihe": key, "wert": stand["wert"],
+            "alter_stunden": alter, "still": still, "still_melden": melden}
 
 
 async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
@@ -844,6 +937,9 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     if action == "messwert":
         return await _messwert(db, inst, params, ctx)
 
+    if action == "messreihe_lesen":
+        return await _messreihe_lesen(db, inst, params, ctx)
+
     if action == "notify":
         target = await _resolve_target(db, inst, params.get("to") or {})
         title = _interp(params.get("title") or "Workflow-Benachrichtigung", ctx)
@@ -855,9 +951,18 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         # wissen, ob der Telegram benutzt.
         kanal = str(_interp(params.get("channel") or params.get("kanal") or "", ctx)).strip()
         empfaenger = await db.get(User, target) if target is not None else None
+        # Drossel: „höchstens alle N Minuten dasselbe". Ohne eigenen Schlüssel drosselt der
+        # Knoten sich selbst — für den Normalfall soll eine Zahl genügen, ohne dass man
+        # sich einen Namen ausdenken muss. Ein Schlüssel mit `{{ … }}` trennt dagegen nach
+        # Gerät oder Alarmart, sodass zwei verschiedene Vorfälle sich nicht stummschalten.
+        drossel = float(params.get("drossel_minuten") or params.get("throttle_minutes") or 0)
+        drossel_key = str(_interp(params.get("drossel_key") or "", ctx)).strip()
+        if drossel > 0 and not drossel_key:
+            drossel_key = f"ablauf:{inst.definition_id}:{node.get('id')}"
         weg = await zustellen(db, user=empfaenger, kind="workflow_notify", title=title,
                               body=body, kanal=kanal, project_id=inst.project_id,
-                              issue_id=inst.issue_id)
+                              issue_id=inst.issue_id,
+                              drossel_key=drossel_key, drossel_minuten=drossel)
         return {"action": "notify", "user_id": target, **weg}
 
     # Unbekannte/absichtliche noop-Aktion: kein Fehler, damit der Workflow durchläuft.

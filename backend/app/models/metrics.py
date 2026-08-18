@@ -44,6 +44,11 @@ class MetricSeries(TimestampMixin, Base):
     # Benachrichtigung, die man nach drei Tagen stummschaltet.
     warned_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     warned_value: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Wann zuletzt gemeldet wurde, dass diese Reihe verstummt ist. Eigene Marke neben
+    # `warned_at`, weil es eine andere Tatsache mit anderer Verfallsbedingung ist: die
+    # Restlaufzeit-Warnung verfällt beim Auffüllen, die Stille beim nächsten Wert überhaupt.
+    # Zusammengelegt würde eine Meldung die andere verschlucken.
+    still_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class MetricPoint(Base):

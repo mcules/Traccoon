@@ -160,3 +160,148 @@ async def test_werte_aus_wenigen_minuten_ergeben_keinen_tagestrend(db):
     r = await metrics.reihe(db, anna.id, "spannung")
     stand = await metrics.trend(db, r, ziel=3.2)
     assert stand["punkte"] == 4 and stand["pro_tag"] is None and stand["rest_tage"] is None
+
+
+async def test_fehlender_wert_wird_uebersprungen(db):
+    """Ein Ereignis ohne Messung ist kein Defekt.
+
+    Der Tracker meldet „bin ausgefallen" ohne Position — und damit ohne Ladestand. Vorher
+    scheiterte der Schritt und stand rot im Protokoll, obwohl nichts kaputt war.
+    """
+    anna = await make_user(db, "anna")
+    await _akku_verlauf(db, anna, [(6, 40), (3, 34), (0, 30)])
+    inst = await _instanz(db, anna)
+    inst.context = {"event": {"type": "deviceInactive"}}      # keine position im Payload
+    node = {"id": "m", "type": "auto_action", "data": {"config": {"action": {
+        "action": "messwert", "params": {
+            "reihe": "akku.shelter", "wert": "{{ position.attributes.batteryLevel }}"}}}}}
+    r = await run_action(db, inst, node)
+    assert r["uebersprungen"] is True and r["ignoriert"] is True
+    assert inst.context["messreihe"]["warnen"] is False
+    # Der letzte bekannte Stand bleibt stehen — bei einer Ausfallmeldung ist er die
+    # interessanteste Zahl, die es noch gibt.
+    assert inst.context["messreihe"]["wert"] == 30.0
+    reihe = await metrics.reihe(db, anna.id, "akku.shelter")
+    assert reihe.last_value == 30.0
+    assert (await metrics.trend(db, reihe))["punkte"] == 3, "kein Punkt dazugekommen"
+
+
+async def test_pflichtwert_bleibt_ein_fehler(db):
+    """Wo der Wert der Zweck des Schritts ist, soll sein Fehlen auffallen."""
+    anna = await make_user(db, "anna")
+    inst = await _instanz(db, anna)
+    node = {"id": "m", "type": "auto_action", "data": {"config": {"action": {
+        "action": "messwert", "params": {"reihe": "x", "wert": "", "pflicht": True}}}}}
+    with pytest.raises(ValueError):
+        await run_action(db, inst, node)
+
+
+# ── Stille: wenn gar nichts mehr kommt ───────────────────────────────────────
+
+async def test_trend_nennt_das_alter_des_letzten_werts(db):
+    anna = await make_user(db, "anna")
+    r = await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
+    stand = await metrics.trend(db, r)
+    assert 71 < stand["alter_stunden"] < 73        # drei Tage
+    assert stand["letzter_am"]
+
+
+async def test_alter_auch_ohne_gerade(db):
+    """Gerade zwei Werte — für eine Prognose zu wenig, fürs Alter reicht es."""
+    anna = await make_user(db, "anna")
+    r = await _akku_verlauf(db, anna, [(5, 50), (4, 45)])
+    stand = await metrics.trend(db, r)
+    assert stand["pro_tag"] is None and stand["alter_stunden"] > 90
+
+
+async def test_stille_wird_genau_einmal_gemeldet(db):
+    anna = await make_user(db, "anna")
+    r = await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
+    alter = (await metrics.trend(db, r))["alter_stunden"]
+    assert metrics.stille_melden(r, alter, 26) is True
+    assert metrics.stille_melden(r, alter, 26) is False, "ein stündlicher Wächter darf nicht nerven"
+
+
+async def test_neuer_wert_beendet_die_stille(db):
+    anna = await make_user(db, "anna")
+    r = await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
+    metrics.stille_melden(r, 72.0, 26)
+    assert r.still_at is not None
+    await metrics.erfassen(db, anna.id, "akku.shelter", 39.0)   # auch ein schlechter Wert zählt
+    await db.commit()
+    assert r.still_at is None
+    assert metrics.stille_melden(r, 72.0, 26) is True
+
+
+async def test_stille_und_restlaufzeit_verschlucken_sich_nicht(db):
+    """Zwei Tatsachen, zwei Marken — sonst frisst eine Meldung die andere."""
+    anna = await make_user(db, "anna")
+    r = await _akku_verlauf(db, anna, [(22, 65), (14, 50), (6, 37), (3, 25)])
+    stand = await metrics.trend(db, r, ziel=0.0)
+    assert metrics.vorwarnen(r, stand["rest_tage"], 30) is True
+    assert metrics.stille_melden(r, stand["alter_stunden"], 26) is True
+    assert r.warned_at is not None and r.still_at is not None
+
+
+async def test_aktion_liest_ohne_zu_schreiben(db):
+    anna = await make_user(db, "anna")
+    r = await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
+    inst = await _instanz(db, anna)
+    node = {"id": "lesen", "type": "auto_action", "data": {"config": {"action": {
+        "action": "messreihe_lesen",
+        "params": {"reihe": "akku.shelter", "still_stunden": 26}}}}}
+    erg = await run_action(db, inst, node)
+    assert erg["still"] is True and erg["still_melden"] is True
+    assert (await metrics.trend(db, r))["punkte"] == 3, "es darf kein Punkt entstehen"
+    stand = inst.context["messreihe"]
+    assert stand["gefunden"] is True and stand["wert"] == 40.0
+
+
+async def test_unbekannte_reihe_ist_kein_fehler(db):
+    """Ein Tippfehler im Schlüssel wäre sonst jede Stunde ein roter Lauf."""
+    anna = await make_user(db, "anna")
+    inst = await _instanz(db, anna)
+    node = {"id": "lesen", "type": "auto_action", "data": {"config": {"action": {
+        "action": "messreihe_lesen", "params": {"reihe": "gibt.es.nicht",
+                                                "still_stunden": 26}}}}}
+    erg = await run_action(db, inst, node)
+    assert erg["gefunden"] is False
+    assert inst.context["messreihe"]["still_melden"] is False
+
+
+async def test_frische_reihe_schweigt_nicht(db):
+    anna = await make_user(db, "anna")
+    await _akku_verlauf(db, anna, [(0.2, 80), (0.1, 79), (0, 78)])
+    inst = await _instanz(db, anna)
+    node = {"id": "lesen", "type": "auto_action", "data": {"config": {"action": {
+        "action": "messreihe_lesen", "params": {"reihe": "akku.shelter",
+                                                "still_stunden": 26}}}}}
+    erg = await run_action(db, inst, node)
+    assert erg["still"] is False and erg["still_melden"] is False
+
+
+async def test_zahlen_duerfen_aus_dem_kontext_kommen(db):
+    """Derselbe Wächter für mehrere Reihen: Schwelle und Fenster kommen vom Job.
+
+    Vorher scheiterte der Schritt an „{{ still_stunden }}" — einem Text, der wie eine Zahl
+    gemeint war.
+    """
+    anna = await make_user(db, "anna")
+    await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
+    inst = await _instanz(db, anna)
+    inst.context = {"reihe": "akku.shelter", "grenze": 26}
+    node = {"id": "lesen", "type": "auto_action", "data": {"config": {"action": {
+        "action": "messreihe_lesen",
+        "params": {"reihe": "{{ reihe }}", "still_stunden": "{{ grenze }}"}}}}}
+    erg = await run_action(db, inst, node)
+    assert erg["still"] is True and erg["still_melden"] is True
+
+
+async def test_grenzen_duerfen_aus_dem_kontext_kommen(db):
+    anna = await make_user(db, "anna")
+    inst = await _instanz(db, anna)
+    inst.context = {"obergrenze": 100, "roh": 127}
+    node = {"id": "m", "type": "auto_action", "data": {"config": {"action": {
+        "action": "messwert", "params": {"reihe": "x", "wert": "{{ roh }}",
+                                         "min": 1, "max": "{{ obergrenze }}"}}}}}
+    assert (await run_action(db, inst, node))["ignoriert"] is True

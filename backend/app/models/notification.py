@@ -1,6 +1,6 @@
 import datetime as dt
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -32,6 +32,14 @@ class Notification(Base):
     # Beide Spalten nullable und ohne Vorgabe: Bestandszeilen ändern ihr Verhalten nicht.
     media_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     media_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)   # animation|photo|document
+    # Drossel: wann zuletzt eine Nachricht dieser Art hinausging. Traccar dedupliziert
+    # Alarme ausdrücklich NICHT — solange das Erschütterungsbit steht, kommt ein Ereignis je
+    # eingehender Position, im Wachbetrieb alle paar Sekunden. Zehn Minuten Rütteln wären
+    # rund 120 gleichlautende Nachrichten. Was als „dieselbe Nachricht" gilt, entscheidet
+    # der Ablauf über den Schlüssel (Gerät, Klasse, was auch immer) — nicht Traccoon.
+    drossel_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
     read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # Telegram gesendet
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (Index("ix_notifications_drossel", "drossel_key", "created_at"),)

@@ -150,8 +150,13 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         jr.finished_at = _now()
         return
     try:
+        # Der Parametersatz des Jobs ist der Startkontext des Laufs — nach derselben Regel
+        # wie bei Prompt-Jobs (nur ein Objekt zählt, eine Liste bleibt Script-Argument).
+        # Vorher stand hier `{}`: derselbe Ablauf für eine zweite Messreihe hätte einen
+        # zweiten Ablauf gebraucht, obwohl sich nur ein Wort ändert.
+        from .job_params import parameter
         inst = await start_workflow(
-            db, definition, subject_kind=definition.subject_kind, context={},
+            db, definition, subject_kind=definition.subject_kind, context=parameter(job.args),
             actor_id=job.user_id, source=f"job:{job.id}",
         )
         jr.status = "ok"; jr.output = f"Workflow-Instanz #{inst.id} gestartet"
@@ -209,8 +214,13 @@ async def _flush_coalesced() -> None:
             row.flushed = True
             if not row.payloads:
                 continue  # Fenster lief leer aus — die Erstzustellung war die einzige
+            # Routennamen sind seit der Mehrbenutzer-Umstellung nicht mehr eindeutig
+            # (models/ops.py). `scalar_one_or_none` warf bei zwei gleichnamigen Routen
+            # `MultipleResultsFound` — und riss den gesamten Scheduler-Tick mit, an dem
+            # Jobs, Timer und Aufräumarbeiten hängen. Der erste Treffer genügt hier: aus
+            # dem Webhook wird nur die Chat-Adresse gelesen.
             sub = (await db.execute(select(WebhookSub).where(
-                WebhookSub.route == row.route))).scalar_one_or_none()
+                WebhookSub.route == row.route).order_by(WebhookSub.id))).scalars().first()
             n = len(row.payloads)
             db.add(Notification(
                 kind="webhook", title=f"{row.route}: {n} weitere Ereignisse ({row.event_key})",
