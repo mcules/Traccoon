@@ -1,55 +1,54 @@
-// Schicht 0 — das Log. Alles, was der Raum je gesehen hat, in Ankunftsreihenfolge.
+// Layer 0: the log. Everything the room has ever seen, in arrival order.
 //
-// Der Recorder ist die **einzige** Stelle, an der dedupliziert wird. Das ist keine Sparsamkeit,
-// sondern der Grund, warum es ihn gibt: Traccoons Ereignisse kommen auf drei Wegen herein, und
-// alle drei können sich überschneiden.
+// The recorder is the **only** place where deduplication happens. That is not thrift but the
+// reason it exists: Traccoon's events come in over three paths, and all three can overlap.
 //
-//   · Beim Verbinden puffert die WS-Brücke, holt danach den Verlauf per `GET …/events` und
-//     verwirft die gepufferten mit `seq <= seq_to` — die Grenze ist knapp und darf es sein,
-//     weil ein Doppler hier hängenbleibt.
-//   · Ein Reconnect nach Netzwackler liefert Zeilen, die schon da waren.
-//   · Ein manuelles Neuladen im Frontend zieht das Fenster noch einmal.
+//   · On connecting, the WS bridge buffers, then fetches the history over `GET …/events` and
+//     discards the buffered ones with `seq <= seq_to`; the boundary is tight and may be,
+//     because a duplicate gets stuck here.
+//   · A reconnect after a network hiccup delivers rows that were already there.
+//   · A manual reload in the frontend pulls the window once more.
 //
-// Ein `Set<number>` über `seq` erschlägt alle drei an einer Stelle. Jede zweite Prüfung
-// woanders wäre eine Stelle, an der sie später auseinanderlaufen.
+// A `Set<number>` over `seq` handles all three in one place. Every second check somewhere else
+// would be a place where they later drift apart.
 
 import type { Ev, LogEntry, Roster } from "./types.ts";
 import { REPLAY_CAP } from "./const.ts";
 import { mapEvent } from "./mapEvent.ts";
 
 export class Recorder {
-  /** Ein-Zahl-Veraltungsprüfung. Bewegt sich bei **jedem** Zuwachs und bei **jedem** Verwurf;
-   *  damit genügt ein Zahlenvergleich, um zu wissen, ob ein laufender `Replay` noch auf dem
-   *  Log sitzt, das er beim Bauen gesehen hat. Eine Inhaltsprüfung wäre O(n) je Bild. */
+  /** One-number staleness check. It moves on **every** growth and on **every** discard, so a
+   *  comparison of numbers is enough to know whether a running `Replay` still sits on the log
+   *  it saw while being built. A content check would be O(n) per frame. */
   revision = 0;
 
   private log: LogEntry[] = [];
-  /** Gesehene `seq`. Bleibt vollständig, auch wenn das Log vorn gekappt wird: eine Zeile, die
-   *  wegen der Kappe verschwunden ist, darf nicht durch einen späten Doppler ans **Ende**
-   *  zurückkehren — dort stünde sie zeitlich falsch und der Raum spielte sie ein zweites Mal. */
+  /** Seen `seq`. Stays complete even when the log is truncated at the front: a row that
+   *  disappeared because of the cap must not come back at the **end** through a late
+   *  duplicate, where it would stand wrongly in time and the room would play it a second time. */
   private seen = new Set<number>();
   private roster: Roster = [];
   private droppedAny = false;
 
-  /** Der Roster kommt aus derselben Antwort wie die Ereignisse und beantwortet, was in den
-   *  Ereignissen fehlt (Rolle, Elternlauf, Modell). `mapEvent` braucht ihn; der Recorder
-   *  reicht ihn nur durch. */
+  /** The roster comes from the same response as the events and answers what is missing in the
+   *  events (role, parent run, model). `mapEvent` needs it; the recorder only passes it
+   *  through. */
   setRoster(roster: Roster): void {
     this.roster = roster;
   }
 
-  /** Nimmt ein Ereignis auf.
+  /** Takes an event in.
    *
-   *  `false` heißt: das Log ist nach diesem Aufruf **nicht** einfach um diese eine Zeile
-   *  gewachsen — entweder war die `seq` schon da (Doppler), oder die Kappe hat dafür vorn
-   *  etwas verdrängt. Beides sind Gründe, einen laufenden Replay nicht blind fortzuschreiben;
-   *  die verlässliche Antwort darauf ist aber `revision`, nicht dieser Rückgabewert. */
+   *  `false` means: after this call the log has **not** simply grown by this one row. Either
+   *  the `seq` was already there (duplicate) or the cap displaced something at the front for
+   *  it. Both are reasons not to blindly continue a running replay, but the reliable answer to
+   *  that is `revision`, not this return value. */
   push(ev: Ev): boolean {
     if (this.seen.has(ev.seq)) return false;
     this.seen.add(ev.seq);
 
-    // Die Mapping-Tabelle steht in `mapEvent.ts` (Welle F) und nirgends sonst. Läge auch nur
-    // ein Sonderfall hier, gäbe es zwei Orte, an denen ein Werkzeugname zu einem Bild wird.
+    // The mapping table stands in `mapEvent.ts` and nowhere else. If even one special case
+    // stood here, there would be two places where a tool name becomes a picture.
     const cmds = mapEvent(ev, this.roster);
     this.log.push({ ts: parseTs(ev.ts), seq: ev.seq, cmds });
     this.revision++;
@@ -64,32 +63,31 @@ export class Recorder {
     return !dropped;
   }
 
-  /** Gibt eine **Kopie** heraus.
+  /** Hands out a **copy**.
    *
-   *  Der Fehler, den das verhindert: ein lebender Cursor läuft über ein
-   *  Log, dessen `shift()` unter ihm wegrutscht. Jeder Verwurf am Kopf verschiebt alle Indizes
-   *  um eins, der Cursor überspringt die verschobenen Einträge — Bearbeitungen und ganze
-   *  Agenten tauchen nie im Raum auf. Der Fehler sieht aus wie ein Engine-Fehler und
-   *  ist ein Aliasing-Fehler; deshalb verlässt die eigene Sammlung dieses Objekt nie.
+   *  The bug this prevents: a live cursor running over a log whose `shift()` slides away under
+   *  it. Every discard at the head shifts all indices by one, the cursor skips the shifted
+   *  entries, and edits and whole agents never turn up in the room. The bug looks like an
+   *  engine bug and is an aliasing bug; that is why the own collection never leaves this
+   *  object.
    *
-   *  Die `LogEntry` selbst werden geteilt, nicht kopiert — sie sind nach dem Anlegen
-   *  unveränderlich, und ein tiefes Kopieren von 20 000 Einträgen je Bild wäre die teuerste
-   *  Zeile der ganzen Ansicht. */
+   *  The `LogEntry` themselves are shared, not copied: they are immutable after creation, and
+   *  deep copying 20 000 entries per frame would be the most expensive line of the whole
+   *  view. */
   entries(): readonly LogEntry[] {
     return this.log.slice();
   }
 
-  /** Grenzen des Logs.
+  /** Bounds of the log.
    *
-   *  `t0`/`t1` sind Minimum und Maximum der **Wanduhr**, nicht erster und letzter Eintrag: das
-   *  Log steht in `seq`-Reihenfolge, und unter `WORKER_CONCURRENCY > 1` kann der zuletzt
-   *  angekommene Zeitstempel älter sein als ein früherer. Für die Zeitleiste zählt die späteste
-   *  Uhrzeit, nicht die späteste Zeile.
+   *  `t0`/`t1` are the minimum and maximum of the **wall clock**, not the first and last
+   *  entry: the log stands in `seq` order, and under `WORKER_CONCURRENCY > 1` the timestamp
+   *  that arrived last can be older than an earlier one. For the timeline the latest time
+   *  counts, not the latest row.
    *
-   *  `seq0`/`seq1` dagegen sind die Grenzen der Ankunftsreihenfolge — die braucht das
-   *  Reconnect-Protokoll (gepufferte Ereignisse mit `seq <= seq_to` verwerfen), und sie sind
-   *  etwas anderes als die Zeitgrenzen. Beides aus einem Durchgang, weil beides denselben
-   *  Durchlauf kostet. */
+   *  `seq0`/`seq1` on the other hand are the bounds of the arrival order, which the reconnect
+   *  protocol needs (discarding buffered events with `seq <= seq_to`), and they are something
+   *  other than the time bounds. Both from one pass, because both cost the same pass. */
   bounds(): { t0: number; t1: number; seq0: number; seq1: number; dropped: boolean } {
     if (this.log.length === 0) {
       return { t0: 0, t1: 0, seq0: 0, seq1: 0, dropped: this.droppedAny };
@@ -107,8 +105,8 @@ export class Recorder {
     return { t0, t1, seq0, seq1, dropped: this.droppedAny };
   }
 
-  /** Beim Sitzungswechsel. `revision` wird **hochgezählt**, nicht auf 0 gesetzt — ein Replay,
-   *  der zufällig `revision === 0` gemerkt hatte, hielte sich sonst für aktuell. */
+  /** On a session change. `revision` is **counted up**, not set to 0: a replay that happened
+   *  to have remembered `revision === 0` would otherwise think itself current. */
   reset(): void {
     this.log = [];
     this.seen.clear();
@@ -118,10 +116,10 @@ export class Recorder {
   }
 }
 
-/** ISO-8601 → ms. `Date.parse` ist erlaubt und nötig: es ist keine Uhr, sondern eine reine
- *  Funktion auf einer Zeichenkette (`new Date`/`Date.now` wären beides nicht). Ein unlesbarer
- *  Zeitstempel wird zu 0 statt zu `NaN` — `NaN` würde sich durch jede Zeitrechnung des Replays
- *  fressen und den Raum lautlos einfrieren. */
+/** ISO-8601 to ms. `Date.parse` is allowed and necessary: it is not a clock but a pure
+ *  function on a string (`new Date`/`Date.now` would be neither). An unreadable timestamp
+ *  becomes 0 instead of `NaN`; `NaN` would eat its way through every time computation of the
+ *  replay and freeze the room silently. */
 function parseTs(iso: string): number {
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : 0;

@@ -1,37 +1,37 @@
-// Schicht 1 — Sprites sind Quellcode.
+// Layer 1: sprites are source code.
 //
-// Ein `Art` ist ein Bild als Zeichenkettenfeld: ein Zeichen je Pixel, `.` und Leerzeichen sind
-// durchsichtig, jedes andere Zeichen zeigt über `map` auf einen Palettenschlüssel. Keine
-// Bilddateien, kein `drawImage`, kein Ladezustand, kein Netzwerk — ein Sprite ist im Diff
-// lesbar und in der Codeprüfung kommentierbar.
+// An `Art` is a picture as an array of strings: one character per pixel, `.` and space are
+// transparent, and every other character points over `map` at a palette key. No image files,
+// no `drawImage`, no loading state, no network: a sprite is readable in the diff and can be
+// commented on in a code review.
 //
-// Die sieben reservierten Zeichen (`S H T P h s t`) stehen in den Personen-Arts und werden
-// **erst beim Zeichnen** aus der übergebenen Palette bedient. Dieselben 19 Sprite-Teile ergeben
-// damit zwölf verschiedene Leute, ohne dass ein einziges Pixel doppelt im Quelltext steht.
+// The seven reserved characters (`S H T P h s t`) stand in the person arts and are served
+// **only while drawing** from the palette passed in. The same 19 sprite parts thereby give
+// twelve different people without a single pixel standing twice in the source.
 
 import type { Ctx } from "../types.ts";
 import type { Pal, PalKey } from "./palette.ts";
 
-/** Ein Sprite. `rows` sind gleich lange Zeilen, `map` bildet jedes benutzte Zeichen ab. */
+/** One sprite. `rows` are lines of equal length, `map` maps every character used. */
 export type Art = { rows: readonly string[]; map: Readonly<Record<string, PalKey>> };
 
-/** Durchsichtig. Zwei Zeichen, weil `.` das Raster lesbar hält und ein Leerzeichen beim
- *  Umbauen eines Sprites schneller getippt ist. */
+/** Transparent. Two characters, because `.` keeps the grid legible and a space is faster to
+ *  type while rebuilding a sprite. */
 function transparent(ch: string): boolean {
   return ch === "." || ch === " ";
 }
 
 /**
- * Baut ein `Art` und prüft es dabei.
+ * Builds an `Art` and checks it in the process.
  *
- * Die Prüfung ist die halbe Miete dieser Datei: ein Sprite ist ein Block gleich langer
- * Zeichenketten, und ein einziges vergessenes Zeichen verschiebt alles darunter um eine Spalte.
- * Im fertigen Bild sieht das aus wie ein Zeichenfehler irgendwo im Renderer — man sucht dann
- * stundenlang an der falschen Stelle. Ein fehlendes `map`-Zeichen ist noch heimtückischer:
- * das Pixel fehlt einfach lautlos.
+ * The check is half the value of this file: a sprite is a block of strings of equal length,
+ * and a single forgotten character shifts everything below it by one column. In the finished
+ * picture that looks like a drawing bug somewhere in the renderer, and one searches for hours
+ * in the wrong place. A missing `map` character is even more insidious: the pixel is simply
+ * missing without a sound.
  *
- * Deshalb wird beim Laden des Moduls geworfen, nicht später gemeldet. Das ist gefahrlos:
- * Arts sind statischer Quelltext, die Prüfung hängt an keiner Eingabe. Was einmal lädt,
+ * That is why it throws while the module loads instead of reporting later. That is safe:
+ * arts are static source, and the check depends on no input. What loads once loads always.
  * lädt immer.
  */
 export function defineArt(rows: readonly string[], map: Readonly<Record<string, PalKey>>): Art {
@@ -59,41 +59,41 @@ export function artW(art: Art): number {
   return art.rows[0].length;
 }
 
-/** Höhe in Pufferpixeln. */
+/** Height in buffer pixels. */
 export function artH(art: Art): number {
   return art.rows.length;
 }
 
-/** Linke Kante eines Arts, das bei `cx` zentriert steht. Bei gerader Breite fällt die Mitte
- *  eine halbe Spalte nach links — konsequent für alle Arts, damit zwei nebeneinander gesetzte
- *  Objekte nicht um ein Pixel gegeneinander springen, je nachdem ob ihre Breite gerade ist. */
+/** Left edge of an art centred at `cx`. With an even width the centre falls half a column to
+ *  the left, consistently for all arts, so that two objects placed beside each other do not
+ *  jump against each other by a pixel depending on whether their width is even. */
 export function artLeft(art: Art, cx: number): number {
   return cx - (artW(art) >> 1);
 }
 
 export interface DrawOpts {
-  /** Waagerecht gespiegelt — Blickrichtung nach links. */
+  /** Mirrored horizontally, so looking to the left. */
   flip?: boolean;
-  /** Deckkraft. Wird nach dem Zeichnen **immer** auf 1 zurückgesetzt (Regel 2.1: es gibt
-   *  kein `restore`, das Zurücksetzen ist Pflicht des Zeichners). */
+  /** Opacity. It is **always** reset to 1 after drawing (rule 2.1: there is no `restore`, and
+   *  resetting is the duty of the drawer). */
   alpha?: number;
-  /** Alle sichtbaren Pixel in einer Farbe — für Schatten- und Umrissdurchgänge.
-   *  Durchsichtige Pixel bleiben durchsichtig. */
+  /** All visible pixels in one colour, for shadow and outline passes. Transparent pixels
+   *  stay transparent. */
   tint?: PalKey;
 }
 
 /**
- * Zeichnet ein `Art` mit Mitte `cx` und Fußpunkt `yBase`.
+ * Draws an `Art` with the centre `cx` and the foot point `yBase`.
  *
- * `yBase` ist die erste Zeile **unter** dem Sprite (Regel 2.2): ein 24 Pixel hohes Sprite
- * belegt `yBase-24 … yBase-1`. Die Szene sortiert nach genau diesem Wert, ein Objekt das seine
- * Oberkante übergibt sortiert falsch und verschwindet hinter Möbeln, vor denen es steht.
+ * `yBase` is the first line **below** the sprite (rule 2.2): a sprite 24 pixels high occupies
+ * `yBase-24 … yBase-1`. The scene sorts by exactly this value, and an object that passes its
+ * top edge sorts wrongly and disappears behind furniture it stands in front of.
  *
- * **Warum die Läufe**: naiv wäre ein `fillRect(1×1)` je Pixel — eine 16×24-Figur wären 384
- * Aufrufe, zwölf Figuren über 4600, und die Bildrate stürbe an der Aufrufmenge, nicht an der
- * Füllfläche. Gleichfarbige waagerechte Nachbarn werden deshalb zu **einem** `fillRect`
- * zusammengefasst; damit landet eine Figur bei 60–120 Aufrufen. `fillStyle` wird nur beim
- * Farbwechsel gesetzt — auch das ist im Canvas nicht gratis.
+ * **Why the runs**: naively it would be one `fillRect(1x1)` per pixel, so a 16x24 figure would
+ * be 384 calls, twelve figures over 4600, and the frame rate would die of the number of calls,
+ * not of the filled area. Horizontal neighbours of the same colour are therefore combined into
+ * **one** `fillRect`, which puts a figure at 60 to 120 calls. `fillStyle` is set only on a
+ * colour change, which is not free in a canvas either.
  */
 export function drawArt(
   ctx: Ctx, art: Art, cx: number, yBase: number, pal: Pal, opts?: DrawOpts,
@@ -113,11 +113,11 @@ export function drawArt(
   for (let ry = 0; ry < h; ry++) {
     const row = rows[ry];
     const y = y0 + ry;
-    // Lauf-Zustand: `key === ""` heißt „gerade durchsichtig".
+    // Run state: `key === ""` means "transparent right now".
     let key: PalKey | "" = "";
     let start = 0;
-    // Ein Schritt über das Zeilenende hinaus schließt den letzten Lauf — spart die
-    // Wiederholung des Abschlusscodes hinter der Schleife.
+    // One step past the end of the line closes the last run, which saves repeating the
+    // closing code behind the loop.
     for (let rx = 0; rx <= w; rx++) {
       const ch = rx < w ? row[flip ? w - 1 - rx : rx] : ".";
       const next: PalKey | "" = transparent(ch) ? "" : (tint ?? art.map[ch]);
@@ -136,8 +136,8 @@ export function drawArt(
   if (alpha !== 1) ctx.globalAlpha = 1;
 }
 
-/** Ein Rechteck in einer Palettenfarbe. Die einzige Stelle, an der prozedurale Teile
- *  (Wand, Boden, Blasen) `fillStyle` anfassen — das hält den Vertrag an einem Ort. */
+/** One rectangle in a palette colour. The only place where procedural parts (wall, floor,
+ *  bubbles) touch `fillStyle`, which keeps the contract in one place. */
 export function fill(
   ctx: Ctx, pal: Pal, key: PalKey, x: number, y: number, w: number, h: number,
 ): void {
@@ -146,9 +146,9 @@ export function fill(
   ctx.fillRect(x, y, w, h);
 }
 
-/** Dasselbe mit Deckkraft — und mit dem verpflichtenden Zurücksetzen auf 1. Ein vergessenes
- *  `globalAlpha` färbt den kompletten Rest des Bildes blass; das ist der häufigste Fehler
- *  in einer Zeichenschicht ohne `save`/`restore`. */
+/** The same with opacity, and with the mandatory reset to 1. A forgotten `globalAlpha` makes
+ *  the whole rest of the picture pale; that is the most common mistake in a drawing layer
+ *  without `save`/`restore`. */
 export function fillA(
   ctx: Ctx, pal: Pal, key: PalKey, alpha: number,
   x: number, y: number, w: number, h: number,
@@ -161,15 +161,14 @@ export function fillA(
 }
 
 /**
- * Ein Art in doppelter Auflösung — jeder Pixel wird ein 2×2-Block.
+ * An art in double resolution: every pixel becomes a 2x2 block.
  *
- * Die Brücke der Auflösungs-Etappen: eine Familie, die noch nicht fein gezeichnet ist, wird
- * damit im HD-Raster gezeichnet und sieht **exakt** aus wie vorher. So kann eine Figur schon
- * einen fein gezeichneten Kopf tragen, während ihre Beine noch grob sind — statt dass erst
- * alle sechzehn Arts fertig sein müssen, bevor irgendetwas besser aussieht.
+ * The bridge of the resolution stages: a family that is not drawn finely yet is drawn in the
+ * HD grid with this and looks **exactly** as before. That way a figure can already carry a
+ * finely drawn head while its legs are still coarse, instead of all sixteen arts having to be
+ * finished before anything looks better.
  *
- * Wer ein Art hier durchreicht, gewinnt kein Detail. Er gewinnt nur das Recht, danebenstehende
- * Teile fein zu zeichnen.
+ * Whoever passes an art through here gains no detail. They only gain the right to draw neighbouring parts finely.
  */
 export function verdoppelt(art: Art): Art {
   const rows: string[] = [];
