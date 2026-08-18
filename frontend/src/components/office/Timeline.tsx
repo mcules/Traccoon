@@ -1,24 +1,23 @@
-// Schicht 2 — die Zeitleiste. Das Herzstück der Bedienung: eine Spalte je Sekunde,
-// ein Klick spult den Raum dorthin zurück.
+// Layer 2, the timeline. The heart of the operation: one column per second, and a click
+// rewinds the room to that point.
 //
-// Zwei Aussagen stecken in einem Balken, und sie sind bewusst getrennt:
+// Two statements sit in one bar, and they are deliberately separated:
 //
-//   · **Höhe = Menge.** Wie viel in dieser Sekunde überhaupt geschah — wurzelskaliert gegen den
-//     Spitzenwert des sichtbaren Fensters. Linear skaliert drückte eine einzelne Sekunde mit
-//     200 Ereignissen alle anderen zu einer Linie zusammen; die Wurzel lässt den Ausreißer
-//     Ausreißer sein, ohne den Rest platt zu machen. `max(6, …)` sorgt dafür, dass eine Sekunde
-//     mit *irgendetwas* darin sichtbar bleibt — eine leere Sekunde bekommt dagegen die Höhe 0,
-//     sonst wäre „nichts passiert" nicht von „fast nichts passiert" zu unterscheiden.
-//   · **Farbe = Zusammensetzung.** Jede Reihe ist ein Kind mit `height: Anteil %`. Eine rot
-//     dominierte Spalte ist damit eine Sekunde voller Fehlschläge — genau die Stelle, auf die
-//     man klickt.
+//   · **Height = amount.** How much happened in this second at all, square-root scaled against
+//     the peak of the visible window. Linear scaling would squeeze a single second with 200
+//     events and all the others into a line; the square root lets the outlier be an outlier
+//     without flattening the rest. `max(6, …)` makes sure a second with *anything* in it stays
+//     visible, while an empty second gets height 0, because otherwise "nothing happened" could
+//     not be told apart from "almost nothing happened".
+//   · **Colour = composition.** Every row is a child with `height: share %`. A column dominated
+//     by red is therefore a second full of failures, exactly the place one clicks on.
 //
-// Die Zahlen kommen aus `timeline.ts` (Schicht 0). Formatiert wird **hier**, weil `toLocale*`
-// dort verboten ist und `labelOf` deshalb Zahlen liefert, keinen Text.
+// The numbers come from `timeline.ts` (layer 0). Formatting happens **here**, because
+// `toLocale*` is forbidden there and `labelOf` therefore delivers numbers, not text.
 //
-// Das Fenster **gleitet** (`slice(-spalten)`): es wird nichts gescrollt und kein Balken dünner.
-// Wie viele Spalten hineinpassen, misst ein `ResizeObserver` — schmaler Reiter heißt weniger
-// Sekunden, nicht dünnere Balken. Genau deshalb steht `TIMELINE_COLUMNS` nur als Obergrenze da.
+// The window **slides** (`slice(-spalten)`): nothing is scrolled and no bar gets thinner. How
+// many columns fit is measured by a `ResizeObserver`: a narrow tab means fewer seconds, not
+// thinner bars. That is exactly why `TIMELINE_COLUMNS` stands there only as an upper bound.
 
 import { tr } from "../../i18n";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -26,36 +25,36 @@ import { REPLAY_CAP, TIMELINE_BUCKET_MS, TIMELINE_COLUMNS } from "./const.ts";
 import { bucketize, labelOf } from "./timeline.ts";
 import type { Bucket, LogEntry } from "./types.ts";
 
-// ── Oberfläche ──────────────────────────────────────────────────────────────────────────────
+// ── Interface ───────────────────────────────────────────────────────────────────────────────
 
-/** Was die Bedienelemente vom Log brauchen — **strukturell**, nicht als Klasse.
+/** What the controls need from the log, **structurally**, not as a class.
  *
- *  Sowohl der echte `Recorder` (Schicht 0) als auch die `RecorderApi` des Feeds erfüllen diese
- *  Form. Ein Verweis auf die Klasse selbst wäre enger als nötig und zwänge Welle L zu einer
- *  Typzusicherung; `bounds()` ist hier absichtlich weit gefasst (nullbar, `dropped` optional),
- *  weil die beiden Fassungen sich genau dort unterscheiden. */
+ *  Both the real `Recorder` (layer 0) and the `RecorderApi` of the feed fulfil this shape. A
+ *  reference to the class itself would be narrower than necessary and would force a type
+ *  assertion; `bounds()` is deliberately loose here (nullable, `dropped` optional), because
+ *  that is exactly where the two versions differ. */
 export interface LogQuelle {
   entries(): readonly LogEntry[];
   bounds(): { t0: number; t1: number; dropped?: boolean } | null;
 }
 
 export interface TimelineProps {
-  /** Das Log. Wird nur gelesen. */
+  /** The log. Only read. */
   recorder: LogQuelle;
-  /** Das einzige Neuberechnungssignal — steigt gedrosselt im Feed. */
+  /** The only recomputation signal, raised throttled in the feed. */
   revision: number;
   /** Angesprungene Position in Epoch-ms, `null` = Gegenwart/Live. */
   seekTs: number | null;
-  /** Bekommt `b.t` unverändert, also Epoch-ms — genau das, was `Replay.seek` erwartet. */
+  /** Gets `b.t` unchanged, so epoch ms, exactly what `Replay.seek` expects. */
   onSeek: (ts: number) => void;
   className?: string;
 }
 
-// ── Die vier Reihen ─────────────────────────────────────────────────────────────────────────
+// ── The four rows ───────────────────────────────────────────────────────────────────────────
 //
-// Vier Farben, mehr gibt es nicht. Rot ist dieselbe Farbe wie `failed` im Agenten-Monitor;
-// Violett/Blau/Grau sind bewusst **keine** Statusfarben, denn eine Nachricht ist kein Erfolg
-// und ein Werkzeugaufruf kein Warten.
+// Four colours, there are no more. Red is the same colour as `failed` in the agent monitor;
+// violet, blue and grey are deliberately **not** status colours, because a message is not a
+// success and a tool call is not waiting.
 
 type ReihenKey = "tools" | "says" | "thinks" | "errors";
 
@@ -66,7 +65,7 @@ interface Reihe {
   viele: string;
 }
 
-/** Reihenfolge der **Beschriftung** — „2 Werkzeugaufrufe, 1 Nachricht". */
+/** Order of the **label**: "2 tool calls, 1 message". */
 const REIHEN: readonly Reihe[] = [
   { key: "tools", css: "bg-sky-400", ein: "timeline.tool_ein", viele: "timeline.tool_viele" },
   { key: "says", css: "bg-violet-400", ein: "timeline.says_ein", viele: "timeline.says_viele" },
@@ -74,17 +73,17 @@ const REIHEN: readonly Reihe[] = [
   { key: "errors", css: "bg-red-400", ein: "timeline.errors_ein", viele: "timeline.errors_viele" },
 ];
 
-/** Reihenfolge im **Stapel**, von oben nach unten. Fehler liegen obenauf: sie sind das, was man
- *  im Vorbeischauen erkennen können muss. */
+/** Order in the **stack**, from top to bottom. Errors lie on top: they are what one has to be
+ *  able to recognise in passing. */
 const STAPEL: readonly ReihenKey[] = ["errors", "says", "tools", "thinks"];
 
 // ── Geometrie ───────────────────────────────────────────────────────────────────────────────
 
-/** Balkenbreite und Lücke in CSS-Pixeln. Fest — der Preis dafür ist, dass bei schmalem Fenster
- *  weniger Sekunden hineinpassen, und der ist billiger als unlesbar dünne Balken. */
+/** Bar width and gap in CSS pixels. Fixed: the price is that fewer seconds fit into a narrow
+ *  window, and that is cheaper than illegibly thin bars. */
 const SPALTE_PX = 4;
 const LUECKE_PX = 1;
-/** Unter so vielen Spalten lohnt die Anzeige nicht mehr; dann wird eben gedrängt. */
+/** Below this many columns the display is no longer worth it; then it simply gets crowded. */
 const MIN_SPALTEN = 24;
 
 // ── Beschriftung ────────────────────────────────────────────────────────────────────────────
@@ -93,21 +92,21 @@ function zwei(n: number): string {
   return n < 10 ? `0${n}` : String(n);
 }
 
-/** Uhrzeit eines Balkens in der **Ortszeit des Browsers**.
+/** Clock time of a bar in the **local time of the browser**.
  *
- *  `labelOf` rechnet in UTC — Schicht 0 kennt die Zeitzone nicht und darf sie nicht kennen,
- *  sonst zeigte dasselbe Log in zwei Tabs zwei verschiedene Zeitleisten. Aufgelöst wird sie
- *  genau hier, indem der Balkenzeitpunkt um den Ortsversatz **dieses** Zeitpunkts verschoben in
- *  `labelOf` geht (versatzweise je Balken, damit auch der Sprung zur Sommerzeit stimmt).
- *  Der Rest der Anwendung zeigt Zeiten ebenfalls in Ortszeit (`lib/formatTime.ts`) — eine
- *  Zeitleiste in UTC widerspräche jedem anderen Zeitstempel auf dem Bildschirm. */
+ *  `labelOf` computes in UTC: layer 0 does not know the time zone and must not know it,
+ *  because otherwise the same log would show two different timelines in two tabs. It is
+ *  resolved exactly here, by passing the bar moment shifted by the local offset of **this**
+ *  moment into `labelOf` (per bar, so that the switch to summer time is right as well).
+ *  The rest of the application shows times in local time as well (`lib/formatTime.ts`), and a
+ *  timeline in UTC would contradict every other timestamp on the screen. */
 function ortsZahlen(b: Bucket): ReturnType<typeof labelOf> {
   const versatz = new Date(b.t).getTimezoneOffset() * 60_000;
   return labelOf({ ...b, t: b.t - versatz });
 }
 
-/** „12:34:56 · 2 Werkzeugaufrufe, 1 Nachricht" — **nur** die Zahlen ≠ 0, ein Ereignis im
- *  Singular. Eine Beschriftung, die „0 Fehler" sagt, redet über etwas, das nicht passiert ist. */
+/** "12:34:56 · 2 tool calls, 1 message": **only** the numbers that are not 0, one event in the
+ *  singular. A label saying "0 errors" talks about something that did not happen. */
 export function balkenLabel(b: Bucket): string {
   const l = ortsZahlen(b);
   const uhr = `${zwei(l.h)}:${zwei(l.m)}:${zwei(l.s)}`;
@@ -119,33 +118,33 @@ export function balkenLabel(b: Bucket): string {
   return teile.length ? `${uhr} · ${teile.join(", ")}` : `${uhr} · ${tr("timeline.keine_ereignisse")}`;
 }
 
-/** Nur die Uhrzeit, für die Randbeschriftung unter der Leiste. */
+/** Only the clock time, for the edge label below the bar. */
 function uhrzeit(b: Bucket): string {
   const l = ortsZahlen(b);
   return `${zwei(l.h)}:${zwei(l.m)}:${zwei(l.s)}`;
 }
 
-// ── Die Komponente ──────────────────────────────────────────────────────────────────────────
+// ── The component ───────────────────────────────────────────────────────────────────────────
 
 export default function Timeline({ recorder, revision, seekTs, onSeek, className }: TimelineProps) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const beobachterRef = useRef<ResizeObserver | null>(null);
   const [breite, setBreite] = useState(0);
-  /** Wandernder Tastaturfokus (roving tabindex): 220 Tabstopps wären keine Bedienung. */
+  /** Roving keyboard focus (roving tabindex): 220 tab stops would not be operation. */
   const [fokus, setFokus] = useState<number | null>(null);
 
-  // Das Log neu zu Sekunden zusammenfassen, sobald sich etwas geändert hat. `revision` ist das
-  // Signal; `recorder` selbst wechselt nur bei einem Sitzungswechsel die Identität.
+  // Summarise the log into seconds again as soon as something has changed. `revision` is the
+  // signal; `recorder` itself only changes identity on a session change.
   const alle = useMemo(() => bucketize(recorder.entries()), [recorder, revision]);
   const grenzen = recorder.bounds();
   const gekappt = grenzen?.dropped === true;
 
-  /** Breitenmessung als **Rückruf-Ref**, nicht als Effekt.
+  /** Width measurement as a **callback ref**, not as an effect.
    *
-   *  Ein `useEffect` mit leerer Abhängigkeitsliste liefe genau einmal — und beim ersten Rendern
-   *  gibt es die Leiste noch gar nicht, weil ein leeres Log stattdessen einen Hinweis zeigt.
-   *  Der Effekt fände `null`, liefe nie wieder, und die Leiste rechnete für immer mit der
-   *  Vollbreite. Der Rückruf greift dagegen genau dann, wenn das Element auftaucht. */
+   *  A `useEffect` with an empty dependency list would run exactly once, and on the first
+   *  render the bar does not exist yet, because an empty log shows a hint instead. The effect
+   *  would find `null`, never run again, and the bar would compute with the full width
+   *  forever. The callback on the other hand takes hold exactly when the element appears. */
   const setzeBox = useCallback((el: HTMLDivElement | null) => {
     beobachterRef.current?.disconnect();
     beobachterRef.current = null;
@@ -166,9 +165,9 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
   const sichtbar = alle.length > spalten ? alle.slice(-spalten) : alle;
   const versteckt = alle.length - sichtbar.length;
 
-  // Spitzenwert des **sichtbaren** Fensters: die Leiste beantwortet „wie voll war diese Sekunde
-  // im Vergleich zu dem, was ich gerade sehe" — ein Ausreißer von vor drei Stunden, der längst
-  // aus dem Fenster gerutscht ist, darf das Bild nicht mehr bestimmen.
+  // Peak of the **visible** window: the bar answers "how full was this second compared to what
+  // I am looking at right now", and an outlier from three hours ago that has long slid out of
+  // the window must not determine the picture any more.
   let peak = 0;
   for (const b of sichtbar) {
     const t = b.tools + b.says + b.thinks + b.errors;
@@ -181,9 +180,9 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
     ? fokus
     : (aktuellIdx >= 0 ? aktuellIdx : sichtbar.length - 1);
 
-  /** Fokus verschieben — **ohne** zu springen. Jeder Sprung baut die Engine neu auf und spielt
-   *  das Log von vorn ab; bei gedrückter Pfeiltaste wären das zweihundert Neuaufbauten in einer
-   *  Sekunde. Ausgelöst wird deshalb erst mit Eingabe-/Leertaste, also mit dem Knopf selbst. */
+  /** Move the focus **without** jumping. Every jump rebuilds the engine and replays the log
+   *  from the start; with a held arrow key that would be two hundred rebuilds in one second.
+   *  Triggering therefore happens on enter or space, so with the button itself. */
   const bewege = (zu: number) => {
     if (sichtbar.length === 0) return;
     const i = Math.max(0, Math.min(sichtbar.length - 1, zu));
@@ -219,8 +218,8 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
         ref={setzeBox}
         role="group"
         aria-label="Zeitleiste — ein Balken je Sekunde"
-        // `overflow-hidden`: verzählt sich die Messung um eine Spalte (Rundung, Bildlaufleiste),
-        // soll die Leiste beschnitten werden und nicht das Layout dahinter aufreißen.
+        // `overflow-hidden`: if the measurement miscounts by one column (rounding, scrollbar),
+        // the bar should be clipped instead of tearing the layout behind it open.
         className="flex h-16 items-end overflow-hidden"
         style={{ gap: `${LUECKE_PX}px` }}
       >
@@ -234,8 +233,8 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
         )}
         {sichtbar.map((b, i) => {
           const gesamt = b.tools + b.says + b.thinks + b.errors;
-          // Wurzelskalierung gegen den Spitzenwert. `gesamt === 0` ergibt ausdrücklich 0 und
-          // nicht die Mindesthöhe — sonst behauptete jede leere Sekunde, es sei etwas gewesen.
+          // Square-root scaling against the peak. `gesamt === 0` explicitly gives 0 and not the
+          // minimum height; otherwise every empty second would claim something had happened.
           const h = gesamt === 0 || peak === 0
             ? 0
             : Math.max(6, Math.round((Math.sqrt(gesamt) / Math.sqrt(peak)) * 100));
@@ -247,8 +246,8 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
               type="button"
               data-spalte={i}
               tabIndex={i === tabIdx ? 0 : -1}
-              // Eine Aussage über die App („hier steht der Raum gerade"), nicht über den Fokus —
-              // deshalb `aria-current` und nicht `aria-selected`.
+              // A statement about the app ("this is where the room stands right now"), not
+              // about the focus, which is why `aria-current` and not `aria-selected`.
               aria-current={ist ? "true" : undefined}
               aria-label={label}
               title={label}
@@ -276,8 +275,8 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
                   })}
                 </span>
               ) : (
-                // Leere Sekunde: ein Punkt auf der Grundlinie. Ohne ihn wäre die Zeitachse an
-                // ruhigen Stellen unsichtbar und man wüsste nicht, wohin man klicken kann.
+                // Empty second: a dot on the base line. Without it the time axis would be
+                // invisible in quiet places and one would not know where to click.
                 <span className="w-full bg-line" style={{ height: "1px" }} />
               )}
             </button>
