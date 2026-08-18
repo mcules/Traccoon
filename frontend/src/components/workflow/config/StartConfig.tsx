@@ -23,11 +23,14 @@ export default function StartConfig({
   config,
   onChange,
   defId,
+  subjectKind,
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
   /** Definition, zu der dieser Start-Knoten gehört — für die eingehende Adresse. */
   defId?: number;
+  /** Subjekt des Ablaufs — bestimmt, ob ein Artefakt benannt werden muss. */
+  subjectKind?: string;
 }) {
   const qc = useQueryClient();
   const { data: hook } = useQuery({
@@ -51,6 +54,24 @@ export default function StartConfig({
   });
 
   const t: Record<string, any> = config.trigger || {};
+  // Drei Arten, einen Ablauf zu starten. Sie schließen sich aus: eine eingehende Adresse
+  // an einem Ereignis-Auslöser wäre eine zweite Tür, die niemand benutzt — und sie stünde
+  // im Weg, wenn man nur sehen will, worauf der Ablauf hört.
+  // Die Art steht ausdrücklich in der Konfiguration, statt aus dem Inhalt geraten zu
+  // werden: sonst fällt „Ereignis" beim Umschalten sofort auf „von Hand" zurück, solange
+  // noch kein Ereignisname eingetragen ist — man wählt etwas, und es passiert scheinbar
+  // nichts. (`t.event` gilt weiterhin als Ereignis, das ist der Bestand.)
+  const art: "manuell" | "ereignis" | "webhook" =
+    t.kind === "webhook" ? "webhook" : (t.kind === "ereignis" || t.event) ? "ereignis" : "manuell";
+  const setArt = (neu: typeof art) => {
+    const rest = { ...t };
+    delete rest.event; delete rest.project_id; delete rest.filter; delete rest.kind;
+    if (neu !== "manuell") rest.kind = neu;
+    onChange({
+      ...config,
+      trigger: Object.keys(rest).length ? (rest as NodeConfig["trigger"]) : undefined,
+    });
+  };
   const setT = (next: Record<string, any>) => {
     const zusammen: Record<string, any> = { ...t, ...next };
     // Leere Angaben nicht mitschleppen — ein Trigger ohne Ereignis ist keiner.
@@ -72,6 +93,17 @@ export default function StartConfig({
   return (
     <div className="space-y-3">
       <label className="block text-xs font-medium text-muted">
+        Wodurch startet der Ablauf?
+        <select value={art} onChange={(e) => setArt(e.target.value as typeof art)}
+          className={`mt-1 ${inp}`}>
+          <option value="manuell">von Hand (oder über einen Job)</option>
+          <option value="ereignis">Ereignis in Traccoon</option>
+          <option value="webhook">Aufruf von außen (Webhook)</option>
+        </select>
+      </label>
+
+      {art === "ereignis" && (
+      <label className="block text-xs font-medium text-muted">
         Auslöser
         <input
           list="ereignisse"
@@ -90,8 +122,10 @@ export default function StartConfig({
           <code className="mx-1 rounded bg-surface px-1">POST /api/events</code> meldet sie.
         </span>
       </label>
+      )}
 
       {/* ── Webhook als Quelle ─────────────────────────────────────────── */}
+      {art !== "ereignis" && (
       <div className="rounded border border-line bg-surface p-2">
         <div className="mb-1 text-xs font-medium text-muted">Eingehende Adresse (Webhook)</div>
         {hook ? (
@@ -116,8 +150,29 @@ export default function StartConfig({
             {adresseAnlegen.isPending ? "…" : "+ Adresse erzeugen"}
           </button>
         )}
-      </div>
 
+        {subjectKind && subjectKind !== "standalone" && (
+          <label className="mt-2 block text-[10px] text-muted">
+            Artefakt steht in diesem Feld der Nutzlast
+            <input
+              value={t.subjekt_feld || ""}
+              onChange={(e) => setT({ subjekt_feld: e.target.value.trim() })}
+              placeholder={subjectKind === "issue" ? "vorgang.ticket" : "geraet.id"}
+              className={`mt-1 font-mono ${inp}`}
+            />
+            <span className="mt-1 block">
+              {subjectKind === "issue"
+                ? "Ticket-Kennung (ABC-31) oder Ticket-Nummer."
+                : "Nummer des Exemplars."}{" "}
+              Ohne diese Angabe startet der Ablauf nicht — er hängt an einem Artefakt, und
+              das fremde System muss sagen, an welchem.
+            </span>
+          </label>
+        )}
+      </div>
+      )}
+
+      {art !== "ereignis" && (
       <label className="block text-xs font-medium text-muted">
         Beispiel-Nutzlast (JSON)
         <textarea
@@ -136,6 +191,7 @@ export default function StartConfig({
           in jeder Verzweigung zur Auswahl.
         </span>
       </label>
+      )}
 
       {t.event && (
         <>

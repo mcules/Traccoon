@@ -53,6 +53,20 @@ try {
   // 4) Start-Knoten anklicken → Webhook-Adresse erzeugen
   await page.locator(".react-flow__node").first().click();
   await page.waitForTimeout(600);
+
+  // Auslöser-Art: bei „Ereignis" hat eine eingehende Adresse nichts zu suchen.
+  const artAuswahl = page.locator("select").first();
+  await artAuswahl.selectOption("ereignis").catch(() => {});
+  await page.waitForTimeout(600);
+  const adresseBeiEreignis = await page.getByText(/Eingehende Adresse/i).first()
+    .isVisible().catch(() => false);
+  ok("Ereignis-Auslöser zeigt KEINE eingehende Adresse", !adresseBeiEreignis);
+  await artAuswahl.selectOption("webhook").catch(() => {});
+  await page.waitForTimeout(600);
+  const adresseBeiWebhook = await page.getByText(/Eingehende Adresse/i).first()
+    .isVisible().catch(() => false);
+  ok("Webhook-Auslöser zeigt die eingehende Adresse", adresseBeiWebhook);
+
   const knopf = page.getByRole("button", { name: /Adresse erzeugen/i });
   if (await knopf.isVisible().catch(() => false)) {
     await knopf.click();
