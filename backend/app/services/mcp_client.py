@@ -1,16 +1,16 @@
-"""Minimaler MCP-Client (Streamable HTTP) für Aufrufe aus dem Backend heraus.
+"""Minimal MCP client (streamable HTTP) for calls out of the backend.
 
-Bisher sprach nur der *Agent* mit MCP-Servern — über die CLI, die ihre eigene Verbindung
-aufbaut. Für die Spam-Erkennung reicht das nicht: eine bestätigte Mail zu verschieben ist
-eine mechanische Handbewegung, kein Auftrag. Dafür einen Claude-Lauf zu starten wäre teuer,
-langsam und unzuverlässig — der Bot braucht einen direkten Draht zu `imap-mcp`.
+So far only the *agent* talked to MCP servers, over the CLI, which builds its own
+connection. For the spam detection that is not enough: moving a confirmed mail is a
+mechanical hand movement, not an assignment. Starting a Claude run for it would be
+expensive, slow and unreliable; the bot needs a direct line to `imap-mcp`.
 
-Deshalb hier das Nötigste vom Protokoll: `initialize`, Sitzungskennung merken, `tools/call`.
-Kein Werkzeug-Verzeichnis, keine Ressourcen, keine Wiederaufnahme — was fehlt, fehlt
+Hence the bare minimum of the protocol here: `initialize`, remember the session id,
+`tools/call`. No tool directory, no resources, no resumption; what is missing is missing on purpose.
 
-Die Server im `mcp-backends`-Netz sind intern unauthentifiziert (die Rechteprüfung sitzt in
-MCPJungle davor). Dieser Weg umgeht MCPJungle bewusst: er trägt keine Nutzer-Identität,
-sondern führt eine Entscheidung aus, die der Mensch gerade selbst getroffen hat.
+The servers in the `mcp-backends` network are internally unauthenticated (the rights check
+sits in MCPJungle in front of them). This path deliberately bypasses MCPJungle: it carries no
+user identity but executes a decision the human has just taken themselves.
 """
 from __future__ import annotations
 
@@ -27,12 +27,12 @@ _TIMEOUT = 30.0
 
 
 class McpError(RuntimeError):
-    """Der Server hat den Aufruf abgelehnt oder war nicht erreichbar."""
+    """The server rejected the call or was unreachable."""
 
 
 def _entpacken(resp: httpx.Response) -> dict[str, Any]:
-    """Antwort → JSON-RPC-Objekt. Streamable HTTP darf mit `application/json` ODER als
-    Ereignisstrom antworten; beides kommt vor, je nach Server und Aufruf."""
+    """Response to a JSON-RPC object. Streamable HTTP may answer with `application/json` OR as
+    an event stream; both occur, depending on the server and the call."""
     ctype = resp.headers.get("content-type", "")
     if "text/event-stream" in ctype:
         for zeile in resp.text.splitlines():
@@ -53,11 +53,11 @@ def _entpacken(resp: httpx.Response) -> dict[str, Any]:
 async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
                     headers: dict[str, str] | None = None,
                     timeout: float = _TIMEOUT) -> dict[str, Any]:
-    """Ein Werkzeug auf einem MCP-Server aufrufen. → Ergebnis-Inhalt des Servers.
+    """Call a tool on an MCP server. Returns the result content of the server.
 
-    Wirft `McpError`, wenn der Server einen Fehler meldet — auch bei `isError` im Ergebnis,
-    denn ein „konnte nicht verschieben" ist für den Aufrufer dasselbe wie ein Transportfehler:
-    die Mail liegt noch da, wo sie lag.
+    Raises `McpError` when the server reports an error, including `isError` in the result,
+    because a "could not move" is the same for the caller as a transport error: the mail is
+    still where it was.
     """
     basis = {"Content-Type": "application/json",
              "Accept": "application/json, text/event-stream", **(headers or {})}
@@ -72,16 +72,16 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
         except httpx.HTTPError as exc:
             raise McpError(f"{url} nicht erreichbar: {exc}") from exc
         _entpacken(init)
-        # Der Server vergibt die Sitzung erst hier; alle Folgeaufrufe müssen sie mitführen.
+        # The server assigns the session only here; all following calls have to carry it.
         sitzung = init.headers.get("mcp-session-id")
         if sitzung:
             basis["Mcp-Session-Id"] = sitzung
 
-        # Ohne diese Benachrichtigung lehnen strenge Server jeden weiteren Aufruf ab.
+        # Without this notification, strict servers reject every further call.
         try:
             await client.post(url, headers=basis, json={
                 "jsonrpc": "2.0", "method": "notifications/initialized"})
-        except httpx.HTTPError as exc:      # nicht tödlich — manche Server brauchen sie nicht
+        except httpx.HTTPError as exc:      # not fatal: some servers do not need it
             log.debug("notifications/initialized fehlgeschlagen: %s", exc)
 
         try:
@@ -103,7 +103,7 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
 
 
 def _text(ergebnis: dict[str, Any]) -> str:
-    """Textteile eines MCP-Ergebnisses zusammenziehen (für Meldungen und Protokoll)."""
+    """Pull the text parts of an MCP result together (for messages and the log)."""
     teile = [c.get("text", "") for c in (ergebnis.get("content") or [])
              if isinstance(c, dict) and c.get("type") == "text"]
     return " ".join(t for t in teile if t).strip()
@@ -114,11 +114,11 @@ def ergebnis_text(ergebnis: dict[str, Any]) -> str:
 
 
 def ergebnis_json(ergebnis: dict[str, Any]) -> dict | None:
-    """Strukturiertes Ergebnis eines Werkzeugs (oder None).
+    """Structured result of a tool (or None).
 
-    Werkzeuge liefern ihr Ergebnis doppelt: als `structuredContent` und als JSON-Text.
-    Wer damit rechnen will statt es nur zu melden, nimmt diesen Weg — den Text noch einmal
-    von Hand zu zerlegen wäre dieselbe Arbeit an einer zweiten Stelle.
+    Tools deliver their result twice: as `structuredContent` and as JSON text. Whoever wants
+    to compute with it instead of only reporting it takes this path; taking the text apart by
+    hand again would be the same work in a second place.
     """
     inhalt = ergebnis.get("structuredContent")
     if isinstance(inhalt, dict):
