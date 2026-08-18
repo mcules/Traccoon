@@ -3,7 +3,7 @@ import { tr } from "../../i18n";
 export function KeyValueEditor({
   value,
   onChange,
-  keyPlaceholder = "Schlüssel",
+  keyPlaceholder = "",
   valuePlaceholder = "Wert",
 }: {
   value: Record<string, any>;

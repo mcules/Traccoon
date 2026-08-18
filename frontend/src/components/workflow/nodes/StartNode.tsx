@@ -1,4 +1,5 @@
 import { BaseNode, type FlowNodeProps } from "./shared";
+import { tr } from "../../../i18n";
 
 export default function StartNode({ id, data, selected }: FlowNodeProps) {
   const t = data.config.trigger;
@@ -15,8 +16,8 @@ export default function StartNode({ id, data, selected }: FlowNodeProps) {
       {/* Der Auslöser gehört auf die Karte — sonst sieht man einem Ablauf nicht an,
           wodurch er überhaupt startet. */}
       <div>{t?.event ? t.event
-        : t?.kind === "webhook" ? "Aufruf von außen (Webhook)"
-        : "manueller Start"}</div>
+        : t?.kind === "webhook" ? tr("start_config.aufruf_von_aussen_webhook")
+        : tr("start.manueller_start")}</div>
       {t?.project_id && <div>nur Projekt #{t.project_id}</div>}
       {t?.filter && <div>mit Bedingung</div>}
       {(data.config.context_schema?.length ?? 0) > 0 && (

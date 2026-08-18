@@ -1,5 +1,6 @@
 import type { NodeConfig } from "../types";
 import type { KontextFeld } from "../contextFields";
+import { tr } from "../../../i18n";
 
 /**
  * Was durchlaufen wird und wie das Element im Ablauf heißt.
@@ -50,7 +51,7 @@ export default function LoopConfig({
 
       <div className="flex gap-2">
         <label className="flex-1 text-xs font-medium text-muted">
-          Element heißt
+          {tr("loop_config.element_heisst")}
           <input
             value={(config.element as string) || ""}
             onChange={(e) => set({ element: e.target.value.trim() })}
@@ -59,7 +60,7 @@ export default function LoopConfig({
           />
         </label>
         <label className="flex-1 text-xs font-medium text-muted">
-          Zähler heißt
+          {tr("loop_config.zaehler_heisst")}
           <input
             value={(config.index as string) || ""}
             onChange={(e) => set({ index: e.target.value.trim() })}
@@ -83,7 +84,7 @@ export default function LoopConfig({
       </label>
 
       <label className="block text-xs font-medium text-muted">
-        Höchstens … Durchläufe
+        {tr("loop_config.hoechstens_durchlaeufe")}
         <input
           type="number"
           min={1}

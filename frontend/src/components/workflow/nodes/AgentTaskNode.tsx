@@ -1,14 +1,15 @@
 import { BaseNode, type FlowNodeProps, type SourceHandleDef } from "./shared";
+import { tr } from "../../../i18n";
 
 const PHASE_LABEL: Record<string, string> = {
   planning: "Planung",
-  execution: "Ausführung",
+  execution: "agent.rolle.ausfuehrung",
 };
 
 const ROLE_LABEL: Record<string, string> = {
   plan_agent: "Planer des Projekts",
-  exec_agent: "Ausführender des Projekts",
-  review_agent: "Prüfer des Projekts",
+  exec_agent: "agent.rolle.exec",
+  review_agent: "agent.rolle.review",
   assigned: "der zugewiesene Agent",
 };
 
@@ -21,7 +22,7 @@ function outcomes(phase?: string): SourceHandleDef[] {
   return [
     erst,
     { id: "loop_exhausted", label: "Zwischenstand", color: "!bg-amber-500" },
-    { id: "blocked", label: "Rückfrage", color: "!bg-yellow-500" },
+    { id: "blocked", label: tr("agent.ausgang.rueckfrage"), color: "!bg-yellow-500" },
     { id: "failed", label: "Fehler", color: "!bg-red-500" },
     // Auffangnetz: unbekannte Ergebnisse landen laut Standard-Abbildung auf „err".
     { id: "err", label: "sonstiges", color: "!bg-red-500" },

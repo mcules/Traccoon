@@ -39,11 +39,11 @@ export default function HumanTaskConfig({
           checked={!!config.handover}
           onChange={(e) => onChange({ ...config, handover: e.target.checked })}
         />
-        Übergabe an andere Person erlauben
+        {tr("human_task_config.uebergabe_erlauben")}
       </label>
 
       <label className="block text-xs font-medium text-muted">
-        Fällig in (Stunden)
+        {tr("human_task_config.faellig_in")}
         <input
           type="number"
           value={config.due_in_hours ?? ""}

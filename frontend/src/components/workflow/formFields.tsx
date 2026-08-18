@@ -148,7 +148,7 @@ export function DynamicForm({
               onChange={(e) => set(f.key, e.target.value)}
               className={`mt-1 ${inp}`}
             >
-              <option value="">— wählen —</option>
+              <option value="">{tr("action_params.waehlen")}</option>
               {(f.options || []).map((o) => (
                 <option key={o} value={o}>
                   {o}

@@ -94,10 +94,10 @@ export default function StartConfig({
   return (
     <div className="space-y-3">
       <label className="block text-xs font-medium text-muted">
-        Wodurch startet der Ablauf?
+        {tr("start_config.wodurch_startet")}
         <select value={art} onChange={(e) => setArt(e.target.value as typeof art)}
           className={`mt-1 ${inp}`}>
-          <option value="manuell">von Hand (oder über einen Job)</option>
+          <option value="manuell">{tr("start_config.von_hand")}</option>
           <option value="ereignis">{tr("start_config.ereignis_in_traccoon")}</option>
           <option value="webhook">{tr("start_config.aufruf_von_aussen_webhook")}</option>
         </select>
@@ -105,7 +105,7 @@ export default function StartConfig({
 
       {art === "ereignis" && (
       <label className="block text-xs font-medium text-muted">
-        Auslöser
+        {tr("start_config.ausloeser")}
         <input
           list="ereignisse"
           value={t.event || ""}
@@ -154,7 +154,7 @@ export default function StartConfig({
 
         {subjectKind && subjectKind !== "standalone" && (
           <label className="mt-2 block text-[10px] text-muted">
-            Artefakt steht in diesem Feld der Nutzlast
+            {tr("start_config.artefakt_feld")}
             <input
               value={t.subjekt_feld || ""}
               onChange={(e) => setT({ subjekt_feld: e.target.value.trim() })}

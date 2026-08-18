@@ -7,7 +7,7 @@ import { ApiError, workflowApi, type Project, type WorkflowSubjectKind } from ".
 const SUBJECT_LABEL: Record<WorkflowSubjectKind, string> = {
   issue: "Ticket",
   hardware_asset: "Hardware",
-  standalone: "eigenständig",
+  standalone: "workflow_list.eigenstaendig",
 };
 
 const EMPTY = { key: "", name: "", subject_kind: "issue" as WorkflowSubjectKind, description: "" };
@@ -80,7 +80,7 @@ export default function WorkflowList({ project }: { project: Project }) {
               {SUBJECT_LABEL[d.subject_kind]}
             </span>
             {d.current_version_id ? (
-              <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-xs text-green-400">veröffentlicht</span>
+              <span className="rounded bg-green-500/15 px-1.5 py-0.5 text-xs text-green-400">{tr("proc.veroeffentlicht")}</span>
             ) : (
               <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-yellow-400">{tr("workflow_list.entwurf")}</span>
             )}

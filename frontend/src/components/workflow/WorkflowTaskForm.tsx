@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi, type NodeConfig } from "../../api";
 import type { MemberLite } from "../../api";
 import { DynamicForm, defaultValues, missingRequired } from "./formFields";
+import { tr } from "../../i18n";
 
 /** Bearbeitungsformular für einen offenen Schritt (human_task oder approval). */
 export default function WorkflowTaskForm({
@@ -64,7 +65,7 @@ export default function WorkflowTaskForm({
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder={needReason ? "Begründung (bei Ablehnung erforderlich)" : "Begründung (optional)"}
+          placeholder={tr(needReason ? "task_form.begruendung_pflicht" : "task_form.begruendung_optional")}
           className={`w-full ${inp}`}
         />
         <div className="flex gap-2">
@@ -98,9 +99,9 @@ export default function WorkflowTaskForm({
       )}
       {config.handover && (
         <label className="block text-xs text-muted">
-          Übergabe an…
+          {tr("task_form.uebergabe_an")}
           <select value={handover} onChange={(e) => setHandover(e.target.value)} className={`mt-1 w-full ${inp}`}>
-            <option value="">— nicht übergeben —</option>
+            <option value="">{tr("task_form.nicht_uebergeben")}</option>
             {members.map((m) => (
               <option key={m.user_id} value={m.user_id}>
                 {m.display_name || m.username}
