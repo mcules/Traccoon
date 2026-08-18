@@ -1,20 +1,20 @@
-"""Ausführungs-Engine für Prozesse (Token-basiert, React-Flow-Graph).
+"""Execution engine for processes (token based, node graph).
 
-Hier läuft inzwischen ALLES, was Traccoon an Abläufen kennt — auch der KI-Ticket-
-Lebenszyklus, der früher fest im Dispatcher verdrahtet war. Ein Prozess ist ein Node-Graph
-(`version.graph = {"nodes":[...], "edges":[...]}`); eine Instanz trägt genau EIN aktives
-Token, das synchron von Knoten zu Knoten schaltet, bis es wartet (Mensch, Genehmigung,
-Agentenlauf, Ereignis, Unter-Prozess) oder ein end-Knoten erreicht ist.
+Everything Traccoon runs as a flow goes through here, including the AI ticket lifecycle
+that used to be wired into the dispatcher. A process is a node graph
+(`version.graph = {"nodes":[...], "edges":[...]}`), and an instance carries exactly ONE
+active token that moves from node to node until it waits (person, approval, agent run,
+event, subprocess) or reaches an end node.
 
-Absicherungen:
-- atomarer `advancing`-Claim (UPDATE … WHERE advancing=false RETURNING) gegen Doppel-Advance
-  (Tick ↔ Request-Event),
-- `MAX_STEPS`-Bremse gegen zyklische Auto-Advance,
-- `routed_at` je Schritt: ein erledigter Warte-Knoten wird genau EINMAL in eine Kante
-  übersetzt — sonst drehte sich eine Rückkante (Fortsetzung!) endlos im Kreis,
-- Torwächter vor jedem Agentenlauf (`services/agent_gate.py`) — Zeitfenster, Runner-Limit
-  und Runaway-Bremse gelten unabhängig vom gezeichneten Graphen,
-- eigene DB-Session (SessionLocal), niemals die Request-Session.
+Safeguards:
+- atomic `advancing` claim (UPDATE ... WHERE advancing=false RETURNING) against a double
+  advance (tick against request event),
+- `MAX_STEPS` brake against cyclic auto advance,
+- `routed_at` per step: a finished wait node is translated into an edge exactly ONCE.
+  Without it a back edge (continuation) spun in circles forever,
+- gatekeeper before every agent run (`services/agent_gate.py`): time windows, runner limit
+  and runaway brake apply no matter how the graph is drawn,
+- its own database session (SessionLocal), never the request session.
 """
 from __future__ import annotations
 
@@ -43,38 +43,38 @@ from .jsonlogic import ALLOWED_OPS, JsonLogicError, collect_operators, safe_eval
 
 log = logging.getLogger("workflow_engine")
 
-# Zyklus-Bremse pro advance-Durchlauf. Höher als früher (50), seit es Schleifen gibt: ein
-# `loop` über 120 Zeilen ist keine kreisende Instanz, sondern Arbeit, und käme sonst nur in
-# 30-Sekunden-Wellen des Ticks voran. Gegen echte Endlosschleifen sichert zusätzlich das
+# Cycle brake per advance pass. Higher than the old 50 since loops exist: a `loop` over 120
+# rows is not a spinning instance but work, and would otherwise only progress in 30 second
+# waves of the tick. Against real endless loops there is additionally the
 # `max` am Schleifen-Knoten selbst.
 MAX_STEPS = 200
-MAX_DRIVE_ROUNDS = 5    # Nachfassen, wenn während des Durchlaufs ein Ergebnis eintraf
+MAX_DRIVE_ROUNDS = 5    # follow up when a result arrived during the pass
 TICK_SECONDS = 30       # Sicherheitsnetz-Loop (Crash-Recovery)
-MAX_SUBFLOW_DEPTH = 3   # Schachtelungs-Bremse für subflow-Knoten
+MAX_SUBFLOW_DEPTH = 3   # nesting brake for subflow nodes
 
-# Knoten, die auf ein externes Ereignis warten. Beim Wiedereintritt (Token wieder aktiv)
-# NICHT erneut ausführen, sondern die Kante gemäß hinterlegter decision nehmen — aber nur
-# EINMAL je Durchlauf (`routed_at`), sonst dreht sich eine Rückkante endlos im Kreis.
+# Nodes that wait for an external event. On re-entry (token active again) do NOT execute
+# them again, take the edge according to the stored decision instead, and only ONCE per
+# pass (`routed_at`), otherwise a back edge spins in circles forever.
 WAIT_NODES = ("human_task", "approval", "agent_task", "wait_event", "subflow", "timer")
 
-# Standard-Abbildung Worker-Ergebnis → Ausgang. Greift nur, wenn weder `outcomes_map` noch
-# ein gleichnamiger Ausgang (z. B. „loop_exhausted") am Knoten verdrahtet ist.
+# Default mapping from worker result to outlet. Only used when neither `outcomes_map` nor an
+# outlet of the same name (for example "loop_exhausted") is wired on the node.
 _DEFAULT_AGENT_MAP = {
     "planned": "ok", "done": "ok", "failed": "err",
     "blocked": "blocked", "loop_exhausted": "blocked",
 }
-# Harter Deckel für das Warten auf einen Agentenlauf: standardmäßig KEINER.
+# Hard cap for waiting on an agent run: NONE by default.
 #
-# Bis 2026-08-05 stand hier 1800 s, und der Wächter gab nach 30 Minuten auf — obwohl der
-# Lauf weiterarbeitete. Ein exec-Schritt umfasst Umsetzung UND Review-Runden in EINEM
-# Auftrag; das dauert regelmäßig länger. Ergebnis: Ticket „fehlgeschlagen: unbekannter
-# Fehler", während der Agent kurz darauf sauber committete (ABC-2, ABC-6). Gewartet wird
-# jetzt am Lebenszeichen des Laufs (`wait_result`), nicht an der Uhr. Wer für einen
-# einzelnen Knoten trotzdem eine Grenze will, setzt `timeout_sec` in dessen Konfiguration;
-# AGENT_WAIT_LIMIT_SEC ist der globale Notnagel (0 = aus).
+# Until 2026-08-05 this was 1800 s and the watcher gave up after 30 minutes although the run
+# kept working. An exec step covers implementation AND review rounds in ONE job, which
+# regularly takes longer. The result was a ticket reading "failed: unknown error" while the
+# agent committed cleanly moments later (ABC-2, ABC-6). Waiting now happens on the sign of
+# life of the run (`wait_result`), not on the clock. Whoever wants a limit for a single node
+# sets `timeout_sec` in its config, AGENT_WAIT_LIMIT_SEC is the global emergency brake
+# (0 = off).
 AGENT_DEFAULT_TIMEOUT = int(os.getenv("AGENT_WAIT_LIMIT_SEC", "0"))
-# Deckel für asynchrone Auto-Aktionen (Merge, Testumgebung). Die sind kurz und begrenzt,
-# hier bleibt eine Uhr sinnvoll — aber großzügig, ein Preview-Build zieht sich.
+# Cap for asynchronous auto actions (merge, test environment). Those are short and bounded,
+# so a clock still makes sense here, but a generous one: a preview build takes its time.
 ACTION_DEFAULT_TIMEOUT = int(os.getenv("ACTION_WAIT_LIMIT_SEC", "3600"))
 
 
@@ -107,7 +107,7 @@ def node_config(node: dict) -> dict:
 
 
 def _handle_matches(edge_handle, handle) -> bool:
-    """Kante passt zu einem Ausgang. „out"/None sind austauschbar (Default-Ausgang)."""
+    """Edge matches an outlet. "out" and None are interchangeable (the default outlet)."""
     if handle in (None, "", "out"):
         return edge_handle in (None, "", "out")
     return edge_handle == handle
@@ -134,15 +134,15 @@ def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
 
-# Wächter-Tasks (Agentenlauf, asynchrone Aktion) brauchen eine starke Referenz — sonst
-# darf der Garbage Collector sie mitten im Warten einsammeln und der Prozess bliebe still
-# stehen. Tests warten über `drain()` auf sie.
+# Watcher tasks (agent run, asynchronous action) need a strong reference, otherwise the
+# garbage collector may take them mid-wait and the process would silently stall. Tests wait
+# for them through `drain()`.
 _BACKGROUND: set[asyncio.Task] = set()
 
 
-# Schritt-IDs, für die in DIESEM Prozess gerade ein Wächter wartet. Ohne dieses Wissen
-# könnte das erneute Anbinden (siehe `recover_workflow_agents`) einen zweiten Wächter auf
-# dasselbe Ergebnis setzen — beide würden schalten.
+# Step ids a watcher in THIS process is currently waiting for. Without that knowledge
+# reattaching (see `recover_workflow_agents`) could put a second watcher on the same result,
+# and both would advance.
 _WAECHTER: set[int] = set()
 
 
@@ -154,7 +154,7 @@ def _spawn(coro) -> asyncio.Task:
 
 
 async def drain(timeout: float = 5.0) -> None:
-    """Auf alle laufenden Wächter warten (Tests; im Betrieb nicht nötig)."""
+    """Wait for all running watchers (tests only, not needed in production)."""
     for _ in range(20):
         pending = {t for t in _BACKGROUND if not t.done()}
         if not pending:
@@ -183,7 +183,7 @@ class Outcome:
     error: str | None = None
 
 
-# ── Step-/Zuständigen-Helfer ─────────────────────────────────────────────────
+# -- step and assignee helpers ------------------------------------------------
 
 async def _latest_step(db, instance_id: int, node_id: str) -> WorkflowStepRun | None:
     return (
@@ -196,13 +196,13 @@ async def _latest_step(db, instance_id: int, node_id: str) -> WorkflowStepRun | 
 
 
 async def _resolve_assignee(db, inst: WorkflowInstance, cfg: dict) -> int | None:
-    """Löst den Zuständigen eines human_task/approval auf.
+    """Resolve who is responsible for a human_task or approval.
 
     config["assignee"] = {mode, ...}:
-      user     → {user_id}
-      role     → {role}          (erstes Projekt-Mitglied dieser Rolle; sonst Projekt-Lead)
-      context  → {path}          (User-ID aus instance.context per Dot-Pfad)
-      reporter → Reporter des gebundenen Issues
+      user     -> {user_id}
+      role     -> {role}         (first project member with that role, else project lead)
+      context  -> {path}         (user id from instance.context by dot path)
+      reporter -> reporter of the bound issue
     """
     a = cfg.get("assignee") or {}
     mode = a.get("mode", "user")
@@ -246,11 +246,11 @@ async def _resolve_assignee(db, inst: WorkflowInstance, cfg: dict) -> int | None
 
 
 async def _notify_assignee(db, inst: WorkflowInstance, node: dict, ntype: str, assignee: int | None):
-    """In-App/Telegram-Benachrichtigung an den Zuständigen + Ticket-Notiz (falls Issue).
+    """Notify the responsible person and add a ticket note when there is an issue.
 
-    `config.notify = false` schaltet sie ab — für Wartepunkte, deren Frage schon auf einem
-    eigenen Weg gestellt wurde (die Spam-Rückfrage bringt ihre eigene Karte mit Knöpfen mit;
-    eine zweite, knopflose Meldung zur selben Mail wäre nur Lärm).
+    `config.notify = false` turns it off, for wait points whose question was already asked
+    another way (the spam question brings its own card with buttons, a second message
+    without buttons about the same mail would be noise).
     """
     cfg = node_config(node)
     if cfg.get("notify") is False:
@@ -279,10 +279,10 @@ async def _notify_assignee(db, inst: WorkflowInstance, node: dict, ntype: str, a
 
 
 async def _ensure_wait_step(db, inst, node, ntype, token, waiting_for) -> None:
-    """Legt (idempotent) einen wartenden StepRun an und benachrichtigt den Zuständigen."""
+    """Create a waiting StepRun (idempotent) and notify the responsible person."""
     existing = await _latest_step(db, inst.id, node["id"])
     if existing is not None and existing.status == SStatus.waiting:
-        return  # wartet bereits — nicht doppelt anlegen/benachrichtigen
+        return  # already waiting, do not create or notify twice
     assignee = await _resolve_assignee(db, inst, node_config(node))
     step = WorkflowStepRun(
         instance_id=inst.id, token_id=token.id, node_id=node["id"],
@@ -297,14 +297,14 @@ async def _ensure_wait_step(db, inst, node, ntype, token, waiting_for) -> None:
     })
 
 
-# ── Probelauf ────────────────────────────────────────────────────────────────
-# Ein Ablauf ließ sich bauen, aber nicht ausprobieren: ob ein Ausdruck stimmt, ob die
-# Weiche in den gedachten Zweig führt, merkte man erst am ersten echten Lauf — mit allen
-# Wirkungen nach außen. Im Probelauf läuft der Graph vollständig durch, aber jede Aktion
-# meldet nur, was sie TÄTE.
+# -- dry run -----------------------------------------------------------------
+# A flow could be built but not tried out: whether an expression is right, whether the
+# decision leads into the intended branch, showed only on the first real run, with all its
+# effects on the outside world. In a dry run the graph runs through completely, but every
+# action only reports what it WOULD do.
 PROBE_KEY = "_probe"
-# Was auch im Probelauf laufen darf: beides bleibt im Kontext dieses Laufs. Ohne sie wäre
-# die Probe wertlos — die Folgeschritte hätten keine Daten, und Weichen prüften ins Leere.
+# What may run in a dry run as well: both stay inside the context of this run. Without them
+# the trial would be worthless, later steps would have no data and decisions would test air.
 PROBE_ERLAUBT = ("set_context", "refresh_facts", "noop")
 
 
@@ -352,8 +352,8 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
 
     if ntype == "approval":
         if _ist_probe(inst):
-            # Der Probelauf nimmt den freigegebenen Weg — den will man sehen; der abgelehnte
-            # ist eine eigene Probe wert und wird nicht heimlich mitgeprüft.
+            # The dry run takes the approved path, which is the one you want to see. The
+            # rejected one deserves a trial of its own and is not checked in secret.
             _probe_schritt(db, inst, node, token, ntype,
                            "würde auf eine Freigabe warten (Probe nimmt „genehmigt\")",
                            decision="approved")
@@ -372,7 +372,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                 _probe_schritt(db, inst, node, token, "auto_action",
                                f"würde ausführen: {name}" + (f" ({ziel})" if ziel else ""))
                 return Outcome(handle="out")
-        # Idempotenz: eine asynchrone Aktion (z. B. Merge) läuft bereits → nicht neu starten.
+        # Idempotency: an asynchronous action (a merge, say) is already running, do not restart.
         running = await _latest_step(db, inst.id, node["id"])
         if running is not None and running.status == SStatus.running:
             return Outcome(wait=True, waiting_for="action")
@@ -380,7 +380,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
             result = await run_action(db, inst, node)
             wait_spec = result.pop("_wait", None) if isinstance(result, dict) else None
             if wait_spec:
-                # Asynchrone Aktion: Schritt bleibt „running", ein Wächter schaltet weiter.
+                # Asynchronous action: the step stays running, a watcher advances it.
                 step = WorkflowStepRun(
                     instance_id=inst.id, token_id=token.id, node_id=node["id"],
                     node_type=NType.auto_action, status=SStatus.running,
@@ -409,10 +409,10 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                 node_type=NType.auto_action, status=SStatus.failed, error=str(e)[:2000],
                 completed_at=_now(),
             ))
-            # Erst wiederholen, dann verzweigen, dann aufgeben. Ein Fehlschlag nach außen
-            # ist meist keiner der Sache, sondern des Augenblicks: Gegenstelle kurz weg,
-            # Netz kurz weg. Ohne Abstand wäre die Wiederholung sinnlos — dieselbe Sekunde,
-            # derselbe Fehler —, deshalb wartet sie über denselben Wecker wie ein Timer.
+            # Retry first, then branch, then give up. A failure towards the outside is
+            # usually not one of the matter but of the moment: far side briefly gone,
+            # network briefly gone. Without a delay the retry would be pointless (same
+            # second, same error), so it waits on the same alarm clock a timer uses.
             versuche = int(cfg.get("wiederholungen") or 0)
             if versuche > 0:
                 zaehler = dict((inst.context or {}).get("_versuche") or {})
@@ -430,8 +430,8 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                     log.info("Instanz %s: %s scheitert (%d/%d) — neuer Versuch in %.0fs",
                              inst.id, node["id"], bisher + 1, versuche, warte)
                     return Outcome(wait=True, waiting_for="timer")
-                # Aufgebraucht: der Zähler gehört weg, sonst zählt der nächste Anlauf
-                # (Schleife, erneuter Start) beim alten Stand weiter.
+                # Used up: the counter has to go, otherwise the next attempt (loop,
+                # restart) would continue from the old count.
                 zaehler.pop(node["id"], None)
                 inst.context = {**(inst.context or {}), "_versuche": zaehler}
             if next_node(edges, node["id"], "error") is not None:
@@ -489,10 +489,10 @@ def _accepted_events(cfg: dict) -> list[str]:
 
 
 async def _wait_for_event(db, inst, node, token, cfg) -> Outcome:
-    """Hält den Lauf an, bis `resume_on_event` ein passendes Ereignis meldet.
+    """Hold the run until `resume_on_event` reports a matching event.
 
-    Damit hängen Rückfragen, abgelehnte Pläne und Fehlversuche im Ticket-Lebenszyklus am
-    Kommentar des Menschen, statt über einen versteckten Status-Sprung neu zu starten.
+    That way questions, rejected plans and failed attempts in the ticket lifecycle hang off
+    a person's comment instead of restarting through a hidden status jump.
     """
     existing = await _latest_step(db, inst.id, node["id"])
     if existing is not None and existing.status == SStatus.waiting:
@@ -562,15 +562,15 @@ async def resume_on_event(issue_id: int, event: str, payload: dict | None = None
 # ── timer: Zeit vergehen lassen ──────────────────────────────────────────────
 
 async def _timer(db, inst, node, token, cfg) -> Outcome:
-    """Wartet eine Weile — ohne dass jemand etwas melden muss.
+    """Wait for a while, without anybody having to report anything.
 
-    `wait_event` wartet auf ein Ereignis; hier wartet der Lauf auf die Uhr. Gebraucht wird
-    das an zwei Stellen: „später noch einmal nachsehen" (Gegenstelle liefert erst in einer
-    Stunde) und als Abstand zwischen zwei Versuchen — ohne ihn wäre jede Wiederholung ein
-    Sofort-Wiederholen: dieselbe Gegenstelle, dieselbe Sekunde, derselbe Fehler.
+    `wait_event` waits for an event, here the run waits for the clock. That is needed in
+    two places: "look again later" (the far side only delivers in an hour) and as the delay
+    between two attempts. Without it every retry would be an immediate retry: same far
+    side, same second, same error.
 
-    Geweckt wird im 30-Sekunden-Tick der Engine (`_faellige_timer`), nicht von einem
-    schlafenden Task: ein Neustart des Backends darf einen wartenden Lauf nicht vergessen.
+    The wake-up happens in the engine's 30 second tick (`_faellige_timer`), not in a
+    sleeping task: a backend restart must not forget a waiting run.
     """
     vorhanden = await _latest_step(db, inst.id, node["id"])
     if vorhanden is not None and vorhanden.status == SStatus.waiting:
@@ -587,11 +587,11 @@ async def _timer(db, inst, node, token, cfg) -> Outcome:
 
 
 def _faellig_ab(cfg: dict, ctx: dict) -> dt.datetime:
-    """Wann der Lauf weitergeht: Dauer ab jetzt oder ein fester Zeitpunkt.
+    """When the run continues: a duration from now or a fixed point in time.
 
-    Ein Zeitpunkt darf aus dem Kontext kommen (`{{…}}` ist an dieser Stelle schon gefüllt,
-    wenn der Editor ihn so einträgt) — liegt er in der Vergangenheit, geht es sofort weiter
-    statt nie.
+    The point in time may come from the context (`{{…}}` is already filled here when the
+    editor writes it that way). If it lies in the past the run continues at once instead of
+    never.
     """
     jetzt = _now()
     bis = str(cfg.get("bis") or "").strip()
@@ -611,12 +611,12 @@ def _faellig_ab(cfg: dict, ctx: dict) -> dt.datetime:
     delta = {"s": dt.timedelta(seconds=menge), "m": dt.timedelta(minutes=menge),
              "h": dt.timedelta(hours=menge), "t": dt.timedelta(days=menge)}.get(
                  einheit, dt.timedelta(minutes=menge))
-    # Nach oben gedeckelt: ein Ablauf, der zwei Jahre schläft, ist fast immer ein Vertipper.
+    # Capped at the top: a flow that sleeps for two years is almost always a typo.
     return jetzt + min(delta, dt.timedelta(days=90))
 
 
 async def faellige_timer() -> int:
-    """Abgelaufene Timer wecken. → Anzahl geweckter Läufe (Aufruf aus dem Tick)."""
+    """Wake expired timers, returns the number of runs woken (called from the tick)."""
     jetzt = _now()
     geweckt = 0
     async with SessionLocal() as db:
@@ -633,7 +633,7 @@ async def faellige_timer() -> int:
                 if wann and dt.datetime.fromisoformat(wann) > jetzt:
                     continue
             except ValueError:
-                pass                      # unlesbarer Stempel → lieber wecken als hängen
+                pass                      # unreadable stamp, better wake than hang
             step.status = SStatus.done
             step.completed_at = jetzt
             tok.state = TState.active
@@ -650,27 +650,24 @@ async def faellige_timer() -> int:
     return geweckt
 
 
-# ── loop: eine Liste Element für Element ─────────────────────────────────────
+# -- loop: a list item by item -----------------------------------------------
 
-# Wo der Zähler einer Schleife lebt. Im Kontext, weil er den Lauf überdauern muss: eine
-# Schleife kann über einen Wartepunkt gehen (Genehmigung je Element) und Tage später
-# weiterlaufen.
+# Where the counter of a loop lives. In the context, because it has to outlive the pass: a
+# loop may cross a wait point (approval per item) and continue days later.
 SCHLEIFEN_KEY = "_schleifen"
 LOOP_MAX = 500
 
 
 async def _schleife(db, inst, node, token, cfg) -> Outcome:
-    """Ein Durchgang durch eine Liste — sequentiell, über eine Rückkante.
+    """One pass through a list, sequential, over a back edge.
 
-    Der Knoten wird bei jedem Durchlauf erneut betreten (synchrone Knoten werden beim
-    Wiedereintritt neu ausgeführt, siehe `_drive`). Er zählt weiter, legt das nächste
-    Element in den Kontext und nimmt den Ausgang `element`; ist die Liste erschöpft,
-    `fertig`.
+    The node is entered again on every pass (synchronous nodes are re-executed on re-entry,
+    see `_drive`). It counts on, puts the next item into the context and takes the outlet
+    `element`. When the list is exhausted it takes `fertig`.
 
-    Bewusst sequentiell und nicht als Fächer aus parallelen Token: die Engine führt ein
-    Token je Instanz, und die Schritte einer Schleife hängen fast immer voneinander ab
-    (dieselbe Gegenstelle, dieselbe Datei, dasselbe Konto). Parallel wäre schneller und
-    an genau diesen Stellen falsch.
+    Sequential on purpose, not a fan of parallel tokens: the engine carries one token per
+    instance, and the steps of a loop almost always depend on each other (same far side,
+    same file, same account). Parallel would be faster and wrong in exactly those places.
     """
     ctx = dict(inst.context or {})
     stand = dict(ctx.get(SCHLEIFEN_KEY) or {})
@@ -688,7 +685,7 @@ async def _schleife(db, inst, node, token, cfg) -> Outcome:
         liste = roh if isinstance(roh, list) else ([] if roh is None else [roh])
         meins = {"i": 0, "gesamt": len(liste), "werte": liste[:grenze], "ergebnisse": []}
     else:
-        # Rückkehr aus dem Schleifenkörper: erst einsammeln, dann weiterzählen.
+        # Back from the loop body: collect first, then count on.
         if sammel_pfad:
             meins["ergebnisse"] = [*meins.get("ergebnisse", []), _dig_ctx(ctx, sammel_pfad)]
         meins["i"] = int(meins.get("i", 0)) + 1
@@ -696,8 +693,8 @@ async def _schleife(db, inst, node, token, cfg) -> Outcome:
     werte = meins.get("werte") or []
     i = int(meins.get("i", 0))
     if i >= len(werte):
-        # Fertig: Zähler weg (eine äußere Schleife startet dieselbe innere sonst nicht neu),
-        # gesammelte Ergebnisse bleiben.
+        # Done: drop the counter (an outer loop would otherwise not restart the same
+        # inner one), collected results stay.
         stand.pop(node["id"], None)
         ctx[SCHLEIFEN_KEY] = stand
         ctx.pop(element_key, None)
@@ -719,7 +716,7 @@ async def _schleife(db, inst, node, token, cfg) -> Outcome:
 
 
 def _dig_ctx(data, pfad: str):
-    """Pfad im Kontext auflösen — inklusive Listen-Index (`tool.json.items.0`)."""
+    """Resolve a path in the context, including list indexes (`tool.json.items.0`)."""
     cur = data
     for teil in str(pfad).split("."):
         if isinstance(cur, dict) and teil in cur:
@@ -731,7 +728,7 @@ def _dig_ctx(data, pfad: str):
     return cur
 
 
-# ── subflow: anderen Ablauf als Kind-Instanz ausführen ───────────────────────
+# -- subflow: run another flow as a child instance ----------------------------
 
 async def _instance_depth(db, inst: WorkflowInstance) -> int:
     depth, cur = 0, inst
@@ -742,10 +739,10 @@ async def _instance_depth(db, inst: WorkflowInstance) -> int:
 
 
 async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
-    """Startet die für den Slot aufgelöste Definition als Kind-Instanz und wartet auf sie.
+    """Start the definition resolved for the slot as a child instance and wait for it.
 
-    So ruft der Ticket-Lebenszyklus den eigenständigen „Abnahme"-Ablauf auf, ohne ihn zu
-    duplizieren — und ein angepasster Abnahme-Prozess wirkt überall, wo er aufgerufen wird.
+    This is how the ticket lifecycle calls the separate review flow without duplicating it,
+    and a customized review process takes effect everywhere it is called.
     """
     from .workflow_sets import resolve_definition
 
@@ -762,16 +759,16 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
         return Outcome(terminal=True, instance_status="failed",
                        error=f"subflow zu tief verschachtelt (> {MAX_SUBFLOW_DEPTH})")
 
-    # Auch ein Unterprozess folgt der Vorgangsart des Tickets, an dem er hängt.
+    # A subprocess follows the issue type of the ticket it hangs off as well.
     vorgangsart = None
     if inst.issue_id:
         from ..models.ticket import Issue
         issue = await db.get(Issue, inst.issue_id)
         vorgangsart = issue.type_id if issue else None
-    # Ein Slot wird je Projekt aufgelöst (eigene Anpassung schlägt Satz schlägt Standard);
-    # ein ausdrücklich benannter Ablauf ist genau dieser — auch ein eigener, projektloser.
-    # Ohne diesen zweiten Weg wäre „Anderer Ablauf" nur für die fünf gelieferten Slots zu
-    # gebrauchen, und die eigenen Abläufe ließen sich nicht ineinander stecken.
+    # A slot is resolved per project (own customization beats set beats default), an
+    # explicitly named flow is exactly that one, including a free-standing one. Without
+    # this second way "other flow" would only be usable for the five shipped slots, and
+    # custom flows could not be nested into each other.
     if def_id:
         definition = await db.get(WorkflowDefinition, int(def_id))
         wofuer = f"Ablauf #{def_id}"
@@ -818,7 +815,7 @@ async def _finish_subflow(parent_id: int, node_id: str, child_status: str,
         step.result = {**(step.result or {}), "child_status": child_status}
         step.error = error[:2000] if error else None
         step.completed_at = _now()
-        # Der Kind-Kontext (z. B. Merge-Ergebnis) fließt zurück nach oben.
+        # The child context (a merge result, for example) flows back up.
         inst.context = {**(inst.context or {}), **(child_context or {})}
         token = (await db.execute(
             select(WorkflowToken).where(
@@ -835,15 +832,16 @@ async def _finish_subflow(parent_id: int, node_id: str, child_status: str,
     await advance(parent_id)
 
 
-# ── agent_task: Brücke zur bestehenden Agent-Queue (Worker) ──────────────────
+# -- agent_task: bridge to the existing agent queue (worker) ------------------
 
 async def _resolve_agent_role(db, issue, cfg: dict) -> str:
-    """Rolle des Laufs. Symbolische Werte binden den Graphen an die Projekt-Einstellungen,
-    statt eine Besetzung fest einzubacken (`plan_agent`, `exec_agent`, `review_agent`,
-    `assigned`); alles andere gilt als konkreter Rollenname.
+    """Role of the run. Symbolic values bind the graph to the project settings instead of
+    baking in a fixed staffing (`plan_agent`, `exec_agent`, `review_agent`, `assigned`),
+    anything else counts as a concrete role name.
 
-    Entspricht `dispatcher._plan_role`/`_exec_role`: geplant wird immer vom Architekten
-    (auch bei PM-Zuweisung — der PM plant nie selbst), umgesetzt vom Ausführungs-Agenten.
+    Matches `dispatcher._plan_role` and `_exec_role`: planning is always done by the
+    architect (even when the PM was assigned, the PM never plans itself), execution by the
+    execution agent.
     """
     from ..models.project import Project
     role = str(cfg.get("agent_role") or "exec_agent")
@@ -857,18 +855,18 @@ async def _resolve_agent_role(db, issue, cfg: dict) -> str:
     exec_default = issue.exec_agent or (project.exec_agent if project else "") or "developer"
     if role == "assigned":
         return issue.assigned_agent or exec_default
-    # exec_agent: bei PM-Zuweisung bewusst NICHT der PM, sondern der Ausführungs-Agent.
+    # exec_agent: on a PM assignment deliberately NOT the PM but the execution agent.
     if issue.assigned_agent == "project_manager":
         return exec_default
     return issue.assigned_agent or exec_default
 
 
 async def _park_on_gate(db, inst, issue, node, token, verdict) -> Outcome:
-    """Lauf vertagen, weil ein Tor zu ist. Das Token bleibt auf dem Knoten stehen
-    (`waiting_for="gate"`), der Engine-Tick versucht es zyklisch erneut.
+    """Postpone a run because a gate is closed. The token stays on the node
+    (`waiting_for="gate"`), the engine tick retries it periodically.
 
-    Bei der Runaway-Bremse (`hold`) wird zusätzlich das Ticket angehalten — es geht erst
-    weiter, wenn ein Mensch eingreift (z. B. neue Plan-Freigabe setzt das Cap-Fenster neu).
+    With the runaway brake (`hold`) the ticket is held as well: it only moves on when a
+    person steps in (a fresh plan approval resets the cap window, for example).
     """
     from ..models.enums import TicketAgentStatus
 
@@ -898,17 +896,17 @@ async def _park_on_gate(db, inst, issue, node, token, verdict) -> Outcome:
     return Outcome(wait=True, waiting_for="gate")
 
 async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Outcome:
-    """Startet einen KI-Agenten-Lauf über die Redis-Queue und wartet asynchron auf das
-    Ergebnis (Token wartet, `_await_agent` schaltet weiter).
+    """Start an agent run through the queue and wait for the result asynchronously (the
+    token waits, `_await_agent` moves it on).
 
-    Vor dem Einreihen entscheidet `services/agent_gate` — Zeitfenster, Nutzer-Limit und
-    Runaway-Bremse gelten unabhängig davon, wie der Prozess gezeichnet ist.
+    Before queueing, `services/agent_gate` decides: time windows, per-user limit and the
+    runaway brake apply no matter how the process is drawn.
 
-    Voraussetzung (durch validate erzwungen): subject_kind=issue, issue_id gesetzt.
+    Precondition (enforced by validate): subject_kind=issue with issue_id set.
     """
     import uuid
 
-    # Idempotenz: läuft für diesen Knoten schon ein Agent → nicht doppelt einreihen.
+    # Idempotency: an agent is already running for this node, do not queue twice.
     existing = await _latest_step(db, inst.id, node["id"])
     if existing is not None and existing.status == SStatus.running:
         return Outcome(wait=True, waiting_for="agent")
@@ -933,7 +931,7 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
         ))
         return Outcome(terminal=True, instance_status="failed", error="Ticket nicht gefunden")
 
-    # ── Torwächter (Policy, nicht Graph) ────────────────────────────────────
+    # -- gatekeeper (policy, not graph) --------------------------------------
     from . import agent_gate
     verdict = await agent_gate.check(db, issue)
     if not verdict.ok:
@@ -946,8 +944,8 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
     outcomes_map = cfg.get("outcomes_map") or {}
     task_id = f"wf-{inst.id}-{token.id}-{node['id']}-{uuid.uuid4().hex[:8]}"
 
-    # Ein wartender Gate-Schritt desselben Knotens wird wiederverwendet, damit ein
-    # mehrfach vertagter Lauf keine Schritt-Historie aufbläht.
+    # A waiting gate step of the same node is reused so a run postponed several times
+    # does not bloat the step history.
     step = existing if (existing is not None and existing.status == SStatus.pending) else None
     if step is None:
         step = WorkflowStepRun(
@@ -958,21 +956,21 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
     step.status = SStatus.running
     step.token_id = token.id
     step.error = None
-    step.result = {"task_id": task_id}  # task_id für Reattach hinterlegt
+    step.result = {"task_id": task_id}  # task_id stored for reattaching
     await db.flush()
 
-    # Dieselbe Marke wie im Monitor/„Läuft gerade" und im Pro-Nutzer-Limit.
+    # The same mark the monitor and the per-user limit use.
     issue.agent_working = True
-    # Und der sichtbare Zustand: hier — beim tatsächlichen Einreihen — arbeitet der Agent
-    # wirklich. Der Graph setzt vorher nur „freigegeben", weil zwischen Freigabe und Start
-    # der Torwächter beliebig lange dazwischenstehen kann. Nur die Umsetzung; die Planung
-    # hat ihren eigenen Zustand, den `st_planning` schon gesetzt hat.
+    # And the visible state: here, at the actual queueing, the agent really works. The
+    # graph only sets "approved" before, because the gatekeeper may sit in between for any
+    # length of time. Execution only, planning has its own state that `st_planning` already
+    # set.
     if phase == "execution":
         from ..models.enums import TicketAgentStatus
         from .artifacts import set_ticket_status
-        # `hold`/`failed` gehören ausdrücklich dazu: läuft wieder ein Agent, ist der alte
-        # Grund überholt. Ohne das zeigte ABC-31 stundenlang „hold — merge", während der
-        # Entwickler längst wieder arbeitete — das Etikett log, nicht der Prozess.
+        # `hold` and `failed` belong in here explicitly: once an agent runs again, the
+        # old reason is obsolete. Without it ABC-31 showed "hold, merge" for hours while
+        # the developer had long been working again. The label lied, not the process.
         if issue.agent_status in (TicketAgentStatus.approved, TicketAgentStatus.plan_review,
                                   TicketAgentStatus.open, TicketAgentStatus.hold,
                                   TicketAgentStatus.failed, None):
@@ -997,21 +995,21 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
             db, inst.issue_id, f"🤖 Workflow startet KI-Agent „{role}“ für Schritt „{label}“",
             author_label="Workflow",
         )
-    # Ergebnis-Wächter erst NACH dem Commit starten: er liest Schritt und Token in
-    # einer EIGENEN Session — vor dem Commit sähe er sie gar nicht (und ein danach
-    # nachziehender Commit dieses Durchlaufs würde seine Änderungen überschreiben).
+    # Start the result watcher only AFTER the commit: it reads step and token in a session
+    # of its own and would not see them before the commit (and a commit of this pass coming
+    # later would overwrite its changes).
     spawn_after.append(_await_agent(inst.id, token.id, step.id, task_id,
                                     dict(outcomes_map), timeout))
     return Outcome(wait=True, waiting_for="agent")
 
 
 async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dict]:
-    """Wartet auf ein Worker-Ergebnis und benennt im Fehlerfall, WAS schiefging.
+    """Wait for a worker result and, on failure, name WHAT went wrong.
 
-    Ohne Ergebnis kommt ein Ersatz-Ergebnis zurück, das den Grund trägt („Lauf verschwunden"
-    vs. „Zeitgrenze") und für die Nachzügler-Abholung markiert ist (`verloren`). Vorher stand
-    an dieser Stelle „kein Ergebnis (Timeout)" — im Ticket las sich das als „fehlgeschlagen:
-    unbekannter Fehler", obwohl gar nichts fehlgeschlagen war.
+    Without a result a substitute result comes back carrying the reason ("run vanished"
+    against "time limit") and marked for the late pickup (`verloren`). This used to say
+    "no result (timeout)", which read in the ticket as "failed: unknown error" although
+    nothing had failed at all.
     """
     uhr = asyncio.get_running_loop().time
     start = uhr()
@@ -1036,11 +1034,12 @@ async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dic
 
 async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: str,
                         timeout: int, context_key: str, outcomes_map: dict) -> None:
-    """Wächter für asynchrone Auto-Aktionen (Merge & Co.): wartet auf das Worker-Ergebnis,
-    legt es unter `context.<context_key>` ab und schaltet über den passenden Ausgang weiter.
+    """Watcher for asynchronous auto actions (merge and friends): waits for the worker
+    result, stores it under `context.<context_key>` and continues through the matching
+    outlet.
 
-    Analog `_await_agent` — nur so bleibt die Engine während eines minutenlangen Merges
-    ansprechbar, statt Session und Advance-Claim zu blockieren.
+    Same shape as `_await_agent`. Only this keeps the engine responsive during a merge that
+    runs for minutes instead of blocking the session and the advance claim.
     """
     _WAECHTER.add(step_id)
     try:
@@ -1091,8 +1090,8 @@ async def _lookup_run_id(db, task_id: str) -> int | None:
 
 
 async def _stalled(db, issue_id: int, fingerprint: str | None) -> bool:
-    """Steckt der Agent fest? Wahr, wenn der Worktree seit dem VORHERIGEN Lauf unverändert
-    ist (Fingerprint-Vergleich) — 1:1 die Stall-Erkennung des früheren Dispatchers."""
+    """Is the agent stuck? True when the worktree is unchanged since the PREVIOUS run
+    (fingerprint comparison), the same stall detection the old dispatcher had."""
     if not fingerprint:
         return False
     from ..models.agents import Run
@@ -1105,10 +1104,11 @@ async def _stalled(db, issue_id: int, fingerprint: str | None) -> bool:
 
 
 def _agent_handle(edges: list[dict], node_id: str, status: str, outcomes_map: dict) -> str:
-    """Ausgang eines agent_task: explizite Abbildung → gleichnamiger Ausgang → Default.
+    """Outlet of an agent_task: explicit mapping, then an outlet of the same name, then
+    the default.
 
-    Der mittlere Schritt macht Graphen lesbar: wer eine Kante „loop_exhausted" zeichnet,
-    bekommt sie auch, ohne outcomes_map pflegen zu müssen.
+    The middle step is what makes graphs readable: draw an edge called "loop_exhausted" and
+    you get it, without maintaining an outcomes_map.
     """
     mapped = outcomes_map.get(status)
     if mapped:
@@ -1119,9 +1119,10 @@ def _agent_handle(edges: list[dict], node_id: str, status: str, outcomes_map: di
 
 
 async def _agent_note(db, issue_id: int, status: str, summary: str, stalled: bool) -> None:
-    """Kurze Spur jedes abgeschlossenen Laufs im Ticket-Verlauf (wer/was).
+    """A short trace of every finished run in the ticket history (who did what).
 
-    „blocked" schreibt der Worker bereits selbst (Rückfrage/Berechtigung) — hier nicht doppeln.
+    "blocked" is written by the worker itself (question, permission), so do not duplicate
+    it here.
     """
     from ..models.ticket import Comment
     note = None
@@ -1135,13 +1136,12 @@ async def _agent_note(db, issue_id: int, status: str, summary: str, stalled: boo
     elif status == "failed":
         note = f"❌ Fehlgeschlagen: {summary or 'unbekannter Fehler'}"
     if note:
-        # `kind` trennt Arbeitsstand von Pannenprotokoll. Der Ticket-Verlauf zeigt beides,
-        # der Prompt des nächsten Agenten nur den Arbeitsstand: eine Meldung über einen
-        # Worker-Neustart oder einen Deadlock ist nichts, woran er weiterarbeiten könnte —
-        # aber genau so hat er sie gelesen. Am 2026-08-07 setzte ein Agent daraufhin
-        # „claude: Antwort bei max_tokens abgeschnitten – max_tokens erhöhen" als Aufgabe
-        # um und schrieb dafür eine Eskalation in den Provider-Router; das Ticket ging über
-        # den Job-Fehler, um den es eigentlich ging.
+        # `kind` separates work state from incident log. The ticket history shows both,
+        # the prompt of the next agent only the work state: a message about a worker
+        # restart or a deadlock is nothing it could build on, but that is exactly how it
+        # read them. On 2026-08-07 an agent turned "claude: answer truncated at max_tokens,
+        # raise max_tokens" into its task and wrote an escalation into the provider router
+        # for it, while the ticket was about a failing job.
         art = "agent_fail" if status == "failed" else "agent"
         db.add(Comment(issue_id=issue_id, author_id=None, author_label="Agent",
                        body=note[:1500], kind=art))
@@ -1149,12 +1149,12 @@ async def _agent_note(db, issue_id: int, status: str, summary: str, stalled: boo
 
 async def _await_agent(instance_id: int, token_id: int, step_id: int, task_id: str,
                        outcomes_map: dict, timeout: int) -> None:
-    """Wartet auf das Agent-Ergebnis, markiert den Schritt done + decision (Outcome-Handle),
-    reaktiviert das Token und schaltet weiter. Der agent_task-Knoten schließt IMMER ab
-    (done) — der Agent-Ausgang bestimmt nur den Zweig.
+    """Wait for the agent result, mark the step done with its decision (outcome handle),
+    reactivate the token and continue. The agent_task node ALWAYS completes (done), the
+    agent outcome only picks the branch.
 
-    Das Ergebnis landet zusätzlich unter `context.agent`, damit Entscheidungs-Knoten darauf
-    prüfen können (Status, Zusammenfassung, Blocker-Art, Feststecker-Erkennung, Merge-Stand).
+    The result also lands under `context.agent` so decision nodes can check it (status,
+    summary, kind of blocker, stall detection, merge state).
     """
     _WAECHTER.add(step_id)
     try:
@@ -1180,8 +1180,8 @@ async def _await_agent_inner(instance_id: int, token_id: int, step_id: int, task
         step.status = SStatus.done
         step.decision = handle
         step.result = ersatz
-        # Ohne Ergebnis den GRUND hinschreiben, nicht bloß „Agent-Status: failed" — genau
-        # diese Zeile hat die Ursachensuche bei ABC-2/ABC-6 in die Irre geführt.
+        # Without a result write down the REASON, not just "agent status: failed". This
+        # very line sent the investigation of ABC-2 and ABC-6 down the wrong path.
         step.error = (None if status in ("done", "planned")
                       else f"Agent-Status: {status}" if result else ersatz["output"])
         step.completed_at = _now()
@@ -1199,8 +1199,8 @@ async def _await_agent_inner(instance_id: int, token_id: int, step_id: int, task
                     issue.agent_working = False
                     stalled = await _stalled(db, issue.id, (result or {}).get("worktree_fingerprint"))
                     if status == "planned":
-                        # Der Plan ist das Artefakt des Laufs, keine Prozess-Entscheidung —
-                        # er wird immer geschrieben, unabhängig vom gezeichneten Graphen.
+                        # The plan is the artifact of the run, not a process decision.
+                        # It is always written, no matter how the graph is drawn.
                         issue.plan = (result or {}).get("output", "")
                     if (result or {}).get("merge_status") == "conflict":
                         issue.merge_status = "conflict"
@@ -1220,17 +1220,17 @@ async def _await_agent_inner(instance_id: int, token_id: int, step_id: int, task
                 "merge_status": (result or {}).get("merge_status") or "",
                 "stalled": stalled,
                 "continuation": cont,
-                # Vorgekaute Werte für Entscheidungs-Knoten und Status-Vorlagen, damit
-                # Graphen ohne Textanalyse auskommen:
+                # Pre-chewed values for decision nodes and status templates so graphs
+                # get by without text analysis:
                 "has_subtickets": has_subtickets,
                 "hold_hint": "plan_split" if has_subtickets else "plan_review",
                 "stuck_reason": "stuck" if stalled else "cap",
                 "blocker_reason": {"permission": "permission", "review": "review"}.get(
                     blocker or "", "question"),
-                # Für den gemeinsamen Störungs-Knoten je Phase: welchen Zustand das Ticket
-                # annimmt und warum. Ein Fehlschlag ist „failed" (ohne Grund), alles andere
-                # ein „hold" mit passendem Grund — dieselben Anzeigen wie mit den früheren
-                # Einzelknoten, nur an einer Stelle bestimmt.
+                # For the shared failure node per phase: which state the ticket takes
+                # and why. A failure is "failed" (without a reason), everything else is a
+                # "hold" with a fitting reason. Same display as with the earlier separate
+                # nodes, just decided in one place.
                 "hold_status": "failed" if status == "failed" else "hold",
                 "hold_reason": (
                     "" if status == "failed"
@@ -1260,10 +1260,10 @@ async def start_workflow(
     parent_instance_id: int | None = None, parent_node_id: str | None = None,
     advance_now: bool = True,
 ) -> WorkflowInstance:
-    """Einziger Einstiegspunkt: legt Instanz + Start-Token an und schaltet einmal durch.
+    """The single entry point: creates instance and start token, then advances once.
 
-    Nutzt die übergebene Request-Session zum Anlegen; `advance` läuft danach in einer
-    eigenen Session. `inst` wird am Ende neu geladen.
+    Creation uses the request session that was passed in, `advance` afterwards runs in a
+    session of its own. `inst` is reloaded at the end.
     """
     if definition.current_version_id is None:
         raise ValueError("Workflow hat keine veröffentlichte Version")
@@ -1276,8 +1276,8 @@ async def start_workflow(
         raise ValueError("Graph hat keinen Start-Knoten")
 
     sk = subject_kind if isinstance(subject_kind, WorkflowSubjectKind) else WorkflowSubjectKind(subject_kind)
-    # Vorlagen aus einem Satz sind projektlos — die Instanz gehört trotzdem zum Projekt
-    # des Subjekts, sonst greifen Rechteprüfung, Live-Events und Zuständigen-Auflösung nicht.
+    # Templates from a set are project-less, but the instance still belongs to the project
+    # of its subject, otherwise permissions, live events and assignee resolution miss.
     project_id = definition.project_id
     if project_id is None and issue_id is not None:
         from ..models.ticket import Issue
@@ -1297,8 +1297,8 @@ async def start_workflow(
     db.add(inst)
     await db.flush()
     db.add(WorkflowToken(instance_id=inst.id, node_id=start["id"], state=TState.active))
-    # Der oberste Lauf eines Tickets ist sein Lebenszyklus — Ereignisse (Kommentar, Stopp)
-    # und die UI finden ihn über issues.workflow_instance_id. Kind-Läufe (subflow) nicht.
+    # The topmost run of a ticket is its lifecycle: events (comment, stop) and the UI find
+    # it through issues.workflow_instance_id. Child runs (subflow) do not count.
     if issue_id is not None and parent_instance_id is None:
         from ..models.ticket import Issue
         subj = await db.get(Issue, issue_id)
@@ -1307,8 +1307,8 @@ async def start_workflow(
     await db.commit()
     inst_id = inst.id
     if not advance_now:
-        # Instanz steht bereit, läuft aber noch nicht los — für den Umstieg von
-        # Bestandstickets, deren Token gezielt auf einen Warteknoten gesetzt wird.
+        # The instance is ready but does not start yet, for migrating existing tickets
+        # whose token is placed on a wait node on purpose.
         return inst
     await advance(inst_id)
     # Request-Session-Sicht auffrischen (advance hat in eigener Session committet)
@@ -1343,15 +1343,15 @@ async def resume_instance(instance_id: int) -> None:
 async def entscheide_genehmigung(db, inst: WorkflowInstance, decision: str, *,
                                  actor_id: int | None = None, reason: str | None = None,
                                  context: dict | None = None) -> bool:
-    """Den wartenden Genehmigungs-Schritt einer Instanz entscheiden — ohne HTTP.
+    """Decide the waiting approval step of an instance, without HTTP.
 
-    Für Bedienwege, die nicht durch die API kommen (Telegram-Karte, native Werkzeuge im
-    Worker). Liefert False, wenn gerade nichts zu entscheiden ist; der Aufrufer soll das
-    sagen können, statt Erfolg zu melden.
+    For paths that do not come through the API (a chat card, native tools in the worker).
+    Returns False when there is nothing to decide right now, so the caller can say that
+    instead of reporting success.
 
-    Committet NICHT und schaltet NICHT weiter: `advance` gehört in den Backend-Prozess,
-    und der Aufrufer muss vorher committen — sonst sähe die eigene Sitzung der Engine die
-    Entscheidung noch nicht.
+    It does NOT commit and does NOT advance: `advance` belongs in the backend process, and
+    the caller has to commit first, otherwise the engine's own session would not see the
+    decision yet.
     """
     if inst is None or inst.status not in (IStatus.running, IStatus.waiting):
         return False
@@ -1384,10 +1384,10 @@ async def entscheide_genehmigung(db, inst: WorkflowInstance, decision: str, *,
 
 
 async def advance(instance_id: int) -> None:
-    """Schaltet das aktive Token synchron weiter bis wait/end.
+    """Move the active token forward synchronously until it waits or ends.
 
-    Atomarer `advancing`-Claim gegen Doppel-Advance; die eigentliche Ausführung läuft
-    in einer eigenen Session (`_drive`). `advancing` wird garantiert zurückgesetzt.
+    An atomic `advancing` claim guards against a double advance, the actual execution runs
+    in its own session (`_drive`). `advancing` is reset in every case.
     """
     async with SessionLocal() as db:
         claimed = (
@@ -1404,12 +1404,12 @@ async def advance(instance_id: int) -> None:
         ).first()
         await db.commit()
     if claimed is None:
-        return  # anderer Advance läuft bereits ODER Instanz bereits terminal
+        return  # another advance is already running OR the instance is terminal
     try:
-        # Erneut fahren, solange wieder ein Token aktiv ist: ein Agenten- oder
-        # Aktions-Ergebnis kann eintreffen, WÄHREND dieser Durchlauf noch den Anspruch
-        # hält (schnelle Queue, wieder-angebundener Lauf). Ohne diese Schleife bliebe die
-        # Instanz bis zum nächsten 30-s-Tick stehen, obwohl alles bereit ist.
+        # Drive again while a token is active: an agent or action result can arrive WHILE
+        # this pass still holds the claim (fast queue, reattached run). Without this loop
+        # the instance would stand still until the next 30 second tick although everything
+        # is ready.
         for _ in range(MAX_DRIVE_ROUNDS):
             await _drive(instance_id)
             if not await _has_active_token(instance_id):
@@ -1458,8 +1458,8 @@ async def _drive(instance_id: int) -> None:
         version = await db.get(WorkflowVersion, inst.version_id)
         graph = version.graph or {} if version else {}
         edges = _edges(graph)
-        # Ergebnis-Wächter werden erst nach dem Commit gestartet — sonst könnten sie einen
-        # Schritt lesen wollen, den diese Session noch gar nicht festgeschrieben hat.
+        # Result watchers start only after the commit, otherwise they might read a step
+        # this session has not written yet.
         spawn_after: list = []
 
         steps_taken = 0
@@ -1483,18 +1483,17 @@ async def _drive(instance_id: int) -> None:
                 break
             ntype = node_type(node)
 
-            # Wiedereintritt: Ein Schritt, der fertig ist und eine Entscheidung trägt
-            # (Genehmigung, Agent-Ausgang, Ereignis, Unter-Prozess, asynchrone Aktion),
-            # bestimmt die Kante — der Knoten wird NICHT erneut ausgeführt. `routed_at`
-            # stempelt das ab; ohne diesen Stempel würde eine Rückkante auf denselben
-            # Knoten (Fortsetzungs-Schleife!) beim nächsten Durchlauf sofort wieder routen,
-            # statt neu auszuführen. Synchrone Aktionen tragen keine Entscheidung und
-            # laufen in einer Schleife bewusst erneut.
+            # Re-entry: a step that is finished and carries a decision (approval, agent
+            # outcome, event, subprocess, asynchronous action) determines the edge, the
+            # node is NOT executed again. `routed_at` stamps that; without the stamp a back
+            # edge onto the same node (continuation loop) would route again on the next
+            # pass instead of executing. Synchronous actions carry no decision and run
+            # again inside a loop on purpose.
             last = await _latest_step(db, inst.id, token.node_id)
             if (last is not None and last.status == SStatus.done and last.routed_at is None
                     and (last.decision or ntype in WAIT_NODES)):
-                # Ausgang laut Entscheidung, sonst Fallback auf „out" (der Editor zeichnet
-                # oft nur einen out-Ausgang).
+                # Outlet according to the decision, otherwise fall back to "out" (the
+                # editor often draws only an out outlet).
                 dec = last.decision or "out"
                 handle = dec if next_node(edges, token.node_id, dec) is not None else "out"
                 last.routed_at = _now()
@@ -1552,7 +1551,8 @@ async def _drive(instance_id: int) -> None:
 # ── Validierung ──────────────────────────────────────────────────────────────
 
 def validate_graph(subject_kind, graph: dict) -> list[str]:
-    """Prüft einen Graph. Gibt eine (evtl. leere) Liste deutscher Fehlermeldungen zurück."""
+    """Check a graph. Returns a list of error messages, possibly empty. The messages are
+    German because they are shown in the editor."""
     errors: list[str] = []
     nodes = graph.get("nodes")
     edges = graph.get("edges")
@@ -1608,9 +1608,8 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
             handles = _outgoing_handles(edges, nid)
             branch_handles = {b.get("handle") for b in (cfg.get("branches") or [])}
             default_h = cfg.get("default_handle", "default")
-            # Der Standard-Zweig MUSS einer der Zweige sein. Sonst zeigt der Knoten einen
-            # Ausgang, den die Konfiguration nicht kennt — beim nächsten Bearbeiten wäre er
-            # weg und die Kante hinge in der Luft.
+            # The default branch MUST be one of the branches. Otherwise the node shows an
+            # outlet the config does not know, which would be gone on the next edit and
             if cfg.get("branches") and default_h not in branch_handles:
                 errors.append(
                     f"Decision-Knoten '{nid}': Standard-Zweig '{default_h}' ist keiner der "
@@ -1683,10 +1682,10 @@ def _reachable(start_id, edges: list[dict]) -> set[str]:
 # ── Sicherheitsnetz-Loop (Crash-Recovery) ────────────────────────────────────
 
 async def _retry_gated() -> list[int]:
-    """Vertagte Agentenläufe (`waiting_for="gate"`) wieder scharf schalten.
+    """Arm postponed agent runs (`waiting_for="gate"`) again.
 
-    Das ersetzt den alten Dispatcher-Pickup: Tickets, die wegen Nacht-Fenster, Feierabend,
-    Runner-Limit oder Cap nicht starten durften, kommen hier zyklisch erneut ans Tor.
+    This replaces the old dispatcher pickup: tickets that could not start because of the
+    night window, after-hours, the runner limit or the cap come back to the gate here.
     """
     async with SessionLocal() as db:
         tokens = (await db.execute(
@@ -1711,17 +1710,17 @@ async def _retry_gated() -> list[int]:
 
 
 async def nachzuegler_einsammeln() -> None:
-    """Ergebnisse einsammeln, die NACH dem Aufgeben des Wächters doch noch eintreffen.
+    """Collect results that arrive AFTER the watcher gave up.
 
-    Der Wächter gibt nur auf, wenn ein Lauf nachweislich verschwunden ist — aber „weg" heißt
-    nicht „für immer weg": ein neu gestarteter Worker holt seinen Auftrag aus der
-    Verarbeitungsliste zurück und legt Stunden später doch ein Ergebnis ab. Ohne diesen
-    Einsammler wäre die Arbeit verloren: der Prozess stünde auf dem Störungs-Zweig, das
-    Ticket auf „fehlgeschlagen", während der Branch die fertige Arbeit trägt.
+    The watcher only gives up when a run has demonstrably vanished, but "gone" does not
+    mean "gone forever": a restarted worker pulls its job back from the processing list and
+    delivers a result hours later. Without this collector the work would be lost, with the
+    process sitting on the failure branch and the ticket on "failed" while the branch
+    carries the finished work.
 
-    Statt die Verbuchung zu kopieren, wird der Schritt wieder auf „läuft" gesetzt, das Token
-    auf seinen Knoten zurückgeholt und derselbe Wächter erneut angehängt — der findet das
-    Ergebnis sofort in Redis und schaltet weiter, als wäre nie etwas gewesen.
+    Instead of copying the bookkeeping, the step is set back to running, the token is
+    returned to its node and the same watcher is attached again. It finds the result in
+    Redis right away and continues as if nothing had happened.
     """
     wieder: list[tuple] = []
     async with SessionLocal() as db:
@@ -1739,7 +1738,7 @@ async def nachzuegler_einsammeln() -> None:
             task_id = res.get("task_id")
             if not task_id or not await peek_result(task_id):
                 continue
-            # Läuft für diese Instanz schon wieder etwas, gilt das Neue — nicht der Nachzügler.
+            # If something runs for this instance again, the new run wins, not the latecomer.
             laeuft = (await db.execute(
                 select(WorkflowStepRun.id).where(
                     WorkflowStepRun.instance_id == s.instance_id,
@@ -1758,8 +1757,8 @@ async def nachzuegler_einsammeln() -> None:
             if inst is None or node is None:
                 continue
             cfg = node_config(node)
-            # Den Umweg über den Störungs-Zweig zurückbauen: wartende Schritte verwerfen,
-            # den Agenten-Schritt wieder scharf machen.
+            # Undo the detour over the failure branch: drop waiting steps and arm the
+            # agent step again.
             for w in (await db.execute(
                     select(WorkflowStepRun).where(
                         WorkflowStepRun.instance_id == s.instance_id,
@@ -1802,18 +1801,18 @@ async def nachzuegler_einsammeln() -> None:
 
 
 async def tote_laeufe_schliessen() -> int:
-    """Läufe abschließen, hinter denen niemand mehr steht.
+    """Close runs nobody stands behind any more.
 
-    Ein Lauf endet normalerweise selbst — außer der Prozess, der ihn führt, stirbt an einer
-    Stelle, an der er nicht mehr schreiben kann (Lauf 753 am 2026-08-07: Deadlock beim
-    Schreiben der Schrittzeile, die Sitzung war danach unbrauchbar, also blieb die Zeile
-    für immer auf „läuft"). Die Aufräumung beim Worker-Start greift erst beim nächsten
-    Neustart — bis dahin zählt der Lauf als lebend und hält über die Board-Regel („wer
-    arbeitet, steht auf In Arbeit") ein Ticket in der Arbeit, das in Wahrheit wartet.
+    A run normally ends on its own, unless the process driving it dies where it can no
+    longer write (run 753 on 2026-08-07: a deadlock while writing the step row left the
+    session unusable, so the row stayed on running forever). The cleanup at worker start
+    only helps on the next restart, and until then the run counts as alive and keeps a
+    ticket in progress through the board rule ("whoever works, sits in In Progress") when
+    it is really waiting.
 
-    Geprüft wird das echte Lebenszeichen, nicht die Uhr: Puls, Warteschlange,
-    Verarbeitungsliste. Erst wenn keine dieser Quellen den Auftrag kennt UND die Gnadenfrist
-    abgelaufen ist, wird geschlossen — ein Agent darf Stunden brauchen.
+    What gets checked is the actual sign of life, not the clock: heartbeat, queue,
+    processing list. Only when none of those sources knows the job AND the grace period has
+    passed is it closed, because an agent may take hours.
     """
     import datetime as _dt
 
@@ -1843,54 +1842,54 @@ async def tote_laeufe_schliessen() -> int:
 
 
 async def _engine_tick() -> None:
-    # Zuerst die Toten schließen, dann abgleichen: sonst hält ein Lauf, der nur noch auf dem
-    # Papier läuft, sein Ticket über die Board-Regel in der Arbeit fest.
+    # Close the dead ones first, then reconcile: otherwise a run that only exists on paper
+    # keeps its ticket in progress through the board rule.
     try:
         await tote_laeufe_schliessen()
-    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+    except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Schließen toter Läufe fehlgeschlagen")
 
-    # Verlorene Wächter wieder anbinden. Ein Wächter lebt im Backend-Prozess; geht er
-    # verloren (Reload, Ausnahme, hängende Verbindung), wartet niemand mehr auf das
-    # Ergebnis — und das Ticket steht, ohne dass es jemandem auffällt.
+    # Reattach lost watchers. A watcher lives in the backend process, and when it is lost
+    # (reload, exception, hanging connection) nobody waits for the result any more, and the
+    # ticket stands still without anyone noticing.
     try:
         await recover_workflow_agents()
-    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+    except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Wiederanbinden der Wächter fehlgeschlagen")
 
-    # Artefakt-Zeilen angleichen: `agent_status` wird an vielen Stellen gesetzt (Endpunkte,
-    # Bot, PM-Chat, Worker) — der Abgleich holt das binnen eines Ticks nach, statt jede
-    # dieser Stellen einzeln pflegen zu müssen.
+    # Reconcile the artifact rows: `agent_status` is set in many places (endpoints, bot, PM
+    # chat, worker), and reconciling catches up within one tick instead of maintaining every
+    # one of those places separately.
     try:
         from .artifacts import reconcile
         async with SessionLocal() as db:
             await reconcile(db)
-    except Exception:  # noqa: BLE001 — der Abgleich darf den Tick nie blockieren
+    except Exception:  # noqa: BLE001, reconciling must never block the tick
         log.exception("Artefakt-Abgleich fehlgeschlagen")
 
-    # Abgelaufene Timer wecken, bevor die Nachzügler laufen: ein geweckter Lauf ist kein
-    # Nachzügler, und umgekehrt soll ein wartender Timer nicht als „hängt" gelten.
+    # Wake expired timers before the latecomers run: a woken run is not a latecomer, and a
+    # waiting timer should not count as stuck either.
     try:
         await faellige_timer()
-    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+    except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Wecken fälliger Timer fehlgeschlagen")
 
     try:
         await nachzuegler_einsammeln()
-    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+    except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Nachzügler-Abholung fehlgeschlagen")
 
-    # Tickets ohne Prozess-Instanz einsammeln. Das lief bisher NUR beim Backend-Start, und
-    # damit war ein Ticket, das zwischendurch verwaiste, bis zum nächsten Neustart tot —
-    # die unangenehmste Sorte Fehler, weil der Neustart ihn behebt und die Ursache verdeckt
-    # (ABC-32 am 2026-08-07: vom Assistenten zugewiesen, nie gestartet).
+    # Pick up tickets without a process instance. This used to run ONLY at backend start,
+    # so a ticket orphaned in between was dead until the next restart, the nastiest kind of
+    # bug because the restart fixes it and hides the cause (ABC-32 on 2026-08-07: assigned
+    # by the assistant, never started).
     try:
         from .lifecycle_flow import adopt_orphans
         async with SessionLocal() as db:
             n = await adopt_orphans(db)
         if n:
             log.info("Tick: %d verwaiste(s) Ticket(s) in den Lebenszyklus geholt", n)
-    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+    except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Einsammeln verwaister Tickets fehlgeschlagen")
 
     gated = await _retry_gated()
@@ -1916,17 +1915,17 @@ async def _engine_tick() -> None:
 
 
 async def recover_workflow_agents() -> None:
-    """Laufende agent_task- und Aktions-Schritte wieder an ihren Redis-Lauf anbinden.
+    """Reattach running agent_task and action steps to their run in Redis.
 
-    `_await_agent`/`_await_action` greifen ein bereits vorliegendes Ergebnis via wait_result
-    sofort ab, sonst warten sie weiter — sonst hinge ein Ticket nach einem simplen
-    Backend-Reload für immer im „läuft"-Zustand.
+    `_await_agent` and `_await_action` pick up an already present result through
+    wait_result, otherwise they keep waiting. Without this a ticket would hang in the
+    running state forever after a plain backend reload.
 
-    Läuft beim Start UND in jedem Tick. Nur beim Start reichte nicht: ein Wächter kann auch
-    im laufenden Betrieb verloren gehen — am 2026-08-07 hing einer in einer halb toten
-    Redis-Verbindung fest, das fertige Ergebnis für ABC-31 lag ab 19:54 unabgeholt in Redis,
-    und das Ticket stand eine Stunde still, ohne dass irgendetwas es bemerkte. Wer schon
-    einen Wächter hat, bekommt keinen zweiten (`_WAECHTER`).
+    Runs at start AND in every tick. At start alone was not enough: a watcher can get lost
+    during operation too. On 2026-08-07 one was stuck in a half dead Redis connection, the
+    finished result for ABC-31 sat unclaimed in Redis from 19:54 on, and the ticket stood
+    still for an hour without anything noticing. Whoever already has a watcher does not get
+    a second one (`_WAECHTER`).
     """
     async with SessionLocal() as db:
         rows = (
@@ -1940,7 +1939,7 @@ async def recover_workflow_agents() -> None:
         for s in rows:
             task_id = (s.result or {}).get("task_id")
             if not task_id or s.token_id is None or s.id in _WAECHTER:
-                continue      # es wartet schon einer — kein zweiter auf dasselbe Ergebnis
+                continue      # somebody waits already, no second one on the same result
             inst = await db.get(WorkflowInstance, s.instance_id)
             if inst is None or inst.status not in (IStatus.running, IStatus.waiting):
                 continue
@@ -1965,8 +1964,8 @@ async def recover_workflow_agents() -> None:
 
 
 async def run_workflow_engine() -> None:
-    """30s-Loop: findet hängengebliebene running-Instanzen mit aktivem Token und schaltet
-    sie weiter (Sicherheitsnetz nach Crash/Neustart; Normalbetrieb läuft synchron)."""
+    """30 second loop: finds stuck running instances with an active token and advances
+    them. A safety net after a crash or restart, normal operation runs synchronously."""
     log.info("workflow-engine gestartet (tick=%ss)", TICK_SECONDS)
     try:
         await recover_workflow_agents()
