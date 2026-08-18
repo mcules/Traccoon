@@ -35,15 +35,14 @@ export default function AssistantPolicies() {
       <div className="space-y-3">
       <div className="text-sm font-medium text-ink">📥 Eingangs-Regeln (Mail)</div>
       <p className="text-sm text-muted">
-        Regeln, die der Assistent gelernt hat. Passt eine Regel auf einen Eingang, kann er automatisch
-        (geschwärzt/ungeschwärzt) laufen und bekommt die gelernte Aktion mit. Priorität: Absender &gt; Domain &gt; Kategorie.
+        {tr("assistant_policies.einleitung")}
       </p>
       {err && <div className="rounded bg-red-500/10 px-3 py-2 text-sm text-red-400">{err}</div>}
 
       {isLoading && <div className="text-sm text-muted">{tr("assistant_policies.laedt")}</div>}
       {!isLoading && data.length === 0 && (
         <div className="rounded-lg border border-dashed border-line p-6 text-center text-sm text-muted">
-          Noch keine Regeln. Beim Freigeben eines Eingangs „Immer …" wählen — dann erscheint hier eine Regel.
+          {tr("assistant_policies.keine_regeln")}
         </div>
       )}
 
@@ -54,7 +53,7 @@ export default function AssistantPolicies() {
               <span className="rounded bg-surface px-1.5 text-xs text-muted">{KIND_LABEL[p.match_kind] || p.match_kind}</span>
               <span className="font-medium text-ink">{p.match_value}</span>
               <span className={`rounded px-1.5 text-xs ${p.auto_approve ? "bg-green-600/15 text-green-400" : "bg-surface text-muted"}`}>
-                {p.auto_approve ? "auto-freigabe" : "nur Vorgabe"}</span>
+                {tr(p.auto_approve ? "assistant_policies.auto_freigabe" : "assistant_policies.nur_vorgabe")}</span>
               <span className={`rounded px-1.5 text-xs ${p.redaction === "unredacted" ? "bg-amber-500/15 text-amber-400" : "bg-surface text-muted"}`}>
                 {tr(p.redaction === "unredacted" ? "assistant.ungeschwaerzt" : "assistant.geschwaerzt")}</span>
               <span className="ml-auto text-xs text-muted">{p.hit_count}×</span>
@@ -63,7 +62,7 @@ export default function AssistantPolicies() {
             <div className="mt-2 flex gap-2">
               <button onClick={() => save.mutate({ ...p, auto_approve: !p.auto_approve })}
                 className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
-                {p.auto_approve ? "Auto aus" : "Auto an"}</button>
+                {tr(p.auto_approve ? "assistant_policies.auto_aus" : "assistant_policies.auto_an")}</button>
               <button onClick={() => save.mutate({ ...p, redaction: p.redaction === "unredacted" ? "redacted" : "unredacted" })}
                 className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
                 {p.redaction === "unredacted" ? `→ ${tr("assistant.geschwaerzt")}` : `→ ${tr("assistant.ungeschwaerzt")}`}</button>
@@ -100,8 +99,7 @@ function ToolPermissions() {
     <div className="space-y-2">
       <div className="text-sm font-medium text-ink">🔐 Tool-Freigaben</div>
       <p className="text-sm text-muted">
-        Was der Assistent ohne Rückfrage darf. <code>allow</code> = immer erlaubt, <code>deny</code> = nie,
-        sonst fragt er nach (einmal/immer/nie). Glob wie <code>obsidian__*</code>.
+        {tr("assistant_policies.rechte_hinweis")}
       </p>
       <div className="space-y-1">
         {data.map((p) => (

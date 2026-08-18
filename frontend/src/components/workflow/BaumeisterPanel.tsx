@@ -88,7 +88,7 @@ export default function BaumeisterPanel({
         rows={4}
         placeholder={umbauen
           ? tr("baumeister.platzhalter_umbau")
-          : "Was soll der Ablauf tun? z. B. „jede Nacht die offenen Bestellungen holen und mir eine Zusammenfassung schicken“"}
+          : tr("baumeister.platzhalter")}
         className="w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
       />
 
@@ -121,8 +121,7 @@ export default function BaumeisterPanel({
       )}
       {fehler.length > 0 && (
         <div className="text-[11px] text-amber-300">
-          {fehler.length} Stelle{fehler.length === 1 ? "" : "n"} fehlen noch — sie stehen
-          unten bei den Validierungsfehlern.
+          {tr("baumeister.fehlende_stellen", { anzahl: fehler.length })}
         </div>
       )}
     </div>

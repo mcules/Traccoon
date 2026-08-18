@@ -107,7 +107,7 @@ export default function ActionParams({
   const auswahl = (f: FieldSpec): [string, string][] => {
     if (f.source === "agent_role") {
       // Je Rolle EIN Eintrag, mit Herkunft der Definition, die tatsächlich greift.
-      return agentOptions(agents, { empty: f.required ? "— wählen —" : "— keiner —" });
+      return agentOptions(agents, { empty: tr(f.required ? "action_params.waehlen" : "action_params.keiner") });
     }
     if (f.source === "board_status") {
       return [["", "—"], ...(meta?.statuses || []).map((s) => [s.name, s.name] as [string, string])];
@@ -116,21 +116,21 @@ export default function ActionParams({
       const felder = (typen?.[0]?.fields || []).filter((x) => x.enabled);
       return felder.length
         ? felder.map((x) => [x.key, `${x.label}${x.multi ? " (mehrere)" : ""}`] as [string, string])
-        : [["", "— keine Felder gepflegt —"]];
+        : [["", tr("action_params.keine_felder")]];
     }
     if (f.source === "artifact_status") {
       const st = typen?.[0]?.statuses || [];
       return st.length
         ? st.map((s) => [s.key, s.label] as [string, string])
-        : [["", "— kein Artefakt an diesem Ablauf —"]];
+        : [["", tr("action_params.kein_artefakt")]];
     }
     if (f.source === "mcp_tool") {
       const liste = werkzeuge || [];
       return liste.length
-        ? [["", "— wählen —"] as [string, string],
+        ? [["", tr("action_params.waehlen")] as [string, string],
            ...liste.map((w) => [w.name,
              `${w.name}${w.pflicht?.length ? ` (${w.pflicht.join(", ")})` : ""}`] as [string, string])]
-        : [["", "— keine MCP-Server eingetragen —"]];
+        : [["", tr("action_params.keine_mcp_server")]];
     }
     if (f.source === "member") {
       return [["", "— niemand —"],
@@ -142,7 +142,7 @@ export default function ActionParams({
       const liste = personen || [];
       return [["", "— Betreiber —"],
               ...liste.map((u) => [String(u.id),
-                `${u.display_name}${u.kanaele.length ? "" : " (kein Weg hinterlegt)"}`] as
+                `${u.display_name}${u.kanaele.length ? "" : ` (${tr("action_params.kein_weg")})`}`] as
                 [string, string])];
     }
     return f.options || [];

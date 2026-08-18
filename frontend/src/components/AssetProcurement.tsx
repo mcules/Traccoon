@@ -73,7 +73,7 @@ export default function AssetProcurement({
 
       {naechsterOffen ? (
         <div className="rounded border border-line bg-surface p-2">
-          <div className="mb-1 text-xs text-muted">Nächster Schritt: <b className="text-ink">{naechsterOffen.name}</b></div>
+          <div className="mb-1 text-xs text-muted">{tr("asset_procurement.naechster_schritt")}: <b className="text-ink">{naechsterOffen.name}</b></div>
           <div className="flex flex-wrap items-center gap-2">
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr("asset_procurement.notiz_optional")}
               className="flex-1 rounded border border-line bg-card px-2 py-1 text-xs" />

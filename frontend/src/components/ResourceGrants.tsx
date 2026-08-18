@@ -63,8 +63,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
   return (
     <div className="max-w-3xl">
       <p className="mb-3 text-xs text-muted">
-        Feingranularer Zugriff auf einen einzelnen Ort oder ein Exemplar — ohne dass der Nutzer
-        volles Projekt-Mitglied wird (z. B. „Wart“ nur fürs Wasserhäuschen samt Masten).
+        {tr("resource_grants.einleitung")}
       </p>
       <table className="w-full border-collapse text-sm">
         <thead>
@@ -122,7 +121,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
         <label className="text-xs text-muted">Objekt
           <select value={rid} onChange={(e) => setRid(e.target.value)}
             className="mt-1 block w-48 rounded border border-line bg-surface px-2 py-1">
-            <option value="">— auswählen —</option>
+            <option value="">{tr("resource_grants.auswaehlen")}</option>
             {rtype === "location"
               ? locations.data?.map((l) => <option key={l.id} value={l.id}>{l.full_path}</option>)
               : assets.data?.map((a) => <option key={a.id} value={a.id}>{assetLabel(a)}</option>)}
@@ -137,7 +136,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
         {rtype === "location" && (
           <label className="flex items-center gap-1 text-xs text-muted">
             <input type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} />
-            gilt auch für Kind-Orte
+            {tr("resource_grants.auch_kind_orte")}
           </label>
         )}
         <button onClick={() => uid && rid && add.mutate()} className="rounded bg-brand px-3 py-1.5 text-white">

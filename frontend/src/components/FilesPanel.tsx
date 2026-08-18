@@ -140,7 +140,7 @@ export default function FilesPanel({ project }: { project: Project }) {
   });
 
   if (status.isError) {
-    const m = status.error instanceof ApiError ? status.error.message : "Repo nicht verfügbar";
+    const m = status.error instanceof ApiError ? status.error.message : tr("files_panel.repo_nicht_verfuegbar");
     return <div className="rounded border border-line bg-card p-4 text-sm text-muted">{m}</div>;
   }
   const st = status.data;
@@ -214,7 +214,7 @@ export default function FilesPanel({ project }: { project: Project }) {
                 ) : file.isLoading ? (
                   <div className="p-3 text-sm text-muted">{tr("files_panel.laedt")}</div>
                 ) : file.isError ? (
-                  <div className="p-3 text-sm text-red-400">{file.error instanceof ApiError ? file.error.message : "Datei nicht lesbar"}</div>
+                  <div className="p-3 text-sm text-red-400">{file.error instanceof ApiError ? file.error.message : tr("files_panel.datei_nicht_lesbar")}</div>
                 ) : isMarkdown(sel) && preview ? (
                   <div className="h-full overflow-auto p-4"><Markdown text={value} /></div>
                 ) : (

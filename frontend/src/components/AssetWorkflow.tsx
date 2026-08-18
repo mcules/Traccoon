@@ -9,7 +9,7 @@ import WorkflowInstanceView from "./workflow/WorkflowInstanceView";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 
 const STATUS_LABEL: Record<string, string> = {
-  running: "läuft", waiting: "wartet", completed: "abgeschlossen",
+  running: "instanz.running", waiting: "instanz.waiting", completed: "instanz.completed",
   failed: "fehlgeschlagen", cancelled: "abgebrochen",
 };
 const STATUS_COLOR: Record<string, string> = {
@@ -57,7 +57,7 @@ export default function AssetWorkflow({
   if (error) {
     return (
       <div className="text-xs text-red-400">
-        {error instanceof ApiError ? error.message : "Workflow konnte nicht geladen werden."}
+        {error instanceof ApiError ? error.message : tr("asset_workflow.nicht_ladbar")}
       </div>
     );
   }
@@ -67,7 +67,7 @@ export default function AssetWorkflow({
     if (projectId == null) {
       return (
         <div className="rounded border border-line bg-surface p-2 text-xs text-muted">
-          Vorrat/Lager ohne Projekt — kein Workflow.
+          {tr("asset_workflow.ohne_projekt")}
         </div>
       );
     }
@@ -78,7 +78,7 @@ export default function AssetWorkflow({
           disabled={start.isPending}
           className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50"
         >
-          🧭 Beschaffung als Workflow starten
+          🧭 {tr("asset_workflow.beschaffung_starten")}
         </button>
         {start.error && (
           <div className="text-xs text-red-400">
@@ -86,7 +86,7 @@ export default function AssetWorkflow({
           </div>
         )}
         <p className="text-xs text-muted">
-          Startet den projektweiten Beschaffungsprozess für dieses Exemplar
+          {tr("asset_workflow.startet_prozess")}
           {assetLabel ? ` (${assetLabel})` : ""}.
         </p>
       </div>

@@ -52,7 +52,7 @@ export default function TranslationsPanel() {
     mutationFn: (texte: Record<string, string>) =>
       api.post(`/i18n/${locale}/import`, { texte, ersetzen: false }),
     onSuccess: (r: any) => {
-      setErr(""); setOk(`${r.uebernommen} Texte übernommen.`);
+      setErr(""); setOk(tr("translations_panel.texte_uebernommen", { anzahl: r.uebernommen }));
       qc.invalidateQueries({ queryKey: ["i18n", locale] });
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Import fehlgeschlagen"),
@@ -97,7 +97,7 @@ export default function TranslationsPanel() {
       const daten = JSON.parse(await datei.text());
       if (daten && typeof daten === "object") einspielen.mutate(daten);
     } catch {
-      setErr("Die Datei ist kein gültiges JSON.");
+      setErr(tr("translations_panel.kein_json"));
     }
   };
 
@@ -106,9 +106,7 @@ export default function TranslationsPanel() {
   return (
     <div className="space-y-3 rounded-lg border border-line bg-card p-4">
       <p className="text-sm text-muted">
-        <b>{tr("translations_panel.uebersetzungen")}</b> — die Schlüssel kommen aus dem deutschen Katalog, der mit der
-        Anwendung ausgeliefert wird. Was du hier einträgst, gilt sofort für alle; ein leeres
-        Feld nimmt deine Änderung zurück und stellt den ausgelieferten Text wieder her.
+        {tr("translations_panel.einleitung")}
       </p>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -123,10 +121,10 @@ export default function TranslationsPanel() {
           placeholder={tr("translations_panel.suchen_schluessel_oder_deutscher_text")} className={`${inp} min-w-56 flex-1`} />
         <label className="flex items-center gap-1.5 text-xs text-muted">
           <input type="checkbox" checked={nurOffene} onChange={(e) => setNurOffene(e.target.checked)} />
-          nur offene
+          {tr("translations_panel.nur_offene")}
         </label>
         <span className="text-xs text-muted">
-          {offen} von {Object.keys(quelle).length} offen
+          {tr("translations_panel.offen_von", { offen, gesamt: Object.keys(quelle).length })}
         </span>
         <div className="flex-1" />
         <button onClick={exportieren}

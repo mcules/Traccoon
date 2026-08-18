@@ -39,31 +39,32 @@ type NodeId =
 type Visual = "done" | "active" | "pending";
 type Kind = "normal" | "done" | "failed" | "hold";
 
+// Schlüssel statt Texte, weil die Tabelle beim Laden des Moduls entsteht.
 const NODE_LABEL: Record<NodeId, string> = {
-  open: "Offen",
-  planning: "Planung",
-  plan_review: "Plan-Freigabe",
-  approved: "Freigegeben",
-  in_progress: "In Arbeit",
-  to_test: "Zur Abnahme",
-  done: "Fertig",
-  hold: "Blockiert",
-  failed: "Fehlgeschlagen",
+  open: "lifecycle.open",
+  planning: "lifecycle.planning",
+  plan_review: "lifecycle.plan_review",
+  approved: "lifecycle.approved",
+  in_progress: "lifecycle.in_progress",
+  to_test: "lifecycle.to_test",
+  done: "lifecycle.done",
+  hold: "lifecycle.hold",
+  failed: "lifecycle.failed",
 };
 
-/** hold_reason → deutscher Klartext (am Blockiert-Knoten angezeigt). */
-const HOLD_REASON_DE: Record<string, string> = {
-  plan_review: "Plan-Freigabe",
-  plan_split: "Aufteilung",
-  question: "Rückfrage",
-  merge: "Merge-Konflikt",
-  verify: "Verifikation",
-  review: "Review-Befunde",
-  incomplete: "Unvollständig",
-  stuck: "Feststecker",
-  cap: "Limit erreicht",
-  interrupted: "Unterbrochen",
-  permission: "Berechtigung",
+/** hold_reason as plain text, shown on the blocked node. */
+const HOLD_REASON: Record<string, string> = {
+  plan_review: "lifecycle.grund_plan_review",
+  plan_split: "lifecycle.grund_plan_split",
+  question: "lifecycle.grund_question",
+  merge: "lifecycle.grund_merge",
+  verify: "lifecycle.grund_verify",
+  review: "lifecycle.grund_review",
+  incomplete: "lifecycle.grund_incomplete",
+  stuck: "lifecycle.grund_stuck",
+  cap: "lifecycle.grund_cap",
+  interrupted: "lifecycle.grund_interrupted",
+  permission: "lifecycle.grund_permission",
 };
 
 // Hauptfluss (links → rechts) — Reihenfolge bestimmt „erledigte Vorgänger".
@@ -171,10 +172,10 @@ const EDGES: EdgeDef[] = [
   { from: "in_progress", to: "to_test", sh: "s-right", th: "t-left" },
   { from: "to_test", to: "done", sh: "s-right", th: "t-left" },
   // Nebenkanten
-  { from: "plan_review", to: "planning", sh: "s-bottom", th: "t-bottom", label: "abgelehnt", tone: "muted" },
-  { from: "in_progress", to: "hold", sh: "s-bottom", th: "t-top", label: "blockiert/Rückfrage", tone: "hold" },
-  { from: "in_progress", to: "failed", sh: "s-bottom", th: "t-top", label: "fehlgeschlagen", tone: "fail" },
-  { from: "hold", to: "in_progress", sh: "s-top", th: "t-bottom", label: "fortgesetzt", tone: "muted" },
+  { from: "plan_review", to: "planning", sh: "s-bottom", th: "t-bottom", label: "lifecycle.kante_abgelehnt", tone: "muted" },
+  { from: "in_progress", to: "hold", sh: "s-bottom", th: "t-top", label: "lifecycle.kante_blockiert", tone: "hold" },
+  { from: "in_progress", to: "failed", sh: "s-bottom", th: "t-top", label: "lifecycle.kante_fehlgeschlagen", tone: "fail" },
+  { from: "hold", to: "in_progress", sh: "s-top", th: "t-bottom", label: "lifecycle.kante_fortgesetzt", tone: "muted" },
 ];
 
 const TONE_COLOR: Record<string, string> = {
@@ -198,7 +199,7 @@ export default function LifecycleView({
     const visuals = computeVisuals(agentStatus);
     const holdSub =
       agentStatus === "hold" && holdReason
-        ? `Grund: ${HOLD_REASON_DE[holdReason] || holdReason}`
+        ? tr("lifecycle.grund", { grund: HOLD_REASON[holdReason] ? tr(HOLD_REASON[holdReason]) : holdReason })
         : undefined;
 
     const nodes: Node<LifecycleNodeData>[] = (Object.keys(NODE_LABEL) as NodeId[]).map((id) => ({
@@ -206,7 +207,7 @@ export default function LifecycleView({
       type: "lifecycle",
       position: POS[id],
       data: {
-        label: NODE_LABEL[id],
+        label: tr(NODE_LABEL[id]),
         visual: visuals[id],
         kind: KIND[id],
         working: agentWorking && visuals[id] === "active",
@@ -227,7 +228,7 @@ export default function LifecycleView({
         target: e.to,
         sourceHandle: e.sh,
         targetHandle: e.th,
-        label: e.label,
+        label: e.label ? tr(e.label) : e.label,
         animated: active && !e.tone,
         style: { stroke: color || "rgb(72 80 92)", strokeWidth: active ? 1.6 : 1 },
         labelStyle: { fill: "rgb(139 148 158)", fontSize: 9 },

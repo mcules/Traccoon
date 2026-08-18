@@ -88,7 +88,7 @@ export default function McpPanel() {
                   className="w-44 rounded border border-line bg-surface px-2 py-1 text-sm" />
                 <input value={v.label} onChange={(e) => upd(form, setForm, i, { label: e.target.value })} placeholder={tr("mcp_panel.label")}
                   className="flex-1 rounded border border-line bg-surface px-2 py-1 text-sm" />
-                <label className="flex items-center gap-1 text-xs text-muted"><input type="checkbox" checked={v.secret} onChange={(e) => upd(form, setForm, i, { secret: e.target.checked })} />geheim</label>
+                <label className="flex items-center gap-1 text-xs text-muted"><input type="checkbox" checked={v.secret} onChange={(e) => upd(form, setForm, i, { secret: e.target.checked })} />{tr("mcp_panel.geheim")}</label>
                 <label className="flex items-center gap-1 text-xs text-muted"><input type="checkbox" checked={v.required} onChange={(e) => upd(form, setForm, i, { required: e.target.checked })} />{tr("mcp_panel.pflicht")}</label>
                 <button onClick={() => setForm({ ...form, variables: form.variables.filter((_, j) => j !== i) })} className="text-muted hover:text-red-400">✕</button>
               </div>

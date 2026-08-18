@@ -54,9 +54,7 @@ export default function ProjectFields({ project }: { project: Project }) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Ein Artefakt bekommt seine Bedeutung durch seine Felder. Ticket und Hardware bringen
-        feste Felder mit — hier ergänzt du eigene, die <b>nur in diesem Projekt</b> gelten.
-        Sie erscheinen sofort in der Ticket- bzw. Hardware-Ansicht.
+        {tr("project_fields.einleitung")}
       </p>
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
 
@@ -100,7 +98,7 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
 
       {fest.length > 0 && (
         <div className="mb-3 text-xs text-muted">
-          Gilt überall: {fest.map((f) => f.label).join(" · ")}
+          {tr("project_fields.gilt_ueberall")}: {fest.map((f) => f.label).join(" · ")}
           <span className="ml-1 text-[11px]">{tr("project_fields.hier_nicht_aenderbar")}</span>
         </div>
       )}
@@ -134,7 +132,7 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
                   onChange={(e) => aendern.mutate({ id: f.id, enabled: e.target.checked })} />
                 aktiv
               </label>
-              <button onClick={() => confirm(`Feld „${f.label}“ löschen?`) && loeschen.mutate(f.id)}
+              <button onClick={() => confirm(tr("project_fields.feld_loeschen_frage", { feld: f.label })) && loeschen.mutate(f.id)}
                 className="rounded border border-line px-1.5 py-0.5 text-xs hover:border-red-400">✕</button>
             </div>
             {f.kind === "select" && <Werteliste feld={f} onFail={onFail} onOk={onOk} />}
@@ -194,7 +192,7 @@ function Werteliste({ feld, onFail, onOk }: {
             o.enabled ? "bg-brand/15 text-ink" : "bg-surface text-muted line-through"}`}>
           {o.label || o.value}
           <button onClick={() => aendern.mutate({ id: o.id, enabled: !o.enabled })}
-            title={o.enabled ? "Nicht mehr anbieten (bleibt an vorhandenen Tickets)" : "Wieder anbieten"}
+            title={tr(o.enabled ? "project_fields.nicht_mehr_anbieten" : "artifact_types_panel.wieder_anbieten")}
             className="text-muted hover:text-ink">{o.enabled ? "○" : "●"}</button>
           <button onClick={() => loeschen.mutate(o.id)} title={tr("project_fields.loeschen")}
             className="text-muted hover:text-red-300">✕</button>

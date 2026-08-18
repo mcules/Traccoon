@@ -48,9 +48,7 @@ export default function MessreihenPanel() {
   return (
     <div className="space-y-3 rounded-lg border border-line bg-card p-4">
       <p className="text-sm text-muted">
-        <b>{tr("messreihen_panel.messreihen")}</b> — was Abläufe an Zahlen mitschreiben (Aktion <code>{tr("messreihen_panel.messwert")}</code>).
-        Aus dem Verlauf entsteht die Prognose: wieviel sich pro Tag ändert, wann der Zielwert
-        erreicht ist, und ob rechtzeitig gewarnt wurde.
+        {tr("messreihen_panel.einleitung")}
       </p>
 
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
@@ -66,8 +64,7 @@ export default function MessreihenPanel() {
         </div>
       ) : (
         <div className="text-sm text-muted">
-          Noch keine Messreihe. Sie entsteht beim ersten Wert — setz in einem Ablauf die
-          Aktion <b>{tr("messreihen_panel.messwert")}</b> ein.
+          {tr("messreihen_panel.keine_reihe")}
         </div>
       )}
     </div>
@@ -115,7 +112,7 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
         )}
         {reihe.warned_at && (
           <span className="text-amber-300">
-            gewarnt am {new Date(reihe.warned_at).toLocaleDateString()}
+            {tr("messreihen_panel.gewarnt_am", { datum: new Date(reihe.warned_at).toLocaleDateString() })}
           </span>
         )}
       </div>
@@ -216,7 +213,7 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
             ))}
             {!punkte.length && !isFetching && (
               <tr><td colSpan={4} className="px-2 py-2 text-muted">
-                In diesem Zeitraum liegt kein Wert.
+                {tr("messreihen_panel.kein_wert_im_zeitraum")}
               </td></tr>
             )}
           </tbody>
@@ -224,11 +221,11 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-muted">{punkte.length} Werte im Zeitraum</span>
+        <span className="text-[11px] text-muted">{tr("messreihen_panel.werte_im_zeitraum", { anzahl: punkte.length })}</span>
         <div className="flex-1" />
         <button onClick={loeschen}
           className="rounded border border-line px-2 py-1 text-[11px] text-red-400 hover:bg-card">
-          Ganze Reihe löschen
+          {tr("messreihen_panel.ganze_reihe_loeschen")}
         </button>
       </div>
     </div>

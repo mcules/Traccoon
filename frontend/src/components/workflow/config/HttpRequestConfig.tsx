@@ -47,8 +47,8 @@ export default function HttpRequestConfig({
         </datalist>
         <span className="mt-1 block text-[11px] text-muted">
           {gewaehlt
-            ? `${gewaehlt.base_url} · ${gewaehlt.auth_type === "none" ? "ohne Anmeldung" : gewaehlt.auth_type}`
-            : "Ziele werden in Administration, Einstellungen oder den Projekt-Einstellungen gepflegt."}
+            ? `${gewaehlt.base_url} · ${gewaehlt.auth_type === "none" ? tr("http_request.ohne_anmeldung") : gewaehlt.auth_type}`
+            : tr("http_request.ziele_pflegen")}
         </span>
       </label>
 
@@ -78,7 +78,7 @@ export default function HttpRequestConfig({
       </div>
 
       <label className="block text-xs font-medium text-muted">
-        Body (JSON oder Text — bei GET/HEAD/DELETE ignoriert)
+        {tr("http_request.body")}
         <textarea
           rows={4}
           value={typeof params.body === "string" ? params.body : JSON.stringify(params.body ?? "", null, 2)}
@@ -97,7 +97,7 @@ export default function HttpRequestConfig({
 
       <div className="grid grid-cols-2 gap-2">
         <label className="block text-xs font-medium text-muted">
-          Ergebnis im Kontext unter
+          {tr("http_request.ergebnis_unter")}
           <input value={params.context_key || ""} onChange={(e) => set("context_key", e.target.value)}
             placeholder="http" className={`mt-1 ${inp}`} />
         </label>

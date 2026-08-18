@@ -51,7 +51,7 @@ function uhrzeit(iso?: string | null): string {
 
 export default function Schrittprotokoll({
   schritte,
-  leerText = "Noch kein Schritt gelaufen.",
+  leerText = tr("instanz.kein_schritt"),
   maxHoehe = "18rem",
 }: {
   schritte: Schritt[];

@@ -62,7 +62,7 @@ export default function ProbelaufPanel(
       <p className="text-[11px]">
         {hatProbe
           ? tr("probelauf.hinweis_mit_nutzlast")
-          : "Ohne Beispiel-Nutzlast am Start-Knoten läuft die Probe mit leerem Kontext — Weichen greifen dann kaum."}
+          : tr("probelauf.ohne_beispiel")}
       </p>
       {fehler && (
         <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-red-300">{fehler}</div>
@@ -78,7 +78,7 @@ export default function ProbelaufPanel(
               className="text-muted hover:text-ink" title={tr("probelauf_panel.schliessen")}>✕</button>
           </div>
           <Schrittprotokoll schritte={schritte} maxHoehe="18rem"
-            leerText="Kein Schritt gelaufen — der Ablauf ging direkt zum Ende." />
+            leerText={tr("probelauf.kein_schritt")} />
         </div>
       )}
     </div>

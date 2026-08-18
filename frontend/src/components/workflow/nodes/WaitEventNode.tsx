@@ -1,4 +1,5 @@
 import { BaseNode, type FlowNodeProps, type SourceHandleDef } from "./shared";
+import { tr } from "../../../i18n";
 
 const EVENT_LABEL: Record<string, string> = {
   comment: "Kommentar",
@@ -19,7 +20,7 @@ export default function WaitEventNode({ id, data, selected }: FlowNodeProps) {
   return (
     <BaseNode
       nodeId={id}
-      title={data.config.label || "Warten auf Ereignis"}
+      title={data.config.label || tr("wait_event_node.titel")}
       icon="⏳"
       accent="border-t-cyan-500"
       selected={selected}

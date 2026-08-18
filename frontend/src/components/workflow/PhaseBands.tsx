@@ -1,4 +1,5 @@
 import { ViewportPortal } from "@xyflow/react";
+import { tr } from "../../i18n";
 import type { FlowNode } from "./nodes/shared";
 
 /** Phasen eines Ablaufs — Reihenfolge bestimmt die Farbe, nicht die Anordnung. */
@@ -8,7 +9,7 @@ export const PHASES: [string, string, string][] = [
   ["umsetzung", "Umsetzung", "34 197 94"],
   ["aufteilung", "Aufteilung", "236 72 153"],
   ["abnahme", "Abnahme", "234 179 8"],
-  ["stoerung", "Störungen", "239 68 68"],
+  ["stoerung", "phase.stoerungen", "239 68 68"],
 ];
 
 /**
@@ -77,7 +78,7 @@ export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
               color: `rgb(${f.rgb})`, opacity: 0.85,
             }}
           >
-            {f.label}
+            {tr(f.label)}
           </span>}
         </div>
       ))}

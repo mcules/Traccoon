@@ -61,9 +61,7 @@ export default function WorkflowList({ project }: { project: Project }) {
   return (
     <div>
       <p className="mb-3 text-sm text-muted">
-        Zusätzliche Prozesse dieses Projekts — etwa für Webhooks oder geplante Jobs. Ein Prozess
-        wird als <b>{tr("workflow_list.entwurf")}</b> bearbeitet und muss <b>veröffentlicht</b> werden, bevor Vorgänge
-        daraus starten können.
+        {tr("workflow_list.einleitung")}
       </p>
 
       <div className="mb-4 space-y-2">
@@ -84,7 +82,7 @@ export default function WorkflowList({ project }: { project: Project }) {
             ) : (
               <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-yellow-400">{tr("workflow_list.entwurf")}</span>
             )}
-            {!d.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">aus</span>}
+            {!d.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.aus")}</span>}
             <div className="flex-1" />
             <button
               title={d.enabled ? "Deaktivieren" : "Aktivieren"}

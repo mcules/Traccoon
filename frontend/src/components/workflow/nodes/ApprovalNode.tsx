@@ -1,10 +1,11 @@
 import { BaseNode, type FlowNodeProps } from "./shared";
+import { tr } from "../../../i18n";
 import { assigneeLabel } from "../assignee";
 
 const GATE_LABEL: Record<string, string> = {
   ai_assign: "KI-Recht (ai_assign)",
   role: "Rolle",
-  none: "ohne Gate",
+  none: "approval.ohne_gate",
 };
 
 export default function ApprovalNode({ id, data, selected }: FlowNodeProps) {
@@ -24,7 +25,7 @@ export default function ApprovalNode({ id, data, selected }: FlowNodeProps) {
       ]}
     >
       <div>Freigabe: {assigneeLabel(c.approvers)}</div>
-      {c.gate && <div>{GATE_LABEL[c.gate] || c.gate}</div>}
+      {c.gate && <div>{GATE_LABEL[c.gate] ? tr(GATE_LABEL[c.gate]) : c.gate}</div>}
     </BaseNode>
   );
 }

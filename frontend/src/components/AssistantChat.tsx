@@ -37,15 +37,14 @@ export default function AssistantChat() {
   return (
     <div className="flex h-[calc(100vh-16rem)] flex-col">
       <p className="mb-2 text-sm text-muted">
-        Sag dem Assistenten, was er tun soll — er bedient Traccoon (in deinen Rechten) und deine
-        Dienste. Bei heiklen Aktionen fragt er nach (hier oder per Telegram).
+        {tr("assistant_chat.einleitung")}
       </p>
       {err && <div className="mb-2 rounded bg-red-500/10 px-3 py-2 text-sm text-red-400">{err}</div>}
 
       <div className="flex-1 space-y-3 overflow-y-auto rounded-lg border border-line bg-surface p-3">
         {data.length === 0 && (
           <div className="p-6 text-center text-sm text-muted">
-            Noch nichts. Probier: „Welche Projekte hab ich?" oder „Kosten von TRA-23?"
+            {tr("assistant_chat.leer")}
           </div>
         )}
         {data.map((m) => (
@@ -59,7 +58,7 @@ export default function AssistantChat() {
               <div className="max-w-[85%] rounded-lg rounded-bl-sm border border-line bg-card px-3 py-2 text-sm text-ink">
                 {m.status === "awaiting" ? (
                   <div className="space-y-2">
-                    <div className="text-amber-400">🔐 Freigabe nötig für <code>{m.pending_tool}</code></div>
+                    <div className="text-amber-400">🔐 {tr("assistant_chat.freigabe_noetig")} <code>{m.pending_tool}</code></div>
                     <div className="flex gap-1">
                       {(["once", "always", "never"] as const).map((d) => (
                         <button key={d} onClick={() => decide.mutate({ id: m.id, decision: d })}
@@ -69,11 +68,11 @@ export default function AssistantChat() {
                     </div>
                   </div>
                 ) : ["new", "approved", "running"].includes(m.status) ? (
-                  <span className="text-muted">🔄 denkt nach…</span>
+                  <span className="text-muted">🔄 {tr("assistant_chat.denkt_nach")}</span>
                 ) : m.error ? (
                   <span className="text-red-400 whitespace-pre-wrap">{m.error}</span>
                 ) : (
-                  <Markdown text={m.result || "(keine Antwort)"} />
+                  <Markdown text={m.result || tr("assistant_chat.keine_antwort")} />
                 )}
               </div>
             </div>

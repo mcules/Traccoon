@@ -41,7 +41,7 @@ export default function TimerConfig({
       </div>
 
       <label className="block text-xs font-medium text-muted">
-        …oder bis zu einem Zeitpunkt
+        {tr("timer.bis_zeitpunkt")}
         <input
           value={(config.bis as string) || ""}
           onChange={(e) => set({ bis: e.target.value.trim() })}
@@ -49,8 +49,7 @@ export default function TimerConfig({
           className={`mt-1 font-mono ${inp}`}
         />
         <span className="mt-1 block text-[11px] text-muted">
-          Vorlagen sind erlaubt. Ein Zeitpunkt, der schon vorbei ist, heißt „jetzt" —
-          nicht „nie". Länger als 90 Tage wird nicht gewartet.
+          {tr("timer.hinweis")}
         </span>
       </label>
     </div>

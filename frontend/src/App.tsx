@@ -56,7 +56,7 @@ export default function App() {
         <Route path="/projects/:key/tickets/:ticketKey" element={<TicketView />} />
         <Route path="/projects/:key" element={<ProjectView />} />
         <Route path="/buero" element={
-          <Suspense fallback={<div className="p-4 text-sm text-muted">Büro lädt…</div>}>
+          <Suspense fallback={<div className="p-4 text-sm text-muted">{tr("common.laedt")}</div>}>
             <Office />
           </Suspense>
         } />
