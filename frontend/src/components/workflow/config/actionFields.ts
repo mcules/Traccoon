@@ -110,6 +110,31 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     ],
   },
 
+  messwert: {
+    summary: "Schreibt eine Zahl in eine Messreihe und liest ab, wohin sie läuft.",
+    fields: [
+      { key: "reihe", label: "Reihe", type: "text", required: true,
+        placeholder: "akku.shelter",
+        hint: "Schlüssel der Reihe — gleicher Schlüssel = gleiche Reihe." },
+      { key: "wert", label: "Wert", type: "text", required: true,
+        placeholder: "{{ position.attributes.batteryLevel }}" },
+      { key: "einheit", label: "Einheit", type: "text", placeholder: "%" },
+      { key: "name", label: "Anzeigename", type: "text", placeholder: "Akku Shelter" },
+      { key: "min", label: "Kleinster gültiger Wert", type: "number",
+        hint: "Geräte melden Unsinn, wenn sie etwas nicht wissen — solche Werte gehören "
+            + "nicht in die Reihe (der Tracker schickt z. B. 127 % für „unbekannt“)." },
+      { key: "max", label: "Größter gültiger Wert", type: "number" },
+      { key: "ziel", label: "Zielwert", type: "number",
+        hint: "Wert, auf den die Reihe zuläuft — 0 heißt „leer“." },
+      { key: "vorwarn_tage", label: "Vorwarnung (Tage)", type: "number",
+        hint: "Wie früh gewarnt werden soll. 0 schaltet die Warnung ab; gewarnt wird "
+            + "einmal je Auffüllung, nicht bei jedem Wert." },
+      { key: "fenster_tage", label: "Trendfenster (Tage)", type: "number",
+        hint: "Wie weit zurück für die Gerade gelesen wird (Standard 30)." },
+    ],
+    outcomes: "Kontext danach: messreihe.wert, .pro_tag, .rest_tage, .leer_am, .guete, .warnen",
+  },
+
   webhook: {
     summary: "Ruft eine freie URL auf. Für wiederkehrende Gegenstellen besser ein Ziel anlegen.",
     fields: [

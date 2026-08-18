@@ -683,6 +683,84 @@ async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
                                                                 "status_code", "ok")}}
 
 
+async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Einen Zahlenwert mitschreiben — und ablesen, wohin die Reihe läuft.
+
+    Ein Ablauf sah bisher nur den Augenblick: „Akku 25 %" wurde zu einer Nachricht und war
+    weg. Erst die Reihe der letzten Wochen beantwortet die Frage, die man wirklich hat —
+    wie lange hält das noch, und wann muss ich handeln?
+
+    Parameter:
+      reihe          Schlüssel der Reihe (z. B. `akku.shelter`)
+      wert           die Zahl; `{{ … }}` erlaubt, Kommas und Prozentzeichen werden geduldet
+      name/einheit   nur beim Anlegen der Reihe nötig
+      min/max        Gültigkeitsbereich; Werte außerhalb werden NICHT festgehalten
+      ziel           Wert, auf den die Reihe zuläuft (Default 0 — leer)
+      vorwarn_tage   wie früh gewarnt werden soll (Default 7); 0 schaltet die Warnung ab
+      fenster_tage   wie weit für den Trend zurückgesehen wird (Default 30)
+
+    Im Kontext steht danach `messreihe.*` — Wert, Verbrauch pro Tag, Resttage, Datum des
+    Nullpunkts, Güte der Gerade und `warnen`. Damit entscheidet die nächste Weiche im
+    Ablauf, ob jemand etwas davon erfahren soll.
+    """
+    from . import metrics
+
+    key = str(_interp(params.get("reihe") or params.get("series") or "", ctx)).strip()
+    if not key:
+        raise ValueError("messwert: keine Reihe angegeben")
+    roh = _interp(params.get("wert", params.get("value")), ctx)
+    if isinstance(roh, str):
+        roh = roh.strip().replace("%", "").replace(",", ".")
+    try:
+        wert = float(roh)
+    except (TypeError, ValueError):
+        raise ValueError(f"messwert: '{roh}' ist keine Zahl")
+
+    # Geräte melden Unsinn, wenn sie etwas nicht wissen: der Tracker schickt `batteryLevel:
+    # 127`, sobald der Ladestand unbekannt ist. Ein einziger solcher Punkt verbiegt die
+    # Gerade so, dass aus „in zwei Wochen leer" ein „steigt leicht an" wird — deshalb geht
+    # ein Wert außerhalb der Grenzen gar nicht erst in die Reihe.
+    unten = params.get("min", params.get("minimum"))
+    oben = params.get("max", params.get("maximum"))
+    ausserhalb = ((unten not in (None, "") and wert < float(unten))
+                  or (oben not in (None, "") and wert > float(oben)))
+    if ausserhalb:
+        # `wert` bleibt der letzte *glaubwürdige* Stand aus der Reihe, der Rohwert wandert
+        # nach `roh`. Sonst schreibt der nächste Knoten den Unsinn in die Nachricht — der
+        # Tracker meldete bei Alarmen „231 %", und genau das stand dann im Telegram.
+        from . import metrics
+        vorhanden = await metrics.reihe(db, await _besitzer(db, inst), key)
+        key_ctx = str(params.get("context_key") or "messreihe")
+        vorher = ctx.get(key_ctx) if isinstance(ctx.get(key_ctx), dict) else {}
+        inst.context = {**ctx, key_ctx: {
+            **vorher, "reihe": key, "ignoriert": True, "warnen": False,
+            "wert": vorhanden.last_value if vorhanden else None,
+            "einheit": vorhanden.unit if vorhanden else "",
+            "roh": wert}}
+        return {"action": "messwert", "reihe": key, "wert": wert, "ignoriert": True,
+                "letzter_guter": vorhanden.last_value if vorhanden else None,
+                "grund": f"außerhalb {unten}…{oben}"}
+
+    ziel = float(params.get("ziel", params.get("target", 0)) or 0)
+    vorwarn = float(params.get("vorwarn_tage", params.get("warn_days", 7)) or 0)
+    fenster = int(params.get("fenster_tage", params.get("window_days", metrics.FENSTER_TAGE)) or
+                  metrics.FENSTER_TAGE)
+
+    owner = await _besitzer(db, inst)
+    reihe, _punkt = await metrics.erfassen(
+        db, owner, key, wert,
+        name=str(_interp(params.get("name") or "", ctx)),
+        einheit=str(params.get("einheit") or params.get("unit") or ""),
+        kontext={"instanz": inst.id, "definition": inst.definition_id})
+    stand = await metrics.trend(db, reihe, ziel=ziel, fenster_tage=fenster)
+    warnen = metrics.vorwarnen(reihe, stand["rest_tage"], vorwarn) if vorwarn > 0 else False
+    stand = {**stand, "reihe": key, "ziel": ziel, "vorwarn_tage": vorwarn, "warnen": warnen}
+    key_ctx = str(params.get("context_key") or "messreihe")
+    inst.context = {**ctx, key_ctx: stand}
+    return {"action": "messwert", "reihe": key, "wert": wert,
+            "pro_tag": stand["pro_tag"], "rest_tage": stand["rest_tage"], "warnen": warnen}
+
+
 async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     cfg = _config(node)
     action, params = _normalize_action(cfg)
@@ -762,6 +840,9 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     from .mail_actions import HANDLER as MAIL_HANDLER
     if action in MAIL_HANDLER:
         return await MAIL_HANDLER[action](db, inst, params, ctx)
+
+    if action == "messwert":
+        return await _messwert(db, inst, params, ctx)
 
     if action == "notify":
         target = await _resolve_target(db, inst, params.get("to") or {})

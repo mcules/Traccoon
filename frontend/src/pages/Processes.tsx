@@ -7,6 +7,7 @@ import {
 } from "../api";
 import { usePageChrome } from "../pageChrome";
 import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
+import MessreihenPanel from "../components/workflow/MessreihenPanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 
 /**
@@ -21,10 +22,10 @@ import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
  * sind neben dem Assistenten und den Projekten ein tragender Teil von Traccoon und keine
  * Nebeneinstellung.
  */
-type Tab = "eigene" | "standard" | "betrieb" | "ausloeser";
+type Tab = "eigene" | "standard" | "betrieb" | "ausloeser" | "messreihen";
 const TABS: [Tab, string][] = [
   ["eigene", "Eigene"], ["standard", "Standard-Satz"], ["betrieb", "Betrieb"],
-  ["ausloeser", "Auslöser"],
+  ["ausloeser", "Auslöser"], ["messreihen", "Messreihen"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -34,11 +35,13 @@ export default function Processes() {
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.get<User>("/auth/me") });
   usePageChrome("Prozesse", TABS.map(([key, label]) => ({
     key, label, to: `/processes/${key}`,
-    icon: { eigene: "✍️", standard: "🔀", betrieb: "📡", ausloeser: "⚡" }[key],
+    icon: { eigene: "✍️", standard: "🔀", betrieb: "📡", ausloeser: "⚡",
+            messreihen: "📈" }[key],
   })));
   return (
     <div>
       {tab === "eigene" && <OwnWorkflowsPanel />}
+      {tab === "messreihen" && <MessreihenPanel />}
       {tab === "standard" && <StandardSatz />}
       {tab === "betrieb" && <Betrieb />}
       {tab === "ausloeser" && <Ausloeser />}

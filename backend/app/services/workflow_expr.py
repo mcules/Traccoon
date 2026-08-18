@@ -132,6 +132,8 @@ FILTER = {
     "plus": (lambda w, f="0": _zahl(w) + _zahl(f), "Addieren — plus:1"),
     "minus": (lambda w, f="0": _zahl(w) - _zahl(f), "Subtrahieren — minus:1"),
     "rund": (_f_rund, "Runden — rund:1 (Nachkommastellen)"),
+    # „verliert -1,95 % pro Tag" liest sich falsch: das Vorzeichen steckt schon im Verb.
+    "betrag": (lambda w: abs(_zahl(w)), "Vorzeichen weglassen"),
     # Listen
     "anzahl": (_f_anzahl, "Wie viele Einträge (bzw. Zeichen)"),
     "erstes": (lambda w: w[0] if isinstance(w, (list, tuple)) and w else "", "Erster Eintrag"),

@@ -11,7 +11,7 @@ from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
     admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, deployments,
     destinations, files, hardware, invitations,
-    issues, lifecycle, mail, me, notifications, ops, permissions, plugins, processes,
+    issues, lifecycle, mail, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
     projects, repo, office,
     runs, secrets, skills, testenv, users, workflows, ws,
 )
@@ -374,6 +374,9 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_default VARCHAR(20) "
                 "DEFAULT 'telegram' NOT NULL",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email VARCHAR(255)",
+                # Messreihen (create_all legt die Tabellen an; der Index nicht).
+                "CREATE INDEX IF NOT EXISTS ix_metric_points_series_ts "
+                "ON metric_points (series_id, ts DESC)",
             ):
                 if not await _fehlt_noch(conn, _ddl):
                     continue
@@ -457,6 +460,7 @@ api.include_router(workflows.router)
 api.include_router(processes.router)
 api.include_router(ops.router)
 api.include_router(destinations.router)
+api.include_router(metrics_api.router)
 api.include_router(artifacts_api.router)
 api.include_router(mail.router)
 api.include_router(secrets.router)

@@ -102,6 +102,15 @@ AKTIONEN: dict[str, list[dict]] = {
         _f("created_ticket.key", "text", "Kennung des angelegten Tickets"),
     ],
     "set_field": [_f("fields.<schlüssel>", "text", "Gesetzte Feldwerte des Artefakts")],
+    "messwert": [
+        _f("messreihe.wert", "zahl", "Der eben festgehaltene Wert"),
+        _f("messreihe.pro_tag", "zahl", "Änderung pro Tag (negativ = fällt)"),
+        _f("messreihe.rest_tage", "zahl", "Tage bis zum Zielwert (leer, wenn unklar)"),
+        _f("messreihe.leer_am", "text", "Datum, an dem der Zielwert erreicht wird"),
+        _f("messreihe.guete", "zahl", "Wie gut die Gerade passt (0–1)"),
+        _f("messreihe.punkte", "zahl", "Wieviele Messpunkte im Fenster liegen"),
+        _f("messreihe.warnen", "ja/nein", "Vorwarnzeit erreicht — jetzt Bescheid geben"),
+    ],
     "tool_call": [
         _f("tool.ok", "ja/nein", "Werkzeug-Aufruf war erfolgreich"),
         _f("tool.text", "text", "Antwort des Werkzeugs im Klartext"),
