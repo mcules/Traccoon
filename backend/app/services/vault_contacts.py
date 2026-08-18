@@ -1,17 +1,17 @@
-"""Bekannte Adressen aus dem Obsidian-Vault in die DB spiegeln.
+"""Mirror known addresses from the Obsidian vault into the database.
 
-Die Kontakte des Hauses liegen im Vault (`03 Bereiche/Personen`, `…/Kontakte`, `…/Firmen`),
-nicht mehr in Nextcloud. Für die Spam-Erkennung ist das die Freispruch-Liste: wer im Vault
-steht, ist kein Fremder.
+The contacts of the house lie in the vault (`03 Bereiche/Personen`, `…/Kontakte`,
+`…/Firmen`), no longer in Nextcloud. For the spam detection that is the acquittal list:
+whoever stands in the vault is not a stranger.
 
-Der Vault wird **nicht pro Mail** gelesen. Er kommt über Syncthing und ist damit
-gelegentlich halb geschrieben oder kurz weg; eine Mail-Beurteilung, die daran hängt, würde
-genau dann falsch entscheiden. Stattdessen periodischer Abgleich in `assistant_contacts`,
-und die Beurteilung schlägt im Index nach.
+The vault is **not read per mail**. It comes over Syncthing and is therefore occasionally
+half written or briefly gone; a mail assessment depending on it would decide wrongly exactly
+then. Instead there is a periodic reconciliation into `assistant_contacts`, and the
+assessment looks up in the index.
 
-Frontmatter wird von Hand gelesen statt mit einem YAML-Werkzeug: gebraucht werden ein paar
-Adressfelder, die Notizen sind teils handgeschrieben und nicht immer gültiges YAML, und ein
-Parser, der an einer krummen Zeile die ganze Datei verwirft, verlöre echte Kontakte.
+The frontmatter is read by hand instead of with a YAML tool: what is needed is a couple of
+address fields, the notes are partly handwritten and not always valid YAML, and a parser
+that discards the whole file on one crooked line would lose real contacts.
 """
 from __future__ import annotations
 
@@ -28,9 +28,9 @@ from ..models.assistant import AssistantContact
 log = logging.getLogger("traccoon.spam")
 
 VAULT_ROOT = os.getenv("VAULT_PATH", "/vault")
-# Ordner mit Personen/Firmen. Bewusst eine feste Liste: der übrige Vault enthält Adressen
-# aus Rechnungen, Fehlermeldungen und Zwischenablagen — die gehören nicht auf eine
-# Freispruch-Liste.
+# Folders with people and companies. Deliberately a fixed list: the rest of the vault
+# contains addresses from invoices, error messages and clipboards, and those do not belong
+# on an acquittal list.
 KONTAKT_ORDNER = (
     "03 Bereiche/Personen",
     "03 Bereiche/Kontakte",
@@ -38,16 +38,16 @@ KONTAKT_ORDNER = (
 )
 
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]{2,}")
-# Frontmatter-Schlüssel, die eine Adresse tragen: email, email_privat, email_afu,
-# email_arbeit, mail, E-Mail …
+# Frontmatter keys that carry an address: email, email_privat, email_afu, email_arbeit,
+# mail, E-Mail …
 _MAIL_KEY_RE = re.compile(r"^\s*(-\s*)?(e-?mail|mail)[a-z_]*\s*:", re.IGNORECASE)
-# Adressen aus Beispielen/Vorlagen, die im Vault herumliegen.
+# Addresses from examples and templates lying around in the vault.
 _IGNORIEREN = re.compile(
     r"(^|@)(example\.(com|org|net)|test\.|localhost|domain\.tld|deine?-?domain)", re.IGNORECASE)
 
 
 def _frontmatter_und_body(text: str) -> tuple[list[str], str]:
-    """Notiz → (Frontmatter-Zeilen, Rest). Ohne Frontmatter: ([], ganzer Text)."""
+    """Note to (frontmatter lines, rest). Without frontmatter: ([], the whole text)."""
     if not text.startswith("---"):
         return [], text
     zeilen = text.splitlines()
@@ -58,11 +58,11 @@ def _frontmatter_und_body(text: str) -> tuple[list[str], str]:
 
 
 def adressen_aus_notiz(text: str) -> list[tuple[str, str]]:
-    """[(adresse, herkunft)] — herkunft ist 'frontmatter' oder 'body'.
+    """[(address, origin)]; origin is 'frontmatter' or 'body'.
 
-    Frontmatter-Adressen sind ausgewiesene Kontaktdaten und taugen als Freispruch. Adressen
-    im Fließtext sind schwächer: dort steht auch mal die Adresse eines Dritten, über den
-    geschrieben wird. Beide werden gespeichert, aber unterschiedlich gewichtet.
+    Frontmatter addresses are declared contact data and are good for an acquittal. Addresses
+    in the running text are weaker: the address of a third party who is being written about
+    stands there sometimes. Both are stored but weighted differently.
     """
     fm, body = _frontmatter_und_body(text)
     out: list[tuple[str, str]] = []
@@ -73,7 +73,7 @@ def adressen_aus_notiz(text: str) -> list[tuple[str, str]]:
             for m in _EMAIL_RE.finditer(zeile):
                 out.append((m.group(0).lower(), "frontmatter"))
             continue
-        # Fortsetzungszeilen einer Liste (`  - adresse@…`) gehören noch zum Adressfeld.
+        # Continuation lines of a list (`  - address@…`) still belong to the address field.
         if in_mail_block and re.match(r"^\s+-\s", zeile):
             for m in _EMAIL_RE.finditer(zeile):
                 out.append((m.group(0).lower(), "frontmatter"))
@@ -82,7 +82,7 @@ def adressen_aus_notiz(text: str) -> list[tuple[str, str]]:
             in_mail_block = False
     for m in _EMAIL_RE.finditer(body):
         out.append((m.group(0).lower(), "body"))
-    # Frontmatter gewinnt, wenn dieselbe Adresse in beiden auftaucht.
+    # The frontmatter wins when the same address turns up in both.
     beste: dict[str, str] = {}
     for adresse, herkunft in out:
         if _IGNORIEREN.search(adresse):
@@ -98,11 +98,11 @@ def _titel(pfad: Path) -> str:
 
 async def sync_contacts(db: AsyncSession, owner_id: int | None,
                         vault_root: str | None = None) -> tuple[int, int]:
-    """Vault → `assistant_contacts`. (angelegt/aktualisiert, gelöscht). Committet selbst.
+    """Vault to `assistant_contacts`. (created/updated, deleted). Commits itself.
 
-    Der Abgleich ist ein Spiegel: was im Vault verschwindet, verschwindet auch hier. Damit
-    ein nicht gemounteter oder gerade leerer Vault nicht die ganze Freispruch-Liste
-    abräumt, bricht die Funktion ab, wenn sie *gar keine* Adresse findet.
+    The reconciliation is a mirror: what disappears in the vault disappears here as well. So
+    that a vault that is not mounted or momentarily empty does not clear the whole acquittal
+    list, the function aborts when it finds *no* address at all.
     """
     root = Path(vault_root or VAULT_ROOT)
     if not root.is_dir():
@@ -131,9 +131,9 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
         log.warning("Vault-Abgleich fand keine einzige Adresse — Bestand bleibt unangetastet")
         return 0, 0
 
-    # Nur der Vault-Anteil wird gespiegelt: Adressen aus dem Gesendet-Ordner
-    # (`source_kind='sent'`) stehen in derselben Tabelle, haben aber eine andere Quelle —
-    # sie dürfen von diesem Abgleich weder aktualisiert noch abgeräumt werden.
+    # Only the vault part is mirrored: addresses from the sent folder (`source_kind='sent'`)
+    # stand in the same table but have a different source, so they must be neither updated
+    # nor cleared away by this reconciliation.
     bestand = {
         row.email: row for row in (await db.execute(select(AssistantContact).where(
             AssistantContact.owner_user_id == owner_id,
@@ -151,7 +151,7 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
         elif (row.name, row.source_path, row.source_kind) != (name[:300], pfad[:500], herkunft):
             row.name, row.source_path, row.source_kind = name[:300], pfad[:500], herkunft
             geaendert += 1
-    for row in bestand.values():   # im Vault nicht mehr vorhanden
+    for row in bestand.values():   # no longer present in the vault
         await db.delete(row)
     entfernt = len(bestand)
     await db.commit()
@@ -165,10 +165,10 @@ _TITEL_RE = re.compile(r"^\s*(herr|frau|dr\.?|prof\.?|dipl\.?-?\w*|mr\.?|mrs\.?|
 
 
 def _namensform(name: str) -> str:
-    """Anzeigename auf eine vergleichbare Form bringen (Anrede/Titel weg, Kleinschreibung).
+    """Bring a display name into a comparable form (salutation and title away, lower case).
 
-    Bewusst ohne Umlaut-Faltung: „Müller" und „Mueller" sind verschiedene Schreibweisen
-    desselben Menschen, aber auch das Muster eines Nachbaus — hier lieber nicht gleichsetzen.
+    Deliberately without folding umlauts: "Müller" and "Mueller" are different spellings of
+    the same person, but also the pattern of an imitation, so better not to equate them here.
     """
     name = (name or "").strip().strip("\"'")
     while True:
@@ -185,13 +185,13 @@ def _namensform(name: str) -> str:
 
 
 async def bekannte_domains(db: AsyncSession, owner_id: int | None) -> frozenset[str]:
-    """Domains, mit denen ich tatsächlich zu tun habe.
+    """Domains I actually have to do with.
 
-    Sie machen aus einer fremden Marke im Absender ein Signal: steht `sparkasse.de` in
-    meinen Kontakten, ist `sparkasse.de.sicherheit.top` ein Nachbau — ohne den Bestand
-    wäre das nur eine beliebige Domain. Nur Frontmatter-Adressen, denn Fließtext trägt
-    auch die Domains Dritter. Adressen, denen ich selbst geschrieben habe, zählen ebenso:
-    wer eine Antwort von mir bekommen hat, ist so bekannt wie ein Vault-Eintrag.
+    They turn a foreign brand in the sender into a signal: if `sparkasse.de` stands in my
+    contacts, then `sparkasse.de.sicherheit.top` is an imitation; without the stock it would
+    only be an arbitrary domain. Only frontmatter addresses, because running text carries the
+    domains of third parties as well. Addresses I have written to myself count too: whoever
+    got an answer from me is as known as a vault entry.
     """
     rows = (await db.execute(select(AssistantContact.domain).where(
         AssistantContact.owner_user_id == owner_id,
@@ -201,15 +201,15 @@ async def bekannte_domains(db: AsyncSession, owner_id: int | None) -> frozenset[
 
 async def namens_kollision(db: AsyncSession, owner_id: int | None, anzeigename: str,
                            sender_email: str) -> str:
-    """Der Anzeigename ist ein bekannter Kontakt — die Adresse aber nicht seine. → Name.
+    """The display name is a known contact but the address is not theirs. Returns the name.
 
-    Das ist die Chef-Masche (BEC): kein Link, kein Anhang, keine Fälschung im technischen
-    Sinn. Der Absender legt sich schlicht den Namen eines Bekannten zu und schreibt von
-    einer eigenen Adresse aus. Technisch ist daran nichts auszusetzen — nur der
-    Kontaktbestand verrät es, und deshalb kann diese Prüfung nur hier stehen.
+    That is the boss scam (BEC): no link, no attachment, no forgery in the technical sense.
+    The sender simply takes on the name of an acquaintance and writes from an address of
+    their own. Technically there is nothing wrong with it; only the contact stock gives it
+    away, and that is why this check can only stand here.
 
-    Verlangt mindestens zwei Namensteile: „Info" oder „Support" sind keine Personen, und
-    ein einteiliger Name träfe ständig zufällig zu.
+    Requires at least two name parts: "info" or "support" are not people, and a single part
+    name would match by chance constantly.
     """
     form = _namensform(anzeigename)
     if not form or len(form.split()) < 2:
@@ -226,10 +226,10 @@ async def namens_kollision(db: AsyncSession, owner_id: int | None, anzeigename: 
 
 async def kontakt_treffer(db: AsyncSession, owner_id: int | None,
                           sender_email: str, sender_domain: str) -> str:
-    """'frontmatter' | 'body' | 'domain' | '' — wie gut der Absender bekannt ist.
+    """'frontmatter' | 'body' | 'domain' | '': how well the sender is known.
 
-    Die Domain zählt nur bei eigenen/firmeneigenen Domains; bei Freemailern sagt sie
-    nichts (an gmx.de hängt jeder), deshalb prüft der Aufrufer das vorher.
+    The domain only counts with own or company domains; with freemailers it says nothing
+    (everybody hangs off gmx.de), which is why the caller checks that beforehand.
     """
     if sender_email:
         row = (await db.execute(select(AssistantContact).where(
