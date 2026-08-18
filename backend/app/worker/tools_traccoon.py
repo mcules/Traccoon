@@ -285,7 +285,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
 
     Bis hierher konnte ein Agent einen Workflow überhaupt nicht anstoßen: Job und Webhook
     können es, das Tool fehlte. Zugriff wie in api/workflows.py: projektlose Prozesse für
-    jeden angemeldeten Nutzer, projektgebundene ab Mitgliedschaft (member).
+    user, project bound ones from membership (member) on.
     """
     from ..models.enums import ProjectRole
     from ..models.workflow import WorkflowDefinition
