@@ -1,52 +1,52 @@
-"""Der Bühnen-Watcher für Deployments — Statuswechsel werden Schrittzeilen.
+"""The stage watcher for deployments: status changes become step rows.
 
-Die `deployments`-Tabelle wird vom `deployer`-Sidecar geschrieben, der von Traccoons
-Ereignisstrom nichts weiß. Damit ein Deploy im Büro sichtbar wird, braucht er eine
-**echte `run_steps`-Zeile**: `seq = id * 4 + slot` ist die Ankunftsreihenfolge, und wer
-in den Strom will, muss durch eine Zeile. Damit gilt automatisch alles Übrige —
-Monotonie, Slot-Arithmetik, Schnappschuss, Wiederverbindungsprotokoll. Ein eigener
-`seq`-Raum für Deployments schied aus (`Recorder.push` entdoppelt **ausschließlich** über
-`seq`, kollidierende Zahlen hießen sofort Datenverlust), ein zweiter Redis-Kanal ebenso
-(er verdoppelte WS-Brücke und Schnappschuss-Paginierung samt eigener Kappungsregel), und
-ein synthetischer `Run` je Deployment hätte `runs`, Kostenansichten und Roster mit
-tokenlosen Geisterläufen verseucht.
+The `deployments` table is written by the `deployer` sidecar, which knows nothing of
+Traccoon's event stream. For a deploy to become visible in the office it needs a **real
+`run_steps` row**: `seq = id * 4 + slot` is the arrival order, and whoever wants into the
+stream has to go through a row. That way everything else follows automatically:
+monotonicity, slot arithmetic, snapshot, reconnect protocol. A `seq` space of its own for
+deployments was out (`Recorder.push` deduplicates **exclusively** over `seq`, so colliding
+numbers would mean immediate data loss), a second Redis channel likewise (it would double
+the WS bridge and the snapshot pagination including a truncation rule of its own), and a
+synthetic `Run` per deployment would have polluted `runs`, cost views and roster with
+token-less ghost runs.
 
-**Eigene Schleife mit 3 s Takt**, nicht der Betriebs-Tick: der läuft alle 30 s und ist
-damit länger als ein mittlerer Deploy (12,5 s). Der `building`-Zustand wäre regelmäßig
-vorbei, bevor wir hinsehen, und die Bühne bekäme nur noch das Urteil. Wo das trotzdem
-passiert (ein Deploy zwischen zwei Takten komplett durch), wird der Auftakt nachgeholt —
-`states_for` liefert dann `start` und Urteil zusammen. Ein Urteil ohne Auftakt wäre ein
-Rack, das aufleuchtet, ohne dass je jemand hingelaufen ist.
+**A loop of its own with a 3 s beat**, not the operations tick: that one runs every 30 s and
+is therefore longer than an average deploy (12.5 s). The `building` state would regularly be
+over before we look, and the stage would only get the verdict. Where that happens anyway (a
+deploy running through completely between two beats), the opening is caught up:
+`states_for` then delivers `start` and the verdict together. A verdict without an opening
+would be a rack lighting up without anybody ever having walked over.
 
-**Idempotenz über eine Spalte, nicht über Prozessgedächtnis.** `announced_status` sagt,
-was schon erzählt wurde; gelesen wird `WHERE status <> announced_status`. Neustartfest,
-doppelfrei, und „was wurde schon erzählt" ist eine Tatsache in der Datenbank statt einer
-Vermutung im RAM.
+**Idempotency over a column, not over process memory.** `announced_status` says what has
+already been told; what is read is `WHERE status <> announced_status`. Restart proof,
+duplicate free, and "what has already been told" is a fact in the database instead of an
+assumption in RAM.
 
-**An welchen Lauf die Zeile gehängt wird** — ein Deployment hat keinen eigenen Aktor
-(siehe oben), es *gehört* dem Lauf, der es ausgelöst hat:
+**Which run the row is hung off**: a deployment has no actor of its own (see above), it
+*belongs* to the run that triggered it:
 
-    Agenten-Werkzeug   `worktree <> ''`   der Lauf, dessen `deploy`-Aufruf gerade wartet:
-                                          über `issue_id` der jüngste `running`-Lauf,
-                                          sonst der jüngste überhaupt
-    Merge/Workflow     `issue_id` gesetzt der jüngste Lauf dieses Tickets
-    Wartungs-Update    `self_deploy`,     **kein Anker → kein Bühnen-Ereignis**
-                       kein `issue_id`
+    agent tool         `worktree <> ''`   the run whose `deploy` call is waiting right now:
+                                          over `issue_id` the most recent `running` run,
+                                          otherwise the most recent one at all
+    merge/workflow     `issue_id` set     the most recent run of this ticket
+    maintenance update `self_deploy`,     **no anchor, so no stage event**
+                       no `issue_id`
 
-Der dritte Fall bekommt bewusst nichts, und das ist keine Lücke: ein Self-Deploy
-recreated den Backend-Container, der die Bühne beliefert. Der WebSocket fällt mitten in
-der Animation, der Prozess, der sie zeichnen ließe, stirbt an ihr. Einen Vorgang zu
-animieren, der den Animierenden tötet, ist ein Kategorienfehler. Diese Zeilen leben in
-der Liste (`api/deployments.py`), nicht im Raum — und ein Test nagelt die Entscheidung
+The third case deliberately gets nothing, and that is not a gap: a self-deploy recreates
+the backend container that supplies the stage. The WebSocket falls in the middle of the
+animation, and the process that would draw it dies of it. Animating a process that kills
+the animator is a category error. These rows live in the list (`api/deployments.py`), not
+in the room, and a test nails the decision down so that nobody "repairs" it.
 fest, damit sie niemand „repariert".
 
-**Nur das jüngste Fenster.** Die Bestandszeilen haben `announced_status = ''` und wären
-sonst allesamt „neu" — der erste Takt nach dem Aufspielen erzählte 186 Deployments aus
-drei Monaten, als wären sie eben passiert. Ein Deploy, der älter ist als
-`ANNOUNCE_WINDOW_HOURS`, ist keine Nachricht mehr; die Historie zeigt der Lesepfad
-(`services/office.deployment_events`) mit geliehener `seq` an seiner richtigen Stelle.
-Wovon eine Zeile bereits erzählt wurde (`announced_status <> ''`), bleibt trotzdem im
-Blick: eine angefangene Geschichte wird zu Ende erzählt, auch nach einem langen Ausfall.
+**Only the most recent window.** The existing rows have `announced_status = ''` and would
+otherwise all be "new": the first beat after the rollout would tell of 186 deployments from
+three months as if they had just happened. A deploy older than `ANNOUNCE_WINDOW_HOURS` is
+no longer news; the history is shown by the read path
+(`services/office.deployment_events`) with a borrowed `seq` in its proper place.
+A row that has already been told about (`announced_status <> ''`) stays in view
+regardless: a started story is told to the end, even after a long outage.
 """
 from __future__ import annotations
 
@@ -67,27 +67,27 @@ from .office import (
 
 log = logging.getLogger("deploy_watch")
 
-# Kürzer als ein mittlerer Deploy (12,5 s) — sonst sieht der Raum den Auftakt nie.
+# Shorter than an average deploy (12.5 s), otherwise the room never sees the opening.
 TICK_SECONDS = 3
-# Ab wann ein Statuswechsel keine Nachricht mehr ist (siehe Modul-Docstring).
+# From when on a status change is no longer news (see the module docstring).
 ANNOUNCE_WINDOW_HOURS = 6
 
-# Status, nach denen nichts mehr kommt.
+# Statuses after which nothing more comes.
 TERMINAL_STATUS = ("ok", "failed", "rolledback")
-# Status, der den Auftakt bereits erzählt hat.
+# Status that has already told the opening.
 STARTED_STATUS = ("building",)
 
-# Der Wert der `ok`-Spalte am Schritt je Zustand. Dreiwertig wie überall im Haus: beim
-# Auftakt weiß niemand etwas, und ein geratenes True malte die Ansicht grün.
+# The value of the `ok` column on the step per state. Three valued as everywhere in the
+# house: at the opening nobody knows anything, and a guessed True would paint the view green.
 _OK_BY_STATE: dict[str, bool | None] = {"start": None, "ok": True, "fail": False, "back": False}
 
 
 def states_for(announced: str, status: str) -> list[str]:
-    """Welche Zustände dieser Übergang erzählt — die ganze Idempotenz-Logik, rein.
+    """Which states this transition tells, the whole idempotency logic, pure.
 
-    Leer, wenn der Status im Raum nichts zu suchen hat (`pending`, `cancelled`). Sonst
-    der neue Zustand — und ihm vorangestellt der Auftakt, falls der noch nie erzählt
-    wurde, weil der Deploy zwischen zwei Takten komplett durchgelaufen ist.
+    Empty when the status has no business in the room (`pending`, `cancelled`). Otherwise
+    the new state, preceded by the opening if that has never been told because the deploy
+    ran through completely between two beats.
     """
     state = deploy_state(status)
     if not state:
@@ -98,18 +98,18 @@ def states_for(announced: str, status: str) -> list[str]:
 
 
 async def _anchor_run(db: AsyncSession, dep: Deployment) -> Run | None:
-    """Der Lauf, an dessen Erzählung das Deployment hängt (oder None, siehe Docstring).
+    """The run whose story the deployment hangs off (or None, see the docstring).
 
-    Beide Anker-Fälle gehen über `issue_id` — der Deploy-Aufruf des Agenten kennt sein
-    Ticket, und `ix_runs_issue_started` deckt die Abfrage. Ohne Ticket gibt es keinen
-    Lauf, dem der Vorgang gehören könnte; dann bleibt der Raum still.
+    Both anchor cases go over `issue_id`: the deploy call of the agent knows its ticket, and
+    `ix_runs_issue_started` covers the query. Without a ticket there is no run the process
+    could belong to, and then the room stays silent.
     """
     if not dep.issue_id:
         return None
     if (dep.worktree or "").strip():
-        # Agenten-Werkzeug: `_do_deploy` wartet inline auf das Ergebnis, der auslösende
-        # Lauf ist also noch `running` — und genau der soll zum Rack laufen. Der Rückfall
-        # auf den jüngsten Lauf greift, wenn er inzwischen am Timeout gestorben ist.
+        # Agent tool: `_do_deploy` waits inline for the result, so the triggering run is
+        # still `running`, and exactly that one should walk to the rack. The fallback to the
+        # most recent run takes hold when it has died at the timeout meanwhile.
         laufend = (await db.execute(
             select(Run).where(Run.issue_id == dep.issue_id, Run.status == "running")
             .order_by(Run.id.desc()).limit(1))).scalars().first()
@@ -121,11 +121,11 @@ async def _anchor_run(db: AsyncSession, dep: Deployment) -> Run | None:
 
 
 async def announce(db: AsyncSession, dep: Deployment) -> list[RunStep]:
-    """Einen Statuswechsel erzählen: Schrittzeilen schreiben, quittieren, senden.
+    """Tell a status change: write step rows, acknowledge, send.
 
-    Quittiert wird IMMER — auch wenn es keinen Anker gibt (Wartungs-Update) oder der
-    Status nichts zu zeigen hat. Sonst läge dieselbe Zeile bei jedem Takt wieder auf dem
-    Tisch und der Watcher liefe ewig im Kreis.
+    Acknowledging happens ALWAYS, even when there is no anchor (maintenance update) or the
+    status has nothing to show. Otherwise the same row would lie on the table again on every
+    beat and the watcher would run in circles forever.
     """
     vorher = dep.announced_status or ""
     states = states_for(vorher, dep.status or "")
@@ -136,25 +136,25 @@ async def announce(db: AsyncSession, dep: Deployment) -> list[RunStep]:
         run = await _anchor_run(db, dep)
         if run is not None:
             ctx = RunCtx.from_run(run)
-            # `RunStep.seq` ist der laufende Zähler DES LAUFS; der Watcher schreibt in
-            # einen fremden Lauf und muss dort anknüpfen, statt bei 1 anzufangen.
+            # `RunStep.seq` is the running counter OF THE RUN; the watcher writes into a
+            # foreign run and has to tie in there instead of starting at 1.
             ctx.seq = int((await db.execute(
                 select(func.max(RunStep.seq)).where(RunStep.run_id == run.id))).scalar() or 0)
             for state in states:
                 steps.append(await add_step(
                     db, ctx, role="system", kind="deploy", target=deploy_target(dep),
                     ok=_OK_BY_STATE.get(state),
-                    # Beim Auftakt ist der Log noch leer bzw. gehört einem früheren
-                    # Versuch — ihn mitzuschicken hieße, ein Ergebnis vorwegzunehmen.
+                    # At the opening the log is still empty respectively belongs to an
+                    # earlier attempt; sending it along would anticipate a result.
                     content=deploy_content(dep.id, state,
                                            "" if state == "start"
                                            else (dep.log or "")[:DEPLOY_LOG_HEAD_CHARS]),
                     commit=False))
 
-    # Freier Anschluss: der Triggername steht seit jeher in `BUILTIN_EVENTS` und hat noch
-    # nie gefeuert. Hier ist die Stelle, an der alles beisammen ist. Vor dem Commit, damit
-    # Quittung und gestartete Abläufe in EINER Transaktion liegen — ein Absturz dazwischen
-    # verlöre sonst das Ereignis, während die Quittung stünde.
+    # Free connection: the trigger name has been in `BUILTIN_EVENTS` all along and has never
+    # fired. Here is the place where everything is together. Before the commit, so that the
+    # acknowledgement and the started flows lie in ONE transaction: a crash in between would
+    # otherwise lose the event while the acknowledgement stood.
     if dep.status in TERMINAL_STATUS and vorher not in TERMINAL_STATUS:
         from .events import emit
         await emit(db, "deployment.finished", project_id=dep.project_id,
@@ -170,22 +170,22 @@ async def announce(db: AsyncSession, dep: Deployment) -> list[RunStep]:
     if steps:
         log.info("Deployment %s: %s → %s im Raum von Lauf %s",
                  dep.id, vorher or "—", dep.status, ctx.run_id if ctx else "—")
-    # Erst nach dem Commit senden: vorher hat die Zeile keine `id` und damit keine `seq`.
+    # Send only after the commit: before it the row has no `id` and therefore no `seq`.
     for step in steps:
         await publish_step(ctx, step)
     return steps
 
 
 async def tick(db: AsyncSession) -> int:
-    """Ein Durchgang. Liefert die Zahl der erzählten Zeilen (für Test und Log)."""
+    """One pass. Returns the number of told rows (for test and log)."""
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=ANNOUNCE_WINDOW_HOURS)
     offen = (await db.execute(
         select(Deployment).where(
             Deployment.status != Deployment.announced_status,
-            # Junge Zeilen — oder solche, deren Geschichte schon angefangen wurde. Das
-            # zweite Glied schließt die Lücke, wenn ein Deploy den Auftakt bekam und sein
-            # Ausgang erst nach einem langen Backend-Ausfall feststand: eine angefangene
-            # Erzählung wird zu Ende erzählt, egal wie alt sie inzwischen ist.
+            # Young rows, or those whose story has already begun. The second term closes the
+            # gap when a deploy got its opening and its outcome was only settled after a long
+            # backend outage: a started story is told to the end, no matter how old it is by
+            # then.
             or_(Deployment.created_at >= cutoff, Deployment.announced_status != ""),
         ).order_by(Deployment.id))).scalars().all()
     erzaehlt = 0
@@ -201,6 +201,6 @@ async def run_deploy_watch() -> None:
         try:
             async with SessionLocal() as db:
                 await tick(db)
-        except Exception:  # noqa: BLE001 — die Bühne ist ein Zuschauer, kein Beteiligter
+        except Exception:  # noqa: BLE001 - the stage is a spectator, not a participant
             log.exception("deploy-watch fehlgeschlagen")
         await asyncio.sleep(TICK_SECONDS)
