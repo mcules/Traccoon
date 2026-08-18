@@ -33,8 +33,8 @@ export default function JobsPanel() {
     if (!paramText.trim()) return "";
     try {
       const v = JSON.parse(paramText);
-      return v && typeof v === "object" && !Array.isArray(v) ? "" : "Objekt erwartet, z.B. {\"thema\": \"…\"}";
-    } catch { return "Kein gültiges JSON"; }
+      return v && typeof v === "object" && !Array.isArray(v) ? "" : tr("jobs_panel.objekt_erwartet");
+    } catch { return tr("jobs_panel.kein_gueltiges_json"); }
   })();
   const setParams = (text: string) => {
     setParamText(text);
@@ -79,19 +79,17 @@ export default function JobsPanel() {
 
   return (
     <div>
-      <p className="mb-3 text-sm text-muted">Geplante Jobs: <b>cron</b> (z.B. <span className="font-mono">0 8 * * *</span>),
-        <b> interval</b> (Sekunden) oder <b>once</b> (ISO-Zeit). <b>prompt</b> = Agenten-Lauf,
-        <b> script</b> = Programm, <b>workflow</b> {tr("jobs_panel.startet_eine_prozess_instanz")}</p>
+      <p className="mb-3 text-sm text-muted">{tr("jobs_panel.einleitung")}</p>
       <div className="mb-4 space-y-2">
         {jobs?.map((j) => (
           <div key={j.id} className={`flex items-center gap-3 rounded border border-line bg-card p-2 text-sm ${j.enabled ? "" : "opacity-50"}`}>
             <span>{j.name}</span>
-            {!j.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">aus</span>}
-            {j.enabled && j.paused && <span className="rounded bg-surface px-1 text-xs text-amber-400">pausiert</span>}
+            {!j.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.aus")}</span>}
+            {j.enabled && j.paused && <span className="rounded bg-surface px-1 text-xs text-amber-400">{tr("jobs_panel.pausiert")}</span>}
             <span className="text-xs text-muted font-mono">{j.type}:{j.schedule} · {j.kind}</span>
-            {j.last_run_at && <span className="text-xs text-muted">zuletzt {new Date(j.last_run_at).toLocaleString()}</span>}
+            {j.last_run_at && <span className="text-xs text-muted">{tr("jobs_panel.zuletzt")} {new Date(j.last_run_at).toLocaleString()}</span>}
             <div className="flex-1" />
-            <button title={j.enabled ? "Deaktivieren" : "Aktivieren"} onClick={() => toggle.mutate(j)}
+            <button title={tr(j.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} onClick={() => toggle.mutate(j)}
               className={ico}>{j.enabled ? "⏸" : "⏵"}</button>
             <button title={tr("jobs_panel.jetzt_ausfuehren")} onClick={() => run.mutate(j.id)} className={ico + " hover:text-brand"}>▶</button>
             <button title={tr("jobs_panel.bearbeiten")} onClick={() => edit(j)} className={ico}>✎</button>
@@ -102,11 +100,11 @@ export default function JobsPanel() {
       </div>
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3 text-sm">
         {editId && <div className="col-span-2 text-xs text-brand">Bearbeite Job #{editId} —
-          <button onClick={() => { setEditId(null); setF(EMPTY); setParamText(""); }} className="ml-1 underline">abbrechen</button></div>}
+          <button onClick={() => { setEditId(null); setF(EMPTY); setParamText(""); }} className="ml-1 underline">{tr("common.abbrechen")}</button></div>}
         {!editId && !!templates?.length && (
           <select value="" onChange={(e) => e.target.value && useTemplate(e.target.value)}
             className={inp + " col-span-2"} title={tr("jobs_panel.fuellt_das_formular_vor")}>
-            <option value="">— aus Vorlage —</option>
+            <option value="">{tr("jobs_panel.aus_vorlage")}</option>
             {templates.map((t) => <option key={t.key} value={t.key}>{t.label}: {t.beschreibung}</option>)}
           </select>
         )}
@@ -129,7 +127,7 @@ export default function JobsPanel() {
           <select value={f.workflow_definition_id ?? ""}
             onChange={(e) => setF({ ...f, workflow_definition_id: e.target.value ? Number(e.target.value) : null })}
             className={inp}>
-            <option value="">— Prozess wählen —</option>
+            <option value="">{tr("jobs_panel.prozess_waehlen")}</option>
             {defs?.filter((d) => d.current_version_id).map((d) => (
               <option key={d.id} value={d.id}>{d.name} ({d.key})</option>
             ))}
@@ -137,16 +135,15 @@ export default function JobsPanel() {
         )}
         {f.kind === "prompt" && (
           <textarea value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} rows={6}
-            placeholder="Prompt — {{platzhalter}} kommen aus den Parametern" className={inp + " col-span-2 font-mono text-xs"} />
+            placeholder={tr("jobs_panel.prompt_platzhalter")} className={inp + " col-span-2 font-mono text-xs"} />
         )}
         {/* Parameter gibt es für beide: beim Prompt füllen sie die Platzhalter, beim
             Ablauf sind sie sein Startkontext — derselbe Ablauf, andere Messreihe. */}
         {(f.kind === "prompt" || f.kind === "workflow") && (
           <div className="col-span-2">
             <textarea value={paramText} onChange={(e) => setParams(e.target.value)} rows={4}
-              placeholder={f.kind === "workflow"
-                ? 'Startkontext (JSON), z.B. {"reihe": "akku.shelter", "still_stunden": 26}'
-                : 'Parameter (JSON), z.B. {"thema": "IT-Sicherheit"}'}
+              placeholder={tr(f.kind === "workflow"
+                ? "jobs_panel.startkontext_platzhalter" : "jobs_panel.parameter_platzhalter")}
               className={inp + " w-full font-mono text-xs"} />
             <div className="mt-1 text-xs">
               {paramFehler
@@ -160,11 +157,11 @@ export default function JobsPanel() {
           </div>
         )}
         <select value={f.notify_mode} onChange={(e) => setF({ ...f, notify_mode: e.target.value })} className={inp}>
-          <option value="on_output">notify bei Output</option><option value="always">immer</option>
-          <option value="on_error">nur Fehler</option><option value="never">nie</option></select>
-        <label className="flex items-center gap-1"><input type="checkbox" checked={f.result_html} onChange={(e) => setF({ ...f, result_html: e.target.checked })} />HTML-Digest</label>
+          <option value="on_output">{tr("jobs_panel.notify_bei_output")}</option><option value="always">{tr("jobs_panel.notify_immer")}</option>
+          <option value="on_error">{tr("jobs_panel.notify_fehler")}</option><option value="never">{tr("jobs_panel.notify_nie")}</option></select>
+        <label className="flex items-center gap-1"><input type="checkbox" checked={f.result_html} onChange={(e) => setF({ ...f, result_html: e.target.checked })} />{tr("jobs_panel.html_digest")}</label>
         <button onClick={() => f.name && save.mutate()} className="col-span-2 rounded bg-brand py-1.5 text-white">
-          {editId ? "Speichern" : "+ Job"}
+          {editId ? tr("common.speichern") : "+ Job"}
         </button>
       </div>
     </div>

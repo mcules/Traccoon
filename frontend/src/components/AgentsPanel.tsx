@@ -90,17 +90,16 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
       {err && <div className="mb-2 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-sm text-red-400">{err}</div>}
       {note && <div className="mb-2 text-sm text-green-400">{note}</div>}
       <div className="mb-3 flex items-center gap-2">
-        <p className="flex-1 text-sm text-muted">{projectId
-          ? "Agenten für dieses Projekt (Provider/Modell/Token je Rolle). Nicht konfigurierte Rollen nutzen deine persönlichen Agenten."
-          : "Agenten-Rollen (Prompt, Modell, Fähigkeiten). Ohne eigene Definition nutzt der Worker sinnvolle Defaults."}</p>
+        <p className="flex-1 text-sm text-muted">
+          {tr(projectId ? "agents_panel.einleitung_projekt" : "agents_panel.einleitung_eigene")}</p>
         {!projectId && (!allAgents || allAgents.length === 0) && (
           <button onClick={() => seed.mutate()} className="rounded border border-line px-3 py-1.5 text-sm">
-            Standard-Agenten anlegen</button>
+            {tr("agents_panel.standard_agenten_anlegen")}</button>
         )}
         <button onClick={() => fetchModels.mutate()} disabled={fetchModels.isPending}
           title={tr("agents_panel.verfuegbare_modelle_live_bei_den_provide")}
           className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink disabled:opacity-50">
-          {fetchModels.isPending ? "Lädt…" : "↻ Modelle abrufen"}</button>
+          {fetchModels.isPending ? tr("common.laedt") : `↻ ${tr("agents_panel.modelle_abrufen")}`}</button>
         <button onClick={newAgent} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
           + Agent</button>
       </div>
@@ -122,11 +121,11 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
               {a.web_search && <span className="rounded bg-surface px-1 text-xs">web</span>}
               {a.learns && <span className="rounded bg-surface px-1 text-xs" title={tr("agents_panel.liest_das_gedaechtnis_und_lernt_aus_jede")}>lernt</span>}
             </div>
-            {a.origin_agent_id && <span className="rounded bg-surface px-1 text-xs">{a.customized ? "bearbeitet" : "verknüpft"}</span>}
+            {a.origin_agent_id && <span className="rounded bg-surface px-1 text-xs">{tr(a.customized ? "agents_panel.bearbeitet" : "agents_panel.verknuepft")}</span>}
             <div className="flex-1" />
             {!projectId && <button onClick={() => syncLinked.mutate(a.id)} className="text-xs text-muted hover:text-ink" title={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}>{tr("agents_panel.verknuepfte")}</button>}
             <button onClick={() => setEdit(a)} className="text-brand">bearbeiten</button>
-            <button onClick={() => del.mutate(a.id)} className="text-muted hover:text-red-400">löschen</button>
+            <button onClick={() => del.mutate(a.id)} className="text-muted hover:text-red-400">{tr("common.loeschen_klein")}</button>
           </div>
         ))}
       </div>
@@ -167,7 +166,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                 </div>
                 <div className="mt-2 flex gap-2">
                   <F label={tr("agents_panel.fallback_provider")}><select value={edit.fallback || ""} onChange={(e) => setEdit({ ...edit, fallback: e.target.value || null, fallback_model: "", fallback_token_name: "" })} className={inp}>
-                    <option value="">— kein —</option>
+                    <option value="">{tr("agents_panel.kein")}</option>
                     {PROVIDERS.map((p) => <option key={p}>{p}</option>)}
                   </select></F>
                   <F label={tr("agents_panel.fallback_modell")}>

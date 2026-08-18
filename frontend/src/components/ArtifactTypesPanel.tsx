@@ -20,32 +20,34 @@ interface Typ {
   fields: Feld[];
 }
 
+// Die Listen halten Schlüssel, keine Texte: sie entstehen beim Laden des Moduls, ein
+// tr() an dieser Stelle würde die Sprache des ersten Aufrufs einfrieren.
 const KATEGORIE: [string, string][] = [
-  ["todo", "Offen"],
-  ["in_progress", "In Arbeit"],
-  ["done", "Abgeschlossen"],
+  ["todo", "artifact_types_panel.kat_todo"],
+  ["in_progress", "artifact_types_panel.kat_in_progress"],
+  ["done", "artifact_types_panel.kat_done"],
 ];
 
 const FELDTYP: [string, string][] = [
-  ["text", "Text"],
-  ["number", "Zahl"],
-  ["date", "Datum"],
-  ["boolean", "Ja/Nein"],
-  ["select", "Auswahl"],
+  ["text", "artifact_types_panel.typ_text"],
+  ["number", "artifact_types_panel.typ_number"],
+  ["date", "artifact_types_panel.typ_date"],
+  ["boolean", "artifact_types_panel.typ_boolean"],
+  ["select", "artifact_types_panel.typ_select"],
 ];
 
 const HERKUNFT: Record<string, string> = {
-  issue_type: "Vorgangsarten des Projekts",
-  board_status: "Board-Spalten des Projekts",
-  sprint: "Sprints des Boards",
-  member: "Mitglieder des Projekts",
-  location: "Standorte",
+  issue_type: "artifact_types_panel.herkunft_issue_type",
+  board_status: "artifact_types_panel.herkunft_board_status",
+  sprint: "artifact_types_panel.herkunft_sprint",
+  member: "artifact_types_panel.herkunft_member",
+  location: "artifact_types_panel.herkunft_location",
 };
 
 const BACKING_LABEL: Record<string, string> = {
-  issue: "Tickets (Board, Sprints, KI-Lebenszyklus)",
-  hardware_asset: "Hardware-Bestand (Beschaffungskette)",
-  generic: "eigene Ablage",
+  issue: "artifact_types_panel.backing_issue",
+  hardware_asset: "artifact_types_panel.backing_hardware",
+  generic: "artifact_types_panel.backing_generic",
 };
 
 const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
@@ -85,13 +87,9 @@ export default function ArtifactTypesPanel() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        Ein <b>{tr("artifact_types_panel.artefakt")}</b> ist zunächst etwas Undefiniertes — seine Bedeutung bekommt es
-        erst durch seine <b>{tr("artifact_types_panel.felder")}</b>. Ticket und Hardware sind deshalb nichts Besonderes,
-        sondern Artefakte mit einem ausgelieferten Satz fester Felder; auch der Zustand ist
-        nur eines davon (<code>status</code>). Hier stehen die Felder, die <i>überall</i>
-        gelten — eigene Ergänzungen pflegt jedes Projekt in seinen Einstellungen.
-      </p>
+      {/* Ein Satz, ein Schlüssel: die Hervorhebungen fallen weg, weil sich Markup mitten im
+          Satz nicht mitübersetzen lässt (die Wortstellung ist anderswo eine andere). */}
+      <p className="text-sm text-muted">{tr("artifact_types_panel.einleitung")}</p>
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
 
       <div className="space-y-3">
@@ -157,7 +155,7 @@ function ArtefaktKarte({ t: typ, onFail, onOk, onDelete }: {
         )}
       </div>
       <div className="mb-3 text-xs text-muted">
-        {typ.description} · Daten: {BACKING_LABEL[typ.backing] || typ.backing}
+        {typ.description} · {tr("artifact_types_panel.daten")}: {BACKING_LABEL[typ.backing] ? tr(BACKING_LABEL[typ.backing]) : typ.backing}
       </div>
 
 
@@ -190,7 +188,7 @@ function Felder({ t: typ, onFail, onOk, offen }: {
   if (!offen) {
     return (
       <div className="mt-2 text-xs text-muted">
-        {typ.fields.map((f) => f.label).join(" · ") || "Noch keine Felder."}
+        {typ.fields.map((f) => f.label).join(" · ") || tr("artifact_types_panel.keine_felder")}
       </div>
     );
   }
@@ -209,12 +207,12 @@ function Felder({ t: typ, onFail, onOk, offen }: {
               {f.builtin ? (
                 <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
                       title={`Eingebaut — schreibt in die Spalte ${f.source}. Schlüssel und Typ sind gesperrt.`}>
-                  {FELDTYP.find(([k]) => k === f.kind)?.[1]} · eingebaut
+                  {tr(FELDTYP.find(([k]) => k === f.kind)?.[1] || "")} · {tr("artifact_types_panel.eingebaut")}
                 </span>
               ) : (
                 <select defaultValue={f.kind}
                   onChange={(e) => aendern.mutate({ id: f.id, kind: e.target.value })} className={inp}>
-                  {FELDTYP.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  {FELDTYP.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
                 </select>
               )}
               <label className="flex items-center gap-1 text-xs text-muted"
@@ -242,7 +240,7 @@ function Felder({ t: typ, onFail, onOk, offen }: {
             </div>
             {f.options_source ? (
               <div className="mt-1 pl-28 text-[10px] text-muted">
-                Werte kommen aus dem Projekt ({HERKUNFT[f.options_source] || f.options_source})
+                {tr("artifact_types_panel.werte_aus_projekt")} ({HERKUNFT[f.options_source] ? tr(HERKUNFT[f.options_source]) : f.options_source})
                 — hier gibt es deshalb nichts zu pflegen.
               </div>
             ) : f.kind === "select" ? (
@@ -261,7 +259,7 @@ function Felder({ t: typ, onFail, onOk, offen }: {
         <input value={neu.label} onChange={(e) => setNeu({ ...neu, label: e.target.value })}
           placeholder={tr("artifact_types_panel.bezeichnung_komponente")} className={`flex-1 ${inp}`} />
         <select value={neu.kind} onChange={(e) => setNeu({ ...neu, kind: e.target.value })} className={inp}>
-          {FELDTYP.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          {FELDTYP.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
         </select>
         <label className="flex items-center gap-1 text-xs text-muted">
           <input type="checkbox" checked={neu.multi}
@@ -311,17 +309,17 @@ function Werteliste({ feld, onFail, onOk }: {
               <select value={o.category || "in_progress"}
                 onChange={(e) => aendern.mutate({ id: o.id, category: e.target.value })}
                 title={tr("artifact_types_panel.board_kategorie")} className="bg-transparent text-[10px] text-muted">
-                {KATEGORIE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                {KATEGORIE.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
               </select>
               <button onClick={() => aendern.mutate({ id: o.id, waiting: !o.waiting })}
-                title={o.waiting ? "Wartet auf einen Menschen" : "Läuft von allein"}
+                title={tr(o.waiting ? "artifact_types_panel.wartet_auf_mensch" : "artifact_types_panel.laeuft_allein")}
                 className={o.waiting ? "text-amber-300" : "text-muted hover:text-ink"}>
                 {o.waiting ? "⏸" : "▷"}
               </button>
             </>
           )}
           <button onClick={() => aendern.mutate({ id: o.id, enabled: !o.enabled })}
-            title={o.enabled ? "Nicht mehr anbieten (bleibt an vorhandenen Artefakten)" : "Wieder anbieten"}
+            title={tr(o.enabled ? "artifact_types_panel.nicht_mehr_anbieten" : "artifact_types_panel.wieder_anbieten")}
             className="text-muted hover:text-ink">{o.enabled ? "○" : "●"}</button>
           {!istStatus && (
             <button onClick={() => loeschen.mutate(o.id)} title={tr("artifact_types_panel.loeschen")}

@@ -19,16 +19,32 @@ const dateien = [];
   }
 })(wurzel);
 
-const benutzt = new Map();
+// Nicht jeder Schlüssel steht direkt in einem tr(): Tabellen halten ihn als Wert
+// (`{ label: "inbox.status_new" }`), und manche werden zusammengesetzt
+// (tr(`preferences_panel.flag_${key}`)). Erfasst wird deshalb jede Zeichenkette, die wie ein
+// Schlüssel aussieht, plus jedes Präfix eines zusammengesetzten Aufrufs.
+const benutzt = new Map();     // direkt: tr("…"), das ist die Quelle für „fehlt"
+const bekannt = new Map();     // zusätzlich indirekt, das ist die Quelle für „verwaist"
+const praefixe = [];
 for (const datei of dateien) {
   const text = readFileSync(datei, "utf8");
   for (const treffer of text.matchAll(/\btr\(\s*"([^"]+)"/g)) {
     if (!benutzt.has(treffer[1])) benutzt.set(treffer[1], datei);
+    bekannt.set(treffer[1], datei);
+  }
+  // Ein Datenpfad („data.location.name") sieht aus wie ein Schlüssel. Deshalb zählt hier nur,
+  // was auch im Katalog steht: alles andere ist eine Zeichenkette, die zufällig einen Punkt hat.
+  for (const treffer of text.matchAll(/"([a-z][a-z0-9_]*\.[a-z0-9_.]+)"/g)) {
+    if (treffer[1] in de) bekannt.set(treffer[1], datei);
+  }
+  for (const treffer of text.matchAll(/\btr\(\s*`([a-z][a-z0-9_]*\.[a-z0-9_]*)\$\{/g)) {
+    praefixe.push(treffer[1]);
   }
 }
+const zusammengesetzt = (k) => praefixe.some((p) => k.startsWith(p));
 
 const fehlend = [...benutzt.keys()].filter((k) => !(k in de)).sort();
-const verwaist = Object.keys(de).filter((k) => !benutzt.has(k)).sort();
+const verwaist = Object.keys(de).filter((k) => !bekannt.has(k) && !zusammengesetzt(k)).sort();
 const ohneEnglisch = Object.keys(de).filter((k) => !en[k]).sort();
 
 console.log(`Schlüssel im Code: ${benutzt.size}`);

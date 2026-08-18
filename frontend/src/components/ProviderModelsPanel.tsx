@@ -15,9 +15,9 @@ const num = "w-24 rounded border border-line bg-surface px-2 py-1 text-right tex
 // Anzeige-Namen der Provider. `openai` ist bei uns meist gar nicht OpenAI, sondern ein
 // OpenAI-kompatibler Endpoint (LiteLLM, vLLM, Ollama …) — deshalb die Klammer.
 const PROVIDER_LABEL: Record<string, string> = {
-  claude_code: "Claude (Subscription/OAuth)",
-  codex: "Codex (ChatGPT-Subscription)",
-  openai: "OpenAI-kompatibel (API-Key/eigener Endpoint)",
+  claude_code: "provider_models_panel.provider_claude_code",
+  codex: "provider_models_panel.provider_codex",
+  openai: "provider_models_panel.provider_openai",
 };
 
 /**
@@ -75,9 +75,10 @@ export default function ProviderModelsPanel() {
     mutationFn: () => api.post<Record<string, any>>("/providers/models/fetch"),
     onSuccess: (r) => {
       const teile = Object.entries(r).map(([label, v]: [string, any]) =>
-        v.error ? `${label}: Fehler (${v.error})`
-          : `${label}: ${v.total ?? 0}${v.added ? ` (+${v.added} neu)` : ""}${v.disabled ? ` (${v.disabled} deaktiviert)` : ""}`);
-      flash(teile.length ? teile.join(" · ") : "Keine Provider-Tokens hinterlegt.");
+        v.error ? `${label}: ${tr("common.fehler")} (${v.error})`
+          : `${label}: ${v.total ?? 0}${v.added ? ` (+${v.added} ${tr("provider_models_panel.neu")})` : ""}`
+            + `${v.disabled ? ` (${v.disabled} ${tr("provider_models_panel.deaktiviert")})` : ""}`);
+      flash(teile.length ? teile.join(" · ") : tr("provider_models_panel.keine_tokens"));
       setErr(""); inv();
     },
     onError: fail,
@@ -97,32 +98,22 @@ export default function ProviderModelsPanel() {
       {note && <div className="rounded border border-line bg-card px-2 py-1 text-sm text-muted">{note}</div>}
 
       <div className="flex items-start justify-between gap-4">
-        <p className="text-sm text-muted">
-          Welcher Provider welche Modelle bereitstellt. Preise in <b>USD je 1 Mio. Token</b> —
-          sie bestimmen die Kostenrechnung der Läufe; <b>0</b> heißt „zählt nichts" (z. B. lokale
-          Modelle). <b>{tr("provider_models_panel.kontext")}</b> ist das größte Fenster in Tokens, <b>≈ t/s</b> die
-          gemessene Ausgabegeschwindigkeit — bei lokalen Modellen ist genau das der
-          Auswahlgrund, denn der Preis ist dort 0. Deaktivierte Modelle verschwinden aus der
-          Auswahl im Agent-Editor, bleiben aber für die Abrechnung alter Läufe erhalten.
-          <b> {tr("provider_models_panel.modelle_abrufen")}</b> fragt deine Endpoints, <b>{tr("provider_models_panel.preise")}</b> holt Preise und
-          Kontextfenster aus models.dev — lokale Modelle stehen dort nicht und bleiben
-          unangetastet, deren t/s misst du selbst.
-        </p>
+        <p className="text-sm text-muted">{tr("provider_models_panel.einleitung")}</p>
         <div className="flex shrink-0 gap-2">
           <button onClick={() => abrufen.mutate()} disabled={abrufen.isPending}
             className="rounded border border-line px-3 py-1.5 text-sm text-ink hover:bg-surface disabled:opacity-50">
-            {abrufen.isPending ? "Lädt…" : "↻ Modelle abrufen"}
+            {abrufen.isPending ? tr("common.laedt") : `↻ ${tr("provider_models_panel.modelle_abrufen")}`}
           </button>
           <button onClick={() => preise.mutate()} disabled={preise.isPending} title={tr("provider_models_panel.preise_aus_dem_offenen_katalog_models_de")}
             className="rounded border border-line px-3 py-1.5 text-sm text-ink hover:bg-surface disabled:opacity-50">
-            {preise.isPending ? "Lädt…" : "💲 Preise (models.dev)"}
+            {preise.isPending ? tr("common.laedt") : `💲 ${tr("provider_models_panel.preise")} (models.dev)`}
           </button>
         </div>
       </div>
 
       {provider.map((p) => (
         <div key={p} className="rounded-lg border border-line bg-card p-4">
-          <div className="mb-2 text-sm font-semibold text-ink">{PROVIDER_LABEL[p] || p}
+          <div className="mb-2 text-sm font-semibold text-ink">{PROVIDER_LABEL[p] ? tr(PROVIDER_LABEL[p]) : p}
             <span className="ml-2 font-mono text-xs font-normal text-muted">{p}</span>
           </div>
           <div className="overflow-x-auto">

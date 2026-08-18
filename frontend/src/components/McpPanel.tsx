@@ -42,25 +42,23 @@ export default function McpPanel() {
           <div className="flex-1" />
           <button onClick={() => importMcp.mutate()} disabled={importMcp.isPending}
             className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-50">
-            {importMcp.isPending ? "Übernehme…" : "Server übernehmen"}</button>
+            {tr(importMcp.isPending ? "mcp_panel.uebernehme" : "mcp_panel.server_uebernehmen")}</button>
         </div>
       )}
 
-      <p className="mb-3 text-sm text-muted">Eigene MCP-Server (Tool-Anbieter für Agenten). Tools erreichbar unter
-        <span className="font-mono"> &lt;name&gt;__&lt;tool&gt;</span>. Definiere <b>{tr("mcp_panel.variablen")}</b> (z. B. Auth) —
-        pro Agent legst du dann eine <b>{tr("mcp_panel.instanz")}</b> an und füllst sie aus.</p>
-      <p className="mb-3 text-xs text-yellow-400">Nur <b>http</b>/<b>sse</b> werden bedient (kein stdio).</p>
+      <p className="mb-3 text-sm text-muted">{tr("mcp_panel.einleitung")}</p>
+      <p className="mb-3 text-xs text-yellow-400">{tr("mcp_panel.nur_http_sse")}</p>
 
       <div className="mb-4 space-y-2">
         {servers?.map((m) => (
           <div key={m.id} className="flex items-center gap-3 rounded border border-line bg-card p-2 text-sm">
             <span className="font-mono">{m.name}</span><span className="text-muted">{m.transport}</span>
-            {(m.variables?.length ?? 0) > 0 && <span className="rounded bg-surface px-1 text-xs">{m.variables.length} Variable(n)</span>}
-            {m.enabled && <span className="text-xs text-green-400">aktiv</span>}
+            {(m.variables?.length ?? 0) > 0 && <span className="rounded bg-surface px-1 text-xs">{tr("mcp_panel.variablen_anzahl", { anzahl: m.variables.length })}</span>}
+            {m.enabled && <span className="text-xs text-green-400">{tr("mcp_panel.aktiv")}</span>}
             <div className="flex-1" />
             <button onClick={() => setForm({ id: m.id, name: m.name, display_name: m.display_name || "", transport: m.transport, url: m.url || "", variables: m.variables || [], enabled: m.enabled })}
-              className="text-brand">bearbeiten</button>
-            <button onClick={() => del.mutate(m.id)} className="text-muted hover:text-red-400">löschen</button>
+              className="text-brand">{tr("common.bearbeiten")}</button>
+            <button onClick={() => del.mutate(m.id)} className="text-muted hover:text-red-400">{tr("common.loeschen_klein")}</button>
           </div>
         ))}
         {servers?.length === 0 && <div className="text-xs text-muted">{tr("mcp_panel.keine_mcp_server")}</div>}
