@@ -33,7 +33,7 @@ export default function OwnWorkflowsPanel({ isAdmin }: { isAdmin: boolean }) {
       project_id: null, key: f.key.trim(), name: f.name.trim(),
       subject_kind: f.subject_kind, description: f.description.trim() || undefined,
     }),
-    onSuccess: (d) => { setF(EMPTY); setErr(""); inv(); nav(`/workflows/${d.id}`); },
+    onSuccess: (d) => { setF(EMPTY); setErr(""); inv(); nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } }); },
     onError: fail,
   });
   const umschalten = useMutation({
@@ -73,7 +73,7 @@ export default function OwnWorkflowsPanel({ isAdmin }: { isAdmin: boolean }) {
                   {d.current_version_id ? "veröffentlicht" : "nur Entwurf"}
                 </td>
                 <td className="whitespace-nowrap py-2 text-right">
-                  <button onClick={() => nav(`/workflows/${d.id}`)}
+                  <button onClick={() => nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } })}
                     className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
                     Editor
                   </button>

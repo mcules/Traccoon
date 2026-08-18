@@ -65,7 +65,7 @@ export default function SlotList({ project }: { project: Project }) {
     onSuccess: (d) => {
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`);
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: `/projects/${project.key}?tab=workflows` } });
     },
     onError: fail,
     onSettled: () => setBusy(""),
@@ -136,7 +136,7 @@ export default function SlotList({ project }: { project: Project }) {
                 <div className="flex-1" />
                 {s.definition_id && (
                   <button
-                    onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`)}
+                    onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`, { state: { from: `/projects/${project.key}?tab=workflows` } })}
                     className="rounded border border-line px-2 py-1 text-xs hover:border-brand"
                   >
                     {s.origin === "project" ? "Bearbeiten" : "Ansehen"}
@@ -179,7 +179,7 @@ export default function SlotList({ project }: { project: Project }) {
                   {(s.per_issue_type || []).map((v) => (
                     <span key={v.issue_type_id}
                           className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
-                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`)}
+                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: `/projects/${project.key}?tab=workflows` } })}
                               title="Eigenen Ablauf dieser Vorgangsart bearbeiten">
                         {v.issue_type_name}
                       </button>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   addEdge,
@@ -65,6 +65,7 @@ function connectionLabel(nodes: FlowNode[], c: Connection): string | undefined {
 
 export default function WorkflowEditor() {
   const { key, id } = useParams();
+  const ort = useLocation();
   const wfId = Number(id);
   const nav = useNavigate();
   const qc = useQueryClient();
@@ -278,15 +279,21 @@ export default function WorkflowEditor() {
   };
 
   const allErrors = errors.length ? errors : clientErrors;
+  const herkunft = (ort.state as { from?: string } | null)?.from
+    || (key ? `/projects/${key}?tab=workflows`
+            : def?.slot ? "/processes/standard" : "/processes/eigene");
 
   return (
     <div className="fixed inset-0 z-30 flex flex-col bg-surface">
       {/* Kopfzeile */}
       <div className="flex items-center gap-3 border-b border-line bg-card px-4 py-2">
         <button
-          // Zurück dorthin, wo der Prozess herkommt: in die Prozess-Übersicht des Projekts
-          // (?tab=workflows) bzw. in die persönlichen Prozesse — nicht auf das Board.
-          onClick={() => nav(key ? `/projects/${key}?tab=workflows` : "/settings/processes")}
+          // Zurück dorthin, wo man hergekommen ist. Der Aufrufer gibt seine eigene Adresse
+          // als `state.from` mit; nur wenn sie fehlt (Lesezeichen, neu geladene Seite), wird
+          // sie aus dem Ablauf selbst erschlossen — Projekt-Ablauf zur Projektübersicht,
+          // Slot-Ablauf zum Standard-Satz, freier Ablauf zu den eigenen Prozessen. Vorher
+          // landete ein Slot-Ablauf in den Einstellungen, wo er gar nicht steht.
+          onClick={() => nav(herkunft)}
           className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
         >
           ← Zurück zu den Prozessen
