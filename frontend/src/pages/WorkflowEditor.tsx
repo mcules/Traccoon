@@ -25,7 +25,7 @@ import NodeConfigPanel from "../components/workflow/NodeConfigPanel";
 import { verfuegbareFelder } from "../components/workflow/contextFields";
 import ProbelaufPanel from "../components/workflow/ProbelaufPanel";
 import BaumeisterPanel from "../components/workflow/BaumeisterPanel";
-import { graphToFlow, flowToGraph } from "../components/workflow/convert";
+import { graphToFlow, flowToGraph, graphSignatur } from "../components/workflow/convert";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "../components/workflow/layout";
 import { validateGraph } from "../components/workflow/validate";
 import type { FlowNode } from "../components/workflow/nodes/shared";
@@ -94,10 +94,11 @@ export default function WorkflowEditor() {
     retry: false,
   });
   const nurLesen = versionError instanceof ApiError && versionError.status === 403;
+  // Immer laden, nicht nur beim Nur-Lesen: daraus ergibt sich, welche Fassung draußen
+  // gilt — und ob der Entwurf vor einem liegt.
   const { data: veroeffentlicht } = useQuery({
     queryKey: ["workflow-versions", wfId],
     queryFn: () => workflowApi.versions(wfId),
-    enabled: nurLesen,
   });
   const ansicht = version
     || (nurLesen ? veroeffentlicht?.find((v) => v.id === def?.current_version_id) : undefined);
@@ -143,6 +144,12 @@ export default function WorkflowEditor() {
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const seeded = useRef(false);
+  // Der zuletzt gespeicherte Graph als Text. Daran hängt die einzige Frage, die man beim
+  // Verlassen des Editors wirklich hat: ist das hier schon gesichert? Vorher stand dort
+  // eine Meldung, die nach dem nächsten Klick verschwand — und danach wusste es niemand
+  // mehr.
+  const gesichert = useRef<string>("");
+  const [stand, setStand] = useState(0);   // zwingt die Kopfzeile zum Nachrechnen
 
   // Abstand für „Anordnen" — global vom Admin gesetzt.
   const { data: layoutCfg } = useQuery({
@@ -159,6 +166,7 @@ export default function WorkflowEditor() {
       const flow = graphToFlow(graph);
       setNodes(flow.nodes);
       setEdges(flow.edges);
+      gesichert.current = graphSignatur(flowToGraph(flow.nodes, flow.edges));
       seeded.current = true;
     }
   }, [ansicht]);
@@ -296,7 +304,10 @@ export default function WorkflowEditor() {
     setSaving(true);
     setMsg("");
     try {
-      await workflowApi.saveVersion(wfId, version.id, { graph: flowToGraph(nodes, edges) });
+      const graph = flowToGraph(nodes, edges);
+      await workflowApi.saveVersion(wfId, version.id, { graph });
+      gesichert.current = graphSignatur(graph);
+      setStand((n) => n + 1);
       setMsg("Gespeichert.");
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
     } catch (e) {
@@ -310,7 +321,10 @@ export default function WorkflowEditor() {
     if (!version) return;
     setMsg("");
     try {
-      await workflowApi.saveVersion(wfId, version.id, { graph: flowToGraph(nodes, edges) });
+      const graph = flowToGraph(nodes, edges);
+      await workflowApi.saveVersion(wfId, version.id, { graph });
+      gesichert.current = graphSignatur(graph);   // Validieren speichert mit
+      setStand((n) => n + 1);
       const r = await workflowApi.validate(wfId, version.id);
       setErrors(r.errors || []);
       setMsg(r.ok ? "Validierung ok." : `${r.errors.length} Problem(e) gefunden.`);
@@ -323,10 +337,14 @@ export default function WorkflowEditor() {
     if (!version) return;
     setMsg("");
     try {
-      await workflowApi.saveVersion(wfId, version.id, { graph: flowToGraph(nodes, edges) });
+      const graph = flowToGraph(nodes, edges);
+      await workflowApi.saveVersion(wfId, version.id, { graph });
       await workflowApi.publish(wfId, version.id);
+      gesichert.current = graphSignatur(graph);
+      setStand((n) => n + 1);
       setErrors([]);
       setMsg("Veröffentlicht.");
+      qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
       if (project) qc.invalidateQueries({ queryKey: ["workflows", project.id] });
@@ -334,6 +352,39 @@ export default function WorkflowEditor() {
       setMsg(e instanceof ApiError ? `Veröffentlichen abgelehnt: ${e.message}` : "Veröffentlichen fehlgeschlagen");
     }
   };
+
+  // Ungespeichert? Der Vergleich läuft gegen den zuletzt gesicherten Graphen — auch eine
+  // verschobene Karte zählt, denn Positionen werden mitgespeichert.
+  const jetzt = useMemo(() => graphSignatur(flowToGraph(nodes, edges)), [nodes, edges]);
+  const geaendert = !nurLesen && seeded.current && jetzt !== gesichert.current;
+
+  // Und welche Fassung gilt draußen? Drei Lagen, die man auseinanderhalten muss: noch nie
+  // veröffentlicht, veröffentlicht und identisch, oder veröffentlicht und der Entwurf ist
+  // weiter. Die dritte war bisher unsichtbar — man baut um, freut sich, und draußen läuft
+  // weiter die alte Fassung.
+  const liveVersion = veroeffentlicht?.find((v) => v.id === def?.current_version_id);
+  // Verglichen wird der INHALT, nicht die Versionsnummer: der Editor legt beim Öffnen eine
+  // frische Entwurfsfassung an, die zwar eine neue Nummer trägt, aber Zeichen für Zeichen
+  // dasselbe enthält. Nach der Nummer zu gehen hieße, jeden Ablauf beim bloßen Anschauen
+  // als „nicht veröffentlicht" auszuweisen.
+  const gleichWieLive = !!liveVersion && jetzt === graphSignatur(liveVersion.graph);
+  const veroeffentlichung = !def?.current_version_id
+    ? { text: "nie veröffentlicht", stil: "text-muted",
+        titel: "Dieser Ablauf läuft noch nirgends — Veröffentlichen macht ihn startbar." }
+    : gleichWieLive
+      ? { text: `veröffentlicht (v${liveVersion?.version ?? "?"})`, stil: "text-green-400",
+          titel: "Was hier auf der Fläche steht, gilt auch draußen." }
+      : { text: `weicht von v${liveVersion?.version ?? "?"} ab`, stil: "text-amber-300",
+          titel: "Draußen läuft die veröffentlichte Fassung. Veröffentlichen übernimmt diese hier." };
+
+  // Beim Verlassen des Fensters mit ungespeicherter Arbeit nachfragen — der Browser
+  // erlaubt nur seinen eigenen Text, aber die Rückfrage selbst ist der Punkt.
+  useEffect(() => {
+    if (!geaendert) return;
+    const warnen = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warnen);
+    return () => window.removeEventListener("beforeunload", warnen);
+  }, [geaendert]);
 
   const allErrors = errors.length ? errors : clientErrors;
   // Welche Kontextfelder dieser Ablauf hat, ergibt sich aus seinem Auslöser und seinen
@@ -354,7 +405,10 @@ export default function WorkflowEditor() {
           // sie aus dem Ablauf selbst erschlossen — Projekt-Ablauf zur Projektübersicht,
           // Slot-Ablauf zum Standard-Satz, freier Ablauf zu den eigenen Prozessen. Vorher
           // landete ein Slot-Ablauf in den Einstellungen, wo er gar nicht steht.
-          onClick={() => nav(herkunft)}
+          onClick={() => {
+            if (geaendert && !confirm("Ungespeicherte Änderungen — trotzdem zurück?")) return;
+            nav(herkunft);
+          }}
           className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
         >
           ← Zurück zu den Prozessen
@@ -367,6 +421,19 @@ export default function WorkflowEditor() {
             nur ansehen
           </span>
         )}
+        {!nurLesen && (
+          <span className={`rounded px-1.5 py-0.5 text-xs ${
+            geaendert ? "bg-amber-500/15 text-amber-300" : "text-muted"}`}
+            title={geaendert
+              ? "Die Fläche weicht von der gespeicherten Fassung ab."
+              : "Alles gesichert."}>
+            {geaendert ? "● ungespeichert" : "gespeichert"}
+          </span>
+        )}
+        <span className={`rounded px-1.5 py-0.5 text-xs ${veroeffentlichung.stil}`}
+          title={veroeffentlichung.titel}>
+          {veroeffentlichung.text}
+        </span>
         <div className="flex-1" />
         {msg && <span className="text-xs text-muted">{msg}</span>}
         <button
@@ -382,7 +449,9 @@ export default function WorkflowEditor() {
           onClick={save}
           disabled={saving || !version}
           hidden={nurLesen}
-          className="rounded border border-line px-3 py-1 text-sm text-ink hover:border-brand disabled:opacity-50"
+          className={`rounded border px-3 py-1 text-sm disabled:opacity-50 ${
+            geaendert ? "border-amber-400 text-amber-200 hover:border-amber-300"
+                      : "border-line text-ink hover:border-brand"}`}
         >
           {saving ? "Speichert…" : "Speichern"}
         </button>

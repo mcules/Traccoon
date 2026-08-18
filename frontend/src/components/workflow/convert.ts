@@ -108,3 +108,39 @@ export function flowToGraph(nodes: FlowNode[], edges: Edge[]): WorkflowGraph {
     })),
   };
 }
+
+
+/**
+ * Ein Graph als vergleichbarer Text — Reihenfolge und Schreibweise fallen heraus.
+ *
+ * Zwei Fragen hängen daran, und beide gehen schief, wenn man einfach `JSON.stringify`
+ * nimmt: Habe ich etwas geändert? Und läuft draußen dasselbe, was hier steht? Die Knoten
+ * kommen mal in dieser, mal in jener Reihenfolge, und die Schlüssel eines Konfigurations-
+ * Objekts stehen nach dem Laden anders als nach dem Bearbeiten. Verglichen wird deshalb
+ * eine sortierte, auf das Wesentliche eingedampfte Fassung.
+ */
+export function graphSignatur(graph: WorkflowGraph | null | undefined): string {
+  if (!graph) return "";
+  const sortiert = (wert: any): any => {
+    if (Array.isArray(wert)) return wert.map(sortiert);
+    if (wert && typeof wert === "object") {
+      return Object.keys(wert).sort().reduce((acc: any, k) => {
+        if (wert[k] !== undefined && wert[k] !== null) acc[k] = sortiert(wert[k]);
+        return acc;
+      }, {});
+    }
+    return wert;
+  };
+  const nachId = (a: any, b: any) => String(a.id).localeCompare(String(b.id));
+  return JSON.stringify({
+    n: [...(graph.nodes || [])].sort(nachId).map((n: any) => ({
+      id: n.id, type: n.type,
+      x: Math.round(n.position?.x ?? 0), y: Math.round(n.position?.y ?? 0),
+      c: sortiert(n.data?.config ?? {}),
+    })),
+    e: [...(graph.edges || [])].sort(nachId).map((e: any) => ({
+      id: e.id, s: e.source, t: e.target,
+      h: e.sourceHandle ?? "", l: typeof e.label === "string" ? e.label : "",
+    })),
+  });
+}
