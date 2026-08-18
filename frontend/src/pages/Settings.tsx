@@ -32,7 +32,7 @@ export default function Settings() {
     key, label: tr(label), to: `/settings/${key}`,
     icon: { secrets: "🔐", prefs: "👤", processes: "🔀", destinations: "🎯", agents: "🤖",
             mcp: "🧩", jobs: "⏱️", webhooks: "🪝", skills: "✨" }[key],
-  })));
+  })), tab);
   return (
     <div className="mx-auto max-w-3xl">
       {tab === "secrets" && <Secrets />}

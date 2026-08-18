@@ -119,9 +119,10 @@ function UserMenu() {
   );
 }
 
-// Mobiles Burger-Menü: bündelt das Untermenü (Reiter) + Schnellzugriffe, damit auf dem
-// Handy alles bequem erreichbar ist. Nur < md sichtbar; Desktop nutzt die Pill-Nav.
-function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: string) => boolean }) {
+// Mobiles Burger-Menü: die Sprünge zwischen den großen Bereichen. Die Reiter der jeweiligen
+// Seite stehen nicht mehr hier, sondern auf der Seite selbst — sie waren sonst zweimal
+// vorhanden, an zwei verschiedenen Stellen, mit zwei verschiedenen Darstellungen.
+function MobileMenu() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
   const isAdmin = user?.global_role === "admin";
@@ -137,19 +138,6 @@ function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: stri
         <>
           <div className="fixed inset-0 z-30" onClick={close} />
           <div className="absolute inset-x-2 top-full z-40 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-2xl">
-            {tabs.length > 0 && (
-              <>
-                <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted">{tr("layout.navigation")}</div>
-                {tabs.map((t) => (
-                  <Link key={t.key} to={t.to} onClick={close}
-                    className={`${item} ${isActive(t.to) ? "bg-surface text-ink" : "text-muted hover:bg-surface hover:text-ink"}`}>
-                    {t.icon && <span className="text-base">{t.icon}</span>}
-                    <span>{t.label}</span>
-                  </Link>
-                ))}
-                <div className="my-1 border-t border-line" />
-              </>
-            )}
             <Link to="/" onClick={close} className={`${item} text-ink hover:bg-surface`}>🦝 <span>{tr("layout.projekte")}</span></Link>
             <Link to="/inbox" onClick={close} className={`${item} text-ink hover:bg-surface`}>📥 <span>{tr("layout.inbox")}</span></Link>
             <Link to="/processes" onClick={close} className={`${item} text-ink hover:bg-surface`}>🔀 <span>{tr("layout.prozesse")}</span></Link>
@@ -193,31 +181,7 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
         </div>
 
-        {/* Mitte: Icon-Pill-Navigation — nur ab md; auf dem Handy übernimmt das Burger-Menü. */}
-        {chrome.tabs.length > 0 && (
-          <nav className="hidden min-w-0 flex-1 items-center justify-center gap-1 overflow-x-auto rounded-lg border border-line bg-surface p-1 md:flex">
-            {chrome.tabs.map((tab) => {
-              const active = isActive(tab.to);
-              return (
-                <Link
-                  key={tab.key}
-                  to={tab.to}
-                  title={tab.label}
-                  className={`flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-sm ${
-                    active
-                      ? "bg-card font-medium text-ink shadow-sm"
-                      : "text-muted hover:bg-card/60 hover:text-ink"
-                  }`}
-                >
-                  {tab.icon && <span className="text-base leading-none">{tab.icon}</span>}
-                  <span className="hidden lg:inline">{tab.label}</span>
-                </Link>
-              );
-            })}
-          </nav>
-        )}
-        {/* Spacer: auf dem Handy immer (Pill-Nav versteckt); Desktop nur ohne Tabs. */}
-        <div className={`flex-1 ${chrome.tabs.length > 0 ? "md:hidden" : ""}`} />
+        <div className="flex-1" />
 
         {/* Rechts: Badges (ab sm) + Nutzer + Burger (mobil) */}
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
@@ -227,12 +191,48 @@ export default function Layout({ children }: { children: ReactNode }) {
           </div>
           <NotificationBell />
           <UserMenu />
-          <MobileMenu tabs={chrome.tabs} isActive={isActive} />
+          <MobileMenu />
         </div>
       </header>
       {/* [&>*]:mx-auto zentriert begrenzte Seiten-Spalten; volle Breite bleibt unberührt. */}
-      <main className="mx-auto max-w-[1400px] p-3 [&>*]:mx-auto sm:p-5">{children}</main>
+      <main className="mx-auto max-w-[1400px] p-3 [&>*]:mx-auto sm:p-5">
+        <SeitenNavigation tabs={chrome.tabs} aktiv={(t) => chrome.active ? t.key === chrome.active : isActive(t.to)} />
+        {children}
+      </main>
       <UpdateFooter />
     </div>
+  );
+}
+
+/**
+ * Die Reiter der aktuellen Seite, auf der Seite.
+ *
+ * Vorher standen sie in der Kopfzeile: eine Pillenleiste, die ab acht Reitern (Einstellungen,
+ * Administration) seitwärts scrollte und dabei den ersten und den aktiven Reiter abschnitt —
+ * eine Navigation, die man nicht sieht, ist keine. Am Handy waren sie stattdessen im
+ * Burger-Menü versteckt, also an einer zweiten Stelle in einer zweiten Form.
+ *
+ * Hier bricht die Leiste einfach um. Sie kostet eine Zeile Höhe und zeigt dafür alles, auf
+ * jeder Breite, mit Beschriftung statt bloßem Zeichen.
+ */
+function SeitenNavigation({ tabs, aktiv }: { tabs: ChromeTab[]; aktiv: (t: ChromeTab) => boolean }) {
+  if (tabs.length === 0) return null;
+  return (
+    <nav className="mb-4 flex flex-wrap gap-1 rounded-lg border border-line bg-card p-1">
+      {tabs.map((tab) => (
+        <Link
+          key={tab.key}
+          to={tab.to}
+          className={`flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm md:min-h-0 ${
+            aktiv(tab)
+              ? "bg-surface font-medium text-ink"
+              : "text-muted hover:bg-surface hover:text-ink"
+          }`}
+        >
+          {tab.icon && <span className="text-base leading-none">{tab.icon}</span>}
+          <span>{tab.label}</span>
+        </Link>
+      ))}
+    </nav>
   );
 }
