@@ -1,15 +1,15 @@
-"""Ausgehende HTTP-Aufrufe über benannte Ziele.
+"""Outgoing HTTP calls over named destinations.
 
-Ein **Ziel** (`models/destination.Destination`) trägt Basis-URL und Anmeldung, der Aufruf
-nennt nur Methode, Pfad-Ergänzung, Query, Header und Body. Genutzt von der Prozess-Aktion
-`http_request`, von Jobs der Art `http` und vom Agenten-Werkzeug `http_call`.
+A **destination** (`models/destination.Destination`) carries the base URL and the login; the
+call only names the method, the path addition, query, headers and body. Used by the process
+action `http_request`, by jobs of kind `http` and by the agent tool `http_call`.
 
-Grundsätze:
-- **Zugangsdaten verlassen den Dienst nicht.** Sie werden erst hier entschlüsselt, in den
-  Request gesetzt und nie protokolliert oder zurückgegeben; `sanitize` schwärzt zusätzlich
-  bekannte Kopfzeilen, bevor irgendetwas gespeichert wird.
-- **Auflösung nach Namen** in fester Reihenfolge: Projekt → Nutzer → systemweit. Damit kann
-  ein Projekt ein gleichnamiges Ziel auf eine Testgegenstelle umbiegen, ohne Prozesse zu
+Principles:
+- **Credentials do not leave the service.** They are decrypted only here, put into the
+  request and never logged or returned; `sanitize` additionally redacts known headers before
+  anything is stored.
+- **Resolution by name** in a fixed order: project, user, system wide. That lets a project
+  bend a destination of the same name onto a test counterpart without changing processes.
   ändern.
 """
 from __future__ import annotations
@@ -33,13 +33,13 @@ log = logging.getLogger("destinations")
 METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS")
 BODYLESS = ("GET", "HEAD", "DELETE", "OPTIONS")
 AUTH_TYPES = ("none", "basic", "bearer", "api_key", "hmac", "oauth2_cc")
-# Rückfall, wenn ein Ziel keine eigene Grenze trägt. Die maßgebliche Grenze steht seit
-# TRA-31 am Ziel (`Destination.max_response_chars`).
+# Fallback when a destination carries no limit of its own. The authoritative limit has stood
+# on the destination since TRA-31 (`Destination.max_response_chars`).
 MAX_RESPONSE_CHARS = 4000
-# Zugriffstoken so lange vor dem echten Ablauf erneuern (Uhren-Drift, Laufzeit).
+# Renew the access token this long before the real expiry (clock drift, runtime).
 TOKEN_SKEW_SECONDS = 60
 
-# Kopfzeilen, deren Wert nie in Ergebnis, Kontext oder Log gehört.
+# Headers whose value never belongs in a result, a context or a log.
 _SENSITIVE = {"authorization", "proxy-authorization", "cookie", "set-cookie"}
 
 
@@ -48,18 +48,18 @@ def _now() -> dt.datetime:
 
 
 def sanitize(headers: dict) -> dict:
-    """Kopfzeilen für Ausgabe/Speicherung schwärzen (Auth, Cookies, konfigurierte Schlüssel)."""
+    """Redact headers for output or storage (auth, cookies, configured keys)."""
     out = {}
     for k, v in (headers or {}).items():
         out[k] = "***" if k.lower() in _SENSITIVE else v
     return out
 
 
-# ── Auflösung ────────────────────────────────────────────────────────────────
+# ── Resolution ───────────────────────────────────────────────────────────────
 
 async def resolve(db: AsyncSession, name: str, *, project_id: int | None = None,
                   owner_id: int | None = None) -> Destination | None:
-    """Ziel nach Namen: Projekt → Nutzer → systemweit. Nur aktivierte Ziele."""
+    """Destination by name: project, user, system wide. Only enabled destinations."""
     if not name:
         return None
     bereiche = [Destination.user_id.is_(None) & Destination.project_id.is_(None)]
@@ -75,7 +75,7 @@ async def resolve(db: AsyncSession, name: str, *, project_id: int | None = None,
 
 
 def _rang(d: Destination) -> int:
-    """Vorrang bei gleichem Namen: Projekt (0) vor Nutzer (1) vor systemweit (2)."""
+    """Precedence with the same name: project (0) before user (1) before system wide (2)."""
     if d.project_id is not None:
         return 0
     return 1 if d.user_id is not None else 2
@@ -83,7 +83,7 @@ def _rang(d: Destination) -> int:
 
 async def visible(db: AsyncSession, *, project_id: int | None = None,
                   owner_id: int | None = None, agents_only: bool = False) -> list[Destination]:
-    """Alle Ziele, die in diesem Zusammenhang aufrufbar sind (je Name das vorrangige)."""
+    """All destinations callable in this context (the primary one per name)."""
     rows = (await db.execute(select(Destination).order_by(Destination.name))).scalars().all()
     passend = [
         d for d in rows
@@ -103,7 +103,7 @@ async def visible(db: AsyncSession, *, project_id: int | None = None,
 # ── Authentifizierung ────────────────────────────────────────────────────────
 
 async def _oauth_token(db: AsyncSession, dest: Destination) -> str:
-    """Zugriffstoken per Client Credentials holen — zwischengespeichert bis kurz vor Ablauf."""
+    """Fetch an access token over client credentials, cached until shortly before expiry."""
     if dest.oauth_token_enc and dest.oauth_expires_at:
         rest = (dest.oauth_expires_at - _now()).total_seconds()
         if rest > TOKEN_SKEW_SECONDS:
@@ -120,7 +120,7 @@ async def _oauth_token(db: AsyncSession, dest: Destination) -> str:
     async with httpx.AsyncClient(verify=dest.verify_tls) as client:
         resp = await client.post(
             dest.oauth_token_url, data=data,
-            auth=(dest.oauth_client_id, secret),   # client_secret_basic (breit unterstützt)
+            auth=(dest.oauth_client_id, secret),   # client_secret_basic (widely supported)
             headers={"Accept": "application/json"}, timeout=dest.timeout_sec or 30)
     if resp.status_code >= 400:
         raise ValueError(f"Ziel '{dest.name}': Token-Abruf fehlgeschlagen "
@@ -138,7 +138,7 @@ async def _oauth_token(db: AsyncSession, dest: Destination) -> str:
 
 async def _apply_auth(db: AsyncSession, dest: Destination, headers: dict, query: dict,
                       body_bytes: bytes) -> tuple[dict, dict, tuple[str, str] | None]:
-    """Anmeldung auf Kopfzeilen/Query anwenden. Liefert (headers, query, basic-auth)."""
+    """Apply the login to headers and query. Returns (headers, query, basic auth)."""
     auth = None
     secret = decrypt_secret(dest.secret_enc) if dest.secret_enc else ""
     kind = dest.auth_type or "none"
@@ -165,7 +165,7 @@ async def _apply_auth(db: AsyncSession, dest: Destination, headers: dict, query:
 # ── Aufruf ───────────────────────────────────────────────────────────────────
 
 def build_url(base_url: str, path: str = "", query: dict | None = None) -> str:
-    """Basis-URL um den Pfad ergänzen und Query anhängen (vorhandene Query bleibt erhalten)."""
+    """Extend the base URL by the path and append the query (an existing query is kept)."""
     base = (base_url or "").rstrip("/")
     p = (path or "").strip()
     if p and not p.startswith("?"):
@@ -183,10 +183,10 @@ def build_url(base_url: str, path: str = "", query: dict | None = None) -> str:
 async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", path: str = "",
                query: dict | None = None, headers: dict | None = None, body=None,
                timeout: int | None = None) -> dict:
-    """Ruft das Ziel auf und liefert ein aufbereitetes Ergebnis (ohne Geheimnisse).
+    """Calls the destination and delivers a prepared result (without secrets).
 
-    `body` darf dict/list (→ JSON) oder Text sein; bei GET/HEAD/DELETE/OPTIONS wird er
-    weggelassen. Die Antwort wird als `json` geparst, wenn möglich, sonst als `text`.
+    `body` may be a dict or list (becoming JSON) or text; with GET/HEAD/DELETE/OPTIONS it is
+    left out. The answer is parsed as `json` when possible, otherwise as `text`.
     """
     verb = (method or "POST").upper()
     if verb not in METHODS:
@@ -216,19 +216,19 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
     ergebnis: dict = {
         "destination": dest.name,
         "method": verb,
-        # Ohne Query: dort könnte ein API-Key stehen (api_key_in=query).
+        # Without the query: an API key could stand there (api_key_in=query).
         "url": build_url(dest.base_url, path),
         "status_code": resp.status_code,
         "ok": 200 <= resp.status_code < 300,
     }
     text = resp.text or ""
-    # Die Grenze kommt vom Ziel (TRA-31). Sie steht auch im Ergebnis, damit der Aufrufer
-    # nicht ein zweites Mal kürzt und dabei die Erlaubnis des Ziels wieder einkassiert.
+    # The limit comes from the destination (TRA-31). It stands in the result as well, so that
+    # the caller does not truncate a second time and thereby revoke the permission again.
     grenze = dest.max_response_chars or MAX_RESPONSE_CHARS
     ergebnis["max_chars"] = grenze
     try:
         ergebnis["json"] = resp.json()
-    except Exception:  # noqa: BLE001 — kein JSON: Text reicht
+    except Exception:  # noqa: BLE001 - no JSON: text is enough
         ergebnis["text"] = text[:grenze]
     else:
         if len(text) <= grenze:

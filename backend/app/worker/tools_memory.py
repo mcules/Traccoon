@@ -5,8 +5,8 @@ können soll — eine DB-Tabelle wäre unsichtbar. Unter `users.vault_memory_pat
 Sorten Notizen:
 
     Mensch.md            gilt für ALLE Läufe dieses Menschen (Vorlieben, feste Vorgaben)
-    Agent-<rolle>.md     rollenspezifisch (assistent, developer, code_reviewer …)
-    Projekt-<KEY>.md     projektspezifisch
+    Agent-<rolle>.md     role specific (assistent, developer, code_reviewer …)
+    Projekt-<KEY>.md     project specific
 
 Der Inhalt ist absichtlich schlichtes Markdown, eine Bullet-Zeile pro Erkenntnis. Es gibt
 kein Parsing, keine IDs, keine Trefferzähler: der Text wird als Block in den Prompt gehängt,
@@ -141,7 +141,7 @@ async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "
     """Gesamtes einschlägiges Gedächtnis als Text für den Prompt (gekappt).
 
     Reihenfolge vom Allgemeinen zum Besonderen, damit das Spezifische am Ende steht und
-    im Zweifel schwerer wiegt.
+    end and weighs more in case of doubt.
     """
     if not root:
         return ""
