@@ -1,17 +1,17 @@
-"""Wie gut trennt die Erkennung wirklich? — Messung statt Gefühl.
+"""How well does the detection really separate? Measurement instead of gut feeling.
 
-Schwellen zu setzen, ohne die Verteilung zu kennen, ist Raten. Diese Rückschau holt eine
-Stichprobe aus zwei Ordnern, deren Wahrheit feststeht — Spam-Ordner = Müll, Posteingang =
-erwünscht — und beurteilt sie mit denselben Regeln wie den Livebetrieb. Heraus kommt, wo
-die beiden Verteilungen liegen und welche Schwelle sie trennt, ohne echte Post zu treffen.
+Setting thresholds without knowing the distribution is guessing. This review takes a sample
+from two folders whose truth is settled (spam folder = rubbish, inbox = wanted) and assesses
+it with the same rules as live operation. Out comes where the two distributions lie and
+which threshold separates them, without hitting real post.
 
-**Ohne Gedächtnis und ohne Modell.** Das Gedächtnis kennt genau diese Mails (es wurde aus
-ihnen angelernt) — es mitzumessen wäre ein Zirkelschluss. Das Modell kostet je Mail einen
-Durchlauf. Was hier steht, ist also die *untere* Schranke: die Regeln allein.
+**Without memory and without a model.** The memory knows exactly these mails (it was trained
+from them), so measuring it as well would be circular. The model costs one pass per mail.
+What stands here is therefore the *lower* bound: the rules alone.
 
-Die Empfehlung folgt der Leitplanke der Erkennung: **kein Fehlalarm.** Gesucht wird die
-niedrigste Schwelle, unter der keine einzige echte Mail liegt — was darunter durchrutscht,
-ist der Preis dafür.
+The recommendation follows the guard rail of the detection: **no false positives.** What is
+sought is the lowest threshold below which not a single real mail lies; what slips through
+below it is the price for that.
 """
 from __future__ import annotations
 
@@ -34,21 +34,21 @@ IMAP_MCP_URL = os.getenv("IMAP_MCP_URL", "http://imap-mcp:3010/mcp")
 
 @dataclass
 class Messung:
-    """Ergebnis einer Rückschau — je Klasse die Punktzahlen, dazu die Empfehlung."""
+    """Result of a review: the scores per class plus the recommendation."""
     spam: list[float] = field(default_factory=list)
     ham: list[float] = field(default_factory=list)
-    freispruch: int = 0          # bekannte Absender, die gar nicht erst beurteilt werden
+    freispruch: int = 0          # known senders that are not assessed in the first place
     fehler: list[str] = field(default_factory=list)
-    # Die auffälligsten Nachrichten aus dem Posteingang — sie entscheiden die Schwelle
-    # ganz allein und gehören angesehen, bevor man ihnen glaubt: oft ist es kein
-    # Fehlalarm, sondern Müll, der nie einsortiert wurde.
+    # The most conspicuous messages from the inbox: they decide the threshold all by
+    # themselves and should be looked at before being believed, because often it is not a
+    # false positive but rubbish that was never sorted in.
     ausreisser: list[dict] = field(default_factory=list)
 
     def bericht(self) -> dict:
         spam = sorted(self.spam)
         ham = sorted(self.ham)
         hoechstes_ham = ham[-1] if ham else 0.0
-        # Kein Fehlalarm: die Schwelle muss über der höchsten echten Mail liegen.
+        # No false positives: the threshold has to lie above the highest real mail.
         vorschlag = round(min(0.95, hoechstes_ham + 0.05), 2) if ham else 0.45
         erwischt = sum(1 for s in spam if s >= vorschlag)
         return {
@@ -69,7 +69,7 @@ class Messung:
 
 
 async def _mail_holen(account: str, folder: str, uid: int) -> dict | None:
-    """Eine Nachricht so herrichten, wie der Watcher sie liefern würde."""
+    """Prepare a message the way the watcher would deliver it."""
     try:
         antwort = await call_tool(IMAP_MCP_URL, "get_email", {
             "account": account, "folder": folder, "uid": uid, "body_format": "both",
@@ -81,8 +81,8 @@ async def _mail_holen(account: str, folder: str, uid: int) -> dict | None:
     kopf = daten.get("headers") or {}
     text = ((daten.get("body") or {}).get("text") or {}).get("content") or ""
     html = ((daten.get("body") or {}).get("html") or {}).get("content") or ""
-    # Der Watcher liefert die Links mit; wer nachträglich beurteilt, muss sie selbst aus
-    # dem HTML holen — sonst sieht die Rückschau eine Mail ohne Links, wo Links sind.
+    # The watcher delivers the links along; whoever assesses afterwards has to get them out
+    # of the HTML themselves; otherwise the review sees a mail without links where there are links.
     links = [{"href": href, "text": re.sub(r"<[^>]+>", " ", innen).strip()[:200]}
              for href, innen in re.findall(
                  r"<a\b[^>]*href=[\"']([^\"']+)[\"'][^>]*>(.*?)</a>", html,
@@ -101,7 +101,7 @@ async def _mail_holen(account: str, folder: str, uid: int) -> dict | None:
 
 async def rueckschau(db: AsyncSession, owner_id: int | None, *, stichprobe: int = 40,
                      konten: list[dict] | None = None) -> Messung:
-    """Stichprobe aus Spam-Ordner und Posteingang beurteilen. → Messung."""
+    """Assess a sample from the spam folder and the inbox. Returns the measurement."""
     from .spam_bootstrap import konten as alle_konten
 
     messung = Messung()
@@ -129,8 +129,8 @@ async def rueckschau(db: AsyncSession, owner_id: int | None, *, stichprobe: int 
                 regel = evaluate(payload, meine_adressen=meine, bekannte_domains=domains,
                                  geschaeftsfreie_domains=ohne_geschaeft,
                                  body=mail_text(payload))
-                # Bekannte Absender werden im Livebetrieb gar nicht erst beurteilt —
-                # sie gehören nicht in die Verteilung, sondern gesondert gezählt.
+                # Known senders are not assessed at all in live operation: they do not belong
+                # in the distribution but are counted separately.
                 if not ist_spam:
                     treffer_art = await kontakt_treffer(
                         db, owner_id, regel.sender_email, regel.sender_domain)
@@ -148,7 +148,7 @@ async def rueckschau(db: AsyncSession, owner_id: int | None, *, stichprobe: int 
 
 
 async def bilanz(db: AsyncSession, owner_id: int | None) -> dict:
-    """Was im Betrieb tatsächlich passiert ist — gefragt, entschieden, gelernt."""
+    """What actually happened in operation: asked, decided, learned."""
     from sqlalchemy import func, select
 
     from ..models.assistant import SpamFeatureStat, SpamVerdict

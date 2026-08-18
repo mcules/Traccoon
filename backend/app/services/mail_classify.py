@@ -1,8 +1,8 @@
-"""Lokale E-Mail-Vorklassifizierung über ein hausinternes Modell (qwen via litellm).
+"""Local pre-classification of e-mail over a model in house (qwen via litellm).
 
-Ziel: sensible Inhalte bleiben im Haus. Der Rohtext geht NUR an das lokale Modell;
-nach außen (Richtung Claude-Assistent) reicht ausschließlich `redacted_summary` weiter —
-eine bereinigte Zusammenfassung ohne PII/Geheimnisse.
+The aim: sensitive content stays in the house. The raw text goes ONLY to the local model;
+to the outside (towards the Claude assistant) exclusively `redacted_summary` is passed on, a
+cleaned summary without PII or secrets.
 """
 from __future__ import annotations
 
@@ -24,8 +24,9 @@ log = logging.getLogger("traccoon.mail")
 
 async def resolve_classify_from_agent(db: AsyncSession, owner_id: int | None,
                                       role: str) -> tuple[str, str, str] | None:
-    """(provider, model, token_name) aus der AgentDefinition mit dieser Rolle (eigene vor
-    globaler, projektlos). None, wenn es die Rolle nicht gibt → Aufrufer nutzt env-Fallback."""
+    """(provider, model, token_name) from the AgentDefinition with this role (one's own
+    before the global one, project-less). None when the role does not exist, and then the
+    caller uses the env fallback."""
     if not role:
         return None
     q = select(AgentDefinition).where(
@@ -65,7 +66,7 @@ _SYSTEM = (
 
 
 def _parse_json(text: str) -> dict:
-    """Robustes JSON aus einer Modell-Antwort ziehen (Code-Zäune/Vor-/Nachtext tolerieren)."""
+    """Pull robust JSON out of a model answer (tolerating code fences and text around it)."""
     t = (text or "").strip()
     t = re.sub(r"^```(?:json)?|```$", "", t, flags=re.MULTILINE).strip()
     try:
@@ -84,21 +85,21 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
                          sender: str, subject: str, body: str,
                          classify_agent: str = "", spam_hints: list[str] | None = None,
                          spam_beispiele: list[str] | None = None) -> dict:
-    """→ {category, priority, sensitive, redacted_summary, spam_score, spam_reason}. Bei
-    jedem Fehler ein sicherer Fallback (sensitive=True, leere Summary) — im Zweifel NICHTS
-    nach außen geben. Provider/Modell/Token kommen aus dem Klassifizier-Agenten (falls
-    gesetzt) → env-Fallback.
+    """Returns {category, priority, sensitive, redacted_summary, spam_score, spam_reason}. On
+    every error a safe fallback (sensitive=True, empty summary): in case of doubt give
+    NOTHING to the outside. Provider, model and token come from the classifying agent (when
+    set), otherwise the env fallback.
 
-    `spam_hints` sind die technischen Befunde der Regeln (SPF fehlgeschlagen, Rückweg
-    abweichend …). Das Modell soll den Text beurteilen, nicht Kopfzeilen nachlesen, die es
-    ohnehin nicht sieht — mit den Befunden im Prompt urteilt es über dieselbe Mail wie die
-    Regeln. `spam_beispiele` sind die jüngsten Entscheidungen des Menschen: damit wandert
-    auch die Einschätzung des Modells mit, nicht nur die Statistik.
+    `spam_hints` are the technical findings of the rules (SPF failed, return path deviating
+    and so on). The model should assess the text, not read headers it does not see anyway;
+    with the findings in the prompt it judges the same mail as the rules. `spam_beispiele`
+    are the most recent decisions of the human, so that the assessment of the model moves
+    along as well, not only the statistics.
     """
     fallback = {"category": "sonstiges", "priority": "normal",
                 "sensitive": True, "redacted_summary": "",
-                # Kein Urteil ist NICHT „unverdächtig" — bei ausgefallener Klassifizierung
-                # entscheiden Regeln und Gedächtnis allein, statt einen Freispruch zu erben.
+                # No verdict is NOT "inconspicuous": with a failed classification, rules and
+                # memory decide alone instead of inheriting an acquittal.
                 "spam_score": 0.0, "spam_reason": ""}
 
     cfg = await resolve_classify_from_agent(db, owner_id, classify_agent)
@@ -113,7 +114,7 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
         return fallback
 
     impl = OpenAIProvider(base_url=base_url)
-    # Rohtext defensiv begrenzen (der lokale Kontext muss nicht die ganze Mail sein).
+    # Limit the raw text defensively (the local context need not be the whole mail).
     teile = [f"Konto: {account}", f"Von: {sender}", f"Betreff: {subject}"]
     if spam_hints:
         teile.append("\nTechnische Befunde zu dieser Mail:\n"
@@ -129,10 +130,10 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
             messages=[{"role": "system", "content": _SYSTEM},
                       {"role": "user", "content": user_msg}],
             temperature=0.1, max_tokens=1500, auth_token=token,
-            # Denkende Modelle (qwen3.6 & Co.) verbrauchen sonst das ganze Ausgabe-Budget im
-            # Reasoning und liefern leeren Text — die Klassifizierung fiel damit JEDES Mal
-            # auf den Notnagel zurück (sensitive=True, keine Zusammenfassung), ohne dass es
-            # jemandem auffiel. Für Triage ist das Denken ohnehin verschenkt.
+            # Thinking models (qwen3.6 and company) otherwise use the whole output budget on
+            # reasoning and deliver empty text, so the classification fell back on the
+            # emergency default EVERY time (sensitive=True, no summary) without anybody
+            # noticing. For triage the thinking is wasted anyway.
             extra_body={"chat_template_kwargs": {"enable_thinking": False}})
     except ProviderError as exc:
         log.warning("Mail-Klassifizierung fehlgeschlagen: %s → Fallback", exc)
@@ -155,8 +156,8 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
 
 
 def _spam_score(roh) -> float:
-    """0.0–1.0 aus einer Modellangabe. Kleine Modelle liefern gern '80' oder '0,8' statt
-    0.8 — beides wird eingefangen, statt still zu einer 0 zu werden."""
+    """0.0 to 1.0 from a model statement. Small models like to deliver '80' or '0,8' instead
+    of 0.8; both are caught instead of silently becoming a 0."""
     if roh is None or roh == "":
         return 0.0
     try:
