@@ -1,10 +1,10 @@
-"""Traccoon Telegram-Bot (aiogram v3). Teilt das Backend-Image (python -m app.bot).
+"""Traccoon chat bot (aiogram v3). Shares the backend image (python -m app.bot).
 
-Notifier-Poll (Notification → Telegram, mit Medium falls `media_path` gesetzt),
+Notifier poll (Notification to chat, with media when `media_path` is set),
 Reply→Kommentar (geteilte apply_user_comment),
-Sprachnachrichten (voice/audio/video_note → lokale Transkription → derselbe Weg wie Text),
+voice messages (voice/audio/video_note, local transcription, then the same path as text),
 Inline-Buttons (approve/reject/accept/perm), Commands /tasks /comment.
-No-op (stabiler Sleep) wenn kein TELEGRAM_BOT_TOKEN gesetzt.
+A no-op (a stable sleep) when no TELEGRAM_BOT_TOKEN is set.
 """
 from __future__ import annotations
 
@@ -40,50 +40,50 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ALLOWED = {int(x) for x in os.getenv("TELEGRAM_ALLOWED_IDS", "").replace(" ", "").split(",") if x.strip().isdigit()}
 OWNER_CHAT = os.getenv("TELEGRAM_OWNER_CHAT", "")
 
-# Sprachnachrichten: lokaler faster-whisper-Container (kein Cloud-Aufruf, kein Audio verlässt
-# das Haus — Vorgabe des Nutzers). `/asr` ist der native Endpunkt von
-# onerahmet/openai-whisper-asr-webservice mit ASR_ENGINE=faster_whisper.
+# Voice messages: a local faster-whisper container (no cloud call, no audio leaves the house,
+# a requirement of the user). `/asr` is the native endpoint of
+# onerahmet/openai-whisper-asr-webservice with ASR_ENGINE=faster_whisper.
 WHISPER_URL = os.getenv("WHISPER_URL", "http://whisper:9000")
-# Erste Wahl: Qwen3-ASR auf der iGPU (llama.cpp/Vulkan). Kein reiner Transkribierer, sondern
-# ein Sprachmodell mit Audio-Eingang — es versteht Eigennamen, die man ihm im Prompt nennt,
-# statt sie nur zu streifen. Am 2026-08-07 auf diesem Host gemessen, 7 s deutsche Sprache:
+# First choice: Qwen3-ASR on the integrated GPU (llama.cpp/Vulkan). Not a pure transcriber but
+# a language model with audio input: it understands proper names you name in the prompt instead
+# of merely brushing them. Measured on this host on 2026-08-07, 7 s of German speech:
 #   faster-whisper (CPU, large-v3-turbo)  3,1 s  „TRA-31 in Traccoon"      ✅
 #   whisper.cpp    (GPU, large-v3-turbo)  0,7 s  „TRA-31 in Trakong"       ✗
 #   Qwen3-ASR      (GPU, 1.7B Q8_0)       0,5 s  „TRA-31 in Traccoon"      ✅
-# Leer = aus, dann läuft alles wie zuvor über Whisper.
+# Empty means off, and then everything runs through Whisper as before.
 ASR_URL = os.getenv("ASR_URL", "").strip().rstrip("/")
-# 10 Minuten Standardgrenze — länger ist am Handy ungewöhnlich und würde den CPU-Container
-# lange blockieren. Bewusst konfigurierbar statt fest, falls sich das als zu eng erweist.
+# Ten minutes as the default limit: longer is unusual on a phone and would block the CPU
+# container for a long time. Deliberately configurable instead of fixed, in case it proves tight.
 VOICE_MAX_SECONDS = int(os.getenv("TELEGRAM_VOICE_MAX_SECONDS", "600"))
-# Fallback-Obergrenze über die Dateigröße, falls Telegram kein `duration` mitliefert (kommt
-# bei manchen `audio`-Uploads ohne Metadaten vor) — ohne sie wäre die Längenprüfung dann
-# wirkungslos. Grober Anhalt: OGG/Opus-Sprachnachrichten liegen bei ~1 MB je Minute.
-# WICHTIG: die Bot-API (ohne eigenen lokalen Bot-API-Server) lehnt `getFile`/den Download
-# JEDER Datei über 20 MB ab — ein Default darüber (z. B. 25 MB) würde Dateien zwischen 20
-# und 25 MB die Größenprüfung passieren lassen, die dann erst beim Download mit einer
-# technischen Exception scheitern und die irreführende „konnte nicht geladen werden"-Meldung
-# statt der beabsichtigten „zu groß"-Meldung auslösen. Deshalb 19 MB Default (Sicherheits-
-# abstand zum harten 20-MB-Limit).
+# A fallback upper bound over the file size in case Telegram delivers no `duration` (happens
+# with some `audio` uploads without metadata); without it the length check would be useless
+# then. A rough guide: OGG/Opus voice messages are about 1 MB per minute.
+# IMPORTANT: the bot API (without a local bot API server of our own) refuses `getFile` and the
+# download of ANY file above 20 MB. A default above that (25 MB, say) would let files between
+# 20 and 25 MB pass the size check and then fail at the download with a technical exception,
+# triggering the misleading "could not be loaded" message instead of the intended "too large"
+# one. Hence a default of 19 MB, with a safety margin to the hard 20 MB limit.
+# one. Hence a default of 19 MB, with a safety margin to the hard 20 MB limit.
 VOICE_MAX_BYTES = int(os.getenv("TELEGRAM_VOICE_MAX_BYTES", str(19 * 1024 * 1024)))
-# Zusätzliche Wörter von Hand — für alles, was NICHT in der Datenbank steht (Namen aus
-# anderen Stacks, Fachbegriffe, Abkürzungen). Der Regelfall braucht das nicht: die Liste
-# baut sich aus den eigenen Daten (siehe `_vokabular`).
+# Extra words by hand, for everything that is NOT in the database (names from other stacks,
+# technical terms, abbreviations). The normal case needs none of this: the list builds itself
+# from our own data (see `_vokabular`).
 VOICE_VOKABULAR = os.getenv("TELEGRAM_VOICE_VOKABULAR", "").strip()
-# Whisper schneidet den `initial_prompt` bei ~224 Tokens ab und nimmt dann das ENDE — eine
-# zu lange Liste verliert also genau die Wörter, die vorne stehen. Lieber kurz halten.
+# Whisper cuts the `initial_prompt` at about 224 tokens and then takes the END, so a list that
+# is too long loses exactly the words standing at the front. Better keep it short.
 VOKABULAR_MAX_WOERTER = int(os.getenv("TELEGRAM_VOICE_VOKABULAR_MAX", "60"))
 _vokabular_cache: tuple[float, str] = (0.0, "")
 
 
 async def _vokabular() -> str:
-    """Die hauseigenen Eigennamen — aus der Datenbank, nicht aus einer gepflegten Liste.
+    """The proper names of this house, from the database instead of a maintained list.
 
-    Whisper hört „Trakon" statt „Traccoon" und „Terra 1 und 30" statt „TRA-31", weil kein
-    Sprachmodell diese Wörter kennen kann. Man muss sie ihm sagen — aber niemand soll dafür
-    eine Liste pflegen: Projekte, Ticket-Präfixe, Agentenrollen und Personen stehen längst
-    in der Datenbank, und ein neues Projekt bringt sein Wort damit von selbst mit.
+    Whisper hears "Trakon" instead of "Traccoon" and "Terra 1 and 30" instead of "TRA-31",
+    because no language model can know these words. One has to tell it, but nobody should have
+    to maintain a list for that: projects, ticket prefixes, agent roles and people are in the
+    database already, and a new project brings its word along by itself.
 
-    Zehn Minuten gecacht: die Namen ändern sich selten, und jede Sprachnachricht soll nicht
+    Cached for ten minutes: the names rarely change, and no voice message should
     drei Abfragen kosten.
     """
     global _vokabular_cache
@@ -99,8 +99,8 @@ async def _vokabular() -> str:
     try:
         async with SessionLocal() as db:
             for p in (await db.execute(select(Project))).scalars().all():
-                # Beides: der Schlüssel wird buchstabiert diktiert („TRA 31"), der Name
-                # ausgesprochen. Ein Beispiel-Ticket bringt Whisper die Schreibweise bei.
+                # Both: the key is dictated letter by letter ("TRA 31"), the name is spoken.
+                # A sample ticket teaches Whisper the spelling.
                 woerter += [p.name, f"Ticket {p.key}-31"]
             for a in (await db.execute(
                     select(AgentDefinition.role).distinct())).scalars().all():
@@ -108,7 +108,7 @@ async def _vokabular() -> str:
             for u in (await db.execute(select(User).where(
                     User.status == UserStatus.active))).scalars().all():
                 woerter.append((u.display_name or u.username or "").strip())
-    except Exception:  # noqa: BLE001 — ohne Vokabular transkribieren ist besser als gar nicht
+    except Exception:  # noqa: BLE001 — transcribing without a vocabulary beats not at all
         log.exception("Vokabular konnte nicht gebildet werden — Transkription läuft ohne")
 
     if VOICE_VOKABULAR:
@@ -121,12 +121,12 @@ async def _vokabular() -> str:
     return text
 
 
-# Whitelist bekannter Audio-Container für `audio`-Uploads (mime_type → Dateiendung).
-# `mime_type` ist ein vom SENDENDEN CLIENT frei befülltes Metadatum aus der Telegram-Nachricht
-# — keine verifizierte serverseitige Eigenschaft. Würde der Rohwert ungeprüft als HTTP-
-# Content-Type des Multipart-Teils an den Whisper-Container weitergereicht, könnte ein
-# präparierter `mime_type` (Kontroll-/Sonderzeichen, beliebiger String) dort landen. Deshalb
-# nur bekannte, harmlose Werte durchlassen — alles andere fällt auf einen sicheren Default.
+# A whitelist of known audio containers for `audio` uploads (mime_type to file extension).
+# `mime_type` is metadata filled in freely by the SENDING CLIENT in the message, not a verified
+# server side property. If the raw value were passed on unchecked as the HTTP content type of
+# the multipart part to the Whisper container, a prepared `mime_type` (control characters,
+# arbitrary string) could end up there. So only known, harmless values pass through, and
+# everything else falls back to a safe default.
 _AUDIO_MIME_WHITELIST: dict[str, str] = {
     "audio/mpeg": "mp3",
     "audio/mp3": "mp3",
@@ -144,17 +144,17 @@ _AUDIO_MIME_WHITELIST: dict[str, str] = {
 
 
 def _upload_name_typ(medienart: str, mime_type: str | None) -> tuple[str, str]:
-    """Dateiname+Content-Type passend zum tatsächlichen Medientyp — NICHT pauschal
-    `audio.ogg`/`application/octet-stream`: `voice` ist tatsächlich OGG/Opus, aber
-    `audio`-Uploads sind häufig MP3/M4A/WAV und `video_note` ist ein MP4-Container
-    (Video+Audio-Spur). Erkennt ffmpeg im Whisper-Image das Format anhand einer
-    falschen Erweiterung/eines falschen Content-Type nicht, schlägt die Transkription
-    fehl oder liefert Müll — und der Nutzer bekommt fälschlich „keine Sprache erkannt"
-    statt der wahren Ursache.
+    """File name and content type matching the actual media type, NOT `audio.ogg` /
+    `application/octet-stream` across the board: `voice` really is OGG/Opus, but `audio`
+    uploads are often MP3/M4A/WAV and `video_note` is an MP4 container (a video plus an audio
+    track). If ffmpeg in the Whisper image does not recognise the format because of a wrong
+    extension or content type, the transcription fails or delivers junk, and the user wrongly
+    gets "no speech recognised" instead of the real cause.
+    gets "no speech recognised" instead of the real cause.
 
-    `mime_type` kommt UNGEPRÜFT von Telegram (letztlich vom sendenden Client) — deshalb
-    gegen `_AUDIO_MIME_WHITELIST` prüfen statt den Rohwert direkt als HTTP-Content-Type
-    zu übernehmen. Unbekannter/verdächtiger Wert → sicherer Default statt Weiterreichen.
+    `mime_type` comes UNCHECKED from Telegram (ultimately from the sending client), so it is
+    checked against `_AUDIO_MIME_WHITELIST` instead of taking the raw value as the HTTP content
+    type. An unknown or suspicious value falls back to a safe default.
     """
     if medienart == "video_note":
         return "video_note.mp4", "video/mp4"
@@ -162,8 +162,8 @@ def _upload_name_typ(medienart: str, mime_type: str | None) -> tuple[str, str]:
         mime = (mime_type or "").strip().lower()
         endung = _AUDIO_MIME_WHITELIST.get(mime)
         if endung is None:
-            # Nicht gelistet (unbekanntes Format ODER manipulierter Wert) — sicherer
-            # Default statt Rohwert ungeprüft in den Multipart-Header zu übernehmen.
+            # Not listed (an unknown format OR a manipulated value), so a safe default instead
+            # of putting the raw value unchecked into the multipart header.
             return "audio.mp3", "audio/mpeg"
         return f"audio.{endung}", mime
     return "voice.ogg", "audio/ogg"
@@ -172,10 +172,10 @@ def _upload_name_typ(medienart: str, mime_type: str | None) -> tuple[str, str]:
 async def _nach_wav(audio: bytes) -> bytes:
     """Telegram-Audio in 16-kHz-Mono-WAV wandeln.
 
-    Der Audio-Pfad von llama.cpp (miniaudio) nimmt WAV/MP3/FLAC — Telegram liefert aber
-    OGG/Opus, und der Server antwortet darauf mit „Failed to load image or audio file".
-    ffmpeg liest alles, was Telegram schickt (auch die MP4-Spur einer Videonachricht), und
-    16 kHz mono ist ohnehin das Format, mit dem jedes ASR-Modell arbeitet.
+    The audio path of llama.cpp (miniaudio) takes WAV/MP3/FLAC, but Telegram delivers OGG/Opus,
+    and the server answers that with "Failed to load image or audio file". ffmpeg reads
+    everything Telegram sends (including the MP4 track of a video note), and 16 kHz mono is the
+    format every ASR model works with anyway.
     """
     proc = await asyncio.create_subprocess_exec(
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-i", "pipe:0",
@@ -189,10 +189,10 @@ async def _nach_wav(audio: bytes) -> bytes:
 
 
 def _asr_text(roh: str) -> str:
-    """Die Nutzlast aus der Modell-Antwort schälen.
+    """Peel the payload out of the model answer.
 
-    Qwen3-ASR schreibt seine Steuermarken mit in den Text: „language German<asr_text>…".
-    Ohne diesen Schnitt stünde das als „🎙 verstanden" im Chat und ginge so auch an den
+    Qwen3-ASR writes its control markers into the text: "language German<asr_text>…". Without
+    this cut that would stand in the chat as "🎙 understood" and go on to the
     Assistenten weiter.
     """
     text = roh.split("<asr_text>")[-1]
@@ -202,12 +202,12 @@ def _asr_text(roh: str) -> str:
 
 
 async def _transkribieren_qwen(audio: bytes, medienart: str, mime_type: str | None) -> str:
-    """Qwen3-ASR auf der iGPU — ein Sprachmodell mit Audio-Eingang.
+    """Qwen3-ASR on the integrated GPU, a language model with audio input.
 
-    Der Unterschied zu Whisper ist der Umgang mit Eigennamen: Whisper bekommt eine Wortliste
-    als Vorlauftext und gewichtet sie schwach, Qwen bekommt sie als Kontext eines Gesprächs.
-    Gemessen am 2026-08-07 mit derselben Aufnahme: „TRA-31 in Trakong" (whisper.cpp/GPU)
-    gegen „TRA-31 in Traccoon" (hier) — bei 0,5 s statt 3,1 s auf der CPU.
+    The difference to Whisper is the handling of proper names: Whisper gets a word list as
+    priming text and weights it weakly, Qwen gets it as the context of a conversation. Measured
+    on 2026-08-07 with the same recording: "TRA-31 in Trakong" (whisper.cpp/GPU)
+    against "TRA-31 in Traccoon" (here), at 0.5 s instead of 3.1 s on the CPU.
     """
     import httpx
     wav = await _nach_wav(audio)
@@ -230,26 +230,26 @@ async def _transkribieren_qwen(audio: bytes, medienart: str, mime_type: str | No
 
 async def _transkribieren(audio: bytes, medienart: str = "voice",
                            mime_type: str | None = None) -> str:
-    """Sprachnachricht lokal transkribieren. Erst Deutsch (häufigster Fall), bei LEEREM
-    Ergebnis (nicht bei technischem Fehler) ein zweiter Versuch ohne Sprachangabe
-    (Auto-Erkennung) — ein 4xx/5xx vom Container oder ein Verbindungsfehler bricht sofort ab,
-    denn eine erneute komplette Übertragung derselben Datei würde die Verarbeitungszeit bei
-    einer langen Nachricht verdoppeln, ohne dass sich am Fehler etwas ändert.
-    Leer nach dem ersten Versuch → zweiter Versuch; leer nach beiden → leerer String, kein
-    Fehler. Ein wirklicher Fehler wird weitergereicht, damit der Aufrufer ehrlich absagen
-    kann statt stumm zu bleiben.
+    """Transcribe a voice message locally. German first (the most common case), and on an EMPTY
+    result (not on a technical error) a second attempt without a language (auto detection). A
+    4xx/5xx from the container or a connection error aborts at once, because transmitting the
+    same file completely again would double the processing time of a long message without
+    changing anything about the error.
+    Empty after the first attempt means a second one; empty after both means an empty string,
+    not an error. A real error is passed on so that the caller can decline honestly instead of
+    staying silent.
 
-    Timeout an `VOICE_MAX_SECONDS` gekoppelt statt fest: eine erlaubte 10-Minuten-Nachricht
-    braucht auf CPU (Modell "small") durchaus mehrere Minuten Transkriptionszeit — ein
-    fixer 120s-Timeout würde genau die Nachrichten abbrechen, die der Längen-Check erlaubt.
-    Faktor 1.0 der Nachrichtenlänge plus 60s Sockel für Modell-Ladezeit/Overhead, mindestens
-    120s für kurze Nachrichten.
+    The timeout is tied to `VOICE_MAX_SECONDS` instead of being fixed: an allowed ten minute
+    message really does need several minutes of transcription on the CPU (model "small"), and a
+    fixed 120 s timeout would abort exactly the messages the length check allows. Factor 1.0 of
+    the message length plus a 60 s base for model loading and overhead, at least 120 s for short
+    messages.
     """
     import httpx
     if ASR_URL:
-        # Erste Wahl: Qwen3-ASR auf der GPU. Scheitert es (Container weg, Modell lädt noch,
-        # Audio unlesbar), fällt es auf Whisper zurück statt die Nachricht zu verlieren —
-        # ein zweiter Weg, der schon läuft, ist mehr wert als eine ehrliche Absage.
+        # First choice: Qwen3-ASR on the GPU. If it fails (container gone, model still loading,
+        # audio unreadable) it falls back to Whisper instead of losing the message: a second
+        # path that already runs is worth more than an honest refusal.
         try:
             return await _transkribieren_qwen(audio, medienart, mime_type)
         except Exception as exc:  # noqa: BLE001
@@ -265,15 +265,14 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
             if sprache:
                 params["language"] = sprache
             if vokabular:
-                # Whisper nimmt `initial_prompt` als Vorlauf-Text und richtet seine
-                # Worterwartung danach aus. Für Eigennamen ist das DER Hebel — am
-                # 2026-08-07 auf diesem Host gemessen, derselbe Satz, dasselbe Modell:
-                #   ohne: „Ticket Terra 1 und 30 in Trakon … Digist … Univer"
-                #   mit:  „Ticket TRA-31 in Traccoon … Digest … UniWar"
+                # Whisper takes `initial_prompt` as priming text and aligns its word
+                # expectations with it. For proper names that is THE lever, measured on this
+                # host on 2026-08-07 with the same sentence and the same model:
+                #   with:    "Ticket TRA-31 in Traccoon … Digest … UniWar"
                 params["initial_prompt"] = vokabular
-            # Ein technischer Fehler (nicht erreichbar, abgelehntes Format, 4xx/5xx) wird
-            # NICHT abgefangen, sondern reicht bis zum Aufrufer durch — ein zweiter Versuch
-            # würde denselben Fehler nur wiederholen und zusätzlich Zeit kosten.
+            # A technical error (unreachable, rejected format, 4xx/5xx) is NOT caught but
+            # passed through to the caller: a second attempt would only repeat the same error
+            # and cost time on top.
             resp = await client.post(f"{WHISPER_URL}/asr", params=params,
                                      files={"audio_file": (dateiname, audio, content_type)})
             resp.raise_for_status()
@@ -283,29 +282,29 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
     return ""
 
 
-# Entscheidungen der Freigabe-Knöpfe im Klartext, für den Vermerk an der Nachricht.
+# Decisions of the approval buttons in plain words, for the note on the message.
 _DEC_TEXT = {"once": "einmal", "always": "immer", "never": "nie"}
 
 
 async def _erledigt(cq: CallbackQuery, vermerk: str) -> None:
-    """Tastatur entfernen und den Ausgang an die Frage schreiben.
+    """Remove the keyboard and write the outcome onto the question.
 
-    Damit sieht man im Verlauf sofort, was noch offen ist: beantwortete Fragen tragen
-    keine Knöpfe mehr, sondern eine Zeile mit Entscheidung und Zeitpunkt. Auch bei
-    „schon erledigt" (anderswo entschieden) müssen die Knöpfe weg — sonst laden sie
-    weiter zum Drücken ein.
+    That way one sees in the history at once what is still open: answered questions carry no
+    buttons any more but a line with the decision and the time. Even on "already handled"
+    (decided elsewhere) the buttons have to go, otherwise they keep inviting a press.
+    # buttons any more but a line with the decision and the time.
     """
     msg = cq.message
     if msg is None:
         return
     zeile = f"<i>{safe(vermerk)} · {_now().strftime('%d.%m. %H:%M')}</i>"
     try:
-        # html_text erhält die Formatierung der Ursprungsnachricht (Fettung, Zeilen).
+        # html_text keeps the formatting of the original message (bold, lines).
         await msg.edit_text(f"{msg.html_text}\n\n{zeile}", parse_mode="HTML")
         return
     except Exception:  # noqa: BLE001
-        # Zu alt zum Bearbeiten, ohne Text (Foto) oder unverändert — dann wenigstens
-        # die Knöpfe abräumen, das ist der eigentliche Zweck.
+        # Too old to edit, without text (a photo) or unchanged: then at least clear the
+        # buttons away, which is the actual purpose.
         try:
             await msg.edit_reply_markup(reply_markup=None)
         except Exception:  # noqa: BLE001
@@ -317,29 +316,29 @@ def _now() -> dt.datetime:
 
 
 # --- Medienausgang ---------------------------------------------------------------------
-# Dieser Prozess ist der EINZIGE Weg nach Telegram: dem backend-Container fehlt
-# `TELEGRAM_BOT_TOKEN` vollständig (er hat nur `TELEGRAM_OWNER_CHAT`), und ein Sendeaufruf
-# an Telegram steht im ganzen Backend an genau einer Stelle — der hier. Wer eine Datei
-# mitschicken will, legt sie an einen für backend UND telegram-bot sichtbaren Pfad und
-# schreibt ihn in `Notification.media_path`. Ein zweiter Ausgang wäre die Sorte Doppelung,
-# gegen die dieses Repo sonst durchgehend argumentiert.
+# This process is the ONLY way to the messenger: the backend container lacks
+# `TELEGRAM_BOT_TOKEN` entirely (it only has `TELEGRAM_OWNER_CHAT`), and a send call to
+# Telegram exists in the whole backend in exactly one place, this one. Whoever wants to send a
+# file along puts it at a path visible to backend AND chat bot and writes it into
+# `Notification.media_path`. A second exit would be the kind of duplication this repository
+# argues against everywhere else.
 
 def _teilbloecke_ende(roh: bytes, i: int) -> int:
-    """Ende einer GIF-Teilblockkette (Längenbyte, Daten, …, 0x00)."""
+    """End of a chain of GIF sub blocks (length byte, data, …, 0x00)."""
     while i < len(roh) and roh[i]:
         i += roh[i] + 1
     return i + 1
 
 
 def _gif_masse(roh: bytes) -> dict[str, int]:
-    """Breite/Höhe/Dauer aus dem GIF selbst — leeres Dict, wenn es keins ist.
+    """Width, height and duration from the GIF itself, an empty dict when it is none.
 
-    Warum überhaupt messen statt feste Werte einzutragen: dieser Ausgang kennt nur „eine
-    Datei", nicht ihren Absender. Feste Maße wären eine Behauptung über einen Inhalt, den
-    der Notifier nicht kennen darf — beim ersten anderen Format stünde eine Lüge im Code.
-    Warum es sich lohnt: Telegram dimensioniert die Blase aus genau diesen Angaben, BEVOR
-    die Datei geladen ist. Ohne sie springt das Layout beim Eintreffen.
-    Unlesbar/kein GIF → nichts behaupten, Telegram misst dann selbst nach dem Laden.
+    Why measure at all instead of entering fixed values: this exit knows only "a file", not its
+    sender. Fixed dimensions would be a claim about content the notifier must not know, and at
+    the first different format a lie would stand in the code.
+    Why it is worth it: Telegram sizes the bubble from exactly these values BEFORE the file is
+    loaded. Without them the layout jumps when it arrives.
+    Unreadable or not a GIF means claiming nothing, and Telegram measures for itself after loading.
     """
     try:
         if not roh.startswith(b"GIF") or len(roh) < 13:
@@ -347,7 +346,7 @@ def _gif_masse(roh: bytes) -> dict[str, int]:
         breite = int.from_bytes(roh[6:8], "little")
         hoehe = int.from_bytes(roh[8:10], "little")
         i = 13
-        if roh[10] & 0x80:                       # globale Farbtabelle überspringen
+        if roh[10] & 0x80:                       # skip the global colour table
             i += 3 * (2 ** ((roh[10] & 7) + 1))
         hundertstel = 0
         while i < len(roh):
@@ -356,7 +355,7 @@ def _gif_masse(roh: bytes) -> dict[str, int]:
                 label = roh[i + 1]
                 i += 2
                 if label == 0xF9 and i + 4 <= len(roh):
-                    # Bildsteuerung: Blockgröße, Kennzeichen, Verzögerung (1/100 s).
+                    # Graphic control: block size, flags, delay (1/100 s).
                     hundertstel += int.from_bytes(roh[i + 2:i + 4], "little")
                 i = _teilbloecke_ende(roh, i)
             elif marke == 0x2C:                  # Bildbeschreibung
@@ -364,13 +363,13 @@ def _gif_masse(roh: bytes) -> dict[str, int]:
                 i += 10
                 if kennzeichen & 0x80:           # lokale Farbtabelle
                     i += 3 * (2 ** ((kennzeichen & 7) + 1))
-                i += 1                           # LZW-Mindestcodegröße
+                i += 1                           # LZW minimum code size
                 i = _teilbloecke_ende(roh, i)
-            else:                                # 0x3B (Ende) oder Unerwartetes
+            else:                                # 0x3B (end) or something unexpected
                 break
         masse = {"width": breite, "height": hoehe}
         if hundertstel:
-            # Telegram will ganze Sekunden; ein Film unter einer Sekunde ist trotzdem einer.
+            # Telegram wants whole seconds; a film under one second is still one.
             masse["duration"] = max(1, round(hundertstel / 100))
         return masse
     except Exception:  # noqa: BLE001
@@ -378,19 +377,19 @@ def _gif_masse(roh: bytes) -> dict[str, int]:
 
 
 async def _zustellen(bot, n, text: str, markup) -> None:
-    """Eine Notification zustellen — mit Medium, wenn eines daliegt, sonst als Text.
+    """Deliver one notification, with media when some lies there, otherwise as text.
 
-    Drei Festlegungen, die hier zusammenkommen:
-    * `send_animation` und nicht `send_video` (das erzwingt Ton-Container-Semantik) und
-      nicht `send_photo` (Standbild). APNG scheidet ohnehin aus: Telegram zeigt es nicht
-      als Animation, sondern nur als Sticker.
-    * Fehlende Datei → stiller Rückfall auf Text. Ein Film, der nicht da ist, darf keine
-      Nachricht verschlucken — die Nachricht ist der Zweck, das Medium die Zugabe.
-      (Häufigste Ursache: der `./data/film`-Mount fehlt in DIESEM Dienst.)
-    * `notified_at` wird IMMER gesetzt, auch im Fehlerfall. Es ist die einzige Bremse des
-      Pollers; ohne sie versucht er dieselbe Zeile alle drei Sekunden endlos erneut.
-    Die Tastatur geht auf beiden Wegen unverändert mit — die Knöpfe (Freigeben/Ablehnen/
-    Abnehmen/Berechtigungen) sind am Medium genauso gültig wie am Text.
+    Three decisions come together here:
+    * `send_animation` and not `send_video` (which forces sound container semantics) and not
+      `send_photo` (a still image). APNG is out anyway: Telegram shows it not as an animation
+      but only as a sticker.
+    * A missing file falls back to text silently. A film that is not there must not swallow a
+      message: the message is the purpose, the medium the extra. (The most common cause: the
+      `./data/film` mount is missing in THIS service.)
+    * `notified_at` is ALWAYS set, including on failure. It is the only brake of the poller;
+      without it the same row is retried every three seconds forever.
+    The keyboard goes along unchanged on both paths: the buttons (approve, reject, accept,
+    permissions) are just as valid on media as on text.
     """
     try:
         pfad = n.media_path or ""
@@ -399,8 +398,8 @@ async def _zustellen(bot, n, text: str, markup) -> None:
             with open(pfad, "rb") as fh:
                 roh = fh.read()
             datei = BufferedInputFile(roh, filename=os.path.basename(pfad))
-            # Telegram kappt Bildunterschriften bei 1024 Zeichen — ungekürzt wird die
-            # Nachricht abgewiesen statt bloß beschnitten.
+            # Telegram cuts captions at 1024 characters: uncut, the message is rejected instead
+            # of merely trimmed.
             beschriftung = text[:1024]
             art = (n.media_kind or "").strip() or "animation"
             if art == "photo":
@@ -431,17 +430,17 @@ async def _acting_user(db, chat_id: str) -> User | None:
 
 
 async def _voice_transkript(bot, m) -> str | None:
-    """Sprachnachricht (voice/audio/video_note) in Text auflösen — inkl. sichtbarer
-    Rückmeldung, damit Fehlhörungen sofort auffallen (Lehre aus 2026-07-29: lieber
-    ehrlich absagen als still bleiben).
+    """Resolve a voice message (voice/audio/video_note) into text, including visible feedback so
+    that mishearings are noticed at once (the lesson of 2026-07-29: better an honest refusal
+    than silence).
 
-    Rückgabe: None = `m` ist gar keine Sprachnachricht (Aufrufer macht normal weiter).
-    "" = Sprachnachricht, aber nicht verarbeitbar — diese Funktion hat SELBST schon die
-    Absage mit Grund geschickt, der Aufrufer bricht einfach ab. Nichtleerer String =
-    Transkript, exakt wie eingehender Text weiterzureichen.
+    Returns None when `m` is not a voice message at all (the caller carries on normally).
+    "" means a voice message that could not be processed, and this function has ALREADY sent
+    the refusal with a reason, so the caller simply stops. A non empty string is the transcript,
+    to be passed on exactly like incoming text.
 
-    `bot` als expliziter Parameter (statt Closure-Zugriff aus `run_bot()`) — sonst wäre
-    diese Funktion nur mit einem echten aiogram-Bot testbar, genau das Gegenteil vom
+    `bot` as an explicit parameter (instead of reaching into the closure of `run_bot()`),
+    because otherwise this function would only be testable with a real aiogram bot, the
     Muster `_zustellen`/`_gif_masse`.
     """
     media = m.voice or m.audio or m.video_note
@@ -449,10 +448,10 @@ async def _voice_transkript(bot, m) -> str | None:
         return None
     dauer = getattr(media, "duration", 0) or 0
     groesse = getattr(media, "file_size", 0) or 0
-    # Beide Signale sind UNABHÄNGIG voneinander zu prüfen, nicht als Alternative: eine
-    # (ggf. gefälschte oder schlicht falsche) kurze `duration` bei tatsächlich sehr
-    # großer `file_size` darf die Größenprüfung nicht überspringen — sonst würde genau
-    # das Speicher-/CPU-Risiko eintreten, das diese Prüfung verhindern soll.
+    # Both signals are to be checked INDEPENDENTLY, not as alternatives: a short `duration`
+    # (possibly forged or simply wrong) on an actually very large `file_size` must not skip the
+    # size check, otherwise exactly the memory and CPU risk this check prevents would occur.
+
     if dauer and dauer > VOICE_MAX_SECONDS:
         await m.answer(f"🙉 Sprachnachricht zu lang ({dauer // 60} Min., Grenze "
                        f"{VOICE_MAX_SECONDS // 60} Min.) — bitte kürzer aufnehmen oder "
@@ -464,10 +463,10 @@ async def _voice_transkript(bot, m) -> str | None:
                        f"aufnehmen oder als Text schicken.")
         return ""
     if not dauer and not groesse:
-        # Weder `duration` noch `file_size` verwertbar — OHNE eine der beiden
-        # Prüfungen wäre eine beliebig große Datei ungebremst komplett in den
-        # Speicher geladen und an Whisper weitergereicht (Speicher-/CPU-Risiko).
-        # Lieber ehrlich absagen statt ungeprüft zu laden.
+        # Neither `duration` nor `file_size` usable. WITHOUT one of the two checks a file of
+        # arbitrary size would be loaded completely into memory unchecked and passed on to
+        # Whisper (a memory and CPU risk). Better an honest refusal than loading blindly.
+
         await m.answer("🙉 Länge/Größe der Datei nicht bestimmbar — bitte als Text "
                        "schicken oder als reguläre Sprachnachricht erneut aufnehmen.")
         return ""
@@ -490,12 +489,12 @@ async def _voice_transkript(bot, m) -> str | None:
     if not text:
         await m.answer("🙉 Ich konnte darin keine Sprache erkennen — bitte als Text schicken.")
         return ""
-    # Roh (ohne `safe()`/HTML-Escaping) senden: `safe()` escaped & wandelt Markdown-artige
-    # Sequenzen in <b>/<i>/<code>-Tags um, aber dieser Bot läuft OHNE
-    # `parse_mode="HTML"` (weder hier per Aufruf noch als Bot-Default) — ein HTML-escapter
-    # String käme dann ungeparst an: `&`/`<`/`>` erschienen als literale Entities und
-    # umgewandelte Tags als sichtbarer `<b>…</b>`-Text statt Fettung. Hier ist ohnehin keine
-    # Formatierung gewünscht, nur die reine, auf Telegram-Länge gekappte Transkription.
+    # Sent raw (without `safe()`/HTML escaping): `safe()` escapes and converts markdown like
+    # sequences into <b>/<i>/<code> tags, but this bot runs WITHOUT `parse_mode="HTML"`
+    # (neither per call nor as a bot default). An HTML escaped string would then arrive
+    # unparsed: `&`/`<`/`>` would appear as literal entities and converted tags as visible
+    # `<b>…</b>` text instead of bold. No formatting is wanted here anyway, only the plain
+    # transcript, cut to Telegram's length.
     await m.answer(f"🎙 verstanden: {clip(text)}")
     return text
 
@@ -514,9 +513,9 @@ async def run_bot() -> None:
     dp = Dispatcher()
 
     async def _allowed(uid: int) -> bool:
-        # Erlaubt: Env-Bootstrap (TELEGRAM_ALLOWED_IDS) ODER jeder User, der seine
-        # Chat-ID in der WebUI hinterlegt hat. DB-Lookup pro Aufruf → neue User
-        # greifen sofort, ohne Bot-Neustart / Env-Edit.
+        # Allowed: the env bootstrap (TELEGRAM_ALLOWED_IDS) OR any user who stored their chat
+        # id in the web interface. A database lookup per call means new users take effect at
+        # once, without a bot restart or an env edit.
         if uid in ALLOWED:
             return True
         async with SessionLocal() as db:
@@ -540,8 +539,8 @@ async def run_bot() -> None:
         return None
 
     def _atask_kb(tid: int) -> InlineKeyboardMarkup:
-        # Freigabe eines Assistent-Eingangs. Schnellfreigabe ist geschwärzt (sicher);
-        # ungeschwärzt/feineres regelt die Web-Inbox.
+        # Approval of an assistant item. The quick approval is redacted (safe); unredacted and
+        # finer choices are handled by the web inbox.
         return InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Freigeben", callback_data=f"atask:approve:{tid}"),
              InlineKeyboardButton(text="❌ Verwerfen", callback_data=f"atask:reject:{tid}")],
@@ -549,15 +548,15 @@ async def run_bot() -> None:
              InlineKeyboardButton(text="♾️ Immer Kategorie", callback_data=f"atask:category:{tid}")]])
 
     def _spam_kb(vid: int) -> InlineKeyboardMarkup:
-        # Genau zwei Knöpfe. Die Frage ist eine Ja/Nein-Frage, und jede weitere Möglichkeit
-        # („später", „Regel anlegen") würde die Antwort verzögern, die zum Lernen gebraucht wird.
+        # Exactly two buttons. The question is a yes or no question, and every further option
+        # ("later", "create a rule") would delay the answer that is needed for learning.
         return InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="✅ Ist Spam", callback_data=f"spam:yes:{vid}"),
             InlineKeyboardButton(text="🚫 Kein Spam", callback_data=f"spam:no:{vid}")]])
 
     def _spam_undo_kb(vid: int) -> InlineKeyboardMarkup:
-        # Genau ein Knopf: die Mail ist schon weg, es gibt nur noch den Widerspruch.
-        # „Passt schon" braucht keinen — Schweigen ist die Zustimmung.
+        # Exactly one button: the mail is gone already, only the objection remains. "Fine as it
+        # is" needs none, because silence is the consent.
         return InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="↩️ Zurückholen", callback_data=f"spamundo:{vid}")]])
 
@@ -569,7 +568,7 @@ async def run_bot() -> None:
                                   callback_data=f"spamall:einzeln:{batch}")]])
 
     def _aperm_kb(tid: int) -> InlineKeyboardMarkup:
-        # Tool-Freigabe des Assistenten (einmal|immer|nie).
+        # Tool approval of the assistant (once, always, never).
         return InlineKeyboardMarkup(inline_keyboard=[[
             InlineKeyboardButton(text="Einmal", callback_data=f"aperm:once:{tid}"),
             InlineKeyboardButton(text="Immer", callback_data=f"aperm:always:{tid}"),
@@ -605,15 +604,15 @@ async def run_bot() -> None:
                         elif n.kind == "spam_auto" and n.spam_verdict_id:
                             markup = _spam_undo_kb(n.spam_verdict_id)
                         elif n.kind == "spam_digest" and n.spam_verdict_id:
-                            # Die Sammlung hängt am ersten Fall — über ihn findet sich die
-                            # Kennung der ganzen Menge.
+                            # The collection hangs on the first case: through it the key of the
+                            # whole set is found.
                             erster = await db.get(SpamVerdict, n.spam_verdict_id)
                             markup = (_spam_digest_kb(erster.digest_batch)
                                       if erster and erster.digest_batch else None)
                         else:
                             markup = _kb_for(n.kind, issue_key, req_id)
-                        # Text oder Medium entscheidet `_zustellen` — und setzt in jedem
-                        # Fall `notified_at` (sonst endlos retry).
+                        # `_zustellen` decides between text and media, and sets `notified_at`
+                        # in every case (otherwise an endless retry).
                         await _zustellen(bot, n, text, markup)
                     await db.commit()
             except Exception:  # noqa: BLE001
@@ -656,9 +655,9 @@ async def run_bot() -> None:
 
     @dp.message(Command("uniwar"))
     async def _uniwar_chat(m: Message):
-        # Chat mit dem UniWar-Operator statt mit dem persönlichen Assistenten. Gleicher Weg wie
-        # `_assistant_chat`, nur mit gesetztem meta.agent — `_handle_assistant_task` löst den
-        # Agenten daraus auf (sonst fällt es auf 'assistent' zurück).
+        # Chat with the UniWar operator instead of the personal assistant. The same path as
+        # `_assistant_chat`, only with meta.agent set: `_handle_assistant_task` resolves the
+        # agent from it (otherwise it falls back to 'assistent').
         if not await _allowed(m.from_user.id):
             return
         text = (m.text or "").split(maxsplit=1)
@@ -678,7 +677,7 @@ async def run_bot() -> None:
             return
         rt = m.reply_to_message.text or m.reply_to_message.html_text or ""
 
-        # Antwort per Sprachnachricht: gleicher Zitat-Bezug wie bei Text, nur transkribiert.
+        # An answer by voice message: the same quoted reference as with text, only transcribed.
         text = m.text
         if text is None:
             gehoert = await _voice_transkript(bot, m)
@@ -687,11 +686,11 @@ async def run_bot() -> None:
                                "Text oder Sprachnachricht.")
                 return
             if not gehoert:
-                return   # _voice_transkript hat die Absage schon geschickt
+                return   # _voice_transkript has already sent the refusal
             text = gehoert
 
-        # Banking-2FA: Antwort auf die „Banking-Sync braucht einen 2FA-Code für <source>"-Karte
-        # → OTP über das banking-MCP an submit_auth weiterreichen (ersetzt den Hermes-Relay).
+        # Banking two factor: an answer to the "banking sync needs a 2FA code for <source>"
+        # card, passing the OTP on to submit_auth through the banking tool server.
         bm = re.search(r"2FA-Code für (.+?) \(Auth-Request", rt)
         if bm and "Banking-Sync" in rt:
             source, code = bm.group(1).strip(), text.strip()
@@ -706,9 +705,9 @@ async def run_bot() -> None:
                 await m.answer(f"⚠ Weiterleitung an {source} fehlgeschlagen: {exc}")
             return
 
-        # Ohne Ticket-Bezug ist die Antwort ein Auftrag an den Assistenten — und zwar zu
-        # GENAU dieser Nachricht. Der zitierte Text geht deshalb als Bezug mit, sonst müsste
-        # der Mensch in jeder Antwort wiederholen, worum es ging.
+        # Without a ticket reference the answer is an assignment to the assistant, and to
+        # EXACTLY this message. The quoted text therefore goes along as the reference, otherwise
+        # the person would have to repeat in every answer what it was about.
         match = re.search(r"\[([A-Z][A-Z0-9]*-\d+)\]", rt)
         if not match:
             await _chat_auftrag(m, bezug=rt, text=text)
@@ -724,13 +723,13 @@ async def run_bot() -> None:
         await m.answer(f"↳ Kommentar zu {key} gespeichert.")
 
     async def _chat_auftrag(m: Message, bezug: str = "", text: str | None = None) -> bool:
-        """Klartext an den persönlichen Assistenten übergeben. True = angenommen.
+        """Hand plain text to the personal assistant. True means accepted.
 
-        `bezug` ist der Text der Nachricht, auf die geantwortet wurde. Eine Antwort meint
-        immer GENAU diese Nachricht — ohne den Bezug wäre sie nur eine weitere Zeile im
-        Gesprächsfaden, und der Assistent müsste raten, worauf sich „mach das" bezieht.
-        `text` überschreibt `m.text` — genutzt für bereits transkribierte Sprachnachrichten,
-        die ab hier GENAUSO behandelt werden wie eingehender Text, kein Sonderweg.
+        `bezug` is the text of the message that was answered. An answer means
+        always EXACTLY this message: without the reference it would be just another line in the
+        thread, and the assistant would have to guess what "do that" refers to.
+        `text` overrides `m.text`, used for already transcribed voice messages, which from here
+        on are treated EXACTLY like incoming text, with no special path.
         """
         text = (text if text is not None else (m.text or "")).strip()
         if not text or text.startswith("/"):
@@ -744,27 +743,27 @@ async def run_bot() -> None:
 
     @dp.message(F.text)
     async def _assistant_chat(m: Message):
-        # Klartext (kein Command, keine Ticket-Antwort) → Chat mit dem Assistenten.
-        # Registriert NACH Commands/Reply → die haben Vorrang.
+        # Plain text (no command, no ticket reply) means a chat with the assistant. Registered
+        # AFTER commands and replies, so those take precedence.
         if not await _allowed(m.from_user.id):
             return
         await _chat_auftrag(m)
 
     @dp.message(F.voice | F.audio | F.video_note)
     async def _voice_chat(m: Message):
-        # Sprachnachricht (kein Reply — das fängt `_reply` schon ab) → wie Klartext an den
-        # Assistenten. Lokal transkribiert (faster-whisper), kein Cloud-Aufruf.
+        # A voice message (not a reply, `_reply` catches those) goes to the assistant like plain
+        # text. Transcribed locally (faster-whisper), no cloud call.
         if not await _allowed(m.from_user.id):
             return
         text = await _voice_transkript(bot, m)
         if not text:
-            return   # None kommt hier nie vor (Filter greift nur bei Audio); "" = schon abgesagt
+            return   # None never happens here (the filter only matches audio); "" means already refused
         await _chat_auftrag(m, text=text)
 
     @dp.message()
     async def _unsupported(m: Message):
-        # Alles ohne Text/Sprachnachricht (Foto, Sticker, Dokument) fiel bisher durch alle
-        # Handler und wurde KOMMENTARLOS verworfen — von außen nicht von „ignoriert" zu
+        # Everything without text or voice (photo, sticker, document) used to fall through every
+        # handler and was discarded WITHOUT COMMENT, indistinguishable from being ignored.
         # unterscheiden. Lieber ehrlich absagen.
         if not m.from_user or not await _allowed(m.from_user.id):
             return
@@ -853,7 +852,7 @@ async def run_bot() -> None:
                     await _erledigt(cq, "❌ Verworfen")
                 else:
                     scope = {"sender": "sender", "category": "category"}.get(action, "once")
-                    # Schnellfreigabe per Telegram ist geschwärzt (sicher); ungeschwärzt regelt die Web-Inbox.
+                    # Quick approval by chat is redacted (safe); unredacted is handled by the web inbox.
                     await approve_assistant_task(db, t, scope=scope, redaction="redacted")
                     await cq.answer("Freigegeben" + ("" if scope == "once" else " + gemerkt"))
                     await _erledigt(cq, "✅ Freigegeben" + {
@@ -869,9 +868,9 @@ async def run_bot() -> None:
                     await cq.answer(f"schon erledigt ({v.status})")
                     await _erledigt(cq, f"⏭ schon erledigt ({v.status})")
                 else:
-                    # Eine bereits entschiedene Zeile darf umentschieden werden: der Irrtum
-                    # fällt oft erst auf, wenn die Mail fehlt. `entscheiden` zählt die alte
-                    # Bewertung im Gedächtnis zurück.
+                    # A row already decided may be decided again: the mistake often only shows
+                    # when the mail is missing. `entscheiden` counts the old assessment back out
+                    # of the memory.
                     ist_spam = antwort == "yes"
                     ergebnis = await entscheiden(db, v, ist_spam, decided_by="telegram")
                     await cq.answer("Als Spam markiert" if ist_spam else "Als erwünscht gemerkt")
@@ -898,8 +897,8 @@ async def run_bot() -> None:
                         await cq.answer("nichts mehr offen")
                         await _erledigt(cq, "⏭ nichts mehr offen")
                     else:
-                        # Jeder Fall bekommt seine eigene Karte — die Sammel-Karte selbst ist
-                        # damit abgearbeitet.
+                        # Every case gets a card of its own, so the collective card itself is
+                        # handled.
                         for v in faelle:
                             titel, text = karte(v)
                             await bot.send_message(
