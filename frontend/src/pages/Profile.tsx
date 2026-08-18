@@ -32,7 +32,7 @@ function PmChatStylePanel() {
       await api.put("/me/pm-chat-style", { value });
       await refresh();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Konnte nicht gespeichert werden.");
+      setErr(e instanceof ApiError ? e.message : tr("common.speichern_fehlgeschlagen"));
     }
   };
   const btn = (value: "bubbles" | "cli", label: string) => (
@@ -47,8 +47,7 @@ function PmChatStylePanel() {
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
       <div className="text-sm font-medium text-ink">PM-Chat</div>
       <p className="text-xs text-muted">
-        Darstellung des Projektmanager-Chats. „Terminal" zeichnet den Verlauf wie eine
-        Kommandozeile (Monospace, dunkler Hintergrund, Prompt-Zeile) — unabhängig vom Theme.
+        {tr("profile.pm_chat_hinweis")}
       </p>
       <div className="flex gap-2">
         {btn("bubbles", "Sprechblasen")}
@@ -70,7 +69,7 @@ function TicketOpenPanel() {
       await api.put("/me/ticket-open-mode", { value });
       await refresh();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Konnte nicht gespeichert werden.");
+      setErr(e instanceof ApiError ? e.message : tr("common.speichern_fehlgeschlagen"));
     }
   };
   const btn = (value: "popup" | "page", label: string) => (
@@ -85,7 +84,7 @@ function TicketOpenPanel() {
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
       <div className="text-sm font-medium text-ink">{tr("profile.tickets_oeffnen")}</div>
       <p className="text-xs text-muted">
-        Verhalten beim Linksklick auf ein Ticket. Mittelklick öffnet immer die ganze Seite in einem neuen Tab.
+        {tr("profile.ticket_open_hinweis")}
       </p>
       <div className="flex gap-2">
         {btn("popup", "Als Popup")}
@@ -166,8 +165,7 @@ function EmailPanel() {
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
       <div className="text-sm font-medium text-ink">E-Mail</div>
       <p className="text-xs text-muted">
-        Deine E-Mail-Adresse für die Anmeldung. Leer lassen und speichern entfernt sie —
-        dann ist keine E-Mail-Anmeldung mehr möglich.
+        {tr("profile.email_hinweis")}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
@@ -217,8 +215,7 @@ function BenachrichtigungenPanel() {
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
       <div className="text-sm font-medium text-ink">{tr("profile.benachrichtigungen")}</div>
       <p className="text-xs text-muted">
-        In der Oberfläche siehst du ohnehin alles. Hier steht, was zusätzlich hinausgeht —
-        und wohin, wenn der Absender keinen Weg nennt (der Normalfall).
+        {tr("profile.benachrichtigungen_hinweis")}
       </p>
 
       <label className="block text-xs font-medium text-muted">
@@ -236,7 +233,7 @@ function BenachrichtigungenPanel() {
       </label>
 
       <label className="block text-xs font-medium text-muted">
-        E-Mail für Benachrichtigungen
+        {tr("profile.email_fuer_benachrichtigungen")}
         <input value={mail} onChange={(e) => setMail(e.target.value)}
           placeholder={user?.email || "name@example.com"} className={`mt-1 ${feld}`} />
         <span className="mt-1 block text-[10px] text-muted">
@@ -246,8 +243,7 @@ function BenachrichtigungenPanel() {
 
       {fehlt && (
         <div className="text-xs text-amber-300">
-          Für den gewählten Standard-Weg ist nichts hinterlegt — Nachrichten gehen dann auf
-          dem anderen Weg hinaus, sonst nur in die Glocke.
+          {tr("profile.kein_weg_hinterlegt")}
         </div>
       )}
       <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("profile.speichern")}</button>
@@ -268,9 +264,9 @@ function PasswordPanel() {
     try {
       await api.post("/auth/me/password", { old_password: oldPassword, new_password: newPassword });
       setOldPassword(""); setNewPassword("");
-      setOk("Passwort geändert.");
+      setOk(tr("profile.passwort_geaendert"));
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Ändern fehlgeschlagen.");
+      setErr(e instanceof ApiError ? e.message : tr("profile.aendern_fehlgeschlagen"));
     }
   };
   return (
@@ -305,7 +301,7 @@ function ThemePanel() {
       await api.put("/me/theme", { value });
       await refresh();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Theme konnte nicht gespeichert werden.");
+      setErr(e instanceof ApiError ? e.message : tr("common.speichern_fehlgeschlagen"));
     }
   };
   const btn = (value: "light" | "dark", label: string) => (
