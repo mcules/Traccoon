@@ -14,8 +14,8 @@ class User(TimestampMixin, Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # E-Mail optional: login-lose Konten (Admin-Anlage ohne E-Mail) sind erlaubt.
-    # UNIQUE bleibt — Postgres wertet mehrere NULL nicht als Kollision.
+    # The e-mail is optional: login-less accounts (created by an admin without an e-mail)
+    # are allowed. UNIQUE stays, because Postgres does not count several NULLs as a collision.
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), default="")
@@ -33,15 +33,15 @@ class User(TimestampMixin, Base):
         default=UserStatus.pending, nullable=False,
     )
 
-    # Persönliche Secrets/Settings (verschlüsselt gespeichert)
+    # Personal secrets and settings (stored encrypted)
     claude_oauth_token_enc: Mapped[str] = mapped_column(String, default="")
     codex_token_enc: Mapped[str] = mapped_column(String, default="")
     telegram_chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Auf welchem Weg dieser Mensch Nachrichten bekommt, wenn der Absender keinen nennt.
-    # Der Weg gehört zur Person, nicht zur Nachricht: wer eine Benachrichtigung auslöst,
-    # weiß selten, ob der Empfänger Telegram überhaupt benutzt.
+    # Which way this person gets messages when the sender names none. The way belongs to the
+    # person, not to the message: whoever triggers a notification rarely knows whether the
+    # recipient uses Telegram at all.
     notify_default: Mapped[str] = mapped_column(String(20), default="telegram")  # telegram|email
-    # Abweichende Adresse für Benachrichtigungen; leer = die Anmelde-Adresse (`email`).
+    # Different address for notifications; empty = the login address (`email`).
     notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # UI language. German is the source language of the shipped catalogs, everything else
     # is a translation, so an unknown value simply falls back to it.
@@ -52,33 +52,33 @@ class User(TimestampMixin, Base):
     mcp_token_enc: Mapped[str] = mapped_column(String, default="")           # Fernet, Client-Token
     mcp_servers: Mapped[list] = mapped_column(JSON, default=list)            # erlaubte Server (Doku/UI)
 
-    # Gedächtnis-Ordner im Obsidian-Vault (TRA-30): darunter legen die Agenten ihre gelernten
-    # Erkenntnisse als Notizen ab (Mensch.md, Agent-<rolle>.md, Projekt-<KEY>.md) und lesen sie
-    # zu Beginn jedes Laufs wieder. Der Zugriff läuft über die MCP-Gruppe DIESES Nutzers, das
-    # Gedächtnis ist also zwingend persönlich. Leer = kein Gedächtnis (Funktion aus).
+    # Memory folder in the Obsidian vault (TRA-30): below it the agents file their learned
+    # insights as notes (Mensch.md, Agent-<rolle>.md, Projekt-<KEY>.md) and read them again at
+    # the beginning of every run. Access runs over the MCP group of THIS user, so the memory
+    # is necessarily personal. Empty = no memory (the function is off).
     vault_memory_path: Mapped[str] = mapped_column(String(500), default="")
 
     max_runners: Mapped[int] = mapped_column(Integer, default=3)
-    # Wann der persönliche Assistent per Telegram/Glocke meldet:
-    #   needed = nur wenn er selbst meldet, bei Fehlern und im Chat (Default)
-    #   always = jedes erledigte Item · errors = nur Fehler · never = gar nicht
+    # When the personal assistant reports over Telegram or the bell:
+    #   needed = only when it reports itself, on errors and in the chat (default)
+    #   always = every finished item · errors = errors only · never = not at all
     assistant_notify: Mapped[str] = mapped_column(String(10), default="needed")
-    # Eigener Prozess-Satz: gilt für ALLE Projekte, in denen dieser Nutzer die Owner-Rolle
-    # hat (sofern das Projekt keinen eigenen Satz referenziert). NULL = globaler Standard.
+    # Own process set: applies to ALL projects in which this user has the owner role (as far
+    # as the project references no set of its own). NULL = the global default.
     workflow_set_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_sets.id", ondelete="SET NULL"), nullable=True
     )
     onboarded_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     default_project_view: Mapped[str] = mapped_column(String(10), default="board")
-    # Wie ein Ticket per Linksklick geöffnet wird: popup (Drawer) oder page (volle Seite).
+    # How a ticket is opened on a left click: popup (drawer) or page (full page).
     ticket_open_mode: Mapped[str] = mapped_column(String(10), default="popup")
-    # Nutzerspezifische Block-Anordnung der vollen Ticket-Seite: {"left":[...keys], "right":[...keys]}.
+    # User specific block arrangement of the full ticket page: {"left":[...keys], "right":[...keys]}.
     ticket_layout: Mapped[dict] = mapped_column(JSON, default=dict)
-    # Darstellung des PM-Chats: bubbles (Sprechblasen) oder cli (Terminal-Look wie die
-    # Claude-Code-CLI). Gilt global für den Nutzer über alle Projekte (TRA-21).
+    # Presentation of the PM chat: bubbles or cli (terminal look like the Claude Code CLI).
+    # Applies globally to the user across all projects (TRA-21).
     pm_chat_style: Mapped[str] = mapped_column(String(10), default="bubbles")
 
-    # Nacht-Fenster (Europe/Berlin) für night_task-Tickets
+    # Night window (Europe/Berlin) for night_task tickets
     night_start_hour: Mapped[int] = mapped_column(Integer, default=22)
     night_end_hour: Mapped[int] = mapped_column(Integer, default=6)
     night_days: Mapped[list] = mapped_column(JSON, default=lambda: [0, 1, 2, 3, 4, 5, 6])

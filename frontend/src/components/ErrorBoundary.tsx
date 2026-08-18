@@ -1,32 +1,32 @@
-// Der Auffangnetz-Baustein: eine Render-Ausnahme reißt nicht mehr die ganze Seite mit.
+// The safety net component: a render exception no longer tears the whole page down.
 //
-// ── Warum es die überhaupt gibt ─────────────────────────────────────────────────────────────
+// ── Why it exists at all ────────────────────────────────────────────────────────────────────
 //
-// Bis hierher hatte das Frontend **keine** einzige ErrorBoundary. In React 18 heißt das: eine
-// geworfene Ausnahme im Rendern hängt den kompletten Baum aus, und übrig bleibt eine weiße
-// Seite. Vor einem Menschen ist das ärgerlich (er lädt neu); vor einem Wandschirm ist es
-// endgültig, denn dort steht niemand.
+// Until now the frontend had **no** ErrorBoundary at all. In React 18 that means an exception
+// thrown while rendering unmounts the complete tree, and what is left is a white page. In
+// front of a human that is annoying (they reload); in front of a wall screen it is final,
+// because nobody stands there.
 //
-// ── Warum der Neustart hier gedrosselt wird ─────────────────────────────────────────────────
+// ── Why the restart is throttled here ───────────────────────────────────────────────────────
 //
-// Automatisches Neuladen heilt genau einen Fall: einen vorübergehenden Zustand (ein Ereignis,
-// das die Bühne nicht verdaut, ein halb ausgerollter Bau). Bei einem echten Programmfehler
-// wirft der frische Baum sofort wieder — ohne Bremse liefe der Schirm in eine Neulade-Schleife
-// und hämmerte dabei das Backend. `sicheresNeuladen` merkt sich deshalb je Grund den letzten
-// Versuch in der `sessionStorage` und lässt den zweiten erst nach dem Mindestabstand zu.
-// Danach bleibt die Meldung stehen — sichtbar zu scheitern ist besser als still zu kreisen.
+// Automatic reloading heals exactly one case: a temporary state (an event the stage cannot
+// digest, a half rolled out build). With a real program bug the fresh tree throws again
+// immediately, and without a brake the screen would run into a reload loop and hammer the
+// backend while doing so. `sicheresNeuladen` therefore remembers the last attempt per reason
+// in the `sessionStorage` and allows the second one only after the minimum distance.
+// Afterwards the message stays: failing visibly is better than circling silently.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
-/** Vorsatz der Schlüssel in der `sessionStorage`. Bewusst `session`, nicht `local`: eine
- *  Bremse soll einen laufenden Tab bremsen, nicht den Rechner für morgen. */
+/** Prefix of the keys in the `sessionStorage`. Deliberately `session`, not `local`: a brake
+ *  should brake a running tab, not the machine for tomorrow. */
 const SPEICHER_PRAEFIX = "traccoon_reload:";
 
 /**
- * Lädt die Seite neu — höchstens einmal je `grund` innerhalb von `mindestAbstandMs`.
+ * Reloads the page, at most once per `grund` within `mindestAbstandMs`.
  *
- * Liegt hier und nicht beim Wachhund, weil beide dieselbe Disziplin brauchen und zwei
- * Neulade-Regeln garantiert auseinanderdriften. `true` = es wurde neu geladen.
+ * It lies here and not with the watchdog because both need the same discipline and two
+ * reload rules are guaranteed to drift apart. `true` = a reload happened.
  */
 export function sicheresNeuladen(grund: string, mindestAbstandMs: number): boolean {
   const key = SPEICHER_PRAEFIX + grund;
@@ -40,8 +40,8 @@ export function sicheresNeuladen(grund: string, mindestAbstandMs: number): boole
     }
     sessionStorage.setItem(key, String(jetzt));
   } catch {
-    // Kein Speicher (privater Modus, abgeschaltete Cookies): dann eben ungebremst. Ohne
-    // Neuladen bliebe der Schirm sicher tot, mit ihm besteht wenigstens eine Chance.
+    // No storage (private mode, cookies switched off): then unthrottled. Without reloading
+    // the screen would surely stay dead; with it there is at least a chance.
   }
   console.warn(`[traccoon] Seite wird neu geladen (${grund}).`);
   location.reload();
@@ -50,12 +50,12 @@ export function sicheresNeuladen(grund: string, mindestAbstandMs: number): boole
 
 export interface ErrorBoundaryProps {
   children: ReactNode;
-  /** Nach so vielen Millisekunden von selbst neu laden. Fehlt der Wert, passiert nichts von
-   *  allein — das ist die richtige Vorgabe überall dort, wo ein Mensch davorsitzt. */
+  /** Reload by itself after this many milliseconds. Without the value nothing happens by
+   *  itself, which is the right default everywhere a human is sitting in front of it. */
   reloadAfterMs?: number;
   /** Mindestabstand zweier automatischer Neuladeversuche. Siehe Dateikopf. */
   reloadMinGapMs?: number;
-  /** Womit der Grund in der Konsole und in der Bremse benannt wird. */
+  /** How the reason is named in the console and in the brake. */
   label?: string;
 }
 

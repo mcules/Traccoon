@@ -16,10 +16,10 @@ function edgeLabel(e: WorkflowGraph["edges"][number]): string | undefined {
 }
 
 /**
- * Vor dem Artefakt-Register gab es je Subjekt eine eigene Zustands-Aktion. Beide sind heute
- * `set_status`; in veröffentlichten Versionen stehen die alten Namen aber weiter (die sind
- * unveränderlich). Sie hier beim Laden umzubenennen hält die Oberfläche einnamig — und wer
- * so einen Knoten anfasst, speichert ihn schon unter dem neuen Namen.
+ * Before the artifact register there was a status action of its own per subject. Both are
+ * `set_status` today; in published versions the old names still stand though (those are
+ * immutable). Renaming them here while loading keeps the interface single-named, and whoever
+ * touches such a node saves it under the new name anyway.
  */
 const ALT_AKTION: Record<string, string> = {
   set_agent_status: "set_status",
@@ -33,11 +33,11 @@ function neuerName(a: string): string {
 /**
  * Aktions-Konfiguration vereinheitlichen.
  *
- * Der Editor schreibt `{action: {action, params}}`, ältere und maschinell erzeugte Graphen
- * (z. B. die Hardware-Beschaffung) die flache Form `{action: "name", status: "ordered"}`.
- * Das Backend versteht beide — die Oberfläche zeigte bei der flachen Form aber weder Aktion
- * noch Parameter an, und die erste Bearbeitung hätte sie überschrieben. Deshalb wird hier
- * beim Laden umgeschrieben; gespeichert wird dann die einheitliche Form.
+ * The editor writes `{action: {action, params}}`, while older and machine generated graphs
+ * (the hardware procurement for instance) write the flat form
+ * `{action: "name", status: "ordered"}`. The backend understands both, but with the flat form
+ * the interface showed neither the action nor the parameters, and the first edit would have
+ * overwritten them. That is why it is rewritten here while loading; what is saved is then the uniform form.
  */
 function normalisiereAktion(config: any): any {
   const roh = config?.action;
@@ -46,7 +46,7 @@ function normalisiereAktion(config: any): any {
     if (!ALT_AKTION[roh.action] && hold_reason === undefined) return config;
     return {
       ...config,
-      // `hold_reason` hieß beim Vorgänger so — `set_status` nennt es `reason`.
+      // `hold_reason` was called that in the predecessor; `set_status` calls it `reason`.
       action: { action: neuerName(roh.action), params: { ...params, reason: hold_reason } },
     };
   }
@@ -56,7 +56,7 @@ function normalisiereAktion(config: any): any {
   return { label, group, action: { action: neuerName(roh || kind || "noop"), params } };
 }
 
-/** WorkflowGraph → React-Flow-Format (+ optionale Laufzeit-Zustände). */
+/** WorkflowGraph to the React Flow format (plus optional runtime states). */
 export function graphToFlow(
   graph: WorkflowGraph,
   rs?: Record<string, RuntimeState>
@@ -65,15 +65,15 @@ export function graphToFlow(
     id: n.id,
     type: n.type,
     position: n.position || { x: 0, y: 0 },
-    // Ohne Start läuft kein Prozess — er lässt sich auch per Taste nicht entfernen
-    // (der Konfigurations-Bereich blendet den Papierkorb dort ebenfalls aus).
+    // Without a start no process runs, and it cannot be removed with a key either
+    // (the configuration area hides the wastebasket there as well).
     deletable: n.type !== "start",
     data: {
       config: n.type === "auto_action" ? normalisiereAktion(n.data.config) : n.data.config,
       runtimeState: rs?.[n.id],
     },
   }));
-  // Rückläufe (Schleifen) einmalig bestimmen — die Kante zeichnet sich damit anders.
+  // Determine back edges (loops) once: the edge then draws itself differently.
   const rueck = feedbackEdges(graph);
   const edges: Edge[] = (graph.edges || []).map((e) => ({
     id: e.id,
@@ -89,7 +89,7 @@ export function graphToFlow(
   return { nodes, edges };
 }
 
-/** React-Flow-Format → WorkflowGraph (Laufzeit-Felder werden entfernt). */
+/** React Flow format to WorkflowGraph (runtime fields are removed). */
 export function flowToGraph(nodes: FlowNode[], edges: Edge[]): WorkflowGraph {
   return {
     nodes: nodes.map((n) => ({
@@ -111,13 +111,13 @@ export function flowToGraph(nodes: FlowNode[], edges: Edge[]): WorkflowGraph {
 
 
 /**
- * Ein Graph als vergleichbarer Text — Reihenfolge und Schreibweise fallen heraus.
+ * A graph as comparable text: order and notation drop out.
  *
- * Zwei Fragen hängen daran, und beide gehen schief, wenn man einfach `JSON.stringify`
- * nimmt: Habe ich etwas geändert? Und läuft draußen dasselbe, was hier steht? Die Knoten
- * kommen mal in dieser, mal in jener Reihenfolge, und die Schlüssel eines Konfigurations-
- * Objekts stehen nach dem Laden anders als nach dem Bearbeiten. Verglichen wird deshalb
- * eine sortierte, auf das Wesentliche eingedampfte Fassung.
+ * Two questions hang off it, and both go wrong when one simply takes `JSON.stringify`: have
+ * I changed something? And is out there running the same thing that stands here? The nodes
+ * come in one order or another, and the keys of a configuration object stand differently
+ * after loading than after editing. What is compared is therefore a sorted version boiled
+ * down to the essentials.
  */
 export function graphSignatur(graph: WorkflowGraph | null | undefined): string {
   if (!graph) return "";
