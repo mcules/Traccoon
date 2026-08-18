@@ -136,7 +136,9 @@ export default function ProjectView() {
     project?.name ?? "",
     // „Board" bleibt im Untermenü hervorgehoben, solange eine Board-Ansicht (auch Liste/…) aktiv ist:
     // dazu zeigt sein Link auf die aktuelle URL, wenn wir in der Board-Gruppe sind.
-    projectChromeTabs(project, inBoardGroup ? tab : undefined)
+    projectChromeTabs(project, inBoardGroup ? tab : undefined),
+    // Liste, Backlog und Archiv liegen unter „Board" — dort bleibt die Marke stehen.
+    inBoardGroup ? "board" : tab,
   );
 
   if (!project) return <div className="text-muted">{tr("project_view.projekt_nicht_gefunden")}</div>;

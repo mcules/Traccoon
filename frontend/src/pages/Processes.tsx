@@ -38,7 +38,7 @@ export default function Processes() {
     key, label: tr(label), to: `/processes/${key}`,
     icon: { eigene: "✍️", standard: "🔀", betrieb: "📡", ausloeser: "⚡",
             messreihen: "📈" }[key],
-  })));
+  })), tab);
   return (
     <div>
       {tab === "eigene" && <OwnWorkflowsPanel />}

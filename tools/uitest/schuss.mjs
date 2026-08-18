@@ -4,15 +4,17 @@ const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
 const SEITEN = [["projekte","/"],["projekt","/projects/UNI"],["board","/projects/UNI?tab=board"],
                 ["prozesse","/processes"],["einstellungen","/settings"],["profil","/profil"]];
 const b = await chromium.launch({ executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome" });
-const c = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
-                               deviceScaleFactor: 2 });
+const BREIT = process.env.BREIT === "1";
+const c = await b.newContext(BREIT
+  ? { viewport: { width: 1400, height: 900 } }
+  : { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 await c.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
 const p = await c.newPage();
 for (const [name, pfad] of SEITEN) {
   await p.goto("http://frontend" + pfad, { waitUntil: "networkidle" }).catch(() => {});
   await p.waitForTimeout(1500);
-  await p.screenshot({ path: `/w/m-${name}.png` });
+  await p.screenshot({ path: `/w/${BREIT ? "d" : "m"}-${name}.png` });
   const h = await p.evaluate(() => document.scrollingElement.scrollHeight);
-  console.log(`${name}: ${Math.round(h / 844 * 10) / 10} Bildschirme hoch`);
+  console.log(`${name}: ${Math.round(h / (BREIT ? 900 : 844) * 10) / 10} Bildschirme hoch`);
 }
 await b.close();

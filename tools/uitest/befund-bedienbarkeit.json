@@ -1,5 +1,5 @@
 {
-  "marke": "runde12",
+  "marke": "nav2",
   "seiten": {
     "Projekte @ Handy": {
       "seitwaerts": [],
@@ -26,7 +26,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 5,
-      "hoehe": 844
+      "hoehe": 969
     },
     "Board @ Handy": {
       "seitwaerts": [],
@@ -42,7 +42,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 5,
-      "hoehe": 844
+      "hoehe": 969
     },
     "Eingang @ Handy": {
       "seitwaerts": [],
@@ -64,7 +64,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 4,
-      "hoehe": 844
+      "hoehe": 1552
     },
     "Eigene Prozesse @ Handy": {
       "seitwaerts": [],
@@ -75,7 +75,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 4,
-      "hoehe": 844
+      "hoehe": 1552
     },
     "Einstellungen @ Handy": {
       "seitwaerts": [],
@@ -86,7 +86,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 4,
-      "hoehe": 951
+      "hoehe": 1133
     },
     "Profil @ Handy": {
       "seitwaerts": [],
@@ -142,7 +142,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 15,
+      "sichtbare_navigation": 6,
       "hoehe": 1180
     },
     "Board @ Tablet": {
@@ -166,7 +166,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 15,
+      "sichtbare_navigation": 6,
       "hoehe": 1180
     },
     "Eingang @ Tablet": {
@@ -188,7 +188,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 11,
+      "sichtbare_navigation": 6,
       "hoehe": 1180
     },
     "Eigene Prozesse @ Tablet": {
@@ -199,7 +199,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 11,
+      "sichtbare_navigation": 6,
       "hoehe": 1180
     },
     "Einstellungen @ Tablet": {
@@ -210,7 +210,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 15,
+      "sichtbare_navigation": 6,
       "hoehe": 1180
     },
     "Profil @ Tablet": {
@@ -232,7 +232,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 14,
+      "sichtbare_navigation": 6,
       "hoehe": 1180
     },
     "Projekte @ Desktop": {
@@ -259,7 +259,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 15,
+      "sichtbare_navigation": 6,
       "hoehe": 900
     },
     "Board @ Desktop": {
@@ -275,7 +275,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 15,
+      "sichtbare_navigation": 6,
       "hoehe": 900
     },
     "Eingang @ Desktop": {
@@ -297,7 +297,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 11,
+      "sichtbare_navigation": 6,
       "hoehe": 900
     },
     "Eigene Prozesse @ Desktop": {
@@ -308,7 +308,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 11,
+      "sichtbare_navigation": 6,
       "hoehe": 900
     },
     "Einstellungen @ Desktop": {
@@ -319,7 +319,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 15,
+      "sichtbare_navigation": 6,
       "hoehe": 900
     },
     "Profil @ Desktop": {
@@ -341,7 +341,7 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 14,
+      "sichtbare_navigation": 6,
       "hoehe": 900
     }
   },
