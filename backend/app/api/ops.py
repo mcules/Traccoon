@@ -1,6 +1,7 @@
 import datetime as dt
 import hashlib
 import hmac
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -149,6 +150,19 @@ async def delete_webhook(wid: int, user: User = Depends(get_current_user),
         await db.commit()
 
 
+def _dig_payload(data, pfad: str):
+    """Punktpfad in der Nutzlast auflösen (`event.attributes.alarm`, `posten.0.name`)."""
+    cur = data
+    for teil in str(pfad).split("."):
+        if isinstance(cur, dict) and teil in cur:
+            cur = cur[teil]
+        elif isinstance(cur, list) and teil.isdigit() and int(teil) < len(cur):
+            cur = cur[int(teil)]
+        else:
+            return None
+    return cur
+
+
 @router.post("/hooks/{public_id}", status_code=202)
 async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = Depends(get_session)):
     """Öffentlicher Inbound-Endpoint per GUID. HMAC-Prüfung (X-Webhook-Signature, hex, ohne Prefix)."""
@@ -169,15 +183,31 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         payload = {}
 
     def fill(tpl: str) -> str:
+        """Platzhalter füllen — {feld} für die oberste Ebene, {a.b.c} tiefer.
+
+        Verschachtelte Nutzlasten sind der Normalfall, sobald der Absender kein Traccoon
+        ist: `{position.address}` oder `{event.attributes.alarm}` ließen sich vorher nicht
+        anschreiben, die Meldung enthielt dann den Platzhalter im Klartext.
+        """
         out = tpl
-        for k, v in (payload.items() if isinstance(payload, dict) else []):
-            out = out.replace("{" + k + "}", str(v))
+        for treffer in set(re.findall(r"\{([A-Za-z0-9_.]+)\}", tpl)):
+            wert = _dig_payload(payload, treffer)
+            if wert is not None:
+                out = out.replace("{" + treffer + "}", str(wert))
         return out
 
     from ..models.notification import Notification
 
-    # Event-Typ aus Header (z. B. X-GitHub-Event) → Filter / Alert / Cooldown
-    event = request.headers.get(sub.event_header, "") if sub.event_header else ""
+    # Woher der Ereignis-Typ kommt: aus einer Kopfzeile (X-GitHub-Event) oder — wenn der
+    # Absender keine setzt — aus der Nutzlast selbst (`payload:event.type`). Ohne den
+    # zweiten Weg ließe sich alles filtern, was Kopfzeilen schickt, und nichts anderes;
+    # Traccar etwa meldet jede Zündung und jeden Alarm über dieselbe URL, ohne Kopfzeile.
+    event = ""
+    if sub.event_header:
+        if sub.event_header.startswith("payload:"):
+            event = str(_dig_payload(payload, sub.event_header[len("payload:"):]) or "")
+        else:
+            event = request.headers.get(sub.event_header, "")
     if sub.event_filter:
         allowed = [e.strip() for e in sub.event_filter.split(",") if e.strip()]
         if event not in allowed:
@@ -228,7 +258,22 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
 
     if sub.mode == "notify":
         # Gerendertes Template als Notification (Telegram-Bot liefert aus).
-        db.add(Notification(kind="webhook", title=f"Webhook: {route}",
+        titel = f"Webhook: {route}"
+        if sub.ref_field:
+            # Idempotenz: dieselbe Meldung nicht zweimal. Absender wiederholen den Aufruf,
+            # wenn die Antwort ausbleibt — beim Alarm eines Bewegungsmelders ist die zweite
+            # Nachricht keine Information, sondern Lärm. Der Bezug steht im Titel, damit
+            # der Abgleich ohne neue Spalte auskommt.
+            ref = str(_dig_payload(payload, sub.ref_field) or "")
+            if ref:
+                titel = f"{titel} #{ref}"
+                seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(hours=24)
+                schon = (await db.execute(select(Notification).where(
+                    Notification.kind == "webhook", Notification.title == titel,
+                    Notification.created_at >= seit))).scalars().first()
+                if schon is not None:
+                    return {"accepted": True, "mode": "notify", "duplicate": True, "ref": ref}
+        db.add(Notification(kind="webhook", title=titel[:500],
                             body=(fill(sub.body_template) or fill(sub.title_template))[:4000],
                             chat_id=sub.notify_chat))
         await db.commit()
