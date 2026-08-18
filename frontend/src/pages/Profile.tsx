@@ -6,7 +6,7 @@ import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 
 export default function Profile() {
-  usePageChrome("Profil", []);
+  usePageChrome(tr("nav.profile"), []);
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <SprachePanel />

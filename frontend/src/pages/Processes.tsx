@@ -25,8 +25,8 @@ import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
  */
 type Tab = "eigene" | "standard" | "betrieb" | "ausloeser" | "messreihen";
 const TABS: [Tab, string][] = [
-  ["eigene", "Eigene"], ["standard", "Standard-Satz"], ["betrieb", "Betrieb"],
-  ["ausloeser", "Auslöser"], ["messreihen", "Messreihen"],
+  ["eigene", "processes.tabs.own"], ["standard", "processes.tabs.default_set"], ["betrieb", "processes.tabs.operations"],
+  ["ausloeser", "processes.tabs.triggers"], ["messreihen", "processes.tabs.series"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -34,8 +34,8 @@ export default function Processes() {
   const { tab: tabParam } = useParams();
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "eigene") as Tab;
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.get<User>("/auth/me") });
-  usePageChrome("Prozesse", TABS.map(([key, label]) => ({
-    key, label, to: `/processes/${key}`,
+  usePageChrome(tr("nav.processes"), TABS.map(([key, label]) => ({
+    key, label: tr(label), to: `/processes/${key}`,
     icon: { eigene: "✍️", standard: "🔀", betrieb: "📡", ausloeser: "⚡",
             messreihen: "📈" }[key],
   })));

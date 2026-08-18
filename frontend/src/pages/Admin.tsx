@@ -12,9 +12,9 @@ import TranslationsPanel from "../components/TranslationsPanel";
 type Tab = "users" | "cost" | "models" | "maintenance" | "mail" | "destinations" | "artifacts"
   | "translations";
 const TABS: [Tab, string][] = [
-  ["users", "Nutzer"], ["cost", "Kosten"], ["models", "Modelle"], ["maintenance", "Wartung"],
-  ["mail", "E-Mail"], ["destinations", "Ziele"], ["artifacts", "Artefakte"],
-  ["translations", "Übersetzungen"],
+  ["users", "admin.tabs.users"], ["cost", "admin.tabs.cost"], ["models", "admin.tabs.models"], ["maintenance", "admin.tabs.maintenance"],
+  ["mail", "admin.tabs.mail"], ["destinations", "admin.tabs.destinations"], ["artifacts", "admin.tabs.artifacts"],
+  ["translations", "admin.tabs.translations"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -22,8 +22,8 @@ export default function Admin() {
   const { tab: tabParam } = useParams();
   // Aktiven Tab aus der URL ableiten; unbekannt → Default "users".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "users") as Tab;
-  usePageChrome("Admin", TABS.map(([key, label]) => ({
-    key, label, to: `/admin/${key}`,
+  usePageChrome(tr("nav.admin"), TABS.map(([key, label]) => ({
+    key, label: tr(label), to: `/admin/${key}`,
     icon: { users: "👥", cost: "💶", models: "🧠", maintenance: "🔧", mail: "✉️",
             destinations: "🎯", artifacts: "📦", translations: "🌐" }[key],
   })));

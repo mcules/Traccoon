@@ -17,7 +17,7 @@ import { usePageChrome } from "../pageChrome";
 type Tab = "secrets" | "prefs" | "processes" | "destinations" | "agents" | "mcp"
   | "jobs" | "webhooks" | "skills";
 const TABS: [Tab, string][] = [
-  ["secrets", "Secret-Tresor"], ["prefs", "Persönlich"], ["processes", "Meine Prozesse"],
+  ["secrets", "settings.tabs.vault"], ["prefs", "settings.tabs.personal"], ["processes", "settings.tabs.my_flows"],
   ["destinations", "Ziele"], ["agents", "Mein Assistent"], ["mcp", "MCP-Server"],
   ["jobs", "Jobs"], ["webhooks", "Webhooks"], ["skills", "Skills"],
 ];
@@ -28,8 +28,8 @@ export default function Settings() {
   // Aktiven Tab aus der URL ableiten; unbekannt → Default "secrets".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "secrets") as Tab;
   const { user } = useAuth();
-  usePageChrome("Einstellungen", TABS.map(([key, label]) => ({
-    key, label, to: `/settings/${key}`,
+  usePageChrome(tr("nav.settings"), TABS.map(([key, label]) => ({
+    key, label: tr(label), to: `/settings/${key}`,
     icon: { secrets: "🔐", prefs: "👤", processes: "🔀", destinations: "🎯", agents: "🤖",
             mcp: "🧩", jobs: "⏱️", webhooks: "🪝", skills: "✨" }[key],
   })));
