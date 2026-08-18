@@ -1,49 +1,49 @@
-// Schicht 0 — der Vertrag des „Büros". Nur Typen, kein einziger Laufzeitwert.
+// Layer 0, the contract of the office. Types only, not a single runtime value.
 //
-// Drei Dinge stehen hier: der Ereignis-Strom vom Backend (`Ev`), das Kommandovokabular des
-// Raums (`Cmd`) und der Zustand, den die Engine daraus baut (`ActorState`, `Frame`).
-// Dazwischen liegt genau eine reine Funktion (`mapEvent`, Welle F) — die ist die Naht.
+// Three things stand here: the event stream from the backend (`Ev`), the command vocabulary of
+// the room (`Cmd`) and the state the engine builds from it (`ActorState`, `Frame`). Between
+// them lies exactly one pure function (`mapEvent`), and that is the seam.
 //
-// Regeln siehe PIXEL-CONTRACT.md. Für diese Datei zählt vor allem Regel 5:
-// kein `enum`, kein `namespace`, nichts, was das Streichen der Typen überlebt.
+// For the rules see PIXEL-CONTRACT.md. For this file rule 5 matters most: no `enum`, no
+// `namespace`, nothing that survives stripping the types.
 
 // ── Kleine Vokabeln ──────────────────────────────────────────────────────────
 
-/** Sechs Bilder statt vierzig Werkzeugnamen. Zuordnung: `toolAct.ts` (Tabelle, keine Heuristik). */
+/** Six images instead of forty tool names. The mapping is in `toolAct.ts` (a table, not a heuristic). */
 export type ToolAct = "read" | "write" | "run" | "browse" | "delegate" | "other";
 
-/** Was auf dem Monitor der Figur steht. Abgeleitet aus `ToolAct` (`toolAct.ts::screenFor`),
- *  nicht aus dem Werkzeugnamen — sonst behauptete der Bildschirm mehr, als das Log hergibt.
- *  `blank` = dunkler Schirm (kein laufendes Werkzeug). */
+/** What stands on the character's monitor. Derived from `ToolAct` (`toolAct.ts::screenFor`),
+ *  not from the tool name, otherwise the screen would claim more than the log gives.
+ *  `blank` is a dark screen (no running tool). */
 export type ScreenKind = "code" | "log" | "page" | "search" | "link" | "wait" | "blank";
 
-/** Grundstimmung einer Anzeige (Monitorrahmen, Dock-Kachel). Vier Zustände, vier Farben —
- *  dieselben wie in der Zeitleiste, damit zwei Ansichten desselben Laufs nie widersprechen. */
+/** The base mood of a display (monitor frame, dock tile). Four states, four colours, the same
+ *  as in the timeline, so two views of the same run never contradict each other. */
 export type MoodKind = "work" | "wait" | "error" | "done";
 
 /** Spiegelt `Run.status` im Backend. */
 export type RunStatus =
   | "running" | "success" | "failed" | "blocked" | "planned" | "loop_exhausted";
 
-/** Färbt ausschließlich den Rand einer Sprechblase, nichts sonst.
- *  `success|planned → ok` · `failed|loop_exhausted → err` · `blocked → blocked` · sonst `null`. */
+/** Colours the edge of a speech bubble and nothing else.
+ *  `success|planned → ok` · `failed|loop_exhausted → err` · `blocked → blocked` · otherwise `null`. */
 export type Verdict = "ok" | "err" | "blocked" | null;
 
 export type Pose = "sit" | "walk" | "stand";
 
-/** Warum jemand auf einen Menschen wartet: Rückfrage, Berechtigungsanfrage, Planfreigabe. */
+/** Why somebody waits for a person: a question, a permission request, a plan approval. */
 export type GateKind = "question" | "permission" | "plan";
 
 export interface Pt { x: number; y: number }
 
-/** Der Zeichenkontext, so viel davon wie der Pixel-Vertrag erlaubt — und **nur** so viel
+/** The drawing context, as much of it as the pixel contract allows, and **only** that much.
  *  (Regel 2.1: `fillStyle`, `globalAlpha`, `fillRect`).
  *
- *  Absichtlich ein eigener, struktureller Typ statt `CanvasRenderingContext2D`: damit ist das
- *  Regelwerk **im Typsystem** verankert, ein `ctx.beginPath()` in Schicht 1 also schon ein
- *  Typfehler und nicht erst ein Prüferfehler. Ein echter `CanvasRenderingContext2D` erfüllt die
- *  Form (deshalb ist `fillStyle` als `string | object` weit genug für `CanvasGradient`), und der
- *  Stub des Prüfers erfüllt sie ebenfalls — er sammelt einfach die `fillRect`-Aufrufe ein. */
+ *  Deliberately a structural type of its own instead of `CanvasRenderingContext2D`: that
+ *  anchors the rules **in the type system**, so a `ctx.beginPath()` in layer 1 is already a
+ *  type error and not merely a review finding. A real `CanvasRenderingContext2D` satisfies the
+ *  shape (which is why `fillStyle` as `string | object` is wide enough for `CanvasGradient`),
+ *  and the stub of the checker satisfies it too: it simply collects the `fillRect` calls. */
 export interface Ctx {
   fillStyle: string | object;
   globalAlpha: number;
@@ -52,32 +52,32 @@ export interface Ctx {
 
 // ── Ereignis-Strom (Backend → Frontend) ──────────────────────────────────────
 //
-// snake_case, weil das ganze Repo snake_case spricht und das Backend die Felder genau so
-// baut (`services/office.py::step_events`). Eine camelCase-Übersetzungsschicht wäre
-// dreißig Zeilen ohne einen einzigen gewonnenen Gedanken — es gibt sie deshalb nicht.
+// snake_case, because the whole repository speaks snake_case and the backend builds the fields
+// exactly that way (`services/office.py::step_events`). A camelCase translation layer would be
+// thirty lines without a single thought gained, so it does not exist.
 
-/** Umschlag, den jedes Ereignis trägt. */
+/** The envelope every event carries. */
 export interface EvBase {
-  /** Schema-Version des Vertrags. Aktuell 1. */
+  /** Schema version of the contract. Currently 1. */
   v: number;
   /** `run_steps.id * 4 + slot`, global monoton, **Ankunftsreihenfolge**.
-   *  Slots: 0 = synthetisierter Vorgänger (Altzeilen), 1 = Hauptereignis,
+   *  Slots: 0 = synthesised predecessor (old rows), 1 = the main event,
    *  2 = abgeleiteter Begleiter (`usage`/`file_edit`/`agent_spawn`), 3 = frei.
-   *  Das Log wird nach `seq` geordnet, **nie** nach `ts` — siehe `MAX_GAP_MS` in `const.ts`. */
+   *  The log is ordered by `seq`, **never** by `ts`. See `MAX_GAP_MS` in `const.ts`. */
   seq: number;
-  /** ISO-8601 mit Millisekunden. Nur für Zeitabstände und die Zeitleiste, nie für Reihenfolge. */
+  /** ISO-8601 with milliseconds. Only for distances in time and the timeline, never for order. */
   ts: string;
-  /** Session = ein Laufbaum: `"issue:412"` (Ticketraum) oder `"run:8871"` (Job/Assistent). */
+  /** Session = one run tree: `"issue:412"` (a ticket room) or `"run:8871"` (job, assistant). */
   sid: string;
-  /** An jedem Ereignis, damit die WS-Brücke ohne DB-Zugriff autorisieren kann. */
+  /** On every event, so the websocket bridge can authorise without touching the database. */
   project_id: number | null;
   owner_id: number | null;
   run_id: number;
-  /** Stabile Aktor-Id im Raum, Form `"run:8871"`. Seed der Figur = `hash32(agent_id)`. */
+  /** Stable actor id in the room, of the form `"run:8871"`. The seed of the character is `hash32(agent_id)`. */
   agent_id: string;
 }
 
-/** Eröffnet den Raum: Titel und Herkunft der Session. */
+/** Opens the room: title and origin of the session. */
 export interface EvSessionSeen extends EvBase {
   kind: "session_seen";
   title: string;
@@ -86,9 +86,9 @@ export interface EvSessionSeen extends EvBase {
   started_at: string | null;
 }
 
-/** Ein Lauf betritt den Raum. Auch der **einzige** Spawn-Auslöser:
- *  `parent_run_id`/`parent_tool_use_id` gesetzt = Unteragent. (`delegate` taugt dafür nicht,
- *  weil `runtime.py` den Unterlauf inline abwartet und die Zeile erst bei dessen Ende schreibt.) */
+/** A run enters the room. Also the **only** trigger for a spawn:
+ *  `parent_run_id`/`parent_tool_use_id` set means a subagent. (`delegate` is no good for that,
+ *  because `runtime.py` awaits the subrun inline and writes the row only at its end.) */
 export interface EvRunStart extends EvBase {
   kind: "run_start";
   /** Rolle, z. B. `plan_agent`, `exec_agent`, `review_agent`, `assistant`. */
@@ -100,35 +100,35 @@ export interface EvRunStart extends EvBase {
   parent_tool_use_id: string | null;
   /** 0 = Wurzellauf. */
   spawn_depth: number;
-  /** Fortsetzung nach Kontext-Kompaktierung; 0 = erster Anlauf. */
+  /** Continuation after context compaction; 0 is the first attempt. */
   continuation_index: number;
   task_id: number | null;
   issue_key: string | null;
 }
 
-/** Etwas von außen: Mensch, PM, Job-Auslöser. */
+/** Something from outside: a person, the PM, a job trigger. */
 export interface EvUserMessage extends EvBase {
   kind: "user_message";
   source: string;
   text: string;
 }
 
-/** Echter Text des Modells. Achtung: Assistenten-Züge, in denen das Modell nur Werkzeuge rief,
- *  tragen im Backend wörtlich `"(Tool-Call)"` — die filtert `mapEvent`, sonst sagt jeder Agent
+/** Real text of the model. Careful: assistant turns in which the model only called tools carry
+ *  the literal `"(Tool-Call)"` in the backend. `mapEvent` filters those, otherwise every agent
  *  im Raum dauernd „(Tool-Call)". */
 export interface EvAgentText extends EvBase {
   kind: "agent_text";
   text: string;
 }
 
-/** Tokens **eines** Modellzugs, nicht des Laufs. Summen für den Inspektor bildet Schicht 0. */
+/** Tokens of **one** model turn, not of the run. Layer 0 forms the totals for the inspector. */
 export interface EvUsage extends EvBase {
   kind: "usage";
   in_tokens: number;
   out_tokens: number;
   cache_read_tokens: number;
   cache_write_tokens: number;
-  /** Wer tatsächlich geantwortet hat — bei einem Fallback-Lauf nicht das konfigurierte Modell. */
+  /** Who actually answered: on a fallback run not the configured model. */
   provider: string | null;
   model: string | null;
 }
@@ -136,9 +136,9 @@ export interface EvUsage extends EvBase {
 export interface EvToolStart extends EvBase {
   kind: "tool_start";
   tool: string;
-  /** Kurzes Ziel für die Blase: Pfad, URL, Rolle. Aus einer Tabelle, nicht geraten. */
+  /** A short target for the bubble: path, URL, role. From a table, not guessed. */
   target: string | null;
-  /** Klammert `tool_start` und `tool_result`. Bei Altzeilen `"legacy:<run_step_id>"`. */
+  /** Brackets `tool_start` and `tool_result`. On old rows `"legacy:<run_step_id>"`. */
   tool_use_id: string;
   args_preview: string | null;
 }
@@ -147,12 +147,12 @@ export interface EvToolResult extends EvBase {
   kind: "tool_result";
   tool: string;
   tool_use_id: string;
-  /** **Dreiwertig.** `null` heißt *unbekannt* (Altzeile ohne erkennbares Fehlerpräfix),
-   *  nicht Erfolg. Wer `ok ?? true` schreibt, malt grüne Häkchen auf geratene Daten. */
+  /** **Three valued.** `null` means *unknown* (an old row without a recognisable error
+   *  prefix), not success. Whoever writes `ok ?? true` paints green ticks on guessed data. */
   ok: boolean | null;
   error: string | null;
-  /** `null` beim Altdaten-Pfad: dort kennt ein Werkzeugschritt nur einen Zeitpunkt.
-   *  Der Raum zeigt dann `TOOL_BUSY_MS` als Ersatzdauer. */
+  /** `null` on the old data path: a tool step knows only one moment there. The room then shows
+   *  `TOOL_BUSY_MS` as a substitute duration. */
   duration_ms: number | null;
   result_preview: string | null;
 }
@@ -163,8 +163,8 @@ export interface EvFileEdit extends EvBase {
   path: string;
 }
 
-/** Abgeleiteter Begleiter (Slot 2): ein Unteragent wurde angefordert.
- *  Zeichnet die Spawn-Linie; die Figur selbst entsteht erst mit dessen `run_start`. */
+/** A derived companion (slot 2): a subagent was requested. Draws the spawn line; the character
+ *  itself only appears with its `run_start`. */
 export interface EvAgentSpawn extends EvBase {
   kind: "agent_spawn";
   child_role: string;
@@ -173,13 +173,13 @@ export interface EvAgentSpawn extends EvBase {
   background: boolean;
 }
 
-/** Der Lauf verlässt den Raum. Kommt genau einmal je `run_start` — fehlt er,
- *  bleibt die Figur für immer stehen. */
+/** The run leaves the room. Comes exactly once per `run_start`; when it is missing the
+ *  character stands there forever. */
 export interface EvRunEnd extends EvBase {
   kind: "run_end";
   ok: boolean;
   status: RunStatus;
-  /** Worauf geblockt wurde, wenn `status === "blocked"`: `question`, `permission`, … */
+  /** What it blocked on when `status === "blocked"`: `question`, `permission`, … */
   blocker_kind: string | null;
   summary: string | null;
   error: string | null;
@@ -188,49 +188,49 @@ export interface EvRunEnd extends EvBase {
   out_tokens: number;
   cache_read_tokens: number;
   cost_usd: number;
-  /** Dreiwertig: `true` = gegen den Katalog bepreist (auch 0,00 ist bepreist!),
-   *  `false` = kein `ProviderModel`-Eintrag, `null` = Altzeile. Die UI zeigt bei
-   *  unvollständiger Bepreisung ein „≥". */
+  /** Three valued: `true` means priced against the catalog (0.00 is priced as well!), `false`
+   *  means no `ProviderModel` entry, `null` means an old row. The interface shows a "≥" when
+   *  the pricing is incomplete. */
   cost_priced: boolean | null;
 }
 
-/** Meldung des Systems (Abbruch, Kappung, Kompaktierung). */
+/** A message of the system (abort, truncation, compaction). */
 export interface EvSystem extends EvBase {
   kind: "system";
   text: string;
 }
 
-/** Der Serverschrank an der Rückwand wird zum Deployment.
+/** The server rack at the back wall becomes the deployment.
  *
- *  **Genau diese vier Felder** — die Menge ist der Vertrag, nicht eine Auswahl daraus:
- *  `services/office.py::deploy_fields` ist der eine Ort, an dem sie entstehen (Watcher-Zeile
- *  und beim Lesen synthetisiertes Bestands-Deployment gehen beide dort durch), und
+ *  **Exactly these four fields**: the set is the contract, not a selection from it.
+ *  `services/office.py::deploy_fields` is the one place where they come into being (the
+ *  watcher row and a legacy deployment synthesised while reading both go through it), and
  *  `test_office_normalize.py::FIELD_KEYS["deploy"]` nagelt sie im Backend fest.
  *
- *  `state` hat **beide Enden als echte Ereignisse** — anders als eine Werkzeugzeile aus
- *  Altdaten, die nur einen Zeitpunkt kennt. Deshalb braucht der Raum hier keine Ersatzdauer
- *  (siehe `TOOL_BUSY_MS`); er wartet auf das Gegenstück.
+ *  `state` has **both ends as real events**, unlike a tool row from old data which knows only
+ *  one moment. So the room needs no substitute duration here (see `TOOL_BUSY_MS`), it waits
+ *  for the counterpart.
  *
- *  `back` (zurückgerollt) steht bewusst neben `fail`: gescheitert **und** geheilt ist die
- *  einzige gute Nachricht im Fehlerfall, und beim Zusammenlegen ginge genau sie verloren. */
+ *  `back` (rolled back) deliberately stands next to `fail`: failed **and** healed is the only
+ *  good news in a failure, and merging the two would lose exactly that. */
 export interface EvDeploy extends EvBase {
   kind: "deploy";
   deployment_id: number;
   state: "start" | "ok" | "fail" | "back";
-  /** Woran gearbeitet wurde: Stack-Verzeichnis, ersatzweise Worktree. Beschriftung, nicht mehr. */
+  /** What was worked on: the stack directory, or the worktree instead. A label, no more. */
   target: string;
-  /** Anriss des Logs (240 Zeichen). Für den Inspektor, nicht für die Bühne. */
+  /** An excerpt of the log (240 characters). For the inspector, not for the stage. */
   log_head: string;
 }
 
-/** RESERVIERT — wird vom Backend **nie** geschickt.
+/** RESERVED: **never** sent by the backend.
  *
- *  Kein Provider-Adapter in Traccoon liefert Denkblöcke; Anthropic-Thinking wird im Worker gar
- *  nicht angefordert und käme auch nicht als eigener Schritt an. Der Zweig bleibt im Union, damit
- *  ein späterer Adapter ihn ohne Vertragsbruch füllen kann.
+ *  No provider adapter here delivers thinking blocks; Anthropic thinking is not even
+ *  requested in the worker and would not arrive as a step of its own. The branch stays in the
+ *  union so that a later adapter can fill it without breaking the contract.
  *
- *  Bitte nicht „reparieren", indem `agent_text` als `thinking` durchgereicht wird: die Zeitleiste
- *  hat eine eigene Farbe für Denken, und die wäre damit gelogen. */
+ *  Please do not "fix" this by passing `agent_text` through as `thinking`: the timeline has a
+ *  colour of its own for thinking, and it would be a lie. */
 export interface EvThinking extends EvBase {
   kind: "thinking";
   text: string;
@@ -243,62 +243,62 @@ export type Ev =
 
 export type EvKind = Ev["kind"];
 
-// ── Kommandos — das gesamte Vokabular des Raums ──────────────────────────────
+// ── Commands, the entire vocabulary of the room ──────────────────────────────
 //
-// Zwölf Stück, mehr gibt es nicht. Alles, was der Raum tun kann, ist eine Folge davon.
-// `mapEvent(ev, ctx) -> Cmd[]` ist rein; die Engine kennt `Ev` überhaupt nicht.
+// Twelve of them, there are no more. Everything the room can do is a sequence of these.
+// `mapEvent(ev, ctx) -> Cmd[]` is pure; the engine does not know `Ev` at all.
 //
-// Bewusst **nicht** vorhanden:
-//   · `confront` — ein Kommando, das zwei Agenten einander widersprechen lässt.
-//     Traccoon hat kein solches Streitmodell: Läufe widersprechen einander nicht, sie scheitern
-//     oder gelingen. Ein Kommando ohne Datenquelle wäre Dekoration.
-//   · `prompt` — den Anweisungstext eines Spawns als eigene Geste zeigen. Bei uns steckt
-//     er in `agent_spawn.prompt` und gehört in den Inspektor, nicht auf die Bühne.
+// Deliberately **absent**:
+//   · `confront`, a command that lets two agents contradict each other. There is no such model
+//     of dispute here: runs do not contradict one another, they fail or succeed. A command
+//     without a data source would be decoration.
+//   · `prompt`, showing the instruction text of a spawn as a gesture of its own. Here it sits
+//     in `agent_spawn.prompt` and belongs in the inspector, not on the stage.
 //
 // Eigene Zutat:
-//   · `gate` / `resume` — die Mensch-im-Kreis-Form. `ask_human`, Berechtigungsanfragen und
-//     Planfreigaben halten einen Lauf an, bis ein Mensch antwortet. Das ist der häufigste
-//     Grund, warum ein Raum still steht —
-//     und genau deshalb muss man es sehen (`GATE_PULSE_MS`).
+//   · `gate` / `resume`, the human in the loop form. `ask_human`, permission requests and plan
+//     approvals stop a run until a person answers. That is the most common reason a room
+//     stands still, and exactly why one has to see it (`GATE_PULSE_MS`).
+//     stands still, and exactly why one has to see it (`GATE_PULSE_MS`).
 
 export type Cmd =
-  /** Legt die Figur an oder aktualisiert ihre Stammdaten. Idempotent — mehrfach erlaubt. */
+  /** Creates the character or updates its master data. Idempotent, may happen several times. */
   | { k: "ensureActor"; id: string; role: string; issue: string | null;
       phase: string | null; model: string | null; parent?: string }
-  /** Denkblase (gepunktet). Wird derzeit nur aus abgeleiteten Zuständen erzeugt, nicht aus `thinking`. */
+  /** Thought bubble (dotted). Currently only produced from derived states, not from `thinking`. */
   | { k: "think"; id: string; text: string }
-  /** Sprechblase mit Schreibmaschineneffekt (`TYPE_CPS`, `BUBBLE_MS`). */
+  /** Speech bubble with a typewriter effect (`TYPE_CPS`, `BUBBLE_MS`). */
   | { k: "say"; id: string; text: string }
-  /** Werkzeug beginnt: Pose, Monitorbild und Beschäftigt-Zustand. */
+  /** A tool begins: pose, monitor image and busy state. */
   | { k: "tool"; id: string; act: ToolAct; tool: string; target?: string }
-  /** Werkzeug endet. `ok: null` = unbekannt → neutrales Zeichen, kein grünes Häkchen. */
+  /** A tool ends. `ok: null` means unknown, so a neutral mark and no green tick. */
   | { k: "toolEnd"; id: string; ok: boolean | null }
-  /** Datei geschrieben — zählt `edits` hoch und legt einen Zettel auf den Schreibtisch. */
+  /** A file was written: counts `edits` up and puts a note on the desk. */
   | { k: "edit"; id: string; path: string }
-  /** Spawn-Linie von `parent` zu `id`. Die Figur `id` entsteht erst mit ihrem `ensureActor`. */
+  /** Spawn line from `parent` to `id`. The character `id` only appears with its `ensureActor`. */
   | { k: "spawn"; id: string; parent: string; role: string }
-  /** `id` läuft zu `to` und übergibt ein Ergebnis. Der Kern der Choreografie. */
+  /** `id` walks to `to` and hands over a result. The core of the choreography. */
   | { k: "deliver"; id: string; to: string; text?: string }
-  /** Wartet auf einen Menschen. Hält die Figur an, bis `resume` kommt. */
+  /** Waits for a person. Stops the character until `resume` arrives. */
   | { k: "gate"; id: string; kind: GateKind; text: string }
-  /** Der Mensch hat geantwortet — Gate auf. */
+  /** The person answered: the gate opens. */
   | { k: "resume"; id: string }
-  /** Statuswechsel ohne Ortswechsel (färbt Dock und Blasenrand). */
+  /** A change of state without a change of place (colours the dock and the bubble edge). */
   | { k: "status"; id: string; status: RunStatus }
-  /** Fertig: Abschlussblase, dann durch die Tür (`DONE_LINGER_MS`). */
+  /** Done: a closing bubble, then out through the door (`DONE_LINGER_MS`). */
   | { k: "done"; id: string; ok: boolean; text?: string }
-  /** Der Serverschrank leuchtet. `by` ist die auslösende Figur — sie geht zum Rack und zurück;
-   *  fehlt sie, leuchtet das Rack ohne Geste (ein Deployment ohne Lauf ist denkbar).
-   *  `label` ist das Ziel (Stack/Worktree), für Schicht 2 — die Bühne zeigt nur Farbe. */
+  /** The server rack lights up. `by` is the triggering character, which walks to the rack and
+   *  back; when it is missing the rack lights without a gesture (a deployment without a run is
+   *  conceivable). `label` is the target (stack or worktree) for layer 2; the stage shows only colour. */
   | { k: "deploy"; state: "start" | "ok" | "fail" | "back"; by?: string; label: string };
 
 export type CmdKind = Cmd["k"];
 
 // ── Zustand ──────────────────────────────────────────────────────────────────
 
-/** Ein Eintrag je Agent. Alle Zeiten sind `engine.t` in ms (Simulationszeit, nicht Wanduhr).
- *  Koordinaten sind **Szenen**-Koordinaten (`SCENE` 1600×900); das Rendern multipliziert mit
- *  `POS_SCALE` und rundet erst dort — siehe PIXEL-CONTRACT.md Regel 1 und 2.3. */
+/** One entry per agent. All times are `engine.t` in ms (simulation time, not the wall clock).
+ *  Coordinates are **scene** coordinates (`SCENE` 1600×900); rendering multiplies by
+ *  `POS_SCALE` and only rounds there, see PIXEL-CONTRACT.md rules 1 and 2.3. */
 export interface ActorState {
   /** `"run:8871"` — identisch zu `Ev.agent_id`. */
   id: string;
@@ -307,55 +307,55 @@ export interface ActorState {
   phase: string | null;
   model: string | null;
 
-  /** Ganzzahlige Szenen-Koordinate. `y` ist der **Fußpunkt** (Sortierschlüssel der Szene). */
+  /** Integer scene coordinate. `y` is the **foot point** (the sorting key of the scene). */
   x: number;
   y: number;
-  /** Subpixel-Akkumulator: sammelt die Bruchteile der Bewegung, damit auch winzige `dt`
-   *  vorankommen. Wird **nie** gerendert und nie gerundet zurückgeschrieben. */
+  /** Subpixel accumulator: collects the fractions of the movement so that even tiny `dt` make
+   *  progress. It is **never** rendered and never written back rounded. */
   sub: Pt;
 
   pose: Pose;
-  /** Blickt nach links. */
+  /** Facing left. */
   flip: boolean;
-  /** Auswärts — nicht im Raum sichtbar (`deskIndex === -2`). */
+  /** Away: not visible in the room (`deskIndex === -2`). */
   away: boolean;
 
-  /** Laufender Blasentext bzw. Startzeit für Schreibmaschineneffekt und `BUBBLE_MS`. */
+  /** The running bubble text and the start time for the typewriter effect and `BUBBLE_MS`. */
   say?: string;
   sayAt?: number;
-  /** Färbt nur den Blasenrand. */
+  /** Colours the bubble edge only. */
   verdict: Verdict;
   think?: string;
-  /** Startzeit der Denkblase (`engine.t`). Ohne sie hätte eine Denkblase keinen Ablauf und
-   *  bliebe für immer stehen — dieselbe Rolle, die `sayAt` für die Sprechblase spielt. */
+  /** Start time of the thought bubble (`engine.t`). Without it a thought bubble would have no
+   *  expiry and would stand forever, the same role `sayAt` plays for the speech bubble. */
   thinkAt?: number;
 
   status: RunStatus;
   /** Sitzplatz: `0..11` = Pod (`hash32(runId) % 12`, deterministisch), `-1` = Chefplatz,
-   *  `-2` = auswärts. */
+   *  `-2` means away. */
   deskIndex: number;
 
   /** Laufendes Werkzeug. */
   act?: ToolAct;
   tool?: string;
   target?: string;
-  /** `engine.t`, bis zu dem das Werkzeug beschäftigt aussieht. `0` = frei. */
+  /** `engine.t` until which the tool looks busy. `0` means free. */
   busy: number;
-  /** Steht am Gate und wartet auf einen Menschen. */
+  /** Stands at the gate and waits for a person. */
   waiting: boolean;
   gate?: GateKind;
 
-  /** Ergebnis des zuletzt beendeten Werkzeugs (dreiwertig, siehe `EvToolResult.ok`). */
+  /** Result of the tool that finished last (three valued, see `EvToolResult.ok`). */
   lastOk?: boolean | null;
-  /** Zähler für Dock und Inspektor. */
+  /** Counters for the dock and the inspector. */
   fails: number;
   resolved: number;
 
-  /** Zuletzt geschriebener Pfad und Gesamtzahl. */
+  /** The path written last and the total count. */
   edit?: string;
   edits: number;
 
-  /** `engine.t` des Abschlusses — ab da läuft `DONE_LINGER_MS` bis zur Tür. */
+  /** `engine.t` of the completion: from there `DONE_LINGER_MS` runs until the door. */
   done?: number;
   doneOk?: boolean;
 
@@ -363,76 +363,76 @@ export interface ActorState {
   parent?: string;
   /** Sichtbare Verbindungslinie bis `until` (`LINK_MS`). */
   link?: { to: string; until: number };
-  /** „hat zugehört" — Kopfdrehung bis `heard` (`HEARD_MS`). */
+  /** "has listened": the head turns until `heard` (`HEARD_MS`). */
   heard?: number;
-  /** Hat den Raum durch die Tür verlassen; bleibt im Dock, verschwindet von der Bühne. */
+  /** Has left the room through the door; stays in the dock, disappears from the stage. */
   retired?: boolean;
 
-  /** `hash32(id)`. Quelle **jeder** Variation dieser Figur — Aussehen, Gangart, Sitzplatz.
+  /** `hash32(id)`. The source of **every** variation of this character: look, gait, seat.
    *  Siehe PIXEL-CONTRACT.md Regel 3.2. */
   seed: number;
 }
 
-/** Kurzlebiger Effekt über der Szene. `t0`/`until` sind `engine.t`;
- *  Fortschritt = `(t - t0) / (until - t0)`, nie ein eigener Zähler (Regel 3.4). */
+/** A short lived effect above the scene. `t0`/`until` are `engine.t`; the progress is
+ *  `(t - t0) / (until - t0)`, never a counter of its own (rule 3.4). */
 export interface Fx {
   kind: FxKind;
-  /** Szenen-Koordinaten; `y` ist auch hier der Fußpunkt. */
+  /** Scene coordinates; `y` is the foot point here as well. */
   x: number;
   y: number;
-  /** Ziel — nur bei `"link"`. */
+  /** The target, only on `"link"`. */
   to?: Pt;
   t0: number;
   until: number;
-  /** Bei `"emote"` genau ein Zeichen aus der Art-Tabelle. */
+  /** On `"emote"` exactly one character from the art table. */
   text?: string;
   seed: number;
 }
 
-/** `emote` = Pop über dem Kopf (statt eigener Jubel-/Frust-Posen) · `spark` = Werkzeugfunke ·
- *  `link` = Spawn-/Übergabelinie · `drop` = Zettel fällt auf den Tisch. */
+/** `emote` = a pop above the head (instead of separate cheer or frustration poses) · `spark` = a tool spark ·
+ *  `link` = a spawn or handover line · `drop` = a note falls onto the desk. */
 export type FxKind = "emote" | "spark" | "link" | "drop";
 
-/** Was der Serverschrank zeigt. `idle` ist der Anfangszustand und wird von **keinem** Ereignis
- *  gesetzt — er heißt „seit dem Öffnen dieses Raums hat kein Deployment stattgefunden". */
+/** What the server rack shows. `idle` is the initial state and is set by **no** event: it means
+ *  "no deployment has happened since this room was opened". */
 export type RackState = "idle" | "start" | "ok" | "fail" | "back";
 
-/** Der Serverschrank — der einzige Zustand im `Frame`, der an keiner Figur hängt.
+/** The server rack, the only state in the `Frame` that hangs on no character.
  *
- *  `since` ist `engine.t` des Wechsels; jede Animationsphase ist `(t - since)` und **nie** ein
- *  hochgezählter Zähler (PIXEL-CONTRACT.md 3.4). Es gibt bewusst kein `until`: der Zustand
- *  verfällt nicht, er wird abgelöst. Siehe `engine.ts::apply({k:"deploy"})`. */
+ *  `since` is the `engine.t` of the change; every animation phase is `(t - since)` and **never**
+ *  a counter that is incremented (PIXEL-CONTRACT.md 3.4). There is deliberately no `until`: the
+ *  state does not expire, it is replaced. See `engine.ts::apply({k:"deploy"})`. */
 export interface Rack {
   state: RackState;
   since: number;
-  /** Ziel des Deployments (Stack/Worktree). Die Bühne zeigt es nicht, Schicht 2 darf. */
+  /** Target of the deployment (stack or worktree). The stage does not show it, layer 2 may. */
   label: string;
 }
 
-/** Das Einzige, was Schicht 1 zu sehen bekommt. `actors` ist **nach `y` sortiert**
- *  (Maler-Algorithmus) und eine Kopie — die Engine gibt nie ihre eigene Sammlung heraus. */
+/** The only thing layer 1 gets to see. `actors` is **sorted by `y`** (painter's algorithm) and
+ *  a copy: the engine never hands out its own collection. */
 export interface Frame {
-  /** Simulationszeit in ms seit `t0` der Session. */
+  /** Simulation time in ms since the `t0` of the session. */
   t: number;
   actors: ActorState[];
   fx: Fx[];
-  /** Der Serverschrank. Steht neben `actors`, weil er an keinen Aktor gebunden ist. */
+  /** The server rack. It stands next to `actors`, because it is bound to no actor. */
   rack: Rack;
 }
 
-/** Eine Zeile des Logs, in **Ankunftsreihenfolge** (`seq`), nie nach `ts` sortiert.
- *  `ts` ist hier bereits die geparste Wanduhr in ms. */
+/** One row of the log, in **arrival order** (`seq`), never sorted by `ts`.
+ *  `ts` here is already the parsed wall clock in ms. */
 export interface LogEntry {
   ts: number;
   seq: number;
   cmds: Cmd[];
 }
 
-// ── Aussehen (Schicht 1 liest das, Schicht 0 erzeugt es aus dem Seed) ────────
+// ── Look (layer 1 reads it, layer 0 builds it from the seed) ─────────────────
 
-/** Die 19 Teile einer Figur, aufgelöst aus `seed`: Kopf 3 · Haar 5 · Torso 3 · Arme 4 · Beine 4.
- *  Die Farbfelder sind **Palettenschlüssel**, keine CSS-Farben — die Palette wird einmal je
- *  Themenwechsel aufgelöst (`pixel/palette.ts`). */
+/** The 19 parts of a character, resolved from `seed`: head 3 · hair 5 · torso 3 · arms 4 · legs 4.
+ *  The colour fields are **palette keys**, not CSS colours: the palette is resolved once per
+ *  theme change (`pixel/palette.ts`). */
 export interface Look {
   head: number;   // 0..2
   hair: number;   // 0..4
@@ -445,72 +445,72 @@ export interface Look {
   pantsCol: string;
 }
 
-/** Gangart, ebenfalls aus dem Seed. Damit laufen zwölf Leute erkennbar verschieden,
- *  ohne dass irgendwo gewürfelt wird. */
+/** The gait, likewise from the seed. With it twelve people walk recognisably differently
+ *  without anything being rolled anywhere. */
 export interface Gait {
-  /** Faktor auf `SPEED_PX_PER_S`, `1 ± PACE_SPREAD`. */
+  /** Factor on `SPEED_PX_PER_S`, `1 ± PACE_SPREAD`. */
   speed: number;
-  /** Auf-/Ab-Amplitude in **Pufferpixeln** (0..1). */
+  /** Up and down amplitude in **buffer pixels** (0..1). */
   bob: number;
-  /** Startphase des 4-Bild-Laufzyklus, 0..1. */
+  /** Start phase of the four frame walk cycle, 0..1. */
   phase: number;
 
-  // Ergänzt in Welle G. Grund: mit `speed/bob/phase` allein laufen zwölf Leute im selben
-  // Takt und unterscheiden sich nur in der Geschwindigkeit — aus zwei Metern Abstand sieht
-  // das aus wie eine einzige Animation. Die vier Felder unten sind die Silhouetten-Merkmale,
-  // die man wirklich sieht. Alle stammen aus eigenen Salzen (Regel 3.2), erzeugt von
-  // `pixel/palette.ts::gaitOf`, dem einzigen Hersteller eines `Gait`.
+  // Added later. The reason: with `speed/bob/phase` alone twelve people walk in the same rhythm
+  // and differ only in speed, which from two metres away looks like one single animation. The
+  // four fields below are the silhouette features one really sees. All come from salts of their
+  // own (rule 3.2), produced by `pixel/palette.ts::gaitOf`, the only maker of a `Gait`.
 
-  /** Beinausschlag des Laufzyklus in **Pufferpixeln** (2..4). */
+
+  /** Leg swing of the walk cycle in **buffer pixels** (2..4). */
   stride: number;
-  /** Vorlage des Oberkörpers in Laufrichtung, 0..1 (0 = kerzengerade). */
+  /** Lean of the upper body in the walking direction, 0..1 (0 is bolt upright). */
   lean: number;
   /** Armausschlag in **Pufferpixeln** (1..2). */
   swing: number;
-  /** Startphase des Armzyklus, 0..1 — gegen `phase` versetzt, weil Arme und Beine
-   *  gegenläufig schwingen; ohne Versatz sieht der Gang aus wie Marschieren. */
+  /** Start phase of the arm cycle, 0..1, offset against `phase`, because arms and legs swing
+   *  in opposite directions; without the offset the gait looks like marching. */
   armPhase: number;
 }
 
 // ── Raum (statische Geometrie, Szenen-Koordinaten) ──────────────────────────
 
-/** Ein Arbeitsplatz. `sit` ist der Fußpunkt der sitzenden Figur, nicht die Stuhlmitte. */
+/** A workplace. `sit` is the foot point of the seated character, not the centre of the chair. */
 export interface Seat {
-  /** Mitte der Tischplatte. */
+  /** Centre of the desktop. */
   desk: Pt;
-  /** Fußpunkt der Figur, wenn sie hier sitzt. */
+  /** Foot point of the character when it sits here. */
   sit: Pt;
-  /** Blickt an diesem Platz nach links. */
+  /** Faces left at this seat. */
   flip: boolean;
 }
 
-/** Wird einmal deterministisch gebaut (`room.ts`, Welle F) und danach nur gelesen. */
+/** Built once deterministically (`room.ts`) and only read afterwards. */
 export interface Room {
-  /** `seats[0..11]` = die zwölf Pod-Plätze (`deskIndex` 0..11), `seats[12]` = Chefplatz
-   *  (`deskIndex === -1`). Genau `MAX_SEATS` Einträge; `deskIndex === -2` hat keinen Sitz. */
+  /** `seats[0..11]` are the twelve pod seats (`deskIndex` 0..11), `seats[12]` is the boss seat
+   *  (`deskIndex === -1`). Exactly `MAX_SEATS` entries; `deskIndex === -2` has no seat. */
   seats: Seat[];
-  /** Türschwelle — hier betreten und verlassen Figuren den Raum. */
+  /** The threshold: characters enter and leave the room here. */
   door: Pt;
-  /** Mitte des runden Tisches. */
+  /** Centre of the round table. */
   table: Pt;
-  /** Standplätze um den Tisch (Huddle), in fester Reihenfolge. */
+  /** Standing places around the table (huddle), in a fixed order. */
   huddle: Pt[];
   /** Kaffeeecke (`IDLE_COFFEE_MS`). */
   coffee: Pt;
-  /** Sammelpunkt außerhalb des Bildes für `deskIndex === -2`. */
+  /** Gathering point outside the picture for `deskIndex === -2`. */
   away: Pt;
-  /** Standplatz **vor** dem Serverschrank — kein Sitz, kein Aktor, nur ein Zielpunkt.
-   *  Genau deshalb braucht die Deploy-Geste keinen sechsten `TripKind`: sie ist ein `deliver`
-   *  ohne Ziel-Aktor und erbt damit Türerkennung, Fußstaub, Tempostreuung und
+  /** Standing place **in front of** the server rack: no seat, no actor, only a target point.
+   *  Exactly for that the deploy gesture needs no sixth `TripKind`: it is a `deliver` without a
+   *  target actor and thereby inherits door detection, foot dust, spread of pace and
    *  dt-Split-Invarianz gratis. */
   rack: Pt;
 }
 
 // ── Roster & Zeitleiste ──────────────────────────────────────────────────────
 
-/** Ein Lauf, wie ihn die Lese-API neben `events[]` mitliefert — direkt aus `runs`.
- *  Der Roster verdient seinen Platz, weil das Ereignisfenster vom **ältesten** Ende gekappt wird:
- *  ohne ihn gingen bei einer langen Session die `run_start`-Ereignisse verloren und der Raum
+/** A run as the read API delivers it next to `events[]`, straight from `runs`.
+ *  The roster earns its place because the event window is truncated at the **oldest** end:
+ *  without it the `run_start` events of a long session would be lost and the room
  *  bliebe leer. */
 export interface RosterEntry {
   agent_id: string;
@@ -537,8 +537,8 @@ export interface RosterEntry {
 
 export type Roster = RosterEntry[];
 
-/** Ein Balken der Zeitleiste, `TIMELINE_BUCKET_MS` breit. `t` ist der Beginn des Fensters
- *  in `engine.t`-Zeit. Die vier Zähler sind die vier Farben — mehr Farben gibt es nicht. */
+/** One bar of the timeline, `TIMELINE_BUCKET_MS` wide. `t` is the start of the window in
+ *  `engine.t` time. The four counters are the four colours, and there are no more colours. */
 export interface Bucket {
   t: number;
   says: number;
@@ -547,6 +547,6 @@ export interface Bucket {
   errors: number;
 }
 
-/** Tag- oder Abendbüro. Kommt aus `<html data-theme>`, **nicht** aus der echten Uhrzeit —
- *  die bräche den Determinismus. */
+/** Day or evening office. Comes from `<html data-theme>`, **not** from the real time of day,
+ *  which would break determinism. */
 export type Grade = "day" | "night";
