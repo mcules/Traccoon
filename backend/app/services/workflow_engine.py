@@ -114,7 +114,7 @@ def _handle_matches(edge_handle, handle) -> bool:
 
 
 def next_node(edges: list[dict], node_id: str, handle) -> str | None:
-    """Ziel-Knoten der Kante mit source==node_id und passendem sourceHandle."""
+    """Target node of the edge with source==node_id and a matching sourceHandle."""
     for e in edges:
         if e.get("source") == node_id and _handle_matches(e.get("sourceHandle"), handle):
             return e.get("target")
@@ -496,7 +496,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                    error=f"Unbekannter Knotentyp '{ntype}'")
 
 
-# ── wait_event: auf ein externes Ereignis warten ─────────────────────────────
+# ── wait_event: waiting for an external event ────────────────────────────────
 
 DEFAULT_EVENTS = ("comment", "manual")
 
@@ -532,10 +532,10 @@ async def _wait_for_event(db, inst, node, token, cfg) -> Outcome:
 
 
 async def resume_on_event(issue_id: int, event: str, payload: dict | None = None) -> bool:
-    """Meldet ein Ereignis (comment|answer|manual|…) an die Lebenszyklus-Instanz eines Tickets.
+    """Reports an event (comment|answer|manual|…) to the lifecycle instance of a ticket.
 
-    Liefert True, wenn ein wartender wait_event-Knoten das Ereignis angenommen hat. Der
-    Aufrufer (z. B. `services/comments.apply_user_comment`) muss vorher committet haben.
+    Returns True when a waiting wait_event node accepted the event. The caller (for instance
+    `services/comments.apply_user_comment`) has to have committed beforehand.
     """
     async with SessionLocal() as db:
         from ..models.ticket import Issue
@@ -822,7 +822,7 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
 
 async def _finish_subflow(parent_id: int, node_id: str, child_status: str,
                           child_context: dict, error: str | None) -> None:
-    """Weckt den wartenden subflow-Schritt der Eltern-Instanz, wenn das Kind endet."""
+    """Wakes the waiting subflow step of the parent instance when the child ends."""
     async with SessionLocal() as db:
         inst = await db.get(WorkflowInstance, parent_id)
         if inst is None or inst.status not in (IStatus.running, IStatus.waiting):
@@ -959,7 +959,7 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
 
     role = await _resolve_agent_role(db, issue, cfg)
     phase = "planning" if cfg.get("phase") == "planning" else "execution"
-    # 0/None = kein Deckel: gewartet wird am Lebenszeichen des Laufs, nicht an der Uhr.
+    # 0/None = no cap: waiting happens on the sign of life of the run, not on the clock.
     timeout = int(cfg.get("timeout_sec") or AGENT_DEFAULT_TIMEOUT)
     outcomes_map = cfg.get("outcomes_map") or {}
     task_id = f"wf-{inst.id}-{token.id}-{node['id']}-{uuid.uuid4().hex[:8]}"
@@ -1119,7 +1119,7 @@ async def _stalled(db, issue_id: int, fingerprint: str | None) -> bool:
         select(Run.worktree_fingerprint)
         .where(Run.issue_id == issue_id, Run.worktree_fingerprint.isnot(None))
         .order_by(Run.id.desc()).limit(2))).scalars().all()
-    prev = rows[1:2]  # vorletzter Lauf (der letzte ist der gerade beendete)
+    prev = rows[1:2]  # the second to last run (the last is the one just finished)
     return bool(prev) and prev[0] == fingerprint
 
 
@@ -1191,7 +1191,7 @@ async def _await_agent_inner(instance_id: int, token_id: int, step_id: int, task
     async with SessionLocal() as db:
         step = await db.get(WorkflowStepRun, step_id)
         if step is None or step.status != SStatus.running:
-            return  # schon anderweitig finalisiert (Reattach-Doppelung)
+            return  # already finalised elsewhere (reattach duplication)
         inst = await db.get(WorkflowInstance, instance_id)
         version = await db.get(WorkflowVersion, inst.version_id) if inst else None
         edges = _edges((version.graph if version else None) or {})
@@ -1339,7 +1339,7 @@ async def start_workflow(
 
 
 async def resume_instance(instance_id: int) -> None:
-    """Reaktiviert das wartende Token einer Instanz und schaltet weiter (nach human/approval)."""
+    """Reactivates the waiting token of an instance and advances (after human/approval)."""
     async with SessionLocal() as db:
         inst = await db.get(WorkflowInstance, instance_id)
         if inst is None or inst.status not in (IStatus.running, IStatus.waiting):
@@ -1456,7 +1456,7 @@ async def _has_active_token(instance_id: int) -> bool:
 
 
 async def _move(db, inst, token, edges, node, handle) -> bool:
-    """Bewegt das Token entlang der Kante <node, handle>. False bei Dangling-Kante (Instanz failed)."""
+    """Moves the token along the edge <node, handle>. False on a dangling edge (instance failed)."""
     target = next_node(edges, node["id"], handle)
     if target is None:
         inst.status = IStatus.failed
@@ -1492,7 +1492,7 @@ async def _drive(instance_id: int) -> None:
                 )
             ).scalars().first()
             if token is None:
-                break  # nichts aktiv → wartet oder fertig
+                break  # nothing active: waiting or finished
 
             node = _node_by_id(graph, token.node_id)
             if node is None:
@@ -1560,7 +1560,7 @@ async def _drive(instance_id: int) -> None:
         await publish_event(inst.project_id or 0, {
             "type": "workflow_update", "instance_id": inst.id, "status": inst.status.value,
         })
-        # Kind-Lauf beendet → wartenden subflow-Schritt der Eltern-Instanz wecken.
+        # The child run has ended, so wake the waiting subflow step of the parent instance.
         parent_id, parent_node = inst.parent_instance_id, inst.parent_node_id
         if parent_id and parent_node and inst.status in (
                 IStatus.completed, IStatus.failed, IStatus.cancelled):
@@ -1678,7 +1678,7 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
             if bad:
                 errors.append(f"Ereignis-Knoten '{nid}': leerer Ereignisname")
 
-    # Optional: Erreichbarkeit eines End-Knotens vom Start via BFS
+    # Optional: reachability of an end node from the start over BFS
     if starts and ends and not dupes:
         reach = _reachable(starts[0].get("id"), edges)
         if not any(e.get("id") in reach for e in ends):

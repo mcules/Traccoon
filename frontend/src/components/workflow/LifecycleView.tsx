@@ -16,20 +16,20 @@ import {
 import "@xyflow/react/dist/style.css";
 
 /**
- * Read-only-Visualisierung des KI-Agenten-Lebenszyklus (Etappe 5).
+ * Read-only visualisation of the AI agent lifecycle.
  *
- * REIN ADDITIV: Der Graph ist hartkodiert (feste Knoten/Positionen), die
- * Hervorhebung kommt ausschließlich aus `agentStatus` (+ `holdReason`).
- * Keine Engine-Instanz, kein Editor — nur Anzeige. Stil an
- * WorkflowInstanceView/shared.tsx angelehnt (◉/✓/○-Sprache, bg-card/border-line).
+ * PURELY ADDITIVE: the graph is hard coded (fixed nodes and positions), and the
+ * highlighting comes exclusively from `agentStatus` (plus `holdReason`). No engine instance,
+ * no editor, only display. The style follows
+ * WorkflowInstanceView/shared.tsx (the ◉/✓/○ language, bg-card/border-line).
  *
- * Annahmen:
- *  - `testing` wird auf dem `to_test`-Knoten hervorgehoben (Review/Abnahme).
- *  - Auf `hold`/`failed` gelten alle Hauptknoten bis inkl. `in_progress` als
- *    „erledigt" (der Fluss hat sie durchlaufen), damit der Fortschritt sichtbar
- *    bleibt; der Abzweig-Knoten selbst ist „aktiv".
- *  - `agentStatus == null` → nichts hervorgehoben (dezenter Hinweis am Rand);
- *    die Einbindung blendet die Sektion dann i. d. R. ganz aus.
+ * Assumptions:
+ *  - `testing` is highlighted on the `to_test` node (review, acceptance).
+ *  - On `hold`/`failed` all main nodes up to and including `in_progress` count as "done"
+ *    (the flow has passed through them), so that the progress stays visible; the branching
+ *    node itself is "active".
+ *  - `agentStatus == null` means nothing is highlighted (a discreet hint at the edge),
+ *    and the embedding then usually hides the section entirely.
  */
 
 type NodeId =
@@ -39,7 +39,7 @@ type NodeId =
 type Visual = "done" | "active" | "pending";
 type Kind = "normal" | "done" | "failed" | "hold";
 
-// Schlüssel statt Texte, weil die Tabelle beim Laden des Moduls entsteht.
+// Keys instead of texts, because the table comes into being while the module loads.
 const NODE_LABEL: Record<NodeId, string> = {
   open: "lifecycle.open",
   planning: "lifecycle.planning",
@@ -72,7 +72,7 @@ const MAIN: NodeId[] = [
   "open", "planning", "plan_review", "approved", "in_progress", "to_test", "done",
 ];
 
-// Feste Positionen (kompaktes LR-Layout; fitView skaliert in die Höhe ~240px).
+// Fixed positions (compact LR layout; fitView scales it into a height of about 240px).
 const X = 168; // horizontaler Rasterabstand
 const POS: Record<NodeId, { x: number; y: number }> = {
   open: { x: 0 * X, y: 20 },
@@ -91,13 +91,13 @@ const KIND: Record<NodeId, Kind> = {
   in_progress: "normal", to_test: "normal", done: "done", hold: "hold", failed: "failed",
 };
 
-/** Leitet je Knoten den Anzeige-Zustand aus dem aktuellen agent_status ab. */
+/** Derives the display state per node from the current agent_status. */
 function computeVisuals(agentStatus: string | null): Record<NodeId, Visual> {
   const out = {} as Record<NodeId, Visual>;
   (Object.keys(NODE_LABEL) as NodeId[]).forEach((n) => (out[n] = "pending"));
   if (!agentStatus) return out;
 
-  // testing → to_test; sonst gleichnamiger Knoten.
+  // testing becomes to_test; otherwise the node of the same name.
   const current = (agentStatus === "testing" ? "to_test" : agentStatus) as NodeId;
 
   const idx = MAIN.indexOf(current);
@@ -158,7 +158,7 @@ function LifecycleNode({ data }: NodeProps<Node<LifecycleNodeData>>) {
   );
 }
 
-// Stabile Referenz (nicht im Render neu erzeugen — sonst React-Flow-Warnung).
+// Stable reference (not created anew in the render, because otherwise React Flow warns).
 const nodeTypes: NodeTypes = { lifecycle: LifecycleNode };
 
 type EdgeDef = {

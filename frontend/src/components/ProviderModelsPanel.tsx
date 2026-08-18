@@ -12,8 +12,8 @@ interface Modell {
 const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 const num = "w-24 rounded border border-line bg-surface px-2 py-1 text-right text-sm text-ink";
 
-// Anzeige-Namen der Provider. `openai` ist bei uns meist gar nicht OpenAI, sondern ein
-// OpenAI-kompatibler Endpoint (LiteLLM, vLLM, Ollama …) — deshalb die Klammer.
+// Display names of the providers. `openai` is mostly not OpenAI here but an
+// OpenAI-compatible endpoint (LiteLLM, vLLM, Ollama …), hence the bracket.
 const PROVIDER_LABEL: Record<string, string> = {
   claude_code: "provider_models_panel.provider_claude_code",
   codex: "provider_models_panel.provider_codex",
@@ -21,20 +21,20 @@ const PROVIDER_LABEL: Record<string, string> = {
 };
 
 /**
- * Modellkatalog: welcher Provider welche Modelle bereitstellt und was sie kosten.
+ * Model catalog: which provider provides which models and what they cost.
  *
- * Der Katalog speist die Modell-Auswahl im Agent-Editor und die Kostenrechnung
- * (Preise in USD je 1 Mio. Token). „Modelle abrufen" fragt jeden hinterlegten Token
- * an seinem eigenen Endpoint ab — bei einem OpenAI-kompatiblen Proxy kommen also
- * dessen lokale Modellnamen, nicht die von OpenAI.
+ * The catalog feeds the model selection in the agent editor and the cost computation
+ * (prices in USD per 1M tokens). "Fetch models" queries every stored token
+ * queries every stored token at its own endpoint, so with an OpenAI-compatible proxy its
+ * local model names come, not those of OpenAI.
  */
 export default function ProviderModelsPanel() {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [edit, setEdit] = useState<Record<number, Partial<Modell>>>({});
-  // Am Handy steht je Modell erst nur der Name: 30 Modelle mit je sieben Feldern wären
-  // sonst zehn Bildschirme Scrollweg, bevor man das gesuchte findet.
+  // On a phone only the name stands per model at first: 30 models with seven fields each
+  // would otherwise be ten screens of scrolling before one finds the one being looked for.
   const [offen, setOffen] = useState<number | null>(null);
 
   const { data: modelle } = useQuery({
@@ -87,19 +87,19 @@ export default function ProviderModelsPanel() {
     onError: fail,
   });
 
-  // Zeile = gespeicherter Stand, überlagert von noch nicht gespeicherten Eingaben.
+  // Row = the saved state, overlaid by inputs not saved yet.
   const zeile = (m: Modell): Modell => ({ ...m, ...edit[m.id] });
   const setzen = (m: Modell, feld: Partial<Modell>) =>
     setEdit((e) => ({ ...e, [m.id]: { ...e[m.id], ...feld } }));
   const geaendert = (m: Modell) => edit[m.id] !== undefined;
 
   /**
-   * Die Zahlenfelder einer Modellzeile, einmal beschrieben.
+   * The number fields of a model row, described once.
    *
-   * Am Schreibtisch stehen sie als Tabellenspalten nebeneinander, am Handy als beschriftete
-   * Felder untereinander — neun Spalten auf 390 px waren vorher entweder abgeschnitten oder
-   * so schmal, dass in jeder Zelle ein Wort je Zeile stand. Zwei Darstellungen, eine Quelle,
-   * damit sie nicht auseinanderlaufen.
+   * On the desktop they stand side by side as table columns, on a phone as labelled fields
+   * below each other: nine columns on 390 px were previously either cut off or so narrow
+   * that every cell held one word per line. Two presentations, one source, so that they do
+   * not drift apart.
    */
   const zahlenFelder = (roh: Modell) => {
     const m = zeile(roh);
