@@ -1,23 +1,23 @@
-"""Gedächtnis der Agenten: gelernte Erkenntnisse als Notizen im Obsidian-Vault (ABC-30).
+"""Memory of the agents: learned insights as notes in the Obsidian vault (ABC-30).
 
-Der Ablageort ist der Vault, weil der Mensch das Gelernte sehen und von Hand korrigieren
-können soll — eine DB-Tabelle wäre unsichtbar. Unter `users.vault_memory_path` liegen drei
-Sorten Notizen:
+The filing place is the vault, because the human should be able to see and correct what has
+been learned by hand; a database table would be invisible. Under
+`users.vault_memory_path` lie three kinds of note:
 
-    Mensch.md            gilt für ALLE Läufe dieses Menschen (Vorlieben, feste Vorgaben)
+    Mensch.md            applies to ALL runs of this human (preferences, fixed rules)
     Agent-<rolle>.md     role specific (assistent, developer, code_reviewer …)
     Projekt-<KEY>.md     project specific
 
-Der Inhalt ist absichtlich schlichtes Markdown, eine Bullet-Zeile pro Erkenntnis. Es gibt
-kein Parsing, keine IDs, keine Trefferzähler: der Text wird als Block in den Prompt gehängt,
-und das Zusammenfassen von Dubletten macht der Agent selbst über `vergiss` + `erinnere_dich`.
+The content is deliberately plain markdown, one bullet line per insight. There is no
+parsing, there are no ids and no hit counters: the text is hung into the prompt as a block,
+and merging duplicates is done by the agent itself over `vergiss` plus `erinnere_dich`.
 
-WARUM DIESE TOOLS ÜBERHAUPT EXISTIEREN — der obsidian-MCP beschreibt `target` als `oneOf`
-ohne `type`-Feld. Modelle wie `claude-sonnet-4-5` bedienen das nicht: sie schicken `target`
-als JSON-String statt als Objekt, jeder Aufruf endet in `MCP error -32602`. Deshalb ruft das
-Modell obsidian hier NIE selbst auf. Es bekommt Tools mit reinen String-Parametern, und
-`_note_target` unten ist die einzige Stelle im Haus, die die `oneOf`-Form kennt. Damit läuft
-das Gedächtnis auf jedem Modell.
+WHY THESE TOOLS EXIST AT ALL: the obsidian MCP describes `target` as a `oneOf` without a
+`type` field. Models like `claude-sonnet-4-5` do not serve that: they send `target` as a
+JSON string instead of an object, and every call ends in `MCP error -32602`. That is why the
+model never calls obsidian itself here. It gets tools with pure string parameters, and
+`_note_target` below is the only place in the house that knows the `oneOf` form. That way the
+memory runs on every model.
 """
 from __future__ import annotations
 
@@ -30,10 +30,10 @@ from ..models.user import User
 
 log = logging.getLogger(__name__)
 
-# Wie viel Gedächtnis höchstens in den Prompt geht — genug für ein paar Dutzend Zeilen,
-# wenig genug, dass es den Auftrag nicht zudeckt.
+# How much memory goes into the prompt at most: enough for a few dozen lines, little enough
+# that it does not cover the assignment.
 MAX_MEMORY_CHARS = 6000
-# Eine einzelne Erkenntnis ist ein Satz, kein Aufsatz.
+# A single insight is a sentence, not an essay.
 MAX_ENTRY_CHARS = 600
 
 BEREICHE = ("mensch", "agent", "projekt")
@@ -78,22 +78,22 @@ NO_MEMORY = "(kein Gedächtnis konfiguriert — dein Mensch hat keinen Vault-Ord
 
 
 def _note_target(path: str) -> dict:
-    """Die `oneOf`-Adresse des obsidian-MCP. EINZIGE Stelle, die deren Form kennt.
+    """The `oneOf` address of the obsidian MCP. The ONLY place that knows its form.
 
-    Muss ein Objekt sein — ein String hier ist genau der Fehler `MCP error -32602`, an dem
-    ältere Modelle scheitern, wenn sie den MCP selbst aufrufen.
+    It has to be an object; a string here is exactly the error `MCP error -32602` older
+    models fail on when they call the MCP themselves.
     """
     return {"type": "path", "path": path}
 
 
 def _safe(part: str) -> str:
-    """Rolle/Projekt-Key als Dateinamens-Bestandteil: keine Pfadwechsel, keine Trenner."""
+    """Role or project key as part of a file name: no path changes, no separators."""
     keep = [c for c in (part or "").strip() if c.isalnum() or c in "-_ äöüÄÖÜß"]
     return "".join(keep).strip() or "unbenannt"
 
 
 def note_path(root: str, bereich: str, agent_role: str = "", project_key: str = "") -> str | None:
-    """Notizpfad für einen Bereich — None, wenn der Bereich hier keinen Sinn hat."""
+    """Note path for an area, or None when the area makes no sense here."""
     root = (root or "").strip().rstrip("/")
     if not root:
         return None
@@ -114,9 +114,9 @@ async def memory_root(db: AsyncSession, owner_id: int | None) -> str:
     return (user.vault_memory_path or "").strip() if user else ""
 
 
-# MCP-Fehler kommen NICHT als Ausnahme: `mcp_client.call` verwirft `isError` und gibt den
-# Fehlertext des Servers zurück (mcp_client.py:97-103). Ein fehlender Aufruf-Erfolg ist hier
-# also am Text zu erkennen — und ein „Notiz gibt es noch nicht" ist der Normalfall, kein Fehler.
+# MCP errors do NOT come as an exception: `mcp_client.call` discards `isError` and returns
+# the error text of the server (mcp_client.py:97-103). A missing call success is therefore
+# recognisable by the text here, and a "the note does not exist yet" is the normal case, not an error.
 _FEHLER_MARKER = ("mcp error", "kein mcp konfiguriert", "not found", "does not exist",
                   "file_exists", "error:", "\"code\":")
 
@@ -127,7 +127,7 @@ def _failed(text: str) -> bool:
 
 
 async def _read_note(mcp, path: str) -> str:
-    """Notizinhalt oder leer (fehlende Notiz ist der Normalfall, nicht der Fehlerfall)."""
+    """Note content or empty (a missing note is the normal case, not the error case)."""
     try:
         out = await mcp.call("obsidian__obsidian_get_note",
                              {"format": "content", "target": _note_target(path)})
@@ -138,9 +138,9 @@ async def _read_note(mcp, path: str) -> str:
 
 
 async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "") -> str:
-    """Gesamtes einschlägiges Gedächtnis als Text für den Prompt (gekappt).
+    """The whole relevant memory as text for the prompt (truncated).
 
-    Reihenfolge vom Allgemeinen zum Besonderen, damit das Spezifische am Ende steht und
+    The order goes from the general to the specific, so that the specific one stands at the
     end and weighs more in case of doubt.
     """
     if not root:
@@ -159,7 +159,7 @@ async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "
 
 
 async def _append_line(mcp, path: str, line: str) -> str:
-    """Zeile anhängen; existiert die Notiz noch nicht, einmal anlegen."""
+    """Append a line; if the note does not exist yet, create it once."""
     try:
         out = await mcp.call("obsidian__obsidian_append_to_note",
                              {"target": _note_target(path), "content": line + "\n"})
@@ -167,8 +167,8 @@ async def _append_line(mcp, path: str, line: str) -> str:
             return ""
     except Exception as exc:  # noqa: BLE001
         out = str(exc)
-    # Zweiter Versuch: Notiz anlegen. `overwrite` bleibt aus — gibt es sie doch schon,
-    # scheitert der Aufruf lieber, als bestehendes Gedächtnis zu überschreiben.
+    # Second attempt: create the note. `overwrite` stays off; if it does exist after all, the
+    # call had better fail than overwrite existing memory.
     kopf = f"# {path.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
     try:
         neu = await mcp.call("obsidian__obsidian_write_note",
@@ -182,7 +182,7 @@ async def _append_line(mcp, path: str, line: str) -> str:
 
 async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: str, args: dict,
                            agent_role: str = "", project_key: str = "") -> str:
-    """Dispatcher für die drei Gedächtnis-Tools. Rückgabe = knapper Text für den Agenten."""
+    """Dispatcher for the three memory tools. The return value is terse text for the agent."""
     root = await memory_root(db, owner_id)
     if not root:
         return NO_MEMORY
