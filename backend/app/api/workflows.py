@@ -1,10 +1,10 @@
-"""REST-Router der Workflow-Engine: Definitionen, Versionen (Editor), Instanzen, Aufgaben.
+"""REST router of the workflow engine: definitions, versions (editor), instances, tasks.
 
-Zugriffsmodell:
-- Definitionen schreiben/publishen: Projekt-Rolle owner|maintainer ODER access.ai_assign
-  (globale Vorlagen ohne Projekt: nur Admin).
-- Instanzen starten/Schritte: Projekt-Mitgliedschaft (member+); projektlose Instanzen: authentifiziert.
-- approve/reject: access.ai_assign wenn node.config.gate=="ai_assign", sonst die konfigurierte Rolle.
+Access model:
+- Writing/publishing definitions: project role owner|maintainer OR access.ai_assign
+  (global templates without a project: admin only).
+- Starting instances/steps: project membership (member+); project-less instances: authenticated.
+- approve/reject: access.ai_assign when node.config.gate=="ai_assign", otherwise the configured role.
 """
 from __future__ import annotations
 
@@ -46,22 +46,22 @@ def _ist_admin(user: User) -> bool:
 
 
 def _gehoert(d, user: User) -> bool:
-    """Ist das ein eigener, freier Ablauf dieses Menschen?
+    """Is this a free flow of this person's own?
 
-    Frei heißt: an kein Projekt und an keinen Slot gebunden. Wer so einen anlegt, ist sein
-    Eigentümer (`created_by`) — er allein sieht, ändert und startet ihn. Ohne diese Grenze
-    wäre „eigener Ablauf" ein Widerspruch: die Definition liegt projektlos in derselben
-    Tabelle wie die ausgelieferten Vorlagen und stünde damit allen offen.
+    Free means: bound to no project and no slot. Whoever creates one is its owner
+    (`created_by`) and alone sees, changes and starts it. Without that boundary "own flow"
+    would be a contradiction: the definition lies project-less in the same table as the
+    shipped templates and would therefore be open to everybody.
     """
     return d.project_id is None and not d.slot and d.created_by == user.id
 
 
 async def _require_def_write(db: AsyncSession, user: User, project_id: int | None) -> None:
-    """Schreibrecht auf eine Definition: Projekt owner|maintainer ODER ai_assign.
+    """Write permission on a definition: project owner|maintainer OR ai_assign.
 
-    Projektlos darf **jeder Angemeldete** anlegen — ein eigener Ablauf ist kein Adminrecht.
-    Was er darf, entscheidet sich nicht hier, sondern dort, wo er wirkt: gebundene Artefakte
-    und Ereignis-Auslöser werden gegen die Rechte seines Eigentümers geprüft
+    Without a project **every logged-in user** may create one: an own flow is not an admin
+    right. What it may do is not decided here but where it takes effect: bound artifacts and
+    event triggers are checked against the rights of its owner
     (`_require_subjekt_recht`, `events.listeners`).
     """
     if project_id is None:
@@ -69,18 +69,18 @@ async def _require_def_write(db: AsyncSession, user: User, project_id: int | Non
     project = await db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Projekt nicht gefunden")
-    access = await build_access(project, user, db)  # 404 bei Fremdprojekt
+    access = await build_access(project, user, db)  # 404 on a foreign project
     if not (access.has_role(ProjectRole.maintainer) or access.ai_assign):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
                             "Rolle owner|maintainer oder KI-Recht (ai_assign) erforderlich")
 
 
 async def _require_write(db: AsyncSession, user: User, d) -> None:
-    """Schreibrecht auf eine konkrete Definition.
+    """Write permission on a concrete definition.
 
-    Gehört sie zu einem Prozess-Satz, entscheidet der Satz (persönlich = Eigentümer,
-    global = Admin); ein freier Ablauf gehört seinem Ersteller; sonst gelten die
-    Projekt-Regeln.
+    If it belongs to a process set, the set decides (personal = owner, global = admin); a
+    free flow belongs to its creator; otherwise the project rules apply.
+    
     """
     if d.set_id:
         return await _require_set_write(db, user, await _get_set(db, d.set_id))
@@ -93,13 +93,13 @@ async def _require_write(db: AsyncSession, user: User, d) -> None:
 
 
 async def _require_project_read(db: AsyncSession, user: User, project_id: int | None) -> None:
-    """Lese-/Nutzungs-Zugriff auf ein Projekt (globale/projektlose Objekte: frei für Angemeldete)."""
+    """Read/use access to a project (global and project-less objects: free for logged-in users)."""
     if project_id is None:
         return
     project = await db.get(Project, project_id)
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Projekt nicht gefunden")
-    await build_access(project, user, db)  # wirft 404 bei fehlendem Zugriff
+    await build_access(project, user, db)  # raises 404 when access is missing
 
 
 async def _get_def(db: AsyncSession, def_id: int) -> WorkflowDefinition:
@@ -139,7 +139,7 @@ async def _load_instance_out(db: AsyncSession, inst: WorkflowInstance) -> Instan
 
 async def _instance_access(db: AsyncSession, user: User, inst: WorkflowInstance,
                            minimum: ProjectRole = ProjectRole.member):
-    """Zugriff auf eine Instanz + (falls Projekt) Access-Objekt zurück."""
+    """Access to an instance plus (when there is a project) the access object."""
     if inst.project_id is None:
         return None
     project = await db.get(Project, inst.project_id)
@@ -153,7 +153,7 @@ async def _instance_access(db: AsyncSession, user: User, inst: WorkflowInstance,
 
 @router.get("/workflow-events")
 async def workflow_events(user: User = Depends(get_current_user)):
-    """Ereignisse, die Traccoon selbst meldet — Vorschlagsliste für den Auslöser."""
+    """Events Traccoon reports itself: suggestion list for the trigger."""
     from ..services.events import BUILTIN_EVENTS
     return [{"event": e, "label": l} for e, l in BUILTIN_EVENTS]
 
@@ -170,7 +170,7 @@ async def post_event(
     data: EventIn,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Ereignis von Hand melden. Startet jeden Ablauf, dessen Start-Knoten darauf hört."""
+    """Report an event by hand. Starts every flow whose start node listens for it."""
     if data.project_id is not None:
         await _require_project_read(db, user, data.project_id)
     from ..services.events import emit
@@ -183,19 +183,19 @@ async def post_event(
 async def workflow_layout(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Abstand (px) für „Anordnen" im Editor. Lesbar für alle — gesetzt wird er vom Admin
-    unter `PUT /admin/workflow-layout`."""
+    """Spacing (px) for "arrange" in the editor. Readable for everyone; it is set by the admin
+    under `PUT /admin/workflow-layout`."""
     from ..services.appsettings import get_layout_gap
     return {"gap": await get_layout_gap(db)}
 
 
 @router.get("/workflow-context-fields")
 async def workflow_context_fields(user: User = Depends(get_current_user)):
-    """Welche Felder im Kontext stehen — je Auslöser, Aktion und Knotentyp.
+    """Which fields are in the context, per trigger, action and node type.
 
-    Der Editor baut daraus die Auswahl an einer Verzweigung. Vorher war das ein leeres
-    Textfeld: man musste den Pfad kennen, und ein Tippfehler fiel erst auf, wenn der Zweig
-    im Betrieb nie griff.
+    The editor builds the selection at a branch from it. Before, that was an empty text
+    field: you had to know the path, and a typo only showed when the branch never took hold
+    in operation.
     """
     from ..services.workflow_context import katalog
     from ..services.workflow_expr import katalog as filter_katalog
@@ -206,7 +206,7 @@ async def workflow_context_fields(user: User = Depends(get_current_user)):
 async def workflow_webhook_lesen(
     def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Die eingehende Adresse dieses Ablaufs (oder `null`, wenn er keine hat)."""
+    """The incoming address of this flow (or `null` when it has none)."""
     d = await _get_def(db, def_id)
     await _require_project_read(db, user, d.project_id)
     return await _webhook_von(db, d)
@@ -216,14 +216,14 @@ async def workflow_webhook_lesen(
 async def workflow_webhook_anlegen(
     def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Diesem Ablauf eine eigene Adresse geben, unter der ihn ein fremdes System anstößt.
+    """Give this flow an address of its own under which a foreign system triggers it.
 
-    Nicht jedes System spricht MCP, und die wenigsten kennen Traccoons Ereignisse — aber
-    einen Webhook kann fast jedes schicken. Bisher musste man ihn in den Einstellungen
-    anlegen und dort den Ablauf auswählen: die Quelle stand am anderen Ende, im Ablauf
-    selbst war sie unsichtbar. Jetzt entsteht sie dort, wo sie hingehört.
+    Not every system speaks MCP, and very few know Traccoon's events, but almost every one
+    can send a webhook. Until now you had to create it in the settings and pick the flow
+    there: the source stood at the other end, and in the flow itself it was invisible. Now it
+    comes into being where it belongs.
 
-    Der Aufruf ist idempotent — ein zweiter gibt dieselbe Adresse zurück.
+    The call is idempotent: a second one returns the same address.
     """
     import secrets as _secrets
     import uuid as _uuid
@@ -240,7 +240,7 @@ async def workflow_webhook_anlegen(
         public_id=str(_uuid.uuid4()), owner_user_id=user.id,
         route=(d.key or f"ablauf-{d.id}")[:120], secret=_secrets.token_hex(24),
         mode="workflow", project_id=d.project_id, workflow_definition_id=d.id,
-        context_map={},   # ohne Abbildung landet die ganze Nutzlast im Kontext
+        context_map={},   # without a mapping the whole payload lands in the context
     )
     db.add(sub)
     await db.commit()
@@ -249,7 +249,7 @@ async def workflow_webhook_anlegen(
 
 
 async def _webhook_von(db: AsyncSession, d) -> dict | None:
-    """Der Webhook, der genau diesen Ablauf startet (samt Adresse und Geheimnis)."""
+    """The webhook that starts exactly this flow (including address and secret)."""
     from ..config import settings
     from ..models.ops import WebhookSub
 
@@ -258,8 +258,8 @@ async def _webhook_von(db: AsyncSession, d) -> dict | None:
         WebhookSub.workflow_definition_id == d.id).order_by(WebhookSub.id))).scalars().first()
     if sub is None:
         return None
-    # Dieselbe Basis wie bei Einladungslinks — ohne sie bleibt der Pfad relativ, damit
-    # niemand eine URL kopiert, die von außen ins Leere zeigt.
+    # The same base as with invitation links; without it the path stays relative so that
+    # nobody copies a URL that points nowhere from the outside.
     basis = (settings.app_base_url or "").rstrip("/")
     return {
         "id": sub.id, "route": sub.route, "public_id": sub.public_id,
@@ -273,10 +273,10 @@ async def _webhook_von(db: AsyncSession, d) -> dict | None:
 @router.get("/workflow-tools")
 async def workflow_tools(user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
-    """Die MCP-Werkzeuge DIESES Menschen — Auswahl für den Knoten „Werkzeug aufrufen".
+    """The MCP tools of THIS person: the selection for the node "call tool".
 
-    Bewusst die eigenen: ein Ablauf ruft später über den MCPJungle-Zugang seines
-    Eigentümers, nicht über einen globalen. Was hier nicht steht, kann er auch nicht rufen.
+    Deliberately their own: a flow later calls through the MCPJungle access of its owner, not
+    through a global one. What is not listed here it cannot call either.
     """
     from ..services.workflow_tools import werkzeuge
     return await werkzeuge(db, user.id)
@@ -284,17 +284,16 @@ async def workflow_tools(user: User = Depends(get_current_user),
 
 @router.get("/workflow-templates")
 async def workflow_templates_list(user: User = Depends(get_current_user)):
-    """Fertige Abläufe zum Kopieren — Auswahl beim Anlegen.
+    """Finished flows to copy: the selection when creating one.
 
-    Nur die Beschreibung, nicht der Graph: die Übersicht braucht ihn nicht, und wer eine
-    Vorlage nimmt, bekommt sie ohnehin als eigene Version 1 (`POST /workflows` mit
-    `template`).
+    Only the description, not the graph: the overview does not need it, and whoever takes a
+    template gets it as their own version 1 anyway (`POST /workflows` with `template`).
     """
     from ..services import workflow_templates
     return workflow_templates.liste()
 
 
-# ── Prozess-Sätze ────────────────────────────────────────────────────────────
+# ── Process sets ─────────────────────────────────────────────────────────────
 
 async def _get_set(db: AsyncSession, set_id: int):
     from ..models.workflow import WorkflowSet
@@ -305,7 +304,7 @@ async def _get_set(db: AsyncSession, set_id: int):
 
 
 async def _require_set_write(db: AsyncSession, user: User, s) -> None:
-    """Globale Sätze darf nur ein Admin ändern, persönliche nur ihr Eigentümer."""
+    """Global sets may only be changed by an admin, personal ones only by their owner."""
     from ..models.enums import GlobalRole, WorkflowSetScope
     if s.scope == WorkflowSetScope.user:
         if s.user_id != user.id and user.global_role != GlobalRole.admin:
@@ -320,7 +319,7 @@ async def _require_set_write(db: AsyncSession, user: User, s) -> None:
 async def list_sets(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Sichtbare Sätze: alle globalen plus die eigenen (Admins sehen alle)."""
+    """Visible sets: all global ones plus one's own (admins see all)."""
     from ..models.enums import GlobalRole, WorkflowSetScope
     from ..models.workflow import WorkflowSet
     q = select(WorkflowSet)
@@ -355,8 +354,8 @@ async def create_my_set(
     data: WorkflowSetCreate,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Eigenen Standard-Satz anlegen (Kopie des globalen) — gilt danach für alle Projekte,
-    in denen ich die Owner-Rolle habe und die keinen eigenen Satz gewählt haben."""
+    """Create an own default set (a copy of the global one); it then applies to all projects
+    in which I have the owner role and which have not chosen a set of their own."""
     if user.workflow_set_id:
         raise HTTPException(status.HTTP_409_CONFLICT, "Es gibt bereits einen persönlichen Satz")
     return await sets.create_user_set(db, user, data.name, data.source_set_id)
@@ -366,7 +365,7 @@ async def create_my_set(
 async def drop_my_set(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Persönlichen Satz aufgeben → meine Projekte folgen wieder dem globalen Standard."""
+    """Give up the personal set, so my projects follow the global default again."""
     from ..models.workflow import WorkflowSet
     sid = user.workflow_set_id
     user.workflow_set_id = None
@@ -377,7 +376,7 @@ async def drop_my_set(
     await db.commit()
 
 
-# ── Slots eines Projekts (anpassen / zurücksetzen) ───────────────────────────
+# ── Slots of a project (adjust / reset) ──────────────────────────────────────
 
 @router.get("/projects/{project_id}/workflow-slots", response_model=list[SlotOut])
 async def project_slots(
@@ -396,10 +395,10 @@ async def customize_slot(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """Projekt-eigene Kopie des geltenden Ablaufs anlegen (copy-on-write).
+    """Create a project-owned copy of the applicable flow (copy-on-write).
 
-    Mit `issue_type_id` gilt die Kopie nur für diese Vorgangsart — alle anderen Tickets des
-    Projekts folgen weiter dem Satz.
+    With `issue_type_id` the copy applies only to this issue type; all other tickets of the
+    project keep following the set.
     """
     await _require_def_write(db, user, project_id)
     project = await db.get(Project, project_id)
@@ -415,9 +414,9 @@ async def reset_slot(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """Anpassung verwerfen → wieder der Satz gilt. Laufende Instanzen bleiben unberührt.
+    """Discard the adjustment, so the set applies again. Running instances stay untouched.
 
-    Mit `issue_type_id` betrifft es nur den Ablauf dieser Vorgangsart.
+    With `issue_type_id` it concerns only the flow of this issue type.
     """
     await _require_def_write(db, user, project_id)
     project = await db.get(Project, project_id)
@@ -430,7 +429,7 @@ async def set_project_set(
     project_id: int, set_id: int | None = None,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Satz wählen, dem dieses Projekt folgt (NULL = Owner-Satz bzw. globaler Standard)."""
+    """Choose the set this project follows (NULL = owner set respectively global default)."""
     await _require_def_write(db, user, project_id)
     project = await db.get(Project, project_id)
     if set_id is not None:
@@ -453,13 +452,13 @@ async def list_workflows(
             or_(WorkflowDefinition.project_id == project_id, WorkflowDefinition.project_id.is_(None)))
     else:
         q = select(WorkflowDefinition)
-    # Zurückgesetzte Projekt-Kopien bleiben zwar in der DB (Instanzen hängen dran),
-    # gehören aber nicht mehr in die Auswahl.
+    # Reset project copies do stay in the database (instances hang off them) but no longer
+    # belong in the selection.
     q = q.where(WorkflowDefinition.archived_at.is_(None))
     rows = (await db.execute(q.order_by(WorkflowDefinition.id))).scalars().all()
-    # Freie Abläufe sind privat: sie stehen projektlos in derselben Tabelle wie die
-    # ausgelieferten Vorlagen, gehören aber einem Menschen. Ohne diesen Filter sähe jeder
-    # die Abläufe aller anderen.
+    # Free flows are private: they stand project-less in the same table as the shipped
+    # templates but belong to a person. Without this filter everybody would see the flows of
+    # everybody else.
     if not _ist_admin(user):
         rows = [d for d in rows
                 if d.project_id is not None or d.slot or d.created_by == user.id]
@@ -489,10 +488,9 @@ async def create_workflow(
     )
     db.add(d)
     await db.flush()
-    # Version 1 mit Start und Ende — nicht leer. Eine leere Fläche sagt niemandem, wo er
-    # anfangen soll; mit den beiden Enden steht das Gerüst, und der erste Schritt kommt
-    # dazwischen. (Fiel beim Durchklicken auf: ein frischer Ablauf hatte keinen einzigen
-    # Knoten, nicht einmal einen Start.)
+    # Version 1 with a start and an end, not empty. An empty canvas tells nobody where to
+    # begin; with the two ends the frame stands and the first step goes in between. (Noticed
+    # while clicking through: a fresh flow had not a single node, not even a start.)
     v1 = WorkflowVersion(
         definition_id=d.id, version=1, status=WorkflowVersionStatus.draft, created_by=user.id,
         graph=workflow_templates.graph(data.template) if vorlage else {
@@ -564,8 +562,8 @@ async def list_versions(
 async def editable_version(
     def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Aktuelle Draft-Version für den Editor. Existiert keine, wird eine neue Draft aus der
-    veröffentlichten current_version geklont (oder leer angelegt)."""
+    """Current draft version for the editor. If none exists, a new draft is cloned from the
+    published current_version (or created empty)."""
     d = await _get_def(db, def_id)
     await _require_write(db, user, d)
     draft = (await db.execute(
@@ -650,11 +648,11 @@ async def rollback_version(
     def_id: int, vid: int,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Auf eine frühere Fassung zurück — als NEUE Version, nicht durch Umbiegen.
+    """Back to an earlier version, as a NEW version, not by bending the pointer.
 
-    Die alte Version bleibt unangetastet: laufende Instanzen hängen an ihrer Version, und
-    die Historie soll zeigen, dass zurückgerollt wurde, statt so auszusehen, als wäre die
-    Zwischenzeit nie passiert.
+    The old version stays untouched: running instances hang off their version, and the
+    history should show that a rollback happened instead of looking as if the time in
+    between never happened.
     """
     d = await _get_def(db, def_id)
     await _require_write(db, user, d)
@@ -668,7 +666,7 @@ async def rollback_version(
         raise HTTPException(status.HTTP_409_CONFLICT, "Diese Fassung ist bereits die aktuelle")
     errors = engine.validate_graph(d.subject_kind, alt.graph or {})
     if errors:
-        # Kann passieren, wenn die Prüfregeln seither strenger wurden.
+        # Can happen when the validation rules have grown stricter since.
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             {"message": "Diese Fassung erfüllt die heutigen Regeln nicht mehr",
                              "errors": errors})
@@ -690,11 +688,11 @@ async def rollback_version(
 
 async def _require_subjekt_recht(db: AsyncSession, user: User, issue_id: int | None,
                                  hardware_asset_id: int | None) -> None:
-    """Rechte an dem Artefakt prüfen, an das die Instanz gebunden wird.
+    """Check the rights on the artifact the instance is bound to.
 
-    Ein Ablauf ist harmlos, solange er nichts anfasst — sein Subjekt fasst er an: Zustände
-    setzen, Felder schreiben, Agenten zuweisen. Deshalb entscheidet nicht die Definition
-    darüber, was er darf, sondern das Projekt des Artefakts.
+    A flow is harmless as long as it touches nothing, and its subject is what it touches:
+    setting states, writing fields, assigning agents. Therefore it is not the definition that
+    decides what it may do, but the project of the artifact.
     """
     pids: list[int] = []
     if issue_id is not None:
@@ -714,7 +712,7 @@ async def _require_subjekt_recht(db: AsyncSession, user: User, issue_id: int | N
         project = await db.get(Project, pid)
         if project is None:
             continue
-        access = await build_access(project, user, db)   # 404 bei fehlendem Zugriff
+        access = await build_access(project, user, db)   # 404 when access is missing
         if not access.has_role(ProjectRole.member):
             raise HTTPException(status.HTTP_403_FORBIDDEN,
                                 "Auf dieses Artefakt hast du keine Rechte")
@@ -728,7 +726,7 @@ async def start_instance(
     d = await _get_def(db, def_id)
     if d.current_version_id is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Workflow hat keine veröffentlichte Version")
-    # Instanzen starten: Projekt-Mitgliedschaft (bei projektgebundenem Workflow)
+    # Starting instances: project membership (with a project-bound workflow)
     if d.project_id is not None:
         project = await db.get(Project, d.project_id)
         access = await build_access(project, user, db)
@@ -736,7 +734,7 @@ async def start_instance(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Projekt-Mitgliedschaft erforderlich")
     elif not d.slot and not (_gehoert(d, user) or _ist_admin(user)):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Dieser Ablauf gehört jemand anderem")
-    # Ein Ablauf wirkt auf sein Subjekt — wer ihn startet, muss darauf Rechte haben.
+    # A flow acts on its subject, so whoever starts it must have rights on that subject.
     await _require_subjekt_recht(db, user, data.issue_id, data.hardware_asset_id)
     try:
         inst = await engine.start_workflow(
@@ -749,23 +747,23 @@ async def start_instance(
     return await _load_instance_out(db, inst)
 
 
-# WICHTIG: statische Route VOR /workflow-instances/{iid:int} deklarieren (sonst 422).
+# IMPORTANT: declare the static route BEFORE /workflow-instances/{iid:int} (otherwise 422).
 class ProbelaufIn(BaseModel):
-    """Womit der Ablauf durchgespielt wird — üblicherweise die Beispiel-Nutzlast.
+    """What the flow is played through with, usually the example payload.
 
-    `graph` ist der Stand aus dem Editor. Ohne ihn liefe die Probe gegen das, was in der
-    Datenbank steht — beim Bauen ändert man aber ständig, ohne zu speichern, und geprüft
-    werden soll, was man vor sich sieht.
+    `graph` is the state from the editor. Without it the trial would run against what is in
+    the database, but while building you change things constantly without saving, and what
+    should be checked is what you see in front of you.
     """
     context: dict = {}
     graph: dict | None = None
 
 
 class EntwurfIn(BaseModel):
-    """Ein Satz darüber, was der Ablauf tun soll — plus optional der Stand auf der Fläche.
+    """One sentence about what the flow should do, plus optionally the state on the canvas.
 
-    Liegt ein Graph bei, ist es ein Umbau („häng eine Freigabe davor"), sonst eine
-    Neuzeichnung. Gespeichert wird in keinem Fall: der Entwurf landet im Editor.
+    If a graph is enclosed it is a rebuild ("put an approval in front of it"), otherwise a
+    fresh drawing. Nothing is saved in either case: the draft lands in the editor.
     """
     beschreibung: str = Field(min_length=3, max_length=2000)
     graph: dict | None = None
@@ -776,11 +774,11 @@ async def workflow_entwurf(
     def_id: int, data: EntwurfIn,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Aus einer Beschreibung einen Ablauf zeichnen lassen.
+    """Have a flow drawn from a description.
 
-    Zurück kommt der Graph für die Fläche, dazu die Fehler der Prüfung (der Entwurf wird
-    auch dann geliefert, wenn noch etwas fehlt — ein fast fertiger Graph ist mehr wert als
-    eine Fehlermeldung) und ein, zwei Sätze, was er tut.
+    Back comes the graph for the canvas, plus the errors of the validation (the draft is
+    delivered even when something is still missing, because an almost finished graph is worth
+    more than an error message) and a sentence or two about what it does.
     """
     from ..services import workflow_author
 
@@ -801,14 +799,14 @@ async def probelauf(
     def_id: int, data: ProbelaufIn,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Den Ablauf durchspielen, ohne dass etwas geschieht.
+    """Play the flow through without anything happening.
 
-    Der Graph läuft vollständig durch — echte Weichen, echte Ausdrücke, echte Schleifen —,
-    aber jede Aktion meldet nur, was sie täte. Wartepunkte (Freigabe, Ereignis, Timer) halten
-    nicht an, sondern nehmen ihren Weg, damit man den ganzen Ablauf sieht.
+    The graph runs through completely, with real branches, real expressions and real loops,
+    but every action only reports what it would do. Waiting points (approval, event, timer)
+    do not stop but take their path, so that the whole flow becomes visible.
 
-    Genommen wird die **Entwurfsfassung**: geprüft werden soll, was man gerade gebaut hat,
-    nicht was zuletzt veröffentlicht wurde.
+    What is taken is the **draft version**: what should be checked is what you have just
+    built, not what was published last.
     """
     from ..models.workflow import WorkflowVersion
 
@@ -830,9 +828,9 @@ async def probelauf(
                             "Der Ablauf ist noch nicht schlüssig: " + "; ".join(fehler[:3]))
 
     if data.graph is not None:
-        # Eine Fassung nur für diesen Augenblick: die Engine hängt jede Instanz an eine
-        # Version, und der Editor-Stand ist noch keine. Sie verschwindet nach dem Lauf
-        # wieder — eine Probe soll keine Versionshistorie hinterlassen.
+        # A version for this moment only: the engine hangs every instance off a version, and
+        # the editor state is not one yet. It disappears again after the run, because a trial
+        # should leave no version history behind.
         letzte = (await db.execute(
             select(WorkflowVersion.version).where(WorkflowVersion.definition_id == d.id)
             .order_by(WorkflowVersion.version.desc()))).scalars().first() or 0
@@ -859,7 +857,7 @@ async def probelauf(
         await db.commit()
 
     if fluechtig is not None:
-        # Erst der Lauf, dann die Fassung — an ihr hängt der Fremdschlüssel der Instanz.
+        # First the run, then the version: the foreign key of the instance hangs off it.
         inst_row = await db.get(WorkflowInstance, inst.id)
         if inst_row is not None:
             await db.delete(inst_row)
@@ -874,7 +872,7 @@ async def my_tasks(
     assignee: str = Query("me"),
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Offene Schritte (waiting, human_task|approval) des aktuellen Users."""
+    """Open steps (waiting, human_task|approval) of the current user."""
     if assignee != "me":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nur assignee=me unterstützt")
     rows = (await db.execute(
@@ -959,7 +957,7 @@ async def get_instance(
 
 
 def _write_context(inst: WorkflowInstance, node_id: str, form_data: dict | None) -> None:
-    """Formular-Eingaben zusätzlich unter context[node_id] ablegen (neues dict → JSON-dirty)."""
+    """Also store form inputs under context[node_id] (new dict, so JSON-dirty)."""
     if form_data is None:
         return
     ctx = dict(inst.context or {})
@@ -985,11 +983,11 @@ async def complete_step(
     step.completed_by = user.id
     step.completed_at = dt.datetime.now(tz=dt.timezone.utc)
     _write_context(inst, step.node_id, data.form_data)
-    # Token reaktivieren, damit advance die "out"-Kante nimmt
+    # Reactivate the token so that advance takes the "out" edge
     await _reactivate_token(db, iid, step.node_id)
     await db.commit()
     await engine.advance(iid)
-    # Optional: den durch advance neu entstandenen wartenden human_task dem next_assignee zuweisen
+    # Optional: assign the waiting human_task newly created by advance to next_assignee
     if data.next_assignee is not None:
         nxt = (await db.execute(
             select(WorkflowStepRun).where(
@@ -1006,7 +1004,7 @@ async def complete_step(
 
 
 async def _reactivate_token(db: AsyncSession, iid: int, node_id: str) -> None:
-    """Wartendes Token wieder aktiv setzen (advance nimmt danach die passende Kante)."""
+    """Set a waiting token active again (advance then takes the matching edge)."""
     from ..models.enums import WorkflowInstanceStatus, WorkflowTokenState
     token = (await db.execute(select(WorkflowToken).where(
         WorkflowToken.instance_id == iid, WorkflowToken.state == WorkflowTokenState.waiting)
@@ -1043,7 +1041,7 @@ async def _decide(db: AsyncSession, user: User, iid: int, sid: int, decision: st
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Schritt nicht gefunden")
     if step.node_type != WorkflowNodeType.approval or step.status != WorkflowStepStatus.waiting:
         raise HTTPException(status.HTTP_409_CONFLICT, "Schritt ist keine offene Genehmigung")
-    # Gate: node.config.gate == "ai_assign" → ai_assign; sonst konfigurierte Rolle
+    # Gate: node.config.gate == "ai_assign" → ai_assign; otherwise the configured role
     version = await db.get(WorkflowVersion, inst.version_id)
     graph = (version.graph if version else None) or {}
     node = next((n for n in (graph.get("nodes") or []) if n.get("id") == step.node_id), None)
@@ -1075,7 +1073,7 @@ async def _require_approval_right(db: AsyncSession, user: User, inst: WorkflowIn
                                   cfg: dict) -> None:
     gate = cfg.get("gate")
     if inst.project_id is None:
-        return  # projektlos: keine Rollenprüfung möglich → jeder Angemeldete
+        return  # project-less: no role check possible, so every logged-in user
     project = await db.get(Project, inst.project_id)
     access = await build_access(project, user, db)
     if gate == "ai_assign":
