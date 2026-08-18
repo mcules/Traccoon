@@ -105,6 +105,10 @@ export interface NodeConfig {
   // wait_event
   events?: string[];             // comment | answer | manual | any
   // subflow
+  // Abgeschalteter Schritt: `ueberspringen` geht über den normalen Ausgang weiter,
+  // `abbrechen` beendet den Lauf an dieser Stelle.
+  deaktiviert?: boolean;
+  deaktiviert_modus?: "ueberspringen" | "abbrechen";
   slot?: WorkflowSlot;
   /** Ausdrücklich benannter Ablauf statt eines Slots — auch ein eigener. */
   definition_id?: number;

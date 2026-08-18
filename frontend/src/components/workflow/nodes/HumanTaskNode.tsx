@@ -11,6 +11,7 @@ export default function HumanTaskNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-brand"
       selected={selected}
       runtimeState={data.runtimeState}
+      aus={!!data.config.deaktiviert}
     >
       <div>Zuständig: {assigneeLabel(c.assignee)}</div>
       {(c.form?.length ?? 0) > 0 && <div>{c.form!.length} Formularfeld(er)</div>}

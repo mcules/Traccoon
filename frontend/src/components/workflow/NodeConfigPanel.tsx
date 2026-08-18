@@ -118,6 +118,57 @@ export default function NodeConfigPanel({
         <StartConfig config={config} onChange={set} defId={defId}
           subjectKind={subjectKind} />
       )}
+
+      {node.type !== "start" && node.type !== "end" && (
+        <Abschalter config={config} onChange={set} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Einen Schritt abschalten, ohne ihn aus dem Graphen zu nehmen.
+ *
+ * Zwei verschiedene Bedürfnisse hinter demselben Schalter, und sie brauchen verschiedene
+ * Antworten. Beim Bauen nimmt man einen Schritt aus dem Weg und alles dahinter soll
+ * weiterlaufen. Im Notfall zieht man die Handbremse — und dann wäre ein Ablauf, der still
+ * am abgeschalteten Schritt vorbeiläuft, genau der gefährliche Ausgang. Deshalb steht die
+ * Wahl ausdrücklich da, statt geraten zu werden.
+ */
+function Abschalter({ config, onChange }: {
+  config: NodeConfig; onChange: (c: NodeConfig) => void;
+}) {
+  const aus = !!config.deaktiviert;
+  const modus = config.deaktiviert_modus || "ueberspringen";
+  return (
+    <div className={`space-y-2 rounded border p-2 ${
+      aus ? "border-amber-500/40 bg-amber-500/5" : "border-line"}`}>
+      <label className="flex items-center gap-2 text-xs text-ink">
+        <input type="checkbox" checked={aus}
+          onChange={(e) => onChange({
+            ...config,
+            deaktiviert: e.target.checked || undefined,
+            deaktiviert_modus: e.target.checked ? modus : undefined,
+          })} />
+        Diesen Schritt abschalten
+      </label>
+      {aus && (
+        <>
+          <label className="block text-[10px] font-medium text-muted">
+            Was soll dann passieren?
+            <select value={modus} className="mt-1 w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
+              onChange={(e) => onChange({ ...config, deaktiviert_modus: e.target.value as NodeConfig["deaktiviert_modus"] })}>
+              <option value="ueberspringen">überspringen und weitermachen</option>
+              <option value="abbrechen">den Ablauf hier beenden</option>
+            </select>
+          </label>
+          <p className="text-[10px] text-muted">
+            {modus === "abbrechen"
+              ? "Läufe enden hier als abgebrochen — sichtbar im Betrieb, mit dem Namen des Schritts."
+              : "Der Schritt tut nichts, der Ablauf geht über den normalen Ausgang weiter."}
+          </p>
+        </>
+      )}
     </div>
   );
 }

@@ -22,6 +22,7 @@ export default function LoopNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-cyan-500"
       selected={selected}
       runtimeState={data.runtimeState}
+      aus={!!data.config.deaktiviert}
       sources={sources}
     >
       <div className="font-mono text-[10px]">{liste || "keine Liste gewählt"}</div>

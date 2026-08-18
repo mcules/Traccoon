@@ -22,6 +22,7 @@ export default function TimerNode({ id, data, selected }: FlowNodeProps) {
       accent="border-t-amber-400"
       selected={selected}
       runtimeState={data.runtimeState}
+      aus={!!data.config.deaktiviert}
       sources={[{ id: "out" }]}
     >
       <div>{text}</div>
