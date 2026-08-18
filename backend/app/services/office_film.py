@@ -1,37 +1,37 @@
-"""Feierabend-Film — der ganze Bürotag als Zeitraffer-GIF.
+"""End of day film: the whole office day as a time lapse GIF.
 
-**Ein Film für den Tag, nicht einer je Sitzung.** Die Daten entscheiden das: ein Tag hat
-15–44 Läufe in ebenso vielen Sitzungen, die meisten mit einem einzigen Lauf und rund
-zwanzig Schritten. Ein Film je Sitzung wären zwanzig Filme mit je drei Bildern. Der Raum
-mit zwölf Plätzen, in den Agenten hereinkommen und wieder gehen, **ist** der Tag — und
-genau das ist die Erzählung, die ein Zeitraffer tragen kann.
+**One film for the day, not one per session.** The data decides that: a day has 15 to 44 runs
+in as many sessions, most with a single run and around twenty steps. A film per session would
+be twenty films of three frames each. The room with twelve seats, into which agents come and
+from which they leave, **is** the day, and that is exactly the story a time lapse can carry.
+exactly the story a time lapse can carry.
 
-**Unterhalb der HTTP-Schicht.** Die Ereignisse kommen aus `services/office.step_events`
-und `run_boundary_events` — denselben Funktionen, durch die auch
-`/office/sessions/…/events` geht. Kein neuer Endpunkt, keine zweite Deutung der
-`run_steps`-Zeilen: was der Film zeigt, ist bitgleich das, was das Büro zeigt.
+**Below the HTTP layer.** The events come from `services/office.step_events` and
+`run_boundary_events`, the same functions `/office/sessions/…/events` goes through. No new
+endpoint, no second reading of the `run_steps` rows: what the film shows is bit for bit what
+the office shows.
 
-**Drei Fensterfallen**, alle drei real (die 36,5-Stunden-Sitzung von Lauf 404 gibt es):
+**Three window traps**, all three real (the 36.5 hour session of run 404 exists):
 
-1. Ein Lauf, der **vor** dem Fenster begann, hat seine `run_start`-Zeile draußen.
-   `run_boundary_events` reicht sie nach — mit `run.started_at`, also mit gestrigem
-   Zeitstempel. Der wird auf den Fensteranfang **geklemmt**, sonst zeigt die HUD-Uhr im
-   Vorspann den Vortag und der Fehler sieht aus wie ein Engine-Fehler.
-2. Ein Lauf, der **nach** dem Fenster endet, bekäme sein `run_end` mit morgigem
-   Zeitstempel. Das wird **nach** dem Erzeugen gefiltert, nicht davor: vorher wüssten wir
-   nicht, ob überhaupt eine Grenze entsteht (ein laufender Lauf bekommt gar keine).
-3. `session_seen` wird hier **nicht** erzeugt. Die Lese-API setzt eine Kopfzeile je Raum;
-   zwanzig Kopfzeilen in einem Film wären zwanzig Titel für einen Tag. Der Film trägt
-   stattdessen Kapitelkarten, die der Renderer aus den Aktivitätsinseln schneidet.
+1. A run that began **before** the window has its `run_start` row outside it.
+   `run_boundary_events` adds it with `run.started_at`, so with yesterday's timestamp. That is
+   **clamped** to the start of the window, otherwise the HUD clock in the opening shows the
+   previous day and the error looks like a bug in the engine.
+2. A run that ends **after** the window would get its `run_end` with tomorrow's timestamp. That
+   is filtered **after** the events are built, not before: beforehand we would not know whether
+   a boundary appears at all (a running run gets none).
+3. `session_seen` is **not** produced here. The read API sets one header per room; twenty
+   headers in one film would be twenty titles for one day. The film carries chapter cards
+   instead, which the renderer cuts from the islands of activity.
 
-**Der Ausgang ist der Notifier.** Dem backend-Container fehlt `TELEGRAM_BOT_TOKEN`
-vollständig — nur `telegram-bot` spricht mit Telegram. Der Job schreibt deshalb eine
-`Notification` mit `media_path`/`media_kind`, und der Bot verschickt sie. Ein zweiter
-Ausgang wäre eine zweite Wahrheit darüber, wer was wann bekommen hat.
+**The exit is the notifier.** The backend container lacks `TELEGRAM_BOT_TOKEN` entirely, only
+`telegram-bot` speaks to Telegram. The job therefore writes a `Notification` with
+`media_path`/`media_kind`, and the bot sends it. A second exit would be a second truth about
+who got what and when.
 
-**Determinismus:** `grade` kommt aus den Job-Argumenten, nie aus der Uhr. **Alle**
-Zeichenketten baut Python und schickt sie fertig mit (auch der Wochentag, siehe
-`WOCHENTAGE`) — dann kann keine ICU-Version im Renderer das Bild verändern.
+**Determinism:** `grade` comes from the job arguments, never from the clock. **Every** string
+is built by Python and sent along ready made (including the weekday, see `WOCHENTAGE`), so no
+ICU version in the renderer can change the image.
 """
 from __future__ import annotations
 
@@ -53,14 +53,14 @@ from .office import (
 
 log = logging.getLogger("office_film")
 
-# Der Renderer ist ein Sidecar ohne Zugangsdaten: das Backend schickt den Log mit, der
-# filmer holt nichts. Deshalb reicht ein nackter Dienstname ohne Auth.
+# The renderer is a sidecar without credentials: the backend sends the log along, the filmer
+# fetches nothing. So a bare service name without auth is enough.
 FILMER_URL = os.getenv("FILMER_URL", "http://filmer:8710")
-# Wo die fertigen Filme liegen. Muss in backend UND telegram-bot gemountet sein — der eine
-# schreibt, der andere verschickt.
+# Where the finished films lie. Has to be mounted in the backend AND in the chat bot: one
+# writes, the other sends.
 FILM_DIR = os.getenv("FILM_DIR", "/data/film")
 
-# Vorgaben, wenn `job.args` schweigt.
+# Defaults for when `job.args` says nothing.
 STD_TZ = "Europe/Berlin"
 STD_SEKUNDEN = 25
 STD_FPS = 12
@@ -68,36 +68,36 @@ STD_GRADE = "night"
 STD_KAPITEL = 8
 STD_BEHALTEN_TAGE = 14
 
-# Dieselbe Obergrenze, die der Renderer als `REPLAY_CAP` fährt. Der stärkste reale Tag
-# hatte ~2500 Ereignisse; ein Ausreißertag darüber verlöre sonst **still** den Morgen.
-# Gekappt wird vom ältesten Ende (wie in `api/office.py`), und die Bildunterschrift sagt es.
+# The same upper bound the renderer runs as `REPLAY_CAP`. The strongest real day had about
+# 2500 events; an outlier day above that would otherwise lose the morning **silently**.
+# Truncation is at the oldest end (as in `api/office.py`), and the caption says so.
 EREIGNIS_CAP = EVENT_CAP_MAX
 
-# Ein Lauf, der auf einen Menschen wartet. Nicht mit „Fehlschlag" zusammenlegen: eine
-# Rückfrage ist kein Scheitern, sondern eine offene Frage.
+# A run waiting for a person. Not to be merged with "failure": a question is not a failure but
+# an open question.
 RUECKFRAGE_STATUS = ("blocked",)
 
-# Wochentage selbst, nicht über `%a`: `strftime` ist locale-abhängig, und im Container ist
-# das Locale C. „Wed" stünde dann unter einem deutschen Film.
+# The weekdays by hand, not through `%a`: `strftime` depends on the locale, and in the container
+# the locale is C. "Wed" would then stand under a German film.
 WOCHENTAGE = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
 
-# Telegram schneidet eine Bildunterschrift bei 1024 Zeichen ab — lieber selbst kürzen als
-# mitten im Wort abgeschnitten werden.
+# Telegram cuts a caption at 1024 characters, so it is better to shorten it here than to be cut
+# off mid word.
 UNTERTITEL_MAX = 1024
 TITEL_MAX = 60
 
-# Antwortköpfe des Renderers. Nachgeschlagen wird ohne Rücksicht auf Groß-/Kleinschreibung
-# (`_kopf`): httpx gibt die Namen kleingeschrieben zurück, der Renderer schreibt sie groß.
+# Response headers of the renderer. Looked up case insensitively (`_kopf`): httpx returns the
+# names in lower case, the renderer writes them capitalised.
 KOPF_KAPITEL = "X-Film-Kapitel"
 KOPF_INSELN = "X-Film-Inseln"
 KOPF_BILDER = "X-Film-Bilder"
 KOPF_GEKAPPT = "X-Film-Gekappt"
-# **Bauzeit**, nicht Spieldauer (`film.mjs`: `Date.now() - t0`). Wie lang der Film läuft,
-# steht nirgends — das ist `Bilder / fps` und wird hier gerechnet.
+# **Build time**, not playing time (`film.mjs`: `Date.now() - t0`). How long the film runs stands
+# nowhere: that is `frames / fps` and is computed here.
 KOPF_DAUER = "X-Film-Dauer-Ms"
 
-# Wie viel Luft der HTTP-Aufruf unter `job.run_timeout` lässt. Der Job muss den Fehler noch
-# selbst schreiben können; läuft ihm der Scheduler-Timeout zuvor, bliebe der JobRun auf
+# How much room the HTTP call leaves under `job.run_timeout`. The job has to be able to write
+# the error itself; if the scheduler timeout beats it, the JobRun would stay on
 # „running" stehen.
 TIMEOUT_PUFFER_S = 30
 
@@ -107,16 +107,16 @@ def _now() -> dt.datetime:
 
 
 def _utc(value: dt.datetime | None) -> dt.datetime | None:
-    """Naive Zeitstempel als UTC lesen. SQLite liefert sie ohne Zone; ohne das wirft ein
-    Vergleich zwischen zwei Zeilen je nach Datenbank einen TypeError oder Stunden."""
+    """Read naive timestamps as UTC. SQLite delivers them without a zone; without it a comparison
+    of two rows throws a TypeError or is off by hours, depending on the database."""
     if value is None:
         return None
     return value.replace(tzinfo=dt.timezone.utc) if value.tzinfo is None else value
 
 
 def _iso_ms(value: dt.datetime) -> str:
-    """Derselbe Zeitstempel-Text wie in `services/office._ts` — der Film liest dieselbe
-    Uhr wie das Büro."""
+    """The same timestamp text as in `services/office._ts`: the film reads the same clock as the
+    office."""
     value = value.astimezone(dt.timezone.utc)
     return f"{value:%Y-%m-%dT%H:%M:%S}.{value.microsecond // 1000:03d}Z"
 
@@ -126,55 +126,55 @@ def _pl(n: int, ein: str, viele: str) -> str:
 
 
 def datum_label(moment: dt.datetime) -> str:
-    """„Mi 05.08." — in der Zone, die `moment` mitbringt."""
+    """"Wed 05.08.", in the zone `moment` brings along."""
     return f"{WOCHENTAGE[moment.weekday()]} {moment:%d.%m.}"
 
 
 @dataclass
 class Tagesbilanz:
-    """Was der Tag war — die Zahlen der Bildunterschrift, an einer Stelle gerechnet."""
+    """What the day was: the numbers of the caption, computed in one place."""
 
-    datum: str                      # „Mi 05.08.", lokal, von Python gebaut
+    datum: str                      # "Wed 05.08.", local, built by Python
     laeufe: int = 0
     sitzungen: int = 0
     ereignisse: int = 0
     fehlschlaege: int = 0
     rueckfragen: int = 0
     kosten_usd: float = 0.0
-    # Solange irgendein Kostenposten `priced IS NULL` hat (das sind heute alle 411), ist
-    # die Summe eine Untergrenze. Das „≥" ist dann Pflicht, keine Zierde.
+    # As long as any cost entry has `priced IS NULL` (today that is all 411 of them), the sum is
+    # a lower bound. The "≥" is then a duty, not decoration.
     kosten_partial: bool = False
     laengster: dict | None = None   # {"key", "titel", "minuten"}
-    # Der Tag hatte mehr Ereignisse, als ein Film fassen kann — der Morgen fehlt.
+    # The day had more events than a film can hold: the morning is missing.
     gekappt: bool = False
 
 
-# ── Die Ereignisse eines Tages ──────────────────────────────────────────────
+# ── The events of one day ───────────────────────────────────────────────────
 
 async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
                            bis: dt.datetime) -> tuple[list[dict], list[dict], Tagesbilanz]:
-    """Alle Ereignisse eines Fensters, **sitzungsübergreifend** und streng nach `seq`.
+    """All events of a window, **across sessions** and strictly by `seq`.
 
-    Rückgabe: (Ereignisse, Roster, Bilanz). Der Roster ist genau die Laufmenge, über die
-    auch die Bilanz zählt, und hat die Form von `agents[]` der Lese-API
-    (`api/office._agent_row`) — der Renderer braucht ihn nicht (er bekommt nur `events`),
-    aber wer wissen will, WER an diesem Tag im Raum war, soll dafür nicht ein zweites Mal
-    fragen und dabei eine zweite Laufmenge bekommen.
+    Returns (events, roster, summary). The roster is exactly the set of runs the summary counts
+    over, and it has the shape of `agents[]` of the read API (`api/office._agent_row`). The
+    renderer does not need it (it only gets `events`), but whoever wants to know WHO was in the
+    room that day should not have to ask a second time and get a second set of runs.
+    room that day should not have to ask a second time and get a second set of runs.
 
-    `von` darf (und soll) in der Zone des Jobs stehen: davon lebt das Datums-Etikett.
-    Für die Abfrage wird nach UTC umgerechnet — SQLite legt `DateTime` als nackte
-    Zeichenkette **ohne** Zone ab, ein Berliner Zeitstempel als Bindeparameter würde
-    dort gegen UTC-Zeichenketten verglichen und läge im Sommer zwei Stunden daneben.
+    `von` may (and should) stand in the zone of the job: the date label lives on that. For the
+    query it is converted to UTC, because SQLite stores `DateTime` as a bare string **without** a
+    zone, so a Berlin timestamp as a bind parameter would be compared against UTC strings there
+    and would be two hours off in summer.
     """
-    from ..api.office import _agent_row, _billed_by_run   # Preis-/Rosterwahrheit: EINE
+    from ..api.office import _agent_row, _billed_by_run   # price and roster truth: ONE
 
     von_utc = von.astimezone(dt.timezone.utc)
     bis_utc = bis.astimezone(dt.timezone.utc)
     bilanz = Tagesbilanz(datum=datum_label(von))
 
-    # Absteigend holen und danach umdrehen — dieselbe Kappung wie in `api/office.py`:
-    # abgeschnitten wird das ÄLTESTE, weil ein halber Film lieber den Abend zeigt als den
-    # Morgen. `cap + 1` verrät die Kappung ohne ein zweites COUNT.
+    # Fetch descending and turn it around afterwards, the same truncation as in
+    # `api/office.py`: the OLDEST is cut, because half a film would rather show the evening than
+    # the morning. `cap + 1` reveals the truncation without a second COUNT.
     rows = (await db.execute(
         select(RunStep)
         .where(RunStep.created_at >= von_utc, RunStep.created_at < bis_utc)
@@ -198,10 +198,10 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
     ctxs = {r.id: RunCtx.from_run(r, issue_key=tickets.get(r.issue_id or 0, ("", ""))[0])
             for r in laeufe}
 
-    # Grenzen des Fensters je Lauf. Bewusst aus den GELADENEN Zeilen und nicht aus einer
-    # eigenen Abfrage über den ganzen Lauf: ob ein `run_start` existiert, muss sich auf das
-    # Fenster beziehen. Ein Lauf, dessen Startzeile gestern liegt, hat im heutigen Film
-    # keinen Auftritt — und ohne nachgereichte Grenze säße sein Agent nie am Schreibtisch.
+    # Bounds of the window per run. Deliberately from the LOADED rows and not from a query of
+    # its own over the whole run: whether a `run_start` exists has to refer to the window. A run
+    # whose start row lies yesterday has no appearance in today's film, and without an added
+    # boundary its agent would never sit at a desk.
     fenster: dict[int, dict] = {}
     for s in schritte:
         b = fenster.setdefault(s.run_id, {"erste": s.id, "letzte": s.id,
@@ -232,25 +232,25 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
         ende = _utc(run.finished_at) or start
         for ev in grenzen:
             if ev["kind"] == "run_start" and start is not None and start < von_utc:
-                # Falle 1: die Grenze trägt `run.started_at` — bei einer Sitzung über
-                # Mitternacht also gestern. Ungeklemmt zeigte die HUD-Uhr im Vorspann den
-                # Vortag, und das sähe aus wie ein Fehler der Engine.
+                # Trap 1: the boundary carries `run.started_at`, so on a session across
+                # midnight that is yesterday. Unclamped the HUD clock in the opening would show
+                # the previous day, and that would look like a bug in the engine.
                 ev["ts"] = _iso_ms(von_utc)
             elif ev["kind"] == "run_end" and ende is not None and ende >= bis_utc:
-                # Falle 2: ein Lauf, der erst morgen endet, hat heute kein Ende. Erst hier
-                # zu filtern ist Absicht — vorher steht nicht fest, ob überhaupt eine
-                # `run_end`-Grenze entsteht (ein laufender Lauf bekommt keine).
+                # Trap 2: a run that only ends tomorrow has no end today. Filtering only here is
+                # deliberate: before this it is not settled whether a `run_end` boundary appears
+                # at all (a running run gets none).
                 continue
             ereignisse.append(ev)
 
-    # `seq` ist die Ankunftsreihenfolge (`run_steps.id`), nie `ts`. Über mehrere Sitzungen
-    # hinweg gilt das genauso: die Zeilen-ID ist global monoton, also ergibt die Sortierung
-    # EINE Folge für den ganzen Tag — und nicht zwanzig verschachtelte. Bei Gleichstand
-    # geht das ENDE vor den Anfang: erst verlässt jemand den Raum, dann kommt der Nächste.
+    # `seq` is the arrival order (`run_steps.id`), never `ts`. Across several sessions that holds
+    # just as well: the row id is globally monotonic, so sorting yields ONE sequence for the
+    # whole day and not twenty nested ones. On a tie the END goes before the beginning: first
+    # somebody leaves the room, then the next one comes in.
     ereignisse.sort(key=lambda e: (e["seq"], 0 if e["kind"] == "run_end" else 1))
     _entdoppeln(ereignisse)
-    # Falle 3 zur Erinnerung: hier wird kein `session_seen` erzeugt. Der Film hat einen
-    # Titel und Kapitelkarten; zwanzig Kopfzeilen wären zwanzig Titel für einen Tag.
+    # Trap 3 as a reminder: no `session_seen` is produced here. The film has one title and
+    # chapter cards; twenty headers would be twenty titles for one day.
 
     prices = await PriceTable.load(db)
     billed = await _billed_by_run(db, run_ids, prices)
@@ -262,11 +262,11 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
     bilanz.fehlschlaege = sum(1 for r in laeufe if (r.status or "") in FAIL_STATUS)
     bilanz.rueckfragen = sum(1 for r in laeufe if (r.status or "") in RUECKFRAGE_STATUS)
     bilanz.kosten_usd = round(sum(c["cost_usd"] for c in billed.values()), 6)
-    # `_billed_by_run` löst eine NULL gegen den HEUTIGEN Katalog auf — richtig für die
-    # Frage „hat dieses Modell einen Preis?". Unter dem Film steht die schärfere: 411 von
-    # 413 Kostenposten haben `priced IS NULL`, ihr Betrag entstand also ohne festgehaltenen
-    # Preis, und ein Katalogeintrag von heute belegt nicht, was damals galt. Die Summe ist
-    # eine Untergrenze, und das „≥" gehört davor. Keine zweite Preisrechnung — eine Zählung.
+    # `_billed_by_run` resolves a NULL against TODAY's catalog, which is right for the question
+    # "does this model have a price?". Under the film stands the sharper one: 411 of 413 cost
+    # entries have `priced IS NULL`, so their amount came about without a recorded price, and a
+    # catalog entry of today does not prove what held back then. The sum is a lower bound, and
+    # the "≥" belongs in front of it. No second price computation, one count.
     offen = await db.scalar(select(func.count()).select_from(CostEntry).where(
         CostEntry.run_id.in_(run_ids), CostEntry.priced.is_(None)))
     bilanz.kosten_partial = any(not c["priced"] for c in billed.values()) or bool(offen)
@@ -275,21 +275,21 @@ async def tages_ereignisse(db: AsyncSession, *, von: dt.datetime,
 
 
 def _entdoppeln(ereignisse: list[dict]) -> int:
-    """Doppelte `seq` auflösen — **die** Falle des sitzungsübergreifenden Films.
+    """Resolve duplicate `seq`, **the** trap of the film across sessions.
 
-    Der Rumpf steht in `services/office.entdoppeln_seq`: seit `GET /office/events` mischt
-    auch der Raum mehrere Sitzungen in EIN Log, und zwei Auflösungen derselben Kollision
-    wären zwei Erzählungen desselben Übergangs. Der Name bleibt hier, weil der Film ihn an
+    The body lives in `services/office.entdoppeln_seq`: since `GET /office/events` the room mixes
+    several sessions into ONE log as well, and two resolutions of the same collision would be two
+    tellings of the same transition. The name stays here, because the film
     dieser Stelle liest.
     """
     return entdoppeln_seq(ereignisse)
 
 
 def _laengster(laeufe: list[Run], tickets: dict[int, tuple[str, str]]) -> dict | None:
-    """Der längste Lauf des Tages — mit seiner **ganzen** Dauer, nicht mit dem im Fenster
-    sichtbaren Anteil. Ein Lauf, der 36,5 Stunden lief, lief 36,5 Stunden; ihn auf das
-    Fenster zu beschneiden hieße, eine Zahl zu erfinden, die niemand gemessen hat.
-    Läufe ohne Ende (noch am Laufen) bleiben draußen: ihre Dauer steht noch nicht fest."""
+    """The longest run of the day, with its **whole** duration and not with the part visible in
+    the window. A run that ran 36.5 hours ran 36.5 hours; trimming it to the window would mean
+    inventing a number nobody measured. Runs without an end (still running) stay out: their
+    duration is not settled yet."""
     best: tuple[float, Run] | None = None
     for run in laeufe:
         start, ende = _utc(run.started_at), _utc(run.finished_at)
@@ -311,7 +311,7 @@ def _laengster(laeufe: list[Run], tickets: dict[int, tuple[str, str]]) -> dict |
 # ── Bildunterschrift ────────────────────────────────────────────────────────
 
 def _geld(betrag: float, *, partial: bool) -> str:
-    """Deutsches Dezimalkomma, und das „≥" wo es hingehört."""
+    """A decimal comma, and the "≥" where it belongs."""
     return ("≥ " if partial else "") + f"{betrag:.2f}".replace(".", ",") + " $"
 
 
@@ -324,11 +324,11 @@ def _dauer(minuten: int) -> str:
 
 def bildunterschrift(bilanz: Tagesbilanz, *, kapitel: int, inseln: int, sekunden: int,
                      gekappt: bool) -> str:
-    """Der Text unter dem Film — deutsch, knapp, höchstens 1024 Zeichen (Telegram).
+    """The text under the film: short, at most 1024 characters (Telegram).
 
-    Rein: keine DB, keine Uhr. Was der Tag war, steht in der Bilanz; was der Film daraus
-    gemacht hat, kommt aus den Antwortköpfen des Renderers. Leere Aussagen fallen weg —
-    „0 Fehlschläge · 0,00 $" ist keine Nachricht, sondern Rauschen.
+    Pure: no database, no clock. What the day was stands in the summary; what the film made of it
+    comes from the response headers of the renderer. Empty statements fall away, because
+    "0 failures · $0.00" is not a message but noise.
     """
     zeilen = [f"🎬 Feierabend · {bilanz.datum}",
               f"{_pl(bilanz.laeufe, 'Lauf', 'Läufe')} in "
@@ -357,8 +357,8 @@ def bildunterschrift(bilanz: Tagesbilanz, *, kapitel: int, inseln: int, sekunden
 
     schluss = f"{kapitel} von {_pl(inseln, 'Szene', 'Szenen')} · {sekunden} s"
     if gekappt:
-        # Der Renderer musste kürzen: der Morgen fehlt. Das gehört unter den Film und
-        # nicht nur ins Log — sonst hält jemand die Lücke für einen stillen Tag.
+        # The renderer had to truncate: the morning is missing. That belongs under the film and
+        # not only in the log, otherwise somebody takes the gap for a quiet day.
         schluss += " · gekappt"
     zeilen.append(schluss)
 
@@ -366,11 +366,11 @@ def bildunterschrift(bilanz: Tagesbilanz, *, kapitel: int, inseln: int, sekunden
     return text if len(text) <= UNTERTITEL_MAX else text[:UNTERTITEL_MAX - 1] + "…"
 
 
-# ── Der Job ─────────────────────────────────────────────────────────────────
+# ── The job ─────────────────────────────────────────────────────────────────
 
 def _opt(job) -> dict:
-    """Die Optionen aus `job.args`. Eine LISTE ist der Argumentvektor eines script-Jobs
-    (`Job.args` trägt beide Formen) und für den Film schlicht leer."""
+    """The options from `job.args`. A LIST is the argument vector of a script job (`Job.args`
+    carries both forms) and is simply empty for the film."""
     args = getattr(job, "args", None)
     return dict(args) if isinstance(args, dict) else {}
 
@@ -383,11 +383,11 @@ def _int(opt: dict, key: str, standard: int) -> int:
 
 
 def _fenster(opt: dict) -> tuple[dt.datetime, dt.datetime]:
-    """Der Bürotag: von der lokalen Mitternacht bis jetzt.
+    """The office day: from local midnight until now.
 
-    „Feierabend" heißt, dass der Job am Abend läuft und den Tag zeigt, der hinter uns
-    liegt — deshalb `bis = jetzt` und nicht 24:00. Ein Job, der nach Mitternacht liefe,
-    filmte damit den frischen Tag; der Zeitplan gehört an den Abend.
+    "End of day" means the job runs in the evening and shows the day behind us, hence
+    `bis = jetzt` and not 24:00. A job running after midnight would film the fresh day; the
+    schedule belongs in the evening.
     """
     name = str(opt.get("tz") or STD_TZ)
     try:
@@ -402,11 +402,11 @@ def _fenster(opt: dict) -> tuple[dt.datetime, dt.datetime]:
 
 def _notification(*, kind: str, title: str, body: str, chat_id: str | None,
                   medium: str = "", medienart: str = "") -> Notification:
-    """Eine Notification, wahlweise mit Medium.
+    """A notification, optionally with media.
 
-    Die beiden Spalten `media_path`/`media_kind` legt die Telegram-Welle an. Bis dahin
-    (und auf einem Backend, dessen Migration noch aussteht) geht der Film eben als Text
-    hinaus: eine fehlende Spalte darf den Job nicht töten, sie kostet nur das Bild.
+    The two columns `media_path`/`media_kind` were added later. Until they exist (and on a
+    backend whose migration is still pending) the film goes out as text: a missing column must
+    not kill the job, it only costs the image.
     """
     n = Notification(kind=kind, title=title, body=body, chat_id=chat_id)
     if medium:
@@ -419,12 +419,12 @@ def _notification(*, kind: str, title: str, body: str, chat_id: str | None,
 
 
 async def _film_holen(payload: dict, *, timeout: float) -> tuple[int, bytes, dict]:
-    """Der Renderer-Aufruf. Gebaut wie `worker/runtime._do_screenshot`: ein
-    `httpx.AsyncClient`, ein POST, Bytes zurück — der filmer ist derselbe Fall wie der
-    shotter, nur mit mehr Bildern.
+    """The call to the renderer. Built like `worker/runtime._do_screenshot`: one
+    `httpx.AsyncClient`, one POST, bytes back. The filmer is the same case as the shotter, only
+    with more images.
 
-    `httpx` wird erst hier importiert: der Test-Ersatz greift so, und der Scheduler-Tick
-    zieht die Netz-Schicht nicht schon beim Import mit hoch.
+    `httpx` is imported only here: that way the test double takes effect, and the scheduler tick
+    does not drag the network layer up at import time.
     """
     import httpx
 
@@ -434,9 +434,9 @@ async def _film_holen(payload: dict, *, timeout: float) -> tuple[int, bytes, dic
 
 
 def _kopf(kopf: dict, name: str) -> str:
-    """Ein Antwortkopf, unabhängig von der Schreibweise. `httpx` gibt die Namen
-    kleingeschrieben zurück, der Renderer setzt sie in `X-Film-Kapitel`-Schreibweise —
-    ein direktes `.get()` fände nichts und läse jeden Wert als 0."""
+    """One response header, independent of its spelling. `httpx` returns the names in lower case,
+    the renderer writes them as `X-Film-Kapitel`, so a direct `.get()` would find nothing and
+    read every value as 0."""
     ziel = name.lower()
     for schluessel, wert in kopf.items():
         if str(schluessel).lower() == ziel:
@@ -456,8 +456,8 @@ def _kopf_ja(kopf: dict, name: str) -> bool:
 
 
 def _aufraeumen(behalten_tage: int) -> int:
-    """Alte Filme wegräumen — im **selben** Job. Ein zweiter Job für dasselbe Verzeichnis
-    wäre ein zweiter Zeitplan, der irgendwann anders steht als dieser."""
+    """Clean up old films, in the **same** job. A second job for the same directory would be a
+    second schedule that will eventually stand differently from this one."""
     if behalten_tage <= 0:
         return 0
     grenze = _now().timestamp() - behalten_tage * 86400
@@ -479,17 +479,17 @@ def _aufraeumen(behalten_tage: int) -> int:
 
 
 async def run_film_job(db: AsyncSession, job, jr) -> None:
-    """kind=film: baut den Tagesfilm und legt ihn als Notification mit Medium hin.
+    """kind=film: builds the daily film and puts it down as a notification with media.
 
-    **Vorbehalt, der hier stehenbleiben muss:** `run_job_kind` läuft *inline* im
-    Scheduler-Tick (Intervall 15 s). 15–20 s Filmbau halten den Tick auf — solange dieser
-    Job baut, wird kein anderer Job fällig. Das ist bewusst in Kauf genommen (der
-    Präzedenzfall ist `_run_script` mit `run_timeout=600`), und deshalb liegt der
-    httpx-Timeout unter `job.run_timeout`: der Job muss seinen eigenen Fehler noch
+    **A caveat that has to stay here:** `run_job_kind` runs *inline* in the scheduler tick
+    (interval 15 s). 15 to 20 s of building the film hold the tick up, so while this job builds,
+    no other job falls due. That is accepted deliberately (the precedent is `_run_script` with
+    `run_timeout=600`), and that is why the httpx timeout lies below `job.run_timeout`: the job
+    has to be able to write its own error, otherwise the JobRun would stay on "running" forever.
     schreiben können, sonst bliebe der JobRun für immer auf „running".
 
-    Es fliegt hier nichts heraus. Eine Ausnahme aus diesem Zweig risse den ganzen Tick
-    ab — alle anderen fälligen Jobs dieser Runde fielen mit aus, für einen Film.
+    Nothing escapes from here. An exception out of this branch would tear off the whole tick, and
+    every other job due in that round would fall away with it, for one film.
     """
     opt = _opt(job)
     try:
@@ -506,19 +506,19 @@ async def run_film_job(db: AsyncSession, job, jr) -> None:
 async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
     von, bis = _fenster(opt)
     ereignisse, _roster, bilanz = await tages_ereignisse(db, von=von, bis=bis)
-    # `notify_mode="never"` heißt beim Film „bau ihn, aber schick ihn nicht" — die Datei
-    # liegt danach trotzdem da. Die feineren Modi (`on_output`/`on_error`) passen hier
-    # nicht: ein Film ist immer Ausgabe, die Unterscheidung wäre bedeutungslos.
+    # `notify_mode="never"` means "build it but do not send it" for the film: the file lies there
+    # afterwards anyway. The finer modes (`on_output`/`on_error`) do not fit here: a film is
+    # always output, and the distinction would be meaningless.
     still = job.notify_mode == "never"
-    # Der Film gehört dem, der den Job angelegt hat — in dessen Sprache steht die Nachricht.
+    # The film belongs to whoever created the job, and the message is in their language.
     from ..models.user import User
     from .i18n import tr
     besitzer = await db.get(User, job.user_id) if getattr(job, "user_id", None) else None
     sprache = getattr(besitzer, "locale", None)
 
     if not ereignisse:
-        # Expliziter Zweig, kein Notfall: ein leerer Raum ergäbe 300 bitgleiche Bilder.
-        # Und kein HTTP-Aufruf — der Renderer hätte nichts zu rendern.
+        # An explicit branch, not an emergency: an empty room would give 300 bit identical
+        # frames. And no HTTP call, because the renderer would have nothing to render.
         jr.status = "ok"
         jr.output = f"{bilanz.datum}: keine Läufe — kein Film."
         if not still:
@@ -537,7 +537,7 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
         "sekunden": sekunden,
         "fps": fps,
         "kapitel": _int(opt, "kapitel", STD_KAPITEL),
-        # Der Renderer formatiert keine Zeit selbst — er bekommt den Versatz mitgeteilt.
+        # The renderer formats no time itself: it is told the offset.
         "tz_offset_min": int((von.utcoffset() or dt.timedelta()).total_seconds() // 60),
         "titel": bilanz.datum,
     }
@@ -545,8 +545,8 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
     status, daten, kopf = await _film_holen(payload, timeout=timeout)
 
     if status == 204:
-        # Der Renderer hat aus dem Log keine einzige Szene machen können. Das ist kein
-        # Fehler, es ist derselbe stille Tag — nur hat es diesmal er festgestellt.
+        # The renderer could not make a single scene out of the log. That is not an error, it is
+        # the same quiet day, only this time it noticed.
         jr.status = "ok"
         jr.output = f"{bilanz.datum}: der Renderer fand keine Ereignisse (204)."
         if not still:
@@ -571,14 +571,14 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
         bilanz,
         kapitel=_kopf_int(kopf, KOPF_KAPITEL),
         inseln=_kopf_int(kopf, KOPF_INSELN),
-        # Wie lang der Film wirklich läuft, nicht wie lang er bestellt war: der Schnitt
-        # landet auf ganzen Bildern und trifft die 25 s nie genau. `X-Film-Dauer-Ms` taugt
-        # dafür NICHT — das ist die Bauzeit des Renderers.
+        # How long the film really runs, not how long it was ordered: the cut lands on whole
+        # frames and never hits the 25 s exactly. `X-Film-Dauer-Ms` is NOT good for that, it is
+        # the build time of the renderer.
         sekunden=round(bilder / fps) if bilder and fps else sekunden,
         gekappt=bilanz.gekappt or _kopf_ja(kopf, KOPF_GEKAPPT),
     )
-    # Der Bot setzt `<b>{title}</b>\n{body}` zusammen — an der ersten Zeile getrennt
-    # ergibt das wieder genau die Bildunterschrift. Ein zweiter Titel über dem Text hätte
+    # The bot assembles `<b>{title}</b>\n{body}`, so split at the first line that gives exactly
+    # the caption again. A second title above the text would have shown the date twice.
     # das Datum doppelt gezeigt.
     kopfzeile, _, rest = untertitel.partition("\n")
     if not still:
