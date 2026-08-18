@@ -390,7 +390,8 @@ export default function WorkflowEditor() {
           ) : (
             <NodeConfigPanel node={selected} members={members} onChange={updateConfig}
               onDelete={deleteNode} projectId={project?.id}
-              subjectKind={def?.subject_kind} kontextFelder={kontextFelder} />
+              subjectKind={def?.subject_kind} kontextFelder={kontextFelder}
+              defId={def?.id} />
           )}
 
           {allErrors.length > 0 && (

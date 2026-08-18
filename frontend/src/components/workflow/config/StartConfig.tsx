@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../../../api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, workflowApi } from "../../../api";
 import type { NodeConfig } from "../types";
 
 interface ProjektLite { id: number; key: string; name: string }
@@ -7,18 +7,38 @@ interface ProjektLite { id: number; key: string; name: string }
 /**
  * Auslöser eines Ablaufs.
  *
- * Statt einen Ablauf von außen fest zu verdrahten (Webhook oder Job zeigt auf eine
- * bestimmte Definition), meldet Traccoon ein **Ereignis** — und der Ablauf entscheidet
- * hier selbst, ob er darauf hört. So hängen an einem Ereignis beliebig viele Abläufe, und
- * ein Projekt kann einen eigenen danebenstellen, ohne den Auslöser anzufassen.
+ * Zwei Quellen, beide hier einstellbar:
+ *
+ * **Ereignis** — Traccoon meldet etwas („Ticket angelegt", „Mail eingegangen"), und der
+ * Ablauf entscheidet selbst, ob er darauf hört. So hängen an einem Ereignis beliebig viele
+ * Abläufe, ohne dass der Auslöser sie kennen muss.
+ *
+ * **Webhook** — für alles, was von außen kommt und weder MCP noch Traccoons Ereignisse
+ * kennt: der Ablauf bekommt eine eigene Adresse. Vorher gab es die zwar (Einstellungen →
+ * Webhooks, Modus `workflow`), aber am anderen Ende: im Ablauf selbst war seine Quelle
+ * unsichtbar. Die Beispiel-Nutzlast daneben ist mehr als Doku — aus ihr entstehen die
+ * Kontextfelder, die die Verzweigungen zur Auswahl anbieten.
  */
 export default function StartConfig({
   config,
   onChange,
+  defId,
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
+  /** Definition, zu der dieser Start-Knoten gehört — für die eingehende Adresse. */
+  defId?: number;
 }) {
+  const qc = useQueryClient();
+  const { data: hook } = useQuery({
+    queryKey: ["workflow-webhook", defId],
+    queryFn: () => workflowApi.webhookGet(defId as number),
+    enabled: !!defId,
+  });
+  const adresseAnlegen = useMutation({
+    mutationFn: () => workflowApi.webhookCreate(defId as number),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["workflow-webhook", defId] }),
+  });
   const { data: events } = useQuery({
     queryKey: ["workflow-events"],
     queryFn: () => api.get<{ event: string; label: string }[]>("/workflow-events"),
@@ -39,9 +59,12 @@ export default function StartConfig({
         delete zusammen[k];
       }
     }
+    // Ein Trigger ohne Ereignis ist kein Ereignis-Trigger — aber die Beispiel-Nutzlast
+    // eines Webhooks lebt hier ebenfalls, die darf nicht mit verschwinden.
+    const leer = !zusammen.event && !zusammen.sample;
     onChange({
       ...config,
-      trigger: zusammen.event ? (zusammen as NodeConfig["trigger"]) : undefined,
+      trigger: leer ? undefined : (zusammen as NodeConfig["trigger"]),
     });
   };
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
@@ -65,6 +88,52 @@ export default function StartConfig({
         <span className="mt-1 block text-[10px] text-muted">
           Eigene Namen sind erlaubt — ein Webhook im Modus <b>Ereignis</b> oder
           <code className="mx-1 rounded bg-surface px-1">POST /api/events</code> meldet sie.
+        </span>
+      </label>
+
+      {/* ── Webhook als Quelle ─────────────────────────────────────────── */}
+      <div className="rounded border border-line bg-surface p-2">
+        <div className="mb-1 text-xs font-medium text-muted">Eingehende Adresse (Webhook)</div>
+        {hook ? (
+          <div className="space-y-1">
+            <div className="break-all font-mono text-[11px] text-ink">{hook.url}</div>
+            <div className="text-[10px] text-muted">
+              Signatur: <code className="rounded bg-card px-1">X-Webhook-Signature</code> =
+              HMAC-SHA256 des Rumpfes, hex, ohne Präfix. Geheimnis:{" "}
+              <code className="break-all rounded bg-card px-1">{hook.secret}</code>
+            </div>
+            <div className="text-[10px] text-muted">
+              Die Nutzlast landet vollständig im Kontext. Feiner abbilden (nur bestimmte
+              Felder) lässt sich das unter Einstellungen → Webhooks.
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => adresseAnlegen.mutate()}
+            disabled={!defId || adresseAnlegen.isPending}
+            className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
+          >
+            {adresseAnlegen.isPending ? "…" : "+ Adresse erzeugen"}
+          </button>
+        )}
+      </div>
+
+      <label className="block text-xs font-medium text-muted">
+        Beispiel-Nutzlast (JSON)
+        <textarea
+          rows={4}
+          value={t.sample ? JSON.stringify(t.sample, null, 1) : ""}
+          onChange={(e) => {
+            const roh = e.target.value.trim();
+            if (!roh) return setT({ sample: "" });
+            try { setT({ sample: JSON.parse(roh) }); } catch { /* Tippen abwarten */ }
+          }}
+          placeholder={'{"vorgang": {"id": 42, "titel": "Störung"}, "quelle": "Zabbix"}'}
+          className={`mt-1 ${inp} font-mono`}
+        />
+        <span className="mt-1 block text-[10px] text-muted">
+          Einmal einfügen, was das fremde System schickt — die Felder daraus stehen danach
+          in jeder Verzweigung zur Auswahl.
         </span>
       </label>
 

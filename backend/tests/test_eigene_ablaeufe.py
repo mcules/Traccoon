@@ -128,3 +128,60 @@ async def test_admin_ablauf_hoert_ueberall(db):
     fremd = await make_project(db, "FRD", "Fremdes Projekt")
     await _freier_ablauf(db, chef, "chef-lauscher", trigger={"event": "issue.created"})
     assert len(await emit(db, "issue.created", project_id=fremd.id)) == 1
+
+
+# ── Webhook als Quelle ───────────────────────────────────────────────────────
+
+async def test_ablauf_bekommt_eine_eigene_adresse(client, db):
+    """Nicht jedes System spricht MCP oder kennt Traccoons Ereignisse — einen Webhook
+    schickt fast jedes. Die Adresse entsteht jetzt im Ablauf, nicht am anderen Ende."""
+    anna = await make_user(db, "anna")
+    d = await _freier_ablauf(db, anna, "stoerungsmelder")
+
+    assert (await client.get(f"/workflows/{d.id}/webhook", headers=auth(anna))).json() is None
+
+    r = await client.post(f"/workflows/{d.id}/webhook", headers=auth(anna))
+    assert r.status_code == 201, r.text
+    hook = r.json()
+    assert hook["public_id"] and hook["secret"]
+    assert hook["url"].endswith(f"/api/hooks/{hook['public_id']}")
+
+    # Ein zweiter Aufruf gibt dieselbe Adresse — sonst sammelte sich bei jedem Klick eine
+    # weitere, und niemand wüsste, welche das fremde System benutzt.
+    wieder = await client.post(f"/workflows/{d.id}/webhook", headers=auth(anna))
+    assert wieder.json()["public_id"] == hook["public_id"]
+
+
+async def test_fremder_gibt_keinem_ablauf_eine_adresse(client, db):
+    anna = await make_user(db, "anna")
+    bert = await make_user(db, "bert")
+    d = await _freier_ablauf(db, anna, "annas-ablauf")
+    assert (await client.post(f"/workflows/{d.id}/webhook",
+                              headers=auth(bert))).status_code == 403
+
+
+async def test_webhook_startet_den_ablauf_wirklich(client, db):
+    """Der Beweis, dass die Adresse trägt: Aufruf rein, Instanz raus — mit der Nutzlast
+    im Kontext, damit die Verzweigungen etwas zu lesen haben."""
+    import hashlib
+    import hmac
+    import json as _json
+
+    from app.models.workflow import WorkflowInstance
+
+    anna = await make_user(db, "anna")
+    d = await _freier_ablauf(db, anna, "stoerungsmelder")
+    hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(anna))).json()
+
+    nutzlast = {"quelle": "Zabbix", "vorgang": {"id": 42, "titel": "Störung"}}
+    roh = _json.dumps(nutzlast).encode()
+    sig = hmac.new(hook["secret"].encode(), roh, hashlib.sha256).hexdigest()
+    r = await client.post(f"/hooks/{hook['public_id']}", content=roh,
+                          headers={"content-type": "application/json",
+                                   "X-Webhook-Signature": sig})
+    assert r.status_code in (200, 202), r.text
+
+    inst = (await db.execute(select(WorkflowInstance).where(
+        WorkflowInstance.definition_id == d.id))).scalars().all()
+    assert len(inst) == 1
+    assert inst[0].context["vorgang"]["titel"] == "Störung"
