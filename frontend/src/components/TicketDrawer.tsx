@@ -15,9 +15,9 @@ import { NODE_TYPE_LABELS } from "./workflow/types";
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
 
-// Default-Spalten der vollen Ticket-Seite (asPage). Reihenfolge = aktueller Stand.
-// Neue Blöcke hier ergänzen, damit sie bei bestehenden Nutzer-Layouts automatisch
-// an ihre Default-Spalte angehängt werden (siehe useMemo unten).
+// Default columns of the full ticket page (asPage). The order is the current state.
+// Add new blocks here so that they are automatically appended to their default column with
+// existing user layouts (see the useMemo below).
 const DEFAULT_LEFT = ["wait", "parent", "summary", "description", "save", "split", "plan", "umbrella", "lifecycle", "comments"];
 const DEFAULT_RIGHT = ["meta", "person", "felder", "hardware", "ai", "files", "workflows"];
 
@@ -26,7 +26,7 @@ type Layout = { left: string[]; right: string[] };
 
 type Draft = { summary: string; description: string; priority: string; type_id: number; status_id: number };
 
-// <subtickets>[...]</subtickets>-Block aus dem Plan lesen (strukturierter Aufteilungs-Vorschlag).
+// Read the <subtickets>[...]</subtickets> block from the plan (structured splitting proposal).
 function parseSplit(plan: string | null): { items?: any[]; raw?: string; error?: boolean } {
   const m = (plan || "").match(/<subtickets>\s*(\[[\s\S]*?\])\s*<\/subtickets>/);
   if (!m) return {};
@@ -39,7 +39,7 @@ export default function TicketDrawer({
 }: {
   issueKey: string; project: Project; meta: ProjectMeta; issues: Issue[];
   onOpen: (k: string) => void; onClose: () => void;
-  // asPage: als volle Seite rendern (kein Overlay/Popup) — für die Ticket-Route.
+  // asPage: render as a full page (no overlay or popup), for the ticket route.
   asPage?: boolean;
 }) {
   const qc = useQueryClient();
@@ -68,7 +68,7 @@ export default function TicketDrawer({
     queryFn: () => api.get<IssueCosts>(`/issues/${issueKey}/costs`),
     refetchInterval: 10000,
   });
-  // Hardware-Bezug (TRA-25): Exemplare + Modellnamen nur in Hardware-Projekten laden.
+  // Hardware reference (TRA-25): load units and model names only in hardware projects.
   const hwAssets = useQuery({
     queryKey: ["hw-assets", project.id],
     queryFn: () => api.get<{ id: number; model_id: number; serial_number: string | null }[]>(
@@ -95,13 +95,12 @@ export default function TicketDrawer({
     enabled: showDiff,
   });
 
-  // ---- Nutzerspezifisches Block-Layout der vollen Ticket-Seite (nur asPage) ----
+  // ---- User specific block layout of the full ticket page (asPage only) ----
   const { user, refresh } = useAuth();
 
-  // Effektives Layout: gespeicherte Reihenfolge als Basis, unbekannte Keys verwerfen,
-  // jeden bekannten Key nur EINMAL zulassen (dedupe über beide Spalten) und bekannte
-  // Keys, die (noch) in KEINER Spalte stehen, an ihre Default-Spalte anhängen — so
-  // verschwinden neu hinzugekommene Blöcke nie.
+  // Effective layout: the saved order as the base, discard unknown keys, allow every known
+  // key only ONCE (deduplicating over both columns) and append known keys that stand in NO
+  // column (yet) to their default column, so that newly added blocks never disappear.
   const effectiveLayout = useMemo<Layout>(() => {
     const saved = user?.ticket_layout;
     const known = new Set([...DEFAULT_LEFT, ...DEFAULT_RIGHT]);
@@ -120,22 +119,22 @@ export default function TicketDrawer({
     return { left, right };
   }, [user?.ticket_layout]);
 
-  // Lokaler State für sofortiges optimistisches Feedback beim Droppen; bei Änderung
-  // des gespeicherten Layouts (z.B. nach refresh() eines anderen Geräts) neu setzen.
+  // Local state for immediate optimistic feedback while dropping; reset when the saved
+  // layout changes (for instance after a refresh() from another device).
   const [layout, setLayout] = useState<Layout>(effectiveLayout);
   useEffect(() => { setLayout(effectiveLayout); }, [user?.ticket_layout]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Layout leise persistieren (Fehler ignorieren) und Auth auffrischen.
+  // Persist the layout quietly (ignoring errors) and refresh the auth.
   const persistLayout = (next: Layout) => {
     api.put("/me/ticket-layout", next).then(() => refresh()).catch(() => { /* leise */ });
   };
 
-  // Natives HTML5-DnD (Muster wie Board.tsx). overKey = Zielblock, vor dem eingefügt wird;
-  // null = ans Ende der Zielspalte (Drop auf freie Spaltenfläche).
+  // Native HTML5 DnD (the pattern of Board.tsx). overKey = target block to insert before;
+  // null = to the end of the target column (drop on the free column area).
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overCol, setOverCol] = useState<LayoutCol | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
-  // Griffe/DnD nur im „Layout bearbeiten"-Modus zeigen; sonst sieht alles normal aus.
+  // Show handles and DnD only in the "edit layout" mode; otherwise everything looks normal.
   const [editLayout, setEditLayout] = useState(false);
 
   const dropOn = (col: LayoutCol, beforeKey: string | null) => {
@@ -143,7 +142,7 @@ export default function TicketDrawer({
     setDragKey(null); setOverCol(null); setOverKey(null);
     if (!dk || dk === beforeKey) return; // Drop auf sich selbst = No-Op
     setLayout((prev) => {
-      // Key aus alter Position in BEIDEN Spalten entfernen (dedupe), dann neu einfügen.
+      // Remove the key from its old position in BOTH columns (dedupe), then insert it anew.
       const left = prev.left.filter((k) => k !== dk);
       const right = prev.right.filter((k) => k !== dk);
       const cols: Layout = { left, right };
@@ -155,7 +154,7 @@ export default function TicketDrawer({
     });
   };
 
-  // Gepufferte Bearbeitung: Änderungen erst beim Klick auf „Speichern" übernehmen (TRA-2).
+  // Buffered editing: changes are taken over only on a click on "save" (TRA-2).
   const [draft, setDraft] = useState<Draft | null>(null);
   const seed = (i: Issue): Draft => ({
     summary: i.summary, description: i.description || "", priority: i.priority,
@@ -225,8 +224,8 @@ export default function TicketDrawer({
   const life = useMutation({
     mutationFn: (path: string) => api.post(`/issues/${issueKey}/${path}`),
     onSuccess: invalidate,
-    // Auch im Fehlerfall neu laden: /complete setzt das Ticket bei Merge-Problemen
-    // serverseitig zurück (testing/hold) — die Ansicht muss das zeigen.
+    // Reload in the error case as well: on merge problems /complete resets the ticket server
+    // side (testing/hold), and the view has to show that.
     onError: (e) => { setErr(e instanceof ApiError ? e.message : "Fehler"); invalidate(); },
   });
   const refreshAttachments = () => qc.invalidateQueries({ queryKey: ["attachments", issueKey] });
@@ -262,7 +261,7 @@ export default function TicketDrawer({
   const canWrite = kannVerwalten || project.my_role === "member";
   const isDone = issue && meta.statuses.find((s) => s.id === issue.status_id)?.category === "done";
 
-  // Split-Beziehungen (aus der geladenen Ticket-Liste).
+  // Split relations (from the loaded ticket list).
   const children = issue
     ? issues.filter((i) => i.parent_ticket_id === issue.id).sort((a, b) => (a.split_order ?? 0) - (b.split_order ?? 0))
     : [];
@@ -272,7 +271,7 @@ export default function TicketDrawer({
 
   const split = parseSplit(issue?.plan || null);
   const showSplit = issue?.hold_reason === "plan_split";
-  // Plan/Überblick ohne den Roh-<subtickets>-Block anzeigen.
+  // Show the plan and overview without the raw <subtickets> block.
   const planText = (issue?.plan || "").replace(/<subtickets>[\s\S]*?<\/subtickets>/g, "").trim();
   const planLabel = tr(isUmbrella ? "ticket_drawer.begruendung_ueberblick" : "ticket_drawer.plan");
   const preApproval = issue?.agent_status === "planning" || issue?.agent_status === "plan_review";
@@ -283,14 +282,14 @@ export default function TicketDrawer({
     external: "border-sky-500/40 bg-sky-500/10 text-sky-300",
   };
 
-  // Zweispalten-Layout nur im Seitenmodus (asPage); im Popup bleibt alles einspaltig.
+  // Two column layout only in page mode (asPage); in the popup everything stays single column.
   const two = asPage;
   const shellOuter = asPage ? "" : "fixed inset-0 z-20 flex items-center justify-center bg-black/40 p-4";
   const shellInner = asPage
-    // etwas breiter als vorher (max-w-6xl), damit die zwei Spalten Platz haben.
+    // a little wider than before (max-w-6xl) so that the two columns have room.
     ? "mx-auto max-w-6xl rounded-xl border border-line bg-card p-6"
     : "max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-line bg-card p-5 shadow-2xl";
-  // Archivieren/Löschen direkt oben neben der Ticket-ID (deutliche Icon-Buttons).
+  // Archiving and deleting right at the top beside the ticket id (clear icon buttons).
   const iconBtn = "rounded-md border border-line p-1.5 text-lg leading-none";
   const headerActions = issue && (canWrite || kannVerwalten) && (
     <div className="flex items-center gap-1.5">
@@ -337,7 +336,7 @@ export default function TicketDrawer({
     </div>
   );
 
-  // Ladezustand: gleiche Hülle + Header, damit die Seite/das Popup nicht springt.
+  // Loading state: the same shell plus header, so that page or popup does not jump.
   if (!issue || !draft) {
     return (
       <div className={shellOuter} onClick={asPage ? undefined : onClose}>
@@ -349,11 +348,11 @@ export default function TicketDrawer({
     );
   }
 
-  // Ab hier sind issue + draft garantiert vorhanden (Narrowing durch die frühe Rückgabe).
-  // Jede logische Sektion wird EINMAL als Variable definiert und danach je nach Modus
-  // in eine Spalte (Popup) oder zwei Grid-Spalten (asPage) einsortiert.
+  // From here on issue and draft are guaranteed to exist (narrowed by the early return).
+  // Every logical section is defined ONCE as a variable and afterwards sorted into one column
+  // (popup) or two grid columns (asPage) depending on the mode.
 
-  // ---- Blöcke der HAUPT-Spalte (links / breit) ----
+  // ---- Blocks of the MAIN column (left, wide) ----
   const bWait = wait && (
     <div className={`mb-3 flex items-center gap-2 rounded border px-3 py-1.5 text-sm ${WAIT_KIND_COLOR[wait.kind]}`}>
       <span>{wait.icon}</span>
@@ -362,7 +361,7 @@ export default function TicketDrawer({
     </div>
   );
 
-  // Rückverweis Sub-Ticket → Sammelticket
+  // Back reference from a sub-ticket to the collective ticket
   const bParent = parent && (
     <button onClick={() => onOpen(parent.key)}
       className="mb-3 block w-full truncate rounded border border-purple-500/40 bg-purple-500/5 px-3 py-1.5 text-left text-xs text-purple-300 hover:bg-purple-500/10">
@@ -444,7 +443,7 @@ export default function TicketDrawer({
     </div>
   );
 
-  // Plan / Begründung-Überblick als Markdown, einklappbar
+  // Plan and reasoning overview as markdown, collapsible
   const bPlan = planText && (
     <details open={preApproval} className="mb-4 rounded border border-line">
       <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">{planLabel}</summary>
@@ -472,7 +471,7 @@ export default function TicketDrawer({
     </div>
   );
 
-  // Vom Agenten geänderte Dateien + Diff + Testumgebung + Anhänge
+  // Files changed by the agent plus diff, test environment and attachments
   const bFiles = (
     <div className="mb-4 rounded-lg border border-line p-3">
       <div className="mb-2 flex items-center gap-2">
@@ -589,7 +588,7 @@ export default function TicketDrawer({
     </>
   );
 
-  // ---- Blöcke der SEITENLEISTE (rechts / schmal) ----
+  // ---- Blocks of the SIDEBAR (right, narrow) ----
   const bMeta = (
     <div className="mb-3 flex flex-wrap gap-3">
       <label className="text-xs text-muted">Status
@@ -613,7 +612,7 @@ export default function TicketDrawer({
     </div>
   );
 
-  // Personen-Zuweisung — unabhängig von der KI-Bearbeitung (TRA-20)
+  // Person assignment, independent of the AI processing (TRA-20)
   const bPerson = (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <label className="text-xs text-muted">Zugewiesen an
@@ -648,7 +647,7 @@ export default function TicketDrawer({
     </div>
   );
 
-  // Hardware-Bezug (TRA-25): Ticket an ein Exemplar des Projekts hängen.
+  // Hardware reference (TRA-25): hang the ticket off a unit of the project.
   const bHardware = project.has_hardware && (
     <div className="mb-3 rounded-lg border border-line p-3">
       <div className="mb-2 text-sm font-medium">{tr("ticket_drawer.hardware")}</div>
@@ -815,8 +814,8 @@ export default function TicketDrawer({
     </div>
   );
 
-  // KI-Lebenszyklus. Läuft ein Prozess, wird GENAU DIESER Graph gezeigt (inklusive
-  // Anpassungen des Projekts) — sonst das ausgelieferte Schema als Orientierung.
+  // AI lifecycle. If a process is running, EXACTLY THAT graph is shown (including the
+  // adjustments of the project); otherwise the shipped scheme as an orientation.
   const bLifecycle = (issue.assigned_agent || issue.agent_status != null) && (
     <details open className="mb-4 rounded-lg border border-line">
       <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-muted">
@@ -844,10 +843,10 @@ export default function TicketDrawer({
   // Prozess-Instanzen an diesem Ticket (Workflow-Engine)
   const bWorkflows = <IssueWorkflows issueId={issue.id} project={project} meta={meta} />;
 
-  // (Archivieren/Löschen liegen jetzt oben im Header — siehe headerActions.)
+  // (Archiving and deleting now sit at the top in the header, see headerActions.)
 
-  // Freie Felder des Artefakts (Administration → Artefakte). Ohne gepflegte Felder
-  // rendert die Komponente nichts, der Block bleibt dann leer.
+  // Free fields of the artifact (Administration → Artifacts). Without maintained fields the
+  // component renders nothing and the block stays empty.
   const bFelder = issue.artifact_id ? (
     <div className="rounded-lg border border-line p-3">
       <div className="mb-2 text-xs font-medium text-muted">{tr("ticket_drawer.felder")}</div>
@@ -855,9 +854,9 @@ export default function TicketDrawer({
     </div>
   ) : null;
 
-  // Key → Block-Node. Nur im asPage-Modus verwendet. Meta/Person behalten hier ihren
-  // dezenten Karten-Rahmen (wie zuvor in der Sidebar). Falsy Nodes (bedingt gerenderte
-  // Blöcke) werden beim Rendern übersprungen, ihr Key bleibt aber im Layout erhalten.
+  // Key to block node. Used only in asPage mode. Meta and person keep their discreet card
+  // frame here (as before in the sidebar). Falsy nodes (conditionally rendered blocks) are
+  // skipped while rendering, but their key stays in the layout.
   const blockMap: Record<string, ReactNode> = {
     wait: bWait,
     parent: bParent,
@@ -878,9 +877,9 @@ export default function TicketDrawer({
     comments: bComments,
   };
 
-  // Eine DnD-Spalte rendern. Die Spaltenfläche selbst ist Drop-Ziel (Einfügen ans Ende);
-  // jeder Block ist zusätzlich Drop-Ziel (Einfügen davor). Nur der kleine Griff (⠿) ist
-  // draggable, damit Inputs/Selects/Buttons im Block bedienbar bleiben.
+  // Render one DnD column. The column area itself is a drop target (insert at the end); every
+  // block is a drop target as well (insert before it). Only the small handle (⠿) is
+  // draggable, so that inputs, selects and buttons in the block stay operable.
   const renderColumn = (col: LayoutCol, keys: string[]) => (
     <div
       className="space-y-4"
@@ -890,7 +889,7 @@ export default function TicketDrawer({
       {keys.map((k) => {
         const node = blockMap[k];
         if (!node) return null; // Block existiert (aktuell) nicht → nicht rendern, Key bleibt im Layout
-        // Normalmodus: Block ganz normal, ohne Griff/DnD/Rahmen.
+        // Normal mode: the block completely normally, without handle, DnD or frame.
         if (!editLayout) return <div key={k}>{node}</div>;
         const showLine = overCol === col && overKey === k && dragKey !== k;
         return (
@@ -932,8 +931,8 @@ export default function TicketDrawer({
       <div className={shellInner} onClick={asPage ? undefined : (e) => e.stopPropagation()}>
         {header}
         {two ? (
-          // Volle Seite: zweispaltiges Grid (Haupt ~2/3, Sidebar ~1/3). Blöcke sind nur im
-          // „Layout bearbeiten"-Modus per DnD umsortierbar (pro Nutzer gespeichert).
+          // Full page: two column grid (main about 2/3, sidebar about 1/3). Blocks are only
+          // reorderable by DnD in the "edit layout" mode (saved per user).
           <>
             {editLayout && (
               <div className="mb-3 rounded-md border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs text-muted">
@@ -947,8 +946,8 @@ export default function TicketDrawer({
             </div>
           </>
         ) : (
-          // Popup: eine Spalte, gleiche Reihenfolge/Optik wie zuvor
-          // (Meta + Person direkt unter dem Titel, dann Beschreibung usw.).
+          // Popup: one column, the same order and look as before
+          // (meta plus person right below the title, then the description and so on).
           <>
             {bWait}
             {bParent}
@@ -973,7 +972,7 @@ export default function TicketDrawer({
   );
 }
 
-/** Kompakte Ansicht der Workflow-Instanzen eines Tickets + offene Schritte. */
+/** Compact view of the workflow instances of a ticket plus open steps. */
 function IssueWorkflows({ issueId, project, meta }: { issueId: number; project: Project; meta: ProjectMeta }) {
   const { data: instances } = useQuery({
     queryKey: ["issue-workflows", issueId],
