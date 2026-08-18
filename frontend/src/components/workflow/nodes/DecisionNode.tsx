@@ -1,4 +1,5 @@
 import { BaseNode, type FlowNodeProps, type SourceHandleDef } from "./shared";
+import { tr } from "../../../i18n";
 
 export default function DecisionNode({ id, data, selected }: FlowNodeProps) {
   const branches = data.config.branches || [];
@@ -20,7 +21,7 @@ export default function DecisionNode({ id, data, selected }: FlowNodeProps) {
       aus={!!data.config.deaktiviert}
       sources={sources}
     >
-      {branches.length === 0 && <div>keine Zweige definiert</div>}
+      {branches.length === 0 && <div>{tr("decision_node.keine_zweige")}</div>}
     </BaseNode>
   );
 }

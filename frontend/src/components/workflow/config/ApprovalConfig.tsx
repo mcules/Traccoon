@@ -33,7 +33,7 @@ export default function ApprovalConfig({
         >
           <option value="ai_assign">KI-Recht (ai_assign)</option>
           <option value="role">{tr("approval_config.projektrolle")}</option>
-          <option value="none">ohne Gate</option>
+          <option value="none">{tr("approval.ohne_gate")}</option>
         </select>
       </label>
 

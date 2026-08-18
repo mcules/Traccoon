@@ -10,11 +10,11 @@ import Schrittprotokoll from "./Schrittprotokoll";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "./layout";
 
 const STATUS_LABEL: Record<string, string> = {
-  running: "läuft",
-  waiting: "wartet",
-  completed: "abgeschlossen",
-  failed: "fehlgeschlagen",
-  cancelled: "abgebrochen",
+  running: "instanz.running",
+  waiting: "instanz.waiting",
+  completed: "instanz.completed",
+  failed: "instanz.failed",
+  cancelled: "instanz.cancelled",
 };
 const STATUS_COLOR: Record<string, string> = {
   running: "text-sky-400",
@@ -72,7 +72,7 @@ export default function WorkflowInstanceView({
         <div className="mb-2 flex items-center gap-2 text-xs">
           <span className="text-muted">Prozess-Instanz #{instance.id}</span>
           <span className={STATUS_COLOR[instance.status] || "text-muted"}>
-            ● {STATUS_LABEL[instance.status] || instance.status}
+            ● {STATUS_LABEL[instance.status] ? tr(STATUS_LABEL[instance.status]) : instance.status}
           </span>
           {instance.error && <span className="text-red-400">— {instance.error}</span>}
         </div>
@@ -83,7 +83,7 @@ export default function WorkflowInstanceView({
       {compact ? (
         <>
           <Schrittprotokoll schritte={instance.steps} maxHoehe="16rem"
-            leerText="Noch kein Schritt abgeschlossen." />
+            leerText={tr("instanz.kein_schritt")} />
           <details className="mt-2">
             <summary className="cursor-pointer text-xs text-muted">{tr("workflow_instance_view.ablauf_als_graph")}</summary>
             <div className="mt-1 overflow-hidden rounded-lg border border-line" style={{ height }}>
@@ -102,7 +102,7 @@ export default function WorkflowInstanceView({
             </summary>
             <div className="mt-1">
               <Schrittprotokoll schritte={instance.steps} maxHoehe="20rem"
-                leerText="Noch kein Schritt abgeschlossen." />
+                leerText={tr("instanz.kein_schritt")} />
             </div>
           </details>
         </>

@@ -18,8 +18,8 @@ export default function StartNode({ id, data, selected }: FlowNodeProps) {
       <div>{t?.event ? t.event
         : t?.kind === "webhook" ? tr("start_config.aufruf_von_aussen_webhook")
         : tr("start.manueller_start")}</div>
-      {t?.project_id && <div>nur Projekt #{t.project_id}</div>}
-      {t?.filter && <div>mit Bedingung</div>}
+      {t?.project_id && <div>{tr("start_node.nur_projekt", { id: t.project_id })}</div>}
+      {t?.filter && <div>{tr("start_node.mit_bedingung")}</div>}
       {(data.config.context_schema?.length ?? 0) > 0 && (
         <div>Kontext: {data.config.context_schema!.map((c) => c.key).join(", ")}</div>
       )}

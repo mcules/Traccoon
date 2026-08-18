@@ -7,10 +7,10 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  plan_agent: "Planer des Projekts",
+  plan_agent: "agent_task_node.plan_agent",
   exec_agent: "agent.rolle.exec",
   review_agent: "agent.rolle.review",
-  assigned: "der zugewiesene Agent",
+  assigned: "agent_task_node.assigned",
 };
 
 /** Ausgänge = mögliche Ergebnisse eines Laufs. Nicht gezeichnete Ausgänge fallen auf

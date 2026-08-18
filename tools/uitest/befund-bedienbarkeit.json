@@ -1,5 +1,5 @@
 {
-  "marke": "final",
+  "marke": "i18n",
   "seiten": {
     "Projekte @ Handy": {
       "abgeschnitten": [],
@@ -116,7 +116,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 5,
-      "hoehe": 2070
+      "hoehe": 2638
     },
     "Projekt/settings @ Handy": {
       "abgeschnitten": [],
@@ -144,7 +144,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 4,
-      "hoehe": 916
+      "hoehe": 1340
     },
     "Prozesse/standard @ Handy": {
       "abgeschnitten": [],
@@ -186,7 +186,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 4,
-      "hoehe": 1938
+      "hoehe": 2298
     },
     "Prozesse/messreihen @ Handy": {
       "abgeschnitten": [],
@@ -214,7 +214,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 4,
-      "hoehe": 1133
+      "hoehe": 1151
     },
     "Einstellungen/prefs @ Handy": {
       "abgeschnitten": [],
@@ -312,7 +312,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 4,
-      "hoehe": 1833
+      "hoehe": 2037
     },
     "Einstellungen/skills @ Handy": {
       "abgeschnitten": [],
@@ -555,7 +555,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 6,
-      "hoehe": 1211
+      "hoehe": 1411
     },
     "Projekt/settings @ Desktop": {
       "abgeschnitten": [],
@@ -625,7 +625,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 6,
-      "hoehe": 1401
+      "hoehe": 1721
     },
     "Prozesse/messreihen @ Desktop": {
       "abgeschnitten": [],
@@ -751,7 +751,7 @@
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
       "sichtbare_navigation": 6,
-      "hoehe": 1119
+      "hoehe": 1275
     },
     "Einstellungen/skills @ Desktop": {
       "abgeschnitten": [],

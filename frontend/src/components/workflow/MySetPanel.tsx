@@ -58,10 +58,7 @@ export default function MySetPanel() {
   return (
     <div className="space-y-3 rounded-lg border border-line bg-card p-4">
       <p className="text-sm text-muted">
-        <b>{tr("my_set_panel.meine_standard_prozesse")}</b> — Ticket-Lebenszyklus, Abnahme, Beschaffung und
-        Ticket-Eingang für <b>alle Projekte, in denen ich Eigentümer bin</b>. Ohne eigenen Satz
-        gilt der ausgelieferte Traccoon-Standard. Ein einzelnes Projekt kann jederzeit davon
-        abweichen (Projekt → Prozesse → Anpassen).
+        {tr("my_set_panel.einleitung")}
       </p>
 
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
@@ -79,7 +76,7 @@ export default function MySetPanel() {
             disabled={anlegen.isPending}
             className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-50"
           >
-            Eigenen Satz anlegen (Kopie des Standards)
+            {tr("my_set_panel.satz_anlegen")}
           </button>
         </div>
       ) : (
@@ -90,7 +87,7 @@ export default function MySetPanel() {
             <div className="flex-1" />
             <button
               onClick={() => {
-                if (confirm("Eigenen Satz aufgeben? Meine Projekte folgen dann wieder dem Standard.")) {
+                if (confirm(tr("my_set_panel.satz_aufgeben_frage"))) {
                   aufgeben.mutate();
                 }
               }}

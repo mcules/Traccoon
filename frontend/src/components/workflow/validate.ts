@@ -1,8 +1,9 @@
 import type { WorkflowGraph } from "./types";
+import { tr } from "../../i18n";
 
 /**
- * Clientseitige Vorab-Validierung (die endgültige macht das Backend).
- * Liefert eine Liste deutscher Fehlermeldungen — leer = ok.
+ * Vorabprüfung im Browser (die endgültige macht der Server).
+ * Liefert eine Liste fertig übersetzter Meldungen, leer heißt in Ordnung.
  */
 export function validateGraph(graph: WorkflowGraph): string[] {
   const errors: string[] = [];
@@ -12,13 +13,13 @@ export function validateGraph(graph: WorkflowGraph): string[] {
 
   const starts = nodes.filter((n) => n.type === "start");
   const ends = nodes.filter((n) => n.type === "end");
-  if (starts.length !== 1) errors.push(`Es muss genau einen Start-Knoten geben (aktuell ${starts.length}).`);
-  if (ends.length < 1) errors.push("Es muss mindestens einen Ende-Knoten geben.");
+  if (starts.length !== 1) errors.push(tr("validate.genau_ein_start", { anzahl: starts.length }));
+  if (ends.length < 1) errors.push(tr("validate.mindestens_ein_ende"));
 
   // Lose Kanten (Quelle/Ziel fehlt)
   for (const e of edges) {
     if (!ids.has(e.source) || !ids.has(e.target)) {
-      errors.push(`Kante ${e.id} zeigt auf einen nicht vorhandenen Knoten.`);
+      errors.push(tr("validate.lose_kante", { kante: e.id }));
     }
   }
 
@@ -29,10 +30,10 @@ export function validateGraph(graph: WorkflowGraph): string[] {
     const label = n.data.config.label || n.id;
     // Unverbundene Knoten
     if (n.type !== "start" && !hasIn.has(n.id)) {
-      errors.push(`Knoten „${label}" hat keinen eingehenden Weg.`);
+      errors.push(tr("validate.kein_eingang", { knoten: label }));
     }
     if (n.type !== "end" && !hasOut.has(n.id)) {
-      errors.push(`Knoten „${label}" hat keinen ausgehenden Weg.`);
+      errors.push(tr("validate.kein_ausgang", { knoten: label }));
     }
     // Freigabe: beide Handles müssen bedient sein
     if (n.type === "approval") {
@@ -40,22 +41,22 @@ export function validateGraph(graph: WorkflowGraph): string[] {
         edges.filter((e) => e.source === n.id).map((e) => e.sourceHandle || "out")
       );
       if (!handles.has("approved"))
-        errors.push(`Freigabe „${label}": Ausgang „genehmigt" ist nicht verbunden.`);
+        errors.push(tr("validate.freigabe_genehmigt", { knoten: label }));
       if (!handles.has("rejected"))
-        errors.push(`Freigabe „${label}": Ausgang „abgelehnt" ist nicht verbunden.`);
+        errors.push(tr("validate.freigabe_abgelehnt", { knoten: label }));
     }
     // Verzweigung: jeder Zweig sollte eine Kante haben
     if (n.type === "decision") {
       const branches = n.data.config.branches || [];
       if (branches.length === 0) {
-        errors.push(`Verzweigung „${label}" hat keine Zweige definiert.`);
+        errors.push(tr("validate.keine_zweige", { knoten: label }));
       }
       const served = new Set(
         edges.filter((e) => e.source === n.id).map((e) => e.sourceHandle || "out")
       );
       for (const b of branches) {
         if (!served.has(b.handle))
-          errors.push(`Verzweigung „${label}": Zweig „${b.label || b.handle}" ist nicht verbunden.`);
+          errors.push(tr("validate.zweig_offen", { knoten: label, zweig: b.label || b.handle }));
       }
     }
   }

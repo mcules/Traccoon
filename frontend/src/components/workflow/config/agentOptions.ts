@@ -1,3 +1,5 @@
+import { tr } from "../../../i18n";
+
 export interface AgentLite {
   id: number;
   role: string;
@@ -40,7 +42,7 @@ export function agentOptions(
     const [gewinner] = [...liste].sort((a, b) => rang(a) - rang(b));
     const herkunft =
       gewinner.project_id != null ? "Projekt"
-        : gewinner.user_id != null ? "Persönlich"
+        : gewinner.user_id != null ? tr("agent_options.persoenlich")
           : "Ausgeliefert";
     const zusatz = [
       herkunft,

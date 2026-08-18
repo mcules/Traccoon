@@ -2,10 +2,10 @@ import type { NodeConfig } from "../types";
 import { tr } from "../../../i18n";
 
 const EVENTS: [string, string, string][] = [
-  ["comment", "Kommentar", "Jemand kommentiert das Ticket"],
-  ["answer", "Antwort", "Rückfrage beantwortet oder Berechtigung entschieden"],
-  ["manual", "Manuell", "Ausdrückliches Weiter über die Oberfläche"],
-  ["any", "Beliebig", "Jedes Ereignis nimmt den Prozess wieder auf"],
+  ["comment", "wait_event.comment", "wait_event.comment_hinweis"],
+  ["answer", "wait_event.answer", "wait_event.answer_hinweis"],
+  ["manual", "wait_event.manual", "wait_event.manual_hinweis"],
+  ["any", "wait_event.any", "wait_event.any_hinweis"],
 ];
 
 export default function WaitEventConfig({
@@ -32,14 +32,13 @@ export default function WaitEventConfig({
             className="mt-1"
           />
           <span>
-            {label}
-            <span className="block text-[11px] text-muted">{hint}</span>
+            {tr(label)}
+            <span className="block text-[11px] text-muted">{tr(hint)}</span>
           </span>
         </label>
       ))}
       <p className="text-[11px] text-muted">
-        Wartet der Prozess hier, bleibt das Ticket in seinem aktuellen Zustand stehen. Eine
-        Freigabe lässt sich damit <b>nicht</b> überspringen — dafür gibt es den Freigabe-Knoten.
+        {tr("wait_event_config.hinweis")}
       </p>
     </div>
   );

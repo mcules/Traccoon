@@ -40,7 +40,7 @@ export default function Members({ project }: { project: Project }) {
     onSuccess: (res) => {
       setEmail(""); setErr("");
       setInfo(res.status === "added"
-        ? "Bereits registrierter User wurde direkt zugeordnet."
+        ? tr("members.direkt_zugeordnet")
         : "Einladung per E-Mail versendet.");
       setTimeout(() => setInfo(""), 4000);
       inv(); invInv();
@@ -66,7 +66,7 @@ export default function Members({ project }: { project: Project }) {
   const addExisting = useMutation({
     mutationFn: (user_id: number) => api.post(`/projects/${project.id}/members`, { user_id, role }),
     onSuccess: () => {
-      setErr(""); setInfo("Nutzer hinzugefügt."); setTimeout(() => setInfo(""), 3000); setQ(""); inv();
+      setErr(""); setInfo(tr("members.hinzugefuegt")); setTimeout(() => setInfo(""), 3000); setQ(""); inv();
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
@@ -110,7 +110,7 @@ export default function Members({ project }: { project: Project }) {
 
       {/* Bestehenden Nutzer per Benutzername/Anzeigename suchen und direkt hinzufügen */}
       <div className="mt-5">
-        <label className="text-xs text-muted">Bestehenden Nutzer hinzufügen (Benutzername oder Anzeigename)
+        <label className="text-xs text-muted">{tr("members.bestehenden_hinzufuegen")}
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("members.name_eingeben")}
             className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1" />
         </label>
@@ -118,7 +118,7 @@ export default function Members({ project }: { project: Project }) {
           <div className="mt-1 divide-y divide-line rounded border border-line bg-card">
             {matches.length === 0 && (
               <div className="px-2 py-1.5 text-xs text-muted">
-                {search.isFetching ? "Suche…" : "Keine passenden Nutzer."}
+                {tr(search.isFetching ? "members.suche" : "members.keine_treffer")}
               </div>
             )}
             {matches.map((u) => (
@@ -128,7 +128,7 @@ export default function Members({ project }: { project: Project }) {
                   {u.status !== "active" && <span className="ml-1 text-xs text-muted">({u.status})</span>}
                 </span>
                 <button onClick={() => addExisting.mutate(u.id)}
-                  className="rounded bg-brand px-2 py-1 text-xs text-white">+ als {role}</button>
+                  className="rounded bg-brand px-2 py-1 text-xs text-white">{tr("members.als_rolle", { rolle: role })}</button>
               </div>
             ))}
           </div>
@@ -136,7 +136,7 @@ export default function Members({ project }: { project: Project }) {
       </div>
 
       <div className="mt-4 flex items-end gap-2">
-        <label className="flex-1 text-xs text-muted">…oder per E-Mail einladen
+        <label className="flex-1 text-xs text-muted">{tr("members.per_mail_einladen")}
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com"
             className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1" />
         </label>
@@ -154,9 +154,7 @@ export default function Members({ project }: { project: Project }) {
       </div>
       {info && <div className="mt-2 text-sm text-green-400">{info}</div>}
       <p className="mt-3 text-xs text-muted">
-        Ist die E-Mail-Adresse bereits bei Traccoon registriert, wird der User direkt zugeordnet.
-        Sonst erhält er eine Einladungsmail mit Link zur Anmeldung/Registrierung.
-        KI-Recht steuert PM-Chat + Agent-Zuweisung. owner/maintainer erhalten es standardmäßig, member/viewer nicht.
+        {tr("members.hinweis")}
       </p>
 
       {pending.length > 0 && (

@@ -76,9 +76,7 @@ function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (
         </label>
       </div>
       <p className="text-[11px] text-muted">
-        Ein Fehlschlag nach außen ist meist einer des Augenblicks. Sind die Versuche
-        aufgebraucht, geht es über den roten Ausgang <b>{tr("auto_action_config.fehler")}</b> weiter — ist der nicht
-        verdrahtet, endet der Lauf.
+        {tr("auto_action_config.wiederholung_hinweis")}
       </p>
     </div>
   );

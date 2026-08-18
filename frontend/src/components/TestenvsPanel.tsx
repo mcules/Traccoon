@@ -51,13 +51,13 @@ export default function TestenvsPanel({ project }: { project: Project }) {
     try {
       const r = await api.post<{ log: string }>(
         `/projects/${project.id}/testenvs/${e.container}/logs`, { service, tail: 500 });
-      setLogs({ ...logs, [e.container]: r.log || "(keine Ausgabe)" });
+      setLogs({ ...logs, [e.container]: r.log || tr("testenvs.keine_ausgabe") });
     } catch (ex) { fehler(ex); }
   };
 
   if (project.testenv_enabled === false) {
     return <div className="text-sm text-muted">
-      Testumgebungen sind für dieses Projekt ausgeschaltet (Einstellungen → Testumgebung).
+      {tr("testenvs.ausgeschaltet")}
     </div>;
   }
 
@@ -94,7 +94,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
               {offen === e.container && (
                 <div className="space-y-2 border-t border-line p-2.5">
                   <div className="text-xs text-muted">
-                    Container-Präfix <span className="font-mono">{e.container}</span>
+                    {tr("testenvs.container_praefix")} <span className="font-mono">{e.container}</span>
                     {e.port ? ` · Port ${e.port}` : ""}
                   </div>
                   {e.error && (
@@ -114,7 +114,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                   <div className="flex flex-wrap gap-1">
                     <button onClick={() => holeLogs(e)}
                       className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
-                      Logs (alle)</button>
+                      {tr("testenvs.logs_alle")}</button>
                     {e.services.map((s) => (
                       <button key={s.container} onClick={() => holeLogs(e, s.service)}
                         className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
@@ -137,13 +137,12 @@ export default function TestenvsPanel({ project }: { project: Project }) {
         <section className="rounded-lg border border-line bg-card p-3">
           <h3 className="mb-1 font-medium">{tr("testenvs_panel.branch_testumgebung_starten")}</h3>
           <p className="mb-2 text-xs text-muted">
-            Baut den gewählten Branch in einer eigenen, wegwerfbaren Umgebung — unabhängig
-            von einem Ticket.
+            {tr("testenvs.baut_branch")}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <select value={branch} onChange={(e) => setBranch(e.target.value)}
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
-              <option value="">— Branch wählen —</option>
+              <option value="">{tr("testenvs.branch_waehlen")}</option>
               {branches?.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
             <button onClick={() => branch && start.mutate()} disabled={!branch || start.isPending}

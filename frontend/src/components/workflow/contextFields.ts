@@ -1,4 +1,5 @@
 import type { FlowNode } from "./nodes/shared";
+import { tr } from "../../i18n";
 
 /**
  * Welche Kontextfelder stehen in DIESEM Ablauf zur Verfügung?
@@ -68,7 +69,7 @@ export function verfuegbareFelder(
     const wandern = (wert: any, pfad: string, tiefe: number) => {
       if (tiefe > 4 || wert === null || wert === undefined) return;
       if (Array.isArray(wert)) {
-        nimm([{ pfad, typ: "liste", beschreibung: `${wert.length} Einträge im Beispiel` }],
+        nimm([{ pfad, typ: "liste", beschreibung: tr("context_fields.eintraege_im_beispiel", { anzahl: wert.length }) }],
              "Beispiel-Nutzlast");
         if (wert.length) wandern(wert[0], `${pfad}.0`, tiefe + 1);
         return;
@@ -83,9 +84,9 @@ export function verfuegbareFelder(
     };
     wandern(probe, "", 0);
   }
-  if (ev && katalog.ausloeser[ev]) nimm(katalog.ausloeser[ev], `Auslöser ${ev}`);
+  if (ev && katalog.ausloeser[ev]) nimm(katalog.ausloeser[ev], tr("context_fields.ausloeser", { name: ev }));
   if (!ev && katalog.ausloeser["(Webhook/Job)"]) {
-    nimm(katalog.ausloeser["(Webhook/Job)"], "Auslöser Webhook/Job");
+    nimm(katalog.ausloeser["(Webhook/Job)"], tr("context_fields.ausloeser", { name: "Webhook/Job" }));
   }
 
   for (const n of nodes) {

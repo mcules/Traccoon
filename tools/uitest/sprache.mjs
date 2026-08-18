@@ -45,7 +45,8 @@ try {
   await page.waitForTimeout(2000);
   const zeilen = await page.locator('input[placeholder]').count();
   ok("Die Verwaltung listet die Schlüssel", zeilen > 0, `${zeilen} Zeilen sichtbar`);
-  const zaehler = await page.getByText(/von \d+ offen/).first().textContent().catch(() => "");
+  const zaehler = await page.getByText(/\d+ (of|von) \d+ (open|offen)/).first()
+    .textContent().catch(() => "");
   ok("Sie zeigt, wie viel noch fehlt", !!zaehler, (zaehler || "").trim());
   await page.screenshot({ path: "/w/28-verwaltung.png" });
 

@@ -45,7 +45,7 @@ export default function AgentsBadge() {
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute right-0 z-30 mt-2 w-72 rounded-lg border border-line bg-card p-3 text-sm shadow-2xl">
             <div className="mb-2 font-medium">
-              {n === 0 ? "Keine Agenten laufen" : `${n} Agent${n === 1 ? "" : "en"} ${n === 1 ? "läuft" : "laufen"}`}
+              {n === 0 ? tr("agents_badge.keine_laufen") : tr("agents_badge.laufen", { anzahl: n })}
             </div>
 
             {data?.update_in_progress ? (
@@ -53,8 +53,8 @@ export default function AgentsBadge() {
             ) : data?.update_pending ? (
               <div className="space-y-2">
                 <div className="rounded bg-yellow-500/10 px-2 py-1.5 text-yellow-300">
-                  ⏳ Update eingereiht. Es startet, sobald alle Agenten fertig sind
-                  {n > 0 ? ` (noch ${n}).` : "."}
+                  ⏳ {tr("agents_badge.update_eingereiht")}
+                  {n > 0 ? ` (${tr("agents_badge.noch_n", { anzahl: n })}).` : "."}
                 </div>
                 {isAdmin && (
                   <button onClick={() => guard(() => cancel.mutateAsync())}
@@ -65,12 +65,11 @@ export default function AgentsBadge() {
               data?.maintenance_project_id ? (
                 <button onClick={() => guard(() => update.mutateAsync())} disabled={update.isPending}
                   className="w-full rounded bg-brand px-3 py-1.5 text-white disabled:opacity-50">
-                  ⬆ Update {data.maintenance_project_key} einreihen
+                  ⬆ {tr("agents_badge.update_einreihen", { projekt: data.maintenance_project_key || "" })}
                 </button>
               ) : (
                 <div className="text-xs text-muted">
-                  Kein Wartungsprojekt gesetzt. Unter <b>{tr("agents_badge.admin_wartung")}</b> auswählen, welches
-                  Projekt sich beim Update selbst deployt.
+                  {tr("agents_badge.kein_wartungsprojekt")}
                 </div>
               )
             ) : (

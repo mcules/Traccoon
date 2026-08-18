@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 
@@ -22,12 +23,12 @@ export default function UpdateFooter() {
 
   let content: { cls: string; text: string; closable?: boolean } | null = null;
   if (data.update_in_progress) {
-    content = { cls: "bg-brand/15 text-brand", text: "🔄 Update läuft — der Stack wird neu deployt…" };
+    content = { cls: "bg-brand/15 text-brand", text: `🔄 ${tr("update_footer.laeuft")}` };
   } else if (data.update_pending) {
     content = {
       cls: "bg-yellow-500/15 text-yellow-300",
-      text: `⏳ Update eingereiht — startet, sobald alle Agenten fertig sind${
-        data.running_agents > 0 ? ` (noch ${data.running_agents})` : ""}.`,
+      text: `⏳ ${tr("update_footer.eingereiht")}${
+        data.running_agents > 0 ? ` (${tr("agents_badge.noch_n", { anzahl: data.running_agents })})` : ""}.`,
     };
   } else if (completedRecent && dismissed !== data.last_update_completed_at) {
     content = { cls: "bg-green-500/15 text-green-300", text: "✅ Update abgeschlossen.", closable: true };

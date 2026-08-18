@@ -69,14 +69,11 @@ export default function SubflowConfig({
           checked={config.inherit_context !== false}
           onChange={(e) => onChange({ ...config, inherit_context: e.target.checked })}
         />
-        Kontext weitergeben
+        {tr("subflow_config.kontext_weitergeben")}
       </label>
 
       <p className="text-[11px] text-muted">
-        Bei einem <b>fest benannten</b> Ablauf gilt der, der für <b>dieses Projekt</b>
-        {" "}eingestellt ist — eigene Anpassung, sonst Satz, sonst Standard. Ein{" "}
-        <b>eigener</b> Ablauf wird genau so aufgerufen, wie er dasteht; er muss dafür
-        veröffentlicht sein. Ausgänge: <b>fertig</b> bzw. <b>gescheitert</b>.
+        {tr("subflow_config.hinweis")}
       </p>
     </div>
   );

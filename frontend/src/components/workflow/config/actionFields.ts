@@ -288,7 +288,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     summary: "action_fields.schreibt_das_urteil_fest_lernt_daraus_und_be",
     fields: [
       { key: "entscheidung", label: "Entscheidung", type: "select",
-        options: [["spam", "Ist Spam"], ["ham", "Kein Spam"]],
+        options: [["spam", "action_fields.ist_spam"], ["ham", "action_fields.kein_spam"]],
         hint: "action_fields.leer_die_antwort_des_menschen_aus_dem_kontex" },
       { key: "decided_by", label: "action_fields.entschieden_von", type: "text", placeholder: "auto" },
     ],

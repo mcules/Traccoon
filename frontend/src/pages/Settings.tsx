@@ -43,7 +43,7 @@ export default function Settings() {
           {/* Eigene Abläufe stehen jetzt unter Prozesse — hier bleibt nur die Einstellung,
               welchen Satz man fährt. Der Verweis, damit niemand sie an der alten Stelle sucht. */}
           <p className="rounded-lg border border-line bg-card p-4 text-sm text-muted">
-            Eigene Abläufe anlegen und bearbeiten: <Link to="/processes/eigene"
+            {tr("settings.eigene_ablaeufe")}: <Link to="/processes/eigene"
               className="text-ink underline">{tr("settings.prozesse_eigene")}</Link>.
           </p>
         </div>
@@ -73,8 +73,7 @@ function Secrets() {
       </div>
       <div className="space-y-3 rounded-lg border border-line bg-card p-4">
         <p className="text-sm text-muted">Allgemeiner <b>{tr("settings.secret_tresor")}</b>: beliebige Tokens/Geheimnisse (API-Keys,
-          Webhook-Secrets …). Verschlüsselt gespeichert, der Wert wird nie wieder angezeigt. Referenzierbar
-          als <code className="rounded bg-surface px-1">secret:&lt;name&gt;</code>.</p>
+          {tr("settings.tresor_hinweis")}</p>
         <NamedSecrets />
       </div>
     </div>

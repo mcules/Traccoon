@@ -87,7 +87,7 @@ function TicketOpenPanel() {
         {tr("profile.ticket_open_hinweis")}
       </p>
       <div className="flex gap-2">
-        {btn("popup", "Als Popup")}
+        {btn("popup", tr("profile.als_popup"))}
         {btn("page", "Ganze Seite")}
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
@@ -239,7 +239,7 @@ function BenachrichtigungenPanel() {
         <input value={mail} onChange={(e) => setMail(e.target.value)}
           placeholder={user?.email || "name@example.com"} className={`mt-1 ${feld}`} />
         <span className="mt-1 block text-[11px] text-muted">
-          Leer lassen: es gilt deine Anmelde-Adresse{user?.email ? ` (${user.email})` : ""}.
+          {tr("profile.leer_lassen_anmelde_adresse")}{user?.email ? ` (${user.email})` : ""}.
         </span>
       </label>
 
@@ -262,7 +262,7 @@ function PasswordPanel() {
   const [ok, setOk] = useState("");
   const save = async () => {
     setErr(""); setOk("");
-    if (newPassword.length < 8) { setErr("Neues Passwort muss mindestens 8 Zeichen haben."); return; }
+    if (newPassword.length < 8) { setErr(tr("profile.passwort_zu_kurz")); return; }
     try {
       await api.post("/auth/me/password", { old_password: oldPassword, new_password: newPassword });
       setOldPassword(""); setNewPassword("");

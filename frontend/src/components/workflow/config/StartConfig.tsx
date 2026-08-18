@@ -118,10 +118,7 @@ export default function StartConfig({
             <option key={e.event} value={e.event}>{e.label}</option>
           ))}
         </datalist>
-        <span className="mt-1 block text-[11px] text-muted">
-          Eigene Namen sind erlaubt — ein Webhook im Modus <b>{tr("start_config.ereignis")}</b> oder
-          <code className="mx-1 rounded bg-surface px-1">POST /api/events</code> meldet sie.
-        </span>
+        <span className="mt-1 block text-[11px] text-muted">{tr("start_config.eigene_namen")}</span>
       </label>
       )}
 
@@ -133,14 +130,10 @@ export default function StartConfig({
           <div className="space-y-1">
             <div className="break-all font-mono text-[11px] text-ink">{hook.url}</div>
             <div className="text-[11px] text-muted">
-              Signatur: <code className="rounded bg-card px-1">X-Webhook-Signature</code> =
-              HMAC-SHA256 des Rumpfes, hex, ohne Präfix. Geheimnis:{" "}
+              {tr("start_config.signatur")}{" "}
               <code className="break-all rounded bg-card px-1">{hook.secret}</code>
             </div>
-            <div className="text-[11px] text-muted">
-              Die Nutzlast landet vollständig im Kontext. Feiner abbilden (nur bestimmte
-              Felder) lässt sich das unter Einstellungen → Webhooks.
-            </div>
+            <div className="text-[11px] text-muted">{tr("start_config.nutzlast")}</div>
           </div>
         ) : (
           <button
@@ -162,11 +155,9 @@ export default function StartConfig({
               className={`mt-1 font-mono ${inp}`}
             />
             <span className="mt-1 block">
-              {subjectKind === "issue"
-                ? "Ticket-Kennung (ABC-31) oder Ticket-Nummer."
-                : "Nummer des Exemplars."}{" "}
-              Ohne diese Angabe startet der Ablauf nicht — er hängt an einem Artefakt, und
-              das fremde System muss sagen, an welchem.
+              {tr(subjectKind === "issue"
+                ? "start_config.ticket_kennung" : "start_config.exemplar_nummer")}{" "}
+              {tr("start_config.ohne_angabe")}
             </span>
           </label>
         )}
@@ -188,8 +179,7 @@ export default function StartConfig({
           className={`mt-1 ${inp} font-mono`}
         />
         <span className="mt-1 block text-[11px] text-muted">
-          Einmal einfügen, was das fremde System schickt — die Felder daraus stehen danach
-          in jeder Verzweigung zur Auswahl.
+          {tr("start_config.beispiel_nutzlast_hinweis")}
         </span>
       </label>
       )}
@@ -197,25 +187,24 @@ export default function StartConfig({
       {t.event && (
         <>
           <label className="block text-xs font-medium text-muted">
-            Nur für dieses Projekt
+            {tr("start_config.nur_dieses_projekt")}
             <select
               value={t.project_id ?? ""}
               onChange={(e) => setT({ project_id: e.target.value ? Number(e.target.value) : "" })}
               className={`mt-1 ${inp}`}
             >
-              <option value="">— jedes Projekt —</option>
+              <option value="">{tr("start_config.jedes_projekt")}</option>
               {projekte?.map((p) => (
                 <option key={p.id} value={p.id}>{p.key} · {p.name}</option>
               ))}
             </select>
             <span className="mt-1 block text-[11px] text-muted">
-              Gehört der Ablauf schon zu einem Projekt, gilt das ohnehin — das hier grenzt
-              zusätzlich ein (z. B. ein systemweiter Ablauf nur für ein bestimmtes Projekt).
+              {tr("start_config.projekt_hinweis")}
             </span>
           </label>
 
           <label className="block text-xs font-medium text-muted">
-            Nur wenn (Bedingung, JSONLogic)
+            {tr("start_config.nur_wenn")}
             <textarea
               rows={3}
               value={t.filter ? JSON.stringify(t.filter, null, 1) : ""}
@@ -228,8 +217,7 @@ export default function StartConfig({
               className={`mt-1 ${inp} font-mono`}
             />
             <span className="mt-1 block text-[11px] text-muted">
-              Leer = immer. Geprüft wird der Inhalt des Ereignisses (im Ablauf als
-              <code className="mx-1 rounded bg-surface px-1">{"{{…}}"}</code> verfügbar).
+              {tr("start_config.bedingung_hinweis")}
             </span>
           </label>
         </>

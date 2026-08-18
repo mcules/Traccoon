@@ -6,28 +6,19 @@ import { ApiError, api, workflowApi, type IssueType, type Project } from "../../
 import type { WorkflowSlotInfo } from "./types";
 
 /** Woher der geltende Ablauf kommt — die wichtigste Information auf dieser Seite. */
+// Schlüssel statt Texte: die Tabelle entsteht beim Laden des Moduls, ein tr() hier würde
+// die Sprache des ersten Aufrufs festhalten.
 const ORIGIN: Record<WorkflowSlotInfo["origin"], { label: string; cls: string; hint: string }> = {
-  builtin: {
-    label: "Standard",
-    cls: "bg-surface text-muted",
-    hint: "Ausgelieferter Ablauf. Änderungen am Standard wirken hier sofort.",
-  },
-  global: {
-    label: "Globaler Satz",
-    cls: "bg-blue-500/15 text-blue-300",
-    hint: "Aus einem systemweiten Satz.",
-  },
-  user: {
-    label: "Mein Satz",
-    cls: "bg-violet-500/15 text-violet-300",
-    hint: "Aus dem persönlichen Satz eines Projekt-Eigentümers.",
-  },
-  project: {
-    label: "Angepasst",
-    cls: "bg-amber-500/15 text-amber-300",
-    hint: "Eigene Kopie dieses Projekts — vom Satz entkoppelt.",
-  },
-  none: { label: "fehlt", cls: "bg-red-500/15 text-red-300", hint: "Kein Ablauf hinterlegt." },
+  builtin: { label: "slot_list.herkunft_builtin", cls: "bg-surface text-muted",
+             hint: "slot_list.herkunft_builtin_hinweis" },
+  global: { label: "slot_list.herkunft_global", cls: "bg-blue-500/15 text-blue-300",
+            hint: "slot_list.herkunft_global_hinweis" },
+  user: { label: "slot_list.herkunft_user", cls: "bg-violet-500/15 text-violet-300",
+          hint: "slot_list.herkunft_user_hinweis" },
+  project: { label: "slot_list.herkunft_project", cls: "bg-amber-500/15 text-amber-300",
+             hint: "slot_list.herkunft_project_hinweis" },
+  none: { label: "slot_list.herkunft_none", cls: "bg-red-500/15 text-red-300",
+          hint: "slot_list.herkunft_none_hinweis" },
 };
 
 /**
@@ -94,15 +85,11 @@ export default function SlotList({ project }: { project: Project }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        Diese Abläufe steuern, was Traccoon tut — vom Ticket-Lebenszyklus bis zur Abnahme. Ohne
-        Anpassung gilt der ausgelieferte Standard bzw. der gewählte Satz; „Anpassen“ legt eine
-        Kopie für dieses Projekt an, „Zurücksetzen“ verwirft sie wieder.
-      </p>
+      <p className="text-sm text-muted">{tr("slot_list.einleitung")}</p>
 
       {sets && sets.length > 1 && (
         <label className="block text-xs font-medium text-muted">
-          Prozess-Satz dieses Projekts
+          {tr("slot_list.prozess_satz")}
           <select
             value={aktuellerSatz ?? ""}
             onChange={(e) => chooseSet.mutate(e.target.value ? Number(e.target.value) : null)}
@@ -128,10 +115,10 @@ export default function SlotList({ project }: { project: Project }) {
             <div key={s.slot} className="rounded border border-line bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium">{s.name}</span>
-                <span className={`rounded px-1.5 py-0.5 text-xs ${o.cls}`}>{o.label}</span>
+                <span className={`rounded px-1.5 py-0.5 text-xs ${o.cls}`} title={tr(o.hint)}>{tr(o.label)}</span>
                 {!s.published && (
                   <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-xs text-yellow-300">
-                    nicht veröffentlicht
+                    {tr("slot_list.nicht_veroeffentlicht")}
                   </span>
                 )}
                 <div className="flex-1" />
@@ -140,7 +127,7 @@ export default function SlotList({ project }: { project: Project }) {
                     onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`, { state: { from: `/projects/${project.key}?tab=workflows` } })}
                     className="rounded border border-line px-2 py-1 text-xs hover:border-brand"
                   >
-                    {s.origin === "project" ? "Bearbeiten" : "Ansehen"}
+                    {tr(s.origin === "project" ? "slot_list.bearbeiten" : "slot_list.ansehen")}
                   </button>
                 )}
                 {s.origin === "project" ? (
@@ -153,7 +140,7 @@ export default function SlotList({ project }: { project: Project }) {
                     className="rounded border border-line px-2 py-1 text-xs hover:border-amber-400 disabled:opacity-50"
                     title={tr("slot_list.eigene_kopie_verwerfen_es_gilt_wieder_de")}
                   >
-                    Zurücksetzen
+                    {tr("slot_list.zuruecksetzen")}
                   </button>
                 ) : (
                   <button
@@ -203,7 +190,7 @@ export default function SlotList({ project }: { project: Project }) {
                 </div>
               )}
               <div className="mt-0.5 text-[11px] text-muted">
-                {o.hint}
+                {tr(o.hint)}
                 {s.set_name && s.origin !== "project" ? ` (${s.set_name})` : ""}
               </div>
             </div>

@@ -76,21 +76,21 @@ export default function Backlog({
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="font-medium">{s.name}</span>
               {s.state === "active"
-                ? <span className="rounded bg-green-500/20 px-1.5 text-xs text-green-400">läuft</span>
+                ? <span className="rounded bg-green-500/20 px-1.5 text-xs text-green-400">{tr("backlog.laeuft")}</span>
                 : <span className="rounded bg-surface px-1.5 text-xs text-muted">geplant</span>}
               <span className="text-xs text-muted">{drin.length} Tickets · {fertig} fertig</span>
               <div className="flex-1" />
               {s.state === "active" ? (
                 <button onClick={() => aktion.mutate({ id: s.id, was: "complete" })}
                   className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
-                  Abschließen</button>
+                  {tr("backlog.abschliessen")}</button>
               ) : (
                 <button onClick={() => aktion.mutate({ id: s.id, was: "start" })}
                   className="rounded bg-brand px-2 py-1 text-xs text-white">{tr("backlog.starten")}</button>
               )}
               {!drin.length && (
                 <button onClick={() => loeschen.mutate(s.id)}
-                  className="text-xs text-muted hover:text-red-400">löschen</button>
+                  className="text-xs text-muted hover:text-red-400">{tr("common.loeschen_klein")}</button>
               )}
             </div>
             <div className="space-y-1">
