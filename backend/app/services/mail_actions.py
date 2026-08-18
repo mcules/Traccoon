@@ -1,20 +1,20 @@
-"""Was der Mail-Eingang tun kann — die Schritte des Slots `mail_intake` als Aktionen.
+"""What the mail inbox can do: the steps of the slot `mail_intake` as actions.
 
-Der Weg einer eingegangenen Mail stand früher am Stück in `mail_intake.intake_mail`:
-einordnen, beurteilen, nachfragen, wegräumen oder weiterreichen. Die Reihenfolge war damit
-nur im Code nachlesbar und nur mit einem Deploy änderbar. Hier steht jeder Schritt für
-sich; ihre Reihenfolge zeichnet der Graph (`workflow_seed.build_mail_intake`).
+The way of an incoming mail used to stand in one piece in `mail_intake.intake_mail`:
+classifying, assessing, asking, clearing away or passing on. The order could therefore only
+be read in the code and only be changed with a deploy. Here every step stands on its own;
+their order is drawn by the graph (`workflow_seed.build_mail_intake`).
 
-Der Kontext einer Instanz ist die gemeinsame Sprache dieser Schritte:
+The context of an instance is the shared language of these steps:
 
-    mail      Rohpayload des Watchers (from/to/subject/body/headers/account/folder/uid)
-    eingang   Einstellungen des Auslösers (Klassifizier-Agent, Assistent, Prompt, Besitzer)
-    klasse    Ergebnis der lokalen Klassifizierung (Kategorie, Dringlichkeit, Kurzfassung)
-    policy    gelernte Regel zum Absender (Schwärzung, Hinweis, Auto-Freigabe)
-    spam      Urteil der Spam-Erkennung + später die Antwort des Menschen
-    task      angelegtes Assistent-Item
+    mail      raw payload of the watcher (from/to/subject/body/headers/account/folder/uid)
+    eingang   settings of the trigger (classifying agent, assistant, prompt, owner)
+    klasse    result of the local classification (category, urgency, short version)
+    policy    learned rule about the sender (redaction, hint, auto approval)
+    spam      verdict of the spam detection plus, later, the answer of the human
+    task      the created assistant item
 
-Nichts hier entscheidet, was als Nächstes kommt — das tun die Weichen im Graphen.
+Nothing here decides what comes next; that is done by the branches in the graph.
 """
 from __future__ import annotations
 
@@ -53,9 +53,9 @@ def _mail_koerper(payload: dict) -> str:
 
 
 def _fill_prompt(tmpl: str, payload: dict) -> str:
-    """{platzhalter} aus dem Payload füllen — JEDES Payload-Feld (mail ODER paperless-linked:
-    {document_id}/{url}/{note}/{hinweis}…). Fehlende bleiben leer. Sichere Ersetzung (kein
-    str.format, damit Code-Beispiele mit { } im Prompt nicht brechen)."""
+    """Fill {placeholders} from the payload: EVERY payload field (mail OR paperless-linked:
+    {document_id}/{url}/{note}/{hinweis}…). Missing ones stay empty. Safe replacement (no
+    str.format, so that code examples with { } in the prompt do not break)."""
     import re
 
     out = tmpl
@@ -66,11 +66,11 @@ def _fill_prompt(tmpl: str, payload: dict) -> str:
 
 
 async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Die Mail im Haus einordnen und die gelernte Regel zum Absender heraussuchen.
+    """Classify the mail in house and look up the learned rule about the sender.
 
-    Ohne Klassifizier-Agenten bleibt es beim Durchreichen (wie im Vorläufer): der Agent
-    liest die Mail später selbst per IMAP. Die technischen Befunde der Regeln gehen als
-    Hinweise ins Modell — es soll den Text beurteilen, nicht Kopfzeilen nachlesen, die es
+    Without a classifying agent it stays at passing through (as in the predecessor): the
+    agent reads the mail itself over IMAP later. The technical findings of the rules go into
+    the model as hints; it should assess the text, not read headers it does not see anyway.
     ohnehin nicht sieht.
     """
     from . import spam_learn
@@ -110,14 +110,14 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     if policy is not None:
         await note_hit(db, policy)
         redaction, action_hint, auto = policy.redaction, policy.action_hint, policy.auto_approve
-    # Schwärzen schützt davor, dass Rohtext das Haus verlässt. Bearbeitet die Mail ein
-    # Modell auf dem eigenen Endpoint, verlässt nichts das Haus — dann ist die Schwärzung
-    # kein Schutz mehr, sondern nur noch Informationsverlust (und ein Umweg über die
-    # IMAP-Tools, der denselben Text ohnehin wieder heranholt).
+    # Redaction protects against raw text leaving the house. If a model on the own endpoint
+    # processes the mail, nothing leaves the house, and then the redaction is no longer a
+    # protection but only a loss of information (and a detour over the IMAP tools that
+    # fetches the same text back anyway).
     agent = str(eingang.get("agent") or "assistent")
     if await agent_laeuft_lokal(db, owner_id, agent):
         redaction = "unredacted"
-    if eingang.get("auto_run"):  # Auslöser erzwingt chatlosen Sofortlauf.
+    if eingang.get("auto_run"):  # the trigger enforces a chatless immediate run.
         auto = True
 
     inst.context = {**ctx, "klasse": klasse,
@@ -129,12 +129,12 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
 
 
 async def spam_beurteilen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Regeln, lokales Modell und Gedächtnis zu einem Urteil zusammenziehen.
+    """Pull rules, local model and memory together into one verdict.
 
-    Die Regeln werden hier erneut ausgewertet statt aus dem Kontext gereicht: sie sind
-    reine Rechnung ohne Zugriff nach außen, und ein Befund-Objekt überlebt den Weg durch
-    eine JSON-Spalte nicht unbeschadet. Was danach passiert, entscheidet die Weiche im
-    Graphen — dieses Urteil sagt nur, was festgestellt wurde.
+    The rules are evaluated again here instead of being passed through the context: they are
+    pure computation without access to the outside, and a findings object does not survive
+    the way through a JSON column unharmed. What happens afterwards is decided by the branch
+    in the graph; this verdict only says what was established.
     """
     from .spam_review import beurteilen
 
@@ -147,18 +147,18 @@ async def spam_beurteilen(db, inst: WorkflowInstance, params: dict, ctx: dict) -
 
 
 async def spam_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Die Rückfrage anlegen: eine Urteils-Zeile (Arbeitsvorrat + Lehrstoff) und die Karte.
+    """Create the question: a verdict row (work stock plus learning material) and the card.
 
-    `vorentschieden` meldet einen Fall, den das Gedächtnis schon geklärt hat — er geht
-    trotzdem als Karte raus, nur ohne Frage. `rueckholbar` meldet eine Mail, die über der
-    Auto-Schwelle lag und deshalb ohne Rückfrage wegkommt; ihre Karte trägt den Rückweg.
-    Beide gehen immer sofort raus: wer stillschweigend verschiebt, merkt einen
-    eingeschlichenen Irrtum nie, und in einer Sammel-Karte von morgen früh wäre der
+    `vorentschieden` reports a case the memory has already settled; it goes out as a card
+    regardless, only without a question. `rueckholbar` reports a mail that lay above the auto
+    threshold and therefore goes away without a question; its card carries the way back.
+    Both always go out immediately: whoever moves silently never notices an error that crept
+    in, and in a digest card of tomorrow morning the objection would be too late.
     Widerspruch zu spät.
 
-    Unterhalb der Sofort-Schwelle wird bewusst KEINE eigene Karte verschickt: diese Fälle
-    sammelt der Scheduler zur Sammel-Karte (`spam_review.digest_faellig`). Der Ablauf
-    wartet derweil an seinem Genehmigungs-Knoten.
+    Below the immediate threshold NO card of its own is deliberately sent: those cases are
+    collected by the scheduler into the digest card (`spam_review.digest_faellig`). The flow
+    waits at its approval node meanwhile.
     """
     from .spam_review import anlegen, melden
 
@@ -182,12 +182,12 @@ async def spam_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
 
 
 async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Das Urteil festschreiben, daraus lernen und die Mail bewegen.
+    """Commit the verdict, learn from it and move the mail.
 
-    Reihenfolge mit Absicht: erst lernen, dann verschieben. Scheitert das Verschieben (Mail
-    schon weggeräumt, IMAP kurz weg), bleibt die Entscheidung trotzdem im Gedächtnis — sie
-    war ja richtig, nur nicht ausführbar. Der Schritt schlägt deshalb auch nicht fehl; das
-    Ergebnis steht als Text am Urteil und im Kontext.
+    The order is deliberate: first learn, then move. If moving fails (mail already cleared
+    away, IMAP briefly gone), the decision still stays in the memory, because it was right,
+    only not executable. That is why the step does not fail either; the result stands as text
+    on the verdict and in the context.
     """
     from ..models.assistant import SpamVerdict
     from .spam_review import festschreiben, imap_aktion
@@ -212,10 +212,10 @@ async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -
 
 
 async def assistent_item(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Aus der Mail ein Assistent-Item machen (das, was der Mensch dann freigibt).
+    """Turn the mail into an assistant item (the thing the human then approves).
 
-    Doppelte Zustellung erzeugt kein zweites Item: der Schlüssel ist derselbe wie beim
-    Auslöser (konfiguriertes Feld, sonst Konto:UID).
+    A double delivery creates no second item: the key is the same as with the trigger
+    (configured field, otherwise account:UID).
     """
     from sqlalchemy import select
 
@@ -284,7 +284,7 @@ async def assistent_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -
 
 
 async def assistent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Den Assistenten sofort loslaufen lassen (Auto-Freigabe durch gelernte Regel)."""
+    """Let the assistant run immediately (auto approval through a learned rule)."""
     from ..core.redis import enqueue_task
 
     task = dict(ctx.get("task") or {})

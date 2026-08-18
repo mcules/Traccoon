@@ -331,7 +331,6 @@ async def _get_or_create_placeholder(db: AsyncSession, project_id: int, display_
     # new random suffix (analogous to _ensure_member) instead of throwing an unhandled 500.
     # The advisory lock above already covers the normal case; this is an additional
     # safeguard against exotic collisions (for instance a suffix hit from another name).
-    # aus anderem Namen).
     for _ in range(5):
         suffix = secrets.token_hex(4)
         user = User(
