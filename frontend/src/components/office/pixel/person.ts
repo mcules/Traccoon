@@ -900,7 +900,6 @@ function arm(
 /** Assembles the character from its parts. The order is the occlusion: legs, torso, the far
  *  arm, head, face, the near arm, hair. The far arm lies **behind** the torso, the near one in
  *  front of it, and that is the only hint of depth a character 14 pixels wide can give. */
- *  überhaupt geben kann. */
 function drawBody(
   ctx: Ctx, cx: number, yBase: number, pal: Pal, look: Look, s: Stance,
   flip: boolean, alpha: number,
@@ -971,7 +970,6 @@ function drawBody(
  * `ensureActor`, and `wake(id)` calls `ensureActor` without a role at all. If the look had been
  * written into a seed once, somebody would have to overwrite it afterwards; this way the
  * character simply gets its role look in the first frame in which the role is known.
- * Rolle bekannt ist.
  */
 export function drawActor(ctx: Ctx, a: ActorState, t: number, pal: Pal): void {
   // Rounded in HD: the character can stand on half art units, and walking runs twice as
