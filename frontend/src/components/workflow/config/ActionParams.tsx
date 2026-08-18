@@ -15,8 +15,8 @@ interface ArtefaktTyp {
   statuses: ArtefaktStatus[]; fields: ArtefaktFeld[];
 }
 
-/** Verschachtelte Schlüssel („to.mode") lesen/schreiben, damit Aktionen wie `notify`
- *  ihre Unterobjekte behalten. */
+/** Read and write nested keys ("to.mode") so that actions like `notify` keep their
+ *  sub-objects. */
 function get(obj: Record<string, any>, pfad: string): any {
   return pfad.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }
@@ -35,9 +35,9 @@ function set(obj: Record<string, any>, pfad: string, wert: any): Record<string, 
 }
 
 /**
- * Zeigt die Einstellmöglichkeiten einer Aktion als benannte Felder — mit Auswahllisten für
- * alles, was feste Werte hat (Zustände, Board-Spalten, Agenten, Rollen). Unbekannte
- * Parameter bleiben über „Weitere Parameter" erreichbar, damit nichts verloren geht.
+ * Shows the settings of an action as named fields, with selection lists for everything that
+ * has fixed values (states, board columns, agents, roles). Unknown parameters stay reachable
+ * over "further parameters" so that nothing is lost.
  */
 export default function ActionParams({
   action,
@@ -52,7 +52,7 @@ export default function ActionParams({
   onChange: (p: Record<string, any>) => void;
   members: MemberLite[];
   projectId?: number;
-  /** Subjekt des Ablaufs — bestimmt, welche Zustände es überhaupt gibt. */
+  /** Subject of the flow; determines which states exist at all. */
   subjectKind?: string;
 }) {
   const spec = ACTION_SPECS[action] || FALLBACK_SPEC;
@@ -64,8 +64,8 @@ export default function ActionParams({
     enabled: braucht("agent_role"),
     staleTime: 5 * 60_000,
   });
-  // Empfänger: alle Personen, die dieser Mensch sehen darf (eigene Projekte, Platzhalter,
-  // er selbst) — samt der Wege, auf denen sie erreichbar sind.
+  // Recipients: all people this human may see (their own projects, placeholders, themselves)
+  // including the ways they are reachable on.
   const { data: personen } = useQuery({
     queryKey: ["users-visible"],
     queryFn: () => api.get<{ id: number; display_name: string; notify_default: string;
@@ -73,7 +73,7 @@ export default function ActionParams({
     enabled: braucht("person"),
     staleTime: 5 * 60_000,
   });
-  // Zustände des Artefakts, an dem der Ablauf hängt (Administration → Artefakte).
+  // States of the artifact the flow hangs off (Administration → Artifacts).
   const { data: typen } = useQuery({
     queryKey: ["artifact-types", subjectKind],
     queryFn: () => api.get<ArtefaktTyp[]>(`/artifact-types?subject=${subjectKind}`),
@@ -81,9 +81,9 @@ export default function ActionParams({
     staleTime: 5 * 60_000,
   });
 
-  // Werkzeuge aus der MCP-Registry (Einstellungen → MCP-Server). Sie machen das Anbinden
-  // fremder Systeme zur Konfiguration: wer einen Server einträgt, findet seine Werkzeuge
-  // hier wieder — ohne dass jemand eine Aktion programmieren müsste.
+  // Tools from the MCP registry (Settings → MCP servers). They turn connecting foreign
+  // systems into configuration: whoever enters a server finds its tools here again, without
+  // anybody having to program an action.
   const { data: werkzeuge } = useQuery({
     queryKey: ["workflow-tools"],
     queryFn: () => api.get<{ name: string; server: string; beschreibung: string;
@@ -99,14 +99,14 @@ export default function ActionParams({
     staleTime: 5 * 60_000,
   });
 
-  /** Enthält der Wert eine Vorlage ({{…}}), muss ein Textfeld her — eine Auswahlliste
-   *  würde ihn beim ersten Öffnen des Knotens stillschweigend verschlucken. Der
-   *  ausgelieferte Lebenszyklus nutzt genau das (hold_reason: {{agent.hold_hint}}). */
+  /** If the value contains a template ({{…}}), a text field is needed: a selection list would
+   *  swallow it silently on the first opening of the node. The shipped lifecycle uses exactly
+   *  that (hold_reason: {{agent.hold_hint}}). */
   const istVorlage = (v: any) => typeof v === "string" && v.includes("{{");
 
   const auswahl = (f: FieldSpec): [string, string][] => {
     if (f.source === "agent_role") {
-      // Je Rolle EIN Eintrag, mit Herkunft der Definition, die tatsächlich greift.
+      // ONE entry per role, with the origin of the definition that actually applies.
       return agentOptions(agents, { empty: tr(f.required ? "action_params.waehlen" : "action_params.keiner") });
     }
     if (f.source === "board_status") {
@@ -137,8 +137,8 @@ export default function ActionParams({
               ...members.map((m) => [String(m.user_id), m.display_name] as [string, string])];
     }
     if (f.source === "person") {
-      // Projekt-Mitglieder reichen hier nicht: ein eigener, projektloser Ablauf hat gar
-      // keine — die Auswahl blieb leer und man konnte niemanden benennen.
+      // Project members are not enough here: an own, project-less flow has none, so the
+      // selection stayed empty and nobody could be named.
       const liste = personen || [];
       return [["", "— Betreiber —"],
               ...liste.map((u) => [String(u.id),
@@ -151,12 +151,12 @@ export default function ActionParams({
   const sichtbar = (f: FieldSpec) => {
     if (!f.showIf) return true;
     const [feld, werte] = f.showIf;
-    // `__subject` prüft das Subjekt des Ablaufs statt eines Parameters.
+    // `__subject` checks the subject of the flow instead of a parameter.
     if (feld === "__subject") return werte.includes(subjectKind || "");
     return werte.includes(String(get(params, feld) ?? ""));
   };
 
-  // Parameter, die kein Feld abdeckt (Altbestand oder Sonderfall) — bleiben editierbar.
+  // Parameters no field covers (legacy or a special case) stay editable.
   const bekannt = new Set(spec.fields.map((f) => f.key.split(".")[0]).filter(Boolean));
   const rest = Object.fromEntries(
     Object.entries(params).filter(([k]) => !bekannt.has(k)));

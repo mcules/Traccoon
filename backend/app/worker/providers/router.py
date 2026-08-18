@@ -39,7 +39,7 @@ class Router:
             "openai": OpenAIProvider(),
         }
         # OpenAI-kompatible Provider mit eigener Base-URL, nach URL gecacht (der globale
-        # Default-OpenAIProvider bleibt unangetastet → api.openai.com).
+        # default OpenAIProvider stays untouched at api.openai.com).
         self._openai_by_url: dict[str, OpenAIProvider] = {}
         self._cooldown: dict[str, float] = {}
 

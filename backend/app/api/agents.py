@@ -42,9 +42,9 @@ class AgentIn(BaseModel):
 
 class AgentOut(AgentIn):
     id: int
-    # Woher die Definition kommt: NULL = systemweit ausgeliefert, sonst der Eigentümer.
-    # Zusammen mit project_id macht das in der Oberfläche unterscheidbar, welche von
-    # mehreren gleichnamigen Rollen tatsächlich greift.
+    # Where the definition comes from: NULL = shipped system wide, otherwise the owner.
+    # Together with project_id that makes it distinguishable in the interface which of
+    # several roles of the same name actually applies.
     user_id: int | None = None
     origin_agent_id: int | None = None
     customized: bool = False
@@ -81,7 +81,7 @@ async def update_agent(agent_id: int, data: AgentIn, user: User = Depends(get_cu
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent nicht gefunden")
     for field, value in data.model_dump().items():
         setattr(a, field, value)
-    # Bearbeiten einer verknüpften Kopie markiert sie als „bearbeitet" → kein Sync mehr.
+    # Editing a linked copy marks it as "edited", so no more syncing.
     if a.origin_agent_id is not None:
         a.customized = True
     await db.commit()
@@ -89,7 +89,7 @@ async def update_agent(agent_id: int, data: AgentIn, user: User = Depends(get_cu
     return a
 
 
-# Konfigfelder, die beim Kopieren/Sync übernommen werden (nicht id/role/user/project/origin).
+# Config fields taken over on copying and syncing (not id/role/user/project/origin).
 _COPY_FIELDS = (
     "display_name", "system_prompt", "provider", "model", "token_name", "fallback",
     "fallback_model", "fallback_token_name", "effort", "temperature", "max_tokens",
@@ -100,7 +100,7 @@ _COPY_FIELDS = (
 
 
 async def _copy_instances(db: AsyncSession, src_agent_id: int, dst_agent_id: int) -> None:
-    """MCP-Instanzen eines Agenten in einen anderen kopieren (values übernommen)."""
+    """Copy the MCP instances of one agent into another (values taken over)."""
     from ..models.plugins import McpInstance
     from sqlalchemy import select as _sel
     for inst in (await db.execute(_sel(McpInstance).where(
@@ -116,11 +116,11 @@ class CopyToProjectIn(BaseModel):
 @router.post("/{agent_id}/copy-to-project", response_model=AgentOut, status_code=201)
 async def copy_to_project(agent_id: int, data: CopyToProjectIn, user: User = Depends(get_current_user),
                           db: AsyncSession = Depends(get_session)):
-    """Globalen Agenten als verknüpfte Kopie in ein Projekt laden (Snapshot, aber gesynct-fähig)."""
+    """Load a global agent into a project as a linked copy (a snapshot, but syncable)."""
     src = await db.get(AgentDefinition, agent_id)
     if src is None or src.user_id not in (None, user.id):
         raise HTTPException(404, "Agent nicht gefunden")
-    # Ziel-Projekt muss existieren und der Nutzer dort mind. Maintainer sein.
+    # The target project has to exist and the user has to be at least a maintainer there.
     from ..models.project import Project
     proj = await db.get(Project, data.project_id)
     if proj is None:
@@ -143,12 +143,12 @@ async def copy_to_project(agent_id: int, data: CopyToProjectIn, user: User = Dep
 @router.post("/{agent_id}/sync-linked")
 async def sync_linked(agent_id: int, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    """Alle unbearbeiteten verknüpften Kopien dieses Agenten auf den aktuellen Stand bringen."""
+    """Bring all unedited linked copies of this agent up to date."""
     from ..models.plugins import McpInstance
     src = await db.get(AgentDefinition, agent_id)
     if src is None or src.user_id not in (None, user.id):
         raise HTTPException(404, "Agent nicht gefunden")
-    # Nur EIGENE unbearbeitete Kopien aktualisieren — nie die anderer Nutzer.
+    # Update only ONE'S OWN unedited copies, never those of other users.
     copies = (await db.execute(select(AgentDefinition).where(
         AgentDefinition.origin_agent_id == agent_id,
         AgentDefinition.customized.is_(False),
@@ -156,7 +156,7 @@ async def sync_linked(agent_id: int, user: User = Depends(get_current_user),
     for c in copies:
         for f in _COPY_FIELDS:
             setattr(c, f, getattr(src, f))
-        # Instanzen frisch übernehmen
+        # Take the instances over freshly
         for old in (await db.execute(select(McpInstance).where(
                 McpInstance.agent_id == c.id))).scalars().all():
             await db.delete(old)
@@ -176,16 +176,16 @@ async def delete_agent(agent_id: int, user: User = Depends(get_current_user), db
 
 DEFAULT_ROLES = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"]
 _CAPS = {
-    # PM plant/splittet Code-Tickets → braucht Lesezugriff auf den Code (schreibt aber nicht).
-    # Planer geben den kompletten Plan als EIN Tool-Argument (submit_plan) aus → hoher
-    # max_tokens, sonst wird die Antwort abgeschnitten und die Tool-Argumente sind unvollständig.
+    # The PM plans and splits code tickets, so it needs read access to the code (but does not write).
+    # Planners output the complete plan as ONE tool argument (submit_plan), hence a high
+    # max_tokens; otherwise the answer is truncated and the tool arguments are incomplete.
     "project_manager": dict(can_delegate=True, can_read_code=True, max_turns_execution=40,
                             max_tokens=16384, max_turns_planning=20),
     "architect": dict(can_read_code=True, max_tokens=16384, max_turns_planning=20),
     "developer": dict(can_code=True),
-    # Der Prüfer liest viel und schreibt wenig (`<review-ok/>` oder eine Befundliste).
-    # Auf sonnet-5/opus-5 teilt sich das Denken `max_tokens` mit der Antwort — mit der
-    # Standardstufe fraß es das Budget und der Lauf starb abgeschnitten (Lauf 744).
+    # The reviewer reads a lot and writes little (`<review-ok/>` or a list of findings).
+    # On sonnet-5/opus-5 the thinking shares `max_tokens` with the answer, and with the
+    # default level it ate the budget and the run died truncated (run 744).
     "code_reviewer": dict(can_read_code=True, effort="medium"),
     "tester": dict(can_code=True),
     "devops": dict(can_code=True),
@@ -193,7 +193,7 @@ _CAPS = {
 
 
 async def seed_default_agents(db: AsyncSession, user_id: int) -> None:
-    """Legt Standard-Agenten-Templates für einen Nutzer an (idempotent)."""
+    """Creates default agent templates for a user (idempotent)."""
     for role in DEFAULT_ROLES:
         exists = (await db.execute(select(AgentDefinition).where(
             AgentDefinition.user_id == user_id, AgentDefinition.role == role,
