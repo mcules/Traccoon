@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from . import models  # noqa: F401  (Metadata für create_all füllen)
+from . import models  # noqa: F401  (fills the metadata for create_all)
 from .api import (
     admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, deployments,
     destinations, files, hardware, invitations,
@@ -30,36 +30,36 @@ log = logging.getLogger("traccoon.start")
 
 
 async def _fehlt_noch(conn, ddl: str) -> bool:
-    """Muss dieses `ADD COLUMN IF NOT EXISTS` überhaupt laufen?
+    """Does this `ADD COLUMN IF NOT EXISTS` need to run at all?
 
-    `IF NOT EXISTS` verhindert den Fehler, nicht die Sperre: Postgres nimmt für jedes ALTER
-    zuerst eine AccessExclusiveLock auf die Tabelle und schaut ERST DANN nach, ob die Spalte
-    schon da ist. Bei 83 Anweisungen pro Backend-Start heißt das 83 exklusive Sperren auf
-    Tabellen, in die nebenan gerade ein Agent schreibt — am 2026-08-07 um 18:00 hat genau
-    das den Lauf 753 (TRA-31, 37 Züge) erledigt: die Sperre auf `run_steps` gegen den
-    laufenden INSERT, Postgres löste den Deadlock auf, und das Opfer war der Agent.
+    `IF NOT EXISTS` prevents the error, not the lock: for every ALTER, Postgres first takes
+    an AccessExclusiveLock on the table and ONLY THEN looks whether the column is already
+    there. With 83 statements per backend start that means 83 exclusive locks on tables an
+    agent is writing to next door. On 2026-08-07 at 18:00 exactly that killed run 753
+    (TRA-31, 37 turns): the lock on `run_steps` against the running INSERT, Postgres broke
+    the deadlock, and the victim was the agent.
 
-    Vorher nachsehen kostet einen billigen Katalog-Lesezugriff und nimmt im Regelfall — die
-    Spalte ist längst da — gar keine Sperre mehr.
+    Looking first costs a cheap catalog read and, in the normal case (the column has long
+    been there), takes no lock at all.
     """
     if m := re.match(r"ALTER TABLE (\w+) ADD COLUMN IF NOT EXISTS (\w+)\b", ddl, re.I):
         da = await conn.scalar(text(
             "SELECT 1 FROM information_schema.columns "
             "WHERE table_name = :t AND column_name = :c"), {"t": m.group(1), "c": m.group(2)})
         return da is None
-    # `CREATE INDEX IF NOT EXISTS` nimmt eine ShareLock und blockiert damit jeden Schreiber
-    # auf der Tabelle — auf `run_steps` also den laufenden Agenten. Auch hier gilt: erst
-    # nachsehen, ob es den Index überhaupt noch anzulegen gilt.
+    # `CREATE INDEX IF NOT EXISTS` takes a ShareLock and thereby blocks every writer on the
+    # table, so on `run_steps` the running agent. The same applies here: look first whether
+    # the index still needs creating at all.
     if m := re.match(r"CREATE (?:UNIQUE )?INDEX IF NOT EXISTS (\w+)\b", ddl, re.I):
         return await conn.scalar(text("SELECT to_regclass(:n)"), {"n": m.group(1)}) is None
-    # Wiederholt sich sonst bei jedem Start: die Spalte ist längst nullable, die Sperre wird
-    # trotzdem angefordert (und lief am 2026-08-07 prompt in den frischen lock_timeout).
+    # Would otherwise repeat on every start: the column has long been nullable, the lock is
+    # requested anyway (and on 2026-08-07 promptly ran into the fresh lock_timeout).
     if m := re.match(r"ALTER TABLE (\w+) ALTER COLUMN (\w+) DROP NOT NULL", ddl, re.I):
         nullable = await conn.scalar(text(
             "SELECT is_nullable FROM information_schema.columns "
             "WHERE table_name = :t AND column_name = :c"), {"t": m.group(1), "c": m.group(2)})
         return nullable == "NO"
-    return True                           # alles andere (ENUM-Werte, UPDATE) läuft wie gehabt
+    return True                           # everything else (ENUM values, UPDATE) runs as before
 
 
 @asynccontextmanager
@@ -67,47 +67,47 @@ async def lifespan(app: FastAPI):
     if settings.dev_create_all:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            # Und falls doch etwas nachzuziehen ist: nach 3 Sekunden aufgeben statt sich in
-            # die Warteschlange vor eine laufende Schreiblast zu stellen. Eine wartende
-            # AccessExclusiveLock blockiert ihrerseits alle nachfolgenden Schreiber — der
-            # Selbstheilungs-Versuch legt sonst genau das lahm, was er reparieren soll.
+            # And should something need catching up after all: give up after 3 seconds
+            # instead of queueing in front of a running write load. A waiting
+            # AccessExclusiveLock blocks every following writer in turn, so the
+            # self-healing attempt would paralyse exactly what it is meant to repair.
             await conn.execute(text("SET lock_timeout = '3s'"))
-            # Additive Spalten idempotent nachziehen (create_all legt sie nur auf FRISCHEN
-            # Tabellen an, nicht auf bestehenden). Reihenfolge/Stil wie ADD COLUMN IF NOT EXISTS.
+            # Add additive columns idempotently (create_all only creates them on FRESH
+            # tables, not on existing ones). Order and style as with ADD COLUMN IF NOT EXISTS.
             for _ddl in (
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cap_baseline_run_id INTEGER",
-                # Verbrauchte Korrektur-Runden des Review-Gates — am Ticket statt im
-                # Worker-Prozess, damit ein Neustart die Grenze nicht zurücksetzt.
+                # Correction rounds spent at the review gate: on the ticket instead of in
+                # the worker process, so that a restart does not reset the limit.
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS review_rounds INTEGER "
                 "DEFAULT 0 NOT NULL",
-                # Modellkatalog: Kontextfenster + ungefähre Ausgabegeschwindigkeit. Bei
-                # lokalen Modellen ist genau das der Auswahlgrund — der Preis ist dort 0.
+                # Model catalog: context window plus approximate output speed. With local
+                # models that is exactly the reason to choose one, the price being 0 there.
                 "ALTER TABLE provider_models ADD COLUMN IF NOT EXISTS context_tokens INTEGER",
                 "ALTER TABLE provider_models ADD COLUMN IF NOT EXISTS speed_tps DOUBLE PRECISION",
                 # Eigene Base-URL je Provider-Token (OpenAI-kompatibler Endpoint, z. B. litellm).
                 "ALTER TABLE provider_tokens ADD COLUMN IF NOT EXISTS base_url VARCHAR(500)",
-                # Person-Zuweisung (TRA-20): Platzhalter-Konten ohne Login. create_all/ADD
-                # COLUMN zieht keine Enum-Werte nach → ADD VALUE explizit (PG 12+ erlaubt das
-                # in-Tx, solange der Wert nicht in derselben Tx genutzt wird).
+                # Person assignment (TRA-20): placeholder accounts without a login.
+                # create_all/ADD COLUMN does not add enum values, so ADD VALUE explicitly
+                # (PG 12+ allows that in a transaction as long as the value is not used in it).
                 "ALTER TYPE userstatus ADD VALUE IF NOT EXISTS 'placeholder'",
-                # Lern-Policy des Assistenten: Schwärzung/Rohtext/gelernte Aktion pro Item.
+                # Learning policy of the assistant: redaction, raw text, learned action per item.
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS redaction VARCHAR(20) DEFAULT 'redacted' NOT NULL",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS raw_body TEXT",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS action_hint TEXT DEFAULT '' NOT NULL",
-                # Telegram-Freigabekarte für projektlose Assistent-Items.
+                # Telegram approval card for project-less assistant items.
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS assistant_task_id INTEGER "
                 "REFERENCES assistant_tasks(id) ON DELETE CASCADE",
-                # Tool-Gate des Assistenten: wartende Freigabe + Einmal-Grant je Item.
+                # Tool gate of the assistant: pending approval plus one-shot grant per item.
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS pending_tool VARCHAR(150)",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS pending_resource VARCHAR(500)",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS grant_tool VARCHAR(150)",
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS grant_resource VARCHAR(500)",
-                # Mail-Webhook als normaler WebhookSub (Modus assistant): Klassifizier-Agent.
+                # Mail webhook as a normal WebhookSub (mode assistant): classifying agent.
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS classify_agent VARCHAR(100)",
-                # Mail-Task-Prompt (Verarbeitungs-Wissen) je Webhook — portiert aus dem Vorläufer.
+                # Mail task prompt (processing knowledge) per webhook, ported from the predecessor.
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS prompt_tmpl TEXT",
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS auto_run BOOLEAN DEFAULT FALSE NOT NULL",
-                # Workflow-Trigger: Webhook/Job starten eine Workflow-Instanz (Etappe 3).
+                # Workflow trigger: webhook or job starts a workflow instance.
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS workflow_definition_id INTEGER "
                 "REFERENCES workflow_definitions(id) ON DELETE SET NULL",
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS context_map JSON DEFAULT '{}'::json NOT NULL",
@@ -115,10 +115,10 @@ async def lifespan(app: FastAPI):
                 "REFERENCES workflow_definitions(id) ON DELETE SET NULL",
                 # E-Mail optional (login-lose Konten): NOT NULL entfernen (UNIQUE bleibt).
                 "ALTER TABLE users ALTER COLUMN email DROP NOT NULL",
-                # Ticket-Öffnen-Modus je Nutzer (popup|page).
+                # Ticket opening mode per user (popup|page).
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS ticket_open_mode VARCHAR(10) "
                 "DEFAULT 'popup' NOT NULL",
-                # Nutzerspezifische Block-Anordnung der Ticket-Seite.
+                # User specific block arrangement of the ticket page.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS ticket_layout JSON DEFAULT '{}'::json NOT NULL",
                 # PM-Chat-Darstellung je Nutzer (TRA-21).
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS pm_chat_style VARCHAR(10) "
@@ -128,14 +128,14 @@ async def lifespan(app: FastAPI):
                 "DEFAULT TRUE NOT NULL",
                 "ALTER TABLE locations ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE SET NULL",
-                # Agentenläufe folgen dem Ticket ins Archiv (TRA-29).
+                # Agent runs follow the ticket into the archive (TRA-29).
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS archived BOOLEAN DEFAULT FALSE NOT NULL",
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
-                # Bestandsdaten nachziehen: Läufe bereits archivierter Tickets mitarchivieren.
+                # Catch up existing data: archive runs of already archived tickets too.
                 "UPDATE runs SET archived = TRUE, archived_at = COALESCE(issues.archived_at, now()) "
                 "FROM issues WHERE runs.issue_id = issues.id AND issues.archived "
                 "AND NOT runs.archived",
-                # Zuständige je Beschaffungsschritt (TRA-26).
+                # Responsible person per procurement step (TRA-26).
                 "ALTER TABLE hardware_workflow_steps ADD COLUMN IF NOT EXISTS assignee "
                 "JSON DEFAULT '{}'::json NOT NULL",
                 # Testumgebungs-Lebenszyklus je Projekt (TRA-18).
@@ -147,8 +147,8 @@ async def lifespan(app: FastAPI):
                 "VARCHAR(255) DEFAULT 'Dockerfile' NOT NULL",
                 "ALTER TABLE projects ADD COLUMN IF NOT EXISTS testenv_url_template "
                 "VARCHAR(255) DEFAULT 'http://{host}:{port}' NOT NULL",
-                # „Testen"-Spalte für Bestandsprojekte anlegen und vor „Fertig" einsortieren.
-                # Beide Statements sind idempotent (NOT EXISTS bzw. nur wenn done davor liegt).
+                # Create the "testing" column for existing projects and sort it before "done".
+                # Both statements are idempotent (NOT EXISTS, respectively only when done follows).
                 "INSERT INTO workflow_statuses (project_id, name, category, \"order\") "
                 "SELECT p.id, 'Testen', 'in_progress', "
                 "COALESCE((SELECT MIN(s.\"order\") FROM workflow_statuses s "
@@ -165,15 +165,15 @@ async def lifespan(app: FastAPI):
                 "JOIN boards b ON b.project_id = s.project_id "
                 "WHERE s.name = 'Testen' AND NOT EXISTS ("
                 "  SELECT 1 FROM board_columns c WHERE c.board_id = b.id AND c.status_id = s.id)",
-                # Spaltenreihenfolge am Status ausrichten — sonst kollidiert die neue
-                # „Testen"-Spalte mit dem alten Platz von „Fertig".
+                # Align the column order with the status, otherwise the new "testing" column
+                # collides with the old place of "done".
                 "UPDATE board_columns c SET \"order\" = s.\"order\" FROM workflow_statuses s "
                 "WHERE s.id = c.status_id AND c.\"order\" <> s.\"order\"",
-                # Ticket an Hardware-Exemplar hängen (TRA-25).
+                # Attach a ticket to a hardware unit (TRA-25).
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS asset_id INTEGER "
                 "REFERENCES hardware_assets(id) ON DELETE SET NULL",
-                # Prozess-Sätze: Slot/Archiv an den Definitionen, Satz-Referenz an
-                # Projekt/Nutzer, Routing-Stempel am Schritt, Instanz am Ticket.
+                # Process sets: slot and archive on the definitions, set reference on
+                # project or user, routing stamp on the step, instance on the ticket.
                 "ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS set_id INTEGER "
                 "REFERENCES workflow_sets(id) ON DELETE CASCADE",
                 "ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS slot VARCHAR(40)",
@@ -195,13 +195,13 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS workflow_instance_id INTEGER",
                 "CREATE INDEX IF NOT EXISTS ix_issues_workflow_instance_id ON issues "
                 "(workflow_instance_id)",
-                # Bestehende Beschaffungs-Definitionen dem Slot zuordnen, damit sie als
-                # Projekt-Anpassung erkannt werden (statt neben dem Satz zu stehen).
+                # Assign existing procurement definitions to the slot so that they are
+                # recognised as a project adjustment (instead of standing beside the set).
                 "UPDATE workflow_definitions SET slot = 'hardware_procurement' "
                 "WHERE key = 'hardware-beschaffung' AND slot IS NULL AND project_id IS NOT NULL",
-                # Webhook meldet ein Ereignis statt einen festen Ablauf zu starten.
-                # Hardware bekommt eine gemeinsame Artefakt-Identität; Prozesse binden
-                # allgemein an ein Artefakt statt an ein Exemplar.
+                # The webhook reports an event instead of starting a fixed flow.
+                # Hardware gets a shared artifact identity; processes bind to an artifact in
+                # general instead of to a single unit.
                 "ALTER TABLE hardware_assets ADD COLUMN IF NOT EXISTS artifact_id INTEGER "
                 "REFERENCES artifacts(id) ON DELETE CASCADE",
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_hardware_asset_artifact ON hardware_assets "
@@ -210,19 +210,19 @@ async def lifespan(app: FastAPI):
                 "REFERENCES artifacts(id) ON DELETE SET NULL",
                 "CREATE INDEX IF NOT EXISTS ix_workflow_instances_artifact ON workflow_instances "
                 "(artifact_id)",
-                # Tickets bekommen dieselbe gemeinsame Artefakt-Identität wie die Hardware.
+                # Tickets get the same shared artifact identity as the hardware.
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS artifact_id INTEGER "
                 "REFERENCES artifacts(id) ON DELETE SET NULL",
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_issue_artifact ON issues "
                 "(artifact_id) WHERE artifact_id IS NOT NULL",
-                # Die beiden JSON-Platzhalter sind durch das echte Feld-Modell abgelöst
-                # (`artifact_fields`/`artifact_values`). Sie waren nie befüllt, stehen aber
-                # als NOT NULL ohne Vorgabe in der Tabelle — ohne DROP schlüge jedes INSERT fehl.
+                # The two JSON placeholders are superseded by the real field model
+                # (`artifact_fields`/`artifact_values`). They were never filled but stand in
+                # the table as NOT NULL without a default, so every INSERT would fail without a DROP.
                 "ALTER TABLE artifact_types DROP COLUMN IF EXISTS fields",
                 "ALTER TABLE artifacts DROP COLUMN IF EXISTS data",
-                # Felder tragen ihre Herkunft (echte Spalte) und sind ggf. eingebaut;
-                # Werte tragen Kategorie und „wartet" — beides wanderte aus dem
-                # früheren Zustands-Modell hierher.
+                # Fields carry their origin (real column) and may be built in; values carry
+                # a category and "waiting", both of which migrated here from the earlier
+                # status model.
                 "ALTER TABLE artifact_fields ADD COLUMN IF NOT EXISTS source VARCHAR(40) "
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE artifact_fields ADD COLUMN IF NOT EXISTS options_source "
@@ -233,9 +233,9 @@ async def lifespan(app: FastAPI):
                 "VARCHAR(20) DEFAULT '' NOT NULL",
                 "ALTER TABLE artifact_field_options ADD COLUMN IF NOT EXISTS waiting BOOLEAN "
                 "DEFAULT FALSE NOT NULL",
-                # Ein Ablauf darf an eine Vorgangsart gebunden sein (Bug ≠ Aufgabe).
-                # Der Unique-Index wird dafür neu gezogen: COALESCE, weil NULLs sonst als
-                # verschieden gelten und beliebig viele allgemeine Kopien entstünden.
+                # A flow may be bound to a kind of item (bug is not task).
+                # The unique index is rebuilt for that: COALESCE, because NULLs would
+                # otherwise count as different and any number of generic copies could appear.
                 "ALTER TABLE workflow_definitions ADD COLUMN IF NOT EXISTS issue_type_id "
                 "INTEGER REFERENCES issue_types(id) ON DELETE CASCADE",
                 "CREATE INDEX IF NOT EXISTS ix_workflow_definitions_issue_type "
@@ -244,7 +244,7 @@ async def lifespan(app: FastAPI):
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_workflow_def_project_slot "
                 "ON workflow_definitions (project_id, slot, COALESCE(issue_type_id, 0)) "
                 "WHERE archived_at IS NULL",
-                # Ein Projekt darf seine Artefakte um eigene Felder erweitern.
+                # A project may extend its artifacts with fields of its own.
                 "ALTER TABLE artifact_fields ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE CASCADE",
                 "CREATE INDEX IF NOT EXISTS ix_artifact_fields_project "
@@ -253,12 +253,12 @@ async def lifespan(app: FastAPI):
                 "DROP INDEX IF EXISTS uq_artifact_field",
                 "CREATE UNIQUE INDEX IF NOT EXISTS uq_artifact_field "
                 "ON artifact_fields (type_id, COALESCE(project_id, 0), key)",
-                # Die Ordnungsebene „Artefakt-Typ" ist wieder weg: Ticket und Hardware sind
-                # beide einfach Artefakte, ihre Bedeutung kommt aus den Feldern.
+                # The ordering level "artifact type" is gone again: ticket and hardware are
+                # both simply artifacts, their meaning comes from the fields.
                 "ALTER TABLE artifact_types DROP COLUMN IF EXISTS group_id",
                 "DROP TABLE IF EXISTS artifact_groups",
                 "ALTER TABLE webhook_subs ADD COLUMN IF NOT EXISTS event_name VARCHAR(120)",
-                # Assistent meldet sich nur noch, wenn es nötig ist.
+                # The assistant only speaks up when it is necessary.
                 "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS notified BOOLEAN "
                 "DEFAULT FALSE NOT NULL",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS assistant_notify VARCHAR(10) "
@@ -276,48 +276,48 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '{}'::json NOT NULL",
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'wait_event'",
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'subflow'",
-                # Schleifen-Knoten: geht eine Liste Element für Element durch.
+                # Loop node: walks a list element by element.
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'loop'",
-                # Timer-Knoten: wartet eine Weile, ohne dass jemand etwas melden muss.
+                # Timer node: waits a while without anyone having to report anything.
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'timer'",
-                # Gedächtnis im Vault (TRA-30): Ordner am Nutzer, Lern-Schalter am Agenten.
+                # Memory in the vault (TRA-30): folder on the user, learning switch on the agent.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS vault_memory_path VARCHAR(500) "
                 "DEFAULT '' NOT NULL",
                 "ALTER TABLE agent_definitions ADD COLUMN IF NOT EXISTS learns BOOLEAN "
                 "DEFAULT TRUE NOT NULL",
-                # Antwortgrenze je Ziel (TRA-31): Gegenstellen, die ihre Lage bewusst in
-                # einem Abruf liefern, brauchen mehr als die pauschalen 4000 Zeichen.
+                # Response limit per destination (TRA-31): counterparts that deliberately
+                # deliver their whole state in one call need more than the flat 4000 characters.
                 "ALTER TABLE destinations ADD COLUMN IF NOT EXISTS max_response_chars "
                 "INTEGER DEFAULT 4000 NOT NULL",
-                # Büro (office): Projekt/Owner wandern an den Lauf, damit die Live-Brücke
-                # jedes Ereignis ohne DB-Rückfrage autorisieren kann — und damit projektlose
-                # Läufe (Assistent, Job) überhaupt eine Zugehörigkeit haben.
+                # Office: project and owner move onto the run so that the live bridge can
+                # authorise every event without a database round trip, and so that
+                # project-less runs (assistant, job) have an affiliation at all.
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS project_id INTEGER "
                 "REFERENCES projects(id) ON DELETE SET NULL",
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS owner_id INTEGER "
                 "REFERENCES users(id) ON DELETE SET NULL",
-                # Verbund Eltern→Kind: beim `delegate`-Werkzeugstart ist die Kind-Lauf-ID noch
-                # unbekannt, die Werkzeug-ID schon. Das Kind bringt sie mit.
+                # Parent to child link: at the `delegate` tool start the child run id is
+                # still unknown, the tool id already known. The child brings it along.
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS parent_tool_use_id VARCHAR(64)",
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS spawn_depth SMALLINT DEFAULT 0 NOT NULL",
                 "ALTER TABLE runs ADD COLUMN IF NOT EXISTS blocker_kind VARCHAR(24)",
-                # Bestandsläufe bekommen ihr Projekt aus dem Ticket — ohne das startet die
-                # Ansicht leer, weil kein Altlauf autorisierbar wäre.
+                # Existing runs get their project from the ticket; without that the view
+                # starts empty, because no old run would be authorisable.
                 "UPDATE runs SET project_id = i.project_id FROM issues i "
                 "WHERE runs.issue_id = i.id AND runs.project_id IS NULL",
                 "CREATE INDEX IF NOT EXISTS ix_runs_project_started ON runs (project_id, started_at DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_runs_owner_started ON runs (owner_id, started_at DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_runs_parent_run_id ON runs (parent_run_id)",
                 "CREATE INDEX IF NOT EXISTS ix_runs_issue_started ON runs (issue_id, started_at)",
-                # Personalakte (`/office/agents`): jede ihrer fünf Abfragen gruppiert nach
-                # `runs.agent` innerhalb eines Zeitfensters — die Werkzeugtabelle joint dafür
-                # sogar `run_steps` gegen `runs`. Ohne diesen Index ist das ein Seq-Scan über
-                # inzwischen 13 000 Laufzeilen, und zwar bei jedem Öffnen des Reiters.
+                # Personnel file (`/office/agents`): each of its five queries groups by
+                # `runs.agent` within a time window, and the tool table even joins
+                # `run_steps` against `runs` for it. Without this index that is a seq scan
+                # over meanwhile 13 000 run rows, on every opening of the tab.
                 "CREATE INDEX IF NOT EXISTS ix_runs_agent_started ON runs (agent, started_at DESC)",
-                # Der Schritt trägt sein Ereignis selbst: Art, Werkzeug-ID, Ziel, Erfolg, Dauer
-                # und die Tokens des einzelnen Modellzugs. `ok` ist dreiwertig (NULL=unbekannt),
-                # `provider`/`model` halten fest, WER geantwortet hat — bei Fallback ist das
-                # nicht der Provider am Lauf.
+                # The step carries its event itself: kind, tool id, target, success, duration
+                # and the tokens of the single model turn. `ok` is three valued
+                # (NULL=unknown), `provider`/`model` record WHO answered, which on a
+                # fallback is not the provider on the run.
                 "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS kind VARCHAR(24) DEFAULT '' NOT NULL",
                 "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS tool_use_id VARCHAR(64)",
                 "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS target VARCHAR(500)",
@@ -328,49 +328,49 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS cache_read_tokens INTEGER DEFAULT 0 NOT NULL",
                 "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS provider VARCHAR(50)",
                 "ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS model VARCHAR(150)",
-                # Tragend, nicht kosmetisch: die Ansicht liest immer „ein Lauf, in
-                # Ankunftsreihenfolge". Ohne diesen Index sortiert Postgres dafür bis zu
-                # 20 000 Zeilen je Abruf. Läuft in engine.begin(), also ohne CONCURRENTLY —
-                # bei bereits großer Tabelle vorher von Hand anlegen, dann ist das hier ein No-op.
+                # Load bearing, not cosmetic: the view always reads "one run, in arrival
+                # order". Without this index Postgres sorts up to 20 000 rows per fetch. It
+                # runs in engine.begin(), so without CONCURRENTLY: on an already large table
+                # create it by hand beforehand, then this here is a no-op.
                 "CREATE INDEX IF NOT EXISTS ix_run_steps_run_id_id ON run_steps (run_id, id)",
-                # Dreiwertig: NULL=Altzeile, False=kein Katalogeintrag (die 0,00 ist bloß eine
-                # Lücke), True=bepreist. Ohne das liest sich jede Katalog-Lücke als „gratis".
+                # Three valued: NULL=old row, False=no catalog entry (the 0.00 is merely a
+                # gap), True=priced. Without it every catalog gap reads as "free".
                 "ALTER TABLE cost_entries ADD COLUMN IF NOT EXISTS priced BOOLEAN",
-                # Deployments (`api/deployments.py`): 186 Zeilen, die bisher niemand lesen
-                # konnte. `source` beantwortet die Frage, die `requested_by`/`chat_id` nie
-                # beantwortet haben (bei 0 von 186 Zeilen gefüllt) — bewusst OHNE Backfill,
-                # die Herkunft der Bestandszeilen bleibt leer statt geraten.
+                # Deployments (`api/deployments.py`): 186 rows nobody could read so far.
+                # `source` answers the question `requested_by`/`chat_id` never answered
+                # (filled on 0 of 186 rows), deliberately WITHOUT a backfill: the origin of
+                # the existing rows stays empty instead of guessed.
                 "ALTER TABLE deployments ADD COLUMN IF NOT EXISTS source VARCHAR(20) "
                 "DEFAULT '' NOT NULL",
-                # Merkposten des Bühnen-Watchers (nächste Welle): welcher Status wurde schon
-                # gemeldet. Spalte statt Prozessgedächtnis = neustartfest und doppelfrei.
+                # Note of the stage watcher: which status has already been reported. A
+                # column instead of process memory means restart proof and duplicate free.
                 "ALTER TABLE deployments ADD COLUMN IF NOT EXISTS announced_status VARCHAR(20) "
                 "DEFAULT '' NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_deployments_project_created ON deployments "
                 "(project_id, created_at DESC)",
                 "CREATE INDEX IF NOT EXISTS ix_deployments_issue ON deployments (issue_id)",
-                # Der Partialindex hat mit der neuen Oberfläche nichts zu tun und gehört
-                # trotzdem hierher: der `deployer`-Sidecar sucht alle 3 Sekunden die nächste
-                # offene Zeile und macht daraus heute einen Seq-Scan über die ganze Tabelle.
-                # Derselbe Index bedient den kommenden Bühnen-Watcher.
+                # The partial index has nothing to do with the new interface and belongs
+                # here anyway: the `deployer` sidecar looks for the next open row every 3
+                # seconds and turns that into a seq scan over the whole table today.
+                # The same index serves the coming stage watcher.
                 "CREATE INDEX IF NOT EXISTS ix_deployments_open ON deployments (id) "
                 "WHERE status IN ('pending','pending-check','building')",
-                # Medienausgang der Notification: dem backend-Container fehlt
-                # `TELEGRAM_BOT_TOKEN` vollständig (nur `TELEGRAM_OWNER_CHAT` ist gesetzt),
-                # nur der telegram-bot-Prozess spricht mit Telegram. Wer eine Datei
-                # mitschicken will, legt den Pfad hierher — beide Spalten nullable, damit
-                # sich für Bestandszeilen nichts ändert.
+                # Media output of the notification: the backend container lacks
+                # `TELEGRAM_BOT_TOKEN` entirely (only `TELEGRAM_OWNER_CHAT` is set), only the
+                # telegram-bot process talks to Telegram. Whoever wants to send a file along
+                # puts the path here; both columns are nullable so that nothing changes for
+                # existing rows.
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS media_path VARCHAR(500)",
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS media_kind VARCHAR(20)",
-                # Mail-Eingang als Prozess: die Spam-Rückfrage kennt ihren Ablauf, damit die
-                # Antwort aus Telegram ihn weiterschaltet statt an ihm vorbei zu verschieben.
+                # Mail inbox as a process: the spam question knows its flow so that the
+                # answer from Telegram advances it instead of moving past it.
                 "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS workflow_instance_id "
                 "INTEGER REFERENCES workflow_instances(id) ON DELETE SET NULL",
                 "CREATE INDEX IF NOT EXISTS ix_spam_verdicts_workflow_instance_id "
                 "ON spam_verdicts (workflow_instance_id)",
-                # Benachrichtigungsweg gehört zur Person: wer eine Nachricht auslöst, weiß
-                # selten, ob der Empfänger Telegram überhaupt benutzt. Der Absender darf
-                # einen Weg vorgeben, muss aber nicht — dann gilt dieser hier.
+                # The notification channel belongs to the person: whoever triggers a message
+                # rarely knows whether the recipient uses Telegram at all. The sender may
+                # prescribe a channel but need not, and then this one applies.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_default VARCHAR(20) "
                 "DEFAULT 'telegram' NOT NULL",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email VARCHAR(255)",
@@ -384,10 +384,10 @@ async def lifespan(app: FastAPI):
                 # UI language per person, and the translation overrides an admin edits.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS locale VARCHAR(10) "
                 "DEFAULT 'de' NOT NULL",
-                # Sprachen, die ein Admin angelegt, umbenannt oder abgeschaltet hat.
+                # Languages an admin has created, renamed or switched off.
                 "ALTER TABLE ui_locales ADD COLUMN IF NOT EXISTS enabled BOOLEAN "
                 "DEFAULT TRUE NOT NULL",
-                # Messreihen (create_all legt die Tabellen an; der Index nicht).
+                # Metric series (create_all creates the tables; the index it does not).
                 "CREATE INDEX IF NOT EXISTS ix_metric_points_series_ts "
                 "ON metric_points (series_id, ts DESC)",
             ):
@@ -395,40 +395,40 @@ async def lifespan(app: FastAPI):
                     continue
                 try:
                     await conn.execute(text(_ddl))
-                except Exception as exc:  # noqa: BLE001 — Sperrkonflikt darf den Start nicht kippen
+                except Exception as exc:  # noqa: BLE001 - a lock conflict must not topple the start
                     log.warning("Schema-Nachzug übersprungen (%s): %s", _ddl[:60], exc)
     async with SessionLocal() as db:
         await seed(db)
-        # Ausgelieferte Abläufe (Ticket-Lebenszyklus, Abnahme, Beschaffung, Eingang) als
-        # globalen Standard-Satz nachziehen — idempotent, veröffentlicht nur bei Änderung.
+        # Add the shipped flows (ticket lifecycle, acceptance, procurement, inbox) as the
+        # global default set: idempotent, published only on a change.
         from .services.workflow_seed import ensure_builtin_set
         await ensure_builtin_set(db)
-        # Automatisch erzeugte Beschaffungs-Ketten der Projekte auf dieselbe Bauform heben.
+        # Lift the automatically created procurement chains of the projects to the same shape.
         from .services.hardware_workflow import refresh_generated_definitions
         await refresh_generated_definitions(db)
-        # Artefakt-Register (Ticket, Hardware) — im Admin pflegbar, fehlende Zustände
-        # werden nachgetragen, bestehende Beschriftungen bleiben.
+        # Artifact register (ticket, hardware): maintainable in the admin area, missing
+        # states are added, existing labels stay.
         from .services.artifacts import backfill_hardware_artifacts, ensure_builtin_types
-        # Erst die Beschriftungen aus dem früheren Zustands-Modell übernehmen — danach legt
-        # `ensure_builtin_types` die eingebauten Felder an, ohne sie zu überschreiben.
+        # First take over the labels from the earlier status model; afterwards
+        # `ensure_builtin_types` creates the built-in fields without overwriting them.
         from .services.artifact_fields import uebernimm_alte_zustaende
         await uebernimm_alte_zustaende(db)
         await ensure_builtin_types(db)
-        # Erst jetzt fällt das alte Zustands-Modell — vorher hätte die Übernahme
-        # nichts mehr zu lesen gehabt.
+        # Only now does the old status model fall; before this the takeover would have had
+        # nothing left to read.
         await db.execute(text("DROP TABLE IF EXISTS artifact_statuses"))
         await db.commit()
-        # Bestehende Exemplare bekommen ihre Artefakt-Zeile (idempotent).
+        # Existing units get their artifact row (idempotent).
         await backfill_hardware_artifacts(db)
-        # Tickets ebenso — und alles, was auseinandergelaufen ist, wird angeglichen.
+        # Tickets likewise, and everything that has drifted apart is aligned.
         from .services.artifacts import reconcile
         await reconcile(db)
     await recover_on_start()
-    # Tickets ohne Prozess-Instanz einsammeln (Umstieg auf die Engine, idempotent).
+    # Collect tickets without a process instance (switch to the engine, idempotent).
     async with SessionLocal() as db:
         from .services.lifecycle_flow import adopt_orphans
         await adopt_orphans(db)
-    # Previews aus einem abgestürzten Vorleben abräumen (blockiert den Start nicht).
+    # Clear away previews from a crashed earlier life (does not block the start).
     from .services.testenv import cleanup_orphan_previews
     tasks = [
         asyncio.create_task(cleanup_orphan_previews()),
@@ -436,12 +436,12 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_scheduler()),
         asyncio.create_task(run_workflow_engine()),
         asyncio.create_task(event_bridge()),
-        # Eigener Kanal für die Büro-Ansicht: ein Nutzer-Socket statt N Projekt-Sockets,
-        # weil projektlose Läufe (Job/Assistent) gar keinen Projektraum haben.
+        # A channel of its own for the office view: one user socket instead of N project
+        # sockets, because project-less runs (job, assistant) have no project room at all.
         asyncio.create_task(office_bridge()),
-        # Deployments in den Büro-Ereignisstrom: eigener 3-s-Takt, weil der Betriebs-Tick
-        # (30 s) länger ist als ein mittlerer Deploy — der Auftakt wäre sonst regelmäßig
-        # vorbei, bevor jemand hinsieht.
+        # Deployments into the office event stream: a 3 s beat of its own, because the
+        # operations tick (30 s) is longer than an average deploy, so the opening would
+        # regularly be over before anyone looks.
         asyncio.create_task(run_deploy_watch()),
     ]
     yield
@@ -501,7 +501,7 @@ async def health():
     return {"status": "ok", "version": VERSION, "auth_enabled": True}
 
 
-# Alle API-Pfade unter /api
+# All API paths under /api
 app.mount("/api", api)
 
 
