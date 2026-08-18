@@ -71,7 +71,6 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     Without a classifying agent it stays at passing through (as in the predecessor): the
     agent reads the mail itself over IMAP later. The technical findings of the rules go into
     the model as hints; it should assess the text, not read headers it does not see anyway.
-    ohnehin nicht sieht.
     """
     from . import spam_learn
     from .assistant_policy import agent_laeuft_lokal, match_policy, note_hit, parse_sender
@@ -154,7 +153,6 @@ async def spam_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     threshold and therefore goes away without a question; its card carries the way back.
     Both always go out immediately: whoever moves silently never notices an error that crept
     in, and in a digest card of tomorrow morning the objection would be too late.
-    Widerspruch zu spät.
 
     Below the immediate threshold NO card of its own is deliberately sent: those cases are
     collected by the scheduler into the digest card (`spam_review.digest_faellig`). The flow
