@@ -69,9 +69,8 @@ def _payload(treffer: dict) -> dict:
 # alias are POISON out of a follow-up, and that was learned expensively (2026-08-18): a
 # mailbox contains thousands of wanted mails and a handful of rubbish. Whoever draws word
 # statistics from that makes every everyday word a ham signal: "rechnung" afterwards stood
-# 55 times on wanted, "domain" 12 times. A phishing mail with the subject "Ihre
-# Domain-Rechnung wartet auf Bearbeitung" thereby fell from 0.55 to 0.14 and was no longer
-# asked about. The same applies to `to:`: everything goes to a catch-all alias anyway, so the
+# 55 times on wanted, "domain" 12 times. A phishing mail whose subject combined those two
+# words thereby fell from 0.55 to 0.14 and was no longer asked about. The same applies to `to:`: everything goes to a catch-all alias anyway, so the
 # feature separates nothing. From a REAL decision both may still be learned, because there
 # both stand in a ratio that means something.
 _NACHLAUF_ARTEN = ("from:", "dom:")

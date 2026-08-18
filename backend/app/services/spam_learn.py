@@ -1,20 +1,20 @@
-"""Das Gedächtnis der Spam-Erkennung: aus entschiedenen Fällen lernen.
+"""The memory of the spam detection: learning from decided cases.
 
-Ohne dieses Modul wäre die Erkennung bei jeder Mail gleich schlau wie am ersten Tag — der
-Mensch würde dieselbe Frage über denselben Absender endlos beantworten. Jede Bestätigung
-(„ist Spam") und jede Ablehnung („kein Spam") erhöht hier Zähler je Merkmal, und **jede**
-folgende Mail wird gegen diese Zähler gehalten, bevor irgendjemand gefragt wird.
+Without this module the detection would be as clever with every mail as on the first day,
+and the human would answer the same question about the same sender endlessly. Every
+confirmation ("is spam") and every rejection ("not spam") raises counters per feature here,
+and **every** following mail is held against these counters before anybody is asked.
 
-Verfahren: naives Bayes über Merkmale (Absender, Domain, angeschriebener Alias, technische
-Signale, Betreff-Wörter) mit Laplace-Glättung. Bewusst kein trainiertes Modell:
+Method: naive Bayes over features (sender, domain, addressed alias, technical signals,
+subject words) with Laplace smoothing. Deliberately no trained model:
 
-* **nachvollziehbar** — man kann nachsehen, welches Merkmal wie oft wie entschieden wurde;
-* **sofort wirksam** — die nächste Mail profitiert, kein Trainingslauf dazwischen;
-* **korrigierbar** — eine geänderte Entscheidung zählt sauber zurück statt nachzuwirken.
+* **traceable**: one can look up which feature was decided how often and how;
+* **effective immediately**: the next mail profits, with no training run in between;
+* **correctable**: a changed decision counts back cleanly instead of lingering.
 
-Die Zähler sind owner-scoped: gelernt wird, was *dieser* Mensch für Spam hält. Genau darum
-geht es — ein Newsletter, den einer bestellt hat und der andere nie wollte, ist objektiv
-nicht zu entscheiden.
+The counters are owner-scoped: what is learned is what *this* person considers spam. That
+is exactly the point: a newsletter one person subscribed to and another never wanted cannot
+be decided objectively.
 """
 from __future__ import annotations
 
@@ -29,32 +29,32 @@ from ..models.assistant import SpamFeatureStat, SpamVerdict
 
 log = logging.getLogger("traccoon.spam")
 
-# Glättung: ein einzelner Treffer soll nicht sofort ein Urteil sein.
+# Smoothing: a single hit should not be a verdict right away.
 _ALPHA = 1.0
-# Ab wie vielen Beobachtungen ein Merkmal mitreden darf — nach Art getrennt.
+# From how many observations a feature may have a say, separated by kind.
 #
-# Eine einzelne Entscheidung über eine konkrete Adresse ist eine Aussage: „von dem will ich
-# nichts". Sie muss ab der nächsten Mail wirken, sonst beantwortet der Mensch dieselbe Frage
-# über denselben Absender ein zweites Mal, und genau das soll aufhören.
+# A single decision about a concrete address is a statement: "I want nothing from that one".
+# It has to take effect from the next mail on, because otherwise the human answers the same
+# question about the same sender a second time, and exactly that should stop.
 #
-# Ein einzelnes Betreff-Wort ist dagegen keine Aussage, sondern Zufall — „Rechnung" steht in
-# echter Post wie in Betrugsmails. Solche Merkmale brauchen Wiederholung, sonst zieht das
-# erste zufällige Wort einer Woche jede spätere Beurteilung schief.
+# A single subject word on the other hand is not a statement but chance: "invoice" stands in
+# real post as in fraud mails. Such features need repetition, because otherwise the first
+# random word of a week skews every later assessment.
 _MIN_EVIDENZ_STARK = 1
 _MIN_EVIDENZ_SCHWACH = 2
-# Deckel je Merkmal in Log-Odds. Ohne ihn reißt ein einziges, oft gesehenes Wort
-# ("rechnung") das Gesamturteil an sich.
+# Cap per feature in log odds. Without it a single often seen word ("rechnung") pulls the
+# overall verdict to itself.
 _MAX_GEWICHT = 1.6
-# Ab so vielen einhelligen Beobachtungen gilt ein Absender als geklärt — dann entscheidet
-# das Gedächtnis allein und es wird nicht erneut gefragt.
+# From this many unanimous observations on, a sender counts as settled, and then the memory
+# decides alone and nobody is asked again.
 _SICHER_AB = 3
 
-# Merkmalsarten, die für sich allein tragen dürfen. Ein Betreff-Wort darf das nie.
+# Kinds of feature that may carry on their own. A subject word never may.
 _STARKE_ARTEN = ("from:", "to:", "dom:")
 
 
 def _mindestens(feature: str) -> int:
-    """Wie viele Beobachtungen dieses Merkmal braucht, um mitzureden."""
+    """How many observations this feature needs in order to have a say."""
     return (_MIN_EVIDENZ_STARK if (feature or "").startswith(_STARKE_ARTEN)
             else _MIN_EVIDENZ_SCHWACH)
 
@@ -67,10 +67,10 @@ def _logodds(spam: int, ham: int, basis: float) -> float:
 
 
 async def _basisrate(db: AsyncSession, owner_id: int | None) -> float:
-    """Anteil Spam an allen entschiedenen Fällen — der Ausgangspunkt ohne jedes Merkmal.
+    """Share of spam among all decided cases, the starting point without any feature.
 
-    Gedeckelt auf [0.1, 0.9]: wer zwei Wochen nur Spam bestätigt hat, soll nicht in eine
-    Welt geraten, in der jede Mail von vornherein schuldig ist.
+    Capped to [0.1, 0.9]: whoever has confirmed nothing but spam for two weeks should not end
+    up in a world in which every mail is guilty from the outset.
     """
     rows = (await db.execute(select(SpamVerdict.status).where(
         SpamVerdict.owner_user_id == owner_id,
@@ -83,14 +83,14 @@ async def _basisrate(db: AsyncSession, owner_id: int | None) -> float:
 
 async def bewerten(db: AsyncSession, owner_id: int | None,
                    merkmale: list[str]) -> tuple[float, list[str], bool]:
-    """(score, gruende, sicher) aus dem Gelernten.
+    """(score, reasons, certain) from what has been learned.
 
-    `score` 0..1 wie bei den anderen Teilurteilen. `sicher` heißt: ein starkes Merkmal
-    (Absender/Alias/Domain) ist oft genug einhellig entschieden worden — dann braucht es
-    keine Rückfrage mehr, das ist der eigentliche Zweck des Lernens.
+    `score` 0..1 as with the other partial verdicts. `certain` means: a strong feature
+    (sender, alias, domain) has been decided unanimously often enough, and then no question
+    is needed any more, which is the actual purpose of the learning.
 
-    Ohne Beobachtungen kommt (Basisrate, [], False) zurück — also keine Meinung, nicht
-    „unschuldig". Der Aufrufer gewichtet das entsprechend.
+    Without observations (base rate, [], False) comes back, so no opinion, not "innocent".
+    The caller weights that accordingly.
     """
     if not merkmale:
         return 0.5, [], False
@@ -112,7 +112,7 @@ async def bewerten(db: AsyncSession, owner_id: int | None,
         summe += gewicht
         if abs(gewicht) > 0.2:
             beitraege.append((gewicht, _erklaerung(row)))
-        # Einhelliges Urteil über ein starkes Merkmal → geklärt.
+        # Unanimous verdict about a strong feature means settled.
         if row.feature.startswith(_STARKE_ARTEN) and gesamt >= _SICHER_AB:
             if row.ham_count == 0 or row.spam_count == 0:
                 sicher = True
@@ -123,7 +123,7 @@ async def bewerten(db: AsyncSession, owner_id: int | None,
 
 
 def _erklaerung(row: SpamFeatureStat) -> str:
-    """Merkmal-Zähler → ein Satz, der in der Telegram-Karte stehen kann."""
+    """Feature counters turned into a sentence that can stand in the Telegram card."""
     art, _, wert = (row.feature or "").partition(":")
     label = {
         "from": f"Absender {wert}", "dom": f"Domain {wert}", "to": f"Alias {wert}",
@@ -139,11 +139,11 @@ def _erklaerung(row: SpamFeatureStat) -> str:
 
 async def merkmale_zaehlen(db: AsyncSession, owner_id: int | None, merkmale: list[str],
                            ist_spam: bool, *, vorher: str = "") -> int:
-    """Merkmale in die Zähler übernehmen. Committet NICHT. → Anzahl gezählter Merkmale.
+    """Take features into the counters. Does NOT commit. Returns the number of counted features.
 
-    Getrennt von `merken`, weil nicht jeder Lehrstoff aus einer Rückfrage stammt: was im
-    Spam-Ordner liegt oder seit Jahren im Posteingang steht, ist ebenfalls eine Entscheidung
-    eines Menschen — nur eine, die nie durch Traccoon lief (siehe `spam_bootstrap`).
+    Separated from `merken`, because not every piece of learning material comes from a
+    question: what lies in the spam folder or has stood in the inbox for years is a decision
+    of a human as well, only one that never went through Traccoon (see `spam_bootstrap`).
     """
     merkmale = [m for m in merkmale if isinstance(m, str) and m]
     if not merkmale:
@@ -174,11 +174,11 @@ async def merkmale_zaehlen(db: AsyncSession, owner_id: int | None, merkmale: lis
 
 async def merken(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool,
                  *, vorher: str = "") -> None:
-    """Eine Entscheidung in die Zähler übernehmen. Committet NICHT.
+    """Take one decision into the counters. Does NOT commit.
 
-    `vorher` ist der bisherige Status derselben Zeile ('spam'/'ham'/''). Ändert der Mensch
-    seine Meinung, wird die alte Zählung zurückgenommen — sonst bliebe der Irrtum für
-    immer im Gedächtnis stehen und würde bei jeder künftigen Mail mitreden.
+    `vorher` is the previous status of the same row ('spam'/'ham'/''). If the human changes
+    their mind, the old counting is taken back; otherwise the error would stay in the memory
+    forever and have a say with every future mail.
     """
     anzahl = await merkmale_zaehlen(db, verdict.owner_user_id, list(verdict.features or []),
                                     ist_spam, vorher=vorher)
@@ -188,12 +188,12 @@ async def merken(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool,
 
 
 async def beispiele(db: AsyncSession, owner_id: int | None, limit: int = 6) -> list[str]:
-    """Kurze Beispielzeilen der letzten Entscheidungen für den Prompt des lokalen Modells.
+    """Short example lines of the last decisions for the prompt of the local model.
 
-    Die Zähler oben wirken auf die Merkmale; das Modell sieht davon nichts. Damit auch
-    seine Einschätzung mitwandert, bekommt es die jüngsten Urteile als Beispiele — knapp
-    gehalten (Absender, Betreff, Entscheidung), damit der Prompt nicht wächst und nichts
-    Persönliches mehr enthält als nötig.
+    The counters above act on the features; the model sees nothing of them. So that its
+    assessment moves along as well, it gets the most recent verdicts as examples, kept short
+    (sender, subject, decision) so that the prompt does not grow and contains no more
+    personal data than necessary.
     """
     rows = (await db.execute(select(SpamVerdict).where(
         SpamVerdict.owner_user_id == owner_id,
