@@ -1,9 +1,9 @@
-// Lässt sich ein Ablauf am Handy bearbeiten? Ohne Ziehen, ohne drei Spalten nebeneinander.
+// Can a flow be edited on a phone? Without dragging, without three columns side by side.
 //
-// Der Editor war dort schlicht nicht bedienbar: die Bausteine kamen nur per HTML5-Ziehen auf
-// die Fläche (ein Ereignis, das ein Touchscreen nicht kennt), und Palette, Fläche und
-// Einstellungen brauchten zusammen 528 px Breite. Diese Probe prüft den Weg, den ein Daumen
-// wirklich geht — und speichert nichts: was sie ändert, ist nach dem Neuladen wieder weg.
+// The editor simply could not be operated there: blocks reached the canvas only by HTML5
+// dragging (an event a touchscreen does not have), and palette, canvas and settings together
+// needed 528 px of width. This probe walks the path a thumb actually takes, and saves
+// nothing: whatever it changes is gone after a reload.
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 
@@ -34,14 +34,14 @@ try {
   ok("Umschalter zwischen Fläche und Baustein steht da",
      await page.getByRole("button", { name: "Baustein", exact: true }).isVisible());
 
-  // Ein Baustein antippen: die Einstellungen müssen von allein aufgehen.
+  // Tap a block: its settings have to open on their own.
   await page.locator(".react-flow__node").first().tap();
   await page.waitForTimeout(1000);
   const konfigOffen = await page.getByText("Bausteine", { exact: true }).isVisible().catch(() => false);
   ok("Tippen auf einen Baustein öffnet seine Einstellungen", konfigOffen);
   await page.screenshot({ path: "/w/31-handy-editor-baustein.png" });
 
-  // Beschriftung ändern — der Kopf muss „ungespeichert" melden.
+  // Change the label, the header has to report unsaved work.
   const feld = page.locator('input[type="text"], input:not([type])').first();
   await feld.fill("Probe am Handy");
   await feld.blur();
@@ -49,7 +49,7 @@ try {
   const schmutzig = await page.getByText(/ungespeichert/).isVisible().catch(() => false);
   ok("Änderungen kommen an", schmutzig);
 
-  // Neuen Baustein per Tipp anhängen — ohne Ziehen, das es hier nicht gibt.
+  // Attach a new block by tapping, since dragging does not exist here.
   const vorher = await knoten();
   await page.getByRole("button", { name: "⏱ Warten", exact: true }).first().tap();
   await page.waitForTimeout(1200);
@@ -60,7 +60,7 @@ try {
      `${vorher} → ${nachher} Bausteine`);
   await page.screenshot({ path: "/w/32-handy-editor-flaeche.png" });
 
-  // Nichts steht über den Rand.
+  // Nothing stands past the edge.
   const ueber = await page.evaluate(
     () => document.scrollingElement.scrollWidth - window.innerWidth);
   ok("Nichts steht seitlich über den Rand", ueber <= 2, `${ueber} px`);

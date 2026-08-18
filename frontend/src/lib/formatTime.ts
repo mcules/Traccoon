@@ -1,4 +1,4 @@
-/** Zeitstempel für Kommentare/Chat einheitlich formatieren (Tag.Monat Stunde:Minute). */
+/** One format for timestamps in comments and chat (day.month hour:minute). */
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);

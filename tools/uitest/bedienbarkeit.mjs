@@ -1,13 +1,14 @@
-// Misst, was an der Bedienung messbar ist: Umbrüche, Tippziele, Schriftgrößen, Wege.
+// Measures what can be measured about operating the interface: overflow, touch targets,
+// font sizes, hidden content.
 //
-// Geschmack lässt sich nicht messen, das hier schon — und genau daran hakt es auf dem Handy:
-// eine Tabelle, die 200 px über den Rand steht, ein Knopf mit 22 px Höhe, ein Hinweistext in
-// 10 px. Die Zahlen aus diesem Lauf landen in befund-bedienbarkeit.json; ein zweiter Lauf
-// danach zeigt, ob eine Änderung wirklich etwas gebracht hat statt nur anders auszusehen.
+// Taste cannot be measured, this can, and it is exactly where a phone falls apart: a table
+// standing 200 px past the edge, a button 22 px high, a hint in 10 px type. The numbers of a
+// run land in befund-bedienbarkeit.json, and a second run shows whether a change actually
+// helped instead of merely looking different.
 //
-// Schwellen: 36 px ist die kleinste Fläche, die ein Daumen zuverlässig trifft (Apple nennt 44,
-// Material 48 — 36 ist die Untergrenze, unter der es messbar hakt). 11 px ist die Grenze, ab
-// der Fließtext auf einem Handy nicht mehr ohne Zoom lesbar ist.
+// Thresholds: 36 px is the smallest area a thumb hits reliably (Apple says 44, Material 48,
+// 36 is the floor below which it measurably starts to fumble). 11 px is where running text on
+// a phone stops being readable without zooming.
 import { chromium } from "playwright-core";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 
@@ -16,9 +17,9 @@ const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
 const MARKE = process.env.MARKE || "lauf";
 const PROJEKT = process.env.PROJEKT || "UNI";
 
-// Jeder Reiter einzeln: die erste Fassung prüfte nur den Standardreiter jeder Seite und
-// hielt deshalb die Administration für sauber, obwohl sechs ihrer acht Reiter Tabellen
-// zeigen, die auf 390 px zusammengequetscht werden.
+// Every tab on its own: the first version checked only the default tab of each page and
+// therefore called the administration clean, although six of its eight tabs show tables that
+// get squeezed to nothing at 390 px.
 const SEITEN = [
   ["Projekte", "/"],
   ["Eingang", "/inbox"],
@@ -31,23 +32,23 @@ const SEITEN = [
     .map((t) => [`Einstellungen/${t}`, `/settings/${t}`]),
   ...["users", "cost", "models", "maintenance", "mail", "destinations", "artifacts", "translations"]
     .map((t) => [`Admin/${t}`, `/admin/${t}`]),
-  // Der Ablauf-Editor war am Handy gar nicht bedienbar und stand deshalb auch nie in der
-  // Messung — genau die Lücke, durch die er durchgefallen ist.
+  // The flow editor could not be operated on a phone at all and therefore never appeared in
+  // the measurement, which is exactly the gap it slipped through.
   ["Ablauf-Editor", `/workflows/${process.env.WF || "44"}`],
 ];
 const BREITEN = [["Handy", 390, 844], ["Desktop", 1400, 900]];
 
 const messen = ({ grenze, handy }) => {
-  // Die Zeichenfläche eines Ablaufs hat ihr eigenes Koordinatensystem: React Flow skaliert
-  // sie als Ganzes, ein 12-px-Text steht bei 0,7-fachem Zoom als 8,4 px im Dokument. Alles
-  // darin zu messen hieße, den Zoomfaktor zu bewerten, nicht die Gestaltung.
+  // The canvas of a flow has its own coordinate system: React Flow scales it as a whole, so
+  // 12 px type sits in the document as 8.4 px at 0.7 zoom. Measuring inside it would judge
+  // the zoom factor, not the design.
   const gezeichnet = (el) => !!el.closest(".react-flow");
   const doc = document.scrollingElement;
   const breite = window.innerWidth;
   const ueberstand = Math.max(0, doc.scrollWidth - breite);
 
-  // Wer steht über den Rand? Nur der äußerste Übeltäter zählt, sonst meldet jedes Kind
-  // seines Elternteils Fehler mit.
+  // Who stands past the edge? Only the outermost offender counts, otherwise every child
+  // reports the fault of its parent as well.
   const raus = [];
   for (const el of document.querySelectorAll("body *")) {
     const r = el.getBoundingClientRect();
@@ -63,7 +64,7 @@ const messen = ({ grenze, handy }) => {
     }
   }
 
-  // Tippziele: sichtbare Bedienelemente unter der Grenze (Daumen 36 px, Maus 24 px).
+  // Touch targets: visible controls below the threshold (thumb 36 px, mouse 24 px).
   const klein = [];
   for (const el of document.querySelectorAll(
     "button, a[href], select, input:not([type=hidden]), [role=button], summary")) {
@@ -72,10 +73,10 @@ const messen = ({ grenze, handy }) => {
     if (r.top > window.innerHeight * 3) continue;          // weit unten: zählt nicht mit
     const stil = getComputedStyle(el);
     if (stil.visibility === "hidden") continue;
-    // Ein Link im Fließtext ist Text, kein Knopf — er soll nicht auf 36 px wachsen.
+    // A link inside running text is text, not a button, and should not grow to 36 px.
     if (el.tagName === "A" && stil.display === "inline") continue;
-    // Ein Kästchen behält seine native Größe (sonst zeichnet der Browser einen weißen Klotz).
-    // Getippt wird auf die Beschriftung daneben — sie ist die Fläche, die zählt.
+    // A checkbox keeps its native size (otherwise the browser draws a white block). What gets
+    // tapped is the label next to it, and that is the area which counts.
     if (el.tagName === "INPUT" && (el.type === "checkbox" || el.type === "radio")) {
       const lab = el.closest("label");
       const lr = lab && lab.getBoundingClientRect();
@@ -87,7 +88,7 @@ const messen = ({ grenze, handy }) => {
     }
   }
 
-  // Zu kleine Schrift in sichtbarem Text.
+  // Type too small in visible text.
   const kleinschrift = new Map();
   for (const el of document.querySelectorAll("body *")) {
     if (!el.childNodes.length) continue;
@@ -100,13 +101,13 @@ const messen = ({ grenze, handy }) => {
     if (px < 11) kleinschrift.set(el.textContent.trim().slice(0, 40), Math.round(px * 10) / 10);
   }
 
-  // Abgeschnitten statt gescrollt: ein Element, dessen Inhalt breiter ist als es selbst, ohne
-  // dass man scrollen könnte. Das ist der schlimmere Fall — es sieht aus, als wäre alles da.
+  // Clipped instead of scrolled: an element whose content is wider than itself, with no way
+  // to scroll. That is the worse case, because it looks as if everything were there.
   const abgeschnitten = [];
   for (const el of document.querySelectorAll("body *")) {
     const s = getComputedStyle(el);
     if (s.overflowX === "auto" || s.overflowX === "scroll") continue;
-    // `truncate` schneidet mit Absicht ab und zeigt „…" — das ist eine Lösung, kein Mangel.
+    // `truncate` cuts on purpose and shows an ellipsis, which is a solution, not a defect.
     if (s.textOverflow === "ellipsis") continue;
     if (el.scrollWidth <= el.clientWidth + 24) continue;
     const r = el.getBoundingClientRect();
@@ -117,17 +118,17 @@ const messen = ({ grenze, handy }) => {
       + (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 30) });
   }
 
-  // Tabellen mit mehr als zwei Spalten sind auf einem Handy keine Tabellen mehr: entweder
-  // stehen sie über den Rand oder ihre Spalten quetschen sich auf ein Wort je Zeile.
+  // A table with more than two columns is not a table on a phone: either it stands past the
+  // edge or its columns squeeze down to one word per line.
   const tabellen = handy ? [...document.querySelectorAll("table")].filter((tab) => {
     const spalten = tab.querySelector("tr")?.children.length || 0;
     return spalten > 2 && tab.getBoundingClientRect().width > 200;
   }).map((tab) => `${tab.querySelector("tr")?.children.length} Spalten`) : [];
 
-  // Textspalten, die schmaler sind als etwa achtzehn Zeichen: dort bricht jeder Satz zum
-  // Wasserfall (die Modell-Seite zeigte 45 Zeilen à zwei Wörter). Die Grenze liegt unter der
-  // schmalsten bewussten Spalte der Anwendung (die 208-px-Palette des Editors), sonst
-  // meldete die Messung eine Gestaltungsentscheidung als Mangel.
+  // Text columns narrower than about eighteen characters: every sentence there breaks into a
+  // waterfall (the model page showed 45 lines of two words each). The threshold sits below the
+  // narrowest deliberate column in the application (the editor's 208 px palette), otherwise
+  // the measurement would report a design decision as a defect.
   const wasserfall = [];
   for (const el of document.querySelectorAll("p, div, li, span")) {
     const txt = (el.textContent || "").trim();
@@ -139,8 +140,8 @@ const messen = ({ grenze, handy }) => {
     if (r.width > 0 && r.width < 180 && r.height > 100) wasserfall.push(`${Math.round(r.width)}px breit`);
   }
 
-  // Was seitwärts weggescrollt werden muss, findet auf einem Handy niemand. Tabellen sind
-  // die üblichen Kandidaten: fünf Spalten passen nicht in 390 px.
+  // Nobody finds what has to be scrolled sideways on a phone. Tables are the usual suspects:
+  // five columns do not fit into 390 px.
   const seitwaerts = [...document.querySelectorAll("body *")].filter((el) => {
     const s = getComputedStyle(el);
     if (s.overflowX !== "auto" && s.overflowX !== "scroll") return false;
@@ -149,8 +150,8 @@ const messen = ({ grenze, handy }) => {
        el.tagName.toLowerCase() + " +" + (el.scrollWidth - el.clientWidth) + "px");
 
   return {
-    // Nur der innerste Übeltäter zählt: ein zu breites Feld macht jeden seiner Vorfahren
-    // ebenfalls „zu breit", und die Meldung „div ist zu breit" hilft niemandem.
+    // Only the innermost offender counts: a field that is too wide makes every ancestor too
+    // wide as well, and the report "some div is too wide" helps nobody.
     abgeschnitten: abgeschnitten
       .filter((v, _i, alle) => !alle.some((w) => w !== v && v.el.contains(w.el)))
       .slice(0, 5).map(({ name }) => name),
@@ -163,7 +164,7 @@ const messen = ({ grenze, handy }) => {
     tippziele_beispiele: klein.slice(0, 5),
     kleinschrift: kleinschrift.size,
     kleinschrift_beispiele: [...kleinschrift.entries()].slice(0, 4),
-    // Wie viele Ziele erreicht man ohne vorher ein Menü zu öffnen?
+    // How many destinations are reachable without opening a menu first?
     sichtbare_navigation: [...document.querySelectorAll("header a[href], header button")]
       .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }).length,
     hoehe: Math.round(document.scrollingElement.scrollHeight),
@@ -187,11 +188,11 @@ for (const [gname, breite, hoehe] of BREITEN) {
     } catch { /* langsame Seite: trotzdem messen, was da ist */ }
     await page.waitForTimeout(1200);
     const m = await page.evaluate(messen, { grenze: breite < 500 ? 36 : 24, handy: breite < 500 });
-    // Am Schreibtisch ist seitliches Scrollen ein Mittel (das Board ist so gebaut), am Handy
-    // ein Mangel — deshalb wird es nur dort überhaupt vermerkt.
+    // At a desk sideways scrolling is a device (the board is built that way), on a phone it is
+    // a defect, so it is only recorded there.
     if (breite >= 500) m.seitwaerts = [];
     bericht.seiten[`${sname} @ ${gname}`] = m;
-    // Punkte: je Messgröße ein Punkt, wenn sie sauber ist.
+    // Score: one point per measure when it comes out clean.
     maxPunkte += 3;
     if (m.ueberstand <= 2) punkte++;
     maxPunkte++; if (m.abgeschnitten.length === 0) punkte++;

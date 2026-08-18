@@ -1,8 +1,8 @@
-// Prüft, ob jeder tr("…")-Schlüssel im deutschen Katalog steht — und umgekehrt.
+// Checks that every tr("…") key exists in the German catalog, and the other way round.
 //
-// Der deutsche Katalog ist die Wahrheit darüber, welche Texte es gibt: die Verwaltung im
-// Admin liest ihn, und was dort fehlt, kann niemand übersetzen. Ein vergessener Eintrag
-// fällt in der Oberfläche kaum auf (es steht ja der Schlüssel da), im Betrieb aber sehr.
+// The German catalog is the truth about which texts exist: the admin area reads it, and what
+// is missing there nobody can translate. A forgotten entry hardly shows in the interface (the
+// key is displayed, after all), but very much so in daily use.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -19,12 +19,12 @@ const dateien = [];
   }
 })(wurzel);
 
-// Nicht jeder Schlüssel steht direkt in einem tr(): Tabellen halten ihn als Wert
-// (`{ label: "inbox.status_new" }`), und manche werden zusammengesetzt
-// (tr(`preferences_panel.flag_${key}`)). Erfasst wird deshalb jede Zeichenkette, die wie ein
-// Schlüssel aussieht, plus jedes Präfix eines zusammengesetzten Aufrufs.
-const benutzt = new Map();     // direkt: tr("…"), das ist die Quelle für „fehlt"
-const bekannt = new Map();     // zusätzlich indirekt, das ist die Quelle für „verwaist"
+// Not every key sits inside a tr(): tables hold it as a value
+// (`{ label: "inbox.status_new" }`), and some are composed
+// (tr(`preferences_panel.flag_${key}`)). So every string that looks like a key is collected,
+// plus the prefix of every composed call.
+const benutzt = new Map();     // direct: tr("…"), the source for "missing"
+const bekannt = new Map();     // also indirect, the source for "orphaned"
 const praefixe = [];
 for (const datei of dateien) {
   const text = readFileSync(datei, "utf8");
@@ -32,8 +32,8 @@ for (const datei of dateien) {
     if (!benutzt.has(treffer[1])) benutzt.set(treffer[1], datei);
     bekannt.set(treffer[1], datei);
   }
-  // Ein Datenpfad („data.location.name") sieht aus wie ein Schlüssel. Deshalb zählt hier nur,
-  // was auch im Katalog steht: alles andere ist eine Zeichenkette, die zufällig einen Punkt hat.
+  // A data path ("data.location.name") looks like a key. So only what is in the catalog
+  // counts here: everything else is a string that happens to contain a dot.
   for (const treffer of text.matchAll(/"([a-z][a-z0-9_]*\.[a-z0-9_.]+)"/g)) {
     if (treffer[1] in de) bekannt.set(treffer[1], datei);
   }

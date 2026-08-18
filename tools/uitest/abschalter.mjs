@@ -1,4 +1,4 @@
-// Kann man einen Schritt abschalten, und sieht man es dem Graphen an?
+// Can a step be switched off, and does the graph show it?
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 
@@ -20,7 +20,7 @@ try {
   await page.goto(`${BASIS}/workflows/44`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
 
-  // Einen Aktions-Knoten anklicken
+  // Click an action node
   await page.getByText("Akkustand festhalten").first().click();
   await page.waitForTimeout(800);
   const schalter = page.getByText(/Diesen Schritt abschalten/i).first();
@@ -41,7 +41,7 @@ try {
   ok("Der Knoten zeigt im Graphen, dass er aus ist", marke > 0);
   await page.screenshot({ path: "/w/25-abschalter.png" });
 
-  // Auf „abbrechen" umstellen — der Hinweis muss sich ändern
+  // Switch to stop mode, the hint has to change
   await page.locator("select").filter({ hasText: "überspringen und weitermachen" }).first()
     .selectOption("abbrechen").catch(() => {});
   await page.waitForTimeout(500);

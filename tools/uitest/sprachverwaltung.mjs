@@ -1,4 +1,4 @@
-// Lässt sich eine Sprache im Admin anlegen, benennen, abschalten und wieder löschen?
+// Can a language be created, named, switched off and removed again in the admin area?
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 
@@ -32,8 +32,8 @@ try {
   const angelegt = await zeileFr.first().isVisible().catch(() => false);
   ok("Neue Sprache erscheint sofort", angelegt);
 
-  // Einen Text übersetzen. Die Sprachverwaltung steht oben, die Textliste unten:
-  // die letzte Tabelle ist die mit den Übersetzungen.
+  // Translate one text. Language management sits on top, the text list below, so the last
+  // table is the one with the translations.
   await page.locator("select").first().selectOption("fr").catch(() => {});
   await page.waitForTimeout(1200);
   const feld = page.locator('input[placeholder]').last();
@@ -43,8 +43,8 @@ try {
   ok("Text lässt sich in der neuen Sprache eintragen", true);
 
   // Abschalten
-  // Der Haken folgt dem Server, nicht dem Klick: erst nach der Antwort steht er um.
-  // Deshalb klicken und warten statt uncheck() (das prüft sofort und schlägt fehl).
+  // The checkbox follows the server, not the click: it flips only after the answer. So click
+  // and wait instead of uncheck(), which checks right away and fails.
   const schalter = zeileFr.locator('input[type="checkbox"]');
   await schalter.click();
   await page.waitForFunction(
@@ -53,7 +53,7 @@ try {
   ok("Sprache lässt sich abschalten", !(await schalter.isChecked()));
   await page.screenshot({ path: "/w/29-sprachverwaltung.png" });
 
-  // Löschen
+  // Delete
   page.once("dialog", (d) => d.accept());
   await zeileFr.getByRole("button", { name: "✕" }).click();
   await page.waitForTimeout(1800);

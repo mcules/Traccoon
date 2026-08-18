@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { beiSprachwechsel, setzeSprache, sprache } from ".";
 
 /**
- * Hält eine Komponente an der aktuellen Sprache.
+ * Keeps a component tied to the current language.
  *
- * Der Zähler ist Absicht: `t()` liest aus einem Modul-Zustand, und React erfährt von einem
- * Sprachwechsel sonst nichts. Ein Zustand, der sich ändert, ist das kleinste Mittel, alle
- * Ansichten neu zeichnen zu lassen.
+ * The counter is deliberate: `tr()` reads from module state, and React would otherwise never
+ * hear about a language change. A piece of state that changes is the smallest way to make
+ * every view redraw.
  */
 export function useSprache(): string {
   const [, tick] = useState(0);
@@ -14,7 +14,7 @@ export function useSprache(): string {
   return sprache();
 }
 
-/** Sprache des angemeldeten Menschen übernehmen (Profil, sonst Browser, sonst Deutsch). */
+/** Take over the language of the signed in person (profile, else browser, else German). */
 export function useSpracheVonNutzer(locale: string | undefined): void {
   useEffect(() => {
     const gewuenscht = locale || navigator.language?.slice(0, 2) || "de";
