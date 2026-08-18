@@ -1,51 +1,51 @@
-// Schicht 1 — die Farben des Büros. Eine flache Tabelle, zwei Abstufungen, keine Rechnerei
-// zur Laufzeit.
+// Layer 1, the colours of the office. A flat table, two grades, no arithmetic at runtime.
 //
-// Warum eine Tabelle und nicht CSS-Variablen: die Zeichenschicht setzt pro Bild einige hundert
-// Mal `fillStyle`. Jede Farbe, die erst aus dem Dokument gelesen werden müsste, wäre ein
-// Layout-Lesevorgang mitten in der Zeichenschleife — der teuerste Fehler, den dieses Feature
-// machen kann, und obendrein in Schicht 1 verboten (Regel 3.1). Farben stehen deshalb hier als
-// Hex-Zeichenketten, und `resolve()` läuft **einmal je Themenwechsel**, nie je Bild.
 //
-// Die zwei Abstufungen sind an Traccoons Theme gebunden, nicht an die Uhr:
+// Why a table and not CSS variables: the drawing layer sets `fillStyle` a few hundred times
+// per frame. Every colour that would first have to be read from the document would be a
+// layout read in the middle of the drawing loop, the most expensive mistake this feature can
+// make, and forbidden in layer 1 on top of that (rule 3.1). Colours therefore stand here as
+// hex strings, and `resolve()` runs **once per theme change**, never per frame.
 //
-//   data-theme="dark"  →  "night"  = Abendbüro: Schreibtischlampen an, die Monitore sind die
-//                                    dominierende Lichtquelle, die Fenster stehen tiefblau.
-//   data-theme="light" →  "day"    = Tagbüro: warmes Off-White, Fensterglanz, Lampen aus.
+// The two grades are bound to Traccoon's theme, not to the clock:
 //
-// Das ist ausdrücklich **keine Tageszeitsimulation**. Die echte Uhrzeit zu lesen bräche den
-// Determinismus (dasselbe Log ergäbe morgens und abends verschiedene Bilder, das Zurückspulen
-// wäre nicht mehr bitgleich) — und es würde den Zuschauer verwirren: er sähe „Abend", obwohl
-// der Lauf, den er gerade anschaut, um 9 Uhr morgens stattfand. Der Raum zeigt den Lauf,
-// nicht den Feierabend.
+//   data-theme="dark"  →  "night"  = evening office: desk lamps on, the monitors are the
+//                                    dominant light source, the windows stand deep blue.
+//   data-theme="light" →  "day"    = day office: warm off-white, window glare, lamps off.
+//
+// This is explicitly **not a time-of-day simulation**. Reading the real clock would break
+// determinism (the same log would give different pictures in the morning and in the evening,
+// rewinding would no longer be bit identical), and it would confuse the viewer: they would
+// see "evening" although the run they are watching took place at 9 in the morning. The room
+// shows the run, not the end of the working day.
 
 import type { Gait, Grade, Look } from "../types.ts";
 import { hash32, mix, rnd01 } from "../ids.ts";
 import { PACE_SPREAD } from "../const.ts";
 
-// ── Die Schlüssel ────────────────────────────────────────────────────────────
+// ── The keys ─────────────────────────────────────────────────────────────────
 
-/** Jede Farbe des Raums hat einen Namen; Hex-Werte stehen ausschließlich in den zwei Tabellen
- *  unten. Die letzten sieben sind **reserviert**: sie gehören keiner Kulisse, sondern der
- *  gerade gezeichneten Figur und werden erst von `resolve(grade, look)` gefüllt. */
+/** Every colour of the room has a name; hex values stand exclusively in the two tables below.
+ *  The last seven are **reserved**: they belong to no scenery but to the figure being drawn
+ *  right now and are only filled in by `resolve(grade, look)`. */
 export type PalKey =
-  // Kulisse
+  // Scenery
   | "wall" | "wallLo" | "wallHi"
   | "floor" | "floorLo" | "floorHi"
   | "rug" | "rugLo"
-  /** Was durchs Fenster zu sehen ist — Himmel bzw. Nachtstadt. */
+  /** What can be seen through the window: sky respectively night city. */
   | "out"
-  // Möbel
+  // Furniture
   | "desk" | "deskLo" | "chair" | "chairLo" | "metal" | "glass" | "clay"
-  // Bildschirme und Papier
+  // Screens and paper
   | "screen" | "screenLit" | "ink" | "paper"
-  // Grün
+  // Green
   | "plant" | "plantLo" | "soil"
   // Licht
   | "lamp" | "shadow"
   // Zustandsfarben (Blasenrand, Monitorschein, Gate-Puls)
   | "acc" | "ok" | "err" | "blocked"
-  // ── reserviert: die Figur ──────────────────────────────────────────────────
+  // ── reserved: the figure ───────────────────────────────────────────────────
   /** Haut. */        | "S"
   /** Haut, Schatten. */ | "s"
   /** Haar. */        | "H"
@@ -54,18 +54,18 @@ export type PalKey =
   /** Oberteil, Schatten. */ | "t"
   /** Hose. */        | "P";
 
-/** Aufgelöste Palette: jeder Schlüssel zeigt auf einen fertigen Hex-Wert. */
+/** Resolved palette: every key points at a finished hex value. */
 export type Pal = Record<PalKey, string>;
 
-/** Alles außer den sieben reservierten Zeichen — das, was in den Grade-Tabellen steht. */
+/** Everything except the seven reserved keys, which is what the grade tables hold. */
 type EnvKey = Exclude<PalKey, "S" | "s" | "H" | "h" | "T" | "t" | "P">;
 
-// ── Die zwei Tabellen ────────────────────────────────────────────────────────
+// ── The two tables ───────────────────────────────────────────────────────────
 //
-// Handgesetzt, nicht gerechnet. Ein Nachtbild als „Tagbild × 0.4" sieht aus wie ein
-// abgedunkeltes Foto: die Monitore würden mitverdunkelt, obwohl sie im Abendbüro genau die
-// Lichtquelle sind, die alles andere überhaupt sichtbar macht. Deshalb zwei Tabellen, in denen
-// `screenLit` und `lamp` **heller** werden, während der Rest fällt.
+// Set by hand, not computed. A night picture as "day picture x 0.4" looks like a darkened
+// photo: the monitors would be dimmed along with everything else although in the evening
+// office they are exactly the light source that makes everything else visible in the first
+// place. Hence two tables in which `screenLit` and `lamp` grow **brighter** while the rest falls.
 
 const DAY_ENV: Record<EnvKey, string> = {
   wall: "#e6e0d3", wallLo: "#c4bba7", wallHi: "#f4f0e7",
@@ -89,21 +89,21 @@ const NIGHT_ENV: Record<EnvKey, string> = {
   desk: "#6b563a", deskLo: "#4a3a26",
   chair: "#2b333f", chairLo: "#1b212a",
   metal: "#5a636e", glass: "#7f96a8", clay: "#7c4633",
-  // Absichtlich **nicht** dunkler als tagsüber: im Abendbüro sind die Monitore die Lampen.
+  // Deliberately **not** darker than during the day: in the evening office the monitors are the lamps.
   screen: "#161b22", screenLit: "#cfe3f5", ink: "#2b3444", paper: "#cfc9bb",
   plant: "#2f5c3a", plantLo: "#20402a", soil: "#33261b",
   lamp: "#ffd88a", shadow: "#080c14",
-  // Zustandsfarben bleiben in beiden Abstufungen **identisch** — sie sind dieselben vier Farben
-  // wie im Dock (AgentMonitor: yellow/green/red/orange). Zwei Ansichten desselben Laufs dürfen
-  // sich nicht widersprechen, nur weil eine davon abends spielt.
+  // Status colours stay **identical** in both grades: they are the same four colours as in the
+  // dock (AgentMonitor: yellow/green/red/orange). Two views of the same run must not
+  // contradict each other just because one of them plays in the evening.
   acc: "#38bdf8", ok: "#4ade80", err: "#f87171", blocked: "#fb923c",
 };
 
-// ── Die Figur: Farbtöne, aus denen `lookOf` wählt ────────────────────────────
+// ── The figure: tones `lookOf` chooses from ──────────────────────────────────
 //
-// `Look.skin`/`hairCol`/`shirtCol`/`pantsCol` sind **Palettenschlüssel**, keine CSS-Farben
-// (so steht es im Vertrag) — Namen aus dieser Tabelle. Damit bleibt `Look` serialisierbar und
-// unabhängig von der Abstufung: dieselbe Figur ist abends dieselbe Figur, nur dunkler.
+// `Look.skin`/`hairCol`/`shirtCol`/`pantsCol` are **palette keys**, not CSS colours (that is
+// what the contract says), names from this table. That keeps `Look` serialisable and
+// independent of the grade: the same figure is the same figure in the evening, only darker.
 
 const TONES: Record<string, string> = {
   skin0: "#f2cda6", skin1: "#e3b184", skin2: "#cd9264",
@@ -119,17 +119,17 @@ const TONES: Record<string, string> = {
   pants3: "#4a4f57", pants4: "#2f3a33",
 };
 
-/** Wie stark der Schattenton unter dem Grundton liegt. 0.70 ist die Grenze, ab der die Kante
- *  bei 16×24 noch als Falte liest und nicht als Loch. */
+/** How far the shadow tone sits below the base tone. 0.70 is the limit from which the edge at
+ *  16x24 still reads as a fold and not as a hole. */
 const SHADE = 0.70;
 
-/** Nachts sind Menschen nicht anders gefärbt, nur anders beleuchtet: rund 18 % dunkler und
- *  8 % kühler. Beides gerechnet statt getippt, weil es sonst 26 zusätzliche Hex-Werte wären,
- *  die man bei jeder Farbänderung doppelt pflegen müsste. */
+/** At night people are not coloured differently, only lit differently: around 18 % darker and
+ *  8 % cooler. Both computed instead of typed, because otherwise it would be 26 additional hex
+ *  values to maintain twice on every colour change. */
 const NIGHT_DARK = 0.82;
 const NIGHT_COOL = 0.08;
 
-// ── Farbrechnung (rein, ganzzahlig gerundet) ─────────────────────────────────
+// ── Colour arithmetic (pure, rounded to integers) ────────────────────────────
 
 function clamp255(v: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
@@ -140,36 +140,35 @@ function hex2(v: number): string {
   return s.length === 1 ? "0" + s : s;
 }
 
-/** `#rrggbb` → drei Kanäle. Kurzform (`#abc`) gibt es in den Tabellen bewusst nicht. */
+/** `#rrggbb` to three channels. The short form (`#abc`) deliberately does not occur in the tables. */
 function parse(hex: string): [number, number, number] {
   const n = parseInt(hex.slice(1), 16);
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
-/** Multipliziert alle Kanäle — der Schattenton eines Sprite-Teils. */
+/** Multiplies all channels: the shadow tone of a sprite part. */
 function darken(hex: string, f: number): string {
   const [r, g, b] = parse(hex);
   return "#" + hex2(r * f) + hex2(g * f) + hex2(b * f);
 }
 
-/** Kühlt eine Farbe: Rot fällt am stärksten, Blau wandert Richtung Weiß. Das ist die
- *  billigste glaubwürdige Nachahmung von Mondlicht — ein reines Abdunkeln lässt Hauttöne
- *  schlammig statt abendlich aussehen. */
+/** Cools a colour: red falls the most, blue moves towards white. That is the cheapest credible
+ *  imitation of moonlight; plain dimming makes skin tones look muddy instead of evening-lit. */
 function cool(hex: string, k: number): string {
   const [r, g, b] = parse(hex);
   return "#" + hex2(r * (1 - k)) + hex2(g * (1 - k * 0.5)) + hex2(b + (255 - b) * k * 0.5);
 }
 
-/** Der Personenton in der jeweiligen Abstufung. */
+/** The person tone in the respective grade. */
 function toneOf(key: string, fallback: string, grade: Grade): string {
   const hex = TONES[key] ?? fallback;
   return grade === "night" ? cool(darken(hex, NIGHT_DARK), NIGHT_COOL) : hex;
 }
 
-// ── Die zwei fertigen Abstufungen ────────────────────────────────────────────
+// ── The two finished grades ──────────────────────────────────────────────────
 
-/** Voreingestellte Figur für den Fall, dass ohne `Look` aufgelöst wird (Möbelvorschau,
- *  Prüferbilder). Nie im laufenden Raum sichtbar — dort hat jeder Aktor seinen `Look`. */
+/** Default figure for the case that resolving happens without a `Look` (furniture preview,
+ *  test pictures). Never visible in the running room, where every actor has their `Look`. */
 function defaultPerson(grade: Grade): Pick<Pal, "S" | "s" | "H" | "h" | "T" | "t" | "P"> {
   const S = toneOf("skin1", "#e3b184", grade);
   const H = toneOf("hair1", "#4b3521", grade);
@@ -178,22 +177,22 @@ function defaultPerson(grade: Grade): Pick<Pal, "S" | "s" | "H" | "h" | "T" | "t
   return { S, s: darken(S, SHADE), H, h: darken(H, SHADE), T, t: darken(T, SHADE), P };
 }
 
-/** Die beiden Abstufungen, fertig aufgelöst. Konstant über die Laufzeit — wer daran etwas
- *  ändert, ändert es für alle Bilder gleichzeitig. */
+/** The two grades, fully resolved. Constant over the runtime: whoever changes something here
+ *  changes it for all pictures at once. */
 export const GRADES: Record<Grade, Pal> = {
   day: { ...DAY_ENV, ...defaultPerson("day") },
   night: { ...NIGHT_ENV, ...defaultPerson("night") },
 };
 
-// ── Aussehen aus dem Seed ────────────────────────────────────────────────────
+// ── Appearance from the seed ─────────────────────────────────────────────────
 //
-// Jedes Merkmal bekommt sein **eigenes benanntes Salz** (Regel 3.2). Zwei Merkmale am selben
-// Salz wären perfekt korreliert — dann trügen alle Blonden dasselbe Hemd, und das fällt erst
-// auf, wenn zwölf Figuren im Raum stehen.
+// Every trait gets its **own named salt** (rule 3.2). Two traits on the same salt would be
+// perfectly correlated, and then all blond figures would wear the same shirt, which only
+// shows once twelve figures stand in the room.
 
-const SALT_HEAD = 0x4b4f5046;   // "KOPF"
-const SALT_HAIR = 0x48414152;   // "HAAR" — die **Form** der Frisur (individuell)
-const SALT_HAIRC = 0x48414146;  // "HAAF" — die **Farbe** des Haars (aus der Rolle)
+const SALT_HEAD = 0x4b4f5046;   // "HEAD"
+const SALT_HAIR = 0x48414152;   // "HAIR" - the **shape** of the hairstyle (individual)
+const SALT_HAIRC = 0x48414146;  // "HAIC" - the **colour** of the hair (from the role)
 const SALT_TORSO = 0x544f5253;  // "TORS"
 const SALT_ARMS = 0x41524d45;   // "ARME"
 const SALT_LEGS = 0x4245494e;   // "BEIN"
@@ -209,61 +208,61 @@ const SALT_LEAN = 0x4e454947;   // "NEIG"
 const SALT_SWING = 0x53434857;  // "SCHW"
 const SALT_ARMPH = 0x41524d50;  // "ARMP"
 
-/** Anzahl Haarformen (Art-Teile) und Haarfarben. Das Produkt war früher der Vorrat an
- *  Frisuren; seit Form und Farbe aus zwei verschiedenen Quellen kommen (s. `lookOf`), sind es
- *  zwei unabhängige Vorräte. */
+/** Number of hair shapes (art parts) and hair colours. The product used to be the supply of
+ *  hairstyles; since shape and colour come from two different sources (see `lookOf`) these
+ *  are two independent supplies. */
 const HAIR_SHAPES = 5;
 const HAIR_COLORS = 8;
 
-// ── Der Aussehen-Seed: was die Rolle bestimmt ────────────────────────────────
+// ── The appearance seed: what the role determines ────────────────────────────
 
 const SALT_ROLLE = 0x524f4c4c;  // "ROLL"
 
 /**
- * Der Seed, aus dem das **Aussehen** kommt — nicht zu verwechseln mit `ActorState.seed`, aus
- * dem alles Individuelle kommt.
+ * The seed the **appearance** comes from, not to be confused with `ActorState.seed`, which
+ * everything individual comes from.
  *
- * Warum überhaupt zwei Seeds: `ActorState.seed` ist `hash32("run:8871")`, also die **Lauf**-Id.
- * Damit sah derselbe `developer` gestern anders aus als heute — wiedererkennen konnte man
- * niemanden. Aus `hash32(role)` dagegen fällt für jede Rolle für immer dieselbe Farbe.
+ * Why two seeds at all: `ActorState.seed` is `hash32("run:8871")`, that is the **run** id.
+ * With that, the same `developer` looked different yesterday than today, and nobody could be
+ * recognised. Out of `hash32(role)` on the other hand falls the same colour for a role forever.
  *
- * Bewusst **keine Rollen-Farbtabelle**: die echten Rollen (`developer`, `assistent`,
- * `architect`, `code_reviewer`, `project_manager`, `uniwar-operator`, `news`) sind Daten, keine
- * Aufzählung — eine Tabelle bräuchte Pflege bei jedem neuen Agenten und hätte für die
- * Prüf-Fixture (`exec_agent`/`plan_agent`/`review_agent`) gar keinen Eintrag.
+ * Deliberately **no role colour table**: the real roles (`developer`, `assistent`,
+ * `architect`, `code_reviewer`, `project_manager`, `uniwar-operator`, `news`) are data, not an
+ * enumeration. A table would need maintenance with every new agent and would have no entry at
+ * all for the test fixture (`exec_agent`/`plan_agent`/`review_agent`).
  *
- * Leere Rolle → der Laufseed. Eine namenlose Figur soll nicht alle namenlosen Figuren einander
- * gleichmachen; und weil `rolle === seed` genau die alten Salze wieder trifft, ist der
- * rollenlose Fall bitgleich zum bisherigen Verhalten.
+ * An empty role means the run seed. A nameless figure should not make all nameless figures
+ * alike; and because `role === seed` hits exactly the old salts again, the role-less case is
+ * bit identical to the previous behaviour.
  */
 export function rollenSeed(role: string, seed: number): number {
   return role ? mix(hash32(role), SALT_ROLLE) : seed;
 }
 
 /**
- * Das Aussehen einer Figur — reine Funktion aus zwei Seeds, also über Live und Replay identisch.
+ * The appearance of a figure: a pure function of two seeds, therefore identical over live and replay.
  *
- * **Die Aufteilung ist der ganze Punkt.** Aus `rolle` kommen genau die drei Merkmale, die man
- * aus drei Metern Entfernung überhaupt lesen kann:
+ * **The split is the whole point.** From `role` come exactly the three traits that can be read
+ * from three metres away at all:
  *
- *   · **Hemdfarbe** — die größte zusammenhängende Farbfläche eines 16×24-Sprites,
- *   · **Haarfarbe** — die zweitgrößte; zusammen mit dem Hemd ein Wappen,
- *   · **Torsoform** — die Schultersilhouette, die die Rolle auch von hinten trägt
- *     (der Chefplatz sitzt mit `DIR_BACK` zum Betrachter).
+ *   · **shirt colour**, the largest contiguous colour area of a 16x24 sprite,
+ *   · **hair colour**, the second largest; together with the shirt a coat of arms,
+ *   · **torso shape**, the shoulder silhouette that carries the role from behind as well
+ *     (the chief's seat sits with `DIR_BACK` towards the viewer).
  *
- * Alles andere hängt am Laufseed: Kopf, Haut, Arme, Beine, **Haarform**, Hosenfarbe. Sonst
- * stünden zwölf `developer` als zwölf Klone im Raum — und Wiedererkennung, die keine Individuen
- * mehr zulässt, ist keine Wiedererkennung, sondern eine Uniform.
+ * Everything else hangs off the run seed: head, skin, arms, legs, **hair shape**, trouser
+ * colour. Otherwise twelve `developer` would stand in the room as twelve clones, and
+ * recognition that no longer allows individuals is not recognition but a uniform.
  *
- * Der frühere Griff, Haarform und -farbe aus **einem** Hash zu ziehen (Rest/Quotient über
- * `HAIR_SHAPES × HAIR_COLORS`), ist damit hinfällig: die beiden liegen jetzt ohnehin auf
- * verschiedenen Seeds und variieren zwangsläufig unabhängig. Sie brauchen dafür aber **eigene
- * Salze** — mit demselben Salz wären sie im rollenlosen Fall (`rolle === seed`) perfekt
- * korreliert, und dann hätte jede Frisurform genau eine Farbe.
+ * The earlier trick of drawing hair shape and colour from **one** hash (remainder and quotient
+ * over `HAIR_SHAPES × HAIR_COLORS`) is thereby obsolete: the two now lie on different seeds
+ * anyway and necessarily vary independently. They do need **salts of their own** for that: with
+ * the same salt they would be perfectly correlated in the role-less case (`role === seed`), and
+ * then every hairstyle shape would have exactly one colour.
  *
- * Der Sitzplatz bleibt bewusst an der Lauf-Id (`seatOf(a.id)`, Schicht 0): `seatOf` sondiert
- * linear, zwölf `developer` bekämen sonst zwölf **aufeinanderfolgende** Plätze und die linke
- * Bank wäre eine Monokultur.
+ * The seat deliberately stays on the run id (`seatOf(a.id)`, layer 0): `seatOf` probes
+ * linearly, so twelve `developer` would otherwise get twelve **consecutive** seats and the left
+ * bench would be a monoculture.
  */
 export function lookOf(seed: number, rolle: number): Look {
   return {
@@ -280,12 +279,12 @@ export function lookOf(seed: number, rolle: number): Look {
 }
 
 /**
- * Die Gangart — ebenfalls rein aus dem Seed.
+ * The gait, likewise purely from the seed.
  *
- * Sieben Werte, weil Wiedererkennbarkeit über die Bewegung läuft: bei 16 Pixeln Breite sieht man
- * die Frisur erst, wenn man hinschaut, den Gang aber sofort. `armPhase` liegt bewusst rund eine
- * halbe Periode neben `phase` (Arme und Beine schwingen gegenläufig) — mit gleicher Phase
- * marschieren alle.
+ * Seven values, because recognisability runs over the movement: at 16 pixels wide you only see
+ * the hairstyle when you look, but the walk immediately. `armPhase` deliberately sits about
+ * half a period beside `phase` (arms and legs swing in opposition); with the same phase
+ * everybody marches.
  */
 export function gaitOf(seed: number): Gait {
   return {
@@ -299,14 +298,14 @@ export function gaitOf(seed: number): Gait {
   };
 }
 
-// ── Auflösen ─────────────────────────────────────────────────────────────────
+// ── Resolving ────────────────────────────────────────────────────────────────
 
 /**
- * Baut die fertige Palette: Kulisse aus der Abstufung, die sieben reservierten Schlüssel aus
- * dem `Look`. Ohne `Look` kommt die Voreinstellungsfigur.
+ * Builds the finished palette: scenery from the grade, the seven reserved keys from the
+ * `Look`. Without a `Look` the default figure is used.
  *
- * **Einmal je Themenwechsel bzw. je Figur, nie je Bild.** Ein Objekt-Spread über 36 Schlüssel
- * ist billig, 24 Figuren × 60 Bilder/s davon sind es nicht — dafür gibt es `palFor` unten.
+ * **Once per theme change respectively per figure, never per frame.** An object spread over 36
+ * keys is cheap, 24 figures × 60 frames/s of them are not, which is what `palFor` below is for.
  */
 export function resolve(grade: Grade, look?: Look): Pal {
   const base = GRADES[grade];
@@ -324,9 +323,9 @@ export function resolve(grade: Grade, look?: Look): Pal {
   };
 }
 
-/** Identität eines `Look` für den Zwischenspeicher — nur die vier Farbschlüssel, denn nur die
- *  landen in der Palette. Zwei Figuren mit gleichen Farben teilen sich also eine Palette,
- *  auch wenn ihre Frisur verschieden ist. */
+/** Identity of a `Look` for the cache: only the four colour keys, because only those land in
+ *  the palette. Two figures with the same colours therefore share a palette even when their
+ *  hairstyle differs. */
 function lookKey(grade: Grade, look: Look): string {
   return grade + "|" + look.skin + "|" + look.hairCol + "|" + look.shirtCol + "|" + look.pantsCol;
 }
@@ -334,21 +333,20 @@ function lookKey(grade: Grade, look: Look): string {
 const PAL_CACHE = new Map<string, Pal>();
 
 /**
- * `resolve` mit Gedächtnis — **das** ist die Fassung, die die Zeichenschleife benutzt.
+ * `resolve` with memory, **this** is the version the drawing loop uses.
  *
- * Der Zwischenspeicher ist reine Allokationsersparnis: gleiche Eingabe, gleiches Ergebnis,
- * kein Zustand, der ins Bild durchschlägt (Regel 3 bleibt gewahrt). Er wird geleert, wenn er
- * über 64 Einträge wächst — mehr als `MAX_ACTORS` verschiedene Farbsätze kann es zwar auf der
- * Bühne nicht geben, wohl aber über eine lange Sitzung hinweg mit vielen kommenden und
- * gehenden Läufen. Eine Map, die nie leert, ist ein Leck mit Anlauf.
+ * The cache is pure allocation saving: same input, same result, no state that shows up in the
+ * picture (rule 3 stays intact). It is cleared when it grows beyond 64 entries: there cannot be
+ * more than `MAX_ACTORS` different colour sets on the stage, but there can be over a long
+ * session with many runs coming and going. A map that never clears is a leak with a run-up.
  *
- * **Der 64er-Deckel hält auch mit rollenfesten Farben.** `lookKey` sieht vier Schlüssel; zwei
- * davon (Hemd, Haar) sind je Rolle konstant, die anderen beiden variieren individuell über
- * 6 Hauttöne × 5 Hosen = **30 Paletten je Rolle und Abstufung**. Entscheidend ist aber nicht
- * die Obergrenze über die Sitzung, sondern die je **Bild**: dort fragen höchstens
- * `MAX_ACTORS = 24` Figuren an, also passen die Einträge eines Bildes immer unter 64. Ein
- * `clear()` kann deshalb nie mitten im Bild zuschlagen und sich Bild für Bild wiederholen —
- * sonst wäre aus dem Zwischenspeicher still eine Allokation je Bild geworden.
+ * **The cap of 64 holds with role-fixed colours too.** `lookKey` sees four keys; two of them
+ * (shirt, hair) are constant per role, the other two vary individually over 6 skin tones × 5
+ * trousers = **30 palettes per role and grade**. What matters is not the upper bound over the
+ * session but the one per **frame**: there at most `MAX_ACTORS = 24` figures ask, so the entries
+ * of one frame always fit under 64. A `clear()` can therefore never strike in the middle of a
+ * frame and repeat frame after frame, which would silently have turned the cache into one
+ * allocation per frame.
  */
 export function palFor(grade: Grade, look: Look): Pal {
   const key = lookKey(grade, look);

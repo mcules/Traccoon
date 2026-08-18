@@ -1,42 +1,42 @@
-// Schicht 0 — die Naht: ein Backend-Ereignis wird zu Kommandos des Raums.
+// Layer 0, the seam: a backend event becomes commands of the room.
 //
-// `mapEvent` ist **rein**: kein DOM, keine Uhr, kein Zufall, kein Zustand außer dem übergebenen
-// Roster. Genau das macht das Zurückspulen ohne Momentaufnahmen möglich — „neue Engine, Log von
-// vorn abspielen" liefert dieselben Kommandos in derselben Reihenfolge und damit dasselbe Bild.
-// Jede Ausnahme (ein Zähler, ein gemerktes „habe ich schon gesagt") bräche das sofort.
+// `mapEvent` is **pure**: no DOM, no clock, no randomness, no state except the roster passed
+// in. Exactly that makes rewinding without snapshots possible: "new engine, replay the log
+// from the start" yields the same commands in the same order and therefore the same picture.
+// Any exception (a counter, a remembered "already said that") would break it instantly.
 //
-// Die Engine kennt `Ev` überhaupt nicht; sie sieht nur `Cmd[]`. Diese Datei ist die einzige
-// Stelle, an der beide Vokabulare aufeinandertreffen.
+// The engine does not know `Ev` at all; it only sees `Cmd[]`. This file is the single place
+// where both vocabularies meet.
 
 import { toolAct } from "./toolAct.ts";
 import type { Cmd, Ev, GateKind, Roster, RosterEntry, RunStatus } from "./types.ts";
 
-// ── Kürzungen ────────────────────────────────────────────────────────────────
+// ── Truncation ───────────────────────────────────────────────────────────────
 //
-// Grundregel: eine Blase, die man nicht in einem Blick liest, ist keine Blase
-// mehr, sondern ein Textfeld über einer 16×24-Figur.
+// Ground rule: a bubble you cannot read at a glance is no longer a bubble but a text field
+// above a 16x24 figure.
 
 /** Gedankenblase. */
 const THINK_CHARS = 90;
-/** Sprechblase: der erste Satz. */
+/** Speech bubble: the first sentence. */
 const SAY_CHARS = 120;
-/** Werkzeugziel (Pfad, URL, Rolle) unter dem Monitor. */
+/** Tool target (path, URL, role) below the monitor. */
 const TARGET_CHARS = 60;
 
-/** Ab dieser Länge ist ein Modelltext kein Satz mehr, den jemand sagt, sondern ein Absatz, den
- *  jemand denkt. Die Grenze liegt bewusst über `SAY_CHARS`: ein Statussatz mit Nebensatz soll
- *  noch gesprochen werden, ein Bericht nicht. */
+/** From this length on, a model text is no longer a sentence someone says but a paragraph
+ *  someone thinks. The limit deliberately sits above `SAY_CHARS`: a status sentence with a
+ *  subordinate clause should still be spoken, a report should not. */
 const THINK_FROM_CHARS = 180;
 
-/** Alle Leerräume zu einem einzelnen Leerzeichen. Muss **vor** der Satzsuche laufen: sonst
- *  endete „…fertig.\nAls Nächstes…" nicht am Zeilenumbruch, obwohl dort offensichtlich ein
- *  Satz zu Ende ist. */
+/** All whitespace to a single space. Must run **before** the sentence search: otherwise
+ *  "…done.\nNext…" would not end at the line break although a sentence obviously ends
+ *  there. */
 function squash(text: string): string {
   return (text || "").replace(/\s+/g, " ").trim();
 }
 
-/** Kürzt auf `max` Zeichen und schneidet dabei kein Wort mittendurch, wenn sich das vermeiden
- *  lässt. Das Auslassungszeichen zählt mit — `clip(s, 90)` ergibt nie mehr als 90 Zeichen. */
+/** Truncates to `max` characters without cutting a word in half where that can be avoided.
+ *  The ellipsis counts along: `clip(s, 90)` never yields more than 90 characters. */
 function clip(text: string, max: number): string {
   const t = squash(text);
   if (t.length <= max) return t;
@@ -45,19 +45,19 @@ function clip(text: string, max: number): string {
   return (space > max * 0.6 ? hard.slice(0, space) : hard) + "…";
 }
 
-/** Der erste Satz, höchstens `max` Zeichen lang.
+/** The first sentence, at most `max` characters long.
  *
- *  Zwei Bedingungen, jede gegen einen konkreten Unfall:
+ *  Two conditions, each against a concrete accident:
  *
- *  1. Ein Satzende ist `[.!?]` **gefolgt von Leerraum oder Textende**. Ohne das würde aus
- *     „Latenz stieg um 1.4x auf 320 ms" das Fragment „Latenz stieg um 1.".
- *  2. Ein Punkt **hinter einer Ziffer** endet keinen Satz. Punkt 1 allein rettet die
- *     nummerierte Liste nämlich nicht: in „1. Datei lesen" steht hinter dem Punkt sehr wohl
- *     ein Leerzeichen, und die Blase sagte dann wörtlich „1.". Aufzählungsmarken und
- *     Versionsnummern sind derselbe Fall. `!`/`?` betrifft das nicht.
+ *  1. A sentence end is `[.!?]` **followed by whitespace or the end of the text**. Without
+ *     that, "latency rose by 1.4x to 320 ms" would become the fragment "latency rose by 1.".
+ *  2. A period **after a digit** does not end a sentence. Point 1 alone does not save the
+ *     numbered list: in "1. read file" there very much is a space after the period, and the
+ *     bubble would then literally say "1.". Bullet markers and version numbers are the same
+ *     case. This does not concern `!`/`?`.
  *
- *  Der Preis ist ein Satz wie „Es waren 12." — der gilt nicht als beendet und wird stattdessen
- *  hart auf `max` gekürzt. Das ist die harmlosere Hälfte des Tauschs. */
+ *  The price is a sentence like "There were 12." which does not count as finished and is
+ *  hard-truncated to `max` instead. That is the more harmless half of the trade. */
 function firstSentence(text: string, max: number): string {
   const t = squash(text);
   for (let i = 0; i < t.length; i++) {
@@ -72,30 +72,30 @@ function firstSentence(text: string, max: number): string {
 
 // ── Kleine Nachschlagehilfen ─────────────────────────────────────────────────
 
-/** Aktor-Id eines Laufs. Muss zu `services/office.py::_event` passen (`f"run:{run_id}"`) —
- *  sonst zeigt der Raum zwei Figuren für denselben Lauf. */
+/** Actor id of a run. Must match `services/office.py::_event` (`f"run:{run_id}"`), otherwise
+ *  the room shows two figures for the same run. */
 function actorId(runId: number): string {
   return `run:${runId}`;
 }
 
-/** Linearer Scan statt einer Map: `mapEvent` ist rein und darf sich nichts merken, und ein
- *  Roster hat Dutzende Einträge, keine Tausende. Eine Map je Aufruf zu bauen wäre teurer als
- *  der Scan selbst. */
+/** A linear scan instead of a map: `mapEvent` is pure and must not remember anything, and a
+ *  roster has dozens of entries, not thousands. Building a map per call would be more
+ *  expensive than the scan itself. */
 function rosterOf(roster: Roster, id: string): RosterEntry | undefined {
   for (const entry of roster) if (entry.agent_id === id) return entry;
   return undefined;
 }
 
-/** Der Umschlag jedes Ereignisses trägt `run_id`; daraus kommt die Figur.
+/** The envelope of every event carries `run_id`; the figure comes from it.
  *
- *  Dieses `ensureActor` steht **vor** jedem Kommando, das eine Figur braucht. Grund ist die
- *  Kappung: das Ereignisfenster wird vom ältesten Ende beschnitten, ein `run_start` kann also
- *  fehlen. Ohne diesen Vorlauf handelten die ersten Kommandos einer langen Sitzung von einer
- *  Figur, die es nie gab. `ensureActor` ist laut Vertrag idempotent — mehrfach zu senden ist
- *  ausdrücklich erlaubt und hier die einzige zustandsfreie Lösung.
+ *  This `ensureActor` stands **before** every command that needs a figure. The reason is the
+ *  truncation: the event window is cut from the oldest end, so a `run_start` can be missing.
+ *  Without this lead-in, the first commands of a long session would be about a figure that
+ *  never existed. `ensureActor` is idempotent by contract: sending it several times is
+ *  explicitly allowed and here the only stateless solution.
  *
- *  Ohne Roster-Eintrag bleiben die Stammdaten leer: eine namenlose Figur ist ehrlicher als eine
- *  erfundene Rolle. */
+ *  Without a roster entry the master data stays empty: a nameless figure is more honest than
+ *  an invented role. */
 function ensure(ev: Ev, roster: Roster): Cmd {
   const id = ev.agent_id;
   const row = rosterOf(roster, id);
@@ -112,22 +112,22 @@ function ensure(ev: Ev, roster: Roster): Cmd {
 
 // ── Werkzeug-Ergebnis ────────────────────────────────────────────────────────
 
-/** Was die Laufzeit wirklich als Fehler zurückgibt — dieselbe Liste wie
+/** What the runtime really returns as an error, the same list as in
  *  `services/office.py::ERROR_PREFIXES`. */
 const ERROR_PREFIXES = ["FEHLER:", "FEHLER ", "TOOL-FEHLER:", "FS-FEHLER:", "CHECK-FEHLER:",
                         "❌", "⛔"];
 
-/** Das Ergebnis eines Werkzeugs, **dreiwertig**.
+/** The result of a tool, **three valued**.
  *
- *  `null` heißt *unbekannt*, nicht *erfolgreich*. Bei Altdaten hat niemand gemessen, ob der
- *  Aufruf durchlief; ein grünes Häkchen darauf wäre eine Behauptung über Daten, die es nicht
- *  gibt. Wer hier `ok ?? true` schreibt, malt den halben Raum grün.
+ *  `null` means *unknown*, not *successful*. In old data nobody measured whether the call
+ *  went through; a green tick on that would be a claim about data that does not exist.
+ *  Whoever writes `ok ?? true` here paints half the room green.
  *
- *  Der Rückfall auf Textschnüffelei steht bewusst **ganz am Ende** und nur für den Fall
- *  `ok === null`: heute erledigt das schon das Backend (`tool_ok`) für beide Pfade, aber ein
- *  Ereignisstrom aus einer älteren Version kennt diese Erkennung nicht — und ein belegter
- *  Fehler ist mehr wert als ein „unbekannt". Erfunden wird dabei nichts: es wird nur `null`
- *  zu `false` verschärft, nie zu `true`. */
+ *  The fallback to sniffing text deliberately stands **at the very end** and only for the
+ *  case `ok === null`: today the backend already does that (`tool_ok`) for both paths, but
+ *  an event stream from an older version does not know this detection, and a proven error is
+ *  worth more than an "unknown". Nothing is invented in the process: `null` is only
+ *  sharpened to `false`, never to `true`. */
 function resultOk(ok: boolean | null, error: string | null, preview: string | null): boolean | null {
   if (ok !== null) return ok;
   const text = ((error || "") + (preview || "")).replace(/^\s+/, "");
@@ -137,11 +137,11 @@ function resultOk(ok: boolean | null, error: string | null, preview: string | nu
 
 // ── Gates ────────────────────────────────────────────────────────────────────
 
-/** `Run.blocker_kind` → die Art des Gates.
+/** `Run.blocker_kind` mapped to the kind of gate.
  *
- *  Die Werte stammen aus `worker/runtime.py` (`ask_human`, `permission`, `assistant_perm`) und
- *  `worker/__main__.py` (`review`, `question` bei einem geblockten Unterlauf). Unbekanntes wird
- *  zur Rückfrage: dass jemand wartet, ist belegt — nur worauf, ist es dann nicht. */
+ *  The values come from `worker/runtime.py` (`ask_human`, `permission`, `assistant_perm`)
+ *  and `worker/__main__.py` (`review`, `question` on a blocked sub-run). Anything unknown
+ *  becomes a question: that somebody is waiting is proven, only what for is not. */
 const GATE_OF: Record<string, GateKind> = {
   ask_human: "question",
   question: "question",
@@ -154,59 +154,59 @@ const RUN_STATUS: readonly string[] = [
   "running", "success", "failed", "blocked", "planned", "loop_exhausted",
 ];
 
-/** Das Backend baut `status` aus einem freien Mapping (`_run_end_fields`) und kann dabei einen
- *  leeren String liefern. Der Typ behauptet `RunStatus`; geprüft wird trotzdem, denn ein
- *  `status`-Kommando mit `""` färbte Dock und Blasenrand nach „unbekannt statt gar nicht". */
+/** The backend builds `status` from a free mapping (`_run_end_fields`) and can deliver an
+ *  empty string doing so. The type claims `RunStatus`; it is checked anyway, because a
+ *  `status` command with `""` would colour dock and bubble border "unknown instead of not at all". */
 function isRunStatus(s: string): s is RunStatus {
   return RUN_STATUS.indexOf(s) >= 0;
 }
 
-// ── Ansagen von außen ────────────────────────────────────────────────────────
+// ── Announcements from outside ───────────────────────────────────────────────
 
-/** Welche `user_message`-Quellen im Raum wirklich gesagt werden.
+/** Which `user_message` sources are really spoken in the room.
  *
- *  Bewusst eine Erlaubnisliste, keine Sperrliste: `source` ist ein freies Feld (`step.target`,
- *  Rückfall `"system"`), und aus jeder System-, Hook- oder Wiedervorlagen-Nachricht ein
- *  Sprechen zu machen, füllte den Raum mit Blasen, die niemand geschrieben hat. Was hier fehlt,
- *  ist still — und eine stille Zeile im Textstrom ist der kleinere Schaden. */
+ *  Deliberately an allow list, not a deny list: `source` is a free field (`step.target`,
+ *  fallback `"system"`), and turning every system, hook or follow-up message into speech
+ *  would fill the room with bubbles nobody wrote. What is missing here is silent, and a
+ *  silent line in the text stream is the smaller damage. */
 const SAY_SOURCES: readonly string[] = ["ticket", "user", "human", "chat", "mail", "pm"];
 
 // ── Deployments ──────────────────────────────────────────────────────────────
 
-/** Die vier Zustände des Serverschranks — wortgleich `services/office.py::DEPLOY_STATES`. */
+/** The four states of the server rack, word for word `services/office.py::DEPLOY_STATES`. */
 const DEPLOY_STATES: readonly string[] = ["start", "ok", "fail", "back"];
 
-/** Wie `isRunStatus`, und aus demselben Grund: `deploy_fields` baut `state` mit
- *  `str(state or "")` aus einem JSON-Rumpf. Eine beschädigte Zeile liefert `""`, und ein
- *  Rack-Kommando mit leerem Zustand ließe den Schrank in einer Farbe leuchten, die niemand
- *  vergeben hat. */
+/** Like `isRunStatus`, and for the same reason: `deploy_fields` builds `state` with
+ *  `str(state or "")` from a JSON body. A damaged row delivers `""`, and a rack command with
+ *  an empty state would make the rack glow in a colour nobody
+ *  ever assigned. */
 function isDeployState(s: string): s is "start" | "ok" | "fail" | "back" {
   return DEPLOY_STATES.indexOf(s) >= 0;
 }
 
-/** Der Bauzeit-Wächter für `mapEvent`.
+/** The compile-time guard for `mapEvent`.
  *
- *  Der Parameter ist `never`: solange jede Art der `Ev`-Union oben ihren eigenen `case` hat,
- *  ist `ev` im `default`-Zweig `never` und der Aufruf übersetzt. Kommt eine Art dazu, ohne dass
- *  jemand hier einen Zweig ergänzt, bricht **`tsc`** — genau das leistete bisher der
- *  erschöpfende `switch` ohne `default`.
+ *  The parameter is `never`: as long as every kind of the `Ev` union above has its own
+ *  `case`, `ev` is `never` in the `default` branch and the call compiles. If a kind is added
+ *  without anyone adding a branch here, **`tsc`** breaks, which is exactly what the
+ *  exhaustive `switch` without a `default` used to provide.
  *
- *  Zur Laufzeit gibt er `[]` zurück, und das ist der eigentliche Punkt: ein Backend darf der
- *  Oberfläche vorauseilen. Ohne diesen Zweig liefert `mapEvent` für eine unbekannte Art
- *  `undefined`, `recorder.push` legt das ungeprüft als `cmds` ins Log, und der Raum stirbt beim
- *  nächsten `advance` an `for (const c of undefined)`. Ein unbekanntes Ereignis soll still
- *  sein, nicht tödlich. */
+ *  At runtime it returns `[]`, and that is the actual point: a backend may run ahead of the
+ *  interface. Without this branch `mapEvent` returns `undefined` for an unknown kind,
+ *  `recorder.push` puts that into the log as `cmds` unchecked, and the room dies on the next
+ *  `advance` with `for (const c of undefined)`. An unknown event should be silent, not
+ *  lethal. */
 function unbekannt(_ev: never): Cmd[] {
   return [];
 }
 
-// ── Die Übersetzung ──────────────────────────────────────────────────────────
+// ── The translation ──────────────────────────────────────────────────────────
 
-/** Ein Ereignis → seine Kommandos. Leeres Feld heißt: im Raum passiert dazu nichts. */
+/** One event to its commands. An empty array means: nothing happens in the room for this. */
 export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
   switch (ev.kind) {
-    // Nur die Kopfzeile der Sitzung (Titel, Herkunft). Sie gehört in die Leiste über der
-    // Bühne, nicht auf den Boden — Schicht 2 liest sie direkt aus dem Ereignis.
+    // Only the header of the session (title, origin). It belongs in the bar above the stage,
+    // not on the floor: layer 2 reads it straight from the event.
     case "session_seen":
       return [];
 
@@ -216,9 +216,9 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
         phase: ev.phase, model: ev.model,
         ...(ev.parent_run_id !== null ? { parent: actorId(ev.parent_run_id) } : {}),
       }];
-      // **Der** Spawn-Moment. `delegate` taugt dafür nicht: `worker/runtime.py` wartet den
-      // Unterlauf inline ab, die `delegate`-Zeile entsteht also erst bei dessen ENDE — der
-      // Unteragent bekäme seine Linie rückwirkend, nachdem er längst fertig ist.
+      // **The** spawn moment. `delegate` is no good for it: `worker/runtime.py` awaits the
+      // sub-run inline, so the `delegate` row only comes into being at its END, and the
+      // sub-agent would get its line retroactively, long after it has finished.
       if (ev.parent_run_id !== null) {
         cmds.push({ k: "spawn", id: ev.agent_id, parent: actorId(ev.parent_run_id),
                     role: ev.agent });
@@ -230,22 +230,22 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
       const text = squash(ev.text);
       if (!text) return [];
       if (SAY_SOURCES.indexOf((ev.source || "").toLowerCase()) < 0) return [];
-      // Der Agent sagt seinen Auftrag laut — der Raum hat keinen Erzähler, und dass jemand
-      // weiß, woran er sitzt, ist die Information, die der Zuschauer sucht.
+      // The agent says its assignment out loud: the room has no narrator, and that somebody
+      // knows what they are working on is the information the viewer is looking for.
       return [ensure(ev, roster), { k: "say", id: ev.agent_id, text: firstSentence(text, SAY_CHARS) }];
     }
 
     case "agent_text": {
       const text = squash(ev.text);
       if (!text) return [];
-      // `"(Tool-Call)"` ist der wörtliche Platzhalter der Laufzeit für einen Zug, in dem das
-      // Modell nur Werkzeuge gerufen hat (`resp.text or "(Tool-Call)"`). Ungefiltert sagte
-      // jeder Agent im Büro pausenlos „(Tool-Call)".
+      // `"(Tool-Call)"` is the literal placeholder of the runtime for a turn in which the
+      // model only called tools (`resp.text or "(Tool-Call)"`). Unfiltered, every agent in the
+      // office would say "(Tool-Call)" without pause.
       //
-      // Heute unterscheidet schon das Backend die beiden Fälle: der Worker schreibt für einen
-      // reinen Werkzeugzug `kind="usage"` statt `kind="agent_text"`, und `step_events` filtert
-      // den Platzhalter zusätzlich in beiden Pfaden. Die Prüfung hier ist der Rückfall für
-      // Altdaten und für Ströme aus einer älteren Backend-Version — sie kostet einen Vergleich.
+      // Today the backend already separates the two cases: for a pure tool turn the worker
+      // writes `kind="usage"` instead of `kind="agent_text"`, and `step_events` filters the
+      // placeholder in both paths on top. The check here is the fallback for old data and for
+      // streams from an older backend version; it costs one comparison.
       if (text === "(Tool-Call)") return [];
       const head = ensure(ev, roster);
       return text.length >= THINK_FROM_CHARS
@@ -253,21 +253,21 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
         : [head, { k: "say", id: ev.agent_id, text: firstSentence(text, SAY_CHARS) }];
     }
 
-    // Reserviert: kein Provider-Adapter in Traccoon liefert Denkblöcke, das Backend emittiert
-    // die Art nie. Der Zweig steht hier trotzdem ausgefüllt, damit ein späterer Adapter nicht
-    // erst diese Datei anfassen muss — und weil ein stiller `default`-Fall der Ort ist, an dem
-    // ein neues Ereignis unbemerkt verschwindet.
+    // Reserved: no provider adapter in Traccoon delivers thinking blocks, the backend never
+    // emits the kind. The branch stands here filled in anyway so that a later adapter does not
+    // have to touch this file first, and because a silent `default` case is the place where a
+    // new event disappears unnoticed.
     case "thinking": {
       const text = squash(ev.text);
       if (!text) return [];
       return [ensure(ev, roster), { k: "think", id: ev.agent_id, text: clip(text, THINK_CHARS) }];
     }
 
-    // Tokens eines Modellzugs. `ActorState` führt keinen Tokenstand und `status` trägt nur den
-    // `RunStatus` — es gibt schlicht kein Kommando, das die Zahl aufnehmen könnte. Sie ist
-    // trotzdem nicht verloren: Zeitleiste, Dock und Inspektor lesen sie in Schicht 2 direkt aus
-    // dem Ereignisstrom. Hier ein `status`-Kommando zu erfinden, das nichts überträgt, wäre
-    // eine Zeile Rauschen je Modellzug.
+    // Tokens of a model turn. `ActorState` keeps no token count and `status` carries only the
+    // `RunStatus`: there simply is no command that could take the number. It is not lost
+    // regardless: timeline, dock and inspector read it in layer 2 straight from the event
+    // stream. Inventing a `status` command here that transports nothing would be one line of
+    // noise per model turn.
     case "usage":
       return [];
 
@@ -291,10 +291,10 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
       return [ensure(ev, roster), { k: "edit", id: ev.agent_id, path }];
     }
 
-    // Absichtlich ohne Kommando. Die Spawn-Linie kommt aus dem `run_start` des KINDES (siehe
-    // oben); hier zusätzlich eine zu ziehen, ergäbe zwei Linien für einen Vorgang — eine davon
-    // zu einer Figur, die es in diesem Moment noch gar nicht gibt. Der Anweisungstext des
-    // Spawns (`prompt`) gehört in den Inspektor, nicht auf die Bühne.
+    // Deliberately without a command. The spawn line comes from the `run_start` of the CHILD
+    // (see above); drawing another one here would give two lines for one event, one of them to
+    // a figure that does not even exist at that moment. The instruction text of the spawn
+    // (`prompt`) belongs in the inspector, not on the stage.
     case "agent_spawn":
       return [];
 
@@ -303,13 +303,13 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
       const cmds: Cmd[] = [ensure(ev, roster)];
       if (isRunStatus(ev.status)) cmds.push({ k: "status", id, status: ev.status });
 
-      // Übergabe an den Elternlauf — der Kern der Choreografie: die Figur läuft
-      // hinüber und reicht ihr Ergebnis weiter. Nur mit Roster, denn das `run_end` selbst kennt
-      // seinen Elternteil nicht.
+      // Handover to the parent run, the core of the choreography: the figure walks over and
+      // passes its result on. Only with a roster, because the `run_end` itself does not know
+      // its parent.
       //
-      // Bei `blocked` **nicht**: ein geblockter Unterlauf hat nichts abzuliefern. Die Figur
-      // liefe hinüber, überreichte nichts und höbe dann die Hand — die Übergabe wäre eine
-      // Geste über einem leeren Ergebnis.
+      // On `blocked` **not**: a blocked sub-run has nothing to deliver. The figure would walk
+      // over, hand over nothing and then raise its hand, so the handover would be a gesture
+      // over an empty result.
       const row = rosterOf(roster, id);
       if (row && row.parent_run_id !== null && ev.status !== "blocked") {
         const text = firstSentence(ev.summary || ev.error || "", SAY_CHARS);
@@ -317,10 +317,10 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
                     ...(text ? { text } : {}) });
       }
 
-      // Hand heben statt verschwinden. Ein Lauf, der auf einen Menschen wartet, ist der
-      // häufigste Grund für einen stillen Raum — und ein stiller Raum ohne sichtbaren Grund
-      // liest sich wie ein Absturz. `planned` gehört dazu, obwohl es kein `blocker_kind` trägt:
-      // ein eingereichter Plan wartet genauso auf eine Freigabe.
+      // Raise a hand instead of disappearing. A run waiting for a human is the most common
+      // reason for a silent room, and a silent room without a visible reason reads like a
+      // crash. `planned` belongs here although it carries no `blocker_kind`: a submitted plan
+      // waits for an approval just the same.
       const gate: GateKind | undefined =
         ev.status === "planned" ? "plan"
           : (ev.blocker_kind ? (GATE_OF[ev.blocker_kind] || "question") : undefined);
@@ -329,10 +329,10 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
                     text: firstSentence(ev.summary || ev.error || "", SAY_CHARS) });
       }
 
-      // `done` schickt die Figur nach `DONE_LINGER_MS` durch die Tür. Bei `blocked` darf das
-      // nicht passieren: dort steht sie am Gate und wartet auf eine Antwort — genau das soll
-      // man sehen. `planned` dagegen ist wirklich fertig (der Lauf hat abgeliefert), die Figur
-      // hebt beim Gehen nur noch den Plan hoch.
+      // `done` sends the figure through the door after `DONE_LINGER_MS`. On `blocked` that
+      // must not happen: there it stands at the gate waiting for an answer, and that is
+      // exactly what should be visible. `planned` on the other hand really is finished (the
+      // run delivered), the figure only holds the plan up as it leaves.
       if (ev.status !== "blocked") {
         const ok = ev.status === "success" || ev.status === "planned";
         const text = firstSentence(ev.summary || ev.error || "", SAY_CHARS);
@@ -341,19 +341,19 @@ export function mapEvent(ev: Ev, roster: Roster): Cmd[] {
       return cmds;
     }
 
-    // Abbruch, Kappung, Kompaktierung: in v1 ohne Kommando. Diese Meldungen betreffen den
-    // Ablauf, nicht den Raum — sie gehören in den Textstrom und in die Zeitleiste. Eine Figur
-    // dafür sprechen zu lassen hieße, dem Agenten Worte in den Mund zu legen, die das System
-    // gesagt hat.
+    // Abort, truncation, compaction: without a command in v1. These messages concern the
+    // process, not the room; they belong in the text stream and in the timeline. Letting a
+    // figure speak them would put words into the agent's mouth that the system
+    // said.
     case "system":
       return [];
 
-    // Der Serverschrank. Genau ein Kommando je Zustandswechsel — die Geste (hinlaufen,
-    // zurücklaufen) und das Urteil (`emote`) baut die Engine daraus, nicht diese Datei.
+    // The server rack. Exactly one command per state change: the gesture (walking there,
+    // walking back) and the verdict (`emote`) are built from it by the engine, not by this file.
     //
-    // `ensure` steht wie überall davor: die Zeile kann aus einem Fenster kommen, dessen
-    // `run_start` vorn weggekappt wurde, und ein Bestands-Deployment hängt seine geliehene
-    // `seq` sogar an eine **fremde** Schrittzeile.
+    // `ensure` stands before it as everywhere: the row can come from a window whose
+    // `run_start` was cut off at the front, and an existing deployment even hangs its borrowed
+    // `seq` on a **foreign** step row.
     case "deploy": {
       if (!isDeployState(ev.state)) return [];
       return [ensure(ev, roster), {
