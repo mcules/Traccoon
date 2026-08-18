@@ -13,30 +13,30 @@ class Notification(Base):
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     issue_id: Mapped[int | None] = mapped_column(ForeignKey("issues.id", ondelete="CASCADE"), nullable=True)
-    # Projektlose Assistent-Freigaben (Telegram-Karte): Bezug aufs Inbox-Item statt aufs Issue.
+    # Project-less assistant approvals (Telegram card): reference to the inbox item instead of the issue.
     assistant_task_id: Mapped[int | None] = mapped_column(
         ForeignKey("assistant_tasks.id", ondelete="CASCADE"), nullable=True)
-    # Spam-Rückfrage (Einzelkarte): Bezug aufs Urteil statt aufs Inbox-Item — ein Urteil
-    # kann auch ohne Inbox-Item entstehen (Passthrough-Webhooks legen keinen Task an).
+    # Spam question (single card): reference to the verdict instead of the inbox item; a
+    # verdict can come into being without an inbox item as well (passthrough webhooks create no task).
     spam_verdict_id: Mapped[int | None] = mapped_column(
         ForeignKey("spam_verdicts.id", ondelete="CASCADE"), nullable=True)
     kind: Mapped[str] = mapped_column(String(40), default="")   # done|failed|plan_review|to_test|blocked|permission|assistant_review|spam_review|spam_digest
     title: Mapped[str] = mapped_column(String(500), default="")
     body: Mapped[str] = mapped_column(Text, default="")
     chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    # Medienausgang: der Notifier ist der EINZIGE Weg nach Telegram — dem backend-Container
-    # fehlt `TELEGRAM_BOT_TOKEN` vollständig (er hat nur `TELEGRAM_OWNER_CHAT`), nur der
-    # telegram-bot-Prozess spricht mit Telegram. Wer eine Datei mitschicken will, legt sie
-    # an einen für BEIDE Dienste sichtbaren Pfad und schreibt ihn hierher; ein zweiter
-    # Ausgang wäre die Doppelung, gegen die dieses Repo sonst durchgehend argumentiert.
-    # Beide Spalten nullable und ohne Vorgabe: Bestandszeilen ändern ihr Verhalten nicht.
+    # Media output: the notifier is the ONLY way to Telegram, because the backend container
+    # lacks `TELEGRAM_BOT_TOKEN` entirely (it only has `TELEGRAM_OWNER_CHAT`) and only the
+    # telegram-bot process talks to Telegram. Whoever wants to send a file along puts it at a
+    # path visible to BOTH services and writes it here; a second output would be the
+    # duplication this repository otherwise argues against throughout.
+    # Both columns are nullable and without a default: existing rows do not change behaviour.
     media_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     media_kind: Mapped[str | None] = mapped_column(String(20), nullable=True)   # animation|photo|document
-    # Drossel: wann zuletzt eine Nachricht dieser Art hinausging. Traccar dedupliziert
-    # Alarme ausdrücklich NICHT — solange das Erschütterungsbit steht, kommt ein Ereignis je
-    # eingehender Position, im Wachbetrieb alle paar Sekunden. Zehn Minuten Rütteln wären
-    # rund 120 gleichlautende Nachrichten. Was als „dieselbe Nachricht" gilt, entscheidet
-    # der Ablauf über den Schlüssel (Gerät, Klasse, was auch immer) — nicht Traccoon.
+    # Throttle: when a message of this kind last went out. Traccar explicitly does NOT
+    # deduplicate alarms; as long as the vibration bit is set, one event comes per incoming
+    # position, every few seconds in guard mode. Ten minutes of shaking would be around 120
+    # identical messages. What counts as "the same message" is decided by the flow over the
+    # key (device, class, whatever), not by Traccoon.
     drossel_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
     read_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)  # Telegram gesendet

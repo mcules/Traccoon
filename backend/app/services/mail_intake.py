@@ -1,13 +1,13 @@
-"""Eingehende E-Mail → Ereignis `mail.received`. Der Auslöser, nicht der Ablauf.
+"""Incoming e-mail becomes the event `mail.received`. The trigger, not the flow.
 
-Was mit der Mail geschieht — einordnen, auf Spam prüfen, nachfragen, wegräumen oder dem
-Assistenten geben — steht seit dem Umstieg im Graphen des Slots `mail_intake`
-(`workflow_seed.build_mail_intake`, Schritte in `mail_actions.py`). Hier bleibt nur, was
-ein Auslöser können muss: dieselbe Mail nicht zweimal melden und die Einstellungen des
-Webhooks mitgeben, damit die Schritte sie lesen können.
+What happens to the mail (classifying, checking for spam, asking, clearing away or giving it
+to the assistant) has stood in the graph of the slot `mail_intake` since the changeover
+(`workflow_seed.build_mail_intake`, steps in `mail_actions.py`). What remains here is what a
+trigger has to be able to do: not report the same mail twice and pass the settings of the
+webhook along so that the steps can read them.
 
-Der Ablauf entscheidet selbst, ob er zuhört (Trigger am Start-Knoten). Damit kann neben
-dem ausgelieferten Ablauf ein zweiter stehen, ohne dass hier etwas umverdrahtet wird.
+The flow decides itself whether it listens (the trigger on the start node). That way a second
+flow can stand beside the shipped one without anything being rewired here.
 """
 from __future__ import annotations
 
@@ -26,11 +26,11 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
                       source: str, classify_agent: str = "", agent: str = "assistent",
                       prompt_tmpl: str = "", ref_field: str = "",
                       auto_run: bool = False) -> list[int]:
-    """Eine eingegangene Mail melden. → IDs der gestarteten Abläufe. Committet selbst.
+    """Report an incoming mail. Returns the ids of the started flows. Commits itself.
 
-    Idempotent über den Bezug (konfiguriertes Feld, sonst Konto:UID): sowohl gegen ein
-    bereits angelegtes Assistent-Item (Bestand aus der Zeit vor dem Prozess) als auch
-    gegen einen bereits gestarteten Ablauf — `emit` prüft den Bezug selbst.
+    Idempotent over the reference (configured field, otherwise account:UID): both against an
+    already created assistant item (existing data from the time before the process) and
+    against an already started flow; `emit` checks the reference itself.
     """
     account = str(payload.get("account") or "")
     uid = payload.get("uid")
@@ -49,8 +49,8 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
                      src_ref, dup.id)
             return []
 
-    # Die Einstellungen des Auslösers reisen im Kontext mit: der Ablauf gehört dem
-    # Standard-Satz und darf nichts über den einzelnen Webhook wissen müssen.
+    # The settings of the trigger travel along in the context: the flow belongs to the
+    # default set and must not have to know anything about the individual webhook.
     ids = await emit(
         db, "mail.received", payload={
             "mail": payload,
