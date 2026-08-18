@@ -84,6 +84,36 @@ async def set_telegram(d: StrIn, u: User = Depends(get_current_user), db: AsyncS
     await db.commit()
 
 
+class NotifyIn(BaseModel):
+    """Wie diese Person erreicht werden will. Leere Felder bleiben unverändert."""
+    notify_default: str | None = None       # telegram | email
+    notify_email: str | None = None         # leer = Anmelde-Adresse benutzen
+    telegram_chat_id: str | None = None
+
+
+@router.put("/me/notify", status_code=204)
+async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
+                     db: AsyncSession = Depends(get_session)):
+    """Benachrichtigungswege im Profil verwalten.
+
+    Der Standard entscheidet, wohin eine Nachricht geht, wenn der Absender keinen Weg
+    nennt — und das ist der Normalfall: ein Ablauf kennt seinen Empfänger oft erst zur
+    Laufzeit und weiß nichts über dessen Gewohnheiten.
+    """
+    from ..services.notify import KANAELE
+    if d.notify_default is not None:
+        if d.notify_default not in KANAELE:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                f"Unbekannter Weg — möglich: {', '.join(KANAELE)}")
+        u.notify_default = d.notify_default
+    if d.notify_email is not None:
+        roh = d.notify_email.strip()
+        u.notify_email = _valid_email(roh) if roh else None
+    if d.telegram_chat_id is not None:
+        u.telegram_chat_id = d.telegram_chat_id.strip() or None
+    await db.commit()
+
+
 @router.put("/me/theme", status_code=204)
 async def set_theme(d: StrIn, u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     u.theme = d.value if d.value in ("light", "dark") else "dark"

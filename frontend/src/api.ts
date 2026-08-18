@@ -101,6 +101,9 @@ export interface User {
   ticket_open_mode?: string;   // popup | page — wie ein Ticket per Linksklick öffnet
   ticket_layout?: { left?: string[]; right?: string[] };  // nutzerspez. Block-Anordnung
   pm_chat_style?: string;      // bubbles | cli — Darstellung des PM-Chats
+  notify_default?: string;     // telegram | email — Weg, wenn der Absender keinen nennt
+  notify_email?: string | null;
+  telegram_chat_id?: string | null;
 }
 export interface Project {
   id: number; key: string; name: string; description: string;

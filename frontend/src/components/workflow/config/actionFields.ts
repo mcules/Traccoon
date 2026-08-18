@@ -18,7 +18,7 @@ export interface FieldSpec {
   options?: [string, string][];
   /** Laufzeit-Quelle für die Auswahl. */
   source?: "board_status" | "agent_role" | "member" | "artifact_status" | "artifact_field"
-    | "mcp_tool";
+    | "mcp_tool" | "person";
   placeholder?: string;
   hint?: string;
   /** Vorbelegung, solange nichts gesetzt ist (wichtig bei Ja/Nein-Feldern). */
@@ -91,10 +91,10 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
   },
 
   notify: {
-    summary: "Schickt eine Benachrichtigung (Glocke und, falls hinterlegt, Telegram).",
+    summary: "Schickt eine Benachrichtigung — Glocke immer, hinaus auf dem Weg der Person.",
     fields: [
       { key: "to.mode", label: "Empfänger", type: "select", options: TO_MODE },
-      { key: "to.user_id", label: "Person", type: "select", source: "member",
+      { key: "to.user_id", label: "Person", type: "select", source: "person",
         showIf: ["to.mode", ["user"]] },
       { key: "to.role", label: "Rolle", type: "select", showIf: ["to.mode", ["role"]],
         options: [["owner", "Owner"], ["maintainer", "Maintainer"], ["member", "Mitglied"],
@@ -103,6 +103,10 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
         placeholder: "freigeber_id" },
       { key: "title", label: "Betreff", type: "text", placeholder: "{{issue_key}}: Hinweis" },
       { key: "text", label: "Text", type: "textarea" },
+      { key: "channel", label: "Weg", type: "select",
+        options: [["", "Standard der Person"], ["telegram", "Telegram"], ["email", "E-Mail"]],
+        hint: "Leer lassen ist der Normalfall — jeder verwaltet im Profil, wie er erreicht "
+            + "wird. Ist der gewählte Weg dort nicht hinterlegt, wird der andere genommen." },
     ],
   },
 

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.security import hash_password
@@ -99,6 +99,38 @@ async def search_users(q: str = "", _: User = Depends(get_current_user),
     )).scalars().all()
     return [{"id": u.id, "username": u.username, "display_name": u.display_name,
              "status": u.status.value} for u in rows]
+
+
+@router.get("/visible")
+async def visible_users(user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    """Personen, die dieser Mensch sehen darf — Auswahl als Empfänger.
+
+    Sichtbar sind: er selbst, alle Mitglieder seiner Projekte und Platzhalter-Konten
+    (die existieren nur, um jemanden zu benennen). Ein Admin sieht alle. Damit lässt sich
+    in einem Ablauf ein Empfänger benennen, ohne dass der Ablauf zu einem Projekt gehören
+    muss — vorher stand dort die Mitgliederliste des Projekts, bei projektlosen Abläufen
+    also nichts.
+    """
+    from ..models.project import ProjectMember
+
+    q = select(User).where(User.id != SYSTEM_USER_ID,
+                           User.status != UserStatus.disabled)
+    if user.global_role != GlobalRole.admin:
+        meine = select(ProjectMember.project_id).where(ProjectMember.user_id == user.id)
+        mit_mir = select(ProjectMember.user_id).where(ProjectMember.project_id.in_(meine))
+        q = q.where(or_(User.id == user.id, User.id.in_(mit_mir),
+                        User.status == UserStatus.placeholder))
+    rows = (await db.execute(q.order_by(User.display_name, User.username))).scalars().all()
+    return [{"id": u.id, "username": u.username, "display_name": u.display_name,
+             "status": u.status.value,
+             # Wie diese Person erreicht wird, gehört in die Auswahl: sonst wählt man
+             # jemanden und erfährt nie, dass bei ihm gar kein Weg hinterlegt ist.
+             "notify_default": u.notify_default,
+             "kanaele": [k for k in ("telegram", "email")
+                         if (u.telegram_chat_id if k == "telegram"
+                             else (u.notify_email or u.email))]}
+            for u in rows]
 
 
 @router.get("", response_model=list[UserOut])

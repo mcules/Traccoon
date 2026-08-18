@@ -53,6 +53,10 @@ class UserOut(BaseModel):
     ticket_open_mode: str = "popup"
     ticket_layout: dict = {}
     pm_chat_style: str = "bubbles"
+    # Benachrichtigungswege dieser Person (Profil).
+    notify_default: str = "telegram"
+    notify_email: str | None = None
+    telegram_chat_id: str | None = None
     # Persönlicher Prozess-Satz (gilt für alle Projekte, in denen der Nutzer Owner ist).
     workflow_set_id: int | None = None
     claude_token_set: bool
