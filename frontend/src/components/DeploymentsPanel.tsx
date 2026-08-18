@@ -33,20 +33,23 @@ const KIND_LABEL: Record<string, string> = {
   self: "deploy.art.wartung", check: "deploy.art.pruefung", stack: "deploy.art.stack",
 };
 const QUELLE_LABEL: Record<string, string> = {
-  agent: "Agent", merge: "Merge", workflow: "Prozess", maintenance: "Wartung",
+  agent: "deployments_panel.quelle_agent", merge: "deployments_panel.quelle_merge",
+  workflow: "deployments_panel.quelle_workflow", maintenance: "deployments_panel.quelle_maintenance",
   // Der einzige Wert, hinter dem ein Mensch steht — der Knopf unten.
-  manual: "von Hand",
+  manual: "deployments_panel.quelle_manual",
 };
 const FILTER: [DeploymentStatusFilter, string][] = [
   // `running` umfasst serverseitig die Warteschlange mit („noch nicht entschieden“) —
   // deshalb „Offen“ und nicht „Läuft“.
-  ["all", "Alle"], ["running", "Offen"], ["ok", "Erfolgreich"],
-  ["failed", "Fehlgeschlagen"], ["other", "Sonstige"],
+  ["all", "deployments_panel.filter_alle"], ["running", "deployments_panel.filter_offen"],
+  ["ok", "deployments_panel.filter_ok"], ["failed", "deployments_panel.filter_failed"],
+  ["other", "deployments_panel.filter_other"],
 ];
 /** Die API kennt kein „ohne Fenster“: `since_hours` ist Pflicht mit Standard 720 h und
  *  Höchstwert 8760 h. Ein Eintrag „Alles“ wäre also eine Lüge über 30 Tage. */
 const FENSTER: [number, string][] = [
-  [24, "24 Stunden"], [168, "7 Tage"], [720, "30 Tage"], [8760, "1 Jahr"],
+  [24, "deployments_panel.fenster_24h"], [168, "deployments_panel.fenster_7t"],
+  [720, "deployments_panel.fenster_30t"], [8760, "deployments_panel.fenster_1j"],
 ];
 const FENSTER_STANDARD = 720;
 /** `LIMIT_MAX` der API. Darüber hinaus nachzuladen brächte nichts als denselben Ausschnitt. */
@@ -130,12 +133,12 @@ export default function DeploymentsPanel(
             <button key={f} onClick={() => setStatus(f)}
               className={`rounded border px-2 py-1 text-xs ${status === f
                 ? "border-brand text-ink" : "border-line text-muted hover:text-ink"}`}>
-              {label}
+              {tr(label)}
             </button>
           ))}
           <select value={seit} onChange={(e) => setSeit(+e.target.value)}
             className="ml-auto rounded border border-line bg-surface px-2 py-1 text-xs text-ink">
-            {FENSTER.map(([h, label]) => <option key={h} value={h}>{label}</option>)}
+            {FENSTER.map(([h, label]) => <option key={h} value={h}>{tr(label)}</option>)}
           </select>
         </div>
       )}
@@ -148,7 +151,7 @@ export default function DeploymentsPanel(
         <div className="text-xs text-muted">
           {Object.values(data.by_status || {}).some((n) => n > 0)
             ? tr("deploy.kein_treffer_filter")
-            : `In ${fensterText(seit)} wurde nichts deployt.`}
+            : tr("deployments_panel.nichts_deployt", { fenster: tr(fensterText(seit)) })}
         </div>
       ) : (
         <div className="divide-y divide-line">
@@ -232,26 +235,17 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
         <div className="mt-3 space-y-2 rounded border border-yellow-400/40 bg-surface p-3">
           <div className="text-sm text-ink">{tr("deployments_panel.diesen_stand_wirklich_ausrollen")}</div>
           <div className="text-xs text-muted">
-            Der Deployer holt im Ordner{" "}
-            <span className="font-mono text-ink">{ordner}</span>{" "}
-            den aktuellen Stand des Branches (<span className="font-mono">git pull --ff-only</span>),
-            baut die Images neu und startet die Container neu.
+            {tr("deployments_panel.was_passiert", { ordner })}
           </div>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
-            <li>Der Dienst ist während des Neustarts <b className="text-ink">kurz nicht erreichbar</b>.</li>
-            <li>
-              Es gibt <b className="text-ink">keinen automatischen Rollback</b>: geht der Bau oder
-              der Start schief, bleibt der neue Stand stehen und muss von Hand zurückgeholt werden.
-            </li>
-            <li>
-              Deployt wird der Stand, der dort im ausgecheckten Branch liegt — nicht dein
-              lokaler Arbeitsstand und kein Worktree eines Tickets.
-            </li>
+            <li>{tr("deployments_panel.warnung_ausfall")}</li>
+            <li>{tr("deployments_panel.warnung_kein_rollback")}</li>
+            <li>{tr("deployments_panel.warnung_welcher_stand")}</li>
           </ul>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button onClick={ausloesen} disabled={sendet}
               className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-40">
-              {sendet ? "Wird eingereiht…" : "Ja, jetzt deployen"}
+              {tr(sendet ? "deployments_panel.wird_eingereiht" : "deployments_panel.ja_deployen")}
             </button>
             <button onClick={() => setFrage(false)} disabled={sendet}
               className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">
@@ -263,8 +257,7 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
 
       {eingereiht !== null && (
         <div className="mt-2 text-xs text-green-400">
-          Eingereiht als #{eingereiht}. Der Deployer greift die Zeile innerhalb weniger Sekunden
-          auf; der Fortschritt steht unten in der Liste.
+          {tr("deployments_panel.eingereiht_als", { nummer: eingereiht })}
         </div>
       )}
       {fehler && <div className="mt-2 text-xs text-red-400">{fehler}</div>}
@@ -303,19 +296,18 @@ function Kopf({ by, count, truncated, kompakt, fenster }: {
           </span>
         ))}
         <span className="ml-auto">
-          {summe} in {fensterText(fenster)} · {count} angezeigt{truncated ? " (gekürzt)" : ""}
+          {tr("deployments_panel.zusammenfassung", { summe, fenster: tr(fensterText(fenster)), count })}
+          {truncated ? ` ${tr("deployments_panel.gekuerzt")}` : ""}
         </span>
       </div>
       {abgebrochen > 0 && !kompakt && (
         <div className="mt-1.5 text-xs text-muted">
-          „Abgebrochen“ schreibt kein Codepfad: die {abgebrochen} Zeilen stammen aus einer
-          einmaligen, von Hand ausgeführten Aufräumaktion an einer festgefahrenen Warteschlange.
-          Sie stehen hier, damit die Summe stimmt — als Fehler sind sie nicht zu lesen.
+          {tr("deployments_panel.abgebrochen_erklaerung", { anzahl: abgebrochen })}
         </div>
       )}
       {abgebrochen > 0 && kompakt && (
         <div className="mt-1.5 text-xs text-muted">
-          Die abgebrochenen stammen aus einer einmaligen Aufräumaktion, nicht aus einem Fehler.
+          {tr("deployments_panel.abgebrochen_kurz")}
         </div>
       )}
     </div>
@@ -349,13 +341,13 @@ function Zeile({ d, kompakt, auf, toggle }: {
                   onClick={(e) => e.stopPropagation()}
                   className="text-xs text-brand hover:underline">{d.issue_key}</Link>
               ) : <span className="text-xs text-muted">{d.issue_key}</span>
-            ) : <span className="text-xs text-muted">ohne Ticket</span>}
+            ) : <span className="text-xs text-muted">{tr("deployments_panel.ohne_ticket")}</span>}
             <span className="ml-auto shrink-0 text-xs text-muted">{formatTime(d.created_at) || "—"}</span>
           </div>
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
-            <span>Warteschlange: {dauerText(d.wait_ms)}</span>
-            <span>Arbeit: {dauerText(d.duration_ms)}</span>
-            {!kompakt && <span>Auslöser: {quelleText(d.source)}</span>}
+            <span>{tr("deployments_panel.warteschlange")}: {dauerText(d.wait_ms)}</span>
+            <span>{tr("deployments_panel.arbeit")}: {dauerText(d.duration_ms)}</span>
+            {!kompakt && <span>{tr("deployments_panel.ausloeser")}: {tr(quelleText(d.source))}</span>}
             {!kompakt && d.stack_dir && (
               <span className="truncate font-mono" title={d.stack_dir}>{d.stack_dir}</span>
             )}
@@ -395,7 +387,8 @@ function LogAusklapper({ id, bytes }: { id: number; bytes?: number | null }) {
   if (isLoading) return <div className="pb-2 pl-6 text-xs text-muted">{tr("deployments_panel.log_wird_geladen")}</div>;
   if (error) {
     return <div className="pb-2 pl-6 text-xs text-muted">
-      Log nicht abrufbar ({error instanceof ApiError ? error.status : "Fehler"}).
+      {tr("deployments_panel.log_nicht_abrufbar", {
+        grund: error instanceof ApiError ? String(error.status) : tr("common.fehler") })}
     </div>;
   }
   const log = data?.log || "";
@@ -427,18 +420,21 @@ function dauerText(ms: number | null | undefined): string {
 /** `requested_by`/`chat_id` sind bei keiner einzigen Zeile gefüllt — der Auslöser kommt aus
  *  `source`, und bei Altzeilen gibt es ihn schlicht nicht. */
 function quelleText(source?: string | null): string {
-  if (!source) return "unbekannt";
+  if (!source) return "deployments_panel.quelle_unbekannt";
   return QUELLE_LABEL[source] || source;
 }
 
-/** Das Zeitfenster benennen, statt es zu verschweigen: „61 erfolgreich“ ohne Zeitraum ist
- *  keine Aussage. Dativ, weil der Text immer hinter „in“ steht. */
+/** Name the time window instead of hiding it: "61 successful" without a period says nothing.
+ *  Returns a key, the caller translates. The odd windows fall back to a counted text, because
+ *  a number plus a unit survives translation while a hand written case ending does not. */
 function fensterText(stunden: number): string {
-  if (stunden === 24) return "24 Stunden";
-  if (stunden === 168) return "7 Tagen";
-  if (stunden === 720) return "30 Tagen";
-  if (stunden === 8760) return "einem Jahr";
-  return stunden % 24 === 0 ? `${stunden / 24} Tagen` : `${stunden} Stunden`;
+  if (stunden === 24) return "deployments_panel.fenster_24h";
+  if (stunden === 168) return "deployments_panel.fenster_7t";
+  if (stunden === 720) return "deployments_panel.fenster_30t";
+  if (stunden === 8760) return "deployments_panel.fenster_1j";
+  return stunden % 24 === 0
+    ? tr("deployments_panel.fenster_tage", { anzahl: stunden / 24 })
+    : tr("deployments_panel.fenster_stunden", { anzahl: stunden });
 }
 
 /** Der Log-Kopf enthält Zeilenumbrüche; in einer Tabellenzeile stört das nur. */

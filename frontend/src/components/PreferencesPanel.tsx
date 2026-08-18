@@ -3,18 +3,15 @@ import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 
-const DAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+// Schlüssel statt Texte: die Listen entstehen beim Laden des Moduls, ein tr() hier würde
+// die Sprache des ersten Aufrufs festhalten.
+const DAYS = ["mo", "di", "mi", "do", "fr", "sa", "so"];
 
 /** Per-User-Flags (Kurzbeschreibung fürs UI). */
-const USER_FLAGS: [string, string, string][] = [
-  ["shift_end", "Feierabend", "Keine neuen Agenten-Läufe starten (laufende gehen zu Ende)."],
-  ["sonnet_max", "Sonnet bevorzugen", "Günstigeres Modell für Routine-Aufgaben verwenden."],
-  ["show_token_prices", "Token-Preise zeigen", "Kosten je Lauf in der Oberfläche einblenden."],
-  ["ticket_notify", "Ticket-Benachrichtigungen", "Bei Ticket-Ereignissen per Telegram melden."],
-];
-const GLOBAL_FLAGS: [string, string, string, string][] = [
-  ["global_pause", "Not-Aus (alle Nutzer)", "Dispatcher pausiert komplett — nichts wird mehr gestartet.", "/runner/global-pause"],
-  ["strict_success", "Strenge Abnahme (alle Nutzer)", "Lauf gilt nur als Erfolg, wenn der Verify-Befehl grün ist.", "/strict-success"],
+const USER_FLAGS: string[] = ["shift_end", "sonnet_max", "show_token_prices", "ticket_notify"];
+const GLOBAL_FLAGS: [string, string][] = [
+  ["global_pause", "/runner/global-pause"],
+  ["strict_success", "/strict-success"],
 ];
 
 export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
@@ -112,12 +109,11 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
             className="w-72 rounded border border-line bg-surface px-2 py-1" />
           <button onClick={async () => {
             await api.put("/me/vault-memory-path", { value: gedaechtnis });
-            inv(); flash(gedaechtnis ? "Gedächtnis-Ordner gespeichert." : "Gedächtnis abgeschaltet.");
+            inv(); flash(tr(gedaechtnis ? "preferences_panel.gedaechtnis_gespeichert" : "preferences_panel.gedaechtnis_aus"));
           }} className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
         </div>
         <p className="mt-2 text-[11px] text-muted">
-          Leer = kein Gedächtnis. Der Zugriff läuft über deine eigene MCP-Gruppe, das Gelernte
-          bleibt also persönlich.
+          {tr("preferences_panel.gedaechtnis_hinweis")}
         </p>
       </div>
 
@@ -133,17 +129,17 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
           <span className="text-muted">{tr("preferences_panel.uhr")}</span>
           <button onClick={async () => {
             await api.put("/me/night-window", { start_hour: nightStart, end_hour: nightEnd, days: flags?.night_days || [0, 1, 2, 3, 4, 5, 6] });
-            inv(); flash("Fenster gespeichert.");
+            inv(); flash(tr("preferences_panel.fenster_gespeichert"));
           }} className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
         </div>
         <div className="mb-3 flex gap-1">
           {DAYS.map((d, i) => (
             <button key={d} onClick={() => toggleDay(i)}
               className={`rounded px-2 py-1 text-xs ${(flags?.night_days || []).includes(i)
-                ? "bg-brand text-white" : "border border-line text-muted"}`}>{d}</button>
+                ? "bg-brand text-white" : "border border-line text-muted"}`}>{tr(`common.tag_${d}`)}</button>
           ))}
         </div>
-        <Toggle label={tr("preferences_panel.fenster_ignorieren")} hint="Nacht-Tickets laufen jederzeit."
+        <Toggle label={tr("preferences_panel.fenster_ignorieren")} hint={tr("preferences_panel.nacht_tickets_jederzeit")}
           on={!!flags?.night_override}
           onChange={async (v) => { await api.put("/me/night-override", { active: v }); inv(); }} />
       </div>
@@ -151,8 +147,9 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
       <div className="rounded-lg border border-line bg-card p-4">
         <div className="mb-3 text-sm font-medium">{tr("preferences_panel.meine_schalter")}</div>
         <div className="space-y-2">
-          {USER_FLAGS.map(([key, label, hint]) => (
-            <Toggle key={key} label={label} hint={hint} on={!!flags?.[key]}
+          {USER_FLAGS.map((key) => (
+            <Toggle key={key} label={tr(`preferences_panel.flag_${key}`)}
+              hint={tr(`preferences_panel.flag_${key}_hinweis`)} on={!!flags?.[key]}
               onChange={(v) => toggle(`/me/${key.replace(/_/g, "-")}`, v)} />
           ))}
         </div>
@@ -162,8 +159,9 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
         <div className="rounded-lg border border-yellow-500/40 bg-card p-4">
           <div className="mb-3 text-sm font-medium text-yellow-400">{tr("preferences_panel.systemweit_administration")}</div>
           <div className="space-y-2">
-            {GLOBAL_FLAGS.map(([key, label, hint, path]) => (
-              <Toggle key={key} label={label} hint={hint} on={!!flags?.[key]}
+            {GLOBAL_FLAGS.map(([key, path]) => (
+              <Toggle key={key} label={tr(`preferences_panel.flag_${key}`)}
+                hint={tr(`preferences_panel.flag_${key}_hinweis`)} on={!!flags?.[key]}
                 onChange={(v) => toggle(path, v)} />
             ))}
           </div>

@@ -27,10 +27,10 @@ export default function AcceptInvite() {
   const [done, setDone] = useState<Project | null>(null);
 
   useEffect(() => {
-    if (!token) { setLoadErr("Kein Einladungs-Token in der URL."); return; }
+    if (!token) { setLoadErr(tr("accept_invite.kein_token")); return; }
     api.get<Preview>(`/invitations/by-token/${token}`)
       .then(setPreview)
-      .catch((e) => setLoadErr(e instanceof ApiError ? e.message : "Einladung nicht gefunden"));
+      .catch((e) => setLoadErr(e instanceof ApiError ? e.message : tr("accept_invite.nicht_gefunden")));
   }, [token]);
 
   async function accept() {
@@ -87,7 +87,7 @@ export default function AcceptInvite() {
       <div className="flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-sm rounded-lg border border-line bg-card p-6 text-center">
           <div className="mb-2 text-xl">🦝 Traccoon</div>
-          <div className="text-red-400">{preview.reason || "Einladung ungültig"}</div>
+          <div className="text-red-400">{preview.reason || tr("accept_invite.ungueltig")}</div>
         </div>
       </div>
     );
@@ -136,11 +136,11 @@ export default function AcceptInvite() {
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         <button className="mt-4 w-full rounded bg-brand py-2 font-medium text-white">
-          {mode === "login" ? "Anmelden & beitreten" : "Registrieren & beitreten"}
+          {tr(mode === "login" ? "accept_invite.anmelden_beitreten" : "accept_invite.registrieren_beitreten")}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
           className="mt-3 w-full text-sm text-muted hover:text-ink">
-          {mode === "login" ? "Neu hier? Registrieren" : "Bereits registriert? Anmelden"}
+          {tr(mode === "login" ? "accept_invite.neu_hier" : "accept_invite.bereits_registriert")}
         </button>
       </form>
     </div>

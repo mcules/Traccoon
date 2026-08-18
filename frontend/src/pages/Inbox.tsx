@@ -21,18 +21,20 @@ type Tab = "chat" | "inbox" | "rules";
 type Filter = "offen" | "erledigt" | "alle";
 const OPEN = ["new", "approved", "running"];
 
+// Die Tabellen halten Schlüssel: sie entstehen beim Laden des Moduls, ein tr() an dieser
+// Stelle würde bei einem Sprachwechsel die alte Beschriftung behalten.
 const PRIO: Record<string, { label: string; cls: string }> = {
-  urgent: { label: "dringend", cls: "bg-red-500/15 text-red-400" },
-  high: { label: "hoch", cls: "bg-amber-500/15 text-amber-400" },
-  normal: { label: "normal", cls: "bg-surface text-muted" },
-  low: { label: "niedrig", cls: "bg-surface text-muted" },
+  urgent: { label: "inbox.prio_urgent", cls: "bg-red-500/15 text-red-400" },
+  high: { label: "inbox.prio_high", cls: "bg-amber-500/15 text-amber-400" },
+  normal: { label: "inbox.prio_normal", cls: "bg-surface text-muted" },
+  low: { label: "inbox.prio_low", cls: "bg-surface text-muted" },
 };
 const STATUS: Record<string, { label: string; cls: string }> = {
-  new: { label: "neu", cls: "bg-brand/20 text-brand" },
-  approved: { label: "freigegeben", cls: "bg-amber-500/15 text-amber-400" },
-  running: { label: "läuft…", cls: "bg-brand/20 text-brand" },
-  done: { label: "erledigt", cls: "bg-green-600/15 text-green-400" },
-  error: { label: "Fehler", cls: "bg-red-500/15 text-red-400" },
+  new: { label: "inbox.status_new", cls: "bg-brand/20 text-brand" },
+  approved: { label: "inbox.status_approved", cls: "bg-amber-500/15 text-amber-400" },
+  running: { label: "inbox.status_running", cls: "bg-brand/20 text-brand" },
+  done: { label: "inbox.status_done", cls: "bg-green-600/15 text-green-400" },
+  error: { label: "inbox.status_error", cls: "bg-red-500/15 text-red-400" },
 };
 
 // mcules@… aus "Name <mail>" ziehen, für das "immer von …"-Label.
@@ -48,15 +50,13 @@ export default function Inbox() {
   return (
     <div className="mx-auto max-w-3xl">
       <h1 className="mb-1 text-lg font-semibold">{tr("inbox.persoenlicher_assistent")}</h1>
-      <p className="mb-4 text-sm text-muted">
-        Eingänge lokal vorklassifiziert &amp; geschwärzt. Erst deine <b>{tr("inbox.freigabe")}</b> lässt den Assistenten
-        handeln — und du kannst dabei <b>{tr("inbox.regeln_lernen")}</b> lassen („ab jetzt immer …").
-      </p>
+      <p className="mb-4 text-sm text-muted">{tr("inbox.einleitung")}</p>
       <div className="mb-4 flex gap-1 border-b border-line">
-        {([["chat", "Chat"], ["inbox", "Eingänge"], ["rules", "Gelernte Regeln"]] as [Tab, string][]).map(([reiter, l]) => (
+        {([["chat", "inbox.reiter_chat"], ["inbox", "inbox.reiter_eingaenge"],
+           ["rules", "inbox.reiter_regeln"]] as [Tab, string][]).map(([reiter, l]) => (
           <button key={reiter} onClick={() => setTab(reiter)}
             className={`px-3 py-2 text-sm ${tab === reiter ? "border-b-2 border-brand text-ink" : "text-muted"}`}>
-            {l}</button>
+            {tr(l)}</button>
         ))}
       </div>
       {tab === "chat" ? <AssistantChat /> : tab === "inbox" ? <InboxList /> : <AssistantPolicies />}
@@ -108,8 +108,8 @@ function InboxList() {
           return (
             <div key={eintrag.id} className="rounded-lg border border-line bg-card p-4">
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                <span className={`rounded px-1.5 text-xs ${st.cls}`}>{st.label}</span>
-                <span className={`rounded px-1.5 text-xs ${prio.cls}`}>{prio.label}</span>
+                <span className={`rounded px-1.5 text-xs ${st.cls}`}>{tr(st.label)}</span>
+                <span className={`rounded px-1.5 text-xs ${prio.cls}`}>{tr(prio.label)}</span>
                 {eintrag.category && <span className="rounded bg-surface px-1.5 text-xs text-muted">{eintrag.category}</span>}
                 {eintrag.sensitive && <span title="sensibel — vertraulich behandeln">🔒</span>}
                 {eintrag.redaction === "unredacted" && <span className="rounded bg-amber-500/15 px-1.5 text-xs text-amber-400" title={tr("inbox.volltext_freigegeben")}>ungeschwärzt</span>}
@@ -135,7 +135,7 @@ function InboxList() {
                     </button>
                   </>
                 )}
-                {eintrag.status === "approved" && <span className="text-sm text-muted">wartet auf Bearbeitung…</span>}
+                {eintrag.status === "approved" && <span className="text-sm text-muted">{tr("inbox.wartet_auf_bearbeitung")}</span>}
                 {eintrag.status === "running" && <span className="text-sm text-brand">🔄 Assistent arbeitet…</span>}
                 {(eintrag.result || eintrag.error) && (
                   <button onClick={() => setOpenId(expanded ? null : eintrag.id)}
@@ -183,9 +183,9 @@ function ApprovePanel({ item, onDone, onError }:
         <div className="mb-1 text-xs uppercase text-muted">{tr("inbox.umfang")}</div>
         <div className="flex flex-wrap gap-1">
           {([
-            ["once", "Nur diesmal"],
-            ["sender", `Immer von ${mail || "Absender"}`],
-            ["category", `Immer Kategorie „${item.category || "?"}"`],
+            ["once", tr("inbox.umfang_einmal")],
+            ["sender", tr("inbox.umfang_absender", { absender: mail || tr("inbox.absender") })],
+            ["category", tr("inbox.umfang_kategorie", { kategorie: item.category || "?" })],
           ] as ["once" | "sender" | "category", string][]).map(([s, l]) => (
             <button key={s} onClick={() => setScope(s)}
               className={`rounded border px-2 py-1 text-xs ${scope === s ? "border-brand bg-brand/15 text-brand" : "border-line text-muted hover:text-ink"}`}>
@@ -196,7 +196,7 @@ function ApprovePanel({ item, onDone, onError }:
       <div>
         <div className="mb-1 text-xs uppercase text-muted">{tr("inbox.verarbeitung")}</div>
         <div className="flex gap-1">
-          {([["redacted", "geschwärzt"], ["unredacted", "ungeschwärzt"]] as ["redacted" | "unredacted", string][]).map(([r, l]) => (
+          {([["redacted", tr("inbox.geschwaerzt")], ["unredacted", tr("inbox.ungeschwaerzt")]] as ["redacted" | "unredacted", string][]).map(([r, l]) => (
             <button key={r} onClick={() => setRedaction(r)}
               className={`rounded border px-2 py-1 text-xs ${redaction === r ? "border-brand bg-brand/15 text-brand" : "border-line text-muted hover:text-ink"}`}>
               {l}</button>
@@ -215,9 +215,9 @@ function ApprovePanel({ item, onDone, onError }:
       <div className="flex items-center gap-2">
         <button onClick={() => approve.mutate()} disabled={approve.isPending}
           className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50">
-          {scope === "once" ? "Freigeben" : "Freigeben & merken"}
+          {tr(scope === "once" ? "inbox.freigeben" : "inbox.freigeben_merken")}
         </button>
-        {scope !== "once" && <span className="text-xs text-muted">legt eine Regel an</span>}
+        {scope !== "once" && <span className="text-xs text-muted">{tr("inbox.legt_regel_an")}</span>}
       </div>
     </div>
   );

@@ -123,9 +123,9 @@ function Maintenance() {
       </div>
       {msg && <div className="text-sm text-green-400">{msg}</div>}
       <div className="border-t border-line pt-3 text-xs text-muted">
-        Aktuell laufende Agenten: <b>{status?.running_agents ?? 0}</b>
-        {status?.update_pending && " · Update eingereiht"}
-        {status?.update_in_progress && " · Update läuft"}
+        {tr("admin.laufende_agenten")}: <b>{status?.running_agents ?? 0}</b>
+        {status?.update_pending && ` · ${tr("admin.update_eingereiht")}`}
+        {status?.update_in_progress && ` · ${tr("admin.update_laeuft")}`}
       </div>
       <RunRetention />
       <WorkflowLayout />
@@ -189,27 +189,27 @@ function TestenvConfig() {
       qc.invalidateQueries({ queryKey: ["testenv-config"] });
     },
   });
+  // Beschriftung und Hinweis kommen als Schlüssel: das Feld wird in der Sprache gebaut, in
+  // der es gerade gezeigt wird.
   const feld = (k: string, label: string, hint?: string) => (
-    <label className="block text-xs text-muted">{label}
+    <label className="block text-xs text-muted">{tr(label)}
       <input value={val(k)} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
         className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
-      {hint && <span className="mt-0.5 block text-[11px] opacity-70">{hint}</span>}
+      {hint && <span className="mt-0.5 block text-[11px] opacity-70">{tr(hint)}</span>}
     </label>
   );
   return (
     <div className="border-t border-line pt-3">
       <div className="text-sm font-medium">{tr("admin.testumgebungen_global")}</div>
-      <p className="mt-1 text-xs text-muted">
-        Gilt für alle Projekte. Änderungen greifen sofort — kein Neustart nötig.
-      </p>
+      <p className="mt-1 text-xs text-muted">{tr("admin.testumgebungen_hinweis")}</p>
       <div className="mt-2 grid gap-2 sm:grid-cols-2">
-        {feld("testenv_host", "Erreichbarer Host", "füllt {host} in der URL-Vorlage")}
-        {feld("testenv_max_concurrent", "Max. parallele Umgebungen")}
-        {feld("testenv_port_lo", "Portbereich von")}
-        {feld("testenv_port_hi", "Portbereich bis")}
-        {feld("testenv_mem_limit", "RAM je Umgebung", "z. B. 2g")}
-        {feld("testenv_cpus", "CPUs je Umgebung", "z. B. 2")}
-        {feld("testenv_max_builds", "Gleichzeitige Builds")}
+        {feld("testenv_host", "admin.feld_testenv_host", "admin.feld_testenv_host_hinweis")}
+        {feld("testenv_max_concurrent", "admin.feld_testenv_max_concurrent")}
+        {feld("testenv_port_lo", "admin.feld_testenv_port_lo")}
+        {feld("testenv_port_hi", "admin.feld_testenv_port_hi")}
+        {feld("testenv_mem_limit", "admin.feld_testenv_mem_limit", "admin.feld_testenv_mem_beispiel")}
+        {feld("testenv_cpus", "admin.feld_testenv_cpus", "admin.feld_testenv_cpus_beispiel")}
+        {feld("testenv_max_builds", "admin.feld_testenv_max_builds")}
       </div>
       <div className="mt-2 flex items-center gap-2">
         <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
@@ -332,10 +332,10 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
     // Pflicht ist nur noch der Benutzername (≥1). E-Mail + Passwort sind optional;
     // wenn ein Passwort gesetzt wird, muss es ≥8 Zeichen haben.
     if (username.trim().length < 1) {
-      setErr("Benutzername erforderlich."); return;
+      setErr(tr("admin.benutzername_noetig")); return;
     }
     if (password && password.length < 8) {
-      setErr("Passwort muss mindestens 8 Zeichen haben (oder leer lassen)."); return;
+      setErr(tr("admin.passwort_zu_kurz")); return;
     }
     try {
       const u = await api.post<any>("/users", {
@@ -344,9 +344,9 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
         ...(email.trim() ? { email: email.trim() } : {}),
         ...(password ? { password } : {}),
       });
-      setOk(`Nutzer „${u.username}" angelegt.`); reset(); onCreated();
+      setOk(tr("admin.nutzer_angelegt", { name: u.username })); reset(); onCreated();
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Fehler beim Anlegen");
+      setErr(e instanceof ApiError ? e.message : tr("admin.fehler_beim_anlegen"));
     }
   };
   const inp = "rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
@@ -486,8 +486,7 @@ function McpAssign({ userId }: { userId: number }) {
           className="flex-1 rounded border border-line bg-surface px-2 py-1" />
         <button onClick={save} className="rounded bg-brand px-3 py-1 text-white">{tr("admin.speichern")}</button>
       </div>
-      <div className="mt-1 text-muted">Danach auf dem Host <code>python3 scripts/provision_mcp.py</code> ausführen —
-        das legt Gruppe + Token in MCPJungle an und schreibt sie dem User zu.</div>
+      <div className="mt-1 text-muted">{tr("admin.mcp_provisionieren_hinweis")}</div>
     </div>
   );
 }

@@ -68,9 +68,7 @@ function Secrets() {
   return (
     <div className="space-y-4">
       <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-        <p className="text-sm text-muted">Hinterlege deine <b>LLM-Keys</b>: Provider wählen, Key eingeben, optional
-          einen Namen vergeben (um mehrere Keys je Provider zu unterscheiden). Pro Agent wählst du dann,
-          welcher Key genutzt wird. Der als <b>{tr("settings.standard")}</b> markierte Key gilt, wenn ein Agent keinen bestimmten wählt.</p>
+        <p className="text-sm text-muted">{tr("settings.keys_einleitung")}</p>
         <ProviderTokens />
       </div>
       <div className="space-y-3 rounded-lg border border-line bg-card p-4">
@@ -99,7 +97,7 @@ function NamedSecrets() {
   };
   const save = () => {
     const n = name.trim();
-    if (!n || !value.trim()) { setErr("Name und Wert erforderlich"); return; }
+    if (!n || !value.trim()) { setErr(tr("settings.name_und_wert_noetig")); return; }
     guard(async () => {
       await api.put(`/me/secrets/${encodeURIComponent(n)}`, { value: value.trim(), description: description.trim() });
       setName(""); setValue(""); setDescription("");
@@ -174,7 +172,7 @@ function ProviderTokens() {
       });
       return;
     }
-    if (!token.trim()) { setErr("Bitte den Token-Wert eingeben."); return; }
+    if (!token.trim()) { setErr(tr("settings.token_wert_eingeben")); return; }
     guard(async () => {
       await api.post("/me/provider-tokens", {
         provider, name, token, is_default: isDefault,
@@ -203,7 +201,7 @@ function ProviderTokens() {
             {t.is_default
               ? <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">{tr("settings.standard")}</span>
               : <button onClick={() => makeDefault(t.id)}
-                  className="text-xs text-muted hover:text-brand">als Standard</button>}
+                  className="text-xs text-muted hover:text-brand">{tr("settings.als_standard")}</button>}
             <div className="flex-1" />
             <button onClick={() => edit(t)} className="text-xs text-muted hover:text-brand">{tr("settings.bearbeiten")}</button>
             <button onClick={() => del(t.id)} className="text-muted hover:text-red-400">✕</button>
@@ -213,9 +211,7 @@ function ProviderTokens() {
       </div>
       {editing !== null && (
         <div className="mb-2 rounded border border-brand/40 bg-brand/10 px-2 py-1 text-xs text-muted">
-          Bearbeite <b>{PROVIDER_LABEL[provider] || provider}</b> / <b>{editing}</b> — Base-URL/Standard
-          kannst du direkt ändern. Das <b>{tr("settings.token_feld_leer_lassen")}</b> behält den bestehenden Wert; zum
-          Wechseln einfach einen neuen Wert eingeben.
+          {tr("settings.bearbeiten_hinweis", { provider: PROVIDER_LABEL[provider] || provider, name: editing })}
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -227,7 +223,7 @@ function ProviderTokens() {
           disabled={editing !== null}
           className="w-32 rounded border border-line bg-surface px-2 py-1.5 text-sm disabled:opacity-50" />
         <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
-          placeholder={editing !== null ? "Neuer Wert (leer = behalten)" : "Token / sk-…"}
+          placeholder={editing !== null ? tr("settings.neuer_wert_leer_behalten") : tr("settings.token_platzhalter")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         {provider === "openai" && (
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}

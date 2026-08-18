@@ -274,7 +274,7 @@ export default function TicketDrawer({
   const showSplit = issue?.hold_reason === "plan_split";
   // Plan/Überblick ohne den Roh-<subtickets>-Block anzeigen.
   const planText = (issue?.plan || "").replace(/<subtickets>[\s\S]*?<\/subtickets>/g, "").trim();
-  const planLabel = isUmbrella ? "Begründung / Überblick" : "Plan";
+  const planLabel = tr(isUmbrella ? "ticket_drawer.begruendung_ueberblick" : "ticket_drawer.plan");
   const preApproval = issue?.agent_status === "planning" || issue?.agent_status === "plan_review";
   const wait = issue ? waitInfo(issue) : null;
   const WAIT_KIND_COLOR: Record<string, string> = {
@@ -332,7 +332,7 @@ export default function TicketDrawer({
         </button>
       )}
       <button onClick={onClose} className="text-muted hover:text-ink">
-        {asPage ? "← Zurück" : "✕"}
+        {asPage ? `← ${tr("common.zurueck")}` : "✕"}
       </button>
     </div>
   );
@@ -532,7 +532,7 @@ export default function TicketDrawer({
                 className="rounded border border-line px-2 py-0.5 text-muted hover:text-red-400">{tr("ticket_drawer.stoppen")}</button>
             </>
           ) : issue.testenv_status === "starting" ? (
-            <span className="text-muted">startet… (Build dauert ein paar Minuten)</span>
+            <span className="text-muted">{tr("ticket_drawer.testumgebung_startet")}</span>
           ) : (
             <button onClick={() => life.mutate("testenv/start")}
               className="rounded border border-line px-2 py-0.5 text-muted hover:text-brand">🖥 Starten</button>
@@ -659,7 +659,7 @@ export default function TicketDrawer({
           setAsset.mutate(v === "" ? null : Number(v));
         }}
         className="block w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink">
-        <option value="">— kein Exemplar —</option>
+        <option value="">{tr("ticket_drawer.kein_exemplar")}</option>
         {hwAssets.data?.map((a) => (
           <option key={a.id} value={a.id}>{assetLabel(a)}</option>
         ))}
@@ -680,7 +680,7 @@ export default function TicketDrawer({
           <div className="flex items-center gap-2">
             <span className="rounded bg-brand/20 px-2 py-0.5 text-brand">
               🤖 {issue.assigned_agent}
-              {issue.agent_status ? ` · ${issue.agent_working ? "läuft…" : issue.agent_status}` : ""}
+              {issue.agent_status ? ` · ${issue.agent_working ? tr("ticket_drawer.laeuft") : issue.agent_status}` : ""}
               {issue.hold_reason ? ` (${issue.hold_reason})` : ""}
             </span>
             <div className="flex-1" />
@@ -783,7 +783,7 @@ export default function TicketDrawer({
                 className="rounded bg-brand px-3 py-1.5 text-white">{tr("ticket_drawer.antworten")}</button>
             </div>
           ) : issue.hold_reason === "permission" ? (
-            <div className="mt-1 text-muted">Berechtigung im <b>{tr("ticket_drawer.monitor")}</b>-Tab oder per Telegram entscheiden.</div>
+            <div className="mt-1 text-muted">{tr("ticket_drawer.berechtigung_entscheiden")}</div>
           ) : issue.hold_reason === "review" ? (
             <div className="mt-2 space-y-2">
               <div className="text-muted">{tr("ticket_drawer.review_befunde_offen_pruefe_den_diff_unt")}</div>

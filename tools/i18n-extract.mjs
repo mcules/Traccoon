@@ -1,4 +1,4 @@
-// Zieht deutsche Oberflächentexte aus einer Datei und ersetzt sie durch t("schlüssel").
+// Zieht deutsche Oberflächentexte aus einer Datei und ersetzt sie durch tr("schlüssel").
 //
 // Bewusst kein Alleskönner: erfasst werden JSX-Textknoten und die Attribute, die ein Mensch
 // liest (placeholder, title, label, aria-label, alt). Alles andere — Klassennamen, Pfade,
@@ -56,7 +56,7 @@ neu = neu.replace(/\b(placeholder|title|label|aria-label|alt)="([^"{}]+)"/g, (ga
   const k = schluessel(text);
   katalog[k] = text.trim();
   gefunden.push([k, text.trim()]);
-  return `${attr}={t("${k}")}`;
+  return `${attr}={tr("${k}")}`;
 });
 
 // 2) JSX-Textknoten, aber NUR wenn der Text das ganze Element füllt (`>Text</`). Ein Satz,
@@ -72,12 +72,15 @@ neu = neu.replace(/>([^<>{}\n][^<>{}]*)<\//g, (ganz, text) => {
   gefunden.push([k, roh]);
   const vorn = text.match(/^\s*/)[0];
   const hinten = text.match(/\s*$/)[0];
-  return `>${vorn}{t("${k}")}${hinten}</`;
+  return `>${vorn}{tr("${k}")}${hinten}</`;
 });
 
-if (gefunden.length && !neu.includes('from "../i18n"') && !neu.includes('from "./i18n"')) {
-  const tiefe = datei.includes("/components/") || datei.includes("/pages/") ? "../i18n" : "./i18n";
-  neu = neu.replace(/^(import[^\n]*\n)/, `$1import { t } from "${tiefe}";\n`);
+if (gefunden.length && !/from "[./]*i18n"/.test(neu)) {
+  // Die Tiefe kommt aus dem Pfad, nicht aus einer Annahme: unter components/workflow/config
+  // liegen drei Ebenen zwischen Datei und src/i18n.
+  const ebenen = datei.replace(/^.*?frontend\/src\//, "").split("/").length - 1;
+  const tiefe = ebenen ? "../".repeat(ebenen) + "i18n" : "./i18n";
+  neu = neu.replace(/^(import[^\n]*\n)/, `$1import { tr } from "${tiefe}";\n`);
 }
 
 if (!trockenlauf && gefunden.length) {

@@ -4,22 +4,24 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, destinationApi, type Destination, type DestinationScope } from "../api";
 import { KeyValueEditor } from "./workflow/kv";
 
+// Schlüssel statt Texte: die Liste entsteht beim Laden des Moduls, ein tr() hier würde die
+// Sprache des ersten Aufrufs festhalten.
 const AUTH: [string, string][] = [
-  ["none", "Keine"],
-  ["basic", "Basic (Benutzer/Passwort)"],
-  ["bearer", "Bearer-Token"],
-  ["api_key", "API-Key"],
-  ["hmac", "HMAC-Signatur"],
-  ["oauth2_cc", "OAuth2 Client Credentials"],
+  ["none", "destinations_panel.auth_none"],
+  ["basic", "destinations_panel.auth_basic"],
+  ["bearer", "destinations_panel.auth_bearer"],
+  ["api_key", "destinations_panel.auth_api_key"],
+  ["hmac", "destinations_panel.auth_hmac"],
+  ["oauth2_cc", "destinations_panel.auth_oauth2_cc"],
 ];
 
 /** Welches Geheimnis das jeweilige Verfahren braucht (Feldname für die API + Beschriftung). */
 const SECRET_FIELD: Record<string, [string, string]> = {
-  basic: ["password", "Passwort"],
-  bearer: ["token", "Token"],
-  api_key: ["api_key", "API-Key"],
-  hmac: ["hmac_secret", "Signatur-Geheimnis"],
-  oauth2_cc: ["client_secret", "Client-Secret"],
+  basic: ["password", "destinations_panel.geheimnis_passwort"],
+  bearer: ["token", "destinations_panel.geheimnis_token"],
+  api_key: ["api_key", "destinations_panel.geheimnis_api_key"],
+  hmac: ["hmac_secret", "destinations_panel.geheimnis_hmac"],
+  oauth2_cc: ["client_secret", "destinations_panel.geheimnis_client_secret"],
 };
 
 const LEER = {
@@ -107,12 +109,9 @@ export default function DestinationsPanel({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        Ein <b>{tr("destinations_panel.ziel")}</b> bündelt Basis-URL und Anmeldung einer externen Gegenstelle. Prozesse,
-        Jobs und (falls freigegeben) KI-Agenten rufen es später nur über seinen <b>{tr("destinations_panel.namen")}</b> auf
-        und ergänzen Methode, Pfad, Query, Kopfzeilen und Body. Zugangsdaten werden verschlüsselt
-        gespeichert und nie wieder angezeigt.
-        {scope === "user" && " Persönliche Ziele gelten in allen deinen Projekten."}
-        {scope === "project" && " Ein Projekt-Ziel überschreibt ein gleichnamiges persönliches oder systemweites."}
+        {tr("destinations_panel.einleitung")}
+        {scope === "user" && ` ${tr("destinations_panel.einleitung_user")}`}
+        {scope === "project" && ` ${tr("destinations_panel.einleitung_projekt")}`}
       </p>
 
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
@@ -157,7 +156,7 @@ export default function DestinationsPanel({
           <input value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })}
             placeholder={tr("destinations_panel.basis_url_https_api_example_com_v1")} className={`${inp} col-span-2`} />
           <select value={f.auth_type} onChange={(e) => setF({ ...f, auth_type: e.target.value })} className={inp}>
-            {AUTH.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {AUTH.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
           </select>
           <input type="number" min={1} max={600} value={f.timeout_sec}
             onChange={(e) => setF({ ...f, timeout_sec: Number(e.target.value) })}
@@ -176,8 +175,8 @@ export default function DestinationsPanel({
               <input value={f.api_key_name} onChange={(e) => setF({ ...f, api_key_name: e.target.value })}
                 placeholder={tr("destinations_panel.name_des_schluessels")} className={inp} />
               <select value={f.api_key_in} onChange={(e) => setF({ ...f, api_key_in: e.target.value })} className={inp}>
-                <option value="header">im Kopf (Header)</option>
-                <option value="query">in der URL (Query)</option>
+                <option value="header">{tr("destinations_panel.im_kopf")}</option>
+                <option value="query">{tr("destinations_panel.in_der_url")}</option>
               </select>
             </>
           )}
@@ -201,7 +200,7 @@ export default function DestinationsPanel({
           )}
           {secretField && (
             <input type="password" value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value })}
-              placeholder={editId ? `${secretLabel} (leer = unverändert)` : secretLabel}
+              placeholder={editId ? tr("destinations_panel.geheimnis_unveraendert", { feld: tr(secretLabel) }) : tr(secretLabel)}
               className={`${inp} col-span-2`} />
           )}
         </div>
