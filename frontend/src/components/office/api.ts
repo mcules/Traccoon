@@ -196,7 +196,6 @@ export interface AgentDuration {
 
 /** One tool in the ranking of a role. `failed` is a number of its own and not derived from
  *  `n - ok`: "unknown" (old data without a measured result) is neither one nor the other. */
- *  noch das andere. */
 export interface AgentTool {
   tool: string;
   n?: number;
@@ -273,31 +272,31 @@ export const officeApi = {
       : `/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours, project_id: opts?.projectId, status: opts?.status })}`;
     // Whether the envelope is `{sessions: […]}` or a bare array is decided by the backend. Both
     // become the same result here, which is cheaper than asking and
-    // überlebt die Abstimmung in beide Richtungen.
+    // survives the agreement in both directions.
     return api.get<SessionList | SessionSummary[]>(path)
       .then((r) => (Array.isArray(r) ? { sessions: r } : r));
   },
 
-  /** Eine Seite Ereignisse.
+  /** One page of events.
    *
-   *  `afterSeq` ist **ausschließlich** Seitenblättern und Lückenfüllung direkt nach einer
-   *  Wiederverbindung — **nie** ein Poller. Warum, steht ausführlich in `useOfficeFeed.ts`
-   *  und im Modul-Docstring von `api/office_ws.py`: `seq` kommt aus einer `SERIAL`-Spalte,
-   *  die **vor** dem Commit vergeben wird. */
+   *  `afterSeq` is **exclusively** for paging and for filling a gap right after a reconnect,
+   *  **never** a poller. Why is explained at length in `useOfficeFeed.ts` and in the module
+   *  docstring of `api/office_ws.py`: `seq` comes from a `SERIAL` column that is assigned
+   *  **before** the commit. */
   events: (sid: Sid, opts?: { limit?: number; afterSeq?: number }): Promise<EventPage> =>
     api.get<EventPage>(
       `/office/sessions/${sid.kind}/${sid.ref}/events`
       + qs({ limit: opts?.limit ?? EVENT_PAGE_LIMIT, after_seq: opts?.afterSeq })),
 
-  /** Eine Seite Ereignisse über **alle** Sitzungen eines Zeitfensters.
+  /** One page of events across **all** sessions of a time window.
    *
-   *  Der Raum der globalen Seite. Möglich ist das, weil `seq` aus `run_steps.id` kommt —
-   *  einer SERIAL-Spalte, die über Läufe und Projekte hinweg monoton ist; Ereignisse
-   *  verschiedener Sitzungen ergeben damit EINE Folge, und der Sitzplatz (`hash32(run_id) % 12`)
-   *  ist ohnehin sitzungsunabhängig.
+   *  The room of the global page. That is possible because `seq` comes from `run_steps.id`, a
+   *  SERIAL column that is monotonic across runs and projects; events of different sessions
+   *  therefore form ONE sequence, and the seat (`hash32(run_id) % 12`) is independent of the
+   *  session anyway.
    *
-   *  Antwortform ist die von `events()`, nur ohne `sid` und dafür mit dem Fenster. Die Rechte
-   *  sind dieselben wie bei `sessions()`; `projectId` **verengt** und autorisiert nie. */
+   *  The response has the shape of `events()`, only without a `sid` and with the window
+   *  instead. Permissions are those of `sessions()`; `projectId` narrows, never authorises. */
   allEvents: (opts?: { sinceHours?: number; limit?: number; afterSeq?: number;
                        projectId?: number }): Promise<EventPage> =>
     api.get<EventPage>("/office/events" + qs({
@@ -305,60 +304,60 @@ export const officeApi = {
       after_seq: opts?.afterSeq, project_id: opts?.projectId,
     })),
 
-  /** Kosten des Raums — eigener Aufruf, weil sie eine ganz andere Änderungsrate haben als
-   *  die Ereignisse und den Schnappschuss sonst dauernd entwerten würden. */
+  /** Cost of the room: a call of its own, because it changes at a completely different rate
+   *  than the events and would otherwise keep invalidating the snapshot. */
   cost: (sid: Sid): Promise<CostRollup> =>
     api.get<CostRollup>(`/office/sessions/${sid.kind}/${sid.ref}/cost`),
 
-  /** Die Personalakte: Kennzahlen je **Rolle**, über Läufe und Sitzungen hinweg.
+  /** The personnel file: key figures per **role**, across runs and sessions.
    *
-   *  Zwei Pfade wie bei `sessions()` — unter dem Projekt (Zugriff prüft `get_project_access`)
-   *  oder global. Das Zeitfenster ist hier **Teil der Aussage** und deshalb ein Pflichtfeld
-   *  der Anzeige, kein stiller Vorgabewert: `run_retention_days` löscht ältere Läufe, „jemals"
-   *  wäre schlicht gelogen.
+   *  Two paths as with `sessions()`: under the project (access checked by
+   *  `get_project_access`) or globally. The time window is **part of the statement** here and
+   *  therefore a mandatory field of the display, not a silent default: `run_retention_days`
+   *  deletes older runs, and "ever" would simply be a lie.
    *
-   *  `agent` verengt auf eine Rolle, `toolLimit` deckelt die Werkzeug-Rangliste je Rolle. */
+   *  `agent` narrows to one role, `toolLimit` caps the tool ranking per role. */
   agents: (scope: Scope,
            opts?: { sinceHours?: number; agent?: string; toolLimit?: number }): Promise<AgentRecordList> => {
     const q = qs({ since_hours: opts?.sinceHours, agent: opts?.agent, tool_limit: opts?.toolLimit });
     const path = scope.kind === "project"
       ? `/projects/${scope.projectId}/office/agents${q}`
       : `/office/agents${q}`;
-    // Wie bei `sessions()`: ob der Umschlag `{agents: […]}` heißt oder ein nacktes Feld ist,
-    // entscheidet die Nebenwelle. Beides landet hier auf derselben Form.
+    // As with `sessions()`: whether the envelope is `{agents: […]}` or a bare array is decided
+    // by the backend. Both land on the same shape here.
     return api.get<AgentRecordList | AgentRecord[]>(path)
       .then((r) => (Array.isArray(r) ? { agents: r } : r));
   },
 };
 
-// ── Der Live-Socket ─────────────────────────────────────────────────────────────────────────
+// ── The live socket ─────────────────────────────────────────────────────────────────────────
 //
-// Gegen echten Code gebaut (`backend/app/api/office_ws.py`, Welle D): EIN Nutzer-Socket
-// bedient Projekt-Reiter **und** globale Seite; gefiltert wird serverseitig. Der Client kann
-// per `subscribe` nur **verengen**, nie erweitern — ein Abo auf ein fremdes Projekt ergibt
+// Built against real code (`backend/app/api/office_ws.py`): ONE user socket serves the project
+// tab **and** the global page; filtering happens server side. The client can only **narrow**
+// through `subscribe`, never widen: a subscription to a foreign project yields
 // Stille, keinen Fehler.
 
-/** Was der Server über den Socket schickt. */
+/** What the server sends over the socket. */
 export type WsIn =
   | { type: "hello"; v: number; user_id: number; is_admin: boolean; projects: number[]; acl_ttl_s: number }
   | { type: "subscribed"; scope: number[] | null }
   | { type: "office_ev"; ev: Ev }
   | { type: "pong" };
 
-/** Was der Client schickt. */
+/** What the client sends. */
 export type WsOut =
   | { type: "subscribe"; scopes: ({ kind: "project"; id: number } | { kind: "global" })[] }
   | { type: "ping" };
 
-/** Adresse des Nutzer-Sockets. Ein Socket je Sitzung im Browser reicht — die Trennung nach
- *  Projekt macht der Server, nicht die Anzahl der Verbindungen. */
+/** Address of the user socket. One socket per browser session is enough: the separation by
+ *  project is done by the server, not by the number of connections. */
 export function officeWsUrl(token: string | null): string {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   return `${proto}://${location.host}/api/ws?token=${encodeURIComponent(token ?? "")}`;
 }
 
-/** `Scope` → die `subscribe`-Nachricht. Ein Objekt, damit die Verengung an genau einer Stelle
- *  entsteht und der Aufrufer sie nicht von Hand zusammenbaut. */
+/** A `Scope` turned into the `subscribe` message. An object, so that the narrowing comes into
+ *  being in exactly one place and the caller does not assemble it by hand. */
 export function subscribeMessage(scope: Scope): WsOut {
   return scope.kind === "project"
     ? { type: "subscribe", scopes: [{ kind: "project", id: scope.projectId }] }
