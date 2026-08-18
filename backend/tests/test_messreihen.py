@@ -13,7 +13,7 @@ from app.models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowVe
 from app.services import metrics
 from app.services.workflow_actions import run_action
 
-from conftest import make_user
+from conftest import auth, make_user
 
 pytestmark = pytest.mark.asyncio
 
@@ -305,3 +305,75 @@ async def test_grenzen_duerfen_aus_dem_kontext_kommen(db):
         "action": "messwert", "params": {"reihe": "x", "wert": "{{ roh }}",
                                          "min": 1, "max": "{{ obergrenze }}"}}}}}
     assert (await run_action(db, inst, node))["ignoriert"] is True
+
+
+# ── Ansicht: Punkte lesen und einzeln entfernen ──────────────────────────────
+
+async def test_punkte_kommen_mit_id_und_trend(client, db):
+    anna = await make_user(db, "anna")
+    await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
+    r = await client.get("/metrics/akku.shelter/punkte?tage=30", headers=auth(anna))
+    assert r.status_code == 200
+    daten = r.json()
+    assert [p["wert"] for p in daten["punkte"]] == [60.0, 50.0, 40.0]
+    assert all(p["id"] for p in daten["punkte"]), "zum Löschen braucht es die ID"
+    assert daten["trend"]["pro_tag"] < 0
+
+
+async def test_zeitraum_gilt_auch_fuer_die_gerade(client, db):
+    """Gezeigt und gerechnet wird dasselbe Fenster — sonst passt die Linie nicht zu den Punkten."""
+    anna = await make_user(db, "anna")
+    await _akku_verlauf(db, anna, [(40, 100), (39, 99), (38, 98), (3, 40), (2, 38), (1, 36)])
+    eng = (await client.get("/metrics/akku.shelter/punkte?tage=7", headers=auth(anna))).json()
+    weit = (await client.get("/metrics/akku.shelter/punkte?tage=90", headers=auth(anna))).json()
+    assert len(eng["punkte"]) == 3 and len(weit["punkte"]) == 6
+    assert eng["trend"]["pro_tag"] != weit["trend"]["pro_tag"]
+
+
+async def test_einzelnen_ausreisser_entfernen(client, db):
+    """Ein Ausreißer verbiegt die Gerade — ohne diesen Weg müsste man die Reihe wegwerfen."""
+    anna = await make_user(db, "anna")
+    await _akku_verlauf(db, anna, [(6, 60), (4, 50), (2, 40)])
+    await metrics.erfassen(db, anna.id, "akku.shelter", 999.0)     # Ausreißer, zuletzt
+    await db.commit()
+    daten = (await client.get("/metrics/akku.shelter/punkte", headers=auth(anna))).json()
+    schlecht = [p for p in daten["punkte"] if p["wert"] == 999.0][0]
+
+    weg = await client.delete(f"/metrics/akku.shelter/punkte/{schlecht['id']}",
+                              headers=auth(anna))
+    assert weg.status_code == 204
+    r = await metrics.reihe(db, anna.id, "akku.shelter")
+    await db.refresh(r)
+    assert r.last_value == 40.0, "der Kopf der Reihe rückt nach"
+    danach = (await client.get("/metrics/akku.shelter/punkte", headers=auth(anna))).json()
+    assert len(danach["punkte"]) == 3
+
+
+async def test_fremder_wert_wird_nicht_geloescht(client, db):
+    anna = await make_user(db, "anna")
+    bert = await make_user(db, "bert")
+    await metrics.erfassen(db, anna.id, "meins", 1.0)
+    await metrics.erfassen(db, bert.id, "deins", 2.0)
+    await db.commit()
+    meins = (await client.get("/metrics/meins/punkte", headers=auth(anna))).json()
+    pid = meins["punkte"][0]["id"]
+    assert (await client.delete(f"/metrics/deins/punkte/{pid}",
+                                headers=auth(bert))).status_code == 404
+
+
+async def test_nachgetragener_altwert_veraendert_den_kopf_nicht(db):
+    """Der Kopf zeigt auf den zeitlich letzten Wert, nicht auf den zuletzt eingetragenen.
+
+    Sonst sieht eine Reihe nach dem Nachtragen alter Werte scheinbar aktuell aus — im Bild
+    stand ein Stand von vorgestern als „jetzt".
+    """
+    anna = await make_user(db, "anna")
+    await metrics.erfassen(db, anna.id, "akku.shelter", 42.0, einheit="%", ts=_tage(1))
+    await metrics.erfassen(db, anna.id, "akku.shelter", 88.0, einheit="%", ts=_tage(3))
+    await db.commit()
+    r = await metrics.reihe(db, anna.id, "akku.shelter")
+    assert r.last_value == 42.0
+    # Ein wirklich neuerer Wert rückt dagegen nach.
+    await metrics.erfassen(db, anna.id, "akku.shelter", 39.0, einheit="%")
+    await db.commit()
+    assert r.last_value == 39.0
