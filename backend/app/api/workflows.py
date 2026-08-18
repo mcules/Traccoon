@@ -471,9 +471,21 @@ async def create_workflow(
     )
     db.add(d)
     await db.flush()
-    # Leere Draft-Version v1 anlegen
-    v1 = WorkflowVersion(definition_id=d.id, version=1, graph={"nodes": [], "edges": []},
-                         status=WorkflowVersionStatus.draft, created_by=user.id)
+    # Version 1 mit Start und Ende — nicht leer. Eine leere Fläche sagt niemandem, wo er
+    # anfangen soll; mit den beiden Enden steht das Gerüst, und der erste Schritt kommt
+    # dazwischen. (Fiel beim Durchklicken auf: ein frischer Ablauf hatte keinen einzigen
+    # Knoten, nicht einmal einen Start.)
+    v1 = WorkflowVersion(
+        definition_id=d.id, version=1, status=WorkflowVersionStatus.draft, created_by=user.id,
+        graph={
+            "nodes": [
+                {"id": "start", "type": "start", "position": {"x": 0, "y": 0},
+                 "data": {"config": {"label": "Auslöser"}}},
+                {"id": "ende", "type": "end", "position": {"x": 0, "y": 260},
+                 "data": {"config": {"label": "Fertig", "outcome": "completed"}}},
+            ],
+            "edges": [{"id": "e-start-out-ende", "source": "start", "target": "ende"}],
+        })
     db.add(v1)
     await db.commit()
     await db.refresh(d)
