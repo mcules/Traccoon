@@ -1,34 +1,35 @@
 import { BaseNode, useSourceHandles, type FlowNodeProps, type SourceHandleDef } from "./shared";
+import { tr } from "../../../i18n";
 
 const ACTION_LABEL: Record<string, string> = {
-  create_ticket: "Ticket anlegen",
-  notify: "Benachrichtigen",
-  webhook: "Freie URL aufrufen",
-  http_request: "Ziel aufrufen",
-  tool_call: "Werkzeug aufrufen",
-  set_context: "Kontext setzen",
-  messwert: "Messwert festhalten",
-  messreihe_lesen: "Messreihe lesen",
-  set_board_status: "Board-Spalte setzen",
-  set_status: "Zustand setzen",
-  set_field: "Feld setzen",
-  refresh_facts: "Projekt-Fakten lesen",
-  assign_agent: "Agent zuweisen",
-  set_cap_baseline: "Kostenfenster zurücksetzen",
-  split_tickets: "Teilaufgaben anlegen",
-  stop_agent: "Agenten stoppen",
-  start_testenv: "Testumgebung starten",
-  stop_testenv: "Testumgebung abräumen",
-  accept_merge: "Mergen / PR öffnen",
-  deploy: "Deployment einreihen",
-  comment: "Kommentar schreiben",
-  mail_classify: "Mail einordnen",
-  spam_evaluate: "Spam beurteilen",
-  spam_card: "Spam-Rückfrage stellen",
-  spam_apply: "Spam-Urteil ausführen",
-  assistant_task: "Assistent-Item anlegen",
-  assistant_card: "Freigabekarte schicken",
-  assistant_run: "Assistenten starten",
+  create_ticket: "action.create_ticket",
+  notify: "action.notify",
+  webhook: "action.webhook",
+  http_request: "action.http_request",
+  tool_call: "action.tool_call",
+  set_context: "action.set_context",
+  messwert: "action.messwert",
+  messreihe_lesen: "action.messreihe_lesen",
+  set_board_status: "action.set_board_status",
+  set_status: "action.set_status",
+  set_field: "action.set_field",
+  refresh_facts: "action.refresh_facts",
+  assign_agent: "action.assign_agent",
+  set_cap_baseline: "action.set_cap_baseline",
+  split_tickets: "action.split_tickets",
+  stop_agent: "action.stop_agent",
+  start_testenv: "action.start_testenv",
+  stop_testenv: "action.stop_testenv",
+  accept_merge: "action.accept_merge",
+  deploy: "action.deploy",
+  comment: "action.comment",
+  mail_classify: "action.mail_classify",
+  spam_evaluate: "action.spam_evaluate",
+  spam_card: "action.spam_card",
+  spam_apply: "action.spam_apply",
+  assistant_task: "action.assistant_task",
+  assistant_card: "action.assistant_card",
+  assistant_run: "action.assistant_run",
 };
 
 /** Aktionen, die asynchron laufen und ihren Ausgang nach dem Ergebnis benennen. */
@@ -62,7 +63,7 @@ export default function AutoActionNode({ id, data, selected }: FlowNodeProps) {
       aus={!!data.config.deaktiviert}
       sources={sources}
     >
-      <div>{a ? ACTION_LABEL[a.action] || a.action : "keine Aktion"}</div>
+      <div>{a ? tr(ACTION_LABEL[a.action] || a.action) : tr("node.keine_aktion")}</div>
     </BaseNode>
   );
 }

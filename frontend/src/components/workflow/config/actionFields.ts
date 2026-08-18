@@ -76,24 +76,24 @@ const TO_MODE: [string, string][] = [
 const KEINE: ActionSpec = { summary: "", fields: [] };
 
 export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
-  http_request: { summary: "Ruft ein hinterlegtes Ziel auf.", fields: [] },  // eigene Maske
+  http_request: { summary: "action_fields.ruft_ein_hinterlegtes_ziel_auf", fields: [] },  // eigene Maske
 
   set_context: {
-    summary: "Schreibt Werte in den Prozess-Kontext (später als {{schlüssel}} nutzbar).",
+    summary: "action_fields.schreibt_werte_in_den_prozess_kontext_spaete",
     fields: [{ key: "", label: "Zuweisungen", type: "kv",
-               hint: "Werte dürfen {{pfad}} aus dem Kontext enthalten." }],
+               hint: "action_fields.werte_duerfen_pfad_aus_dem_kontext_enthalten" }],
   },
 
   comment: {
-    summary: "Schreibt einen Kommentar an das gebundene Ticket.",
+    summary: "action_fields.schreibt_einen_kommentar_an_das_gebundene_ti",
     fields: [{ key: "text", label: "Text", type: "textarea", required: true,
-               placeholder: "Der Agent hat {{agent.summary}} gemeldet." }],
+               placeholder: "action_fields.der_agent_hat_agent_summary_gemeldet" }],
   },
 
   notify: {
-    summary: "Schickt eine Benachrichtigung — Glocke immer, hinaus auf dem Weg der Person.",
+    summary: "action_fields.schickt_eine_benachrichtigung_glocke_immer_h",
     fields: [
-      { key: "to.mode", label: "Empfänger", type: "select", options: TO_MODE },
+      { key: "to.mode", label: "action_fields.empfaenger", type: "select", options: TO_MODE },
       { key: "to.user_id", label: "Person", type: "select", source: "person",
         showIf: ["to.mode", ["user"]] },
       { key: "to.role", label: "Rolle", type: "select", showIf: ["to.mode", ["role"]],
@@ -101,67 +101,67 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
                   ["viewer", "Leser"]] },
       { key: "to.path", label: "Kontext-Pfad", type: "text", showIf: ["to.mode", ["context"]],
         placeholder: "freigeber_id" },
-      { key: "title", label: "Betreff", type: "text", placeholder: "{{issue_key}}: Hinweis" },
+      { key: "title", label: "Betreff", type: "text", placeholder: "action_fields.issue_key_hinweis" },
       { key: "text", label: "Text", type: "textarea" },
-      { key: "drossel_minuten", label: "Höchstens alle … Minuten", type: "number",
-        hint: "0 = aus. Der Ablauf läuft weiterhin bei jedem Aufruf durch — nur die "
+      { key: "drossel_minuten", label: "action_fields.hoechstens_alle_minuten", type: "number",
+        hint: "action_fields.0_aus_der_ablauf_laeuft_weiterhin_bei_jedem_"
             + "Nachricht bleibt aus. Nötig, wo die Gegenstelle nicht selbst zusammenfasst: "
             + "ein Tracker wiederholt seinen Alarm im Sekundentakt, solange er anliegt." },
-      { key: "drossel_key", label: "Drossel-Schlüssel", type: "text",
+      { key: "drossel_key", label: "action_fields.drossel_schluessel", type: "text",
         placeholder: "shelter.diebstahl",
-        hint: "Was als „dieselbe Nachricht“ gilt. Leer = dieser Knoten für sich; mit "
+        hint: "action_fields.was_als_dieselbe_nachricht_gilt_leer_dieser_"
             + "{{pfad}} trennt man nach Gerät oder Art." },
       { key: "channel", label: "Weg", type: "select",
         options: [["", "Standard der Person"], ["telegram", "Telegram"], ["email", "E-Mail"]],
-        hint: "Leer lassen ist der Normalfall — jeder verwaltet im Profil, wie er erreicht "
+        hint: "action_fields.leer_lassen_ist_der_normalfall_jeder_verwalt"
             + "wird. Ist der gewählte Weg dort nicht hinterlegt, wird der andere genommen." },
     ],
   },
 
   messwert: {
-    summary: "Schreibt eine Zahl in eine Messreihe und liest ab, wohin sie läuft.",
+    summary: "action_fields.schreibt_eine_zahl_in_eine_messreihe_und_lie",
     fields: [
       { key: "reihe", label: "Reihe", type: "text", required: true,
         placeholder: "akku.shelter",
-        hint: "Schlüssel der Reihe — gleicher Schlüssel = gleiche Reihe." },
+        hint: "action_fields.schluessel_der_reihe_gleicher_schluessel_gle" },
       { key: "wert", label: "Wert", type: "text", required: true,
-        placeholder: "{{ position.attributes.batteryLevel }}" },
+        placeholder: "action_fields.position_attributes_batterylevel" },
       { key: "einheit", label: "Einheit", type: "text", placeholder: "%" },
-      { key: "name", label: "Anzeigename", type: "text", placeholder: "Akku Shelter" },
-      { key: "min", label: "Kleinster gültiger Wert", type: "number",
-        hint: "Geräte melden Unsinn, wenn sie etwas nicht wissen — solche Werte gehören "
+      { key: "name", label: "Anzeigename", type: "text", placeholder: "action_fields.akku_shelter" },
+      { key: "min", label: "action_fields.kleinster_gueltiger_wert", type: "number",
+        hint: "action_fields.geraete_melden_unsinn_wenn_sie_etwas_nicht_w"
             + "nicht in die Reihe (der Tracker schickt z. B. 127 % für „unbekannt“)." },
-      { key: "max", label: "Größter gültiger Wert", type: "number" },
+      { key: "max", label: "action_fields.groesster_gueltiger_wert", type: "number" },
       { key: "ziel", label: "Zielwert", type: "number",
-        hint: "Wert, auf den die Reihe zuläuft — 0 heißt „leer“." },
-      { key: "vorwarn_tage", label: "Vorwarnung (Tage)", type: "number",
-        hint: "Wie früh gewarnt werden soll. 0 schaltet die Warnung ab; gewarnt wird "
+        hint: "action_fields.wert_auf_den_die_reihe_zulaeuft_0_heisst_lee" },
+      { key: "vorwarn_tage", label: "action_fields.vorwarnung_tage", type: "number",
+        hint: "action_fields.wie_frueh_gewarnt_werden_soll_0_schaltet_die"
             + "einmal je Auffüllung, nicht bei jedem Wert." },
-      { key: "fenster_tage", label: "Trendfenster (Tage)", type: "number",
-        hint: "Wie weit zurück für die Gerade gelesen wird (Standard 30)." },
+      { key: "fenster_tage", label: "action_fields.trendfenster_tage", type: "number",
+        hint: "action_fields.wie_weit_zurueck_fuer_die_gerade_gelesen_wir" },
     ],
-    outcomes: "Kontext danach: messreihe.wert, .pro_tag, .rest_tage, .leer_am, .guete, .warnen",
+    outcomes: "action_fields.kontext_danach_messreihe_wert_pro_tag_rest_t",
   },
 
   messreihe_lesen: {
-    summary: "Sieht eine Messreihe an, ohne sie zu füttern — und merkt, wenn sie verstummt.",
+    summary: "action_fields.sieht_eine_messreihe_an_ohne_sie_zu_fuettern",
     fields: [
       { key: "reihe", label: "Reihe", type: "text", required: true,
         placeholder: "akku.shelter",
-        hint: "{{pfad}} erlaubt — so prüft derselbe Ablauf mehrere Reihen, je nach "
+        hint: "action_fields.pfad_erlaubt_so_prueft_derselbe_ablauf_mehre"
             + "Startkontext des Jobs." },
-      { key: "still_stunden", label: "Verstummt nach … Stunden", type: "number",
-        hint: "0 = nicht prüfen. Gemeldet wird einmal je Stille-Phase; sobald wieder ein "
+      { key: "still_stunden", label: "action_fields.verstummt_nach_stunden", type: "number",
+        hint: "action_fields.0_nicht_pruefen_gemeldet_wird_einmal_je_stil"
             + "Wert kommt, zählt sie von vorn." },
       { key: "ziel", label: "Zielwert", type: "number" },
-      { key: "fenster_tage", label: "Trendfenster (Tage)", type: "number" },
+      { key: "fenster_tage", label: "action_fields.trendfenster_tage", type: "number" },
     ],
-    outcomes: "Kontext danach: messreihe.wert, .alter_stunden, .still, .still_melden, "
+    outcomes: "action_fields.kontext_danach_messreihe_wert_alter_stunden_"
             + ".gefunden, .rest_tage, .leer_am",
   },
 
   webhook: {
-    summary: "Ruft eine freie URL auf. Für wiederkehrende Gegenstellen besser ein Ziel anlegen.",
+    summary: "action_fields.ruft_eine_freie_url_auf_fuer_wiederkehrende_",
     fields: [
       { key: "url", label: "URL", type: "text", required: true,
         placeholder: "https://example.com/hook" },
@@ -170,50 +170,50 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
                   ["DELETE", "DELETE"]] },
       { key: "headers", label: "Kopfzeilen", type: "kv" },
       { key: "payload", label: "Body", type: "json" },
-      { key: "secret", label: "Secret aus dem Tresor", type: "text",
-        hint: "Name im Secret-Tresor; im Aufruf als {{secret}} verfügbar." },
-      { key: "timeout_sec", label: "Zeitlimit (s)", type: "number" },
+      { key: "secret", label: "action_fields.secret_aus_dem_tresor", type: "text",
+        hint: "action_fields.name_im_secret_tresor_im_aufruf_als_secret_v" },
+      { key: "timeout_sec", label: "action_fields.zeitlimit_s", type: "number" },
     ],
   },
 
   create_ticket: {
-    summary: "Legt ein neues Ticket an (im Projekt des Prozesses, sofern nichts anderes steht).",
+    summary: "action_fields.legt_ein_neues_ticket_an_im_projekt_des_proz",
     fields: [
       { key: "summary", label: "Titel", type: "text", required: true,
-        placeholder: "Störung: {{event.name}}" },
+        placeholder: "action_fields.stoerung_event_name" },
       { key: "description", label: "Beschreibung", type: "textarea" },
-      { key: "assigned_agent", label: "Agent zuweisen", type: "select", source: "agent_role",
-        hint: "Leer = niemand. Zuweisung startet den Lebenszyklus." },
+      { key: "assigned_agent", label: "action_fields.agent_zuweisen", type: "select", source: "agent_role",
+        hint: "action_fields.leer_niemand_zuweisung_startet_den_lebenszyk" },
       { key: "start_agent_status", label: "Startzustand", type: "select", options: AGENT_STATUS },
-      { key: "project_id", label: "Anderes Projekt (ID)", type: "number" },
-      { key: "context_key", label: "Ergebnis im Kontext unter", type: "text",
+      { key: "project_id", label: "action_fields.anderes_projekt_id", type: "number" },
+      { key: "context_key", label: "action_fields.ergebnis_im_kontext_unter", type: "text",
         placeholder: "created_ticket" },
     ],
   },
 
   refresh_facts: {
     subjects: ["issue"],
-    summary: "Liest Projekt- und Ticket-Einstellungen in den Kontext (project.*, issue.*), "
+    summary: "action_fields.liest_projekt_und_ticket_einstellungen_in_de"
       + "damit Verzweigungen darauf prüfen können.",
     fields: [],
   },
 
   set_field: {
-    summary: "Setzt ein freies Feld des Artefakts, an dem der Ablauf hängt. Welche Felder es "
+    summary: "action_fields.setzt_ein_freies_feld_des_artefakts_an_dem_d"
       + "gibt, sagt das Artefakt-Register (Administration → Artefakte).",
     subjects: ["issue", "hardware_asset"],
     fields: [
       { key: "field", label: "Feld", type: "select", source: "artifact_field", required: true },
       { key: "values", label: "Wert(e)", type: "text", required: true,
-        hint: "Mehrere durch Komma trennen. {{vorlagen}} aus dem Kontext sind erlaubt." },
+        hint: "action_fields.mehrere_durch_komma_trennen_vorlagen_aus_dem" },
       { key: "mode", label: "Vorgehen", type: "select", options: [
           ["set", "Ersetzen"], ["add", "Ergänzen"], ["remove", "Entfernen"]],
-        hint: "Ergänzen/Entfernen lohnt nur bei Feldern mit Mehrfachauswahl." },
+        hint: "action_fields.ergaenzen_entfernen_lohnt_nur_bei_feldern_mi" },
     ],
   },
 
   set_status: {
-    summary: "Setzt den Zustand des Artefakts, an dem der Ablauf hängt — Ticket oder "
+    summary: "action_fields.setzt_den_zustand_des_artefakts_an_dem_der_a"
       + "Hardware. Die möglichen Werte kommen aus dem Artefakt-Register.",
     subjects: ["issue", "hardware_asset"],
     fields: [
@@ -221,142 +221,142 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
         required: true },
       { key: "reason", label: "Grund", type: "select", options: HOLD_REASON,
         showIf: ["__subject", ["issue"]],
-        hint: "Nur bei Tickets — unterscheidet u. a. Plan- von Aufteilungs-Freigabe." },
+        hint: "action_fields.nur_bei_tickets_unterscheidet_u_a_plan_von_a" },
       { key: "notify", label: "Benachrichtigen", type: "boolean", default: true,
-        hint: "Meldet Plan-Freigabe, Abnahme, Fehler und Blockade (Standard: an)." },
+        hint: "action_fields.meldet_plan_freigabe_abnahme_fehler_und_bloc" },
     ],
   },
 
 
   set_board_status: {
-    summary: "Verschiebt das Ticket in eine Board-Spalte.",
+    summary: "action_fields.verschiebt_das_ticket_in_eine_board_spalte",
     subjects: ["issue"],
     fields: [
       { key: "status", label: "Spalte", type: "select", source: "board_status" },
-      { key: "category", label: "…oder Kategorie", type: "select",
+      { key: "category", label: "action_fields.oder_kategorie", type: "select",
         options: [["", "—"], ["todo", "To Do"], ["in_progress", "In Arbeit"], ["done", "Fertig"]],
-        hint: "Greift, wenn keine Spalte mit passendem Namen existiert." },
+        hint: "action_fields.greift_wenn_keine_spalte_mit_passendem_namen" },
     ],
   },
 
   assign_agent: {
-    summary: "Weist dem Ticket einen Agenten zu.",
+    summary: "action_fields.weist_dem_ticket_einen_agenten_zu",
     subjects: ["issue"],
     fields: [{ key: "agent", label: "Agent", type: "select", source: "agent_role", required: true }],
   },
 
   set_cap_baseline: {
     subjects: ["issue"],
-    summary: "Setzt das Kostenfenster neu: ab hier zählt die Runaway-Bremse nur frische Läufe. "
+    summary: "action_fields.setzt_das_kostenfenster_neu_ab_hier_zaehlt_d"
       + "Gehört an jede menschliche Freigabe.",
     fields: [],
   },
 
   split_tickets: {
     subjects: ["issue"],
-    summary: "Legt die im Plan vorgeschlagenen Teilaufgaben als Kind-Tickets an "
+    summary: "action_fields.legt_die_im_plan_vorgeschlagenen_teilaufgabe"
       + "(Teil 1 startet, der Rest wartet auf seinen Vorgänger).",
     fields: [],
   },
 
   tool_call: {
-    summary: "Ruft ein MCP-Werkzeug auf — Mail, Vault, Paperless, Nextcloud, Hausautomation "
+    summary: "action_fields.ruft_ein_mcp_werkzeug_auf_mail_vault_paperle"
       + "und alles andere aus deiner MCP-Registry. Das Ergebnis steht danach unter tool.* "
       + "im Kontext (tool.ok, tool.text, tool.json).",
     fields: [
       { key: "tool", label: "Werkzeug", type: "select", source: "mcp_tool", required: true,
-        hint: "Die Liste kommt aus deinen MCP-Servern (Einstellungen → MCP-Server)." },
+        hint: "action_fields.die_liste_kommt_aus_deinen_mcp_servern_einst" },
       { key: "arguments", label: "Argumente", type: "kv",
-        hint: "Werte dürfen {{pfad}} aus dem Kontext enthalten." },
-      { key: "context_key", label: "Ergebnis im Kontext unter", type: "text",
+        hint: "action_fields.werte_duerfen_pfad_aus_dem_kontext_enthalten" },
+      { key: "context_key", label: "action_fields.ergebnis_im_kontext_unter", type: "text",
         placeholder: "tool" },
-      { key: "fail_on_error", label: "Fehler bricht ab", type: "boolean", default: false,
-        hint: "Aus: der Ablauf entscheidet selbst über tool.ok an einer Weiche." },
+      { key: "fail_on_error", label: "action_fields.fehler_bricht_ab", type: "boolean", default: false,
+        hint: "action_fields.aus_der_ablauf_entscheidet_selbst_ueber_tool" },
     ],
   },
 
   mail_classify: {
     subjects: ["standalone"],
-    summary: "Ordnet die eingegangene Mail im Haus ein (Kategorie, Dringlichkeit, "
+    summary: "action_fields.ordnet_die_eingegangene_mail_im_haus_ein_kat"
       + "Kurzfassung) und sucht die gelernte Regel zum Absender. Schreibt klasse.* "
       + "und policy.* in den Kontext.",
     fields: [
       { key: "classify_agent", label: "Klassifizier-Agent", type: "text",
-        hint: "Leer = der Agent aus dem Auslöser. Ganz ohne Agenten wird nur durchgereicht." },
+        hint: "action_fields.leer_der_agent_aus_dem_ausloeser_ganz_ohne_a" },
     ],
   },
 
   spam_evaluate: {
     subjects: ["standalone"],
-    summary: "Zieht Regeln, lokales Modell und Gedächtnis zu einem Urteil zusammen "
+    summary: "action_fields.zieht_regeln_lokales_modell_und_gedaechtnis_"
       + "(spam.score, spam.geklaert, spam.frage_ab …). Entscheidet selbst nichts.",
     fields: [],
   },
 
   spam_card: {
     subjects: ["standalone"],
-    summary: "Legt die Urteils-Zeile an und stellt die Telegram-Rückfrage. Unterhalb der "
+    summary: "action_fields.legt_die_urteils_zeile_an_und_stellt_die_tel"
       + "Sofort-Schwelle wartet der Fall auf die Sammel-Karte.",
     fields: [
-      { key: "vorentschieden", label: "Schon entschieden", type: "boolean", default: false,
-        hint: "Meldet einen vom Gedächtnis geklärten Fall — als Hinweis, nicht als Frage." },
+      { key: "vorentschieden", label: "action_fields.schon_entschieden", type: "boolean", default: false,
+        hint: "action_fields.meldet_einen_vom_gedaechtnis_geklaerten_fall" },
     ],
   },
 
   spam_apply: {
     subjects: ["standalone"],
-    summary: "Schreibt das Urteil fest, lernt daraus und bewegt die Mail (Spam-Ordner "
+    summary: "action_fields.schreibt_das_urteil_fest_lernt_daraus_und_be"
       + "bzw. zurück in den Posteingang).",
     fields: [
       { key: "entscheidung", label: "Entscheidung", type: "select",
         options: [["spam", "Ist Spam"], ["ham", "Kein Spam"]],
-        hint: "Leer = die Antwort des Menschen aus dem Kontext (spam.entschieden)." },
-      { key: "decided_by", label: "Entschieden von", type: "text", placeholder: "auto" },
+        hint: "action_fields.leer_die_antwort_des_menschen_aus_dem_kontex" },
+      { key: "decided_by", label: "action_fields.entschieden_von", type: "text", placeholder: "auto" },
     ],
   },
 
   assistant_task: {
     subjects: ["standalone"],
-    summary: "Macht aus der Mail ein Assistent-Item (das, was der Mensch freigibt). "
+    summary: "action_fields.macht_aus_der_mail_ein_assistent_item_das_wa"
       + "Doppelte Zustellung erzeugt kein zweites Item.",
     fields: [],
   },
 
   assistant_card: {
     subjects: ["standalone"],
-    summary: "Schickt die Freigabekarte zum Assistent-Item.",
+    summary: "action_fields.schickt_die_freigabekarte_zum_assistent_item",
     fields: [],
   },
 
   assistant_run: {
     subjects: ["standalone"],
-    summary: "Reiht den Assistenten-Lauf ein (für Items, die eine gelernte Regel bereits "
+    summary: "action_fields.reiht_den_assistenten_lauf_ein_fuer_items_di"
       + "freigegeben hat).",
     fields: [],
   },
 
-  stop_agent: { summary: "Bricht einen laufenden Agentenlauf ab.", fields: [], subjects: ["issue"] },
-  start_testenv: { summary: "Startet die Testumgebung des Tickets.", fields: [], subjects: ["issue"] },
+  stop_agent: { summary: "action_fields.bricht_einen_laufenden_agentenlauf_ab", fields: [], subjects: ["issue"] },
+  start_testenv: { summary: "action_fields.startet_die_testumgebung_des_tickets", fields: [], subjects: ["issue"] },
   stop_testenv: {
     subjects: ["issue"],
-    summary: "Räumt die Testumgebung ab (Container, Volumes, Worktree, Port). "
+    summary: "action_fields.raeumt_die_testumgebung_ab_container_volumes"
       + "Muss VOR dem Merge laufen.",
     fields: [],
   },
 
   accept_merge: {
     subjects: ["issue"],
-    summary: "Mergt den Ticket-Branch bzw. öffnet einen Pull Request.",
-    fields: [{ key: "timeout_sec", label: "Zeitlimit (s)", type: "number", placeholder: "900" }],
-    outcomes: "Läuft asynchron; der Ausgang heißt wie das Ergebnis: merged, conflict, "
+    summary: "action_fields.mergt_den_ticket_branch_bzw_oeffnet_einen_pu",
+    fields: [{ key: "timeout_sec", label: "action_fields.zeitlimit_s", type: "number", placeholder: "900" }],
+    outcomes: "action_fields.laeuft_asynchron_der_ausgang_heisst_wie_das_"
       + "pr_open, no_git, push_failed — sonst „weiter\".",
   },
 
   deploy: {
     subjects: ["issue"],
-    summary: "Reiht ein Deployment ein.",
-    fields: [{ key: "force", label: "Auch ohne Auto-Deploy", type: "boolean", default: false,
-               hint: "Ohne Haken passiert nichts, wenn Auto-Deploy am Projekt aus ist." }],
+    summary: "action_fields.reiht_ein_deployment_ein",
+    fields: [{ key: "force", label: "action_fields.auch_ohne_auto_deploy", type: "boolean", default: false,
+               hint: "action_fields.ohne_haken_passiert_nichts_wenn_auto_deploy_" }],
   },
 
 };

@@ -244,25 +244,25 @@ export interface WorkflowTaskLite {
 }
 
 export const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
-  start: "Start",
-  end: "Ende",
-  human_task: "Aufgabe",
-  decision: "Verzweigung",
-  approval: "Freigabe",
-  auto_action: "Aktion",
-  agent_task: "KI-Agent",
-  wait_event: "Warten auf Ereignis",
-  subflow: "Anderer Ablauf",
-  loop: "Für jedes …",
-  timer: "Warten",
+  start: "node.start",
+  end: "node.end",
+  human_task: "node.human_task",
+  decision: "node.decision",
+  approval: "node.approval",
+  auto_action: "node.auto_action",
+  agent_task: "node.agent_task",
+  wait_event: "node.wait_event",
+  subflow: "node.subflow",
+  loop: "node.loop",
+  timer: "node.timer",
 };
 
 export const SLOT_LABELS: Record<WorkflowSlot, string> = {
-  ticket_lifecycle: "KI-Ticket-Lebenszyklus",
-  acceptance: "Abnahme & Auslieferung",
-  hardware_procurement: "Hardware-Beschaffung",
-  ticket_intake: "Ticket-Eingang",
-  mail_intake: "Mail-Eingang",
+  ticket_lifecycle: "slot.ticket_lifecycle",
+  acceptance: "slot.acceptance",
+  hardware_procurement: "slot.hardware_procurement",
+  ticket_intake: "slot.ticket_intake",
+  mail_intake: "slot.mail_intake",
 };
 
 /** Prozess-Satz (global ausgeliefert oder persönlich). */

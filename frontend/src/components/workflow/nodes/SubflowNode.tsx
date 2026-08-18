@@ -1,4 +1,5 @@
 import { BaseNode, type FlowNodeProps, type SourceHandleDef } from "./shared";
+import { tr } from "../../../i18n";
 import { SLOT_LABELS } from "../types";
 
 /**
@@ -22,7 +23,7 @@ export default function SubflowNode({ id, data, selected }: FlowNodeProps) {
       aus={!!data.config.deaktiviert}
       sources={sources}
     >
-      <div>{data.config.slot ? SLOT_LABELS[data.config.slot] : "kein Ablauf gewählt"}</div>
+      <div>{data.config.slot ? tr(SLOT_LABELS[data.config.slot]) : tr("node.kein_ablauf_gewaehlt")}</div>
     </BaseNode>
   );
 }

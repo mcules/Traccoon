@@ -45,7 +45,7 @@ export default function NodePalette() {
           className="flex cursor-grab items-center gap-2 rounded border border-line bg-surface px-2 py-1.5 text-sm hover:border-brand active:cursor-grabbing"
         >
           <span>{ICONS[t]}</span>
-          <span>{NODE_TYPE_LABELS[t]}</span>
+          <span>{tr(NODE_TYPE_LABELS[t])}</span>
         </div>
       ))}
     </div>
