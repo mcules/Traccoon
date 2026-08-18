@@ -38,7 +38,6 @@ the backend container that supplies the stage. The WebSocket falls in the middle
 animation, and the process that would draw it dies of it. Animating a process that kills
 the animator is a category error. These rows live in the list (`api/deployments.py`), not
 in the room, and a test nails the decision down so that nobody "repairs" it.
-fest, damit sie niemand „repariert".
 
 **Only the most recent window.** The existing rows have `announced_status = ''` and would
 otherwise all be "new": the first beat after the rollout would tell of 186 deployments from

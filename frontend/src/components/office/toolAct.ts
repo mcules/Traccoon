@@ -1,45 +1,43 @@
-// Schicht 0 — Werkzeugname → Bild.
+// Layer 0: tool name to picture.
 //
-// `ToolAct = read | write | run | browse | delegate | other`: **sechs Bilder statt vierzig Namen**.
-// Der Grund: einen Agenten ans Fenster laufen zu
-// lassen, weil ein Werkzeugname zufällig „web" enthält, ist eine Lüge, die der Zuschauer nicht
-// überprüfen kann. Er sieht eine Figur browsen und hat keine Möglichkeit festzustellen, dass in
-// Wahrheit eine Datei gelesen wurde. Lieber kein Bild als ein falsches.
+// `ToolAct = read | write | run | browse | delegate | other`: **six pictures instead of forty names**.
+// The reason: making an agent walk to the window because a tool name happens to contain
+// "web" is a lie the viewer cannot check. They see a figure browsing and have no way of
+// finding out that in truth a file was read. Better no picture than a wrong one.
 //
-// ── Der Kompromiss, offen benannt ────────────────────────────────────────────
+// ── The compromise, named openly ─────────────────────────────────────────────
 //
-// Der saubere Grundsatz wäre „eine Tabelle, keine Heuristik". Der hielte nur bei geschlossener
-// Werkzeugmenge. Traccoons Menge ist offen — jeder MCP-Server, den ein Nutzer registriert, bringt beliebig benannte Werkzeuge
-// mit (`obsidian__obsidian_get_note`, `homeassistant__call_service`, …). Eine erschöpfende
-// Tabelle dafür kann es nicht geben.
+// The clean principle would be "a table, no heuristic". That would only hold with a closed
+// set of tools. Traccoon's set is open: every MCP server a user registers brings arbitrarily
+// named tools with it (`obsidian__obsidian_get_note`, `homeassistant__call_service`, …). An
+// exhaustive table for those cannot exist.
 //
-// Der Kompromiss bewahrt die Absicht:
-//   1. `TOOL_ACT` ist **erschöpfend für jedes Werkzeug, das Traccoon selbst besitzt** — die
-//      nativen aus `worker/runtime.py`, die deutschen Gedächtniswerkzeuge aus
-//      `worker/tools_memory.py` und alle zwanzig `traccoon_*` aus `worker/tools_traccoon.py`.
-//      Für die driftet nichts, sie sind aufgezählt.
-//   2. `NATIVE_TOOLS` ist eine **eigene, gepflegte Liste** derselben Namen. Bewusst nicht aus
-//      `Object.keys(TOOL_ACT)` abgeleitet: ein vergessenes Werkzeug fehlte sonst in beiden und
-//      der Prüfer (Welle M) merkte nichts. Er hält die Backend-Sollliste gegen `NATIVE_TOOLS`
-//      **und** `NATIVE_TOOLS` gegen die Tabelle — erst dadurch bricht der Build bei einer Lücke.
-//   3. Die Heuristik greift **nur** bei MCP-Namen und **nur** für `read`/`write`/`run`.
-//      `browse` und `delegate` sind daraus nicht erreichbar: ob ein fremdes Werkzeug ins Netz
-//      geht oder Arbeit weiterreicht, steht in seinem Namen nicht drin. Genau das war die Lüge
-//      oben.
+// The compromise preserves the intention:
+//   1. `TOOL_ACT` is **exhaustive for every tool Traccoon owns itself**: the native ones from
+//      `worker/runtime.py`, the memory tools from `worker/tools_memory.py` and all twenty
+//      `traccoon_*` from `worker/tools_traccoon.py`. Nothing drifts for those, they are
+//      enumerated.
+//   2. `NATIVE_TOOLS` is a **separate, maintained list** of the same names. Deliberately not
+//      derived from `Object.keys(TOOL_ACT)`: a forgotten tool would otherwise be missing in
+//      both and the checker would notice nothing. It holds the backend target list against
+//      `NATIVE_TOOLS` **and** `NATIVE_TOOLS` against the table; only that makes the build break on a gap.
+//   3. The heuristic takes hold **only** on MCP names and **only** for `read`/`write`/`run`.
+//      `browse` and `delegate` are not reachable from it: whether a foreign tool goes onto the
+//      network or passes work on does not stand in its name. Exactly that was the lie above.
 
 import type { MoodKind, ScreenKind, ToolAct } from "./types.ts";
 
-// ── 1. Die Tabelle — autoritativ, driftet nie ────────────────────────────────
+// ── 1. The table: authoritative, never drifts ────────────────────────────────
 
-/** Jedes Traccoon-eigene Werkzeug mit seinem Bild. Reihenfolge = Herkunftsdatei im Worker,
- *  damit ein neues Werkzeug dort nachgetragen wird, wo man es sucht. */
+/** Every Traccoon-owned tool with its picture. The order follows the source file in the
+ *  worker, so that a new tool is added where one looks for it. */
 export const TOOL_ACT: Record<string, ToolAct> = {
   // ── worker/runtime.py — native Werkzeuge ───────────────────────────────────
-  // `submit_plan` schreibt kein File, liefert aber ein Schriftstück ab; `write` ist das
-  // ehrlichste der sechs Bilder.
+  // `submit_plan` writes no file but delivers a document; `write` is the most honest of the
+  // six pictures.
   submit_plan: "write",
-  // `ask_human`/`continue_later` sind Gesten an den Ablauf, keine Tätigkeit. Was der Zuschauer
-  // sehen soll, kommt aus dem `gate`-Kommando (Hand heben), nicht aus einer Werkzeugpose.
+  // `ask_human`/`continue_later` are gestures towards the flow, not an activity. What the
+  // viewer should see comes from the `gate` command (raising a hand), not from a tool pose.
   ask_human: "other",
   continue_later: "other",
   fs_read: "read",
@@ -48,7 +46,7 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   fs_edit: "write",
   check: "run",
   deploy: "run",
-  // Rendert die Projektseite und sieht sie an — das ist der eine native Fall von „browse".
+  // Renders the project page and looks at it: that is the one native case of "browse".
   screenshot: "browse",
   read_attachment: "read",
   open_tasks: "read",
@@ -56,25 +54,25 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   delegate: "delegate",
   load_skill: "read",
 
-  // ── worker/tools_memory.py — die deutschen Gedächtniswerkzeuge ─────────────
+  // ── worker/tools_memory.py: the memory tools ───────────────────────────────
   erinnere_dich: "write",
   vergiss: "write",
   gedaechtnis_suchen: "read",
 
-  // ── worker/tools_traccoon.py — die zwanzig Steuerwerkzeuge ─────────────────
+  // ── worker/tools_traccoon.py: the twenty control tools ─────────────────────
   traccoon_list_projects: "read",
   traccoon_list_issues: "read",
   traccoon_get_issue: "read",
   traccoon_create_issue: "write",
   traccoon_comment: "write",
   traccoon_assign_agent: "write",
-  // Stößt einen fremden Lauf an. **Nicht** `delegate`: das Bild dazu ist die Spawn-Linie zu
-  // einer Figur im selben Raum, und die entsteht hier nie — der geplante Lauf gehört zu einem
-  // anderen Ticket und damit zu einer anderen Session.
+  // Triggers a foreign run. **Not** `delegate`: the picture for that is the spawn line to a
+  // figure in the same room, and that never comes into being here, because the planned run
+  // belongs to another ticket and therefore to another session.
   traccoon_start_planning: "run",
   traccoon_approve_plan: "write",
   traccoon_issue_costs: "read",
-  // Nachricht nach draußen an einen Menschen: weder Lesen noch Schreiben noch Laufenlassen.
+  // Message to the outside, to a human: neither reading nor writing nor running.
   traccoon_notify_human: "other",
   traccoon_list_destinations: "read",
   traccoon_list_jobs: "read",
@@ -85,15 +83,15 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   traccoon_run_job: "run",
   traccoon_list_workflows: "read",
   traccoon_start_workflow: "run",
-  // Der einzige Weg eines Agenten ins Netz (Ziele, `allow_agents`) — hier ist „browse" belegt.
+  // The only way of an agent onto the network (destinations, `allow_agents`); here "browse" is proven.
   traccoon_http_call: "browse",
 };
 
-/** Die Sollliste, gegen die der Prüfer testet: jeder Name, den Traccoon selbst als Werkzeug
- *  anbietet. Quellen sind `worker/runtime.py` (`*_TOOL`-Konstanten und `_delegate_tool`),
- *  `worker/tools_memory.py::MEMORY_TOOLS` und `worker/tools_traccoon.py::TRACCOON_TOOLS`.
+/** The target list the checker tests against: every name Traccoon itself offers as a tool.
+ *  The sources are `worker/runtime.py` (`*_TOOL` constants and `_delegate_tool`),
+ *  `worker/tools_memory.py::MEMORY_TOOLS` and `worker/tools_traccoon.py::TRACCOON_TOOLS`.
  *
- *  Doppelt geführt und nicht aus `TOOL_ACT` abgeleitet — siehe Kopf, Punkt 2. */
+ *  Kept twice and not derived from `TOOL_ACT`, see the head, point 2. */
 export const NATIVE_TOOLS: readonly string[] = [
   // runtime.py (15)
   "submit_plan", "ask_human", "continue_later",
@@ -114,18 +112,18 @@ export const NATIVE_TOOLS: readonly string[] = [
 
 // ── 2./3. MCP ────────────────────────────────────────────────────────────────
 
-/** Trenner zwischen Servername und Werkzeugname bei MCP-Werkzeugen.
- *  Gesetzt in `worker/mcp_client.py::MultiMcpSession.list_tools` (`f"{name}__{t.name}"`);
- *  MCPJungle liefert seine Gateway-Werkzeuge in derselben Form. */
+/** Separator between server name and tool name with MCP tools.
+ *  Set in `worker/mcp_client.py::MultiMcpSession.list_tools` (`f"{name}__{t.name}"`);
+ *  MCPJungle delivers its gateway tools in the same shape. */
 const MCP_SEP = "__";
 
-/** Die eine Heuristik. Sie sieht ausschließlich MCP-Namen und kennt nur drei der sechs Bilder.
+/** The one heuristic. It sees exclusively MCP names and knows only three of the six pictures.
  *
- *  Angewandt wird sie auf die **Wortmarken** des nackten Namens, nicht auf den Namensanfang:
- *  ein striktes `startsWith` feuerte fast nie, weil MCP-Server ihren eigenen Namen als erste
- *  Marke wiederholen (`obsidian_get_note`, `calendar_list_events`). Die erste Marke, die in
- *  dieser Tabelle steht, gewinnt; findet sich keine, bleibt es `other` — und `other` ist keine
- *  Notlösung, sondern die richtige Antwort auf „ich weiß es nicht". */
+ *  It is applied to the **word marks** of the bare name, not to the beginning of the name: a
+ *  strict `startsWith` fired almost never, because MCP servers repeat their own name as the
+ *  first mark (`obsidian_get_note`, `calendar_list_events`). The first mark that stands in
+ *  this table wins; if none is found it stays `other`, and `other` is not a stopgap but the
+ *  right answer to "I do not know". */
 const MCP_VERB: Record<string, ToolAct> = {
   get: "read", list: "read", read: "read", search: "read", find: "read", query: "read",
   fetch: "read", describe: "read", show: "read", view: "read", download: "read",
@@ -140,22 +138,22 @@ const MCP_VERB: Record<string, ToolAct> = {
   render: "run", fire: "run", install: "run",
 };
 
-/** `hasOwnProperty` statt `in`: ein Werkzeug namens `constructor` oder `toString` liefe sonst
- *  über die Prototypenkette und bekäme ein Bild, das nirgends in der Tabelle steht. */
+/** `hasOwnProperty` instead of `in`: a tool called `constructor` or `toString` would
+ *  otherwise run over the prototype chain and get a picture that stands nowhere in the table. */
 function tableHas<T>(table: Record<string, T>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(table, key);
 }
 
-/** Werkzeugname → Bild. Auflösungsreihenfolge:
+/** Tool name to picture. Resolution order:
  *
- *  1. **exakte Tabelle** — autoritativ, driftet nie;
- *  2. MCP-Namen `server__tool` auf den nackten Namen kürzen und noch einmal die Tabelle fragen
- *     (ein Projekt-MCP darf durchaus `traccoon__fs_read` heißen);
- *  3. genau eine Präfix-Heuristik, und die gilt **nur** für MCP.
+ *  1. **exact table**, authoritative, never drifts;
+ *  2. shorten MCP names `server__tool` to the bare name and ask the table again
+ *     (a project MCP may well be called `traccoon__fs_read`);
+ *  3. exactly one prefix heuristic, and that applies **only** to MCP.
  *
- *  Ein unbekannter Name **ohne** `__` ist kein MCP-Werkzeug, also entweder ein Tippfehler oder
- *  ein neues natives Werkzeug, das in die Tabelle gehört — der bekommt `other` und der Prüfer
- *  meldet die Lücke. Ihn heuristisch zu erraten hieße, die Lücke zu verstecken. */
+ *  An unknown name **without** `__` is not an MCP tool, so it is either a typo or a new
+ *  native tool that belongs in the table; that one gets `other` and the checker reports the
+ *  gap. Guessing it heuristically would mean hiding the gap. */
 export function toolAct(name: string): ToolAct {
   const tool = (name || "").trim();
   if (!tool) return "other";
@@ -172,10 +170,10 @@ export function toolAct(name: string): ToolAct {
   return "other";
 }
 
-// ── Monitor und Stimmung ─────────────────────────────────────────────────────
+// ── Monitor and mood ─────────────────────────────────────────────────────────
 
-/** Bild je Tätigkeit. Die Grundtabelle — sie hat für jedes der sechs `ToolAct` einen Eintrag,
- *  damit nie ein Fall durchfällt. */
+/** Picture per activity. The base table: it has an entry for each of the six `ToolAct` so
+ *  that no case ever falls through. */
 const SCREEN_BY_ACT: Record<ToolAct, ScreenKind> = {
   read: "code",
   write: "code",
@@ -185,24 +183,24 @@ const SCREEN_BY_ACT: Record<ToolAct, ScreenKind> = {
   other: "blank",
 };
 
-/** Die wenigen Werkzeuge, bei denen das Bild der Tätigkeit sichtbar falsch wäre.
- *  Kurz halten: jede Zeile hier ist eine Ausnahme von „sechs Bilder statt vierzig Namen"
- *  und muss sich lohnen. */
+/** The few tools where the picture of the activity would be visibly wrong.
+ *  Keep it short: every line here is an exception to "six pictures instead of forty names"
+ *  and has to be worth it. */
 const SCREEN_BY_TOOL: Record<string, ScreenKind> = {
-  // Suchen sieht anders aus als Lesen — Trefferliste statt Quelltext.
+  // Searching looks different from reading: a hit list instead of source code.
   codegraph: "search",
   gedaechtnis_suchen: "search",
   fs_list: "search",
-  // Etwas Gerendertes ansehen, nicht Quelltext.
+  // Looking at something rendered, not at source code.
   screenshot: "page",
   read_attachment: "page",
 };
 
-/** Was auf dem Monitor steht.
+/** What stands on the monitor.
  *
- *  `waiting` gewinnt vor allem anderen: eine Figur, die auf einen Menschen wartet, ist genau
- *  das, was der Zuschauer sehen soll — auch wenn im Hintergrund noch ein Werkzeug offen ist
- *  (der Berechtigungsdialog hält den Aufruf ja gerade an). */
+ *  `waiting` wins before everything else: a figure waiting for a human is exactly what the
+ *  viewer should see, even when a tool is still open in the background (the permission
+ *  dialog is what holds the call up right now). */
 export function screenFor(act: ToolAct | undefined, tool: string | undefined,
                           waiting: boolean): ScreenKind {
   if (waiting) return "wait";
@@ -212,15 +210,15 @@ export function screenFor(act: ToolAct | undefined, tool: string | undefined,
   return SCREEN_BY_ACT[act];
 }
 
-/** Stimmung der Anzeige.
+/** Mood of the display.
  *
- *  Reihenfolge ist eine Aussage: **fertig** schlägt alles (ein beendeter Lauf ist beendet, auch
- *  wenn unterwegs etwas schieflief), dann **wartend** (der einzige Zustand, in dem der Mensch
- *  etwas tun muss — er darf nicht hinter einem alten Fehler verschwinden), dann **Fehler**,
- *  sonst **Arbeit**.
+ *  The order is a statement: **done** beats everything (a finished run is finished, even when
+ *  something went wrong on the way), then **waiting** (the only state in which the human has
+ *  to do something, and it must not disappear behind an old error), then **error**,
+ *  otherwise **work**.
  *
- *  `fails`/`waiting` sind Zähler, keine Schalter: dieselbe Funktion beschriftet die Kachel
- *  eines einzelnen Agenten (0/1) und die Zusammenfassung eines ganzen Raums (n). */
+ *  `fails`/`waiting` are counters, not switches: the same function labels the tile of a
+ *  single agent (0/1) and the summary of a whole room (n). */
 export function moodFor(done: boolean, fails: number, waiting: number): MoodKind {
   if (done) return "done";
   if (waiting > 0) return "wait";

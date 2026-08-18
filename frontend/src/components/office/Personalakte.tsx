@@ -1,40 +1,40 @@
-// Schicht 2 — die Personalakte: was eine **Rolle** über alle ihre Läufe hinweg getan hat.
+// Layer 2, the personnel file: what a **role** has done across all its runs.
 //
-// ══ Warum das ein eigener Dock-Reiter ist und nicht in den Inspektor gehört ═══════════════════
+// ══ Why this is a dock tab of its own and does not belong in the inspector ═══════════════════
 //
-// Der Inspektor sagt in seinem eigenen Kopf zu, ohne eigene Abfrage auszukommen — alles darin
-// stammt aus Roster und Log —, und er sitzt in einer 45 %-hohen Kachel. Die Akte ist das
-// Gegenteil: ein Aggregat über Läufe **und** Sitzungen hinweg, mit eigenem Zeitfenster, eigenem
-// Lade- und eigenem Fehlerzustand. Sie in den Inspektor zu quetschen hieße, ihm eine Abfrage
-// unterzuschieben, die er ausdrücklich nicht haben wollte.
+// The inspector promises in its own head to get by without a query of its own (everything in
+// it comes from roster and log), and it sits in a tile 45 % high. The file is the opposite: an
+// aggregate across runs **and** sessions, with a time window of its own, a loading state of
+// its own and an error state of its own. Squeezing it into the inspector would mean slipping
+// it a query it explicitly did not want.
 //
-// Ein Klick auf eine Figur setzt `selectedId`. Der Inspektor zeigt daraufhin weiter den
-// **einzelnen Lauf**, die Akte springt zur **Rolle** dieser Figur. Beide Wahrheiten stehen
-// nebeneinander, und keine gibt sich für die andere aus.
+// A click on a figure sets `selectedId`. The inspector then keeps showing the **single run**,
+// the file jumps to the **role** of that figure. Both truths stand next to each other, and
+// neither pretends to be the other.
 //
-// ══ Die Ehrlichkeit ist der ganze Punkt ══════════════════════════════════════════════════════
+// ══ The honesty is the whole point ═══════════════════════════════════════════════════════════
 //
-//   1. **Drei Balken, keine Erfolgsquote.** *Abgeliefert* · *wartet auf einen Menschen* ·
-//      *abgebrochen*. Die drei Zahlen kommen **fertig vom Server**; hier wird nichts aus
-//      `success / runs` gerechnet. Genau daran hängt, ob `architect` 78 % oder 6 % zeigt und
-//      `project_manager` 64 % oder 0 %: `planned` ist ein abgelieferter Plan, `blocked` ist ein
-//      Mensch, der nicht geantwortet hat — beides ist kein Fehlschlag der Rolle.
-//   2. **Farben wörtlich aus `TopBar.tsx`**, die sie ihrerseits wörtlich aus `AgentMonitor.tsx`
-//      hat. Zwei Ansichten desselben Laufs dürfen sich nie widersprechen.
-//   3. **Kosten mit „≥".** Jede Kostenzeile im Bestand ist unbepreist; ein Betrag ohne Zeichen
-//      behauptete eine Genauigkeit, die es nicht gibt.
-//   4. **Runden ≠ Schritte.** Ø 6,9 Runden der Agentenschleife gegen Ø 21,5 Schritte im
-//      Ereignisstrom — zwei verschiedene Dinge, also zwei verschiedene Beschriftungen.
-//   5. **Dauer als Median/p90/max plus Histogramm**, nie als Mittelwert: ein Lauf über 36,5
-//      Stunden macht jeden Durchschnitt zur Karikatur.
-//   6. **Das Fenster wird benannt.** `run_retention_days` löscht ältere Läufe — „Lieblingswerk-
-//      zeuge" heißt „der letzten 30 Tage", nicht „jemals".
+//   1. **Three bars, no success rate.** *Delivered* · *waiting for a human* · *aborted*. The
+//      three numbers come **ready from the server**; nothing is computed from `success / runs`
+//      here. On exactly that hangs whether `architect` shows 78 % or 6 % and
+//      `project_manager` 64 % or 0 %: `planned` is a delivered plan, `blocked` is a human who
+//      did not answer, and neither is a failure of the role.
+//   2. **Colours verbatim from `TopBar.tsx`**, which in turn has them verbatim from
+//      `AgentMonitor.tsx`. Two views of the same run must never contradict each other.
+//   3. **Costs with "≥".** Every cost row in the existing data is unpriced; an amount without
+//      a sign would claim a precision that does not exist.
+//   4. **Rounds are not steps.** An average of 6.9 rounds of the agent loop against an average
+//      of 21.5 steps in the event stream: two different things, so two different labels.
+//   5. **Duration as median/p90/max plus a histogram**, never as an average: one run over 36.5
+//      hours turns every average into a caricature.
+//   6. **The window is named.** `run_retention_days` deletes older runs, so "favourite tools"
+//      means "of the last 30 days", not "ever".
 //
-// ══ Keine Diagrammbibliothek ═════════════════════════════════════════════════════════════════
+// ══ No chart library ═════════════════════════════════════════════════════════════════════════
 //
-// Alles hier sind `div`s mit Prozentbreiten, genau wie die Zeitleiste ihre Balken malt. Das
-// Dockerfile macht bei jedem Bau `npm install` **ohne** Lockfile — eine neue Abhängigkeit wäre
-// ein Risiko für den Bau und kaufte drei gestapelte Rechtecke.
+// Everything here is `div`s with percentage widths, exactly as the timeline paints its bars.
+// The Dockerfile runs `npm install` **without** a lockfile on every build, so a new dependency
+// would be a risk for the build and would buy three stacked rectangles.
 
 import { tr } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -44,35 +44,35 @@ import { dauerText, statusFarbe, statusText, tokenText, usdText, zahl } from "./
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
 
-/** Die wählbaren Fenster. Der lange Text steht daneben, weil er in der Überschrift landet:
- *  eine Kennzahl ohne ihr Fenster ist keine Kennzahl. 30 Tage sind der Standardwert von
- *  `run_retention_days` — darüber hinaus gibt es schlicht keine Läufe mehr, und ein Fenster,
- *  das mehr verspricht, als die Aufbewahrung hergibt, wäre eine leere Zusage. */
+/** The selectable windows. The long text stands beside it because it lands in the heading: a
+ *  key figure without its window is not a key figure. 30 days is the default value of
+ *  `run_retention_days`; beyond that there simply are no runs any more, and a window that
+ *  promises more than the retention delivers would be an empty promise. */
 const FENSTER: readonly { h: number; kurz: string; lang: string }[] = [
   { h: 24, kurz: "akte.fenster_24h_kurz", lang: "akte.fenster_24h" },
   { h: 24 * 7, kurz: "akte.fenster_7t_kurz", lang: "akte.fenster_7t" },
   { h: 24 * 30, kurz: "akte.fenster_30t_kurz", lang: "akte.fenster_30t" },
 ];
 
-/** Vorgabe: das ganze Aufbewahrungsfenster. Die Akte ist ein Rückblick, kein Wecker. */
+/** Default: the whole retention window. The file is a review, not an alarm clock. */
 const FENSTER_STD = 24 * 30;
 
-/** So viele Werkzeuge je Rolle holt und zeigt die Rangliste. Darunter beginnt der lange
- *  Schwanz aus Einmalaufrufen, den niemand liest. */
+/** This many tools per role are fetched and shown by the ranking. Below that the long tail of
+ *  one-off calls begins, which nobody reads. */
 const WERKZEUG_LIMIT = 8;
 
-/** Ein Aggregat über Wochen ändert sich nicht im Sekundentakt. */
+/** An aggregate over weeks does not change every second. */
 const AKTE_REFETCH_MS = 60_000;
 
 // ── Farben ──────────────────────────────────────────────────────────────────────────────────
 
-/** Textfarbe → Flächenfarbe.
+/** Text colour to area colour.
  *
- *  Der **Schlüssel** ist wörtlich das, was `statusFarbe` liefert; der Wert ist dieselbe Farbe
- *  als Fläche. Zwei Gründe für diesen Umweg statt eines `replace("text-", "bg-")`:
- *  Tailwind liest Klassennamen als Text aus dem Quelltext — ein zur Laufzeit
- *  zusammengesetzter Name existierte im fertigen CSS gar nicht. Und driftet `ST_FARBE`
- *  eines Tages, fehlt hier der Eintrag: der Balken wird grau statt still falsch. */
+ *  The **key** is verbatim what `statusFarbe` delivers; the value is the same colour as an
+ *  area. Two reasons for this detour instead of a `replace("text-", "bg-")`: Tailwind reads
+ *  class names as text from the source, so a name assembled at runtime would not exist in the
+ *  finished CSS at all. And if `ST_FARBE` drifts one day, the entry is missing here: the bar
+ *  turns grey instead of being silently wrong. */
 const FLAECHE: Record<string, string> = {
   "text-green-400": "bg-green-400",
   "text-orange-400": "bg-orange-400",
@@ -85,16 +85,16 @@ function flaeche(status: string): string {
   return FLAECHE[statusFarbe(status)] ?? "bg-line";
 }
 
-// ── Die drei Balken ─────────────────────────────────────────────────────────────────────────
+// ── The three bars ──────────────────────────────────────────────────────────────────────────
 //
-// `status` ist hier **kein** Filter, sondern nur die Quelle der Farbe: die Zahlen selbst
-// rechnet der Server. Steht `success` grün im Agenten-Monitor, ist „abgeliefert" hier
-// dasselbe Grün — sonst sähe derselbe Lauf in zwei Ansichten verschieden aus.
+// `status` is **not** a filter here but only the source of the colour: the numbers themselves
+// are computed by the server. If `success` stands green in the agent monitor, "delivered" is
+// the same green here; otherwise the same run would look different in two views.
 
 interface BalkenArt {
   key: "delivered" | "waiting" | "aborted";
   label: string;
-  /** Für die Farbe, siehe oben. */
+  /** For the colour, see above. */
   status: string;
   titel: string;
 }
@@ -116,8 +116,8 @@ const BALKEN: readonly BalkenArt[] = [
 
 // ── Zahlen ──────────────────────────────────────────────────────────────────────────────────
 
-/** Eine Nachkommastelle mit deutschem Komma. Von Hand statt `toLocaleString`, damit dieselbe
- *  Zahl in jedem Browser gleich aussieht — dieselbe Begründung wie bei `zahl` in `TopBar`. */
+/** One decimal place with a German comma. By hand instead of `toLocaleString`, so that the
+ *  same number looks the same in every browser, the same reasoning as with `zahl` in `TopBar`. */
 function komma1(v: number): string {
   return v.toFixed(1).replace(".", ",");
 }
@@ -126,7 +126,7 @@ function prozent(teil: number, ganzes: number): number {
   return ganzes > 0 ? (teil / ganzes) * 100 : 0;
 }
 
-/** Wie lange her, grob. Der genaue Zeitpunkt steht im `title`. */
+/** How long ago, roughly. The exact moment stands in the `title`. */
 function herText(iso: string | null | undefined, jetzt: number): string {
   if (!iso) return "—";
   const t = Date.parse(iso);
@@ -140,8 +140,8 @@ function herText(iso: string | null | undefined, jetzt: number): string {
   return tr("akte.vor_tagen", { anzahl: Math.round(std / 24) });
 }
 
-/** Beschriftung eines Histogramm-Eimers. `lt_ms` ist die **obere** Grenze; fehlt sie, ist es
- *  der offene Eimer ganz oben. */
+/** Label of a histogram bucket. `lt_ms` is the **upper** bound; when it is missing this is the
+ *  open bucket at the top. */
 function eimerText(lt: number | null | undefined, vorher: number | null): string {
   if (lt === null || lt === undefined || !Number.isFinite(lt)) {
     return vorher !== null ? `> ${dauerText(vorher)}` : tr("akte.darueber");
@@ -149,20 +149,20 @@ function eimerText(lt: number | null | undefined, vorher: number | null): string
   return vorher !== null ? `${dauerText(vorher)} – ${dauerText(lt)}` : `< ${dauerText(lt)}`;
 }
 
-// ── Oberfläche ──────────────────────────────────────────────────────────────────────────────
+// ── Interface ───────────────────────────────────────────────────────────────────────────────
 
 export interface PersonalakteProps {
   scope: Scope;
-  /** Rolle, die aufgeklappt und angesteuert werden soll — die Rolle der ausgewählten Figur.
-   *  `null`/fehlt = niemand ist ausgewählt, dann bleibt die Wahl beim Betrachter. Ein Wechsel
-   *  klappt die neue Rolle auf; das Zuklappen von Hand bleibt danach bestehen. */
+  /** Role that should be expanded and scrolled to, the role of the selected figure.
+   *  `null` or missing means nobody is selected, and then the choice stays with the viewer. A
+   *  change expands the new role; collapsing by hand persists afterwards. */
   focusAgent?: string | null;
-  /** Vorgewähltes Zeitfenster in Stunden. Nur beim Einhängen gelesen. */
+  /** Preselected time window in hours. Read only on mount. */
   initialSinceHours?: number;
   className?: string;
 }
 
-// ── Die Komponente ──────────────────────────────────────────────────────────────────────────
+// ── The component ───────────────────────────────────────────────────────────────────────────
 
 export default function Personalakte({
   scope, focusAgent, initialSinceHours, className,
@@ -181,8 +181,8 @@ export default function Personalakte({
     retry: 1,
   });
 
-  // Die gewählte Figur bestimmt die aufgeklappte Rolle — und holt sie ins Bild. Ohne das
-  // Scrollen zeigte die Akte bei zwölf Rollen zwar die richtige, aber unterhalb des Randes.
+  // The selected figure determines the expanded role and brings it into view. Without the
+  // scrolling the file would show the right role of twelve, but below the edge.
   useEffect(() => {
     if (!focusAgent) return;
     setOffen(focusAgent);
@@ -196,9 +196,9 @@ export default function Personalakte({
   const fensterText = treffer ? tr(treffer.lang)
     : tr("akte.fenster_tage", { anzahl: Math.round(gemessen / 24) });
 
-  // Reihenfolge: die vielbeschäftigte Rolle zuerst, bei Gleichstand die zuletzt aktive. Das
-  // ist die Reihenfolge, in der man hinsieht — und sie ist stabil, weil sie nicht davon
-  // abhängt, wer gerade ausgewählt ist.
+  // Order: the busiest role first, on a tie the most recently active one. That is the order in
+  // which one looks, and it is stable because it does not depend on who is selected right
+  // now.
   const rollen = useMemo(() => {
     const kopie = [...(akte.data?.agents ?? [])];
     kopie.sort((a, b) => {
@@ -261,7 +261,7 @@ export default function Personalakte({
   );
 }
 
-// ── Eine Rolle ──────────────────────────────────────────────────────────────────────────────
+// ── One role ────────────────────────────────────────────────────────────────────────────────
 
 function Rollenkarte({ r, jetzt, offen, onToggle }: {
   r: AgentRecord;
@@ -276,9 +276,9 @@ function Rollenkarte({ r, jetzt, offen, onToggle }: {
     aborted: r.aborted ?? 0,
   };
   const beurteilt = werte.delivered + werte.waiting + werte.aborted;
-  // Was übrig bleibt, läuft noch (oder hat einen Status, den der Server keiner der drei
-  // Gruppen zuordnet). Es bekommt einen eigenen, grauen Rest — es unter die drei zu
-  // verteilen wäre genau die Sorte stiller Rechnung, die diese Ansicht vermeiden soll.
+  // What is left over is still running (or has a status the server assigns to none of the
+  // three groups). It gets a grey remainder of its own; distributing it among the three would
+  // be exactly the kind of silent arithmetic this view is meant to avoid.
   const rest = Math.max(0, runs - beurteilt);
   const basis = beurteilt + rest;
 
@@ -308,11 +308,11 @@ function Rollenkarte({ r, jetzt, offen, onToggle }: {
   );
 }
 
-// ── Das Balkenband ──────────────────────────────────────────────────────────────────────────
+// ── The bar band ────────────────────────────────────────────────────────────────────────────
 //
-// Ein gestapelter Balken, drei `div`s mit Prozentbreiten (plus dem grauen Rest). Die Zahlen
-// stehen daneben — ein Balken allein sagt „ungefähr ein Drittel", und ungefähr ist bei
-// zwölf Läufen zu wenig.
+// One stacked bar, three `div`s with percentage widths (plus the grey remainder). The numbers
+// stand beside it: a bar alone says "about a third", and about is too little with twelve
+// runs.
 
 function Balkenband({ werte, rest, basis }: {
   werte: Record<BalkenArt["key"], number>;
@@ -354,7 +354,7 @@ function Balkenband({ werte, rest, basis }: {
   );
 }
 
-// ── Der aufgeklappte Teil ───────────────────────────────────────────────────────────────────
+// ── The expanded part ───────────────────────────────────────────────────────────────────────
 
 function Details({ r, basis, werte, rest }: {
   r: AgentRecord;
@@ -369,9 +369,9 @@ function Details({ r, basis, werte, rest }: {
   const eimerMax = eimer.reduce((m, b) => Math.max(m, b.n ?? 0), 0);
   const werkzeuge = r.tools ?? [];
   const werkzeugMax = werkzeuge.reduce((m, t) => Math.max(m, t.n ?? 0), 0);
-  // `!== false` und nicht `=== true`: fehlt das Feld, ist unbekannt, ob alles bepreist war —
-  // und unbekannt gehört auf die Seite der Untergrenze. Ein Betrag ohne „≥" wäre eine
-  // Genauigkeitsbehauptung, die niemand geprüft hat.
+  // `!== false` and not `=== true`: if the field is missing it is unknown whether everything
+  // was priced, and unknown belongs on the side of the lower bound. An amount without "≥"
+  // would be a precision claim nobody checked.
   const unbepreist = r.cost_partial !== false;
 
   return (
