@@ -10,8 +10,8 @@ import AgentsBadge from "./AgentsBadge";
 import InboxBadge from "./InboxBadge";
 import UpdateFooter from "./UpdateFooter";
 
-// Projekt-Titel (Name + Untertitel) — zugleich Schnellwechsler. Auf Projektseiten zeigt er das
-// aktuelle Projekt; sonst kompakt „Projekte ▾". Klick öffnet die Projektliste.
+// Project title (name plus subtitle), at the same time a quick switcher. On project pages it
+// shows the current project; otherwise a compact "projects ▾". A click opens the project list.
 function ProjectSwitcher() {
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
@@ -119,9 +119,9 @@ function UserMenu() {
   );
 }
 
-// Mobiles Burger-Menü: die Sprünge zwischen den großen Bereichen. Die Reiter der jeweiligen
-// Seite stehen nicht mehr hier, sondern auf der Seite selbst — sie waren sonst zweimal
-// vorhanden, an zwei verschiedenen Stellen, mit zwei verschiedenen Darstellungen.
+// Mobile burger menu: the jumps between the large areas. The tabs of the respective page no
+// longer stand here but on the page itself; otherwise they existed twice, in two different
+// places, with two different presentations.
 function MobileMenu() {
   const [open, setOpen] = useState(false);
   const { user, logout } = useAuth();
@@ -205,15 +205,15 @@ export default function Layout({ children }: { children: ReactNode }) {
 }
 
 /**
- * Die Reiter der aktuellen Seite, auf der Seite.
+ * The tabs of the current page, on the page.
  *
- * Vorher standen sie in der Kopfzeile: eine Pillenleiste, die ab acht Reitern (Einstellungen,
- * Administration) seitwärts scrollte und dabei den ersten und den aktiven Reiter abschnitt —
- * eine Navigation, die man nicht sieht, ist keine. Am Handy waren sie stattdessen im
- * Burger-Menü versteckt, also an einer zweiten Stelle in einer zweiten Form.
+ * Formerly they stood in the header: a pill bar that scrolled sideways from eight tabs on
+ * (settings, administration) and cut off the first and the active tab while doing so, and a
+ * navigation one cannot see is none. On a phone they were hidden in the burger menu instead,
+ * so in a second place in a second form.
  *
- * Hier bricht die Leiste einfach um. Sie kostet eine Zeile Höhe und zeigt dafür alles, auf
- * jeder Breite, mit Beschriftung statt bloßem Zeichen.
+ * Here the bar simply wraps. It costs one line of height and shows everything for that, at
+ * every width, with a label instead of a bare sign.
  */
 function SeitenNavigation({ tabs, aktiv }: { tabs: ChromeTab[]; aktiv: (t: ChromeTab) => boolean }) {
   if (tabs.length === 0) return null;

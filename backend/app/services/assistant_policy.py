@@ -1,7 +1,7 @@
-"""Lern-Policy des persönlichen Assistenten: passende Regel für einen Eingang finden
-und Regeln per Freigabe („immer …") anlegen/aktualisieren.
+"""Learning policy of the personal assistant: find the matching rule for an inbox item and
+create or update rules over an approval ("always …").
 
-Generisch — der Inhalt (Absender, Aktionen) ist owner-scoped und bleibt in der DB.
+Generic; the content (sender, actions) is owner-scoped and stays in the database.
 """
 from __future__ import annotations
 
@@ -19,8 +19,8 @@ _ALLOWED_KIND = {"sender", "domain", "category"}
 
 
 def parse_sender(from_header: str) -> tuple[str, str]:
-    """('news@verband.de', 'verband.de') aus einem From-Header wie 'Name <news@verband.de>'.
-    Leerstrings, wenn keine Adresse gefunden."""
+    """('news@verband.de', 'verband.de') from a From header like 'Name <news@verband.de>'.
+    Empty strings when no address is found."""
     m = _EMAIL_RE.search(from_header or "")
     if not m:
         return "", ""
@@ -31,7 +31,7 @@ def parse_sender(from_header: str) -> tuple[str, str]:
 
 async def match_policy(db: AsyncSession, owner_id: int | None, *, sender_email: str,
                        domain: str, category: str) -> AssistantPolicy | None:
-    """Beste passende, aktive Regel — Priorität Absender > Domain > Kategorie."""
+    """The best matching active rule; the priority is sender before domain before category."""
     if not owner_id:
         return None
     rows = (await db.execute(select(AssistantPolicy).where(
@@ -78,12 +78,12 @@ async def upsert_policy(db: AsyncSession, owner_id: int | None, *, match_kind: s
 
 
 async def agent_laeuft_lokal(db: AsyncSession, owner_id: int | None, role: str) -> bool:
-    """Läuft dieser Agent auf einem Modell im eigenen Haus?
+    """Does this agent run on a model in one's own house?
 
-    Merkmal ist nicht der Provider-Name, sondern die eigene Endpoint-URL des Tokens: `openai`
-    heißt hier meist nicht OpenAI, sondern ein eigener OpenAI-kompatibler Endpoint (LiteLLM &
-    Co.). Ohne Base-URL geht der Aufruf zum Anbieter — dann verlässt der Text das Haus, und
-    die Schwärzung ist genau dafür da.
+    The distinguishing feature is not the provider name but the endpoint URL of the token:
+    `openai` mostly does not mean OpenAI here but an OpenAI-compatible endpoint of one's own
+    (LiteLLM and company). Without a base URL the call goes to the vendor, and then the text
+    leaves the house, which is exactly what the redaction is for.
     """
     from sqlalchemy import or_, select
 
@@ -96,6 +96,6 @@ async def agent_laeuft_lokal(db: AsyncSession, owner_id: int | None, role: str) 
             or_(AgentDefinition.user_id == owner_id, AgentDefinition.user_id.is_(None)))
         .order_by(AgentDefinition.user_id.is_(None)))).scalars().first()
     if row is None or row.provider in ("claude_code", "claude", "anthropic", "codex"):
-        return False       # Subscriptions laufen immer auswärts
+        return False       # subscriptions always run outside
     base = await resolve_provider_base_url(db, owner_id, row.provider, row.token_name or "")
     return bool(base)

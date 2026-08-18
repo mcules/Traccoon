@@ -16,7 +16,7 @@ const WAIT_KIND_COLOR: Record<string, string> = {
   external: "bg-sky-500/20 text-sky-300",
 };
 
-// Eingeklappte Spalten pro Projekt merken (rein lokal — keine Server-Einstellung).
+// Remember collapsed columns per project (purely local, no server setting).
 const collapseKey = (projectId: number) => `traccoon.board.collapsed.${projectId}`;
 
 function loadCollapsed(projectId: number): Set<number> {
@@ -40,7 +40,7 @@ export default function Board({
     ? board.columns.map((c) => statusMap.get(c.status_id)).filter((s): s is Status => !!s)
     : meta.statuses;
 
-  // Split-Beziehungen aus der geladenen Ticket-Liste ableiten.
+  // Derive split relations from the loaded ticket list.
   const childrenByParent = new Map<number, Issue[]>();
   for (const i of issues) {
     if (i.parent_ticket_id != null) {
@@ -49,7 +49,7 @@ export default function Board({
       childrenByParent.set(i.parent_ticket_id, arr);
     }
   }
-  // Sortierte Tickets je Spalte (für Desktop-Board UND mobile Einzelspalte).
+  // Sorted tickets per column (for the desktop board AND the mobile single column).
   const itemsByCol = new Map<number, Issue[]>();
   for (const s of cols) {
     itemsByCol.set(s.id, issues.filter((i) => i.status_id === s.id)
@@ -63,7 +63,7 @@ export default function Board({
   const [moveErr, setMoveErr] = useState<string | null>(null);
   const [mobileCol, setMobileCol] = useState<number | null>(null);
 
-  // Eingeklappte Spalten (nur Desktop-Board); beim Projektwechsel neu laden.
+  // Collapsed columns (desktop board only); reloaded on a project change.
   const [collapsed, setCollapsed] = useState<Set<number>>(() => loadCollapsed(project.id));
   useEffect(() => { setCollapsed(loadCollapsed(project.id)); }, [project.id]);
   const toggleCol = (id: number) =>
@@ -74,7 +74,7 @@ export default function Board({
       try {
         localStorage.setItem(collapseKey(project.id), JSON.stringify([...next]));
       } catch {
-        /* z.B. privater Modus ohne Storage — Zustand bleibt dann nur für diese Sitzung */
+        /* for instance private mode without storage: the state then holds only for this session */
       }
       return next;
     });
@@ -92,9 +92,9 @@ export default function Board({
   const canDrag = project.my_role !== "viewer" && !move.isPending;
   const canMove = project.my_role !== "viewer";
 
-  /** Im Testumgebungs-Flow führt der Weg nach „Fertig" nur über „Auf Fertig setzen" am
-   * Ticket (stoppt Testumgebung, mergt, setzt dann erst done). Der Server lehnt den
-   * direkten Sprung mit 409 ab — hier blenden wir ihn zusätzlich aus. */
+  /** In the test environment flow the way to "done" leads only over "set to done" on the
+   * ticket (which stops the test environment, merges and only then sets done). The server
+   * rejects the direct jump with a 409; here we additionally hide it. */
   const inTestenvFlow = (i: Issue) =>
     project.testenv_enabled !== false &&
     (i.agent_status === "to_test" || i.agent_status === "testing");
@@ -123,7 +123,7 @@ export default function Board({
     move.mutate({ key, status_id: colId, position: targetIdx });
   };
 
-  // Inhalt einer Karte (Titel + Meta-Zeile) — in Desktop-Karte UND mobiler Karte genutzt.
+  // Content of a card (title plus meta line), used in the desktop card AND the mobile card.
   const cardContent = (i: Issue) => {
     const kids = childrenByParent.get(i.id);
     const isUmbrella = !!kids && kids.length > 0;
@@ -163,7 +163,7 @@ export default function Board({
     );
   };
 
-  // Mobile Spalten-Auswahl: aktive Spalte (Default = erste nicht-leere, sonst erste).
+  // Mobile column selection: the active column (default = the first non-empty one, otherwise the first).
   const firstNonEmpty = cols.find((s) => (itemsByCol.get(s.id)?.length ?? 0) > 0)?.id;
   const activeCol = mobileCol ?? firstNonEmpty ?? cols[0]?.id ?? null;
   const activeItems = activeCol != null ? (itemsByCol.get(activeCol) || []) : [];
@@ -230,8 +230,8 @@ export default function Board({
           const items = itemsByCol.get(s.id) || [];
           const dragOverThisCol = overCol === s.id;
 
-          // Eingeklappt: schmale Säule mit senkrechtem Namen + Anzahl. Bleibt Drop-Ziel
-          // (Karte landet am Ende der Spalte); Klick klappt wieder auf.
+          // Collapsed: a narrow pillar with a vertical name plus the count. It stays a drop
+          // target (the card lands at the end of the column); a click expands it again.
           if (collapsed.has(s.id)) {
             return (
               <button

@@ -8,12 +8,12 @@ from ..models.enums import Priority, TicketAgentStatus
 class IssueCreate(BaseModel):
     summary: str = Field(min_length=1, max_length=500)
     description: str | None = None
-    type_id: int | None = None      # None = Default-Typ des Projekts
+    type_id: int | None = None      # None = the default type of the project
     status_id: int | None = None    # None = erster Status
     priority: Priority = Priority.medium
-    # Personen-Zuweisung NICHT hier — nur über POST /issues/{key}/assignee
-    # (set_assignee), da dort Membership validiert bzw. Platzhalter angelegt
-    # werden. Ein Feld hier würde diesen Schutz umgehen.
+    # Person assignment NOT here: only over POST /issues/{key}/assignee (set_assignee),
+    # because there the membership is validated respectively a placeholder is created. A
+    # field here would bypass that protection.
     parent_id: int | None = None
     sprint_id: int | None = None
     story_points: int | None = None
@@ -26,7 +26,7 @@ class IssueUpdate(BaseModel):
     type_id: int | None = None
     status_id: int | None = None
     priority: Priority | None = None
-    # Personen-Zuweisung NICHT hier — nur über POST/DELETE /issues/{key}/assignee.
+    # Person assignment NOT here: only over POST/DELETE /issues/{key}/assignee.
     parent_id: int | None = None
     sprint_id: int | None = None
     story_points: int | None = None
@@ -38,8 +38,8 @@ class AssignAgentIn(BaseModel):
 
 
 class AssigneeIn(BaseModel):
-    """Person-Zuweisung: entweder bestehenden User (user_id) ODER neue Person per
-    Namen (display_name) — für Letztere wird ein Platzhalter-Konto angelegt."""
+    """Person assignment: either an existing user (user_id) OR a new person by name
+    (display_name); for the latter a placeholder account is created."""
     user_id: int | None = None
     display_name: str | None = Field(default=None, max_length=255)
 
@@ -77,13 +77,13 @@ class IssueOut(BaseModel):
     split_order: int | None = None
     sprint_id: int | None
     story_points: int | None
-    asset_id: int | None = None   # Hardware-Bezug; Beschriftung löst das Frontend auf
+    asset_id: int | None = None   # hardware reference; the label is resolved by the frontend
     rank: str
     agent_working: bool
-    # Laufender Lebenszyklus-Prozess (die Wahrheit über den Ablauf; agent_status ist die
-    # Projektion davon). NULL = für dieses Ticket läuft gerade keiner.
+    # Running lifecycle process (the truth about the flow; agent_status is the projection of
+    # it). NULL = none is running for this ticket right now.
     workflow_instance_id: int | None = None
-    # Gemeinsame Artefakt-Identität — daran hängen die freien Felder.
+    # Common artifact identity; the free fields hang off it.
     artifact_id: int | None = None
     archived: bool = False
     archived_at: dt.datetime | None = None
@@ -99,7 +99,7 @@ class IssueOut(BaseModel):
 
 class MoveIn(BaseModel):
     status_id: int
-    position: int = 0  # 0-basierte Position innerhalb der Zielspalte
+    position: int = 0  # zero based position within the target column
 
 
 class TagIn(BaseModel):
