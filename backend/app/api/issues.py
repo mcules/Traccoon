@@ -32,7 +32,7 @@ async def get_issue_access(
     if issue is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
     project = await db.get(Project, issue.project_id)
-    access = await build_access(project, user, db)  # 404 bei fremdem Projekt
+    access = await build_access(project, user, db)  # 404 on a foreign project
     return issue, access
 
 
@@ -42,8 +42,8 @@ def _require_write(access: Access) -> None:
 
 
 async def _assert_asset_in_project(asset_id: int, project_id: int, db: AsyncSession) -> None:
-    """Hardware-Bezug (ABC-25) darf nur auf Exemplare des eigenen Projekts zeigen —
-    sonst würde ein Ticket ein fremdes Exemplar referenzieren und dessen Existenz leaken."""
+    """The hardware reference (ABC-25) may only point at units of one's own project;
+    otherwise a ticket would reference a foreign unit and leak its existence."""
     from ..models.hardware import HardwareAsset
     asset = await db.get(HardwareAsset, asset_id)
     if asset is None:
@@ -108,7 +108,7 @@ async def create_issue(
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Projekt hat keine Status")
         status_id = s.id
 
-    # Race-sichere Key-Vergabe über Counter-Row-Lock.
+    # Race safe key allocation over a counter row lock.
     counter = (
         await db.execute(
             select(IssueCounter).where(IssueCounter.project_id == project.id).with_for_update()
@@ -188,11 +188,11 @@ async def archive_issue(
     now = dt.datetime.now(tz=dt.timezone.utc)
     issue.archived = True
     issue.archived_at = now
-    # Verwaiste Testumgebung mit abräumen (ABC-18) — Container, Volumes, Port.
+    # Clear away an orphaned test environment as well (ABC-18): container, volumes, port.
     if issue.testenv_status:
         from ..services.testenv import stop_testenv
         await stop_testenv(db, issue, access.project.key)
-    # Agentenläufe folgen dem Ticket (ABC-29).
+    # Agent runs follow the ticket (ABC-29).
     from ..models.agents import Run
     await db.execute(
         sa_update(Run).where(Run.issue_id == issue.id, Run.archived.is_(False))
@@ -222,7 +222,7 @@ async def unarchive_issue(
     return issue
 
 
-# ---------- Agent-Zuweisung (Kern-Feature, nur mit KI-Recht) ----------
+# ---------- Agent assignment (core feature, only with the AI right) ----------
 
 @router.post("/issues/{key}/assign-agent", response_model=IssueOut)
 async def assign_agent(
@@ -236,15 +236,15 @@ async def assign_agent(
     issue.assigned_agent = data.agent
     issue.assigned_by_user_id = access.user.id
     issue.assigned_at = dt.datetime.now(tz=dt.timezone.utc)
-    # Zuweisung startet die Planung: bei PM plant/orchestriert der PM, bei
-    # Direktzuweisung plant der plan_agent, danach führt der zugewiesene Agent aus.
+    # The assignment starts the planning: with a PM the PM plans and orchestrates, with a
+    # direct assignment the plan_agent plans and the assigned agent implements afterwards.
     if issue.agent_status is None:
         from ..services.artifacts import set_ticket_status
-        # Planung startet → „In Arbeit" (raus aus To Do); Artefakt-Zeile zieht mit.
+        # Planning starts, so "in progress" (out of to do); the artifact row follows.
         await set_ticket_status(db, issue, TicketAgentStatus.planning)
     await db.commit()
-    # Der Ablauf selbst steckt im Prozess „KI-Ticket-Lebenszyklus" (Projekt-Kopie, Satz des
-    # Nutzers oder globaler Standard) — hier wird er nur angestoßen.
+    # The flow itself sits in the process "AI ticket lifecycle" (project copy, set of the
+    # user or global default); here it is only triggered.
     from ..services.lifecycle_flow import start_lifecycle
     await start_lifecycle(db, issue, access.user.id,
                           entry="exec" if issue.plan else "plan")
@@ -267,44 +267,44 @@ async def unassign_agent(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "KI-Recht (ai_assign) erforderlich")
     if issue.agent_working:
         raise HTTPException(status.HTTP_409_CONFLICT, "Agent arbeitet gerade — erst stoppen")
-    # Ohne Agent gibt es keinen Lebenszyklus mehr — laufende Instanz beenden, sonst
-    # würde sie beim nächsten Tick weiterlaufen wollen.
+    # Without an agent there is no lifecycle any more: end a running instance, because
+    # otherwise it would want to keep running on the next tick.
     from ..services.lifecycle_flow import cancel_lifecycle
     await cancel_lifecycle(db, issue)
     issue.assigned_agent = None
     issue.assigned_by_user_id = None
     issue.assigned_at = None
     from ..services.artifacts import set_ticket_status
-    # Board-Spalte bleibt, wo sie ist — das Ticket verliert nur seinen Agenten.
+    # The board column stays where it is; the ticket only loses its agent.
     await set_ticket_status(db, issue, None, board=False)
     await db.commit()
     await db.refresh(issue)
     return issue
 
 
-# ---------- Personen-Zuweisung (Mensch, orthogonal zur KI-Zuweisung) ----------
+# ---------- Person assignment (human, orthogonal to the AI assignment) ----------
 
-# Slug-Länge so begrenzt, dass "placeholder+{slug}.{suffix}@traccoon.local"
-# (<=255, email) und "{slug}.{suffix}" (<=100, username) mit 8-stelligem
-# Hex-Suffix und Fixteilen sicher passen — auch bei display_name bis 255 Zeichen.
-# Slug wird VOR dem Anhängen des Suffix gekappt (nicht danach), sonst würde bei
-# langen Namen der Suffix mit abgeschnitten und die Randomisierung entfällt.
+# The slug length is limited so that "placeholder+{slug}.{suffix}@traccoon.local"
+# (<=255, email) and "{slug}.{suffix}" (<=100, username) fit safely with an 8 digit hex
+# suffix and the fixed parts, even with a display_name of up to 255 characters.
+# The slug is truncated BEFORE the suffix is appended (not afterwards), because otherwise
+# the suffix would be cut off with long names and the randomisation would be lost.
 _PLACEHOLDER_SLUG_MAX = 60
 
 
 async def _get_or_create_placeholder(db: AsyncSession, project_id: int, display_name: str) -> User:
-    """Findet ein bestehendes Platzhalter-Konto mit gleichem Namen (case-insensitive),
-    das bereits Mitglied DIESES Projekts ist, oder legt ein neues an. Platzhalter
-    haben keinen Login (leerer Passwort-Hash, Status placeholder) und dienen nur
-    als Zuweisungsziel. Suche ist auf Projekt-Mitgliedschaft gescoped, damit
-    Platzhalter nicht projektübergreifend wiederverwendet werden (sonst Bruch der
-    sonst strikt durchgesetzten Multi-Tenancy-Isolation, vgl. build_access)."""
+    """Finds an existing placeholder account with the same name (case insensitive) that is
+    already a member of THIS project, or creates a new one. Placeholders have no login
+    (empty password hash, status placeholder) and serve only as an assignment target. The
+    search is scoped to the project membership so that placeholders are not reused across
+    projects (which would break the otherwise strictly enforced multi-tenancy isolation, see
+    build_access)."""
     name = display_name.strip()
 
-    # Transaktionsweiter Advisory-Lock auf (project_id, lower(name)), damit zwei
-    # parallele Requests mit identischem Namen serialisiert werden — sonst sehen
-    # beide "kein Treffer" (Select-then-Insert-Race) und legen zwei Platzhalter
-    # mit gleichem Namen an. Lock wird automatisch beim Commit/Rollback frei.
+    # Transaction wide advisory lock on (project_id, lower(name)), so that two parallel
+    # requests with an identical name are serialised; otherwise both would see "no hit"
+    # (select-then-insert race) and create two placeholders with the same name. The lock is
+    # released automatically on commit or rollback.
     lock_key = int(
         hashlib.sha256(f"placeholder:{project_id}:{name.lower()}".encode()).hexdigest()[:15],
         16,
@@ -327,10 +327,10 @@ async def _get_or_create_placeholder(db: AsyncSession, project_id: int, display_
 
     slug = "".join(c for c in name.lower().replace(" ", ".") if c.isalnum() or c == ".") or "person"
     slug = slug[:_PLACEHOLDER_SLUG_MAX]
-    # Race-sicher: Savepoint + Auffangen der UniqueConstraint-Verletzung mit neuem
-    # Zufalls-Suffix erneut versuchen (analog zu _ensure_member), statt unbehandelt
-    # 500 zu werfen. Der Advisory-Lock oben deckt bereits den Normalfall ab; dies
-    # ist zusätzliche Absicherung gegen exotische Kollisionen (z. B. Suffix-Treffer
+    # Race safe: savepoint plus catching the unique constraint violation and retrying with a
+    # new random suffix (analogous to _ensure_member) instead of throwing an unhandled 500.
+    # The advisory lock above already covers the normal case; this is an additional
+    # safeguard against exotic collisions (for instance a suffix hit from another name).
     # aus anderem Namen).
     for _ in range(5):
         suffix = secrets.token_hex(4)
@@ -354,9 +354,9 @@ async def _get_or_create_placeholder(db: AsyncSession, project_id: int, display_
 
 
 async def _ensure_member(db: AsyncSession, project_id: int, user_id: int) -> None:
-    """Stellt sicher, dass die zugewiesene Person Projektmitglied ist (sonst sieht
-    sie das Ticket nicht in ihrer Liste / hat keinen Zugriff). Idempotent/racesicher
-    via Savepoint + Auffangen der UniqueConstraint-Verletzung (statt Select-then-Insert)."""
+    """Makes sure the assigned person is a project member (otherwise they do not see the
+    ticket in their list and have no access). Idempotent and race safe via a savepoint plus
+    catching the unique constraint violation (instead of select-then-insert)."""
     dup = (
         await db.execute(
             select(ProjectMember).where(
@@ -373,7 +373,7 @@ async def _ensure_member(db: AsyncSession, project_id: int, user_id: int) -> Non
                 ai_assign=default_ai_assign(ProjectRole.viewer),
             ))
     except IntegrityError:
-        # Paralleler Request hat die Mitgliedschaft zwischenzeitlich angelegt — ok.
+        # A parallel request created the membership in the meantime, which is fine.
         pass
 
 
@@ -387,11 +387,11 @@ async def set_assignee(
     _require_write(access)
 
     if data.user_id is not None:
-        # Zuweisung per user_id NUR auf bereits existierende Projektmitglieder erlauben.
-        # Sonst könnte jedes Member fremde/erratene User-IDs (auch aus anderen Projekten)
-        # als Assignee setzen und sie dadurch automatisch (ohne Einladung/Zustimmung)
-        # als ProjectMember hinzufügen — das umgeht den Invite-Flow (require_role(maintainer))
-        # und erlaubt zudem User-ID-Enumeration über 200/404.
+    # Assignment by user_id is only allowed on already existing project members. Otherwise
+    # every member could set foreign or guessed user ids (from other projects as well) as
+    # the assignee and thereby add them automatically (without an invitation or consent) as
+    # a ProjectMember, which would bypass the invite flow (require_role(maintainer)) and
+    # additionally allow user id enumeration over 200/404.
         target = (
             await db.execute(
                 select(User)
@@ -474,9 +474,9 @@ RANK_STEP = 1000
 
 
 async def _guard_done_transition(issue: Issue, target: WorkflowStatus, db: AsyncSession) -> None:
-    """Im Testumgebungs-Flow darf „Fertig" NUR über POST /issues/{key}/complete gesetzt werden
-    (Stop → Merge → done). Ein direkter Board-Zug dorthin würde den Merge überspringen und ein
-    still un-gemergtes Ticket als erledigt zeigen (ABC-18)."""
+    """In the test environment flow, "done" may ONLY be set over POST /issues/{key}/complete
+    (stop, merge, done). A direct board move there would skip the merge and show a silently
+    unmerged ticket as finished (ABC-18)."""
     from ..models.enums import StatusCategory
     if target.category != StatusCategory.done:
         return
@@ -506,7 +506,7 @@ async def move_issue(
     await _guard_done_transition(issue, target_status, db)
     issue.status_id = data.status_id
     await db.flush()
-    # Alle Tickets der Zielspalte (ohne dieses) ordnen, neu einfügen, Ränge sequenziell.
+    # Order all tickets of the target column (except this one), insert anew, ranks sequential.
     others = (
         await db.execute(
             select(Issue).where(
