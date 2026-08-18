@@ -10,7 +10,7 @@ class UserStatus(str, enum.Enum):
     pending = "pending"
     active = "active"
     disabled = "disabled"
-    placeholder = "placeholder"  # Person ohne echtes Konto — nur als Zuweisungsziel nutzbar, kein Login
+    placeholder = "placeholder"  # person without a real account: usable only as an assignment target, no login
 
 
 class ProjectRole(str, enum.Enum):
@@ -116,18 +116,18 @@ class GrantLevel(str, enum.Enum):
 
 
 # ── Workflow-Engine ──────────────────────────────────────────────────────────
-# Generische, deklarative Prozess-Engine (visueller Node-Graph). Läuft NEBEN dem
-# KI-Ticket-Lifecycle (TicketAgentStatus) — siehe services/workflow_engine.py.
+# Generic, declarative process engine (visual node graph). Runs BESIDE the AI ticket
+# lifecycle (TicketAgentStatus); see services/workflow_engine.py.
 
 class WorkflowSubjectKind(str, enum.Enum):
-    issue = "issue"                  # Instanz an ein Ticket gebunden (Voraussetzung für agent_task)
-    hardware_asset = "hardware_asset"  # Instanz an ein Hardware-Exemplar gebunden
-    standalone = "standalone"        # freistehend (kein Subject)
+    issue = "issue"                  # instance bound to a ticket (precondition for agent_task)
+    hardware_asset = "hardware_asset"  # instance bound to a hardware unit
+    standalone = "standalone"        # free standing (no subject)
 
 
 class WorkflowVersionStatus(str, enum.Enum):
     draft = "draft"          # editierbar
-    published = "published"  # unveränderlich (Instanzen pinnen darauf)
+    published = "published"  # immutable (instances pin to it)
     archived = "archived"
 
 
@@ -147,37 +147,37 @@ class WorkflowNodeType(str, enum.Enum):
     approval = "approval"
     auto_action = "auto_action"
     agent_task = "agent_task"
-    wait_event = "wait_event"  # wartet auf ein externes Ereignis (Kommentar/Antwort/manuell)
-    subflow = "subflow"        # startet die Definition eines Slots als Kind-Instanz
-    loop = "loop"              # geht eine Liste Element für Element durch
-    timer = "timer"            # wartet eine Weile bzw. bis zu einem Zeitpunkt
+    wait_event = "wait_event"  # waits for an external event (comment, answer, manual)
+    subflow = "subflow"        # starts the definition of a slot as a child instance
+    loop = "loop"              # walks through a list element by element
+    timer = "timer"            # waits a while respectively until a point in time
 
 
 class WorkflowSetScope(str, enum.Enum):
     """Geltungsbereich eines Prozess-Satzes.
 
-    global_ = der eine ausgelieferte Standard-Satz (is_builtin) oder ein weiterer
-    systemweiter Satz (Admin); user = persönlicher Satz, gilt für alle Projekte, in
-    denen der Nutzer die Owner-Rolle hat.
+    global_ = the one shipped default set (is_builtin) or a further system wide set
+    (admin); user = a personal set, applying to all projects in which the user has the
+    owner role.
     """
     global_ = "global"
     user = "user"
 
 
 class WorkflowSlot(str, enum.Enum):
-    """Fest benannte Abläufe, die Traccoon selbst auslöst. Ein Satz belegt je Slot
-    höchstens eine Definition; Projekte können einen Slot mit einer eigenen Kopie
-    überschreiben (copy-on-write) und jederzeit zurücksetzen."""
+    """Firmly named flows Traccoon triggers itself. A set occupies at most one definition per
+    slot; projects can override a slot with a copy of their own (copy-on-write) and reset it
+    at any time."""
     ticket_lifecycle = "ticket_lifecycle"          # KI-Ticket-Lebenszyklus
-    acceptance = "acceptance"                      # Abnahme: Testenv abräumen → Merge → Deploy
-    hardware_procurement = "hardware_procurement"  # Beschaffung eines Exemplars
-    ticket_intake = "ticket_intake"                # Eingang (Webhook/Mail) → Ticket
-    mail_intake = "mail_intake"                    # Maileingang: einordnen, Spam, Assistent
+    acceptance = "acceptance"                      # acceptance: clear the test env, merge, deploy
+    hardware_procurement = "hardware_procurement"  # procurement of a unit
+    ticket_intake = "ticket_intake"                # inbox (webhook, mail) to ticket
+    mail_intake = "mail_intake"                    # mail inbox: classify, spam, assistant
 
 
 class WorkflowTokenState(str, enum.Enum):
-    active = "active"        # steht auf einem Knoten, bereit zum Weiterschalten
-    waiting = "waiting"      # wartet auf externes Ereignis
+    active = "active"        # stands on a node, ready to advance
+    waiting = "waiting"      # waits for an external event
     consumed = "consumed"    # aufgebraucht (End erreicht / Zweig beendet)
 
 
@@ -191,5 +191,5 @@ class WorkflowStepStatus(str, enum.Enum):
 
 
 def pg_enum_values(e):
-    """values_callable-Helfer: speichert die .value-Strings (lowercase) in PG."""
+    """values_callable helper: stores the .value strings (lower case) in PG."""
     return [member.value for member in e]

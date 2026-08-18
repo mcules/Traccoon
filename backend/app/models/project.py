@@ -16,15 +16,15 @@ class Project(TimestampMixin, Base):
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Vererbung von Mitgliedschaften des Eltern-Baums abschalten (z. B. "Wart" soll NICHT
-    # automatisch für jeden Freifunk-Owner sichtbar sein). Default an = gängiges Verhalten.
+    # Switch off the inheritance of memberships from the parent tree (a caretaker project
+    # should NOT be visible to every owner above automatically). On by default = usual behaviour.
     inherit_members: Mapped[bool] = mapped_column(Boolean, default=True)
     avatar_color: Mapped[str] = mapped_column(String(20), default="#0052CC")
     lead_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    # Prozess-Satz dieses Projekts (Referenz, keine Kopie). NULL = Satz eines Owners bzw.
-    # der globale Standard-Satz — siehe services/workflow_sets.resolve_definition.
+    # Process set of this project (a reference, not a copy). NULL = the set of an owner
+    # respectively the global default set; see services/workflow_sets.resolve_definition.
     workflow_set_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_sets.id", ondelete="SET NULL"), nullable=True
     )
@@ -36,33 +36,33 @@ class Project(TimestampMixin, Base):
     git_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     work_in_branches: Mapped[bool] = mapped_column(Boolean, default=True)
     merge_target: Mapped[str] = mapped_column(String(255), default="main")
-    # Statt direkt zu mergen: Branch pushen und einen Pull Request öffnen (GitHub).
+    # Instead of merging directly: push the branch and open a pull request (GitHub).
     use_pull_request: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Testumgebungen: compose.preview.yml (Standard) oder Dockerfile-Build
-    # An: fertige Umsetzung landet auf „Testen" statt direkt gemergt zu werden (TRA-18).
+    # Test environments: compose.preview.yml (default) or a Dockerfile build
+    # On: a finished implementation lands on "testing" instead of being merged directly (TRA-18).
     testenv_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     testenv_mode: Mapped[str] = mapped_column(String(20), default="compose")
     testenv_compose_file: Mapped[str] = mapped_column(String(255), default="compose.preview.yml")
     testenv_dockerfile: Mapped[str] = mapped_column(String(255), default="Dockerfile")
     testenv_url_template: Mapped[str] = mapped_column(String(255), default="http://{host}:{port}")
-    testenv_container_port: Mapped[int] = mapped_column(Integer, default=8080)  # nur dockerfile-Modus
-    testenv_prestart: Mapped[str] = mapped_column(Text, default="")   # im Worktree vor dem Start
-    testenv_env_enc: Mapped[str] = mapped_column(Text, default="")    # Fernet-JSON, Env für die Preview
-    testenv_demo_login: Mapped[str] = mapped_column(Text, default="")  # JSON für den Screenshot-Login
+    testenv_container_port: Mapped[int] = mapped_column(Integer, default=8080)  # dockerfile mode only
+    testenv_prestart: Mapped[str] = mapped_column(Text, default="")   # in the worktree before the start
+    testenv_env_enc: Mapped[str] = mapped_column(Text, default="")    # Fernet JSON, env for the preview
+    testenv_demo_login: Mapped[str] = mapped_column(Text, default="")  # JSON for the screenshot login
     push_after_merge: Mapped[bool] = mapped_column(Boolean, default=True)
     auto_pull: Mapped[bool] = mapped_column(Boolean, default=True)
     pull_interval_min: Mapped[int] = mapped_column(Integer, default=15)
 
     # KI-Managed
     managed: Mapped[bool] = mapped_column(Boolean, default=False)
-    has_hardware: Mapped[bool] = mapped_column(Boolean, default=False)  # Hardware-Tab ein/aus
+    has_hardware: Mapped[bool] = mapped_column(Boolean, default=False)  # hardware tab on/off
     auto_create_agents: Mapped[bool] = mapped_column(Boolean, default=False)
     system_prompt: Mapped[str] = mapped_column(Text, default="")
     pm_chat_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     plan_agent: Mapped[str] = mapped_column(String(100), default="architect")
     exec_agent: Mapped[str] = mapped_column(String(100), default="developer")
-    # Standard-Subscription/Token dieses Projekts — überschreibt den persönlichen
-    # Default-ProviderToken des Nutzers (greift, wenn ein Agent keinen eigenen Token wählt).
+    # Default subscription or token of this project; overrides the personal default
+    # ProviderToken of the user (takes hold when an agent chooses no token of its own).
     default_provider: Mapped[str] = mapped_column(String(50), default="")
     default_token_name: Mapped[str] = mapped_column(String(120), default="")
     verify_command: Mapped[str] = mapped_column(Text, default="")
@@ -96,7 +96,7 @@ class ProjectMember(TimestampMixin, Base):
         SAEnum(ProjectRole, name="projectrole", values_callable=pg_enum_values),
         default=ProjectRole.member, nullable=False,
     )
-    # KI-Recht: darf PM-Chat nutzen + Tickets Agenten zuweisen (orthogonal zur Rolle)
+    # AI right: may use the PM chat and assign agents to tickets (orthogonal to the role)
     ai_assign: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     project: Mapped["Project"] = relationship(back_populates="members")
@@ -108,9 +108,9 @@ def default_ai_assign(role: ProjectRole) -> bool:
 
 
 class ResourceGrant(TimestampMixin, Base):
-    """Granulare Freigabe eines einzelnen Objekts (Location/Asset) an einen User,
-    unabhängig von dessen Projekt-Rolle. Deckt den "Wart"-Fall: User sieht/verwaltet
-    NUR das Wasserhäuschen + seine Masten, ohne volle Projekt-Mitgliedschaft.
+    """Granular grant of a single object (location, asset) to a user, independently of their
+    project role. Covers the caretaker case: the user sees and manages ONLY the pump house
+    plus its masts, without a full project membership.
     """
     __tablename__ = "resource_grants"
     __table_args__ = (
@@ -120,7 +120,7 @@ class ResourceGrant(TimestampMixin, Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Projekt, in dessen Kontext die Freigabe gilt (Sichtbarkeit im Hardware-Tab etc.)
+    # Project in whose context the grant applies (visibility in the hardware tab and so on)
     project_id: Mapped[int] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -135,5 +135,5 @@ class ResourceGrant(TimestampMixin, Base):
         SAEnum(GrantLevel, name="grantlevel", values_callable=pg_enum_values),
         default=GrantLevel.view, nullable=False,
     )
-    # Gilt die Freigabe auch für Kind-Locations (Mast unterm Wasserhäuschen)?
+    # Does the grant apply to child locations as well (a mast below the pump house)?
     recursive: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -1,12 +1,12 @@
-"""Testumgebungen: Port-Allokation (Redis-SET) + Deployer als Runner.
+"""Test environments: port allocation (Redis SET) plus the deployer as the runner.
 
-Zwei Ausprägungen (TRA-18), identische Bau-Mechanik:
-  * Ticket-Testumgebung — Zustand in Feldern am `Issue`, Container `test-<ticket-id>`
-  * Branch-Testumgebung — Zustand in `branch_testenvs`, Container `test-b<env-id>`
+Two variants (TRA-18), with identical build mechanics:
+  * ticket test environment: state in fields on the `Issue`, container `test-<ticket-id>`
+  * branch test environment: state in `branch_testenvs`, container `test-b<env-id>`
 
-Isolation: eigenes Compose-Projekt je Umgebung (eigenes Netz + eigene leere Volumes),
-nur der Einstiegs-Service bekommt einen Host-Port, keine Proxy-Labels, keine
-Host-Bind-Mounts. Der Docker-Socket bleibt beim Deployer.
+Isolation: a compose project of its own per environment (own network plus own empty volumes),
+only the entry service gets a host port, no proxy labels, no host bind mounts. The Docker
+socket stays with the deployer.
 """
 from __future__ import annotations
 
@@ -23,11 +23,11 @@ from ..models.ticket import Issue
 log = logging.getLogger("traccoon.testenv")
 DEPLOYER_URL = os.getenv("DEPLOYER_URL", "http://deployer:8661")
 INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "")
-# Host-Pfad des Workspace (wie ihn der Deployer sieht) — kommt aus der Umgebung (.env).
+# Host path of the workspace (as the deployer sees it); comes from the environment (.env).
 WORKSPACE_HOST_PATH = os.getenv("WORKSPACE_HOST_PATH", "")
 _SET = f"{PREFIX}testenv:ports"
 
-# Defaults; zur Laufzeit über AppSettings überschreibbar (Admin → Testumgebungen).
+# Defaults; overridable at runtime over AppSettings (Admin → test environments).
 DEFAULTS = {
     "testenv_host": os.getenv("TESTENV_HOST", "localhost"),
     "testenv_port_lo": "21000",
@@ -41,7 +41,7 @@ SETTING_KEYS = tuple(DEFAULTS)
 
 
 async def get_config(db: AsyncSession) -> dict[str, str]:
-    """Globale Testumgebungs-Konfiguration (DB-persistent, ohne Neustart wirksam)."""
+    """Global test environment configuration (persisted in the database, effective without a restart)."""
     from .appsettings import get_setting
     return {k: (await get_setting(db, k, "") or DEFAULTS[k]) for k in SETTING_KEYS}
 
@@ -52,8 +52,8 @@ def _int(cfg: dict, key: str) -> int:
 
 
 async def _alloc_port(cfg: dict) -> int | None:
-    """Atomar über ein Redis-SET. Zusätzlich gedeckelt auf `testenv_max_concurrent`,
-    damit viele parallele Umgebungen den Host nicht erschöpfen."""
+    """Atomic over a Redis SET. Additionally capped by `testenv_max_concurrent` so that many
+    parallel environments do not exhaust the host."""
     r = get_redis()
     if await r.scard(_SET) >= _int(cfg, "testenv_max_concurrent"):
         return None
@@ -68,7 +68,7 @@ async def _free_port(port: int) -> None:
 
 
 def _worktree_host(project_key: str, name: str) -> str:
-    """Host-Sicht auf den Worktree (gitops.worktree_path liefert die Worker-Sicht)."""
+    """Host view of the worktree (gitops.worktree_path delivers the worker view)."""
     return f"{WORKSPACE_HOST_PATH}/.traccoon-worktrees/{project_key.lower()}/{name}"
 
 
@@ -94,8 +94,8 @@ def _demo_login(project) -> tuple[str, str]:
 
 
 def _runtime_env(project, cfg: dict, port: int, extra_enc: str = "") -> dict:
-    """Projekt-Env plus injizierte Laufzeitwerte. Injizierte stehen ZULETZT und gewinnen —
-    sonst könnte eine Projekt-Env den Port oder die Wegwerf-Secrets überschreiben."""
+    """Project env plus injected runtime values. The injected ones stand LAST and win;
+    otherwise a project env could override the port or the throwaway secrets."""
     email, password = _demo_login(project)
     env = _decrypt_env(getattr(project, "testenv_env_enc", ""), extra_enc)
     env.update({
@@ -104,7 +104,7 @@ def _runtime_env(project, cfg: dict, port: int, extra_enc: str = "") -> dict:
         "TESTENV_CPUS": str(cfg.get("testenv_cpus", DEFAULTS["testenv_cpus"])),
         "SEED_DEMO_EMAIL": email,
         "SEED_DEMO_PASSWORD": password,
-        # Keine echten Fremdsysteme aus einer Wegwerf-Umgebung heraus ansprechen.
+        # Do not address real foreign systems out of a throwaway environment.
         "MOCK_MODE": "true",
         "PREVIEW_PORT": str(port),   # Altname, solange Bestands-Composes ihn nutzen
     })
@@ -230,7 +230,7 @@ def branch_container(env_id: int) -> str:
 
 
 async def start_branch_testenv(db: AsyncSession, project, branch: str, user_id: int | None) -> dict:
-    """Testumgebung für einen beliebigen Branch. Gleiche Bau-Mechanik wie am Ticket."""
+    """Test environment for an arbitrary branch. The same build mechanics as on the ticket."""
     import datetime as dt
 
     from ..models.testenv import BranchTestenv
@@ -253,7 +253,7 @@ async def start_branch_testenv(db: AsyncSession, project, branch: str, user_id: 
     name = branch_container(row.id)
     workdir = _worktree_host(project.key, f"branch-{row.id}")
     payload = _base_payload(project, cfg, name, workdir, port)
-    payload["branch"] = branch          # Runner frischt den Worktree auf diesen Branch auf
+    payload["branch"] = branch          # the runner refreshes the worktree onto this branch
     payload["repo_dir"] = f"{WORKSPACE_HOST_PATH}/{project.key.lower()}"
 
     ok, logtext = await _up(payload)
@@ -269,7 +269,7 @@ async def start_branch_testenv(db: AsyncSession, project, branch: str, user_id: 
 
 
 async def stop_branch_testenv(db: AsyncSession, project, row) -> None:
-    """Stoppt die Umgebung und LÖSCHT die Zeile — die Tabelle hält nur aktive/fehlerhafte."""
+    """Stops the environment and DELETES the row; the table holds only active or failed ones."""
     workdir = _worktree_host(project.key, f"branch-{row.id}")
     await _down(row.container or branch_container(row.id), _compose_file(project, workdir))
     if row.port:
@@ -278,10 +278,10 @@ async def stop_branch_testenv(db: AsyncSession, project, row) -> None:
     await db.commit()
 
 
-# ── Übersicht / Logs / Aufräumen ────────────────────────────────────────────
+# ── Overview, logs, clean-up ────────────────────────────────────────────────
 
 async def runner_list() -> list[dict]:
-    """Was der Runner tatsächlich laufen sieht (docker ps, gefiltert auf test-*)."""
+    """What the runner actually sees running (docker ps, filtered on test-*)."""
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             r = await client.post(f"{DEPLOYER_URL}/preview/list", json={},
@@ -308,8 +308,8 @@ async def runner_logs(project_name: str, service: str | None, tail: int) -> dict
 
 
 async def cleanup_orphan_previews() -> dict:
-    """Beim Start abgleichen: Testumgebungen ohne Zustand in der DB abräumen,
-    Port-Reservierungen ohne Umgebung freigeben."""
+    """Reconcile at start: clear away test environments without a state in the database and
+    release port reservations without an environment."""
     from sqlalchemy import select
 
     from ..db import SessionLocal
