@@ -26,14 +26,20 @@ class _Abgeschnitten(ProviderError):
 IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude."
 _BETAS = "oauth-2025-04-20,claude-code-20250219"
 _ANTHROPIC_VERSION = "2023-06-01"
-# Web-Suche: neuere Modelle nutzen web_search_20260209 (dynamic filtering); ältere die
-# Basis-Variante web_search_20250305 (der neue Typ gäbe dort 400). Model-abhängig wählen.
-_WS_NEW_MODELS = ("opus-4-8", "opus-4-7", "opus-4-6", "sonnet-5", "sonnet-4-6", "fable-5", "mythos-5")
+# Web-Suche: web_search_20250305 ist die Basis-Variante — der Server sucht selbst und
+# liefert `web_search_tool_result` zurück. Der neuere Typ web_search_20260209 (dynamic
+# filtering) läuft dagegen IM Code-Execution-Container (`await web_search(...)` in Python);
+# mit dem OAuth-Subscription-Token antwortet der Container zuverlässig mit
+# `too_many_requests` → kein einziges Suchergebnis, und die Turns verpuffen (Job 3,
+# „KI- & Tech-News", starb daran mehrfach mit loop_exhausted). Deshalb per Default die
+# Basis-Variante; wer den neuen Typ testen will, setzt ANTHROPIC_WEB_SEARCH_TYPE.
+_WS_DEFAULT_TYPE = "web_search_20250305"
+_WS_MAX_USES = int(os.getenv("ANTHROPIC_WEB_SEARCH_MAX_USES", "8"))
 
 
 def _web_search_tool(model: str) -> dict:
-    ws_type = "web_search_20260209" if any(k in (model or "") for k in _WS_NEW_MODELS) else "web_search_20250305"
-    return {"type": ws_type, "name": "web_search", "max_uses": 8}
+    ws_type = os.getenv("ANTHROPIC_WEB_SEARCH_TYPE", "") or _WS_DEFAULT_TYPE
+    return {"type": ws_type, "name": "web_search", "max_uses": _WS_MAX_USES}
 
 
 def _wire(name: str) -> str:
