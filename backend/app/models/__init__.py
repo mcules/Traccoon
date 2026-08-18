@@ -23,6 +23,7 @@ from .ops import (  # noqa: F401
     Deployment, Job, JobRun, PermAction, PermGrant, PermRequest, Permission,
     ProviderModel, WebhookCoalesce, WebhookSub,
 )
+from .metrics import MetricPoint, MetricSeries  # noqa: F401
 from .secrets import UserSecret  # noqa: F401
 from .destination import Destination  # noqa: F401
 from .artifact import (  # noqa: F401
