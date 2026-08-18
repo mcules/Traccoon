@@ -14,6 +14,7 @@ from ..core.redis import enqueue_task
 from ..db import SessionLocal
 from ..models.ops import Job, JobRun
 from ..models.notification import Notification
+from ..models.user import User
 
 log = logging.getLogger("scheduler")
 INTERVAL = 15
@@ -74,8 +75,13 @@ async def _run_script(db, job: Job, jr: JobRun) -> None:
     jr.finished_at = _now()
     if job.notify_mode == "always" or (job.notify_mode == "on_output" and jr.output) or \
             (job.notify_mode == "on_error" and jr.status == "error"):
-        db.add(Notification(kind="job", title=f"Job: {job.name}", body=(jr.output or jr.error)[:4000],
-                            chat_id=job.notify_chat))
+        from .i18n import tr
+        besitzer = await db.get(User, job.user_id) if job.user_id else None
+        db.add(Notification(
+            kind="job",
+            title=await tr(db, "server.notify.job", getattr(besitzer, "locale", None),
+                           name=job.name),
+            body=(jr.output or jr.error)[:4000], chat_id=job.notify_chat))
 
 
 async def run_job_kind(db, job: Job, jr: JobRun) -> bool:
@@ -222,8 +228,14 @@ async def _flush_coalesced() -> None:
             sub = (await db.execute(select(WebhookSub).where(
                 WebhookSub.route == row.route).order_by(WebhookSub.id))).scalars().first()
             n = len(row.payloads)
+            from .i18n import tr
+            besitzer = (await db.get(User, sub.owner_user_id)
+                        if sub and sub.owner_user_id else None)
             db.add(Notification(
-                kind="webhook", title=f"{row.route}: {n} weitere Ereignisse ({row.event_key})",
+                kind="webhook",
+                title=await tr(db, "server.notify.webhook_weitere",
+                               getattr(besitzer, "locale", None),
+                               route=row.route, anzahl=n, schluessel=row.event_key),
                 body=json.dumps(row.payloads[:10], ensure_ascii=False)[:4000],
                 chat_id=sub.notify_chat if sub else None))
             log.info("coalesce geflusht: %s/%s (%d Ereignisse)", row.route, row.event_key, n)

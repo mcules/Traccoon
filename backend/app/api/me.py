@@ -245,25 +245,19 @@ async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Dep
         ProviderToken.user_id == u.id).limit(1))).first()) or bool(
         u.claude_oauth_token_enc or u.codex_token_enc)
 
+    # Beschriftung und Hinweis kommen aus dem Server-Katalog, in der Sprache des Lesers: die
+    # Liste ist das Erste, was jemand nach der Anmeldung sieht.
+    from ..services.i18n import tr
+    fertig = {"claude_token": has_token, "runner": await runner_connected(),
+              "project": bool(can_assign), "git": bool(git_ready),
+              "verify": bool(verify_ready), "telegram": bool(u.telegram_chat_id)}
+    pflicht = {"claude_token", "runner", "project"}
     steps = [
-        {"key": "claude_token", "title": "LLM-Token hinterlegen",
-         "hint": "Provider wählen + Key eingeben unter Einstellungen → Secret-Tresor.",
-         "done": has_token, "required": True},
-        {"key": "runner", "title": "Worker erreichbar",
-         "hint": "Der Worker-Container muss laufen, sonst bleibt jede Zuweisung liegen.",
-         "done": await runner_connected(), "required": True},
-        {"key": "project", "title": "Projekt anlegen",
-         "hint": "Mindestens ein Projekt, in dem du das KI-Recht hast.",
-         "done": bool(can_assign), "required": True},
-        {"key": "git", "title": "Git verbinden",
-         "hint": "Repository + Token im Projekt-Tab „Einstellungen“ — ohne Git kann kein Code entstehen.",
-         "done": bool(git_ready), "required": False},
-        {"key": "verify", "title": "Prüfbefehl setzen",
-         "hint": "z. B. „npm run build“ — sonst kann niemand belegen, dass die Arbeit grün ist.",
-         "done": bool(verify_ready), "required": False},
-        {"key": "telegram", "title": "Telegram verbinden (optional)",
-         "hint": "Benachrichtigungen und Freigaben per Chat.",
-         "done": bool(u.telegram_chat_id), "required": False},
+        {"key": k,
+         "title": await tr(db, f"server.onboarding.{k}", u.locale),
+         "hint": await tr(db, f"server.onboarding.{k}_hinweis", u.locale),
+         "done": fertig[k], "required": k in pflicht}
+        for k in ("claude_token", "runner", "project", "git", "verify", "telegram")
     ]
     offen = [s for s in steps if not s["done"] and s["required"]]
     return {"steps": steps, "ready": not offen, "projects": len(projects),

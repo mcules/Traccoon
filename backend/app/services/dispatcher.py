@@ -116,10 +116,12 @@ async def _pruefe_worker_puls() -> None:
             admin = (await db.execute(select(User).where(User.telegram_chat_id.isnot(None))
                                       .order_by(User.id))).scalars().first()
             if admin:
+                from .i18n import tr
                 db.add(Notification(
-                    user_id=admin.id, kind="worker_down", title="⚠ Worker steht",
-                    body=f"Kein Lebenszeichen des Workers, {wartend} Auftrag/Aufträge warten. "
-                         "Assistent und Agenten laufen gerade nicht.",
+                    user_id=admin.id, kind="worker_down",
+                    title=await tr(db, "server.notify.worker_down", admin.locale),
+                    body=await tr(db, "server.notify.worker_down_body", admin.locale,
+                                  wartend=wartend),
                     chat_id=admin.telegram_chat_id))
                 await db.commit()
         _puls_gemeldet = True

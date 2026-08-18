@@ -62,15 +62,22 @@ def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
     return reihenfolge[0]
 
 
-async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: str,
+async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: str = "",
                     body: str = "", kanal: str = "", project_id: int | None = None,
                     issue_id: int | None = None,
-                    drossel_key: str = "", drossel_minuten: float = 0) -> dict:
+                    drossel_key: str = "", drossel_minuten: float = 0,
+                    title_key: str = "", body_key: str = "",
+                    werte: dict[str, object] | None = None) -> dict:
     """Create a notification and send it out on the fitting channel.
 
     The messenger is still handled by the bot process, the only one holding the bot token,
     so all that happens here is setting the chat id. Email goes out right away: no second
     process is needed, and `notified_at` tells the bell that nothing is pending outside.
+
+    `title_key` and `body_key` name a text in the server catalog; it is rendered in the
+    language of the recipient. Whoever passes `title` directly gets that text as it stands,
+    which is what a flow needs: its notification is written by a person and belongs to nobody
+    else's language.
 
     With `drossel_key` and `drossel_minuten` the same message is suppressed inside the
     window, completely, including the bell. Putting it there only would push the noise one
@@ -93,6 +100,14 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
             log.info("throttled: %s (open again at %s)", drossel_key, wieder.isoformat())
             return {"kanal": "gedrosselt", "unterdrueckt": True, "drossel_key": drossel_key,
                     "wieder_ab": wieder.isoformat()}
+
+    if title_key or body_key:
+        from .i18n import tr
+        sprache = getattr(user, "locale", None) or "de"
+        if title_key:
+            title = await tr(db, title_key, sprache, **(werte or {}))
+        if body_key:
+            body = await tr(db, body_key, sprache, **(werte or {}))
 
     gewaehlt = waehle_kanal(user, kanal)
     ziel = kanal_adresse(user, gewaehlt)

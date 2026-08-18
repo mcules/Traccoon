@@ -26,7 +26,19 @@ export default function TranslationsPanel() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
-  const quelle = alleSchluessel();
+  // Zwei Quellen, eine Liste: der Browser bringt seinen Katalog mit, die Texte des Servers
+  // (Benachrichtigungen, Einrichtungsschritte) kennt nur der Server. Ohne den zweiten Teil
+  // bliebe die Hälfte der Anwendung deutsch, während die andere umschaltet.
+  const { data: serverTexte } = useQuery({
+    queryKey: ["i18n-server-katalog", locale],
+    queryFn: () => api.get<{ texte: Record<string, string>; ausgeliefert: Record<string, string> }>(
+      `/i18n/server-katalog?locale=${locale}`),
+  });
+  const quelle = { ...alleSchluessel(), ...(serverTexte?.texte || {}) };
+  // Auch die ausgelieferte Übersetzung kommt vom Server, sonst gälten seine Texte hier als
+  // offen, obwohl sie längst übersetzt sind.
+  const geliefertAlle = (l: string) => (
+    l === locale ? { ...ausgeliefert(l), ...(serverTexte?.ausgeliefert || {}) } : ausgeliefert(l));
   const { data: sprachen } = useQuery({
     queryKey: ["i18n-locales"],
     queryFn: () => api.get<SpracheInfo[]>("/i18n/locales"),
@@ -59,7 +71,7 @@ export default function TranslationsPanel() {
   });
 
   const zeilen = useMemo(() => {
-    const geliefert = ausgeliefert(locale);
+    const geliefert = geliefertAlle(locale);
     const eigene = overrides?.texte || {};
     return Object.entries(quelle)
       .map(([key, deutsch]) => ({
@@ -74,13 +86,13 @@ export default function TranslationsPanel() {
   }, [quelle, overrides, locale, nurOffene, suche]);
 
   const offen = useMemo(() => {
-    const geliefert = ausgeliefert(locale);
+    const geliefert = geliefertAlle(locale);
     const eigene = overrides?.texte || {};
     return Object.keys(quelle).filter((k) => !(eigene[k] ?? geliefert[k])).length;
   }, [quelle, overrides, locale]);
 
   const exportieren = () => {
-    const geliefert = ausgeliefert(locale);
+    const geliefert = geliefertAlle(locale);
     const eigene = overrides?.texte || {};
     const alles: Record<string, string> = {};
     Object.keys(quelle).forEach((k) => { alles[k] = eigene[k] ?? geliefert[k] ?? ""; });

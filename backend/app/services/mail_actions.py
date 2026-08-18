@@ -24,6 +24,7 @@ from ..models.assistant import AssistantTask
 from ..models.notification import Notification
 from ..models.user import User
 from ..models.workflow import WorkflowInstance
+from .i18n import tr
 
 log = logging.getLogger("traccoon.mail")
 
@@ -274,9 +275,11 @@ async def assistent_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -
     titel = str(_mail(ctx).get("subject") or "(kein Betreff)")
     db.add(Notification(
         user_id=owner_id, assistant_task_id=int(task["id"]), kind="assistant_review",
-        chat_id=owner.telegram_chat_id, title=f"📥 {titel}"[:200],
-        body=(f"von {_mail(ctx).get('from') or '?'}\n"
-              f"{klasse.get('redacted_summary', '')}")[:1000]))
+        chat_id=owner.telegram_chat_id,
+        title=(await tr(db, "server.notify.mail_eingang", owner.locale, titel=titel))[:200],
+        body=(await tr(db, "server.notify.mail_von", owner.locale,
+                       absender=_mail(ctx).get("from") or "?")
+              + "\n" + str(klasse.get("redacted_summary", "")))[:1000]))
     return {"action": "assistant_card", "sent": True, "task_id": task["id"]}
 
 

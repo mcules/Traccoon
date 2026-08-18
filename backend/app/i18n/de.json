@@ -1,0 +1,23 @@
+{
+  "server.notify.feierabend": "Feierabend · {datum}",
+  "server.notify.film_still": "🌙 Heute war es still im Büro — keine Läufe.",
+  "server.notify.job": "Job: {name}",
+  "server.notify.mail_eingang": "📥 {titel}",
+  "server.notify.mail_von": "von {absender}",
+  "server.notify.spam_verdacht": "🚩 {anzahl} Spam-Verdachtsfälle",
+  "server.notify.webhook_weitere": "{route}: {anzahl} weitere Ereignisse ({schluessel})",
+  "server.notify.worker_down": "⚠ Worker steht",
+  "server.notify.worker_down_body": "Seit {minuten} Minuten meldet sich kein Worker. Zuweisungen bleiben liegen, bis er wieder da ist.",
+  "server.onboarding.claude_token": "LLM-Token hinterlegen",
+  "server.onboarding.claude_token_hinweis": "Provider wählen und Key eingeben unter Einstellungen → Secret-Tresor.",
+  "server.onboarding.git": "Git verbinden",
+  "server.onboarding.git_hinweis": "Repository und Token im Projekt-Reiter „Einstellungen“ — ohne Git kann kein Code entstehen.",
+  "server.onboarding.project": "Projekt anlegen",
+  "server.onboarding.project_hinweis": "Mindestens ein Projekt, in dem du das KI-Recht hast.",
+  "server.onboarding.runner": "Worker erreichbar",
+  "server.onboarding.runner_hinweis": "Der Worker-Container muss laufen, sonst bleibt jede Zuweisung liegen.",
+  "server.onboarding.telegram": "Chat verbinden (optional)",
+  "server.onboarding.telegram_hinweis": "Benachrichtigungen und Freigaben per Chat.",
+  "server.onboarding.verify": "Prüfbefehl setzen",
+  "server.onboarding.verify_hinweis": "Zum Beispiel „npm run build“ — sonst kann niemand belegen, dass die Arbeit grün ist."
+}

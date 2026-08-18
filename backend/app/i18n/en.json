@@ -1,0 +1,23 @@
+{
+  "server.notify.feierabend": "End of day · {datum}",
+  "server.notify.film_still": "🌙 A quiet day in the office, no runs.",
+  "server.notify.job": "Job: {name}",
+  "server.notify.mail_eingang": "📥 {titel}",
+  "server.notify.mail_von": "from {absender}",
+  "server.notify.spam_verdacht": "🚩 {anzahl} suspected spam cases",
+  "server.notify.webhook_weitere": "{route}: {anzahl} more events ({schluessel})",
+  "server.notify.worker_down": "⚠ Worker is down",
+  "server.notify.worker_down_body": "No worker has reported for {minuten} minutes. Assignments wait until it is back.",
+  "server.onboarding.claude_token": "Store a model token",
+  "server.onboarding.claude_token_hinweis": "Pick a provider and enter the key under Settings, secret vault.",
+  "server.onboarding.git": "Connect git",
+  "server.onboarding.git_hinweis": "Repository and token in the project settings tab. Without git no code can be written.",
+  "server.onboarding.project": "Create a project",
+  "server.onboarding.project_hinweis": "At least one project where you hold the AI permission.",
+  "server.onboarding.runner": "Worker reachable",
+  "server.onboarding.runner_hinweis": "The worker container has to run, otherwise every assignment sits still.",
+  "server.onboarding.telegram": "Connect chat (optional)",
+  "server.onboarding.telegram_hinweis": "Notifications and approvals through the messenger.",
+  "server.onboarding.verify": "Set a verify command",
+  "server.onboarding.verify_hinweis": "For instance \"npm run build\", otherwise nobody can show that the work is green."
+}

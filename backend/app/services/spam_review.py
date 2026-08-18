@@ -29,6 +29,7 @@ from ..models.notification import Notification
 from ..models.user import User
 from . import spam_learn
 from .appsettings import get_setting
+from .i18n import tr
 from .mcp_client import McpError, call_tool, ergebnis_text
 from .spam_rules import (
     FREEMAIL_DOMAINS, evaluate, features, ist_faelschungsverdacht, mail_text,
@@ -354,7 +355,8 @@ async def digest_faellig(db: AsyncSession) -> int:
             # Rückmeldung eines Knopfes, wenn dort schon eine Aktion steht.
             user_id=owner_id, spam_verdict_id=faelle[0].id, kind="spam_digest",
             chat_id=owner.telegram_chat_id,
-            title=f"🚩 {len(faelle)} Spam-Verdachtsfälle"[:200],
+            title=(await tr(db, "server.notify.spam_verdacht", owner.locale,
+                            anzahl=len(faelle)))[:200],
             body="\n".join(zeilen)[:4000]))
         gesendet += 1
     await db.commit()

@@ -510,6 +510,11 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
     # liegt danach trotzdem da. Die feineren Modi (`on_output`/`on_error`) passen hier
     # nicht: ein Film ist immer Ausgabe, die Unterscheidung wäre bedeutungslos.
     still = job.notify_mode == "never"
+    # Der Film gehört dem, der den Job angelegt hat — in dessen Sprache steht die Nachricht.
+    from ..models.user import User
+    from .i18n import tr
+    besitzer = await db.get(User, job.user_id) if getattr(job, "user_id", None) else None
+    sprache = getattr(besitzer, "locale", None)
 
     if not ereignisse:
         # Expliziter Zweig, kein Notfall: ein leerer Raum ergäbe 300 bitgleiche Bilder.
@@ -517,9 +522,11 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
         jr.status = "ok"
         jr.output = f"{bilanz.datum}: keine Läufe — kein Film."
         if not still:
-            db.add(_notification(kind="film", title=f"Feierabend · {bilanz.datum}",
-                                 body="🌙 Heute war es still im Büro — keine Läufe.",
-                                 chat_id=job.notify_chat))
+            db.add(_notification(
+                kind="film",
+                title=await tr(db, "server.notify.feierabend", sprache, datum=bilanz.datum),
+                body=await tr(db, "server.notify.film_still", sprache),
+                chat_id=job.notify_chat))
         return
 
     sekunden = _int(opt, "sekunden", STD_SEKUNDEN)
@@ -543,9 +550,11 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
         jr.status = "ok"
         jr.output = f"{bilanz.datum}: der Renderer fand keine Ereignisse (204)."
         if not still:
-            db.add(_notification(kind="film", title=f"Feierabend · {bilanz.datum}",
-                                 body="🌙 Heute war es still im Büro — keine Läufe.",
-                                 chat_id=job.notify_chat))
+            db.add(_notification(
+                kind="film",
+                title=await tr(db, "server.notify.feierabend", sprache, datum=bilanz.datum),
+                body=await tr(db, "server.notify.film_still", sprache),
+                chat_id=job.notify_chat))
         return
     if status != 200 or not daten:
         jr.status = "error"
