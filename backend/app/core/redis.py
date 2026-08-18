@@ -13,52 +13,52 @@ log = logging.getLogger(__name__)
 
 PREFIX = "traccoon:"
 QUEUE = PREFIX + "task_queue"
-# Reliable-Queue: Jobs liegen waehrend der Verarbeitung hier (blmove QUEUE→PROCESSING),
-# damit ein abgestuerzter Worker sie beim naechsten Start aus PROCESSING zurueck in QUEUE
-# holen kann, statt sie zu verlieren (siehe worker/__main__.py: pull_loop-Recovery + ACK).
+# Reliable queue: jobs lie here during processing (blmove QUEUE to PROCESSING) so that a
+# crashed worker can fetch them back from PROCESSING into QUEUE on its next start instead of
+# losing them (see worker/__main__.py: pull_loop recovery plus ACK).
 PROCESSING = QUEUE + ":processing"
-# Was der Worker gerade in der Mangel hat (Hash issue_key → Job-Infos). Der Worker leert den
-# Hash beim Start; als alleiniges Lebenszeichen taugt er deshalb nicht (ein hart gekillter
-# Worker laesst seine Eintraege stehen) — dafuer gibt es den Puls mit Verfallszeit.
+# What the worker currently has in hand (hash issue_key to job info). The worker clears the
+# hash at start; as the only sign of life it is therefore no good (a hard killed worker
+# leaves its entries standing), and that is what the pulse with an expiry is for.
 ACTIVE = PREFIX + "active_processes"
-# Puls je Auftrag: der Worker frischt `alive:<task_id>` waehrend der Verarbeitung auf. Faellt
-# er weg, ist der Lauf nachweislich tot — genau das unterscheidet „arbeitet noch lange" von
-# „ist verschwunden". Verfallszeit klar ueber dem Auffrisch-Takt, damit ein GC-Hickser im
-# Worker keinen Fehlalarm ausloest.
+# Pulse per assignment: the worker refreshes `alive:<task_id>` during processing. If it goes
+# away, the run is demonstrably dead, and exactly that separates "still working for a long
+# time" from "has disappeared". The expiry is clearly above the refresh beat so that a GC
+# hiccup in the worker does not raise a false alarm.
 PULS_TAKT = 15
 PULS_TTL = 90
-# Ergebnisse bleiben einen Tag liegen. Frueher eine Stunde — zu kurz: ein Ergebnis, das erst
-# nach einem Backend-Ausfall abgeholt wird, war damit weg und die Arbeit verloren.
+# Results stay for a day. Formerly one hour, which was too short: a result fetched only after
+# a backend outage was gone with it and the work lost.
 ERGEBNIS_TTL = 86400
-# So lange darf ein Lauf ohne JEDES Lebenszeichen bleiben, bevor er als verschwunden gilt.
+# This long a run may stay without ANY sign of life before it counts as disappeared.
 GNADENFRIST = 300
-# Takt der Lebenszeichen-Prüfung (der Ergebnis-Poll läuft schneller, kostet aber nur eine
-# Abfrage). Als Modul-Konstante, damit Tests ihn auf 0 ziehen können.
+# Beat of the liveness check (the result poll runs faster but costs only one query). As a
+# module constant so that tests can pull it to 0.
 PRUEF_TAKT = 5.0
 
 _redis: Redis | None = None
 
 
 def get_redis() -> Redis:
-    """Der gemeinsame Redis-Client — mit denselben Sicherungen wie im Worker.
+    """The shared Redis client, with the same safeguards as in the worker.
 
-    Ohne `socket_keepalive`/`health_check_interval`/`socket_timeout` wartet der Client auf
-    einer halb toten Verbindung endlos auf Antwort: kein Fehler, kein Timeout, kein Log.
-    Der Worker weiß das seit jeher (`_REDIS_KW`), das Backend nicht — und dort hängen die
-    Wächter, die auf das Ergebnis eines Agentenlaufs warten.
+    Without `socket_keepalive`/`health_check_interval`/`socket_timeout` the client waits
+    endlessly for an answer on a half dead connection: no error, no timeout, no log. The
+    worker has always known that (`_REDIS_KW`), the backend did not, and the watchers waiting
+    for the result of an agent run hang there.
 
-    Am 2026-08-07 kostete das eine Stunde Stillstand: das Ergebnis für TRA-31 lag um 19:54
-    fertig in Redis, der Wächter hing in einem `get`, das nie zurückkam, und niemand holte
-    es ab. Von außen sah es aus, als arbeite der Agent noch — er war längst fertig.
+    On 2026-08-07 that cost an hour of standstill: the result for TRA-31 lay finished in
+    Redis at 19:54, the watcher hung in a `get` that never came back, and nobody fetched it.
+    From the outside it looked as if the agent were still working; it had long finished.
     """
     global _redis
     if _redis is None:
         _redis = Redis.from_url(
             settings.redis_url, decode_responses=True,
             socket_keepalive=True, health_check_interval=30,
-            # Harte Obergrenze pro Kommando: lieber ein Fehler, den der Aufrufer sieht, als
-            # ein Warten, das niemand bemerkt. Die Wächter pollen im Sekundentakt — 30 s
-            # sind großzügig für ein `get`.
+            # Hard upper bound per command: better an error the caller sees than a wait
+            # nobody notices. The watchers poll every second, so 30 s are generous for a
+            # `get`.
             socket_timeout=30, socket_connect_timeout=10, retry_on_timeout=True)
     return _redis
 
@@ -68,22 +68,22 @@ async def enqueue_task(payload: dict) -> None:
 
 
 def puls_key(task_id: str) -> str:
-    """Key des Lebenszeichens. Der Worker schreibt ihn (mit seiner eigenen Verbindung),
-    das Backend liest ihn — der Name gehört deshalb hierher, nicht in eines der beiden."""
+    """Key of the sign of life. The worker writes it (with its own connection) and the backend
+    reads it, so the name belongs here, not in either of the two."""
     return f"{PREFIX}alive:{task_id}"
 
 
 async def lauf_lebt(task_id: str) -> bool:
-    """Gibt es diesen Auftrag noch — egal wie lange er schon läuft?
+    """Does this assignment still exist, no matter how long it has been running?
 
-    Drei Quellen, jede für sich ausreichend:
-    * Puls des Workers (er verarbeitet den Auftrag gerade),
-    * Warteschlange (noch nicht drangekommen),
-    * Verarbeitungsliste (Worker abgestürzt, die Recovery legt ihn beim nächsten Start
-      zurück in die Warteschlange — der Auftrag ist also nicht verloren, nur verzögert).
+    Three sources, each sufficient on its own:
+    * pulse of the worker (it is processing the assignment right now),
+    * queue (not picked up yet),
+    * processing list (worker crashed; the recovery puts it back into the queue on the next
+      start, so the assignment is not lost, only delayed).
 
-    Der Hash der aktiven Prozesse zählt zusätzlich, hilft aber nur bei einem Worker, der
-    noch läuft; ein gekillter Worker hinterlässt dort Karteileichen (deshalb der Puls).
+    The hash of active processes counts in addition but only helps with a worker that is
+    still running; a killed worker leaves stale entries there (hence the pulse).
     """
     r = get_redis()
     if await r.get(puls_key(task_id)) is not None:
@@ -100,18 +100,18 @@ async def lauf_lebt(task_id: str) -> bool:
 
 async def wait_result(task_id: str, timeout: float | None = None, poll: float = 0.4,
                       gnadenfrist: float = GNADENFRIST) -> dict | None:
-    """Wartet auf result:{task_id} — solange der Lauf lebt, nicht nach der Uhr.
+    """Waits for result:{task_id}, as long as the run lives, not by the clock.
 
-    Ein Agentenlauf darf Stunden dauern (Umsetzung + Review-Runden hängen an EINEM Auftrag).
-    Eine feste Wanduhr-Grenze hat genau das kaputtgemacht: der Wächter gab nach 30 Minuten
-    auf, das Ticket stand auf „fehlgeschlagen", während der Agent weiterarbeitete und seine
-    Arbeit sauber committete. Deshalb wird hier auf ein LEBENSZEICHEN geprüft statt auf die
-    verstrichene Zeit — aufgegeben wird nur, wenn der Auftrag `gnadenfrist` Sekunden lang
-    nirgends mehr auftaucht (Worker weg, Auftrag nicht in der Queue).
+    An agent run may take hours (implementation plus review rounds hang off ONE assignment).
+    A fixed wall clock limit broke exactly that: the watcher gave up after 30 minutes, the
+    ticket stood on "failed" while the agent kept working and committed its work cleanly.
+    That is why a SIGN OF LIFE is checked here instead of the elapsed time: giving up happens
+    only when the assignment turns up nowhere for `gnadenfrist` seconds (worker gone,
+    assignment not in the queue).
 
-    `timeout` ist ein optionaler harter Deckel (None/0 = keiner) für Knoten, die bewusst
-    nicht ewig warten sollen. None bei beidem: verschwundener Lauf oder Deckel erreicht —
-    welcher Fall vorlag, unterscheidet der Aufrufer über die verstrichene Zeit.
+    `timeout` is an optional hard cap (None/0 = none) for nodes that deliberately should not
+    wait forever. None in both cases: disappeared run or cap reached; which case it was is
+    told apart by the caller over the elapsed time.
     """
     r = get_redis()
     key = f"{PREFIX}result:{task_id}"
@@ -126,17 +126,17 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
             if raw is not None:
                 await r.delete(key)
                 return json.loads(raw)
-        except Exception:  # noqa: BLE001 — eine Störung darf den Wächter nicht töten
-            # Ein Aussetzer (Timeout, Verbindungsabriss) ist kein Grund, das Warten
-            # aufzugeben: das Ergebnis kommt später trotzdem, und ein gestorbener Wächter
-            # lässt das Ticket für immer stehen. Beim nächsten Umlauf neu versuchen.
+        except Exception:  # noqa: BLE001 - a disturbance must not kill the watcher
+            # An outage (timeout, connection loss) is no reason to give up waiting: the
+            # result comes later anyway, and a dead watcher would leave the ticket standing
+            # forever. Try again on the next round.
             log.warning("Ergebnis-Abfrage für %s gescheitert — erneuter Versuch", task_id,
                         exc_info=True)
         jetzt = uhr()
         if timeout and jetzt - start >= timeout:
             return None
-        # Lebenszeichen nur alle paar Sekunden prüfen — der Ergebnis-Poll läuft schnell,
-        # die Prüfung kostet mehrere Redis-Abfragen.
+        # Check the sign of life only every few seconds: the result poll runs fast, while the
+        # check costs several Redis queries.
         if jetzt >= naechste_pruefung:
             naechste_pruefung = jetzt + PRUEF_TAKT
             if await lauf_lebt(task_id):
@@ -154,13 +154,13 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
 
 
 async def peek_result(task_id: str) -> bool:
-    """True, wenn ein Ergebnis für task_id in Redis liegt (ohne es zu konsumieren).
-    Für den Reattach nach Backend-Neustart: erkennt Läufe, die schon fertig sind."""
+    """True when a result for task_id lies in Redis (without consuming it).
+    For the reattach after a backend restart: detects runs that are already finished."""
     return await get_redis().get(f"{PREFIX}result:{task_id}") is not None
 
 
 async def publish_kill(issue_key: str) -> None:
-    """Laufenden Agenten-Lauf abbrechen (Worker hört auf traccoon:kill)."""
+    """Abort a running agent run (the worker listens on traccoon:kill)."""
     await get_redis().publish(PREFIX + "kill", issue_key)
 
 

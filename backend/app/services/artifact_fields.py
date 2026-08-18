@@ -1,13 +1,13 @@
-"""Felder eines Artefakts und die Werte, die ein einzelnes Exemplar davon trägt.
+"""Fields of an artifact and the values a single unit of it carries.
 
-Nach ALMEX-Vorbild (`Artifacts → Fields → Values`): ein Artefakt (Ticket, Hardware, eigener
-Typ) trägt beliebig viele Felder; ein Feld vom Typ „Auswahl" hat eine gepflegte Werteliste,
-und am Feld steht, ob ein Exemplar einen oder mehrere Werte daraus tragen darf.
+Following the ALMEX model (`Artifacts → Fields → Values`): an artifact (ticket, hardware,
+own type) carries any number of fields; a field of type "choice" has a maintained value
+list, and the field says whether a unit may carry one or several values from it.
 
-Die Werte hängen an `artifacts.id` — jedes Ticket und jedes Hardware-Exemplar hat dort eine
-Zeile, deshalb gibt es keinen Sonderweg je Herkunft. Geschrieben wird ausschließlich über
-`set_values()`: dort sitzen Typprüfung, Kardinalität und der Abgleich gegen die Werteliste.
-Ein Feld darf jederzeit dazukommen — bestehende Exemplare haben dafür schlicht keine Zeile.
+The values hang off `artifacts.id`: every ticket and every hardware unit has a row there, so
+there is no special path per origin. Writing happens exclusively through `set_values()`,
+where type check, cardinality and the comparison against the value list sit. A field may be
+added at any time; existing units simply have no row for it.
 """
 from __future__ import annotations
 
@@ -23,15 +23,15 @@ KINDS = ("text", "number", "date", "boolean", "select")
 
 
 class FieldError(ValueError):
-    """Eingabe passt nicht zum Feld — die API macht daraus eine 400 mit Klartext."""
+    """The input does not fit the field; the API turns this into a 400 with plain text."""
 
 
 async def fields_of(db: AsyncSession, type_id: int, project_id: int | None = None, *,
                     nur_aktive: bool = True) -> list[ArtifactField]:
-    """Felder eines Artefakts: die überall geltenden plus die Ergänzungen des Projekts.
+    """Fields of an artifact: the ones applying everywhere plus the additions of the project.
 
-    Ohne `project_id` kommen nur die allgemeinen — das ist die Sicht der Administration.
-    Mit Projekt sieht man, was an dessen Tickets tatsächlich dranhängt.
+    Without `project_id` only the general ones come, which is the view of the administration.
+    With a project one sees what actually hangs off its tickets.
     """
     from sqlalchemy import or_
     q = select(ArtifactField).where(ArtifactField.type_id == type_id)
@@ -53,10 +53,10 @@ async def options_of(db: AsyncSession, field_id: int, *, nur_aktive: bool = True
         q.order_by(ArtifactFieldOption.order, ArtifactFieldOption.id))).scalars().all())
 
 
-# ── Eingebaute Felder (Spalten von Ticket und Exemplar) ──────────────────────
+# ── Built-in fields (columns of ticket and unit) ─────────────────────────────
 
 async def detailzeile(db: AsyncSession, artefakt):
-    """Die Detailtabelle hinter einem Artefakt — Ticket oder Exemplar, sonst nichts."""
+    """The detail table behind an artifact: ticket or unit, nothing else."""
     from ..models.hardware import HardwareAsset
     from ..models.ticket import Issue
     for modell in (Issue, HardwareAsset):
@@ -68,7 +68,7 @@ async def detailzeile(db: AsyncSession, artefakt):
 
 
 def _aus_spalte(feld: ArtifactField, row) -> list:
-    """Spaltenwert in die Listenform bringen, in der auch freie Felder geliefert werden."""
+    """Bring a column value into the list shape free fields are delivered in as well."""
     wert = getattr(row, feld.source, None)
     if wert is None or wert == "":
         return []
@@ -84,8 +84,8 @@ def _aus_spalte(feld: ArtifactField, row) -> list:
 
 
 async def _in_spalte(db: AsyncSession, feld: ArtifactField, row, werte: list) -> list:
-    """Geprüften Wert in die echte Spalte schreiben. Der Zustand nimmt dabei den Weg über
-    `services.artifacts`, damit Board-Spalte, Meldung und Artefakt-Zeile mitgezogen werden."""
+    """Write a checked value into the real column. The state takes the way over
+    `services.artifacts` so that board column, message and artifact row are pulled along."""
     wert = werte[0] if werte else None
     if feld.key == STATUS_KEY:
         from . import artifacts as art
@@ -106,11 +106,11 @@ async def _in_spalte(db: AsyncSession, feld: ArtifactField, row, werte: list) ->
     elif feld.kind == "date":
         neu_wert = dt.date.fromisoformat(str(wert)[:10])
     elif feld.options_source in ("issue_type", "board_status", "sprint", "member", "location"):
-        neu_wert = int(wert)          # diese Felder halten Fremdschlüssel
+        neu_wert = int(wert)          # these fields hold foreign keys
     else:
         neu_wert = str(wert)
-    # Spalten mit Enum-Typ vertragen den reinen Wert (SQLAlchemy wandelt),
-    # bei Datums-Spalten mit Zeitanteil ergänzen wir Mitternacht UTC.
+    # Columns with an enum type tolerate the plain value (SQLAlchemy converts); with date
+    # columns that have a time part we add midnight UTC.
     ziel = getattr(type(row), feld.source).type
     if feld.kind == "date" and neu_wert is not None and hasattr(ziel, "timezone"):
         neu_wert = dt.datetime.combine(neu_wert, dt.time(0, 0), tzinfo=dt.timezone.utc)
@@ -124,8 +124,8 @@ async def _in_spalte(db: AsyncSession, feld: ArtifactField, row, werte: list) ->
 async def values_for(db: AsyncSession, artifact_ids: list[int]) -> dict[int, dict[str, list]]:
     """Werte mehrerer Artefakte in einem Rutsch — `{artefakt_id: {feld_key: [werte]}}`.
 
-    Eine Abfrage statt einer je Artefakt: Listen mit 200 Einträgen sollen die Datenbank nicht
-    200-mal fragen. Eingebaute Felder kommen aus der Detailtabelle, freie aus `artifact_values`.
+    One query instead of one per artifact: lists with 200 entries should not ask the database
+    200 times. Built-in fields come from the detail table, free ones from `artifact_values`.
     """
     if not artifact_ids:
         return {}
@@ -140,7 +140,7 @@ async def values_for(db: AsyncSession, artifact_ids: list[int]) -> dict[int, dic
         out.setdefault(wert.artifact_id, {}).setdefault(feld.key, []).append(
             _lesbar(feld, wert.value_text))
 
-    # Eingebaute Felder: je Artefakt einmal die Detailzeile holen.
+    # Built-in fields: fetch the detail row once per artifact.
     from ..models.artifact import Artifact
     artefakte = (await db.execute(select(Artifact).where(
         Artifact.id.in_(artifact_ids)))).scalars().all()
@@ -178,7 +178,7 @@ def _lesbar(feld: ArtifactField, text: str):
 # ── Schreiben ────────────────────────────────────────────────────────────────
 
 def _als_text(feld: ArtifactField, wert) -> str:
-    """Einen Eingabewert prüfen und in seine gespeicherte Form bringen."""
+    """Check one input value and bring it into its stored form."""
     if wert is None:
         return ""
     if feld.kind == "boolean":
@@ -205,11 +205,11 @@ def _als_text(feld: ArtifactField, wert) -> str:
 
 async def pruefe(db: AsyncSession, feld: ArtifactField, werte: list,
                  project_id: int | None = None) -> list[tuple[str, int | None]]:
-    """Eingaben prüfen und in ihre Speicherform bringen — ohne etwas zu schreiben.
+    """Check inputs and bring them into their stored form, without writing anything.
 
-    Getrennt vom Schreiben, damit ein Aufruf mit mehreren Feldern erst vollständig geprüft
-    und dann angewandt werden kann. Sonst stünde nach dem Fehler im dritten Feld schon die
-    halbe Änderung in der Datenbank, und es bräuchte ein Zurückrollen der ganzen Sitzung.
+    Separated from writing so that a call with several fields can be checked completely first
+    and applied afterwards. Otherwise half the change would already stand in the database
+    after the error in the third field, and it would need a rollback of the whole session.
     """
     sauber = [w for w in (werte or []) if not (w is None or str(w).strip() == "")]
     if not feld.multi and len(sauber) > 1:
@@ -221,7 +221,7 @@ async def pruefe(db: AsyncSession, feld: ArtifactField, werte: list,
         return [(_als_text(feld, w), None) for w in sauber]
 
     if feld.options_source:
-        # Vorgangsart, Sprint, Board-Spalte, Person, Standort — die Liste hängt am Projekt.
+        # Issue type, sprint, board column, person, location: the list hangs off the project.
         erlaubte = dict(await dynamic_options(db, feld, project_id))
         for w in sauber:
             if str(w) not in erlaubte:
@@ -245,10 +245,10 @@ async def pruefe(db: AsyncSession, feld: ArtifactField, werte: list,
 
 async def schreibe(db: AsyncSession, artifact_id: int, feld: ArtifactField,
                    zuordnung: list[tuple[str, int | None]]) -> list:
-    """Geprüfte Werte festschreiben — ersetzt die bisherigen dieses Feldes vollständig.
+    """Commit checked values, replacing the previous ones of this field completely.
 
-    Ein eingebautes Feld landet in seiner echten Spalte (Board, Sprints und der
-    KI-Lebenszyklus lesen unverändert dort), ein freies in `artifact_values`.
+    A built-in field lands in its real column (board, sprints and the AI lifecycle read there
+    unchanged), a free one in `artifact_values`.
     """
     if feld.source:
         from ..models.artifact import Artifact
@@ -275,7 +275,7 @@ async def set_values(db: AsyncSession, artifact_id: int, feld: ArtifactField, we
 
 
 async def option_usage(db: AsyncSession, option_id: int) -> int:
-    """Wie viele Artefakte tragen diesen Listenwert? Schützt vor stillem Datenverlust."""
+    """How many artifacts carry this list value? Protects against silent data loss."""
     return (await db.execute(select(func.count()).select_from(ArtifactValue)
                              .where(ArtifactValue.option_id == option_id))).scalar() or 0
 
@@ -285,14 +285,14 @@ async def field_usage(db: AsyncSession, field_id: int) -> int:
                              .where(ArtifactValue.field_id == field_id))).scalar() or 0
 
 
-# ── Eingebaute Felder anlegen und pflegen ────────────────────────────────────
+# ── Creating and maintaining built-in fields ─────────────────────────────────
 
 async def ensure_builtin_fields(db: AsyncSession) -> None:
-    """Die eingebauten Felder von Ticket und Exemplar anlegen bzw. nachziehen.
+    """Create respectively update the built-in fields of ticket and unit.
 
-    Idempotent: vorhandene Felder werden nur in ihrer Herkunft geradegezogen, nie in ihrer
-    Beschriftung — die darf der Admin ändern. Bei den Auswahlwerten gilt dasselbe: fehlende
-    kommen dazu, vorhandene behalten Beschriftung, Kategorie und „wartet".
+    Idempotent: existing fields are only straightened out in their origin, never in their
+    label, which the admin may change. The same applies to the selectable values: missing ones
+    are added, existing ones keep label, category and "waiting".
     """
     from . import artifacts as art
 
@@ -311,7 +311,7 @@ async def ensure_builtin_fields(db: AsyncSession) -> None:
                 db.add(feld)
                 await db.flush()
             else:
-                # Herkunft und Typ gehören dem Programm, die Beschriftung dem Admin.
+                # Origin and type belong to the program, the label to the admin.
                 feld.source = spec["source"]
                 feld.options_source = spec["options_source"]
                 feld.kind = spec["kind"]
@@ -333,8 +333,8 @@ async def _ensure_options(db: AsyncSession, feld: ArtifactField,
 
 
 async def status_field(db: AsyncSession, type_id: int) -> ArtifactField | None:
-    """Das Zustands-Feld eines Artefakts. Board-Spiegel, Lebenszyklus und die Auswertung
-    „wartet auf einen Menschen" lesen genau dieses Feld — sein Schlüssel ist gesperrt."""
+    """The state field of an artifact. Board mirror, lifecycle and the evaluation "waiting for
+    a human" read exactly this field, so its key is locked."""
     return next((f for f in await fields_of(db, type_id, nur_aktive=False)
                  if f.key == STATUS_KEY), None)
 
@@ -344,12 +344,12 @@ async def status_options(db: AsyncSession, type_id: int) -> list[ArtifactFieldOp
     return await options_of(db, feld.id, nur_aktive=False) if feld else []
 
 
-# ── Auswahlwerte, die vom Projekt abhängen ───────────────────────────────────
+# ── Selectable values that depend on the project ─────────────────────────────
 
 async def dynamic_options(db: AsyncSession, feld: ArtifactField,
                           project_id: int | None) -> list[tuple[str, str]]:
-    """Auswahlwerte, die nicht im Register stehen, sondern am Projekt hängen —
-    Vorgangsarten, Board-Spalten, Sprints, Mitglieder, Standorte."""
+    """Selectable values that do not stand in the register but hang off the project:
+    issue types, board columns, sprints, members, locations."""
     if not feld.options_source or project_id is None:
         return []
     from ..models.hardware import Location
@@ -368,7 +368,7 @@ async def dynamic_options(db: AsyncSession, feld: ArtifactField,
                                  .order_by(WorkflowStatus.order))).scalars().all()
         return [(str(r.id), r.name) for r in rows]
     if quelle == "sprint":
-        # Sprints hängen am Board, nicht direkt am Projekt.
+        # Sprints hang off the board, not directly off the project.
         from ..models.ticket import Board
         rows = (await db.execute(
             select(Sprint).join(Board, Board.id == Sprint.board_id)
@@ -387,27 +387,27 @@ async def dynamic_options(db: AsyncSession, feld: ArtifactField,
 
 
 async def uebernimm_alte_zustaende(db: AsyncSession) -> int:
-    """Einmalige Übernahme: die frühere Tabelle `artifact_statuses` in die Werteliste.
+    """One-off takeover: the former table `artifact_statuses` into the value list.
 
-    Zustände waren bis zum Zusammenschluss ein eigenes Modell. Wer dort Beschriftungen,
-    Kategorien oder „wartet" angepasst hatte, soll das behalten — deshalb werden die alten
-    Zeilen als Werte des Feldes `status` angelegt, bevor die Tabelle fällt. Läuft die
-    Übernahme ein zweites Mal, findet sie nichts mehr.
+    Until the merge, states were a model of their own. Whoever had adjusted labels,
+    categories or "waiting" there should keep that, which is why the old rows are created as
+    values of the field `status` before the table falls. If the takeover runs a second time,
+    it finds nothing any more.
     """
     from sqlalchemy import text
 
     from ..models.artifact import ArtifactType
-    # Erst nachsehen, dann fragen. Der Fehlschlag war abgefangen, aber Postgres schreibt ihn
-    # trotzdem als ERROR ins Server-Log — bei jedem Start und jedem Reload. Diese Zeilen
-    # standen am 2026-08-07 direkt neben dem echten Deadlock und machen die Suche unnötig
-    # schwer; ein Log voller harmloser Fehler ist ein Log, in dem man den echten übersieht.
+    # Look first, then ask. The failure was caught, but Postgres writes it into the server log
+    # as an ERROR regardless, on every start and every reload. These lines stood right beside
+    # the real deadlock on 2026-08-07 and make the search unnecessarily hard; a log full of
+    # harmless errors is a log in which one overlooks the real one.
     if await db.scalar(text("SELECT to_regclass('artifact_statuses')")) is None:
         return 0
     try:
         rows = (await db.execute(text(
             "SELECT type_id, key, label, category, \"order\", waiting FROM artifact_statuses"
         ))).all()
-    except Exception:      # noqa: BLE001 — z. B. SQLite in den Tests: nichts zu tun
+    except Exception:      # noqa: BLE001 - for instance SQLite in the tests: nothing to do
         await db.rollback()
         return 0
     if not rows:
