@@ -143,18 +143,21 @@ export default function DecisionConfig({
       {felder.length > 0 && (
         <details className="rounded border border-line bg-surface p-2 text-xs text-muted">
           <summary className="cursor-pointer">Verfügbare Kontext-Felder ({felder.length})</summary>
-          <table className="mt-2 w-full">
-            <tbody>
-              {felder.map((f) => (
-                <tr key={f.pfad} className="align-top">
-                  <td className="pr-2 font-mono text-ink">{f.pfad}</td>
-                  <td className="pr-2 whitespace-nowrap">{f.typ}</td>
-                  <td className="pr-2">{f.beschreibung}</td>
-                  <td className="whitespace-nowrap text-[10px]">{f.quelle}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* Untereinander statt vier Spalten: im schmalen Panel lief die Herkunft
+              rechts aus dem Bild — sie ist aber genau das, was man wissen will. */}
+          <ul className="mt-2 space-y-1.5">
+            {felder.map((f) => (
+              <li key={f.pfad}>
+                <div className="flex items-baseline gap-1.5">
+                  <code className="break-all font-mono text-ink">{f.pfad}</code>
+                  <span className="shrink-0 text-[10px] opacity-70">{f.typ}</span>
+                </div>
+                <div className="text-[10px] leading-snug">
+                  {f.beschreibung} · <span className="opacity-70">{f.quelle}</span>
+                </div>
+              </li>
+            ))}
+          </ul>
         </details>
       )}
 
