@@ -1,26 +1,26 @@
-"""Die eingebauten Felder von Ticket und Hardware-Exemplar.
+"""The built-in fields of ticket and hardware unit.
 
-Ticket und Exemplar haben ihre Daten seit jeher in echten Spalten — Priorität, Vorgangsart,
-Sprint, Seriennummer, Kosten. Im Register tauchten sie nicht auf, weshalb die Frage „welche
-Felder hat ein Ticket?" zwei Antworten an zwei Orten hatte.
+Ticket and unit have always had their data in real columns: priority, issue type, sprint,
+serial number, cost. They did not appear in the register, which is why the question "which
+fields does a ticket have?" had two answers in two places.
 
-Hier steht die eine Antwort. Jedes dieser Felder verhält sich im Register wie ein frei
-angelegtes, schreibt seinen Wert aber weiter in die gewachsene Spalte — Board, Sprints und
-der KI-Lebenszyklus lesen unverändert dort. `source` nennt die Spalte, `builtin=True` sperrt
-Schlüssel, Typ und Löschen.
+Here stands the one answer. Every one of these fields behaves in the register like a freely
+created one but keeps writing its value into the grown column; board, sprints and the AI
+lifecycle read there unchanged. `source` names the column, `builtin=True` locks the key, the
+type and deletion.
 
-**Auch der Zustand ist nur ein Feld** (`status`). Ein zweites Zustands-Modell gibt es nicht
-mehr; dass Engine und Board ein Feld namens `status` erwarten, trägt der gesperrte Schlüssel.
+**The state is only a field as well** (`status`). There is no second state model any more;
+that engine and board expect a field called `status` is carried by the locked key.
 
-Bewusst NICHT aufgenommen: Maschinenzustand, den niemand von Hand pflegt — Merge-Ergebnis,
-Testumgebung, Branch, Fortsetzungszähler, Plan-Text, Cap-Fenster. Er gehört dem Ablauf, nicht
-dem Formular.
+Deliberately NOT included: machine state nobody maintains by hand, so the merge result, the
+test environment, the branch, the continuation counter, the plan text, the cap window. It
+belongs to the flow, not to the form.
 """
 from __future__ import annotations
 
 from ..models.enums import Priority, PurchaseStatus, TicketAgentStatus
 
-# (Wert, Beschriftung, Kategorie, wartet-auf-Menschen)
+# (value, label, category, waits for a human)
 _TICKET_STATUS: list[tuple[str, str, str, bool]] = [
     (TicketAgentStatus.open.value, "Offen", "todo", False),
     (TicketAgentStatus.planning.value, "Planung läuft", "in_progress", False),
@@ -55,7 +55,7 @@ def _f(key, label, kind, source, **rest) -> dict:
             "options": [], "options_source": "", "multi": False, **rest}
 
 
-# Schlüssel des Artefakt-Typs → seine eingebauten Felder, in Anzeigereihenfolge.
+# Key of the artifact type to its built-in fields, in display order.
 BUILTIN_FIELDS: dict[str, list[dict]] = {
     "ticket": [
         _f("status", "Status", "select", "agent_status", options=_TICKET_STATUS),
@@ -84,9 +84,9 @@ BUILTIN_FIELDS: dict[str, list[dict]] = {
     ],
 }
 
-# Der Schlüssel des Zustands-Feldes. Board-Spiegel, Lebenszyklus und die Auswertung
-# „wartet auf einen Menschen" lesen genau dieses Feld.
+# The key of the state field. Board mirror, lifecycle and the "waiting for a human" evaluation
+# read exactly this field.
 STATUS_KEY = "status"
 
-# Spalte, in der der Zustand je Artefakt-Art steckt.
+# Column the state sits in per kind of artifact.
 STATUS_SOURCE = {"ticket": "agent_status", "hardware": "purchase_status"}
