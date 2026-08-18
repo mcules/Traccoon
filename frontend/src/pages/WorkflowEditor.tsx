@@ -46,6 +46,8 @@ function defaultConfig(type: WorkflowNodeType): NodeConfig {
       return { events: ["comment", "manual"] };
     case "subflow":
       return { inherit_context: true };
+    case "loop":
+      return { liste: "", element: "element", index: "i" };
     default:
       return {};
   }

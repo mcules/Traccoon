@@ -149,6 +149,7 @@ class WorkflowNodeType(str, enum.Enum):
     agent_task = "agent_task"
     wait_event = "wait_event"  # wartet auf ein externes Ereignis (Kommentar/Antwort/manuell)
     subflow = "subflow"        # startet die Definition eines Slots als Kind-Instanz
+    loop = "loop"              # geht eine Liste Element für Element durch
 
 
 class WorkflowSetScope(str, enum.Enum):

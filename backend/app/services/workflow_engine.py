@@ -43,7 +43,11 @@ from .jsonlogic import ALLOWED_OPS, JsonLogicError, collect_operators, safe_eval
 
 log = logging.getLogger("workflow_engine")
 
-MAX_STEPS = 50          # Zyklus-Bremse pro advance-Durchlauf
+# Zyklus-Bremse pro advance-Durchlauf. Höher als früher (50), seit es Schleifen gibt: ein
+# `loop` über 120 Zeilen ist keine kreisende Instanz, sondern Arbeit, und käme sonst nur in
+# 30-Sekunden-Wellen des Ticks voran. Gegen echte Endlosschleifen sichert zusätzlich das
+# `max` am Schleifen-Knoten selbst.
+MAX_STEPS = 200
 MAX_DRIVE_ROUNDS = 5    # Nachfassen, wenn während des Durchlaufs ein Ergebnis eintraf
 TICK_SECONDS = 30       # Sicherheitsnetz-Loop (Crash-Recovery)
 MAX_SUBFLOW_DEPTH = 3   # Schachtelungs-Bremse für subflow-Knoten
@@ -378,6 +382,9 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
     if ntype == "subflow":
         return await _start_subflow(db, inst, node, token, cfg)
 
+    if ntype == "loop":
+        return await _schleife(db, inst, node, token, cfg)
+
     return Outcome(terminal=True, instance_status="failed",
                    error=f"Unbekannter Knotentyp '{ntype}'")
 
@@ -463,6 +470,87 @@ async def resume_on_event(issue_id: int, event: str, payload: dict | None = None
         await db.commit()
     await advance(instance_id)
     return True
+
+
+# ── loop: eine Liste Element für Element ─────────────────────────────────────
+
+# Wo der Zähler einer Schleife lebt. Im Kontext, weil er den Lauf überdauern muss: eine
+# Schleife kann über einen Wartepunkt gehen (Genehmigung je Element) und Tage später
+# weiterlaufen.
+SCHLEIFEN_KEY = "_schleifen"
+LOOP_MAX = 500
+
+
+async def _schleife(db, inst, node, token, cfg) -> Outcome:
+    """Ein Durchgang durch eine Liste — sequentiell, über eine Rückkante.
+
+    Der Knoten wird bei jedem Durchlauf erneut betreten (synchrone Knoten werden beim
+    Wiedereintritt neu ausgeführt, siehe `_drive`). Er zählt weiter, legt das nächste
+    Element in den Kontext und nimmt den Ausgang `element`; ist die Liste erschöpft,
+    `fertig`.
+
+    Bewusst sequentiell und nicht als Fächer aus parallelen Token: die Engine führt ein
+    Token je Instanz, und die Schritte einer Schleife hängen fast immer voneinander ab
+    (dieselbe Gegenstelle, dieselbe Datei, dasselbe Konto). Parallel wäre schneller und
+    an genau diesen Stellen falsch.
+    """
+    ctx = dict(inst.context or {})
+    stand = dict(ctx.get(SCHLEIFEN_KEY) or {})
+    meins = dict(stand.get(node["id"]) or {})
+
+    pfad = str(cfg.get("liste") or cfg.get("list") or "").strip()
+    element_key = str(cfg.get("element") or "element")
+    index_key = str(cfg.get("index") or "i")
+    sammel_pfad = str(cfg.get("sammle") or "").strip()
+    ergebnis_key = str(cfg.get("ergebnisse") or "ergebnisse")
+    grenze = min(int(cfg.get("max") or LOOP_MAX), LOOP_MAX)
+
+    if not meins:
+        roh = _dig_ctx(ctx, pfad) if pfad else None
+        liste = roh if isinstance(roh, list) else ([] if roh is None else [roh])
+        meins = {"i": 0, "gesamt": len(liste), "werte": liste[:grenze], "ergebnisse": []}
+    else:
+        # Rückkehr aus dem Schleifenkörper: erst einsammeln, dann weiterzählen.
+        if sammel_pfad:
+            meins["ergebnisse"] = [*meins.get("ergebnisse", []), _dig_ctx(ctx, sammel_pfad)]
+        meins["i"] = int(meins.get("i", 0)) + 1
+
+    werte = meins.get("werte") or []
+    i = int(meins.get("i", 0))
+    if i >= len(werte):
+        # Fertig: Zähler weg (eine äußere Schleife startet dieselbe innere sonst nicht neu),
+        # gesammelte Ergebnisse bleiben.
+        stand.pop(node["id"], None)
+        ctx[SCHLEIFEN_KEY] = stand
+        ctx.pop(element_key, None)
+        ctx[ergebnis_key] = meins.get("ergebnisse", [])
+        ctx[f"{index_key}_gesamt"] = meins.get("gesamt", 0)
+        inst.context = ctx
+        db.add(WorkflowStepRun(
+            instance_id=inst.id, token_id=token.id, node_id=node["id"],
+            node_type=NType.loop, status=SStatus.done, completed_at=_now(),
+            result={"durchgaenge": len(werte), "gesamt": meins.get("gesamt", 0)}))
+        return Outcome(handle="fertig")
+
+    ctx[element_key] = werte[i]
+    ctx[index_key] = i
+    stand[node["id"]] = meins
+    ctx[SCHLEIFEN_KEY] = stand
+    inst.context = ctx
+    return Outcome(handle="element")
+
+
+def _dig_ctx(data, pfad: str):
+    """Pfad im Kontext auflösen — inklusive Listen-Index (`tool.json.items.0`)."""
+    cur = data
+    for teil in str(pfad).split("."):
+        if isinstance(cur, dict) and teil in cur:
+            cur = cur[teil]
+        elif isinstance(cur, list) and teil.isdigit() and int(teil) < len(cur):
+            cur = cur[int(teil)]
+        else:
+            return None
+    return cur
 
 
 # ── subflow: anderen Ablauf als Kind-Instanz ausführen ───────────────────────
@@ -1359,6 +1447,14 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
                 from ..models.enums import WorkflowSlot
                 if slot not in {s.value for s in WorkflowSlot}:
                     errors.append(f"Subflow-Knoten '{nid}': unbekannter Slot '{slot}'")
+
+        if ntype == "loop":
+            handles = _outgoing_handles(edges, nid)
+            for req in ("element", "fertig"):
+                if req not in handles:
+                    errors.append(f"Schleifen-Knoten '{nid}': Kante für Ausgang '{req}' fehlt")
+            if not node_config(n).get("liste"):
+                errors.append(f"Schleifen-Knoten '{nid}': keine Liste angegeben")
 
         if ntype == "wait_event":
             cfg = node_config(n)
