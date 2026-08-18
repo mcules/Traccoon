@@ -1,37 +1,37 @@
-// Schicht 0 — die Zeitleiste als Zahlen.
+// Layer 0: the timeline as numbers.
 //
-// Ein Balken je Sekunde, vier Serien. Was die Komponente daraus macht, steht ausdrücklich
-// **nicht** hier, gehört aber zum Verständnis der Serien:
+// One bar per second, four series. What the component makes of it deliberately does **not**
+// stand here, but it belongs to the understanding of the series:
 //
-//   · **Höhe = Menge.** Wie viel in dieser Sekunde überhaupt passiert ist (Wurzelskalierung
-//     gegen den Spitzenwert, damit eine einzelne Sekunde mit 400 Ereignissen nicht alle
-//     anderen platt drückt).
-//   · **Farbe = Zusammensetzung.** Woraus die Sekunde bestand. Eine rot dominierte Sekunde ist
-//     eine Sekunde voller Fehlschläge — und das ist die Stelle, auf die man klickt.
+//   · **Height = amount.** How much happened in this second at all (square-root scaling
+//     against the peak, so that a single second with 400 events does not flatten all the
+//     others).
+//   · **Colour = composition.** What the second consisted of. A second dominated by red is a
+//     second full of failures, and that is the place one clicks on.
 //
-// Beides sind Darstellungsentscheidungen und leben in der React-Schicht. Hier stehen nur die
-// Zähler; sonst gäbe es zwei Orte, an denen über dieselben Daten entschieden wird.
+// Both are display decisions and live in the React layer. Here stand only the counters;
+// otherwise there would be two places where the same data is decided about.
 //
-// `toLocale*` ist in Schicht 0 verboten (PIXEL-CONTRACT.md 3.1): es hängt an Sprache und
-// Zeitzone des Browsers, dasselbe Log ergäbe in zwei Tabs zwei verschiedene Zeitleisten.
-// `labelOf` liefert deshalb **Zahlen**, keinen Text.
+// `toLocale*` is forbidden in layer 0 (PIXEL-CONTRACT.md 3.1): it depends on the language and
+// time zone of the browser, so the same log would give two different timelines in two tabs.
+// `labelOf` therefore delivers **numbers**, not text.
 
 import type { Bucket, LogEntry } from "./types.ts";
 import { TIMELINE_BUCKET_MS, TIMELINE_CAP } from "./const.ts";
 
-/** Fasst das Log zu Sekundenbalken zusammen.
+/** Summarises the log into second bars.
  *
- *  Die Balken sind **lückenlos**: auch eine Sekunde ohne jedes Ereignis bekommt ihren leeren
- *  Balken. Nur so ist die Waagerechte eine echte Zeitachse, auf der ein Klick auf halber
- *  Strecke auch die halbe Zeit meint. Ließe man leere Sekunden weg, wäre eine zwanzigminütige
- *  Pause optisch so breit wie eine einzelne Sekunde.
+ *  The bars are **gapless**: even a second without any event gets its empty bar. Only that
+ *  way is the horizontal a real time axis on which a click halfway along means half the time
+ *  as well. Leaving empty seconds out would make a twenty minute pause optically as wide as a
+ *  single second.
  *
- *  `t` ist die **Wanduhr** in ms (auf die Sekunde abgerundet), nicht `engine.t`: es ist genau
- *  der Wert, den `Replay.seek` entgegennimmt. Ein Umrechnen in Simulationszeit müsste den
- *  gesamten Replay durchrechnen, nur um einen Balken zu beschriften.
+ *  `t` is the **wall clock** in ms (rounded down to the second), not `engine.t`: it is
+ *  exactly the value `Replay.seek` takes. Converting into simulation time would have to
+ *  compute the whole replay just to label a bar.
  *
- *  Über `TIMELINE_CAP` hinaus werden die **ältesten** Balken verworfen — dieselbe Richtung, in
- *  die auch `REPLAY_CAP` kappt. Die Ansicht ist ein Kurzzeitgedächtnis; das Jüngste ist das,
+ *  Beyond `TIMELINE_CAP` the **oldest** bars are discarded, the same direction `REPLAY_CAP`
+ *  truncates in. The view is a short term memory; the most recent is what one opens it for. */
  *  wofür man sie öffnet. */
 export function bucketize(log: readonly LogEntry[], from?: number, to?: number): Bucket[] {
   if (log.length === 0) return [];
@@ -39,8 +39,8 @@ export function bucketize(log: readonly LogEntry[], from?: number, to?: number):
   let lo = from;
   let hi = to;
   if (lo === undefined || hi === undefined) {
-    // Minimum und Maximum, nicht erster und letzter Eintrag: das Log steht in `seq`-Reihenfolge,
-    // und die ist unter `WORKER_CONCURRENCY > 1` nicht chronologisch.
+    // Minimum and maximum, not the first and last entry: the log stands in `seq` order, and
+    // that is not chronological under `WORKER_CONCURRENCY > 1`.
     let a = log[0].ts;
     let b = a;
     for (const e of log) {
@@ -74,7 +74,7 @@ export function bucketize(log: readonly LogEntry[], from?: number, to?: number):
       switch (c.k) {
         case "say":
         case "deliver":
-          // Eine Übergabe ist eine Äußerung mit Ziel — für die Zeitleiste dasselbe.
+          // A handover is an utterance with a target, which for the timeline is the same.
           b.says++;
           break;
         case "tool":
@@ -84,8 +84,8 @@ export function bucketize(log: readonly LogEntry[], from?: number, to?: number):
           b.thinks++;
           break;
         case "toolEnd":
-          // Dreiwertig: `null` heißt *unbekannt* und zählt zu gar nichts. Wer `ok ?? true`
-          // oder `!ok` schreibt, malt Farbe auf geratene Daten.
+          // Three valued: `null` means *unknown* and counts towards nothing. Whoever writes
+          // `ok ?? true` or `!ok` paints colour on guessed data.
           if (c.ok === false) b.errors++;
           break;
         case "done":
@@ -102,10 +102,10 @@ export function bucketize(log: readonly LogEntry[], from?: number, to?: number):
   return out;
 }
 
-/** Die Zahlen hinter einem Balken, unformatiert.
+/** The numbers behind a bar, unformatted.
  *
- *  `h`/`m`/`s` sind **UTC**. Die Zeitzone kennt nur Schicht 2 — sie aufzulösen bräuchte hier
- *  die Umgebung des Browsers und machte aus derselben Datenlage zwei verschiedene Zeitleisten. */
+ *  `h`/`m`/`s` are **UTC**. Only layer 2 knows the time zone; resolving it would need the
+ *  environment of the browser here and turn the same data into two different timelines. */
 export function labelOf(b: Bucket): {
   h: number; m: number; s: number;
   tools: number; says: number; thinks: number; errors: number;

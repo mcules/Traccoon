@@ -26,10 +26,10 @@ GRANT_RANK = {GrantLevel.view: 0, GrantLevel.manage: 1}
 
 
 async def _location_grant_level(loc_id: int, user: User, db: AsyncSession) -> GrantLevel | None:
-    """Höchste Freigabe für einen Ort — direkt ODER geerbt von einem Vorfahren-Ort
-    mit recursive=True (Wart bekommt Grant aufs Wasserhäuschen → gilt auch für Masten drunter).
-    Grant muss zum aktuellen Projekt des Orts gehören (project_id-Scope) — Defense-in-Depth
-    gegen projektübergreifende Grants (siehe add_resource_grant-Validierung)."""
+    """Highest grant for a location, directly OR inherited from an ancestor location with
+    recursive=True (a caretaker gets a grant on the pump house, which then applies to the
+    masts below it as well). The grant has to belong to the current project of the location
+    (project_id scope), as defence in depth against cross-project grants (see the validation
     best: GrantLevel | None = None
     loc = await db.get(Location, loc_id)
     seen: set[int] = set()
@@ -58,7 +58,7 @@ async def _can_view_location(loc: Location, user: User, db: AsyncSession) -> boo
     if user.global_role == GlobalRole.admin:
         return True
     if loc.project_id is None:
-        return True  # globaler/lagernder Ort — sichtbar für alle angemeldeten Nutzer
+        return True  # global or stored location: visible to all logged-in users
     proj = await db.get(Project, loc.project_id)
     if proj is not None:
         try:
@@ -70,8 +70,8 @@ async def _can_view_location(loc: Location, user: User, db: AsyncSession) -> boo
 
 
 async def _require_location_manage(loc: Location, user: User, db: AsyncSession) -> None:
-    """Anlegen/Ändern/Löschen eines Orts: Projekt-Mitglied (maintainer+) ODER manage-Grant.
-    Projektlose Orte bleiben wie bisher für jeden angemeldeten Nutzer offen."""
+    """Creating, changing and deleting a location: project member (maintainer+) OR a manage
+    grant. Project-less locations stay open to every logged-in user as before."""
     if loc.project_id is None:
         return
     proj = await db.get(Project, loc.project_id)
@@ -144,8 +144,8 @@ async def update_location(
     if loc is None:
         raise HTTPException(404, "Ort nicht gefunden")
     await _require_location_manage(loc, user, db)
-    # Verschieben in ein anderes Projekt erfordert zusätzlich maintainer+ im ZIELPROJEKT —
-    # sonst könnte ein Maintainer von Projekt A einen Ort einfach in Projekt B umhängen.
+    # Moving into another project additionally requires maintainer+ in the TARGET project;
+    # otherwise a maintainer of project A could simply move a location into project B.
     if data.project_id != loc.project_id:
         if data.project_id is not None:
             target_proj = await db.get(Project, data.project_id)
@@ -217,8 +217,8 @@ async def delete_model(
 async def _asset_grant_level(
     asset_id: int, user: User, db: AsyncSession, project_id: int | None = None
 ) -> GrantLevel | None:
-    """Grant muss zum aktuellen Projekt des Assets gehören (project_id-Scope), wenn bekannt —
-    Defense-in-Depth gegen projektübergreifende Grants."""
+    """The grant has to belong to the current project of the asset (project_id scope) when
+    known, as defence in depth against cross-project grants."""
     q = select(ResourceGrant).where(
         ResourceGrant.user_id == user.id,
         ResourceGrant.resource_type == ResourceType.asset,
@@ -234,7 +234,7 @@ async def _can_view_asset(asset: HardwareAsset, user: User, db: AsyncSession) ->
     if user.global_role == GlobalRole.admin:
         return True
     if asset.project_id is None:
-        return True  # Vorrat/Lager — sichtbar für alle angemeldeten Nutzer
+        return True  # stock or storage: visible to all logged-in users
     proj = await db.get(Project, asset.project_id)
     if proj is not None:
         try:
@@ -270,9 +270,9 @@ async def list_assets(
 
 
 async def _require_project_member(project_id: int | None, user: User, db: AsyncSession) -> None:
-    """Projekt-gebundene Hardware nur für Mitglieder des Projekts (member+)."""
+    """Project bound hardware only for members of the project (member+)."""
     if project_id is None:
-        return  # Vorrat/Lager ohne Projekt
+        return  # stock or storage without a project
     proj = await db.get(Project, project_id)
     if proj is None:
         raise HTTPException(400, "Projekt existiert nicht")
@@ -281,8 +281,8 @@ async def _require_project_member(project_id: int | None, user: User, db: AsyncS
 
 
 async def _require_asset_manage(asset: HardwareAsset, user: User, db: AsyncSession) -> None:
-    """Ändern/Löschen eines bestehenden Exemplars: Projekt-Mitglied (member+) ODER
-    manage-Grant auf das Asset ODER manage-Grant auf dessen Ort (Wart-Fall)."""
+    """Changing and deleting an existing unit: project member (member+) OR a manage grant on
+    the asset OR a manage grant on its location (the caretaker case)."""
     if asset.project_id is None:
         return
     proj = await db.get(Project, asset.project_id)
@@ -313,8 +313,8 @@ async def create_asset(
     a = HardwareAsset(**data.model_dump())
     db.add(a)
     await db.flush()
-    # Jedes Exemplar ist ein Artefakt: gemeinsame Identität und Zustand entstehen sofort,
-    # sonst hinge das Objekt bis zum nächsten Start ohne Artefakt-Zeile in der Luft.
+    # Every unit is an artifact: the common identity and state come into being immediately;
+    # otherwise the object would hang in the air without an artifact row until the next start.
     from ..services.artifacts import ensure_for_asset
     await ensure_for_asset(db, a)
     await db.commit()
@@ -332,13 +332,13 @@ async def update_asset(
         raise HTTPException(404, "Exemplar nicht gefunden")
     await _require_asset_manage(a, user, db)
     fields = data.model_dump(exclude_unset=True)
-    # Verschieben in ein anderes Projekt erfordert zusätzlich member+ im ZIELPROJEKT —
-    # sonst könnte ein Projekt-Mitglied ein Exemplar einfach in ein fremdes Projekt umhängen.
+    # Moving into another project additionally requires member+ in the TARGET project;
+    # otherwise a project member could simply move a unit into a foreign project.
     if "project_id" in fields and fields["project_id"] != a.project_id:
         await _require_project_member(fields["project_id"], user, db)
     for field, value in fields.items():
         setattr(a, field, value)
-    # Artefakt-Zeile mitziehen (Titel, Projekt, Zustand) — sie ist die gemeinsame Sicht.
+    # Pull the artifact row along (title, project, state): it is the common view.
     from ..services.artifacts import sync_asset_artifact
     await sync_asset_artifact(db, a)
     await db.commit()
@@ -362,7 +362,7 @@ async def delete_asset(
 async def asset_issues(
     asset_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)
 ):
-    """Tickets, die an diesem Exemplar hängen (ABC-25) — Gegenrichtung zu Issue.asset_id."""
+    """Tickets that hang off this unit (ABC-25), the opposite direction to Issue.asset_id."""
     from ..models.ticket import Issue, WorkflowStatus
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
@@ -405,7 +405,7 @@ async def _ensure_workflow(project_id: int, db: AsyncSession) -> HardwareWorkflo
 async def get_workflow(
     access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session),
 ):
-    """Beschaffungsschritte des Projekts (legt den Standard-Satz an, falls noch keiner existiert)."""
+    """Procurement steps of the project (creates the default set when none exists yet)."""
     wf = await _ensure_workflow(access.project.id, db)
     rows = (await db.execute(
         select(HardwareWorkflowStep).where(HardwareWorkflowStep.workflow_id == wf.id)
@@ -430,8 +430,8 @@ async def set_workflow(
         db.add(HardwareWorkflowStep(workflow_id=wf.id, name=step.name, order=step.order or i,
                                     assignee=step.assignee or {}))
     await db.commit()
-    # Existiert bereits eine generische Beschaffungs-Definition, eine neue Version daraus
-    # veröffentlichen — sonst liefe der Prozess weiter mit den alten Schritten (ABC-26).
+    # If a generic procurement definition already exists, publish a new version from it;
+    # otherwise the process would keep running with the old steps (ABC-26).
     from ..services.hardware_workflow import sync_hardware_definition
     await sync_hardware_definition(db, access.project.id, access.user.id)
 
@@ -452,8 +452,8 @@ async def _instantiate_steps(asset: HardwareAsset, db: AsyncSession) -> None:
         )
     ).scalars().all()
     for s in steps:
-        # Zuständigen aus der Vorlage vorbelegen, wenn dort ein konkreter Nutzer steht
-        # (Rollen-/Kontext-Zuweisung löst erst die Workflow-Engine auf) — ABC-26.
+        # Prefill the responsible person from the template when a concrete user stands there
+        # (role and context assignment is only resolved by the workflow engine), ABC-26.
         spec = s.assignee or {}
         assignee_id = spec.get("user_id") if spec.get("mode") == "user" else None
         db.add(HardwareAssetStep(asset_id=asset.id, name=s.name, order=s.order,
@@ -480,15 +480,15 @@ async def asset_steps(
     return list(rows)
 
 
-# ---------- Beschaffung auf der generischen Workflow-Engine (Etappe 4, additiv) ----------
+# ---------- Procurement on the generic workflow engine (additive) ----------
 
 @router.post("/projects/{project_id}/hardware-workflow/definition")
 async def ensure_hw_workflow_definition(
     access: Access = Depends(require_role(ProjectRole.maintainer)),
     db: AsyncSession = Depends(get_session),
 ):
-    """Erzeugt (idempotent) die veröffentlichte „Hardware-Beschaffung"-Workflow-Definition des
-    Projekts aus den vorhandenen Schritten. Danach im Prozess-Editor sicht-/erweiterbar."""
+    """Creates (idempotently) the published "hardware procurement" workflow definition of the
+    project from the existing steps. Visible and extendable in the process editor afterwards."""
     from ..services.hardware_workflow import ensure_hardware_definition
     d = await ensure_hardware_definition(db, access.project.id, access.user.id)
     return {"definition_id": d.id, "key": d.key, "current_version_id": d.current_version_id}
@@ -498,7 +498,7 @@ async def ensure_hw_workflow_definition(
 async def start_asset_workflow(
     asset_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Startet (idempotent) eine Beschaffungs-Workflow-Instanz für ein Exemplar."""
+    """Starts (idempotently) a procurement workflow instance for a unit."""
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
         raise HTTPException(404, "Exemplar nicht gefunden")
@@ -527,7 +527,7 @@ async def complete_step(
     step.completed_by_id = user.id
     if data.note:
         step.note = data.note
-    # Übergabe: nächsten offenen Schritt der zuständigen Person zuordnen
+    # Handover: assign the next open step to the responsible person
     if data.next_assignee is not None:
         nxt = (
             await db.execute(
