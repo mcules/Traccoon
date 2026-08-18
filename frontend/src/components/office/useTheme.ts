@@ -1,15 +1,15 @@
-// Schicht 2 — Tag- oder Abendbüro.
+// Layer 2: day or evening office.
 //
-// `data-theme="dark"` → `"night"` (Lampen an, Monitore als Hauptlichtquelle),
-// alles andere → `"day"`. **Nicht** die echte Uhrzeit: die bräche den Determinismus, weil
-// dasselbe Log um 23 Uhr ein anderes Bild ergäbe als um 9 Uhr (PIXEL-CONTRACT.md Regel 3.1).
-// Der Grad ist ein Palettentausch, kein Rechenweg — Schicht 1 sieht ihn nur als `Grade`.
+// `data-theme="dark"` gives `"night"` (lamps on, monitors as the main light source),
+// everything else gives `"day"`. **Not** the real time of day: that would break determinism,
+// because the same log would give a different picture at 23:00 than at 9:00
+// (PIXEL-CONTRACT.md rule 3.1). The grade is a palette swap, not a computation; layer 1 sees it only as a `Grade`.
 //
-// **Es gibt in Traccoon keinen Theme-Context.** Das Attribut wird imperativ auf
-// `document.documentElement` gesetzt: `auth.tsx:30` beim Laden von `/me`, `Profile.tsx:171`
-// beim Umschalten. Also wird genau dort gelauscht — ein `MutationObserver` auf dieses eine
-// Attribut. Kein `localStorage`-Polling (das Attribut ist die Wahrheit, der Speicher nur die
-// Herkunft) und kein Intervall (ein Themenwechsel ist ein Ereignis, kein Zustand, den man
+// **There is no theme context in Traccoon.** The attribute is set imperatively on
+// `document.documentElement`: in `auth.tsx:30` while loading `/me`, in `Profile.tsx:171` on
+// switching. So exactly there is where we listen, with a `MutationObserver` on this one
+// attribute. No `localStorage` polling (the attribute is the truth, the storage only the
+// origin) and no interval (a theme change is an event, not a state one has to poll).
 // abfragen müsste).
 
 import { useEffect, useState } from "react";
@@ -17,8 +17,8 @@ import type { Grade } from "./types.ts";
 
 const ATTR = "data-theme";
 
-/** Liest den Grad aus dem DOM. Einzige Wahrheitsquelle; alles andere wäre eine Kopie,
- *  die driften kann. */
+/** Reads the grade from the DOM. The only source of truth; everything else would be a copy
+ *  that can drift. */
 function readGrade(): Grade {
   return document.documentElement.getAttribute(ATTR) === "dark" ? "night" : "day";
 }
@@ -28,13 +28,13 @@ export function useTheme(): Grade {
 
   useEffect(() => {
     const root = document.documentElement;
-    // Zwischen dem ersten Render und diesem Effekt kann `auth.tsx` das Attribut gesetzt
-    // haben (es kommt erst mit der Antwort von `/me`). Einmal nachlesen kostet nichts und
-    // spart ein falsch beleuchtetes erstes Bild.
+    // Between the first render and this effect `auth.tsx` can have set the attribute (it
+    // only comes with the answer of `/me`). Reading once costs nothing and saves a wrongly
+    // lit first frame.
     setGrade(readGrade());
     const obs = new MutationObserver(() => {
-      // `setGrade` mit gleichem Wert ist ein No-op in React — ein Attributwechsel auf
-      // denselben Grad löst also kein Neuzeichnen aus.
+      // `setGrade` with the same value is a no-op in React, so an attribute change to the
+      // same grade triggers no redraw.
       setGrade(readGrade());
     });
     obs.observe(root, { attributes: true, attributeFilter: [ATTR] });
