@@ -21,7 +21,7 @@ export default function Login() {
         await login(email, password);
       } else {
         await api.post("/auth/register", { email, username, password });
-        setInfo("Registriert. Konto muss ggf. von einem Admin freigeschaltet werden.");
+        setInfo(tr("login.registriert"));
         setMode("login");
       }
     } catch (e) {
@@ -53,7 +53,7 @@ export default function Login() {
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
           className="mt-3 w-full text-sm text-muted hover:text-ink">
-          {mode === "login" ? "Neu hier? Registrieren" : "Zurück zum Login"}
+          {tr(mode === "login" ? "login.neu_hier" : "login.zurueck_zum_login")}
         </button>
       </form>
     </div>

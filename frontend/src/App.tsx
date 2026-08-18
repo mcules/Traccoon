@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react";
+import { tr } from "./i18n";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
 import { useSprache, useSpracheVonNutzer } from "./i18n/useSprache";
@@ -25,7 +26,7 @@ export default function App() {
   useSpracheVonNutzer(user?.locale);
   useSprache();
 
-  if (loading) return <div className="p-8 text-muted">Lädt…</div>;
+  if (loading) return <div className="p-8 text-muted">{tr("common.laedt")}</div>;
   if (!user) {
     return (
       <Routes>

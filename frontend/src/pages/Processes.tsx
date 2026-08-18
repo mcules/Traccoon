@@ -64,9 +64,7 @@ function StandardSatz() {
     <div className="space-y-4">
       <p className="text-sm text-muted">
         {tr("proc.standard_hinweis")}{" "}
-        {admin
-          ? "Laufende Vorgänge bleiben unberührt: sie hängen an der Version, mit der sie gestartet sind."
-          : "Ändern darf ihn nur ein Admin; ansehen lohnt sich trotzdem, denn er beschreibt, wie Traccoon arbeitet."}
+        {tr(admin ? "processes.hinweis_admin" : "processes.hinweis_leser")}
       </p>
 
       <div className="space-y-2">
@@ -312,7 +310,7 @@ function Betrieb() {
                 className="rounded border border-line px-2 py-1 text-xs hover:border-brand"
                 title={tr("processes.verlauf_des_vorgangs")}
               >
-                {offen === l.id ? "Verlauf zu" : "Verlauf"}
+                {tr(offen === l.id ? "processes.verlauf_zu" : "processes.verlauf")}
               </button>
               {(l.status === "running" || l.status === "waiting") && (
                 <button
@@ -320,12 +318,12 @@ function Betrieb() {
                   className="rounded border border-line px-2 py-1 text-xs hover:border-red-400"
                   title={tr("processes.vorgang_abbrechen")}
                 >
-                  Abbrechen
+                  {tr("processes.abbrechen")}
                 </button>
               )}
             </div>
             <div className="mt-1 text-xs text-muted">
-              steht bei <span className="text-ink">{l.node_label || "—"}</span>
+              {tr("processes.steht_bei")} <span className="text-ink">{l.node_label || "—"}</span>
               {l.waiting_for && ` — ${tr("proc.wartet")} ${WARTET_AUF[l.waiting_for] ? tr(WARTET_AUF[l.waiting_for]) : l.waiting_for}`}
             </div>
             {l.error && <div className="mt-1 text-xs text-red-300">{l.error}</div>}
@@ -350,11 +348,11 @@ function Betrieb() {
 // ── Auslöser ─────────────────────────────────────────────────────────────────
 
 const KIND: Record<ProcAusloeser["kind"], { label: string; cls: string }> = {
-  event: { label: "Ereignis", cls: "bg-violet-500/15 text-violet-300" },
-  webhook: { label: "Webhook", cls: "bg-blue-500/15 text-blue-300" },
-  job: { label: "Zeitplan", cls: "bg-green-500/15 text-green-300" },
-  subflow: { label: "Unterprozess", cls: "bg-surface text-muted" },
-  manual: { label: "aus dem Programm", cls: "bg-surface text-muted" },
+  event: { label: "processes.ausloeser_event", cls: "bg-violet-500/15 text-violet-300" },
+  webhook: { label: "processes.ausloeser_webhook", cls: "bg-blue-500/15 text-blue-300" },
+  job: { label: "processes.ausloeser_job", cls: "bg-green-500/15 text-green-300" },
+  subflow: { label: "processes.ausloeser_subflow", cls: "bg-surface text-muted" },
+  manual: { label: "processes.ausloeser_manual", cls: "bg-surface text-muted" },
 };
 
 function Ausloeser() {
@@ -376,7 +374,7 @@ function Ausloeser() {
           return (
             <div key={`${t.definition_id}-${t.kind}-${i}`} className="rounded border border-line bg-card p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded px-1.5 py-0.5 text-xs ${k.cls}`}>{k.label}</span>
+                <span className={`rounded px-1.5 py-0.5 text-xs ${k.cls}`}>{tr(k.label)}</span>
                 <span className="font-medium">{t.definition_name}</span>
                 {t.project_key && (
                   <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{t.project_key}</span>
@@ -406,11 +404,9 @@ function Ausloeser() {
       <div>
         <h3 className="mb-1 text-sm font-medium">{tr("processes.ereignisse")}</h3>
         <p className="mb-2 text-xs text-muted">
-          Diese Ereignisse feuert Traccoon. Ein Ablauf kann sie am Start-Knoten abfangen, statt
-          fest verdrahtet zu werden.
+          {tr("processes.ereignisse_hinweis")}
           {ohneZuhoerer === events?.length && events.length > 0 && (
-            <> Derzeit hört auf <span className="text-amber-300">keines</span> davon ein Ablauf —
-            alle Abläufe werden vom Programm oder von Hand gestartet.</>
+            <> {tr("processes.ereignisse_niemand_hoert")}</>
           )}
         </p>
         <div className="grid gap-1.5 sm:grid-cols-2">

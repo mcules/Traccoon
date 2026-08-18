@@ -196,7 +196,7 @@ export default function Hardware({ project }: { project: Project }) {
               </select>
               <select value={lParent} onChange={(e) => setLParent(e.target.value)}
                 className="rounded border border-line bg-surface px-2 py-1 text-sm">
-                <option value="">— übergeordnet —</option>
+                <option value="">{tr("hardware.uebergeordnet")}</option>
                 {locations.data?.map((l) => <option key={l.id} value={l.id}>{l.full_path}</option>)}
               </select>
               <button onClick={() => lName && addLoc.mutate()} className="rounded bg-brand px-3 py-1 text-sm text-white">+</button>
@@ -277,8 +277,7 @@ function WorkflowConfig({ project }: { project: Project }) {
     <div className="rounded-lg border border-line bg-card p-3">
       <h3 className="mb-1 font-medium">{tr("hardware.beschaffungsprozess")}</h3>
       <p className="mb-2 text-xs text-muted">
-        Schritte, die jedes neue Exemplar durchläuft — je Schritt lässt sich festlegen, wer
-        zuständig ist.
+        {tr("hardware.prozess_hinweis")}
       </p>
       <div className="space-y-2">
         {schritte.map((s, i) => (
@@ -306,7 +305,7 @@ function WorkflowConfig({ project }: { project: Project }) {
                 onChange={(v) => aendern(schritte.map((x, j) => j === i ? { ...x, assignee: v } : x))} />
               {s.assignee?.mode && (
                 <button onClick={() => aendern(schritte.map((x, j) => j === i ? { ...x, assignee: {} as AssigneeSpec } : x))}
-                  className="text-xs text-muted hover:text-ink">zurücksetzen</button>
+                  className="text-xs text-muted hover:text-ink">{tr("hardware.zuruecksetzen")}</button>
               )}
             </div>
           </div>
@@ -315,24 +314,22 @@ function WorkflowConfig({ project }: { project: Project }) {
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
         <button onClick={() => aendern([...schritte, { name: "", order: schritte.length, assignee: {} as AssigneeSpec }])}
-          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">+ Schritt</button>
+          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">+ {tr("hardware.schritt")}</button>
         <button onClick={() => speichern.mutate()} disabled={!entwurf}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-40">{tr("hardware.speichern")}</button>
         <button onClick={() => alsProzess.mutate()} disabled={alsProzess.isPending}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
           title={tr("hardware.diese_schrittliste_als_grafischen_workfl")}>
-          🧭 Als Prozess bearbeiten
+          🧭 {tr("hardware.als_prozess_bearbeiten")}
         </button>
       </div>
       {alsProzess.error && (
         <p className="mt-1 text-xs text-red-400">
-          {alsProzess.error instanceof ApiError ? alsProzess.error.message : "Konnte Prozess nicht öffnen."}
+          {alsProzess.error instanceof ApiError ? alsProzess.error.message : tr("hardware.prozess_nicht_offen")}
         </p>
       )}
       <p className="mt-1 text-xs text-muted">
-        Wirkt auf künftige Exemplare; bereits angelegte behalten ihre Schritte. Existiert schon
-        ein grafischer Prozess, wird beim Speichern eine neue Version daraus veröffentlicht —
-        laufende Beschaffungen bleiben auf ihrer alten Version.
+        {tr("hardware.prozess_wirkung")}
       </p>
     </div>
   );

@@ -49,7 +49,7 @@ export default function MyWork() {
       </div>
 
       {(wfTasks?.length ?? 0) > 0 && (
-        <Sektion titel="🧭 Meine offenen Schritte" hinweis="Prozess-Schritte, die auf dich warten (Aufgaben & Freigaben).">
+        <Sektion titel={`🧭 ${tr("my_work.meine_schritte")}`} hinweis={tr("my_work.meine_schritte_hinweis")}>
           <div className="space-y-1.5">
             {wfTasks!.map((t) => (
               <button
@@ -75,20 +75,20 @@ export default function MyWork() {
       )}
 
       {data.action.length > 0 && (
-        <Sektion titel="⚡ Braucht deine Interaktion" hinweis="Ein Agent wartet auf deine Freigabe, Abnahme oder Antwort.">
+        <Sektion titel={`⚡ ${tr("my_work.braucht_dich")}`} hinweis={tr("my_work.braucht_dich_hinweis")}>
           <ProjektGruppen tickets={data.action} />
         </Sektion>
       )}
 
       {data.assigned.length > 0 && (
-        <Sektion titel="📋 Mir zugewiesen" hinweis="Offene Tickets, für die du verantwortlich bist.">
+        <Sektion titel={`📋 ${tr("my_work.mir_zugewiesen")}`} hinweis={tr("my_work.mir_zugewiesen_hinweis")}>
           <ProjektGruppen tickets={data.assigned} />
         </Sektion>
       )}
 
       {leer && (
         <div className="rounded-lg border border-line bg-card p-4 text-sm text-muted">
-          🎉 Nichts wartet auf dich — keine offenen Tickets, die dir zugewiesen sind.
+          🎉 {tr("my_work.nichts_offen")}
         </div>
       )}
 

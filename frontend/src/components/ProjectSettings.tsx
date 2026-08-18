@@ -202,7 +202,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
                 <option value="">{tr("project_settings.persoenlicher_default")}</option>
                 {myTokens?.map((t) => (
                   <option key={t.id} value={`${t.provider}|${t.name}`}>
-                    {PROVIDER_LABEL[t.provider] || t.provider} · {t.name}{t.is_default ? " (dein Default)" : ""}
+                    {PROVIDER_LABEL[t.provider] || t.provider} · {t.name}{t.is_default ? ` (${tr("project_settings.dein_standard")})` : ""}
                   </option>
                 ))}
               </select>
@@ -258,7 +258,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
       {tab === "testenv" && (
       <Section title={tr("project_settings.testumgebung")}>
         <Check label={tr("project_settings.testumgebungs_schritt")}
-          hint="An: Fertige Umsetzungen landen auf „Testen“ statt direkt gemergt zu werden — der Merge passiert erst bei „Auf Fertig setzen“. Aus: altes Verhalten (Auto-Merge → Fertig)."
+          hint={tr("project_settings.hint_testschritt")}
           on={s.testenv_enabled} onChange={(v) => set({ testenv_enabled: v })} />
         <div className="grid grid-cols-2 gap-2">
           <div>
@@ -279,9 +279,9 @@ export default function ProjectSettings({ project }: { project: Project }) {
           )}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <Field label={tr("project_settings.compose_datei")} hint="Relativ zum Worktree."
+          <Field label={tr("project_settings.compose_datei")} hint={tr("project_settings.hint_relativ_worktree")}
             value={s.testenv_compose_file} onChange={(v) => set({ testenv_compose_file: v })} />
-          <Field label={tr("project_settings.dockerfile")} hint="Nur im Dockerfile-Modus."
+          <Field label={tr("project_settings.dockerfile")} hint={tr("project_settings.hint_nur_dockerfile")}
             value={s.testenv_dockerfile} onChange={(v) => set({ testenv_dockerfile: v })} />
         </div>
         <Field label={tr("project_settings.url_vorlage")} hint={tr("project_settings.hint_url_vorlage")}
@@ -289,11 +289,11 @@ export default function ProjectSettings({ project }: { project: Project }) {
         <Field label={tr("project_settings.vorbereitungsbefehle")} textarea
           hint={tr("project_settings.laufen_im_worktree_vor_dem_bauen_eine_zeile_")}
           value={s.testenv_prestart} onChange={(v) => set({ testenv_prestart: v })} />
-        <Field label={tr("project_settings.demo_login_json")} hint='Für Screenshots, z. B. {"user":"demo","pass":"demo"}.'
+        <Field label={tr("project_settings.demo_login_json")} hint={tr("project_settings.hint_demo_login")}
           value={s.testenv_demo_login} onChange={(v) => set({ testenv_demo_login: v })} />
         <div>
-          <label className="text-xs text-muted">Umgebungsvariablen
-            {s.testenv_env_set && <span className="ml-1 text-green-400">· hinterlegt</span>}</label>
+          <label className="text-xs text-muted">{tr("project_settings.umgebungsvariablen")}
+            {s.testenv_env_set && <span className="ml-1 text-green-400">· {tr("project_settings.hinterlegt")}</span>}</label>
           <textarea value={envText} onChange={(e) => setEnvText(e.target.value)} rows={3}
             placeholder={"KEY=wert\nANDERER=wert"}
             className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 font-mono text-xs" />
@@ -309,11 +309,11 @@ export default function ProjectSettings({ project }: { project: Project }) {
       {tab === "deploy" && (
       <>
       <Section title={tr("project_settings.deployment")}>
-        <Check label={tr("project_settings.automatisch_deployen")} hint="Nach Abnahme und Merge baut und startet der Deployer."
+        <Check label={tr("project_settings.automatisch_deployen")} hint={tr("project_settings.hint_auto_deploy")}
           on={s.auto_deploy} onChange={(v) => set({ auto_deploy: v })} />
         {s.auto_deploy && s.use_pull_request && (
           <div className="text-xs text-yellow-400">
-            Hinweis: Mit „Pull Request statt Merge“ wird nichts automatisch deployt — erst nach dem Merge auf GitHub.
+            {tr("project_settings.hinweis_pull_request")}
           </div>
         )}
       </Section>
