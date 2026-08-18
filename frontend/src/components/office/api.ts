@@ -1,56 +1,56 @@
-// Schicht 2 — die Lese-API des „Büros".
+// Layer 2, the read API of the office.
 //
-// Benannte Unter-API im Stil von `processApi`/`workflowApi` in `src/api.ts`: ein flaches Objekt
-// mit drei Aufrufen, alle über den gemeinsamen `api`-Helfer. Der bringt Basis-Pfad `/api`,
-// den `Authorization`-Kopf aus `getToken()` und — wichtig — die harte Weiterleitung bei 401.
-// Deshalb steht hier **keine** eigene 401-Behandlung; sie wäre eine zweite Wahrheit.
+// A named sub API in the style of `processApi`/`workflowApi` in `src/api.ts`: a flat object with
+// three calls, all through the shared `api` helper. That one brings the base path `/api`, the
+// `Authorization` header from `getToken()` and, importantly, the hard redirect on 401. So there
+// is **no** 401 handling of its own here; it would be a second truth.
 //
-// Die Antwort-Typen leben hier und **nicht** in `types.ts`: das ist Schicht 0 und kennt keine
-// API. Was von der Leitung kommt, ist eine Transportform; was der Raum daraus baut, ist der
-// Vertrag. Genau ein Feld überquert die Grenze unverändert — `Ev` —, und das ist Absicht:
-// Historie und Live-Strom entstehen im Backend in derselben Funktion (`services/office.py`
-// `step_events`), also gibt es auch im Frontend nur eine Form.
+// The response types live here and **not** in `types.ts`: that is layer 0 and knows no API. What
+// comes off the wire is a transport form; what the room builds from it is the contract. Exactly
+// one field crosses the border unchanged, `Ev`, and that is deliberate: history and live stream
+// come into being in the backend in the same function (`services/office.py` `step_events`), so
+// there is only one form in the frontend as well.
 //
-// ── Stand der Abstimmung mit dem Backend ────────────────────────────────────────────────────
-// Der Live-Socket (Welle D, `api/office_ws.py`) ist **gegen echten Code** gebaut:
+// ── State of the agreement with the backend ─────────────────────────────────────────────────
+// The live socket (`api/office_ws.py`) is built **against real code**:
 // `/api/ws?token=`, `{"type":"subscribe","scopes":[…]}`, `{"type":"office_ev","ev":{…}}`.
-// Die Lese-Endpunkte (Welle C, `api/office.py`) existierten beim Schreiben dieser Datei
-// noch nicht — Pfade und Feldnamen stehen deshalb nach Plan. Alles, was der Feed nicht selbst
-// braucht, ist `?`-optional; so bricht eine Abweichung im Nebenfeld nicht den Bau, sondern
-// fehlt bloß. Die Stellen, die zwingend passen müssen, sind mit ⚠ markiert.
+// The read endpoints (`api/office.py`) did not exist yet when this file was written, so paths
+// and field names follow the plan. Everything the feed does not need itself is `?` optional, so
+// that a deviation in a side field does not break the build but is simply missing. The places
+// that have to match are marked with ⚠.
 
 import { api } from "../../api";
 import type { Ev, Roster, RunStatus } from "./types.ts";
 
-/** Version des Ereignis-Umschlags (`services/office.py::EVENT_VERSION`). Ändert sich die
- *  Bedeutung eines Feldes, zählt das Backend hoch — und die Ansicht verweigert die Darstellung,
- *  statt eine falsche Deutung zu zeichnen. Lieber ein Hinweis als ein gelogener Raum. */
+/** Version of the event envelope (`services/office.py::EVENT_VERSION`). If the meaning of a
+ *  field changes, the backend counts up, and the view refuses to draw instead of painting a
+ *  wrong reading. Better a note than a room that lies. */
 export const EVENT_VERSION = 1;
 
-// ── Geltungsbereich und Adresse ─────────────────────────────────────────────────────────────
+// ── Scope and address ───────────────────────────────────────────────────────────────────────
 
-/** Woher die Sitzungsliste kommt: aus einem Projekt-Reiter oder von der globalen Seite.
- *  `projectKey` steckt mit drin, weil die globale Seite `?project=KEY` in die URL schreibt
- *  und Kopfzeile wie Filter den Schlüssel zeigen, nicht die Id. */
+/** Where the session list comes from: a project tab or the global page.
+ *  `projectKey` is included because the global page writes `?project=KEY` into the URL and both
+ *  header and filter show the key, not the id. */
 export type Scope =
   | { kind: "project"; projectId: number; projectKey: string }
   | { kind: "global" };
 
 /** Adresse eines Raums. Genau zwei Formen, siehe `services/office.py::session_id`:
- *  `issue:{id}` = der Raum eines Tickets (Planung, Ausführung, Fortsetzungen, Unteragenten),
- *  `run:{root}` = ein Lauf ohne Ticket (Job, Assistent). */
+ *  `issue:{id}` is the room of a ticket (planning, execution, continuations, subagents),
+ *  `run:{root}` a run without a ticket (job, assistant). */
 export interface Sid {
   kind: "issue" | "run";
   ref: number;
 }
 
-/** `Sid` → `"issue:412"`. Dieselbe Zeichenkette steht in jedem Ereignis als `ev.sid`. */
+/** `Sid` becomes `"issue:412"`. The same string stands in every event as `ev.sid`. */
 export function sidKey(sid: Sid): string {
   return `${sid.kind}:${sid.ref}`;
 }
 
-/** `"issue:412"` → `Sid`, sonst `null`. Fail-closed: unlesbare Adressen ergeben keinen Raum,
- *  statt still auf einen falschen zu zeigen. */
+/** `"issue:412"` becomes a `Sid`, otherwise `null`. Fail closed: unreadable addresses yield no
+ *  room instead of silently pointing at a wrong one. */
 export function parseSid(raw: string | null | undefined): Sid | null {
   if (!raw) return null;
   const [kind, ref] = raw.split(":");
@@ -61,13 +61,13 @@ export function parseSid(raw: string | null | undefined): Sid | null {
 
 // ── Antwortformen ───────────────────────────────────────────────────────────────────────────
 
-/** Welche Räume die Liste überhaupt zurückgibt (`services`/`api/office.py::SESSION_STATUS`).
- *  `live` heißt dort **nicht** „Status running in der Datenbank", sondern „running **und**
- *  jünger als das Live-Fenster" — nach einem Worker-Absturz bliebe `running` sonst für immer
- *  stehen und der Kiosk zeigte einen Raum, in dem nie wieder etwas passiert. */
+/** Which rooms the list returns at all (`api/office.py::SESSION_STATUS`). `live` there does
+ *  **not** mean "status running in the database" but "running **and** younger than the live
+ *  window": after a worker crash `running` would otherwise stand forever and the kiosk would
+ *  show a room in which nothing will ever happen again. */
 export type SessionStatus = "all" | "live" | "recent";
 
-/** Eine Sitzung in der Liste — ein Raum, noch nicht betreten. */
+/** One session in the list: a room, not yet entered. */
 export interface SessionSummary {
   /** ⚠ `"issue:412"` / `"run:8871"`. */
   sid: string;
@@ -77,71 +77,71 @@ export interface SessionSummary {
   issue_key?: string | null;
   project_id?: number | null;
   project_key?: string | null;
-  /** Status der Sitzung: läuft noch etwas, oder wie ist sie ausgegangen. */
+  /** Status of the session: is something still running, or how did it end. */
   status?: RunStatus;
-  /** Wie viele Läufe zu diesem Raum gehören (Wurzel + Fortsetzungen + Unteragenten). */
+  /** How many runs belong to this room (root plus continuations plus subagents). */
   runs?: number;
   started_at?: string | null;
   ended_at?: string | null;
-  /** Jüngster Zeitstempel dieses Raums (ISO). Das Backend liefert ihn seit jeher und
-   *  sortiert die Liste danach; deklariert war er hier bloß nie. Der Kiosk braucht ihn:
-   *  ein Raum, in dem 90 s nichts geschah, ist der falsche für einen Wandschirm. */
+  /** Newest timestamp of this room (ISO). The backend has always delivered it and sorts the
+   *  list by it; it was simply never declared here. The kiosk needs it: a room in which nothing
+   *  happened for 90 s is the wrong one for a wall screen. */
   last_event_at?: string | null;
-  /** Mindestens ein Lauf ist `running`. */
+  /** At least one run is `running`. */
   live?: boolean;
-  /** Die Schritte sind der Aufbewahrung zum Opfer gefallen — der Raum bleibt leer,
-   *  die Kosten stimmen trotzdem (`CostEntry.run_id` ist `SET NULL`). */
+  /** The steps fell victim to the retention: the room stays empty, the cost is right anyway
+   *  (`CostEntry.run_id` is `SET NULL`). */
   purged?: boolean;
   cost_usd?: number;
   cost_priced?: boolean | null;
 }
 
-/** Umschlag der Sitzungsliste. Liefert das Backend ein nacktes Feld, baut `sessions()` den
- *  Umschlag selbst — siehe dort. */
+/** Envelope of the session list. If the backend delivers a bare array, `sessions()` builds the
+ *  envelope itself, see there. */
 export interface SessionList {
   sessions: SessionSummary[];
-  /** Wie viele es insgesamt gäbe, falls die Antwort gekappt wurde. */
+  /** How many there would be in total, if the answer was truncated. */
   total?: number;
 }
 
-/** Eine Seite des Ereignisfensters. */
+/** One page of the event window. */
 export interface EventPage {
-  /** ⚠ Die Ereignisse selbst, aufsteigend nach `seq`. */
+  /** ⚠ The events themselves, ascending by `seq`. */
   events: Ev[];
-  /** ⚠ Roster direkt aus `runs` — nur auf der ersten Seite verlässlich befüllt.
-   *  Er verdient seinen Platz, weil vom **ältesten** Ende gekappt wird: ohne ihn gingen bei
-   *  einer langen Sitzung die `run_start`-Ereignisse verloren und der Raum bliebe leer. */
+  /** ⚠ Roster straight from `runs`, reliably filled on the first page only. It earns its place
+   *  because truncation happens at the **oldest** end: without it the `run_start` events of a
+   *  long session would be lost and the room would stay empty. */
   agents?: Roster;
   sid?: string;
   title?: string;
   issue_key?: string | null;
   project_id?: number | null;
   project_key?: string | null;
-  /** Kleinste bzw. größte gelieferte `seq` dieser Seite. */
+  /** Smallest and largest `seq` delivered on this page. */
   seq_from?: number | null;
   seq_to?: number | null;
-  /** Vom ältesten Ende gekappt — es gibt ältere Ereignisse, die nicht mitkommen. */
+  /** Truncated at the oldest end: there are older events that do not come along. */
   truncated?: boolean;
   purged?: boolean;
   live?: boolean;
 
-  // ── Nur bei `GET /office/events` (alle Sitzungen) ────────────────────────────────────────
-  // Dieser Schnappschuss hat keine `sid`; an ihrer Stelle steht das Fenster. Die Felder
-  // liegen hier und nicht in einem eigenen Typ, weil das Frontend beide Schnappschüsse durch
-  // **denselben** Weg schickt — zwei Formen wären zwei Wege durch `useOfficeFeed`.
-  /** `"all"`, wenn die Antwort mehrere Sitzungen mischt. */
+  // ── Only on `GET /office/events` (all sessions) ─────────────────────────────────────────
+  // This snapshot has no `sid`; the window stands in its place. The fields live here and not in
+  // a type of their own, because the frontend sends both snapshots through the **same** path,
+  // and two forms would be two paths through `useOfficeFeed`.
+  /** `"all"` when the answer mixes several sessions. */
   scope?: string;
-  /** Das gemessene Fenster in Stunden — vom Server geklemmt, deshalb kommt es zurück. */
+  /** The measured window in hours, clamped by the server, which is why it comes back. */
   since_hours?: number;
   window_from?: string | null;
   window_to?: string | null;
-  /** Wie viele Sitzungen bzw. Läufe im Fenster zusammenkamen. */
+  /** How many sessions and runs came together in the window. */
   sessions?: number;
   runs?: number;
 }
 
-/** Kosten je Modell. `priced` ist die Unterscheidung, die Traccoon heute fehlt:
- *  ein Katalogeintrag mit 0,00 ist *bepreist und gratis*, gar kein Eintrag ist *unbekannt*. */
+/** Cost per model. `priced` is the distinction that used to be missing: a catalog entry of 0.00
+ *  is *priced and free*, no entry at all is *unknown*. */
 export interface CostByModel {
   provider?: string | null;
   model?: string | null;
@@ -153,12 +153,12 @@ export interface CostByModel {
   calls?: number;
 }
 
-/** Kosten eines Raums, zweigleisig: abgerechnet (aus `CostEntry`, autoritativ) und geschätzt
- *  (Schritt-Tokens gegen den aktuellen Katalog — richtig auch bei einem Fallback-Lauf). */
+/** Cost of a room, on two tracks: billed (from `CostEntry`, authoritative) and estimated (step
+ *  tokens against the current catalog, right on a fallback run as well). */
 export interface CostRollup {
   cost_usd_billed?: number;
   cost_usd_estimated?: number;
-  /** Mindestens ein Modellzug hat keinen Katalogeintrag → die Anzeige stellt ein „≥" davor. */
+  /** At least one model turn has no catalog entry, so the display puts a "≥" in front. */
   cost_partial?: boolean;
   in_tokens?: number;
   out_tokens?: number;
@@ -170,32 +170,32 @@ export interface CostRollup {
 
 // ── Personalakte: Kennzahlen je Rolle ───────────────────────────────────────────────────────
 //
-// Ein Aggregat über **Rollen**, nicht über Läufe — die eine Achse, die dem Roster fehlt. Alles
-// darin ist **fertig gerechnet vom Server**, und das ist keine Bequemlichkeit, sondern der
-// ganze Punkt: sobald irgendwo hier `success / runs` stünde, wäre die alte Lüge zurück
-// (`architect` 6 % statt 78 %, `project_manager` 0 % statt 64 %, weil `planned` und `blocked`
-// dort als Fehlschlag gezählt würden). Das Frontend darf diese Zahlen **anzeigen** und
-// nebeneinanderstellen — nicht herleiten.
+// An aggregate over **roles**, not over runs: the one axis the roster lacks. Everything in it is
+// **computed by the server**, and that is not convenience but the whole point: the moment
+// `success / runs` stood anywhere here, the old lie would be back (`architect` at 6 % instead of
+// 78 %, `project_manager` at 0 % instead of 64 %, because `planned` and `blocked` would count as
+// failures there). The frontend may **display** these numbers and put them side by side, not
+// derive them.
 //
-// ⚠ Stand: `GET /office/agents` entsteht in der Nebenwelle (`api/office.py`) und existierte
-// beim Schreiben dieser Datei noch nicht. Alles außer `agent` ist deshalb `?`-optional: eine
-// Abweichung im Nebenfeld lässt die Akte lückenhaft, aber nicht kaputt.
+// ⚠ State: `GET /office/agents` came later (`api/office.py`) and did not exist when this file
+// was written. Everything except `agent` is therefore `?` optional: a deviation in a side field
+// leaves the file with gaps but not broken.
 
-/** Dauerverteilung einer Rolle. **Kein Mittelwert** — eine Sitzung lief 36,5 Stunden und zöge
- *  jeden Durchschnitt in die Sinnlosigkeit. Median, p90, Maximum und ein Histogramm sagen
- *  stattdessen, wie die Läufe wirklich verteilt sind. */
+/** Duration distribution of a role. **No average**: one session ran 36.5 hours and would drag
+ *  any average into meaninglessness. Median, p90, maximum and a histogram say instead how the
+ *  runs are really distributed. */
 export interface AgentDuration {
   p50_ms?: number | null;
   p90_ms?: number | null;
   max_ms?: number | null;
-  /** Feste Eimer, aufsteigend. `lt_ms` ist die **obere** Grenze; fehlt sie, ist es der
-   *  offene Eimer ganz oben („darüber"). Serverseitig als `CASE WHEN` gezählt, weil die
-   *  Tests auf SQLite laufen und dort kein `percentile_cont` existiert. */
+  /** Fixed buckets, ascending. `lt_ms` is the **upper** bound; when it is missing this is the
+   *  open bucket at the top ("above"). Counted server side as a `CASE WHEN`, because the tests
+   *  run on SQLite and there is no `percentile_cont` there. */
   buckets?: { lt_ms?: number | null; n?: number }[];
 }
 
-/** Ein Werkzeug in der Rangliste einer Rolle. `failed` ist eine eigene Zahl und keine
- *  Ableitung aus `n - ok`: „unbekannt" (Altdaten ohne gemessenes Ergebnis) ist weder das eine
+/** One tool in the ranking of a role. `failed` is a number of its own and not derived from
+ *  `n - ok`: "unknown" (old data without a measured result) is neither one nor the other. */
  *  noch das andere. */
 export interface AgentTool {
   tool: string;
@@ -204,27 +204,27 @@ export interface AgentTool {
   failed?: number;
 }
 
-/** Die Akte einer Rolle. */
+/** The file of one role. */
 export interface AgentRecord {
-  /** ⚠ Der Rollenname (`runs.agent`), z. B. `developer`. Die Identität der Zeile. */
+  /** ⚠ The role name (`runs.agent`), `developer` for instance. The identity of the row. */
   agent: string;
   runs?: number;
   running?: number;
-  /** Rohe Statuszählung, unverdichtet — damit sichtbar bleibt, woher die drei Balken kommen. */
+  /** Raw status counts, undistilled, so that it stays visible where the three bars come from. */
   by_status?: Record<string, number>;
   /** Abgeliefert (`success` + `planned`). */
   delivered?: number;
-  /** Wartet auf einen Menschen (`blocked`). */
+  /** Waiting for a person (`blocked`). */
   waiting?: number;
   /** Abgebrochen (`failed` + `loop_exhausted`). */
   aborted?: number;
   cost_usd?: number;
-  /** Mindestens ein Posten ist unbepreist → die Anzeige stellt ein „≥" davor. */
+  /** At least one entry is unpriced, so the display puts a "≥" in front. */
   cost_partial?: boolean;
   in_tokens?: number;
   out_tokens?: number;
   cache_read_tokens?: number;
-  /** **Runden** der Agentenschleife (Ø 6,9 im Bestand) — nicht dasselbe wie Schritte. */
+  /** **Rounds** of the agent loop (6.9 on average here), not the same as steps. */
   iterations_avg?: number;
   iterations_max?: number;
   /** **Schritte** im Ereignisstrom (Ø 21,5 im Bestand). */
@@ -235,19 +235,19 @@ export interface AgentRecord {
   last_run_at?: string | null;
 }
 
-/** Umschlag der Akte. `since_hours` kommt **zurück**, weil der Server klemmt
- *  (`SINCE_HOURS_MAX`) — die Überschrift soll das Fenster nennen, das gemessen wurde, nicht
- *  das, das erbeten war. */
+/** Envelope of the file. `since_hours` comes **back**, because the server clamps
+ *  (`SINCE_HOURS_MAX`): the heading should name the window that was measured, not the one that
+ *  was asked for. */
 export interface AgentRecordList {
   agents: AgentRecord[];
   since_hours?: number;
 }
 
-// ── Die Aufrufe ─────────────────────────────────────────────────────────────────────────────
+// ── The calls ───────────────────────────────────────────────────────────────────────────────
 
-/** Obergrenze einer Ereignisseite. Das Backend deckelt selbst (`EVENT_CAP_MAX = 20 000`);
- *  4 000 ist der Wert aus dem Plan und hält eine Seite klein genug, dass der Schub beim
- *  Nachziehen nicht zur Ruckelquelle wird. */
+/** Upper bound of one event page. The backend caps by itself (`EVENT_CAP_MAX = 20 000`); 4 000
+ *  is the value from the plan and keeps a page small enough that the burst while replaying does
+ *  not become a source of judder. */
 export const EVENT_PAGE_LIMIT = 4000;
 
 function qs(params: Record<string, string | number | boolean | undefined>): string {
@@ -260,19 +260,19 @@ function qs(params: Record<string, string | number | boolean | undefined>): stri
 }
 
 export const officeApi = {
-  /** Räume, die dieser Nutzer sehen darf.
+  /** Rooms this user may see.
    *
-   *  Zwei Pfade, ein Ergebnis: der Projekt-Reiter fragt unter dem Projekt (Zugriff prüft
-   *  `get_project_access`, Fremde bekommen 404), die globale Seite fragt übergreifend.
-   *  `projectId` **verengt** dort nur — autorisiert wird es nie. */
+   *  Two paths, one result: the project tab asks under the project (access is checked by
+   *  `get_project_access`, strangers get 404), the global page asks across everything.
+   *  `projectId` only **narrows** there, it never authorises. */
   sessions: (scope: Scope,
              opts?: { limit?: number; projectId?: number; sinceHours?: number;
                       status?: SessionStatus }): Promise<SessionList> => {
     const path = scope.kind === "project"
       ? `/projects/${scope.projectId}/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours, status: opts?.status })}`
       : `/office/sessions${qs({ limit: opts?.limit, since_hours: opts?.sinceHours, project_id: opts?.projectId, status: opts?.status })}`;
-    // Ob der Umschlag `{sessions: […]}` heißt oder ein nacktes Feld ist, entscheidet Welle C.
-    // Beides wird hier zum selben Ergebnis — das ist billiger als eine Rückfrage und
+    // Whether the envelope is `{sessions: […]}` or a bare array is decided by the backend. Both
+    // become the same result here, which is cheaper than asking and
     // überlebt die Abstimmung in beide Richtungen.
     return api.get<SessionList | SessionSummary[]>(path)
       .then((r) => (Array.isArray(r) ? { sessions: r } : r));
