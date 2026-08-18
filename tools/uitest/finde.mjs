@@ -1,4 +1,4 @@
-// Zeigt zu einer Seite die innersten Elemente, deren Inhalt breiter ist als sie selbst.
+// Shows, for one page, the innermost elements whose content is wider than they are.
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();

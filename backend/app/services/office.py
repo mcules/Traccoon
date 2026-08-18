@@ -1,41 +1,41 @@
-"""Büro (office) — die Naht zwischen Datenbank und Ansicht.
+"""Office: the seam between database and view.
 
-Alles, was das Büro je zu sehen bekommt, geht durch `step_events`. Die Historie-API liest
-`run_steps` und ruft sie; der Worker schreibt eine Zeile und ruft sie über `publish_step`.
-Damit ist die *identische Form* beider Ströme gebaut und nicht bloß vereinbart — es gibt
-keinen zweiten Ort, an dem ein Ereignis entstehen könnte, und also auch keinen, an dem
-Live-Ansicht und Nachlese auseinanderlaufen könnten.
+Everything the office ever sees goes through `step_events`. The history API reads
+`run_steps` and calls it; the worker writes a row and calls it through `publish_step`.
+That makes the *identical shape* of both streams built rather than merely agreed: there is
+no second place where an event could come into being, and therefore none where the live
+view and the replay could drift apart.
 
-**Reihenfolge** ist `seq`, nie `ts`. `seq = run_steps.id * 4 + slot`: die Zeilen-ID ist
-SERIAL, global monoton und exakt die Ankunftsreihenfolge — ein eigener Zähler wäre eine
-zweite Wahrheit. Vier Slots je Zeile, damit eine Zeile mehr als ein Ereignis tragen kann:
+**Order** is `seq`, never `ts`. `seq = run_steps.id * 4 + slot`: the row id is SERIAL,
+globally monotonic and exactly the arrival order, and a counter of our own would be a
+second truth. Four slots per row so that one row can carry more than one event:
 
-    0  synthetisierter Vorgänger (nur bei Altzeilen: der `tool_start` zur `tool_result`)
+    0  synthesised predecessor (old rows only: the `tool_start` for a `tool_result`)
     1  Hauptereignis
     2  abgeleiteter Begleiter (`usage`, `file_edit`, `agent_spawn`)
-    3  reserviert — und Platz für die `run_end`-Grenze hinter der letzten Zeile
+    3  reserved, and room for the `run_end` boundary behind the last row
 
-`2e9 * 4 < 2^53`, die Zahl bleibt in JavaScript exakt.
+`2e9 * 4 < 2^53`, so the number stays exact in JavaScript.
 
-**Slot 3 hat zwei Bewerber, und die Vorrangregel steht hier:** die synthetisierte
-`run_end`-Grenze gewinnt, ein **Bestands**-Deployment weicht auf Slot 3 der
-vorhergehenden Schrittzeile aus (`deploy_anchor_step_id`). Das betrifft ausschließlich
-den Altpfad — ein neues Deployment schreibt über den Watcher (`services/deploy_watch.py`)
-eine echte `run_steps`-Zeile und bekommt Slot 1 wie alles andere. Ein nachträglich
-eingefügter Schritt kam nicht in Frage: neue SERIAL-Ids liegen oberhalb *jedes*
-existierenden Schritts, ein Juli-Deploy sortierte damit ans Ende jeder Sitzung — `seq`
-**ist** die Ankunftsreihenfolge, und ein Backfill löge über sie.
+**Slot 3 has two candidates, and the precedence rule lives here:** the synthesised
+`run_end` boundary wins, and a **legacy** deployment moves to slot 3 of the preceding
+step row (`deploy_anchor_step_id`). This concerns the old path only: a new deployment
+writes a real `run_steps` row through the watcher (`services/deploy_watch.py`) and gets
+slot 1 like everything else. Inserting a step afterwards was no option: new SERIAL ids sit
+above *every* existing step, so a July deploy would sort to the end of every session.
+`seq` **is** the arrival order, and a backfill would lie about it.
 
-**`thinking` ist reserviert und wird nie emittiert.** Kein Provider-Adapter liefert
-Denkblöcke; ein erfundenes Denken würde die Farben der Zeitleiste vergiften und Zeit
-behaupten, die niemand gemessen hat. Die Art steht im Vertrag, damit sie später ohne
-Versionssprung dazukommen kann — nicht, damit heute jemand sie füllt.
 
-**Altdaten replayen.** Jede vor der Instrumentierung geschriebene Zeile hat `kind=''` und
-wird beim Lesen aus `role` + `content` rekonstruiert. Ohne das startet das Büro leer.
+**`thinking` is reserved and never emitted.** No provider adapter delivers thinking blocks;
+invented thinking would poison the colours of the timeline and claim time nobody measured.
+The kind is in the contract so it can be added later without a version jump, not so that
+somebody fills it today.
 
-**Nie geraten.** `ok` ist dreiwertig; wo der Erfolg nicht belegt ist, steht `None`. Ein
-geratenes `True` wäre eine Lüge, die die Ansicht grün malt.
+**Replaying old data.** Every row written before the instrumentation has `kind=''` and is
+rebuilt from `role` + `content` while reading. Without that the office starts empty.
+
+**Never guess.** `ok` has three values, and where success is not proven it is `None`. A
+guessed `True` would be a lie that paints the view green.
 """
 from __future__ import annotations
 
@@ -53,16 +53,16 @@ from ..models.agents import RunStep
 
 log = logging.getLogger("office")
 
-# Version des Umschlags. Erhöhen, wenn ein Feld seine Bedeutung ändert — das Frontend
-# verweigert dann die Anzeige, statt eine falsche Deutung zu zeichnen. Eine Art
-# *hinzuzufügen* ist dagegen additiv und bleibt bei 1: `deploy` deutet kein bestehendes
-# Feld um, und ein Sprung auf 2 ließe jede laufende Oberfläche die Anzeige verweigern —
-# für einen Zweig, den sie schlicht ignorieren kann.
+# Version of the envelope. Raise it when a field changes its meaning: the frontend then
+# refuses to draw rather than paint a wrong reading. *Adding* a kind is additive and stays
+# at 1: `deploy` reinterprets no existing field, and a jump to 2 would make every running
+# interface refuse to draw, for a branch it can simply ignore.
+
 EVENT_VERSION = 1
-# EIN globaler Kanal; Fan-out und Autorisierung macht die WS-Brücke. Ein Kanal je Projekt
-# hätte projektlose Läufe nicht abbilden können und 40 Abos je Nutzer bedeutet.
+# ONE global channel; fan out and authorisation are the job of the websocket bridge. A
+# channel per project could not carry projectless runs and would mean 40 subscriptions per user.
 CHANNEL = f"{PREFIX}office"
-# Wie weit ein Ereignis „gerade eben" ist (Anschluss an den Live-Strom nach dem Snapshot).
+# How recent an event counts as "just now" (joining the live stream after the snapshot).
 LIVE_WINDOW_MS = 90_000
 EVENT_CAP_DEFAULT = 4_000
 EVENT_CAP_MAX = 20_000
@@ -74,37 +74,37 @@ SLOT_MAIN = 1
 SLOT_DERIVED = 2
 SLOT_TAIL = 3   # `run_end`-Grenze; im Altpfad geliehen für ein Bestands-Deployment
 
-# Der vollständige Vertrag. `thinking` steht bewusst dabei und wird nie erzeugt.
+# The full contract. `thinking` is deliberately listed and never produced.
 KINDS = (
     "session_seen", "run_start", "user_message", "agent_text", "thinking", "usage",
     "tool_start", "tool_result", "file_edit", "agent_spawn", "run_end", "system",
     "deploy",
 )
 
-# Die vier Zustände, die der Serverschrank zeigen kann. `back` (rolledback) ist bewusst
-# nicht mit `fail` zusammengelegt: gescheitert UND geheilt ist die einzige gute Nachricht
-# im Fehlerfall, und beim Zusammenlegen ginge genau sie verloren.
+# The four states the server rack can show. `back` (rolledback) is deliberately not merged
+# with `fail`: failed AND healed is the only good news in a failure, and merging would lose
+# exactly that.
 DEPLOY_STATES = ("start", "ok", "fail", "back")
 DEPLOY_STATE_BY_STATUS = {
     "building": "start", "ok": "ok", "failed": "fail", "rolledback": "back",
 }
-# Dieselbe Breite wie die Liste in `api/deployments.py` — beide zeigen denselben Anriss
-# desselben Logs, und zwei Breiten wären zwei Wahrheiten über „was stand am Anfang".
+# The same width as the list in `api/deployments.py`: both show the same excerpt of the same
+# log, and two widths would be two truths about "what stood at the beginning".
 DEPLOY_LOG_HEAD_CHARS = 240
 
-# Kürzungsgrenzen — der Raum zeigt Vorschauen, nicht Volltexte.
+# Truncation limits: the room shows previews, not full texts.
 ARGS_PREVIEW_CHARS = 400
 RESULT_PREVIEW_CHARS = 2000
 
-# Was die Laufzeit wirklich als Fehler zurückgibt (worker/runtime.py, mcp_client.py,
-# tools_memory.py, codegraph.py). Alles andere ist unbekannt, nicht erfolgreich.
+# What the runtime really returns as an error (worker/runtime.py, mcp_client.py,
+# tools_memory.py, codegraph.py). Everything else is unknown, not successful.
 ERROR_PREFIXES = ("FEHLER:", "FEHLER ", "TOOL-FEHLER:", "FS-FEHLER:", "CHECK-FEHLER:", "❌", "⛔")
 
-# Aus welchem Argument die Beschriftung eines Werkzeugs kommt. Explizite Tabelle statt
-# Heuristik, und in derselben Schlüsselreihenfolge wie `worker/perms.resource_of` — damit
-# der Raum dasselbe beschriftet, was im Berechtigungsdialog stand. MCP-Werkzeuge
-# (`server__tool`) fehlen absichtlich: ihre Argumentnamen sind unbeschränkt, jede Regel
-# dafür wäre geraten.
+# Which argument gives a tool its label. An explicit table instead of a heuristic, in the
+# same key order as `worker/perms.resource_of`, so the room labels the same thing the
+# permission dialog showed. Tool server tools (`server__tool`) are missing on purpose:
+# their argument names are unbounded, and any rule for them would be a guess.
+
 TOOL_TARGET_KEYS: dict[str, tuple[str, ...]] = {
     "fs_read": ("path",),
     "fs_write": ("path",),
@@ -118,14 +118,14 @@ TOOL_TARGET_KEYS: dict[str, tuple[str, ...]] = {
     "traccoon_http_call": ("path", "url"),
 }
 
-# Werkzeuge, die eine Datei hinterlassen — nur sie bekommen den `file_edit`-Begleiter.
+# Tools that leave a file behind: only they get the `file_edit` companion.
 EDIT_TOOLS = ("fs_write", "fs_edit")
 
-# Verdikt eines Laufs. `blocked`/`running` sind weder das eine noch das andere → None.
+# Verdict of a run. `blocked`/`running` are neither one nor the other, hence None.
 OK_STATUS = ("success", "planned")
 FAIL_STATUS = ("failed", "loop_exhausted")
 
-# Trenner zwischen Argumenten und Ergebnis in den Alt-Werkzeugzeilen
+# Separator between arguments and result in the old tool rows
 # (`worker/runtime.py`: f"args={…}\n→ {…}").
 LEGACY_SPLIT = "\n→ "
 
@@ -134,11 +134,11 @@ LEGACY_SPLIT = "\n→ "
 
 @dataclass
 class RunCtx:
-    """Alles, was ein Ereignis über seinen Lauf wissen muss — ohne DB-Zugriff.
+    """Everything an event needs to know about its run, without touching the database.
 
-    Der Worker hält eine Instanz über den ganzen Lauf und zählt `seq` hoch; die Lese-API
-    baut sie einmal je Lauf aus der `runs`-Zeile. Kein Feld hier wird nachgeschlagen: die
-    WS-Brücke autorisiert je Ereignis, und eine Query je Ereignis wäre nicht bezahlbar.
+    The worker keeps one instance for the whole run and counts `seq` up; the read API builds
+    it once per run from the `runs` row. No field here is looked up: the websocket bridge
+    authorises per event, and a query per event would not be affordable.
     """
 
     run_id: int
@@ -178,14 +178,14 @@ class RunCtx:
 
 
 def session_id(run) -> str:
-    """Adresse des Raums, zu dem ein Lauf gehört.
+    """Address of the room a run belongs to.
 
-    Ein Ticket ist ein Raum: Planungslauf, Ausführung, Fortsetzungen und alle Unteragenten
-    gehören zusammen. Ein einzelner `Run` wäre zu klein (der Unteragent bekäme ein eigenes
-    Büro), ein Projekt zu groß. Läufe ohne Ticket (Job, Assistent) adressieren über ihre
-    Wurzel — mehr als einen Sprung nach oben kennt die Zeile nicht, tiefer verschachtelte
-    Unterläufe landen deshalb am Zwischenlauf. Für die Anzeige reicht das, weil ohne Ticket
-    ohnehin nur eine Kette entsteht.
+    A ticket is a room: the planning run, the execution, continuations and every subagent
+    belong together. A single `Run` would be too small (a subagent would get an office of its
+    own), a project too large. Runs without a ticket (job, assistant) address through their
+    root, and the row knows only one hop upwards, so more deeply nested subruns end up at the
+    intermediate run. That is enough for the view, because without a ticket there is only one
+    chain anyway.
     """
     if run.issue_id:
         return f"issue:{run.issue_id}"
@@ -193,7 +193,7 @@ def session_id(run) -> str:
 
 
 def kind_from_role(role: str) -> str:
-    """Ereignis-Art einer Altzeile aus ihrer `role`."""
+    """Event kind of an old row, taken from its `role`."""
     r = (role or "").strip().lower()
     if r == "assistant":
         return "agent_text"
@@ -203,7 +203,7 @@ def kind_from_role(role: str) -> str:
 
 
 def tool_target(tool: str, args: dict | None) -> str | None:
-    """Womit das Werkzeug beschriftet wird — oder None, wenn nichts Sicheres da ist."""
+    """What the tool is labelled with, or None when nothing certain is there."""
     for key in TOOL_TARGET_KEYS.get(tool or "", ()):
         value = (args or {}).get(key)
         if isinstance(value, str) and value.strip():
@@ -212,11 +212,11 @@ def tool_target(tool: str, args: dict | None) -> str | None:
 
 
 def tool_ok(result: str) -> bool | None:
-    """False bei einem belegten Fehler, sonst None. Niemals ein geratenes True.
+    """False on a proven failure, otherwise None. Never a guessed True.
 
-    Die Laufzeit meldet Erfolg nicht — sie gibt einfach das Ergebnis zurück. „Kein
-    Fehlerpräfix" heißt deshalb nur „nicht als Fehler erkannt", und genau das ist `None`.
-    Erst die Instrumentierung (Welle B) weiß, ob ein Aufruf durchlief, und schreibt `True`.
+    The runtime does not report success, it simply returns the result. "No error prefix"
+    therefore only means "not recognised as an error", and that is exactly `None`. Only the
+    instrumentation knows whether a call went through, and writes `True`.
     """
     text = (result or "").lstrip()
     if not text:
@@ -227,15 +227,15 @@ def tool_ok(result: str) -> bool | None:
 # ── Umschlag ────────────────────────────────────────────────────────────────
 
 def _as_utc(value: dt.datetime | None) -> dt.datetime | None:
-    """Naive Zeitstempel als UTC lesen (SQLite liefert sie ohne Zone). Ohne das wirft ein
-    Vergleich zwischen zwei Zeilen je nach Datenbank einen TypeError oder Stunden."""
+    """Read naive timestamps as UTC (SQLite delivers them without a zone). Without this a
+    comparison of two rows throws a TypeError or is off by hours, depending on the database."""
     if value is None:
         return None
     return value.replace(tzinfo=dt.timezone.utc) if value.tzinfo is None else value
 
 
 def _ts(value: dt.datetime | None) -> str:
-    """ISO-8601 in UTC mit Millisekunden. Naive Zeitstempel gelten als UTC (SQLite liefert
+    """ISO-8601 in UTC with milliseconds. Naive timestamps count as UTC (SQLite delivers
     sie ohne Zone) — sonst verschöbe dieselbe Zeile je nach Datenbank um Stunden."""
     if value is None:
         value = dt.datetime.now(dt.timezone.utc)
@@ -245,15 +245,15 @@ def _ts(value: dt.datetime | None) -> str:
     return f"{value:%Y-%m-%dT%H:%M:%S}.{value.microsecond // 1000:03d}Z"
 
 
-# Öffentlicher Name für `_ts`. Wer eine Zeit **in** ein fertiges Ereignis schreibt (die
-# Fensterklemmung von `GET /office/events`), muss exakt denselben Text erzeugen wie der, der
-# das Ereignis gebaut hat — zwei Schreibweisen desselben Moments wären zwei Zeitachsen.
+# Public name for `_ts`. Whoever writes a time **into** a finished event (the window clamp of
+# `GET /office/events`) has to produce exactly the same text as whoever built the event: two
+# spellings of the same moment would be two timelines.
 ts_text = _ts
 
 
 def _event(ctx: RunCtx, *, seq: int, ts: str, kind: str, **fields: Any) -> dict:
-    """Der gemeinsame Umschlag. `project_id`/`owner_id` hängen an JEDEM Ereignis, damit die
-    WS-Brücke ohne DB-Zugriff entscheiden kann, wer es sehen darf."""
+    """The shared envelope. `project_id`/`owner_id` hang on EVERY event so the websocket
+    bridge can decide who may see it without touching the database."""
     return {
         "v": EVENT_VERSION, "seq": seq, "ts": ts, "sid": ctx.sid,
         "project_id": ctx.project_id, "owner_id": ctx.owner_id,
@@ -267,10 +267,10 @@ def _seq(step_id: int, slot: int) -> int:
 
 
 def _parse_args(raw: str) -> dict:
-    """Argumente aus einer Vorschau lesen, soweit sie lesbar sind. Kein Fehler, wenn nicht —
+    """Read arguments out of a preview as far as they are readable. No error when they are not,
     die Vorschau ist gekürzt und darf mitten im JSON abbrechen."""
     text = (raw or "").strip()
-    # „args=" ist die Formatierung der alten Werkzeugzeile, kein Inhalt.
+    # "args=" is the formatting of the old tool row, not content.
     if text.startswith("args="):
         text = text[len("args="):].strip()
     if not text.startswith("{"):
@@ -286,13 +286,13 @@ def _args_of(step) -> dict:
     return _parse_args(step.content)
 
 
-# ── Die Naht ────────────────────────────────────────────────────────────────
+# ── The seam ────────────────────────────────────────────────────────────────
 
 def step_events(step, ctx: RunCtx) -> list[dict]:
-    """Eine `run_steps`-Zeile → die Ereignisse, die sie im Raum auslöst.
+    """One `run_steps` row turned into the events it causes in the room.
 
-    Rein: keine DB, keine Uhr, keine Zufälligkeit. Nur so kann die Ansicht deterministisch
-    zurückspulen und nur so liefern Historie und Live-Strom garantiert dasselbe.
+    Pure: no database, no clock, no randomness. Only that way can the view rewind
+    deterministically, and only that way do history and live stream deliver the same thing.
     """
     kind = (getattr(step, "kind", "") or "").strip()
     if not kind:
@@ -315,15 +315,15 @@ def step_events(step, ctx: RunCtx) -> list[dict]:
                           task_id=ctx.task_id, issue_key=ctx.issue_key))
 
     elif kind == "user_message":
-        # Die Quelle steht im `target` — eine eigene Spalte dafür wäre eine Spalte für ein
-        # einziges Wort in einer von zehn Ereignisarten.
+        # The source sits in `target`: a column of its own would be a column for a single
+        # word in one of ten event kinds.
         out.append(_event(ctx, seq=main, ts=ts, kind="user_message",
                           source=(step.target or "system"), text=step.content or ""))
 
     elif kind == "agent_text":
         text = (step.content or "").strip()
-        # „(Tool-Call)" ist der Platzhalter der Laufzeit für einen Zug ohne Text. Ungefiltert
-        # sagte jeder Agent alle paar Sekunden „(Tool-Call)" in den Raum.
+        # "(Tool-Call)" is the runtime's placeholder for a turn without text. Unfiltered,
+        # every agent would say "(Tool-Call)" into the room every few seconds.
         if text and text != "(Tool-Call)":
             out.append(_event(ctx, seq=main, ts=ts, kind="agent_text", text=step.content))
         out.extend(_usage_event(step, ctx, seq=derived, ts=ts))
@@ -337,9 +337,9 @@ def step_events(step, ctx: RunCtx) -> list[dict]:
                           tool=tool, target=(step.target or tool_target(tool, args)),
                           tool_use_id=step.tool_use_id,
                           args_preview=(step.content or "")[:ARGS_PREVIEW_CHARS]))
-        # Der Spawn hängt am Werkzeugstart, nicht am Ergebnis: `delegate` wartet den
-        # Unterlauf inline ab, die Ergebniszeile entsteht also erst bei dessen ENDE — der
-        # Unteragent säße dann rückwirkend am Schreibtisch.
+        # The spawn hangs on the tool start, not on the result: `delegate` awaits the subrun
+        # inline, so the result row appears only at its END, and the subagent would be sitting
+        # at the desk retroactively.
         if tool == "delegate":
             out.append(_event(ctx, seq=derived, ts=ts, kind="agent_spawn",
                               child_role=(step.target or args.get("role") or ""),
@@ -353,8 +353,8 @@ def step_events(step, ctx: RunCtx) -> list[dict]:
                                  if step.ok is False else ""),
                           duration_ms=step.duration_ms,
                           result_preview=(step.content or "")[:RESULT_PREVIEW_CHARS]))
-        # Nur bei belegtem Erfolg: ein fehlgeschlagenes fs_write hat nichts geschrieben,
-        # und ein `None` weiß es nicht.
+        # Only on proven success: a failed fs_write wrote nothing, and a `None` does not know.
+
         if tool in EDIT_TOOLS and step.ok is True and step.target:
             out.append(_event(ctx, seq=derived, ts=ts, kind="file_edit", path=step.target))
 
@@ -369,9 +369,9 @@ def step_events(step, ctx: RunCtx) -> list[dict]:
                           tool_use_id=step.tool_use_id, background=False))
 
     elif kind == "deploy":
-        # Der Inhalt ist JSON — dieselbe Bauform wie bei `run_end`, und aus demselben
-        # Grund: die Zeile trägt Felder, für die es keine Spalte gibt und für die eine
-        # eigene Spalte in `run_steps` (eine von zwölf Arten) nicht zu rechtfertigen wäre.
+        # The content is JSON, the same shape as `run_end` and for the same reason: the row
+        # carries fields that have no column, and a column of their own in `run_steps` (one of
+        # twelve kinds) could not be justified.
         src = _args_of(step)
         out.append(_event(ctx, seq=main, ts=ts, kind="deploy",
                           **deploy_fields(deployment_id=src.get("deployment_id"),
@@ -380,21 +380,21 @@ def step_events(step, ctx: RunCtx) -> list[dict]:
                                           log_head=src.get("log_head"))))
 
     elif kind == "run_end":
-        # Der Inhalt einer run_end-Zeile ist der Abschlussbericht als JSON — dieselben
-        # Felder, die `run_boundary_events` aus der `runs`-Zeile zieht.
+        # The content of a run_end row is the closing report as JSON, the same fields that
+        # `run_boundary_events` pulls from the `runs` row.
         out.append(_event(ctx, seq=main, ts=ts, kind="run_end", **_run_end_fields(_args_of(step))))
 
     else:
-        # `system` und alles Unbekannte: als Systemzeile zeigen statt verschlucken.
+        # `system` and everything unknown: show as a system line instead of swallowing it.
         out.append(_event(ctx, seq=main, ts=ts, kind="system", text=step.content or ""))
 
     return out
 
 
 def _usage_event(step, ctx: RunCtx, *, seq: int, ts: str) -> list[dict]:
-    """Tokens eines Modellzugs. Kommt auch ohne Text — ein Zug, der nur Werkzeuge rief,
-    hat trotzdem gekostet. Ohne Tokens gar kein Ereignis (sonst stünde die Zeitleiste voller
-    Nullen). `cache_write_tokens` ist immer 0: kein Adapter meldet den Schreib-Anteil."""
+    """Tokens of one model turn. Comes without text as well: a turn that only called tools
+    still cost something. Without tokens no event at all (the timeline would otherwise be full
+    of zeros). `cache_write_tokens` is always 0, because no adapter reports the write share."""
     in_tok = int(getattr(step, "in_tokens", 0) or 0)
     out_tok = int(getattr(step, "out_tokens", 0) or 0)
     cache_read = int(getattr(step, "cache_read_tokens", 0) or 0)
@@ -407,7 +407,7 @@ def _usage_event(step, ctx: RunCtx, *, seq: int, ts: str) -> list[dict]:
 
 
 def _legacy_events(step, ctx: RunCtx) -> list[dict]:
-    """Zeilen aus der Zeit vor der Instrumentierung (`kind=''`).
+    """Rows from the time before the instrumentation (`kind=''`).
 
     Ohne diesen Pfad startet das Büro leer — die vorhandenen Läufe sind der einzige Grund,
     warum am ersten Tag überhaupt etwas zu sehen ist. Was hier fehlt, fehlt ehrlich:
@@ -424,15 +424,15 @@ def _legacy_events(step, ctx: RunCtx) -> list[dict]:
                        text=step.content)]
 
     if role == "tool":
-        # Eine Altzeile ist Start UND Ergebnis in einem Feld: "args={…}\n→ …". Der Raum
-        # braucht beide Hälften getrennt, sonst geht ein Werkzeug nie auf. Beide tragen
-        # denselben Zeitstempel — die Dauer wurde damals nicht gemessen, und sie zu
-        # schätzen hieße, Zeit zu erfinden.
+        # An old row is start AND result in one field: "args={…}\n→ …". The room needs both
+        # halves separately, otherwise a tool never opens. Both carry the same timestamp: the
+        # duration was not measured back then, and estimating it would mean inventing time.
+
         raw = step.content or ""
         args_text, _, result = raw.partition(LEGACY_SPLIT)
         args = _parse_args(args_text)
-        # Das „args="-Präfix ist Formatierung der alten Zeile, kein Inhalt — im neuen Pfad
-        # steht dort nacktes JSON, und beide sollen dieselbe Vorschau ergeben.
+        # The "args=" prefix is formatting of the old row, not content. The new path has bare
+        # JSON there, and both should produce the same preview.
         if args_text.startswith("args="):
             args_text = args_text[len("args="):]
         tool = step.tool_name or ""
@@ -452,7 +452,7 @@ def _legacy_events(step, ctx: RunCtx) -> list[dict]:
 
 
 def _run_end_fields(src: dict) -> dict:
-    """Die Felder eines `run_end` — aus einem Mapping, damit `runs`-Zeile und JSON-Inhalt
+    """The fields of a `run_end`, from one mapping so that the `runs` row and the JSON content
     einer run_end-Zeile durch DIESELBE Stelle laufen und nicht auseinanderdriften können."""
     status = str(src.get("status") or "")
     ok: bool | None = True if status in OK_STATUS else False if status in FAIL_STATUS else None
@@ -469,28 +469,28 @@ def _run_end_fields(src: dict) -> dict:
 
 
 def entdoppeln_seq(events: list[dict]) -> int:
-    """Doppelte `seq` in einer **bereits sortierten** Liste auflösen — die Falle jedes
-    sitzungsübergreifenden Logs. Rückgabe: wie viele verschoben wurden.
+    """Resolve duplicate `seq` in an **already sorted** list, the trap of every log that spans
+    sessions. Returns how many were moved.
 
-    Die nachgereichten Grenzen sitzen zwischen den Zeilen: `run_end` auf `letzte*4 + 3`,
-    `run_start` auf `erste*4 - 1`. Das ist dieselbe Zahl, sobald der nächste Lauf mit der
-    unmittelbar folgenden Zeilen-ID anfängt — und weil Läufe hintereinander laufen, ist das
-    der Normalfall, nicht der Ausreißer (gemessen 13 Kollisionen an einem echten Tag mit 21
-    Läufen). Innerhalb EINER Sitzung fällt das kaum auf, über Sitzungen hinweg trifft es
-    fast jeden Übergang.
+    The boundaries added afterwards sit between the rows: `run_end` at `last*4 + 3`,
+    `run_start` at `first*4 - 1`. That is the same number as soon as the next run starts with
+    the immediately following row id, and because runs happen one after another this is the
+    normal case, not the outlier (13 collisions measured on a real day with 21 runs). Inside
+    ONE session it hardly shows, across sessions it hits nearly every transition.
 
-    Und es wäre nicht sichtbar, sondern still: der Recorder entdoppelt über `seq`
-    (`office/recorder.ts`) und verwürfe das zweite Ereignis — ein Agent käme nie herein oder
-    ginge nie. Deshalb rückt der Nachzügler auf die nächste freie Zahl. Die ist `erste*4 + 0`
-    und damit der reservierte Slot 0 seiner eigenen ersten Zeile: noch immer vor deren
-    Hauptereignis, also bleibt die Erzählung heil.
 
-    Verschoben wird nur nach oben und nur bei Gleichstand — die Reihenfolge der bereits
+    And it would not be visible but silent: the recorder deduplicates by `seq`
+    (`office/recorder.ts`) and would drop the second event, so an agent would never enter or
+    never leave. That is why the latecomer moves to the next free number. That is `first*4 + 0`
+    and therefore the reserved slot 0 of its own first row: still before its main event, so
+    the story stays intact.
+
+    Only upwards and only on a tie: the order of the rows already placed stays untouched.
     sortierten Liste bleibt dadurch unangetastet.
 
-    Steht hier und nicht beim Aufrufer, weil `seq` diesem Modul gehört: Film (`office_film`)
-    und Raum (`api/office.GET /office/events`) mischen dieselben Sitzungen und dürfen die
-    Kollision nicht zweimal — womöglich verschieden — auflösen.
+    This lives here and not in the caller, because `seq` belongs to this module: the film
+    (`office_film`) and the room (`api/office.GET /office/events`) mix the same sessions and
+    must not resolve the collision twice, possibly differently.
     """
     vorher = -1
     verschoben = 0
@@ -504,15 +504,15 @@ def entdoppeln_seq(events: list[dict]) -> int:
 
 def run_boundary_events(run, ctx: RunCtx, *, first_step_id: int | None,
                         last_step_id: int | None, cost_priced: bool | None = None) -> list[dict]:
-    """`run_start`/`run_end` für Läufe, die keine eigenen Grenzzeilen haben (Altläufe).
+    """`run_start`/`run_end` for runs that have no boundary rows of their own (old runs).
 
-    Die Grenzen setzen sich zwischen die Schritte statt daneben: `run_start` auf
-    `first_step_id*4 - 1` (der Slot 0 der ersten Zeile bleibt für deren eigenen Vorgänger
-    frei), `run_end` auf `last_step_id*4 + 3`. Damit bleibt die Ordnung eine einzige
-    aufsteigende Zahlenreihe, ohne Sonderfall beim Sortieren.
+    The boundaries sit between the steps instead of next to them: `run_start` at
+    `first_step_id*4 - 1` (slot 0 of the first row stays free for its own predecessor),
+    `run_end` at `last_step_id*4 + 3`. That keeps the order one single ascending series of
+    numbers, without a special case while sorting.
 
-    Ohne Schritte gibt es keine Ankerpunkte und also auch keine Grenzen — ein Lauf ohne
-    eine einzige Zeile hat im Raum nichts zu zeigen.
+    Without steps there are no anchors and therefore no boundaries: a run without a single
+    row has nothing to show in the room.
     """
     out: list[dict] = []
     if first_step_id:
@@ -525,7 +525,7 @@ def run_boundary_events(run, ctx: RunCtx, *, first_step_id: int | None,
                           spawn_depth=ctx.spawn_depth,
                           continuation_index=ctx.continuation_index,
                           task_id=ctx.task_id, issue_key=ctx.issue_key))
-    # Ein laufender Lauf hat den Raum noch nicht verlassen.
+    # A running run has not left the room yet.
     if last_step_id and run.status and run.status != "running":
         out.append(_event(ctx, seq=_seq(last_step_id, SEQ_SLOTS - 1),
                           ts=_ts(run.finished_at or run.started_at), kind="run_end",
@@ -534,8 +534,8 @@ def run_boundary_events(run, ctx: RunCtx, *, first_step_id: int | None,
                               "summary": run.summary or run.last_text or "", "error": run.error or "",
                               "iterations": run.iterations, "in_tokens": run.input_tokens,
                               "out_tokens": run.output_tokens,
-                              # Der Lauf führt keine gecachten Tokens getrennt — die stehen
-                              # nur am CostEntry. Hier ehrlich 0 statt geschätzt.
+                              # The run does not track cached tokens separately, they only
+                              # sit on the CostEntry. An honest 0 here instead of a guess.
                               "cache_read_tokens": 0, "cost_usd": run.cost_usd,
                               "cost_priced": cost_priced,
                           })))
@@ -545,24 +545,24 @@ def run_boundary_events(run, ctx: RunCtx, *, first_step_id: int | None,
 # ── Deployments ─────────────────────────────────────────────────────────────
 
 def deploy_state(status: str) -> str:
-    """`building|ok|failed|rolledback` → der Zustand, den der Raum zeigt. Sonst `""`.
+    """`building|ok|failed|rolledback` turned into the state the room shows. Otherwise `""`.
 
-    Was hier leer herausfällt, hat im Raum nichts verloren: `pending`/`pending-check` ist
-    eine Warteschlange, nicht ein Vorgang, und `cancelled` schreibt kein Codepfad (siehe
-    `models/ops.Deployment`) — eine handgeschriebene Aufräumaktion zu animieren, hieße,
-    eine Handlung zu behaupten, die nie stattgefunden hat.
+    What falls out empty here has no business in the room: `pending`/`pending-check` is a
+    queue, not an event, and `cancelled` is written by no code path (see
+    `models/ops.Deployment`). Animating a hand written cleanup would claim an action that
+    never took place.
     """
     return DEPLOY_STATE_BY_STATUS.get((status or "").strip(), "")
 
 
 def deploy_target(dep) -> str:
-    """Woran gearbeitet wurde — der Stack, ersatzweise der Worktree. Beschriftung des
-    Racks, nicht mehr; der Pfad ist das Einzige, was die Zeile darüber sicher weiß."""
+    """What was worked on: the stack, or the worktree instead. A label for the rack, no more;
+    the path is the only thing the row above knows for certain."""
     return (getattr(dep, "stack_dir", "") or getattr(dep, "worktree", "") or "")[:500]
 
 
 def deploy_fields(*, deployment_id: Any, state: Any, target: str, log_head: Any) -> dict:
-    """Die Felder eines `deploy` — der EINE Ort, an dem sie entstehen.
+    """The fields of a `deploy`, the ONE place where they come into being.
 
     Beide Wege gehen hier durch: die echte Zeile des Watchers (Live und Nachlese) und das
     beim Lesen synthetisierte Bestands-Deployment. Zwei Stellen könnten auseinanderlaufen,
@@ -577,14 +577,14 @@ def deploy_fields(*, deployment_id: Any, state: Any, target: str, log_head: Any)
 
 
 def deploy_content(deployment_id: int, state: str, log_head: str = "") -> str:
-    """Der JSON-Rumpf einer `deploy`-Schrittzeile (Schreibseite zu `deploy_fields`)."""
+    """The JSON body of a `deploy` step row (the write side of `deploy_fields`)."""
     return json.dumps({"deployment_id": int(deployment_id), "state": state,
                        "log_head": (log_head or "")[:DEPLOY_LOG_HEAD_CHARS]},
                       ensure_ascii=False)
 
 
 def deploy_step_id(step) -> int:
-    """Zu welchem Deployment eine `deploy`-Zeile gehört (0, wenn es keine ist).
+    """Which deployment a `deploy` row belongs to (0 when it is none).
 
     Der Lesepfad braucht das, um ein Bestands-Deployment NICHT ein zweites Mal zu
     synthetisieren, wenn der Watcher es längst als echte Zeile erzählt hat.
@@ -596,7 +596,7 @@ def deploy_step_id(step) -> int:
 
 def deploy_anchor_step_id(steps, created_at: dt.datetime | None, *,
                           blocked: set[int] | frozenset[int] = frozenset()) -> int | None:
-    """An welche Schrittzeile ein **Bestands**-Deployment seine geliehene `seq` hängt.
+    """Which step row a **legacy** deployment hangs its borrowed `seq` on.
 
     Anker ist die letzte Zeile vor `created_at` — dort stand die Sitzung, als der Deploy
     losging, und dorthin gehört er in der Erzählung. Ist deren Slot 3 schon vergeben (die
@@ -614,7 +614,7 @@ def deploy_anchor_step_id(steps, created_at: dt.datetime | None, *,
 
 
 def deployment_events(dep, ctx: RunCtx, *, anchor_step_id: int | None) -> list[dict]:
-    """Ein Deployment aus der Zeit vor dem Watcher → sein Ereignis, mit geliehener `seq`.
+    """A deployment from the time before the watcher, turned into its event with a borrowed `seq`.
 
     Dasselbe Muster wie `run_boundary_events`: nichts wird geschrieben, die Ordnung
     entsteht beim Lesen aus einer fremden Zeilen-ID. Anders als dort gibt es nur EIN
@@ -634,14 +634,14 @@ def deployment_events(dep, ctx: RunCtx, *, anchor_step_id: int | None) -> list[d
 
 def session_seen_event(ctx: RunCtx, *, title: str, project_key: str,
                        started_at: dt.datetime | None, seq: int) -> dict:
-    """Kopfzeile eines Raums — sagt der Ansicht, dass es die Session gibt, bevor der erste
+    """Header of a room: tells the view that the session exists before the first
     Agent zur Tür hereinkommt."""
     return _event(ctx, seq=seq, ts=_ts(started_at), kind="session_seen",
                   title=title, issue_key=ctx.issue_key, project_key=project_key,
                   started_at=_ts(started_at))
 
 
-# ── Schreiben und Senden ────────────────────────────────────────────────────
+# ── Writing and sending ─────────────────────────────────────────────────────
 
 async def add_step(db: AsyncSession, ctx: RunCtx, *, role: str, kind: str, content: str = "",
                    tool: str | None = None, target: str | None = None,
@@ -649,12 +649,12 @@ async def add_step(db: AsyncSession, ctx: RunCtx, *, role: str, kind: str, conte
                    duration_ms: int | None = None, in_tokens: int = 0, out_tokens: int = 0,
                    cache_read_tokens: int = 0, provider: str = "", model: str = "",
                    commit: bool = True) -> RunStep:
-    """Eine Schrittzeile schreiben — der EINE Weg dorthin.
+    """Write a step row, the ONE way there.
 
-    Der Worker (`_add_step`) und `open_room` benutzen dieselbe Funktion, damit es keine
-    Zeile geben kann, die die Ereignisfelder nicht trägt. `ctx.seq` ist der laufende
-    Zähler des Laufs (`RunStep.seq`), nicht die Ereignis-Nummer — die kommt aus `id`.
-    `commit=False` erlaubt es, mehrere Zeilen in EINER Transaktion zu setzen.
+    The worker (`_add_step`) and `open_room` use the same function, so there can be no row
+    that does not carry the event fields. `ctx.seq` is the running counter of the run
+    (`RunStep.seq`), not the event number, which comes from `id`. `commit=False` allows
+    several rows to be set in ONE transaction.
     """
     ctx.seq += 1
     step = RunStep(
@@ -670,12 +670,12 @@ async def add_step(db: AsyncSession, ctx: RunCtx, *, role: str, kind: str, conte
 
 
 async def publish_step(ctx: RunCtx, step) -> None:
-    """Die Ereignisse einer Zeile in den Live-Kanal geben.
+    """Put the events of a row into the live channel.
 
-    Schluckt JEDEN Fehler: ein ausgefallener Redis darf keinen Agentenlauf töten — die
-    Ansicht ist ein Zuschauer, kein Beteiligter. Der Redis-Zugriff wird erst im Rumpf
-    importiert, damit der Test-Ersatz (`conftest.redis_stub`) greift; ein Import am
-    Modulkopf hätte die echte Funktion festgenagelt.
+    Swallows EVERY error: a Redis outage must not kill an agent run, because the view is a
+    spectator, not a participant. Redis is imported inside the body so the test double
+    (`conftest.redis_stub`) takes effect; an import at module level would have nailed down
+    the real function.
     """
     try:
         from ..core.redis import get_redis
@@ -687,13 +687,13 @@ async def publish_step(ctx: RunCtx, step) -> None:
 
 
 async def open_room(db: AsyncSession, ctx: RunCtx, *, agent, mode: str, issue: dict) -> None:
-    """Den Raum eröffnen: der Agent kommt herein, und es steht dabei, WARUM.
+    """Open the room: the agent walks in, and it says WHY.
 
-    Beide Zeilen gehen in EINER Transaktion raus — ein Agent, der ohne Auftrag am
-    Schreibtisch sitzt, wäre ein Zustand, den es nicht geben soll, auch nicht für 20 ms.
+    Both rows go out in ONE transaction: an agent sitting at a desk without an assignment
+    would be a state that must not exist, not even for 20 ms.
     """
-    # Der Name kommt aus der Agentendefinition, falls der Kontext ihn noch nicht kennt —
-    # der Raum beschriftet den Schreibtisch damit.
+    # The name comes from the agent definition when the context does not know it yet: the
+    # room labels the desk with it.
     if not ctx.agent:
         ctx.agent = getattr(agent, "name", "") or getattr(agent, "role", "") or ""
     start = await add_step(db, ctx, role="system", kind="run_start", content=mode,
@@ -703,7 +703,7 @@ async def open_room(db: AsyncSession, ctx: RunCtx, *, agent, mode: str, issue: d
     auftrag_step = await add_step(db, ctx, role="user", kind="user_message", target="ticket",
                                   content=auftrag, commit=False)
     await db.commit()
-    # Erst nach dem Commit senden: vorher hat die Zeile keine `id` und damit keine `seq`.
+    # Send only after the commit: before it the row has no `id` and therefore no `seq`.
     await publish_step(ctx, start)
     await publish_step(ctx, auftrag_step)
 
@@ -711,11 +711,11 @@ async def open_room(db: AsyncSession, ctx: RunCtx, *, agent, mode: str, issue: d
 # ── Preise ──────────────────────────────────────────────────────────────────
 
 class PriceTable:
-    """Modellkatalog einmal laden, in Python bepreisen (Preise sind USD je 1M Tokens).
+    """Load the model catalog once and price in Python (prices are USD per 1M tokens).
 
-    Der Unterschied, der Traccoon heute fehlt: ein Katalogeintrag mit 0,00 heißt *bepreist
-    und gratis* (lokales Modell), gar kein Eintrag heißt *unbekannt*. Beides ergab bisher
-    dieselbe 0,00 in der Anzeige, und jede Katalog-Lücke sah aus wie ein Geschenk.
+    The distinction that was missing before: a catalog entry of 0.00 means *priced and free*
+    (a local model), no entry at all means *unknown*. Both used to produce the same 0.00 in
+    the display, and every gap in the catalog looked like a gift.
     """
 
     def __init__(self, rows) -> None:
@@ -732,8 +732,8 @@ class PriceTable:
 
     def price(self, provider: str, model: str, *, in_tokens: int = 0, out_tokens: int = 0,
               cache_read_tokens: int = 0) -> tuple[float, bool]:
-        """(Kosten in USD, bepreist?). Ohne Katalogeintrag `(0.0, False)` — die Null ist
-        dann eine Lücke und der Aufrufer muss sie als solche ausweisen."""
+        """(cost in USD, priced?). Without a catalog entry `(0.0, False)`: the zero is a gap
+        then, and the caller has to mark it as one."""
         row = self._by_key.get((provider or "", model or ""))
         if row is None:
             return 0.0, False

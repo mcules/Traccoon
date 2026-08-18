@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 
 /**
- * Ist der Bildschirm schmal (Handy)?
+ * Is the screen narrow (a phone)?
  *
- * Manches lässt sich nicht mit CSS lösen: der Ablauf-Editor zeigt am Handy immer nur eine
- * seiner drei Spalten, und welche das ist, entscheidet ein Zustand in React — nicht eine
- * Klasse. Die Grenze ist dieselbe wie Tailwinds `md`, damit Verhalten und Aussehen an
- * derselben Stelle umschalten.
+ * Some things cannot be solved with CSS: on a phone the flow editor shows only one of its
+ * three columns, and which one is decided by state in React, not by a class. The breakpoint
+ * is the same as Tailwind's `md`, so behaviour and appearance switch at the same place.
  */
 export function useSchmal(grenze = 768): boolean {
   const [schmal, setSchmal] = useState(

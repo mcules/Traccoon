@@ -1,5 +1,5 @@
-// Probe der Messreihen-Ansicht: Übersicht, Detail mit Zeitraum, Prognosegerade,
-// Wertetabelle und das Entfernen eines einzelnen Ausreißers.
+// Probe of the measurement series view: overview, detail with a period, the forecast line,
+// the value table, and dropping a single outlier.
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 
@@ -23,8 +23,8 @@ try {
   ok("Reihen stehen in der Übersicht",
      await page.getByText("akku.shelter").first().isVisible().catch(() => false));
 
-  // Nicht auf eine bestimmte Prüfreihe festnageln: die Testdaten werden zwischendurch
-  // aufgeräumt, die erste vorhandene Reihe tut es genauso.
+  // Do not pin this to one test series: the test data is cleaned up now and then, and the
+  // first series that exists does the job just as well.
   await page.locator('button:has-text("▸")').first().click();
   await page.waitForTimeout(1500);
   ok("Zeitraum lässt sich wählen",
@@ -41,9 +41,9 @@ try {
   ok("Wertetabelle steht darunter", zeilen >= 1, `${zeilen} Zeilen`);
   await page.screenshot({ path: "/w/21-detail.png" });
 
-  // Ausreißer entfernen — die Prognose muss sich sichtbar ändern. Das geht nur mit einer
-  // Reihe, in der überhaupt mehrere Werte stehen: die Prüfreihen werden zwischendurch
-  // aufgeräumt, und eine echte Reihe mit einem einzigen Wert ist kein Fehlerfall.
+  // Drop an outlier, the forecast has to change visibly. That only works with a series that
+  // holds several values: test series get cleaned up now and then, and a real series with a
+  // single value is not a failure.
   if (zeilen >= 3) {
     const vorher = await page.getByText(/Güte/).first().textContent().catch(() => "");
     page.once("dialog", (d) => d.accept());

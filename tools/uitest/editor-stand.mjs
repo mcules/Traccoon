@@ -1,4 +1,4 @@
-// Zeigt der Editor, ob etwas ungespeichert ist und welche Fassung draußen gilt?
+// Does the editor show whether something is unsaved and which version is live?
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 
@@ -17,7 +17,7 @@ const fehler = [];
 page.on("pageerror", (e) => fehler.push(String(e).slice(0, 160)));
 
 try {
-  // Ablauf 44 ist veröffentlicht und unverändert.
+  // Flow 44 is published and unchanged.
   await page.goto(`${BASIS}/workflows/44`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2500);
   const frisch = await page.getByText(/^gespeichert$/).first().isVisible().catch(() => false);
@@ -26,7 +26,7 @@ try {
   ok("Veröffentlichte Fassung wird benannt", !!live, (live || "").trim());
   await page.screenshot({ path: "/w/23-editor-sauber.png" });
 
-  // Eine Karte verschieben — Positionen werden mitgespeichert, also ist das eine Änderung.
+  // Move a card: positions are saved along, so that counts as a change.
   const knoten = page.locator(".react-flow__node").first();
   const box = await knoten.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -43,7 +43,7 @@ try {
      (jetztAlt || "").trim());
   await page.screenshot({ path: "/w/24-editor-geaendert.png" });
 
-  // Zurückgehen fragt nach — und bleibt beim Abbrechen.
+  // Going back asks first, and stays put when you cancel.
   page.once("dialog", (d) => d.dismiss());
   await page.getByRole("button", { name: /Zurück zu den Prozessen/i }).click();
   await page.waitForTimeout(800);

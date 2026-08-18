@@ -1,8 +1,8 @@
 import type { Issue } from "../api";
 import { tr } from "../i18n";
 
-/** Schlüssel je HoldReason (die `hold_reason`-Werte des Servers). Übersetzt wird erst in
- *  waitInfo(): eine Tabelle auf Modulebene würde die Sprache des ersten Aufrufs festhalten. */
+/** One key per hold reason (the server's `hold_reason` values). Translation happens in
+ *  waitInfo(): a table at module level would freeze the language of the first call. */
 export const HOLD_LABEL: Record<string, string> = {
   plan_review: "lifecycle.grund_plan_review", plan_split: "lifecycle.grund_plan_split",
   question: "lifecycle.grund_question",
@@ -14,10 +14,10 @@ export const HOLD_LABEL: Record<string, string> = {
 
 export type WaitKind = "error" | "question" | "external";
 
-/** Zuordnung der HoldReasons/agent_status zu einer der drei Warte-Kategorien. */
+/** Which hold reason and agent status belongs to which of the three waiting kinds. */
 const QUESTION_REASONS = new Set(["question", "permission", "plan_review", "plan_split", "review"]);
 const ERROR_REASONS = new Set(["stuck", "incomplete"]);
-// merge, verify, cap, interrupted = warten auf etwas Externes (Git, Testenv, Kosten-Limit, System)
+// merge, verify, cap, interrupted = waiting for something outside (git, test env, cost cap, system)
 
 export interface WaitInfo {
   kind: WaitKind;
@@ -34,7 +34,7 @@ const KIND_META: Record<WaitKind, { icon: string; title: string }> = {
 
 const uebersetzt = (m: { icon: string; title: string }) => ({ icon: m.icon, title: tr(m.title) });
 
-/** Liefert Icon + Grund für ein wartendes/blockiertes Ticket, sonst null. */
+/** Icon and reason for a waiting or blocked ticket, otherwise null. */
 export function waitInfo(issue: Pick<Issue, "agent_status" | "hold_reason">): WaitInfo | null {
   if (issue.agent_status === "failed") {
     return { kind: "error", ...uebersetzt(KIND_META.error), label: tr("common.fehler") };

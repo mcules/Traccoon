@@ -1,4 +1,4 @@
-// Trägt die Oberfläche eine zweite Sprache? Umschalten im Profil, Verwaltung im Admin.
+// Does the interface carry a second language? Switching in the profile, editing in the admin.
 import { chromium } from "playwright-core";
 import { readFileSync } from "node:fs";
 
@@ -22,7 +22,7 @@ try {
   ok("Sprachwahl steht im Profil",
      await page.getByText("Sprache", { exact: true }).first().isVisible().catch(() => false));
 
-  // Auf Englisch stellen
+  // Switch to English
   await page.locator("section", { hasText: "Sprache" }).first().locator("select")
     .selectOption("en");
   await page.getByRole("button", { name: "Speichern" }).first().click();
@@ -32,7 +32,7 @@ try {
   ok("Die Oberfläche wechselt auf Englisch", englisch);
   await page.screenshot({ path: "/w/26-englisch.png" });
 
-  // Navigation und eine zweite Seite prüfen
+  // Check the navigation and a second page
   await page.goto(`${BASIS}/processes/messreihen`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1500);
   const reihen = await page.getByText("Series", { exact: false }).first()
@@ -40,7 +40,7 @@ try {
   ok("Auch andere Seiten sind übersetzt", reihen);
   await page.screenshot({ path: "/w/27-englisch-messreihen.png" });
 
-  // Verwaltung im Admin
+  // The admin translation view
   await page.goto(`${BASIS}/admin/translations`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
   const zeilen = await page.locator('input[placeholder]').count();
@@ -50,7 +50,7 @@ try {
   ok("Sie zeigt, wie viel noch fehlt", !!zaehler, (zaehler || "").trim());
   await page.screenshot({ path: "/w/28-verwaltung.png" });
 
-  // Zurück auf Deutsch, damit der Betrieb bleibt, wie er war
+  // Back to German so operation stays as it was
   await page.goto(`${BASIS}/profil`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1200);
   await page.locator("section", { hasText: "Language" }).first().locator("select")

@@ -1,13 +1,13 @@
-// Zieht deutsche Oberflächentexte aus einer Datei und ersetzt sie durch tr("schlüssel").
+// Pulls German interface texts out of a file and replaces them with tr("key").
 //
-// Bewusst kein Alleskönner: erfasst werden JSX-Textknoten und die Attribute, die ein Mensch
-// liest (placeholder, title, label, aria-label, alt). Alles andere — Klassennamen, Pfade,
-// Schlüssel von Objekten — bleibt unangetastet, weil dort ein falscher Treffer nicht
-// auffällt, sondern etwas kaputt macht.
+// Deliberately not a do-it-all: it takes JSX text nodes and the attributes a person reads
+// (placeholder, title, label, aria-label, alt). Everything else, class names, paths, object
+// keys, stays untouched, because a wrong match there does not show up as an oddity but
+// breaks something.
 //
-// Der Schlüssel entsteht aus Dateiname und Text: `processes.eigene_prozesse`. Wo das schief
-// aussieht, wird er hinterher von Hand geradegezogen — die Ersetzung ist der langweilige
-// Teil, die Benennung nicht.
+// The key comes from the file name and the text: `processes.eigene_prozesse`. Where that
+// reads badly it gets straightened by hand afterwards. Replacing is the boring part, naming
+// is not.
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename } from "node:path";
 
@@ -31,8 +31,8 @@ function istText(s) {
   if (/^(https?:|\/|#|\.|@)/.test(t)) return false;
   if (/[{}<>]/.test(t)) return false;
   if (!/[A-Za-zÄÖÜäöüß]/.test(t)) return false;
-  // Ein Wort, das mit Großbuchstabe beginnt, ist in der Oberfläche fast immer eine
-  // Beschriftung („Profil", „Abmelden"). Reine Großschreibung (ABC-31, JSON) nicht.
+  // A word starting with a capital is almost always a label in an interface ("Profile",
+  // "Sign out"). All caps (ABC-31, JSON) is not.
   if (/^[A-ZÄÖÜ][a-zäöüß]/.test(t)) return true;
   return DEUTSCH.test(t);
 }
@@ -50,7 +50,7 @@ function schluessel(text) {
 let neu = quelle;
 const gefunden = [];
 
-// 1) Attribute: placeholder="…", title="…", label="…"
+// 1) Attributes: placeholder="…", title="…", label="…"
 neu = neu.replace(/\b(placeholder|title|label|aria-label|alt)="([^"{}]+)"/g, (ganz, attr, text) => {
   if (!istText(text)) return ganz;
   const k = schluessel(text);
@@ -59,9 +59,9 @@ neu = neu.replace(/\b(placeholder|title|label|aria-label|alt)="([^"{}]+)"/g, (ga
   return `${attr}={tr("${k}")}`;
 });
 
-// 2) JSX-Textknoten, aber NUR wenn der Text das ganze Element füllt (`>Text</`). Ein Satz,
-// der um ein <b> oder <code> herumläuft, zerfiele sonst in Bruchstücke — und Bruchstücke
-// lassen sich nicht übersetzen, weil in anderen Sprachen die Satzstellung anders ist.
+// 2) JSX text nodes, but ONLY when the text fills the whole element (`>text</`). A sentence
+// running around a <b> or <code> would otherwise fall into fragments, and fragments cannot be
+// translated, because word order is different elsewhere.
 neu = neu.replace(/>([^<>{}\n][^<>{}]*)<\//g, (ganz, text) => {
   if (!istText(text)) return ganz;
   if (/^[).,;:!?—–-]/.test(text.trim())) return ganz;   // Bruchstück eines Satzes
@@ -76,8 +76,8 @@ neu = neu.replace(/>([^<>{}\n][^<>{}]*)<\//g, (ganz, text) => {
 });
 
 if (gefunden.length && !/from "[./]*i18n"/.test(neu)) {
-  // Die Tiefe kommt aus dem Pfad, nicht aus einer Annahme: unter components/workflow/config
-  // liegen drei Ebenen zwischen Datei und src/i18n.
+  // The depth comes from the path, not from an assumption: under components/workflow/config
+  // there are three levels between the file and src/i18n.
   const ebenen = datei.replace(/^.*?frontend\/src\//, "").split("/").length - 1;
   const tiefe = ebenen ? "../".repeat(ebenen) + "i18n" : "./i18n";
   neu = neu.replace(/^(import[^\n]*\n)/, `$1import { tr } from "${tiefe}";\n`);

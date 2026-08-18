@@ -1,6 +1,6 @@
-// End-zu-End-Probe der neuen Ablauf-Oberfläche. Kein Ersatz für die Unit-Tests — hier geht
-// es um das, was nur im Browser auffällt: ob die Bausteine wirklich da sind, ob die
-// Auswahlen gefüllt werden und ob das Schließen dorthin zurückführt, wo man herkam.
+// End to end probe of the flow interface. No replacement for the unit tests: this is about
+// what only shows in a browser, whether the blocks are really there, whether the dropdowns
+// get filled, and whether closing takes you back where you came from.
 import { chromium } from "playwright-core";
 import { readFileSync, writeFileSync } from "node:fs";
 
@@ -12,12 +12,12 @@ const ok = (was, gut, detail = "") => {
   console.log(`${gut ? "OK  " : "FEHL"} ${was}${detail ? " — " + detail : ""}`);
 };
 
-// Browser liegt im Image, das npm-Paket bringt nur die Steuerung mit.
+// The browser is in the image, the npm package only brings the driver.
 const browser = await chromium.launch({
   executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome",
 });
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 1000 } });
-// Anmeldung über den Token — dasselbe, was das Frontend nach dem Login ablegt.
+// Sign in through the token, the same value the frontend stores after a login.
 await ctx.addInitScript((t) => localStorage.setItem("traccoon_token", t), TOKEN);
 const page = await ctx.newPage();
 const fehlerImLog = [];
@@ -25,7 +25,7 @@ page.on("console", (m) => m.type() === "error" && fehlerImLog.push(m.text().slic
 page.on("pageerror", (e) => fehlerImLog.push("pageerror: " + String(e).slice(0, 200)));
 
 try {
-  // 1) Prozess-Seite: „Eigene" ist der Startreiter
+  // 1) Process page: "own" is the first tab
   await page.goto(`${BASIS}/processes`, { waitUntil: "networkidle" });
   await page.waitForTimeout(1200);
   const eigeneSichtbar = await page.getByText("Eigene Prozesse").first().isVisible().catch(() => false);
@@ -38,7 +38,7 @@ try {
   const felder = page.locator("input");
   await felder.nth(0).fill(`${key}v`);
   await felder.nth(1).fill(`UI-Vorlage ${stempel}`);
-  // Vorlagen-Auswahl: das erste Select im Anlege-Bereich.
+  // Template picker: the first select in the create area.
   const vorlagenAuswahl = page.locator("select").first();
   const vorlagenZahl = await vorlagenAuswahl.locator("option").count().catch(() => 0);
   ok("Vorlagen stehen zur Auswahl", vorlagenZahl >= 5, `${vorlagenZahl} Einträge (mit Gerüst)`);
@@ -54,8 +54,8 @@ try {
   ok("Vorlage bringt einen fertigen Ablauf mit", knotenAusVorlage >= 5,
      `${knotenAusVorlage} Knoten`);
   await page.screenshot({ path: "/w/09-vorlage.png" });
-  // Veröffentlichen — nur ein veröffentlichter Ablauf lässt sich später als Unterablauf
-  // aufrufen, und genau das wird weiter unten geprüft.
+  // Publish: only a published flow can be called as a subflow later, and that is exactly
+  // what gets checked further down.
   page.once("dialog", (d) => d.accept());
   await page.getByRole("button", { name: /Veröffentlichen/i }).click().catch(() => {});
   await page.waitForTimeout(2500);
@@ -65,7 +65,7 @@ try {
   await page.getByRole("button", { name: /Zurück zu den Prozessen/i }).click();
   await page.waitForTimeout(1500);
 
-  // Und jetzt der leere Weg — darauf baut der Rest der Probe auf.
+  // And now the empty one, which the rest of the probe builds on.
   const felder2 = page.locator("input");
   await felder2.nth(0).fill(key);
   await felder2.nth(1).fill(`UI-Probe ${stempel}`);
@@ -74,7 +74,7 @@ try {
   ok("Anlegen springt in den Editor", true, page.url().split("/").slice(-1)[0]);
   await page.waitForTimeout(1500);
 
-  // 3) Bausteine: die neuen müssen in der Palette stehen
+  // 3) Blocks: the new ones have to be in the palette
   for (const name of ["Für jedes", "Warten", "Aktion"]) {
     const da = await page.getByText(name, { exact: false }).first().isVisible().catch(() => false);
     ok(`Baustein „${name}\" in der Palette`, da);
@@ -85,7 +85,7 @@ try {
   await page.locator(".react-flow__node").first().click();
   await page.waitForTimeout(600);
 
-  // Auslöser-Art: bei „Ereignis" hat eine eingehende Adresse nichts zu suchen.
+  // Trigger kind: with "event" an incoming address has no business being there.
   const artAuswahl = page.locator("select").first();
   await artAuswahl.selectOption("ereignis").catch(() => {});
   await page.waitForTimeout(600);
@@ -116,10 +116,10 @@ try {
   }
   await page.screenshot({ path: "/w/03-start-webhook.png" });
 
-  // 5) Werkzeug-Knoten: kommt die MCP-Auswahl?
+  // 5) Tool node: does the tool picker appear?
   const palette = page.getByText("Aktion", { exact: false }).first();
   const flaeche = page.locator(".react-flow__pane");
-  // Auf die Linie zwischen Auslöser und Ende ziehen — der Baustein gehört dazwischen.
+  // Drag onto the line between trigger and end, the block belongs in between.
   const linie = page.locator(".react-flow__edge").first();
   const box = await linie.boundingBox();
   await palette.dragTo(flaeche, {
@@ -139,12 +139,12 @@ try {
   await page.waitForTimeout(600);
   const auswahl = page.locator("select").first();
   if (await auswahl.isVisible().catch(() => false)) {
-    // Über den Wert wählen — die Beschriftung trägt den Zusatz „(MCP)".
+    // Pick by value, the label carries the "(MCP)" suffix.
     await auswahl.selectOption("tool_call").catch((e) => console.log("     Auswahl:", String(e).slice(0, 80)));
     await page.waitForTimeout(2500);
     const gewaehlt = await auswahl.inputValue().catch(() => "");
     ok("Aktion Werkzeug-aufrufen laesst sich waehlen", gewaehlt === "tool_call", gewaehlt);
-    // Das Werkzeug-Feld ist das Select direkt unter der Aktionsauswahl.
+    // The tool field is the select right below the action picker.
     const werkzeugSelect = page.locator("select").nth(1);
     const anzahl = await werkzeugSelect.locator("option").count().catch(() => 0);
     ok("Werkzeug-Auswahl ist mit MCP-Werkzeugen gefüllt", anzahl > 50, `${anzahl} Einträge`);
@@ -155,7 +155,7 @@ try {
   }
   await page.screenshot({ path: "/w/04-werkzeug.png" });
 
-  // 6b) Probelauf — solange der Graph schlüssig ist
+  // 6b) Dry run, as long as the graph is sound
   const probeKnopf = page.getByRole("button", { name: /Probelauf/i });
   if (await probeKnopf.isVisible().catch(() => false)) {
     await probeKnopf.click();
@@ -201,15 +201,15 @@ try {
   await page.screenshot({ path: "/w/05-verzweigung.png" });
 
 
-  // 6d) Baumeister: beschreiben statt bauen. Ruft wirklich das Modell — deshalb großzügig
-  // Zeit und nur die Frage, ob aus dem Satz ein Graph auf der Fläche wird.
+  // 6d) Describe instead of build. This really calls the model, hence the generous timeout
+  // and the single question whether a sentence turns into a graph on the canvas.
   const baumeisterAuf = page.getByRole("button", { name: /Beschreiben statt bauen/i });
   if (await baumeisterAuf.isVisible().catch(() => false)) {
     await baumeisterAuf.click();
     await page.waitForTimeout(500);
     const feld = page.locator("textarea").last();
     await feld.fill("Rufe ein Ziel auf und schicke mir eine Nachricht, wenn es fehlschlägt");
-    // Auf dem Bestand bauen ist hier nicht gemeint — es soll neu gezeichnet werden.
+    // Building on what is there is not the point here, it should draw anew.
     const aufBestand = page.getByText(/Auf dem bauen, was auf der Fläche liegt/i).first();
     const box2 = await aufBestand.locator("xpath=preceding-sibling::input").first()
       .isChecked().catch(() => false);
@@ -235,7 +235,7 @@ try {
     ok("Baumeister ist im Editor erreichbar", false);
   }
 
-  // 6c) „Anderer Ablauf": neben den festen Slots müssen die eigenen wählbar sein.
+  // 6c) "Other flow": besides the fixed slots your own flows have to be selectable.
   const anderer = page.getByText("Anderer Ablauf", { exact: false }).first();
   await anderer.dragTo(flaeche, { targetPosition: { x: 640, y: 520 } });
   await page.waitForTimeout(900);
@@ -250,14 +250,14 @@ try {
   ok("Eigene, veröffentlichte Abläufe stehen zur Wahl", eigeneOpt > 0, `${eigeneOpt} Abläufe`);
   await page.screenshot({ path: "/w/10-unterablauf.png" });
 
-  // 7) Schließen → zurück zur Liste (der Punkt, der vorher in die Einstellungen führte)
+  // 7) Close leads back to the list (the spot that used to end in the settings)
   await page.getByRole("button", { name: /Zurück zu den Prozessen/i }).click();
   await page.waitForTimeout(1500);
   ok("Schließen führt zurück zu den eigenen Prozessen",
      page.url().includes("/processes"), page.url());
   await page.screenshot({ path: "/w/06-zurueck.png" });
 
-  // 8) Betrieb: der Verlauf eines echten Laufs — was kam je Schritt zurück?
+  // 8) Operations: the history of a real run, what came back per step?
   await page.goto(`${BASIS}/processes/betrieb`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
   const verlaufKnopf = page.getByRole("button", { name: /^Verlauf$/ }).first();
