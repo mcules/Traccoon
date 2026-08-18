@@ -1,4 +1,4 @@
-"""Job-Scheduler (cron/interval/once) — echte Ausführung (prompt→Worker, script→Subprocess)."""
+"""Job scheduler (cron/interval/once): real execution (prompt to worker, script to subprocess)."""
 from __future__ import annotations
 
 import asyncio
@@ -85,15 +85,15 @@ async def _run_script(db, job: Job, jr: JobRun) -> None:
 
 
 async def run_job_kind(db, job: Job, jr: JobRun) -> bool:
-    """Führt die Nicht-Prompt-Arten eines Jobs aus.
+    """Runs the non-prompt kinds of a job.
 
-    Rückgabe `True` = erledigt (JobRun ist fertig gesetzt), `False` = Prompt-Job, gehört
-    in die Redis-Warteschlange des Workers.
+    Returns `True` = done (the JobRun is set finished), `False` = prompt job, which belongs
+    in the Redis queue of the worker.
 
-    Einzige Stelle, an der `kind` verzweigt wird — vorher stand die Verzweigung nur im
-    Scheduler, weshalb „jetzt ausführen" (API und Agent-Tool) workflow- und http-Jobs
-    stillschweigend als Prompt-Job an den Assistenten gab: statt der Workflow-Instanz lief
-    ein Agent auf einem leeren Prompt.
+    The only place where `kind` branches: before, the branching stood only in the scheduler,
+    which is why "run now" (API and agent tool) silently gave workflow and http jobs to the
+    assistant as a prompt job: instead of the workflow instance an agent ran on an empty
+    prompt.
     """
     if job.kind == "script":
         await _run_script(db, job, jr)
@@ -105,11 +105,11 @@ async def run_job_kind(db, job: Job, jr: JobRun) -> bool:
         await _run_http_job(db, job, jr)
         return True
     if job.kind == "film":
-        # Der Feierabend-Film baut 15–20 s lang und hält den Tick (15 s) genau so lange
-        # auf. In Kauf genommen aus demselben Grund wie bei `_run_script`: ein zweiter
-        # Ausführungsweg neben diesem hier wäre ein zweiter Zeitplan, eine zweite
-        # Historie und ein zweiter Pause-Schalter. Der httpx-Timeout im Job liegt unter
-        # `job.run_timeout`, damit der JobRun seinen Fehler noch selbst schreiben kann.
+        # The after-work film builds for 15 to 20 s and holds up the tick (15 s) for exactly
+        # that long. Accepted for the same reason as with `_run_script`: a second execution
+        # path beside this one would be a second schedule, a second history and a second
+        # pause switch. The httpx timeout in the job lies below `job.run_timeout` so that the
+        # JobRun can still write its error itself.
         from .office_film import run_film_job
         await run_film_job(db, job, jr)
         return True
@@ -135,16 +135,16 @@ async def _tick() -> None:
                                     "job_id": job.id, "job_run_id": jr.id})
             log.info("job %s ausgelöst (%s)", job.name, job.kind)
         await db.commit()
-        # ERST committen, DANN einreihen. Andersherum liegt der Auftrag in Redis, bevor es
-        # den JobRun in der Datenbank gibt — ein freier Worker greift ihn in Millisekunden,
-        # findet `jr is None` und kehrt STILL zurück (worker/__main__.py:494). Der Job-Run
-        # bleibt dann für immer auf „running", ohne Fehler und ohne Lauf.
+        # Commit FIRST, queue AFTERWARDS. The other way round the assignment lies in Redis
+        # before the JobRun exists in the database; a free worker grabs it within
+        # milliseconds, finds `jr is None` and returns SILENTLY (worker/__main__.py:494). The
+        # job run then stays on "running" forever, without an error and without a run.
         for auftrag in nachreichen:
             await enqueue_task(auftrag)
 
 
 async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
-    """kind=workflow: startet bei Fälligkeit eine Workflow-Instanz (subject standalone)."""
+    """kind=workflow: starts a workflow instance when due (subject standalone)."""
     from ..models.workflow import WorkflowDefinition
     from ..services.workflow_engine import start_workflow
     if job.workflow_definition_id is None:
@@ -156,10 +156,10 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         jr.finished_at = _now()
         return
     try:
-        # Der Parametersatz des Jobs ist der Startkontext des Laufs — nach derselben Regel
-        # wie bei Prompt-Jobs (nur ein Objekt zählt, eine Liste bleibt Script-Argument).
-        # Vorher stand hier `{}`: derselbe Ablauf für eine zweite Messreihe hätte einen
-        # zweiten Ablauf gebraucht, obwohl sich nur ein Wort ändert.
+        # The parameter set of the job is the start context of the run, by the same rule as
+        # with prompt jobs (only an object counts, a list stays a script argument). Before,
+        # `{}` stood here: the same flow for a second metric series would have needed a
+        # second flow although only one word changes.
         from .job_params import parameter
         inst = await start_workflow(
             db, definition, subject_kind=definition.subject_kind, context=parameter(job.args),
@@ -173,11 +173,11 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
 
 
 async def _run_http_job(db, job: Job, jr: JobRun) -> None:
-    """kind=http: ruft bei Fälligkeit ein hinterlegtes Ziel auf.
+    """kind=http: calls a stored destination when due.
 
-    Der Aufruf steht in `job.http_request` ({method, path, query, headers, body}) — dieselbe
-    Form wie die Prozess-Aktion, damit ein Ablauf mühelos zwischen Zeitplan und Prozess
-    wandern kann. Fehler landen als Job-Fehler (und damit im gewohnten Notify-Pfad).
+    The call stands in `job.http_request` ({method, path, query, headers, body}), the same
+    shape as the process action, so that a flow can move effortlessly between schedule and
+    process. Errors land as job errors (and therefore in the usual notify path).
     """
     from ..models.destination import Destination
     from . import destinations
@@ -219,12 +219,12 @@ async def _flush_coalesced() -> None:
         for row in rows:
             row.flushed = True
             if not row.payloads:
-                continue  # Fenster lief leer aus — die Erstzustellung war die einzige
-            # Routennamen sind seit der Mehrbenutzer-Umstellung nicht mehr eindeutig
-            # (models/ops.py). `scalar_one_or_none` warf bei zwei gleichnamigen Routen
-            # `MultipleResultsFound` — und riss den gesamten Scheduler-Tick mit, an dem
-            # Jobs, Timer und Aufräumarbeiten hängen. Der erste Treffer genügt hier: aus
-            # dem Webhook wird nur die Chat-Adresse gelesen.
+                continue  # the window ran out empty; the first delivery was the only one
+            # Route names are no longer unique since the multi-user change (models/ops.py).
+            # `scalar_one_or_none` raised `MultipleResultsFound` with two routes of the same
+            # name and tore down the whole scheduler tick, on which jobs, timers and clean-up
+            # work hang. The first hit is enough here: only the chat address is read from the
+            # webhook.
             sub = (await db.execute(select(WebhookSub).where(
                 WebhookSub.route == row.route).order_by(WebhookSub.id))).scalars().first()
             n = len(row.payloads)
@@ -244,17 +244,17 @@ async def _flush_coalesced() -> None:
 
 RUN_RETENTION_KEY = "run_retention_days"
 RUN_RETENTION_DEFAULT = 30
-_purge_after = 0.0  # Monotonic-Marke: Aufräumen läuft höchstens stündlich
-# Der Vault ändert sich selten; stündlich reicht. Erster Durchlauf gleich beim Start,
-# damit die Freispruch-Liste nicht eine Stunde lang leer ist.
+_purge_after = 0.0  # monotonic mark: clean-up runs at most hourly
+# The vault changes rarely; hourly is enough. The first pass happens right at the start so
+# that the acquittal list is not empty for an hour.
 _vault_after = 0.0
 
 
 async def _purge_archived_runs() -> None:
-    """Archivierte Agentenläufe nach Ablauf der Aufbewahrungsfrist löschen (TRA-29).
+    """Delete archived agent runs after the retention period (TRA-29).
 
-    Frist in Tagen aus dem AppSetting `run_retention_days` (Default 30, 0 = nie löschen).
-    RunSteps hängen per ON DELETE CASCADE dran.
+    The period in days comes from the AppSetting `run_retention_days` (default 30, 0 = never
+    delete). RunSteps hang off it over ON DELETE CASCADE.
     """
     from sqlalchemy import delete
 
@@ -280,7 +280,7 @@ async def _purge_archived_runs() -> None:
 
 
 async def _spam_digest() -> None:
-    """Sammel-Karte für Spam-Verdachtsfälle unterhalb der Sofort-Schwelle."""
+    """Digest card for spam suspicions below the immediate threshold."""
     from .spam_review import digest_faellig
 
     async with SessionLocal() as db:
@@ -288,11 +288,11 @@ async def _spam_digest() -> None:
 
 
 async def _postfach_lernen() -> None:
-    """Was der Mensch selbst entschieden hat, ohne zu fragen einsammeln.
+    """Collect what the human decided themselves, without asking.
 
-    Zwei Wege, beide ohne Rückfrage und ohne Modell: Mails, die er selbst in den
-    Spam-Ordner geschoben hat (am Handy, in der Webmail), und Adressen, denen er selbst
-    geschrieben hat. Ersteres ist Spam-Lehrstoff, letzteres ein Freispruch.
+    Two paths, both without a question and without a model: mails they moved into the spam
+    folder themselves (on the phone, in the webmail), and addresses they wrote to themselves.
+    The former is spam learning material, the latter an acquittal.
     """
     from ..models.ops import WebhookSub
     from .spam_bootstrap import antwort_kontakte, spam_rueckkopplung
@@ -310,10 +310,10 @@ async def _postfach_lernen() -> None:
 
 
 async def _vault_kontakte() -> None:
-    """Bekannte Adressen aus dem Vault nachziehen (Freispruch-Liste der Spam-Erkennung).
+    """Update known addresses from the vault (the acquittal list of the spam detection).
 
-    Nur für Menschen, die tatsächlich einen Mail-Webhook betreiben — für alle anderen gäbe
-    es nichts zu prüfen, und der Vault-Durchlauf kostet Dateizugriffe.
+    Only for people who actually run a mail webhook; for everybody else there would be
+    nothing to check, and the vault pass costs file accesses.
     """
     from ..models.ops import WebhookSub
     from .vault_contacts import sync_contacts
