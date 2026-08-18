@@ -145,7 +145,6 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
     # 2026-08-07 that was 1993 lines, and the reviewer dutifully reported that the agent had
     # removed the `may_plan_continue` node. It had never touched it. `merge-base` delivers
     # the branching point even when the other side has moved on.
-    # weitergelaufen ist.
     rc, mb = await _git(wd, "merge-base", ctx.base_commit or ctx.main, "HEAD")
     base = mb.strip() if rc == 0 and mb.strip() else (ctx.base_commit or ctx.main)
     # Two dots, not three: `base...HEAD` shows only COMMITTED work. In the review gate the
