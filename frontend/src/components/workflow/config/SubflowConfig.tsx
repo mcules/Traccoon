@@ -1,30 +1,64 @@
+import { useQuery } from "@tanstack/react-query";
+import { workflowApi } from "../../../api";
 import { SLOT_LABELS, type NodeConfig, type WorkflowSlot } from "../types";
 
 const SLOTS = Object.keys(SLOT_LABELS) as WorkflowSlot[];
 
+/**
+ * Welcher Ablauf hier aufgerufen wird — ein Slot oder ein bestimmter Ablauf.
+ *
+ * Bisher standen nur die fünf ausgelieferten Slots zur Wahl. Damit war der Knoten für
+ * alles Eigene nutzlos: man baut sich einen Ablauf, will ihn aus einem zweiten heraus
+ * aufrufen — und findet im Dropdown den Ticket-Lebenszyklus. Beide Wege haben ihren Sinn:
+ * ein **Slot** wird je Projekt aufgelöst (eigene Anpassung schlägt Satz schlägt Standard),
+ * ein **benannter Ablauf** ist genau dieser eine, egal wo er läuft.
+ */
 export default function SubflowConfig({
   config,
   onChange,
+  defId,
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
+  /** Der Ablauf, in dem dieser Knoten steckt — er darf sich nicht selbst aufrufen. */
+  defId?: number;
 }) {
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
+  const { data: alle } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
+  // Aufrufbar ist, was veröffentlicht ist — ein Entwurf hat keine Version, auf die eine
+  // Kind-Instanz zeigen könnte. Und der eigene Ablauf fällt raus (Endlosschleife).
+  const abläufe = (alle || []).filter(
+    (d) => d.current_version_id && !d.archived_at && d.id !== defId && !d.slot);
+
+  const wert = config.definition_id ? `def:${config.definition_id}`
+    : config.slot ? `slot:${config.slot}` : "";
+  const setzen = (v: string) => {
+    const [art, rest] = v.split(":");
+    onChange({
+      ...config,
+      slot: art === "slot" ? (rest as WorkflowSlot) : undefined,
+      definition_id: art === "def" ? Number(rest) : undefined,
+    });
+  };
+
   return (
     <div className="space-y-3">
       <label className="block text-xs font-medium text-muted">
         Aufzurufender Ablauf
-        <select
-          value={config.slot || ""}
-          onChange={(e) => onChange({ ...config, slot: (e.target.value || undefined) as WorkflowSlot })}
-          className={`mt-1 ${inp}`}
-        >
+        <select value={wert} onChange={(e) => setzen(e.target.value)} className={`mt-1 ${inp}`}>
           <option value="">— wählen —</option>
-          {SLOTS.map((s) => (
-            <option key={s} value={s}>
-              {SLOT_LABELS[s]}
-            </option>
-          ))}
+          <optgroup label="Fest benannte Abläufe (je Projekt aufgelöst)">
+            {SLOTS.map((s) => (
+              <option key={s} value={`slot:${s}`}>{SLOT_LABELS[s]}</option>
+            ))}
+          </optgroup>
+          {abläufe.length > 0 && (
+            <optgroup label="Eigene Abläufe (veröffentlicht)">
+              {abläufe.map((d) => (
+                <option key={d.id} value={`def:${d.id}`}>{d.name}</option>
+              ))}
+            </optgroup>
+          )}
         </select>
       </label>
 
@@ -38,9 +72,10 @@ export default function SubflowConfig({
       </label>
 
       <p className="text-[10px] text-muted">
-        Aufgerufen wird der Ablauf, der für <b>dieses Projekt</b> gilt — also eine eigene
-        Anpassung, sonst der Satz, sonst der Standard. Ausgänge: <b>fertig</b> bzw.
-        <b> gescheitert</b>.
+        Bei einem <b>fest benannten</b> Ablauf gilt der, der für <b>dieses Projekt</b>
+        {" "}eingestellt ist — eigene Anpassung, sonst Satz, sonst Standard. Ein{" "}
+        <b>eigener</b> Ablauf wird genau so aufgerufen, wie er dasteht; er muss dafür
+        veröffentlicht sein. Ausgänge: <b>fertig</b> bzw. <b>gescheitert</b>.
       </p>
     </div>
   );

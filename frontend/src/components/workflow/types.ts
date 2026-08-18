@@ -106,6 +106,8 @@ export interface NodeConfig {
   events?: string[];             // comment | answer | manual | any
   // subflow
   slot?: WorkflowSlot;
+  /** Ausdrücklich benannter Ablauf statt eines Slots — auch ein eigener. */
+  definition_id?: number;
   inherit_context?: boolean;
   // loop — geht `liste` Element für Element durch; der Körper hängt am Ausgang `element`
   // und führt über eine Rückkante hierher zurück.

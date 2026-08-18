@@ -95,7 +95,7 @@ export default function NodeConfigPanel({
         <AgentTaskConfig config={config} onChange={set} projectId={projectId} />
       )}
       {node.type === "wait_event" && <WaitEventConfig config={config} onChange={set} />}
-      {node.type === "subflow" && <SubflowConfig config={config} onChange={set} />}
+      {node.type === "subflow" && <SubflowConfig config={config} onChange={set} defId={defId} />}
 
       {node.type === "end" && (
         <label className="block text-xs font-medium text-muted">
