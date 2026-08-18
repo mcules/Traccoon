@@ -23,6 +23,7 @@ import WorkflowCanvas from "../components/workflow/WorkflowCanvas";
 import NodePalette from "../components/workflow/NodePalette";
 import NodeConfigPanel from "../components/workflow/NodeConfigPanel";
 import { verfuegbareFelder } from "../components/workflow/contextFields";
+import ProbelaufPanel from "../components/workflow/ProbelaufPanel";
 import { graphToFlow, flowToGraph } from "../components/workflow/convert";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "../components/workflow/layout";
 import { validateGraph } from "../components/workflow/validate";
@@ -443,6 +444,9 @@ export default function WorkflowEditor() {
               subjectKind={def?.subject_kind} kontextFelder={kontextFelder}
               kontextFilter={katalog?.filter} defId={def?.id} />
           )}
+
+          {!nurLesen && <ProbelaufPanel defId={def?.id} nodes={nodes}
+              graph={() => flowToGraph(nodes, edges)} />}
 
           {allErrors.length > 0 && (
             <div className="mt-auto border-t border-line p-3">
