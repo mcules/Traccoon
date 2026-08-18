@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_session
 from ..models.i18n import UiLocale, UiTranslation
 from ..models.user import User
+from ..services import i18n as server_texte
 from .deps import get_current_user, require_admin
 
 router = APIRouter(prefix="/i18n", tags=["i18n"])
@@ -110,6 +111,20 @@ async def update_locale(locale: str, data: LocaleUpdate, _: User = Depends(requi
     await db.commit()
 
 
+@router.get("/server-katalog")
+async def server_katalog(locale: str = "", _: User = Depends(get_current_user)):
+    """The German texts the server itself writes: notifications, the setup checklist.
+
+    The browser knows only its own catalog. Without this list the admin area could not offer
+    those texts for translation, and they would stay German forever while the rest of the
+    interface switches. `locale` adds the shipped translation of that language, otherwise the
+    admin area would count every one of these texts as untranslated.
+    """
+    lc = _locale(locale) if locale else ""
+    return {"texte": server_texte.quelle(),
+            "ausgeliefert": dict(server_texte.KATALOG.get(lc, {})) if lc else {}}
+
+
 @router.get("/{locale}")
 async def overrides(locale: str, user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
@@ -132,12 +147,14 @@ async def set_text(locale: str, key: str, data: TextIn,
         if vorhanden is not None:
             await db.delete(vorhanden)
             await db.commit()
+            server_texte.verwerfen()
         return
     if vorhanden is None:
         db.add(UiTranslation(locale=lc, key=key, text=data.text))
     else:
         vorhanden.text = data.text
     await db.commit()
+    server_texte.verwerfen()
 
 
 @router.post("/{locale}/import")

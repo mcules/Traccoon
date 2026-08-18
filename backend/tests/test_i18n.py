@@ -81,3 +81,52 @@ async def test_leerer_text_stellt_die_ausgelieferte_fassung_wieder_her(client, d
     assert (await client.get("/i18n/en", headers=h)).json()["texte"]["menu.start"]
     await client.put("/i18n/en/menu.start", json={"text": "  "}, headers=h)
     assert (await client.get("/i18n/en", headers=h)).json()["texte"] == {}
+
+
+async def test_server_katalog_steht_zur_uebersetzung(client, db):
+    """Der Server schreibt eigene Texte (Benachrichtigungen, Einrichtung). Ohne diese Liste
+    könnte die Verwaltung sie nicht anbieten, und sie blieben für immer deutsch."""
+    anna = await make_user(db, "anna")
+    r = await client.get("/i18n/server-katalog", headers=auth(anna))
+    assert r.status_code == 200
+    texte = r.json()["texte"]
+    assert texte["server.onboarding.project"] == "Projekt anlegen"
+    assert all(k.startswith("server.") for k in texte)
+
+
+async def test_servertext_in_der_sprache_des_lesers(db):
+    from app.services.i18n import tr, verwerfen
+
+    verwerfen()
+    assert await tr(db, "server.onboarding.project", "de") == "Projekt anlegen"
+    assert await tr(db, "server.onboarding.project", "en") == "Create a project"
+    # Unbekannte Sprache fällt auf Deutsch zurück, nicht auf den Schlüssel: ein Schlüssel
+    # auf dem Bildschirm ist schlimmer als ein Text in der falschen Sprache.
+    assert await tr(db, "server.onboarding.project", "fr") == "Projekt anlegen"
+    assert await tr(db, "gibt.es.nicht", "de") == "gibt.es.nicht"
+
+
+async def test_platzhalter_werden_gefuellt(db):
+    from app.services.i18n import tr
+
+    text = await tr(db, "server.notify.job", "de", name="Nachtlauf")
+    assert text == "Job: Nachtlauf"
+
+
+async def test_admin_aenderung_schlaegt_den_ausgelieferten_text(client, db):
+    from app.services.i18n import tr
+
+    admin = await make_user(db, "chef", admin=True)
+    await client.put("/i18n/en/server.onboarding.project",
+                     json={"text": "Start a project"}, headers=auth(admin))
+    # Der Zwischenspeicher wird beim Schreiben verworfen, sonst hinge die Änderung 30 s fest.
+    assert await tr(db, "server.onboarding.project", "en") == "Start a project"
+
+
+async def test_onboarding_folgt_der_sprache_des_nutzers(client, db):
+    anna = await make_user(db, "anna")
+    anna.locale = "en"
+    await db.commit()
+    r = await client.get("/me/onboarding", headers=auth(anna))
+    titel = [s["title"] for s in r.json()["steps"]]
+    assert "Create a project" in titel

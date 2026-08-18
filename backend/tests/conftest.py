@@ -254,3 +254,14 @@ def helpers():
         "make_project": staticmethod(make_project), "add_member": staticmethod(add_member),
         "make_location": staticmethod(make_location), "make_asset": staticmethod(make_asset),
     })
+
+
+@pytest.fixture(autouse=True)
+def _i18n_frisch():
+    """Übersetzungen kommen aus einem prozessweiten Zwischenspeicher (30 s), damit nicht jede
+    Benachrichtigung eine Abfrage kostet. Zwischen zwei Tests ist das ein Fehler: der Text,
+    den ein Test überschreibt, gälte im nächsten weiter."""
+    from app.services.i18n import verwerfen
+    verwerfen()
+    yield
+    verwerfen()
