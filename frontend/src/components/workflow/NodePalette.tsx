@@ -11,6 +11,7 @@ const ICONS: Record<WorkflowNodeType, string> = {
   wait_event: "⏳",
   subflow: "🔗",
   loop: "🔁",
+  timer: "⏱",
 };
 
 const ORDER: WorkflowNodeType[] = [
@@ -23,6 +24,7 @@ const ORDER: WorkflowNodeType[] = [
   "wait_event",
   "subflow",
   "loop",
+  "timer",
   "end",
 ];
 

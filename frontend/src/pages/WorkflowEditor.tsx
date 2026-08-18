@@ -48,6 +48,8 @@ function defaultConfig(type: WorkflowNodeType): NodeConfig {
       return { inherit_context: true };
     case "loop":
       return { liste: "", element: "element", index: "i" };
+    case "timer":
+      return { dauer: 30, einheit: "m" };
     default:
       return {};
   }
