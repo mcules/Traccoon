@@ -1,31 +1,31 @@
-// Schicht 0 — die Kamerawahl des Wandschirms.
+// Layer 0: the camera choice of the wall screen.
 //
-// ══ Die Einsicht, auf der das hier beruht ════════════════════════════════════════════════════
+// ══ The insight this rests on ════════════════════════════════════════════════════════════════
 //
-// Die Kamera braucht keine Identität, sondern einen **Punkt**. Und `Frame.fx` ist bereits der
-// vollständige Geschehensstrom des Raums: jedes `tool` erzeugt einen `spark`, jedes `edit` einen
-// `drop`, jedes `spawn`/`deliver` ein `link`, jedes `gate`/`done` ein `emote`. Die Engine hält
-// die Liste außerdem schon sauber — `tick` wirft alles weg, dessen `until` vorbei ist.
+// The camera does not need an identity but a **point**. And `Frame.fx` is already the complete
+// stream of what happens in the room: every `tool` produces a `spark`, every `edit` a `drop`,
+// every `spawn`/`deliver` a `link`, every `gate`/`done` an `emote`. The engine also keeps the
+// list clean already: `tick` throws away everything whose `until` has passed.
 //
-// Deshalb kostet der Kiosk **null Umbau an der Engine**: kein neues Feld in `ActorState`, kein
-// `lastAct`, das aus `Priv` nach außen gehoben werden müsste. Jedes solche Feld stünde im
-// `Frame` und machte `golden.json` rot — für eine Information, die im `fx`-Strom ohnehin steht.
+// That is why the kiosk costs **no rebuilding of the engine**: no new field in `ActorState`, no
+// `lastAct` that would have to be lifted out of `Priv`. Every such field would stand in the
+// `Frame` and turn `golden.json` red, for information that is in the `fx` stream anyway.
 //
-// Alle Zeiten sind `engine.t` (Simulationszeit, nicht Wanduhr), alle Koordinaten sind
-// **Szenen**-Koordinaten (`SCENE`, 1600×900) — genau wie `Fx.x/y`. Das Umrechnen in Pufferpixel
-// (`POS_SCALE`) ist Sache der Bühne und passiert bewusst nicht hier: sonst gäbe es zwei Stellen,
-// an denen dieselbe Skalierung steht.
+// All times are `engine.t` (simulation time, not wall clock), all coordinates are **scene**
+// coordinates (`SCENE`, 1600x900), exactly like `Fx.x/y`. Converting into buffer pixels
+// (`POS_SCALE`) is the business of the stage and deliberately does not happen here: otherwise
+// there would be two places holding the same scaling.
 
 import type { Frame, Fx, FxKind, Pt } from "./types.ts";
 import { KIOSK_HOLD_MS, KIOSK_IDLE_MS, SCENE } from "./const.ts";
 
 /**
- * Was der Kiosk zwischen zwei Bildern behalten muss.
+ * What the kiosk has to keep between two frames.
  *
- * `x`/`y`/`zoom` sind das **Soll** der Kamera, nicht ihr Ist — die Bühne fährt mit ihrer
- * vorhandenen Easing dorthin. `pickedAt` trägt die Halte-Regel, `lastFxT0` ist zugleich
- * Entprellung (ein Fx wird nie zweimal gewählt) und Aktivitätsuhr (die Stille-Regel misst
- * daran).
+ * `x`/`y`/`zoom` are the **target** of the camera, not its actual position: the stage moves
+ * there with its existing easing. `pickedAt` carries the hold rule, `lastFxT0` is both a
+ * debounce (an fx is never chosen twice) and an activity clock (the silence rule measures by
+ * it).
  */
 export interface KioskCam {
   x: number;
@@ -36,29 +36,29 @@ export interface KioskCam {
 }
 
 /**
- * Feste Rangfolge, **kein Punktesystem**. Ein Punktesystem bräuchte Gewichte, und die könnte
- * niemand begründen — „ein Fehler zählt 2,5 Funken" ist eine erfundene Zahl. Die Reihenfolge
- * hier ist dagegen eine Aussage über den Raum: `emote` (Gate oder Abschluss) ist das Seltenste
- * und Wichtigste, `link` (Übergabe, Spawn) die eigentliche Choreografie, `drop` (geschriebene
- * Datei) das Ergebnis, `spark` (Werkzeugschritt) das Alltäglichste.
+ * A fixed ranking, **no scoring system**. A scoring system would need weights, and nobody
+ * could justify those: "an error counts 2.5 sparks" is an invented number. The order here on
+ * the other hand is a statement about the room: `emote` (gate or completion) is the rarest and
+ * most important, `link` (handover, spawn) the actual choreography, `drop` (written file) the
+ * result, `spark` (tool step) the most everyday thing.
  */
 const RANK: Record<FxKind, number> = { emote: 3, link: 2, drop: 1, spark: 0 };
 
-/** Der ganze Raum: die Mitte von `SCENE`. Mal `POS_SCALE` ist das exakt `CAM_FULL` — das steht
- *  aber in Schicht 1 und ist von hier aus zu Recht unerreichbar. */
+/** The whole room: the centre of `SCENE`. Times `POS_SCALE` that is exactly `CAM_FULL`, but
+ *  that stands in layer 1 and is rightly unreachable from here. */
 const FULL: Pt = { x: SCENE.w / 2, y: SCENE.h / 2 };
 
-/** Frischer Kiosk-Zustand: ganzer Raum, noch nichts gesehen.
+/** Fresh kiosk state: the whole room, nothing seen yet.
  *
- *  `pickedAt` liegt eine volle Haltezeit in der Vergangenheit und `lastFxT0` **vor** dem
- *  Nullpunkt: die erste Wahl soll nicht sechs Sekunden lang auf einen Raum warten, in dem
- *  gerade etwas anfängt, und ein Fx bei `t0 === 0` ist ein Fx wie jedes andere. */
+ *  `pickedAt` lies a full hold time in the past and `lastFxT0` **before** the zero point: the
+ *  first choice should not wait six seconds for a room in which something is just starting,
+ *  and an fx at `t0 === 0` is an fx like any other. */
 export function newKioskCam(): KioskCam {
   return { x: FULL.x, y: FULL.y, zoom: 1, pickedAt: -KIOSK_HOLD_MS, lastFxT0: -1 };
 }
 
-/** Zurück auf den ganzen Raum. Gibt `null`, wenn die Kamera dort schon steht — sonst meldete
- *  der Kiosk in jedem Bild eine „Änderung" und die Bühne malte durchgehend neu. */
+/** Back to the whole room. Gives `null` when the camera already stands there; otherwise the
+ *  kiosk would report a "change" in every frame and the stage would redraw continuously. */
 function toFull(st: KioskCam, t: number): Pt | null {
   if (st.zoom === 1 && st.x === FULL.x && st.y === FULL.y) return null;
   st.x = FULL.x;
@@ -69,30 +69,30 @@ function toFull(st: KioskCam, t: number): Pt | null {
 }
 
 /**
- * Wohin die Kiosk-Kamera schauen soll — oder `null`, wenn alles bleibt, wie es ist.
+ * Where the kiosk camera should look, or `null` when everything stays as it is.
  *
- * `st` wird dabei **fortgeschrieben** (Halte- und Entprell-Zustand). Das ist kein versteckter
- * Seiteneffekt, sondern die Aufgabe: `st` ist der Kamerazustand, und der Rückgabewert sagt der
- * Bühne nur, ob sie ihn diesmal übernehmen muss. `st.zoom` gehört zum Ergebnis dazu.
+ * `st` is **written on** in the process (hold and debounce state). That is not a hidden side
+ * effect but the task: `st` is the camera state, and the return value only tells the stage
+ * whether it has to take it over this time. `st.zoom` belongs to the result.
  *
- * Die Regeln, in genau dieser Reihenfolge:
+ * The rules, in exactly this order:
  *
- *  1. **Leerer Raum** (keine Figur mit `retired !== true`): gar nicht wählen, ganzer Raum.
- *  2. **Halten** — ein gewähltes Ziel gilt `KIOSK_HOLD_MS` unverändert. Ohne das zappelte die
- *     Kamera zwölfmal je Sekunde zwischen Funken hin und her.
- *  3. **Wählen** — unter allen neuen `fx` nach `RANK`, innerhalb einer Art das jüngste `t0`.
- *  4. **Stille** — `KIOSK_IDLE_MS` ohne ein einziges neues Fx: zurück auf den ganzen Raum und
- *     dort bleiben. Das ist das ehrliche Bild — es passiert nichts, also sieht man den ganzen
- *     stillen Raum und nicht einen zufälligen leeren Schreibtisch aus der Nähe.
+ *  1. **Empty room** (no figure with `retired !== true`): do not choose at all, whole room.
+ *  2. **Hold**: a chosen target applies unchanged for `KIOSK_HOLD_MS`. Without that the
+ *     camera would jitter between sparks twelve times a second.
+ *  3. **Choose**: among all new `fx` by `RANK`, and within a kind the most recent `t0`.
+ *  4. **Silence**: `KIOSK_IDLE_MS` without a single new fx means back to the whole room and
+ *     staying there. That is the honest picture: nothing is happening, so one sees the whole
+ *     silent room and not a random empty desk from close up.
  */
 export function pickTarget(f: Frame, st: KioskCam): Pt | null {
   const t = f.t;
 
-  // Die Simulationszeit kann **rückwärts springen**: ein Seek auf der Zeitleiste oder ein neu
-  // gebauter `Replay` (Raumwechsel im Kiosk) fängt wieder vorn an. Dann sind `t - pickedAt` und
-  // `t - lastFxT0` negativ und die Kamera hielte für immer still. Das Halten eines Ziels aus
-  // einer anderen Zeitlinie wäre ohnehin sinnlos — also alles fallen lassen und im selben Bild
-  // neu wählen.
+  // The simulation time can **jump backwards**: a seek on the timeline or a newly built
+  // `Replay` (room change in the kiosk) starts from the front again. Then `t - pickedAt` and
+  // `t - lastFxT0` are negative and the camera would hold still forever. Holding a target from
+  // another timeline would be pointless anyway, so drop everything and choose again in the
+  // same frame.
   if (t < st.pickedAt || t < st.lastFxT0) {
     st.pickedAt = t - KIOSK_HOLD_MS;
     st.lastFxT0 = -1;
@@ -105,7 +105,7 @@ export function pickTarget(f: Frame, st: KioskCam): Pt | null {
   }
   if (!peopled) return toFull(st, t);
 
-  // Ein Durchgang durch den Strom: bester Kandidat **und** jüngstes gesehenes `t0`.
+  // One pass through the stream: the best candidate **and** the most recent `t0` seen.
   let best: Fx | undefined;
   let newest = st.lastFxT0;
   for (const fx of f.fx) {
@@ -116,9 +116,9 @@ export function pickTarget(f: Frame, st: KioskCam): Pt | null {
     const rb = RANK[best.kind];
     if (r > rb || (r === rb && fx.t0 > best.t0)) best = fx;
   }
-  // Auch während des Haltens fortgeschrieben: `lastFxT0` ist die Aktivitätsuhr. Sonst zählte
-  // ein sechs Sekunden langes Halten als Stille, sobald es zufällig ins 20-Sekunden-Fenster
-  // fällt — und die Kamera zöge sich aus einem vollen Raum zurück.
+  // Written on during the hold as well: `lastFxT0` is the activity clock. Otherwise a hold of
+  // six seconds would count as silence as soon as it happened to fall into the 20 second
+  // window, and the camera would pull back out of a full room.
   st.lastFxT0 = newest;
 
   // 2. Halten.
@@ -130,8 +130,8 @@ export function pickTarget(f: Frame, st: KioskCam): Pt | null {
     return null;
   }
 
-  // 3. Wählen. Zoom 2, nicht 3: der Puffer zeigt dann 240×135, also den halben Raum — die
-  // Nachbarn des Ziels bleiben im Bild, und eine Übergabelinie läuft nicht aus dem Bild hinaus.
+  // 3. Choose. Zoom 2, not 3: the buffer then shows 240x135, so half the room; the neighbours
+  // of the target stay in the picture and a handover line does not run out of it.
   st.x = best.x;
   st.y = best.y;
   st.zoom = 2;
