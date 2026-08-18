@@ -1,16 +1,16 @@
-"""Board-Spiegel und Betriebs-Tick.
+"""Board mirror and operations tick.
 
-Was hier früher stand — der komplette Zwei-Phasen-Ablauf planning→plan_review→approved→
-execution→to_test→done samt Fortsetzung, Aufteilung und Torprüfung — ist jetzt ein
-gestaltbarer Prozess (Slot `ticket_lifecycle`, siehe `services/workflow_seed.py`). Übrig
-bleiben die zwei Dinge, die kein Prozess sein sollen:
+What used to stand here, the complete two phase flow planning → plan_review → approved →
+execution → to_test → done including continuation, splitting and gate check, is now a
+designable process (slot `ticket_lifecycle`, see `services/workflow_seed.py`). What remains
+are the two things that should not be a process:
 
-* `sync_board_status` — spiegelt den Agent-Status auf die Board-Spalte,
-* der Betriebs-Tick — Wartungs-Update (kein Agent läuft → Self-Deploy) und Aufräumen nach
-  einem Neustart.
+* `sync_board_status`: mirrors the agent status onto the board column,
+* the operations tick: maintenance update (no agent running means self-deploy) and clean-up
+  after a restart.
 
-Die Torprüfung vor jedem Agentenlauf (Zeitfenster, Runner-Limit, Runaway-Bremse) steckt in
-`services/agent_gate.py`; das Weiterschalten wartender Läufe erledigt der Engine-Tick.
+The gate check before every agent run (time window, runner limit, runaway brake) sits in
+`services/agent_gate.py`; advancing waiting runs is done by the engine tick.
 """
 from __future__ import annotations
 
@@ -35,14 +35,14 @@ def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
 
-# Agent-Status → Board-Spalte (per Name). Fehler/Rückfrage/Freigabe-Gate/zu-testen → „Warten",
-# aktive Bearbeitung → „In Arbeit", fertig → „Fertig". open/None lässt die Spalte unangetastet.
+# Agent status to board column (by name). Error, question, approval gate and to-test become
+# "waiting", active work "in progress", finished "done"; open/None leaves the column untouched.
 _AGENT_STATUS_TO_BOARD = {
     TicketAgentStatus.failed: "Warten",
     TicketAgentStatus.hold: "Warten",
     TicketAgentStatus.plan_review: "Warten",
-    # Testumgebungs-Flow (ABC-18): eigene Spalte zwischen „In Arbeit" und „Fertig".
-    # Fehlt sie im Projekt, greift der Fallback auf „Warten" (s. sync_board_status).
+    # Test environment flow (ABC-18): a column of its own between "in progress" and "done".
+    # If it is missing in the project, the fallback to "waiting" applies (see sync_board_status).
     TicketAgentStatus.to_test: "Testen",
     TicketAgentStatus.testing: "Testen",
     TicketAgentStatus.planning: "In Arbeit",
@@ -53,10 +53,10 @@ _AGENT_STATUS_TO_BOARD = {
 
 
 async def sync_board_status(db, issue: Issue) -> None:
-    """Board-Spalte an den Agent-Status koppeln (verschiebt das Ticket in die passende Spalte,
-    falls sie im Projekt existiert). So landen Fehler/Rückfragen/zu-testende Tickets in „Warten"
-    statt in „To Do" zu bleiben. Ein manuell in eine „done"-Spalte gesetztes Ticket wird nie
-    zurückgezogen (menschliche Abnahme hat Vorrang)."""
+    """Couple the board column to the agent status (moves the ticket into the matching column
+    when it exists in the project). That way errors, questions and tickets to be tested land
+    in "waiting" instead of staying in "to do". A ticket moved manually into a "done" column
+    is never pulled back (human acceptance takes precedence)."""
     target = _AGENT_STATUS_TO_BOARD.get(issue.agent_status)
     if not target:
         return
@@ -64,18 +64,18 @@ async def sync_board_status(db, issue: Issue) -> None:
         WorkflowStatus.project_id == issue.project_id))).scalars().all()
     cur = next((s for s in stats if s.id == issue.status_id), None)
     if cur and cur.category == StatusCategory.done and target != "Fertig":
-        return  # bereits (manuell) abgenommen — nicht nach „Warten" zurückziehen
+        return  # already accepted (manually): do not pull back to "waiting"
     st = next((s for s in stats if s.name == target), None)
     if st is None and target == "Testen":
-        # Bestandsprojekt ohne „Testen"-Spalte: einmalig anlegen (vor „Fertig" einsortiert),
-        # sonst Fallback auf „Warten" — der Übergang darf nie am fehlenden Status scheitern.
+        # Existing project without a "testing" column: create it once (before "done");
+        # otherwise fall back to "waiting", because the transition must never fail.
         st = await _ensure_testing_status(db, issue.project_id, stats)
     if st and issue.status_id != st.id:
         issue.status_id = st.id
 
 
 async def _ensure_testing_status(db, project_id: int, stats: list[WorkflowStatus]):
-    """Legt die „Testen"-Spalte für ein Bestandsprojekt an (idempotent) und hängt sie ans Board."""
+    """Creates the "testing" column for an existing project (idempotent) and attaches it to the board."""
     from ..models.ticket import Board, BoardColumn
     done = next((s for s in stats if s.category == StatusCategory.done), None)
     order = (done.order if done else max([s.order for s in stats], default=0) + 1)
@@ -91,11 +91,11 @@ async def _ensure_testing_status(db, project_id: int, stats: list[WorkflowStatus
     return st
 
 
-# ── Puls des Workers ─────────────────────────────────────────────────────────
-# Der Worker schreibt alle 5 s `runner:heartbeat` (ex=10). Bleibt der aus, während Aufträge
-# in der Warteschlange liegen, steht der Worker — genau das passierte am 2026-07-30 über
-# eine Stunde lang, ohne dass es irgendwo aufgefallen wäre: der Assistent schwieg einfach,
-# und das ist von „hat nichts zu sagen" nicht zu unterscheiden. Lieber einmal melden.
+# ── Pulse of the worker ──────────────────────────────────────────────────────
+# The worker writes `runner:heartbeat` (ex=10) every 5 s. If that stops while assignments lie
+# in the queue, the worker is stuck, which is exactly what happened on 2026-07-30 for over an
+# hour without being noticed anywhere: the assistant simply stayed silent, and that cannot be
+# told apart from "has nothing to say". Better to report once too often.
 WORKER_STILL_SEC = 180
 _puls_gemeldet = False
 
@@ -112,7 +112,7 @@ async def _pruefe_worker_puls() -> None:
     if steht and not _puls_gemeldet:
         log.error("Worker ohne Puls, %s Auftrag/Aufträge warten", wartend)
         async with SessionLocal() as db:
-            # An den Betreiber: ohne Worker läuft weder Assistent noch Agent.
+            # To the operator: without a worker neither the assistant nor an agent runs.
             admin = (await db.execute(select(User).where(User.telegram_chat_id.isnot(None))
                                       .order_by(User.id))).scalars().first()
             if admin:
@@ -133,9 +133,9 @@ async def _pruefe_worker_puls() -> None:
 # ── Betriebs-Tick ────────────────────────────────────────────────────────────
 
 async def _tick() -> None:
-    """Wartungs-Update: sobald der letzte Agent fertig ist, das Wartungsprojekt über den
-    Deployer-Sidecar self-deployen. Während des Updates startet `agent_gate` ohnehin
-    keine neuen Läufe."""
+    """Maintenance update: as soon as the last agent is finished, self-deploy the maintenance
+    project over the deployer sidecar. During the update `agent_gate` starts no new runs
+    anyway."""
     await _pruefe_worker_puls()
     if not await get_flag("update_pending"):
         return
@@ -167,19 +167,19 @@ async def run_dispatcher() -> None:
         await asyncio.sleep(TICK_SECONDS)
 
 
-# Läuft ein Worker-Run noch, wenn sein letzter run_step jünger als dies ist? Der Worker
-# ist ein eigener Container und überlebt einen Backend-Reload (uvicorn --reload) — dann
-# darf sein Lauf NICHT als „interrupted" abgeschossen werden, sondern wird wieder angebunden.
+# Is a worker run still going when its last run_step is younger than this? The worker is a
+# container of its own and survives a backend reload (uvicorn --reload), and then its run
+# must NOT be shot down as "interrupted" but is reattached.
 REATTACH_FRESH_SECONDS = 300
 
 
 async def recover_on_start() -> None:
-    """Nach Backend-Neustart aufräumen.
+    """Clean up after a backend restart.
 
-    Das Wieder-Anbinden laufender Agenten macht die Engine (`recover_workflow_agents`, sie
-    kennt den wartenden Schritt). Hier bleibt: Wartungs-Flags quittieren und `agent_working`
-    von Tickets zurücksetzen, deren Lauf nachweislich tot ist — sonst blockierten sie über
-    das Runner-Limit alle weiteren Läufe.
+    Reattaching running agents is done by the engine (`recover_workflow_agents`, which knows
+    the waiting step). What remains here: acknowledge maintenance flags and reset
+    `agent_working` on tickets whose run is demonstrably dead, because otherwise they would
+    block all further runs over the runner limit.
     """
     just_updated = await get_flag("update_in_progress") or await get_flag("update_pending")
     if just_updated:
@@ -197,9 +197,9 @@ async def recover_on_start() -> None:
                                     .order_by(Run.id.desc()))).scalars().first()
             alive = False
             if run and run.task_id:
-                # Erste und beste Auskunft: der Puls des Workers zu genau diesem Auftrag.
-                # Ohne ihn galt ein Lauf schon als tot, wenn er länger als fünf Minuten an
-                # einer einzigen Antwort saß — die Engine hing derweil weiter am selben Lauf.
+                # The first and best information: the pulse of the worker for this exact
+                # assignment. Without it a run counted as dead as soon as it sat on a
+                # single answer for more than five minutes, while the engine kept hanging.
                 if await lauf_lebt(run.task_id):
                     alive = True
                 if not alive and run.finished_at is None:
@@ -209,7 +209,7 @@ async def recover_on_start() -> None:
                     if ref and (_now() - ref).total_seconds() < REATTACH_FRESH_SECONDS:
                         alive = True
                 if not alive and await peek_result(run.task_id):
-                    alive = True  # Worker war fertig, Ergebnis liegt noch in Redis
+                    alive = True  # the worker was finished, the result still lies in Redis
             if alive:
                 log.info("recover: Lauf %s lebt — Engine bindet ihn wieder an", run.task_id)
                 continue
