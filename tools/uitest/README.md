@@ -25,7 +25,7 @@ docker run --rm --network traccoon_default -v "$PWD/tools/uitest":/w -w /w \
   -e BASIS=http://frontend mcr.microsoft.com/playwright:v1.56.0-noble node /w/ablauf-editor.mjs
 ```
 
-Screenshots landen daneben (`01-…png` bis `10-…png`), das Protokoll in `befund.txt`.
+Screenshots landen daneben (`01-…png` bis `11-…png`), das Protokoll in `befund.txt`.
 
 **Hinterher aufräumen** — die Probe legt echte Abläufe an:
 
@@ -39,3 +39,7 @@ delete from workflow_versions where definition_id in
   (select id from workflow_definitions where key like 'uitest%');
 delete from workflow_definitions where key like 'uitest%';
 ```
+
+Der Baumeister-Schritt ruft **wirklich** das Modell (rund eine Minute) — er prüft nur,
+ob aus dem Satz ein Graph auf der Fläche wird und ob „Zurück" den alten Stand
+wiederherstellt, nicht was gezeichnet wurde.
