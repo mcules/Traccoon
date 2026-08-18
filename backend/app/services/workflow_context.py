@@ -102,6 +102,12 @@ AKTIONEN: dict[str, list[dict]] = {
         _f("created_ticket.key", "text", "Kennung des angelegten Tickets"),
     ],
     "set_field": [_f("fields.<schlüssel>", "text", "Gesetzte Feldwerte des Artefakts")],
+    "tool_call": [
+        _f("tool.ok", "ja/nein", "Werkzeug-Aufruf war erfolgreich"),
+        _f("tool.text", "text", "Antwort des Werkzeugs im Klartext"),
+        _f("tool.json", "objekt", "Antwort zerlegt, falls sie JSON war (tiefer adressierbar)"),
+        _f("tool.error", "text", "Fehlermeldung, falls der Aufruf misslang"),
+    ],
     "http_request": [
         _f("http.status_code", "zahl", "Antwortcode der Gegenstelle"),
         _f("http.ok", "ja/nein", "Antwort war erfolgreich (2xx)"),

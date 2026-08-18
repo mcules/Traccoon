@@ -71,6 +71,17 @@ export default function ActionParams({
     staleTime: 5 * 60_000,
   });
 
+  // Werkzeuge aus der MCP-Registry (Einstellungen → MCP-Server). Sie machen das Anbinden
+  // fremder Systeme zur Konfiguration: wer einen Server einträgt, findet seine Werkzeuge
+  // hier wieder — ohne dass jemand eine Aktion programmieren müsste.
+  const { data: werkzeuge } = useQuery({
+    queryKey: ["workflow-tools"],
+    queryFn: () => api.get<{ name: string; server: string; beschreibung: string;
+                             pflicht: string[] }[]>("/workflow-tools"),
+    enabled: braucht("mcp_tool"),
+    staleTime: 10 * 60_000,
+  });
+
   const { data: meta } = useQuery({
     queryKey: ["meta", projectId],
     queryFn: () => api.get<{ statuses: StatusLite[] }>(`/projects/${projectId}/meta`),
@@ -102,6 +113,14 @@ export default function ActionParams({
       return st.length
         ? st.map((s) => [s.key, s.label] as [string, string])
         : [["", "— kein Artefakt an diesem Ablauf —"]];
+    }
+    if (f.source === "mcp_tool") {
+      const liste = werkzeuge || [];
+      return liste.length
+        ? [["", "— wählen —"] as [string, string],
+           ...liste.map((w) => [w.name,
+             `${w.name}${w.pflicht?.length ? ` (${w.pflicht.join(", ")})` : ""}`] as [string, string])]
+        : [["", "— keine MCP-Server eingetragen —"]];
     }
     if (f.source === "member") {
       return [["", "— niemand —"],

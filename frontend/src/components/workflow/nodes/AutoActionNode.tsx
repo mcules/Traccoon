@@ -5,6 +5,7 @@ const ACTION_LABEL: Record<string, string> = {
   notify: "Benachrichtigen",
   webhook: "Freie URL aufrufen",
   http_request: "Ziel aufrufen",
+  tool_call: "Werkzeug aufrufen",
   set_context: "Kontext setzen",
   set_board_status: "Board-Spalte setzen",
   set_status: "Zustand setzen",
