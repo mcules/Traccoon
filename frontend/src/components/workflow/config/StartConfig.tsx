@@ -6,19 +6,19 @@ import type { NodeConfig } from "../types";
 interface ProjektLite { id: number; key: string; name: string }
 
 /**
- * Auslöser eines Ablaufs.
+ * Trigger of a flow.
  *
- * Zwei Quellen, beide hier einstellbar:
+ * Two sources, both configurable here:
  *
- * **Ereignis** — Traccoon meldet etwas („Ticket angelegt", „Mail eingegangen"), und der
- * Ablauf entscheidet selbst, ob er darauf hört. So hängen an einem Ereignis beliebig viele
- * Abläufe, ohne dass der Auslöser sie kennen muss.
+ * **Event**: Traccoon reports something ("ticket created", "mail received"), and the flow
+ * decides itself whether it listens for it. That way any number of flows hang off one event
+ * without the trigger having to know them.
  *
- * **Webhook** — für alles, was von außen kommt und weder MCP noch Traccoons Ereignisse
- * kennt: der Ablauf bekommt eine eigene Adresse. Vorher gab es die zwar (Einstellungen →
- * Webhooks, Modus `workflow`), aber am anderen Ende: im Ablauf selbst war seine Quelle
- * unsichtbar. Die Beispiel-Nutzlast daneben ist mehr als Doku — aus ihr entstehen die
- * Kontextfelder, die die Verzweigungen zur Auswahl anbieten.
+ * **Webhook**: for everything that comes from outside and knows neither MCP nor Traccoon's
+ * events: the flow gets an address of its own. That did exist before (Settings →
+ * Webhooks, mode `workflow`), but at the other end: in the flow itself its source was
+ * invisible. The example payload beside it is more than documentation: the context fields
+ * the branches offer for selection come out of it.
  */
 export default function StartConfig({
   config,
@@ -28,9 +28,9 @@ export default function StartConfig({
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
-  /** Definition, zu der dieser Start-Knoten gehört — für die eingehende Adresse. */
+  /** Definition this start node belongs to, for the incoming address. */
   defId?: number;
-  /** Subjekt des Ablaufs — bestimmt, ob ein Artefakt benannt werden muss. */
+  /** Subject of the flow; determines whether an artifact has to be named. */
   subjectKind?: string;
 }) {
   const qc = useQueryClient();
@@ -55,13 +55,13 @@ export default function StartConfig({
   });
 
   const t: Record<string, any> = config.trigger || {};
-  // Drei Arten, einen Ablauf zu starten. Sie schließen sich aus: eine eingehende Adresse
-  // an einem Ereignis-Auslöser wäre eine zweite Tür, die niemand benutzt — und sie stünde
-  // im Weg, wenn man nur sehen will, worauf der Ablauf hört.
-  // Die Art steht ausdrücklich in der Konfiguration, statt aus dem Inhalt geraten zu
-  // werden: sonst fällt „Ereignis" beim Umschalten sofort auf „von Hand" zurück, solange
-  // noch kein Ereignisname eingetragen ist — man wählt etwas, und es passiert scheinbar
-  // nichts. (`t.event` gilt weiterhin als Ereignis, das ist der Bestand.)
+  // Three ways to start a flow. They exclude each other: an incoming address on an event
+  // trigger would be a second door nobody uses, and it would be in the way when one only
+  // wants to see what the flow listens for.
+  // The kind stands explicitly in the configuration instead of being guessed from the
+  // content: otherwise "event" would fall back to "by hand" immediately on switching as
+  // long as no event name is entered yet, so one chooses something and apparently nothing
+  // happens. (`t.event` still counts as an event, which is the existing data.)
   const art: "manuell" | "ereignis" | "webhook" =
     t.kind === "webhook" ? "webhook" : (t.kind === "ereignis" || t.event) ? "ereignis" : "manuell";
   const setArt = (neu: typeof art) => {
@@ -75,14 +75,14 @@ export default function StartConfig({
   };
   const setT = (next: Record<string, any>) => {
     const zusammen: Record<string, any> = { ...t, ...next };
-    // Leere Angaben nicht mitschleppen — ein Trigger ohne Ereignis ist keiner.
+    // Do not carry empty entries along: a trigger without an event is none.
     for (const k of Object.keys(zusammen)) {
       if (zusammen[k] === "" || zusammen[k] === undefined || zusammen[k] === null) {
         delete zusammen[k];
       }
     }
-    // Ein Trigger ohne Ereignis ist kein Ereignis-Trigger — aber die Beispiel-Nutzlast
-    // eines Webhooks lebt hier ebenfalls, die darf nicht mit verschwinden.
+    // A trigger without an event is not an event trigger, but the example payload of a
+    // webhook lives here as well and must not disappear with it.
     const leer = !zusammen.event && !zusammen.sample;
     onChange({
       ...config,

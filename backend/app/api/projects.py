@@ -48,7 +48,7 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
         ("To Do", StatusCategory.todo),
         ("In Arbeit", StatusCategory.in_progress),
         ("Warten", StatusCategory.in_progress),
-        # Testumgebungs-Flow (ABC-18): fertige Umsetzung wartet hier auf die Abnahme.
+        # Test environment flow (ABC-18): a finished implementation waits here for acceptance.
         ("Testen", StatusCategory.in_progress),
         ("Fertig", StatusCategory.done),
     ]
@@ -61,15 +61,15 @@ async def _seed_project_defaults(project: Project, db: AsyncSession) -> None:
     board = Board(project_id=project.id, name="Board")
     db.add(board)
     db.add(IssueCounter(project_id=project.id, last_number=0))
-    await db.flush()  # IDs für Board-Spalten
+    await db.flush()  # ids for the board columns
     for i, s in enumerate(status_objs):
         db.add(BoardColumn(board_id=board.id, status_id=s.id, order=i))
 
 
 @router.get("/projects", response_model=list[ProjectOut])
 async def list_projects(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    # Admin sieht ALLE Projekte (auch fremde, als is_member=False markiert), sonst die eigenen
-    # plus die vom Eltern-Baum geerbten.
+    # An admin sees ALL projects (foreign ones as well, marked is_member=False); everybody
+    # else sees their own plus the ones inherited from the parent tree.
     from ..models.enums import GlobalRole
     from .deps import build_access_bulk
     all_projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
@@ -78,9 +78,9 @@ async def list_projects(user: User = Depends(get_current_user), db: AsyncSession
             project_out(p, Access(user, p, ProjectRole.owner, True, True))
             for p in all_projects
         ]
-    # Direkte Mitgliedschaft ODER geerbt vom Eltern-Baum (Sub-Projekte ohne eigene
-    # Mitgliedschaft, z. B. "Wart" unter "Königsberg"). Alle Mitgliedschaften des Users
-    # UND alle Projekte in je einer Query vorladen, um N+1 beim Baum-Hochlaufen zu vermeiden.
+    # Direct membership OR inherited from the parent tree (sub-projects without a membership
+    # of their own, a caretaker project under a main project for instance). All memberships
+    # of the user AND all projects are preloaded in one query each, to avoid N+1 while walking up the tree.
     projects_by_id = {p.id: p for p in all_projects}
     memberships = (
         await db.execute(select(ProjectMember).where(ProjectMember.user_id == user.id))
@@ -96,11 +96,11 @@ async def list_projects(user: User = Depends(get_current_user), db: AsyncSession
 
 
 async def _gen_project_key(db: AsyncSession, name: str) -> str:
-    """Global eindeutiger, IMMER dreistelliger Projekt-Key aus dem Namen (A-Z0-9)."""
+    """Globally unique, ALWAYS three character project key from the name (A-Z0-9)."""
     import re
     alnum = re.sub(r"[^A-Z0-9]", "", name.upper()) or "PRJ"
     if alnum[0].isdigit():
-        alnum = "P" + alnum  # muss mit Buchstabe beginnen
+        alnum = "P" + alnum  # has to start with a letter
     base = alnum[:3].ljust(3, "X")   # exakt 3 Zeichen
 
     async def free(k: str) -> bool:
@@ -108,7 +108,7 @@ async def _gen_project_key(db: AsyncSession, name: str) -> str:
 
     if await free(base):
         return base
-    # Bei Kollision: nummerierte 3-Zeichen-Varianten (UN2…UN9, U10…U99, 100…999)
+    # On a collision: numbered three character variants (UN2…UN9, U10…U99, 100…999)
     for n in range(2, 1000):
         suf = str(n)
         cand = (base[: 3 - len(suf)] + suf)[:3]
@@ -118,8 +118,8 @@ async def _gen_project_key(db: AsyncSession, name: str) -> str:
 
 
 async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db: AsyncSession) -> None:
-    """Übergeordnetes Projekt muss existieren und darf kein Nachfahre sein (Zyklus-Schutz).
-    `project_id=None` beim Anlegen — dann entfällt die Nachfahren-Prüfung."""
+    """The parent project has to exist and must not be a descendant (cycle protection).
+    `project_id=None` while creating, and then the descendant check is dropped."""
     if parent_id is None:
         return
     if await db.get(Project, parent_id) is None:
@@ -128,7 +128,7 @@ async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db
         return
     if parent_id == project_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ein Projekt kann sich nicht selbst übergeordnet sein")
-    # Vom neuen Elternteil nach oben laufen: taucht das Projekt selbst auf, wäre es ein Zyklus.
+    # Walk up from the new parent: if the project itself turns up, it would be a cycle.
     seen: set[int] = set()
     cur = parent_id
     while cur is not None and cur not in seen:
@@ -154,7 +154,7 @@ async def create_project(
     )
     db.add(project)
     await db.flush()
-    # Ersteller = Owner mit KI-Recht
+    # Creator = owner with the AI right
     db.add(ProjectMember(
         project_id=project.id, user_id=user.id, role=ProjectRole.owner, ai_assign=True
     ))
@@ -206,7 +206,7 @@ async def set_testenv_env(
     access: Access = Depends(require_role(ProjectRole.maintainer)),
     db: AsyncSession = Depends(get_session),
 ):
-    """Env der Testumgebung verschlüsselt ablegen (wird nie wieder ausgeliefert)."""
+    """Store the env of the test environment encrypted (it is never delivered again)."""
     from ..core.security import encrypt_secret
     access.project.testenv_env_enc = encrypt_secret(json.dumps(data.env)) if data.env else ""
     await db.commit()
@@ -340,7 +340,7 @@ async def remove_member(
     await db.commit()
 
 
-# ---------- Granulare Freigaben (Wart-Fall: einzelnes Wasserhäuschen/Asset ohne volle Mitgliedschaft) ----------
+# ---------- Granular grants (caretaker case: a single location or asset without a full membership) ----------
 
 async def _resource_label(rt: ResourceType, rid: int, db: AsyncSession) -> str:
     if rt == ResourceType.location:
@@ -395,8 +395,8 @@ async def add_resource_grant(
         exists = await db.get(HardwareAsset, data.resource_id)
     if exists is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Objekt existiert nicht")
-    # Objekt muss zum freigebenden Projekt gehören — sonst könnte ein Maintainer
-    # Grants für fremde Locations/Assets aus anderen Projekten vergeben (Privilege Escalation).
+    # The object has to belong to the granting project; otherwise a maintainer could hand out
+    # grants for foreign locations or assets from other projects (privilege escalation).
     if exists.project_id != access.project.id:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST, "Objekt gehört nicht zu diesem Projekt"
@@ -412,8 +412,8 @@ async def add_resource_grant(
     ).scalar_one_or_none()
     if dup is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Freigabe existiert bereits")
-    # `recursive` ergibt nur bei Orten Sinn (Vererbung auf Kind-Orte). Bei Exemplaren
-    # normalisieren, damit gleichwertige Freigaben nicht unterschiedlich abgelegt werden.
+    # `recursive` only makes sense with locations (inheritance to child locations). With
+    # units it is normalised so that equivalent grants are not stored differently.
     recursive = data.recursive if data.resource_type == ResourceType.location else False
     g = ResourceGrant(
         project_id=access.project.id, user_id=data.user_id, resource_type=data.resource_type,
