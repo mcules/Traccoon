@@ -1,38 +1,38 @@
-"""Deployments — die Lese-API plus **der eine Schreibweg von Hand**: der Knopf.
+"""Deployments: the read API plus **the one manual write path**, the button.
 
-Drei Leseroute auf eine Tabelle, die 186 Zeilen lang geschrieben und nie gelesen wurde —
-und seit dem Knopf eine vierte Route, die schreibt (`POST /projects/{id}/deployments`,
-siehe `create_deployment`). Sie ist die fünfte Schreibstelle der Tabelle und die einzige,
-hinter der ein Mensch steht statt eines Automatismus; deshalb trägt sie `source="manual"`.
+Three read routes on a table that was written 186 rows long and never read, and since the
+button a fourth route that writes (`POST /projects/{id}/deployments`, see
+`create_deployment`). It is the fifth write site of the table and the only one with a human
+behind it, which is why it carries `source="manual"`.
 
-Muster durchgehend `api/office.py`: nackte Dicts statt Pydantic-Schemata, **404 statt
-403**, und die Berechtigung kommt aus der **Zeile** (ihrem `project_id`), nicht aus dem
-Pfad — ein Pfad, der die Projekt-ID trägt, überließe dem Client die Autorisierung.
+The pattern throughout is that of `api/office.py`: bare dicts instead of Pydantic schemas,
+**404 instead of 403**, and the permission comes from the **row** (its `project_id`), not
+from the path. A path carrying the project id would leave authorisation to the client.
 
-Warum es eine **globale** Route gibt und nicht nur die projektbezogene: die 17
-Wartungs-Updates (`self_deploy`) hängen an keinem Ticket, und ein Deployment ohne Projekt
-(`project_id IS NULL`, heute keins, ab der ersten `SET NULL`-Projektlöschung eins) wäre
-sonst für niemanden auffindbar.
+Why there is a **global** route and not only the project bound one: the 17 maintenance
+updates (`self_deploy`) hang off no ticket, and a deployment without a project
+(`project_id IS NULL`, none today, one after the first `SET NULL` project deletion) would
+otherwise be findable by nobody.
 
-**Vier Eigenheiten des Bestands prägen die Antwortform** — jede davon ist nachgemessen,
-keine geraten:
+**Four peculiarities of the existing data shape the response** and every one of them was
+measured, not guessed:
 
-1. `requested_by` und `chat_id` sind bei **0 von 186** Zeilen gefüllt; keine der vier
-   Schreibstellen setzt sie. „Wer hat das ausgelöst" ist mit dem heutigen Schema nicht
-   darstellbar. Dafür gibt es die neue Spalte `source` — und weil sie noch niemand füllt,
-   bildet die API `"" → "unbekannt"` ab, statt aus `self_deploy` eine Herkunft zu raten.
-   Die beiden Altspalten tauchen in **keiner** Antwort auf.
-2. Alle 56 `failed` tragen **denselben** Wächter-Text („Abgelehnt: Self-Deploy nur über
-   das explizite Wartungs-…"). Eine Liste ohne `log_head` wäre deshalb nicht bloß dünn,
-   sondern aktiv irreführend — sie zeigte 56 verschiedene Fehlschläge, wo einer steht.
-   Der Volltext bleibt dem Detail-Endpunkt vorbehalten (siehe `deployment_detail`).
-3. 69 Zeilen stehen auf `cancelled`, einem Status, den **kein Codepfad schreibt**
-   (Herleitung im Docstring von `models/ops.Deployment`). Sie werden gezeigt, aber nicht
-   kanonisiert: ihre `phase` ist `aborted` und ihr `ok` ist `None`.
-4. **71 von 186 Zeilen fehlt ein Zeitstempel.** `wait_ms`/`duration_ms` sind deshalb
-   dreiwertig — eine gerechnete 0 wäre eine erfundene Dauer.
+1. `requested_by` and `chat_id` are filled on **0 of 186** rows; none of the four write
+   sites sets them. "Who triggered this" cannot be expressed with today's schema. That is
+   what the new `source` column is for, and because nobody fills it yet the API maps
+   `"" -> "unknown"` instead of guessing an origin from `self_deploy`. The two legacy
+   columns appear in **no** response.
+2. All 56 `failed` rows carry the **same** guard text ("Rejected: self-deploy only through
+   the explicit maintenance …"). A list without `log_head` would therefore not merely be
+   thin, it would be actively misleading: it would show 56 different failures where there
+   is one. The full text stays with the detail endpoint (see `deployment_detail`).
+3. 69 rows sit on `cancelled`, a status **no code path writes** (derivation in the
+   docstring of `models/ops.Deployment`). They are shown but not canonicalised: their
+   `phase` is `aborted` and their `ok` is `None`.
+4. **71 of 186 rows lack a timestamp.** `wait_ms`/`duration_ms` are three valued because
+   of that: a computed 0 would be an invented duration.
 
-`ok` folgt derselben Regel wie `services/office.tool_ok`: **nie ein geratenes Ergebnis**.
+`ok` follows the same rule as `services/office.tool_ok`: **never a guessed result**.
 Belegter Erfolg `True`, belegter Fehlschlag `False`, alles andere `None`.
 """
 from __future__ import annotations
@@ -51,8 +51,8 @@ from ..models.project import Project
 from ..models.ticket import Issue
 from ..models.user import User
 from .deps import Access, build_access, get_current_user, get_project_access, require_role
-# Dieselbe Definition von „darf sehen" wie Büro und Projektliste. Es soll genau eine
-# geben, nicht drei, die irgendwann auseinanderlaufen.
+# The same definition of "may see" as the office and the project list. There should be
+# exactly one, not three that drift apart eventually.
 from .office_ws import compute_acl
 
 router = APIRouter(tags=["deployments"])
@@ -60,17 +60,17 @@ router = APIRouter(tags=["deployments"])
 LIMIT_DEFAULT = 50
 LIMIT_MAX = 200
 
-# Deutlich länger als das Büro (dort eine Woche): ein Deployment ist **Archiv**, keine
-# Sitzung. Die Frage „wann lief das zuletzt durch" ist Monate später noch dieselbe Frage,
-# während ein Agentenlauf nach 30 Tagen ohnehin der Aufbewahrung zum Opfer fällt.
+# Considerably longer than the office (a week there): a deployment is **archive**, not a
+# session. The question "when did this last go through" is still the same question months
+# later, while an agent run falls to retention after 30 days anyway.
 SINCE_HOURS_DEFAULT = 24 * 30
 SINCE_HOURS_MAX = 24 * 365
 
 LOG_HEAD_CHARS = 240
 
-# Die Statusmengen, aus denen `phase`, `ok` und der Filter entstehen. `status` selbst geht
-# **roh** durch die Antwort — die Ansicht soll `pending-check` von `pending` unterscheiden
-# können, auch wenn beide dieselbe Phase haben.
+# The status sets from which `phase`, `ok` and the filter are derived. `status` itself goes
+# through the response **raw**: the view should be able to tell `pending-check` from
+# `pending` even though both share a phase.
 OPEN_STATUS = ("pending", "pending-check", "building")
 FAILED_STATUS = ("failed", "rolledback")
 
@@ -84,26 +84,26 @@ def _clamp(value: int, low: int, high: int) -> int:
 
 
 def _aware(value: dt.datetime | None) -> dt.datetime | None:
-    """Naive Zeitstempel als UTC lesen. SQLite liefert sie ohne Zone; ohne diese Zeile
-    verschöbe sich dieselbe Zeile je nach Datenbank um Stunden."""
+    """Read naive timestamps as UTC. SQLite delivers them without a zone; without this line
+    the same row would shift by hours depending on the database."""
     if value is None:
         return None
     return value.replace(tzinfo=dt.timezone.utc) if value.tzinfo is None else value
 
 
 def _iso(value: dt.datetime | None) -> str | None:
-    """ISO-8601 mit expliziter Zone. Ein nacktes `datetime` würde im Browser als Ortszeit
-    gelesen — dieselbe Zeile stünde je nach Besucher um Stunden daneben."""
+    """ISO-8601 with an explicit zone. A bare `datetime` would be read as local time in the
+    browser, and the same row would be hours off depending on the visitor."""
     aware = _aware(value)
     return None if aware is None else aware.astimezone(dt.timezone.utc).isoformat()
 
 
 def _span_ms(start: dt.datetime | None, end: dt.datetime | None) -> int | None:
-    """Millisekunden zwischen zwei Zeitstempeln — oder `None`, wenn einer fehlt.
+    """Milliseconds between two timestamps, or `None` when one of them is missing.
 
-    Der Rückfall auf 0 wäre bequem und falsch: 71 der 186 Bestandszeilen haben kein
-    `finished_at`, 58 kein `started_at`. Eine 0 dort behauptete einen Deploy, der keine
-    Zeit gebraucht hat, statt einen, dessen Zeit niemand aufgeschrieben hat.
+    Falling back to 0 would be convenient and wrong: 71 of the 186 existing rows have no
+    `finished_at`, 58 no `started_at`. A 0 there would claim a deploy that took no time
+    instead of one whose time nobody wrote down.
     """
     a, b = _aware(start), _aware(end)
     if a is None or b is None:
@@ -112,12 +112,12 @@ def _span_ms(start: dt.datetime | None, end: dt.datetime | None) -> int | None:
 
 
 def _phase(status: str) -> str:
-    """`queued|running|done|aborted` — die grobe Lage, für Farbe und Sortierung.
+    """`queued|running|done|aborted`, the rough situation, for colour and sorting.
 
-    Unbekanntes landet bei `aborted` und nicht bei `done`: ein Status, den diese Datei
-    nicht kennt, ist kein abgeschlossener Deploy, sondern einer, über den nichts bekannt
-    ist. `cancelled` fällt genau deshalb hierher — es ist der einzige heute vorkommende
-    Vertreter (siehe Modul-Docstring, Punkt 3).
+    Anything unknown lands on `aborted` and not on `done`: a status this file does not know
+    is not a finished deploy but one about which nothing is known. `cancelled` falls here
+    for exactly that reason, being the only representative occurring today (see the module
+    docstring, point 3).
     """
     if status in ("pending", "pending-check"):
         return "queued"
@@ -129,10 +129,10 @@ def _phase(status: str) -> str:
 
 
 def _ok(status: str) -> bool | None:
-    """Dreiwertig, nach der Hausregel aus `services/office.tool_ok`: **nie ein geratenes
-    Ergebnis**. `True` nur bei belegtem Erfolg, `False` nur bei belegtem Fehlschlag,
-    sonst `None` — offen (läuft noch) und abgebrochen (weiß niemand) sind beide „unbekannt",
-    aber aus verschiedenen Gründen; die `phase` trennt sie.
+    """Three valued, following the house rule from `services/office.tool_ok`: **never a
+    guessed result**. `True` only on proven success, `False` only on proven failure, `None`
+    otherwise. Open (still running) and aborted (nobody knows) are both "unknown" but for
+    different reasons; the `phase` separates them.
     """
     if status == "ok":
         return True
@@ -142,8 +142,8 @@ def _ok(status: str) -> bool | None:
 
 
 def _kind(self_deploy: bool, check_only: bool) -> str:
-    """`self|check|stack`. Reihenfolge ist tragend: ein Self-Deploy ist nie ein bloßer
-    Check, und `check_only` allein sagt nichts darüber, wessen Stack gemeint ist."""
+    """`self|check|stack`. The order carries meaning: a self-deploy is never a mere check,
+    and `check_only` alone says nothing about whose stack is meant."""
     if self_deploy:
         return "self"
     if check_only:
@@ -152,22 +152,22 @@ def _kind(self_deploy: bool, check_only: bool) -> str:
 
 
 def _not_found() -> HTTPException:
-    """Eine einzige Formulierung für „gibt es nicht" und „gehört dir nicht". Zwei
-    unterscheidbare Antworten wären ein Verzeichnis fremder Projekte."""
+    """A single wording for "does not exist" and "is not yours". Two distinguishable answers
+    would be a directory of foreign projects."""
     return HTTPException(404, "Deployment nicht gefunden")
 
 
 # ── Autorisierung ───────────────────────────────────────────────────────────
 
 async def _visible_deployments(db: AsyncSession, user: User):
-    """SQL-Bedingung: welche Deployments darf dieser Nutzer überhaupt sehen?
+    """SQL condition: which deployments may this user see at all?
 
-    Vorbild ist `api/office.py::_visible_runs` — Admin ohne Filter, sonst die erlaubten
-    Projekte. Ein Unterschied ist beabsichtigt: **`project_id IS NULL` bleibt Admins
-    vorbehalten.** Der Lauf hat ein `owner_id`, an dem ein projektloser Lauf seinem
-    Menschen zugeordnet werden kann; das Deployment hat **kein** solches Feld
-    (`requested_by` ist bei 0 von 186 Zeilen gefüllt). Ein herrenloses Deployment gehört
-    deshalb niemandem — und `IN (…)` liefert für NULL ohnehin NULL, also kein Treffer.
+    The model is `api/office.py::_visible_runs`: admin without a filter, otherwise the
+    permitted projects. One difference is deliberate: **`project_id IS NULL` stays reserved
+    for admins.** A run has an `owner_id` by which a project-less run can be attributed to
+    its human; a deployment has **no** such field (`requested_by` is filled on 0 of 186
+    rows). An ownerless deployment therefore belongs to nobody, and `IN (…)` yields NULL
+    for NULL anyway, so no match.
     """
     if user.global_role == GlobalRole.admin:
         return true()
@@ -176,14 +176,14 @@ async def _visible_deployments(db: AsyncSession, user: User):
 
 
 async def _authorize_row(db: AsyncSession, user: User, project_id: int | None) -> None:
-    """Darf der Nutzer diese eine Zeile lesen? Sonst 404 — in **beiden** Fällen.
+    """May the user read this one row? Otherwise 404, in **both** cases.
 
-    Die Projekt-ID stammt aus der geladenen Zeile, nicht aus dem Pfad; `/deployments/{id}`
-    trägt gar keine. Dass „fremdes Projekt" und „gibt es nicht" ununterscheidbar antworten,
-    ist der Punkt: sonst wäre die Route ein Zähler fremder Deployments.
+    The project id comes from the loaded row, not from the path; `/deployments/{id}` carries
+    none. That "foreign project" and "does not exist" answer indistinguishably is the point:
+    otherwise the route would be a counter of foreign deployments.
     """
     if project_id is None:
-        # Kein Projekt = kein Eigentümer, an dem man Sichtbarkeit festmachen könnte.
+        # No project means no owner on which visibility could be anchored.
         if user.global_role != GlobalRole.admin:
             raise _not_found()
         return
@@ -201,12 +201,12 @@ async def _authorize_row(db: AsyncSession, user: User, project_id: int | None) -
 # ── Zeilenform + Abfrage ────────────────────────────────────────────────────
 
 def _status_condition(status: str):
-    """Der Filter über `?status=`. `all` gibt `None` zurück (kein UND).
+    """The filter behind `?status=`. `all` returns `None` (no AND).
 
-    `running` meint „noch nicht entschieden" und umfasst deshalb die Warteschlange mit:
-    wer wissen will, ob gerade etwas unterwegs ist, interessiert sich nicht dafür, ob der
-    Sidecar die Zeile schon aufgegriffen hat. `other` ist der Rest — heute genau die 69
-    `cancelled`, morgen jeder Status, den diese Datei noch nicht kennt.
+    `running` means "not decided yet" and therefore includes the queue: whoever wants to
+    know whether something is under way right now does not care whether the sidecar has
+    already picked the row up. `other` is the rest, today exactly the 69 `cancelled`,
+    tomorrow every status this file does not know yet.
     """
     if status == "all":
         return None
@@ -220,8 +220,8 @@ def _status_condition(status: str):
 
 
 def _row(rec) -> dict:
-    """Eine Zeile der Liste. `status` steht **roh** darin, nichts wird geschönt;
-    `phase`/`ok` sind Ableitungen daneben, nicht an seiner Stelle."""
+    """One row of the list. `status` is in there **raw**, nothing is glossed over;
+    `phase`/`ok` are derivations beside it, not in its place."""
     (dep_id, project_id, project_key, issue_id, issue_key, status, source, self_deploy,
      check_only, stack_dir, created_at, started_at, finished_at, log_len, log_head) = rec
     status = status or ""
@@ -234,19 +234,19 @@ def _row(rec) -> dict:
         "status": status,
         "phase": _phase(status),
         "ok": _ok(status),
-        # Leer heißt „steht nicht in der Zeile", nicht „war niemand". Der Backfill wäre
-        # heute richtig (`self_deploy → maintenance`) und würde falsch, sobald `merge`
-        # oder `workflow` das erste Mal feuern — eine geratene Herkunft in einer
-        # Historienansicht ist schlimmer als ein ehrliches Leerfeld.
+        # Empty means "not in the row", not "was nobody". The backfill would be right today
+        # (`self_deploy → maintenance`) and would become wrong the moment `merge` or
+        # `workflow` fires for the first time: a guessed origin in a history view is worse
+        # than an honest empty field.
         "source": source or "unbekannt",
         "kind": _kind(bool(self_deploy), bool(check_only)),
         "stack_dir": stack_dir or "",
         "created_at": _iso(created_at),
         "started_at": _iso(started_at),
         "finished_at": _iso(finished_at),
-        # Zwei getrennte Zeiten, weil sie zwei getrennte Probleme benennen: `wait_ms` ist
-        # die Warteschlange (der Sidecar pollt alle 3 s), `duration_ms` die eigentliche
-        # Arbeit. Zusammengezählt sähe ein 3-s-Wartefall aus wie ein langsamer Build.
+        # Two separate times, because they name two separate problems: `wait_ms` is the
+        # queue (the sidecar polls every 3 s), `duration_ms` the actual work. Added
+        # together, a 3 s wait would look like a slow build.
         "wait_ms": _span_ms(created_at, started_at),
         "duration_ms": _span_ms(started_at, finished_at),
         "log_bytes": int(log_len or 0),
@@ -255,11 +255,11 @@ def _row(rec) -> dict:
 
 
 def _select_rows():
-    """Die Spaltenliste der Liste — **ohne** den Log-Volltext.
+    """The column list of the list, **without** the full log text.
 
-    `octet_length`/`substr` rechnen in der Datenbank, damit ein Abruf über 200 Zeilen
-    nicht 200 vollständige Build-Logs über die Leitung zieht. Beide Funktionen gibt es
-    unter Postgres wie unter SQLite (ab 3.43; das Backend-Image bringt 3.46).
+    `octet_length`/`substr` compute in the database so that fetching 200 rows does not pull
+    200 complete build logs over the wire. Both functions exist under Postgres as well as
+    SQLite (from 3.43; the backend image ships 3.46).
     """
     return (
         select(
@@ -278,28 +278,28 @@ def _select_rows():
 
 async def _payload(db: AsyncSession, *, where, limit: int, since_hours: int,
                    status: str) -> dict:
-    """Der gemeinsame Rumpf beider Listen — Projektkarte und globale Seite zeigen dieselbe
-    Form, weil sie durch dieselbe Funktion gehen.
+    """The shared body of both lists: project card and global page show the same shape
+    because they go through the same function.
 
-    `where` trägt die **Sichtbarkeit plus alle Verengungen außer dem Status**. Das ist
-    Absicht: `by_status` wird gegen genau dieses `where` gezählt und beantwortet damit die
-    Frage „was liegt in diesem Fenster überhaupt herum", während die Liste bereits
-    gefiltert ist. Andersherum wäre die Zählung eine Tautologie (`{"ok": 50}` bei
-    `?status=ok`) und die 69 abgebrochenen blieben unerklärt — sie *in* die Liste zu
-    mischen, würde sie dagegen vergiften.
+    `where` carries the **visibility plus every narrowing except the status**. That is
+    deliberate: `by_status` is counted against exactly this `where` and thereby answers the
+    question "what is lying around in this window at all", while the list is already
+    filtered. The other way round the count would be a tautology (`{"ok": 50}` on
+    `?status=ok`) and the 69 aborted ones would stay unexplained; mixing them *into* the
+    list, on the other hand, would poison it.
     """
     if status not in STATUS_FILTER:
         raise HTTPException(400, f"status muss eines von {', '.join(STATUS_FILTER)} sein")
     limit = _clamp(limit, 1, LIMIT_MAX)
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=since_hours)
-    # `created_at` und nicht `finished_at`: eine Zeile ohne Ende (69 von 186) fiele sonst
-    # aus jedem Fenster heraus und wäre über keine Route mehr erreichbar.
+    # `created_at` and not `finished_at`: a row without an end (69 of 186) would otherwise
+    # fall out of every window and be reachable through no route at all.
     window = and_(where, Deployment.created_at >= cutoff)
 
     cond = _status_condition(status)
     listed = window if cond is None else and_(window, cond)
-    # `limit + 1` verrät die Kappung ohne ein zweites COUNT.
+    # `limit + 1` reveals the truncation without a second COUNT.
     rows = (await db.execute(
         _select_rows().where(listed).order_by(Deployment.id.desc()).limit(limit + 1)
     )).all()
@@ -326,11 +326,10 @@ async def project_deployments(
     status: str = "all",
     issue_id: int | None = None,
 ):
-    """Die Deployments eines Projekts — Karte im Dashboard, volle Liste in den
-    Einstellungen.
+    """The deployments of a project: card on the dashboard, full list in the settings.
 
-    Fremdes Projekt = 404, das erledigt `get_project_access`. **Viewer genügt**: wer
-    gemergt hat, will wissen, ob es draußen ist, und ist dafür nicht zwangsläufig
+    Foreign project = 404, handled by `get_project_access`. **Viewer is enough**: whoever
+    merged wants to know whether it is out there, and is not necessarily a
     `maintainer`.
     """
     where = Deployment.project_id == access.project.id
@@ -349,12 +348,12 @@ async def global_deployments(
     status: str = "all",
     project_id: int | None = None,
 ):
-    """Alle Deployments, die dieser Nutzer sehen darf.
+    """All deployments this user may see.
 
-    `project_id` **verengt** die ohnehin erlaubte Menge und autorisiert nie: ein fremdes
-    Projekt einzutragen liefert eine leere Liste, keinen Zugang und keine 403 (die wäre
-    ein Existenzbeweis). Der Filter steht deshalb als zusätzliches UND neben der
-    Sichtbarkeitsbedingung, nicht an ihrer Stelle.
+    `project_id` **narrows** the already permitted set and never authorises: entering a
+    foreign project yields an empty list, no access and no 403 (which would be a proof of
+    existence). The filter therefore stands as an additional AND beside the visibility
+    condition, not in its place.
     """
     where = await _visible_deployments(db, user)
     if project_id is not None:
@@ -369,12 +368,12 @@ async def deployment_detail(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_session),
 ):
-    """Eine Zeile mit dem **vollständigen Log** — der einzige Endpunkt, der ihn liefert.
+    """One row with the **complete log**, the only endpoint that delivers it.
 
-    Der Volltext gehört genau hierher: in der Liste wären 56 identische Wächter-Meldungen
-    Lärm, und ein `ok`-Log ist heute rund 1 kB — bei 200 Zeilen wäre die Liste ohne Not
-    zwanzigmal so groß. Wer den Grund sehen will, klickt die Zeile an; `log_head`
-    entscheidet, ob sich das lohnt.
+    The full text belongs exactly here: in the list, 56 identical guard messages would be
+    noise, and an `ok` log is around 1 kB today, so with 200 rows the list would be twenty
+    times as large for no reason. Whoever wants to see the cause clicks the row; `log_head`
+    decides whether that is worth it.
     """
     dep = await db.get(Deployment, dep_id)
     if dep is None:
@@ -401,17 +400,17 @@ async def deployment_detail(
     return row
 
 
-# ── Der Knopf ───────────────────────────────────────────────────────────────
+# ── The button ──────────────────────────────────────────────────────────────
 
 class DeployIn(BaseModel):
-    """Rumpf des Knopfes — heute genau ein Feld, und das ist optional.
+    """Body of the button, today exactly one field, and that one optional.
 
-    Bewusst **kein** `stack_dir`: das Ziel kommt aus `project.workspace_dir` und darf nie
-    vom Client kommen. Ein Pfad aus dem Rumpf wäre ein `docker compose` auf ein beliebiges
-    Hostverzeichnis, ausgelöst über eine HTTP-Route. Ebenso wenig `self_deploy` oder
-    `check_only`: der Host-Stack wird ausschließlich über das idle-gegatete
-    Wartungs-Update recreated (siehe `services/dispatcher.py`), nicht über einen Knopf in
-    einem Projekt.
+    Deliberately **no** `stack_dir`: the target comes from `project.workspace_dir` and must
+    never come from the client. A path from the body would be a `docker compose` on an
+    arbitrary host directory, triggered over an HTTP route. Just as deliberately no
+    `self_deploy` and no `check_only`: the host stack is recreated exclusively through the
+    idle-gated maintenance update (see `services/dispatcher.py`), never through a button in
+    a project.
     """
 
     issue_id: int | None = None
@@ -423,40 +422,39 @@ async def create_deployment(
     access: Access = Depends(require_role(ProjectRole.maintainer)),
     db: AsyncSession = Depends(get_session),
 ):
-    """Ein Deployment von Hand einreihen — der Knopf unter Einstellungen → Deployment.
+    """Queue a deployment by hand, the button under Settings → Deployment.
 
-    Der Grund für die Route: Deployments entstanden bisher nur automatisch (`merge` nach
-    Abnahme bei `auto_deploy`, `workflow`, `agent`, `maintenance`). Für ein Projekt mit
-    echten Nutzern ist `auto_deploy` bewusst aus — es gibt im generischen Pfad **kein
-    Rollback**, anders als beim Self-Deploy. Wer dort ausrollt, will den Zeitpunkt selbst
-    bestimmen; genau das und nichts weiter tut diese Route: sie schreibt eine `pending`-
-    Zeile, die der Sidecar (`deployer/deploy_watch.py`) beim nächsten Poll aufgreift.
+    The reason for the route: deployments used to come into being only automatically
+    (`merge` after acceptance with `auto_deploy`, `workflow`, `agent`, `maintenance`). For a
+    project with real users `auto_deploy` is deliberately off, because there is **no
+    rollback** in the generic path, unlike with the self-deploy. Whoever rolls out there
+    wants to pick the moment; that and nothing more is what this route does: it writes a
+    `pending` row that the sidecar (`deployer/deploy_watch.py`) picks up on its next poll.
 
-    **`maintainer`, nicht `viewer`** (und damit 403 für ein Mitglied, 404 für einen
-    Fremden — beides erledigt `require_role`): die Leseseite ist bewusst für jedes
-    Mitglied offen („ist mein Merge draußen?"), das Auslösen ist es nicht. Es baut und
-    startet einen laufenden Stack neu.
+    **`maintainer`, not `viewer`** (and therefore 403 for a member, 404 for a stranger, both
+    handled by `require_role`): the read side is deliberately open to every member ("is my
+    merge out there?"), triggering is not. It rebuilds and restarts a running stack.
 
-    Vier Regeln, jede mit einem Vorfall oder einem Datenrennen dahinter:
+    Four rules, each with an incident or a data race behind it:
 
-    1. **Leerer `workspace_dir` → 400.** Ein leeres Stack-Verzeichnis zielt auf das
-       Host-/Wartungsprojekt selbst. Der Deployer lehnt das ohnehin ab („Impliziter
-       Host-Deploy … ist gesperrt"), aber die Zeile entstünde trotzdem — im Auto-Deploy-
-       Pfad war genau das einmal ein Deploy-Sturm (ABC-19, kommentiert in
-       `worker/__main__.py`). Ein Knopf, der garantiert scheitert, ist kein Knopf.
-    2. **Höchstens ein offener Deploy je Projekt → 409.** Zwei `docker compose up` im
-       selben Verzeichnis sind ein Datenrennen um Container und Netze, kein zweiter
-       Deploy. Der Sidecar arbeitet ohnehin nur eine Zeile zur Zeit ab; ohne diese Sperre
-       stünde die zweite bloß in der Schlange und liefe unbemerkt hinterher.
-    3. **`issue_id` muss zum Projekt gehören** — sonst 404 in derselben Formulierung wie
-       überall hier. Ein fremdes Ticket anzuhängen, wäre eine Zeile, deren `issue_key` im
-       Frontend auf ein Projekt zeigt, in dem sie nichts zu suchen hat.
-    4. **`source="manual"`**, der fünfte Wert der Spalte. Nicht `agent` und nicht
-       `merge` — die Historienansicht soll den Menschen vom Automatismus unterscheiden
-       können; das ist der einzige Grund, warum es die Spalte gibt.
+    1. **Empty `workspace_dir` → 400.** An empty stack directory aims at the host and
+       maintenance project itself. The deployer rejects that anyway ("implicit host deploy
+       … is locked"), but the row would come into being regardless, and in the auto-deploy
+       path exactly that was a deploy storm once (ABC-19, commented in
+       `worker/__main__.py`). A button that is guaranteed to fail is not a button.
+    2. **At most one open deploy per project → 409.** Two `docker compose up` in the same
+       directory are a data race over containers and networks, not a second deploy. The
+       sidecar works off one row at a time anyway; without this lock the second one would
+       merely queue and run unnoticed afterwards.
+    3. **`issue_id` must belong to the project**, otherwise 404 in the same wording as
+       everywhere here. Attaching a foreign ticket would be a row whose `issue_key` points
+       the frontend at a project where it has no business.
+    4. **`source="manual"`**, the fifth value of the column. Not `agent` and not `merge`:
+       the history view should be able to tell the human from the automation, and that is
+       the only reason the column exists.
 
-    Die Antwort ist die **Zeilenform der Liste** (`_row`), damit das Frontend sie ohne
-    zweiten Abruf einsortieren kann. Ein Log gibt es zu diesem Zeitpunkt naturgemäß nicht.
+    The response is the **row shape of the list** (`_row`) so that the frontend can sort it
+    in without a second fetch. A log does not exist at this point, naturally.
     """
     project = access.project
     stack_dir = (project.workspace_dir or "").strip()
@@ -474,8 +472,8 @@ async def create_deployment(
         if issue is None or issue.project_id != project.id:
             raise HTTPException(404, "Ticket nicht gefunden")
 
-    # Nur gegen die **offenen** Status, nicht gegen „zuletzt gebaut": ein fehlgeschlagener
-    # Deploy von vorhin darf einen neuen Versuch nicht blockieren.
+    # Only against the **open** statuses, not against "last built": a failed deploy from
+    # earlier must not block a new attempt.
     laufend = (await db.execute(
         select(Deployment.id)
         .where(and_(Deployment.project_id == project.id,
@@ -490,8 +488,8 @@ async def create_deployment(
             "Stack-Verzeichnis kommen sich in die Quere.",
         )
 
-    # `self_deploy`/`check_only`/`worktree` bleiben auf ihren Vorgaben (False/False/""):
-    # gebaut wird der Stack des Projekts aus seinem eigenen Verzeichnis, sonst nichts.
+    # `self_deploy`/`check_only`/`worktree` stay on their defaults (False/False/""): what
+    # gets built is the project's stack from its own directory, nothing else.
     dep = Deployment(project_id=project.id, issue_id=issue_id, stack_dir=stack_dir,
                      status="pending", source="manual")
     db.add(dep)
