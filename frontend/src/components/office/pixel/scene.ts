@@ -1,34 +1,34 @@
-// Schicht 1 — der einzige Einstieg der Zeichenschicht.
+// Layer 1, the only entry point of the drawing layer.
 //
-// `renderFrame(ctx, frame, cam, grade)` malt einen kompletten Bildpuffer. Sie bekommt einen
-// `Frame` und sonst nichts: keine Engine, keinen Recorder, keine Uhr. Das ist die Naht, an der
-// das Zurückspulen hängt — sähe die Zeichenschicht die Engine, könnte sie beim Malen Zustand
-// fortschreiben, und das Bild hinge davon ab, wie oft gezeichnet wurde.
+// `renderFrame(ctx, frame, cam, grade)` paints a complete image buffer. It gets a `Frame` and
+// nothing else: no engine, no recorder, no clock. That is the seam rewinding hangs on: if the
+// drawing layer saw the engine it could carry state forward while painting, and the image would
+// depend on how often it was drawn.
 //
-// ── Warum die Raumgeometrie hier ein zweites Mal steht ───────────────────────
+// ── Why the room geometry stands here a second time ─────────────────────────
 //
-// `room.ts` ist Schicht 0, und Schicht 1 darf aus Schicht 0 nur `types`, `ids` und `const`
-// sehen (Regel 4; der Prüfer erzwingt es). Die Möbelplätze unten sind deshalb aus **denselben
-// Brüchen** von `SCENE` gerechnet wie dort, nicht abgeschrieben. Damit die beiden nicht
-// auseinanderlaufen können, ohne dass es jemand merkt, exportiert diese Datei `SEATS_PX`:
-// Welle M kann `SEATS_PX[i]` gegen `round(ROOM.seats[i].sit × POS_SCALE)` halten, und die
-// Doppelung wird von einer stillen Gefahr zu einer geprüften Zusage.
+// `room.ts` is layer 0, and layer 1 may only see `types`, `ids` and `const` from layer 0 (rule
+// 4, and the checker enforces it). The furniture positions below are therefore computed from
+// the **same fractions** of `SCENE` as there, not copied. So the two cannot drift apart without
+// anybody noticing, this file exports `SEATS_PX`: a check can hold `SEATS_PX[i]` against
+// `round(ROOM.seats[i].sit × POS_SCALE)`, which turns the duplication from a silent danger into
+// a checked promise.
 //
-// ── Die Schichtreihenfolge ───────────────────────────────────────────────────
+// ── The order of layers ─────────────────────────────────────────────────────
 //
-//   1 Hülle          Wand · Fenster · Board · Uhr · Tür · Boden · Schrank
+//   1 shell          wall · windows · board · clock · door · floor · cabinet
 //   2 Licht          Fensterlicht (Tag) bzw. Lampenkegel (Abend)
 //   3 Teppich
-//   4 Bodenschicht   Möbel, Arbeitsplätze **und Figuren gemeinsam** nach `yBase` sortiert
+//   4 floor layer    furniture, workplaces **and characters together**, sorted by `yBase`
 //   5 Luft           Dampf, Staub, Funken, Zettel
 //   6 Spawn-Linien
-//   7 Überlagerungen Schilder, Blasen, Emotes
-//   8 Abstufung      — passiert in der Palette, nicht als Filter
+//   7 overlays       plates, bubbles, emotes
+//   8 grading        happens in the palette, not as a filter
 //
-// Schicht 4 ist die eine, die man nicht umstellen darf: Möbel und Figuren liegen in **einer**
-// Liste und werden zusammen sortiert (Maler-Algorithmus). Zwei getrennte Durchgänge wären
-// einfacher zu schreiben und sofort falsch — eine Figur vor dem Schreibtisch der vorderen Reihe
-// verschwände hinter ihm.
+// Layer 4 is the one that must not be rearranged: furniture and characters lie in **one** list
+// and are sorted together (painter's algorithm). Two separate passes would be easier to write
+// and wrong at once: a character in front of the desk of the front row would disappear behind
+// it.
 
 import type {
   ActorState, Ctx, Frame, Fx, Grade, MoodKind, Pt, ScreenKind, ToolAct,
@@ -50,23 +50,23 @@ import {
 
 // ═══ Kamera ══════════════════════════════════════════════════════════════════
 
-/** `x`/`y` sind der **Pufferpunkt**, der in der Bildmitte steht; `zoom` wird auf eine ganze
- *  Zahl gerundet. Nicht-ganzzahliges Skalieren macht aus Pixelkunst Matsch: eine 1 Pixel breite
- *  Kante würde auf 1,5 Pixel abgebildet und liefe über zwei Spalten mit halber Deckkraft. */
+/** `x`/`y` are the **buffer point** standing in the centre of the image; `zoom` is rounded to a
+ *  whole number. Non integer scaling turns pixel art into mush: an edge one pixel wide would be
+ *  mapped onto 1.5 pixels and would run over two columns at half opacity. */
 export type Cam = { x: number; y: number; zoom: number };
 
-/** Die Kamera, die den ganzen Raum zeigt. */
+/** The camera that shows the whole room. */
 export const CAM_FULL: Cam = { x: ART.w / 2, y: ART.h / 2, zoom: ART_SCALE };
 
 interface CamFit { z: number; hz: number; ox: number; oy: number }
 
 /**
- * Maßstab und Versatz der Kamera.
+ * Scale and offset of the camera.
  *
- * `z` ist ein **Vielfaches von `ART_SCALE`**, nicht bloß ganzzahlig. Das ist die Bedingung
- * dafür, dass fein gezeichnete Familien überhaupt möglich sind: sie rechnen in HD-Einheiten
- * (halbe Kunsteinheiten), und `hz = z / ART_SCALE` muss dabei ganzzahlig bleiben. Bei einem
- * ungeraden Zoom liefe eine HD-Kante über eine halbe Pufferspalte — genau das Flimmern, das
+ * `z` is a **multiple of `ART_SCALE`**, not merely an integer. That is the condition for finely
+ * drawn families to be possible at all: they compute in HD units (half art units), and
+ * `hz = z / ART_SCALE` has to stay an integer. At an odd zoom an HD edge would run over half a
+ * buffer column, exactly the shimmer that
  * Regel 2.3 verbietet.
  */
 function camFit(cam: Cam): CamFit {
@@ -80,15 +80,15 @@ function camFit(cam: Cam): CamFit {
 }
 
 /**
- * Die Kamera als `Ctx`-Hülle.
+ * The camera as a `Ctx` wrapper.
  *
- * Verschieben und Zoomen müssten eigentlich `translate`/`scale` sein — beides ist verboten
- * (Regel 2.1), und zwar zu Recht: eine Transformationsmatrix rastert Kanten auf Subpixel. Statt
- * dessen rechnet diese Hülle jedes Rechteck selbst um. Weil alle Eingaben ganzzahlig sind und
- * `z` eine ganze Zahl ist, sind auch alle Ausgaben ganzzahlig — die Pixel bleiben Pixel.
+ * Panning and zooming would really be `translate`/`scale`, and both are forbidden (rule 2.1),
+ * rightly so: a transformation matrix rasterises edges onto subpixels. Instead this wrapper
+ * converts every rectangle itself. Because all inputs are integers and `z` is a whole number,
+ * all outputs are integers as well, so pixels stay pixels.
  *
- * Bei Identität wird der Kontext **unverändert** durchgereicht: der häufigste Fall soll keinen
- * Aufruf-Umweg kosten, und die goldenen Ops-Hashes des Prüfers bleiben so die des nackten
+ * At identity the context is passed through **unchanged**: the most common case should not cost
+ * a detour through a call, and the golden ops hashes of the checker stay those of the bare
  * Kontexts.
  */
 function viewOf(base: Ctx, fit: CamFit): Ctx {
@@ -96,10 +96,10 @@ function viewOf(base: Ctx, fit: CamFit): Ctx {
 }
 
 /**
- * Dieselbe Kamera, aber in **HD-Einheiten**: eine Einheit ist ein Pufferpixel bei voller
- * Ansicht, statt der zwei einer Kunsteinheit. Fein gezeichnete Familien (seit Etappe 2 die
- * Figuren) bekommen diesen Kontext und rechnen in doppelt so feinem Raster; ihre Koordinaten
- * sind entsprechend die doppelten.
+ * The same camera, but in **HD units**: one unit is one buffer pixel at full view instead of
+ * the two of an art unit. Finely drawn families (the characters since stage 2) get this context
+ * and compute in a grid twice as fine; their coordinates are doubled accordingly.
+ * are doubled accordingly.
  */
 function viewHiOf(base: Ctx, fit: CamFit): Ctx {
   return skaliert(base, fit.hz, fit.ox, fit.oy);
@@ -118,19 +118,19 @@ function skaliert(base: Ctx, z: number, ox: number, oy: number): Ctx {
   };
 }
 
-/** Deckkraft einer Figur, die nicht zum gewählten Sitzungsreiter gehört. Kräftig genug, dass
- *  man sie noch als Figur erkennt — der Filter blendet aus, er entfernt nicht. */
+/** Opacity of a character that does not belong to the selected session tab. Strong enough to
+ *  still recognise it as a character: the filter dims, it does not remove. */
 const DIM_ALPHA = 0.35;
 
 /**
- * Blasse Hülle: jede gesetzte Deckkraft wird mit `k` multipliziert.
+ * A pale wrapper: every opacity set is multiplied by `k`.
  *
- * Warum eine Hülle und nicht ein `globalAlpha` um den Block herum: `fillA` und `drawArt` setzen
- * `globalAlpha` am Ende **selbst** auf 1 zurück (Regel 2.1: es gibt kein `restore`, das
- * Zurücksetzen ist Pflicht des Zeichners). Ein einmal gesetztes Alpha hielte also nur bis zum
- * ersten Aufruf. Die Hülle fängt genau diese Zuweisungen ab.
+ * Why a wrapper and not a `globalAlpha` around the block: `fillA` and `drawArt` set
+ * `globalAlpha` back to 1 **themselves** at the end (rule 2.1: there is no `restore`, resetting
+ * is the duty of the drawer). An alpha set once would therefore only hold until the first call.
+ * The wrapper intercepts exactly those assignments.
  *
- * Der Aufrufer setzt `hülle.globalAlpha = 1` vor dem Block (das legt die Basis auf `k`) und
+ * The caller sets `wrapper.globalAlpha = 1` before the block (which puts the base at `k`) and
  * `basis.globalAlpha = 1` danach.
  */
 function dimOf(base: Ctx, k: number): Ctx {
@@ -143,11 +143,11 @@ function dimOf(base: Ctx, k: number): Ctx {
   };
 }
 
-// ═══ Der Grundriss ═══════════════════════════════════════════════════════════
+// ═══ The floor plan ══════════════════════════════════════════════════════════
 //
-// Szenenmaße wie in `room.ts`, danach **einmal** mit `POS_SCALE` in Pufferpixel gerundet.
-// Ab hier ist jede Zahl eine Pufferzahl; `POS_SCALE` kommt in dieser Datei sonst nur noch
-// für Aktor- und Effektpositionen vor (Regel 1).
+// Scene dimensions as in `room.ts`, then rounded **once** into buffer pixels with `POS_SCALE`.
+// From here on every number is a buffer number; `POS_SCALE` appears in this file otherwise only
+// for actor and effect positions (rule 1).
 
 /** Szenen- → Pufferkoordinate. */
 function px(v: number): number {
@@ -162,25 +162,25 @@ const SEAT_DX = 92;
 const SEAT_DY = 14;
 
 export interface SeatPx {
-  /** Fußpunkt der sitzenden Figur. */
+  /** Foot point of the seated character. */
   sit: Pt;
-  /** Mitte der eigenen Tischhälfte. */
+  /** Centre of its own half of the desk. */
   desk: Pt;
-  /** Mitte des Monitors auf dieser Tischhälfte. */
+  /** Centre of the monitor on this half of the desk. */
   mon: Pt;
-  /** Sitzt links vom Tisch und blickt nach rechts? */
+  /** Sits to the left of the desk and faces right? */
   flip: boolean;
 }
 
 /**
- * Die dreizehn Plätze in Pufferpixeln.
+ * The thirteen seats in buffer pixels.
  *
- * Ein Schreibtisch ist in `room.ts` eine **Zweierbank**: zwei Sitze im Abstand `±SEAT_DX` um
- * eine gemeinsame Tischmitte. Der 26 Pixel breite Tisch-Art deckt diese 55 Pixel nicht ab —
- * deshalb steht hier **je Sitz** eine Tischhälfte, um 14 Pixel zur Bankmitte verschoben. Die
- * zwei Hälften stoßen genau in der Mitte aneinander und ergeben eine 54 Pixel lange Bank. Ein
- * einzelner Tisch in der Mitte hätte beide Figuren 14 Pixel neben dem Tisch sitzen lassen —
- * technisch korrekt und optisch offensichtlich falsch.
+ * A desk is a **bench for two** in `room.ts`: two seats at distance `±SEAT_DX` around a shared
+ * desk centre. The desk art 26 pixels wide does not cover those 55 pixels, so **per seat** half
+ * a desk stands here, shifted 14 pixels towards the centre of the bench. The two halves meet
+ * exactly in the middle and make a bench 54 pixels long. A single desk in the middle would have
+ * let both characters sit 14 pixels beside the desk: technically correct and visibly wrong.
+ * let both characters sit 14 pixels beside the desk: technically correct and visibly wrong.
  */
 function buildSeats(): SeatPx[] {
   const out: SeatPx[] = [];
@@ -193,16 +193,16 @@ function buildSeats(): SeatPx[] {
         out.push({
           sit,
           desk: { x: sit.x + dir * 14, y: px(ry) },
-          // Monitor zur Bankmitte hin — die zwei Schirme einer Bank stehen Rücken an Rücken,
-          // wie an einer echten Doppelbank. Nach außen gesetzt sähen sie aus wie Trennwände.
+          // Monitor towards the centre of the bench: the two screens of a bench stand back to
+          // back, as at a real double bench. Placed outwards they would look like partitions.
           mon: { x: sit.x + dir * 19, y: px(ry) },
           flip: !left,
         });
       }
     }
   }
-  // Chefplatz: 61 % / 32 %. Er sitzt **vor** seinem Tisch, mit gleicher x-Mitte — die einzige
-  // Figur im Raum, die uns den Rücken zudreht. `person.ts` liest das an `deskIndex === -1` ab.
+  // Boss seat: 61 % / 32 %. It sits **in front of** its desk with the same x centre, the only
+  // character in the room that turns its back to us. `person.ts` reads that off `deskIndex === -1`.
   const cx = Math.round(SCENE.w * 0.61);
   const cy = Math.round(SCENE.h * 0.32);
   out.push({
@@ -214,24 +214,24 @@ function buildSeats(): SeatPx[] {
   return out;
 }
 
-/** Öffentlich, damit Welle M die Doppelung gegen `room.ts` prüfen kann. */
+/** Public so that a check can hold the duplication against `room.ts`. */
 export const SEATS_PX: readonly SeatPx[] = buildSeats();
 
 const DOOR = { x: px(Math.round(SCENE.w * 0.73)), y: px(Math.round(SCENE.h * 0.135)) };
 const TABLE = { x: px(Math.round(SCENE.w * 0.51)), y: px(Math.round(SCENE.h * 0.55)) };
 const COFFEE = { x: px(Math.round(SCENE.w * 0.065)), y: px(Math.round(SCENE.h * 0.25)) };
 
-/** Fensterbänder links und rechts der Wandmitte. Die Zahlen sind Pufferpixel und aus keiner
- *  Szenengröße abgeleitet — die Wand ist Kulisse, kein Ort, an dem etwas passiert. */
+/** Bands of windows left and right of the centre of the wall. The numbers are buffer pixels and
+ *  derived from no scene dimension: the wall is scenery, not a place where something happens. */
 const WIN_Y = 32;
 const WIN_LEFT_X = 20;
 const WIN_LEFT_N = 5;
 const WIN_RIGHT_X = 396;
 const WIN_RIGHT_N = 3;
 
-/** Die Mitten aller Fenster — für die Lichtfelder auf dem Boden. Aus denselben Konstanten
- *  gebaut wie die Fenster selbst; eine zweite Liste wäre die erste Stelle, an der Fenster
- *  und Licht auseinanderlaufen. */
+/** The centres of all windows, for the fields of light on the floor. Built from the same
+ *  constants as the windows themselves; a second list would be the first place where windows
+ *  and light drift apart. */
 const WIN_XS: readonly number[] = [
   ...Array.from({ length: WIN_LEFT_N }, (_, i) => WIN_LEFT_X + i * WINDOW_STEP + 11),
   ...Array.from({ length: WIN_RIGHT_N }, (_, i) => WIN_RIGHT_X + i * WINDOW_STEP + 11),
@@ -239,50 +239,50 @@ const WIN_XS: readonly number[] = [
 const BOARD_X = 190;
 const CLOCK_X = 246;
 
-/** Aktenschrank mit Topfpflanze, unter dem Whiteboard. Reine Einrichtung. */
+/** Filing cabinet with a potted plant, under the whiteboard. Pure furnishing. */
 const CABINET_X = 196;
 const CABINET_Y = 60;
 
 /**
- * Der Serverschrank: 20×34, steht an der Rückwand **zwischen Whiteboard und Uhr**.
+ * The server rack: 20×34, standing at the back wall **between whiteboard and clock**.
  *
- * Der Platz ist gerechnet, nicht gewählt. Das Board belegt `BOARD_X ± 17` (also bis 207), die
- * Uhr `CLOCK_X ± 4` (ab 242), das linke Fensterband endet bei 147, die Tür beginnt bei 340.
- * Der 20 Pixel breite Schrank passt mit `RACK_X = 224` genau in die Lücke (214..233) — und
- * nur dort, ohne ein anderes Wandstück zu verdecken.
+ * The place is computed, not chosen. The board occupies `BOARD_X ± 17` (so up to 207), the
+ * clock `CLOCK_X ± 4` (from 242), the left band of windows ends at 147 and the door begins at
+ * 340. The rack 20 pixels wide fits with `RACK_X = 224` exactly into the gap (214..233), and
+ * only there, without covering another piece of wall.
  *
- * `RACK_Y` bleibt die alte Bodenlinie: der Schrank ist nach oben gewachsen, nicht nach vorn.
- * Seine Oberkante liegt damit bei 26, also **über** der Sockelleiste (`WALL_H - 4`) in der
- * Wandfläche — genau so, wie ein zwei Meter hohes Rack vor einer Wand aussieht. Er verdeckt
- * dort nichts: zwischen Board (bis 207) und Uhr (ab 242) hängt nichts an der Wand.
+ * `RACK_Y` stays the old floor line: the rack grew upwards, not forwards. Its top edge is
+ * therefore at 26, so **above** the skirting board (`WALL_H - 4`) in the wall surface, exactly
+ * how a rack two metres tall looks in front of a wall. It covers nothing there: between the
+ * board (up to 207) and the clock (from 242) nothing hangs on the wall.
  */
 const RACK_X = 224;
 const RACK_Y = 60;
 
 /**
- * Der Standplatz vor dem Serverschrank, in Pufferpixeln.
+ * The standing place in front of the server rack, in buffer pixels.
  *
- * Dieselbe Doppelung wie bei `SEATS_PX` und aus demselben Grund: Schicht 1 darf `room.ts` nicht
- * sehen (Regel 4), hält die Geometrie also zwangsläufig ein zweites Mal. Prüfung 11 hält
- * `RACK_PX ≡ round(ROOM.rack × POS_SCALE)` — läuft es auseinander, läuft die Figur an eine
- * Stelle, an der kein Schrank steht, und das Urteil (`emote`) schwebt daneben in der Luft.
+ * The same duplication as with `SEATS_PX` and for the same reason: layer 1 must not see
+ * `room.ts` (rule 4) and therefore inevitably holds the geometry a second time. Check 11 holds
+ * `RACK_PX ≡ round(ROOM.rack × POS_SCALE)`; if it drifts, the character walks to a place where
+ * no rack stands, and the verdict (`emote`) floats beside it in the air.
  *
- * Die 18 Pixel Versatz nach rechts sind kein Geschmack: eine Figur ist 16 Pufferpixel breit und
- * stünde mittig **vor** dem Schrank, statt daneben. Mit dem Versatz beginnt sie bei 234, einen
- * Pixel rechts der Schrankkante (233) — sie steht am Rack, nicht davor.
+ * The 18 pixels of offset to the right are not taste: a character is 16 buffer pixels wide and
+ * would stand centred **in front of** the rack instead of next to it. With the offset it starts
+ * at 234, one pixel right of the rack edge (233): it stands at the rack, not in front of it.
  *
- * Rechts, nicht links: links liegen Aktenschrank und Topfpflanze (188..203). Und weil die
- * Sprechblase um die Figurenmitte zentriert ist, sitzt das LED-Feld auf der **anderen**
- * Frontseite (`LED_X = 3`, hier 217..220) — sonst verdeckte die Blase genau die Anzeige,
- * derentwegen die Figur hergelaufen ist.
+ * Right, not left: on the left are the filing cabinet and the potted plant (188..203). And
+ * because the speech bubble is centred on the middle of the character, the LED field sits on
+ * the **other** front side (`LED_X = 3`, here 217..220), otherwise the bubble would cover
+ * exactly the display the character walked over for.
  */
 export const RACK_PX: Pt = { x: RACK_X + 18, y: RACK_Y + 8 };
 
-// ═══ Monitorbild und Stimmung ════════════════════════════════════════════════
+// ═══ Monitor image and mood ══════════════════════════════════════════════════
 //
-// `toolAct.ts` ist Schicht 0 und für Schicht 1 nicht sichtbar (Regel 4). Die zwei Tabellen
-// unten sind deshalb Kopien von `screenFor`/`moodFor` — bewusst **wortgleich**, damit ein
-// Vergleich der beiden Stellen im Diff eine Zeile ist und keine Übersetzungsarbeit.
+// `toolAct.ts` is layer 0 and not visible to layer 1 (rule 4). The two tables below are
+// therefore copies of `screenFor`/`moodFor`, deliberately **word for word**, so that comparing
+// the two places is one line in a diff and not a translation exercise.
 
 const SCREEN_BY_ACT: Record<ToolAct, ScreenKind> = {
   read: "code", write: "code", run: "log", browse: "page", delegate: "link", other: "blank",
@@ -293,8 +293,8 @@ const SCREEN_BY_TOOL: Record<string, ScreenKind> = {
   screenshot: "page", read_attachment: "page",
 };
 
-/** `waiting` gewinnt vor allem anderen: eine Figur, die auf einen Menschen wartet, ist genau
- *  das, was der Zuschauer sehen soll — auch wenn im Hintergrund noch ein Werkzeug offen ist. */
+/** `waiting` wins over everything else: a character waiting for a person is exactly what the
+ *  viewer should see, even when a tool is still open in the background. */
 function screenOf(a: ActorState): ScreenKind {
   if (a.waiting) return "wait";
   if (a.tool !== undefined) {
@@ -305,7 +305,7 @@ function screenOf(a: ActorState): ScreenKind {
   return SCREEN_BY_ACT[a.act];
 }
 
-/** Fertig schlägt alles, dann Warten, dann Fehler, sonst Arbeit. */
+/** Done beats everything, then waiting, then errors, otherwise work. */
 function moodOf(a: ActorState): MoodKind {
   if (a.done !== undefined) return "done";
   if (a.waiting) return "wait";
@@ -313,52 +313,52 @@ function moodOf(a: ActorState): MoodKind {
   return "work";
 }
 
-// ═══ Die Bodenschicht ════════════════════════════════════════════════════════
+// ═══ The floor layer ═════════════════════════════════════════════════════════
 
 interface Piece {
-  /** Sortierschlüssel = Fußpunkt. */
+  /** Sorting key = foot point. */
   y: number;
   draw(): void;
 }
 
-/** Oberkante der Tischplatte — worauf ein Monitor gestellt wird. */
+/** Top edge of the desktop, what a monitor is placed on. */
 function deskTop(yBase: number): number {
   return yBase - SIZE.desk.h + 1;
 }
 
-// ═══ Der Bildaufbau ══════════════════════════════════════════════════════════
+// ═══ Building the image ══════════════════════════════════════════════════════
 
 export interface RenderOpts {
-  /** Ausgewählter Agent — bekommt ein helles Schild und einen Ring auf dem Boden. */
+  /** The selected agent: gets a bright plate and a ring on the floor. */
   selected?: string;
-  /** Agent unter dem Zeiger. */
+  /** Agent under the pointer. */
   hover?: string;
-  /** Agenten, die der Sitzungsreiter gerade **nicht** meint. Sie werden blass gezeichnet und
-   *  **nicht** entfernt: ein entfernter Agent gäbe seinen Sitzplatz frei, die Übergabelinien
-   *  zeigten ins Nichts und derselbe Raum sähe je nach Reiter anders aus. */
+  /** Agents the session tab does **not** mean right now. They are drawn pale and **not**
+   *  removed: a removed agent would free its seat, the handover lines would point into nothing
+   *  and the same room would look different depending on the tab. */
   dimmed?: ReadonlySet<string>;
 }
 
 /**
- * Malt ein vollständiges Bild in den 480×270-Puffer.
+ * Paints a complete image into the 480×270 buffer.
  *
- * Der Aufrufer hat den Puffer **nicht** zu leeren: die Wand und der Boden decken ihn
- * vollständig ab. Ein `clearRect` wäre ein vierter Kontextaufruf im Vertrag und ein
- * überflüssiger Vollbild-Schreibvorgang je Bild.
+ * The caller must **not** clear the buffer: wall and floor cover it completely. A `clearRect`
+ * would be a fourth context call in the contract and a superfluous full frame write per frame.
+ * would be a fourth context call in the contract and a superfluous full frame write per frame.
  */
 export function renderFrame(
   ctx: Ctx, frame: Frame, cam: Cam, grade: Grade, opts?: RenderOpts,
 ): void {
   const fit = camFit(cam);
   const v = viewOf(ctx, fit);
-  // Die Figuren sind fein gezeichnet (Etappe 2) und bekommen die HD-Sicht; alles übrige
-  // zeichnet weiter in Kunsteinheiten. Beides nebeneinander ist der Zweck der Trennung.
+  // The characters are finely drawn (stage 2) and get the HD view; everything else still draws
+  // in art units. Having both side by side is the purpose of the separation.
   const vh = viewHiOf(ctx, fit);
   const env = GRADES[grade];
   const day = grade === "day";
   const t = frame.t;
 
-  // ── 1 Hülle ───────────────────────────────────────────────────────────────
+  // ── 1 shell ───────────────────────────────────────────────────────────────
   drawWall(vh, env);
   for (let i = 0; i < WIN_LEFT_N; i++) drawWindow(v, WIN_LEFT_X + i * WINDOW_STEP, WIN_Y, env);
   for (let i = 0; i < WIN_RIGHT_N; i++) drawWindow(v, WIN_RIGHT_X + i * WINDOW_STEP, WIN_Y, env);
@@ -366,24 +366,24 @@ export function renderFrame(
   drawClock(v, CLOCK_X, 26, env);
   drawDoor(v, DOOR.x, WALL_H, env, { open: anyoneTravelling(frame) });
   drawFloor(vh, env);
-  // Licht kommt nach dem Boden und vor den Möbeln: es liegt auf den Dielen, aber unter allem,
-  // was darauf steht — sonst leuchteten Schreibtische von innen.
+  // Light comes after the floor and before the furniture: it lies on the planks but under
+  // everything standing on them, otherwise desks would glow from the inside.
   drawLicht(vh, env, WIN_XS, day);
   drawCabinet(v, CABINET_X, CABINET_Y, env);
   drawPlant(v, CABINET_X, CABINET_Y - SIZE.cabinet.h, env, { small: true });
-  // Das Rack ist die einzige Kulisse, die etwas erzählt: bei `idle` zeichnet es sich
-  // unverändert, sonst leuchtet je Höheneinheit ein LED-Feld.
+  // The rack is the only piece of scenery that tells something: on `idle` it draws unchanged,
+  // otherwise one LED field per rack unit lights up.
   drawRack(v, RACK_X, RACK_Y, env, { state: frame.rack.state, since: frame.rack.since, t });
 
   // ── 2 Licht ───────────────────────────────────────────────────────────────
   if (day) {
-    // Zwei Lichtteppiche unter den Fensterbändern. Sie sind der einzige Grund, warum der
-    // Tagraum nach Tag aussieht und nicht nach „hellerer Nacht".
+    // Two carpets of light under the bands of windows. They are the only reason the day room
+    // looks like day and not like "a brighter night".
     drawWindowLight(v, WIN_LEFT_X + 2 * WINDOW_STEP, WALL_H + 58, 104, 58, env);
     drawWindowLight(v, WIN_RIGHT_X + WINDOW_STEP, WALL_H + 58, 76, 58, env);
   } else {
-    // Abends kommt das Licht von den Schirmen. Ein weicher Fleck unter jedem **besetzten**
-    // Platz; die leeren bleiben dunkel, und genau das macht sichtbar, wie voll der Raum ist.
+    // In the evening the light comes from the screens. A soft patch under every **occupied**
+    // seat; the empty ones stay dark, and exactly that shows how full the room is.
     for (const a of frame.actors) {
       if (a.retired === true || a.pose !== "sit") continue;
       const s = seatFor(a);
@@ -400,37 +400,37 @@ export function renderFrame(
   const world: Piece[] = [];
   buildRoom(world, v, vh, env, frame);
   buildActors(world, v, vh, env, frame, grade, opts);
-  // Stabil (ES2019): bei gleichem Fußpunkt gewinnt die Einfügereihenfolge — und die ist
-  // „erst der Stuhl, dann die Figur darauf".
+  // Stable (ES2019): at the same foot point the insertion order wins, and that is "first the
+  // chair, then the character on it".
   world.sort((a, b) => a.y - b.y);
   for (const p of world) p.draw();
 
   // ── 5 Luft ────────────────────────────────────────────────────────────────
-  // Dampf steigt von der **Oberkante** der Maschine auf. Vom Fußpunkt aus gerechnet stiege er
-  // im Gerät selbst auf und wäre unsichtbar — der klassische Fehler bei der Fußpunkt-Regel.
+  // Steam rises from the **top edge** of the machine. Computed from the foot point it would
+  // rise inside the device and be invisible, the classic mistake with the foot point rule.
   steam(v, COFFEE.x, COFFEE.y - 6 - SIZE.coffee.h + 1, env, t, 0x4b4146);
   dust(v, env, t, 0x53544142);
   for (const fx of frame.fx) drawAirFx(v, env, fx, t);
   for (const a of frame.actors) {
     if (a.retired === true || a.pose !== "walk") continue;
-    // Staubwölkchen im Takt des Laufzyklus: das Alter kommt aus `t`, nicht aus einem Zähler.
+    // Puffs of dust at the beat of the walk cycle: the age comes from `t`, not from a counter.
     footPuff(v, px(a.x), px(a.y), env, ((t % 480) / 480));
   }
 
   // ── 6 Spawn-Linien ────────────────────────────────────────────────────────
   drawLinks(v, env, frame, t);
 
-  // ── 7 Überlagerungen ──────────────────────────────────────────────────────
+  // ── 7 overlays ────────────────────────────────────────────────────────────
   drawOverlays(v, env, frame, grade, opts);
 
   // ── 8 Abstufung ───────────────────────────────────────────────────────────
-  // Nichts zu tun. Tag und Abend sind zwei Palettentabellen, kein Filter über dem fertigen
-  // Bild: ein abgedunkeltes Tagbild würde die Monitore mitverdunkeln, obwohl sie abends genau
-  // die Lichtquelle sind, die alles andere sichtbar macht.
+  // Nothing to do. Day and evening are two palette tables, not a filter over the finished
+  // image: a darkened day image would darken the monitors as well, although in the evening they
+  // are exactly the light source that makes everything else visible.
 }
 
-/** Steht gerade jemand in der Tür? Dann ist sie offen. Ein Detail, das den Raum erzählen
- *  lässt, ohne dass ein Ereignis dafür erfunden werden müsste. */
+/** Is somebody standing in the door right now? Then it is open. A detail that lets the room
+ *  tell a story without an event having to be invented for it. */
 function anyoneTravelling(frame: Frame): boolean {
   for (const a of frame.actors) {
     if (a.retired === true) continue;
@@ -439,16 +439,16 @@ function anyoneTravelling(frame: Frame): boolean {
   return false;
 }
 
-/** Der Sitz eines Aktors — `deskIndex` 0..11 = Pod, `-1` = Chefplatz, `-2` = auswärts. */
+/** The seat of an actor: `deskIndex` 0..11 is a pod, `-1` the boss seat, `-2` away. */
 function seatFor(a: ActorState): SeatPx | undefined {
   if (a.deskIndex >= 0 && a.deskIndex < SEATS_PX.length - 1) return SEATS_PX[a.deskIndex];
   if (a.deskIndex === -1) return SEATS_PX[SEATS_PX.length - 1];
   return undefined;
 }
 
-/** Möbel und Arbeitsplätze in die Sortierliste legen. */
+/** Put furniture and workplaces into the sorting list. */
 function buildRoom(world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame): void {
-  // Wer sitzt wo — für Stuhl (besetzt/frei) und Monitorbild.
+  // Who sits where, for the chair (occupied or free) and the monitor image.
   const byDesk = new Map<number, ActorState>();
   for (const a of frame.actors) {
     if (a.retired === true || a.pose !== "sit") continue;
@@ -469,8 +469,8 @@ function buildRoom(world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame): voi
         drawMonitor(v, s.mon.x, deskTop(s.desk.y), env, { screen, mood, flip: s.flip });
       },
     });
-    // Der Stuhl kommt **vor** der Figur in die Liste. Beide haben denselben Fußpunkt, und die
-    // Sortierung ist stabil — also sitzt die Figur auf dem Stuhl und nicht dahinter.
+    // The chair goes into the list **before** the character. Both have the same foot point and
+    // the sort is stable, so the character sits on the chair and not behind it.
     world.push({
       y: s.sit.y,
       draw(): void {
@@ -479,8 +479,8 @@ function buildRoom(world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame): voi
     });
   }
 
-  // Runder Tisch mit vier Stühlen. Die hinteren zwei stehen vor dem Tisch in der Liste,
-  // die vorderen dahinter — beides ergibt sich aus ihrem Fußpunkt, nicht aus der Reihenfolge.
+  // A round table with four chairs. The two at the back stand before the table in the list, the
+  // two at the front after it; both follow from their foot point, not from the order.
   world.push({ y: TABLE.y - 6, draw: () => drawTableChair(v, TABLE.x - 26, TABLE.y - 6, env) });
   world.push({ y: TABLE.y - 6, draw: () => drawTableChair(v, TABLE.x + 26, TABLE.y - 6, env) });
   world.push({ y: TABLE.y, draw: () => drawMeetingTable(v, TABLE.x, TABLE.y, env) });
@@ -495,7 +495,7 @@ function buildRoom(world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame): voi
   world.push({ y: 258, draw: () => drawPlant(v, ART.w - 14, 258, env) });
 }
 
-/** Figuren in dieselbe Sortierliste legen — das ist der Kern von Schicht 4. */
+/** Put characters into the same sorting list: that is the core of layer 4. */
 function buildActors(
   world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame, grade: Grade, opts?: RenderOpts,
 ): void {
@@ -503,20 +503,20 @@ function buildActors(
   const hov = opts?.hover;
   const blassSet = opts?.dimmed;
   const blassV = blassSet !== undefined ? dimOf(v, DIM_ALPHA) : v;
-  // Dieselbe Blässe noch einmal für die feine Sicht — die Figur wird darüber gezeichnet,
+  // The same paleness once more for the fine view: the character is drawn over it,
   // ihr Markierungsring darunter in Kunsteinheiten.
   const blassVh = blassSet !== undefined ? dimOf(vh, DIM_ALPHA) : vh;
   for (const a of frame.actors) {
     if (a.retired === true) continue;
     const cx = px(a.x);
     const yBase = px(a.y);
-    // Außerhalb des Puffers wird nicht gezeichnet. Der Sammelpunkt für „auswärts" liegt in
-    // `room.ts` bei `y = -100`, also weit über der Decke — ohne diese Prüfung liefe die
-    // Zeichenschleife für jede abgeschobene Figur einmal komplett durch.
+    // Nothing is drawn outside the buffer. The gathering point for "away" lies at `y = -100` in
+    // `room.ts`, so far above the ceiling. Without this check the drawing loop would run
+    // completely once for every character pushed away.
     if (cx < -FIG_W || cx > ART.w + FIG_W || yBase < -FIG_H || yBase > ART.h + FIG_H) continue;
 
-    // Hemd, Haar und Schultern kommen aus der **Rolle**, alles übrige aus dem Laufseed —
-    // `a.role` steht schon im `Frame`, es braucht also kein neues Feld in Schicht 0.
+    // Shirt, hair and shoulders come from the **role**, everything else from the run seed:
+    // `a.role` is already in the `Frame`, so no new field is needed in layer 0.
     const look = lookOf(a.seed, rollenSeed(a.role, a.seed));
     const pal = palFor(grade, look);
     const ring = a.id === sel ? "acc" : a.id === hov ? "wallHi" : undefined;
@@ -526,17 +526,17 @@ function buildActors(
       y: yBase,
       draw(): void {
         if (ring) {
-          // Markierungsring auf dem Boden statt Umriss um die Figur: ein Umriss müsste
-          // Pixel für Pixel um ein zusammengesetztes Sprite gelegt werden, ein Ring sind
-          // vier Rechtecke — und er verdeckt die Figur nicht.
+          // A marking ring on the floor instead of an outline around the character: an outline
+          // would have to be laid pixel by pixel around an assembled sprite, a ring is four
+          // rectangles, and it does not cover the character.
           fillA(v, env, ring, 0.55, cx - 7, yBase, 14, 1);
           fillA(v, env, ring, 0.35, cx - 8, yBase - 1, 1, 2);
           fillA(v, env, ring, 0.35, cx + 7, yBase - 1, 1, 2);
           fillA(v, env, ring, 0.25, cx - 6, yBase - 2, 12, 1);
         }
-        // Die blasse Hülle wird **nach** dem Ring scharfgestellt: `fillA` setzt die Deckkraft
-        // am Ende auf 1 zurück und löschte die Hülle sonst gleich wieder. Der Ring bleibt
-        // hell — dass etwas ausgewählt ist, gilt auch dann, wenn der Filter es ausblendet.
+        // The pale wrapper is armed **after** the ring: `fillA` sets the opacity back to 1 at
+        // the end and would otherwise erase the wrapper right away. The ring stays bright: that
+        // something is selected holds even when the filter dims it.
         const c = blass ? blassVh : vh;
         if (blass) c.globalAlpha = 1;
         if (ghost) drawGhost(c, cx * 2, yBase * 2, pal, frame.t, a.seed, look);
@@ -547,7 +547,7 @@ function buildActors(
   }
 }
 
-/** Kurzlebige Effekte, die in der Luft liegen (Funke, fallender Zettel). */
+/** Short lived effects that lie in the air (spark, falling note). */
 function drawAirFx(v: Ctx, env: Pal, fx: Fx, t: number): void {
   const span = Math.max(1, fx.until - fx.t0);
   const age = Math.max(0, Math.min(1, (t - fx.t0) / span));
@@ -556,7 +556,7 @@ function drawAirFx(v: Ctx, env: Pal, fx: Fx, t: number): void {
   if (fx.kind === "spark") {
     spark(v, cx, y - FIG_H + 6, env, age, fx.seed);
   } else if (fx.kind === "drop") {
-    // Ein Blatt fällt auf den Tisch: es sinkt und legt sich flach hin. Vier Rechtecke.
+    // A sheet falls onto the desk: it sinks and lies down flat. Four rectangles.
     const drop = Math.round(age * 8);
     const yy = y - FIG_H + 2 + drop;
     fillA(v, env, "paper", 1 - age * 0.3, cx + 6, yy, 5, 4);
@@ -564,7 +564,7 @@ function drawAirFx(v: Ctx, env: Pal, fx: Fx, t: number): void {
   }
 }
 
-/** Spawn- und Übergabelinien. */
+/** Spawn and handover lines. */
 function drawLinks(v: Ctx, env: Pal, frame: Frame, t: number): void {
   const at = new Map<string, Pt>();
   for (const a of frame.actors) at.set(a.id, { x: px(a.x), y: px(a.y) - FIG_H + 6 });
@@ -577,8 +577,8 @@ function drawLinks(v: Ctx, env: Pal, frame: Frame, t: number): void {
       { x: px(fx.to.x), y: px(fx.to.y) - FIG_H + 6 }, env, age);
   }
 
-  // Die mitwandernde Linie: solange `link` steht, hängt sie an den **aktuellen** Positionen
-  // beider Figuren. Der `Fx` oben ist der Blitz beim Auslösen, das hier ist das Band.
+  // The line that travels along: while `link` stands it hangs on the **current** positions of
+  // both characters. The `Fx` above is the flash at the trigger, this one is the band.
   for (const a of frame.actors) {
     if (a.link === undefined || a.retired === true) continue;
     const from = at.get(a.id);
@@ -588,10 +588,10 @@ function drawLinks(v: Ctx, env: Pal, frame: Frame, t: number): void {
   }
 }
 
-// ═══ Überlagerungen ══════════════════════════════════════════════════════════
+// ═══ Overlays ════════════════════════════════════════════════════════════════
 
-/** Der Rollenname, gekürzt auf das, was auf ein Schild passt. `exec_agent` → `EXEC`.
- *  Der Teil vor dem ersten Unterstrich ist bei allen Traccoon-Rollen der aussagekräftige
+/** The role name, shortened to what fits on a plate. `exec_agent` becomes `EXEC`.
+ *  The part before the first underscore is the meaningful one in all roles here.
  *  (`plan_agent`, `exec_agent`, `review_agent`, `assistant`). */
 function shortRole(role: string): string {
   const cut = role.indexOf("_");
@@ -616,15 +616,15 @@ function drawOverlays(
 
     const chosen = a.id === sel;
     const hovered = a.id === hov;
-    // Schild und Blase teilen das Schicksal der Figur: gehört sie nicht zum Sitzungsreiter,
-    // wird auch ihr Etikett blass. Ein helles Schild über einer blassen Figur läse sich als
+    // Plate and bubble share the fate of the character: if it does not belong to the session
+    // tab, its label goes pale as well. A bright plate over a pale character would read as
     // Zeichenfehler.
     const blass = blassSet !== undefined && blassSet.has(a.id);
     const c = blass ? blassV : v;
     if (blass) c.globalAlpha = 1;
 
-    // Schilder für alle, aber blass: ein Raum mit zwölf gleich hellen Etiketten liest sich als
-    // Tabelle, nicht als Raum. Hell wird nur, wonach gefragt wurde.
+    // Plates for everybody, but pale: a room with twelve equally bright labels reads as a
+    // table, not as a room. Only what was asked for becomes bright.
     nameplate(c, cx, yBase + 11, env, shortRole(a.role), {
       sub: chosen ? (a.issue ?? a.model ?? undefined) : undefined,
       selected: chosen,
@@ -643,7 +643,7 @@ function drawOverlays(
     if (blass) v.globalAlpha = 1;
   }
 
-  // Emotes zuletzt: sie sind das Kurzsignal und dürfen von nichts überdeckt werden.
+  // Emotes last: they are the short signal and must not be covered by anything.
   for (const fx of frame.fx) {
     if (fx.kind !== "emote" || fx.text === undefined) continue;
     const g = fx.text;
@@ -654,16 +654,16 @@ function drawOverlays(
   }
 }
 
-// ═══ Trefferprüfung ══════════════════════════════════════════════════════════
+// ═══ Hit testing ═════════════════════════════════════════════════════════════
 
 /**
- * Welcher Agent steht unter dem Punkt? `px`/`py` sind **Pufferkoordinaten** (die Bühne rechnet
- * die Mauszeigerposition dorthin um, weil nur sie den Blit-Faktor kennt).
+ * Which agent stands under this point? `px`/`py` are **buffer coordinates** (the stage converts
+ * the pointer position into them, because only it knows the blit factor).
  *
- * Geprüft wird von **vorn nach hinten**, also rückwärts durch die nach `y` sortierte Liste.
- * Vorn heißt weiter unten heißt später gezeichnet — und was oben liegt, muss auch klickbar
- * sein. Eine Prüfung in Listenreihenfolge träfe die Figur dahinter, und der Fehler sähe aus
- * wie ein Rundungsproblem.
+ * Testing goes from **front to back**, so backwards through the list sorted by `y`. Front means
+ * further down means drawn later, and what lies on top has to be clickable. A test in list
+ * order would hit the character behind it, and the bug would look like a rounding problem.
+
  */
 export function hitTest(
   frame: Frame, cam: Cam, pxCoord: number, pyCoord: number,
@@ -681,7 +681,7 @@ export function hitTest(
   return undefined;
 }
 
-/** Wo eine Figur im Puffer steht — für die Bühne (Kamera folgt der Auswahl) und den Inspektor. */
+/** Where a character stands in the buffer: for the stage and the inspector. */
 export function actorAt(frame: Frame, id: string): Pt | undefined {
   for (const a of frame.actors) {
     if (a.id === id) return { x: px(a.x), y: px(a.y) };

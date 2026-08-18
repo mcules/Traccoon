@@ -1,28 +1,28 @@
-// Schicht 0 — der Raum als Zustandsmaschine.
+// Layer 0, the room as a state machine.
 //
-// Die Engine ist der einzige Ort, an dem aus Kommandos ein Bild wird. Sie hat genau zwei
-// Eingänge: `apply(cmd)` (ein Ereignis ist passiert, augenblicklich) und `tick(dt)` (Zeit ist
-// vergangen). Eine Uhr sieht sie nie — weder live noch beim Zurückspulen. Deshalb ergibt
-// dasselbe Log denselben Raum, und zwar bitgleich.
+// The engine is the only place where commands become an image. It has exactly two entrances:
+// `apply(cmd)` (an event happened, instantly) and `tick(dt)` (time has passed). It never sees a
+// clock, neither live nor while rewinding. That is why the same log yields the same room, bit
+// for bit.
 //
-// Die zwei Entwurfsentscheidungen, an denen alles hängt:
+// The two design decisions everything hangs on:
 //
-//  1. **Jede Bewegung ist eine geschlossene Funktion von `t`.** Ein Weg kennt seinen Start-,
-//     Ankunfts-, Halte- und Rückkehrzeitpunkt; die Position ist eine Interpolation dazwischen.
-//     Der naheliegende Weg — pro Tick ein Stück Strecke aufaddieren — verletzt die
-//     dt-Split-Invarianz (PIXEL-CONTRACT.md 3.4) auf zwei Arten gleichzeitig: die
-//     Fließkomma-Summe `8 × (v·25)` ist nicht bitgleich `v·200`, und das Ziel wird bei großem
-//     `dt` in einem Sprung überschossen statt in acht Schritten erreicht. Mit Zeitstempeln
-//     stellt sich die Frage gar nicht erst.
+//  1. **Every movement is a closed function of `t`.** A trip knows its start, arrival, hold and
+//     return times; the position is an interpolation between them. The obvious way, adding a
+//     piece of distance per tick, violates the dt split invariance (PIXEL-CONTRACT.md 3.4) in
+//     two ways at once: the floating point sum `8 × (v·25)` is not bit identical to `v·200`, and
+//     at a large `dt` the target is overshot in one jump instead of reached in eight steps. With
+//     timestamps the question does not even arise.
+
 //
-//  2. **Jeder Zustandsübergang trägt seinen exakten Zeitpunkt bei sich**, und der nächste
-//     Übergang rechnet von *diesem* Zeitpunkt weiter, nicht von `this.t`. Endet ein Weg bei
-//     t=1400 und `tick` steht gerade bei t=1600, beginnt der Folgeweg trotzdem bei 1400.
-//     Genau hier scheitern solche Engines sonst: `tick(200)` würde einen Übergang um bis zu
-//     200 ms nach hinten schieben, `tick(25)×8` nur um 25.
+//  2. **Every state transition carries its exact moment with it**, and the next transition
+//     computes from *that* moment, not from `this.t`. If a trip ends at t=1400 and `tick` stands
+//     at t=1600, the following trip still begins at 1400. Exactly here such engines usually
+//     fail: `tick(200)` would push a transition back by up to 200 ms, `tick(25)×8` only by 25.
+//     fail: `tick(200)` would push a transition back by up to 200 ms, `tick(25)×8` only by 25.
 //
-// Alles Übrige folgt daraus: keine Tick-Zähler, keine „alle n Bilder"-Schwellen, kein Wurf
-// pro Bild — Variation kommt aus `rnd01(mix(seed, SALT))`.
+// Everything else follows from that: no tick counters, no "every n frames" thresholds, no roll
+// per frame. Variation comes from `rnd01(mix(seed, SALT))`.
 
 import type {
   ActorState, Cmd, Frame, Fx, Pt, Rack, Room, RunStatus, Seat, Verdict,
@@ -38,83 +38,83 @@ import {
 
 // ── Salze (PIXEL-CONTRACT.md 3.2) ────────────────────────────────────────────
 //
-// Jede Verwendungsstelle bekommt ihr eigenes, benanntes Salz. Zwei Stellen mit demselben Salz
-// wären perfekt korreliert — dann gingen alle langsamen Läufer auch gleichzeitig durch die Tür.
-// Diese Zahlen sind keine Stellschrauben, sondern Namen; deshalb stehen sie hier und nicht in
-// `const.ts` (dort liegt, was man einstellt).
+// Every place of use gets its own named salt. Two places with the same salt would be perfectly
+// correlated, and then all the slow walkers would go through the door at the same time as well.
+// These numbers are not knobs but names, which is why they stand here and not in `const.ts`
+// (that is where what one adjusts lives).
 
 const SALT_PACE = 0x9e37_79b1;
 const SALT_LINGER = 0x85eb_ca6b;
 
-/** Standzeit des „wartet auf einen Menschen"-Zeichens über dem Kopf: drei Pulse.
- *  Abgeleitet statt eigenständig, damit es genau eine Stellschraube dafür gibt. */
+/** How long the "waiting for a person" sign stands above the head: three pulses. Derived
+ *  instead of independent, so that there is exactly one knob for it. */
 const GATE_EMOTE_MS = 3 * GATE_PULSE_MS;
 
 // ── Geometrie ────────────────────────────────────────────────────────────────
 //
-// Sie kommt vollständig aus `room.ts`; die Engine legt keinen einzigen Punkt selbst fest.
-// `constructor(room?)` nimmt trotzdem einen Raum entgegen — der Prüfer stellt so eine
-// Miniatur-Geometrie hin, ohne dass hier ein zweiter Grundriss gepflegt werden müsste.
+// It comes entirely from `room.ts`; the engine fixes not a single point itself.
+// `constructor(room?)` takes a room anyway: that lets a checker put up a miniature geometry
+// without a second floor plan having to be maintained here.
 
-/** Abstand, in dem man sich zum Übergeben neben jemanden stellt: eine Sitzbreite.
- *  Bewusst dieselbe Zahl wie der Sitzabstand — wer übergibt, stellt sich dahin, wo im Zweifel
- *  auch ein Stuhl stünde, und läuft der Figur nicht in den Rücken. */
+/** The distance at which one stands next to somebody to hand something over: one seat width.
+ *  Deliberately the same number as the seat distance: whoever hands over stands where a chair
+ *  would stand in case of doubt, and does not walk into the character's back. */
 const DELIVER_GAP = SEAT_DX;
 
 // ── Wege ─────────────────────────────────────────────────────────────────────
 //
-// Ein `Trip` ist ein vollständig vorausberechneter Weg. Er kennt seine vier Zeitpunkte und
-// leitet daraus jede Position ab — er zählt nichts hoch. Genau das macht ihn dt-split-invariant.
+// A `Trip` is a completely precomputed path. It knows its four moments and derives every
+// position from them; it counts nothing up. Exactly that makes it dt split invariant.
 
 type TripKind = "arrive" | "deliver" | "coffee" | "huddle" | "exit";
 
 interface Trip {
   kind: TripKind;
-  /** Echte Arbeit drängelt sich vor Spaziergänge (Kaffee, Huddle). */
+  /** Real work pushes in front of walks (coffee, huddle). */
   work: boolean;
-  /** `this.t` beim Einreihen — ein Weg beginnt nie vor seinem Auftrag. */
+  /** `this.t` at the time of queuing: a trip never begins before its order. */
   queuedAt: number;
   from: Pt;
   to: Pt;
-  /** Ziel des Rückwegs; bei `exit` ungenutzt. */
+  /** Target of the way back; unused on `exit`. */
   home: Pt;
   t0: number;
   tArrive: number;
   holdUntil: number;
-  /** Ende des Rückwegs; `=== holdUntil`, wenn `back === false`. */
+  /** End of the way back; `=== holdUntil` when `back === false`. */
   tBack: number;
   back: boolean;
   targetId?: string;
   text?: string;
-  /** Die Wirkung der Ankunft (sprechen, verschwinden) wird genau einmal ausgelöst. */
+  /** The effect of the arrival (speaking, disappearing) is triggered exactly once. */
   fired: boolean;
 }
 
-/** Was die Engine über eine Figur weiß, was die Zeichenschicht aber nichts angeht.
- *  Bewusst neben `ActorState` und nicht darin: `Frame` ist der Vertrag mit Schicht 1,
- *  und Wegewarteschlangen gehören nicht in einen Zeichenauftrag. */
+/** What the engine knows about a character that is none of the drawing layer's business.
+ *  Deliberately next to `ActorState` and not inside it: `Frame` is the contract with layer 1,
+ *  and queues of trips do not belong in a drawing order. */
 interface Priv {
-  /** Fließkomma-Position; `ActorState.x/.sub.x` sind nur ihre Ganz- und Bruchteile. */
+  /** Floating point position; `ActorState.x/.sub.x` are only its whole and fractional parts. */
   fx: number;
   fy: number;
-  /** Tempofaktor aus dem Seed, `1 ± PACE_SPREAD`. */
+  /** Pace factor from the seed, `1 ± PACE_SPREAD`. */
   pace: number;
   trip: Trip | null;
   trips: Trip[];
-  /** Exakter Zeitpunkt, zu dem der letzte Weg endete — Startzeit des nächsten. */
+  /** The exact moment the last trip ended: the start time of the next one. */
   freeAt: number;
-  /** `t` der letzten echten Regung. Ab hier läuft die Kaffee-Uhr. */
+  /** `t` of the last real stirring. The coffee clock runs from here. */
   lastAct: number;
-  /** `t` der letzten Äußerung — Fenster für die Huddle-Erkennung. */
+  /** `t` of the last utterance: the window for detecting a huddle. */
   spokeAt: number;
-  /** Geplanter Abgang durch die Tür (`0` = keiner). */
+  /** Planned departure through the door (`0` means none). */
   exitAt: number;
 }
 
 // ── Hilfsfunktionen ──────────────────────────────────────────────────────────
 
-/** Färbt ausschließlich den Blasenrand. `running` und alles Unbekannte bleibt farblos —
- *  ein Lauf, der noch läuft, hat kein Urteil. */
+/** Colours the bubble edge and nothing else. `running` and everything unknown stays colourless:
+ *  a run that is still running has no verdict. */
 function verdictOf(s: RunStatus): Verdict {
   if (s === "success" || s === "planned") return "ok";
   if (s === "failed" || s === "loop_exhausted") return "err";
@@ -128,47 +128,47 @@ function dist(a: Pt, b: Pt): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-// ── Die Engine ───────────────────────────────────────────────────────────────
+// ── The engine ───────────────────────────────────────────────────────────────
 
 export class Engine {
   private room: Room;
-  /** Einfügereihenfolge ist Iterationsreihenfolge — deshalb `Map`, nie ein Objekt
-   *  (PIXEL-CONTRACT.md 3.5: `"12"` sortierte sich sonst vor `"run:8871"`). */
+  /** Insertion order is iteration order, hence a `Map` and never an object
+   *  (PIXEL-CONTRACT.md 3.5: `"12"` would otherwise sort before `"run:8871"`). */
   private actors = new Map<string, ActorState>();
   private priv = new Map<string, Priv>();
   private fxs: Fx[] = [];
   private _t = 0;
 
-  /** Der Serverschrank. Der einzige Zustand der Engine, der an keiner Figur hängt — deshalb
-   *  steht er hier und nicht in `ActorState`: ein Deployment gehört dem Raum, nicht dem Lauf,
-   *  der es angestoßen hat (der geht längst durch die Tür, während noch gebaut wird). */
+  /** The server rack. The only state of the engine that hangs on no character, which is why it
+   *  stands here and not in `ActorState`: a deployment belongs to the room, not to the run that
+   *  triggered it (which walks through the door long before the build is done). */
   private rack: Rack = { state: "idle", since: 0, label: "" };
 
-  /** Belegte Pod-Plätze und der Chefplatz. Wird beim Abgang wieder freigegeben — sonst wäre
-   *  eine lange Sitzung nach dreizehn Läufen ein Raum voller Geister am Fenster. */
+  /** Occupied pod seats and the boss seat. Released again on departure, otherwise a long
+   *  session would be a room full of ghosts at the window after thirteen runs. */
   private podTaken = new Set<number>();
   private bossTaken = false;
 
-  /** Zeitpunkt der zuletzt geplanten Ankunft — staffelt einen Rückstau (`ARRIVE_STAGGER_MS`). */
+  /** Moment of the arrival planned last: staggers a backlog (`ARRIVE_STAGGER_MS`). */
   private lastArriveAt = -ARRIVE_STAGGER_MS;
-  /** Läuft gerade ein Huddle? Verhindert, dass jede weitere Äußerung ein neues auslöst. */
+  /** Is a huddle running right now? Prevents every further utterance from starting a new one. */
   private huddleUntil = 0;
 
   constructor(room?: Room) {
     this.room = room ?? ROOM;
   }
 
-  /** Simulationszeit in ms. Jede Animationsphase leitet sich hieraus ab — nie aus einem
-   *  Tick-Zähler, sonst hinge das Bild davon ab, wie oft getickt wurde. */
+  /** Simulation time in ms. Every animation phase derives from it, never from a tick counter,
+   *  otherwise the image would depend on how often it was ticked. */
   get t(): number {
     return this._t;
   }
 
   // ── Eingang 1: Kommandos ───────────────────────────────────────────────────
   //
-  // `apply` wirkt augenblicklich zum aktuellen `this.t`. Es liest keine Uhr und ruft nie
-  // `tick` — sonst hinge die Wirkung eines Ereignisses davon ab, wann es eintraf, und der
-  // Replay wäre nicht mehr derselbe Raum.
+  // `apply` takes effect instantly at the current `this.t`. It reads no clock and never calls
+  // `tick`, otherwise the effect of an event would depend on when it arrived, and the replay
+  // would no longer be the same room.
 
   apply(cmd: Cmd): void {
     switch (cmd.k) {
@@ -199,12 +199,12 @@ export class Engine {
         a.act = cmd.act;
         a.tool = cmd.tool;
         a.target = cmd.target;
-        // Eine Werkzeugzeile aus Altdaten kennt nur *einen* Zeitpunkt, kein Intervall
-        // (`tool_start` und `tool_result` werden aus derselben Zeile synthetisiert,
-        // `duration_ms` ist `null`). Eine konstante Beschäftigungsdauer ist ehrlich zu dem,
-        // was wir wissen: sie behauptet keine Dauer, sie zeigt „hier passiert gerade etwas".
-        // Liefert das Backend später ein echtes Intervall, löscht `toolEnd` einfach `busy` —
-        // genau eine Zeile Änderung, und die Anzeige wird echt.
+        // A tool row from old data knows only *one* moment, not an interval (`tool_start` and
+        // `tool_result` are synthesised from the same row, `duration_ms` is `null`). A constant
+        // busy duration is honest about what we know: it claims no duration, it shows
+        // "something is happening here". If the backend later delivers a real interval,
+        // `toolEnd` simply clears `busy`, exactly one line of change, and the display becomes
+        // real.
         a.busy = this._t + TOOL_BUSY_MS;
         this.emit("spark", a, this._t, TOOL_BUSY_MS);
         this.touch(a);
@@ -216,7 +216,7 @@ export class Engine {
         a.lastOk = cmd.ok;
         if (cmd.ok === false) a.fails++;
         else if (cmd.ok === true) a.resolved++;
-        // `busy` bleibt absichtlich stehen — es läuft in `tick` aus (siehe oben).
+        // `busy` deliberately stays: it runs out in `tick` (see above).
         this.touch(a);
         break;
       }
@@ -247,7 +247,7 @@ export class Engine {
         const a = this.wake(cmd.id);
         const to = this.actors.get(cmd.to);
         if (!to || to.retired || to.id === a.id) {
-          // Kein Ziel im Raum: dann wird es eben eine Ansage in den Raum hinein.
+          // No target in the room, so it becomes an announcement into the room instead.
           this.speak(a, cmd.text ?? "");
           this.maybeHuddle();
           break;
@@ -266,8 +266,8 @@ export class Engine {
         const a = this.wake(cmd.id);
         a.waiting = true;
         a.gate = cmd.kind;
-        // Wer auf einen Menschen wartet, läuft nicht mehr los. Ein bereits laufender Weg
-        // darf zu Ende gehen — mitten im Raum stehenzubleiben sähe nach einem Absturz aus.
+        // Whoever waits for a person does not set off any more. A trip already running may
+        // finish: stopping in the middle of the room would look like a crash.
         a.say = cmd.text;
         a.sayAt = this._t;
         a.pose = a.pose === "walk" ? "walk" : "stand";
@@ -298,36 +298,36 @@ export class Engine {
         if (cmd.text !== undefined && cmd.text !== "") this.speak(a, cmd.text);
         this.emitAt("emote", a, this._t, LINK_MS, cmd.ok ? "✓" : "✗");
         const p = this.privOf(a);
-        // Gestreut, damit nicht zwölf Leute gleichzeitig zur Tür gehen.
+        // Staggered, so that twelve people do not walk to the door at the same time.
         const spread = rnd01(mix(a.seed, SALT_LINGER)) * DONE_LINGER_SPREAD_MS;
         p.exitAt = this._t + DONE_LINGER_MS + spread;
         this.touch(a);
         break;
       }
       case "deploy": {
-        // **Kein Verfall.** Der Rack-Zustand wird vom `start` gesetzt und vom `ok`/`fail`/`back`
-        // abgelöst — kein `until`, keine Ersatzdauer. Das ist der ausdrückliche Gegensatz zu
-        // `TOOL_BUSY_MS`: das gibt es nur, weil eine Werkzeugzeile aus Altdaten kein Intervall
-        // kennt. Hier haben wir **beide Enden als echte Ereignisse**, also muss nichts geraten
-        // werden.
+        // **No expiry.** The rack state is set by the `start` and replaced by `ok`/`fail`/`back`:
+        // no `until`, no substitute duration. That is the explicit opposite of `TOOL_BUSY_MS`,
+        // which exists only because a tool row from old data knows no interval. Here we have
+        // **both ends as real events**, so nothing has to be guessed.
+
         //
-        // Kommt das Ende nie (Deployer tot, Container weg, Watcher gestorben), leuchtet das Rack
-        // weiter. **Das ist die Wahrheit, kein Fehler**: es läuft ein Deployment, von dem niemand
-        // weiß, wie es ausging. Ein Zeitablauf würde diesen Zustand in ein „fertig" umlügen, das
-        // im Log nirgends steht.
+        // If the end never comes (deployer dead, container gone, watcher died) the rack keeps
+        // glowing. **That is the truth, not a bug**: a deployment is running that nobody knows
+        // the outcome of. An expiry would turn that state into a "finished" that stands nowhere
+        // in the log.
         this.rack = { state: cmd.state, since: this._t, label: cmd.label };
 
         if (cmd.by !== undefined) {
-          // Die Geste: hin und zurück. Ein `deliver` mit **Zielpunkt statt Ziel-Aktor** — kein
-          // sechster `TripKind`, kein Aktor ohne Lauf. `onArrive` liest `targetId` nur im
-          // `deliver`-Zweig und findet hier keinen; damit passiert bei der Ankunft nichts außer
-          // dem Stehenbleiben (`SPEAK_HOLD_MS`). Türerkennung, Fußstaub, Tempostreuung und
-          // dt-Split-Invarianz kommen gratis mit.
+          // The gesture: there and back. A `deliver` with a **target point instead of a target
+          // actor**: no sixth `TripKind`, no actor without a run. `onArrive` reads `targetId`
+          // only in the `deliver` branch and finds none here, so nothing happens on arrival
+          // except standing still (`SPEAK_HOLD_MS`). Door detection, foot dust, spread of pace
+          // and dt split invariance come for free.
           //
-          // Gelaufen wird bei **jedem** Zustandswechsel, nicht nur beim `start`. Das ist keine
-          // Nachlässigkeit: 130 der 186 Deployments stammen aus der Zeit vor dem Watcher und
-          // erzählen nur ihr **Ende** (`deployment_events` synthetisiert genau ein Ereignis).
-          // Eine Regel „nur bei start" ließe die Mehrheit aller Deployments ohne jede Geste.
+          // The walk happens on **every** change of state, not only on the `start`. That is not
+          // sloppiness: 130 of the 186 deployments come from the time before the watcher and
+          // tell only their **end** (`deployment_events` synthesises exactly one event). A rule
+          // of "only on start" would leave the majority of all deployments without a gesture.
           const a = this.wake(cmd.by);
           const rack = this.room.rack;
           this.enqueue(a, {
@@ -338,9 +338,9 @@ export class Engine {
           this.touch(a);
         }
 
-        // Das Urteil: dieselbe `emote`-Art, die `done` schon benutzt — kein fünftes `FxKind`.
-        // `back` bekommt „✗", weil das Deployment gescheitert **ist**; dass es auch geheilt
-        // wurde, erzählen die LED-Reihen (unten `ok`), nicht das Zeichen über dem Schrank.
+        // The verdict: the same `emote` kind `done` already uses, no fifth `FxKind`. `back`
+        // gets "✗", because the deployment did fail; that it was also healed is told by the LED
+        // rows (`ok` below), not by the sign above the rack.
         if (cmd.state !== "start") {
           const rack = this.room.rack;
           this.emitAt("emote", { x: rack.x, y: rack.y, seed: hash32(cmd.label) },
@@ -353,35 +353,35 @@ export class Engine {
 
   // ── Eingang 2: Zeit ────────────────────────────────────────────────────────
 
-  /** Die eine Tür, durch die Zeit hereinkommt.
+  /** The one door time comes in through.
    *
-   *  `dtMs` wird **nicht** geklemmt: `MAX_FRAME_MS` ist die Sache des Aufrufers (die rAF-Schleife
-   *  in Schicht 2), denn ein Klemmen hier bräche genau die Invariante, für die es die Engine gibt —
-   *  `tick(200)` wäre plötzlich `tick(100)`. */
+   *  `dtMs` is **not** clamped: `MAX_FRAME_MS` is the caller's business (the rAF loop in layer
+   *  2), because clamping here would break exactly the invariant the engine exists for:
+   *  `tick(200)` would suddenly be `tick(100)`. */
   tick(dtMs: number): void {
     if (!(dtMs > 0)) return;
     this._t += dtMs;
     const t = this._t;
     for (const a of this.actors.values()) this.stepActor(a, this.privOf(a));
-    // Effekte sterben an ihrem Zeitpunkt, nicht nach n Bildern — auch bei einem einzigen
-    // großen Tick ist danach exakt dieselbe Menge übrig wie bei acht kleinen.
+    // Effects die at their moment, not after n frames: even with one large tick exactly the
+    // same set is left afterwards as with eight small ones.
     if (this.fxs.length > 0) this.fxs = this.fxs.filter((f) => f.until > t);
   }
 
   // ── Ausgang ────────────────────────────────────────────────────────────────
 
-  /** Das Einzige, was Schicht 1 zu sehen bekommt. Die Aktoren sind nach `y` sortiert
-   *  (Maler-Algorithmus, hinten zuerst) und liegen in einer **eigenen** Liste — die Engine
-   *  gibt ihre Sammlung nie heraus.
+  /** The only thing layer 1 gets to see. The actors are sorted by `y` (painter's algorithm,
+   *  back first) and lie in a list **of their own**: the engine never hands out its collection.
+   *  Departed characters stay in it: the dock keeps showing them, the stage skips `retired`.
    *
-   *  Abgegangene Figuren bleiben enthalten: das Dock zeigt sie weiter, die Bühne überspringt
-   *  `retired`. Zwei Listen wären zwei Wahrheiten. */
+   *  Departed characters stay in it: the dock keeps showing them, the stage skips `retired`.
+   *  Two lists would be two truths. */
   frame(): Frame {
     const actors = [...this.actors.values()];
     actors.sort((x, y) => x.y - y.y); // stabil (ES2019) → Gleichstand behält Einfügereihenfolge
-    // `rack` als Kopie, aus demselben Grund wie `actors`: die Engine gibt ihren eigenen
-    // Zustand nie heraus — ein Aufrufer, der `frame().rack.state` überschriebe, änderte sonst
-    // den Raum, und beim nächsten Abspielen stünde er wieder anders da.
+    // `rack` as a copy, for the same reason as `actors`: the engine never hands out its own
+    // state. A caller overwriting `frame().rack.state` would otherwise change the room, and on
+    // the next replay it would stand differently.
     return { t: this._t, actors, fx: this.fxs.slice(), rack: { ...this.rack } };
   }
 
@@ -398,7 +398,7 @@ export class Engine {
     return fresh;
   }
 
-  /** Legt die Figur an oder gibt die vorhandene zurück. Idempotent. */
+  /** Creates the character or returns the existing one. Idempotent. */
   private ensureActor(id: string, parent?: string): ActorState {
     const found = this.actors.get(id);
     if (found) return found;
@@ -408,8 +408,8 @@ export class Engine {
     const a: ActorState = {
       id, role: "", issue: null, phase: null, model: null,
       x: 0, y: 0, sub: { x: 0, y: 0 },
-      // Beginnt stehend, nicht laufend: bis der gestaffelte Einlass an der Reihe ist, wartet
-      // die Figur vor der Tür — eine laufende Figur, die sich nicht bewegt, sähe kaputt aus.
+      // Begins standing, not walking: until the staggered entry is its turn the character waits
+      // in front of the door, and a walking character that does not move would look broken.
       pose: "stand", flip: false, away: false,
       verdict: null, status: "running", deskIndex: -2,
       busy: 0, waiting: false, fails: 0, resolved: 0, edits: 0,
@@ -425,9 +425,9 @@ export class Engine {
     return a;
   }
 
-  /** Weckt eine Figur, die es geben muss, weil gleich etwas mit ihr passiert. Ein `retired`
-   *  Agent, der wieder redet, kommt durch dieselbe Tür zurück, durch die er gegangen ist —
-   *  das kommt bei Fortsetzungsläufen nach einer Kontext-Kompaktierung wirklich vor. */
+  /** Wakes a character that has to exist because something is about to happen with it. A
+   *  `retired` agent that speaks again comes back through the same door it left by, which does
+   *  happen with continuation runs after a context compaction. */
   private wake(id: string): ActorState {
     const a = this.ensureActor(id);
     if (a.retired) {
@@ -444,10 +444,10 @@ export class Engine {
     return a;
   }
 
-  /** Sitzvergabe: der Wurzellauf (kein `parent`) an den Chefplatz, alle anderen über
-   *  `seatOf` — `hash32(id) % 12` mit linearer Sondierung, ohne Warteschlange. Ist alles
-   *  belegt, wird die Figur Geist am Fenster (`deskIndex === -2`). Eine Warteschlange trüge
-   *  Zustand über das Zurücksetzen hinweg und derselbe Agent säße beim zweiten Ansehen woanders. */
+  /** Seat assignment: the root run (no `parent`) gets the boss seat, everybody else goes
+   *  through `seatOf`, `hash32(id) % 12` with linear probing and no queue. If everything is
+   *  taken, the character becomes a ghost at the window (`deskIndex === -2`). A queue would
+   *  carry state across a reset and the same agent would sit elsewhere on a second viewing. */
   private seat(a: ActorState): void {
     if (a.parent === undefined && !this.bossTaken) {
       this.bossTaken = true;
@@ -467,15 +467,15 @@ export class Engine {
     a.deskIndex = -2;
   }
 
-  /** Der Sitz dieser Figur — aus **diesem** Raum, nicht aus `podSeat()`: der Konstruktor darf
-   *  eine andere Geometrie bekommen haben, und zwei Quellen für denselben Punkt wären eine
+  /** The seat of this character, from **this** room and not from `podSeat()`: the constructor
+   *  may have been given a different geometry, and two sources for the same point would be one
    *  zu viel. */
   private seatOfActor(a: ActorState): Seat | undefined {
     if (a.deskIndex === -2) return undefined;
     return this.room.seats[a.deskIndex === -1 ? POD_SEATS : a.deskIndex];
   }
 
-  /** Der Fußpunkt, an dem diese Figur zu Hause ist. */
+  /** The foot point this character is at home at. */
   private home(a: ActorState): Pt {
     return this.seatOfActor(a)?.sit ?? this.room.away;
   }
@@ -484,9 +484,9 @@ export class Engine {
     return this.seatOfActor(a)?.flip ?? false;
   }
 
-  /** Ankunft durch die Tür. Kommen mehrere Läufe im selben Augenblick (Backfill eines
-   *  Ereignisfensters ist der Normalfall), werden sie um `ARRIVE_STAGGER_MS` gestaffelt —
-   *  sonst springen zwölf Leute gleichzeitig herein und man sieht nichts. */
+  /** Arrival through the door. When several runs come in the same instant (the backfill of an
+   *  event window is the normal case) they are staggered by `ARRIVE_STAGGER_MS`, otherwise
+   *  twelve people jump in at once and one sees nothing. */
   private enter(a: ActorState, p: Priv): void {
     const at = Math.max(this._t, this.lastArriveAt + ARRIVE_STAGGER_MS);
     this.lastArriveAt = at;
@@ -505,8 +505,8 @@ export class Engine {
     });
   }
 
-  /** Platz schaffen, wenn der Raum voll ist: zuerst die, die schon draußen sind, dann die
-   *  fertigen, zuletzt die älteste Figur überhaupt. Insertion-Order der `Map` ist hier
+  /** Make room when the room is full: first those already outside, then the finished ones, and
+   *  last the oldest character of all. The insertion order of the `Map` is
    *  Altersreihenfolge. */
   private evict(): void {
     let victim: ActorState | undefined;
@@ -521,7 +521,7 @@ export class Engine {
 
   // ── Regungen ───────────────────────────────────────────────────────────────
 
-  /** „Es ist etwas passiert" — setzt die Kaffee-Uhr zurück. */
+  /** "Something happened": resets the coffee clock. */
   private touch(a: ActorState): void {
     this.privOf(a).lastAct = this._t;
   }
@@ -542,9 +542,9 @@ export class Engine {
     return { x: p.fx, y: p.fy };
   }
 
-  /** Schreibt die Fließkomma-Position in den Aktor zurück: ganze Szenenpixel nach `x`/`y`,
-   *  der Rest in den Subpixel-Akkumulator. Gerundet wird erst beim Zeichnen
-   *  (PIXEL-CONTRACT.md 2.3) — wer hier rundete, verlöre bei kleinen `dt` jede Bewegung. */
+  /** Writes the floating point position back into the actor: whole scene pixels into `x`/`y`,
+   *  the rest into the subpixel accumulator. Rounding happens only while drawing
+   *  (PIXEL-CONTRACT.md 2.3); whoever rounded here would lose every movement at small `dt`. */
   private sync(a: ActorState, p: Priv): void {
     const ix = Math.floor(p.fx);
     const iy = Math.floor(p.fy);
@@ -558,9 +558,9 @@ export class Engine {
     this.fxs.push({ kind, x: a.x, y: a.y, t0, until: t0 + ms, seed: a.seed });
   }
 
-  /** Ein Emote über einem **Ort**, nicht zwingend über einer Figur. `ActorState` erfüllt die
-   *  Form von selbst — deshalb reicht ein Parameter für beide Fälle, und der Serverschrank
-   *  braucht keine eigene Emit-Funktion. */
+  /** An emote above a **place**, not necessarily above a character. `ActorState` satisfies the
+   *  shape by itself, so one parameter is enough for both cases and the server rack needs no
+   *  emit function of its own. */
   private emitAt(kind: "emote", at: { x: number; y: number; seed: number },
                  t0: number, ms: number, text: string): void {
     this.fxs.push({ kind, x: at.x, y: at.y, t0, until: t0 + ms, text, seed: at.seed });
@@ -568,9 +568,9 @@ export class Engine {
 
   // ── Huddle ─────────────────────────────────────────────────────────────────
 
-  /** Reden `HUDDLE_MIN` Figuren innerhalb von `HUDDLE_WINDOW_MS`, treffen sie sich am runden
-   *  Tisch. Die Prüfung sitzt in `apply`, nicht in `tick`: sie hängt damit am Zeitstempel des
-   *  Ereignisses und nicht daran, wo eine Tick-Grenze zufällig lag. */
+  /** When `HUDDLE_MIN` characters speak within `HUDDLE_WINDOW_MS` they meet at the round table.
+   *  The check sits in `apply`, not in `tick`: that ties it to the timestamp of the event and
+   *  not to where a tick boundary happened to fall. */
   private maybeHuddle(): void {
     if (this._t < this.huddleUntil) return;
     const since = this._t - HUDDLE_WINDOW_MS;
@@ -599,10 +599,10 @@ export class Engine {
 
   // ── Wegewarteschlange ──────────────────────────────────────────────────────
 
-  /** Reiht einen Weg ein. Echte Arbeit (`deliver`, `arrive`, `exit`) stellt sich **vor**
-   *  Spaziergänge — ein Kaffeegang darf eine Übergabe nicht verzögern. Mehr als
-   *  `MAX_QUEUED_TRIPS` Vormerkungen werden verworfen, sonst rennt eine Figur nach einem
-   *  Ereignisschwall minutenlang Aufträge ab, die längst überholt sind. */
+  /** Queues a trip. Real work (`deliver`, `arrive`, `exit`) pushes in **front of** walks: a
+   *  coffee run must not delay a handover. More than `MAX_QUEUED_TRIPS` bookings are dropped,
+   *  otherwise after a flood of events a character would spend minutes working off orders that
+   *  are long overtaken. */
   private enqueue(a: ActorState, tr: Trip): void {
     const p = this.privOf(a);
     if (tr.work) {
@@ -615,7 +615,7 @@ export class Engine {
     if (p.trips.length > MAX_QUEUED_TRIPS) p.trips.length = MAX_QUEUED_TRIPS;
   }
 
-  /** Rechnet einen Weg vollständig aus. Ab hier ist er eine Funktion der Zeit. */
+  /** Computes a trip completely. From here on it is a function of time. */
   private startTrip(a: ActorState, p: Priv, tr: Trip): void {
     const t0 = Math.max(p.freeAt, tr.queuedAt);
     const speed = SPEED_PX_PER_S * p.pace;
@@ -651,14 +651,14 @@ export class Engine {
     };
   }
 
-  // ── Ein Aktor, ein Tick ────────────────────────────────────────────────────
+  // ── One actor, one tick ────────────────────────────────────────────────────
 
   private stepActor(a: ActorState, p: Priv): void {
     const t = this._t;
 
-    // Idle-Skip. Nicht Kosmetik: `Replay.seek` über drei Stunden Log sind zehntausende Ticks,
-    // und in einem Büro sitzen die meisten Leute die meiste Zeit still. Wer nichts vorhat,
-    // kostet hier eine Bedingung statt eines halben Dutzend Rechnungen.
+    // Idle skip. Not cosmetics: `Replay.seek` over three hours of log is tens of thousands of
+    // ticks, and in an office most people sit still most of the time. Whoever has nothing
+    // planned costs one condition here instead of half a dozen computations.
     if (a.retired) return;
     if (
       !p.trip && p.trips.length === 0 && a.busy === 0 && !a.waiting &&
@@ -667,7 +667,7 @@ export class Engine {
       p.exitAt === 0 && t < p.lastAct + IDLE_COFFEE_MS
     ) return;
 
-    // Ablaufende Zustände. Alle Schwellen sind Zeitpunkte, keine Zähler (PIXEL-CONTRACT.md 3.4).
+    // Expiring states. All thresholds are moments, not counters (PIXEL-CONTRACT.md 3.4).
     if (a.busy !== 0 && t >= a.busy) {
       a.busy = 0;
       a.act = undefined;
@@ -685,7 +685,7 @@ export class Engine {
     if (a.heard !== undefined && t >= a.heard) a.heard = undefined;
     if (a.link !== undefined && t >= a.link.until) a.link = undefined;
 
-    // Abgang: fällig zum gespeicherten Zeitpunkt, nicht zum Tick-Zeitpunkt.
+    // Departure: due at the stored moment, not at the moment of the tick.
     if (p.exitAt !== 0 && t >= p.exitAt) {
       const at = p.exitAt;
       p.exitAt = 0;
@@ -694,7 +694,7 @@ export class Engine {
       this.enqueue(a, this.makeExit(at));
     }
 
-    // Kaffee: das einzige Lebenszeichen in einer langen Werkzeugkette.
+    // Coffee: the only sign of life in a long chain of tools.
     if (
       p.exitAt === 0 && !a.waiting && !p.trip && p.trips.length === 0 &&
       a.deskIndex !== -2 && !a.retired && t >= p.lastAct + IDLE_COFFEE_MS
@@ -707,9 +707,9 @@ export class Engine {
     this.stepTrips(a, p);
   }
 
-  /** Arbeitet die Wege ab. Die Schleife ist nötig, weil ein einziger großer Tick mehrere
-   *  Wege überspringen kann — und jeder davon beginnt exakt dann, wann der vorige endete,
-   *  nicht erst bei `this.t`. Genau das macht `tick(200)` und `tick(25)×8` gleich. */
+  /** Works off the trips. The loop is necessary because one large tick can skip several trips,
+   *  and each of them begins exactly when the previous one ended, not only at `this.t`. Exactly
+   *  that makes `tick(200)` and `tick(25)×8` equal. */
   private stepTrips(a: ActorState, p: Priv): void {
     const t = this._t;
     for (let guard = 0; guard < 16; guard++) {
@@ -717,7 +717,7 @@ export class Engine {
       if (!tr) {
         const next = p.trips.shift();
         if (!next) {
-          // Zu Hause und untätig.
+          // At home and idle.
           if (!a.retired) {
             const h = this.home(a);
             p.fx = h.x;
@@ -732,18 +732,18 @@ export class Engine {
         tr = next;
       }
 
-      // Hinweg. Vor `t0` steht die Figur noch am Ausgangspunkt — das ist der gestaffelte
-      // Ankömmling, der vor der Tür wartet, bis er an der Reihe ist.
+      // The way there. Before `t0` the character still stands at the starting point: that is the
+      // staggered arrival waiting in front of the door until it is its turn.
       if (t < tr.tArrive) {
         this.place(a, p, tr.from, tr.to, tr.t0, tr.tArrive);
         a.pose = t < tr.t0 ? "stand" : "walk";
         return;
       }
       if (!tr.fired) {
-        // Erst exakt ans Ziel setzen, dann die Wirkung auslösen. Sonst läse `onArrive` die
-        // Position aus dem *vorigen* Tick — und die liegt bei `tick(200)` woanders als bei
-        // `tick(25)×8`. Genau daran hängen die Blickrichtung des Zuhörers und der Startpunkt
-        // der Übergabelinie.
+        // First set exactly onto the target, then trigger the effect. Otherwise `onArrive` would
+        // read the position from the *previous* tick, and at `tick(200)` that lies elsewhere
+        // than at `tick(25)×8`. The facing direction of the listener and the starting point of
+        // the handover line hang on exactly that.
         p.fx = tr.to.x;
         p.fy = tr.to.y;
         this.sync(a, p);
@@ -756,18 +756,18 @@ export class Engine {
         p.fx = tr.to.x;
         p.fy = tr.to.y;
         this.sync(a, p);
-        // `SETTLE_MS`: nach der Ankunft wird noch einen Moment getrippelt, bevor die Pose
-        // umschlägt — sonst friert die Figur mitten im Schritt ein.
+        // `SETTLE_MS`: after the arrival there is a moment of shuffling before the pose changes,
+        // otherwise the character freezes mid stride.
         a.pose = t < tr.tArrive + SETTLE_MS ? "walk" : "stand";
         return;
       }
-      // Rückweg.
+      // The way back.
       if (tr.back && t < tr.tBack) {
         this.place(a, p, tr.to, tr.home, tr.holdUntil, tr.tBack);
         a.pose = "walk";
         return;
       }
-      // Fertig — der nächste Weg beginnt exakt hier.
+      // Done: the next trip begins exactly here.
       p.freeAt = tr.back ? tr.tBack : tr.holdUntil;
       p.trip = null;
       if (!a.retired) {
@@ -788,8 +788,8 @@ export class Engine {
     if (to.x !== from.x) a.flip = to.x < from.x;
   }
 
-  /** Die Wirkung der Ankunft — ausgelöst zum **geplanten** Ankunftszeitpunkt `tr.tArrive`,
-   *  nicht zu `this.t`. Sonst hinge die Startzeit der Sprechblase daran, wie grob getickt wurde. */
+  /** The effect of the arrival, triggered at the **planned** arrival moment `tr.tArrive` and not
+   *  at `this.t`. Otherwise the bubble's start time would depend on how coarsely it was ticked. */
   private onArrive(a: ActorState, p: Priv, tr: Trip): void {
     switch (tr.kind) {
       case "arrive":
@@ -801,12 +801,12 @@ export class Engine {
         if (tr.text !== undefined && tr.text !== "") this.speak(a, tr.text, tr.tArrive);
         if (to) {
           to.heard = tr.tArrive + HEARD_MS;
-          // **Nie die Live-Position eines anderen Aktors lesen.** `tick` läuft die Aktoren in
-          // Einfügereihenfolge ab; wer nach uns dran ist, steht noch auf dem Stand des vorigen
-          // Ticks. Bei `tick(200)` ist der 200 ms alt, bei `tick(25)×8` nur 25 ms — und schon
-          // ist die dt-Split-Invarianz dahin. Der Sitz ist dagegen eine reine Funktion des
-          // Platzes. (Die mitwandernde Linie zeichnet ohnehin `ActorState.link`, das nur eine
-          // Id trägt und die Position erst beim Zeichnen auflöst.)
+          // **Never read the live position of another actor.** `tick` runs the actors in
+          // insertion order; whoever comes after us still stands at the state of the previous
+          // tick. At `tick(200)` that is 200 ms old, at `tick(25)×8` only 25 ms, and the dt
+          // split invariance is gone. The seat on the other hand is a pure function of the
+          // place. (The line that travels along draws `ActorState.link` anyway, which carries
+          // only an id and resolves the position while drawing.)
           const anchor = this.home(to);
           this.fxs.push({
             kind: "link", x: a.x, y: a.y, to: { x: anchor.x, y: anchor.y },
@@ -817,7 +817,7 @@ export class Engine {
         break;
       }
       case "exit":
-        // Durch die Tür. Der Platz wird frei — der nächste Lauf soll ihn haben.
+        // Through the door. The seat is freed: the next run should have it.
         this.unseat(a);
         a.retired = true;
         a.away = true;
