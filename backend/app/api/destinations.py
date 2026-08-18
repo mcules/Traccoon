@@ -1,12 +1,12 @@
-"""Ziele verwalten: benannte externe Gegenstellen mit Basis-URL und Anmeldung.
+"""Manage destinations: named external counterparts with a base URL and a login.
 
-Wer was darf — bewusst wie bei den Prozess-Sätzen:
-- **systemweit** (kein Nutzer, kein Projekt): nur Admin,
-- **persönlich** (`user_id`): der Eigentümer (Admins zusätzlich),
-- **projektbezogen** (`project_id`): Rolle owner|maintainer im Projekt.
+Who may do what, deliberately as with the process sets:
+- **system wide** (no user, no project): admins only,
+- **personal** (`user_id`): the owner (plus admins),
+- **project bound** (`project_id`): role owner or maintainer in the project.
 
-Geheimnisse gehen nur HINEIN: kein Endpunkt gibt Passwort, Token, API-Key, HMAC- oder
-Client-Secret je zurück — die Antworten melden nur, ob eines hinterlegt ist.
+Secrets only go IN: no endpoint ever returns the password, token, API key, HMAC secret or
+client secret; the answers only report whether one is stored.
 """
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ from .deps import build_access, get_current_user
 
 router = APIRouter(tags=["destinations"])
 
-# Felder, deren Wert im verschlüsselten `secret_enc` landet — je nach Verfahren ein
-# anderes Geheimnis, aber immer dasselbe Feld.
+# Fields whose value lands in the encrypted `secret_enc`: a different secret depending on
+# the method, but always the same field.
 SECRET_FIELDS = ("password", "token", "api_key", "hmac_secret", "client_secret", "secret")
 
 
@@ -55,7 +55,7 @@ async def _require_write(db: AsyncSession, user: User, *, user_id: int | None,
         project = await db.get(Project, project_id)
         if project is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Projekt nicht gefunden")
-        access = await build_access(project, user, db)   # 404 bei Fremdprojekt
+        access = await build_access(project, user, db)   # 404 on a foreign project
         if not access.has_role(ProjectRole.maintainer):
             raise HTTPException(status.HTTP_403_FORBIDDEN,
                                 "Rolle owner|maintainer erforderlich")
@@ -77,12 +77,12 @@ async def _get(db: AsyncSession, did: int) -> Destination:
 
 
 def _apply_secret(d: Destination, data: dict) -> None:
-    """Ein gesetztes Geheimnis übernehmen — ein leerer Wert lässt das alte unangetastet."""
+    """Take over a set secret; an empty value leaves the old one untouched."""
     for feld in SECRET_FIELDS:
         wert = data.get(feld)
         if wert:
             d.secret_enc = encrypt_secret(str(wert))
-            # Anmeldung geändert → zwischengespeichertes OAuth-Token verwerfen.
+            # The login changed, so discard the cached OAuth token.
             d.oauth_token_enc = ""
             d.oauth_expires_at = None
             return
@@ -93,8 +93,8 @@ async def list_destinations(
     project_id: int | None = None, usable: bool = False,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Ziele auflisten. `usable=true` liefert die im Zusammenhang **aufrufbaren** (je Name
-    das vorrangige) — das ist die Liste für die Auswahl im Prozess-Editor."""
+    """List destinations. `usable=true` delivers the ones **callable** in the context (the
+    primary one per name), which is the list for the selection in the process editor."""
     if usable:
         rows = await svc.visible(db, project_id=project_id, owner_id=user.id)
         return [_out(d) for d in rows]
@@ -170,10 +170,10 @@ async def test_destination(
     did: int, data: DestinationTestIn,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Probeaufruf mit den hinterlegten Zugangsdaten — Standard ist ein harmloses GET.
+    """Test call with the stored credentials; the default is a harmless GET.
 
-    Antwortet mit Status und (gekürztem) Inhalt, damit man Anmeldung und Pfad prüfen kann,
-    ohne einen Prozess bauen zu müssen.
+    Answers with the status and the (truncated) content, so that login and path can be
+    checked without having to build a process.
     """
     d = await _get(db, did)
     await _require_write(db, user, user_id=d.user_id, project_id=d.project_id)
@@ -181,7 +181,7 @@ async def test_destination(
         return await svc.call(db, d, method=data.method, path=data.path,
                               query=data.query or {}, headers=data.headers or {},
                               body=data.body, timeout=data.timeout_sec)
-    except Exception as e:  # noqa: BLE001 — Netz-/Auth-Fehler gehören in die Antwort
+    except Exception as e:  # noqa: BLE001 - network and auth errors belong in the answer
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Aufruf fehlgeschlagen: {e}")
     finally:
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben

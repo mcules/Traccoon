@@ -1,8 +1,8 @@
-"""Messreihen ansehen — die Zahlen, die Abläufe mitschreiben.
+"""Look at metric series: the numbers flows write along.
 
-Rückschlüsse zieht man aus dem Verlauf, nicht aus dem letzten Wert. Deshalb liefert die
-Übersicht zu jeder Reihe gleich mit, wohin sie läuft, und die Einzelansicht die Punkte
-selbst — mehr braucht es nicht, um zu sehen, ob eine Prognose glaubwürdig ist.
+Conclusions are drawn from the history, not from the last value. That is why the overview
+delivers where a series is heading along with it, and the single view the points themselves;
+more is not needed in order to see whether a forecast is credible.
 """
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ def _reihe_out(r: MetricSeries, stand: dict | None = None) -> dict:
 async def list_series(mit_trend: bool = Query(True), ziel: float = Query(0.0),
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    """Die eigenen Reihen. Fremde sieht niemand — es sind Betriebsdaten seiner Geräte."""
+    """One's own series. Nobody sees foreign ones: they are operating data of their devices."""
     rows = (await db.execute(select(MetricSeries)
                              .where(MetricSeries.owner_user_id == user.id)
                              .order_by(MetricSeries.key))).scalars().all()
@@ -47,11 +47,11 @@ async def series_points(key: str, tage: int = Query(60, ge=1, le=3650),
                         ziel: float = Query(0.0),
                         user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    """Die Punkte einer Reihe im gewählten Zeitraum — samt Trend zum selben Zielwert.
+    """The points of a series in the chosen period, including the trend to the same target value.
 
-    Der Zeitraum gilt für BEIDES: gezeigt und gerechnet wird dasselbe Fenster. Sonst
-    zeichnet die Ansicht eine Gerade, die zu den sichtbaren Punkten nicht passt, und man
-    zweifelt an der Zahl statt an der Achse.
+    The period applies to BOTH: what is shown and what is computed is the same window.
+    Otherwise the view draws a line that does not fit the visible points, and one doubts the
+    number instead of the axis.
     """
     r = await metrics.reihe(db, user.id, key)
     if r is None:
@@ -67,11 +67,11 @@ async def series_points(key: str, tage: int = Query(60, ge=1, le=3650),
 @router.delete("/metrics/{key:path}/punkte/{punkt_id}", status_code=204)
 async def delete_point(key: str, punkt_id: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    """Einen einzelnen Wert entfernen.
+    """Remove a single value.
 
-    Ein Gerät meldet irgendwann Unsinn, den keine Plausibilitätsgrenze abfängt — ein
-    einzelner Ausreißer verbiegt die Gerade und damit die Prognose. Ohne diesen Weg bliebe
-    nur, die ganze Reihe wegzuwerfen und die Geschichte gleich mit.
+    A device reports nonsense at some point that no plausibility limit catches, and a single
+    outlier bends the line and with it the forecast. Without this path the only option would
+    be to throw the whole series away and the history with it.
     """
     r = await metrics.reihe(db, user.id, key)
     if r is None:
@@ -81,7 +81,7 @@ async def delete_point(key: str, punkt_id: int, user: User = Depends(get_current
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Wert gehört nicht zu dieser Reihe")
     await db.delete(punkt)
     await db.flush()
-    # Der Kopf der Reihe zeigt auf den letzten Wert — war der es, muss er nachrücken.
+    # The head of the series points at the last value; if that was it, it has to move up.
     letzter = (await db.execute(
         select(MetricPoint).where(MetricPoint.series_id == r.id)
         .order_by(MetricPoint.ts.desc()).limit(1))).scalars().first()

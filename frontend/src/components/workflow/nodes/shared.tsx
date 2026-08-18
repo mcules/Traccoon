@@ -1,11 +1,11 @@
 import { Handle, Position, useStore, type Node, type NodeProps } from "@xyflow/react";
 import type { NodeConfig, WorkflowNodeType } from "../types";
 
-/** Laufzeit-Zustand eines Knotens für die Read-only-Instanz-Ansicht. */
+/** Runtime state of a node for the read-only instance view. */
 export type RuntimeState = "done" | "active" | "pending" | "failed";
 
-/** node.data im React-Flow-Graphen. `type` (Object-Literal!) — nicht als interface,
- *  sonst schlägt der `Record<string, unknown>`-Constraint von React-Flow v12 fehl. */
+/** node.data in the React Flow graph. A `type` (object literal), not an interface, because
+ *  otherwise the `Record<string, unknown>` constraint of React Flow v12 fails. */
 export type FlowNodeData = {
   config: NodeConfig;
   runtimeState?: RuntimeState;
@@ -30,12 +30,12 @@ export interface SourceHandleDef {
 const handleDot = "!h-2.5 !w-2.5 !border !border-card";
 
 /**
- * Ausgänge, die ein Knoten zeigen muss.
+ * Exits a node has to show.
  *
- * Entscheidend ist die zweite Quelle: React Flow zeichnet eine Kante NUR, wenn es den
- * benannten Ausgang am Knoten wirklich gibt. Fehlt er, verschwindet die Verbindung
- * kommentarlos — der Zielknoten sieht dann aus, als hinge er in der Luft. Deshalb werden
- * hier auch alle Ausgänge ergänzt, die vorhandene Kanten tatsächlich benutzen.
+ * What matters is the second source: React Flow draws an edge ONLY when the named exit
+ * really exists on the node. If it is missing, the connection disappears without a word and
+ * the target node then looks as if it hung in the air. That is why all exits existing edges
+ * actually use are added here as well.
  */
 export function useSourceHandles(nodeId: string, vorgabe: SourceHandleDef[]): SourceHandleDef[] {
   const genutzt = useStore((st) => {
@@ -51,7 +51,7 @@ export function useSourceHandles(nodeId: string, vorgabe: SourceHandleDef[]): So
   return out.length ? out : [{ id: "out" }];
 }
 
-/** Gemeinsamer Rahmen für alle Custom-Nodes: Titelzeile, Konfig-Auszug, Handles. */
+/** Shared frame for all custom nodes: title line, config excerpt, handles. */
 export function BaseNode({
   nodeId,
   title,
@@ -64,14 +64,14 @@ export function BaseNode({
   sources = [{ id: "out" }],
   children,
 }: {
-  /** Ohne die Kennung können fehlende Ausgänge nicht ergänzt werden (s. useSourceHandles). */
+  /** Without the id, missing exits cannot be added (see useSourceHandles). */
   nodeId?: string;
   title: string;
   icon?: string;
   accent: string; // Tailwind-border-Klasse für die obere Akzentkante
   selected?: boolean;
   runtimeState?: RuntimeState;
-  /** Abgeschalteter Schritt: sichtbar blass, damit man ihn im Graphen nicht übersieht. */
+  /** Switched off step: visibly pale, so that it is not overlooked in the graph. */
   aus?: boolean;
   hasTarget?: boolean;
   sources?: SourceHandleDef[];
@@ -79,12 +79,12 @@ export function BaseNode({
 }) {
   const rs = runtimeState ? RS[runtimeState] : null;
   const border = rs ? rs.ring : selected ? "border-brand" : "border-line";
-  // Jeder Ausgang, den eine vorhandene Kante benutzt, MUSS gezeichnet werden — sonst
-  // verschluckt React Flow die Kante und der Zielknoten hängt scheinbar in der Luft.
-  // Zentral hier, damit das für jeden Knotentyp gilt (auch selbstgebaute Graphen).
+  // Every exit an existing edge uses MUST be drawn; otherwise React Flow swallows the edge
+  // and the target node seemingly hangs in the air. Central here, so that it applies to
+  // every node type (self-built graphs as well).
   const alle = useSourceHandles(nodeId ?? "", sources);
   sources = sources.length ? alle : sources;
-  // Fluss läuft von oben nach unten: Eingang oben, Ausgänge nebeneinander unten.
+  // The flow runs from top to bottom: entry at the top, exits side by side at the bottom.
   const labeled = sources.filter((s) => s.label).length;
   return (
     <div

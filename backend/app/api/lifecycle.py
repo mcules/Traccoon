@@ -1,11 +1,11 @@
-"""Die vertrauten Ticket-Aktionen — jetzt als Adapter auf die Prozess-Engine.
+"""The familiar ticket actions, now as an adapter onto the process engine.
 
-Planen, Plan freigeben/ablehnen, Aufteilung freigeben, abnehmen, stoppen: die URLs sind
-unverändert (Frontend, Telegram-Bot und Webhooks hängen daran), der Ablauf dahinter steckt
-aber im Prozess „KI-Ticket-Lebenszyklus" und ist damit pro Projekt gestaltbar.
+Planning, approving or rejecting a plan, approving a splitting, accepting, stopping: the
+URLs are unchanged (frontend, Telegram bot and webhooks hang off them), but the flow behind
+them sits in the process "AI ticket lifecycle" and is therefore designable per project.
 
-Konkret heißt das: `approve-plan` sucht den wartenden Genehmigungs-Schritt der Instanz und
-entscheidet ihn — welcher Knoten danach kommt, bestimmt der Graph, nicht dieser Code.
+Concretely that means: `approve-plan` looks for the waiting approval step of the instance and
+decides it; which node comes afterwards is determined by the graph, not by this code.
 """
 import datetime as dt
 
@@ -38,7 +38,7 @@ def _who(access: Access) -> str:
 
 
 async def _waiting_approval(db: AsyncSession, issue: Issue) -> tuple[int, WorkflowStepRun]:
-    """Offene Genehmigung im Lebenszyklus des Tickets — sonst 409 mit klarer Ansage."""
+    """Open approval in the lifecycle of the ticket, otherwise a 409 with a clear message."""
     inst = await live_instance(db, issue)
     if inst is None:
         raise HTTPException(status.HTTP_409_CONFLICT,
@@ -55,7 +55,7 @@ async def _waiting_approval(db: AsyncSession, issue: Issue) -> tuple[int, Workfl
 
 
 async def _decide(db: AsyncSession, issue: Issue, decision: str, reason: str | None = None):
-    """Wartende Genehmigung entscheiden und den Prozess weiterschalten."""
+    """Decide a waiting approval and advance the process."""
     from ..services import workflow_engine as engine
     from ..models.enums import WorkflowInstanceStatus, WorkflowTokenState
     from ..models.workflow import WorkflowInstance, WorkflowToken
@@ -84,7 +84,7 @@ async def start_planning(
     pair: tuple[Issue, Access] = Depends(get_issue_access),
     db: AsyncSession = Depends(get_session),
 ):
-    """Planung (neu) starten — bricht einen laufenden Prozess ab und beginnt von vorn."""
+    """Start the planning (anew): aborts a running process and begins from the front."""
     issue, access = pair
     _require_ai(access)
     if issue.assigned_agent is None:
@@ -120,7 +120,7 @@ async def approve_plan(
 @router.post("/issues/{key}/approve-split", response_model=list[IssueOut])
 async def approve_split(pair: tuple[Issue, Access] = Depends(get_issue_access),
                         db: AsyncSession = Depends(get_session)):
-    """Aufteilung freigeben. Die Teilaufgaben legt der Prozess an (`split_tickets`)."""
+    """Approve the splitting. The sub-tasks are created by the process (`split_tickets`)."""
     issue, access = pair
     _require_ai(access)
     if issue.hold_reason != HoldReason.plan_split:
@@ -156,10 +156,10 @@ async def complete(
     pair: tuple[Issue, Access] = Depends(get_issue_access),
     db: AsyncSession = Depends(get_session),
 ):
-    """Abnahme: entscheidet die wartende Abnahme-Genehmigung des Prozesses.
+    """Acceptance: decides the waiting acceptance approval of the process.
 
-    Was danach passiert (Testumgebung abräumen, mergen bzw. PR öffnen, deployen), steht im
-    Prozess „Abnahme & Auslieferung" — dort ist es auch anpassbar.
+    What happens afterwards (clearing the test environment, merging respectively opening a PR,
+    deploying) stands in the process "acceptance and delivery", where it can be adjusted.
     """
     issue, access = pair
     _require_ai(access)
@@ -174,10 +174,9 @@ async def complete(
 @router.post("/issues/{key}/stop", response_model=IssueOut)
 async def stop_agent(pair: tuple[Issue, Access] = Depends(get_issue_access),
                      db: AsyncSession = Depends(get_session)):
-    """Laufenden Agenten-Lauf abbrechen (kill-Kanal) und Ticket auf hold setzen.
+    """Abort a running agent run (kill channel) and put the ticket on hold.
 
-    Der Prozess bleibt bestehen und wartet — ein Kommentar oder „Planung starten" nimmt ihn
-    wieder auf.
+    The process stays and waits; a comment or "start planning" picks it up again.
     """
     issue, access = pair
     _require_ai(access)
