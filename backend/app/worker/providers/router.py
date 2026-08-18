@@ -1,7 +1,7 @@
-"""Provider-Router mit Cooldown/Circuit-Breaker (Port aus dem Vorläufer, self-contained).
+"""Provider router with a cooldown and circuit breaker (ported from the predecessor, self-contained).
 
-Provider-Map ist schlank: claude_code→Anthropic, codex→Codex. Token pro Provider
-kommen aus dem Secret-Tresor (im Worker aufgelöst, hier durchgereicht).
+The provider map is lean: claude_code to Anthropic, codex to Codex. The token per provider
+comes from the secret vault (resolved in the worker, passed through here).
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ _MAX_ATTEMPTS = int(os.getenv("PROVIDER_MAX_ATTEMPTS", "4"))
 
 # Traccoon-Provider-Namen (AgentDefinition.provider) → Impl.
 # claude_code = Anthropic-OAuth-Subscription, codex = ChatGPT-Subscription,
-# openai = echter OpenAI-API-Provider (sk-Key) — eigenständig, KEIN Codex-Alias mehr.
+# openai = the real OpenAI API provider (sk key), standalone, NO longer a Codex alias.
 _ANTHROPIC = {"claude_code", "claude", "anthropic"}
 _CODEX = {"codex"}
 _OPENAI = {"openai"}
@@ -38,7 +38,7 @@ class Router:
             "codex": CodexProvider(),
             "openai": OpenAIProvider(),
         }
-        # OpenAI-kompatible Provider mit eigener Base-URL, nach URL gecacht (der globale
+        # OpenAI-compatible providers with a base URL of their own, cached by URL (the global
         # default OpenAIProvider stays untouched at api.openai.com).
         self._openai_by_url: dict[str, OpenAIProvider] = {}
         self._cooldown: dict[str, float] = {}
@@ -56,7 +56,7 @@ class Router:
         if provider in _CODEX:
             return self._providers["codex"]
         if provider in _OPENAI:
-            # Eigener Endpoint (lokales litellm o. Ä.) nur für die OpenAI-Familie.
+            # An own endpoint (a local litellm or similar) only for the OpenAI family.
             return self._openai_for(base_url) if base_url else self._providers["openai"]
         return None
 
@@ -86,36 +86,36 @@ class Router:
         chain = [p for p in raw_chain if not self._cooling(p)] or raw_chain
         last_err: ProviderError | None = None
         for prov in chain:
-            # Base-URL strikt per Provider; Legacy-Key-Rückfall analog zum Token unten.
+            # The base URL strictly per provider; the legacy key fallback as with the token below.
             base_url = base_urls.get(prov)
             impl = self._impl(prov, base_url)
             if impl is None:
                 last_err = ProviderError(f"Provider '{prov}' nicht verfügbar")
                 continue
-            # Jeder Provider hat eigene Modellnamen: Primär → model, Fallback → fallback_model
-            # (leer → Provider-Default). Kein Übernehmen des Primär-Modells auf den Fallback.
+            # Every provider has its own model names: primary to model, fallback to
+            # fallback_model (empty means the provider default); the primary model is not carried over.
             use_model = model if prov == provider else fallback_model
-            # Token strikt per Provider; Legacy-Keys claude_code/codex nur als Default-Rückfall.
+            # The token strictly per provider; the legacy keys claude_code/codex only as a default fallback.
             token = tokens.get(prov)
             if token is None:
                 legacy = "claude_code" if prov in _ANTHROPIC else "codex" if prov in _CODEX else prov
                 token = tokens.get(legacy)
             for attempt in range(_MAX_ATTEMPTS):
                 try:
-                    # `extra_body` kennt nur der OpenAI-kompatible Provider (endpoint-eigene
-                    # Felder wie `chat_template_kwargs`). Die Subscription-Provider bekommen
-                    # es NICHT — dort wäre es ein unbekanntes Feld und damit ein 400er.
+                    # `extra_body` is known only to the OpenAI-compatible provider
+                    # (endpoint-owned fields like `chat_template_kwargs`). The subscription
+                    # providers do NOT get it: there it would be an unknown field and a 400.
                     zusatz = {"extra_body": extra_body} if extra_body and prov in _OPENAI else {}
-                    # Denk-Tiefe versteht nur Anthropic (`output_config.effort`). Bei einem
-                    # Fallback auf codex/openai fällt sie ersatzlos weg statt zu einem 400er.
+                    # Thinking depth is understood only by Anthropic (`output_config.effort`).
+                    # On a fallback to codex or openai it drops out instead of causing a 400.
                     if effort and prov in _ANTHROPIC:
                         zusatz["effort"] = effort
                     resp = await impl.chat(model=use_model, messages=messages, tools=tools,
                                            temperature=temperature, max_tokens=max_tokens,
                                            web_search=web_search, auth_token=token, **zusatz)
-                    # Erst hier steht fest, WER geantwortet hat: nach einem Fallback ist das
-                    # weder der eingestellte Provider noch dessen Modell. Ohne diese Zeilen
-                    # bepreist der Aufrufer den ganzen Lauf mit dem Primärmodell.
+                    # Only here is it settled WHO answered: after a fallback that is neither
+                    # the configured provider nor its model. Without these lines the caller
+                    # prices the whole run with the primary model.
                     resp.provider, resp.model = prov, use_model
                     return resp
                 except ProviderError as exc:
