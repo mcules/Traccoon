@@ -32,7 +32,6 @@ function transparent(ch: string): boolean {
  *
  * That is why it throws while the module loads instead of reporting later. That is safe:
  * arts are static source, and the check depends on no input. What loads once loads always.
- * lädt immer.
  */
 export function defineArt(rows: readonly string[], map: Readonly<Record<string, PalKey>>): Art {
   if (rows.length === 0) throw new Error("Art ohne Zeilen");
