@@ -20,6 +20,7 @@ ERLAUBT = {
     "auto_action": {"out", "merged", "pr_open", "no_git", "conflict", "push_failed",
                     "pr_failed", "gone", "error"},
     "loop": {"element", "fertig"},
+    "timer": {"out"},
     "decision": set(),              # kommt aus den Zweigen
     "end": set(),
 }

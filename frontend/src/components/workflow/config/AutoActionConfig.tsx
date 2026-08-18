@@ -43,6 +43,46 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
   ]],
 ];
 
+/** Wiederholen und Fehlerzweig gelten für JEDE Aktion — deshalb stehen sie unter der
+ *  Auswahl und nicht in den Feldern einer einzelnen. */
+function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (c: NodeConfig) => void }) {
+  const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
+  return (
+    <div className="space-y-2 rounded border border-line bg-surface p-2">
+      <div className="text-xs font-medium text-muted">Wenn es schiefgeht</div>
+      <div className="flex gap-2">
+        <label className="flex-1 text-[10px] text-muted">
+          Wiederholungen
+          <input
+            type="number" min={0} max={10}
+            value={(config.wiederholungen as number) ?? ""}
+            onChange={(e) => onChange({ ...config,
+              wiederholungen: e.target.value ? Number(e.target.value) : undefined })}
+            placeholder="0"
+            className={`mt-0.5 ${inp}`}
+          />
+        </label>
+        <label className="flex-1 text-[10px] text-muted">
+          Abstand (Sekunden)
+          <input
+            type="number" min={1}
+            value={(config.warte_sek as number) ?? ""}
+            onChange={(e) => onChange({ ...config,
+              warte_sek: e.target.value ? Number(e.target.value) : undefined })}
+            placeholder="30"
+            className={`mt-0.5 ${inp}`}
+          />
+        </label>
+      </div>
+      <p className="text-[10px] text-muted">
+        Ein Fehlschlag nach außen ist meist einer des Augenblicks. Sind die Versuche
+        aufgebraucht, geht es über den roten Ausgang <b>Fehler</b> weiter — ist der nicht
+        verdrahtet, endet der Lauf.
+      </p>
+    </div>
+  );
+}
+
 export default function AutoActionConfig({
   config,
   onChange,
@@ -111,6 +151,8 @@ export default function AutoActionConfig({
           subjectKind={subjectKind}
         />
       )}
+
+      <Fehlerverhalten config={config} onChange={onChange} />
     </div>
   );
 }

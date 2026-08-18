@@ -42,7 +42,13 @@ const OUTCOMES: Record<string, SourceHandleDef[]> = {
 export default function AutoActionNode({ id, data, selected }: FlowNodeProps) {
   const a = data.config.action;
   // Ohne benannte Ausgänge blieben Kanten wie „merged" oder „conflict" ungezeichnet.
-  const sources = useSourceHandles(id, OUTCOMES[a?.action ?? ""] ?? [{ id: "out" }]);
+  const basis = OUTCOMES[a?.action ?? ""] ?? [{ id: "out" }];
+  // Der Fehlerausgang existierte in der Engine längst, im Bild aber nicht — wer ihn
+  // verdrahten wollte, hatte keinen Punkt, an den er die Kante hängen konnte.
+  const sources = useSourceHandles(id, [
+    ...basis,
+    { id: "error", label: "Fehler", color: "!bg-red-500" },
+  ]);
   return (
     <BaseNode
       nodeId={id}

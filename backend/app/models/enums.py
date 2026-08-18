@@ -150,6 +150,7 @@ class WorkflowNodeType(str, enum.Enum):
     wait_event = "wait_event"  # wartet auf ein externes Ereignis (Kommentar/Antwort/manuell)
     subflow = "subflow"        # startet die Definition eines Slots als Kind-Instanz
     loop = "loop"              # geht eine Liste Element für Element durch
+    timer = "timer"            # wartet eine Weile bzw. bis zu einem Zeitpunkt
 
 
 class WorkflowSetScope(str, enum.Enum):

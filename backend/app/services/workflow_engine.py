@@ -55,7 +55,7 @@ MAX_SUBFLOW_DEPTH = 3   # Schachtelungs-Bremse für subflow-Knoten
 # Knoten, die auf ein externes Ereignis warten. Beim Wiedereintritt (Token wieder aktiv)
 # NICHT erneut ausführen, sondern die Kante gemäß hinterlegter decision nehmen — aber nur
 # EINMAL je Durchlauf (`routed_at`), sonst dreht sich eine Rückkante endlos im Kreis.
-WAIT_NODES = ("human_task", "approval", "agent_task", "wait_event", "subflow")
+WAIT_NODES = ("human_task", "approval", "agent_task", "wait_event", "subflow", "timer")
 
 # Standard-Abbildung Worker-Ergebnis → Ausgang. Greift nur, wenn weder `outcomes_map` noch
 # ein gleichnamiger Ausgang (z. B. „loop_exhausted") am Knoten verdrahtet ist.
@@ -368,6 +368,31 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                 node_type=NType.auto_action, status=SStatus.failed, error=str(e)[:2000],
                 completed_at=_now(),
             ))
+            # Erst wiederholen, dann verzweigen, dann aufgeben. Ein Fehlschlag nach außen
+            # ist meist keiner der Sache, sondern des Augenblicks: Gegenstelle kurz weg,
+            # Netz kurz weg. Ohne Abstand wäre die Wiederholung sinnlos — dieselbe Sekunde,
+            # derselbe Fehler —, deshalb wartet sie über denselben Wecker wie ein Timer.
+            versuche = int(cfg.get("wiederholungen") or 0)
+            if versuche > 0:
+                zaehler = dict((inst.context or {}).get("_versuche") or {})
+                bisher = int(zaehler.get(node["id"], 0))
+                if bisher < versuche:
+                    zaehler[node["id"]] = bisher + 1
+                    inst.context = {**(inst.context or {}), "_versuche": zaehler}
+                    warte = float(cfg.get("warte_sek") or 30)
+                    db.add(WorkflowStepRun(
+                        instance_id=inst.id, token_id=token.id, node_id=node["id"],
+                        node_type=NType.timer, status=SStatus.waiting,
+                        result={"faellig": (_now() + dt.timedelta(seconds=warte)).isoformat(),
+                                "versuch": bisher + 1, "von": versuche}))
+                    await db.flush()
+                    log.info("Instanz %s: %s scheitert (%d/%d) — neuer Versuch in %.0fs",
+                             inst.id, node["id"], bisher + 1, versuche, warte)
+                    return Outcome(wait=True, waiting_for="timer")
+                # Aufgebraucht: der Zähler gehört weg, sonst zählt der nächste Anlauf
+                # (Schleife, erneuter Start) beim alten Stand weiter.
+                zaehler.pop(node["id"], None)
+                inst.context = {**(inst.context or {}), "_versuche": zaehler}
             if next_node(edges, node["id"], "error") is not None:
                 return Outcome(handle="error")
             return Outcome(terminal=True, instance_status="failed",
@@ -384,6 +409,9 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
 
     if ntype == "loop":
         return await _schleife(db, inst, node, token, cfg)
+
+    if ntype == "timer":
+        return await _timer(db, inst, node, token, cfg)
 
     return Outcome(terminal=True, instance_status="failed",
                    error=f"Unbekannter Knotentyp '{ntype}'")
@@ -470,6 +498,97 @@ async def resume_on_event(issue_id: int, event: str, payload: dict | None = None
         await db.commit()
     await advance(instance_id)
     return True
+
+
+# ── timer: Zeit vergehen lassen ──────────────────────────────────────────────
+
+async def _timer(db, inst, node, token, cfg) -> Outcome:
+    """Wartet eine Weile — ohne dass jemand etwas melden muss.
+
+    `wait_event` wartet auf ein Ereignis; hier wartet der Lauf auf die Uhr. Gebraucht wird
+    das an zwei Stellen: „später noch einmal nachsehen" (Gegenstelle liefert erst in einer
+    Stunde) und als Abstand zwischen zwei Versuchen — ohne ihn wäre jede Wiederholung ein
+    Sofort-Wiederholen: dieselbe Gegenstelle, dieselbe Sekunde, derselbe Fehler.
+
+    Geweckt wird im 30-Sekunden-Tick der Engine (`_faellige_timer`), nicht von einem
+    schlafenden Task: ein Neustart des Backends darf einen wartenden Lauf nicht vergessen.
+    """
+    vorhanden = await _latest_step(db, inst.id, node["id"])
+    if vorhanden is not None and vorhanden.status == SStatus.waiting:
+        return Outcome(wait=True, waiting_for="timer")
+
+    faellig = _faellig_ab(cfg, inst.context or {})
+    db.add(WorkflowStepRun(
+        instance_id=inst.id, token_id=token.id, node_id=node["id"],
+        node_type=NType.timer, status=SStatus.waiting,
+        result={"faellig": faellig.isoformat()}))
+    await db.flush()
+    log.info("Instanz %s wartet bis %s (%s)", inst.id, faellig.isoformat(), node["id"])
+    return Outcome(wait=True, waiting_for="timer")
+
+
+def _faellig_ab(cfg: dict, ctx: dict) -> dt.datetime:
+    """Wann der Lauf weitergeht: Dauer ab jetzt oder ein fester Zeitpunkt.
+
+    Ein Zeitpunkt darf aus dem Kontext kommen (`{{…}}` ist an dieser Stelle schon gefüllt,
+    wenn der Editor ihn so einträgt) — liegt er in der Vergangenheit, geht es sofort weiter
+    statt nie.
+    """
+    jetzt = _now()
+    bis = str(cfg.get("bis") or "").strip()
+    if bis:
+        from .workflow_expr import fuellen
+        roh = fuellen(bis, ctx) if "{{" in bis else bis
+        try:
+            ziel = dt.datetime.fromisoformat(roh.replace("Z", "+00:00"))
+            if ziel.tzinfo is None:
+                ziel = ziel.replace(tzinfo=dt.timezone.utc)
+            return max(ziel, jetzt)
+        except ValueError:
+            log.warning("Timer: %r ist kein Zeitpunkt — es wird nicht gewartet", roh)
+            return jetzt
+    menge = float(cfg.get("dauer") or 0)
+    einheit = str(cfg.get("einheit") or "m")[:1].lower()
+    delta = {"s": dt.timedelta(seconds=menge), "m": dt.timedelta(minutes=menge),
+             "h": dt.timedelta(hours=menge), "t": dt.timedelta(days=menge)}.get(
+                 einheit, dt.timedelta(minutes=menge))
+    # Nach oben gedeckelt: ein Ablauf, der zwei Jahre schläft, ist fast immer ein Vertipper.
+    return jetzt + min(delta, dt.timedelta(days=90))
+
+
+async def faellige_timer() -> int:
+    """Abgelaufene Timer wecken. → Anzahl geweckter Läufe (Aufruf aus dem Tick)."""
+    jetzt = _now()
+    geweckt = 0
+    async with SessionLocal() as db:
+        rows = (await db.execute(
+            select(WorkflowStepRun, WorkflowToken)
+            .join(WorkflowToken, WorkflowToken.id == WorkflowStepRun.token_id)
+            .where(WorkflowStepRun.node_type == NType.timer,
+                   WorkflowStepRun.status == SStatus.waiting,
+                   WorkflowToken.state == TState.waiting))).all()
+        faellig: list[int] = []
+        for step, tok in rows:
+            wann = (step.result or {}).get("faellig")
+            try:
+                if wann and dt.datetime.fromisoformat(wann) > jetzt:
+                    continue
+            except ValueError:
+                pass                      # unlesbarer Stempel → lieber wecken als hängen
+            step.status = SStatus.done
+            step.completed_at = jetzt
+            tok.state = TState.active
+            tok.waiting_for = None
+            faellig.append(step.instance_id)
+        if faellig:
+            await db.execute(update(WorkflowInstance)
+                             .where(WorkflowInstance.id.in_(faellig))
+                             .values(status=IStatus.running))
+            await db.commit()
+            geweckt = len(faellig)
+    for iid in set(faellig):
+        await advance(iid)
+    return geweckt
 
 
 # ── loop: eine Liste Element für Element ─────────────────────────────────────
@@ -1448,6 +1567,11 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
                 if slot not in {s.value for s in WorkflowSlot}:
                     errors.append(f"Subflow-Knoten '{nid}': unbekannter Slot '{slot}'")
 
+        if ntype == "timer":
+            cfg = node_config(n)
+            if not (cfg.get("dauer") or cfg.get("bis")):
+                errors.append(f"Timer-Knoten '{nid}': weder Dauer noch Zeitpunkt angegeben")
+
         if ntype == "loop":
             handles = _outgoing_handles(edges, nid)
             for req in ("element", "fertig"):
@@ -1670,6 +1794,13 @@ async def _engine_tick() -> None:
             await reconcile(db)
     except Exception:  # noqa: BLE001 — der Abgleich darf den Tick nie blockieren
         log.exception("Artefakt-Abgleich fehlgeschlagen")
+
+    # Abgelaufene Timer wecken, bevor die Nachzügler laufen: ein geweckter Lauf ist kein
+    # Nachzügler, und umgekehrt soll ein wartender Timer nicht als „hängt" gelten.
+    try:
+        await faellige_timer()
+    except Exception:  # noqa: BLE001 — darf den Tick nie blockieren
+        log.exception("Wecken fälliger Timer fehlgeschlagen")
 
     try:
         await nachzuegler_einsammeln()
