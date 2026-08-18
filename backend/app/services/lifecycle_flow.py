@@ -1,14 +1,14 @@
-"""Einstieg in den Ticket-Lebenszyklus — die Klammer zwischen Ticket und Prozess-Engine.
+"""Entry into the ticket lifecycle: the bracket between ticket and process engine.
 
-Seit der Lebenszyklus ein Graph ist (Slot `ticket_lifecycle`), gibt es genau einen Weg,
-einen Agenten in Bewegung zu setzen: eine Instanz dieses Ablaufs starten. Wer welchen
-Ablauf bekommt, entscheidet `workflow_sets.resolve_definition` (Projekt-Kopie → Satz des
-Projekts → Satz eines Owners → globaler Standard).
+Since the lifecycle is a graph (slot `ticket_lifecycle`), there is exactly one way to set an
+agent in motion: start an instance of this flow. Who gets which flow is decided by
+`workflow_sets.resolve_definition` (project copy, then set of the project, then set of an
+owner, then the global default).
 
-Drei Einstiege (`context.entry`, ausgewertet vom `entry`-Knoten des Standard-Graphen):
-    plan    — Normalfall: der Agent plant erst
-    exec    — Plan liegt vor (freigegebene Teilaufgabe einer Aufteilung)
-    accept  — nur noch abnehmen (Sammelticket, dessen Teile alle fertig sind)
+Three entries (`context.entry`, evaluated by the `entry` node of the default graph):
+    plan    - the normal case: the agent plans first
+    exec    - the plan exists (approved sub-task of a splitting)
+    accept  - only acceptance is left (collective ticket whose parts are all finished)
 """
 from __future__ import annotations
 
@@ -52,11 +52,11 @@ async def start_lifecycle(db: AsyncSession, issue: Issue, actor_id: int | None =
                           entry: str = "plan", restart: bool = False,
                           context: dict | None = None,
                           advance_now: bool = True) -> WorkflowInstance | None:
-    """Lebenszyklus für ein Ticket starten (idempotent).
+    """Start the lifecycle for a ticket (idempotent).
 
-    Läuft bereits einer, wird er zurückgegeben — außer `restart=True`, dann wird der alte
-    abgebrochen. Ohne zugewiesenen Agenten passiert nichts: Traccoon arbeitet ausschließlich
-    auf ausdrückliche Zuweisung (Kernprinzip, kein Auto-Pickup).
+    If one is already running it is returned, except with `restart=True`, which aborts the
+    old one. Without an assigned agent nothing happens: Traccoon works exclusively on an
+    explicit assignment (a core principle, no auto pickup).
     """
     if issue.assigned_agent is None:
         return None
@@ -72,7 +72,7 @@ async def start_lifecycle(db: AsyncSession, issue: Issue, actor_id: int | None =
             t.state = WorkflowTokenState.consumed
         await db.flush()
 
-    # Die Vorgangsart entscheidet mit: ein Bug darf einen eigenen Ablauf haben.
+    # The issue type has a say: a bug may have a flow of its own.
     definition = await resolve_definition(db, issue.project_id, LIFECYCLE_SLOT,
                                           issue.type_id)
     if definition is None or definition.current_version_id is None:
@@ -93,19 +93,19 @@ async def entscheide_offene_genehmigung(
     db: AsyncSession, issue: Issue, decision: str, actor_id: int | None,
     reason: str | None = None,
 ) -> bool:
-    """Die offene Genehmigung eines Tickets entscheiden — ohne HTTP.
+    """Decide the open approval of a ticket, without HTTP.
 
-    Der Assistent bedient Traccoon über native Werkzeuge im Worker, nicht über die API. Ohne
-    diesen Weg setzte `traccoon_approve_plan` nur `agent_status = approved` und ließ den
-    Prozess an seinem Genehmigungs-Knoten stehen: das Ticket sah freigegeben aus, und niemand
-    fing an. Dieselbe Falle wie bei der Zuweisung (TRA-32 am 2026-08-07).
+    The assistant operates Traccoon over native tools in the worker, not over the API.
+    Without this path `traccoon_approve_plan` only set `agent_status = approved` and left the
+    process standing at its approval node: the ticket looked approved and nobody started. The
+    same trap as with the assignment (TRA-32 on 2026-08-07).
 
-    Weitergeschaltet wird bewusst NICHT hier: `advance` gehört in den Backend-Prozess, dessen
-    30-s-Tick ein aktives Token ohnehin findet. Ein `advance` aus dem Worker würde die Wächter
-    der Folgeschritte in einem fremden Prozess aufhängen.
+    Advancing deliberately does NOT happen here: `advance` belongs in the backend process,
+    whose 30 s tick finds an active token anyway. An `advance` out of the worker would hang
+    the watchers of the following steps in a foreign process.
 
-    Liefert False, wenn es gerade nichts zu entscheiden gibt — der Aufrufer soll das sagen
-    können, statt Erfolg zu melden.
+    Returns False when there is nothing to decide right now, so that the caller can say so
+    instead of reporting success.
     """
     from .workflow_engine import entscheide_genehmigung
 
@@ -113,27 +113,27 @@ async def entscheide_offene_genehmigung(
                                         actor_id=actor_id, reason=reason)
 
 
-# Wo ein Bestandsticket im Standard-Graphen steht. Nur Zustände, die WARTEN — laufende
-# (planning/approved/in_progress) steigen über `entry` neu ein, weil ihr Agentenlauf beim
-# Umstieg ohnehin nicht mehr existiert.
+# Where an existing ticket stands in the default graph. Only states that WAIT; running ones
+# (planning/approved/in_progress) enter anew over `entry`, because their agent run no longer
+# exists at the changeover anyway.
 _ADOPT_NODES: dict[str, tuple[str, str]] = {
     "plan_review": ("approve_plan", "approval"),
     "to_test": ("approve_result", "approval"),
     "testing": ("approve_result", "approval"),
 }
-_ADOPT_WAIT = {                     # (mit Plan, ohne Plan)
+_ADOPT_WAIT = {                     # (with a plan, without a plan)
     "hold": ("wait_exec", "wait_plan"),
     "failed": ("wait_exec", "wait_plan"),
 }
 
 
 async def adopt_orphans(db: AsyncSession) -> int:
-    """Bestandstickets ohne Prozess-Instanz einsammeln (Umstieg auf die Prozess-Engine).
+    """Collect existing tickets without a process instance (changeover to the process engine).
 
-    Wartende Tickets werden an der passenden Stelle des Graphen abgesetzt, damit die
-    gewohnten Knöpfe (Plan freigeben, Abnehmen, Kommentar) sofort wieder greifen. Läuft
-    idempotent bei jedem Start — ein Ticket, dessen Instanz fehlt, würde sonst stumm liegen
-    bleiben.
+    Waiting tickets are placed at the matching point of the graph so that the familiar
+    buttons (approve plan, accept, comment) take hold again immediately. Runs idempotently at
+    every start; a ticket whose instance is missing would otherwise lie there mutely.
+
     """
     from ..models.enums import WorkflowNodeType, WorkflowStepStatus, WorkflowTokenState
     from ..models.workflow import WorkflowStepRun, WorkflowToken, WorkflowVersion
@@ -158,7 +158,7 @@ async def adopt_orphans(db: AsyncSession) -> int:
             with_plan, without_plan = _ADOPT_WAIT[st]
             target = ((with_plan if issue.plan else without_plan), "wait_event")
         if target is None:
-            # planning/approved/in_progress → regulär neu einsteigen
+            # planning/approved/in_progress: enter regularly again
             inst = await start_lifecycle(db, issue, entry="exec" if issue.plan else "plan")
             adopted += 1 if inst else 0
             continue
@@ -171,10 +171,10 @@ async def adopt_orphans(db: AsyncSession) -> int:
         node = next((n for n in ((version.graph if version else {}) or {}).get("nodes", [])
                      if n.get("id") == node_id), None)
         if node is None or node_type(node) != expected:
-            # Angepasster Graph ohne diesen Knoten: der reguläre Einstieg muss reichen.
+            # An adjusted graph without this node: the regular entry has to be enough.
             adopted += 1
             continue
-        # Token auf den Warteknoten setzen und den passenden Schritt anlegen.
+        # Put the token on the waiting node and create the matching step.
         for t in (await db.execute(select(WorkflowToken).where(
                 WorkflowToken.instance_id == inst.id))).scalars().all():
             t.node_id = node_id
@@ -194,7 +194,7 @@ async def adopt_orphans(db: AsyncSession) -> int:
 
 
 async def cancel_lifecycle(db: AsyncSession, issue: Issue) -> bool:
-    """Laufenden Lebenszyklus abbrechen (Agent abgezogen, Ticket gelöscht/archiviert)."""
+    """Abort a running lifecycle (agent pulled off, ticket deleted or archived)."""
     from ..models.enums import WorkflowTokenState
     from ..models.workflow import WorkflowToken
     inst = await live_instance(db, issue)
@@ -210,12 +210,12 @@ async def cancel_lifecycle(db: AsyncSession, issue: Issue) -> bool:
 
 
 async def promote_split(db: AsyncSession, child: Issue) -> None:
-    """Aufteilungs-Kette: nächstes geparktes Geschwister starten; sind alle fertig, geht das
-    Sammelticket in die Abnahme.
+    """Splitting chain: start the next parked sibling; when all are finished, the collective
+    ticket goes into acceptance.
 
-    Läuft nach dem Merge eines Teils (Worker), damit Teil n+1 auf dem Ergebnis von Teil n
-    aufbaut — genau wie vor der Migration, nur startet jetzt eine Instanz statt eines
-    Status-Sprungs.
+    Runs after the merge of one part (worker) so that part n+1 builds on the result of part
+    n, exactly as before the migration, only that now an instance starts instead of a status
+    jump.
     """
     from ..models.enums import TicketAgentStatus
     from .comments import add_system_comment
@@ -235,7 +235,7 @@ async def promote_split(db: AsyncSession, child: Issue) -> None:
             db, nxt.id,
             f"▶️ Automatisch freigegeben — Vorgänger {child.key} ist fertig.")
         await db.flush()
-        # Teilaufgaben haben ihren Plan schon → direkt in die Umsetzung.
+        # Sub-tasks already have their plan, so straight into the implementation.
         await start_lifecycle(db, nxt, entry="exec")
         return
 

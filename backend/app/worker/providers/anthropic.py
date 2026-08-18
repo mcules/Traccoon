@@ -1,7 +1,7 @@
-"""Anthropic / Claude über OAuth-Subscription (sk-ant-oat setup-token).
+"""Anthropic / Claude over an OAuth subscription (sk-ant-oat setup token).
 
-Port aus dem Vorläufer. Token kommt ausschließlich über `auth_token` (Secret-Tresor);
-kein Datei-AuthStore. Die OAuth-Details sind zwingend für den Subscription-Token.
+Ported from the predecessor. The token comes exclusively over `auth_token` (secret vault);
+there is no file AuthStore. The OAuth details are mandatory for the subscription token.
 """
 from __future__ import annotations
 
@@ -18,21 +18,21 @@ log = logging.getLogger("traccoon.providers.claude")
 
 
 class _Abgeschnitten(ProviderError):
-    """Antwort lief in `max_tokens` (Denken hat das Budget gefressen) — intern, damit der
-    Rettungsversuch sie von echten Provider-Fehlern unterscheiden kann. Nach außen bleibt
-    es ein gewöhnlicher (retrybarer) ProviderError."""
+    """The answer ran into `max_tokens` (the thinking ate the budget). Internal, so that the
+    rescue attempt can tell it apart from real provider errors. To the outside it stays an
+    ordinary (retryable) ProviderError."""
 
 
 IDENTITY = "You are Claude Code, Anthropic's official CLI for Claude."
 _BETAS = "oauth-2025-04-20,claude-code-20250219"
 _ANTHROPIC_VERSION = "2023-06-01"
-# Web-Suche: web_search_20250305 ist die Basis-Variante — der Server sucht selbst und
-# liefert `web_search_tool_result` zurück. Der neuere Typ web_search_20260209 (dynamic
-# filtering) läuft dagegen IM Code-Execution-Container (`await web_search(...)` in Python);
-# mit dem OAuth-Subscription-Token antwortet der Container zuverlässig mit
-# `too_many_requests` → kein einziges Suchergebnis, und die Turns verpuffen (Job 3,
-# „KI- & Tech-News", starb daran mehrfach mit loop_exhausted). Deshalb per Default die
-# Basis-Variante; wer den neuen Typ testen will, setzt ANTHROPIC_WEB_SEARCH_TYPE.
+# Web search: web_search_20250305 is the basic variant, where the server searches itself and
+# returns `web_search_tool_result`. The newer type web_search_20260209 (dynamic filtering) on
+# the other hand runs IN the code execution container (`await web_search(...)` in Python);
+# with the OAuth subscription token the container reliably answers `too_many_requests`, so
+# there is not a single search result and the turns fizzle out (job 3, "AI and tech news",
+# died of that several times with loop_exhausted). Hence the basic variant by default;
+# whoever wants to test the new type sets ANTHROPIC_WEB_SEARCH_TYPE.
 _WS_DEFAULT_TYPE = "web_search_20250305"
 _WS_MAX_USES = int(os.getenv("ANTHROPIC_WEB_SEARCH_MAX_USES", "8"))
 
@@ -55,7 +55,7 @@ def _unwire(name: str) -> str:
 
 
 def _clean_schema(node: Any) -> Any:
-    """Ungültige `enum` (null/leer) entfernen — z.B. aus `enum: targets or None`."""
+    """Remove invalid `enum` (null or empty), for instance from `enum: targets or None`."""
     if isinstance(node, dict):
         out = {}
         for k, v in node.items():
@@ -105,7 +105,7 @@ def _translate(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | Non
                 blocks.append({"type": "tool_use", "id": tc.get("id"),
                                "name": _wire(fn.get("name", "")), "input": inp})
             a_msgs.append({"role": "assistant", "content": blocks or [{"type": "text", "text": "(empty)"}]})
-        else:  # user (content kann String oder multimodale Block-Liste sein)
+        else:  # user (content can be a string or a multimodal list of blocks)
             a_msgs.append({"role": "user", "content": m.get("content") or ""})
     flush()
 
@@ -120,11 +120,11 @@ def _translate(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | Non
     if a_tools:
         a_tools[-1]["cache_control"] = {"type": "ephemeral"}
     system_blocks[-1]["cache_control"] = {"type": "ephemeral"}
-    # Auch die (wachsende) Message-History cachen — DER Hebel gegen den quadratischen
-    # Verbrauch: Breakpoint auf den letzten Block der letzten Nachricht, damit jede
-    # Folge-Iteration den kompletten Prefix (system + tools + bisherige Turns) als
-    # Cache-Hit (~0,1x) liest statt ihn voll zu bezahlen. String-Content wird in einen
-    # Text-Block gewandelt (cache_control geht nur auf strukturierte Blöcke).
+    # Cache the (growing) message history as well: THE lever against the quadratic
+    # consumption. A breakpoint on the last block of the last message lets every following
+    # iteration read the complete prefix (system plus tools plus previous turns) as a cache
+    # hit (~0.1x) instead of paying for it in full. String content is turned into a text
+    # block (cache_control only works on structured blocks).
     if a_msgs:
         _last = a_msgs[-1]
         _c = _last.get("content")
@@ -139,10 +139,10 @@ def _translate(messages: list[dict[str, Any]], tools: list[dict[str, Any]] | Non
 class AnthropicProvider(Provider):
     name = "claude"
 
-    # 300 s wie bei codex und openai. Die früheren 180 s waren der Ausreißer und rissen
-    # Läufe ab, sobald EIN Modellzug länger brauchte — bei einem großen Zustand und einem
-    # Zug, der 40 Bauaufträge ausformuliert, ist das erreichbar. Der Lauf starb dann mit
-    # „Verbindungsfehler", was auf ein Netzproblem zeigt statt auf das Zeitlimit.
+    # 300 s as with codex and openai. The earlier 180 s were the outlier and tore runs off as
+    # soon as ONE model turn took longer, which is reachable with a large state and a turn
+    # that formulates 40 build assignments. The run then died with "connection error", which
+    # points at a network problem instead of at the time limit.
     def __init__(self, model: str = "", claude_code_version: str = "2.1.74",
                  timeout: float = float(os.getenv("ANTHROPIC_TIMEOUT_SEC", "300"))):
         self.model = model
@@ -174,10 +174,10 @@ class AnthropicProvider(Provider):
             "system": system_blocks,
             "messages": a_msgs,
         }
-        # Denk-Tiefe. Ohne dieses Feld denkt sonnet-5/opus-5 mit der Standardstufe `high`
-        # — und das Denken teilt sich `max_tokens` mit der sichtbaren Antwort. Genau daran
-        # starben die Läufe 744 (Prüfer) und 752 (Entwickler): Budget im Denken verbraucht,
-        # Antwort abgeschnitten. Eine niedrigere Stufe am Agenten ist der saubere Hebel.
+        # Thinking depth. Without this field sonnet-5/opus-5 thinks with the default level
+        # `high`, and the thinking shares `max_tokens` with the visible answer. On exactly
+        # that, runs 744 (reviewer) and 752 (developer) died: budget used up in thinking, the
+        # answer truncated. A lower level on the agent is the clean lever.
         if effort:
             body["output_config"] = {"effort": effort}
         all_tools = list(a_tools or [])
@@ -191,13 +191,13 @@ class AnthropicProvider(Provider):
         try:
             return self._parse(data)
         except _Abgeschnitten:
-            # Rettungsversuch: dasselbe Budget, aber ohne Denken — dann geht es vollständig
-            # in die sichtbare Antwort. Besser eine Antwort ohne Denkschritt als ein Lauf,
-            # der nach 41 Iterationen an einem Formatfehler stirbt.
-            zweiter = dict(body)                  # eigener Body: der erste bleibt unverändert
+            # Rescue attempt: the same budget but without thinking, so that it goes fully
+            # into the visible answer. Better an answer without a thinking step than a run
+            # that dies of a format error after 41 iterations.
+            zweiter = dict(body)                  # a body of its own: the first stays unchanged
             zweiter["thinking"] = {"type": "disabled"}
             if effort in ("xhigh", "max"):
-                zweiter.pop("output_config", None)   # „disabled" ist oberhalb `high` ein 400er
+                zweiter.pop("output_config", None)   # "disabled" is a 400 above `high`
             log.warning("claude: Antwort bei max_tokens (%d) abgeschnitten — zweiter Versuch ohne Denken",
                         max_tokens)
             return self._parse(await self._post(zweiter, auth_token), gerettet=True)
@@ -243,10 +243,10 @@ class AnthropicProvider(Provider):
                                   "function": {"name": orig, "arguments": json.dumps(inp, ensure_ascii=False)}})
         text = "".join(text_parts)
         # max_tokens-Abbruch: entweder mitten im Tool-Argument (calls vorhanden, JSON
-        # unvollständig) ODER das Budget wurde vom (server-seitigen) Thinking aufgebraucht,
-        # bevor überhaupt Text/Tool-Use kam → leere Nutzlast. Beide Fälle sind KEINE gültige
-        # „leere Antwort", sondern eine abgeschnittene → klar (retrybar) melden statt still
-        # als Leerlauf durchzureichen (sonst Fehldiagnose „Leere Modell-Antwort").
+        # incomplete) OR the budget was used up by the (server side) thinking before any text
+        # or tool use came at all, so an empty payload. Neither case is a valid "empty
+        # answer" but a truncated one, so report it clearly (retryable) instead of passing it
+        # through silently as idling (which would misdiagnose as "empty model answer").
         if data.get("stop_reason") == "max_tokens" and (calls or not text.strip()):
             raise _Abgeschnitten(
                 "claude: Antwort bei max_tokens abgeschnitten – unvollständig "
@@ -258,9 +258,9 @@ class AnthropicProvider(Provider):
             raw_msg["tool_calls"] = oai_calls
         usage = data.get("usage") or {}
         # Prompt-Caching-Anteile: cache_read = gecachter Prefix (~0,1x berechnet),
-        # cache_creation = neu in den Cache geschriebener Anteil (informativ). Beide
-        # explizit greifbar machen, damit die Runtime cache_read in Kosten + CostEntry
-        # aufnehmen kann.
+        # cache_creation = the share newly written into the cache (informative). Make both
+        # explicitly graspable so that the runtime can take cache_read into the cost and the
+        # CostEntry.
         cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
         return ChatResponse(text=text, tool_calls=calls,
                             raw={"choices": [{"message": raw_msg}]}, usage=usage,
