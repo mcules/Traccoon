@@ -754,9 +754,10 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
         return Outcome(wait=True, waiting_for="subflow")
 
     slot = cfg.get("slot") or cfg.get("workflow_slot")
-    if not slot:
+    def_id = cfg.get("definition_id")
+    if not slot and not def_id:
         return Outcome(terminal=True, instance_status="failed",
-                       error=f"subflow-Knoten '{node['id']}' ohne Slot")
+                       error=f"subflow-Knoten '{node['id']}' ohne Ablauf")
     if await _instance_depth(db, inst) >= MAX_SUBFLOW_DEPTH:
         return Outcome(terminal=True, instance_status="failed",
                        error=f"subflow zu tief verschachtelt (> {MAX_SUBFLOW_DEPTH})")
@@ -767,14 +768,27 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
         from ..models.ticket import Issue
         issue = await db.get(Issue, inst.issue_id)
         vorgangsart = issue.type_id if issue else None
-    definition = await resolve_definition(db, inst.project_id, slot, vorgangsart)
+    # Ein Slot wird je Projekt aufgelöst (eigene Anpassung schlägt Satz schlägt Standard);
+    # ein ausdrücklich benannter Ablauf ist genau dieser — auch ein eigener, projektloser.
+    # Ohne diesen zweiten Weg wäre „Anderer Ablauf" nur für die fünf gelieferten Slots zu
+    # gebrauchen, und die eigenen Abläufe ließen sich nicht ineinander stecken.
+    if def_id:
+        definition = await db.get(WorkflowDefinition, int(def_id))
+        wofuer = f"Ablauf #{def_id}"
+    else:
+        definition = await resolve_definition(db, inst.project_id, slot, vorgangsart)
+        wofuer = f"Slot '{slot}'"
     if definition is None or definition.current_version_id is None:
         return Outcome(terminal=True, instance_status="failed",
-                       error=f"Kein veröffentlichter Ablauf für Slot '{slot}'")
+                       error=f"Kein veröffentlichter Ablauf für {wofuer}")
+    if definition.id == inst.definition_id:
+        return Outcome(terminal=True, instance_status="failed",
+                       error=f"subflow-Knoten '{node['id']}' ruft sich selbst auf")
 
+    bezug = {"slot": slot} if slot else {"definition_id": definition.id}
     step = WorkflowStepRun(
         instance_id=inst.id, token_id=token.id, node_id=node["id"],
-        node_type=NType.subflow, status=SStatus.running, result={"slot": slot},
+        node_type=NType.subflow, status=SStatus.running, result=bezug,
     )
     db.add(step)
     await db.flush()
@@ -785,7 +799,7 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
         hardware_asset_id=inst.hardware_asset_id, context=ctx, actor_id=inst.started_by,
         source=f"subflow:{inst.id}", parent_instance_id=inst.id, parent_node_id=node["id"],
     )
-    step.result = {"slot": slot, "child_instance_id": child.id}
+    step.result = {**bezug, "child_instance_id": child.id}
     return Outcome(wait=True, waiting_for="subflow")
 
 
@@ -1619,9 +1633,9 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
         if ntype == "subflow":
             cfg = node_config(n)
             slot = cfg.get("slot") or cfg.get("workflow_slot")
-            if not slot:
-                errors.append(f"Subflow-Knoten '{nid}': kein Ablauf (Slot) gewählt")
-            else:
+            if not slot and not cfg.get("definition_id"):
+                errors.append(f"Subflow-Knoten '{nid}': kein Ablauf gewählt")
+            elif slot:
                 from ..models.enums import WorkflowSlot
                 if slot not in {s.value for s in WorkflowSlot}:
                     errors.append(f"Subflow-Knoten '{nid}': unbekannter Slot '{slot}'")
