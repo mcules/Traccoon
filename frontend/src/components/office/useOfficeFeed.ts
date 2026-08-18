@@ -1,62 +1,62 @@
-// Schicht 2 — das Herzstück: aus Socket + Schnappschuss wird ein lückenloses, doppelfreies Log.
+// Layer 2, the heart of it: socket plus snapshot become a gapless, duplicate free log.
 //
-// ══ Der Ablauf, und er ist determinismuskritisch ═════════════════════════════════════════════
+// ══ The sequence, and it is critical for determinism ═══════════════════════════════════════
 //
-//   1. WebSocket öffnen und `subscribe` senden.
-//   2. Eingehende Ereignisse **puffern**, solange der Backfill läuft.
-//   3. Schnappschuss über `officeApi.events(…)` holen — seitenweise, bis eine Seite kürzer
-//      ist als `limit`.
-//   4. Gepufferte Ereignisse nachziehen. Doppler verwirft `Recorder.push` anhand der `seq`
-//      von selbst; hier wird nichts verglichen.
+//   1. Open the WebSocket and send `subscribe`.
+//   2. **Buffer** incoming events while the backfill runs.
+//   3. Fetch the snapshot through `officeApi.events(…)`, page by page, until one page is
+//      shorter than `limit`.
+//   4. Replay the buffered events. `Recorder.push` drops duplicates by their `seq` on its own;
+//      nothing is compared here.
 //   5. Live gehen.
 //
-// Die Reihenfolge ist kein Stil, sondern die einzige, die kein Ereignis verliert: Erst der
-// Socket, dann der Schnappschuss. Andersherum fiele jede Zeile, die zwischen dem Lesen der
-// Datenbank und dem Abonnieren geschrieben wird, in ein Loch — und ein fehlendes `run_end`
-// heißt, dass eine Figur den Raum nie verlässt.
+// The order is not style but the only one that loses no event: socket first, then snapshot. The
+// other way round every row written between reading the database and subscribing would fall
+// into a hole, and a missing `run_end` means a character never leaves the room.
+// into a hole, and a missing `run_end` means a character never leaves the room.
 //
-// ══ Warum **nie** inkrementell mit `after_seq` gepollt wird ═════════════════════════════════
+// ══ Why polling incrementally with `after_seq` never happens ═══════════════════════════════
 //
-// `seq` stammt aus `run_steps.id`, also aus einer `SERIAL`-Spalte — und die wird **vor** dem
-// Commit vergeben. Zwei parallele Worker (`WORKER_CONCURRENCY > 1`) können ihre Zeilen deshalb
-// in umgekehrter Reihenfolge sichtbar machen: erst 1005, dann 1003. Ein Poller, der sich seinen
-// Höchststand merkt, überspränge 1003 für immer, ohne es je zu bemerken.
+// `seq` comes from `run_steps.id`, so from a `SERIAL` column, and that is assigned **before**
+// the commit. Two parallel workers (`WORKER_CONCURRENCY > 1`) can therefore make their rows
+// visible in reverse order: 1005 first, then 1003. A poller that remembers its high water mark
+// would skip 1003 forever without ever noticing.
 //
-// `after_seq` ist ausschließlich (a) Seitenblättern innerhalb **eines** Schnappschusses und
-// (b) Lückenfüllung unmittelbar nach einer Wiederverbindung — in beiden Fällen deckt der
-// Puffer bzw. der nachfolgende volle Schnappschuss, was das Blättern verpasst haben könnte.
-// Erkennt der Client ein Loch (jede Wiederverbindung gilt als Loch, weil er nicht wissen
-// kann, was während der Trennung geschah), holt er einen **vollen neuen** Schnappschuss.
-// Das ist billig: `Recorder.push` wirft alles Bekannte weg.
+// `after_seq` is used exclusively for (a) paging inside **one** snapshot and (b) filling a gap
+// immediately after a reconnect. In both cases the buffer or the following full snapshot covers
+// whatever the paging might have missed. When the client detects a hole (every reconnect counts
+// as a hole, because it cannot know what happened during the disconnection) it fetches a
+// **full new** snapshot. That is cheap: `Recorder.push` throws away everything already known.
+
 //
-// ══ Zustandsdisziplin, die die Bildrate rettet ══════════════════════════════════════════════
+// ══ State discipline that saves the frame rate ═════════════════════════════════════════════
 //
-// · Der `Recorder` lebt in einem **Ref**. Die Bühne rendert nie pro Bild neu.
-// · Das einzige Rendersignal ist `revision` — und der Bump ist auf `REVISION_THROTTLE_MS`
-//   gedrosselt. Ein Schub von 60 Schritten löst einen Renderdurchlauf aus, nicht sechzig.
-// · Dedupliziert wird **ausschließlich** in `Recorder.push`. Genau deshalb sind
-//   Backfill-Wettlauf, Wiederverbindungs-Doppler und manuelles Neuladen mit derselben Zeile
-//   erledigt — es gibt keinen zweiten Ort, an dem eine Regel driften könnte.
-// · Der Schnappschuss ist `staleTime: Infinity`: er ist ein Zeitpunkt, kein Wert, der veralten
-//   könnte. Fortgeschrieben wird er über den Socket, nicht über ein Neuladen.
-// · Bei `ApiError` mit Status 401 leitet `src/api.ts` bereits hart weiter — hier steht bewusst
-//   keine zweite Behandlung.
+// · The `Recorder` lives in a **ref**. The stage never renders per frame.
+// · The only render signal is `revision`, and the bump is throttled to `REVISION_THROTTLE_MS`.
+//   A burst of 60 steps triggers one render pass, not sixty.
+// · Deduplication happens **exclusively** in `Recorder.push`. Exactly for that reason the
+//   backfill race, reconnect duplicates and a manual reload are all handled by the same line:
+//   there is no second place where a rule could drift.
+// · The snapshot is `staleTime: Infinity`: it is a moment, not a value that could go stale. It
+//   is carried forward through the socket, not through a refetch.
+// · On an `ApiError` with status 401 `src/api.ts` already redirects hard, so there is
+//   deliberately no second handling here.
 //
-// ══ Zwei Betriebsarten, ein Weg ═════════════════════════════════════════════════════════════
+// ══ Two modes of operation, one path ═══════════════════════════════════════════════════════
 //
-// Mit `sid` ist der Raum **eine** Sitzung; Ereignisse fremder Sitzungen werden verworfen, weil
-// der Server nach Projekt filtert und nicht nach Raum.
+// With a `sid` the room is **one** session; events of other sessions are dropped, because the
+// server filters by project and not by room.
 //
-// Ohne `sid` und mit `opts.alleSitzungen` ist der Raum das **Fenster**: der Schnappschuss kommt
-// aus `GET /office/events`, und live wird jedes Ereignis angenommen, das der Socket liefert —
-// der filtert bereits serverseitig auf das, was dieser Nutzer sehen darf (`api/office_ws.py`).
-// Das geht nur, weil `seq` aus `run_steps.id` stammt, einer SERIAL-Spalte: über Läufe **und**
-// Projekte hinweg monoton, also ergeben zwanzig Sitzungen EINE Folge und `Recorder.push`
-// entdoppelt sie mit derselben Regel wie eine einzelne. Der Sitzplatz (`hash32(run_id) % 12`)
-// ist ohnehin sitzungsunabhängig.
+// Without a `sid` and with `opts.alleSitzungen` the room is the **window**: the snapshot comes
+// from `GET /office/events`, and live every event the socket delivers is accepted, because it
+// already filters server side to what this user may see (`api/office_ws.py`). That only works
+// because `seq` comes from `run_steps.id`, a SERIAL column: monotonic across runs **and**
+// projects, so twenty sessions form ONE sequence and `Recorder.push` deduplicates them by the
+// same rule as a single one. The seat (`hash32(run_id) % 12`) is independent of the session
+// anyway.
 //
-// Beide Arten nehmen denselben Weg durch diese Datei — es gibt einen Recorder, eine
-// Blätterschleife und einen Übergang von Puffer zu Live, nicht zwei.
+// Both modes take the same path through this file: there is one recorder, one paging loop and
+// one transition from buffer to live, not two.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -68,28 +68,28 @@ import {
 import { REPLAY_CAP } from "./const.ts";
 import type { Ev, EvRunEnd, EvRunStart, LogEntry, Roster, RosterEntry } from "./types.ts";
 
-// Welle E liefert `./recorder.ts` (Schicht 0). Solange die Datei fehlt, hält das `@ts-ignore`
-// den Bau grün; die Zeile darunter ist bereits die endgültige. Beim Landen von Welle E: den
-// Kommentar löschen und prüfen, dass `RecorderApi` unten zur Klasse passt — dann ist auch
-// `RecorderApi` überflüssig und wird durch `import type { Recorder }` ersetzt.
-// @ts-ignore -- Modul folgt mit Welle E (office/recorder.ts)
+// The recorder module (`./recorder.ts`, layer 0) arrived later. While the file was missing the
+// `@ts-ignore` kept the build green; the line below it is already the final one. Once it lands:
+// delete the comment and check that `RecorderApi` below matches the class, at which point
+// `RecorderApi` is superfluous and is replaced by `import type { Recorder }`.
+// @ts-ignore -- module follows (office/recorder.ts)
 import { Recorder } from "./recorder.ts";
 
-// ── Die Oberfläche, gegen die hier gebaut wird ──────────────────────────────────────────────
+// ── The interface this is built against ─────────────────────────────────────────────────────
 
-/** Was der Feed vom `Recorder` braucht (Plan-Oberfläche der Welle E).
- *  **Nicht** hier implementieren — der Recorder ist Schicht 0 und gehört zur Engine. */
+/** What the feed needs from the `Recorder`.
+ *  Do **not** implement it here: the recorder is layer 0 and belongs to the engine. */
 export interface RecorderApi {
-  /** Nimmt ein Ereignis auf. `false` = schon bekannt (`seq` bereits gesehen) und verworfen.
-   *  Der EINE Ort, an dem dedupliziert wird. */
+  /** Takes an event in. `false` means already known (`seq` seen before) and dropped. The ONE
+   *  place where deduplication happens. */
   push(ev: Ev): boolean;
-  /** Zählt bei jeder tatsächlichen Aufnahme hoch. Der Feed drosselt daraus sein `revision`. */
+  /** Counts up on every actual intake. The feed throttles its `revision` from it. */
   readonly revision: number;
-  /** Das Log in Ankunftsreihenfolge — als **Kopie**. `readonly`, weil die Kopie zwar dem
-   *  Aufrufer gehört, aber weitergereicht wird (`new Replay(log)`): eine Liste, die unterwegs
-   *  jemand verändern darf, wäre genau der Aliasing-Fehler, den die Kopie verhindern soll. */
+  /** The log in arrival order, as a **copy**. `readonly`, because the copy belongs to the
+   *  caller but is passed on (`new Replay(log)`): a list somebody may change on the way would
+   *  be exactly the aliasing bug the copy prevents. */
   entries(): readonly LogEntry[];
-  /** Zeit- und `seq`-Grenzen des Logs, `null` solange es leer ist. */
+  /** Time and `seq` bounds of the log, `null` while it is empty. */
   bounds(): { t0: number; t1: number; seq0: number; seq1: number } | null;
   /** Alles vergessen (Sitzungswechsel). */
   reset(): void;
@@ -97,78 +97,78 @@ export interface RecorderApi {
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
 
-/** Höchstens fünf Renderdurchläufe je Sekunde aus dem Ereignisstrom. Bewusst nur hinten
- *  ausgelöst (trailing): das erste Ereignis eines Schubs kostet 200 ms Verzögerung, dafür
- *  kostet der ganze Schub genau einen Durchlauf. */
+/** At most five render passes per second out of the event stream. Deliberately trailing only:
+ *  the first event of a burst costs 200 ms of delay, but the whole burst costs exactly one
+ *  pass. */
 const REVISION_THROTTLE_MS = 200;
 
-/** Wartezeiten der Wiederverbindung. Der letzte Wert gilt danach dauerhaft — ein Backend, das
- *  gerade neu startet, soll wiederkommen, ohne dass hundert Tabs es dabei überrennen. */
+/** Waits of the reconnect. The last value applies permanently afterwards: a backend that is
+ *  restarting should come back without a hundred tabs overrunning it.  */
 const RECONNECT_MS = [1000, 2000, 5000, 10_000, 20_000];
 
-/** Gegen Zwischenboxen, die stille Verbindungen kappen (der Server antwortet mit `pong`). */
+/** Against middleboxes that cut silent connections (the server answers with `pong`). */
 const PING_MS = 45_000;
 
-/** Kommt der Socket nicht zustande, wird der Schnappschuss trotzdem geholt. Eine Ansicht ohne
- *  Live-Strom ist brauchbar; eine leere Ansicht ist es nicht. */
+/** If the socket does not come up, the snapshot is fetched anyway. A view without a live
+ *  stream is usable; an empty view is not. */
 const SOCKET_GRACE_MS = 4000;
 
-/** Deckel des Puffers. Er greift nur in einem Fehlerfall — wenn der Schnappschuss gar nicht
- *  zurückkommt (Endpunkt tot) und der Socket trotzdem liefert, würde der Puffer sonst
- *  unbegrenzt wachsen. Verworfen wird vom **ältesten** Ende, genau wie beim Ereignisfenster
- *  des Backends; und sobald der Schnappschuss wieder trägt, ist die Lücke ohnehin gefüllt. */
+/** Cap of the buffer. It only takes effect in a failure case, when the snapshot
+ *  does not come back at all (a dead endpoint) and the socket still delivers, the buffer would
+ *  otherwise grow without bound. Dropping happens at the **oldest** end, exactly as with the
+ *  event window of the backend; and once the snapshot works again the gap is filled anyway. */
 const BUFFER_CAP = REPLAY_CAP;
 
-/** Mehr Seiten holt der Schnappschuss nicht. `REPLAY_CAP` ist ohnehin die Grenze dessen, was
- *  die Engine abspielt — ohne Deckel könnte ein Backend, das `limit` ignoriert, den Browser
- *  in eine Endlosschleife schicken. */
+/** The snapshot fetches no more pages than this. `REPLAY_CAP` is the limit of what the engine
+ *  replays anyway, and without a cap a backend that ignores `limit` could send the browser
+ *  into an endless loop. */
 const MAX_PAGES = Math.ceil(REPLAY_CAP / EVENT_PAGE_LIMIT) + 1;
 
-// ── Rückgabe ────────────────────────────────────────────────────────────────────────────────
+// ── Return value ────────────────────────────────────────────────────────────────────────────
 
-/** Summen über die ganze Sitzung. Tokens kommen aus dem Roster (autoritativ je Lauf), Kosten
- *  aus dem Kosten-Aufruf — der kennt als Einziger den Unterschied zwischen „bepreist und
- *  gratis" und „nicht im Katalog". */
+/** Totals over the whole session. Tokens come from the roster (authoritative per run), cost
+ *  from the cost call, which is the only one that knows the difference between "priced and
+ *  free" and "not in the catalog". */
 export interface FeedTotals {
   runs: number;
   running: number;
   in_tokens: number;
   out_tokens: number;
   cache_read_tokens: number;
-  /** Abgerechnet, aus `CostEntry`. */
+  /** Billed, from `CostEntry`. */
   cost_usd_billed: number;
-  /** Geschätzt gegen den aktuellen Katalog — richtig auch bei einem Fallback-Lauf. */
+  /** Estimated against the current catalog, right on a fallback run as well. */
   cost_usd_estimated: number;
-  /** Mindestens ein Modellzug hat keinen Katalogeintrag → die Anzeige stellt ein „≥" davor. */
+  /** At least one model turn has no catalog entry, so the display puts a "≥" in front. */
   cost_partial: boolean;
 }
 
-/** Vorgabefenster des Modus „alle Sitzungen", in Stunden.
+/** Default window of the "all sessions" mode, in hours.
  *
- *  Muss zu `api/office.py::EVENTS_SINCE_HOURS_DEFAULT` passen — die Oberfläche schreibt die
- *  Zahl in die Kopfzeile („der letzten 12 Stunden"), und eine Überschrift, die ein anderes
- *  Fenster nennt als das gemessene, wäre schlimmer als gar keine. Warum zwölf: am Bestand
- *  gemessen liegen darin 14 Läufe, bei 24 h sind es 23 und `office/const.ts` lässt
- *  `MAX_ACTORS = 24` Figuren gleichzeitig zu — der Raum stünde dauerhaft an der Kante und
- *  verdrängte bei jedem neuen Lauf eine Figur. */
+ *  Has to match `api/office.py::EVENTS_SINCE_HOURS_DEFAULT`: the interface writes the number
+ *  into the header ("the last 12 hours"), and a heading that names a different window than the
+ *  one measured would be worse than none. Why twelve: measured against the data there are 14
+ *  runs in it, at 24 h there are 23, and `office/const.ts` allows `MAX_ACTORS = 24` characters
+ *  at once, so the room would permanently sit at the edge and evict a character with every new
+ *  run. */
 export const ALLE_FENSTER_H = 12;
 
-/** Zusatzschalter des Feeds. */
+/** Extra switches of the feed. */
 export interface OfficeFeedOpts {
-  /** Ohne `sid` **alle** Sitzungen in einen Raum mischen, statt leer zu bleiben. */
+  /** Without a `sid`, mix **all** sessions into one room instead of staying empty. */
   alleSitzungen?: boolean;
   /** Fenster dieses Modus in Stunden. */
   sinceHours?: number;
 }
 
 export interface OfficeFeed {
-  /** Lebt in einem Ref und wechselt nur bei einem Sitzungswechsel die Identität. */
+  /** Lives in a ref and only changes identity when the session changes. */
   recorder: RecorderApi;
-  /** Das einzige Rendersignal. Steigt gedrosselt. */
+  /** The only render signal. Rises throttled. */
   revision: number;
   roster: Roster;
   totals: FeedTotals;
-  /** Socket offen **und** Backfill durch — Ereignisse kommen in Echtzeit an. */
+  /** Socket open **and** backfill done: events arrive in real time. */
   live: boolean;
   error?: string;
 }
@@ -186,16 +186,16 @@ interface Snapshot {
   page: EventPage | null;
 }
 
-/** Seitenweise, bis eine Seite kürzer ist als `limit`.
+/** Page by page, until one page is shorter than `limit`.
  *
- *  Das Blättern benutzt `after_seq` — und das ist der eine erlaubte Gebrauch: es läuft
- *  innerhalb **eines** Vorgangs vorwärts, und was dabei nachträglich mit kleinerer `seq`
- *  sichtbar wird, liegt bereits im Puffer des Sockets (der lief vorher an). Der Recorder
- *  fügt es an seinem Platz ein und wirft den Doppler weg.
+ *  The paging uses `after_seq`, and that is the one permitted use: it runs forward inside
+ *  **one** operation, and whatever becomes visible afterwards with a smaller `seq` already
+ *  lies in the buffer of the socket (which started earlier). The recorder inserts it at its
+ *  place and throws the duplicate away.
  *
- *  `lade` ist der einzige Unterschied zwischen „eine Sitzung" und „alle Sitzungen": beide
- *  Endpunkte liefern dieselbe Form, also blättert **eine** Schleife durch beide. Zwei
- *  Schleifen wären zwei Gelegenheiten, die Reihenfolge unterschiedlich zu verlieren. */
+ *  `lade` is the only difference between "one session" and "all sessions": both endpoints
+ *  deliver the same shape, so **one** loop pages through both. Two loops would be two
+ *  opportunities to lose the order differently. */
 async function fetchSnapshot(lade: (afterSeq?: number) => Promise<EventPage>): Promise<Snapshot> {
   const events: Ev[] = [];
   let agents: Roster = [];
@@ -205,8 +205,8 @@ async function fetchSnapshot(lade: (afterSeq?: number) => Promise<EventPage>): P
   for (let i = 0; i < MAX_PAGES; i++) {
     const p = await lade(afterSeq);
     const batch = p.events ?? [];
-    // Der Roster steht nur auf der ersten Seite; spätere Seiten überschreiben ihn nicht mit
-    // einem leeren Feld — sonst wäre der Raum nach dem Blättern besetzungslos.
+    // The roster stands only on the first page; later pages do not overwrite it with an empty
+    // field, otherwise the room would have no cast after paging.
     if (p.agents && p.agents.length) agents = p.agents;
     for (const ev of batch) events.push(ev);
     page = p;
@@ -221,9 +221,9 @@ async function fetchSnapshot(lade: (afterSeq?: number) => Promise<EventPage>): P
 
 // ── Roster ──────────────────────────────────────────────────────────────────────────────────
 
-/** Ein Lauf, der live den Raum betritt, steht noch in keinem Roster — der kam mit dem
- *  Schnappschuss. Bis zum nächsten Schnappschuss wird der Eintrag aus dem `run_start`-Ereignis
- *  gebaut; die Zahlen füllt das `run_end` nach. */
+/** A run that enters the room live stands in no roster yet, because that came with the
+ *  snapshot. Until the next snapshot the entry is built from the `run_start` event; the
+ *  numbers are filled in by the `run_end`. */
 function rosterFromRunStart(ev: EvRunStart): RosterEntry {
   return {
     agent_id: ev.agent_id, run_id: ev.run_id, agent: ev.agent, phase: ev.phase,
@@ -249,35 +249,35 @@ function rosterFromRunEnd(prev: RosterEntry | undefined, ev: EvRunEnd): RosterEn
   };
 }
 
-// ── Der Feed ────────────────────────────────────────────────────────────────────────────────
+// ── The feed ────────────────────────────────────────────────────────────────────────────────
 
 export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): OfficeFeed {
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
   const sinceHours = opts?.sinceHours ?? ALLE_FENSTER_H;
-  /** „Alle Sitzungen": kein Raum gewählt **und** der Aufrufer will diesen Modus. Das
-   *  zweite Stück ist kein Zierrat — ohne `sid` ist auch der Projekt-Reiter, solange seine
-   *  Sitzungsliste noch unterwegs ist, und der soll dann nicht für einen Wimpernschlag das
+  /** "All sessions": no room chosen **and** the caller wants this mode. The second part is not
+   *  decoration: without a `sid` the project tab is in the same state while its session list is
+   *  still on the way, and it should not show the
    *  ganze Projekt laden, um es sofort wieder wegzuwerfen. */
   const alle = !sid && !!opts?.alleSitzungen;
-  // Die Identität des Logs. Sie wechselt beim Raumwechsel **und** beim Wechsel des
-  // Fensters — beides ist ein anderes Log, und der Recorder muss dazwischen leer sein.
+  // The identity of the log. It changes on a change of room **and** on a change of window:
+  // both are a different log, and the recorder has to be empty in between.
   const key = sid ? sidKey(sid) : (alle ? `alle:${scopeKey}:${sinceHours}` : null);
 
-  // ── Refs: alles, was pro Ereignis angefasst wird, aber kein Rendern auslösen darf ─────────
+  // ── Refs: everything touched per event but not allowed to trigger a render ────────────────
   const recorderRef = useRef<RecorderApi | null>(null);
   if (recorderRef.current === null) recorderRef.current = new Recorder() as RecorderApi;
   const recorder = recorderRef.current;
 
-  /** Ereignisse, die während des Backfills eintreffen. Wird beim Nachziehen geleert. */
+  /** Events arriving during the backfill. Emptied when they are replayed. */
   const bufferRef = useRef<Ev[]>([]);
-  /** `false`, solange der Schnappschuss läuft — dann wird gepuffert statt aufgenommen. */
+  /** `false` while the snapshot runs: then events are buffered instead of taken in. */
   const liveRef = useRef(false);
-  /** Aktuelle Sitzung, damit der Nachrichtenempfänger ohne Neuanmeldung mitzieht.
-   *  Im Modus „alle Sitzungen" bleibt sie leer — dort trennt niemand. */
+  /** The current session, so the message receiver follows without re-subscribing. In the "all
+   *  sessions" mode it stays empty, because nothing is separated there. */
   const sidRef = useRef<string | null>(sid ? sidKey(sid) : null);
   sidRef.current = sid ? sidKey(sid) : null;
-  /** Spiegel für `accept`: der Empfänger hängt am Socket-Effekt und darf nicht bei jedem
-   *  Moduswechsel neu angemeldet werden. */
+  /** Mirror for `accept`: the receiver hangs on the socket effect and must not be
+   *  re-registered on every change of mode. */
   const alleRef = useRef(alle);
   alleRef.current = alle;
 
@@ -289,16 +289,16 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
   const closingRef = useRef(false);
   const rosterRef = useRef<Map<string, RosterEntry>>(new Map());
 
-  // ── Zustand: sechs Werte, mehr sieht React vom Strom nicht ────────────────────────────────
+  // ── State: six values, React sees no more of the stream ───────────────────────────────────
   const [revision, setRevision] = useState(0);
   const [roster, setRoster] = useState<Roster>([]);
   const [live, setLive] = useState(false);
   const [wsError, setWsError] = useState<string | undefined>(undefined);
-  /** > 0 heißt „Socket ist versorgt" und gibt den Schnappschuss frei; jede Erhöhung ist ein
-   *  neuer, **voller** Schnappschuss (Erstverbindung, Wiederverbindung, Notfall ohne Socket). */
+  /** > 0 means "the socket is supplied" and releases the snapshot; every increase is a new,
+   *  **full** snapshot (first connection, reconnect, emergency without a socket). */
   const [generation, setGeneration] = useState(0);
 
-  /** Gedrosseltes Rendersignal. Mehrfach je Tick aufrufen ist ausdrücklich erlaubt. */
+  /** Throttled render signal. Calling it several times per tick is explicitly allowed. */
   const scheduleBump = useCallback(() => {
     if (bumpTimerRef.current !== null) return;
     bumpTimerRef.current = window.setTimeout(() => {
@@ -307,8 +307,8 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     }, REVISION_THROTTLE_MS);
   }, []);
 
-  /** Roster aus einem Grenz-Ereignis fortschreiben. Passiert ein paar Mal je Sitzung, nicht
-   *  je Schritt — deshalb darf es hier echten Zustand anfassen. */
+  /** Carry the roster forward from a boundary event. Happens a few times per session, not per
+   *  step, which is why it may touch real state here. */
   const patchRoster = useCallback((ev: Ev) => {
     if (ev.kind !== "run_start" && ev.kind !== "run_end") return;
     const map = rosterRef.current;
@@ -316,11 +316,11 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     if (ev.kind === "run_start") {
       if (prev) return;                       // der Schnappschuss kennt ihn schon
       const neu = rosterFromRunStart(ev);
-      // Das Ereignis trägt die Projekt-**Id**, nicht den Schlüssel — den kennt nur der
-      // Schnappschuss. Steht schon jemand aus demselben Projekt im Raum, ist der Schlüssel
-      // damit belegt und nicht geraten; sonst bleibt er leer, und die Figur sitzt bis zum
-      // nächsten Schnappschuss unter „(ohne Projekt)". Das ist im Modus „alle Sitzungen"
-      // sichtbar, weil die Reiter dort nach Projekt gruppieren.
+      // The event carries the project **id**, not the key, which only the snapshot knows. If
+      // somebody from the same project already stands in the room, the key is
+      // taken from there and not guessed; otherwise it stays empty and the character sits under
+      // "(no project)" until the next snapshot. That is visible in the "all sessions" mode,
+      // because the tabs group by project there.
       if (neu.project_id !== null) {
         for (const r of map.values()) {
           if (r.project_id === neu.project_id && r.project_key) {
@@ -336,15 +336,15 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     setRoster([...map.values()]);
   }, []);
 
-  /** Ein Ereignis von der Leitung: prüfen, ob es hierher gehört, dann puffern oder aufnehmen. */
+  /** An event from the wire: check whether it belongs here, then buffer or take it in. */
   const accept = useCallback((ev: Ev) => {
-    // Vertragsversion: lieber nichts zeigen als etwas Falsches (siehe `EVENT_VERSION`).
+    // Contract version: better show nothing than something wrong (see `EVENT_VERSION`).
     if (ev.v !== EVENT_VERSION) return;
-    // Der Server filtert nach Projekt, nicht nach Raum — die Sitzung trennt der Client.
-    // Im Modus „alle Sitzungen" gibt es nichts zu trennen: was der Socket liefert, ist
-    // bereits genau das, was dieser Nutzer sehen darf (`api/office_ws.py::visible`), und
-    // der Raum zeigt es zusammen. Es hier trotzdem wegzuwerfen war die eine Zeile, die
-    // die Übersicht bisher unmöglich machte.
+    // The server filters by project, not by room, so the client separates the session. In the
+    // "all sessions" mode there is nothing to separate: what the socket delivers is already
+    // exactly what this user may see (`api/office_ws.py::visible`), and the room shows it
+    // together. Throwing it away here anyway was the one line that made the overview
+    // impossible until now.
     if (!alleRef.current && (!sidRef.current || ev.sid !== sidRef.current)) return;
     if (!liveRef.current) {
       const buf = bufferRef.current;
@@ -358,10 +358,10 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     }
   }, [patchRoster, scheduleBump]);
 
-  // ── Sitzungswechsel: Recorder leeren, wieder in den Backfill ──────────────────────────────
+  // ── Change of session: empty the recorder, back into the backfill ─────────────────────────
   //
-  // Steht vor dem `useQuery`, damit dieser Effekt im selben Durchlauf zuerst läuft: der
-  // Schnappschuss darf nie in einen Recorder fallen, der noch die alte Sitzung hält.
+  // Stands before the `useQuery` so that this effect runs first in the same pass: the snapshot
+  // must never fall into a recorder that still holds the old session.
   useEffect(() => {
     liveRef.current = false;
     bufferRef.current = [];
@@ -372,17 +372,17 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     setRevision((r) => r + 1);
   }, [key]);
 
-  // ── Der Socket ────────────────────────────────────────────────────────────────────────────
+  // ── The socket ────────────────────────────────────────────────────────────────────────────
   //
-  // Hängt nur am Geltungsbereich, nicht an der Sitzung: ein Wechsel des Raums innerhalb
-  // desselben Projekts baut die Verbindung nicht neu auf (`sidRef` zieht mit).
+  // Hangs on the scope only, not on the session: changing rooms inside the same project does
+  // not rebuild the connection (`sidRef` follows).
   useEffect(() => {
     closingRef.current = false;
     attemptRef.current = 0;
     let graceTimer: number | null = null;
 
-    /** Gibt den Schnappschuss frei. Mehrfach aufrufen ist der Normalfall (jede
-     *  Wiederverbindung) — jedes Mal wird ein voller neuer geholt. */
+    /** Releases the snapshot. Calling it several times is the normal case (every reconnect),
+     *  and each time a full new one is fetched. */
     const armSnapshot = () => setGeneration((g) => g + 1);
 
     const clearPing = () => {
@@ -395,7 +395,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
       try {
         ws = new WebSocket(officeWsUrl(getToken()));
       } catch {
-        // Kein Socket möglich (z. B. blockierter Upgrade): der Schnappschuss allein muss reichen.
+        // No socket possible (a blocked upgrade, say): the snapshot alone has to do.
         armSnapshot();
         return;
       }
@@ -405,8 +405,8 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
         attemptRef.current = 0;
         setWsError(undefined);
         ws.send(JSON.stringify(subscribeMessage(scope)));
-        // Erst jetzt den Schnappschuss holen — vorher fiele jede Zeile, die zwischen Lesen
-        // und Abonnieren geschrieben wird, in ein Loch.
+        // Only now fetch the snapshot: before it every row written between reading and
+        // subscribing would fall into a hole.
         armSnapshot();
         clearPing();
         pingTimerRef.current = window.setInterval(() => {
@@ -419,7 +419,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
         try { msg = JSON.parse(e.data as string) as WsIn; } catch { return; }
         if (msg.type === "office_ev") { accept(msg.ev); return; }
         if (msg.type === "hello" && msg.v !== EVENT_VERSION) {
-          // Das Backend spricht einen anderen Vertrag. Nicht raten, nicht wiederverbinden.
+          // The backend speaks a different contract. Do not guess, do not reconnect.
           closingRef.current = true;
           setWsError(`Das Büro spricht Vertragsversion ${msg.v}, diese Ansicht kennt `
             + `${EVENT_VERSION}. Bitte die Seite neu laden.`);
@@ -432,8 +432,8 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
         liveRef.current = false;
         setLive(false);
         if (closingRef.current) return;
-        // 4401/4403 kommen aus der Authentifizierung des Sockets — dagegen hilft kein
-        // Wiederholen. 401 auf dem HTTP-Weg leitet `src/api.ts` ohnehin schon hart weiter.
+        // 4401/4403 come from the authentication of the socket, and retrying does not help. A
+        // 401 on the HTTP path is already redirected hard by `src/api.ts`.
         if (e.code === 4401 || e.code === 4403) {
           setWsError("Keine Berechtigung für den Live-Strom des Büros.");
           return;
@@ -445,8 +445,8 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     };
 
     connect();
-    // Notfallanker: kommt der Socket nicht zustande, wird trotzdem einmal geholt. Ohne das
-    // bliebe die Ansicht schwarz, wo eine statische Ansicht möglich gewesen wäre.
+    // Emergency anchor: if the socket does not come up, it is fetched once anyway. Without that
+    // the view would stay black where a static view was possible.
     graceTimer = window.setTimeout(() => {
       if (wsRef.current?.readyState !== WebSocket.OPEN) armSnapshot();
     }, SOCKET_GRACE_MS);
@@ -464,17 +464,17 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     };
   }, [scopeKey, accept]);   // `accept` ist über `useCallback` stabil
 
-  // ── Der Schnappschuss ─────────────────────────────────────────────────────────────────────
+  // ── The snapshot ──────────────────────────────────────────────────────────────────────────
   //
-  // `staleTime: Infinity`: ein Schnappschuss ist ein Zeitpunkt, kein Wert, der veraltet.
-  // Fortgeschrieben wird über den Socket. Neu geholt wird er nur, wenn `generation` steigt —
-  // also bei einem Loch, und ein Loch ist jede Wiederverbindung.
+  // `staleTime: Infinity`: a snapshot is a moment, not a value that goes stale. It is carried
+  // forward through the socket. It is fetched again only when `generation` rises, so on a hole,
+  // and every reconnect is a hole.
   const snapshot = useQuery({
     queryKey: ["office", "events", key, generation],
     queryFn: () => fetchSnapshot(sid
       ? (afterSeq) => officeApi.events(sid, { limit: EVENT_PAGE_LIMIT, afterSeq })
-      // Der Umfang reist als `project_id` mit — er **verengt** serverseitig und
-      // autorisiert nie; die erlaubte Menge rechnet das Backend ohnehin selbst.
+      // The scope travels along as `project_id`: it **narrows** server side and never
+      // authorises; the allowed set is computed by the backend itself anyway.
       : (afterSeq) => officeApi.allEvents({
         limit: EVENT_PAGE_LIMIT, afterSeq, sinceHours,
         ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
@@ -486,9 +486,9 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     retry: 1,
   });
 
-  // Schritt 4 und 5: Schnappschuss aufnehmen, Puffer nachziehen, live gehen.
-  // Das läuft in EINEM synchronen Block — dazwischen kann keine Nachricht dazwischenkommen,
-  // und genau deshalb braucht der Übergang keine Sperre.
+  // Steps 4 and 5: take the snapshot in, replay the buffer, go live.
+  // This runs in ONE synchronous block: no message can come in between, and exactly for that
+  // reason the transition needs no lock.
   useEffect(() => {
     const data = snapshot.data;
     if (!data) return;
@@ -504,7 +504,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     const buffered = bufferRef.current;
     bufferRef.current = [];
     for (const ev of buffered) {
-      // Doppelte wirft `push` weg — hier wird nichts verglichen. Das ist der ganze Trick.
+      // `push` throws duplicates away, nothing is compared here. That is the whole trick.
       if (rec.push(ev)) patchRoster(ev);
     }
 
@@ -516,14 +516,14 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
 
   // ── Kosten ────────────────────────────────────────────────────────────────────────────────
   //
-  // Eine ganz normale Abfrage: Kosten ändern sich am Laufende, nicht je Schritt. Solange etwas
-  // läuft, wird nachgesehen; danach nicht mehr.
+  // An ordinary query: cost changes at the end of a run, not per step. While something runs it
+  // is checked, afterwards no longer.
   //
-  // Im Modus „alle Sitzungen" gibt es sie **nicht**: der Roll-up ist je Raum gebaut, und ein
-  // Aufruf je gezeigter Sitzung wären zwanzig Runden für eine Summe. `computeTotals` fällt
-  // dann auf den Roster zurück — Tokens stehen dort ohnehin autoritativ, die Kosten sind die
-  // abgerechneten je Lauf, und `cost_priced` trägt das „≥" wie überall sonst. Die Kopfzeile
-  // meint damit die Summe über genau die Sitzungen, die im Raum stehen.
+  // In the "all sessions" mode it does **not** exist: the roll up is built per room, and one
+  // call per shown session would be twenty rounds for one total. `computeTotals` then falls
+  // back to the roster: tokens are authoritative there anyway, the cost is the billed one per
+  // run, and `cost_priced` carries the "≥" as everywhere else. The header then means the total
+  // over exactly the sessions standing in the room.
   const sessionRunning = roster.some((r) => r.status === "running");
   const cost = useQuery({
     queryKey: ["office", "cost", key],
@@ -543,8 +543,8 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
   return { recorder, revision, roster, totals, live, error };
 }
 
-/** Tokens aus dem Roster, Kosten aus dem Roll-up — und wo der Roll-up (noch) fehlt, ehrlich
- *  aus dem Roster, samt „unvollständig", wenn auch nur ein Lauf unbepreist ist. */
+/** Tokens from the roster, cost from the roll up, and where the roll up is (still) missing,
+ *  honestly from the roster, including "incomplete" when even one run is unpriced. */
 function computeTotals(roster: Roster, cost: CostRollup | undefined): FeedTotals {
   if (!roster.length && !cost) return EMPTY_TOTALS;
   let inTok = 0, outTok = 0, cacheTok = 0, running = 0, fallbackCost = 0, unpriced = false;
@@ -554,8 +554,8 @@ function computeTotals(roster: Roster, cost: CostRollup | undefined): FeedTotals
     cacheTok += r.cache_read_tokens || 0;
     fallbackCost += r.cost_usd || 0;
     if (r.status === "running") running++;
-    // `null` = Altzeile, `false` = kein Katalogeintrag. Beides heißt: die Summe ist eine
-    // Untergrenze, und die Anzeige stellt ein „≥" davor.
+    // `null` is an old row, `false` means no catalog entry. Both mean the total is a lower
+    // bound, and the display puts a "≥" in front.
     if (r.cost_priced !== true) unpriced = true;
   }
   const billed = cost?.cost_usd_billed ?? fallbackCost;
