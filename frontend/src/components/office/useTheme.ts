@@ -10,7 +10,6 @@
 // switching. So exactly there is where we listen, with a `MutationObserver` on this one
 // attribute. No `localStorage` polling (the attribute is the truth, the storage only the
 // origin) and no interval (a theme change is an event, not a state one has to poll).
-// abfragen müsste).
 
 import { useEffect, useState } from "react";
 import type { Grade } from "./types.ts";
