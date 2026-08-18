@@ -1,12 +1,12 @@
-"""Artefakte: Zustände nachschlagen und setzen — egal ob Ticket, Hardware oder eigener Typ.
+"""Artifacts: looking up and setting states, whether ticket, hardware or a type of one's own.
 
-Der Prozess-Editor fragt hier, welche Zustände ein Ablauf überhaupt setzen kann (abhängig
-vom Subjekt), und die Aktion `set_status` landet ebenfalls hier. Damit gibt es EINE
-Status-Aktion statt dreier — und die Auswahl zeigt nur, was zum Subjekt passt.
+The process editor asks here which states a flow can set at all (depending on the subject),
+and the action `set_status` lands here as well. That gives ONE status action instead of
+three, and the selection only shows what fits the subject.
 
-Die eingebauten Typen schreiben weiter in ihre gewachsenen Spalten (`issues.agent_status`,
-`hardware_assets.purchase_status`); das Register beschreibt sie nur. So ist der Typ im
-Admin pflegbar, ohne Board, Sprints oder den KI-Lebenszyklus anzufassen.
+The built-in types keep writing into their grown columns (`issues.agent_status`,
+`hardware_assets.purchase_status`); the register only describes them. That way the type is
+maintainable in the admin area without touching board, sprints or the AI lifecycle.
 """
 from __future__ import annotations
 
@@ -19,11 +19,11 @@ from ..models.artifact import Artifact, ArtifactType
 
 log = logging.getLogger("artifacts")
 
-# Subjekt eines Ablaufs → Schlüssel des Artefakt-Typs.
+# Subject of a flow mapped to the key of the artifact type.
 SUBJECT_TYPE = {"issue": "ticket", "hardware_asset": "hardware"}
 
-# Ausgelieferte Typen. Die Schlüssel MÜSSEN den Enum-Werten der jeweiligen Spalte
-# entsprechen — sie werden unverändert gespeichert.
+# Shipped types. The keys MUST correspond to the enum values of the respective column: they
+# are stored unchanged.
 BUILTIN: dict[str, dict] = {
     "ticket": {
         "name": "Ticket", "plural": "Tickets", "icon": "🎫", "color": "#58a6ff",
@@ -39,12 +39,12 @@ BUILTIN: dict[str, dict] = {
 
 
 async def ensure_builtin_types(db: AsyncSession) -> None:
-    """Ticket und Hardware im Register anlegen — samt ihrer eingebauten Felder.
+    """Create ticket and hardware in the register, including their built-in fields.
 
-    Die Zustände sind seit dem Zusammenschluss die Werteliste des Feldes `status` und kein
-    eigenes Modell mehr; sie entstehen deshalb zusammen mit den übrigen eingebauten Feldern
-    (Priorität, Vorgangsart, Sprint, Seriennummer …). Bestehende Einträge werden nie
-    überschrieben — wer eine Beschriftung ändert, behält sie.
+    Since the merge the states are the value list of the field `status` and no longer a model
+    of their own; they therefore come into being together with the other built-in fields
+    (priority, issue type, sprint, serial number …). Existing entries are never overwritten:
+    whoever changes a label keeps it.
     """
     for key, spec in BUILTIN.items():
         t = (await db.execute(select(ArtifactType).where(ArtifactType.key == key))
@@ -74,9 +74,9 @@ async def type_for_subject(db: AsyncSession, subject_kind) -> ArtifactType | Non
 
 
 async def statuses(db: AsyncSession, type_id: int):
-    """Die möglichen Zustände eines Artefakts — die Werteliste des Feldes `status`.
+    """The possible states of an artifact, the value list of the field `status`.
 
-    Liefert `ArtifactFieldOption`; `value` ist der gespeicherte Zustand (früher `key`).
+    Delivers `ArtifactFieldOption`; `value` is the stored state (formerly `key`).
     """
     from .artifact_fields import status_options
     return await status_options(db, type_id)
@@ -85,16 +85,16 @@ async def statuses(db: AsyncSession, type_id: int):
 async def ensure_for_asset(db: AsyncSession, asset) -> Artifact:
     """Gemeinsame Artefakt-Zeile eines Hardware-Exemplars — anlegen, falls sie fehlt.
 
-    Sie trägt Identität, Projekt und Zustand; die hardware-eigenen Felder (Modell, Ort,
-    Kosten …) bleiben in `hardware_assets`. Damit zeigen Prozesse, Verweise und Freigaben
-    auf dasselbe Objekt wie bei jedem anderen Artefakt.
+    It carries identity, project and state; the hardware-owned fields (model, place, cost …)
+    stay in `hardware_assets`. That way processes, references and approvals point at the same
+    object as with every other artifact.
     """
     if asset.artifact_id:
         vorhanden = await db.get(Artifact, asset.artifact_id)
         if vorhanden is not None:
             return vorhanden
     typ = await type_by_key(db, "hardware")
-    if typ is None:                       # Register noch nicht geseedet
+    if typ is None:                       # register not seeded yet
         await ensure_builtin_types(db)
         typ = await type_by_key(db, "hardware")
     from ..models.hardware import HardwareModel
@@ -132,7 +132,7 @@ async def ensure_for_issue(db: AsyncSession, issue) -> Artifact:
 
 
 async def sync_issue_artifact(db: AsyncSession, issue) -> None:
-    """Titel/Projekt/Zustand der Artefakt-Zeile am Ticket nachziehen."""
+    """Update title, project and state of the artifact row on the ticket."""
     art = await ensure_for_issue(db, issue)
     art.project_id = issue.project_id
     art.title = (issue.summary or issue.key)[:500]
@@ -140,7 +140,7 @@ async def sync_issue_artifact(db: AsyncSession, issue) -> None:
 
 
 async def sync_asset_artifact(db: AsyncSession, asset) -> None:
-    """Titel/Projekt/Zustand der Artefakt-Zeile am Exemplar nachziehen."""
+    """Update title, project and state of the artifact row on the unit."""
     art = await ensure_for_asset(db, asset)
     art.project_id = asset.project_id
     art.status_key = getattr(asset.purchase_status, "value", str(asset.purchase_status or ""))
@@ -148,12 +148,12 @@ async def sync_asset_artifact(db: AsyncSession, asset) -> None:
 
 async def set_ticket_status(db: AsyncSession, issue, status, *, reason=None,
                             board: bool = True) -> None:
-    """Der EINE Weg, den Zustand eines Tickets zu ändern.
+    """The ONE way to change the state of a ticket.
 
-    Schreibt Artefakt-Zeile und Ticket-Spalte in einem Zug — damit kann kein Auseinanderlaufen
-    entstehen, statt es hinterher per Abgleich einzufangen. `status`/`reason` dürfen Enum oder
-    Zeichenkette sein; `board=False` lässt die Board-Spalte unangetastet (z. B. beim Abziehen
-    eines Agenten, wo das Ticket bewusst stehen bleibt).
+    Writes the artifact row and the ticket column in one go, so no drift can come into being
+    instead of being caught afterwards by a reconciliation. `status`/`reason` may be an enum
+    or a string; `board=False` leaves the board column untouched (for instance when pulling an
+    agent off, where the ticket deliberately stays where it is).
     """
     from ..models.enums import HoldReason, TicketAgentStatus
 
@@ -177,7 +177,7 @@ async def set_ticket_status(db: AsyncSession, issue, status, *, reason=None,
 
 
 async def set_asset_status(db: AsyncSession, asset, status) -> None:
-    """Der EINE Weg, den Zustand eines Hardware-Exemplars zu ändern (mit Datumsfeldern)."""
+    """The ONE way to change the state of a hardware unit (with date fields)."""
     import datetime as _dt
 
     from ..models.enums import PurchaseStatus
@@ -196,11 +196,10 @@ async def set_asset_status(db: AsyncSession, asset, status) -> None:
 async def apply_status(db: AsyncSession, *, subject_kind, issue=None, asset=None,
                        artifact: Artifact | None = None, status_key: str,
                        reason: str = "", notify: bool = True) -> dict:
-    """Zustand eines Artefakts setzen — der eine Weg für alle Typen.
+    """Set the state of an artifact, the one way for all types.
 
-    Ticket und Hardware schreiben in ihre gewachsenen Spalten und lösen dieselben
-    Folgewirkungen aus wie bisher (Board-Spalte, Meldung, Datumsfelder). Ein generischer
-    Typ speichert schlicht seinen Schlüssel.
+    Ticket and hardware write into their grown columns and trigger the same consequences as
+    before (board column, message, date fields). A generic type simply stores its key.
     """
     art = getattr(subject_kind, "value", str(subject_kind))
 
@@ -238,10 +237,10 @@ async def apply_status(db: AsyncSession, *, subject_kind, issue=None, asset=None
 
 
 async def backfill_hardware_artifacts(db: AsyncSession) -> int:
-    """Bestandsexemplare an ihre Artefakt-Zeile hängen (idempotent, beim Start).
+    """Hang existing units off their artifact row (idempotent, at start).
 
-    Setzt zugleich die Artefakt-Bindung laufender Beschaffungs-Prozesse, damit sie nicht
-    weiter nur über `hardware_asset_id` hängen.
+    Also sets the artifact binding of running procurement processes so that they no longer
+    hang off `hardware_asset_id` alone.
     """
     from ..models.hardware import HardwareAsset
     from ..models.workflow import WorkflowInstance
@@ -269,17 +268,17 @@ async def backfill_hardware_artifacts(db: AsyncSession) -> int:
 
 
 async def reconcile(db: AsyncSession) -> dict:
-    """Artefakt-Zeilen an die Detailtabellen angleichen — für Tickets UND Hardware.
+    """Align artifact rows with the detail tables, for tickets AND hardware.
 
-    Warum ein Abgleichlauf statt Aufrufen an jeder Schreibstelle: `agent_status` wird an 21
-    Stellen in 10 Dateien gesetzt (Endpunkte, Telegram-Bot, PM-Chat, Worker,
-    Prozess-Aktionen). Jede einzeln nachzuziehen wäre eine offene Fehlerquelle — dieser Lauf
-    erfasst sie per Konstruktion. Er läuft beim Start und im 30-Sekunden-Tick der
-    Prozess-Engine; die häufigen Wege (`apply_status`) schreiben zusätzlich sofort mit.
+    Why a reconciliation pass instead of calls at every write site: `agent_status` is set in
+    21 places in 10 files (endpoints, Telegram bot, PM chat, worker,
+    process actions). Updating each one separately would be an open source of errors; this
+    pass covers them by construction. It runs at start and in the 30 second tick of the
+    process engine; the frequent paths (`apply_status`) write along immediately as well.
 
-    Bewusst in dialekt-neutralem SQLAlchemy statt in rohem SQL: so läuft derselbe Code unter
-    Postgres wie unter der SQLite der Tests — und damit ist er überhaupt testbar. Die
-    Abweichungen filtert die Datenbank, es werden nur betroffene Zeilen geladen.
+    Deliberately in dialect-neutral SQLAlchemy instead of raw SQL: that way the same code runs
+    under Postgres as under the SQLite of the tests, which makes it testable at all. The
+    deviations are filtered by the database, and only affected rows are loaded.
     """
     from sqlalchemy import String, cast, func, or_
 
@@ -325,22 +324,22 @@ async def reconcile(db: AsyncSession) -> dict:
         art.project_id = asset.project_id
     ergebnis["hardware_angeglichen"] = len(hardware_drift)
 
-    # 3) Wer arbeitet, steht auf „In Arbeit".
+    # 3) Whoever works stands on "in progress".
     #
-    # Die Regel ist einfach und gilt ohne Ausnahme: läuft für ein Ticket gerade ein Agent,
-    # dann ist es NICHT „Warten". Sie hier durchzusetzen statt an jeder Startstelle ist
-    # dieselbe Überlegung wie beim Rest dieses Abgleichs — ein Lauf startet an mehreren
-    # Wegen (Prozess-Schritt, Review-Runde im Worker, Wiedervorlage der Reliable-Queue nach
-    # einem Neustart), und nur der letzte davon geht durch den Graphen.
+    # The rule is simple and holds without exception: if an agent is running for a ticket,
+    # then it is NOT "waiting". Enforcing it here instead of at every start site is the same
+    # consideration as with the rest of this reconciliation: a run starts over several paths
+    # (process step, review round in the worker, follow-up of the reliable queue after a
+    # restart), and only the last of them goes through the graph.
     #
-    # Am 2026-08-07 lief genau das schief: nach einem Worker-Neustart holte die Recovery zwei
-    # Aufträge zurück, die Agenten arbeiteten — und das Board zeigte „Warten", weil den
-    # Zustand niemand angefasst hatte.
-    # Geprüft wird der ZUSTAND UND DIE SPALTE. Die Regel gilt dem Board, und das kann auch
-    # dann falsch stehen, wenn `agent_status` längst stimmt: TRA-32 am 2026-08-07 wurde aus
-    # dem Störungs-Zweig heraus fortgesetzt, der Agent lief mit `in_progress` — die Spalte
-    # blieb auf „Warten", weil sie beim Parken gesetzt und nie wieder angefasst wurde. Ein
-    # Abgleich, der nur auf `agent_status` schaut, sieht daran nichts Falsches.
+    # On 2026-08-07 exactly that went wrong: after a worker restart the recovery fetched two
+    # assignments back, the agents worked, and the board showed "waiting", because nobody had
+    # touched the state.
+    # What is checked is the STATE AND THE COLUMN. The rule concerns the board, and that can
+    # be wrong even when `agent_status` has long been right: TRA-32 on 2026-08-07 was
+    # continued out of the disturbance branch, the agent ran with `in_progress`, and the
+    # column stayed on "waiting" because it was set while parking and never touched again. A
+    # reconciliation that only looks at `agent_status` sees nothing wrong with that.
     from ..models.agents import Run
     from ..models.enums import TicketAgentStatus as _TS
     from .dispatcher import sync_board_status
@@ -348,8 +347,8 @@ async def reconcile(db: AsyncSession) -> dict:
         select(Issue, Run.phase)
         .join(Run, Run.issue_id == Issue.id)
         .where(Run.status == "running", Run.finished_at.is_(None),
-               # `done` bleibt unangetastet: ein abgenommenes Ticket wird nicht
-               # zurückgezogen, nur weil noch ein Lauf nachläuft.
+               # `done` stays untouched: an accepted ticket is not pulled back just because
+               # a run is still trailing.
                Issue.agent_status.is_distinct_from(_TS.done)))).all()
     gesehen: set[int] = set()
     for issue, phase in laufend:
@@ -359,7 +358,7 @@ async def reconcile(db: AsyncSession) -> dict:
         ziel = _TS.planning if phase == "planning" else _TS.in_progress
         vorher = (getattr(issue.agent_status, "value", "—"), issue.status_id)
         if issue.agent_status in (_TS.planning, _TS.in_progress):
-            await sync_board_status(db, issue)   # Zustand stimmt, nur die Spalte hinkt
+            await sync_board_status(db, issue)   # the state is right, only the column lags
         else:
             await set_ticket_status(db, issue, ziel)
         issue.agent_working = True
@@ -369,7 +368,7 @@ async def reconcile(db: AsyncSession) -> dict:
                      getattr(issue.agent_status, "value", "—"), issue.status_id)
     ergebnis["laufende_richtiggestellt"] = len(gesehen)
 
-    # 4) Prozess-Instanzen an ihr Artefakt binden (löst die Spezial-Spalten ab).
+    # 4) Bind process instances to their artifact (superseding the special columns).
     from ..models.workflow import WorkflowInstance
     lose = (await db.execute(
         select(WorkflowInstance, Issue.artifact_id)

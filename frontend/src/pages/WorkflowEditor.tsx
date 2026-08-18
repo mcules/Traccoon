@@ -59,7 +59,7 @@ function defaultConfig(type: WorkflowNodeType): NodeConfig {
   }
 }
 
-/** Label einer neuen Kante aus Quell-Knoten + sourceHandle ableiten. */
+/** Derive the label of a new edge from the source node plus sourceHandle. */
 function connectionLabel(nodes: FlowNode[], c: Connection): string | undefined {
   const src = nodes.find((n) => n.id === c.source);
   if (!src) return undefined;
@@ -87,17 +87,17 @@ export default function WorkflowEditor() {
   const project = useMemo(() => projects?.find((p) => p.key === key), [projects, key]);
 
   const { data: def } = useQuery({ queryKey: ["workflow", wfId], queryFn: () => workflowApi.get(wfId) });
-  // Bearbeitbare Draft-Version. Fehlt das Schreibrecht (z. B. ein Ablauf aus dem
-  // ausgelieferten Satz, den nur ein Admin ändern darf), fällt die Ansicht auf die
-  // veröffentlichte Version zurück — schauen darf jeder, ändern nicht.
+  // Editable draft version. If the write permission is missing (for instance a flow from the
+  // shipped set that only an admin may change), the view falls back to the published
+  // version: looking is allowed for everyone, changing is not.
   const { data: version, error: versionError } = useQuery({
     queryKey: ["workflow-editable", wfId],
     queryFn: () => workflowApi.editable(wfId),
     retry: false,
   });
   const nurLesen = versionError instanceof ApiError && versionError.status === 403;
-  // Immer laden, nicht nur beim Nur-Lesen: daraus ergibt sich, welche Fassung draußen
-  // gilt — und ob der Entwurf vor einem liegt.
+  // Always loaded, not only in read-only mode: it shows which version applies out there, and
+  // whether the draft is ahead of it.
   const { data: veroeffentlicht } = useQuery({
     queryKey: ["workflow-versions", wfId],
     queryFn: () => workflowApi.versions(wfId),
@@ -113,9 +113,9 @@ export default function WorkflowEditor() {
 
   const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
-  /** Wird ein Knoten per Taste gelöscht, müssen seine Kanten AUS DEM VOLLEN Graphen weg —
-   *  in der gefilterten Sicht kennt React Flow die ausgeblendeten Kanten nicht und ließe
-   *  sonst Verweise ins Leere zurück. */
+  /** When a node is deleted with a key, its edges have to go FROM THE FULL graph: in the
+   *  filtered view React Flow does not know the hidden edges and would otherwise leave
+   *  references pointing nowhere. */
   const handleNodesChange = useCallback(
     (changes: Parameters<typeof onNodesChange>[0]) => {
       const weg = changes.filter((c) => c.type === "remove").map((c) => c.id);
@@ -128,7 +128,7 @@ export default function WorkflowEditor() {
     [onNodesChange, setEdges],
   );
 
-  /** Gelöschte Verbindungen sind eine echte Änderung — das muss man auch sehen. */
+  /** Deleted connections are a real change, and that has to be visible. */
   const handleEdgesChange = useCallback(
     (changes: Parameters<typeof onEdgesChange>[0]) => {
       const weg = changes.filter((c) => c.type === "remove").length;
@@ -138,22 +138,21 @@ export default function WorkflowEditor() {
     [onEdgesChange],
   );
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  /** „Hauptweg" blendet die Störungs-Zweige aus — der rote Faden bleibt übrig. */
+  /** "Main path" hides the disturbance branches, leaving the red thread. */
   const [nurHauptweg, setNurHauptweg] = useState(false);
-  /** Ziel für den Blick nach dem Anordnen (Start-Knoten, oben mittig). */
+  /** Target for the view after arranging (start node, top centre). */
   const [fokus, setFokus] = useState<{ x: number; y: number; token: number } | undefined>();
   const [errors, setErrors] = useState<string[]>([]);
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
   const seeded = useRef(false);
-  // Der zuletzt gespeicherte Graph als Text. Daran hängt die einzige Frage, die man beim
-  // Verlassen des Editors wirklich hat: ist das hier schon gesichert? Vorher stand dort
-  // eine Meldung, die nach dem nächsten Klick verschwand — und danach wusste es niemand
-  // mehr.
+  // The last saved graph as text. On it hangs the only question one really has when leaving
+  // the editor: is this saved yet? Before, there was a message that disappeared after the
+  // next click, and after that nobody knew any more.
   const gesichert = useRef<string>("");
-  const [stand, setStand] = useState(0);   // zwingt die Kopfzeile zum Nachrechnen
+  const [stand, setStand] = useState(0);   // forces the header to recompute
 
-  // Abstand für „Anordnen" — global vom Admin gesetzt.
+  // Spacing for "arrange", set globally by the admin.
   const { data: layoutCfg } = useQuery({
     queryKey: ["workflow-layout"],
     queryFn: workflowApi.layout,
@@ -161,7 +160,7 @@ export default function WorkflowEditor() {
   });
   const gap = layoutCfg?.gap ?? DEFAULT_GAP;
 
-  // Graph einmalig aus der Draft-Version übernehmen.
+  // Take the graph over from the draft version once.
   useEffect(() => {
     if (ansicht && !seeded.current) {
       const graph = needsLayout(ansicht.graph) ? layoutGraph(ansicht.graph, { gap }) : ansicht.graph;
@@ -192,8 +191,8 @@ export default function WorkflowEditor() {
     [nodes, setEdges]
   );
 
-  // Am Handy passen die drei Spalten nicht nebeneinander: gezeigt wird immer eine, und der
-  // Wechsel hängt an dieser Auswahl. Am Schreibtisch bleibt alles, wie es war.
+  // On a phone the three columns do not fit beside each other: one is always shown, and the
+  // switch hangs off this selection. On the desktop everything stays as it was.
   const schmal = useSchmal();
   const [spalte, setSpalte] = useState<"flaeche" | "baustein">("flaeche");
 
@@ -204,13 +203,13 @@ export default function WorkflowEditor() {
       setNodes((ns) => ns.concat(node));
       setSelectedId(id2);
 
-      // Ein Baustein, der in der Luft hängt, ist ein Validierungsfehler und Handarbeit
-      // obendrein: erst ziehen, dann zwei Verbindungen nachziehen. Also verbinden, wo die
-      // Absicht eindeutig ist — auf einer Linie abgelegt heißt „dazwischen", bei
-      // ausgewähltem Knoten heißt es „dahinter". Sonst bleibt er frei stehen.
+      // A building block hanging in the air is a validation error and manual work on top:
+      // first drag, then draw two connections. So connect where the intention is
+      // unambiguous: dropped on a line means "in between", with a selected node it means
+      // "behind it". Otherwise it stands free.
       setEdges((es) => {
-        /** Baustein in eine bestehende Verbindung schieben: sie endet jetzt bei ihm, und
-         *  von ihm geht sie weiter. Ein Ende-Baustein schließt den Weg ab. */
+        /** Push a building block into an existing connection: it now ends at the block, and
+         *  from the block it continues. An end block closes the path. */
         const einschieben = (kante: typeof es[number]) => {
           const rest = es.filter((e) => e.id !== kante.id);
           const hinein = { ...kante, id: `e-${kante.source}-${kante.sourceHandle || "out"}-${id2}`,
@@ -225,14 +224,14 @@ export default function WorkflowEditor() {
           return treffer ? einschieben(treffer) : es;
         }
 
-        // Kein Treffer auf einer Linie: hinter den ausgewählten Knoten. Hängt dort schon
-        // etwas, wird eingeschoben statt danebengestellt — „dahinter" ist die Erwartung,
-        // und ein Baustein in der Luft ist Handarbeit plus Validierungsfehler.
+        // No hit on a line: behind the selected node. If something already hangs there, it is
+        // inserted instead of placed beside it: "behind" is the expectation, and a block in
+        // the air is manual work plus a validation error.
         const quelle = nodes.find((n) => n.id === selectedId);
         if (!quelle || quelle.id === id2 || quelle.type === "end") return es;
 
-        // Verzweigung, Freigabe und Schleife haben benannte Ausgänge — dort wird nicht
-        // geraten, sondern der erste noch freie genommen.
+        // Branch, approval and loop have named exits; there nothing is guessed, the first
+        // still free one is taken.
         const benannt: Record<string, string[]> = {
           decision: (quelle.data.config.branches || []).map((b) => b.handle),
           approval: ["approved", "rejected"],
@@ -245,7 +244,7 @@ export default function WorkflowEditor() {
           return es.concat({ id: `e-${quelle.id}-${frei}-${id2}`, source: quelle.id,
                              target: id2, sourceHandle: frei === "out" ? undefined : frei });
         }
-        // Alles belegt: in die erste ausgehende Verbindung einschieben.
+        // Everything taken: insert into the first outgoing connection.
         const raus = es.find((e) => e.source === quelle.id);
         return raus ? einschieben(raus) : es;
       });
@@ -253,8 +252,8 @@ export default function WorkflowEditor() {
     [setNodes, setEdges, nodes, selectedId]
   );
 
-  /** Baustein per Tipp: er landet unter dem ausgewählten (oder unter dem letzten), den Rest
-   *  — Verbinden, Auswählen — erledigt `onDropNode`. */
+  /** Building block by tap: it lands under the selected one (or under the last one), and the
+   *  rest, connecting and selecting, is done by `onDropNode`. */
   const anhaengen = useCallback((type: WorkflowNodeType) => {
     const bezug = nodes.find((n) => n.id === selectedId) || nodes[nodes.length - 1];
     const pos = bezug
@@ -280,8 +279,8 @@ export default function WorkflowEditor() {
     [selectedId, setNodes, setEdges]
   );
 
-  /** Alle Knoten neu von oben nach unten anordnen (auch alte LR-Graphen).
-   *  Rechnet mit den GEMESSENEN Kartengrößen, damit der Abstand überall gleich ausfällt. */
+  /** Rearrange all nodes from top to bottom (old LR graphs as well).
+   *  Computes with the MEASURED card sizes so that the spacing comes out the same everywhere. */
   const autoLayout = useCallback(() => {
     const sizes = new Map(
       nodes
@@ -291,8 +290,8 @@ export default function WorkflowEditor() {
     const laid = layoutGraph(flowToGraph(nodes, edges), { gap, sizes });
     const pos = new Map(laid.nodes.map((n) => [n.id, n.position]));
     setNodes((ns) => ns.map((n) => (pos.has(n.id) ? { ...n, position: pos.get(n.id)! } : n)));
-    // Blick auf den Anfang setzen: die neuen Koordinaten stehen hier schon fest, deshalb
-    // brauchen wir nicht auf das Neuzeichnen zu warten.
+    // Set the view on the beginning: the new coordinates are already fixed here, so there is
+    // no need to wait for the redraw.
     const start = nodes.find((n) => n.type === "start");
     const ziel = start && pos.get(start.id);
     if (ziel) {
@@ -304,8 +303,8 @@ export default function WorkflowEditor() {
 
   const clientErrors = useMemo(() => validateGraph(flowToGraph(nodes, edges)), [nodes, edges]);
 
-  // Gefilterte Sicht: ausgeblendete Knoten samt ihrer Kanten verschwinden nur optisch —
-  // gespeichert wird IMMER der vollständige Graph (`nodes`/`edges`).
+  // Filtered view: hidden nodes and their edges disappear only optically; what is saved is
+  // ALWAYS the complete graph (`nodes`/`edges`).
   const hatGruppen = useMemo(() => nodes.some((n) => n.data.config.group), [nodes]);
   const sichtbar = useMemo(() => {
     if (!nurHauptweg) return { nodes, edges };
@@ -371,20 +370,20 @@ export default function WorkflowEditor() {
     }
   };
 
-  // Ungespeichert? Der Vergleich läuft gegen den zuletzt gesicherten Graphen — auch eine
-  // verschobene Karte zählt, denn Positionen werden mitgespeichert.
+  // Unsaved? The comparison runs against the last saved graph, and a moved card counts too,
+  // because positions are saved along.
   const jetzt = useMemo(() => graphSignatur(flowToGraph(nodes, edges)), [nodes, edges]);
   const geaendert = !nurLesen && seeded.current && jetzt !== gesichert.current;
 
-  // Und welche Fassung gilt draußen? Drei Lagen, die man auseinanderhalten muss: noch nie
-  // veröffentlicht, veröffentlicht und identisch, oder veröffentlicht und der Entwurf ist
-  // weiter. Die dritte war bisher unsichtbar — man baut um, freut sich, und draußen läuft
-  // weiter die alte Fassung.
+  // And which version applies out there? Three situations that have to be told apart: never
+  // published, published and identical, or published with the draft ahead. The third was
+  // invisible until now: you rebuild, are happy, and out there the old version keeps
+  // running.
   const liveVersion = veroeffentlicht?.find((v) => v.id === def?.current_version_id);
-  // Verglichen wird der INHALT, nicht die Versionsnummer: der Editor legt beim Öffnen eine
-  // frische Entwurfsfassung an, die zwar eine neue Nummer trägt, aber Zeichen für Zeichen
-  // dasselbe enthält. Nach der Nummer zu gehen hieße, jeden Ablauf beim bloßen Anschauen
-  // als „nicht veröffentlicht" auszuweisen.
+  // What is compared is the CONTENT, not the version number: on opening, the editor creates a
+  // fresh draft version that carries a new number but contains the same thing character for
+  // character. Going by the number would mean marking every flow as "not published" on mere
+  // viewing.
   const gleichWieLive = !!liveVersion && jetzt === graphSignatur(liveVersion.graph);
   const veroeffentlichung = !def?.current_version_id
     ? { text: tr("editor.nie_veroeffentlicht"), stil: "text-muted",
@@ -395,8 +394,8 @@ export default function WorkflowEditor() {
       : { text: `weicht von v${liveVersion?.version ?? "?"} ab`, stil: "text-amber-300",
           titel: tr("editor.abweichung_titel") };
 
-  // Beim Verlassen des Fensters mit ungespeicherter Arbeit nachfragen — der Browser
-  // erlaubt nur seinen eigenen Text, aber die Rückfrage selbst ist der Punkt.
+  // Ask when leaving the window with unsaved work: the browser only allows its own text, but
+  // the question itself is the point.
   useEffect(() => {
     if (!geaendert) return;
     const warnen = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
@@ -405,8 +404,8 @@ export default function WorkflowEditor() {
   }, [geaendert]);
 
   const allErrors = errors.length ? errors : clientErrors;
-  // Welche Kontextfelder dieser Ablauf hat, ergibt sich aus seinem Auslöser und seinen
-  // Schritten — der Katalog dazu kommt aus dem Backend, damit er nicht auseinanderläuft.
+  // Which context fields this flow has follows from its trigger and its steps; the catalog
+  // for that comes from the backend so that it does not drift apart.
   const kontextFelder = useMemo(
     () => verfuegbareFelder(nodes, katalog), [nodes, katalog]);
   const herkunft = (ort.state as { from?: string } | null)?.from
@@ -418,11 +417,11 @@ export default function WorkflowEditor() {
       {/* Kopfzeile */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-card px-3 py-2 sm:px-4">
         <button
-          // Zurück dorthin, wo man hergekommen ist. Der Aufrufer gibt seine eigene Adresse
-          // als `state.from` mit; nur wenn sie fehlt (Lesezeichen, neu geladene Seite), wird
-          // sie aus dem Ablauf selbst erschlossen — Projekt-Ablauf zur Projektübersicht,
-          // Slot-Ablauf zum Standard-Satz, freier Ablauf zu den eigenen Prozessen. Vorher
-          // landete ein Slot-Ablauf in den Einstellungen, wo er gar nicht steht.
+          // Back to where one came from. The caller passes its own address as `state.from`;
+          // only when that is missing (bookmark, reloaded page) is it derived from the flow
+          // itself: a project flow to the project overview, a slot flow to the default set, a
+          // free flow to one's own processes. Before, a slot flow landed in the settings,
+          // where it does not stand at all.
           onClick={() => {
             if (geaendert && !confirm(tr("editor.zurueck_trotz_aenderungen"))) return;
             nav(herkunft);
@@ -567,8 +566,8 @@ export default function WorkflowEditor() {
           {!nurLesen && <BaumeisterPanel defId={def?.id} knotenZahl={nodes.length}
               graph={() => flowToGraph(nodes, edges)}
               uebernehmen={(g) => {
-                // Der Entwurf bringt keine Größen mit — erst anordnen, dann zeichnen,
-                // sonst klebt alles im selben Raster übereinander.
+                // The draft brings no sizes with it: arrange first, then draw, otherwise
+                // everything sticks on top of each other in the same grid.
                 const flow = graphToFlow(needsLayout(g) ? layoutGraph(g, { gap }) : g);
                 setNodes(flow.nodes);
                 setEdges(flow.edges);
