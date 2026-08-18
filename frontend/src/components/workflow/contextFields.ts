@@ -2,15 +2,15 @@ import type { FlowNode } from "./nodes/shared";
 import { tr } from "../../i18n";
 
 /**
- * Welche Kontextfelder stehen in DIESEM Ablauf zur Verfügung?
+ * Which context fields are available in THIS flow?
  *
- * Der Katalog aus dem Backend sagt, wer was in den Kontext schreibt (Auslöser, Aktionen,
- * Knotentypen). Was davon hier gilt, verrät der Graph selbst: sein Trigger-Ereignis, die
- * Aktionen, die er benutzt, und die Schlüssel, die er sich per `set_context` selbst legt.
+ * The catalog from the backend says who writes what into the context (triggers, actions,
+ * node types). Which of those apply here is revealed by the graph itself: its trigger event,
+ * the actions it uses and the keys it puts down itself over `set_context`.
  *
- * Bewusst nicht nach Reihenfolge gefiltert: ob ein Feld an dieser Stelle schon geschrieben
- * wurde, hängt vom gelaufenen Weg ab, nicht von der Zeichnung. Lieber ein Feld zu viel
- * anbieten als eines verschweigen, das es gibt.
+ * Deliberately not filtered by order: whether a field has already been written at this point
+ * depends on the path taken, not on the drawing. Better to offer one field too many than to
+ * conceal one that exists.
  */
 export interface KontextFeld {
   pfad: string;
@@ -22,7 +22,7 @@ export interface KontextFeld {
 export interface KontextFilter { name: string; hilfe: string }
 
 export interface KontextKatalog {
-  /** Filter für Vorlagen: {{ pfad | filter:argument }} */
+  /** Filter for templates: {{ path | filter:argument }} */
   filter?: KontextFilter[];
   basis: Omit<KontextFeld, "quelle">[];
   ausloeser: Record<string, Omit<KontextFeld, "quelle">[]>;
@@ -57,13 +57,13 @@ export function verfuegbareFelder(
 
   nimm(katalog.basis, "immer da");
 
-  // Auslöser: das Ereignis am Start-Knoten. Ohne Trigger kann der Ablauf von einem Webhook
-  // oder Job angestoßen werden — dessen Nutzlast steht als eigener Eintrag im Katalog.
+  // Trigger: the event on the start node. Without a trigger the flow can be started by a
+  // webhook or a job, whose payload stands as an entry of its own in the catalog.
   const start = nodes.find((n) => n.type === "start");
   const ev = start ? (cfgOf(start).trigger?.event as string | undefined) : undefined;
 
-  // Beispiel-Nutzlast am Start: was ein fremdes System schickt, weiß nur der Mensch.
-  // Einmal eingefügt, kennt der Editor die Felder — inklusive verschachtelter.
+  // Example payload at the start: only the human knows what a foreign system sends. Once
+  // inserted, the editor knows the fields, nested ones included.
   const probe = start ? cfgOf(start).trigger?.sample : undefined;
   if (probe && typeof probe === "object") {
     const wandern = (wert: any, pfad: string, tiefe: number) => {
@@ -93,7 +93,7 @@ export function verfuegbareFelder(
     const aktion = aktionsName(n);
     if (aktion && katalog.aktionen[aktion]) nimm(katalog.aktionen[aktion], `Schritt „${aktion}“`);
     if (n.type && katalog.knoten[n.type]) nimm(katalog.knoten[n.type], `Knoten ${n.type}`);
-    // Selbst gelegte Schlüssel: die kennt nur dieser Graph.
+    // Keys put down by the flow itself: only this graph knows those.
     if (aktion === "set_context") {
       const roh = cfgOf(n).action?.params ?? cfgOf(n);
       const zuweisungen = (roh?.set && typeof roh.set === "object" ? roh.set : roh) || {};

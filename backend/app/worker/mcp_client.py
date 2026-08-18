@@ -1,5 +1,5 @@
-"""Minimaler MCP-Gateway-Client (streamable-http). Optional: ist MCP_GATEWAY_URL
-nicht gesetzt, liefert die Session keine Tools (Agent nutzt nur eingebaute Tools)."""
+"""Minimal MCP gateway client (streamable-http). Optional: when MCP_GATEWAY_URL is not set,
+the session delivers no tools (the agent then uses only built-in tools)."""
 from __future__ import annotations
 
 import json
@@ -32,12 +32,12 @@ class McpSession:
         self._token = token
         self._client: httpx.AsyncClient | None = None
         self._extra_headers: dict[str, str] = {}
-        self._session_id: str | None = None   # Streamable-HTTP: Mcp-Session-Id aus initialize
+        self._session_id: str | None = None   # streamable HTTP: Mcp-Session-Id from initialize
         self._id = 0
 
     def _headers(self) -> dict[str, str]:
         # Streamable-HTTP-Server (z. B. MCPJungle) verlangen text/event-stream im Accept
-        # und die Session-ID aus der initialize-Antwort auf allen Folge-Requests.
+        # and the session id from the initialize answer on all following requests.
         h = {"content-type": "application/json",
              "accept": "application/json, text/event-stream", **self._extra_headers}
         if self._token:
@@ -48,7 +48,7 @@ class McpSession:
 
     @staticmethod
     def _parse_body(r: httpx.Response) -> dict:
-        # Antwort ist JSON oder SSE (data:-Zeilen) — beides tolerieren.
+        # The answer is JSON or SSE (data: lines); tolerate both.
         ct = r.headers.get("content-type", "")
         if "text/event-stream" in ct:
             for line in r.text.splitlines():
@@ -76,7 +76,7 @@ class McpSession:
         assert self._client is not None
         r = await self._client.post(self._base, headers=self._headers(),
                                     json={"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
-        # Session-ID aus der initialize-Antwort merken (für alle Folge-Requests).
+        # Remember the session id from the initialize answer (for all following requests).
         if method == "initialize":
             sid = r.headers.get("mcp-session-id")
             if sid:
@@ -104,10 +104,10 @@ class McpSession:
 
 
 class MultiMcpSession:
-    """Bündelt globales Gateway + projekteigene MCP-Server hinter einer Session.
+    """Bundles the global gateway plus project-owned MCP servers behind one session.
 
-    Tools der Zusatz-Server bekommen ein `<servername>__`-Präfix — das trennt
-    Namensgleiche und sagt beim Aufruf, wohin der Call gehört.
+    Tools of the additional servers get a `<servername>__` prefix, which separates ones with
+    the same name and says where the call belongs on invocation.
     """
 
     def __init__(self) -> None:
@@ -135,11 +135,11 @@ class MultiMcpSession:
 @asynccontextmanager
 async def mcp_session(agent_name: str = "", servers: list[dict] | None = None,
                       gateway_url: str | None = None, gateway_token: str | None = None):
-    """servers: [{name, url, headers}] — HTTP/SSE-Server aus der MCP-Registry.
+    """servers: [{name, url, headers}], HTTP/SSE servers from the MCP registry.
 
-    gateway_url/gateway_token: owner-eigener MCPJungle-Gruppen-Endpoint (harte
-    Per-User-Trennung). Fällt auf das globale MCP_GATEWAY_URL/TOKEN zurück, wenn
-    nicht gesetzt. stdio-Server werden hier nicht bedient.
+    gateway_url/gateway_token: the owner's own MCPJungle group endpoint (hard
+    per-user separation). Falls back to the global MCP_GATEWAY_URL/TOKEN when it is not set.
+    stdio servers are not served here.
     """
     gw_url = gateway_url if gateway_url is not None else MCP_GATEWAY_URL
     gw_token = gateway_token if gateway_token is not None else MCP_GATEWAY_TOKEN
@@ -166,7 +166,7 @@ async def _init(session: McpSession) -> None:
     try:
         await session._rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {},
                                           "clientInfo": {"name": "traccoon", "version": "0.1"}})
-        # Streamable-HTTP-Handshake: initialized-Notification nach initialize.
+        # Streamable HTTP handshake: the initialized notification after initialize.
         await session._notify("notifications/initialized")
     except Exception:  # noqa: BLE001
         pass
