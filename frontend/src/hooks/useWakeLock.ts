@@ -1,30 +1,30 @@
-// Hält den Bildschirm wach, solange das Büro als Wandschirm läuft.
+// Keeps the screen awake as long as the office runs as a wall screen.
 //
-// ── Warum diese Datei hier liegt und nicht in `components/office/` ───────────────────────────
+// ── Why this file lies here and not in `components/office/` ──────────────────────────────────
 //
-// `tools/office-check.mjs` ordnet jede unbekannte `.ts` **direkt** in `office/` fail-closed
-// der Schicht 0 zu (`layerOf`), und Schicht 0 muss den Reinheits-Grep bestehen: keine Uhr,
-// kein Zufall, **keine Browser-Umgebung**. Ein `navigator.wakeLock` fiele dort durch. Den
-// Prüfer dafür aufzuweichen wäre genau der Präzedenzfall, den `PIXEL-CONTRACT.md` vermeiden
-// will — also wohnt der Hook außerhalb, in `src/hooks/`.
+// `tools/office-check.mjs` assigns every unknown `.ts` **directly** in `office/` to layer 0
+// fail-closed (`layerOf`), and layer 0 has to pass the purity grep: no clock, no randomness,
+// **no browser environment**. A `navigator.wakeLock` would fail there. Softening the checker
+// for it would be exactly the precedent `PIXEL-CONTRACT.md` wants to avoid, so the hook lives
+// outside, in `src/hooks/`.
 //
-// ── Was der Wake-Lock kann und was nicht ────────────────────────────────────────────────────
+// ── What the wake lock can and cannot do ────────────────────────────────────────────────────
 //
-// Er verhindert, dass der Bildschirm abdunkelt; er startet **kein** Vollbild. Vollbild braucht
-// eine Nutzergeste (`requestFullscreen()` scheitert sonst still) — dafür gibt es im Kiosk den
-// ⛶-Knopf, und in der Praxis startet die Wand ohnehin als `chromium --kiosk`.
+// It prevents the screen from dimming; it starts **no** full screen. Full screen needs a user
+// gesture (`requestFullscreen()` fails silently otherwise), which is what the ⛶ button in the
+// kiosk is for, and in practice the wall starts as `chromium --kiosk` anyway.
 //
-// Die Sperre wird vom Browser **automatisch freigegeben**, sobald das Dokument versteckt wird
-// (Tabwechsel, Bildschirmsperre). Deshalb genügt es nicht, sie einmal anzufordern: bei jedem
-// `visibilitychange` zurück auf sichtbar wird neu angefordert. Ohne das ist der Wandschirm
-// nach dem ersten Tabwechsel wieder ein normaler Bildschirm mit Bildschirmschoner.
+// The lock is released **automatically** by the browser as soon as the document is hidden
+// (tab change, screen lock). It is therefore not enough to request it once: on every
+// `visibilitychange` back to visible it is requested anew. Without that the wall screen is a
+// normal screen with a screensaver again after the first tab change.
 
 import { useEffect } from "react";
 
-/** Der Ausschnitt der Wake-Lock-API, den dieser Hook benutzt. Von Hand deklariert statt aus
- *  `lib.dom` gezogen: die Typen sind je nach TypeScript-Fassung vorhanden oder nicht, und ein
- *  Bau, der an der Bibliotheksversion hängt, ist genau die Art Überraschung, die niemand
- *  sucht. Zugegriffen wird über genau **eine** Umdeutung, unten. */
+/** The part of the wake lock API this hook uses. Declared by hand instead of pulled from
+ *  `lib.dom`: the types are present or not depending on the TypeScript version, and a build
+ *  that depends on the library version is exactly the kind of surprise nobody is looking
+ *  for. Access happens over exactly **one** reinterpretation, below. */
 interface WakeLockSentinelLike {
   released: boolean;
   release(): Promise<void>;
@@ -34,12 +34,12 @@ interface WakeLockLike {
 }
 
 /**
- * Hält den Bildschirm wach, solange `aktiv` gilt.
+ * Keeps the screen awake as long as `aktiv` holds.
  *
- * Fehler sind hier kein Fehler: `request()` wirft in unsicheren Kontexten (kein HTTPS), wenn
- * die Berechtigung fehlt oder das Dokument gerade nicht sichtbar ist. Ein Wandschirm, der
- * deswegen eine Ausnahme in die Konsole schreibt, ist immer noch ein funktionierender
- * Wandschirm — ein Wandschirm, der deswegen weiß wird, nicht.
+ * Errors are not an error here: `request()` throws in insecure contexts (no HTTPS), when the
+ * permission is missing or when the document is not visible right now. A wall screen writing
+ * an exception into the console because of that is still a working wall screen; a wall screen
+ * turning white because of it is not.
  */
 export function useWakeLock(aktiv: boolean): void {
   useEffect(() => {
@@ -54,8 +54,8 @@ export function useWakeLock(aktiv: boolean): void {
       if (entlassen || sperre !== null || document.visibilityState !== "visible") return;
       try {
         sperre = await wl.request("screen");
-        // Der Effekt kann während des `await` abgeräumt worden sein — dann gehört die
-        // frisch geholte Sperre niemandem mehr und wird sofort wieder abgegeben.
+        // The effect can have been cleaned up during the `await`, and then the freshly
+        // fetched lock belongs to nobody and is released again immediately.
         if (entlassen) { void sperre.release().catch(() => {}); sperre = null; }
       } catch {
         sperre = null;
