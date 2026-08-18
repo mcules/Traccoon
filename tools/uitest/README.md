@@ -26,8 +26,17 @@ docker run --rm --network traccoon_default -v "$PWD/tools/uitest":/w -w /w \
 
 Screenshots land next to it (`01-…png` through `11-…png`), the log in `befund.txt`.
 
-There is a second probe for the measurement series view (`messreihen.mjs`) and one for the
-editor status line (`editor-stand.mjs`), started the same way.
+The other probes start the same way:
+
+| Probe | What it covers |
+|---|---|
+| `bedienbarkeit.mjs` | overflow, touch targets, font sizes and hidden content across 29 screens at 390 and 1400 px. Writes `befund-bedienbarkeit.json` and compares against the previous run |
+| `handy-editor.mjs` | the flow editor on a phone: tap a block, change it, attach a new one. Saves nothing |
+| `messreihen.mjs` | the measurement series view |
+| `editor-stand.mjs` | the unsaved and published markers in the editor |
+| `abschalter.mjs` | switching a step off, skip or stop |
+| `sprache.mjs`, `sprachverwaltung.mjs` | switching language, and creating, renaming, disabling and deleting one |
+| `schuss.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
 
 **Clean up afterwards**, the probe creates real flows:
 
