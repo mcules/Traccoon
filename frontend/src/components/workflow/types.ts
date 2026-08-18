@@ -7,7 +7,7 @@ export type WorkflowInstanceStatus =
   | "running" | "waiting" | "completed" | "failed" | "cancelled";
 export type WorkflowNodeType =
   | "start" | "end" | "human_task" | "decision" | "approval" | "auto_action" | "agent_task"
-  | "wait_event" | "subflow";
+  | "wait_event" | "subflow" | "loop";
 
 /** Fest benannte Abläufe, die Traccoon selbst auslöst (Backend: WorkflowSlot). */
 export type WorkflowSlot =
@@ -95,6 +95,14 @@ export interface NodeConfig {
   // subflow
   slot?: WorkflowSlot;
   inherit_context?: boolean;
+  // loop — geht `liste` Element für Element durch; der Körper hängt am Ausgang `element`
+  // und führt über eine Rückkante hierher zurück.
+  liste?: string;                // Kontext-Pfad auf die Liste
+  element?: string;              // unter diesem Schlüssel steht das aktuelle Element
+  index?: string;                // … und hier der Zähler
+  sammle?: string;               // Pfad, dessen Wert je Durchlauf eingesammelt wird
+  ergebnisse?: string;           // wohin das Eingesammelte am Ende kommt
+  max?: number;                  // Deckel gegen versehentlich riesige Listen
   // agent_task
   agent_role?: string;           // plan_agent | exec_agent | review_agent | assigned | <Rolle>
   phase?: "planning" | "execution";
@@ -220,6 +228,7 @@ export const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
   agent_task: "KI-Agent",
   wait_event: "Warten auf Ereignis",
   subflow: "Anderer Ablauf",
+  loop: "Für jedes …",
 };
 
 export const SLOT_LABELS: Record<WorkflowSlot, string> = {

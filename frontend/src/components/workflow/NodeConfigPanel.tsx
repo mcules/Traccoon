@@ -3,6 +3,7 @@ import type { MemberLite } from "../../api";
 import type { FlowNode } from "./nodes/shared";
 import HumanTaskConfig from "./config/HumanTaskConfig";
 import DecisionConfig from "./config/DecisionConfig";
+import LoopConfig from "./config/LoopConfig";
 import type { KontextFeld } from "./contextFields";
 import ApprovalConfig from "./config/ApprovalConfig";
 import AutoActionConfig from "./config/AutoActionConfig";
@@ -76,6 +77,9 @@ export default function NodeConfigPanel({
       </label>
 
       {node.type === "human_task" && <HumanTaskConfig config={config} onChange={set} members={members} />}
+      {node.type === "loop" && (
+        <LoopConfig config={config} onChange={set} felder={kontextFelder} />
+      )}
       {node.type === "decision" && (
         <DecisionConfig config={config} onChange={set} felder={kontextFelder}
           filter={kontextFilter} />

@@ -19,6 +19,7 @@ ERLAUBT = {
     "agent_task": {"planned", "done", "blocked", "failed", "loop_exhausted", "err", "out"},
     "auto_action": {"out", "merged", "pr_open", "no_git", "conflict", "push_failed",
                     "pr_failed", "gone", "error"},
+    "loop": {"element", "fertig"},
     "decision": set(),              # kommt aus den Zweigen
     "end": set(),
 }

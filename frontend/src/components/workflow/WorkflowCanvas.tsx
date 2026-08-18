@@ -25,6 +25,7 @@ import AutoActionNode from "./nodes/AutoActionNode";
 import AgentTaskNode from "./nodes/AgentTaskNode";
 import WaitEventNode from "./nodes/WaitEventNode";
 import SubflowNode from "./nodes/SubflowNode";
+import LoopNode from "./nodes/LoopNode";
 import ConditionEdge from "./ConditionEdge";
 import { CanvasModeProvider } from "./canvasMode";
 import PhaseBands from "./PhaseBands";
@@ -40,6 +41,7 @@ const nodeTypes: NodeTypes = {
   agent_task: AgentTaskNode,
   wait_event: WaitEventNode,
   subflow: SubflowNode,
+  loop: LoopNode,
 };
 const edgeTypes: EdgeTypes = { condition: ConditionEdge };
 

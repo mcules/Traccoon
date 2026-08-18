@@ -276,6 +276,8 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '{}'::json NOT NULL",
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'wait_event'",
                 "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'subflow'",
+                # Schleifen-Knoten: geht eine Liste Element für Element durch.
+                "ALTER TYPE workflownodetype ADD VALUE IF NOT EXISTS 'loop'",
                 # Gedächtnis im Vault (ABC-30): Ordner am Nutzer, Lern-Schalter am Agenten.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS vault_memory_path VARCHAR(500) "
                 "DEFAULT '' NOT NULL",
