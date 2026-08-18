@@ -307,7 +307,10 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         # Idempotenz via ref_field → source_ref.
         src_ref = None
         if sub.ref_field and isinstance(payload, dict):
-            src_ref = str(payload.get(sub.ref_field) or "") or None
+            # Punktpfad wie überall sonst: der Bezug eines Fremdsystems steckt fast nie
+            # auf der obersten Ebene (`event.id`), und ohne ihn liefe jede Wiederholung
+            # des Absenders als zweiter Ablauf.
+            src_ref = str(_dig_payload(payload, sub.ref_field) or "") or None
             if src_ref:
                 from ..models.workflow import WorkflowInstance
                 dup = (await db.execute(select(WorkflowInstance).where(
