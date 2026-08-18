@@ -1,14 +1,14 @@
-"""Platzhalter in Prompt-Jobs — damit ein Job eine Vorlage sein kann statt einer Kopie.
+"""Placeholders in prompt jobs, so that a job can be a template instead of a copy.
 
-Der KI-&-Tech-News-Job trug sein Wissen (Quellen, Aufbau, Zeitfenster) fest im Prompt. Ein
-zweiter Digest — Security, Funk, was auch immer — hieß darum: Prompt kopieren und an drei
-Stellen editieren. Jetzt trägt `jobs.args` die Parameter, der Prompt nur noch `{{platzhalter}}`.
+The AI and tech news job carried its knowledge (sources, structure, time window) firmly in
+the prompt. A second digest (security, radio, whatever) therefore meant copying the prompt
+and editing it in three places. Now `jobs.args` carries the parameters and the prompt only `{{placeholders}}`.
 
-Bewusst KEINE Template-Engine: reine Textersetzung, kein Ausdruck, kein Code. Ein Prompt ist
-Nutzereingabe, die anschließend an ein Modell geht — dort hat Auswertung nichts zu suchen.
+Deliberately NO template engine: pure text replacement, no expression, no code. A prompt is
+user input that afterwards goes to a model, and evaluation has no business there.
 
-`args` ist historisch die Argumentliste der script-Jobs. Nur ein **Objekt** gilt als
-Parametersatz; eine Liste bleibt unangetastet Script-Argument.
+`args` is historically the argument list of the script jobs. Only an **object** counts as a
+parameter set; a list stays a script argument untouched.
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ _PLATZHALTER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
 
 def _als_text(wert) -> str:
-    """Parameterwert → Prompt-Text. Listen als Aufzählung in einer Zeile, Objekte als JSON."""
+    """Parameter value to prompt text. Lists as an enumeration in one line, objects as JSON."""
     if wert is None:
         return ""
     if isinstance(wert, bool):
@@ -37,11 +37,11 @@ def _als_text(wert) -> str:
 
 def eingebaute_werte(*, jetzt: dt.datetime | None = None,
                      letzter_lauf: dt.datetime | None = None) -> dict[str, str]:
-    """Zeitangaben, die praktisch jeder wiederkehrende Job braucht.
+    """Time values practically every recurring job needs.
 
-    `seit` ist der letzte Lauf — ohne ihn (erster Lauf, Job war aus) 24 Stunden zurück. Damit
-    fragt ein täglicher Digest nach „seit dem letzten Mal" statt nach einer Zahl, die im Prompt
-    steht und beim Umstellen des Zeitplans still falsch wird.
+    `seit` is the last run; without it (first run, job was off) 24 hours back. That way a
+    daily digest asks for "since the last time" instead of for a number that stands in the
+    prompt and silently becomes wrong when the schedule is changed.
     """
     jetzt = (jetzt or dt.datetime.now(tz=dt.timezone.utc)).astimezone(TZ)
     seit = (letzter_lauf.astimezone(TZ) if letzter_lauf else jetzt - dt.timedelta(days=1))
@@ -55,17 +55,17 @@ def eingebaute_werte(*, jetzt: dt.datetime | None = None,
 
 
 def parameter(args) -> dict:
-    """Der Parametersatz eines Jobs — nur ein Objekt zählt, eine Liste ist Script-Argument."""
+    """The parameter set of a job; only an object counts, a list is a script argument."""
     return dict(args) if isinstance(args, dict) else {}
 
 
 def rendere(prompt: str, args=None, *, jetzt: dt.datetime | None = None,
             letzter_lauf: dt.datetime | None = None) -> str:
-    """`{{name}}` ersetzen: erst die Parameter des Jobs, dann die eingebauten Zeitwerte.
+    """Replace `{{name}}`: first the parameters of the job, then the built-in time values.
 
-    Ein unbekannter Platzhalter bleibt WÖRTLICH stehen. Stillschweigend zu leeren wäre der
-    schlechtere Ausgang: der Auftrag verlöre lautlos eine Vorgabe, statt dass im Ergebnis
-    sichtbar `{{quellen}}` steht und der Fehler auffällt.
+    An unknown placeholder stays VERBATIM. Emptying it silently would be the worse outcome:
+    the assignment would lose a rule without a sound, instead of `{{quellen}}` standing
+    visibly in the result and the error being noticed.
     """
     werte = {**eingebaute_werte(jetzt=jetzt, letzter_lauf=letzter_lauf)}
     werte.update({k: _als_text(v) for k, v in parameter(args).items()})
@@ -78,6 +78,6 @@ def rendere(prompt: str, args=None, *, jetzt: dt.datetime | None = None,
 
 
 def offene_platzhalter(prompt: str, args=None) -> list[str]:
-    """Platzhalter ohne Wert — für die Vorschau/Prüfung beim Anlegen eines Jobs."""
+    """Placeholders without a value, for the preview and check while creating a job."""
     bekannt = set(eingebaute_werte()) | set(parameter(args))
     return sorted({m.group(1) for m in _PLATZHALTER.finditer(prompt or "")} - bekannt)
