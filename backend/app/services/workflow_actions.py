@@ -51,9 +51,6 @@ import re
 
 from ..models.workflow import WorkflowInstance
 
-_VAR_RE = re.compile(r"\{\{\s*([\w.]+)\s*\}\}")
-
-
 def _config(node: dict) -> dict:
     data = node.get("data") or {}
     cfg = data.get("config")
@@ -73,13 +70,16 @@ def _dig(data, path: str):
 
 
 def _interp(value, ctx: dict):
-    """Ersetzt {{pfad}} in Strings durch Kontext-Werte. Nicht-Strings bleiben unverändert."""
+    """Ersetzt `{{…}}` in Strings. Nicht-Strings bleiben unverändert.
+
+    Hinter den Klammern steht seit 2026-08-18 mehr als ein Pfad: eine Kette aus Filtern
+    (`{{ mail.subject | kurz:40 }}`, siehe `workflow_expr`). Ein reiner Pfad verhält sich
+    unverändert — alle bestehenden Vorlagen bleiben gültig.
+    """
     if not isinstance(value, str):
         return value
-    def repl(m):
-        v = _dig(ctx, m.group(1))
-        return "" if v is None else str(v)
-    return _VAR_RE.sub(repl, value)
+    from .workflow_expr import fuellen
+    return fuellen(value, ctx)
 
 
 def _normalize_action(cfg: dict) -> tuple[str, dict]:

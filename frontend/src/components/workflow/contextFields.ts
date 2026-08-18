@@ -18,7 +18,11 @@ export interface KontextFeld {
   quelle: string;
 }
 
+export interface KontextFilter { name: string; hilfe: string }
+
 export interface KontextKatalog {
+  /** Filter für Vorlagen: {{ pfad | filter:argument }} */
+  filter?: KontextFilter[];
   basis: Omit<KontextFeld, "quelle">[];
   ausloeser: Record<string, Omit<KontextFeld, "quelle">[]>;
   aktionen: Record<string, Omit<KontextFeld, "quelle">[]>;
