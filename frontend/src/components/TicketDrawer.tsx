@@ -296,7 +296,7 @@ export default function TicketDrawer({
     <div className="flex items-center gap-1.5">
       {canWrite && issue.archived && (
         <>
-          <span className="rounded bg-line px-1.5 text-[10px] uppercase text-muted">archiviert</span>
+          <span className="rounded bg-line px-1.5 text-[11px] uppercase text-muted">archiviert</span>
           <button onClick={() => archive.mutate()} title={tr("ticket_drawer.wiederherstellen")}
             className={`${iconBtn} text-muted hover:bg-surface hover:text-brand`}>♻️</button>
         </>

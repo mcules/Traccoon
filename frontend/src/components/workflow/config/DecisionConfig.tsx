@@ -98,7 +98,7 @@ export default function DecisionConfig({
                   placeholder={tr("decision_config.wert")}
                   className={`w-24 ${inp}`}
                 />
-                <span className="text-[10px] text-muted">
+                <span className="text-[11px] text-muted">
                   leeres Feld = greift immer (Auffang-Zweig, gehört ans Ende)
                 </span>
               </div>
@@ -123,7 +123,7 @@ export default function DecisionConfig({
           <summary className="cursor-pointer">
             Vorlagen-Filter ({filter.length}) — für Texte in Aktionen
           </summary>
-          <p className="mt-1 text-[10px]">
+          <p className="mt-1 text-[11px]">
             Schreibweise <code className="rounded bg-card px-1">{"{{ pfad | filter:argument }}"}</code>,
             von links nach rechts. Beispiel:{" "}
             <code className="rounded bg-card px-1">{"{{ spam.score | mal:100 | rund:1 }}"}</code>
@@ -151,9 +151,9 @@ export default function DecisionConfig({
               <li key={f.pfad}>
                 <div className="flex items-baseline gap-1.5">
                   <code className="break-all font-mono text-ink">{f.pfad}</code>
-                  <span className="shrink-0 text-[10px] opacity-70">{f.typ}</span>
+                  <span className="shrink-0 text-[11px] opacity-70">{f.typ}</span>
                 </div>
-                <div className="text-[10px] leading-snug">
+                <div className="text-[11px] leading-snug">
                   {f.beschreibung} · <span className="opacity-70">{f.quelle}</span>
                 </div>
               </li>
@@ -184,7 +184,7 @@ export default function DecisionConfig({
           )}
         </select>
         {config.default_handle && !branches.some((b) => b.handle === config.default_handle) && (
-          <span className="mt-1 block text-[10px] text-amber-400">
+          <span className="mt-1 block text-[11px] text-amber-400">
             Dieser Ausgang ist verdrahtet, aber nicht als Zweig beschrieben. Lege einen Zweig
             mit dieser Kennung an (ohne Bedingung = greift immer).
           </span>

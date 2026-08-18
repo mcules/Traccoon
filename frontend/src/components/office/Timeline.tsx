@@ -283,7 +283,7 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
           );
         })}
       </div>
-      <div className="mt-1 flex items-center justify-between text-[10px] text-muted">
+      <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
         <span>{uhrzeit(sichtbar[0])}</span>
         <span>
           {gekappt && <span className="mr-2" title={kappTitel}>⚠ Anfang verworfen</span>}

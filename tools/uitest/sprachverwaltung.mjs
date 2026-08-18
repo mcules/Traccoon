@@ -28,7 +28,7 @@ try {
   await page.locator('input[placeholder="Name, z. B. Français"]').fill("Französisch");
   await page.getByRole("button", { name: "anlegen" }).click();
   await page.waitForTimeout(1800);
-  const zeileFr = page.locator("tr", { has: page.locator('td:text-is("fr")') });
+  const zeileFr = page.locator("div", { has: page.locator('span:text-is("fr")') }).last();
   const angelegt = await zeileFr.first().isVisible().catch(() => false);
   ok("Neue Sprache erscheint sofort", angelegt);
 
@@ -36,8 +36,7 @@ try {
   // die letzte Tabelle ist die mit den Übersetzungen.
   await page.locator("select").first().selectOption("fr").catch(() => {});
   await page.waitForTimeout(1200);
-  const zeile = page.locator("table").last().locator("tbody tr").first();
-  const feld = zeile.locator('input[type="text"], input:not([type])').last();
+  const feld = page.locator('input[placeholder]').last();
   await feld.fill("Réglages");
   await feld.blur();
   await page.waitForTimeout(1500);
@@ -58,7 +57,7 @@ try {
   page.once("dialog", (d) => d.accept());
   await zeileFr.getByRole("button", { name: "✕" }).click();
   await page.waitForTimeout(1800);
-  const weg = (await page.locator("tr", { has: page.locator('td:text-is("fr")') }).count()) === 0;
+  const weg = (await page.locator('span:text-is("fr")').count()) === 0;
   ok("Sprache lässt sich wieder löschen", weg);
 
   ok("Keine JavaScript-Fehler", fehler.length === 0, fehler.slice(0, 1).join(""));

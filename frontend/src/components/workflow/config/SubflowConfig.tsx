@@ -72,7 +72,7 @@ export default function SubflowConfig({
         Kontext weitergeben
       </label>
 
-      <p className="text-[10px] text-muted">
+      <p className="text-[11px] text-muted">
         Bei einem <b>fest benannten</b> Ablauf gilt der, der für <b>dieses Projekt</b>
         {" "}eingestellt ist — eigene Anpassung, sonst Satz, sonst Standard. Ein{" "}
         <b>eigener</b> Ablauf wird genau so aufgerufen, wie er dasteht; er muss dafür

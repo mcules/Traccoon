@@ -16,20 +16,25 @@ const TOKEN = readFileSync("/w/tok.txt", "utf8").trim();
 const MARKE = process.env.MARKE || "lauf";
 const PROJEKT = process.env.PROJEKT || "UNI";
 
+// Jeder Reiter einzeln: die erste Fassung prüfte nur den Standardreiter jeder Seite und
+// hielt deshalb die Administration für sauber, obwohl sechs ihrer acht Reiter Tabellen
+// zeigen, die auf 390 px zusammengequetscht werden.
 const SEITEN = [
   ["Projekte", "/"],
-  ["Projekt", `/projects/${PROJEKT}`],
-  ["Board", `/projects/${PROJEKT}?tab=board`],
   ["Eingang", "/inbox"],
-  ["Prozesse", "/processes"],
-  ["Eigene Prozesse", "/processes/eigene"],
-  ["Einstellungen", "/settings"],
   ["Profil", "/profil"],
-  ["Administration", "/admin"],
+  ...["board", "list", "dashboard", "monitor", "workflows", "settings"]
+    .map((t) => [`Projekt/${t}`, `/projects/${PROJEKT}?tab=${t}`]),
+  ...["eigene", "standard", "betrieb", "ausloeser", "messreihen"]
+    .map((t) => [`Prozesse/${t}`, `/processes/${t}`]),
+  ...["secrets", "prefs", "processes", "destinations", "agents", "mcp", "jobs", "webhooks", "skills"]
+    .map((t) => [`Einstellungen/${t}`, `/settings/${t}`]),
+  ...["users", "cost", "models", "maintenance", "mail", "destinations", "artifacts", "translations"]
+    .map((t) => [`Admin/${t}`, `/admin/${t}`]),
 ];
-const BREITEN = [["Handy", 390, 844], ["Tablet", 820, 1180], ["Desktop", 1400, 900]];
+const BREITEN = [["Handy", 390, 844], ["Desktop", 1400, 900]];
 
-const messen = (grenze) => {
+const messen = ({ grenze, handy }) => {
   const doc = document.scrollingElement;
   const breite = window.innerWidth;
   const ueberstand = Math.max(0, doc.scrollWidth - breite);
@@ -86,6 +91,41 @@ const messen = (grenze) => {
     if (px < 11) kleinschrift.set(el.textContent.trim().slice(0, 40), Math.round(px * 10) / 10);
   }
 
+  // Abgeschnitten statt gescrollt: ein Element, dessen Inhalt breiter ist als es selbst, ohne
+  // dass man scrollen könnte. Das ist der schlimmere Fall — es sieht aus, als wäre alles da.
+  const abgeschnitten = [];
+  for (const el of document.querySelectorAll("body *")) {
+    const s = getComputedStyle(el);
+    if (s.overflowX === "auto" || s.overflowX === "scroll") continue;
+    // `truncate` schneidet mit Absicht ab und zeigt „…" — das ist eine Lösung, kein Mangel.
+    if (s.textOverflow === "ellipsis") continue;
+    if (el.scrollWidth <= el.clientWidth + 24) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width < 40 || r.height < 12) continue;
+    abgeschnitten.push({ el, name: el.tagName.toLowerCase() + " +"
+      + (el.scrollWidth - el.clientWidth) + "px: "
+      + (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 30) });
+  }
+
+  // Tabellen mit mehr als zwei Spalten sind auf einem Handy keine Tabellen mehr: entweder
+  // stehen sie über den Rand oder ihre Spalten quetschen sich auf ein Wort je Zeile.
+  const tabellen = handy ? [...document.querySelectorAll("table")].filter((tab) => {
+    const spalten = tab.querySelector("tr")?.children.length || 0;
+    return spalten > 2 && tab.getBoundingClientRect().width > 200;
+  }).map((tab) => `${tab.querySelector("tr")?.children.length} Spalten`) : [];
+
+  // Textspalten, die schmaler sind als etwa zwanzig Zeichen: dort bricht jeder Satz zum
+  // Wasserfall (die Modell-Seite zeigte 45 Zeilen à zwei Wörter).
+  const wasserfall = [];
+  for (const el of document.querySelectorAll("p, div, li, span")) {
+    const txt = (el.textContent || "").trim();
+    if (txt.length < 120) continue;
+    const eigener = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 40);
+    if (!eigener) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.width < 210 && r.height > 100) wasserfall.push(`${Math.round(r.width)}px breit`);
+  }
+
   // Was seitwärts weggescrollt werden muss, findet auf einem Handy niemand. Tabellen sind
   // die üblichen Kandidaten: fünf Spalten passen nicht in 390 px.
   const seitwaerts = [...document.querySelectorAll("body *")].filter((el) => {
@@ -96,6 +136,13 @@ const messen = (grenze) => {
        el.tagName.toLowerCase() + " +" + (el.scrollWidth - el.clientWidth) + "px");
 
   return {
+    // Nur der innerste Übeltäter zählt: ein zu breites Feld macht jeden seiner Vorfahren
+    // ebenfalls „zu breit", und die Meldung „div ist zu breit" hilft niemandem.
+    abgeschnitten: abgeschnitten
+      .filter((v, _i, alle) => !alle.some((w) => w !== v && v.el.contains(w.el)))
+      .slice(0, 5).map(({ name }) => name),
+    tabellen,
+    wasserfall: wasserfall.slice(0, 3),
     seitwaerts: seitwaerts.slice(0, 5),
     ueberstand,
     ueberlaeufer: raus.slice(0, 6).map(({ name, ueber }) => ({ name, ueber })),
@@ -126,7 +173,7 @@ for (const [gname, breite, hoehe] of BREITEN) {
       await page.goto(BASIS + pfad, { waitUntil: "networkidle", timeout: 30000 });
     } catch { /* langsame Seite: trotzdem messen, was da ist */ }
     await page.waitForTimeout(1200);
-    const m = await page.evaluate(messen, breite < 500 ? 36 : 24);
+    const m = await page.evaluate(messen, { grenze: breite < 500 ? 36 : 24, handy: breite < 500 });
     // Am Schreibtisch ist seitliches Scrollen ein Mittel (das Board ist so gebaut), am Handy
     // ein Mangel — deshalb wird es nur dort überhaupt vermerkt.
     if (breite >= 500) m.seitwaerts = [];
@@ -134,7 +181,13 @@ for (const [gname, breite, hoehe] of BREITEN) {
     // Punkte: je Messgröße ein Punkt, wenn sie sauber ist.
     maxPunkte += 3;
     if (m.ueberstand <= 2) punkte++;
-    if (breite < 500) { maxPunkte++; if (m.seitwaerts.length === 0) punkte++; }
+    maxPunkte++; if (m.abgeschnitten.length === 0) punkte++;
+    if (breite < 500) {
+      maxPunkte += 3;
+      if (m.seitwaerts.length === 0) punkte++;
+      if (m.tabellen.length === 0) punkte++;
+      if (m.wasserfall.length === 0) punkte++;
+    }
     if (m.tippziele_klein === 0) punkte++;
     if (m.kleinschrift === 0) punkte++;
   }
@@ -159,5 +212,8 @@ for (const [name, m] of Object.entries(bericht.seiten)) {
   if (m.tippziele_klein) mangel.push(`${m.tippziele_klein} zu kleine Tippziele`);
   if (m.kleinschrift) mangel.push(`${m.kleinschrift}× Schrift < 11px`);
   if (m.seitwaerts?.length) mangel.push(`seitwärts versteckt: ${m.seitwaerts.join(", ")}`);
+  if (m.abgeschnitten?.length) mangel.push(`abgeschnitten: ${m.abgeschnitten.join(" | ")}`);
+  if (m.tabellen?.length) mangel.push(`Tabelle am Handy: ${m.tabellen.join(", ")}`);
+  if (m.wasserfall?.length) mangel.push(`Textwasserfall: ${m.wasserfall.join(", ")}`);
   console.log(mangel.length ? `FEHL ${name}: ${mangel.join(" · ")}` : `OK   ${name}`);
 }

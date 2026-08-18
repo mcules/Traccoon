@@ -59,7 +59,7 @@ export default function Schrittprotokoll({
   maxHoehe?: string;
 }) {
   if (!schritte.length) {
-    return <div className="text-[10px] text-muted">{leerText}</div>;
+    return <div className="text-[11px] text-muted">{leerText}</div>;
   }
   return (
     <ul className="overflow-auto rounded border border-line bg-surface p-2 text-xs text-muted"
@@ -71,28 +71,28 @@ export default function Schrittprotokoll({
           <li key={`${s.node_id}-${i}`} className="border-b border-line/60 py-1 last:border-0">
             <div className="flex items-baseline gap-1.5">
               <code className="font-mono text-ink">{s.node_id}</code>
-              <span className="text-[10px] opacity-70">{s.node_type}</span>
+              <span className="text-[11px] opacity-70">{s.node_type}</span>
               {s.status && (
-                <span className={`text-[10px] ${STATUS_FARBE[s.status] || "opacity-70"}`}>
+                <span className={`text-[11px] ${STATUS_FARBE[s.status] || "opacity-70"}`}>
                   {s.status}
                 </span>
               )}
-              {s.decision && <span className="text-[10px] text-brand">→ {s.decision}</span>}
-              <span className="ml-auto shrink-0 text-[10px] opacity-50">
+              {s.decision && <span className="text-[11px] text-brand">→ {s.decision}</span>}
+              <span className="ml-auto shrink-0 text-[11px] opacity-50">
                 {uhrzeit(s.completed_at || s.entered_at)}
               </span>
             </div>
             {text && (
-              <div className={`line-clamp-2 break-words text-[10px] leading-snug
+              <div className={`line-clamp-2 break-words text-[11px] leading-snug
                                ${s.error ? "text-red-300" : "opacity-90"}`}>
                 {text}
               </div>
             )}
             {voll && (
               <details className="mt-0.5">
-                <summary className="cursor-pointer text-[10px] opacity-60">{tr("schrittprotokoll.rohdaten")}</summary>
+                <summary className="cursor-pointer text-[11px] opacity-60">{tr("schrittprotokoll.rohdaten")}</summary>
                 <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all
-                                rounded bg-card p-1 text-[10px]">
+                                rounded bg-card p-1 text-[11px]">
                   {JSON.stringify(s.result, null, 1)}
                 </pre>
               </details>

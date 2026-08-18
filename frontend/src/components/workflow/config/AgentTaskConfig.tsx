@@ -41,7 +41,7 @@ export default function AgentTaskConfig({
             <option key={wert} value={wert}>{beschriftung}</option>
           ))}
         </datalist>
-        <span className="mt-1 block text-[10px] text-muted">
+        <span className="mt-1 block text-[11px] text-muted">
           Die vier Platzhalter binden den Ablauf an die Projekt-Einstellungen. Ein konkreter
           Rollenname (z. B. <code>developer</code>) setzt sie fest.
         </span>
@@ -67,7 +67,7 @@ export default function AgentTaskConfig({
           keyPlaceholder="Ergebnis"
           valuePlaceholder="Handle/Status"
         />
-        <div className="mt-1 text-[10px] text-muted">
+        <div className="mt-1 text-[11px] text-muted">
           Nur nötig, wenn ein Ergebnis auf einen anders benannten Ausgang gehen soll — die
           Ausgänge am Knoten (fertig/Zwischenstand/Rückfrage/Fehler) greifen von allein.
         </div>

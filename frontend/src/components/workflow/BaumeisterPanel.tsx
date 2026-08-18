@@ -92,7 +92,7 @@ export default function BaumeisterPanel({
         className="w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
       />
 
-      <label className="flex items-center gap-2 text-[10px] text-muted">
+      <label className="flex items-center gap-2 text-[11px] text-muted">
         <input type="checkbox" checked={umbauen} onChange={(e) => setUmbauen(e.target.checked)} />
         {tr("baumeister.auf_bestand_bauen")}
       </label>
@@ -110,9 +110,9 @@ export default function BaumeisterPanel({
         )}
       </div>
 
-      {err && <div className="text-[10px] text-red-300">{err}</div>}
+      {err && <div className="text-[11px] text-red-300">{err}</div>}
       {erklaerung && (
-        <div className="rounded border border-line bg-surface p-2 text-[10px] text-muted">
+        <div className="rounded border border-line bg-surface p-2 text-[11px] text-muted">
           {erklaerung}
           <div className="mt-1 opacity-70">
             {tr("baumeister.auf_der_flaeche")}
@@ -120,7 +120,7 @@ export default function BaumeisterPanel({
         </div>
       )}
       {fehler.length > 0 && (
-        <div className="text-[10px] text-amber-300">
+        <div className="text-[11px] text-amber-300">
           {fehler.length} Stelle{fehler.length === 1 ? "" : "n"} fehlen noch — sie stehen
           unten bei den Validierungsfehlern.
         </div>

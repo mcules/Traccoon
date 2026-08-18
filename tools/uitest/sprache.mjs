@@ -43,7 +43,7 @@ try {
   // Verwaltung im Admin
   await page.goto(`${BASIS}/admin/translations`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
-  const zeilen = await page.locator("table tbody tr").count();
+  const zeilen = await page.locator('input[placeholder]').count();
   ok("Die Verwaltung listet die Schlüssel", zeilen > 0, `${zeilen} Zeilen sichtbar`);
   const zaehler = await page.getByText(/von \d+ offen/).first().textContent().catch(() => "");
   ok("Sie zeigt, wie viel noch fehlt", !!zaehler, (zaehler || "").trim());

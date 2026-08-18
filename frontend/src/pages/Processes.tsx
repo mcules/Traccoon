@@ -413,7 +413,7 @@ function Ausloeser() {
           {events?.map((e) => (
             <div key={e.event} className="flex items-center gap-2 rounded border border-line bg-card px-2.5 py-1.5">
               <span className="min-w-0 flex-1 truncate text-sm">{e.label}</span>
-              <code className="hidden shrink-0 text-[10px] text-muted sm:block">{e.event}</code>
+              <code className="hidden shrink-0 text-[11px] text-muted sm:block">{e.event}</code>
               <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
                 e.listeners ? "bg-violet-500/15 text-violet-300" : "bg-surface text-muted"
               }`}>

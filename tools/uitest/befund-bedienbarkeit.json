@@ -1,7 +1,10 @@
 {
-  "marke": "nav2",
+  "marke": "final",
   "seiten": {
     "Projekte @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -12,39 +15,10 @@
       "sichtbare_navigation": 4,
       "hoehe": 1131
     },
-    "Projekt @ Handy": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [
-        {
-          "name": "button.flex.shrink-0",
-          "ueber": 59
-        }
-      ],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 5,
-      "hoehe": 969
-    },
-    "Board @ Handy": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [
-        {
-          "name": "button.flex.shrink-0",
-          "ueber": 59
-        }
-      ],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 5,
-      "hoehe": 969
-    },
     "Eingang @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -55,40 +29,10 @@
       "sichtbare_navigation": 4,
       "hoehe": 844
     },
-    "Prozesse @ Handy": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 4,
-      "hoehe": 1552
-    },
-    "Eigene Prozesse @ Handy": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 4,
-      "hoehe": 1552
-    },
-    "Einstellungen @ Handy": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 4,
-      "hoehe": 1133
-    },
     "Profil @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -99,7 +43,155 @@
       "sichtbare_navigation": 4,
       "hoehe": 1499
     },
-    "Administration @ Handy": {
+    "Projekt/board @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [
+        {
+          "name": "button.flex.shrink-0",
+          "ueber": 59
+        }
+      ],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 5,
+      "hoehe": 969
+    },
+    "Projekt/list @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 5,
+      "hoehe": 1597
+    },
+    "Projekt/dashboard @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 5,
+      "hoehe": 1203
+    },
+    "Projekt/monitor @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 5,
+      "hoehe": 1755
+    },
+    "Projekt/workflows @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 5,
+      "hoehe": 2070
+    },
+    "Projekt/settings @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 5,
+      "hoehe": 1515
+    },
+    "Prozesse/eigene @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 916
+    },
+    "Prozesse/standard @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 991
+    },
+    "Prozesse/betrieb @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 2007
+    },
+    "Prozesse/ausloeser @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 1938
+    },
+    "Prozesse/messreihen @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -110,7 +202,10 @@
       "sichtbare_navigation": 4,
       "hoehe": 844
     },
-    "Projekte @ Tablet": {
+    "Einstellungen/secrets @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -118,58 +213,13 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1180
+      "sichtbare_navigation": 4,
+      "hoehe": 1133
     },
-    "Projekt @ Tablet": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [
-        {
-          "name": "div.w-72.shrink-0",
-          "ueber": 88
-        },
-        {
-          "name": "div.w-72.shrink-0",
-          "ueber": 388
-        },
-        {
-          "name": "div.w-72.shrink-0",
-          "ueber": 688
-        }
-      ],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1180
-    },
-    "Board @ Tablet": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [
-        {
-          "name": "div.w-72.shrink-0",
-          "ueber": 88
-        },
-        {
-          "name": "div.w-72.shrink-0",
-          "ueber": 388
-        },
-        {
-          "name": "div.w-72.shrink-0",
-          "ueber": 688
-        }
-      ],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1180
-    },
-    "Eingang @ Tablet": {
+    "Einstellungen/prefs @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -177,10 +227,13 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1180
+      "sichtbare_navigation": 4,
+      "hoehe": 1747
     },
-    "Prozesse @ Tablet": {
+    "Einstellungen/processes @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -188,10 +241,13 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1180
+      "sichtbare_navigation": 4,
+      "hoehe": 844
     },
-    "Eigene Prozesse @ Tablet": {
+    "Einstellungen/destinations @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -199,10 +255,13 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1180
+      "sichtbare_navigation": 4,
+      "hoehe": 1149
     },
-    "Einstellungen @ Tablet": {
+    "Einstellungen/agents @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -210,10 +269,13 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1180
+      "sichtbare_navigation": 4,
+      "hoehe": 1417
     },
-    "Profil @ Tablet": {
+    "Einstellungen/mcp @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -221,10 +283,13 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1313
+      "sichtbare_navigation": 4,
+      "hoehe": 1495
     },
-    "Administration @ Tablet": {
+    "Einstellungen/jobs @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -232,45 +297,156 @@
       "tippziele_beispiele": [],
       "kleinschrift": 0,
       "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 1180
+      "sichtbare_navigation": 4,
+      "hoehe": 1570
+    },
+    "Einstellungen/webhooks @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 1833
+    },
+    "Einstellungen/skills @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 851
+    },
+    "Admin/users @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 844
+    },
+    "Admin/cost @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 844
+    },
+    "Admin/models @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 2121
+    },
+    "Admin/maintenance @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 1428
+    },
+    "Admin/mail @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 844
+    },
+    "Admin/destinations @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 844
+    },
+    "Admin/artifacts @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 1124
+    },
+    "Admin/translations @ Handy": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 4,
+      "hoehe": 874
     },
     "Projekte @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 900
-    },
-    "Projekt @ Desktop": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [
-        {
-          "name": "div.w-72.shrink-0",
-          "ueber": 108
-        }
-      ],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 900
-    },
-    "Board @ Desktop": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [
-        {
-          "name": "div.w-72.shrink-0",
-          "ueber": 108
-        }
-      ],
       "tippziele_klein": 0,
       "tippziele_beispiele": [],
       "kleinschrift": 0,
@@ -279,39 +455,9 @@
       "hoehe": 900
     },
     "Eingang @ Desktop": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 900
-    },
-    "Prozesse @ Desktop": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 900
-    },
-    "Eigene Prozesse @ Desktop": {
-      "seitwaerts": [],
-      "ueberstand": 0,
-      "ueberlaeufer": [],
-      "tippziele_klein": 0,
-      "tippziele_beispiele": [],
-      "kleinschrift": 0,
-      "kleinschrift_beispiele": [],
-      "sichtbare_navigation": 6,
-      "hoehe": 900
-    },
-    "Einstellungen @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -323,6 +469,9 @@
       "hoehe": 900
     },
     "Profil @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -333,7 +482,393 @@
       "sichtbare_navigation": 6,
       "hoehe": 1313
     },
-    "Administration @ Desktop": {
+    "Projekt/board @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [
+        {
+          "name": "div.w-72.shrink-0",
+          "ueber": 108
+        }
+      ],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Projekt/list @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Projekt/dashboard @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Projekt/monitor @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1491
+    },
+    "Projekt/workflows @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1211
+    },
+    "Projekt/settings @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1245
+    },
+    "Prozesse/eigene @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Prozesse/standard @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Prozesse/betrieb @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1195
+    },
+    "Prozesse/ausloeser @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1401
+    },
+    "Prozesse/messreihen @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Einstellungen/secrets @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Einstellungen/prefs @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1275
+    },
+    "Einstellungen/processes @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Einstellungen/destinations @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Einstellungen/agents @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Einstellungen/mcp @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1095
+    },
+    "Einstellungen/jobs @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 958
+    },
+    "Einstellungen/webhooks @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1119
+    },
+    "Einstellungen/skills @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Admin/users @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Admin/cost @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Admin/models @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 1526
+    },
+    "Admin/maintenance @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 986
+    },
+    "Admin/mail @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Admin/destinations @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Admin/artifacts @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
+      "seitwaerts": [],
+      "ueberstand": 0,
+      "ueberlaeufer": [],
+      "tippziele_klein": 0,
+      "tippziele_beispiele": [],
+      "kleinschrift": 0,
+      "kleinschrift_beispiele": [],
+      "sichtbare_navigation": 6,
+      "hoehe": 900
+    },
+    "Admin/translations @ Desktop": {
+      "abgeschnitten": [],
+      "tabellen": [],
+      "wasserfall": [],
       "seitwaerts": [],
       "ueberstand": 0,
       "ueberlaeufer": [],
@@ -345,7 +880,7 @@
       "hoehe": 900
     }
   },
-  "punkte": 90,
-  "maxPunkte": 90,
+  "punkte": 341,
+  "maxPunkte": 341,
   "quote": 100
 }

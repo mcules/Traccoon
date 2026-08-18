@@ -57,9 +57,9 @@ export default function ProbelaufPanel(
         >
           {tr(läuft ? "probelauf.laeuft" : "probelauf.starten")}
         </button>
-        {ergebnis && <span className="text-[10px]">Ergebnis: <b>{ergebnis}</b></span>}
+        {ergebnis && <span className="text-[11px]">Ergebnis: <b>{ergebnis}</b></span>}
       </div>
-      <p className="text-[10px]">
+      <p className="text-[11px]">
         {hatProbe
           ? tr("probelauf.hinweis_mit_nutzlast")
           : "Ohne Beispiel-Nutzlast am Start-Knoten läuft die Probe mit leerem Kontext — Weichen greifen dann kaum."}

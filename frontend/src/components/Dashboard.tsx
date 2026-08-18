@@ -102,7 +102,7 @@ export default function Dashboard({ project }: { project: Project }) {
       {costs && costs.by_model.length > 0 && (
         <Karte titel={tr("dashboard.kosten_nach_modell", { summe: costs.total_usd.toFixed(2) })}>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="hidden w-full text-sm sm:table">
               <thead>
                 <tr className="text-left text-xs text-muted">
                   <th className="py-1 pr-3 font-medium">{tr("dashboard.modell")}</th>
@@ -125,6 +125,18 @@ export default function Dashboard({ project }: { project: Project }) {
                   ))}
               </tbody>
             </table>
+
+            <div className="divide-y divide-line text-sm sm:hidden">
+              {costs.by_model.slice().sort((a, b) => b.usd - a.usd).map((m) => (
+                <div key={`${m.provider}/${m.model}`} className="flex flex-wrap items-baseline gap-x-2 py-1.5">
+                  <span className="min-w-0 flex-1 break-all text-ink">{m.model || m.provider}</span>
+                  <span className="tabular-nums text-ink">${m.usd.toFixed(2)}</span>
+                  <span className="basis-full text-xs text-muted">
+                    {tr("dashboard.in")} {m.input_tokens} · {tr("dashboard.out")} {m.output_tokens}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </Karte>
       )}

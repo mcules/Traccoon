@@ -26,7 +26,7 @@ export default function NotificationBell() {
         className="relative flex h-10 w-10 items-center justify-center text-muted hover:text-ink md:h-8 md:w-8">
         🔔
         {(count?.count || 0) > 0 && (
-          <span className="absolute -right-2 -top-1 rounded-full bg-red-500 px-1 text-[10px] text-white">
+          <span className="absolute -right-2 -top-1 rounded-full bg-red-500 px-1 text-[11px] text-white">
             {count!.count}
           </span>
         )}

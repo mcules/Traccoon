@@ -33,6 +33,9 @@ export default function ProviderModelsPanel() {
   const [err, setErr] = useState("");
   const [note, setNote] = useState("");
   const [edit, setEdit] = useState<Record<number, Partial<Modell>>>({});
+  // Am Handy steht je Modell erst nur der Name: 30 Modelle mit je sieben Feldern wären
+  // sonst zehn Bildschirme Scrollweg, bevor man das gesuchte findet.
+  const [offen, setOffen] = useState<number | null>(null);
 
   const { data: modelle } = useQuery({
     queryKey: ["provider-models"], queryFn: () => api.get<Modell[]>("/providers/models"),
@@ -90,6 +93,37 @@ export default function ProviderModelsPanel() {
     setEdit((e) => ({ ...e, [m.id]: { ...e[m.id], ...feld } }));
   const geaendert = (m: Modell) => edit[m.id] !== undefined;
 
+  /**
+   * Die Zahlenfelder einer Modellzeile, einmal beschrieben.
+   *
+   * Am Schreibtisch stehen sie als Tabellenspalten nebeneinander, am Handy als beschriftete
+   * Felder untereinander — neun Spalten auf 390 px waren vorher entweder abgeschnitten oder
+   * so schmal, dass in jeder Zelle ein Wort je Zeile stand. Zwei Darstellungen, eine Quelle,
+   * damit sie nicht auseinanderlaufen.
+   */
+  const zahlenFelder = (roh: Modell) => {
+    const m = zeile(roh);
+    return [
+      { key: "price_input", label: tr("provider_models_panel.input"),
+        node: <input type="number" step="0.01" min="0" value={m.price_input} className={num}
+                onChange={(e) => setzen(roh, { price_input: Number(e.target.value) })} /> },
+      { key: "price_output", label: tr("provider_models_panel.output"),
+        node: <input type="number" step="0.01" min="0" value={m.price_output} className={num}
+                onChange={(e) => setzen(roh, { price_output: Number(e.target.value) })} /> },
+      { key: "price_cache_read", label: tr("provider_models_panel.cache_read"),
+        node: <input type="number" step="0.01" min="0" value={m.price_cache_read} className={num}
+                onChange={(e) => setzen(roh, { price_cache_read: Number(e.target.value) })} /> },
+      { key: "context_tokens", label: tr("provider_models_panel.kontext"),
+        node: <input type="number" step="1024" min="0" value={m.context_tokens ?? ""}
+                placeholder="—" className={num} title={tr("provider_models_panel.maximales_kontextfenster_in_tokens")}
+                onChange={(e) => setzen(roh, { context_tokens: e.target.value ? Number(e.target.value) : null })} /> },
+      { key: "speed_tps", label: "≈ t/s",
+        node: <input type="number" step="1" min="0" value={m.speed_tps ?? ""}
+                placeholder="—" className={num} title={tr("provider_models_panel.gemessene_ausgabegeschwindigkeit_tokens_")}
+                onChange={(e) => setzen(roh, { speed_tps: e.target.value ? Number(e.target.value) : null })} /> },
+    ];
+  };
+
   const provider = [...new Set((modelle || []).map((m) => m.provider))].sort();
 
   return (
@@ -97,9 +131,9 @@ export default function ProviderModelsPanel() {
       {err && <div className="rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-sm text-red-400">{err}</div>}
       {note && <div className="rounded border border-line bg-card px-2 py-1 text-sm text-muted">{note}</div>}
 
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col items-start justify-between gap-2 sm:flex-row sm:gap-4">
         <p className="text-sm text-muted">{tr("provider_models_panel.einleitung")}</p>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2">
           <button onClick={() => abrufen.mutate()} disabled={abrufen.isPending}
             className="rounded border border-line px-3 py-1.5 text-sm text-ink hover:bg-surface disabled:opacity-50">
             {abrufen.isPending ? tr("common.laedt") : `↻ ${tr("provider_models_panel.modelle_abrufen")}`}
@@ -116,7 +150,8 @@ export default function ProviderModelsPanel() {
           <div className="mb-2 text-sm font-semibold text-ink">{PROVIDER_LABEL[p] ? tr(PROVIDER_LABEL[p]) : p}
             <span className="ml-2 font-mono text-xs font-normal text-muted">{p}</span>
           </div>
-          <div className="overflow-x-auto">
+          {/* Am Schreibtisch die Tabelle, am Handy Karten: dieselben Felder aus zahlenFelder(). */}
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs uppercase text-muted">
@@ -137,28 +172,9 @@ export default function ProviderModelsPanel() {
                         <input value={m.display_name} className={inp}
                           onChange={(e) => setzen(roh, { display_name: e.target.value })} />
                       </td>
-                      <td className="pr-2">
-                        <input type="number" step="0.01" min="0" value={m.price_input} className={num}
-                          onChange={(e) => setzen(roh, { price_input: Number(e.target.value) })} />
-                      </td>
-                      <td className="pr-2">
-                        <input type="number" step="0.01" min="0" value={m.price_output} className={num}
-                          onChange={(e) => setzen(roh, { price_output: Number(e.target.value) })} />
-                      </td>
-                      <td className="pr-2">
-                        <input type="number" step="0.01" min="0" value={m.price_cache_read} className={num}
-                          onChange={(e) => setzen(roh, { price_cache_read: Number(e.target.value) })} />
-                      </td>
-                      <td className="pr-2">
-                        <input type="number" step="1024" min="0" value={m.context_tokens ?? ""}
-                          placeholder="—" className={num} title={tr("provider_models_panel.maximales_kontextfenster_in_tokens")}
-                          onChange={(e) => setzen(roh, { context_tokens: e.target.value ? Number(e.target.value) : null })} />
-                      </td>
-                      <td className="pr-2">
-                        <input type="number" step="1" min="0" value={m.speed_tps ?? ""}
-                          placeholder="—" className={num} title={tr("provider_models_panel.gemessene_ausgabegeschwindigkeit_tokens_")}
-                          onChange={(e) => setzen(roh, { speed_tps: e.target.value ? Number(e.target.value) : null })} />
-                      </td>
+                      {zahlenFelder(roh).map((f) => (
+                        <td key={f.key} className="pr-2">{f.node}</td>
+                      ))}
                       <td className="text-center">
                         <input type="checkbox" checked={m.enabled}
                           onChange={(e) => setzen(roh, { enabled: e.target.checked })} />
@@ -166,9 +182,9 @@ export default function ProviderModelsPanel() {
                       <td className="whitespace-nowrap py-2 text-right">
                         <button onClick={() => speichern.mutate(m)} disabled={!geaendert(roh)}
                           className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface disabled:opacity-30">
-                          Speichern
+                          {tr("common.speichern")}
                         </button>
-                        <button onClick={() => { if (confirm(`${m.model} aus dem Katalog löschen?`)) loeschen.mutate(m.id); }}
+                        <button onClick={() => { if (confirm(tr("provider_models_panel.loeschen_frage", { modell: m.model }))) loeschen.mutate(m.id); }}
                           className="ml-1 rounded border border-line px-2 py-1 text-xs text-red-400 hover:bg-surface">
                           ✕
                         </button>
@@ -179,12 +195,56 @@ export default function ProviderModelsPanel() {
               </tbody>
             </table>
           </div>
+
+          <div className="space-y-2 md:hidden">
+            {(modelle || []).filter((m) => m.provider === p).map((roh) => {
+              const m = zeile(roh);
+              return (
+                <div key={m.id} className={`rounded border border-line p-2 ${m.enabled ? "" : "opacity-50"}`}>
+                  <button onClick={() => setOffen(offen === m.id ? null : m.id)}
+                    className="flex w-full items-baseline gap-2 text-left">
+                    <span className="text-muted">{offen === m.id ? "▾" : "▸"}</span>
+                    <span className="min-w-0 flex-1 break-all font-mono text-xs text-muted">{m.model}</span>
+                    {geaendert(roh) && <span className="text-xs text-brand">•</span>}
+                  </button>
+                  {offen !== m.id ? null : (
+                  <>
+                  <input value={m.display_name} className={`${inp} mt-1`}
+                    onChange={(e) => setzen(roh, { display_name: e.target.value })} />
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    {zahlenFelder(roh).map((f) => (
+                      <label key={f.key} className="text-[11px] text-muted">
+                        {f.label}
+                        <div className="mt-0.5 [&>input]:w-full">{f.node}</div>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="mt-2 flex items-center gap-3 text-xs">
+                    <label className="flex items-center gap-1 text-muted">
+                      <input type="checkbox" checked={m.enabled}
+                        onChange={(e) => setzen(roh, { enabled: e.target.checked })} />
+                      {tr("provider_models_panel.aktiv")}
+                    </label>
+                    <div className="flex-1" />
+                    <button onClick={() => speichern.mutate(m)} disabled={!geaendert(roh)}
+                      className="rounded border border-line px-2 py-1 text-ink hover:bg-surface disabled:opacity-30">
+                      {tr("common.speichern")}
+                    </button>
+                    <button onClick={() => { if (confirm(tr("provider_models_panel.loeschen_frage", { modell: m.model }))) loeschen.mutate(m.id); }}
+                      className="rounded border border-line px-2 py-1 text-red-400 hover:bg-surface">✕</button>
+                  </div>
+                  </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       ))}
 
       {modelle && modelle.length === 0 && (
         <div className="text-sm text-muted">
-          Katalog leer — „Modelle abrufen" holt sie von den Endpoints deiner Provider-Tokens.
+          {tr("provider_models_panel.katalog_leer")}
         </div>
       )}
     </div>

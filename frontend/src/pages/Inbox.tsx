@@ -117,9 +117,9 @@ function InboxList() {
               </div>
               <div className="truncate font-medium text-ink">{eintrag.subject || eintrag.title}</div>
               {eintrag.from && <div className="truncate text-xs text-muted">von {eintrag.from}</div>}
-              {eintrag.redacted_summary && <p className="mt-1.5 text-sm text-muted">{eintrag.redacted_summary}</p>}
+              {eintrag.redacted_summary && <p className="mt-1.5 break-words text-sm text-muted">{eintrag.redacted_summary}</p>}
               {eintrag.action_hint && (
-                <p className="mt-1.5 text-xs text-brand">↳ gelernte Vorgabe: {eintrag.action_hint}</p>
+                <p className="mt-1.5 break-words text-xs text-brand">↳ {tr("inbox.gelernte_vorgabe")}: {eintrag.action_hint}</p>
               )}
 
               <div className="mt-3 flex items-center gap-2">

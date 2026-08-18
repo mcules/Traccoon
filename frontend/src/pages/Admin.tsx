@@ -276,37 +276,36 @@ function Users() {
   return (
     <>
     <CreateUserForm onCreated={() => qc.invalidateQueries({ queryKey: ["admin-users"] })} />
-    <table className="w-full text-sm">
-      <thead><tr className="border-b border-line text-left text-xs uppercase text-muted">
-        <th className="py-2">{tr("admin.nutzer")}</th><th>{tr("admin.rolle")}</th><th>{tr("admin.status")}</th><th></th></tr></thead>
-      <tbody>
-        {users?.map((u) => (
-          <>
-          <tr key={u.id} className="border-b border-line">
-            <td className="py-2">{u.display_name} <span className="text-muted">({u.email})</span></td>
-            <td>
-              <select value={u.global_role} onChange={(e) => role.mutate({ id: u.id, role: e.target.value })}
-                className="rounded border border-line bg-surface px-1 py-0.5 text-ink">
-                <option value="user">user</option>
-                <option value="admin">admin</option>
-              </select>
-            </td>
-            <td>{u.status}</td>
-            <td className="space-x-3 text-right">
-              <button onClick={() => setEditUser(u)} className="text-muted hover:text-ink">bearbeiten</button>
-              <button onClick={() => setMcpFor(mcpFor === u.id ? null : u.id)} className="text-muted hover:text-ink">MCP</button>
-              {u.status === "pending" && <button onClick={() => act.mutate({ id: u.id, path: "approve" })} className="text-brand">freischalten</button>}
-              {u.status === "active" && <button onClick={() => act.mutate({ id: u.id, path: "disable" })} className="text-muted hover:text-red-400">sperren</button>}
-              {u.status === "disabled" && <button onClick={() => act.mutate({ id: u.id, path: "approve" })} className="text-brand">entsperren</button>}
-            </td>
-          </tr>
-          {mcpFor === u.id && (
-            <tr><td colSpan={4} className="bg-card px-2 py-2"><McpAssign userId={u.id} /></td></tr>
-          )}
-          </>
-        ))}
-      </tbody>
-    </table>
+    {/* Keine Tabelle: vier Spalten auf 390 px hießen ein Wort je Zeile, und die drei
+        Knöpfe stapelten sich rechts übereinander. Eine Karte je Nutzer bricht sauber um
+        und liest sich auf jeder Breite gleich. */}
+    <div className="space-y-2">
+      {users?.map((u) => (
+        <div key={u.id} className="rounded-lg border border-line bg-card p-2 text-sm">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-medium">{u.display_name}</span>
+            {u.email && <span className="text-xs text-muted">{u.email}</span>}
+            <span className={`rounded px-1.5 text-xs ${
+              u.status === "active" ? "bg-green-500/15 text-green-400"
+                : u.status === "pending" ? "bg-amber-500/15 text-amber-400"
+                : "bg-surface text-muted"}`}>{u.status}</span>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <select value={u.global_role} onChange={(e) => role.mutate({ id: u.id, role: e.target.value })}
+              className="rounded border border-line bg-surface px-1 py-0.5 text-ink">
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+            <button onClick={() => setEditUser(u)} className="text-muted hover:text-ink">{tr("common.bearbeiten")}</button>
+            <button onClick={() => setMcpFor(mcpFor === u.id ? null : u.id)} className="text-muted hover:text-ink">MCP</button>
+            {u.status === "pending" && <button onClick={() => act.mutate({ id: u.id, path: "approve" })} className="text-brand">{tr("admin.freischalten")}</button>}
+            {u.status === "active" && <button onClick={() => act.mutate({ id: u.id, path: "disable" })} className="text-muted hover:text-red-400">{tr("admin.sperren")}</button>}
+            {u.status === "disabled" && <button onClick={() => act.mutate({ id: u.id, path: "approve" })} className="text-brand">{tr("admin.entsperren")}</button>}
+          </div>
+          {mcpFor === u.id && <div className="mt-2 border-t border-line pt-2"><McpAssign userId={u.id} /></div>}
+        </div>
+      ))}
+    </div>
     {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)}
       onSaved={() => { setEditUser(null); qc.invalidateQueries({ queryKey: ["admin-users"] }); }} />}
     </>
@@ -496,12 +495,17 @@ function Cost() {
   return (
     <div>
       <div className="mb-3 text-2xl font-semibold">${data?.total_usd?.toFixed(4) ?? "0"}</div>
-      <table className="w-full text-sm">
-        <thead><tr className="border-b border-line text-left text-xs uppercase text-muted"><th className="py-2">{tr("admin.modell")}</th><th>USD</th><th>{tr("admin.calls")}</th></tr></thead>
-        <tbody>{data?.by_model?.map((m: any) => (
-          <tr key={m.model} className="border-b border-line"><td className="py-2">{m.model}</td><td>${m.usd}</td><td>{m.calls}</td></tr>
-        ))}</tbody>
-      </table>
+      {/* Modellnamen sind lang und Zahlen kurz: als Tabelle quetschte das auf dem Handy den
+          Namen auf ein Wort je Zeile. Eine Zeile je Modell, Zahlen rechts. */}
+      <div className="divide-y divide-line text-sm">
+        {data?.by_model?.map((m: any) => (
+          <div key={m.model} className="flex flex-wrap items-baseline gap-x-3 py-2">
+            <span className="min-w-0 flex-1 break-all">{m.model}</span>
+            <span className="tabular-nums text-ink">${m.usd}</span>
+            <span className="tabular-nums text-xs text-muted">{tr("admin.calls_n", { anzahl: m.calls })}</span>
+          </div>
+        ))}
+      </div>
       {(!data?.by_model || data.by_model.length === 0) && <div className="text-sm text-muted">{tr("admin.noch_keine_kosten")}</div>}
     </div>
   );

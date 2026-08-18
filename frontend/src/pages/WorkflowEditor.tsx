@@ -480,7 +480,7 @@ export default function WorkflowEditor() {
         {!nurLesen && (
           <div className="w-52 shrink-0 overflow-y-auto border-r border-line bg-card p-3">
             <NodePalette />
-            <p className="mt-4 border-t border-line pt-3 text-[10px] leading-relaxed text-muted">
+            <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-muted">
               {tr("editor.hilfe_verbinden")}<br />
               {tr("editor.hilfe_loeschen")}
             </p>
