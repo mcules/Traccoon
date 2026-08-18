@@ -1,11 +1,11 @@
-"""Etappe 4 — Hardware-Beschaffung auf der generischen Workflow-Engine.
+"""Hardware procurement on the generic workflow engine.
 
-Bildet den bestehenden linearen Beschaffungsprozess (`hardware_workflow_steps`,
-Default Bestellen→Erhalten→Einlagern→Einbauen) als generische WorkflowDefinition ab:
-je Schritt ein human_task, gefolgt von einer set_status-Auto-Action (falls der
-Schrittname einem PurchaseStatus zugeordnet ist). Der Workflow ist damit die Quelle des
-`purchase_status`; das alte Modul (`hardware_asset_steps` + AssetProcurement) läuft
-zunächst parallel weiter (Dual-Run).
+Maps the existing linear procurement process (`hardware_workflow_steps`, by default order →
+receive → store → install) as a generic WorkflowDefinition: one human_task per step,
+followed by a set_status auto action (when the step name is assigned to a PurchaseStatus).
+The workflow is thereby the source of the `purchase_status`; the old module
+(`hardware_asset_steps` plus AssetProcurement) keeps running in parallel for the time being
+(dual run).
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ HARDWARE_DEF_KEY = "hardware-beschaffung"
 HARDWARE_SLOT = WorkflowSlot.hardware_procurement.value
 DEFAULT_STEPS = ["Bestellen", "Erhalten", "Einlagern", "Einbauen"]
 
-# Schrittname (kleingeschrieben) → purchase_status. Unbekannte Namen erzeugen keine Status-Aktion.
+# Step name (lower case) to purchase_status. Unknown names produce no status action.
 STEP_STATUS_MAP = {
     "bestellen": "ordered",
     "erhalten": "delivered",
@@ -32,7 +32,7 @@ STEP_STATUS_MAP = {
     "einbauen": "installed",
 }
 
-# Beschriftung des Status-Schritts — „→ ordered" sagt niemandem etwas.
+# Label of the status step: "→ ordered" says nothing to anybody.
 STATUS_LABEL = {
     "ordered": "Status: Bestellt",
     "delivered": "Status: Erhalten",
@@ -44,13 +44,13 @@ STATUS_LABEL = {
 def build_hardware_graph(steps: list[str] | list[tuple[str, dict]]) -> dict:
     """Linearer Graph: start → (human_task[ → auto_action set_status])* → end.
 
-    `steps` sind entweder reine Namen oder (Name, AssigneeSpec)-Paare. Ohne Spec bleibt
-    der Schritt unzugewiesen und die Übergabe im Prozess setzt die Zuständigen.
+    `steps` are either plain names or (name, AssigneeSpec) pairs. Without a spec the step
+    stays unassigned and the handover in the process sets the responsible people.
     """
     pairs: list[tuple[str, dict]] = [
         (s, {}) if isinstance(s, str) else (s[0], s[1] or {}) for s in steps
     ]
-    # Fluss läuft von oben nach unten (Editor/Runtime rendern vertikal).
+    # The flow runs from top to bottom (editor and runtime render vertically).
     nodes: list[dict] = [
         {"id": "s", "type": "start", "position": {"x": 0, "y": 0}, "data": {"config": {}}},
     ]
@@ -64,7 +64,7 @@ def build_hardware_graph(steps: list[str] | list[tuple[str, dict]]) -> dict:
             "data": {"config": {
                 "label": name,
                 "group": "beschaffung",
-                "assignee": assignee or {"mode": "user"},  # leer = Übergabe setzt Zuständige
+                "assignee": assignee or {"mode": "user"},  # empty = the handover sets the responsible people
                 "form": [{"key": "note", "label": "Notiz", "type": "text"}],
                 "handover": True,
             }},
@@ -77,9 +77,9 @@ def build_hardware_graph(steps: list[str] | list[tuple[str, dict]]) -> dict:
             aa = f"aa{i}"
             nodes.append({
                 "id": aa, "type": "auto_action", "position": {"x": 0, "y": y},
-                # Verschachtelte Form — dieselbe, die der Editor schreibt. In der flachen
-                # Form („action": "name", "status": …) zeigt die Oberfläche weder Aktion
-                # noch Parameter an, und die erste Bearbeitung würde sie überschreiben.
+                # The nested form, the same one the editor writes. In the flat form
+                # ("action": "name", "status": …) the interface shows neither the action nor
+                # the parameters, and the first edit would overwrite them.
                 "data": {"config": {
                     "label": STATUS_LABEL.get(status, f"Status: {status}"),
                     "group": "beschaffung",
@@ -96,7 +96,7 @@ def build_hardware_graph(steps: list[str] | list[tuple[str, dict]]) -> dict:
 
 
 async def _project_steps(db, project_id: int) -> list[tuple[str, dict]]:
-    """Schritte (Name + AssigneeSpec) des Projekt-Beschaffungs-Workflows, sonst Default-Satz."""
+    """Steps (name plus AssigneeSpec) of the project procurement workflow, otherwise the default set."""
     wf = (await db.execute(
         select(HardwareWorkflow).where(HardwareWorkflow.project_id == project_id)
     )).scalar_one_or_none()
@@ -112,10 +112,10 @@ async def _project_steps(db, project_id: int) -> list[tuple[str, dict]]:
 
 async def ensure_hardware_definition(db, project_id: int, actor_id: int | None = None
                                      ) -> WorkflowDefinition:
-    """Legt (idempotent) die veröffentlichte „Hardware-Beschaffung"-Definition des Projekts an.
+    """Creates (idempotently) the published "hardware procurement" definition of the project.
 
-    Existiert sie bereits, wird sie unverändert zurückgegeben (Dual-Run: bestehende Instanzen
-    pinnen ohnehin auf ihre Version)."""
+    If it already exists it is returned unchanged (dual run: existing instances pin to their
+    version anyway)."""
     existing = (await db.execute(
         select(WorkflowDefinition).where(
             WorkflowDefinition.project_id == project_id,
@@ -149,11 +149,11 @@ async def ensure_hardware_definition(db, project_id: int, actor_id: int | None =
 
 async def sync_hardware_definition(db, project_id: int, actor_id: int | None = None
                                    ) -> WorkflowDefinition | None:
-    """Schrittliste geändert → neue veröffentlichte Version der Beschaffungs-Definition.
+    """Step list changed means a new published version of the procurement definition.
 
-    Tut nichts, wenn für das Projekt noch keine Definition existiert (dann wird sie erst
-    beim „Als Prozess bearbeiten" erzeugt) oder wenn der Graph unverändert ist. Laufende
-    Instanzen bleiben auf ihrer alten Version gepinnt — nur neue starten mit der neuen.
+    Does nothing when no definition exists for the project yet (then it is only created on
+    "edit as a process") or when the graph is unchanged. Running instances stay pinned to
+    their old version; only new ones start with the new one.
     """
     definition = (await db.execute(
         select(WorkflowDefinition).where(
@@ -186,11 +186,11 @@ async def sync_hardware_definition(db, project_id: int, actor_id: int | None = N
 
 async def start_hardware_instance(db, asset: HardwareAsset, actor_id: int | None = None
                                   ) -> WorkflowInstance:
-    """Startet (idempotent) eine Beschaffungs-Instanz für ein Exemplar. Voraussetzung:
-    Exemplar ist einem Projekt zugeordnet (Vorrat/Lager ohne Projekt hat keinen Workflow)."""
+    """Starts (idempotently) a procurement instance for a unit. Precondition: the unit is
+    assigned to a project (stock without a project has no workflow)."""
     if asset.project_id is None:
         raise ValueError("Exemplar ohne Projekt hat keinen Beschaffungs-Workflow")
-    # Bereits eine laufende/wartende Instanz für dieses Exemplar? → diese zurückgeben.
+    # Already a running or waiting instance for this unit? Then return that one.
     running = (await db.execute(
         select(WorkflowInstance).where(
             WorkflowInstance.hardware_asset_id == asset.id,
@@ -201,8 +201,8 @@ async def start_hardware_instance(db, asset: HardwareAsset, actor_id: int | None
     if running is not None:
         return running
 
-    # Welcher Beschaffungs-Ablauf gilt: eigene Schrittliste des Projekts → Satz des
-    # Projekts/Owners → globaler Standard.
+    # Which procurement flow applies: the project's own step list, then the set of the
+    # project or owner, then the global default.
     from .workflow_sets import resolve_definition
     definition = await resolve_definition(db, asset.project_id, HARDWARE_SLOT)
     if definition is None or definition.current_version_id is None:
@@ -222,17 +222,17 @@ _ALT_AKTION = {"set_purchase_status": "set_status"}
 
 
 def _vergleichsform(graph: dict) -> dict:
-    """Graph auf das reduzieren, was ihn inhaltlich ausmacht — Schreibweise egal.
+    """Reduce the graph to what makes it up in substance, regardless of notation.
 
-    Aktionen gab es in flacher (`{"action": "name", "status": …}`) und verschachtelter Form,
-    und die Zustands-Aktion hieß früher anders. Wer nur die Schreibweise vergleicht, hält
-    zwei gleiche Ketten für verschieden. Alles andere — Reihenfolge, Beschriftungen,
-    Zuständige, Formularfelder — bleibt drin: daran erkennt man eine echte Anpassung.
+    Actions existed in a flat (`{"action": "name", "status": …}`) and a nested form, and the
+    status action used to be called differently. Whoever compares only the notation considers
+    two identical chains different. Everything else (order, labels, responsible people, form
+    fields) stays in: that is how a real adjustment is recognised.
     """
     def aktion(cfg: dict) -> dict:
         roh = cfg.get("action")
         if isinstance(roh, str):
-            # Flache Form: alles außer Name und Beschriftung ist Parameter.
+            # Flat form: everything except name and label is a parameter.
             name = roh
             params = {k: v for k, v in cfg.items()
                       if k not in ("action", "kind", "label", "group")}
@@ -256,12 +256,12 @@ def _vergleichsform(graph: dict) -> dict:
 
 
 async def refresh_generated_definitions(db) -> int:
-    """Unangetastete Projekt-Beschaffungen auf die aktuelle Bauform heben.
+    """Lift untouched project procurements to the current shape.
 
-    Angefasst wird nur, was sich vom frisch erzeugten Graphen ausschließlich in der
-    Schreibweise unterscheidet (frühere flache Aktions-Form, alter Aktionsname). Sobald
-    jemand inhaltlich etwas geändert hat, bleibt die Kette wie sie ist — eine Anpassung darf
-    nie stillschweigend verloren gehen. Laufende Instanzen bleiben ohnehin auf ihrer Version.
+    What is touched is only what differs from the freshly produced graph exclusively in
+    notation (the earlier flat action form, the old action name). As soon as somebody has
+    changed something in substance, the chain stays as it is: an adjustment must never be
+    lost silently. Running instances stay on their version anyway.
     """
     rows = (await db.execute(
         select(WorkflowDefinition).where(
@@ -279,7 +279,7 @@ async def refresh_generated_definitions(db) -> int:
         if neu == current.graph:
             continue
         if _vergleichsform(current.graph or {}) != _vergleichsform(neu):
-            continue  # inhaltlich angepasst — nicht anfassen
+            continue  # adjusted in substance: do not touch
         last = (await db.execute(
             select(WorkflowVersion).where(WorkflowVersion.definition_id == d.id)
             .order_by(WorkflowVersion.version.desc()))).scalars().first()
