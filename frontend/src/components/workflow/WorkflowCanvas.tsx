@@ -132,7 +132,9 @@ function Inner(props: WorkflowCanvasProps) {
       <PhaseBands nodes={nodes} />
       <Background className="!bg-surface" />
       <Controls />
-      <MiniMap pannable zoomable className="!bg-card" />
+      {/* Die Übersichtskarte deckte am Handy ein Viertel der Fläche zu — dort ist die
+          Fläche selbst schon die Übersicht. */}
+      <MiniMap pannable zoomable className="!bg-card !hidden md:!block" />
     </ReactFlow>
   );
 }

@@ -31,10 +31,17 @@ const SEITEN = [
     .map((t) => [`Einstellungen/${t}`, `/settings/${t}`]),
   ...["users", "cost", "models", "maintenance", "mail", "destinations", "artifacts", "translations"]
     .map((t) => [`Admin/${t}`, `/admin/${t}`]),
+  // Der Ablauf-Editor war am Handy gar nicht bedienbar und stand deshalb auch nie in der
+  // Messung — genau die Lücke, durch die er durchgefallen ist.
+  ["Ablauf-Editor", `/workflows/${process.env.WF || "44"}`],
 ];
 const BREITEN = [["Handy", 390, 844], ["Desktop", 1400, 900]];
 
 const messen = ({ grenze, handy }) => {
+  // Die Zeichenfläche eines Ablaufs hat ihr eigenes Koordinatensystem: React Flow skaliert
+  // sie als Ganzes, ein 12-px-Text steht bei 0,7-fachem Zoom als 8,4 px im Dokument. Alles
+  // darin zu messen hieße, den Zoomfaktor zu bewerten, nicht die Gestaltung.
+  const gezeichnet = (el) => !!el.closest(".react-flow");
   const doc = document.scrollingElement;
   const breite = window.innerWidth;
   const ueberstand = Math.max(0, doc.scrollWidth - breite);
@@ -45,6 +52,7 @@ const messen = ({ grenze, handy }) => {
   for (const el of document.querySelectorAll("body *")) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) continue;
+    if (gezeichnet(el)) continue;
     if (r.right > breite + 2 || r.left < -2) {
       const stil = getComputedStyle(el);
       if (stil.overflowX === "auto" || stil.overflowX === "scroll") continue;  // darf scrollen
@@ -87,6 +95,7 @@ const messen = ({ grenze, handy }) => {
     if (!eigenerText) continue;
     const r = el.getBoundingClientRect();
     if (r.width === 0 || r.height === 0) continue;
+    if (gezeichnet(el)) continue;
     const px = parseFloat(getComputedStyle(el).fontSize);
     if (px < 11) kleinschrift.set(el.textContent.trim().slice(0, 40), Math.round(px * 10) / 10);
   }
@@ -102,6 +111,7 @@ const messen = ({ grenze, handy }) => {
     if (el.scrollWidth <= el.clientWidth + 24) continue;
     const r = el.getBoundingClientRect();
     if (r.width < 40 || r.height < 12) continue;
+    if (gezeichnet(el)) continue;
     abgeschnitten.push({ el, name: el.tagName.toLowerCase() + " +"
       + (el.scrollWidth - el.clientWidth) + "px: "
       + (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 30) });
@@ -114,8 +124,10 @@ const messen = ({ grenze, handy }) => {
     return spalten > 2 && tab.getBoundingClientRect().width > 200;
   }).map((tab) => `${tab.querySelector("tr")?.children.length} Spalten`) : [];
 
-  // Textspalten, die schmaler sind als etwa zwanzig Zeichen: dort bricht jeder Satz zum
-  // Wasserfall (die Modell-Seite zeigte 45 Zeilen à zwei Wörter).
+  // Textspalten, die schmaler sind als etwa achtzehn Zeichen: dort bricht jeder Satz zum
+  // Wasserfall (die Modell-Seite zeigte 45 Zeilen à zwei Wörter). Die Grenze liegt unter der
+  // schmalsten bewussten Spalte der Anwendung (die 208-px-Palette des Editors), sonst
+  // meldete die Messung eine Gestaltungsentscheidung als Mangel.
   const wasserfall = [];
   for (const el of document.querySelectorAll("p, div, li, span")) {
     const txt = (el.textContent || "").trim();
@@ -123,7 +135,8 @@ const messen = ({ grenze, handy }) => {
     const eigener = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim().length > 40);
     if (!eigener) continue;
     const r = el.getBoundingClientRect();
-    if (r.width > 0 && r.width < 210 && r.height > 100) wasserfall.push(`${Math.round(r.width)}px breit`);
+    if (gezeichnet(el)) continue;
+    if (r.width > 0 && r.width < 180 && r.height > 100) wasserfall.push(`${Math.round(r.width)}px breit`);
   }
 
   // Was seitwärts weggescrollt werden muss, findet auf einem Handy niemand. Tabellen sind
