@@ -204,6 +204,66 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     fields: [],
   },
 
+  mail_classify: {
+    subjects: ["standalone"],
+    summary: "Ordnet die eingegangene Mail im Haus ein (Kategorie, Dringlichkeit, "
+      + "Kurzfassung) und sucht die gelernte Regel zum Absender. Schreibt klasse.* "
+      + "und policy.* in den Kontext.",
+    fields: [
+      { key: "classify_agent", label: "Klassifizier-Agent", type: "text",
+        hint: "Leer = der Agent aus dem Auslöser. Ganz ohne Agenten wird nur durchgereicht." },
+    ],
+  },
+
+  spam_evaluate: {
+    subjects: ["standalone"],
+    summary: "Zieht Regeln, lokales Modell und Gedächtnis zu einem Urteil zusammen "
+      + "(spam.score, spam.geklaert, spam.frage_ab …). Entscheidet selbst nichts.",
+    fields: [],
+  },
+
+  spam_card: {
+    subjects: ["standalone"],
+    summary: "Legt die Urteils-Zeile an und stellt die Telegram-Rückfrage. Unterhalb der "
+      + "Sofort-Schwelle wartet der Fall auf die Sammel-Karte.",
+    fields: [
+      { key: "vorentschieden", label: "Schon entschieden", type: "boolean", default: false,
+        hint: "Meldet einen vom Gedächtnis geklärten Fall — als Hinweis, nicht als Frage." },
+    ],
+  },
+
+  spam_apply: {
+    subjects: ["standalone"],
+    summary: "Schreibt das Urteil fest, lernt daraus und bewegt die Mail (Spam-Ordner "
+      + "bzw. zurück in den Posteingang).",
+    fields: [
+      { key: "entscheidung", label: "Entscheidung", type: "select",
+        options: [["spam", "Ist Spam"], ["ham", "Kein Spam"]],
+        hint: "Leer = die Antwort des Menschen aus dem Kontext (spam.entschieden)." },
+      { key: "decided_by", label: "Entschieden von", type: "text", placeholder: "auto" },
+    ],
+  },
+
+  assistant_task: {
+    subjects: ["standalone"],
+    summary: "Macht aus der Mail ein Assistent-Item (das, was der Mensch freigibt). "
+      + "Doppelte Zustellung erzeugt kein zweites Item.",
+    fields: [],
+  },
+
+  assistant_card: {
+    subjects: ["standalone"],
+    summary: "Schickt die Freigabekarte zum Assistent-Item.",
+    fields: [],
+  },
+
+  assistant_run: {
+    subjects: ["standalone"],
+    summary: "Reiht den Assistenten-Lauf ein (für Items, die eine gelernte Regel bereits "
+      + "freigegeben hat).",
+    fields: [],
+  },
+
   stop_agent: { summary: "Bricht einen laufenden Agentenlauf ab.", fields: [], subjects: ["issue"] },
   start_testenv: { summary: "Startet die Testumgebung des Tickets.", fields: [], subjects: ["issue"] },
   stop_testenv: {

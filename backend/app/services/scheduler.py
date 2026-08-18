@@ -223,6 +223,9 @@ async def _flush_coalesced() -> None:
 RUN_RETENTION_KEY = "run_retention_days"
 RUN_RETENTION_DEFAULT = 30
 _purge_after = 0.0  # Monotonic-Marke: Aufräumen läuft höchstens stündlich
+# Der Vault ändert sich selten; stündlich reicht. Erster Durchlauf gleich beim Start,
+# damit die Freispruch-Liste nicht eine Stunde lang leer ist.
+_vault_after = 0.0
 
 
 async def _purge_archived_runs() -> None:
@@ -254,17 +257,72 @@ async def _purge_archived_runs() -> None:
             log.info("%d archivierte Agentenläufe älter als %d Tage gelöscht", res.rowcount, days)
 
 
+async def _spam_digest() -> None:
+    """Sammel-Karte für Spam-Verdachtsfälle unterhalb der Sofort-Schwelle."""
+    from .spam_review import digest_faellig
+
+    async with SessionLocal() as db:
+        await digest_faellig(db)
+
+
+async def _postfach_lernen() -> None:
+    """Was der Mensch selbst entschieden hat, ohne zu fragen einsammeln.
+
+    Zwei Wege, beide ohne Rückfrage und ohne Modell: Mails, die er selbst in den
+    Spam-Ordner geschoben hat (am Handy, in der Webmail), und Adressen, denen er selbst
+    geschrieben hat. Ersteres ist Spam-Lehrstoff, letzteres ein Freispruch.
+    """
+    from ..models.ops import WebhookSub
+    from .spam_bootstrap import antwort_kontakte, spam_rueckkopplung
+
+    async with SessionLocal() as db:
+        owner_ids = (await db.execute(select(WebhookSub.owner_user_id).where(
+            WebhookSub.mode == "assistant",
+            WebhookSub.owner_user_id.isnot(None)).distinct())).scalars().all()
+        for owner_id in owner_ids:
+            try:
+                await spam_rueckkopplung(db, owner_id)
+                await antwort_kontakte(db, owner_id)
+            except Exception:  # noqa: BLE001
+                log.exception("Postfach-Abgleich für Nutzer %s fehlgeschlagen", owner_id)
+
+
+async def _vault_kontakte() -> None:
+    """Bekannte Adressen aus dem Vault nachziehen (Freispruch-Liste der Spam-Erkennung).
+
+    Nur für Menschen, die tatsächlich einen Mail-Webhook betreiben — für alle anderen gäbe
+    es nichts zu prüfen, und der Vault-Durchlauf kostet Dateizugriffe.
+    """
+    from ..models.ops import WebhookSub
+    from .vault_contacts import sync_contacts
+
+    async with SessionLocal() as db:
+        owner_ids = (await db.execute(select(WebhookSub.owner_user_id).where(
+            WebhookSub.mode == "assistant",
+            WebhookSub.owner_user_id.isnot(None)).distinct())).scalars().all()
+        for owner_id in owner_ids:
+            try:
+                await sync_contacts(db, owner_id)
+            except Exception:  # noqa: BLE001
+                log.exception("Vault-Kontaktabgleich für Nutzer %s fehlgeschlagen", owner_id)
+
+
 async def run_scheduler() -> None:
-    global _purge_after
+    global _purge_after, _vault_after
     await asyncio.sleep(8)
     loop = asyncio.get_running_loop()
     while True:
         try:
             await _tick()
             await _flush_coalesced()
+            await _spam_digest()
             if loop.time() >= _purge_after:
                 _purge_after = loop.time() + 3600
                 await _purge_archived_runs()
+            if loop.time() >= _vault_after:
+                _vault_after = loop.time() + 3600
+                await _vault_kontakte()
+                await _postfach_lernen()
         except Exception:  # noqa: BLE001
             log.exception("scheduler tick failed")
         await asyncio.sleep(INTERVAL)

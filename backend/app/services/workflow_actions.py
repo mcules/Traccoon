@@ -30,6 +30,15 @@ Ticket-Lebenszyklus (Etappe 5 — der Graph ist die Wahrheit, `agent_status` die
   split_tickets       {}                      — <subtickets> aus dem Plan als Kinder anlegen
   stop_agent          {}                      — laufenden Agentenlauf abbrechen
 
+Mail-Eingang (Slot `mail_intake`, Handler in `services/mail_actions.py`):
+  mail_classify       {classify_agent?}       — Mail einordnen + gelernte Absender-Regel
+  spam_evaluate       {}                      — Regeln + Modell + Gedächtnis → ein Urteil
+  spam_card           {vorentschieden?}       — Urteils-Zeile + Telegram-Rückfrage anlegen
+  spam_apply          {entscheidung?, decided_by?} — festschreiben, lernen, Mail bewegen
+  assistant_task      {}                      — Assistent-Item aus der Mail anlegen
+  assistant_card      {}                      — Freigabekarte für das Item
+  assistant_run       {}                      — Assistenten-Lauf einreihen (Auto-Freigabe)
+
 Aktionen unterstützen beide Config-Formen (Editor verschachtelt {action:{action,params}} und
 flach {action:"name",...}) via _normalize_action. Text-/Wert-Felder unterstützen einfaches
 {{var.pfad}}-Templating aus dem Kontext.
@@ -683,6 +692,13 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
 
     if action == "stop_agent":
         return await _stop_agent(db, inst)
+
+    # Mail-Eingang (Slot `mail_intake`): einordnen, beurteilen, nachfragen, wegräumen oder
+    # dem Assistenten geben. Liegt in einem eigenen Modul, weil dort das gesamte Mail-Wissen
+    # zusammenkommt — hier steht nur, dass es diese Schritte gibt.
+    from .mail_actions import HANDLER as MAIL_HANDLER
+    if action in MAIL_HANDLER:
+        return await MAIL_HANDLER[action](db, inst, params, ctx)
 
     if action == "notify":
         target = await _resolve_target(db, inst, params.get("to") or {})

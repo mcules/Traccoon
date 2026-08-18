@@ -11,7 +11,8 @@ export type WorkflowNodeType =
 
 /** Fest benannte Abläufe, die Traccoon selbst auslöst (Backend: WorkflowSlot). */
 export type WorkflowSlot =
-  | "ticket_lifecycle" | "acceptance" | "hardware_procurement" | "ticket_intake";
+  | "ticket_lifecycle" | "acceptance" | "hardware_procurement" | "ticket_intake"
+  | "mail_intake";
 export type WorkflowStepStatus =
   | "pending" | "running" | "waiting" | "done" | "failed" | "skipped";
 
@@ -52,7 +53,10 @@ export type AutoActionName =
   // Ticket-Lebenszyklus
   | "assign_agent" | "set_cap_baseline"
   | "start_testenv" | "stop_testenv" | "accept_merge" | "deploy" | "split_tickets"
-  | "stop_agent";
+  | "stop_agent"
+  // Mail-Eingang (Slot mail_intake)
+  | "mail_classify" | "spam_evaluate" | "spam_card" | "spam_apply"
+  | "assistant_task" | "assistant_card" | "assistant_run";
 
 export interface AutoActionConfig {
   action: AutoActionName;
@@ -222,6 +226,7 @@ export const SLOT_LABELS: Record<WorkflowSlot, string> = {
   acceptance: "Abnahme & Auslieferung",
   hardware_procurement: "Hardware-Beschaffung",
   ticket_intake: "Ticket-Eingang",
+  mail_intake: "Mail-Eingang",
 };
 
 /** Prozess-Satz (global ausgeliefert oder persönlich). */

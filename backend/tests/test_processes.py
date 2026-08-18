@@ -162,7 +162,11 @@ async def test_ereignisse_zaehlen_ihre_zuhoerer(client, db, standard):
     daten = r.json()
     assert {e["event"] for e in daten}
     # Ohne gesetzten Trigger hört niemand zu — das soll die Übersicht ehrlich zeigen.
-    assert all(e["listeners"] == 0 for e in daten)
+    # Ausnahme ist der ausgelieferte Mail-Eingang: er hört auf `mail.received`, und genau
+    # das soll die Übersicht auch zeigen.
+    zuhoerer = {e["event"]: e["listeners"] for e in daten}
+    assert zuhoerer.get("mail.received") == 1
+    assert all(z == 0 for e, z in zuhoerer.items() if e != "mail.received")
 
 
 # ── Zurückrollen ─────────────────────────────────────────────────────────────

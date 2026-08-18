@@ -242,8 +242,15 @@ async def _resolve_assignee(db, inst: WorkflowInstance, cfg: dict) -> int | None
 
 
 async def _notify_assignee(db, inst: WorkflowInstance, node: dict, ntype: str, assignee: int | None):
-    """In-App/Telegram-Benachrichtigung an den Zuständigen + Ticket-Notiz (falls Issue)."""
+    """In-App/Telegram-Benachrichtigung an den Zuständigen + Ticket-Notiz (falls Issue).
+
+    `config.notify = false` schaltet sie ab — für Wartepunkte, deren Frage schon auf einem
+    eigenen Weg gestellt wurde (die Spam-Rückfrage bringt ihre eigene Karte mit Knöpfen mit;
+    eine zweite, knopflose Meldung zur selben Mail wäre nur Lärm).
+    """
     cfg = node_config(node)
+    if cfg.get("notify") is False:
+        return
     label = cfg.get("label") or cfg.get("title") or node.get("id")
     verb = "Genehmigung" if ntype == "approval" else "Aufgabe"
     title = f"Workflow: {verb} „{label}“ wartet"
@@ -1051,6 +1058,49 @@ async def resume_instance(instance_id: int) -> None:
         inst.status = IStatus.running
         await db.commit()
     await advance(instance_id)
+
+
+async def entscheide_genehmigung(db, inst: WorkflowInstance, decision: str, *,
+                                 actor_id: int | None = None, reason: str | None = None,
+                                 context: dict | None = None) -> bool:
+    """Den wartenden Genehmigungs-Schritt einer Instanz entscheiden — ohne HTTP.
+
+    Für Bedienwege, die nicht durch die API kommen (Telegram-Karte, native Werkzeuge im
+    Worker). Liefert False, wenn gerade nichts zu entscheiden ist; der Aufrufer soll das
+    sagen können, statt Erfolg zu melden.
+
+    Committet NICHT und schaltet NICHT weiter: `advance` gehört in den Backend-Prozess,
+    und der Aufrufer muss vorher committen — sonst sähe die eigene Sitzung der Engine die
+    Entscheidung noch nicht.
+    """
+    if inst is None or inst.status not in (IStatus.running, IStatus.waiting):
+        return False
+    step = (await db.execute(
+        select(WorkflowStepRun).where(
+            WorkflowStepRun.instance_id == inst.id,
+            WorkflowStepRun.node_type == NType.approval,
+            WorkflowStepRun.status == SStatus.waiting)
+        .order_by(WorkflowStepRun.id.desc()))).scalars().first()
+    if step is None:
+        return False
+    step.status = SStatus.done
+    step.decision = decision
+    step.result = {"reason": reason} if reason else None
+    step.completed_by = actor_id
+    step.completed_at = _now()
+    token = (await db.execute(
+        select(WorkflowToken).where(
+            WorkflowToken.instance_id == inst.id,
+            WorkflowToken.node_id == step.node_id,
+            WorkflowToken.state == TState.waiting).with_for_update())).scalars().first()
+    if token is not None:
+        token.state = TState.active
+        token.waiting_for = None
+    if context:
+        inst.context = {**(inst.context or {}), **context}
+    inst.status = IStatus.running
+    await db.flush()
+    return True
 
 
 async def advance(instance_id: int) -> None:

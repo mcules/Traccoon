@@ -16,7 +16,11 @@ class Notification(Base):
     # Projektlose Assistent-Freigaben (Telegram-Karte): Bezug aufs Inbox-Item statt aufs Issue.
     assistant_task_id: Mapped[int | None] = mapped_column(
         ForeignKey("assistant_tasks.id", ondelete="CASCADE"), nullable=True)
-    kind: Mapped[str] = mapped_column(String(40), default="")   # done|failed|plan_review|to_test|blocked|permission|assistant_review
+    # Spam-Rückfrage (Einzelkarte): Bezug aufs Urteil statt aufs Inbox-Item — ein Urteil
+    # kann auch ohne Inbox-Item entstehen (Passthrough-Webhooks legen keinen Task an).
+    spam_verdict_id: Mapped[int | None] = mapped_column(
+        ForeignKey("spam_verdicts.id", ondelete="CASCADE"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(40), default="")   # done|failed|plan_review|to_test|blocked|permission|assistant_review|spam_review|spam_digest
     title: Mapped[str] = mapped_column(String(500), default="")
     body: Mapped[str] = mapped_column(Text, default="")
     chat_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

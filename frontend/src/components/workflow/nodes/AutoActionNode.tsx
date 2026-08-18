@@ -19,6 +19,13 @@ const ACTION_LABEL: Record<string, string> = {
   accept_merge: "Mergen / PR öffnen",
   deploy: "Deployment einreihen",
   comment: "Kommentar schreiben",
+  mail_classify: "Mail einordnen",
+  spam_evaluate: "Spam beurteilen",
+  spam_card: "Spam-Rückfrage stellen",
+  spam_apply: "Spam-Urteil ausführen",
+  assistant_task: "Assistent-Item anlegen",
+  assistant_card: "Freigabekarte schicken",
+  assistant_run: "Assistenten starten",
 };
 
 /** Aktionen, die asynchron laufen und ihren Ausgang nach dem Ergebnis benennen. */

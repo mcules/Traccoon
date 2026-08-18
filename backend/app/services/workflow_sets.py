@@ -54,6 +54,12 @@ SLOT_META: dict[str, dict] = {
         "description": "Eingehende Meldung (Webhook/Mail) sichten, Ticket anlegen und zuweisen.",
         "subject_kind": "standalone",
     },
+    WorkflowSlot.mail_intake.value: {
+        "name": "Mail-Eingang",
+        "description": "Eingegangene Mail einordnen, auf Spam prüfen und entweder wegräumen "
+                       "oder dem Assistenten geben.",
+        "subject_kind": "standalone",
+    },
 }
 
 BUILTIN_SET_KEY = "standard"

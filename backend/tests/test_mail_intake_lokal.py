@@ -3,28 +3,37 @@
 Bearbeitet ein Modell im eigenen Haus die Mail, verlässt kein Rohtext den Server. Die
 Schwärzung wäre dann kein Schutz mehr, sondern nur Informationsverlust: der Agent bekäme eine
 verkürzte Zusammenfassung und müsste denselben Text über die IMAP-Tools wieder heranholen.
+
+Geprüft wird über den echten Weg: Mail melden → der ausgelieferte Mail-Eingang läuft →
+Assistent-Item. Damit hängt die Prüfung an dem Ablauf, der auch in Betrieb ist.
 """
 import pytest
 from app.core.security import encrypt_secret
 from app.models.agents import AgentDefinition
+from app.models.assistant import AssistantTask
 from app.models.secrets import ProviderToken
 from app.services import mail_intake
+from app.services.workflow_seed import ensure_builtin_set
+from sqlalchemy import select
 
 from conftest import make_user
 
 
 @pytest.fixture
 async def anna(db):
+    await ensure_builtin_set(db)
     return await make_user(db, "anna")
 
 
-async def _mail(db, owner_id, agent: str, uid: int):
-    task, _auto = await mail_intake.intake_mail(
+async def _mail(db, owner_id, agent: str, uid: int) -> AssistantTask:
+    ids = await mail_intake.intake_mail(
         db, owner_id,
         {"account": "privat", "uid": uid, "from": "rechnung@beispiel.de",
          "subject": "Rechnung 4711", "body": "IBAN DE12 3456 7890, 129,90 EUR"},
         source="mail", agent=agent)
-    return task
+    assert ids, "der ausgelieferte Mail-Eingang hört nicht auf mail.received"
+    return (await db.execute(select(AssistantTask).where(
+        AssistantTask.source_ref == f"privat:{uid}"))).scalars().one()
 
 
 async def test_lokaler_agent_bekommt_den_volltext(db, anna):
@@ -62,3 +71,16 @@ async def test_openai_ohne_eigenen_endpoint_bleibt_geschwaerzt(db, anna):
     task = await _mail(db, anna.id, "wolke", 3)
     assert task.redaction == "redacted"
     assert task.raw_body is None
+
+
+async def test_dieselbe_mail_zweimal_bleibt_ein_item(db, anna):
+    """Der Watcher liefert bei Neustarts gern doppelt — das darf nichts verdoppeln."""
+    await _mail(db, anna.id, "assistent", 4)
+    ids = await mail_intake.intake_mail(
+        db, anna.id, {"account": "privat", "uid": 4, "from": "rechnung@beispiel.de",
+                      "subject": "Rechnung 4711", "body": "egal"},
+        source="mail", agent="assistent")
+    assert ids == []
+    items = (await db.execute(select(AssistantTask).where(
+        AssistantTask.source_ref == "privat:4"))).scalars().all()
+    assert len(items) == 1
