@@ -1,16 +1,16 @@
-"""Winziger, sicherer JSONLogic-Subset-Evaluator (KEINE pip-Abhängigkeit).
+"""Tiny, safe evaluator for a JSONLogic subset (NO pip dependency).
 
-Bewusst eng gehalten: nur eine Allowlist an Operatoren, kein eval, kein Zugriff
-außerhalb des übergebenen Datenobjekts (= WorkflowInstance.context). `{"var": "a.b"}`
-liest per Dot-Pfad. Die Rekursionstiefe ist gedeckelt, damit ein bösartig tiefer
-Ausdruck nicht den Stack sprengt.
+Deliberately kept narrow: only an allow list of operators, no eval, no access outside the
+data object passed in (= WorkflowInstance.context). `{"var": "a.b"}` reads over a dot path.
+The recursion depth is capped so that a maliciously deep expression does not blow the
+stack.
 
-Verwendet von der Workflow-Engine für `decision`-Guards. Gibt bei unbekannten
-Operatoren eine JsonLogicError (die Validierung fängt sie vorab ab).
+Used by the workflow engine for `decision` guards. Raises a JsonLogicError on unknown
+operators (the validation catches them in advance).
 """
 from __future__ import annotations
 
-# Erlaubte Operatoren — ALLES andere wird abgelehnt.
+# Allowed operators; EVERYTHING else is rejected.
 ALLOWED_OPS = {
     "var", "==", "!=", ">", "<", ">=", "<=", "and", "or", "!", "in", "+", "-", "*",
 }
@@ -32,7 +32,7 @@ def _truthy(v) -> bool:
 
 
 def _num(v):
-    """Best-effort-Zahl (für Vergleiche/Arithmetik). None wenn nicht möglich."""
+    """Best-effort number (for comparisons and arithmetic). None when not possible."""
     if isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
@@ -57,7 +57,7 @@ def _loose_eq(a, b) -> bool:
 
 
 def _cmp(a, b):
-    """Vergleichbare Paare liefern (na, nb); wirft bei inkompatiblen Typen."""
+    """Deliver comparable pairs (na, nb); raises on incompatible types."""
     na, nb = _num(a), _num(b)
     if na is not None and nb is not None:
         return na, nb
@@ -150,7 +150,7 @@ def evaluate(rule, data: dict, _depth: int = 0):
             for n in nums:
                 total *= n
             return total
-        # "-" : unär oder binär
+        # "-" : unary or binary
         if len(nums) == 1:
             return -nums[0]
         return nums[0] - nums[1]
@@ -158,7 +158,7 @@ def evaluate(rule, data: dict, _depth: int = 0):
 
 
 def collect_operators(rule, acc: set | None = None) -> set:
-    """Sammelt alle Operator-Schlüssel eines Ausdrucks (für die Validierung)."""
+    """Collects all operator keys of an expression (for the validation)."""
     acc = set() if acc is None else acc
     if isinstance(rule, dict):
         for k, v in rule.items():
@@ -171,5 +171,5 @@ def collect_operators(rule, acc: set | None = None) -> set:
 
 
 def safe_eval(rule, data: dict) -> bool:
-    """Guard-Auswertung mit Wahrheitswert; wirft JsonLogicError bei ungültigem Ausdruck."""
+    """Guard evaluation with a truth value; raises JsonLogicError on an invalid expression."""
     return _truthy(evaluate(rule, data))

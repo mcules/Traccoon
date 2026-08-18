@@ -20,7 +20,7 @@ export default function Profile() {
   );
 }
 
-/** Darstellung des PM-Chats — gilt global über alle Projekte (TRA-21). */
+/** Presentation of the PM chat; applies globally across all projects (TRA-21). */
 function PmChatStylePanel() {
   const { user, refresh } = useAuth();
   const current = user?.pm_chat_style === "cli" ? "cli" : "bubbles";
@@ -96,12 +96,12 @@ function TicketOpenPanel() {
 }
 
 /**
- * Sprache der Oberfläche.
+ * Language of the interface.
  *
- * Deutsch ist die Quelle, alles andere eine Übersetzung. Fehlt ein Text in der gewählten
- * Sprache, steht der deutsche da — eine halb übersetzte Oberfläche bleibt damit benutzbar,
- * statt in rohen Schlüsseln zu enden. Welche Sprachen es gibt, sagt der Server: eine neue
- * entsteht in der Verwaltung, ohne dass jemand Code anfassen muss.
+ * German is the source, everything else a translation. If a text is missing in the chosen
+ * language, the German one stands there, so a half translated interface stays usable instead
+ * of ending in raw keys. Which languages exist is said by the server: a new one comes into
+ * being in the administration without anybody having to touch code.
  */
 function SprachePanel() {
   const { user, refresh } = useAuth();
@@ -155,7 +155,7 @@ function EmailPanel() {
   const save = async () => {
     setErr(""); setOk("");
     try {
-      // Leerer Wert entfernt die E-Mail. Backend liefert 409 bei Kollision.
+      // An empty value removes the e-mail. The backend answers 409 on a collision.
       await api.put("/me/email", { value: email.trim() });
       await refresh();
       setOk(email.trim() ? "E-Mail gespeichert." : "E-Mail entfernt.");
@@ -181,12 +181,12 @@ function EmailPanel() {
 }
 
 /**
- * Auf welchem Weg dieser Mensch erreicht wird.
+ * Which way this human is reached.
  *
- * Der Weg gehört zur Person, nicht zur Nachricht: wer eine Benachrichtigung auslöst —
- * ein Ablauf, ein Agent, ein anderer Mensch — weiß selten, ob der Empfänger Telegram
- * überhaupt benutzt. Deshalb steht hier der Standard, und nur wer es besser weiß,
- * übersteuert ihn in der Aktion.
+ * The way belongs to the person, not to the message: whoever triggers a notification (a
+ * flow, an agent, another human) rarely knows whether the recipient uses Telegram at all.
+ * That is why the default stands here, and only whoever knows better overrides it in the
+ * action.
  */
 function BenachrichtigungenPanel() {
   const { user, refresh } = useAuth();
@@ -296,7 +296,7 @@ function ThemePanel() {
   const setTheme = async (value: "light" | "dark") => {
     if (value === current) return;
     setErr("");
-    // Optimistisch: DOM + localStorage sofort, damit die UI unmittelbar reagiert.
+    // Optimistic: DOM plus localStorage immediately, so that the UI reacts at once.
     document.documentElement.setAttribute("data-theme", value);
     localStorage.setItem("traccoon_theme", value);
     try {

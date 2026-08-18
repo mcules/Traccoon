@@ -21,13 +21,13 @@ class ProviderTokenIn(BaseModel):
     name: str = ""          # optional — leer = „Standard"
     token: str = ""
     is_default: bool = False
-    base_url: str | None = None   # optional — nur openai: eigener OpenAI-kompatibler Endpoint
+    base_url: str | None = None   # optional, openai only: an OpenAI-compatible endpoint of its own
 
 
 @router.get("/me/provider-tokens")
 async def list_provider_tokens(user: User = Depends(get_current_user),
                                db: AsyncSession = Depends(get_session)):
-    """Benannte Tokens des Users je Provider — nur Metadaten, nie der Wert."""
+    """Named tokens of the user per provider: metadata only, never the value."""
     rows = (await db.execute(select(ProviderToken).where(ProviderToken.user_id == user.id)
                              .order_by(ProviderToken.provider, ProviderToken.name))).scalars().all()
     return [{"id": t.id, "provider": t.provider, "name": t.name, "is_default": t.is_default,
@@ -42,15 +42,15 @@ async def add_provider_token(data: ProviderTokenIn, user: User = Depends(get_cur
         raise HTTPException(400, f"Unbekannter Provider (erlaubt: {', '.join(PROVIDERS)})")
     if not data.token.strip():
         raise HTTPException(400, "Token erforderlich")
-    name = data.name.strip() or "Standard"   # Name ist optional
+    name = data.name.strip() or "Standard"   # the name is optional
     provider_rows = (await db.execute(select(ProviderToken).where(
         ProviderToken.user_id == user.id, ProviderToken.provider == data.provider))).scalars().all()
     existing = next((t for t in provider_rows if t.name == name), None)
     row = existing or ProviderToken(user_id=user.id, provider=data.provider, name=name, value_enc="")
     row.value_enc = encrypt_secret(data.token.strip())
-    # Eigene Base-URL nur für die OpenAI-Familie sinnvoll; sonst ignorieren/leeren.
+    # A base URL of its own only makes sense for the OpenAI family; otherwise ignore or empty it.
     row.base_url = (data.base_url or "").strip() or None if data.provider == "openai" else None
-    # Erster Token eines Providers wird automatisch Default; sonst nur wenn angehakt.
+    # The first token of a provider automatically becomes the default; otherwise only when ticked.
     make_default = data.is_default or not provider_rows
     if make_default:
         for other in provider_rows:
@@ -65,7 +65,7 @@ async def add_provider_token(data: ProviderTokenIn, user: User = Depends(get_cur
 @router.post("/me/provider-tokens/{tid}/default", status_code=204)
 async def set_default_provider_token(tid: int, user: User = Depends(get_current_user),
                                      db: AsyncSession = Depends(get_session)):
-    """Diesen Token zum Standard seines Providers machen (die anderen verlieren den Status)."""
+    """Make this token the default of its provider (the others lose the status)."""
     row = await db.get(ProviderToken, tid)
     if row is None or row.user_id != user.id:
         raise HTTPException(404, "Token nicht gefunden")
@@ -77,8 +77,8 @@ async def set_default_provider_token(tid: int, user: User = Depends(get_current_
 
 
 class ProviderTokenPatch(BaseModel):
-    token: str | None = None       # nur setzen, wenn nicht-leer (sonst Wert unverändert)
-    base_url: str | None = None    # nur openai; "" → zurücksetzen auf Provider-Default
+    token: str | None = None       # set only when not empty (otherwise the value stays unchanged)
+    base_url: str | None = None    # openai only; "" resets to the provider default
     is_default: bool | None = None
 
 
@@ -86,8 +86,8 @@ class ProviderTokenPatch(BaseModel):
 async def update_provider_token(tid: int, data: ProviderTokenPatch,
                                 user: User = Depends(get_current_user),
                                 db: AsyncSession = Depends(get_session)):
-    """Bestehenden Key bearbeiten OHNE Token-Zwang: Base-URL/Default ändern; Token nur, wenn
-    ein neuer Wert mitgegeben wird (Werte werden nie zurückgeliefert)."""
+    """Edit an existing key WITHOUT forcing a token: change the base URL or the default; the
+    token only when a new value is passed along (values are never returned)."""
     row = await db.get(ProviderToken, tid)
     if row is None or row.user_id != user.id:
         raise HTTPException(404, "Token nicht gefunden")
@@ -112,7 +112,7 @@ async def del_provider_token(tid: int, user: User = Depends(get_current_user),
         provider = row.provider
         await db.delete(row)
         await db.flush()
-        # War es der Standard, rückt der nächste verbliebene Token des Providers nach.
+        # If it was the default, the next remaining token of the provider moves up.
         if was_default:
             nxt = (await db.execute(select(ProviderToken).where(
                 ProviderToken.user_id == user.id, ProviderToken.provider == provider)
@@ -182,10 +182,10 @@ async def set_git_token(data: TokenIn, access: Access = Depends(require_role(Pro
 @router.get("/projects/{project_id}/agent-requirements")
 async def agent_requirements(access: Access = Depends(require_role(ProjectRole.member)),
                              db: AsyncSession = Depends(get_session)):
-    """Meldet fehlende Secrets vor einem Lauf (Claude/Codex-Token, Git-Token)."""
+    """Reports missing secrets before a run (Claude/Codex token, git token)."""
     user = access.user
     missing: list[str] = []
-    # welche Provider nutzen die Projekt-Agenten?
+    # which providers do the project agents use?
     defs = (
         await db.execute(
             select(AgentDefinition).where(

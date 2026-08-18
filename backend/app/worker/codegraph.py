@@ -1,11 +1,11 @@
-"""Codegraph-Integration: ein Code-Wissensgraph PRO WORKTREE, damit Agenten mit EINER
-Abfrage relevante Symbole, Aufrufwege und Blast-Radius bekommen, statt viele Dateien
-einzeln zu lesen (spart Tokens).
+"""Codegraph integration: one code knowledge graph PER WORKTREE, so that agents get the
+relevant symbols, call paths and blast radius with ONE query instead of reading many files
+one by one (which saves tokens).
 
-Isolation: jede Abfrage läuft strikt mit ``cwd = Worktree`` — codegraph indiziert und
-liest ausschließlich die Dateien dieses Tickets, nie einen anderen Worktree/das Repo
-außerhalb. Der Index liegt in ``<worktree>/.codegraph/`` und wird lokal aus git
-ausgeschlossen (kein versehentliches Mitcommitten der SQLite-DB via ``git add -A``).
+Isolation: every query runs strictly with ``cwd = worktree``; codegraph indexes and reads
+exclusively the files of this ticket, never another worktree or the repository outside it.
+The index lies in ``<worktree>/.codegraph/`` and is excluded from git locally (no accidental
+committing of the SQLite database over ``git add -A``).
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 log = logging.getLogger("traccoon.codegraph")
 
-# Kill-Switch (default an). Nur lesende Query-Subcommands sind über das Agent-Tool erlaubt.
+# Kill switch (on by default). Only reading query subcommands are allowed over the agent tool.
 ENABLED = os.getenv("CODEGRAPH_ENABLED", "1").lower() not in ("0", "false", "no", "")
 _BIN = os.getenv("CODEGRAPH_BIN", "codegraph")
 _TIMEOUT = float(os.getenv("CODEGRAPH_TIMEOUT", "60"))
@@ -46,7 +46,7 @@ async def _exec(program: str, *args: str, cwd: str, timeout: float) -> tuple[int
 
 
 async def available() -> bool:
-    """codegraph aktiviert UND Binary aufrufbar? Ergebnis wird gecacht."""
+    """codegraph enabled AND the binary callable? The result is cached."""
     global _bin_ok
     if not ENABLED:
         return False
@@ -66,8 +66,8 @@ def _lock(root: str) -> asyncio.Lock:
 
 
 async def _git_exclude_codegraph(root: str) -> None:
-    """`.codegraph/` lokal aus git ausschließen (verändert kein getracktes .gitignore).
-    `git rev-parse --git-path info/exclude` liefert auch in git-Worktrees den korrekten Pfad."""
+    """Exclude `.codegraph/` from git locally (changing no tracked .gitignore).
+    `git rev-parse --git-path info/exclude` delivers the correct path in git worktrees too."""
     rc, p = await _exec("git", "rev-parse", "--git-path", "info/exclude", cwd=root, timeout=15)
     if rc != 0:
         return
@@ -85,8 +85,8 @@ async def _git_exclude_codegraph(root: str) -> None:
 
 
 async def ensure_indexed(root: str) -> None:
-    """Index frisch halten: bei fehlendem Index einmalig `init` (baut den Graphen),
-    sonst inkrementeller `sync`. Pro Worktree serialisiert (Lock)."""
+    """Keep the index fresh: with a missing index a one-off `init` (which builds the graph),
+    otherwise an incremental `sync`. Serialised per worktree (lock)."""
     async with _lock(root):
         if (Path(root) / ".codegraph").exists():
             await _exec(_BIN, "sync", cwd=root, timeout=_TIMEOUT)
@@ -98,7 +98,7 @@ async def ensure_indexed(root: str) -> None:
 
 
 async def query(root: str | None, command: str, arg: str) -> str:
-    """Eine codegraph-Query im Worktree ausführen und (gekürzte) Ausgabe liefern."""
+    """Run one codegraph query in the worktree and deliver the (truncated) output."""
     if not root:
         return "FEHLER: kein Workspace für dieses Projekt."
     if not await available():
