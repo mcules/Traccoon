@@ -151,22 +151,22 @@ function Abschalter({ config, onChange }: {
             deaktiviert: e.target.checked || undefined,
             deaktiviert_modus: e.target.checked ? modus : undefined,
           })} />
-        Diesen Schritt abschalten
+        {tr("abschalter.schalter")}
       </label>
       {aus && (
         <>
           <label className="block text-[10px] font-medium text-muted">
-            Was soll dann passieren?
+            {tr("abschalter.was_dann")}
             <select value={modus} className="mt-1 w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
               onChange={(e) => onChange({ ...config, deaktiviert_modus: e.target.value as NodeConfig["deaktiviert_modus"] })}>
-              <option value="ueberspringen">überspringen und weitermachen</option>
-              <option value="abbrechen">den Ablauf hier beenden</option>
+              <option value="ueberspringen">{tr("abschalter.ueberspringen")}</option>
+              <option value="abbrechen">{tr("abschalter.abbrechen")}</option>
             </select>
           </label>
           <p className="text-[10px] text-muted">
             {modus === "abbrechen"
-              ? "Läufe enden hier als abgebrochen — sichtbar im Betrieb, mit dem Namen des Schritts."
-              : "Der Schritt tut nichts, der Ablauf geht über den normalen Ausgang weiter."}
+              ? tr("abschalter.hinweis_abbrechen")
+              : tr("abschalter.hinweis_ueberspringen")}
           </p>
         </>
       )}

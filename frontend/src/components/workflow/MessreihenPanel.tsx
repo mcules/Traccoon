@@ -61,7 +61,7 @@ export default function MessreihenPanel() {
             <ReihenZeile key={r.key} reihe={r}
               offen={offen === r.key}
               umschalten={() => setOffen(offen === r.key ? null : r.key)}
-              loeschen={() => { if (confirm(`Reihe '${r.key}' mit allen Werten löschen?`)) loeschen.mutate(r.key); }} />
+              loeschen={() => { if (confirm(tr("messreihen.reihe_loeschen_frage", { key: r.key }))) loeschen.mutate(r.key); }} />
           ))}
         </div>
       ) : (
@@ -101,16 +101,16 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
         )}
         {t?.rest_tage != null ? (
           <span className={knapp ? "text-amber-300" : ""}>
-            noch {t.rest_tage} Tage — leer am {t.leer_am}
+            {tr("messreihen.noch_tage", { tage: t.rest_tage, datum: t.leer_am ?? "" })}
           </span>
         ) : (
-          <span>{(t?.punkte ?? 0) < 3 ? "zu wenige Werte für eine Prognose" : "kein absehbares Ende"}</span>
+          <span>{tr((t?.punkte ?? 0) < 3 ? "messreihen.zu_wenige_werte" : "messreihen.kein_ende")}</span>
         )}
-        {t?.guete != null && <span>Güte {t.guete}</span>}
+        {t?.guete != null && <span>{tr("messreihen.guete", { wert: t.guete })}</span>}
         <span>{t?.punkte ?? 0} Werte</span>
         {alt && t?.alter_stunden != null && (
           <span className="text-amber-300">
-            seit {Math.round(t.alter_stunden)} h kein neuer Wert
+            {tr("messreihen.kein_neuer_wert", { stunden: Math.round(t.alter_stunden) })}
           </span>
         )}
         {reihe.warned_at && (

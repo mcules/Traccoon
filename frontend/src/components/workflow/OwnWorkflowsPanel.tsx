@@ -80,7 +80,7 @@ export default function OwnWorkflowsPanel() {
                 <td className="pr-2">{d.name}</td>
                 <td className="pr-2 text-muted">{d.subject_kind}</td>
                 <td className="pr-2 text-muted">
-                  {d.current_version_id ? "veröffentlicht" : "nur Entwurf"}
+                  {tr(d.current_version_id ? "proc.veroeffentlicht" : "own_workflows.nur_entwurf")}
                 </td>
                 <td className="whitespace-nowrap py-2 text-right">
                   <button onClick={() => nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } })}
@@ -91,7 +91,7 @@ export default function OwnWorkflowsPanel() {
                     className="ml-1 rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
                     {d.enabled ? "Aus" : "An"}
                   </button>
-                  <button onClick={() => { if (confirm(`Prozess '${d.key}' löschen?`)) loeschen.mutate(d.id); }}
+                  <button onClick={() => { if (confirm(tr("own_workflows.loeschen_frage", { key: d.key }))) loeschen.mutate(d.id); }}
                     className="ml-1 rounded border border-line px-2 py-1 text-xs text-red-400 hover:bg-surface">
                     ✕
                   </button>
@@ -112,7 +112,7 @@ export default function OwnWorkflowsPanel() {
             placeholder={tr("own_workflows_panel.name")} className={inp} />
           <select value={f.template} className={inp}
             onChange={(e) => setF({ ...f, template: e.target.value })}>
-            <option value="">leeres Gerüst (Start + Ende)</option>
+            <option value="">{tr("own_workflows.leeres_geruest")}</option>
             {(vorlagen || []).map((v) => (
               <option key={v.key} value={v.key}>Vorlage: {v.name}</option>
             ))}

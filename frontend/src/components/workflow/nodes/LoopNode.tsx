@@ -1,4 +1,5 @@
 import { BaseNode, type FlowNodeProps, type SourceHandleDef } from "./shared";
+import { tr } from "../../../i18n";
 
 /**
  * Geht eine Liste Element für Element durch — der Weg von „ich habe die Daten" zu „ich
@@ -17,7 +18,7 @@ export default function LoopNode({ id, data, selected }: FlowNodeProps) {
   return (
     <BaseNode
       nodeId={id}
-      title={data.config.label || "Für jedes …"}
+      title={data.config.label || tr("node.loop")}
       icon="🔁"
       accent="border-t-cyan-500"
       selected={selected}
@@ -25,7 +26,7 @@ export default function LoopNode({ id, data, selected }: FlowNodeProps) {
       aus={!!data.config.deaktiviert}
       sources={sources}
     >
-      <div className="font-mono text-[10px]">{liste || "keine Liste gewählt"}</div>
+      <div className="font-mono text-[10px]">{liste || tr("loop.keine_liste")}</div>
     </BaseNode>
   );
 }

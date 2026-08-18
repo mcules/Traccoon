@@ -23,23 +23,23 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
   ["Ticket", [
     ["set_board_status", "Board-Spalte setzen"],
     ["assign_agent", "Agent zuweisen"],
-    ["set_cap_baseline", "Kostenfenster zurücksetzen"],
+    ["set_cap_baseline", "action.set_cap_baseline"],
     ["split_tickets", "Teilaufgaben anlegen"],
     ["stop_agent", "Laufenden Agenten stoppen"],
   ]],
   ["Mail-Eingang", [
     ["mail_classify", "Mail einordnen"],
     ["spam_evaluate", "Spam beurteilen"],
-    ["spam_card", "Spam-Rückfrage stellen"],
-    ["spam_apply", "Spam-Urteil ausführen"],
+    ["spam_card", "action.spam_card"],
+    ["spam_apply", "action.spam_apply"],
     ["assistant_task", "Assistent-Item anlegen"],
     ["assistant_card", "Freigabekarte schicken"],
     ["assistant_run", "Assistenten starten"],
   ]],
   ["Auslieferung", [
     ["start_testenv", "Testumgebung starten"],
-    ["stop_testenv", "Testumgebung abräumen"],
-    ["accept_merge", "Branch mergen / PR öffnen"],
+    ["stop_testenv", "action.stop_testenv"],
+    ["accept_merge", "action.accept_merge"],
     ["deploy", "Deployment einreihen"],
   ]],
 ];

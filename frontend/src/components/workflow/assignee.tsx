@@ -58,7 +58,7 @@ export function AssigneeEditor({
           onChange={(e) => onChange({ mode: "user", user_id: Number(e.target.value) })}
           className={inp}
         >
-          <option value="">— wählen —</option>
+          <option value="">{tr("action_params.waehlen")}</option>
           {members.map((m) => (
             <option key={m.user_id} value={m.user_id}>
               {m.display_name || m.username}

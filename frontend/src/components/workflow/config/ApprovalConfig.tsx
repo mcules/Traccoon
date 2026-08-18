@@ -43,7 +43,7 @@ export default function ApprovalConfig({
           checked={!!config.reason_required_on_reject}
           onChange={(e) => onChange({ ...config, reason_required_on_reject: e.target.checked })}
         />
-        Begründung bei Ablehnung erforderlich
+        {tr("approval_config.begruendung_pflicht")}
       </label>
     </div>
   );

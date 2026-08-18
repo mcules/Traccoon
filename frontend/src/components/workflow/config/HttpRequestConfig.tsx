@@ -61,7 +61,7 @@ export default function HttpRequestConfig({
           </select>
         </label>
         <label className="col-span-2 block text-xs font-medium text-muted">
-          Pfad (an die Basis-URL angehängt)
+          {tr("http_config.pfad")}
           <input value={params.path || ""} onChange={(e) => set("path", e.target.value)}
             placeholder="/api/v2/orders/{{created_ticket.key}}" className={`mt-1 ${inp}`} />
         </label>

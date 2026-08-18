@@ -36,7 +36,7 @@ export default function ProbelaufPanel(
       setSchritte(r.steps);
       const klartext: Record<string, string> = {
         completed: "durchgelaufen", failed: "abgebrochen", waiting: "wartet",
-        running: "läuft noch", cancelled: "abgebrochen",
+        running: "probelauf.laeuft_noch", cancelled: "probelauf.abgebrochen",
       };
       setErgebnis(r.error ? `${klartext[r.status] || r.status} — ${r.error}`
                           : (klartext[r.status] || r.status));
@@ -55,13 +55,13 @@ export default function ProbelaufPanel(
           disabled={!defId || läuft}
           className="rounded border border-line px-2 py-1 text-ink hover:bg-surface disabled:opacity-50"
         >
-          {läuft ? "läuft …" : "▷ Probelauf"}
+          {tr(läuft ? "probelauf.laeuft" : "probelauf.starten")}
         </button>
         {ergebnis && <span className="text-[10px]">Ergebnis: <b>{ergebnis}</b></span>}
       </div>
       <p className="text-[10px]">
         {hatProbe
-          ? "Spielt den Entwurf mit der Beispiel-Nutzlast durch. Aktionen melden nur, was sie täten."
+          ? tr("probelauf.hinweis_mit_nutzlast")
           : "Ohne Beispiel-Nutzlast am Start-Knoten läuft die Probe mit leerem Kontext — Weichen greifen dann kaum."}
       </p>
       {fehler && (

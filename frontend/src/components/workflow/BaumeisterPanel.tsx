@@ -41,7 +41,7 @@ export default function BaumeisterPanel({
     try {
       const r = await workflowApi.entwurf(defId, text.trim(), umbauen ? alt : undefined);
       if (!r.graph?.nodes?.length) {
-        setErr("Es kam kein Ablauf zurück — beschreib es etwas genauer.");
+        setErr(tr("baumeister.kein_ablauf"));
         return;
       }
       setVorher(alt);
@@ -87,14 +87,14 @@ export default function BaumeisterPanel({
         onChange={(e) => setText(e.target.value)}
         rows={4}
         placeholder={umbauen
-          ? "Was soll sich ändern? z. B. „häng vor das Deployment eine Freigabe“"
+          ? tr("baumeister.platzhalter_umbau")
           : "Was soll der Ablauf tun? z. B. „jede Nacht die offenen Bestellungen holen und mir eine Zusammenfassung schicken“"}
         className="w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
       />
 
       <label className="flex items-center gap-2 text-[10px] text-muted">
         <input type="checkbox" checked={umbauen} onChange={(e) => setUmbauen(e.target.checked)} />
-        Auf dem bauen, was auf der Fläche liegt
+        {tr("baumeister.auf_bestand_bauen")}
       </label>
 
       <div className="flex items-center gap-2">
@@ -105,7 +105,7 @@ export default function BaumeisterPanel({
         {vorher && (
           <button onClick={zurueck}
             className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
-            Zurück zum vorherigen Stand
+            {tr("baumeister.zurueck_zum_stand")}
           </button>
         )}
       </div>
@@ -115,7 +115,7 @@ export default function BaumeisterPanel({
         <div className="rounded border border-line bg-surface p-2 text-[10px] text-muted">
           {erklaerung}
           <div className="mt-1 opacity-70">
-            Auf der Fläche — noch nicht gespeichert. Sieh ihn dir an, bevor du speicherst.
+            {tr("baumeister.auf_der_flaeche")}
           </div>
         </div>
       )}

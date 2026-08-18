@@ -14,7 +14,7 @@ export default function HumanTaskNode({ id, data, selected }: FlowNodeProps) {
       runtimeState={data.runtimeState}
       aus={!!data.config.deaktiviert}
     >
-      <div>Zuständig: {assigneeLabel(c.assignee)}</div>
+      <div>{tr("human_task.zustaendig")}: {assigneeLabel(c.assignee)}</div>
       {(c.form?.length ?? 0) > 0 && <div>{c.form!.length} Formularfeld(er)</div>}
       {c.handover && <div>{tr("human_task_node.uebergabe_moeglich")}</div>}
     </BaseNode>
