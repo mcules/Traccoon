@@ -56,7 +56,7 @@ export default function AssistantPolicies() {
               <span className={`rounded px-1.5 text-xs ${p.auto_approve ? "bg-green-600/15 text-green-400" : "bg-surface text-muted"}`}>
                 {p.auto_approve ? "auto-freigabe" : "nur Vorgabe"}</span>
               <span className={`rounded px-1.5 text-xs ${p.redaction === "unredacted" ? "bg-amber-500/15 text-amber-400" : "bg-surface text-muted"}`}>
-                {p.redaction === "unredacted" ? "ungeschwärzt" : "geschwärzt"}</span>
+                {tr(p.redaction === "unredacted" ? "assistant.ungeschwaerzt" : "assistant.geschwaerzt")}</span>
               <span className="ml-auto text-xs text-muted">{p.hit_count}×</span>
             </div>
             {p.action_hint && <p className="mt-1 text-xs text-muted">↳ {p.action_hint}</p>}
@@ -66,13 +66,13 @@ export default function AssistantPolicies() {
                 {p.auto_approve ? "Auto aus" : "Auto an"}</button>
               <button onClick={() => save.mutate({ ...p, redaction: p.redaction === "unredacted" ? "redacted" : "unredacted" })}
                 className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
-                {p.redaction === "unredacted" ? "→ geschwärzt" : "→ ungeschwärzt"}</button>
+                {p.redaction === "unredacted" ? `→ ${tr("assistant.geschwaerzt")}` : `→ ${tr("assistant.ungeschwaerzt")}`}</button>
               <button onClick={() => save.mutate({ ...p, enabled: !p.enabled })}
                 className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
                 {p.enabled ? "Deaktivieren" : "Aktivieren"}</button>
               <button onClick={() => del.mutate(p.id)}
                 className="ml-auto rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-red-400">
-                Löschen</button>
+                {tr("common.loeschen")}</button>
             </div>
           </div>
         ))}
@@ -112,7 +112,7 @@ function ToolPermissions() {
             <div className="flex-1" />
             {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className="text-xs text-muted hover:text-green-400">→ allow</button>}
             {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className="text-xs text-muted hover:text-red-400">→ deny</button>}
-            <button onClick={() => del.mutate(p.id)} className="text-xs text-muted hover:text-red-400">löschen</button>
+            <button onClick={() => del.mutate(p.id)} className="text-xs text-muted hover:text-red-400">{tr("common.loeschen_klein")}</button>
           </div>
         ))}
         {data.length === 0 && <div className="text-xs text-muted">{tr("assistant_policies.keine_der_assistent_fragt_bei_jeder_heik")}</div>}
@@ -149,8 +149,8 @@ function NewPolicy({ onSave }: { onSave: (p: Partial<Policy>) => void }) {
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-ink outline-none" />
         <select value={redaction} onChange={(e) => setRedaction(e.target.value)}
           className="rounded border border-line bg-surface px-2 py-1.5 text-ink">
-          <option value="redacted">geschwärzt</option>
-          <option value="unredacted">ungeschwärzt</option>
+          <option value="redacted">{tr("assistant.geschwaerzt")}</option>
+          <option value="unredacted">{tr("assistant.ungeschwaerzt")}</option>
         </select>
       </div>
       <input value={hint} onChange={(e) => setHint(e.target.value)} placeholder={tr("assistant_policies.gelernte_aktion_optional")}
