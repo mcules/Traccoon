@@ -1,43 +1,48 @@
-# Hausordnung für Agenten in diesem Repository
+# House rules for agents in this repository
 
-Diese Datei liest jeder Agentenlauf zu Beginn (`runtime._read_conventions`). Sie ist kurz
-gehalten: was hier steht, kostet in jedem Lauf Kontext, also steht hier nur, was nicht aus
-dem Code selbst hervorgeht.
+Every agent run reads this file at the start (`runtime._read_conventions`). It is kept
+short: everything here costs context in every single run, so it only holds what the code
+itself does not say.
 
-## Umfang: nur dein Ticket
+## Scope: your ticket, nothing else
 
-Ändere ausschließlich, was dein Ticket und dein freigegebener Plan verlangen. Fällt dir
-unterwegs ein anderer Fehler auf: **schreib ihn in dein Ergebnis, behebe ihn nicht.** Ein
-Ticket, das nebenbei fremde Dateien anfasst, ist beim Merge ein Konflikt ohne Gewinner —
-und die eigentliche Arbeit wird mit ihm zurückgehalten.
+Change only what your ticket and your approved plan ask for. If you spot another bug along
+the way, **write it into your result, do not fix it**. A ticket that touches unrelated
+files becomes a merge conflict nobody wins, and it holds back the work it came for.
 
-Am 2026-08-07 ist genau das passiert: ein Ticket über einen fehlschlagenden Job kam mit
-einer umgebauten Provider-Fehlerbehandlung zurück, weil der Agent eine Fehlermeldung aus
-dem Kommentarverlauf für seinen Auftrag hielt. Solche Meldungen (Worker-Neustart, Deadlock,
-abgeschnittene Modell-Antwort) sind **Pannen der Infrastruktur, nie deine Aufgabe.**
+That is exactly what happened on 2026-08-07: a ticket about a failing job came back with a
+rebuilt provider error path, because the agent mistook an error message in the comment
+history for its assignment. Messages like these (worker restart, deadlock, truncated model
+response) are **infrastructure mishaps, never your task**.
 
-## Dokumentation gehört in den Vault, nicht ins Repository
+## Documentation lives in the vault, not in the repository
 
-Projekt- und Stackwissen wird in Obsidian gepflegt (`02 Projekte/…`, `03 Bereiche/…`).
-Lege **keine** Notizen, Umsetzungsstände oder Pfade wie `02 Projekte/...` im Repository an —
-sie driften gegen die Vault-Fassung ab, und niemand weiß mehr, welche gilt. Im Repository
-gehören: Code, Tests, `README.md`, Kommentare am Code.
+Project and stack knowledge is kept in Obsidian (`02 Projekte/…`, `03 Bereiche/…`). Do
+**not** create notes, status documents or paths like `02 Projekte/...` inside the
+repository. They drift against the vault version, and then nobody knows which one counts.
+The repository holds code, tests, `README.md` and comments on the code.
 
-## Kommentare erklären das Warum
+## Language: English in the code
 
-Der Code sagt, was passiert. Ein Kommentar sagt, warum es so und nicht anders ist —
-bevorzugt mit dem Fall, der zu dieser Lösung geführt hat. Kommentare, die die nächste Zeile
-nacherzählen, werden beim Review beanstandet.
+Comments, docstrings and strings are English, even though we talk German around it. Do not
+translate technical terms that are more common in English (pull request, docker compose).
+No em dashes anywhere: use a comma, a colon, parentheses or a full stop.
 
-## Bauen und Prüfen
+## Comments explain the why
 
-- `check` läuft im Worktree und muss grün sein, bevor du fertig meldest.
-- Kein Deploy von Hand: dieses Projekt hat kein eigenes Stack-Verzeichnis, der Deployer
-  lehnt den Auftrag ab. Live geht die Änderung über Abnahme und Merge.
-- Tests gehören zur Änderung, nicht in ein Folgeticket.
+The code says what happens. A comment says why it is this way and not another, preferably
+with the case that led to the solution. Comments that retell the next line get flagged in
+review.
 
-## Wenn du nicht weiterkommst
+## Building and checking
 
-Frag (`ask_human`), statt zu raten — aber erst, wenn die Frage wirklich nur ein Mensch
-beantworten kann. Reicht dein Budget nicht, übergib sauber (`continue_later`): was du
-gelernt hast, was erledigt ist, was als Nächstes ansteht.
+- `check` runs inside the worktree and has to be green before you report done.
+- No manual deploy: this project has no stack directory of its own, the deployer rejects the
+  request. Changes go live through review and merge.
+- Tests belong to the change, not to a follow-up ticket.
+
+## When you get stuck
+
+Ask (`ask_human`) instead of guessing, but only when the question really needs a human. If
+your budget runs out, hand over cleanly (`continue_later`): what you learned, what is done,
+what comes next.
