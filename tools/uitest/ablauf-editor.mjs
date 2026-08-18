@@ -177,6 +177,24 @@ try {
      page.url().includes("/processes"), page.url());
   await page.screenshot({ path: "/w/06-zurueck.png" });
 
+  // 8) Betrieb: der Verlauf eines echten Laufs — was kam je Schritt zurück?
+  await page.goto(`${BASIS}/processes/betrieb`, { waitUntil: "networkidle" });
+  await page.waitForTimeout(2000);
+  const verlaufKnopf = page.getByRole("button", { name: /^Verlauf$/ }).first();
+  if (await verlaufKnopf.isVisible().catch(() => false)) {
+    await verlaufKnopf.click();
+    await page.waitForTimeout(3000);
+    const zeilen = await page.locator("li code").count().catch(() => 0);
+    ok("Betrieb klappt den Verlauf eines Laufs auf", zeilen > 0, `${zeilen} Schritt-Zeilen`);
+    const ersteZeile = await page.locator("li code").first().textContent().catch(() => "");
+    ok("Verlauf nennt den Knoten je Schritt", !!ersteZeile, (ersteZeile || "").trim());
+    const graphAn = await page.getByText(/Ablauf als Graph/i).first().isVisible().catch(() => false);
+    ok("Graph steckt im Aufklapper, nicht vor dem Protokoll", graphAn);
+    await page.screenshot({ path: "/w/08-verlauf.png" });
+  } else {
+    ok("Betrieb zeigt einen Verlauf-Knopf", false, "kein Lauf sichtbar");
+  }
+
   ok("Keine JavaScript-Fehler in der Konsole", fehlerImLog.length === 0,
      fehlerImLog.slice(0, 2).join(" | "));
   writeFileSync("/w/befund.txt", befund.join("\n") + "\n");
