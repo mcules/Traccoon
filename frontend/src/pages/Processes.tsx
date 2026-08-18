@@ -38,7 +38,7 @@ export default function Processes() {
   })));
   return (
     <div>
-      {tab === "eigene" && <OwnWorkflowsPanel isAdmin={me?.global_role === "admin"} />}
+      {tab === "eigene" && <OwnWorkflowsPanel />}
       {tab === "standard" && <StandardSatz />}
       {tab === "betrieb" && <Betrieb />}
       {tab === "ausloeser" && <Ausloeser />}

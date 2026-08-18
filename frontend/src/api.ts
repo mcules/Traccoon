@@ -304,9 +304,12 @@ export const workflowApi = {
   /** Welche Kontextfelder es gibt — je Auslöser, Aktion und Knotentyp (für den Editor). */
   contextFields: () => api.get<import("./components/workflow/contextFields").KontextKatalog>(
     "/workflow-context-fields"),
+  /** Fertige Abläufe zum Kopieren (Beschreibung, nicht der Graph). */
+  templates: () => api.get<{ key: string; name: string; description: string;
+                             subject_kind: WfSubject; hinweis: string }[]>("/workflow-templates"),
   create: (body: {
     project_id?: number | null; key: string; name: string;
-    description?: string; subject_kind: WfSubject;
+    description?: string; subject_kind: WfSubject; template?: string;
   }) => api.post<WfDef>("/workflows", body),
   get: (id: number) => api.get<WfDef>(`/workflows/${id}`),
   update: (id: number, body: { name?: string; description?: string; enabled?: boolean }) =>
