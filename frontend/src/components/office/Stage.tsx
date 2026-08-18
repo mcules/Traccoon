@@ -56,6 +56,7 @@
 // nicht mehr nur der Blit-Faktor. Wer einen davon vergisst, wählt eine Figur zu weit rechts.
 // `toBuffer` rechnet deshalb konsequent über `getBoundingClientRect()` des Canvas.
 
+import { tr } from "../../i18n";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent } from "react";
@@ -857,8 +858,8 @@ export default function Stage(props: StageProps): JSX.Element {
       tabIndex={kiosk === true ? -1 : 0}
       role="group"
       aria-label={kiosk === true
-        ? "Büro-Bühne im Wandschirm-Betrieb. Die Kamera folgt dem Geschehen von selbst."
-        : "Büro-Bühne. Alt und Pfeiltasten schwenken, Plus und Minus zoomen, Pos1 zentriert."}
+        ? tr("stage.kiosk_beschreibung")
+        : tr("stage.beschreibung")}
       onKeyDown={onKeyDown}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
@@ -875,8 +876,8 @@ export default function Stage(props: StageProps): JSX.Element {
         role="img"
         aria-label={
           empty
-            ? "Leeres Büro — noch kein Agentenlauf."
-            : `Pixel-Büro mit ${roomCount} ${roomCount === 1 ? "Agent" : "Agenten"} im Raum.`
+            ? tr("stage.leer")
+            : tr("stage.mit_agenten", { anzahl: roomCount })
         }
       />
 
@@ -926,7 +927,7 @@ export default function Stage(props: StageProps): JSX.Element {
             {/* Bewusst ohne „in diesem Projekt": die Bühne steht auch auf der
                 projektübergreifenden Seite, und leer heißt hier nur „im geladenen
                 Fenster ist nichts passiert" — nicht „es gab hier nie einen Agenten". */}
-            Noch kein Agentenlauf zu sehen.
+            {tr("stage.kein_lauf")}
           </p>
         </div>
       )}

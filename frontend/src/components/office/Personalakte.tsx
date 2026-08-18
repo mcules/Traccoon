@@ -36,6 +36,7 @@
 // Dockerfile macht bei jedem Bau `npm install` **ohne** Lockfile — eine neue Abhängigkeit wäre
 // ein Risiko für den Bau und kaufte drei gestapelte Rechtecke.
 
+import { tr } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { officeApi, type AgentRecord, type Scope } from "./api.ts";
@@ -48,9 +49,9 @@ import { dauerText, statusFarbe, statusText, tokenText, usdText, zahl } from "./
  *  `run_retention_days` — darüber hinaus gibt es schlicht keine Läufe mehr, und ein Fenster,
  *  das mehr verspricht, als die Aufbewahrung hergibt, wäre eine leere Zusage. */
 const FENSTER: readonly { h: number; kurz: string; lang: string }[] = [
-  { h: 24, kurz: "24 h", lang: "der letzten 24 Stunden" },
-  { h: 24 * 7, kurz: "7 Tage", lang: "der letzten 7 Tage" },
-  { h: 24 * 30, kurz: "30 Tage", lang: "der letzten 30 Tage" },
+  { h: 24, kurz: "akte.fenster_24h_kurz", lang: "akte.fenster_24h" },
+  { h: 24 * 7, kurz: "akte.fenster_7t_kurz", lang: "akte.fenster_7t" },
+  { h: 24 * 30, kurz: "akte.fenster_30t_kurz", lang: "akte.fenster_30t" },
 ];
 
 /** Vorgabe: das ganze Aufbewahrungsfenster. Die Akte ist ein Rückblick, kein Wecker. */
@@ -100,19 +101,16 @@ interface BalkenArt {
 
 const BALKEN: readonly BalkenArt[] = [
   {
-    key: "delivered", label: "abgeliefert", status: "success",
-    titel: "Erfolgreich beendet oder ein fertiger Plan (`success` + `planned`). Ein Plan, der "
-      + "auf Freigabe wartet, ist Arbeit, die abgeliefert wurde — kein Fehlschlag.",
+    key: "delivered", label: "akte.balken_abgeliefert", status: "success",
+    titel: "akte.balken_abgeliefert_titel",
   },
   {
-    key: "waiting", label: "wartet auf einen Menschen", status: "blocked",
-    titel: "Der Lauf hängt an einer Frage, einer Berechtigung oder einer Freigabe (`blocked`). "
-      + "Das ist kein Fehler des Agenten, sondern eine offene Zusage von uns.",
+    key: "waiting", label: "akte.balken_wartet", status: "blocked",
+    titel: "akte.balken_wartet_titel",
   },
   {
-    key: "aborted", label: "abgebrochen", status: "failed",
-    titel: "Fehlgeschlagen oder in der Schleife steckengeblieben (`failed` + `loop_exhausted`) — "
-      + "die Fälle, in denen die Rolle wirklich nicht geliefert hat.",
+    key: "aborted", label: "akte.balken_abgebrochen", status: "failed",
+    titel: "akte.balken_abgebrochen_titel",
   },
 ];
 
@@ -136,17 +134,17 @@ function herText(iso: string | null | undefined, jetzt: number): string {
   const d = Math.max(0, jetzt - t);
   const min = Math.round(d / 60_000);
   if (min < 1) return "gerade eben";
-  if (min < 60) return `vor ${min} min`;
+  if (min < 60) return tr("akte.vor_min", { anzahl: min });
   const std = Math.round(min / 60);
-  if (std < 48) return `vor ${std} h`;
-  return `vor ${Math.round(std / 24)} Tagen`;
+  if (std < 48) return tr("akte.vor_std", { anzahl: std });
+  return tr("akte.vor_tagen", { anzahl: Math.round(std / 24) });
 }
 
 /** Beschriftung eines Histogramm-Eimers. `lt_ms` ist die **obere** Grenze; fehlt sie, ist es
  *  der offene Eimer ganz oben. */
 function eimerText(lt: number | null | undefined, vorher: number | null): string {
   if (lt === null || lt === undefined || !Number.isFinite(lt)) {
-    return vorher !== null ? `> ${dauerText(vorher)}` : "darüber";
+    return vorher !== null ? `> ${dauerText(vorher)}` : tr("akte.darueber");
   }
   return vorher !== null ? `${dauerText(vorher)} – ${dauerText(lt)}` : `< ${dauerText(lt)}`;
 }
@@ -194,8 +192,9 @@ export default function Personalakte({
   }, [focusAgent]);
 
   const gemessen = akte.data?.since_hours ?? stunden;
-  const fensterText = FENSTER.find((f) => f.h === gemessen)?.lang
-    ?? `der letzten ${Math.round(gemessen / 24)} Tage`;
+  const treffer = FENSTER.find((f) => f.h === gemessen);
+  const fensterText = treffer ? tr(treffer.lang)
+    : tr("akte.fenster_tage", { anzahl: Math.round(gemessen / 24) });
 
   // Reihenfolge: die vielbeschäftigte Rolle zuerst, bei Gleichstand die zuletzt aktive. Das
   // ist die Reihenfolge, in der man hinsieht — und sie ist stabil, weil sie nicht davon
@@ -236,21 +235,20 @@ export default function Personalakte({
       </div>
 
       <p className="text-[11px] text-muted">
-        Ältere Läufe löscht die Aufbewahrung (<span className="font-mono">run_retention_days</span>),
-        deshalb steht hier nie „jemals", sondern immer ein Fenster.
+        {tr("akte.aufbewahrung_hinweis")}
       </p>
 
-      {akte.isLoading && <div className="py-4 text-center text-xs text-muted">Akte wird geladen…</div>}
+      {akte.isLoading && <div className="py-4 text-center text-xs text-muted">{tr("akte.wird_geladen")}</div>}
 
       {akte.error && (
         <div className="rounded border border-red-400/40 bg-red-400/5 px-2 py-1 text-xs text-red-400">
-          Akte nicht ladbar: {(akte.error as Error).message}
+          {tr("akte.nicht_ladbar")}: {(akte.error as Error).message}
         </div>
       )}
 
       {!akte.isLoading && !akte.error && rollen.length === 0 && (
         <div className="py-4 text-center text-xs text-muted">
-          Kein Lauf {fensterText}.
+          {tr("akte.kein_lauf", { fenster: fensterText })}
         </div>
       )}
 
@@ -291,14 +289,14 @@ function Rollenkarte({ r, jetzt, offen, onToggle }: {
         className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-xs">
         <span className="shrink-0 text-[11px] text-muted">{offen ? "▾" : "▸"}</span>
         <span className="font-medium">{r.agent}</span>
-        <span className="text-muted">{zahl(runs)} {runs === 1 ? "Lauf" : "Läufe"}</span>
+        <span className="text-muted">{zahl(runs)} {tr(runs === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}</span>
         {(r.running ?? 0) > 0 && (
           <span className="text-yellow-400" title={`${r.running} laufen gerade`}>
             ● {zahl(r.running ?? 0)} aktiv
           </span>
         )}
         <div className="flex-1" />
-        <span className="text-muted" title="Letzter Lauf dieser Rolle im gewählten Fenster.">
+        <span className="text-muted" title={tr("akte.letzter_lauf")}>
           {herText(r.last_run_at, jetzt)}
         </span>
       </button>
@@ -330,12 +328,12 @@ function Balkenband({ werte, rest, basis }: {
           return (
             <div key={b.key} className={flaeche(b.status)}
               style={{ width: `${prozent(n, basis)}%` }}
-              title={`${b.label}: ${zahl(n)} von ${zahl(basis)}`} />
+              title={`${tr(b.label)}: ${zahl(n)} ${tr("akte.von")} ${zahl(basis)}`} />
           );
         })}
         {rest > 0 && (
           <div className="bg-line" style={{ width: `${prozent(rest, basis)}%` }}
-            title={`läuft noch oder ohne Urteil: ${zahl(rest)} von ${zahl(basis)}`} />
+            title={`${tr("akte.ohne_urteil")}: ${zahl(rest)} ${tr("akte.von")} ${zahl(basis)}`} />
         )}
       </div>
       <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0 text-[11px]">
@@ -347,8 +345,8 @@ function Balkenband({ werte, rest, basis }: {
           </span>
         ))}
         {rest > 0 && (
-          <span className="text-muted" title="Läufe ohne abschließendes Urteil — meist noch laufend.">
-            läuft noch {zahl(rest)}
+          <span className="text-muted" title={tr("akte.ohne_urteil_titel")}>
+            {tr("dock.laeuft_noch")} {zahl(rest)}
           </span>
         )}
       </div>
@@ -381,8 +379,7 @@ function Details({ r, basis, werte, rest }: {
       {/* Woher die drei Balken kommen — roh, unverdichtet, zum Nachrechnen. */}
       {statusZeilen.length > 0 && (
         <div className="flex flex-wrap gap-x-2 gap-y-0.5"
-          title={"Die rohen Laufstatus. Aus ihnen bildet der Server die drei Balken darüber — "
-            + "hier steht, was er gezählt hat."}>
+          title={tr("akte.rohe_status")}>
           {statusZeilen.map(([s, n]) => (
             <span key={s} className={statusFarbe(s)}>
               {statusText(s)} <b className="text-ink">{zahl(n)}</b>
@@ -393,36 +390,30 @@ function Details({ r, basis, werte, rest }: {
 
       {/* Runden und Schritte — getrennt beschriftet, weil es zwei verschiedene Dinge sind. */}
       <dl className="grid grid-cols-[7.5rem_1fr] gap-x-2 gap-y-1">
-        <Feld label="Runden"
-          titel={"Durchläufe der Agentenschleife (runs.iterations) — wie oft das Modell erneut "
-            + "gefragt wurde. Im Bestand im Schnitt 6,9."}>
+        <Feld label={tr("akte.runden")} titel={tr("akte.runden_titel")}>
           Ø {komma1(r.iterations_avg ?? 0)} · max {zahl(r.iterations_max ?? 0)}
         </Feld>
-        <Feld label="Schritte"
-          titel={"Zeilen im Ereignisstrom (run_steps) — Werkzeugaufrufe, Nachrichten, "
-            + "Bearbeitungen. Im Bestand im Schnitt 21,5, also etwas völlig anderes als eine Runde."}>
+        <Feld label={tr("akte.schritte")} titel={tr("akte.schritte_titel")}>
           Ø {komma1(r.steps_avg ?? 0)} · max {zahl(r.steps_max ?? 0)}
         </Feld>
-        <Feld label="Tokens"
-          titel={`Cache gelesen ${zahl(r.cache_read_tokens ?? 0)}`}>
+        <Feld label={tr("buero.tokens")}
+          titel={tr("akte.cache_gelesen", { anzahl: zahl(r.cache_read_tokens ?? 0) })}>
           {tokenText((r.in_tokens ?? 0) + (r.out_tokens ?? 0))}
           <span className="text-muted">
-            {" "}({zahl(r.in_tokens ?? 0)} ein · {zahl(r.out_tokens ?? 0)} aus)
+            {" "}({zahl(r.in_tokens ?? 0)} {tr("akte.ein")} · {zahl(r.out_tokens ?? 0)} {tr("akte.aus")})
           </span>
         </Feld>
-        <Feld label="Kosten"
+        <Feld label={tr("akte.kosten")}
           titel={unbepreist
-            ? "Für mindestens einen Posten fehlt ein Preis im Katalog (oder die Zeile stammt aus "
-              + "der Zeit davor). Der Betrag ist eine Untergrenze — der wahre liegt darüber."
-            : "Vollständig gegen den Preiskatalog abgerechnet."}>
+            ? tr("akte.kosten_teilweise")
+            : tr("akte.kosten_voll")}>
           {usdText(r.cost_usd ?? 0, unbepreist)}
         </Feld>
-        <Feld label="Läufe"
-          titel="Grundgesamtheit der drei Balken.">
+        <Feld label={tr("agent_monitor.laeufe")} titel={tr("akte.laeufe_titel")}>
           {zahl(basis)}
           <span className="text-muted">
             {" "}({zahl(werte.delivered)} + {zahl(werte.waiting)} + {zahl(werte.aborted)}
-            {rest > 0 ? ` + ${zahl(rest)} laufend` : ""})
+            {rest > 0 ? ` + ${zahl(rest)} ${tr("akte.laufend")}` : ""})
           </span>
         </Feld>
       </dl>
@@ -430,23 +421,22 @@ function Details({ r, basis, werte, rest }: {
       {/* Dauer: Median, p90, Maximum — und die Verteilung darunter. */}
       <div>
         <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
-          <span className="font-medium">Dauer</span>
-          <span className="text-muted" title="Die Hälfte aller Läufe war schneller als das.">
-            Median <b className="text-ink">{dauerText(dauer.p50_ms)}</b>
+          <span className="font-medium">{tr("akte.dauer")}</span>
+          <span className="text-muted" title={tr("akte.median_titel")}>
+            {tr("akte.median")} <b className="text-ink">{dauerText(dauer.p50_ms)}</b>
           </span>
-          <span className="text-muted" title="Neun von zehn Läufen waren schneller als das.">
+          <span className="text-muted" title={tr("akte.p90_titel")}>
             p90 <b className="text-ink">{dauerText(dauer.p90_ms)}</b>
           </span>
-          <span className="text-muted" title="Der längste Lauf im Fenster.">
+          <span className="text-muted" title={tr("akte.max_titel")}>
             max <b className="text-ink">{dauerText(dauer.max_ms)}</b>
           </span>
         </div>
         <p className="mb-1 text-[11px] text-muted">
-          Kein Mittelwert: ein einzelner Lauf über 36 Stunden verschöbe ihn so weit, dass er
-          über keinen einzigen echten Lauf mehr etwas aussagt.
+          {tr("akte.kein_mittelwert")}
         </p>
         {eimer.length === 0 ? (
-          <div className="text-muted">Keine Verteilung im Fenster.</div>
+          <div className="text-muted">{tr("akte.keine_verteilung")}</div>
         ) : (
           <div className="space-y-0.5">
             {eimer.map((b, i) => {
@@ -469,9 +459,9 @@ function Details({ r, basis, werte, rest }: {
 
       {/* Werkzeuge: Rangliste mit Anzahl und Fehlschlägen. */}
       <div>
-        <div className="mb-0.5 font-medium">Werkzeuge</div>
+        <div className="mb-0.5 font-medium">{tr("dock.werkzeuge")}</div>
         {werkzeuge.length === 0 ? (
-          <div className="text-muted">Kein Werkzeugaufruf im Fenster.</div>
+          <div className="text-muted">{tr("akte.kein_werkzeugaufruf")}</div>
         ) : (
           <div className="space-y-0.5">
             {werkzeuge.map((t) => (
@@ -486,9 +476,8 @@ function Details({ r, basis, werte, rest }: {
                 <span className="w-8 shrink-0 text-right text-muted">{zahl(t.n ?? 0)}</span>
                 <span className={"w-14 shrink-0 text-right " + ((t.failed ?? 0) > 0 ? "text-red-400" : "text-muted")}
                   title={(t.failed ?? 0) > 0
-                    ? `${t.failed} Aufrufe schlugen fehl (${t.ok ?? 0} liefen durch)`
-                    : "Kein gemeldeter Fehlschlag. Altdaten ohne gemessenes Ergebnis zählen "
-                      + "weder als Erfolg noch als Fehlschlag."}>
+                    ? tr("akte.aufrufe_fehl", { fehl: t.failed ?? 0, ok: t.ok ?? 0 })
+                    : tr("akte.kein_fehlschlag")}>
                   {(t.failed ?? 0) > 0 ? `✕ ${zahl(t.failed ?? 0)}` : "—"}
                 </span>
               </div>

@@ -64,6 +64,7 @@
 //
 // Kein ⌘K/Strg+K (gehört dem Browser), und alles mit Strg/Cmd bleibt unangetastet.
 
+import { tr } from "../../i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Stage from "./Stage.tsx";
@@ -433,10 +434,10 @@ export default function OfficeView({
   // Das Fenster gehört in die Überschrift, nicht in eine Fußnote: der Raum zeigt einen
   // Ausschnitt, und ein ungenannter Ausschnitt sähe aus wie „mehr war nicht los".
   const titel = alleModus
-    ? `Alle Sitzungen · der letzten ${ALLE_FENSTER_H} Stunden`
+    ? tr("office_view.alle_sitzungen_fenster", { stunden: ALLE_FENSTER_H })
     : (gewaehlt ? [gewaehlt.issue_key, gewaehlt.title].filter(Boolean).join(" · ") : undefined);
   const fehler = error
-    ?? (sessions.error ? `Sitzungen nicht ladbar: ${(sessions.error as Error).message}` : undefined);
+    ?? (sessions.error ? tr("office_view.sitzungen_nicht_ladbar", { fehler: (sessions.error as Error).message }) : undefined);
 
   // Der Wachhund der Kioskseite lebt außerhalb dieser Komponente (er lädt die Seite neu, das
   // ist keine Zuständigkeit einer Ansicht). Über den Spiegel-Ref bleibt der Effekt an `fehler`
@@ -475,12 +476,12 @@ export default function OfficeView({
           <select
             value={sidStr ?? ""}
             onChange={(e) => waehleSitzung(e.target.value)}
-            title="Welcher Raum gezeigt wird. Die Reiter darüber filtern innerhalb dieses Raums."
+            title={tr("office_view.welcher_raum")}
             className="max-w-[22rem] truncate rounded border border-line bg-surface px-2 py-1 text-ink"
           >
             {/* Erste Option und Vorgabe: der ganze Betrieb in einem Raum. */}
             {alleMoeglich && (
-              <option value={ALLE}>{`Alle Sitzungen (der letzten ${ALLE_FENSTER_H} Stunden)`}</option>
+              <option value={ALLE}>{tr("office_view.alle_sitzungen_option", { stunden: ALLE_FENSTER_H })}</option>
             )}
             {liste.map((s) => (
               <option key={s.sid} value={s.sid}>
@@ -506,7 +507,7 @@ export default function OfficeView({
           type="button"
           onClick={() => setDockOpen((v) => !v)}
           aria-pressed={dockOpen}
-          title="Dock und Inspektor ein- oder ausblenden (B)"
+          title={tr("office_view.dock_umschalten")}
           className="rounded border border-line px-2 py-1 text-muted hover:border-brand hover:text-ink"
         >
           {dockOpen ? "▸ Dock ausblenden" : "◂ Dock einblenden"}
@@ -520,7 +521,7 @@ export default function OfficeView({
       <button
         type="button"
         onClick={() => setHelpOpen(true)}
-        title="Tastaturkürzel (?)"
+        title={tr("office_view.tastenkuerzel")}
         className="rounded border border-line px-2 py-1 text-muted hover:border-brand hover:text-ink"
       >
         ? Tasten
@@ -570,7 +571,7 @@ export default function OfficeView({
         <button
           type="button"
           onClick={vollbildUmschalten}
-          title="Vollbild ein- oder ausschalten"
+          title={tr("office_view.vollbild")}
           aria-label="Vollbild umschalten"
           className={"absolute right-3 top-3 z-10 rounded border border-line bg-card/80 px-2 py-1 "
             + "text-sm text-muted transition-opacity hover:border-brand hover:text-ink "
@@ -644,26 +645,26 @@ export default function OfficeView({
 /** Dieselbe Tabelle, die oben im Kopf dieser Datei steht — nur eben dort, wo man sie sucht. */
 function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.Element {
   const zeilen: [string, string][] = [
-    ["?", "Diese Hilfe ein- und ausblenden"],
+    ["?", tr("office_view.hilfe_umschalten")],
     ...(voll ? ([
       ["1 2 3 4", "Dock: Chat, Agenten, Werkzeuge, Personalakte"],
-      ["B", "Dock ein- oder ausblenden"],
+      ["B", tr("office_view.dock_taste")],
     ] as [string, string][]) : []),
-    ["L", "Zurück zu Live"],
-    ["Leertaste", "Wiedergabe anhalten oder fortsetzen"],
-    ["← →", "Eine Sekunde zurück oder vor (mit Umschalt zehn)"],
+    ["L", tr("buero.zurueck_zu_live")],
+    [tr("office_view.leertaste"), tr("office_view.wiedergabe_taste")],
+    ["← →", tr("office_view.pfeile")],
     ["Esc", voll
-      ? "Hilfe, Dock, Wiedergabe, Auswahl — und zuletzt die Seite verlassen"
-      : "Hilfe, Wiedergabe, Auswahl schließen"],
-    ["Alt + ← ↑ → ↓", "Im Raum schwenken (Bühne muss den Fokus haben)"],
-    ["+ − 0", "Zoomen und zurücksetzen (Bühne muss den Fokus haben)"],
+      ? tr("office_view.esc_voll")
+      : tr("office_view.esc_reiter")],
+    ["Alt + ← ↑ → ↓", tr("office_view.schwenken")],
+    ["+ − 0", tr("office_view.zoomen")],
   ];
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Tastaturkürzel des Büros"
+      aria-label={tr("office_view.tastenkuerzel_titel")}
       onClick={onClose}
     >
       <div
@@ -671,11 +672,11 @@ function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.E
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center gap-2">
-          <h2 className="text-sm font-semibold">🏢 Büro — Tastenkürzel</h2>
+          <h2 className="text-sm font-semibold">🏢 {tr("office_view.tastenkuerzel_titel")}</h2>
           <div className="flex-1" />
           <button type="button" onClick={onClose} autoFocus
             className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-brand hover:text-ink">
-            Schließen
+            {tr("office_view.schliessen")}
           </button>
         </div>
         <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1.5 text-xs">
@@ -687,7 +688,7 @@ function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.E
           ))}
         </dl>
         <p className="mt-3 text-[11px] text-muted">
-          In Textfeldern sind alle Kürzel aus — dort tippt man.
+          {tr("office_view.textfelder")}
         </p>
       </div>
     </div>
