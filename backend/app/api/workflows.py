@@ -198,7 +198,8 @@ async def workflow_context_fields(user: User = Depends(get_current_user)):
     im Betrieb nie griff.
     """
     from ..services.workflow_context import katalog
-    return katalog()
+    from ..services.workflow_expr import katalog as filter_katalog
+    return {**katalog(), "filter": filter_katalog()}
 
 
 @router.get("/workflows/{def_id}/webhook")

@@ -25,6 +25,7 @@ export default function NodeConfigPanel({
   projectId,
   subjectKind,
   kontextFelder,
+  kontextFilter,
   defId,
 }: {
   node: FlowNode | null;
@@ -36,6 +37,8 @@ export default function NodeConfigPanel({
   subjectKind?: string;
   /** Kontextfelder dieses Ablaufs — die Verzweigung bietet sie zur Auswahl an. */
   kontextFelder?: KontextFeld[];
+  /** Vorlagen-Filter (Hilfe im Verzweigungs-Editor). */
+  kontextFilter?: import("./contextFields").KontextFilter[];
   /** Definition dieses Ablaufs — der Start-Knoten braucht sie für seine eigene Adresse. */
   defId?: number;
 }) {
@@ -74,7 +77,8 @@ export default function NodeConfigPanel({
 
       {node.type === "human_task" && <HumanTaskConfig config={config} onChange={set} members={members} />}
       {node.type === "decision" && (
-        <DecisionConfig config={config} onChange={set} felder={kontextFelder} />
+        <DecisionConfig config={config} onChange={set} felder={kontextFelder}
+          filter={kontextFilter} />
       )}
       {node.type === "approval" && <ApprovalConfig config={config} onChange={set} members={members} />}
       {node.type === "auto_action" && (

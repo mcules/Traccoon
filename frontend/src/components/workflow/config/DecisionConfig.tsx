@@ -1,5 +1,5 @@
 import type { NodeConfig, DecisionBranch, JsonLogic } from "../types";
-import type { KontextFeld } from "../contextFields";
+import type { KontextFeld, KontextFilter } from "../contextFields";
 
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 
@@ -30,9 +30,12 @@ export default function DecisionConfig({
   config,
   onChange,
   felder = [],
+  filter = [],
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
+  /** Filter für Vorlagen — hier nur als Hilfe; Bedingungen selbst rechnen ohne. */
+  filter?: KontextFilter[];
   /** Kontextfelder, die dieser Ablauf wirklich hat — aus Auslöser, Schritten und
    *  selbst gesetzten Schlüsseln (siehe `contextFields.ts`). */
   felder?: KontextFeld[];
@@ -113,6 +116,29 @@ export default function DecisionConfig({
       <button onClick={add} className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
         + Zweig
       </button>
+
+      {filter.length > 0 && (
+        <details className="rounded border border-line bg-surface p-2 text-xs text-muted">
+          <summary className="cursor-pointer">
+            Vorlagen-Filter ({filter.length}) — für Texte in Aktionen
+          </summary>
+          <p className="mt-1 text-[10px]">
+            Schreibweise <code className="rounded bg-card px-1">{"{{ pfad | filter:argument }}"}</code>,
+            von links nach rechts. Beispiel:{" "}
+            <code className="rounded bg-card px-1">{"{{ spam.score | mal:100 | rund:1 }}"}</code>
+          </p>
+          <table className="mt-2 w-full">
+            <tbody>
+              {filter.map((f) => (
+                <tr key={f.name} className="align-top">
+                  <td className="pr-2 font-mono text-ink">{f.name}</td>
+                  <td>{f.hilfe}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
 
       {felder.length > 0 && (
         <details className="rounded border border-line bg-surface p-2 text-xs text-muted">
