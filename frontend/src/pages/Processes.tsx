@@ -7,6 +7,7 @@ import {
 } from "../api";
 import { usePageChrome } from "../pageChrome";
 import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
+import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 
 /**
  * Prozess-Verwaltung — die Sicht über alle Abläufe hinweg.
@@ -231,6 +232,9 @@ function Betrieb() {
   const [nurHaengt, setNurHaengt] = useState(false);
   const [mitFertigen, setMitFertigen] = useState(false);
   const [err, setErr] = useState("");
+  // Aufgeklappter Lauf: Graph plus Protokoll. Ein Vorgang, der hängt oder gescheitert ist,
+  // wirft immer dieselbe Frage auf — was kam zurück, und warum ging es dann dort weiter?
+  const [offen, setOffen] = useState<number | null>(null);
 
   const { data: laeufe } = useQuery({
     queryKey: ["proc-running", nurHaengt, mitFertigen],
@@ -302,6 +306,13 @@ function Betrieb() {
                   {l.stunden < 48 ? `${l.stunden} h` : `${Math.round(l.stunden / 24)} Tage`}
                 </span>
               )}
+              <button
+                onClick={() => setOffen(offen === l.id ? null : l.id)}
+                className="rounded border border-line px-2 py-1 text-xs hover:border-brand"
+                title="Verlauf des Vorgangs"
+              >
+                {offen === l.id ? "Verlauf zu" : "Verlauf"}
+              </button>
               {(l.status === "running" || l.status === "waiting") && (
                 <button
                   onClick={() => abbrechen.mutate(l.id)}
@@ -317,6 +328,12 @@ function Betrieb() {
               {l.waiting_for && ` — wartet ${WARTET_AUF[l.waiting_for] || `auf ${l.waiting_for}`}`}
             </div>
             {l.error && <div className="mt-1 text-xs text-red-300">{l.error}</div>}
+            {offen === l.id && (
+              <div className="mt-3 border-t border-line pt-3">
+                <WorkflowInstanceView iid={l.id} projectId={l.project_id ?? null}
+                                     height="260px" compact />
+              </div>
+            )}
           </div>
         ))}
         {laeufe?.length === 0 && (

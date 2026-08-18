@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ApiError, workflowApi } from "../../api";
 import type { FlowNode } from "./nodes/shared";
+import Schrittprotokoll, { type Schritt } from "./Schrittprotokoll";
 
 /**
  * Den Ablauf durchspielen, bevor er echt läuft.
@@ -18,9 +19,7 @@ export default function ProbelaufPanel(
 ) {
   const [läuft, setLäuft] = useState(false);
   const [fehler, setFehler] = useState("");
-  const [schritte, setSchritte] = useState<
-    { node_id: string; node_type: string; decision?: string | null;
-      result?: Record<string, any> | null; error?: string | null }[] | null>(null);
+  const [schritte, setSchritte] = useState<Schritt[] | null>(null);
   const [ergebnis, setErgebnis] = useState("");
 
   const start = nodes.find((n) => n.type === "start");
@@ -45,22 +44,6 @@ export default function ProbelaufPanel(
     } finally {
       setLäuft(false);
     }
-  };
-
-  const zeile = (s: NonNullable<typeof schritte>[number]) => {
-    const text = s.result?.probe
-      || (s.result ? JSON.stringify(s.result).slice(0, 160) : "")
-      || s.error || "";
-    return (
-      <li key={`${s.node_id}-${text}`} className="border-b border-line/60 py-1 last:border-0">
-        <div className="flex items-baseline gap-1.5">
-          <code className="font-mono text-ink">{s.node_id}</code>
-          <span className="text-[10px] opacity-70">{s.node_type}</span>
-          {s.decision && <span className="text-[10px] text-brand">→ {s.decision}</span>}
-        </div>
-        {text && <div className="text-[10px] leading-snug opacity-90">{text}</div>}
-      </li>
-    );
   };
 
   return (
@@ -93,10 +76,8 @@ export default function ProbelaufPanel(
             <button onClick={() => setSchritte(null)}
               className="text-muted hover:text-ink" title="schließen">✕</button>
           </div>
-          <ul className="max-h-72 overflow-auto rounded border border-line bg-surface p-2">
-            {schritte.length ? schritte.map(zeile)
-              : <li className="text-[10px]">Kein Schritt gelaufen.</li>}
-          </ul>
+          <Schrittprotokoll schritte={schritte} maxHoehe="18rem"
+            leerText="Kein Schritt gelaufen — der Ablauf ging direkt zum Ende." />
         </div>
       )}
     </div>

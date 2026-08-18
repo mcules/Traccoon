@@ -5,6 +5,7 @@ import { workflowApi, getToken, type WorkflowInstance } from "../../api";
 import WorkflowCanvas from "./WorkflowCanvas";
 import { graphToFlow } from "./convert";
 import { runtimeStates } from "./runtimeState";
+import Schrittprotokoll from "./Schrittprotokoll";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "./layout";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -75,9 +76,36 @@ export default function WorkflowInstanceView({
           {instance.error && <span className="text-red-400">— {instance.error}</span>}
         </div>
       )}
-      <div className="overflow-hidden rounded-lg border border-line" style={{ height }}>
-        <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
-      </div>
+      {/* Der Graph zeigt, wo der Lauf steht — das Protokoll, was dabei herauskam.
+          Aufgeklappt in einer Liste zählt das Protokoll: „Wo steht er?" beantwortet die
+          Zeile darüber längst, „was kam zurück?" bisher niemand. */}
+      {compact ? (
+        <>
+          <Schrittprotokoll schritte={instance.steps} maxHoehe="16rem"
+            leerText="Noch kein Schritt abgeschlossen." />
+          <details className="mt-2">
+            <summary className="cursor-pointer text-xs text-muted">Ablauf als Graph</summary>
+            <div className="mt-1 overflow-hidden rounded-lg border border-line" style={{ height }}>
+              <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
+            </div>
+          </details>
+        </>
+      ) : (
+        <>
+          <div className="overflow-hidden rounded-lg border border-line" style={{ height }}>
+            <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
+          </div>
+          <details className="mt-2" open>
+            <summary className="cursor-pointer text-xs text-muted">
+              Verlauf — {instance.steps.length} Schritt{instance.steps.length === 1 ? "" : "e"}
+            </summary>
+            <div className="mt-1">
+              <Schrittprotokoll schritte={instance.steps} maxHoehe="20rem"
+                leerText="Noch kein Schritt abgeschlossen." />
+            </div>
+          </details>
+        </>
+      )}
     </div>
   );
 }
