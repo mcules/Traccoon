@@ -43,17 +43,51 @@ async def list_series(mit_trend: bool = Query(True), ziel: float = Query(0.0),
 
 
 @router.get("/metrics/{key:path}/punkte")
-async def series_points(key: str, tage: int = Query(60, ge=1, le=730),
+async def series_points(key: str, tage: int = Query(60, ge=1, le=3650),
+                        ziel: float = Query(0.0),
                         user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
+    """Die Punkte einer Reihe im gewählten Zeitraum — samt Trend zum selben Zielwert.
+
+    Der Zeitraum gilt für BEIDES: gezeigt und gerechnet wird dasselbe Fenster. Sonst
+    zeichnet die Ansicht eine Gerade, die zu den sichtbaren Punkten nicht passt, und man
+    zweifelt an der Zahl statt an der Achse.
+    """
     r = await metrics.reihe(db, user.id, key)
     if r is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Messreihe nicht gefunden")
     seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=tage)
     ps = await metrics.punkte(db, r.id, seit=seit)
-    return {**_reihe_out(r, await metrics.trend(db, r)),
-            "punkte": [{"ts": metrics._mit_zone(p.ts).isoformat(), "wert": p.value}
-                       for p in ps]}
+    return {**_reihe_out(r, await metrics.trend(db, r, ziel=ziel, fenster_tage=tage)),
+            "ziel": ziel,
+            "punkte": [{"id": p.id, "ts": metrics._mit_zone(p.ts).isoformat(),
+                        "wert": p.value, "kontext": p.context or {}} for p in ps]}
+
+
+@router.delete("/metrics/{key:path}/punkte/{punkt_id}", status_code=204)
+async def delete_point(key: str, punkt_id: int, user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    """Einen einzelnen Wert entfernen.
+
+    Ein Gerät meldet irgendwann Unsinn, den keine Plausibilitätsgrenze abfängt — ein
+    einzelner Ausreißer verbiegt die Gerade und damit die Prognose. Ohne diesen Weg bliebe
+    nur, die ganze Reihe wegzuwerfen und die Geschichte gleich mit.
+    """
+    r = await metrics.reihe(db, user.id, key)
+    if r is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Messreihe nicht gefunden")
+    punkt = await db.get(MetricPoint, punkt_id)
+    if punkt is None or punkt.series_id != r.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Wert gehört nicht zu dieser Reihe")
+    await db.delete(punkt)
+    await db.flush()
+    # Der Kopf der Reihe zeigt auf den letzten Wert — war der es, muss er nachrücken.
+    letzter = (await db.execute(
+        select(MetricPoint).where(MetricPoint.series_id == r.id)
+        .order_by(MetricPoint.ts.desc()).limit(1))).scalars().first()
+    r.last_value = letzter.value if letzter else None
+    r.last_at = letzter.ts if letzter else None
+    await db.commit()
 
 
 @router.delete("/metrics/{key:path}", status_code=204)

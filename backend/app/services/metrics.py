@@ -71,8 +71,12 @@ async def erfassen(db: AsyncSession, owner_id: int | None, key: str, wert: float
     # Und jeder Wert beendet eine Stille-Phase — auch ein schlechter. Die nächste Stille
     # darf dann erneut melden.
     r.still_at = None
-    r.last_value = float(wert)
-    r.last_at = punkt.ts
+    # Der Kopf zeigt auf den ZEITLICH letzten Wert, nicht auf den zuletzt eingetragenen.
+    # Sonst macht ein nachgetragener Altwert die Reihe scheinbar aktuell — im Bild stand
+    # dann ein Stand von vorgestern als „jetzt", und die Prognose rechnete ab dort.
+    if r.last_at is None or _mit_zone(punkt.ts) >= _mit_zone(r.last_at):
+        r.last_value = float(wert)
+        r.last_at = punkt.ts
     await db.flush()
     return r, punkt
 
