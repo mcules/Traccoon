@@ -57,49 +57,41 @@ export default function OwnWorkflowsPanel() {
 
   return (
     <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <p className="text-sm text-muted">
-        <b>{tr("own_workflows_panel.eigene_prozesse")}</b> — projektlos, ohne Slot. Auslösen kannst du sie über einen{" "}
-        <b>{tr("own_workflows_panel.job")}</b> (Einstellungen → Jobs, Art <code>workflow</code>), einen <b>{tr("own_workflows_panel.webhook")}</b>{" "}
-        (Modus <code>workflow</code>) oder einen <b>{tr("own_workflows_panel.agenten")}</b> (<code>traccoon_start_workflow</code>,
-        einmalige Freigabe nötig). Startbar erst mit veröffentlichter Version.
-      </p>
+      <p className="text-sm text-muted">{tr("own_workflows_panel.einleitung")}</p>
 
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
 
       {eigene.length > 0 ? (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-line text-left text-xs uppercase text-muted">
-              <th className="py-2">{tr("own_workflows_panel.key")}</th><th>{tr("own_workflows_panel.name")}</th><th>{tr("own_workflows_panel.gegenstand")}</th><th>{tr("own_workflows_panel.version")}</th><th />
-            </tr>
-          </thead>
-          <tbody>
-            {eigene.map((d) => (
-              <tr key={d.id} className={`border-b border-line ${d.enabled ? "" : "opacity-50"}`}>
-                <td className="py-2 pr-2 font-mono text-xs">{d.key}</td>
-                <td className="pr-2">{d.name}</td>
-                <td className="pr-2 text-muted">{d.subject_kind}</td>
-                <td className="pr-2 text-muted">
-                  {tr(d.current_version_id ? "proc.veroeffentlicht" : "own_workflows.nur_entwurf")}
-                </td>
-                <td className="whitespace-nowrap py-2 text-right">
-                  <button onClick={() => nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } })}
-                    className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
-                    Editor
-                  </button>
-                  <button onClick={() => umschalten.mutate(d)}
-                    className="ml-1 rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
-                    {d.enabled ? "Aus" : "An"}
-                  </button>
-                  <button onClick={() => { if (confirm(tr("own_workflows.loeschen_frage", { key: d.key }))) loeschen.mutate(d.id); }}
-                    className="ml-1 rounded border border-line px-2 py-1 text-xs text-red-400 hover:bg-surface">
-                    ✕
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        /* Keine Tabelle: auf einem Handy stünden fünf Spalten über den Rand hinaus, und was
+           man nicht sieht, sucht man auch nicht. Die Zeile bricht stattdessen um. */
+        <div className="space-y-2">
+          {eigene.map((d) => (
+            <div key={d.id}
+              className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line bg-card p-2 text-sm ${
+                d.enabled ? "" : "opacity-50"}`}>
+              <span className="font-mono text-xs text-muted">{d.key}</span>
+              <span className="min-w-0 flex-1 basis-full truncate sm:basis-auto">{d.name}</span>
+              <span className="text-xs text-muted">{d.subject_kind}</span>
+              <span className="text-xs text-muted">
+                {tr(d.current_version_id ? "proc.veroeffentlicht" : "own_workflows.nur_entwurf")}
+              </span>
+              <div className="ml-auto flex shrink-0 gap-1">
+                <button onClick={() => nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } })}
+                  className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
+                  {tr("own_workflows_panel.editor")}
+                </button>
+                <button onClick={() => umschalten.mutate(d)}
+                  className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
+                  {tr(d.enabled ? "own_workflows_panel.aus" : "own_workflows_panel.an")}
+                </button>
+                <button onClick={() => { if (confirm(tr("own_workflows.loeschen_frage", { key: d.key }))) loeschen.mutate(d.id); }}
+                  className="rounded border border-line px-2 py-1 text-xs text-red-400 hover:bg-surface">
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="text-sm text-muted">{tr("own_workflows_panel.noch_keine_eigenen_prozesse")}</div>
       )}
@@ -107,7 +99,7 @@ export default function OwnWorkflowsPanel() {
       <div className="space-y-2 border-t border-line pt-3">
         <div className="flex flex-wrap items-center gap-2">
           <input value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })}
-            placeholder="key (z. B. preis-abgleich)" className={inp} />
+            placeholder={tr("own_workflows_panel.key_platzhalter")} className={inp} />
           <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
             placeholder={tr("own_workflows_panel.name")} className={inp} />
           <select value={f.template} className={inp}

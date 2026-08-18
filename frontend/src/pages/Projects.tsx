@@ -68,7 +68,7 @@ export default function Projects() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {projects?.map((p) => (
           <Link key={p.id} to={`/projects/${p.key}`}
-            className="rounded-lg border border-line bg-card p-4 hover:border-brand">
+            className="block rounded-lg border border-line bg-card p-4 hover:border-brand">
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-muted">{p.key}</span>
               <div className="flex gap-1">
@@ -76,13 +76,13 @@ export default function Projects() {
                 {!p.is_member && <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-xs text-yellow-400">{tr("projects.fremd")}</span>}
                 {p.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">KI</span>}
                 <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
-                  {p.my_role}{p.my_role_inherited ? " (geerbt)" : ""}
+                  {p.my_role}{p.my_role_inherited ? ` (${tr("projects.geerbt")})` : ""}
                 </span>
               </div>
             </div>
             <div className="mt-1 font-medium">{p.name}</div>
             {parentName(p.parent_id) && (
-              <div className="text-xs text-muted">↳ Sub-Projekt von {parentName(p.parent_id)}</div>
+              <div className="text-xs text-muted">↳ {tr("projects.unterprojekt_von", { eltern: parentName(p.parent_id) || "" })}</div>
             )}
             {!p.my_ai_assign && (
               <div className="mt-2 text-xs text-muted">{tr("projects.ticketsystem_kein_ki_recht")}</div>

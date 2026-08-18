@@ -202,23 +202,23 @@ export default function Board({
             </div>
           )}
           {activeItems.map((i) => (
-            <div key={i.id} className="rounded-lg border border-line bg-card">
-              <button {...ticketOpenHandlers(i.key, onOpen)} className="block w-full p-3 text-left">
+            <div key={i.id} className="relative rounded-lg border border-line bg-card">
+              <button {...ticketOpenHandlers(i.key, onOpen)} className="block w-full p-3 pr-28 text-left">
                 {cardContent(i)}
               </button>
-              <div className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs">
-                <span className="text-muted">{tr("board.status")}</span>
-                {canMove ? (
+              {/* Am Handy zeigt die Spaltenauswahl oben schon, wo die Karte steht — die
+                  Beschriftung „Status" daneben war eine Zeile Wiederholung je Karte. */}
+              {canMove ? (
+                <div className="absolute right-2 top-2">
                   <select
                     value={i.status_id}
+                    title={tr("board.verschieben_nach")}
                     onChange={(e) => move.mutate({ key: i.key, status_id: Number(e.target.value), position: 0 })}
-                    className="rounded border border-line bg-surface px-2 py-1 text-ink">
+                    className="rounded border border-line bg-surface px-2 py-1 text-xs text-muted">
                     {movableCols(i).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
-                ) : (
-                  <span className="text-ink">{statusMap.get(i.status_id)?.name}</span>
-                )}
-              </div>
+                </div>
+              ) : null}
             </div>
           ))}
         </div>

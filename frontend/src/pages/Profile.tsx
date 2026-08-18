@@ -238,7 +238,7 @@ function BenachrichtigungenPanel() {
         {tr("profile.email_fuer_benachrichtigungen")}
         <input value={mail} onChange={(e) => setMail(e.target.value)}
           placeholder={user?.email || "name@example.com"} className={`mt-1 ${feld}`} />
-        <span className="mt-1 block text-[10px] text-muted">
+        <span className="mt-1 block text-[11px] text-muted">
           Leer lassen: es gilt deine Anmelde-Adresse{user?.email ? ` (${user.email})` : ""}.
         </span>
       </label>

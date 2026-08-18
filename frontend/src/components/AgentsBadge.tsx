@@ -35,7 +35,7 @@ export default function AgentsBadge() {
   return (
     <div className="relative">
       <button onClick={() => setOpen((v) => !v)} title={tr("agents_badge.laufende_agenten")}
-        className={`flex items-center gap-1 rounded px-2 py-1 text-sm ${busy ? "text-brand" : "text-muted hover:text-ink"}`}>
+        className={`flex h-10 items-center gap-1 rounded px-2 py-1 text-sm md:h-8 ${busy ? "text-brand" : "text-muted hover:text-ink"}`}>
         <span>{busy ? "🔄" : "🤖"}</span>
         <span className="tabular-nums">{n}</span>
       </button>

@@ -34,7 +34,7 @@ export default function MyWork() {
 
   return (
     <div className="mb-6 space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
         <Kachel label={tr("my_work.wartet_auf_dich")} wert={s.action}
           farbe={s.action ? "text-yellow-400" : undefined} />
         <Kachel label={tr("my_work.mir_zugewiesen")} wert={s.assigned} />
@@ -152,7 +152,7 @@ function ProjektGruppen({ tickets }: { tickets: MyTicket[] }) {
       {gruppen.map((g) => (
         <div key={g.id}>
           <Link to={`/projects/${g.key}`}
-            className="mb-1.5 flex items-center gap-2 text-xs font-medium text-muted hover:text-ink">
+            className="mb-1.5 flex min-h-[36px] items-center gap-2 text-xs font-medium text-muted hover:text-ink md:min-h-[28px]">
             <span className="font-mono">{g.key}</span>
             <span className="truncate">{g.name}</span>
             <span className="rounded bg-surface px-1.5 py-0.5 text-[10px]">{g.items.length}</span>
@@ -189,9 +189,9 @@ function TicketZeile({ t }: { t: MyTicket }) {
 
 function Kachel({ label, wert, farbe }: { label: string; wert: number; farbe?: string }) {
   return (
-    <div className="rounded-lg border border-line bg-card p-3">
-      <div className={`text-2xl font-semibold ${farbe || "text-ink"}`}>{wert}</div>
-      <div className="text-xs text-muted">{label}</div>
+    <div className="rounded-lg border border-line bg-card p-2 sm:p-3">
+      <div className={`text-xl font-semibold sm:text-2xl ${farbe || "text-ink"}`}>{wert}</div>
+      <div className="truncate text-[11px] leading-tight text-muted sm:text-xs" title={label}>{label}</div>
     </div>
   );
 }

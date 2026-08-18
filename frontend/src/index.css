@@ -53,3 +53,70 @@ body {
   image-rendering: -moz-crisp-edges;
   image-rendering: pixelated;
 }
+
+/* Auf einem Handy zählt die Fläche, nicht die Dichte: ein Knopf mit 28 px Höhe ist am
+   Bildschirm hübsch und unter dem Daumen ein Glücksspiel. Die Messung (tools/uitest/
+   bedienbarkeit.mjs) hat auf jeder Seite zwischen 8 und 44 solcher Ziele gefunden, die
+   meisten davon in der Kopfzeile und in Listenzeilen.
+
+   Die Regel greift nur bei grobem Zeigegerät, die Maus behält also die dichte Darstellung.
+   `min-height` wirkt nur auf Elemente, die nicht `inline` sind — ein Link mitten im Fließtext
+   bleibt deshalb unangetastet, ein Knopf (von Haus aus `inline-block`) wächst. */
+@media (pointer: coarse) {
+  button,
+  select,
+  summary,
+  [role="button"] {
+    min-height: 36px;
+  }
+  /* Kästchen nicht auf 36 px aufblasen: der Browser zeichnet sie dann als weißen Klotz.
+     20 px sind gut zu treffen, die Fläche drumherum liefert das <label>. */
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 20px;
+    height: 20px;
+  }
+  /* Getippt wird auf die Beschriftung: sie ist die Fläche, das Kästchen nur ihr Anfang. */
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    min-height: 36px;
+  }
+  /* Ein Knopf mit nur einem Zeichen („✕") ist elf Pixel breit und unter dem Daumen nicht zu
+     treffen. `min-width` ersetzt dabei den Vorgabewert `auto`, mit dem ein Flex-Element sonst
+     nicht unter seinen Inhalt schrumpft — deshalb kommt `flex-shrink: 0` dazu, sonst stand
+     „+ Token" halb neben seinem eigenen Feld. (`max(36px, max-content)` geht nicht: `max()`
+     rechnet nur mit Längen, das Schlüsselwort macht die ganze Regel ungültig.) */
+  button,
+  [role="button"] {
+    min-width: 36px;
+    flex-shrink: 0;
+  }
+  input:not([type="checkbox"]):not([type="radio"]),
+  textarea,
+  select {
+    min-height: 40px;
+  }
+  /* Unter 16 px zoomt iOS beim Hineintippen in ein Feld die ganze Seite heran und kommt
+     nicht von allein zurück. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Auch mit der Maus ist ein 16 px hoher Textknopf („bearbeiten", „als Standard") ein Ziel,
+   das man verfehlt. 24 px kosten optisch nichts, weil die Zeile ohnehin so hoch steht. */
+@media (pointer: fine) {
+  button,
+  summary,
+  [role="button"] {
+    min-height: 24px;
+    min-width: 24px;
+    flex-shrink: 0;
+  }
+  label:has(> input[type="checkbox"]),
+  label:has(> input[type="radio"]) {
+    min-height: 24px;
+  }
+}
