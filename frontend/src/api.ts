@@ -46,7 +46,7 @@ export async function request<T = any>(
   return res.json();
 }
 
-/** Datei-Upload (multipart) — Content-Type setzt der Browser selbst (boundary). */
+/** File upload (multipart); the Content-Type is set by the browser itself (boundary). */
 async function upload<T = any>(path: string, file: File): Promise<T> {
   const fd = new FormData();
   fd.append("file", file);
@@ -58,7 +58,7 @@ async function upload<T = any>(path: string, file: File): Promise<T> {
   return res.json();
 }
 
-/** Authentifizierter Download: Blob holen und als Object-URL öffnen. */
+/** Authenticated download: fetch the blob and open it as an object URL. */
 async function download(path: string, filename: string): Promise<void> {
   const headers: Record<string, string> = {};
   const token = getToken();
@@ -73,7 +73,7 @@ async function download(path: string, filename: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
-/** Authentifiziert laden und als Object-URL zurückgeben (z. B. für <img src>). */
+/** Load authenticated and return as an object URL (for instance for <img src>). */
 async function blobUrl(path: string): Promise<string> {
   const headers: Record<string, string> = {};
   const token = getToken();
@@ -164,7 +164,7 @@ export interface MyDashboard {
 }
 
 // ---------- Workflow-Engine ----------
-// Vertrag liegt in components/workflow/types.ts; hier für Bequemlichkeit re-exportiert.
+// The contract lies in components/workflow/types.ts; re-exported here for convenience.
 export type {
   WorkflowDefinition, WorkflowVersion, WorkflowInstance, WorkflowStepRun,
   WorkflowTokenLite, WorkflowTaskLite, WorkflowGraph, WorkflowNode, WorkflowEdge,
@@ -181,7 +181,7 @@ import type {
 
 export type DestinationScope = "global" | "user" | "project";
 
-/** Externe Gegenstelle mit hinterlegter Anmeldung (Geheimnisse kommen nie zurück). */
+/** External counterpart with a stored login (secrets never come back). */
 export interface Destination {
   id: number; name: string; label: string; description: string;
   user_id: number | null; project_id: number | null; scope: DestinationScope;
@@ -201,7 +201,7 @@ export interface HttpCallResult {
 }
 
 export const destinationApi = {
-  /** `usable` liefert die im Zusammenhang aufrufbaren (je Name das vorrangige). */
+  /** `usable` delivers those callable in the context (the primary one per name). */
   list: (projectId?: number, usable = false) =>
     api.get<Destination[]>(
       `/destinations${projectId ? `?project_id=${projectId}` : ""}${
@@ -215,38 +215,38 @@ export const destinationApi = {
 };
 
 // ---------- Deployments ----------
-// Vertrag der Lese-API (`backend/app/api/deployments.py`). Außer `id` und `status` ist alles
-// optional: die Liste muss auch dann etwas Ehrliches zeigen, wenn ein Feld fehlt. Die API
-// liefert Textfelder als leere Zeichenkette statt `null` — beides wird hier gleich behandelt.
+// Contract of the read API (`backend/app/api/deployments.py`). Except for `id` and `status`
+// everything is optional: the list has to show something honest even when a field is
+// missing. The API delivers text fields as an empty string instead of `null`; both are treated the same here.
 
-/** Filter der Lese-API. `other` = alles, was weder läuft noch ok/failed ist (v. a. `cancelled`). */
+/** Filter of the read API. `other` = everything that neither runs nor is ok/failed (above all `cancelled`). */
 export type DeploymentStatusFilter = "all" | "running" | "ok" | "failed" | "other";
 
 export interface DeploymentRow {
   id: number;
-  /** Rohstatus aus der DB: ok | failed | cancelled | building | pending | pending-check | rolledback. */
+  /** Raw status from the database: ok | failed | cancelled | building | pending | pending-check | rolledback. */
   status: string;
   project_id?: number | null;
   project_key?: string | null;
   issue_id?: number | null;
   issue_key?: string | null;
-  /** Grobphase, aus dem Status abgeleitet. */
+  /** Rough phase, derived from the status. */
   phase?: "queued" | "running" | "done" | "aborted" | null;
-  /** Dreiwertig: true = geklappt, false = nicht geklappt, null = **unbekannt** (nicht „ok“). */
+  /** Three valued: true = worked, false = did not work, null = **unknown** (not "ok"). */
   ok?: boolean | null;
-  /** agent | merge | workflow | maintenance | manual; bei Altzeilen leer → „unbekannt“. */
+  /** agent | merge | workflow | maintenance | manual; empty with old rows, so "unknown". */
   source?: string | null;
   kind?: "self" | "check" | "stack" | null;
   stack_dir?: string | null;
   created_at?: string | null;
   started_at?: string | null;
   finished_at?: string | null;
-  /** Wartezeit in der Warteschlange; `null`, wenn ein Zeitstempel fehlt — nie gerechnete 0. */
+  /** Waiting time in the queue; `null` when a timestamp is missing, never a computed 0. */
   wait_ms?: number | null;
-  /** Reine Arbeitszeit; ebenfalls `null` bei fehlendem Zeitstempel. */
+  /** Pure working time; likewise `null` when a timestamp is missing. */
   duration_ms?: number | null;
   log_bytes?: number | null;
-  /** Erste ~240 Zeichen des Logs. Ohne den wäre „fehlgeschlagen“ irreführend. */
+  /** The first ~240 characters of the log. Without it "failed" would be misleading. */
   log_head?: string | null;
 }
 
@@ -257,13 +257,13 @@ export interface DeploymentListe {
   by_status?: Record<string, number>;
 }
 
-/** Nur der Detail-Endpunkt liefert den Volltext-Log (bis ~20 000 Zeichen). */
+/** Only the detail endpoint delivers the full text log (up to ~20 000 characters). */
 export interface DeploymentDetail extends DeploymentRow {
   log?: string | null;
 }
 
 export const deploymentApi = {
-  /** Ohne `projectId` die globale Liste — die Wartungs-Updates gehören zu keinem Projekt. */
+  /** Without `projectId` the global list: the maintenance updates belong to no project. */
   list: (opts: {
     projectId?: number; issueId?: number; limit?: number;
     sinceHours?: number; status?: DeploymentStatusFilter;
@@ -272,17 +272,17 @@ export const deploymentApi = {
     if (opts.limit) q.set("limit", String(opts.limit));
     if (opts.sinceHours) q.set("since_hours", String(opts.sinceHours));
     if (opts.status && opts.status !== "all") q.set("status", opts.status);
-    // `issue_id` kennt laut Vertrag nur die projektbezogene Route; global ist es wirkungslos.
+    // By contract only the project bound route knows `issue_id`; globally it has no effect.
     if (opts.issueId) q.set("issue_id", String(opts.issueId));
     const pfad = opts.projectId != null ? `/projects/${opts.projectId}/deployments` : "/deployments";
     const s = q.toString();
     return api.get<DeploymentListe>(`${pfad}${s ? `?${s}` : ""}`);
   },
   get: (id: number) => api.get<DeploymentDetail>(`/deployments/${id}`),
-  /** Von Hand einreihen (Knopf unter Einstellungen → Deployment). Nur projektbezogen —
-   *  ein Deployment ohne Projekt hätte kein Stack-Verzeichnis, das man drücken könnte.
-   *  Das Ziel bestimmt der Server aus `workspace_dir`; der Client schickt keinen Pfad.
-   *  400 = kein Stack-Verzeichnis, 409 = es läuft schon eins, 403 = Rolle reicht nicht. */
+  /** Queue by hand (the button under Settings → Deployment). Only project bound, because a
+   *  deployment without a project would have no stack directory to press.
+   *  The target is determined by the server from `workspace_dir`; the client sends no path.
+   *  400 = no stack directory, 409 = one is already running, 403 = the role is not enough. */
   create: (projectId: number, body: { issue_id?: number } = {}) =>
     api.post<DeploymentRow>(`/projects/${projectId}/deployments`, body),
 };
@@ -294,25 +294,25 @@ export interface WfWebhook {
 
 export const workflowApi = {
   list: (projectId: number) => api.get<WfDef[]>(`/workflows?project_id=${projectId}`),
-  /** Alle Definitionen — ohne project_id-Filter; für die projektlosen (eigene Prozesse). */
+  /** All definitions, without a project_id filter; for the project-less ones (own processes). */
   listAll: () => api.get<WfDef[]>("/workflows"),
-  /** Eingehende Adresse eines Ablaufs (Webhook als Quelle) — lesen bzw. anlegen. */
+  /** Incoming address of a flow (webhook as the source): read respectively create. */
   webhookGet: (id: number) => api.get<WfWebhook | null>(`/workflows/${id}/webhook`),
   webhookCreate: (id: number) => api.post<WfWebhook>(`/workflows/${id}/webhook`, {}),
-  /** Den Ablauf durchspielen, ohne dass etwas geschieht (Entwurfsfassung). */
+  /** Play the flow through without anything happening (draft version). */
   probelauf: (id: number, context: Record<string, unknown>, graph?: unknown) =>
     api.post<{ status: string; error?: string | null;
                steps: { node_id: string; node_type: string; status: string;
                         decision?: string | null; result?: Record<string, any> | null;
                         error?: string | null }[] }>(`/workflows/${id}/probelauf`, { context, graph }),
-  /** Aus einer Beschreibung einen Ablauf zeichnen lassen (speichert nichts). */
+  /** Have a flow drawn from a description (saves nothing). */
   entwurf: (id: number, beschreibung: string, graph?: unknown) =>
     api.post<{ graph: { nodes: any[]; edges: any[] }; fehler: string[]; erklaerung: string }>(
       `/workflows/${id}/entwurf`, { beschreibung, graph }),
-  /** Welche Kontextfelder es gibt — je Auslöser, Aktion und Knotentyp (für den Editor). */
+  /** Which context fields exist, per trigger, action and node type (for the editor). */
   contextFields: () => api.get<import("./components/workflow/contextFields").KontextKatalog>(
     "/workflow-context-fields"),
-  /** Fertige Abläufe zum Kopieren (Beschreibung, nicht der Graph). */
+  /** Finished flows to copy (the description, not the graph). */
   templates: () => api.get<{ key: string; name: string; description: string;
                              subject_kind: WfSubject; hinweis: string }[]>("/workflow-templates"),
   create: (body: {
@@ -348,11 +348,11 @@ export const workflowApi = {
   cancel: (iid: number) => api.post<WfInst>(`/workflow-instances/${iid}/cancel`),
   myTasks: () => api.get<WfTask[]>(`/workflow-instances/tasks?assignee=me`),
 
-  /** Abstand (px) fürs „Anordnen" im Editor — global vom Admin gesetzt. */
+  /** Spacing (px) for "arrange" in the editor, set globally by the admin. */
   layout: () => api.get<{ gap: number }>("/workflow-layout"),
   setLayout: (gap: number) => api.put<{ gap: number }>("/admin/workflow-layout", { gap }),
 
-  // ── Prozess-Sätze & Slots ──────────────────────────────────────────────────
+  // ── Process sets and slots ─────────────────────────────────────────────────
   sets: () => api.get<WfSet[]>("/workflow-sets"),
   setSlots: (setId: number) => api.get<WfSlot[]>(`/workflow-sets/${setId}/slots`),
   createMySet: (body: { name?: string; source_set_id?: number | null }) =>
@@ -373,7 +373,7 @@ export const workflowApi = {
     api.post<WfVer>(`/workflows/${id}/versions/${vid}/rollback`),
 };
 
-// ── Prozess-Verwaltung (übergreifend) ────────────────────────────────────────
+// ── Process administration (cross-cutting) ───────────────────────────────────
 
 export interface ProcAbweichung {
   project_id: number; project_key: string; project_name: string;

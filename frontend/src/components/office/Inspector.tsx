@@ -1,20 +1,20 @@
-// Schicht 2 — der Inspektor: die ausgewählte Figur im Detail.
+// Layer 2, the inspector: the selected figure in detail.
 //
-// Die Bühne zeigt, **dass** jemand arbeitet; hier steht, **woran**. Alles darin kommt aus zwei
-// Quellen, und beide sind schon da: der Roster-Eintrag (Stammdaten und Summen, direkt aus
-// `runs`) und das Log (was diese Figur zuletzt getan hat).
+// The stage shows **that** somebody is working; here stands **what on**. Everything in it
+// comes from two sources, and both are already there: the roster entry (master data and
+// totals, straight from `runs`) and the log (what this figure did last).
 //
-// Zwei Stellen verdienen eine Begründung:
+// Two places deserve a justification:
 //
-//   · **`blocker_kind` steht nicht im Roster.** `RosterEntry` trägt ihn nicht — er kommt mit
-//     `run_end` und ist dort bereits zu einer `GateKind` verdichtet (`mapEvent::GATE_OF`). Der
-//     Inspektor liest deshalb das letzte `gate`-Kommando dieser Figur. Ist der Lauf `blocked`
-//     und trotzdem kein Gate im Fenster (Kappung), steht ehrlich „Grund nicht im Fenster" da
-//     statt eines geratenen Grundes.
-//   · **Kosten mit „≥".** `cost_priced !== true` heißt: entweder Altzeile (`null`) oder kein
-//     Katalogeintrag (`false`). Beides macht die Zahl zu einer Untergrenze. Ein Katalogeintrag
-//     mit 0,00 wäre dagegen *bepreist und gratis* — genau diese Unterscheidung ist der Grund,
-//     warum das Zeichen überhaupt existiert.
+//   · **`blocker_kind` does not stand in the roster.** `RosterEntry` does not carry it; it
+//     comes with `run_end` and is already condensed to a `GateKind` there
+//     (`mapEvent::GATE_OF`). The inspector therefore reads the last `gate` command of this
+//     figure. If the run is `blocked` and there is still no gate in the window (truncation),
+//     it honestly says "reason not in the window" instead of a guessed reason.
+//   · **Costs with "≥".** `cost_priced !== true` means: either an old row (`null`) or no
+//     catalog entry (`false`). Both make the number a lower bound. A catalog entry with 0.00
+//     on the other hand would be *priced and free*, and exactly that distinction is the
+//     reason the sign exists at all.
 
 import { tr } from "../../i18n";
 import { useMemo } from "react";
@@ -26,30 +26,30 @@ import {
   GATE_TEXT, dauerText, statusFarbe, statusText, uhrText, usdText, zahl,
 } from "./TopBar.tsx";
 
-/** So viele Schritte zeigt der Inspektor rückwärts. Mehr ist die Aufgabe des Docks. */
+/** This many steps back the inspector shows. More is the job of the dock. */
 const SCHRITTE = 10;
 
 export interface InspectorProps {
   scope: Scope;
-  /** Die ausgewählte Figur, `null` = nichts ausgewählt. */
+  /** The selected figure, `null` = nothing selected. */
   entry: RosterEntry | null;
-  /** Für den Elternlauf: aus ihm wird sein Name. */
+  /** For the parent run: its name is taken from it. */
   roster: Roster;
   recorder: LogQuelle;
   revision: number;
-  /** `null` = Gegenwart, sonst Epoch-ms — der Inspektor zeigt denselben Moment wie der Raum. */
+  /** `null` = present, otherwise epoch ms: the inspector shows the same moment as the room. */
   seekTs: number | null;
   onSelect?: (id: string) => void;
   onClose?: () => void;
-  /** Öffnet den Akte-Reiter im Dock für die Rolle dieses Laufs. Optional — ohne Dock (im
-   *  Projekt-Reiter) gibt es keinen Ort, an den der Sprung führen könnte, und dann fehlt der
-   *  Einstieg lieber, als ins Leere zu zeigen. Der Inspektor **bleibt** dabei beim einzelnen
-   *  Lauf: er reicht die Rolle weiter, er wird nicht selbst zur Akte. */
+  /** Opens the file tab in the dock for the role of this run. Optional: without a dock (in
+   *  the project tab) there is no place the jump could lead to, and then the entry is better
+   *  missing than pointing into nothing. The inspector **stays** with the single run in the
+   *  process: it passes the role on, it does not become the file itself. */
   onOpenAkte?: (agent: string) => void;
   className?: string;
 }
 
-// ── Ableitungen aus dem Log ─────────────────────────────────────────────────────────────────
+// ── Derivations from the log ────────────────────────────────────────────────────────────────
 
 interface Schritt {
   key: string;
@@ -60,8 +60,8 @@ interface Schritt {
 
 function schrittText(c: Cmd): { text: string; css?: string } | null {
   switch (c.k) {
-    // Steht laut Vertrag vor **jedem** Kommando und ist reine Buchführung — in einer Liste der
-    // letzten Schritte wäre es nur Rauschen, das die echten Schritte verdrängt.
+    // By contract it stands before **every** command and is pure bookkeeping; in a list of
+    // the last steps it would only be noise displacing the real steps.
     case "ensureActor": return null;
     case "say": return { text: `💬 ${c.text}` };
     case "think": return { text: `💭 ${c.text}`, css: "italic text-muted" };
@@ -78,9 +78,9 @@ function schrittText(c: Cmd): { text: string; css?: string } | null {
     case "status": return { text: `● ${statusText(c.status)}`, css: statusFarbe(c.status) };
     case "done": return c.ok ? { text: "✅ fertig", css: "text-green-400" }
       : { text: "❌ abgebrochen", css: "text-red-400" };
-    // Der Serverschrank. `back` bekommt seine eigene Zeile statt „fehlgeschlagen": gescheitert
-    // **und** geheilt ist die einzige gute Nachricht im Fehlerfall, und die Liste ist der Ort,
-    // an dem man sie im Klartext lesen kann.
+    // The server rack. `back` gets a line of its own instead of "failed": failed **and**
+    // healed is the only good news in the error case, and the list is the place where one can
+    // read it in plain text.
     case "deploy":
       return c.state === "start" ? { text: `🖥 ${tr("inspector.deploy_laeuft")} · ${c.label}` }
         : c.state === "ok" ? { text: `🖥 Deployment live · ${c.label}`, css: "text-green-400" }
@@ -105,8 +105,8 @@ function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id:
   for (const e of log) {
     if (bis !== null && e.ts > bis) continue;
     e.cmds.forEach((c, i) => {
-      // `deploy` ist das einzige Kommando ohne `id`: es gehört dem Raum, nicht der Figur.
-      // Die auslösende Figur steht in `by` — für den Inspektor ist das dieselbe Zugehörigkeit.
+      // `deploy` is the only command without an `id`: it belongs to the room, not to the
+      // figure. The triggering figure stands in `by`, the same affiliation for the inspector.
       if ((c.k === "deploy" ? c.by : c.id) !== id) return;
       if (c.k === "tool") {
         werkzeug = { tool: c.tool, target: c.target, ts: e.ts, dauer: null, ok: undefined };
@@ -126,7 +126,7 @@ function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id:
   return { schritte: schritte.slice(-SCHRITTE), werkzeug, gate, edits };
 }
 
-// ── Die Komponente ──────────────────────────────────────────────────────────────────────────
+// ── The component ───────────────────────────────────────────────────────────────────────────
 
 export default function Inspector({
   scope, entry, roster, recorder, revision, seekTs, onSelect, onClose, onOpenAkte, className,
@@ -156,8 +156,8 @@ export default function Inspector({
     : (roster.find((r) => r.run_id === entry.parent_run_id) ?? null);
   const elternId = entry.parent_run_id === null ? null : `run:${entry.parent_run_id}`;
 
-  // Der Projektschlüssel steht am Lauf; im Projektumfang ist der Umfang selbst der Rückfall
-  // (ein Lauf ohne `project_key` kann trotzdem in diesem Projekt sitzen).
+  // The project key stands on the run; in the project scope the scope itself is the fallback
+  // (a run without a `project_key` can still sit in this project).
   const projektKey = entry.project_key ?? (scope.kind === "project" ? scope.projectKey : null);
 
   const blockText = entry.status === "blocked"
