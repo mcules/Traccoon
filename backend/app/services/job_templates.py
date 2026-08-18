@@ -1,13 +1,13 @@
-"""Job-Vorlagen: ein Muster + Parameter statt eines kopierten Prompts.
+"""Job templates: one pattern plus parameters instead of a copied prompt.
 
-Anlass war der KI-&-Tech-News-Job. Sein Prompt war gut, aber er beschrieb sein Thema, seine
-Quellen und seinen Aufbau in einem Stück — ein zweiter Digest (Security, Funk, Recht …) wäre
-eine Kopie mit drei geänderten Zeilen gewesen, die beim nächsten Verbessern auseinanderläuft.
+The occasion was the AI and tech news job. Its prompt was good, but it described its topic,
+its sources and its structure in one piece; a second digest (security, radio, law …) would
+have been a copy with three changed lines that drifts apart on the next improvement.
 
-Eine Vorlage liefert Prompt + Voreinstellungen; was den einen Job vom anderen unterscheidet,
-steht in `params` (→ `jobs.args`) und wird beim Lauf über `job_params.rendere` eingesetzt.
-Vorlagen sind Code, keine Daten: sie sollen mit dem Prompt-Handwerk mitwachsen, ohne dass
-jemand bestehende Jobs nachpflegt.
+A template delivers the prompt plus defaults; what distinguishes one job from another stands
+in `params` (becoming `jobs.args`) and is inserted at the run over `job_params.rendere`.
+Templates are code, not data: they should grow with the prompt craft without anybody having
+to maintain existing jobs afterwards.
 """
 from __future__ import annotations
 
@@ -57,8 +57,8 @@ JOB_TEMPLATES: dict[str, dict] = {
             "run_timeout": 900,
             "prompt": _DIGEST_PROMPT,
         },
-        # Voreinstellung = der bewährte KI-&-Tech-Digest. Wer ein anderes Thema will, ändert
-        # Parameter — nicht den Prompt.
+        # The default is the proven AI and tech digest. Whoever wants another topic changes
+        # parameters, not the prompt.
         "params": {
             "titel": "KI- & Tech-News",
             "symbol": "🗞️",
@@ -74,16 +74,16 @@ JOB_TEMPLATES: dict[str, dict] = {
 
 
 def liste() -> list[dict]:
-    """Vorlagen für die Auswahl (Schlüssel, Beschriftung, Parameter mit Vorgabewerten)."""
+    """Templates for the selection (key, label, parameters with default values)."""
     return [{"key": k, "label": v["label"], "beschreibung": v["beschreibung"],
              "params": deepcopy(v["params"]), "felder": deepcopy(v["felder"])}
             for k, v in JOB_TEMPLATES.items()]
 
 
 def anwenden(key: str, params: dict | None = None) -> dict:
-    """Vorlage → Job-Felder (inkl. `args` = Vorgabe-Parameter, von `params` überschrieben).
+    """Template to job fields (including `args` = default parameters, overridden by `params`).
 
-    Unbekannter Schlüssel → KeyError; der Aufrufer macht daraus seine eigene Fehlermeldung.
+    An unknown key raises a KeyError; the caller turns that into its own error message.
     """
     vorlage = JOB_TEMPLATES[key]
     felder = deepcopy(vorlage["felder"])

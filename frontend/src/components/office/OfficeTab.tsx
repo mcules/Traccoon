@@ -1,15 +1,15 @@
-// Schicht 2 — das Büro als Projekt-Reiter.
+// Layer 2: the office as a project tab.
 //
-// Die begrenzte Fassung: Kopfzeile, Bühne, Zeitleiste. Kein Dock, kein Inspektor — dafür ist
-// der Reiter zu schmal, und wer sie braucht, ist einen Klick vom Vollbild entfernt.
+// The limited version: header, stage, timeline. No dock, no inspector, because the tab is too
+// narrow for them, and whoever needs them is one click away from the full screen.
 //
-// ── Warum hier **kein** `fixed inset-0` steht ───────────────────────────────────────────────
+// ── Why there is **no** `fixed inset-0` here ────────────────────────────────────────────────
 //
-// `<main>` in `Layout.tsx` ist `mx-auto max-w-[1400px] p-3` — eine begrenzte, mitlaufende
-// Spalte unter einer `sticky`-Kopfzeile. Eine Bühne, die sich daraus mit `fixed` herauslöst,
-// läge über der Kopfzeile und über dem Untermenü des Projekts. Deshalb bekommt sie eine
-// Seitenverhältnis-Kachel (`aspect-[16/9] w-full`, gesetzt in `OfficeView`) und bleibt im
-// Fluss. Die Vollbildansicht ist eine eigene Seite (`pages/Office.tsx`), kein CSS-Trick.
+// `<main>` in `Layout.tsx` is `mx-auto max-w-[1400px] p-3`, a limited column running along
+// under a `sticky` header. A stage that breaks out of it with `fixed` would lie over the
+// header and over the sub-menu of the project. That is why it gets an aspect ratio tile
+// (`aspect-[16/9] w-full`, set in `OfficeView`) and stays in the flow. The full screen view
+// is a page of its own (`pages/Office.tsx`), not a CSS trick.
 
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,8 +19,8 @@ import type { Scope } from "./api.ts";
 
 export default function OfficeTab({ project }: { project: Project }): JSX.Element {
   const navigate = useNavigate();
-  // Stabile Identität: `useOfficeFeed` hängt seinen Socket zwar an einem abgeleiteten
-  // Schlüssel auf, aber ein Objekt, das sich bei jedem Render erneuert, ist eine Falle,
+  // Stable identity: `useOfficeFeed` does hang its socket off a derived key, but an object
+  // that renews itself on every render is a trap one does not have to lay.
   // die man nicht auslegen muss.
   const scope = useMemo<Scope>(
     () => ({ kind: "project", projectId: project.id, projectKey: project.key }),
