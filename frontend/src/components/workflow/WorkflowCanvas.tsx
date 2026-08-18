@@ -55,7 +55,9 @@ export interface WorkflowCanvasProps {
   onEdgesChange?: OnEdgesChange;
   onConnect?: OnConnect;
   onNodeClick?: (id: string) => void;
-  onDropNode?: (type: WorkflowNodeType, pos: { x: number; y: number }) => void;
+  /** `edgeId` ist gesetzt, wenn der Baustein auf eine bestehende Verbindung gezogen wurde
+   *  — dann gehört er dazwischen, nicht daneben. */
+  onDropNode?: (type: WorkflowNodeType, pos: { x: number; y: number }, edgeId?: string) => void;
   /** Diesen Punkt (Flächen-Koordinaten) oben mittig zeigen. `token` löst aus. */
   fokus?: { x: number; y: number; token: number };
 }
@@ -83,7 +85,20 @@ function Inner(props: WorkflowCanvasProps) {
       const type = ev.dataTransfer.getData("application/reactflow") as WorkflowNodeType;
       if (!type || !onDropNode) return;
       const pos = rf.screenToFlowPosition({ x: ev.clientX, y: ev.clientY });
-      onDropNode(type, pos);
+      // Liegt unter dem Zeiger eine Verbindung? React Flow zeichnet sie als SVG-Pfad; der
+      // Treffer lässt sich am zuverlässigsten am gerenderten Element ablesen. Die Linie ist
+      // dünn, deshalb wird ringsum nachgeschaut (React Flow legt dafür einen breiten,
+      // unsichtbaren Pfad darüber — `.react-flow__edge-interaction`).
+      let edgeId: string | undefined;
+      for (const [dx, dy] of [[0, 0], [0, -6], [0, 6], [-6, 0], [6, 0]]) {
+        const treffer = document.elementFromPoint(ev.clientX + dx, ev.clientY + dy);
+        const kante = treffer?.closest?.(".react-flow__edge");
+        if (kante) {
+          edgeId = kante.getAttribute("data-id") || undefined;
+          break;
+        }
+      }
+      onDropNode(type, pos, edgeId);
     },
     [rf, onDropNode]
   );

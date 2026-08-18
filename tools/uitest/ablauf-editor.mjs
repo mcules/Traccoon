@@ -74,8 +74,21 @@ try {
   // 5) Werkzeug-Knoten: kommt die MCP-Auswahl?
   const palette = page.getByText("Aktion", { exact: false }).first();
   const flaeche = page.locator(".react-flow__pane");
-  await palette.dragTo(flaeche, { targetPosition: { x: 420, y: 380 } });
+  // Auf die Linie zwischen Auslöser und Ende ziehen — der Baustein gehört dazwischen.
+  const linie = page.locator(".react-flow__edge").first();
+  const box = await linie.boundingBox();
+  await palette.dragTo(flaeche, {
+    targetPosition: box
+      ? { x: box.x + box.width / 2 - 220, y: box.y + box.height / 2 - 60 }
+      : { x: 420, y: 380 },
+  });
   await page.waitForTimeout(900);
+  const kantenNachEinfuegen = await page.locator(".react-flow__edge").count();
+  ok("Baustein auf der Linie wird dazwischen gehaengt", kantenNachEinfuegen >= 2,
+     `${kantenNachEinfuegen} Verbindungen`);
+  const fehlerhinweis = await page.getByText(/Validierungsfehler/i).first()
+    .isVisible().catch(() => false);
+  ok("Kein Knoten haengt in der Luft", !fehlerhinweis);
   const knoten = page.locator(".react-flow__node");
   await knoten.nth(await knoten.count() - 1).click();
   await page.waitForTimeout(600);
@@ -99,8 +112,12 @@ try {
 
   // 6) Verzweigung: Kontextfelder + Filter-Hilfe
   const verzweigung = page.getByText("Verzweigung", { exact: false }).first();
-  await verzweigung.dragTo(flaeche, { targetPosition: { x: 760, y: 380 } });
+  const vorher = await page.locator(".react-flow__edge").count();
+  await verzweigung.dragTo(flaeche, { targetPosition: { x: 860, y: 300 } });
   await page.waitForTimeout(900);
+  const nachher = await page.locator(".react-flow__edge").count();
+  ok("Neuer Baustein haengt sich an den ausgewaehlten Knoten", nachher > vorher,
+     `${vorher} → ${nachher} Verbindungen`);
   const knoten2 = page.locator(".react-flow__node");
   await knoten2.nth(await knoten2.count() - 1).click();
   await page.waitForTimeout(700);
