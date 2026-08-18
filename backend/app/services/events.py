@@ -82,8 +82,46 @@ async def listeners(db: AsyncSession, event: str, project_id: int | None) -> lis
         gewuenscht = t.get("project_id")
         if gewuenscht and int(gewuenscht) != (project_id or 0):
             continue
+        if not await _darf_hoeren(db, d, project_id):
+            continue
         treffer.append(d)
     return treffer
+
+
+async def _darf_hoeren(db: AsyncSession, d: WorkflowDefinition, project_id: int | None) -> bool:
+    """Darf dieser Ablauf auf ein Ereignis AUS DIESEM PROJEKT anspringen?
+
+    Ein freier Ablauf gehört einem Menschen, hängt aber an keinem Projekt — ohne Prüfung
+    liefe er bei jedem Ticket-Ereignis mit, auch in Projekten, die sein Eigentümer gar nicht
+    sehen darf. Der ausgelieferte Satz (`slot`) und projektgebundene Abläufe sind davon nicht
+    betroffen: die stehen ohnehin unter der Aufsicht des Projekts bzw. eines Admins.
+    """
+    if d.project_id is not None or d.slot or project_id is None:
+        return True
+    if d.created_by is None:
+        # Altbestand: solche Abläufe konnte früher nur ein Admin anlegen, sie sind also
+        # bereits abgesegnet. Neu angelegte tragen immer ihren Eigentümer.
+        return True
+    from ..models.enums import GlobalRole
+    from ..models.project import Project
+    from ..models.user import User
+    from ..api.deps import build_access
+
+    besitzer = await db.get(User, d.created_by)
+    if besitzer is None:
+        return False
+    if besitzer.global_role == GlobalRole.admin:
+        return True
+    projekt = await db.get(Project, project_id)
+    if projekt is None:
+        return False
+    try:
+        await build_access(projekt, besitzer, db)   # wirft bei fehlendem Zugriff
+    except Exception:                              # noqa: BLE001 — 403/404 = hört nicht zu
+        log.info("Ablauf %s hört nicht auf Projekt %s: Eigentümer ohne Zugriff",
+                 d.key, project_id)
+        return False
+    return True
 
 
 async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,

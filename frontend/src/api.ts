@@ -287,6 +287,9 @@ export const workflowApi = {
   list: (projectId: number) => api.get<WfDef[]>(`/workflows?project_id=${projectId}`),
   /** Alle Definitionen — ohne project_id-Filter; für die projektlosen (eigene Prozesse). */
   listAll: () => api.get<WfDef[]>("/workflows"),
+  /** Welche Kontextfelder es gibt — je Auslöser, Aktion und Knotentyp (für den Editor). */
+  contextFields: () => api.get<import("./components/workflow/contextFields").KontextKatalog>(
+    "/workflow-context-fields"),
   create: (body: {
     project_id?: number | null; key: string; name: string;
     description?: string; subject_kind: WfSubject;

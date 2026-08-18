@@ -3,6 +3,7 @@ import type { MemberLite } from "../../api";
 import type { FlowNode } from "./nodes/shared";
 import HumanTaskConfig from "./config/HumanTaskConfig";
 import DecisionConfig from "./config/DecisionConfig";
+import type { KontextFeld } from "./contextFields";
 import ApprovalConfig from "./config/ApprovalConfig";
 import AutoActionConfig from "./config/AutoActionConfig";
 import AgentTaskConfig from "./config/AgentTaskConfig";
@@ -23,6 +24,7 @@ export default function NodeConfigPanel({
   onDelete,
   projectId,
   subjectKind,
+  kontextFelder,
 }: {
   node: FlowNode | null;
   members: MemberLite[];
@@ -31,6 +33,8 @@ export default function NodeConfigPanel({
   projectId?: number;
   /** Subjekt des Ablaufs (issue|hardware_asset|standalone) — steuert Aktionen und Zustände. */
   subjectKind?: string;
+  /** Kontextfelder dieses Ablaufs — die Verzweigung bietet sie zur Auswahl an. */
+  kontextFelder?: KontextFeld[];
 }) {
   if (!node) {
     return <div className="p-3 text-sm text-muted">Knoten anklicken, um ihn zu konfigurieren.</div>;
@@ -66,7 +70,9 @@ export default function NodeConfigPanel({
       </label>
 
       {node.type === "human_task" && <HumanTaskConfig config={config} onChange={set} members={members} />}
-      {node.type === "decision" && <DecisionConfig config={config} onChange={set} />}
+      {node.type === "decision" && (
+        <DecisionConfig config={config} onChange={set} felder={kontextFelder} />
+      )}
       {node.type === "approval" && <ApprovalConfig config={config} onChange={set} members={members} />}
       {node.type === "auto_action" && (
         <AutoActionConfig config={config} onChange={set} members={members}
