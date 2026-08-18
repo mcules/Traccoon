@@ -94,7 +94,7 @@ class NotifyIn(BaseModel):
 @router.put("/me/notify", status_code=204)
 async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
-    """Benachrichtigungswege im Profil verwalten.
+    """Manage the notification channels in the profile.
 
     The default decides where a message goes when the sender names no channel, and that is
     the normal case: a flow often knows its recipient only at runtime and knows nothing about
