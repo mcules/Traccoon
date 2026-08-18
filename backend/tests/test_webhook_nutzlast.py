@@ -95,3 +95,36 @@ async def test_ohne_bezugsfeld_kein_unterdruecken(client, db):
     await _melden(client, w)
     await _melden(client, w)
     assert len(await _letzte(db)) == 2
+
+
+async def test_workflow_modus_erkennt_wiederholungen(client, db):
+    """Auch der Ablauf-Modus muss den Bezug tief in der Nutzlast finden."""
+    from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
+    from app.models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowVersion
+
+    anna = await make_user(db, "anna")
+    d = WorkflowDefinition(project_id=None, key="tracker", name="Tracker", created_by=anna.id,
+                           subject_kind=WorkflowSubjectKind.standalone)
+    db.add(d)
+    await db.flush()
+    v = WorkflowVersion(definition_id=d.id, version=1, status=WorkflowVersionStatus.published,
+                        graph={"nodes": [
+                            {"id": "s", "type": "start", "position": {"x": 0, "y": 0},
+                             "data": {"config": {}}},
+                            {"id": "e", "type": "end", "position": {"x": 0, "y": 1},
+                             "data": {"config": {"outcome": "completed"}}}],
+                            "edges": [{"id": "k", "source": "s", "target": "e"}]})
+    db.add(v)
+    await db.flush()
+    d.current_version_id = v.id
+    w = WebhookSub(public_id="probe-wf", route="wf", owner_user_id=anna.id, mode="workflow",
+                   workflow_definition_id=d.id, ref_field="event.id")
+    db.add(w)
+    await db.commit()
+
+    erste = await _melden(client, w)
+    assert erste.status_code == 202 and not erste.json().get("duplicate")
+    zweite = await _melden(client, w)
+    assert zweite.json().get("duplicate") is True
+    laeufe = (await db.execute(select(WorkflowInstance))).scalars().all()
+    assert len(laeufe) == 1
