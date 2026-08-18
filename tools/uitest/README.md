@@ -1,23 +1,22 @@
-# Browser-Probe der Ablauf-Oberfläche
+# Browser probe for the flow editor
 
-Was nur im Browser auffällt: ob die Bausteine wirklich in der Palette stehen, ob die
-Auswahlen gefüllt werden (269 MCP-Werkzeuge!), ob die Kontextfelder aus dem Graphen
-entstehen — und ob „Schließen" dorthin zurückführt, wo man hergekommen ist.
+What only shows up in a browser: whether the building blocks are really in the palette,
+whether the dropdowns get filled (269 MCP tools), whether the context fields grow out of the
+graph, and whether "close" takes you back to where you came from.
 
-Die Unit-Tests decken das Verhalten ab, nicht die Bedienung. Diese Probe hat zwei Dinge
-gefunden, die kein Test gesehen hätte: ein neu angelegter Ablauf war eine **völlig leere
-Fläche** (kein Start-Knoten, nichts zum Anklicken), und die Herkunft-Spalte der
-Kontextfelder lief aus dem Panel.
+Unit tests cover behaviour, not operation. This probe found two things no test would have
+seen: a freshly created flow was a **completely empty canvas** (no start node, nothing to
+click), and the origin column of the context fields ran out of its panel.
 
-## Ausführen
+## Running it
 
 ```bash
-# Token für die Anmeldung (ohne Passwort — dasselbe, was das Frontend nach dem Login ablegt)
+# Login token, no password needed. Same value the frontend stores after login.
 docker compose exec -T backend sh -lc \
   'cd /app && python -c "from app.core.security import create_access_token; print(create_access_token(13))"' \
   > tools/uitest/tok.txt
 
-# Playwright bringt die Browser mit, das npm-Paket muss einmal daneben
+# The image ships the browsers, the npm package has to sit next to the script once.
 docker run --rm -v "$PWD/tools/uitest":/w -w /w \
   mcr.microsoft.com/playwright:v1.56.0-noble npm i playwright-core@1.56.0
 
@@ -25,9 +24,12 @@ docker run --rm --network traccoon_default -v "$PWD/tools/uitest":/w -w /w \
   -e BASIS=http://frontend mcr.microsoft.com/playwright:v1.56.0-noble node /w/ablauf-editor.mjs
 ```
 
-Screenshots landen daneben (`01-…png` bis `11-…png`), das Protokoll in `befund.txt`.
+Screenshots land next to it (`01-…png` through `11-…png`), the log in `befund.txt`.
 
-**Hinterher aufräumen** — die Probe legt echte Abläufe an:
+There is a second probe for the measurement series view (`messreihen.mjs`) and one for the
+editor status line (`editor-stand.mjs`), started the same way.
+
+**Clean up afterwards**, the probe creates real flows:
 
 ```sql
 delete from workflow_instances where definition_id in
@@ -40,6 +42,6 @@ delete from workflow_versions where definition_id in
 delete from workflow_definitions where key like 'uitest%';
 ```
 
-Der Baumeister-Schritt ruft **wirklich** das Modell (rund eine Minute) — er prüft nur,
-ob aus dem Satz ein Graph auf der Fläche wird und ob „Zurück" den alten Stand
-wiederherstellt, nicht was gezeichnet wurde.
+The "describe instead of build" step really calls the model (about a minute). It only checks
+that a sentence turns into a graph on the canvas and that "back" restores the previous
+state, not what was drawn.
