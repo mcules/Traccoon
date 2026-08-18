@@ -301,6 +301,10 @@ export const workflowApi = {
                steps: { node_id: string; node_type: string; status: string;
                         decision?: string | null; result?: Record<string, any> | null;
                         error?: string | null }[] }>(`/workflows/${id}/probelauf`, { context, graph }),
+  /** Aus einer Beschreibung einen Ablauf zeichnen lassen (speichert nichts). */
+  entwurf: (id: number, beschreibung: string, graph?: unknown) =>
+    api.post<{ graph: { nodes: any[]; edges: any[] }; fehler: string[]; erklaerung: string }>(
+      `/workflows/${id}/entwurf`, { beschreibung, graph }),
   /** Welche Kontextfelder es gibt — je Auslöser, Aktion und Knotentyp (für den Editor). */
   contextFields: () => api.get<import("./components/workflow/contextFields").KontextKatalog>(
     "/workflow-context-fields"),

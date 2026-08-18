@@ -761,6 +761,41 @@ class ProbelaufIn(BaseModel):
     graph: dict | None = None
 
 
+class EntwurfIn(BaseModel):
+    """Ein Satz darüber, was der Ablauf tun soll — plus optional der Stand auf der Fläche.
+
+    Liegt ein Graph bei, ist es ein Umbau („häng eine Freigabe davor"), sonst eine
+    Neuzeichnung. Gespeichert wird in keinem Fall: der Entwurf landet im Editor.
+    """
+    beschreibung: str = Field(min_length=3, max_length=2000)
+    graph: dict | None = None
+
+
+@router.post("/workflows/{def_id}/entwurf")
+async def workflow_entwurf(
+    def_id: int, data: EntwurfIn,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Aus einer Beschreibung einen Ablauf zeichnen lassen.
+
+    Zurück kommt der Graph für die Fläche, dazu die Fehler der Prüfung (der Entwurf wird
+    auch dann geliefert, wenn noch etwas fehlt — ein fast fertiger Graph ist mehr wert als
+    eine Fehlermeldung) und ein, zwei Sätze, was er tut.
+    """
+    from ..services import workflow_author
+
+    d = await _get_def(db, def_id)
+    await _require_write(db, user, d)
+    try:
+        return await workflow_author.entwerfen(
+            db, owner_id=user.id, beschreibung=data.beschreibung,
+            subject_kind=d.subject_kind, vorhanden=data.graph)
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)[:300])
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Entwurf fehlgeschlagen: {exc}"[:300])
+
+
 @router.post("/workflows/{def_id}/probelauf", response_model=InstanceOut, status_code=201)
 async def probelauf(
     def_id: int, data: ProbelaufIn,

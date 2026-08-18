@@ -201,6 +201,40 @@ try {
   await page.screenshot({ path: "/w/05-verzweigung.png" });
 
 
+  // 6d) Baumeister: beschreiben statt bauen. Ruft wirklich das Modell — deshalb großzügig
+  // Zeit und nur die Frage, ob aus dem Satz ein Graph auf der Fläche wird.
+  const baumeisterAuf = page.getByRole("button", { name: /Beschreiben statt bauen/i });
+  if (await baumeisterAuf.isVisible().catch(() => false)) {
+    await baumeisterAuf.click();
+    await page.waitForTimeout(500);
+    const feld = page.locator("textarea").last();
+    await feld.fill("Rufe ein Ziel auf und schicke mir eine Nachricht, wenn es fehlschlägt");
+    // Auf dem Bestand bauen ist hier nicht gemeint — es soll neu gezeichnet werden.
+    const aufBestand = page.getByText(/Auf dem bauen, was auf der Fläche liegt/i).first();
+    const box2 = await aufBestand.locator("xpath=preceding-sibling::input").first()
+      .isChecked().catch(() => false);
+    if (box2) await aufBestand.click().catch(() => {});
+    const vorherKnoten = await page.locator(".react-flow__node").count();
+    await page.getByRole("button", { name: /Zeichnen lassen/i }).click();
+    await page.waitForTimeout(90000);
+    const nachherKnoten = await page.locator(".react-flow__node").count();
+    ok("Baumeister zeichnet einen Ablauf auf die Fläche", nachherKnoten !== vorherKnoten,
+       `${vorherKnoten} → ${nachherKnoten} Knoten`);
+    const zurueckDa = await page.getByRole("button", { name: /Zurück zum vorherigen Stand/i })
+      .isVisible().catch(() => false);
+    ok("Der vorherige Stand lässt sich wiederholen", zurueckDa);
+    await page.screenshot({ path: "/w/11-baumeister.png" });
+    if (zurueckDa) {
+      await page.getByRole("button", { name: /Zurück zum vorherigen Stand/i }).click();
+      await page.waitForTimeout(1200);
+      const wieder = await page.locator(".react-flow__node").count();
+      ok("Zurück stellt den alten Stand wirklich her", wieder === vorherKnoten,
+         `${wieder} Knoten`);
+    }
+  } else {
+    ok("Baumeister ist im Editor erreichbar", false);
+  }
+
   // 6c) „Anderer Ablauf": neben den festen Slots müssen die eigenen wählbar sein.
   const anderer = page.getByText("Anderer Ablauf", { exact: false }).first();
   await anderer.dragTo(flaeche, { targetPosition: { x: 640, y: 520 } });

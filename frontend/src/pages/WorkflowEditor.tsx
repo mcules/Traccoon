@@ -24,6 +24,7 @@ import NodePalette from "../components/workflow/NodePalette";
 import NodeConfigPanel from "../components/workflow/NodeConfigPanel";
 import { verfuegbareFelder } from "../components/workflow/contextFields";
 import ProbelaufPanel from "../components/workflow/ProbelaufPanel";
+import BaumeisterPanel from "../components/workflow/BaumeisterPanel";
 import { graphToFlow, flowToGraph } from "../components/workflow/convert";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "../components/workflow/layout";
 import { validateGraph } from "../components/workflow/validate";
@@ -447,6 +448,18 @@ export default function WorkflowEditor() {
 
           {!nurLesen && <ProbelaufPanel defId={def?.id} nodes={nodes}
               graph={() => flowToGraph(nodes, edges)} />}
+
+          {!nurLesen && <BaumeisterPanel defId={def?.id} knotenZahl={nodes.length}
+              graph={() => flowToGraph(nodes, edges)}
+              uebernehmen={(g) => {
+                // Der Entwurf bringt keine Größen mit — erst anordnen, dann zeichnen,
+                // sonst klebt alles im selben Raster übereinander.
+                const flow = graphToFlow(needsLayout(g) ? layoutGraph(g, { gap }) : g);
+                setNodes(flow.nodes);
+                setEdges(flow.edges);
+                setSelectedId(null);
+                setMsg("Entwurf übernommen — noch nicht gespeichert.");
+              }} />}
 
           {allErrors.length > 0 && (
             <div className="mt-auto border-t border-line p-3">
