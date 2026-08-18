@@ -1,17 +1,17 @@
-"""Prozess-Verwaltung — die übergreifende Sicht auf alles, was als Ablauf läuft.
+"""Process administration: the cross-cutting view of everything running as a flow.
 
-Seit alle Abläufe Graphen sind, verteilt sich das Wissen darüber auf Sätze, Projekt-Kopien,
-Versionen und laufende Instanzen. Die Endpunkte hier führen das zusammen und beantworten die
-vier Fragen, die man an eine Verwaltung stellt:
+Since all flows are graphs, the knowledge about them is spread over sets, project copies,
+versions and running instances. The endpoints here bring that together and answer the four
+questions one asks an administration:
 
-* `/processes/slots`    — was ist der Standard, und wer weicht davon ab?
-* `/processes/running`  — was läuft gerade, und wo hängt etwas?
-* `/processes/triggers` — was startet welchen Ablauf?
-* Zurückrollen liegt bei den Versionen (`api/workflows.py`), weil es dort hingehört.
+* `/processes/slots`    - what is the default, and who deviates from it?
+* `/processes/running`  - what is running right now, and where is something stuck?
+* `/processes/triggers` - what starts which flow?
+* Rolling back sits with the versions (`api/workflows.py`), because that is where it belongs.
 
-Sichtbarkeit: der Standard-Satz ist für alle lesbar (er erklärt, wie Traccoon arbeitet),
-geändert wird er nur vom Admin. Betrieb und Auslöser zeigen ausschließlich Projekte, auf die
-der Anfragende Zugriff hat — ein Ablauf verrät sonst Namen fremder Projekte.
+Visibility: the default set is readable for everyone (it explains how Traccoon works) and is
+changed only by the admin. Operation and triggers show exclusively projects the requester
+has access to; otherwise a flow would reveal the names of foreign projects.
 """
 from __future__ import annotations
 
@@ -44,10 +44,10 @@ def _now() -> dt.datetime:
 
 
 def _aware(wert: dt.datetime | None) -> dt.datetime | None:
-    """Zeitstempel mit Zone versehen.
+    """Give a timestamp a zone.
 
-    Postgres gibt zonenbehaftete Werte zurück, SQLite (Tests) zonenlose — ohne diese
-    Angleichung scheitert jede Differenz mit „can't subtract offset-naive and offset-aware".
+    Postgres returns zone aware values, SQLite (tests) zone naive ones; without this
+    alignment every difference fails with "can't subtract offset-naive and offset-aware".
     """
     if wert is not None and wert.tzinfo is None:
         return wert.replace(tzinfo=dt.timezone.utc)
@@ -55,19 +55,19 @@ def _aware(wert: dt.datetime | None) -> dt.datetime | None:
 
 
 async def _sichtbare_projekte(db: AsyncSession, user: User) -> dict[int, Project]:
-    """Projekte, die dieser Nutzer sehen darf — einmal ermittelt, danach nur noch gelesen."""
+    """Projects this user may see: determined once, only read afterwards."""
     alle = (await db.execute(select(Project))).scalars().all()
     out: dict[int, Project] = {}
     for p in alle:
         try:
             await build_access(p, user, db)
-        except Exception:  # noqa: BLE001 — 403/404 bedeutet schlicht: nicht sichtbar
+        except Exception:  # noqa: BLE001 - 403/404 simply means: not visible
             continue
         out[p.id] = p
     return out
 
 
-# ── Standard-Satz und Abweichungen ───────────────────────────────────────────
+# ── Default set and deviations ───────────────────────────────────────────────
 
 class AbweichungOut(BaseModel):
     project_id: int
@@ -87,7 +87,7 @@ class SlotUebersichtOut(BaseModel):
     version: int | None = None
     published: bool = False
     updated_at: dt.datetime | None = None
-    # Projekte mit eigener Kopie dieses Slots — die folgen dem Satz nicht mehr.
+    # Projects with their own copy of this slot: those no longer follow the set.
     abweichungen: list[AbweichungOut] = []
 
 
@@ -96,10 +96,10 @@ async def slot_uebersicht(
     set_id: int | None = None,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Belegung eines Satzes samt der Projekte, die davon abweichen.
+    """Occupancy of a set including the projects that deviate from it.
 
-    Ohne `set_id` der globale Standard — das ist die Grundlage aller Projekte und war
-    bisher nur über die API erreichbar.
+    Without `set_id` the global default, which is the basis of all projects and was reachable
+    only over the API so far.
     """
     if set_id is None:
         s = (await db.execute(select(WorkflowSet).where(
@@ -112,7 +112,7 @@ async def slot_uebersicht(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Prozess-Satz nicht gefunden")
 
     sichtbar = await _sichtbare_projekte(db, user)
-    # Projekt-eigene Kopien je Slot (nicht archiviert) — das sind genau die Abweichungen.
+    # Project-owned copies per slot (not archived): those are exactly the deviations.
     kopien = (await db.execute(select(WorkflowDefinition).where(
         WorkflowDefinition.slot.isnot(None),
         WorkflowDefinition.project_id.isnot(None),
@@ -142,10 +142,10 @@ async def slot_uebersicht(
     return out
 
 
-# ── Betrieb: was läuft, was hängt ────────────────────────────────────────────
+# ── Operation: what runs, what is stuck ──────────────────────────────────────
 
-# Ab wann gilt ein wartender Schritt als „hängt"? Wartet ein Ablauf auf einen Menschen,
-# ist das normal — nach einem Tag ohne Regung will man es trotzdem sehen.
+# From when does a waiting step count as "stuck"? If a flow waits for a human, that is
+# normal, but after a day without a stir one wants to see it anyway.
 HAENGT_AB_STUNDEN = 24
 
 
@@ -157,10 +157,10 @@ class LaufOut(BaseModel):
     project_id: int | None = None
     project_key: str | None = None
     subject_kind: WorkflowSubjectKind
-    # Woran der Ablauf hängt: Ticket-Schlüssel bzw. Exemplar-Kennung.
+    # What the flow hangs off: ticket key respectively unit identifier.
     subject_ref: str | None = None
     status: WorkflowInstanceStatus
-    # Aktueller Halt: Knoten-Beschriftung und worauf gewartet wird.
+    # Current stop: node label and what is being waited for.
     node_label: str | None = None
     waiting_for: str | None = None
     seit: dt.datetime | None = None
@@ -185,16 +185,16 @@ async def laufende(
     include_done: bool = False, only_stuck: bool = False, limit: int = 200,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Alle Abläufe quer über die Projekte — mit dem Punkt, an dem sie gerade stehen.
+    """All flows across the projects, with the point they are standing at right now.
 
-    `only_stuck=true` zeigt nur, was Aufmerksamkeit braucht: gescheiterte Instanzen und
-    solche, die länger als einen Tag am selben Schritt warten.
+    `only_stuck=true` shows only what needs attention: failed instances and those waiting at
+    the same step for longer than a day.
     """
     q = select(WorkflowInstance)
     if not include_done:
-        # Offen ist alles, was nicht abgeschlossen oder abgebrochen ist — `waiting` gehört
-        # ausdrücklich dazu: ein Ablauf, der auf einen Menschen wartet, ist der Normalfall
-        # und genau das, was eine Betriebssicht zeigen muss.
+        # Open is everything that is not finished or aborted; `waiting` explicitly belongs to
+        # that: a flow waiting for a human is the normal case and exactly what an operations
+        # view has to show.
         q = q.where(WorkflowInstance.status.notin_(
             [WorkflowInstanceStatus.completed, WorkflowInstanceStatus.cancelled]))
     rows = (await db.execute(q.order_by(WorkflowInstance.id.desc()).limit(limit))).scalars().all()
@@ -213,8 +213,8 @@ async def laufende(
             WorkflowToken.instance_id == inst.id,
             WorkflowToken.state.in_([WorkflowTokenState.waiting, WorkflowTokenState.active]),
         ).order_by(WorkflowToken.id.desc()))).scalars().first()
-        # Wie lange steht es schon? Der letzte betretene Schritt ist ehrlicher als der
-        # Token, dessen Zeitstempel auch ein Weiterschalten im selben Knoten anfasst.
+        # How long has it been standing? The last entered step is more honest than the token,
+        # whose timestamp is touched by advancing within the same node as well.
         schritt = (await db.execute(select(WorkflowStepRun).where(
             WorkflowStepRun.instance_id == inst.id,
         ).order_by(WorkflowStepRun.id.desc()))).scalars().first()
@@ -247,7 +247,7 @@ async def laufende(
     return out
 
 
-# ── Auslöser: was startet welchen Ablauf ─────────────────────────────────────
+# ── Triggers: what starts which flow ─────────────────────────────────────────
 
 class AusloeserOut(BaseModel):
     definition_id: int
@@ -260,7 +260,7 @@ class AusloeserOut(BaseModel):
     # Ereignis-Name, Webhook-Route bzw. Job-Name.
     source: str
     label: str
-    # Nur bei Ereignis-Triggern: Einschränkung auf ein Projekt.
+    # Only with event triggers: restriction to one project.
     only_project_id: int | None = None
     enabled: bool = True
 
@@ -269,11 +269,11 @@ class AusloeserOut(BaseModel):
 async def ausloeser(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Was einen Ablauf startet — Ereignis, Webhook, Job oder ein anderer Ablauf.
+    """What starts a flow: an event, a webhook, a job or another flow.
 
-    Gelesen wird aus den veröffentlichten Graphen (Start-Knoten) und den Verweisen in
-    Webhooks/Jobs. Eine eigene Trigger-Tabelle gibt es bewusst nicht: der Graph ist die
-    Wahrheit und kann so mit keinem Index auseinanderlaufen.
+    What is read are the published graphs (start nodes) and the references in webhooks and
+    jobs. There is deliberately no trigger table of its own: the graph is the truth and can
+    therefore not drift apart from any index.
     """
     from ..models.ops import Job, WebhookSub
 
@@ -294,7 +294,7 @@ async def ausloeser(
 
     out: list[AusloeserOut] = []
 
-    # 1) Ereignis-Trigger am Start-Knoten der veröffentlichten Fassung.
+    # 1) Event triggers on the start node of the published version.
     for d in bekannt.values():
         if not d.current_version_id:
             continue
@@ -310,7 +310,7 @@ async def ausloeser(
             enabled=bool(d.enabled),
         ))
 
-    # 2) Webhooks und Jobs, die unmittelbar auf eine Definition zeigen.
+    # 2) Webhooks and jobs that point directly at a definition.
     for hook in (await db.execute(select(WebhookSub).where(
             WebhookSub.workflow_definition_id.isnot(None)))).scalars().all():
         d = bekannt.get(hook.workflow_definition_id)
@@ -327,8 +327,8 @@ async def ausloeser(
         out.append(AusloeserOut(**kopf(d), kind="job", source=job.name,
                                 label=f"Job „{job.name}“", enabled=bool(job.enabled)))
 
-    # 3) Aufrufe aus anderen Abläufen (subflow-Knoten) — sonst wirkte ein Ablauf
-    #    auslöserlos, obwohl ihn ein anderer aufruft.
+    # 3) Calls from other flows (subflow nodes); otherwise a flow would look triggerless
+    #    although another one calls it.
     for d in bekannt.values():
         if not d.current_version_id:
             continue
@@ -345,7 +345,7 @@ async def ausloeser(
             out.append(AusloeserOut(**kopf(ziel), kind="subflow", source=d.name,
                                     label=f"Aufruf aus „{d.name}“"))
 
-    # 4) Alles ohne Auslöser: läuft nur, wenn ein Mensch (oder Code) es startet.
+    # 4) Everything without a trigger: runs only when a human (or code) starts it.
     mit_ausloeser = {a.definition_id for a in out}
     for d in bekannt.values():
         if d.id in mit_ausloeser or not d.current_version_id:
@@ -357,7 +357,7 @@ async def ausloeser(
     return sorted(out, key=lambda a: (a.kind != "event", a.definition_name, a.label))
 
 
-# ── Ereignis-Katalog (für die Auswahl im Editor und die Übersicht) ───────────
+# ── Event catalog (for the selection in the editor and the overview) ─────────
 
 class EreignisOut(BaseModel):
     event: str
@@ -369,7 +369,7 @@ class EreignisOut(BaseModel):
 async def ereignisse(
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Alle bekannten Ereignisse mit der Zahl der Abläufe, die darauf hören."""
+    """All known events with the number of flows listening for them."""
     defs = (await db.execute(select(WorkflowDefinition).where(
         WorkflowDefinition.archived_at.is_(None),
         WorkflowDefinition.current_version_id.isnot(None),
