@@ -15,12 +15,12 @@ from .enums import (
 
 
 class WorkflowSet(TimestampMixin, Base):
-    """Benannter Satz von Prozess-Vorlagen (je Slot höchstens eine Definition).
+    """Named set of process templates (at most one definition per slot).
 
-    Auflösungskette für ein Projekt (services/workflow_sets.resolve_definition):
-    projekt-eigene Kopie → Satz des Projekts → Satz eines Projekt-Owners → globaler
-    Builtin-Satz. Projekte referenzieren einen Satz nur; eine Kopie entsteht erst beim
-    Anpassen (copy-on-write), damit Änderungen am Satz sofort überall greifen.
+    Resolution chain for a project (services/workflow_sets.resolve_definition): the project's
+    own copy, then the set of the project, then the set of a project owner, then the global
+    builtin set. Projects only reference a set; a copy comes into being on adjustment
+    (copy-on-write) so that changes to the set take hold everywhere immediately.
     """
     __tablename__ = "workflow_sets"
     __table_args__ = (UniqueConstraint("user_id", "key", name="uq_workflow_set_user_key"),)
@@ -30,17 +30,17 @@ class WorkflowSet(TimestampMixin, Base):
         SAEnum(WorkflowSetScope, name="workflowsetscope", values_callable=pg_enum_values),
         default=WorkflowSetScope.user, index=True,
     )
-    # scope=user → Eigentümer; scope=global → NULL
+    # scope=user means owner; scope=global means NULL
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True
     )
     key: Mapped[str] = mapped_column(String(60), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="")
-    # Der eine ausgelieferte Standard-Satz. Wird beim Start idempotent nachgezogen
-    # (services/workflow_seed.ensure_builtin_set) und darf nicht gelöscht werden.
+    # The one shipped default set. It is updated idempotently at start
+    # (services/workflow_seed.ensure_builtin_set) and must not be deleted.
     is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Revision der ausgelieferten Graphen — steigt, wenn der Seed neue Versionen publiziert.
+    # Revision of the shipped graphs; rises when the seed publishes new versions.
     builtin_revision: Mapped[int] = mapped_column(Integer, default=0)
     created_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
@@ -48,18 +48,18 @@ class WorkflowSet(TimestampMixin, Base):
 
 
 class WorkflowDefinition(TimestampMixin, Base):
-    """Logischer Workflow (Container über Versionen). project_id NULL = globale Vorlage."""
+    """Logical workflow (container over versions). project_id NULL = global template."""
     __tablename__ = "workflow_definitions"
     __table_args__ = (
         UniqueConstraint("project_id", "key", name="uq_workflow_def_project_key"),
-        # Je Satz bzw. je Projekt höchstens EINE aktive Definition pro Slot. Archivierte
-        # (zurückgesetzte) Kopien bleiben liegen, damit laufende Instanzen intakt bleiben.
+        # At most ONE active definition per slot per set respectively per project. Archived
+        # (reset) copies stay so that running instances remain intact.
         Index("uq_workflow_def_set_slot", "set_id", "slot", unique=True,
               postgresql_where=sa_text("archived_at IS NULL"),
               sqlite_where=sa_text("archived_at IS NULL")),
-        # Je Projekt und Slot EINE Kopie — und zusätzlich je Vorgangsart eine eigene.
-        # `COALESCE`, weil NULL-Werte in einem Unique-Index sonst als verschieden gelten
-        # und beliebig viele allgemeine Kopien entstünden.
+        # ONE copy per project and slot, and in addition one per issue type. `COALESCE`,
+        # because NULL values in a unique index would otherwise count as different and any
+        # number of generic copies could appear.
         Index("uq_workflow_def_project_slot", "project_id", "slot",
               sa_text("COALESCE(issue_type_id, 0)"), unique=True,
               postgresql_where=sa_text("archived_at IS NULL"),
@@ -70,15 +70,15 @@ class WorkflowDefinition(TimestampMixin, Base):
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Zugehöriger Vorlagen-Satz (NULL = freier/projekteigener Workflow).
+    # The template set it belongs to (NULL = free or project-owned workflow).
     set_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_sets.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    # Belegter Slot (WorkflowSlot-Wert) — NULL bei frei angelegten Workflows.
+    # Occupied slot (WorkflowSlot value); NULL with freely created workflows.
     slot: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
-    # Zurückgesetzte Projekt-Kopien werden archiviert statt gelöscht (Instanzen hängen dran).
-    # Gilt dieser Ablauf nur für eine Vorgangsart? NULL = für alle Tickets des Projekts.
-    # Damit kann ein Bug einen anderen Lebenszyklus fahren als eine Aufgabe.
+    # Reset project copies are archived instead of deleted (instances hang off them).
+    # Does this flow apply only to one issue type? NULL = to all tickets of the project.
+    # That lets a bug run a different lifecycle from a task.
     issue_type_id: Mapped[int | None] = mapped_column(
         ForeignKey("issue_types.id", ondelete="CASCADE"), nullable=True, index=True)
     archived_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -89,7 +89,7 @@ class WorkflowDefinition(TimestampMixin, Base):
         SAEnum(WorkflowSubjectKind, name="workflowsubjectkind", values_callable=pg_enum_values),
         default=WorkflowSubjectKind.standalone,
     )
-    # Veröffentlichte Version, auf die neue Instanzen zeigen. NULL = noch kein Publish.
+    # Published version new instances point at. NULL = not published yet.
     current_version_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_versions.id", ondelete="SET NULL"), nullable=True
     )
@@ -100,7 +100,7 @@ class WorkflowDefinition(TimestampMixin, Base):
 
 
 class WorkflowVersion(Base):
-    """Unveränderlicher Graph-Snapshot. Veröffentlichte Versionen dürfen NICHT editiert werden."""
+    """Immutable graph snapshot. Published versions must NOT be edited."""
     __tablename__ = "workflow_versions"
     __table_args__ = (UniqueConstraint("definition_id", "version", name="uq_workflow_version"),)
 
@@ -124,7 +124,7 @@ class WorkflowVersion(Base):
 
 
 class WorkflowInstance(TimestampMixin, Base):
-    """Laufende Ausführung eines Workflows. version_id gepinnt → Edits brechen Instanzen nicht."""
+    """Running execution of a workflow. version_id is pinned, so edits do not break instances."""
     __tablename__ = "workflow_instances"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -147,7 +147,7 @@ class WorkflowInstance(TimestampMixin, Base):
     hardware_asset_id: Mapped[int | None] = mapped_column(
         ForeignKey("hardware_assets.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Allgemeine Artefakt-Bindung (löst hardware_asset_id ab; Tickets folgen später).
+    # General artifact binding (supersedes hardware_asset_id; tickets follow later).
     artifact_id: Mapped[int | None] = mapped_column(
         ForeignKey("artifacts.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -155,15 +155,15 @@ class WorkflowInstance(TimestampMixin, Base):
         SAEnum(WorkflowInstanceStatus, name="workflowinstancestatus", values_callable=pg_enum_values),
         default=WorkflowInstanceStatus.running, index=True,
     )
-    context: Mapped[dict] = mapped_column(JSON, default=dict)  # Variablen-Kontext (Guards lesen hier)
+    context: Mapped[dict] = mapped_column(JSON, default=dict)  # variable context (guards read here)
     # Atomarer Claim gegen Doppel-Advance (Tick ↔ Event), analog Issue.agent_working.
     advancing: Mapped[bool] = mapped_column(Boolean, default=False)
     source: Mapped[str | None] = mapped_column(String(64), nullable=True)       # webhook | job | manual
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Idempotenz
-    # subflow: Rückverweis auf den aufrufenden Lauf. Endet diese Instanz, weckt sie den
-    # wartenden subflow-Schritt der Eltern-Instanz (über parent_node_id gefunden) und
-    # liefert ihren Ausgang als Handle. Bewusst KEIN FK auf workflow_step_runs — das
-    # ergäbe einen Zyklus zwischen den Tabellen und bräche create_all.
+    # subflow: back reference to the calling run. When this instance ends, it wakes the
+    # waiting subflow step of the parent instance (found over parent_node_id) and delivers
+    # its exit as a handle. Deliberately NO FK on workflow_step_runs: that would give a cycle
+    # between the tables and break create_all.
     parent_instance_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_instances.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -177,7 +177,7 @@ class WorkflowInstance(TimestampMixin, Base):
 
 
 class WorkflowToken(Base):
-    """Ausführungsposition. v1: genau 1 aktives Token je Instanz; Schema erlaubt N (AND-Split später)."""
+    """Execution position. v1: exactly 1 active token per instance; the schema allows N (AND split later)."""
     __tablename__ = "workflow_tokens"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -197,7 +197,7 @@ class WorkflowToken(Base):
 
 
 class WorkflowStepRun(Base):
-    """Append-only Historie + Persistenz von Zuständigen/Formular/Genehmigung/Agent-Ergebnis."""
+    """Append-only history plus persistence of responsible people, form, approval and agent result."""
     __tablename__ = "workflow_step_runs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -219,7 +219,7 @@ class WorkflowStepRun(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     form_data: Mapped[dict | None] = mapped_column(JSON, nullable=True)   # Formular-Eingaben
-    decision: Mapped[str | None] = mapped_column(String(60), nullable=True)  # gewählter Ausgang (Handle)
+    decision: Mapped[str | None] = mapped_column(String(60), nullable=True)  # chosen exit (handle)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)      # Agent-/Auto-Action-Ergebnis
     agent_run_id: Mapped[int | None] = mapped_column(
         ForeignKey("runs.id", ondelete="SET NULL"), nullable=True
@@ -230,8 +230,8 @@ class WorkflowStepRun(Base):
     completed_by: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    # Wann die Engine diesen (fertigen) Schritt in eine Kante übersetzt hat. Ohne diesen
-    # Stempel würde eine Rückkante auf denselben Warte-Knoten (Continuation-Schleife im
-    # Ticket-Lebenszyklus) beim Wiedereintritt sofort erneut routen, statt den Knoten neu
-    # auszuführen — der Lauf liefe endlos im Kreis, ohne je einen Agenten zu starten.
+    # When the engine translated this (finished) step into an edge. Without this stamp a back
+    # edge onto the same waiting node (the continuation loop in the ticket lifecycle) would
+    # route again immediately on re-entry instead of executing the node anew, and the run
+    # would go round in circles forever without ever starting an agent.
     routed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

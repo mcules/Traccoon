@@ -24,7 +24,7 @@ router = APIRouter(tags=["cost"])
 async def project_costs(access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session)):
     pid = access.project.id
     # Bevorzugt direkt ueber CostEntry.project_id filtern (ueberlebt Issue-Loeschung).
-    # Alt-Zeilen ohne project_id (vor der Denormalisierung) weiter ueber den Issue-Join zaehlen.
+    # Old rows without a project_id (before the denormalisation) keep counting over the issue join.
     cond = or_(
         CostEntry.project_id == pid,
         and_(CostEntry.project_id.is_(None), Issue.project_id == pid),
@@ -115,7 +115,7 @@ class PriceIn(BaseModel):
 
 @router.get("/providers/models")
 async def list_models(_: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    # Katalog ist nicht sensibel und speist die Modell-Dropdowns im Agent-Editor (jeder User).
+    # The catalog is not sensitive and feeds the model dropdowns in the agent editor (every user).
     rows = (await db.execute(select(ProviderModel).order_by(ProviderModel.provider, ProviderModel.model))).scalars().all()
     return [{"id": m.id, "provider": m.provider, "model": m.model, "display_name": m.display_name,
              "price_input": m.price_input, "price_output": m.price_output,
@@ -145,8 +145,8 @@ async def upsert_model(data: PriceIn, _: User = Depends(require_admin), db: Asyn
 @router.delete("/providers/models/{model_id}")
 async def delete_model(model_id: int, _: User = Depends(require_admin),
                        db: AsyncSession = Depends(get_session)):
-    """Katalogeintrag entfernen. Bereits abgerechnete Läufe bleiben unberührt — CostEntry
-    speichert den fertigen Betrag, nicht den Katalogverweis."""
+    """Remove a catalog entry. Already billed runs stay untouched: CostEntry stores the
+    finished amount, not the catalog reference."""
     m = await db.get(ProviderModel, model_id)
     if m is None:
         raise HTTPException(404, "Modell nicht gefunden")
@@ -157,19 +157,19 @@ async def delete_model(model_id: int, _: User = Depends(require_admin),
 
 _ANTHROPIC_BETAS = "oauth-2025-04-20,claude-code-20250219"
 
-# Preisquelle: die Provider-APIs selbst liefern keine Preise (weder Anthropic noch OpenAI),
-# models.dev ist ein offener Katalog ohne Auth mit genau unseren Einheiten (USD je 1 Mio. Token).
+# Price source: the provider APIs themselves deliver no prices (neither Anthropic nor
+# OpenAI); models.dev is an open catalog without auth in exactly our units (USD per 1M tokens).
 _MODELSDEV_URL = "https://models.dev/api.json"
-# Unsere Provider-Namen → Anbieter-IDs bei models.dev. `openai` ist bei uns oft ein
-# OpenAI-kompatibler Proxy; lokale Modellnamen stehen dort schlicht nicht drin und
-# bleiben dann unangetastet.
+# Our provider names mapped to the provider ids at models.dev. `openai` is often an
+# OpenAI-compatible proxy here; local model names simply do not stand there and stay
+# untouched then.
 _PRICE_SOURCE = {"claude_code": "anthropic", "claude": "anthropic", "anthropic": "anthropic",
                  "codex": "openai", "openai": "openai"}
 
 
 def _modelsdev_entry(catalog: dict, provider: str, model: str) -> dict | None:
-    """Katalogeintrag zu (Provider, Modell-ID) — exakt, sonst ohne Datums-Suffix
-    (claude-opus-4-6-20260101 → claude-opus-4-6)."""
+    """Catalog entry for (provider, model id): exact, otherwise without the date suffix
+    (claude-opus-4-6-20260101 to claude-opus-4-6)."""
     src = _PRICE_SOURCE.get(provider)
     if not src:
         return None
@@ -182,10 +182,10 @@ def _modelsdev_entry(catalog: dict, provider: str, model: str) -> dict | None:
 
 @router.post("/providers/models/prices")
 async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """Preise aus models.dev in den Katalog übernehmen (Input/Output/Cache-Read, USD je 1 Mio.).
+    """Take prices from models.dev into the catalog (input, output, cache read, USD per 1M).
 
-    Nur setzen, nie löschen: Modelle ohne Treffer (lokale Modelle hinter einem eigenen
-    Endpoint) behalten ihre bestehenden Preise."""
+    Only set, never delete: models without a hit (local models behind an endpoint of their
+    own) keep their existing prices."""
     async with httpx.AsyncClient(timeout=30) as c:
         r = await c.get(_MODELSDEV_URL)
         r.raise_for_status()
@@ -206,9 +206,9 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
         alt = (row.price_input, row.price_output, row.price_cache_read)
         if not row.display_name and entry.get("name"):
             row.display_name = str(entry["name"])[:150]
-        # Kontextfenster nur setzen, wenn es noch fehlt oder sich geändert hat — ein von Hand
-        # gepflegter Wert (lokales Modell mit kleinerem Fenster) wird nicht überschrieben,
-        # solange models.dev das Modell gar nicht kennt (dann sind wir hier nie).
+        # Only set the context window when it is still missing or has changed: a value
+        # maintained by hand (a local model with a smaller window) is not overwritten, as
+        # long as models.dev does not know the model at all (then we never get here).
         kontext = ((entry.get("limit") or {}).get("context")) if isinstance(entry.get("limit"), dict) else None
         if kontext and row.context_tokens != int(kontext):
             row.context_tokens = int(kontext)
@@ -225,7 +225,7 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
             "context_set": kontexte, "unknown": unknown}
 
 
-# Nicht-Chat-Modelle, die OpenAI-kompatible Endpoints (LiteLLM, Ollama, vLLM …) mitliefern.
+# Non-chat models that OpenAI-compatible endpoints (LiteLLM, Ollama, vLLM …) deliver as well.
 _NON_CHAT_HINTS = ("embed", "bge-", "gte-", "e5-", "rerank", "whisper", "tts", "dall-e",
                    "moderation", "stable-diffusion", "flux", "clip")
 
@@ -237,11 +237,11 @@ def _is_chat_model(model_id: str) -> bool:
 
 async def _fetch_provider_models(provider: str, token: str,
                                  base_url: str | None = None) -> list[tuple[str, str]]:
-    """Verfügbare Modelle live beim Endpoint abfragen → [(model_id, display_name)].
+    """Query the available models live at the endpoint, giving [(model_id, display_name)].
 
-    `base_url` ist die eigene Endpoint-URL des Tokens (OpenAI-kompatibler Proxy wie LiteLLM);
-    ohne sie zählt der Provider-Default. Bei eigenem Endpoint wird NICHT auf OpenAI-Namen
-    (gpt/o1/o3 …) gefiltert — dort heißen die Modelle qwen3.6-…, Gemma3-4b usw."""
+    `base_url` is the endpoint URL of the token itself (an OpenAI-compatible proxy like
+    LiteLLM); without it the provider default counts. With an own endpoint there is NO
+    filtering on OpenAI names (gpt/o1/o3 …): there the models are called qwen3.6-…, Gemma3-4b and so on."""
     async with httpx.AsyncClient(timeout=30) as c:
         if provider in ("claude_code", "claude", "anthropic"):
             base = (base_url or "https://api.anthropic.com/v1").rstrip("/")
@@ -258,19 +258,19 @@ async def _fetch_provider_models(provider: str, token: str,
             r.raise_for_status()
             ids = sorted(m["id"] for m in r.json().get("data", []) if m.get("id"))
             if base_url:
-                # Eigener Endpoint: alles außer Embedding/Rerank/Audio/Bild übernehmen.
+                # Own endpoint: take everything except embedding, rerank, audio and image.
                 return [(i, i) for i in ids if _is_chat_model(i)]
-            # Echtes OpenAI: nur Chat-Familien (der Katalog dort ist voller Nicht-Chat-Modelle).
+            # Real OpenAI: only chat families (the catalog there is full of non-chat models).
             return [(i, i) for i in ids if i.startswith(("gpt", "o1", "o3", "o4", "chatgpt"))]
     return []
 
 
 async def _model_endpoints(db: AsyncSession, user_id: int) -> list[tuple[str, str, str, str | None]]:
-    """Alle abfragbaren Endpoints des Nutzers → [(label, provider, token, base_url)].
+    """All queryable endpoints of the user, giving [(label, provider, token, base_url)].
 
-    Ein Nutzer kann je Provider mehrere benannte Tokens haben (Agenten wählen über
-    `token_name`), bei OpenAI mit je eigener Base-URL. Ohne eigenen Token greift der
-    Bestands-Default (Subscription/System-Secret) auf dem Provider-Endpoint."""
+    A user can have several named tokens per provider (agents choose over `token_name`),
+    with OpenAI each with its own base URL. Without an own token the existing default
+    (subscription or system secret) on the provider endpoint applies."""
     out: list[tuple[str, str, str, str | None]] = []
     seen: set[str] = set()
     rows = (await db.execute(
@@ -294,13 +294,13 @@ async def _model_endpoints(db: AsyncSession, user_id: int) -> list[tuple[str, st
 
 @router.post("/providers/models/fetch")
 async def fetch_models(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    """Verfügbare Modelle live bei den Endpoints des Nutzers abrufen und in den Katalog
-    übernehmen. Preise bestehender Einträge bleiben erhalten; neue starten mit 0.
-    Modelle, die kein Endpoint des Providers mehr kennt, werden deaktiviert (nicht gelöscht —
-    alte Läufe/Kosten referenzieren sie noch)."""
+    """Fetch the available models live at the endpoints of the user and take them into the
+    catalog. Prices of existing entries are kept; new ones start at 0. Models no endpoint of
+    the provider knows any more are deactivated (not deleted, because old runs and costs
+    still reference them)."""
     results: dict[str, dict] = {}
-    live: dict[str, set[str]] = {}     # provider → alle live gemeldeten Modell-IDs
-    broken: set[str] = set()           # Provider mit mindestens einem toten Endpoint
+    live: dict[str, set[str]] = {}     # provider to all model ids reported live
+    broken: set[str] = set()           # providers with at least one dead endpoint
     for label, provider, token, base_url in await _model_endpoints(db, user.id):
         try:
             models = await _fetch_provider_models(provider, token, base_url)
@@ -316,9 +316,9 @@ async def fetch_models(user: User = Depends(get_current_user), db: AsyncSession 
                 db.add(ProviderModel(provider=provider, model=mid, display_name=name))
                 added += 1
             else:
-                # Einen von Hand vergebenen Namen NICHT überschreiben: OpenAI-kompatible
-                # Endpoints liefern als „Namen" nur die Modell-ID zurück, jeder Abruf hätte
-                # „Qwen3.6 35B q8 (lokal)" wieder zu „qwen3.6-35b-q8" gemacht.
+                # Do NOT overwrite a name given by hand: OpenAI-compatible endpoints return
+                # only the model id as the "name", so every fetch would have turned
+                # "Qwen3.6 35B q8 (local)" back into "qwen3.6-35b-q8".
                 if name and row.display_name in ("", row.model) and row.display_name != name:
                     row.display_name = name
                     updated += 1
@@ -327,16 +327,16 @@ async def fetch_models(user: User = Depends(get_current_user), db: AsyncSession 
                     updated += 1
         live.setdefault(provider, set()).update(mid for mid, _ in models)
         results[label] = {"total": len(models), "added": added, "updated": updated}
-    # Nur Provider aufräumen, bei denen ALLE Endpoints fehlerfrei geantwortet haben —
-    # sonst würden Modelle eines gerade toten Endpoints fälschlich deaktiviert.
+    # Only clean up providers whose endpoints ALL answered without an error; otherwise models
+    # of a momentarily dead endpoint would be deactivated wrongly.
     for provider, ids in live.items():
         if not ids or provider in broken:
             continue
         stale = (await db.execute(select(ProviderModel).where(
             ProviderModel.provider == provider, ProviderModel.model.notin_(ids),
             ProviderModel.enabled.is_(True)))).scalars().all()
-        # Undatierte Aliase (claude-sonnet-4-5 → …-20250929) stehen nicht in /v1/models,
-        # funktionieren aber — sonst würde ausgerechnet der Default-Modellname wegfliegen.
+        # Undated aliases (claude-sonnet-4-5 to …-20250929) do not stand in /v1/models but
+        # work anyway; otherwise the default model name of all things would fly out.
         stale = [r for r in stale if not any(i.startswith(r.model + "-") for i in ids)]
         for row in stale:
             row.enabled = False
