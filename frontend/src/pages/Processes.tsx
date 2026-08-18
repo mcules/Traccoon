@@ -63,8 +63,7 @@ function StandardSatz() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Der ausgelieferte Standard gilt für jedes Projekt, das keine eigene Kopie angelegt hat —
-        eine Änderung hier wirkt sofort überall dort.{" "}
+        {tr("proc.standard_hinweis")}{" "}
         {admin
           ? "Laufende Vorgänge bleiben unberührt: sie hängen an der Version, mit der sie gestartet sind."
           : "Ändern darf ihn nur ein Admin; ansehen lohnt sich trotzdem, denn er beschreibt, wie Traccoon arbeitet."}
@@ -81,7 +80,7 @@ function StandardSatz() {
         ))}
         {slots?.length === 0 && (
           <div className="rounded border border-line bg-card p-3 text-sm text-muted">
-            Kein Standard-Satz vorhanden.
+            {tr("proc.kein_standard_satz")}
           </div>
         )}
       </div>
@@ -101,7 +100,7 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
           <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">v{s.version}</span>
         ) : (
           <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-xs text-yellow-300">
-            nicht veröffentlicht
+            {tr("proc.nicht_veroeffentlicht")}
           </span>
         )}
         {s.abweichungen.length > 0 && (
@@ -181,7 +180,7 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
               <span className={`rounded px-1.5 py-0.5 ${
                 v.status === "published" ? "bg-green-500/15 text-green-300" : "bg-surface text-muted"
               }`}>
-                {v.status === "published" ? "veröffentlicht" : "Entwurf"}
+                {tr(v.status === "published" ? "proc.veroeffentlicht" : "proc.entwurf")}
               </span>
               {aktuell && (
                 <span className="rounded bg-brand/20 px-1.5 py-0.5 text-brand">aktuell</span>
@@ -199,7 +198,7 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
                   className="shrink-0 rounded border border-line px-1.5 py-0.5 hover:border-amber-400 disabled:opacity-50"
                   title={tr("processes.diese_fassung_wieder_in_kraft_setzen_als")}
                 >
-                  Zurückrollen
+                  {tr("proc.zurueckrollen")}
                 </button>
               )}
             </div>
@@ -221,13 +220,13 @@ const STATUS_STIL: Record<ProcLauf["status"], string> = {
   cancelled: "bg-surface text-muted",
 };
 const STATUS_TEXT: Record<ProcLauf["status"], string> = {
-  running: "läuft", waiting: "wartet", failed: "gescheitert",
+  running: "proc.status.laeuft", waiting: "proc.status.wartet", failed: "proc.status.gescheitert",
   completed: "fertig", cancelled: "abgebrochen",
 };
 const WARTET_AUF: Record<string, string> = {
-  human_task: "auf eine Person", approval: "auf eine Freigabe", agent: "auf den Agenten",
-  timer: "auf einen Zeitpunkt", event: "auf ein Ereignis", gate: "auf ein freies Zeitfenster",
-  subflow: "auf einen Unterprozess",
+  human_task: "proc.wartet.person", approval: "proc.wartet.freigabe", agent: "proc.wartet.agent",
+  timer: "proc.wartet.zeitpunkt", event: "proc.wartet.ereignis", gate: "proc.wartet.fenster",
+  subflow: "proc.wartet.unterprozess",
 };
 
 function Betrieb() {
@@ -260,15 +259,13 @@ function Betrieb() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Alle offenen Vorgänge über die Projekte hinweg. „Wartet“ ist der Normalfall — ein Ablauf,
-        der auf einen Menschen wartet, ist nicht kaputt. Auffällig wird er, wenn er länger als
-        einen Tag am selben Schritt steht oder gescheitert ist.
+        {tr("proc.betrieb_hinweis")}
       </p>
 
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={nurHaengt} onChange={(e) => setNurHaengt(e.target.checked)} />
-          Nur Auffälliges{haengen > 0 && !nurHaengt ? ` (${haengen})` : ""}
+          {tr("proc.nur_auffaelliges")}{haengen > 0 && !nurHaengt ? ` (${haengen})` : ""}
         </label>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={mitFertigen} onChange={(e) => setMitFertigen(e.target.checked)} />
@@ -276,7 +273,7 @@ function Betrieb() {
         </label>
         <div className="flex-1" />
         <span className="text-xs text-muted">
-          {laeufe?.length ?? 0} {laeufe?.length === 1 ? "Vorgang" : "Vorgänge"}
+          {laeufe?.length ?? 0} {tr(laeufe?.length === 1 ? "proc.vorgang" : "proc.vorgaenge")}
         </span>
       </div>
 
@@ -288,7 +285,7 @@ function Betrieb() {
                className={`rounded border p-3 ${l.haengt ? "border-amber-500/40 bg-amber-500/5" : "border-line bg-card"}`}>
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STIL[l.status]}`}>
-                {STATUS_TEXT[l.status]}
+                {tr(STATUS_TEXT[l.status])}
               </span>
               <span className="font-medium">{l.definition_name}</span>
               {l.project_key && (
@@ -329,7 +326,7 @@ function Betrieb() {
             </div>
             <div className="mt-1 text-xs text-muted">
               steht bei <span className="text-ink">{l.node_label || "—"}</span>
-              {l.waiting_for && ` — wartet ${WARTET_AUF[l.waiting_for] || `auf ${l.waiting_for}`}`}
+              {l.waiting_for && ` — ${tr("proc.wartet")} ${WARTET_AUF[l.waiting_for] ? tr(WARTET_AUF[l.waiting_for]) : l.waiting_for}`}
             </div>
             {l.error && <div className="mt-1 text-xs text-red-300">{l.error}</div>}
             {offen === l.id && (
@@ -342,7 +339,7 @@ function Betrieb() {
         ))}
         {laeufe?.length === 0 && (
           <div className="rounded border border-line bg-card p-3 text-sm text-muted">
-            {nurHaengt ? "Nichts Auffälliges — kein Vorgang hängt." : "Zurzeit läuft kein Vorgang."}
+            {nurHaengt ? tr("proc.nichts_auffaelliges") : tr("proc.kein_vorgang")}
           </div>
         )}
       </div>
@@ -370,8 +367,7 @@ function Ausloeser() {
   return (
     <div className="space-y-5">
       <p className="text-sm text-muted">
-        Was einen Ablauf in Gang setzt. Gelesen wird das aus den Graphen selbst und den Verweisen
-        in Webhooks und Zeitplänen — es gibt keine zweite Liste, die damit auseinanderlaufen könnte.
+        {tr("proc.ausloeser_hinweis")}
       </p>
 
       <div className="space-y-2">
@@ -400,7 +396,7 @@ function Ausloeser() {
               </div>
               <div className="mt-1 text-xs text-muted">
                 {t.label}
-                {t.only_project_id && " — nur für ein bestimmtes Projekt"}
+                {t.only_project_id && ` ${tr("proc.nur_fuer_projekt")}`}
               </div>
             </div>
           );
