@@ -110,7 +110,7 @@ function SprachePanel() {
   const [err, setErr] = useState("");
   const { data: sprachen } = useQuery({
     queryKey: ["i18n-locales"],
-    queryFn: () => api.get<{ locale: string; eigene_texte: number }[]>("/i18n/locales"),
+    queryFn: () => api.get<{ locale: string; name: string; enabled: boolean }[]>("/i18n/locales"),
   });
 
   const save = async () => {
@@ -132,8 +132,10 @@ function SprachePanel() {
       <div className="flex flex-wrap items-center gap-2">
         <select value={locale} onChange={(e) => setLocale(e.target.value)}
           className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
-          {(sprachen || [{ locale: "de", eigene_texte: 0 }, { locale: "en", eigene_texte: 0 }])
-            .map((s) => <option key={s.locale} value={s.locale}>{s.locale}</option>)}
+          {(sprachen || [{ locale: "de", name: "Deutsch", enabled: true },
+                         { locale: "en", name: "English", enabled: true }])
+            .filter((s) => s.enabled)
+            .map((s) => <option key={s.locale} value={s.locale}>{s.name}</option>)}
         </select>
         <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
           {tr("profile.speichern")}

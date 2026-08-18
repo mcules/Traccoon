@@ -23,7 +23,7 @@ from .ops import (  # noqa: F401
     Deployment, Job, JobRun, PermAction, PermGrant, PermRequest, Permission,
     ProviderModel, WebhookCoalesce, WebhookSub,
 )
-from .i18n import UiTranslation  # noqa: F401
+from .i18n import UiLocale, UiTranslation  # noqa: F401
 from .metrics import MetricPoint, MetricSeries  # noqa: F401
 from .secrets import UserSecret  # noqa: F401
 from .destination import Destination  # noqa: F401

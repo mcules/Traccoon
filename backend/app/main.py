@@ -384,6 +384,9 @@ async def lifespan(app: FastAPI):
                 # UI language per person, and the translation overrides an admin edits.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS locale VARCHAR(10) "
                 "DEFAULT 'de' NOT NULL",
+                # Sprachen, die ein Admin angelegt, umbenannt oder abgeschaltet hat.
+                "ALTER TABLE ui_locales ADD COLUMN IF NOT EXISTS enabled BOOLEAN "
+                "DEFAULT TRUE NOT NULL",
                 # Messreihen (create_all legt die Tabellen an; der Index nicht).
                 "CREATE INDEX IF NOT EXISTS ix_metric_points_series_ts "
                 "ON metric_points (series_id, ts DESC)",

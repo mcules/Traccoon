@@ -14,7 +14,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..db import get_session
-from ..models.i18n import UiTranslation
+from ..models.i18n import UiLocale, UiTranslation
 from ..models.user import User
 from .deps import get_current_user, require_admin
 
@@ -42,17 +42,72 @@ def _locale(roh: str) -> str:
     return kurz
 
 
+NAMEN = {"de": "Deutsch", "en": "English"}
+
+
+class LocaleIn(BaseModel):
+    locale: str = Field(min_length=2, max_length=10)
+    name: str = Field(default="", max_length=80)
+
+
+class LocaleUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=80)
+    enabled: bool | None = None
+
+
 @router.get("/locales")
 async def list_locales(user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    """Which languages exist, and how many texts each one carries here."""
+    """Which languages exist, what they are called, and how many texts each carries here.
+
+    Shipped languages need no row of their own: they exist because their catalog is bundled
+    with the application. A row appears as soon as somebody renames one, switches it off or
+    creates a language that was never shipped.
+    """
     rows = (await db.execute(
         select(UiTranslation.locale, func.count(UiTranslation.id))
         .group_by(UiTranslation.locale))).all()
     gezaehlt = {locale: anzahl for locale, anzahl in rows}
-    alle = sorted(set(EINGEBAUT) | set(gezaehlt))
-    return [{"locale": l, "eigene_texte": gezaehlt.get(l, 0), "eingebaut": l in EINGEBAUT}
+    eigene = {r.locale: r for r in (await db.execute(select(UiLocale))).scalars().all()}
+    alle = sorted(set(EINGEBAUT) | set(gezaehlt) | set(eigene))
+    return [{"locale": l,
+             "name": (eigene[l].name if l in eigene and eigene[l].name else NAMEN.get(l, l)),
+             "eigene_texte": gezaehlt.get(l, 0),
+             "eingebaut": l in EINGEBAUT,
+             "enabled": eigene[l].enabled if l in eigene else True}
             for l in alle]
+
+
+@router.post("/locales", status_code=201)
+async def create_locale(data: LocaleIn, _: User = Depends(require_admin),
+                        db: AsyncSession = Depends(get_session)):
+    """Create a language. It exists from now on, even before its first text."""
+    lc = _locale(data.locale)
+    if (await db.execute(select(UiLocale).where(UiLocale.locale == lc))).scalar_one_or_none():
+        raise HTTPException(status.HTTP_409_CONFLICT, "Diese Sprache gibt es schon")
+    db.add(UiLocale(locale=lc, name=data.name.strip() or lc.upper()))
+    await db.commit()
+    return {"locale": lc}
+
+
+@router.put("/locales/{locale}", status_code=204)
+async def update_locale(locale: str, data: LocaleUpdate, _: User = Depends(require_admin),
+                        db: AsyncSession = Depends(get_session)):
+    """Rename a language or switch it off. Switching off hides it from the picker; the
+    texts stay, so turning it back on loses nothing."""
+    lc = _locale(locale)
+    zeile = (await db.execute(select(UiLocale).where(UiLocale.locale == lc))).scalar_one_or_none()
+    if zeile is None:
+        zeile = UiLocale(locale=lc, name=NAMEN.get(lc, lc.upper()))
+        db.add(zeile)
+    if data.name is not None:
+        zeile.name = data.name.strip() or NAMEN.get(lc, lc.upper())
+    if data.enabled is not None:
+        if lc == "de" and not data.enabled:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                "Die Quellsprache lässt sich nicht abschalten")
+        zeile.enabled = data.enabled
+    await db.commit()
 
 
 @router.get("/{locale}")
@@ -107,10 +162,18 @@ async def import_texts(locale: str, data: ImportIn, _: User = Depends(require_ad
     return {"locale": lc, "uebernommen": geschrieben}
 
 
-@router.delete("/{locale}", status_code=204)
+@router.delete("/locales/{locale}", status_code=204)
 async def drop_locale(locale: str, _: User = Depends(require_admin),
                       db: AsyncSession = Depends(get_session)):
-    """Drop a whole language. The shipped ones fall back to their catalog, they do not
-    disappear."""
-    await db.execute(delete(UiTranslation).where(UiTranslation.locale == _locale(locale)))
+    """Drop a whole language with its texts.
+
+    A shipped language does not disappear: its catalog comes with the application, only the
+    changes made here are gone. Whoever still has it selected falls back to the shipped
+    texts, and for a language that was never shipped, to the source language.
+    """
+    lc = _locale(locale)
+    if lc == "de":
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Die Quellsprache bleibt")
+    await db.execute(delete(UiTranslation).where(UiTranslation.locale == lc))
+    await db.execute(delete(UiLocale).where(UiLocale.locale == lc))
     await db.commit()

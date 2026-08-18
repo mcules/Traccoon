@@ -3,7 +3,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { alleSchluessel, ausgeliefert, QUELLSPRACHE, setzeSprache, sprache, tr } from "../i18n";
 
-interface SpracheInfo { locale: string; eigene_texte: number; eingebaut: boolean }
+interface SpracheInfo {
+  locale: string; name: string; eigene_texte: number; eingebaut: boolean; enabled: boolean;
+}
 
 /**
  * Übersetzungen der Oberfläche verwalten.
@@ -21,7 +23,6 @@ export default function TranslationsPanel() {
   const [locale, setLocale] = useState("en");
   const [suche, setSuche] = useState("");
   const [nurOffene, setNurOffene] = useState(true);
-  const [neueSprache, setNeueSprache] = useState("");
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
@@ -114,7 +115,7 @@ export default function TranslationsPanel() {
         <select value={locale} onChange={(e) => setLocale(e.target.value)} className={inp}>
           {(sprachen || []).filter((s) => s.locale !== QUELLSPRACHE).map((s) => (
             <option key={s.locale} value={s.locale}>
-              {s.locale}{s.eingebaut ? " (ausgeliefert)" : ""}
+              {s.name} ({s.locale}){s.eingebaut ? ` · ${tr("translations_panel.ausgeliefert")}` : ""}
             </option>
           ))}
         </select>
@@ -139,24 +140,8 @@ export default function TranslationsPanel() {
         </label>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-line pt-2 text-xs">
-        <span className="text-muted">{tr("translations_panel.neue_sprache")}</span>
-        <input value={neueSprache} onChange={(e) => setNeueSprache(e.target.value)}
-          placeholder="z. B. fr" className={`${inp} w-24`} />
-        <button
-          onClick={() => {
-            const kennung = neueSprache.trim().toLowerCase();
-            if (!kennung) return;
-            setLocale(kennung);
-            setNeueSprache("");
-            // Angelegt wird sie mit dem ersten gespeicherten Text — bis dahin gibt es
-            // nichts zu speichern, und eine leere Sprache wäre nur ein Eintrag ohne Inhalt.
-            setOk(`Sprache „${kennung}" ausgewählt. Sie entsteht mit dem ersten Text.`);
-          }}
-          className="rounded border border-line px-2 py-1 text-ink hover:bg-surface">
-          anlegen
-        </button>
-      </div>
+      <Sprachverwaltung sprachen={sprachen || []} gewaehlt={locale} onWaehlen={setLocale}
+        onFehler={setErr} onOk={setOk} />
 
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
       {ok && <div className="text-xs text-green-400">{ok}</div>}
@@ -196,6 +181,108 @@ export default function TranslationsPanel() {
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * Sprachen anlegen, benennen, abschalten, löschen.
+ *
+ * Eine Sprache entstand vorher erst mit ihrem ersten Text — genau in dem Moment, in dem
+ * jemand zu übersetzen anfängt, war sie also noch nicht da, und ein Neuladen verlor die
+ * Auswahl. Jetzt ist sie ein eigener Eintrag: benannt („Français" statt „fr"), abschaltbar,
+ * ohne dass ihre Texte verschwinden, und löschbar mitsamt allem.
+ *
+ * Die ausgelieferten Sprachen lassen sich nicht wegwerfen — ihr Katalog gehört zur
+ * Anwendung. Löschen nimmt dort nur zurück, was hier geändert wurde.
+ */
+function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
+  sprachen: SpracheInfo[]; gewaehlt: string; onWaehlen: (l: string) => void;
+  onFehler: (t: string) => void; onOk: (t: string) => void;
+}) {
+  const qc = useQueryClient();
+  const [kennung, setKennung] = useState("");
+  const [name, setName] = useState("");
+  const inp = "rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
+  const frisch = () => qc.invalidateQueries({ queryKey: ["i18n-locales"] });
+  const fehler = (e: unknown) => onFehler(e instanceof ApiError ? e.message : tr("common.fehler"));
+
+  const anlegen = useMutation({
+    mutationFn: () => api.post("/i18n/locales", { locale: kennung.trim().toLowerCase(), name: name.trim() }),
+    onSuccess: () => {
+      onOk(tr("translations_panel.sprache_angelegt", { sprache: kennung.trim().toLowerCase() }));
+      onWaehlen(kennung.trim().toLowerCase());
+      setKennung(""); setName(""); frisch();
+    },
+    onError: fehler,
+  });
+  const aendern = useMutation({
+    mutationFn: ({ locale, body }: { locale: string; body: Record<string, unknown> }) =>
+      api.put(`/i18n/locales/${locale}`, body),
+    onSuccess: () => { onFehler(""); frisch(); }, onError: fehler,
+  });
+  const loeschen = useMutation({
+    mutationFn: (locale: string) => api.del(`/i18n/locales/${locale}`),
+    onSuccess: () => { onFehler(""); onWaehlen("en"); frisch(); }, onError: fehler,
+  });
+
+  return (
+    <div className="space-y-2 border-t border-line pt-2">
+      <div className="text-xs font-medium text-muted">{tr("translations_panel.sprachen")}</div>
+      <table className="w-full text-xs">
+        <tbody>
+          {sprachen.map((s) => (
+            <tr key={s.locale} className="border-t border-line/60">
+              <td className="py-1 pr-2 font-mono text-[10px] text-muted">{s.locale}</td>
+              <td className="py-1 pr-2">
+                <input defaultValue={s.name}
+                  onBlur={(e) => e.target.value !== s.name
+                    && aendern.mutate({ locale: s.locale, body: { name: e.target.value } })}
+                  className={`${inp} w-40`} />
+              </td>
+              <td className="py-1 pr-2 text-muted">
+                {s.eingebaut ? tr("translations_panel.ausgeliefert") : tr("translations_panel.eigene")}
+                {" · "}
+                {tr("translations_panel.eigene_texte", { anzahl: s.eigene_texte })}
+              </td>
+              <td className="py-1 pr-2">
+                {s.locale !== QUELLSPRACHE && (
+                  <label className="flex items-center gap-1 text-muted">
+                    <input type="checkbox" checked={s.enabled}
+                      onChange={(e) => aendern.mutate({ locale: s.locale, body: { enabled: e.target.checked } })} />
+                    {tr("translations_panel.waehlbar")}
+                  </label>
+                )}
+              </td>
+              <td className="py-1 text-right">
+                <button onClick={() => onWaehlen(s.locale)} disabled={s.locale === QUELLSPRACHE}
+                  className="rounded border border-line px-2 py-0.5 text-ink hover:bg-surface disabled:opacity-40">
+                  {s.locale === gewaehlt ? tr("translations_panel.in_bearbeitung") : tr("translations_panel.bearbeiten")}
+                </button>
+                {s.locale !== QUELLSPRACHE && (
+                  <button
+                    onClick={() => { if (confirm(tr("translations_panel.loeschen_frage", { sprache: s.name }))) loeschen.mutate(s.locale); }}
+                    title={tr("translations_panel.loeschen_titel")}
+                    className="ml-1 rounded border border-line px-2 py-0.5 text-red-400 hover:bg-surface">✕</button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-muted">{tr("translations_panel.neue_sprache")}</span>
+        <input value={kennung} onChange={(e) => setKennung(e.target.value)}
+          placeholder={tr("translations_panel.kennung_platzhalter")} className={`${inp} w-24`} />
+        <input value={name} onChange={(e) => setName(e.target.value)}
+          placeholder={tr("translations_panel.name_platzhalter")} className={`${inp} w-40`} />
+        <button onClick={() => kennung.trim() && anlegen.mutate()}
+          className="rounded border border-line px-2 py-1 text-ink hover:bg-surface">
+          {tr("translations_panel.anlegen")}
+        </button>
       </div>
     </div>
   );
