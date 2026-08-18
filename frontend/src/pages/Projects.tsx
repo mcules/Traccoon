@@ -9,7 +9,7 @@ import { usePageChrome } from "../pageChrome";
 
 export default function Projects() {
   // Titel ohne Untermenü — sonst bliebe das der zuletzt besuchten Seite stehen.
-  usePageChrome("Projekte", []);
+  usePageChrome(tr("nav.projects"), []);
   const qc = useQueryClient();
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
   const [show, setShow] = useState(false);

@@ -43,7 +43,7 @@ function senderEmail(from: string | null): string {
 
 export default function Inbox() {
   // Eigene Reiter im Seiteninhalt — im Kopf nur der Titel, kein Untermenü.
-  usePageChrome("Assistent", []);
+  usePageChrome(tr("nav.assistant"), []);
   const [tab, setTab] = useState<Tab>("chat");
   return (
     <div className="mx-auto max-w-3xl">
