@@ -8,15 +8,15 @@ interface SpracheInfo {
 }
 
 /**
- * Übersetzungen der Oberfläche verwalten.
+ * Manage the translations of the interface.
  *
- * Die Schlüssel kommen aus dem ausgelieferten deutschen Katalog — er ist die Wahrheit
- * darüber, welche Texte es gibt. Danebengestellt wird, was die gewählte Sprache mitbringt
- * und was hier zur Laufzeit geändert wurde. Wer ein Feld leert, nimmt seine Änderung
- * zurück und bekommt den ausgelieferten Text wieder; nichts wird dadurch leer.
+ * The keys come from the shipped German catalog: it is the truth about which texts exist.
+ * Beside it stands what the chosen language brings along and what was changed here at
+ * runtime. Whoever empties a field takes their change back and gets the shipped text again;
+ * nothing becomes empty through that.
  *
- * Eine neue Sprache braucht keinen Code: Kennung eintragen, übersetzen, fertig. Sie lebt
- * vollständig in der Datenbank und steht sofort in der Sprachwahl des Profils.
+ * A new language needs no code: enter the identifier, translate, done. It lives completely
+ * in the database and stands in the language choice of the profile immediately.
  */
 export default function TranslationsPanel() {
   const qc = useQueryClient();
@@ -26,17 +26,17 @@ export default function TranslationsPanel() {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
 
-  // Zwei Quellen, eine Liste: der Browser bringt seinen Katalog mit, die Texte des Servers
-  // (Benachrichtigungen, Einrichtungsschritte) kennt nur der Server. Ohne den zweiten Teil
-  // bliebe die Hälfte der Anwendung deutsch, während die andere umschaltet.
+  // Two sources, one list: the browser brings its catalog along, and the texts of the server
+  // (notifications, setup steps) are known only to the server. Without the second part half
+  // the application would stay German while the other half switches.
   const { data: serverTexte } = useQuery({
     queryKey: ["i18n-server-katalog", locale],
     queryFn: () => api.get<{ texte: Record<string, string>; ausgeliefert: Record<string, string> }>(
       `/i18n/server-katalog?locale=${locale}`),
   });
   const quelle = { ...alleSchluessel(), ...(serverTexte?.texte || {}) };
-  // Auch die ausgelieferte Übersetzung kommt vom Server, sonst gälten seine Texte hier als
-  // offen, obwohl sie längst übersetzt sind.
+  // The shipped translation comes from the server as well; otherwise its texts would count
+  // as open here although they have long been translated.
   const geliefertAlle = (l: string) => (
     l === locale ? { ...ausgeliefert(l), ...(serverTexte?.ausgeliefert || {}) } : ausgeliefert(l));
   const { data: sprachen } = useQuery({
@@ -190,15 +190,15 @@ export default function TranslationsPanel() {
 
 
 /**
- * Sprachen anlegen, benennen, abschalten, löschen.
+ * Create, name, switch off and delete languages.
  *
- * Eine Sprache entstand vorher erst mit ihrem ersten Text — genau in dem Moment, in dem
- * jemand zu übersetzen anfängt, war sie also noch nicht da, und ein Neuladen verlor die
- * Auswahl. Jetzt ist sie ein eigener Eintrag: benannt („Français" statt „fr"), abschaltbar,
- * ohne dass ihre Texte verschwinden, und löschbar mitsamt allem.
+ * A language used to come into being only with its first text, so exactly at the moment
+ * somebody starts translating it did not exist yet, and a reload lost the selection. Now it
+ * is an entry of its own: named ("Français" instead of "fr"), switchable off without its
+ * texts disappearing, and deletable together with everything.
  *
- * Die ausgelieferten Sprachen lassen sich nicht wegwerfen — ihr Katalog gehört zur
- * Anwendung. Löschen nimmt dort nur zurück, was hier geändert wurde.
+ * The shipped languages cannot be thrown away: their catalog belongs to the application.
+ * Deleting there only takes back what was changed here.
  */
 function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
   sprachen: SpracheInfo[]; gewaehlt: string; onWaehlen: (l: string) => void;

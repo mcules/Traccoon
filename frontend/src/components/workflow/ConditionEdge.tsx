@@ -6,19 +6,19 @@ import {
 import { useCanvasReadOnly } from "./canvasMode";
 
 /**
- * Weg für einen Rücklauf (Schleife): seitlich hinaus, außen hoch, seitlich wieder hinein —
- * statt als große S-Kurve quer durch die Mitte.
+ * Path for a back edge (loop): out to the side, up along the outside, back in from the side,
+ * instead of a large S curve right through the middle.
  *
- * Die Spur liegt umso weiter außen, je länger der Rücksprung ist; zusätzlich versetzt sie
- * ein Wert aus der Kanten-Kennung, damit mehrere Rückläufe nicht übereinanderliegen. Die
- * Ecken sind leicht gerundet, das liest sich ruhiger als spitze Winkel.
+ * The track lies further outside the longer the jump back is; in addition it is offset by a
+ * value from the edge id so that several back edges do not lie on top of each other. The
+ * corners are slightly rounded, which reads more calmly than sharp angles.
  */
 function ruecklaufPfad(
   sx: number, sy: number, tx: number, ty: number, id: string,
   rand: { links: number; rechts: number },
 ): [string, number, number] {
-  // Die Spur liegt AUSSERHALB aller Knoten — nur so kreuzt sie garantiert keinen.
-  // Mehrere Rückläufe je Seite werden gestaffelt, damit sie nicht aufeinanderliegen.
+  // The track lies OUTSIDE all nodes: only that way does it cross none of them for certain.
+  // Several back edges per side are staggered so that they do not lie on top of each other.
   const versatz = (Math.abs(hash(id)) % 4) * 26;
   const seite = sx >= tx ? 1 : -1;
   const lane = seite > 0 ? rand.rechts + 48 + versatz : rand.links - 48 - versatz;
@@ -35,7 +35,7 @@ function ruecklaufPfad(
   ];
 }
 
-/** Kleiner, stabiler Zahlenwert aus der Kanten-Kennung (nur für den Spur-Versatz). */
+/** Small, stable numeric value from the edge id (only for the track offset). */
 function hash(s: string): number {
   let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
@@ -43,11 +43,11 @@ function hash(s: string): number {
 }
 
 /**
- * Kante mit optionalem Bedingungs-/Handle-Label — und einem Löschknopf.
+ * Edge with an optional condition or handle label, and a delete button.
  *
- * Eine Verbindung entsteht mit einem Zug, soll aber auch wieder verschwinden können. Der ✕
- * erscheint beim Überfahren oder wenn die Linie ausgewählt ist; Entf/Rücktaste tun
- * dasselbe. In der Laufzeit-Ansicht (read-only) gibt es ihn nicht.
+ * A connection comes into being with one drag but should be able to disappear again. The ✕
+ * appears on hovering or when the line is selected; delete and backspace do the same. In the
+ * runtime view (read-only) it does not exist.
  */
 export default function ConditionEdge({
   id,
@@ -63,8 +63,8 @@ export default function ConditionEdge({
   selected,
 }: EdgeProps) {
   const feedback = !!data?.feedback;
-  // Äußere Kanten des Bildes (als Zeichenkette, damit die Auswahl vergleichbar bleibt und
-  // nicht bei jedem Bildaufbau neu auslöst).
+  // Outer edges of the picture (as a string, so that the selection stays comparable and does
+  // not trigger anew on every render).
   const randKey = useStore((st) => {
     if (!feedback) return "";
     let links = Infinity, rechts = -Infinity;
@@ -91,15 +91,15 @@ export default function ConditionEdge({
         id={id}
         path={path}
         markerEnd={markerEnd}
-        // Breiter unsichtbarer Streifen um die Linie — sonst müsste man die dünne Kurve
-        // pixelgenau treffen, um sie auszuwählen.
+        // A wide invisible strip around the line; otherwise one would have to hit the thin
+        // curve pixel exactly in order to select it.
         interactionWidth={24}
         style={{
-          // brand ist im Theme ein fester Hex-Wert (keine CSS-Variable wie muted).
+          // brand is a fixed hex value in the theme (not a CSS variable like muted).
           stroke: selected ? "#0052CC" : "rgb(var(--muted))",
           strokeWidth: selected ? 2 : 1,
-          // Rückläufe treten zurück: gestrichelt und blasser — sie sind die Ausnahme
-          // im Ablauf, nicht der Hauptweg.
+          // Back edges step back: dashed and paler, because they are the exception in the
+          // flow, not the main path.
           strokeDasharray: feedback && !selected ? "5 4" : undefined,
           opacity: feedback && !selected ? 0.55 : 1,
         }}
@@ -131,7 +131,7 @@ export default function ConditionEdge({
               type="button"
               title={tr("condition_edge.verbindung_loeschen")}
               aria-label={tr("condition_edge.verbindung_loeschen")}
-              // nodrag/nopan: sonst schwenkt React Flow beim Klick die Fläche.
+              // nodrag/nopan: otherwise React Flow pans the canvas on a click.
               className="nodrag nopan pointer-events-auto flex h-5 w-5 items-center justify-center
                          rounded-full border border-line bg-card text-[11px] leading-none text-muted
                          shadow-sm hover:border-red-400 hover:text-red-400"

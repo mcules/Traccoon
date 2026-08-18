@@ -1,13 +1,13 @@
-"""Messreihen: Zahlen mit Zeitstempel, die ein Ablauf mitschreibt.
+"""Metric series: numbers with a timestamp that a flow writes along.
 
-Ein Ablauf sah bisher immer nur den Augenblick. „Akku 25 %" ist für sich genommen
-belanglos — erst die Reihe der letzten Wochen sagt, ob das Gerät in zwei Tagen oder in
-zwei Monaten stehenbleibt. Genau diese Rückschlüsse waren nicht möglich: der Wert kam
-mit dem Webhook an, wurde in eine Nachricht gegossen und war weg.
+A flow used to see only the moment. "Battery 25 %" is meaningless on its own; only the
+series of the last weeks says whether the device stops in two days or in two months. Exactly
+those conclusions were impossible: the value arrived with the webhook, was poured into a
+message and was gone.
 
-Bewusst allgemein gehalten und nicht auf Akkustände zugeschnitten: eine Reihe ist ein
-Name, eine Einheit und eine Folge von (Zeitpunkt, Wert). Was daraus abgelesen wird —
-Verbrauch pro Tag, Restlaufzeit, Vorwarnung — steht im Ablauf, nicht hier.
+Deliberately kept general and not tailored to battery levels: a series is a name, a unit and
+a sequence of (moment, value). What is read from it (consumption per day, remaining runtime,
+early warning) stands in the flow, not here.
 """
 from __future__ import annotations
 
@@ -28,31 +28,31 @@ class MetricSeries(TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("owner_user_id", "key", name="uq_metric_series_owner_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Reihen gehören einem Menschen — sie entstehen aus seinen Abläufen und enthalten
-    # Betriebsdaten seiner Geräte.
+    # Series belong to a human: they come into being from their flows and contain operating
+    # data of their devices.
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     key: Mapped[str] = mapped_column(String(120), nullable=False)
     name: Mapped[str] = mapped_column(String(200), default="")
     unit: Mapped[str] = mapped_column(String(20), default="")
     description: Mapped[str] = mapped_column(Text, default="")
-    # Letzter Stand — spart der Übersicht den Blick in die Punkte.
+    # Last state; saves the overview a look into the points.
     last_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     last_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Wann zuletzt vorgewarnt wurde. Ohne diese Marke käme die Warnung „in 7 Tagen leer"
-    # jeden Tag erneut — bei einem Gerät, das täglich meldet, wäre das die Sorte
-    # Benachrichtigung, die man nach drei Tagen stummschaltet.
+    # When the last early warning happened. Without this mark the warning "empty in 7 days"
+    # would come again every day, and with a device that reports daily that would be the kind
+    # of notification one mutes after three days.
     warned_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     warned_value: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # Wann zuletzt gemeldet wurde, dass diese Reihe verstummt ist. Eigene Marke neben
-    # `warned_at`, weil es eine andere Tatsache mit anderer Verfallsbedingung ist: die
-    # Restlaufzeit-Warnung verfällt beim Auffüllen, die Stille beim nächsten Wert überhaupt.
-    # Zusammengelegt würde eine Meldung die andere verschlucken.
+    # When it was last reported that this series has gone silent. A mark of its own beside
+    # `warned_at`, because it is another fact with another expiry condition: the remaining
+    # runtime warning expires on refilling, the silence on the next value at all. Merged,
+    # one message would swallow the other.
     still_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class MetricPoint(Base):
-    """Ein Messpunkt. `context` hält fest, woher er kam (Gerät, Lauf, Ereignis)."""
+    """One measuring point. `context` records where it came from (device, run, event)."""
     __tablename__ = "metric_points"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
