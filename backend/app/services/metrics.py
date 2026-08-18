@@ -1,14 +1,13 @@
-"""Was sich aus einer Messreihe ablesen lässt.
+"""What a measurement series tells you.
 
-Der Kern ist eine Gerade durch die letzten Punkte: Wieviel ändert sich pro Tag, und wann
-ist der Zielwert erreicht? Für Akkustände, Füllstände, Speicherplatz, Vorräte — überall
-dort, wo eine Größe gleichmäßig in eine Richtung läuft und man den Aufschlag nicht
-abwarten will.
+The core is a line through the last points: how much changes per day, and when is the
+target value reached? Battery levels, fill levels, disk space, supplies, anywhere a value
+moves steadily in one direction and you do not want to wait for the impact.
 
-Bewusst schlicht: kein Modell, das Wochenrhythmen lernt, sondern die Gerade, die ein
-Mensch auch mit dem Lineal durch die Punkte legen würde. Sie ist erklärbar — man kann
-im Zweifel selbst nachrechnen, warum die Warnung kam —, und wo die Annahme nicht trägt
-(sprunghafte Werte), sagt das Bestimmtheitsmaß es dazu.
+Deliberately plain. No model that learns weekly rhythms, just the line a person would draw
+through the points with a ruler. It can be explained: you can check for yourself why the
+warning came, and where the assumption does not hold (jumpy values), the coefficient of
+determination says so.
 """
 from __future__ import annotations
 
@@ -22,13 +21,13 @@ from ..models.metrics import MetricPoint, MetricSeries
 
 log = logging.getLogger("traccoon.metrics")
 
-FENSTER_TAGE = 30       # so weit zurück wird für den Trend gelesen
-MIN_PUNKTE = 3          # darunter ist jede Gerade Zufall
-# Und darunter ist sie Hochrechnung aus dem Rauschen: vier Spannungswerte aus drei Minuten
-# ergaben „+14 V pro Tag". Zwischen erstem und letztem Punkt muss echte Zeit liegen.
+FENSTER_TAGE = 30       # how far back the trend reads
+MIN_PUNKTE = 3          # below that, any line is coincidence
+# And below this it extrapolates noise: four voltage readings from three minutes produced
+# "+14 V per day". There has to be real time between the first and the last point.
 MIN_SPANNE_TAGE = 0.5
-# Wieviel ein Wert steigen muss, damit die Reihe als „aufgefüllt" gilt (neuer Akku,
-# nachgefüllter Tank) und eine ausgesprochene Warnung wieder verfällt.
+# How far a value has to rise for the series to count as refilled (new battery, topped up
+# tank), which also expires a warning that was already sent.
 AUFFUELL_SPRUNG = 10.0
 
 
@@ -37,7 +36,7 @@ def _jetzt() -> dt.datetime:
 
 
 def _mit_zone(ts: dt.datetime) -> dt.datetime:
-    """Zeitstempel ohne Zone als UTC lesen — SQLite gibt sie nackt zurück."""
+    """Read a naive timestamp as UTC. SQLite hands them back without a zone."""
     return ts if ts.tzinfo is not None else ts.replace(tzinfo=dt.timezone.utc)
 
 
@@ -55,7 +54,7 @@ async def reihe(db: AsyncSession, owner_id: int | None, key: str,
 async def erfassen(db: AsyncSession, owner_id: int | None, key: str, wert: float, *,
                    name: str = "", einheit: str = "", ts: dt.datetime | None = None,
                    kontext: dict | None = None) -> tuple[MetricSeries, MetricPoint]:
-    """Einen Wert festhalten. Die Reihe entsteht beim ersten Wert von selbst."""
+    """Record a value. The series comes into existence with its first value."""
     r = await reihe(db, owner_id, key, anlegen=True, name=name, einheit=einheit)
     if name and not r.name:
         r.name = name
@@ -64,16 +63,16 @@ async def erfassen(db: AsyncSession, owner_id: int | None, key: str, wert: float
     punkt = MetricPoint(series_id=r.id, ts=ts or _jetzt(), value=float(wert),
                         context=kontext or {})
     db.add(punkt)
-    # Ein deutlicher Anstieg heißt: nachgefüllt. Dann gilt die alte Warnung nicht mehr.
+    # A clear rise means somebody refilled it, so the old warning no longer applies.
     if r.last_value is not None and float(wert) - r.last_value >= AUFFUELL_SPRUNG:
         r.warned_at = None
         r.warned_value = None
-    # Und jeder Wert beendet eine Stille-Phase — auch ein schlechter. Die nächste Stille
-    # darf dann erneut melden.
+    # Any value ends a phase of silence, even a bad one. The next silence may report
+    # again.
     r.still_at = None
-    # Der Kopf zeigt auf den ZEITLICH letzten Wert, nicht auf den zuletzt eingetragenen.
-    # Sonst macht ein nachgetragener Altwert die Reihe scheinbar aktuell — im Bild stand
-    # dann ein Stand von vorgestern als „jetzt", und die Prognose rechnete ab dort.
+    # The head points at the value that is last IN TIME, not at the one entered last.
+    # Otherwise a backfilled old value makes the series look current: the chart showed a
+    # reading from two days ago as "now", and the forecast started from there.
     if r.last_at is None or _mit_zone(punkt.ts) >= _mit_zone(r.last_at):
         r.last_value = float(wert)
         r.last_at = punkt.ts
@@ -91,7 +90,7 @@ async def punkte(db: AsyncSession, series_id: int, *, seit: dt.datetime | None =
 
 
 def gerade(werte: list[tuple[float, float]]) -> tuple[float, float, float]:
-    """Ausgleichsgerade y = a·x + b über (x=Tage, y=Wert) → (a, b, Bestimmtheitsmaß)."""
+    """Least squares line y = a*x + b over (x=days, y=value), returns (a, b, r squared)."""
     n = len(werte)
     if n < 2:
         return 0.0, (werte[0][1] if werte else 0.0), 0.0
@@ -113,17 +112,17 @@ def gerade(werte: list[tuple[float, float]]) -> tuple[float, float, float]:
 
 async def trend(db: AsyncSession, r: MetricSeries, *, ziel: float = 0.0,
                 fenster_tage: int = FENSTER_TAGE) -> dict:
-    """Wohin die Reihe läuft — und wann sie den Zielwert erreicht.
+    """Where the series is heading, and when it reaches the target value.
 
-    `rest_tage` ist None, solange sich keine Richtung ablesen lässt: zu wenige Punkte,
-    oder die Reihe bewegt sich vom Ziel weg. Kein Wert ist ehrlicher als eine Zahl, die
-    aus zwei Messungen entsteht.
+    `rest_tage` stays None as long as no direction can be read: too few points, or the
+    series moves away from the target. No number is more honest than one made up from two
+    readings.
     """
     seit = _jetzt() - dt.timedelta(days=fenster_tage)
     ps = await punkte(db, r.id, seit=seit)
-    # Das Alter des letzten Werts gehört zu jeder Auskunft — auch zu den kurzen. Eine
-    # Reihe, die seit Wochen schweigt, liefert sonst unverdrossen weiter ihre alte Gerade,
-    # und niemand merkt, dass sie längst nicht mehr gefüttert wird.
+    # The age of the last value belongs to every answer, including the short ones. A
+    # series that has been quiet for weeks otherwise keeps serving its old line, and nobody
+    # notices that it stopped being fed long ago.
     letzter = _mit_zone(r.last_at) if r.last_at else None
     ergebnis = {"punkte": len(ps), "wert": r.last_value, "einheit": r.unit,
                 "pro_tag": None, "rest_tage": None, "leer_am": None, "guete": None,
@@ -153,12 +152,11 @@ async def trend(db: AsyncSession, r: MetricSeries, *, ziel: float = 0.0,
 
 
 def vorwarnen(r: MetricSeries, rest_tage: float | None, vorwarn_tage: float) -> bool:
-    """Ob JETZT gewarnt werden soll — genau einmal je Auffüllung.
+    """Whether to warn NOW, exactly once per refill.
 
-    Ohne diese Einmaligkeit käme bei einem Gerät, das täglich meldet, jeden Tag dieselbe
-    Warnung; nach drei Tagen schaltet man sie stumm und verpasst genau die, auf die es
-    ankam. Steigt der Wert wieder deutlich (`erfassen`), verfällt die Marke — ein neuer
-    Akku darf erneut warnen.
+    Without that, a device reporting daily would produce the same warning every day. After
+    three days you mute it and miss the one that mattered. When the value rises again
+    (`erfassen`), the mark expires, so a new battery may warn again.
     """
     if rest_tage is None or rest_tage > vorwarn_tage:
         return False
@@ -171,15 +169,15 @@ def vorwarnen(r: MetricSeries, rest_tage: float | None, vorwarn_tage: float) -> 
 
 def stille_melden(r: MetricSeries, alter_stunden: float | None,
                   schwelle_stunden: float) -> bool:
-    """Ob JETZT zu melden ist, dass die Reihe verstummt ist — einmal je Stille-Phase.
+    """Whether to report NOW that the series went quiet, once per phase of silence.
 
-    Gebaut wie `vorwarnen`, und aus demselben Grund: ein stündlicher Wächter darf nicht
-    stündlich dasselbe sagen. Die Marke steht an der Reihe (nicht im Ablauf), weil sie den
-    Zustand der Reihe beschreibt und einen Neustart überleben muss.
+    Built like `vorwarnen` and for the same reason: an hourly watchdog must not say the
+    same thing every hour. The mark sits on the series, not in the flow, because it
+    describes the state of the series and has to survive a restart.
 
-    Das ist der Gegenpol zur Prognose: die Prognose sagt, wann etwas zu Ende geht; das hier
-    merkt, dass gar nichts mehr kommt — auch dann, wenn die Gegenstelle selbst ausgefallen
-    ist und deshalb nicht einmal mehr ihre eigene Störung melden kann.
+    This is the counterpart to the forecast. The forecast says when something runs out,
+    this notices that nothing arrives at all, including the case where the far side is down
+    and can no longer even report its own failure.
     """
     if alter_stunden is None or schwelle_stunden <= 0 or alter_stunden < schwelle_stunden:
         return False

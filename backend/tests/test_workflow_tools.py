@@ -100,7 +100,7 @@ async def test_unbekannter_server_ist_ein_fehler_kein_text(db, anna):
     """Die MCP-Sitzung antwortet auf einen unbekannten Server mit einem Hinweis-TEXT.
     Würde der als Erfolg durchgehen, liefe der Ablauf weiter, als wäre alles gut."""
     r = await workflow_tools.aufrufen(db, anna.id, "gibtsnicht__tool", {})
-    assert r["ok"] is False and "unbekannter MCP-Server" in r["error"]
+    assert r["ok"] is False and "unknown MCP server" in r["error"]
 
 
 async def test_fehler_kann_den_schritt_abbrechen(db, anna, monkeypatch):

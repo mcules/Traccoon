@@ -1,14 +1,13 @@
-"""Welche Felder im Kontext eines Ablaufs stehen — und woher sie kommen.
+"""Which fields live in the context of a flow, and where they come from.
 
-Bedingungen an einer Verzweigung lesen aus `instance.context`. Was dort steht, wusste
-bisher nur der Code: der Auslöser legt seine Nutzlast hinein, jede Aktion schreibt ihre
-Ergebnisse dazu. Im Editor blieb ein leeres Textfeld, in das man den richtigen Pfad raten
-musste — und ein Tippfehler fiel erst auf, wenn der Zweig im Betrieb nie griff.
+Conditions on a decision read from `instance.context`. What sits there was known only to
+the code: the trigger drops its payload in, every action adds its results. The editor
+offered an empty text field where you had to guess the right path, and a typo only showed
+up when the branch never fired in production.
 
-Dieser Katalog ist die eine Stelle, an der steht, wer was in den Kontext schreibt. Er
-speist die Auswahl im Editor. Er ist bewusst **beschreibend**, nicht bindend: die Wahrheit
-bleibt der Code der Aktionen; wer hier etwas vergisst, kann den Pfad weiterhin von Hand
-eintragen (freie Eingabe bleibt möglich).
+This catalog is the one place that says who writes what into the context. It feeds the
+picker in the editor. It is descriptive, not binding: the truth stays in the code of the
+actions, and anything missing here can still be typed by hand.
 """
 from __future__ import annotations
 
@@ -17,14 +16,14 @@ def _f(pfad: str, typ: str, beschreibung: str) -> dict:
     return {"pfad": pfad, "typ": typ, "beschreibung": beschreibung}
 
 
-# Immer vorhanden, unabhängig von Auslöser und Aktionen.
+# Always present, regardless of trigger and actions.
 BASIS = [
     _f("event.name", "text", "Name des auslösenden Ereignisses"),
     _f("event.project_id", "zahl", "Projekt, aus dem das Ereignis kam"),
     _f("continuation", "zahl", "Wie oft der Lauf an derselben Sache schon fortgesetzt wurde"),
 ]
 
-# Was ein Auslöser mitbringt. Schlüssel = Ereignisname (siehe events.BUILTIN_EVENTS).
+# What a trigger brings along. Key = event name (see events.BUILTIN_EVENTS).
 AUSLOESER: dict[str, list[dict]] = {
     "issue.created": [
         _f("issue.key", "text", "Ticket-Kennung, z. B. ABC-31"),
@@ -62,9 +61,9 @@ AUSLOESER: dict[str, list[dict]] = {
         _f("deployment.status", "text", "Ergebnis des Deployments"),
         _f("deployment.project_id", "zahl", "Betroffenes Projekt"),
     ],
-    # Kein Ereignis, sondern die Nutzlast des Auslösers: ein Webhook (Modus `workflow`)
-    # oder ein Job reicht sie über `context_map` durch. Welche Felder das sind, bestimmt
-    # der Auslöser — die hier sind die des ausgelieferten Ticket-Eingangs.
+    # Not an event but the payload of the trigger: a webhook (mode `workflow`) or a job
+    # passes it through via `context_map`. Which fields those are is up to the trigger, the
+    # ones here belong to the shipped ticket intake.
     "(Webhook/Job)": [
         _f("title", "text", "Titel der Meldung → Ticket-Titel"),
         _f("body", "text", "Inhalt der Meldung → Beschreibung"),
@@ -83,7 +82,7 @@ AUSLOESER: dict[str, list[dict]] = {
     ],
 }
 
-# Was eine Aktion in den Kontext schreibt. Schlüssel = Aktionsname (workflow_actions).
+# What an action writes into the context. Key = action name (workflow_actions).
 AKTIONEN: dict[str, list[dict]] = {
     "refresh_facts": [
         _f("project.needs_acceptance", "ja/nein", "Projekt verlangt eine Abnahme"),

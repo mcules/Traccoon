@@ -1,24 +1,23 @@
-"""Aus einer Beschreibung einen Ablauf bauen.
+"""Build a flow from a description.
 
-Der Editor ist ehrlich zu dem, der schon weiß, wie ein Graph aussieht. Wer das nicht
-weiß, sitzt vor Start und Ende und soll aus zwölf Bausteinen etwas zusammensetzen,
-dessen Regeln (welcher Ausgang, welcher Parameter, welcher Kontextpfad) erst beim
-Validieren sichtbar werden. Vorlagen helfen — aber nur, solange der eigene Fall einem
-der vier Muster ähnelt.
+The editor is fair to anyone who already knows what a graph looks like. Anyone who does
+not sits in front of a start and an end node and is supposed to assemble something from
+twelve building blocks whose rules (which outlet, which parameter, which context path)
+only become visible during validation. Templates help, but only while your case resembles
+one of the four patterns.
 
-Hier beschreibt man ihn stattdessen in einem Satz, und ein Modell zeichnet den Graphen.
-Bewusst *nur zeichnen*: Der Entwurf landet auf der Fläche, nicht in der Datenbank.
-Gespeichert und veröffentlicht wird wie immer von Hand — ein Ablauf, den niemand
-angesehen hat, soll nicht laufen können.
+Here you describe it in one sentence instead, and a model draws the graph. Drawing only,
+on purpose: the draft lands on the canvas, not in the database. Saving and publishing stay
+manual, because a flow nobody has looked at must not be able to run.
 
-Zwei Dinge machen das Ergebnis brauchbar statt nur plausibel:
+Two things make the result usable instead of merely plausible:
 
-* Der Kontrakt unten ist derselbe, den `validate_graph` prüft — Ausgangsnamen,
-  Pflichtfelder, Aktionsnamen. Das Modell rät nicht, es bekommt die Regeln.
-* Was es liefert, wird sofort geprüft. Findet die Prüfung Fehler, bekommt das Modell
-  sie zurück und bessert nach (einmal). Bleibt etwas übrig, geht der Entwurf trotzdem
-  auf die Fläche — mit den Fehlern dabei, denn ein fast fertiger Graph ist mehr wert
-  als eine Fehlermeldung.
+* The contract below is the same one `validate_graph` checks: outlet names, required
+  fields, action names. The model does not guess, it gets the rules.
+* Whatever it returns is validated at once. If validation finds errors, the model gets
+  them back and fixes them (once). If anything is left, the draft still goes onto the
+  canvas together with the errors, because an almost finished graph is worth more than an
+  error message.
 """
 from __future__ import annotations
 
@@ -37,8 +36,8 @@ from .workflow_engine import validate_graph
 log = logging.getLogger("workflow_author")
 
 DEFAULT_MODEL = os.getenv("DEFAULT_CLAUDE_MODEL", "claude-sonnet-4-5")
-MAX_WERKZEUGE = 220          # Prompt-Deckel; die Auswahl im Editor bleibt vollständig
-SPALTE, ZEILE = 260, 130     # dasselbe Raster wie die ausgelieferten Graphen
+MAX_WERKZEUGE = 220          # prompt cap, the picker in the editor stays complete
+SPALTE, ZEILE = 260, 130     # same grid the shipped graphs use
 
 KONTRAKT = """\
 Du zeichnest Abläufe für Traccoon als gerichteten Graphen. Antworte AUSSCHLIESSLICH mit
@@ -109,7 +108,7 @@ REGELN (daran wird geprüft, ein Verstoß macht den Ablauf unbrauchbar):
 
 
 def _json_aus(text: str) -> dict:
-    """JSON aus einer Modellantwort ziehen — Code-Zäune und Vorreden tolerieren."""
+    """Pull JSON out of a model answer, tolerating code fences and preambles."""
     t = (text or "").strip()
     t = re.sub(r"^```(?:json)?|```$", "", t, flags=re.MULTILINE).strip()
     try:
@@ -125,7 +124,7 @@ def _json_aus(text: str) -> dict:
 
 
 def _tiefen(nodes: list[dict], edges: list[dict]) -> dict[str, int]:
-    """Wie weit jeder Knoten vom Start entfernt ist — für eine lesbare Anordnung."""
+    """How far each node sits from the start, used for a readable layout."""
     start = next((n["id"] for n in nodes if n.get("type") == "start"), None)
     tiefe: dict[str, int] = {}
     if start is None:
@@ -145,10 +144,10 @@ def _tiefen(nodes: list[dict], edges: list[dict]) -> dict[str, int]:
 
 
 def anordnen(graph: dict) -> dict:
-    """Positionen setzen: eine Zeile je Schritt, Geschwister nebeneinander.
+    """Set positions: one row per step, siblings side by side.
 
-    Das Modell soll den Ablauf denken, nicht das Layout. Ohne Positionen wären alle
-    Knoten übereinander — der Graph wäre richtig und trotzdem unlesbar.
+    The model should think about the flow, not about the layout. Without positions every
+    node would sit on top of the others: the graph would be correct and still unreadable.
     """
     nodes = graph.get("nodes") or []
     edges = graph.get("edges") or []
@@ -163,12 +162,12 @@ def anordnen(graph: dict) -> dict:
 
 
 def _config_von(n: dict) -> dict:
-    """Die Konfiguration finden, egal wie tief das Modell sie gelegt hat.
+    """Find the config, no matter how deep the model buried it.
 
-    Der Kontrakt verlangt `data.config`, aber Modelle schreiben genauso gern `config`
-    direkt an den Knoten oder packen die Felder flach in `data`. Wer hier streng ist,
-    bekommt einen Graphen mit der richtigen Form und lauter leeren Knoten — genau das
-    war beim ersten echten Lauf zu sehen: sechs Knoten ohne ein einziges Label.
+    The contract asks for `data.config`, but models just as happily write `config` right
+    on the node or put the fields flat into `data`. Being strict here gets you a graph
+    with the right shape and nothing but empty nodes, which is exactly what the first real
+    run looked like: six nodes without a single label.
     """
     data = n.get("data") if isinstance(n.get("data"), dict) else {}
     for kandidat in (data.get("config"), n.get("config"), data):
@@ -178,11 +177,11 @@ def _config_von(n: dict) -> dict:
 
 
 def _nachbessern(nodes: list[dict]) -> None:
-    """Kleine Auslassungen selbst schließen, statt dafür eine Modellrunde zu verbrennen.
+    """Close small omissions here instead of burning a model round on them.
 
-    Beides kostet sonst nur Zeit und sieht für den Menschen wie ein Fehler des Systems
-    aus: eine Weiche ohne benannten Standard-Zweig (die Prüfung verlangt dann eine Kante
-    für den Ausgang `default`, den niemand gezeichnet hat) und ein Ende ohne Ausgang.
+    Both otherwise cost time and look like a system error to the person watching: a
+    decision without a named default branch (validation then asks for an edge on the
+    outlet `default` that nobody drew) and an end node without an outcome.
     """
     for n in nodes:
         cfg = n["data"]["config"]
@@ -196,7 +195,7 @@ def _nachbessern(nodes: list[dict]) -> None:
 
 
 def _saeubern(roh: dict) -> dict:
-    """Nur das übernehmen, was ein Graph sein darf — und Kanten-IDs sicherstellen."""
+    """Keep only what a graph may contain, and make sure edges have ids."""
     nodes, edges = [], []
     for i, n in enumerate(roh.get("nodes") or []):
         if not isinstance(n, dict) or not n.get("id") or not n.get("type"):
@@ -221,7 +220,7 @@ async def _werkzeugliste(db: AsyncSession, owner_id: int | None) -> str:
     from .workflow_tools import werkzeuge
     try:
         alle = await werkzeuge(db, owner_id)
-    except Exception:  # noqa: BLE001 — ohne Werkzeuge lässt sich trotzdem zeichnen
+    except Exception:  # noqa: BLE001, drawing works without the tool list too
         return ""
     zeilen = [f"- {w['name']}({', '.join(w['pflicht'][:6])}) — {w['beschreibung'][:90]}"
               for w in alle[:MAX_WERKZEUGE]]
@@ -236,11 +235,11 @@ async def _werkzeugliste(db: AsyncSession, owner_id: int | None) -> str:
 async def entwerfen(db: AsyncSession, *, owner_id: int, beschreibung: str,
                     subject_kind: WorkflowSubjectKind, vorhanden: dict | None = None,
                     token_name: str = "") -> dict:
-    """→ {"graph": {...}, "fehler": [...], "erklaerung": "..."}.
+    """Returns {"graph": {...}, "fehler": [...], "erklaerung": "..."}.
 
-    `vorhanden` ist der Graph, der gerade auf der Fläche liegt: dann ist es keine
-    Neuzeichnung, sondern ein Umbau („häng noch eine Freigabe davor"). Der Unterschied
-    steckt nur im Prompt — zurück kommt in beiden Fällen der vollständige Graph.
+    `vorhanden` is the graph currently on the canvas. Then this is not a new drawing but a
+    rebuild ("put an approval in front of the deployment"). The difference lives in the
+    prompt only, both cases return the complete graph.
     """
     token = await resolve_provider_token(db, owner_id, "claude_code", token_name)
     if not token:
@@ -287,7 +286,7 @@ async def entwerfen(db: AsyncSession, *, owner_id: int, beschreibung: str,
         fehler = validate_graph(subject_kind, graph)
         if not fehler or runde == 1:
             break
-        # Nachbessern: dieselben Sätze, die auch im Editor stünden.
+        # Fix-up round with the very sentences the editor would show.
         log.info("Entwurf hat %d Fehler → eine Nachbesserung", len(fehler))
         verlauf += [
             {"role": "assistant", "content": resp.text or ""},
