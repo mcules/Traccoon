@@ -1,57 +1,56 @@
-"""Live-Transport des Büros — EIN Socket je Nutzer statt N Sockets je Projekt.
+"""Live transport of the office: ONE socket per user instead of N sockets per project.
 
-Der Socket ist `GET /api/ws?token=`; er trägt ausschließlich Büro-Ereignisse aus dem
-einen Redis-Kanal `traccoon:office` (`services.office.CHANNEL`). Warum nicht
-einfach die vorhandenen Projekt-Sockets mitbenutzen:
+The socket is `GET /api/ws?token=`; it carries exclusively office events out of the one
+Redis channel `traccoon:office` (`services.office.CHANNEL`). Why not simply reuse the
+existing project sockets:
 
-1. **Projektlose Läufe haben gar keinen Projektraum.** Job- und Assistentenläufe tragen
-   `project_id = None`; über `traccoon:events:{pid}` sind sie schlicht nicht adressierbar.
-   Die globale Seite wäre ausgerechnet für die Läufe blind, die es nur global gibt.
-2. **Mit N Sockets läge die Autorisierung beim Client.** Der Server nähme entgegen, was
-   man ihm sagt. Hier rechnet der Server die erlaubte Menge selbst aus, und das
-   `subscribe` des Clients kann sie nur **verengen** — nie erweitern.
-3. **Kosten.** Ein Nutzer in 40 Projekten öffnete sonst 40 Sockets und 40
-   `build_access`-Runden allein beim Seitenaufbau.
-4. **Getrennter Verkehr.** `traccoon:events:{pid}` trägt `pm_chat` und `issue_update`;
-   Schritt-Ereignisse dort einzuspeisen würde `PmChat.tsx` und `ProjectView.tsx` mit
-   Verkehr fluten, den sie nur wegwerfen können.
+1. **Project-less runs have no project room at all.** Job and assistant runs carry
+   `project_id = None`; over `traccoon:events:{pid}` they are simply not addressable.
+   The global page would be blind for precisely those runs that only exist globally.
+2. **With N sockets the authorisation would lie with the client.** The server would accept
+   what it is told. Here the server computes the permitted set itself, and the `subscribe`
+   of the client can only **narrow** it, never widen it.
+3. **Cost.** A user in 40 projects would otherwise open 40 sockets and 40 `build_access`
+   rounds during page load alone.
+4. **Separated traffic.** `traccoon:events:{pid}` carries `pm_chat` and `issue_update`;
+   feeding step events in there would flood `PmChat.tsx` and `ProjectView.tsx` with
+   traffic they can only throw away.
 
-Büro-Ereignisse werden deshalb **nicht** auf `traccoon:events:{pid}` gespiegelt, und
-`/api/projects/{id}/ws` bleibt inhaltlich unangetastet (nur die Auth-Härtung unten kommt
-dort ebenfalls an).
+Office events are therefore **not** mirrored onto `traccoon:events:{pid}`, and
+`/api/projects/{id}/ws` stays untouched in content (only the auth hardening below arrives
+there as well).
 
-**Protokoll**
+**Protocol**
 
-    Client verbindet   → Server: {"type":"hello", …}
-    Client:  {"type":"subscribe","scopes":[{"kind":"project","id":27}]}
+    client connects    → server: {"type":"hello", …}
+    client:  {"type":"subscribe","scopes":[{"kind":"project","id":27}]}
              {"type":"subscribe","scopes":[{"kind":"global"}]}
-    Server:  {"type":"office_ev","ev":{…}}
+    server:  {"type":"office_ev","ev":{…}}
 
-**Wiederverbindungsprotokoll** (determinismuskritisch, deshalb hier festgehalten):
+**Reconnect protocol** (critical for determinism, therefore recorded here):
 
-    verbinden → subscriben → eingehende Ereignisse PUFFERN
-    → Snapshot über GET /api/office/sessions/{kind}/{ref}/events holen
-    → gepufferte Ereignisse mit seq <= seq_to verwerfen → live gehen
+    connect → subscribe → BUFFER incoming events
+    → fetch the snapshot over GET /api/office/sessions/{kind}/{ref}/events
+    → discard buffered events with seq <= seq_to → go live
 
-Der Client darf **nie** inkrementell mit `after_seq` pollen: `seq` stammt aus einer
-`SERIAL`-Spalte, und die wird **vor** dem Commit vergeben. Zwei parallele Worker können
-ihre Zeilen also in umgekehrter Reihenfolge sichtbar machen — ein Poller, der sich seinen
-Höchststand merkt, überspränge die Zeile, die später mit kleinerer id landet. `after_seq`
-ist ausschließlich die Lückenfüllung unmittelbar nach einer Wiederverbindung, wo der
+The client must **never** poll incrementally with `after_seq`: `seq` comes from a `SERIAL`
+column, and that is assigned **before** the commit. Two parallel workers can therefore
+make their rows visible in reverse order, and a poller that remembers its high water mark
+would skip the row that lands later with a smaller id. `after_seq` is exclusively the gap
+filling directly after a reconnect, where the buffer covers the gap anyway.
 Puffer die Lücke ohnehin deckt.
 
-**Autorisierung.** Die erlaubte Projektmenge wird EINMAL beim Verbinden gerechnet — über
-exakt dasselbe Muster wie `GET /projects` (`api/projects.py:74-91`: zwei Queries plus
-`build_access_bulk`, keine Runde je Projekt), damit es nur eine Definition von „darf
-sehen" gibt; ein Test sichert die Gleichheit ab. Sie hält 60 s, ein einzelner
-Hintergrund-Sweeper frischt sie auf — **nie** der heiße Pfad. Der Filter je Ereignis
-braucht überhaupt keine Datenbank: `project_id`/`owner_id` hängen an jedem Ereignis
-(Welle A), und damit kann die Entscheidung auch nicht an einem veralteten Join
-vorbeidriften.
+**Authorisation.** The permitted project set is computed ONCE on connect, over exactly the
+same pattern as `GET /projects` (`api/projects.py:74-91`: two queries plus
+`build_access_bulk`, no round per project), so that there is only one definition of "may
+see"; a test secures the equality. It holds for 60 s, and a single background sweeper
+refreshes it, **never** the hot path. The filter per event needs no database at all:
+`project_id`/`owner_id` hang off every event, so the decision cannot drift past a stale
+join.
 
-**Auth.** Der Socket tut, was `deps.get_current_user` tut: Token dekodieren, Nutzer laden,
-`status != active` ablehnen und Tokens ablehnen, die vor `password_changed_at` ausgestellt
-wurden. Schließcodes: 4401 (Token kaputt/unbekannter Nutzer), 4403 (inaktiv/widerrufen).
+**Auth.** The socket does what `deps.get_current_user` does: decode the token, load the
+user, reject `status != active` and reject tokens issued before `password_changed_at`.
+Close codes: 4401 (token broken or unknown user), 4403 (inactive or revoked).
 """
 from __future__ import annotations
 
@@ -77,76 +76,76 @@ from .deps import build_access_bulk
 log = logging.getLogger("office.ws")
 router = APIRouter()
 
-# Wie lange die einmal gerechnete Projektmenge gilt. 60 s ist der Kompromiss: eine
-# frisch entzogene Mitgliedschaft wirkt spürbar schnell, ohne dass jemand je Ereignis
-# in die Datenbank fasst.
+# How long the once computed project set is valid. 60 s is the compromise: a freshly
+# withdrawn membership takes effect noticeably fast without anyone reaching into the
+# database per event.
 ACL_TTL_S = 60.0
-# Takt des Sweepers. Kleiner als die TTL, damit eine abgelaufene ACL nicht bis zur
-# doppelten TTL stehen bleibt.
+# Beat of the sweeper. Smaller than the TTL so that an expired ACL does not stand around
+# until twice the TTL.
 ACL_SWEEP_S = 15.0
-# Warteschlange je Verbindung. Ein langsamer Client darf den Brücken-Task nicht
-# ausbremsen; läuft sie über, fällt die Verbindung (siehe `_Conn`).
+# Queue per connection. A slow client must not slow the bridge task down; if it overflows,
+# the connection falls (see `_Conn`).
 QUEUE_MAX = 512
 
 CLOSE_UNAUTHENTICATED = 4401   # Token unlesbar / Nutzer unbekannt
-CLOSE_FORBIDDEN = 4403         # Konto inaktiv oder Token durch Passwortwechsel widerrufen
-CLOSE_TOO_SLOW = 1013          # „try again later" — Client hängt hinterher
+CLOSE_FORBIDDEN = 4403         # account inactive or token revoked by a password change
+CLOSE_TOO_SLOW = 1013          # "try again later": the client is lagging behind
 CLOSE_INTERNAL = 1011
 
 
 # ── Verbindung ──────────────────────────────────────────────────────────────
 
-# `eq=False`: eine Verbindung ist sie selbst, nicht ihr Inhalt — zwei Reiter desselben
-# Nutzers mit derselben ACL sind zwei Verbindungen. Nur so liegen sie beide im Set.
+# `eq=False`: a connection is itself, not its content. Two tabs of the same user with the
+# same ACL are two connections, and only that way do both lie in the set.
 @dataclass(eq=False)
 class _Conn:
-    """Eine offene Nutzer-Verbindung samt ihrer Sicht auf die Welt.
+    """One open user connection together with its view of the world.
 
-    `allowed` ist die vom SERVER gerechnete Menge (was der Nutzer sehen darf), `scope`
-    die vom CLIENT gewünschte Verengung (was er gerade sehen will). Beide werden
-    geschnitten, nie vereinigt — ein Abonnement auf ein fremdes Projekt liefert Stille.
+    `allowed` is the set computed by the SERVER (what the user may see), `scope` the
+    narrowing wished for by the CLIENT (what they want to see right now). Both are
+    intersected, never united: a subscription to a foreign project yields silence.
     """
 
     ws: WebSocket
     user_id: int
     is_admin: bool
-    allowed: set[int]                 # Projekt-IDs, die dieser Nutzer sehen darf
-    acl_at: float                     # monotone Uhr — Alter von `allowed`
-    scope: set[int] | None = None     # None = global; sonst die Verengung des Clients
+    allowed: set[int]                 # project ids this user may see
+    acl_at: float                     # monotonic clock, the age of `allowed`
+    scope: set[int] | None = None     # None = global; otherwise the narrowing of the client
     queue: asyncio.Queue = field(default_factory=lambda: asyncio.Queue(maxsize=QUEUE_MAX))
 
 
 def visible(ev: dict, c: _Conn) -> bool:
-    """Darf diese Verbindung dieses Ereignis sehen? Ohne Datenbank, ohne Uhr.
+    """May this connection see this event? Without a database, without a clock.
 
-    Jedes Ereignis trägt `project_id`/`owner_id` selbst (Welle A) — deshalb kostet der
-    heiße Pfad nichts und kann nicht an einem veralteten Join vorbeidriften.
+    Every event carries `project_id`/`owner_id` itself, which is why the hot path costs
+    nothing and cannot drift past a stale join.
     """
     if c.is_admin:
         return True
     project_id = ev.get("project_id")
     if project_id is not None:
         return project_id in c.allowed
-    # Projektlos (Job, Assistent): nur der Eigentümer des Laufs sieht ihn. Ein Ereignis
-    # ohne beides ist niemandes Ereignis und wird nicht zugestellt.
+    # Project-less (job, assistant): only the owner of the run sees it. An event without
+    # both is nobody's event and is not delivered.
     owner_id = ev.get("owner_id")
     return owner_id is not None and owner_id == c.user_id
 
 
 def in_scope(ev: dict, c: _Conn) -> bool:
-    """Die Verengung des Clients. `None` = alles, was er ohnehin sehen darf."""
+    """The narrowing of the client. `None` = everything they may see anyway."""
     if c.scope is None:
         return True
     return ev.get("project_id") in c.scope
 
 
 def parse_scopes(data: dict) -> set[int] | None:
-    """`subscribe`-Nachricht → Verengung. Fehlerhaft Gemeintes wird eng, nie weit.
+    """A `subscribe` message turned into a narrowing. What is meant wrongly becomes narrow, never wide.
 
-    Ohne `scopes`-Schlüssel gilt global (None). Steht irgendwo `{"kind":"global"}`, gilt
-    global. Sonst zählen die lesbaren Projekt-IDs — bleibt keine übrig, ist das eine
-    LEERE Menge und damit Stille, nicht etwa „alles": eine unverständliche Nachricht darf
-    den Strom nicht aufreißen.
+    Without a `scopes` key, global applies (None). If `{"kind":"global"}` stands anywhere,
+    global applies. Otherwise the readable project ids count, and if none is left that is an
+    EMPTY set and therefore silence, not "everything": an incomprehensible message must not
+    tear the stream open.
     """
     scopes = data.get("scopes")
     if not isinstance(scopes, list):
@@ -169,8 +168,8 @@ def parse_scopes(data: dict) -> set[int] | None:
 # ── Fan-out ─────────────────────────────────────────────────────────────────
 
 class UserConnectionManager:
-    """Alle offenen Nutzer-Sockets. Ein Raum, kein Raum je Projekt — die Trennung macht
-    `visible`, nicht die Zustellung."""
+    """All open user sockets. One room, not a room per project: the separation is done by
+    `visible`, not by the delivery."""
 
     def __init__(self) -> None:
         self.conns: set[_Conn] = set()
@@ -182,32 +181,32 @@ class UserConnectionManager:
         self.conns.discard(conn)
 
     def send(self, conn: _Conn, message: dict) -> bool:
-        """In die Warteschlange legen. Läuft sie über, fällt die Verbindung — der Client
-        hat dann ohnehin eine Lücke und muss über den Snapshot wiederkommen (siehe
-        Wiederverbindungsprotokoll im Modul-Docstring). Weiterschicken hieße, ihm einen
-        lückenlosen Strom vorzuspielen, den er nicht bekommen hat."""
+        """Put into the queue. If it overflows the connection falls: the client then has a
+        gap anyway and has to come back over the snapshot (see the reconnect protocol in
+        the module docstring). Sending on would fake a gapless stream for them that they
+        did not get."""
         try:
             conn.queue.put_nowait(message)
             return True
         except asyncio.QueueFull:
             self.remove(conn)
-            # Nicht awaiten: der Brücken-Task darf an einem hängenden Client nicht warten.
+            # Not awaited: the bridge task must not wait on a hanging client.
             asyncio.create_task(_close_quiet(conn.ws, CLOSE_TOO_SLOW))
             return False
 
     async def dispatch(self, ev: dict) -> None:
-        """Ein Büro-Ereignis an alle, die es sehen dürfen UND sehen wollen."""
+        """One office event to everybody who may see it AND wants to see it."""
         message = {"type": "office_ev", "ev": ev}
         for conn in list(self.conns):
             if visible(ev, conn) and in_scope(ev, conn):
                 self.send(conn, message)
 
     async def refresh_stale(self, now: float | None = None) -> int:
-        """Abgelaufene ACLs auffrischen — EIN Durchgang für alle Verbindungen.
+        """Refresh expired ACLs, ONE pass for all connections.
 
-        Je Nutzer wird höchstens einmal gerechnet (mehrere Reiter sind mehrere
-        Verbindungen desselben Nutzers). Wer inzwischen deaktiviert wurde, verliert den
-        Strom hier — sonst hinge ein gesperrtes Konto bis zum Reload weiter mit.
+        Per user it is computed at most once (several tabs are several connections of the
+        same user). Whoever has been deactivated meanwhile loses the stream here; otherwise
+        a locked account would keep listening until the next reload.
         """
         now = time.monotonic() if now is None else now
         stale = [c for c in self.conns if (now - c.acl_at) > ACL_TTL_S]
@@ -238,8 +237,8 @@ manager = UserConnectionManager()
 
 
 async def _close_quiet(ws: WebSocket, code: int) -> None:
-    """Schließen und dabei nichts kaputtmachen: ein schon toter Socket wirft beim
-    Schließen, und das ist kein Ereignis, das jemanden interessiert."""
+    """Close without breaking anything: an already dead socket raises on close, and that is
+    not an event anybody is interested in."""
     try:
         await ws.close(code=code)
     except Exception:  # noqa: BLE001
@@ -247,9 +246,8 @@ async def _close_quiet(ws: WebSocket, code: int) -> None:
 
 
 async def _pump(conn: _Conn) -> None:
-    """Der EINZIGE Schreiber auf einem Socket. Auch die Antworten des Protokolls laufen
-    hier durch — zwei Tasks, die gleichzeitig auf denselben Socket senden, könnten ihre
-    Rahmen verschränken."""
+    """The ONLY writer on a socket. The answers of the protocol run through here too,
+    because two tasks sending on the same socket at once could interleave their frames."""
     try:
         while True:
             message = await conn.queue.get()
@@ -257,8 +255,8 @@ async def _pump(conn: _Conn) -> None:
     except asyncio.CancelledError:
         raise
     except Exception:  # noqa: BLE001
-        # Senden wirft = Verbindung ist weg. Fallenlassen und schließen; das weckt die
-        # Empfangsschleife, die dann aufräumt.
+        # Sending raises = the connection is gone. Drop it and close; that wakes the
+        # receive loop, which then cleans up.
         manager.remove(conn)
         await _close_quiet(conn.ws, CLOSE_INTERNAL)
 
@@ -266,13 +264,13 @@ async def _pump(conn: _Conn) -> None:
 # ── Autorisierung ───────────────────────────────────────────────────────────
 
 async def compute_acl(db: AsyncSession, user: User) -> set[int]:
-    """Die Projekte, die dieser Nutzer sehen darf — exakt die Menge aus `GET /projects`.
+    """The projects this user may see, exactly the set from `GET /projects`.
 
-    Dasselbe Muster wie `api/projects.py:74-91`: alle Projekte und alle Mitgliedschaften
-    des Nutzers in je EINER Query, danach `build_access_bulk` ohne weiteren DB-Zugriff
-    (sonst liefe der parent_id-Baum in N+1). Der Admin braucht keinen Sonderzweig —
-    `build_access_bulk` gibt ihm für jedes Projekt eine `Access`-Sicht, genau wie die
-    Kurzschluss-Zeile in `list_projects`. Ein Test hält beide Mengen aneinander.
+    The same pattern as `api/projects.py:74-91`: all projects and all memberships of the
+    user in ONE query each, then `build_access_bulk` without further database access
+    (otherwise the parent_id tree would run into N+1). The admin needs no special branch:
+    `build_access_bulk` gives them an `Access` view for every project, exactly like the
+    short circuit line in `list_projects`. A test holds both sets against each other.
     """
     all_projects = (await db.execute(select(Project).order_by(Project.id))).scalars().all()
     projects_by_id = {p.id: p for p in all_projects}
@@ -287,15 +285,15 @@ async def compute_acl(db: AsyncSession, user: User) -> set[int]:
 
 
 def token_revoked(payload: dict, user: User) -> bool:
-    """Wurde dieses Token durch einen Passwortwechsel entwertet? (wie `get_current_user`)"""
+    """Was this token devalued by a password change? (like `get_current_user`)"""
     if user.password_changed_at is None:
         return False
     return int(payload.get("iat", 0) or 0) < int(user.password_changed_at.timestamp())
 
 
 async def authenticate(token: str, db: AsyncSession) -> tuple[User | None, int]:
-    """(Nutzer, Schließcode). Genau die Prüfungen aus `deps.get_current_user` — ein
-    Socket ist kein schwächerer Eingang als ein Request."""
+    """(User, close code). Exactly the checks from `deps.get_current_user`: a socket is not
+    a weaker entrance than a request."""
     try:
         payload = decode_access_token(token)
     except jwt.PyJWTError:
@@ -308,7 +306,7 @@ async def authenticate(token: str, db: AsyncSession) -> tuple[User | None, int]:
     return user, 0
 
 
-# ── Der Socket ──────────────────────────────────────────────────────────────
+# ── The socket ──────────────────────────────────────────────────────────────
 
 @router.websocket("/ws")
 async def office_ws(websocket: WebSocket, token: str = "") -> None:
@@ -324,8 +322,8 @@ async def office_ws(websocket: WebSocket, token: str = "") -> None:
         )
 
     await websocket.accept()
-    # Das `hello` geht noch von Hand raus — die Pumpe läuft erst danach, es gibt also
-    # noch keinen zweiten Schreiber.
+    # The `hello` still goes out by hand: the pump only runs afterwards, so there is no
+    # second writer yet.
     await websocket.send_json({
         "type": "hello", "v": EVENT_VERSION, "user_id": conn.user_id,
         "is_admin": conn.is_admin, "projects": sorted(conn.allowed),
@@ -349,7 +347,7 @@ async def office_ws(websocket: WebSocket, token: str = "") -> None:
                     "scope": None if conn.scope is None else sorted(conn.scope),
                 })
             elif data.get("type") == "ping":
-                # Gegen Zwischenboxen, die stille Verbindungen nach ein paar Minuten kappen.
+                # Against middleboxes that cut silent connections after a few minutes.
                 manager.send(conn, {"type": "pong"})
     except WebSocketDisconnect:
         pass
@@ -360,15 +358,15 @@ async def office_ws(websocket: WebSocket, token: str = "") -> None:
         pump.cancel()
 
 
-# ── Brücke und Sweeper ──────────────────────────────────────────────────────
+# ── Bridge and sweeper ──────────────────────────────────────────────────────
 
 async def office_bridge() -> None:
-    """Abonniert `traccoon:office` und verteilt ACL-gefiltert an die Nutzer-Sockets.
+    """Subscribes to `traccoon:office` and distributes ACL filtered to the user sockets.
 
-    Der ACL-Sweeper hängt hier mit dran, damit das Lifespan nur EINEN Task kennt und der
-    Sweeper garantiert mit der Brücke lebt und stirbt. Der Redis-Zugriff wird erst im
-    Rumpf importiert — am Modulkopf hätte er den Test-Ersatz festgenagelt und jeder Test,
-    der dieses Modul auch nur importiert, liefe in eine echte Verbindung.
+    The ACL sweeper hangs off this so that the lifespan knows only ONE task and the sweeper
+    is guaranteed to live and die with the bridge. The Redis access is only imported in the
+    body: at the module head it would have nailed down the test replacement, and every test
+    that merely imports this module would run into a real connection.
     """
     from ..core.redis import get_redis
 
@@ -391,8 +389,8 @@ async def office_bridge() -> None:
 
 
 async def acl_sweeper() -> None:
-    """Frischt abgelaufene Projektmengen auf — der EINE Ort, an dem das passiert.
-    Im heißen Pfad wäre es eine Query je Ereignis und je Verbindung."""
+    """Refreshes expired project sets, the ONE place where that happens.
+    In the hot path it would be one query per event and per connection."""
     while True:
         await asyncio.sleep(ACL_SWEEP_S)
         try:
