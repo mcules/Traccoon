@@ -14,8 +14,8 @@ import { formatTime } from "../lib/formatTime";
 /** Rohstatus → deutsche Beschriftung. Unbekannte Werte werden roh durchgereicht. */
 const ST_LABEL: Record<string, string> = {
   ok: "erfolgreich", failed: "fehlgeschlagen", cancelled: "abgebrochen",
-  building: "baut", pending: "wartet", "pending-check": "wartet (Prüfung)",
-  rolledback: "zurückgerollt",
+  building: "deploy.status.baut", pending: "deploy.status.wartet", "pending-check": "deploy.status.wartet_pruefung",
+  rolledback: "deploy.status.zurueckgerollt",
 };
 /** Textfarben aus dem vorhandenen Vorrat (AgentMonitor.ST_COLOR) — keine neue Farbsprache. */
 const ST_TEXT: Record<string, string> = {
@@ -30,7 +30,7 @@ const ST_BAR: Record<string, string> = {
   rolledback: "bg-orange-400", cancelled: "bg-slate-600",
 };
 const KIND_LABEL: Record<string, string> = {
-  self: "Wartungs-Update", check: "nur Prüfung", stack: "Stack",
+  self: "deploy.art.wartung", check: "deploy.art.pruefung", stack: "deploy.art.stack",
 };
 const QUELLE_LABEL: Record<string, string> = {
   agent: "Agent", merge: "Merge", workflow: "Prozess", maintenance: "Wartung",
@@ -96,8 +96,8 @@ export default function DeploymentsPanel(
     const st = error instanceof ApiError ? error.status : 0;
     return (
       <div className="text-xs text-muted">
-        {st === 404 ? "Deployment-Liste steht hier noch nicht zur Verfügung."
-          : `Deployments konnten nicht geladen werden (${st || "Fehler"}).`}
+        {st === 404 ? tr("deploy.liste_nicht_verfuegbar")
+          : tr("deploy.laden_fehlgeschlagen", { code: st || "?" })}
       </div>
     );
   }
@@ -147,7 +147,7 @@ export default function DeploymentsPanel(
         // Leer wegen Filter oder leer wegen Bestand — das ist nicht dieselbe Nachricht.
         <div className="text-xs text-muted">
           {Object.values(data.by_status || {}).some((n) => n > 0)
-            ? "Keine Zeile passt zum gewählten Filter."
+            ? tr("deploy.kein_treffer_filter")
             : `In ${fensterText(seit)} wurde nichts deployt.`}
         </div>
       ) : (
@@ -193,13 +193,12 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
   // Reihenfolge = Dringlichkeit: kein Recht schlägt alles, dann das fehlende Ziel, dann
   // der laufende Deploy (der geht von allein vorbei).
   const grund = !erlaubt
-    ? "Zum Deployen brauchst du mindestens die Rolle „Maintainer“."
+    ? tr("deploy.rolle_fehlt")
     : !ordner
-      ? "Für dieses Projekt ist kein Arbeitsverzeichnis hinterlegt (Einstellungen → Git). "
-        + "Ohne Stack-Ordner gibt es nichts zu bauen."
+      ? tr("deploy.kein_arbeitsverzeichnis")
+
       : laufend
-        ? "Es läuft bereits ein Deployment für dieses Projekt — zwei gleichzeitige Builds "
-          + "im selben Ordner kommen sich in die Quere."
+        ? tr("deploy.laeuft_bereits")
         : "";
 
   const ausloesen = async () => {
@@ -210,7 +209,7 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
       setFrage(false);
       nachziehen();
     } catch (e) {
-      setFehler(e instanceof ApiError ? e.message : "Deployment konnte nicht eingereiht werden.");
+      setFehler(e instanceof ApiError ? e.message : tr("deploy.einreihen_fehlgeschlagen"));
     } finally {
       setSendet(false);
     }
@@ -225,7 +224,7 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
           Jetzt deployen
         </button>
         <span className="text-xs text-muted">
-          {grund || `Baut und startet den Stack in ${ordner} neu.`}
+          {grund || tr("deploy.baut_neu", { ordner })}
         </span>
       </div>
 
