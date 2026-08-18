@@ -40,13 +40,31 @@ router = APIRouter(tags=["workflows"])
 
 # ── interne Helfer ───────────────────────────────────────────────────────────
 
+def _ist_admin(user: User) -> bool:
+    from ..models.enums import GlobalRole
+    return user.global_role == GlobalRole.admin
+
+
+def _gehoert(d, user: User) -> bool:
+    """Ist das ein eigener, freier Ablauf dieses Menschen?
+
+    Frei heißt: an kein Projekt und an keinen Slot gebunden. Wer so einen anlegt, ist sein
+    Eigentümer (`created_by`) — er allein sieht, ändert und startet ihn. Ohne diese Grenze
+    wäre „eigener Ablauf" ein Widerspruch: die Definition liegt projektlos in derselben
+    Tabelle wie die ausgelieferten Vorlagen und stünde damit allen offen.
+    """
+    return d.project_id is None and not d.slot and d.created_by == user.id
+
+
 async def _require_def_write(db: AsyncSession, user: User, project_id: int | None) -> None:
-    """Schreibrecht auf eine Definition: Projekt owner|maintainer ODER ai_assign; global → Admin."""
+    """Schreibrecht auf eine Definition: Projekt owner|maintainer ODER ai_assign.
+
+    Projektlos darf **jeder Angemeldete** anlegen — ein eigener Ablauf ist kein Adminrecht.
+    Was er darf, entscheidet sich nicht hier, sondern dort, wo er wirkt: gebundene Artefakte
+    und Ereignis-Auslöser werden gegen die Rechte seines Eigentümers geprüft
+    (`_require_subjekt_recht`, `events.listeners`).
+    """
     if project_id is None:
-        from ..models.enums import GlobalRole
-        if user.global_role != GlobalRole.admin:
-            raise HTTPException(status.HTTP_403_FORBIDDEN,
-                                "Globale Workflow-Vorlagen darf nur ein Admin ändern")
         return
     project = await db.get(Project, project_id)
     if project is None:
@@ -61,10 +79,16 @@ async def _require_write(db: AsyncSession, user: User, d) -> None:
     """Schreibrecht auf eine konkrete Definition.
 
     Gehört sie zu einem Prozess-Satz, entscheidet der Satz (persönlich = Eigentümer,
-    global = Admin); sonst gelten die Projekt-Regeln.
+    global = Admin); ein freier Ablauf gehört seinem Ersteller; sonst gelten die
+    Projekt-Regeln.
     """
     if d.set_id:
         return await _require_set_write(db, user, await _get_set(db, d.set_id))
+    if d.project_id is None and not d.slot:
+        if not (_gehoert(d, user) or _ist_admin(user)):
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "Dieser Ablauf gehört jemand anderem")
+        return
     await _require_def_write(db, user, d.project_id)
 
 
@@ -163,6 +187,18 @@ async def workflow_layout(
     unter `PUT /admin/workflow-layout`."""
     from ..services.appsettings import get_layout_gap
     return {"gap": await get_layout_gap(db)}
+
+
+@router.get("/workflow-context-fields")
+async def workflow_context_fields(user: User = Depends(get_current_user)):
+    """Welche Felder im Kontext stehen — je Auslöser, Aktion und Knotentyp.
+
+    Der Editor baut daraus die Auswahl an einer Verzweigung. Vorher war das ein leeres
+    Textfeld: man musste den Pfad kennen, und ein Tippfehler fiel erst auf, wenn der Zweig
+    im Betrieb nie griff.
+    """
+    from ..services.workflow_context import katalog
+    return katalog()
 
 
 # ── Prozess-Sätze ────────────────────────────────────────────────────────────
@@ -328,6 +364,12 @@ async def list_workflows(
     # gehören aber nicht mehr in die Auswahl.
     q = q.where(WorkflowDefinition.archived_at.is_(None))
     rows = (await db.execute(q.order_by(WorkflowDefinition.id))).scalars().all()
+    # Freie Abläufe sind privat: sie stehen projektlos in derselben Tabelle wie die
+    # ausgelieferten Vorlagen, gehören aber einem Menschen. Ohne diesen Filter sähe jeder
+    # die Abläufe aller anderen.
+    if not _ist_admin(user):
+        rows = [d for d in rows
+                if d.project_id is not None or d.slot or d.created_by == user.id]
     return list(rows)
 
 
@@ -535,6 +577,38 @@ async def rollback_version(
 
 # ── Instanzen ────────────────────────────────────────────────────────────────
 
+async def _require_subjekt_recht(db: AsyncSession, user: User, issue_id: int | None,
+                                 hardware_asset_id: int | None) -> None:
+    """Rechte an dem Artefakt prüfen, an das die Instanz gebunden wird.
+
+    Ein Ablauf ist harmlos, solange er nichts anfasst — sein Subjekt fasst er an: Zustände
+    setzen, Felder schreiben, Agenten zuweisen. Deshalb entscheidet nicht die Definition
+    darüber, was er darf, sondern das Projekt des Artefakts.
+    """
+    pids: list[int] = []
+    if issue_id is not None:
+        from ..models.ticket import Issue
+        issue = await db.get(Issue, issue_id)
+        if issue is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket nicht gefunden")
+        pids.append(issue.project_id)
+    if hardware_asset_id is not None:
+        from ..models.hardware import HardwareAsset
+        asset = await db.get(HardwareAsset, hardware_asset_id)
+        if asset is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Exemplar nicht gefunden")
+        if asset.project_id is not None:
+            pids.append(asset.project_id)
+    for pid in pids:
+        project = await db.get(Project, pid)
+        if project is None:
+            continue
+        access = await build_access(project, user, db)   # 404 bei fehlendem Zugriff
+        if not access.has_role(ProjectRole.member):
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "Auf dieses Artefakt hast du keine Rechte")
+
+
 @router.post("/workflows/{def_id}/instances", response_model=InstanceOut, status_code=201)
 async def start_instance(
     def_id: int, data: InstanceCreate,
@@ -549,6 +623,10 @@ async def start_instance(
         access = await build_access(project, user, db)
         if not access.has_role(ProjectRole.member):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Projekt-Mitgliedschaft erforderlich")
+    elif not d.slot and not (_gehoert(d, user) or _ist_admin(user)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Dieser Ablauf gehört jemand anderem")
+    # Ein Ablauf wirkt auf sein Subjekt — wer ihn startet, muss darauf Rechte haben.
+    await _require_subjekt_recht(db, user, data.issue_id, data.hardware_asset_id)
     try:
         inst = await engine.start_workflow(
             db, d, subject_kind=data.subject_kind, issue_id=data.issue_id,

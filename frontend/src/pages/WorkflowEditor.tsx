@@ -22,6 +22,7 @@ import {
 import WorkflowCanvas from "../components/workflow/WorkflowCanvas";
 import NodePalette from "../components/workflow/NodePalette";
 import NodeConfigPanel from "../components/workflow/NodeConfigPanel";
+import { verfuegbareFelder } from "../components/workflow/contextFields";
 import { graphToFlow, flowToGraph } from "../components/workflow/convert";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "../components/workflow/layout";
 import { validateGraph } from "../components/workflow/validate";
@@ -66,6 +67,10 @@ function connectionLabel(nodes: FlowNode[], c: Connection): string | undefined {
 export default function WorkflowEditor() {
   const { key, id } = useParams();
   const ort = useLocation();
+  const { data: katalog } = useQuery({
+    queryKey: ["workflow-context-fields"], queryFn: workflowApi.contextFields,
+    staleTime: 60 * 60 * 1000,   // ändert sich nur mit einem Deploy
+  });
   const wfId = Number(id);
   const nav = useNavigate();
   const qc = useQueryClient();
@@ -279,6 +284,10 @@ export default function WorkflowEditor() {
   };
 
   const allErrors = errors.length ? errors : clientErrors;
+  // Welche Kontextfelder dieser Ablauf hat, ergibt sich aus seinem Auslöser und seinen
+  // Schritten — der Katalog dazu kommt aus dem Backend, damit er nicht auseinanderläuft.
+  const kontextFelder = useMemo(
+    () => verfuegbareFelder(nodes, katalog), [nodes, katalog]);
   const herkunft = (ort.state as { from?: string } | null)?.from
     || (key ? `/projects/${key}?tab=workflows`
             : def?.slot ? "/processes/standard" : "/processes/eigene");
@@ -381,7 +390,7 @@ export default function WorkflowEditor() {
           ) : (
             <NodeConfigPanel node={selected} members={members} onChange={updateConfig}
               onDelete={deleteNode} projectId={project?.id}
-              subjectKind={def?.subject_kind} />
+              subjectKind={def?.subject_kind} kontextFelder={kontextFelder} />
           )}
 
           {allErrors.length > 0 && (

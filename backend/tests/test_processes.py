@@ -212,3 +212,60 @@ async def test_nur_ein_admin_darf_den_standard_zurueckrollen(client, db, standar
     erste = await db.get(WorkflowVersion, d.current_version_id)
     r = await client.post(f"/workflows/{d.id}/versions/{erste.id}/rollback", headers=auth(niemand))
     assert r.status_code == 403
+
+
+async def test_kontextfelder_nennen_ihre_herkunft(client, db):
+    """Der Editor braucht die Felder, die ein Ablauf wirklich hat — geraten wurde lange
+    genug (freies Textfeld, Tippfehler fiel erst im Betrieb auf)."""
+    anna = await make_user(db, "anna")
+    r = await client.get("/workflow-context-fields", headers=auth(anna))
+    assert r.status_code == 200, r.text
+    k = r.json()
+    assert {"basis", "ausloeser", "aktionen", "knoten"} <= set(k)
+
+    # Ein Auslöser bringt seine Nutzlast mit …
+    mail = [f["pfad"] for f in k["ausloeser"]["mail.received"]]
+    assert "mail.subject" in mail and "eingang.owner_id" in mail
+    # … eine Aktion ihre Ergebnisse …
+    assert "spam.score" in [f["pfad"] for f in k["aktionen"]["spam_evaluate"]]
+    assert "project.needs_acceptance" in [f["pfad"] for f in k["aktionen"]["refresh_facts"]]
+    # … und ein Agentenlauf das, worauf der Lebenszyklus verzweigt.
+    assert "agent.has_subtickets" in [f["pfad"] for f in k["knoten"]["agent_task"]]
+    # Jedes Feld erklärt sich selbst.
+    assert all(f["beschreibung"] and f["typ"] for f in k["basis"])
+
+
+async def test_kontextfelder_decken_die_guards_des_standardsatzes(client, db):
+    """Was die ausgelieferten Abläufe an ihren Weichen lesen, muss im Katalog stehen —
+    sonst beschreibt er etwas anderes als das, was läuft."""
+    from app.services.workflow_seed import BUILDERS
+
+    anna = await make_user(db, "anna")
+    k = (await client.get("/workflow-context-fields", headers=auth(anna))).json()
+    bekannt = {f["pfad"] for gruppe in ("basis",) for f in k[gruppe]}
+    for topf in ("ausloeser", "aktionen", "knoten"):
+        for felder in k[topf].values():
+            bekannt |= {f["pfad"] for f in felder}
+
+    def vars_von(regel, raus: set):
+        if isinstance(regel, dict):
+            for op, args in regel.items():
+                if op == "var" and isinstance(args, str):
+                    raus.add(args)
+                else:
+                    vars_von(args, raus)
+        elif isinstance(regel, list):
+            for a in regel:
+                vars_von(a, raus)
+
+    benutzt: set[str] = set()
+    for build in BUILDERS.values():
+        for n in build()["nodes"]:
+            cfg = (n.get("data") or {}).get("config") or {}
+            for b in cfg.get("branches") or []:
+                vars_von(b.get("guard"), benutzt)
+
+    # `entry` steuert den Einstieg des Lebenszyklus und kommt vom Aufrufer, nicht aus einer
+    # Aktion — der Rest muss im Katalog stehen.
+    fehlend = {v for v in benutzt if v not in bekannt and v != "entry"}
+    assert not fehlend, f"Guards lesen Felder, die der Katalog nicht kennt: {sorted(fehlend)}"

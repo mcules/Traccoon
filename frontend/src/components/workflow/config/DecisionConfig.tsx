@@ -1,4 +1,5 @@
 import type { NodeConfig, DecisionBranch, JsonLogic } from "../types";
+import type { KontextFeld } from "../contextFields";
 
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 
@@ -28,9 +29,13 @@ let handleSeq = 0;
 export default function DecisionConfig({
   config,
   onChange,
+  felder = [],
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
+  /** Kontextfelder, die dieser Ablauf wirklich hat — aus Auslöser, Schritten und
+   *  selbst gesetzten Schlüsseln (siehe `contextFields.ts`). */
+  felder?: KontextFeld[];
 }) {
   const branches = config.branches || [];
   const setBranches = (b: DecisionBranch[]) => onChange({ ...config, branches: b });
@@ -66,11 +71,15 @@ export default function DecisionConfig({
                 </button>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
+                {/* Auswahl statt Ratefläche: die Pfade stehen im Kontext dieses Ablaufs.
+                    Freie Eingabe bleibt möglich — der Katalog beschreibt, er schreibt nicht
+                    vor (eigene Felder aus einem Ziel-Aufruf etwa kennt er nicht). */}
                 <input
                   value={s.field}
                   onChange={(e) => upd({ field: e.target.value })}
                   placeholder="Kontext-Feld"
-                  className={`w-28 font-mono ${inp}`}
+                  list={felder.length ? "wf-kontextfelder" : undefined}
+                  className={`w-40 font-mono ${inp}`}
                 />
                 <select value={s.op} onChange={(e) => upd({ op: e.target.value })} className={inp}>
                   {OPS.map((o) => (
@@ -93,9 +102,35 @@ export default function DecisionConfig({
           );
         })}
       </div>
+      {felder.length > 0 && (
+        <datalist id="wf-kontextfelder">
+          {felder.map((f) => (
+            <option key={f.pfad} value={f.pfad}>{`${f.beschreibung} · ${f.quelle}`}</option>
+          ))}
+        </datalist>
+      )}
+
       <button onClick={add} className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
         + Zweig
       </button>
+
+      {felder.length > 0 && (
+        <details className="rounded border border-line bg-surface p-2 text-xs text-muted">
+          <summary className="cursor-pointer">Verfügbare Kontext-Felder ({felder.length})</summary>
+          <table className="mt-2 w-full">
+            <tbody>
+              {felder.map((f) => (
+                <tr key={f.pfad} className="align-top">
+                  <td className="pr-2 font-mono text-ink">{f.pfad}</td>
+                  <td className="pr-2 whitespace-nowrap">{f.typ}</td>
+                  <td className="pr-2">{f.beschreibung}</td>
+                  <td className="whitespace-nowrap text-[10px]">{f.quelle}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
 
       <label className="block text-xs font-medium text-muted">
         Standard-Zweig (wenn keine Bedingung greift)

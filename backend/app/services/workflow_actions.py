@@ -112,9 +112,26 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     from ..models.user import SYSTEM_USER_ID
 
     pid = _as_int(_interp(params.get("project_id"), ctx)) if params.get("project_id") is not None else None
+    fremdes_ziel = pid is not None and pid != inst.project_id
     pid = pid or inst.project_id
     if pid is None:
         raise ValueError("create_ticket: kein project_id (weder Parameter noch Instanz-Projekt)")
+    # Ein Ablauf darf nur dort anlegen, wo der Mensch hinter ihm selbst anlegen dürfte.
+    # Ohne diese Prüfung wäre ein eigener, freier Ablauf ein Weg, in fremde Projekte zu
+    # schreiben: die Definition gehört ihrem Ersteller, das Zielprojekt aber nicht.
+    if fremdes_ziel and inst.started_by is not None:
+        from ..api.deps import build_access
+        from ..models.enums import GlobalRole, ProjectRole
+        from ..models.user import User as _User
+        starter = await db.get(_User, inst.started_by)
+        ziel = await db.get(Project, pid)
+        if starter is None or ziel is None:
+            raise ValueError("create_ticket: Zielprojekt oder Auslöser unbekannt")
+        if starter.global_role != GlobalRole.admin:
+            zugriff = await build_access(ziel, starter, db)
+            if not zugriff.has_role(ProjectRole.member):
+                raise ValueError(
+                    f"create_ticket: keine Rechte am Projekt {ziel.key}")
     t = (await db.execute(select(IssueType).where(IssueType.project_id == pid)
                           .order_by(IssueType.order))).scalars().first()
     s = (await db.execute(select(WorkflowStatus).where(WorkflowStatus.project_id == pid)
