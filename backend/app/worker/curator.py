@@ -1,20 +1,20 @@
-"""Der Curator: hält das gelernte Gedächtnis lesbar, statt es wuchern zu lassen.
+"""The curator: keeps the learned memory readable instead of letting it run wild.
 
-Das Gedächtnis (ABC-30) ist eine Bullet-Liste je Notiz, an die jeder Lauf unten anhängt.
-Es wächst damit nur — und `read_memory` kappt bei `MAX_MEMORY_CHARS`. Ab dieser Grenze
-fällt das Unterste stillschweigend aus dem Prompt: erst gelernt, dann vergessen, ohne dass
-es jemand merkt. Genau davor hat Predecessor seinen `curator` — Aufräumen als eigene, kleine
-Hintergrundarbeit auf dem Aux-Modell.
+The memory (ABC-30) is a bullet list per note that every run appends to at the bottom. It
+therefore only grows, and `read_memory` truncates at `MAX_MEMORY_CHARS`. From that limit on,
+the bottom falls silently out of the prompt: first learned, then forgotten, without anybody
+noticing. That is exactly what Predecessor has its `curator` for: tidying up as a small background
+job of its own on the aux model.
 
-Die Regeln sind bewusst streng, weil hier fremde Erinnerungen angefasst werden:
+The rules are deliberately strict, because other people's memories are touched here:
 
-* **Nie löschen, nur archivieren.** Was rausfliegt, landet in `Archiv-<notiz>.md`. Ein
-  Fehlurteil des Modells kostet dann einen Handgriff, nicht eine Erinnerung.
-* **Angepinntes ist tabu.** Eine Zeile mit 📌 bleibt Wort für Wort stehen.
-* **Im Zweifel behalten.** Der Auftrag sagt ausdrücklich, dass Unklares nicht wegsortiert wird.
-* **Nur zusammenfassen, nicht erfinden.** Keine neuen Aussagen, keine Umdeutungen.
-* **Nichts tun ist ein gültiges Ergebnis.** Kein Aux-Modell, kurze Notiz, unklare Antwort →
-  die Notiz bleibt, wie sie ist.
+* **Never delete, only archive.** What flies out lands in `Archiv-<notiz>.md`. A wrong
+  judgement of the model then costs one hand movement, not a memory.
+* **Pinned lines are taboo.** A line with 📌 stays word for word.
+* **When in doubt, keep.** The assignment says explicitly that unclear things are not sorted away.
+* **Only summarise, do not invent.** No new statements, no reinterpretations.
+* **Doing nothing is a valid result.** No aux model, a short note, an unclear answer: the
+  note stays as it is.
 """
 from __future__ import annotations
 
@@ -26,9 +26,9 @@ from .tools_memory import _note_target, _read_note, memory_root, note_path
 
 log = logging.getLogger("traccoon.curator")
 
-# Erst ab dieser Länge lohnt Aufräumen — darunter ist die Liste ohnehin überschaubar.
+# Only from this length on is tidying up worth it; below it the list is manageable anyway.
 MINDEST_ZEICHEN = 1500
-# Wie oft je Notiz höchstens aufgeräumt wird.
+# How often per note tidying up happens at most.
 ABSTAND_STUNDEN = 24
 PIN = "📌"
 
@@ -53,7 +53,7 @@ AUFTRAG = (
 
 
 def _teile(antwort: str) -> tuple[str, str] | None:
-    """(behalten, archiv) aus der Modellantwort — None, wenn sie nicht dem Format folgt."""
+    """(keep, archive) from the model answer; None when it does not follow the format."""
     if "### BEHALTEN" not in antwort:
         return None
     rest = antwort.split("### BEHALTEN", 1)[1]
@@ -89,7 +89,7 @@ async def faellig(db, owner_id: int, pfad: str, *, jetzt: dt.datetime | None = N
 
 async def kuratiere_notiz(db, mcp, *, owner_id: int, pfad: str, agent, tokens: dict,
                           base_urls: dict) -> str | None:
-    """Eine Gedächtnis-Notiz aufräumen. Rückgabe = kurzer Bericht, None = nichts getan."""
+    """Tidy up one memory note. The return value is a short report, None = nothing done."""
     inhalt = (await _read_note(mcp, pfad)).strip()
     if len(inhalt) < MINDEST_ZEICHEN:
         return None
@@ -108,8 +108,8 @@ async def kuratiere_notiz(db, mcp, *, owner_id: int, pfad: str, agent, tokens: d
         return None
     behalten, archiv = geteilt
 
-    # Sicherungsnetze gegen ein übereifriges Modell. Sie greifen VOR dem Schreiben, weil ein
-    # überschriebenes Gedächtnis nur noch aus dem Archiv zu retten wäre.
+    # Safety nets against an overeager model. They take hold BEFORE writing, because an
+    # overwritten memory could only be rescued from the archive.
     if not _zeilen(behalten):
         log.warning("Curator: Ergebnis hat keine Einträge — %s bleibt unverändert", pfad)
         return None
@@ -124,7 +124,7 @@ async def kuratiere_notiz(db, mcp, *, owner_id: int, pfad: str, agent, tokens: d
 
     kopf = f"# {pfad.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
     if archiv:
-        # ERST archivieren, DANN kürzen: bricht der zweite Schritt ab, ist nichts verloren.
+        # Archive FIRST, truncate AFTERWARDS: if the second step breaks off, nothing is lost.
         arch_pfad = pfad.rsplit("/", 1)[0] + "/Archiv-" + pfad.rsplit("/", 1)[-1]
         stempel = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y-%m-%d")
         try:
@@ -152,7 +152,7 @@ async def kuratiere_notiz(db, mcp, *, owner_id: int, pfad: str, agent, tokens: d
 
 async def kuratiere(db, mcp, *, owner_id: int, agent_role: str = "", project_key: str = "",
                     agent=None, tokens: dict | None = None, base_urls: dict | None = None) -> list[str]:
-    """Alle einschlägigen Gedächtnis-Notizen eines Menschen aufräumen, sofern fällig."""
+    """Tidy up all relevant memory notes of a human, as far as they are due."""
     root = await memory_root(db, owner_id)
     if not root:
         return []
