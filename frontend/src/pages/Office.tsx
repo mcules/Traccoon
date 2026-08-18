@@ -1,69 +1,68 @@
-// Die globale Vollbildseite des Büros — `/buero`.
+// The global full screen page of the office, `/buero`.
 //
-// ── Warum sie innerhalb von `<Layout>` bleibt und trotzdem alles bedeckt ────────────────────
+// ── Why it stays inside `<Layout>` and still covers everything ──────────────────────────────
 //
-// Genau nach dem Vorbild von `WorkflowEditor.tsx`: die Seite bleibt eine gewöhnliche Route
-// innerhalb von `<PageChromeProvider><Layout>` und rendert `fixed inset-0 z-30`. Zwei Dinge
-// hängen daran, und beide wären ohne sie kaputt:
+// Exactly following the model of `WorkflowEditor.tsx`: the page stays an ordinary route
+// inside `<PageChromeProvider><Layout>` and renders `fixed inset-0 z-30`. Two things hang off
+// that, and both would be broken without it:
 //
-//   · **`z-30` deckt die Kopfzeile.** Die ist `sticky top-0 z-10`; alles darunter läge sonst
-//     unter ihr statt über ihr.
-//   · **Kein `usePageChrome`.** Der Hook räumt beim Verlassen auf (`setChrome({title:"",tabs:[]})`),
-//     also wischt allein das *Nicht*-Aufrufen das Untermenü der vorigen Seite weg. Würde diese
-//     Seite eigene Reiter setzen, stünden sie unter dem Vollbild und niemand sähe sie.
+//   · **`z-30` covers the header.** That one is `sticky top-0 z-10`; everything below would
+//     otherwise lie under it instead of above it.
+//   · **No `usePageChrome`.** The hook cleans up on leaving (`setChrome({title:"",tabs:[]})`),
+//     so not calling it is what wipes away the sub-menu of the previous page. If this page set
+//     tabs of its own they would stand under the full screen and nobody would see them.
 //
-// ── Was in der URL steht ────────────────────────────────────────────────────────────────────
+// ── What is in the URL ──────────────────────────────────────────────────────────────────────
 //
-//   `?project=KEY`  Umfang. Fehlt er, ist der Umfang global — alle Projekte, die der Nutzer
-//                   sehen darf (autorisiert wird serverseitig, nie hier).
-//   `?sid=issue:412` Der Raum. `officeApi.sessions` liefert die Liste; ohne Angabe nimmt die
-//                   Ansicht die jüngste. Ohne diesen Parameter wäre `?at=` sinnlos — ein
-//                   Zeitpunkt ohne Raum zeigt auf nichts.
-//   `?at=<epoch-ms>` Startpunkt der Wiedergabe.
-//   `?kiosk=1`      Wandschirm: keine Bedienung, keine Kopfzeile, Selbstheilung an.
+//   `?project=KEY`  Scope. Without it the scope is global, all projects the user may see
+//                   (authorised server side, never here).
+//   `?sid=issue:412` The room. `officeApi.sessions` delivers the list; without a value the
+//                   view takes the most recent one. Without this parameter `?at=` would be
+//                   pointless: a moment without a room points at nothing.
+//   `?at=<epoch-ms>` Starting point of the replay.
+//   `?kiosk=1`      Wall screen: no operation, no header, self-healing on.
 //
-// Geschrieben wird mit `replace: true`: ein geteilter Link auf einen Moment ist die ganze
-// Absicht, aber jeder Klick auf die Zeitleiste einen Eintrag im Verlauf wäre eine Zumutung
-// für den Zurück-Knopf.
+// Writing uses `replace: true`: a shared link to a moment is the whole intention, but every
+// click on the timeline as an entry in the history would be an imposition on the back button.
 //
-// ══ Der Kiosk ═══════════════════════════════════════════════════════════════════════════════
+// ══ The kiosk ═══════════════════════════════════════════════════════════════════════════════
 //
-// **Ein Parameter, keine zweite Route.** Eine eigene Route wäre eine Kopie dieser Datei
-// gewesen, und `?project=`/`?sid=`/`?at=` hätten von da an zweimal gepflegt werden müssen.
-// Vorgabe ist der **globale** Umfang: ein Wandschirm beantwortet „was tut das Haus gerade";
-// 516 von 632 Läufen sind unter fünf Minuten fertig, ein einzelner Projektraum wäre die
-// meiste Zeit ein leerer Schreibtisch. `?kiosk=1&project=TRA` bleibt trotzdem möglich.
+// **One parameter, not a second route.** A route of its own would have been a copy of this
+// file, and `?project=`/`?sid=`/`?at=` would have had to be maintained twice from then on.
+// The default is the **global** scope: a wall screen answers "what is the house doing right
+// now"; 516 of 632 runs finish in under five minutes, so a single project room would be an
+// empty desk most of the time. `?kiosk=1&project=TRA` remains possible nevertheless.
 //
-// **Vollbild wird nicht automatisch angefordert.** `requestFullscreen()` verlangt eine
-// Nutzergeste und scheitert sonst still — deshalb gibt es in der Ansicht einen ⛶-Knopf und
-// hier keine Zeile dazu. In der Praxis startet die Wand als `chromium --kiosk`; wer das
-// später „repariert", baut eine Funktion, die nie funktioniert hat.
+// **Full screen is not requested automatically.** `requestFullscreen()` demands a user
+// gesture and fails silently otherwise, which is why the view has a ⛶ button and there is no
+// line about it here. In practice the wall starts as `chromium --kiosk`; whoever "repairs"
+// that later builds a function that never worked.
 //
-// ── Selbstheilung: was hier wacht, und was schon vorher heilte ──────────────────────────────
+// ── Self-healing: what watches here, and what already healed before ─────────────────────────
 //
-//   · **WS-Abbruch** — heilt `useOfficeFeed` selbst (Backoff plus voller Schnappschuss).
-//     Hier steht bewusst nichts.
-//   · **Token abgelaufen** — `useTokenKeepalive` erneuert alle sechs Stunden; ohne das wäre
-//     der Schirm nach `jwt_expire_minutes` (720) ein Anmeldeformular.
-//   · **Socket-Schließcode 4401/4403** — dagegen hilft kein Wiederverbinden, wohl aber ein
-//     frischer Seitenaufbau mit frischem Token: Neuladen nach `WACHHUND_AUTH_MS`.
-//   · **Vertragsbruch (`hello.v` ≠ `EVENT_VERSION`)** — sofort neu laden. Das heißt, es wurde
-//     ein neues Frontend ausgerollt; Neuladen ist hier nicht die Notbremse, sondern genau die
-//     richtige Antwort.
-//   · **Jeder andere Dauerfehler** — nach `WACHHUND_FEHLER_MS`.
-//   · **Renderausnahme** — fängt die `ErrorBoundary` und lädt nach zehn Sekunden neu.
-//   · **Einmal je Nacht** — der Recorder hält bis `REPLAY_CAP` Einträge und das DOM lief
-//     einen ganzen Tag; ein Schnitt zu einer festen Stunde kostet nichts und räumt alles.
+//   · **WS abort**: healed by `useOfficeFeed` itself (backoff plus full snapshot).
+//     Deliberately nothing stands here.
+//   · **Token expired**: `useTokenKeepalive` renews every six hours; without it the screen
+//     would be a login form after `jwt_expire_minutes` (720).
+//   · **Socket close code 4401/4403**: reconnecting does not help against that, but a fresh
+//     page load with a fresh token does, so a reload after `WACHHUND_AUTH_MS`.
+//   · **Contract breach (`hello.v` !== `EVENT_VERSION`)**: reload immediately. It means a new
+//     frontend has been rolled out; reloading is not the emergency brake here but exactly the
+//     right answer.
+//   · **Every other permanent error**: after `WACHHUND_FEHLER_MS`.
+//   · **Render exception**: caught by the `ErrorBoundary`, which reloads after ten seconds.
+//   · **Once every night**: the recorder holds up to `REPLAY_CAP` entries and the DOM has run
+//     a whole day; a cut at a fixed hour costs nothing and clears everything.
 //
-// Alle Neuladewege laufen über `sicheresNeuladen` und sind damit gegen die eine Gefahr
-// gesichert, die schlimmer ist als ein toter Schirm: die Neulade-Schleife.
+// All reload paths run through `sicheresNeuladen` and are thereby secured against the one
+// danger that is worse than a dead screen: the reload loop.
 //
-// ── Warum der Wachhund die Fehlermeldung liest statt eines Fehlercodes ──────────────────────
+// ── Why the watchdog reads the error message instead of an error code ───────────────────────
 //
-// `useOfficeFeed` meldet seinen Zustand heute als **einen** deutschen Satz. Ihn dort um einen
-// maschinenlesbaren Grund zu erweitern, hieße eine Datei anzufassen, die einer anderen Welle
-// gehört. Deshalb erkennt `frist()` die zwei Sonderfälle an einem Textstück — eng an der
-// Quelle, mit Verweis, und fail-safe: wer nichts erkennt, bekommt die lange Frist.
+// `useOfficeFeed` reports its state today as **one** German sentence. Extending it there with
+// a machine readable reason would mean touching a file that belongs to another wave. That is
+// why `frist()` recognises the two special cases by a piece of text: close to the source,
+// with a reference, and fail-safe, because whoever recognises nothing gets the long deadline.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { tr } from "../i18n";
@@ -76,34 +75,34 @@ import type { Scope } from "../components/office/api.ts";
 import { useWakeLock } from "../hooks/useWakeLock.ts";
 import { useTokenKeepalive } from "../hooks/useTokenKeepalive.ts";
 
-// ── Stellschrauben des Wachhunds ────────────────────────────────────────────────────────────
+// ── Adjustable settings of the watchdog ─────────────────────────────────────────────────────
 
-/** So lange darf ein Fehler stehen, bevor neu geladen wird. Zwei Minuten sind länger als
- *  jeder Backend-Neustart und als die volle Wiederverbindungstreppe des Feeds — was so lange
- *  bleibt, geht von allein nicht mehr weg. */
+/** This long an error may stand before a reload happens. Two minutes are longer than any
+ *  backend restart and than the full reconnect staircase of the feed; what stays that long
+ *  does not go away by itself any more. */
 const WACHHUND_FEHLER_MS = 120_000;
 
-/** Authentifizierungsfehler des Sockets (4401/4403). Kürzer, weil hier ein frischer
- *  Seitenaufbau mit erneuertem Token tatsächlich etwas ändern kann. */
+/** Authentication error of the socket (4401/4403). Shorter, because here a fresh page load
+ *  with a renewed token can actually change something. */
 const WACHHUND_AUTH_MS = 60_000;
 
 /** Mindestabstand zweier automatischer Neuladeversuche desselben Grundes. */
 const NEULADEN_ABSTAND_MS = 10 * 60_000;
 
-/** Renderausnahme: kurz warten (vielleicht war es ein Ereignis, das gleich vorbei ist),
- *  dann neu aufbauen. */
+/** Render exception: wait briefly (perhaps it was an event that is over in a moment), then
+ *  rebuild. */
 const BOUNDARY_RELOAD_MS = 10_000;
 
-/** Der nächtliche Schnitt, Ortszeit. 4 Uhr: nach dem 19-Uhr-Gipfel und vor allem, was
- *  morgens anläuft. */
+/** The nightly cut, local time. 4 o'clock: after the 19:00 peak and before everything that
+ *  starts up in the morning. */
 const NACHT_STUNDE = 4;
 
 /**
- * Wie lange dieser Fehler stehen darf. `0` heißt sofort.
+ * How long this error may stand. `0` means immediately.
  *
- * Die Textstücke stammen wörtlich aus `components/office/useOfficeFeed.ts` (Socket-`onclose`
- * bzw. `hello`-Behandlung). Ändert sich dort die Formulierung, greift hier still die
- * lange Frist — schlechter, aber nie falsch.
+ * The pieces of text come verbatim from `components/office/useOfficeFeed.ts` (socket
+ * `onclose` respectively `hello` handling). If the wording changes there, the long deadline
+ * silently takes hold here: worse, but never wrong.
  */
 function frist(meldung: string): number {
   if (meldung.includes("Vertragsversion")) return 0;
@@ -117,7 +116,7 @@ function grundVon(meldung: string): string {
   return "dauerfehler";
 }
 
-/** Millisekunden bis zur nächsten vollen `stunde` in Ortszeit. */
+/** Milliseconds until the next full `stunde` in local time. */
 function bisZurStunde(stunde: number): number {
   const jetzt = new Date();
   const ziel = new Date(jetzt);
@@ -133,15 +132,15 @@ export default function Office(): JSX.Element {
   const kioskRoh = params.get("kiosk");
   const kiosk = kioskRoh === "1" || kioskRoh === "true";
 
-  // Dieselbe Abfrage wie im Kopfbereich (`ProjectSwitcher`) — aus dem Cache, nicht neu.
+  // The same query as in the header (`ProjectSwitcher`), from the cache, not fresh.
   const { data: projects, isLoading } = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.get<Project[]>("/projects"),
   });
   const project = projectKey ? projects?.find((p) => p.key === projectKey) : undefined;
 
-  // Nur **einmal** gelesen: die Ansicht besitzt Sprungpunkt und Raum danach selbst, und ein
-  // Rücklesen aus der URL machte aus jedem Schreiben einen Kreis.
+  // Read only **once**: the view owns the jump point and the room itself afterwards, and
+  // reading back from the URL would turn every write into a circle.
   const start = useRef<{ at: number | null; sid: string | null }>({
     at: (() => {
       const roh = params.get("at");
@@ -158,7 +157,7 @@ export default function Office(): JSX.Element {
     [project?.id, project?.key],
   );
 
-  /** Ein Schreiber für beide Parameter — sie ändern sich nie unabhängig voneinander. */
+  /** One writer for both parameters: they never change independently of each other. */
   const schreibe = useCallback((feld: "at" | "sid", wert: string | null) => {
     setParams((vorher) => {
       const next = new URLSearchParams(vorher);
@@ -177,12 +176,12 @@ export default function Office(): JSX.Element {
     [schreibe],
   );
 
-  // Zurück dorthin, wo das Büro herkommt: in den Projekt-Reiter, wenn ein Projekt im Spiel
-  // ist, sonst auf die Projektliste.
+  // Back to where the office came from: into the project tab when a project is involved,
+  // otherwise to the project list.
   const zurueck = () => navigate(projectKey ? `/projects/${projectKey}?tab=buero` : "/");
 
-  /** Esc im Kiosk: eine Ebene zurück in die bediente Vollbildseite, nicht aus dem Büro
-   *  heraus — Raum und Sprungpunkt bleiben stehen, man will ja meist genau hier eingreifen. */
+  /** Esc in the kiosk: one level back into the operable full screen page, not out of the
+   *  office; room and jump point stay, because usually you want to intervene right here. */
   const kioskVerlassen = useCallback(() => {
     setParams((vorher) => {
       const next = new URLSearchParams(vorher);
@@ -199,15 +198,14 @@ export default function Office(): JSX.Element {
 
   const [fehler, setFehler] = useState<string | undefined>(undefined);
 
-  // Wachhund für Dauerfehler. Der Zeitgeber wird bei **jedem** Wechsel der Meldung neu
-  // gestellt: ein Fehler, der kommt und geht, ist kein Dauerfehler, und ein anderer Fehler
-  // ist ein anderer Fall.
+  // Watchdog for permanent errors. The timer is reset on **every** change of the message: an
+  // error that comes and goes is not a permanent error, and another error is another case.
   useEffect(() => {
     if (!kiosk || !fehler) return;
     const wartezeit = frist(fehler);
     const grund = grundVon(fehler);
     if (wartezeit === 0) {
-      // Vertragsbruch: ein neues Frontend liegt auf dem Server, dieses hier ist von gestern.
+      // Contract breach: a new frontend lies on the server, this one here is from yesterday.
       sicheresNeuladen(grund, NEULADEN_ABSTAND_MS);
       return;
     }
@@ -216,8 +214,8 @@ export default function Office(): JSX.Element {
     return () => window.clearTimeout(timer);
   }, [kiosk, fehler]);
 
-  // Der nächtliche Schnitt. Ein einziger Zeitgeber statt einer Uhrabfrage im Takt — die
-  // Frist ist immer unter 24 h und passt damit bequem in `setTimeout`.
+  // The nightly cut. A single timer instead of a clock query on a beat: the deadline is
+  // always under 24 h and therefore fits comfortably into `setTimeout`.
   useEffect(() => {
     if (!kiosk) return;
     const timer = window.setTimeout(
@@ -225,8 +223,8 @@ export default function Office(): JSX.Element {
     return () => window.clearTimeout(timer);
   }, [kiosk]);
 
-  // Steht `?project=` in der URL, aber die Projektliste ist noch unterwegs, wäre der Umfang
-  // für einen Wimpernschlag „global" — und der Feed baute seinen Socket zweimal auf.
+  // If `?project=` is in the URL but the project list is still on its way, the scope would be
+  // "global" for the blink of an eye, and the feed would build its socket twice.
   const wartet = !!projectKey && isLoading;
 
   return (

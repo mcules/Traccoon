@@ -10,17 +10,17 @@ from .base import TimestampMixin
 
 
 class AssistantTask(TimestampMixin, Base):
-    """Projektloses Arbeits-Item des persönlichen Assistenten (steht über den Projekten).
+    """Project-less work item of the personal assistant (stands above the projects).
 
-    Entsteht z. B. aus einer eingehenden E-Mail: ein LOKALES Modell (qwen via litellm)
-    klassifiziert und schwärzt den Inhalt VORHER — nur `redacted_summary` (+ Metadaten)
-    verlässt das Haus Richtung Claude. Der Rohtext bleibt lokal; Claude liest den Volltext
-    erst nach ausdrücklicher Freigabe (Status `new` → `approved`) über die IMAP-Tools.
+    Comes into being for instance from an incoming e-mail: a LOCAL model (qwen via litellm)
+    classifies and redacts the content BEFOREHAND, and only `redacted_summary` (plus
+    metadata) leaves the house towards Claude. The raw text stays local; Claude reads the
+    full text only after an explicit approval (status `new` to `approved`) over the IMAP tools.
     """
     __tablename__ = "assistant_tasks"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Eigentümer = der Mensch, dem der Assistent dient; sein Token, seine MCP-Gruppe.
+    # Owner = the human the assistant serves; their token, their MCP group.
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
 
@@ -29,23 +29,23 @@ class AssistantTask(TimestampMixin, Base):
     source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)  # Idempotenz
 
     title: Mapped[str] = mapped_column(String(500), default="")
-    # Ergebnis der LOKALEN Vorklassifizierung (qwen) — bleibt im Haus erzeugt.
+    # Result of the LOCAL pre-classification (qwen), produced in house.
     category: Mapped[str] = mapped_column(String(80), default="")
     priority: Mapped[str] = mapped_column(String(20), default="normal")  # low|normal|high|urgent
-    # Bereinigte, an Claude weiterreichbare Zusammenfassung (KEIN Rohtext, keine PII).
+    # Cleaned summary that can be passed on to Claude (NO raw text, no PII).
     redacted_summary: Mapped[str] = mapped_column(Text, default="")
-    # Metadaten für den späteren IMAP-Volltextzugriff (account/uid/from/subject) — kein Inhalt.
+    # Metadata for the later IMAP full text access (account/uid/from/subject), no content.
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
 
-    # Schwärzung dieses Items: 'redacted' = nur Summary an Claude (Default, sicher);
-    # 'unredacted' = Volltext direkt (nur wenn eine AssistantPolicy das für die Quelle erlaubt).
+    # Redaction of this item: 'redacted' = only the summary to Claude (default, safe);
+    # 'unredacted' = full text directly (only when an AssistantPolicy allows that for the source).
     redaction: Mapped[str] = mapped_column(String(20), default="redacted")
-    # Rohtext NUR gespeichert, wenn eine Regel 'unredacted' erlaubt (sonst NULL → nie im Haus abgelegt).
+    # Raw text stored ONLY when a rule allows 'unredacted' (otherwise NULL, so never stored in house).
     raw_body: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Gelernter Handlungs-Hinweis aus der greifenden AssistantPolicy (z. B. „in Paperless ablegen").
+    # Learned action hint from the applying AssistantPolicy (for instance "file in Paperless").
     action_hint: Mapped[str] = mapped_column(Text, default="")
 
-    # new = wartet auf Freigabe (nichts läuft); approved = freigegeben → Worker;
+    # new = waiting for approval (nothing runs); approved = released to the worker;
     # running → done | error.
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)
     run_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -53,24 +53,24 @@ class AssistantTask(TimestampMixin, Base):
     error: Mapped[str] = mapped_column(Text, default="")
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Tool-Gate: worauf der Lauf gerade auf Freigabe wartet (status='awaiting').
+    # Tool gate: what the run is currently waiting for approval on (status='awaiting').
     pending_tool: Mapped[str | None] = mapped_column(String(150), nullable=True)
     pending_resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    # Einmal-Freigabe für die nächste Wiederaufnahme (wird beim Gate konsumiert).
+    # One-shot approval for the next resumption (consumed at the gate).
     grant_tool: Mapped[str | None] = mapped_column(String(150), nullable=True)
     grant_resource: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    # Hat der Assistent während des Laufs ausdrücklich gemeldet („der Mensch soll das
-    # sehen", Werkzeug `notify_human`)? Nur dann verschickt der Abschluss eine Nachricht —
-    # sonst steht das Ergebnis still im Posteingang. Ein erledigtes „nichts zu tun" soll
-    # niemanden stören.
+    # Did the assistant report explicitly during the run ("the human should see this", tool
+    # `notify_human`)? Only then does the conclusion send a message; otherwise the result
+    # stands silently in the inbox. A finished "nothing to do" should not disturb
+    # anybody.
     notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class AssistantPermission(TimestampMixin, Base):
-    """Gelernte Tool-Berechtigung des Assistenten (owner-scoped, projektlos): 'immer erlauben'
-    / 'nie' pro Tool(+Ressource). Wird vom Freigabe-Gate gelesen (perms.evaluate). Inhalt
-    persönlich → DB-only, nicht im git."""
+    """Learned tool permission of the assistant (owner-scoped, project-less): 'always allow'
+    or 'never' per tool (plus resource). Read by the approval gate (perms.evaluate). The
+    content is personal, so DB-only, not in git."""
     __tablename__ = "assistant_permissions"
     __table_args__ = (
         UniqueConstraint("owner_user_id", "tool", "resource", name="uq_assistant_perm"),
@@ -85,12 +85,12 @@ class AssistantPermission(TimestampMixin, Base):
 
 
 class AssistantPolicy(TimestampMixin, Base):
-    """Gelernte Regel des persönlichen Assistenten für eingehende Items (v. a. Mail).
+    """Learned rule of the personal assistant for incoming items (mail above all).
 
-    Owner-scoped, projektlos. Inhalt (Absender, Aktionen …) ist persönlich und bleibt in der DB —
-    NICHT im git. Wird per Freigabe „immer …" gefüllt (Inbox/Telegram) oder manuell gepflegt.
-    Passt eine Regel auf einen Eingang, kann er automatisch (geschwärzt/ungeschwärzt) laufen und
-    bekommt den gelernten Handlungs-Hinweis mit.
+    Owner-scoped, project-less. The content (sender, actions and so on) is personal and stays
+    in the database, NOT in git. It is filled through the approval "always …" (inbox,
+    Telegram) or maintained by hand. If a rule matches an incoming item, that item can run
+    automatically (redacted or unredacted) and carries the learned action hint along.
     """
     __tablename__ = "assistant_policies"
     __table_args__ = (
@@ -101,11 +101,11 @@ class AssistantPolicy(TimestampMixin, Base):
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
 
-    # Worauf die Regel matcht: 'sender' (news@verband.de) · 'domain' (verband.de) · 'category' (rechnung).
+    # What the rule matches on: 'sender' (news@verband.de) · 'domain' (verband.de) · 'category' (invoice).
     match_kind: Mapped[str] = mapped_column(String(20), default="sender")
     match_value: Mapped[str] = mapped_column(String(300), default="")
 
-    auto_approve: Mapped[bool] = mapped_column(Boolean, default=True)   # überspringt Review
+    auto_approve: Mapped[bool] = mapped_column(Boolean, default=True)   # skips the review
     redaction: Mapped[str] = mapped_column(String(20), default="redacted")  # redacted | unredacted
     action_hint: Mapped[str] = mapped_column(Text, default="")         # gelernte Aktion
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -115,15 +115,15 @@ class AssistantPolicy(TimestampMixin, Base):
 
 
 class AssistantContact(TimestampMixin, Base):
-    """Bekannte Adresse aus dem Obsidian-Vault — die Freispruch-Liste der Spam-Erkennung.
+    """Known address from the Obsidian vault, the acquittal list of the spam detection.
 
-    Kontakte stehen im Vault (`03 Bereiche/Personen|Kontakte|Firmen`), nicht mehr in
-    Nextcloud. Der Vault wird nicht pro Mail gelesen, sondern periodisch hierher gespiegelt:
-    die Prüfung ist damit ein Index-Lookup und hängt nicht an der Erreichbarkeit einer
-    Syncthing-Replik.
+    Contacts stand in the vault (`03 Bereiche/Personen|Kontakte|Firmen`), no longer in
+    Nextcloud. The vault is not read per mail but mirrored here periodically: the check is
+    therefore an index lookup and does not depend on the reachability of a Syncthing
+    replica.
 
-    Zeilen sind ein Spiegel, kein Besitz — der Abgleich löscht, was im Vault verschwunden
-    ist. Nichts hier ist von Hand gepflegt.
+    Rows are a mirror, not a possession: the reconciliation deletes what has disappeared from
+    the vault. Nothing here is maintained by hand.
     """
     __tablename__ = "assistant_contacts"
     __table_args__ = (
@@ -137,23 +137,23 @@ class AssistantContact(TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), default="", index=True)
     domain: Mapped[str] = mapped_column(String(255), default="", index=True)
     name: Mapped[str] = mapped_column(String(300), default="")
-    # Woher die Adresse stammt: Vault-Pfad der Notiz (Nachvollziehbarkeit beim Fehlalarm).
+    # Where the address comes from: vault path of the note (traceability on a false alarm).
     source_path: Mapped[str] = mapped_column(String(500), default="")
-    # 'frontmatter' = ausgewiesenes Adressfeld (verlässlich) · 'body' = im Text gefunden
-    # (schwächer: dort steht auch mal die Adresse eines Dritten).
+    # 'frontmatter' = declared address field (reliable) · 'body' = found in the text
+    # (weaker: the address of a third party stands there sometimes as well).
     source_kind: Mapped[str] = mapped_column(String(20), default="frontmatter")
 
 
 class SpamVerdict(TimestampMixin, Base):
-    """Ein Spam-Urteil über eine eingegangene Mail — und was der Mensch dazu gesagt hat.
+    """One spam verdict about an incoming mail, and what the human said about it.
 
-    Diese Tabelle ist zugleich Arbeitsvorrat (offene Rückfragen an Telegram) und Gedächtnis:
-    aus den entschiedenen Zeilen lernt die Erkennung (siehe `SpamFeatureStat`). Deshalb wird
-    eine entschiedene Zeile nie gelöscht — sie ist der Lehrstoff.
+    This table is work stock (open questions to Telegram) and memory at the same time: the
+    detection learns from the decided rows (see `SpamFeatureStat`). That is why a decided row
+    is never deleted: it is the learning material.
 
-    Merkmale liegen hier bewusst schon zerlegt vor (`features`), nicht nur als Rohmail:
-    gelernt wird über Merkmale, und die müssen später ohne die Originalmail rekonstruierbar
-    sein (die wandert in den Spam-Ordner oder wird vom Menschen gelöscht).
+    Features deliberately lie here already broken down (`features`), not only as a raw mail:
+    learning happens over features, and those have to be reconstructable later without the
+    original mail (which wanders into the spam folder or is deleted by the human).
     """
     __tablename__ = "spam_verdicts"
 
@@ -162,59 +162,59 @@ class SpamVerdict(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     assistant_task_id: Mapped[int | None] = mapped_column(
         ForeignKey("assistant_tasks.id", ondelete="CASCADE"), nullable=True, index=True)
-    # Der Ablauf, der diese Frage gestellt hat. Über ihn schaltet die Antwort aus Telegram
-    # den Prozess weiter, statt an ihm vorbei selbst zu verschieben (siehe spam_review).
-    # NULL = Altbestand aus der Zeit vor dem Mail-Prozess → direkter Weg.
+    # The flow that asked this question. Through it the answer from Telegram advances the
+    # process instead of moving the mail past it (see spam_review).
+    # NULL = legacy from the time before the mail process, so the direct way.
     workflow_instance_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_instances.id", ondelete="SET NULL"), nullable=True, index=True)
 
-    # Für die spätere IMAP-Aktion (verschieben) — Konto/Ordner/UID der Nachricht.
+    # For the later IMAP action (moving): account, folder and UID of the message.
     account: Mapped[str] = mapped_column(String(120), default="")
     folder: Mapped[str] = mapped_column(String(255), default="")
     uid: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     sender_email: Mapped[str] = mapped_column(String(320), default="", index=True)
     sender_domain: Mapped[str] = mapped_column(String(255), default="", index=True)
-    # An welchen meiner Aliase ging die Mail? Ein Alias, den nur ein Anbieter kennt und der
-    # plötzlich Fremdwerbung bekommt, ist verkauft oder geleakt — das ist ein Signal über
-    # den einzelnen Vorgang hinaus.
+    # Which of my aliases did the mail go to? An alias only one provider knows and that
+    # suddenly receives foreign advertising is sold or leaked, and that is a signal beyond
+    # the single case.
     recipient: Mapped[str] = mapped_column(String(320), default="", index=True)
     subject: Mapped[str] = mapped_column(String(500), default="")
 
-    # Teilurteile, damit hinterher nachvollziehbar ist, WER falsch lag.
+    # Partial verdicts, so that it is traceable afterwards WHO was wrong.
     rule_score: Mapped[float] = mapped_column(Float, default=0.0)
     model_score: Mapped[float] = mapped_column(Float, default=0.0)
     learned_score: Mapped[float] = mapped_column(Float, default=0.0)
     score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
     reasons: Mapped[list] = mapped_column(JSON, default=list)
-    # Zerlegte Merkmale für das Lernen (Liste von Merkmal-Schlüsseln, s. spam_learn).
+    # Broken down features for the learning (list of feature keys, see spam_learn).
     features: Mapped[list] = mapped_column(JSON, default=list)
 
-    # pending = wartet auf den Menschen · spam / ham = entschieden · skipped = verfallen
-    # (Mail nicht mehr auffindbar o. Ä.).
+    # pending = waiting for the human · spam / ham = decided · skipped = expired
+    # (mail no longer findable or similar).
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
-    # Kennung der Sammel-Karte, in der dieser Fall abgefragt wurde. Ein Knopf „alle
-    # bestätigen" braucht eine benennbare Menge, und die Telegram-Rückmeldung trägt nur
-    # 64 Zeichen — eine kurze Kennung passt, eine Liste von Nummern nicht.
+    # Identifier of the digest card in which this case was asked about. A button "confirm
+    # all" needs a nameable set, and the Telegram callback carries only 64 characters, so a
+    # short identifier fits and a list of numbers does not.
     digest_batch: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
-    # Wie entschieden wurde: telegram | web | auto — trennt gelernte Wahrheit von Vermutung.
+    # How it was decided: telegram | web | auto, separating learned truth from assumption.
     decided_by: Mapped[str] = mapped_column(String(20), default="")
     decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Ergebnis der IMAP-Aktion (verschoben/Fehlermeldung) — rein zur Nachschau.
+    # Result of the IMAP action (moved, or error message), purely for looking up afterwards.
     action_result: Mapped[str] = mapped_column(Text, default="")
 
 
 class SpamFeatureStat(TimestampMixin, Base):
-    """Gelernte Häufigkeit eines Merkmals in Spam vs. Nicht-Spam.
+    """Learned frequency of a feature in spam versus non-spam.
 
-    Das ist das Gedächtnis der Erkennung: jede Entscheidung des Menschen erhöht hier Zähler,
-    und jede *künftige* Mail wird gegen diese Zähler gehalten. Ohne diese Tabelle bliebe die
-    Erkennung bei jedem Durchgang gleich schlau — der Mensch würde dieselbe Frage ewig
-    beantworten.
+    This is the memory of the detection: every decision of the human raises counters here,
+    and every *future* mail is held against these counters. Without this table the detection
+    would stay equally clever on every pass, and the human would answer the same question
+    forever.
 
-    Bewusst Zähler statt eines trainierten Modells: nachvollziehbar (man kann nachsehen,
-    warum), sofort wirksam (kein Trainingslauf), korrigierbar (eine falsche Entscheidung
-    lässt sich zurückzählen).
+    Deliberately counters instead of a trained model: traceable (you can look up why),
+    effective immediately (no training run), correctable (a wrong decision can be counted
+    back).
     """
     __tablename__ = "spam_feature_stats"
     __table_args__ = (
@@ -224,7 +224,7 @@ class SpamFeatureStat(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    # Merkmal als Schlüssel, z. B. 'from:werbung@example.com' · 'dom:example.com' ·
+    # Feature as a key, for instance 'from:werbung@example.com' · 'dom:example.com' ·
     # 'to:shop-alias@meine-domain.de' · 'sig:spf_fail' · 'wort:gewonnen'.
     feature: Mapped[str] = mapped_column(String(400), default="", index=True)
     spam_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -233,15 +233,15 @@ class SpamFeatureStat(TimestampMixin, Base):
 
 
 class ChatSummary(TimestampMixin, Base):
-    """Fortgeschriebene Zusammenfassung eines Gesprächsfadens (Mensch ↔ ein Agent).
+    """Continuously written summary of a conversation thread (human and one agent).
 
-    Der Verlauf war ein reines Zeitfenster: die letzten Wortwechsel wörtlich, alles davor
-    ersatzlos weg. Nach zwölf Stunden wusste der Assistent nichts mehr — nicht allmählich
-    schwächer, sondern schlagartig nichts. Jetzt wandern ältere Wortwechsel hierher, in eine
-    Zusammenfassung, die mitwächst; sie ersetzt nichts Jüngeres, sondern trägt das Ältere.
+    The history was a pure time window: the last exchanges verbatim, everything before that
+    gone without replacement. After twelve hours the assistant knew nothing any more, not
+    gradually weaker but abruptly nothing. Now older exchanges wander here, into a summary
+    that grows along; it replaces nothing newer but carries the older part.
 
-    Genau EINE Zeile je (Mensch, Agent) — sie wird fortgeschrieben, nicht vermehrt.
-    `bis_task_id` merkt sich, bis wohin sie reicht; alles danach ist noch wörtlich im Verlauf.
+    Exactly ONE row per (human, agent): it is written on, not multiplied.
+    `bis_task_id` remembers how far it reaches; everything after is still verbatim.
     """
     __tablename__ = "chat_summaries"
     __table_args__ = (
