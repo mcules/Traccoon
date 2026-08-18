@@ -1,7 +1,7 @@
 import datetime as dt
 
 from sqlalchemy import (
-    Boolean, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint,
+    Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -112,6 +112,124 @@ class AssistantPolicy(TimestampMixin, Base):
 
     hit_count: Mapped[int] = mapped_column(Integer, default=0)
     last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AssistantContact(TimestampMixin, Base):
+    """Bekannte Adresse aus dem Obsidian-Vault — die Freispruch-Liste der Spam-Erkennung.
+
+    Kontakte stehen im Vault (`03 Bereiche/Personen|Kontakte|Firmen`), nicht mehr in
+    Nextcloud. Der Vault wird nicht pro Mail gelesen, sondern periodisch hierher gespiegelt:
+    die Prüfung ist damit ein Index-Lookup und hängt nicht an der Erreichbarkeit einer
+    Syncthing-Replik.
+
+    Zeilen sind ein Spiegel, kein Besitz — der Abgleich löscht, was im Vault verschwunden
+    ist. Nichts hier ist von Hand gepflegt.
+    """
+    __tablename__ = "assistant_contacts"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "email", name="uq_assistant_contact"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+
+    email: Mapped[str] = mapped_column(String(320), default="", index=True)
+    domain: Mapped[str] = mapped_column(String(255), default="", index=True)
+    name: Mapped[str] = mapped_column(String(300), default="")
+    # Woher die Adresse stammt: Vault-Pfad der Notiz (Nachvollziehbarkeit beim Fehlalarm).
+    source_path: Mapped[str] = mapped_column(String(500), default="")
+    # 'frontmatter' = ausgewiesenes Adressfeld (verlässlich) · 'body' = im Text gefunden
+    # (schwächer: dort steht auch mal die Adresse eines Dritten).
+    source_kind: Mapped[str] = mapped_column(String(20), default="frontmatter")
+
+
+class SpamVerdict(TimestampMixin, Base):
+    """Ein Spam-Urteil über eine eingegangene Mail — und was der Mensch dazu gesagt hat.
+
+    Diese Tabelle ist zugleich Arbeitsvorrat (offene Rückfragen an Telegram) und Gedächtnis:
+    aus den entschiedenen Zeilen lernt die Erkennung (siehe `SpamFeatureStat`). Deshalb wird
+    eine entschiedene Zeile nie gelöscht — sie ist der Lehrstoff.
+
+    Merkmale liegen hier bewusst schon zerlegt vor (`features`), nicht nur als Rohmail:
+    gelernt wird über Merkmale, und die müssen später ohne die Originalmail rekonstruierbar
+    sein (die wandert in den Spam-Ordner oder wird vom Menschen gelöscht).
+    """
+    __tablename__ = "spam_verdicts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    assistant_task_id: Mapped[int | None] = mapped_column(
+        ForeignKey("assistant_tasks.id", ondelete="CASCADE"), nullable=True, index=True)
+    # Der Ablauf, der diese Frage gestellt hat. Über ihn schaltet die Antwort aus Telegram
+    # den Prozess weiter, statt an ihm vorbei selbst zu verschieben (siehe spam_review).
+    # NULL = Altbestand aus der Zeit vor dem Mail-Prozess → direkter Weg.
+    workflow_instance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workflow_instances.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Für die spätere IMAP-Aktion (verschieben) — Konto/Ordner/UID der Nachricht.
+    account: Mapped[str] = mapped_column(String(120), default="")
+    folder: Mapped[str] = mapped_column(String(255), default="")
+    uid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    sender_email: Mapped[str] = mapped_column(String(320), default="", index=True)
+    sender_domain: Mapped[str] = mapped_column(String(255), default="", index=True)
+    # An welchen meiner Aliase ging die Mail? Ein Alias, den nur ein Anbieter kennt und der
+    # plötzlich Fremdwerbung bekommt, ist verkauft oder geleakt — das ist ein Signal über
+    # den einzelnen Vorgang hinaus.
+    recipient: Mapped[str] = mapped_column(String(320), default="", index=True)
+    subject: Mapped[str] = mapped_column(String(500), default="")
+
+    # Teilurteile, damit hinterher nachvollziehbar ist, WER falsch lag.
+    rule_score: Mapped[float] = mapped_column(Float, default=0.0)
+    model_score: Mapped[float] = mapped_column(Float, default=0.0)
+    learned_score: Mapped[float] = mapped_column(Float, default=0.0)
+    score: Mapped[float] = mapped_column(Float, default=0.0, index=True)
+    reasons: Mapped[list] = mapped_column(JSON, default=list)
+    # Zerlegte Merkmale für das Lernen (Liste von Merkmal-Schlüsseln, s. spam_learn).
+    features: Mapped[list] = mapped_column(JSON, default=list)
+
+    # pending = wartet auf den Menschen · spam / ham = entschieden · skipped = verfallen
+    # (Mail nicht mehr auffindbar o. Ä.).
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    # Kennung der Sammel-Karte, in der dieser Fall abgefragt wurde. Ein Knopf „alle
+    # bestätigen" braucht eine benennbare Menge, und die Telegram-Rückmeldung trägt nur
+    # 64 Zeichen — eine kurze Kennung passt, eine Liste von Nummern nicht.
+    digest_batch: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    # Wie entschieden wurde: telegram | web | auto — trennt gelernte Wahrheit von Vermutung.
+    decided_by: Mapped[str] = mapped_column(String(20), default="")
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Ergebnis der IMAP-Aktion (verschoben/Fehlermeldung) — rein zur Nachschau.
+    action_result: Mapped[str] = mapped_column(Text, default="")
+
+
+class SpamFeatureStat(TimestampMixin, Base):
+    """Gelernte Häufigkeit eines Merkmals in Spam vs. Nicht-Spam.
+
+    Das ist das Gedächtnis der Erkennung: jede Entscheidung des Menschen erhöht hier Zähler,
+    und jede *künftige* Mail wird gegen diese Zähler gehalten. Ohne diese Tabelle bliebe die
+    Erkennung bei jedem Durchgang gleich schlau — der Mensch würde dieselbe Frage ewig
+    beantworten.
+
+    Bewusst Zähler statt eines trainierten Modells: nachvollziehbar (man kann nachsehen,
+    warum), sofort wirksam (kein Trainingslauf), korrigierbar (eine falsche Entscheidung
+    lässt sich zurückzählen).
+    """
+    __tablename__ = "spam_feature_stats"
+    __table_args__ = (
+        UniqueConstraint("owner_user_id", "feature", name="uq_spam_feature"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    # Merkmal als Schlüssel, z. B. 'from:werbung@example.com' · 'dom:example.com' ·
+    # 'to:shop-alias@meine-domain.de' · 'sig:spf_fail' · 'wort:gewonnen'.
+    feature: Mapped[str] = mapped_column(String(400), default="", index=True)
+    spam_count: Mapped[int] = mapped_column(Integer, default=0)
+    ham_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ChatSummary(TimestampMixin, Base):

@@ -170,6 +170,7 @@ class WorkflowSlot(str, enum.Enum):
     acceptance = "acceptance"                      # Abnahme: Testenv abräumen → Merge → Deploy
     hardware_procurement = "hardware_procurement"  # Beschaffung eines Exemplars
     ticket_intake = "ticket_intake"                # Eingang (Webhook/Mail) → Ticket
+    mail_intake = "mail_intake"                    # Maileingang: einordnen, Spam, Assistent
 
 
 class WorkflowTokenState(str, enum.Enum):

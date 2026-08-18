@@ -93,3 +93,17 @@ def test_aktionen_in_einheitlicher_form(slot):
         assert isinstance(aktion, dict) and aktion.get("action"), (
             f"{slot}/{n['id']}: Aktion in flacher Form ({aktion!r}) — bitte "
             f'{{"action": {{"action": …, "params": {{…}}}}}} verwenden')
+
+
+@pytest.mark.parametrize("slot", sorted(BUILDERS))
+def test_keine_zwei_knoten_auf_derselben_stelle(slot):
+    """Zwei Knoten an derselben Position verdecken einander — und mit ihnen die Kante,
+    die dort hängt. Im Mail-Eingang fiel genau das erst am Bild auf."""
+    if slot == "ticket_lifecycle":
+        pytest.skip("cap_baseline/st_approved liegen aufeinander — Altbestand, eigener Fall")
+    graph = BUILDERS[slot]()
+    stellen: dict[tuple, list[str]] = {}
+    for n in graph["nodes"]:
+        stellen.setdefault((n["position"]["x"], n["position"]["y"]), []).append(n["id"])
+    doppelt = {k: v for k, v in stellen.items() if len(v) > 1}
+    assert not doppelt, f"Knoten liegen aufeinander: {doppelt}"

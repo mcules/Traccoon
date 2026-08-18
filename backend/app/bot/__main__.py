@@ -18,7 +18,7 @@ import re
 from sqlalchemy import select
 
 from ..db import SessionLocal
-from ..models.assistant import AssistantTask
+from ..models.assistant import AssistantTask, SpamVerdict
 from ..models.enums import GlobalRole, TicketAgentStatus
 from ..models.notification import Notification
 from ..models.ops import PermAction, PermGrant, Permission, PermRequest
@@ -29,6 +29,7 @@ from ..services.assistant_inbox import (
 )
 from ..services.artifacts import set_ticket_status
 from ..services.comments import add_system_comment, apply_user_comment
+from ..services.spam_review import entscheide_batch, entscheiden, karte, zurueckholen
 from ..worker.assistant_gate import apply_perm_decision
 from .mdtg import clip, safe
 
@@ -547,6 +548,26 @@ async def run_bot() -> None:
             [InlineKeyboardButton(text="♾️ Immer Absender", callback_data=f"atask:sender:{tid}"),
              InlineKeyboardButton(text="♾️ Immer Kategorie", callback_data=f"atask:category:{tid}")]])
 
+    def _spam_kb(vid: int) -> InlineKeyboardMarkup:
+        # Genau zwei Knöpfe. Die Frage ist eine Ja/Nein-Frage, und jede weitere Möglichkeit
+        # („später", „Regel anlegen") würde die Antwort verzögern, die zum Lernen gebraucht wird.
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="✅ Ist Spam", callback_data=f"spam:yes:{vid}"),
+            InlineKeyboardButton(text="🚫 Kein Spam", callback_data=f"spam:no:{vid}")]])
+
+    def _spam_undo_kb(vid: int) -> InlineKeyboardMarkup:
+        # Genau ein Knopf: die Mail ist schon weg, es gibt nur noch den Widerspruch.
+        # „Passt schon" braucht keinen — Schweigen ist die Zustimmung.
+        return InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="↩️ Zurückholen", callback_data=f"spamundo:{vid}")]])
+
+    def _spam_digest_kb(batch: str) -> InlineKeyboardMarkup:
+        return InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Alle sind Spam", callback_data=f"spamall:yes:{batch}"),
+             InlineKeyboardButton(text="🚫 Keiner ist Spam", callback_data=f"spamall:no:{batch}")],
+            [InlineKeyboardButton(text="👉 Einzeln durchgehen",
+                                  callback_data=f"spamall:einzeln:{batch}")]])
+
     def _aperm_kb(tid: int) -> InlineKeyboardMarkup:
         # Tool-Freigabe des Assistenten (einmal|immer|nie).
         return InlineKeyboardMarkup(inline_keyboard=[[
@@ -579,6 +600,16 @@ async def run_bot() -> None:
                             markup = _atask_kb(n.assistant_task_id)
                         elif n.kind == "assistant_perm" and n.assistant_task_id:
                             markup = _aperm_kb(n.assistant_task_id)
+                        elif n.kind == "spam_review" and n.spam_verdict_id:
+                            markup = _spam_kb(n.spam_verdict_id)
+                        elif n.kind == "spam_auto" and n.spam_verdict_id:
+                            markup = _spam_undo_kb(n.spam_verdict_id)
+                        elif n.kind == "spam_digest" and n.spam_verdict_id:
+                            # Die Sammlung hängt am ersten Fall — über ihn findet sich die
+                            # Kennung der ganzen Menge.
+                            erster = await db.get(SpamVerdict, n.spam_verdict_id)
+                            markup = (_spam_digest_kb(erster.digest_batch)
+                                      if erster and erster.digest_batch else None)
                         else:
                             markup = _kb_for(n.kind, issue_key, req_id)
                         # Text oder Medium entscheidet `_zustellen` — und setzt in jedem
@@ -828,6 +859,64 @@ async def run_bot() -> None:
                     await _erledigt(cq, "✅ Freigegeben" + {
                         "sender": " · Absender künftig automatisch",
                         "category": " · Kategorie künftig automatisch"}.get(scope, ""))
+            elif data.startswith("spam:"):
+                _, antwort, vid = data.split(":", 2)
+                v = await db.get(SpamVerdict, int(vid))
+                if v is None:
+                    await cq.answer("Nicht gefunden")
+                    await _erledigt(cq, "⏭ Urteil nicht mehr vorhanden")
+                elif v.status not in ("pending", "spam", "ham"):
+                    await cq.answer(f"schon erledigt ({v.status})")
+                    await _erledigt(cq, f"⏭ schon erledigt ({v.status})")
+                else:
+                    # Eine bereits entschiedene Zeile darf umentschieden werden: der Irrtum
+                    # fällt oft erst auf, wenn die Mail fehlt. `entscheiden` zählt die alte
+                    # Bewertung im Gedächtnis zurück.
+                    ist_spam = antwort == "yes"
+                    ergebnis = await entscheiden(db, v, ist_spam, decided_by="telegram")
+                    await cq.answer("Als Spam markiert" if ist_spam else "Als erwünscht gemerkt")
+                    kopf = "✅ Spam · verschoben" if ist_spam else "🚫 Kein Spam · Absender gemerkt"
+                    await _erledigt(cq, f"{kopf}\n{ergebnis}")
+            elif data.startswith("spamundo:"):
+                _, vid = data.split(":", 1)
+                v = await db.get(SpamVerdict, int(vid))
+                if v is None:
+                    await cq.answer("Nicht gefunden")
+                    await _erledigt(cq, "⏭ Urteil nicht mehr vorhanden")
+                else:
+                    ergebnis = await zurueckholen(db, v)
+                    await cq.answer("Zurückgeholt")
+                    await _erledigt(cq, f"↩️ Zurückgeholt · Absender gemerkt\n{ergebnis}")
+
+            elif data.startswith("spamall:"):
+                _, antwort, batch = data.split(":", 2)
+                if antwort == "einzeln":
+                    faelle = (await db.execute(select(SpamVerdict).where(
+                        SpamVerdict.digest_batch == batch,
+                        SpamVerdict.status == "pending").order_by(SpamVerdict.id))).scalars().all()
+                    if not faelle:
+                        await cq.answer("nichts mehr offen")
+                        await _erledigt(cq, "⏭ nichts mehr offen")
+                    else:
+                        # Jeder Fall bekommt seine eigene Karte — die Sammel-Karte selbst ist
+                        # damit abgearbeitet.
+                        for v in faelle:
+                            titel, text = karte(v)
+                            await bot.send_message(
+                                cq.message.chat.id,
+                                f"<b>{safe(titel)}</b>\n{safe(text)}",
+                                parse_mode="HTML", reply_markup=_spam_kb(v.id))
+                        await cq.answer(f"{len(faelle)} einzeln")
+                        await _erledigt(cq, f"👉 {len(faelle)} Fälle einzeln zugestellt")
+                else:
+                    ist_spam = antwort == "yes"
+                    anzahl, fehler = await entscheide_batch(db, batch, ist_spam,
+                                                            decided_by="telegram")
+                    await cq.answer(f"{anzahl} entschieden")
+                    kopf = ("✅ alle als Spam verschoben" if ist_spam
+                            else "🚫 alle als erwünscht gemerkt")
+                    await _erledigt(cq, f"{kopf} ({anzahl})"
+                                    + (f" · {fehler} nicht verschiebbar" if fehler else ""))
             elif data.startswith("aperm:"):
                 _, dec, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))

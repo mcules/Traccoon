@@ -76,6 +76,29 @@ async def seeded(db):
 
 
 @pytest.fixture(autouse=True)
+def kein_mcp(monkeypatch):
+    """Kein Test spricht mit einem echten MCP-Dienst.
+
+    Der Mail-Eingang ruft am Ende `imap-mcp` und verschiebt damit echte Post. Im Test lief
+    das gegen den laufenden Dienst — die Mailkennung aus den Testdaten zeigt zwar auf keine
+    existierende Nachricht, aber darauf darf sich nichts verlassen. Wer den Aufruf prüfen
+    will, ersetzt `call_tool` selbst (siehe `imap_stub` in den Spam-Tests).
+    """
+    import app.services.mcp_client as mcpmod
+
+    async def verboten(url, tool, arguments=None, **kw):
+        raise AssertionError(
+            f"Test wollte {tool!r} an {url!r} rufen — im Test bitte ersetzen (monkeypatch).")
+
+    monkeypatch.setattr(mcpmod, "call_tool", verboten)
+    import importlib
+    for modname in ("app.services.spam_review",):
+        mod = importlib.import_module(modname)
+        if hasattr(mod, "call_tool"):
+            monkeypatch.setattr(mod, "call_tool", verboten)
+
+
+@pytest.fixture(autouse=True)
 def redis_stub(monkeypatch):
     """Redis/Worker-Ersatz für alle Tests.
 

@@ -107,37 +107,10 @@ async def entscheide_offene_genehmigung(
     Liefert False, wenn es gerade nichts zu entscheiden gibt — der Aufrufer soll das sagen
     können, statt Erfolg zu melden.
     """
-    from ..models.enums import WorkflowNodeType, WorkflowStepStatus, WorkflowTokenState
-    from ..models.workflow import WorkflowStepRun, WorkflowToken
+    from .workflow_engine import entscheide_genehmigung
 
-    inst = await live_instance(db, issue)
-    if inst is None:
-        return False
-    step = (await db.execute(
-        select(WorkflowStepRun).where(
-            WorkflowStepRun.instance_id == inst.id,
-            WorkflowStepRun.node_type == WorkflowNodeType.approval,
-            WorkflowStepRun.status == WorkflowStepStatus.waiting)
-        .order_by(WorkflowStepRun.id.desc()))).scalars().first()
-    if step is None:
-        return False
-    step.status = WorkflowStepStatus.done
-    step.decision = decision
-    step.result = {"reason": reason} if reason else None
-    step.completed_by = actor_id
-    step.completed_at = _now()
-    token = (await db.execute(
-        select(WorkflowToken).where(
-            WorkflowToken.instance_id == inst.id,
-            WorkflowToken.node_id == step.node_id,
-            WorkflowToken.state == WorkflowTokenState.waiting).with_for_update()
-        )).scalars().first()
-    if token is not None:
-        token.state = WorkflowTokenState.active
-        token.waiting_for = None
-    inst.status = WorkflowInstanceStatus.running
-    await db.flush()
-    return True
+    return await entscheide_genehmigung(db, await live_instance(db, issue), decision,
+                                        actor_id=actor_id, reason=reason)
 
 
 # Wo ein Bestandsticket im Standard-Graphen steht. Nur Zustände, die WARTEN — laufende

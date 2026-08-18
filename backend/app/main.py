@@ -358,6 +358,12 @@ async def lifespan(app: FastAPI):
                 # sich für Bestandszeilen nichts ändert.
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS media_path VARCHAR(500)",
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS media_kind VARCHAR(20)",
+                # Mail-Eingang als Prozess: die Spam-Rückfrage kennt ihren Ablauf, damit die
+                # Antwort aus Telegram ihn weiterschaltet statt an ihm vorbei zu verschieben.
+                "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS workflow_instance_id "
+                "INTEGER REFERENCES workflow_instances(id) ON DELETE SET NULL",
+                "CREATE INDEX IF NOT EXISTS ix_spam_verdicts_workflow_instance_id "
+                "ON spam_verdicts (workflow_instance_id)",
             ):
                 if not await _fehlt_noch(conn, _ddl):
                     continue

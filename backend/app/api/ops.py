@@ -213,20 +213,18 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
                                window_until=now + dt.timedelta(seconds=cooldown), payloads=[]))
 
     if sub.mode == "assistant":
-        # E-Mail → projektlose AssistantTask (lokale Vorklassifizierung durch classify_agent).
+        # E-Mail → Ereignis `mail.received`. Was daraus wird (einordnen, Spam, Assistent),
+        # steht im Ablauf des Slots `mail_intake` — auch das Anlegen des Items und der
+        # Start des Assistenten. Deshalb wird hier nichts mehr eingereiht.
         from ..services.mail_intake import intake_mail
-        task, auto = await intake_mail(
+        ids = await intake_mail(
             db, sub.owner_user_id, payload if isinstance(payload, dict) else {},
             source=f"webhook:{route}", classify_agent=sub.classify_agent or "",
             agent=sub.agent or "assistent", prompt_tmpl=sub.prompt_tmpl or "",
             ref_field=sub.ref_field or "", auto_run=sub.auto_run)
-        if task is None:
+        if not ids:
             return {"accepted": True, "ignored": True}
-        if auto:
-            from ..core.redis import enqueue_task
-            await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task.id}",
-                                "assistant_task_id": task.id})
-        return {"accepted": True, "id": task.id, "status": task.status, "auto": auto}
+        return {"accepted": True, "mode": "assistant", "instances": ids}
 
     if sub.mode == "notify":
         # Gerendertes Template als Notification (Telegram-Bot liefert aus).

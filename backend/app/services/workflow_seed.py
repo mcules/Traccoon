@@ -6,7 +6,7 @@ und im Beschaffungsmodul verdrahtet war:
 
     Planung → Plan-Freigabe → Umsetzung → (Abnahme) → Merge/Deploy,
     Fortsetzung mit Feststecker-Erkennung, Rückfragen als Wartepunkt am Kommentar,
-    Aufteilung in Teilaufgaben, Beschaffungskette, Ticket-Eingang.
+    Aufteilung in Teilaufgaben, Beschaffungskette, Ticket-Eingang, Mail-Eingang.
 
 `ensure_builtin_set` läuft beim Backend-Start und ist idempotent: nur wenn sich ein Graph
 tatsächlich geändert hat, wird eine neue Version veröffentlicht. Laufende Instanzen bleiben
@@ -30,7 +30,7 @@ log = logging.getLogger("workflow_seed")
 
 # Steigt, sobald sich ein ausgelieferter Graph ändert (nur zur Nachvollziehbarkeit —
 # veröffentlicht wird ohnehin nur bei echtem Graph-Unterschied).
-BUILTIN_REVISION = 8
+BUILTIN_REVISION = 14
 
 # So oft darf ein Agent an derselben Sache weitermachen, nachdem ihn eine Grenze
 # (Iterationen, Zeit, Token) beendet hat. Umsetzung darf länger dranbleiben als Planung:
@@ -346,6 +346,164 @@ def build_ticket_intake() -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
+# ── Slot: Mail-Eingang ───────────────────────────────────────────────────────
+
+def build_mail_intake() -> dict:
+    """Was mit einer eingegangenen Mail geschieht — vorher fest in `mail_intake.py`.
+
+    Ausgelöst vom Ereignis `mail.received` (der Mail-Webhook meldet es). Der Kontext bringt
+    `mail` (Rohpayload des Watchers) und `eingang` (Einstellungen des Auslösers) mit; alles
+    Weitere schreiben die Schritte selbst (siehe `services/mail_actions.py`).
+
+    Die Reihenfolge der Zweige ist die Leitplanke der Erkennung:
+
+        Erkennung aus       → durchlassen (Not-Aus geht allem vor)
+        bekannter Absender  → durchlassen (Freispruch aus dem Kontaktbestand)
+        gelernt: Spam       → melden und verschieben (ein Irrtum muss auffallen)
+        sicher genug        → verschieben, Karte trägt den Rückweg (ab Werk aus);
+                              greift über die Auto-Schwelle oder beim Serverurteil
+        gelernt: erwünscht  → durchlassen, ohne erneut zu fragen
+        Verdacht            → fragen und warten; erst die Antwort bewegt die Mail
+                              (beide Spam-Wege enden im selben Ausführ-Knoten)
+        unauffällig         → Assistent-Item, wie bei jeder normalen Mail
+
+    Der Fälschungsverdacht ist schon im Urteil verrechnet: er hebt sowohl den Freispruch
+    des Kontaktbestands als auch den des Gedächtnisses auf (`spam_review.beurteilen`).
+    Ein bekannter Name ist das lohnende Ziel — genau da darf die Whitelist nicht greifen.
+
+    „Kein Spam" führt bewusst NICHT ins Leere, sondern in den Assistenten-Zweig: eine Mail,
+    die zu Unrecht verdächtigt wurde, soll danach ganz normal bearbeitet werden können.
+    Vorher blieb sie als Item ohne Karte liegen.
+    """
+    nodes = [
+        _n("start", "start", 0, 0, {
+            "label": "Mail eingegangen",
+            "trigger": {"event": "mail.received"},
+        }),
+        _n("classify", "auto_action", 0, 1,
+           _action("mail_classify", "Mail einordnen")),
+        _n("evaluate", "auto_action", 0, 2,
+           _action("spam_evaluate", "Spam beurteilen")),
+        # Jeder Grund bekommt seinen eigenen Ausgang, obwohl vier davon zum selben Schritt
+        # führen: am Verlauf einer Instanz soll ablesbar sein, WARUM eine Mail durchgelassen
+        # wurde („Absender bekannt" ist etwas anderes als „unauffällig"). Zwei Zweige mit
+        # demselben Ausgangsnamen wären außerdem zwei Ausgänge mit derselben Kennung am
+        # selben Knoten — welche Kante daran hängt, wäre Zufall.
+        _n("weiche", "decision", 0, 3, {
+            "label": "Spam?",
+            "branches": [
+                {"handle": "aus", "label": "Erkennung aus",
+                 "guard": {"==": [{"var": "spam.aktiv"}, False]}},
+                {"handle": "kontakt", "label": "bekannter Absender",
+                 "guard": {"==": [{"var": "spam.bekannter_kontakt"}, True]}},
+                {"handle": "geklaert_spam", "label": "gelernt: Spam", "guard": {"and": [
+                    {"==": [{"var": "spam.geklaert"}, True]},
+                    {"==": [{"var": "spam.geklaert_urteil"}, "spam"]},
+                ]}},
+                {"handle": "geklaert_ham", "label": "gelernt: erwünscht",
+                 "guard": {"==": [{"var": "spam.geklaert"}, True]}},
+                # Steht VOR der Rückfrage: was hier greift, wird nicht mehr gefragt,
+                # sondern verschoben — mit Rückweg auf der Karte. Zwei Wege dorthin:
+                # die Punktzahl über der Auto-Schwelle ODER das Urteil des eigenen
+                # Mailservers. Letzteres, weil es in der gewichteten Mischung untergeht:
+                # 13 Spam-Punkte vom eigenen Server ergeben ein Gesamturteil von ~0.55,
+                # und damit wäre jede sinnvolle Auto-Schwelle unerreichbar.
+                # Die Klammer `auto_ab <= 1` hält den ganzen Zweig aus, solange niemand
+                # die Schwelle bewusst gesetzt hat.
+                {"handle": "auto", "label": "sicher genug (Auto)", "guard": {"and": [
+                    {"<=": [{"var": "spam.auto_ab"}, 1]},
+                    {"or": [
+                        {">=": [{"var": "spam.score"}, {"var": "spam.auto_ab"}]},
+                        {"==": [{"var": "spam.serverurteil"}, True]},
+                    ]},
+                ]}},
+                {"handle": "frage", "label": "Verdacht",
+                 "guard": {">=": [{"var": "spam.score"}, {"var": "spam.frage_ab"}]}},
+                {"handle": "sauber", "label": "unauffällig"},
+            ],
+            "default_handle": "sauber",
+        }),
+
+        # ── Geklärter Fall: verschieben, aber melden ─────────────────────────
+        _n("karte_gelernt", "auto_action", 3, 4,
+           _action("spam_card", "Gelernten Fall melden", vorentschieden=True)),
+
+        # ── Sicher genug: verschieben, aber widersprechlich ─────────────────
+        _n("karte_auto", "auto_action", 3, 5,
+           _action("spam_card", "Aussortierung melden", rueckholbar=True)),
+
+        # ── Verdacht: fragen, warten, ausführen ──────────────────────────────
+        _n("karte", "auto_action", 1, 4, _action("spam_card", "Rückfrage stellen")),
+        _n("rueckfrage", "approval", 1, 5, {
+            "label": "Ist das Spam?",
+            "instructions": "Freigabe verschiebt die Mail in den Spam-Ordner. "
+                            "Ablehnung merkt den Absender als erwünscht.",
+            "assignee": {"mode": "context", "path": "eingang.owner_id"},
+            # Die Frage ist schon gestellt — als Karte mit Knöpfen (Schritt davor bzw.
+            # Sammel-Karte des Scheduler-Takts). Eine zweite Meldung wäre nur Lärm.
+            "notify": False,
+        }),
+        # EIN Ausführ-Knoten für beide Spam-Wege: die Antwort des Menschen und das
+        # Urteil des Gedächtnisses enden in derselben Handlung. `decided_by` bleibt
+        # bewusst leer — die Aktion nimmt es aus dem Kontext (`telegram`, wenn ein Mensch
+        # geantwortet hat, sonst `auto`). Stünde hier ein fester Wert, verbuchte das
+        # Gedächtnis jede menschliche Entscheidung als Automatik.
+        _n("weg", "auto_action", 2, 6,
+           _action("spam_apply", "In den Spam-Ordner", entscheidung="spam")),
+        _n("end_spam", "end", 2, 7, {"label": "Als Spam weggeräumt", "outcome": "completed"}),
+        # Steht auf dem Rückweg zur Mitte: von hier läuft die Mail in den Assistenten.
+        _n("kein_spam", "auto_action", 1, 7,
+           _action("spam_apply", "Absender merken", entscheidung="ham")),
+
+        # ── Normaler Weg: Assistent ──────────────────────────────────────────
+        _n("item", "auto_action", 0, 8, _action("assistant_task", "Assistent-Item anlegen")),
+        _n("ist_auto", "decision", 0, 9, {
+            "label": "Automatisch freigegeben?",
+            "branches": [
+                {"handle": "auto", "label": "gelernte Regel",
+                 "guard": {"==": [{"var": "policy.auto"}, True]}},
+                {"handle": "fragen", "label": "Freigabe einholen"},
+            ],
+            "default_handle": "fragen",
+        }),
+        _n("lauf", "auto_action", -1, 10, _action("assistant_run", "Assistenten starten")),
+        _n("freigabe_karte", "auto_action", 1, 10,
+           _action("assistant_card", "Freigabekarte schicken")),
+        _n("end_item", "end", 0, 11, {"label": "Übergeben", "outcome": "completed"}),
+    ]
+
+    edges = [
+        _e("start", "classify"),
+        _e("classify", "evaluate"),
+        _e("evaluate", "weiche"),
+
+        _e("weiche", "karte_gelernt", "geklaert_spam"),
+        _e("karte_gelernt", "weg"),
+        _e("weiche", "karte_auto", "auto"),
+        _e("karte_auto", "weg"),
+
+        _e("weiche", "karte", "frage"),
+        _e("karte", "rueckfrage"),
+        _e("rueckfrage", "weg", "approved", "ist Spam"),
+        _e("rueckfrage", "kein_spam", "rejected", "kein Spam"),
+        _e("weg", "end_spam"),
+        # Zu Unrecht verdächtigt: der Absender ist gemerkt, die Mail geht ihren normalen Weg.
+        _e("kein_spam", "item"),
+
+        # Vier Wege, ein Ziel: der Assistent bearbeitet die Mail wie jede andere.
+        _e("weiche", "item", "sauber"),
+        _e("weiche", "item", "aus", "Erkennung aus"),
+        _e("weiche", "item", "kontakt", "bekannt"),
+        _e("weiche", "item", "geklaert_ham", "gelernt: erwünscht"),
+        _e("item", "ist_auto"),
+        _e("ist_auto", "lauf", "auto"),
+        _e("ist_auto", "freigabe_karte", "fragen"),
+        _e("lauf", "end_item"),
+        _e("freigabe_karte", "end_item"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 # ── Slot: Hardware-Beschaffung ───────────────────────────────────────────────
 
 def build_hardware_procurement() -> dict:
@@ -358,6 +516,7 @@ BUILDERS = {
     WorkflowSlot.acceptance.value: build_acceptance,
     WorkflowSlot.hardware_procurement.value: build_hardware_procurement,
     WorkflowSlot.ticket_intake.value: build_ticket_intake,
+    WorkflowSlot.mail_intake.value: build_mail_intake,
 }
 
 

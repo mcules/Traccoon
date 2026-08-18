@@ -62,6 +62,8 @@ services:
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
       MCPJUNGLE_BASE: ${MCPJUNGLE_BASE:-http://mcpjungle:8080}
       MCPJUNGLE_ADMIN_TOKEN: ${MCPJUNGLE_ADMIN_TOKEN:-}
+      VAULT_PATH: /vault
+      IMAP_MCP_URL: ${IMAP_MCP_URL:-http://imap-mcp:3010/mcp}
     ports:
       - "${BACKEND_PORT:-8800}:8800"
     volumes:
@@ -76,6 +78,10 @@ services:
       # Beide Mounts gehören zusammen — fehlt er drüben, findet der Bot die Datei nie
       # und die Nachricht geht (still, aber ohne Film) als Text raus.
       - ./data/film:/data/film
+      # Obsidian-Vault NUR LESEND: die Spam-Erkennung zieht daraus die bekannten Adressen
+      # (Freispruch-Liste). Der Vault ist eine Syncthing-Replik — hier hineinzuschreiben
+      # hieße, gegen Obsidian und den Sync anzuschreiben.
+      - ${VAULT_HOST_PATH:-/opt/docker/stacks/syncthing/data/sync/Sync/Obsidian/Second Brain}:/vault:ro
     networks:
       default:
         aliases:
@@ -145,6 +151,9 @@ services:
       TELEGRAM_VOICE_VOKABULAR: ${TELEGRAM_VOICE_VOKABULAR:-}
       # Qwen3-ASR auf der iGPU als erste Wahl; Whisper bleibt als Rückfall erreichbar.
       ASR_URL: ${ASR_URL:-http://asr-gpu:9100}
+      # Bestätigte Spam-Entscheidungen verschiebt der Bot selbst per IMAP-MCP — dafür einen
+      # Agentenlauf zu starten wäre teuer und langsam für eine Handbewegung.
+      IMAP_MCP_URL: ${IMAP_MCP_URL:-http://imap-mcp:3010/mcp}
     volumes:
       - ./backend/app:/app/app
       # Lesend: `Notification.media_path` zeigt hierher. Ohne diesen Mount fällt der

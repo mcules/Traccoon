@@ -25,6 +25,15 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
     ["split_tickets", "Teilaufgaben anlegen"],
     ["stop_agent", "Laufenden Agenten stoppen"],
   ]],
+  ["Mail-Eingang", [
+    ["mail_classify", "Mail einordnen"],
+    ["spam_evaluate", "Spam beurteilen"],
+    ["spam_card", "Spam-Rückfrage stellen"],
+    ["spam_apply", "Spam-Urteil ausführen"],
+    ["assistant_task", "Assistent-Item anlegen"],
+    ["assistant_card", "Freigabekarte schicken"],
+    ["assistant_run", "Assistenten starten"],
+  ]],
   ["Auslieferung", [
     ["start_testenv", "Testumgebung starten"],
     ["stop_testenv", "Testumgebung abräumen"],
