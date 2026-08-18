@@ -30,6 +30,7 @@ async def _location_grant_level(loc_id: int, user: User, db: AsyncSession) -> Gr
     recursive=True (a caretaker gets a grant on the pump house, which then applies to the
     masts below it as well). The grant has to belong to the current project of the location
     (project_id scope), as defence in depth against cross-project grants (see the validation
+    in add_resource_grant)."""
     best: GrantLevel | None = None
     loc = await db.get(Location, loc_id)
     seen: set[int] = set()

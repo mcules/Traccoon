@@ -1,4 +1,4 @@
-"""Persönliche Settings (/me/*) + Redis-Flags (Layer C) + Admin-Toggles."""
+"""Personal settings (/me/*) plus Redis flags (layer C) plus admin toggles."""
 import datetime as dt
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -63,8 +63,8 @@ ASSISTANT_NOTIFY = ("needed", "always", "errors", "never")
 @router.put("/me/assistant-notify", status_code=204)
 async def set_assistant_notify(d: StrIn, u: User = Depends(get_current_user),
                                db: AsyncSession = Depends(get_session)):
-    """Wann der persönliche Assistent sich meldet. Voreinstellung `needed`: nur wenn er
-    ausdrücklich etwas meldet, bei Fehlern und im Chat — erledigte Ablage bleibt still."""
+    """When the personal assistant speaks up. The default `needed`: only when it explicitly
+    reports something, on errors and in the chat; finished filing stays silent."""
     u.assistant_notify = d.value if d.value in ASSISTANT_NOTIFY else "needed"
     await db.commit()
 
@@ -72,8 +72,8 @@ async def set_assistant_notify(d: StrIn, u: User = Depends(get_current_user),
 @router.put("/me/vault-memory-path", status_code=204)
 async def set_vault_memory_path(d: StrIn, u: User = Depends(get_current_user),
                                 db: AsyncSession = Depends(get_session)):
-    """Gedächtnis-Ordner im Obsidian-Vault (TRA-30). Darunter legen die Agenten ihre gelernten
-    Vorgaben ab und lesen sie bei jedem Lauf wieder. Leer = kein Gedächtnis."""
+    """Memory folder in the Obsidian vault (TRA-30). The agents file their learned rules
+    below it and read them again on every run. Empty = no memory."""
     u.vault_memory_path = (d.value or "").strip().strip("/")[:500]
     await db.commit()
 
@@ -85,7 +85,7 @@ async def set_telegram(d: StrIn, u: User = Depends(get_current_user), db: AsyncS
 
 
 class NotifyIn(BaseModel):
-    """Wie diese Person erreicht werden will. Leere Felder bleiben unverändert."""
+    """How this person wants to be reached. Empty fields stay unchanged."""
     notify_default: str | None = None       # telegram | email
     notify_email: str | None = None         # leer = Anmelde-Adresse benutzen
     telegram_chat_id: str | None = None
@@ -96,9 +96,9 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
     """Benachrichtigungswege im Profil verwalten.
 
-    Der Standard entscheidet, wohin eine Nachricht geht, wenn der Absender keinen Weg
-    nennt — und das ist der Normalfall: ein Ablauf kennt seinen Empfänger oft erst zur
-    Laufzeit und weiß nichts über dessen Gewohnheiten.
+    The default decides where a message goes when the sender names no channel, and that is
+    the normal case: a flow often knows its recipient only at runtime and knows nothing about
+    their habits.
     """
     from ..services.notify import KANAELE
     if d.notify_default is not None:
@@ -131,13 +131,13 @@ async def set_theme(d: StrIn, u: User = Depends(get_current_user), db: AsyncSess
 
 @router.put("/me/email", status_code=204)
 async def set_email(d: StrIn, u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    """Eigene E-Mail ändern (Self-Service). Leer = E-Mail entfernen (dann kein E-Mail-Login)."""
+    """Change one's own e-mail (self-service). Empty = remove the e-mail (then no e-mail login)."""
     raw = (d.value or "").strip()
     if not raw:
         u.email = None
         await db.commit()
         return
-    email = _valid_email(raw)  # wirft bei ungültigem Format
+    email = _valid_email(raw)  # raises on an invalid format
     other = (await db.execute(
         select(User).where(User.email == email, User.id != u.id))).scalar_one_or_none()
     if other is not None:
@@ -155,7 +155,7 @@ async def set_default_view(d: StrIn, u: User = Depends(get_current_user), db: As
 @router.put("/me/ticket-open-mode", status_code=204)
 async def set_ticket_open_mode(d: StrIn, u: User = Depends(get_current_user),
                                db: AsyncSession = Depends(get_session)):
-    """Wie ein Ticket per Linksklick öffnet: popup (Drawer) oder page (volle Seite)."""
+    """How a ticket opens on a left click: popup (drawer) or page (full page)."""
     u.ticket_open_mode = d.value if d.value in ("popup", "page") else "popup"
     await db.commit()
 
@@ -163,7 +163,7 @@ async def set_ticket_open_mode(d: StrIn, u: User = Depends(get_current_user),
 @router.put("/me/pm-chat-style", status_code=204)
 async def set_pm_chat_style(d: StrIn, u: User = Depends(get_current_user),
                             db: AsyncSession = Depends(get_session)):
-    """Darstellung des PM-Chats: bubbles (Sprechblasen) oder cli (Terminal-Look)."""
+    """Presentation of the PM chat: bubbles or cli (terminal look)."""
     u.pm_chat_style = d.value if d.value in ("bubbles", "cli") else "bubbles"
     await db.commit()
 
@@ -176,7 +176,7 @@ class TicketLayoutIn(BaseModel):
 @router.put("/me/ticket-layout", status_code=204)
 async def set_ticket_layout(d: TicketLayoutIn, u: User = Depends(get_current_user),
                             db: AsyncSession = Depends(get_session)):
-    """Nutzerspezifische Block-Anordnung der vollen Ticket-Seite speichern."""
+    """Save the user specific block arrangement of the full ticket page."""
     u.ticket_layout = {"left": d.left[:40], "right": d.right[:40]}
     await db.commit()
 
@@ -187,12 +187,12 @@ class McpReachIn(BaseModel):
 
 @router.get("/me/mcp")
 async def my_mcp(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    """Eigene MCP-Reichweite (MCPJungle-Gruppe) + wählbare Server. Self-Service konfigurierbar."""
+    """One's own MCP reach (MCPJungle group) plus selectable servers. Configurable self-service."""
     from ..services.mcp_provision import list_available_servers
     available: list[str] = []
     try:
         available = await list_available_servers()
-    except Exception:  # noqa: BLE001  (MCPJungle nicht erreichbar / kein Admin-Token)
+    except Exception:  # noqa: BLE001  (MCPJungle unreachable or no admin token)
         pass
     return {"group": u.mcp_group or "", "servers": list(u.mcp_servers or []),
             "provisioned": bool(u.mcp_group and u.mcp_token_enc), "available": available}
@@ -214,8 +214,8 @@ async def set_my_mcp(d: McpReachIn, u: User = Depends(get_current_user),
 
 @router.post("/me/mcp/import")
 async def import_mcp(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    """Die MCPJungle-Server als echte McpServer-Registry-Einträge übernehmen (editierbar wie
-    manuell). Schaltet die Gateway-Gruppe ab (Registry ersetzt sie)."""
+    """Take over the MCPJungle servers as real McpServer registry entries (editable like
+    manual ones). Switches the gateway group off (the registry replaces it)."""
     from ..services.mcp_provision import McpProvisionError, import_registry_from_jungle
     try:
         return await import_registry_from_jungle(db, u)
@@ -226,7 +226,7 @@ async def import_mcp(u: User = Depends(get_current_user), db: AsyncSession = Dep
 
 @router.get("/me/onboarding")
 async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    """Was fehlt noch, damit echte Agentenläufe möglich sind — geprüft, nicht geraten."""
+    """What is still missing for real agent runs to be possible: checked, not guessed."""
     from sqlalchemy import select
 
     from ..core.redis import runner_connected
@@ -240,13 +240,13 @@ async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Dep
     can_assign = [p for m, p in memberships if m.ai_assign]
     git_ready = [p for p in can_assign if p.git_enabled and p.github_repo and p.git_token_enc]
     verify_ready = [p for p in can_assign if p.verify_command]
-    # LLM-Token vorhanden = benannter Provider-Token ODER Alt-Feld (Subscription).
+    # An LLM token is present = a named provider token OR the legacy field (subscription).
     has_token = bool((await db.execute(select(ProviderToken.id).where(
         ProviderToken.user_id == u.id).limit(1))).first()) or bool(
         u.claude_oauth_token_enc or u.codex_token_enc)
 
-    # Beschriftung und Hinweis kommen aus dem Server-Katalog, in der Sprache des Lesers: die
-    # Liste ist das Erste, was jemand nach der Anmeldung sieht.
+    # Label and hint come from the server catalog, in the language of the reader: the list is
+    # the first thing somebody sees after logging in.
     from ..services.i18n import tr
     fertig = {"claude_token": has_token, "runner": await runner_connected(),
               "project": bool(can_assign), "git": bool(git_ready),
@@ -271,20 +271,20 @@ async def dismiss_onboarding(u: User = Depends(get_current_user),
     await db.commit()
 
 
-# Ticket-Agent-Zustände, die eine menschliche Reaktion erfordern (Arbeitsliste).
+# Ticket agent states that require a human reaction (the work list).
 _WAIT_STATES = ["plan_review", "to_test", "hold", "failed"]
 
 
 @router.get("/me/dashboard")
 async def my_dashboard(u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    """Persönliches Start-Dashboard: projektübergreifend meine offenen/wartenden Tickets
-    plus Eckdaten. Alles zur Abfragezeit aggregiert — keine gespeicherten Gadgets.
+    """Personal start dashboard: my open and waiting tickets across projects plus key figures.
+    Everything is aggregated at query time, with no stored gadgets.
 
     Zwei Listen:
-    - `action`: Tickets, die MEINE Interaktion brauchen (Agent wartet auf mich — Plan-Freigabe,
-      Test-Abnahme, Rückfrage/Hold, Fehler). „Meine" = ich habe den Agenten zugewiesen
-      (`assigned_by_user_id`) ODER das Ticket ist mir als Person zugewiesen (`assignee_user_id`).
-    - `assigned`: mir zugewiesene, noch offene Tickets, die NICHT schon in `action` stehen.
+    - `action`: tickets that need MY interaction (the agent waits for me: plan approval, test
+      acceptance, question or hold, error). "Mine" means I assigned the agent
+      (`assigned_by_user_id`) OR the ticket is assigned to me as a person (`assignee_user_id`).
+    - `assigned`: tickets assigned to me that are still open and NOT already in `action`.
     """
     from sqlalchemy import func, or_, select
 
@@ -309,14 +309,14 @@ async def my_dashboard(u: User = Depends(get_current_user), db: AsyncSession = D
             .join(WorkflowStatus, WorkflowStatus.id == Issue.status_id)
             .where(Issue.archived.is_(False)))
 
-    # Braucht meine Interaktion — Agent wartet auf mich.
+    # Needs my interaction: the agent waits for me.
     action_rows = (await db.execute(
         base.where(mine, Issue.agent_status.in_(_WAIT_STATES))
         .order_by(Issue.updated_at.desc()))).all()
     action = [_serialize(i, p, c) for i, p, c in action_rows]
     action_keys = {a["key"] for a in action}
 
-    # Mir zugewiesen und noch offen (nicht erledigt), ohne die bereits oben gelisteten.
+    # Assigned to me and still open (not finished), without the ones listed above.
     assigned_rows = (await db.execute(
         base.where(Issue.assignee_user_id == u.id, Issue.resolved_at.is_(None),
                    WorkflowStatus.category != "done")
@@ -357,7 +357,7 @@ async def my_flags(u: User = Depends(get_current_user)):
     return out
 
 
-# Per-User-Flag-Toggles: POST = an, DELETE = aus
+# Per-user flag toggles: POST = on, DELETE = off
 def _mk_user_flag(name: str):
     async def on(u: User = Depends(get_current_user)):
         await set_user_flag(name, u.id, True)
