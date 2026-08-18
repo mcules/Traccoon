@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 
@@ -80,8 +81,8 @@ export default function Members({ project }: { project: Project }) {
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase text-muted">
-            <th className="py-2">Mitglied</th><th>Rolle</th>
-            <th title="Darf KI nutzen + Tickets zuweisen">KI-Recht</th><th></th>
+            <th className="py-2">{tr("members.mitglied")}</th><th>{tr("members.rolle")}</th>
+            <th title={tr("members.darf_ki_nutzen_tickets_zuweisen")}>KI-Recht</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -100,7 +101,7 @@ export default function Members({ project }: { project: Project }) {
                   onChange={(e) => update.mutate({ user_id: m.user_id, body: { ai_assign: e.target.checked } })} />
               </td>
               <td className="text-right">
-                <button onClick={() => remove.mutate(m.user_id)} className="text-muted hover:text-red-400">Entfernen</button>
+                <button onClick={() => remove.mutate(m.user_id)} className="text-muted hover:text-red-400">{tr("members.entfernen")}</button>
               </td>
             </tr>
           ))}
@@ -110,7 +111,7 @@ export default function Members({ project }: { project: Project }) {
       {/* Bestehenden Nutzer per Benutzername/Anzeigename suchen und direkt hinzufügen */}
       <div className="mt-5">
         <label className="text-xs text-muted">Bestehenden Nutzer hinzufügen (Benutzername oder Anzeigename)
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Name eingeben…"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("members.name_eingeben")}
             className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1" />
         </label>
         {q.trim().length >= 1 && (
@@ -160,11 +161,11 @@ export default function Members({ project }: { project: Project }) {
 
       {pending.length > 0 && (
         <div className="mt-6">
-          <div className="mb-2 text-xs font-medium uppercase text-muted">Offene Einladungen</div>
+          <div className="mb-2 text-xs font-medium uppercase text-muted">{tr("members.offene_einladungen")}</div>
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase text-muted">
-                <th className="py-2">E-Mail</th><th>Rolle</th><th>Läuft ab</th><th></th>
+                <th className="py-2">E-Mail</th><th>{tr("members.rolle")}</th><th>{tr("members.laeuft_ab")}</th><th></th>
               </tr>
             </thead>
             <tbody>

@@ -1,4 +1,5 @@
 import type { AssigneeSpec } from "./types";
+import { tr } from "../../i18n";
 import type { MemberLite } from "../../api";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -46,10 +47,10 @@ export function AssigneeEditor({
         onChange={(e) => onChange({ mode: e.target.value as AssigneeSpec["mode"] })}
         className={inp}
       >
-        <option value="user">Bestimmter Nutzer</option>
-        <option value="role">Projektrolle</option>
-        <option value="context">Aus Kontext</option>
-        <option value="reporter">Melder</option>
+        <option value="user">{tr("assignee.bestimmter_nutzer")}</option>
+        <option value="role">{tr("assignee.projektrolle")}</option>
+        <option value="context">{tr("assignee.aus_kontext")}</option>
+        <option value="reporter">{tr("assignee.melder")}</option>
       </select>
       {spec.mode === "user" && (
         <select
@@ -82,7 +83,7 @@ export function AssigneeEditor({
         <input
           value={spec.context_key || ""}
           onChange={(e) => onChange({ mode: "context", context_key: e.target.value })}
-          placeholder="Kontext-Schlüssel"
+          placeholder={tr("assignee.kontext_schluessel")}
           className={inp}
         />
       )}

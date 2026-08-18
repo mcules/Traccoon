@@ -1,4 +1,5 @@
 import { BaseNode, type FlowNodeProps } from "./shared";
+import { tr } from "../../../i18n";
 import { assigneeLabel } from "../assignee";
 
 export default function HumanTaskNode({ id, data, selected }: FlowNodeProps) {
@@ -15,7 +16,7 @@ export default function HumanTaskNode({ id, data, selected }: FlowNodeProps) {
     >
       <div>Zuständig: {assigneeLabel(c.assignee)}</div>
       {(c.form?.length ?? 0) > 0 && <div>{c.form!.length} Formularfeld(er)</div>}
-      {c.handover && <div>↪ Übergabe möglich</div>}
+      {c.handover && <div>{tr("human_task_node.uebergabe_moeglich")}</div>}
     </BaseNode>
   );
 }

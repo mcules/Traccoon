@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, workflowApi, MyDashboard, MyTicket, ProjectMeta, WorkflowTaskLite } from "../api";
@@ -34,15 +35,15 @@ export default function MyWork() {
   return (
     <div className="mb-6 space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Kachel label="Wartet auf dich" wert={s.action}
+        <Kachel label={tr("my_work.wartet_auf_dich")} wert={s.action}
           farbe={s.action ? "text-yellow-400" : undefined} />
-        <Kachel label="Mir zugewiesen" wert={s.assigned} />
-        <Kachel label="Läuft gerade" wert={s.working}
+        <Kachel label={tr("my_work.mir_zugewiesen")} wert={s.assigned} />
+        <Kachel label={tr("my_work.laeuft_gerade")} wert={s.working}
           farbe={s.working ? "text-sky-400" : undefined} />
-        <Kachel label="Erledigt (7 T.)" wert={s.done_7d} farbe="text-green-400" />
-        <Kachel label="Projekte" wert={s.projects} />
+        <Kachel label={tr("my_work.erledigt_7_t")} wert={s.done_7d} farbe="text-green-400" />
+        <Kachel label={tr("my_work.projekte")} wert={s.projects} />
         <Link to="/inbox" className="block">
-          <Kachel label="Ungelesen" wert={s.unread}
+          <Kachel label={tr("my_work.ungelesen")} wert={s.unread}
             farbe={s.unread ? "text-brand" : undefined} />
         </Link>
       </div>
@@ -172,7 +173,7 @@ function TicketZeile({ t }: { t: MyTicket }) {
       className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 hover:border-brand">
       <span className="font-mono text-xs text-muted" title={t.project_name}>{t.key}</span>
       <span className="min-w-0 flex-1 truncate text-sm">{t.summary}</span>
-      {t.agent_working && <span className="text-xs text-sky-400" title="Agent arbeitet">▶ läuft</span>}
+      {t.agent_working && <span className="text-xs text-sky-400" title={tr("my_work.agent_arbeitet")}>{tr("my_work.laeuft")}</span>}
       {wi && (
         <span className={`shrink-0 text-xs ${
           wi.kind === "error" ? "text-red-400" : wi.kind === "question" ? "text-yellow-400" : "text-muted"

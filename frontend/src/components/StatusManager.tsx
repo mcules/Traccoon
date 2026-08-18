@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 
@@ -52,7 +53,7 @@ export default function StatusManager({ project }: { project: Project }) {
 
   return (
     <div className="rounded-lg border border-line bg-card p-4">
-      <div className="mb-1 text-sm font-medium">Board-Spalten (Status)</div>
+      <div className="mb-1 text-sm font-medium">{tr("status_manager.board_spalten_status")}</div>
       <p className="mb-3 text-xs text-muted">
         Diese Spalten bilden das Kanban-Board — von links (offen) nach rechts (erledigt).
         Neue Projekte starten mit To&nbsp;Do / In&nbsp;Arbeit / Fertig.
@@ -73,12 +74,12 @@ export default function StatusManager({ project }: { project: Project }) {
               className="rounded border border-line bg-surface px-2 py-1 text-xs text-ink">
               {KATEGORIEN.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
-            <button onClick={() => del(s)} className="text-muted hover:text-red-400" title="Status löschen">✕</button>
+            <button onClick={() => del(s)} className="text-muted hover:text-red-400" title={tr("status_manager.status_loeschen")}>✕</button>
           </div>
         ))}
       </div>
       <div className="mt-3 flex items-center gap-2">
-        <input value={neu} onChange={(e) => setNeu(e.target.value)} placeholder="Neue Spalte"
+        <input value={neu} onChange={(e) => setNeu(e.target.value)} placeholder={tr("status_manager.neue_spalte")}
           onKeyDown={(e) => e.key === "Enter" && add()}
           className="flex-1 rounded border border-line bg-surface px-2 py-1 text-sm" />
         <select value={neuKat} onChange={(e) => setNeuKat(e.target.value)}

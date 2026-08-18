@@ -24,7 +24,7 @@ def user_out(u: User) -> UserOut:
         default_project_view=u.default_project_view, ticket_open_mode=u.ticket_open_mode,
         ticket_layout=u.ticket_layout or {}, pm_chat_style=u.pm_chat_style,
         workflow_set_id=u.workflow_set_id,
-        notify_default=u.notify_default, notify_email=u.notify_email,
+        locale=u.locale, notify_default=u.notify_default, notify_email=u.notify_email,
         telegram_chat_id=u.telegram_chat_id,
         claude_token_set=bool(u.claude_oauth_token_enc), created_at=u.created_at,
     )

@@ -43,6 +43,9 @@ class User(TimestampMixin, Base):
     notify_default: Mapped[str] = mapped_column(String(20), default="telegram")  # telegram|email
     # Abweichende Adresse für Benachrichtigungen; leer = die Anmelde-Adresse (`email`).
     notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # UI language. German is the source language of the shipped catalogs, everything else
+    # is a translation, so an unknown value simply falls back to it.
+    locale: Mapped[str] = mapped_column(String(10), default="de")
 
     # MCP-Gateway (MCPJungle) pro User — harte serverseitige Tool-Trennung.
     mcp_group: Mapped[str] = mapped_column(String(120), default="")          # MCPJungle-Gruppe

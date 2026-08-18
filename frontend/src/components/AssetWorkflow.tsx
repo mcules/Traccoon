@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api, ApiError, workflowApi,
@@ -52,7 +53,7 @@ export default function AssetWorkflow({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["asset-workflow", assetId] }),
   });
 
-  if (isLoading) return <div className="text-xs text-muted">Lädt…</div>;
+  if (isLoading) return <div className="text-xs text-muted">{tr("asset_workflow.laedt")}</div>;
   if (error) {
     return (
       <div className="text-xs text-red-400">
@@ -154,7 +155,7 @@ function InstancePanel({
 
       {openSteps.length > 0 ? (
         <div className="space-y-2">
-          <div className="text-xs font-medium text-muted">Offene Schritte</div>
+          <div className="text-xs font-medium text-muted">{tr("asset_workflow.offene_schritte")}</div>
           {openSteps.map((s) => {
             const cfg = configByNode[s.node_id] ?? {};
             return (
@@ -177,7 +178,7 @@ function InstancePanel({
       ) : (
         instance.status !== "completed" &&
         instance.status !== "cancelled" && (
-          <div className="text-xs text-muted">Aktuell kein Schritt, der auf dich wartet.</div>
+          <div className="text-xs text-muted">{tr("asset_workflow.aktuell_kein_schritt_der_auf_dich_wartet")}</div>
         )
       )}
     </div>

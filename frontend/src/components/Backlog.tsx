@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
 import { waitInfo } from "../lib/waitReason";
@@ -57,7 +58,7 @@ export default function Backlog({
       <select value={i.sprint_id ?? ""} onChange={(e) =>
         setSprint.mutate({ key: i.key, sprint_id: e.target.value ? +e.target.value : null })}
         className="rounded border border-line bg-surface px-1.5 py-0.5 text-xs text-ink">
-        <option value="">Backlog</option>
+        <option value="">{tr("backlog.backlog")}</option>
         {offeneSprints.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
       </select>
     </div>
@@ -85,7 +86,7 @@ export default function Backlog({
                   Abschließen</button>
               ) : (
                 <button onClick={() => aktion.mutate({ id: s.id, was: "start" })}
-                  className="rounded bg-brand px-2 py-1 text-xs text-white">Starten</button>
+                  className="rounded bg-brand px-2 py-1 text-xs text-white">{tr("backlog.starten")}</button>
               )}
               {!drin.length && (
                 <button onClick={() => loeschen.mutate(s.id)}
@@ -94,7 +95,7 @@ export default function Backlog({
             </div>
             <div className="space-y-1">
               {drin.length ? drin.map(Zeile)
-                : <div className="text-xs text-muted">Noch nichts zugeordnet.</div>}
+                : <div className="text-xs text-muted">{tr("backlog.noch_nichts_zugeordnet")}</div>}
             </div>
           </section>
         );
@@ -102,17 +103,17 @@ export default function Backlog({
 
       <section className="rounded-lg border border-line p-3">
         <div className="mb-2 flex items-center gap-2">
-          <span className="font-medium">Backlog</span>
+          <span className="font-medium">{tr("backlog.backlog")}</span>
           <span className="text-xs text-muted">{backlog.length} Tickets</span>
           <div className="flex-1" />
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Neuer Sprint"
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("backlog.neuer_sprint")}
             className="rounded border border-line bg-surface px-2 py-1 text-xs" />
           <button onClick={() => name.trim() && neu.mutate()}
             className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">+ Sprint</button>
         </div>
         <div className="space-y-1">
           {backlog.length ? backlog.map(Zeile)
-            : <div className="text-xs text-muted">Backlog ist leer.</div>}
+            : <div className="text-xs text-muted">{tr("backlog.backlog_ist_leer")}</div>}
         </div>
       </section>
     </div>

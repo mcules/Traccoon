@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Issue, Project, ProjectMeta, Status } from "../api";
 import { waitInfo } from "../lib/waitReason";
@@ -207,7 +208,7 @@ export default function Board({
                 {cardContent(i)}
               </button>
               <div className="flex items-center gap-2 border-t border-line px-3 py-2 text-xs">
-                <span className="text-muted">Status</span>
+                <span className="text-muted">{tr("board.status")}</span>
                 {canMove ? (
                   <select
                     value={i.status_id}

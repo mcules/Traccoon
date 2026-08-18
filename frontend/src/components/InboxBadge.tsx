@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { tr } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 
@@ -10,7 +11,7 @@ export default function InboxBadge() {
   });
   const nNew = data.filter((t) => t.status === "new").length;
   return (
-    <Link to="/inbox" title="Assistent-Inbox"
+    <Link to="/inbox" title={tr("inbox_badge.assistent_inbox")}
       className="relative flex items-center gap-1 text-muted hover:text-ink">
       <span>🗂️</span>
       {nNew > 0 && (

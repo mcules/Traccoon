@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { FlowNode } from "./nodes/shared";
 import Schrittprotokoll, { type Schritt } from "./Schrittprotokoll";
@@ -74,7 +75,7 @@ export default function ProbelaufPanel(
               Probelauf — {schritte.length} Schritt{schritte.length === 1 ? "" : "e"}
             </span>
             <button onClick={() => setSchritte(null)}
-              className="text-muted hover:text-ink" title="schließen">✕</button>
+              className="text-muted hover:text-ink" title={tr("probelauf_panel.schliessen")}>✕</button>
           </div>
           <Schrittprotokoll schritte={schritte} maxHoehe="18rem"
             leerText="Kein Schritt gelaufen — der Ablauf ging direkt zum Ende." />

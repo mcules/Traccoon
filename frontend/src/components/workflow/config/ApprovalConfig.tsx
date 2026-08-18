@@ -1,4 +1,5 @@
 import type { NodeConfig } from "../types";
+import { tr } from "../../../i18n";
 import type { MemberLite } from "../../../api";
 import { AssigneeEditor } from "../assignee";
 
@@ -15,7 +16,7 @@ export default function ApprovalConfig({
   return (
     <div className="space-y-3">
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">Freigeber</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("approval_config.freigeber")}</div>
         <AssigneeEditor
           value={config.approvers}
           members={members}
@@ -31,7 +32,7 @@ export default function ApprovalConfig({
           className={`mt-1 ${inp}`}
         >
           <option value="ai_assign">KI-Recht (ai_assign)</option>
-          <option value="role">Projektrolle</option>
+          <option value="role">{tr("approval_config.projektrolle")}</option>
           <option value="none">ohne Gate</option>
         </select>
       </label>

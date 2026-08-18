@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, destinationApi, type Destination, type DestinationScope } from "../api";
 import { KeyValueEditor } from "./workflow/kv";
@@ -106,8 +107,8 @@ export default function DestinationsPanel({
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        Ein <b>Ziel</b> bündelt Basis-URL und Anmeldung einer externen Gegenstelle. Prozesse,
-        Jobs und (falls freigegeben) KI-Agenten rufen es später nur über seinen <b>Namen</b> auf
+        Ein <b>{tr("destinations_panel.ziel")}</b> bündelt Basis-URL und Anmeldung einer externen Gegenstelle. Prozesse,
+        Jobs und (falls freigegeben) KI-Agenten rufen es später nur über seinen <b>{tr("destinations_panel.namen")}</b> auf
         und ergänzen Methode, Pfad, Query, Kopfzeilen und Body. Zugangsdaten werden verschlüsselt
         gespeichert und nie wieder angezeigt.
         {scope === "user" && " Persönliche Ziele gelten in allen deinen Projekten."}
@@ -125,7 +126,7 @@ export default function DestinationsPanel({
               <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
                 {AUTH.find(([k]) => k === d.auth_type)?.[1] || d.auth_type}
               </span>
-              {d.has_secret && <span className="text-xs text-green-400" title="Geheimnis hinterlegt">🔑</span>}
+              {d.has_secret && <span className="text-xs text-green-400" title={tr("destinations_panel.geheimnis_hinterlegt")}>🔑</span>}
               {d.allow_agents && (
                 <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-xs text-purple-300">
                   für Agenten frei
@@ -133,47 +134,47 @@ export default function DestinationsPanel({
               )}
               <div className="flex-1" />
               {probe[d.id] && <span className="text-xs text-muted">{probe[d.id]}</span>}
-              <button onClick={() => testen.mutate(d.id)} title="Probeaufruf (GET auf die Basis-URL)"
-                className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">Testen</button>
+              <button onClick={() => testen.mutate(d.id)} title={tr("destinations_panel.probeaufruf_get_auf_die_basis_url")}
+                className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">{tr("destinations_panel.testen")}</button>
               <button onClick={() => bearbeiten(d)}
-                className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">Bearbeiten</button>
+                className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">{tr("destinations_panel.bearbeiten")}</button>
               <button onClick={() => confirm(`Ziel „${d.name}" löschen?`) && loeschen.mutate(d.id)}
-                className="rounded border border-line px-2 py-0.5 text-xs hover:border-red-400">Löschen</button>
+                className="rounded border border-line px-2 py-0.5 text-xs hover:border-red-400">{tr("destinations_panel.loeschen")}</button>
             </div>
             <div className="mt-1 truncate text-xs text-muted">{d.base_url}</div>
           </div>
         ))}
-        {ziele?.length === 0 && <div className="text-xs text-muted">Noch keine Ziele.</div>}
+        {ziele?.length === 0 && <div className="text-xs text-muted">{tr("destinations_panel.noch_keine_ziele")}</div>}
       </div>
 
       <div className="space-y-2 rounded-lg border border-line bg-card p-3">
         <div className="text-sm font-medium">{editId ? "Ziel bearbeiten" : "Neues Ziel"}</div>
         <div className="grid grid-cols-2 gap-2">
           <input value={f.name} disabled={!!editId} onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder="Name (z. B. crm)" className={`${inp} font-mono disabled:opacity-50`} />
+            placeholder={tr("destinations_panel.name_z_b_crm")} className={`${inp} font-mono disabled:opacity-50`} />
           <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })}
-            placeholder="Bezeichnung" className={inp} />
+            placeholder={tr("destinations_panel.bezeichnung")} className={inp} />
           <input value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })}
-            placeholder="Basis-URL (https://api.example.com/v1)" className={`${inp} col-span-2`} />
+            placeholder={tr("destinations_panel.basis_url_https_api_example_com_v1")} className={`${inp} col-span-2`} />
           <select value={f.auth_type} onChange={(e) => setF({ ...f, auth_type: e.target.value })} className={inp}>
             {AUTH.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
           <input type="number" min={1} max={600} value={f.timeout_sec}
             onChange={(e) => setF({ ...f, timeout_sec: Number(e.target.value) })}
-            placeholder="Zeitlimit (s)" className={inp} />
+            placeholder={tr("destinations_panel.zeitlimit_s")} className={inp} />
           <input type="number" min={500} max={60000} step={500} value={f.max_response_chars}
             onChange={(e) => setF({ ...f, max_response_chars: Number(e.target.value) })}
-            title="Wie viel der Antwort der Aufrufer höchstens sieht. Nur anheben, wenn die Gegenstelle ihre Lage bewusst in einem Abruf liefert."
-            placeholder="Antwort max. (Zeichen)" className={inp} />
+            title={tr("destinations_panel.wie_viel_der_antwort_der_aufrufer_hoechs")}
+            placeholder={tr("destinations_panel.antwort_max_zeichen")} className={inp} />
 
           {f.auth_type === "basic" && (
             <input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })}
-              placeholder="Benutzername" className={inp} />
+              placeholder={tr("destinations_panel.benutzername")} className={inp} />
           )}
           {f.auth_type === "api_key" && (
             <>
               <input value={f.api_key_name} onChange={(e) => setF({ ...f, api_key_name: e.target.value })}
-                placeholder="Name des Schlüssels" className={inp} />
+                placeholder={tr("destinations_panel.name_des_schluessels")} className={inp} />
               <select value={f.api_key_in} onChange={(e) => setF({ ...f, api_key_in: e.target.value })} className={inp}>
                 <option value="header">im Kopf (Header)</option>
                 <option value="query">in der URL (Query)</option>
@@ -183,19 +184,19 @@ export default function DestinationsPanel({
           {f.auth_type === "hmac" && (
             <>
               <input value={f.hmac_header} onChange={(e) => setF({ ...f, hmac_header: e.target.value })}
-                placeholder="Signatur-Kopfzeile" className={inp} />
+                placeholder={tr("destinations_panel.signatur_kopfzeile")} className={inp} />
               <input value={f.hmac_prefix} onChange={(e) => setF({ ...f, hmac_prefix: e.target.value })}
-                placeholder="Präfix (leer lassen, z. B. Predecessor)" className={inp} />
+                placeholder={tr("destinations_panel.praefix_leer_lassen_z_b_hermes")} className={inp} />
             </>
           )}
           {f.auth_type === "oauth2_cc" && (
             <>
               <input value={f.oauth_token_url} onChange={(e) => setF({ ...f, oauth_token_url: e.target.value })}
-                placeholder="Token-URL" className={`${inp} col-span-2`} />
+                placeholder={tr("destinations_panel.token_url")} className={`${inp} col-span-2`} />
               <input value={f.oauth_client_id} onChange={(e) => setF({ ...f, oauth_client_id: e.target.value })}
-                placeholder="Client-ID" className={inp} />
+                placeholder={tr("destinations_panel.client_id")} className={inp} />
               <input value={f.oauth_scope} onChange={(e) => setF({ ...f, oauth_scope: e.target.value })}
-                placeholder="Scope (optional)" className={inp} />
+                placeholder={tr("destinations_panel.scope_optional")} className={inp} />
             </>
           )}
           {secretField && (
@@ -206,7 +207,7 @@ export default function DestinationsPanel({
         </div>
 
         <div>
-          <div className="mb-1 text-xs font-medium text-muted">Feste Kopfzeilen (bei jedem Aufruf)</div>
+          <div className="mb-1 text-xs font-medium text-muted">{tr("destinations_panel.feste_kopfzeilen_bei_jedem_aufruf")}</div>
           <KeyValueEditor value={kopf} onChange={setKopf} />
         </div>
 
@@ -219,7 +220,7 @@ export default function DestinationsPanel({
           <input type="checkbox" checked={!!f.allow_agents}
             onChange={(e) => setF({ ...f, allow_agents: e.target.checked })} />
           Für KI-Agenten freigeben
-          <span className="text-xs text-muted">(sonst nur Prozesse und Jobs)</span>
+          <span className="text-xs text-muted">{tr("destinations_panel.sonst_nur_prozesse_und_jobs")}</span>
         </label>
 
         <div className="flex gap-2">
@@ -228,7 +229,7 @@ export default function DestinationsPanel({
             {editId ? "Speichern" : "Anlegen"}
           </button>
           {editId && (
-            <button onClick={reset} className="rounded border border-line px-3 py-1.5 text-sm">Abbrechen</button>
+            <button onClick={reset} className="rounded border border-line px-3 py-1.5 text-sm">{tr("destinations_panel.abbrechen")}</button>
           )}
         </div>
       </div>

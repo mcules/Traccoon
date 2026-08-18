@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { tr } from "../i18n";
 import { api, Project, ProjectCosts } from "../api";
 import DeploymentsPanel from "./DeploymentsPanel";
 
@@ -16,7 +17,7 @@ export default function Dashboard({ project }: { project: Project }) {
     queryFn: () => api.get<ProjectCosts>(`/projects/${project.id}/costs`),
     refetchInterval: 8000,
   });
-  if (!data) return <div className="text-muted">Lädt…</div>;
+  if (!data) return <div className="text-muted">{tr("dashboard.laedt")}</div>;
 
   const t = data.tickets, r = data.runs;
   const kats: [string, number][] = Object.entries(t.by_category);
@@ -24,10 +25,10 @@ export default function Dashboard({ project }: { project: Project }) {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Kachel label="Tickets" wert={t.total} />
-        <Kachel label="Wartet auf dich" wert={t.waiting_for_human}
+        <Kachel label={tr("dashboard.tickets")} wert={t.total} />
+        <Kachel label={tr("dashboard.wartet_auf_dich")} wert={t.waiting_for_human}
           farbe={t.waiting_for_human ? "text-yellow-400" : undefined} />
-        <Kachel label="Läuft gerade" wert={t.working}
+        <Kachel label={tr("dashboard.laeuft_gerade")} wert={t.working}
           farbe={t.working ? "text-sky-400" : undefined} />
         <Kachel label={`Erledigt (${data.window_days} T.)`} wert={data.throughput.done_in_window}
           farbe="text-green-400" />
@@ -59,12 +60,12 @@ export default function Dashboard({ project }: { project: Project }) {
         <Karte titel={`Agentenläufe (${data.window_days} Tage)`}>
           {r.total > 0 ? (
             <div className="space-y-2 text-sm">
-              <Zeile label="Läufe gesamt" wert={r.total} />
-              <Zeile label="Erfolgsquote"
+              <Zeile label={tr("dashboard.laeufe_gesamt")} wert={r.total} />
+              <Zeile label={tr("dashboard.erfolgsquote")}
                 wert={r.success_rate === null ? "—" : `${r.success_rate}%`}
                 farbe={r.success_rate === null ? "" : r.success_rate >= 66 ? "text-green-400"
                   : r.success_rate >= 33 ? "text-yellow-400" : "text-red-400"} />
-              <Zeile label="Kosten" wert={`$${r.cost_usd.toFixed(4)}`} />
+              <Zeile label={tr("dashboard.kosten")} wert={`$${r.cost_usd.toFixed(4)}`} />
               <div className="border-t border-line pt-2 text-xs text-muted">
                 {Object.entries(r.by_status).map(([s, v]: any) => (
                   <span key={s} className="mr-3">{s}: <b className="text-ink">{v.count}</b></span>
@@ -104,10 +105,10 @@ export default function Dashboard({ project }: { project: Project }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs text-muted">
-                  <th className="py-1 pr-3 font-medium">Modell</th>
-                  <th className="py-1 pr-3 text-right font-medium">Kosten</th>
-                  <th className="py-1 pr-3 text-right font-medium">In</th>
-                  <th className="py-1 text-right font-medium">Out</th>
+                  <th className="py-1 pr-3 font-medium">{tr("dashboard.modell")}</th>
+                  <th className="py-1 pr-3 text-right font-medium">{tr("dashboard.kosten")}</th>
+                  <th className="py-1 pr-3 text-right font-medium">{tr("dashboard.in")}</th>
+                  <th className="py-1 text-right font-medium">{tr("dashboard.out")}</th>
                 </tr>
               </thead>
               <tbody>

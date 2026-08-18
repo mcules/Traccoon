@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Project } from "../api";
 
@@ -52,7 +53,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
   return (
     <div className="space-y-6">
       <section>
-        <h3 className="mb-2 font-medium">▶️ Läuft gerade</h3>
+        <h3 className="mb-2 font-medium">{tr("agent_monitor.laeuft_gerade")}</h3>
         {active && active.length > 0 ? (
           <div className="space-y-2">
             {active.map((a) => (
@@ -70,7 +71,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
             ))}
           </div>
         ) : (
-          <div className="text-xs text-muted">Kein Agent arbeitet gerade.</div>
+          <div className="text-xs text-muted">{tr("agent_monitor.kein_agent_arbeitet_gerade")}</div>
         )}
       </section>
 
@@ -96,7 +97,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
 
       <section>
         <div className="mb-2 flex items-center gap-3">
-          <h3 className="font-medium">Agenten-Läufe</h3>
+          <h3 className="font-medium">{tr("agent_monitor.agenten_laeufe")}</h3>
           <label className="flex items-center gap-1.5 text-xs text-muted">
             <input type="checkbox" checked={zeigeArchiv}
               onChange={(e) => setZeigeArchiv(e.target.checked)} />
@@ -145,7 +146,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
             </div>
           )}
           {grouped?.truncated && (
-            <div className="text-xs text-muted">Ältere Läufe sind ausgeblendet (Anzeigegrenze erreicht).</div>
+            <div className="text-xs text-muted">{tr("agent_monitor.aeltere_laeufe_sind_ausgeblendet_anzeige")}</div>
           )}
         </div>
       </section>

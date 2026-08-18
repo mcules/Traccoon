@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { tr } from "../../../i18n";
 import { workflowApi } from "../../../api";
 import { SLOT_LABELS, type NodeConfig, type WorkflowSlot } from "../types";
 
@@ -47,13 +48,13 @@ export default function SubflowConfig({
         Aufzurufender Ablauf
         <select value={wert} onChange={(e) => setzen(e.target.value)} className={`mt-1 ${inp}`}>
           <option value="">— wählen —</option>
-          <optgroup label="Fest benannte Abläufe (je Projekt aufgelöst)">
+          <optgroup label={tr("subflow_config.fest_benannte_ablaeufe_je_projekt_aufgel")}>
             {SLOTS.map((s) => (
               <option key={s} value={`slot:${s}`}>{SLOT_LABELS[s]}</option>
             ))}
           </optgroup>
           {abläufe.length > 0 && (
-            <optgroup label="Eigene Abläufe (veröffentlicht)">
+            <optgroup label={tr("subflow_config.eigene_ablaeufe_veroeffentlicht")}>
               {abläufe.map((d) => (
                 <option key={d.id} value={`def:${d.id}`}>{d.name}</option>
               ))}

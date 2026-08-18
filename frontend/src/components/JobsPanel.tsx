@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 
@@ -80,7 +81,7 @@ export default function JobsPanel() {
     <div>
       <p className="mb-3 text-sm text-muted">Geplante Jobs: <b>cron</b> (z.B. <span className="font-mono">0 8 * * *</span>),
         <b> interval</b> (Sekunden) oder <b>once</b> (ISO-Zeit). <b>prompt</b> = Agenten-Lauf,
-        <b> script</b> = Programm, <b>workflow</b> = startet eine Prozess-Instanz.</p>
+        <b> script</b> = Programm, <b>workflow</b> {tr("jobs_panel.startet_eine_prozess_instanz")}</p>
       <div className="mb-4 space-y-2">
         {jobs?.map((j) => (
           <div key={j.id} className={`flex items-center gap-3 rounded border border-line bg-card p-2 text-sm ${j.enabled ? "" : "opacity-50"}`}>
@@ -92,24 +93,24 @@ export default function JobsPanel() {
             <div className="flex-1" />
             <button title={j.enabled ? "Deaktivieren" : "Aktivieren"} onClick={() => toggle.mutate(j)}
               className={ico}>{j.enabled ? "⏸" : "⏵"}</button>
-            <button title="Jetzt ausführen" onClick={() => run.mutate(j.id)} className={ico + " hover:text-brand"}>▶</button>
-            <button title="Bearbeiten" onClick={() => edit(j)} className={ico}>✎</button>
-            <button title="Löschen" onClick={() => del.mutate(j.id)} className={ico + " hover:text-red-400"}>🗑</button>
+            <button title={tr("jobs_panel.jetzt_ausfuehren")} onClick={() => run.mutate(j.id)} className={ico + " hover:text-brand"}>▶</button>
+            <button title={tr("jobs_panel.bearbeiten")} onClick={() => edit(j)} className={ico}>✎</button>
+            <button title={tr("jobs_panel.loeschen")} onClick={() => del.mutate(j.id)} className={ico + " hover:text-red-400"}>🗑</button>
           </div>
         ))}
-        {jobs?.length === 0 && <div className="text-xs text-muted">Keine Jobs.</div>}
+        {jobs?.length === 0 && <div className="text-xs text-muted">{tr("jobs_panel.keine_jobs")}</div>}
       </div>
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3 text-sm">
         {editId && <div className="col-span-2 text-xs text-brand">Bearbeite Job #{editId} —
           <button onClick={() => { setEditId(null); setF(EMPTY); setParamText(""); }} className="ml-1 underline">abbrechen</button></div>}
         {!editId && !!templates?.length && (
           <select value="" onChange={(e) => e.target.value && useTemplate(e.target.value)}
-            className={inp + " col-span-2"} title="Füllt das Formular vor">
+            className={inp + " col-span-2"} title={tr("jobs_panel.fuellt_das_formular_vor")}>
             <option value="">— aus Vorlage —</option>
             {templates.map((t) => <option key={t.key} value={t.key}>{t.label}: {t.beschreibung}</option>)}
           </select>
         )}
-        <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Name" className={inp} />
+        <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={tr("jobs_panel.name")} className={inp} />
         <div className="flex gap-2">
           <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} className={inp + " flex-1"}>
             <option value="cron">cron</option><option value="interval">interval</option><option value="once">once</option></select>
@@ -117,12 +118,12 @@ export default function JobsPanel() {
             <option value="prompt">prompt</option><option value="script">script</option>
             <option value="workflow">workflow</option><option value="film">film</option></select>
         </div>
-        <input value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })} placeholder="Schedule" className={inp} />
+        <input value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })} placeholder={tr("jobs_panel.schedule")} className={inp} />
         {f.kind === "prompt" && (
-          <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} placeholder="Agent (z.B. news)" className={inp} />
+          <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} placeholder={tr("jobs_panel.agent_z_b_news")} className={inp} />
         )}
         {f.kind === "script" && (
-          <input value={f.command} onChange={(e) => setF({ ...f, command: e.target.value })} placeholder="Script-Datei" className={inp} />
+          <input value={f.command} onChange={(e) => setF({ ...f, command: e.target.value })} placeholder={tr("jobs_panel.script_datei")} className={inp} />
         )}
         {f.kind === "workflow" && (
           <select value={f.workflow_definition_id ?? ""}
@@ -154,7 +155,7 @@ export default function JobsPanel() {
                   ? <span className="text-muted">Steht im Ablauf als Kontext zur Verfügung — abfragbar in Weichen und als {"{{name}}"}.</span>
                   : fehlend.length
                     ? <span className="text-amber-400">Ohne Wert: {fehlend.join(", ")} — bleibt wörtlich im Prompt stehen.</span>
-                    : <span className="text-muted">Eingebaut: heute, jetzt, seit, zeitfenster.</span>}
+                    : <span className="text-muted">{tr("jobs_panel.eingebaut_heute_jetzt_seit_zeitfenster")}</span>}
             </div>
           </div>
         )}

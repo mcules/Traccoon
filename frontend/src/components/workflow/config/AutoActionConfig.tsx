@@ -1,4 +1,5 @@
 import type { NodeConfig, AutoActionConfig as AutoAction, AutoActionName } from "../types";
+import { tr } from "../../../i18n";
 import type { MemberLite } from "../../../api";
 import HttpRequestConfig from "./HttpRequestConfig";
 import ActionParams from "./ActionParams";
@@ -49,7 +50,7 @@ function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
   return (
     <div className="space-y-2 rounded border border-line bg-surface p-2">
-      <div className="text-xs font-medium text-muted">Wenn es schiefgeht</div>
+      <div className="text-xs font-medium text-muted">{tr("auto_action_config.wenn_es_schiefgeht")}</div>
       <div className="flex gap-2">
         <label className="flex-1 text-[10px] text-muted">
           Wiederholungen
@@ -76,7 +77,7 @@ function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (
       </div>
       <p className="text-[10px] text-muted">
         Ein Fehlschlag nach außen ist meist einer des Augenblicks. Sind die Versuche
-        aufgebraucht, geht es über den roten Ausgang <b>Fehler</b> weiter — ist der nicht
+        aufgebraucht, geht es über den roten Ausgang <b>{tr("auto_action_config.fehler")}</b> weiter — ist der nicht
         verdrahtet, endet der Lauf.
       </p>
     </div>

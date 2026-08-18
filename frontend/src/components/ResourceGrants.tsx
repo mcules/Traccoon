@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 
@@ -68,7 +69,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase text-muted">
-            <th className="py-2">Nutzer</th><th>Objekt</th><th>Stufe</th><th>Rekursiv</th><th></th>
+            <th className="py-2">{tr("resource_grants.nutzer")}</th><th>{tr("resource_grants.objekt")}</th><th>{tr("resource_grants.stufe")}</th><th>{tr("resource_grants.rekursiv")}</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -81,12 +82,12 @@ export default function ResourceGrants({ project }: { project: Project }) {
               <td>{g.level}</td>
               <td>{g.resource_type === "location" ? (g.recursive ? "ja" : "nein") : "—"}</td>
               <td className="text-right">
-                <button onClick={() => remove.mutate(g.id)} className="text-muted hover:text-red-400">Entziehen</button>
+                <button onClick={() => remove.mutate(g.id)} className="text-muted hover:text-red-400">{tr("resource_grants.entziehen")}</button>
               </td>
             </tr>
           ))}
           {grants?.length === 0 && (
-            <tr><td colSpan={5} className="py-2 text-xs text-muted">Keine Freigaben.</td></tr>
+            <tr><td colSpan={5} className="py-2 text-xs text-muted">{tr("resource_grants.keine_freigaben")}</td></tr>
           )}
         </tbody>
       </table>
@@ -94,7 +95,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
       <div className="mt-4 flex flex-wrap items-end gap-2">
         <label className="relative block text-xs text-muted">Nutzer
           <input value={uq} onChange={(e) => { setUq(e.target.value); setUid(""); }}
-            placeholder="Name suchen…"
+            placeholder={tr("resource_grants.name_suchen")}
             className="mt-1 block w-44 rounded border border-line bg-surface px-2 py-1" />
           {uq.trim() && !uid && (
             <div className="absolute z-10 mt-1 max-h-48 w-44 overflow-auto rounded border border-line bg-surface">
@@ -106,7 +107,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
                 </button>
               ))}
               {userSearch.data?.length === 0 && (
-                <div className="px-2 py-1 text-xs text-muted">Kein Treffer.</div>
+                <div className="px-2 py-1 text-xs text-muted">{tr("resource_grants.kein_treffer")}</div>
               )}
             </div>
           )}
@@ -114,8 +115,8 @@ export default function ResourceGrants({ project }: { project: Project }) {
         <label className="text-xs text-muted">Objektart
           <select value={rtype} onChange={(e) => { setRtype(e.target.value as "location" | "asset"); setRid(""); }}
             className="mt-1 block rounded border border-line bg-surface px-2 py-1">
-            <option value="location">Ort</option>
-            <option value="asset">Exemplar</option>
+            <option value="location">{tr("resource_grants.ort")}</option>
+            <option value="asset">{tr("resource_grants.exemplar")}</option>
           </select>
         </label>
         <label className="text-xs text-muted">Objekt

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../../i18n";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, workflowApi, type IssueType, type Project } from "../../api";
@@ -107,7 +108,7 @@ export default function SlotList({ project }: { project: Project }) {
             onChange={(e) => chooseSet.mutate(e.target.value ? Number(e.target.value) : null)}
             className="mt-1 w-full max-w-md rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink"
           >
-            <option value="">Automatisch (Satz eines Eigentümers, sonst Standard)</option>
+            <option value="">{tr("slot_list.automatisch_satz_eines_eigentuemers_sons")}</option>
             {sets.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -150,7 +151,7 @@ export default function SlotList({ project }: { project: Project }) {
                     }}
                     disabled={busy === s.slot}
                     className="rounded border border-line px-2 py-1 text-xs hover:border-amber-400 disabled:opacity-50"
-                    title="Eigene Kopie verwerfen — es gilt wieder der Satz"
+                    title={tr("slot_list.eigene_kopie_verwerfen_es_gilt_wieder_de")}
                   >
                     Zurücksetzen
                   </button>
@@ -162,7 +163,7 @@ export default function SlotList({ project }: { project: Project }) {
                     }}
                     disabled={busy === s.slot || !s.definition_id}
                     className="rounded border border-line px-2 py-1 text-xs hover:border-brand disabled:opacity-50"
-                    title="Kopie für dieses Projekt anlegen und bearbeiten"
+                    title={tr("slot_list.kopie_fuer_dieses_projekt_anlegen_und_be")}
                   >
                     Anpassen
                   </button>
@@ -175,16 +176,16 @@ export default function SlotList({ project }: { project: Project }) {
                   dem Satz. */}
               {s.subject_kind === "issue" && (meta?.types?.length ?? 0) > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line pt-2">
-                  <span className="text-[11px] text-muted">Je Vorgangsart:</span>
+                  <span className="text-[11px] text-muted">{tr("slot_list.je_vorgangsart")}</span>
                   {(s.per_issue_type || []).map((v) => (
                     <span key={v.issue_type_id}
                           className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
                       <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: `/projects/${project.key}?tab=workflows` } })}
-                              title="Eigenen Ablauf dieser Vorgangsart bearbeiten">
+                              title={tr("slot_list.eigenen_ablauf_dieser_vorgangsart_bearbe")}>
                         {v.issue_type_name}
                       </button>
                       <button onClick={() => reset.mutate({ slot: s.slot, art: v.issue_type_id })}
-                              title="Eigenen Ablauf verwerfen — die Vorgangsart folgt wieder dem Satz"
+                              title={tr("slot_list.eigenen_ablauf_verwerfen_die_vorgangsart")}
                               className="hover:text-red-300">✕</button>
                     </span>
                   ))}
@@ -194,7 +195,7 @@ export default function SlotList({ project }: { project: Project }) {
                       && customize.mutate({ slot: s.slot, art: Number(e.target.value) })}
                     className="rounded border border-line bg-surface px-1.5 py-0.5 text-[11px] text-muted"
                   >
-                    <option value="">+ eigener Ablauf für …</option>
+                    <option value="">{tr("slot_list.eigener_ablauf_fuer")}</option>
                     {(meta?.types || [])
                       .filter((t) => !(s.per_issue_type || []).some((v) => v.issue_type_id === t.id))
                       .map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
 
@@ -77,19 +78,19 @@ export default function NewTicketModal({
       <div onClick={(e) => e.stopPropagation()} onPaste={onPaste}
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-card p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold">Neues Ticket</h2>
+          <h2 className="text-base font-semibold">{tr("new_ticket_modal.neues_ticket")}</h2>
           <button onClick={onClose} className="text-muted hover:text-ink">✕</button>
         </div>
 
-        <label className="text-xs text-muted">Titel</label>
+        <label className="text-xs text-muted">{tr("new_ticket_modal.titel")}</label>
         <input autoFocus value={summary} onChange={(e) => setSummary(e.target.value)}
-          placeholder="Kurze Zusammenfassung…"
+          placeholder={tr("new_ticket_modal.kurze_zusammenfassung")}
           onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && canSave) create.mutate(); }}
           className="mb-3 mt-1 w-full rounded border border-line bg-surface px-3 py-2 text-base" />
 
-        <label className="text-xs text-muted">Beschreibung</label>
+        <label className="text-xs text-muted">{tr("new_ticket_modal.beschreibung")}</label>
         <textarea value={description} onChange={(e) => setDescription(e.target.value)}
-          rows={4} placeholder="Optional…"
+          rows={4} placeholder={tr("new_ticket_modal.optional")}
           className="mb-3 mt-1 w-full rounded border border-line bg-surface px-3 py-2" />
 
         <div className="mb-4 flex flex-wrap gap-3">
@@ -125,7 +126,7 @@ export default function NewTicketModal({
         </div>
 
         {/* Anhänge / Screenshots */}
-        <label className="text-xs text-muted">Anhänge</label>
+        <label className="text-xs text-muted">{tr("new_ticket_modal.anhaenge")}</label>
         <div className="mb-4 mt-1 rounded-lg border border-dashed border-line p-3">
           {files.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
@@ -151,7 +152,7 @@ export default function NewTicketModal({
               <input type="file" multiple accept="image/*" className="hidden"
                 onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
             </label>
-            <span>oder Screenshot mit <b>Strg+V</b> einfügen</span>
+            <span>oder Screenshot mit <b>{tr("new_ticket_modal.strg_v")}</b> einfügen</span>
           </div>
         </div>
 
@@ -159,7 +160,7 @@ export default function NewTicketModal({
 
         <div className="flex justify-end gap-2">
           <button onClick={onClose}
-            className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">Abbrechen</button>
+            className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">{tr("new_ticket_modal.abbrechen")}</button>
           <button disabled={!canSave} onClick={() => create.mutate()}
             className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">
             {create.isPending ? "Legt an…" : "Speichern"}

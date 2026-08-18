@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { tr } from "../i18n";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -417,7 +418,7 @@ export default function WorkflowEditor() {
         <h1 className="text-sm font-semibold">{def?.name || "Prozess"}</h1>
         {nurLesen && (
           <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
-            title="Dieser Ablauf gehört zu einem Prozess-Satz. Zum Ändern im Projekt „Anpassen“ wählen.">
+            title={tr("workflow_editor.dieser_ablauf_gehoert_zu_einem_prozess_s")}>
             nur ansehen
           </span>
         )}
@@ -501,11 +502,11 @@ export default function WorkflowEditor() {
         </div>
 
         <div className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line bg-card">
-          <div className="border-b border-line px-3 py-2 text-xs font-medium text-muted">Konfiguration</div>
+          <div className="border-b border-line px-3 py-2 text-xs font-medium text-muted">{tr("workflow_editor.konfiguration")}</div>
           {nurLesen ? (
             <p className="p-3 text-sm text-muted">
               Dieser Ablauf gehört zu einem Prozess-Satz und wird hier nur angezeigt. Zum Ändern
-              im Projekt unter <b>Prozesse</b> auf <b>Anpassen</b> gehen — das legt eine Kopie
+              im Projekt unter <b>{tr("workflow_editor.prozesse")}</b> auf <b>{tr("workflow_editor.anpassen")}</b> gehen — das legt eine Kopie
               für dieses Projekt an.
             </p>
           ) : (

@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { tr } from "../../../i18n";
 import { api, workflowApi } from "../../../api";
 import type { NodeConfig } from "../types";
 
@@ -97,8 +98,8 @@ export default function StartConfig({
         <select value={art} onChange={(e) => setArt(e.target.value as typeof art)}
           className={`mt-1 ${inp}`}>
           <option value="manuell">von Hand (oder über einen Job)</option>
-          <option value="ereignis">Ereignis in Traccoon</option>
-          <option value="webhook">Aufruf von außen (Webhook)</option>
+          <option value="ereignis">{tr("start_config.ereignis_in_traccoon")}</option>
+          <option value="webhook">{tr("start_config.aufruf_von_aussen_webhook")}</option>
         </select>
       </label>
 
@@ -109,7 +110,7 @@ export default function StartConfig({
           list="ereignisse"
           value={t.event || ""}
           onChange={(e) => setT({ event: e.target.value.trim() })}
-          placeholder="kein Auslöser — nur manueller Start"
+          placeholder={tr("start_config.kein_ausloeser_nur_manueller_start")}
           className={`mt-1 ${inp}`}
         />
         <datalist id="ereignisse">
@@ -118,7 +119,7 @@ export default function StartConfig({
           ))}
         </datalist>
         <span className="mt-1 block text-[10px] text-muted">
-          Eigene Namen sind erlaubt — ein Webhook im Modus <b>Ereignis</b> oder
+          Eigene Namen sind erlaubt — ein Webhook im Modus <b>{tr("start_config.ereignis")}</b> oder
           <code className="mx-1 rounded bg-surface px-1">POST /api/events</code> meldet sie.
         </span>
       </label>
@@ -127,7 +128,7 @@ export default function StartConfig({
       {/* ── Webhook als Quelle ─────────────────────────────────────────── */}
       {art !== "ereignis" && (
       <div className="rounded border border-line bg-surface p-2">
-        <div className="mb-1 text-xs font-medium text-muted">Eingehende Adresse (Webhook)</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("start_config.eingehende_adresse_webhook")}</div>
         {hook ? (
           <div className="space-y-1">
             <div className="break-all font-mono text-[11px] text-ink">{hook.url}</div>

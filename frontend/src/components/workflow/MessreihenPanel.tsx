@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../api";
 
@@ -47,7 +48,7 @@ export default function MessreihenPanel() {
   return (
     <div className="space-y-3 rounded-lg border border-line bg-card p-4">
       <p className="text-sm text-muted">
-        <b>Messreihen</b> — was Abläufe an Zahlen mitschreiben (Aktion <code>Messwert</code>).
+        <b>{tr("messreihen_panel.messreihen")}</b> — was Abläufe an Zahlen mitschreiben (Aktion <code>{tr("messreihen_panel.messwert")}</code>).
         Aus dem Verlauf entsteht die Prognose: wieviel sich pro Tag ändert, wann der Zielwert
         erreicht ist, und ob rechtzeitig gewarnt wurde.
       </p>
@@ -66,7 +67,7 @@ export default function MessreihenPanel() {
       ) : (
         <div className="text-sm text-muted">
           Noch keine Messreihe. Sie entsteht beim ersten Wert — setz in einem Ablauf die
-          Aktion <b>Messwert</b> ein.
+          Aktion <b>{tr("messreihen_panel.messwert")}</b> ein.
         </div>
       )}
     </div>
@@ -153,7 +154,7 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
   return (
     <div className="mt-3 space-y-3 border-t border-line pt-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">Zeitraum</span>
+        <span className="text-muted">{tr("messreihen_panel.zeitraum")}</span>
         {ZEITRAeUME.map(([d, label]) => (
           <button key={d} onClick={() => setTage(d)}
             className={`rounded border px-2 py-0.5 ${
@@ -188,9 +189,9 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-card text-left text-[10px] uppercase text-muted">
             <tr>
-              <th className="px-2 py-1">Zeitpunkt</th>
-              <th className="px-2 py-1">Wert</th>
-              <th className="px-2 py-1">Herkunft</th>
+              <th className="px-2 py-1">{tr("messreihen_panel.zeitpunkt")}</th>
+              <th className="px-2 py-1">{tr("messreihen_panel.wert")}</th>
+              <th className="px-2 py-1">{tr("messreihen_panel.herkunft")}</th>
               <th className="px-2 py-1" />
             </tr>
           </thead>
@@ -208,7 +209,7 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
                 <td className="px-2 py-1 text-right">
                   <button
                     onClick={() => { if (confirm(`Wert ${p.wert} ${reihe.unit} entfernen?`)) wegwerfen.mutate(p.id); }}
-                    title="Diesen Wert entfernen — z. B. einen Ausreißer, der die Gerade verbiegt"
+                    title={tr("messreihen_panel.diesen_wert_entfernen_z_b_einen_ausreiss")}
                     className="text-red-400 hover:text-red-300">✕</button>
                 </td>
               </tr>
@@ -245,7 +246,7 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
   punkte: Punkt[]; einheit: string; trend?: Trend | null; ziel: number;
 }) {
   if (punkte.length < 2) {
-    return <div className="text-[10px] text-muted">Noch keine Linie — dafür braucht es zwei Werte.</div>;
+    return <div className="text-[10px] text-muted">{tr("messreihen_panel.noch_keine_linie_dafuer_braucht_es_zwei_")}</div>;
   }
   const B = 900, H = 260, li = 46, re = 16, ob = 14, un = 26;
 

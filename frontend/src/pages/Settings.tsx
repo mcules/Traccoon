@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
@@ -43,7 +44,7 @@ export default function Settings() {
               welchen Satz man fährt. Der Verweis, damit niemand sie an der alten Stelle sucht. */}
           <p className="rounded-lg border border-line bg-card p-4 text-sm text-muted">
             Eigene Abläufe anlegen und bearbeiten: <Link to="/processes/eigene"
-              className="text-ink underline">Prozesse → Eigene</Link>.
+              className="text-ink underline">{tr("settings.prozesse_eigene")}</Link>.
           </p>
         </div>
       )}
@@ -69,11 +70,11 @@ function Secrets() {
       <div className="space-y-3 rounded-lg border border-line bg-card p-4">
         <p className="text-sm text-muted">Hinterlege deine <b>LLM-Keys</b>: Provider wählen, Key eingeben, optional
           einen Namen vergeben (um mehrere Keys je Provider zu unterscheiden). Pro Agent wählst du dann,
-          welcher Key genutzt wird. Der als <b>Standard</b> markierte Key gilt, wenn ein Agent keinen bestimmten wählt.</p>
+          welcher Key genutzt wird. Der als <b>{tr("settings.standard")}</b> markierte Key gilt, wenn ein Agent keinen bestimmten wählt.</p>
         <ProviderTokens />
       </div>
       <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-        <p className="text-sm text-muted">Allgemeiner <b>Secret-Tresor</b>: beliebige Tokens/Geheimnisse (API-Keys,
+        <p className="text-sm text-muted">Allgemeiner <b>{tr("settings.secret_tresor")}</b>: beliebige Tokens/Geheimnisse (API-Keys,
           Webhook-Secrets …). Verschlüsselt gespeichert, der Wert wird nie wieder angezeigt. Referenzierbar
           als <code className="rounded bg-surface px-1">secret:&lt;name&gt;</code>.</p>
         <NamedSecrets />
@@ -120,20 +121,20 @@ function NamedSecrets() {
             <code className="rounded bg-surface px-1.5 py-0.5 text-xs text-brand">secret:{s.name}</code>
             {s.description && <span className="text-xs text-muted">{s.description}</span>}
             <div className="flex-1" />
-            <button onClick={() => prefill(s)} className="text-xs text-muted hover:text-brand">Wert ersetzen</button>
+            <button onClick={() => prefill(s)} className="text-xs text-muted hover:text-brand">{tr("settings.wert_ersetzen")}</button>
             <button onClick={() => remove(s.name)} className="text-muted hover:text-red-400">✕</button>
           </div>
         ))}
-        {vault.length === 0 && <div className="text-xs text-muted">Noch keine Secrets im Tresor.</div>}
+        {vault.length === 0 && <div className="text-xs text-muted">{tr("settings.noch_keine_secrets_im_tresor")}</div>}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (z. B. github_pat)"
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("settings.name_z_b_github_pat")}
           className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder="Wert / Token"
+        <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder={tr("settings.wert_token")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Beschreibung (optional)"
+        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tr("settings.beschreibung_optional")}
           className="w-48 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Speichern</button>
+        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("settings.speichern")}</button>
       </div>
     </div>
   );
@@ -200,20 +201,20 @@ function ProviderTokens() {
             <span className="font-medium">{t.name}</span>
             {t.base_url && <span className="text-xs text-muted">→ {t.base_url}</span>}
             {t.is_default
-              ? <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">Standard</span>
+              ? <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">{tr("settings.standard")}</span>
               : <button onClick={() => makeDefault(t.id)}
                   className="text-xs text-muted hover:text-brand">als Standard</button>}
             <div className="flex-1" />
-            <button onClick={() => edit(t)} className="text-xs text-muted hover:text-brand">Bearbeiten</button>
+            <button onClick={() => edit(t)} className="text-xs text-muted hover:text-brand">{tr("settings.bearbeiten")}</button>
             <button onClick={() => del(t.id)} className="text-muted hover:text-red-400">✕</button>
           </div>
         ))}
-        {toks?.length === 0 && <div className="text-xs text-muted">Noch keine Keys hinterlegt.</div>}
+        {toks?.length === 0 && <div className="text-xs text-muted">{tr("settings.noch_keine_keys_hinterlegt")}</div>}
       </div>
       {editing !== null && (
         <div className="mb-2 rounded border border-brand/40 bg-brand/10 px-2 py-1 text-xs text-muted">
           Bearbeite <b>{PROVIDER_LABEL[provider] || provider}</b> / <b>{editing}</b> — Base-URL/Standard
-          kannst du direkt ändern. Das <b>Token-Feld leer lassen</b> behält den bestehenden Wert; zum
+          kannst du direkt ändern. Das <b>{tr("settings.token_feld_leer_lassen")}</b> behält den bestehenden Wert; zum
           Wechseln einfach einen neuen Wert eingeben.
         </div>
       )}
@@ -222,7 +223,7 @@ function ProviderTokens() {
           className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink disabled:opacity-50">
           {Object.entries(PROVIDER_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name (optional)"
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("settings.name_optional")}
           disabled={editing !== null}
           className="w-32 rounded border border-line bg-surface px-2 py-1.5 text-sm disabled:opacity-50" />
         <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
@@ -230,17 +231,17 @@ function ProviderTokens() {
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         {provider === "openai" && (
           <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder="Base-URL (optional, z. B. http://litellm:4000/v1)"
+            placeholder={tr("settings.base_url_optional_z_b_http_litellm_4000_")}
             className="w-64 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         )}
         <label className="flex items-center gap-1 text-xs text-muted">
-          <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> Standard
+          <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> {tr("settings.standard")}
         </label>
         <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
           {editing !== null ? "Speichern" : "+ Token"}
         </button>
         {editing !== null && (
-          <button onClick={reset} className="text-xs text-muted hover:text-ink">Abbrechen</button>
+          <button onClick={reset} className="text-xs text-muted hover:text-ink">{tr("settings.abbrechen")}</button>
         )}
       </div>
     </div>

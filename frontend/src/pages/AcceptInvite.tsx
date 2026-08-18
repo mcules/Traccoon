@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
+import { tr } from "../i18n";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, Project } from "../api";
 import { useAuth } from "../auth";
@@ -79,7 +80,7 @@ export default function AcceptInvite() {
     );
   }
   if (!preview) {
-    return <div className="p-8 text-muted">Lädt…</div>;
+    return <div className="p-8 text-muted">{tr("accept_invite.laedt")}</div>;
   }
   if (!preview.valid) {
     return (
@@ -127,11 +128,11 @@ export default function AcceptInvite() {
           {mode === "register" && (
             <input
               className="w-full rounded border border-line bg-surface px-3 py-2 outline-none"
-              placeholder="Benutzername" value={username} onChange={(e) => setUsername(e.target.value)} />
+              placeholder={tr("accept_invite.benutzername")} value={username} onChange={(e) => setUsername(e.target.value)} />
           )}
           <input type="password"
             className="w-full rounded border border-line bg-surface px-3 py-2 outline-none"
-            placeholder="Passwort" value={password} onChange={(e) => setPassword(e.target.value)} />
+            placeholder={tr("accept_invite.passwort")} value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         <button className="mt-4 w-full rounded bg-brand py-2 font-medium text-white">

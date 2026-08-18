@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import Markdown from "./Markdown";
@@ -84,10 +85,10 @@ export default function AssistantChat() {
       <form className="mt-3 flex gap-2"
         onSubmit={(e) => { e.preventDefault(); setErr(""); if (input.trim()) send.mutate(input.trim()); }}>
         <input value={input} onChange={(e) => setInput(e.target.value)}
-          placeholder="Nachricht an den Assistenten…"
+          placeholder={tr("assistant_chat.nachricht_an_den_assistenten")}
           className="flex-1 rounded border border-line bg-card px-3 py-2 text-ink outline-none" />
         <button type="submit" disabled={send.isPending || !input.trim()}
-          className="rounded bg-brand px-4 py-2 text-sm text-white disabled:opacity-50">Senden</button>
+          className="rounded bg-brand px-4 py-2 text-sm text-white disabled:opacity-50">{tr("assistant_chat.senden")}</button>
       </form>
     </div>
   );

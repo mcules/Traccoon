@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 
@@ -35,8 +36,8 @@ export default function McpPanel() {
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-card p-3">
           <div className="text-sm">
             <span className="font-medium text-ink">🔌 {myMcp.available.length} MCP-Server verfügbar</span>
-            {myMcp?.provisioned && <span className="ml-2 rounded bg-yellow-500/15 px-1.5 text-xs text-yellow-400">Gateway-Gruppe aktiv</span>}
-            <p className="text-xs text-muted">Als echte, editierbare Server-Einträge übernehmen (ersetzt die Gateway-Gruppe).</p>
+            {myMcp?.provisioned && <span className="ml-2 rounded bg-yellow-500/15 px-1.5 text-xs text-yellow-400">{tr("mcp_panel.gateway_gruppe_aktiv")}</span>}
+            <p className="text-xs text-muted">{tr("mcp_panel.als_echte_editierbare_server_eintraege_u")}</p>
           </div>
           <div className="flex-1" />
           <button onClick={() => importMcp.mutate()} disabled={importMcp.isPending}
@@ -46,8 +47,8 @@ export default function McpPanel() {
       )}
 
       <p className="mb-3 text-sm text-muted">Eigene MCP-Server (Tool-Anbieter für Agenten). Tools erreichbar unter
-        <span className="font-mono"> &lt;name&gt;__&lt;tool&gt;</span>. Definiere <b>Variablen</b> (z. B. Auth) —
-        pro Agent legst du dann eine <b>Instanz</b> an und füllst sie aus.</p>
+        <span className="font-mono"> &lt;name&gt;__&lt;tool&gt;</span>. Definiere <b>{tr("mcp_panel.variablen")}</b> (z. B. Auth) —
+        pro Agent legst du dann eine <b>{tr("mcp_panel.instanz")}</b> an und füllst sie aus.</p>
       <p className="mb-3 text-xs text-yellow-400">Nur <b>http</b>/<b>sse</b> werden bedient (kein stdio).</p>
 
       <div className="mb-4 space-y-2">
@@ -62,7 +63,7 @@ export default function McpPanel() {
             <button onClick={() => del.mutate(m.id)} className="text-muted hover:text-red-400">löschen</button>
           </div>
         ))}
-        {servers?.length === 0 && <div className="text-xs text-muted">Keine MCP-Server.</div>}
+        {servers?.length === 0 && <div className="text-xs text-muted">{tr("mcp_panel.keine_mcp_server")}</div>}
       </div>
 
       {form ? (
@@ -72,7 +73,7 @@ export default function McpPanel() {
             <button onClick={() => setForm(null)} className="text-muted">✕</button>
           </div>
           <div className="flex flex-wrap gap-2">
-            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name (z. B. banking)"
+            <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={tr("mcp_panel.name_z_b_banking")}
               className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
             <select value={form.transport} onChange={(e) => setForm({ ...form, transport: e.target.value })}
               className="rounded border border-line bg-surface px-2 py-1.5 text-sm">
@@ -82,15 +83,15 @@ export default function McpPanel() {
               className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
           </div>
           <div>
-            <div className="mb-1 text-xs text-muted">Variablen (werden pro Instanz ausgefüllt, als Header angewandt)</div>
+            <div className="mb-1 text-xs text-muted">{tr("mcp_panel.variablen_werden_pro_instanz_ausgefuellt")}</div>
             {form.variables.map((v, i) => (
               <div key={i} className="mb-1 flex items-center gap-2">
-                <input value={v.key} onChange={(e) => upd(form, setForm, i, { key: e.target.value })} placeholder="Key (z. B. Authorization)"
+                <input value={v.key} onChange={(e) => upd(form, setForm, i, { key: e.target.value })} placeholder={tr("mcp_panel.key_z_b_authorization")}
                   className="w-44 rounded border border-line bg-surface px-2 py-1 text-sm" />
-                <input value={v.label} onChange={(e) => upd(form, setForm, i, { label: e.target.value })} placeholder="Label"
+                <input value={v.label} onChange={(e) => upd(form, setForm, i, { label: e.target.value })} placeholder={tr("mcp_panel.label")}
                   className="flex-1 rounded border border-line bg-surface px-2 py-1 text-sm" />
                 <label className="flex items-center gap-1 text-xs text-muted"><input type="checkbox" checked={v.secret} onChange={(e) => upd(form, setForm, i, { secret: e.target.checked })} />geheim</label>
-                <label className="flex items-center gap-1 text-xs text-muted"><input type="checkbox" checked={v.required} onChange={(e) => upd(form, setForm, i, { required: e.target.checked })} />Pflicht</label>
+                <label className="flex items-center gap-1 text-xs text-muted"><input type="checkbox" checked={v.required} onChange={(e) => upd(form, setForm, i, { required: e.target.checked })} />{tr("mcp_panel.pflicht")}</label>
                 <button onClick={() => setForm({ ...form, variables: form.variables.filter((_, j) => j !== i) })} className="text-muted hover:text-red-400">✕</button>
               </div>
             ))}
@@ -98,7 +99,7 @@ export default function McpPanel() {
               className="text-xs text-brand hover:underline">+ Variable</button>
           </div>
           {err && <div className="text-sm text-red-400">{err}</div>}
-          <button onClick={() => form.name && save.mutate(form)} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Speichern</button>
+          <button onClick={() => form.name && save.mutate(form)} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("mcp_panel.speichern")}</button>
         </div>
       ) : (
         <button onClick={() => setForm({ ...EMPTY, variables: [] })} className="rounded bg-brand px-3 py-1.5 text-sm text-white">+ Server</button>

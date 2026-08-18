@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
+import { tr } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api, Issue, Project, ProjectMeta } from "../api";
 import { usePageChrome } from "../pageChrome";
@@ -31,8 +32,8 @@ export default function TicketView() {
   // der Weg zurück ins Projekt ist damit immer einen Klick entfernt).
   usePageChrome(ticketKey ?? "Ticket", projectChromeTabs(project));
 
-  if (!project) return <div className="text-muted">Projekt nicht gefunden.</div>;
-  if (!meta) return <div className="text-muted">Lädt…</div>;
+  if (!project) return <div className="text-muted">{tr("ticket_view.projekt_nicht_gefunden")}</div>;
+  if (!meta) return <div className="text-muted">{tr("ticket_view.laedt")}</div>;
 
   return (
     <TicketDrawer
