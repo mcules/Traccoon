@@ -1,4 +1,5 @@
 import type { NodeConfig } from "../types";
+import { tr } from "../../../i18n";
 import type { MemberLite } from "../../../api";
 import { AssigneeEditor } from "../assignee";
 import { FormFieldsEditor } from "../formFields";
@@ -16,7 +17,7 @@ export default function HumanTaskConfig({
   return (
     <div className="space-y-3">
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">Zuständig</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("human_task_config.zustaendig")}</div>
         <AssigneeEditor
           value={config.assignee}
           members={members}
@@ -25,7 +26,7 @@ export default function HumanTaskConfig({
       </div>
 
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">Formularfelder</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("human_task_config.formularfelder")}</div>
         <FormFieldsEditor
           fields={config.form || []}
           onChange={(f) => onChange({ ...config, form: f })}

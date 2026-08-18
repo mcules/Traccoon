@@ -1,4 +1,5 @@
 import type { FormField } from "./types";
+import { tr } from "../../i18n";
 
 export function emptyField(): FormField {
   return { key: "", label: "", type: "text", required: false };
@@ -35,16 +36,16 @@ export function FormFieldsEditor({
             <input
               value={f.key}
               onChange={(e) => patch(i, { key: e.target.value })}
-              placeholder="schlüssel"
+              placeholder={tr("form_fields.schluessel")}
               className="w-28 rounded border border-line bg-card px-2 py-1 font-mono text-xs"
             />
             <input
               value={f.label}
               onChange={(e) => patch(i, { label: e.target.value })}
-              placeholder="Beschriftung"
+              placeholder={tr("form_fields.beschriftung")}
               className="flex-1 rounded border border-line bg-card px-2 py-1 text-sm"
             />
-            <button onClick={() => remove(i)} className="text-muted hover:text-red-400" title="Feld entfernen">
+            <button onClick={() => remove(i)} className="text-muted hover:text-red-400" title={tr("form_fields.feld_entfernen")}>
               ✕
             </button>
           </div>
@@ -54,11 +55,11 @@ export function FormFieldsEditor({
               onChange={(e) => patch(i, { type: e.target.value as FormField["type"] })}
               className="rounded border border-line bg-card px-2 py-1 text-xs text-ink"
             >
-              <option value="text">Text</option>
-              <option value="number">Zahl</option>
-              <option value="select">Auswahl</option>
-              <option value="date">Datum</option>
-              <option value="boolean">Ja/Nein</option>
+              <option value="text">{tr("form_fields.text")}</option>
+              <option value="number">{tr("form_fields.zahl")}</option>
+              <option value="select">{tr("form_fields.auswahl")}</option>
+              <option value="date">{tr("form_fields.datum")}</option>
+              <option value="boolean">{tr("form_fields.ja_nein")}</option>
             </select>
             <label className="flex items-center gap-1 text-xs text-muted">
               <input
@@ -74,7 +75,7 @@ export function FormFieldsEditor({
                 onChange={(e) =>
                   patch(i, { options: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })
                 }
-                placeholder="Optionen, kommagetrennt"
+                placeholder={tr("form_fields.optionen_kommagetrennt")}
                 className="flex-1 rounded border border-line bg-card px-2 py-1 text-xs"
               />
             )}
@@ -82,7 +83,7 @@ export function FormFieldsEditor({
               <input
                 value={f.placeholder || ""}
                 onChange={(e) => patch(i, { placeholder: e.target.value })}
-                placeholder="Platzhalter"
+                placeholder={tr("form_fields.platzhalter")}
                 className="flex-1 rounded border border-line bg-card px-2 py-1 text-xs"
               />
             )}

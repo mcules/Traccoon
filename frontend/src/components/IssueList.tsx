@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { tr } from "../i18n";
 import { Issue, Project, ProjectMeta } from "../api";
 import { waitInfo } from "../lib/waitReason";
 import { ticketOpenHandlers, type OnOpenTicket } from "../ticketOpen";
@@ -55,11 +56,11 @@ export default function IssueList({
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Suche (Titel oder Schlüssel)…"
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("issue_list.suche_titel_oder_schluessel")}
           className="w-64 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         <select value={statusId} onChange={(e) => setStatusId(e.target.value ? +e.target.value : "")}
           className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
-          <option value="">Alle Status</option>
+          <option value="">{tr("issue_list.alle_status")}</option>
           {meta.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <label className="flex items-center gap-1.5 text-sm text-muted">
@@ -106,7 +107,7 @@ export default function IssueList({
             );
           })}
           {!gefiltert.length && (
-            <tr><td colSpan={5} className="py-6 text-center text-sm text-muted">Keine Treffer.</td></tr>
+            <tr><td colSpan={5} className="py-6 text-center text-sm text-muted">{tr("issue_list.keine_treffer")}</td></tr>
           )}
         </tbody>
       </table>

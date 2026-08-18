@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, type Project } from "../api";
 
@@ -100,7 +101,7 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
       {fest.length > 0 && (
         <div className="mb-3 text-xs text-muted">
           Gilt überall: {fest.map((f) => f.label).join(" · ")}
-          <span className="ml-1 text-[10px]">(hier nicht änderbar)</span>
+          <span className="ml-1 text-[10px]">{tr("project_fields.hier_nicht_aenderbar")}</span>
         </div>
       )}
 
@@ -117,7 +118,7 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
                 {FELDTYP.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
               <label className="flex items-center gap-1 text-xs text-muted"
-                     title="Darf ein Ticket mehrere Werte gleichzeitig tragen?">
+                     title={tr("project_fields.darf_ein_ticket_mehrere_werte_gleichzeit")}>
                 <input type="checkbox" checked={f.multi}
                   onChange={(e) => aendern.mutate({ id: f.id, multi: e.target.checked })} />
                 Mehrfachauswahl
@@ -128,7 +129,7 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
                 Pflicht
               </label>
               <label className="flex items-center gap-1 text-xs text-muted"
-                     title="Abgeschaltete Felder werden nicht mehr angeboten">
+                     title={tr("project_fields.abgeschaltete_felder_werden_nicht_mehr_a")}>
                 <input type="checkbox" checked={f.enabled}
                   onChange={(e) => aendern.mutate({ id: f.id, enabled: e.target.checked })} />
                 aktiv
@@ -140,15 +141,15 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
           </div>
         ))}
         {eigene.length === 0 && (
-          <div className="text-xs text-muted">Noch keine eigenen Felder.</div>
+          <div className="text-xs text-muted">{tr("project_fields.noch_keine_eigenen_felder")}</div>
         )}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input value={neu.key} onChange={(e) => setNeu({ ...neu, key: e.target.value })}
-          placeholder="Schlüssel (kunde)" className={`w-40 font-mono ${inp}`} />
+          placeholder={tr("project_fields.schluessel_kunde")} className={`w-40 font-mono ${inp}`} />
         <input value={neu.label} onChange={(e) => setNeu({ ...neu, label: e.target.value })}
-          placeholder="Bezeichnung (Kunde)" className={`flex-1 ${inp}`} />
+          placeholder={tr("project_fields.bezeichnung_kunde")} className={`flex-1 ${inp}`} />
         <select value={neu.kind} onChange={(e) => setNeu({ ...neu, kind: e.target.value })} className={inp}>
           {FELDTYP.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
@@ -186,7 +187,7 @@ function Werteliste({ feld, onFail, onOk }: {
 
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-28">
-      <span className="text-[10px] text-muted">Werte:</span>
+      <span className="text-[10px] text-muted">{tr("project_fields.werte")}</span>
       {feld.options.map((o) => (
         <span key={o.id}
           className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${
@@ -195,13 +196,13 @@ function Werteliste({ feld, onFail, onOk }: {
           <button onClick={() => aendern.mutate({ id: o.id, enabled: !o.enabled })}
             title={o.enabled ? "Nicht mehr anbieten (bleibt an vorhandenen Tickets)" : "Wieder anbieten"}
             className="text-muted hover:text-ink">{o.enabled ? "○" : "●"}</button>
-          <button onClick={() => loeschen.mutate(o.id)} title="Löschen"
+          <button onClick={() => loeschen.mutate(o.id)} title={tr("project_fields.loeschen")}
             className="text-muted hover:text-red-300">✕</button>
         </span>
       ))}
       <input value={wert} onChange={(e) => setWert(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && wert.trim() && anlegen.mutate()}
-        placeholder="Wert + Enter" className={`w-32 text-xs ${inp}`} />
+        placeholder={tr("project_fields.wert_enter")} className={`w-32 text-xs ${inp}`} />
     </div>
   );
 }

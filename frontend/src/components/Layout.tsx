@@ -1,4 +1,5 @@
 import { ReactNode, useState } from "react";
+import { tr } from "../i18n";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, Project } from "../api";
@@ -40,7 +41,7 @@ function ProjectSwitcher() {
               )}
             </>
           ) : (
-            <span className="text-sm text-muted">Projekte</span>
+            <span className="text-sm text-muted">{tr("layout.projekte")}</span>
           )}
         </div>
         <span className="shrink-0 text-xs text-muted">▾</span>
@@ -50,7 +51,7 @@ function ProjectSwitcher() {
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute left-0 z-30 mt-2 max-h-96 w-64 overflow-y-auto rounded-lg border border-line bg-card p-1 text-sm shadow-2xl">
             {(projects?.length ?? 0) === 0 && (
-              <div className="px-2 py-1.5 text-xs text-muted">Keine Projekte.</div>
+              <div className="px-2 py-1.5 text-xs text-muted">{tr("layout.keine_projekte")}</div>
             )}
             {projects?.map((p) => (
               <button
@@ -94,23 +95,23 @@ function UserMenu() {
             <div className="truncate px-2 py-1.5 text-xs text-muted">{name}</div>
             <div className="my-1 border-t border-line" />
             <Link to="/profil" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Profil</Link>
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.profil")}</Link>
             <Link to="/settings" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Einstellungen</Link>
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.einstellungen")}</Link>
             <Link to="/processes" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Prozesse</Link>
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.prozesse")}</Link>
             {/* Die Pillenleiste gehört der jeweiligen Seite — eine globale Ansicht hat dort
                 keinen Platz. Das Büro steht deshalb hier, neben „Prozesse": beides sind
                 projektübergreifende Seiten, keine Einstellungen. */}
             <Link to="/buero" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">🏢 Büro</Link>
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.buero")}</Link>
             {isAdmin && (
               <Link to="/admin" onClick={() => setOpen(false)}
-                className="block rounded px-2 py-1.5 text-ink hover:bg-surface">Admin</Link>
+                className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.admin")}</Link>
             )}
             <div className="my-1 border-t border-line" />
             <button onClick={logout}
-              className="block w-full rounded px-2 py-1.5 text-left text-ink hover:bg-surface">Abmelden</button>
+              className="block w-full rounded px-2 py-1.5 text-left text-ink hover:bg-surface">{tr("layout.abmelden")}</button>
           </div>
         </>
       )}
@@ -128,7 +129,7 @@ function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: stri
   const item = "flex items-center gap-2 rounded px-2 py-2 text-sm";
   return (
     <div className="md:hidden">
-      <button onClick={() => setOpen((v) => !v)} aria-label="Menü" title="Menü"
+      <button onClick={() => setOpen((v) => !v)} aria-label={tr("layout.menue")} title={tr("layout.menue")}
         className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-surface text-lg leading-none text-ink hover:bg-card">
         ☰
       </button>
@@ -138,7 +139,7 @@ function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: stri
           <div className="absolute inset-x-2 top-full z-40 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-2xl">
             {tabs.length > 0 && (
               <>
-                <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted">Navigation</div>
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted">{tr("layout.navigation")}</div>
                 {tabs.map((t) => (
                   <Link key={t.key} to={t.to} onClick={close}
                     className={`${item} ${isActive(t.to) ? "bg-surface text-ink" : "text-muted hover:bg-surface hover:text-ink"}`}>
@@ -149,18 +150,18 @@ function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: stri
                 <div className="my-1 border-t border-line" />
               </>
             )}
-            <Link to="/" onClick={close} className={`${item} text-ink hover:bg-surface`}>🦝 <span>Projekte</span></Link>
-            <Link to="/inbox" onClick={close} className={`${item} text-ink hover:bg-surface`}>📥 <span>Inbox</span></Link>
-            <Link to="/processes" onClick={close} className={`${item} text-ink hover:bg-surface`}>🔀 <span>Prozesse</span></Link>
-            <Link to="/buero" onClick={close} className={`${item} text-ink hover:bg-surface`}>🏢 <span>Büro</span></Link>
-            <Link to="/profil" onClick={close} className={`${item} text-ink hover:bg-surface`}>👤 <span>Profil</span></Link>
-            <Link to="/settings" onClick={close} className={`${item} text-ink hover:bg-surface`}>⚙️ <span>Einstellungen</span></Link>
+            <Link to="/" onClick={close} className={`${item} text-ink hover:bg-surface`}>🦝 <span>{tr("layout.projekte")}</span></Link>
+            <Link to="/inbox" onClick={close} className={`${item} text-ink hover:bg-surface`}>📥 <span>{tr("layout.inbox")}</span></Link>
+            <Link to="/processes" onClick={close} className={`${item} text-ink hover:bg-surface`}>🔀 <span>{tr("layout.prozesse")}</span></Link>
+            <Link to="/buero" onClick={close} className={`${item} text-ink hover:bg-surface`}>🏢 <span>{tr("layout.buero_2")}</span></Link>
+            <Link to="/profil" onClick={close} className={`${item} text-ink hover:bg-surface`}>👤 <span>{tr("layout.profil")}</span></Link>
+            <Link to="/settings" onClick={close} className={`${item} text-ink hover:bg-surface`}>⚙️ <span>{tr("layout.einstellungen")}</span></Link>
             {isAdmin && (
-              <Link to="/admin" onClick={close} className={`${item} text-ink hover:bg-surface`}>🛠️ <span>Admin</span></Link>
+              <Link to="/admin" onClick={close} className={`${item} text-ink hover:bg-surface`}>🛠️ <span>{tr("layout.admin")}</span></Link>
             )}
             <div className="my-1 border-t border-line" />
             <button onClick={() => { close(); logout(); }}
-              className={`${item} w-full text-left text-ink hover:bg-surface`}>🚪 <span>Abmelden</span></button>
+              className={`${item} w-full text-left text-ink hover:bg-surface`}>🚪 <span>{tr("layout.abmelden")}</span></button>
           </div>
         </>
       )}
@@ -180,7 +181,7 @@ export default function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
         {/* Links: Marke + Projekt-Titel/Switcher bzw. Seitentitel */}
         <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
-          <Link to="/" className="shrink-0 text-xl" title="Traccoon — Start">🦝</Link>
+          <Link to="/" className="shrink-0 text-xl" title={tr("layout.traccoon_start")}>🦝</Link>
           {!onProjectPage && chrome.title && (
             <span className="hidden shrink-0 font-semibold text-ink sm:inline">{chrome.title}</span>
           )}

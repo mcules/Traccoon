@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError, MemberLite, Project } from "../api";
@@ -76,7 +77,7 @@ export default function Hardware({ project }: { project: Project }) {
       {err && <div className="mb-3 text-sm text-red-400">{err}</div>}
       <div className="grid gap-6 lg:grid-cols-2">
         <section>
-          <h3 className="mb-2 font-medium">Exemplare (dieses Projekt)</h3>
+          <h3 className="mb-2 font-medium">{tr("hardware.exemplare_dieses_projekt")}</h3>
           <div className="space-y-2">
             {assets.data?.map((a) => (
               <div key={a.id} className="rounded border border-line bg-card text-sm">
@@ -92,7 +93,7 @@ export default function Hardware({ project }: { project: Project }) {
                   </button>
                   {kannVerwalten && (
                     <button onClick={() => delAsset.mutate(a.id)}
-                      className="text-muted hover:text-red-400" title="Exemplar löschen">🗑</button>
+                      className="text-muted hover:text-red-400" title={tr("hardware.exemplar_loeschen")}>🗑</button>
                   )}
                 </div>
                 {offen === a.id && (
@@ -118,7 +119,7 @@ export default function Hardware({ project }: { project: Project }) {
                     )}
                     {a.artifact_id && (
                       <div className="mt-3 rounded-lg border border-line p-3">
-                        <div className="mb-2 text-xs font-medium text-muted">Felder</div>
+                        <div className="mb-2 text-xs font-medium text-muted">{tr("hardware.felder")}</div>
                         <ArtifactFields artifactId={a.artifact_id} compact />
                       </div>
                     )}
@@ -127,17 +128,17 @@ export default function Hardware({ project }: { project: Project }) {
                 )}
               </div>
             ))}
-            {assets.data?.length === 0 && <div className="text-xs text-muted">Keine Exemplare.</div>}
+            {assets.data?.length === 0 && <div className="text-xs text-muted">{tr("hardware.keine_exemplare")}</div>}
           </div>
           <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-line bg-card p-3">
             <select value={aModel} onChange={(e) => setAModel(e.target.value)}
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
-              <option value="">Modell…</option>
+              <option value="">{tr("hardware.modell")}</option>
               {models.data?.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
             <select value={aLoc} onChange={(e) => setALoc(e.target.value)}
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
-              <option value="">Ort…</option>
+              <option value="">{tr("hardware.ort")}</option>
               {locations.data?.map((l) => <option key={l.id} value={l.id}>{l.full_path}</option>)}
             </select>
             <select value={aStatus} onChange={(e) => setAStatus(e.target.value)}
@@ -154,7 +155,7 @@ export default function Hardware({ project }: { project: Project }) {
           {kannVerwalten && <WorkflowConfig project={project} />}
 
           <div>
-            <h3 className="mb-2 font-medium">Katalog (Modelle)</h3>
+            <h3 className="mb-2 font-medium">{tr("hardware.katalog_modelle")}</h3>
             <div className="flex flex-wrap gap-1">
               {models.data?.map((m) => (
                 <span key={m.id} className="flex items-center gap-1 rounded bg-surface px-2 py-1 text-xs">
@@ -167,14 +168,14 @@ export default function Hardware({ project }: { project: Project }) {
               ))}
             </div>
             <div className="mt-2 flex gap-2">
-              <input value={mName} onChange={(e) => setMName(e.target.value)} placeholder="Modellname"
+              <input value={mName} onChange={(e) => setMName(e.target.value)} placeholder={tr("hardware.modellname")}
                 className="flex-1 rounded border border-line bg-surface px-2 py-1 text-sm" />
               <button onClick={() => mName && addModel.mutate()} className="rounded bg-brand px-3 py-1 text-sm text-white">+</button>
             </div>
           </div>
 
           <div>
-            <h3 className="mb-2 font-medium">Lagerorte</h3>
+            <h3 className="mb-2 font-medium">{tr("hardware.lagerorte")}</h3>
             <div className="space-y-1">
               {locations.data?.map((l) => (
                 <div key={l.id} className="flex items-center gap-1.5 text-xs text-muted">
@@ -187,7 +188,7 @@ export default function Hardware({ project }: { project: Project }) {
               ))}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
-              <input value={lName} onChange={(e) => setLName(e.target.value)} placeholder="Ortname"
+              <input value={lName} onChange={(e) => setLName(e.target.value)} placeholder={tr("hardware.ortname")}
                 className="rounded border border-line bg-surface px-2 py-1 text-sm" />
               <select value={lType} onChange={(e) => setLType(e.target.value)}
                 className="rounded border border-line bg-surface px-2 py-1 text-sm">
@@ -217,7 +218,7 @@ function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: str
   });
   return (
     <div className="mt-3 border-t border-line pt-2.5">
-      <div className="mb-1 text-xs font-medium text-muted">Tickets</div>
+      <div className="mb-1 text-xs font-medium text-muted">{tr("hardware.tickets")}</div>
       {data?.length ? (
         <ul className="space-y-1">
           {data.map((i) => (
@@ -232,7 +233,7 @@ function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: str
           ))}
         </ul>
       ) : (
-        <div className="text-xs text-muted">Keine Tickets an diesem Exemplar.</div>
+        <div className="text-xs text-muted">{tr("hardware.keine_tickets_an_diesem_exemplar")}</div>
       )}
     </div>
   );
@@ -274,7 +275,7 @@ function WorkflowConfig({ project }: { project: Project }) {
   });
   return (
     <div className="rounded-lg border border-line bg-card p-3">
-      <h3 className="mb-1 font-medium">Beschaffungsprozess</h3>
+      <h3 className="mb-1 font-medium">{tr("hardware.beschaffungsprozess")}</h3>
       <p className="mb-2 text-xs text-muted">
         Schritte, die jedes neue Exemplar durchläuft — je Schritt lässt sich festlegen, wer
         zuständig ist.
@@ -286,20 +287,20 @@ function WorkflowConfig({ project }: { project: Project }) {
               <span className="w-5 text-xs text-muted">{i + 1}.</span>
               <input value={s.name}
                 onChange={(e) => aendern(schritte.map((x, j) => j === i ? { ...x, name: e.target.value } : x))}
-                placeholder="Schrittname"
+                placeholder={tr("hardware.schrittname")}
                 className="flex-1 rounded border border-line bg-card px-2 py-1 text-sm" />
-              <button title="nach oben" disabled={i === 0}
+              <button title={tr("hardware.nach_oben")} disabled={i === 0}
                 onClick={() => { const n = [...schritte]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; aendern(n); }}
                 className="text-muted hover:text-ink disabled:opacity-30">↑</button>
-              <button title="nach unten" disabled={i === schritte.length - 1}
+              <button title={tr("hardware.nach_unten")} disabled={i === schritte.length - 1}
                 onClick={() => { const n = [...schritte]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; aendern(n); }}
                 className="text-muted hover:text-ink disabled:opacity-30">↓</button>
-              <button title="Schritt entfernen"
+              <button title={tr("hardware.schritt_entfernen")}
                 onClick={() => aendern(schritte.filter((_, j) => j !== i))}
                 className="text-muted hover:text-red-400">✕</button>
             </div>
             <div className="mt-1.5 flex items-center gap-2 pl-7">
-              <span className="text-xs text-muted">Zuständig</span>
+              <span className="text-xs text-muted">{tr("hardware.zustaendig")}</span>
               <AssigneeEditor value={s.assignee?.mode ? s.assignee : undefined}
                 members={members || []}
                 onChange={(v) => aendern(schritte.map((x, j) => j === i ? { ...x, assignee: v } : x))} />
@@ -310,16 +311,16 @@ function WorkflowConfig({ project }: { project: Project }) {
             </div>
           </div>
         ))}
-        {schritte.length === 0 && <div className="text-xs text-muted">Noch keine Schritte.</div>}
+        {schritte.length === 0 && <div className="text-xs text-muted">{tr("hardware.noch_keine_schritte")}</div>}
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
         <button onClick={() => aendern([...schritte, { name: "", order: schritte.length, assignee: {} as AssigneeSpec }])}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">+ Schritt</button>
         <button onClick={() => speichern.mutate()} disabled={!entwurf}
-          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-40">Speichern</button>
+          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-40">{tr("hardware.speichern")}</button>
         <button onClick={() => alsProzess.mutate()} disabled={alsProzess.isPending}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
-          title="Diese Schrittliste als grafischen Workflow-Prozess bearbeiten">
+          title={tr("hardware.diese_schrittliste_als_grafischen_workfl")}>
           🧭 Als Prozess bearbeiten
         </button>
       </div>

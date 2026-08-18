@@ -11,7 +11,7 @@ from . import models  # noqa: F401  (Metadata für create_all füllen)
 from .api import (
     admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, deployments,
     destinations, files, hardware, invitations,
-    issues, lifecycle, mail, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
+    i18n as i18n_api, issues, lifecycle, mail, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
     projects, repo, office,
     runs, secrets, skills, testenv, users, workflows, ws,
 )
@@ -381,6 +381,9 @@ async def lifespan(app: FastAPI):
                 # Stille-Marke einer Messreihe (einmal je Stille-Phase melden).
                 "ALTER TABLE metric_series ADD COLUMN IF NOT EXISTS still_at "
                 "TIMESTAMP WITH TIME ZONE",
+                # UI language per person, and the translation overrides an admin edits.
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS locale VARCHAR(10) "
+                "DEFAULT 'de' NOT NULL",
                 # Messreihen (create_all legt die Tabellen an; der Index nicht).
                 "CREATE INDEX IF NOT EXISTS ix_metric_points_series_ts "
                 "ON metric_points (series_id, ts DESC)",
@@ -468,6 +471,7 @@ api.include_router(processes.router)
 api.include_router(ops.router)
 api.include_router(destinations.router)
 api.include_router(metrics_api.router)
+api.include_router(i18n_api.router)
 api.include_router(artifacts_api.router)
 api.include_router(mail.router)
 api.include_router(secrets.router)

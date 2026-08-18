@@ -1,4 +1,5 @@
 import type { NodeConfig } from "../types";
+import { tr } from "../../../i18n";
 
 /** Wie lange gewartet wird — eine Dauer ab jetzt oder ein fester Zeitpunkt. */
 export default function TimerConfig({
@@ -31,10 +32,10 @@ export default function TimerConfig({
             onChange={(e) => set({ einheit: e.target.value })}
             className={`mt-1 ${inp}`}
           >
-            <option value="s">Sekunden</option>
-            <option value="m">Minuten</option>
-            <option value="h">Stunden</option>
-            <option value="t">Tage</option>
+            <option value="s">{tr("timer_config.sekunden")}</option>
+            <option value="m">{tr("timer_config.minuten")}</option>
+            <option value="h">{tr("timer_config.stunden")}</option>
+            <option value="t">{tr("timer_config.tage")}</option>
           </select>
         </label>
       </div>

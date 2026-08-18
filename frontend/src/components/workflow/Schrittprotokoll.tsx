@@ -10,6 +10,7 @@
  * Dieselbe Darstellung bedient den Probelauf und den echten Lauf; ein Probelauf ist nichts
  * anderes als ein Lauf, in dem jede Aktion nur sagt, was sie täte.
  */
+import { tr } from "../../i18n";
 export interface Schritt {
   node_id: string;
   node_type: string;
@@ -89,7 +90,7 @@ export default function Schrittprotokoll({
             )}
             {voll && (
               <details className="mt-0.5">
-                <summary className="cursor-pointer text-[10px] opacity-60">Rohdaten</summary>
+                <summary className="cursor-pointer text-[10px] opacity-60">{tr("schrittprotokoll.rohdaten")}</summary>
                 <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all
                                 rounded bg-card p-1 text-[10px]">
                   {JSON.stringify(s.result, null, 1)}

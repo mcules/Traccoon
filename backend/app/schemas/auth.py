@@ -54,6 +54,7 @@ class UserOut(BaseModel):
     ticket_layout: dict = {}
     pm_chat_style: str = "bubbles"
     # Benachrichtigungswege dieser Person (Profil).
+    locale: str = "de"
     notify_default: str = "telegram"
     notify_email: str | None = None
     telegram_chat_id: str | None = None

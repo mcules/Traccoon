@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { tr, setzeSprache } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
@@ -7,6 +9,7 @@ export default function Profile() {
   usePageChrome("Profil", []);
   return (
     <div className="mx-auto max-w-2xl space-y-4">
+      <SprachePanel />
       <EmailPanel />
       <BenachrichtigungenPanel />
       <PasswordPanel />
@@ -80,7 +83,7 @@ function TicketOpenPanel() {
   );
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <div className="text-sm font-medium text-ink">Tickets öffnen</div>
+      <div className="text-sm font-medium text-ink">{tr("profile.tickets_oeffnen")}</div>
       <p className="text-xs text-muted">
         Verhalten beim Linksklick auf ein Ticket. Mittelklick öffnet immer die ganze Seite in einem neuen Tab.
       </p>
@@ -89,6 +92,56 @@ function TicketOpenPanel() {
         {btn("page", "Ganze Seite")}
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
+    </section>
+  );
+}
+
+/**
+ * Sprache der Oberfläche.
+ *
+ * Deutsch ist die Quelle, alles andere eine Übersetzung. Fehlt ein Text in der gewählten
+ * Sprache, steht der deutsche da — eine halb übersetzte Oberfläche bleibt damit benutzbar,
+ * statt in rohen Schlüsseln zu enden. Welche Sprachen es gibt, sagt der Server: eine neue
+ * entsteht in der Verwaltung, ohne dass jemand Code anfassen muss.
+ */
+function SprachePanel() {
+  const { user, refresh } = useAuth();
+  const [locale, setLocale] = useState(user?.locale || "de");
+  const [ok, setOk] = useState("");
+  const [err, setErr] = useState("");
+  const { data: sprachen } = useQuery({
+    queryKey: ["i18n-locales"],
+    queryFn: () => api.get<{ locale: string; eigene_texte: number }[]>("/i18n/locales"),
+  });
+
+  const save = async () => {
+    setErr(""); setOk("");
+    try {
+      await api.put("/me/locale", { value: locale });
+      await setzeSprache(locale);
+      await refresh();
+      setOk(tr("profile.gespeichert"));
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : tr("profile.speichern_fehlgeschlagen"));
+    }
+  };
+
+  return (
+    <section className="space-y-3 rounded-lg border border-line bg-card p-4">
+      <div className="text-sm font-medium text-ink">{tr("profile.sprache")}</div>
+      <p className="text-xs text-muted">{tr("profile.sprache_hinweis")}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select value={locale} onChange={(e) => setLocale(e.target.value)}
+          className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink">
+          {(sprachen || [{ locale: "de", eigene_texte: 0 }, { locale: "en", eigene_texte: 0 }])
+            .map((s) => <option key={s.locale} value={s.locale}>{s.locale}</option>)}
+        </select>
+        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+          {tr("profile.speichern")}
+        </button>
+      </div>
+      {err && <div className="text-sm text-red-400">{err}</div>}
+      {ok && <div className="text-sm text-green-400">{ok}</div>}
     </section>
   );
 }
@@ -119,7 +172,7 @@ function EmailPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Speichern</button>
+        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("profile.speichern")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
@@ -162,7 +215,7 @@ function BenachrichtigungenPanel() {
 
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <div className="text-sm font-medium text-ink">Benachrichtigungen</div>
+      <div className="text-sm font-medium text-ink">{tr("profile.benachrichtigungen")}</div>
       <p className="text-xs text-muted">
         In der Oberfläche siehst du ohnehin alles. Hier steht, was zusätzlich hinausgeht —
         und wohin, wenn der Absender keinen Weg nennt (der Normalfall).
@@ -171,7 +224,7 @@ function BenachrichtigungenPanel() {
       <label className="block text-xs font-medium text-muted">
         Standard-Weg
         <select value={standard} onChange={(e) => setStandard(e.target.value)} className={`mt-1 ${feld}`}>
-          <option value="telegram">Telegram</option>
+          <option value="telegram">{tr("profile.telegram")}</option>
           <option value="email">E-Mail</option>
         </select>
       </label>
@@ -197,7 +250,7 @@ function BenachrichtigungenPanel() {
           dem anderen Weg hinaus, sonst nur in die Glocke.
         </div>
       )}
-      <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Speichern</button>
+      <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("profile.speichern")}</button>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
     </section>
@@ -222,15 +275,15 @@ function PasswordPanel() {
   };
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <div className="text-sm font-medium text-ink">Passwort ändern</div>
+      <div className="text-sm font-medium text-ink">{tr("profile.passwort_aendern")}</div>
       <div className="flex flex-wrap items-center gap-2">
         <input type="password" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)}
-          placeholder="Aktuelles Passwort"
+          placeholder={tr("profile.aktuelles_passwort")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="Neues Passwort (≥8 Zeichen)"
+          placeholder={tr("profile.neues_passwort_8_zeichen")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Ändern</button>
+        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("profile.aendern")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
@@ -265,8 +318,8 @@ function ThemePanel() {
   );
   return (
     <section className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <div className="text-sm font-medium text-ink">Theme</div>
-      <p className="text-xs text-muted">Erscheinungsbild der Oberfläche.</p>
+      <div className="text-sm font-medium text-ink">{tr("profile.theme")}</div>
+      <p className="text-xs text-muted">{tr("profile.erscheinungsbild_der_oberflaeche")}</p>
       <div className="flex gap-2">
         {btn("dark", "Dunkel")}
         {btn("light", "Hell")}

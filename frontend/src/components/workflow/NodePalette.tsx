@@ -1,4 +1,5 @@
 import { NODE_TYPE_LABELS, type WorkflowNodeType } from "./types";
+import { tr } from "../../i18n";
 
 const ICONS: Record<WorkflowNodeType, string> = {
   start: "▶",
@@ -32,7 +33,7 @@ const ORDER: WorkflowNodeType[] = [
 export default function NodePalette() {
   return (
     <div className="space-y-1.5">
-      <div className="mb-2 text-xs font-medium text-muted">Bausteine — in die Fläche ziehen</div>
+      <div className="mb-2 text-xs font-medium text-muted">{tr("node_palette.bausteine_in_die_flaeche_ziehen")}</div>
       {ORDER.map((t) => (
         <div
           key={t}

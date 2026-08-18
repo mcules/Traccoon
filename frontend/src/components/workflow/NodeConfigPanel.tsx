@@ -1,4 +1,5 @@
 import { NODE_TYPE_LABELS, type NodeConfig, type WorkflowInstanceStatus } from "./types";
+import { tr } from "../../i18n";
 import type { MemberLite } from "../../api";
 import type { FlowNode } from "./nodes/shared";
 import HumanTaskConfig from "./config/HumanTaskConfig";
@@ -45,7 +46,7 @@ export default function NodeConfigPanel({
   defId?: number;
 }) {
   if (!node) {
-    return <div className="p-3 text-sm text-muted">Knoten anklicken, um ihn zu konfigurieren.</div>;
+    return <div className="p-3 text-sm text-muted">{tr("node_config_panel.knoten_anklicken_um_ihn_zu_konfigurieren")}</div>;
   }
   const config = node.data.config;
   const set = (c: NodeConfig) => onChange(node.id, c);
@@ -60,7 +61,7 @@ export default function NodeConfigPanel({
           <button
             onClick={() => onDelete(node.id)}
             className="text-sm text-muted hover:text-red-400"
-            title="Knoten löschen"
+            title={tr("node_config_panel.knoten_loeschen")}
           >
             🗑
           </button>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { WorkflowGraph } from "./types";
 
@@ -76,8 +77,8 @@ export default function BaumeisterPanel({
   return (
     <div className="space-y-2 border-t border-line p-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted">Beschreiben statt bauen</span>
-        <button onClick={() => setOffen(false)} title="schließen"
+        <span className="text-xs font-medium text-muted">{tr("baumeister_panel.beschreiben_statt_bauen")}</span>
+        <button onClick={() => setOffen(false)} title={tr("baumeister_panel.schliessen")}
           className="text-xs text-muted hover:text-ink">✕</button>
       </div>
 

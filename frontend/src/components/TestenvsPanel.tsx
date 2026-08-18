@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 
@@ -65,7 +66,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
       {err && <div className="text-sm text-red-400">{err}</div>}
 
       <section>
-        <h3 className="mb-2 font-medium">Laufende Umgebungen</h3>
+        <h3 className="mb-2 font-medium">{tr("testenvs_panel.laufende_umgebungen")}</h3>
         <div className="space-y-2">
           {envs?.map((e) => (
             <div key={e.container} className="rounded border border-line bg-card text-sm">
@@ -79,7 +80,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                 <span className="flex-1 truncate">{e.label}</span>
                 {e.url && (
                   <a href={e.url} target="_blank" rel="noreferrer"
-                    className="text-brand hover:underline">🖥 öffnen</a>
+                    className="text-brand hover:underline">{tr("testenvs_panel.oeffnen")}</a>
                 )}
                 <button onClick={() => { setOffen(offen === e.container ? null : e.container); }}
                   className="text-muted hover:text-ink">
@@ -107,7 +108,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                       </span>
                     ))}
                     {e.services.length === 0 && (
-                      <span className="text-xs text-muted">Kein Container beim Runner sichtbar.</span>
+                      <span className="text-xs text-muted">{tr("testenvs_panel.kein_container_beim_runner_sichtbar")}</span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-1">
@@ -128,13 +129,13 @@ export default function TestenvsPanel({ project }: { project: Project }) {
               )}
             </div>
           ))}
-          {envs?.length === 0 && <div className="text-xs text-muted">Keine laufende Testumgebung.</div>}
+          {envs?.length === 0 && <div className="text-xs text-muted">{tr("testenvs_panel.keine_laufende_testumgebung")}</div>}
         </div>
       </section>
 
       {kann && (
         <section className="rounded-lg border border-line bg-card p-3">
-          <h3 className="mb-1 font-medium">Branch-Testumgebung starten</h3>
+          <h3 className="mb-1 font-medium">{tr("testenvs_panel.branch_testumgebung_starten")}</h3>
           <p className="mb-2 text-xs text-muted">
             Baut den gewählten Branch in einer eigenen, wegwerfbaren Umgebung — unabhängig
             von einem Ticket.

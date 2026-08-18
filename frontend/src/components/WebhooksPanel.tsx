@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Project } from "../api";
 
@@ -116,8 +117,8 @@ export default function WebhooksPanel() {
             {w.ref_field && <span className="rounded bg-surface px-1 text-xs">ref: {w.ref_field}</span>}
             <div className="flex-1" />
             <button title={w.enabled ? "Deaktivieren" : "Aktivieren"} onClick={() => toggle.mutate(w)} className={ico}>{w.enabled ? "⏸" : "⏵"}</button>
-            <button title="Bearbeiten" onClick={() => edit(w)} className={ico}>✎</button>
-            <button title="Löschen" onClick={() => del.mutate(w.id)} className={ico + " hover:text-red-400"}>🗑</button>
+            <button title={tr("webhooks_panel.bearbeiten")} onClick={() => edit(w)} className={ico}>✎</button>
+            <button title={tr("webhooks_panel.loeschen")} onClick={() => del.mutate(w.id)} className={ico + " hover:text-red-400"}>🗑</button>
           </div>
           <div className="mt-1 flex items-center gap-2">
             <code className="flex-1 truncate rounded bg-surface px-1.5 py-0.5 text-xs">
@@ -128,7 +129,7 @@ export default function WebhooksPanel() {
           </div>
           </div>
         ))}
-        {hooks?.length === 0 && <div className="text-xs text-muted">Keine Webhooks.</div>}
+        {hooks?.length === 0 && <div className="text-xs text-muted">{tr("webhooks_panel.keine_webhooks")}</div>}
       </div>
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3 text-sm">
         {editId && <div className="col-span-2 text-xs text-brand">Bearbeite Webhook #{editId} —
@@ -142,13 +143,13 @@ export default function WebhooksPanel() {
           placeholder={editId ? "HMAC-Secret (leer = unverändert)" : "HMAC-Secret"} className={inp} />
         {f.mode === "assistant" ? (
           <input value={f.classify_agent} onChange={(e) => setF({ ...f, classify_agent: e.target.value })}
-            placeholder="Klassifizier-Agent (z. B. mail_classifier)" className={inp} />
+            placeholder={tr("webhooks_panel.klassifizier_agent_z_b_mail_classifier")} className={inp} />
         ) : (
           <select value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })} className={inp}>
             <option value="">— Projekt (für task) —</option>
             {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
         )}
-        <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} placeholder="Agent (optional)" className={inp} />
+        <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} placeholder={tr("webhooks_panel.agent_optional")} className={inp} />
         {f.mode === "assistant" ? (
           <textarea value={f.prompt_tmpl} onChange={(e) => setF({ ...f, prompt_tmpl: e.target.value })}
             placeholder="Task-Prompt (Mail-Verarbeitungs-Wissen) — leer = Standard. Platzhalter {account} {uid} {from} {subject} {body_text} …"
@@ -166,7 +167,7 @@ export default function WebhooksPanel() {
               ))}
             </select>
             <input value={f.context_map} onChange={(e) => setF({ ...f, context_map: e.target.value })}
-              placeholder="Kontext-Mapping: asset_id: data.id, ort: data.location.name" className={inp} />
+              placeholder={tr("webhooks_panel.kontext_mapping_asset_id_data_id_ort_dat")} className={inp} />
             <div className="col-span-2 text-xs text-muted">
               Ohne Mapping wandert der komplette Payload als Kontext in die Instanz.
             </div>
@@ -185,21 +186,20 @@ export default function WebhooksPanel() {
         {open && (
           <>
             <input value={f.event_header} onChange={(e) => setF({ ...f, event_header: e.target.value })}
-              placeholder="Event-Header (z. B. X-GitHub-Event)" className={inp} />
+              placeholder={tr("webhooks_panel.event_header_z_b_x_github_event")} className={inp} />
             <input value={f.event_filter} onChange={(e) => setF({ ...f, event_filter: e.target.value })}
-              placeholder="nur diese Events: push, issues" className={inp} />
+              placeholder={tr("webhooks_panel.nur_diese_events_push_issues")} className={inp} />
             <input value={f.alert_events} onChange={(e) => setF({ ...f, alert_events: e.target.value })}
-              placeholder="Sofort-Alarm bei: outage, alert" className={inp} />
+              placeholder={tr("webhooks_panel.sofort_alarm_bei_outage_alert")} className={inp} />
             <input value={f.event_cooldowns} onChange={(e) => setF({ ...f, event_cooldowns: e.target.value })}
-              placeholder="Zusammenfassen: push:300, issues:60" className={inp} />
+              placeholder={tr("webhooks_panel.zusammenfassen_push_300_issues_60")} className={inp} />
             <input value={f.event_key_header} onChange={(e) => setF({ ...f, event_key_header: e.target.value })}
-              placeholder="Gruppier-Header (optional)" className={inp} />
+              placeholder={tr("webhooks_panel.gruppier_header_optional")} className={inp} />
             <input value={f.ref_field} onChange={(e) => setF({ ...f, ref_field: e.target.value })}
-              placeholder="Idempotenz-Feld im Payload (z. B. id)" className={inp} />
+              placeholder={tr("webhooks_panel.idempotenz_feld_im_payload_z_b_id")} className={inp} />
             <input value={f.notify_chat} onChange={(e) => setF({ ...f, notify_chat: e.target.value })}
-              placeholder="Telegram-Chat-ID (optional)" className={inp} />
-            <div className="text-xs text-muted">Cooldown: erste Zustellung läuft durch, Folge-Events im Fenster
-              kommen als eine Sammel-Meldung.</div>
+              placeholder={tr("webhooks_panel.telegram_chat_id_optional")} className={inp} />
+            <div className="text-xs text-muted">{tr("webhooks_panel.cooldown_erste_zustellung_laeuft_durch_f")}</div>
           </>
         )}
         <button onClick={() => f.route && save.mutate()} className="col-span-2 rounded bg-brand py-1.5 text-white">

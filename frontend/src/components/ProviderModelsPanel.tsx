@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
 
@@ -99,11 +100,11 @@ export default function ProviderModelsPanel() {
         <p className="text-sm text-muted">
           Welcher Provider welche Modelle bereitstellt. Preise in <b>USD je 1 Mio. Token</b> —
           sie bestimmen die Kostenrechnung der Läufe; <b>0</b> heißt „zählt nichts" (z. B. lokale
-          Modelle). <b>Kontext</b> ist das größte Fenster in Tokens, <b>≈ t/s</b> die
+          Modelle). <b>{tr("provider_models_panel.kontext")}</b> ist das größte Fenster in Tokens, <b>≈ t/s</b> die
           gemessene Ausgabegeschwindigkeit — bei lokalen Modellen ist genau das der
           Auswahlgrund, denn der Preis ist dort 0. Deaktivierte Modelle verschwinden aus der
           Auswahl im Agent-Editor, bleiben aber für die Abrechnung alter Läufe erhalten.
-          <b> Modelle abrufen</b> fragt deine Endpoints, <b>Preise</b> holt Preise und
+          <b> {tr("provider_models_panel.modelle_abrufen")}</b> fragt deine Endpoints, <b>{tr("provider_models_panel.preise")}</b> holt Preise und
           Kontextfenster aus models.dev — lokale Modelle stehen dort nicht und bleiben
           unangetastet, deren t/s misst du selbst.
         </p>
@@ -112,7 +113,7 @@ export default function ProviderModelsPanel() {
             className="rounded border border-line px-3 py-1.5 text-sm text-ink hover:bg-surface disabled:opacity-50">
             {abrufen.isPending ? "Lädt…" : "↻ Modelle abrufen"}
           </button>
-          <button onClick={() => preise.mutate()} disabled={preise.isPending} title="Preise aus dem offenen Katalog models.dev übernehmen"
+          <button onClick={() => preise.mutate()} disabled={preise.isPending} title={tr("provider_models_panel.preise_aus_dem_offenen_katalog_models_de")}
             className="rounded border border-line px-3 py-1.5 text-sm text-ink hover:bg-surface disabled:opacity-50">
             {preise.isPending ? "Lädt…" : "💲 Preise (models.dev)"}
           </button>
@@ -128,11 +129,11 @@ export default function ProviderModelsPanel() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs uppercase text-muted">
-                  <th className="py-2">Modell-ID</th><th>Anzeigename</th>
-                  <th className="text-right">Input</th><th className="text-right">Output</th>
-                  <th className="text-right">Cache-Read</th>
-                  <th className="text-right">Kontext</th><th className="text-right">≈ t/s</th>
-                  <th className="text-center">Aktiv</th><th />
+                  <th className="py-2">{tr("provider_models_panel.modell_id")}</th><th>{tr("provider_models_panel.anzeigename")}</th>
+                  <th className="text-right">{tr("provider_models_panel.input")}</th><th className="text-right">{tr("provider_models_panel.output")}</th>
+                  <th className="text-right">{tr("provider_models_panel.cache_read")}</th>
+                  <th className="text-right">{tr("provider_models_panel.kontext")}</th><th className="text-right">≈ t/s</th>
+                  <th className="text-center">{tr("provider_models_panel.aktiv")}</th><th />
                 </tr>
               </thead>
               <tbody>
@@ -159,12 +160,12 @@ export default function ProviderModelsPanel() {
                       </td>
                       <td className="pr-2">
                         <input type="number" step="1024" min="0" value={m.context_tokens ?? ""}
-                          placeholder="—" className={num} title="Maximales Kontextfenster in Tokens"
+                          placeholder="—" className={num} title={tr("provider_models_panel.maximales_kontextfenster_in_tokens")}
                           onChange={(e) => setzen(roh, { context_tokens: e.target.value ? Number(e.target.value) : null })} />
                       </td>
                       <td className="pr-2">
                         <input type="number" step="1" min="0" value={m.speed_tps ?? ""}
-                          placeholder="—" className={num} title="Gemessene Ausgabegeschwindigkeit (Tokens/s)"
+                          placeholder="—" className={num} title={tr("provider_models_panel.gemessene_ausgabegeschwindigkeit_tokens_")}
                           onChange={(e) => setzen(roh, { speed_tps: e.target.value ? Number(e.target.value) : null })} />
                       </td>
                       <td className="text-center">

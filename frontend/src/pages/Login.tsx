@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { tr } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 
@@ -39,11 +40,11 @@ export default function Login() {
           {mode === "register" && (
             <input
               className="w-full rounded border border-line bg-surface px-3 py-2 outline-none"
-              placeholder="Benutzername" value={username} onChange={(e) => setUsername(e.target.value)} />
+              placeholder={tr("login.benutzername")} value={username} onChange={(e) => setUsername(e.target.value)} />
           )}
           <input type="password"
             className="w-full rounded border border-line bg-surface px-3 py-2 outline-none"
-            placeholder="Passwort" value={password} onChange={(e) => setPassword(e.target.value)} />
+            placeholder={tr("login.passwort")} value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         {info && <div className="mt-3 text-sm text-green-400">{info}</div>}

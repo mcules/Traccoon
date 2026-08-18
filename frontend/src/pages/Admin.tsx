@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, workflowApi } from "../api";
@@ -6,11 +7,14 @@ import { usePageChrome } from "../pageChrome";
 import DestinationsPanel from "../components/DestinationsPanel";
 import ArtifactTypesPanel from "../components/ArtifactTypesPanel";
 import ProviderModelsPanel from "../components/ProviderModelsPanel";
+import TranslationsPanel from "../components/TranslationsPanel";
 
-type Tab = "users" | "cost" | "models" | "maintenance" | "mail" | "destinations" | "artifacts";
+type Tab = "users" | "cost" | "models" | "maintenance" | "mail" | "destinations" | "artifacts"
+  | "translations";
 const TABS: [Tab, string][] = [
   ["users", "Nutzer"], ["cost", "Kosten"], ["models", "Modelle"], ["maintenance", "Wartung"],
   ["mail", "E-Mail"], ["destinations", "Ziele"], ["artifacts", "Artefakte"],
+  ["translations", "Übersetzungen"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -21,7 +25,7 @@ export default function Admin() {
   usePageChrome("Admin", TABS.map(([key, label]) => ({
     key, label, to: `/admin/${key}`,
     icon: { users: "👥", cost: "💶", models: "🧠", maintenance: "🔧", mail: "✉️",
-            destinations: "🎯", artifacts: "📦" }[key],
+            destinations: "🎯", artifacts: "📦", translations: "🌐" }[key],
   })));
   return (
     <div>
@@ -32,6 +36,7 @@ export default function Admin() {
       {tab === "mail" && <MailConfig />}
       {tab === "destinations" && <DestinationsPanel scope="global" />}
       {tab === "artifacts" && <ArtifactTypesPanel />}
+      {tab === "translations" && <TranslationsPanel />}
     </div>
   );
 }
@@ -69,7 +74,7 @@ function MailConfig() {
           className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
       </label>
       <label className="block text-xs text-muted">Passwort {data?.smtp_password_set && <span className="text-green-400">(gesetzt)</span>}
-        <input type="password" placeholder="unverändert lassen = leer"
+        <input type="password" placeholder={tr("admin.unveraendert_lassen_leer")}
           value={form.smtp_password ?? ""} onChange={(e) => setForm({ ...form, smtp_password: e.target.value })}
           className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
       </label>
@@ -82,7 +87,7 @@ function MailConfig() {
           onChange={(e) => setForm({ ...form, smtp_use_tls: e.target.checked })} />
         STARTTLS verwenden
       </label>
-      <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-white">Speichern</button>
+      <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-white">{tr("admin.speichern")}</button>
       {msg && <span className="ml-3 text-sm text-green-400">{msg}</span>}
     </div>
   );
@@ -101,14 +106,14 @@ function Maintenance() {
   return (
     <div className="max-w-xl space-y-4 rounded-lg border border-line bg-card p-4">
       <div>
-        <div className="text-sm font-medium">Wartungsprojekt</div>
+        <div className="text-sm font-medium">{tr("admin.wartungsprojekt")}</div>
         <p className="mt-1 text-xs text-muted">
           Nur das hier gewählte Projekt darf sich selbst deployen — und ausschließlich über den
           Update-Button (🤖-Icon oben). Agenten und Auto-Deploy lösen <b>niemals</b> einen Self-Deploy aus.
         </p>
       </div>
       <div>
-        <label className="text-xs text-muted">Projekt, das den laufenden Traccoon-Stack aktualisiert</label>
+        <label className="text-xs text-muted">{tr("admin.projekt_das_den_laufenden_traccoon_stack")}</label>
         <select value={status?.maintenance_project_id ?? ""}
           onChange={(e) => save.mutate(e.target.value ? Number(e.target.value) : null)}
           className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink">
@@ -145,7 +150,7 @@ function WorkflowLayout() {
   });
   return (
     <div className="border-t border-line pt-3">
-      <div className="text-sm font-medium">Prozess-Editor: Knotenabstand</div>
+      <div className="text-sm font-medium">{tr("admin.prozess_editor_knotenabstand")}</div>
       <p className="mt-1 text-xs text-muted">
         Gilt für „Anordnen" — derselbe Abstand waagerecht wie senkrecht, gemessen zwischen den
         Kartenrändern. Kleinere Werte packen lange Abläufe enger zusammen.
@@ -193,7 +198,7 @@ function TestenvConfig() {
   );
   return (
     <div className="border-t border-line pt-3">
-      <div className="text-sm font-medium">Testumgebungen (global)</div>
+      <div className="text-sm font-medium">{tr("admin.testumgebungen_global")}</div>
       <p className="mt-1 text-xs text-muted">
         Gilt für alle Projekte. Änderungen greifen sofort — kein Neustart nötig.
       </p>
@@ -237,16 +242,16 @@ function RunRetention() {
   });
   return (
     <div className="border-t border-line pt-3">
-      <div className="text-sm font-medium">Agentenläufe aufbewahren</div>
+      <div className="text-sm font-medium">{tr("admin.agentenlaeufe_aufbewahren")}</div>
       <p className="mt-1 text-xs text-muted">
         Wird ein Ticket archiviert, wandern seine Agentenläufe mit ins Archiv. Nach dieser
-        Frist werden sie samt Schritten endgültig gelöscht. <b>0 = nie löschen.</b>
+        Frist werden sie samt Schritten endgültig gelöscht. <b>{tr("admin.0_nie_loeschen")}</b>
       </p>
       <div className="mt-2 flex items-center gap-2">
         <input type="number" min={0} value={wert}
           onChange={(e) => setDays(Number(e.target.value))}
           className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <span className="text-xs text-muted">Tage</span>
+        <span className="text-xs text-muted">{tr("admin.tage")}</span>
         <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
@@ -273,7 +278,7 @@ function Users() {
     <CreateUserForm onCreated={() => qc.invalidateQueries({ queryKey: ["admin-users"] })} />
     <table className="w-full text-sm">
       <thead><tr className="border-b border-line text-left text-xs uppercase text-muted">
-        <th className="py-2">Nutzer</th><th>Rolle</th><th>Status</th><th></th></tr></thead>
+        <th className="py-2">{tr("admin.nutzer")}</th><th>{tr("admin.rolle")}</th><th>{tr("admin.status")}</th><th></th></tr></thead>
       <tbody>
         {users?.map((u) => (
           <>
@@ -356,12 +361,12 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
           {ok && <div className="text-sm text-brand">{ok}</div>}
           <div className="flex flex-wrap gap-2">
             <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-Mail (optional)" className={`flex-1 ${inp}`} />
-            <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Benutzername" className={`w-40 ${inp}`} />
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Anzeigename (optional)" className={`w-48 ${inp}`} />
+            <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={tr("admin.benutzername")} className={`w-40 ${inp}`} />
+            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={tr("admin.anzeigename_optional")} className={`w-48 ${inp}`} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder="Passwort (optional, ≥8 Zeichen)" className={`flex-1 ${inp}`} />
+              placeholder={tr("admin.passwort_optional_8_zeichen")} className={`flex-1 ${inp}`} />
             <select value={globalRole} onChange={(e) => setGlobalRole(e.target.value)} className={inp}>
               <option value="user">user</option>
               <option value="admin">admin</option>
@@ -370,10 +375,9 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
               <option value="active">aktiv</option>
               <option value="pending">wartend</option>
             </select>
-            <button onClick={submit} className="rounded bg-brand px-3 py-1.5 text-sm text-white">Anlegen</button>
+            <button onClick={submit} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("admin.anlegen")}</button>
           </div>
-          <p className="text-xs text-muted">Aktive Nutzer können sich sofort anmelden; „wartend" muss noch freigeschaltet werden.
-            Ohne Passwort kann sich der Nutzer nicht anmelden. Ohne E-Mail keine E-Mail-Anmeldung.</p>
+          <p className="text-xs text-muted">{tr("admin.aktive_nutzer_koennen_sich_sofort_anmeld")}</p>
         </div>
       )}
     </div>
@@ -412,12 +416,12 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
       <div onClick={(e) => e.stopPropagation()}
         className="w-full max-w-md rounded-xl border border-line bg-card p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold">Nutzer bearbeiten</h2>
+          <h2 className="text-base font-semibold">{tr("admin.nutzer_bearbeiten")}</h2>
           <button onClick={onClose} className="text-muted hover:text-ink">✕</button>
         </div>
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-muted">Anzeigename</label>
+            <label className="text-xs text-muted">{tr("admin.anzeigename")}</label>
             <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
               className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
           </div>
@@ -427,31 +431,31 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
               className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
           </div>
           <div>
-            <label className="text-xs text-muted">Benutzername</label>
+            <label className="text-xs text-muted">{tr("admin.benutzername")}</label>
             <input value={username} onChange={(e) => setUsername(e.target.value)}
               className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
           </div>
           <div>
-            <label className="text-xs text-muted">Max. gleichzeitige Agenten-Läufe</label>
+            <label className="text-xs text-muted">{tr("admin.max_gleichzeitige_agenten_laeufe")}</label>
             <input type="number" min={0} max={20} value={maxRunners}
               onChange={(e) => setMaxRunners(e.target.value)}
               className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
           </div>
           <div className="border-t border-line pt-3">
-            <label className="text-xs text-muted">Neues Passwort setzen</label>
+            <label className="text-xs text-muted">{tr("admin.neues_passwort_setzen")}</label>
             <div className="mt-1 flex gap-2">
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                 placeholder="mind. 8 Zeichen"
                 className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
-              <button onClick={resetPw} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">Setzen</button>
+              <button onClick={resetPw} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">{tr("admin.setzen")}</button>
             </div>
           </div>
           {err && <div className="text-sm text-red-400">{err}</div>}
           {msg && <div className="text-sm text-green-400">{msg}</div>}
         </div>
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">Schließen</button>
-          <button onClick={save} className="rounded bg-brand px-4 py-1.5 text-sm text-white">Speichern</button>
+          <button onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">{tr("admin.schliessen")}</button>
+          <button onClick={save} className="rounded bg-brand px-4 py-1.5 text-sm text-white">{tr("admin.speichern")}</button>
         </div>
       </div>
     </div>
@@ -475,12 +479,12 @@ function McpAssign({ userId }: { userId: number }) {
       <div className="mb-1 text-muted">Erlaubte MCP-Server (Komma) — z. B. obsidian, imap, paperless, banking, homeassistant, uniwar.
         {data?.provisioned
           ? <span className="ml-1 text-green-400">· provisioniert (Gruppe {data.group})</span>
-          : <span className="ml-1 text-yellow-400">· noch nicht provisioniert</span>}
+          : <span className="ml-1 text-yellow-400">{tr("admin.noch_nicht_provisioniert")}</span>}
       </div>
       <div className="flex gap-2">
         <input value={val} onChange={(e) => setText(e.target.value)}
           className="flex-1 rounded border border-line bg-surface px-2 py-1" />
-        <button onClick={save} className="rounded bg-brand px-3 py-1 text-white">Speichern</button>
+        <button onClick={save} className="rounded bg-brand px-3 py-1 text-white">{tr("admin.speichern")}</button>
       </div>
       <div className="mt-1 text-muted">Danach auf dem Host <code>python3 scripts/provision_mcp.py</code> ausführen —
         das legt Gruppe + Token in MCPJungle an und schreibt sie dem User zu.</div>
@@ -494,12 +498,12 @@ function Cost() {
     <div>
       <div className="mb-3 text-2xl font-semibold">${data?.total_usd?.toFixed(4) ?? "0"}</div>
       <table className="w-full text-sm">
-        <thead><tr className="border-b border-line text-left text-xs uppercase text-muted"><th className="py-2">Modell</th><th>USD</th><th>Calls</th></tr></thead>
+        <thead><tr className="border-b border-line text-left text-xs uppercase text-muted"><th className="py-2">{tr("admin.modell")}</th><th>USD</th><th>{tr("admin.calls")}</th></tr></thead>
         <tbody>{data?.by_model?.map((m: any) => (
           <tr key={m.model} className="border-b border-line"><td className="py-2">{m.model}</td><td>${m.usd}</td><td>{m.calls}</td></tr>
         ))}</tbody>
       </table>
-      {(!data?.by_model || data.by_model.length === 0) && <div className="text-sm text-muted">Noch keine Kosten.</div>}
+      {(!data?.by_model || data.by_model.length === 0) && <div className="text-sm text-muted">{tr("admin.noch_keine_kosten")}</div>}
     </div>
   );
 }

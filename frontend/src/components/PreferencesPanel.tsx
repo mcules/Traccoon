@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 
@@ -55,26 +56,26 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-line bg-card p-4">
-        <div className="mb-3 text-sm font-medium">Agenten-Betrieb</div>
+        <div className="mb-3 text-sm font-medium">{tr("preferences_panel.agenten_betrieb")}</div>
         <div className="mb-3 flex items-center gap-3 text-sm">
-          <label className="text-muted">Gleichzeitige Läufe (max. 20)</label>
+          <label className="text-muted">{tr("preferences_panel.gleichzeitige_laeufe_max_20")}</label>
           <input type="number" min={1} max={20} value={runners}
             onChange={(e) => setRunners(+e.target.value)}
             className="w-20 rounded border border-line bg-surface px-2 py-1" />
           <button onClick={async () => { await api.put("/me/runner-limit", { value: runners }); inv(); flash("Limit gespeichert."); }}
-            className="rounded bg-brand px-3 py-1 text-white">Speichern</button>
+            className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
         </div>
         <div className="flex items-center gap-3 text-sm">
-          <label className="text-muted">Telegram-Chat-ID</label>
+          <label className="text-muted">{tr("preferences_panel.telegram_chat_id")}</label>
           <input value={chat} onChange={(e) => setChat(e.target.value)} placeholder="z. B. 123456789"
             className="w-48 rounded border border-line bg-surface px-2 py-1" />
           <button onClick={async () => { await api.put("/me/telegram-chat", { value: chat }); inv(); flash("Chat-ID gespeichert."); }}
-            className="rounded bg-brand px-3 py-1 text-white">Speichern</button>
+            className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
         </div>
       </div>
 
       <div className="rounded-lg border border-line bg-card p-4">
-        <div className="mb-1 text-sm font-medium">Meldungen des Assistenten</div>
+        <div className="mb-1 text-sm font-medium">{tr("preferences_panel.meldungen_des_assistenten")}</div>
         <p className="mb-3 text-xs text-muted">
           Der persönliche Assistent arbeitet den Posteingang still ab. Ob er sich meldet,
           entscheidet er selbst: nur wenn du etwas wissen musst oder willst (Frist, Betrag,
@@ -86,10 +87,10 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
             await api.put("/me/assistant-notify", { value: e.target.value });
             inv(); flash("Gespeichert.");
           }} className="rounded border border-line bg-surface px-2 py-1">
-            <option value="needed">Nur wenn ich etwas wissen muss (empfohlen)</option>
-            <option value="always">Jeder erledigte Eingang</option>
-            <option value="errors">Nur Pannen</option>
-            <option value="never">Gar nicht</option>
+            <option value="needed">{tr("preferences_panel.nur_wenn_ich_etwas_wissen_muss_empfohlen")}</option>
+            <option value="always">{tr("preferences_panel.jeder_erledigte_eingang")}</option>
+            <option value="errors">{tr("preferences_panel.nur_pannen")}</option>
+            <option value="never">{tr("preferences_panel.gar_nicht")}</option>
           </select>
         </div>
         <p className="mt-2 text-[11px] text-muted">
@@ -98,21 +99,21 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       <div className="rounded-lg border border-line bg-card p-4">
-        <div className="mb-1 text-sm font-medium">Gedächtnis der Agenten</div>
+        <div className="mb-1 text-sm font-medium">{tr("preferences_panel.gedaechtnis_der_agenten")}</div>
         <p className="mb-3 text-xs text-muted">
           Ordner in deinem Obsidian-Vault, in dem die Agenten festhalten, was du ihnen beibringst —
-          damit du es nicht wiederholen musst. Sie legen dort <code>Mensch.md</code>,{" "}
-          <code>Agent-&lt;rolle&gt;.md</code> und <code>Projekt-&lt;KEY&gt;.md</code> an und lesen
+          damit du es nicht wiederholen musst. Sie legen dort <code>{tr("preferences_panel.mensch_md")}</code>,{" "}
+          <code>{tr("preferences_panel.agent_lt_rolle_gt_md")}</code> und <code>{tr("preferences_panel.projekt_lt_key_gt_md")}</code> an und lesen
           es zu Beginn jedes Laufs. Du kannst die Notizen jederzeit selbst korrigieren.
         </p>
         <div className="flex items-center gap-3 text-sm">
           <input value={gedaechtnis} onChange={(e) => setGedaechtnis(e.target.value)}
-            placeholder="z. B. 04 Traccoon/Gedächtnis"
+            placeholder={tr("preferences_panel.z_b_04_traccoon_gedaechtnis")}
             className="w-72 rounded border border-line bg-surface px-2 py-1" />
           <button onClick={async () => {
             await api.put("/me/vault-memory-path", { value: gedaechtnis });
             inv(); flash(gedaechtnis ? "Gedächtnis-Ordner gespeichert." : "Gedächtnis abgeschaltet.");
-          }} className="rounded bg-brand px-3 py-1 text-white">Speichern</button>
+          }} className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
         </div>
         <p className="mt-2 text-[11px] text-muted">
           Leer = kein Gedächtnis. Der Zugriff läuft über deine eigene MCP-Gruppe, das Gelernte
@@ -121,19 +122,19 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
       </div>
 
       <div className="rounded-lg border border-line bg-card p-4">
-        <div className="mb-1 text-sm font-medium">Nacht-Fenster</div>
-        <p className="mb-3 text-xs text-muted">Tickets mit der Markierung „Nachtarbeit" starten nur in diesem Fenster.</p>
+        <div className="mb-1 text-sm font-medium">{tr("preferences_panel.nacht_fenster")}</div>
+        <p className="mb-3 text-xs text-muted">{tr("preferences_panel.tickets_mit_der_markierung_nachtarbeit_s")}</p>
         <div className="mb-3 flex items-center gap-2 text-sm">
           <input type="number" min={0} max={23} value={nightStart} onChange={(e) => setNightStart(+e.target.value)}
             className="w-16 rounded border border-line bg-surface px-2 py-1" />
           <span className="text-muted">bis</span>
           <input type="number" min={0} max={23} value={nightEnd} onChange={(e) => setNightEnd(+e.target.value)}
             className="w-16 rounded border border-line bg-surface px-2 py-1" />
-          <span className="text-muted">Uhr</span>
+          <span className="text-muted">{tr("preferences_panel.uhr")}</span>
           <button onClick={async () => {
             await api.put("/me/night-window", { start_hour: nightStart, end_hour: nightEnd, days: flags?.night_days || [0, 1, 2, 3, 4, 5, 6] });
             inv(); flash("Fenster gespeichert.");
-          }} className="rounded bg-brand px-3 py-1 text-white">Speichern</button>
+          }} className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
         </div>
         <div className="mb-3 flex gap-1">
           {DAYS.map((d, i) => (
@@ -142,13 +143,13 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
                 ? "bg-brand text-white" : "border border-line text-muted"}`}>{d}</button>
           ))}
         </div>
-        <Toggle label="Fenster ignorieren" hint="Nacht-Tickets laufen jederzeit."
+        <Toggle label={tr("preferences_panel.fenster_ignorieren")} hint="Nacht-Tickets laufen jederzeit."
           on={!!flags?.night_override}
           onChange={async (v) => { await api.put("/me/night-override", { active: v }); inv(); }} />
       </div>
 
       <div className="rounded-lg border border-line bg-card p-4">
-        <div className="mb-3 text-sm font-medium">Meine Schalter</div>
+        <div className="mb-3 text-sm font-medium">{tr("preferences_panel.meine_schalter")}</div>
         <div className="space-y-2">
           {USER_FLAGS.map(([key, label, hint]) => (
             <Toggle key={key} label={label} hint={hint} on={!!flags?.[key]}
@@ -159,7 +160,7 @@ export default function PreferencesPanel({ isAdmin }: { isAdmin: boolean }) {
 
       {isAdmin && (
         <div className="rounded-lg border border-yellow-500/40 bg-card p-4">
-          <div className="mb-3 text-sm font-medium text-yellow-400">Systemweit (Administration)</div>
+          <div className="mb-3 text-sm font-medium text-yellow-400">{tr("preferences_panel.systemweit_administration")}</div>
           <div className="space-y-2">
             {GLOBAL_FLAGS.map(([key, label, hint, path]) => (
               <Toggle key={key} label={label} hint={hint} on={!!flags?.[key]}

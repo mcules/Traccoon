@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { tr } from "../i18n";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Issue, Project, ProjectMeta } from "../api";
@@ -138,14 +139,14 @@ export default function ProjectView() {
     projectChromeTabs(project, inBoardGroup ? tab : undefined)
   );
 
-  if (!project) return <div className="text-muted">Projekt nicht gefunden.</div>;
+  if (!project) return <div className="text-muted">{tr("project_view.projekt_nicht_gefunden")}</div>;
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         {project.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">KI-gemanagt</span>}
         {!project.my_ai_assign && (
-          <span className="rounded bg-surface px-2 py-0.5 text-xs text-muted">Ticketsystem (kein KI-Recht)</span>
+          <span className="rounded bg-surface px-2 py-0.5 text-xs text-muted">{tr("project_view.ticketsystem_kein_ki_recht")}</span>
         )}
         {issues && meta && (
           <div className="flex items-center gap-3 text-xs text-muted">
@@ -189,10 +190,10 @@ export default function ProjectView() {
       {tab === "archiv" && meta && (
         (archivedIssues && archivedIssues.length > 0)
           ? <IssueList project={project} meta={meta} issues={archivedIssues} onOpen={openTicket} />
-          : <div className="text-sm text-muted">Keine archivierten Tickets.</div>
+          : <div className="text-sm text-muted">{tr("project_view.keine_archivierten_tickets")}</div>
       )}
       {tab === "code" && (
-        <Suspense fallback={<div className="text-sm text-muted">Editor lädt…</div>}>
+        <Suspense fallback={<div className="text-sm text-muted">{tr("project_view.editor_laedt")}</div>}>
           <FilesPanel project={project} />
         </Suspense>
       )}
@@ -200,7 +201,7 @@ export default function ProjectView() {
       {tab === "pm" && <PmChat project={project} />}
       {tab === "monitor" && <AgentMonitor project={project} />}
       {tab === "buero" && (
-        <Suspense fallback={<div className="text-sm text-muted">Büro lädt…</div>}>
+        <Suspense fallback={<div className="text-sm text-muted">{tr("project_view.buero_laedt")}</div>}>
           <OfficeTab project={project} />
         </Suspense>
       )}
@@ -208,7 +209,7 @@ export default function ProjectView() {
         <div className="space-y-8">
           <SlotList project={project} />
           <div>
-            <h3 className="mb-2 text-sm font-semibold">Eigene Prozesse</h3>
+            <h3 className="mb-2 text-sm font-semibold">{tr("project_view.eigene_prozesse")}</h3>
             <WorkflowList project={project} />
           </div>
         </div>

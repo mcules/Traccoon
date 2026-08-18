@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 
@@ -39,7 +40,7 @@ export default function AssetProcurement({
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
 
-  if (!steps) return <div className="text-xs text-muted">Lädt…</div>;
+  if (!steps) return <div className="text-xs text-muted">{tr("asset_procurement.laedt")}</div>;
   const naechsterOffen = steps.find((s) => s.status !== "DONE");
 
   return (
@@ -74,11 +75,11 @@ export default function AssetProcurement({
         <div className="rounded border border-line bg-surface p-2">
           <div className="mb-1 text-xs text-muted">Nächster Schritt: <b className="text-ink">{naechsterOffen.name}</b></div>
           <div className="flex flex-wrap items-center gap-2">
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Notiz (optional)"
+            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr("asset_procurement.notiz_optional")}
               className="flex-1 rounded border border-line bg-card px-2 py-1 text-xs" />
             <select value={nextAssignee} onChange={(e) => setNextAssignee(e.target.value)}
-              className="rounded border border-line bg-card px-2 py-1 text-xs text-ink" title="Übergabe an">
-              <option value="">Übergabe an… (optional)</option>
+              className="rounded border border-line bg-card px-2 py-1 text-xs text-ink" title={tr("asset_procurement.uebergabe_an")}>
+              <option value="">{tr("asset_procurement.uebergabe_an_optional")}</option>
               {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name || m.username}</option>)}
             </select>
             <button onClick={() => complete.mutate(naechsterOffen.id)}
@@ -86,7 +87,7 @@ export default function AssetProcurement({
           </div>
         </div>
       ) : (
-        <div className="text-xs text-green-400">Beschaffung abgeschlossen.</div>
+        <div className="text-xs text-green-400">{tr("asset_procurement.beschaffung_abgeschlossen")}</div>
       )}
       {err && <div className="text-xs text-red-400">{err}</div>}
     </div>

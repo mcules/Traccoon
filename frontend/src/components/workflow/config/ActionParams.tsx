@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { tr } from "../../../i18n";
 import { api } from "../../../api";
 import type { MemberLite } from "../../../api";
 import { KeyValueEditor } from "../kv";
@@ -244,7 +245,7 @@ export default function ActionParams({
       {spec.outcomes && <div className="text-[10px] text-amber-400">{spec.outcomes}</div>}
 
       {spec.fields.length === 0 && (
-        <div className="text-[11px] text-muted">Diese Aktion braucht keine Einstellungen.</div>
+        <div className="text-[11px] text-muted">{tr("action_params.diese_aktion_braucht_keine_einstellungen")}</div>
       )}
 
       {!nurKv && Object.keys(rest).length > 0 && (

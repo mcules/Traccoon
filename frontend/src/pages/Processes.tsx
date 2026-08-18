@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -105,7 +106,7 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
         )}
         {s.abweichungen.length > 0 && (
           <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-300"
-                title="Diese Projekte haben eine eigene Kopie und folgen dem Standard nicht mehr">
+                title={tr("processes.diese_projekte_haben_eine_eigene_kopie_u")}>
             {s.abweichungen.length} Abweichung{s.abweichungen.length === 1 ? "" : "en"}
           </span>
         )}
@@ -125,7 +126,7 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
 
       {s.abweichungen.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-          <span>Eigene Kopie:</span>
+          <span>{tr("processes.eigene_kopie")}</span>
           {s.abweichungen.map((a) => (
             <button
               key={a.project_id}
@@ -196,7 +197,7 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
                   onClick={() => rollback.mutate(v.id)}
                   disabled={rollback.isPending}
                   className="shrink-0 rounded border border-line px-1.5 py-0.5 hover:border-amber-400 disabled:opacity-50"
-                  title="Diese Fassung wieder in Kraft setzen (als neue Version)"
+                  title={tr("processes.diese_fassung_wieder_in_kraft_setzen_als")}
                 >
                   Zurückrollen
                 </button>
@@ -204,7 +205,7 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
             </div>
           );
         })}
-        {versionen?.length === 0 && <div className="text-xs text-muted">Noch keine Version.</div>}
+        {versionen?.length === 0 && <div className="text-xs text-muted">{tr("processes.noch_keine_version")}</div>}
       </div>
     </div>
   );
@@ -312,7 +313,7 @@ function Betrieb() {
               <button
                 onClick={() => setOffen(offen === l.id ? null : l.id)}
                 className="rounded border border-line px-2 py-1 text-xs hover:border-brand"
-                title="Verlauf des Vorgangs"
+                title={tr("processes.verlauf_des_vorgangs")}
               >
                 {offen === l.id ? "Verlauf zu" : "Verlauf"}
               </button>
@@ -320,7 +321,7 @@ function Betrieb() {
                 <button
                   onClick={() => abbrechen.mutate(l.id)}
                   className="rounded border border-line px-2 py-1 text-xs hover:border-red-400"
-                  title="Vorgang abbrechen"
+                  title={tr("processes.vorgang_abbrechen")}
                 >
                   Abbrechen
                 </button>
@@ -407,7 +408,7 @@ function Ausloeser() {
       </div>
 
       <div>
-        <h3 className="mb-1 text-sm font-medium">Ereignisse</h3>
+        <h3 className="mb-1 text-sm font-medium">{tr("processes.ereignisse")}</h3>
         <p className="mb-2 text-xs text-muted">
           Diese Ereignisse feuert Traccoon. Ein Ablauf kann sie am Start-Knoten abfangen, statt
           fest verdrahtet zu werden.

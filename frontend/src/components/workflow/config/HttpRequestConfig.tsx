@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { tr } from "../../../i18n";
 import { destinationApi } from "../../../api";
 import { KeyValueEditor } from "../kv";
 
@@ -34,7 +35,7 @@ export default function HttpRequestConfig({
           list="ziele"
           value={params.destination || ""}
           onChange={(e) => set("destination", e.target.value)}
-          placeholder="Name des Ziels"
+          placeholder={tr("http_request_config.name_des_ziels")}
           className={`mt-1 ${inp}`}
         />
         <datalist id="ziele">
@@ -67,12 +68,12 @@ export default function HttpRequestConfig({
       </div>
 
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">Query-Parameter (an die URL)</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("http_request_config.query_parameter_an_die_url")}</div>
         <KeyValueEditor value={params.query || {}} onChange={(q) => set("query", q)} />
       </div>
 
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">Zusätzliche Kopfzeilen</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("http_request_config.zusaetzliche_kopfzeilen")}</div>
         <KeyValueEditor value={params.headers || {}} onChange={(h) => set("headers", h)} />
       </div>
 

@@ -1,4 +1,5 @@
 /** Einfacher Schlüssel/Wert-Editor (für auto_action.params & outcomes_map). */
+import { tr } from "../../i18n";
 export function KeyValueEditor({
   value,
   onChange,
@@ -43,7 +44,7 @@ export function KeyValueEditor({
             placeholder={valuePlaceholder}
             className={`flex-1 ${inp}`}
           />
-          <button onClick={() => remove(k)} className="text-muted hover:text-red-400" title="Entfernen">
+          <button onClick={() => remove(k)} className="text-muted hover:text-red-400" title={tr("kv.entfernen")}>
             ✕
           </button>
         </div>

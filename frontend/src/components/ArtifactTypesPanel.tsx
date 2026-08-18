@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
 
@@ -85,8 +86,8 @@ export default function ArtifactTypesPanel() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        Ein <b>Artefakt</b> ist zunächst etwas Undefiniertes — seine Bedeutung bekommt es
-        erst durch seine <b>Felder</b>. Ticket und Hardware sind deshalb nichts Besonderes,
+        Ein <b>{tr("artifact_types_panel.artefakt")}</b> ist zunächst etwas Undefiniertes — seine Bedeutung bekommt es
+        erst durch seine <b>{tr("artifact_types_panel.felder")}</b>. Ticket und Hardware sind deshalb nichts Besonderes,
         sondern Artefakte mit einem ausgelieferten Satz fester Felder; auch der Zustand ist
         nur eines davon (<code>status</code>). Hier stehen die Felder, die <i>überall</i>
         gelten — eigene Ergänzungen pflegt jedes Projekt in seinen Einstellungen.
@@ -94,24 +95,24 @@ export default function ArtifactTypesPanel() {
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
 
       <div className="space-y-3">
-        {typen?.map((t) => (
-          <ArtefaktKarte key={t.id} t={t} onFail={fail} onOk={ok}
-                         onDelete={() => loeschen.mutate(t.id)} />
+        {typen?.map((typ) => (
+          <ArtefaktKarte key={typ.id} t={typ} onFail={fail} onOk={ok}
+                         onDelete={() => loeschen.mutate(typ.id)} />
         ))}
       </div>
 
       <div>
         <div className="rounded-lg border border-line bg-card p-4">
-          <div className="mb-2 text-sm font-medium">Eigenes Artefakt anlegen</div>
+          <div className="mb-2 text-sm font-medium">{tr("artifact_types_panel.eigenes_artefakt_anlegen")}</div>
           <div className="flex flex-wrap items-center gap-2">
             <input value={neu.icon} onChange={(e) => setNeu({ ...neu, icon: e.target.value })}
               className={`w-14 text-center ${inp}`} />
             <input value={neu.key} onChange={(e) => setNeu({ ...neu, key: e.target.value })}
-              placeholder="Schlüssel (vertrag)" className={`w-36 font-mono ${inp}`} />
+              placeholder={tr("artifact_types_panel.schluessel_vertrag")} className={`w-36 font-mono ${inp}`} />
             <input value={neu.name} onChange={(e) => setNeu({ ...neu, name: e.target.value })}
-              placeholder="Name (Vertrag)" className={`flex-1 ${inp}`} />
+              placeholder={tr("artifact_types_panel.name_vertrag")} className={`flex-1 ${inp}`} />
             <button onClick={() => neu.key.trim() && neu.name.trim() && anlegen.mutate()}
-              className="rounded bg-brand px-3 py-1.5 text-sm text-white">Anlegen</button>
+              className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("artifact_types_panel.anlegen")}</button>
           </div>
           <p className="mt-2 text-[10px] text-muted">
             Bekommt eine eigene Ablage und beliebige Zustände. Board, Sprints und der
@@ -125,22 +126,22 @@ export default function ArtifactTypesPanel() {
 
 // ── Ein Artefakt mit Zuständen und Feldern ───────────────────────────────────
 
-function ArtefaktKarte({ t, onFail, onOk, onDelete }: {
+function ArtefaktKarte({ t: typ, onFail, onOk, onDelete }: {
   t: Typ; onFail: (e: unknown) => void; onOk: () => void; onDelete: () => void;
 }) {
   const [zeigeFelder, setZeigeFelder] = useState(false);
   return (
     <div className="rounded-lg border border-line bg-card p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-lg">{t.icon}</span>
-        <span className="font-medium">{t.name}</span>
-        <span className="font-mono text-xs text-muted">{t.key}</span>
-        {t.builtin && (
+        <span className="text-lg">{typ.icon}</span>
+        <span className="font-medium">{typ.name}</span>
+        <span className="font-mono text-xs text-muted">{typ.key}</span>
+        {typ.builtin && (
           <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">eingebaut</span>
         )}
-        {t.fields.length > 0 && (
+        {typ.fields.length > 0 && (
           <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
-            {t.fields.length} Feld{t.fields.length === 1 ? "" : "er"}
+            {typ.fields.length} Feld{typ.fields.length === 1 ? "" : "er"}
           </span>
         )}
         <div className="flex-1" />
@@ -148,32 +149,32 @@ function ArtefaktKarte({ t, onFail, onOk, onDelete }: {
           className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">
           {zeigeFelder ? "Felder ausblenden" : "Felder"}
         </button>
-        {!t.builtin && (
-          <button onClick={() => confirm(`Artefakt „${t.name}“ löschen?`) && onDelete()}
+        {!typ.builtin && (
+          <button onClick={() => confirm(`Artefakt „${typ.name}“ löschen?`) && onDelete()}
             className="rounded border border-line px-2 py-0.5 text-xs hover:border-red-400">
             Löschen
           </button>
         )}
       </div>
       <div className="mb-3 text-xs text-muted">
-        {t.description} · Daten: {BACKING_LABEL[t.backing] || t.backing}
+        {typ.description} · Daten: {BACKING_LABEL[typ.backing] || typ.backing}
       </div>
 
 
-      <Felder t={t} onFail={onFail} onOk={onOk} offen={zeigeFelder} />
+      <Felder t={typ} onFail={onFail} onOk={onOk} offen={zeigeFelder} />
     </div>
   );
 }
 
 // ── Felder eines Artefakts samt Werteliste ───────────────────────────────────
 
-function Felder({ t, onFail, onOk, offen }: {
+function Felder({ t: typ, onFail, onOk, offen }: {
   t: Typ; onFail: (e: unknown) => void; onOk: () => void; offen: boolean;
 }) {
   const [neu, setNeu] = useState({ key: "", label: "", kind: "text", multi: false });
 
   const anlegen = useMutation({
-    mutationFn: () => api.post(`/artifact-types/${t.id}/fields`, neu),
+    mutationFn: () => api.post(`/artifact-types/${typ.id}/fields`, neu),
     onSuccess: () => { setNeu({ key: "", label: "", kind: "text", multi: false }); onOk(); },
     onError: onFail,
   });
@@ -189,16 +190,16 @@ function Felder({ t, onFail, onOk, offen }: {
   if (!offen) {
     return (
       <div className="mt-2 text-xs text-muted">
-        {t.fields.map((f) => f.label).join(" · ") || "Noch keine Felder."}
+        {typ.fields.map((f) => f.label).join(" · ") || "Noch keine Felder."}
       </div>
     );
   }
   return (
-    <div className="mt-3 border-t border-line pt-3">
-      <div className="mb-2 text-xs font-medium text-muted">Felder</div>
+    <div className="mt-3 border-typ border-line pt-3">
+      <div className="mb-2 text-xs font-medium text-muted">{tr("artifact_types_panel.felder")}</div>
 
       <div className="space-y-2">
-        {t.fields.map((f) => (
+        {typ.fields.map((f) => (
           <div key={f.id} className={`rounded border border-line px-2 py-1.5 ${f.enabled ? "bg-surface" : "bg-surface/40"}`}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="w-28 shrink-0 font-mono text-xs text-muted" title={f.key}>{f.key}</span>
@@ -217,7 +218,7 @@ function Felder({ t, onFail, onOk, offen }: {
                 </select>
               )}
               <label className="flex items-center gap-1 text-xs text-muted"
-                     title="Darf ein Exemplar mehrere Werte gleichzeitig tragen?">
+                     title={tr("artifact_types_panel.darf_ein_exemplar_mehrere_werte_gleichze")}>
                 <input type="checkbox" checked={f.multi} disabled={f.builtin}
                   onChange={(e) => aendern.mutate({ id: f.id, multi: e.target.checked })} />
                 Mehrfachauswahl
@@ -227,7 +228,7 @@ function Felder({ t, onFail, onOk, offen }: {
                   onChange={(e) => aendern.mutate({ id: f.id, required: e.target.checked })} />
                 Pflicht
               </label>
-              <label className="flex items-center gap-1 text-xs text-muted" title="Abgeschaltete Felder werden nicht mehr angeboten">
+              <label className="flex items-center gap-1 text-xs text-muted" title={tr("artifact_types_panel.abgeschaltete_felder_werden_nicht_mehr_a")}>
                 <input type="checkbox" checked={f.enabled}
                   onChange={(e) => aendern.mutate({ id: f.id, enabled: e.target.checked })} />
                 aktiv
@@ -249,16 +250,16 @@ function Felder({ t, onFail, onOk, offen }: {
             ) : null}
           </div>
         ))}
-        {t.fields.length === 0 && (
-          <div className="text-xs text-muted">Noch keine Felder.</div>
+        {typ.fields.length === 0 && (
+          <div className="text-xs text-muted">{tr("artifact_types_panel.noch_keine_felder")}</div>
         )}
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <input value={neu.key} onChange={(e) => setNeu({ ...neu, key: e.target.value })}
-          placeholder="Schlüssel (komponente)" className={`w-40 font-mono ${inp}`} />
+          placeholder={tr("artifact_types_panel.schluessel_komponente")} className={`w-40 font-mono ${inp}`} />
         <input value={neu.label} onChange={(e) => setNeu({ ...neu, label: e.target.value })}
-          placeholder="Bezeichnung (Komponente)" className={`flex-1 ${inp}`} />
+          placeholder={tr("artifact_types_panel.bezeichnung_komponente")} className={`flex-1 ${inp}`} />
         <select value={neu.kind} onChange={(e) => setNeu({ ...neu, kind: e.target.value })} className={inp}>
           {FELDTYP.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
@@ -299,7 +300,7 @@ function Werteliste({ feld, onFail, onOk }: {
 
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-28">
-      <span className="text-[10px] text-muted">Werte:</span>
+      <span className="text-[10px] text-muted">{tr("artifact_types_panel.werte")}</span>
       {feld.options.map((o) => (
         <span key={o.id}
           className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${
@@ -309,7 +310,7 @@ function Werteliste({ feld, onFail, onOk }: {
             <>
               <select value={o.category || "in_progress"}
                 onChange={(e) => aendern.mutate({ id: o.id, category: e.target.value })}
-                title="Board-Kategorie" className="bg-transparent text-[10px] text-muted">
+                title={tr("artifact_types_panel.board_kategorie")} className="bg-transparent text-[10px] text-muted">
                 {KATEGORIE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
               <button onClick={() => aendern.mutate({ id: o.id, waiting: !o.waiting })}
@@ -323,14 +324,14 @@ function Werteliste({ feld, onFail, onOk }: {
             title={o.enabled ? "Nicht mehr anbieten (bleibt an vorhandenen Artefakten)" : "Wieder anbieten"}
             className="text-muted hover:text-ink">{o.enabled ? "○" : "●"}</button>
           {!istStatus && (
-            <button onClick={() => loeschen.mutate(o.id)} title="Löschen"
+            <button onClick={() => loeschen.mutate(o.id)} title={tr("artifact_types_panel.loeschen")}
               className="text-muted hover:text-red-300">✕</button>
           )}
         </span>
       ))}
       <input value={wert} onChange={(e) => setWert(e.target.value)}
         onKeyDown={(e) => e.key === "Enter" && wert.trim() && anlegen.mutate()}
-        placeholder="Wert + Enter" className={`w-32 text-xs ${inp}`} />
+        placeholder={tr("artifact_types_panel.wert_enter")} className={`w-32 text-xs ${inp}`} />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { tr } from "../../i18n";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -239,7 +240,7 @@ export default function LifecycleView({
   }, [agentStatus, holdReason, agentWorking]);
 
   if (!agentStatus) {
-    return <div className="text-xs text-muted">Kein KI-Lauf.</div>;
+    return <div className="text-xs text-muted">{tr("lifecycle_view.kein_ki_lauf")}</div>;
   }
 
   return (

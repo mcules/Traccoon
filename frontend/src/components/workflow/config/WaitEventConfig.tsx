@@ -1,4 +1,5 @@
 import type { NodeConfig } from "../types";
+import { tr } from "../../../i18n";
 
 const EVENTS: [string, string, string][] = [
   ["comment", "Kommentar", "Jemand kommentiert das Ticket"],
@@ -21,7 +22,7 @@ export default function WaitEventConfig({
   };
   return (
     <div className="space-y-2">
-      <div className="text-xs font-medium text-muted">Worauf gewartet wird</div>
+      <div className="text-xs font-medium text-muted">{tr("wait_event_config.worauf_gewartet_wird")}</div>
       {EVENTS.map(([key, label, hint]) => (
         <label key={key} className="flex items-start gap-2 text-sm">
           <input

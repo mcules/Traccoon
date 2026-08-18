@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from "react";
+import { tr } from "../../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import "@xyflow/react/dist/style.css";
 import { workflowApi, getToken, type WorkflowInstance } from "../../api";
@@ -63,7 +64,7 @@ export default function WorkflowInstanceView({
     return graphToFlow(graph, runtimeStates(instance as WorkflowInstance));
   }, [instance]);
 
-  if (!instance || !flow) return <div className="text-xs text-muted">Lädt…</div>;
+  if (!instance || !flow) return <div className="text-xs text-muted">{tr("workflow_instance_view.laedt")}</div>;
 
   return (
     <div>
@@ -84,7 +85,7 @@ export default function WorkflowInstanceView({
           <Schrittprotokoll schritte={instance.steps} maxHoehe="16rem"
             leerText="Noch kein Schritt abgeschlossen." />
           <details className="mt-2">
-            <summary className="cursor-pointer text-xs text-muted">Ablauf als Graph</summary>
+            <summary className="cursor-pointer text-xs text-muted">{tr("workflow_instance_view.ablauf_als_graph")}</summary>
             <div className="mt-1 overflow-hidden rounded-lg border border-line" style={{ height }}>
               <WorkflowCanvas nodes={flow.nodes} edges={flow.edges} readOnly />
             </div>

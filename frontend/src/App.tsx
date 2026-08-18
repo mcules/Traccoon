@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth";
+import { useSprache, useSpracheVonNutzer } from "./i18n/useSprache";
 import Login from "./pages/Login";
 import AcceptInvite from "./pages/AcceptInvite";
 import Projects from "./pages/Projects";
@@ -20,6 +21,9 @@ import { PageChromeProvider } from "./pageChrome";
 
 export default function App() {
   const { user, loading } = useAuth();
+  // Die Sprache hängt am angemeldeten Menschen; ohne Anmeldung entscheidet der Browser.
+  useSpracheVonNutzer(user?.locale);
+  useSprache();
 
   if (loading) return <div className="p-8 text-muted">Lädt…</div>;
   if (!user) {

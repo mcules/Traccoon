@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
@@ -33,7 +34,7 @@ export default function AgentsBadge() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen((v) => !v)} title="Laufende Agenten"
+      <button onClick={() => setOpen((v) => !v)} title={tr("agents_badge.laufende_agenten")}
         className={`flex items-center gap-1 rounded px-2 py-1 text-sm ${busy ? "text-brand" : "text-muted hover:text-ink"}`}>
         <span>{busy ? "🔄" : "🤖"}</span>
         <span className="tabular-nums">{n}</span>
@@ -48,7 +49,7 @@ export default function AgentsBadge() {
             </div>
 
             {data?.update_in_progress ? (
-              <div className="rounded bg-brand/10 px-2 py-1.5 text-brand">🔄 Update läuft — Stack wird neu deployt…</div>
+              <div className="rounded bg-brand/10 px-2 py-1.5 text-brand">{tr("agents_badge.update_laeuft_stack_wird_neu_deployt")}</div>
             ) : data?.update_pending ? (
               <div className="space-y-2">
                 <div className="rounded bg-yellow-500/10 px-2 py-1.5 text-yellow-300">
@@ -57,7 +58,7 @@ export default function AgentsBadge() {
                 </div>
                 {isAdmin && (
                   <button onClick={() => guard(() => cancel.mutateAsync())}
-                    className="text-xs text-muted hover:text-red-400">Update abbrechen</button>
+                    className="text-xs text-muted hover:text-red-400">{tr("agents_badge.update_abbrechen")}</button>
                 )}
               </div>
             ) : isAdmin ? (
@@ -68,12 +69,12 @@ export default function AgentsBadge() {
                 </button>
               ) : (
                 <div className="text-xs text-muted">
-                  Kein Wartungsprojekt gesetzt. Unter <b>Admin → Wartung</b> auswählen, welches
+                  Kein Wartungsprojekt gesetzt. Unter <b>{tr("agents_badge.admin_wartung")}</b> auswählen, welches
                   Projekt sich beim Update selbst deployt.
                 </div>
               )
             ) : (
-              <div className="text-xs text-muted">Updates löst ein Admin aus.</div>
+              <div className="text-xs text-muted">{tr("agents_badge.updates_loest_ein_admin_aus")}</div>
             )}
             {err && <div className="mt-2 text-xs text-red-400">{err}</div>}
           </div>

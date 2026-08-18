@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -100,7 +101,7 @@ export default function DeploymentsPanel(
       </div>
     );
   }
-  if (isLoading || !data) return <div className="text-xs text-muted">Lädt…</div>;
+  if (isLoading || !data) return <div className="text-xs text-muted">{tr("deployments_panel.laedt")}</div>;
 
   const items = data.items || [];
   // „Läuft schon eins?“ wird aus `by_status` beantwortet und **nicht** aus `items`: die
@@ -230,7 +231,7 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
 
       {frage && (
         <div className="mt-3 space-y-2 rounded border border-yellow-400/40 bg-surface p-3">
-          <div className="text-sm text-ink">Diesen Stand wirklich ausrollen?</div>
+          <div className="text-sm text-ink">{tr("deployments_panel.diesen_stand_wirklich_ausrollen")}</div>
           <div className="text-xs text-muted">
             Der Deployer holt im Ordner{" "}
             <span className="font-mono text-ink">{ordner}</span>{" "}
@@ -377,10 +378,10 @@ function Zeile({ d, kompakt, auf, toggle }: {
  *  Farbe, nicht das grüne Häkchen. Läuft es gerade, gewinnt das laufende Kennzeichen. */
 function OkZeichen({ ok, laeuft }: { ok?: boolean | null; laeuft: boolean }) {
   if (laeuft) {
-    return <span className="mt-0.5 animate-pulse text-yellow-400" title="läuft gerade">◐</span>;
+    return <span className="mt-0.5 animate-pulse text-yellow-400" title={tr("deployments_panel.laeuft_gerade")}>◐</span>;
   }
   if (ok === true) return <span className="mt-0.5 text-green-400" title="erfolgreich">✓</span>;
-  if (ok === false) return <span className="mt-0.5 text-red-400" title="nicht erfolgreich">✗</span>;
+  if (ok === false) return <span className="mt-0.5 text-red-400" title={tr("deployments_panel.nicht_erfolgreich")}>✗</span>;
   return <span className="mt-0.5 text-muted" title="unbekannt">•</span>;
 }
 
@@ -392,7 +393,7 @@ function LogAusklapper({ id, bytes }: { id: number; bytes?: number | null }) {
     staleTime: 60000,
     retry: false,
   });
-  if (isLoading) return <div className="pb-2 pl-6 text-xs text-muted">Log wird geladen…</div>;
+  if (isLoading) return <div className="pb-2 pl-6 text-xs text-muted">{tr("deployments_panel.log_wird_geladen")}</div>;
   if (error) {
     return <div className="pb-2 pl-6 text-xs text-muted">
       Log nicht abrufbar ({error instanceof ApiError ? error.status : "Fehler"}).
@@ -408,7 +409,7 @@ function LogAusklapper({ id, bytes }: { id: number; bytes?: number | null }) {
         <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded border border-line bg-surface p-2 font-mono text-[11px] text-muted">
           {log}
         </pre>
-      ) : <div className="text-xs text-muted">Kein Log hinterlegt.</div>}
+      ) : <div className="text-xs text-muted">{tr("deployments_panel.kein_log_hinterlegt")}</div>}
     </div>
   );
 }

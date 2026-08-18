@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../../i18n";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi } from "../../api";
@@ -57,9 +58,9 @@ export default function OwnWorkflowsPanel() {
   return (
     <div className="space-y-3 rounded-lg border border-line bg-card p-4">
       <p className="text-sm text-muted">
-        <b>Eigene Prozesse</b> — projektlos, ohne Slot. Auslösen kannst du sie über einen{" "}
-        <b>Job</b> (Einstellungen → Jobs, Art <code>workflow</code>), einen <b>Webhook</b>{" "}
-        (Modus <code>workflow</code>) oder einen <b>Agenten</b> (<code>traccoon_start_workflow</code>,
+        <b>{tr("own_workflows_panel.eigene_prozesse")}</b> — projektlos, ohne Slot. Auslösen kannst du sie über einen{" "}
+        <b>{tr("own_workflows_panel.job")}</b> (Einstellungen → Jobs, Art <code>workflow</code>), einen <b>{tr("own_workflows_panel.webhook")}</b>{" "}
+        (Modus <code>workflow</code>) oder einen <b>{tr("own_workflows_panel.agenten")}</b> (<code>traccoon_start_workflow</code>,
         einmalige Freigabe nötig). Startbar erst mit veröffentlichter Version.
       </p>
 
@@ -69,7 +70,7 @@ export default function OwnWorkflowsPanel() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line text-left text-xs uppercase text-muted">
-              <th className="py-2">Key</th><th>Name</th><th>Gegenstand</th><th>Version</th><th />
+              <th className="py-2">{tr("own_workflows_panel.key")}</th><th>{tr("own_workflows_panel.name")}</th><th>{tr("own_workflows_panel.gegenstand")}</th><th>{tr("own_workflows_panel.version")}</th><th />
             </tr>
           </thead>
           <tbody>
@@ -100,7 +101,7 @@ export default function OwnWorkflowsPanel() {
           </tbody>
         </table>
       ) : (
-        <div className="text-sm text-muted">Noch keine eigenen Prozesse.</div>
+        <div className="text-sm text-muted">{tr("own_workflows_panel.noch_keine_eigenen_prozesse")}</div>
       )}
 
       <div className="space-y-2 border-t border-line pt-3">
@@ -108,7 +109,7 @@ export default function OwnWorkflowsPanel() {
           <input value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })}
             placeholder="key (z. B. preis-abgleich)" className={inp} />
           <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder="Name" className={inp} />
+            placeholder={tr("own_workflows_panel.name")} className={inp} />
           <select value={f.template} className={inp}
             onChange={(e) => setF({ ...f, template: e.target.value })}>
             <option value="">leeres Gerüst (Start + Ende)</option>
@@ -125,7 +126,7 @@ export default function OwnWorkflowsPanel() {
             </select>
           )}
           <input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })}
-            placeholder="Beschreibung (optional)" className={`${inp} min-w-48 flex-1`} />
+            placeholder={tr("own_workflows_panel.beschreibung_optional")} className={`${inp} min-w-48 flex-1`} />
           <button onClick={() => anlegen.mutate()}
             disabled={!f.key.trim() || !f.name.trim() || anlegen.isPending}
             className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-50">

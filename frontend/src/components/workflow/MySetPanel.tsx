@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../../i18n";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, workflowApi } from "../../api";
@@ -57,7 +58,7 @@ export default function MySetPanel() {
   return (
     <div className="space-y-3 rounded-lg border border-line bg-card p-4">
       <p className="text-sm text-muted">
-        <b>Meine Standard-Prozesse</b> — Ticket-Lebenszyklus, Abnahme, Beschaffung und
+        <b>{tr("my_set_panel.meine_standard_prozesse")}</b> — Ticket-Lebenszyklus, Abnahme, Beschaffung und
         Ticket-Eingang für <b>alle Projekte, in denen ich Eigentümer bin</b>. Ohne eigenen Satz
         gilt der ausgelieferte Traccoon-Standard. Ein einzelnes Projekt kann jederzeit davon
         abweichen (Projekt → Prozesse → Anpassen).
@@ -70,7 +71,7 @@ export default function MySetPanel() {
           <input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Name (optional)"
+            placeholder={tr("my_set_panel.name_optional")}
             className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink"
           />
           <button
@@ -105,7 +106,7 @@ export default function MySetPanel() {
                 className="flex items-center gap-2 rounded border border-line bg-surface px-2 py-1.5 text-sm"
               >
                 <span>{s.name}</span>
-                {!s.published && <span className="text-xs text-yellow-400">Entwurf</span>}
+                {!s.published && <span className="text-xs text-yellow-400">{tr("my_set_panel.entwurf")}</span>}
                 <div className="flex-1" />
                 {s.definition_id && (
                   <button

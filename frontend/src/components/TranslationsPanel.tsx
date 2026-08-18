@@ -1,0 +1,202 @@
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, ApiError } from "../api";
+import { alleSchluessel, ausgeliefert, QUELLSPRACHE, setzeSprache, sprache, tr } from "../i18n";
+
+interface SpracheInfo { locale: string; eigene_texte: number; eingebaut: boolean }
+
+/**
+ * Übersetzungen der Oberfläche verwalten.
+ *
+ * Die Schlüssel kommen aus dem ausgelieferten deutschen Katalog — er ist die Wahrheit
+ * darüber, welche Texte es gibt. Danebengestellt wird, was die gewählte Sprache mitbringt
+ * und was hier zur Laufzeit geändert wurde. Wer ein Feld leert, nimmt seine Änderung
+ * zurück und bekommt den ausgelieferten Text wieder; nichts wird dadurch leer.
+ *
+ * Eine neue Sprache braucht keinen Code: Kennung eintragen, übersetzen, fertig. Sie lebt
+ * vollständig in der Datenbank und steht sofort in der Sprachwahl des Profils.
+ */
+export default function TranslationsPanel() {
+  const qc = useQueryClient();
+  const [locale, setLocale] = useState("en");
+  const [suche, setSuche] = useState("");
+  const [nurOffene, setNurOffene] = useState(true);
+  const [neueSprache, setNeueSprache] = useState("");
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  const quelle = alleSchluessel();
+  const { data: sprachen } = useQuery({
+    queryKey: ["i18n-locales"],
+    queryFn: () => api.get<SpracheInfo[]>("/i18n/locales"),
+  });
+  const { data: overrides } = useQuery({
+    queryKey: ["i18n", locale],
+    queryFn: () => api.get<{ locale: string; texte: Record<string, string> }>(`/i18n/${locale}`),
+  });
+
+  const speichern = useMutation({
+    mutationFn: ({ key, text }: { key: string; text: string }) =>
+      api.put(`/i18n/${locale}/${encodeURIComponent(key)}`, { text }),
+    onSuccess: () => {
+      setErr("");
+      qc.invalidateQueries({ queryKey: ["i18n", locale] });
+      qc.invalidateQueries({ queryKey: ["i18n-locales"] });
+      if (locale === sprache()) void setzeSprache(locale);
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+  });
+
+  const einspielen = useMutation({
+    mutationFn: (texte: Record<string, string>) =>
+      api.post(`/i18n/${locale}/import`, { texte, ersetzen: false }),
+    onSuccess: (r: any) => {
+      setErr(""); setOk(`${r.uebernommen} Texte übernommen.`);
+      qc.invalidateQueries({ queryKey: ["i18n", locale] });
+    },
+    onError: (e) => setErr(e instanceof ApiError ? e.message : "Import fehlgeschlagen"),
+  });
+
+  const zeilen = useMemo(() => {
+    const geliefert = ausgeliefert(locale);
+    const eigene = overrides?.texte || {};
+    return Object.entries(quelle)
+      .map(([key, deutsch]) => ({
+        key, deutsch,
+        wert: eigene[key] ?? geliefert[key] ?? "",
+        geaendert: key in eigene,
+      }))
+      .filter((z) => !nurOffene || !z.wert)
+      .filter((z) => !suche.trim()
+        || z.key.toLowerCase().includes(suche.toLowerCase())
+        || z.deutsch.toLowerCase().includes(suche.toLowerCase()));
+  }, [quelle, overrides, locale, nurOffene, suche]);
+
+  const offen = useMemo(() => {
+    const geliefert = ausgeliefert(locale);
+    const eigene = overrides?.texte || {};
+    return Object.keys(quelle).filter((k) => !(eigene[k] ?? geliefert[k])).length;
+  }, [quelle, overrides, locale]);
+
+  const exportieren = () => {
+    const geliefert = ausgeliefert(locale);
+    const eigene = overrides?.texte || {};
+    const alles: Record<string, string> = {};
+    Object.keys(quelle).forEach((k) => { alles[k] = eigene[k] ?? geliefert[k] ?? ""; });
+    const blob = new Blob([JSON.stringify(alles, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `traccoon-${locale}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const importieren = async (datei: File) => {
+    try {
+      const daten = JSON.parse(await datei.text());
+      if (daten && typeof daten === "object") einspielen.mutate(daten);
+    } catch {
+      setErr("Die Datei ist kein gültiges JSON.");
+    }
+  };
+
+  const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
+
+  return (
+    <div className="space-y-3 rounded-lg border border-line bg-card p-4">
+      <p className="text-sm text-muted">
+        <b>{tr("translations_panel.uebersetzungen")}</b> — die Schlüssel kommen aus dem deutschen Katalog, der mit der
+        Anwendung ausgeliefert wird. Was du hier einträgst, gilt sofort für alle; ein leeres
+        Feld nimmt deine Änderung zurück und stellt den ausgelieferten Text wieder her.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <select value={locale} onChange={(e) => setLocale(e.target.value)} className={inp}>
+          {(sprachen || []).filter((s) => s.locale !== QUELLSPRACHE).map((s) => (
+            <option key={s.locale} value={s.locale}>
+              {s.locale}{s.eingebaut ? " (ausgeliefert)" : ""}
+            </option>
+          ))}
+        </select>
+        <input value={suche} onChange={(e) => setSuche(e.target.value)}
+          placeholder={tr("translations_panel.suchen_schluessel_oder_deutscher_text")} className={`${inp} min-w-56 flex-1`} />
+        <label className="flex items-center gap-1.5 text-xs text-muted">
+          <input type="checkbox" checked={nurOffene} onChange={(e) => setNurOffene(e.target.checked)} />
+          nur offene
+        </label>
+        <span className="text-xs text-muted">
+          {offen} von {Object.keys(quelle).length} offen
+        </span>
+        <div className="flex-1" />
+        <button onClick={exportieren}
+          className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
+          Export
+        </button>
+        <label className="cursor-pointer rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
+          Import
+          <input type="file" accept="application/json" className="hidden"
+            onChange={(e) => e.target.files?.[0] && importieren(e.target.files[0])} />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-line pt-2 text-xs">
+        <span className="text-muted">{tr("translations_panel.neue_sprache")}</span>
+        <input value={neueSprache} onChange={(e) => setNeueSprache(e.target.value)}
+          placeholder="z. B. fr" className={`${inp} w-24`} />
+        <button
+          onClick={() => {
+            const kennung = neueSprache.trim().toLowerCase();
+            if (!kennung) return;
+            setLocale(kennung);
+            setNeueSprache("");
+            // Angelegt wird sie mit dem ersten gespeicherten Text — bis dahin gibt es
+            // nichts zu speichern, und eine leere Sprache wäre nur ein Eintrag ohne Inhalt.
+            setOk(`Sprache „${kennung}" ausgewählt. Sie entsteht mit dem ersten Text.`);
+          }}
+          className="rounded border border-line px-2 py-1 text-ink hover:bg-surface">
+          anlegen
+        </button>
+      </div>
+
+      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
+      {ok && <div className="text-xs text-green-400">{ok}</div>}
+
+      <div className="max-h-[60vh] overflow-auto rounded border border-line">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-card text-left text-[10px] uppercase text-muted">
+            <tr>
+              <th className="px-2 py-1">{tr("translations_panel.schluessel")}</th>
+              <th className="px-2 py-1">{tr("translations_panel.deutsch_quelle")}</th>
+              <th className="px-2 py-1">{locale}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zeilen.map((z) => (
+              <tr key={z.key} className="border-t border-line/60">
+                <td className="px-2 py-1 align-top font-mono text-[10px] text-muted">{z.key}</td>
+                <td className="px-2 py-1 align-top text-ink">{z.deutsch}</td>
+                <td className="px-2 py-1">
+                  <input
+                    defaultValue={z.wert}
+                    placeholder={z.deutsch}
+                    onBlur={(e) => {
+                      if (e.target.value !== z.wert) {
+                        speichern.mutate({ key: z.key, text: e.target.value });
+                      }
+                    }}
+                    className={`w-full rounded border bg-surface px-1.5 py-1 text-ink ${
+                      z.geaendert ? "border-brand" : "border-line"}`} />
+                </td>
+              </tr>
+            ))}
+            {!zeilen.length && (
+              <tr><td colSpan={3} className="px-2 py-2 text-muted">
+                {nurOffene ? "Nichts offen in dieser Sprache." : "Kein Treffer."}
+              </td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

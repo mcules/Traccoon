@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../../i18n";
 import {
   BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useStore, type EdgeProps,
 } from "@xyflow/react";
@@ -128,8 +129,8 @@ export default function ConditionEdge({
           {aktiv && (
             <button
               type="button"
-              title="Verbindung löschen"
-              aria-label="Verbindung löschen"
+              title={tr("condition_edge.verbindung_loeschen")}
+              aria-label={tr("condition_edge.verbindung_loeschen")}
               // nodrag/nopan: sonst schwenkt React Flow beim Klick die Fläche.
               className="nodrag nopan pointer-events-auto flex h-5 w-5 items-center justify-center
                          rounded-full border border-line bg-card text-[11px] leading-none text-muted

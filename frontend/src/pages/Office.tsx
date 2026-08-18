@@ -66,6 +66,7 @@
 // Quelle, mit Verweis, und fail-safe: wer nichts erkennt, bekommt die lange Frist.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { tr } from "../i18n";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Project } from "../api";
@@ -240,13 +241,13 @@ export default function Office(): JSX.Element {
           >
             ← {projectKey ? "Zurück zum Projekt" : "Zurück zur Übersicht"}
           </button>
-          <h1 className="text-sm font-semibold">🏢 Büro</h1>
+          <h1 className="text-sm font-semibold">{tr("office.buero")}</h1>
           <span className="font-mono text-xs text-muted">
             {projectKey ?? "alle Projekte"}
           </span>
           {!!projectKey && !isLoading && !project && (
             <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
-              title="Kein Projekt mit diesem Schlüssel — die Ansicht zeigt deshalb alle Projekte.">
+              title={tr("office.kein_projekt_mit_diesem_schluessel_die_a")}>
               unbekanntes Projekt
             </span>
           )}
@@ -254,7 +255,7 @@ export default function Office(): JSX.Element {
       )}
 
       {wartet ? (
-        <div className="p-4 text-sm text-muted">Büro lädt…</div>
+        <div className="p-4 text-sm text-muted">{tr("office.buero_laedt")}</div>
       ) : (
         <ErrorBoundary
           label="buero"

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
 
@@ -109,7 +110,7 @@ function FeldZeile({ feld, werte, onSet }: {
               );
             })}
             {waehlbar.length === 0 && (
-              <span className="text-xs text-muted">Keine Werte gepflegt.</span>
+              <span className="text-xs text-muted">{tr("artifact_fields.keine_werte_gepflegt")}</span>
             )}
           </div>
         ) : (
@@ -176,7 +177,7 @@ function MehrfachText({ werte, kind, onSet }: {
         <span key={`${w}-${i}`} className="flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-xs">
           {String(w)}
           <button onClick={() => onSet(werte.filter((_, j) => j !== i))}
-            className="text-muted hover:text-red-300" title="Entfernen">✕</button>
+            className="text-muted hover:text-red-300" title={tr("artifact_fields.entfernen")}>✕</button>
         </span>
       ))}
       <input

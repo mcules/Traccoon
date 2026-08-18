@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, AttachmentInfo, Comment, FileChange, Issue, IssueCosts, Project, ProjectMeta, workflowApi } from "../api";
 import { useAuth } from "../auth";
@@ -296,23 +297,23 @@ export default function TicketDrawer({
       {canWrite && issue.archived && (
         <>
           <span className="rounded bg-line px-1.5 text-[10px] uppercase text-muted">archiviert</span>
-          <button onClick={() => archive.mutate()} title="Wiederherstellen"
+          <button onClick={() => archive.mutate()} title={tr("ticket_drawer.wiederherstellen")}
             className={`${iconBtn} text-muted hover:bg-surface hover:text-brand`}>♻️</button>
         </>
       )}
       {canWrite && !issue.archived && isDone && (
-        <button onClick={() => archive.mutate()} title="Ticket archivieren"
+        <button onClick={() => archive.mutate()} title={tr("ticket_drawer.ticket_archivieren")}
           className={`${iconBtn} text-muted hover:bg-surface hover:text-brand`}>📦</button>
       )}
       {kannVerwalten && (confirmDel ? (
         <span className="flex items-center gap-1 text-sm">
-          <span className="text-red-400">Löschen?</span>
-          <button onClick={() => del.mutate()} className="rounded bg-red-500 px-2 py-1 text-xs text-white">Ja</button>
+          <span className="text-red-400">{tr("ticket_drawer.loeschen")}</span>
+          <button onClick={() => del.mutate()} className="rounded bg-red-500 px-2 py-1 text-xs text-white">{tr("ticket_drawer.ja")}</button>
           <button onClick={() => setConfirmDel(false)}
-            className="rounded border border-line px-2 py-1 text-xs text-muted">Nein</button>
+            className="rounded border border-line px-2 py-1 text-xs text-muted">{tr("ticket_drawer.nein")}</button>
         </span>
       ) : (
-        <button onClick={() => setConfirmDel(true)} title="Ticket löschen"
+        <button onClick={() => setConfirmDel(true)} title={tr("ticket_drawer.ticket_loeschen")}
           className={`${iconBtn} text-muted hover:bg-surface hover:text-red-400`}>🗑️</button>
       ))}
     </div>
@@ -323,7 +324,7 @@ export default function TicketDrawer({
       {headerActions}
       <div className="flex-1" />
       {two && issue && (
-        <button onClick={() => setEditLayout((v) => !v)} title="Blöcke neu anordnen (Drag & Drop)"
+        <button onClick={() => setEditLayout((v) => !v)} title={tr("ticket_drawer.bloecke_neu_anordnen_drag_drop")}
           className={`rounded-md border px-2.5 py-1 text-xs ${
             editLayout ? "border-brand bg-brand text-white" : "border-line text-muted hover:bg-surface hover:text-ink"
           }`}>
@@ -342,7 +343,7 @@ export default function TicketDrawer({
       <div className={shellOuter} onClick={asPage ? undefined : onClose}>
         <div className={shellInner} onClick={asPage ? undefined : (e) => e.stopPropagation()}>
           {header}
-          <div className="text-muted">Lädt…</div>
+          <div className="text-muted">{tr("ticket_drawer.laedt")}</div>
         </div>
       </div>
     );
@@ -377,7 +378,7 @@ export default function TicketDrawer({
 
   const bDescription = (
     <details open className="mb-3 rounded border border-line">
-      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">Beschreibung</summary>
+      <summary className="cursor-pointer px-3 py-2 text-xs font-medium text-muted">{tr("ticket_drawer.beschreibung")}</summary>
       <div className="px-3 pb-3">
         <textarea value={draft.description}
           onChange={(e) => setDraft({ ...draft, description: e.target.value })}
@@ -395,9 +396,9 @@ export default function TicketDrawer({
       </button>
       {dirty && (
         <button onClick={() => setDraft(seed(issue))}
-          className="rounded border border-line px-3 py-1.5 text-muted hover:text-ink">Verwerfen</button>
+          className="rounded border border-line px-3 py-1.5 text-muted hover:text-ink">{tr("ticket_drawer.verwerfen")}</button>
       )}
-      {dirty && <span className="text-xs text-yellow-400">● Ungespeicherte Änderungen</span>}
+      {dirty && <span className="text-xs text-yellow-400">{tr("ticket_drawer.ungespeicherte_aenderungen")}</span>}
     </div>
   );
 
@@ -422,7 +423,7 @@ export default function TicketDrawer({
                 {sub.description && <Markdown text={sub.description} />}
                 {sub.plan && (
                   <details className="mt-2">
-                    <summary className="cursor-pointer text-xs text-muted">Plan</summary>
+                    <summary className="cursor-pointer text-xs text-muted">{tr("ticket_drawer.plan")}</summary>
                     <Markdown text={sub.plan} />
                   </details>
                 )}
@@ -438,7 +439,7 @@ export default function TicketDrawer({
           <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-surface p-2 text-xs">{split.raw}</pre>
         </div>
       ) : (
-        <div className="text-xs text-muted">Kein strukturierter Vorschlag im Plan gefunden.</div>
+        <div className="text-xs text-muted">{tr("ticket_drawer.kein_strukturierter_vorschlag_im_plan_ge")}</div>
       )}
     </div>
   );
@@ -475,7 +476,7 @@ export default function TicketDrawer({
   const bFiles = (
     <div className="mb-4 rounded-lg border border-line p-3">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-sm font-medium">Dateien</span>
+        <span className="text-sm font-medium">{tr("ticket_drawer.dateien")}</span>
         <div className="flex-1" />
         {fileChanges && fileChanges.length > 0 && (
           <button onClick={() => setShowDiff((v) => !v)}
@@ -499,13 +500,13 @@ export default function TicketDrawer({
           ))}
         </div>
       ) : (
-        <div className="mb-3 text-xs text-muted">Noch keine Code-Änderungen.</div>
+        <div className="mb-3 text-xs text-muted">{tr("ticket_drawer.noch_keine_code_aenderungen")}</div>
       )}
 
       {showDiff && (
         <div className="mb-3 max-h-96 overflow-auto rounded bg-surface p-2">
-          {diff.isLoading ? <div className="text-xs text-muted">Lädt…</div>
-            : !diff.data?.diff ? <div className="text-xs text-muted">Kein Diff.</div>
+          {diff.isLoading ? <div className="text-xs text-muted">{tr("ticket_drawer.laedt")}</div>
+            : !diff.data?.diff ? <div className="text-xs text-muted">{tr("ticket_drawer.kein_diff")}</div>
             : <pre className="whitespace-pre font-mono text-[11px] leading-tight">
                 {diff.data.diff.split("\n").map((ln, i) => (
                   <div key={i} className={
@@ -522,13 +523,13 @@ export default function TicketDrawer({
       {/* Testumgebung: sichtbar sobald es Code-Änderungen gibt */}
       {project.my_ai_assign && fileChanges && fileChanges.length > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-2 border-t border-line pt-2 text-xs">
-          <span className="font-medium">Testumgebung:</span>
+          <span className="font-medium">{tr("ticket_drawer.testumgebung")}</span>
           {issue.testenv_status === "running" && issue.testenv_url ? (
             <>
               <a href={issue.testenv_url} target="_blank" rel="noreferrer"
                 className="text-brand hover:underline">🖥 {issue.testenv_url}</a>
               <button onClick={() => life.mutate("testenv/stop")}
-                className="rounded border border-line px-2 py-0.5 text-muted hover:text-red-400">Stoppen</button>
+                className="rounded border border-line px-2 py-0.5 text-muted hover:text-red-400">{tr("ticket_drawer.stoppen")}</button>
             </>
           ) : issue.testenv_status === "starting" ? (
             <span className="text-muted">startet… (Build dauert ein paar Minuten)</span>
@@ -564,12 +565,12 @@ export default function TicketDrawer({
 
   const bComments = (
     <>
-      <div className="mb-2 text-sm font-medium">Kommentare</div>
+      <div className="mb-2 text-sm font-medium">{tr("ticket_drawer.kommentare")}</div>
       <div className="mb-2 flex gap-2">
         <input value={comment} onChange={(e) => setComment(e.target.value)}
-          placeholder="Kommentar…" className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
+          placeholder={tr("ticket_drawer.kommentar")} className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
         <button onClick={() => comment.trim() && addComment.mutate()}
-          className="rounded bg-brand px-3 py-1.5 text-white">Senden</button>
+          className="rounded bg-brand px-3 py-1.5 text-white">{tr("ticket_drawer.senden")}</button>
       </div>
       <div className="space-y-2">
         {[...(comments || [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((c) => (
@@ -583,7 +584,7 @@ export default function TicketDrawer({
             <div className="whitespace-pre-wrap">{c.body}</div>
           </div>
         ))}
-        {comments?.length === 0 && <div className="text-xs text-muted">Noch keine Kommentare.</div>}
+        {comments?.length === 0 && <div className="text-xs text-muted">{tr("ticket_drawer.noch_keine_kommentare")}</div>}
       </div>
     </>
   );
@@ -635,7 +636,7 @@ export default function TicketDrawer({
         </select>
       </label>
       <input value={newPersonName} onChange={(e) => setNewPersonName(e.target.value)}
-        placeholder="Neue Person (Name)…"
+        placeholder={tr("ticket_drawer.neue_person_name")}
         onKeyDown={(e) => { if (e.key === "Enter" && newPersonName.trim())
           setAssignee.mutate({ display_name: newPersonName.trim() }); }}
         className="mt-1 w-40 rounded border border-line bg-surface px-2 py-1 text-sm" />
@@ -650,7 +651,7 @@ export default function TicketDrawer({
   // Hardware-Bezug (TRA-25): Ticket an ein Exemplar des Projekts hängen.
   const bHardware = project.has_hardware && (
     <div className="mb-3 rounded-lg border border-line p-3">
-      <div className="mb-2 text-sm font-medium">Hardware</div>
+      <div className="mb-2 text-sm font-medium">{tr("ticket_drawer.hardware")}</div>
       <select
         value={issue.asset_id ?? ""}
         onChange={(e) => {
@@ -711,8 +712,8 @@ export default function TicketDrawer({
             {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
           <button onClick={() => assign.mutate()}
-            className="rounded bg-brand px-3 py-1 text-white">🧭 Zur Planung übergeben</button>
-          <span className="text-xs text-muted">Startet die Planung; Standard-PM entscheidet Besetzung + Split.</span>
+            className="rounded bg-brand px-3 py-1 text-white">{tr("ticket_drawer.zur_planung_uebergeben")}</button>
+          <span className="text-xs text-muted">{tr("ticket_drawer.startet_die_planung_standard_pm_entschei")}</span>
         </div>
       )}
       {/* Lifecycle-Aktionen (Menschenhoheit) */}
@@ -735,13 +736,13 @@ export default function TicketDrawer({
         <div className="mt-3 space-y-2">
           {project.testenv_enabled !== false && (
             <div className="rounded border border-line bg-surface p-2.5 text-sm">
-              <div className="mb-1.5 font-medium">Testumgebung</div>
+              <div className="mb-1.5 font-medium">{tr("ticket_drawer.testumgebung_2")}</div>
               {issue.testenv_status === "starting" ? (
-                <div className="text-muted">⏳ Testumgebung startet… (Build dauert ein paar Minuten)</div>
+                <div className="text-muted">{tr("ticket_drawer.testumgebung_startet_build_dauert_ein_pa")}</div>
               ) : issue.testenv_status === "running" && issue.testenv_url ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <a href={issue.testenv_url} target="_blank" rel="noreferrer"
-                    className="rounded bg-brand px-3 py-1 text-sm text-white">🖥 Testumgebung öffnen</a>
+                    className="rounded bg-brand px-3 py-1 text-sm text-white">{tr("ticket_drawer.testumgebung_oeffnen")}</a>
                   <button onClick={() => life.mutate("testenv/stop")}
                     className="rounded border border-line px-3 py-1 text-sm text-muted hover:text-red-400">
                     Stoppen</button>
@@ -773,20 +774,19 @@ export default function TicketDrawer({
           <div className="text-yellow-400">⏸ Blockiert ({issue.hold_reason})</div>
           {issue.hold_reason === "question" ? (
             <div className="mt-2 flex gap-2">
-              <input id="ans" placeholder="Antwort an den Agenten…"
+              <input id="ans" placeholder={tr("ticket_drawer.antwort_an_den_agenten")}
                 className="flex-1 rounded border border-line bg-surface px-2 py-1.5"
                 onKeyDown={(e) => { const v = (e.target as HTMLInputElement).value;
                   if (e.key === "Enter" && v.trim()) { answerBlocker.mutate(v); (e.target as HTMLInputElement).value = ""; } }} />
               <button onClick={() => { const el = document.getElementById("ans") as HTMLInputElement;
                 if (el?.value.trim()) { answerBlocker.mutate(el.value); el.value = ""; } }}
-                className="rounded bg-brand px-3 py-1.5 text-white">Antworten</button>
+                className="rounded bg-brand px-3 py-1.5 text-white">{tr("ticket_drawer.antworten")}</button>
             </div>
           ) : issue.hold_reason === "permission" ? (
-            <div className="mt-1 text-muted">Berechtigung im <b>Monitor</b>-Tab oder per Telegram entscheiden.</div>
+            <div className="mt-1 text-muted">Berechtigung im <b>{tr("ticket_drawer.monitor")}</b>-Tab oder per Telegram entscheiden.</div>
           ) : issue.hold_reason === "review" ? (
             <div className="mt-2 space-y-2">
-              <div className="text-muted">Review-Befunde offen — prüfe den Diff (unten „Diff ansehen"),
-                dann abnehmen oder eine Korrektur kommentieren.</div>
+              <div className="text-muted">{tr("ticket_drawer.review_befunde_offen_pruefe_den_diff_unt")}</div>
               <button onClick={() => life.mutate("complete")}
                 className="rounded bg-green-600 px-3 py-1 text-sm text-white">✅ Abnehmen</button>
             </div>
@@ -850,7 +850,7 @@ export default function TicketDrawer({
   // rendert die Komponente nichts, der Block bleibt dann leer.
   const bFelder = issue.artifact_id ? (
     <div className="rounded-lg border border-line p-3">
-      <div className="mb-2 text-xs font-medium text-muted">Felder</div>
+      <div className="mb-2 text-xs font-medium text-muted">{tr("ticket_drawer.felder")}</div>
       <ArtifactFields artifactId={issue.artifact_id} />
     </div>
   ) : null;
@@ -914,7 +914,7 @@ export default function TicketDrawer({
                   setDragKey(k);
                 }}
                 onDragEnd={() => { setDragKey(null); setOverCol(null); setOverKey(null); }}
-                title="Zum Umsortieren ziehen"
+                title={tr("ticket_drawer.zum_umsortieren_ziehen")}
                 className="absolute -left-5 top-0 cursor-grab select-none text-brand active:cursor-grabbing"
               >
                 ⠿

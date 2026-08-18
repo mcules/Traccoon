@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 
@@ -21,7 +22,7 @@ export default function NotificationBell() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} className="relative text-muted hover:text-ink" title="Benachrichtigungen">
+      <button onClick={() => setOpen(!open)} className="relative text-muted hover:text-ink" title={tr("notification_bell.benachrichtigungen")}>
         🔔
         {(count?.count || 0) > 0 && (
           <span className="absolute -right-2 -top-1 rounded-full bg-red-500 px-1 text-[10px] text-white">
@@ -34,7 +35,7 @@ export default function NotificationBell() {
         <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
         <div className="absolute right-0 top-8 z-30 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-lg">
           <div className="mb-2 flex items-center justify-between px-1">
-            <span className="text-xs font-medium text-muted">Benachrichtigungen</span>
+            <span className="text-xs font-medium text-muted">{tr("notification_bell.benachrichtigungen")}</span>
             <button onClick={readAll} className="text-xs text-brand">alle gelesen</button>
           </div>
           {list?.map((n) => (
@@ -43,7 +44,7 @@ export default function NotificationBell() {
               <div className="text-xs text-muted">{n.body}</div>
             </div>
           ))}
-          {list?.length === 0 && <div className="px-1 text-xs text-muted">Nichts Neues.</div>}
+          {list?.length === 0 && <div className="px-1 text-xs text-muted">{tr("notification_bell.nichts_neues")}</div>}
         </div>
         </>
       )}

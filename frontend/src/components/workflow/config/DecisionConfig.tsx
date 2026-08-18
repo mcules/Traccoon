@@ -1,4 +1,5 @@
 import type { NodeConfig, DecisionBranch, JsonLogic } from "../types";
+import { tr } from "../../../i18n";
 import type { KontextFeld, KontextFilter } from "../contextFields";
 
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
@@ -55,7 +56,7 @@ export default function DecisionConfig({
   const inp = "rounded border border-line bg-card px-2 py-1 text-xs text-ink";
   return (
     <div className="space-y-3">
-      <div className="mb-1 text-xs font-medium text-muted">Zweige</div>
+      <div className="mb-1 text-xs font-medium text-muted">{tr("decision_config.zweige")}</div>
       <div className="space-y-2">
         {branches.map((b, i) => {
           const s = parseGuard(b.guard);
@@ -66,10 +67,10 @@ export default function DecisionConfig({
                 <input
                   value={b.label}
                   onChange={(e) => patch(i, { label: e.target.value })}
-                  placeholder="Beschriftung"
+                  placeholder={tr("decision_config.beschriftung")}
                   className={`flex-1 ${inp}`}
                 />
-                <button onClick={() => remove(i)} className="text-muted hover:text-red-400" title="Zweig entfernen">
+                <button onClick={() => remove(i)} className="text-muted hover:text-red-400" title={tr("decision_config.zweig_entfernen")}>
                   ✕
                 </button>
               </div>
@@ -80,7 +81,7 @@ export default function DecisionConfig({
                 <input
                   value={s.field}
                   onChange={(e) => upd({ field: e.target.value })}
-                  placeholder="Kontext-Feld"
+                  placeholder={tr("decision_config.kontext_feld")}
                   list={felder.length ? "wf-kontextfelder" : undefined}
                   className={`w-40 font-mono ${inp}`}
                 />
@@ -94,7 +95,7 @@ export default function DecisionConfig({
                 <input
                   value={s.value}
                   onChange={(e) => upd({ value: e.target.value })}
-                  placeholder="Wert"
+                  placeholder={tr("decision_config.wert")}
                   className={`w-24 ${inp}`}
                 />
                 <span className="text-[10px] text-muted">

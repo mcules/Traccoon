@@ -114,6 +114,15 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
     await db.commit()
 
 
+@router.put("/me/locale", status_code=204)
+async def set_locale(d: StrIn, u: User = Depends(get_current_user),
+                     db: AsyncSession = Depends(get_session)):
+    """UI language of this person. Unknown values fall back to the source language."""
+    wert = (d.value or "de").strip().lower().replace("_", "-")[:10]
+    u.locale = wert if wert and wert.replace("-", "").isalnum() else "de"
+    await db.commit()
+
+
 @router.put("/me/theme", status_code=204)
 async def set_theme(d: StrIn, u: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     u.theme = d.value if d.value in ("light", "dark") else "dark"
