@@ -21,6 +21,8 @@ class WorkflowDefinitionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
     subject_kind: WorkflowSubjectKind = WorkflowSubjectKind.standalone
+    # Statt Start+Ende gleich ein fertiger Ablauf zum Umbauen (services/workflow_templates).
+    template: str | None = None
 
 
 class WorkflowDefinitionUpdate(BaseModel):

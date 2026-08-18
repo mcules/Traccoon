@@ -282,6 +282,18 @@ async def workflow_tools(user: User = Depends(get_current_user),
     return await werkzeuge(db, user.id)
 
 
+@router.get("/workflow-templates")
+async def workflow_templates_list(user: User = Depends(get_current_user)):
+    """Fertige Abläufe zum Kopieren — Auswahl beim Anlegen.
+
+    Nur die Beschreibung, nicht der Graph: die Übersicht braucht ihn nicht, und wer eine
+    Vorlage nimmt, bekommt sie ohnehin als eigene Version 1 (`POST /workflows` mit
+    `template`).
+    """
+    from ..services import workflow_templates
+    return workflow_templates.liste()
+
+
 # ── Prozess-Sätze ────────────────────────────────────────────────────────────
 
 async def _get_set(db: AsyncSession, set_id: int):
@@ -465,9 +477,15 @@ async def create_workflow(
     ))).scalar_one_or_none()
     if exists is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "Key im Projekt bereits vergeben")
+    from ..services import workflow_templates
+    vorlage = workflow_templates.vorlage(data.template) if data.template else None
+    if data.template and vorlage is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Vorlage '{data.template}' unbekannt")
     d = WorkflowDefinition(
         project_id=data.project_id, key=data.key, name=data.name,
-        description=data.description or "", subject_kind=data.subject_kind, created_by=user.id,
+        description=data.description or (vorlage["description"] if vorlage else ""),
+        subject_kind=vorlage["subject_kind"] if vorlage else data.subject_kind,
+        created_by=user.id,
     )
     db.add(d)
     await db.flush()
@@ -477,7 +495,7 @@ async def create_workflow(
     # Knoten, nicht einmal einen Start.)
     v1 = WorkflowVersion(
         definition_id=d.id, version=1, status=WorkflowVersionStatus.draft, created_by=user.id,
-        graph={
+        graph=workflow_templates.graph(data.template) if vorlage else {
             "nodes": [
                 {"id": "start", "type": "start", "position": {"x": 0, "y": 0},
                  "data": {"config": {"label": "Auslöser"}}},

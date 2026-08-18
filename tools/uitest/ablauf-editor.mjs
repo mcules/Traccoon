@@ -36,8 +36,39 @@ try {
   const stempel = Date.now().toString().slice(-6);
   const key = `uitest${stempel}`;
   const felder = page.locator("input");
-  await felder.nth(0).fill(key);
-  await felder.nth(1).fill(`UI-Probe ${stempel}`);
+  await felder.nth(0).fill(`${key}v`);
+  await felder.nth(1).fill(`UI-Vorlage ${stempel}`);
+  // Vorlagen-Auswahl: das erste Select im Anlege-Bereich.
+  const vorlagenAuswahl = page.locator("select").first();
+  const vorlagenZahl = await vorlagenAuswahl.locator("option").count().catch(() => 0);
+  ok("Vorlagen stehen zur Auswahl", vorlagenZahl >= 5, `${vorlagenZahl} Einträge (mit Gerüst)`);
+  await vorlagenAuswahl.selectOption("liste-abarbeiten").catch(() => {});
+  await page.waitForTimeout(500);
+  const hinweis = await page.getByText(/Schleife den Pfad zur Liste/i).first()
+    .isVisible().catch(() => false);
+  ok("Vorlage erklärt, was man anpassen muss", hinweis);
+  await page.getByRole("button", { name: /anlegen|hinzufügen|\+/i }).first().click();
+  await page.waitForURL(/\/workflows\/\d+/, { timeout: 15000 });
+  await page.waitForTimeout(2000);
+  const knotenAusVorlage = await page.locator(".react-flow__node").count();
+  ok("Vorlage bringt einen fertigen Ablauf mit", knotenAusVorlage >= 5,
+     `${knotenAusVorlage} Knoten`);
+  await page.screenshot({ path: "/w/09-vorlage.png" });
+  // Veröffentlichen — nur ein veröffentlichter Ablauf lässt sich später als Unterablauf
+  // aufrufen, und genau das wird weiter unten geprüft.
+  page.once("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: /Veröffentlichen/i }).click().catch(() => {});
+  await page.waitForTimeout(2500);
+  const veroeffentlicht = !(await page.getByText(/Validierungsfehler/i).first()
+    .isVisible().catch(() => false));
+  ok("Vorlage lässt sich ohne Nacharbeit veröffentlichen", veroeffentlicht);
+  await page.getByRole("button", { name: /Zurück zu den Prozessen/i }).click();
+  await page.waitForTimeout(1500);
+
+  // Und jetzt der leere Weg — darauf baut der Rest der Probe auf.
+  const felder2 = page.locator("input");
+  await felder2.nth(0).fill(key);
+  await felder2.nth(1).fill(`UI-Probe ${stempel}`);
   await page.getByRole("button", { name: /anlegen|hinzufügen|\+/i }).first().click();
   await page.waitForURL(/\/workflows\/\d+/, { timeout: 15000 });
   ok("Anlegen springt in den Editor", true, page.url().split("/").slice(-1)[0]);
@@ -169,6 +200,21 @@ try {
   }
   await page.screenshot({ path: "/w/05-verzweigung.png" });
 
+
+  // 6c) „Anderer Ablauf": neben den festen Slots müssen die eigenen wählbar sein.
+  const anderer = page.getByText("Anderer Ablauf", { exact: false }).first();
+  await anderer.dragTo(flaeche, { targetPosition: { x: 640, y: 520 } });
+  await page.waitForTimeout(900);
+  const knoten3 = page.locator(".react-flow__node");
+  await knoten3.nth(await knoten3.count() - 1).click();
+  await page.waitForTimeout(1200);
+  const ablaufAuswahl = page.locator("select").first();
+  const gruppen = await ablaufAuswahl.locator("optgroup").count().catch(() => 0);
+  const eigeneOpt = await ablaufAuswahl
+    .locator('optgroup[label*="Eigene"] option').count().catch(() => 0);
+  ok("Unterablauf trennt feste Slots von eigenen Abläufen", gruppen >= 1, `${gruppen} Gruppen`);
+  ok("Eigene, veröffentlichte Abläufe stehen zur Wahl", eigeneOpt > 0, `${eigeneOpt} Abläufe`);
+  await page.screenshot({ path: "/w/10-unterablauf.png" });
 
   // 7) Schließen → zurück zur Liste (der Punkt, der vorher in die Einstellungen führte)
   await page.getByRole("button", { name: /Zurück zu den Prozessen/i }).click();
