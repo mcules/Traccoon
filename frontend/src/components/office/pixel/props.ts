@@ -35,9 +35,8 @@ import type { Pal, PalKey } from "./palette.ts";
  *  The reason stands with them: at three pixels they are the same block, and "NENNWERT" could
  *  not be told from "MEMMWERT" in the golden image. Four pixels for three letters cost two
  *  pixels of width in a typical name; illegible type costs the whole feature. */
- *  kostet das ganze Feature. */
 const GH = 5;
-/** Zwischenraum zwischen zwei Glyphen. */
+/** Spacing between two glyphs. */
 const GAP = 1;
 /** A space is narrower than a letter, otherwise short names fall apart into single words. */
 const SPACE_ADV = 3;
@@ -143,7 +142,6 @@ const GLYPHS: Record<string, readonly string[]> = {
 
 /** An unknown character. A visible box, not a silent omission: a gap in a name looks like a data
  *  error, a box like a missing glyph, and only the second leads to the right repair. */
- *  Zweite führt zur richtigen Reparatur. */
 const TOFU: readonly string[] = ["###", "#.#", "#.#", "#.#", "###"];
 
 /**
@@ -542,7 +540,6 @@ export function emotePop(
  *
  * Dashed and travelling: a solid line says "these two belong together", a travelling one also
  * says **in which direction** the delegation went. That is the whole reason the line exists.
- * warum es die Linie gibt.
  *
  * Bresenham by hand, because there is no `lineTo`, and because a rasterised line is exactly
  * what belongs here anyway.
