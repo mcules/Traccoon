@@ -10,7 +10,6 @@ Principles:
   anything is stored.
 - **Resolution by name** in a fixed order: project, user, system wide. That lets a project
   bend a destination of the same name onto a test counterpart without changing processes.
-  ändern.
 """
 from __future__ import annotations
 
