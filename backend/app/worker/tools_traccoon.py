@@ -1,6 +1,6 @@
-"""Native Steuer-Tools: der Assistent bedient Traccoon IM NAMEN seines Menschen und
-STRIKT in dessen Rechten (build_access je Projekt). Generisch — keine personenbezogenen
-Daten im Code. Rückgabe je Tool = knapper Text für den Agenten.
+"""Native control tools: the assistant operates Traccoon IN THE NAME of its human and
+STRICTLY within their rights (build_access per project). Generic, with no personal data in
+the code. The return value of every tool is terse text for the agent.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _def(name: str, desc: str, props: dict, required: list[str]) -> dict:
         "parameters": {"type": "object", "properties": props, "required": required}}}
 
 
-# Deny-default: der Assistent bekommt diese nur mit `traccoon_*` in allowed_tools.
+# Deny by default: the assistant only gets these with `traccoon_*` in allowed_tools.
 TRACCOON_TOOLS = [
     _def("traccoon_list_projects", "Projekte auflisten, auf die dein Mensch Zugriff hat "
          "(Key, Name, seine Rolle, ob KI-Zuweisung erlaubt).", {}, []),
@@ -121,12 +121,12 @@ TRACCOON_TOOLS = [
 ]
 TRACCOON_TOOL_NAMES = {t["function"]["name"] for t in TRACCOON_TOOLS}
 
-# Steuer-Tools sind vom Assistenten-Gate ausgenommen, weil sie ohnehin nur in den Rechten des
-# Menschen wirken. Für Jobs gilt das nicht: ein Job ist eine DAUERHAFTE, selbsttätige und
-# kostenpflichtige Abmachung — die soll ein Mensch einmal bestätigt haben („immer" merkt sich
-# das Gate dann). Lesen bleibt frei.
-# `traccoon_start_workflow` ist aus demselben Grund dabei: ein Prozess kann Agentenläufe,
-# Freigaben und Aufrufe nach außen anstoßen — nicht etwas, das ein Agent unbemerkt auslöst.
+# Control tools are exempt from the assistant gate, because they only act within the rights
+# of the human anyway. For jobs that does not apply: a job is a PERMANENT, self-acting and
+# chargeable arrangement, and a human should have confirmed it once (the gate then remembers
+# "always"). Reading stays free.
+# `traccoon_start_workflow` is included for the same reason: a process can trigger agent
+# runs, approvals and calls to the outside, which is not something an agent sets off unnoticed.
 # Auflisten bleibt frei.
 TRACCOON_GATED_TOOLS = {"traccoon_create_job", "traccoon_update_job", "traccoon_run_job",
                         "traccoon_start_workflow"}
@@ -137,7 +137,7 @@ async def _user(db: AsyncSession, owner_id: int | None) -> User | None:
 
 
 async def _issue_access(db: AsyncSession, user: User, key: str):
-    """(Issue, Access, Project) für einen Ticket-Key — oder (None, Fehlertext)."""
+    """(Issue, Access, Project) for a ticket key, or (None, error text)."""
     iss = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
     if iss is None:
         return None, None, f"Ticket '{key}' nicht gefunden."
@@ -153,10 +153,10 @@ _JOB_FELDER = ("name", "prompt", "agent", "type", "schedule", "enabled", "notify
 
 
 async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
-    """Jobs des Menschen lesen und pflegen — strikt seine eigenen.
+    """Read and maintain the jobs of the human, strictly their own.
 
-    Anlass: der Assistent konnte Jobs nicht sehen und hielt einen längst umgezogenen Job für
-    nicht existent. Lesen ist frei, Schreiben geht über das Gate (TRACCOON_GATED_TOOLS).
+    The reason: the assistant could not see jobs and considered a job that had long been
+    moved non-existent. Reading is free, writing goes over the gate (TRACCOON_GATED_TOOLS).
     """
     from ..models.ops import Job, JobRun
     from ..services.job_params import offene_platzhalter, parameter
@@ -164,7 +164,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
 
     async def _job(jid) -> Job | None:
         j = await db.get(Job, int(jid or 0))
-        # Fremde Jobs existieren für den Assistenten schlicht nicht — auch nicht als „verboten".
+        # Foreign jobs simply do not exist for the assistant, not even as "forbidden".
         return j if j is not None and j.user_id == user.id else None
 
     if name == "traccoon_job_templates":
@@ -221,7 +221,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         felder.setdefault("schedule", "0 6 * * *")
         felder.setdefault("agent", "assistent")
         felder["name"] = str(args.get("name") or "Namenloser Job")[:255]
-        # Meldung geht an denselben Chat wie alles andere von ihm.
+        # The message goes to the same chat as everything else from it.
         felder.setdefault("notify_chat", user.telegram_chat_id)
         j = Job(user_id=user.id, **felder)
         db.add(j)
@@ -242,8 +242,8 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
                 setattr(j, f, args[f])
                 geaendert.append(f)
         if args.get("params"):
-            # Nachziehen, nicht ersetzen — sonst verliert ein Job beim Ändern eines Wertes
-            # alle übrigen Parameter.
+            # Update, do not replace: otherwise a job loses all its other parameters when
+            # one value is changed.
             j.args = {**parameter(j.args), **args["params"]}
             geaendert.append("params")
         if not geaendert:
@@ -261,16 +261,16 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         db.add(jr)
         j.last_run_at = _now()
         await db.flush()
-        # script/workflow/http hier direkt ausführen (wie Scheduler und API). Ohne das lief
-        # ein Workflow-Job als Prompt-Job beim Assistenten — ohne Workflow, ohne Fehler.
+        # Run script/workflow/http directly here (as the scheduler and the API do). Without
+        # that, a workflow job ran as a prompt job at the assistant, with no workflow and no error.
         from ..services.scheduler import run_job_kind
         if await run_job_kind(db, j, jr):
             await db.commit()
             return (f"Job #{j.id} '{j.name}' ({j.kind}) ausgeführt: {jr.status}"
                     + (f" — {jr.output[:500]}" if jr.output else "")
                     + (f" — FEHLER: {jr.error[:500]}" if jr.error else ""))
-        # ERST committen, DANN einreihen — sonst greift ein freier Worker den Auftrag, bevor
-        # es den JobRun gibt, und der Lauf bleibt für immer auf „running" (vgl. api/ops.py).
+        # Commit FIRST, queue AFTERWARDS; otherwise a free worker grabs the assignment before
+        # the JobRun exists and the run stays on "running" forever (see api/ops.py).
         await db.commit()
         from ..core.redis import enqueue_task
         await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}", "job_id": j.id,
@@ -281,10 +281,10 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
 
 
 async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
-    """Prozesse auflisten und starten — in den Rechten des Menschen, nicht des Agenten.
+    """List and start processes, within the rights of the human, not of the agent.
 
-    Bis hierher konnte ein Agent einen Workflow überhaupt nicht anstoßen: Job und Webhook
-    können es, das Tool fehlte. Zugriff wie in api/workflows.py: projektlose Prozesse für
+    Until now an agent could not trigger a workflow at all: job and webhook can, but the tool
+    was missing. Access as in api/workflows.py: project-less processes for every logged-in
     user, project bound ones from membership (member) on.
     """
     from ..models.enums import ProjectRole
@@ -308,7 +308,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
         q = select(WorkflowDefinition).where(
             WorkflowDefinition.archived_at.is_(None),
             WorkflowDefinition.enabled.is_(True),
-            # Ohne veröffentlichte Version gibt es nichts zu starten — Entwürfe verschweigen.
+            # Without a published version there is nothing to start; drafts stay silent.
             WorkflowDefinition.current_version_id.is_not(None))
         if args.get("project_key"):
             p = (await db.execute(select(Project).where(
@@ -458,9 +458,9 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         iss.assigned_agent = (args.get("role") or "").strip()
         iss.assigned_by_user_id = user.id
         iss.assigned_at = _now()
-        # Zuweisen heißt anfangen — genau wie über die Oberfläche (`/issues/{key}/assign-agent`).
-        # Ohne diese Zeilen setzte der Assistent nur Felder, und das Ticket lag mit Agent und
-        # Status da, ohne dass ein Prozess lief (TRA-32 am 2026-08-07).
+        # Assigning means starting, exactly as over the interface (`/issues/{key}/assign-agent`).
+        # Without these lines the assistant only set fields, and the ticket lay there with an
+        # agent and a status without a process running (TRA-32 on 2026-08-07).
         from ..services.lifecycle_flow import start_lifecycle
         inst = await start_lifecycle(db, iss, user.id, advance_now=False,
                                      entry="exec" if iss.plan else "plan")
@@ -486,9 +486,9 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             iss.cap_baseline_run_id = (await db.execute(
                 select(func.max(Run.id)).where(Run.issue_id == iss.id))).scalar()
             await sync_board_status(db, iss)
-            # Der Status allein plant nichts. Weitergeschaltet wird NICHT hier: `advance`
-            # gehört in den Backend-Prozess, dessen 30-s-Tick das frische Token findet —
-            # aus dem Worker heraus hingen die Wächter der Folgeschritte im falschen Prozess.
+            # The status alone plans nothing. Advancing does NOT happen here: `advance`
+            # belongs in the backend process, whose 30 s tick finds the fresh token; out of
+            # the worker the watchers of the following steps hung in the wrong process.
             from ..services.lifecycle_flow import start_lifecycle
             inst = await start_lifecycle(db, iss, user.id, advance_now=False, entry="plan",
                                          restart=True)
@@ -506,9 +506,9 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             iss.cap_baseline_run_id = (await db.execute(
                 select(func.max(Run.id)).where(Run.issue_id == iss.id))).scalar()
             await sync_board_status(db, iss)
-            # Die Freigabe ist ein SCHRITT im Prozess, kein Feld am Ticket: der Graph steht
-            # auf `approve_plan` und wartet. Nur den Status zu setzen ließ das Ticket
-            # freigegeben aussehen, während niemand anfing.
+            # The approval is a STEP in the process, not a field on the ticket: the graph
+            # stands on `approve_plan` and waits. Setting only the status made the ticket
+            # look approved while nobody started.
             from ..services.lifecycle_flow import entscheide_offene_genehmigung
             entschieden = await entscheide_offene_genehmigung(db, iss, "approved", user.id)
             await db.commit()
@@ -518,9 +518,9 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             return f"{iss.key}: Plan freigegeben, der Prozess läuft weiter."
 
     if name == "traccoon_notify_human":
-        # Ausdrückliche Meldung an den Menschen. Sie ist der EINZIGE reguläre Weg, aus einem
-        # Assistenten-Lauf heraus eine Telegram-/Glocken-Nachricht auszulösen — der
-        # Abschlussbericht schweigt sonst (Ausnahme: Fehler und Chat).
+        # An explicit message to the human. It is the ONLY regular way to trigger a Telegram
+        # or bell message out of an assistant run; the closing report stays silent otherwise
+        # (exceptions: errors and chat).
         from ..models.notification import Notification
         titel = str(args.get("title") or "").strip() or "Hinweis deines Assistenten"
         dringend = str(args.get("urgency") or "").lower() == "high"
@@ -558,9 +558,9 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             return f"FEHLER: {e}"
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben
         kopf = f"{res['method']} {res['url']} → HTTP {res['status_code']}"
-        # Die Grenze hat das Ziel gesetzt (TRA-31) — hier NICHT erneut pauschal kürzen,
-        # sonst bekäme ein Agent von einer bewusst großen Antwort doch nur den Anfang und
-        # plante auf abgeschnittenem JSON, ohne dass der Schnitt auffällt.
+        # The limit was set by the destination (TRA-31): do NOT truncate again flatly here,
+        # because otherwise an agent would get only the beginning of a deliberately large
+        # answer and would plan on truncated JSON without the cut being noticeable.
         grenze = int(res.get("max_chars") or 4000)
         inhalt = res.get("text")
         if inhalt is None and "json" in res:
