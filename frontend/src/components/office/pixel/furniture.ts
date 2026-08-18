@@ -1,24 +1,24 @@
-// Schicht 1 — das Mobiliar und die Kulisse.
+// Layer 1, the furniture and the set.
 //
-// Maßstab (Regel 1 des Pixel-Vertrags, die Regel, an der man scheitert): der Puffer ist
-// 480×270, `POS_SCALE = 0.3` gilt **nur für Positionen**. Eine Figur ist 16×24 **Pufferpixel**.
-// Alles hier ist an dieser Figur gemessen und nicht an Szenenkoordinaten:
+// Scale (rule 1 of the pixel contract, the rule people fail at): the buffer is 480×270, and
+// `POS_SCALE = 0.3` applies **to positions only**. A character is 16×24 **buffer pixels**.
+// Everything here is measured against that character, not against scene coordinates:
 //
-//   Figur          16 × 24     — der Maßstab, an dem alles andere hängt
-//   Schreibtisch   26 × 12     — passt neben die Figur, ohne sie zu verdecken
-//   Bürostuhl      10 × 15
-//   Monitor        16 × 13     — steht auf der Tischplatte, nicht auf dem Boden
+//   character      16 × 24     — the scale everything else hangs on
+//   desk           26 × 12     — fits next to the character without hiding it
+//   office chair   10 × 15
+//   monitor        16 × 13     — stands on the desktop, not on the floor
 //   runder Tisch   52 × 13
-//   Tür            20 × 34     — reicht von der Bodenlinie bis fast an die Decke
+//   door           20 × 34     — reaches from the floor line almost to the ceiling
 //   Fenster        30 × 22     — kachelbar, siehe `WINDOW_STEP`
-//   Aktenschrank   16 × 15     — hüfthoch, Ablage für die kleine Pflanze
-//   Serverschrank  20 × 34     — anderthalb Figurenhöhen; hoch **statt** breit, siehe dort
+//   filing cabinet 16 × 15     — hip high, a shelf for the small plant
+//   server rack    20 × 34     — one and a half character heights; tall **instead of** wide, see there
 //
-// Die Wand nimmt die obersten `WALL_H = 38` Zeilen ein, der Boden die restlichen 232.
+// The wall takes the top `WALL_H = 38` rows, the floor the remaining 232.
 //
-// Wand, Boden, Teppich und Fensterlicht sind **prozedural**: sie sind Flächen, keine Motive.
-// Als Art wären sie zusammen größer als das gesamte übrige Kunstbudget und ließen sich nicht
-// auf beliebige Raumbreiten ziehen.
+// Wall, floor, carpet and window light are **procedural**: they are surfaces, not motifs. As
+// art they would together be larger than the entire remaining art budget and could not be
+// stretched to arbitrary room widths.
 
 import type { Ctx, RackState } from "../types.ts";
 import { ART } from "../const.ts";
@@ -26,30 +26,30 @@ import { mix } from "../ids.ts";
 import type { Pal, PalKey } from "./palette.ts";
 import { artH, artLeft, artW, defineArt, drawArt, fill, fillA, verdoppelt } from "./art.ts";
 
-// ═══ Maße der Kulisse ════════════════════════════════════════════════════════
+// ═══ Dimensions of the set ═══════════════════════════════════════════════════
 
-/** Höhe der Rückwand in Pufferpixeln. Alles darunter ist Boden; `WALL_H` ist damit auch die
- *  Bodenlinie, auf der Tür, Schränke und die hintere Schreibtischreihe stehen. */
+/** Height of the back wall in buffer pixels. Everything below is floor, so `WALL_H` is also the
+ *  floor line that the door, the cabinets and the back row of desks stand on. */
 export const WALL_H = 38;
 
-/** Kulisse in Pufferpixeln: Wand, Boden und Licht sind seit Etappe 3 fein gezeichnet und
- *  bekommen die HD-Sicht. Alles übrige Mobiliar zeichnet weiter in Kunsteinheiten — beides
- *  nebeneinander ist der Zweck der Trennung (PIXEL-CONTRACT Regel 1). */
+/** The set in buffer pixels: wall, floor and light are finely drawn since stage 3 and get the
+ *  HD view. All other furniture still draws in art units, and having both side by side is the
+ *  purpose of the separation (PIXEL-CONTRACT rule 1). */
 const HD = 2;
 
-/** Schrittweite beim Aneinanderreihen von Fenstern: zwei Fenster teilen sich den Pfosten,
- *  sonst stünde eine 4 Pixel breite Rahmennaht zwischen ihnen. */
+/** Step when lining up windows: two windows share the post, otherwise a frame seam 4 pixels
+ *  wide would stand between them. */
 export const WINDOW_STEP = 28;
 
-// ═══ Die Arts ════════════════════════════════════════════════════════════════
+// ═══ The art ═════════════════════════════════════════════════════════════════
 //
-// Zeichenlegende ist je Art eigenständig — `M` heißt im Monitor etwas anderes als im Schrank.
-// Was in **keinem** Möbel-Art vorkommen darf: `S H T P h s t`. Diese sieben Zeichen sind für
-// die Figur reserviert und würden hier die Hautfarbe des gerade gezeichneten Agenten annehmen.
+// The legend is separate per piece of art: `M` means something different in the monitor than
+// in the cabinet. What must appear in **no** furniture art: `S H T P h s t`. Those seven
+// characters are reserved for the character and would take the skin colour of the agent here.
 
 // ── Schreibtisch ─────────────────────────────────────────────────────────────
-// Platte, Vorderkante, Sichtblende, zwei Metallwangen. 26×12: schmal genug, dass eine
-// 16 Pixel breite Figur davorsteht, ohne dass der Tisch sie einrahmt.
+// Top, front edge, modesty panel, two metal sides. 26×12: narrow enough that a character 16
+// pixels wide stands in front of it without the desk framing them.
 
 const DESK = defineArt([
   "DDDDDDDDDDDDDDDDDDDDDDDDDD",
@@ -66,11 +66,11 @@ const DESK = defineArt([
   ".MM....................MM.",
 ], { D: "desk", d: "deskLo", M: "metal" });
 
-// ── Bürostuhl ────────────────────────────────────────────────────────────────
-// Zwei Fassungen. Die besetzte lässt die Sitzfläche frei: dort sitzt die Figur, und ein
-// durchscheinender Stuhl unter ihr sähe aus wie ein Zeichenfehler. Der Fuß bleibt in beiden
-// Fassungen sichtbar — er ragt seitlich unter der Figur hervor und ist das Detail, an dem man
-// „sitzt am Schreibtisch" überhaupt erkennt.
+// ── Office chair ─────────────────────────────────────────────────────────────
+// Two versions. The occupied one leaves the seat free: the character sits there, and a chair
+// shining through beneath them would look like a drawing error. The foot stays visible in both
+// versions: it sticks out sideways under the character and is the detail that makes "sitting at
+// the desk" recognisable at all.
 
 const CHAIR_LEGS = [
   "....MM....",
@@ -109,9 +109,9 @@ const CHAIR_TAKEN = defineArt([
 ], { C: "chair", c: "chairLo", M: "metal" });
 
 // ── Monitor ──────────────────────────────────────────────────────────────────
-// Nur Gehäuse und leere Fläche. Der Inhalt wird prozedural hineingezeichnet (`drawMonitor`),
-// weil sieben Bildsorten × vier Stimmungen als 28 Arts das halbe Budget fräßen — und weil
-// dieselben Striche in anderer Länge sofort nach einem anderen Werkzeug aussehen.
+// Only the case and an empty area. The content is drawn procedurally (`drawMonitor`), because
+// seven kinds of image times four moods would eat half the budget as 28 pieces of art, and
+// because the same strokes at a different length immediately look like a different tool.
 
 const MONITOR = defineArt([
   "NNNNNNNNNNNNNNNN",
@@ -129,13 +129,13 @@ const MONITOR = defineArt([
   "...MMMMMMMMMM...",
 ], { N: "screen", g: "screenLit", M: "metal" });
 
-/** Innenfläche des Monitors, relativ zur linken oberen Ecke des Arts. */
+/** Inner area of the monitor, relative to the top left corner of the art. */
 const MON_IN = { x: 1, y: 1, w: 14, h: 7 } as const;
 
 // ── Runder Tisch ─────────────────────────────────────────────────────────────
-// Die Ellipse ist eine Tabelle von Halbbreiten, kein `arc` (Regel 2.1). Die vier oberen Zeilen
-// sind Platte, die drei unteren die vordere Zarge — dieser eine Farbwechsel macht aus einer
-// Scheibe eine Tischplatte mit Dicke.
+// The ellipse is a table of half widths, not an `arc` (rule 2.1). The four upper rows are the
+// top, the three lower ones the front apron, and that one change of colour turns a disc into a
+// tabletop with thickness.
 
 /** Waagerecht zentrierter Lauf in einer `w` breiten Zeile. */
 function band(w: number, n: number, ch: string): string {
@@ -161,9 +161,9 @@ const OFFICE = defineArt([
 ], { D: "desk", d: "deskLo", M: "metal" });
 
 // ── Stuhl am runden Tisch ────────────────────────────────────────────────────
-// Schmaler als der Bürostuhl (8 statt 10) und ohne Rollenfuß: der Besprechungsstuhl steht,
-// er rollt nicht. Der Unterschied ist bei 8 Pixeln klein, aber er trennt „Arbeitsplatz" von
-// „Besprechung", und genau das soll das Huddle zeigen.
+// Narrower than the office chair (8 instead of 10) and without castors: the meeting chair
+// stands, it does not roll. At 8 pixels the difference is small, but it separates "workplace"
+// from "meeting", and that is exactly what the huddle should show.
 
 const TABLE_CHAIR = defineArt([
   "..CCCC..",
@@ -181,9 +181,9 @@ const TABLE_CHAIR = defineArt([
 ], { C: "chair", c: "chairLo", M: "metal" });
 
 // ── Pflanzen ─────────────────────────────────────────────────────────────────
-// Zwei Größen. Die große steht in Ecken und bricht die Wandkante, die kleine steht auf
-// Schränken und Fensterbänken. Beide sind bewusst unsymmetrisch — eine achsensymmetrische
-// Pflanze liest sich als Ornament, nicht als Pflanze.
+// Two sizes. The large one stands in corners and breaks the edge of the wall, the small one
+// stands on cabinets and window sills. Both are deliberately asymmetric: a plant with an axis
+// of symmetry reads as an ornament, not as a plant.
 
 const PLANT_TALL = defineArt([
   "....G......",
@@ -227,14 +227,14 @@ const PLANT_SMALL = defineArt([
 ], { G: "plant", g: "plantLo", O: "soil", K: "clay" });
 
 // ── Aktenschrank ─────────────────────────────────────────────────────────────
-// 16×15, hüfthoch neben einer 24 Pixel hohen Figur: drei Schubladen mit Griffmulde, heller
-// Blechkorpus, kleine Füße. Er ist reine Einrichtung und trägt **keine** Bedeutung mehr —
-// genau das ist der Punkt. Solange er die Deployment-Anzeige war, hat der Zuschauer den
-// Serverschrank in einem Möbel gesucht, das aussieht wie ein Rollcontainer.
+// 16×15, hip high next to a character 24 pixels tall: three drawers with recessed handles, a
+// light sheet metal body, small feet. It is pure furnishing and carries **no** meaning any
+// more, which is exactly the point. As long as it was the deployment display, viewers looked
+// for the server rack in a piece of furniture that looks like a drawer unit.
 //
-// Er bleibt trotzdem im Raum: auf ihm steht die Topfpflanze (die sonst auf dem Boden stünde
-// und dort wie ein vergessener Blumentopf läge), und ein Büro ohne ein einziges Stauraummöbel
-// liest sich als Möbelhaus-Ausstellung, nicht als Arbeitsplatz.
+// It stays in the room anyway: the potted plant stands on it (which would otherwise stand on
+// the floor and lie there like a forgotten flowerpot), and an office without a single piece of
+// storage furniture reads as a furniture showroom, not as a workplace.
 
 const FILE_CABINET = defineArt([
   "MMMMMMMMMMMMMMMM",
@@ -255,32 +255,32 @@ const FILE_CABINET = defineArt([
 ], { M: "metal", c: "chairLo", I: "ink" });
 
 // ── Serverschrank ────────────────────────────────────────────────────────────
-// 20×34: **hoch statt breit**, gut anderthalb Figurenhöhen. Das Seitenverhältnis ist der
-// erste und wichtigste Träger der Aussage — ein Rack steht, ein Aktenschrank hockt. Bei 22×20
-// (der alten Fassung) las sich dasselbe Möbel unweigerlich als Schrank mit Schubladen, und
-// die drei dunklen Schlitze darin als Griffe.
+// 20×34: **tall instead of wide**, a good one and a half character heights. The aspect ratio is
+// the first and most important carrier of the message: a rack stands, a filing cabinet
+// crouches. At 22×20 (the old version) the same piece of furniture inevitably read as a
+// cupboard with drawers, and the three dark slots in it as handles.
 //
-// Was es zum Rack macht, in der Reihenfolge, in der das Auge es aufnimmt:
+// What makes it a rack, in the order the eye takes it in:
 //
-//   · **Zwei helle Rahmenholme** (`metal`, je 2 Spalten außen) über die volle Höhe. Sie
-//     rahmen eine **dunkle** Front (`chair`) — die Umkehr des alten Blechquaders, und der
-//     Grund, warum die Silhouette schon aus drei Metern nicht mehr nach Möbel aussieht.
-//   · **Höheneinheiten mit eigenen Blenden**, getrennt durch dunkle Fugen (`chairLo`):
-//     ein Patchfeld oben (Portpaare), drei Geräte, unten eine Blindblende. Gestapelte
-//     Geräte sind das, was ein Rack von einem Kasten unterscheidet.
-//   · **Lüftungsgitter** als versetztes Schachbrett aus `ink`-Pixeln (nicht als voller
-//     Balken): eine perforierte Fläche kann man nicht als Griff missverstehen.
-//   · **Sockel und vier Füße** unten, damit er auf dem Boden steht statt zu schweben.
+//   · **Two bright frame posts** (`metal`, 2 columns each on the outside) over the full height.
+//     They frame a **dark** front (`chair`), the inverse of the old sheet metal box, and the
+//     reason the silhouette stops looking like furniture from three metres away.
+//   · **Rack units with their own faceplates**, separated by dark gaps (`chairLo`): a patch
+//     panel on top (pairs of ports), three devices, a blanking plate at the bottom. Stacked
+//     devices are what distinguishes a rack from a box.
+//   · **Ventilation grilles** as an offset chequerboard of `ink` pixels (not as a solid bar): a
+//     perforated surface cannot be mistaken for a handle.
+//   · **A plinth and four feet** at the bottom, so it stands on the floor instead of floating.
 //
-// Die `L`-Blöcke (Zeilen 7·8 / 13·14 / 19·20, Spalten 3..6) sind die LED-Felder — je Gerät
-// eines, 4×2 Pixel. Sie sind `ink` wie das Gitter, also im Ruhezustand dunkel, und werden von
-// `drawRack` überschrieben, sobald ein Deployment läuft.
+// The `L` blocks (rows 7·8 / 13·14 / 19·20, columns 3..6) are the LED fields, one per device,
+// 4×2 pixels. They are `ink` like the grille, so dark at rest, and are overwritten by
+// `drawRack` as soon as a deployment runs.
 //
-// Sie sitzen an der **linken** Frontkante, und das ist gemessen, nicht dekoriert: die Figur,
-// die das Deployment auslöst, steht rechts vom Schrank (`RACK_PX`), und ihre Sprechblase ist
-// um ihre Mitte zentriert. Auf der rechten Frontseite lag das Leuchtfeld damit genau unter der
-// Blase — im einzigen Moment, in dem jemand hinsieht, war die Anzeige verdeckt. Links ist es
-// so weit vom Sprecher entfernt, wie der Schrank breit ist.
+// They sit on the **left** front edge, and that is measured, not decorated: the character that
+// triggers the deployment stands to the right of the rack (`RACK_PX`), and its speech bubble is
+// centred on its middle. On the right hand front the light field lay exactly under the bubble,
+// so in the one moment somebody looks, the display was covered. On the left it is as far from
+// the speaker as the rack is wide.
 
 const RACK = defineArt([
   "MMMMMMMMMMMMMMMMMMMM",
@@ -320,9 +320,9 @@ const RACK = defineArt([
 ], { M: "metal", C: "chair", c: "chairLo", N: "screen", I: "ink", L: "ink" });
 
 // ── Kaffeeecke ───────────────────────────────────────────────────────────────
-// Maschine auf einer kleinen Theke, mit Tasse in der Nische. Das ist der Ort, an den eine
-// Figur nach `IDLE_COFFEE_MS` geht — das einzige Lebenszeichen in einer langen Werkzeugkette,
-// und deshalb muss man auf einen Blick sehen, was es ist.
+// A machine on a small counter, with a cup in the niche. That is the place a character goes to
+// after `IDLE_COFFEE_MS`, the only sign of life in a long chain of tools, and therefore one
+// has to see at a glance what it is.
 
 const COFFEE = defineArt([
   "....MMMMMMMM....",
@@ -349,10 +349,10 @@ const COFFEE = defineArt([
   ".d............d.",
 ], { M: "metal", I: "ink", K: "clay", D: "desk", d: "deskLo" });
 
-// ── Tür ──────────────────────────────────────────────────────────────────────
-// Zwei Fassungen. Die offene zeigt einen dunklen Flur und das eingeschwenkte Blatt: durch
-// sie kommen und gehen die Läufe. Ohne den dunklen Durchgang liest sich die offene Tür wie
-// ein Loch in der Wand.
+// ── Door ─────────────────────────────────────────────────────────────────────
+// Two versions. The open one shows a dark corridor and the swung in leaf: the runs come and go
+// through it. Without the dark passage an open door reads as a hole in the wall.
+
 
 const DOOR_SHUT = defineArt([
   "dddddddddddddddddddd",
@@ -429,9 +429,9 @@ const DOOR_OPEN = defineArt([
 ], { d: "deskLo", D: "desk", M: "metal", I: "shadow" });
 
 // ── Fenster ──────────────────────────────────────────────────────────────────
-// Zwei Scheiben je Element, Kämpfer in der Mitte. Der schräge Glanz (`G`) sitzt in beiden
-// Scheiben gleich: er ist eine Spiegelung des Raumlichts, keine Wolke — bei Nacht trägt er
-// die Deckenbeleuchtung, bei Tag den Himmel.
+// Two panes per element, a transom in the middle. The diagonal gleam (`G`) sits the same in
+// both panes: it is a reflection of the room light, not a cloud. At night it carries the
+// ceiling light, by day the sky.
 
 const WINDOW = defineArt([
   "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMM",
@@ -459,9 +459,9 @@ const WINDOW = defineArt([
 ], { M: "metal", O: "out", G: "glass", w: "wallHi" });
 
 // ── Whiteboard ───────────────────────────────────────────────────────────────
-// Zwei Kästen mit einem Pfeil dazwischen und drei Textzeilen. Der Inhalt ist bewusst fest:
-// ein Board, dessen Skizze sich ändert, wäre eine Bewegung ohne Ereignis — und damit ein
-// Detail, das der Zuschauer für eine Aussage über den Lauf hält, die es nicht ist.
+// Two boxes with an arrow between them and three lines of text. The content is deliberately
+// fixed: a board whose sketch changes would be movement without an event, and therefore a
+// detail a viewer takes for a statement about the run that it is not.
 
 const BOARD = defineArt([
   "MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM",
@@ -487,9 +487,9 @@ const BOARD = defineArt([
 ], { M: "metal", W: "paper", I: "ink" });
 
 // ── Wanduhr ──────────────────────────────────────────────────────────────────
-// Die Zeiger stehen **fest**. Sie aus der Uhrzeit zu setzen wäre in Schicht 1 verboten
-// (Regel 3.1) — und schlimmer: beim Zurückspulen zeigte dieselbe Sekunde des Laufs jedes Mal
-// eine andere Uhrzeit. Die Uhr ist Einrichtung, keine Anzeige.
+// The hands stand **still**. Setting them from the clock would be forbidden in layer 1
+// (rule 3.1), and worse: on rewind the same second of a run would show a different time every
+// time. The clock is furnishing, not a display.
 
 const CLOCK = defineArt([
   "...MMM...",
@@ -503,13 +503,13 @@ const CLOCK = defineArt([
   "...MMM...",
 ], { M: "metal", W: "paper", I: "ink" });
 
-// ═══ Maßtabelle ══════════════════════════════════════════════════════════════
+// ═══ Table of dimensions ═════════════════════════════════════════════════════
 
-/** Die Maße aller Möbel in Pufferpixeln — abgeleitet, nicht getippt. Wer den Raum aufbaut
- *  (Welle F/H), rechnet damit Abstände aus, statt Zahlen aus diesem Kommentarkopf abzuschreiben,
- *  die beim nächsten Umbau eines Sprites still falsch würden. */
-/** Dieselben Arts im feinen Raster. `SIZE` unten bleibt an den groben hängen — daran rechnet
- *  die Szene ihre Geometrie, und die ist in Kunsteinheiten. Wer hier `SIZE` verdoppelt,
+/** The dimensions of all furniture in buffer pixels, derived and not typed. Whoever builds the
+ *  room computes distances with it instead of copying numbers from this header comment, which
+ *  would go silently wrong at the next rebuild of a sprite. */
+/** The same art in the fine grid. `SIZE` below stays on the coarse one: the scene computes its
+ *  geometry with that, and that is in art units. Whoever doubles `SIZE` here
  *  verschiebt jeden Sitzplatz. */
 const DESK_HD = verdoppelt(DESK);
 const CHAIR_FREE_HD = verdoppelt(CHAIR_FREE);
@@ -534,16 +534,16 @@ export const SIZE = {
 
 // ═══ Zeichnen ════════════════════════════════════════════════════════════════
 //
-// Alle Weltzeichenfunktionen tragen `(ctx, cx, yBase, pal, …)`: waagerechte Mitte plus
-// **unterste** Kontaktzeile. Die Szene sortiert nach `yBase` (Maler-Algorithmus); ein Objekt,
-// das seine Oberkante übergibt, sortiert falsch und verschwindet hinter dem, wovor es steht.
+// Every world drawing function carries `(ctx, cx, yBase, pal, …)`: horizontal centre plus the
+// **lowest** contact row. The scene sorts by `yBase` (painter's algorithm); an object that
+// passes its top edge sorts wrongly and disappears behind whatever it stands in front of.
 //
-// Die Palette steht an vierter Stelle statt in den Optionen, weil sie jede dieser Funktionen
-// braucht und ein Aufruf ohne sie gar nichts zeichnen könnte.
+// The palette comes fourth instead of in the options, because every one of these functions
+// needs it and a call without it could draw nothing at all.
 
-/** Ein weicher Kontaktschatten unter einem Möbel. Kein `shadowBlur` (verboten und in dieser
- *  Auflösung ohnehin Matsch): drei flache Rechtecke, nach außen blasser. Ohne ihn schwebt
- *  jedes Möbel einen Hauch über dem Boden — der Effekt ist winzig und fällt sofort auf. */
+/** A soft contact shadow under a piece of furniture. No `shadowBlur` (forbidden and mush at
+ *  this resolution anyway): three flat rectangles, paler outwards. Without it every piece
+ *  floats a hair above the floor, and the effect is tiny and noticed at once. */
 function contactShadow(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: number): void {
   const h = w >> 1;
   fillA(ctx, pal, "shadow", 0.20, cx - (w >> 1), yBase - 1, w, 1);
@@ -551,8 +551,8 @@ function contactShadow(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: number)
   fillA(ctx, pal, "shadow", 0.06, cx - (h >> 1) - h, yBase + 1, h * 2, 1);
 }
 
-/** Derselbe Schatten im feinen Raster: fünf Stufen statt drei, weil eine Stufe halb so hoch
- *  ist. Er läuft nach hinten schmaler zu — das Licht kommt von den Fenstern, also von oben. */
+/** The same shadow in the fine grid: five steps instead of three, because a step is half as
+ *  high. It narrows towards the back, because the light comes from the windows, so from above. */
 function kontaktSchattenHD(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: number): void {
   const halb = w >> 1;
   fillA(ctx, pal, "shadow", 0.24, cx - halb + 4, yBase - 3, w - 8, 1);
@@ -563,30 +563,30 @@ function kontaktSchattenHD(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: num
 }
 
 export function drawDesk(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
-  // Fein gezeichnet (Etappe 4). `cx`/`yBase` bleiben Kunsteinheiten — die Szene stellt die
-  // Möbel weiter in ihrem Raster auf; nur gezeichnet wird doppelt so fein.
+  // Finely drawn (stage 4). `cx`/`yBase` stay art units: the scene still places furniture in
+  // its own grid, only the drawing is twice as fine.
   const X = cx * HD, Y = yBase * HD;
   const w = SIZE.desk.w * HD, h = SIZE.desk.h * HD;
   const x0 = X - (w >> 1);
   kontaktSchattenHD(ctx, pal, X, Y, w);
   drawArt(ctx, DESK_HD, X, Y, pal);
-  // Vorderkante: eine HAARLINIE Licht, darunter eine Linie Schatten. Zwei Pufferpixel dick
-  // war die Kante ein Balken; erst eine Linie mit ihrem eigenen Schatten liest sich als
-  // Plattenrand, den man anfassen könnte.
+  // Front edge: a HAIRLINE of light with a line of shadow below it. Two buffer pixels thick
+  // made the edge a bar; only a line with its own shadow reads as the rim of a top you could
+  // touch.
   fillA(ctx, pal, "wallHi", 0.22, x0, Y - h, w, 1);
   fillA(ctx, pal, "shadow", 0.16, x0, Y - h + 1, w, 1);
-  // Die Sichtblende liegt im Eigenschatten der Platte. Ohne diesen Griff hat sie fast genau
-  // den Ton des Dielenbodens und verschwindet darin — der Tisch sieht dann aus wie eine
-  // Platte auf zwei Drähten.
+  // The modesty panel lies in the shadow of the top. Without that grip it has almost exactly
+  // the tone of the plank floor and vanishes into it, and the desk then looks like a board on
+  // two wires.
   fillA(ctx, pal, "shadow", 0.30, x0 + 6, Y - h + 6, w - 12, 10);
-  // Und ein Hauch Licht auf der Oberseite links, wo die Fenster stehen.
+  // And a hint of light on the upper side to the left, where the windows are.
   fillA(ctx, pal, "wallHi", 0.10, x0 + 2, Y - h + 2, (w >> 1) - 4, 3);
 }
 
 export interface ChairOpts {
-  /** Es sitzt jemand darauf — Sitzfläche bleibt frei, die Figur füllt sie. */
+  /** Somebody is sitting on it: the seat stays free, the character fills it. */
   occupied?: boolean;
-  /** Blickt nach links. */
+  /** Facing left. */
   flip?: boolean;
 }
 
@@ -596,40 +596,40 @@ export function drawChair(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?: 
   const w = SIZE.chair.w * HD, h = SIZE.chair.h * HD;
   kontaktSchattenHD(ctx, pal, X, Y, w - 4);
   drawArt(ctx, art, X, Y, pal, { flip: opts?.flip });
-  // Lichtkante auf der Oberkante der Lehne: sie trennt die Lehne von der Sitzfläche
-  // dahinter, die denselben Ton hat — sonst ist der Stuhl ein Klecks.
+  // A light edge on the top of the backrest: it separates the backrest from the seat behind it,
+  // which has the same tone, otherwise the chair is a blob.
   fillA(ctx, pal, "wallHi", 0.20, X - (w >> 1) + 4, Y - h, w - 8, 1);
 }
 
-// ── Monitor: Bildsorte und Stimmung ──────────────────────────────────────────
+// ── Monitor: kind of image and mood ──────────────────────────────────────────
 
-/** Was auf dem Schirm zu sehen ist. Sieben Bilder für vierzig Werkzeuge — abgeleitet aus
- *  `ToolAct`, nicht aus dem Werkzeugnamen. */
+/** What is on the screen. Seven images for forty tools, derived from `ToolAct` and not from
+ *  the tool name. */
 export type ScreenKind = "code" | "log" | "page" | "search" | "link" | "wait" | "blank";
 
-/** Wie es dem Lauf gerade geht. Färbt **den Schein, die Tinte einer Zeile und ein Pixel des
- *  Rahmens** — nicht die Fläche. Ein rot geflutetes Panel liest sich als „kaputter Monitor",
- *  nicht als „fehlgeschlagener Schritt", und übertönt bei zwölf Plätzen alles andere im Bild. */
+/** How the run is doing right now. Colours **the glow, the ink of one line and one pixel of the
+ *  frame**, not the area. A panel flooded red reads as "broken monitor", not as "failed step",
+ *  and at twelve seats it drowns out everything else in the picture. */
 export type Mood = "work" | "wait" | "error" | "done";
 
 const MOOD_COLOR: Record<Mood, PalKey> = {
   work: "acc", wait: "blocked", error: "err", done: "ok",
 };
 
-/** Zeilenbild je Bildsorte: `[Zeile, Einzug, Länge]` innerhalb der 14×7-Innenfläche.
- *  Zeile 7 gibt es nicht — wer sie einträgt, malt in den Rahmen. */
+/** Line pattern per kind of image: `[row, indent, length]` inside the 14×7 inner area.
+ *  There is no row 7: whoever enters it paints into the frame. */
 const SCREEN_LINES: Record<ScreenKind, readonly (readonly [number, number, number])[]> = {
-  // Editor: Einzugsstufen sind das, was Quelltext auf 14 Pixeln überhaupt erkennbar macht.
+  // Editor: levels of indentation are what makes source code recognisable at 14 pixels at all.
   code: [[0, 0, 6], [1, 2, 7], [2, 2, 4], [3, 4, 8], [4, 2, 5], [5, 4, 6], [6, 0, 7]],
-  // Protokoll: linksbündig, dicht, ungleich lang.
+  // Log: left aligned, dense, of unequal length.
   log: [[0, 0, 12], [1, 0, 9], [2, 0, 13], [3, 0, 7], [4, 0, 11], [5, 0, 13], [6, 0, 8]],
-  // Dokument/Seite: Überschrift und Fließtext, mit Rand.
+  // Document or page: a heading and running text, with a margin.
   page: [[1, 2, 6], [3, 2, 10], [4, 2, 10], [5, 2, 7]],
   // Suche: Eingabezeile oben, darunter Treffer.
   search: [[0, 1, 12], [2, 1, 9], [3, 1, 11], [4, 1, 6], [5, 1, 10]],
-  // Übergabe: zwei Kästen, die Verbindung malt `drawScreenBody` in der Stimmungsfarbe.
+  // Handover: two boxes, the connection is painted by `drawScreenBody` in the mood colour.
   link: [[1, 1, 3], [2, 1, 3], [3, 1, 3], [1, 10, 3], [2, 10, 3], [3, 10, 3]],
-  // Warten: nur der Balken unten; die Punkte kommen in Stimmungsfarbe.
+  // Waiting: only the bar at the bottom; the dots come in the mood colour.
   wait: [[6, 1, 12]],
   blank: [],
 };
@@ -638,13 +638,13 @@ function drawScreenBody(
   ctx: Ctx, pal: Pal, x: number, y: number, kind: ScreenKind, mood: PalKey,
 ): void {
   if (kind === "blank") {
-    // Dunkles Panel: der Platz ist besetzt, aber gerade tut niemand etwas.
+    // Dark panel: the seat is taken, but nobody is doing anything right now.
     fill(ctx, pal, "screen", x, y, MON_IN.w, MON_IN.h);
     return;
   }
   if (kind === "page") {
-    // Ein Dokument ist Papier, kein leuchtender Editor — deshalb der einzige Fall,
-    // in dem die Fläche eine andere Grundfarbe bekommt.
+    // A document is paper, not a glowing editor, which is the only case where the area gets a
+    // different base colour.
     fill(ctx, pal, "paper", x, y, MON_IN.w, MON_IN.h);
   }
   if (kind === "code") {
@@ -652,16 +652,16 @@ function drawScreenBody(
     fill(ctx, pal, "screen", x, y, 2, MON_IN.h);
   }
 
-  // Der Editor rückt zusätzlich um die Nummernspalte ein. Geklemmt wird **nach** diesem
-  // Versatz: sonst läuft die längste Codezeile ein Pixel über die Innenfläche hinaus und
-  // malt in den Rahmen — bei zwölf Monitoren fällt genau das auf.
+  // The editor additionally indents by the number column. Clamping happens **after** that
+  // offset: otherwise the longest line of code runs one pixel past the inner area and paints
+  // into the frame, and at twelve monitors that is exactly what gets noticed.
   const gutter = kind === "code" ? 3 : 0;
   for (const [row, indent, len] of SCREEN_LINES[kind]) {
     const sx = indent + gutter;
     fill(ctx, pal, "ink", x + sx, y + row, Math.min(len, MON_IN.w - sx), 1);
   }
 
-  // Genau ein Element trägt die Stimmung — nie die Fläche.
+  // Exactly one element carries the mood, never the area.
   if (kind === "code") fill(ctx, pal, mood, x + 3, y + 3, 8, 1);
   else if (kind === "log") fill(ctx, pal, mood, x, y + 2, 2, 1);
   else if (kind === "search") fill(ctx, pal, mood, x + 12, y, 1, 1);
@@ -677,13 +677,13 @@ function drawScreenBody(
 export interface MonitorOpts {
   screen?: ScreenKind;
   mood?: Mood;
-  /** Blickrichtung des Platzes — der Schein fällt dann zur anderen Seite. */
+  /** Facing direction of the seat: the glow then falls to the other side. */
   flip?: boolean;
 }
 
 /**
- * Monitor mit Inhalt. `yBase` ist die Unterkante des Fußes, also die Tischplatte —
- * **nicht** der Boden.
+ * A monitor with content. `yBase` is the lower edge of the foot, so the desktop, **not** the
+ * floor.
  */
 export function drawMonitor(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?: MonitorOpts): void {
   const kind = opts?.screen ?? "blank";
@@ -691,9 +691,9 @@ export function drawMonitor(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?
   const x0 = artLeft(MONITOR, cx);
   const y0 = yBase - SIZE.monitor.h;
 
-  // Der Schein liegt **hinter** dem Gerät und wird vom Gehäuse überzeichnet: zwei Ringe,
-  // außen schwächer. Ein Verlauf wäre hier das Naheliegende und ist verboten (Regel 2.1) —
-  // zwei gestufte Rechtecke sehen bei 480×270 ohnehin besser aus als ein weicher Kreis.
+  // The glow lies **behind** the device and is painted over by the case: two rings, weaker
+  // outwards. A gradient would be the obvious thing here and is forbidden (rule 2.1), and two
+  // stepped rectangles look better at 480×270 than a soft circle anyway.
   if (kind !== "blank") {
     fillA(ctx, pal, mood, 0.06, x0 - 5, y0 - 4, SIZE.monitor.w + 10, 17);
     fillA(ctx, pal, mood, 0.10, x0 - 2, y0 - 2, SIZE.monitor.w + 4, 13);
@@ -702,7 +702,7 @@ export function drawMonitor(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?
   drawArt(ctx, MONITOR, cx, yBase, pal, { flip: opts?.flip });
   drawScreenBody(ctx, pal, x0 + MON_IN.x, y0 + MON_IN.y, kind, mood);
 
-  // Das eine Rahmenpixel: die Betriebsleuchte unten rechts.
+  // The one frame pixel: the power light at the bottom right.
   fill(ctx, pal, mood, x0 + 13, y0 + 8, 1, 1);
 }
 
@@ -728,7 +728,7 @@ export function drawPlant(
   drawArt(ctx, art, cx, yBase, pal, { flip: opts?.flip });
 }
 
-/** Der Aktenschrank. Einrichtung, sonst nichts — die Deployment-Anzeige ist `drawRack`. */
+/** The filing cabinet. Furnishing, nothing else: the deployment display is `drawRack`. */
 export function drawCabinet(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
   contactShadow(ctx, pal, cx, yBase, SIZE.cabinet.w);
   drawArt(ctx, FILE_CABINET, cx, yBase, pal);
@@ -736,41 +736,41 @@ export function drawCabinet(ctx: Ctx, cx: number, yBase: number, pal: Pal): void
     SIZE.cabinet.w, 1);
 }
 
-// ── Der Serverschrank als Deployment-Anzeige ─────────────────────────────────
+// ── The server rack as the deployment display ────────────────────────────────
 
-/** Die `L`-Felder des `RACK`-Arts, in Art-Koordinaten: je Höheneinheit ein 4×2-Feld. Abgeleitet
- *  aus dem Sprite oben — wer dort eine Zeile einfügt, muss diese Zahlen mitziehen; deshalb
- *  stehen sie direkt neben der Zeichenfunktion und nicht in `const.ts`. Index 0 ist das
- *  **oberste** Gerät.
+/** The `L` fields of the `RACK` art in art coordinates: one 4×2 field per rack unit. Derived
+ *  from the sprite above, so whoever inserts a row there has to move these numbers along, which
+ *  is why they stand next to the drawing function and not in `const.ts`. Index 0 is the
+ *  **topmost** device.
  *
- *  Vier Pixel breit und zwei hoch statt des früheren 8×1-Balkens: ein Balken über die halbe
- *  Frontbreite war genau das, was den Schrank nach Schublade aussehen ließ. Ein kompakter
- *  Block neben dem Lüftungsgitter liest sich als Betriebsanzeige des Geräts, in dessen
- *  Blende er sitzt — und acht leuchtende Pixel bleiben es in beiden Fassungen. */
+ *  Four pixels wide and two high instead of the former 8×1 bar: a bar across half the front
+ *  width was exactly what made the rack look like a drawer. A compact block next to the
+ *  ventilation grille reads as the status light of the device in whose faceplate it sits, and
+ *  eight lit pixels it remains in both versions. */
 const LED_ROWS: readonly number[] = [7, 13, 19];
 const LED_X = 3;
 const LED_W = 4;
 const LED_H = 2;
 
-/** Ein Schritt des steigenden Balkens. Drei Schritte ergeben einen Durchlauf von 1,26 s — das
- *  liest sich als „hier arbeitet etwas", ohne zu flackern. */
+/** One step of the rising bar. Three steps make a cycle of 1.26 s, which reads as "something is
+ *  working here" without flickering. */
 const LED_STEP_MS = 420;
 
-/** Der Serverschrank, wie ihn ein `Frame` beschreibt. `t - since` ist die Phase; einen Zähler
- *  gibt es nicht (PIXEL-CONTRACT.md 3.4). */
+/** The server rack as a `Frame` describes it. `t - since` is the phase; there is no counter
+ *  (PIXEL-CONTRACT.md 3.4). */
 export interface RackOpts {
   state: RackState;
   since: number;
   t: number;
 }
 
-/** Welche Farbe ein LED-Feld trägt. Keine neue Palettenfarbe nötig — `lamp`, `ok`, `err` und
- *  `blocked` sind dieselben vier, die Blasenränder und Dock-Kacheln schon benutzen, und damit
- *  widersprechen Rack und Zeitleiste einander nie.
+/** Which colour an LED field carries. No new palette colour needed: `lamp`, `ok`, `err` and
+ *  `blocked` are the same four that bubble edges and dock tiles already use, so rack and
+ *  timeline never contradict each other.
  *
- *  `back` ist der Grund, warum es vier Zustände sind und nicht drei: oben `blocked`
- *  (gescheitert), unten `ok` (zurückgerollt, der Dienst läuft wieder). Mit `fail` zusammengelegt
- *  ginge genau die gute Hälfte dieser Nachricht verloren. */
+ *  `back` is the reason there are four states and not three: `blocked` on top (failed), `ok`
+ *  below (rolled back, the service runs again). Merged with `fail` exactly the good half of
+ *  that message would be lost. */
 function ledKey(state: RackState, row: number): PalKey {
   if (state === "start") return "lamp";
   if (state === "ok") return "ok";
@@ -779,13 +779,13 @@ function ledKey(state: RackState, row: number): PalKey {
 }
 
 /**
- * Der Serverschrank. Ohne `rack` (oder bei `idle`) ist er stille Kulisse: ein Rack, in dem
+ * The server rack. Without `rack` (or on `idle`) it is quiet scenery: a rack in which nothing
  * gerade nichts leuchtet.
  *
- * **Die Bauregel, an der die goldenen Ops-Hashes hängen**: der LED-Block wird ausschließlich
- * betreten, wenn wirklich ein Deployment leuchtet. Bei `idle` fallen exakt dieselben drei
- * Zeichenaufrufe in derselben Reihenfolge an wie ohne `rack` — sonst hinge jedes der 16
- * goldenen Bilder am Zustand des Schranks und die Absicht eines Bless-Diffs verschwände im
+ * **The construction rule the golden ops hashes hang on**: the LED block is entered only when
+ * a deployment really lights up. On `idle` exactly the same three drawing calls happen in the
+ * same order as without `rack`, otherwise each of the 16 golden images would depend on the
+ * state of the rack and the intent of a bless diff would vanish in the
  * Rauschen.
  */
 export function drawRack(
@@ -800,16 +800,16 @@ export function drawRack(
   const xLeft = artLeft(RACK, cx);
   const x0 = xLeft + LED_X;
   const yTop = yBase - SIZE.rack.h;
-  // Der steigende Balken: ein Schritt je `LED_STEP_MS`, von unten nach oben, dann von vorn.
-  // Die Phase kommt aus `t - since` — bei einem Sprung in der Zeitleiste steht sie damit
-  // sofort richtig, statt sich von Bild zu Bild neu hochzuzählen.
+  // The rising bar: one step per `LED_STEP_MS`, from bottom to top, then from the start. The
+  // phase comes from `t - since`, so after a jump in the timeline it stands right immediately
+  // instead of counting itself up frame by frame.
   const stufe = Math.floor(Math.max(0, rack.t - rack.since) / LED_STEP_MS);
   const an = rack.state === "start" ? 1 + (stufe % LED_ROWS.length) : LED_ROWS.length;
 
-  // Ein schwacher Lichthauch über die ganze Front, in der Farbe des **untersten** leuchtenden
-  // Geräts: aus zwei Metern sieht man auf 480×270 zuerst, *dass* der Schrank lebt, und erst
-  // dann, welche Reihen. Die Farbe ist die des Zustands, nicht die der Reihe — bei `back`
-  // wäre das oberste (`blocked`) die falsche Nachricht für die Fläche.
+  // A faint wash of light across the whole front, in the colour of the **lowest** lit device:
+  // from two metres away at 480×270 one sees first *that* the rack is alive, and only then
+  // which rows. The colour is that of the state, not of the row: on `back` the topmost
+  // (`blocked`) would be the wrong message for the surface.
   const flaeche = ledKey(rack.state, LED_ROWS.length - 1);
   fillA(ctx, pal, flaeche, 0.05, xLeft + 2, yTop + 2, SIZE.rack.w - 4, SIZE.rack.h - 6);
 
@@ -817,9 +817,9 @@ export function drawRack(
     if (LED_ROWS.length - i > an) continue;
     const key = ledKey(rack.state, i);
     const y = yTop + LED_ROWS[i];
-    // Streulicht zuerst, dann die LED selbst: umgekehrt läge der blasse Schleier über dem
-    // Leuchtfeld und nähme ihm genau die Farbe, um die es geht. Ohne den Schein sind acht
-    // Pixel in 480×270 aus zwei Metern schlicht nicht zu sehen.
+    // Stray light first, then the LED itself: the other way round the pale veil would lie over
+    // the light field and take exactly the colour that matters. Without the glow eight pixels
+    // in 480×270 simply cannot be seen from two metres.
     fillA(ctx, pal, key, 0.30, x0 - 2, y - 2, LED_W + 4, LED_H + 4);
     fillA(ctx, pal, key, 0.55, x0 - 1, y - 1, LED_W + 2, LED_H + 2);
     fill(ctx, pal, key, x0, y, LED_W, LED_H);
@@ -831,20 +831,20 @@ export function drawCoffee(ctx: Ctx, cx: number, yBase: number, pal: Pal): void 
   drawArt(ctx, COFFEE, cx, yBase, pal);
 }
 
-/** Tür. `yBase` ist die Schwelle, also die Bodenlinie an der Wand (`WALL_H`). */
+/** The door. `yBase` is the threshold, so the floor line at the wall (`WALL_H`). */
 export function drawDoor(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?: { open?: boolean }): void {
   const open = opts?.open === true;
   drawArt(ctx, open ? DOOR_OPEN : DOOR_SHUT, cx, yBase, pal);
   if (open) {
-    // Lichtstreifen aus dem Flur auf den Boden davor — er macht den Durchgang zu einem
-    // Durchgang statt zu einem schwarzen Rechteck.
+    // A strip of light from the corridor onto the floor in front of it: it turns the passage
+    // into a passage instead of a black rectangle.
     fillA(ctx, pal, "lamp", 0.12, cx - 4, yBase, 14, 2);
     fillA(ctx, pal, "lamp", 0.07, cx - 6, yBase + 2, 18, 2);
   }
 }
 
-/** Fensterelement. `yBase` ist die Unterkante der Fensterbank. Mehrere Elemente im Abstand
- *  `WINDOW_STEP` setzen, dann teilen sich zwei Fenster den Pfosten. */
+/** A window element. `yBase` is the lower edge of the sill. Place several elements at distance
+ *  `WINDOW_STEP` and two windows share the post. */
 export function drawWindow(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
   drawArt(ctx, WINDOW, cx, yBase, pal);
 }
@@ -862,44 +862,44 @@ export function drawClock(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
 const SALT_PLANK = 0x4449454c;  // "DIEL"
 const SALT_SHADE = 0x53434841;  // "SCHA"
 
-/** Länge eines Dielenbretts und Höhe einer Dielenreihe.
+/** Length of a floorboard and height of a row of boards.
  *
- *  Das Längenverhältnis ist das ganze Geheimnis: bei 46×7 (erster Versuch) sieht der Boden aus
- *  wie eine Ziegelmauer, weil ein Brett dann nur sechsmal so lang wie hoch ist. Echte Dielen
- *  liegen bei 15:1 und darüber — deshalb 92×6. */
+ *  The ratio of the lengths is the whole secret: at 46×7 (the first attempt) the floor looks
+ *  like a brick wall, because a board is then only six times as long as it is high. Real boards
+ *  are 15:1 and above, hence 92×6. */
 const PLANK_W = 92;
 const PLANK_H = 10;
-/** Mindestversatz zweier benachbarter Reihen. Ohne diese Schranke fallen Stöße gelegentlich
- *  untereinander und der Boden bekommt eine durchgehende Fuge — ein verlegter Boden hat das
- *  nie, und das Auge sieht die Reihe sofort. */
+/** Minimum offset of two neighbouring rows. Without this bound the joints occasionally fall
+ *  under one another and the floor gets a continuous seam, which a laid floor never has, and
+ *  the eye sees the row at once. */
 const MIN_STAGGER = 26;
 
 /**
- * Die Rückwand: Fläche, Deckenkante, ein leichter Abfall nach unten, Sockelleiste.
+ * The back wall: surface, ceiling edge, a slight fall towards the bottom, skirting board.
  *
- * Der Abfall ist drei gestufte Bänder statt eines Verlaufs (Regel 2.1) — bei 38 Zeilen Höhe
- * sieht man den Unterschied ohnehin nicht, und Bänder bleiben golden prüfbar.
+ * The fall is three stepped bands instead of a gradient (rule 2.1): at 38 rows of height the
+ * difference cannot be seen anyway, and bands stay checkable against golden images.
  */
 export function drawWall(ctx: Ctx, pal: Pal): void {
-  // Fein gezeichnet (Etappe 3): `ctx` ist die HD-Sicht, gerechnet wird in Pufferpixeln.
-  // Was das bringt, sieht man an den Fugen — eine Kunsteinheit breit waren sie Balken, eine
-  // HD-Einheit breit sind sie Linien. Dieselbe Wand, halb so grob.
+  // Finely drawn (stage 3): `ctx` is the HD view and the computation is in buffer pixels.
+  // What that gives shows in the joints: one art unit wide they were bars, one
+  // HD unit wide they are lines. The same wall, half as coarse.
   const W = ART.w * HD, H = WALL_H * HD;
   fill(ctx, pal, "wall", 0, 0, W, H);
   fill(ctx, pal, "wallHi", 0, 0, W, 3);
-  // Der Abfall nach unten in sechs Stufen statt drei Bändern: im feinen Raster ist jede
-  // Stufe halb so hoch, und aus Streifen wird ein Verlauf, den man nicht mehr als Stufen liest.
+  // The fall towards the bottom in six steps instead of three bands: in the fine grid every
+  // step is half as high, and stripes become a gradient one no longer reads as steps.
   for (let i = 0; i < 6; i++) {
     fillA(ctx, pal, "wallLo", 0.06 + i * 0.05, 0, H - 26 + i * 4, W, 4);
   }
-  // Sockelleiste: Schattenfuge, Leiste, helle Oberkante — drei Zeilen, die die Wand auf den
-  // Boden stellen, statt sie an ihn zu stoßen.
+  // Skirting board: shadow gap, board, bright top edge. Three rows that put the wall onto the
+  // floor instead of butting it against it.
   fillA(ctx, pal, "wallLo", 0.55, 0, H - 9, W, 1);
   fill(ctx, pal, "wallLo", 0, H - 8, W, 8);
   fillA(ctx, pal, "wallHi", 0.30, 0, H - 8, W, 1);
   fillA(ctx, pal, "shadow", 0.18, 0, H - 2, W, 2);
-  // Plattenstöße der Wandverkleidung: eine HAARLINIE alle 80 Kunsteinheiten, mit einer
-  // hellen Kante daneben — so liest sie sich als Stoß zweier Platten statt als Kratzer.
+  // Panel joints of the wall cladding: a HAIRLINE every 80 art units with a bright edge next to
+  // it, so it reads as the joint of two panels instead of a scratch.
   for (let x = 40 * HD; x < W; x += 80 * HD) {
     fillA(ctx, pal, "wallLo", 0.28, x, 3, 1, H - 12);
     fillA(ctx, pal, "wallHi", 0.16, x + 1, 3, 1, H - 12);
@@ -907,14 +907,14 @@ export function drawWall(ctx: Ctx, pal: Pal): void {
 }
 
 /**
- * Der Dielenboden. Reihen von `PLANK_H`, Stöße alle `PLANK_W`, je Reihe versetzt und dabei
- * mit erzwungenem Mindestversatz. Jedes Brett bekommt aus seinem Hash eine von drei
- * Tönungen — dieselbe Fläche in einer Farbe sieht aus wie Linoleum.
+ * The plank floor. Rows of `PLANK_H`, joints every `PLANK_W`, offset per row with an enforced
+ * minimum offset. Every board gets one of three tints from its hash, because the same area in
+ * one colour looks like linoleum.
  */
 export function drawFloor(ctx: Ctx, pal: Pal): void {
-  // Fein gezeichnet (Etappe 3), in Pufferpixeln. Der Boden ist siebzig Prozent des Bildes —
-  // er entscheidet, ob der Raum nach Diele aussieht oder nach Mauerwerk. Grob gerastert war
-  // beides gleich breit: Fuge und Maserung waren zwei Pufferpixel dick wie das Brett selbst.
+  // Finely drawn (stage 3), in buffer pixels. The floor is seventy percent of the image and
+  // decides whether the room looks like planks or like masonry. In the coarse grid both were
+  // equally wide: joint and grain were two buffer pixels thick, like the board itself.
   const W = ART.w * HD, H = ART.h * HD, TOP = WALL_H * HD;
   const PW = PLANK_W * HD, PH = PLANK_H * HD;
   fill(ctx, pal, "floor", 0, TOP, W, H - TOP);
@@ -927,54 +927,54 @@ export function drawFloor(ctx: Ctx, pal: Pal): void {
     let off = raw;
     if (prev >= 0) {
       const d = Math.abs(off - prev);
-      // Der Abstand ist zyklisch: 1 und 45 liegen bei `PLANK_W = 46` nebeneinander.
+      // The distance is cyclic: 1 and 45 lie next to each other at `PLANK_W = 46`.
       if (Math.min(d, PW - d) < MIN_STAGGER * HD) {
         off = (prev + MIN_STAGGER * HD + (raw % (PW - 2 * MIN_STAGGER * HD))) % PW;
       }
     }
     prev = off;
 
-    // Bretttönung, Maserung und senkrechte Stöße in einem Durchgang.
+    // Board tint, grain and vertical joints in one pass.
     let p = 0;
     for (let x = off - PW; x < W; x += PW, p++) {
       const v = mix(r * 131 + p, SALT_SHADE) % 4;
-      // Schwach: ein Brett soll sich vom Nachbarn abheben, nicht von ihm abstechen.
+      // Faint: a board should stand out from its neighbour, not clash with it.
       if (v === 1) fillA(ctx, pal, "floorHi", 0.11, x, y, PW, rowH - 1);
       else if (v === 2) fillA(ctx, pal, "floorLo", 0.09, x, y, PW, rowH - 1);
-      // Zwei Maserungslinien je Brett statt einer, beide nur einen Pufferpixel hoch: die
-      // eine dicke Linie las sich als Fuge mitten im Brett.
+      // Two grain lines per board instead of one, both only one buffer pixel high: the single
+      // thick line read as a joint in the middle of the board.
       else if (v === 3) {
         fillA(ctx, pal, "floorLo", 0.10, x + 12, y + 4, PW - 36, 1);
         fillA(ctx, pal, "floorLo", 0.07, x + 24, y + rowH - 6, PW - 60, 1);
       }
-      // Der Stoß: eine Haarlinie plus eine helle Kante rechts daneben. Zusammen liest sich
-      // das als Kante zweier Bretter — die nackte dunkle Linie las sich als Mörtelfuge.
+      // The joint: a hairline plus a bright edge right next to it. Together that reads as the
+      // edge of two boards; the bare dark line read as a mortar joint.
       if (x >= 0) {
         fillA(ctx, pal, "floorLo", 0.60, x, y, 1, rowH - 1);
         fillA(ctx, pal, "floorHi", 0.18, x + 1, y, 1, rowH - 1);
       }
     }
-    // Waagerechte Fuge am unteren Rand der Reihe — deutlich schwächer als der Stoß,
-    // sonst gewinnt die Reihe optisch über das Brett und der Boden kippt ins Gemauerte.
+    // Horizontal joint at the lower edge of the row, clearly fainter than the vertical one,
+    // otherwise the row wins visually over the board and the floor tips into masonry.
     if (rowH === PH) fillA(ctx, pal, "floorLo", 0.20, 0, y + rowH - 1, W, 1);
   }
 
-  // Schattenband unter der Wand: der Boden bekommt dort kein Streiflicht ab. Vier Zeilen
-  // reichen, damit die Wand auf dem Boden aufsitzt statt an ihn angeklebt zu sein.
+  // A band of shadow under the wall: the floor catches no grazing light there. Four rows are
+  // enough to seat the wall on the floor instead of gluing it against it.
   for (let i = 0; i < 7; i++) {
     fillA(ctx, pal, "shadow", 0.20 - i * 0.026, 0, TOP + i, W, 1);
   }
 }
 
 /**
- * Lichtfelder auf dem Boden — das, was einen Raum beleuchtet aussehen lässt statt bemalt.
+ * Fields of light on the floor, what makes a room look lit instead of painted.
  *
- * Vor jedem Fenster liegt ein Trapez, das nach unten breiter und schwächer wird: Licht fällt
- * schräg ein, also wandert es zum Betrachter hin auseinander. Ein Rechteck täte es nicht —
- * es läse sich als heller Teppich, nicht als Sonne.
+ * In front of every window lies a trapezoid that grows wider and weaker towards the bottom:
+ * light falls at an angle, so it spreads towards the viewer. A rectangle would not do, it
+ * would read as a bright carpet, not as sunlight.
  *
- * Nachts ist der Aufheller aus (draußen ist es dunkel) und stattdessen liegt ein sehr
- * schwacher kalter Schimmer da: eine Stadt vor dem Fenster wirft Licht, nur wenig davon.
+ * At night the fill light is off (it is dark outside) and instead a very faint cold shimmer
+ * lies there: a city outside the window throws light, only little of it.
  */
 export function drawLicht(ctx: Ctx, pal: Pal, xs: readonly number[], day: boolean): void {
   const TOP = WALL_H * HD;
@@ -990,16 +990,16 @@ export function drawLicht(ctx: Ctx, pal: Pal, xs: readonly number[], day: boolea
 }
 
 /**
- * Teppich. `cx`/`yBase` sind Mitte und **Vorderkante** — auch der Teppich hält sich an die
- * Sortierregel, obwohl er flach liegt: er wird im Hintergrunddurchgang gezeichnet, aber seine
- * Vorderkante ist der Punkt, an dem eine davorstehende Figur ihn verdecken muss.
+ * Carpet. `cx`/`yBase` are the centre and the **front edge**: the carpet keeps to the sorting
+ * rule as well although it lies flat, because it is drawn in the background pass, but its front
+ * edge is the point where a character standing in front of it has to cover it.
  */
 export function drawRug(ctx: Ctx, cx: number, yBase: number, w: number, h: number, pal: Pal): void {
   const x = cx - (w >> 1);
   const y = yBase - h;
   fill(ctx, pal, "rug", x, y, w, h);
-  // Umlaufende Borte, innen ein zweiter Streifen — zwei Linien genügen, damit ein Rechteck
-  // als Teppich liest und nicht als Farbfleck.
+  // A border all round with a second stripe inside: two lines are enough for a rectangle to
+  // read as a carpet and not as a patch of colour.
   fill(ctx, pal, "rugLo", x, y, w, 1);
   fill(ctx, pal, "rugLo", x, y + h - 1, w, 1);
   fill(ctx, pal, "rugLo", x, y, 1, h);
@@ -1008,20 +1008,20 @@ export function drawRug(ctx: Ctx, cx: number, yBase: number, w: number, h: numbe
   fill(ctx, pal, "rugLo", x + 3, y + h - 4, w - 6, 1);
   fill(ctx, pal, "rugLo", x + 3, y + 3, 1, h - 6);
   fill(ctx, pal, "rugLo", x + w - 4, y + 3, 1, h - 6);
-  // Die Vorderkante fängt Licht, der Rest liegt im Raumschatten.
+  // The front edge catches light, the rest lies in the shadow of the room.
   fillA(ctx, pal, "wallHi", 0.10, x, y + h - 1, w, 1);
 }
 
 /**
- * Der Lichtteppich unter einem Fenster. `cx` ist die Fenstermitte, `yBase` das vordere Ende
- * des Lichtflecks; `w` ist die Breite an der Wand, `h` die Tiefe.
+ * The carpet of light under a window. `cx` is the centre of the window, `yBase` the front end
+ * of the patch of light; `w` is the width at the wall, `h` the depth.
  *
- * Ein Fensterlicht ist perspektivisch ein Trapez: es wird zum Betrachter hin breiter und
- * blasser. Beides entsteht hier zeilenweise — pro Bodenzeile ein Rechteck mit eigener Breite
- * und eigener Deckkraft. Die Lücke in der Mitte ist der Schatten des Kämpfers; ohne sie sieht
- * der Fleck aus wie eine Lampe, nicht wie ein Fenster.
+ * In perspective a window light is a trapezoid: it grows wider and paler towards the viewer.
+ * Both happen here row by row, one rectangle per floor row with its own width
+ * and its own opacity. The gap in the middle is the shadow of the transom; without it the
+ * patch looks like a lamp, not like a window.
  *
- * Gehört ins Tagbild. Nachts liegt draußen keine Sonne — dann zeichnet die Szene ihn nicht.
+ * Belongs to the day picture. At night there is no sun outside, and the scene does not draw it.
  */
 export function drawWindowLight(
   ctx: Ctx, cx: number, yBase: number, w: number, h: number, pal: Pal,
@@ -1031,8 +1031,8 @@ export function drawWindowLight(
     const t = i / h;
     const rowW = w + Math.round(t * w * 0.55);
     const alpha = 0.13 * (1 - t) + 0.02;
-    // Der Kämpferschatten läuft nach vorn aus: eine bis zum Ende durchgezogene Lücke sieht
-    // aus wie ein Zeichenfehler, kein Schatten.
+    // The transom shadow fades towards the front: a gap drawn through to the end looks like a
+    // drawing error, not like a shadow.
     const gap = t > 0.62 ? 0 : 2 + Math.round(t * 3);
     const x = cx - (rowW >> 1);
     const half = (rowW - gap) >> 1;

@@ -1,60 +1,60 @@
-// Schicht 2 — die Bühne. Das Fenster in den Raum, und die einzige Stelle, an der aus
-// Simulationszeit sichtbare Pixel werden.
+// Layer 2, the stage. The window into the room, and the only place where simulation time
+// turns into visible pixels.
 //
-// ══ Die Regel, an der dieses Feature steht oder fällt ════════════════════════════════════════
+// ══ The rule this feature stands or falls on ════════════════════════════════════════════════
 //
-// **Die Bühne rendert nie pro Bild neu.** Im rAF-Pfad wird kein einziger React-Zustand
+// **The stage never renders per frame.** Not a single React state is touched in the rAF path;
 // angefasst. Alles Bewegliche lebt in Refs: Replay, Kamera, Frame, rAF-Handle, Zeiger,
-// gespiegelte Props. React sieht von dieser Komponente nur, was sich in Menschentempo ändert —
-// Auswahl, Überfahren, `revision` (im Feed auf 5/s gedrosselt), Theme.
+// mirrored props. React only sees what changes at human pace: selection, hover, `revision`
+// (throttled to 5/s in the feed), theme.
 //
-// Der Grund ist nicht Eleganz, sondern Messbarkeit: der Projekt-Reiter läuft neben einer
-// Query, die alle 8 Sekunden nachfasst, in Tabs, die Leute stundenlang offen lassen. Ein
-// `setState` je Bild wären 60 Renderdurchläufe der Elternkomponente je Sekunde, und die
-// Elternkomponente hält Dock, Inspektor und Zeitleiste.
+// The reason is not elegance but measurability: the project tab runs next to a query that
+// refetches every 8 seconds, in tabs people leave open for hours. One `setState` per frame
+// would be 60 render passes of the parent per second, and the parent holds the dock, the
+// inspector and the timeline.
 //
-// ══ Die drei Effekte, und der vierte, der keiner ist ════════════════════════════════════════
+// ══ The three effects, and the fourth that is none ═════════════════════════════════════════
 //
-//   · Replay aus dem Log      `[revision]`  — die Ein-Zahl-Veraltungsprüfung
-//   · Seek                    `[seekTs]`    — zurückspulen bzw. live
-//   · rAF-Schleife            `[]`          — genau einmal beim Einhängen
+//   · replay from the log   `[revision]`  — the one number staleness check
+//   · seek                  `[seekTs]`    — rewind or live
+//   · rAF loop              `[]`          — exactly once on mount
 //
-// In dieser Reihenfolge stehen sie auch in der Datei, und die Reihenfolge ist Absicht: React
-// führt Effekte in Deklarationsreihenfolge aus, also existiert der `Replay` bereits, wenn der
-// Seek ihn sucht, und beide sind fertig, bevor das erste Bild gerechnet wird.
+// They stand in the file in this order, and the order is deliberate: React runs effects in
+// declaration order, so the replay already exists when the seek looks for it, and both are
+// finished before the first frame is computed.
 //
-// Davor steht ein vierter, winziger: er spiegelt `seekTs`, `speed`, `grade`, `selected`,
-// `hover` und die zwei Rückrufe in Refs und tut sonst nichts. Er ist die Ausnahme, die die
-// anderen drei erst schlank macht — ohne ihn müsste die Schleife `speed` in der
-// Abhängigkeitsliste führen und würde bei jedem Tempowechsel mitten im Bild neu starten.
+// Before them stands a fourth, tiny one: it mirrors `seekTs`, `speed`, `grade`, `selected`,
+// `hover` and the two callbacks into refs and does nothing else. It is the exception that
+// makes the other three lean: without it the loop would have to list `speed` among its
+// dependencies and would restart mid frame on every change of speed.
 //
-// ══ Die eine dokumentierte Ausnahme vom Pixel-Vertrag ═══════════════════════════════════════
+// ══ The one documented exception to the pixel contract ═════════════════════════════════════
 //
-// Das `drawImage` unten (Puffer → sichtbarer Canvas) ist die einzige vom Zeichenvertrag
-// ausgenommene Stelle, und sie lebt laut PIXEL-CONTRACT.md Regel 4 genau hier. Alles andere in
-// dieser Datei zeichnet nichts: `renderFrame` malt in den 480×270-Puffer, diese Datei blittet
+// The `drawImage` below (buffer to visible canvas) is the only place exempt from the drawing
+// contract, and it lives here by rule 4 of PIXEL-CONTRACT.md. Nothing else in this file draws:
+// `renderFrame` paints into the 480×270 buffer, and this file blits it.
 // ihn ganzzahlig hoch.
 //
-// ══ Ganzzahlig im Rückspeicher, eingepasst per CSS ══════════════════════════════════════════
+// ══ Integer in the backing store, fitted with CSS ══════════════════════════════════════════
 //
-// Zwei getrennte Größen, und sie zu verwechseln ist der teure Fehler:
+// Two separate sizes, and confusing them is the expensive mistake:
 //
-//   · **Rückspeicher** (`canvas.width/height`) = `480·s × 270·s` mit ganzzahligem `s`. Nur hier
-//     gilt Regel 1: ein Blit mit Faktor 1,5 liefe über halbe Spalten und machte aus Pixelkunst
+//   · **Backing store** (`canvas.width/height`) = `480·s × 270·s` with an integer `s`. Rule 1
+//     applies only here: a blit at factor 1.5 would run over half columns and turn pixel art into mush.
 //     Matsch.
-//   · **CSS-Fläche** (`canvas.style.width/height`) = das größte 16:9-Rechteck, das in den
-//     Container passt. 480×270 **ist** 16:9, also verzerrt nichts, und eine Richtung füllt
-//     immer vollständig. Das Hochziehen auf diese Fläche macht der Browser, hart gerastert
+//   · **CSS area** (`canvas.style.width/height`) = the largest 16:9 rectangle that fits into
+//     the container. 480×270 **is** 16:9, so nothing is distorted, and one direction always
+//     fills completely. The browser scales up to that area, hard pixelated.
 //     (`.pixel-canvas`, `image-rendering: pixelated`).
 //
-// Vorher wurde beides in einem Schritt erledigt: ganzzahlig blitten **und** den Rest als
-// Briefkasten stehen lassen. Auf 1920×1080 ergab das Faktor 3 statt 3,76 — ringsum breite leere
-// Flächen, gerade im Wandschirm, für den die Fläche der ganze Punkt ist.
+// Before, both were done in one step: blit at an integer factor **and** leave the rest as a
+// letterbox. On 1920×1080 that gave factor 3 instead of 3.76, so wide empty areas all around,
+// on the wall screen of all places, where the area is the whole point.
 //
-// Was daran hängt: **die Trefferprüfung**. Die Zeigerposition kommt in CSS-Pixeln, `hitTest`
-// will Pufferpixel — und dazwischen stehen jetzt **zwei** Faktoren (CSS → Rückspeicher → Puffer),
-// nicht mehr nur der Blit-Faktor. Wer einen davon vergisst, wählt eine Figur zu weit rechts.
-// `toBuffer` rechnet deshalb konsequent über `getBoundingClientRect()` des Canvas.
+// What hangs on it: **hit testing**. The pointer position arrives in CSS pixels, `hitTest`
+// wants buffer pixels, and there are now **two** factors in between (CSS to backing store to
+// buffer), not just the blit factor. Forget one of them and you select a character too far to
+// the right. `toBuffer` therefore consistently computes over `getBoundingClientRect()`.
 
 import { tr } from "../../i18n";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -74,65 +74,65 @@ import { CAM_FULL, actorAt, hitTest, renderFrame } from "./pixel/scene.ts";
 
 // ═══ Stellschrauben ══════════════════════════════════════════════════════════════════════════
 
-/** Höchster Zoom. Bei 4 zeigt der Puffer noch 120×67 Pixel — darunter sieht man einzelne
- *  Sprites und sonst nichts mehr, und die Ansicht verliert genau das, wofür es sie gibt. */
+/** Highest zoom. At 4 the buffer still shows 120×67 pixels; below that you see single sprites
+ *  and nothing else, and the view loses exactly what it exists for. */
 const MAX_ZOOM = 4;
 
-/** Deckel für den ganzzahligen Rückspeicher-Faktor. Bei 8 ist der Canvas 3840×2160 — genau ein
- *  4K-Schirm bei `devicePixelRatio = 1`. Darüber wächst nur der Speicher: was der Browser aus
- *  dem Rückspeicher hochzieht, sieht ab dieser Feinheit nicht mehr schärfer aus, weil die
+/** Cap for the integer backing store factor. At 8 the canvas is 3840×2160, exactly a 4K screen
+ *  at `devicePixelRatio = 1`. Above that only memory grows: what the browser scales up from
+ *  the backing store does not look sharper beyond this fineness, because the
  *  Quelle 480×270 bleibt. */
 const MAX_BLIT = 8;
 
-/** Zeitkonstante der Kamerabewegung. `dt/220` heißt: nach ~220 ms ist der Rest der Strecke
- *  einmal ausgeglichen — schnell genug, um zu folgen, langsam genug, um nicht zu zucken. */
+/** Time constant of the camera movement. `dt/220` means the remaining distance is evened out
+ *  once after about 220 ms: fast enough to follow, slow enough not to twitch. */
 const CAM_EASE_MS = 220;
 
-/** Ein Tastendruck schwenkt so viele Pufferpixel. */
+/** One key press pans this many buffer pixels. */
 const PAN_STEP = 24;
 
-/** Höchstens vier Hover-Meldungen je Sekunde an React. Ohne Drosselung rendert die
- *  Elternkomponente bei jeder Mausbewegung — und die hält Dock und Inspektor. */
+/** At most four hover reports per second to React. Without throttling the parent renders on
+ *  every mouse move, and it holds the dock and the inspector. */
 const HOVER_MS = 250;
 
-/** Takt der Schleife bei `prefers-reduced-motion`. Kein rAF: zwei Bilder je Sekunde reichen,
- *  um Zustandswechsel zu zeigen, und mehr will jemand mit dieser Einstellung nicht sehen. */
+/** Beat of the loop under `prefers-reduced-motion`. No rAF: two frames per second are enough
+ *  to show changes of state, and somebody with that setting wants no more. */
 const CALM_TICK_MS = 500;
 
-/** Hängt die Wiedergabe im Livebetrieb weiter als das hinter dem jüngsten Ereignis zurück,
- *  wird aufgeschlossen statt nachgelaufen. Passiert nach jedem angehaltenen Tab. */
+/** If playback in live mode lags further behind the newest event than this, it catches up
+ *  instead of trailing. Happens after every tab that was paused. */
 const LIVE_CATCHUP_MS = 4000;
 
-/** Die eingefrorene Animationsuhr des Ruhemodus (siehe `calmFrame`). */
+/** The frozen animation clock of the calm mode (see `calmFrame`). */
 const CALM_CLOCK = 0;
 
-/** So alt tut der Ruhemodus jede Blase — damit `revealOf` auf 1 steht und der Text **ganz**
- *  dasteht, statt sich einzutippen. */
+/** This old the calm mode pretends every bubble to be, so that `revealOf` stands at 1 and the
+ *  text is **fully** there instead of typing itself in. */
 const CALM_SETTLED_MS = 600_000;
 
-// ═══ Oberfläche ══════════════════════════════════════════════════════════════════════════════
+// ═══ Interface ═══════════════════════════════════════════════════════════════════════════════
 
 export interface StageProps {
-  /** Das Log. Die Bühne liest nur (`entries`), sie schreibt nie hinein. */
+  /** The log. The stage only reads (`entries`), it never writes into it. */
   recorder: RecorderApi;
-  /** Die Ein-Zahl-Veraltungsprüfung des Recorders. Nur hieran hängt der Replay-Abgleich. */
+  /** The one number staleness check of the recorder. Only the replay comparison hangs on it. */
   revision: number;
-  /** `null` = live. Sonst der Zeitpunkt, auf den die Zeitleiste zurückgespult hat. */
+  /** `null` means live. Otherwise the moment the timeline rewound to. */
   seekTs: number | null;
-  /** Faktor auf die vergehende Zeit. `0` = angehalten, `1` = Echtzeit. */
+  /** Factor on the passing time. `0` is paused, `1` is real time. */
   speed: number;
-  /** Tag- oder Abendbüro. Kommt aus `useTheme`, nicht aus der Uhr. */
+  /** Day or evening office. Comes from `useTheme`, not from the clock. */
   grade: Grade;
-  /** Ausgewählter Agent (heller Ring, Schild, Kameraverfolgung). */
+  /** Selected agent (brighter ring, name plate, camera follow). */
   selected?: string;
-  /** Agent unter dem Zeiger. */
+  /** Agent under the pointer. */
   hover?: string;
-  /** Agenten, die der Sitzungsreiter gerade nicht meint — sie werden blass gezeichnet.
-   *  `undefined` = kein Filter aktiv. Bewusst kein Entfernen: siehe `TopBar.tsx`, Punkt 2. */
+  /** Agents the session tab does not mean right now: they are drawn pale.
+   *  `undefined` means no filter is active. Deliberately no removal: see `TopBar.tsx`, point 2. */
   dimmed?: ReadonlySet<string>;
-  /** Wandschirm-Betrieb: die Kamera sucht sich ihr Ziel selbst (`kiosk.ts`), Tastatur, Mausrad
-   *  und Überfahren sind aus. Das einzige, was diese Datei nach außen dazu braucht — alles
-   *  Weitere (Rahmen, Kopfzeile, Raumwechsel) gehört der Ansicht darüber. */
+  /** Wall screen mode: the camera picks its target itself (`kiosk.ts`), keyboard, wheel and
+   *  hover are off. The only thing this file needs from outside for it; everything else
+   *  (frame, header, changing rooms) belongs to the view above. */
   kiosk?: boolean;
   onSelect(id: string | undefined): void;
   onHover(id: string | undefined): void;
@@ -141,24 +141,24 @@ export interface StageProps {
 
 // ═══ Kamera ══════════════════════════════════════════════════════════════════════════════════
 
-/** Der gelebte Kamerazustand: `x/y` ist, wo sie steht, `wantX/wantY`, wo sie hin soll. Die
- *  Trennung ist der ganze Grund, warum ein Schwenk weich aussieht und ein Sprung trotzdem
- *  sofort ankommt (dann werden beide gemeinsam gesetzt). */
+/** The lived camera state: `x/y` is where it stands, `wantX/wantY` where it should go. The
+ *  separation is the whole reason a pan looks smooth and a jump still arrives instantly (both
+ *  are then set together). */
 interface CamState { x: number; y: number; zoom: number; wantX: number; wantY: number }
 
 /**
- * Hält die Kamera im Raum.
+ * Keeps the camera inside the room.
  *
- * Bei ganzzahligem `zoom` zeigt der Puffer `PIX.w/z × PIX.h/z` Pixel um `x/y`. Wird `x` näher
- * als die halbe Sichtbreite an den Rand gelassen, liefe der Blick über die Wand hinaus — und
- * weil `renderFrame` den Puffer bewusst **nicht** leert (Wand und Boden decken ihn ab), stünde
- * dort das vorige Bild statt Nichts. Die Klemmung ist also nicht Kosmetik, sondern die Zusage,
- * auf der das Nicht-Leeren beruht.
+ * At an integer `zoom` the buffer shows `PIX.w/z × PIX.h/z` pixels around `x/y`. If `x` were
+ * allowed closer to the edge than half the view width, the view would run past the wall, and
+ * because `renderFrame` deliberately does **not** clear the buffer (wall and floor cover it),
+ * the previous frame would stand there instead of nothing. The clamp is therefore not cosmetic
+ * but the promise the non clearing rests on.
  */
 function clampCam(c: CamState): void {
-  // Die halbe Sichtbreite kommt aus dem PUFFER (so viele Kunsteinheiten zeigt er bei diesem
-  // Maßstab), die Grenze aus der KUNSTEBENE (so weit reicht der Raum). Beides war dasselbe,
-  // solange ART_SCALE = 1 galt — seit der Puffer doppelt so fein ist, sind es zwei Dinge.
+  // Half the view width comes from the BUFFER (this many art units it shows at this scale), the
+  // bound from the ART LAYER (this far the room reaches). Both were the same while ART_SCALE = 1
+  // held; since the buffer is twice as fine they are two things.
   const halfW = PIX.w / (2 * c.zoom);
   const halfH = PIX.h / (2 * c.zoom);
   c.x = Math.min(ART.w - halfW, Math.max(halfW, c.x));
@@ -167,10 +167,10 @@ function clampCam(c: CamState): void {
   c.wantY = Math.min(ART.h - halfH, Math.max(halfH, c.wantY));
 }
 
-/** Wo ein Pufferpunkt unter dieser Kamera landet — dieselbe Rechnung wie `camFit` in
- *  `pixel/scene.ts`, die dort privat ist. Die Doppelung ist bewusst und klein: sie wird für
- *  die DOM-Schilder gebraucht, und ein Export nur dafür würde die Zeichenschicht um eine
- *  Schnittstelle erweitern, die niemand sonst braucht. */
+/** Where a buffer point lands under this camera, the same computation as `camFit` in
+ *  `pixel/scene.ts`, which is private there. The duplication is deliberate and small: it is
+ *  needed for the DOM name plates, and an export just for that would widen the drawing layer
+ *  by an interface nobody else needs. */
 function camOffset(cam: Cam): { z: number; ox: number; oy: number } {
   const z = Math.max(1, Math.round(cam.zoom));
   return { z, ox: Math.round(PIX.w / 2 - cam.x * z), oy: Math.round(PIX.h / 2 - cam.y * z) };
@@ -179,33 +179,33 @@ function camOffset(cam: Cam): { z: number; ox: number; oy: number } {
 // ═══ Ruhemodus ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * Derselbe Raum, nur ohne Bewegung — für `prefers-reduced-motion`.
+ * The same room, only without movement, for `prefers-reduced-motion`.
  *
- * **Reduzierte Bewegung heißt nicht „langsamer", sondern „weniger".** Ein halbiertes Bildtempo
- * wäre für jemanden mit Bewegungsempfindlichkeit keine Erleichterung, sondern dasselbe Ruckeln
- * in zäh. Deshalb wird hier nicht gebremst, sondern die **Animationsuhr eingefroren**: der
- * Frame geht mit `t = CALM_CLOCK` in die Zeichenschicht, und damit stehen Laufzyklus, Blinzeln,
- * Staub, Dampf und die Punkte der Denkblase still. Sichtbar ändert sich nur noch, was sich
- * wirklich geändert hat — wer wo sitzt, wer was sagt, welcher Monitor was zeigt.
+ * **Reduced motion does not mean "slower" but "less".** A halved frame rate would be no relief
+ * for somebody sensitive to motion but the same juddering in slow motion. So nothing is slowed
+ * here, the **animation clock is frozen**: the frame goes into the drawing layer with
+ * `t = CALM_CLOCK`, and with that the walk cycle, blinking, dust, steam and the dots of the
+ * thought bubble stand still. Visibly only what really changed changes: who sits where, who
+ * says what, which monitor shows what.
  *
- * Die Simulation läuft dabei **normal weiter** (`Replay.advance` im ruhigen Takt). Sie
- * anzuhalten hieße, den Raum anzulügen; eingefroren ist die Darstellung, nicht die Zeit.
+ * The simulation keeps running **normally** (`Replay.advance` at the calm beat). Stopping it
+ * would mean lying about the room; what is frozen is the display, not the time.
  *
- * Drei Umschriften sind nötig, damit das eingefrorene `t` nichts kaputtmacht:
+ * Three rewrites are needed so the frozen `t` breaks nothing:
  *
- *   · `pose: "walk" → "stand"` — kein Laufzyklus, keine Staubwölkchen unter den Füßen. Die
- *     Figur steht dann an ihrer aktuellen Stelle und ist nach `SETTLE_MS` ohnehin am Ziel.
- *   · `sayAt`/`thinkAt` weit in die Vergangenheit — `revealOf` steht damit auf 1 und die Blase
- *     erscheint **ganz**, statt sich Zeichen für Zeichen einzutippen.
- *   · `link.until` auf `CALM_CLOCK + LINK_MS` — das Band zwischen Eltern- und Kindlauf hat
- *     damit Alter 0 und steht voll da, statt bei eingefrorener Uhr auszublassen.
+ *   · `pose: "walk" → "stand"`, no walk cycle and no dust under the feet. The character then
+ *     stands at its current place and is at its target after `SETTLE_MS` anyway.
+ *   · `sayAt`/`thinkAt` far into the past, so `revealOf` stands at 1 and the bubble appears
+ *     **whole** instead of typing itself in character by character.
+ *   · `link.until` at `CALM_CLOCK + LINK_MS`, so the band between parent and child run has age
+ *     0 and stands fully there instead of fading out under a frozen clock.
  *
- * Die Effekte in der Luft (Funke, fallender Zettel, Emote-Pop) fallen ganz weg: sie sind reine
- * Partikel, sie tragen keine Information, die nicht auch am Monitor oder am Blasenrand steht.
+ * The effects in the air (spark, falling note, emote pop) fall away entirely: they are pure
+ * particles and carry no information that is not also on the monitor or at the bubble's edge.
  *
- * Kopiert wird flach und nur dort, wo etwas zu ändern ist — die `ActorState` aus `Frame` gehören
- * der Engine und dürfen **nie** verändert werden (`Engine.frame()` gibt die Objekte selbst
- * heraus, nur die Liste ist eine Kopie).
+ * Copying is shallow and only where something has to change: the `ActorState` from `Frame`
+ * belong to the engine and must **never** be modified (`Engine.frame()` hands out the objects
+ * themselves, only the list is a copy).
  */
 function calmFrame(f: Frame): Frame {
   const actors: ActorState[] = [];
@@ -221,15 +221,15 @@ function calmFrame(f: Frame): Frame {
       link: a.link !== undefined ? { to: a.link.to, until: CALM_CLOCK + LINK_MS } : undefined,
     });
   }
-  // Die Reihenfolge bleibt die der Engine (nach `y` sortiert) — der Maler-Algorithmus der
-  // Zeichenschicht hängt daran.
-  // Der Serverschrank bleibt, wie er ist — er ist kein Partikel, sondern ein Zustand des Raums.
-  // `since` wird auf `CALM_CLOCK` gezogen: bei eingefrorener Uhr stünde ein steigender Balken
-  // sonst auf einer beliebigen Phase des letzten echten Zeitpunkts.
+  // The order stays the engine's (sorted by `y`), because the painter's algorithm of the
+  // drawing layer depends on it.
+  // The server rack stays as it is: it is not a particle but a state of the room.
+  // `since` is pulled to `CALM_CLOCK`: with a frozen clock a rising bar would otherwise stand
+  // at an arbitrary phase of the last real moment.
   return { t: CALM_CLOCK, actors, fx: [], rack: { ...f.rack, since: CALM_CLOCK } };
 }
 
-// ═══ Die Bühne ═══════════════════════════════════════════════════════════════════════════════
+// ═══ The stage ═══════════════════════════════════════════════════════════════════════════════
 
 export default function Stage(props: StageProps): JSX.Element {
   const {
@@ -250,25 +250,25 @@ export default function Stage(props: StageProps): JSX.Element {
   const camRef = useRef<CamState>({
     x: CAM_FULL.x, y: CAM_FULL.y, zoom: CAM_FULL.zoom, wantX: CAM_FULL.x, wantY: CAM_FULL.y,
   });
-  /** Die Kamera, mit der das **zuletzt gemalte** Bild entstanden ist. Die Trefferprüfung muss
-   *  gegen sie rechnen und nicht gegen die aktuelle: zwischen zwei Bildern ist die Kamera schon
-   *  ein Stück weitergewandert, und ein Klick träfe sonst knapp daneben. */
+  /** The camera the **last painted** frame came about with. The hit test has to compute against
+   *  it and not against the current one: between two frames the camera has already moved on a
+   *  little, and a click would otherwise land just beside the target. */
   const hitCamRef = useRef<Cam>({ ...CAM_FULL });
   const rafRef = useRef<number | null>(null);
   const timerRef = useRef<number | null>(null);
   const prevNowRef = useRef(0);
   const dirtyRef = useRef(true);
 
-  /** Die Geometrie der Bühne, einmal je Größenänderung gerechnet.
+  /** The geometry of the stage, computed once per resize.
    *
-   *  · `scale` — ganzzahliger Faktor des **Rückspeichers**: `canvas.width === PIX.w * scale`.
-   *  · `unit`  — **CSS**-Pixel je Pufferpixel. Das ist der Faktor, mit dem die DOM-Schilder
-   *              rechnen, und er ist im Allgemeinen krumm (genau darum geht es).
-   *  · `offX/offY` — Lage des Canvas **im Host**, in CSS-Pixeln. Die Bühne ist mittig
-   *              eingepasst; die Schilder liegen im Host, nicht im Canvas. */
+   *  · `scale` — integer factor of the **backing store**: `canvas.width === PIX.w * scale`.
+   *  · `unit`  — **CSS** pixels per buffer pixel. That is the factor the DOM name plates
+   *              compute with, and it is generally fractional (which is the whole point).
+   *  · `offX/offY` — position of the canvas **inside the host**, in CSS pixels. The stage is
+   *              fitted centred; the plates live in the host, not in the canvas. */
   const blitRef = useRef({ scale: 1, unit: 1, offX: 0, offY: 0 });
 
-  // ── Ruhezustände ───────────────────────────────────────────────────────────────────────────
+  // ── Calm states ────────────────────────────────────────────────────────────────────────────
   const shownRef = useRef(true);      // im Sichtfeld?
   const wakeRef = useRef(true);       // Tab im Vordergrund?
   const calmRef = useRef(false);      // prefers-reduced-motion?
@@ -287,13 +287,13 @@ export default function Stage(props: StageProps): JSX.Element {
 
   // ── Kiosk ──────────────────────────────────────────────────────────────────────────────────
   //
-  // Der Kamerazustand des Wandschirms lebt in einem Ref, nicht im React-Zustand: ein Ziel im
-  // Zustand kostete einen Renderdurchlauf **je Kamerabewegung**, und die ganze Datei ist darum
-  // herum gebaut, das nie zu tun. Die Wahl selbst trifft `kiosk.ts` (Schicht 0, prüfbar rein);
-  // hier steht nur, was sie mit der Kamera macht.
+  // The camera state of the wall screen lives in a ref, not in React state: a target in state
+  // would cost a render pass **per camera movement**, and this whole file is built around never
+  // doing that. The choice itself is made by `kiosk.ts` (layer 0, testably pure); here stands
+  // only what it does with the camera.
   const kioskStRef = useRef<KioskCam>(newKioskCam());
-  /** Zuletzt geschriebene Beschriftung der Bildmitte — das DOM wird nur bei echter Änderung
-   *  angefasst, nicht sechzigmal je Sekunde. */
+  /** Last written label of the centre of the image: the DOM is touched only on a real change,
+   *  not sixty times a second. */
   const midTextRef = useRef<string>("");
 
   // ── Zeiger ─────────────────────────────────────────────────────────────────────────────────
@@ -301,19 +301,18 @@ export default function Stage(props: StageProps): JSX.Element {
   const hoverTimerRef = useRef<number | null>(null);
   const hoverSentRef = useRef<string | undefined>(undefined);
 
-  // ── Effekt 4: die Spiegel ──────────────────────────────────────────────────────────────────
+  // ── Effect 4: the mirrors ──────────────────────────────────────────────────────────────────
   //
-  // Winzig und ohne Abhängigkeitsliste: er tut nichts als zuweisen. Genau deshalb darf er bei
-  // jedem Render laufen — und genau deshalb startet ein Geschwindigkeitswechsel die Schleife
-  // nicht neu.
+  // Tiny and without a dependency list: it does nothing but assign. Exactly for that it may run
+  // on every render, and exactly for that a change of speed does not restart the loop.
   useEffect(() => {
     seekRef.current = seekTs;
     speedRef.current = speed;
     if (gradeRef.current !== grade) {
       gradeRef.current = grade;
       palRef.current = GRADES[grade];
-      // Der Rand um die eingepasste Bühne liegt im Host, also wechselt er hier die Farbe mit —
-      // `layout()` läuft bei einem Themawechsel nicht, weil sich keine Größe ändert.
+      // The border around the fitted stage lies in the host, so it changes colour here as well:
+      // `layout()` does not run on a theme change, because no size changes.
       if (hostRef.current) hostRef.current.style.backgroundColor = palRef.current.wallLo;
     }
     selRef.current = selected;
@@ -321,9 +320,9 @@ export default function Stage(props: StageProps): JSX.Element {
     dimRef.current = dimmed;
     if (kioskRef.current !== (kiosk === true)) {
       kioskRef.current = kiosk === true;
-      // Das Schild der Bildmitte ist ein anderes DOM-Element, sobald der Kiosk ein- oder
-      // ausgeschaltet wird. Ohne das Zurücksetzen hielte der Merker einen Text fest, der im
-      // neuen (leeren) Element gar nicht steht — und die Zeile bliebe für immer versteckt.
+      // The label of the image centre is a different DOM element as soon as the kiosk is
+      // switched on or off. Without resetting, the marker would hold a text that does not stand
+      // in the new (empty) element at all, and the line would stay hidden forever.
       midTextRef.current = "";
     }
     onSelectRef.current = onSelect;
@@ -331,29 +330,29 @@ export default function Stage(props: StageProps): JSX.Element {
     dirtyRef.current = true;
   });
 
-  // ── Effekt 2: der Replay ───────────────────────────────────────────────────────────────────
+  // ── Effect 2: the replay ───────────────────────────────────────────────────────────────────
   //
-  // `revision` ist die Ein-Zahl-Veraltungsprüfung: sie bewegt sich bei jedem Zuwachs **und**
-  // bei jedem Verwurf am Kopf. `Replay.extend` schreibt bei reinem Zuwachs nur den Logzeiger
-  // fort (kein Neuaufbau, keine drei Stunden Ticks) und baut nur dann ehrlich neu, wenn der
-  // bereits abgespielte Anfang nicht mehr derselbe ist. Damit ist der Verwurfsfall bereits
-  // abgedeckt — eine zweite Prüfung auf `bounds().dropped` hier wäre eine zweite Wahrheit über
+  // `revision` is the one number staleness check: it moves on every growth **and** on every
+  // drop at the head. `Replay.extend` on pure growth only advances the log pointer (no rebuild,
+  // no three hours of ticks) and honestly rebuilds only when the beginning already played is
+  // not the same any more. That covers the drop case, so a second check on `bounds().dropped`
+  // here would be a second truth about
   // denselben Sachverhalt.
   useEffect(() => {
     const log = recorder.entries();
     let rp = replayRef.current;
     if (rp === null) { rp = new Replay(log); replayRef.current = rp; }
     else rp.extend(log);
-    // Nachziehen, weil `extend` im Verwurfsfall neu aufbaut: dann steht ein anderer Raum da,
-    // und bei `speed === 0` käme die Schleife nie dazu, ihn zu holen.
+    // Follow up, because `extend` rebuilds in the drop case: a different room stands there then,
+    // and at `speed === 0` the loop would never get round to fetching it.
     frameRef.current = rp.frame();
     dirtyRef.current = true;
   }, [recorder, revision]);
 
-  // ── Effekt 3: zurückspulen bzw. live ───────────────────────────────────────────────────────
+  // ── Effect 3: rewind or live ───────────────────────────────────────────────────────────────
   //
-  // Ein `seek` ist teuer (neue Engine, Log von vorn) und passiert deshalb **nur** hier: wenn
-  // der Nutzer die Zeitleiste anfasst. Die Schleife spult nie, sie läuft nur weiter.
+  // A `seek` is expensive (new engine, log from the start) and therefore happens **only** here:
+  // when the user touches the timeline. The loop never seeks, it only runs on.
   useEffect(() => {
     const rp = replayRef.current;
     if (rp === null) return;
@@ -363,15 +362,15 @@ export default function Stage(props: StageProps): JSX.Element {
     dirtyRef.current = true;
   }, [seekTs]);
 
-  // ── Effekt 1: die Schleife ─────────────────────────────────────────────────────────────────
+  // ── Effect 1: the loop ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const host = hostRef.current;
     const cvs = canvasRef.current;
     if (!host || !cvs) return;
 
-    // Puffer anlegen. `OffscreenCanvas` spart ein DOM-Element; wo es fehlt, tut ein
-    // abgekoppeltes `<canvas>` genau dasselbe. Zwei Zweige statt eines Unions-Aufrufs, weil
-    // `getContext` auf beiden Typen verschiedene Überladungen hat.
+    // Create the buffer. `OffscreenCanvas` saves a DOM element; where it is missing a detached
+    // `<canvas>` does exactly the same. Two branches instead of one union call, because
+    // `getContext` has different overloads on the two types.
     let buf: HTMLCanvasElement | OffscreenCanvas;
     let bctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
     if (typeof OffscreenCanvas !== "undefined") {
@@ -387,12 +386,12 @@ export default function Stage(props: StageProps): JSX.Element {
     }
     const vctx = cvs.getContext("2d", { alpha: false });
     if (!bctx || !vctx) return;
-    // Puffer und Kontexte bleiben **lokal** in dieser Schleife: sie werden mit ihr angelegt und
-    // mit ihr weggeworfen. Ein Ref darauf wäre eine zweite Lebensdauer für dasselbe Objekt.
-    // `Ctx` (der erlaubte Ausschnitt fillStyle/globalAlpha/fillRect) erfüllt ein echter
-    // 2D-Kontext strukturell — die Zeichenschicht sieht nichts anderes.
+    // Buffer and contexts stay **local** to this loop: they are created with it and thrown away
+    // with it. A ref on them would be a second lifetime for the same object. `Ctx` (the allowed
+    // subset fillStyle/globalAlpha/fillRect) is satisfied structurally by a real 2D context, and
+    // the drawing layer sees nothing else.
 
-    // ── Größe ────────────────────────────────────────────────────────────────────────────────
+    // ── Size ─────────────────────────────────────────────────────────────────────────────────
     const layout = (): void => {
       const r = host.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -400,21 +399,21 @@ export default function Stage(props: StageProps): JSX.Element {
       const hostH = Math.max(1, r.height);
 
       // ── Einpassen (CSS) ───────────────────────────────────────────────────────────────────
-      // Das größte 16:9-Rechteck im Container. Weil 480×270 selbst 16:9 ist, reicht dafür ein
-      // gemeinsamer Faktor — es gibt keine Verzerrung zu verhindern, nur eine Richtung, die
-      // vollständig füllt, und eine, die den Rest teilt.
+      // The largest 16:9 rectangle in the container. Because 480×270 is itself 16:9 one common
+      // factor is enough: there is no distortion to prevent, only one direction that fills
+      // completely and one that shares the rest.
       const fit = Math.min(hostW / PIX.w, hostH / PIX.h);
       const cssW = Math.max(1, Math.round(PIX.w * fit));
       const cssH = Math.max(1, Math.round(PIX.h * fit));
       const offX = Math.round((hostW - cssW) / 2);
       const offY = Math.round((hostH - cssH) / 2);
 
-      // ── Zeichnen (Rückspeicher) ───────────────────────────────────────────────────────────
-      // Ganzzahlig, sonst wird Pixelkunst zu Matsch: ein 1 Pixel breiter Strich liefe bei
-      // Faktor 1,5 über zwei Spalten mit halber Deckkraft. **Abgerundet**, nie aufgerundet:
-      // ein zu großer Rückspeicher müsste vom Browser verkleinert werden, und `pixelated` wirft
-      // dabei ganze Quellzeilen weg — eine ein Pixel breite Kante verschwände einfach. Beim
-      // Vergrößern geht nichts verloren, einzelne Pixel werden nur unterschiedlich breit.
+      // ── Drawing (backing store) ───────────────────────────────────────────────────────────
+      // Integer, otherwise pixel art turns to mush: a line one pixel wide would run over two
+      // columns at half opacity at factor 1.5. **Rounded down**, never up: a backing store that
+      // is too large would have to be shrunk by the browser, and `pixelated` throws away whole
+      // source rows while doing so, so an edge one pixel wide would simply disappear. Scaling
+      // up loses nothing, single pixels only become differently wide.
       const scale = Math.max(1, Math.min(MAX_BLIT, Math.floor(cssW * dpr / PIX.w)));
       const bw = PIX.w * scale;
       const bh = PIX.h * scale;
@@ -424,23 +423,23 @@ export default function Stage(props: StageProps): JSX.Element {
       cvs.style.height = `${cssH}px`;
       cvs.style.left = `${offX}px`;
       cvs.style.top = `${offY}px`;
-      // Der Rand um die eingepasste Bühne gehört zum Raum, nicht zur Anwendung — deshalb eine
-      // Palettenfarbe und nicht `bg-surface`. Früher malte ihn der Canvas selbst; jetzt liegt
-      // er außerhalb, also trägt ihn der Host.
+      // The border around the fitted stage belongs to the room, not to the application, hence a
+      // palette colour and not `bg-surface`. The canvas used to paint it itself; now it lies
+      // outside, so the host carries it.
       host.style.backgroundColor = palRef.current.wallLo;
 
       blitRef.current = { scale, unit: cssW / PIX.w, offX, offY };
-      // Eine Größenänderung setzt den Kontextzustand zurück — die Glättung muss danach neu aus.
+      // A resize resets the context state, so smoothing has to be switched off again afterwards.
       vctx.imageSmoothingEnabled = false;
       dirtyRef.current = true;
     };
     layout();
 
-    // ── Ein Schild an seine Figur hängen ─────────────────────────────────────────────────────
+    // ── Hanging a plate on its character ─────────────────────────────────────────────────────
     //
-    // Die Schilder sind echte `<span>` über dem Canvas, keine gemalten Pixel: man soll sie
-    // markieren können und ein Screenreader soll sie lesen. Gesetzt wird hier **nur die Lage**
-    // (Text und Existenz gehören React) — deshalb kostet ein wandernder Agent keinen
+    // The plates are real `<span>` above the canvas, not painted pixels: they should be
+    // selectable and a screen reader should read them. Only **the position** is set here (text
+    // and existence belong to React), which is why a wandering agent costs no render pass.
     // Renderdurchlauf.
     const place = (el: HTMLSpanElement | null, id: string | undefined, f: Frame,
       cam: Cam): void => {
@@ -449,21 +448,21 @@ export default function Stage(props: StageProps): JSX.Element {
       if (!p) { el.style.visibility = "hidden"; return; }
       const { z, ox, oy } = camOffset(cam);
       const b = blitRef.current;
-      // Pufferpixel → CSS-Pixel im Host: der Einpass-Faktor, dazu die Lage des Canvas im Host.
-      // Der ganzzahlige Rückspeicher-Faktor kommt hier **nicht** vor — er beschreibt, wie fein
-      // gemalt wird, nicht, wie groß das Bild auf dem Schirm ist.
+      // Buffer pixel to CSS pixel in the host: the fit factor plus the position of the canvas
+      // in the host. The integer backing store factor does **not** appear here: it describes
+      // how finely something is painted, not how large the image is on screen.
       const sx = b.offX + (p.x * z + ox) * b.unit;
       const sy = b.offY + (p.y * z + oy) * b.unit;
-      // Über dem Kopf, mittig. `translate(-50%, -100%)` steht im Stil des Elements.
+      // Above the head, centred. `translate(-50%, -100%)` sits in the element's style.
       el.style.left = `${Math.round(sx)}px`;
       el.style.top = `${Math.round(sy - FIG_H * z * b.unit)}px`;
-      // Stapelung wie im Canvas: wer weiter unten steht, steht vorn. Damit deckt das Schild
-      // einer vorderen Figur das einer hinteren ab — und nicht umgekehrt.
+      // Stacked as in the canvas: whoever stands further down stands in front. So the plate of
+      // a character in front covers the one behind it, and not the other way round.
       el.style.zIndex = String(Math.max(0, Math.round(sy)));
       el.style.visibility = "visible";
     };
 
-    // ── Ein Bild ─────────────────────────────────────────────────────────────────────────────
+    // ── One frame ────────────────────────────────────────────────────────────────────────────
     const paint = (): boolean => {
       const f = frameRef.current;
       if (!f) return false;
@@ -477,10 +476,10 @@ export default function Stage(props: StageProps): JSX.Element {
         dimmed: dimRef.current,
       });
 
-      // ── Die eine ausgenommene Stelle (PIXEL-CONTRACT.md Regel 4) ───────────────────────────
-      // Der Rückspeicher ist per Bau genau `PIX × scale` groß, also deckt der Blit ihn
-      // vollständig ab: kein Briefkasten mehr, kein Vorabfüllen. Den Rand um die eingepasste
-      // Fläche trägt der Host (siehe `layout`).
+      // ── The one exempt place (PIXEL-CONTRACT.md rule 4) ───────────────────────────────────
+      // The backing store is by construction exactly `PIX × scale`, so the blit covers it
+      // completely: no letterbox any more, no pre fill. The border around the fitted area is
+      // carried by the host (see `layout`).
       const b = blitRef.current;
       vctx.imageSmoothingEnabled = false;
       vctx.drawImage(buf, 0, 0, PIX.w, PIX.h, 0, 0, PIX.w * b.scale, PIX.h * b.scale);
@@ -492,13 +491,13 @@ export default function Stage(props: StageProps): JSX.Element {
       return true;
     };
 
-    // ── Wer steht in der Bildmitte? ──────────────────────────────────────────────────────────
+    // ── Who stands in the centre of the image? ───────────────────────────────────────────────
     //
-    // Der Wandschirm soll sagen, wen er gerade zeigt — aber **ohne auszuwählen**: ein gesetztes
-    // `selected` zöge den hellen Ring, das DOM-Schild und die Kameraverfolgung nach sich und
-    // wäre außerdem ein Renderdurchlauf. `hitTest` auf die Bildmitte ist vorhandener Code und
-    // beantwortet genau die Frage, die hier gestellt ist. Der Text wird imperativ gesetzt, wie
-    // die Lage der anderen Schilder auch.
+    // The wall screen should say who it currently shows, but **without selecting**: a set
+    // `selected` would drag the bright ring, the DOM plate and the camera follow along with it,
+    // and would be a render pass as well. `hitTest` on the image centre is existing code and
+    // answers exactly the question asked here. The text is set imperatively, like the position
+    // of the other plates.
     const midTag = (f: Frame, cam: Cam): void => {
       const el = midTagRef.current;
       if (!el) return;
@@ -512,11 +511,11 @@ export default function Stage(props: StageProps): JSX.Element {
     // ── Kamera je Bild ───────────────────────────────────────────────────────────────────────
     const moveCam = (dt: number, f: Frame | null): boolean => {
       const c = camRef.current;
-      // Verfolgung: nur bei Zoom, und nur wenn die Figur aus der Mitte läuft. Ein Nachziehen
-      // bei jedem Schritt nähme dem Nutzer das Schwenken aus der Hand.
+      // Follow: only when zoomed, and only when the character walks out of the centre. Pulling
+      // along on every step would take panning out of the user's hands.
       const sel = selRef.current;
-      // Im Kiosk führt `kioskCam` die Kamera. Ein gleichzeitiges Nachziehen auf eine (etwa durch
-      // eine Berührung des Wandschirms) ausgewählte Figur wären zwei Hände am selben Lenkrad.
+      // In kiosk mode `kioskCam` steers the camera. Following a character selected at the same
+      // time (by a touch of the wall screen, say) would be two hands on the same wheel.
       if (c.zoom > 1 && sel !== undefined && f && !kioskRef.current) {
         const p = actorAt(f, sel);
         if (p) {
@@ -543,23 +542,23 @@ export default function Stage(props: StageProps): JSX.Element {
 
     // ── Kiosk-Kamera je Bild ─────────────────────────────────────────────────────────────────
     //
-    // Läuft **in dieser Schleife**, direkt vor `moveCam` — dann trägt die vorhandene Easing
-    // (`CAM_EASE_MS`) den Schwenk noch im selben Bild an.
+    // Runs **inside this loop**, right before `moveCam`, so the existing easing
+    // (`CAM_EASE_MS`) carries the pan in the same frame.
     //
-    // `zoomAt` wird bewusst **nicht** gerufen: das setzt `wantX = x` und ließe die Kamera
-    // springen. Hier stattdessen `c.zoom` direkt, dann das Ziel in `wantX/wantY`, dann
-    // `clampCam` — der Zoom sitzt sofort, der Weg dorthin bleibt weich.
+    // `zoomAt` is deliberately **not** called: it sets `wantX = x` and would let the camera
+    // jump. Instead `c.zoom` directly, then the target in `wantX/wantY`, then `clampCam`: the
+    // zoom sits at once, the way there stays smooth.
     //
-    // **Ruhemodus (`prefers-reduced-motion`) hält das aus**, und das ist kein Zufall:
-    // `calmFrame` wirft `fx` weg, aber es wird erst in `paint` angewandt. Hier steht
-    // `frameRef.current`, der **echte** Frame samt Effektstrom — die Fx-Kamera funktioniert
-    // also auch dort. Wer `calmFrame` eines Tages nach vorn zieht, blendet den Wandschirm.
+    // **Calm mode (`prefers-reduced-motion`) survives this**, and that is no accident:
+    // `calmFrame` throws `fx` away, but it is applied only in `paint`. Here stands
+    // `frameRef.current`, the **real** frame including the effect stream, so the fx camera works
+    // there too. Whoever moves `calmFrame` forward one day blinds the wall screen.
     const kioskCam = (f: Frame | null): boolean => {
       if (!kioskRef.current || !f) return false;
       const tgt = pickTarget(f, kioskStRef.current);
       if (tgt === null) return false;
       const c = camRef.current;
-      // `Fx.x/y` sind Szenen-Koordinaten (1600×900), die Kamera rechnet in Pufferpixeln.
+      // `Fx.x/y` are scene coordinates (1600×900), the camera computes in buffer pixels.
       c.zoom = kioskStRef.current.zoom;
       c.wantX = Math.round(tgt.x * POS_SCALE);
       c.wantY = Math.round(tgt.y * POS_SCALE);
@@ -567,17 +566,17 @@ export default function Stage(props: StageProps): JSX.Element {
       return true;
     };
 
-    // ── Der Takt ─────────────────────────────────────────────────────────────────────────────
+    // ── The beat ─────────────────────────────────────────────────────────────────────────────
     const step = (): void => {
       const now = performance.now();
-      // Beidseitig geklemmt. Ein Tab, der im Hintergrund lag, brächte sonst Minuten in einem
-      // einzigen `dt` — und die Klemmung ist Sache der Schleife, nicht der Engine: `Replay`
-      // klemmt `dtMs` bewusst nicht, weil das die dt-Split-Invarianz bräche.
+      // Clamped on both sides. A tab that lay in the background would otherwise bring minutes
+      // in a single `dt`, and clamping is the loop's business, not the engine's: `Replay`
+      // deliberately does not clamp `dtMs`, because that would break the dt split invariant.
       //
-      // Abweichung im Ruhemodus: dort ist der Takt `CALM_TICK_MS` (500 ms), und mit dem
-      // rAF-Deckel von 100 ms liefe der Raum mit einem Fünftel der Echtzeit — die Wiedergabe
-      // fiele immer weiter zurück. Der Deckel muss also über dem eigenen Takt liegen; die
-      // Engine zerlegt die Spanne ohnehin selbst in `LIVE_STEP_MS`-Schritte.
+      // Different in calm mode: the beat there is `CALM_TICK_MS` (500 ms), and with the rAF cap
+      // of 100 ms the room would run at a fifth of real time, so playback would fall further
+      // and further behind. The cap therefore has to lie above the own beat; the engine splits
+      // the span into `LIVE_STEP_MS` steps itself anyway.
       const cap = calmRef.current ? CALM_TICK_MS * 2 : MAX_FRAME_MS;
       const dt = Math.min(cap, Math.max(0, now - prevNowRef.current));
       prevNowRef.current = now;
@@ -589,13 +588,12 @@ export default function Stage(props: StageProps): JSX.Element {
         if (sp > 0) {
           if (seekRef.current === null) {
             rp.advance(dt * sp);
-            // Aufschließen statt nachlaufen: nach einem angehaltenen Tab hinkt die Wiedergabe
-            // um die ganze Pause hinterher, und niemand will die Vergangenheit nachspielen
-            // sehen, wenn er „live" gewählt hat.
+            // Catch up instead of trailing: after a paused tab playback lags by the whole
+            // pause, and nobody wants to watch the past being replayed when they chose live.
             if (rp.to - rp.position > LIVE_CATCHUP_MS) rp.toLive();
           } else {
-            // Zurückgespult: die Zeit sitzt auf `seekTs` und läuft von dort weiter, sobald
-            // wieder abgespielt wird. Angehalten (`speed === 0`) steht sie einfach.
+            // Rewound: time sits on `seekTs` and runs on from there as soon as playback
+            // resumes. Paused (`speed === 0`) it simply stands.
             rp.advance(dt * sp);
           }
           moved = true;
@@ -603,15 +601,15 @@ export default function Stage(props: StageProps): JSX.Element {
         if (moved || frameRef.current === null) frameRef.current = rp.frame();
       }
 
-      // Nichts bewegt, Kamera steht, nichts angefragt → auch nichts malen. Bei `speed === 0`
-      // ist das der Normalfall, und ein angehaltenes Bild soll keine 60 Vollbilder je Sekunde
-      // kosten. Der Merker fällt erst, wenn wirklich gemalt wurde.
+      // Nothing moved, camera still, nothing requested, so nothing is painted either. At
+      // `speed === 0` that is the normal case, and a paused image should not cost 60 full
+      // frames per second. The marker only falls when something really was painted.
       if (kioskCam(frameRef.current)) dirtyRef.current = true;
       const cammoved = moveCam(dt, frameRef.current);
       if ((moved || cammoved || dirtyRef.current) && paint()) dirtyRef.current = false;
     };
 
-    // ── Start und Stopp ──────────────────────────────────────────────────────────────────────
+    // ── Start and stop ───────────────────────────────────────────────────────────────────────
     const tickRaf = (): void => {
       rafRef.current = window.requestAnimationFrame(tickRaf);
       step();
@@ -622,20 +620,20 @@ export default function Stage(props: StageProps): JSX.Element {
       if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
     };
 
-    /** Die einzige Stelle, die entscheidet, ob überhaupt gerechnet wird. Angehalten wird nicht
-     *  aus Sparsamkeit, sondern weil diese Ansicht in Tabs lebt, die tagelang offen stehen. */
+    /** The only place that decides whether anything is computed at all. Pausing is not thrift
+     *  but the fact that this view lives in tabs people leave open for days. */
     const sync = (): void => {
       const want = shownRef.current && wakeRef.current;
       const running = rafRef.current !== null || timerRef.current !== null;
       if (want === running) return;
       if (!want) { stop(); return; }
-      // Beim Aufwachen die Uhr neu setzen, sonst wäre das erste `dt` die ganze Pause.
+      // Reset the clock on waking, otherwise the first `dt` would be the whole pause.
       prevNowRef.current = performance.now();
       dirtyRef.current = true;
       const rp = replayRef.current;
       if (rp && seekRef.current === null && speedRef.current > 0) rp.toLive();
       if (calmRef.current) {
-        // Einmal sofort: sonst stünde nach dem Einhängen eine halbe Sekunde lang gar nichts da.
+        // Once right away, otherwise nothing at all would stand there for half a second after mounting.
         step();
         timerRef.current = window.setInterval(step, CALM_TICK_MS);
       } else {
@@ -647,8 +645,8 @@ export default function Stage(props: StageProps): JSX.Element {
     const ro = new ResizeObserver(layout);
     ro.observe(host);
 
-    // Außerhalb des Sichtfelds wird nicht gerechnet. Das ist der Normalfall in einem
-    // Projekt-Reiter, in dem jemand nach unten gescrollt hat.
+    // Outside the viewport nothing is computed. That is the normal case in a project tab where
+    // somebody scrolled down.
     const io = new IntersectionObserver((es) => {
       shownRef.current = es.some((e) => e.isIntersecting);
       sync();
@@ -662,20 +660,20 @@ export default function Stage(props: StageProps): JSX.Element {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     const onCalm = (): void => {
       calmRef.current = mq.matches;
-      // Der Takt selbst wechselt: stoppen und über `sync` im richtigen Modus neu starten.
+      // The beat itself changes: stop and start again in the right mode through `sync`.
       stop();
       sync();
     };
     calmRef.current = mq.matches;
     mq.addEventListener("change", onCalm);
 
-    // Zoom am Mausrad. Ein eigener Listener statt `onWheel`, weil React den Wurzel-Listener
-    // passiv anmeldet und `preventDefault` dort wirkungslos bliebe — die Seite scrollte dann
-    // unter der Bühne weg.
+    // Zoom on the mouse wheel. A listener of its own instead of `onWheel`, because React
+    // registers the root listener passively and `preventDefault` would have no effect there,
+    // so the page would scroll away under the stage.
     const onWheel = (e: WheelEvent): void => {
-      // Im Kiosk gehört die Kamera dem Raum. Auch das `preventDefault` fällt weg: die Seite
-      // scrollt dort ohnehin nicht, und ein stiller Fänger auf einem Wandschirm ist nur eine
-      // Stelle, an der jemand später einen Fehler sucht.
+      // In kiosk mode the camera belongs to the room. The `preventDefault` falls away as well:
+      // the page does not scroll there anyway, and a silent catcher on a wall screen is only a
+      // place where somebody looks for a bug later.
       if (kioskRef.current) return;
       e.preventDefault();
       zoomAt(e.deltaY < 0 ? 1 : -1, e.clientX, e.clientY);
@@ -697,25 +695,25 @@ export default function Stage(props: StageProps): JSX.Element {
         hoverTimerRef.current = null;
       }
     };
-    // Absichtlich leer: alles, was diese Schleife braucht, liest sie aus Refs. Eine
-    // Abhängigkeit hier wäre ein Neustart der Schleife mitten im Bild.
+    // Deliberately empty: everything this loop needs it reads from refs. A dependency here
+    // would restart the loop mid frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Zeiger → Puffer ────────────────────────────────────────────────────────────────────────
   //
-  // Nur die Bühne kennt ihre Geometrie, also rechnet sie die Zeigerposition um; `hitTest`
-  // erwartet Pufferkoordinaten und macht die Kameraumkehr selbst.
+  // Only the stage knows its geometry, so it converts the pointer position; `hitTest` expects
+  // buffer coordinates and undoes the camera itself.
   //
-  // **Zwei Faktoren, nicht einer.** Seit die Fläche per CSS eingepasst wird, ist die CSS-Größe
-  // des Canvas kein Vielfaches von 480×270 mehr — sie hängt am Container. Der Weg geht deshalb
-  // CSS-Pixel → Rückspeicher (`canvas.width / rect.width`) → Pufferpixel (`/ scale`). Beide
-  // Faktoren kommen aus derselben Messung, also stimmt die Rechnung auch dann noch, wenn
-  // zwischen `layout()` und dem Klick etwas an der Größe gerückt hat.
+  // **Two factors, not one.** Since the area is fitted by CSS the CSS size of the canvas is no
+  // longer a multiple of 480×270, it depends on the container. The path therefore goes CSS
+  // pixel to backing store (`canvas.width / rect.width`) to buffer pixel (`/ scale`). Both
+  // factors come from the same measurement, so the computation still holds when something
+  // shifted the size between `layout()` and the click.
   //
-  // Ein Versatz ist nicht mehr abzuziehen: der Blit deckt den Rückspeicher vollständig ab, und
-  // `rect` ist der Canvas selbst — der Rand ums Bild liegt außerhalb und liefert von sich aus
-  // Werte außerhalb von 0..480, die `hitTest` als „nichts getroffen" beantwortet.
+  // An offset no longer has to be subtracted: the blit covers the backing store completely, and
+  // `rect` is the canvas itself. The border around the image lies outside and by itself yields
+  // values outside 0..480, which `hitTest` answers as "hit nothing".
   const toBuffer = useCallback((clientX: number, clientY: number) => {
     const cvs = canvasRef.current;
     if (!cvs) return null;
@@ -735,7 +733,7 @@ export default function Stage(props: StageProps): JSX.Element {
     return hitTest(f, hitCamRef.current, pt.x, pt.y);
   }, [toBuffer]);
 
-  /** Meldet den Treffer unter dem Zeiger — aber nur, wenn er sich geändert hat. */
+  /** Reports the hit under the pointer, but only when it changed. */
   const reportHover = useCallback(() => {
     const pt = hoverPtRef.current;
     const f = frameRef.current;
@@ -746,13 +744,13 @@ export default function Stage(props: StageProps): JSX.Element {
   }, []);
 
   const onPointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    // Im Kiosk gar nicht erst anfangen: die 250-ms-Drosselung soll nie feuern, sonst weckte
-    // eine Fliege auf dem Touchscreen alle vier Sekunden Dock und Inspektor auf.
+    // Do not even start in kiosk mode: the 250 ms throttle should never fire, otherwise a fly
+    // on the touchscreen would wake dock and inspector every four seconds.
     if (kioskRef.current) return;
     hoverPtRef.current = toBuffer(e.clientX, e.clientY);
-    // Vorn und hinten im Fenster: der erste Zug meldet sofort, der letzte des Fensters kommt
-    // am Ende nach. Ohne den Nachzügler bliebe ein Zeiger, der zwischen zwei Fenstern stehen
-    // bleibt, auf dem alten Treffer sitzen.
+    // Leading and trailing inside the window: the first move reports at once, the last one of
+    // the window follows at the end. Without the trailing call a pointer that comes to rest
+    // between two windows would stay on the old hit.
     if (hoverTimerRef.current !== null) return;
     reportHover();
     hoverTimerRef.current = window.setTimeout(() => {
@@ -771,16 +769,16 @@ export default function Stage(props: StageProps): JSX.Element {
   }, [reportHover]);
 
   const onClick = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
-    // Der Klick holt den Fokus her, sonst gingen die Kameratasten ins Leere.
+    // The click fetches the focus, otherwise the camera keys would go nowhere.
     hostRef.current?.focus();
     onSelectRef.current(pick(e.clientX, e.clientY));
   }, [pick]);
 
   // ── Zoom ───────────────────────────────────────────────────────────────────────────────────
   //
-  // Ganzzahlig und ankerbewahrend: der Punkt unter dem Zeiger bleibt liegen. Die Rechnung ist
-  // die Umkehrung von `camFit` — aus `screen = PIX.w/2 + (b - cam) * z` folgt für gleiches
-  // `screen` bei neuem `z'`: `cam' = b - (b - cam) * z / z'`.
+  // Integer and anchor preserving: the point under the pointer stays where it is. The
+  // computation is the inverse of `camFit`: from `screen = PIX.w/2 + (b - cam) * z` follows for
+  // the same `screen` at a new `z'`: `cam' = b - (b - cam) * z / z'`.
   const zoomAt = useCallback((dir: number, clientX?: number, clientY?: number) => {
     const c = camRef.current;
     const z0 = c.zoom;
@@ -788,7 +786,7 @@ export default function Stage(props: StageProps): JSX.Element {
     if (z1 === z0) return;
     const anchor = clientX !== undefined && clientY !== undefined
       ? toBuffer(clientX, clientY) : null;
-    // Ohne Zeiger (Tastatur) ist der Anker die Bildmitte — also die Kamera selbst, und dann
+    // Without a pointer (keyboard) the anchor is the centre of the image, so the camera itself,
     // bleibt sie einfach stehen.
     const ax = anchor ? c.x + (anchor.x - PIX.w / 2) / z0 : c.x;
     const ay = anchor ? c.y + (anchor.y - PIX.h / 2) / z0 : c.y;
@@ -803,12 +801,12 @@ export default function Stage(props: StageProps): JSX.Element {
 
   // ── Tastatur ───────────────────────────────────────────────────────────────────────────────
   //
-  // **Nur Kamera, nur bei Fokus.** Die globale Tastaturkarte (Auswahl, Abspielen, Zeitleiste)
-  // gehört der Ansicht darüber; ein `window`-Listener hier würde ihr in die Quere kommen und
-  // wäre außerdem in jedem Textfeld der Seite aktiv.
+  // **Camera only, and only on focus.** The global keyboard map (selection, playback, timeline)
+  // belongs to the view above; a `window` listener here would get in its way and
+  // active inside every text field of the page.
   const onKeyDown = useCallback((e: ReactKeyboardEvent<HTMLDivElement>) => {
-    // Im Kiosk keine Bühnentasten. Die Ansicht darüber lässt dort nur `Escape` gelten, und ein
-    // Schwenk, den niemand zurücknehmen kann, bliebe bis zum nächsten Ziel stehen.
+    // No stage keys in kiosk mode. The view above only lets `Escape` through there, and a pan
+    // nobody can undo would stand until the next target.
     if (kioskRef.current) return;
     const c = camRef.current;
     const pan = (dx: number, dy: number): void => {
@@ -838,12 +836,12 @@ export default function Stage(props: StageProps): JSX.Element {
 
   // ── Was React sieht ────────────────────────────────────────────────────────────────────────
   //
-  // Diese drei Werte werden im Rendertakt gebildet, nicht im Bildtakt: `revision` steigt
-  // höchstens fünfmal je Sekunde, Auswahl und Überfahren im Menschentempo.
+  // These three values are formed at render pace, not at frame pace: `revision` rises at most
+  // five times a second, selection and hover at human pace.
   const empty = useMemo(() => {
     const b = recorder.bounds();
-    // Der echte `Recorder` gibt bei leerem Log Nullen zurück, die Schnittstelle erlaubt `null`.
-    // Beides heißt dasselbe: es ist noch nichts passiert.
+    // The real `Recorder` returns zeros on an empty log, the interface allows `null`. Both mean
+    // the same: nothing has happened yet.
     return !b || (b.t1 === 0 && b.seq1 === 0);
   }, [recorder, revision]);
 
@@ -935,14 +933,14 @@ export default function Stage(props: StageProps): JSX.Element {
   );
 }
 
-/** Beschriftung eines Schildes: Rolle und, wenn bekannt, Ticket oder Modell. Ausgeschrieben —
- *  anders als auf dem gemalten Schild im Canvas, das auf neun Zeichen kürzen muss. */
+/** Label of a plate: role and, when known, ticket or model. Written out, unlike the painted
+ *  plate in the canvas, which has to truncate at nine characters. */
 function tagOf(f: Frame | null, id: string | undefined): string | undefined {
   if (!f || id === undefined) return undefined;
   for (const a of f.actors) {
     if (a.id !== id) continue;
-    // Eine Figur, deren `ensureActor` noch ohne Rolle kam, hätte sonst ein leeres Schild —
-    // die Id (`run:8871`) sagt in dem Fall mehr als nichts.
+    // A character whose `ensureActor` arrived without a role would otherwise have an empty
+    // plate, and the id (`run:8871`) says more than nothing in that case.
     const name = a.role !== "" ? a.role : a.id;
     const extra = a.issue ?? a.model ?? undefined;
     return extra ? `${name} · ${extra}` : name;
