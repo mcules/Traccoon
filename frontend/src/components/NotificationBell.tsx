@@ -22,7 +22,8 @@ export default function NotificationBell() {
 
   return (
     <div className="relative">
-      <button onClick={() => setOpen(!open)} className="relative text-muted hover:text-ink" title={tr("notification_bell.benachrichtigungen")}>
+      <button onClick={() => setOpen(!open)} title={tr("notification_bell.benachrichtigungen")}
+        className="relative flex h-10 w-10 items-center justify-center text-muted hover:text-ink md:h-8 md:w-8">
         🔔
         {(count?.count || 0) > 0 && (
           <span className="absolute -right-2 -top-1 rounded-full bg-red-500 px-1 text-[10px] text-white">
@@ -36,7 +37,7 @@ export default function NotificationBell() {
         <div className="absolute right-0 top-8 z-30 max-h-96 w-80 overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-lg">
           <div className="mb-2 flex items-center justify-between px-1">
             <span className="text-xs font-medium text-muted">{tr("notification_bell.benachrichtigungen")}</span>
-            <button onClick={readAll} className="text-xs text-brand">alle gelesen</button>
+            <button onClick={readAll} className="text-xs text-brand">{tr("notification_bell.alle_gelesen")}</button>
           </div>
           {list?.map((n) => (
             <div key={n.id} className={`rounded p-2 text-sm ${n.read ? "opacity-60" : ""}`}>

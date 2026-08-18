@@ -129,7 +129,7 @@ function NamedSecrets() {
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("settings.name_z_b_github_pat")}
           className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder={tr("settings.wert_token")}
-          className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
+          className="min-w-[10rem] flex-1 basis-full rounded border border-line bg-surface px-2 py-1.5 text-sm sm:basis-auto" />
         <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tr("settings.beschreibung_optional")}
           className="w-48 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
         <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("settings.speichern")}</button>
@@ -194,17 +194,26 @@ function ProviderTokens() {
       {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
       <div className="mb-2 space-y-1">
         {toks?.map((t) => (
-          <div key={t.id} className="flex items-center gap-2 text-sm">
-            <span className="w-40 text-muted">{PROVIDER_LABEL[t.provider] || t.provider}</span>
-            <span className="font-medium">{t.name}</span>
-            {t.base_url && <span className="text-xs text-muted">→ {t.base_url}</span>}
-            {t.is_default
-              ? <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">{tr("settings.standard")}</span>
-              : <button onClick={() => makeDefault(t.id)}
-                  className="text-xs text-muted hover:text-brand">{tr("settings.als_standard")}</button>}
-            <div className="flex-1" />
-            <button onClick={() => edit(t)} className="text-xs text-muted hover:text-brand">{tr("settings.bearbeiten")}</button>
-            <button onClick={() => del(t.id)} className="text-muted hover:text-red-400">✕</button>
+          /* Ein Key je Zeile war am Handy ein Wortsalat: Anbieter, Name, Adresse und drei
+             Bedienelemente in einer Reihe. Jetzt oben die Angaben, darunter die Knöpfe. */
+          <div key={t.id} className="rounded border border-line px-2 py-1.5 text-sm">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <span className="font-medium">{t.name}</span>
+              <span className="text-xs text-muted">{PROVIDER_LABEL[t.provider] || t.provider}</span>
+              {t.is_default && (
+                <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">{tr("settings.standard")}</span>
+              )}
+            </div>
+            {t.base_url && <div className="truncate text-xs text-muted">→ {t.base_url}</div>}
+            <div className="mt-0.5 flex items-center gap-3 text-xs">
+              {!t.is_default && (
+                <button onClick={() => makeDefault(t.id)}
+                  className="text-muted hover:text-brand">{tr("settings.als_standard")}</button>
+              )}
+              <button onClick={() => edit(t)} className="text-muted hover:text-brand">{tr("settings.bearbeiten")}</button>
+              <div className="flex-1" />
+              <button onClick={() => del(t.id)} className="text-muted hover:text-red-400">✕</button>
+            </div>
           </div>
         ))}
         {toks?.length === 0 && <div className="text-xs text-muted">{tr("settings.noch_keine_keys_hinterlegt")}</div>}
@@ -216,12 +225,12 @@ function ProviderTokens() {
       )}
       <div className="flex flex-wrap items-center gap-2">
         <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={editing !== null}
-          className="rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink disabled:opacity-50">
+          className="min-w-[10rem] flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink disabled:opacity-50 sm:flex-none">
           {Object.entries(PROVIDER_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("settings.name_optional")}
           disabled={editing !== null}
-          className="w-32 rounded border border-line bg-surface px-2 py-1.5 text-sm disabled:opacity-50" />
+          className="min-w-[8rem] flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm disabled:opacity-50 sm:w-32 sm:flex-none" />
         <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
           placeholder={editing !== null ? tr("settings.neuer_wert_leer_behalten") : tr("settings.token_platzhalter")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
@@ -234,7 +243,7 @@ function ProviderTokens() {
           <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> {tr("settings.standard")}
         </label>
         <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
-          {editing !== null ? "Speichern" : "+ Token"}
+          {editing !== null ? tr("common.speichern") : "+ Token"}
         </button>
         {editing !== null && (
           <button onClick={reset} className="text-xs text-muted hover:text-ink">{tr("settings.abbrechen")}</button>

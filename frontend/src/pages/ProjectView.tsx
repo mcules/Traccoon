@@ -144,16 +144,16 @@ export default function ProjectView() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        {project.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">KI-gemanagt</span>}
+        {project.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">{tr("project_view.ki_gemanagt")}</span>}
         {!project.my_ai_assign && (
           <span className="rounded bg-surface px-2 py-0.5 text-xs text-muted">{tr("project_view.ticketsystem_kein_ki_recht")}</span>
         )}
         {issues && meta && (
           <div className="flex items-center gap-3 text-xs text-muted">
-            <span>◷ {issues.length} gesamt</span>
-            <span>⚡ {issues.filter((i) => i.agent_working).length} aktiv</span>
-            <span className="text-green-400">✓ {issues.filter((i) =>
-              meta.statuses.find((s) => s.id === i.status_id)?.category === "done").length} fertig</span>
+            <span>◷ {tr("project_view.gesamt", { anzahl: issues.length })}</span>
+            <span>⚡ {tr("project_view.aktiv", { anzahl: issues.filter((i) => i.agent_working).length })}</span>
+            <span className="text-green-400">✓ {tr("project_view.fertig", { anzahl: issues.filter((i) =>
+              meta.statuses.find((s) => s.id === i.status_id)?.category === "done").length })}</span>
           </div>
         )}
         {/* Ticket-Ansichten unter „Board" als Buttons */}
@@ -171,10 +171,12 @@ export default function ProjectView() {
             ))}
           </div>
         )}
-        <div className="flex-1" />
+        <div className="hidden flex-1 sm:block" />
         {canWrite && (
-          <button onClick={() => setNewOpen(true)}
-            className="rounded bg-brand px-3 py-1.5 text-sm text-white">+ Neues Ticket</button>
+          <button onClick={() => setNewOpen(true)} title={tr("project_view.neues_ticket")}
+            className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+            + <span className="hidden sm:inline">{tr("project_view.neues_ticket")}</span>
+          </button>
         )}
       </div>
 

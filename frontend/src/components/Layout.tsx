@@ -27,7 +27,7 @@ function ProjectSwitcher() {
     <div className="relative min-w-0">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-surface"
+        className="flex min-h-[40px] min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-surface md:min-h-0"
         title={cur?.name}
       >
         <div className="min-w-0">
@@ -84,7 +84,7 @@ function UserMenu() {
       <button
         onClick={() => setOpen((v) => !v)}
         title={name}
-        className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface text-xs font-medium text-ink hover:bg-card"
+        className="flex h-10 w-10 items-center justify-center rounded-full border border-line bg-surface text-xs font-medium text-ink hover:bg-card md:h-8 md:w-8"
       >
         {initials}
       </button>
@@ -130,7 +130,7 @@ function MobileMenu({ tabs, isActive }: { tabs: ChromeTab[]; isActive: (to: stri
   return (
     <div className="md:hidden">
       <button onClick={() => setOpen((v) => !v)} aria-label={tr("layout.menue")} title={tr("layout.menue")}
-        className="flex h-8 w-8 items-center justify-center rounded-md border border-line bg-surface text-lg leading-none text-ink hover:bg-card">
+        className="flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface text-lg leading-none text-ink hover:bg-card md:h-8 md:w-8">
         ☰
       </button>
       {open && (
@@ -181,11 +181,16 @@ export default function Layout({ children }: { children: ReactNode }) {
       <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
         {/* Links: Marke + Projekt-Titel/Switcher bzw. Seitentitel */}
         <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
-          <Link to="/" className="shrink-0 text-xl" title={tr("layout.traccoon_start")}>🦝</Link>
+          <Link to="/" title={tr("layout.traccoon_start")}
+            className="flex h-10 w-10 shrink-0 items-center justify-center text-xl md:h-8 md:w-8">🦝</Link>
           {!onProjectPage && chrome.title && (
-            <span className="hidden shrink-0 font-semibold text-ink sm:inline">{chrome.title}</span>
+            <span className="truncate font-semibold text-ink">{chrome.title}</span>
           )}
-          <ProjectSwitcher />
+          {/* Der Wechsler ist auf einer projektlosen Seite am Handy nur Platzverbrauch —
+              dort steht der Seitentitel, und die Projektliste hängt im Menü. */}
+          <div className={!onProjectPage && chrome.title ? "hidden sm:block" : ""}>
+            <ProjectSwitcher />
+          </div>
         </div>
 
         {/* Mitte: Icon-Pill-Navigation — nur ab md; auf dem Handy übernimmt das Burger-Menü. */}
