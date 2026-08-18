@@ -7,6 +7,8 @@ const ACTION_LABEL: Record<string, string> = {
   http_request: "Ziel aufrufen",
   tool_call: "Werkzeug aufrufen",
   set_context: "Kontext setzen",
+  messwert: "Messwert festhalten",
+  messreihe_lesen: "Messreihe lesen",
   set_board_status: "Board-Spalte setzen",
   set_status: "Zustand setzen",
   set_field: "Feld setzen",

@@ -134,7 +134,9 @@ class Job(TimestampMixin, Base):
     http_request: Mapped[dict] = mapped_column(JSON, default=dict)
     prompt: Mapped[str] = mapped_column(Text, default="")
     command: Mapped[str] = mapped_column(String(500), default="")       # script-Pfad
-    args: Mapped[list] = mapped_column(JSON, default=list)
+    # Liste = Argumente eines Script-Jobs, Objekt = Parametersatz (Prompt-Platzhalter bzw.
+    # Startkontext eines Ablauf-Jobs). Die Annotation sagte bisher nur die halbe Wahrheit.
+    args: Mapped[list | dict] = mapped_column(JSON, default=list)
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     notify_mode: Mapped[str] = mapped_column(String(20), default="on_output")  # always|on_output|on_error|never
     notify_chat: Mapped[str | None] = mapped_column(String(64), nullable=True)

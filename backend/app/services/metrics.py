@@ -68,6 +68,9 @@ async def erfassen(db: AsyncSession, owner_id: int | None, key: str, wert: float
     if r.last_value is not None and float(wert) - r.last_value >= AUFFUELL_SPRUNG:
         r.warned_at = None
         r.warned_value = None
+    # Und jeder Wert beendet eine Stille-Phase — auch ein schlechter. Die nächste Stille
+    # darf dann erneut melden.
+    r.still_at = None
     r.last_value = float(wert)
     r.last_at = punkt.ts
     await db.flush()
@@ -114,8 +117,15 @@ async def trend(db: AsyncSession, r: MetricSeries, *, ziel: float = 0.0,
     """
     seit = _jetzt() - dt.timedelta(days=fenster_tage)
     ps = await punkte(db, r.id, seit=seit)
+    # Das Alter des letzten Werts gehört zu jeder Auskunft — auch zu den kurzen. Eine
+    # Reihe, die seit Wochen schweigt, liefert sonst unverdrossen weiter ihre alte Gerade,
+    # und niemand merkt, dass sie längst nicht mehr gefüttert wird.
+    letzter = _mit_zone(r.last_at) if r.last_at else None
     ergebnis = {"punkte": len(ps), "wert": r.last_value, "einheit": r.unit,
                 "pro_tag": None, "rest_tage": None, "leer_am": None, "guete": None,
+                "letzter_am": letzter.isoformat() if letzter else None,
+                "alter_stunden": (round((_jetzt() - letzter).total_seconds() / 3600.0, 2)
+                                  if letzter else None),
                 "erster_wert": ps[0].value if ps else None,
                 "erster_am": _mit_zone(ps[0].ts).isoformat() if ps else None}
     if len(ps) < MIN_PUNKTE:
@@ -152,4 +162,24 @@ def vorwarnen(r: MetricSeries, rest_tage: float | None, vorwarn_tage: float) -> 
         return False
     r.warned_at = _jetzt()
     r.warned_value = r.last_value
+    return True
+
+
+def stille_melden(r: MetricSeries, alter_stunden: float | None,
+                  schwelle_stunden: float) -> bool:
+    """Ob JETZT zu melden ist, dass die Reihe verstummt ist — einmal je Stille-Phase.
+
+    Gebaut wie `vorwarnen`, und aus demselben Grund: ein stündlicher Wächter darf nicht
+    stündlich dasselbe sagen. Die Marke steht an der Reihe (nicht im Ablauf), weil sie den
+    Zustand der Reihe beschreibt und einen Neustart überleben muss.
+
+    Das ist der Gegenpol zur Prognose: die Prognose sagt, wann etwas zu Ende geht; das hier
+    merkt, dass gar nichts mehr kommt — auch dann, wenn die Gegenstelle selbst ausgefallen
+    ist und deshalb nicht einmal mehr ihre eigene Störung melden kann.
+    """
+    if alter_stunden is None or schwelle_stunden <= 0 or alter_stunden < schwelle_stunden:
+        return False
+    if r.still_at is not None:
+        return False
+    r.still_at = _jetzt()
     return True

@@ -374,6 +374,13 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_default VARCHAR(20) "
                 "DEFAULT 'telegram' NOT NULL",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email VARCHAR(255)",
+                # Drossel je Nachrichten-Art: „höchstens alle N Minuten dasselbe".
+                "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS drossel_key VARCHAR(160)",
+                "CREATE INDEX IF NOT EXISTS ix_notifications_drossel "
+                "ON notifications (drossel_key, created_at)",
+                # Stille-Marke einer Messreihe (einmal je Stille-Phase melden).
+                "ALTER TABLE metric_series ADD COLUMN IF NOT EXISTS still_at "
+                "TIMESTAMP WITH TIME ZONE",
                 # Messreihen (create_all legt die Tabellen an; der Index nicht).
                 "CREATE INDEX IF NOT EXISTS ix_metric_points_series_ts "
                 "ON metric_points (series_id, ts DESC)",

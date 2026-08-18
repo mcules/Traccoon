@@ -75,3 +75,27 @@ async def test_katalog_erklaert_jeden_filter():
     eintraege = katalog()
     assert {"kurz", "default", "datum", "anzahl", "mal"} <= {e["name"] for e in eintraege}
     assert all(e["hilfe"] for e in eintraege)
+
+
+async def test_filterargument_darf_aus_dem_kontext_kommen():
+    """`default:event.type` soll den Wert von dort einsetzen, nicht das Wort.
+
+    Vorher stand wörtlich „event.type" in der Telegram-Nachricht — und im
+    Drossel-Schlüssel, wodurch alle Störungsarten derselbe Fall gewesen wären.
+    """
+    ctx = {"event": {"type": "deviceInactive", "attributes": {}}}
+    assert fuellen("{{ event.attributes.alarm | default:event.type }}", ctx) == "deviceInactive"
+
+
+async def test_zitiertes_argument_bleibt_woertlich():
+    ctx = {"event": {"type": "alarm"}}
+    assert fuellen('{{ fehlt | default:"event.type" }}', ctx) == "event.type"
+
+
+async def test_unbekannter_pfad_bleibt_als_text_stehen():
+    """Eine Vorgabe wie `default:unbekannt` verhält sich unverändert."""
+    assert fuellen("{{ fehlt | default:unbekannt }}", {}) == "unbekannt"
+
+
+async def test_zahlen_bleiben_zahlen():
+    assert fuellen("{{ text | kurz:4 }}", {"text": "abcdefgh"}) == "abc…"

@@ -11,7 +11,7 @@ from app.models.notification import Notification
 from app.models.ops import WebhookSub
 from sqlalchemy import select
 
-from conftest import make_user
+from conftest import auth, make_user
 
 pytestmark = pytest.mark.asyncio
 
@@ -128,3 +128,62 @@ async def test_workflow_modus_erkennt_wiederholungen(client, db):
     assert zweite.json().get("duplicate") is True
     laeufe = (await db.execute(select(WorkflowInstance))).scalars().all()
     assert len(laeufe) == 1
+
+
+# ── Bearbeiten darf nichts verlieren ─────────────────────────────────────────
+
+async def test_bearbeiten_behaelt_die_vorlagen(client, db):
+    """Die Antwort trug die Vorlagen nicht — das Formular füllte sie mit Standardwerten
+    nach, und Speichern setzte den eingetragenen Text still zurück."""
+    anna = await make_user(db, "anna")
+    r = await client.post("/webhooks", headers=auth(anna), json={
+        "route": "vorlagen", "mode": "notify",
+        "title_template": "Alarm {device.name}",
+        "body_template": "{device.name}: {event.type}"})
+    assert r.status_code in (200, 201), r.text
+    wid = r.json()["id"]
+
+    gelesen = [w for w in (await client.get("/webhooks", headers=auth(anna))).json()
+               if w["id"] == wid][0]
+    assert gelesen["title_template"] == "Alarm {device.name}"
+    assert gelesen["body_template"] == "{device.name}: {event.type}"
+
+    # Genau das tut die Oberfläche: gelesene Werte zurückschreiben.
+    zurueck = await client.put(f"/webhooks/{wid}", headers=auth(anna), json={
+        "route": gelesen["route"], "mode": gelesen["mode"],
+        "title_template": gelesen["title_template"],
+        "body_template": gelesen["body_template"]})
+    assert zurueck.status_code == 200
+    assert zurueck.json()["body_template"] == "{device.name}: {event.type}"
+
+
+async def test_ereignisname_kommt_zurueck(client, db):
+    anna = await make_user(db, "anna")
+    r = await client.post("/webhooks", headers=auth(anna), json={
+        "route": "melder", "mode": "event", "event_name": "sensor.ausgeloest"})
+    assert r.json()["event_name"] == "sensor.ausgeloest"
+
+
+async def test_sammelfenster_ueberlebt_doppelte_routennamen(db):
+    """Zwei Webhooks dürfen denselben Routennamen tragen — der Tick darf daran nicht sterben."""
+    import datetime as dt
+
+    from app.models.ops import WebhookCoalesce
+    from app.services.scheduler import _flush_coalesced
+
+    anna = await make_user(db, "anna")
+    bert = await make_user(db, "bert")
+    for besitzer in (anna, bert):
+        db.add(WebhookSub(public_id=f"doppelt-{besitzer.id}", route="gleich",
+                          owner_user_id=besitzer.id, mode="notify", notify_chat="1"))
+    db.add(WebhookCoalesce(route="gleich", event_key="x", payloads=[{"a": 1}],
+                           window_until=dt.datetime.now(tz=dt.timezone.utc)
+                           - dt.timedelta(minutes=1)))
+    await db.commit()
+
+    await _flush_coalesced()   # warf vorher MultipleResultsFound
+
+    from app.models.notification import Notification
+    sammel = (await db.execute(select(Notification).where(
+        Notification.kind == "webhook"))).scalars().all()
+    assert len(sammel) == 1 and "gleich" in sammel[0].title

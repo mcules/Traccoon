@@ -56,6 +56,10 @@ class WebhookOut(BaseModel):
     id: int; public_id: str; route: str; mode: str; project_id: int | None
     owner_user_id: int | None; agent: str | None; classify_agent: str | None
     prompt_tmpl: str | None = None; auto_run: bool = False
+    # Die Vorlagen gehören in die Antwort: das Frontend füllt sein Formular daraus und
+    # fällt sonst auf "{title}"/"{body}" zurück — jedes Speichern eines bestehenden
+    # Webhooks setzte die eingetragenen Texte damit still zurück.
+    title_template: str = "{title}"; body_template: str = "{body}"
     silent: bool; enabled: bool; secret_set: bool
     event_header: str | None = None; event_filter: str | None = None
     event_key_header: str | None = None; event_cooldowns: dict = {}
@@ -69,7 +73,9 @@ def _wh_out(w: WebhookSub) -> WebhookOut:
         id=w.id, public_id=w.public_id, route=w.route, mode=w.mode, project_id=w.project_id,
         owner_user_id=w.owner_user_id, agent=w.agent, classify_agent=w.classify_agent,
         prompt_tmpl=w.prompt_tmpl, auto_run=w.auto_run,
+        title_template=w.title_template, body_template=w.body_template,
         silent=w.silent, enabled=w.enabled, secret_set=bool(w.secret),
+        event_name=w.event_name,
         event_header=w.event_header, event_filter=w.event_filter,
         event_key_header=w.event_key_header, event_cooldowns=w.event_cooldowns or {},
         alert_events=w.alert_events or [], ref_field=w.ref_field, notify_chat=w.notify_chat,

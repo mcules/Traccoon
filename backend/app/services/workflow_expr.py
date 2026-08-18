@@ -143,7 +143,9 @@ FILTER = {
     "datum": (_f_datum, "Zeit formatieren — datum:\"%d.%m.%Y\""),
     "plus_zeit": (_f_plus_zeit, "Zeit verschieben — plus_zeit:2,\"h\" (t=Tage, h=Stunden, m=Minuten)"),
     # Allgemein
-    "default": (_f_default, "Ersatz, wenn leer — default:\"sonstiges\""),
+    "default": (_f_default,
+                "Ersatz, wenn leer — default:\"sonstiges\" (in Anführungszeichen wörtlich, "
+                "ohne Anführungszeichen ein Kontextpfad: default:event.type)"),
     "json": (_f_json, "Als JSON-Text"),
     "text": (lambda w: "" if w is None else str(w), "Als Text"),
 }
@@ -175,14 +177,17 @@ def _teile(ausdruck: str) -> list[str]:
     return [t for t in teile if t]
 
 
-def _argumente(roh: str) -> list[str]:
-    """`kurz:40,"…"` → ["40", "…"] — Komma trennt, Anführungszeichen schützen.
+def _argumente(roh: str) -> list[tuple[str, bool]]:
+    """`kurz:40,"…"` → [("40", False), ("…", True)] — Komma trennt, Anführungszeichen schützen.
+
+    Das zweite Feld sagt, ob das Argument zitiert war. Daran hängt mehr als Kosmetik:
+    zitiert heißt wörtlich, unzitiert darf ein Kontextpfad sein (siehe `auswerten`).
 
     Ein *ausdrücklich* leeres Argument bleibt erhalten (`kurz:11,""` heißt „kürzen, aber
     ohne Auslassungszeichen"); weggeworfen wird nur, was gar nicht dasteht. Ohne diese
     Unterscheidung schluckt der Zerleger die Absicht und nimmt stillschweigend die Vorgabe.
     """
-    out: list[str] = []
+    out: list[tuple[str, bool]] = []
     aktuell, quote, zitiert = "", "", False
     for zeichen in roh:
         if quote:
@@ -194,12 +199,12 @@ def _argumente(roh: str) -> list[str]:
             quote, zitiert = zeichen, True
         elif zeichen == ",":
             if zitiert or aktuell.strip() != "":
-                out.append(aktuell.strip() if not zitiert else aktuell)
+                out.append((aktuell.strip() if not zitiert else aktuell, zitiert))
             aktuell, zitiert = "", False
         else:
             aktuell += zeichen
     if zitiert or aktuell.strip() != "":
-        out.append(aktuell.strip() if not zitiert else aktuell)
+        out.append((aktuell.strip() if not zitiert else aktuell, zitiert))
     return out
 
 
@@ -232,10 +237,30 @@ def auswerten(ausdruck: str, ctx: dict):
             continue
         fn = eintrag[0]
         try:
-            wert = fn(wert, *_argumente(roh)) if roh else fn(wert)
+            wert = fn(wert, *_filterargumente(roh, ctx)) if roh else fn(wert)
         except Exception:  # noqa: BLE001 — eine schiefe Vorlage kippt keinen Lauf
             log.info("Filter %r auf %r fehlgeschlagen", name, wert)
     return wert
+
+
+def _filterargumente(roh: str, ctx: dict) -> list[str]:
+    """Argumente eines Filters — zitiert wörtlich, sonst gern aus dem Kontext.
+
+    `default:"–"` ist ein Text, `default:event.type` der Wert von dort. Ohne diese Regel
+    schrieb `{{ event.attributes.alarm | default:event.type }}` wörtlich „event.type" in
+    die Nachricht — und in den Drossel-Schlüssel, wo alle Störungsarten dann derselbe Fall
+    gewesen wären. Löst der Pfad nichts auf, bleibt der Text stehen: eine Vorgabe wie
+    `default:unbekannt` verhält sich unverändert.
+    """
+    fertig: list[str] = []
+    for text, zitiert in _argumente(roh):
+        if not zitiert and text and not text.replace(".", "", 1).lstrip("-").isdigit():
+            aus_ctx = _dig(ctx, text)
+            if aus_ctx is not None:
+                fertig.append(aus_ctx if isinstance(aus_ctx, str) else str(aus_ctx))
+                continue
+        fertig.append(text)
+    return fertig
 
 
 def fuellen(text: str, ctx: dict) -> str:

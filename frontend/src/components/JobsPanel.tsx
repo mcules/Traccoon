@@ -138,17 +138,23 @@ export default function JobsPanel() {
           <textarea value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} rows={6}
             placeholder="Prompt — {{platzhalter}} kommen aus den Parametern" className={inp + " col-span-2 font-mono text-xs"} />
         )}
-        {f.kind === "prompt" && (
+        {/* Parameter gibt es für beide: beim Prompt füllen sie die Platzhalter, beim
+            Ablauf sind sie sein Startkontext — derselbe Ablauf, andere Messreihe. */}
+        {(f.kind === "prompt" || f.kind === "workflow") && (
           <div className="col-span-2">
             <textarea value={paramText} onChange={(e) => setParams(e.target.value)} rows={4}
-              placeholder={'Parameter (JSON), z.B. {"thema": "IT-Sicherheit"}'}
+              placeholder={f.kind === "workflow"
+                ? 'Startkontext (JSON), z.B. {"reihe": "akku.shelter", "still_stunden": 26}'
+                : 'Parameter (JSON), z.B. {"thema": "IT-Sicherheit"}'}
               className={inp + " w-full font-mono text-xs"} />
             <div className="mt-1 text-xs">
               {paramFehler
                 ? <span className="text-red-400">{paramFehler} — Parameter werden nicht übernommen.</span>
-                : fehlend.length
-                  ? <span className="text-amber-400">Ohne Wert: {fehlend.join(", ")} — bleibt wörtlich im Prompt stehen.</span>
-                  : <span className="text-muted">Eingebaut: heute, jetzt, seit, zeitfenster.</span>}
+                : f.kind === "workflow"
+                  ? <span className="text-muted">Steht im Ablauf als Kontext zur Verfügung — abfragbar in Weichen und als {"{{name}}"}.</span>
+                  : fehlend.length
+                    ? <span className="text-amber-400">Ohne Wert: {fehlend.join(", ")} — bleibt wörtlich im Prompt stehen.</span>
+                    : <span className="text-muted">Eingebaut: heute, jetzt, seit, zeitfenster.</span>}
             </div>
           </div>
         )}
