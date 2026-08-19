@@ -1,17 +1,16 @@
-"""Personalakte: Index auf (agent, started_at) für die Rollen-Kennzahlen
+"""Personnel file: an index on (agent, started_at) for the role key figures
 
-Die Personalakte des Büros (`GET /office/agents`) rechnet fünf gruppierte Abfragen, und
-jede einzelne gruppiert nach `runs.agent` innerhalb eines Zeitfensters — die
-Werkzeugtabelle joint dafür sogar `run_steps` gegen `runs`. Bisher gab es Indizes auf
-`(project_id, started_at)`, `(owner_id, started_at)` und `(issue_id, started_at)`, aber
-keinen auf der Rolle: die Akte wäre ein Seq-Scan über inzwischen 13 000 Laufzeilen,
-und zwar bei jedem Öffnen des Reiters.
+The personnel file of the office (`GET /office/agents`) computes five grouped queries, and
+each of them groups by `runs.agent` within a time window; the tool table even joins
+`run_steps` against `runs` for it. Until now there were indexes on `(project_id,
+started_at)`, `(owner_id, started_at)` and `(issue_id, started_at)`, but none on the role:
+the file would be a seq scan over meanwhile 13 000 run rows, on every opening of the tab.
 
-`started_at DESC` steht mit im Index, weil das Fenster (`since_hours`) immer die jüngsten
-Läufe meint — die Sortierrichtung erspart Postgres den Rückwärtslauf.
+`started_at DESC` stands in the index as well, because the window (`since_hours`) always
+means the most recent runs, and the sort direction saves Postgres the backward run.
 
-Der Live-Pfad ist `main.py::dev_create_all` (dort steht dasselbe DDL idempotent);
-diese Revision ist der Pfad für `MIGRATE=1`.
+The live path is `main.py::dev_create_all` (the same DDL stands there idempotently); this
+revision is the path for `MIGRATE=1`.
 
 Revision ID: b2e7f9c14a08
 Revises: a1d47f8c9b02

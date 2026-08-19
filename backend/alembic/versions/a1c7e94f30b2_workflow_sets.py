@@ -1,8 +1,8 @@
-"""Prozess-Sätze: workflow_sets + Slot/Archiv an Definitionen, Satz-Referenz an Projekt/Nutzer
+"""Process sets: workflow_sets plus slot and archive on definitions, a set reference on project and user
 
-Macht alle Abläufe (Ticket-Lebenszyklus, Abnahme, Beschaffung, Eingang) zu editierbaren
-Graphen: ein Satz hält je Slot eine Vorlage, Projekte referenzieren einen Satz und legen
-erst beim Anpassen eine eigene Kopie an (copy-on-write).
+Makes all flows (ticket lifecycle, acceptance, procurement, inbox) editable graphs: a set
+holds one template per slot, projects reference a set and only create a copy of their own on
+adjusting (copy-on-write).
 
 Revision ID: a1c7e94f30b2
 Revises: f4b9d2e60a18
@@ -48,8 +48,8 @@ def upgrade() -> None:
         'archived_at', sa.DateTime(timezone=True), nullable=True))
     op.create_index('ix_workflow_definitions_set_id', 'workflow_definitions', ['set_id'])
     op.create_index('ix_workflow_definitions_slot', 'workflow_definitions', ['slot'])
-    # Je Satz / je Projekt höchstens EIN aktiver Ablauf pro Slot; archivierte
-    # (zurückgesetzte) Kopien bleiben erhalten, damit laufende Instanzen intakt bleiben.
+    # At most ONE active flow per slot per set respectively per project; archived (reset)
+    # copies are kept so that running instances stay intact.
     op.create_index('uq_workflow_def_set_slot', 'workflow_definitions', ['set_id', 'slot'],
                     unique=True, postgresql_where=sa.text('archived_at IS NULL'))
     op.create_index('uq_workflow_def_project_slot', 'workflow_definitions', ['project_id', 'slot'],
@@ -63,8 +63,8 @@ def upgrade() -> None:
 
     op.add_column('workflow_step_runs', sa.Column(
         'routed_at', sa.DateTime(timezone=True), nullable=True))
-    # Bestandsdaten: alle bereits abgeschlossenen Schritte gelten als geroutet, sonst würde
-    # die Engine sie nach dem Update erneut in eine Kante übersetzen.
+    # Existing data: all already finished steps count as routed; otherwise the engine would
+    # translate them into an edge again after the update.
     op.execute("UPDATE workflow_step_runs SET routed_at = completed_at "
                "WHERE completed_at IS NOT NULL AND routed_at IS NULL")
 
@@ -77,7 +77,7 @@ def upgrade() -> None:
     op.add_column('issues', sa.Column('workflow_instance_id', sa.Integer(), nullable=True))
     op.create_index('ix_issues_workflow_instance_id', 'issues', ['workflow_instance_id'])
 
-    # Bestehende Beschaffungs-Definitionen dem Slot zuordnen (sie sind die Projekt-Anpassung).
+    # Assign existing procurement definitions to the slot (they are the project adjustment).
     op.execute("UPDATE workflow_definitions SET slot = 'hardware_procurement' "
                "WHERE key = 'hardware-beschaffung' AND slot IS NULL AND project_id IS NOT NULL")
 
@@ -103,4 +103,4 @@ def downgrade() -> None:
     op.drop_column('workflow_definitions', 'set_id')
     op.drop_table('workflow_sets')
     sa.Enum(name='workflowsetscope').drop(op.get_bind(), checkfirst=True)
-    # Enum-Werte (wait_event/subflow) lassen sich in PG nicht entfernen — bleiben stehen.
+    # Enum values (wait_event/subflow) cannot be removed in PG, so they stay.
