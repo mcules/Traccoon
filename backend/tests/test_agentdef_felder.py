@@ -36,7 +36,7 @@ def test_lauf_liest_nur_vorhandene_agentfelder():
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
         and node.value.id == "agent"
     }
-    assert gelesen <= felder, f"AgentDef fehlt: {sorted(gelesen - felder)}"
+    assert gelesen <= felder, f"AgentDef is missing: {sorted(gelesen - felder)}"
 
 
 def test_fehlerzweig_meldet_den_echten_fehler(caplog):
@@ -63,7 +63,7 @@ async def test_watchdog_meldet_stillstand_genau_einmal(monkeypatch, caplog):
     with caplog.at_level(logging.ERROR):
         gemeldet = worker.watchdog_pruefe(False)
     assert gemeldet and dumps == [1]
-    assert "tickt seit" in caplog.text
+    assert "has not ticked" in caplog.text
 
     # Second pass with a persisting standstill: no second dump (no log flooding).
     assert worker.watchdog_pruefe(True) is True

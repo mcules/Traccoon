@@ -129,7 +129,7 @@ async def nachlernen(db: AsyncSession, owner_id: int | None, account: str, folde
     hoechste = max(int(t.get("uid") or 0) for t in neu)
     await db.commit()
     await set_setting(db, key, str(hoechste))
-    log.info("Angelernt: %s/%s → %d Nachrichten als %s (Stand jetzt %d)",
+    log.info("Learned: %s/%s -> %d messages as %s (now at %d)",
              account, folder, gelernt, "Spam" if ist_spam else "erwünscht", hoechste)
     return len(treffer), gelernt
 
@@ -139,7 +139,7 @@ async def konten(db: AsyncSession) -> list[dict]:
     try:
         antwort = await call_tool(IMAP_MCP_URL, "list_accounts", {})
     except McpError as exc:
-        log.warning("Kontenliste nicht abrufbar: %s", exc)
+        log.warning("Account list not fetchable: %s", exc)
         return []
     return list((ergebnis_json(antwort) or {}).get("accounts") or [])
 
@@ -148,7 +148,7 @@ async def ordner(db: AsyncSession, account: str) -> list[str]:
     try:
         antwort = await call_tool(IMAP_MCP_URL, "list_folders", {"account": account})
     except McpError as exc:
-        log.warning("Ordnerliste %s nicht abrufbar: %s", account, exc)
+        log.warning("Folder list %s not fetchable: %s", account, exc)
         return []
     daten = ergebnis_json(antwort) or {}
     return [f["name"] for f in (daten.get("folders") or []) if not f.get("ignored")]
@@ -197,7 +197,7 @@ async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
         alias = konto["alias"]
         ordnername = sent_ordner(await ordner(db, alias))
         if not ordnername:
-            log.info("Konto %s: kein Gesendet-Ordner gefunden", alias)
+            log.info("Account %s: no sent folder found", alias)
             continue
         key = _stand_key(alias, ordnername)
         try:
@@ -227,7 +227,7 @@ async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
         await db.commit()
         await set_setting(db, key, str(max(int(t.get("uid") or 0) for t in frisch)))
     if neu:
-        log.info("Gesendet-Abgleich: %d neue erwünschte Adressen", neu)
+        log.info("Sent folder reconciliation: %d new wanted addresses", neu)
     return neu
 
 
@@ -289,6 +289,6 @@ async def kaltstart(db: AsyncSession, owner_id: int | None, *,
         for f in dict.fromkeys(ham_ordner):
             _, n = await nachlernen(db, owner_id, alias, f, ist_spam=False, limit=limit)
             bilanz["ham"] += n
-    log.info("Kaltstart: %d Nachrichten als Spam, %d als erwünscht gelernt",
+    log.info("Cold start: %d messages learned as spam, %d as wanted",
              bilanz["spam"], bilanz["ham"])
     return bilanz

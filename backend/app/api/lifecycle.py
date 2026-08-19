@@ -42,7 +42,7 @@ async def _waiting_approval(db: AsyncSession, issue: Issue) -> tuple[int, Workfl
     inst = await live_instance(db, issue)
     if inst is None:
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            "Für dieses Ticket läuft kein Prozess — bitte Agent zuweisen")
+                            "No process is running for this ticket, please assign an agent")
     step = (await db.execute(
         select(WorkflowStepRun).where(
             WorkflowStepRun.instance_id == inst.id,
@@ -50,7 +50,7 @@ async def _waiting_approval(db: AsyncSession, issue: Issue) -> tuple[int, Workfl
             WorkflowStepRun.node_type == WorkflowNodeType.approval,
         ).order_by(WorkflowStepRun.id.desc()))).scalars().first()
     if step is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Es wartet gerade keine Freigabe")
+        raise HTTPException(status.HTTP_409_CONFLICT, "No approval is waiting right now")
     return inst.id, step
 
 
@@ -88,14 +88,14 @@ async def start_planning(
     issue, access = pair
     _require_ai(access)
     if issue.assigned_agent is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Kein Agent zugewiesen")
+        raise HTTPException(status.HTTP_409_CONFLICT, "No agent assigned")
     from ..services.artifacts import set_ticket_status
     await set_ticket_status(db, issue, TicketAgentStatus.planning)
     await db.commit()
     inst = await start_lifecycle(db, issue, access.user.id, entry="plan", restart=True)
     if inst is None:
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            "Kein veröffentlichter Lebenszyklus-Prozess für dieses Projekt")
+                            "No published lifecycle process for this project")
     await db.commit()
     await db.refresh(issue)
     return issue
@@ -109,9 +109,9 @@ async def approve_plan(
     issue, access = pair
     _require_ai(access)
     if issue.agent_status != TicketAgentStatus.plan_review:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Ticket ist nicht in Plan-Freigabe")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The ticket is not in plan approval")
     if not issue.plan:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Kein Plan vorhanden")
+        raise HTTPException(status.HTTP_409_CONFLICT, "No plan present")
     await add_system_comment(db, issue.id, f"✅ Plan freigegeben von {_who(access)}")
     await _decide(db, issue, "approved")
     return issue
@@ -124,7 +124,7 @@ async def approve_split(pair: tuple[Issue, Access] = Depends(get_issue_access),
     issue, access = pair
     _require_ai(access)
     if issue.hold_reason != HoldReason.plan_split:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Kein Aufteilungs-Vorschlag zur Freigabe")
+        raise HTTPException(status.HTTP_409_CONFLICT, "No splitting proposal to approve")
     await add_system_comment(db, issue.id, f"✅ Aufteilung freigegeben von {_who(access)}")
     await _decide(db, issue, "approved")
     children = (await db.execute(
@@ -132,7 +132,7 @@ async def approve_split(pair: tuple[Issue, Access] = Depends(get_issue_access),
     )).scalars().all()
     if not children:
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            "Der Prozess hat keine Teilaufgaben angelegt — Plan prüfen")
+                            "The process created no sub-tasks, check the plan")
     return list(children)
 
 
@@ -144,7 +144,7 @@ async def reject_plan(
     issue, access = pair
     _require_ai(access)
     if issue.agent_status != TicketAgentStatus.plan_review:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Ticket ist nicht in Plan-Freigabe")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The ticket is not in plan approval")
     issue.plan = None
     await add_system_comment(db, issue.id, f"✖ Plan abgelehnt von {_who(access)}")
     await _decide(db, issue, "rejected")
@@ -165,7 +165,7 @@ async def complete(
     _require_ai(access)
     if issue.agent_status not in (TicketAgentStatus.to_test, TicketAgentStatus.testing,
                                   TicketAgentStatus.hold):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Ticket ist nicht zur Abnahme bereit")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The ticket is not ready for acceptance")
     await add_system_comment(db, issue.id, f"✅ Abnahme durch {_who(access)}")
     await _decide(db, issue, "approved")
     return issue

@@ -114,7 +114,7 @@ async def test_vergessener_standardzweig_wird_gesetzt(db, monkeypatch):
     zaehler, _ = _modell(monkeypatch, json.dumps(ohne))
     r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
                               subject_kind=WorkflowSubjectKind.standalone)
-    assert r["fehler"] == [] and zaehler["n"] == 1, "keine Nachbesserungsrunde nötig"
+    assert r["fehler"] == [] and zaehler["n"] == 1, "no rework round needed"
     weiche = next(n for n in r["graph"]["nodes"] if n["id"] == "w")
     assert weiche["data"]["config"]["default_handle"] == "nein"
     assert all(n["data"]["config"]["outcome"] == "completed"
@@ -134,7 +134,7 @@ async def test_fehler_werden_zurueckgegeben_und_einmal_nachgebessert(db, monkeyp
     zaehler, chat = _modell(monkeypatch, json.dumps(KAPUTT), json.dumps(GUT))
     r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
                               subject_kind=WorkflowSubjectKind.standalone)
-    assert zaehler["n"] == 2, "genau eine Nachbesserung"
+    assert zaehler["n"] == 2, "exactly one rework round"
     assert r["fehler"] == []
     # The correction gets the real validation sentences to see.
     nachricht = chat.letzte["messages"][-1]["content"]
@@ -197,7 +197,7 @@ async def test_endpunkt_speichert_nichts(client, db, monkeypatch):
     assert len(r.json()["graph"]["nodes"]) == 3
 
     await db.refresh(v)
-    assert v.graph == {"nodes": [], "edges": []}, "der Entwurf darf nichts überschreiben"
+    assert v.graph == {"nodes": [], "edges": []}, "the draft must not overwrite anything"
 
 
 async def test_fremder_darf_nicht_bauen(client, db, monkeypatch):
@@ -223,4 +223,4 @@ async def test_ohne_zugang_klare_ansage(client, db, monkeypatch):
     r = await client.post(f"/workflows/{d.id}/entwurf", headers=auth(anna),
                           json={"beschreibung": "melde Störungen"})
     assert r.status_code == 409
-    assert "Claude-Zugang" in r.json()["detail"]
+    assert "Claude access" in r.json()["detail"]

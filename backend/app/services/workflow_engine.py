@@ -337,11 +337,11 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
             node_type=NType(ntype), status=SStatus.skipped, completed_at=_now(),
             result={"deaktiviert": True, "modus": modus}))
         if modus == "abbrechen":
-            log.info("Instanz %s: abgeschalteter Schritt %s beendet den Lauf",
+            log.info("Instance %s: switched off step %s ends the run",
                      inst.id, node["id"])
             return Outcome(terminal=True, instance_status="cancelled",
                            error=f"Schritt '{label}' ist abgeschaltet (Ablauf beendet)")
-        log.info("Instanz %s: Schritt %s übersprungen (abgeschaltet)", inst.id, node["id"])
+        log.info("Instance %s: step %s skipped (switched off)", inst.id, node["id"])
         return Outcome(handle="out")
 
     if ntype == "start":
@@ -624,7 +624,7 @@ def _faellig_ab(cfg: dict, ctx: dict) -> dt.datetime:
                 ziel = ziel.replace(tzinfo=dt.timezone.utc)
             return max(ziel, jetzt)
         except ValueError:
-            log.warning("Timer: %r ist kein Zeitpunkt — es wird nicht gewartet", roh)
+            log.warning("Timer: %r is not a point in time, nothing is waited for", roh)
             return jetzt
     menge = float(cfg.get("dauer") or 0)
     einheit = str(cfg.get("einheit") or "m")[:1].lower()
@@ -949,7 +949,7 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
             node_type=NType.agent_task, status=SStatus.failed,
             error=f"Gebundenes Ticket #{inst.issue_id} nicht gefunden", completed_at=_now(),
         ))
-        return Outcome(terminal=True, instance_status="failed", error="Ticket nicht gefunden")
+        return Outcome(terminal=True, instance_status="failed", error="Ticket not found")
 
     # -- gatekeeper (policy, not graph) --------------------------------------
     from . import agent_gate
@@ -1036,7 +1036,7 @@ async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dic
     try:
         result = await wait_result(task_id, timeout=timeout or None)
     except Exception:  # noqa: BLE001
-        log.exception("wait_result (%s) für %s fehlgeschlagen", was, task_id)
+        log.exception("wait_result (%s) for %s failed", was, task_id)
         result = None
     if result is not None:
         return result, result
@@ -1047,7 +1047,7 @@ async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dic
     else:
         text = (f"Lauf verschwunden — seit {int(GNADENFRIST / 60)} Minuten kein Lebenszeichen "
                 "(kein Worker-Puls, nicht mehr in der Warteschlange).")
-    log.warning("Wächter %s (%s) ohne Ergebnis nach %ds: %s", task_id, was, dauer, text)
+    log.warning("Watchdog %s (%s) without a result after %ds: %s", task_id, was, dauer, text)
     return None, {"status": "failed", "success": False, "output": text, "summary": text,
                   "verloren": True, "task_id": task_id}
 
@@ -1286,10 +1286,10 @@ async def start_workflow(
     session of its own. `inst` is reloaded at the end.
     """
     if definition.current_version_id is None:
-        raise ValueError("Workflow hat keine veröffentlichte Version")
+        raise ValueError("The workflow has no published version")
     version = await db.get(WorkflowVersion, definition.current_version_id)
     if version is None:
-        raise ValueError("Version nicht gefunden")
+        raise ValueError("Version not found")
     graph = version.graph or {}
     start = next((n for n in _nodes(graph) if node_type(n) == "start"), None)
     if start is None:
@@ -1812,7 +1812,7 @@ async def nachzuegler_einsammeln() -> None:
         if wieder:
             await db.commit()
     for art, iid, tok_id, step_id, task_id, omap, timeout, ckey in wieder:
-        log.info("Nachzügler: Ergebnis für %s doch noch da → Schritt %s wird verbucht",
+        log.info("Straggler: the result for %s is there after all, step %s is booked",
                  task_id, step_id)
         if art == "agent":
             _spawn(_await_agent(iid, tok_id, step_id, task_id, omap, timeout))
@@ -1853,7 +1853,7 @@ async def tote_laeufe_schliessen() -> int:
             run.error = ((run.error or "") +
                          "Kein Lebenszeichen mehr: der Lauf wurde abgebrochen, ohne sich "
                          "abmelden zu können (z. B. Absturz beim Schreiben).").strip()
-            log.warning("Lauf %s (%s, Auftrag %s) ohne Lebenszeichen geschlossen",
+            log.warning("Run %s (%s, assignment %s) closed without a sign of life",
                         run.id, run.agent, run.task_id)
             geschlossen += 1
         if geschlossen:
@@ -1867,7 +1867,7 @@ async def _engine_tick() -> None:
     try:
         await tote_laeufe_schliessen()
     except Exception:  # noqa: BLE001, must never block the tick
-        log.exception("Schließen toter Läufe fehlgeschlagen")
+        log.exception("Closing dead runs failed")
 
     # Reattach lost watchers. A watcher lives in the backend process, and when it is lost
     # (reload, exception, hanging connection) nobody waits for the result any more, and the
@@ -1875,7 +1875,7 @@ async def _engine_tick() -> None:
     try:
         await recover_workflow_agents()
     except Exception:  # noqa: BLE001, must never block the tick
-        log.exception("Wiederanbinden der Wächter fehlgeschlagen")
+        log.exception("Reattaching the watchdogs failed")
 
     # Reconcile the artifact rows: `agent_status` is set in many places (endpoints, bot, PM
     # chat, worker), and reconciling catches up within one tick instead of maintaining every
@@ -1892,12 +1892,12 @@ async def _engine_tick() -> None:
     try:
         await faellige_timer()
     except Exception:  # noqa: BLE001, must never block the tick
-        log.exception("Wecken fälliger Timer fehlgeschlagen")
+        log.exception("Waking due timers failed")
 
     try:
         await nachzuegler_einsammeln()
     except Exception:  # noqa: BLE001, must never block the tick
-        log.exception("Nachzügler-Abholung fehlgeschlagen")
+        log.exception("Fetching stragglers failed")
 
     # Pick up tickets without a process instance. This used to run ONLY at backend start,
     # so a ticket orphaned in between was dead until the next restart, the nastiest kind of
@@ -1908,7 +1908,7 @@ async def _engine_tick() -> None:
         async with SessionLocal() as db:
             n = await adopt_orphans(db)
         if n:
-            log.info("Tick: %d verwaiste(s) Ticket(s) in den Lebenszyklus geholt", n)
+            log.info("Tick: %d orphaned ticket(s) pulled into the lifecycle", n)
     except Exception:  # noqa: BLE001, must never block the tick
         log.exception("Einsammeln verwaister Tickets fehlgeschlagen")
 
@@ -1931,7 +1931,7 @@ async def _engine_tick() -> None:
         try:
             await advance(iid)
         except Exception:  # noqa: BLE001
-            log.exception("workflow advance failed für Instanz %s", iid)
+            log.exception("workflow advance failed for instance %s", iid)
 
 
 async def recover_workflow_agents() -> None:

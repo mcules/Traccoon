@@ -246,7 +246,7 @@ def _fs_resolve(root: str, rel: str) -> str:
     full = os.path.realpath(os.path.join(root, rel or "."))
     rootr = os.path.realpath(root)
     if full != rootr and not full.startswith(rootr + os.sep):
-        raise ValueError("Pfad außerhalb des Projekt-Workspace")
+        raise ValueError("Path outside the project workspace")
     return full
 
 
@@ -578,11 +578,11 @@ async def _add_step(db: AsyncSession, ctx: office.RunCtx, role: str, tool: str |
             out_tokens=out_tokens, cache_read_tokens=cache_read_tokens, provider=provider,
             model=model)
     except Exception as exc:  # noqa: BLE001 — bookkeeping is never a reason to give up
-        log.warning("Schrittzeile nicht geschrieben (%s/%s): %s", role, tool or "—", exc)
+        log.warning("Step row not written (%s/%s): %s", role, tool or "—", exc)
         try:
             await db.rollback()
         except Exception:  # noqa: BLE001
-            log.exception("Rollback nach fehlgeschlagener Schrittzeile misslungen")
+            log.exception("The rollback after a failed step row did not succeed")
         return
     # `SessionLocal` runs with expire_on_commit=False, so `step.id` is there without asking.
     await office.publish_step(ctx, step)
@@ -662,7 +662,7 @@ async def _end_run(db: AsyncSession, run_id: int, status: str, summary: str = ""
     except Exception:  # noqa: BLE001
         # The room is a spectator, not a participant: a closing row that was not written must
         # not swallow the result of the run (the status is settled above already).
-        log.warning("Büro: run_end von Lauf %s nicht geschrieben", run_id, exc_info=True)
+        log.warning("Office: run_end of run %s not written", run_id, exc_info=True)
 
 
 async def _add_comment(db: AsyncSession, issue_id: int, label: str, body: str) -> None:
@@ -743,14 +743,14 @@ def _server_spec(r, extra_headers: dict | None = None) -> dict | None:
     from ..core.security import decrypt_secret
 
     if r.transport not in ("http", "sse") or not r.url:
-        log.info("MCP-Server %s übersprungen (transport=%s)", r.name, r.transport)
+        log.info("MCP server %s skipped (transport=%s)", r.name, r.transport)
         return None
     headers = dict(r.headers or {})
     if r.env_enc:
         try:
             headers.update(json.loads(decrypt_secret(r.env_enc)))
         except Exception:  # noqa: BLE001
-            log.warning("MCP-Server %s: env konnte nicht entschlüsselt werden", r.name)
+            log.warning("MCP server %s: env could not be decrypted", r.name)
     if extra_headers:
         headers.update(extra_headers)
     return {"name": r.name, "url": r.url, "headers": headers}
@@ -780,7 +780,7 @@ async def _agent_mcp(db: AsyncSession, agent: AgentDef, owner_id: int | None = N
                 try:
                     values = json.loads(decrypt_secret(inst.values_enc))
                 except Exception:  # noqa: BLE001
-                    log.warning("MCP-Instanz %s: values nicht entschlüsselbar", inst.id)
+                    log.warning("MCP instance %s: values not decryptable", inst.id)
             spec = _server_spec(srv, extra_headers=values)  # Variablen → Header
             if spec:
                 out.append(spec)

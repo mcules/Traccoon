@@ -63,7 +63,7 @@ def _cmp(a, b):
         return na, nb
     if isinstance(a, str) and isinstance(b, str):
         return a, b
-    raise JsonLogicError(f"Nicht vergleichbar: {a!r} / {b!r}")
+    raise JsonLogicError(f"Not comparable: {a!r} / {b!r}")
 
 
 def _dig(data, path: str):
@@ -83,20 +83,20 @@ def _dig(data, path: str):
 def evaluate(rule, data: dict, _depth: int = 0):
     """Wertet einen JSONLogic-Ausdruck gegen `data` aus."""
     if _depth > MAX_DEPTH:
-        raise JsonLogicError("Rekursionstiefe überschritten")
+        raise JsonLogicError("Recursion depth exceeded")
     # Literale
     if rule is None or isinstance(rule, (int, float, str, bool)):
         return rule
     if isinstance(rule, list):
         return [evaluate(x, data, _depth + 1) for x in rule]
     if not isinstance(rule, dict):
-        raise JsonLogicError(f"Ungültiger Ausdruck: {rule!r}")
+        raise JsonLogicError(f"Invalid expression: {rule!r}")
     if len(rule) != 1:
-        raise JsonLogicError("Operator-Objekt braucht genau einen Schlüssel")
+        raise JsonLogicError("An operator object needs exactly one key")
 
     op, args = next(iter(rule.items()))
     if op not in ALLOWED_OPS:
-        raise JsonLogicError(f"Operator '{op}' nicht erlaubt")
+        raise JsonLogicError(f"Operator '{op}' is not allowed")
 
     if op == "var":
         if isinstance(args, list):
@@ -154,7 +154,7 @@ def evaluate(rule, data: dict, _depth: int = 0):
         if len(nums) == 1:
             return -nums[0]
         return nums[0] - nums[1]
-    raise JsonLogicError(f"Operator '{op}' nicht implementiert")  # pragma: no cover
+    raise JsonLogicError(f"Operator '{op}' is not implemented")  # pragma: no cover
 
 
 def collect_operators(rule, acc: set | None = None) -> set:

@@ -126,7 +126,7 @@ async def cap_ok(db, issue: Issue) -> GateVerdict:
     run_count, in_tok = int(agg[0]), int(agg[1] or 0)
 
     if run_count >= MAX_RUNS_PER_TICKET or in_tok >= MAX_INPUT_TOKENS_PER_TICKET:
-        log.warning("Ticket %s: Runaway-Cap erreicht (%d Läufe / %d Input-Tokens) → hold",
+        log.warning("Ticket %s: runaway cap reached (%d runs / %d input tokens), going to hold",
                     issue.key, run_count, in_tok)
         return GateVerdict(False, "cap", hold=True, hold_reason=HoldReason.cap,
                            detail=f"{run_count} Läufe / {in_tok} Input-Tokens")
@@ -144,7 +144,7 @@ async def cap_ok(db, issue: Issue) -> GateVerdict:
                            body=text, kind="cost_warn"))
             from .notify import notify_issue
             await notify_issue(db, issue, "cost_warn", f"{issue.key}: Kostenwarnung", text)
-            log.warning("Ticket %s: Kostenwarnung (%d Läufe / %d Input-Tokens)",
+            log.warning("Ticket %s: cost warning (%d runs / %d input tokens)",
                         issue.key, run_count, in_tok)
     return OK
 

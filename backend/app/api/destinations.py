@@ -54,7 +54,7 @@ async def _require_write(db: AsyncSession, user: User, *, user_id: int | None,
     if project_id is not None:
         project = await db.get(Project, project_id)
         if project is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Projekt nicht gefunden")
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
         access = await build_access(project, user, db)   # 404 on a foreign project
         if not access.has_role(ProjectRole.maintainer):
             raise HTTPException(status.HTTP_403_FORBIDDEN,
@@ -62,17 +62,17 @@ async def _require_write(db: AsyncSession, user: User, *, user_id: int | None,
         return
     if user_id is not None:
         if user_id != user.id and user.global_role != GlobalRole.admin:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Fremdes persönliches Ziel")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Foreign personal destination")
         return
     if user.global_role != GlobalRole.admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "Systemweite Ziele darf nur ein Admin anlegen")
+                            "Only an admin may create system-wide destinations")
 
 
 async def _get(db: AsyncSession, did: int) -> Destination:
     d = await db.get(Destination, did)
     if d is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ziel nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Destination not found")
     return d
 
 
@@ -124,7 +124,7 @@ async def create_destination(
     if doppelt is not None and (doppelt.user_id, doppelt.project_id) == (data.user_id,
                                                                         data.project_id):
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            f"Ziel '{data.name}' gibt es in diesem Bereich schon")
+                            f"The destination '{data.name}' already exists in this scope")
     werte = data.model_dump(exclude={"user_id", "project_id", *SECRET_FIELDS})
     d = Destination(**werte, user_id=data.user_id, project_id=data.project_id,
                     created_by=user.id)

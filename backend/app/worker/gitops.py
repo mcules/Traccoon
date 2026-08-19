@@ -221,7 +221,7 @@ async def refresh_main(ctx: GitCtx) -> str:
         return "main nicht ausgecheckt — nur FETCH_HEAD aktualisiert"
     rc, out = await _git(ctx.workdir, "merge", "--ff-only", "FETCH_HEAD")
     if rc != 0:
-        log.info("main nicht fast-forwardbar (%s): %s", ctx.main, out.strip()[:200])
+        log.info("main not fast-forwardable (%s): %s", ctx.main, out.strip()[:200])
         return "main abgewichen — kein Fast-Forward"
     return "main aktualisiert"
 
@@ -432,7 +432,7 @@ async def remove_worktree(ctx: GitCtx) -> None:
         await _git(ctx.workdir, "worktree", "remove", "--force", ctx.worktree)
         rc, out = await _git(ctx.workdir, "branch", "-d", ctx.branch)
         if rc != 0:
-            log.warning("Branch %s NICHT gelöscht (ungemergt): %s", ctx.branch, out.strip())
+            log.warning("Branch %s NOT deleted (unmerged): %s", ctx.branch, out.strip())
         await _git(ctx.workdir, "worktree", "prune")
     except Exception:  # noqa: BLE001
         log.exception("worktree-remove fehlgeschlagen")

@@ -268,4 +268,4 @@ async def test_kontextfelder_decken_die_guards_des_standardsatzes(client, db):
     # `entry` controls the entry of the lifecycle and comes from the caller, not from an
     # action; the rest has to stand in the catalog.
     fehlend = {v for v in benutzt if v not in bekannt and v != "entry"}
-    assert not fehlend, f"Guards lesen Felder, die der Katalog nicht kennt: {sorted(fehlend)}"
+    assert not fehlend, f"Guards read fields the catalog does not know: {sorted(fehlend)}"

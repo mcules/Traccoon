@@ -24,7 +24,7 @@ class OpenAIProvider(Provider):
 
     def _headers(self, token: str | None) -> dict[str, str]:
         if not token:
-            raise ProviderError("openai: kein API-Key (Secret-Tresor leer).")
+            raise ProviderError("openai: no API key (the secret vault is empty).")
         return {"Authorization": f"Bearer {token}", "content-type": "application/json"}
 
     async def chat(self, *, model: str, messages: list[dict[str, Any]],

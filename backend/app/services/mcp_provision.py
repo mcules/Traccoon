@@ -31,7 +31,7 @@ def _base() -> str:
 
 def _headers() -> dict[str, str]:
     if not settings.mcpjungle_admin_token:
-        raise McpProvisionError("MCPJUNGLE_ADMIN_TOKEN nicht gesetzt — Provisionierung nicht möglich.")
+        raise McpProvisionError("MCPJUNGLE_ADMIN_TOKEN is not set, provisioning is not possible.")
     return {"Authorization": f"Bearer {settings.mcpjungle_admin_token}"}
 
 
@@ -112,7 +112,7 @@ async def provision_user_mcp(db: AsyncSession, user: User, servers: list[str]) -
             raise McpProvisionError(f"Client anlegen fehlgeschlagen: {rc.status_code} {rc.text[:200]}")
         token = (rc.json() or {}).get("access_token")
         if not token:
-            raise McpProvisionError("Kein Access-Token von MCPJungle erhalten.")
+            raise McpProvisionError("No access token received from MCPJungle.")
 
     user.mcp_group = group
     user.mcp_servers = chosen

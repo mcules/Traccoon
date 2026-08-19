@@ -63,7 +63,7 @@ async def test_workflow_job_startet_bei_sofort_ausfuehren_eine_instanz(db, anna,
 
     out = await call_traccoon_tool(db, anna.id, "traccoon_run_job", {"job_id": job.id})
     assert "ok" in out and "workflow" in out
-    assert eingereiht == [], "Workflow-Job gehört nicht in die Worker-Warteschlange"
+    assert eingereiht == [], "a workflow job does not belong in the worker queue"
     inst = await _instanzen(db)
     assert len(inst) == 1 and inst[0].definition_id == d.id
     jr = (await db.execute(select(JobRun))).scalars().one()

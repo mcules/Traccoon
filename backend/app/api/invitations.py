@@ -88,7 +88,7 @@ async def invite_member(
     if ROLE_RANK[data.role] > ROLE_RANK[access.role]:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "Kann keine Rolle vergeben, die höher als die eigene ist",
+            "Cannot hand out a role higher than one's own",
         )
     email = data.email.strip().lower()
     project = access.project
@@ -103,7 +103,7 @@ async def invite_member(
             )
         ).scalar_one_or_none()
         if dup is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Bereits Mitglied")
+            raise HTTPException(status.HTTP_409_CONFLICT, "Already a member")
         m = ProjectMember(
             project_id=project.id, user_id=target.id, role=data.role,
             ai_assign=default_ai_assign(data.role),
@@ -155,7 +155,7 @@ async def revoke_invitation(
 ):
     inv = await db.get(ProjectInvitation, invitation_id)
     if inv is None or inv.project_id != access.project.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Einladung nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation not found")
     inv.status = InvitationStatus.revoked
     await db.commit()
 
@@ -165,10 +165,10 @@ async def revoke_invitation(
 async def _load_valid(db: AsyncSession, token: str) -> tuple[ProjectInvitation | None, Project | None, str | None]:
     inv = (await db.execute(select(ProjectInvitation).where(ProjectInvitation.token == token))).scalar_one_or_none()
     if inv is None:
-        return None, None, "Einladung nicht gefunden"
+        return None, None, "Invitation not found"
     project = await db.get(Project, inv.project_id)
     if project is None:
-        return inv, None, "Projekt nicht gefunden"
+        return inv, None, "Project not found"
     if inv.status != InvitationStatus.pending:
         return inv, project, "Einladung bereits verwendet oder widerrufen"
     if inv.expires_at and inv.expires_at < dt.datetime.now(tz=dt.timezone.utc):
@@ -180,7 +180,7 @@ async def _load_valid(db: AsyncSession, token: str) -> tuple[ProjectInvitation |
 async def preview_invitation(token: str, db: AsyncSession = Depends(get_session)):
     inv, project, reason = await _load_valid(db, token)
     if inv is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Einladung nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation not found")
     return InvitationPreview(
         project_key=project.key if project else "?",
         project_name=project.name if project else "?",
@@ -196,13 +196,13 @@ async def accept_invitation(
 ):
     inv, project, reason = await _load_valid(db, token)
     if inv is None or project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Einladung nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invitation not found")
     if reason is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, reason)
     if inv.email != user.email.lower():
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
-            "Diese Einladung ist an eine andere E-Mail-Adresse gerichtet",
+            "This invitation is addressed to another e-mail address",
         )
     dup = (
         await db.execute(

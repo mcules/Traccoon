@@ -88,7 +88,7 @@ async def test_einzelwert_feld_lehnt_zwei_werte_ab(client, db, register):
     r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                          json={"values": {"prio": ["hoch", "niedrig"]}})
     assert r.status_code == 400
-    assert "nur einen Wert" in r.json()["detail"]
+    assert "only one value" in r.json()["detail"]
     # After the rejected attempt nothing may be half written.
     leer = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
     assert "prio" not in leer.json()["values"]
@@ -158,7 +158,7 @@ async def test_zahl_und_datum_werden_geprueft(client, db, register):
     for feld, mist in (("aufwand", "viel"), ("termin", "irgendwann"), ("extern", "vielleicht")):
         r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                              json={"values": {feld: [mist]}})
-        assert r.status_code == 400, f"{feld}={mist} hätte abgelehnt werden müssen"
+        assert r.status_code == 400, f"{feld}={mist} should have been rejected"
 
 
 # ── Nichts verschwindet still ────────────────────────────────────────────────
@@ -179,7 +179,7 @@ async def test_benutzter_listenwert_laesst_sich_nicht_loeschen(client, db, regis
 
     r = await client.delete(f"/artifact-field-options/{option.id}", headers=auth(user))
     assert r.status_code == 409
-    assert "1 Artefakt" in r.json()["detail"]
+    assert "1 artifact(s)" in r.json()["detail"]
 
 
 async def test_benutztes_feld_braucht_force(client, db, register):
@@ -214,7 +214,7 @@ async def test_mehrfach_zurueckstellen_nur_wenn_es_passt(client, db, register):
 
     r = await client.put(f"/artifact-fields/{f.id}", headers=auth(user), json={"multi": False})
     assert r.status_code == 409
-    assert "mehrere Werte" in r.json()["detail"]
+    assert "several values" in r.json()["detail"]
 
     # Back to one value, and then it works.
     await client.put(f"/artifacts/{aid}/values", headers=auth(user),
@@ -360,7 +360,7 @@ async def test_prozess_meldet_unbekanntes_feld(db, register):
     await db.commit()
     inst = await _instanz(db, proj, issue)
 
-    with pytest.raises(ValueError, match="gibt es an diesem Artefakt nicht"):
+    with pytest.raises(ValueError, match="does not exist on this artifact"):
         await run_action(db, inst, _knoten(field="gibtsnicht", values="x"))
 
 
@@ -553,7 +553,7 @@ async def test_ausgeliefertes_feld_laesst_sich_nicht_entfernen(client, db, regis
 
     r = await client.delete(f"/artifact-fields/{status.id}?force=true", headers=auth(chef))
     assert r.status_code == 409
-    assert "nicht löschen" in r.json()["detail"]
+    assert "cannot be deleted" in r.json()["detail"]
     # Switching off stays possible.
     assert (await client.put(f"/artifact-fields/{status.id}", headers=auth(chef),
                              json={"enabled": False})).status_code == 200

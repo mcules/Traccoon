@@ -37,7 +37,7 @@ async def register(data: RegisterIn, db: AsyncSession = Depends(get_session)):
         await db.execute(select(User).where((User.email == email) | (User.username == data.username)))
     ).scalar_one_or_none()
     if exists is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "E-Mail oder Benutzername bereits vergeben")
+        raise HTTPException(status.HTTP_409_CONFLICT, "E-mail or user name already taken")
 
     # The first real user (except the system) automatically becomes an active admin.
     real_count = (
@@ -67,9 +67,9 @@ async def login(data: LoginIn, db: AsyncSession = Depends(get_session)):
     email = data.email.lower()
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None or not verify_password(data.password, user.password_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Ungültige Anmeldedaten")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
     if user.status == UserStatus.pending:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Konto wartet auf Freischaltung")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "The account is waiting to be enabled")
     if user.status == UserStatus.disabled:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Konto deaktiviert")
     if user.status == UserStatus.placeholder:

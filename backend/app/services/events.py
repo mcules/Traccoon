@@ -118,7 +118,7 @@ async def _darf_hoeren(db: AsyncSession, d: WorkflowDefinition, project_id: int 
     try:
         await build_access(projekt, besitzer, db)   # raises when access is missing
     except Exception:                              # noqa: BLE001, 403/404 means not listening
-        log.info("Ablauf %s hört nicht auf Projekt %s: Eigentümer ohne Zugriff",
+        log.info("Flow %s does not listen to project %s: the owner has no access",
                  d.key, project_id)
         return False
     return True
@@ -166,5 +166,5 @@ async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,
             gestartet.append(inst.id)
             log.info("Ereignis %s → Ablauf %s gestartet (Instanz %s)", event, d.key, inst.id)
         except Exception:  # noqa: BLE001, a broken flow must not disturb the trigger
-            log.exception("Ereignis %s: Ablauf %s konnte nicht starten", event, d.key)
+            log.exception("Event %s: flow %s could not start", event, d.key)
     return gestartet

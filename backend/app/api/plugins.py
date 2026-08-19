@@ -44,24 +44,24 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     try:
         zf = zipfile.ZipFile(io.BytesIO(raw))
     except zipfile.BadZipFile:
-        raise HTTPException(400, "Keine gültige Zip-Datei")
+        raise HTTPException(400, "Not a valid zip file")
     # Manifest finden (flachstes gewinnt)
     manifests = [n for n in zf.namelist() if n.endswith("manifest.json")]
     if not manifests:
-        raise HTTPException(400, "manifest.json fehlt")
+        raise HTTPException(400, "manifest.json is missing")
     manifests.sort(key=lambda n: n.count("/"))
     base = manifests[0].rsplit("manifest.json", 1)[0]
     try:
         manifest = json.loads(zf.read(manifests[0]))
     except json.JSONDecodeError:
-        raise HTTPException(400, "manifest.json ungültig")
+        raise HTTPException(400, "manifest.json is invalid")
     slug = manifest.get("slug") or manifest.get("id")
     if not slug or not all(c.isalnum() or c in "-_" for c in slug):
-        raise HTTPException(400, "ungültiger slug")
+        raise HTTPException(400, "invalid slug")
 
     total = sum(i.file_size for i in zf.infolist())
     if total > MAX_UNZIP:
-        raise HTTPException(400, "Plugin zu groß (>25MB)")
+        raise HTTPException(400, "Plugin too large (>25MB)")
 
     plugin = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if plugin is None:
@@ -110,11 +110,11 @@ def _ctype(path: str) -> str:
 async def serve_file(slug: str, path: str, db: AsyncSession = Depends(get_session)):
     plugin = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if plugin is None:
-        raise HTTPException(404, "Plugin nicht gefunden")
+        raise HTTPException(404, "Plugin not found")
     f = (await db.execute(select(PluginFile).where(PluginFile.plugin_id == plugin.id,
                                                    PluginFile.path == (path or plugin.entry)))).scalar_one_or_none()
     if f is None:
-        raise HTTPException(404, "Datei nicht gefunden")
+        raise HTTPException(404, "File not found")
     return Response(content=f.data, media_type=f.content_type, headers={"Cache-Control": "no-cache"})
 
 
@@ -131,14 +131,14 @@ async def delete_plugin(slug: str, _: User = Depends(require_admin), db: AsyncSe
 async def _plugin(db: AsyncSession, slug: str) -> Plugin:
     p = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if p is None:
-        raise HTTPException(404, "Plugin nicht gefunden")
+        raise HTTPException(404, "Plugin not found")
     return p
 
 
 def _validate_row(plugin: Plugin, table: str, row: dict) -> dict:
     schema = (plugin.table_schema or {}).get(table)
     if schema is None:
-        raise HTTPException(400, f"Tabelle '{table}' nicht im Plugin-Schema")
+        raise HTTPException(400, f"The table '{table}' is not in the plugin schema")
     allowed = set(schema.keys())
     return {k: v for k, v in row.items() if k in allowed}
 
@@ -206,7 +206,7 @@ async def fetch_proxy(slug: str, data: FetchIn, _: User = Depends(get_current_us
                       db: AsyncSession = Depends(get_session)):
     plugin = await _plugin(db, slug)
     if not _ssrf_ok(data.url, plugin.allowed_hosts or []):
-        raise HTTPException(400, "URL nicht erlaubt (SSRF-Schutz / allowed_hosts)")
+        raise HTTPException(400, "URL not allowed (SSRF protection / allowed_hosts)")
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
             r = await client.request(data.method, data.url, headers=data.headers, content=data.body)

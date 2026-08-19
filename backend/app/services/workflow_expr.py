@@ -239,7 +239,7 @@ def auswerten(ausdruck: str, ctx: dict):
         try:
             wert = fn(wert, *_filterargumente(roh, ctx)) if roh else fn(wert)
         except Exception:  # noqa: BLE001, a broken template must not fail the run
-            log.info("Filter %r auf %r fehlgeschlagen", name, wert)
+            log.info("Filter %r on %r failed", name, wert)
     return wert
 
 

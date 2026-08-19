@@ -104,7 +104,7 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
     if d.notify_default is not None:
         if d.notify_default not in KANAELE:
             raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                f"Unbekannter Weg — möglich: {', '.join(KANAELE)}")
+                                f"Unknown channel, possible: {', '.join(KANAELE)}")
         u.notify_default = d.notify_default
     if d.notify_email is not None:
         roh = d.notify_email.strip()
@@ -141,7 +141,7 @@ async def set_email(d: StrIn, u: User = Depends(get_current_user), db: AsyncSess
     other = (await db.execute(
         select(User).where(User.email == email, User.id != u.id))).scalar_one_or_none()
     if other is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "E-Mail bereits vergeben")
+        raise HTTPException(status.HTTP_409_CONFLICT, "E-mail already taken")
     u.email = email
     await db.commit()
 

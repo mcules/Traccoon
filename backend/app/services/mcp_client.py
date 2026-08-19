@@ -43,7 +43,7 @@ def _entpacken(resp: httpx.Response) -> dict[str, Any]:
                         return json.loads(roh)
                     except json.JSONDecodeError:
                         continue
-        raise McpError("Ereignisstrom ohne verwertbare Antwort")
+        raise McpError("Event stream without a usable answer")
     try:
         return resp.json()
     except ValueError as exc:
@@ -70,7 +70,7 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
                            "clientInfo": {"name": "traccoon", "version": "1"}}})
             init.raise_for_status()
         except httpx.HTTPError as exc:
-            raise McpError(f"{url} nicht erreichbar: {exc}") from exc
+            raise McpError(f"{url} not reachable: {exc}") from exc
         _entpacken(init)
         # The server assigns the session only here; all following calls have to carry it.
         sitzung = init.headers.get("mcp-session-id")

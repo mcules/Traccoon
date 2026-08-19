@@ -48,7 +48,7 @@ async def test_kappung_sagt_es_und_endet_auf_einer_zeilengrenze(monkeypatch):
     assert "Diff gekappt" in text
     assert "KEIN unvollständiger Code" in text
     kopf = text.split("\n[... Diff gekappt")[0]
-    assert kopf.endswith("\n") or kopf == "", "mitten in der Zeile geschnitten"
+    assert kopf.endswith("\n") or kopf == "", "cut in the middle of the row"
 
 
 async def test_fehlende_dateien_werden_benannt(monkeypatch):
@@ -89,9 +89,9 @@ async def test_diff_zeigt_auch_uncommittete_korrekturen(monkeypatch, tmp_path):
     await gitops.diff_text(_C())
 
     diffs = [a for a in befehle if a[0] == "diff"]
-    assert diffs, "es wurde gar kein Diff gebildet"
-    assert "..." not in " ".join(diffs[0]), "Drei-Punkt-Diff übersieht die uncommittete Korrektur"
-    assert diffs[0] == ("diff", "abc123"), "Basis muss der Abzweigpunkt sein, nicht der heutige main"
+    assert diffs, "no diff was built at all"
+    assert "..." not in " ".join(diffs[0]), "a three dot diff overlooks the uncommitted correction"
+    assert diffs[0] == ("diff", "abc123"), "the base has to be the branching point, not today's main"
 
 
 async def test_basis_ist_der_abzweigpunkt_auch_mit_base_commit(monkeypatch):
@@ -124,6 +124,6 @@ async def test_basis_ist_der_abzweigpunkt_auch_mit_base_commit(monkeypatch):
 
     await gitops.diff_text(_C())
 
-    assert ("merge-base", "c489052", "HEAD") in befehle, "merge-base wurde übersprungen"
-    assert ("diff", "abzweig456") in befehle, "es wurde gegen den falschen Stand verglichen"
+    assert ("merge-base", "c489052", "HEAD") in befehle, "the merge base was skipped"
+    assert ("diff", "abzweig456") in befehle, "the comparison ran against the wrong state"
     assert ("diff", "c489052") not in befehle

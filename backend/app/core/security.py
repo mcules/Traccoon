@@ -64,8 +64,8 @@ def encrypt_secret(plaintext: str) -> str:
         return ""
     f = _fernet()
     if f is None:
-        log.error("SECRET_ENCRYPTION_KEY fehlt — Geheimnis wird IM KLARTEXT gespeichert. "
-                  "Key setzen (Fernet.generate_key()) und Dienste neu starten.")
+        log.error("SECRET_ENCRYPTION_KEY is missing, the secret is stored IN PLAIN TEXT. "
+                  "Set the key (Fernet.generate_key()) and restart the services.")
         return plaintext
     return ENC_PREFIX + f.encrypt(plaintext.encode()).decode()
 

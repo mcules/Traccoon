@@ -130,7 +130,7 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
             # An outage (timeout, connection loss) is no reason to give up waiting: the
             # result comes later anyway, and a dead watcher would leave the ticket standing
             # forever. Try again on the next round.
-            log.warning("Ergebnis-Abfrage für %s gescheitert — erneuter Versuch", task_id,
+            log.warning("Fetching the result for %s failed, trying again", task_id,
                         exc_info=True)
         jetzt = uhr()
         if timeout and jetzt - start >= timeout:
@@ -144,12 +144,12 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
             elif tot_seit is None:
                 tot_seit = jetzt
             elif jetzt - tot_seit >= gnadenfrist:
-                log.warning("Lauf %s seit %.0fs ohne Lebenszeichen — gilt als verschwunden",
+                log.warning("Run %s without a sign of life for %.0fs, counts as disappeared",
                             task_id, jetzt - tot_seit)
                 return None
         if jetzt - letzte_meldung >= 1800:
             letzte_meldung = jetzt
-            log.info("warte weiter auf %s (%.0f min, Lauf lebt)", task_id, (jetzt - start) / 60)
+            log.info("still waiting for %s (%.0f min, the run is alive)", task_id, (jetzt - start) / 60)
         await asyncio.sleep(poll)
 
 

@@ -48,7 +48,7 @@ def test_disallowed_operator_raises():
     except JsonLogicError:
         pass
     else:  # pragma: no cover
-        raise AssertionError("cat-Operator hätte JsonLogicError werfen müssen")
+        raise AssertionError("the cat operator should have raised JsonLogicError")
     assert collect_operators({"and": [{"==": [{"var": "x"}, 1]}]}) == {"and", "==", "var"}
 
 

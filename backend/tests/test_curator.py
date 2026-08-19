@@ -32,7 +32,7 @@ class FakeMcp:
             return self.notizen.get(pfad, "")
         if tool == "obsidian__obsidian_append_to_note":
             if self.schreibfehler == "archiv":
-                raise RuntimeError("Archiv nicht schreibbar")
+                raise RuntimeError("Archive not writable")
             self.angehaengt[pfad] = self.angehaengt.get(pfad, "") + args["content"]
             return "ok"
         if tool == "obsidian__obsidian_write_note":

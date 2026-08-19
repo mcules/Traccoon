@@ -35,10 +35,10 @@ def _workdir(project) -> str:
 
 def _require_git(project) -> str:
     if not project.git_enabled:
-        raise HTTPException(409, "Git ist für dieses Projekt nicht aktiv")
+        raise HTTPException(409, "Git is not active for this project")
     wd = _workdir(project)
     if not os.path.isdir(os.path.join(wd, ".git")):
-        raise HTTPException(409, "Repo noch nicht bereit (noch kein Klon/Lauf)")
+        raise HTTPException(409, "The repository is not ready yet (no clone or run yet)")
     return wd
 
 
@@ -47,10 +47,10 @@ def _safe_path(workdir: str, rel: str) -> str:
     root = os.path.realpath(workdir)
     full = os.path.realpath(os.path.join(root, (rel or "").lstrip("/")))
     if full != root and not full.startswith(root + os.sep):
-        raise HTTPException(400, "Ungültiger Pfad")
+        raise HTTPException(400, "Invalid path")
     first = os.path.relpath(full, root).split(os.sep)[0]
     if first == ".git":
-        raise HTTPException(400, ".git ist gesperrt")
+        raise HTTPException(400, ".git is locked")
     return full
 
 
@@ -100,13 +100,13 @@ async def repo_read(path: str, access: Access = Depends(require_role(ProjectRole
                     db: AsyncSession = Depends(get_session)):
     full = _safe_path(_require_git(access.project), path)
     if not os.path.isfile(full):
-        raise HTTPException(404, "Datei nicht gefunden")
+        raise HTTPException(404, "File not found")
     if os.path.getsize(full) > MAX_FILE_BYTES:
-        raise HTTPException(413, "Datei zu groß für den Editor")
+        raise HTTPException(413, "File too large for the editor")
     try:
         content = open(full, encoding="utf-8").read()
     except UnicodeDecodeError:
-        raise HTTPException(415, "Binärdatei — nicht editierbar")
+        raise HTTPException(415, "Binary file, not editable")
     return {"path": path, "content": content}
 
 
@@ -116,9 +116,9 @@ async def repo_raw(path: str, access: Access = Depends(require_role(ProjectRole.
     """Raw file bytes (for an image preview) with a guessed content type."""
     full = _safe_path(_require_git(access.project), path)
     if not os.path.isfile(full):
-        raise HTTPException(404, "Datei nicht gefunden")
+        raise HTTPException(404, "File not found")
     if os.path.getsize(full) > 5_000_000:
-        raise HTTPException(413, "Datei zu groß für die Vorschau")
+        raise HTTPException(413, "File too large for the preview")
     ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
     with open(full, "rb") as fh:
         return Response(content=fh.read(), media_type=ctype)
@@ -149,11 +149,11 @@ async def repo_commit(data: CommitIn, access: Access = Depends(require_role(Proj
                       db: AsyncSession = Depends(get_session)):
     wd = _require_git(access.project)
     if not data.title.strip():
-        raise HTTPException(400, "Commit-Titel fehlt")
+        raise HTTPException(400, "Commit title missing")
     await gitops._git(wd, "add", "-A")
     rc, _ = await gitops._git(wd, "diff", "--cached", "--quiet")
     if rc == 0:
-        raise HTTPException(409, "Nichts zu committen")
+        raise HTTPException(409, "Nothing to commit")
     msg = data.title.strip()
     if data.description.strip():
         msg += "\n\n" + data.description.strip()
@@ -173,7 +173,7 @@ async def repo_commit_message(access: Access = Depends(require_role(ProjectRole.
     await gitops._git(wd, "add", "-A")
     _, diff = await gitops._git(wd, "diff", "--cached")
     if not diff.strip():
-        raise HTTPException(409, "Keine Änderungen zum Beschreiben")
+        raise HTTPException(409, "No changes to describe")
     # Prefer the project default subscription, otherwise the personal default.
     tok_name = p.default_token_name if p.default_provider == "claude_code" else ""
     token = await resolve_provider_token(db, access.user.id, "claude_code", tok_name)

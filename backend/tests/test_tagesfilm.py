@@ -124,7 +124,7 @@ async def test_aufeinanderfolgende_laeufe_kollidieren_nicht_auf_derselben_seq(db
     ereignisse, _r, _b = await of.tages_ereignisse(db, von=VON, bis=BIS)
 
     seqs = [e["seq"] for e in ereignisse]
-    assert len(set(seqs)) == len(seqs), "doppelte seq — der Recorder verwirft die zweite"
+    assert len(set(seqs)) == len(seqs), "duplicate seq, the recorder discards the second one"
     assert seqs == sorted(seqs)
     # All five agents come in AND leave again.
     assert len(arten(ereignisse, "run_start")) == 5

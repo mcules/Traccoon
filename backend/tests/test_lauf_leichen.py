@@ -50,6 +50,6 @@ async def test_delegierter_unterlauf_raeumt_seinen_elternlauf_nicht_ab(db):
     await _lauf(db, issue, "wf-1-1-exec-abc", parent_run_id=eltern.id, spawn_depth=1)
 
     await db.refresh(eltern)
-    assert eltern.status == "running", "Elternlauf wurde von seinem eigenen Kind abgeräumt"
+    assert eltern.status == "running", "the parent run was cleared away by its own child"
     laeufe = (await db.execute(select(Run).where(Run.task_id == "wf-1-1-exec-abc"))).scalars().all()
     assert len(laeufe) == 2

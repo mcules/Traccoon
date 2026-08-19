@@ -81,7 +81,7 @@ def _decrypt_env(*encs: str) -> dict:
         try:
             env.update(json.loads(decrypt_secret(enc)))
         except Exception:  # noqa: BLE001
-            log.warning("testenv-Env konnte nicht gelesen werden")
+            log.warning("the testenv env could not be read")
     return env
 
 
@@ -289,7 +289,7 @@ async def runner_list() -> list[dict]:
         if r.status_code == 200:
             return r.json().get("stacks", [])
     except Exception as exc:  # noqa: BLE001
-        log.warning("Testumgebungs-Übersicht fehlgeschlagen: %s", exc)
+        log.warning("Test environment overview failed: %s", exc)
     return []
 
 
@@ -339,8 +339,8 @@ async def cleanup_orphan_previews() -> dict:
         if resp.status_code == 200:
             removed = resp.json().get("removed", [])
     except Exception as exc:  # noqa: BLE001
-        log.warning("Testumgebungen aufräumen fehlgeschlagen: %s", exc)
+        log.warning("Cleaning up test environments failed: %s", exc)
     if removed or stale:
-        log.info("Testumgebungen aufgeräumt: %d Stacks, %d Ports freigegeben",
+        log.info("Test environments cleaned up: %d stacks, %d ports released",
                  len(removed), len(stale))
     return {"removed": removed, "freed_ports": stale}

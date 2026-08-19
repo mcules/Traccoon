@@ -130,7 +130,7 @@ async def test_erinnere_dich_baut_target_als_objekt(db):
                                  {"bereich": "mensch", "text": "Commit-Betreffe auf Deutsch."})
     assert "Gemerkt" in out
     for _name, args in mcp.calls:
-        assert isinstance(args["target"], dict), "target als String → MCP error -32602"
+        assert isinstance(args["target"], dict), "target as a string, MCP error -32602"
         assert args["target"]["type"] == "path"
     assert "- [" in mcp.notes[f"{ROOT}/Mensch.md"]
     assert "Commit-Betreffe auf Deutsch." in mcp.notes[f"{ROOT}/Mensch.md"]
@@ -383,7 +383,7 @@ async def test_rueckschau_merkt_und_zaehlt_tokens(db, monkeypatch):
 
     async def fake_chat(**kw):
         assert {t["function"]["name"] for t in kw["tools"]} == {
-            "erinnere_dich", "vergiss", "gedaechtnis_suchen"}, "nur Gedächtnis-Tools"
+            "erinnere_dich", "vergiss", "gedaechtnis_suchen"}, "only memory tools"
         gesehen.append(list(kw["messages"]))
         return antworten.pop(0)
 

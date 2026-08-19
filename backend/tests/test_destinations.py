@@ -134,7 +134,7 @@ async def test_oauth2_holt_token_und_merkt_ihn(db, monkeypatch):
     await svc.call(db, d, method="GET", path="/y")
 
     token_aufrufe = [r for r in aufrufe if r.url.path.endswith("/token")]
-    assert len(token_aufrufe) == 1, "Token wurde nicht zwischengespeichert"
+    assert len(token_aufrufe) == 1, "the token was not cached"
     assert all(r.headers["authorization"] == "Bearer AT-1"
                for r in aufrufe if not r.url.path.endswith("/token"))
     await db.refresh(d)
@@ -186,7 +186,7 @@ async def test_aufloesung_projekt_vor_nutzer_vor_global(db):
 
 async def test_agenten_nur_ueber_freigegebene_ziele(db, calls):
     await _dest(db, name="intern", auth_type="none")
-    with pytest.raises(ValueError, match="nicht für KI-Agenten"):
+    with pytest.raises(ValueError, match="not released for AI agents"):
         await svc.call_by_name(db, "intern", agents_only=True, method="GET")
 
     frei = await svc.resolve(db, "intern")

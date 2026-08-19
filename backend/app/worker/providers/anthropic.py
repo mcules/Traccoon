@@ -151,8 +151,8 @@ class AnthropicProvider(Provider):
 
     def _headers(self, token: str | None) -> dict[str, str]:
         if not token:
-            raise ProviderError("claude: kein Setup-Token (Secret-Tresor leer). "
-                                "Token unter Einstellungen → Secrets hinterlegen.")
+            raise ProviderError("claude: no setup token (the secret vault is empty). "
+                                "Store the token under Settings -> secrets.")
         return {
             "Authorization": f"Bearer {token}",
             "anthropic-version": _ANTHROPIC_VERSION,
@@ -198,7 +198,7 @@ class AnthropicProvider(Provider):
             zweiter["thinking"] = {"type": "disabled"}
             if effort in ("xhigh", "max"):
                 zweiter.pop("output_config", None)   # "disabled" is a 400 above `high`
-            log.warning("claude: Antwort bei max_tokens (%d) abgeschnitten — zweiter Versuch ohne Denken",
+            log.warning("claude: the answer was cut off at max_tokens (%d), second attempt without thinking",
                         max_tokens)
             return self._parse(await self._post(zweiter, auth_token), gerettet=True)
 

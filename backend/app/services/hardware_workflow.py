@@ -189,7 +189,7 @@ async def start_hardware_instance(db, asset: HardwareAsset, actor_id: int | None
     """Starts (idempotently) a procurement instance for a unit. Precondition: the unit is
     assigned to a project (stock without a project has no workflow)."""
     if asset.project_id is None:
-        raise ValueError("Exemplar ohne Projekt hat keinen Beschaffungs-Workflow")
+        raise ValueError("A unit without a project has no procurement workflow")
     # Already a running or waiting instance for this unit? Then return that one.
     running = (await db.execute(
         select(WorkflowInstance).where(

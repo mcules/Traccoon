@@ -191,7 +191,7 @@ async def uebergabe(db, *, messages: list[dict], grund: str, letzter_text: str,
         messages=[{"role": "user", "content": UEBERGABE_AUFTRAG + quelle}],
         agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1500)
     if not text:
-        log.warning("Übergabe ohne Aux-Modell — es bleibt beim letzten Stand")
+        log.warning("Handover without an aux model, the last state stays")
         return f"{grund}\n\nStand aus dem Verlauf:\n{roh}"
     return f"{grund}\n\n{text.strip()}"
 
@@ -240,11 +240,11 @@ async def _zusammenfassen(db, messages: list[dict], stuecke: list[tuple[int, int
                                "content": AUFTRAG + von_wo + _als_text(messages[a:b])}],
                     agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1024)
             except Exception:  # noqa: BLE001 - one outage must not cost the run
-                log.exception("Kompaktierung: Stück %d/%d fehlgeschlagen", nr, len(stuecke))
+                log.exception("Compaction: piece %d/%d failed", nr, len(stuecke))
                 text = None
         if text:
             return text.strip()
-        log.warning("Kompaktierung: Stück %d/%d ohne Zusammenfassung (Aux nicht verfügbar)",
+        log.warning("Compaction: piece %d/%d without a summary (aux not available)",
                     nr, len(stuecke))
         return (f"- (Teil {nr}: {b - a} Nachrichten, Zusammenfassung nicht möglich — "
                 "dieser Abschnitt ist verloren, im Zweifel nachprüfen.)")
@@ -273,7 +273,7 @@ async def kompaktiere(db, *, messages: list[dict], grenze_tokens: int, gemessen:
         bis = stuecke[-1][1]
     zusammenfassung = await _zusammenfassen(db, messages, stuecke, owner_id=owner_id,
                                             agent=agent, tokens=tokens, base_urls=base_urls)
-    log.info("Kompaktierung: %d Nachrichten in %d Stück(en) zusammengefasst",
+    log.info("Compaction: %d messages summarised in %d piece(s)",
              bis - von, len(stuecke))
 
     ersatz = ("# Zusammenfassung des bisherigen Verlaufs\n"

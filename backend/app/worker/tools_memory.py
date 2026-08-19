@@ -132,7 +132,7 @@ async def _read_note(mcp, path: str) -> str:
         out = await mcp.call("obsidian__obsidian_get_note",
                              {"format": "content", "target": _note_target(path)})
     except Exception as exc:  # noqa: BLE001
-        log.debug("Gedächtnis: %s nicht lesbar (%s)", path, exc)
+        log.debug("Memory: %s not readable (%s)", path, exc)
         return ""
     return "" if _failed(out) else out
 

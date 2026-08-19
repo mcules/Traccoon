@@ -116,7 +116,7 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     fremdes_ziel = pid is not None and pid != inst.project_id
     pid = pid or inst.project_id
     if pid is None:
-        raise ValueError("create_ticket: kein project_id (weder Parameter noch Instanz-Projekt)")
+        raise ValueError("create_ticket: no project_id (neither a parameter nor the instance project)")
     # A flow may only create where the person behind it could create as well. Without this
     # check a free-standing flow would be a way into foreign projects: the definition
     # belongs to its creator, the target project does not.
@@ -127,12 +127,12 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
         starter = await db.get(_User, inst.started_by)
         ziel = await db.get(Project, pid)
         if starter is None or ziel is None:
-            raise ValueError("create_ticket: Zielprojekt oder Auslöser unbekannt")
+            raise ValueError("create_ticket: target project or trigger unknown")
         if starter.global_role != GlobalRole.admin:
             zugriff = await build_access(ziel, starter, db)
             if not zugriff.has_role(ProjectRole.member):
                 raise ValueError(
-                    f"create_ticket: keine Rechte am Projekt {ziel.key}")
+                    f"create_ticket: no rights on the project {ziel.key}")
     t = (await db.execute(select(IssueType).where(IssueType.project_id == pid)
                           .order_by(IssueType.order))).scalars().first()
     s = (await db.execute(select(WorkflowStatus).where(WorkflowStatus.project_id == pid)
@@ -141,7 +141,7 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     counter = (await db.execute(select(IssueCounter).where(IssueCounter.project_id == pid)
                                 .with_for_update())).scalar_one_or_none()
     if not (t and s and project and counter):
-        raise ValueError("create_ticket: Zielprojekt ohne Typ/Status/Zähler")
+        raise ValueError("create_ticket: target project without type, status or counter")
     counter.last_number += 1
     n = counter.last_number
     reporter = inst.started_by or SYSTEM_USER_ID
@@ -196,7 +196,7 @@ async def _set_board_status(db, inst: WorkflowInstance, params: dict, ctx: dict)
     if target is None and category:
         target = next((w for w in rows if getattr(w.category, "value", str(w.category)) == category), None)
     if target is None:
-        raise ValueError(f"set_board_status: kein Status '{name or category}' im Projekt")
+        raise ValueError(f"set_board_status: no status '{name or category}' in the project")
     issue.status_id = target.id
     return {"action": "set_board_status", "status_id": target.id, "status": target.name}
 
@@ -324,7 +324,7 @@ async def _set_field(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     feld = next((f for f in await af.fields_of(db, artefakt.type_id, artefakt.project_id)
                  if f.key == key), None)
     if feld is None:
-        raise ValueError(f"Feld '{key}' gibt es an diesem Artefakt nicht")
+        raise ValueError(f"The field '{key}' does not exist on this artifact")
 
     # Values may arrive as a list, as a single value or comma separated.
     roh = params.get("values", params.get("value"))
@@ -366,7 +366,7 @@ async def _set_status(db, inst: WorkflowInstance, params: dict, ctx: dict) -> di
     if not wert:
         import logging
         logging.getLogger("workflow_actions").warning(
-            "set_status ohne Zustand (Vorlage %r leer) → hold", params.get("status"))
+            "set_status without a state (template %r empty), going to hold", params.get("status"))
         wert = "hold"
     issue = await _issue_of(db, inst)
     asset = (await db.get(HardwareAsset, inst.hardware_asset_id)
@@ -504,7 +504,7 @@ async def _accept_merge(db, inst: WorkflowInstance, params: dict) -> dict:
     from ..core.redis import enqueue_task
     issue = await _issue_of(db, inst)
     if issue is None:
-        raise ValueError("accept_merge erfordert ein gebundenes Ticket")
+        raise ValueError("accept_merge requires a bound ticket")
     task_id = f"accept-{issue.key}-{uuid.uuid4().hex[:8]}"
     await enqueue_task({"kind": "accept", "task_id": task_id,
                         "issue_id": issue.id, "project_id": issue.project_id})
@@ -547,7 +547,7 @@ async def _split_tickets(db, inst: WorkflowInstance, params: dict) -> dict:
 
     umbrella = await _issue_of(db, inst)
     if umbrella is None:
-        raise ValueError("split_tickets erfordert ein gebundenes Ticket")
+        raise ValueError("split_tickets requires a bound ticket")
     m = re.search(r"<subtickets>\s*(\[.*?\])\s*</subtickets>", umbrella.plan or "", re.DOTALL)
     if not m:
         return {"action": "split_tickets", "created": 0, "reason": "kein <subtickets>-Block"}
@@ -657,14 +657,14 @@ async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
 
     name = str(_interp(params.get("destination") or params.get("target") or "", ctx)).strip()
     if not name:
-        raise ValueError("http_request: kein Ziel angegeben")
+        raise ValueError("http_request: no destination given")
     owner = inst.started_by
     if owner is None and inst.issue_id:
         issue = await _issue_of(db, inst)
         owner = (issue.assigned_by_user_id or issue.reporter_id) if issue else None
     dest = await destinations.resolve(db, name, project_id=inst.project_id, owner_id=owner)
     if dest is None:
-        raise ValueError(f"http_request: unbekanntes oder deaktiviertes Ziel '{name}'")
+        raise ValueError(f"http_request: unknown or disabled destination '{name}'")
 
     result = await destinations.call(
         db, dest,
@@ -678,7 +678,7 @@ async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
     key = str(params.get("context_key") or "http")
     inst.context = {**ctx, key: result}
     if params.get("fail_on_error") and not result["ok"]:
-        raise ValueError(f"Ziel '{name}' antwortete mit {result['status_code']}: "
+        raise ValueError(f"Destination '{name}' answered with {result['status_code']}: "
                          f"{result.get('error', '')[:200]}")
     return {"action": "http_request", **{k: result[k] for k in ("destination", "method", "url",
                                                                 "status_code", "ok")}}
@@ -700,7 +700,7 @@ def _zahl(params: dict, ctx: dict, *namen, default: float = 0.0) -> float:
             try:
                 return float(roh)
             except (TypeError, ValueError):
-                raise ValueError(f"'{name}': '{roh}' ist keine Zahl")
+                raise ValueError(f"'{name}': '{roh}' is not a number")
     return default
 
 
@@ -747,7 +747,7 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
 
     key = str(_interp(params.get("reihe") or params.get("series") or "", ctx)).strip()
     if not key:
-        raise ValueError("messwert: keine Reihe angegeben")
+        raise ValueError("messwert: no series given")
     roh = _interp(params.get("wert", params.get("value")), ctx)
     if isinstance(roh, str):
         roh = roh.strip().replace("%", "").replace(",", ".")
@@ -766,7 +766,7 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     try:
         wert = float(roh)
     except (TypeError, ValueError):
-        raise ValueError(f"messwert: '{roh}' ist keine Zahl")
+        raise ValueError(f"messwert: '{roh}' is not a number")
 
     # Devices report nonsense when they do not know something: the tracker sends
     # `batteryLevel: 127` as soon as the charge is unknown. A single point like that bends
@@ -828,7 +828,7 @@ async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
 
     key = str(_interp(params.get("reihe") or params.get("series") or "", ctx)).strip()
     if not key:
-        raise ValueError("messreihe_lesen: keine Reihe angegeben")
+        raise ValueError("messreihe_lesen: no series given")
     still_ab = _zahl(params, ctx, "still_stunden", "still_ab")
     key_ctx = str(params.get("context_key") or "messreihe")
 

@@ -74,7 +74,7 @@ def rolle(payload: dict, name: str) -> dict:
     for row in payload["agents"]:
         if row["agent"] == name:
             return row
-    raise AssertionError(f"Rolle {name!r} fehlt in {[r['agent'] for r in payload['agents']]}")
+    raise AssertionError(f"Role {name!r} is missing in {[r['agent'] for r in payload['agents']]}")
 
 
 # ── The three bars ───────────────────────────────────────────────────────────

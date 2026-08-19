@@ -66,13 +66,13 @@ async def test_abgebrochener_pruefer_erzeugt_keinen_auftrag(db, monkeypatch):
     ergebnis, laeufe, issue = await _gate(
         db, monkeypatch, RunResult("failed", "claude: Antwort bei max_tokens abgeschnitten"))
 
-    assert laeufe == ["code_reviewer"], "der Entwickler wurde auf einen Phantom-Befund angesetzt"
+    assert laeufe == ["code_reviewer"], "the developer was set on a phantom finding"
     assert ergebnis.status == "done"
     from app.models.ticket import Comment
     from sqlalchemy import select
     texte = [c.body for c in (await db.execute(select(Comment).where(
         Comment.issue_id == issue.id))).scalars().all()]
-    assert any("UNGEPRÜFT" in t for t in texte), "der Mensch erfährt nicht, dass niemand prüfte"
+    assert any("UNGEPRÜFT" in t for t in texte), "the human does not learn that nobody checked"
 
 
 async def test_echte_befunde_loesen_weiter_eine_korrektur_aus(db, monkeypatch):
@@ -102,7 +102,7 @@ async def test_verbrauchte_runden_ueberleben_den_neustart(db, monkeypatch):
     ergebnis, laeufe, _ = await _gate(
         db, monkeypatch, RunResult("done", "1. Befund"), runden=worker.REVIEW_RUNDEN)
 
-    assert laeufe == [], "verbrauchte Runden dürfen keinen weiteren Lauf starten"
+    assert laeufe == [], "used up rounds must not start another run"
     assert ergebnis.blocker_kind == "review"
 
 
@@ -131,7 +131,7 @@ async def test_offene_befunde_landen_am_ticket(db, monkeypatch):
     assert ergebnis.blocker_kind == "review"
     texte = [c.body for c in (await db.execute(
         select(Comment).where(Comment.issue_id == issue.id))).scalars().all()]
-    assert any("Der Timeout ist zu kurz." in t for t in texte), "die Befunde fehlen am Ticket"
+    assert any("Der Timeout ist zu kurz." in t for t in texte), "the findings are missing on the ticket"
 
 
 async def test_stillstand_beendet_das_gate_statt_der_rundenzahl(db, monkeypatch):
@@ -216,7 +216,7 @@ async def test_fortschritt_darf_weiterlaufen(db, monkeypatch):
         db, proj, issue, await fake_load_agent(db, "developer"), "/ws", False, {}, [],
         RunResult("done", "fertig"), _Ctx(), owner_id=None, task_id="t-1", base_urls={})
 
-    assert ergebnis.blocker_kind is None, "bestandenes Review darf nicht blockieren"
+    assert ergebnis.blocker_kind is None, "a passed review must not block"
     assert runde["n"] == 4
 
 

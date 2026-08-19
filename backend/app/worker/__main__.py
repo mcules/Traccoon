@@ -369,7 +369,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
         # of rounds. If the last correction did not touch the diff, the next round brings
         # nothing, and then it fetches a person, with exactly that reason.
         if vorheriger_diff is not None and diff == vorheriger_diff:
-            log.warning("review %s: Runde %d hat nichts verändert → Stillstand",
+            log.warning("review %s: round %d changed nothing, standstill",
                         issue.key, attempt)
             db.add(Comment(
                 issue_id=issue.id, author_id=None, author_label="Prüfer", kind="internal",
@@ -404,7 +404,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
         # in a review hold afterwards, over a finding that never existed.
 
         if rev.status != "done":
-            log.warning("review %s: Prüfer-Lauf %s (Runde %d) — keine Befunde, kein Auftrag",
+            log.warning("review %s: reviewer run %s (round %d), no findings, no assignment",
                         issue.key, rev.status, attempt + 1)
             db.add(Comment(
                 issue_id=issue.id, author_id=None, author_label="System", kind="internal",
@@ -415,7 +415,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                       "eine Fehlermeldung anzusetzen wäre eine erfundene Aufgabe.")))
             await db.commit()
             return result
-        log.info("review %s: Befunde (Runde %d von %d) → Korrektur",
+        log.info("review %s: findings (round %d of %d), correcting",
                  issue.key, attempt + 1, REVIEW_RUNDEN)
         # The round is spent the moment it begins, and committed, so that it survives a
         # restart in the middle of the correction.
@@ -471,7 +471,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
         # late accept jobs (from queue recovery, for instance) from touching a cleanly merged
         # branch and running into a phantom conflict, which is a source of loops.
         if issue.merge_status == "merged":
-            log.info("accept %s → bereits gemerged, übersprungen", job["issue_id"])
+            log.info("accept %s: already merged, skipped", job["issue_id"])
             return {"status": "merged"}
         if project.git_enabled and issue.branch_name:
             host = urlsplit(project.github_repo).hostname or ""
@@ -508,7 +508,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                 else:
                     # Put the conflict markers into the worktree so the agent can resolve them.
                     await gitops.setup_conflict_resolution(ctx)
-                    log.info("accept %s → Konflikt (Runde %d), zurück an den Agenten",
+                    log.info("accept %s: conflict (round %d), back to the agent",
                              job["issue_id"], issue.merge_conflict_rounds)
                 await db.commit()
                 await redis.publish(f"{PREFIX}events:{project.id}",
@@ -567,8 +567,8 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                                   source="merge"))
                 await db.commit()
             else:
-                log.info("accept %s: Self-/Host-Projekt — kein Ticket-Deploy "
-                         "(Host-Stack nur via Wartungs-Update)", job["issue_id"])
+                log.info("accept %s: self or host project, no ticket deploy "
+                         "(the host stack only over the maintenance update)", job["issue_id"])
         # Subticket merged: release the next parked sibling or finish the umbrella ticket
         # (only AFTER the merge, so that part n+1 builds on n).
         if issue.parent_ticket_id and issue.merge_status == "merged":
@@ -602,7 +602,7 @@ async def _handle_job(job: dict, redis: Redis) -> None:
             # This used to be a silent `return`: the job run stayed on "running" forever,
             # without an error and without a run. It happened when the task was queued before
             # the commit and a free worker was faster than the transaction.
-            log.warning("Job-Auftrag %s ohne Datensatz (job_run=%s, job=%s) — übersprungen",
+            log.warning("Job assignment %s without a record (job_run=%s, job=%s), skipped",
                         job.get("task_id"), job_run_id, job.get("job_id"))
             return
         # Safety net: script, workflow and http run at their own trigger (scheduler, API, agent
@@ -613,7 +613,7 @@ async def _handle_job(job: dict, redis: Redis) -> None:
             jr.error = f"Job-Art '{j.kind}' gehört nicht in den Worker (Auslöser hat nicht verzweigt)"
             jr.finished_at = _now_dt()
             await db.commit()
-            log.error("Job %s (%s) fiel in den Prompt-Pfad", j.name, j.kind)
+            log.error("Job %s (%s) fell into the prompt path", j.name, j.kind)
             return
         # Owner of the job: their token, their assistant agent, their tool servers, their delivery.
         owner_id = j.user_id
@@ -876,7 +876,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             if result.status == "blocked" and getattr(result, "blocker_kind", None) == "assistant_perm":
                 # Tool gate: the item waits for approval (status awaiting, chat card set).
                 # Do NOT finalise, the run is started again after the decision.
-                log.info("assistant-task %s → wartet auf Freigabe (%s)", tid, result.text)
+                log.info("assistant task %s waits for approval (%s)", tid, result.text)
                 return
             out = result.summary or result.text or ""
             run_id = getattr(result, "run_id", None)
@@ -1037,17 +1037,17 @@ def watchdog_pruefe(gemeldet: bool) -> bool:
     steht_seit = time.monotonic() - _LETZTER_TICK
     if steht_seit > LOOP_STALL_SEC:
         if not gemeldet:
-            log.error("Event-Loop tickt seit %.0fs nicht mehr — Thread-Stacks folgen", steht_seit)
+            log.error("The event loop has not ticked for %.0fs, thread stacks follow", steht_seit)
             faulthandler.dump_traceback()   # to stderr, so into the container log
         if LOOP_KILL_SEC and steht_seit > LOOP_KILL_SEC:
-            log.error("Event-Loop steht seit %.0fs — Worker beendet sich für den Neustart", steht_seit)
+            log.error("The event loop has stood for %.0fs, the worker ends itself for the restart", steht_seit)
             faulthandler.dump_traceback()   # the last state before leaving
             sys.stderr.flush()
             sys.stdout.flush()
             os._exit(1)                     # no clean shutdown possible: the loop does not react
         return True
     if gemeldet:
-        log.warning("Event-Loop läuft wieder (Stillstand %.0fs)", steht_seit)
+        log.warning("The event loop runs again (standstill %.0fs)", steht_seit)
     return False
 
 
@@ -1095,7 +1095,7 @@ async def _lauf_abschliessen(task_id: str, grund: str) -> None:
             run.error = ((run.error or "") + grund).strip()
             await db.commit()
     except Exception:  # noqa: BLE001 — the cleanup must not make the abort worse
-        log.exception("Laufzeile nach Abbruch nicht geschlossen (task %s)", task_id)
+        log.exception("Run row not closed after the abort (task %s)", task_id)
 
 
 async def raeume_leichen_und_melde() -> None:
@@ -1145,7 +1145,7 @@ async def raeume_leichen_und_melde() -> None:
                                 title="⚠️ Worker nach Abbruch neu gestartet",
                                 body=body[:4000], chat_id=u.telegram_chat_id))
         await db.commit()
-    log.warning("Aufräumen nach Neustart: %d Lauf/Läufe und %d Assistent-Aufgabe(n) abgeschlossen",
+    log.warning("Clean-up after the restart: %d run(s) and %d assistant task(s) finished",
                 len(runs), len(tasks))
 
 
@@ -1180,7 +1180,7 @@ async def pull_loop(redis: Redis) -> None:
         await redis.lpush(QUEUE, raw)
         recovered += 1
     if recovered or duplicates:
-        log.info("Recovery: %d Job(s) aus PROCESSING zurück in QUEUE, %d Duplikat(e) verworfen",
+        log.info("Recovery: %d job(s) from PROCESSING back into QUEUE, %d duplicate(s) discarded",
                  recovered, duplicates)
     while True:
         await asyncio.sleep(PULL_INTERVAL)
@@ -1233,7 +1233,7 @@ async def kill_listener(redis: Redis) -> None:
         task = RUNNING.get(key)
         if task and not task.done():
             task.cancel()
-            log.info("kill: Lauf für %s abgebrochen", key)
+            log.info("kill: run for %s aborted", key)
 
 
 async def main() -> None:
@@ -1253,7 +1253,7 @@ async def main() -> None:
     try:
         await raeume_leichen_und_melde()
     except Exception:  # noqa: BLE001
-        log.exception("Aufräumen nach Neustart fehlgeschlagen (Worker läuft trotzdem an)")
+        log.exception("Clean-up after the restart failed (the worker starts regardless)")
     asyncio.create_task(heartbeat(redis))
     asyncio.create_task(kill_listener(killer))
     asyncio.create_task(pull_loop(redis))
@@ -1344,7 +1344,7 @@ async def main() -> None:
             if task_id:
                 if task_id in _inflight_task_ids:
                     await redis.lrem(PROCESSING, 1, raw)
-                    log.warning("Duplikat-Job task_id=%s verworfen (läuft bereits)", task_id)
+                    log.warning("Duplicate job task_id=%s discarded (already running)", task_id)
                     continue
                 _inflight_task_ids.add(task_id)
             asyncio.create_task(_run(job, raw))
@@ -1377,19 +1377,19 @@ async def _auslaufen() -> None:
     """Finish running tasks, as far as the grace period reaches."""
     laufend = [t for t in RUNNING.values() if not t.done()]
     if not laufend:
-        log.info("Worker beendet sich — nichts läuft mehr")
+        log.info("The worker shuts down, nothing is running any more")
         return
-    log.info("Worker beendet sich: %d Lauf/Läufe aktiv, warte bis zu %d s "
-             "(neue Aufträge werden nicht mehr angenommen)", len(laufend), DRAIN_SEC)
+    log.info("The worker shuts down: %d run(s) active, waiting up to %d s "
+             "(new assignments are no longer accepted)", len(laufend), DRAIN_SEC)
     _fertig, offen = await asyncio.wait(laufend, timeout=DRAIN_SEC)
     if offen:
         # No abort by hand: the tasks still stand in PROCESSING, the recovery of the next
         # worker fetches them back, and the successor builds its handover from the step rows.
         # Docker ends the process in a moment anyway.
-        log.warning("Auslaufzeit vorbei, %d Lauf/Läufe unfertig — sie werden neu eingereiht",
+        log.warning("Grace time over, %d run(s) unfinished: they are queued anew",
                     len(offen))
     else:
-        log.info("Alle Läufe sauber beendet")
+        log.info("All runs finished cleanly")
 
 
 if __name__ == "__main__":

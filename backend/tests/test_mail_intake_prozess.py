@@ -72,7 +72,7 @@ def _verdaechtig(uid: int = 5001) -> dict:
 async def _melden(db, owner, payload) -> WorkflowInstance:
     ids = await mail_intake.intake_mail(db, owner.id, payload, source="mail",
                                         agent="assistent")
-    assert len(ids) == 1, "genau ein ausgelieferter Mail-Eingang soll anlaufen"
+    assert len(ids) == 1, "exactly one shipped mail inbox should start"
     return await db.get(WorkflowInstance, ids[0])
 
 

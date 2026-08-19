@@ -50,7 +50,7 @@ class AssigneeIn(BaseModel):
             return v
         v = v.strip()
         if not v:
-            raise ValueError("display_name darf nicht leer sein")
+            raise ValueError("display_name must not be empty")
         return v
 
 

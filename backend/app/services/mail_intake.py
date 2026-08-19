@@ -45,7 +45,7 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
             AssistantTask.source == source,
             AssistantTask.source_ref == src_ref))).scalar_one_or_none()
         if dup is not None:
-            log.info("Mail %s bereits als Item #%s bearbeitet — kein zweiter Lauf",
+            log.info("Mail %s already handled as item #%s, no second run",
                      src_ref, dup.id)
             return []
 
@@ -62,5 +62,5 @@ async def intake_mail(db: AsyncSession, owner_id: int | None, payload: dict, *,
         }, actor_id=owner_id, source_ref=src_ref)
     await db.commit()
     if not ids:
-        log.warning("Mail %s: kein Ablauf hört auf mail.received — nichts geschehen", src_ref)
+        log.warning("Mail %s: no flow listens for mail.received, nothing happened", src_ref)
     return ids

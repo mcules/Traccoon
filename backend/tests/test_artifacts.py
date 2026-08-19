@@ -73,7 +73,7 @@ async def test_zustand_setzen_wirkt_auf_die_hardware(db, register):
 async def test_unbekannter_zustand_wird_abgewiesen(db, register):
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
-    with pytest.raises(ValueError, match="kein Zustand"):
+    with pytest.raises(ValueError, match="is not a state"):
         await art.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset,
                                asset=asset, status_key="gibtsnicht")
 
@@ -115,7 +115,7 @@ async def test_eingebauter_typ_laesst_sich_nicht_loeschen(client, db, register):
     ticket = await art.type_by_key(db, "ticket")
     r = await client.delete(f"/artifact-types/{ticket.id}", headers=auth(chef))
     assert r.status_code == 409
-    assert "nicht löschen" in r.json()["detail"]
+    assert "cannot be deleted" in r.json()["detail"]
 
 
 async def test_beschriftung_eines_eingebauten_zustands_ist_aenderbar(client, db, register):

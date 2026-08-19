@@ -66,7 +66,7 @@ async def upload_attachment(file: UploadFile, pair: tuple[Issue, Access] = Depen
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Schreibrecht erforderlich")
     raw = await file.read()
     if len(raw) > 20 * 1024 * 1024:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Datei zu groß (>20MB)")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (>20MB)")
     a = Attachment(issue_id=issue.id, uploader_id=access.user.id, filename=file.filename or "datei",
                    mime_type=file.content_type or "application/octet-stream", size=len(raw), data=raw)
     db.add(a)
@@ -79,14 +79,14 @@ async def _attachment_access(aid: int, user: User, db: AsyncSession) -> Attachme
     """The attachment is only for members of the associated project (respectively admins)."""
     a = await db.get(Attachment, aid)
     if a is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Anhang nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
     issue = await db.get(Issue, a.issue_id)
     project = await db.get(Project, issue.project_id) if issue else None
     if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Anhang nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
     access = await build_access(project, user, db)
     if not access.has_role(ProjectRole.viewer):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Kein Zugriff auf dieses Projekt")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this project")
     return a
 
 
@@ -107,6 +107,6 @@ async def delete_attachment(aid: int, user: User = Depends(get_current_user),
         project = await db.get(Project, issue.project_id)
         access = await build_access(project, user, db)
         if not access.has_role(ProjectRole.maintainer):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Nur Hochlader oder Maintainer dürfen löschen")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the uploader or a maintainer may delete")
     await db.delete(a)
     await db.commit()

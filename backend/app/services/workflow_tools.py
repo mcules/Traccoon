@@ -76,7 +76,7 @@ async def werkzeuge(db: AsyncSession, owner_id: int | None) -> list[dict]:
         async with sitzung as mcp:
             roh = await mcp.list_tools()
     except Exception:  # noqa: BLE001, the tool list is convenience, not infrastructure
-        log.warning("MCP-Werkzeugliste für Nutzer %s nicht abrufbar", owner_id, exc_info=True)
+        log.warning("MCP tool list for user %s not fetchable", owner_id, exc_info=True)
         return []
     out = []
     for t in roh:

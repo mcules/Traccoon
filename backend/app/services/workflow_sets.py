@@ -250,7 +250,7 @@ async def customize(db: AsyncSession, project: Project, slot: str, actor_id: int
             return existing
     source = await resolve_definition(db, project.id, slot, issue_type_id)
     if source is None:
-        raise ValueError(f"Für den Slot '{slot}' gibt es keinen Ablauf zum Kopieren")
+        raise ValueError(f"There is no flow to copy for the slot '{slot}'")
     # The key is unique per project, so the copy for an issue type needs one of its own,
     # and the name should say at a glance who it applies to.
     schluessel = name = None
@@ -292,7 +292,7 @@ async def reset(db: AsyncSession, project: Project, slot: str,
     own.archived_at = _now()
     own.enabled = False
     await db.commit()
-    log.info("Projekt %s: Slot %s zurückgesetzt (Definition %s archiviert)",
+    log.info("Project %s: slot %s reset (definition %s archived)",
              project.key, slot, own.id)
     return True
 

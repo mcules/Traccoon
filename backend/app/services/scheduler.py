@@ -133,7 +133,7 @@ async def _tick() -> None:
             if not await run_job_kind(db, job, jr):  # prompt → Worker
                 nachreichen.append({"kind": "job", "task_id": f"job-{jr.id}",
                                     "job_id": job.id, "job_run_id": jr.id})
-            log.info("job %s ausgelöst (%s)", job.name, job.kind)
+            log.info("job %s triggered (%s)", job.name, job.kind)
         await db.commit()
         # Commit FIRST, queue AFTERWARDS. The other way round the assignment lies in Redis
         # before the JobRun exists in the database; a free worker grabs it within
@@ -276,7 +276,7 @@ async def _purge_archived_runs() -> None:
         )
         await db.commit()
         if res.rowcount:
-            log.info("%d archivierte Agentenläufe älter als %d Tage gelöscht", res.rowcount, days)
+            log.info("%d archived agent runs older than %d days deleted", res.rowcount, days)
 
 
 async def _spam_digest() -> None:
@@ -306,7 +306,7 @@ async def _postfach_lernen() -> None:
                 await spam_rueckkopplung(db, owner_id)
                 await antwort_kontakte(db, owner_id)
             except Exception:  # noqa: BLE001
-                log.exception("Postfach-Abgleich für Nutzer %s fehlgeschlagen", owner_id)
+                log.exception("Mailbox reconciliation for user %s failed", owner_id)
 
 
 async def _vault_kontakte() -> None:
@@ -326,7 +326,7 @@ async def _vault_kontakte() -> None:
             try:
                 await sync_contacts(db, owner_id)
             except Exception:  # noqa: BLE001
-                log.exception("Vault-Kontaktabgleich für Nutzer %s fehlgeschlagen", owner_id)
+                log.exception("Vault contact reconciliation for user %s failed", owner_id)
 
 
 async def run_scheduler() -> None:

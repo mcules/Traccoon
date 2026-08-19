@@ -255,7 +255,7 @@ async def assistent_item(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     await db.flush()
     inst.context = {**ctx, "task": {"id": task.id, "status": task.status,
                                     "auto": bool(policy.get("auto"))}}
-    log.info("Mail-Item #%s (%s, prio=%s, auto=%s) über Ablauf %s",
+    log.info("Mail item #%s (%s, prio=%s, auto=%s) over flow %s",
              task.id, task.category, task.priority, policy.get("auto"), inst.id)
     return {"action": "assistant_task", "task_id": task.id, "status": task.status}
 

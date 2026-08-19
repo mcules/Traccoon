@@ -99,7 +99,7 @@ async def test_fortsetzung_laeuft_nicht_im_kreis(db, seeded, redis_stub):
     await enginemod.drain()
 
     exec_schritte = await _schritte(db, "exec")
-    assert len(exec_schritte) >= 2, "keine echte Fortsetzung — Knoten wurde nicht erneut ausgeführt"
+    assert len(exec_schritte) >= 2, "not a real continuation, the node was not executed again"
     assert all(s.routed_at is not None for s in exec_schritte[:-1])
     await db.refresh(issue)
     assert issue.continuation_count >= 1
@@ -218,7 +218,7 @@ async def test_planung_laeuft_nicht_endlos_im_kreis(db, seeded, redis_stub):
     await db.refresh(issue)
 
     plan_schritte = await _schritte(db, "plan")
-    assert len(plan_schritte) <= PLAN_FORTSETZUNGEN + 1, "Planung dreht sich ungebremst"
+    assert len(plan_schritte) <= PLAN_FORTSETZUNGEN + 1, "the planning turns unbraked"
     assert issue.continuation_count >= PLAN_FORTSETZUNGEN
     assert issue.agent_status == TicketAgentStatus.hold      # waits for a human
     wartend = (await db.execute(select(WorkflowStepRun).where(

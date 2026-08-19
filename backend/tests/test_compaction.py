@@ -56,7 +56,7 @@ def test_schnitt_trennt_nie_werkzeugaufruf_von_seiner_antwort():
     rest = m[bis:]
     for i, nachricht in enumerate(rest):
         if nachricht.get("role") == "tool":
-            assert rest[i - 1].get("tool_calls"), "tool-Antwort ohne ihren Aufruf"
+            assert rest[i - 1].get("tool_calls"), "a tool answer without its call"
 
 
 async def test_zusammenfassung_ersetzt_den_mittelteil(db, monkeypatch):
@@ -159,7 +159,7 @@ async def test_reiner_werkzeugverlauf_behaelt_kopf_und_juengstes(db, monkeypatch
     # The rest has to stay a valid interplay; otherwise the provider answers with a 400.
     for i, nachricht in enumerate(neu):
         if nachricht.get("role") == "tool":
-            assert neu[i - 1].get("tool_calls"), "tool-Antwort ohne ihren Aufruf"
+            assert neu[i - 1].get("tool_calls"), "a tool answer without its call"
 
 
 async def test_uebergabe_traegt_den_faden_weiter(db, monkeypatch):
@@ -209,7 +209,7 @@ async def test_uebergabe_faellt_ehrlich_zurueck(db, monkeypatch):
 async def test_uebergabe_bei_kurzem_lauf_bleibt_schlicht(db, monkeypatch):
     """A run with two turns needs no aux round: the stopgap already says everything."""
     async def fake_aux(*a, **kw):
-        raise AssertionError("Aux darf hier gar nicht erst gefragt werden")
+        raise AssertionError("aux must not even be asked here")
 
     monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
     m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"},

@@ -26,7 +26,7 @@ async def test_auslaufen_wartet_auf_den_laufenden_agenten(monkeypatch):
     worker.RUNNING["TST-1"] = asyncio.create_task(agent())
     try:
         await worker._auslaufen()
-        assert fertig.is_set(), "der laufende Agent wurde nicht zu Ende gebracht"
+        assert fertig.is_set(), "the running agent was not brought to an end"
     finally:
         worker.RUNNING.clear()
 
@@ -45,7 +45,7 @@ async def test_auslaufen_gibt_nach_der_frist_auf(monkeypatch):
     try:
         await worker._auslaufen()
         assert not task.done()
-        assert not task.cancelled(), "der Lauf darf nicht von Hand abgebrochen werden"
+        assert not task.cancelled(), "the run must not be aborted by hand"
     finally:
         task.cancel()
         worker.RUNNING.clear()
