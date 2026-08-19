@@ -1,10 +1,10 @@
-"""Spam-Erkennung: Regeln, Gedächtnis, Rückfrage, Ausführung.
+"""Spam detection: rules, memory, question, execution.
 
-Der Kern dieser Tests ist nicht „erkennt Spam" — das entscheidet am Ende ein Modell und
-ein Mensch. Geprüft wird, dass die *Mechanik* stimmt: dass ein bekannter Absender in Ruhe
-gelassen wird, dass ein gefälschter bekannter Absender es gerade NICHT wird, dass ein
-bestellter Newsletter nicht als Müll durchgeht — und vor allem, dass jede Entscheidung im
-Gedächtnis landet und die nächste Mail beeinflusst.
+The core of these tests is not "detects spam": that is decided in the end by a model and a
+human. What is checked is that the *mechanics* are right: that a known sender is left alone,
+that a forged known sender is precisely NOT left alone, that a subscribed newsletter does not
+pass as rubbish, and above all that every decision lands in the memory and influences the
+next mail.
 """
 import pytest
 from app.models.assistant import AssistantContact, AssistantPolicy, SpamVerdict
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.asyncio
 
 
 def _mail(**over) -> dict:
-    """Ein unauffälliger Payload, wie ihn der imap-watcher liefert."""
+    """An inconspicuous payload, as the imap watcher delivers it."""
     payload = {
         "account": "privat", "folder": "INBOX", "uid": 4711,
         "from": [{"name": "Shop", "addr": "info@shop.de"}],
@@ -53,7 +53,7 @@ async def test_saubere_mail_ohne_verdacht():
 
 
 async def test_faelschungsmuster_schlaegt_an():
-    """SPF fehlgeschlagen, fremder Rückweg, fremde Antwortadresse, getarnter Name."""
+    """SPF failed, a foreign return path, a foreign reply address, a disguised name."""
     res = evaluate(_mail(
         **{"from": [{"name": "Paketdienst Zustellung <service@dhl.de>", "addr": "x@paket-tracking.xyz"}],
            "reply_to": [{"name": "", "addr": "kasse@4t7k.ru"}],
@@ -74,7 +74,7 @@ async def test_faelschungsmuster_schlaegt_an():
 
 
 async def test_bounce_unterdomaene_ist_kein_mismatch():
-    """`bounce.shop.de` zu `shop.de` ist üblich und darf keinen Verdacht auslösen."""
+    """`bounce.shop.de` to `shop.de` is usual and must raise no suspicion."""
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<b@bounce.shop.de>", "Received-Count": 3}))
@@ -82,8 +82,8 @@ async def test_bounce_unterdomaene_ist_kein_mismatch():
 
 
 async def test_newsletter_bleibt_newsletter():
-    """Sauberer Massenversand mit Abmeldeweg ist kein Spam — sonst verschwinden
-    Bestellbestätigungen im Spam-Ordner."""
+    """Clean bulk sending with an unsubscribe path is not spam; otherwise order confirmations
+    disappear into the spam folder."""
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<bounce@shop.de>",
@@ -101,22 +101,22 @@ async def test_massenversand_ohne_abmeldeweg():
 
 
 async def test_blindkopie_versand_faellt_auf():
-    """Die eigene Adresse steht nirgends — typisch für Massenversand per Blindkopie."""
+    """One's own address stands nowhere, which is typical of bulk sending by blind copy."""
     res = evaluate(_mail(to=[{"name": "", "addr": "irgendwer@example.org"}]),
                    meine_adressen=frozenset({"ich@meine-domain.de"}))
     assert "bcc_blast" in res.signals
 
 
 async def test_eigene_domain_als_platzhalter():
-    """Wer eine ganze Domain empfängt, kann seine Aliase nicht aufzählen."""
+    """Whoever receives a whole domain cannot enumerate their aliases."""
     res = evaluate(_mail(to=[{"name": "", "addr": "shop-alias@meine-domain.de"}]),
                    meine_adressen=frozenset({"*@meine-domain.de"}))
     assert "bcc_blast" not in res.signals
 
 
 async def test_alias_wird_als_merkmal_gefuehrt():
-    """Der angeschriebene Alias ist ein eigenes Signal: ein Alias, den nur ein Anbieter
-    kennt und der plötzlich Fremdwerbung bekommt, ist verkauft."""
+    """The addressed alias is a signal of its own: an alias only one provider knows and that
+    suddenly receives foreign advertising has been sold."""
     res = evaluate(_mail(to=[{"name": "", "addr": "shop-alias@meine-domain.de"}]))
     merkmale = features(res, "Ihre Bestellung")
     assert "to:shop-alias@meine-domain.de" in merkmale
@@ -125,7 +125,7 @@ async def test_alias_wird_als_merkmal_gefuehrt():
 
 
 async def test_freemail_domain_ist_kein_merkmal():
-    """An gmx.de hängt jeder — die Domain sagt nichts."""
+    """Everybody hangs off gmx.de, so the domain says nothing."""
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "wer@example.org"}]}))
     merkmale = features(res, "Hallo")
     assert "dom:gmx.de" not in merkmale
@@ -135,9 +135,9 @@ async def test_freemail_domain_ist_kein_merkmal():
 # --- Echtheit: Ausrichtung ------------------------------------------------------------
 
 async def test_dkim_pass_von_fremder_domain_faellt_auf():
-    """Eine gültige Signatur sagt nur, dass IRGENDWER unterschrieben hat. Erst die
-    Ausrichtung auf die Absenderdomain macht daraus eine Aussage — der häufigste Weg,
-    mit „DKIM pass" trotzdem zu fälschen."""
+    """A valid signature only says that SOMEBODY signed. Only the alignment with the sender
+    domain makes a statement of it, and that is the most common way of forging with a "DKIM
+    pass" anyway."""
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=none",
         "Return-Path": "<bounce@shop.de>",
@@ -147,10 +147,9 @@ async def test_dkim_pass_von_fremder_domain_faellt_auf():
 
 
 async def test_bestandenes_dmarc_beendet_die_ausrichtungsfrage():
-    """DMARC IST die Ausrichtungsprüfung: besteht es, ist per Definition etwas
-    ausgerichtet. Ohne diese Bremse schlägt die Regel bei jedem Mailinglisten-Beitrag
-    und jedem Google-Workspace-Absender an — an echter Post gemessen der häufigste
-    Fehlalarm überhaupt."""
+    """DMARC IS the alignment check: if it passes, something is aligned by definition. Without
+    this brake the rule fires on every mailing list contribution and every Google Workspace
+    sender, which measured against real post is the most common false alarm of all."""
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<bounce@shop.de>",
@@ -176,18 +175,18 @@ async def test_dkim_unterdomaene_ist_ausgerichtet():
 
 
 async def test_dkim_domain_aus_authentication_results():
-    """Ohne `DKIM-Signature` im Payload trägt `header.d=` dieselbe Information."""
+    """Without a `DKIM-Signature` in the payload, `header.d=` carries the same information."""
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass header.d=fremd.top; dmarc=none",
         "Return-Path": "<bounce@shop.de>", "Received-Count": 3}))
     assert "dkim_nicht_ausgerichtet" in res.signals
 
 
-# --- Urteil des eigenen Mailservers (aus echten Postfächern gelernt) --------------------
+# --- Verdict of one's own mail server (learned from real mailboxes) --------------------
 
 async def test_spam_level_sterne_werden_gelesen():
-    """`X-Spam-Level: **************` — ein Stern je Punkt. Der Server hat längst
-    bewertet; das zu ignorieren und selbst nachzubauen wäre die schlechtere Kopie."""
+    """`X-Spam-Level: **************`, one star per point. The server has long assessed it,
+    and ignoring that and rebuilding it oneself would be the worse copy."""
     res = evaluate(_mail(headers={"X-Spam-Level": "**************", "Received-Count": 3}))
     assert "server_spam_hoch" in res.signals
     assert res.score >= 0.7
@@ -205,7 +204,7 @@ async def test_spam_markierung_im_betreff():
 
 
 async def test_serverurteil_schlaegt_die_newsletter_bremse():
-    """Ein Abmeldeknopf macht erkannten Müll nicht zum bestellten Newsletter."""
+    """An unsubscribe button does not turn recognised rubbish into a subscribed newsletter."""
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<bounce@shop.de>", "X-Spam-Level": "***********",
@@ -213,11 +212,11 @@ async def test_serverurteil_schlaegt_die_newsletter_bremse():
     assert not res.ist_newsletter
 
 
-# --- Weiterleitung, Selbstfälschung, Klickzähler (aus echten Postfächern gelernt) -------
+# --- Forwarding, self-forgery, click counters (learned from real mailboxes) -------------
 
 async def test_srs_rueckweg_ist_kein_verdacht():
-    """Beim Weiterleiten schreibt der eigene Server den Rückweg auf sich selbst um. Dann
-    steht dort IMMER die eigene Domain — ein Signal, das bei jeder Mail feuert, ist keins."""
+    """On forwarding, one's own server rewrites the return path onto itself. Then one's own
+    domain ALWAYS stands there, and a signal that fires on every mail is none."""
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<SRS0=m6Wz=GK=shop.de=info@meine-domain.de>", "Received-Count": 3}),
@@ -226,8 +225,8 @@ async def test_srs_rueckweg_ist_kein_verdacht():
 
 
 async def test_verp_bounceadresse_loest_nicht_aus():
-    """Seriöse Versanddienste bouncen über eigene Adressen (`bounces+…-kickstarter@…`).
-    Aus einer weitergeleiteten Mail ist am Rückweg deshalb nichts zu holen."""
+    """Serious sending services bounce over addresses of their own (`bounces+…-kickstarter@…`).
+    From a forwarded mail there is therefore nothing to get from the return path."""
     res = evaluate(_mail(headers={
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "Return-Path": "<SRS0=YnP1=GK=bounce.dienst.de=bounces+145129-0b4c-shop.de@meine-domain.de>",
@@ -237,7 +236,7 @@ async def test_verp_bounceadresse_loest_nicht_aus():
 
 
 async def test_mail_von_meiner_eigenen_adresse():
-    """„Von dir an dich" ohne bestandene Prüfung — der älteste Trick."""
+    """"From you to you" without a passed check: the oldest trick."""
     res = evaluate(_mail(**{"from": [{"name": "Ich", "addr": "ich@meine-domain.de"}],
                             "headers": {"Received-Count": 1}}),
                    meine_adressen=frozenset({"*@meine-domain.de"}))
@@ -254,13 +253,13 @@ async def test_echte_eigene_post_bleibt_unverdaechtig():
 
 
 async def test_klickzaehler_ist_keine_taeuschung():
-    """Newsletter leiten JEDEN Link über einen Zähldienst um — das ist der Normalfall."""
+    """Newsletters route EVERY link over a counting service; that is the normal case."""
     res = evaluate(_mail(links=[{"href": "https://ctrk.klclick.com/x", "text": "commodore.net"}]))
     assert "link_text_taeuscht" not in res.signals
 
 
 async def test_ziel_auf_der_absenderdomain_ist_keine_taeuschung():
-    """`emails.kickstarter.com` bei Absender `kickstarter.com` — derselbe Hof."""
+    """`emails.kickstarter.com` with the sender `kickstarter.com`: the same yard."""
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "no-reply@kickstarter.com"}],
                             "links": [{"href": "https://emails.kickstarter.com/x",
                                        "text": "www.youtube.com"}]}))
@@ -283,7 +282,7 @@ async def test_unbekannte_umleitung_in_einer_liste_ist_nur_ein_punkt():
     assert "link_text_taeuscht" not in res.signals
 
 
-# --- Täuschung am Namen ---------------------------------------------------------------
+# --- Deception in the name --------------------------------------------------------------
 
 async def test_punycode_absender():
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "info@xn--spakasse-9db.de"}]}))
@@ -291,7 +290,7 @@ async def test_punycode_absender():
 
 
 async def test_kyrillisches_o_im_absender():
-    """„sparkasse" mit kyrillischem „а" sieht identisch aus, ist aber eine andere Domain."""
+    """"sparkasse" with a Cyrillic "а" looks identical but is a different domain."""
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "info@spаrkasse.de"}]}))
     assert "schriftmischung" in res.signals
 
@@ -302,8 +301,8 @@ async def test_unsichtbare_zeichen_im_betreff():
 
 
 async def test_bekannte_marke_als_fremde_subdomain():
-    """`sparkasse.de.sicherheit.top` holt eine bekannte Marke in die sichtbare Adresse,
-    ohne sie zu besitzen."""
+    """`sparkasse.de.sicherheit.top` pulls a known brand into the visible address without
+    owning it."""
     res = evaluate(_mail(**{"from": [{"name": "", "addr": "info@sparkasse.de.sicherheit.top"}]}),
                    bekannte_domains=frozenset({"sparkasse.de"}))
     assert "marke_als_subdomain" in res.signals
@@ -329,7 +328,7 @@ async def test_fehlende_message_id():
 
 
 async def test_vorgetaeuschte_antwort():
-    """„Re:" ohne Bezug ist eine Antwort auf ein Gespräch, das es nie gab."""
+    """"Re:" without a reference is an answer to a conversation that never existed."""
     res = evaluate(_mail(subject="Re: Ihre offene Rechnung", message_id="<a@shop.de>"))
     assert "fake_antwort" in res.signals
 
@@ -367,8 +366,8 @@ async def test_aufgesetzte_dringlichkeit():
 # --- Links ------------------------------------------------------------------------------
 
 async def test_linktext_zeigt_andere_domain_als_das_ziel():
-    """Der verlässlichste Phishing-Anzeiger überhaupt — in ehrlicher Post kommt er
-    praktisch nicht vor."""
+    """The most reliable phishing indicator of all: in honest post it practically does not
+    occur."""
     res = evaluate(_mail(links=[{"href": "https://4t7k.ru/login", "text": "www.paypal.de"}]))
     assert "link_text_taeuscht" in res.signals
     assert any("4t7k.ru" in g for g in res.reasons)
@@ -402,7 +401,7 @@ async def test_kuerzungsdienst_und_billige_endung():
     assert "link_billig_tld" in res.signals
 
 
-# --- Anhänge -----------------------------------------------------------------------------
+# --- Attachments ---------------------------------------------------------------------------
 
 async def test_ausfuehrbarer_anhang():
     res = evaluate(_mail(attachments=[{"filename": "Rechnung.exe", "content_type": "x", "size_bytes": 1}]))
@@ -416,9 +415,9 @@ async def test_doppelendung():
 
 
 async def test_svg_anhang_ist_eigener_leichter_posten():
-    """SVG und HTML werden als getarnte Anmeldemasken verschickt — aber Google hängt
-    seine Nutzungsbedingungen ebenfalls als .html an. Eigener, leichter Posten statt
-    gemeinsamer Topf mit ausführbaren Dateien."""
+    """SVG and HTML are sent as disguised login masks, but Google attaches its terms of use
+    as .html as well. Hence an own, light entry instead of a common pot with executable
+    files."""
     res = evaluate(_mail(attachments=[{"filename": "Dokument.svg"}]))
     assert "anhang_webseite" in res.signals
     assert "anhang_ausfuehrbar" not in res.signals
@@ -431,7 +430,7 @@ async def test_harmloser_anhang_bleibt_harmlos():
 
 
 async def test_passwortgeschuetztes_archiv():
-    """Ein Archiv, dessen Passwort im Text steht, ist für jeden Scanner blind."""
+    """An archive whose password stands in the text is blind to every scanner."""
     res = evaluate(_mail(attachments=[{"filename": "Unterlagen.zip"}]),
                    body="Das Passwort lautet 1234.")
     assert "anhang_archiv_mit_passwort" in res.signals
@@ -442,11 +441,11 @@ async def test_archiv_ohne_passwort_im_text():
     assert "anhang_archiv_mit_passwort" not in res.signals
 
 
-# --- Mailtext aus wechselnden Feldern ------------------------------------------------------
+# --- Mail text from varying fields ---------------------------------------------------------
 
 async def test_mailtext_findet_jedes_feld():
-    """Der Watcher liefert `body_text` ODER `body_html_as_text`; wer nur `body` liest,
-    beurteilt bei der Hälfte aller Mails einen leeren Text."""
+    """The watcher delivers `body_text` OR `body_html_as_text`; whoever reads only `body`
+    assesses an empty text for half of all mails."""
     assert mail_text({"body_text": "a"}) == "a"
     assert mail_text({"body_html_as_text": "b"}) == "b"
     assert mail_text({"body": "c"}) == "c"
@@ -488,7 +487,7 @@ async def test_vault_abgleich_spiegelt(db, tmp_path):
     assert [r.email for r in rows] == ["rainer@example.net"]
     assert rows[0].domain == "t-online.de"
 
-    # Notiz weg → Eintrag weg (Spiegel, kein Bestand).
+    # The note is gone, so the entry is gone (a mirror, not a stock of its own).
     (ordner / "Rainer.md").write_text("---\nemail: neu@example.net\n---\n", encoding="utf-8")
     await sync_contacts(db, user.id, str(tmp_path))
     rows = (await db.execute(select(AssistantContact))).scalars().all()
@@ -496,8 +495,8 @@ async def test_vault_abgleich_spiegelt(db, tmp_path):
 
 
 async def test_leerer_vault_raeumt_nicht_ab(db, tmp_path):
-    """Ein nicht gemounteter oder halb synchronisierter Vault darf die Freispruch-Liste
-    nicht löschen — sonst gilt nach einem Sync-Aussetzer die halbe Verwandtschaft als fremd."""
+    """A vault that is not mounted or half synchronised must not delete the acquittal list;
+    otherwise half the family counts as foreign after a sync hiccup."""
     user = await make_user(db, "dennis")
     db.add(AssistantContact(owner_user_id=user.id, email="opa@example.net",
                             domain="t-online.de"))
@@ -516,8 +515,8 @@ async def _kontakt(db, owner_id, name: str, email: str) -> None:
 
 
 async def test_bekannter_name_von_fremder_adresse(db):
-    """Kein Link, kein Anhang, keine technische Fälschung — nur ein geliehener Name.
-    Nur der Kontaktbestand verrät das."""
+    """No link, no attachment, no technical forgery: only a borrowed name. Only the contact
+    stock gives that away."""
     user = await make_user(db, "dennis")
     await _kontakt(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
     assert await namens_kollision(db, user.id, "Rainer Beispiel", "r.beispiel@gmx-mail.top") \
@@ -538,8 +537,8 @@ async def test_anrede_und_umgedrehte_schreibweise(db):
 
 
 async def test_einteiliger_name_loest_nicht_aus(db):
-    """„Info" oder „Support" sind keine Personen — ein einteiliger Name träfe ständig
-    zufällig zu."""
+    """"Info" or "support" are not people, and a single part name would match by chance
+    constantly."""
     user = await make_user(db, "dennis")
     await _kontakt(db, user.id, "Support", "support@shop.de")
     assert await namens_kollision(db, user.id, "Support", "support@fremd.top") == ""
@@ -557,11 +556,11 @@ async def test_bekannte_domains_ohne_fliesstext(db):
 
 
 async def test_chef_masche_erzeugt_verdacht(db):
-    """Ende-zu-Ende: technisch tadellose Mail, die sich als Bekannter ausgibt.
+    """End to end: a technically impeccable mail that pretends to be an acquaintance.
 
-    Der geliehene Name allein trägt bewusst kein Urteil (Bekannte schreiben auch von
-    ihrer zweiten Adresse) — erst zusammen mit umgeleiteter Antwort und aufgesetzter
-    Dringlichkeit wird daraus eine Rückfrage.
+    The borrowed name alone deliberately carries no verdict (acquaintances write from their
+    second address as well); only together with a redirected reply and manufactured urgency
+    does it become a question.
     """
     user = await _owner(db)
     await _kontakt(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
@@ -577,8 +576,8 @@ async def test_chef_masche_erzeugt_verdacht(db):
 
 
 async def test_geliehener_name_allein_traegt_kein_urteil(db):
-    """Ein Bekannter, der von seiner zweiten Adresse schreibt, darf nicht als Betrug
-    durchgehen — der Vault kennt nie alle Adressen eines Menschen."""
+    """An acquaintance writing from their second address must not pass as fraud: the vault
+    never knows all the addresses of a person."""
     user = await _owner(db)
     await _kontakt(db, user.id, "Rainer Beispiel", "r.beispiel@example.net")
     urteil = await spam_review.beurteilen(db, user.id, _mail(
@@ -588,7 +587,7 @@ async def test_geliehener_name_allein_traegt_kein_urteil(db):
     assert urteil["score"] < urteil["frage_ab"]
 
 
-# --- Gedächtnis ----------------------------------------------------------------------
+# --- Memory ---------------------------------------------------------------------------
 
 async def _urteil(db, owner_id, merkmale, **over) -> SpamVerdict:
     felder = {"sender_email": "wer@spam.xyz", "subject": "Gewinn", **over}
@@ -600,12 +599,12 @@ async def _urteil(db, owner_id, merkmale, **over) -> SpamVerdict:
 
 
 async def test_entscheidungen_wirken_auf_die_naechste_mail(db):
-    """Der Kern: was der Mensch entscheidet, muss künftige Beurteilungen verändern."""
+    """The core: what the human decides has to change future assessments."""
     user = await make_user(db, "dennis")
     merkmale = ["from:wer@spam.xyz", "dom:spam.xyz", "wort:gewinn"]
 
     vorher, _, sicher = await spam_learn.bewerten(db, user.id, merkmale)
-    assert vorher == 0.5 and not sicher      # keine Meinung ohne Beobachtung
+    assert vorher == 0.5 and not sicher      # no opinion without an observation
 
     for _ in range(3):
         v = await _urteil(db, user.id, merkmale)
@@ -633,7 +632,7 @@ async def test_erwuenschter_absender_wird_gelernt(db):
 
 
 async def test_umentscheiden_nimmt_die_alte_zaehlung_zurueck(db):
-    """Ein Irrtum darf nicht für immer im Gedächtnis stehen bleiben."""
+    """An error must not stay in the memory forever."""
     user = await make_user(db, "dennis")
     merkmale = ["from:news@verband.de"]
     v = await _urteil(db, user.id, merkmale)
@@ -677,7 +676,7 @@ async def test_bekannter_kontakt_wird_in_ruhe_gelassen(db):
 
 
 async def test_gefaelschter_bekannter_kontakt_faellt_auf(db):
-    """Der bekannte Name ist das lohnende Ziel — hier darf die Whitelist NICHT greifen."""
+    """The known name is the rewarding target; here the whitelist must NOT take hold."""
     user = await _owner(db)
     db.add(AssistantContact(owner_user_id=user.id, email="info@shop.de", domain="shop.de",
                             source_kind="frontmatter"))
@@ -692,8 +691,8 @@ async def test_gefaelschter_bekannter_kontakt_faellt_auf(db):
 
 
 async def test_hoher_verdacht_kommt_ueber_die_sofort_schwelle(db):
-    """Ob daraus eine sofortige Karte wird, entscheidet der Ablauf — die Höhe des
-    Verdachts entscheidet sich hier (siehe test_mail_intake_prozess.py)."""
+    """Whether that becomes an immediate card is decided by the flow; the height of the
+    suspicion is decided here (see test_mail_intake_prozess.py)."""
     user = await _owner(db)
     urteil = await spam_review.beurteilen(db, user.id, _mail(
         **{"from": [{"name": "", "addr": "x@4t7k.xyz"}],
@@ -720,8 +719,8 @@ async def test_unverdaechtiges_bleibt_unter_der_frage_schwelle(db):
 
 
 async def test_geklaerter_absender_wird_nicht_erneut_gefragt(db):
-    """Nach drei einhelligen „erwünscht" soll die Frage aufhören — das ist der Zweck
-    des Lernens."""
+    """After three unanimous "wanted" the question should stop; that is the purpose of the
+    learning."""
     user = await _owner(db)
     merkmale = features(evaluate(_mail(headers={"Authentication-Results": "mx; spf=softfail",
                                                 "Received-Count": 1})), "Ihre Bestellung")
@@ -734,14 +733,14 @@ async def test_geklaerter_absender_wird_nicht_erneut_gefragt(db):
     urteil = await spam_review.beurteilen(db, user.id, _mail(headers={
         "Authentication-Results": "mx; spf=softfail", "Received-Count": 1}),
         cls={"spam_score": 0.7, "category": "werbung"})
-    # Das Gedächtnis zieht das Urteil unter die Frage-Schwelle — dieselbe Mail löst keine
-    # zweite Rückfrage mehr aus. (Als „geklärt" gilt sie nicht: ein Fälschungs-Signal —
-    # hier der fehlgeschlagene SPF — hebt den Freispruch aus dem Gedächtnis bewusst auf.)
+    # The memory pulls the verdict below the question threshold, so the same mail no longer
+    # triggers a second question. (It does not count as "settled": a forgery signal, here the
+    # failed SPF, deliberately lifts the acquittal out of the memory.)
     assert urteil["learned_score"] < 0.5
     assert urteil["score"] < urteil["frage_ab"]
 
 
-# --- Entscheidung + Ausführung -------------------------------------------------------
+# --- Decision plus execution -------------------------------------------------------
 
 @pytest.fixture
 def imap_stub(monkeypatch):
@@ -770,7 +769,7 @@ async def test_bestaetigung_verschiebt_und_lernt(db, imap_stub):
 
 
 async def test_ablehnung_merkt_den_absender_vor(db, imap_stub):
-    """„Kein Spam" ist mehr als ein Nein — der Absender soll künftig gar nicht auffallen."""
+    """"Not spam" is more than a no: the sender should not stand out at all in future."""
     user = await _owner(db)
     v = await _urteil(db, user.id, ["from:news@verband.de"], account="privat", folder="INBOX",
                       uid=99)
@@ -785,8 +784,8 @@ async def test_ablehnung_merkt_den_absender_vor(db, imap_stub):
 
 
 async def test_fehlgeschlagenes_verschieben_behaelt_die_entscheidung(db, monkeypatch):
-    """IMAP kurz weg: die Entscheidung des Menschen war trotzdem richtig und bleibt
-    im Gedächtnis — sonst müsste er sie noch einmal treffen."""
+    """IMAP briefly gone: the decision of the human was right regardless and stays in the
+    memory; otherwise they would have to take it once more."""
     from app.services.mcp_client import McpError
 
     async def kaputt(*a, **k):
@@ -829,8 +828,8 @@ async def test_sammelkarte_buendelt_und_entscheidet(db, imap_stub):
 
 
 async def test_sammelkarte_ueberspringt_sofort_gemeldete(db):
-    """Ein Fall, der schon eine Einzelkarte hat, darf nicht zusätzlich in der Sammlung
-    auftauchen — sonst wird zweimal dasselbe gefragt."""
+    """A case that already has a single card must not additionally turn up in the digest;
+    otherwise the same thing is asked twice."""
     import datetime as dt
 
     user = await _owner(db)
@@ -843,11 +842,11 @@ async def test_sammelkarte_ueberspringt_sofort_gemeldete(db):
     assert await spam_review.digest_faellig(db) == 0
 
 
-# --- Getarnter Massenversand (Fall vom 2026-08-18) -----------------------------------
+# --- Disguised bulk sending (a case from 2026-08-18) ---------------------------------
 
 def _phish(**over) -> dict:
-    """Die Domain-Rechnungs-Mail: technisch fast sauber, aufwendiges HTML ohne einen
-    einzigen Link, Abmeldeweg nur im Kopf, adressiert an ein Sammelpostfach."""
+    """The domain invoice mail: technically almost clean, elaborate HTML without a single
+    link, the unsubscribe path only in the header, addressed to a collective mailbox."""
     payload = _mail(
         **{"from": [{"name": "Kundenkonto Verwaltung", "addr": "admin@unbekannt.example"}],
            "to": [{"name": "", "addr": "fragen@mitmachverein.de"}],
@@ -866,15 +865,15 @@ async def test_getarnter_massenversand_faellt_auf():
     res = evaluate(_phish(), meine_adressen=frozenset({"ich@meine-domain.de"}))
     assert "abmeldung_nur_behauptet" in res.signals
     assert "geschaeft_an_rollenadresse" in res.signals
-    # Ein Abmeldeweg, den es im Rumpf nicht gibt, macht daraus keinen Newsletter.
+    # An unsubscribe path that does not exist in the body does not make a newsletter of it.
     assert res.ist_newsletter is False
     assert res.score >= 0.9
 
 
 async def test_fassade_zaehlt_nur_bei_technikmangel():
-    """Google Play, OpenAI und eQSL haben kein `<a href>` im Rumpf und sind trotzdem echt:
-    große Versender melden per One-Click im Kopf ab (RFC 8058). Wer seine Prüfungen
-    besteht, darf sein HTML bauen, wie er will."""
+    """Google Play, OpenAI and eQSL have no `<a href>` in the body and are genuine anyway:
+    large senders unsubscribe over one-click in the header (RFC 8058). Whoever passes their
+    checks may build their HTML as they like."""
     sauber = _phish(**{"headers": {
         "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
         "List-Unsubscribe": "<mailto:abmelden@unbekannt.example>",
@@ -885,7 +884,7 @@ async def test_fassade_zaehlt_nur_bei_technikmangel():
 
 
 async def test_sammeladresse_ohne_geschaeftsvorgang_ist_harmlos():
-    """An `fragen@` schreiben ständig Fremde — das ist der Zweck der Adresse."""
+    """Strangers write to `fragen@` constantly; that is the purpose of the address."""
     res = evaluate(_phish(subject="Frage zum nächsten Treffen",
                           body_text="Hallo, wann trefft ihr euch?"),
                    meine_adressen=frozenset({"ich@meine-domain.de"}))
@@ -899,16 +898,16 @@ async def test_rechnung_an_persoenliche_adresse_ist_harmlos():
 
 
 async def test_buchhaltung_ist_keine_sammeladresse():
-    """Manche Rollen haben sehr wohl Verträge — die Liste trennt das bewusst."""
+    """Some roles do have contracts, and the list separates that deliberately."""
     res = evaluate(_phish(**{"to": [{"name": "", "addr": "buchhaltung@verein.de"}]}),
                    meine_adressen=frozenset({"ich@meine-domain.de"}))
     assert "geschaeft_an_rollenadresse" not in res.signals
 
 
 async def test_geschaeftsfreie_domain_schlaegt_jede_adresse():
-    """Bei manchen Domains gibt es kein Vertragswesen — dort ist auch `vorstand@` oder
-    `buchhaltung@` keine Ausnahme, weil es sie schlicht nicht gibt. Das ist eine Auskunft
-    des Menschen (`spam_keine_geschaeftsdomains`), keine Heuristik."""
+    """With some domains there is no contractual business, and there `vorstand@` or
+    `buchhaltung@` is no exception either, because it simply does not exist. That is a
+    statement of the human (`spam_keine_geschaeftsdomains`), not a heuristic."""
     ohne = frozenset({"mitmachverein.de"})
     for adresse in ("fragen@mitmachverein.de", "vorstand@mitmachverein.de",
                     "buchhaltung@mitmachverein.de", "michael@mitmachverein.de"):
@@ -917,7 +916,7 @@ async def test_geschaeftsfreie_domain_schlaegt_jede_adresse():
                        geschaeftsfreie_domains=ohne)
         assert "geschaeft_an_domain_ohne_geschaeft" in res.signals, adresse
 
-    # Ohne die Auskunft bleibt es bei der schwächeren Rollen-Heuristik.
+    # Without that statement it stays with the weaker role heuristic.
     res = evaluate(_phish(**{"to": [{"name": "", "addr": "buchhaltung@mitmachverein.de"}]}),
                    meine_adressen=frozenset({"ich@meine-domain.de"}))
     assert "geschaeft_an_domain_ohne_geschaeft" not in res.signals
@@ -925,7 +924,7 @@ async def test_geschaeftsfreie_domain_schlaegt_jede_adresse():
 
 
 async def test_geschaeftsfreie_domain_ohne_geschaeftsvorgang_ist_harmlos():
-    """Die Domain empfängt weiter ganz normale Post — nur eben keine Rechnungen."""
+    """The domain keeps receiving completely normal post, only no invoices."""
     res = evaluate(_phish(subject="Frage zum Treffen", body_text="Wann trefft ihr euch?",
                           **{"to": [{"name": "", "addr": "fragen@mitmachverein.de"}]}),
                    meine_adressen=frozenset({"ich@meine-domain.de"}),
