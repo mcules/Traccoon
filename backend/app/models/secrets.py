@@ -7,10 +7,10 @@ from ..db import Base
 
 
 class ProviderToken(Base):
-    """Benannter LLM-Token je Provider und User. value_enc Fernet-verschlüsselt.
+    """Named LLM token per provider and user. value_enc is Fernet encrypted.
 
     provider: claude_code (OAuth-Setup-Token) | codex (ChatGPT-JWT) | openai (sk-API-Key).
-    Mehrere je (user, provider) möglich; genau einer kann is_default sein.
+    Several per (user, provider) are possible; exactly one can be is_default.
     """
     __tablename__ = "provider_tokens"
     __table_args__ = (UniqueConstraint("user_id", "provider", "name", name="uq_provider_token"),)
@@ -22,15 +22,15 @@ class ProviderToken(Base):
     value_enc: Mapped[str] = mapped_column(Text, nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     # Optionale eigene Base-URL (OpenAI-kompatibler Endpoint, z. B. lokales litellm).
-    # Nur für die OpenAI-Familie relevant; leer/NULL → Provider-Default (api.openai.com).
+    # Relevant only for the OpenAI family; empty or NULL means the provider default (api.openai.com).
     base_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class UserSecret(Base):
-    """Secret-Tresor: value_enc ist Fernet-verschlüsselt. user_id NULL = System-Secret.
+    """Secret vault: value_enc is Fernet encrypted. user_id NULL = a system secret.
 
-    Referenzierbar als `secret:<name>` in Token-Feldern.
+    Referenceable as `secret:<name>` in token fields.
     """
     __tablename__ = "user_secrets"
     __table_args__ = (UniqueConstraint("user_id", "name", name="uq_user_secret"),)

@@ -48,7 +48,7 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
     if pr is None or pr.status != "pending":
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Anfrage nicht gefunden")
     issue = await db.get(Issue, pr.issue_id)
-    # Zugriff prüfen (Mitglied + ai_assign)
+    # Check the access (membership plus ai_assign)
     from ..models.project import Project
     project = await db.get(Project, issue.project_id)
     from .deps import build_access
@@ -71,8 +71,8 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
     pr.decided_at = _now()
     pr.decided_by = user.id
     await db.commit()
-    # Weiter geht es über den Lebenszyklus-Prozess: der wartende Ereignis-Knoten nimmt die
-    # Entscheidung an und schaltet auf den Zweig, den der Graph dafür vorsieht.
+    # It continues over the lifecycle process: the waiting event node accepts the decision
+    # and switches to the branch the graph provides for it.
     from ..services.workflow_engine import resume_on_event
     resumed = await resume_on_event(issue.id, "answer",
                                     {"kind": "permission", "tool": pr.tool, "decision": dec})
@@ -96,12 +96,12 @@ async def answer_blocker(data: AnswerIn, pair: tuple[Issue, Access] = Depends(ge
     blocker.answer = data.answer
     blocker.answered_at = _now()
     blocker.answered_by = access.user.id
-    # Antwort als User-Kommentar (fließt in den nächsten Lauf ein)
+    # The answer as a user comment (which flows into the next run)
     db.add(Comment(issue_id=issue.id, author_id=access.user.id,
                    author_label=access.user.display_name or access.user.username,
                    body=data.answer, kind="agent"))
     await db.commit()
-    # Der Prozess wartet an einem Ereignis-Knoten auf genau diese Antwort.
+    # The process waits at an event node for exactly this answer.
     from ..services.workflow_engine import resume_on_event
     resumed = await resume_on_event(issue.id, "answer",
                                     {"kind": "question", "text": data.answer[:2000]})

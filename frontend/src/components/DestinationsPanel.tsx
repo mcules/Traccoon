@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, destinationApi, type Destination, type DestinationScope } from "../api";
 import { KeyValueEditor } from "./workflow/kv";
 
-// Schlüssel statt Texte: die Liste entsteht beim Laden des Moduls, ein tr() hier würde die
-// Sprache des ersten Aufrufs festhalten.
+// Keys instead of texts: the list comes into being while the module loads, and a tr() here
+// would fix the language of the first call.
 const AUTH: [string, string][] = [
   ["none", "destinations_panel.auth_none"],
   ["basic", "destinations_panel.auth_basic"],
@@ -15,7 +15,7 @@ const AUTH: [string, string][] = [
   ["oauth2_cc", "destinations_panel.auth_oauth2_cc"],
 ];
 
-/** Welches Geheimnis das jeweilige Verfahren braucht (Feldname für die API + Beschriftung). */
+/** Which secret the respective method needs (the field name for the API plus the label). */
 const SECRET_FIELD: Record<string, [string, string]> = {
   basic: ["password", "destinations_panel.geheimnis_passwort"],
   bearer: ["token", "destinations_panel.geheimnis_token"],
@@ -33,9 +33,9 @@ const LEER = {
 };
 
 /**
- * Ziele = externe Gegenstellen mit hinterlegter Anmeldung (wie Destinations in der BTP).
- * Prozesse, Jobs und Agenten nennen später nur den Namen — Basis-URL und Zugangsdaten
- * stehen genau hier.
+ * Destinations are external counterparts with a stored login (like destinations in the BTP).
+ * Processes, jobs and agents later name only the name; the base URL and the credentials
+ * stand exactly here.
  */
 export default function DestinationsPanel({
   scope,
