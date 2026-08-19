@@ -208,7 +208,7 @@ export default function Hardware({ project }: { project: Project }) {
   );
 }
 
-/** Tickets, die an diesem Exemplar hängen (TRA-25) — Gegenrichtung zum Hardware-Feld im Ticket. */
+/** Tickets that hang off this unit (TRA-25), the opposite direction to the hardware field in the ticket. */
 function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: string }) {
   const navigate = useNavigate();
   const { data } = useQuery({
@@ -241,7 +241,7 @@ function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: str
 
 interface WfStep { name: string; order: number; assignee: AssigneeSpec }
 
-/** Standard-Beschaffungsschritte je Projekt (Vorlage für neue Exemplare) inkl. Zuständigen. */
+/** Default procurement steps per project (a template for new units) including the responsible people. */
 function WorkflowConfig({ project }: { project: Project }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -253,7 +253,7 @@ function WorkflowConfig({ project }: { project: Project }) {
     queryKey: ["members", project.id],
     queryFn: () => api.get<MemberLite[]>(`/projects/${project.id}/members`),
   });
-  // Entwurf erst beim ersten Bearbeiten anlegen — bis dahin gilt der Serverstand.
+  // Create the draft only on the first edit; until then the server state applies.
   const [entwurf, setEntwurf] = useState<WfStep[] | null>(null);
   const schritte: WfStep[] = entwurf ?? data ?? [];
   const aendern = (next: WfStep[]) => setEntwurf(next.map((s, i) => ({ ...s, order: i })));
@@ -265,7 +265,7 @@ function WorkflowConfig({ project }: { project: Project }) {
     }),
     onSuccess: () => { setEntwurf(null); qc.invalidateQueries({ queryKey: ["hw-workflow", project.id] }); },
   });
-  // „Als Prozess bearbeiten“: erzeugt (idempotent) die Workflow-Definition und öffnet den Editor.
+  // "Edit as a process": creates (idempotently) the workflow definition and opens the editor.
   const alsProzess = useMutation({
     mutationFn: () =>
       api.post<{ definition_id: number; current_version_id: number }>(

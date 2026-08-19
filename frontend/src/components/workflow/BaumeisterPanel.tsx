@@ -4,11 +4,11 @@ import { ApiError, workflowApi } from "../../api";
 import type { WorkflowGraph } from "./types";
 
 /**
- * „Beschreib es, ich zeichne es" — der Einstieg für alle, die keinen Graphen im Kopf haben.
+ * "Describe it, I draw it": the entry for everybody who has no graph in their head.
  *
- * Der Entwurf landet auf der Fläche, nicht in der Datenbank: gespeichert und veröffentlicht
- * wird wie immer von Hand. Und weil er den bisherigen Stand ersetzt, gibt es ein
- * Zurück — sonst kostet ein Versuch die Arbeit der letzten halben Stunde.
+ * The draft lands on the canvas, not in the database: saving and publishing happen by hand
+ * as always. And because it replaces the previous state there is an undo; otherwise one
+ * attempt would cost the work of the last half hour.
  */
 export default function BaumeisterPanel({
   defId,
@@ -23,7 +23,7 @@ export default function BaumeisterPanel({
 }) {
   const [offen, setOffen] = useState(false);
   const [text, setText] = useState("");
-  // Mehr als Start und Ende auf der Fläche? Dann ist ein Umbau meist gemeint.
+  // More than a start and an end on the canvas? Then a rebuild is usually meant.
   const [umbauen, setUmbauen] = useState(knotenZahl > 2);
   const [laeuft, setLaeuft] = useState(false);
   const [erklaerung, setErklaerung] = useState("");

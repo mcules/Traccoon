@@ -21,8 +21,8 @@ type Tab = "chat" | "inbox" | "rules";
 type Filter = "offen" | "erledigt" | "alle";
 const OPEN = ["new", "approved", "running"];
 
-// Die Tabellen halten Schlüssel: sie entstehen beim Laden des Moduls, ein tr() an dieser
-// Stelle würde bei einem Sprachwechsel die alte Beschriftung behalten.
+// The tables hold keys: they come into being while the module loads, and a tr() at this
+// place would keep the old label on a language change.
 const PRIO: Record<string, { label: string; cls: string }> = {
   urgent: { label: "inbox.prio_urgent", cls: "bg-red-500/15 text-red-400" },
   high: { label: "inbox.prio_high", cls: "bg-amber-500/15 text-amber-400" },
@@ -37,14 +37,14 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   error: { label: "inbox.status_error", cls: "bg-red-500/15 text-red-400" },
 };
 
-// mcules@… aus "Name <mail>" ziehen, für das "immer von …"-Label.
+// Pull mcules@… out of "Name <mail>", for the "always from …" label.
 function senderEmail(from: string | null): string {
   const m = (from || "").match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
   return m ? m[0] : (from || "");
 }
 
 export default function Inbox() {
-  // Eigene Reiter im Seiteninhalt — im Kopf nur der Titel, kein Untermenü.
+  // Own tabs in the page content; in the header only the title, no sub-menu.
   usePageChrome(tr("nav.assistant"), []);
   const [tab, setTab] = useState<Tab>("chat");
   return (

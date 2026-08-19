@@ -25,7 +25,7 @@ const TAB_KEYS = TABS.map(([k]) => k);
 
 export default function Settings() {
   const { tab: tabParam } = useParams();
-  // Aktiven Tab aus der URL ableiten; unbekannt → Default "secrets".
+  // Derive the active tab from the URL; unknown becomes the default "secrets".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "secrets") as Tab;
   const { user } = useAuth();
   usePageChrome(tr("nav.settings"), TABS.map(([key, label]) => ({
@@ -160,7 +160,7 @@ function ProviderTokens() {
   };
   const save = () => {
     if (editingId !== null) {
-      // Bearbeiten per ID: Base-URL/Default ändern; Token nur, wenn neu eingegeben.
+      // Editing by id: change the base URL or the default; the token only when newly entered.
       guard(async () => {
         await api.patch(`/me/provider-tokens/${editingId}`, {
           token: token.trim() || undefined,
@@ -193,8 +193,8 @@ function ProviderTokens() {
       {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
       <div className="mb-2 space-y-1">
         {toks?.map((t) => (
-          /* Ein Key je Zeile war am Handy ein Wortsalat: Anbieter, Name, Adresse und drei
-             Bedienelemente in einer Reihe. Jetzt oben die Angaben, darunter die Knöpfe. */
+          /* One key per row was a word salad on a phone: provider, name, address and three
+             controls in one line. Now the entries at the top and the buttons below. */
           <div key={t.id} className="rounded border border-line px-2 py-1.5 text-sm">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span className="font-medium">{t.name}</span>

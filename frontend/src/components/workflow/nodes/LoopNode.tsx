@@ -2,12 +2,12 @@ import { BaseNode, type FlowNodeProps, type SourceHandleDef } from "./shared";
 import { tr } from "../../../i18n";
 
 /**
- * Geht eine Liste Element für Element durch — der Weg von „ich habe die Daten" zu „ich
- * arbeite mit ihnen".
+ * Walks through a list element by element: the way from "I have the data" to "I work with
+ * it".
  *
- * Sequentiell und über eine Rückkante: der Ausgang `element` führt in den Körper, dessen
- * letzter Schritt wieder hierher zurück. Ist die Liste erschöpft, geht es bei `fertig`
- * weiter. Ohne die Rückkante läuft der Körper genau einmal — das meldet die Prüfung.
+ * Sequentially and over a back edge: the exit `element` leads into the body, whose last
+ * step leads back here. When the list is exhausted it continues at `fertig`. Without the
+ * back edge the body runs exactly once, which the validation reports.
  */
 export default function LoopNode({ id, data, selected }: FlowNodeProps) {
   const sources: SourceHandleDef[] = [

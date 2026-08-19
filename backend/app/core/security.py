@@ -1,4 +1,4 @@
-"""Passwort-Hashing (Argon2id), JWT (HS256) und reversible Secrets (Fernet)."""
+"""Password hashing (Argon2id), JWT (HS256) and reversible secrets (Fernet)."""
 from __future__ import annotations
 
 import datetime as dt
@@ -16,7 +16,7 @@ _ph = PasswordHasher()
 ENC_PREFIX = "enc:v1:"
 
 
-# ---------- Passwörter ----------
+# ---------- Passwords ----------
 
 def hash_password(password: str) -> str:
     return _ph.hash(password)
@@ -58,8 +58,8 @@ def _fernet() -> Fernet | None:
 
 
 def encrypt_secret(plaintext: str) -> str:
-    """Verschlüsselt einen Wert. Ohne SECRET_ENCRYPTION_KEY landet er im Klartext
-    in der Datenbank — das ist nur als Notnagel gedacht und wird laut protokolliert."""
+    """Encrypts a value. Without SECRET_ENCRYPTION_KEY it lands in the database in plain
+    text, which is meant only as a stopgap and is logged loudly."""
     if plaintext == "":
         return ""
     f = _fernet()

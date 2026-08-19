@@ -11,7 +11,7 @@ from .base import TimestampMixin
 
 
 class Skill(Base):
-    """Versionierter Prompt-Baustein. Neue Version = neue Zeile; `active` markiert die genutzte."""
+    """Versioned prompt building block. A new version is a new row; `active` marks the used one."""
     __tablename__ = "skills"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -44,12 +44,12 @@ class McpServer(TimestampMixin, Base):
     tools: Mapped[list] = mapped_column(JSON, default=list)          # discovered
     disabled_tools: Mapped[list] = mapped_column(JSON, default=list)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Variablen-Schema: benannte Slots, die Instanzen ausfüllen (z. B. Auth-Header).
+    # Variable schema: named slots the instances fill in (an auth header for instance).
     variables: Mapped[list] = mapped_column(JSON, default=list)      # [{key,label,secret,required}]
 
 
 class McpInstance(Base):
-    """Agent-eigene, ausgefüllte Instanz eines McpServer (Variablen → Werte).
+    """Agent-owned, filled-in instance of an McpServer (variables to values).
 
     values_enc = Fernet-JSON {var_key: value}; nie im API-Response ausgeliefert.
     """
@@ -83,7 +83,7 @@ class Plugin(TimestampMixin, Base):
 
 
 class PluginData(Base):
-    """Generische Plugin-Datenzeile (Table-CRUD ohne dynamisches DDL).
+    """Generic plugin data row (table CRUD without dynamic DDL).
 
     row = JSON, validiert gegen Plugin.table_schema. user_id gesetzt = privat.
     """

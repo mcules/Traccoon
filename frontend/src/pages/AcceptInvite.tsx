@@ -9,8 +9,8 @@ interface Preview {
   valid: boolean; reason: string | null;
 }
 
-/** Ziel des Einladungslinks: /accept-invite?token=... — läuft für eingeloggte
- * UND nicht eingeloggte User (dann erst Login/Register, danach automatisch beitreten). */
+/** Target of the invitation link: /accept-invite?token=… It works for logged-in AND not
+ * logged-in users (who first log in or register and then join automatically). */
 export default function AcceptInvite() {
   const [params] = useSearchParams();
   const token = params.get("token") || "";
@@ -46,7 +46,7 @@ export default function AcceptInvite() {
     }
   }
 
-  // Bereits eingeloggt + gültige Einladung → direkt annehmen.
+  // Already logged in plus a valid invitation: accept directly.
   useEffect(() => {
     if (user && preview?.valid && !done && !busy) accept();
   }, [user, preview]);
@@ -63,7 +63,7 @@ export default function AcceptInvite() {
         });
         await login(preview!.email, password);
       }
-      // useEffect oben übernimmt den accept(), sobald `user` gesetzt ist.
+      // The useEffect above takes over the accept() as soon as `user` is set.
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Fehler");
     }
