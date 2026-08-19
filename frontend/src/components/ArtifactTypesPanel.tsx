@@ -20,8 +20,8 @@ interface Typ {
   fields: Feld[];
 }
 
-// Die Listen halten Schlüssel, keine Texte: sie entstehen beim Laden des Moduls, ein
-// tr() an dieser Stelle würde die Sprache des ersten Aufrufs einfrieren.
+// The lists hold keys, not texts: they come into being while the module loads, and a tr()
+// at this place would freeze the language of the first call.
 const KATEGORIE: [string, string][] = [
   ["todo", "artifact_types_panel.kat_todo"],
   ["in_progress", "artifact_types_panel.kat_in_progress"],
@@ -53,12 +53,12 @@ const BACKING_LABEL: Record<string, string> = {
 const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
 /**
- * Artefakt-Register: was Traccoon verwaltet, welche Zustände es kennt — und welche Felder
- * es trägt.
+ * Artifact register: what Traccoon manages, which states it knows and which fields it
+ * carries.
  *
- * Drei Ebenen nach ALMEX-Vorbild: ein **Artefakt-Typ** ordnet (Vorgang, Gegenstand), ein
- * **Artefakt** ist die Sache selbst (Ticket, Hardware), und darunter hängen die **Felder**
- * mit ihrer **Werteliste**. Am Feld steht, ob ein einzelnes Exemplar einen oder mehrere
+ * Three levels following the ALMEX example: an **artifact type** orders things (process,
+ * object), an **artifact** is the thing itself (ticket, hardware), and below it hang the
+ * **fields** with their **value list**. The field says whether a single unit may carry one or several values from it.
  */
 export default function ArtifactTypesPanel() {
   const qc = useQueryClient();
@@ -121,7 +121,7 @@ export default function ArtifactTypesPanel() {
   );
 }
 
-// ── Ein Artefakt mit Zuständen und Feldern ───────────────────────────────────
+// ── One artifact with states and fields ──────────────────────────────────────
 
 function ArtefaktKarte({ t: typ, onFail, onOk, onDelete }: {
   t: Typ; onFail: (e: unknown) => void; onOk: () => void; onDelete: () => void;
@@ -278,8 +278,8 @@ function Werteliste({ feld, onFail, onOk }: {
   feld: Feld; onFail: (e: unknown) => void; onOk: () => void;
 }) {
   const [wert, setWert] = useState("");
-  // Beim Zustands-Feld tragen die Werte zusätzlich Board-Kategorie und „wartet"; und
-  // gelöscht wird dort nicht, weil die Schlüssel echten Datenbank-Werten entsprechen.
+  // With the state field the values additionally carry a board category and "waiting"; and
+  // nothing is deleted there, because the keys correspond to real database values.
   const istStatus = feld.key === "status";
   const anlegen = useMutation({
     mutationFn: () => api.post(`/artifact-fields/${feld.id}/options`, { value: wert.trim() }),
