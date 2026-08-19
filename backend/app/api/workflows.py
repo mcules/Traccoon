@@ -668,7 +668,7 @@ async def rollback_version(
     if errors:
         # Can happen when the validation rules have grown stricter since.
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            {"message": "Diese Fassung erfüllt die heutigen Regeln nicht mehr",
+                            {"message": "This version no longer satisfies today's rules",
                              "errors": errors})
     neu = WorkflowVersion(
         definition_id=def_id, version=await _next_version_number(db, def_id),
@@ -825,7 +825,7 @@ async def probelauf(
     fehler = engine.validate_graph(d.subject_kind, graph)
     if fehler:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
-                            "Der Ablauf ist noch nicht schlüssig: " + "; ".join(fehler[:3]))
+                            "The flow is not coherent yet: " + "; ".join(fehler[:3]))
 
     if data.graph is not None:
         # A version for this moment only: the engine hangs every instance off a version, and

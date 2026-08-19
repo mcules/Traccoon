@@ -32,8 +32,8 @@ def test_niemand_setzt_den_zustand_an_der_zentrale_vorbei():
             if re.search(r"\.(agent_status|purchase_status)\s*=(?!=)", zeile):
                 treffer.append(f"{rel}:{nr}: {zeile.strip()}")
     assert not treffer, (
-        "Zustand wird direkt gesetzt statt über set_ticket_status/set_asset_status — "
-        "die Artefakt-Zeile liefe auseinander:\n" + "\n".join(treffer))
+        "The state is set directly instead of over set_ticket_status/set_asset_status, "
+        "the artifact row would drift apart:\n" + "\n".join(treffer))
 
 
 @pytest.fixture
