@@ -22,8 +22,8 @@ class Location(Base):
     parent_id: Mapped[int | None] = mapped_column(
         ForeignKey("locations.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    # Optional: Ort fest an ein Projekt hängen (NICHT Pflicht — viele Orte bleiben
-    # projektlos/global, nur die zugehörigen Assets tragen project_id).
+    # Optional: hang the location firmly off a project (NOT mandatory; many locations stay
+    # project-less or global, and only the associated assets carry a project_id).
     project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )
@@ -46,9 +46,9 @@ class HardwareAsset(TimestampMixin, Base):
     __tablename__ = "hardware_assets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Gemeinsame Identität aller Artefakte: Zustand, Projekt und Titel stehen dort, und
-    # Prozesse/Verweise/Freigaben zeigen darauf. Diese Tabelle hält nur noch die
-    # hardware-spezifischen Details (Modell, Ort, Kosten, Seriennummer, Garantie).
+    # Common identity of all artifacts: state, project and title stand there, and processes,
+    # references and grants point at it. This table holds only the hardware specific details.
+    # (model, place, cost, serial number, warranty).
     artifact_id: Mapped[int | None] = mapped_column(
         ForeignKey("artifacts.id", ondelete="CASCADE"), nullable=True, unique=True, index=True
     )
@@ -60,8 +60,8 @@ class HardwareAsset(TimestampMixin, Base):
         ForeignKey("projects.id", ondelete="SET NULL"), nullable=True, index=True
     )  # NULL = Vorrat/Lager
     serial_number: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Zustand: führend ist `artifacts.status_key`. Diese Spalte wird mitgeschrieben,
-    # solange Oberfläche und Filter darauf laufen (Umstellung in Etappen).
+    # State: authoritative is `artifacts.status_key`. This column is written along as long as
+    # the interface and the filters run on it (changeover in stages).
     purchase_status: Mapped[PurchaseStatus] = mapped_column(
         SAEnum(PurchaseStatus, name="purchasestatus", values_callable=pg_enum_values),
         default=PurchaseStatus.planned, index=True,
@@ -95,8 +95,8 @@ class HardwareWorkflowStep(Base):
     workflow_id: Mapped[int] = mapped_column(ForeignKey("hardware_workflows.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     order: Mapped[int] = mapped_column(Integer, default=0)
-    # Wer ist für diesen Schritt zuständig (ABC-26)? Gleiche Form wie der AssigneeSpec der
-    # Workflow-Engine: {"mode": user|role|context|reporter, ...}. Leer = niemand vorbelegt.
+    # Who is responsible for this step (ABC-26)? Same shape as the workflow AssigneeSpec.
+    # {"mode": user|role|context|reporter, ...}. Empty = nobody prefilled.
     assignee: Mapped[dict] = mapped_column(JSON, default=dict)
 
 
