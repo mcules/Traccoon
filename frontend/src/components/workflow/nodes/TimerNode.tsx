@@ -1,11 +1,11 @@
 import { BaseNode, type FlowNodeProps } from "./shared";
 
 /**
- * Lässt Zeit vergehen — die zweite Art zu warten.
+ * Lets time pass: the second way of waiting.
  *
- * `wait_event` wartet auf jemanden, der etwas meldet; hier wartet der Ablauf auf die Uhr.
- * Geweckt wird im Takt der Engine, nicht von einem schlafenden Task: ein Neustart des
- * Backends darf einen wartenden Lauf nicht vergessen.
+ * `wait_event` waits for somebody who reports something; here the flow waits for the clock.
+ * Waking happens on the beat of the engine, not from a sleeping task: a restart of the
+ * backend must not forget a waiting run.
  */
 export default function TimerNode({ id, data, selected }: FlowNodeProps) {
   const cfg = data.config;

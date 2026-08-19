@@ -12,7 +12,7 @@ const SUBJECT_LABEL: Record<WorkflowSubjectKind, string> = {
 
 const EMPTY = { key: "", name: "", subject_kind: "issue" as WorkflowSubjectKind, description: "" };
 
-/** CRUD-Panel für Workflow-Definitionen eines Projekts. */
+/** CRUD panel for the workflow definitions of a project. */
 export default function WorkflowList({ project }: { project: Project }) {
   const qc = useQueryClient();
   const nav = useNavigate();
@@ -20,8 +20,8 @@ export default function WorkflowList({ project }: { project: Project }) {
     queryKey: ["workflows", project.id],
     queryFn: () => workflowApi.list(project.id),
   });
-  // Abläufe mit Slot stehen oben in der Slot-Übersicht (mit Herkunft und Zurücksetzen) —
-  // hier nur die frei angelegten.
+  // Flows with a slot stand at the top in the slot overview (with the origin and a reset);
+  // here only the freely created ones.
   const defs = alle?.filter((d) => !d.slot);
   const [f, setF] = useState(EMPTY);
   const [err, setErr] = useState("");

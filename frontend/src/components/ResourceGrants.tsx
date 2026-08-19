@@ -15,8 +15,8 @@ interface UserLite { id: number; username: string; display_name: string; }
 
 const LEVELS = ["view", "manage"];
 
-/** Granulare Freigabe eines einzelnen Orts/Exemplars an einen User — ohne volle
- * Projekt-Mitgliedschaft (Wart-Fall: sieht/verwaltet nur sein Wasserhäuschen + Masten). */
+/** Granular grant of a single location or unit to a user, without a full project membership
+ * (the caretaker case: they see and manage only their pump house plus its masts). */
 export default function ResourceGrants({ project }: { project: Project }) {
   const qc = useQueryClient();
   const key = ["resource-grants", project.id];
@@ -32,7 +32,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
   const assetLabel = (a: Asset) =>
     [modelName(a.model_id) || `Modell #${a.model_id}`, a.serial_number, `#${a.id}`].filter(Boolean).join(" · ");
 
-  // Nutzer über Suche wählen statt roher ID — konsistent zu „Mitglieder".
+  // Choose the user over a search instead of a raw id, consistently with "members".
   const [uid, setUid] = useState("");
   const [uq, setUq] = useState("");
   const userSearch = useQuery({

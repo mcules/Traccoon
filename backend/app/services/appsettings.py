@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.ops import AppSetting
 
-# Abstand (px) zwischen den Knoten, wenn der Prozess-Editor „Anordnen" ausführt. Ein
-# einziger Wert für waagerecht wie senkrecht — gleichmäßige Abstände lesen sich ruhiger
-# als die früheren, je nach Richtung unterschiedlichen Werte.
+# Spacing (px) between the nodes when the process editor runs "arrange". A single value for
+# horizontal as for vertical: even distances read more calmly than the earlier values, which
+# differed by direction.
 LAYOUT_GAP_KEY = "workflow_layout_gap"
 LAYOUT_GAP_DEFAULT = 40
 

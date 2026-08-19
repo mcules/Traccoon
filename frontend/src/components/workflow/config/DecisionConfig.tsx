@@ -18,7 +18,7 @@ function parseGuard(g: JsonLogic | undefined): Simple {
   return { field: "", op: "==", value: "" };
 }
 
-/** Builder → JSONLogic. Zahlwerte werden als Zahl kodiert. */
+/** Builder to JSONLogic. Numeric values are encoded as a number. */
 function buildGuard(s: Simple): JsonLogic | undefined {
   if (!s.field) return undefined;
   const num = s.value !== "" && !isNaN(Number(s.value)) ? Number(s.value) : s.value;
@@ -35,10 +35,10 @@ export default function DecisionConfig({
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
-  /** Filter für Vorlagen — hier nur als Hilfe; Bedingungen selbst rechnen ohne. */
+  /** Filter for templates; here only as a help, the conditions themselves compute without it. */
   filter?: KontextFilter[];
-  /** Kontextfelder, die dieser Ablauf wirklich hat — aus Auslöser, Schritten und
-   *  selbst gesetzten Schlüsseln (siehe `contextFields.ts`). */
+  /** Context fields this flow really has: from the trigger, the steps and keys set by
+   *  itself (see `contextFields.ts`). */
   felder?: KontextFeld[];
 }) {
   const branches = config.branches || [];

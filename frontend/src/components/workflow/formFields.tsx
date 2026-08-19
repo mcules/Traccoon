@@ -5,7 +5,7 @@ export function emptyField(): FormField {
   return { key: "", label: "", type: "text", required: false };
 }
 
-/** Standard-/Leerwerte für einen Satz Formularfelder. */
+/** Default and empty values for a set of form fields. */
 export function defaultValues(fields: FormField[] | undefined): Record<string, any> {
   const out: Record<string, any> = {};
   for (const f of fields || []) {
@@ -16,7 +16,7 @@ export function defaultValues(fields: FormField[] | undefined): Record<string, a
 
 const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
-/** Editor für die Feld-Definition eines human_task (Konfig-Panel). */
+/** Editor for the field definition of a human_task (the config panel). */
 export function FormFieldsEditor({
   fields,
   onChange,
@@ -100,7 +100,7 @@ export function FormFieldsEditor({
   );
 }
 
-/** Ausfüll-Formular für die Runtime (WorkflowTaskForm). */
+/** Filling-in form for the runtime (WorkflowTaskForm). */
 export function DynamicForm({
   fields,
   values,
@@ -172,7 +172,7 @@ export function DynamicForm({
   );
 }
 
-/** Prüft Pflichtfelder; gibt fehlende Beschriftungen zurück. */
+/** Checks the mandatory fields; returns the missing labels. */
 export function missingRequired(fields: FormField[], values: Record<string, any>): string[] {
   const miss: string[] = [];
   for (const f of fields) {

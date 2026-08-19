@@ -175,8 +175,8 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
 
 
 async def _set_board_status(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Setzt die Board-Spalte (status_id) des gebundenen Tickets. Param `status` (Spaltenname)
-    oder `category` (todo|in_progress|done)."""
+    """Sets the board column (status_id) of the bound ticket. The parameter is `status` (the
+    column name) or `category` (todo|in_progress|done)."""
     if inst.issue_id is None:
         return {"action": "set_board_status", "applied": False, "reason": "keine Ticket-Bindung"}
     from sqlalchemy import select
@@ -884,7 +884,7 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         return await _set_board_status(db, inst, params, ctx)
 
     if action == "webhook":
-        # Ein Ziel im Parametersatz gewinnt: dann ist es ein normaler Ziel-Aufruf.
+        # A destination in the parameter set wins: then it is a normal destination call.
         if params.get("destination") or params.get("target"):
             return await _http_request(db, inst, params, ctx)
         return await _webhook(db, inst, params, ctx)

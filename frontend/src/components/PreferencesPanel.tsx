@@ -3,11 +3,11 @@ import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 
-// Schlüssel statt Texte: die Listen entstehen beim Laden des Moduls, ein tr() hier würde
-// die Sprache des ersten Aufrufs festhalten.
+// Keys instead of texts: the lists come into being while the module loads, and a tr() here
+// would fix the language of the first call.
 const DAYS = ["mo", "di", "mi", "do", "fr", "sa", "so"];
 
-/** Per-User-Flags (Kurzbeschreibung fürs UI). */
+/** Per-user flags (a short description for the UI). */
 const USER_FLAGS: string[] = ["shift_end", "sonnet_max", "show_token_prices", "ticket_notify"];
 const GLOBAL_FLAGS: [string, string][] = [
   ["global_pause", "/runner/global-pause"],

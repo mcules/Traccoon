@@ -2,8 +2,8 @@ import type { WorkflowGraph } from "./types";
 import { tr } from "../../i18n";
 
 /**
- * Vorabprüfung im Browser (die endgültige macht der Server).
- * Liefert eine Liste fertig übersetzter Meldungen, leer heißt in Ordnung.
+ * Preliminary check in the browser (the final one is done by the server).
+ * Returns a list of ready translated messages; empty means all right.
  */
 export function validateGraph(graph: WorkflowGraph): string[] {
   const errors: string[] = [];
@@ -35,7 +35,7 @@ export function validateGraph(graph: WorkflowGraph): string[] {
     if (n.type !== "end" && !hasOut.has(n.id)) {
       errors.push(tr("validate.kein_ausgang", { knoten: label }));
     }
-    // Freigabe: beide Handles müssen bedient sein
+    // Approval: both handles have to be served
     if (n.type === "approval") {
       const handles = new Set(
         edges.filter((e) => e.source === n.id).map((e) => e.sourceHandle || "out")
@@ -45,7 +45,7 @@ export function validateGraph(graph: WorkflowGraph): string[] {
       if (!handles.has("rejected"))
         errors.push(tr("validate.freigabe_abgelehnt", { knoten: label }));
     }
-    // Verzweigung: jeder Zweig sollte eine Kante haben
+    // Branch: every path should have an edge
     if (n.type === "decision") {
       const branches = n.data.config.branches || [];
       if (branches.length === 0) {

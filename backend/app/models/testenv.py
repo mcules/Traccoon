@@ -1,8 +1,8 @@
-"""Testumgebung für einen beliebigen Branch (TRA-18).
+"""Test environment for an arbitrary branch (TRA-18).
 
-Ticket-Testumgebungen leben in Feldern am `Issue` (testenv_status/url/container/port/error);
-für frei gewählte Branches gibt es keinen Träger — daher diese Tabelle. Sie hält nur
-aktive bzw. fehlerhafte Umgebungen: beim Stoppen wird die Zeile gelöscht.
+Ticket test environments live in fields on the `Issue` (testenv_status/url/container/port/error);
+there is no carrier for freely chosen branches, hence this table. It holds only active
+respectively failed environments: on stopping, the row is deleted.
 """
 import datetime as dt
 
