@@ -1,8 +1,8 @@
-"""Tool-Gate des persönlichen Assistenten (projektlos, owner-scoped).
+"""Tool gate of the personal assistant (project-less, owner-scoped).
 
-Externe mutierende Aktionen (Mail senden, Dateien/Notizen schreiben, Kalender …) brauchen
-eine Freigabe, bis der Mensch „immer" sagt. Der Assistent lernt so, was er darf. Entscheidung
-kommt per Telegram (einmal|immer|nie); die Karte erzeugt dieses Modul.
+External mutating actions (sending mail, writing files or notes, calendar …) need
+an approval until the human says "always". That way the assistant learns what it may do. The
+decision comes over Telegram (once|always|never); the card is produced by this module.
 """
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ async def _owner_rules(db: AsyncSession, owner_id: int | None) -> list[dict]:
 
 async def gate_check(db: AsyncSession, task: AssistantTask, owner_id: int | None,
                      tool: str, resource: str) -> str:
-    """→ 'allow' | 'deny' | 'ask'. Bei 'ask' wird das Item auf awaiting gesetzt und eine
-    Telegram-Freigabekarte erzeugt (Run wird danach vom Aufrufer geblockt)."""
-    # Einmal-Freigabe aus einer vorherigen Runde konsumieren.
+    """Returns 'allow' | 'deny' | 'ask'. With 'ask' the item is set to awaiting and a Telegram
+    approval card is produced (the run is blocked by the caller afterwards)."""
+    # Consume a one-off approval from a previous round.
     if task.grant_tool and perms._match_pat(task.grant_tool, tool) \
             and perms._match_pat(task.grant_resource or "*", resource):
         task.grant_tool = None
@@ -39,7 +39,7 @@ async def gate_check(db: AsyncSession, task: AssistantTask, owner_id: int | None
     if decision != "ask":
         return decision
 
-    # Freigabe nötig → Item parken + Telegram-Karte (falls eingerichtet).
+    # An approval is needed, so park the item and send the Telegram card (when set up).
     task.status = "awaiting"
     task.pending_tool = tool
     task.pending_resource = (resource or "*")[:500]
@@ -55,8 +55,8 @@ async def gate_check(db: AsyncSession, task: AssistantTask, owner_id: int | None
 
 
 async def apply_perm_decision(db: AsyncSession, task: AssistantTask, decision: str) -> None:
-    """Gate-Entscheidung anwenden (geteilt von Telegram-Bot und Web): 'once' = Einmal-Grant,
-    'always'/'never' = tool-weite Regel; danach den Lauf neu anstoßen."""
+    """Apply the gate decision (shared by the Telegram bot and the web): 'once' = a one-off
+    grant, 'always'/'never' = a tool wide rule; afterwards the run is set off again."""
     tool, res = task.pending_tool or "*", task.pending_resource or "*"
     if decision == "once":
         task.grant_tool, task.grant_resource = tool, res

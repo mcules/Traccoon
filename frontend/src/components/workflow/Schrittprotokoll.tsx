@@ -1,14 +1,13 @@
 /**
- * Was in einem Lauf tatsächlich geschah — Schritt für Schritt.
+ * What actually happened in a run, step by step.
  *
- * Jeder Schritt speichert seit jeher sein Ergebnis (`workflow_step_runs.result`), seine
- * Entscheidung und einen etwaigen Fehler. Angezeigt wurde davon nichts: die Instanz-Ansicht
- * malte den Graphen und färbte den Fortschritt ein, aber die erste Frage im Betrieb ist
- * eine andere — was kam von der Gegenstelle zurück, und warum ging es dann links statt
- * rechts?
+ * Every step has always stored its result (`workflow_step_runs.result`), its decision and
+ * any error. None of that was shown: the instance view drew the graph and coloured the
+ * progress in, but the first question in operation is a different one: what came back from
+ * the counterpart, and why did it then go left instead of right?
  *
- * Dieselbe Darstellung bedient den Probelauf und den echten Lauf; ein Probelauf ist nichts
- * anderes als ein Lauf, in dem jede Aktion nur sagt, was sie täte.
+ * The same presentation serves the trial run and the real run; a trial run is nothing other
+ * than a run in which every action only says what it would do.
  */
 import { tr } from "../../i18n";
 export interface Schritt {
@@ -30,12 +29,12 @@ const STATUS_FARBE: Record<string, string> = {
   skipped: "text-muted",
 };
 
-/** Das Wesentliche eines Ergebnisses in einer Zeile — der Rest steht im Aufklapper. */
+/** The essentials of a result in one line; the rest stands in the expander. */
 function kurzfassung(s: Schritt): string {
   if (s.error) return s.error;
   const r = s.result || {};
   if (r.probe) return String(r.probe);
-  // Aktionen melden ihren Namen und das Nötigste; alles andere wäre hier Rauschen.
+  // Actions report their name and the necessary minimum; everything else would be noise here.
   const teile = Object.entries(r)
     .filter(([k]) => !["action", "probe"].includes(k))
     .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);

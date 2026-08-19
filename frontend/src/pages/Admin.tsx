@@ -20,7 +20,7 @@ const TAB_KEYS = TABS.map(([k]) => k);
 
 export default function Admin() {
   const { tab: tabParam } = useParams();
-  // Aktiven Tab aus der URL ableiten; unbekannt → Default "users".
+  // Derive the active tab from the URL; unknown becomes the default "users".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "users") as Tab;
   usePageChrome(tr("nav.admin"), TABS.map(([key, label]) => ({
     key, label: tr(label), to: `/admin/${key}`,
@@ -134,7 +134,7 @@ function Maintenance() {
   );
 }
 
-/** Abstand der Knoten beim „Anordnen" im Prozess-Editor. */
+/** Spacing of the nodes on "arrange" in the process editor. */
 function WorkflowLayout() {
   const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ["workflow-layout"], queryFn: workflowApi.layout });
@@ -168,7 +168,7 @@ function WorkflowLayout() {
   );
 }
 
-/** Globale Grenzen der Testumgebungen — zur Laufzeit wirksam (TRA-18). */
+/** Global limits of the test environments, effective at runtime (TRA-18). */
 function TestenvConfig() {
   const qc = useQueryClient();
   const { data } = useQuery({
@@ -189,8 +189,8 @@ function TestenvConfig() {
       qc.invalidateQueries({ queryKey: ["testenv-config"] });
     },
   });
-  // Beschriftung und Hinweis kommen als Schlüssel: das Feld wird in der Sprache gebaut, in
-  // der es gerade gezeigt wird.
+  // Label and hint come as keys: the field is built in the language it is currently shown
+  // in.
   const feld = (k: string, label: string, hint?: string) => (
     <label className="block text-xs text-muted">{tr(label)}
       <input value={val(k)} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
@@ -224,7 +224,7 @@ function TestenvConfig() {
   );
 }
 
-/** Aufbewahrung archivierter Agentenläufe (TRA-29). */
+/** Retention of archived agent runs (TRA-29). */
 function RunRetention() {
   const qc = useQueryClient();
   const { data } = useQuery({
@@ -328,8 +328,8 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
   };
   const submit = async () => {
     setErr(""); setOk("");
-    // Pflicht ist nur noch der Benutzername (≥1). E-Mail + Passwort sind optional;
-    // wenn ein Passwort gesetzt wird, muss es ≥8 Zeichen haben.
+    // Only the user name is mandatory (>=1). E-mail and password are optional; when a
+    // password is set, it has to have at least 8 characters.
     if (username.trim().length < 1) {
       setErr(tr("admin.benutzername_noetig")); return;
     }
@@ -461,7 +461,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
   );
 }
 
-/** MCP-Server-Zuteilung je User (harte Trennung — Token erzeugt das provision-Skript). */
+/** MCP server allocation per user (hard separation; the token is produced by the provision script). */
 function McpAssign({ userId }: { userId: number }) {
   const { data, refetch } = useQuery({
     queryKey: ["user-mcp", userId], queryFn: () => api.get<any>(`/users/${userId}/mcp`),
