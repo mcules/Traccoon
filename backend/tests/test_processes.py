@@ -1,7 +1,7 @@
-"""Prozess-Verwaltung: Standard-Satz mit Abweichungen, Betrieb, Auslöser, Zurückrollen.
+"""Process administration: the default set with deviations, operation, triggers, rolling back.
 
-Die vier Fragen, die eine Verwaltung beantworten muss — und die Grenze, die dabei nie fallen
-darf: ein Nutzer sieht nur Projekte, auf die er Zugriff hat.
+The four questions an administration has to answer, and the boundary that must never fall in
+the process: a user sees only projects they have access to.
 """
 import datetime as dt
 import itertools
@@ -21,7 +21,7 @@ from sqlalchemy import select
 
 @pytest.fixture
 async def standard(db):
-    """Ausgelieferten Satz anlegen — Grundlage aller Abweichungs-Prüfungen."""
+    """Create the shipped set: the basis of all deviation checks."""
     await ensure_builtin_set(db)
     return (await db.execute(select(WorkflowSet).where(
         WorkflowSet.key == sets.BUILTIN_SET_KEY))).scalars().first()
@@ -52,7 +52,7 @@ async def test_projekt_kopie_erscheint_als_abweichung(client, db, standard):
 
 
 async def test_fremde_projekte_bleiben_verborgen(client, db, standard):
-    """Eine Abweichung verrät sonst Namen von Projekten, die einen nichts angehen."""
+    """A deviation would otherwise reveal names of projects that are none of one's business."""
     besitzer = await make_user(db, "eigner", admin=True)
     fremder = await make_user(db, "fremd")
     proj = await make_project(db, "GEH", "Geheim", inherit_members=False)
@@ -71,7 +71,7 @@ _lfd = itertools.count(1)
 
 
 async def _instanz(db, proj, *, status, alter_stunden=0.0) -> WorkflowInstance:
-    # Schlüssel je Projekt eindeutig — ein Test legt mehrere Abläufe an.
+    # The key is unique per project; one test creates several flows.
     d = WorkflowDefinition(project_id=proj.id, key=f"ab{next(_lfd)}", name="Ablauf",
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
@@ -95,7 +95,7 @@ async def _instanz(db, proj, *, status, alter_stunden=0.0) -> WorkflowInstance:
 
 
 async def test_wartende_vorgaenge_gehoeren_in_die_betriebssicht(client, db):
-    """`waiting` ist der Normalfall — würde die Standardsicht ihn weglassen, wäre sie blind."""
+    """`waiting` is the normal case: if the default view left it out, it would be blind."""
     user = await make_user(db, "op", admin=True)
     proj = await make_project(db, "OPS", "Betrieb")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -140,10 +140,10 @@ async def test_fremde_vorgaenge_sind_unsichtbar(client, db):
     assert (await client.get("/processes/running", headers=auth(fremder))).json() == []
 
 
-# ── Auslöser ─────────────────────────────────────────────────────────────────
+# ── Triggers ─────────────────────────────────────────────────────────────────
 
 async def test_ausloeser_findet_unterprozess_und_manuelles(client, db, standard):
-    """Der Abnahme-Ablauf wird vom Lebenszyklus aufgerufen — sonst wirkte er auslöserlos."""
+    """The acceptance flow is called by the lifecycle; otherwise it would look triggerless."""
     admin = await make_user(db, "chef", admin=True)
     r = await client.get("/processes/triggers", headers=auth(admin))
     assert r.status_code == 200, r.text
@@ -151,7 +151,7 @@ async def test_ausloeser_findet_unterprozess_und_manuelles(client, db, standard)
     abnahme = [t for t in daten if t["slot"] == "acceptance"]
     assert abnahme and abnahme[0]["kind"] == "subflow"
     assert "KI-Ticket-Lebenszyklus" in abnahme[0]["label"]
-    # Jeder veröffentlichte Ablauf taucht genau einmal auf.
+    # Every published flow turns up exactly once.
     assert {t["slot"] for t in daten} >= set(sets.SLOT_META)
 
 
@@ -161,18 +161,18 @@ async def test_ereignisse_zaehlen_ihre_zuhoerer(client, db, standard):
     assert r.status_code == 200
     daten = r.json()
     assert {e["event"] for e in daten}
-    # Ohne gesetzten Trigger hört niemand zu — das soll die Übersicht ehrlich zeigen.
-    # Ausnahme ist der ausgelieferte Mail-Eingang: er hört auf `mail.received`, und genau
-    # das soll die Übersicht auch zeigen.
+    # Without a set trigger nobody listens, and the overview should show that honestly.
+    # The exception is the shipped mail inbox: it listens for `mail.received`, and exactly
+    # that the overview should show as well.
     zuhoerer = {e["event"]: e["listeners"] for e in daten}
     assert zuhoerer.get("mail.received") == 1
     assert all(z == 0 for e, z in zuhoerer.items() if e != "mail.received")
 
 
-# ── Zurückrollen ─────────────────────────────────────────────────────────────
+# ── Rolling back ─────────────────────────────────────────────────────────────
 
 async def test_zurueckrollen_legt_eine_neue_version_an(client, db, standard):
-    """Historie bleibt: zurückgerollt wird durch Veröffentlichen, nicht durch Umbiegen."""
+    """The history stays: rolling back happens by publishing, not by bending a pointer."""
     admin = await make_user(db, "chef", admin=True)
     d = await sets.set_definition(db, standard.id, "ticket_lifecycle")
     erste = await db.get(WorkflowVersion, d.current_version_id)
@@ -193,7 +193,7 @@ async def test_zurueckrollen_legt_eine_neue_version_an(client, db, standard):
     assert f"{erste.version}" in neu["notes"]
     await db.refresh(d)
     assert d.current_version_id == neu["id"]
-    # Die alte Fassung ist unangetastet — laufende Instanzen hängen daran.
+    # The old version is untouched: running instances hang off it.
     await db.refresh(erste)
     assert erste.status == WorkflowVersionStatus.published
 
@@ -215,29 +215,29 @@ async def test_nur_ein_admin_darf_den_standard_zurueckrollen(client, db, standar
 
 
 async def test_kontextfelder_nennen_ihre_herkunft(client, db):
-    """Der Editor braucht die Felder, die ein Ablauf wirklich hat — geraten wurde lange
-    genug (freies Textfeld, Tippfehler fiel erst im Betrieb auf)."""
+    """The editor needs the fields a flow really has; guessing went on long enough (a free
+    text field, and a typo only stood out in operation)."""
     anna = await make_user(db, "anna")
     r = await client.get("/workflow-context-fields", headers=auth(anna))
     assert r.status_code == 200, r.text
     k = r.json()
     assert {"basis", "ausloeser", "aktionen", "knoten"} <= set(k)
 
-    # Ein Auslöser bringt seine Nutzlast mit …
+    # A trigger brings its payload along …
     mail = [f["pfad"] for f in k["ausloeser"]["mail.received"]]
     assert "mail.subject" in mail and "eingang.owner_id" in mail
-    # … eine Aktion ihre Ergebnisse …
+    # … an action its results …
     assert "spam.score" in [f["pfad"] for f in k["aktionen"]["spam_evaluate"]]
     assert "project.needs_acceptance" in [f["pfad"] for f in k["aktionen"]["refresh_facts"]]
-    # … und ein Agentenlauf das, worauf der Lebenszyklus verzweigt.
+    # … and an agent run what the lifecycle branches on.
     assert "agent.has_subtickets" in [f["pfad"] for f in k["knoten"]["agent_task"]]
-    # Jedes Feld erklärt sich selbst.
+    # Every field explains itself.
     assert all(f["beschreibung"] and f["typ"] for f in k["basis"])
 
 
 async def test_kontextfelder_decken_die_guards_des_standardsatzes(client, db):
-    """Was die ausgelieferten Abläufe an ihren Weichen lesen, muss im Katalog stehen —
-    sonst beschreibt er etwas anderes als das, was läuft."""
+    """What the shipped flows read at their branches has to stand in the catalog; otherwise it
+    describes something other than what runs."""
     from app.services.workflow_seed import BUILDERS
 
     anna = await make_user(db, "anna")
@@ -265,7 +265,7 @@ async def test_kontextfelder_decken_die_guards_des_standardsatzes(client, db):
             for b in cfg.get("branches") or []:
                 vars_von(b.get("guard"), benutzt)
 
-    # `entry` steuert den Einstieg des Lebenszyklus und kommt vom Aufrufer, nicht aus einer
-    # Aktion — der Rest muss im Katalog stehen.
+    # `entry` controls the entry of the lifecycle and comes from the caller, not from an
+    # action; the rest has to stand in the catalog.
     fehlend = {v for v in benutzt if v not in bekannt and v != "entry"}
     assert not fehlend, f"Guards lesen Felder, die der Katalog nicht kennt: {sorted(fehlend)}"

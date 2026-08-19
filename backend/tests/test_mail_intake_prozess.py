@@ -1,9 +1,9 @@
-"""Der Mail-Eingang als Ablauf: melden → beurteilen → fragen → wegräumen.
+"""The mail inbox as a flow: report, assess, ask, clear away.
 
-Geprüft wird die Mechanik, nicht die Treffsicherheit der Erkennung: dass eine Mail einen
-Lauf startet, dass ein Verdacht am Genehmigungs-Knoten wartet statt heimlich zu verschieben,
-dass die Antwort aus Telegram genau diesen Lauf weiterschaltet — und dass eine unauffällige
-Mail ihren gewohnten Weg zum Assistenten geht.
+What is checked is the mechanics, not the accuracy of the detection: that a mail starts a
+run, that a suspicion waits at the approval node instead of moving secretly, that the answer
+from Telegram advances exactly this run, and that an inconspicuous mail goes its usual way to
+the assistant.
 """
 import pytest
 from app.models.assistant import AssistantTask, SpamVerdict
@@ -24,8 +24,8 @@ async def owner(db):
     user = await make_user(db, "dennis")
     user.telegram_chat_id = "4242"
     await db.commit()
-    # Damit die Rückfrage im Test sofort als eigene Karte kommt statt auf den
-    # Sammel-Takt zu warten — geprüft wird der Weg, nicht die Höhe der Schwelle.
+    # So that the question comes as a card of its own immediately in the test instead of
+    # waiting for the digest beat: what is checked is the path, not the height of the threshold.
     await set_setting(db, spam_review.SOFORT_AB_KEY, "0.5")
     return user
 
@@ -59,8 +59,8 @@ def _mail(**over) -> dict:
 
 
 def _verdaechtig(uid: int = 5001) -> dict:
-    """Eine Mail, die jede Schwelle reißt — Absender erfunden, Antwort umgeleitet, nichts
-    besteht die Echtheitsprüfung."""
+    """A mail that tears every threshold: an invented sender, a redirected reply, and nothing
+    passes the authenticity check."""
     return _mail(uid=uid, **{
         "from": [{"name": "", "addr": "x@4t7k.xyz"}],
         "reply_to": [{"name": "", "addr": "kasse@anders.ru"}],
@@ -82,14 +82,14 @@ async def test_unauffaellige_mail_geht_zum_assistenten(db, owner):
     assert inst.status == WorkflowInstanceStatus.completed
     task = (await db.execute(select(AssistantTask))).scalars().one()
     assert task.title == "Ihre Bestellung"
-    # Kein Spam-Urteil, dafür die gewohnte Freigabekarte.
+    # No spam verdict, but the usual approval card.
     assert (await db.execute(select(SpamVerdict))).scalars().all() == []
     karte = (await db.execute(select(Notification))).scalars().one()
     assert karte.kind == "assistant_review" and karte.assistant_task_id == task.id
 
 
 async def test_verdacht_wartet_auf_die_antwort(db, owner, imap_stub):
-    """Nichts wird verschoben, bevor ein Mensch geantwortet hat — das ist die Leitplanke."""
+    """Nothing is moved before a human has answered; that is the guard rail."""
     inst = await _melden(db, owner, _verdaechtig())
 
     assert inst.status == WorkflowInstanceStatus.waiting
@@ -100,8 +100,8 @@ async def test_verdacht_wartet_auf_die_antwort(db, owner, imap_stub):
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
     assert verdict.status == "pending" and verdict.workflow_instance_id == inst.id
     assert imap_stub == []
-    # Die Karte mit den Knöpfen kommt aus der Spam-Erkennung, nicht als zweite
-    # Workflow-Meldung — sonst stünden zwei Nachrichten zur selben Mail im Chat.
+    # The card with the buttons comes from the spam detection, not as a second workflow
+    # message; otherwise two messages about the same mail would stand in the chat.
     karten = (await db.execute(select(Notification))).scalars().all()
     assert [k.kind for k in karten] == ["spam_review"]
 
@@ -118,13 +118,13 @@ async def test_antwort_aus_telegram_schaltet_den_ablauf_weiter(db, owner, imap_s
     assert verdict.status == "spam" and verdict.decided_by == "telegram"
     await db.refresh(inst)
     assert inst.status == WorkflowInstanceStatus.completed
-    # Und gelernt wird auch: dieselbe Adresse fällt beim nächsten Mal schneller auf.
+    # And learning happens as well: the same address stands out faster next time.
     score, _, _ = await spam_learn.bewerten(db, owner.id, ["from:x@4t7k.xyz"])
     assert score > 0.5
 
 
 async def test_kein_spam_fuehrt_die_mail_zum_assistenten(db, owner, imap_stub):
-    """„Kein Spam" ist kein Papierkorb: die Mail soll danach ganz normal bearbeitet werden."""
+    """"Not spam" is no waste bin: the mail should be handled completely normally afterwards."""
     inst = await _melden(db, owner, _verdaechtig())
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
 
@@ -138,8 +138,8 @@ async def test_kein_spam_fuehrt_die_mail_zum_assistenten(db, owner, imap_stub):
 
 
 async def test_geklaerter_absender_wird_ohne_rueckfrage_weggeraeumt(db, owner, imap_stub):
-    """Nach drei einhelligen „ist Spam" entscheidet das Gedächtnis allein — gemeldet wird
-    trotzdem, sonst fiele ein eingeschlichener Irrtum nie auf."""
+    """After three unanimous "is spam" the memory decides alone; reporting happens regardless,
+    because otherwise an error that crept in would never stand out."""
     for i in range(3):
         v = SpamVerdict(owner_user_id=owner.id, sender_email="werber@versand.example",
                         features=["from:werber@versand.example"], status="spam")
@@ -166,10 +166,10 @@ async def test_geklaerter_absender_wird_ohne_rueckfrage_weggeraeumt(db, owner, i
     assert "gelernt" in karte.title.lower()
 
 
-# ── Stufe 2: verschieben ohne zu fragen, aber widersprechlich ────────────────
+# ── Stage 2: moving without asking, but contestably ──────────────────────────
 
 async def test_auto_schwelle_verschiebt_ohne_rueckfrage(db, owner, imap_stub):
-    """Über der Auto-Schwelle wird nicht mehr gefragt — die Karte trägt den Rückweg."""
+    """Above the auto threshold nothing is asked any more; the card carries the way back."""
     await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
     inst = await _melden(db, owner, _verdaechtig(uid=8001))
 
@@ -193,7 +193,7 @@ async def test_rueckholen_lernt_den_absender_als_erwuenscht(db, owner, imap_stub
     assert "verschoben" in ergebnis or ergebnis
     await db.refresh(verdict)
     assert verdict.status == "ham"
-    # Und der Absender ist gemerkt: derselbe Irrtum passiert nicht noch einmal.
+    # And the sender is remembered: the same error does not happen again.
     score, _, _ = await spam_learn.bewerten(db, owner.id, ["from:x@4t7k.xyz"])
     assert score < 0.5
     from app.models.assistant import AssistantPolicy
@@ -203,16 +203,16 @@ async def test_rueckholen_lernt_den_absender_als_erwuenscht(db, owner, imap_stub
 
 
 async def test_auto_ist_ab_werk_aus(db, owner, imap_stub):
-    """Ohne ausdrückliche Entscheidung des Menschen bleibt es bei der Rückfrage."""
+    """Without an explicit decision of the human it stays with the question."""
     inst = await _melden(db, owner, _verdaechtig(uid=8003))
     assert inst.status == WorkflowInstanceStatus.waiting
     assert imap_stub == []
 
 
 async def test_serverurteil_raeumt_ohne_rueckfrage_weg(db, owner, imap_stub):
-    """Der Fall vom 2026-08-18: vier Mails mit `***SPAM***` im Betreff, vom eigenen Server
-    mit 13 Punkten bewertet — und trotzdem ein Gesamturteil von nur ~0.55. Ohne den
-    Sonderweg bliebe jede Auto-Schwelle wirkungslos."""
+    """The case from 2026-08-18: four mails with `***SPAM***` in the subject, rated with 13
+    points by the own server, and still an overall verdict of only ~0.55. Without the special
+    path every auto threshold would stay ineffective."""
     await set_setting(db, spam_review.AUTO_AB_KEY, "0.95")
     inst = await _melden(db, owner, _mail(uid=9001, **{
         "from": [{"name": "Dr. Beispiel Person", "addr": "support@suchmaschine.example"}],
@@ -224,14 +224,14 @@ async def test_serverurteil_raeumt_ohne_rueckfrage_weg(db, owner, imap_stub):
     assert imap_stub[0][0] == "mark_spam"
     verdict = (await db.execute(select(SpamVerdict))).scalars().one()
     assert verdict.status == "spam" and verdict.decided_by == "auto"
-    # Die Punktzahl allein hätte es NICHT über die Schwelle geschafft — das Serverurteil hat.
+    # The score alone would NOT have made it over the threshold; the server verdict did.
     assert verdict.score < 0.95
     karte = (await db.execute(select(Notification))).scalars().one()
     assert karte.kind == "spam_auto"
 
 
 async def test_serverurteil_schweigt_solange_auto_aus_ist(db, owner, imap_stub):
-    """Ohne gesetzte Auto-Schwelle bleibt auch das Serverurteil eine Frage."""
+    """Without a set auto threshold the server verdict stays a question as well."""
     inst = await _melden(db, owner, _mail(uid=9002, **{
         "from": [{"name": "", "addr": "wer@zufall.top"}],
         "subject": "***SPAM*** Angebot",
