@@ -1,7 +1,7 @@
-"""Repo-Browser + Editor pro Projekt (arbeitet auf dem Workspace-Checkout /workspace/<key>).
+"""Repository browser plus editor per project (works on the workspace checkout /workspace/<key>).
 
-Lesen/Schreiben von Dateien, Commit (mit auto-generiertem Titel/Beschreibung via LLM),
-Branch-Anzeige sowie Pull/Push des aktuellen Branches. Nur für Maintainer, nur bei git_enabled.
+Reading and writing files, committing (with an auto-generated title and description over an
+LLM), showing the branch and pulling or pushing the current branch. Maintainers only, and only with git_enabled.
 """
 from __future__ import annotations
 
@@ -113,7 +113,7 @@ async def repo_read(path: str, access: Access = Depends(require_role(ProjectRole
 @router.get("/projects/{project_id}/repo/raw")
 async def repo_raw(path: str, access: Access = Depends(require_role(ProjectRole.maintainer)),
                    db: AsyncSession = Depends(get_session)):
-    """Rohe Datei-Bytes (für Bild-Vorschau) mit erratenem Content-Type."""
+    """Raw file bytes (for an image preview) with a guessed content type."""
     full = _safe_path(_require_git(access.project), path)
     if not os.path.isfile(full):
         raise HTTPException(404, "Datei nicht gefunden")
@@ -167,14 +167,14 @@ async def repo_commit(data: CommitIn, access: Access = Depends(require_role(Proj
 @router.post("/projects/{project_id}/repo/commit-message")
 async def repo_commit_message(access: Access = Depends(require_role(ProjectRole.maintainer)),
                               db: AsyncSession = Depends(get_session)):
-    """Titel + Beschreibung aus dem aktuellen Diff generieren (LLM, Token des Nutzers)."""
+    """Generate a title plus description from the current diff (LLM, the token of the user)."""
     p = access.project
     wd = _require_git(p)
     await gitops._git(wd, "add", "-A")
     _, diff = await gitops._git(wd, "diff", "--cached")
     if not diff.strip():
         raise HTTPException(409, "Keine Änderungen zum Beschreiben")
-    # Projekt-Standard-Subscription bevorzugen, sonst persönlicher Default.
+    # Prefer the project default subscription, otherwise the personal default.
     tok_name = p.default_token_name if p.default_provider == "claude_code" else ""
     token = await resolve_provider_token(db, access.user.id, "claude_code", tok_name)
     prompt = (
