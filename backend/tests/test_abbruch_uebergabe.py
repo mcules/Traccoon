@@ -1,9 +1,9 @@
-"""Nach einem Abbruch weiß der Nachfolger, was schon getan ist.
+"""After an abort the successor knows what has already been done.
 
-Ein Lauf, der geordnet endet, übergibt (`compaction.uebergabe`). Ein abgebrochener nicht:
-beim Worker-Neustart am 2026-08-07 verloren die Läufe 753/754 ihren Verlauf, die Nachfolger
-begannen bei null — und lasen dieselben Dateien noch einmal, obwohl ihre Änderungen längst
-im Worktree standen. Die Fakten dazu liegen in der Datenbank.
+A run that ends in an orderly way hands over (`compaction.uebergabe`); an aborted one does
+not: at the worker restart on 2026-08-07 runs 753/754 lost their history, and the successors
+began at zero and read the same files again although their changes had long stood in the
+worktree. The facts about that lie in the database.
 """
 import datetime as dt
 
@@ -36,7 +36,7 @@ async def test_geaenderte_dateien_werden_uebergeben(db):
     vor = await _lauf(db, issue, status="failed", last_text="Ich war beim Timeout-Fix.")
     await _schritt(db, vor, tool="fs_edit", target="backend/app/bot/__main__.py", seq=1)
     await _schritt(db, vor, tool="fs_write", target="backend/tests/test_voice.py", seq=2)
-    await _schritt(db, vor, tool="fs_read", target="README.md", seq=3)   # Lesen zählt nicht
+    await _schritt(db, vor, tool="fs_read", target="README.md", seq=3)   # reading does not count
     await _schritt(db, vor, tool=None, target=None, rolle="assistant", kind="usage", seq=4)
 
     text = await _abbruch_uebergabe(db, issue.id, run_id=vor.id + 999)
@@ -49,8 +49,8 @@ async def test_geaenderte_dateien_werden_uebergeben(db):
 
 
 async def test_ohne_schreibzugriff_keine_uebergabe(db):
-    """Wer nichts geschrieben hat, hinterlässt nichts — dann ist Schweigen ehrlicher als
-    eine Übergabe, die nur „ich habe gelesen" sagt."""
+    """Whoever wrote nothing leaves nothing behind, and then silence is more honest than a
+    handover that only says "I have read"."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     vor = await _lauf(db, issue, status="failed")
     await _schritt(db, vor, tool="fs_read", target="README.md")
@@ -59,7 +59,7 @@ async def test_ohne_schreibzugriff_keine_uebergabe(db):
 
 
 async def test_geordnet_beendeter_lauf_wird_nicht_uebergeben(db):
-    """`loop_exhausted` hat seine eigene, bessere Übergabe — die hier ist nur der Notnagel."""
+    """`loop_exhausted` has its own, better handover; this one is only the stopgap."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     vor = await _lauf(db, issue, status="loop_exhausted")
     await _schritt(db, vor, tool="fs_edit", target="a.py")
@@ -68,7 +68,7 @@ async def test_geordnet_beendeter_lauf_wird_nicht_uebergeben(db):
 
 
 async def test_alter_abbruch_bleibt_liegen(db):
-    """Ein Abbruch von gestern beschreibt nicht den heutigen Worktree."""
+    """An abort from yesterday does not describe today's worktree."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     vor = await _lauf(db, issue, status="failed", minuten_her=600)
     await _schritt(db, vor, tool="fs_edit", target="a.py")
@@ -77,7 +77,7 @@ async def test_alter_abbruch_bleibt_liegen(db):
 
 
 async def test_eigener_lauf_zaehlt_nicht(db):
-    """Der laufende Lauf darf sich nicht selbst als Vorgänger sehen."""
+    """The running run must not see itself as its predecessor."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     vor = await _lauf(db, issue, status="failed")
     await _schritt(db, vor, tool="fs_edit", target="a.py")

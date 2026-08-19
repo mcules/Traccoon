@@ -1,6 +1,6 @@
-"""Lebenszyklus der Testumgebungen (ABC-18) — die Teile, die ohne Docker prüfbar sind:
-Board-Spalte „Testen", 409-Sperre gegen den direkten Sprung auf „Fertig", und dass
-`/complete` ohne sauberen Merge kein „Fertig" setzt.
+"""Lifecycle of the test environments (ABC-18), the parts checkable without Docker: the
+board column "testing", the 409 lock against the direct jump to "done", and that `/complete`
+sets no "done" without a clean merge.
 """
 import app.services.workflow_engine as enginemod
 from app.models.enums import ProjectRole, StatusCategory, TicketAgentStatus
@@ -9,7 +9,7 @@ from conftest import add_member, auth, make_project, make_user
 
 
 async def _seed_board(db, project):
-    """Minimaler Projekt-Satz: Typen + Status inkl. „Testen", Zähler."""
+    """Minimal project set: types plus statuses including "testing", counters."""
     t = IssueType(project_id=project.id, name="Aufgabe")
     db.add(t)
     stats = {}
@@ -67,7 +67,7 @@ async def test_move_in_andere_spalten_bleibt_erlaubt(client, db):
 
 
 async def test_ohne_testenv_flow_ist_fertig_frei(client, db):
-    """Projekt-Toggle aus → altes Verhalten, der Board-Zug nach „Fertig" bleibt offen."""
+    """The project toggle off means the old behaviour, and the board move to "done" stays open."""
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     proj.testenv_enabled = False
@@ -83,8 +83,8 @@ async def test_ohne_testenv_flow_ist_fertig_frei(client, db):
 
 
 async def _bis_zur_abnahme(db, issue, merge_result, redis_stub):
-    """Ticket in den Lebenszyklus übernehmen (steht dann an der Abnahme) und das
-    Merge-Ergebnis des Workers vorgeben."""
+    """Take the ticket into the lifecycle (it then stands at the acceptance) and give the merge
+    result of the worker."""
     from app.services.lifecycle_flow import adopt_orphans
     redis_stub["*"] = merge_result
     await adopt_orphans(db)
@@ -96,7 +96,7 @@ async def test_complete_setzt_kein_fertig_bei_merge_konflikt(client, db, seeded,
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     m = await add_member(db, proj, owner, ProjectRole.owner)
-    m.ai_assign = True          # /complete verlangt das KI-Recht
+    m.ai_assign = True          # /complete demands the AI right
     await db.commit()
     t, stats = await _seed_board(db, proj)
     issue = await _make_issue(db, proj, t.id, stats["Testen"].id, TicketAgentStatus.to_test)
@@ -109,11 +109,11 @@ async def test_complete_setzt_kein_fertig_bei_merge_konflikt(client, db, seeded,
 
     r = await client.post(f"/issues/{issue.key}/complete", headers=auth(owner))
     assert r.status_code == 200, r.text
-    await enginemod.drain()          # Merge läuft asynchron im Abnahme-Prozess
+    await enginemod.drain()          # the merge runs asynchronously in the acceptance process
     await db.refresh(issue)
     assert issue.agent_status == TicketAgentStatus.hold
     assert issue.resolved_at is None
-    assert issue.status_id != stats["Fertig"].id   # kein stilles „Fertig"
+    assert issue.status_id != stats["Fertig"].id   # no silent "done"
 
 
 async def test_complete_setzt_fertig_bei_sauberem_merge(client, db, seeded, redis_stub):

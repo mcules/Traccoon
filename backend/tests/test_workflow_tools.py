@@ -1,9 +1,8 @@
-"""Werkzeuge im Ablauf: fremde Systeme anbinden, ohne zu programmieren.
+"""Tools in a flow: connecting foreign systems without programming.
 
-Die Werkzeuge kommen aus der MCP-Registry — derselben Liste, die auch der Agent nutzt.
-Geprüft wird, dass ein Ablauf nur die Werkzeuge SEINES Eigentümers erreicht, dass ein
-Ergebnis im Kontext landet und dass ein Fehlschlag als Fehlschlag ankommt statt als Text,
-der wie Erfolg aussieht.
+The tools come from the MCP registry, the same list the agent uses. What is checked is that
+a flow reaches only the tools of ITS owner, that a result lands in the context and that a
+failure arrives as a failure instead of as text that looks like success.
 """
 import pytest
 from app.models.plugins import McpServer
@@ -17,7 +16,7 @@ pytestmark = pytest.mark.asyncio
 
 
 class _Sitzung:
-    """MCP-Sitzung als Attrappe — was der echte Server antworten würde."""
+    """MCP session as a dummy: what the real server would answer."""
 
     def __init__(self, antwort: str, tools: list | None = None):
         self.antwort, self.tools, self.aufrufe = antwort, tools or [], []
@@ -53,7 +52,7 @@ async def anna(db):
 
 
 async def test_nur_die_eigenen_server_stehen_zur_wahl(db, anna, monkeypatch):
-    """Ein Ablauf kommt nirgends hin, wo sein Eigentümer nicht hindarf."""
+    """A flow gets nowhere its owner is not allowed to go."""
     server = await workflow_tools._server_des_besitzers(db, anna.id)
     assert [s["name"] for s in server] == ["obsidian"]
 
@@ -68,7 +67,7 @@ async def test_werkzeugliste_nennt_pflichtfelder(db, anna, monkeypatch):
     assert liste[0]["name"] == "obsidian__obsidian_append_to_note"
     assert liste[0]["pflicht"] == ["path"]
     assert liste[0]["felder"] == ["path", "content"]
-    # Nur die erste Zeile der Beschreibung — der Rest sprengt jede Auswahlliste.
+    # Only the first line of the description: the rest blows up every selection list.
     assert liste[0]["beschreibung"] == "Anhängen"
 
 
@@ -89,7 +88,7 @@ async def test_aufruf_landet_im_kontext(db, anna, monkeypatch):
     ergebnis = await run_action(db, inst, node)
 
     assert ergebnis["ok"] is True
-    # Vorlagen in den Argumenten werden gefüllt — sonst stünde dort wörtlich {{mail.subject}}.
+    # Templates in the arguments are filled; otherwise {{mail.subject}} would stand there literally.
     assert sitzung.aufrufe == [("obsidian__obsidian_append_to_note",
                                 {"path": "Rechnung.md", "content": "Test"})]
     assert inst.context["tool"]["ok"] is True
@@ -97,8 +96,8 @@ async def test_aufruf_landet_im_kontext(db, anna, monkeypatch):
 
 
 async def test_unbekannter_server_ist_ein_fehler_kein_text(db, anna):
-    """Die MCP-Sitzung antwortet auf einen unbekannten Server mit einem Hinweis-TEXT.
-    Würde der als Erfolg durchgehen, liefe der Ablauf weiter, als wäre alles gut."""
+    """The MCP session answers an unknown server with a hint TEXT. If that passed as success,
+    the flow would run on as if everything were fine."""
     r = await workflow_tools.aufrufen(db, anna.id, "gibtsnicht__tool", {})
     assert r["ok"] is False and "unknown MCP server" in r["error"]
 
@@ -113,7 +112,7 @@ async def test_fehler_kann_den_schritt_abbrechen(db, anna, monkeypatch):
     with pytest.raises(ValueError, match="kaputt"):
         await run_action(db, inst, node)
 
-    # Ohne den Schalter entscheidet der Ablauf selbst — über tool.ok an einer Weiche.
+    # Without the switch the flow decides itself, over tool.ok at a branch.
     node["data"]["config"]["action"]["params"]["fail_on_error"] = False
     ergebnis = await run_action(db, inst, node)
     assert ergebnis["ok"] is False and inst.context["tool"]["ok"] is False

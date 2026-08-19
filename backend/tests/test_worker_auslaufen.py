@@ -1,13 +1,13 @@
-"""Ein Deploy darf keinen denkenden Agenten erschlagen.
+"""A deploy must not slay a thinking agent.
 
-Docker schickt beim Neustart SIGTERM und tötet nach der Gnadenfrist. Ohne Handler starb der
-Worker sofort — mitsamt jedem Lauf, der gerade arbeitete. Die Wiedervorlage rettet den
-Auftrag, nicht das Gespräch: ABC-31 verlor am 2026-08-07 zweimal knapp 40 Züge, beide Male
-durch einen Deploy von Hand.
+Docker sends SIGTERM on a restart and kills after the grace period. Without a handler the
+worker died immediately, together with every run that was working. The follow-up rescues the
+assignment, not the conversation: ABC-31 lost almost 40 turns twice on 2026-08-07, both
+times through a deploy by hand.
 
-Vollständig lösen lässt sich das nicht — ein Lauf darf Stunden dauern, ein Deploy nicht
-Stunden warten. Die Auslaufzeit deckt den laufenden Modellzug samt Werkzeug ab, und damit
-stehen die Schrittzeilen, aus denen der Nachfolger seine Übergabe baut.
+It cannot be solved completely: a run may take hours, and a deploy must not wait hours. The
+grace time covers the running model turn including its tool, and with that the step rows
+stand from which the successor builds its handover.
 """
 import asyncio
 
@@ -32,8 +32,8 @@ async def test_auslaufen_wartet_auf_den_laufenden_agenten(monkeypatch):
 
 
 async def test_auslaufen_gibt_nach_der_frist_auf(monkeypatch):
-    """Die Frist ist eine Frist: ein stundenlanger Lauf hält den Deploy nicht auf. Er wird
-    NICHT abgebrochen — er steht noch in PROCESSING und wird neu eingereiht."""
+    """The deadline is a deadline: a run of hours does not hold the deploy up. It is NOT
+    aborted; it still stands in PROCESSING and is queued anew."""
     monkeypatch.setattr(worker, "DRAIN_SEC", 0)
 
     async def zaeher_agent():
@@ -54,7 +54,7 @@ async def test_auslaufen_gibt_nach_der_frist_auf(monkeypatch):
 async def test_ohne_laufende_agenten_sofort_fertig(monkeypatch):
     monkeypatch.setattr(worker, "DRAIN_SEC", 30)
     worker.RUNNING.clear()
-    await asyncio.wait_for(worker._auslaufen(), timeout=1)     # darf nicht die Frist absitzen
+    await asyncio.wait_for(worker._auslaufen(), timeout=1)     # must not sit out the deadline
 
 
 async def test_signalhandler_setzt_das_beenden_flag():
