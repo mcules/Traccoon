@@ -1,8 +1,8 @@
-"""Ein Schreibweg für Zustände — nachgewiesen am Quelltext und im Verhalten.
+"""One write path for states, proven in the source and in the behaviour.
 
-Vorher setzten 21 Stellen `agent_status` direkt; die Artefakt-Zeile lief dann bis zum
-nächsten Abgleich hinterher. Jetzt geht alles über `set_ticket_status`/`set_asset_status`,
-die beides in einem Zug schreiben. Der Abgleich bleibt als Netz, ist aber nicht mehr der
+Before, 21 places set `agent_status` directly, and the artifact row then lagged behind until
+the next reconciliation. Now everything goes over `set_ticket_status`/`set_asset_status`,
+which write both in one go. The reconciliation stays as a net but is no longer the mechanism.
 """
 import pathlib
 import re
@@ -16,7 +16,7 @@ from sqlalchemy import select
 from conftest import make_asset, make_project
 
 APP = pathlib.Path(__file__).resolve().parent.parent / "app"
-# Hier darf direkt zugewiesen werden: die Umsetzung selbst bzw. die Neuanlage eines Tickets,
+# Direct assignment is allowed here: the implementation itself respectively the creation of a
 # ticket whose artifact row comes into being immediately afterwards.
 ERLAUBT = {"services/artifacts.py", "services/workflow_actions.py"}
 
@@ -28,7 +28,7 @@ def test_niemand_setzt_den_zustand_an_der_zentrale_vorbei():
         if rel in ERLAUBT:
             continue
         for nr, zeile in enumerate(datei.read_text().splitlines(), 1):
-            # Zuweisung, nicht Vergleich: „= x" ja, „== x" und „!= x" nein.
+            # Assignment, not comparison: "= x" yes, "== x" and "!= x" no.
             if re.search(r"\.(agent_status|purchase_status)\s*=(?!=)", zeile):
                 treffer.append(f"{rel}:{nr}: {zeile.strip()}")
     assert not treffer, (
@@ -75,7 +75,7 @@ async def test_ein_aufruf_setzt_zustand_board_und_artefakt(db, register):
 
 
 async def test_zustand_zuruecknehmen_laesst_das_board_stehen(db, register):
-    """Agent abgezogen: kein Zustand mehr, aber das Ticket springt nicht zurück."""
+    """The agent was pulled off: no state any more, but the ticket does not jump back."""
     proj = await make_project(db, "TST", "Test")
     issue = await _ticket(db, proj)
     await art.set_ticket_status(db, issue, TicketAgentStatus.in_progress)
@@ -105,7 +105,7 @@ async def test_hardware_zustand_fuehrt_die_datumsfelder_mit(db, register):
 
 
 async def test_abgleich_findet_nichts_mehr_zu_tun(db, register):
-    """Wenn der eine Weg genutzt wird, hat der Abgleich nichts nachzuholen."""
+    """When the one path is used, the reconciliation has nothing to catch up."""
     proj = await make_project(db, "TST", "Test")
     issue = await _ticket(db, proj)
     await art.set_ticket_status(db, issue, TicketAgentStatus.to_test)
@@ -115,12 +115,12 @@ async def test_abgleich_findet_nichts_mehr_zu_tun(db, register):
 
 
 async def test_laufender_agent_steht_nie_auf_warten(db):
-    """Die Regel ohne Ausnahme: läuft für ein Ticket ein Agent, ist es „In Arbeit".
+    """The rule without an exception: if an agent is running for a ticket, it is "in progress".
 
-    Ein Lauf startet auf mehreren Wegen — Prozess-Schritt, Review-Runde im Worker,
-    Wiedervorlage der Reliable-Queue nach einem Neustart — und nur der erste geht durch den
-    Graphen. Am 2026-08-07 arbeiteten nach einem Worker-Neustart zwei Agenten, während das
-    Board „Warten" zeigte, weil den Zustand niemand angefasst hatte.
+    A run starts over several paths (process step, review round in the worker, follow-up of
+    the reliable queue after a restart), and only the first goes through the graph. On
+    2026-08-07 two agents were working after a worker restart while the board showed
+    "waiting", because nobody had touched the state.
     """
     from app.models.agents import Run
     from app.models.enums import HoldReason, TicketAgentStatus
@@ -141,8 +141,8 @@ async def test_laufender_agent_steht_nie_auf_warten(db):
 
 
 async def test_planungslauf_steht_auf_planung(db):
-    """Der Plan-Lauf gehört auf `planning`, nicht auf `in_progress` — beide landen im Board
-    unter „In Arbeit", aber der Zustand soll die Phase benennen."""
+    """The plan run belongs on `planning`, not on `in_progress`: both land in the board under
+    "in progress", but the state should name the phase."""
     from app.models.agents import Run
     from app.models.enums import TicketAgentStatus
     from app.services.artifacts import reconcile
@@ -158,8 +158,8 @@ async def test_planungslauf_steht_auf_planung(db):
 
 
 async def test_beendeter_lauf_ruehrt_den_zustand_nicht_an(db):
-    """Die Gegenprobe: ein FERTIGER Lauf ist kein Grund, ein wartendes Ticket anzufassen —
-    sonst risse der Abgleich jedes abgeschlossene Ticket zurück in die Arbeit."""
+    """The counter-check: a FINISHED run is no reason to touch a waiting ticket; otherwise the
+    reconciliation would tear every completed ticket back into the work."""
     import datetime as dt
 
     from app.models.agents import Run
@@ -178,11 +178,11 @@ async def test_beendeter_lauf_ruehrt_den_zustand_nicht_an(db):
 
 
 async def test_stehengebliebene_spalte_wird_nachgezogen(db):
-    """Der Zustand kann stimmen und die SPALTE trotzdem falsch stehen.
+    """The state can be right and the COLUMN still stand wrongly.
 
-    ABC-32 am 2026-08-07: das Ticket wurde aus dem Störungs-Zweig heraus fortgesetzt, der
-    Agent lief mit `in_progress` — die Board-Spalte blieb auf „Warten", weil sie beim Parken
-    gesetzt und nie wieder angefasst wurde. Ein Abgleich, der nur `agent_status` prüft, sieht
+    ABC-32 on 2026-08-07: the ticket was continued out of the disturbance branch, the agent
+    ran with `in_progress`, and the board column stayed on "waiting" because it was set while
+    parking and never touched again. A reconciliation that only checks `agent_status` sees nothing wrong.
     """
     from app.models.agents import Run
     from app.models.enums import TicketAgentStatus
@@ -203,8 +203,8 @@ async def test_stehengebliebene_spalte_wird_nachgezogen(db):
 
 
 async def test_abgenommenes_ticket_bleibt_fertig(db):
-    """Gegenprobe: ein manuell abgenommenes Ticket zieht der Abgleich nicht zurück in die
-    Arbeit, auch wenn noch ein Lauf nachläuft."""
+    """Counter-check: a manually accepted ticket is not pulled back into the work by the
+    reconciliation, even when a run is still trailing."""
     from app.models.agents import Run
     from app.models.enums import TicketAgentStatus
     from app.services.artifacts import reconcile
