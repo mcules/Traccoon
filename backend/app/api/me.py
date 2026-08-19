@@ -70,6 +70,29 @@ async def set_assistant_notify(d: StrIn, u: User = Depends(get_current_user),
     await db.commit()
 
 
+@router.put("/me/timezone", status_code=204)
+async def set_timezone(d: StrIn, u: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    """Zeitzone dieser Person (IANA). Sie entscheidet, was „8 Uhr" heißt — in der Oberfläche,
+    im Nachtfenster und im Zeitplan ihrer Jobs."""
+    from zoneinfo import ZoneInfo, available_timezones
+
+    name = (d.value or "").strip()
+    if name not in available_timezones():
+        raise Fehler(400, "err.unknown_timezone", "Unknown time zone '{name}'", name=name)
+    ZoneInfo(name)   # lädt sie einmal, damit ein kaputter Datenstand hier auffällt
+    u.timezone = name
+    await db.commit()
+
+
+@router.get("/timezones")
+async def list_timezones(_: User = Depends(get_current_user)) -> list[str]:
+    """Auswahl für die Oberfläche: die Zonen, die dieser Server wirklich kennt."""
+    from zoneinfo import available_timezones
+
+    return sorted(available_timezones())
+
+
 @router.put("/me/vault-memory-path", status_code=204)
 async def set_vault_memory_path(d: StrIn, u: User = Depends(get_current_user),
                                 db: AsyncSession = Depends(get_session)):
@@ -354,7 +377,7 @@ async def my_flags(u: User = Depends(get_current_user)):
     out.update(night_start_hour=u.night_start_hour, night_end_hour=u.night_end_hour,
                night_days=u.night_days, night_override=u.night_override, max_runners=u.max_runners,
                telegram_chat_id=u.telegram_chat_id, assistant_notify=u.assistant_notify,
-               vault_memory_path=u.vault_memory_path)
+               vault_memory_path=u.vault_memory_path, timezone=u.timezone)
     return out
 
 

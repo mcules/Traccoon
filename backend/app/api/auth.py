@@ -23,6 +23,7 @@ def user_out(u: User) -> UserOut:
         avatar_color=u.avatar_color, theme=u.theme, global_role=u.global_role,
         status=u.status, max_runners=u.max_runners, onboarded=u.onboarded_at is not None,
         default_project_view=u.default_project_view, ticket_open_mode=u.ticket_open_mode,
+        timezone=u.timezone,
         ticket_layout=u.ticket_layout or {}, pm_chat_style=u.pm_chat_style,
         workflow_set_id=u.workflow_set_id,
         locale=u.locale, notify_default=u.notify_default, notify_email=u.notify_email,

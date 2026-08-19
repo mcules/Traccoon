@@ -46,6 +46,11 @@ class User(TimestampMixin, Base):
     # UI language. German is the source language of the shipped catalogs, everything else
     # is a translation, so an unknown value simply falls back to it.
     locale: Mapped[str] = mapped_column(String(10), default="de")
+    # Zeitzone dieser Person (IANA, z. B. "Europe/Berlin"). Sie entscheidet, was „8 Uhr"
+    # heißt: in der Oberfläche, im Nachtfenster und im Zeitplan ihrer Jobs. Ohne sie rechnete
+    # der Server in UTC und in einer fest verdrahteten Zone — ein Cron-Job „0 8 * * *" lief
+    # damit um 10 Uhr, und niemand sah warum.
+    timezone: Mapped[str] = mapped_column(String(64), default="Europe/Berlin")
 
     # MCP-Gateway (MCPJungle) pro User — harte serverseitige Tool-Trennung.
     mcp_group: Mapped[str] = mapped_column(String(120), default="")          # MCPJungle-Gruppe

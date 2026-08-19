@@ -25,7 +25,20 @@ from ..models.user import User
 
 log = logging.getLogger("agent_gate")
 
-TZ = ZoneInfo("Europe/Berlin")
+TZ = ZoneInfo("Europe/Berlin")   # Rückfall, wenn niemand eine Zone gesetzt hat
+
+
+def zone_of(user) -> ZoneInfo:
+    """Die Zeitzone einer Person — die Antwort auf „was heißt hier 8 Uhr?".
+
+    Ein Nachtfenster von 22 bis 6 ist keine Angabe in UTC und auch keine in Berlin, sondern
+    eine im Alltag dessen, der schläft. Eine unbekannte Zone (Tippfehler, alter Datenstand)
+    darf den Torwächter nicht sprengen, deshalb der Rückfall.
+    """
+    try:
+        return ZoneInfo(getattr(user, "timezone", "") or TZ.key)
+    except Exception:  # noqa: BLE001 — unbekannte Zone ist kein Grund, nichts laufen zu lassen
+        return TZ
 
 MAX_CONCURRENT = 3            # global gleichzeitig laufende Agenten
 MAX_CONTINUATIONS = 30        # Fortsetzungen je Ticket
@@ -83,7 +96,7 @@ async def schedule_ok(db, issue: Issue) -> GateVerdict:
     if issue.night_task:
         user = await db.get(User, owner_id) if owner_id else None
         if user and not user.night_override:
-            now = dt.datetime.now(TZ)
+            now = dt.datetime.now(zone_of(user))
             if now.weekday() not in (user.night_days or [0, 1, 2, 3, 4, 5, 6]):
                 return GateVerdict(False, "night", detail="außerhalb der Nacht-Wochentage")
             s, e, h = user.night_start_hour, user.night_end_hour, now.hour

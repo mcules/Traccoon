@@ -8,6 +8,7 @@ import logging
 import os
 
 from croniter import croniter
+from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
 from ..core.redis import enqueue_task
@@ -26,21 +27,44 @@ def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
 
-def _due(job: Job, now: dt.datetime) -> bool:
+STD_TZ = ZoneInfo("Europe/Berlin")
+
+
+def zone_of(user) -> ZoneInfo:
+    """Die Zeitzone, in der der Zeitplan dieser Person gemeint ist.
+
+    Ein Plan wird von Menschen geschrieben: „0 8 * * *" heißt acht Uhr morgens dort, wo der
+    steht, der ihn eingetragen hat — nicht acht Uhr UTC. Bis hierher rechnete alles in UTC,
+    und ein Morgenjob lief im Sommer um zehn.
+    """
+    try:
+        return ZoneInfo(getattr(user, "timezone", "") or STD_TZ.key)
+    except Exception:  # noqa: BLE001 — eine unbekannte Zone darf keinen Job anhalten
+        return STD_TZ
+
+
+def _due(job: Job, now: dt.datetime, zone: ZoneInfo = STD_TZ) -> bool:
     if job.type == "interval":
         secs = int(job.schedule) if job.schedule.isdigit() else 60
         return job.last_run_at is None or (now - job.last_run_at).total_seconds() >= secs
     if job.type == "cron":
-        base = job.last_run_at or (now - dt.timedelta(minutes=1))
+        # In der Zone des Besitzers rechnen und erst danach wieder vergleichen: croniter
+        # arbeitet mit der Wanduhr, die es bekommt.
+        jetzt_lokal = now.astimezone(zone)
+        base = (job.last_run_at or (now - dt.timedelta(minutes=1))).astimezone(zone)
         try:
-            return croniter(job.schedule, base).get_next(dt.datetime) <= now
+            return croniter(job.schedule, base).get_next(dt.datetime) <= jetzt_lokal
         except (ValueError, KeyError):
             return False
     if job.type == "once":
         if job.last_run_at is not None:
             return False
         try:
-            return dt.datetime.fromisoformat(job.schedule) <= now
+            zeitpunkt = dt.datetime.fromisoformat(job.schedule)
+            # Ohne Zeitzone im Text ist die des Besitzers gemeint, nicht UTC.
+            if zeitpunkt.tzinfo is None:
+                zeitpunkt = zeitpunkt.replace(tzinfo=zone)
+            return zeitpunkt <= now
         except ValueError:
             return False
     return False
@@ -123,8 +147,14 @@ async def _tick() -> None:
             await db.execute(select(Job).where(Job.enabled.is_(True), Job.paused.is_(False)))
         ).scalars().all()
         nachreichen: list[dict] = []
+        # Die Zonen einmal je Besitzer holen statt je Job: es sind wenige Menschen und viele
+        # Jobs.
+        zonen: dict[int | None, ZoneInfo] = {}
         for job in jobs:
-            if not _due(job, now):
+            if job.user_id not in zonen:
+                besitzer = await db.get(User, job.user_id) if job.user_id else None
+                zonen[job.user_id] = zone_of(besitzer)
+            if not _due(job, now, zonen[job.user_id]):
                 continue
             job.last_run_at = now
             jr = JobRun(job_id=job.id, status="running")
