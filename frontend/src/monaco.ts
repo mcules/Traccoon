@@ -1,5 +1,5 @@
-// Monaco lokal bündeln (kein CDN): Worker per Vite-?worker-Import bereitstellen
-// und den @monaco-editor/react-Loader auf die gebündelte Instanz zeigen lassen.
+// Bundle Monaco locally (no CDN): provide the workers over a Vite ?worker import and point
+// the @monaco-editor/react loader at the bundled instance.
 import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
@@ -20,10 +20,10 @@ import { loader } from "@monaco-editor/react";
 
 loader.config({ monaco });
 
-// Vorwärmen im Hintergrund: startet die größten Worker einmal, damit ihre JS-Chunks
-// (ts.worker ~6 MB, editor.worker) heruntergeladen und vom Browser gecacht werden —
-// so ist der erste echte Öffnen von „Code" nicht mehr durch den Worker-Download blockiert.
-// Läuft in Web-Worker-Threads, blockiert also die UI nicht; nach kurzer Zeit wieder beendet.
+// Prewarming in the background: starts the largest workers once so that their JS chunks
+// (ts.worker about 6 MB, editor.worker) are downloaded and cached by the browser, so that
+// the first real opening of "code" is no longer blocked by the worker download.
+// It runs in web worker threads, so it does not block the UI, and ends again after a short time.
 let _warmed = false;
 export function prewarmMonaco(): void {
   if (_warmed) return;
@@ -35,7 +35,7 @@ export function prewarmMonaco(): void {
   } catch { /* Vorwärmen ist optional */ }
 }
 
-// Sprache aus Dateiendung (Monaco leitet vieles über den Pfad ab; hier die häufigsten).
+// Language from the file extension (Monaco derives much over the path; here the most common ones).
 export function langOf(path: string): string {
   const ext = path.split(".").pop()?.toLowerCase() || "";
   const map: Record<string, string> = {

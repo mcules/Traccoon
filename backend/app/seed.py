@@ -9,7 +9,7 @@ from .models.user import SYSTEM_USER_ID, User
 
 
 async def seed(db: AsyncSession) -> None:
-    # System-User (erster Insert → id=1 auf frischer DB)
+    # System user (the first insert, so id=1 on a fresh database)
     system = (await db.execute(select(User).where(User.username == "system"))).scalar_one_or_none()
     if system is None:
         db.add(User(
@@ -18,7 +18,7 @@ async def seed(db: AsyncSession) -> None:
         ))
         await db.commit()
 
-    # Bootstrap-Admin aus ENV, nur wenn noch kein echter User existiert
+    # Bootstrap admin from the environment, only when no real user exists yet
     if settings.bootstrap_admin_email and settings.bootstrap_admin_password:
         real = (
             await db.execute(
@@ -35,16 +35,16 @@ async def seed(db: AsyncSession) -> None:
             ))
             await db.commit()
 
-    # Provider-Modellkatalog seeden (Default-Preise für Kostenberechnung)
+    # Seed the provider model catalog (default prices for the cost computation)
     from .models.ops import ProviderModel
     prices = [
         ("claude_code", "claude-sonnet-4-5", "Claude Sonnet 4.5", 3.0, 15.0),
         ("claude_code", "claude-opus-4-1", "Claude Opus 4.1", 15.0, 75.0),
         ("claude_code", "claude-haiku-4-5", "Claude Haiku 4.5", 0.8, 4.0),
         ("codex", "gpt-5", "GPT-5 (Codex)", 1.25, 10.0),
-        # Kein openai-Seed: der Provider ist bei uns meist ein eigener OpenAI-kompatibler
-        # Endpoint (LiteLLM & Co.) mit ganz anderen Modellnamen — Katalog kommt aus
-        # POST /providers/models/fetch.
+        # No openai seed: the provider is mostly an OpenAI-compatible endpoint of our own
+        # (LiteLLM and company) with completely different model names, so the catalog comes
+        # from POST /providers/models/fetch.
     ]
     for prov, model, name, pin, pout in prices:
         exists = (await db.execute(
@@ -55,7 +55,7 @@ async def seed(db: AsyncSession) -> None:
                                  price_input=pin, price_output=pout))
     await db.commit()
 
-    # Default-Agenten für aktive Nutzer ohne Templates (deckt Bootstrap-Admin ab)
+    # Default agents for active users without templates (covers the bootstrap admin)
     from .api.agents import seed_default_agents
     from .models.agents import AgentDefinition
     active = (await db.execute(select(User).where(

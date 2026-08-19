@@ -5,9 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, workflowApi, type IssueType, type Project } from "../../api";
 import type { WorkflowSlotInfo } from "./types";
 
-/** Woher der geltende Ablauf kommt — die wichtigste Information auf dieser Seite. */
-// Schlüssel statt Texte: die Tabelle entsteht beim Laden des Moduls, ein tr() hier würde
-// die Sprache des ersten Aufrufs festhalten.
+/** Where the applicable flow comes from: the most important information on this page. */
+// Keys instead of texts: the table comes into being while the module loads, and a tr() here
+// would fix the language of the first call.
 const ORIGIN: Record<WorkflowSlotInfo["origin"], { label: string; cls: string; hint: string }> = {
   builtin: { label: "slot_list.herkunft_builtin", cls: "bg-surface text-muted",
              hint: "slot_list.herkunft_builtin_hinweis" },
@@ -22,10 +22,10 @@ const ORIGIN: Record<WorkflowSlotInfo["origin"], { label: string; cls: string; h
 };
 
 /**
- * Die Abläufe eines Projekts: was gilt, woher es kommt, und wie man es ändert.
+ * The flows of a project: what applies, where it comes from and how to change it.
  *
- * Anpassen legt eine Kopie an (der Satz wirkt dann hier nicht mehr), Zurücksetzen wirft die
- * Kopie weg. Laufende Vorgänge bleiben davon unberührt — sie hängen an ihrer Version.
+ * Adjusting creates a copy (the set then no longer acts here), and resetting throws the copy
+ * away. Running processes stay unaffected: they hang off their version.
  */
 export default function SlotList({ project }: { project: Project }) {
   const qc = useQueryClient();
@@ -45,7 +45,7 @@ export default function SlotList({ project }: { project: Project }) {
   };
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
-  // Vorgangsarten des Projekts — ein Ticket-Ablauf darf je Art ein eigener sein.
+  // Issue types of the project: a ticket flow may be a separate one per type.
   const { data: meta } = useQuery({
     queryKey: ["meta", project.id],
     queryFn: () => api.get<{ types: IssueType[] }>(`/projects/${project.id}/meta`),

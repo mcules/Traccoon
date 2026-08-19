@@ -1,8 +1,8 @@
-"""Echter OpenAI-API-Provider (Chat Completions, sk-API-Key).
+"""The real OpenAI API provider (chat completions, sk API key).
 
-Additiv neben claude_code (Anthropic-OAuth) und codex (ChatGPT-Subscription).
-Da der interne Message-/Tool-Kontrakt bereits OpenAI-Format ist, geht das Body
-weitgehend direkt an die API. `auth_token` = sk-… API-Key.
+Additive beside claude_code (Anthropic OAuth) and codex (ChatGPT subscription). Because the
+internal message and tool contract is already in the OpenAI format, the body goes to the API
+largely directly. `auth_token` = an sk-… API key.
 """
 from __future__ import annotations
 
@@ -38,10 +38,10 @@ class OpenAIProvider(Provider):
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
-        # Endpoint-eigene Felder (z. B. `chat_template_kwargs` für lokale Modelle hinter
-        # LiteLLM). Ohne das verbrät ein denkendes Modell wie qwen3.6 sein ganzes
-        # Ausgabe-Budget im `reasoning_content` und liefert leeren Text zurück — 231
-        # Completion-Tokens für ein „OK", davon 229 Denken.
+        # Endpoint-owned fields (for instance `chat_template_kwargs` for local models behind
+        # LiteLLM). Without that, a thinking model like qwen3.6 burns its whole output budget
+        # in `reasoning_content` and returns empty text: 231 completion tokens for an "OK",
+        # 229 of them thinking.
         if extra_body:
             body.update(extra_body)
         if tools:
