@@ -28,7 +28,6 @@ class ChatResponse:
     # Who actually answered. On a fallback that is NOT the provider or model configured on
     # the agent, and with exactly that the whole run used to be priced. The adapters do not
     # fill it, the router sets it: empty by default, so that nothing changes for anybody else.
-    # niemanden sonst etwas ändert.
     provider: str = ""
     model: str = ""
 
