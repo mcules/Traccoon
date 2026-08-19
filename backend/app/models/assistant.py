@@ -66,6 +66,12 @@ class AssistantTask(TimestampMixin, Base):
     # anybody.
     notified: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Out of the view, not out of the world. Deleting would be wrong here: the assistant
+    # learns from finished items (rules, spam statistics), and a chat message that was
+    # archived is still the context of the conversation that followed it.
+    archived_at: Mapped[dt.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True)
+
 
 class AssistantPermission(TimestampMixin, Base):
     """Learned tool permission of the assistant (owner-scoped, project-less): 'always allow'
@@ -189,6 +195,15 @@ class SpamVerdict(TimestampMixin, Base):
     reasons: Mapped[list] = mapped_column(JSON, default=list)
     # Broken down features for the learning (list of feature keys, see spam_learn).
     features: Mapped[list] = mapped_column(JSON, default=list)
+
+    # What the mail was classified as (the model's kind: phishing, werbung, rechnung …).
+    # Deliberately a free value and not an enum: the statistics group by whatever stands
+    # here, so a new kind needs no migration and no code.
+    art: Mapped[str] = mapped_column(String(40), default="", index=True)
+    # Findings of both sources in one shape: [{quelle, kennung, text}]. The rules have
+    # carried key plus plain text forever (`RuleResult.treffer`), the model now delivers the
+    # same. Card, note and statistics read from here.
+    befunde: Mapped[list] = mapped_column(JSON, default=list)
 
     # pending = waiting for the human · spam / ham = decided · skipped = expired
     # (mail no longer findable or similar).

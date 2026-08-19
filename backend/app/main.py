@@ -391,6 +391,19 @@ async def lifespan(app: FastAPI):
                 # Metric series (create_all creates the tables; the index it does not).
                 "CREATE INDEX IF NOT EXISTS ix_metric_points_series_ts "
                 "ON metric_points (series_id, ts DESC)",
+                # Assistant: archive instead of delete. The chat window used to keep
+                # everything forever, and the inbox had no way to put a finished item away.
+                "ALTER TABLE assistant_tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
+                # What a mail was classified as, and the findings behind it. The kind is what
+                # the statistics group by, the findings are what the knowledge note is fed
+                # from; both used to exist only inside one log line.
+                "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS art VARCHAR(40) "
+                "DEFAULT '' NOT NULL",
+                "CREATE INDEX IF NOT EXISTS ix_spam_verdicts_art ON spam_verdicts (art)",
+                "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS befunde JSON "
+                "DEFAULT '[]'::json NOT NULL",
+                "CREATE INDEX IF NOT EXISTS ix_assistant_tasks_archived_at "
+                "ON assistant_tasks (archived_at)",
             ):
                 if not await _fehlt_noch(conn, _ddl):
                     continue

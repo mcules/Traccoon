@@ -3,11 +3,12 @@
 The e-mail inbox itself runs over the NORMAL webhook (WebhookSub, mode 'assistant',
 api/ops.py to services/mail_intake.py). Here stand only the UI and administration endpoints.
 """
+import datetime as dt
 import logging
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.fehler import Fehler
@@ -45,10 +46,20 @@ async def _get_owned(tid: int, user: User, db: AsyncSession) -> AssistantTask:
 
 
 @router.get("/assistant/inbox")
-async def list_inbox(status_filter: str | None = None,
+async def list_inbox(status_filter: str | None = None, archiv: bool = False,
                      user: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
-    q = select(AssistantTask).order_by(AssistantTask.id.desc())
+    """Incoming items, newest first.
+
+    Without `kind` the chat used to stand in here as well: 116 of 518 entries were messages
+    somebody had typed into the chat window, in a list that says "incoming". The chat has
+    its own view, so it does not belong in this one.
+    """
+    q = (select(AssistantTask)
+         .where(AssistantTask.kind != "chat")
+         .order_by(AssistantTask.id.desc()))
+    q = q.where(AssistantTask.archived_at.isnot(None) if archiv
+                else AssistantTask.archived_at.is_(None))
     # An admin sees everything; everybody else only their own.
     if user.global_role != "admin":
         q = q.where(AssistantTask.owner_user_id == user.id)
@@ -94,6 +105,22 @@ async def reject_inbox(tid: int, user: User = Depends(get_current_user),
     await reject_assistant_task(db, t)
     await db.refresh(t)
     return _out(t)
+
+
+@router.get("/assistant/statistik")
+async def statistik(tage: int = 30, user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)):
+    """As what mail was classified, plus how well the local model judged.
+
+    Counted at query time out of the rows that exist anyway (the house pattern, see
+    `api/dashboard.py`). Nothing is kept twice, and the answer covers the whole stock
+    instead of starting at zero with a counter.
+    """
+    from ..services.spam_report import bilanz, einstufungen
+
+    daten = await einstufungen(db, user.id, tage=tage)
+    daten["betrieb"] = await bilanz(db, user.id)
+    return daten
 
 
 # ================= Gelernte Regeln (AssistantPolicy) =================
@@ -224,12 +251,70 @@ class DecideIn(BaseModel):
 
 
 @router.get("/assistant/chat")
-async def chat_history(user: User = Depends(get_current_user),
+async def chat_history(vor: int | None = None, limit: int = 20, archiv: bool = False,
+                       user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    rows = (await db.execute(select(AssistantTask).where(
-        AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat")
-        .order_by(AssistantTask.id.desc()).limit(50))).scalars().all()
-    return [_chat_out(t) for t in reversed(rows)]  # oldest first (the conversation history)
+    """A page of the conversation, newest last.
+
+    Formerly the last fifty came at once, and the browser scrolled through all of them down
+    to the current one on every opening. Now the newest `limit` come, and whoever wants to
+    read further back fetches the page before them (`vor` = the id one is standing at).
+
+    `mehr` says whether anything lies before that page, which the browser cannot tell from a
+    full page alone.
+    """
+    n = max(1, min(limit, 100))
+    q = (select(AssistantTask)
+         .where(AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat")
+         .order_by(AssistantTask.id.desc()))
+    q = q.where(AssistantTask.archived_at.isnot(None) if archiv
+                else AssistantTask.archived_at.is_(None))
+    if vor:
+        q = q.where(AssistantTask.id < vor)
+    # One row more than asked for: that is the answer to "is there anything older".
+    rows = (await db.execute(q.limit(n + 1))).scalars().all()
+    mehr = len(rows) > n
+    seite = rows[:n]
+    return {"nachrichten": [_chat_out(t) for t in reversed(seite)], "mehr": mehr}
+
+
+# Running messages stay: archiving something that is still being worked on would hide the
+# answer one is waiting for.
+_LAEUFT = ("new", "approved", "running", "awaiting")
+
+
+@router.post("/assistant/chat/archive-all")
+async def chat_archive_all(user: User = Depends(get_current_user),
+                           db: AsyncSession = Depends(get_session)):
+    """Clear the conversation: everything finished goes into the archive."""
+    n = (await db.execute(
+        update(AssistantTask)
+        .where(AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat",
+               AssistantTask.archived_at.is_(None),
+               AssistantTask.status.not_in(_LAEUFT))
+        .values(archived_at=dt.datetime.now(tz=dt.timezone.utc)))).rowcount
+    await db.commit()
+    return {"archiviert": n or 0}
+
+
+@router.post("/assistant/chat/{tid}/archive")
+async def chat_archive(tid: int, user: User = Depends(get_current_user),
+                       db: AsyncSession = Depends(get_session)):
+    t = await _get_owned(tid, user, db)
+    if t.status in _LAEUFT:
+        raise Fehler(409, "err.still_running", "The message is still being worked on")
+    t.archived_at = dt.datetime.now(tz=dt.timezone.utc)
+    await db.commit()
+    return _chat_out(t)
+
+
+@router.post("/assistant/chat/{tid}/unarchive")
+async def chat_unarchive(tid: int, user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_session)):
+    t = await _get_owned(tid, user, db)
+    t.archived_at = None
+    await db.commit()
+    return _chat_out(t)
 
 
 @router.post("/assistant/chat")

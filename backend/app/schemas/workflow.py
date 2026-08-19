@@ -94,6 +94,37 @@ class WorkflowVersionUpdate(BaseModel):
     notes: str | None = None
 
 
+class GraphSaveOut(BaseModel):
+    """What saving did. `layout` means: nothing changed about the flow, only the picture."""
+    ergebnis: str            # layout | entwurf | neuer_entwurf
+    hinweis: str = ""
+    version: "WorkflowVersionOut"
+
+
+class DiffFeld(BaseModel):
+    feld: str
+    vorher: str = ""
+    nachher: str = ""
+
+
+class DiffKnoten(BaseModel):
+    id: str
+    label: str = ""
+    felder: list[DiffFeld] = []
+
+
+class DiffOut(BaseModel):
+    """Differences between two versions, by node and edge instead of by text line."""
+    von: int | None = None
+    bis: int
+    gleich: bool = False
+    knoten_neu: list[DiffKnoten] = []
+    knoten_weg: list[DiffKnoten] = []
+    knoten_geaendert: list[DiffKnoten] = []
+    kanten_neu: list[str] = []
+    kanten_weg: list[str] = []
+
+
 class WorkflowVersionOut(BaseModel):
     id: int
     definition_id: int

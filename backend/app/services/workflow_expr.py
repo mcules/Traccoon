@@ -103,6 +103,67 @@ def _f_anzahl(wert):
     return 0 if wert is None else 1
 
 
+def _f_feld(wert, name=""):
+    """Pull one field out of a list of objects: `{{ treffer | feld:"filename" }}`.
+
+    The counterpart to `verbinde`, and the piece that was missing to get from a search
+    result to a sentence. A single object gives a single value, so the filter also works
+    where a path happens to hold one result rather than many.
+    """
+    if isinstance(wert, dict):
+        return wert.get(name)
+    if isinstance(wert, (list, tuple)):
+        return [e.get(name) for e in wert if isinstance(e, dict) and e.get(name) is not None]
+    return wert
+
+
+def _f_dateiname(wert):
+    """Path to note name: `03 Bereiche/Fahrzeuge/VW T5.md` becomes `VW T5`.
+
+    Element wise over a list, because that is where paths usually arrive. What is wanted in
+    a sentence is the name, not the shelf it stands on.
+    """
+    def eins(x):
+        t = "" if x is None else str(x)
+        return t.rsplit("/", 1)[-1].removesuffix(".md")
+    if isinstance(wert, (list, tuple)):
+        return [eins(x) for x in wert]
+    return eins(wert)
+
+
+def _f_max(wert):
+    """Largest number in a list, 0 when there is nothing to compare.
+
+    A guard cannot walk a list (JSONLogic knows no `some` here on purpose), so the question
+    "does any day bring snow" is answered by turning the list into one number first.
+    """
+    if isinstance(wert, (list, tuple)):
+        zahlen = [_zahl(x) for x in wert if x is not None]
+        return max(zahlen) if zahlen else 0
+    return _zahl(wert)
+
+
+def _f_min(wert):
+    """Smallest number in a list, the counterpart to `max`."""
+    if isinstance(wert, (list, tuple)):
+        zahlen = [_zahl(x) for x in wert if x is not None]
+        return min(zahlen) if zahlen else 0
+    return _zahl(wert)
+
+
+def _f_zeilen_mit(wert, muster=""):
+    """The lines of a text that contain `muster`, as a list.
+
+    Not every tool answers in JSON. The vault server, for instance, renders its search hits
+    as markdown, and its paths stand in the heading lines. Without this the answer would only
+    be usable whole, and a flow would have to paste a page of markdown where one sentence
+    belongs. Without a pattern: every non empty line.
+    """
+    text = "" if wert is None else str(wert)
+    zeilen = [z.strip() for z in text.splitlines() if z.strip()]
+    return [z for z in zeilen if muster in z] if muster else zeilen
+
+
 def _f_json(wert):
     try:
         return json.dumps(wert, ensure_ascii=False)
@@ -139,6 +200,11 @@ FILTER = {
     "erstes": (lambda w: w[0] if isinstance(w, (list, tuple)) and w else "", "Erster Eintrag"),
     "letztes": (lambda w: w[-1] if isinstance(w, (list, tuple)) and w else "", "Letzter Eintrag"),
     "verbinde": (_f_verbinde, "Liste zu Text — verbinde:\", \""),
+    "feld": (_f_feld, "Ein Feld aus einer Objektliste — feld:\"name\""),
+    "dateiname": (_f_dateiname, "Notizname aus dem Pfad (ohne Ordner und .md)"),
+    "max": (_f_max, "Größter Zahlwert einer Liste"),
+    "zeilen_mit": (_f_zeilen_mit, "Zeilen eines Textes, die etwas enthalten — zeilen_mit:\"### \""),
+    "min": (_f_min, "Kleinster Zahlwert einer Liste"),
     # Zeit
     "datum": (_f_datum, "Zeit formatieren — datum:\"%d.%m.%Y\""),
     "plus_zeit": (_f_plus_zeit, "Zeit verschieben — plus_zeit:2,\"h\" (t=Tage, h=Stunden, m=Minuten)"),

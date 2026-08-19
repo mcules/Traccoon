@@ -1082,3 +1082,110 @@ async def test_ohne_links_kein_urteil_ueber_das_ziel():
     res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
                    body=mail_text(mail))
     assert "identitaet_ohne_deckung" in res.signals or "marke_im_anzeigenamen" in res.signals
+
+
+# --- Das Urteil des lokalen Modells ----------------------------------------------------
+
+async def _n26(**over) -> dict:
+    """The real case of 2026-08-19: a brand name in front of a foreign domain, and every
+    authenticity check passing. The rules find exactly one signal for that."""
+    return _mail(**{
+        "from": [{"name": "Bank", "addr": "kundensicherheitscenter@fremde-firma.example"}],
+        "subject": "Neue Mitteilung",
+        "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
+                    "Return-Path": "<b@fremde-firma.example>", "Received-Count": 3},
+        **over})
+
+
+async def test_modell_betrug_setzt_sich_gegen_schwache_regeln_durch(db):
+    """The mixture caps at 0.76 with a single rule signal, so no auto threshold was ever
+    reachable, however sure the model was."""
+    user = await _owner(db)
+    urteil = await spam_review.beurteilen(db, user.id, await _n26(), cls={
+        "spam_score": 0.95, "category": "sonstiges", "betrug": True,
+        "spam_reason": "Phishing-Versuch mit gefälschtem Absender",
+        "merkmale": [{"kennung": "marke_fremde_domain", "text": "gibt sich als Bank aus"}]})
+    assert urteil["score"] >= 0.95
+    assert urteil["modellurteil"] is True
+    assert urteil["art"] == "phishing"
+    assert any("Betrugsversuch" in g for g in urteil["reasons"])
+    assert "llm:marke_fremde_domain" in urteil["features"]
+    assert {"quelle": "modell", "kennung": "marke_fremde_domain",
+            "text": "gibt sich als Bank aus"} in urteil["befunde"]
+
+
+async def test_newsletter_bremse_haelt_den_betrug_nicht_auf(db):
+    """A phish that hangs an unsubscribe link under its footer is a "newsletter" to the
+    rules. This test pins the ORDER: the floor has to come after the brake."""
+    user = await _owner(db)
+    urteil = await spam_review.beurteilen(db, user.id, await _n26(headers={
+        "Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
+        "List-Unsubscribe": "<https://fremde-firma.example/ab>", "Received-Count": 3,
+    }), cls={"spam_score": 0.95, "category": "werbung", "betrug": True})
+    assert urteil["score"] >= 0.95
+
+
+async def test_ohne_betrugsflag_bleibt_die_mischung_wie_bisher(db):
+    """Without the flag nothing changes: the same mail keeps its mixed value."""
+    user = await _owner(db)
+    urteil = await spam_review.beurteilen(db, user.id, await _n26(), cls={
+        "spam_score": 0.95, "category": "sonstiges", "betrug": False})
+    assert urteil["modellurteil"] is False
+    assert urteil["score"] < 0.95
+
+
+async def test_wortlaut_ersetzt_das_fehlende_feld(db):
+    """Models older than the field say it in the reason. Above the floor that counts."""
+    user = await _owner(db)
+    urteil = await spam_review.beurteilen(db, user.id, await _n26(), cls={
+        "spam_score": 0.95, "category": "sonstiges",
+        "spam_reason": "Phishing mit gefälschtem Absender"})
+    assert urteil["modellurteil"] is True and urteil["score"] >= 0.95
+
+
+async def test_verneinter_wortlaut_loest_nichts_aus(db):
+    """"kein Betrug, nur Werbung" must not become the opposite verdict."""
+    user = await _owner(db)
+    urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
+        "spam_score": 0.3, "category": "werbung", "spam_reason": "kein Betrug, nur Werbung"})
+    assert urteil["modellurteil"] is False
+    assert urteil["score"] < urteil["frage_ab"]
+
+
+async def test_bekannter_kontakt_schuetzt_nicht_vor_erkanntem_betrug(db):
+    """The boss scam comes from a real, taken over address: technically nothing is wrong
+    with it, and the graph checks the contact branch before the automatic one."""
+    user = await _owner(db)
+    db.add(AssistantContact(owner_user_id=user.id, email="info@shop.de", domain="shop.de",
+                            source_kind="frontmatter"))
+    await db.commit()
+    urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
+        "spam_score": 0.95, "category": "sonstiges", "betrug": True})
+    assert urteil["bekannter_kontakt"] is False
+    assert urteil["score"] >= 0.95
+
+
+async def test_gelernter_ham_absender_schuetzt_nicht_vor_betrug(db):
+    """Three harmless mails do not vouch for the fourth: an account can be taken over."""
+    user = await make_user(db, "dennis")
+    for _ in range(3):
+        v = await _urteil(db, user.id, ["from:info@shop.de"], sender_email="info@shop.de")
+        await spam_learn.merken(db, v, False)
+    await db.commit()
+    urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
+        "spam_score": 0.95, "category": "sonstiges", "betrug": True})
+    assert urteil["geklaert"] is False
+    assert urteil["score"] >= 0.95
+
+
+async def test_gelernter_spam_absender_bleibt_geklaert(db):
+    """The counter test to the one above: the learned SPAM path clears away regardless of
+    the auto threshold and must not be switched off along with it."""
+    user = await make_user(db, "dennis")
+    for _ in range(3):
+        v = await _urteil(db, user.id, ["from:info@shop.de"], sender_email="info@shop.de")
+        await spam_learn.merken(db, v, True)
+    await db.commit()
+    urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
+        "spam_score": 0.95, "category": "sonstiges", "betrug": True})
+    assert urteil["geklaert"] is True and urteil["geklaert_urteil"] == "spam"
