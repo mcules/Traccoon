@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Traccoon Deployer-Watchdog (Port des Vorläufer-Musters auf Postgres, pure stdlib + psycopg2).
+"""Traccoon deployer watchdog (a port of the predecessor pattern onto Postgres, pure stdlib plus psycopg2).
 
-Pollt die `deployments`-Tabelle. Bewusst getrennt + build-unabhängiges Image, damit ein
-Self-Deploy den Deployer nicht mitkillt (sonst kein Rollback). Spricht Postgres DIREKT
-(überlebt den Recreate von backend/worker).
+Polls the `deployments` table. Deliberately separate plus a build-independent image, so that a
+self-deploy does not kill the deployer along with it (otherwise there is no rollback). Talks to
+Postgres DIRECTLY (which survives the recreate of backend and worker).
 
-Zweigleisig:
-  - Self-Deploy (stack_dir == SELF_STACK_DIR): Image :rollback taggen → build+up → HTTP-Health
-    → ok | Rollback + failed. finalize: auslösendes Ticket to_test/hold (Race-Closer).
-  - Generisches Projekt-Deploy: compose build+up im Projekt-Stack, Container-Health, KEIN Rollback.
-  - check-only: nur build, kein up (billiger Verify).
+Two tracks:
+  - Self-deploy (stack_dir == SELF_STACK_DIR): tag the image :rollback, build plus up, HTTP health,
+    then ok or rollback plus failed. finalize: the triggering ticket to_test/hold (a race closer).
+  - Generic project deploy: compose build plus up in the project stack, container health, NO rollback.
+  - check-only: build only, no up (a cheaper verify).
 """
 import re
 import json
@@ -24,21 +24,21 @@ import psycopg2
 
 INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN", "")
 PREVIEW_PORT = int(os.getenv("PREVIEW_SERVER_PORT", "8661"))
-# Ressourcendeckel je Preview-Container. Der Host teilt sich viele Stacks —
-# eine Testumgebung darf ihn nicht leerlaufen lassen.
+# Resource cap per preview container. The host shares many stacks, and a test environment
+# must not drain it.
 PREVIEW_MEMORY = os.getenv("PREVIEW_MEMORY", "2g")
 PREVIEW_CPUS = os.getenv("PREVIEW_CPUS", "2")
-# Namensschema der Testumgebungen: test-<ticket-key> / test-b<id>. Der Altname bleibt in
-# den Aufraeum-Filtern, damit noch laufende Alt-Stacks abraeumbar bleiben.
+# Naming scheme of the test environments: test-<ticket-key> / test-b<id>. The old name stays in
+# the clean-up filters so that still running old stacks remain clearable.
 PREVIEW_PREFIXES = ("test-", "traccoon-preview-")
-# Gleichzeitige Docker-Builds deckeln — viele parallele Builds bringen den Host in die Knie.
+# Cap the concurrent Docker builds: many parallel builds bring the host to its knees.
 MAX_BUILDS = int(os.getenv("TESTENV_MAX_BUILDS", "2"))
 _build_sem = threading.BoundedSemaphore(MAX_BUILDS)
-# Wie lange nach dem Start geprueft wird, ob der Einstiegs-Container noch lebt.
+# How long after the start it is checked whether the entry container is still alive.
 LIVENESS_WAIT = int(os.getenv("TESTENV_LIVENESS_WAIT", "6"))
 
-PG_DSN = os.getenv("PG_DSN", "")               # Zugangsdaten aus der Umgebung (.env/compose)
-SELF_STACK_DIR = os.getenv("SELF_STACK_DIR", "")  # Stack-Pfad aus der Umgebung
+PG_DSN = os.getenv("PG_DSN", "")               # credentials from the environment (.env, compose)
+SELF_STACK_DIR = os.getenv("SELF_STACK_DIR", "")  # stack path from the environment
 SELF_SERVICES = os.getenv("SELF_SERVICES", "backend worker frontend").split()
 HEALTH_URL = os.getenv("HEALTH_URL", "http://backend:8800/api/health")
 POLL = 3
@@ -74,8 +74,8 @@ def http_ok(url, tries=30, delay=3):
 
 
 def _run(sql, params):
-    """Kurzlebige, eigene Verbindung je Write — der lange Build/Recreate killt sonst die
-    dauerhaft gehaltene Verbindung, und Status/Finalize gehen verloren (building bleibt hängen)."""
+    """A short lived connection of its own per write: the long build and recreate would otherwise
+    kill a permanently held connection, and status and finalize would be lost (building hangs)."""
     c = db()
     try:
         with c.cursor() as cur:
@@ -97,7 +97,7 @@ def mark_building(conn, dep_id):
 
 
 def finalize_issue(conn, issue_id, ok):
-    """Self-Deploy-Race-Closer: der auslösende Run wurde vom Recreate gekillt → hier abschließen."""
+    """Self-deploy race closer: the triggering run was killed by the recreate, so finish it here."""
     if not issue_id:
         return
     if ok:
@@ -133,13 +133,13 @@ def do_check(conn, dep):
 
 def do_self_deploy(conn, dep):
     dep_id, issue_id = dep["id"], dep["issue_id"]
-    # Update = neuen Code holen (best effort). Schlägt der Pull fehl (Auth/Netz), wird der
-    # aktuelle Stand gebaut — der Deploy bricht deswegen nicht ab.
+    # An update means fetching new code (best effort). If the pull fails (auth, network), the
+    # current state is built and the deploy does not abort because of it.
     pr, pout = sh(["git", "-C", SELF_STACK_DIR, "-c", "safe.directory=*", "pull", "--ff-only"], timeout=120)
     pout = re.sub(r"x-access-token:[^@\s]+@", "x-access-token:***@", pout)  # Token nie loggen
     print(f"[deployer] self-deploy git pull rc={pr}: {pout[-300:]}", flush=True)
-    # Der Pull lief als root → .git-Dateien gehoeren sonst root und blockieren den Host-Git.
-    # Ownership auf den Repo-Owner zuruecksetzen.
+    # The pull ran as root, so the .git files would otherwise belong to root and block the host
+    # git. Reset the ownership to the repository owner.
     try:
         stt = os.stat(SELF_STACK_DIR)
         sh(["chown", "-R", f"{stt.st_uid}:{stt.st_gid}", os.path.join(SELF_STACK_DIR, ".git")])
@@ -168,22 +168,22 @@ def do_self_deploy(conn, dep):
 
 
 def pull_stack(stack_dir):
-    """Neuen Stand in den Deploy-Checkout holen — best effort, mit Log-Zeile.
+    """Fetch the new state into the deploy checkout: best effort, with a log line.
 
-    Der Agent arbeitet in einem eigenen Klon (`<WORKSPACE_ROOT>/<key>`) und pusht dorthin;
-    der Stack-Ordner ist ein ZWEITER Checkout desselben Repos. Ohne diesen Pull baut der
-    Deploy stur den Stand, der zufaellig im Ordner liegt — der Fehler faellt nicht auf,
-    weil der Build gelingt und der Container startet. Er liefert nur alten Code aus.
+    The agent works in a clone of its own (`<WORKSPACE_ROOT>/<key>`) and pushes there; the
+    stack folder is a SECOND checkout of the same repository. Without this pull the deploy
+    stubbornly builds the state that happens to lie in the folder, and the error does not stand
+    out, because the build succeeds and the container starts. It only delivers old code.
 
-    Fehlschlaege (kein Repo, kein Netz, keine Auth, nicht vorspulbar) sind KEIN Deploy-Abbruch:
-    dann wird der vorhandene Stand gebaut, so wie es der Self-Deploy auch haelt. Was passiert
-    ist, steht im Log der Deployment-Zeile.
+    Failures (no repository, no network, no auth, not fast-forwardable) are NOT a deploy abort:
+    then the existing state is built, exactly as the self-deploy handles it. What happened
+    stands in the log of the deployment row.
     """
     if not os.path.isdir(os.path.join(stack_dir, ".git")):
         return "kein Git-Checkout — Pull uebersprungen"
     rc, out = sh(["git", "-C", stack_dir, "-c", "safe.directory=*", "pull", "--ff-only"], timeout=180)
     out = re.sub(r"(x-access-token|[A-Za-z0-9_.-]+):[^@\s]+@", r"\1:***@", out)  # Token nie loggen
-    # Der Pull lief als root → .git wuerde sonst root gehoeren und den Host-Git blockieren.
+    # The pull ran as root, so .git would otherwise belong to root and block the host git.
     try:
         stt = os.stat(stack_dir)
         sh(["chown", "-R", f"{stt.st_uid}:{stt.st_gid}", os.path.join(stack_dir, ".git")])
@@ -206,9 +206,9 @@ def do_generic_deploy(conn, dep):
     time.sleep(6)
     rc3, ps = sh(["docker", "compose", "--project-directory", stack_dir, "ps"], timeout=60)
     ok = rc2 == 0 and "Exit" not in ps and "Restarting" not in ps
-    # Der Pull gehoert auch in den Erfolgsfall: „Already up to date" statt „Fast-forward"
-    # ist der Unterschied zwischen „nichts Neues" und „falscher Ordner" — und genau den
-    # will man sehen koennen, ohne im Deployer-Log zu graben.
+    # The pull belongs in the success case as well: "Already up to date" instead of
+    # "Fast-forward" is the difference between "nothing new" and "wrong folder", and exactly
+    # that is what one wants to be able to see without digging in the deployer log.
     set_status(conn, dep_id, "ok" if ok else "failed", pull_log + "\n" + out2 + "\n" + ps)
     finalize_issue(conn, issue_id, ok)
 
@@ -221,13 +221,13 @@ def process(conn, dep):
         if dep["status_prev"] == "pending-check" or dep["check_only"]:
             do_check(conn, dep)
         elif dep.get("self_deploy"):
-            # Nur der explizit angeforderte Wartungs-Update recreated den Host-Stack.
+            # Only the explicitly requested maintenance update recreates the host stack.
             do_self_deploy(conn, dep)
         elif dep["stack_dir"] and not targets_self:
             do_generic_deploy(conn, dep)
         else:
-            # Leerer stack_dir ODER self-zielend ohne self_deploy-Flag → NIE implizit
-            # den Host recreaten (verhinderte den Self-Deploy-Loop).
+            # An empty stack_dir OR one aiming at self without the self_deploy flag NEVER
+            # recreates the host implicitly (which prevented the self-deploy loop).
             set_status(conn, dep["id"], "failed",
                        "Abgelehnt: Self-Deploy nur über das explizite Wartungs-Update. "
                        "Impliziter Host-Deploy (leerer/self-stack_dir) ist gesperrt.")
@@ -280,8 +280,8 @@ class PreviewHandler(BaseHTTPRequestHandler):
 
 
 def _run_prestart(prestart, workdir, env, log_parts):
-    """Prestart-Befehle: eine Zeile = ein Befehl, `#`-Kommentare werden übersprungen.
-    Der erste Fehlschlag bricht ab — dann wird gar nicht erst gebaut."""
+    """Prestart commands: one line is one command, and `#` comments are skipped.
+    The first failure aborts, and then nothing is built at all."""
     for line in (prestart or "").splitlines():
         cmd = line.strip()
         if not cmd or cmd.startswith("#"):
@@ -295,8 +295,8 @@ def _run_prestart(prestart, workdir, env, log_parts):
 
 
 def _ensure_branch_worktree(repo_dir, workdir, branch, log_parts):
-    """Worktree für einen beliebigen Branch anlegen bzw. auf dessen aktuellen Stand bringen.
-    Die Umgebung baut IMMER den Branch-Stand, nie den geteilten Integrations-Checkout."""
+    """Create a worktree for an arbitrary branch respectively bring it to that branch's current state.
+    The environment ALWAYS builds the branch state, never the shared integration checkout."""
     if not os.path.isdir(os.path.join(repo_dir, ".git")):
         log_parts.append(f"kein Repo unter {repo_dir}")
         return False
@@ -318,8 +318,8 @@ def _ensure_branch_worktree(repo_dir, workdir, branch, log_parts):
 
 
 def _write_env_file(workdir, env_vars, log_parts):
-    """Injizierte Werte als .env in den Worktree schreiben — nur so sehen `docker compose`
-    und ein `COPY`-Build sie; reine Prozess-Env reicht dafür nicht."""
+    """Write the injected values as a .env into the worktree: only that way do `docker compose`
+    and a `COPY` build see them; pure process env is not enough for that."""
     try:
         with open(os.path.join(workdir, ".env"), "w", encoding="utf-8") as fh:
             for k, v in env_vars.items():
@@ -331,8 +331,8 @@ def _write_env_file(workdir, env_vars, log_parts):
 
 
 def _connect_sidecars(name, sidecars, log_parts):
-    """Projekt-Services (z. B. ein zentraler Proxy) ins Testenv-Netz hängen.
-    Fehler sind tolerant: ein fehlender Sidecar darf die Umgebung nicht killen."""
+    """Hang project services (a central proxy for instance) into the testenv network.
+    Errors are tolerated: a missing sidecar must not kill the environment."""
     net = f"{name}_default"
     for sc in sidecars or []:
         container, alias = sc.get("container"), sc.get("alias") or sc.get("container")
@@ -345,7 +345,7 @@ def _connect_sidecars(name, sidecars, log_parts):
 
 
 def _alive(name):
-    """Läuft nach dem Start noch mindestens ein Container des Stacks?"""
+    """Is at least one container of the stack still running after the start?"""
     p = subprocess.run(["docker", "ps", "-a", "--filter",
                         f"label=com.docker.compose.project={name}", "--format", "{{.Status}}"],
                        capture_output=True, text=True, timeout=30)
@@ -372,7 +372,7 @@ def preview_up(body):
            **injected}
     log_parts = []
 
-    # Branch-Testumgebung: Worktree für den gewünschten Branch bereitstellen.
+    # Branch test environment: provide the worktree for the wanted branch.
     if body.get("branch"):
         if not _ensure_branch_worktree(body.get("repo_dir", ""), workdir, body["branch"], log_parts):
             return False, "\n".join(log_parts)[-4000:]
@@ -404,7 +404,7 @@ def preview_up(body):
     _connect_sidecars(name, body.get("sidecars"), log_parts)
     log_parts.append(cap_resources(name, mem, cpus))
 
-    # Nachprüfung: kein „grün", das sofort tot ist.
+    # Re-check: no "green" that is dead immediately.
     time.sleep(LIVENESS_WAIT)
     alive, why = _alive(name)
     if not alive:
@@ -416,7 +416,7 @@ def preview_up(body):
 
 
 def preview_logs(project_name, service, tail):
-    """Logs eines Stacks (compose) bzw. des Einzel-Containers (Dockerfile-Modus)."""
+    """Logs of a stack (compose) respectively of the single container (Dockerfile mode)."""
     tail = max(1, min(int(tail or 200), 2000))
     cmd = ["docker", "compose", "-p", project_name, "logs", "--no-color", "--tail", str(tail)]
     if service:
@@ -450,10 +450,10 @@ def preview_list():
 
 def build_and_run_dockerfile(name, workdir, host_port, container_port, env,
                              dockerfile="Dockerfile", mem=None, cpus=None):
-    """Preview ohne compose.preview.yml: Dockerfile bauen und einzeln starten.
+    """Preview without a compose.preview.yml: build the Dockerfile and start it on its own.
 
-    Der Container bekommt dasselbe compose-Projekt-Label wie im compose-Modus,
-    damit Deckel und Aufraeumen ihn genauso finden.
+    The container gets the same compose project label as in compose mode, so that the caps and
+    the clean-up find it just the same.
     """
     mem = mem or PREVIEW_MEMORY
     cpus = cpus or PREVIEW_CPUS
@@ -468,7 +468,7 @@ def build_and_run_dockerfile(name, workdir, host_port, container_port, env,
     run_env = []
     for k, v in env.items():
         if k.startswith(("PREVIEW_", "PATH", "HOME", "HOSTNAME", "LANG")):
-            continue  # Deployer-Interna gehoeren nicht in die Preview
+            continue  # deployer internals do not belong in the preview
         run_env += ["-e", f"{k}={v}"]
     r = subprocess.run(
         ["docker", "run", "-d", "--name", f"{name}-app",
@@ -480,7 +480,7 @@ def build_and_run_dockerfile(name, workdir, host_port, container_port, env,
 
 
 def cap_resources(project_name, mem=None, cpus=None):
-    """Speicher-/CPU-Deckel nachziehen — unabhaengig davon, was die compose.preview.yml sagt."""
+    """Apply the memory and CPU caps, regardless of what the compose.preview.yml says."""
     p = subprocess.run(["docker", "ps", "-q", "--filter", f"label=com.docker.compose.project={project_name}"],
                        capture_output=True, text=True, timeout=30)
     ids = [x for x in p.stdout.split() if x]
@@ -492,28 +492,28 @@ def cap_resources(project_name, mem=None, cpus=None):
                         "--memory-swap", mem, "--cpus", cpus, *ids],
                        capture_output=True, text=True, timeout=60)
     if u.returncode != 0:
-        # z. B. Kernel ohne Swap-Limit — kein Grund, die Preview scheitern zu lassen
+        # for instance a kernel without a swap limit: no reason to let the preview fail
         return f"cap: nicht gesetzt ({u.stderr.strip()[:200]})"
     return f"cap: {mem} / {cpus} CPU auf {len(ids)} Container"
 
 
 def teardown(project_name, compose_file):
-    """Preview abbauen — compose-Stack UND einzeln gestartete Dockerfile-Container."""
+    """Tear the preview down: the compose stack AND individually started Dockerfile containers."""
     subprocess.run(["docker", "compose", "-p", project_name,
                     *(["-f", compose_file] if compose_file else []), "down", "-v"],
                    capture_output=True, text=True, timeout=180)
-    # Reste per Label einsammeln (Dockerfile-Modus laeuft ohne compose)
+    # Collect the remains by label (Dockerfile mode runs without compose)
     p = subprocess.run(["docker", "ps", "-aq", "--filter",
                         f"label=com.docker.compose.project={project_name}"],
                        capture_output=True, text=True, timeout=30)
     ids = [x for x in p.stdout.split() if x]
     if ids:
         subprocess.run(["docker", "rm", "-f", *ids], capture_output=True, text=True, timeout=120)
-    # Das gebaute Preview-Image mitnehmen. `down -v` raeumt Container und Volumes, aber
-    # nie Images — und ein Preview-Image ist kein Kleinkram: eine Node-App mit Vite-Build
-    # liegt bei ~600 MB. Wer taeglich Tickets testet, fuellt damit stillschweigend die
-    # Platte. Die Images heissen <projectname>-<service>; per Label eingesammelt, damit
-    # kein fremdes Image erwischt wird.
+    # Take the built preview image along. `down -v` clears containers and volumes but never
+    # images, and a preview image is no trifle: a Node app with a Vite build lies at about
+    # 600 MB. Whoever tests tickets daily silently fills the disk with them. The images are
+    # called <projectname>-<service>; they are collected by label so that no foreign image is
+    # caught.
     q = subprocess.run(["docker", "images", "-q", "--filter",
                         f"label=com.docker.compose.project={project_name}"],
                        capture_output=True, text=True, timeout=30)
@@ -524,7 +524,7 @@ def teardown(project_name, compose_file):
 
 
 def cleanup_orphans(keep):
-    """Preview-Stacks abraeumen, die das Backend nicht mehr kennt (Neustart, Absturz, Abnahme)."""
+    """Clear away preview stacks the backend no longer knows (restart, crash, acceptance)."""
     p = subprocess.run(["docker", "ps", "-a", "--format", "{{.Label \"com.docker.compose.project\"}}"],
                        capture_output=True, text=True, timeout=30)
     projects = {x.strip() for x in p.stdout.splitlines()
