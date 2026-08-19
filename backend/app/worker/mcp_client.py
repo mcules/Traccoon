@@ -103,6 +103,17 @@ class McpSession:
         return "\n".join(parts) or "(kein Output)"
 
 
+class McpNichtVerfuegbar(RuntimeError):
+    """The tool cannot be reached at all: no server carries its prefix, and no gateway.
+
+    Deliberately an exception and not a sentence in the return value. This used to answer
+    with "(kein MCP konfiguriert — Tool … nicht verfügbar)" as TEXT, and whoever got text
+    booked the call as a success: on 2026-08-19 a flow wrote its note over a tool name
+    without a server prefix, reported green and left the note empty. Whoever needs a sentence
+    for a model builds it in the `except`, which every caller in the worker does anyway.
+    """
+
+
 class MultiMcpSession:
     """Bundles the global gateway plus project-owned MCP servers behind one session.
 
@@ -128,7 +139,9 @@ class MultiMcpSession:
             if name.startswith(f"{server}__"):
                 return await sess.call(name[len(server) + 2:], arguments)
         if self._gateway is None:
-            return f"(kein MCP konfiguriert — Tool {name} nicht verfügbar)"
+            raise McpNichtVerfuegbar(
+                f"kein MCP-Server für {name!r}: kein Server dieses Namens registriert und "
+                f"kein Gateway eingerichtet")
         return await self._gateway.call(name, arguments)
 
 

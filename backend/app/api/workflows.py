@@ -31,7 +31,9 @@ from ..schemas.workflow import (
     WorkflowDefinitionUpdate, WorkflowSetCreate, WorkflowSetOut, WorkflowTaskLite,
     WorkflowVersionOut, WorkflowVersionUpdate,
 )
+from ..schemas.workflow import DiffOut, GraphSaveOut
 from ..services import workflow_engine as engine
+from ..services import workflow_graph as graf
 from ..services import workflow_sets as sets
 from ..services.workflow_engine import node_config
 from .deps import build_access, get_current_user
@@ -569,8 +571,15 @@ async def list_versions(
 async def editable_version(
     def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
-    """Current draft version for the editor. If none exists, a new draft is cloned from the
-    published current_version (or created empty)."""
+    """What the editor works on: the open draft, otherwise the published version.
+
+    Deliberately WITHOUT creating anything. Opening a flow used to clone a draft, so merely
+    looking at one left a version number behind, and the history filled with entries in which
+    nothing had happened. A draft now comes into being where it belongs: at the first change
+    (see `save_graph`).
+
+    An empty flow that was never published gets an empty graph in the answer, not a row.
+    """
     d = await _get_def(db, def_id)
     await _require_write(db, user, d)
     draft = (await db.execute(
@@ -580,17 +589,126 @@ async def editable_version(
         .order_by(WorkflowVersion.version.desc()))).scalars().first()
     if draft is not None:
         return draft
-    base = await db.get(WorkflowVersion, d.current_version_id) if d.current_version_id else None
-    graph = (base.graph if base else None) or {"nodes": [], "edges": []}
+    if d.current_version_id:
+        return await db.get(WorkflowVersion, d.current_version_id)
+    # Nothing published and nothing drafted: a shell the editor can fill. It carries no id,
+    # so the browser knows there is nothing to save onto yet.
+    return WorkflowVersion(id=0, definition_id=def_id, version=0,
+                           graph={"nodes": [], "edges": []},
+                           status=WorkflowVersionStatus.draft, created_by=user.id, notes="")
+
+
+@router.put("/workflows/{def_id}/graph", response_model=GraphSaveOut)
+async def save_graph(
+    def_id: int, data: WorkflowVersionUpdate,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Save the editor state, and decide what that is worth.
+
+    Three cases, and only the last one costs a version:
+
+    * The content matches the version the editor started from, and only positions moved:
+      the arrangement is written into THAT version, even a published one. A picture is not
+      behaviour, and a flow that was never touched must not be marked as changed because
+      somebody tidied up the boxes.
+    * A draft is already open: it is updated.
+    * The content differs from what is published: a draft comes into being now.
+
+    The answer says which of the three happened (`ergebnis`), so the editor can say it too.
+    """
+    d = await _get_def(db, def_id)
+    await _require_write(db, user, d)
+    graph = data.graph or {"nodes": [], "edges": []}
+
+    draft = (await db.execute(
+        select(WorkflowVersion).where(
+            WorkflowVersion.definition_id == def_id,
+            WorkflowVersion.status == WorkflowVersionStatus.draft)
+        .order_by(WorkflowVersion.version.desc()))).scalars().first()
+    live = await db.get(WorkflowVersion, d.current_version_id) if d.current_version_id else None
+
+    # Layout only: write the positions where they belong and keep quiet about it.
+    ziel = draft or live
+    if ziel is not None and graf.gleicher_inhalt(ziel.graph, graph):
+        ziel.graph = graf.mit_positionen(ziel.graph, graf.positionen(graph))
+        await db.commit()
+        await db.refresh(ziel)
+        return GraphSaveOut(ergebnis="layout", version=ziel, hinweis="Anordnung gespeichert")
+
+    if draft is not None:
+        draft.graph = graph
+        if data.notes is not None:
+            draft.notes = data.notes
+        await db.commit()
+        await db.refresh(draft)
+        return GraphSaveOut(ergebnis="entwurf", version=draft, hinweis="Entwurf gespeichert")
+
     draft = WorkflowVersion(
         definition_id=def_id, version=await _next_version_number(db, def_id),
         graph=graph, status=WorkflowVersionStatus.draft, created_by=user.id,
-        notes=(f"Klon aus v{base.version}" if base else ""),
+        notes=data.notes if data.notes is not None else (
+            f"Änderung an v{live.version}" if live else "Erster Entwurf"),
     )
     db.add(draft)
     await db.commit()
     await db.refresh(draft)
-    return draft
+    return GraphSaveOut(ergebnis="neuer_entwurf", version=draft,
+                        hinweis="Entwurf angelegt (der Inhalt weicht ab)")
+
+
+@router.delete("/workflows/{def_id}/draft", status_code=204)
+async def discard_draft(
+    def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """Throw the open draft away and go back to what is published.
+
+    There was no way to do this: whoever had talked themselves into a corner had to rebuild
+    the graph by hand, and a stale draft silently overwrote newer published versions on the
+    next publish.
+    """
+    d = await _get_def(db, def_id)
+    await _require_write(db, user, d)
+    draft = (await db.execute(
+        select(WorkflowVersion).where(
+            WorkflowVersion.definition_id == def_id,
+            WorkflowVersion.status == WorkflowVersionStatus.draft)
+        .order_by(WorkflowVersion.version.desc()))).scalars().first()
+    if draft is None:
+        return
+    if draft.id == d.current_version_id:
+        raise Fehler(status.HTTP_409_CONFLICT, "err.draft_is_current",
+                     "This draft is the current version and cannot be discarded")
+    await db.delete(draft)
+    await db.commit()
+
+
+@router.get("/workflows/{def_id}/versions/{vid}/diff", response_model=DiffOut)
+async def version_diff(
+    def_id: int, vid: int, gegen: int | None = None,
+    user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
+):
+    """What changed between two versions, in the words of the editor.
+
+    Without `gegen` the comparison runs against the version before it, which is the question
+    one usually has ("what did this version change?"). Positions are left out: they are not
+    what a version is about.
+    """
+    d = await _get_def(db, def_id)
+    await _require_project_read(db, user, d.project_id)
+    neu = await db.get(WorkflowVersion, vid)
+    if neu is None or neu.definition_id != def_id:
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.version_not_found", "Version not found")
+    if gegen is not None:
+        alt = await db.get(WorkflowVersion, gegen)
+        if alt is None or alt.definition_id != def_id:
+            raise Fehler(status.HTTP_404_NOT_FOUND, "err.version_not_found", "Version not found")
+    else:
+        alt = (await db.execute(
+            select(WorkflowVersion).where(WorkflowVersion.definition_id == def_id,
+                                          WorkflowVersion.version < neu.version)
+            .order_by(WorkflowVersion.version.desc()))).scalars().first()
+    return DiffOut(von=alt.version if alt else None, bis=neu.version,
+                   **graf.unterschiede(alt.graph if alt else None, neu.graph))
 
 
 async def _get_draft(db: AsyncSession, def_id: int, vid: int) -> WorkflowVersion:

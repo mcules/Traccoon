@@ -15,6 +15,7 @@ below it is the price for that.
 """
 from __future__ import annotations
 
+import datetime as dt
 import logging
 import os
 import re
@@ -145,6 +146,70 @@ async def rueckschau(db: AsyncSession, owner_id: int | None, *, stichprobe: int 
                         "von": regel.sender_email, "betreff": payload["subject"][:70],
                         "gruende": regel.reasons[:3]})
     return messung
+
+
+async def einstufungen(db: AsyncSession, owner_id: int | None, *, tage: int = 30) -> dict:
+    """As what mail was classified, counted at query time.
+
+    No second stock of data: the rows carry it already, so the answer covers everything that
+    ever ran through, not only what has been measured since a counter was switched on.
+    Grouped by the VALUE in the column, never by a list in the code: a kind the model names
+    tomorrow for the first time appears here without a line being changed.
+
+    Two pots, because a mail leaves two different traces: everything suspicious becomes a
+    `SpamVerdict` (from the question threshold on), everything inconspicuous an
+    `AssistantTask` with the category of the model. Whoever counts only one of them is
+    counting half a mailbox.
+    """
+    from sqlalchemy import func, select
+
+    from ..models.assistant import AssistantTask, SpamVerdict
+
+    seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=max(1, tage))
+
+    verdachte = (await db.execute(
+        select(SpamVerdict.art, SpamVerdict.status, func.count())
+        .where(SpamVerdict.owner_user_id == owner_id, SpamVerdict.created_at >= seit)
+        .group_by(SpamVerdict.art, SpamVerdict.status))).all()
+    durchgelassen = (await db.execute(
+        select(AssistantTask.category, func.count())
+        .where(AssistantTask.owner_user_id == owner_id, AssistantTask.kind != "chat",
+               AssistantTask.created_at >= seit)
+        .group_by(AssistantTask.category))).all()
+
+    arten: dict[str, dict] = {}
+    for art, status, n in verdachte:
+        eintrag = arten.setdefault(art or "unbekannt",
+                                   {"gesamt": 0, "aussortiert": 0, "durchgelassen": 0,
+                                    "offen": 0})
+        eintrag["gesamt"] += n
+        if status == "spam":
+            eintrag["aussortiert"] += n
+        elif status == "pending":
+            eintrag["offen"] += n
+        else:
+            eintrag["durchgelassen"] += n
+    for kategorie, n in durchgelassen:
+        eintrag = arten.setdefault(kategorie or "unbekannt",
+                                   {"gesamt": 0, "aussortiert": 0, "durchgelassen": 0,
+                                    "offen": 0})
+        eintrag["gesamt"] += n
+        eintrag["durchgelassen"] += n
+
+    # How well the model judged, measured against what the human decided. Only rows that were
+    # decided count: a pending question says nothing about anybody being right.
+    entschieden = (await db.execute(
+        select(SpamVerdict.model_score, SpamVerdict.status)
+        .where(SpamVerdict.owner_user_id == owner_id, SpamVerdict.created_at >= seit,
+               SpamVerdict.status.in_(("spam", "ham"))))).all()
+    treffer = sum(1 for score, status in entschieden
+                  if (score >= 0.5) == (status == "spam"))
+    return {
+        "tage": tage,
+        "arten": dict(sorted(arten.items(), key=lambda p: -p[1]["gesamt"])),
+        "modell": {"entschieden": len(entschieden), "treffer": treffer,
+                   "quote": round(treffer / len(entschieden), 3) if entschieden else None},
+    }
 
 
 async def bilanz(db: AsyncSession, owner_id: int | None) -> dict:

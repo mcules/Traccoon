@@ -58,3 +58,37 @@ async def test_leere_antwort_faellt_sicher_zurueck(db, anna, monkeypatch):
         classify_agent="mail_classifier")
     assert out["sensitive"] is True and out["redacted_summary"] == ""
     assert "geheim" not in str(out)
+
+
+# --- Was das Modell zurückgibt ---------------------------------------------------------
+
+def test_der_string_false_ist_kein_ja():
+    """`bool("false")` is True. Small models answer with exactly that string, and without
+    this helper every one of them would carry a mail over the auto threshold."""
+    from app.services.mail_classify import ja
+
+    assert ja(True) is True and ja("true") is True and ja("Ja") is True and ja(1) is True
+    assert ja("false") is False and ja("nein") is False and ja("0") is False
+    assert ja(None) is False and ja("") is False and ja(0) is False
+
+
+def test_merkmale_werden_normalisiert_und_gedeckelt():
+    """The key is counted later, so an invented spelling would become a category of its own."""
+    from app.services.mail_classify import merkmale
+
+    aus = merkmale([
+        {"kennung": "Marke Fremde-Domain!", "text": "  gibt sich als N26 aus  "},
+        {"kennung": "marke_fremde_domain", "text": "doppelt"},
+        {"kennung": "", "text": "ohne Kennung"},
+        "kein Objekt",
+        *[{"kennung": f"weiteres_{i}", "text": "x"} for i in range(6)],
+    ])
+    assert aus[0] == {"kennung": "marke_fremde_domain", "text": "gibt sich als N26 aus"}
+    assert len(aus) == 5, "höchstens fünf, sonst listet das Modell statt zu urteilen"
+    assert all(k["kennung"] for k in aus)
+
+
+def test_merkmale_ohne_liste_bleiben_leer():
+    from app.services.mail_classify import merkmale
+
+    assert merkmale(None) == [] and merkmale("phishing") == [] and merkmale({}) == []

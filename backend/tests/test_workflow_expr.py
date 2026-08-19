@@ -99,3 +99,42 @@ async def test_unbekannter_pfad_bleibt_als_text_stehen():
 
 async def test_zahlen_bleiben_zahlen():
     assert fuellen("{{ text | kurz:4 }}", {"text": "abcdefgh"}) == "abc…"
+
+
+# --- Listen und Pfade ------------------------------------------------------------------
+
+async def test_feld_zieht_aus_einer_objektliste():
+    """Der Weg vom Suchtreffer zum Satz: ohne das bleibt eine Trefferliste unbenutzbar."""
+    ctx = {"t": {"hits": [{"filename": "a/VW T5.md", "x": 1}, {"filename": "b/Corsa C.md"}]}}
+    assert fuellen('{{ t.hits | feld:"filename" | verbinde:", " }}', ctx) == "a/VW T5.md, b/Corsa C.md"
+    # Einzelnes Objekt: derselbe Filter, ein Wert.
+    assert fuellen('{{ t | feld:"hits" | anzahl }}', ctx) == "2"
+
+
+async def test_feld_ueberspringt_was_es_nicht_hat():
+    ctx = {"l": [{"a": 1}, {"b": 2}, "kein Objekt"]}
+    assert fuellen('{{ l | feld:"a" | verbinde:"," }}', ctx) == "1"
+
+
+async def test_dateiname_macht_aus_pfaden_namen():
+    ctx = {"p": ["03 Bereiche/Fahrzeuge/VW T5 Multivan.md", "Opel Corsa C.md"]}
+    assert fuellen('{{ p | dateiname | verbinde:" und " }}', ctx) == "VW T5 Multivan und Opel Corsa C"
+    assert fuellen("{{ p | erstes | dateiname }}", ctx) == "VW T5 Multivan"
+
+
+async def test_max_beantwortet_die_frage_die_eine_weiche_nicht_stellen_kann():
+    """JSONLogic kennt hier kein `some`; „bringt irgendein Tag Schnee" wird deshalb erst zu
+    einer Zahl gemacht und dann verglichen."""
+    ctx = {"w": {"schnee": [0, 0, 1.4, 0.2], "leer": [], "text": ["0,5", "2"]}}
+    assert fuellen("{{ w.schnee | max }}", ctx) == "1.4"
+    assert fuellen("{{ w.schnee | min }}", ctx) == "0.0"
+    assert fuellen("{{ w.leer | max }}", ctx) == "0", "nichts zu vergleichen ist kein Fehler"
+    assert fuellen("{{ w.leer | min }}", ctx) == "0"
+    # Zahlen als Text (JSON-APIs liefern das gern) zählen mit.
+    assert fuellen("{{ w.text | max }}", ctx) == "2.0"
+
+
+async def test_neue_filter_stehen_im_katalog():
+    """Was der Editor nicht anbietet, findet niemand."""
+    namen = {e["name"] for e in katalog()}
+    assert {"feld", "dateiname", "max", "min"} <= namen
