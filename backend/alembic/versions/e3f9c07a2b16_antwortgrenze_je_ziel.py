@@ -1,12 +1,12 @@
-"""Antwortgrenze je Ziel statt einer pauschalen Obergrenze (TRA-31)
+"""A response limit per destination instead of a flat upper bound (TRA-31)
 
-`MAX_RESPONSE_CHARS = 4000` galt für jedes Ziel gleichermaßen. Für Gegenstellen, die ihre
-Lage bewusst in EINEM Abruf liefern, ist das zu wenig: die UniWar-Bot-API antwortet mit rund
-12 000 Zeichen, ein Agent plante damit auf abgeschnittenem JSON — schlimmer als gar keine
-Antwort, weil der Schnitt nicht auffällt.
+`MAX_RESPONSE_CHARS = 4000` applied to every destination alike. For counterparts that
+deliberately deliver their state in ONE call that is too little: the UniWar bot API answers
+with around 12 000 characters, and an agent planned on truncated JSON with that, which is
+worse than no answer, because the cut does not stand out.
 
-Die Grenze wandert deshalb an das Ziel. Der Standard bleibt 4000, sodass sich für bestehende
-Ziele nichts ändert; nur wer es ausdrücklich braucht, hebt sie an.
+The limit therefore moves to the destination. The default stays 4000, so nothing changes for
+existing destinations; only whoever explicitly needs it raises it.
 
 Revision ID: e3f9c07a2b16
 Revises: d2e8b45c91af

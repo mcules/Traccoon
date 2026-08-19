@@ -2,12 +2,10 @@
 
 Ticket und Hardware sind beide einfach Artefakte; die Ebene darüber („Vorgang",
 „Gegenstand") trug nichts bei und fällt wieder weg. Ein Artefakt ist zunächst etwas
-Undefiniertes — seine Bedeutung bekommt es erst durch seine Felder.
 
 Neu ist deshalb `artifact_fields.project_id`: ein Projekt-Eigentümer ergänzt die
 ausgelieferten Felder um eigene, ohne die anderer Projekte zu verändern. Der eindeutige
 Schlüssel wird entsprechend neu gezogen (`COALESCE`, weil NULLs in einem Unique-Index als
-verschieden gelten).
 
 Revision ID: c1a7e94f5d32
 Revises: b9f5c37a2e81

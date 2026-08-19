@@ -1,15 +1,15 @@
-"""Spam-Erkennung: Kontakt-Spiegel, Urteile und gelernte Merkmale
+"""Spam detection: contact mirror, verdicts and learned features
 
-Die Mail-Triage konnte bisher einordnen, aber nichts wegräumen. Drei Tabellen kommen dazu:
+The mail triage could classify until now but clear nothing away. Three tables are added:
 
-* `assistant_contacts` — bekannte Adressen aus dem Obsidian-Vault (Freispruch-Liste);
-* `spam_verdicts` — je beurteilte Mail ein Urteil samt Entscheidung des Menschen;
-* `spam_feature_stats` — die daraus gelernten Zähler, die in jede künftige Beurteilung
-  eingehen. Ohne sie bliebe die Erkennung ewig gleich schlau und der Mensch würde dieselbe
-  Frage über denselben Absender endlos beantworten.
+* `assistant_contacts`: known addresses from the Obsidian vault (the acquittal list);
+* `spam_verdicts`: one verdict per assessed mail including the decision of the human;
+* `spam_feature_stats`: the counters learned from that, which enter every future assessment.
+  Without them the detection would stay equally clever forever and the human would answer the
+  same question about the same sender endlessly.
 
-`notifications.spam_verdict_id` gibt der Telegram-Karte ihren Bezug (bei der Sammel-Karte
-zeigt er auf den ersten Fall der Sammlung).
+`notifications.spam_verdict_id` gives the Telegram card its reference (with the digest card
+it points at the first case of the collection).
 
 Revision ID: d4a7c2b91f63
 Revises: c8f4b1e70a29
