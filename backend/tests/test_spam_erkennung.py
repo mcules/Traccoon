@@ -930,3 +930,85 @@ async def test_geschaeftsfreie_domain_ohne_geschaeftsvorgang_ist_harmlos():
                    meine_adressen=frozenset({"ich@meine-domain.de"}),
                    geschaeftsfreie_domains=frozenset({"mitmachverein.de"}))
     assert "geschaeft_an_domain_ohne_geschaeft" not in res.signals
+
+
+def _marken_mail(**over) -> dict:
+    """The N26 phishing of 2026-08-19: technically flawless, forged only in the name.
+
+    SPF and DKIM pass because the sender owns their own throwaway domain, an unsubscribe
+    footer makes it look like a newsletter, and the mail programme shows nothing but
+    "Support-N26". The whole lie sits in the display name.
+    """
+    payload = _mail(**{
+        "account": "vorstand_b37", "uid": 336,
+        "from": [{"name": "Support-N26", "addr": "support@fremde-firma.example"}],
+        "to": [{"name": "", "addr": "vorstand@verein.example"}],
+        "subject": "Ihre letzte Transaktion muss verifiziert werden – N26 Sicherheitsteam",
+        "body_text": ("Ihre N26-Karte wurde gesperrt. Unser System hat bei der zuletzt "
+                      "durchgeführten Zahlung eine Abweichung festgestellt."),
+        "links": [{"href": "https://ecdylink.net/hqatxc", "text": "Karte jetzt reaktivieren"}],
+        "headers": {
+            "Authentication-Results": ("mxe90b; dkim=pass header.d=fremde-firma.example; "
+                                       "spf=pass smtp.mailfrom=support@fremde-firma.example"),
+            "List-Unsubscribe": "<mailto:unsubscribe@fremde-firma.example>",
+            "Precedence": "bulk",
+            "Return-Path": "<support@fremde-firma.example>",
+            "Received-Count": 1,
+            "X-Spam-Status": ("No, score=1.6 required=7.0 tests=DKIM_SIGNED,DKIM_VALID, "
+                              "HTML_MESSAGE,SPF_PASS,URIBL_BLACK autolearn=no"),
+        },
+    })
+    payload.update(over)
+    return payload
+
+
+async def test_marke_im_anzeigenamen_ohne_deckung():
+    res = evaluate(_marken_mail(), meine_adressen=frozenset({"vorstand@verein.example"}))
+    assert "marke_im_anzeigenamen" in res.signals
+    # The unsubscribe footer must not save it: whoever forges the name is not a newsletter.
+    assert res.ist_newsletter is False
+
+
+async def test_marke_mit_deckung_bleibt_still():
+    """Contained is enough: `amazonses.com` sends for Amazon, `sparkasse-musterstadt.de` is one."""
+    for name, addr in (("N26", "service@n26.com"),
+                       ("Amazon.de", "versand@amazonses.com"),
+                       ("Sparkasse Bamberg", "news@sparkasse-musterstadt.de")):
+        res = evaluate(_marken_mail(**{"from": [{"name": name, "addr": addr}]}),
+                       meine_adressen=frozenset({"vorstand@verein.example"}))
+        assert "marke_im_anzeigenamen" not in res.signals, name
+
+
+async def test_freier_name_ist_keine_marke():
+    """A name that names no brand claims nothing: "Support" or "Dipl.-Ing." say nothing about
+    who is writing, and an ambiguous abbreviation would fire on every second private mail."""
+    for name in ("Support", "Dipl.-Ing. Klaus Meier", "Ups, da war noch was"):
+        res = evaluate(_marken_mail(**{"from": [{"name": name, "addr": "a@b.example"}]}),
+                       meine_adressen=frozenset({"vorstand@verein.example"}))
+        assert "marke_im_anzeigenamen" not in res.signals, name
+
+
+async def test_sperrlisten_treffer_zaehlt_ohne_punktzahl():
+    """The own mail server had the link on a blacklist and let the mail through anyway,
+    because 1.6 of 7 points is not enough. The entry itself is the finding."""
+    res = evaluate(_marken_mail(), meine_adressen=frozenset({"vorstand@verein.example"}))
+    assert "server_blockliste" in res.signals
+    assert "server_spam_mittel" not in res.signals      # 1.6 points stay under the threshold
+
+
+async def test_weisse_liste_ist_kein_sperrlisten_treffer():
+    """RCVD_IN_DNSWL_MED looks similar and means the opposite."""
+    kopf = dict(_marken_mail()["headers"])
+    kopf["X-Spam-Status"] = "No, score=-0.1 required=7.0 tests=DKIM_VALID,RCVD_IN_DNSWL_MED"
+    res = evaluate(_marken_mail(headers=kopf), meine_adressen=frozenset({"vorstand@verein.example"}))
+    assert "server_blockliste" not in res.signals
+
+
+async def test_phishing_kommt_ueber_die_frageschwelle():
+    """All three findings together: the mail has to become a question, not pass silently."""
+    mail = _marken_mail()
+    res = evaluate(mail, meine_adressen=frozenset({"vorstand@verein.example"}),
+                   geschaeftsfreie_domains=frozenset({"verein.example"}), body=mail_text(mail))
+    assert {"marke_im_anzeigenamen", "server_blockliste",
+            "geschaeft_an_domain_ohne_geschaeft"} <= set(res.signals)
+    assert res.score >= 0.9

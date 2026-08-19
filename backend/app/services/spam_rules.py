@@ -5,7 +5,6 @@ not linguistic. Whether DKIM was signed by a foreign domain, or a link leads som
 than its text claims, is a fact. A language model can only retell it and may get it wrong.
 The text decides only where the technique is clean (and that is exactly why good fraud today
 is technically clean).
-sauber ankommt).
 
 The signals follow what mail filtering and phishing research show to be solid:
 
@@ -13,7 +12,7 @@ The signals follow what mail filtering and phishing research show to be solid:
   signature of a foreign domain is the most common way to forge with "DKIM pass".
 * **Deception in the name** — punycode/IDN, mixed scripts (a Cyrillic "о" in an otherwise
   Latin word), invisible characters, a known brand as the subdomain of a foreign one.
-* **Kopfzeilen-Hygiene** — fehlende/kaputte Message-ID, Datumsversatz, Zufallsadressen,
+* **Header hygiene** — a missing or broken Message-ID, a date offset, random addresses,
   faked replies (`Re:` without a reference), manufactured urgency (a SpamAssassin legacy).
 * **Links** — text against target, IP addresses instead of names, the `@` trick, shorteners.
 * **Attachments** — executable and scriptable formats, double extensions, password protected
@@ -44,6 +43,26 @@ FREEMAIL_DOMAINS = frozenset({
     "outlook.de", "hotmail.com", "hotmail.de", "live.com", "live.de", "aol.com",
     "icloud.com", "me.com", "mail.ru", "yandex.ru", "proton.me", "protonmail.com",
     "posteo.de", "mailbox.org", "arcor.de", "online.de", "gmx.com",
+})
+
+# Brands worth forging. Whoever writes under one of these names and does not send from the
+# matching domain claims a relationship they cannot keep. Deliberately short and only names
+# that stand for a contract (bank, parcel, account): a list of every brand in the world would
+# turn every mention into a suspicion. Ambiguous tokens stay out on purpose ("ing" would fire
+# on every "Dipl.-Ing.", "ups" on every "Ups!").
+MARKEN = frozenset({
+    "n26", "paypal", "klarna", "sparkasse", "volksbank", "raiffeisen", "commerzbank",
+    "postbank", "dkb", "comdirect", "targobank", "santander", "revolut", "mastercard",
+    "amazon", "apple", "microsoft", "netflix", "ebay", "telekom", "vodafone",
+    "dhl", "hermes", "dpd", "gls", "fedex", "whatsapp", "spotify",
+})
+
+# Hits in DNS blacklists, as SpamAssassin names them in `tests=`. Only the hard lists: the
+# similar looking RCVD_IN_DNSWL_* is the opposite, a whitelist.
+SPERRLISTEN = frozenset({
+    "URIBL_BLACK", "URIBL_RED", "URIBL_ABUSE_SURBL", "URIBL_DBL_SPAM", "URIBL_SBL",
+    "URIBL_ZEN_BLOCKED", "RCVD_IN_SBL", "RCVD_IN_SBL_CSS", "RCVD_IN_XBL", "RCVD_IN_PBL",
+    "RCVD_IN_BL_SPAMCOP_NET",
 })
 
 # Endings that are noticeably overrepresented in bulk mail. No proof, a surcharge and no more.
@@ -147,6 +166,13 @@ _GEWICHT = {
     "schriftmischung": 0.40,
     "unsichtbare_zeichen": 0.30,
     "marke_als_subdomain": 0.40,
+    # The same trick one field further forward: the brand stands in the display name, which is
+    # all most mail programs show. Weighted like the address variant, because it works the same
+    # way and is seen more often.
+    "marke_im_anzeigenamen": 0.40,
+    # An entry in a DNS blacklist is a fact somebody else established, not an estimate of ours.
+    # It travels in the header of every mail and used to be read only through the total score.
+    "server_blockliste": 0.35,
     # Set from outside (it needs the contact store), but the weight belongs here anyway,
     # otherwise half the scoring would sit somewhere else.
     #
@@ -375,6 +401,15 @@ def _pruefe_serverurteil(res: RuleResult, headers: dict, payload: dict) -> None:
         elif punkte >= 5:
             res.treffer("server_spam_mittel", f"Mailserver bewertet sie mit {punkte:g} Punkten")
 
+    # Beside the score the server notes WHICH tests hit. A blacklist entry among them says
+    # more than the sum: the total can stay far below the threshold while the link target is
+    # demonstrably listed (2026-08-19, N26 phishing: 1.6 of 7 points, URIBL_BLACK among them).
+    m = re.search(r"tests=([\w,\s]+)", _header(headers, "X-Spam-Status"))
+    getroffen = sorted(set(re.split(r"[,\s]+", (m.group(1) if m else "").upper())) & SPERRLISTEN)
+    if getroffen:
+        res.treffer("server_blockliste",
+                    f"Mailserver fand einen Eintrag in einer Sperrliste ({getroffen[0]})")
+
     flag = _header(headers, "X-Spam-Flag").strip().lower()
     status = _header(headers, "X-Spam-Status").strip().lower()
     if flag.startswith("yes") or status.startswith("yes"):
@@ -463,6 +498,20 @@ def _pruefe_echtheit(res: RuleResult, headers: dict, payload: dict, *,
 
 
 
+def _marke_ohne_deckung(name: str, domain: str) -> str:
+    """The brand from the display name that the sender domain does not carry, or ''.
+
+    Contained is enough, not equal: `amazonses.com` sends for Amazon and
+    `sparkasse-musterstadt.de` is one. Only a domain that does not carry the name at all lies.
+    """
+    if not name or not domain:
+        return ""
+    for wort in re.findall(r"[a-z0-9]{2,}", name.lower()):
+        if wort in MARKEN and wort not in domain.lower():
+            return wort
+    return ""
+
+
 def _pruefe_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) -> None:
     """Punycode, mixed scripts, invisible characters, a brand as a foreign subdomain."""
     if any(label.startswith("xn--") for label in res.sender_domain.split(".")):
@@ -485,6 +534,15 @@ def _pruefe_namenstaeuschung(res: RuleResult, bekannte_domains: frozenset[str]) 
             res.treffer("absender_name_taeuscht",
                         f"Anzeigename nennt {sorted(name_domains)[0]}, "
                         f"gesendet von {res.sender_domain}")
+
+    # A brand in the display name that the address does not keep: "Support-N26
+    # <support@fremde-firma.example>". Mail programs show the name and hide the address, which
+    # is why this is the cheapest disguise there is, and why it needs no technical flaw: the
+    # sender owns their throwaway domain and signs it properly.
+    marke = _marke_ohne_deckung(res.sender_name, res.sender_domain)
+    if marke:
+        res.treffer("marke_im_anzeigenamen",
+                    f"Anzeigename nennt „{marke}“, gesendet von {res.sender_domain}")
 
     # A domain known to me is IN the sender but is not the sender domain:
     # `sparkasse.de.sicherheit-pruefung.top` or `sparkasse-de.top`. That is the trick which
@@ -781,8 +839,9 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
     `meine_adressen` are our own receiving addresses and aliases (lower case, `*@domain`
     allowed). `bekannte_domains` are the domains of my contacts: they turn a foreign brand in
     the sender into a signal. `geschaeftsfreie_domains` are own domains over which no contracts
-    run, where every invoice is a claim. `body` is read only for the password protected archive
-    case. If one of them is missing, exactly the corresponding check falls away and all others
+    run, where every invoice is a claim. `body` is the text of the mail: without it the business
+    matter and the password protected archive are not recognised, because both stand in the
+    body and not in the header. If one of them is missing, exactly the corresponding check falls away and all others
     still apply.
     """
     res = RuleResult()
@@ -852,7 +911,10 @@ _FAELSCHUNG = frozenset({
     # unsubscribe button stands underneath, otherwise the newsletter brake caps exactly the junk
     # that was recognised.
     "server_spam_flag", "server_spam_hoch", "server_spam_mittel", "betreff_spam_markiert",
-    "punycode_absender", "schriftmischung", "marke_als_subdomain",
+    "punycode_absender", "schriftmischung", "marke_als_subdomain", "marke_im_anzeigenamen",
+    # A listed link target is not "requested advertising" either, however tidy the unsubscribe
+    # footer underneath looks.
+    "server_blockliste",
     "link_text_taeuscht", "link_at_trick", "anhang_doppelendung", "unsichtbare_zeichen",
     "absender_bin_ich",
     # A claimed unsubscribe path that does not exist in the body does not turn junk into a
