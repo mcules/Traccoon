@@ -1,14 +1,14 @@
-"""Gedächtnis der Agenten im Obsidian-Vault (TRA-30)
+"""Memory of the agents in the Obsidian vault (TRA-30)
 
-Die Agenten konnten bisher nichts behalten: dauerhaft war nur die gelernte Mail-Regel
-(`assistant_policies.action_hint`) und die gelernte Tool-Freigabe. Jede Vorgabe des Menschen
-musste deshalb bei jedem Lauf neu gesagt werden.
+The agents could keep nothing until now: permanent were only the learned mail rule
+(`assistant_policies.action_hint`) and the learned tool approval. Every rule of the human
+therefore had to be said again on every run.
 
-Der Ablageort ist der Obsidian-Vault, weil der Mensch das Gelernte dort sehen und von Hand
-korrigieren soll. Der Vault-Zugriff läuft über die MCP-Gruppe des Owners, das Gedächtnis ist
-also zwingend persönlich — daher hängt der Ordner am Nutzer und nicht am Projekt.
+The filing place is the Obsidian vault, because the human should see what has been learned
+there and correct it by hand. Vault access runs over the MCP group of the owner, so the
+memory is necessarily personal, and the folder hangs off the user, not the project.
 
-`agent_definitions.learns` schaltet Abruf und Rückschau pro Agent. Standard ist an; ohne
+`agent_definitions.learns` switches fetching and review per agent. The default is on.
 
 Revision ID: d2e8b45c91af
 Revises: c1a7e94f5d32
