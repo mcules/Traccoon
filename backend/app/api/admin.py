@@ -44,7 +44,7 @@ async def _status(db: AsyncSession) -> dict:
 
 @router.get("/admin/status")
 async def admin_status(_: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    # Für das Kopfzeilen-Icon (Agenten-Zähler) — jeder eingeloggte Nutzer.
+    # For the header icon (agent counter): every logged-in user.
     return await _status(db)
 
 
@@ -65,8 +65,8 @@ async def set_maintenance(data: MaintenanceIn, _: User = Depends(require_admin),
 
 @router.post("/admin/update")
 async def request_update(user: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """Update einreihen: keine neuen Agenten mehr; wenn der letzte fertig ist, self-deployt
-    der Dispatcher das Wartungsprojekt über den Deployer-Sidecar."""
+    """Queue the update: no new agents any more; when the last one is finished, the dispatcher
+    self-deploys the maintenance project over the deployer sidecar."""
     mp = await get_setting(db, MAINT_KEY, "")
     if not mp.isdigit():
         raise HTTPException(409, "Kein Wartungsprojekt gesetzt (Admin → Wartung).")
@@ -95,7 +95,7 @@ class TestenvConfigIn(BaseModel):
 
 @router.get("/admin/testenv-config")
 async def get_testenv_config(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """Globale Grenzen der Testumgebungen — zur Laufzeit wirksam, kein Neustart nötig (TRA-18)."""
+    """Global limits of the test environments, effective at runtime with no restart needed (TRA-18)."""
     from ..services.testenv import get_config
     return await get_config(db)
 
@@ -129,7 +129,7 @@ async def put_workflow_layout(
 
 
 class RunRetentionIn(BaseModel):
-    days: int = Field(ge=0, le=3650)  # 0 = nie löschen
+    days: int = Field(ge=0, le=3650)  # 0 = never delete
 
 
 @router.get("/admin/run-retention")
@@ -160,7 +160,7 @@ class SmtpConfigIn(BaseModel):
 
 @router.get("/admin/mail-config")
 async def get_mail_settings(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """SMTP-Konfiguration für den Mailversand (z. B. Projekt-Einladungen)."""
+    """SMTP configuration for sending mail (project invitations for instance)."""
     cfg = await get_mail_config(db)
     cfg["smtp_password_set"] = bool(cfg.pop("smtp_password", ""))
     return cfg
@@ -176,10 +176,10 @@ async def put_mail_settings(
     return cfg
 
 
-# ---------- Modelle für Nebenaufgaben (Aux) ----------
+# ---------- Models for side tasks (aux) ----------
 
 class AuxTaskIn(BaseModel):
-    """Ein Modell für eine Nebenaufgabe. `provider` leer = zurück auf `auto`."""
+    """One model for a side task. An empty `provider` means back to `auto`."""
     provider: str | None = Field(default=None, max_length=50)
     model: str | None = Field(default=None, max_length=150)
     token_name: str | None = Field(default=None, max_length=100)
@@ -189,8 +189,8 @@ class AuxTaskIn(BaseModel):
 
 @router.get("/admin/aux-models")
 async def get_aux_models(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """Welche Nebenaufgabe auf welchem Modell läuft. Ohne Eintrag gilt `auto` — dann macht
-    sie der Agent selbst, auf seinem eigenen (teuren) Modell."""
+    """Which side task runs on which model. Without an entry `auto` applies, and then the
+    agent does it itself, on its own (expensive) model."""
     from ..worker.aux import AUX_TASKS, aux_config
     return [{"task": t, "beschreibung": beschreibung, "config": await aux_config(db, t) or None}
             for t, beschreibung in AUX_TASKS.items()]
@@ -205,7 +205,7 @@ async def put_aux_model(task: str, data: AuxTaskIn, _: User = Depends(require_ad
     if task not in AUX_TASKS:
         raise HTTPException(404, f"Unbekannte Nebenaufgabe '{task}'")
     werte = {k: v for k, v in data.model_dump().items() if v not in (None, "")}
-    # Kein Provider = die Einstellung löschen, nicht ein halbes Fragment stehen lassen.
+    # No provider means delete the setting, not leave half a fragment standing.
     await set_setting(db, setting_key(task), _json.dumps(werte) if werte.get("provider") else "")
     from ..worker.aux import aux_config
     return {"task": task, "config": await aux_config(db, task) or None}

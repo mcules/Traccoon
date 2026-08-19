@@ -1,25 +1,25 @@
 import type { Project } from "./api";
 import type { ChromeTab } from "./pageChrome";
 
-/** Reiter-Schlüssel des Projekt-Untermenüs (inkl. der Board-Unteransichten). */
+/** Tab keys of the project sub-menu (including the board sub-views). */
 export type ProjectTab =
   | "board" | "list" | "backlog" | "archiv" | "code" | "dashboard" | "pm"
   | "monitor" | "buero" | "workflows" | "members" | "hardware" | "testenvs" | "settings";
 
-/** Ticket-Ansichten unter „Board" — im Untermenü nur als „Board" vertreten,
- *  darunter im Board selbst als Buttons. */
+/** Ticket views under "board": represented in the sub-menu only as "board", and below that
+ *  in the board itself as buttons. */
 export const BOARD_VIEWS: [ProjectTab, string][] = [
   ["board", "Board"], ["list", "Liste"], ["backlog", "Backlog"], ["archiv", "Archiv"],
 ];
 
-/** Icon je Reiter für die Pill-Navigation im Header. */
+/** Icon per tab for the pill navigation in the header. */
 export const TAB_ICONS: Record<string, string> = {
   pm: "💬", board: "🗂️", code: "📁", dashboard: "📊",
   monitor: "⚡", buero: "🏢", workflows: "🔀", hardware: "🖥️", testenvs: "🧪", settings: "⚙️",
 };
 
-/** Rollen-/Flag-abhängige Reiter des Projekts. Ohne Projekt leer, damit Aufrufer
- *  den Hook-Aufruf vor ihrem Projekt-Guard machen können. */
+/** Role and flag dependent tabs of the project. Empty without a project, so that callers can
+ *  make the hook call before their project guard. */
 export function projectTabs(project: Project | undefined): [ProjectTab, string][] {
   if (!project) return [];
   const canManage = project.my_role === "owner" || project.my_role === "maintainer";
@@ -31,20 +31,20 @@ export function projectTabs(project: Project | undefined): [ProjectTab, string][
     ...(canManage && project.git_enabled ? ([["code", "Code"]] as [ProjectTab, string][]) : []),
     ["dashboard", "Dashboard"],
     ...(project.my_ai_assign ? ([["monitor", "Monitor"]] as [ProjectTab, string][]) : []),
-    // Das Büro zeigt dieselben Läufe wie der Monitor, nur als Raum — also dasselbe Gate.
+    // The office shows the same runs as the monitor, only as a room, so the same gate.
     ...(project.my_ai_assign ? ([["buero", "Büro"]] as [ProjectTab, string][]) : []),
     ...(canManage ? ([["workflows", "Prozesse"]] as [ProjectTab, string][]) : []),
     ...(project.has_hardware ? ([["hardware", "Hardware"]] as [ProjectTab, string][]) : []),
     ...(project.testenv_enabled !== false && canWrite
       ? ([["testenvs", "Testumgebungen"]] as [ProjectTab, string][]) : []),
-    // Mitglieder liegen in den Projekt-Einstellungen (ProjectSettings-Reiter)
+    // Members lie in the project settings (the ProjectSettings tab)
     ...(canManage ? ([["settings", "Einstellungen"]] as [ProjectTab, string][]) : []),
   ];
 }
 
-/** Reiter → Chrome-Tabs (Header-Untermenü). `activeBoardView` hält „Board" auch
- *  dann hervorgehoben, wenn Liste/Backlog/Archiv aktiv ist (Link zeigt auf die
- *  aktuelle URL). Auf der Ticket-Seite bleibt der Parameter leer. */
+/** Tab to chrome tabs (the header sub-menu). `activeBoardView` keeps "board" highlighted even
+ *  when list, backlog or archive is active (the link points at the current URL). On the
+ *  ticket page the parameter stays empty. */
 export function projectChromeTabs(
   project: Project | undefined,
   activeBoardView?: ProjectTab
