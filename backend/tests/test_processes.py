@@ -161,12 +161,11 @@ async def test_ereignisse_zaehlen_ihre_zuhoerer(client, db, standard):
     assert r.status_code == 200
     daten = r.json()
     assert {e["event"] for e in daten}
-    # Without a set trigger nobody listens, and the overview should show that honestly.
-    # The exception is the shipped mail inbox: it listens for `mail.received`, and exactly
-    # that the overview should show as well.
+    # Without a set trigger nobody listens, and the overview should show that honestly. The
+    # shipped set contains no event driven flow any more: the mail inbox left it and is now
+    # a template one creates for oneself.
     zuhoerer = {e["event"]: e["listeners"] for e in daten}
-    assert zuhoerer.get("mail.received") == 1
-    assert all(z == 0 for e, z in zuhoerer.items() if e != "mail.received")
+    assert all(z == 0 for z in zuhoerer.values())
 
 
 # ── Rolling back ─────────────────────────────────────────────────────────────

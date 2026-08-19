@@ -18,6 +18,8 @@ Supported actions:
   webhook             {url, method, headers, payload, secret}  outgoing call to a free URL
   comment             {text}                    system comment on the bound issue
   notify              {to:{mode,...}, title, text}  notification (bell plus channel)
+  assistent_auftrag   {auftrag, agent?, warten?, ...}  hand a free assignment to the assistant
+  antwort             {text | felder}           the answer of this run (a waiting webhook reads it)
   noop                (default)                 nothing, a placeholder
 
 Ticket lifecycle (the graph is the truth, `agent_status` is the projection):
@@ -639,6 +641,50 @@ async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
             "error": ergebnis.get("error")}
 
 
+async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Append a line to a note in the vault, and create the note when it is missing.
+
+    Parameters, all with `{{path}}` templating from the context:
+      pfad         path of the note, for example `04 Wissen/Erkennung/{{ spam.art }}.md`
+      text         what is appended (one line, or several separated by newlines)
+      ueberschrift optional section the text is put under (created when absent)
+      werkzeug     MCP tool, default `obsidian__obsidian_append_to_note`
+      context_key  where the result is written (default `notiz`)
+
+    A shortcut over `tool_call`, and not a redundant one: the address form of the obsidian
+    server is an `oneOf` (`{"type": "path", "path": …}`), and whoever writes it out by hand
+    in the arguments of every flow gets it wrong once and then wonders why the note stays
+    empty. The knowledge sits in exactly one place now, the same as in `tools_memory`.
+    """
+    from .workflow_tools import aufrufen
+
+    pfad = str(_interp(params.get("pfad") or params.get("path") or "", ctx)).strip()
+    text = str(_interp(params.get("text") or "", ctx)).strip()
+    ueberschrift = str(_interp(params.get("ueberschrift") or params.get("heading") or "",
+                               ctx)).strip()
+    key = str(params.get("context_key") or "notiz")
+    if not pfad or not text:
+        # Not an error: a flow that has nothing to write should not fail because of it.
+        inst.context = {**ctx, key: {"ok": False, "error": "kein Pfad oder kein Text"}}
+        return {"action": "notiz_anhaengen", "ok": False, "grund": "leer"}
+
+    argumente: dict = {"target": {"type": "path", "path": pfad}, "content": text}
+    if ueberschrift:
+        # A section is addressed as an object, and it has to be created when it is missing:
+        # otherwise the call fails on a note that does not carry that heading yet. Without
+        # this the line lands at the end of the file, which is where nobody looks for a task.
+        argumente["section"] = {"type": "heading", "target": ueberschrift}
+        argumente["createTargetIfMissing"] = True
+    # With the server prefix: without it the session finds no tool and answers with a HINT
+    # AS TEXT, and `aufrufen` reports ok because it got an answer. The note stays empty and
+    # nobody notices. The name may be overridden, for a vault hanging off another server.
+    werkzeug = str(params.get("werkzeug") or "obsidian__obsidian_append_to_note").strip()
+    ergebnis = await aufrufen(db, await _besitzer(db, inst), werkzeug, argumente)
+    inst.context = {**ctx, key: ergebnis}
+    return {"action": "notiz_anhaengen", "pfad": pfad, "ok": ergebnis["ok"],
+            "error": ergebnis.get("error")}
+
+
 async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Call a configured destination (base URL and authentication live there).
 
@@ -855,6 +901,107 @@ async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
             "alter_stunden": alter, "still": still, "still_melden": melden}
 
 
+async def _assistent_auftrag(db, inst: WorkflowInstance, params: dict, ctx: dict,
+                             node_id: str) -> dict:
+    """Give the personal assistant a free assignment — no mail, no ticket, no project.
+
+    The generic counterpart to the mail path (`assistant_task` + `assistant_run`), which can
+    only read its assignment out of an incoming mail. Here the assignment stands in the node,
+    so ANY flow can hand work to the assistant.
+
+    Parameters:
+      auftrag      the assignment itself ({{…}} out of the context), required
+      titel        heading in the inbox (default: first line of the assignment)
+      agent        role of the agent (default `assistent`)
+      freigabe     true = the item waits for the person, false (default) = it runs at once
+      warten       true = the step waits for the run and puts its answer into the context
+      context_key  where the answer lands (default `assistent`)
+      timeout_sek  limit for the wait (0 = the engine default)
+
+    Idempotent per node and instance: a repeated pass (restart, retry) picks up the existing
+    item instead of commissioning the work a second time.
+    """
+    from sqlalchemy import select
+
+    from ..core.redis import enqueue_task
+    from ..models.assistant import AssistantTask
+
+    auftrag = str(_interp(params.get("auftrag") or params.get("prompt") or "", ctx)).strip()
+    if not auftrag:
+        return {"action": "assistent_auftrag", "gestartet": False, "grund": "kein Auftrag"}
+    rolle = str(_interp(params.get("agent") or "", ctx)).strip() or "assistent"
+    titel = str(_interp(params.get("titel") or "", ctx)).strip() \
+        or auftrag.splitlines()[0][:200]
+    besitzer = params.get("owner_id") or inst.started_by or _dig(ctx, "eingang.owner_id")
+    try:
+        besitzer = int(besitzer) if besitzer is not None else None
+    except (TypeError, ValueError):
+        besitzer = None
+    if besitzer is None:
+        # Without an owner there is no token and no MCP group, so the run would start and
+        # immediately have nothing to work with. Say so instead of failing later.
+        return {"action": "assistent_auftrag", "gestartet": False,
+                "grund": "kein Besitzer (weder am Ablauf noch am Knoten)"}
+
+    quelle, quelle_ref = f"ablauf:{inst.definition_id}", f"{inst.id}:{node_id}"
+    task = (await db.execute(select(AssistantTask).where(
+        AssistantTask.source == quelle,
+        AssistantTask.source_ref == quelle_ref))).scalar_one_or_none()
+    neu_angelegt = task is None
+    if task is None:
+        freigabe = bool(params.get("freigabe"))
+        task = AssistantTask(
+            owner_user_id=besitzer, kind="auftrag", source=quelle, source_ref=quelle_ref,
+            title=titel[:500],
+            category=str(_interp(params.get("kategorie") or "", ctx))[:80],
+            priority=str(params.get("prioritaet") or params.get("priority") or "normal"),
+            # The assignment IS the prompt; the worker takes it out of `meta.prompt`, the
+            # same way it takes the ported mail prompt of a webhook.
+            meta={"agent": rolle, "prompt": auftrag,
+                  "ablauf": {"instanz": inst.id, "knoten": node_id,
+                             "definition": inst.definition_id}},
+            status="new" if freigabe else "approved",
+        )
+        db.add(task)
+        await db.flush()
+
+    task_id = f"assistant-{task.id}"
+    warten = bool(params.get("warten"))
+    if neu_angelegt and task.status == "approved":
+        await enqueue_task({"kind": "assistant", "task_id": task_id,
+                            "assistant_task_id": int(task.id)})
+    ergebnis = {"action": "assistent_auftrag", "task_id": task.id, "agent": rolle,
+                "status": task.status, "gestartet": task.status == "approved",
+                "wiederverwendet": not neu_angelegt}
+    if warten and task.status == "approved":
+        ergebnis["_wait"] = {"task_id": task_id,
+                             "timeout": int(params.get("timeout_sek")
+                                            or params.get("timeout_sec") or 0),
+                             "context_key": str(params.get("context_key") or "assistent")}
+    inst.context = {**ctx, "auftrag": {"task_id": task.id, "status": task.status,
+                                       "agent": rolle}}
+    return ergebnis
+
+
+def _antwort(inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Set the answer this run gives back to whoever started it.
+
+    A webhook that waits (`response_timeout`) reads exactly this: `context.antwort`. Free
+    text goes into `text`, a structured answer into the remaining fields — both go through
+    the same `{{…}}` templating as everywhere else.
+    """
+    if params.get("text") is not None:
+        antwort = _interp(params.get("text") or "", ctx)
+    else:
+        felder = params.get("felder") if isinstance(params.get("felder"), dict) else \
+            {k: v for k, v in params.items() if k not in ("felder", "text")}
+        antwort = _interp_deep(felder, ctx)
+    schluessel = str(params.get("context_key") or "antwort")
+    inst.context = {**ctx, schluessel: antwort}
+    return {"action": "antwort", "context_key": schluessel,
+            "felder": list(antwort) if isinstance(antwort, dict) else "text"}
+
+
 async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     cfg = _config(node)
     action, params = _normalize_action(cfg)
@@ -935,6 +1082,15 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     if action in MAIL_HANDLER:
         return await MAIL_HANDLER[action](db, inst, params, ctx)
 
+    if action == "assistent_auftrag":
+        return await _assistent_auftrag(db, inst, params, ctx, str(node.get("id") or ""))
+
+    if action == "antwort":
+        return _antwort(inst, params, ctx)
+
+    if action == "notiz_anhaengen":
+        return await _notiz_anhaengen(db, inst, params, ctx)
+
     if action == "messwert":
         return await _messwert(db, inst, params, ctx)
 
@@ -960,11 +1116,25 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         drossel_key = str(_interp(params.get("drossel_key") or "", ctx)).strip()
         if drossel > 0 and not drossel_key:
             drossel_key = f"ablauf:{inst.definition_id}:{node.get('id')}"
-        weg = await zustellen(db, user=empfaenger, kind="workflow_notify", title=title,
+        # Art und Bezug machen aus der Nachricht eine Karte, auf der man handeln kann: der
+        # Bot hängt seine Knöpfe an der Art auf und findet über den Bezug die Sache, um die
+        # es geht (ein Spam-Urteil zum Zurückholen, ein Eingang zum Freigeben). Ohne beides
+        # bleibt es eine gewöhnliche Meldung — der Normalfall.
+        art = str(_interp(params.get("kind") or params.get("art") or "", ctx)).strip() \
+            or "workflow_notify"
+        roh_bezug = params.get("bezug") if isinstance(params.get("bezug"), dict) else {}
+        bezug: dict[str, int] = {}
+        for feld, wert in roh_bezug.items():
+            wert = _interp(wert, ctx)
+            zahl = _as_int(wert)
+            if zahl is not None:
+                bezug[str(feld)] = zahl
+        weg = await zustellen(db, user=empfaenger, kind=art, title=title,
                               body=body, kanal=kanal, project_id=inst.project_id,
-                              issue_id=inst.issue_id,
+                              issue_id=inst.issue_id, bezug=bezug or None,
                               drossel_key=drossel_key, drossel_minuten=drossel)
-        return {"action": "notify", "user_id": target, **weg}
+        return {"action": "notify", "user_id": target, "kind": art,
+                **({"bezug": bezug} if bezug else {}), **weg}
 
     # Unknown or deliberate noop action: not an error, so the workflow keeps running.
     return {"action": "noop", "requested": action}

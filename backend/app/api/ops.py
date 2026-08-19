@@ -51,6 +51,10 @@ class WebhookIn(BaseModel):
     context_map: dict = {}
     # mode=event: name of the reported event (empty = webhook.<route>).
     event_name: str | None = None
+    # mode=workflow: hold the request open until the flow answers (seconds, 0 = off), and
+    # which fields the answer carries ({field: context.path}; empty = context.antwort).
+    response_timeout: int = 0
+    response_map: dict = {}
 
 
 class WebhookOut(BaseModel):
@@ -67,6 +71,7 @@ class WebhookOut(BaseModel):
     alert_events: list = []; ref_field: str | None = None; notify_chat: str | None = None
     workflow_definition_id: int | None = None; context_map: dict = {}
     event_name: str | None = None
+    response_timeout: int = 0; response_map: dict = {}
 
 
 def _wh_out(w: WebhookSub) -> WebhookOut:
@@ -80,7 +85,8 @@ def _wh_out(w: WebhookSub) -> WebhookOut:
         event_header=w.event_header, event_filter=w.event_filter,
         event_key_header=w.event_key_header, event_cooldowns=w.event_cooldowns or {},
         alert_events=w.alert_events or [], ref_field=w.ref_field, notify_chat=w.notify_chat,
-        workflow_definition_id=w.workflow_definition_id, context_map=w.context_map or {})
+        workflow_definition_id=w.workflow_definition_id, context_map=w.context_map or {},
+        response_timeout=w.response_timeout or 0, response_map=w.response_map or {})
 
 
 @router.get("/webhooks", response_model=list[WebhookOut])
@@ -169,6 +175,62 @@ def _dig_payload(data, pfad: str):
         else:
             return None
     return cur
+
+
+# Hard ceiling for a held-open request. Whoever waits here occupies a connection, and a
+# sender that runs into ITS own timeout meanwhile gets nothing out of a longer wait.
+ANTWORT_MAX_SEK = 120
+
+
+async def _warte_auf_antwort(instance_id: int, sub: WebhookSub) -> dict:
+    """Hold the answer of a flow open for the caller (mode 'workflow').
+
+    A webhook is a trigger, and a trigger may have an answer: the flow writes it (action
+    `antwort` → `context.antwort`), this reads it. Without `response_map` exactly that key
+    goes back, with one the named fields are dug out of the context.
+
+    The waiting is polling and not a subscription on purpose: a flow ends in many places
+    (end node, error, cancellation, timeout of a step), and none of them should have to know
+    that somebody is listening here.
+    """
+    import asyncio
+
+    from ..db import SessionLocal
+    from ..models.enums import WorkflowInstanceStatus as IStatus
+    from ..models.workflow import WorkflowInstance
+
+    grenze = max(0, min(int(sub.response_timeout or 0), ANTWORT_MAX_SEK))
+    uhr = asyncio.get_running_loop().time
+    ende = uhr() + grenze
+    karte = sub.response_map or {}
+    ctx: dict = {}
+    status, fertig = "weg", False
+    while True:
+        # A session of its own per look: the answer is written by another task in another
+        # transaction, and a session that keeps its snapshot would never see it.
+        async with SessionLocal() as s:
+            inst = await s.get(WorkflowInstance, instance_id)
+            if inst is None:
+                break
+            ctx = dict(inst.context or {})
+            status = inst.status.value
+            fertig = inst.status not in (IStatus.running, IStatus.waiting)
+        # An answer that already stands does not need the end of the flow: answering first
+        # and tidying up afterwards is a perfectly good order.
+        if karte:
+            bereit = fertig or all(_dig_payload(ctx, pfad) is not None for pfad in karte.values())
+        else:
+            bereit = fertig or "antwort" in ctx
+        if bereit or uhr() >= ende:
+            break
+        await asyncio.sleep(0.4)
+
+    if karte:
+        antwort = {schluessel: _dig_payload(ctx, pfad) for schluessel, pfad in karte.items()}
+    else:
+        antwort = ctx.get("antwort")
+    return {"instance_id": instance_id, "status": status, "fertig": fertig,
+            "antwort": antwort}
 
 
 @router.post("/hooks/{public_id}", status_code=202)
@@ -348,6 +410,22 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
             issue_id=issue_id, hardware_asset_id=asset_id,
             actor_id=sub.owner_user_id, source=f"webhook:{route}", source_ref=src_ref,
         )
+        if int(sub.response_timeout or 0) > 0:
+            # The caller wants the answer of the flow, not only the receipt. What goes back
+            # is what the flow wrote: a dict answer IS the body (so the far side sees exactly
+            # the fields it was promised), anything else is wrapped.
+            from fastapi.responses import JSONResponse
+            ergebnis = await _warte_auf_antwort(inst.id, sub)
+            antwort = ergebnis["antwort"]
+            if isinstance(antwort, dict):
+                rumpf = antwort
+            elif antwort is None:
+                rumpf = {"accepted": True, "mode": "workflow", "antwort": None,
+                         "instance_id": inst.id, "status": ergebnis["status"],
+                         "fertig": ergebnis["fertig"]}
+            else:
+                rumpf = {"antwort": antwort}
+            return JSONResponse(rumpf, status_code=200 if antwort is not None else 202)
         return {"accepted": True, "mode": "workflow", "instance_id": inst.id,
                 "status": inst.status.value,
                 **({"issue_id": issue_id} if issue_id else {}),

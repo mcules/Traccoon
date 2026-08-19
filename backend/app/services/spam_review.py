@@ -19,6 +19,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import re
 import uuid
 
 from sqlalchemy import select
@@ -30,6 +31,7 @@ from ..models.user import User
 from . import spam_learn
 from .appsettings import get_setting
 from .i18n import tr
+from .mail_classify import ja
 from .mcp_client import McpError, call_tool, ergebnis_text
 from .spam_rules import (
     FREEMAIL_DOMAINS, evaluate, features, ist_faelschungsverdacht, mail_text,
@@ -44,6 +46,11 @@ FRAGE_AB_KEY = "spam_frage_ab"               # from here on anything is asked at
 SOFORT_AB_KEY = "spam_sofort_ab"             # from here on singly instead of a digest card
 AUTO_AB_KEY = "spam_auto_ab"                 # from here on away without asking (recall window)
 DIGEST_MIN_KEY = "spam_digest_minuten"       # beat of the digest card
+# Whether a mail cleared away WITHOUT a question is worth a message. The sorting itself
+# does not hang off this: the verdict comes into being, is learnt from and stands in the
+# overview either way, only the card stays away. The branch for it stands in the flow,
+# this is merely the value it reads.
+AUTO_MELDEN_KEY = "spam_auto_melden"         # 1 = melden (Vorgabe), 0 = still
 MEINE_ADRESSEN_KEY = "spam_meine_adressen"   # eigene Empfangsadressen, Komma-getrennt
 # Domains over which demonstrably no contractual business runs. There, every "invoice" is a
 # claim, regardless of what the address in front of it is called.
@@ -57,6 +64,7 @@ _VORGABE = {
     # their own measurement (see `spam_report.rueckschau`).
     AUTO_AB_KEY: "1.01",
     DIGEST_MIN_KEY: "120",
+    AUTO_MELDEN_KEY: "1",
     MEINE_ADRESSEN_KEY: "",
     KEINE_GESCHAEFTSDOMAINS_KEY: "",
 }
@@ -98,6 +106,36 @@ def _mischen(regel: float, modell: float, gelernt: float | None) -> float:
     return round(0.4 * regel + 0.3 * modell + 0.3 * gelernt, 3)
 
 
+# What a fraud named by the model is worth at least. The weighted mixture cannot carry it:
+# with a single rule signal (0.4) even a model at 0.95 reaches 0.76 at most, and every
+# sensible auto threshold stays out of reach. Case of 2026-08-19 (verdict #42): a "N26" mail
+# from fremde-firma.example, SPF, DKIM and DMARC all passing, model 0.95 with "Phishing-Versuch
+# mit gefälschtem Absender", overall verdict 0.731, and so it stayed in the inbox.
+_BETRUG_SCORE = 0.95
+# From here on the wording of the reason counts as a statement of its own. The floor keeps a
+# negation ("kein Betrugsversuch, nur Werbung") from turning into the opposite verdict, and
+# it keeps the technical findings out that the flow passes into the prompt (they contain the
+# word "Fälschungsverdacht" themselves).
+_BETRUG_TEXT_AB = 0.8
+_BETRUG_WORTE = re.compile(r"phish|betrug|scam|f[äa]lsch|identit[äa]tsdiebstahl", re.I)
+
+
+def _modell_betrug(cls: dict, modell: float) -> bool:
+    """Does the local model name a fraud, not merely bulk mail?
+
+    Three ways in, because the field is younger than some of the models that answer here: the
+    explicit flag, the category, and as a last resort the wording of the reason. The last one
+    only above `_BETRUG_TEXT_AB`, so that a model mentioning the word in order to rule it out
+    does not produce the opposite verdict.
+    """
+    if ja(cls.get("betrug")):
+        return True
+    if str(cls.get("category") or "").strip().lower() in ("phishing", "betrug"):
+        return True
+    grund = str(cls.get("spam_reason") or "")
+    return modell >= _BETRUG_TEXT_AB and bool(_BETRUG_WORTE.search(grund))
+
+
 async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
                      cls: dict, regel=None) -> dict:
     """Assess an incoming mail: a pure verdict, without side effects.
@@ -120,6 +158,14 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
                          geschaeftsfreie_domains=await geschaeftsfreie_domains(db),
                          body=mail_text(payload))
     subject = str(payload.get("subject") or "")
+
+    # The verdict of the local model, pulled forward: both the contact acquittal below and
+    # the memory need to know whether a fraud was named, and both stand before the place
+    # where the score is put together.
+    modell = float(cls.get("spam_score") or 0.0)
+    if str(cls.get("category") or "").lower() in ("spam", "phishing", "werbung"):
+        modell = max(modell, 0.6)
+    betrug = _modell_betrug(cls, modell)
 
     # Boss scam: the display name is a known contact but the address is not theirs.
     # Technically there is nothing wrong with such a mail; only the contact list gives it
@@ -144,7 +190,11 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     faelschungsverdacht = ist_faelschungsverdacht(regel.signals)
     # `sent` counts like a vault entry: whoever I wrote to myself I demonstrably know, and
     # that is the strongest "wanted" statement a mailbox can produce.
-    bekannter_kontakt = treffer in ("frontmatter", "sent") and not faelschungsverdacht
+    # A named fraud lifts the acquittal as well: the graph checks the `kontakt` branch BEFORE
+    # the automatic one, so a boss scam from a taken over contact address would otherwise walk
+    # past everything below.
+    bekannter_kontakt = (treffer in ("frontmatter", "sent")
+                         and not faelschungsverdacht and not betrug)
     if bekannter_kontakt:
         log.debug("Mail from the known contact %s, no spam suspicion", regel.sender_email)
     if treffer and faelschungsverdacht:
@@ -157,14 +207,23 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         regel.score = max(0.0, regel.score - 0.15)
 
     merkmale = features(regel, subject, kontakt_treffer=treffer)
+    # The findings of both sources in one shape. The rules have carried key plus plain text
+    # since `RuleResult.treffer()`; the model now delivers the same, and only the origin
+    # tells them apart. Whoever reads the card, writes the note or counts the statistics
+    # reads from here instead of taking each source apart again.
+    modell_merkmale = list(cls.get("merkmale") or [])
+    befunde = [{"quelle": "regel", "kennung": sig, "text": text}
+               for sig, text in zip(regel.signals, regel.reasons)]
+    befunde += [{"quelle": "modell", "kennung": str(m.get("kennung") or ""),
+                 "text": str(m.get("text") or "")}
+                for m in modell_merkmale if m.get("kennung")]
+    # The model keys join the memory with their own namespace: the format is prefixed anyway
+    # (`from:`, `dom:`, `sig:`, `wort:`), so nothing in the learning has to change.
+    merkmale += [f"llm:{m['kennung']}" for m in modell_merkmale if m.get("kennung")]
 
     # --- Memory ---------------------------------------------------------------
     gelernt_score, gelernt_gruende, sicher = await spam_learn.bewerten(db, owner_id, merkmale)
     hat_gedaechtnis = bool(gelernt_gruende) or sicher
-
-    modell = float(cls.get("spam_score") or 0.0)
-    if str(cls.get("category") or "").lower() in ("spam", "phishing", "werbung"):
-        modell = max(modell, 0.6)
 
     score = _mischen(regel.score, modell, gelernt_score if hat_gedaechtnis else None)
 
@@ -173,7 +232,17 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     if regel.ist_newsletter and not faelschungsverdacht:
         score = min(score, 0.4)
 
+    # Here the model wins, against the mixture and against the newsletter brake. Whoever asks
+    # a model whether this is fraud and then averages its answer away with two calmer voices
+    # need not have asked. Deliberately AFTER the brake: a phish that hangs a List-Unsubscribe
+    # under its footer counts as a "newsletter" to the rules, and the cap of 0.4 would take
+    # back exactly the verdict this is about.
+    if betrug:
+        score = round(max(score, modell, _BETRUG_SCORE), 3)
+
     gruende = list(regel.reasons)
+    if betrug:
+        gruende.append("das lokale Modell erkennt einen Betrugsversuch")
     if cls.get("spam_reason"):
         gruende.append(str(cls["spam_reason"])[:200])
     gruende.extend(gelernt_gruende)
@@ -182,6 +251,13 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # learning is for. Otherwise the same question would stand forever. The consequence is
     # drawn by the graph; here stands only THAT the matter is settled and how.
     geklaert = bool(sicher and not faelschungsverdacht)
+    # A named fraud lifts the "wanted" of the memory, not its "spam": what is dangerous here
+    # is the acquittal. Whoever wrote to me three times harmlessly can have their account
+    # taken over on the fourth, and the memory would wave exactly that mail through. The
+    # condition keeps the `geklaert_spam` path intact, which clears away regardless of the
+    # auto threshold.
+    if geklaert and betrug and gelernt_score < 0.5:
+        geklaert = False
     # The verdict of one's own mail server stands for itself. In the weighted mixture it
     # would go under: with rule = 1.0 and a silent model, even a mail the own server gives 13
     # spam points to lands at ~0.55, which would put an auto threshold out of reach. Whoever
@@ -198,6 +274,17 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         "learned_score": gelernt_score if hat_gedaechtnis else 0.0,
         "geklaert": geklaert,
         "serverurteil": serverurteil,
+        "modellurteil": betrug,
+        # What the mail was classified as. Comes from the model, and a named fraud is at
+        # least "phishing" even when the model called it something vaguer. This is what the
+        # statistics group by, so it is deliberately a value and not a flag: a new kind
+        # appears there without a line of code.
+        "art": ("phishing" if betrug and str(cls.get("category") or "").lower()
+                not in ("phishing", "betrug") else
+                str(cls.get("category") or "").strip().lower() or "unbekannt"),
+        "befunde": befunde,
+        # Ready made line for a note or a card: the plain texts, in reading order.
+        "befunde_text": " · ".join(b["text"] for b in befunde if b["text"])[:600],
         "geklaert_urteil": ("spam" if gelernt_score >= 0.5 else "ham") if geklaert else "",
         "bekannter_kontakt": bekannter_kontakt,
         "faelschungsverdacht": faelschungsverdacht,
@@ -215,10 +302,16 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         "frage_ab": await _zahl(db, FRAGE_AB_KEY),
         "sofort_ab": await _zahl(db, SOFORT_AB_KEY),
         "auto_ab": await _zahl(db, AUTO_AB_KEY),
+        # Same reason as the thresholds: the branch in front of the reporting step reads
+        # it out of the context instead of asking the database itself.
+        "auto_melden": str(await get_setting(
+            db, AUTO_MELDEN_KEY, _VORGABE[AUTO_MELDEN_KEY])).strip().lower()
+            not in ("0", "false", "nein", "aus"),
     }
-    log.info("Spam verdict (%.2f: rule=%.2f model=%.2f learnt=%.2f, resolved=%s) from %s",
+    log.info("Spam verdict (%.2f: rule=%.2f model=%.2f learnt=%.2f, resolved=%s, fraud=%s, "
+             "kind=%s) from %s",
              score, regel.score, modell, gelernt_score, urteil["geklaert_urteil"] or "nein",
-             regel.sender_email)
+             betrug, urteil["art"], regel.sender_email)
     return urteil
 
 
@@ -247,6 +340,8 @@ async def anlegen(db: AsyncSession, owner_id: int | None, urteil: dict, *,
         score=float(urteil.get("score") or 0.0),
         reasons=list(urteil.get("reasons") or [])[:12],
         features=list(urteil.get("features") or []),
+        art=str(urteil.get("art") or "")[:40],
+        befunde=list(urteil.get("befunde") or [])[:20],
         status="pending")
     db.add(verdict)
     await db.flush()

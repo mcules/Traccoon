@@ -3,7 +3,7 @@
 The way of an incoming mail used to stand in one piece in `mail_intake.intake_mail`:
 classifying, assessing, asking, clearing away or passing on. The order could therefore only
 be read in the code and only be changed with a deploy. Here every step stands on its own;
-their order is drawn by the graph (`workflow_seed.build_mail_intake`).
+their order is drawn by the graph (template `mail-eingang`, `workflow_templates`).
 
 The context of an instance is the shared language of these steps:
 
@@ -100,7 +100,8 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
                                       spam_beispiele=await spam_learn.beispiele(db, owner_id))
     else:
         klasse = {"category": "", "priority": "normal", "sensitive": False,
-                  "redacted_summary": "", "spam_score": 0.0, "spam_reason": ""}
+                  "redacted_summary": "", "spam_score": 0.0, "spam_reason": "",
+                  "betrug": False, "merkmale": []}
 
     sender_email, domain = parse_sender(sender)
     policy = await match_policy(db, owner_id, sender_email=sender_email, domain=domain,
@@ -157,26 +158,44 @@ async def spam_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     Below the immediate threshold NO card of its own is deliberately sent: those cases are
     collected by the scheduler into the digest card (`spam_review.digest_faellig`). The flow
     waits at its approval node meanwhile.
+
+    With `melden=false` this step only prepares: the verdict comes into being, the text
+    stands in the context (`spam.karte_titel`, `spam.karte_text`, `spam.karte_art`,
+    `spam.karte_faellig`), and the sending is done by a notify node behind it. That way
+    switching off the message does not switch off the sorting.
     """
-    from .spam_review import anlegen, melden
+    from .spam_review import anlegen, karte, melden
 
     owner_id = _owner(inst, ctx)
     urteil = dict(ctx.get("spam") or {})
     task = ctx.get("task") or {}
     vorentschieden = bool(params.get("vorentschieden"))
     rueckholbar = bool(params.get("rueckholbar"))
+    # Ob gemeldet wird, entscheidet der Ablauf. `melden=false` heißt: Urteil anlegen, Text
+    # bereitstellen — verschickt wird es von einem Melde-Knoten dahinter, den man abschalten
+    # kann, ohne die Aussortierung mit abzuschalten. Vorgabe bleibt `true`, damit
+    # veröffentlichte Fassungen ohne solchen Knoten weiter melden.
+    selbst_melden = params.get("melden")
+    selbst_melden = True if selbst_melden is None else bool(selbst_melden)
     verdict = await anlegen(db, owner_id, urteil,
                             task_id=task.get("id") if isinstance(task, dict) else None,
                             instance_id=inst.id)
     sofort = vorentschieden or rueckholbar or float(urteil.get("score") or 0.0) >= float(
         urteil.get("sofort_ab") or 0.9)
-    if sofort:
+    if sofort and selbst_melden:
         await melden(db, owner_id, verdict, sofort=True, vorentschieden=vorentschieden,
                      rueckholbar=rueckholbar)
     art = "rueckholbar" if rueckholbar else ("sofort" if sofort else "sammel")
-    inst.context = {**ctx, "spam": {**urteil, "verdict_id": verdict.id, "karte": art}}
+    # Der Text gehört zum Spam-Wissen, nicht in den Graphen: welche Gründe genannt werden und
+    # wie ein Rückholhinweis lautet, ändert sich mit der Erkennung. Der Melde-Knoten nimmt
+    # ihn als `{{ spam.karte_titel }}` / `{{ spam.karte_text }}` und bleibt selbst allgemein.
+    titel, text = karte(verdict, vorentschieden=vorentschieden, rueckholbar=rueckholbar)
+    inst.context = {**ctx, "spam": {**urteil, "verdict_id": verdict.id, "karte": art,
+                                    "karte_titel": titel, "karte_text": text,
+                                    "karte_faellig": bool(sofort),
+                                    "karte_art": "spam_auto" if rueckholbar else "spam_review"}}
     return {"action": "spam_card", "verdict_id": verdict.id, "karte": art,
-            "vorentschieden": vorentschieden}
+            "vorentschieden": vorentschieden, "selbst_gemeldet": bool(sofort and selbst_melden)}
 
 
 async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:

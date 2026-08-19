@@ -98,6 +98,12 @@ class WebhookSub(TimestampMixin, Base):
     ref_field: Mapped[str | None] = mapped_column(String(120), nullable=True)  # → source_ref (Idempotenz)
     notify_chat: Mapped[str | None] = mapped_column(String(64), nullable=True)
     permissions_json: Mapped[list] = mapped_column(JSON, default=list)  # policy for project-less tasks
+    # Answer back to the caller (mode 'workflow'): how many seconds the request may be held
+    # open until the flow has produced its answer (0 = answer at once, as before). What is
+    # sent back is what the flow itself wrote — `antwort` in the context (action `antwort`),
+    # or, when a map stands here, exactly the fields it names ({field: context.path}).
+    response_timeout: Mapped[int] = mapped_column(Integer, default=0)
+    response_map: Mapped[dict] = mapped_column(JSON, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 

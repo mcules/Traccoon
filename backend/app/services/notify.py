@@ -62,12 +62,18 @@ def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
     return reihenfolge[0]
 
 
+# What a notification can hang off besides project and ticket. The bot decides by `kind`
+# which buttons it attaches, and it finds the thing they act on over exactly these columns.
+BEZUEGE = ("issue_id", "assistant_task_id", "spam_verdict_id", "project_id")
+
+
 async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: str = "",
                     body: str = "", kanal: str = "", project_id: int | None = None,
                     issue_id: int | None = None,
                     drossel_key: str = "", drossel_minuten: float = 0,
                     title_key: str = "", body_key: str = "",
-                    werte: dict[str, object] | None = None) -> dict:
+                    werte: dict[str, object] | None = None,
+                    bezug: dict[str, int] | None = None) -> dict:
     """Create a notification and send it out on the fitting channel.
 
     The messenger is still handled by the bot process, the only one holding the bot token,
@@ -115,6 +121,12 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
                      issue_id=issue_id, kind=kind, title=title[:500], body=(body or "")[:4000],
                      drossel_key=(drossel_key or None),
                      chat_id=(ziel or OWNER_CHAT or None) if gewaehlt == "telegram" else None)
+    # A reference makes the message actionable: only with it does the bot know WHICH verdict
+    # its "get it back" button undoes. Unknown keys are ignored instead of failing — the
+    # sender is a flow, and a typo there must not tear down the notification.
+    for feld, wert in (bezug or {}).items():
+        if feld in BEZUEGE and wert is not None:
+            setattr(n, feld, int(wert))
     db.add(n)
 
     if gewaehlt == "email":

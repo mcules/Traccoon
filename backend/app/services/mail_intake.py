@@ -2,7 +2,8 @@
 
 What happens to the mail (classifying, checking for spam, asking, clearing away or giving it
 to the assistant) has stood in the graph of the slot `mail_intake` since the changeover
-(`workflow_seed.build_mail_intake`, steps in `mail_actions.py`). What remains here is what a
+(template `mail-eingang` in `workflow_templates`, steps in `mail_actions.py`). What remains
+here is what a
 trigger has to be able to do: not report the same mail twice and pass the settings of the
 webhook along so that the steps can read them.
 

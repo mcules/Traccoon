@@ -13,7 +13,7 @@ from app.models.agents import AgentDefinition
 from app.models.assistant import AssistantTask
 from app.models.secrets import ProviderToken
 from app.services import mail_intake
-from app.services.workflow_seed import ensure_builtin_set
+from app.services import workflow_templates
 from sqlalchemy import select
 
 from conftest import make_user
@@ -21,8 +21,10 @@ from conftest import make_user
 
 @pytest.fixture
 async def anna(db):
-    await ensure_builtin_set(db)
-    return await make_user(db, "anna")
+    user = await make_user(db, "anna")
+    await workflow_templates.anlegen(db, "mail-eingang", besitzer_id=user.id)
+    await db.commit()
+    return user
 
 
 async def _mail(db, owner_id, agent: str, uid: int) -> AssistantTask:

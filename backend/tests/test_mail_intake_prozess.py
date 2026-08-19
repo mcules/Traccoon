@@ -12,7 +12,7 @@ from app.models.notification import Notification
 from app.models.workflow import WorkflowInstance, WorkflowStepRun
 from app.services import mail_intake, spam_learn, spam_review
 from app.services.appsettings import set_setting
-from app.services.workflow_seed import ensure_builtin_set
+from app.services import workflow_templates
 from sqlalchemy import select
 
 from conftest import make_user
@@ -20,9 +20,11 @@ from conftest import make_user
 
 @pytest.fixture
 async def owner(db):
-    await ensure_builtin_set(db)
     user = await make_user(db, "dennis")
     user.telegram_chat_id = "4242"
+    # Der Mail-Eingang ist KEIN ausgelieferter Ablauf mehr, sondern einer aus der Vorlage —
+    # er gehört der Person, die ihn angelegt hat. Also legt ihn der Test auch so an.
+    await workflow_templates.anlegen(db, "mail-eingang", besitzer_id=user.id)
     await db.commit()
     # So that the question comes as a card of its own immediately in the test instead of
     # waiting for the digest beat: what is checked is the path, not the height of the threshold.
@@ -236,5 +238,160 @@ async def test_serverurteil_schweigt_solange_auto_aus_ist(db, owner, imap_stub):
         "from": [{"name": "", "addr": "wer@zufall.top"}],
         "subject": "***SPAM*** Angebot",
         "headers": {"X-Spam-Flag": "YES", "Received-Count": 1}}))
+    assert inst.status == WorkflowInstanceStatus.waiting
+    assert imap_stub == []
+
+
+# ── Melden ist ein Schritt, kein Nebeneffekt ─────────────────────────────────
+
+async def _melde_knoten_abschalten(db, node_id: str) -> None:
+    """Den Melde-Schritt abschalten — dasselbe, was das Häkchen im Editor tut."""
+    import copy
+
+    from app.models.enums import WorkflowVersionStatus
+    from app.models.workflow import WorkflowDefinition, WorkflowVersion
+
+    d = (await db.execute(select(WorkflowDefinition).where(
+        WorkflowDefinition.key == "mail-eingang"))).scalars().first()
+    alt = await db.get(WorkflowVersion, d.current_version_id)
+    graph = copy.deepcopy(alt.graph)
+    treffer = [n for n in graph["nodes"] if n["id"] == node_id]
+    assert treffer, f"Knoten {node_id} steht nicht im ausgelieferten Ablauf"
+    treffer[0]["data"]["config"].update(deaktiviert=True, deaktiviert_modus="ueberspringen")
+    neu = WorkflowVersion(definition_id=d.id, version=alt.version + 1, graph=graph,
+                          status=WorkflowVersionStatus.published)
+    db.add(neu)
+    await db.flush()
+    d.current_version_id = neu.id
+    await db.commit()
+
+
+async def test_melden_laesst_sich_abschalten_ohne_die_aussortierung(db, owner, imap_stub):
+    """Der eigentliche Zweck der Trennung: kein Ton, aber die Mail geht trotzdem weg.
+
+    Vorher hing die Karte in derselben Aktion wie das Urteil. Wer die Nachricht loswerden
+    wollte, hätte den Schritt abschalten müssen — und damit das Urteil, an dem Verschieben
+    und Lernen hängen. Jetzt trifft der Schalter nur die Nachricht.
+    """
+    await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
+    await _melde_knoten_abschalten(db, "melde_auto")
+
+    inst = await _melden(db, owner, _verdaechtig(uid=8100))
+
+    assert inst.status == WorkflowInstanceStatus.completed
+    assert imap_stub[0][0] == "mark_spam", "die Mail wird weiterhin weggeräumt"
+    verdict = (await db.execute(select(SpamVerdict))).scalars().one()
+    assert verdict.status == "spam", "das Urteil entsteht und wird gelernt"
+    assert (await db.execute(select(Notification))).scalars().all() == [], "kein Ton"
+
+
+async def test_melde_knoten_haengt_die_karte_an_das_urteil(db, owner, imap_stub):
+    """Die Karte muss handhabbar bleiben: der Knopf „zurückholen" braucht den Bezug."""
+    await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
+    inst = await _melden(db, owner, _verdaechtig(uid=8101))
+
+    assert inst.status == WorkflowInstanceStatus.completed
+    verdict = (await db.execute(select(SpamVerdict))).scalars().one()
+    karte = (await db.execute(select(Notification))).scalars().one()
+    assert karte.kind == "spam_auto" and karte.spam_verdict_id == verdict.id
+    assert karte.user_id == owner.id and karte.chat_id == owner.telegram_chat_id
+
+
+async def test_einstellung_schaltet_die_meldung_ab_nicht_die_aussortierung(db, owner, imap_stub):
+    """Der Schalter für den Alltag: ohne Kopie des Ablaufs, nur über die Einstellung.
+
+    Ein eigener Prozess-Satz wäre hier der falsche Weg — er ist eine Vollkopie und liefe
+    neben dem ausgelieferten Ablauf, also zweimal pro Mail. Deswegen liest die Weiche vor dem
+    Melde-Schritt den Wert aus dem Urteil.
+    """
+    await set_setting(db, spam_review.AUTO_AB_KEY, "0.5")
+    await set_setting(db, spam_review.AUTO_MELDEN_KEY, "0")
+
+    inst = await _melden(db, owner, _verdaechtig(uid=8200))
+
+    assert inst.status == WorkflowInstanceStatus.completed
+    assert imap_stub[0][0] == "mark_spam", "die Mail wird weiterhin weggeräumt"
+    verdict = (await db.execute(select(SpamVerdict))).scalars().one()
+    assert verdict.status == "spam", "das Urteil steht in der Übersicht und wird gelernt"
+    assert (await db.execute(select(Notification))).scalars().all() == [], "kein Ton"
+
+
+async def test_rueckfrage_bleibt_trotz_abgeschalteter_automeldung(db, owner, imap_stub):
+    """Wer gefragt werden will, wird gefragt: der Schalter gilt nur für das, was OHNE
+    Rückfrage weggeräumt wird."""
+    await set_setting(db, spam_review.AUTO_MELDEN_KEY, "0")
+
+    inst = await _melden(db, owner, _verdaechtig(uid=8201))
+
+    assert inst.status == WorkflowInstanceStatus.waiting, "die Frage steht noch offen"
+    karte = (await db.execute(select(Notification))).scalars().one()
+    assert karte.kind == "spam_review"
+
+
+# ── Das Urteil des lokalen Modells im Ablauf ─────────────────────────────────
+
+@pytest.fixture
+def modell_stub(monkeypatch):
+    """Replace the local classification. `mail_actions` imports it inside the function, so
+    patching the module the function reads from is what takes hold."""
+    from app.services import mail_classify
+
+    def antwort(**over):
+        async def fake(*a, **kw):
+            return {"category": "sonstiges", "priority": "normal", "sensitive": False,
+                    "redacted_summary": "", "spam_score": 0.95, "spam_reason": "Phishing",
+                    "betrug": True, "merkmale": [{"kennung": "marke_fremde_domain",
+                                                  "text": "gibt sich als N26 aus"}],
+                    **over}
+        monkeypatch.setattr(mail_classify, "classify_email", fake)
+    return antwort
+
+
+def _n26(uid: int = 9101) -> dict:
+    """Technically flawless, and still a forgery: brand name, foreign domain."""
+    return _mail(uid=uid, **{
+        "from": [{"name": "N26", "addr": "kundensicherheitscenter@fremde-firma.example"}],
+        "subject": "Neue Mitteilung",
+        "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
+                    "Return-Path": "<b@fremde-firma.example>", "Received-Count": 3}})
+
+
+async def _melden_klassifiziert(db, owner, payload) -> WorkflowInstance:
+    ids = await mail_intake.intake_mail(db, owner.id, payload, source="mail",
+                                        agent="assistent", classify_agent="mail_classifier")
+    assert len(ids) == 1
+    return await db.get(WorkflowInstance, ids[0])
+
+
+async def test_modellurteil_raeumt_ohne_rueckfrage_weg(db, owner, imap_stub, modell_stub):
+    """The case of 2026-08-19: rules 0.4, model 0.95, and the mixture landed at 0.731."""
+    modell_stub()
+    await set_setting(db, spam_review.AUTO_AB_KEY, "0.95")
+    inst = await _melden_klassifiziert(db, owner, _n26())
+
+    assert inst.status == WorkflowInstanceStatus.completed
+    assert imap_stub[0][0] == "mark_spam"
+    verdict = (await db.execute(select(SpamVerdict))).scalars().one()
+    assert verdict.status == "spam" and verdict.decided_by == "auto"
+    assert verdict.rule_score < 0.5, "die Regeln allein hätten es nie getragen"
+    assert verdict.art == "phishing"
+    assert any(b["quelle"] == "modell" for b in verdict.befunde)
+    karte = (await db.execute(select(Notification))).scalars().one()
+    assert karte.kind == "spam_auto"
+
+
+async def test_modellurteil_schweigt_solange_auto_aus_ist(db, owner, imap_stub, modell_stub):
+    """Auto off is a deliberate decision of a human; the model does not overrule it."""
+    modell_stub()
+    inst = await _melden_klassifiziert(db, owner, _n26(uid=9102))
+    assert inst.status == WorkflowInstanceStatus.waiting
+    assert imap_stub == []
+
+
+async def test_ohne_betrugsurteil_bleibt_alles_beim_alten(db, owner, imap_stub, modell_stub):
+    """Advertising the model is sure about is still not fraud, and stays a question."""
+    modell_stub(betrug=False, category="werbung", spam_reason="unerwünschte Werbung")
+    await set_setting(db, spam_review.AUTO_AB_KEY, "0.95")
+    inst = await _melden_klassifiziert(db, owner, _n26(uid=9103))
     assert inst.status == WorkflowInstanceStatus.waiting
     assert imap_stub == []
