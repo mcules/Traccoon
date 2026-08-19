@@ -1,4 +1,4 @@
-"""Token-/Secret-Auflösung für den Worker aus dem Secret-Tresor (Fernet+DB)."""
+"""Token and secret resolution for the worker from the secret vault (Fernet plus database)."""
 from __future__ import annotations
 
 from sqlalchemy import select
@@ -19,7 +19,7 @@ async def _system_secret(db: AsyncSession, name: str) -> str | None:
 
 
 async def resolve_ref(db: AsyncSession, raw: str, owner_id: int | None) -> str:
-    """`secret:<name>` → Tresor-Wert (User- dann System-scoped); sonst Wert unverändert."""
+    """`secret:<name>` becomes the vault value (user scoped, then system scoped); otherwise the value is unchanged."""
     if not raw:
         return ""
     if not raw.startswith("secret:"):
@@ -58,8 +58,8 @@ async def resolve_codex_token(db: AsyncSession, owner_id: int | None) -> str | N
 
 async def resolve_provider_token(db: AsyncSession, owner_id: int | None, provider: str,
                                  token_name: str = "") -> str | None:
-    """LLM-Token für (User, Provider): benannter ProviderToken → Default-ProviderToken →
-    Alt-Feld (claude/codex) bzw. System-Secret. Rückwärtskompatibel."""
+    """LLM token for (user, provider): a named ProviderToken, then the default ProviderToken,
+    then the legacy field (claude/codex) respectively the system secret. Backwards compatible."""
     if owner_id:
         q = select(ProviderToken).where(ProviderToken.user_id == owner_id,
                                         ProviderToken.provider == provider)
@@ -69,20 +69,20 @@ async def resolve_provider_token(db: AsyncSession, owner_id: int | None, provide
             row = (await db.execute(q.where(ProviderToken.is_default.is_(True)))).scalar_one_or_none()
         if row:
             return decrypt_secret(row.value_enc)
-    # Kein benannter Token → Bestands-Default (Subscriptions bleiben erstklassig).
+    # No named token, so the existing default (subscriptions stay first class).
     if provider in ("claude_code", "claude", "anthropic"):
         return await resolve_claude_token(db, owner_id)
     if provider == "codex":
         return await resolve_codex_token(db, owner_id)
-    # openai o. Ä. ohne Token → System-Secret gleichen Namens.
+    # openai or similar without a token: the system secret of the same name.
     return await _system_secret(db, provider)
 
 
 async def resolve_provider_base_url(db: AsyncSession, owner_id: int | None, provider: str,
                                     token_name: str = "") -> str | None:
-    """Eigene Base-URL des zu (User, Provider, token_name) gehörenden ProviderToken-Rows
-    (benannt → Default). Nur echte ProviderToken-Rows tragen eine Base-URL; ohne Row bzw.
-    ohne gesetzte URL → None (Provider nutzt seinen Default-Endpoint)."""
+    """The own base URL of the ProviderToken row belonging to (user, provider, token_name)
+    (named, then default). Only real ProviderToken rows carry a base URL; without a row or
+    without a set URL it is None (and the provider uses its default endpoint)."""
     if not owner_id:
         return None
     q = select(ProviderToken).where(ProviderToken.user_id == owner_id,
@@ -100,5 +100,5 @@ async def resolve_git_token(db: AsyncSession, project_git_token_enc: str, owner_
         tok = await resolve_ref(db, project_git_token_enc, owner_id)
         if tok:
             return tok
-    # per-User- dann System-Secret `git:<host>`
+    # per-user, then the system secret `git:<host>`
     return await resolve_ref(db, f"secret:git:{host}", owner_id) or None

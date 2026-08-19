@@ -59,7 +59,6 @@ const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
  * Drei Ebenen nach ALMEX-Vorbild: ein **Artefakt-Typ** ordnet (Vorgang, Gegenstand), ein
  * **Artefakt** ist die Sache selbst (Ticket, Hardware), und darunter hängen die **Felder**
  * mit ihrer **Werteliste**. Am Feld steht, ob ein einzelnes Exemplar einen oder mehrere
- * Werte daraus tragen darf.
  */
 export default function ArtifactTypesPanel() {
   const qc = useQueryClient();

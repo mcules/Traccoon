@@ -1,12 +1,12 @@
 import type { AutoActionName } from "../types";
 
 /**
- * Was eine Aktion einstellen kann — je Aktion ausgeschrieben, damit im Editor direkt
- * sichtbar ist, welche Felder es gibt und welche Werte erlaubt sind. Ohne diese Beschreibung
- * blieb nur ein leeres Schlüssel/Wert-Feld, in das man die richtigen Namen erraten musste.
+ * What an action can configure, written out per action so that it is directly visible in the
+ * editor which fields exist and which values are allowed. Without this description only an
+ * empty key/value field remained, in which one had to guess the right names.
  *
- * `options` kann statisch sein oder zur Laufzeit gefüllt werden (Board-Spalten, Agenten,
- * Mitglieder) — siehe `ActionParams.tsx`.
+ * `options` can be static or filled at runtime (board columns, agents, members); see
+ * `ActionParams.tsx`.
  */
 export type FieldType = "text" | "textarea" | "number" | "boolean" | "select" | "kv" | "json";
 
@@ -16,25 +16,25 @@ export interface FieldSpec {
   type: FieldType;
   /** Auswahlwerte: [Wert, Beschriftung]. */
   options?: [string, string][];
-  /** Laufzeit-Quelle für die Auswahl. */
+  /** Runtime source for the selection. */
   source?: "board_status" | "agent_role" | "member" | "artifact_status" | "artifact_field"
     | "mcp_tool" | "person";
   placeholder?: string;
   hint?: string;
-  /** Vorbelegung, solange nichts gesetzt ist (wichtig bei Ja/Nein-Feldern). */
+  /** Prefill as long as nothing is set (important with yes/no fields). */
   default?: boolean;
-  /** Feld nur zeigen, wenn ein anderes Feld diesen Wert hat. */
+  /** Show the field only when another field has this value. */
   showIf?: [string, string[]];
   required?: boolean;
 }
 
 export interface ActionSpec {
-  /** Ein Satz: was die Aktion tut. */
+  /** One sentence: what the action does. */
   summary: string;
   fields: FieldSpec[];
-  /** Ausgänge, die die Aktion erzeugt (asynchrone Aktionen). */
+  /** Exits the action produces (asynchronous actions). */
   outcomes?: string;
-  /** Für welche Subjekte die Aktion sinnvoll ist. Leer = für alle. */
+  /** Which subjects the action makes sense for. Empty = for all. */
   subjects?: ("issue" | "hardware_asset" | "standalone")[];
 }
 
