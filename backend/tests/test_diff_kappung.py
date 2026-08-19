@@ -1,10 +1,10 @@
-"""Ein gekappter Diff muss sich als gekappt zu erkennen geben.
+"""A truncated diff has to give itself away as truncated.
 
-TRA-32 am 2026-08-07, Prüfrunde 2: der Prüfer sah einen compose-Block, der „mittendrin
-abbricht (`v` als letzte Zeile)", und meldete eine unvollständige Service-Definition. Der
-Code war vollständig — gekappt hatte `diff_text` bei 20 000 Zeichen, stumm und mitten im
-Wort. Das kostete eine der zwei Korrektur-Runden und schickte das Ticket mit einem
-Phantom-Befund an den Menschen.
+TRA-32 on 2026-08-07, review round 2: the reviewer saw a compose block that "breaks off in
+the middle (`v` as the last line)" and reported an incomplete service definition. The code
+was complete; `diff_text` had truncated it at 20 000 characters, silently and in the middle
+of a word. That cost one of the two correction rounds and sent the ticket to the human with
+a phantom finding.
 """
 from app.worker import gitops
 
@@ -52,19 +52,19 @@ async def test_kappung_sagt_es_und_endet_auf_einer_zeilengrenze(monkeypatch):
 
 
 async def test_fehlende_dateien_werden_benannt(monkeypatch):
-    """Damit der Prüfer weiß, wo er selbst nachsehen muss — statt zu raten."""
+    """So that the reviewer knows where to look itself, instead of guessing."""
     text = await _text(monkeypatch, _diff(4, 60), 1000)
 
     assert "datei_3.py" in text.split("Diff gekappt")[1]
 
 
 async def test_diff_zeigt_auch_uncommittete_korrekturen(monkeypatch, tmp_path):
-    """Das Review-Gate muss den ARBEITSSTAND sehen, nicht nur die Commits.
+    """The review gate has to see the WORKING STATE, not only the commits.
 
-    Committet wird erst NACH dem Gate. Mit `base...HEAD` sah der Prüfer deshalb den Stand vor
-    seinen eigenen Befunden, und die Stillstands-Erkennung meldete „nichts verändert" — beide
-    Tickets vom 2026-08-07 endeten so nach genau einer Korrekturrunde, obwohl die Korrektur
-    längst geschrieben war.
+    Committing happens only AFTER the gate. With `base...HEAD` the reviewer therefore saw the
+    state before its own findings, and the standstill detection reported "nothing changed";
+    both tickets of 2026-08-07 ended that way after exactly one correction round although the
+    correction had long been written.
     """
     befehle: list[tuple] = []
 
@@ -95,12 +95,12 @@ async def test_diff_zeigt_auch_uncommittete_korrekturen(monkeypatch, tmp_path):
 
 
 async def test_basis_ist_der_abzweigpunkt_auch_mit_base_commit(monkeypatch):
-    """`git_base_sha` ist der main-Stand beim letzten Vorbereiten, NICHT der Abzweigpunkt.
+    """`git_base_sha` is the main state at the last preparation, NOT the branching point.
 
-    `prepare` schreibt ihn bei jeder Wiederverwendung des Worktrees neu. Ein Zwei-Punkt-Diff
-    gegen diesen Stand zeigt alles, was main seit dem echten Abzweig dazubekommen hat, als
-    „gelöscht": bei TRA-31 am 2026-08-07 waren das 1993 Zeilen, und der Prüfer meldete, der
-    Agent habe den `may_plan_continue`-Knoten entfernt — den er nie angefasst hatte.
+    `prepare` rewrites it on every reuse of the worktree. A two dot diff against that state
+    shows everything main has gained since the real branching as "deleted": with TRA-31 on
+    2026-08-07 that was 1993 lines, and the reviewer reported that the agent had removed the
+    `may_plan_continue` node, which it had never touched.
     """
     befehle: list[tuple] = []
 
@@ -119,7 +119,7 @@ async def test_basis_ist_der_abzweigpunkt_auch_mit_base_commit(monkeypatch):
     class _C:
         worktree = "/ws"
         workdir = "/ws"
-        base_commit = "c489052"      # main-Stand, nicht der Abzweig
+        base_commit = "c489052"      # the main state, not the branching point
         main = "main"
 
     await gitops.diff_text(_C())

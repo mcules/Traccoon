@@ -1,11 +1,11 @@
-"""Der Notifier schickt ein Medium mit, wenn eines daliegt — und sonst genau wie bisher Text.
+"""The notifier sends a medium along when one lies there, and otherwise text exactly as before.
 
-Der Ausgang nach Telegram ist der Notifier im telegram-bot-Prozess, und zwar als einziger:
-dem backend-Container fehlt `TELEGRAM_BOT_TOKEN` vollständig. Deshalb hängt der Medienweg
-an der Notification (`media_path`) und nicht an einem zweiten Absender.
+The way out to Telegram is the notifier in the telegram-bot process, and it is the only one:
+the backend container lacks `TELEGRAM_BOT_TOKEN` entirely. That is why the media path hangs
+off the notification (`media_path`) and not off a second sender.
 
-Getestet wird `_zustellen` direkt (kein aiogram-Bot, keine echte Notification) — nach dem
-Muster von `test_bot_buttons.py`: FakeBot statt Netz, kleines Attrappen-Objekt statt ORM.
+What is tested is `_zustellen` directly (no aiogram bot, no real notification), following the
+pattern of `test_bot_buttons.py`: a FakeBot instead of a network, a small dummy object instead of an ORM.
 """
 import datetime as dt
 
@@ -14,16 +14,16 @@ import pytest
 from app.bot.__main__ import _gif_masse, _zustellen
 
 
-# Kleinstes gültiges GIF89a, von Hand gesetzt: 480×270, eine Bildsteuerung mit
-# 100 Hundertstel Verzögerung (= 1 s), keine Farbtabellen. Ein echtes GIF als Fixture
-# wäre für die Frage „werden die Maße gelesen?" nur Ballast.
+# The smallest valid GIF89a, set by hand: 480x270, one graphic control with a delay of 100
+# hundredths (= 1 s), no colour tables. A real GIF as a fixture would be mere ballast for the
+# question "are the dimensions read?".
 def _gif(breite=480, hoehe=270, hundertstel=100) -> bytes:
     return (b"GIF89a"
             + breite.to_bytes(2, "little") + hoehe.to_bytes(2, "little")
-            + bytes([0x00, 0x00, 0x00])                       # keine globale Farbtabelle
+            + bytes([0x00, 0x00, 0x00])                       # no global colour table
             + b"\x21\xf9\x04\x00" + hundertstel.to_bytes(2, "little") + b"\x00\x00"
             + b"\x2c" + b"\x00" * 8 + b"\x00"                 # Bildbeschreibung
-            + b"\x02\x02\x44\x01\x00"                         # LZW-Größe + ein Teilblock
+            + b"\x02\x02\x44\x01\x00"                         # LZW size plus one sub-block
             + b"\x3b")
 
 
@@ -54,7 +54,7 @@ class FakeNotification:
         self.notified_at = None
 
 
-MARKUP = object()   # steht für die Inline-Tastatur; `_zustellen` reicht sie nur durch
+MARKUP = object()   # stands for the inline keyboard; `_zustellen` only passes it through
 
 
 async def test_medium_geht_als_animation_mit_beschriftung(tmp_path):
@@ -67,8 +67,8 @@ async def test_medium_geht_als_animation_mit_beschriftung(tmp_path):
     chat_id, kw = bot.animation
     assert chat_id == 4711 and bot.nachricht is None
     assert kw["caption"] == "<b>Feierabend</b>" and kw["parse_mode"] == "HTML"
-    # Maße kommen aus der Datei, nicht aus einer Konstante — Telegram dimensioniert die
-    # Blase daraus, BEVOR das GIF geladen ist.
+    # The dimensions come from the file, not from a constant: Telegram sizes the bubble from
+    # them BEFORE the GIF is loaded.
     assert (kw["width"], kw["height"], kw["duration"]) == (480, 270, 1)
     assert n.notified_at is not None
 
@@ -85,14 +85,14 @@ async def test_ohne_medium_bleibt_der_textweg_unveraendert():
 
 
 async def test_fehlende_datei_faellt_still_auf_text_zurueck(tmp_path):
-    """Ein Film, der nicht da ist, darf keine Nachricht verschlucken."""
+    """A film that is not there must not swallow a message."""
     bot, n = FakeBot(), FakeNotification(str(tmp_path / "gibt-es-nicht.gif"), "animation")
 
     await _zustellen(bot, n, "<b>Feierabend</b>", MARKUP)
 
     assert bot.animation is None
     assert bot.nachricht[1] == "<b>Feierabend</b>"
-    # Und trotzdem quittiert: sonst versucht der Poller dieselbe Zeile alle 3 s endlos neu.
+    # And acknowledged regardless: otherwise the poller retries the same row every 3 s forever.
     assert isinstance(n.notified_at, dt.datetime)
 
 
@@ -120,7 +120,7 @@ async def test_sendefehler_setzt_notified_at_trotzdem():
 
 
 async def test_beschriftung_wird_auf_1024_gekappt(tmp_path):
-    """Telegram weist zu lange Bildunterschriften ab — dann käme gar nichts an."""
+    """Telegram rejects captions that are too long, and then nothing would arrive at all."""
     datei = tmp_path / "buero.gif"
     datei.write_bytes(_gif())
     bot, n = FakeBot(), FakeNotification(str(datei), "animation")
@@ -141,13 +141,13 @@ async def test_media_kind_photo_nimmt_den_foto_weg(tmp_path):
 
 
 def test_gif_masse_schweigt_bei_fremdem_format():
-    """Kein GIF → keine Behauptung über Maße; Telegram misst dann selbst."""
+    """No GIF means no claim about dimensions; Telegram then measures itself."""
     assert _gif_masse(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40) == {}
     assert _gif_masse(b"") == {}
 
 
 def test_gif_masse_summiert_alle_verzoegerungen():
-    # Zwei Bilder à 1,5 s → 3 s. Ein Einzelbild-GIF (0) bekommt gar keine Dauer.
+    # Two frames at 1.5 s give 3 s. A single frame GIF (0) gets no duration at all.
     doppelt = _gif(hundertstel=150)[:-1] + _gif(hundertstel=150)[13:]
     assert _gif_masse(doppelt)["duration"] == 3
     assert "duration" not in _gif_masse(_gif(hundertstel=0))

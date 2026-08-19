@@ -1,9 +1,9 @@
-"""Wann der persönliche Assistent sich meldet — und wann er schweigt.
+"""When the personal assistant speaks up, and when it stays silent.
 
-Anlass: ein erledigtes „nichts zu tun" (AliExpress-Empfangsbestätigung) kam als
-Telegram-Nachricht an, obwohl der Assistent im Text selbst schrieb, er melde nicht. Grund
-war der bedingungslose Abschlussbericht. Seither gilt: der Lauf selbst ist keine Nachricht;
-gemeldet wird über `traccoon_notify_human`, bei Pannen und im Chat.
+The occasion: a finished "nothing to do" (an AliExpress receipt confirmation) arrived as a
+Telegram message although the assistant wrote in the text itself that it was not reporting.
+The reason was the unconditional closing report. Since then the rule is: the run itself is
+no message; reporting happens over `traccoon_notify_human`, on mishaps and in the chat.
 """
 import pytest
 from app.models.assistant import AssistantTask
@@ -17,7 +17,7 @@ from sqlalchemy import select
 async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
                 status: str = "done", meldet: bool = False, titel: str = "Bestellung 123",
                 blocker_kind: str | None = None):
-    """Ein Assistenten-Item durchlaufen lassen; `meldet` = der Agent ruft notify_human."""
+    """Let an assistant item run through; `meldet` = the agent calls notify_human."""
     t = AssistantTask(owner_user_id=owner.id, kind=kind, title=titel, status="approved",
                       redacted_summary="Zusammenfassung", meta={"chat_text": "Wie spät?"})
     db.add(t)
@@ -27,7 +27,7 @@ async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
     class Ergebnis:
         def __init__(self):
             self.status = {"done": "done", "error": "failed"}.get(status, status)
-            # ask_human liefert die Frage als `text`, ohne Zusammenfassung.
+            # ask_human delivers the question as `text`, without a summary.
             self.text = ("Ticket oder API-Freigabe?" if self.status == "blocked"
                          else "Erledigt. Kein Statuswechsel, keine Telegram-Nachricht.")
             self.summary = "" if self.status == "blocked" else self.text
@@ -36,7 +36,7 @@ async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
 
     async def fake_run_agent(**kwargs):
         if meldet:
-            # So würde `traccoon_notify_human` wirken: eigene Nachricht + Vermerk am Item.
+            # This is how `traccoon_notify_human` would act: its own message plus a note on the item.
             db.add(Notification(user_id=owner.id, kind="assistant", title="Frist am Freitag",
                                 body="Rechnung 240 € fällig", chat_id=owner.telegram_chat_id))
             obj = await db.get(AssistantTask, t.id)
@@ -56,7 +56,7 @@ async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
     monkeypatch.setattr(worker, "run_agent", fake_run_agent, raising=False)
     monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
     monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
-    # run_agent wird im Rumpf importiert — dort ebenfalls ersetzen.
+    # run_agent is imported in the body, so replace it there as well.
     import app.worker.runtime as rt
     monkeypatch.setattr(rt, "run_agent", fake_run_agent, raising=False)
 
@@ -78,14 +78,14 @@ async def owner(db):
 
 
 async def test_erledigtes_ohne_handlungsbedarf_bleibt_still(db, owner, monkeypatch):
-    """Der Fall aus der Praxis: abgelegt, nichts zu tun → keine Nachricht."""
+    """The case from practice: filed, nothing to do, so no message."""
     await _lauf(db, monkeypatch, owner=owner)
     assert await _nachrichten(db) == []
 
 
 async def test_ausdrueckliche_meldung_kommt_an_und_zwar_einmal(db, owner, monkeypatch):
-    """Meldet der Assistent selbst, geht GENAU seine Meldung raus — nicht zusätzlich der
-    Abschlussbericht (sonst käme dieselbe Sache zweimal)."""
+    """If the assistant reports itself, EXACTLY its message goes out, not the closing report
+    in addition (because otherwise the same thing would come twice)."""
     await _lauf(db, monkeypatch, owner=owner, meldet=True)
     n = await _nachrichten(db)
     assert len(n) == 1
@@ -99,7 +99,7 @@ async def test_panne_meldet_sich_immer(db, owner, monkeypatch):
 
 
 async def test_chat_wird_immer_beantwortet(db, owner, monkeypatch):
-    """Eine gestellte Frage will man beantwortet haben — auch bei „gar nicht"."""
+    """A question asked is a question one wants answered, even with "not at all"."""
     owner.assistant_notify = "never"
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner, kind="chat")
@@ -122,19 +122,19 @@ async def test_modus_gar_nicht_schweigt_auch_bei_pannen(db, owner, monkeypatch):
 
 
 async def test_rueckfrage_im_chat_kommt_an(db, owner, monkeypatch):
-    """Anlass: `ask_human` endete als 'blocked' und wurde als Tool-Gate missdeutet — die
-    Rückfrage verschwand still, der Mensch sah nur ein ewiges 'running'."""
+    """The occasion: `ask_human` ended as 'blocked' and was misread as a tool gate; the
+    question disappeared silently and the human saw only an eternal 'running'."""
     t = await _lauf(db, monkeypatch, owner=owner, kind="chat", status="blocked",
                     blocker_kind="ask_human")
     n = await _nachrichten(db)
     assert len(n) == 1 and "Ticket oder API-Freigabe?" in n[0].body
     await db.refresh(t)
-    # Erledigt, nicht 'running' — sonst fehlt der Wortwechsel später im Verlauf.
+    # Finished, not 'running'; otherwise the exchange is missing in the history later.
     assert t.status == "done" and t.result == "Ticket oder API-Freigabe?"
 
 
 async def test_rueckfrage_ohne_chat_meldet_trotz_modus_bedarf(db, owner, monkeypatch):
-    """Auch außerhalb des Chats (Mail-Eingang): eine Frage ohne Empfänger ist sinnlos."""
+    """Outside the chat as well (mail inbox): a question without a recipient is pointless."""
     owner.assistant_notify = "needed"
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner, status="blocked", blocker_kind="ask_human")
@@ -143,8 +143,8 @@ async def test_rueckfrage_ohne_chat_meldet_trotz_modus_bedarf(db, owner, monkeyp
 
 
 async def test_tool_freigabe_bleibt_still_und_offen(db, owner, monkeypatch):
-    """Das Gegenstück: beim Tool-Gate wartet das Item auf die Freigabekarte — es darf
-    weder finalisiert noch doppelt gemeldet werden."""
+    """The counterpart: with the tool gate the item waits for the approval card; it must be
+    neither finalised nor reported twice."""
     t = await _lauf(db, monkeypatch, owner=owner, status="blocked",
                     blocker_kind="assistant_perm")
     assert await _nachrichten(db) == []
@@ -153,7 +153,7 @@ async def test_tool_freigabe_bleibt_still_und_offen(db, owner, monkeypatch):
 
 
 async def test_meldewerkzeug_braucht_keine_freigabe(db, owner):
-    """Ohne diese Ausnahme hieße eine fehlende Allowlist-Freigabe „meldet nie" — dann
-    bliebe auch Wichtiges stumm."""
+    """Without this exception a missing allowlist approval would mean "never reports", and
+    then important things would stay mute as well."""
     from app.worker.runtime import _ALWAYS_ALLOWED
     assert "traccoon_notify_human" in _ALWAYS_ALLOWED
