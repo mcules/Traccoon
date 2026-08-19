@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const me = await api.get<User>("/auth/me");
       setUser(me);
-      // Server ist die Quelle des Themes: beim Laden anwenden (kein Umschalt-UI hier).
+      // The server is the source of the theme: apply it on loading (no toggle UI here).
       if (me.theme === "light" || me.theme === "dark") {
         document.documentElement.setAttribute("data-theme", me.theme);
         localStorage.setItem("traccoon_theme", me.theme);

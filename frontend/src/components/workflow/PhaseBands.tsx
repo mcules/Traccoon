@@ -18,7 +18,6 @@ export const PHASES: [string, string, string][] = [
  * The bands are computed from the actual positions of the nodes of a phase (`config.group`)
  * and not set fixed: if somebody moves a node, the band moves with it. Without group
  * entries nothing appears at all, so older and self-built flows look as before.
- * wie bisher.
  */
 export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
   // One band per contiguous block of a phase, NOT one hull around everything. If a side

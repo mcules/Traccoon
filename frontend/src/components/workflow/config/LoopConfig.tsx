@@ -8,7 +8,6 @@ import { tr } from "../../../i18n";
  * The list is a context path, usually the result of a step before it (`tool.json.items`,
  * `http.body.zeilen`) or something the trigger brought along. The rest are names: under
  * which key the current element stands and where the counter lands.
- * Zähler landet.
  */
 export default function LoopConfig({
   config,

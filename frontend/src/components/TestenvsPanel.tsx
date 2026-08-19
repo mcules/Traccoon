@@ -16,7 +16,7 @@ const BADGE: Record<string, string> = {
   error: "bg-red-500/20 text-red-400",
 };
 
-/** Übersicht aller Testumgebungen des Projekts (Ticket + Branch) mit Logs und Stop (TRA-18). */
+/** Overview of all test environments of the project (ticket plus branch) with logs and stop (TRA-18). */
 export default function TestenvsPanel({ project }: { project: Project }) {
   const qc = useQueryClient();
   const kann = project.my_role !== "viewer";

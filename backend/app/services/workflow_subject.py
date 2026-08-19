@@ -57,7 +57,7 @@ async def subjekt_aus_nutzlast(db: AsyncSession, definition, payload: dict, ctx:
     pfad = _feld(definition, (version.graph if version else {}) or {})
     if not pfad:
         # No field named: the flow needs an artifact, the trigger delivers none.
-        # Das ist ein Einrichtungsfehler und soll auffallen, nicht stumm ins Leere laufen.
+        # That is a setup error and should stand out instead of running into nothing silently.
         return None, None, (f"Dieser Ablauf hängt an einem Artefakt "
                             f"({definition.subject_kind.value}); im Start-Knoten ist aber "
                             f"kein Feld dafür benannt.")

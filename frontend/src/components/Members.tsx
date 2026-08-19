@@ -56,7 +56,7 @@ export default function Members({ project }: { project: Project }) {
     onSuccess: inv,
   });
 
-  // Nutzersuche (Benutzername/Anzeigename) zum Direkt-Hinzufügen bestehender Konten.
+  // User search (user name, display name) for adding existing accounts directly.
   const search = useQuery({
     queryKey: ["user-search", q],
     queryFn: () => api.get<{ id: number; username: string; display_name: string; status: string }[]>(

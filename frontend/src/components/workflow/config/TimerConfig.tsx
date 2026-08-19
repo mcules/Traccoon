@@ -1,7 +1,7 @@
 import type { NodeConfig } from "../types";
 import { tr } from "../../../i18n";
 
-/** Wie lange gewartet wird — eine Dauer ab jetzt oder ein fester Zeitpunkt. */
+/** How long is waited: a duration from now or a fixed point in time. */
 export default function TimerConfig({
   config,
   onChange,
