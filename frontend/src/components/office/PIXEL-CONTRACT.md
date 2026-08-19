@@ -1,86 +1,89 @@
-# Pixel-Vertrag — Traccoon „Büro"
+# Pixel contract: the Traccoon "office"
 
-Dies ist das Regelwerk für alles unter `src/components/office/`. Es ist kein Stilratgeber,
-sondern die Zusage, auf der sieben parallel gebaute Teile zusammenpassen. `frontend/tools/office-check.mjs`
-erzwingt die Regeln maschinell — was hier steht, bricht dort den Lauf.
+This is the rulebook for everything under `src/components/office/`. It is not a style guide but
+the promise on which seven parts built in parallel fit together. `frontend/tools/office-check.mjs`
+enforces the rules mechanically: what stands here breaks the run there.
 
-Jede Regel steht mit ihrer Begründung da. Wer eine Regel brechen will, muss die Begründung
-widerlegen, nicht die Regel übersehen.
+Every rule stands together with its reasoning. Whoever wants to break a rule has to refute the
+reasoning, not overlook the rule.
 
 ---
 
-## Regel 1 — Kunstebene 480×270, Bildpuffer 960×540 (die wichtigste Regel)
+## Rule 1: art level 480x270, frame buffer 960x540 (the most important rule)
 
-Es gibt genau ein Koordinatensystem, in dem gezeichnet wird: die **Kunstebene**, 480×270
-Einheiten (`ART`). Der Bildpuffer ist doppelt so fein — **960×540** (`PIX = ART × ART_SCALE`,
-`ART_SCALE = 2`). Zwischen beiden steht dieselbe Kamera-Hülle, die auch das Zoomen macht:
-`CAM_FULL` hat `zoom: ART_SCALE`.
+There is exactly one coordinate system that is drawn in: the **art level**, 480x270 units
+(`ART`). The frame buffer is twice as fine, **960x540** (`PIX = ART × ART_SCALE`,
+`ART_SCALE = 2`). Between the two stands the same camera wrapper that also does the zooming:
+`CAM_FULL` has `zoom: ART_SCALE`.
 
-> **Warum die Trennung, seit wann, und was sie soll**
+> **Why the separation, since when, and what it is for**
 >
-> Bis 2026-08-07 waren Kunstebene und Puffer dasselbe: 480×270. Auf einem 1080p-Schirm wurde
-> daraus ein 4×4-Klotz je gezeichnetem Pixel, und eine Figur von 16×24 war aus drei Metern ein
-> Daumennagel — „extrem pixelig", und zwar nicht als Stil, sondern als Nebenwirkung.
+> Until 2026-08-07 the art level and the buffer were the same: 480x270. On a 1080p screen that
+> became a 4x4 block per drawn pixel, and a figure of 16x24 was a thumbnail from three metres
+> away: "extremely pixelated", and not as a style but as a side effect.
 >
-> Die Kunstebene bleibt, damit **nichts umgerechnet werden muss**: jede vorhandene
-> Zeichenfunktion malt weiter in denselben Zahlen und liefert dasselbe Bild (jede Einheit wird
-> ein 2×2-Block). Der feinere Puffer ist der Platz, in den neue Kunst hineinwächst — Etappe für
-> Etappe, Objektfamilie für Objektfamilie, ohne dass zwischendurch etwas kaputt ist.
+> The art level stays so that **nothing has to be converted**: every existing drawing function
+> keeps painting in the same numbers and delivers the same picture (every unit becomes a 2x2
+> block). The finer buffer is the room new art grows into, stage by stage, object family by
+> object family, without anything being broken in between.
 >
-> **Wer feiner zeichnen will, zeichnet in Pufferpixeln** — also unter Umgehung der
-> Kamera-Hülle, mit `ART_SCALE` als Umrechnung. Solange eine Familie noch grob ist, bleibt sie
-> in Kunsteinheiten. Beides nebeneinander ist ausdrücklich erlaubt; das ist der ganze Zweck.
+> **Whoever wants to draw more finely draws in buffer pixels**, so bypassing the camera wrapper,
+> with `ART_SCALE` as the conversion. As long as a family is still coarse it stays in art units.
+> Both side by side is explicitly allowed; that is the whole purpose.
 
-Der sichtbare Canvas ist beliebig groß; er bekommt den Puffer ganzzahlig hochskaliert
+The visible canvas is arbitrarily large; it gets the buffer scaled up by an integer factor
 (`imageSmoothingEnabled = false`).
 
-> **Ganzzahlig ist die Zeichnung im Rückspeicher — das Einpassen in den Viewport macht CSS.**
+> **Integer applies to the drawing in the backing store; fitting into the viewport is done by CSS.**
 >
-> Der Rückspeicher (`canvas.width/height`) bleibt ein ganzzahliges Vielfaches von `PIX`; nur
-> dort gilt die Regel, denn ein Blit mit Faktor 1,5 liefe über halbe Spalten. Die **CSS-Größe**
-> des Canvas dagegen ist das größte 16:9-Rechteck, das in den Container passt — 480×270 *ist*
-> 16:9, also verzerrt nichts, und eine Richtung füllt immer vollständig. Hochgezogen wird per
-> `image-rendering: pixelated` (Klasse `.pixel-canvas` in `src/index.css`), nicht bilinear.
+> The backing store (`canvas.width/height`) stays an integer multiple of `PIX`, and only there
+> does the rule apply, because a blit with a factor of 1.5 would run over half columns. The **CSS
+> size** of the canvas on the other hand is the largest 16:9 rectangle that fits into the
+> container: 480x270 *is* 16:9, so nothing is distorted, and one direction always fills
+> completely. It is scaled up over `image-rendering: pixelated` (the class `.pixel-canvas` in
+> `src/index.css`), not bilinearly.
 >
-> Wer das zu „der sichtbare Canvas muss ein ganzzahliges Vielfaches sein" verkürzt, holt den
-> Fehler zurück, der hier stand: auf 1920×1080 ergab das Faktor 3 statt 3,76 und ringsum breite
-> leere Flächen — im Wandschirm, für den die Fläche der ganze Zweck ist.
+> Whoever shortens that to "the visible canvas has to be an integer multiple" brings back the bug
+> that stood here: on 1920x1080 that gave a factor of 3 instead of 3.76 and wide empty areas all
+> around, on the wall screen whose whole purpose is the area.
 >
-> Was daran hängt: **die Trefferprüfung**. `hitTest` will Pufferkoordinaten, die Zeigerposition
-> kommt in CSS-Pixeln, und dazwischen stehen jetzt zwei Faktoren (CSS → Rückspeicher → Puffer)
-> statt nur des Blit-Faktors. `Stage.toBuffer` rechnet deshalb über `getBoundingClientRect()`
-> **des Canvas** und beide Faktoren; wer einen vergisst, wählt eine Figur zu weit rechts.
+> What depends on it: **the hit test**. `hitTest` wants buffer coordinates, the pointer position
+> comes in CSS pixels, and between them there are now two factors (CSS to backing store to
+> buffer) instead of only the blit factor. `Stage.toBuffer` therefore computes over
+> `getBoundingClientRect()` **of the canvas** and both factors; whoever forgets one selects a
+> figure too far to the right.
 
-Die Simulation dagegen läuft in **`SCENE = 1600×900`**. Zwischen beiden steht `POS_SCALE = 0.3`:
+The simulation on the other hand runs in **`SCENE = 1600x900`**. Between the two stands
+`POS_SCALE = 0.3`:
 
-> **`POS_SCALE` gilt für Positionen. Für Sprites gilt es nicht.**
+> **`POS_SCALE` applies to positions. It does not apply to sprites.**
 
-Eine Figur ist **16×24 Kunsteinheiten** — ein knappes Elftel der Bildhöhe. Sie ist *nicht* 16×24
-Szenenpixel, die dann auf 5×7 schrumpfen. Wer die Sprites mitskaliert, malt Figuren mit 35 statt
-384 Pixeln und rechnet damit das gesamte Kunstbudget (≤20 KB, ~36 Arts) um den Faktor 3 falsch —
-und merkt es erst, wenn die Arts fertig und unbrauchbar sind.
+A figure is **16x24 art units**, a good eleventh of the picture height. It is *not* 16x24 scene
+pixels that then shrink to 5x7. Whoever scales the sprites along paints figures with 35 instead
+of 384 pixels and thereby miscalculates the whole art budget (<= 20 KB, about 36 arts) by a
+factor of 3, and notices only when the arts are finished and unusable.
 
-Praktisch heißt das in jeder Zeichenfunktion:
+In practice that means in every drawing function:
 
 ```ts
-const px = Math.round(actor.x * POS_SCALE);   // Position: skaliert
-const py = Math.round(actor.y * POS_SCALE);   // Position: skaliert
-drawPerson(ctx, px, py, look, pose);          // Sprite: 16×24 Pufferpixel, ungeskaliert
+const px = Math.round(actor.x * POS_SCALE);   // position: scaled
+const py = Math.round(actor.y * POS_SCALE);   // position: scaled
+drawPerson(ctx, px, py, look, pose);          // sprite: 16x24 buffer pixels, unscaled
 ```
 
-Möbel, Blasen, Schrift, Partikel: ebenfalls in Kunsteinheiten (bzw., wo eine Familie schon fein
-gezeichnet ist, in Pufferpixeln — Regel 1). `POS_SCALE` taucht in Schicht 1
-höchstens auf, um eine Szenenkoordinate hereinzuholen — nie, um eine Größe zu berechnen.
+Furniture, bubbles, text, particles: likewise in art units (respectively, where a family is
+already drawn finely, in buffer pixels, see rule 1). `POS_SCALE` appears in layer 1 at most in
+order to bring a scene coordinate in, never in order to compute a size.
 
 ---
 
-## Regel 2 — Zeichenregeln (Schicht 1)
+## Rule 2: drawing rules (layer 1)
 
-### 2.1 Drei Werkzeuge, mehr nicht
+### 2.1 Three tools, no more
 
-Auf dem 2D-Kontext existieren für Schicht 1 genau drei Dinge:
+On the 2D context exactly three things exist for layer 1:
 
-| erlaubt | verboten |
+| allowed | forbidden |
 |---|---|
 | `ctx.fillStyle` | `beginPath`, `moveTo`, `lineTo`, `arc`, `arcTo`, `ellipse`, `rect`, `fill`, `stroke`, `clip` |
 | `ctx.globalAlpha` | `createLinearGradient`, `createRadialGradient`, `createPattern` |
@@ -89,289 +92,291 @@ Auf dem 2D-Kontext existieren für Schicht 1 genau drei Dinge:
 | | `save`, `restore`, `translate`, `scale`, `rotate`, `setTransform` |
 | | `fillText`, `strokeText`, `measureText` |
 
-Gründe: Pfade und Verläufe rastern auf Subpixel-Kanten und zerstören die Pixeloptik; `save`/`restore`
-schleppen einen Zustandsstapel mit, der die goldenen Ops-Hashes von der Aufrufreihenfolge abhängig
-macht; `fillText` liefert je Plattform andere Pixel und wäre damit nicht mehr golden prüfbar.
-Schrift ist ein Art, kein Font.
+The reasons: paths and gradients rasterise on subpixel edges and destroy the pixel look;
+`save`/`restore` drag a state stack along that makes the golden ops hashes depend on the call
+order; `fillText` delivers different pixels per platform and would therefore no longer be golden
+checkable. Text is an art, not a font.
 
-Kurven gibt es trotzdem — als **gestufte `fillRect`-Läufe**: pro Zeile eine Kante berechnen, eine
-Rechteckzeile setzen. Ein Kreis ist eine Tabelle von Halbbreiten, kein `arc`.
+Curves exist regardless, as **stepped `fillRect` runs**: compute one edge per row, set one
+rectangle row. A circle is a table of half widths, not an `arc`.
 
-`globalAlpha` wird nach jedem Block wieder auf `1` gesetzt. Da es kein `restore` gibt, ist das
-Zurücksetzen die Pflicht des Aufrufers — ein vergessenes `globalAlpha` färbt den Rest des Bildes.
+`globalAlpha` is set back to `1` after every block. Since there is no `restore`, resetting is the
+duty of the caller: a forgotten `globalAlpha` colours the rest of the picture.
 
-Der Prüfer stellt der Zeichenschicht einen `ctx`-Proxy hin, der bei jedem anderen Zugriff wirft.
+The checker puts a `ctx` proxy in front of the drawing layer that raises on every other access.
 
-### 2.2 Die Signatur `(ctx, cx, yBase, …)`
+### 2.2 The signature `(ctx, cx, yBase, …)`
 
-Jede Weltzeichenfunktion (alles, was in der Szene steht: Figuren, Möbel, Requisiten) hat die Form
+Every world drawing function (everything that stands in the scene: figures, furniture, props) has
+the form
 
 ```ts
 function drawX(ctx: Ctx, cx: number, yBase: number, …): void
 ```
 
-- **`cx`** = waagerechte **Mitte** des Objekts in Pufferpixeln.
-- **`yBase`** = die Pufferzeile, **auf der das Objekt steht** — die erste Zeile *unter* dem Sprite.
-  Ein 24 Pixel hohes Sprite belegt also `yBase-24 … yBase-1` und beginnt mit
+- **`cx`** = the horizontal **centre** of the object in buffer pixels.
+- **`yBase`** = the buffer row **the object stands on**, the first row *below* the sprite. A
+  sprite 24 pixels high therefore occupies `yBase-24 … yBase-1` and begins with
   `ctx.fillRect(cx - 8, yBase - 24, …)`.
 
-Das ist keine Geschmacksfrage: die Szene sortiert vor dem Zeichnen nach `yBase` (Maler-Algorithmus,
-hinten zuerst). Ein Objekt, das über seinen Fußpunkt lügt — etwa seine Oberkante als `y` übergibt —
-sortiert falsch und verschwindet hinter Möbeln, vor denen es steht. Der Fehler sieht nach einem
-Tiefenproblem aus und ist ein Signaturproblem.
+That is not a matter of taste: the scene sorts by `yBase` before drawing (painter's algorithm,
+back first). An object that lies about its foot point, passing its top edge as `y` for instance,
+sorts wrongly and disappears behind furniture it stands in front of. The bug looks like a depth
+problem and is a signature problem.
 
-`Frame.actors` kommt aus der Engine bereits nach `y` sortiert. Wer eigene Objekte einmischt, sortiert
-mit demselben Schlüssel.
+`Frame.actors` comes from the engine already sorted by `y`. Whoever mixes objects of their own in
+sorts with the same key.
 
-### 2.3 Bewegung nur in ganzen Pixeln
+### 2.3 Movement only in whole pixels
 
-Gezeichnet wird ausschließlich auf ganzzahligen Pufferkoordinaten. Ein `fillRect` mit `x = 12.4`
-lässt der Browser über zwei Spalten mit halber Deckkraft laufen — bei einer laufenden Figur flimmert
-das sichtbar, bei einem Möbel verwischt die Kante.
+Drawing happens exclusively on integer buffer coordinates. A `fillRect` with `x = 12.4` is let
+run by the browser over two columns with half opacity: with a walking figure that flickers
+visibly, with a piece of furniture the edge smears.
 
-Gerundet wird **beim Rendern** (`Math.round` nach `× POS_SCALE`), nicht in der Engine. Die Engine
-rechnet in Szenenpixeln mit einem Subpixel-Akkumulator (`ActorState.sub`) weiter — siehe Regel 3.
+Rounding happens **while rendering** (`Math.round` after `× POS_SCALE`), not in the engine. The
+engine keeps computing in scene pixels with a subpixel accumulator (`ActorState.sub`), see rule 3.
 
 ---
 
-## Regel 3 — Determinismus (Schicht 0 und Schicht 1)
+## Rule 3: determinism (layers 0 and 1)
 
-Der Raum muss aus dem Ereignis-Log heraus **bitgleich** wiederherstellbar sein: Zurückspulen ist
-„neue Engine, Log von vorn abspielen". Alles, was nicht aus dem Log kommt, bricht das.
+The room has to be **bit identically** reconstructable out of the event log: rewinding is "new
+engine, replay the log from the start". Everything that does not come from the log breaks that.
 
-### 3.1 Verbotene Bezeichner
+### 3.1 Forbidden identifiers
 
-In den Schichten 0 und 1 kommen diese Zeichenketten nicht vor (Prüfer: Reinheits-Grep, Kommentare
-werden vorher entfernt):
+In layers 0 and 1 these strings do not occur (checker: purity grep, with comments removed
+beforehand):
 
 ```
 Math.random   Date.now   performance.now   new Date
 window.   document.   localStorage   toLocale
 ```
 
-`Math.random` ist offensichtlich. Die Uhren sind es weniger: eine Animationsphase aus
-`performance.now()` sieht live richtig aus und liefert beim Zurückspulen ein anderes Bild als beim
-ersten Mal. `toLocale*` hängt an der Zeitzone und der Sprache des Browsers — dasselbe Log ergäbe
-in zwei Tabs zwei verschiedene Zeitleisten. Formatierung gehört nach Schicht 2.
+`Math.random` is obvious. The clocks are less so: an animation phase from `performance.now()`
+looks right live and delivers a different picture on rewinding than the first time. `toLocale*`
+depends on the time zone and the language of the browser, so the same log would give two
+different timelines in two tabs. Formatting belongs in layer 2.
 
-### 3.2 Variation kommt aus dem Seed
+### 3.2 Variation comes from the seed
 
-Jede „Zufälligkeit" — Frisur, Hautton, Schrittlänge, Wackelphase, welcher Stuhl, welcher Spruch —
-ist eine reine Funktion aus `ActorState.seed`:
+Every "randomness" (hairstyle, skin tone, stride length, wobble phase, which chair, which line)
+is a pure function of `ActorState.seed`:
 
 ```ts
 const gait = 1 + (rnd01(mix(seed, SALT_PACE)) - 0.5) * 2 * PACE_SPREAD;
 ```
 
-`seed` selbst ist `hash32(agentId)`. Jede Verwendungsstelle bekommt ihr **eigenes** `SALT` als
-benannte Konstante; zwei Stellen mit demselben Salz sind korreliert (alle Langsamen haben rote
-Haare), und das fällt erst spät und peinlich auf.
+`seed` itself is `hash32(agentId)`. Every place of use gets its **own** `SALT` as a named
+constant; two places with the same salt are correlated (all the slow ones have red hair), and
+that stands out late and embarrassingly.
 
-**Zwei Seeds, nicht einer: `ActorState.seed` (individuell) und der Aussehen-Seed (Rolle).**
+**Two seeds, not one: `ActorState.seed` (individual) and the appearance seed (role).**
 
-`ActorState.seed` ist `hash32("run:8871")` — die **Lauf**-Id. Alles daraus ist damit pro Lauf neu,
-und genau das war zu viel: derselbe `developer` sah gestern anders aus als heute, wiedererkennen
-konnte man niemanden. Deshalb gibt es daneben `rollenSeed(role, seed)` = `mix(hash32(role), SALT_ROLLE)`
-(`pixel/palette.ts`). Die Aufteilung ist **nicht** verhandelbare Kosmetik, sondern folgt der
-Sichtbarkeit bei 16×24 Pixeln:
+`ActorState.seed` is `hash32("run:8871")`, the **run** id. Everything from it is therefore new per
+run, and exactly that was too much: the same `developer` looked different yesterday than today,
+and nobody could be recognised. That is why there is `rollenSeed(role, seed)` =
+`mix(hash32(role), SALT_ROLLE)` beside it (`pixel/palette.ts`). The split is **not** negotiable
+cosmetics but follows the visibility at 16x24 pixels:
 
-| Merkmal | Quelle | Warum |
+| trait | source | why |
 |---|---|---|
-| Hemdfarbe | **Rolle** | größte zusammenhängende Farbfläche eines Sprites — aus drei Metern *die* Information |
-| Haarfarbe | **Rolle** | zweitgrößte Fläche; mit dem Hemd zusammen ein Wappen |
-| Torso (Form) | **Rolle** | Schultersilhouette, trägt die Rolle auch von hinten (der Chefplatz zeigt `DIR_BACK`) |
-| Kopf, Haut, Arme, Beine, Haarform, Hosenfarbe | **`seed`** | damit zwölf `developer` unterscheidbar bleiben |
-| alle sieben `gaitOf`-Felder | **`seed`** | die Bewegung sieht man vor der Frisur — sie ist der eigentliche Träger der Individualität |
-| `Priv.pace`, Abgangsstreuung, Atem, `fx.seed` | **`seed`** | sonst gehen alle gleichzeitig durch dieselbe Tür |
-| Sitzplatz (`seatOf(a.id)`) | **Lauf-Id** | `seatOf` sondiert linear — zwölf `developer` bekämen zwölf **aufeinanderfolgende** Plätze, die linke Bank wäre eine Monokultur |
+| shirt colour | **role** | the largest contiguous colour area of a sprite, *the* information from three metres |
+| hair colour | **role** | the second largest area; together with the shirt a coat of arms |
+| torso (shape) | **role** | the shoulder silhouette, which carries the role from behind as well (the chief's seat shows `DIR_BACK`) |
+| head, skin, arms, legs, hair shape, trouser colour | **`seed`** | so that twelve `developer` stay distinguishable |
+| all seven `gaitOf` fields | **`seed`** | the movement is seen before the hairstyle, so it is the actual carrier of individuality |
+| `Priv.pace`, leaving spread, breathing, `fx.seed` | **`seed`** | otherwise everybody goes through the same door at the same time |
+| seat (`seatOf(a.id)`) | **run id** | `seatOf` probes linearly, so twelve `developer` would get twelve **consecutive** seats and the left bench would be a monoculture |
 
-Drei Dinge daran sind Vertrag, nicht Geschmack:
+Three things about that are contract, not taste:
 
-- **Es gibt keine Rollen-Farbtabelle.** Rollen sind Daten (`developer`, `assistent`, `architect`,
-  `code_reviewer`, `project_manager`, `uniwar-operator`, `news` — und morgen eine achte), keine
-  Aufzählung. Eine Tabelle bräuchte Pflege bei jedem neuen Agenten und hätte für unbekannte Rollen
-  gar keinen Eintrag; `hash32(role)` gibt jeder Rolle für immer eine stabile Farbe.
-- **Leere Rolle → der Laufseed.** Eine namenlose Figur soll nicht alle namenlosen Figuren einander
-  gleichmachen. Weil `rolle === seed` dabei genau die alten Salze trifft, ist der rollenlose Fall
-  bitgleich zum Verhalten vor der Aufteilung.
-- **Das Aussehen wird beim Zeichnen aufgelöst, nie in einen Seed zurückgeschrieben.** `engine.ts`
-  setzt `a.role` erst *nach* `ensureActor`, und `wake(id)` ruft `ensureActor` ganz ohne Rolle. Ein
-  einmalig gespeicherter Aussehen-Seed müsste also nachträglich überschrieben werden — mit der
-  Auflösung in Schicht 1 bekommt die Figur ihr Rollenaussehen einfach im ersten Bild, in dem die
-  Rolle bekannt ist. Deshalb lebt das Ganze in `pixel/palette.ts` (Schicht 1, darf `ids.ts`
-  importieren) und **nicht** in Schicht 0: `ActorState.role` steht bereits im `Frame`, es braucht
-  kein neues Feld — und damit bleibt Prüfung 3 (goldenes Frame-JSON) bytegleich, während nur
-  Prüfung 8 (Pixel-Ops) sich ändert.
+- **There is no role colour table.** Roles are data (`developer`, `assistent`, `architect`,
+  `code_reviewer`, `project_manager`, `uniwar-operator`, `news`, and an eighth tomorrow), not an
+  enumeration. A table would need maintenance with every new agent and would have no entry at all
+  for unknown roles; `hash32(role)` gives every role a stable colour forever.
+- **An empty role means the run seed.** A nameless figure should not make all nameless figures
+  alike. Because `role === seed` hits exactly the old salts in the process, the role-less case is
+  bit identical to the behaviour before the split.
+- **The appearance is resolved while drawing, never written back into a seed.** `engine.ts` sets
+  `a.role` only *after* `ensureActor`, and `wake(id)` calls `ensureActor` without a role at all.
+  An appearance seed stored once would therefore have to be overwritten afterwards; with the
+  resolution in layer 1 the figure simply gets its role appearance in the first frame in which
+  the role is known. That is why the whole thing lives in `pixel/palette.ts` (layer 1, which may
+  import `ids.ts`) and **not** in layer 0: `ActorState.role` already stands in the `Frame`, so no
+  new field is needed, and thereby check 3 (the golden frame JSON) stays byte identical while
+  only check 8 (pixel ops) changes.
 
-### 3.3 Subpixel-Akkumulator
+### 3.3 Subpixel accumulator
 
-Positionen werden als Fließkomma integriert und **nur beim Rendern** gerundet:
+Positions are integrated as floating point and rounded **only while rendering**:
 
 ```ts
-a.sub.x += vx * dt;                       // Bruchteile bleiben erhalten
+a.sub.x += vx * dt;                       // fractions are kept
 const step = Math.trunc(a.sub.x);
-a.x += step; a.sub.x -= step;             // ganze Szenenpixel wandern nach x
+a.x += step; a.sub.x -= step;             // whole scene pixels wander into x
 ```
 
-Wer stattdessen pro Tick rundet, verliert bei kleinen `dt` jede Bewegung (`round(0.4) = 0`) und
-verletzt damit sofort Regel 3.4.
+Whoever rounds per tick instead loses every movement with small `dt` (`round(0.4) = 0`) and
+thereby violates rule 3.4 immediately.
 
-### 3.4 dt-Split-Invarianz
+### 3.4 dt split invariance
 
-> `tick(200)` muss denselben Zustand ergeben wie `tick(25)` achtmal.
+> `tick(200)` has to give the same state as `tick(25)` eight times.
 
-Das ist die Regel, die Live-Betrieb und Replay überhaupt erst gleichsetzt: live kommen Ticks im
-rAF-Takt, beim Zurückspulen in `REPLAY_STEP_MS`-Schritten. Wären die Ergebnisse verschieden, zeigte
-die Zeitleiste einen anderen Raum als die Bühne.
+That is the rule that equates live operation and replay in the first place: live the ticks come in
+the rAF beat, while rewinding they come in `REPLAY_STEP_MS` steps. If the results differed, the
+timeline would show a different room from the stage.
 
-Daraus folgt hart:
+From that follows hard:
 
-- **Alle Phasen kommen aus `engine.t`**, nie aus einem Tick-Zähler.
-  Richtig: `const frame = Math.floor(t / 120) % 4;` — falsch: `a.frame = (a.frame + 1) % 4;`
-- Keine Schwelle der Form „alle 10 Ticks"; Schwellen sind Zeitpunkte (`if (t >= a.busy)`).
-- Zufall darf nicht pro Tick gezogen werden, sondern pro Ereignis (siehe 3.2).
-- `dt` selbst ist geklemmt: `dt = min(MAX_GAP_MS, max(0, ts - prev))` — **beidseitig**, denn unter
-  `WORKER_CONCURRENCY > 1` kann `ts` gegenüber `seq` rückwärts laufen.
+- **All phases come from `engine.t`**, never from a tick counter.
+  Right: `const frame = Math.floor(t / 120) % 4;` — wrong: `a.frame = (a.frame + 1) % 4;`
+- No threshold of the form "every 10 ticks"; thresholds are moments (`if (t >= a.busy)`).
+- Randomness must not be drawn per tick but per event (see 3.2).
+- `dt` itself is clamped: `dt = min(MAX_GAP_MS, max(0, ts - prev))`, on **both sides**, because
+  under `WORKER_CONCURRENCY > 1` `ts` can run backwards relative to `seq`.
 
-### 3.5 Iteration in Einfügereihenfolge
+### 3.5 Iteration in insertion order
 
-Aktoren, Werkzeuge, Effekte leben in `Map`, und es wird über `map.values()` iteriert — nie über
-`Object.keys(obj)`. Bei einem Objekt hängt die Reihenfolge davon ab, ob ein Schlüssel wie eine Zahl
-aussieht (`"12"` wandert vor `"run:8871"`); mit `run:`-Ids ginge das lange gut und bräche genau
-dann, wenn eine Id einmal rein numerisch ist.
+Actors, tools and effects live in a `Map`, and iteration happens over `map.values()`, never over
+`Object.keys(obj)`. With an object the order depends on whether a key looks like a number (`"12"`
+wanders before `"run:8871"`); with `run:` ids that would go well for a long time and break exactly
+when an id is once purely numeric.
 
-Wer eine Sammlung nach außen gibt, gibt eine **Kopie** (`[...map.values()]`). Ein lebender Cursor auf einer
-`shift()`-Warteschlange verschluckt sonst Einträge, sobald der Kopf verworfen wird — die Indizes
-rutschen unter ihm weg, und ein ganzer Agent erscheint nie im Raum.
+Whoever hands a collection out hands out a **copy** (`[...map.values()]`). A live cursor on a
+`shift()` queue otherwise swallows entries as soon as the head is discarded: the indices slide
+away under it, and a whole agent never appears in the room.
 
 ---
 
-## Regel 4 — Schichten
+## Rule 4: layers
 
-| Schicht | Dateien | darf importieren |
+| layer | files | may import |
 |---|---|---|
-| **0** reine Domäne | `types`, `ids`, `const`, `toolAct`, `mapEvent`, `room`, `engine`, `recorder`, `replay`, `timeline` | nur Schicht 0 |
-| **1** reine Pixel | `pixel/palette`, `pixel/art`, `pixel/person`, `pixel/furniture`, `pixel/props`, `pixel/scene` | Schicht 1 + `types`/`ids`/`const` — **nie** Engine |
-| **2** React | `api`, `useOfficeFeed`, `useTheme`, `OfficeView`, `Stage`, `TopBar`, `Timeline`, `Dock`, `Inspector` | alles |
+| **0** pure domain | `types`, `ids`, `const`, `toolAct`, `mapEvent`, `room`, `engine`, `recorder`, `replay`, `timeline` | layer 0 only |
+| **1** pure pixels | `pixel/palette`, `pixel/art`, `pixel/person`, `pixel/furniture`, `pixel/props`, `pixel/scene` | layer 1 plus `types`/`ids`/`const`, **never** the engine |
+| **2** React | `api`, `useOfficeFeed`, `useTheme`, `OfficeView`, `Stage`, `TopBar`, `Timeline`, `Dock`, `Inspector` | everything |
 
-Zusätzlich: **Schicht 0 und 1 importieren keine Pakete.** Kein `react`, kein `@tanstack/*`, nichts
-aus `node_modules` — sonst wären sie nicht mehr ohne Bundler ausführbar (Regel 5).
+In addition: **layers 0 and 1 import no packages.** No `react`, no `@tanstack/*`, nothing from
+`node_modules`; otherwise they would no longer be executable without a bundler (rule 5).
 
-Warum Schicht 1 die Engine nicht kennen darf: die Zeichenschicht bekommt einen `Frame`, sonst nichts.
-Sähe sie die Engine, könnte sie den Zustand beim Zeichnen fortschreiben — und das Bild hinge davon
-ab, wie oft gezeichnet wurde. Damit wäre Replay tot.
+Why layer 1 must not know the engine: the drawing layer gets a `Frame`, nothing else. If it saw
+the engine, it could write the state on while drawing, and the picture would depend on how often
+it was drawn. That would kill the replay.
 
-Warum Schicht 0 nichts aus Schicht 1 sehen darf: die Domäne muss ohne Canvas testbar bleiben; der
-Prüfer lädt sie nackt unter Node, wo es kein `CanvasRenderingContext2D` gibt.
+Why layer 0 must see nothing from layer 1: the domain has to stay testable without a canvas; the
+checker loads it bare under Node, where there is no `CanvasRenderingContext2D`.
 
-### Die eine dokumentierte Ausnahme
+### The one documented exception
 
-Das Blitten des 480×270-Puffers auf den sichtbaren Canvas braucht genau ein `drawImage`:
+Blitting the 480x270 buffer onto the visible canvas needs exactly one `drawImage`:
 
 ```ts
-// Stage.tsx (Schicht 2) — die einzige vom Pixel-Vertrag ausgenommene Stelle.
+// Stage.tsx (layer 2): the only place exempted from the pixel contract.
 vis.imageSmoothingEnabled = false;
 vis.drawImage(buffer, 0, 0, PIX.w, PIX.h, 0, 0, PIX.w * z, PIX.h * z);
 ```
 
-Der Blit deckt den Rückspeicher **vollständig** ab (kein Versatz, kein Briefkasten): auf die
-sichtbare Fläche zieht ihn CSS, siehe Regel 1.
+The blit covers the backing store **completely** (no offset, no letterbox): onto the visible area
+it is pulled by CSS, see rule 1.
 
-Dieses `drawImage` lebt in **`Stage.tsx`, Schicht 2**, und ist vom Vertrag ausdrücklich ausgenommen.
-Es ist die einzige Ausnahme; ein zweites `drawImage` irgendwo anders ist ein Fehler, kein Präzedenzfall.
+This `drawImage` lives in **`Stage.tsx`, layer 2**, and is explicitly exempted from the contract.
+It is the only exception; a second `drawImage` anywhere else is a bug, not a precedent.
 
 ---
 
-## Regel 5 — Werkzeug-Beschränkung: Schicht 0 und 1 laufen nackt unter Node
+## Rule 5: tool restriction, layers 0 and 1 run bare under Node
 
-Es gibt im Frontend keinen Test-Runner, und vitest lohnt nicht (das Dockerfile macht bei jedem Bau
-`npm install` ohne Lockfile). Stattdessen laufen die Schichten 0 und 1 **direkt** unter Node:
+There is no test runner in the frontend, and vitest is not worth it (the Dockerfile runs
+`npm install` without a lockfile on every build). Instead layers 0 and 1 run **directly** under
+Node:
 
 ```bash
 docker run --rm -v "$PWD/frontend":/w -v "$PWD/backend":/backend -w /w node:22-alpine \
   node --experimental-strip-types tools/office-check.mjs
 ```
 
-`backend/` wird mit eingehängt, weil die Vollständigkeitsprüfung der Werkzeug-Tabelle ihre
-Sollliste aus `backend/app/worker/*.py` **zieht**. Eine abgeschriebene Liste prüfte nur, ob die
-Abschrift zu sich selbst passt — die Drift, um die es geht, sähe sie nie. Fehlt der Mount,
-bricht der Prüfer und sagt, was zu tun ist.
+`backend/` is mounted as well, because the completeness check of the tool table **draws** its
+target list from `backend/app/worker/*.py`. A copied list would only check whether the copy
+matches itself, and the drift it is all about it would never see. If the mount is missing, the
+checker breaks and says what to do.
 
-`--experimental-strip-types` ersetzt Typen durch Leerzeichen — es transpiliert nicht. Daraus folgen
-vier Verbote für die Schichten 0 und 1:
+`--experimental-strip-types` replaces types by spaces; it does not transpile. From that follow
+four prohibitions for layers 0 and 1:
 
-- **kein `enum`** (erzeugt Laufzeitcode) → stattdessen `as const`-Objekt + `typeof`-Union,
-- **kein `namespace`**, kein `module {}`,
-- **keine Parameter-Properties** (`constructor(private x: number)`),
-- **kein `import =` / `export =`**.
+- **no `enum`** (it produces runtime code); instead an `as const` object plus a `typeof` union,
+- **no `namespace`**, no `module {}`,
+- **no parameter properties** (`constructor(private x: number)`),
+- **no `import =` / `export =`**.
 
-Erlaubt ist alles, was durch bloßes Streichen verschwindet: Typannotationen, `interface`, `type`,
-Generics, `as`, `satisfies`, `import type`.
+Allowed is everything that disappears by mere deletion: type annotations, `interface`, `type`,
+generics, `as`, `satisfies`, `import type`.
 
-Zwei weitere Regeln, die aus Nodes ESM-Auflösung folgen:
+Two further rules that follow from Node's ESM resolution:
 
-- **Relative Importe tragen die `.ts`-Endung**: `import { mix } from "./ids.ts";`
-  Node löst extensionslose Specifier in ESM nicht auf. Vite und `tsc`
-  (`allowImportingTsExtensions: true`) kommen damit klar — der Prüfer erzwingt es.
-- **Typ-Importe heißen `import type`**. Ein `import { Ev } from "./types.ts"` bliebe nach dem
-  Streichen als echter Import stehen und knallte zur Laufzeit, weil `types.ts` keinen Wert exportiert.
+- **Relative imports carry the `.ts` extension**: `import { mix } from "./ids.ts";`
+  Node does not resolve extensionless specifiers in ESM. Vite and `tsc`
+  (`allowImportingTsExtensions: true`) cope with it, and the checker enforces it.
+- **Type imports are called `import type`.** An `import { Ev } from "./types.ts"` would stay as a
+  real import after the deletion and blow up at runtime, because `types.ts` exports no value.
 
-Das kostet nichts und schenkt uns einen Test-Runner mit null Abhängigkeiten.
+That costs nothing and gives us a test runner with zero dependencies.
 
 ---
 
-## Was der Prüfer prüft
+## What the checker checks
 
-`frontend/tools/office-check.mjs`, `npm run check:office` (aus `frontend/`, dort liegt das
-Backend unter `../backend`). Bewusst **nicht** Teil von `npm run build` — der Docker-Bau darf
-nicht davon abhängen.
+`frontend/tools/office-check.mjs`, `npm run check:office` (from `frontend/`, where the backend
+lies under `../backend`). Deliberately **not** part of `npm run build`: the Docker build must not
+depend on it.
 
-| Prüfung | Regel | Stand |
+| check | rule | state |
 |---|---|---|
-| Reinheits-Grep (verbotene Bezeichner) | 3.1 | gebaut |
-| Schicht-Import-Regel + `.ts`-Endung + keine Pakete | 4, 5 | gebaut |
-| goldenes Bild: `frameAt` an 8 Zeitpunkten gegen `tools/golden.json` | 3 | gebaut |
-| Seek-Idempotenz (`seek(t)` zweimal = einmal, und `frameAt` ≡ `seek`) | 3 | gebaut |
-| `seek ≡ advance` (5 Schrittweiten, auch krumme) | 3 | gebaut |
-| dt-Split-Invarianz `tick(200) ≡ tick(25)×8`, nackt und über das Kommando-Skript | 3.4 | gebaut |
-| Pixel-Vertrag als `ctx`-Proxy (alles außer `fillStyle`/`globalAlpha`/`fillRect` wirft, dazu ganzzahlige Koordinaten) | 2.1, 2.3 | gebaut |
-| goldene Pixel-Ops-Hashes (8 Bilder × Tag/Abend) | 2 | gebaut |
-| Vollständigkeit der Werkzeug-Tabelle (Sollliste aus `backend/app/worker`) | — | gebaut |
-| Sitzgeometrie: `SEATS_PX[i]` ≡ `round(ROOM.seats[i].sit × POS_SCALE)` | 4 | gebaut |
-| Rack-Geometrie: `RACK_PX` ≡ `round(ROOM.rack × POS_SCALE)` | 4 | gebaut |
-| Das Rack leuchtet in der Fixture (≥ 2 Zustände über die 8 goldenen Bilder) | — | gebaut |
+| purity grep (forbidden identifiers) | 3.1 | built |
+| layer import rule plus `.ts` extension plus no packages | 4, 5 | built |
+| golden picture: `frameAt` at 8 moments against `tools/golden.json` | 3 | built |
+| seek idempotency (`seek(t)` twice equals once, and `frameAt` equals `seek`) | 3 | built |
+| `seek` equals `advance` (5 step sizes, odd ones as well) | 3 | built |
+| dt split invariance `tick(200)` equals `tick(25)x8`, bare and over the command script | 3.4 | built |
+| the pixel contract as a `ctx` proxy (everything except `fillStyle`/`globalAlpha`/`fillRect` raises, plus integer coordinates) | 2.1, 2.3 | built |
+| golden pixel ops hashes (8 pictures x day/evening) | 2 | built |
+| completeness of the tool table (target list from `backend/app/worker`) | — | built |
+| seat geometry: `SEATS_PX[i]` equals `round(ROOM.seats[i].sit × POS_SCALE)` | 4 | built |
+| rack geometry: `RACK_PX` equals `round(ROOM.rack × POS_SCALE)` | 4 | built |
+| the rack lights up in the fixture (>= 2 states over the 8 golden pictures) | — | built |
 
-Die letzte Prüfung ist keine Geometrie, sondern eine Aussage über die Prüfung selbst: die
-Ops-Hashes melden nur „dieselben Aufrufe wie beim letzten Bless" und sind blind dafür, ob sie
-einen Zeichenzweig je betreten haben. Enthielte kein goldenes Bild ein leuchtendes Rack, wäre
-die LED-Zeichnung ungeprüft — eine Prüfung, die den neuen Code nicht ausführt, ist Theater.
+The last check is not geometry but a statement about the checking itself: the ops hashes only
+report "the same calls as at the last bless" and are blind to whether they ever entered a drawing
+branch. If no golden picture contained a glowing rack, the LED drawing would be unchecked, and a
+check that does not execute the new code is theatre.
 
-### Der Serverschrank — der einzige nicht-aktorgebundene Zustand im `Frame`
+### The server rack: the only state in the `Frame` not bound to an actor
 
-`Frame.rack` (`{ state, since, label }`) steht neben `actors`, weil ein Deployment dem **Raum**
-gehört und keiner Figur: der Lauf, der es angestoßen hat, geht längst durch die Tür, während
-noch gebaut wird. Zwei Folgerungen sind Vertrag, nicht Geschmack:
+`Frame.rack` (`{ state, since, label }`) stands beside `actors`, because a deployment belongs to
+the **room** and to no figure: the run that set it off goes through the door long before the
+building is finished. Two conclusions are contract, not taste:
 
-- **Die Phase kommt aus `(t - since)`**, wie bei jedem `Fx` (Regel 3.4). `since` ist `engine.t`.
-- **Kein Verfall.** Der Zustand wird vom `start` gesetzt und vom `ok`/`fail`/`back` abgelöst —
-  es gibt kein `until`. Das ist der ausdrückliche Gegensatz zu `TOOL_BUSY_MS`, das nur
-  existiert, weil eine Werkzeugzeile aus Altdaten kein Intervall kennt; beim Deployment sind
-  **beide Enden echte Ereignisse**. Kommt das Ende nie (Deployer tot), leuchtet das Rack weiter.
-  Das ist die Wahrheit, kein Fehler: es läuft etwas, von dem niemand weiß, wie es ausging.
+- **The phase comes from `(t - since)`**, as with every `Fx` (rule 3.4). `since` is `engine.t`.
+- **No expiry.** The state is set by the `start` and superseded by the `ok`/`fail`/`back`; there
+  is no `until`. That is the explicit opposite of `TOOL_BUSY_MS`, which exists only because a tool
+  row from old data knows no interval; with a deployment **both ends are real events**. If the end
+  never comes (the deployer is dead), the rack keeps glowing. That is the truth, not a bug:
+  something is running whose outcome nobody knows.
 
-`drawRack` betritt den LED-Block **ausschließlich** bei `state !== "idle"`. Bei `idle` fallen
-byteweise dieselben `fillRect` in derselben Reihenfolge an wie ohne `rack` — sonst hinge jedes
-der 16 Ops-Hashes am Zustand des Schranks und die Absicht eines Bless-Diffs verschwände im
-Rauschen.
+`drawRack` enters the LED block **exclusively** with `state !== "idle"`. With `idle` the same
+`fillRect` calls arise byte for byte in the same order as without a `rack`; otherwise every one of
+the 16 ops hashes would hang off the state of the rack and the intention of a bless diff would
+disappear in the noise.
 
-Der Serverschrank ist **20×34** (hoch statt breit) und steht in der Wandlücke zwischen
-Whiteboard und Uhr; der alte 22×20-Kasten mit drei Schlitzen las sich als Aktenschrank mit
-Schubladengriffen und trug die Bedeutung damit nicht. Der Aktenschrank ist er selbst geblieben —
-16×15, `drawCabinet`, ohne jede Bedeutung, Ablage für die Topfpflanze.
+The server rack is **20x34** (tall instead of wide) and stands in the wall gap between the
+whiteboard and the clock; the old 22x20 box with three slots read as a filing cabinet with drawer
+handles and therefore did not carry the meaning. The filing cabinet has stayed itself: 16x15,
+`drawCabinet`, without any meaning, a shelf for the potted plant.
 
-Die Fixture dazu steht in `frontend/tools/fixture.mjs` und ist der Form von
-`services/office.py::step_events` nachgebaut, nicht ausgedacht. Ändert sich das erwartete
-Verhalten, schreibt `--bless` die goldenen Bilder neu — **eine Entscheidung, keine Reparatur**,
-und die Begründung gehört in die Commit-Nachricht.
+The fixture for it stands in `frontend/tools/fixture.mjs` and is reproduced from the shape of
+`services/office.py::step_events`, not invented. If the expected behaviour changes, `--bless`
+rewrites the golden pictures: **a decision, not a repair**, and the reasoning belongs in the commit
+message.
 
-Dazu, außerhalb des Prüfers: `tsc -b` muss durchlaufen (`strict: true`).
+In addition, outside the checker: `tsc -b` has to pass (`strict: true`).
