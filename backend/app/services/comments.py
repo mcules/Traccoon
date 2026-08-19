@@ -1,9 +1,9 @@
-"""Geteilte Kommentar-Logik (Dashboard-API + Telegram-Bot).
+"""Shared comment logic (dashboard API plus Telegram bot).
 
-Legt den Kommentar an und meldet ihn — bei `comment_triggers_agent` — als Ereignis an den
-Lebenszyklus-Prozess des Tickets. Wo der Prozess daraufhin weiterläuft (neu planen, weiter
-umsetzen, Konflikt auflösen), steht im Graphen an den `wait_event`-Knoten und nicht mehr
-hier. Nur echte User-Kommentare (author_id gesetzt, kind=agent) lösen aus.
+Creates the comment and, with `comment_triggers_agent`, reports it as an event to the
+lifecycle process of the ticket. Where the process continues from there (planning anew,
+implementing on, resolving a conflict) stands in the graph at the `wait_event` nodes and no
+longer here. Only real user comments (author_id set, kind=agent) trigger it.
 """
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ async def add_system_comment(db: AsyncSession, issue_id: int, text: str,
                              author_label: str = "System") -> None:
     """Ereignis-Notiz im Ticket (Plan-Freigabe/-Ablehnung, Agent-Zwischenstand …).
 
-    kind="system" → im Verlauf als neutraler Eintrag gerendert. Kein Commit;
-    der Aufrufer committet (die Endpoints/Dispatcher tun das ohnehin).
+    kind="system" is rendered in the history as a neutral entry. No commit; the caller commits
+    (the endpoints and the dispatcher do that anyway).
     """
     db.add(Comment(issue_id=issue_id, author_id=None, author_label=author_label,
                    body=text, kind="system"))
@@ -42,7 +42,7 @@ async def apply_user_comment(db: AsyncSession, issue: Issue, text: str,
     trigger = bool(project and project.comment_triggers_agent
                    and issue.agent_status not in RUNNING)
     issue_id, issue_key = issue.id, issue.key
-    await db.commit()   # erst festschreiben — der Prozess liest den Kommentar gleich mit
+    await db.commit()   # commit first: the process reads the comment right away
 
     from .events import emit
     await emit(db, "comment.added", project_id=issue.project_id, issue_id=issue_id,
@@ -57,9 +57,9 @@ async def apply_user_comment(db: AsyncSession, issue: Issue, text: str,
     if await resume_on_event(issue_id, "comment", {"text": text[:2000], "user_id": user_id}):
         log.info("Ticket %s: Kommentar hat den Prozess fortgesetzt", issue_key)
         return
-    # Kein wartender Ereignis-Knoten: entweder läuft gar kein Prozess (dann starten wir
-    # einen) oder er wartet gerade auf eine Freigabe — die soll ein Kommentar NICHT
-    # überspringen, sonst wäre die Menschenhoheit umgehbar.
+    # No waiting event node: either no process is running at all (then we start one) or it is
+    # waiting for an approval, and a comment must NOT skip that, because otherwise human
+    # sovereignty would be circumventable.
     if await live_instance(db, issue) is None:
         await start_lifecycle(db, issue, user_id,
                               entry="exec" if issue.plan else "plan")

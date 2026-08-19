@@ -21,12 +21,12 @@ const ZEITRAeUME: [number, string][] = [[7, "7 Tage"], [30, "30 Tage"], [90, "90
                                         [365, "1 Jahr"]];
 
 /**
- * Messreihen — die Zahlen, die Abläufe mitschreiben.
+ * Metric series: the numbers flows write along.
  *
- * Ein Ablauf sieht immer nur den Augenblick. Erst der Verlauf beantwortet die Frage, die
- * man wirklich hat: wohin läuft das, und wann muss ich handeln? Deshalb steht die Prognose
- * hier nicht als Zahl allein, sondern als gestrichelte Verlängerung der Punkte — eine
- * Vorhersage, die man nicht nachsehen kann, glaubt man zu Recht nicht.
+ * A flow only ever sees the moment. Only the history answers the question one really has:
+ * where is this heading, and when do I have to act? That is why the forecast does not stand
+ * here as a number alone but as a dashed extension of the points; a forecast one cannot
+ * check is rightly not believed.
  */
 export default function MessreihenPanel() {
   const qc = useQueryClient();
@@ -122,7 +122,7 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
   );
 }
 
-/** Alles zu einer Reihe: Zeitraum wählen, Verlauf sehen, einzelne Werte wegnehmen. */
+/** Everything about one series: choose the period, see the history, remove single values. */
 function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
   const qc = useQueryClient();
   const [tage, setTage] = useState(30);
@@ -233,11 +233,11 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
 }
 
 /**
- * Der Verlauf als Linie, dazu die Prognose gestrichelt.
+ * The history as a line, plus the forecast dashed.
  *
- * Ohne Bibliothek: das ist eine Polyline, eine gestrichelte Strecke und ein paar
- * Beschriftungen. Die Prognose bekommt bewusst dieselbe Fläche wie die Messung — man soll
- * sehen, wie weit sie über das Gemessene hinausgeht.
+ * Without a library: it is a polyline, a dashed segment and a few labels. The forecast
+ * deliberately gets the same area as the measurement, so that one sees how far it goes
+ * beyond what was measured.
  */
 function Verlaufsbild({ punkte, einheit, trend, ziel }: {
   punkte: Punkt[]; einheit: string; trend?: Trend | null; ziel: number;

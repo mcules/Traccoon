@@ -1,7 +1,7 @@
-"""Einheitliches Provider-Interface (Port aus dem Vorläufer).
+"""Uniform provider interface (ported from the predecessor).
 
-Messages/Tools im OpenAI-Format (interner Lingua-Franca); Provider, die anders
-sprechen (Anthropic, Codex), übersetzen in ihrem Adapter.
+Messages and tools in the OpenAI format (the internal lingua franca); providers that speak
+differently (Anthropic, Codex) translate in their adapter.
 """
 from __future__ import annotations
 
@@ -23,11 +23,11 @@ class ChatResponse:
     raw: dict[str, Any] = field(default_factory=dict)
     usage: dict[str, Any] = field(default_factory=dict)
     # Gecachte (per Prompt-Caching ~0,1x berechnete) Input-Tokens dieses Calls.
-    # Default 0 → Provider ohne Caching (codex/openai) bleiben unberührt.
+    # Default 0: providers without caching (codex, openai) stay untouched.
     cache_read_tokens: int = 0
-    # Wer tatsächlich geantwortet hat. Bei einem Fallback ist das NICHT der am Agenten
-    # eingestellte Provider/Modell — und genau damit wurde der ganze Lauf bisher bepreist.
-    # Die Adapter füllen das nicht, der Router setzt es: Default leer, damit sich für
+    # Who actually answered. On a fallback that is NOT the provider or model configured on
+    # the agent, and with exactly that the whole run used to be priced. The adapters do not
+    # fill it, the router sets it: empty by default, so that nothing changes for anybody else.
     # niemanden sonst etwas ändert.
     provider: str = ""
     model: str = ""
@@ -49,6 +49,6 @@ class Provider(Protocol):
                    tools: list[dict[str, Any]] | None = None,
                    temperature: float = 0.3, max_tokens: int = 4096,
                    web_search: bool = False, auth_token: str | None = None) -> ChatResponse:
-        # `effort` (Denk-Tiefe) kennt nur der Anthropic-Adapter; der Router reicht es
-        # ausschließlich dorthin durch — anderswo wäre es ein unbekanntes Feld.
+        # `effort` (thinking depth) is known only to the Anthropic adapter; the router passes
+        # it exclusively there, because elsewhere it would be an unknown field.
         ...
