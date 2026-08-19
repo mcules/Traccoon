@@ -35,11 +35,11 @@ def mj(*args: str) -> subprocess.CompletedProcess:
 
 def main() -> None:
     if not FERNET_KEY:
-        sys.exit("SECRET_ENCRYPTION_KEY fehlt (muss der Traccoon-Key sein).")
+        sys.exit("SECRET_ENCRYPTION_KEY is missing (it has to be the Traccoon key).")
     if not PG_DSN:
-        sys.exit("PG_DSN fehlt (postgresql://<user>:<pw>@<host>:<port>/<db> in der Umgebung setzen).")
+        sys.exit("PG_DSN is missing (set postgresql://<user>:<pw>@<host>:<port>/<db> in the environment).")
     if not GROUPS_HOST:
-        sys.exit("MCPJUNGLE_GROUPS_DIR fehlt (Host-Pfad des /groups-Mounts in der Umgebung setzen).")
+        sys.exit("MCPJUNGLE_GROUPS_DIR is missing (set the host path of the /groups mount in the environment).")
     f = Fernet(FERNET_KEY.encode())
     conn = psycopg2.connect(PG_DSN)
     cur = conn.cursor()
@@ -62,7 +62,7 @@ def main() -> None:
         out = (r.stdout or "") + (r.stderr or "")   # the token stands on stderr
         m = re.search(r"Access token:\s*(\S+)", out)
         if not m:
-            print(f"! {username}: kein Token erhalten:\n{out[:300]}")
+            print(f"! {username}: no token received:\n{out[:300]}")
             continue
         token_enc = "enc:v1:" + f.encrypt(m.group(1).encode()).decode()
         cur.execute("UPDATE users SET mcp_group=%s, mcp_token_enc=%s WHERE id=%s",

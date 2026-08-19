@@ -151,7 +151,7 @@ def do_self_deploy(conn, dep):
     if rc != 0:
         set_status(conn, dep_id, "failed", "Build fehlgeschlagen:\n" + out)
         finalize_issue(conn, issue_id, False)
-        add_comment(conn, issue_id, "Deploy-Build fehlgeschlagen (kein Recreate).")
+        add_comment(conn, issue_id, "The deploy build failed (no recreate).")
         return
     rc, out2 = compose(SELF_STACK_DIR, "up", "-d", *SELF_SERVICES, timeout=300)
     time.sleep(8)
@@ -164,7 +164,7 @@ def do_self_deploy(conn, dep):
         compose(SELF_STACK_DIR, "up", "-d", *SELF_SERVICES, timeout=300)
         set_status(conn, dep_id, "rolledback", "Health rot → Rollback\n" + out2[-1500:])
         finalize_issue(conn, issue_id, False)
-        add_comment(conn, issue_id, "Deploy: Health rot → automatischer Rollback auf Vorversion.")
+        add_comment(conn, issue_id, "Deploy: health is red, rolling back to the previous version automatically.")
 
 
 def pull_stack(stack_dir):
@@ -180,7 +180,7 @@ def pull_stack(stack_dir):
     stands in the log of the deployment row.
     """
     if not os.path.isdir(os.path.join(stack_dir, ".git")):
-        return "kein Git-Checkout — Pull uebersprungen"
+        return "no git checkout, the pull was skipped"
     rc, out = sh(["git", "-C", stack_dir, "-c", "safe.directory=*", "pull", "--ff-only"], timeout=180)
     out = re.sub(r"(x-access-token|[A-Za-z0-9_.-]+):[^@\s]+@", r"\1:***@", out)  # Token nie loggen
     # The pull ran as root, so .git would otherwise belong to root and block the host git.
@@ -229,11 +229,11 @@ def process(conn, dep):
             # An empty stack_dir OR one aiming at self without the self_deploy flag NEVER
             # recreates the host implicitly (which prevented the self-deploy loop).
             set_status(conn, dep["id"], "failed",
-                       "Abgelehnt: Self-Deploy nur über das explizite Wartungs-Update. "
-                       "Impliziter Host-Deploy (leerer/self-stack_dir) ist gesperrt.")
+                       "Rejected: a self deploy only runs over the explicit maintenance "
+                       "update. An implicit host deploy (empty or self stack_dir) is locked.")
             finalize_issue(conn, dep["issue_id"], False)
     except Exception:  # noqa: BLE001
-        set_status(conn, dep["id"], "failed", "Deployer-Ausnahme:\n" + traceback.format_exc())
+        set_status(conn, dep["id"], "failed", "Deployer exception:\n" + traceback.format_exc())
 
 
 class PreviewHandler(BaseHTTPRequestHandler):
@@ -298,7 +298,7 @@ def _ensure_branch_worktree(repo_dir, workdir, branch, log_parts):
     """Create a worktree for an arbitrary branch respectively bring it to that branch's current state.
     The environment ALWAYS builds the branch state, never the shared integration checkout."""
     if not os.path.isdir(os.path.join(repo_dir, ".git")):
-        log_parts.append(f"kein Repo unter {repo_dir}")
+        log_parts.append(f"no repository under {repo_dir}")
         return False
     subprocess.run(["git", "-C", repo_dir, "fetch", "--all", "--prune"],
                    capture_output=True, text=True, timeout=300)
@@ -326,7 +326,7 @@ def _write_env_file(workdir, env_vars, log_parts):
                 fh.write(f"{k}={v}\n")
         return True
     except OSError as exc:
-        log_parts.append(f".env konnte nicht geschrieben werden: {exc}")
+        log_parts.append(f".env could not be written: {exc}")
         return False
 
 
@@ -341,7 +341,7 @@ def _connect_sidecars(name, sidecars, log_parts):
         r = subprocess.run(["docker", "network", "connect", "--alias", alias, net, container],
                            capture_output=True, text=True, timeout=60)
         if r.returncode != 0:
-            log_parts.append(f"sidecar {container} nicht verbunden: {r.stderr.strip()[:200]}")
+            log_parts.append(f"sidecar {container} not connected: {r.stderr.strip()[:200]}")
 
 
 def _alive(name):
@@ -351,7 +351,7 @@ def _alive(name):
                        capture_output=True, text=True, timeout=30)
     states = [x.strip() for x in p.stdout.splitlines() if x.strip()]
     if not states:
-        return False, "kein Container gestartet"
+        return False, "no container started"
     dead = [s for s in states if s.startswith(("Exited", "Restarting", "Dead"))]
     if len(dead) == len(states):
         return False, "Container sofort beendet: " + "; ".join(dead[:5])
@@ -378,7 +378,7 @@ def preview_up(body):
             return False, "\n".join(log_parts)[-4000:]
 
     if not os.path.isdir(workdir):
-        return False, f"Arbeitsverzeichnis fehlt: {workdir}"
+        return False, f"working directory missing: {workdir}"
 
     _write_env_file(workdir, injected, log_parts)
 
@@ -395,7 +395,7 @@ def preview_up(body):
                                capture_output=True, text=True, env=env, cwd=workdir, timeout=1800)
             rc, out = p.returncode, (p.stdout + p.stderr)
         else:
-            rc, out = 1, f"kein compose_file: {cfile}"
+            rc, out = 1, f"no compose_file: {cfile}"
     log_parts.append(out)
     if rc != 0:
         teardown(name, cfile)
@@ -408,7 +408,7 @@ def preview_up(body):
     time.sleep(LIVENESS_WAIT)
     alive, why = _alive(name)
     if not alive:
-        log_parts.append("Liveness-Prüfung fehlgeschlagen: " + why)
+        log_parts.append("Liveness check failed: " + why)
         log_parts.append(preview_logs(name, None, 100).get("log", ""))
         teardown(name, cfile)
         return False, "\n".join(log_parts)[-4000:]
@@ -458,7 +458,7 @@ def build_and_run_dockerfile(name, workdir, host_port, container_port, env,
     mem = mem or PREVIEW_MEMORY
     cpus = cpus or PREVIEW_CPUS
     if not os.path.isfile(os.path.join(workdir, dockerfile)):
-        return 1, f"kein {dockerfile} in {workdir}"
+        return 1, f"no {dockerfile} in {workdir}"
     b = subprocess.run(["docker", "build", "-f", os.path.join(workdir, dockerfile),
                         "-t", f"{name}:preview", workdir],
                        capture_output=True, text=True, timeout=1800)
@@ -485,7 +485,7 @@ def cap_resources(project_name, mem=None, cpus=None):
                        capture_output=True, text=True, timeout=30)
     ids = [x for x in p.stdout.split() if x]
     if not ids:
-        return "cap: keine Container gefunden"
+        return "cap: no containers found"
     mem = mem or PREVIEW_MEMORY
     cpus = cpus or PREVIEW_CPUS
     u = subprocess.run(["docker", "update", "--memory", mem,
@@ -493,8 +493,8 @@ def cap_resources(project_name, mem=None, cpus=None):
                        capture_output=True, text=True, timeout=60)
     if u.returncode != 0:
         # for instance a kernel without a swap limit: no reason to let the preview fail
-        return f"cap: nicht gesetzt ({u.stderr.strip()[:200]})"
-    return f"cap: {mem} / {cpus} CPU auf {len(ids)} Container"
+        return f"cap: not set ({u.stderr.strip()[:200]})"
+    return f"cap: {mem} / {cpus} CPU on {len(ids)} containers"
 
 
 def teardown(project_name, compose_file):

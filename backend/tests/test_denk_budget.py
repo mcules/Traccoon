@@ -80,7 +80,7 @@ async def test_zweimal_abgeschnitten_meldet_ehrlich(monkeypatch):
     fake = _Fake(_leer_abgeschnitten(), _leer_abgeschnitten())
     with pytest.raises(ProviderError) as err:
         await _chat(monkeypatch, fake)
-    assert "auch ohne Denken" in str(err.value)
+    assert "Even without thinking" in str(err.value)
     assert err.value.retryable
     assert len(fake.bodies) == 2      # no endless following up
 

@@ -249,9 +249,9 @@ class AnthropicProvider(Provider):
         # through silently as idling (which would misdiagnose as "empty model answer").
         if data.get("stop_reason") == "max_tokens" and (calls or not text.strip()):
             raise _Abgeschnitten(
-                "claude: Antwort bei max_tokens abgeschnitten – unvollständig "
-                "(Tool-Argumente oder komplett leer, Budget im Thinking verbraucht)"
-                + (" — auch ohne Denken. max_tokens erhöhen oder Aufgabe kleiner schneiden."
+                "claude: the answer was cut off at max_tokens and is incomplete "
+                "(tool arguments or completely empty, the budget went into thinking)"
+                + (" Even without thinking. Raise max_tokens or cut the task smaller."
                    if gerettet else "."), retryable=True)
         raw_msg: dict[str, Any] = {"role": "assistant", "content": text or None}
         if oai_calls:
