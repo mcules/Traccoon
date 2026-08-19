@@ -1,16 +1,16 @@
-"""Warten am Lebenszeichen statt an der Uhr.
+"""Waiting on the sign of life instead of on the clock.
 
-Am 2026-08-05 standen UNI-2 und UNI-6 auf „fehlgeschlagen: unbekannter Fehler", obwohl
-beide Agenten sauber fertig wurden und committeten: der Wächter im Backend hatte nach
-30 Minuten aufgegeben, während der exec-Schritt (Umsetzung + zwei Review-Runden in EINEM
-Auftrag) noch lief. Diese Tests halten die drei Zusagen fest:
+On 2026-08-05 UNI-2 and UNI-6 stood on "failed: unknown error" although both agents
+finished cleanly and committed: the watcher in the backend had given up after 30 minutes
+while the exec step (implementation plus two review rounds in ONE assignment) was still
+running. These tests record the three promises:
 
-* Ein lebender Lauf wird nicht abgeschnitten — auch nicht nach Stunden.
-* Ein verschwundener Lauf wird als solcher benannt, nicht als „unbekannter Fehler".
-* Trifft sein Ergebnis später doch ein, wird es nachgetragen statt weggeworfen.
+* A living run is not cut off, not even after hours.
+* A disappeared run is named as such, not as an "unknown error".
+* If its result arrives later after all, it is added instead of thrown away.
 """
 import app.core.redis as redismod
-# Die echten Funktionen VOR dem autouse-Stub greifen (der ersetzt nur die Modul-Attribute).
+# Reach the real functions BEFORE the autouse stub (which only replaces the module attributes).
 from app.core.redis import lauf_lebt as echtes_lauf_lebt
 from app.core.redis import wait_result as echtes_wait_result
 from app.models.enums import TicketAgentStatus, WorkflowStepStatus
@@ -26,7 +26,7 @@ class FakeRedis:
 
     def __init__(self, ergebnis_ab=None, puls=False, queue=None):
         self.werte = {}
-        self.ergebnis_ab = ergebnis_ab      # ab dem wievielten Abruf liegt ein Ergebnis da
+        self.ergebnis_ab = ergebnis_ab      # from which fetch on a result lies there
         self.abrufe = 0
         self.puls = puls
         self.queue = queue or []
@@ -50,7 +50,7 @@ class FakeRedis:
 
 
 async def test_lebender_lauf_wird_nicht_abgeschnitten(monkeypatch):
-    """Solange der Lauf lebt, wird gewartet — die alte 30-Minuten-Grenze gibt es nicht mehr."""
+    """As long as the run lives it is waited for: the old 30 minute limit does not exist any more."""
     fake = FakeRedis(ergebnis_ab=25, puls=True)
     monkeypatch.setattr(redismod, "get_redis", lambda: fake)
     monkeypatch.setattr(redismod, "lauf_lebt", echtes_lauf_lebt)
@@ -61,7 +61,7 @@ async def test_lebender_lauf_wird_nicht_abgeschnitten(monkeypatch):
 
 
 async def test_verschwundener_lauf_wird_aufgegeben(monkeypatch):
-    """Kein Puls, nicht in der Warteschlange → nach der Gnadenfrist ist Schluss."""
+    """No pulse, not in the queue: after the grace period it stops."""
     fake = FakeRedis(ergebnis_ab=None, puls=False)
     monkeypatch.setattr(redismod, "get_redis", lambda: fake)
     monkeypatch.setattr(redismod, "lauf_lebt", echtes_lauf_lebt)
@@ -82,7 +82,7 @@ async def test_auftrag_in_der_warteschlange_zaehlt_als_lebend(monkeypatch):
 
 
 async def test_harter_deckel_greift_wenn_gesetzt(monkeypatch):
-    """Wer für einen Knoten bewusst eine Grenze setzt, bekommt sie auch."""
+    """Whoever deliberately sets a limit for a node gets it."""
     fake = FakeRedis(ergebnis_ab=None, puls=True)
     monkeypatch.setattr(redismod, "get_redis", lambda: fake)
     monkeypatch.setattr(redismod, "lauf_lebt", echtes_lauf_lebt)
@@ -92,9 +92,9 @@ async def test_harter_deckel_greift_wenn_gesetzt(monkeypatch):
 
 
 async def test_verlorener_lauf_wird_beim_namen_genannt(db, seeded, redis_stub):
-    """Ohne Ergebnis steht im Ticket, WAS los war — nicht „unbekannter Fehler"."""
+    """Without a result the ticket says WHAT was going on, not "unknown error"."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
-    redis_stub["*"] = None      # der Wächter bekommt nichts
+    redis_stub["*"] = None      # the watcher gets nothing
 
     from app.services.lifecycle_flow import start_lifecycle
     await start_lifecycle(db, issue, owner.id)
@@ -114,7 +114,7 @@ async def test_verlorener_lauf_wird_beim_namen_genannt(db, seeded, redis_stub):
 
 
 async def test_nachzuegler_wird_verbucht(db, seeded, redis_stub):
-    """Trifft das Ergebnis später doch ein, läuft der Prozess weiter statt zu verharren."""
+    """If the result arrives later after all, the process runs on instead of standing still."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = None
     from app.services.lifecycle_flow import start_lifecycle
@@ -123,7 +123,7 @@ async def test_nachzuegler_wird_verbucht(db, seeded, redis_stub):
     await db.refresh(issue)
     assert issue.agent_status == TicketAgentStatus.failed
 
-    # Der Worker war nur weg, nicht tot: sein Ergebnis liegt jetzt in Redis.
+    # The worker was only away, not dead: its result now lies in Redis.
     schritt = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.node_id == "plan"))).scalars().first()
     redis_stub[schritt.result["task_id"]] = {"status": "planned", "output": "Der Plan.",
