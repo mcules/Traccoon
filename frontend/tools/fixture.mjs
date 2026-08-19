@@ -1,42 +1,42 @@
-// Das Ereignis-Log, gegen das `office-check.mjs` prüft. Eingefroren.
+// The event log `office-check.mjs` checks against. Frozen.
 //
-// **Nicht ausgedacht, sondern nachgebaut.** Jede Zeile hier hat exakt die Form, die
-// `backend/app/services/office.py::step_events` erzeugt — dieselbe Schlüsselmenge, die
-// `backend/tests/test_office_normalize.py::FIELD_KEYS` als Vertrag festhält, derselbe
-// Umschlag aus `_event`, dieselbe `seq`-Formel `run_steps.id * 4 + slot`. Eine Fixture,
-// die etwas anderes schickt, prüft eine Ansicht, die es nicht gibt.
+// **Not invented but reproduced.** Every line here has exactly the shape
+// `backend/app/services/office.py::step_events` produces: the same key set
+// `backend/tests/test_office_normalize.py::FIELD_KEYS` records as the contract, the same
+// envelope from `_event`, the same `seq` formula `run_steps.id * 4 + slot`. A fixture that
+// sends something else checks a view that does not exist.
 //
-// Bewusst enthalten, weil jede dieser Formen im Raum etwas anderes auslöst:
+// Deliberately included, because every one of these shapes triggers something else in the room:
 //
-//   · **drei Läufe** — ein Wurzellauf (8871, bekommt den Chefplatz), sein **delegierter
-//     Unterlauf** (8872, `parent_run_id` gesetzt → Spawn-Linie und Übergabe am Ende) und ein
-//     zweiter Wurzellauf (8873, Assistent).
-//   · **Werkzeuge mit Erfolg UND Fehlschlag** — `ok: true`, `ok: false` mit Fehlerpräfix und
-//     einmal `ok: null` (Altzeile: unbekannt, **nicht** Erfolg).
-//   · **ein `gate`** — 8873 endet `blocked`/`ask_human`, die Figur hebt die Hand und geht
-//     gerade NICHT durch die Tür.
-//   · **Lücken in der Zeit** — eine über `MAX_GAP_MS` (20 s) hinaus, damit die Klemmung im
-//     Replay wirklich zieht, und mehrere kleine.
-//   · **ein `ts`, das gegenüber `seq` rückwärts läuft** (Zeile 454) — unter
-//     `WORKER_CONCURRENCY > 1` der Normalfall und die Ursache der unteren Klemmung.
-//   · **gleiche Zeitstempel** (`agent_text` + `usage`, `tool_start` + `agent_spawn`) — sie
-//     müssen zusammen wirken, bevor die Uhr weiterläuft.
-//   · **genau ein `run_end` je Lauf.** Fehlt er, bleibt die Figur für immer stehen.
-//   · **ein Deployment mit beiden Enden** (`deploy` `start` → `fail`) — der Serverschrank ist
-//     der einzige Zustand im `Frame`, der an keiner Figur hängt, und ohne diese zwei Zeilen
-//     enthielte kein goldener Rahmen ein leuchtendes Rack. Die Ops-Hashes prüften die neue
-//     Zeichnung dann nie: eine Prüfung, die den neuen Code nicht ausführt, ist Theater.
+//   · **three runs**: a root run (8871, which gets the chief's seat), its **delegated
+//     sub-run** (8872, with `parent_run_id` set, so a spawn line and a handover at the end)
+//     and a second root run (8873, the assistant).
+//   · **tools with success AND failure**: `ok: true`, `ok: false` with an error prefix and
+//     once `ok: null` (an old row: unknown, **not** success).
+//   · **one `gate`**: 8873 ends `blocked`/`ask_human`, the figure raises its hand and
+//     precisely does NOT go through the door.
+//   · **gaps in time**: one beyond `MAX_GAP_MS` (20 s), so that the clamping in the replay
+//     really takes hold, and several small ones.
+//   · **a `ts` that runs backwards relative to `seq`** (line 454): under
+//     `WORKER_CONCURRENCY > 1` the normal case and the cause of the lower clamping.
+//   · **identical timestamps** (`agent_text` plus `usage`, `tool_start` plus `agent_spawn`): they
+//     have to take effect together before the clock runs on.
+//   · **exactly one `run_end` per run.** If it is missing, the figure stands forever.
+//   · **a deployment with both ends** (`deploy` `start` to `fail`): the server rack is the
+//     only state in the `Frame` that hangs off no figure, and without these two lines no
+//     golden frame would contain a glowing rack. The ops hashes would then never check the new
+//     drawing: a check that does not execute the new code is theatre.
 //
-// Wer hier etwas ändert, ändert `tools/golden.json` mit — und zwar bewusst (`--bless`).
+// Whoever changes something here changes `tools/golden.json` with it, deliberately (`--bless`).
 
 const SID = "issue:412";
 const PROJECT_ID = 27;
 const OWNER_ID = 3;
 
-/** Nullpunkt des Logs. UTC mit Millisekunden, genau wie `services/office.py::_ts`. */
+/** Zero point of the log. UTC with milliseconds, exactly like `services/office.py::_ts`. */
 const T0 = Date.parse("2026-08-05T11:22:33.000Z");
 
-/** ms nach `T0` → ISO-8601 mit Millisekunden. */
+/** ms after `T0` to ISO-8601 with milliseconds. */
 function ts(ms) {
   const d = new Date(T0 + ms);
   const p = (n, w = 2) => String(n).padStart(w, "0");
@@ -45,12 +45,12 @@ function ts(ms) {
     + `.${p(d.getUTCMilliseconds(), 3)}Z`;
 }
 
-/** `seq = run_steps.id * 4 + slot`. Slots: 0 Vorgänger · 1 Haupt · 2 abgeleitet · 3 frei. */
+/** `seq = run_steps.id * 4 + slot`. Slots: 0 predecessor · 1 main · 2 derived · 3 free. */
 function seq(stepId, slot) {
   return stepId * 4 + slot;
 }
 
-/** Der gemeinsame Umschlag — Feld für Feld `services/office.py::_event`. */
+/** The common envelope, field by field `services/office.py::_event`. */
 function ev(runId, stepId, slot, atMs, kind, fields) {
   return {
     v: 1, seq: seq(stepId, slot), ts: ts(atMs), sid: SID,
@@ -60,11 +60,11 @@ function ev(runId, stepId, slot, atMs, kind, fields) {
   };
 }
 
-// ── Das Log ──────────────────────────────────────────────────────────────────
+// ── The log ──────────────────────────────────────────────────────────────────
 
 export const EVENTS = [
-  // Kopfzeile des Raums. `seq: 0` — sie steht vor allem anderen (`api/office.py` schiebt sie
-  // mit `events.insert(0, …)` davor).
+  // Header of the room. `seq: 0`: it stands before everything else (`api/office.py` pushes it
+  // in front with `events.insert(0, …)`).
   ev(8871, 0, 0, 0, "session_seen", {
     title: "Anmeldung schlägt bei Umlauten fehl", issue_key: "TRA-412",
     project_key: "TRA", started_at: ts(0),
@@ -97,7 +97,7 @@ export const EVENTS = [
     result_preview: "from fastapi import APIRouter\n…",
   }),
 
-  // Fehlschlag mit belegtem Fehlerpräfix (`ERROR_PREFIXES`).
+  // Failure with a proven error prefix (`ERROR_PREFIXES`).
   ev(8871, 105, 1, 5000, "tool_start", {
     tool: "codegraph", target: "verify_password", tool_use_id: "tu-2",
     args_preview: '{"query": "verify_password"}',
@@ -108,8 +108,8 @@ export const EVENTS = [
     duration_ms: 902, result_preview: "FEHLER: kein Index für diesen Worktree",
   }),
 
-  // Delegation. Der Spawn hängt am **Start** (`step_events`), nicht am Ergebnis — der
-  // Unterlauf wird inline abgewartet.
+  // Delegation. The spawn hangs off the **start** (`step_events`), not off the result: the
+  // sub-run is awaited inline.
   ev(8871, 107, 1, 7000, "tool_start", {
     tool: "delegate", target: "review_agent", tool_use_id: "tu-3",
     args_preview: '{"role": "review_agent", "task": "Patch gegenlesen"}',
@@ -125,7 +125,7 @@ export const EVENTS = [
     parent_run_id: 8871, parent_tool_use_id: "tu-3", spawn_depth: 1,
     continuation_index: 0, task_id: null, issue_key: "TRA-412",
   }),
-  // Über `THINK_FROM_CHARS` (180) → wird eine Denkblase, keine Sprechblase.
+  // Above `THINK_FROM_CHARS` (180), so it becomes a thinking bubble, not a speech bubble.
   ev(8872, 109, 1, 9000, "agent_text", {
     text: "Der Handler dekodiert das Passwort mit latin-1, bevor er es an bcrypt reicht; bei "
       + "einem Umlaut im Klartext wirft das eine UnicodeDecodeError. Ich prüfe, ob dieselbe "
@@ -139,7 +139,7 @@ export const EVENTS = [
     tool: "fs_write", tool_use_id: "tu-4", ok: true, error: "", duration_ms: 61,
     result_preview: "geschrieben: backend/app/api/auth.py",
   }),
-  // Abgeleiteter Begleiter (Slot 2) — nur bei belegtem Erfolg eines `EDIT_TOOLS`.
+  // Derived companion (slot 2), only on a proven success of an `EDIT_TOOLS`.
   ev(8872, 111, 2, 10900, "file_edit", { path: "backend/app/api/auth.py" }),
   ev(8872, 112, 1, 12000, "run_end", {
     ok: true, status: "success", blocker_kind: null,
@@ -148,8 +148,8 @@ export const EVENTS = [
     cost_usd: 0.0412, cost_priced: true,
   }),
 
-  // `ts` läuft gegenüber `seq` RÜCKWÄRTS: der Usage-Begleiter des Unterlaufs kommt später an,
-  // trägt aber die frühere Uhrzeit. Ohne die untere Klemmung drehte das die Engine zurück.
+  // `ts` runs BACKWARDS relative to `seq`: the usage companion of the sub-run arrives later
+  // but carries the earlier time. Without the lower clamping that would turn the engine back.
   ev(8872, 113, 2, 11800, "usage", {
     in_tokens: 900, out_tokens: 210, cache_read_tokens: 800, cache_write_tokens: 0,
     provider: "codex", model: "gpt-5-codex",
@@ -159,16 +159,16 @@ export const EVENTS = [
     result_preview: "review_agent: Kodierung auf utf-8 umgestellt, Testfall ergänzt.",
   }),
 
-  // ── Der Serverschrank geht an ──────────────────────────────────────────────
-  // Echte Zeile des Watchers (`services/deploy_watch.py`), Slot 1, Felder exakt
-  // `services/office.py::deploy_fields`. `log_head` ist beim Start leer — es gibt noch kein Log.
-  // Die auslösende Figur ist der Wurzellauf: er hat gerade das Review zurückbekommen.
+  // ── The server rack goes on ────────────────────────────────────────────────
+  // A real row of the watcher (`services/deploy_watch.py`), slot 1, the fields exactly
+  // `services/office.py::deploy_fields`. `log_head` is empty at the start: there is no log yet.
+  // The triggering figure is the root run: it has just got the review back.
   ev(8871, 114, 1, 13500, "deploy", {
     deployment_id: 341, state: "start",
     target: "/opt/docker/stacks/traccoon", log_head: "",
   }),
 
-  // ── Lücke: 31,5 s ohne ein Ereignis (über MAX_GAP_MS = 20 s) ───────────────
+  // ── Gap: 31.5 s without an event (beyond MAX_GAP_MS = 20 s) ────────────────
 
   // ── Zweiter Wurzellauf 8873 (Assistent) ────────────────────────────────────
   ev(8873, 115, 1, 45000, "run_start", {
@@ -183,7 +183,7 @@ export const EVENTS = [
     tool: "traccoon_list_issues", target: null, tool_use_id: "tu-5",
     args_preview: '{"project": "TRA"}',
   }),
-  // `ok: null` — Altzeile ohne erkennbares Präfix. Unbekannt, NICHT Erfolg.
+  // `ok: null`: an old row without a recognisable prefix. Unknown, NOT success.
   ev(8873, 118, 1, 46900, "tool_result", {
     tool: "traccoon_list_issues", tool_use_id: "tu-5", ok: null, error: "",
     duration_ms: null, result_preview: "TRA-412, TRA-418",
@@ -195,18 +195,18 @@ export const EVENTS = [
     cost_usd: 0.0071, cost_priced: false,
   }),
 
-  // Systemmeldung: löst bewusst kein Kommando aus (`mapEvent` gibt `[]` zurück).
+  // System message: deliberately triggers no command (`mapEvent` returns `[]`).
   ev(8871, 120, 1, 48500, "system", {
     text: "Kontext kompaktiert (42 Nachrichten → 12).",
   }),
 
-  // ── Abschluss des Wurzellaufs ──────────────────────────────────────────────
+  // ── Conclusion of the root run ─────────────────────────────────────────────
   ev(8871, 121, 1, 52000, "agent_text", { text: "Fix ist drin, Prüfung läuft grün." }),
 
-  // Das Gegenstück zum `start` von oben — **dasselbe** `deployment_id`. Genau deshalb braucht
-  // der Rack-Zustand keinen Verfall: beide Enden sind echte Ereignisse. `log_head` trägt den
-  // Wächter-Text, den in der Wirklichkeit alle 56 fehlgeschlagenen Deployments tragen
-  // (`api/deployments.py`) — gekürzt schickt ihn schon das Backend (240 Zeichen).
+  // The counterpart to the `start` above, with **the same** `deployment_id`. Exactly for that
+  // the rack state needs no expiry: both ends are real events. `log_head` carries the guard
+  // text that all 56 failed deployments carry in reality (`api/deployments.py`); the backend
+  // already sends it truncated (240 characters).
   ev(8871, 122, 1, 52500, "deploy", {
     deployment_id: 341, state: "fail",
     target: "/opt/docker/stacks/traccoon",
@@ -221,8 +221,8 @@ export const EVENTS = [
   }),
 ];
 
-/** Der Roster, wie ihn die Lese-API neben `events[]` liefert (`api/office.py::_agent_row`).
- *  `mapEvent` braucht ihn für Rolle, Elternlauf und die Übergabe am Laufende. */
+/** The roster as the read API delivers it beside `events[]` (`api/office.py::_agent_row`).
+ *  `mapEvent` needs it for the role, the parent run and the handover at the end of a run. */
 export const ROSTER = [
   {
     agent_id: "run:8871", run_id: 8871, agent: "exec_agent", phase: "execute",
@@ -250,28 +250,28 @@ export const ROSTER = [
   },
 ];
 
-/** Anfang und Ende des Logs in Epoch-ms — die Grenzen, zwischen denen geprüft wird. */
+/** Beginning and end of the log in epoch ms: the bounds checking happens between. */
 export const T_FROM = T0;
 export const T_TO = T0 + 54000;
 
-/** Die acht Zeitpunkte des goldenen Bildes, als Versatz zu `T_FROM`.
+/** The eight moments of the golden picture, as an offset to `T_FROM`.
  *
- *  Gewählt, nicht gestreut — ein gleichmäßiges Raster trifft die interessanten Momente nicht.
- *  Jeder Punkt hier steht für einen Zustand, den nur er zeigt:
+ *  Chosen, not spread: an even grid does not hit the interesting moments. Every point here
+ *  stands for a state only it shows:
  *
- *    0      Ankunft: die Figur steht noch an der Tür, nichts ist gelaufen
- *    1200   mitten im Hereinlaufen — der einzige Punkt, an dem eine Interpolation geprüft wird
- *    7200   der Unterlauf betritt den Raum: Spawn-Linie, Funke am Werkzeug
- *    12000  `run_end` des Unterlaufs: Urteil, Emote, der Zettel fällt, die Übergabe wird geplant
- *    15500  Ankunft an der Übergabe — im `SETTLE_MS`-Fenster, in dem noch getrippelt wird;
- *           zugleich steht der Wurzellauf am Rack, das seit 2 s `start` zeigt (steigender Balken)
- *    25200  durch die Tür: `retired`, Sitzplatz wieder frei; das Rack leuchtet weiter, weil das
- *           Deployment noch läuft — genau der Zustand ohne Verfall
- *    48000  nach der 31,5-s-Lücke: Simulationszeit steht bei 36,5 s, weil `MAX_GAP_MS` klemmt;
- *           dazu die erhobene Hand des Gates
- *    54000  Ende des Logs: beide Wurzelläufe abgeschlossen bzw. wartend, das Rack steht auf
- *           `fail` (drei rote Reihen) und das „✗" über dem Schrank ist noch nicht verklungen
+ *    0      arrival: the figure still stands at the door, nothing has run
+ *    1200   in the middle of walking in: the only point where an interpolation is checked
+ *    7200   the sub-run enters the room: spawn line, spark at the tool
+ *    12000  `run_end` of the sub-run: verdict, emote, the note falls, the handover is planned
+ *    15500  arrival at the handover, in the `SETTLE_MS` window in which stepping still
+ *           happens; at the same time the root run stands at the rack, which has shown `start` for 2 s (a rising bar)
+ *    25200  through the door: `retired`, the seat free again; the rack keeps glowing because
+ *           the deployment is still running, exactly the state without an expiry
+ *    48000  after the 31.5 s gap: simulation time stands at 36.5 s, because `MAX_GAP_MS`
+ *           clamps; plus the raised hand of the gate
+ *    54000  end of the log: both root runs finished respectively waiting, the rack stands on
+ *           `fail` (three red rows) and the "✗" above it has not yet faded
  *
- *  Ein Punkt, der bei einer geänderten Konstante NICHT umkippt, prüft nichts — wer hier etwas
- *  streicht, sollte vorher wissen, welche Zeile im Code dann ungeprüft bleibt. */
+ *  A point that does NOT tip over with a changed constant checks nothing; whoever deletes
+ *  something here should know beforehand which line in the code then stays unchecked. */
 export const GOLDEN_OFFSETS = [0, 1200, 7200, 12000, 15500, 25200, 48000, 54000];
