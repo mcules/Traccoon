@@ -1,9 +1,9 @@
-"""Messreihen: aus Zahlen Schlüsse ziehen.
+"""Metric series: drawing conclusions from numbers.
 
-Ein Ablauf sah bisher nur den Augenblick. „Akku 25 %" ist für sich belanglos — erst die
-Reihe sagt, ob das Gerät in zwei Tagen oder in zwei Monaten stehenbleibt. Geprüft wird
-hier beides: dass die Gerade stimmt, und dass die Vorwarnung genau einmal kommt (bei
-einem Gerät, das täglich meldet, wäre eine tägliche Warnung dieselbe Warnung wie keine).
+A flow used to see only the moment. "Battery 25 %" is meaningless on its own; only the series
+says whether the device stops in two days or in two months. What is checked here is both:
+that the line is right, and that the early warning comes exactly once (with a device that
+reports daily, a daily warning would be the same warning as none).
 """
 import datetime as dt
 
@@ -31,7 +31,7 @@ async def _akku_verlauf(db, owner, werte):
 
 
 async def test_gerade_trifft_den_echten_verlauf(db):
-    """Der reale Verlauf des Trackers: 65 % am 27.07., 25 % am 18.08. — 1,8 %/Tag."""
+    """The real history of the tracker: 65 % on 27 July, 25 % on 18 August, so 1.8 %/day."""
     anna = await make_user(db, "anna")
     r = await _akku_verlauf(db, anna, [(22, 65), (18, 57), (14, 50), (10, 46), (6, 37),
                                        (2, 27), (0, 25)])
@@ -43,7 +43,7 @@ async def test_gerade_trifft_den_echten_verlauf(db):
 
 
 async def test_zu_wenige_punkte_ergeben_keine_prognose(db):
-    """Zwei Messungen sind keine Reihe — lieber nichts sagen als eine Zufallszahl."""
+    """Two measurements are not a series; better to say nothing than a random number."""
     anna = await make_user(db, "anna")
     r = await _akku_verlauf(db, anna, [(2, 50), (0, 40)])
     stand = await metrics.trend(db, r)
@@ -70,7 +70,7 @@ async def test_neuer_akku_darf_wieder_warnen(db):
     r = await _akku_verlauf(db, anna, [(22, 65), (14, 50), (6, 37), (0, 25)])
     metrics.vorwarnen(r, 5.0, 7)
     assert r.warned_at is not None
-    # Deutlicher Anstieg = aufgefüllt: die Marke verfällt.
+    # A clear rise means refilled: the mark expires.
     await metrics.erfassen(db, anna.id, "akku.shelter", 100.0)
     await db.commit()
     assert r.warned_at is None
@@ -127,10 +127,10 @@ async def test_aktion_meckert_bei_unsinn(db):
 
 
 async def test_unsinnige_werte_kommen_nicht_in_die_reihe(db):
-    """Der Tracker meldet `batteryLevel: 127`, wenn er den Ladestand nicht kennt.
+    """The tracker reports `batteryLevel: 127` when it does not know the charge level.
 
-    Ein einziger solcher Punkt verbiegt die Gerade so, dass aus „in zwei Wochen leer"
-    ein „steigt leicht an" wird — genau das ist beim ersten echten Ereignis passiert.
+    A single such point bends the line so that "empty in two weeks" becomes "rises slightly",
+    and exactly that happened with the first real event.
     """
     anna = await make_user(db, "anna")
     await _akku_verlauf(db, anna, [(22, 65), (14, 50), (6, 37), (0, 25)])
@@ -145,7 +145,7 @@ async def test_unsinnige_werte_kommen_nicht_in_die_reihe(db):
     stand = await metrics.trend(db, r2)
     assert stand["punkte"] == 4 and stand["pro_tag"] < 0
 
-    # Der Lauf bricht nicht ab — die nächste Weiche darf das erkennen.
+    # The run does not abort: the next branch should be able to recognise it.
     assert inst.context["messreihe"]["ignoriert"] is True
     assert inst.context["messreihe"]["warnen"] is False
 
@@ -163,23 +163,23 @@ async def test_werte_aus_wenigen_minuten_ergeben_keinen_tagestrend(db):
 
 
 async def test_fehlender_wert_wird_uebersprungen(db):
-    """Ein Ereignis ohne Messung ist kein Defekt.
+    """An event without a measurement is not a defect.
 
-    Der Tracker meldet „bin ausgefallen" ohne Position — und damit ohne Ladestand. Vorher
-    scheiterte der Schritt und stand rot im Protokoll, obwohl nichts kaputt war.
+    The tracker reports "I have dropped out" without a position, and therefore without a
+    charge level. Before, the step failed and stood red in the log although nothing was broken.
     """
     anna = await make_user(db, "anna")
     await _akku_verlauf(db, anna, [(6, 40), (3, 34), (0, 30)])
     inst = await _instanz(db, anna)
-    inst.context = {"event": {"type": "deviceInactive"}}      # keine position im Payload
+    inst.context = {"event": {"type": "deviceInactive"}}      # no position in the payload
     node = {"id": "m", "type": "auto_action", "data": {"config": {"action": {
         "action": "messwert", "params": {
             "reihe": "akku.shelter", "wert": "{{ position.attributes.batteryLevel }}"}}}}}
     r = await run_action(db, inst, node)
     assert r["uebersprungen"] is True and r["ignoriert"] is True
     assert inst.context["messreihe"]["warnen"] is False
-    # Der letzte bekannte Stand bleibt stehen — bei einer Ausfallmeldung ist er die
-    # interessanteste Zahl, die es noch gibt.
+    # The last known state stays: with a dropout report it is the most interesting number
+    # still available.
     assert inst.context["messreihe"]["wert"] == 30.0
     reihe = await metrics.reihe(db, anna.id, "akku.shelter")
     assert reihe.last_value == 30.0
@@ -187,7 +187,7 @@ async def test_fehlender_wert_wird_uebersprungen(db):
 
 
 async def test_pflichtwert_bleibt_ein_fehler(db):
-    """Wo der Wert der Zweck des Schritts ist, soll sein Fehlen auffallen."""
+    """Where the value is the purpose of the step, its absence should stand out."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna)
     node = {"id": "m", "type": "auto_action", "data": {"config": {"action": {
@@ -196,7 +196,7 @@ async def test_pflichtwert_bleibt_ein_fehler(db):
         await run_action(db, inst, node)
 
 
-# ── Stille: wenn gar nichts mehr kommt ───────────────────────────────────────
+# ── Silence: when nothing comes any more ─────────────────────────────────────
 
 async def test_trend_nennt_das_alter_des_letzten_werts(db):
     anna = await make_user(db, "anna")
@@ -207,7 +207,7 @@ async def test_trend_nennt_das_alter_des_letzten_werts(db):
 
 
 async def test_alter_auch_ohne_gerade(db):
-    """Gerade zwei Werte — für eine Prognose zu wenig, fürs Alter reicht es."""
+    """Exactly two values: too few for a forecast, enough for the age."""
     anna = await make_user(db, "anna")
     r = await _akku_verlauf(db, anna, [(5, 50), (4, 45)])
     stand = await metrics.trend(db, r)
@@ -227,14 +227,14 @@ async def test_neuer_wert_beendet_die_stille(db):
     r = await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
     metrics.stille_melden(r, 72.0, 26)
     assert r.still_at is not None
-    await metrics.erfassen(db, anna.id, "akku.shelter", 39.0)   # auch ein schlechter Wert zählt
+    await metrics.erfassen(db, anna.id, "akku.shelter", 39.0)   # a bad value counts as well
     await db.commit()
     assert r.still_at is None
     assert metrics.stille_melden(r, 72.0, 26) is True
 
 
 async def test_stille_und_restlaufzeit_verschlucken_sich_nicht(db):
-    """Zwei Tatsachen, zwei Marken — sonst frisst eine Meldung die andere."""
+    """Two facts, two marks; otherwise one message eats the other."""
     anna = await make_user(db, "anna")
     r = await _akku_verlauf(db, anna, [(22, 65), (14, 50), (6, 37), (3, 25)])
     stand = await metrics.trend(db, r, ziel=0.0)
@@ -258,7 +258,7 @@ async def test_aktion_liest_ohne_zu_schreiben(db):
 
 
 async def test_unbekannte_reihe_ist_kein_fehler(db):
-    """Ein Tippfehler im Schlüssel wäre sonst jede Stunde ein roter Lauf."""
+    """A typo in the key would otherwise be a red run every hour."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna)
     node = {"id": "lesen", "type": "auto_action", "data": {"config": {"action": {
@@ -281,10 +281,9 @@ async def test_frische_reihe_schweigt_nicht(db):
 
 
 async def test_zahlen_duerfen_aus_dem_kontext_kommen(db):
-    """Derselbe Wächter für mehrere Reihen: Schwelle und Fenster kommen vom Job.
+    """The same watcher for several series: the threshold and the window come from the job.
 
-    Vorher scheiterte der Schritt an „{{ still_stunden }}" — einem Text, der wie eine Zahl
-    gemeint war.
+    Before, the step failed on "{{ still_stunden }}", a text that was meant as a number.
     """
     anna = await make_user(db, "anna")
     await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
@@ -307,7 +306,7 @@ async def test_grenzen_duerfen_aus_dem_kontext_kommen(db):
     assert (await run_action(db, inst, node))["ignoriert"] is True
 
 
-# ── Ansicht: Punkte lesen und einzeln entfernen ──────────────────────────────
+# ── The view: reading points and removing them one by one ───────────────────
 
 async def test_punkte_kommen_mit_id_und_trend(client, db):
     anna = await make_user(db, "anna")
@@ -321,7 +320,7 @@ async def test_punkte_kommen_mit_id_und_trend(client, db):
 
 
 async def test_zeitraum_gilt_auch_fuer_die_gerade(client, db):
-    """Gezeigt und gerechnet wird dasselbe Fenster — sonst passt die Linie nicht zu den Punkten."""
+    """Shown and computed is the same window; otherwise the line does not fit the points."""
     anna = await make_user(db, "anna")
     await _akku_verlauf(db, anna, [(40, 100), (39, 99), (38, 98), (3, 40), (2, 38), (1, 36)])
     eng = (await client.get("/metrics/akku.shelter/punkte?tage=7", headers=auth(anna))).json()
@@ -331,10 +330,10 @@ async def test_zeitraum_gilt_auch_fuer_die_gerade(client, db):
 
 
 async def test_einzelnen_ausreisser_entfernen(client, db):
-    """Ein Ausreißer verbiegt die Gerade — ohne diesen Weg müsste man die Reihe wegwerfen."""
+    """An outlier bends the line; without this path one would have to throw the series away."""
     anna = await make_user(db, "anna")
     await _akku_verlauf(db, anna, [(6, 60), (4, 50), (2, 40)])
-    await metrics.erfassen(db, anna.id, "akku.shelter", 999.0)     # Ausreißer, zuletzt
+    await metrics.erfassen(db, anna.id, "akku.shelter", 999.0)     # the outlier, last
     await db.commit()
     daten = (await client.get("/metrics/akku.shelter/punkte", headers=auth(anna))).json()
     schlecht = [p for p in daten["punkte"] if p["wert"] == 999.0][0]
@@ -362,10 +361,10 @@ async def test_fremder_wert_wird_nicht_geloescht(client, db):
 
 
 async def test_nachgetragener_altwert_veraendert_den_kopf_nicht(db):
-    """Der Kopf zeigt auf den zeitlich letzten Wert, nicht auf den zuletzt eingetragenen.
+    """The head points at the value that is last in time, not at the one entered last.
 
-    Sonst sieht eine Reihe nach dem Nachtragen alter Werte scheinbar aktuell aus — im Bild
-    stand ein Stand von vorgestern als „jetzt".
+    Otherwise a series looks up to date after old values are added, and a state from the day
+    before yesterday stood in the picture as "now".
     """
     anna = await make_user(db, "anna")
     await metrics.erfassen(db, anna.id, "akku.shelter", 42.0, einheit="%", ts=_tage(1))
@@ -373,7 +372,7 @@ async def test_nachgetragener_altwert_veraendert_den_kopf_nicht(db):
     await db.commit()
     r = await metrics.reihe(db, anna.id, "akku.shelter")
     assert r.last_value == 42.0
-    # Ein wirklich neuerer Wert rückt dagegen nach.
+    # A really newer value on the other hand moves up.
     await metrics.erfassen(db, anna.id, "akku.shelter", 39.0, einheit="%")
     await db.commit()
     assert r.last_value == 39.0

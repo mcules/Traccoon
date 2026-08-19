@@ -1,8 +1,8 @@
-"""Der Ticket-Lebenszyklus als Prozess: Schleife, Torwächter, Ereignisse.
+"""The ticket lifecycle as a process: loop, gatekeeper, events.
 
-Diese Tests sichern die drei Stellen ab, an denen die Migration schiefgehen konnte:
-Fortsetzungs-Schleifen (Rückkante auf denselben Knoten), die Runaway-Bremse (darf nicht
-per Graph abschaltbar sein) und das Fortsetzen per Kommentar/Antwort.
+These tests secure the three places where the migration could go wrong: continuation loops
+(a back edge onto the same node), the runaway brake (which must not be switchable off over
+the graph) and continuing over a comment or an answer.
 """
 from app.models.enums import (
     HoldReason, ProjectRole, StatusCategory, TicketAgentStatus, WorkflowStepStatus,
@@ -49,7 +49,7 @@ async def _schritte(db, node_id: str) -> list[WorkflowStepRun]:
 
 
 async def test_planung_laeuft_bis_zur_freigabe(db, seeded, redis_stub):
-    """Zuweisen → Agent plant → Ticket wartet auf die Plan-Freigabe (Menschenhoheit)."""
+    """Assign, the agent plans, the ticket waits for the plan approval (human sovereignty)."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "output": "Der Plan.", "summary": "Plan"}
 
@@ -67,7 +67,7 @@ async def test_planung_laeuft_bis_zur_freigabe(db, seeded, redis_stub):
 
 
 async def test_aufteilung_wird_als_solche_markiert(db, seeded, redis_stub):
-    """Plan mit <subtickets> → andere Freigabe (plan_split), sonst identischer Weg."""
+    """A plan with <subtickets> gives another approval (plan_split), otherwise the same way."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "summary": "Plan",
                        "output": '<subtickets>[{"summary":"Teil A"}]</subtickets>'}
@@ -80,16 +80,16 @@ async def test_aufteilung_wird_als_solche_markiert(db, seeded, redis_stub):
 
 
 async def test_fortsetzung_laeuft_nicht_im_kreis(db, seeded, redis_stub):
-    """`loop_exhausted` führt über eine Rückkante auf denselben Agenten-Knoten.
+    """`loop_exhausted` leads over a back edge onto the same agent node.
 
-    Ohne den `routed_at`-Stempel würde die Engine den erledigten Schritt immer wieder in
-    eine Kante übersetzen, statt neu auszuführen — der Lauf drehte sich, ohne je einen
-    Agenten zu starten. Hier muss jede Runde einen NEUEN Schritt erzeugen.
+    Without the `routed_at` stamp the engine would translate the finished step into an edge
+    again and again instead of executing it anew, and the run would turn without ever
+    starting an agent. Here every round has to produce a NEW step.
     """
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     await db.commit()
-    # Erst ein Zwischenstand (Fortsetzung), dann fertig — sonst drehte der Prozess bis zum Cap.
+    # First an interim state (continuation), then finished; otherwise the process would turn up to the cap.
     redis_stub["*"] = [{"status": "loop_exhausted", "summary": "Zwischenstand",
                         "worktree_fingerprint": "aaa"},
                        {"status": "done", "summary": "fertig", "worktree_fingerprint": "bbb"}]
@@ -106,7 +106,7 @@ async def test_fortsetzung_laeuft_nicht_im_kreis(db, seeded, redis_stub):
 
 
 async def test_feststecker_haelt_an_statt_weiterzulaufen(db, seeded, redis_stub):
-    """Gleicher Worktree-Fingerabdruck wie zuvor → Feststecker: anhalten, nicht fortsetzen."""
+    """The same worktree fingerprint as before means stuck: halt, do not continue."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     db.add(Run(issue_id=issue.id, agent="developer", phase="execution",
@@ -127,7 +127,7 @@ async def test_feststecker_haelt_an_statt_weiterzulaufen(db, seeded, redis_stub)
 
 
 async def test_runaway_bremse_greift_auch_im_graphen(db, seeded, redis_stub):
-    """Über dem Cap darf KEIN Agentenlauf mehr starten — egal was der Prozess zeichnet."""
+    """Above the cap NO agent run may start any more, no matter what the process draws."""
     from app.services import agent_gate
 
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
@@ -148,12 +148,12 @@ async def test_runaway_bremse_greift_auch_im_graphen(db, seeded, redis_stub):
     token = (await db.execute(select(WorkflowToken).where(
         WorkflowToken.state == WorkflowTokenState.waiting))).scalars().first()
     assert token is not None and token.waiting_for == "gate"
-    # Kein Schritt ist je gelaufen — der Lauf wurde vor dem Einreihen gestoppt.
+    # No step has ever run: the run was stopped before it was queued.
     assert all(s.status == WorkflowStepStatus.pending for s in await _schritte(db, "exec"))
 
 
 async def test_kommentar_setzt_wartenden_prozess_fort(client, db, seeded, redis_stub):
-    """Rückfrage des Agenten → Ticket wartet; ein Kommentar nimmt den Prozess wieder auf."""
+    """A question from the agent makes the ticket wait; a comment picks the process up again."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     await db.commit()
@@ -167,7 +167,7 @@ async def test_kommentar_setzt_wartenden_prozess_fort(client, db, seeded, redis_
     assert issue.agent_status == TicketAgentStatus.hold
     assert issue.hold_reason == HoldReason.question
 
-    # Antwort als Kommentar → der Ereignis-Knoten nimmt sie an, der Agent läuft weiter.
+    # The answer as a comment: the event node accepts it and the agent runs on.
     redis_stub["*"] = {"status": "done", "summary": "umgesetzt"}
     r = await client.post(f"/issues/{issue.key}/comments",
                           json={"body": "So wie im Entwurf."}, headers=auth(owner))
@@ -180,7 +180,7 @@ async def test_kommentar_setzt_wartenden_prozess_fort(client, db, seeded, redis_
 
 
 async def test_freigabe_bleibt_dem_menschen_vorbehalten(client, db, seeded, redis_stub):
-    """Ein Kommentar darf eine wartende Freigabe NICHT überspringen."""
+    """A comment must NOT skip a waiting approval."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "output": "Plan", "summary": "Plan"}
     from app.services.lifecycle_flow import start_lifecycle
@@ -193,19 +193,19 @@ async def test_freigabe_bleibt_dem_menschen_vorbehalten(client, db, seeded, redi
     await enginemod.drain()
     await db.refresh(issue)
 
-    assert issue.agent_status == TicketAgentStatus.plan_review   # unverändert wartend
+    assert issue.agent_status == TicketAgentStatus.plan_review   # unchanged, still waiting
     offen = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.status == WorkflowStepStatus.waiting))).scalars().all()
     assert [s.node_id for s in offen] == ["approve_plan"]
 
 
 async def test_planung_laeuft_nicht_endlos_im_kreis(db, seeded, redis_stub):
-    """Auch die Planung hat ein Fortsetzungs-Budget.
+    """The planning has a continuation budget as well.
 
-    Die Rückkante „weiter planen" führte ungebremst auf `plan` zurück: ein Architekt, der
-    jedes Mal sein Iterations-Limit reißt, startete im Neunzig-Sekunden-Takt den nächsten
-    Lauf, und gezählt hat das niemand (TRA-31 am 2026-08-07). Nach `PLAN_FORTSETZUNGEN`
-    Anläufen ist Schluss — dann braucht es einen Menschen, nicht den elften Versuch.
+    The back edge "keep planning" led back to `plan` unbraked: an architect that tears its
+    iteration limit every time started the next run every ninety seconds, and nobody counted
+    that (TRA-31 on 2026-08-07). After `PLAN_FORTSETZUNGEN` attempts it stops, and then a
+    human is needed, not the eleventh attempt.
     """
     from app.services.workflow_seed import PLAN_FORTSETZUNGEN
 
@@ -220,15 +220,15 @@ async def test_planung_laeuft_nicht_endlos_im_kreis(db, seeded, redis_stub):
     plan_schritte = await _schritte(db, "plan")
     assert len(plan_schritte) <= PLAN_FORTSETZUNGEN + 1, "Planung dreht sich ungebremst"
     assert issue.continuation_count >= PLAN_FORTSETZUNGEN
-    assert issue.agent_status == TicketAgentStatus.hold      # wartet auf einen Menschen
+    assert issue.agent_status == TicketAgentStatus.hold      # waits for a human
     wartend = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.status == WorkflowStepStatus.waiting))).scalars().all()
     assert [s.node_id for s in wartend] == ["wait_plan"]
 
 
 async def test_freigabe_setzt_die_fortsetzungs_zaehlung_zurueck(db, seeded, redis_stub):
-    """Planung und Umsetzung teilen sich einen Zähler — eine zähe Planung darf der
-    Umsetzung nicht ihr Budget wegessen, bevor sie die erste Zeile geschrieben hat."""
+    """Planning and implementation share a counter: a tough planning must not eat the
+    implementation's budget before it has written the first line."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
     issue.continuation_count = 7
@@ -249,9 +249,9 @@ async def test_freigabe_setzt_die_fortsetzungs_zaehlung_zurueck(db, seeded, redi
 
 
 async def test_zuweisen_ueber_den_assistenten_startet_den_prozess(db, seeded, redis_stub):
-    """Der Assistent bedient Traccoon über native Werkzeuge, nicht über die API. Setzte er nur
-    Felder, lag das Ticket mit Agent und Status da, ohne dass ein Prozess lief — und nur ein
-    Backend-Neustart holte es je wieder ein (TRA-32 am 2026-08-07)."""
+    """The assistant operates Traccoon over native tools, not over the API. If it only set
+    fields, the ticket would lie there with an agent and a status without a process running,
+    and only a backend restart would ever catch it again (TRA-32 on 2026-08-07)."""
     from app.services.lifecycle_flow import live_instance, start_lifecycle
 
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.planning)
@@ -262,15 +262,15 @@ async def test_zuweisen_ueber_den_assistenten_startet_den_prozess(db, seeded, re
 
     assert inst is not None
     assert await live_instance(db, issue) is not None
-    # Das Token ist AKTIV, nicht wartend: genau daran erkennt der 30-s-Tick des Backends,
-    # dass es hier weitergehen muss — advance läuft bewusst nicht im Worker.
+    # The token is ACTIVE, not waiting: exactly by that the 30 s tick of the backend
+    # recognises that it has to continue here; advance deliberately does not run in the worker.
     tok = (await db.execute(select(WorkflowToken).where(
         WorkflowToken.instance_id == inst.id))).scalars().first()
     assert tok.state == WorkflowTokenState.active
 
 
 async def test_verwaistes_ticket_wird_im_tick_eingesammelt(db, seeded, redis_stub):
-    """Das Sicherheitsnetz: was ohne Instanz dasteht, holt der Tick — nicht erst der Neustart."""
+    """The safety net: what stands there without an instance is fetched by the tick, not only by the restart."""
     from app.services.lifecycle_flow import adopt_orphans, live_instance
 
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.planning)
@@ -285,8 +285,8 @@ async def test_verwaistes_ticket_wird_im_tick_eingesammelt(db, seeded, redis_stu
 
 
 async def test_startender_agent_hebt_ueberholten_hold_auf(db, seeded, redis_stub):
-    """Läuft wieder ein Agent, ist der alte Hold-Grund Geschichte — sonst zeigt das Board
-    „hold — merge", während gearbeitet wird."""
+    """If an agent is running again, the old hold reason is history; otherwise the board
+    shows "hold - merge" while work is going on."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.hold)
     issue.hold_reason = HoldReason.merge
     issue.plan = "Plan"
