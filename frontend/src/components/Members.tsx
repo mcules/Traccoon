@@ -1,7 +1,9 @@
 import { useState } from "react";
+import { formatDate } from "../lib/formatTime";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
+import { Aktionen, ICON, IconKnopf, LoeschDialog } from "./ui";
 
 interface Member {
   id: number; user_id: number; username: string; display_name: string;
@@ -27,6 +29,8 @@ export default function Members({ project }: { project: Project }) {
   const [err, setErr] = useState("");
   const [info, setInfo] = useState("");
   const [q, setQ] = useState("");
+  const [entfernen, setEntfernen] = useState<Member | null>(null);
+  const [widerrufen, setWiderrufen] = useState<Invitation | null>(null);
   const inv = () => qc.invalidateQueries({ queryKey: key });
   const invInv = () => qc.invalidateQueries({ queryKey: invKey });
 
@@ -100,8 +104,13 @@ export default function Members({ project }: { project: Project }) {
                 <input type="checkbox" checked={m.ai_assign}
                   onChange={(e) => update.mutate({ user_id: m.user_id, body: { ai_assign: e.target.checked } })} />
               </td>
-              <td className="text-right">
-                <button onClick={() => remove.mutate(m.user_id)} className="text-muted hover:text-red-400">{tr("members.entfernen")}</button>
+              <td className="py-1 text-right">
+                <div className="flex justify-end">
+                  <Aktionen>
+                    <IconKnopf icon={ICON.loeschen} titel={tr("members.entfernen")} gefahr
+                      onClick={() => setEntfernen(m)} />
+                  </Aktionen>
+                </div>
               </td>
             </tr>
           ))}
@@ -171,17 +180,31 @@ export default function Members({ project }: { project: Project }) {
                 <tr key={i.id} className="border-b border-line">
                   <td className="py-2">{i.email}</td>
                   <td>{i.role}</td>
-                  <td className="text-muted">{i.expires_at ? new Date(i.expires_at).toLocaleDateString() : "—"}</td>
-                  <td className="text-right">
-                    <button onClick={() => revoke.mutate(i.id)} className="text-muted hover:text-red-400">
-                      Widerrufen
-                    </button>
+                  <td className="text-muted">{i.expires_at ? formatDate(i.expires_at) : "—"}</td>
+                  <td className="py-1 text-right">
+                    <div className="flex justify-end">
+                      <Aktionen>
+                        <IconKnopf icon={ICON.loeschen} titel={tr("members.widerrufen")} gefahr
+                          onClick={() => setWiderrufen(i)} />
+                      </Aktionen>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+      {entfernen && (
+        <LoeschDialog was={entfernen.display_name || entfernen.username}
+          hinweis={tr("members.entfernen_hinweis")}
+          onClose={() => setEntfernen(null)}
+          onLoeschen={() => { remove.mutate(entfernen.user_id); setEntfernen(null); }} />
+      )}
+      {widerrufen && (
+        <LoeschDialog was={widerrufen.email} hinweis={tr("members.widerrufen_hinweis")}
+          onClose={() => setWiderrufen(null)}
+          onLoeschen={() => { revoke.mutate(widerrufen.id); setWiderrufen(null); }} />
       )}
     </div>
   );

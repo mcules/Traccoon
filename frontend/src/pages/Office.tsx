@@ -74,6 +74,8 @@ import ErrorBoundary, { sicheresNeuladen } from "../components/ErrorBoundary.tsx
 import type { Scope } from "../components/office/api.ts";
 import { useWakeLock } from "../hooks/useWakeLock.ts";
 import { useTokenKeepalive } from "../hooks/useTokenKeepalive.ts";
+import { projektPfad } from "../projectTabs";
+import { SCHIENE_FREILASSEN } from "../nav";
 
 // ── Adjustable settings of the watchdog ─────────────────────────────────────────────────────
 
@@ -178,7 +180,7 @@ export default function Office(): JSX.Element {
 
   // Back to where the office came from: into the project tab when a project is involved,
   // otherwise to the project list.
-  const zurueck = () => navigate(projectKey ? `/projects/${projectKey}?tab=buero` : "/");
+  const zurueck = () => navigate(projectKey ? projektPfad(projectKey, "betrieb", "buero") : "/");
 
   /** Esc in the kiosk: one level back into the operable full screen page, not out of the
    *  office; room and jump point stay, because usually you want to intervene right here. */
@@ -228,17 +230,24 @@ export default function Office(): JSX.Element {
   const wartet = !!projectKey && isLoading;
 
   return (
-    <div className="fixed inset-0 z-30 flex flex-col bg-surface">
+    // Die Bereichsschiene bleibt frei: das Büro deckt die Seite zu, nicht den Weg hinaus.
+    // Im Kiosk gibt es keinen Weg hinaus (Wandschirm), dort deckt es wirklich alles.
+    <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${kiosk ? "" : SCHIENE_FREILASSEN}`}>
       {/* Die Kopfzeile dieser Seite (Zurück-Knopf) ist Bedienung — im Kiosk fällt sie weg.
           Was der Wandschirm an Beschriftung braucht, steht in der Kopfzeile der Ansicht. */}
       {!kiosk && (
         <div className="flex shrink-0 items-center gap-3 border-b border-line bg-card px-4 py-2">
-          <button
-            onClick={zurueck}
-            className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
-          >
-            ← {tr(projectKey ? "office.zurueck_projekt" : "office.zurueck_uebersicht")}
-          </button>
+          {/* Zurück nur mit Projekt-Bezug: dorthin führt die Bereichsschiene nicht. Aus dem
+              globalen Büro geht es über die Schiene hinaus, ein zweiter Ausgang wäre nur ein
+              zweiter Ort, an dem man ihn sucht. */}
+          {projectKey && (
+            <button
+              onClick={zurueck}
+              className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
+            >
+              ← {tr("office.zurueck_projekt")}
+            </button>
+          )}
           <h1 className="text-sm font-semibold">{tr("office.buero")}</h1>
           <span className="font-mono text-xs text-muted">
             {projectKey ?? tr("office.alle_projekte")}

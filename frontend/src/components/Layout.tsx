@@ -5,9 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { api, Project } from "../api";
 import { useAuth } from "../auth";
 import { useChrome, type ChromeTab } from "../pageChrome";
+import { hauptNavigation, istBereich, SCHIENE_BREITE, type NavEintrag } from "../nav";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
-import InboxBadge from "./InboxBadge";
 import UpdateFooter from "./UpdateFooter";
 
 // Project title (name plus subtitle), at the same time a quick switcher. On project pages it
@@ -72,10 +72,110 @@ function ProjectSwitcher() {
   );
 }
 
+/** Waiting items of the assistant inbox, as a number on the navigation entry. */
+function useInboxZaehler(): number {
+  const { data = [] } = useQuery({
+    queryKey: ["inbox"], queryFn: () => api.get<{ status: string }[]>("/assistant/inbox"),
+    refetchInterval: 15000,
+  });
+  return data.filter((t) => t.status === "new").length;
+}
+
+/**
+ * The areas as a narrow rail on the left, from the medium width on.
+ *
+ * A rail and not a bar in the header: the header already carries the project (title,
+ * switcher, badges), and an area navigation that has to share the row with it is the first
+ * thing to be squeezed out. On the left it keeps its place at every width, and above all it
+ * is *visible*, which the old list behind the avatar was not.
+ */
+function BereichsSchiene() {
+  const { user } = useAuth();
+  const loc = useLocation();
+  const wartend = useInboxZaehler();
+  const eintraege = hauptNavigation(user?.global_role === "admin");
+
+  return (
+    <nav className={`sticky top-0 hidden h-screen ${SCHIENE_BREITE} shrink-0 flex-col items-center gap-1 border-r border-line bg-card py-3 md:flex`}>
+      <Link to="/" title={tr("layout.traccoon_start")} className="mb-2 text-2xl">🦝</Link>
+      {eintraege.map((e) => (
+        <SchienenKnopf key={e.key} eintrag={e} aktiv={istBereich(loc.pathname, e.to)}
+          zaehler={e.zaehler === "inbox" ? wartend : 0} />
+      ))}
+    </nav>
+  );
+}
+
+function SchienenKnopf({ eintrag, aktiv, zaehler }: {
+  eintrag: NavEintrag; aktiv: boolean; zaehler: number;
+}) {
+  return (
+    <Link
+      to={eintrag.to}
+      title={eintrag.label}
+      className={`relative flex w-[60px] flex-col items-center gap-0.5 rounded-lg px-1 py-2 ${
+        aktiv ? "bg-surface text-ink" : "text-muted hover:bg-surface hover:text-ink"
+      }`}
+    >
+      <span className="text-lg leading-none">{eintrag.icon}</span>
+      <span className="w-full truncate text-center text-[10px] leading-tight">{eintrag.label}</span>
+      {zaehler > 0 && (
+        <span className="absolute right-1 top-1 rounded-full bg-brand px-1 text-[10px] font-medium text-white tabular-nums">
+          {zaehler}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+/**
+ * The same areas on a phone, out of the same list.
+ *
+ * Formerly a second, hand written list stood here that had drifted against the one behind
+ * the avatar (different order, the office missing there, the inbox missing in both).
+ */
+function MobileMenu() {
+  const [open, setOpen] = useState(false);
+  const { user } = useAuth();
+  const loc = useLocation();
+  const wartend = useInboxZaehler();
+  const eintraege = hauptNavigation(user?.global_role === "admin");
+  const close = () => setOpen(false);
+
+  return (
+    <div className="md:hidden">
+      <button onClick={() => setOpen((v) => !v)} aria-label={tr("layout.menue")} title={tr("layout.menue")}
+        className="relative flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface text-lg leading-none text-ink hover:bg-card">
+        ☰
+        {wartend > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand" />}
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={close} />
+          <div className="absolute inset-x-2 top-full z-40 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-2xl">
+            {eintraege.map((e) => (
+              <Link key={e.key} to={e.to} onClick={close}
+                className={`flex items-center gap-2 rounded px-2 py-2 text-sm ${
+                  istBereich(loc.pathname, e.to) ? "bg-surface text-ink" : "text-ink hover:bg-surface"
+                }`}>
+                <span>{e.icon}</span>
+                <span className="flex-1">{e.label}</span>
+                {e.zaehler === "inbox" && wartend > 0 && (
+                  <span className="rounded-full bg-brand px-1.5 text-xs text-white tabular-nums">{wartend}</span>
+                )}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Only what really belongs to the person: the account and the way out. */
 function UserMenu() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
-  const isAdmin = user?.global_role === "admin";
   const name = user?.display_name || user?.username || "";
   const initials = name.trim().slice(0, 2).toUpperCase() || "?";
 
@@ -94,62 +194,10 @@ function UserMenu() {
           <div className="absolute right-0 z-30 mt-2 w-48 rounded-lg border border-line bg-card p-1 text-sm shadow-2xl">
             <div className="truncate px-2 py-1.5 text-xs text-muted">{name}</div>
             <div className="my-1 border-t border-line" />
-            <Link to="/profil" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.profil")}</Link>
-            <Link to="/settings" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.einstellungen")}</Link>
-            <Link to="/processes" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.prozesse")}</Link>
-            {/* Die Pillenleiste gehört der jeweiligen Seite — eine globale Ansicht hat dort
-                keinen Platz. Das Büro steht deshalb hier, neben „Prozesse": beides sind
-                projektübergreifende Seiten, keine Einstellungen. */}
-            <Link to="/buero" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.buero")}</Link>
-            {isAdmin && (
-              <Link to="/admin" onClick={() => setOpen(false)}
-                className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.admin")}</Link>
-            )}
-            <div className="my-1 border-t border-line" />
+            <Link to="/konto" onClick={() => setOpen(false)}
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.konto")}</Link>
             <button onClick={logout}
               className="block w-full rounded px-2 py-1.5 text-left text-ink hover:bg-surface">{tr("layout.abmelden")}</button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// Mobile burger menu: the jumps between the large areas. The tabs of the respective page no
-// longer stand here but on the page itself; otherwise they existed twice, in two different
-// places, with two different presentations.
-function MobileMenu() {
-  const [open, setOpen] = useState(false);
-  const { user, logout } = useAuth();
-  const isAdmin = user?.global_role === "admin";
-  const close = () => setOpen(false);
-  const item = "flex items-center gap-2 rounded px-2 py-2 text-sm";
-  return (
-    <div className="md:hidden">
-      <button onClick={() => setOpen((v) => !v)} aria-label={tr("layout.menue")} title={tr("layout.menue")}
-        className="flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface text-lg leading-none text-ink hover:bg-card md:h-8 md:w-8">
-        ☰
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={close} />
-          <div className="absolute inset-x-2 top-full z-40 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-2xl">
-            <Link to="/" onClick={close} className={`${item} text-ink hover:bg-surface`}>🦝 <span>{tr("layout.projekte")}</span></Link>
-            <Link to="/inbox" onClick={close} className={`${item} text-ink hover:bg-surface`}>📥 <span>{tr("layout.inbox")}</span></Link>
-            <Link to="/processes" onClick={close} className={`${item} text-ink hover:bg-surface`}>🔀 <span>{tr("layout.prozesse")}</span></Link>
-            <Link to="/buero" onClick={close} className={`${item} text-ink hover:bg-surface`}>🏢 <span>{tr("layout.buero_2")}</span></Link>
-            <Link to="/profil" onClick={close} className={`${item} text-ink hover:bg-surface`}>👤 <span>{tr("layout.profil")}</span></Link>
-            <Link to="/settings" onClick={close} className={`${item} text-ink hover:bg-surface`}>⚙️ <span>{tr("layout.einstellungen")}</span></Link>
-            {isAdmin && (
-              <Link to="/admin" onClick={close} className={`${item} text-ink hover:bg-surface`}>🛠️ <span>{tr("layout.admin")}</span></Link>
-            )}
-            <div className="my-1 border-t border-line" />
-            <button onClick={() => { close(); logout(); }}
-              className={`${item} w-full text-left text-ink hover:bg-surface`}>🚪 <span>{tr("layout.abmelden")}</span></button>
           </div>
         </>
       )}
@@ -161,45 +209,53 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { chrome } = useChrome();
   const loc = useLocation();
   const current = loc.pathname + loc.search;
-  const isActive = (to: string) => loc.pathname === to || current === to;
+  const isActive = (t: ChromeTab) => chrome.active ? t.key === chrome.active
+    : (loc.pathname === t.to || current === t.to);
   const onProjectPage = /^\/projects\//.test(loc.pathname);
+  const seitlich = chrome.layout === "seite" && chrome.tabs.length > 0;
 
   return (
-    <div className="min-h-full">
-      <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
-        {/* Links: Marke + Projekt-Titel/Switcher bzw. Seitentitel */}
-        <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
-          <Link to="/" title={tr("layout.traccoon_start")}
-            className="flex h-10 w-10 shrink-0 items-center justify-center text-xl md:h-8 md:w-8">🦝</Link>
-          {!onProjectPage && chrome.title && (
-            <span className="truncate font-semibold text-ink">{chrome.title}</span>
+    <div className="flex min-h-full">
+      <BereichsSchiene />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
+          {/* Links: Menü (mobil) + Projekt-Titel/Switcher bzw. Seitentitel */}
+          <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
+            <MobileMenu />
+            {!onProjectPage && chrome.title && (
+              <span className="truncate font-semibold text-ink">{chrome.title}</span>
+            )}
+            {/* Der Wechsler ist auf einer projektlosen Seite am Handy nur Platzverbrauch —
+                dort steht der Seitentitel, und die Projektliste hängt im Menü. */}
+            <div className={!onProjectPage && chrome.title ? "hidden sm:block" : ""}>
+              <ProjectSwitcher />
+            </div>
+          </div>
+
+          <div className="flex-1" />
+
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <div className="hidden sm:block"><AgentsBadge /></div>
+            <NotificationBell />
+            <UserMenu />
+          </div>
+        </header>
+        {/* [&>*]:mx-auto zentriert begrenzte Seiten-Spalten; volle Breite bleibt unberührt. */}
+        <main className="mx-auto w-full max-w-[1400px] flex-1 p-3 [&>*]:mx-auto sm:p-5">
+          {seitlich ? (
+            <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+              <SeitenNavigation tabs={chrome.tabs} aktiv={isActive} seitlich />
+              <div className="min-w-0 flex-1">{children}</div>
+            </div>
+          ) : (
+            <>
+              <SeitenNavigation tabs={chrome.tabs} aktiv={isActive} />
+              {children}
+            </>
           )}
-          {/* Der Wechsler ist auf einer projektlosen Seite am Handy nur Platzverbrauch —
-              dort steht der Seitentitel, und die Projektliste hängt im Menü. */}
-          <div className={!onProjectPage && chrome.title ? "hidden sm:block" : ""}>
-            <ProjectSwitcher />
-          </div>
-        </div>
-
-        <div className="flex-1" />
-
-        {/* Rechts: Badges (ab sm) + Nutzer + Burger (mobil) */}
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-          <div className="hidden items-center gap-2 sm:flex sm:gap-3">
-            <InboxBadge />
-            <AgentsBadge />
-          </div>
-          <NotificationBell />
-          <UserMenu />
-          <MobileMenu />
-        </div>
-      </header>
-      {/* [&>*]:mx-auto zentriert begrenzte Seiten-Spalten; volle Breite bleibt unberührt. */}
-      <main className="mx-auto max-w-[1400px] p-3 [&>*]:mx-auto sm:p-5">
-        <SeitenNavigation tabs={chrome.tabs} aktiv={(t) => chrome.active ? t.key === chrome.active : isActive(t.to)} />
-        {children}
-      </main>
-      <UpdateFooter />
+        </main>
+        <UpdateFooter />
+      </div>
     </div>
   );
 }
@@ -212,21 +268,31 @@ export default function Layout({ children }: { children: ReactNode }) {
  * navigation one cannot see is none. On a phone they were hidden in the burger menu instead,
  * so in a second place in a second form.
  *
- * Here the bar simply wraps. It costs one line of height and shows everything for that, at
- * every width, with a label instead of a bare sign.
+ * Two shapes since: a wrapping bar for a handful of entries, and beside the content for the
+ * pages with eight or nine (settings, administration, project settings). Wrapping is fine
+ * for five, but at nine the bar takes two lines and reads like a word cloud. Below `md`
+ * both look the same, because there is no room for a column beside the content.
  */
-function SeitenNavigation({ tabs, aktiv }: { tabs: ChromeTab[]; aktiv: (t: ChromeTab) => boolean }) {
+function SeitenNavigation({ tabs, aktiv, seitlich = false }: {
+  tabs: ChromeTab[]; aktiv: (t: ChromeTab) => boolean; seitlich?: boolean;
+}) {
   if (tabs.length === 0) return null;
+  // No card of its own: below stand cards, and a navigation in the same frame as the content
+  // reads as one more box instead of as the way between them. What carries it is a line — to
+  // the side one on the right, above one below.
+  const behaelter = seitlich
+    ? "flex shrink-0 flex-wrap gap-1 md:w-52 md:flex-col md:flex-nowrap md:border-r md:border-line md:pr-3"
+    : "mb-4 flex flex-wrap gap-1 border-b border-line pb-2";
   return (
-    <nav className="mb-4 flex flex-wrap gap-1 rounded-lg border border-line bg-card p-1">
+    <nav className={behaelter}>
       {tabs.map((tab) => (
         <Link
           key={tab.key}
           to={tab.to}
-          className={`flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm md:min-h-0 ${
+          className={`flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors md:min-h-0 ${
             aktiv(tab)
-              ? "bg-surface font-medium text-ink"
-              : "text-muted hover:bg-surface hover:text-ink"
+              ? "bg-brand/15 font-medium text-brand ring-1 ring-inset ring-brand/30"
+              : "text-muted hover:bg-card hover:text-ink"
           }`}
         >
           {tab.icon && <span className="text-base leading-none">{tab.icon}</span>}

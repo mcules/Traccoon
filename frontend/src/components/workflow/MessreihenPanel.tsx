@@ -1,7 +1,12 @@
 import { useState } from "react";
+import { formatDate, formatDateTime } from "../../lib/formatTime";
 import { tr } from "../../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../api";
+import {
+  Aktionen, Bereich, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile,
+  LoeschDialog,
+} from "../ui";
 
 interface Trend {
   punkte: number; wert: number | null; einheit: string;
@@ -31,6 +36,7 @@ const ZEITRAeUME: [number, string][] = [[7, "7 Tage"], [30, "30 Tage"], [90, "90
 export default function MessreihenPanel() {
   const qc = useQueryClient();
   const [offen, setOffen] = useState<string | null>(null);
+  const [loeschReihe, setLoeschReihe] = useState<any | null>(null);
   const [err, setErr] = useState("");
 
   const { data: reihen } = useQuery({
@@ -46,28 +52,24 @@ export default function MessreihenPanel() {
   });
 
   return (
-    <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <p className="text-sm text-muted">
-        {tr("messreihen_panel.einleitung")}
-      </p>
+    <Bereich hinweis={tr("messreihen_panel.einleitung")}>
+      <Fehlerzeile text={err} />
 
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
-
-      {reihen?.length ? (
-        <div className="space-y-2">
-          {reihen.map((r) => (
-            <ReihenZeile key={r.key} reihe={r}
-              offen={offen === r.key}
-              umschalten={() => setOffen(offen === r.key ? null : r.key)}
-              loeschen={() => { if (confirm(tr("messreihen.reihe_loeschen_frage", { key: r.key }))) loeschen.mutate(r.key); }} />
-          ))}
-        </div>
-      ) : (
-        <div className="text-sm text-muted">
-          {tr("messreihen_panel.keine_reihe")}
-        </div>
+      <Liste>
+        {reihen?.map((r) => (
+          <ReihenZeile key={r.key} reihe={r}
+            offen={offen === r.key}
+            umschalten={() => setOffen(offen === r.key ? null : r.key)}
+            loeschen={() => setLoeschReihe(r)} />
+        ))}
+        {!reihen?.length && <ListeLeer>{tr("messreihen_panel.keine_reihe")}</ListeLeer>}
+      </Liste>
+      {loeschReihe && (
+        <LoeschDialog was={loeschReihe.key} laeuft={loeschen.isPending}
+          onClose={() => setLoeschReihe(null)}
+          onLoeschen={() => { loeschen.mutate(loeschReihe.key); setLoeschReihe(null); }} />
       )}
-    </div>
+    </Bereich>
   );
 }
 
@@ -79,7 +81,7 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
   const alt = (t?.alter_stunden ?? 0) > 26;
 
   return (
-    <div className={`rounded border p-3 ${knapp ? "border-amber-500/40 bg-amber-500/5" : "border-line bg-surface"}`}>
+    <ListenZeile warnung={knapp}>
       <div className="flex flex-wrap items-baseline gap-2">
         <button onClick={umschalten} className="font-medium text-ink hover:text-brand">
           {offen ? "▾" : "▸"} {reihe.name}
@@ -88,7 +90,7 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
         <div className="flex-1" />
         <span className="text-sm text-ink">{reihe.last_value ?? "—"} {reihe.unit}</span>
         <span className={`text-[11px] ${alt ? "text-amber-300" : "text-muted"}`}>
-          {reihe.last_at ? new Date(reihe.last_at).toLocaleString() : ""}
+          {formatDateTime(reihe.last_at)}
         </span>
       </div>
 
@@ -112,13 +114,13 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
         )}
         {reihe.warned_at && (
           <span className="text-amber-300">
-            {tr("messreihen_panel.gewarnt_am", { datum: new Date(reihe.warned_at).toLocaleDateString() })}
+            {tr("messreihen_panel.gewarnt_am", { datum: formatDate(reihe.warned_at) })}
           </span>
         )}
       </div>
 
       {offen && <Detail reihe={reihe} loeschen={loeschen} />}
-    </div>
+    </ListenZeile>
   );
 }
 
@@ -196,7 +198,7 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
             {[...punkte].reverse().map((p) => (
               <tr key={p.id} className="border-t border-line/60">
                 <td className="whitespace-nowrap px-2 py-1 text-muted">
-                  {new Date(p.ts).toLocaleString()}
+                  {formatDateTime(new Date(p.ts).toISOString())}
                 </td>
                 <td className="px-2 py-1 text-ink">{p.wert} {reihe.unit}</td>
                 <td className="px-2 py-1 text-[11px] text-muted">
@@ -204,10 +206,11 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
                     || (p.kontext?.instanz ? `Lauf #${p.kontext.instanz}` : "—")}
                 </td>
                 <td className="px-2 py-1 text-right">
-                  <button
-                    onClick={() => { if (confirm(`Wert ${p.wert} ${reihe.unit} entfernen?`)) wegwerfen.mutate(p.id); }}
-                    title={tr("messreihen_panel.diesen_wert_entfernen_z_b_einen_ausreiss")}
-                    className="text-red-400 hover:text-red-300">✕</button>
+                  <div className="flex justify-end">
+                    <IconKnopf icon={ICON.loeschen} gefahr
+                      titel={tr("messreihen_panel.diesen_wert_entfernen_z_b_einen_ausreiss")}
+                      onClick={() => wegwerfen.mutate(p.id)} />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -302,7 +305,7 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
         {punkte.map((p) => (
           <circle key={p.id} cx={px(new Date(p.ts).getTime())} cy={py(p.wert)} r="3"
                   className="fill-brand">
-            <title>{new Date(p.ts).toLocaleString()} — {p.wert} {einheit}</title>
+            <title>{formatDateTime(new Date(p.ts).toISOString())} — {p.wert} {einheit}</title>
           </circle>
         ))}
 

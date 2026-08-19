@@ -2,6 +2,7 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
+import { ICON, IconKnopf } from "./ui";
 
 interface Grant {
   id: number; project_id: number; user_id: number; username: string; display_name: string;
@@ -81,7 +82,8 @@ export default function ResourceGrants({ project }: { project: Project }) {
               <td>{g.level}</td>
               <td>{g.resource_type === "location" ? (g.recursive ? "ja" : "nein") : "—"}</td>
               <td className="text-right">
-                <button onClick={() => remove.mutate(g.id)} className="text-muted hover:text-red-400">{tr("resource_grants.entziehen")}</button>
+                <IconKnopf icon={ICON.loeschen} titel={tr("resource_grants.entziehen")} gefahr
+                  onClick={() => remove.mutate(g.id)} />
               </td>
             </tr>
           ))}

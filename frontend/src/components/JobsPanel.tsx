@@ -1,7 +1,12 @@
 import { useState } from "react";
+import { formatDateTime } from "../lib/formatTime";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, ApiError } from "../api";
+import {
+  Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
+  ListeLeer, ListenZeile, LoeschDialog,
+} from "./ui";
 
 const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "prompt",
                 agent: "", prompt: "", command: "", notify_mode: "on_output", notify_chat: "",
@@ -11,9 +16,87 @@ const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "prompt",
                 project_id: null as number | null,
                 workflow_definition_id: null as number | null };
 
+/**
+ * Scheduled jobs: what runs on its own, and when.
+ *
+ * The form used to stand under the list, permanently open, with a line "editing job #12"
+ * above it. A dialog says that by itself, and the list keeps the height of its entries.
+ */
 export default function JobsPanel() {
   const qc = useQueryClient();
   const { data: jobs } = useQuery({ queryKey: ["jobs"], queryFn: () => api.get<any[]>("/jobs") });
+  const [dialog, setDialog] = useState<any | null>(null);      // {} = neuer Job
+  const [loeschJob, setLoeschJob] = useState<any | null>(null);
+  const [err, setErr] = useState("");
+
+  const inv = () => qc.invalidateQueries({ queryKey: ["jobs"] });
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const speichern = useMutation({
+    mutationFn: ({ id, body }: { id: number | null; body: any }) =>
+      id ? api.put(`/jobs/${id}`, body) : api.post("/jobs", body),
+    onSuccess: () => { setDialog(null); setErr(""); inv(); }, onError: fail,
+  });
+  const run = useMutation({ mutationFn: (id: number) => api.post(`/jobs/${id}/run`), onSuccess: inv, onError: fail });
+  const toggle = useMutation({
+    mutationFn: (j: any) => api.post(`/jobs/${j.id}/enabled`, { enabled: !j.enabled }),
+    onSuccess: inv, onError: fail });
+  const del = useMutation({
+    mutationFn: (id: number) => api.del(`/jobs/${id}`),
+    onSuccess: () => { setLoeschJob(null); inv(); }, onError: fail });
+
+  return (
+    <Bereich hinweis={tr("jobs_panel.einleitung")}>
+      <Fehlerzeile text={err} />
+      <Liste className="mb-4">
+        {jobs?.map((j) => (
+          <ListenZeile key={j.id} gedimmt={!j.enabled}>
+            <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="font-medium">{j.name}</span>
+                {!j.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.aus")}</span>}
+                {j.enabled && j.paused && <span className="rounded bg-surface px-1 text-xs text-amber-400">{tr("jobs_panel.pausiert")}</span>}
+                <span className="font-mono text-xs text-muted">{j.type}:{j.schedule} · {j.kind}</span>
+              </div>
+              {j.last_run_at && (
+                <div className="text-xs text-muted">{tr("jobs_panel.zuletzt")} {formatDateTime(j.last_run_at)}</div>
+              )}
+            </div>
+            <Aktionen>
+              <IconKnopf icon={j.enabled ? "⏸" : "⏵"} onClick={() => toggle.mutate(j)}
+                titel={tr(j.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
+              <IconKnopf icon={ICON.starten} titel={tr("jobs_panel.jetzt_ausfuehren")}
+                onClick={() => run.mutate(j.id)} disabled={run.isPending} />
+              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => { setErr(""); setDialog(j); }} />
+              <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschJob(j)} />
+            </Aktionen>
+            </div>
+          </ListenZeile>
+        ))}
+        {jobs?.length === 0 && <ListeLeer>{tr("jobs_panel.keine_jobs")}</ListeLeer>}
+      </Liste>
+      <button onClick={() => { setErr(""); setDialog({}); }}
+        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        {ICON.neu} {tr("jobs_panel.job_anlegen")}
+      </button>
+
+      {dialog && (
+        <JobDialog job={dialog.id ? dialog : null} fehler={err} laeuft={speichern.isPending}
+          onClose={() => { setDialog(null); setErr(""); }}
+          onSpeichern={(body, id) => speichern.mutate({ id, body })} />
+      )}
+      {loeschJob && (
+        <LoeschDialog was={loeschJob.name} laeuft={del.isPending}
+          onClose={() => setLoeschJob(null)} onLoeschen={() => del.mutate(loeschJob.id)} />
+      )}
+    </Bereich>
+  );
+}
+
+function JobDialog({ job, fehler, laeuft, onClose, onSpeichern }: {
+  job: any | null; fehler: string; laeuft: boolean;
+  onClose: () => void; onSpeichern: (body: any, id: number | null) => void;
+}) {
   // For kind=workflow: published definitions to choose from.
   const { data: defs } = useQuery({
     queryKey: ["workflow-defs"],
@@ -25,10 +108,19 @@ export default function JobsPanel() {
     queryFn: () => api.get<{ key: string; label: string; beschreibung: string;
                              params: Record<string, any>; felder: Record<string, any> }[]>("/jobs/templates"),
   });
-  const [f, setF] = useState(EMPTY);
-  const [editId, setEditId] = useState<number | null>(null);
+
+  const [f, setF] = useState<any>(job ? {
+    name: job.name, type: job.type, schedule: job.schedule, kind: job.kind, agent: job.agent || "",
+    prompt: job.prompt || "", command: job.command || "", notify_mode: job.notify_mode,
+    notify_chat: job.notify_chat || "", result_html: !!job.result_html,
+    pause_on_success: !!job.pause_on_success, run_timeout: job.run_timeout ?? 600,
+    args: job.args || [], project_id: job.project_id ?? null,
+    workflow_definition_id: job.workflow_definition_id ?? null,
+  } : EMPTY);
   // Parameters as JSON text, so that a typo while editing does not eat the value at once.
-  const [paramText, setParamText] = useState("");
+  const [paramText, setParamText] = useState(
+    job && job.args && !Array.isArray(job.args) ? JSON.stringify(job.args, null, 2) : "");
+
   const paramFehler = (() => {
     if (!paramText.trim()) return "";
     try {
@@ -38,134 +130,127 @@ export default function JobsPanel() {
   })();
   const setParams = (text: string) => {
     setParamText(text);
-    if (!text.trim()) { setF((p) => ({ ...p, args: [] })); return; }
+    if (!text.trim()) { setF((p: any) => ({ ...p, args: [] })); return; }
     try {
       const v = JSON.parse(text);
-      if (v && typeof v === "object" && !Array.isArray(v)) setF((p) => ({ ...p, args: v }));
+      if (v && typeof v === "object" && !Array.isArray(v)) setF((p: any) => ({ ...p, args: v }));
     } catch { /* ungültig: Text stehen lassen, Job-Feld unverändert */ }
   };
   // Placeholders without a value: the same rule as server side (services/job_params).
   const EINGEBAUT = ["heute", "jetzt", "seit", "zeitfenster"];
   const fehlend = Array.from(new Set(
-    [...(f.prompt || "").matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g)].map((m) => m[1]),
-  )).filter((k) => !EINGEBAUT.includes(k) && !(f.args && !Array.isArray(f.args) && k in (f.args as any)));
+    [...(f.prompt || "").matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g)].map((m: any) => m[1]),
+  )).filter((k) => !EINGEBAUT.includes(k as string)
+    && !(f.args && !Array.isArray(f.args) && (k as string) in (f.args as any)));
   const useTemplate = (key: string) => {
     const t = templates?.find((x) => x.key === key);
     if (!t) return;
-    setF((p) => ({ ...p, ...t.felder, args: t.params }));
+    setF((p: any) => ({ ...p, ...t.felder, args: t.params }));
     setParamText(JSON.stringify(t.params, null, 2));
-  };
-  const inv = () => qc.invalidateQueries({ queryKey: ["jobs"] });
-  const save = useMutation({
-    mutationFn: () => editId ? api.put(`/jobs/${editId}`, f) : api.post("/jobs", f),
-    onSuccess: () => { setF(EMPTY); setEditId(null); setParamText(""); inv(); },
-  });
-  const run = useMutation({ mutationFn: (id: number) => api.post(`/jobs/${id}/run`), onSuccess: inv });
-  const toggle = useMutation({
-    mutationFn: (j: any) => api.post(`/jobs/${j.id}/enabled`, { enabled: !j.enabled }), onSuccess: inv });
-  const del = useMutation({ mutationFn: (id: number) => api.del(`/jobs/${id}`), onSuccess: inv });
-
-  const edit = (j: any) => {
-    setEditId(j.id);
-    const p = j.args && !Array.isArray(j.args) ? j.args : null;
-    setParamText(p ? JSON.stringify(p, null, 2) : "");
-    setF({ name: j.name, type: j.type, schedule: j.schedule, kind: j.kind, agent: j.agent || "",
-           prompt: j.prompt || "", command: j.command || "", notify_mode: j.notify_mode,
-           notify_chat: j.notify_chat || "", result_html: !!j.result_html,
-           pause_on_success: !!j.pause_on_success, run_timeout: j.run_timeout ?? 600,
-           args: j.args || [], project_id: j.project_id ?? null,
-           workflow_definition_id: j.workflow_definition_id ?? null });
   };
 
   return (
-    <div>
-      <p className="mb-3 text-sm text-muted">{tr("jobs_panel.einleitung")}</p>
-      <div className="mb-4 space-y-2">
-        {jobs?.map((j) => (
-          <div key={j.id} className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-line bg-card p-2 text-sm ${j.enabled ? "" : "opacity-50"}`}>
-            <span>{j.name}</span>
-            {!j.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.aus")}</span>}
-            {j.enabled && j.paused && <span className="rounded bg-surface px-1 text-xs text-amber-400">{tr("jobs_panel.pausiert")}</span>}
-            <span className="text-xs text-muted font-mono">{j.type}:{j.schedule} · {j.kind}</span>
-            {j.last_run_at && <span className="text-xs text-muted">{tr("jobs_panel.zuletzt")} {new Date(j.last_run_at).toLocaleString()}</span>}
-            <div className="hidden flex-1 sm:block" />
-            <button title={tr(j.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} onClick={() => toggle.mutate(j)}
-              className={ico}>{j.enabled ? "⏸" : "⏵"}</button>
-            <button title={tr("jobs_panel.jetzt_ausfuehren")} onClick={() => run.mutate(j.id)} className={ico + " hover:text-brand"}>▶</button>
-            <button title={tr("jobs_panel.bearbeiten")} onClick={() => edit(j)} className={ico}>✎</button>
-            <button title={tr("jobs_panel.loeschen")} onClick={() => del.mutate(j.id)} className={ico + " hover:text-red-400"}>🗑</button>
+    <Dialog breit titel={job ? tr("jobs_panel.job_bearbeiten") : tr("jobs_panel.job_anlegen")} onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!f.name.trim()} laeuft={laeuft}
+        onSpeichern={() => onSpeichern(f, job ? job.id : null)}
+        speichernText={job ? undefined : tr("common.anlegen")} />}>
+      <Fehlerzeile text={fehler} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {!job && !!templates?.length && (
+          <div className="sm:col-span-2">
+            <Feld label={tr("jobs_panel.aus_vorlage")} hinweis={tr("jobs_panel.fuellt_das_formular_vor")}>
+              <select value="" onChange={(e) => e.target.value && useTemplate(e.target.value)} className={EINGABE}>
+                <option value="">—</option>
+                {templates.map((t) => <option key={t.key} value={t.key}>{t.label}: {t.beschreibung}</option>)}
+              </select>
+            </Feld>
           </div>
-        ))}
-        {jobs?.length === 0 && <div className="text-xs text-muted">{tr("jobs_panel.keine_jobs")}</div>}
-      </div>
-      <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3 text-sm">
-        {editId && <div className="col-span-2 text-xs text-brand">Bearbeite Job #{editId} —
-          <button onClick={() => { setEditId(null); setF(EMPTY); setParamText(""); }} className="ml-1 underline">{tr("common.abbrechen")}</button></div>}
-        {!editId && !!templates?.length && (
-          <select value="" onChange={(e) => e.target.value && useTemplate(e.target.value)}
-            className={inp + " col-span-2"} title={tr("jobs_panel.fuellt_das_formular_vor")}>
-            <option value="">{tr("jobs_panel.aus_vorlage")}</option>
-            {templates.map((t) => <option key={t.key} value={t.key}>{t.label}: {t.beschreibung}</option>)}
-          </select>
         )}
-        <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder={tr("jobs_panel.name")} className={inp} />
-        <div className="flex flex-wrap gap-2">
-          <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} className={inp + " flex-1"}>
-            <option value="cron">cron</option><option value="interval">interval</option><option value="once">once</option></select>
-          <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={inp + " flex-1"}>
+        <Feld label={tr("jobs_panel.name")}>
+          <input value={f.name} autoFocus onChange={(e) => setF({ ...f, name: e.target.value })} className={EINGABE} />
+        </Feld>
+        <Feld label={tr("jobs_panel.schedule")}>
+          <input value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}
+            className={`${EINGABE} font-mono`} />
+        </Feld>
+        <Feld label={tr("jobs_panel.takt")}>
+          <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} className={EINGABE}>
+            <option value="cron">cron</option><option value="interval">interval</option><option value="once">once</option>
+          </select>
+        </Feld>
+        <Feld label={tr("jobs_panel.art")}>
+          <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={EINGABE}>
             <option value="prompt">prompt</option><option value="script">script</option>
-            <option value="workflow">workflow</option><option value="film">film</option></select>
-        </div>
-        <input value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })} placeholder={tr("jobs_panel.schedule")} className={inp} />
+            <option value="workflow">workflow</option><option value="film">film</option>
+          </select>
+        </Feld>
+
         {f.kind === "prompt" && (
-          <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} placeholder={tr("jobs_panel.agent_z_b_news")} className={inp} />
+          <Feld label={tr("jobs_panel.agent_z_b_news")}>
+            <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} className={EINGABE} />
+          </Feld>
         )}
         {f.kind === "script" && (
-          <input value={f.command} onChange={(e) => setF({ ...f, command: e.target.value })} placeholder={tr("jobs_panel.script_datei")} className={inp} />
+          <Feld label={tr("jobs_panel.script_datei")}>
+            <input value={f.command} onChange={(e) => setF({ ...f, command: e.target.value })} className={EINGABE} />
+          </Feld>
         )}
         {f.kind === "workflow" && (
-          <select value={f.workflow_definition_id ?? ""}
-            onChange={(e) => setF({ ...f, workflow_definition_id: e.target.value ? Number(e.target.value) : null })}
-            className={inp}>
-            <option value="">{tr("jobs_panel.prozess_waehlen")}</option>
-            {defs?.filter((d) => d.current_version_id).map((d) => (
-              <option key={d.id} value={d.id}>{d.name} ({d.key})</option>
-            ))}
-          </select>
+          <Feld label={tr("jobs_panel.prozess_waehlen")}>
+            <select value={f.workflow_definition_id ?? ""}
+              onChange={(e) => setF({ ...f, workflow_definition_id: e.target.value ? Number(e.target.value) : null })}
+              className={EINGABE}>
+              <option value="">—</option>
+              {defs?.filter((d) => d.current_version_id).map((d) => (
+                <option key={d.id} value={d.id}>{d.name} ({d.key})</option>
+              ))}
+            </select>
+          </Feld>
         )}
         {f.kind === "prompt" && (
-          <textarea value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} rows={6}
-            placeholder={tr("jobs_panel.prompt_platzhalter")} className={inp + " col-span-2 font-mono text-xs"} />
+          <div className="sm:col-span-2">
+            <Feld label={tr("jobs_panel.prompt")}>
+              <textarea value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} rows={6}
+                placeholder={tr("jobs_panel.prompt_platzhalter")} className={`${EINGABE} font-mono text-xs`} />
+            </Feld>
+          </div>
         )}
         {/* Parameter gibt es für beide: beim Prompt füllen sie die Platzhalter, beim
             Ablauf sind sie sein Startkontext — derselbe Ablauf, andere Messreihe. */}
         {(f.kind === "prompt" || f.kind === "workflow") && (
-          <div className="col-span-2">
-            <textarea value={paramText} onChange={(e) => setParams(e.target.value)} rows={4}
-              placeholder={tr(f.kind === "workflow"
-                ? "jobs_panel.startkontext_platzhalter" : "jobs_panel.parameter_platzhalter")}
-              className={inp + " w-full font-mono text-xs"} />
+          <div className="sm:col-span-2">
+            <Feld label={tr(f.kind === "workflow" ? "jobs_panel.startkontext" : "jobs_panel.parameter")}>
+              <textarea value={paramText} onChange={(e) => setParams(e.target.value)} rows={4}
+                placeholder={tr(f.kind === "workflow"
+                  ? "jobs_panel.startkontext_platzhalter" : "jobs_panel.parameter_platzhalter")}
+                className={`${EINGABE} font-mono text-xs`} />
+            </Feld>
             <div className="mt-1 text-xs">
               {paramFehler
-                ? <span className="text-red-400">{paramFehler} — Parameter werden nicht übernommen.</span>
+                ? <span className="text-red-400">{paramFehler} — {tr("jobs_panel.parameter_nicht_uebernommen")}</span>
                 : f.kind === "workflow"
-                  ? <span className="text-muted">Steht im Ablauf als Kontext zur Verfügung — abfragbar in Weichen und als {"{{name}}"}.</span>
+                  ? <span className="text-muted">{tr("jobs_panel.startkontext_hinweis")}</span>
                   : fehlend.length
-                    ? <span className="text-amber-400">Ohne Wert: {fehlend.join(", ")} — bleibt wörtlich im Prompt stehen.</span>
+                    ? <span className="text-amber-400">{tr("jobs_panel.ohne_wert", { namen: fehlend.join(", ") })}</span>
                     : <span className="text-muted">{tr("jobs_panel.eingebaut_heute_jetzt_seit_zeitfenster")}</span>}
             </div>
           </div>
         )}
-        <select value={f.notify_mode} onChange={(e) => setF({ ...f, notify_mode: e.target.value })} className={inp}>
-          <option value="on_output">{tr("jobs_panel.notify_bei_output")}</option><option value="always">{tr("jobs_panel.notify_immer")}</option>
-          <option value="on_error">{tr("jobs_panel.notify_fehler")}</option><option value="never">{tr("jobs_panel.notify_nie")}</option></select>
-        <label className="flex items-center gap-1"><input type="checkbox" checked={f.result_html} onChange={(e) => setF({ ...f, result_html: e.target.checked })} />{tr("jobs_panel.html_digest")}</label>
-        <button onClick={() => f.name && save.mutate()} className="col-span-2 rounded bg-brand py-1.5 text-white">
-          {editId ? tr("common.speichern") : "+ Job"}
-        </button>
+
+        <Feld label={tr("jobs_panel.meldung")}>
+          <select value={f.notify_mode} onChange={(e) => setF({ ...f, notify_mode: e.target.value })} className={EINGABE}>
+            <option value="on_output">{tr("jobs_panel.notify_bei_output")}</option>
+            <option value="always">{tr("jobs_panel.notify_immer")}</option>
+            <option value="on_error">{tr("jobs_panel.notify_fehler")}</option>
+            <option value="never">{tr("jobs_panel.notify_nie")}</option>
+          </select>
+        </Feld>
+        <label className="flex items-end gap-2 pb-1.5 text-sm text-ink">
+          <input type="checkbox" checked={f.result_html}
+            onChange={(e) => setF({ ...f, result_html: e.target.checked })} />
+          {tr("jobs_panel.html_digest")}
+        </label>
       </div>
-    </div>
+    </Dialog>
   );
 }
-const inp = "rounded border border-line bg-surface px-2 py-1.5 text-ink";
-const ico = "text-base leading-none text-muted hover:text-ink";

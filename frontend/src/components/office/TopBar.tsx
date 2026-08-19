@@ -190,9 +190,10 @@ export interface TopBarProps {
   /** Session filter, `null` = all. */
   filter: string | null;
   onFilterChange: (f: string | null) => void;
-  /** Is the view already the full screen page? Then the button says "leave". */
-  fullscreen?: boolean;
-  onToggleFullscreen?: () => void;
+  /** Way into the full screen page. Absent on the page itself: leaving it happens over the
+   *  area rail, which stays standing beside it, and a second way out would only be a second
+   *  place to look for it. */
+  onFullscreen?: () => void;
   /** Wall screen: everything operable falls away, the header stays a pure display.
    *  **No second component** for that: two headers would be guaranteed to drift apart, and
    *  nobody wants the question "why does the kiosk show different totals than the tab". */
@@ -206,7 +207,7 @@ export interface TopBarProps {
 export default function TopBar({
   scope, titel, roster, totals, live, seekTs, onBackToLive,
   speed, onSpeedChange, filter, onFilterChange,
-  fullscreen, onToggleFullscreen, error, kiosk,
+  onFullscreen, error, kiosk,
 }: TopBarProps) {
   const reiter = reiterAus(scope, roster);
   const tokenSumme = totals.in_tokens + totals.out_tokens;
@@ -279,11 +280,11 @@ export default function TopBar({
           </span>
         )}
 
-        {!kiosk && onToggleFullscreen && (
-          <button type="button" onClick={onToggleFullscreen}
+        {!kiosk && onFullscreen && (
+          <button type="button" onClick={onFullscreen}
             className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand"
-            title={tr(fullscreen ? "buero.zurueck_reiter" : "buero.ganze_seite")}>
-            {fullscreen ? "⤡ Vollbild verlassen" : "⤢ Vollbild"}
+            title={tr("buero.ganze_seite")}>
+            ⤢ {tr("buero.vollbild")}
           </button>
         )}
       </div>

@@ -3,6 +3,11 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, destinationApi, type Destination, type DestinationScope } from "../api";
 import { KeyValueEditor } from "./workflow/kv";
+import {
+  Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
+  ListeLeer, ListenZeile, LoeschDialog,
+} from "./ui";
+import { useAuth } from "../auth";
 
 // Keys instead of texts: the list comes into being while the module loads, and a tr() here
 // would fix the language of the first call.
@@ -36,6 +41,11 @@ const LEER = {
  * Destinations are external counterparts with a stored login (like destinations in the BTP).
  * Processes, jobs and agents later name only the name; the base URL and the credentials
  * stand exactly here.
+ *
+ * The form used to stand permanently open under the list, and editing an entry filled it
+ * from up there: one clicked a row at the top and the fields changed at the bottom, out of
+ * sight. It is a dialog now, and the row carries only what it is: name, address, state and
+ * three actions.
  */
 export default function DestinationsPanel({
   scope,
@@ -47,9 +57,8 @@ export default function DestinationsPanel({
   userId?: number;
 }) {
   const qc = useQueryClient();
-  const [f, setF] = useState<Record<string, any>>(LEER);
-  const [editId, setEditId] = useState<number | null>(null);
-  const [kopf, setKopf] = useState<Record<string, any>>({});
+  const [dialog, setDialog] = useState<Destination | {} | null>(null);   // {} = neues Ziel
+  const [loeschZiel, setLoeschZiel] = useState<Destination | null>(null);
   const [err, setErr] = useState("");
   const [probe, setProbe] = useState<Record<number, string>>({});
 
@@ -63,175 +72,261 @@ export default function DestinationsPanel({
     && (scope !== "user" || d.user_id === userId));
 
   const inv = () => qc.invalidateQueries({ queryKey: ["destinations"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
-  const reset = () => { setF(LEER); setKopf({}); setEditId(null); setErr(""); };
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
 
   const speichern = useMutation({
-    mutationFn: () => {
-      const [feld] = SECRET_FIELD[f.auth_type] || [];
-      const body: Record<string, any> = { ...f, default_headers: kopf };
-      delete body.secret;
-      if (feld && f.secret) body[feld] = f.secret;
-      if (editId) {
-        delete body.name;
-        return destinationApi.update(editId, body);
-      }
-      return destinationApi.create({
-        ...body,
-        user_id: scope === "user" ? userId : null,
-        project_id: scope === "project" ? projectId : null,
-      });
-    },
-    onSuccess: () => { reset(); inv(); },
+    mutationFn: ({ id, body }: { id: number | null; body: Record<string, any> }) =>
+      id ? destinationApi.update(id, body)
+         : destinationApi.create({
+             ...body,
+             user_id: scope === "user" ? userId : null,
+             project_id: scope === "project" ? projectId : null,
+           }),
+    onSuccess: () => { setDialog(null); setErr(""); inv(); },
     onError: fail,
   });
   const loeschen = useMutation({
-    mutationFn: (id: number) => destinationApi.del(id), onSuccess: inv, onError: fail,
+    mutationFn: (id: number) => destinationApi.del(id),
+    onSuccess: () => { setLoeschZiel(null); inv(); }, onError: fail,
   });
   const testen = useMutation({
     mutationFn: (id: number) => destinationApi.test(id, { method: "GET", path: "" }),
     onSuccess: (r, id) =>
       setProbe((p) => ({ ...p, [id]: `HTTP ${r.status_code}${r.ok ? " ✓" : " ✗"}` })),
     onError: (e, id) =>
-      setProbe((p) => ({ ...p, [id]: e instanceof ApiError ? e.message : "Fehler" })),
+      setProbe((p) => ({ ...p, [id]: e instanceof ApiError ? e.message : tr("common.fehler") })),
   });
 
-  const bearbeiten = (d: Destination) => {
-    setEditId(d.id);
-    setErr("");
-    setKopf(d.default_headers || {});
-    setF({ ...LEER, ...d, secret: "" });
+  return (
+    <Bereich hinweis={<>
+      {tr("destinations_panel.einleitung")}
+      {scope === "user" && ` ${tr("destinations_panel.einleitung_user")}`}
+      {scope === "project" && ` ${tr("destinations_panel.einleitung_projekt")}`}
+    </>}>
+      <Fehlerzeile text={err} />
+
+      <Liste>
+        {ziele?.map((d) => (
+          <ListenZeile key={d.id} gedimmt={!d.enabled}>
+            <div className="flex items-center gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs text-muted">{d.name}</span>
+                  <span className="font-medium">{d.label || d.base_url}</span>
+                  <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
+                    {AUTH.find(([k]) => k === d.auth_type)?.[1] ? tr(AUTH.find(([k]) => k === d.auth_type)![1]) : d.auth_type}
+                  </span>
+                  {d.has_secret && <span className="text-xs text-green-400" title={tr("destinations_panel.geheimnis_hinterlegt")}>🔑</span>}
+                  {d.allow_agents && (
+                    <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-xs text-purple-300">
+                      {tr("destinations_panel.fuer_agenten_frei")}
+                    </span>
+                  )}
+                  {probe[d.id] && <span className="text-xs text-muted">{probe[d.id]}</span>}
+                </div>
+                <div className="mt-0.5 truncate text-xs text-muted">{d.base_url}</div>
+              </div>
+              <Aktionen>
+                <IconKnopf icon={ICON.testen} titel={tr("destinations_panel.probeaufruf_get_auf_die_basis_url")}
+                  onClick={() => testen.mutate(d.id)} disabled={testen.isPending} />
+                <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(d)} />
+                <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschZiel(d)} />
+              </Aktionen>
+            </div>
+          </ListenZeile>
+        ))}
+        {ziele?.length === 0 && <ListeLeer>{tr("destinations_panel.noch_keine_ziele")}</ListeLeer>}
+      </Liste>
+
+      <button onClick={() => { setErr(""); setDialog({}); }}
+        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        {ICON.neu} {tr("destinations_panel.neues_ziel")}
+      </button>
+
+      {dialog && (
+        <ZielDialog ziel={"id" in dialog ? (dialog as Destination) : null}
+          fehler={err}
+          laeuft={speichern.isPending}
+          onClose={() => { setDialog(null); setErr(""); }}
+          onSpeichern={(body, id) => speichern.mutate({ id, body })} />
+      )}
+      {loeschZiel && (
+        <LoeschDialog was={loeschZiel.name} hinweis={tr("destinations_panel.loeschen_hinweis")}
+          laeuft={loeschen.isPending}
+          onClose={() => setLoeschZiel(null)} onLoeschen={() => loeschen.mutate(loeschZiel.id)} />
+      )}
+    </Bereich>
+  );
+}
+
+/**
+ * Create and edit in one form.
+ *
+ * The name stays fixed once it exists: flows, jobs and agents address the destination by
+ * exactly that name, and renaming it here would break them silently.
+ */
+function ZielDialog({ ziel, fehler, laeuft, onClose, onSpeichern }: {
+  ziel: Destination | null;
+  fehler: string;
+  laeuft: boolean;
+  onClose: () => void;
+  onSpeichern: (body: Record<string, any>, id: number | null) => void;
+}) {
+  const [f, setF] = useState<Record<string, any>>(ziel ? { ...LEER, ...ziel, secret: "" } : LEER);
+  const [kopf, setKopf] = useState<Record<string, any>>(ziel?.default_headers || {});
+  const [secretField, secretLabel] = SECRET_FIELD[f.auth_type] || ["", ""];
+  const kann = !!f.name.trim() && !!f.base_url.trim();
+
+  const speichern = () => {
+    const body: Record<string, any> = { ...f, default_headers: kopf };
+    delete body.secret;
+    if (secretField && f.secret) body[secretField] = f.secret;
+    // The name belongs to the entry, not to the change: an update must not carry it.
+    if (ziel) delete body.name;
+    onSpeichern(body, ziel ? ziel.id : null);
   };
 
-  const inp = "rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
-  const [secretField, secretLabel] = SECRET_FIELD[f.auth_type] || ["", ""];
-
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-muted">
-        {tr("destinations_panel.einleitung")}
-        {scope === "user" && ` ${tr("destinations_panel.einleitung_user")}`}
-        {scope === "project" && ` ${tr("destinations_panel.einleitung_projekt")}`}
-      </p>
-
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
-
-      <div className="space-y-2">
-        {ziele?.map((d) => (
-          <div key={d.id} className={`rounded border border-line bg-card p-2 text-sm ${d.enabled ? "" : "opacity-50"}`}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs text-muted">{d.name}</span>
-              <span className="font-medium">{d.label || d.base_url}</span>
-              <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
-                {AUTH.find(([k]) => k === d.auth_type)?.[1] || d.auth_type}
-              </span>
-              {d.has_secret && <span className="text-xs text-green-400" title={tr("destinations_panel.geheimnis_hinterlegt")}>🔑</span>}
-              {d.allow_agents && (
-                <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-xs text-purple-300">
-                  für Agenten frei
-                </span>
-              )}
-              <div className="flex-1" />
-              {probe[d.id] && <span className="text-xs text-muted">{probe[d.id]}</span>}
-              <button onClick={() => testen.mutate(d.id)} title={tr("destinations_panel.probeaufruf_get_auf_die_basis_url")}
-                className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">{tr("destinations_panel.testen")}</button>
-              <button onClick={() => bearbeiten(d)}
-                className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">{tr("destinations_panel.bearbeiten")}</button>
-              <button onClick={() => confirm(`Ziel „${d.name}" löschen?`) && loeschen.mutate(d.id)}
-                className="rounded border border-line px-2 py-0.5 text-xs hover:border-red-400">{tr("destinations_panel.loeschen")}</button>
-            </div>
-            <div className="mt-1 truncate text-xs text-muted">{d.base_url}</div>
-          </div>
-        ))}
-        {ziele?.length === 0 && <div className="text-xs text-muted">{tr("destinations_panel.noch_keine_ziele")}</div>}
-      </div>
-
-      <div className="space-y-2 rounded-lg border border-line bg-card p-3">
-        <div className="text-sm font-medium">{editId ? "Ziel bearbeiten" : "Neues Ziel"}</div>
-        <div className="grid grid-cols-2 gap-2">
-          <input value={f.name} disabled={!!editId} onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder={tr("destinations_panel.name_z_b_crm")} className={`${inp} font-mono disabled:opacity-50`} />
-          <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })}
-            placeholder={tr("destinations_panel.bezeichnung")} className={inp} />
-          <input value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })}
-            placeholder={tr("destinations_panel.basis_url_https_api_example_com_v1")} className={`${inp} col-span-2`} />
-          <select value={f.auth_type} onChange={(e) => setF({ ...f, auth_type: e.target.value })} className={inp}>
+    <Dialog breit titel={ziel ? tr("destinations_panel.ziel_bearbeiten") : tr("destinations_panel.neues_ziel")}
+      onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={speichern} deaktiviert={!kann} laeuft={laeuft}
+        speichernText={ziel ? undefined : tr("common.anlegen")} />}>
+      <Fehlerzeile text={fehler} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Feld label={tr("destinations_panel.name_z_b_crm")} hinweis={ziel ? tr("destinations_panel.name_fest") : undefined}>
+          <input value={f.name} disabled={!!ziel} autoFocus={!ziel}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            className={`${EINGABE} font-mono disabled:opacity-60`} />
+        </Feld>
+        <Feld label={tr("destinations_panel.bezeichnung")}>
+          <input value={f.label} onChange={(e) => setF({ ...f, label: e.target.value })} className={EINGABE} />
+        </Feld>
+        <div className="sm:col-span-2">
+          <Feld label={tr("destinations_panel.basis_url_https_api_example_com_v1")}>
+            <input value={f.base_url} autoFocus={!!ziel}
+              onChange={(e) => setF({ ...f, base_url: e.target.value })} className={EINGABE} />
+          </Feld>
+        </div>
+        <Feld label={tr("destinations_panel.anmeldung")}>
+          <select value={f.auth_type} onChange={(e) => setF({ ...f, auth_type: e.target.value })} className={EINGABE}>
             {AUTH.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
           </select>
+        </Feld>
+        <Feld label={tr("destinations_panel.zeitlimit_s")}>
           <input type="number" min={1} max={600} value={f.timeout_sec}
-            onChange={(e) => setF({ ...f, timeout_sec: Number(e.target.value) })}
-            placeholder={tr("destinations_panel.zeitlimit_s")} className={inp} />
+            onChange={(e) => setF({ ...f, timeout_sec: Number(e.target.value) })} className={EINGABE} />
+        </Feld>
+        <Feld label={tr("destinations_panel.antwort_max_zeichen")}
+          hinweis={tr("destinations_panel.wie_viel_der_antwort_der_aufrufer_hoechs")}>
           <input type="number" min={500} max={60000} step={500} value={f.max_response_chars}
-            onChange={(e) => setF({ ...f, max_response_chars: Number(e.target.value) })}
-            title={tr("destinations_panel.wie_viel_der_antwort_der_aufrufer_hoechs")}
-            placeholder={tr("destinations_panel.antwort_max_zeichen")} className={inp} />
+            onChange={(e) => setF({ ...f, max_response_chars: Number(e.target.value) })} className={EINGABE} />
+        </Feld>
 
-          {f.auth_type === "basic" && (
-            <input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })}
-              placeholder={tr("destinations_panel.benutzername")} className={inp} />
-          )}
-          {f.auth_type === "api_key" && (
-            <>
-              <input value={f.api_key_name} onChange={(e) => setF({ ...f, api_key_name: e.target.value })}
-                placeholder={tr("destinations_panel.name_des_schluessels")} className={inp} />
-              <select value={f.api_key_in} onChange={(e) => setF({ ...f, api_key_in: e.target.value })} className={inp}>
+        {f.auth_type === "basic" && (
+          <Feld label={tr("destinations_panel.benutzername")}>
+            <input value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} className={EINGABE} />
+          </Feld>
+        )}
+        {f.auth_type === "api_key" && (
+          <>
+            <Feld label={tr("destinations_panel.name_des_schluessels")}>
+              <input value={f.api_key_name} onChange={(e) => setF({ ...f, api_key_name: e.target.value })} className={EINGABE} />
+            </Feld>
+            <Feld label={tr("destinations_panel.wohin")}>
+              <select value={f.api_key_in} onChange={(e) => setF({ ...f, api_key_in: e.target.value })} className={EINGABE}>
                 <option value="header">{tr("destinations_panel.im_kopf")}</option>
                 <option value="query">{tr("destinations_panel.in_der_url")}</option>
               </select>
-            </>
-          )}
-          {f.auth_type === "hmac" && (
-            <>
-              <input value={f.hmac_header} onChange={(e) => setF({ ...f, hmac_header: e.target.value })}
-                placeholder={tr("destinations_panel.signatur_kopfzeile")} className={inp} />
-              <input value={f.hmac_prefix} onChange={(e) => setF({ ...f, hmac_prefix: e.target.value })}
-                placeholder={tr("destinations_panel.praefix_leer_lassen_z_b_hermes")} className={inp} />
-            </>
-          )}
-          {f.auth_type === "oauth2_cc" && (
-            <>
-              <input value={f.oauth_token_url} onChange={(e) => setF({ ...f, oauth_token_url: e.target.value })}
-                placeholder={tr("destinations_panel.token_url")} className={`${inp} col-span-2`} />
-              <input value={f.oauth_client_id} onChange={(e) => setF({ ...f, oauth_client_id: e.target.value })}
-                placeholder={tr("destinations_panel.client_id")} className={inp} />
-              <input value={f.oauth_scope} onChange={(e) => setF({ ...f, oauth_scope: e.target.value })}
-                placeholder={tr("destinations_panel.scope_optional")} className={inp} />
-            </>
-          )}
-          {secretField && (
-            <input type="password" value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value })}
-              placeholder={editId ? tr("destinations_panel.geheimnis_unveraendert", { feld: tr(secretLabel) }) : tr(secretLabel)}
-              className={`${inp} col-span-2`} />
-          )}
-        </div>
+            </Feld>
+          </>
+        )}
+        {f.auth_type === "hmac" && (
+          <>
+            <Feld label={tr("destinations_panel.signatur_kopfzeile")}>
+              <input value={f.hmac_header} onChange={(e) => setF({ ...f, hmac_header: e.target.value })} className={EINGABE} />
+            </Feld>
+            <Feld label={tr("destinations_panel.praefix_leer_lassen_z_b_hermes")}>
+              <input value={f.hmac_prefix} onChange={(e) => setF({ ...f, hmac_prefix: e.target.value })} className={EINGABE} />
+            </Feld>
+          </>
+        )}
+        {f.auth_type === "oauth2_cc" && (
+          <>
+            <div className="sm:col-span-2">
+              <Feld label={tr("destinations_panel.token_url")}>
+                <input value={f.oauth_token_url} onChange={(e) => setF({ ...f, oauth_token_url: e.target.value })} className={EINGABE} />
+              </Feld>
+            </div>
+            <Feld label={tr("destinations_panel.client_id")}>
+              <input value={f.oauth_client_id} onChange={(e) => setF({ ...f, oauth_client_id: e.target.value })} className={EINGABE} />
+            </Feld>
+            <Feld label={tr("destinations_panel.scope_optional")}>
+              <input value={f.oauth_scope} onChange={(e) => setF({ ...f, oauth_scope: e.target.value })} className={EINGABE} />
+            </Feld>
+          </>
+        )}
+        {secretField && (
+          <div className="sm:col-span-2">
+            <Feld label={tr(secretLabel)}
+              hinweis={ziel ? tr("destinations_panel.geheimnis_unveraendert", { feld: tr(secretLabel) }) : undefined}>
+              <input type="password" value={f.secret}
+                onChange={(e) => setF({ ...f, secret: e.target.value })} className={EINGABE} />
+            </Feld>
+          </div>
+        )}
 
-        <div>
+        <div className="sm:col-span-2">
           <div className="mb-1 text-xs font-medium text-muted">{tr("destinations_panel.feste_kopfzeilen_bei_jedem_aufruf")}</div>
           <KeyValueEditor value={kopf} onChange={setKopf} />
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={!!f.verify_tls}
             onChange={(e) => setF({ ...f, verify_tls: e.target.checked })} />
-          TLS-Zertifikat prüfen
+          {tr("destinations_panel.tls_pruefen")}
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={!!f.allow_agents}
             onChange={(e) => setF({ ...f, allow_agents: e.target.checked })} />
-          Für KI-Agenten freigeben
+          {tr("destinations_panel.fuer_agenten_freigeben")}
           <span className="text-xs text-muted">{tr("destinations_panel.sonst_nur_prozesse_und_jobs")}</span>
         </label>
-
-        <div className="flex gap-2">
-          <button onClick={() => f.name.trim() && f.base_url.trim() && speichern.mutate()}
-            className="rounded bg-brand px-3 py-1.5 text-sm text-white">
-            {editId ? "Speichern" : "Anlegen"}
-          </button>
-          {editId && (
-            <button onClick={reset} className="rounded border border-line px-3 py-1.5 text-sm">{tr("destinations_panel.abbrechen")}</button>
-          )}
-        </div>
       </div>
+    </Dialog>
+  );
+}
+
+/**
+ * The same destinations, switched by scope instead of by menu entry.
+ *
+ * Destinations exist three times over (global, personal, per project) and therefore stood
+ * at three places in the menu: under the settings, in the administration and in the project
+ * settings, each time the same panel. One entry now, and the scope is a switch above the
+ * list, showing only what this person may see.
+ */
+export function DestinationsBereich({ projectId }: { projectId?: number }) {
+  const { user } = useAuth();
+  const istAdmin = user?.global_role === "admin";
+  const bereiche: [DestinationScope, string][] = [
+    ...(projectId ? ([["project", tr("destinations_panel.bereich_projekt")]] as [DestinationScope, string][]) : []),
+    ["user", tr("destinations_panel.bereich_ich")],
+    ...(istAdmin ? ([["global", tr("destinations_panel.bereich_global")]] as [DestinationScope, string][]) : []),
+  ];
+  const [scope, setScope] = useState<DestinationScope>(bereiche[0][0]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1.5">
+        {bereiche.map(([k, label]) => (
+          <button key={k} onClick={() => setScope(k)}
+            className={`rounded-md border px-3 py-1 text-sm ${
+              scope === k ? "border-brand bg-brand text-white"
+                          : "border-line text-muted hover:bg-surface hover:text-ink"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <DestinationsPanel scope={scope} projectId={projectId} userId={user?.id} />
     </div>
   );
 }

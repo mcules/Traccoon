@@ -27,10 +27,14 @@ import NodeConfigPanel from "../components/workflow/NodeConfigPanel";
 import { verfuegbareFelder } from "../components/workflow/contextFields";
 import ProbelaufPanel from "../components/workflow/ProbelaufPanel";
 import BaumeisterPanel from "../components/workflow/BaumeisterPanel";
-import { graphToFlow, flowToGraph, graphSignatur } from "../components/workflow/convert";
+import {
+  graphToFlow, flowToGraph, graphSignatur, inhaltsSignatur,
+} from "../components/workflow/convert";
 import { needsLayout, layoutGraph, DEFAULT_GAP } from "../components/workflow/layout";
 import { validateGraph } from "../components/workflow/validate";
 import type { FlowNode } from "../components/workflow/nodes/shared";
+import { projektPfad } from "../projectTabs";
+import { SCHIENE_FREILASSEN } from "../nav";
 
 function defaultConfig(type: WorkflowNodeType): NodeConfig {
   switch (type) {
@@ -316,17 +320,25 @@ export default function WorkflowEditor() {
   }, [nurHauptweg, nodes, edges]);
   const selected = nodes.find((n) => n.id === selectedId) || null;
 
+  /**
+   * Speichern heißt nicht mehr „schreib in Fassung X".
+   *
+   * Der Server sieht sich an, was sich geändert hat: eine reine Anordnung landet in der
+   * Fassung, die ohnehin gilt (auch in einer veröffentlichten), alles andere in einem
+   * Entwurf, den es erst dann gibt. Vorher kostete jedes Hinsehen eine Fassungsnummer, und
+   * ein verschobener Kasten machte aus „veröffentlicht" ein „weicht ab".
+   */
   const save = async () => {
-    if (!version) return;
     setSaving(true);
     setMsg("");
     try {
       const graph = flowToGraph(nodes, edges);
-      await workflowApi.saveVersion(wfId, version.id, { graph });
+      const r = await workflowApi.saveGraph(wfId, { graph });
       gesichert.current = graphSignatur(graph);
       setStand((n) => n + 1);
-      setMsg("Gespeichert.");
+      setMsg(r.hinweis || "Gespeichert.");
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
+      qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
     } catch (e) {
       setMsg(e instanceof ApiError ? `Speichern fehlgeschlagen: ${e.message}` : "Speichern fehlgeschlagen");
     } finally {
@@ -334,15 +346,28 @@ export default function WorkflowEditor() {
     }
   };
 
+  /** Entwurf wegwerfen und zurück auf das, was läuft. */
+  const verwerfen = async () => {
+    setMsg("");
+    try {
+      await workflowApi.discardDraft(wfId);
+      qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
+      qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
+      seeded.current = false;      // der Graph wird aus der Live-Fassung neu geladen
+      setMsg("Entwurf verworfen.");
+    } catch (e) {
+      setMsg(e instanceof ApiError ? e.message : "Verwerfen fehlgeschlagen");
+    }
+  };
+
   const validateServer = async () => {
-    if (!version) return;
     setMsg("");
     try {
       const graph = flowToGraph(nodes, edges);
-      await workflowApi.saveVersion(wfId, version.id, { graph });
+      const gespeichert = await workflowApi.saveGraph(wfId, { graph });
       gesichert.current = graphSignatur(graph);   // Validieren speichert mit
       setStand((n) => n + 1);
-      const r = await workflowApi.validate(wfId, version.id);
+      const r = await workflowApi.validate(wfId, gespeichert.version.id);
       setErrors(r.errors || []);
       setMsg(r.ok ? "Validierung ok." : `${r.errors.length} Problem(e) gefunden.`);
     } catch (e) {
@@ -351,12 +376,16 @@ export default function WorkflowEditor() {
   };
 
   const publish = async () => {
-    if (!version) return;
     setMsg("");
     try {
       const graph = flowToGraph(nodes, edges);
-      await workflowApi.saveVersion(wfId, version.id, { graph });
-      await workflowApi.publish(wfId, version.id);
+      const gespeichert = await workflowApi.saveGraph(wfId, { graph });
+      // Nichts Inhaltliches geändert: dann gibt es auch nichts zu veröffentlichen.
+      if (gespeichert.ergebnis === "layout" && gespeichert.version.status === "published") {
+        setMsg("Nichts zu veröffentlichen — nur die Anordnung war anders.");
+        return;
+      }
+      await workflowApi.publish(wfId, gespeichert.version.id);
       gesichert.current = graphSignatur(graph);
       setStand((n) => n + 1);
       setErrors([]);
@@ -384,7 +413,11 @@ export default function WorkflowEditor() {
   // fresh draft version that carries a new number but contains the same thing character for
   // character. Going by the number would mean marking every flow as "not published" on mere
   // viewing.
-  const gleichWieLive = !!liveVersion && jetzt === graphSignatur(liveVersion.graph);
+  // Verglichen wird der INHALT: eine andere Anordnung ist keine Abweichung, sonst stünde
+  // nach jedem Aufräumen „weicht von v7 ab" da, obwohl der Ablauf derselbe ist.
+  const inhaltJetzt = useMemo(
+    () => inhaltsSignatur(flowToGraph(nodes, edges)), [nodes, edges]);
+  const gleichWieLive = !!liveVersion && inhaltJetzt === inhaltsSignatur(liveVersion.graph);
   const veroeffentlichung = !def?.current_version_id
     ? { text: tr("editor.nie_veroeffentlicht"), stil: "text-muted",
         titel: tr("editor.nie_veroeffentlicht_titel") }
@@ -409,11 +442,12 @@ export default function WorkflowEditor() {
   const kontextFelder = useMemo(
     () => verfuegbareFelder(nodes, katalog), [nodes, katalog]);
   const herkunft = (ort.state as { from?: string } | null)?.from
-    || (key ? `/projects/${key}?tab=workflows`
+    || (key ? projektPfad(key, "einstellungen", "prozesse")
             : def?.slot ? "/processes/standard" : "/processes/eigene");
 
   return (
-    <div className="fixed inset-0 z-30 flex flex-col bg-surface">
+    // Wie im Büro: die Bereichsschiene bleibt stehen, der Rest der Seite verschwindet.
+    <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${SCHIENE_FREILASSEN}`}>
       {/* Kopfzeile */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-card px-3 py-2 sm:px-4">
         <button

@@ -1,25 +1,38 @@
 import { useState } from "react";
 import { tr } from "../i18n";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import AgentsPanel from "../components/AgentsPanel";
 import SkillsPanel from "../components/SkillsPanel";
 import McpPanel from "../components/McpPanel";
-import PreferencesPanel from "../components/PreferencesPanel";
-import MySetPanel from "../components/workflow/MySetPanel";
-import DestinationsPanel from "../components/DestinationsPanel";
+import { DestinationsBereich } from "../components/DestinationsPanel";
 import WebhooksPanel from "../components/WebhooksPanel";
 import JobsPanel from "../components/JobsPanel";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
+import {
+  Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf,
+  Etikett, Liste, ListeLeer, ListenZeile, LoeschDialog,
+} from "../components/ui";
 
-type Tab = "secrets" | "prefs" | "processes" | "destinations" | "agents" | "mcp"
-  | "jobs" | "webhooks" | "skills";
-const TABS: [Tab, string][] = [
-  ["secrets", "settings.tabs.vault"], ["prefs", "settings.tabs.personal"], ["processes", "settings.tabs.my_flows"],
-  ["destinations", "Ziele"], ["agents", "Mein Assistent"], ["mcp", "MCP-Server"],
-  ["jobs", "Jobs"], ["webhooks", "Webhooks"], ["skills", "Skills"],
+/**
+ * The settings hold resources, not a person.
+ *
+ * They used to hold both: the vault and the MCP servers next to the runner limit, the night
+ * window and the switches of one human, and a link saying that the own flows had moved
+ * elsewhere. What belongs to the person now stands on `/konto`, the flows under `/processes`,
+ * and what remains has one thing in common: they are things an agent works with.
+ */
+type Tab = "secrets" | "destinations" | "agents" | "mcp" | "jobs" | "webhooks" | "skills";
+const TABS: [Tab, string, string][] = [
+  ["secrets", "settings.tabs.vault", "\u{1F510}"],
+  ["destinations", "settings.tabs.ziele", "\u{1F3AF}"],
+  ["agents", "settings.tabs.assistent", "\u{1F916}"],
+  ["mcp", "settings.tabs.mcp", "\u{1F9E9}"],
+  ["jobs", "settings.tabs.jobs", "\u{23F1}"],
+  ["webhooks", "settings.tabs.webhooks", "\u{1FA9D}"],
+  ["skills", "settings.tabs.skills", "\u{2728}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -28,29 +41,13 @@ export default function Settings() {
   // Derive the active tab from the URL; unknown becomes the default "secrets".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "secrets") as Tab;
   const { user } = useAuth();
-  usePageChrome(tr("nav.settings"), TABS.map(([key, label]) => ({
-    key, label: tr(label), to: `/settings/${key}`,
-    icon: { secrets: "🔐", prefs: "👤", processes: "🔀", destinations: "🎯", agents: "🤖",
-            mcp: "🧩", jobs: "⏱️", webhooks: "🪝", skills: "✨" }[key],
-  })), tab);
+  usePageChrome(tr("nav.settings"), TABS.map(([key, label, icon]) => ({
+    key, label: tr(label), to: `/settings/${key}`, icon,
+  })), tab, "seite");
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="max-w-3xl">
       {tab === "secrets" && <Secrets />}
-      {tab === "prefs" && <PreferencesPanel isAdmin={user?.global_role === "admin"} />}
-      {tab === "processes" && (
-        <div className="space-y-4">
-          <MySetPanel />
-          {/* Eigene Abläufe stehen jetzt unter Prozesse — hier bleibt nur die Einstellung,
-              welchen Satz man fährt. Der Verweis, damit niemand sie an der alten Stelle sucht. */}
-          <p className="rounded-lg border border-line bg-card p-4 text-sm text-muted">
-            {tr("settings.eigene_ablaeufe")}: <Link to="/processes/eigene"
-              className="text-ink underline">{tr("settings.prozesse_eigene")}</Link>.
-          </p>
-        </div>
-      )}
-      {tab === "destinations" && user && (
-        <DestinationsPanel scope="user" userId={user.id} />
-      )}
+      {tab === "destinations" && <DestinationsBereich />}
       {tab === "agents" && <AgentsPanel />}
       {tab === "mcp" && <McpPanel />}
       {tab === "jobs" && <JobsPanel />}
@@ -67,187 +64,252 @@ const PROVIDER_LABEL: Record<string, string> = {
 function Secrets() {
   return (
     <div className="space-y-4">
-      <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-        <p className="text-sm text-muted">{tr("settings.keys_einleitung")}</p>
+      <Bereich hinweis={tr("settings.keys_einleitung")}>
         <ProviderTokens />
-      </div>
-      <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-        <p className="text-sm text-muted">Allgemeiner <b>{tr("settings.secret_tresor")}</b>: beliebige Tokens/Geheimnisse (API-Keys,
-          {tr("settings.tresor_hinweis")}</p>
+      </Bereich>
+      <Bereich hinweis={<>
+        Allgemeiner <b>{tr("settings.secret_tresor")}</b>: beliebige Tokens/Geheimnisse (API-Keys,
+        {tr("settings.tresor_hinweis")}
+      </>}>
         <NamedSecrets />
-      </div>
+      </Bereich>
     </div>
   );
 }
 
+/**
+ * The vault: named secrets, referenced elsewhere only as `secret:name`.
+ *
+ * The value never comes back from the server, which is why editing means "replace the
+ * value" and not "change the text in the field". The dialog says so instead of pretending
+ * an empty field were the current secret.
+ */
 function NamedSecrets() {
   const qc = useQueryClient();
   const { data } = useQuery({
     queryKey: ["named-secrets"], queryFn: () => api.get<any>("/me/secrets"),
   });
-  const [name, setName] = useState("");
-  const [value, setValue] = useState("");
-  const [description, setDescription] = useState("");
+  const [dialog, setDialog] = useState<{ name: string; description: string } | null>(null);
+  const [loeschen, setLoeschen] = useState<string | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["named-secrets"] });
   const guard = async (fn: () => Promise<any>) => {
-    try { setErr(""); await fn(); inv(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
-  };
-  const save = () => {
-    const n = name.trim();
-    if (!n || !value.trim()) { setErr(tr("settings.name_und_wert_noetig")); return; }
-    guard(async () => {
-      await api.put(`/me/secrets/${encodeURIComponent(n)}`, { value: value.trim(), description: description.trim() });
-      setName(""); setValue(""); setDescription("");
-    });
-  };
-  const remove = (n: string) =>
-    guard(() => api.put(`/me/secrets/${encodeURIComponent(n)}`, { value: "", description: "" }));
-  const prefill = (s: { name: string; description: string }) => {
-    setName(s.name); setDescription(s.description); setValue("");
+    try { setErr(""); await fn(); inv(); return true; }
+    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.fehler")); return false; }
   };
   const vault: { name: string; description: string }[] = data?.vault || [];
 
   return (
     <div>
-      {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
-      <div className="mb-2 space-y-1">
+      <Fehlerzeile text={err} />
+      <Liste className="mb-3">
         {vault.map((s) => (
-          <div key={s.name} className="flex items-center gap-2 text-sm">
-            <code className="rounded bg-surface px-1.5 py-0.5 text-xs text-brand">secret:{s.name}</code>
-            {s.description && <span className="text-xs text-muted">{s.description}</span>}
-            <div className="flex-1" />
-            <button onClick={() => prefill(s)} className="text-xs text-muted hover:text-brand">{tr("settings.wert_ersetzen")}</button>
-            <button onClick={() => remove(s.name)} className="text-muted hover:text-red-400">✕</button>
-          </div>
+          <ListenZeile key={s.name}>
+            <div className="flex items-center gap-2">
+              <code className="shrink-0 font-mono text-xs text-brand">secret:{s.name}</code>
+              {s.description && <span className="min-w-0 flex-1 truncate text-xs text-muted">{s.description}</span>}
+              <div className="flex-1" />
+              <Aktionen>
+                <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
+                  onClick={() => setDialog({ name: s.name, description: s.description })} />
+                <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+                  onClick={() => setLoeschen(s.name)} />
+              </Aktionen>
+            </div>
+          </ListenZeile>
         ))}
-        {vault.length === 0 && <div className="text-xs text-muted">{tr("settings.noch_keine_secrets_im_tresor")}</div>}
-      </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("settings.name_z_b_github_pat")}
-          className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        <input type="password" value={value} onChange={(e) => setValue(e.target.value)} placeholder={tr("settings.wert_token")}
-          className="min-w-[10rem] flex-1 basis-full rounded border border-line bg-surface px-2 py-1.5 text-sm sm:basis-auto" />
-        <input value={description} onChange={(e) => setDescription(e.target.value)} placeholder={tr("settings.beschreibung_optional")}
-          className="w-48 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("settings.speichern")}</button>
-      </div>
+        {vault.length === 0 && <ListeLeer>{tr("settings.noch_keine_secrets_im_tresor")}</ListeLeer>}
+      </Liste>
+      <button onClick={() => setDialog({ name: "", description: "" })}
+        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        {ICON.neu} {tr("settings.secret_anlegen")}
+      </button>
+
+      {dialog && (
+        <SecretDialog vorhanden={dialog.name ? dialog : null} start={dialog}
+          onClose={() => setDialog(null)}
+          onSpeichern={async (name, wert, beschreibung) => {
+            const ok = await guard(() => api.put(`/me/secrets/${encodeURIComponent(name)}`,
+              { value: wert, description: beschreibung }));
+            if (ok) setDialog(null);
+          }} />
+      )}
+      {loeschen && (
+        <LoeschDialog was={`secret:${loeschen}`} hinweis={tr("settings.secret_loeschen_hinweis")}
+          onClose={() => setLoeschen(null)}
+          onLoeschen={async () => {
+            await guard(() => api.put(`/me/secrets/${encodeURIComponent(loeschen)}`,
+              { value: "", description: "" }));
+            setLoeschen(null);
+          }} />
+      )}
     </div>
   );
 }
 
+function SecretDialog({ vorhanden, start, onClose, onSpeichern }: {
+  vorhanden: { name: string } | null;
+  start: { name: string; description: string };
+  onClose: () => void;
+  onSpeichern: (name: string, wert: string, beschreibung: string) => void;
+}) {
+  const [name, setName] = useState(start.name);
+  const [wert, setWert] = useState("");
+  const [beschreibung, setBeschreibung] = useState(start.description);
+  const kann = !!name.trim() && !!wert.trim();
+
+  return (
+    <Dialog titel={vorhanden ? tr("settings.secret_bearbeiten") : tr("settings.secret_anlegen")}
+      onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!kann}
+        onSpeichern={() => onSpeichern(name.trim(), wert.trim(), beschreibung.trim())} />}>
+      <div className="space-y-3">
+        <Feld label={tr("settings.name")} hinweis={tr("settings.secret_name_hinweis")}>
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!vorhanden}
+            autoFocus={!vorhanden} placeholder={tr("settings.name_z_b_github_pat")}
+            className={`${EINGABE} disabled:opacity-60`} />
+        </Feld>
+        <Feld label={tr("settings.wert_token")}
+          hinweis={vorhanden ? tr("settings.wert_ersetzt_hinweis") : undefined}>
+          <input type="password" value={wert} onChange={(e) => setWert(e.target.value)}
+            autoFocus={!!vorhanden} placeholder={tr("settings.wert_token")} className={EINGABE} />
+        </Feld>
+        <Feld label={tr("settings.beschreibung_optional")}>
+          <input value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)} className={EINGABE} />
+        </Feld>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Provider tokens: which subscription or key an agent run uses.
+ *
+ * The list carries the state (default, address), the dialog the work. The token itself
+ * never comes back from the server, so editing an entry leaves the field empty and keeps
+ * the stored value unless something new is typed in.
+ */
 function ProviderTokens() {
   const qc = useQueryClient();
   const { data: toks } = useQuery({
     queryKey: ["provider-tokens"], queryFn: () => api.get<any[]>("/me/provider-tokens"),
   });
-  const [provider, setProvider] = useState("claude_code");
-  const [name, setName] = useState("");
-  const [token, setToken] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [isDefault, setIsDefault] = useState(false);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [dialog, setDialog] = useState<any | null>(null);   // null = zu, {} = neu
+  const [loeschen, setLoeschen] = useState<any | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["provider-tokens"] });
   const guard = async (fn: () => Promise<any>) => {
-    try { setErr(""); await fn(); inv(); }
-    catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
+    try { setErr(""); await fn(); inv(); return true; }
+    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.fehler")); return false; }
   };
-  const reset = () => {
-    setName(""); setToken(""); setBaseUrl(""); setIsDefault(false); setEditing(null); setEditingId(null);
-  };
-  const save = () => {
-    if (editingId !== null) {
-      // Editing by id: change the base URL or the default; the token only when newly entered.
-      guard(async () => {
-        await api.patch(`/me/provider-tokens/${editingId}`, {
-          token: token.trim() || undefined,
-          base_url: provider === "openai" ? baseUrl.trim() || null : null,
-          is_default: isDefault,
-        });
-        reset();
-      });
-      return;
-    }
-    if (!token.trim()) { setErr(tr("settings.token_wert_eingeben")); return; }
-    guard(async () => {
-      await api.post("/me/provider-tokens", {
-        provider, name, token, is_default: isDefault,
-        base_url: provider === "openai" ? baseUrl.trim() || null : null,
-      });
-      reset();
-    });
-  };
-  const edit = (t: any) => {
-    setProvider(t.provider); setName(t.name === "Standard" ? "" : t.name);
-    setBaseUrl(t.base_url || ""); setToken(""); setIsDefault(t.is_default);
-    setEditing(t.name); setEditingId(t.id); setErr("");
-  };
-  const del = (id: number) => guard(() => api.del(`/me/provider-tokens/${id}`));
-  const makeDefault = (id: number) => guard(() => api.post(`/me/provider-tokens/${id}/default`));
 
   return (
     <div>
-      {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
-      <div className="mb-2 space-y-1">
+      <Fehlerzeile text={err} />
+      <Liste className="mb-3">
         {toks?.map((t) => (
-          /* One key per row was a word salad on a phone: provider, name, address and three
-             controls in one line. Now the entries at the top and the buttons below. */
-          <div key={t.id} className="rounded border border-line px-2 py-1.5 text-sm">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-              <span className="font-medium">{t.name}</span>
-              <span className="text-xs text-muted">{PROVIDER_LABEL[t.provider] || t.provider}</span>
-              {t.is_default && (
-                <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">{tr("settings.standard")}</span>
-              )}
+          <ListenZeile key={t.id}>
+            <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-x-2">
+                <span className="font-medium text-ink">{t.name}</span>
+                <span className="text-xs text-muted">{PROVIDER_LABEL[t.provider] || t.provider}</span>
+                {t.is_default && <Etikett farbe="brand">{tr("settings.standard")}</Etikett>}
+              </div>
+              {t.base_url && <div className="truncate text-xs text-muted">→ {t.base_url}</div>}
             </div>
-            {t.base_url && <div className="truncate text-xs text-muted">→ {t.base_url}</div>}
-            <div className="mt-0.5 flex items-center gap-3 text-xs">
+            <Aktionen>
               {!t.is_default && (
-                <button onClick={() => makeDefault(t.id)}
-                  className="text-muted hover:text-brand">{tr("settings.als_standard")}</button>
+                <IconKnopf icon={ICON.standard} titel={tr("common.als_standard")}
+                  onClick={() => guard(() => api.post(`/me/provider-tokens/${t.id}/default`))} />
               )}
-              <button onClick={() => edit(t)} className="text-muted hover:text-brand">{tr("settings.bearbeiten")}</button>
-              <div className="flex-1" />
-              <button onClick={() => del(t.id)} className="text-muted hover:text-red-400">✕</button>
+              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(t)} />
+              <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschen(t)} />
+            </Aktionen>
             </div>
-          </div>
+          </ListenZeile>
         ))}
-        {toks?.length === 0 && <div className="text-xs text-muted">{tr("settings.noch_keine_keys_hinterlegt")}</div>}
-      </div>
-      {editing !== null && (
-        <div className="mb-2 rounded border border-brand/40 bg-brand/10 px-2 py-1 text-xs text-muted">
-          {tr("settings.bearbeiten_hinweis", { provider: PROVIDER_LABEL[provider] || provider, name: editing })}
-        </div>
+        {toks?.length === 0 && <ListeLeer>{tr("settings.noch_keine_keys_hinterlegt")}</ListeLeer>}
+      </Liste>
+      <button onClick={() => setDialog({})} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        {ICON.neu} {tr("settings.token_anlegen")}
+      </button>
+
+      {dialog && (
+        <TokenDialog eintrag={dialog.id ? dialog : null} onClose={() => setDialog(null)}
+          onSpeichern={async (werte) => {
+            const ok = dialog.id
+              ? await guard(() => api.patch(`/me/provider-tokens/${dialog.id}`, {
+                  token: werte.token || undefined,
+                  base_url: werte.provider === "openai" ? werte.base_url || null : null,
+                  is_default: werte.is_default,
+                }))
+              : await guard(() => api.post("/me/provider-tokens", {
+                  provider: werte.provider, name: werte.name, token: werte.token,
+                  is_default: werte.is_default,
+                  base_url: werte.provider === "openai" ? werte.base_url || null : null,
+                }));
+            if (ok) setDialog(null);
+          }} />
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={editing !== null}
-          className="min-w-[10rem] flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink disabled:opacity-50 sm:flex-none">
-          {Object.entries(PROVIDER_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
-        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("settings.name_optional")}
-          disabled={editing !== null}
-          className="min-w-[8rem] flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm disabled:opacity-50 sm:w-32 sm:flex-none" />
-        <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
-          placeholder={editing !== null ? tr("settings.neuer_wert_leer_behalten") : tr("settings.token_platzhalter")}
-          className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        {provider === "openai" && (
-          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}
-            placeholder={tr("settings.base_url_optional_z_b_http_litellm_4000_")}
-            className="w-64 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
-        )}
-        <label className="flex items-center gap-1 text-xs text-muted">
-          <input type="checkbox" checked={isDefault} onChange={(e) => setIsDefault(e.target.checked)} /> {tr("settings.standard")}
-        </label>
-        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
-          {editing !== null ? tr("common.speichern") : "+ Token"}
-        </button>
-        {editing !== null && (
-          <button onClick={reset} className="text-xs text-muted hover:text-ink">{tr("settings.abbrechen")}</button>
-        )}
-      </div>
+      {loeschen && (
+        <LoeschDialog was={loeschen.name} onClose={() => setLoeschen(null)}
+          onLoeschen={async () => {
+            await guard(() => api.del(`/me/provider-tokens/${loeschen.id}`));
+            setLoeschen(null);
+          }} />
+      )}
     </div>
+  );
+}
+
+function TokenDialog({ eintrag, onClose, onSpeichern }: {
+  eintrag: any | null;
+  onClose: () => void;
+  onSpeichern: (werte: {
+    provider: string; name: string; token: string; base_url: string; is_default: boolean;
+  }) => void;
+}) {
+  const [provider, setProvider] = useState(eintrag?.provider || "claude_code");
+  const [name, setName] = useState(eintrag && eintrag.name !== "Standard" ? eintrag.name : "");
+  const [token, setToken] = useState("");
+  const [baseUrl, setBaseUrl] = useState(eintrag?.base_url || "");
+  const [istStandard, setIstStandard] = useState(!!eintrag?.is_default);
+  // A new entry without a token would be an empty box; an existing one keeps its stored value.
+  const kann = !!eintrag || !!token.trim();
+
+  return (
+    <Dialog titel={eintrag ? tr("settings.token_bearbeiten") : tr("settings.token_anlegen")} onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!kann}
+        onSpeichern={() => onSpeichern({
+          provider, name, token: token.trim(), base_url: baseUrl.trim(), is_default: istStandard,
+        })} />}>
+      <div className="space-y-3">
+        <Feld label={tr("settings.provider")}>
+          <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={!!eintrag}
+            className={`${EINGABE} disabled:opacity-60`}>
+            {Object.entries(PROVIDER_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </Feld>
+        <Feld label={tr("settings.name_optional")}>
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!eintrag}
+            className={`${EINGABE} disabled:opacity-60`} />
+        </Feld>
+        <Feld label={tr("settings.wert_token")}
+          hinweis={eintrag ? tr("settings.neuer_wert_leer_behalten") : undefined}>
+          <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
+            autoFocus placeholder={tr("settings.token_platzhalter")} className={EINGABE} />
+        </Feld>
+        {provider === "openai" && (
+          <Feld label={tr("settings.base_url_optional_z_b_http_litellm_4000_")}>
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={EINGABE} />
+          </Feld>
+        )}
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input type="checkbox" checked={istStandard} onChange={(e) => setIstStandard(e.target.checked)} />
+          {tr("settings.standard")}
+        </label>
+      </div>
+    </Dialog>
   );
 }

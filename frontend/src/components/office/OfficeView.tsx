@@ -461,8 +461,7 @@ export default function OfficeView({
       onSpeedChange={(t) => { setSpeed(t); setPaused(false); }}
       filter={sessionFilter}
       onFilterChange={setSessionFilter}
-      fullscreen={voll}
-      onToggleFullscreen={voll ? onClose : onFullscreen}
+      onFullscreen={voll ? undefined : onFullscreen}
       error={fehler}
       kiosk={kiosk}
     />

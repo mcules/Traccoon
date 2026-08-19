@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "../lib/formatTime";
 import { tr } from "../i18n";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +8,11 @@ import {
   type ProcAusloeser, type ProcLauf, type ProcSlot, type User,
 } from "../api";
 import { usePageChrome } from "../pageChrome";
+import {
+  Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, Zeilenknopf,
+} from "../components/ui";
 import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
+import { projektPfad } from "../projectTabs";
 import MessreihenPanel from "../components/workflow/MessreihenPanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 
@@ -37,9 +42,13 @@ export default function Processes() {
     key, label: tr(label), to: `/processes/${key}`,
     icon: { eigene: "✍️", standard: "🔀", betrieb: "📡", ausloeser: "⚡",
             messreihen: "📈" }[key],
-  })), tab);
+  })), tab, "seite");
   return (
     <div>
+      {/* Kein persönlicher Prozess-Satz mehr an dieser Stelle: er ist eine Vollkopie ALLER
+          Slots und hilft genau dort nicht, wo man ihn nehmen wollte — ereignisgetriebene
+          Abläufe liefen doppelt, weil `events.listeners` nach Triggern sucht, nicht nach
+          Sätzen. Wer einen Ablauf anders haben will, legt einen eigenen an. */}
       {tab === "eigene" && <OwnWorkflowsPanel />}
       {tab === "messreihen" && <MessreihenPanel />}
       {tab === "standard" && <StandardSatz />}
@@ -60,13 +69,11 @@ function StandardSatz() {
   const { data: slots } = useQuery({ queryKey: ["proc-slots"], queryFn: () => processApi.slots() });
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {tr("proc.standard_hinweis")}{" "}
-        {tr(admin ? "processes.hinweis_admin" : "processes.hinweis_leser")}
-      </p>
-
-      <div className="space-y-2">
+    <Bereich hinweis={<>
+      {tr("proc.standard_hinweis")}{" "}
+      {tr(admin ? "processes.hinweis_admin" : "processes.hinweis_leser")}
+    </>}>
+      <Liste>
         {slots?.map((s) => (
           <SlotZeile
             key={s.slot} s={s} admin={admin}
@@ -75,13 +82,9 @@ function StandardSatz() {
             onEdit={() => s.definition_id && nav(`/workflows/${s.definition_id}`, { state: { from: "/processes/standard" } })}
           />
         ))}
-        {slots?.length === 0 && (
-          <div className="rounded border border-line bg-card p-3 text-sm text-muted">
-            {tr("proc.kein_standard_satz")}
-          </div>
-        )}
-      </div>
-    </div>
+        {slots?.length === 0 && <ListeLeer>{tr("proc.kein_standard_satz")}</ListeLeer>}
+      </Liste>
+    </Bereich>
   );
 }
 
@@ -90,32 +93,23 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
 }) {
   const nav = useNavigate();
   return (
-    <div className="rounded border border-line bg-card p-3">
+    <ListenZeile>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{s.name}</span>
-        {s.published ? (
-          <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">v{s.version}</span>
-        ) : (
-          <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-xs text-yellow-300">
-            {tr("proc.nicht_veroeffentlicht")}
-          </span>
-        )}
+        <span className="font-medium text-ink">{s.name}</span>
+        {s.published
+          ? <Etikett>v{s.version}</Etikett>
+          : <Etikett farbe="gelb">{tr("proc.nicht_veroeffentlicht")}</Etikett>}
         {s.abweichungen.length > 0 && (
-          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-300"
-                title={tr("processes.diese_projekte_haben_eine_eigene_kopie_u")}>
+          <Etikett farbe="gelb" titel={tr("processes.diese_projekte_haben_eine_eigene_kopie_u")}>
             {s.abweichungen.length} Abweichung{s.abweichungen.length === 1 ? "" : "en"}
-          </span>
+          </Etikett>
         )}
         <div className="flex-1" />
-        <button onClick={onToggle}
-                className="rounded border border-line px-2 py-1 text-xs hover:border-brand">
+        <Zeilenknopf onClick={onToggle}>
           {offen ? "Versionen ausblenden" : "Versionen"}
-        </button>
+        </Zeilenknopf>
         {s.definition_id && (
-          <button onClick={onEdit}
-                  className="rounded border border-line px-2 py-1 text-xs hover:border-brand">
-            {admin ? "Bearbeiten" : "Ansehen"}
-          </button>
+          <Zeilenknopf onClick={onEdit}>{admin ? "Bearbeiten" : "Ansehen"}</Zeilenknopf>
         )}
       </div>
       <div className="mt-1 text-xs text-muted">{s.description}</div>
@@ -137,7 +131,7 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
       )}
 
       {offen && s.definition_id && <Versionen defId={s.definition_id} darfSchreiben={admin} />}
-    </div>
+    </ListenZeile>
   );
 }
 
@@ -186,7 +180,7 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
                 {v.notes || "—"}
               </span>
               <span className="shrink-0 text-muted">
-                {v.published_at ? new Date(v.published_at).toLocaleDateString("de-DE") : ""}
+                {formatDate(v.published_at)}
               </span>
               {darfSchreiben && !aktuell && v.status === "published" && (
                 <button
@@ -209,12 +203,9 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
 
 // ── Betrieb ──────────────────────────────────────────────────────────────────
 
-const STATUS_STIL: Record<ProcLauf["status"], string> = {
-  running: "bg-blue-500/15 text-blue-300",
-  waiting: "bg-surface text-muted",
-  failed: "bg-red-500/15 text-red-300",
-  completed: "bg-green-500/15 text-green-300",
-  cancelled: "bg-surface text-muted",
+type EtikettFarbe = "neutral" | "gruen" | "gelb" | "rot" | "blau" | "violett" | "brand";
+const STATUS_FARBE: Record<ProcLauf["status"], EtikettFarbe> = {
+  running: "blau", waiting: "neutral", failed: "rot", completed: "gruen", cancelled: "neutral",
 };
 const STATUS_TEXT: Record<ProcLauf["status"], string> = {
   running: "proc.status.laeuft", waiting: "proc.status.wartet", failed: "proc.status.gescheitert",
@@ -254,12 +245,9 @@ function Betrieb() {
   const haengen = laeufe?.filter((l) => l.haengt).length ?? 0;
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {tr("proc.betrieb_hinweis")}
-      </p>
-
-      <div className="flex flex-wrap items-center gap-3 text-sm">
+    <Bereich
+      hinweis={tr("proc.betrieb_hinweis")}
+      werkzeuge={<>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={nurHaengt} onChange={(e) => setNurHaengt(e.target.checked)} />
           {tr("proc.nur_auffaelliges")}{haengen > 0 && !nurHaengt ? ` (${haengen})` : ""}
@@ -272,26 +260,22 @@ function Betrieb() {
         <span className="text-xs text-muted">
           {laeufe?.length ?? 0} {tr(laeufe?.length === 1 ? "proc.vorgang" : "proc.vorgaenge")}
         </span>
-      </div>
+      </>}
+    >
+      <Fehlerzeile text={err} />
 
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
-
-      <div className="space-y-2">
+      <Liste>
         {laeufe?.map((l) => (
-          <div key={l.id}
-               className={`rounded border p-3 ${l.haengt ? "border-amber-500/40 bg-amber-500/5" : "border-line bg-card"}`}>
+          <ListenZeile key={l.id}>
             <div className="flex flex-wrap items-center gap-2">
-              <span className={`rounded px-1.5 py-0.5 text-xs ${STATUS_STIL[l.status]}`}>
-                {tr(STATUS_TEXT[l.status])}
-              </span>
-              <span className="font-medium">{l.definition_name}</span>
-              {l.project_key && (
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{l.project_key}</span>
-              )}
+              <Etikett farbe={STATUS_FARBE[l.status]}>{tr(STATUS_TEXT[l.status])}</Etikett>
+              <span className="font-medium text-ink">{l.definition_name}</span>
+              {l.haengt && <Etikett farbe="gelb" titel="Steht ungewöhnlich lange">hängt</Etikett>}
+              {l.project_key && <Etikett>{l.project_key}</Etikett>}
               {l.subject_ref && (
                 <button
                   onClick={() => nav(l.subject_ref?.startsWith("HW-")
-                    ? `/projects/${l.project_key}/hardware`
+                    ? projektPfad(l.project_key!, "betrieb", "hardware")
                     : `/projects/${l.project_key}/tickets/${l.subject_ref}`)}
                   className="rounded bg-surface px-1.5 py-0.5 text-xs text-ink hover:text-brand"
                 >
@@ -304,21 +288,17 @@ function Betrieb() {
                   {l.stunden < 48 ? `${l.stunden} h` : `${Math.round(l.stunden / 24)} Tage`}
                 </span>
               )}
-              <button
+              <Zeilenknopf
                 onClick={() => setOffen(offen === l.id ? null : l.id)}
-                className="rounded border border-line px-2 py-1 text-xs hover:border-brand"
-                title={tr("processes.verlauf_des_vorgangs")}
+                titel={tr("processes.verlauf_des_vorgangs")}
               >
                 {tr(offen === l.id ? "processes.verlauf_zu" : "processes.verlauf")}
-              </button>
+              </Zeilenknopf>
               {(l.status === "running" || l.status === "waiting") && (
-                <button
-                  onClick={() => abbrechen.mutate(l.id)}
-                  className="rounded border border-line px-2 py-1 text-xs hover:border-red-400"
-                  title={tr("processes.vorgang_abbrechen")}
-                >
+                <Zeilenknopf gefahr onClick={() => abbrechen.mutate(l.id)}
+                  titel={tr("processes.vorgang_abbrechen")}>
                   {tr("processes.abbrechen")}
-                </button>
+                </Zeilenknopf>
               )}
             </div>
             <div className="mt-1 text-xs text-muted">
@@ -332,26 +312,24 @@ function Betrieb() {
                                      height="260px" compact />
               </div>
             )}
-          </div>
+          </ListenZeile>
         ))}
         {laeufe?.length === 0 && (
-          <div className="rounded border border-line bg-card p-3 text-sm text-muted">
-            {nurHaengt ? tr("proc.nichts_auffaelliges") : tr("proc.kein_vorgang")}
-          </div>
+          <ListeLeer>{nurHaengt ? tr("proc.nichts_auffaelliges") : tr("proc.kein_vorgang")}</ListeLeer>
         )}
-      </div>
-    </div>
+      </Liste>
+    </Bereich>
   );
 }
 
 // ── Triggers ─────────────────────────────────────────────────────────────────
 
-const KIND: Record<ProcAusloeser["kind"], { label: string; cls: string }> = {
-  event: { label: "processes.ausloeser_event", cls: "bg-violet-500/15 text-violet-300" },
-  webhook: { label: "processes.ausloeser_webhook", cls: "bg-blue-500/15 text-blue-300" },
-  job: { label: "processes.ausloeser_job", cls: "bg-green-500/15 text-green-300" },
-  subflow: { label: "processes.ausloeser_subflow", cls: "bg-surface text-muted" },
-  manual: { label: "processes.ausloeser_manual", cls: "bg-surface text-muted" },
+const KIND: Record<ProcAusloeser["kind"], { label: string; farbe: EtikettFarbe }> = {
+  event: { label: "processes.ausloeser_event", farbe: "violett" },
+  webhook: { label: "processes.ausloeser_webhook", farbe: "blau" },
+  job: { label: "processes.ausloeser_job", farbe: "gruen" },
+  subflow: { label: "processes.ausloeser_subflow", farbe: "neutral" },
+  manual: { label: "processes.ausloeser_manual", farbe: "neutral" },
 };
 
 function Ausloeser() {
@@ -362,66 +340,58 @@ function Ausloeser() {
   const ohneZuhoerer = events?.filter((e) => e.listeners === 0).length ?? 0;
 
   return (
-    <div className="space-y-5">
-      <p className="text-sm text-muted">
-        {tr("proc.ausloeser_hinweis")}
-      </p>
-
-      <div className="space-y-2">
-        {trigger?.map((t, i) => {
-          const k = KIND[t.kind];
-          return (
-            <div key={`${t.definition_id}-${t.kind}-${i}`} className="rounded border border-line bg-card p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className={`rounded px-1.5 py-0.5 text-xs ${k.cls}`}>{tr(k.label)}</span>
-                <span className="font-medium">{t.definition_name}</span>
-                {t.project_key && (
-                  <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{t.project_key}</span>
-                )}
-                {!t.enabled && (
-                  <span className="rounded bg-red-500/15 px-1.5 py-0.5 text-xs text-red-300">abgeschaltet</span>
-                )}
-                <div className="flex-1" />
-                <button
-                  onClick={() => nav(t.project_key
+    <div className="space-y-4">
+      <Bereich hinweis={tr("proc.ausloeser_hinweis")}>
+        <Liste>
+          {trigger?.map((t, i) => {
+            const k = KIND[t.kind];
+            return (
+              <ListenZeile key={`${t.definition_id}-${t.kind}-${i}`} gedimmt={!t.enabled}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Etikett farbe={k.farbe}>{tr(k.label)}</Etikett>
+                  <span className="font-medium text-ink">{t.definition_name}</span>
+                  {t.project_key && <Etikett>{t.project_key}</Etikett>}
+                  {!t.enabled && <Etikett farbe="rot">abgeschaltet</Etikett>}
+                  <div className="flex-1" />
+                  <Zeilenknopf onClick={() => nav(t.project_key
                     ? `/projects/${t.project_key}/workflows/${t.definition_id}`
-                    : `/workflows/${t.definition_id}`)}
-                  className="rounded border border-line px-2 py-1 text-xs hover:border-brand"
-                >
-                  Ansehen
-                </button>
-              </div>
-              <div className="mt-1 text-xs text-muted">
-                {t.label}
-                {t.only_project_id && ` ${tr("proc.nur_fuer_projekt")}`}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                    : `/workflows/${t.definition_id}`)}>
+                    Ansehen
+                  </Zeilenknopf>
+                </div>
+                <div className="mt-1 text-xs text-muted">
+                  {t.label}
+                  {t.only_project_id && ` ${tr("proc.nur_fuer_projekt")}`}
+                </div>
+              </ListenZeile>
+            );
+          })}
+          {trigger?.length === 0 && <ListeLeer>{tr("processes.noch_keine_version")}</ListeLeer>}
+        </Liste>
+      </Bereich>
 
-      <div>
-        <h3 className="mb-1 text-sm font-medium">{tr("processes.ereignisse")}</h3>
-        <p className="mb-2 text-xs text-muted">
-          {tr("processes.ereignisse_hinweis")}
-          {ohneZuhoerer === events?.length && events.length > 0 && (
-            <> {tr("processes.ereignisse_niemand_hoert")}</>
-          )}
-        </p>
-        <div className="grid gap-1.5 sm:grid-cols-2">
+      <Bereich hinweis={<>
+        <span className="font-medium text-ink">{tr("processes.ereignisse")}</span>{" — "}
+        {tr("processes.ereignisse_hinweis")}
+        {ohneZuhoerer === events?.length && events.length > 0 && (
+          <> {tr("processes.ereignisse_niemand_hoert")}</>
+        )}
+      </>}>
+        <Liste>
           {events?.map((e) => (
-            <div key={e.event} className="flex items-center gap-2 rounded border border-line bg-card px-2.5 py-1.5">
-              <span className="min-w-0 flex-1 truncate text-sm">{e.label}</span>
-              <code className="hidden shrink-0 text-[11px] text-muted sm:block">{e.event}</code>
-              <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs ${
-                e.listeners ? "bg-violet-500/15 text-violet-300" : "bg-surface text-muted"
-              }`}>
-                {e.listeners || "—"}
-              </span>
-            </div>
+            <ListenZeile key={e.event}>
+              <div className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate">{e.label}</span>
+                <code className="hidden shrink-0 text-[11px] text-muted sm:block">{e.event}</code>
+                <Etikett farbe={e.listeners ? "violett" : "neutral"}
+                  titel={e.listeners ? "So viele Abläufe hören darauf" : "Niemand hört darauf"}>
+                  {e.listeners || "—"}
+                </Etikett>
+              </div>
+            </ListenZeile>
           ))}
-        </div>
-      </div>
+        </Liste>
+      </Bereich>
     </div>
   );
 }

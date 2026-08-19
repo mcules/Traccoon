@@ -48,6 +48,7 @@ export interface DecisionBranch {
 export type AutoActionName =
   | "create_ticket" | "notify" | "webhook" | "http_request" | "tool_call"
   | "set_context" | "set_board_status" | "messwert" | "messreihe_lesen"
+  | "notiz_anhaengen"
   | "comment" | "refresh_facts"
   // Zustand eines Artefakts (Ticket, Hardware, eigene Typen)
   | "set_status" | "set_field"
@@ -57,7 +58,9 @@ export type AutoActionName =
   | "stop_agent"
   // Mail-Eingang (Slot mail_intake)
   | "mail_classify" | "spam_evaluate" | "spam_card" | "spam_apply"
-  | "assistant_task" | "assistant_card" | "assistant_run";
+  | "assistant_task" | "assistant_card" | "assistant_run"
+  // Assistent allgemein (ohne Mail, ohne Ticket) und die Antwort eines Ablaufs
+  | "assistent_auftrag" | "antwort";
 
 export interface AutoActionConfig {
   action: AutoActionName;

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import Onboarding from "../components/Onboarding";
 import MyWork from "../components/MyWork";
+import { Etikett } from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 export default function Projects() {
@@ -72,12 +73,12 @@ export default function Projects() {
             <div className="flex items-center justify-between">
               <span className="font-mono text-xs text-muted">{p.key}</span>
               <div className="flex gap-1">
-                {p.is_new && <span className="rounded bg-green-500/20 px-1.5 py-0.5 text-xs text-green-400">{tr("projects.neu")}</span>}
-                {!p.is_member && <span className="rounded bg-yellow-500/20 px-1.5 py-0.5 text-xs text-yellow-400">{tr("projects.fremd")}</span>}
-                {p.managed && <span className="rounded bg-brand/20 px-1.5 py-0.5 text-xs text-brand">KI</span>}
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
+                {p.is_new && <Etikett farbe="gruen">{tr("projects.neu")}</Etikett>}
+                {!p.is_member && <Etikett farbe="gelb">{tr("projects.fremd")}</Etikett>}
+                {p.managed && <Etikett farbe="brand">KI</Etikett>}
+                <Etikett>
                   {p.my_role}{p.my_role_inherited ? ` (${tr("projects.geerbt")})` : ""}
-                </span>
+                </Etikett>
               </div>
             </div>
             <div className="mt-1 font-medium">{p.name}</div>

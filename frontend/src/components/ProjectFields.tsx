@@ -2,6 +2,10 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, type Project } from "../api";
+import {
+  Aktionen, Dialog, DialogFuss, EINGABE, Feld as Formularfeld, Fehlerzeile, ICON, IconKnopf,
+  LoeschDialog,
+} from "./ui";
 
 interface Wert {
   id: number; value: string; label: string; color: string; order: number; enabled: boolean;
@@ -56,7 +60,7 @@ export default function ProjectFields({ project }: { project: Project }) {
       <p className="text-sm text-muted">
         {tr("project_fields.einleitung")}
       </p>
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
+      <Fehlerzeile text={err} />
 
       {sichtbar.map((t) => (
         <ArtefaktFelder key={t.id} t={t} projectId={project.id} onFail={fail} onOk={ok} />
@@ -65,23 +69,33 @@ export default function ProjectFields({ project }: { project: Project }) {
   );
 }
 
+/**
+ * The fields of one artifact within this project.
+ *
+ * A field used to be a row of controls: label as an input written on blur, type as a select,
+ * three checkboxes and the value list behind them. Which of them belonged to which field was
+ * a matter of counting columns as soon as the row wrapped. It is a dialog now, and the row
+ * says what the field is.
+ */
 function ArtefaktFelder({ t, projectId, onFail, onOk }: {
   t: Typ; projectId: number; onFail: (e: unknown) => void; onOk: () => void;
 }) {
-  const [neu, setNeu] = useState({ key: "", label: "", kind: "text", multi: false });
+  const [dialog, setDialog] = useState<Feld | {} | null>(null);   // {} = neues Feld
+  const [loeschFeld, setLoeschFeld] = useState<Feld | null>(null);
 
   const anlegen = useMutation({
-    mutationFn: () => api.post(`/artifact-types/${t.id}/fields?project_id=${projectId}`, neu),
-    onSuccess: () => { setNeu({ key: "", label: "", kind: "text", multi: false }); onOk(); },
-    onError: onFail,
+    mutationFn: (neu: { key: string; label: string; kind: string; multi: boolean }) =>
+      api.post(`/artifact-types/${t.id}/fields?project_id=${projectId}`, neu),
+    onSuccess: () => { setDialog(null); onOk(); }, onError: onFail,
   });
   const aendern = useMutation({
     mutationFn: ({ id, ...rest }: { id: number } & Record<string, any>) =>
       api.put(`/artifact-fields/${id}`, rest),
-    onSuccess: onOk, onError: onFail,
+    onSuccess: () => { setDialog(null); onOk(); }, onError: onFail,
   });
   const loeschen = useMutation({
-    mutationFn: (id: number) => api.del(`/artifact-fields/${id}`), onSuccess: onOk, onError: onFail,
+    mutationFn: (id: number) => api.del(`/artifact-fields/${id}`),
+    onSuccess: () => { setLoeschFeld(null); onOk(); }, onError: onFail,
   });
 
   // Editable is only what belongs to THIS project. Shipped fields and those applying
@@ -103,39 +117,26 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {eigene.map((f) => (
-          <div key={f.id} className={`rounded border border-line px-2 py-1.5 ${f.enabled ? "bg-surface" : "bg-surface/40"}`}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-28 shrink-0 font-mono text-xs text-muted">{f.key}</span>
-              <input defaultValue={f.label}
-                onBlur={(e) => e.target.value !== f.label && aendern.mutate({ id: f.id, label: e.target.value })}
-                className={`flex-1 ${inp}`} />
-              <select defaultValue={f.kind}
-                onChange={(e) => aendern.mutate({ id: f.id, kind: e.target.value })} className={inp}>
-                {FELDTYP.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              </select>
-              <label className="flex items-center gap-1 text-xs text-muted"
-                     title={tr("project_fields.darf_ein_ticket_mehrere_werte_gleichzeit")}>
-                <input type="checkbox" checked={f.multi}
-                  onChange={(e) => aendern.mutate({ id: f.id, multi: e.target.checked })} />
-                Mehrfachauswahl
-              </label>
-              <label className="flex items-center gap-1 text-xs text-muted">
-                <input type="checkbox" checked={f.required}
-                  onChange={(e) => aendern.mutate({ id: f.id, required: e.target.checked })} />
-                Pflicht
-              </label>
-              <label className="flex items-center gap-1 text-xs text-muted"
-                     title={tr("project_fields.abgeschaltete_felder_werden_nicht_mehr_a")}>
-                <input type="checkbox" checked={f.enabled}
-                  onChange={(e) => aendern.mutate({ id: f.id, enabled: e.target.checked })} />
-                aktiv
-              </label>
-              <button onClick={() => confirm(tr("project_fields.feld_loeschen_frage", { feld: f.label })) && loeschen.mutate(f.id)}
-                className="rounded border border-line px-1.5 py-0.5 text-xs hover:border-red-400">✕</button>
+          <div key={f.id}
+            className={`flex items-center gap-2 rounded border border-line px-2 py-1.5 ${f.enabled ? "bg-surface" : "bg-surface/40"}`}>
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+              <span className="font-mono text-xs text-muted">{f.key}</span>
+              <span className={f.enabled ? "" : "line-through"}>{f.label}</span>
+              <span className="text-xs text-muted">{FELDTYP.find(([k]) => k === f.kind)?.[1]}</span>
+              {f.multi && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.mehrfach")}</span>}
+              {f.required && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.pflicht")}</span>}
+              {f.kind === "select" && f.options.length > 0 && (
+                <span className="truncate text-xs text-muted">
+                  {f.options.filter((o) => o.enabled).map((o) => o.label || o.value).join(" · ")}
+                </span>
+              )}
             </div>
-            {f.kind === "select" && <Werteliste feld={f} onFail={onFail} onOk={onOk} />}
+            <Aktionen>
+              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(f)} />
+              <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschFeld(f)} />
+            </Aktionen>
           </div>
         ))}
         {eigene.length === 0 && (
@@ -143,25 +144,88 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input value={neu.key} onChange={(e) => setNeu({ ...neu, key: e.target.value })}
-          placeholder={tr("project_fields.schluessel_kunde")} className={`w-40 font-mono ${inp}`} />
-        <input value={neu.label} onChange={(e) => setNeu({ ...neu, label: e.target.value })}
-          placeholder={tr("project_fields.bezeichnung_kunde")} className={`flex-1 ${inp}`} />
-        <select value={neu.kind} onChange={(e) => setNeu({ ...neu, kind: e.target.value })} className={inp}>
-          {FELDTYP.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-        </select>
-        <label className="flex items-center gap-1 text-xs text-muted">
-          <input type="checkbox" checked={neu.multi}
-            onChange={(e) => setNeu({ ...neu, multi: e.target.checked })} />
-          Mehrfachauswahl
-        </label>
-        <button onClick={() => neu.key.trim() && neu.label.trim() && anlegen.mutate()}
-          className="rounded border border-line px-2 py-1 text-xs hover:border-brand">
-          Feld anlegen
-        </button>
-      </div>
+      <button onClick={() => setDialog({})}
+        className="mt-2 rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+        {ICON.neu} {tr("artifact_types_panel.feld_anlegen")}
+      </button>
+
+      {dialog && (
+        <FeldDialog feld={"id" in dialog ? (dialog as Feld) : null}
+          laeuft={anlegen.isPending || aendern.isPending}
+          onClose={() => setDialog(null)}
+          onAnlegen={(neu) => anlegen.mutate(neu)}
+          onAendern={(id, patch) => aendern.mutate({ id, ...patch })}
+          onFail={onFail} onOk={onOk} />
+      )}
+      {loeschFeld && (
+        <LoeschDialog was={loeschFeld.label} laeuft={loeschen.isPending}
+          onClose={() => setLoeschFeld(null)} onLoeschen={() => loeschen.mutate(loeschFeld.id)} />
+      )}
     </div>
+  );
+}
+
+function FeldDialog({ feld, laeuft, onClose, onAnlegen, onAendern, onFail, onOk }: {
+  feld: Feld | null; laeuft: boolean; onClose: () => void;
+  onAnlegen: (neu: { key: string; label: string; kind: string; multi: boolean }) => void;
+  onAendern: (id: number, patch: Record<string, any>) => void;
+  onFail: (e: unknown) => void; onOk: () => void;
+}) {
+  const [key, setKey] = useState(feld?.key || "");
+  const [label, setLabel] = useState(feld?.label || "");
+  const [kind, setKind] = useState(feld?.kind || "text");
+  const [multi, setMulti] = useState(!!feld?.multi);
+  const [required, setRequired] = useState(!!feld?.required);
+  const [enabled, setEnabled] = useState(feld ? feld.enabled : true);
+
+  return (
+    <Dialog titel={tr(feld ? "artifact_types_panel.feld_bearbeiten" : "artifact_types_panel.feld_anlegen")}
+      onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} laeuft={laeuft}
+        deaktiviert={!label.trim() || (!feld && !key.trim())}
+        speichernText={feld ? undefined : tr("common.anlegen")}
+        onSpeichern={() => feld
+          ? onAendern(feld.id, { label, kind, multi, required, enabled })
+          : onAnlegen({ key: key.trim(), label: label.trim(), kind, multi })} />}>
+      <div className="space-y-3">
+        <Formularfeld label={tr("project_fields.schluessel_kunde")}>
+          <input value={key} disabled={!!feld} autoFocus={!feld} onChange={(e) => setKey(e.target.value)}
+            className={`${EINGABE} font-mono disabled:opacity-60`} />
+        </Formularfeld>
+        <Formularfeld label={tr("project_fields.bezeichnung_kunde")}>
+          <input value={label} autoFocus={!!feld} onChange={(e) => setLabel(e.target.value)} className={EINGABE} />
+        </Formularfeld>
+        <Formularfeld label={tr("artifact_types_panel.typ")}>
+          <select value={kind} onChange={(e) => setKind(e.target.value)} className={EINGABE}>
+            {FELDTYP.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </Formularfeld>
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2 text-sm text-ink"
+            title={tr("project_fields.darf_ein_ticket_mehrere_werte_gleichzeit")}>
+            <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} />
+            {tr("artifact_types_panel.mehrfachauswahl")}
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
+            {tr("artifact_types_panel.pflicht")}
+          </label>
+          {feld && (
+            <label className="flex items-center gap-2 text-sm text-ink"
+              title={tr("project_fields.abgeschaltete_felder_werden_nicht_mehr_a")}>
+              <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+              {tr("artifact_types_panel.aktiv")}
+            </label>
+          )}
+        </div>
+        {feld && feld.kind === "select" && (
+          <div className="border-t border-line pt-3">
+            <div className="mb-1 text-xs font-medium text-muted">{tr("project_fields.werte")}</div>
+            <Werteliste feld={feld} onFail={onFail} onOk={onOk} />
+          </div>
+        )}
+      </div>
+    </Dialog>
   );
 }
 
@@ -184,23 +248,24 @@ function Werteliste({ feld, onFail, onOk }: {
   });
 
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-28">
-      <span className="text-[11px] text-muted">{tr("project_fields.werte")}</span>
+    <div className="space-y-1">
       {feld.options.map((o) => (
-        <span key={o.id}
-          className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${
-            o.enabled ? "bg-brand/15 text-ink" : "bg-surface text-muted line-through"}`}>
-          {o.label || o.value}
-          <button onClick={() => aendern.mutate({ id: o.id, enabled: !o.enabled })}
-            title={tr(o.enabled ? "project_fields.nicht_mehr_anbieten" : "artifact_types_panel.wieder_anbieten")}
-            className="text-muted hover:text-ink">{o.enabled ? "○" : "●"}</button>
-          <button onClick={() => loeschen.mutate(o.id)} title={tr("project_fields.loeschen")}
-            className="text-muted hover:text-red-300">✕</button>
-        </span>
+        <div key={o.id} className="flex items-center gap-2 rounded border border-line px-2 py-1 text-sm">
+          <span className={o.enabled ? "flex-1" : "flex-1 text-muted line-through"}>{o.label || o.value}</span>
+          <IconKnopf icon={o.enabled ? "○" : "●"}
+            titel={tr(o.enabled ? "project_fields.nicht_mehr_anbieten" : "artifact_types_panel.wieder_anbieten")}
+            onClick={() => aendern.mutate({ id: o.id, enabled: !o.enabled })} />
+          <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+            onClick={() => loeschen.mutate(o.id)} />
+        </div>
       ))}
-      <input value={wert} onChange={(e) => setWert(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && wert.trim() && anlegen.mutate()}
-        placeholder={tr("project_fields.wert_enter")} className={`w-32 text-xs ${inp}`} />
+      <div className="flex items-center gap-2">
+        <input value={wert} onChange={(e) => setWert(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && wert.trim() && anlegen.mutate()}
+          placeholder={tr("project_fields.wert_enter")} className={`flex-1 text-sm ${inp}`} />
+        <IconKnopf icon={ICON.neu} titel={tr("common.anlegen")} disabled={!wert.trim()}
+          onClick={() => wert.trim() && anlegen.mutate()} />
+      </div>
     </div>
   );
 }

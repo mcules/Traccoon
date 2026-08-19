@@ -3,6 +3,8 @@ import { tr } from "../../i18n";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi, type Project, type WorkflowSubjectKind } from "../../api";
+import { projektPfad } from "../../projectTabs";
+import { Liste, ListeLeer, ListenZeile } from "../ui";
 
 const SUBJECT_LABEL: Record<WorkflowSubjectKind, string> = {
   issue: "Ticket",
@@ -41,7 +43,7 @@ export default function WorkflowList({ project }: { project: Project }) {
       setF(EMPTY);
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: `/projects/${project.key}?tab=workflows` } });
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } });
     },
     onError: fail,
   });
@@ -64,14 +66,10 @@ export default function WorkflowList({ project }: { project: Project }) {
         {tr("workflow_list.einleitung")}
       </p>
 
-      <div className="mb-4 space-y-2">
+      <Liste className="mb-4">
         {defs?.map((d) => (
-          <div
-            key={d.id}
-            className={`flex flex-wrap items-center gap-3 rounded border border-line bg-card p-2 text-sm ${
-              d.enabled ? "" : "opacity-50"
-            }`}
-          >
+          <ListenZeile key={d.id} gedimmt={!d.enabled}>
+            <div className="flex flex-wrap items-center gap-3">
             <span className="font-mono text-xs text-muted">{d.key}</span>
             <span className="font-medium">{d.name}</span>
             <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
@@ -93,7 +91,7 @@ export default function WorkflowList({ project }: { project: Project }) {
             </button>
             <button
               title={tr("workflow_list.bearbeiten")}
-              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: `/projects/${project.key}?tab=workflows` } })}
+              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } })}
               className={ico + " hover:text-brand"}
             >
               ✎
@@ -101,10 +99,11 @@ export default function WorkflowList({ project }: { project: Project }) {
             <button title={tr("workflow_list.loeschen")} onClick={() => del.mutate(d.id)} className={ico + " hover:text-red-400"}>
               🗑
             </button>
-          </div>
+            </div>
+          </ListenZeile>
         ))}
-        {defs?.length === 0 && <div className="text-xs text-muted">{tr("workflow_list.noch_keine_eigenen_prozesse")}</div>}
-      </div>
+        {defs?.length === 0 && <ListeLeer>{tr("workflow_list.noch_keine_eigenen_prozesse")}</ListeLeer>}
+      </Liste>
 
       <div className="grid grid-cols-2 gap-2 rounded-lg border border-line bg-card p-3">
         <input

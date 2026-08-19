@@ -2,6 +2,10 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
+import {
+  Aktionen, Dialog, DialogFuss, EINGABE, Feld as Formularfeld, Fehlerzeile, ICON, IconKnopf,
+  LoeschDialog, Bereich, Liste, ListenZeile,
+} from "./ui";
 
 interface Wert {
   id: number; value: string; label: string; color: string; order: number; enabled: boolean;
@@ -58,66 +62,104 @@ const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
  *
  * Three levels following the Artefakt example: an **artifact type** orders things (process,
  * object), an **artifact** is the thing itself (ticket, hardware), and below it hang the
- * **fields** with their **value list**. The field says whether a single unit may carry one or several values from it.
+ * **fields** with their **value list**. The field says whether a single unit may carry one
+ * or several values from it.
+ *
+ * A field used to be edited in its own row: label as an input, type as a select, three
+ * checkboxes and the value list behind them, all in a line that wrapped into a column of
+ * unlabelled controls on anything narrower than a desktop. Editing happens in a dialog now,
+ * and the row says what the field is.
  */
 export default function ArtifactTypesPanel() {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
-  const [neu, setNeu] = useState({ key: "", name: "", icon: "📦" });
+  const [neuDialog, setNeuDialog] = useState(false);
+  const [loeschTyp, setLoeschTyp] = useState<Typ | null>(null);
 
   const { data: typen } = useQuery({
     queryKey: ["artifact-types"], queryFn: () => api.get<Typ[]>("/artifact-types"),
   });
 
-  const inv = () => {
-    qc.invalidateQueries({ queryKey: ["artifact-types"] });
-  };
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const inv = () => { qc.invalidateQueries({ queryKey: ["artifact-types"] }); };
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
   const ok = () => { setErr(""); inv(); };
 
   const anlegen = useMutation({
-    mutationFn: () => api.post("/artifact-types", neu),
-    onSuccess: () => { setNeu({ key: "", name: "", icon: "📦" }); ok(); }, onError: fail,
+    mutationFn: (neu: { key: string; name: string; icon: string }) => api.post("/artifact-types", neu),
+    onSuccess: () => { setNeuDialog(false); ok(); }, onError: fail,
   });
   const loeschen = useMutation({
-    mutationFn: (id: number) => api.del(`/artifact-types/${id}`), onSuccess: ok, onError: fail,
+    mutationFn: (id: number) => api.del(`/artifact-types/${id}`),
+    onSuccess: () => { setLoeschTyp(null); ok(); }, onError: fail,
   });
 
-
+  // Ein Satz, ein Schlüssel: die Hervorhebungen fallen weg, weil sich Markup mitten im Satz
+  // nicht mitübersetzen lässt (die Wortstellung ist anderswo eine andere).
   return (
-    <div className="space-y-4">
-      {/* Ein Satz, ein Schlüssel: die Hervorhebungen fallen weg, weil sich Markup mitten im
-          Satz nicht mitübersetzen lässt (die Wortstellung ist anderswo eine andere). */}
-      <p className="text-sm text-muted">{tr("artifact_types_panel.einleitung")}</p>
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
+    <Bereich hinweis={tr("artifact_types_panel.einleitung")}>
+      <Fehlerzeile text={err} />
 
-      <div className="space-y-3">
+      <Liste>
         {typen?.map((typ) => (
           <ArtefaktKarte key={typ.id} t={typ} onFail={fail} onOk={ok}
-                         onDelete={() => loeschen.mutate(typ.id)} />
+                         onDelete={() => setLoeschTyp(typ)} />
         ))}
-      </div>
+      </Liste>
 
-      <div>
-        <div className="rounded-lg border border-line bg-card p-4">
-          <div className="mb-2 text-sm font-medium">{tr("artifact_types_panel.eigenes_artefakt_anlegen")}</div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input value={neu.icon} onChange={(e) => setNeu({ ...neu, icon: e.target.value })}
-              className={`w-14 text-center ${inp}`} />
-            <input value={neu.key} onChange={(e) => setNeu({ ...neu, key: e.target.value })}
-              placeholder={tr("artifact_types_panel.schluessel_vertrag")} className={`w-36 font-mono ${inp}`} />
-            <input value={neu.name} onChange={(e) => setNeu({ ...neu, name: e.target.value })}
-              placeholder={tr("artifact_types_panel.name_vertrag")} className={`flex-1 ${inp}`} />
-            <button onClick={() => neu.key.trim() && neu.name.trim() && anlegen.mutate()}
-              className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("artifact_types_panel.anlegen")}</button>
+      <button onClick={() => { setErr(""); setNeuDialog(true); }}
+        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        {ICON.neu} {tr("artifact_types_panel.eigenes_artefakt_anlegen")}
+      </button>
+
+      {neuDialog && (
+        <ArtefaktDialog fehler={err} laeuft={anlegen.isPending}
+          onClose={() => { setNeuDialog(false); setErr(""); }}
+          onSpeichern={(werte) => anlegen.mutate(werte)} />
+      )}
+      {loeschTyp && (
+        <LoeschDialog was={loeschTyp.name} laeuft={loeschen.isPending}
+          hinweis={tr("artifact_types_panel.loeschen_hinweis")}
+          onClose={() => setLoeschTyp(null)} onLoeschen={() => loeschen.mutate(loeschTyp.id)} />
+      )}
+    </Bereich>
+  );
+}
+
+function ArtefaktDialog({ fehler, laeuft, onClose, onSpeichern }: {
+  fehler: string; laeuft: boolean; onClose: () => void;
+  onSpeichern: (werte: { key: string; name: string; icon: string }) => void;
+}) {
+  const [key, setKey] = useState("");
+  const [name, setName] = useState("");
+  const [icon, setIcon] = useState("📦");
+
+  return (
+    <Dialog titel={tr("artifact_types_panel.eigenes_artefakt_anlegen")} onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!key.trim() || !name.trim()} laeuft={laeuft}
+        speichernText={tr("common.anlegen")}
+        onSpeichern={() => onSpeichern({ key: key.trim(), name: name.trim(), icon })} />}>
+      <Fehlerzeile text={fehler} />
+      <div className="space-y-3">
+        <div className="flex gap-3">
+          <div className="w-20">
+            <Formularfeld label={tr("artifact_types_panel.icon")}>
+              <input value={icon} onChange={(e) => setIcon(e.target.value)}
+                className={`${EINGABE} text-center`} />
+            </Formularfeld>
           </div>
-          <p className="mt-2 text-[11px] text-muted">
-            Bekommt eine eigene Ablage und beliebige Zustände. Board, Sprints und der
-            KI-Lebenszyklus bleiben den Tickets vorbehalten.
-          </p>
+          <div className="flex-1">
+            <Formularfeld label={tr("artifact_types_panel.schluessel_vertrag")}>
+              <input value={key} autoFocus onChange={(e) => setKey(e.target.value)}
+                className={`${EINGABE} font-mono`} />
+            </Formularfeld>
+          </div>
         </div>
+        <Formularfeld label={tr("artifact_types_panel.name_vertrag")}>
+          <input value={name} onChange={(e) => setName(e.target.value)} className={EINGABE} />
+        </Formularfeld>
+        <p className="text-[11px] text-muted">{tr("artifact_types_panel.eigenes_artefakt_hinweis")}</p>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -128,38 +170,37 @@ function ArtefaktKarte({ t: typ, onFail, onOk, onDelete }: {
 }) {
   const [zeigeFelder, setZeigeFelder] = useState(false);
   return (
-    <div className="rounded-lg border border-line bg-card p-4">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="text-lg">{typ.icon}</span>
-        <span className="font-medium">{typ.name}</span>
-        <span className="font-mono text-xs text-muted">{typ.key}</span>
-        {typ.builtin && (
-          <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">eingebaut</span>
-        )}
-        {typ.fields.length > 0 && (
-          <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
-            {typ.fields.length} Feld{typ.fields.length === 1 ? "" : "er"}
-          </span>
-        )}
-        <div className="flex-1" />
-        <button onClick={() => setZeigeFelder(!zeigeFelder)}
-          className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">
-          {zeigeFelder ? "Felder ausblenden" : "Felder"}
-        </button>
-        {!typ.builtin && (
-          <button onClick={() => confirm(`Artefakt „${typ.name}“ löschen?`) && onDelete()}
-            className="rounded border border-line px-2 py-0.5 text-xs hover:border-red-400">
-            Löschen
+    <ListenZeile>
+      <div className="mb-2 flex items-center gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <span className="text-lg">{typ.icon}</span>
+          <span className="font-medium">{typ.name}</span>
+          <span className="font-mono text-xs text-muted">{typ.key}</span>
+          {typ.builtin && (
+            <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{tr("artifact_types_panel.eingebaut")}</span>
+          )}
+          {typ.fields.length > 0 && (
+            <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
+              {tr("artifact_types_panel.felder_anzahl", { anzahl: typ.fields.length })}
+            </span>
+          )}
+        </div>
+        <Aktionen>
+          <button onClick={() => setZeigeFelder(!zeigeFelder)}
+            className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+            {zeigeFelder ? tr("artifact_types_panel.felder_ausblenden") : tr("artifact_types_panel.felder")}
           </button>
-        )}
+          {!typ.builtin && (
+            <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={onDelete} />
+          )}
+        </Aktionen>
       </div>
       <div className="mb-3 text-xs text-muted">
         {typ.description} · {tr("artifact_types_panel.daten")}: {BACKING_LABEL[typ.backing] ? tr(BACKING_LABEL[typ.backing]) : typ.backing}
       </div>
 
-
       <Felder t={typ} onFail={onFail} onOk={onOk} offen={zeigeFelder} />
-    </div>
+    </ListenZeile>
   );
 }
 
@@ -168,20 +209,22 @@ function ArtefaktKarte({ t: typ, onFail, onOk, onDelete }: {
 function Felder({ t: typ, onFail, onOk, offen }: {
   t: Typ; onFail: (e: unknown) => void; onOk: () => void; offen: boolean;
 }) {
-  const [neu, setNeu] = useState({ key: "", label: "", kind: "text", multi: false });
+  const [dialog, setDialog] = useState<Feld | {} | null>(null);    // {} = neues Feld
+  const [loeschFeld, setLoeschFeld] = useState<Feld | null>(null);
 
   const anlegen = useMutation({
-    mutationFn: () => api.post(`/artifact-types/${typ.id}/fields`, neu),
-    onSuccess: () => { setNeu({ key: "", label: "", kind: "text", multi: false }); onOk(); },
-    onError: onFail,
+    mutationFn: (neu: { key: string; label: string; kind: string; multi: boolean }) =>
+      api.post(`/artifact-types/${typ.id}/fields`, neu),
+    onSuccess: () => { setDialog(null); onOk(); }, onError: onFail,
   });
   const aendern = useMutation({
     mutationFn: ({ id, ...rest }: { id: number } & Record<string, any>) =>
       api.put(`/artifact-fields/${id}`, rest),
-    onSuccess: onOk, onError: onFail,
+    onSuccess: () => { setDialog(null); onOk(); }, onError: onFail,
   });
   const loeschen = useMutation({
-    mutationFn: (id: number) => api.del(`/artifact-fields/${id}`), onSuccess: onOk, onError: onFail,
+    mutationFn: (id: number) => api.del(`/artifact-fields/${id}`),
+    onSuccess: () => { setLoeschFeld(null); onOk(); }, onError: onFail,
   });
 
   if (!offen) {
@@ -192,59 +235,39 @@ function Felder({ t: typ, onFail, onOk, offen }: {
     );
   }
   return (
-    <div className="mt-3 border-typ border-line pt-3">
+    <div className="mt-3 border-t border-line pt-3">
       <div className="mb-2 text-xs font-medium text-muted">{tr("artifact_types_panel.felder")}</div>
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {typ.fields.map((f) => (
-          <div key={f.id} className={`rounded border border-line px-2 py-1.5 ${f.enabled ? "bg-surface" : "bg-surface/40"}`}>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="w-28 shrink-0 font-mono text-xs text-muted" title={f.key}>{f.key}</span>
-              <input defaultValue={f.label}
-                onBlur={(e) => e.target.value !== f.label && aendern.mutate({ id: f.id, label: e.target.value })}
-                className={`flex-1 ${inp}`} />
-              {f.builtin ? (
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
-                      title={`Eingebaut — schreibt in die Spalte ${f.source}. Schlüssel und Typ sind gesperrt.`}>
-                  {tr(FELDTYP.find(([k]) => k === f.kind)?.[1] || "")} · {tr("artifact_types_panel.eingebaut")}
+          <div key={f.id}
+            className={`flex items-center gap-2 rounded border border-line px-2 py-1.5 ${f.enabled ? "bg-surface" : "bg-surface/40"}`}>
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
+              <span className="font-mono text-xs text-muted" title={f.key}>{f.key}</span>
+              <span className={f.enabled ? "" : "line-through"}>{f.label}</span>
+              <span className="text-xs text-muted">
+                {tr(FELDTYP.find(([k]) => k === f.kind)?.[1] || "")}
+              </span>
+              {f.multi && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.mehrfach")}</span>}
+              {f.required && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.pflicht")}</span>}
+              {f.builtin && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("artifact_types_panel.eingebaut")}</span>}
+              {f.options_source && (
+                <span className="text-xs text-muted">
+                  {tr("artifact_types_panel.werte_aus_projekt")} ({HERKUNFT[f.options_source] ? tr(HERKUNFT[f.options_source]) : f.options_source})
                 </span>
-              ) : (
-                <select defaultValue={f.kind}
-                  onChange={(e) => aendern.mutate({ id: f.id, kind: e.target.value })} className={inp}>
-                  {FELDTYP.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
-                </select>
               )}
-              <label className="flex items-center gap-1 text-xs text-muted"
-                     title={tr("artifact_types_panel.darf_ein_exemplar_mehrere_werte_gleichze")}>
-                <input type="checkbox" checked={f.multi} disabled={f.builtin}
-                  onChange={(e) => aendern.mutate({ id: f.id, multi: e.target.checked })} />
-                Mehrfachauswahl
-              </label>
-              <label className="flex items-center gap-1 text-xs text-muted">
-                <input type="checkbox" checked={f.required}
-                  onChange={(e) => aendern.mutate({ id: f.id, required: e.target.checked })} />
-                Pflicht
-              </label>
-              <label className="flex items-center gap-1 text-xs text-muted" title={tr("artifact_types_panel.abgeschaltete_felder_werden_nicht_mehr_a")}>
-                <input type="checkbox" checked={f.enabled}
-                  onChange={(e) => aendern.mutate({ id: f.id, enabled: e.target.checked })} />
-                aktiv
-              </label>
-              {!f.builtin && (
-                <button onClick={() => confirm(`Feld „${f.label}“ löschen?`) && loeschen.mutate(f.id)}
-                  className="rounded border border-line px-1.5 py-0.5 text-xs hover:border-red-400">
-                  ✕
-                </button>
+              {!f.options_source && f.kind === "select" && f.options.length > 0 && (
+                <span className="truncate text-xs text-muted">
+                  {f.options.filter((o) => o.enabled).map((o) => o.label || o.value).join(" · ")}
+                </span>
               )}
             </div>
-            {f.options_source ? (
-              <div className="mt-1 pl-28 text-[11px] text-muted">
-                {tr("artifact_types_panel.werte_aus_projekt")} ({HERKUNFT[f.options_source] ? tr(HERKUNFT[f.options_source]) : f.options_source})
-                — hier gibt es deshalb nichts zu pflegen.
-              </div>
-            ) : f.kind === "select" ? (
-              <Werteliste feld={f} onFail={onFail} onOk={onOk} />
-            ) : null}
+            <Aktionen>
+              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(f)} />
+              {!f.builtin && (
+                <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschFeld(f)} />
+              )}
+            </Aktionen>
           </div>
         ))}
         {typ.fields.length === 0 && (
@@ -252,25 +275,109 @@ function Felder({ t: typ, onFail, onOk, offen }: {
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <input value={neu.key} onChange={(e) => setNeu({ ...neu, key: e.target.value })}
-          placeholder={tr("artifact_types_panel.schluessel_komponente")} className={`w-40 font-mono ${inp}`} />
-        <input value={neu.label} onChange={(e) => setNeu({ ...neu, label: e.target.value })}
-          placeholder={tr("artifact_types_panel.bezeichnung_komponente")} className={`flex-1 ${inp}`} />
-        <select value={neu.kind} onChange={(e) => setNeu({ ...neu, kind: e.target.value })} className={inp}>
-          {FELDTYP.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
-        </select>
-        <label className="flex items-center gap-1 text-xs text-muted">
-          <input type="checkbox" checked={neu.multi}
-            onChange={(e) => setNeu({ ...neu, multi: e.target.checked })} />
-          Mehrfachauswahl
-        </label>
-        <button onClick={() => neu.key.trim() && neu.label.trim() && anlegen.mutate()}
-          className="rounded border border-line px-2 py-1 text-xs hover:border-brand">
-          Feld anlegen
-        </button>
-      </div>
+      <button onClick={() => setDialog({})}
+        className="mt-2 rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+        {ICON.neu} {tr("artifact_types_panel.feld_anlegen")}
+      </button>
+
+      {dialog && (
+        <FeldDialog feld={"id" in dialog ? (dialog as Feld) : null}
+          onClose={() => setDialog(null)}
+          onAnlegen={(neu) => anlegen.mutate(neu)}
+          onAendern={(id, patch) => aendern.mutate({ id, ...patch })}
+          onFail={onFail} onOk={onOk}
+          laeuft={anlegen.isPending || aendern.isPending} />
+      )}
+      {loeschFeld && (
+        <LoeschDialog was={loeschFeld.label} laeuft={loeschen.isPending}
+          onClose={() => setLoeschFeld(null)} onLoeschen={() => loeschen.mutate(loeschFeld.id)} />
+      )}
     </div>
+  );
+}
+
+/**
+ * One field, with its value list where it has one.
+ *
+ * A built-in field writes into a real column, so its key and its type are locked; only
+ * label, requirement and visibility belong to whoever set it up.
+ */
+function FeldDialog({ feld, laeuft, onClose, onAnlegen, onAendern, onFail, onOk }: {
+  feld: Feld | null;
+  laeuft: boolean;
+  onClose: () => void;
+  onAnlegen: (neu: { key: string; label: string; kind: string; multi: boolean }) => void;
+  onAendern: (id: number, patch: Record<string, any>) => void;
+  onFail: (e: unknown) => void;
+  onOk: () => void;
+}) {
+  const [key, setKey] = useState(feld?.key || "");
+  const [label, setLabel] = useState(feld?.label || "");
+  const [kind, setKind] = useState(feld?.kind || "text");
+  const [multi, setMulti] = useState(!!feld?.multi);
+  const [required, setRequired] = useState(!!feld?.required);
+  const [enabled, setEnabled] = useState(feld ? feld.enabled : true);
+
+  const speichern = () => {
+    if (feld) onAendern(feld.id, { label, kind, multi, required, enabled });
+    else onAnlegen({ key: key.trim(), label: label.trim(), kind, multi });
+  };
+
+  return (
+    <Dialog titel={feld ? tr("artifact_types_panel.feld_bearbeiten") : tr("artifact_types_panel.feld_anlegen")}
+      onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} laeuft={laeuft}
+        deaktiviert={!label.trim() || (!feld && !key.trim())}
+        speichernText={feld ? undefined : tr("common.anlegen")} onSpeichern={speichern} />}>
+      <div className="space-y-3">
+        <Formularfeld label={tr("artifact_types_panel.schluessel_komponente")}
+          hinweis={feld?.builtin ? tr("artifact_types_panel.eingebaut_hinweis", { spalte: feld.source }) : undefined}>
+          <input value={key} disabled={!!feld} autoFocus={!feld}
+            onChange={(e) => setKey(e.target.value)} className={`${EINGABE} font-mono disabled:opacity-60`} />
+        </Formularfeld>
+        <Formularfeld label={tr("artifact_types_panel.bezeichnung_komponente")}>
+          <input value={label} autoFocus={!!feld} onChange={(e) => setLabel(e.target.value)} className={EINGABE} />
+        </Formularfeld>
+        <Formularfeld label={tr("artifact_types_panel.typ")}>
+          <select value={kind} disabled={!!feld?.builtin} onChange={(e) => setKind(e.target.value)}
+            className={`${EINGABE} disabled:opacity-60`}>
+            {FELDTYP.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
+          </select>
+        </Formularfeld>
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-2 text-sm text-ink"
+            title={tr("artifact_types_panel.darf_ein_exemplar_mehrere_werte_gleichze")}>
+            <input type="checkbox" checked={multi} disabled={!!feld?.builtin}
+              onChange={(e) => setMulti(e.target.checked)} />
+            {tr("artifact_types_panel.mehrfachauswahl")}
+          </label>
+          <label className="flex items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={required} onChange={(e) => setRequired(e.target.checked)} />
+            {tr("artifact_types_panel.pflicht")}
+          </label>
+          {feld && (
+            <label className="flex items-center gap-2 text-sm text-ink"
+              title={tr("artifact_types_panel.abgeschaltete_felder_werden_nicht_mehr_a")}>
+              <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+              {tr("artifact_types_panel.aktiv")}
+            </label>
+          )}
+        </div>
+
+        {feld && feld.options_source && (
+          <p className="text-xs text-muted">
+            {tr("artifact_types_panel.werte_aus_projekt")} ({HERKUNFT[feld.options_source] ? tr(HERKUNFT[feld.options_source]) : feld.options_source})
+            — {tr("artifact_types_panel.nichts_zu_pflegen")}
+          </p>
+        )}
+        {feld && !feld.options_source && feld.kind === "select" && (
+          <div className="border-t border-line pt-3">
+            <div className="mb-1 text-xs font-medium text-muted">{tr("artifact_types_panel.werte")}</div>
+            <Werteliste feld={feld} onFail={onFail} onOk={onOk} />
+          </div>
+        )}
+      </div>
+    </Dialog>
   );
 }
 
@@ -296,39 +403,38 @@ function Werteliste({ feld, onFail, onOk }: {
   });
 
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-28">
-      <span className="text-[11px] text-muted">{tr("artifact_types_panel.werte")}</span>
+    <div className="space-y-1">
       {feld.options.map((o) => (
-        <span key={o.id}
-          className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-xs ${
-            o.enabled ? "bg-brand/15 text-ink" : "bg-surface text-muted line-through"}`}>
-          {o.label || o.value}
+        <div key={o.id} className="flex items-center gap-2 rounded border border-line px-2 py-1 text-sm">
+          <span className={o.enabled ? "flex-1" : "flex-1 text-muted line-through"}>{o.label || o.value}</span>
           {istStatus && (
             <>
               <select value={o.category || "in_progress"}
                 onChange={(e) => aendern.mutate({ id: o.id, category: e.target.value })}
-                title={tr("artifact_types_panel.board_kategorie")} className="bg-transparent text-[11px] text-muted">
+                title={tr("artifact_types_panel.board_kategorie")} className={`text-xs ${inp}`}>
                 {KATEGORIE.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
               </select>
-              <button onClick={() => aendern.mutate({ id: o.id, waiting: !o.waiting })}
-                title={tr(o.waiting ? "artifact_types_panel.wartet_auf_mensch" : "artifact_types_panel.laeuft_allein")}
-                className={o.waiting ? "text-amber-300" : "text-muted hover:text-ink"}>
-                {o.waiting ? "⏸" : "▷"}
-              </button>
+              <IconKnopf icon={o.waiting ? "⏸" : "▷"} aktiv={o.waiting}
+                titel={tr(o.waiting ? "artifact_types_panel.wartet_auf_mensch" : "artifact_types_panel.laeuft_allein")}
+                onClick={() => aendern.mutate({ id: o.id, waiting: !o.waiting })} />
             </>
           )}
-          <button onClick={() => aendern.mutate({ id: o.id, enabled: !o.enabled })}
-            title={tr(o.enabled ? "artifact_types_panel.nicht_mehr_anbieten" : "artifact_types_panel.wieder_anbieten")}
-            className="text-muted hover:text-ink">{o.enabled ? "○" : "●"}</button>
+          <IconKnopf icon={o.enabled ? "○" : "●"}
+            titel={tr(o.enabled ? "artifact_types_panel.nicht_mehr_anbieten" : "artifact_types_panel.wieder_anbieten")}
+            onClick={() => aendern.mutate({ id: o.id, enabled: !o.enabled })} />
           {!istStatus && (
-            <button onClick={() => loeschen.mutate(o.id)} title={tr("artifact_types_panel.loeschen")}
-              className="text-muted hover:text-red-300">✕</button>
+            <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+              onClick={() => loeschen.mutate(o.id)} />
           )}
-        </span>
+        </div>
       ))}
-      <input value={wert} onChange={(e) => setWert(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && wert.trim() && anlegen.mutate()}
-        placeholder={tr("artifact_types_panel.wert_enter")} className={`w-32 text-xs ${inp}`} />
+      <div className="flex items-center gap-2">
+        <input value={wert} onChange={(e) => setWert(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && wert.trim() && anlegen.mutate()}
+          placeholder={tr("artifact_types_panel.wert_enter")} className={`flex-1 text-sm ${inp}`} />
+        <IconKnopf icon={ICON.neu} titel={tr("common.anlegen")} disabled={!wert.trim()}
+          onClick={() => wert.trim() && anlegen.mutate()} />
+      </div>
     </div>
   );
 }

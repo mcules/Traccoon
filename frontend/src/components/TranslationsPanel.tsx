@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
+import { Aktionen, ICON, IconKnopf, LoeschDialog, Bereich, Fehlerzeile, Liste, ListeLeer, ListenZeile} from "./ui";
 import { alleSchluessel, ausgeliefert, QUELLSPRACHE, setzeSprache, sprache, tr } from "../i18n";
 
 interface SpracheInfo {
@@ -116,12 +117,7 @@ export default function TranslationsPanel() {
   const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
   return (
-    <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <p className="text-sm text-muted">
-        {tr("translations_panel.einleitung")}
-      </p>
-
-      <div className="flex flex-wrap items-center gap-2 text-sm">
+    <Bereich hinweis={tr("translations_panel.einleitung")} werkzeuge={<>
         <select value={locale} onChange={(e) => setLocale(e.target.value)} className={inp}>
           {(sprachen || []).filter((s) => s.locale !== QUELLSPRACHE).map((s) => (
             <option key={s.locale} value={s.locale}>
@@ -148,20 +144,20 @@ export default function TranslationsPanel() {
           <input type="file" accept="application/json" className="hidden"
             onChange={(e) => e.target.files?.[0] && importieren(e.target.files[0])} />
         </label>
-      </div>
-
+      </>}>
       <Sprachverwaltung sprachen={sprachen || []} gewaehlt={locale} onWaehlen={setLocale}
         onFehler={setErr} onOk={setOk} />
 
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
+      <Fehlerzeile text={err} />
       {ok && <div className="text-xs text-green-400">{ok}</div>}
 
       {/* Keine Tabelle: drei Spalten (Schlüssel, deutsche Quelle, Übersetzung) sind auf einem
           Handy nicht zu halten — der Schlüssel allein ist breiter als der Bildschirm. Ab sm
           stehen Quelle und Feld nebeneinander, darunter untereinander. */}
-      <div className="max-h-[60vh] divide-y divide-line/60 overflow-auto rounded border border-line text-xs">
+      <div className="max-h-[60vh] overflow-auto">
+      <Liste>
         {zeilen.map((z) => (
-          <div key={z.key} className="p-2">
+          <ListenZeile key={z.key}>
             <div className="break-all font-mono text-[11px] text-muted">{z.key}</div>
             <div className="mt-1 gap-2 sm:flex">
               <div className="min-w-0 flex-1 text-ink">{z.deutsch}</div>
@@ -173,18 +169,19 @@ export default function TranslationsPanel() {
                     speichern.mutate({ key: z.key, text: e.target.value });
                   }
                 }}
-                className={`mt-1 w-full rounded border bg-surface px-1.5 py-1 text-ink sm:mt-0 sm:flex-1 ${
+                className={`mt-1 w-full rounded border bg-card px-1.5 py-1 text-ink sm:mt-0 sm:flex-1 ${
                   z.geaendert ? "border-brand" : "border-line"}`} />
             </div>
-          </div>
+          </ListenZeile>
         ))}
         {!zeilen.length && (
-          <div className="px-2 py-2 text-muted">
+          <ListeLeer>
             {tr(nurOffene ? "translations_panel.nichts_offen" : "translations_panel.kein_treffer")}
-          </div>
+          </ListeLeer>
         )}
+      </Liste>
       </div>
-    </div>
+    </Bereich>
   );
 }
 
@@ -207,6 +204,7 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
   const qc = useQueryClient();
   const [kennung, setKennung] = useState("");
   const [name, setName] = useState("");
+  const [loeschSprache, setLoeschSprache] = useState<SpracheInfo | null>(null);
   const inp = "rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
   const frisch = () => qc.invalidateQueries({ queryKey: ["i18n-locales"] });
   const fehler = (e: unknown) => onFehler(e instanceof ApiError ? e.message : tr("common.fehler"));
@@ -253,17 +251,16 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
                   {tr("translations_panel.waehlbar")}
                 </label>
               )}
-              <div className="ml-auto flex items-center gap-1">
-                <button onClick={() => onWaehlen(s.locale)} disabled={s.locale === QUELLSPRACHE}
-                  className="rounded border border-line px-2 py-0.5 text-ink hover:bg-surface disabled:opacity-40">
-                  {s.locale === gewaehlt ? tr("translations_panel.in_bearbeitung") : tr("translations_panel.bearbeiten")}
-                </button>
-                {s.locale !== QUELLSPRACHE && (
-                  <button
-                    onClick={() => { if (confirm(tr("translations_panel.loeschen_frage", { sprache: s.name }))) loeschen.mutate(s.locale); }}
-                    title={tr("translations_panel.loeschen_titel")}
-                    className="rounded border border-line px-2 py-0.5 text-red-400 hover:bg-surface">✕</button>
-                )}
+              <div className="ml-auto">
+                <Aktionen>
+                  <IconKnopf icon={ICON.bearbeiten} aktiv={s.locale === gewaehlt}
+                    titel={s.locale === gewaehlt ? tr("translations_panel.in_bearbeitung") : tr("translations_panel.bearbeiten")}
+                    disabled={s.locale === QUELLSPRACHE} onClick={() => onWaehlen(s.locale)} />
+                  {s.locale !== QUELLSPRACHE && (
+                    <IconKnopf icon={ICON.loeschen} titel={tr("translations_panel.loeschen_titel")} gefahr
+                      onClick={() => setLoeschSprache(s)} />
+                  )}
+                </Aktionen>
               </div>
             </div>
           ))}
@@ -280,6 +277,12 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
           {tr("translations_panel.anlegen")}
         </button>
       </div>
+      {loeschSprache && (
+        <LoeschDialog was={loeschSprache.name} hinweis={tr("translations_panel.loeschen_titel")}
+          laeuft={loeschen.isPending}
+          onClose={() => setLoeschSprache(null)}
+          onLoeschen={() => { loeschen.mutate(loeschSprache.locale); setLoeschSprache(null); }} />
+      )}
     </div>
   );
 }
