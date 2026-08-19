@@ -1,7 +1,7 @@
-"""Assistent-Inbox, gelernte Regeln (Policy) und Web-Chat.
+"""Assistant inbox, learned rules (policy) and web chat.
 
-Der E-Mail-Eingang selbst läuft über den NORMALEN Webhook (WebhookSub, Modus 'assistant',
-api/ops.py → services/mail_intake.py). Hier nur die UI-/Verwaltungs-Endpoints.
+The e-mail inbox itself runs over the NORMAL webhook (WebhookSub, mode 'assistant',
+api/ops.py to services/mail_intake.py). Here stand only the UI and administration endpoints.
 """
 import logging
 
@@ -48,7 +48,7 @@ async def list_inbox(status_filter: str | None = None,
                      user: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
     q = select(AssistantTask).order_by(AssistantTask.id.desc())
-    # Admin sieht alles; sonst nur eigene.
+    # An admin sees everything; everybody else only their own.
     if user.global_role != "admin":
         q = q.where(AssistantTask.owner_user_id == user.id)
     if status_filter:
@@ -64,7 +64,7 @@ async def get_inbox(tid: int, user: User = Depends(get_current_user),
 
 
 class ApproveIn(BaseModel):
-    # once = nur dieses Item; sender|domain|category = Regel „ab jetzt immer" anlegen.
+    # once = this item only; sender|domain|category creates a rule "always from now on".
     scope: str = "once"
     redaction: str = "redacted"   # redacted | unredacted
     action_note: str = ""         # optionaler gelernter Handlungs-Hinweis
@@ -74,8 +74,8 @@ class ApproveIn(BaseModel):
 async def approve_inbox(tid: int, data: ApproveIn | None = None,
                         user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    """Freigabe = zugleich die Freigabe für den Volltextzugriff. Startet den Assistenten.
-    `scope` != once lernt eine AssistantPolicy (immer für Absender/Domain/Kategorie)."""
+    """The approval is at the same time the approval for full text access. Starts the assistant.
+    `scope` != once learns an AssistantPolicy (always for the sender, domain or category)."""
     d = data or ApproveIn()
     t = await _get_owned(tid, user, db)
     if t.status not in ("new", "error"):
@@ -203,7 +203,7 @@ async def delete_tool_perm(pid: int, user: User = Depends(get_current_user),
     await db.commit()
 
 
-# ================= Chat mit dem Assistenten (Web, parallel zu Telegram) =================
+# ================= Chat with the assistant (web, in parallel to Telegram) =================
 
 def _chat_out(t: AssistantTask) -> dict:
     return {
@@ -227,7 +227,7 @@ async def chat_history(user: User = Depends(get_current_user),
     rows = (await db.execute(select(AssistantTask).where(
         AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat")
         .order_by(AssistantTask.id.desc()).limit(50))).scalars().all()
-    return [_chat_out(t) for t in reversed(rows)]  # ältester zuerst (Gesprächsverlauf)
+    return [_chat_out(t) for t in reversed(rows)]  # oldest first (the conversation history)
 
 
 @router.post("/assistant/chat")

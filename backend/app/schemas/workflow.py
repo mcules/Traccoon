@@ -1,7 +1,7 @@
-"""Pydantic-Schemas der Workflow-Engine (Definitionen, Versionen, Instanzen).
+"""Pydantic schemas of the workflow engine (definitions, versions, instances).
 
-Der Graph ist ein frei geformtes dict (React-Flow-nativ) — bewusst KEIN starres Schema,
-damit der Editor beliebige node.data/Positionen tragen kann.
+The graph is a freely shaped dict (React Flow native), deliberately NO rigid schema, so that
+the editor can carry arbitrary node.data and positions.
 """
 import datetime as dt
 
@@ -21,7 +21,7 @@ class WorkflowDefinitionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str | None = None
     subject_kind: WorkflowSubjectKind = WorkflowSubjectKind.standalone
-    # Statt Start+Ende gleich ein fertiger Ablauf zum Umbauen (services/workflow_templates).
+    # Instead of start plus end, a finished flow to rebuild right away (services/workflow_templates).
     template: str | None = None
 
 
@@ -36,7 +36,7 @@ class WorkflowDefinitionOut(BaseModel):
     project_id: int | None
     set_id: int | None = None
     slot: str | None = None
-    # Gesetzt, wenn dieser Ablauf nur für eine Vorgangsart gilt (Bug ≠ Aufgabe).
+    # Set when this flow applies only to one issue type (bug is not task).
     issue_type_id: int | None = None
     archived_at: dt.datetime | None = None
     key: str
@@ -51,7 +51,7 @@ class WorkflowDefinitionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-# ── Prozess-Sätze ────────────────────────────────────────────────────────────
+# ── Process sets ─────────────────────────────────────────────────────────────
 
 class WorkflowSetOut(BaseModel):
     id: int
@@ -65,13 +65,13 @@ class WorkflowSetOut(BaseModel):
 
 
 class WorkflowSetCreate(BaseModel):
-    """Neuer Satz — immer als Kopie einer Vorlage (Default: globaler Standard)."""
+    """A new set, always as a copy of a template (default: the global standard)."""
     name: str = Field(default="", max_length=200)
     source_set_id: int | None = None
 
 
 class SlotOut(BaseModel):
-    """Ein Ablauf-Platz eines Projekts inklusive Herkunft des geltenden Graphen."""
+    """One flow slot of a project including the origin of the applicable graph."""
     slot: str
     name: str
     description: str
@@ -83,7 +83,7 @@ class SlotOut(BaseModel):
     definition_name: str | None = None
     published: bool = False
     customizable: bool = True
-    # Abläufe, die nur für eine Vorgangsart gelten (Bug ≠ Aufgabe).
+    # Flows that apply to one issue type only (bug is not task).
     per_issue_type: list[dict] = []
 
 

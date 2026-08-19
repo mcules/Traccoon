@@ -6,13 +6,13 @@ import { SLOT_LABELS, type NodeConfig, type WorkflowSlot } from "../types";
 const SLOTS = Object.keys(SLOT_LABELS) as WorkflowSlot[];
 
 /**
- * Welcher Ablauf hier aufgerufen wird — ein Slot oder ein bestimmter Ablauf.
+ * Which flow is called here: a slot or a specific flow.
  *
- * Bisher standen nur die fünf ausgelieferten Slots zur Wahl. Damit war der Knoten für
- * alles Eigene nutzlos: man baut sich einen Ablauf, will ihn aus einem zweiten heraus
- * aufrufen — und findet im Dropdown den Ticket-Lebenszyklus. Beide Wege haben ihren Sinn:
- * ein **Slot** wird je Projekt aufgelöst (eigene Anpassung schlägt Satz schlägt Standard),
- * ein **benannter Ablauf** ist genau dieser eine, egal wo er läuft.
+ * Until now only the five shipped slots stood to choose from. That made the node useless
+ * for everything of one's own: one builds a flow, wants to call it out of a second one, and
+ * finds the ticket lifecycle in the dropdown. Both ways have their point: a **slot** is
+ * resolved per project (an own adjustment beats the set beats the default), while a **named
+ * flow** is exactly this one, no matter where it runs.
  */
 export default function SubflowConfig({
   config,
@@ -21,13 +21,13 @@ export default function SubflowConfig({
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
-  /** Der Ablauf, in dem dieser Knoten steckt — er darf sich nicht selbst aufrufen. */
+  /** The flow this node sits in; it must not call itself. */
   defId?: number;
 }) {
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
   const { data: alle } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
-  // Aufrufbar ist, was veröffentlicht ist — ein Entwurf hat keine Version, auf die eine
-  // Kind-Instanz zeigen könnte. Und der eigene Ablauf fällt raus (Endlosschleife).
+  // Callable is what is published: a draft has no version a child instance could point at.
+  // And the own flow drops out (an endless loop).
   const abläufe = (alle || []).filter(
     (d) => d.current_version_id && !d.archived_at && d.id !== defId && !d.slot);
 

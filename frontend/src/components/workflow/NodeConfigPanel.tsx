@@ -36,13 +36,13 @@ export default function NodeConfigPanel({
   onChange: (nodeId: string, config: NodeConfig) => void;
   onDelete: (nodeId: string) => void;
   projectId?: number;
-  /** Subjekt des Ablaufs (issue|hardware_asset|standalone) — steuert Aktionen und Zustände. */
+  /** Subject of the flow (issue|hardware_asset|standalone); controls actions and states. */
   subjectKind?: string;
-  /** Kontextfelder dieses Ablaufs — die Verzweigung bietet sie zur Auswahl an. */
+  /** Context fields of this flow; the branch offers them for selection. */
   kontextFelder?: KontextFeld[];
   /** Vorlagen-Filter (Hilfe im Verzweigungs-Editor). */
   kontextFilter?: import("./contextFields").KontextFilter[];
-  /** Definition dieses Ablaufs — der Start-Knoten braucht sie für seine eigene Adresse. */
+  /** Definition of this flow; the start node needs it for its own address. */
   defId?: number;
 }) {
   if (!node) {
@@ -128,13 +128,13 @@ export default function NodeConfigPanel({
 }
 
 /**
- * Einen Schritt abschalten, ohne ihn aus dem Graphen zu nehmen.
+ * Switch a step off without taking it out of the graph.
  *
- * Zwei verschiedene Bedürfnisse hinter demselben Schalter, und sie brauchen verschiedene
- * Antworten. Beim Bauen nimmt man einen Schritt aus dem Weg und alles dahinter soll
- * weiterlaufen. Im Notfall zieht man die Handbremse — und dann wäre ein Ablauf, der still
- * am abgeschalteten Schritt vorbeiläuft, genau der gefährliche Ausgang. Deshalb steht die
- * Wahl ausdrücklich da, statt geraten zu werden.
+ * Two different needs behind the same switch, and they need different answers. While
+ * building one takes a step out of the way and everything behind it should keep running. In
+ * an emergency one pulls the handbrake, and then a flow silently running past the switched
+ * off step would be exactly the dangerous outcome. That is why the choice stands there
+ * explicitly instead of being guessed.
  */
 function Abschalter({ config, onChange }: {
   config: NodeConfig; onChange: (c: NodeConfig) => void;

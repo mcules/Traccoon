@@ -1,7 +1,7 @@
-"""Testumgebungen je Projekt (ABC-18): Branch-Umgebungen, Übersicht, Logs.
+"""Test environments per project (ABC-18): branch environments, overview, logs.
 
-Die Ticket-Umgebung wird weiterhin am Ticket gesteuert (`lifecycle.py`); hier liegt
-alles, was am Projekt hängt: freie Branches, kombinierte Übersicht und Log-Abruf.
+The ticket environment is still controlled on the ticket (`lifecycle.py`); here lies
+everything that hangs off the project: free branches, the combined overview and log fetching.
 """
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def _require_enabled(access: Access) -> None:
 
 @router.get("/projects/{project_id}/branches")
 async def list_branches(access: Access = Depends(get_project_access)):
-    """Branch-Namen des Projekt-Repos (lokal + Remote-Tracking, dedupliziert)."""
+    """Branch names of the project repository (local plus remote tracking, deduplicated)."""
     workdir = os.path.join(WORKSPACE_ROOT, access.project.key.lower())
     if not os.path.isdir(os.path.join(workdir, ".git")):
         return []
@@ -70,7 +70,7 @@ async def list_branches(access: Access = Depends(get_project_access)):
         elif ref.startswith("refs/remotes/origin/"):
             name = ref[len("refs/remotes/origin/"):]
         else:
-            continue  # z. B. der Remote-Kopf `refs/remotes/origin` selbst
+            continue  # for instance the remote head `refs/remotes/origin` itself
         if not name or name == "HEAD" or name in names:
             continue
         names.append(name)
@@ -111,8 +111,8 @@ async def stop_branch_testenv(
 @router.get("/projects/{project_id}/testenvs")
 async def list_testenvs(access: Access = Depends(get_project_access),
                         db: AsyncSession = Depends(get_session)):
-    """Kombinierte Übersicht: DB-Zustand (Ticket + Branch), angereichert um das,
-    was der Runner gerade wirklich laufen sieht."""
+    """Combined overview: the database state (ticket plus branch), enriched by what the
+    runner actually sees running right now."""
     issues = (await db.execute(
         select(Issue).where(Issue.project_id == access.project.id,
                             Issue.testenv_status.notin_(["", "stopped"]))
@@ -148,8 +148,8 @@ async def testenv_logs(
     access: Access = Depends(get_project_access),
     db: AsyncSession = Depends(get_session),
 ):
-    """Logs einer Umgebung. Der Name muss zu einer Umgebung DIESES Projekts gehören —
-    sonst könnte man über den Runner fremde Stacks auslesen."""
+    """Logs of an environment. The name has to belong to an environment of THIS project;
+    otherwise one could read foreign stacks over the runner."""
     known = {svc.ticket_container(i) for i in (await db.execute(
         select(Issue).where(Issue.project_id == access.project.id))).scalars().all()}
     known |= {i.testenv_container for i in (await db.execute(
