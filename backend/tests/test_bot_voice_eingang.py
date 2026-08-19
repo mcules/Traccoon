@@ -1,9 +1,9 @@
-"""`_voice_transkript` ist der Weg Sprachnachricht → Text, BEVOR der Text wie eine
-normale Klartext-Nachricht weiterläuft (`_chat_auftrag`/`_reply`).
+"""`_voice_transkript` is the way from a voice message to text, BEFORE the text runs on like
+a normal plain text message (`_chat_auftrag`/`_reply`).
 
-`bot` ist bewusst ein expliziter Parameter (nicht aus der aiogram-Closure) — nur so lässt
-sich diese Funktion ohne echten Bot/Netz testen, nach dem Muster von `_zustellen` in
-`test_bot_medien.py`: FakeBot/FakeMessage statt Netz, kleine Attrappen statt ORM.
+`bot` is deliberately an explicit parameter (not from the aiogram closure): only that way can
+this function be tested without a real bot or network, following the pattern of `_zustellen`
+in `test_bot_medien.py`: FakeBot and FakeMessage instead of a network, small dummies instead of an ORM.
 """
 import pytest
 
@@ -47,7 +47,7 @@ class FakeMedia:
 
 
 class FakeMessage:
-    """Nur `voice`/`audio`/`video_note` + `answer` — der Rest interessiert `_voice_transkript` nicht."""
+    """Only `voice`/`audio`/`video_note` plus `answer`; the rest does not interest `_voice_transkript`."""
 
     def __init__(self, voice=None, audio=None, video_note=None):
         self.voice = voice

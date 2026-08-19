@@ -1,7 +1,7 @@
-"""Der Job-Lauf selbst: bekommt der Agent den gefüllten Prompt?
+"""The job run itself: does the agent get the filled prompt?
 
-Die Platzhalter-Mechanik ist anderswo geprüft (test_job_params). Hier geht es um die eine
-Stelle, an der sie wirkt — und um das Zeitfenster, das aus den vorigen Läufen kommt.
+The placeholder mechanics are checked elsewhere (test_job_params). Here it is about the one
+place where they take effect, and about the time window that comes from the previous runs.
 """
 import datetime as dt
 
@@ -22,7 +22,7 @@ async def anna(db):
 
 
 async def _lauf(db, monkeypatch, job: Job) -> str:
-    """Job einmal durchlaufen lassen; liefert den Prompt, den der Agent gesehen hat."""
+    """Let a job run through once; delivers the prompt the agent saw."""
     jr = JobRun(job_id=job.id, status="running")
     db.add(jr)
     await db.commit()
@@ -43,7 +43,7 @@ async def _lauf(db, monkeypatch, job: Job) -> str:
     async def fake_tokens(*a, **kw):
         return {}, {}
 
-    # `_handle_job` importiert run_agent im Rumpf — dort ersetzen, nicht am Modul.
+    # `_handle_job` imports run_agent in the body, so replace it there, not on the module.
     import app.worker.runtime as rt
     monkeypatch.setattr(rt, "run_agent", fake_run_agent, raising=False)
     monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
@@ -63,7 +63,7 @@ async def test_prompt_wird_mit_parametern_gefuellt(db, anna, monkeypatch):
 
 
 async def test_script_job_argumente_bleiben_liste(db, anna, monkeypatch):
-    """Eine `args`-Liste ist Script-Argument und darf im Prompt nichts ersetzen."""
+    """An `args` list is a script argument and must replace nothing in the prompt."""
     j = Job(user_id=anna.id, name="Alt", kind="prompt", agent="news",
             prompt="Unverändert {{thema}}", args=["--flag"])
     db.add(j)
@@ -72,8 +72,8 @@ async def test_script_job_argumente_bleiben_liste(db, anna, monkeypatch):
 
 
 async def test_zeitfenster_ueberspringt_kaputte_laeufe(db, anna, monkeypatch):
-    """War der Job gestern kaputt, muss das Fenster bis zum letzten ERFOLG zurückreichen —
-    sonst fällt der Ausfalltag stillschweigend aus dem Rückblick."""
+    """If the job was broken yesterday, the window has to reach back to the last SUCCESS;
+    otherwise the day of the outage falls silently out of the review."""
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news",
             prompt="{{seit}}", args={})
     db.add(j)

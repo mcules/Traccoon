@@ -28,7 +28,7 @@ async def test_sprache_anlegen_umbenennen_abschalten_loeschen(client, db):
 
     assert (await client.post("/i18n/locales", json={"locale": "FR", "name": "Französisch"},
                               headers=h)).status_code == 201
-    # Doppelt anlegen ist ein Fehler, kein stilles Überschreiben: sonst wäre der Name weg.
+    # Creating twice is an error, not a silent overwrite: otherwise the name would be gone.
     assert (await client.post("/i18n/locales", json={"locale": "fr"}, headers=h)).status_code == 409
 
     await client.put("/i18n/fr/menu.start", json={"text": "Accueil"}, headers=h)
@@ -64,7 +64,7 @@ async def test_umbenennen_der_ausgelieferten_sprache_legt_erst_dann_eine_zeile_a
     await client.put("/i18n/locales/en", json={"name": "British English"}, headers=h)
     nach = {s["locale"]: s for s in (await client.get("/i18n/locales", headers=h)).json()}
     assert nach["en"]["name"] == "British English"
-    assert nach["en"]["eingebaut"] is True       # bleibt ausgeliefert, nur anders benannt
+    assert nach["en"]["eingebaut"] is True       # stays shipped, only named differently
 
 
 async def test_nur_admin_darf_sprachen_verwalten(client, db):
@@ -84,8 +84,8 @@ async def test_leerer_text_stellt_die_ausgelieferte_fassung_wieder_her(client, d
 
 
 async def test_server_katalog_steht_zur_uebersetzung(client, db):
-    """Der Server schreibt eigene Texte (Benachrichtigungen, Einrichtung). Ohne diese Liste
-    könnte die Verwaltung sie nicht anbieten, und sie blieben für immer deutsch."""
+    """The server writes texts of its own (notifications, setup). Without this list the
+    administration could not offer them, and they would stay German forever."""
     anna = await make_user(db, "anna")
     r = await client.get("/i18n/server-katalog", headers=auth(anna))
     assert r.status_code == 200
@@ -100,8 +100,8 @@ async def test_servertext_in_der_sprache_des_lesers(db):
     verwerfen()
     assert await tr(db, "server.onboarding.project", "de") == "Projekt anlegen"
     assert await tr(db, "server.onboarding.project", "en") == "Create a project"
-    # Unbekannte Sprache fällt auf Deutsch zurück, nicht auf den Schlüssel: ein Schlüssel
-    # auf dem Bildschirm ist schlimmer als ein Text in der falschen Sprache.
+    # An unknown language falls back on German, not on the key: a key on the screen is worse
+    # than a text in the wrong language.
     assert await tr(db, "server.onboarding.project", "fr") == "Projekt anlegen"
     assert await tr(db, "gibt.es.nicht", "de") == "gibt.es.nicht"
 
@@ -119,7 +119,7 @@ async def test_admin_aenderung_schlaegt_den_ausgelieferten_text(client, db):
     admin = await make_user(db, "chef", admin=True)
     await client.put("/i18n/en/server.onboarding.project",
                      json={"text": "Start a project"}, headers=auth(admin))
-    # Der Zwischenspeicher wird beim Schreiben verworfen, sonst hinge die Änderung 30 s fest.
+    # The cache is discarded on writing; otherwise the change would hang for 30 s.
     assert await tr(db, "server.onboarding.project", "en") == "Start a project"
 
 

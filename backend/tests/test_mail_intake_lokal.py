@@ -1,11 +1,11 @@
-"""Schwärzen schützt vor dem Weg nach draußen — nicht vor dem eigenen Rechner.
+"""Redaction protects against the way outside, not against one's own machine.
 
-Bearbeitet ein Modell im eigenen Haus die Mail, verlässt kein Rohtext den Server. Die
-Schwärzung wäre dann kein Schutz mehr, sondern nur Informationsverlust: der Agent bekäme eine
-verkürzte Zusammenfassung und müsste denselben Text über die IMAP-Tools wieder heranholen.
+If a model in one's own house processes the mail, no raw text leaves the server. The
+redaction would then no longer be a protection but only a loss of information: the agent
+would get a shortened summary and would have to fetch the same text back over the IMAP tools.
 
-Geprüft wird über den echten Weg: Mail melden → der ausgelieferte Mail-Eingang läuft →
-Assistent-Item. Damit hängt die Prüfung an dem Ablauf, der auch in Betrieb ist.
+What is checked is the real way: report a mail, the shipped mail inbox runs, an assistant
+item comes out. That makes the check hang off the flow that is in operation as well.
 """
 import pytest
 from app.core.security import encrypt_secret
@@ -50,7 +50,7 @@ async def test_lokaler_agent_bekommt_den_volltext(db, anna):
 
 
 async def test_agent_beim_anbieter_bleibt_geschwaerzt(db, anna):
-    """Claude läuft auswärts — dort ist die Schwärzung genau der Schutz, um den es geht."""
+    """Claude runs outside, and there the redaction is exactly the protection it is about."""
     db.add(AgentDefinition(role="assistent", user_id=anna.id, provider="claude_code",
                            model="claude-opus-5", system_prompt=""))
     await db.commit()
@@ -61,7 +61,7 @@ async def test_agent_beim_anbieter_bleibt_geschwaerzt(db, anna):
 
 
 async def test_openai_ohne_eigenen_endpoint_bleibt_geschwaerzt(db, anna):
-    """`openai` ohne Base-URL ist das echte OpenAI — auch das ist auswärts."""
+    """`openai` without a base URL is the real OpenAI, and that is outside as well."""
     db.add(ProviderToken(user_id=anna.id, provider="openai", name="cloud",
                          value_enc=encrypt_secret("sk-x"), base_url=None, is_default=True))
     db.add(AgentDefinition(role="wolke", user_id=anna.id, provider="openai",
@@ -74,7 +74,7 @@ async def test_openai_ohne_eigenen_endpoint_bleibt_geschwaerzt(db, anna):
 
 
 async def test_dieselbe_mail_zweimal_bleibt_ein_item(db, anna):
-    """Der Watcher liefert bei Neustarts gern doppelt — das darf nichts verdoppeln."""
+    """The watcher likes to deliver twice on restarts, and that must double nothing."""
     await _mail(db, anna.id, "assistent", 4)
     ids = await mail_intake.intake_mail(
         db, anna.id, {"account": "privat", "uid": 4, "from": "rechnung@beispiel.de",

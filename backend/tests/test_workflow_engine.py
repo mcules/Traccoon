@@ -1,7 +1,7 @@
-"""Unit-Tests für den JSONLogic-Subset + Graph-Validierung/Traversierung der Workflow-Engine.
+"""Unit tests for the JSONLogic subset plus graph validation and traversal of the workflow engine.
 
-Läuft mit pytest ODER standalone:  python tests/test_workflow_engine.py
-(bewusst ohne DB-/Async-Abhängigkeiten — nur reine Funktionen.)
+Runs with pytest OR standalone:  python tests/test_workflow_engine.py
+(deliberately without database or async dependencies, only pure functions.)
 """
 import os
 import sys
@@ -39,7 +39,7 @@ def test_arithmetic_and_missing_var_default():
     data = {"a": 2, "b": 4}
     assert evaluate({"+": [{"var": "a"}, {"var": "b"}]}, data) == 6
     assert evaluate({"*": [{"var": "a"}, 3]}, data) == 6
-    assert evaluate({"var": ["missing", 99]}, data) == 99  # Default bei fehlendem Pfad
+    assert evaluate({"var": ["missing", 99]}, data) == 99  # the default with a missing path
 
 
 def test_disallowed_operator_raises():

@@ -84,7 +84,7 @@ async def test_abbrechen_beendet_den_lauf(db):
 
 
 async def test_ohne_modus_wird_uebersprungen(db):
-    """Der harmlose Fall ist der Standard, der gefährliche muss benannt werden."""
+    """The harmless case is the default; the dangerous one has to be named."""
     inst = await _lauf(db, {"deaktiviert": True})
     assert inst.status.value == "completed" and inst.context["b"] == "2"
 

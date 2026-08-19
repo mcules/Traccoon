@@ -1,10 +1,9 @@
-"""Auf welchem Weg jemand erreicht wird — und wer überhaupt als Empfänger zur Wahl steht.
+"""Which way somebody is reached, and who is available as a recipient at all.
 
-Bisher gab es genau einen Weg hinaus: Telegram, falls eine Chat-ID hinterlegt war. Wer
-eine Benachrichtigung auslöst, weiß aber selten, ob der Empfänger Telegram benutzt —
-in einem Ablauf steht der Empfänger oft erst zur Laufzeit fest. Also entscheidet die
-Person, der Absender darf übersteuern, und wenn der gewählte Weg bei dieser Person nicht
-hinterlegt ist, wird der andere genommen statt gar keiner.
+Until now there was exactly one way out: Telegram, if a chat id was stored. Whoever triggers
+a notification rarely knows whether the recipient uses Telegram though, and in a flow the
+recipient is often only settled at runtime. So the person decides, the sender may override,
+and when the chosen way is not stored for that person, the other one is taken instead of none.
 """
 import pytest
 from app.models.notification import Notification
@@ -57,7 +56,7 @@ async def test_absender_darf_den_weg_vorgeben(db, monkeypatch):
 
 
 async def test_fehlender_weg_faellt_auf_den_anderen(db, monkeypatch):
-    """Eine Nachricht, die niemanden erreicht, ist der schlechteste Ausgang."""
+    """A message that reaches nobody is the worst outcome."""
     gesendet = []
     _kein_smtp(monkeypatch, gesendet)
     bert = await _person(db, "bert", chat=None, mail="bert@example.org", standard="telegram")
@@ -103,10 +102,10 @@ async def test_profil_verwaltet_die_wege(client, db):
 
 
 async def test_sichtbare_personen(client, db):
-    """Empfängerauswahl: eigene Projekte, Platzhalter, man selbst — nicht die ganze Welt."""
+    """Recipient selection: one's own projects, placeholders, oneself, not the whole world."""
     from app.models.enums import ProjectRole, UserStatus
 
-    await make_user(db, "system")   # id 1 ist das Systemkonto und taucht nie auf
+    await make_user(db, "system")   # id 1 is the system account and never turns up
     anna = await make_user(db, "anna")
     kollege = await make_user(db, "kollege")
     fremder = await make_user(db, "fremder")

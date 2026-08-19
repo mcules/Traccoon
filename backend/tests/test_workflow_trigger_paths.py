@@ -1,9 +1,9 @@
-"""Wer darf einen Prozess anstoßen — Job, Webhook, Agent.
+"""Who may set a process off: job, webhook, agent.
 
-Anlass: `kind` wurde nur im Scheduler verzweigt. „Jetzt ausführen" (API und Agent-Tool) gab
-workflow- und http-Jobs stillschweigend als Prompt-Job an den Assistenten: kein Workflow, kein
-Fehler, nur ein Agentenlauf auf einem leeren Prompt. Und ein Agent konnte einen Prozess
-überhaupt nicht starten — das Tool fehlte, obwohl Job und Webhook es konnten.
+The occasion: `kind` branched only in the scheduler. "Run now" (API and agent tool) silently
+gave workflow and http jobs to the assistant as a prompt job: no workflow, no error, only an
+agent run on an empty prompt. And an agent could not start a process at all, because the tool
+was missing although job and webhook could do it.
 """
 import pytest
 from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
@@ -46,7 +46,7 @@ async def _instanzen(db) -> list[WorkflowInstance]:
 
 
 async def test_workflow_job_startet_bei_sofort_ausfuehren_eine_instanz(db, anna, monkeypatch):
-    """Der Kern des Fehlers: run_job durfte den Job nicht in den Prompt-Pfad geben."""
+    """The core of the bug: run_job must not give the job into the prompt path."""
     d = await _prozess(db)
     job = Job(user_id=anna.id, name="Preise", kind="workflow", workflow_definition_id=d.id,
               type="cron", schedule="0 3 * * *")
@@ -83,7 +83,7 @@ async def test_agent_startet_prozess_und_sieht_nur_startbare(db, anna):
     inst = await _instanzen(db)
     assert len(inst) == 1
     assert inst[0].context["quelle"] == "models.dev"
-    # Herkunft muss erkennbar bleiben — sonst ist später unklar, wer den Lauf ausgelöst hat.
+    # The origin has to stay recognisable; otherwise it is unclear later who triggered the run.
     assert inst[0].source == f"agent:{anna.id}"
 
 
@@ -102,6 +102,6 @@ async def test_prozess_ohne_veroeffentlichung_startet_nicht(db, anna):
 
 
 async def test_prozess_starten_braucht_freigabe(db):
-    """Ein Prozess kann Agentenläufe, Freigaben und Aufrufe nach außen anstoßen."""
+    """A process can set off agent runs, approvals and calls to the outside."""
     assert "traccoon_start_workflow" in TRACCOON_GATED_TOOLS
     assert "traccoon_list_workflows" not in TRACCOON_GATED_TOOLS

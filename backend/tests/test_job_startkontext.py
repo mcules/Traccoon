@@ -1,9 +1,9 @@
-"""Ein Job soll seinem Ablauf etwas mitgeben können.
+"""A job should be able to give its flow something along.
 
-Bisher startete ein Ablauf-Job immer mit leerem Kontext. Für den zweiten Wächter — dieselbe
-Prüfung, andere Messreihe — hätte man deshalb einen zweiten Ablauf bauen müssen, obwohl
-sich nur ein Wort ändert. Der Parametersatz des Jobs füllt jetzt den Startkontext, nach
-derselben Regel wie bei Prompt-Jobs.
+Until now a flow job always started with an empty context. For the second watcher (the same
+check, another metric series) one would therefore have had to build a second flow although
+only one word changes. The parameter set of the job now fills the start context, by the same
+rule as with prompt jobs.
 """
 import pytest
 from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
@@ -61,7 +61,7 @@ async def test_parametersatz_wird_startkontext(db):
 
 
 async def test_script_argumente_bleiben_draussen(db):
-    """Eine Liste ist ein Script-Argument, kein Kontext — Regressionsschutz."""
+    """A list is a script argument, not a context: regression protection."""
     anna = await make_user(db, "anna")
     _jr, inst = await _lauf(db, anna, ["-x", "42"])
     assert inst.context == {}

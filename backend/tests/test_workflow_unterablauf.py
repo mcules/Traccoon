@@ -1,10 +1,10 @@
-"""Unterabläufe: „Anderer Ablauf" darf auch ein eigener sein.
+"""Sub-flows: "another flow" may be an own one as well.
 
-Der Knoten kannte bisher nur die fünf ausgelieferten Slots — für alles Eigene war er
-nutzlos: man baut sich einen Ablauf, will ihn aus einem zweiten heraus aufrufen, und
-findet im Dropdown nur den Ticket-Lebenszyklus. Ein ausdrücklich benannter Ablauf
-(`definition_id`) ergänzt den Slot-Weg, ohne ihn zu ersetzen: ein Slot wird je Projekt
-aufgelöst, eine Definition ist genau diese eine.
+The node knew only the five shipped slots until now, and for everything of one's own it was
+useless: one builds a flow, wants to call it out of a second one, and finds only the ticket
+lifecycle in the dropdown. An explicitly named flow (`definition_id`) complements the slot
+path without replacing it: a slot is resolved per project, while a definition is exactly
+this one.
 """
 import pytest
 from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
@@ -83,7 +83,7 @@ async def test_benannter_ablauf_genuegt_der_pruefung():
 
 
 async def test_selbstaufruf_wird_verweigert(client, db):
-    """Ein Ablauf, der sich selbst als Unterablauf einträgt, liefe endlos."""
+    """A flow that enters itself as a sub-flow would run endlessly."""
     anna = await make_user(db, "anna")
     d = await _ablauf(db, anna, "ich", _gerade())
     graph = _gerade(
