@@ -1,9 +1,9 @@
-"""Eine Antwort im Telegram-Chat ist eine Chat-Nachricht — keine Sackgasse.
+"""An answer in the Telegram chat is a chat message, not a dead end.
 
-Anlass: Der Reply-Handler war für Ticket-Kommentare gedacht und griff bei JEDER Antwort.
-Antwortete Dennis auf eine Nachricht des Assistenten (im Chat das Naheliegendste), fand der
-Handler keinen `[ABC-1]`-Schlüssel im Bezugstext und kehrte still zurück: keine Aufgabe, keine
-Rückmeldung. Von außen war das nicht von „der Assistent ignoriert mich" zu unterscheiden.
+The occasion: the reply handler was meant for ticket comments and took hold on EVERY answer.
+If somebody answered a message of the assistant (the most obvious thing in a chat), the
+handler found no `[ABC-1]` key in the quoted text and returned silently: no task, no
+feedback. From the outside that was indistinguishable from "the assistant ignores me".
 """
 import pytest
 from app.models.assistant import AssistantTask
@@ -33,13 +33,13 @@ async def test_chat_auftrag_wird_angelegt_und_eingereiht(db, anna, monkeypatch):
     t = await create_chat_task(db, anna.id, "was liegt heute an?", "277")
     assert t.kind == "chat" and t.status == "approved"
     assert t.meta["chat_text"] == "was liegt heute an?" and t.meta["chat_id"] == "277"
-    assert "agent" not in t.meta            # ohne Angabe übernimmt der Assistent
+    assert "agent" not in t.meta            # without an entry the assistant takes over
     assert eingereiht == [{"kind": "assistant", "task_id": f"assistant-{t.id}",
                            "assistant_task_id": t.id}]
 
 
 async def test_eigener_agent_landet_im_meta(db, anna, monkeypatch):
-    """/gameproj geht denselben Weg — der Agent steht im meta, sonst läuft der Assistent."""
+    """/gameproj goes the same way: the agent stands in the meta, otherwise the assistant runs."""
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
 
@@ -52,8 +52,8 @@ async def _nichts():
 
 
 async def test_langer_text_kuerzt_nur_den_titel(db, anna, monkeypatch):
-    """Der Titel ist auf 200 Zeichen begrenzt — der Auftrag selbst darf nicht beschnitten
-    werden, sonst arbeitet der Assistent an einer abgeschnittenen Frage."""
+    """The title is limited to 200 characters; the assignment itself must not be cut, because
+    otherwise the assistant works on a truncated question."""
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
 
@@ -66,19 +66,19 @@ async def test_langer_text_kuerzt_nur_den_titel(db, anna, monkeypatch):
 
 
 async def test_antwort_traegt_den_bezug_mit(db, anna, monkeypatch):
-    """Eine Antwort meint GENAU die zitierte Nachricht — sonst fehlt „mach das" der Gegenstand."""
+    """An answer means EXACTLY the quoted message; otherwise "do that" lacks its object."""
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
 
     t = await create_chat_task(db, anna.id, "ja, mach das", "277",
                                bezug="Rücksendung erfasst\nSoll ich die Erstattung überwachen?")
     assert t.meta["bezug_text"].startswith("Rücksendung erfasst")
-    assert "bezug_task_id" not in t.meta      # keine passende Benachrichtigung → kein Vorgang
+    assert "bezug_task_id" not in t.meta      # no matching notification, so no process
 
 
 async def test_antwort_findet_den_ursprungsvorgang(db, anna, monkeypatch):
-    """Zitierte Assistenten-Nachrichten stammen aus Notifications — darüber führt der Weg
-    zurück zum Eingang, an dem weitergearbeitet werden soll."""
+    """Quoted assistant messages come from notifications, and over them the way leads back to
+    the inbox item that should be worked on further."""
     from app.models.notification import Notification
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
@@ -100,7 +100,7 @@ async def test_antwort_findet_den_ursprungsvorgang(db, anna, monkeypatch):
 
 
 async def test_fremder_chat_wird_nicht_verknuepft(db, anna, monkeypatch):
-    """Die Benachrichtigung eines anderen Chats darf keinen Bezug stiften."""
+    """The notification of another chat must not establish a reference."""
     from app.models.notification import Notification
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())

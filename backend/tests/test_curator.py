@@ -1,7 +1,7 @@
-"""Der Curator räumt das Gedächtnis auf — und muss dabei vorsichtig sein.
+"""The curator tidies the memory up, and has to be careful doing so.
 
-Er fasst fremde Erinnerungen an. Die Tests bewachen deshalb vor allem die Notbremsen: was
-passiert, wenn das Modell übereifrig ist, das Format verfehlt oder das Archiv klemmt.
+It touches other people's memories. That is why the tests guard above all the emergency
+brakes: what happens when the model is overeager, misses the format or the archive jams.
 """
 import datetime as dt
 
@@ -11,15 +11,15 @@ from app.worker import curator
 from app.worker.curator import PIN, _teile, faellig, kuratiere_notiz
 from conftest import make_user
 
-# Lang genug, dass Aufräumen überhaupt lohnt (MINDEST_ZEICHEN) — so sehen echte
-# Gedächtnis-Notizen aus: ein Satz je Zeile, nicht zwei Wörter.
+# Long enough for tidying up to be worth it at all (MINDEST_ZEICHEN), and this is what real
+# memory notes look like: one sentence per line, not two words.
 NOTIZ = "\n".join(f"- Erkenntnis {i}: Der Mensch möchte das dauerhaft so gehandhabt wissen."
                   for i in range(40))
 PFAD = "KI/Gedaechtnis/Mensch.md"
 
 
 class FakeMcp:
-    """Vault-Ersatz: merkt sich, was geschrieben und was angehängt wurde."""
+    """Vault replacement: remembers what was written and what was appended."""
 
     def __init__(self, inhalt: str = NOTIZ, schreibfehler: str | None = None):
         self.notizen = {PFAD: inhalt}
@@ -74,14 +74,14 @@ async def test_aufraeumen_kuerzt_und_archiviert(db, monkeypatch):
     bericht = await _lauf(db, mcp)
     assert bericht and "40 → 20" in bericht
     assert "Erkenntnis 0" in mcp.notizen[PFAD] and "Erkenntnis 39" not in mcp.notizen[PFAD]
-    # Aussortiertes ist nicht weg, sondern liegt im Archiv daneben.
+    # What is sorted out is not gone but lies in the archive beside it.
     archiv = mcp.angehaengt["KI/Gedaechtnis/Archiv-Mensch.md"]
     assert "Erkenntnis 39" in archiv and "Aussortiert am" in archiv
 
 
 async def test_angepinntes_muss_ueberleben(db, monkeypatch):
-    """Fehlt ein Pin im Ergebnis, wird gar nichts geschrieben — der Mensch hat diese Zeile
-    ausdrücklich festgenagelt."""
+    """If a pin is missing in the result, nothing is written at all: the human nailed this
+    line down explicitly."""
     inhalt = NOTIZ + f"\n- {PIN} Niemals ohne Rückfrage deployen"
     _aux(monkeypatch, "### BEHALTEN\n" + "\n".join(
         f"- Erkenntnis {i}: zusammengefasst." for i in range(20)))
@@ -113,8 +113,8 @@ async def test_ohne_aux_passiert_nichts(db, monkeypatch):
 
 
 async def test_klemmendes_archiv_haelt_die_notiz_unveraendert(db, monkeypatch):
-    """Erst archivieren, dann kürzen — klemmt das Archiv, darf nichts gekürzt werden,
-    sonst wäre das Aussortierte ersatzlos weg."""
+    """Archive first, truncate afterwards: if the archive jams, nothing may be truncated,
+    because otherwise what was sorted out would be gone without replacement."""
     behalten = "\n".join(f"- Erkenntnis {i}: zusammengefasst." for i in range(20))
     _aux(monkeypatch, f"### BEHALTEN\n{behalten}\n### ARCHIV\n- Erkenntnis 39: alt.")
     mcp = FakeMcp(schreibfehler="archiv")
@@ -124,11 +124,11 @@ async def test_klemmendes_archiv_haelt_die_notiz_unveraendert(db, monkeypatch):
 
 async def test_hoechstens_einmal_am_tag(db, monkeypatch):
     jetzt = dt.datetime.now(tz=dt.timezone.utc)
-    assert await faellig(db, 1, PFAD) is True                     # noch nie gelaufen
+    assert await faellig(db, 1, PFAD) is True                     # never run yet
     await set_setting(db, f"curator_last:1:{PFAD}", jetzt.isoformat())
     assert await faellig(db, 1, PFAD, jetzt=jetzt) is False
     assert await faellig(db, 1, PFAD, jetzt=jetzt + dt.timedelta(hours=25)) is True
-    # Unlesbarer Zeitstempel darf nicht dauerhaft blockieren.
+    # An unreadable timestamp must not block permanently.
     await set_setting(db, f"curator_last:1:{PFAD}", "kaputt")
     assert await faellig(db, 1, PFAD) is True
 
@@ -142,8 +142,8 @@ async def test_erfolgreicher_lauf_merkt_sich_den_zeitpunkt(db, monkeypatch):
 
 
 async def test_ohne_eigenes_modell_bleibt_die_pflege_aus(db, monkeypatch):
-    """Der Curator ist Fleißarbeit im Hintergrund. Liefe er mangels Einstellung auf dem
-    Arbeitsmodell, würde er ungefragt Geld kosten UND am Vault des Menschen schreiben."""
+    """The curator is diligence work in the background. If it ran on the working model for
+    lack of a setting, it would cost money unasked AND write in the vault of the human."""
     from app.worker import __main__ as worker
 
     gelaufen = {}

@@ -1,10 +1,9 @@
-"""Warten und Wiederholen: die zwei Dinge, die ein Ablauf können muss, wenn die Welt
-draußen nicht sofort antwortet.
+"""Waiting and retrying: the two things a flow has to be able to do when the world outside
+does not answer immediately.
 
-Geprüft wird die Mechanik dahinter: dass ein wartender Lauf einen Neustart überlebt (der
-Wecker sitzt im Tick, nicht in einem schlafenden Task), dass ein abgelaufener Timer wirklich
-weckt — und dass eine Wiederholung Abstand hält, statt in derselben Sekunde denselben Fehler
-zu erzeugen.
+What is checked is the mechanics behind it: that a waiting run survives a restart (the alarm
+sits in the tick, not in a sleeping task), that an expired timer really wakes, and that a
+retry keeps a distance instead of producing the same error in the same second.
 """
 import datetime as dt
 
@@ -67,8 +66,8 @@ async def test_timer_haelt_den_lauf_an(db):
     token = (await db.execute(select(WorkflowToken).where(
         WorkflowToken.instance_id == inst.id))).scalars().one()
     assert token.state == WorkflowTokenState.waiting and token.waiting_for == "timer"
-    # Die Fälligkeit steht am Schritt — nicht in einem Task, der einen Neustart nicht
-    # überlebt hätte.
+    # The due time stands on the step, not in a task that would not have survived a
+    # restart.
     step = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.instance_id == inst.id))).scalars().one()
     faellig = dt.datetime.fromisoformat(step.result["faellig"])
@@ -81,8 +80,7 @@ async def test_faelliger_timer_weckt_und_laeuft_weiter(db):
     step = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.instance_id == inst.id))).scalars().one()
 
-    # Nicht fällig → nichts passiert. Das ist die halbe Miete: der Wecker darf nicht
-    # jeden wartenden Lauf sofort einsammeln.
+    # Not due means nothing happens. That is half the value: the alarm must not collect
     assert await faellige_timer() == 0
 
     step.result = {"faellig": (dt.datetime.now(dt.timezone.utc)
@@ -95,7 +93,7 @@ async def test_faelliger_timer_weckt_und_laeuft_weiter(db):
 
 
 async def test_zeitpunkt_in_der_vergangenheit_wartet_nicht(db):
-    """Ein Zeitpunkt, der schon vorbei ist, heißt „jetzt" — nicht „nie"."""
+    """A point in time that has already passed means "now", not "never"."""
     gestern = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).isoformat()
     inst = await _lauf(db, _graph(timer={"bis": gestern}), "vergangen")
     assert await faellige_timer() == 1
@@ -104,8 +102,8 @@ async def test_zeitpunkt_in_der_vergangenheit_wartet_nicht(db):
 
 
 async def test_wiederholung_haelt_abstand_und_gibt_dann_auf(db, monkeypatch):
-    """Ein Fehlschlag nach außen ist meist einer des Augenblicks. Also: warten, erneut
-    versuchen — aber nicht endlos."""
+    """A failure to the outside is mostly one of the moment. So: wait, try again, but not
+    endlessly."""
     versuche = {"n": 0}
 
     async def kaputt(db_, inst_, node_):
@@ -118,7 +116,7 @@ async def test_wiederholung_haelt_abstand_und_gibt_dann_auf(db, monkeypatch):
     }), "wiederholt")
 
     assert versuche["n"] == 1
-    assert inst.status == WorkflowInstanceStatus.waiting     # wartet auf den zweiten Versuch
+    assert inst.status == WorkflowInstanceStatus.waiting     # waits for the second attempt
     assert inst.context["_versuche"]["tun"] == 1
 
     async def faellig_stellen():
@@ -134,17 +132,16 @@ async def test_wiederholung_haelt_abstand_und_gibt_dann_auf(db, monkeypatch):
     assert versuche["n"] == 2
     await faellig_stellen()
     await faellige_timer()
-    assert versuche["n"] == 3          # der dritte ist der letzte (zwei Wiederholungen)
+    assert versuche["n"] == 3          # the third is the last (two retries)
 
     await db.refresh(inst)
     assert inst.status == WorkflowInstanceStatus.failed
-    # Der Zähler ist weg — sonst zählte der nächste Anlauf beim alten Stand weiter.
+    # The counter is gone; otherwise the next attempt would count on from the old state.
     assert inst.context.get("_versuche", {}).get("tun") is None
 
 
 async def test_fehlerzweig_faengt_den_fehlschlag_auf(db, monkeypatch):
-    """Wer einen `error`-Ausgang verdrahtet, will den Fehler behandeln statt den Lauf
-    zu verlieren."""
+    """Whoever wires an `error` exit wants to handle the error instead of losing the run."""
     async def kaputt(db_, inst_, node_):
         raise ValueError("kaputt")
 
@@ -166,6 +163,6 @@ async def test_validierung_verlangt_dauer_oder_zeitpunkt():
 
 
 async def test_lange_wartezeit_wird_gedeckelt():
-    """Ein Ablauf, der zwei Jahre schläft, ist fast immer ein Vertipper."""
+    """A flow that sleeps for two years is almost always a typo."""
     faellig = workflow_engine._faellig_ab({"dauer": 900, "einheit": "t"}, {})
     assert faellig - dt.datetime.now(dt.timezone.utc) <= dt.timedelta(days=90)

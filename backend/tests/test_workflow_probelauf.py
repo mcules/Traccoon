@@ -1,8 +1,8 @@
-"""Probelauf: den Ablauf durchspielen, ohne dass etwas geschieht.
+"""Trial run: playing the flow through without anything happening.
 
-Der Kern dieser Tests ist die Zusage, die der Probelauf gibt — **es passiert nichts**.
-Alles andere (Weichen greifen, Ausdrücke rechnen, der Lauf kommt bis zum Ende) ist dafür
-da, dass die Probe überhaupt etwas aussagt.
+The core of these tests is the promise the trial run gives: **nothing happens**. Everything
+else (branches take hold, expressions compute, the run reaches the end) is there so that the
+trial says anything at all.
 """
 import pytest
 from app.models.enums import (
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.asyncio
 
 
 def _graph() -> dict:
-    """Auslöser → Werkzeug rufen → Weiche → (Ticket anlegen | warten) → Ende."""
+    """Trigger, call a tool, branch, (create a ticket | wait), end."""
     return {
         "nodes": [
             {"id": "s", "type": "start", "position": {"x": 0, "y": 0},
@@ -83,14 +83,14 @@ async def test_probelauf_laeuft_durch_und_zeigt_was_er_taete(client, db, monkeyp
     assert daten["status"] == WorkflowInstanceStatus.completed.value
 
     schritte = {s["node_id"]: s for s in daten["steps"]}
-    # Das Werkzeug wurde NICHT gerufen — es steht nur da, was es täte.
+    # The tool was NOT called: it only says what it would do.
     assert gerufen == []
     assert "würde ausführen: tool_call" in schritte["werkzeug"]["result"]["probe"]
     assert "obsidian__obsidian_append_to_note" in schritte["werkzeug"]["result"]["probe"]
-    # Die Weiche hat echt gerechnet: Stufe 5 ≥ 3 → der wichtige Zweig.
+    # The branch really computed: level 5 >= 3, so the important path.
     assert "ticket" in schritte and "warten" not in schritte
     assert "würde ausführen: create_ticket" in schritte["ticket"]["result"]["probe"]
-    # Und kein Ticket ist entstanden.
+    # And no ticket has come into being.
     assert (await db.execute(select(Issue))).scalars().all() == []
 
 
@@ -101,7 +101,7 @@ async def test_die_andere_seite_der_weiche_laesst_sich_genauso_pruefen(client, d
                           json={"context": {"vorgang": {"titel": "Kleinkram", "stufe": 1}}})
     schritte = {s["node_id"]: s for s in r.json()["steps"]}
     assert "warten" in schritte and "ticket" not in schritte
-    # Der Timer hält den Probelauf nicht an — sonst sähe man das Ende nie.
+    # The timer does not stop the trial run; otherwise one would never see the end.
     assert "würde warten: 2 h" in schritte["warten"]["result"]["probe"]
     assert r.json()["status"] == WorkflowInstanceStatus.completed.value
 
@@ -120,14 +120,13 @@ async def test_probelauf_nimmt_den_entwurf_nicht_das_veroeffentlichte(client, db
                           json={"context": {"vorgang": {"titel": "x", "stufe": 9}}})
     schritte = {s["node_id"]: s for s in r.json()["steps"]}
     assert "neues__werkzeug" in schritte["werkzeug"]["result"]["probe"]
-    # Die veröffentlichte Fassung bleibt die, auf die echte Läufe zeigen.
+    # The published version stays the one real runs point at.
     await db.refresh(d)
     assert (await db.get(WorkflowVersion, d.current_version_id)).version == 1
 
 
 async def test_unschluessiger_ablauf_wird_nicht_durchgespielt(client, db):
-    """Ein Probelauf über einen kaputten Graphen erzeugt nur Verwirrung — lieber sagen,
-    was fehlt."""
+    """A trial run over a broken graph only creates confusion; better to say what is missing."""
     anna = await make_user(db, "anna")
     kaputt = _graph()
     kaputt["edges"] = [e for e in kaputt["edges"] if e.get("sourceHandle") != "ja"]
@@ -145,8 +144,8 @@ async def test_fremder_darf_nicht_proben(client, db):
 
 
 async def test_probelauf_prueft_den_stand_aus_dem_editor(client, db):
-    """Beim Bauen ändert man ständig, ohne zu speichern — geprüft werden soll, was man
-    vor sich sieht, nicht was zuletzt in der Datenbank landete."""
+    """While building one changes things constantly without saving: what should be checked is
+    what one sees in front of one, not what landed in the database last."""
     from app.models.workflow import WorkflowInstance
 
     anna = await make_user(db, "anna")
@@ -161,7 +160,7 @@ async def test_probelauf_prueft_den_stand_aus_dem_editor(client, db):
     schritte = {s["node_id"]: s for s in r.json()["steps"]}
     assert "gerade__gebaut" in schritte["werkzeug"]["result"]["probe"]
 
-    # Die Probe hinterlässt nichts: keine Instanz, keine zusätzliche Fassung.
+    # The trial leaves nothing behind: no instance, no additional version.
     assert (await db.execute(select(WorkflowInstance))).scalars().all() == []
     fassungen = (await db.execute(select(WorkflowVersion).where(
         WorkflowVersion.definition_id == d.id))).scalars().all()

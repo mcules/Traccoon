@@ -1,7 +1,7 @@
-"""Ausdrücke in Vorlagen: aus Daten die Form machen, die das Zielsystem will.
+"""Expressions in templates: making the form the target system wants out of data.
 
-Der Kern dieser Tests ist nicht „rechnet richtig", sondern: eine schiefe Vorlage darf nie
-einen Lauf kippen, und alles, was vorher ging, geht weiter.
+The core of these tests is not "computes correctly" but: a crooked template must never
+topple a run, and everything that worked before keeps working.
 """
 import datetime as dt
 
@@ -19,10 +19,10 @@ CTX = {
 
 
 async def test_reiner_pfad_verhaelt_sich_wie_frueher():
-    """Alle bestehenden Vorlagen bleiben gültig — sonst wäre das ein Bruch, kein Ausbau."""
+    """All existing templates stay valid; otherwise this would be a break, not an extension."""
     assert fuellen("{{ mail.subject }}", CTX) == CTX["mail"]["subject"]
     assert fuellen("Betreff: {{mail.subject}}!", CTX).startswith("Betreff: Ihre")
-    # Unbekanntes Feld bleibt leer statt „None" zu schreiben.
+    # An unknown field stays empty instead of writing "None".
     assert fuellen("[{{ gibts.nicht }}]", CTX) == "[]"
 
 
@@ -47,19 +47,19 @@ async def test_listen_und_tiefe_pfade():
 async def test_zeit_rechnen_und_formatieren():
     heute = dt.datetime.now(tz=dt.timezone.utc)
     assert fuellen('{{ jetzt | datum:"%Y" }}', CTX) == str(heute.year)
-    # Zwei Stunden später ist ein anderer Zeitpunkt — geprüft wird die Verschiebung selbst.
+    # Two hours later is another point in time: what is checked is the shift itself.
     vorher = auswerten("jetzt", CTX)
     nachher = auswerten('jetzt | plus_zeit:2,"h"', CTX)
     assert dt.datetime.fromisoformat(nachher) - dt.datetime.fromisoformat(vorher) \
         >= dt.timedelta(hours=1, minutes=59)
-    # Ein ISO-Zeitstempel aus dem Kontext lässt sich genauso formatieren.
+    # An ISO timestamp from the context can be formatted just as well.
     assert fuellen('{{ zeit | datum:"%d.%m.%Y" }}',
                    {"zeit": "2026-08-18T06:31:32+00:00"}) == "18.08.2026"
 
 
 async def test_schiefe_vorlage_kippt_keinen_lauf():
-    """Ein Tippfehler im Filter, ein Text statt einer Zahl — das darf höchstens ein
-    unschönes Ergebnis geben, niemals einen Abbruch mitten im Ablauf."""
+    """A typo in the filter, a text instead of a number: that may at most give an ugly result,
+    never an abort in the middle of the flow."""
     assert fuellen("{{ mail.subject | gibtsnicht }}", CTX) == CTX["mail"]["subject"]
     assert fuellen("{{ mail.subject | mal:2 }}", CTX) == "0.0"
     assert fuellen("{{ }}", CTX) == ""
@@ -71,17 +71,17 @@ async def test_boolesche_werte_lesen_sich_wie_erwartet():
 
 
 async def test_katalog_erklaert_jeden_filter():
-    """Die Liste speist die Hilfe im Editor — ein Filter ohne Erklärung ist dort wertlos."""
+    """The list feeds the help in the editor: a filter without an explanation is worthless there."""
     eintraege = katalog()
     assert {"kurz", "default", "datum", "anzahl", "mal"} <= {e["name"] for e in eintraege}
     assert all(e["hilfe"] for e in eintraege)
 
 
 async def test_filterargument_darf_aus_dem_kontext_kommen():
-    """`default:event.type` soll den Wert von dort einsetzen, nicht das Wort.
+    """`default:event.type` should insert the value from there, not the word.
 
-    Vorher stand wörtlich „event.type" in der Telegram-Nachricht — und im
-    Drossel-Schlüssel, wodurch alle Störungsarten derselbe Fall gewesen wären.
+    Before, "event.type" stood literally in the Telegram message, and in the throttle key,
+    which would have made all kinds of disturbance the same case.
     """
     ctx = {"event": {"type": "deviceInactive", "attributes": {}}}
     assert fuellen("{{ event.attributes.alarm | default:event.type }}", ctx) == "deviceInactive"
@@ -93,7 +93,7 @@ async def test_zitiertes_argument_bleibt_woertlich():
 
 
 async def test_unbekannter_pfad_bleibt_als_text_stehen():
-    """Eine Vorgabe wie `default:unbekannt` verhält sich unverändert."""
+    """A default like `default:unbekannt` behaves unchanged."""
     assert fuellen("{{ fehlt | default:unbekannt }}", {}) == "unbekannt"
 
 
