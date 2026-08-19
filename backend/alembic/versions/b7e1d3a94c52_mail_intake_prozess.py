@@ -1,11 +1,11 @@
-"""Mail-Eingang als Prozess: Spam-Urteil kennt seinen Ablauf
+"""Mail inbox as a process: the spam verdict knows its flow
 
-Der Weg einer eingegangenen Mail (klassifizieren → beurteilen → nachfragen → verschieben)
-läuft ab jetzt als Graph (Slot `mail_intake`, Auslöser `mail.received`). Damit die Antwort
-aus Telegram den Ablauf weiterschaltet statt an ihm vorbei selbst zu verschieben, trägt die
-Rückfrage ihre Instanz.
+The way of an incoming mail (classify, assess, ask, move) runs as a graph from now on (slot
+`mail_intake`, trigger `mail.received`). So that the answer from Telegram advances the flow
+instead of moving the mail past it, the question carries its instance.
 
-Alt-Urteile behalten NULL — für sie bleibt der direkte Weg (siehe `spam_review.entscheiden`).
+
+Old verdicts keep NULL: for them the direct way remains (see `spam_review.entscheiden`).
 
 Revision ID: b7e1d3a94c52
 Revises: d4a7c2b91f63

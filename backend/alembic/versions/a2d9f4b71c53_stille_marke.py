@@ -1,9 +1,9 @@
-"""Stille-Marke an der Messreihe
+"""A silence mark on the metric series
 
-Die Prognose sagt, wann etwas zu Ende geht. Sie sagt nicht, dass gar nichts mehr kommt —
-und genau das ist der gefährlichere Fall: fällt die Gegenstelle aus, meldet sie auch ihre
-eigene Störung nicht mehr, und Stille sieht aus wie ein ruhiger Tag. Die Marke sorgt
-dafür, dass das Verstummen genau einmal gemeldet wird, nicht stündlich.
+The forecast says when something comes to an end. It does not say that nothing comes any
+more, and exactly that is the more dangerous case: if the counterpart drops out, it no longer
+reports its own failure either, and silence looks like a quiet day. The mark makes sure that
+the falling silent is reported exactly once, not hourly.
 
 Revision ID: a2d9f4b71c53
 Revises: f1c8a52d6e07

@@ -1,9 +1,9 @@
-"""Drossel: höchstens alle N Minuten dieselbe Nachricht
+"""Throttle: the same message at most every N minutes
 
-Traccar dedupliziert Alarme ausdrücklich nicht: solange ein Alarmbit gesetzt ist, entsteht
-ein Ereignis je eingehender Position — im Wachbetrieb alle paar Sekunden. Ohne Drossel wird
-aus zehn Minuten Erschütterung ein Strom von rund 120 gleichlautenden Nachrichten. Der
-Schlüssel entscheidet, was als „dieselbe Nachricht" gilt; er kommt aus dem Ablauf.
+Traccar explicitly does not deduplicate alarms: as long as an alarm bit is set, an event
+arises per incoming position, every few seconds in guard mode. Without a throttle, ten
+minutes of shaking become a stream of around 120 identical messages. The key decides what
+counts as "the same message"; it comes from the flow.
 
 Revision ID: f1c8a52d6e07
 Revises: e7b2d4c19f38

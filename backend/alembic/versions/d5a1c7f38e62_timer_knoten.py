@@ -1,9 +1,9 @@
-"""Timer-Knoten: warten, ohne dass jemand etwas melden muss
+"""Timer node: waiting without anybody having to report anything
 
-`wait_event` wartet auf ein Ereignis — jemand kommentiert, ein Mensch antwortet. Es gab
-aber keinen Weg, schlicht Zeit vergehen zu lassen („in zwei Stunden nachsehen", „morgen
-früh erinnern"), und ohne den ist jede Wiederholung nach einem Fehlschlag ein
-Sofort-Wiederholen: dieselbe Gegenstelle, dieselbe Sekunde, derselbe Fehler.
+`wait_event` waits for an event: somebody comments, a human answers. But there was no way to
+let time simply pass ("look again in two hours", "", „morgen
+remind me tomorrow morning"), and without one every retry after a failure is an immediate
+retry: the same counterpart, the same second, the same error.
 
 Revision ID: d5a1c7f38e62
 Revises: c3f8b1e29d47
@@ -22,5 +22,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Enum-Werte lassen sich in PostgreSQL nicht entfernen, ohne den Typ neu zu bauen.
+    # Enum values cannot be removed in PostgreSQL without rebuilding the type.
     pass
