@@ -1,11 +1,11 @@
-"""Karteileichen in der Lauf-Liste.
+"""Stale entries in the run list.
 
-Ein Worker-Neustart lässt den abgebrochenen Lauf als `running` zurück; die Reliable-Queue
-holt den Auftrag zurück und startet ihn neu. Die Aufräumung beim Worker-Start greift aber
-erst nach `STALE_GRACE_SEC` — und ließ damit ausgerechnet die Leichen stehen, die der
-Neustart selbst erzeugt hat (Lauf 714 am 2026-08-07 war acht Sekunden alt, blieb danach
-für immer „läuft"). Wer denselben Auftrag neu startet, räumt seinen Vorgänger deshalb
-selbst ab — genauer als jede Zeitgrenze.
+A worker restart leaves the aborted run behind as `running`; the reliable queue fetches the
+assignment back and starts it anew. The clean-up at the worker start only takes hold after
+`STALE_GRACE_SEC` though, and thereby left standing exactly the corpses the restart itself
+produced (run 714 on 2026-08-07 was eight seconds old and stayed "running" forever).
+Whoever starts the same assignment anew therefore clears its predecessor away themselves,
+more precisely than any time limit.
 """
 from app.models.agents import Run
 from app.worker.runtime import _start_run
@@ -30,7 +30,7 @@ async def test_neuer_lauf_schliesst_die_leiche_desselben_auftrags(db):
     assert leiche.status == "failed"
     assert leiche.finished_at is not None
     assert "neu gestartet" in (leiche.error or "")
-    assert neu.status == "running"          # der frische Lauf bleibt unangetastet
+    assert neu.status == "running"          # the fresh run stays untouched
 
 
 async def test_fremder_auftrag_bleibt_unberuehrt(db):
@@ -42,8 +42,8 @@ async def test_fremder_auftrag_bleibt_unberuehrt(db):
 
 
 async def test_delegierter_unterlauf_raeumt_seinen_elternlauf_nicht_ab(db):
-    """Der teure Fehlgriff: ein Unterlauf trägt DIESELBE task_id wie sein Elternteil (der
-    Verbund-Schlüssel fürs Büro) und startet, während der Elternlauf noch läuft."""
+    """The expensive mistake: a sub-run carries THE SAME task_id as its parent (the link key
+    for the office) and starts while the parent run is still running."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     eltern = await _lauf(db, issue, "wf-1-1-exec-abc")
 
