@@ -1,23 +1,23 @@
-// Der Film: Ereignisse rein, GIF-Bytes raus.
+// The film: events in, GIF bytes out.
 //
-// Die Verdrahtung ist kurz, weil jedes Stück schon existiert: `Recorder` dedupliziert und
-// übersetzt (`mapEvent`), `Replay` spielt ab, `renderFrame` malt, `raster.mjs` klippt,
-// `gif.mjs` kodiert. Neu ist nur, **welche** Zeitpunkte gemalt werden — das entscheidet
+// The wiring is short because every piece already exists: `Recorder` deduplicates and
+// translates (`mapEvent`), `Replay` replays, `renderFrame` paints, `raster.mjs` clips and
+// `gif.mjs` encodes. New is only **which** moments are painted, and that is decided by
 // `schnitt.mjs`.
 //
-// Zwei Regeln, die diese Datei trägt und die man leicht verletzt:
+// Two rules this file carries and that are easily violated:
 //
-//  1. **Ein einziger `Replay` für den ganzen Tag.** `advance()` läuft auch durch die nicht
-//     gezeigten Strecken; nur so sitzen die Figuren aus Kapitel 3 noch dort, wo Kapitel 5 sie
-//     erwartet. Teuer ist das nicht: `settle()` klemmt jede Lücke auf `MAX_GAP_MS`, eine
-//     übersprungene Stunde kostet also höchstens 20 s Simulationszeit.
-//  2. **Nie `frameAt` in der Schleife.** Das baut jedes Mal eine neue Engine und spult von
-//     vorn — bei 300 Bildern über 2500 Ereignissen wären das Milliarden Aktorschritte statt
-//     Zehntausenden.
+//  1. **One single `Replay` for the whole day.** `advance()` runs through the stretches that
+//     are not shown as well; only that way do the figures of chapter 3 still sit where chapter
+//     5 expects them. That is not expensive: `settle()` clamps every gap to `MAX_GAP_MS`, so a
+//     skipped hour costs at most 20 s of simulation time.
+//  2. **Never `frameAt` in the loop.** That builds a new engine every time and replays from
+//     the front; with 300 frames over 2500 events those would be billions of actor steps
+//     instead of tens of thousands.
 //
-// Und die dritte, die man gar nicht sieht: **keine Zeitzonenbibliothek**. Die Uhr rechnet
-// ganzzahlig aus `ts + tz_offset_min·60000`. Python kennt den Versatz des Tages und schickt ihn
-// mit; `toLocale*` oder `Intl` machten das Bild von der ICU-Version des Basis-Images abhängig.
+// And the third, which one does not see at all: **no time zone library**. The clock computes
+// with integers from `ts + tz_offset_min*60000`. Python knows the offset of the day and sends
+// it along; `toLocale*` or `Intl` would make the picture depend on the ICU version of the base image.
 
 import { ART } from "../../src/components/office/const.ts";
 import { Recorder } from "../../src/components/office/recorder.ts";
@@ -28,22 +28,22 @@ import { hudZeile, kapitelKarte } from "./hud.mjs";
 import { rasterCtx } from "./raster.mjs";
 import { gif } from "./gif.mjs";
 
-/** Wie viele Bilder eine Trennkarte stehen bleibt (bei 12 fps ein Drittel einer Sekunde).
- *  Weniger und man liest die Uhrzeit nicht, mehr und acht Karten fressen ein Sechstel des Films. */
+/** How many frames a chapter card stays (at 12 fps a third of a second). Fewer and one does
+ *  not read the time, more and eight cards eat a sixth of the film. */
 const KARTEN_BILDER = 4;
 
-// Der Film bleibt vorerst auf der Kunstebene (480×270): sein Bild ist heute so grob,
-// wie die Kunst es ist, und ein vierfach so großes GIF brächte keinen Strich mehr
-// Detail. Sobald die Kunst fein gezeichnet ist, wandert auch er auf den Puffer.
+// The film stays on the art level (480x270) for now: its picture is as coarse today as the art
+// is, and a GIF four times as large would bring not one more stroke of detail. As soon as the
+// art is drawn finely, it moves onto the buffer as well.
 const CAM_FILM = { x: ART.w / 2, y: ART.h / 2, zoom: 1 };
-/** Unter so vielen Bildern ist ein Kapitel kein Kapitel mehr, sondern ein Zucken. */
+/** Below this many frames a chapter is no longer a chapter but a twitch. */
 const MIN_BILDER = 6;
 
 /**
- * Baut den Film. `auftrag` ist der Rumpf von `POST /film`, Feld für Feld.
+ * Builds the film. `auftrag` is the body of `POST /film`, field by field.
  *
- * Rückgabe: die GIF-Bytes und die Zahlen, die als `X-Film-*` in die Antwort gehen — Python
- * schreibt daraus die Bildunterschrift („8 von 67 Szenen").
+ * Returns: the GIF bytes and the numbers that go into the answer as `X-Film-*`; Python writes
+ * the caption out of them ("8 of 67 scenes").
  */
 export function baueFilm(auftrag) {
   const t0 = Date.now();
@@ -55,11 +55,11 @@ export function baueFilm(auftrag) {
   const titel = typeof auftrag.titel === "string" ? auftrag.titel : "";
 
   const rec = new Recorder();
-  // Der Roster wird aus den `run_start`-Zeilen **nachgebaut**, statt ihn mitschicken zu lassen:
-  // dieselben Felder stehen schon im Ereignis (Rolle, Phase, Modell, Elternlauf), und ohne sie
-  // hätte jede Figur die leere Rolle — alle sähen gleich aus (die Rolle bestimmt Hemd, Haar und
-  // Torso) und die Übergabe am Laufende fiele aus, weil `mapEvent` den Elternlauf nur aus dem
-  // Roster kennt. Ein zweites Feld im Vertrag wäre dafür überflüssig.
+  // The roster is **rebuilt** from the `run_start` rows instead of being sent along: the same
+  // fields already stand in the event (role, phase, model, parent run), and without them every
+  // figure would have the empty role, so all would look the same (the role determines shirt,
+  // hair and torso) and the handover at the end of a run would drop out, because `mapEvent`
+  // knows the parent run only from the roster. A second field in the contract would be superfluous.
   rec.setRoster(rosterAus(events));
   for (const ev of events) rec.push(ev);
 
@@ -78,9 +78,9 @@ export function baueFilm(auftrag) {
   const { ctx, buf, reset } = rasterCtx(ART.w, ART.h);
   const bilder = [];
 
-  // Der erste Sprung ist ein `seek`, kein `advance`: ein frischer `Replay` steht auf dem
-  // Anfang, hat aber noch **kein** Ereignis angewandt, und `advance(0)` ist ein Nichtstun.
-  // Ohne diese Zeile zeigte das erste Bild jedes Kapitels einen leeren Raum.
+  // The first jump is a `seek`, not an `advance`: a fresh `Replay` stands at the beginning but
+  // has applied **no** event yet, and `advance(0)` is a no-op. Without this line the first
+  // frame of every chapter would show an empty room.
   replay.seek(plan.bilder[0].ts);
 
   let karteIdx = -1;
@@ -105,8 +105,8 @@ export function baueFilm(auftrag) {
       karteLauf++;
     }
 
-    // Der Rasterer schreibt in **denselben** Puffer; ohne Kopie enthielte das GIF 300-mal das
-    // letzte Bild. Der Fehler sieht aus wie ein Encoder-Fehler und ist keiner.
+    // The rasteriser writes into the **same** buffer; without a copy the GIF would contain the
+    // last frame 300 times. The bug looks like an encoder bug and is none.
     bilder.push(buf.slice());
   }
 
@@ -129,9 +129,9 @@ export function baueFilm(auftrag) {
 
 // ── Zeit, ganzzahlig ─────────────────────────────────────────────────────────
 
-/** `ts + Versatz` → `HH:MM:SS`. Reine Ganzzahlrechnung, kein `Date`, kein `Intl`.
- *  Der Versatz ist für den ganzen Tag fest — Python hat ihn gerechnet, weil nur Python weiß,
- *  in welcher Zone der Zuschauer sitzt und ob an diesem Tag die Uhr umgestellt wurde. */
+/** `ts + offset` to `HH:MM:SS`. Pure integer arithmetic, no `Date`, no `Intl`. The offset is
+ *  fixed for the whole day: Python computed it, because only Python knows which zone the
+ *  viewer sits in and whether the clock was changed on that day. */
 export function uhrzeit(ms, versatzMin) {
   const t = Math.floor(ms) + Math.round(versatzMin) * 60000;
   let s = Math.floor(t / 1000) % 86400;
@@ -143,12 +143,12 @@ function p2(n) {
   return n < 10 ? "0" + n : String(n);
 }
 
-// ── Die HUD-Zeile ────────────────────────────────────────────────────────────
+// ── The HUD line ─────────────────────────────────────────────────────────────
 
-/** Uhrzeit · Sitzung bzw. Ticket · Zahl der Figuren im Raum.
+/** Time · session respectively ticket · number of figures in the room.
  *
- *  Die Zahl steht ohne Wort da: jede Beschriftung wäre Sprache, und Sprache baut in diesem
- *  Feature ausschließlich Python (die Bildunterschrift sagt ohnehin, was der Film zeigt). */
+ *  The number stands there without a word: every label would be language, and in this feature
+ *  language is built exclusively by Python (the caption says what the film shows anyway). */
 function zeile(zeit, marken, ts, frame) {
   let leute = 0;
   for (const a of frame.actors) if (a.retired !== true) leute++;
@@ -156,11 +156,11 @@ function zeile(zeit, marken, ts, frame) {
   return wo ? `${zeit} | ${wo} | ${leute}` : `${zeit} | ${leute}`;
 }
 
-/** Beschriftungswechsel über den Tag: ein Eintrag je Ereignis, aufsteigend nach `ts`.
+/** Label changes over the day: one entry per event, ascending by `ts`.
  *
- *  Nötig, weil `LogEntry` die Sitzung nicht trägt — der Recorder übersetzt nach Kommandos, und
- *  Kommandos kennen nur Figuren. Ein Tag enthält viele Sitzungen; ohne diese Spur zeigte die
- *  Zeile den ganzen Film über dasselbe Ticket. */
+ *  Necessary because `LogEntry` does not carry the session: the recorder translates into
+ *  commands, and commands know only figures. A day contains many sessions, and without this
+ *  track the line would show the same ticket over the whole film. */
 function sitzungsMarken(events) {
   const namen = new Map();
   for (const ev of events) {
@@ -177,8 +177,8 @@ function sitzungsMarken(events) {
   return out;
 }
 
-/** Die letzte Marke mit `ts <= at`. Linear gesucht: die Bilder kommen aufsteigend, aber ein
- *  Zeiger über zwei Datenreihen wäre eine Zustandsvariable mehr für dieselbe Antwort. */
+/** The last mark with `ts <= at`. Searched linearly: the frames come in ascending order, but a
+ *  pointer over two data series would be one state variable more for the same answer. */
 function markeBei(marken, at) {
   let text = marken.length > 0 ? marken[0].text : "";
   for (const m of marken) {
@@ -190,8 +190,8 @@ function markeBei(marken, at) {
 
 // ── Kleinkram ────────────────────────────────────────────────────────────────
 
-/** Ein- und Ausblenden der Trennkarte: das erste und das letzte Bild halb, dazwischen voll.
- *  Ein längerer Verlauf verschenkte bei vier Bildern nur Lesezeit. */
+/** Fading the chapter card in and out: the first and the last frame half, full in between. A
+ *  longer transition would only waste reading time with four frames. */
 function blende(i, m) {
   if (m <= 1) return 1;
   return i === 0 || i === m - 1 ? 0.5 : 1;
@@ -201,8 +201,8 @@ function zahl(v, ersatz) {
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : ersatz;
 }
 
-/** Der Roster aus den `run_start`-Zeilen. Nur die fünf Felder, die `mapEvent` wirklich liest —
- *  ein vollständiger `RosterEntry` wäre hier eine Erfindung, keine Vollständigkeit. */
+/** The roster from the `run_start` rows. Only the five fields `mapEvent` really reads: a
+ *  complete `RosterEntry` would be an invention here, not completeness. */
 function rosterAus(events) {
   const out = [];
   const gesehen = new Set();
