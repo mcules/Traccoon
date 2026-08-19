@@ -1,11 +1,11 @@
-"""Artefakte ohne Ordnungsebene — dafür Felder je Projekt
+"""Artifacts without an ordering level, and fields per project instead
 
-Ticket und Hardware sind beide einfach Artefakte; die Ebene darüber („Vorgang",
-„Gegenstand") trug nichts bei und fällt wieder weg. Ein Artefakt ist zunächst etwas
+Ticket and hardware are both simply artifacts; the level above them ("process", "object")
+contributed nothing and falls away again. An artifact is initially something undefined.
 
-Neu ist deshalb `artifact_fields.project_id`: ein Projekt-Eigentümer ergänzt die
-ausgelieferten Felder um eigene, ohne die anderer Projekte zu verändern. Der eindeutige
-Schlüssel wird entsprechend neu gezogen (`COALESCE`, weil NULLs in einem Unique-Index als
+New is therefore `artifact_fields.project_id`: a project owner extends the shipped fields
+with fields of their own, without changing those of other projects. The unique key is
+rebuilt accordingly (`COALESCE`, because NULLs count as different in a unique index).
 
 Revision ID: c1a7e94f5d32
 Revises: b9f5c37a2e81
@@ -32,7 +32,7 @@ def upgrade() -> None:
         ON artifact_fields (type_id, COALESCE(project_id, 0), key)
     """)
 
-    # Die Ordnungsebene über den Artefakten entfällt wieder.
+    # The ordering level above the artifacts falls away again.
     op.drop_column("artifact_types", "group_id")
     op.drop_table("artifact_groups")
 
@@ -54,8 +54,8 @@ def downgrade() -> None:
     op.create_foreign_key("fk_artifact_types_group", "artifact_types", "artifact_groups",
                           ["group_id"], ["id"], ondelete="SET NULL")
 
-    # Projekt-eigene Felder haben ohne die Spalte keinen Sinn — sie werden abgeschaltet
-    # statt gelöscht, damit zugeordnete Werte lesbar bleiben.
+    # Project-owned fields make no sense without the column, so they are switched off instead
+    # of deleted, in order to keep assigned values readable.
     op.execute("UPDATE artifact_fields SET enabled = FALSE WHERE project_id IS NOT NULL")
     op.drop_index("uq_artifact_field", table_name="artifact_fields")
     op.drop_index("ix_artifact_fields_project", table_name="artifact_fields")

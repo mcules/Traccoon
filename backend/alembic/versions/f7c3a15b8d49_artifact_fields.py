@@ -1,13 +1,13 @@
-"""Felder und Werte an Artefakten (Artefakt-Vorbild: Artifacts → Fields → Values)
+"""Fields and values on artifacts (the Artefakt model: Artifacts → Fields → Values)
 
-Ein Artefakt (Ticket, Hardware, eigener Typ) trägt typisierte Felder; ein Auswahl-Feld hat
-eine gepflegte Werteliste, und `multi` sagt, ob ein Exemplar einen oder mehrere Werte daraus
-tragen darf. Die Werte hängen an `artifacts.id` — die gemeinsame Identität, die Ticket und
+An artifact (ticket, hardware, own type) carries typed fields; a choice field has a
+maintained value list, and `multi` says whether a unit may carry one or several values from
+it. The values hang off `artifacts.id`, the common identity ticket and hardware have anyway.
 
-Darüber kommt mit `artifact_groups` eine reine Ordnungsebene („Vorgang" über Ticket und Bug).
+Above that, `artifact_groups` adds a pure ordering level ("process" over ticket and bug).
 
-Die beiden JSON-Platzhalter `artifact_types.fields` und `artifacts.data` fallen weg: sie
-waren nie befüllt und sind durch das echte Modell abgelöst.
+The two JSON placeholders `artifact_types.fields` and `artifacts.data` fall away: they were
+never filled and are superseded by the real model.
 
 Revision ID: f7c3a15b8d49
 Revises: e6b2f04d1a37
@@ -92,7 +92,7 @@ def upgrade() -> None:
     op.create_index("ix_artifact_values_field", "artifact_values", ["field_id"])
     op.create_index("ix_artifact_values_option", "artifact_values", ["option_id"])
 
-    # Nie befüllte JSON-Platzhalter, abgelöst durch das Modell oben.
+    # Never filled JSON placeholders, superseded by the model above.
     op.drop_column("artifact_types", "fields")
     op.drop_column("artifacts", "data")
 
