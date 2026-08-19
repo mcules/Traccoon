@@ -1,8 +1,8 @@
-"""Die Job-Steuertools des Assistenten.
+"""The job control tools of the assistant.
 
-Anlass: Der Assistent konnte geplante Jobs nicht sehen. Auf die Frage nach dem Umzug des
-News-Jobs von nexus nach Traccoon antwortete er, das sei noch offen und er brauche ein
-Ticket — der Job lief in Traccoon längst. Wer über Jobs reden soll, muss sie lesen können.
+The occasion: the assistant could not see scheduled jobs. Asked about the move of the news
+job from nexus to Traccoon, it answered that this was still open and it needed a ticket; the
+job had long been running in Traccoon. Whoever is to talk about jobs has to be able to read them.
 """
 import pytest
 from app.models.ops import Job, JobRun
@@ -22,7 +22,7 @@ async def anna(db):
 
 
 async def _tool(db, user, werkzeug, **args) -> str:
-    # `werkzeug` statt `name`: der Job-Name ist selbst ein Argument.
+    # `werkzeug` instead of `name`: the job name is an argument itself.
     return await call_traccoon_tool(db, user.id, werkzeug, args)
 
 
@@ -51,7 +51,7 @@ async def test_anlegen_ueber_vorlage(db, anna):
     j = (await db.execute(select(Job))).scalars().one()
     assert j.user_id == anna.id and j.kind == "prompt" and j.result_html is True
     assert j.args["thema"] == "IT-Sicherheit"
-    assert j.args["sprache"] == "Deutsch"          # Vorgabe der Vorlage bleibt
+    j.args["sprache"] == "Deutsch"          # the default of the template stays
     assert j.notify_chat == "123"                  # meldet an denselben Chat
 
 
@@ -72,7 +72,7 @@ async def test_unbekannte_vorlage_nennt_die_echten(db, anna):
 
 
 async def test_parameter_werden_nachgezogen_nicht_ersetzt(db, anna):
-    """Sonst verliert ein Job beim Ändern EINES Wertes alle anderen."""
+    """Otherwise a job loses all other values when ONE is changed."""
     db.add(Job(user_id=anna.id, name="Digest", kind="prompt", prompt="{{thema}} {{sprache}}",
                args={"thema": "Funk", "sprache": "Deutsch"}))
     await db.commit()
@@ -92,8 +92,8 @@ async def test_abschalten_ueber_update(db, anna):
 
 
 async def test_lauf_wird_erst_nach_dem_commit_eingereiht(db, anna, monkeypatch):
-    """Andersherum greift ein freier Worker den Auftrag, bevor es den JobRun gibt — der Lauf
-    bliebe für immer auf 'running' (derselbe Fehler wie in api/ops.py)."""
+    """The other way round a free worker grabs the assignment before the JobRun exists, and the
+    run would stay on 'running' forever (the same bug as in api/ops.py)."""
     db.add(Job(user_id=anna.id, name="Digest", kind="prompt", prompt="x"))
     await db.commit()
     j = (await db.execute(select(Job))).scalars().one()
@@ -101,7 +101,7 @@ async def test_lauf_wird_erst_nach_dem_commit_eingereiht(db, anna, monkeypatch):
     gesehen = {}
 
     async def fake_enqueue(payload):
-        # Zum Zeitpunkt des Einreihens MUSS der JobRun schon in der DB stehen.
+        # At the moment of queueing the JobRun MUST already stand in the database.
         factory = getattr(db, "__test_factory__")
         async with factory() as s2:
             gesehen["run"] = await s2.get(JobRun, payload["job_run_id"])
@@ -113,7 +113,7 @@ async def test_lauf_wird_erst_nach_dem_commit_eingereiht(db, anna, monkeypatch):
 
 
 async def test_schreibende_jobtools_brauchen_freigabe(db):
-    """Ein Zeitplan wirkt dauerhaft weiter — anders als ein Kommentar am Ticket."""
+    """A schedule keeps acting permanently, unlike a comment on a ticket."""
     assert TRACCOON_GATED_TOOLS <= TRACCOON_TOOL_NAMES
     assert "traccoon_create_job" in TRACCOON_GATED_TOOLS
     assert "traccoon_list_jobs" not in TRACCOON_GATED_TOOLS

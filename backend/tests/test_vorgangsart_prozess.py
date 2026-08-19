@@ -1,10 +1,10 @@
-"""Die Vorgangsart wählt den Prozess.
+"""The issue type chooses the process.
 
-Bis hierher fuhr jedes Ticket eines Projekts denselben Lebenszyklus. Jetzt darf ein Bug
-einen eigenen haben, während Aufgabe und Anforderung weiter dem Satz folgen — die Kopie
-hängt dafür an der Vorgangsart.
+Until now every ticket of a project ran the same lifecycle. Now a bug may have one of its
+own while task and requirement keep following the set; the copy hangs off the issue type for
+that.
 
-Auflösung: Vorgangsart → projekteigen (allgemein) → Satz → Owner-Satz → Standard.
+Resolution: issue type, then project-owned (generic), then set, then owner set, then default.
 """
 from app.models.enums import ProjectRole, StatusCategory
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
@@ -34,11 +34,11 @@ async def test_ohne_eigene_kopie_gilt_fuer_alle_dasselbe(db):
     fuer_aufgabe = await sets.resolve_definition(db, proj.id, SLOT, aufgabe.id)
     fuer_bug = await sets.resolve_definition(db, proj.id, SLOT, bug.id)
     assert fuer_aufgabe is not None
-    assert fuer_aufgabe.id == fuer_bug.id      # beide folgen dem Standard
+    assert fuer_aufgabe.id == fuer_bug.id      # both follow the default
 
 
 async def test_kopie_fuer_eine_vorgangsart_gilt_nur_dort(db):
-    """Der Kern: ein eigener Ablauf für Bugs lässt alle anderen unberührt."""
+    """The core: an own flow for bugs leaves all the others untouched."""
     await ensure_builtin_set(db)
     proj, aufgabe, bug = await _projekt_mit_arten(db)
     standard = await sets.resolve_definition(db, proj.id, SLOT)
@@ -48,7 +48,7 @@ async def test_kopie_fuer_eine_vorgangsart_gilt_nur_dort(db):
 
     assert (await sets.resolve_definition(db, proj.id, SLOT, bug.id)).id == eigen.id
     assert (await sets.resolve_definition(db, proj.id, SLOT, aufgabe.id)).id == standard.id
-    # Und ohne Angabe der Vorgangsart bleibt es beim Standard.
+    # And without naming the issue type it stays with the default.
     assert (await sets.resolve_definition(db, proj.id, SLOT)).id == standard.id
 
 
@@ -63,7 +63,7 @@ async def test_allgemeine_kopie_greift_wo_keine_besondere_steht(db):
 
 
 async def test_zweimal_anpassen_liefert_dieselbe_kopie(db):
-    """Sonst entstünden stille Doppel — der Index verbietet sie ohnehin."""
+    """Otherwise silent duplicates would arise; the index forbids them anyway."""
     await ensure_builtin_set(db)
     proj, _, bug = await _projekt_mit_arten(db)
     a = await sets.customize(db, proj, SLOT, actor_id=None, issue_type_id=bug.id)
@@ -72,7 +72,7 @@ async def test_zweimal_anpassen_liefert_dieselbe_kopie(db):
 
 
 async def test_lebenszyklus_startet_den_ablauf_der_vorgangsart(db):
-    """Nicht nur die Auflösung — der echte Start muss die Vorgangsart berücksichtigen."""
+    """Not only the resolution: the real start has to take the issue type into account."""
     from app.services.lifecycle_flow import start_lifecycle
     await ensure_builtin_set(db)
     proj, aufgabe, bug = await _projekt_mit_arten(db)
@@ -105,6 +105,6 @@ async def test_api_legt_kopie_je_vorgangsart_an(client, db):
     assert r.status_code == 201, r.text
     assert r.json()["issue_type_id"] == bug_id
 
-    # Die Aufgabe folgt weiterhin dem Satz.
+    # The task keeps following the set.
     fuer_aufgabe = await sets.resolve_definition(db, pid, SLOT, aufgabe_id)
     assert fuer_aufgabe.id != r.json()["id"]

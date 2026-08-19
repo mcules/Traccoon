@@ -1,8 +1,7 @@
-"""Artefakte: ein Register für Ticket, Hardware und eigene Typen — und EIN Weg, einen
-Zustand zu setzen.
+"""Artifacts: a register for ticket, hardware and own types, and ONE way to set a state.
 
-Vorher gab es drei Status-Aktionen, von denen je nach Ablauf zwei sinnlos waren, und die
-möglichen Werte standen nur im Code.
+Before there were three status actions of which two were pointless depending on the flow,
+and the possible values stood only in the code.
 """
 import pytest
 from app.models.artifact import ArtifactFieldOption, ArtifactType
@@ -23,7 +22,7 @@ async def register(db):
 
 
 async def test_eingebaute_typen_decken_die_echten_zustaende_ab(db, register):
-    """Die Schlüssel MÜSSEN den Enum-Werten entsprechen — sie werden so gespeichert."""
+    """The keys MUST correspond to the enum values: they are stored that way."""
     ticket = await art.type_by_key(db, "ticket")
     hardware = await art.type_by_key(db, "hardware")
     ticket_keys = {s.value for s in await art.statuses(db, ticket.id)}
@@ -59,7 +58,7 @@ async def test_zustand_setzen_wirkt_auf_das_ticket(db, register):
                            status_key="hold", reason="merge")
     assert issue.agent_status == TicketAgentStatus.hold
     assert issue.hold_reason.value == "merge"
-    assert issue.status_id == spalten["Warten"].id      # Board-Spalte zieht nach
+    assert issue.status_id == spalten["Warten"].id      # the board column follows
 
 
 async def test_zustand_setzen_wirkt_auf_die_hardware(db, register):
@@ -68,7 +67,7 @@ async def test_zustand_setzen_wirkt_auf_die_hardware(db, register):
     await art.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset, asset=asset,
                            status_key="delivered")
     assert asset.purchase_status == PurchaseStatus.delivered
-    assert asset.delivery_date is not None       # Datum wird mitgeführt
+    assert asset.delivery_date is not None       # the date is carried along
 
 
 async def test_unbekannter_zustand_wird_abgewiesen(db, register):
@@ -99,7 +98,7 @@ async def test_nur_admin_pflegt_typen(client, db, register):
     chef = await make_user(db, "chef", admin=True)
 
     r = await client.get("/artifact-types", headers=auth(normal))
-    assert r.status_code == 200 and len(r.json()) == 2      # lesen darf jeder
+    assert r.status_code == 200 and len(r.json()) == 2      # everybody may read
 
     r = await client.post("/artifact-types", headers=auth(normal),
                           json={"key": "vertrag", "name": "Vertrag"})
@@ -120,7 +119,7 @@ async def test_eingebauter_typ_laesst_sich_nicht_loeschen(client, db, register):
 
 
 async def test_beschriftung_eines_eingebauten_zustands_ist_aenderbar(client, db, register):
-    """Der Schlüssel bleibt (er IST der gespeicherte Wert), die Beschriftung nicht."""
+    """The key stays (it IS the stored value), the label does not."""
     chef = await make_user(db, "chef", admin=True)
     ticket = await art.type_by_key(db, "ticket")
     s = next(x for x in await art.statuses(db, ticket.id) if x.value == "to_test")
@@ -129,11 +128,11 @@ async def test_beschriftung_eines_eingebauten_zustands_ist_aenderbar(client, db,
                                "category": "in_progress", "order": 5, "waiting": True})
     assert r.status_code == 200
     assert r.json()["label"] == "Warte auf Abnahme"
-    assert r.json()["value"] == "to_test"        # unverändert
+    assert r.json()["value"] == "to_test"        # unchanged
 
 
 async def test_uebergreifende_liste_zeigt_ticket_und_hardware(client, db, register):
-    """Der eigentliche Gewinn: „was liegt an?" über beide Welten in einer Abfrage."""
+    """The actual gain: "what is pending?" over both worlds in one query."""
     from app.models.enums import ProjectRole, StatusCategory
     from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
     from conftest import add_member
@@ -160,7 +159,7 @@ async def test_uebergreifende_liste_zeigt_ticket_und_hardware(client, db, regist
     typen = {a["type_key"] for a in r.json()}
     assert typen == {"ticket", "hardware"}
 
-    # Nur, was auf einen Menschen wartet — das Register sagt, welche Zustände das sind.
+    # Only what waits for a human: the register says which states those are.
     r = await client.get("/artifacts?waiting=true", headers=auth(owner))
     wartend = r.json()
     assert [a["ref"] for a in wartend] == ["TST-1"]
