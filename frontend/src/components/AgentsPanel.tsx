@@ -2,6 +2,9 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
+import {
+  Aktionen, Bereich, Dialog, DialogFuss, Fehlerzeile, ICON, IconKnopf, Liste, ListenZeile, LoeschDialog,
+} from "./ui";
 
 interface Agent {
   id: number; role: string; display_name: string; system_prompt: string;
@@ -36,6 +39,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   const { data: skills } = useQuery({ queryKey: ["skills"], queryFn: () => api.get<any[]>("/skills") });
   const { data: mcpServers } = useQuery({ queryKey: ["mcp-servers"], queryFn: () => api.get<any[]>("/mcp-servers") });
   const [edit, setEdit] = useState<Partial<Agent> | null>(null);
+  const [loeschAgent, setLoeschAgent] = useState<Agent | null>(null);
   const [showAdv, setShowAdv] = useState(false);
   const inv = () => qc.invalidateQueries({ queryKey: key });
   const tokensFor = (p?: string) => (tokens || []).filter((t) => t.provider === p);
@@ -62,7 +66,9 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
     mutationFn: (a: Partial<Agent>) => a.id ? api.put(`/agents/${a.id}`, a) : api.post("/agents", a),
     onSuccess: () => { setEdit(null); setErr(""); inv(); }, onError: fail,
   });
-  const del = useMutation({ mutationFn: (id: number) => api.del(`/agents/${id}`), onSuccess: inv, onError: fail });
+  const del = useMutation({
+    mutationFn: (id: number) => api.del(`/agents/${id}`),
+    onSuccess: () => { setLoeschAgent(null); inv(); }, onError: fail });
   const seed = useMutation({ mutationFn: () => api.post("/agents/seed-defaults"), onSuccess: inv, onError: fail });
   const loadInto = useMutation({
     mutationFn: (id: number) => api.post(`/agents/${id}/copy-to-project`, { project_id: projectId }),
@@ -86,8 +92,8 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   });
 
   return (
-    <div>
-      {err && <div className="mb-2 rounded border border-red-400/40 bg-red-400/10 px-2 py-1 text-sm text-red-400">{err}</div>}
+    <Bereich>
+      <Fehlerzeile text={err} />
       {note && <div className="mb-2 text-sm text-green-400">{note}</div>}
       <div className="mb-3 flex items-center gap-2">
         <p className="flex-1 text-sm text-muted">
@@ -109,9 +115,10 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
           ({inherited.map((a) => a.role).join(", ")}). Lege hier einen an, um sie fürs Projekt zu überschreiben.</p>
       )}
 
-      <div className="space-y-2">
+      <Liste>
         {agents?.map((a) => (
-          <div key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-line bg-card p-2.5 text-sm">
+          <ListenZeile key={a.id}>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-mono font-medium">{a.role}</span>
             <span className="text-xs text-muted">{a.provider}{a.model ? ` · ${a.model}` : ""}</span>
             <div className="flex gap-1">
@@ -123,12 +130,18 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
             </div>
             {a.origin_agent_id && <span className="rounded bg-surface px-1 text-xs">{tr(a.customized ? "agents_panel.bearbeitet" : "agents_panel.verknuepft")}</span>}
             <div className="hidden flex-1 sm:block" />
-            {!projectId && <button onClick={() => syncLinked.mutate(a.id)} className="text-xs text-muted hover:text-ink" title={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}>{tr("agents_panel.verknuepfte")}</button>}
-            <button onClick={() => setEdit(a)} className="text-brand">{tr("common.bearbeiten")}</button>
-            <button onClick={() => del.mutate(a.id)} className="text-muted hover:text-red-400">{tr("common.loeschen_klein")}</button>
-          </div>
+            <Aktionen>
+              {!projectId && (
+                <IconKnopf icon="🔗" titel={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}
+                  onClick={() => syncLinked.mutate(a.id)} disabled={syncLinked.isPending} />
+              )}
+              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setEdit(a)} />
+              <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschAgent(a)} />
+            </Aktionen>
+            </div>
+          </ListenZeile>
         ))}
-      </div>
+      </Liste>
 
       {/* Projekt-Modus: geerbte (globale) Agenten mit „In Projekt laden" */}
       {projectId && inherited.map((a) => (
@@ -140,13 +153,12 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
       ))}
 
       {edit && (
-        <div className="fixed inset-0 z-30 flex justify-end bg-black/40" onClick={() => setEdit(null)}>
-          <div className="h-full w-full max-w-lg overflow-y-auto bg-card p-5" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-medium">{edit.id ? "Agent bearbeiten" : "Neuer Agent"}</h3>
-              <button onClick={() => setEdit(null)} className="text-muted">✕</button>
-            </div>
-            <div className="space-y-4 text-sm">
+        <Dialog breit titel={tr(edit.id ? "agents_panel.agent_bearbeiten" : "agents_panel.agent_anlegen")}
+          onClose={() => setEdit(null)}
+          fuss={<DialogFuss onAbbrechen={() => setEdit(null)} laeuft={save.isPending}
+            deaktiviert={!edit.role?.trim()} onSpeichern={() => save.mutate(edit)}
+            speichernText={edit.id ? undefined : tr("common.anlegen")} />}>
+          <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-2">
                 <F label={tr("agents_panel.rolle_kennung")}><input value={edit.role || ""} onChange={(e) => setEdit({ ...edit, role: e.target.value })} className={inp} /></F>
                 <F label={tr("agents_panel.anzeigename")}><input value={edit.display_name || ""} onChange={(e) => setEdit({ ...edit, display_name: e.target.value })} className={inp} /></F>
@@ -219,12 +231,14 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                 </div>
               )}
 
-              <button onClick={() => save.mutate(edit)} className="w-full rounded bg-brand py-2 text-white">{tr("agents_panel.speichern")}</button>
-            </div>
           </div>
-        </div>
+        </Dialog>
       )}
-    </div>
+      {loeschAgent && (
+        <LoeschDialog was={loeschAgent.role} laeuft={del.isPending}
+          onClose={() => setLoeschAgent(null)} onLoeschen={() => del.mutate(loeschAgent.id)} />
+      )}
+    </Bereich>
   );
 }
 
@@ -310,7 +324,7 @@ function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
             <span>{i.name}</span>
             {i.set_keys?.length > 0 && <span className="text-xs text-muted">({i.set_keys.length} Variable(n))</span>}
             <div className="flex-1" />
-            <button onClick={() => del(i.id)} className="text-muted hover:text-red-400">✕</button>
+            <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => del(i.id)} />
           </div>
         ))}
         {instances?.length === 0 && <div className="text-xs text-muted">{tr("agents_panel.keine_mcp_server_freigegeben")}</div>}

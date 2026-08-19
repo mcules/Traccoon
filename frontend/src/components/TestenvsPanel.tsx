@@ -2,6 +2,9 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
+import {
+  Bereich, Etikett, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile, Zeilenknopf,
+} from "./ui";
 
 interface Svc { service: string; container: string; status: string }
 interface Env {
@@ -10,10 +13,8 @@ interface Env {
   error: string | null; services: Svc[];
 }
 
-const BADGE: Record<string, string> = {
-  running: "bg-green-500/20 text-green-400",
-  starting: "bg-yellow-500/20 text-yellow-400",
-  error: "bg-red-500/20 text-red-400",
+const BADGE: Record<string, "gruen" | "gelb" | "rot"> = {
+  running: "gruen", starting: "gelb", error: "rot",
 };
 
 /** Overview of all test environments of the project (ticket plus branch) with logs and stop (TRA-18). */
@@ -63,36 +64,29 @@ export default function TestenvsPanel({ project }: { project: Project }) {
 
   return (
     <div className="space-y-4">
-      {err && <div className="text-sm text-red-400">{err}</div>}
+      <Fehlerzeile text={err} />
 
-      <section>
-        <h3 className="mb-2 font-medium">{tr("testenvs_panel.laufende_umgebungen")}</h3>
-        <div className="space-y-2">
+      <Bereich titel={tr("testenvs_panel.laufende_umgebungen")}>
+        <Liste>
           {envs?.map((e) => (
-            <div key={e.container} className="rounded border border-line bg-card text-sm">
-              <div className="flex flex-wrap items-center gap-2 p-2.5">
-                <span className={`rounded px-1.5 py-0.5 text-xs ${BADGE[e.status] || "bg-surface text-muted"}`}>
-                  {e.status || "—"}
-                </span>
-                <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">
-                  {e.kind === "ticket" ? "Ticket" : "Branch"}
-                </span>
-                <span className="flex-1 truncate">{e.label}</span>
+            <ListenZeile key={e.container}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Etikett farbe={BADGE[e.status] || "neutral"}>{e.status || "—"}</Etikett>
+                <Etikett>{e.kind === "ticket" ? "Ticket" : "Branch"}</Etikett>
+                <span className="min-w-0 flex-1 truncate text-ink">{e.label}</span>
                 {e.url && (
                   <a href={e.url} target="_blank" rel="noreferrer"
-                    className="text-brand hover:underline">{tr("testenvs_panel.oeffnen")}</a>
+                    className="shrink-0 text-brand hover:underline">{tr("testenvs_panel.oeffnen")}</a>
                 )}
-                <button onClick={() => { setOffen(offen === e.container ? null : e.container); }}
-                  className="text-muted hover:text-ink">
-                  {offen === e.container ? "▾ Details" : "▸ Details"}</button>
+                <Zeilenknopf onClick={() => setOffen(offen === e.container ? null : e.container)}>
+                  {offen === e.container ? "▾ Details" : "▸ Details"}
+                </Zeilenknopf>
                 {kann && (
-                  <button onClick={() => stop.mutate(e)}
-                    className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-red-400">
-                    Stoppen</button>
+                  <IconKnopf icon="⏹" titel={tr("testenvs_panel.stoppen")} gefahr onClick={() => stop.mutate(e)} />
                 )}
               </div>
               {offen === e.container && (
-                <div className="space-y-2 border-t border-line p-2.5">
+                <div className="mt-2 space-y-2 border-t border-line pt-2.5">
                   <div className="text-xs text-muted">
                     {tr("testenvs.container_praefix")} <span className="font-mono">{e.container}</span>
                     {e.port ? ` · Port ${e.port}` : ""}
@@ -103,9 +97,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                   )}
                   <div className="flex flex-wrap gap-1">
                     {e.services.map((s) => (
-                      <span key={s.container} className="rounded bg-surface px-1.5 py-0.5 text-xs">
-                        {s.service} · <span className="text-muted">{s.status}</span>
-                      </span>
+                      <Etikett key={s.container}>{s.service} · {s.status}</Etikett>
                     ))}
                     {e.services.length === 0 && (
                       <span className="text-xs text-muted">{tr("testenvs_panel.kein_container_beim_runner_sichtbar")}</span>
@@ -127,18 +119,14 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                   )}
                 </div>
               )}
-            </div>
+            </ListenZeile>
           ))}
-          {envs?.length === 0 && <div className="text-xs text-muted">{tr("testenvs_panel.keine_laufende_testumgebung")}</div>}
-        </div>
-      </section>
+          {envs?.length === 0 && <ListeLeer>{tr("testenvs_panel.keine_laufende_testumgebung")}</ListeLeer>}
+        </Liste>
+      </Bereich>
 
       {kann && (
-        <section className="rounded-lg border border-line bg-card p-3">
-          <h3 className="mb-1 font-medium">{tr("testenvs_panel.branch_testumgebung_starten")}</h3>
-          <p className="mb-2 text-xs text-muted">
-            {tr("testenvs.baut_branch")}
-          </p>
+        <Bereich titel={tr("testenvs_panel.branch_testumgebung_starten")} hinweis={tr("testenvs.baut_branch")}>
           <div className="flex flex-wrap items-center gap-2">
             <select value={branch} onChange={(e) => setBranch(e.target.value)}
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
@@ -149,7 +137,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
               className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-40">
               {start.isPending ? "startet…" : "Starten"}</button>
           </div>
-        </section>
+        </Bereich>
       )}
     </div>
   );

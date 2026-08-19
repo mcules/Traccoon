@@ -6,6 +6,7 @@ import { api, workflowApi, MyDashboard, MyTicket, ProjectMeta, WorkflowTaskLite 
 import { waitInfo } from "../lib/waitReason";
 import { formatTime } from "../lib/formatTime";
 import { NODE_TYPE_LABELS } from "./workflow/types";
+import { Bereich, Liste, ZEILE } from "./ui";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 
 const PRIO_FARBE: Record<string, string> = {
@@ -157,9 +158,9 @@ function ProjektGruppen({ tickets }: { tickets: MyTicket[] }) {
             <span className="truncate">{g.name}</span>
             <span className="rounded bg-surface px-1.5 py-0.5 text-[11px]">{g.items.length}</span>
           </Link>
-          <div className="space-y-1.5">
+          <Liste>
             {g.items.map((t) => <TicketZeile key={t.key} t={t} />)}
-          </div>
+          </Liste>
         </div>
       ))}
     </div>
@@ -170,7 +171,7 @@ function TicketZeile({ t }: { t: MyTicket }) {
   const wi = waitInfo(t);
   return (
     <Link to={`/projects/${t.project_key}/tickets/${t.key}`}
-      className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2 hover:border-brand">
+      className={`${ZEILE} flex items-center gap-3`}>
       <span className="font-mono text-xs text-muted" title={t.project_name}>{t.key}</span>
       <span className="min-w-0 flex-1 truncate text-sm">{t.summary}</span>
       {t.agent_working && <span className="text-xs text-sky-400" title={tr("my_work.agent_arbeitet")}>{tr("my_work.laeuft")}</span>}
@@ -198,10 +199,8 @@ function Kachel({ label, wert, farbe }: { label: string; wert: number; farbe?: s
 
 function Sektion({ titel, hinweis, children }: { titel: string; hinweis: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-line bg-card p-4">
-      <div className="mb-1 text-sm font-medium">{titel}</div>
-      <div className="mb-3 text-xs text-muted">{hinweis}</div>
-      <div className="space-y-1.5">{children}</div>
-    </div>
+    <Bereich titel={titel} hinweis={hinweis}>
+      <Liste>{children}</Liste>
+    </Bereich>
   );
 }

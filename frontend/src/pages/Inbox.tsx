@@ -5,6 +5,9 @@ import { api, ApiError } from "../api";
 import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
 import AssistantChat from "../components/AssistantChat";
+import {
+  Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, Reiter,
+} from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 interface InboxItem {
@@ -17,24 +20,25 @@ interface InboxItem {
   created_at: string; finished_at: string | null;
 }
 
-type Tab = "chat" | "inbox" | "rules";
+type Tab = "chat" | "inbox" | "rules" | "statistik";
 type Filter = "offen" | "erledigt" | "alle";
 const OPEN = ["new", "approved", "running"];
 
 // The tables hold keys: they come into being while the module loads, and a tr() at this
 // place would keep the old label on a language change.
-const PRIO: Record<string, { label: string; cls: string }> = {
-  urgent: { label: "inbox.prio_urgent", cls: "bg-red-500/15 text-red-400" },
-  high: { label: "inbox.prio_high", cls: "bg-amber-500/15 text-amber-400" },
-  normal: { label: "inbox.prio_normal", cls: "bg-surface text-muted" },
-  low: { label: "inbox.prio_low", cls: "bg-surface text-muted" },
+type EtikettFarbe = "neutral" | "gruen" | "gelb" | "rot" | "blau" | "violett" | "brand";
+const PRIO: Record<string, { label: string; farbe: EtikettFarbe }> = {
+  urgent: { label: "inbox.prio_urgent", farbe: "rot" },
+  high: { label: "inbox.prio_high", farbe: "gelb" },
+  normal: { label: "inbox.prio_normal", farbe: "neutral" },
+  low: { label: "inbox.prio_low", farbe: "neutral" },
 };
-const STATUS: Record<string, { label: string; cls: string }> = {
-  new: { label: "inbox.status_new", cls: "bg-brand/20 text-brand" },
-  approved: { label: "inbox.status_approved", cls: "bg-amber-500/15 text-amber-400" },
-  running: { label: "inbox.status_running", cls: "bg-brand/20 text-brand" },
-  done: { label: "inbox.status_done", cls: "bg-green-600/15 text-green-400" },
-  error: { label: "inbox.status_error", cls: "bg-red-500/15 text-red-400" },
+const STATUS: Record<string, { label: string; farbe: EtikettFarbe }> = {
+  new: { label: "inbox.status_new", farbe: "brand" },
+  approved: { label: "inbox.status_approved", farbe: "gelb" },
+  running: { label: "inbox.status_running", farbe: "blau" },
+  done: { label: "inbox.status_done", farbe: "gruen" },
+  error: { label: "inbox.status_error", farbe: "rot" },
 };
 
 // Pull mcules@… out of "Name <mail>", for the "always from …" label.
@@ -51,15 +55,91 @@ export default function Inbox() {
     <div className="mx-auto max-w-3xl">
       <h1 className="mb-1 text-lg font-semibold">{tr("inbox.persoenlicher_assistent")}</h1>
       <p className="mb-4 text-sm text-muted">{tr("inbox.einleitung")}</p>
-      <div className="mb-4 flex gap-1 border-b border-line">
-        {([["chat", "inbox.reiter_chat"], ["inbox", "inbox.reiter_eingaenge"],
-           ["rules", "inbox.reiter_regeln"]] as [Tab, string][]).map(([reiter, l]) => (
-          <button key={reiter} onClick={() => setTab(reiter)}
-            className={`px-3 py-2 text-sm ${tab === reiter ? "border-b-2 border-brand text-ink" : "text-muted"}`}>
-            {tr(l)}</button>
-        ))}
+      <div className="mb-4">
+        <Reiter aktiv={tab} onWaehlen={setTab} auswahl={[
+          ["chat", tr("inbox.reiter_chat")],
+          ["inbox", tr("inbox.reiter_eingaenge")],
+          ["rules", tr("inbox.reiter_regeln")],
+          ["statistik", tr("inbox.reiter_statistik")],
+        ]} />
       </div>
-      {tab === "chat" ? <AssistantChat /> : tab === "inbox" ? <InboxList /> : <AssistantPolicies />}
+      {tab === "chat" ? <AssistantChat />
+        : tab === "inbox" ? <InboxList />
+        : tab === "statistik" ? <Statistik />
+        : <AssistantPolicies />}
+    </div>
+  );
+}
+
+type Einstufung = { gesamt: number; aussortiert: number; durchgelassen: number; offen: number };
+type StatistikDaten = {
+  tage: number;
+  arten: Record<string, Einstufung>;
+  modell: { entschieden: number; treffer: number; quote: number | null };
+};
+
+/**
+ * As what mail was classified.
+ *
+ * Counted by the server out of the rows that exist anyway, so the view shows the whole
+ * stock from the first opening instead of starting at zero. The bars are plain div widths:
+ * a chart library for six numbers would be a dependency nobody can read afterwards.
+ */
+function Statistik() {
+  const [tage, setTage] = useState(30);
+  const { data } = useQuery({
+    queryKey: ["assistant-statistik", tage],
+    queryFn: () => api.get<StatistikDaten>(`/assistant/statistik?tage=${tage}`),
+  });
+  const arten = Object.entries(data?.arten || {});
+  const groesste = Math.max(1, ...arten.map(([, w]) => w.gesamt));
+
+  return (
+    <div className="space-y-4">
+      <Bereich
+        hinweis={tr("inbox.statistik_hinweis")}
+        werkzeuge={<Reiter aktiv={String(tage)} onWaehlen={(w) => setTage(Number(w))} auswahl={[
+          ["7", "7 Tage"], ["30", "30 Tage"], ["90", "90 Tage"], ["365", "1 Jahr"],
+        ]} />}
+      >
+        {arten.length === 0 && <p className="text-sm text-muted">{tr("inbox.statistik_leer")}</p>}
+        <div className="space-y-2">
+          {arten.map(([art, w]) => (
+            <div key={art}>
+              <div className="mb-0.5 flex items-baseline gap-2 text-sm">
+                <span className="font-medium text-ink">{art}</span>
+                <span className="text-xs text-muted">
+                  {w.gesamt}× · {tr("inbox.statistik_aussortiert", { anzahl: w.aussortiert })}
+                  {w.offen > 0 && ` · ${tr("inbox.statistik_offen", { anzahl: w.offen })}`}
+                </span>
+              </div>
+              {/* Zwei Abschnitte auf einem Balken: was weggeräumt wurde, was blieb. */}
+              <div className="flex h-2.5 overflow-hidden rounded bg-surface"
+                style={{ width: `${Math.round((w.gesamt / groesste) * 100)}%`, minWidth: "6%" }}>
+                <div className="bg-red-500/60" style={{ flexGrow: w.aussortiert || 0 }} />
+                <div className="bg-brand/50" style={{ flexGrow: (w.gesamt - w.aussortiert) || 0 }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Bereich>
+
+      <Bereich titel={tr("inbox.statistik_modell")} hinweis={tr("inbox.statistik_modell_hinweis")}>
+        {data?.modell.quote === null || data?.modell.entschieden === 0 ? (
+          <p className="text-sm text-muted">{tr("inbox.statistik_modell_leer")}</p>
+        ) : (
+          <p className="text-sm text-ink">
+            <span className="text-2xl font-semibold">
+              {Math.round((data?.modell.quote ?? 0) * 100)}%
+            </span>{" "}
+            <span className="text-muted">
+              {tr("inbox.statistik_modell_zahlen", {
+                treffer: data?.modell.treffer ?? 0, gesamt: data?.modell.entschieden ?? 0,
+              })}
+            </span>
+          </p>
+        )}
+      </Bereich>
     </div>
   );
 }
@@ -87,32 +167,29 @@ function InboxList() {
   return (
     <>
       <div className="mb-4 flex gap-1 border-b border-line">
-        {(["offen", "erledigt", "alle"] as Filter[]).map((f) => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`px-3 py-2 text-sm capitalize ${filter === f ? "border-b-2 border-brand text-ink" : "text-muted"}`}>
-            {f}</button>
-        ))}
       </div>
-      {err && <div className="mb-3 rounded bg-red-500/10 px-3 py-2 text-sm text-red-400">{err}</div>}
+      <Bereich
+        werkzeuge={<Reiter aktiv={filter} onWaehlen={setFilter} auswahl={[
+          ["offen", "Offen"], ["erledigt", "Erledigt"], ["alle", "Alle"],
+        ]} />}
+      >
+      <Fehlerzeile text={err} />
       {isLoading && <div className="text-sm text-muted">{tr("inbox.laedt")}</div>}
-      {!isLoading && items.length === 0 && (
-        <div className="rounded-lg border border-dashed border-line p-8 text-center text-sm text-muted">
-          Nichts hier. Eingehende Mails erscheinen automatisch.
-        </div>
-      )}
-      <div className="space-y-2">
+      <Liste>
         {items.map((eintrag) => {
           const prio = PRIO[eintrag.priority] || PRIO.normal;
-          const st = STATUS[eintrag.status] || { label: eintrag.status, cls: "bg-surface text-muted" };
+          const st = STATUS[eintrag.status] || { label: eintrag.status, farbe: "neutral" as const };
           const expanded = openId === eintrag.id;
           return (
-            <div key={eintrag.id} className="rounded-lg border border-line bg-card p-4">
+            <ListenZeile key={eintrag.id}>
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                <span className={`rounded px-1.5 text-xs ${st.cls}`}>{tr(st.label)}</span>
-                <span className={`rounded px-1.5 text-xs ${prio.cls}`}>{tr(prio.label)}</span>
-                {eintrag.category && <span className="rounded bg-surface px-1.5 text-xs text-muted">{eintrag.category}</span>}
+                <Etikett farbe={st.farbe}>{tr(st.label)}</Etikett>
+                <Etikett farbe={prio.farbe}>{tr(prio.label)}</Etikett>
+                {eintrag.category && <Etikett>{eintrag.category}</Etikett>}
                 {eintrag.sensitive && <span title="sensibel — vertraulich behandeln">🔒</span>}
-                {eintrag.redaction === "unredacted" && <span className="rounded bg-amber-500/15 px-1.5 text-xs text-amber-400" title={tr("inbox.volltext_freigegeben")}>ungeschwärzt</span>}
+                {eintrag.redaction === "unredacted" && (
+                  <Etikett farbe="gelb" titel={tr("inbox.volltext_freigegeben")}>ungeschwärzt</Etikett>
+                )}
                 <span className="ml-auto text-xs text-muted">{formatTime(eintrag.created_at)}</span>
               </div>
               <div className="truncate font-medium text-ink">{eintrag.subject || eintrag.title}</div>
@@ -156,10 +233,14 @@ function InboxList() {
                   {eintrag.result && <div className="text-sm text-ink whitespace-pre-wrap">{eintrag.result}</div>}
                 </div>
               )}
-            </div>
+            </ListenZeile>
           );
         })}
-      </div>
+        {!isLoading && items.length === 0 && (
+          <ListeLeer>Nichts hier. Eingehende Mails erscheinen automatisch.</ListeLeer>
+        )}
+      </Liste>
+      </Bereich>
     </>
   );
 }

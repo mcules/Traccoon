@@ -48,6 +48,14 @@ so a German interface says it in German. Both catalogs (`frontend/src/i18n/de.js
 `HTTPException` is left for the cases that only pass a foreign message through (`str(exc)`)
 and have no sentence of their own to name.
 
+## The look of the interface
+
+`frontend/DESIGN.md` says which building blocks a page is made of (`Bereich`, `Liste`,
+`ListenZeile`, `Etikett`, `Zustand`, `Zeilenknopf` … in `src/components/ui.tsx`) and when
+each one is taken. Read it BEFORE writing markup: whoever builds a chain of classes by hand
+that already exists there produces exactly the differences that file exists to abolish — five
+tabs of the same page had grown five answers to the same question.
+
 ## Building and checking
 
 - `check` runs inside the worktree and has to be green before you report done.

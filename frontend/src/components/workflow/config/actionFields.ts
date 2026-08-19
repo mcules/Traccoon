@@ -111,7 +111,67 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
       { key: "channel", label: "Weg", type: "select",
         options: [["", "option.standard_der_person"], ["telegram", "option.telegram"], ["email", "option.e_mail"]],
         hint: "action_fields.leer_lassen_ist_der_normalfall_jeder_verwalt"},
+      { key: "kind", label: "Art", type: "text", placeholder: "workflow_notify",
+        hint: "Entscheidet, welche Knöpfe der Bot anhängt (z. B. spam_auto = „zurückholen“). Leer = gewöhnliche Meldung ohne Knöpfe." },
+      { key: "bezug", label: "Bezug", type: "kv",
+        placeholder: "spam_verdict_id: {{ spam.verdict_id }}",
+        hint: "Worauf sich die Knöpfe beziehen: spam_verdict_id, assistant_task_id, issue_id oder project_id." },
     ],
+  },
+
+  assistent_auftrag: {
+    summary: "Gibt dem persönlichen Assistenten einen freien Auftrag — ohne Mail, ohne Ticket, ohne Projekt.",
+    fields: [
+      { key: "auftrag", label: "Auftrag", type: "textarea", required: true,
+        placeholder: "Lies Paperless-Dokument {{ doc_id }} und halte Wissenswertes im Vault fest.",
+        hint: "Der Auftrag selbst. {{ pfad }} holt Werte aus dem Kontext." },
+      { key: "titel", label: "Titel", type: "text",
+        placeholder: "Paperless #{{ doc_id }}",
+        hint: "Überschrift im Assistenten-Eingang. Leer = erste Zeile des Auftrags." },
+      { key: "agent", label: "Agent", type: "select", source: "agent_role",
+        hint: "Wer den Auftrag ausführt. Leer = der persönliche Assistent." },
+      { key: "freigabe", label: "Erst freigeben lassen", type: "boolean",
+        hint: "An: der Auftrag wartet im Eingang auf deinen Menschen. Aus: er läuft sofort." },
+      { key: "warten", label: "Auf das Ergebnis warten", type: "boolean",
+        hint: "An: der Schritt bleibt stehen, bis der Lauf fertig ist — nur dann kann der Ablauf mit der Antwort weiterarbeiten." },
+      { key: "context_key", label: "Ergebnis unter", type: "text", placeholder: "assistent",
+        showIf: ["warten", ["true"]],
+        hint: "Kontext-Schlüssel für das Ergebnis: {{ assistent.output }} ist die Antwort." },
+      { key: "timeout_sek", label: "Zeitgrenze (Sekunden)", type: "number",
+        showIf: ["warten", ["true"]],
+        hint: "0 = Vorgabe der Engine. Eine Rückfrage des Assistenten kann die Grenze reißen." },
+      { key: "prioritaet", label: "Priorität", type: "select",
+        options: [["normal", "normal"], ["low", "niedrig"], ["high", "hoch"], ["urgent", "dringend"]] },
+    ],
+    outcomes: "Kontext danach: auftrag.task_id, auftrag.status. Mit „warten\" zusätzlich <Ergebnis unter>.output und .status.",
+  },
+
+  antwort: {
+    summary: "Legt fest, was dieser Lauf an seinen Auslöser zurückgibt (ein wartender Webhook liest genau das).",
+    fields: [
+      { key: "text", label: "Antwort (Text)", type: "textarea",
+        placeholder: "{{ assistent.output }}",
+        hint: "Freier Text. Für eine strukturierte Antwort dieses Feld leer lassen und unten Felder setzen." },
+      { key: "felder", label: "Antwort (Felder)", type: "kv",
+        hint: "Schlüssel → Wert, Werte mit {{ pfad }}. Ein Objekt hier IST der Rumpf der Antwort." },
+      { key: "context_key", label: "Ablegen unter", type: "text", placeholder: "antwort",
+        hint: "Nur ändern, wenn der Webhook eine eigene Zuordnung benutzt." },
+    ],
+    outcomes: "Kontext danach: antwort (Text oder Objekt).",
+  },
+
+  notiz_anhaengen: {
+    summary: "action_fields.haengt_eine_zeile_an_eine_notiz_im_vault",
+    fields: [
+      { key: "pfad", label: "action_fields.notiz_pfad", type: "text", required: true,
+        placeholder: "04 Wissen/Erkennung/{{ spam.art }}.md",
+        hint: "action_fields.pfad_darf_aus_dem_kontext_kommen_so_waechst" },
+      { key: "text", label: "Text", type: "textarea", required: true,
+        placeholder: "- {{ spam.sender_domain }}: {{ spam.befunde_text }}" },
+      { key: "ueberschrift", label: "action_fields.abschnitt_optional", type: "text",
+        hint: "action_fields.wird_angelegt_wenn_es_ihn_noch_nicht_gibt" },
+    ],
+    outcomes: "action_fields.kontext_danach_notiz_ok_notiz_error",
   },
 
   messwert: {
@@ -280,7 +340,12 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     fields: [
       { key: "vorentschieden", label: "action_fields.schon_entschieden", type: "boolean", default: false,
         hint: "action_fields.meldet_einen_vom_gedaechtnis_geklaerten_fall" },
+      { key: "rueckholbar", label: "Ohne Rückfrage weggeräumt", type: "boolean", default: false,
+        hint: "Die Mail geht ohne Frage weg; die Karte trägt den Weg zurück." },
+      { key: "melden", label: "Selbst melden", type: "boolean", default: true,
+        hint: "Aus: dieser Schritt legt nur das Urteil an und stellt den Text bereit ({{ spam.karte_titel }}, {{ spam.karte_text }}) — verschickt wird er von einem Melde-Knoten dahinter, den man abschalten kann, ohne die Aussortierung zu verlieren." },
     ],
+    outcomes: "Kontext danach: spam.verdict_id, spam.karte_titel, spam.karte_text, spam.karte_art, spam.karte_faellig.",
   },
 
   spam_apply: {

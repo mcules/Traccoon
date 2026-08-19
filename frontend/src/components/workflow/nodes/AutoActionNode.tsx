@@ -8,6 +8,7 @@ const ACTION_LABEL: Record<string, string> = {
   http_request: "action.http_request",
   tool_call: "action.tool_call",
   set_context: "action.set_context",
+  notiz_anhaengen: "action.notiz_anhaengen",
   messwert: "action.messwert",
   messreihe_lesen: "action.messreihe_lesen",
   set_board_status: "action.set_board_status",
@@ -30,6 +31,8 @@ const ACTION_LABEL: Record<string, string> = {
   assistant_task: "action.assistant_task",
   assistant_card: "action.assistant_card",
   assistant_run: "action.assistant_run",
+  assistent_auftrag: "Assistent beauftragen",
+  antwort: "Antwort setzen",
 };
 
 /** Actions that run asynchronously and name their exit after the result. */

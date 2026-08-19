@@ -1,28 +1,46 @@
 import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { api, ApiError, Project } from "../api";
 import StatusManager from "./StatusManager";
-import DestinationsPanel from "./DestinationsPanel";
+import { DestinationsBereich } from "./DestinationsPanel";
 import ProjectFields from "./ProjectFields";
 import AgentsPanel from "./AgentsPanel";
 import Members from "./Members";
 import ResourceGrants from "./ResourceGrants";
 import DeploymentsPanel from "./DeploymentsPanel";
+import SlotList from "./workflow/SlotList";
+import WorkflowList from "./workflow/WorkflowList";
+import { projektPfad } from "../projectTabs";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PROVIDER_LABEL: Record<string, string> = {
   claude_code: "Claude", codex: "Codex", openai: "OpenAI",
 };
 
-type Tab = "allgemein" | "mitglieder" | "agenten" | "board" | "felder" | "git" | "testenv"
-  | "deploy" | "destinations";
-const TABS: [Tab, string][] = [
-  ["allgemein", "Allgemein"], ["mitglieder", "Mitglieder"], ["agenten", "Agenten"], ["board", "Board"],
-  ["felder", "Felder"],
-  ["git", "Git"], ["testenv", "Testumgebung"], ["deploy", "Deployment"], ["destinations", "Ziele"],
+/**
+ * The sections of the project settings, in the address.
+ *
+ * They used to hang off a `useState`: no deep link into a section, and the back button
+ * jumped out of the settings instead of one section back. The flows moved in here from
+ * their own top level tab, because a slot assignment is a setting, not a place of work.
+ */
+type Tab = "allgemein" | "mitglieder" | "agenten" | "prozesse" | "board" | "felder" | "git"
+  | "testumgebung" | "deployment" | "ziele";
+const TABS: [Tab, string, string][] = [
+  ["allgemein", "project_settings.tab_allgemein", "\u{2699}\u{FE0F}"],
+  ["mitglieder", "project_settings.tab_mitglieder", "\u{1F465}"],
+  ["agenten", "project_settings.tab_agenten", "\u{1F916}"],
+  ["prozesse", "project_settings.tab_prozesse", "\u{1F500}"],
+  ["board", "project_settings.tab_board", "\u{1F5C2}\u{FE0F}"],
+  ["felder", "project_settings.tab_felder", "\u{1F4DD}"],
+  ["git", "project_settings.tab_git", "\u{1F4C1}"],
+  ["testumgebung", "project_settings.tab_testumgebung", "\u{1F9EA}"],
+  ["deployment", "project_settings.tab_deployment", "\u{1F680}"],
+  ["ziele", "project_settings.tab_ziele", "\u{1F3AF}"],
 ];
+const TAB_KEYS = TABS.map(([k]) => k);
 
 type Settings = {
   managed: boolean; has_hardware: boolean; pm_chat_enabled: boolean; verify_command: string; review_enabled: boolean;
@@ -37,7 +55,7 @@ type Settings = {
   git_token_set: boolean; testenv_env_set: boolean;
 };
 
-export default function ProjectSettings({ project }: { project: Project }) {
+export default function ProjectSettings({ project, bereich }: { project: Project; bereich?: string }) {
   const qc = useQueryClient();
   const { data, refetch } = useQuery({
     queryKey: ["project-settings", project.id],
@@ -48,7 +66,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
     queryFn: () => api.get<{ id: number; provider: string; name: string; is_default: boolean }[]>("/me/provider-tokens"),
   });
   const [s, setS] = useState<Settings | null>(null);
-  const [tab, setTab] = useState<Tab>("allgemein");
+  const tab: Tab = (TAB_KEYS.includes(bereich as Tab) ? bereich : "allgemein") as Tab;
   const [token, setToken] = useState("");
   const [envText, setEnvText] = useState("");
   const [msg, setMsg] = useState("");
@@ -105,18 +123,22 @@ export default function ProjectSettings({ project }: { project: Project }) {
   };
 
   const showSave = tab !== "board" && tab !== "agenten" && tab !== "mitglieder"
-    && tab !== "destinations";
+    && tab !== "ziele" && tab !== "prozesse";
   return (
-    <div className="mx-auto max-w-2xl">
-      <div className="mb-4 flex flex-wrap gap-1 border-b border-line">
-        {(TABS as [Tab, string][]).map(([t, label]) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm ${tab === t ? "border-b-2 border-brand text-ink" : "text-muted"}`}>
-            {label}</button>
+    <div className="flex flex-col gap-4 md:flex-row md:gap-6">
+      {/* Ten sections wrapped into three lines of pills; as a column they simply stand there. */}
+      <nav className="flex shrink-0 flex-wrap gap-1 rounded-lg border border-line bg-card p-1 md:w-48 md:flex-col md:flex-nowrap">
+        {TABS.map(([t, label, icon]) => (
+          <Link key={t} to={projektPfad(project.key, "einstellungen", t)}
+            className={`flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm md:min-h-0 ${
+              tab === t ? "bg-surface font-medium text-ink" : "text-muted hover:bg-surface hover:text-ink"}`}>
+            <span className="text-base leading-none">{icon}</span>
+            <span>{tr(label)}</span>
+          </Link>
         ))}
-      </div>
+      </nav>
 
-      <div className="space-y-4">
+      <div className="min-w-0 max-w-2xl flex-1 space-y-4">
       {tab === "mitglieder" && (
         <div className="space-y-8">
           <Members project={project} />
@@ -222,7 +244,17 @@ export default function ProjectSettings({ project }: { project: Project }) {
       {tab === "board" && <StatusManager project={project} />}
       {tab === "felder" && <ProjectFields project={project} />}
 
-      {tab === "destinations" && <DestinationsPanel scope="project" projectId={project.id} />}
+      {tab === "ziele" && <DestinationsBereich projectId={project.id} />}
+      {/* Slots and own flows of the project: which graph runs on which occasion. */}
+      {tab === "prozesse" && (
+        <div className="space-y-8">
+          <SlotList project={project} />
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">{tr("project_view.eigene_prozesse")}</h3>
+            <WorkflowList project={project} />
+          </div>
+        </div>
+      )}
 
       {tab === "git" && (
       <Section title={tr("project_settings.git")}>
@@ -255,7 +287,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
       </Section>
       )}
 
-      {tab === "testenv" && (
+      {tab === "testumgebung" && (
       <Section title={tr("project_settings.testumgebung")}>
         <Check label={tr("project_settings.testumgebungs_schritt")}
           hint={tr("project_settings.hint_testschritt")}
@@ -306,7 +338,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
       </Section>
       )}
 
-      {tab === "deploy" && (
+      {tab === "deployment" && (
       <>
       <Section title={tr("project_settings.deployment")}>
         <Check label={tr("project_settings.automatisch_deployen")} hint={tr("project_settings.hint_auto_deploy")}

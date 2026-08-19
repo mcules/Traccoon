@@ -8,6 +8,7 @@ import AssetWorkflow from "./AssetWorkflow";
 import ArtifactFields from "./ArtifactFields";
 import { AssigneeEditor } from "./workflow/assignee";
 import type { AssigneeSpec } from "./workflow/types";
+import { ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile} from "./ui";
 
 interface Model { id: number; name: string; category: string | null; manufacturer: string | null; }
 interface Location { id: number; name: string; type: string; parent_id: number | null; full_path: string; }
@@ -39,6 +40,9 @@ export default function Hardware({ project }: { project: Project }) {
   const [aLoc, setALoc] = useState("");
   const [aStatus, setAStatus] = useState("planned");
   const [offen, setOffen] = useState<number | null>(null);
+  const [loeschAsset, setLoeschAsset] = useState<any | null>(null);
+  const [loeschModell, setLoeschModell] = useState<any | null>(null);
+  const [loeschOrt, setLoeschOrt] = useState<any | null>(null);
   const [ansicht, setAnsicht] = useState<"klassisch" | "workflow">("klassisch");
   const [err, setErr] = useState("");
   const fehler = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
@@ -74,30 +78,29 @@ export default function Hardware({ project }: { project: Project }) {
 
   return (
     <div>
-      {err && <div className="mb-3 text-sm text-red-400">{err}</div>}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section>
-          <h3 className="mb-2 font-medium">{tr("hardware.exemplare_dieses_projekt")}</h3>
-          <div className="space-y-2">
+      <Fehlerzeile text={err} />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Bereich titel={tr("hardware.exemplare_dieses_projekt")}>
+          <Liste>
             {assets.data?.map((a) => (
-              <div key={a.id} className="rounded border border-line bg-card text-sm">
-                <div className="flex items-start gap-2 p-2.5">
-                  <button onClick={() => setOffen(offen === a.id ? null : a.id)} className="flex-1 text-left">
-                    <div className="font-medium">{modelName(a.model_id)}</div>
-                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted">
-                      <span className="rounded bg-surface px-1.5 py-0.5">{a.purchase_status}</span>
+              <ListenZeile key={a.id}>
+                <div className="flex items-start gap-2">
+                  <button onClick={() => setOffen(offen === a.id ? null : a.id)} className="min-w-0 flex-1 text-left">
+                    <div className="truncate font-medium text-ink">{modelName(a.model_id)}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted">
+                      <Etikett>{a.purchase_status}</Etikett>
                       <span>📍 {locPath(a.location_id)}</span>
                       {a.serial_number && <span>SN {a.serial_number}</span>}
                       <span className="text-brand">{offen === a.id ? "▾ Beschaffung" : "▸ Beschaffung"}</span>
                     </div>
                   </button>
                   {kannVerwalten && (
-                    <button onClick={() => delAsset.mutate(a.id)}
-                      className="text-muted hover:text-red-400" title={tr("hardware.exemplar_loeschen")}>🗑</button>
+                    <IconKnopf icon={ICON.loeschen} titel={tr("hardware.exemplar_loeschen")} gefahr
+                      onClick={() => setLoeschAsset(a)} />
                   )}
                 </div>
                 {offen === a.id && (
-                  <div className="border-t border-line p-2.5">
+                  <div className="mt-2 border-t border-line pt-2.5">
                     <div className="mb-2.5 inline-flex rounded border border-line bg-surface p-0.5 text-xs">
                       <button
                         onClick={() => setAnsicht("klassisch")}
@@ -126,11 +129,11 @@ export default function Hardware({ project }: { project: Project }) {
                     <AssetIssues assetId={a.id} projectKey={project.key} />
                   </div>
                 )}
-              </div>
+              </ListenZeile>
             ))}
-            {assets.data?.length === 0 && <div className="text-xs text-muted">{tr("hardware.keine_exemplare")}</div>}
-          </div>
-          <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border border-line bg-card p-3">
+            {assets.data?.length === 0 && <ListeLeer>{tr("hardware.keine_exemplare")}</ListeLeer>}
+          </Liste>
+          <div className="flex flex-wrap items-end gap-2 rounded-lg border border-line bg-surface p-3">
             <select value={aModel} onChange={(e) => setAModel(e.target.value)}
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
               <option value="">{tr("hardware.modell")}</option>
@@ -149,45 +152,50 @@ export default function Hardware({ project }: { project: Project }) {
               + Exemplar
             </button>
           </div>
-        </section>
+        </Bereich>
 
-        <section className="space-y-6">
+        <section className="space-y-4">
           {kannVerwalten && <WorkflowConfig project={project} />}
 
-          <div>
-            <h3 className="mb-2 font-medium">{tr("hardware.katalog_modelle")}</h3>
-            <div className="flex flex-wrap gap-1">
+          <Bereich titel={tr("hardware.katalog_modelle")}>
+            <Liste>
               {models.data?.map((m) => (
-                <span key={m.id} className="flex items-center gap-1 rounded bg-surface px-2 py-1 text-xs">
-                  {m.name}
-                  {kannVerwalten && (
-                    <button onClick={() => delModel.mutate(m.id)}
-                      className="text-muted hover:text-red-400">✕</button>
-                  )}
-                </span>
+                <ListenZeile key={m.id}>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-ink">{m.name}</span>
+                    {kannVerwalten && (
+                      <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+                        onClick={() => setLoeschModell(m)} />
+                    )}
+                  </div>
+                </ListenZeile>
               ))}
-            </div>
-            <div className="mt-2 flex gap-2">
+              {models.data?.length === 0 && <ListeLeer>Noch kein Modell im Katalog.</ListeLeer>}
+            </Liste>
+            <div className="flex gap-2">
               <input value={mName} onChange={(e) => setMName(e.target.value)} placeholder={tr("hardware.modellname")}
                 className="flex-1 rounded border border-line bg-surface px-2 py-1 text-sm" />
               <button onClick={() => mName && addModel.mutate()} className="rounded bg-brand px-3 py-1 text-sm text-white">+</button>
             </div>
-          </div>
+          </Bereich>
 
-          <div>
-            <h3 className="mb-2 font-medium">{tr("hardware.lagerorte")}</h3>
-            <div className="space-y-1">
+          <Bereich titel={tr("hardware.lagerorte")}>
+            <Liste>
               {locations.data?.map((l) => (
-                <div key={l.id} className="flex items-center gap-1.5 text-xs text-muted">
-                  📍 {l.full_path} <span className="opacity-60">({l.type})</span>
-                  {kannVerwalten && (
-                    <button onClick={() => delLoc.mutate(l.id)}
-                      className="ml-auto text-muted hover:text-red-400">✕</button>
-                  )}
-                </div>
+                <ListenZeile key={l.id}>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">📍 {l.full_path}</span>
+                    <Etikett>{l.type}</Etikett>
+                    {kannVerwalten && (
+                      <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+                        onClick={() => setLoeschOrt(l)} />
+                    )}
+                  </div>
+                </ListenZeile>
               ))}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
+              {locations.data?.length === 0 && <ListeLeer>Noch kein Lagerort.</ListeLeer>}
+            </Liste>
+            <div className="flex flex-wrap gap-2">
               <input value={lName} onChange={(e) => setLName(e.target.value)} placeholder={tr("hardware.ortname")}
                 className="rounded border border-line bg-surface px-2 py-1 text-sm" />
               <select value={lType} onChange={(e) => setLType(e.target.value)}
@@ -201,9 +209,24 @@ export default function Hardware({ project }: { project: Project }) {
               </select>
               <button onClick={() => lName && addLoc.mutate()} className="rounded bg-brand px-3 py-1 text-sm text-white">+</button>
             </div>
-          </div>
+          </Bereich>
         </section>
       </div>
+      {loeschAsset && (
+        <LoeschDialog was={modelName(loeschAsset.model_id)} hinweis={tr("hardware.exemplar_loeschen")}
+          onClose={() => setLoeschAsset(null)}
+          onLoeschen={() => { delAsset.mutate(loeschAsset.id); setLoeschAsset(null); }} />
+      )}
+      {loeschModell && (
+        <LoeschDialog was={loeschModell.name}
+          onClose={() => setLoeschModell(null)}
+          onLoeschen={() => { delModel.mutate(loeschModell.id); setLoeschModell(null); }} />
+      )}
+      {loeschOrt && (
+        <LoeschDialog was={loeschOrt.full_path}
+          onClose={() => setLoeschOrt(null)}
+          onLoeschen={() => { delLoc.mutate(loeschOrt.id); setLoeschOrt(null); }} />
+      )}
     </div>
   );
 }
@@ -227,7 +250,7 @@ function AssetIssues({ assetId, projectKey }: { assetId: number; projectKey: str
                 className="flex w-full items-center gap-2 text-left text-xs hover:underline">
                 <span className="font-mono text-brand">{i.key}</span>
                 <span className={`flex-1 truncate ${i.archived ? "text-muted line-through" : ""}`}>{i.summary}</span>
-                <span className="rounded bg-surface px-1.5 py-0.5 text-muted">{i.status}</span>
+                <Etikett>{i.status}</Etikett>
               </button>
             </li>
           ))}
@@ -274,14 +297,10 @@ function WorkflowConfig({ project }: { project: Project }) {
     onSuccess: (res) => navigate(`/projects/${project.key}/workflows/${res.definition_id}`),
   });
   return (
-    <div className="rounded-lg border border-line bg-card p-3">
-      <h3 className="mb-1 font-medium">{tr("hardware.beschaffungsprozess")}</h3>
-      <p className="mb-2 text-xs text-muted">
-        {tr("hardware.prozess_hinweis")}
-      </p>
-      <div className="space-y-2">
+    <Bereich titel={tr("hardware.beschaffungsprozess")} hinweis={tr("hardware.prozess_hinweis")}>
+      <Liste>
         {schritte.map((s, i) => (
-          <div key={i} className="rounded border border-line bg-surface p-2">
+          <ListenZeile key={i}>
             <div className="flex items-center gap-2">
               <span className="w-5 text-xs text-muted">{i + 1}.</span>
               <input value={s.name}
@@ -294,9 +313,8 @@ function WorkflowConfig({ project }: { project: Project }) {
               <button title={tr("hardware.nach_unten")} disabled={i === schritte.length - 1}
                 onClick={() => { const n = [...schritte]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; aendern(n); }}
                 className="text-muted hover:text-ink disabled:opacity-30">↓</button>
-              <button title={tr("hardware.schritt_entfernen")}
-                onClick={() => aendern(schritte.filter((_, j) => j !== i))}
-                className="text-muted hover:text-red-400">✕</button>
+              <IconKnopf icon={ICON.loeschen} titel={tr("hardware.schritt_entfernen")} gefahr
+                onClick={() => aendern(schritte.filter((_, j) => j !== i))} />
             </div>
             <div className="mt-1.5 flex items-center gap-2 pl-7">
               <span className="text-xs text-muted">{tr("hardware.zustaendig")}</span>
@@ -308,11 +326,11 @@ function WorkflowConfig({ project }: { project: Project }) {
                   className="text-xs text-muted hover:text-ink">{tr("hardware.zuruecksetzen")}</button>
               )}
             </div>
-          </div>
+          </ListenZeile>
         ))}
-        {schritte.length === 0 && <div className="text-xs text-muted">{tr("hardware.noch_keine_schritte")}</div>}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
+        {schritte.length === 0 && <ListeLeer>{tr("hardware.noch_keine_schritte")}</ListeLeer>}
+      </Liste>
+      <div className="flex flex-wrap gap-2">
         <button onClick={() => aendern([...schritte, { name: "", order: schritte.length, assignee: {} as AssigneeSpec }])}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">+ {tr("hardware.schritt")}</button>
         <button onClick={() => speichern.mutate()} disabled={!entwurf}
@@ -331,6 +349,6 @@ function WorkflowConfig({ project }: { project: Project }) {
       <p className="mt-1 text-xs text-muted">
         {tr("hardware.prozess_wirkung")}
       </p>
-    </div>
+    </Bereich>
   );
 }

@@ -4,10 +4,16 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi } from "../../api";
 import type { WorkflowDefinition, WorkflowSubjectKind } from "./types";
+import {
+  Aktionen, Bereich, Dialog, DialogFuss, Etikett, Fehlerzeile, ICON, IconKnopf, Liste,
+  ListeLeer, ListenZeile, LoeschDialog, Zustand,
+} from "../ui";
 
 const EMPTY = { key: "", name: "", subject_kind: "standalone" as WorkflowSubjectKind,
                 description: "", template: "" };
 const inp = "rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
+/** Drei Spalten: der Ablauf selbst, sein Zustand, die Handgriffe. */
+const SPALTEN = "sm:grid-cols-[minmax(0,1fr)_9rem_auto]";
 
 /**
  * Own, project-less processes: everything that belongs to no project and no slot.
@@ -26,6 +32,8 @@ export default function OwnWorkflowsPanel() {
   const nav = useNavigate();
   const [f, setF] = useState(EMPTY);
   const [err, setErr] = useState("");
+  const [neuDialog, setNeuDialog] = useState(false);
+  const [loeschAblauf, setLoeschAblauf] = useState<WorkflowDefinition | null>(null);
 
   const { data: alle } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
   const { data: vorlagen } = useQuery({
@@ -34,6 +42,8 @@ export default function OwnWorkflowsPanel() {
   // Slot flows stand at the top in the process set, project flows in the respective project.
   const eigene = (alle || []).filter((d) => d.project_id === null && !d.slot && !d.archived_at);
 
+  const oeffnen = (d: WorkflowDefinition) =>
+    nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } });
   const inv = () => qc.invalidateQueries({ queryKey: ["workflows-all"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
@@ -43,7 +53,7 @@ export default function OwnWorkflowsPanel() {
       subject_kind: f.subject_kind, description: f.description.trim() || undefined,
       template: f.template || undefined,
     }),
-    onSuccess: (d) => { setF(EMPTY); setErr(""); inv(); nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } }); },
+    onSuccess: (d) => { setF(EMPTY); setErr(""); setNeuDialog(false); inv(); nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } }); },
     onError: fail,
   });
   const umschalten = useMutation({
@@ -52,52 +62,69 @@ export default function OwnWorkflowsPanel() {
   });
   const loeschen = useMutation({
     mutationFn: (id: number) => workflowApi.del(id),
-    onSuccess: () => { setErr(""); inv(); }, onError: fail,
+    onSuccess: () => { setErr(""); setLoeschAblauf(null); inv(); }, onError: fail,
   });
 
   return (
-    <div className="space-y-3 rounded-lg border border-line bg-card p-4">
-      <p className="text-sm text-muted">{tr("own_workflows_panel.einleitung")}</p>
-
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
+    <Bereich hinweis={tr("own_workflows_panel.einleitung")}>
+      <Fehlerzeile text={err} />
 
       {eigene.length > 0 ? (
-        /* No table: on a phone five columns would stand out over the edge, and what one does
-           not see one does not look for. The row wraps instead. */
-        <div className="space-y-2">
+        /* Ohne Spaltenköpfe: bei einer Handvoll Einträgen erklären sich Name, Schlüssel und
+           Zustand von selbst, und eine Überschriftenzeile wäre eine Zeile Rauschen über
+           fünf Zeilen Inhalt. */
+        <Liste>
           {eigene.map((d) => (
-            <div key={d.id}
-              className={`flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line bg-card p-2 text-sm ${
-                d.enabled ? "" : "opacity-50"}`}>
-              <span className="font-mono text-xs text-muted">{d.key}</span>
-              <span className="min-w-0 flex-1 basis-full truncate sm:basis-auto">{d.name}</span>
-              <span className="text-xs text-muted">{d.subject_kind}</span>
-              <span className="text-xs text-muted">
-                {tr(d.current_version_id ? "proc.veroeffentlicht" : "own_workflows.nur_entwurf")}
-              </span>
-              <div className="ml-auto flex shrink-0 gap-1">
-                <button onClick={() => nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } })}
-                  className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
-                  {tr("own_workflows_panel.editor")}
-                </button>
-                <button onClick={() => umschalten.mutate(d)}
-                  className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
-                  {tr(d.enabled ? "own_workflows_panel.aus" : "own_workflows_panel.an")}
-                </button>
-                <button onClick={() => { if (confirm(tr("own_workflows.loeschen_frage", { key: d.key }))) loeschen.mutate(d.id); }}
-                  className="rounded border border-line px-2 py-1 text-xs text-red-400 hover:bg-surface">
-                  ✕
-                </button>
+            <ListenZeile key={d.id} spalten={SPALTEN} gedimmt={!d.enabled}
+              onClick={() => oeffnen(d)}>
+              {/* Zwei Zeilen statt fünf Spalten: der Name trägt den Eintrag, alles
+                  Technische steht eine Etage tiefer und leiser. Das hält die Liste auch
+                  dann ausgerichtet, wenn ein Name lang und der nächste kurz ist. */}
+              <div className="min-w-0 basis-full sm:basis-auto">
+                <div className="truncate font-medium text-ink">{d.name}</div>
+                <div className="mt-0.5 flex items-center gap-2 text-xs text-muted">
+                  <span className="truncate font-mono">{d.key}</span>
+                  <span className="text-line">·</span>
+                  <Etikett>{d.subject_kind}</Etikett>
+                </div>
               </div>
-            </div>
+              {!d.enabled
+                ? <Zustand farbe="grau" text={tr("own_workflows_panel.aus")} />
+                : d.current_version_id
+                  ? <Zustand farbe="gruen" text={tr("proc.veroeffentlicht")} />
+                  : <Zustand farbe="gelb" text={tr("own_workflows.nur_entwurf")} />}
+              {/* Klicks auf die Knöpfe gehören den Knöpfen — sonst öffnete sich hinter dem
+                  Löschdialog auch noch der Editor. */}
+              <div className="ml-auto shrink-0 sm:ml-0 sm:justify-self-end"
+                onClick={(e) => e.stopPropagation()}>
+                <Aktionen>
+                  <IconKnopf icon={ICON.bearbeiten} titel={tr("own_workflows_panel.editor")}
+                    onClick={() => oeffnen(d)} />
+                  <IconKnopf icon={d.enabled ? "⏸" : "⏵"} onClick={() => umschalten.mutate(d)}
+                    titel={tr(d.enabled ? "own_workflows_panel.aus" : "own_workflows_panel.an")} />
+                  <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+                    onClick={() => setLoeschAblauf(d)} />
+                </Aktionen>
+              </div>
+            </ListenZeile>
           ))}
-        </div>
+        </Liste>
       ) : (
-        <div className="text-sm text-muted">{tr("own_workflows_panel.noch_keine_eigenen_prozesse")}</div>
+        <Liste><ListeLeer>{tr("own_workflows_panel.noch_keine_eigenen_prozesse")}</ListeLeer></Liste>
       )}
 
-      <div className="space-y-2 border-t border-line pt-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <button onClick={() => { setErr(""); setNeuDialog(true); }}
+        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        {ICON.neu} {tr("own_workflows_panel.ablauf_anlegen")}
+      </button>
+
+      {neuDialog && (
+        <Dialog breit titel={tr("own_workflows_panel.ablauf_anlegen")} onClose={() => setNeuDialog(false)}
+          fuss={<DialogFuss onAbbrechen={() => setNeuDialog(false)} laeuft={anlegen.isPending}
+            deaktiviert={!f.key.trim() || !f.name.trim()} speichernText={tr("common.anlegen")}
+            onSpeichern={() => anlegen.mutate()} />}>
+          <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })}
             placeholder={tr("own_workflows_panel.key_platzhalter")} className={inp} />
           <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })}
@@ -119,11 +146,6 @@ export default function OwnWorkflowsPanel() {
           )}
           <input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })}
             placeholder={tr("own_workflows_panel.beschreibung_optional")} className={`${inp} min-w-48 flex-1`} />
-          <button onClick={() => anlegen.mutate()}
-            disabled={!f.key.trim() || !f.name.trim() || anlegen.isPending}
-            className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-50">
-            Anlegen
-          </button>
         </div>
         {gewaehlt && (
           <p className="text-xs text-muted">
@@ -131,7 +153,13 @@ export default function OwnWorkflowsPanel() {
             <span className="text-brand">{gewaehlt.hinweis}</span>
           </p>
         )}
-      </div>
-    </div>
+          </div>
+        </Dialog>
+      )}
+      {loeschAblauf && (
+        <LoeschDialog was={loeschAblauf.key} laeuft={loeschen.isPending}
+          onClose={() => setLoeschAblauf(null)} onLoeschen={() => loeschen.mutate(loeschAblauf.id)} />
+      )}
+    </Bereich>
   );
 }

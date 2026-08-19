@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api, Issue, Project, ProjectMeta } from "../api";
 import { usePageChrome } from "../pageChrome";
-import { projectChromeTabs } from "../projectTabs";
+import { projectChromeTabs, projektPfad } from "../projectTabs";
 import TicketDrawer from "../components/TicketDrawer";
 
 // Full ticket page (route /projects/:key/tickets/:ticketKey). Uses the TicketDrawer in
@@ -30,7 +30,7 @@ export default function TicketView() {
 
   // The sub-menu of the project stays visible on the ticket page (no tab is active, so the
   // way back into the project is always one click away).
-  usePageChrome(ticketKey ?? "Ticket", projectChromeTabs(project));
+  usePageChrome(ticketKey ?? "Ticket", projectChromeTabs(project), undefined, "seite");
 
   if (!project) return <div className="text-muted">{tr("ticket_view.projekt_nicht_gefunden")}</div>;
   if (!meta) return <div className="text-muted">{tr("ticket_view.laedt")}</div>;
@@ -43,7 +43,7 @@ export default function TicketView() {
       meta={meta}
       issues={issues || []}
       onOpen={(k) => navigate(`/projects/${project.key}/tickets/${k}`)}
-      onClose={() => navigate(`/projects/${project.key}?tab=board`)}
+      onClose={() => navigate(projektPfad(project.key, "arbeit", "board"))}
     />
   );
 }

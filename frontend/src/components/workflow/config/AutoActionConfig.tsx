@@ -19,6 +19,8 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
     ["webhook", "Freie URL aufrufen"],
     ["create_ticket", "Ticket anlegen"],
     ["refresh_facts", "Projekt-Fakten lesen"],
+    ["assistent_auftrag", "Assistent beauftragen"],
+    ["antwort", "Antwort setzen"],
   ]],
   ["Ticket", [
     ["set_board_status", "Board-Spalte setzen"],

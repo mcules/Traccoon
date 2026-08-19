@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { tr } from "../i18n";
 import { api, Project, ProjectCosts } from "../api";
+import { Bereich } from "./ui";
 import DeploymentsPanel from "./DeploymentsPanel";
 
 const KAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
@@ -154,12 +155,7 @@ function Kachel({ label, wert, farbe }: { label: string; wert: number; farbe?: s
 }
 
 function Karte({ titel, children }: { titel: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-line bg-card p-4">
-      <div className="mb-3 text-sm font-medium">{titel}</div>
-      {children}
-    </div>
-  );
+  return <Bereich titel={titel}>{children}</Bereich>;
 }
 
 function Zeile({ label, wert, farbe }: { label: string; wert: string | number; farbe?: string }) {

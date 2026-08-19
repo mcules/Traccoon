@@ -10,6 +10,7 @@
  * than a run in which every action only says what it would do.
  */
 import { tr } from "../../i18n";
+import { zeitzone } from "../../lib/formatTime";
 export interface Schritt {
   node_id: string;
   node_type: string;
@@ -45,7 +46,8 @@ function kurzfassung(s: Schritt): string {
 function uhrzeit(iso?: string | null): string {
   if (!iso) return "";
   const d = new Date(iso);
-  return isNaN(d.getTime()) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("de-DE",
+    { hour: "2-digit", minute: "2-digit", timeZone: zeitzone() });
 }
 
 export default function Schrittprotokoll({

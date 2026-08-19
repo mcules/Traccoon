@@ -119,6 +119,38 @@ export function flowToGraph(nodes: FlowNode[], edges: Edge[]): WorkflowGraph {
  * after loading than after editing. What is compared is therefore a sorted version boiled
  * down to the essentials.
  */
+/**
+ * Der funktionale Inhalt eines Graphen, ohne die Anordnung.
+ *
+ * Das Gegenstück zu `workflow_graph.inhalts_signatur` im Backend, und beide müssen dieselbe
+ * Antwort geben: sonst zeigt der Editor eine Abweichung, die der Server nicht sieht (oder
+ * umgekehrt). Positionen fehlen bewusst — ein verschobener Kasten ändert nichts daran, was
+ * der Ablauf tut.
+ */
+export function inhaltsSignatur(graph: WorkflowGraph | null | undefined): string {
+  if (!graph) return "";
+  const sortiert = (wert: any): any => {
+    if (Array.isArray(wert)) return wert.map(sortiert);
+    if (wert && typeof wert === "object") {
+      return Object.keys(wert).sort().reduce((acc: any, k) => {
+        if (wert[k] !== undefined && wert[k] !== null) acc[k] = sortiert(wert[k]);
+        return acc;
+      }, {});
+    }
+    return wert;
+  };
+  const nachId = (a: any, b: any) => String(a.id).localeCompare(String(b.id));
+  return JSON.stringify({
+    n: [...(graph.nodes || [])].sort(nachId).map((n: any) => ({
+      id: n.id, type: n.type, c: sortiert(n.data?.config ?? {}),
+    })),
+    e: [...(graph.edges || [])].sort(nachId).map((e: any) => ({
+      id: e.id, s: e.source, t: e.target,
+      h: e.sourceHandle ?? "", l: typeof e.label === "string" ? e.label : "",
+    })),
+  });
+}
+
 export function graphSignatur(graph: WorkflowGraph | null | undefined): string {
   if (!graph) return "";
   const sortiert = (wert: any): any => {

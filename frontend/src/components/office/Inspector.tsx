@@ -22,6 +22,7 @@ import { Link } from "react-router-dom";
 import type { Scope } from "./api.ts";
 import type { Cmd, GateKind, Roster, RosterEntry } from "./types.ts";
 import type { LogQuelle } from "./Timeline.tsx";
+import { projektPfad } from "../../projectTabs";
 import {
   GATE_TEXT, dauerText, statusFarbe, statusText, uhrText, usdText, zahl,
 } from "./TopBar.tsx";
@@ -271,7 +272,7 @@ export default function Inspector({
             </Link>
           )}
           {projektKey && (
-            <Link to={`/projects/${projektKey}?tab=monitor`}
+            <Link to={projektPfad(projektKey, "betrieb", "monitor")}
               className="rounded border border-line px-2 py-0.5 hover:border-brand">
               📈 Agenten-Monitor
             </Link>

@@ -4,20 +4,25 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, workflowApi, type IssueType, type Project } from "../../api";
 import type { WorkflowSlotInfo } from "./types";
+import {
+  Bereich, Etikett, Fehlerzeile, Liste, ListenZeile, Zeilenknopf,
+} from "../ui";
+import { projektPfad } from "../../projectTabs";
 
 /** Where the applicable flow comes from: the most important information on this page. */
 // Keys instead of texts: the table comes into being while the module loads, and a tr() here
 // would fix the language of the first call.
-const ORIGIN: Record<WorkflowSlotInfo["origin"], { label: string; cls: string; hint: string }> = {
-  builtin: { label: "slot_list.herkunft_builtin", cls: "bg-surface text-muted",
+type EtikettFarbe = "neutral" | "gruen" | "gelb" | "rot" | "blau" | "violett" | "brand";
+const ORIGIN: Record<WorkflowSlotInfo["origin"], { label: string; farbe: EtikettFarbe; hint: string }> = {
+  builtin: { label: "slot_list.herkunft_builtin", farbe: "neutral",
              hint: "slot_list.herkunft_builtin_hinweis" },
-  global: { label: "slot_list.herkunft_global", cls: "bg-blue-500/15 text-blue-300",
+  global: { label: "slot_list.herkunft_global", farbe: "blau",
             hint: "slot_list.herkunft_global_hinweis" },
-  user: { label: "slot_list.herkunft_user", cls: "bg-violet-500/15 text-violet-300",
+  user: { label: "slot_list.herkunft_user", farbe: "violett",
           hint: "slot_list.herkunft_user_hinweis" },
-  project: { label: "slot_list.herkunft_project", cls: "bg-amber-500/15 text-amber-300",
+  project: { label: "slot_list.herkunft_project", farbe: "gelb",
              hint: "slot_list.herkunft_project_hinweis" },
-  none: { label: "slot_list.herkunft_none", cls: "bg-red-500/15 text-red-300",
+  none: { label: "slot_list.herkunft_none", farbe: "rot",
           hint: "slot_list.herkunft_none_hinweis" },
 };
 
@@ -57,7 +62,7 @@ export default function SlotList({ project }: { project: Project }) {
     onSuccess: (d) => {
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: `/projects/${project.key}?tab=workflows` } });
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } });
     },
     onError: fail,
     onSettled: () => setBusy(""),
@@ -84,9 +89,7 @@ export default function SlotList({ project }: { project: Project }) {
   const aktuellerSatz = slots?.find((s) => s.origin !== "project")?.set_id ?? null;
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted">{tr("slot_list.einleitung")}</p>
-
+    <Bereich hinweis={tr("slot_list.einleitung")}>
       {sets && sets.length > 1 && (
         <label className="block text-xs font-medium text-muted">
           {tr("slot_list.prozess_satz")}
@@ -106,54 +109,36 @@ export default function SlotList({ project }: { project: Project }) {
         </label>
       )}
 
-      {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
+      <Fehlerzeile text={err} />
 
-      <div className="space-y-2">
+      <Liste>
         {slots?.map((s) => {
           const o = ORIGIN[s.origin];
           return (
-            <div key={s.slot} className="rounded border border-line bg-card p-3">
+            <ListenZeile key={s.slot}>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{s.name}</span>
-                <span className={`rounded px-1.5 py-0.5 text-xs ${o.cls}`} title={tr(o.hint)}>{tr(o.label)}</span>
+                <span className="font-medium text-ink">{s.name}</span>
+                <Etikett farbe={o.farbe} titel={tr(o.hint)}>{tr(o.label)}</Etikett>
                 {!s.published && (
-                  <span className="rounded bg-yellow-500/15 px-1.5 py-0.5 text-xs text-yellow-300">
-                    {tr("slot_list.nicht_veroeffentlicht")}
-                  </span>
+                  <Etikett farbe="gelb">{tr("slot_list.nicht_veroeffentlicht")}</Etikett>
                 )}
                 <div className="flex-1" />
                 {s.definition_id && (
-                  <button
-                    onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`, { state: { from: `/projects/${project.key}?tab=workflows` } })}
-                    className="rounded border border-line px-2 py-1 text-xs hover:border-brand"
-                  >
+                  <Zeilenknopf onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`,
+                    { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } })}>
                     {tr(s.origin === "project" ? "slot_list.bearbeiten" : "slot_list.ansehen")}
-                  </button>
+                  </Zeilenknopf>
                 )}
                 {s.origin === "project" ? (
-                  <button
-                    onClick={() => {
-                      setBusy(s.slot);
-                      reset.mutate({ slot: s.slot });
-                    }}
-                    disabled={busy === s.slot}
-                    className="rounded border border-line px-2 py-1 text-xs hover:border-amber-400 disabled:opacity-50"
-                    title={tr("slot_list.eigene_kopie_verwerfen_es_gilt_wieder_de")}
-                  >
+                  <Zeilenknopf gefahr titel={tr("slot_list.eigene_kopie_verwerfen_es_gilt_wieder_de")}
+                    onClick={() => { setBusy(s.slot); reset.mutate({ slot: s.slot }); }}>
                     {tr("slot_list.zuruecksetzen")}
-                  </button>
+                  </Zeilenknopf>
                 ) : (
-                  <button
-                    onClick={() => {
-                      setBusy(s.slot);
-                      customize.mutate({ slot: s.slot });
-                    }}
-                    disabled={busy === s.slot || !s.definition_id}
-                    className="rounded border border-line px-2 py-1 text-xs hover:border-brand disabled:opacity-50"
-                    title={tr("slot_list.kopie_fuer_dieses_projekt_anlegen_und_be")}
-                  >
+                  <Zeilenknopf titel={tr("slot_list.kopie_fuer_dieses_projekt_anlegen_und_be")}
+                    onClick={() => { setBusy(s.slot); customize.mutate({ slot: s.slot }); }}>
                     Anpassen
-                  </button>
+                  </Zeilenknopf>
                 )}
               </div>
               <div className="mt-1 text-xs text-muted">{s.description}</div>
@@ -167,7 +152,7 @@ export default function SlotList({ project }: { project: Project }) {
                   {(s.per_issue_type || []).map((v) => (
                     <span key={v.issue_type_id}
                           className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
-                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: `/projects/${project.key}?tab=workflows` } })}
+                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } })}
                               title={tr("slot_list.eigenen_ablauf_dieser_vorgangsart_bearbe")}>
                         {v.issue_type_name}
                       </button>
@@ -193,10 +178,10 @@ export default function SlotList({ project }: { project: Project }) {
                 {tr(o.hint)}
                 {s.set_name && s.origin !== "project" ? ` (${s.set_name})` : ""}
               </div>
-            </div>
+            </ListenZeile>
           );
         })}
-      </div>
-    </div>
+      </Liste>
+    </Bereich>
   );
 }

@@ -4,17 +4,22 @@ import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, workflowApi } from "../api";
 import { usePageChrome } from "../pageChrome";
-import DestinationsPanel from "../components/DestinationsPanel";
 import ArtifactTypesPanel from "../components/ArtifactTypesPanel";
+import { SystemSchalterPanel } from "../components/KontoPanels";
+import {
+  Aktionen, Bereich, BestaetigenDialog, Dialog, DialogFuss, EINGABE, Etikett, Feld,
+  Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile,
+} from "../components/ui";
 import ProviderModelsPanel from "../components/ProviderModelsPanel";
 import TranslationsPanel from "../components/TranslationsPanel";
 
-type Tab = "users" | "cost" | "models" | "maintenance" | "mail" | "destinations" | "artifacts"
-  | "translations";
+// Destinations no longer have a tab of their own: they stand under the settings with a
+// scope switch (global | me | project), because it was the same panel three times over.
+type Tab = "users" | "cost" | "models" | "maintenance" | "mail" | "artifacts" | "translations";
 const TABS: [Tab, string][] = [
-  ["users", "admin.tabs.users"], ["cost", "admin.tabs.cost"], ["models", "admin.tabs.models"], ["maintenance", "admin.tabs.maintenance"],
-  ["mail", "admin.tabs.mail"], ["destinations", "admin.tabs.destinations"], ["artifacts", "admin.tabs.artifacts"],
-  ["translations", "admin.tabs.translations"],
+  ["users", "admin.tabs.users"], ["cost", "admin.tabs.cost"], ["models", "admin.tabs.models"],
+  ["maintenance", "admin.tabs.maintenance"], ["mail", "admin.tabs.mail"],
+  ["artifacts", "admin.tabs.artifacts"], ["translations", "admin.tabs.translations"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -25,8 +30,8 @@ export default function Admin() {
   usePageChrome(tr("nav.admin"), TABS.map(([key, label]) => ({
     key, label: tr(label), to: `/admin/${key}`,
     icon: { users: "👥", cost: "💶", models: "🧠", maintenance: "🔧", mail: "✉️",
-            destinations: "🎯", artifacts: "📦", translations: "🌐" }[key],
-  })), tab);
+            artifacts: "📦", translations: "🌐" }[key],
+  })), tab, "seite");
   return (
     <div>
       {tab === "users" && <Users />}
@@ -34,7 +39,6 @@ export default function Admin() {
       {tab === "models" && <ProviderModelsPanel />}
       {tab === "maintenance" && <Maintenance />}
       {tab === "mail" && <MailConfig />}
-      {tab === "destinations" && <DestinationsPanel scope="global" />}
       {tab === "artifacts" && <ArtifactTypesPanel />}
       {tab === "translations" && <TranslationsPanel />}
     </div>
@@ -55,7 +59,7 @@ function MailConfig() {
     },
   });
   return (
-    <div className="max-w-xl space-y-3 rounded-lg border border-line bg-card p-4">
+    <div className="max-w-xl"><Bereich>
       <p className="text-xs text-muted">
         SMTP-Server für ausgehende Mails (z. B. Projekt-Einladungen). Ohne Host wird nicht
         versendet — nur geloggt.
@@ -89,7 +93,7 @@ function MailConfig() {
       </label>
       <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-white">{tr("admin.speichern")}</button>
       {msg && <span className="ml-3 text-sm text-green-400">{msg}</span>}
-    </div>
+    </Bereich></div>
   );
 }
 
@@ -104,7 +108,7 @@ function Maintenance() {
   });
 
   return (
-    <div className="max-w-xl space-y-4 rounded-lg border border-line bg-card p-4">
+    <div className="max-w-xl"><Bereich>
       <div>
         <div className="text-sm font-medium">{tr("admin.wartungsprojekt")}</div>
         <p className="mt-1 text-xs text-muted">
@@ -130,7 +134,10 @@ function Maintenance() {
       <RunRetention />
       <WorkflowLayout />
       <TestenvConfig />
-    </div>
+      {/* System wide switches: they belong to the installation, not between the settings of
+          one person, where they used to stand. */}
+      <SystemSchalterPanel />
+    </Bereich></div>
   );
 }
 
@@ -260,60 +267,111 @@ function RunRetention() {
   );
 }
 
+/**
+ * User administration.
+ *
+ * The card carries the state, the actions are icons: unlocking somebody and locking them
+ * out are one click apart, and as words in a row ("edit · MCP · approve · lock") they were
+ * a sentence one had to read to the end before daring to click. Locking asks back, because
+ * it takes the login away from a person, and no undo stands beside it.
+ */
 function Users() {
   const qc = useQueryClient();
   const { data: users } = useQuery({ queryKey: ["admin-users"], queryFn: () => api.get<any[]>("/users") });
+  const [err, setErr] = useState("");
+  const inv = () => qc.invalidateQueries({ queryKey: ["admin-users"] });
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
   const act = useMutation({
     mutationFn: (v: { id: number; path: string }) => api.post(`/users/${v.id}/${v.path}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+    onSuccess: () => { setErr(""); setSperren(null); inv(); }, onError: fail,
   });
   const role = useMutation({
     mutationFn: (v: { id: number; role: string }) => api.post(`/users/${v.id}/role?role=${v.role}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin-users"] }),
+    onSuccess: inv, onError: fail,
   });
-  const [mcpFor, setMcpFor] = useState<number | null>(null);
+  const [mcpUser, setMcpUser] = useState<any | null>(null);
   const [editUser, setEditUser] = useState<any | null>(null);
+  const [neuOffen, setNeuOffen] = useState(false);
+  const [sperren, setSperren] = useState<any | null>(null);
+
   return (
     <>
-    <CreateUserForm onCreated={() => qc.invalidateQueries({ queryKey: ["admin-users"] })} />
+    <Fehlerzeile text={err} />
     {/* Keine Tabelle: vier Spalten auf 390 px hießen ein Wort je Zeile, und die drei
-        Knöpfe stapelten sich rechts übereinander. Eine Karte je Nutzer bricht sauber um
+        Knöpfe stapelten sich rechts übereinander. Eine Zeile je Nutzer bricht sauber um
         und liest sich auf jeder Breite gleich. */}
-    <div className="space-y-2">
+    <Bereich>
+    <Liste>
       {users?.map((u) => (
-        <div key={u.id} className="rounded-lg border border-line bg-card p-2 text-sm">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="font-medium">{u.display_name}</span>
-            {u.email && <span className="text-xs text-muted">{u.email}</span>}
-            <span className={`rounded px-1.5 text-xs ${
-              u.status === "active" ? "bg-green-500/15 text-green-400"
-                : u.status === "pending" ? "bg-amber-500/15 text-amber-400"
-                : "bg-surface text-muted"}`}>{u.status}</span>
+        <ListenZeile key={u.id}>
+          <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-medium">{u.display_name}</span>
+              {u.email && <span className="text-xs text-muted">{u.email}</span>}
+              <Etikett farbe={u.status === "active" ? "gruen"
+                : u.status === "pending" ? "gelb" : "neutral"}>{u.status}</Etikett>
+              <select value={u.global_role} onChange={(e) => role.mutate({ id: u.id, role: e.target.value })}
+                className="rounded border border-line bg-surface px-1 py-0.5 text-xs text-ink">
+                <option value="user">user</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+            <Aktionen>
+              <IconKnopf icon="🧩" titel={tr("admin.mcp_server_zuweisen")} onClick={() => setMcpUser(u)} />
+              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setEditUser(u)} />
+              {u.status === "pending" && (
+                <IconKnopf icon="✅" titel={tr("admin.freischalten")}
+                  onClick={() => act.mutate({ id: u.id, path: "approve" })} />
+              )}
+              {u.status === "active" && (
+                <IconKnopf icon="🔒" titel={tr("admin.sperren")} gefahr onClick={() => setSperren(u)} />
+              )}
+              {u.status === "disabled" && (
+                <IconKnopf icon="🔓" titel={tr("admin.entsperren")}
+                  onClick={() => act.mutate({ id: u.id, path: "approve" })} />
+              )}
+            </Aktionen>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            <select value={u.global_role} onChange={(e) => role.mutate({ id: u.id, role: e.target.value })}
-              className="rounded border border-line bg-surface px-1 py-0.5 text-ink">
-              <option value="user">user</option>
-              <option value="admin">admin</option>
-            </select>
-            <button onClick={() => setEditUser(u)} className="text-muted hover:text-ink">{tr("common.bearbeiten")}</button>
-            <button onClick={() => setMcpFor(mcpFor === u.id ? null : u.id)} className="text-muted hover:text-ink">MCP</button>
-            {u.status === "pending" && <button onClick={() => act.mutate({ id: u.id, path: "approve" })} className="text-brand">{tr("admin.freischalten")}</button>}
-            {u.status === "active" && <button onClick={() => act.mutate({ id: u.id, path: "disable" })} className="text-muted hover:text-red-400">{tr("admin.sperren")}</button>}
-            {u.status === "disabled" && <button onClick={() => act.mutate({ id: u.id, path: "approve" })} className="text-brand">{tr("admin.entsperren")}</button>}
-          </div>
-          {mcpFor === u.id && <div className="mt-2 border-t border-line pt-2"><McpAssign userId={u.id} /></div>}
-        </div>
+        </ListenZeile>
       ))}
-    </div>
+    </Liste>
+    <button onClick={() => { setErr(""); setNeuOffen(true); }}
+      className="mt-3 rounded bg-brand px-3 py-1.5 text-sm text-white">
+      {ICON.neu} {tr("admin.nutzer_anlegen")}
+    </button>
+
+    {neuOffen && (
+      <CreateUserDialog onClose={() => setNeuOffen(false)}
+        onCreated={() => { setNeuOffen(false); inv(); }} />
+    )}
     {editUser && <EditUserModal user={editUser} onClose={() => setEditUser(null)}
-      onSaved={() => { setEditUser(null); qc.invalidateQueries({ queryKey: ["admin-users"] }); }} />}
+      onSaved={() => { setEditUser(null); inv(); }} />}
+    {mcpUser && (
+      <Dialog titel={tr("admin.mcp_fuer", { name: mcpUser.display_name || mcpUser.username })}
+        onClose={() => setMcpUser(null)}>
+        <McpAssign userId={mcpUser.id} />
+      </Dialog>
+    )}
+    {sperren && (
+      <BestaetigenDialog titel={tr("admin.sperren")} laeuft={act.isPending}
+        text={tr("admin.sperren_frage", { name: sperren.display_name || sperren.username })}
+        hinweis={tr("admin.sperren_hinweis")} bestaetigenText={tr("admin.sperren")}
+        onClose={() => setSperren(null)}
+        onBestaetigen={() => act.mutate({ id: sperren.id, path: "disable" })} />
+    )}
+    </Bereich>
     </>
   );
 }
 
-function CreateUserForm({ onCreated }: { onCreated: () => void }) {
-  const [open, setOpen] = useState(false);
+/**
+ * Creating a user.
+ *
+ * Only the user name is mandatory: an account without an e-mail is a placeholder somebody
+ * can be assigned tickets under, and one without a password cannot log in yet, which is
+ * exactly what the invitation flow needs.
+ */
+function CreateUserDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -321,147 +379,65 @@ function CreateUserForm({ onCreated }: { onCreated: () => void }) {
   const [globalRole, setGlobalRole] = useState("user");
   const [statusVal, setStatusVal] = useState("active");
   const [err, setErr] = useState("");
-  const [ok, setOk] = useState("");
-  const reset = () => {
-    setEmail(""); setUsername(""); setDisplayName(""); setPassword("");
-    setGlobalRole("user"); setStatusVal("active"); setErr("");
-  };
+  const [laeuft, setLaeuft] = useState(false);
+
   const submit = async () => {
-    setErr(""); setOk("");
+    setErr("");
     // Only the user name is mandatory (>=1). E-mail and password are optional; when a
     // password is set, it has to have at least 8 characters.
-    if (username.trim().length < 1) {
-      setErr(tr("admin.benutzername_noetig")); return;
-    }
-    if (password && password.length < 8) {
-      setErr(tr("admin.passwort_zu_kurz")); return;
-    }
+    if (username.trim().length < 1) { setErr(tr("admin.benutzername_noetig")); return; }
+    if (password && password.length < 8) { setErr(tr("admin.passwort_zu_kurz")); return; }
+    setLaeuft(true);
     try {
-      const u = await api.post<any>("/users", {
+      await api.post<any>("/users", {
         username: username.trim(), display_name: displayName.trim(),
         global_role: globalRole, status: statusVal,
         ...(email.trim() ? { email: email.trim() } : {}),
         ...(password ? { password } : {}),
       });
-      setOk(tr("admin.nutzer_angelegt", { name: u.username })); reset(); onCreated();
+      onCreated();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : tr("admin.fehler_beim_anlegen"));
-    }
+    } finally { setLaeuft(false); }
   };
-  const inp = "rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
+
   return (
-    <div className="mb-4 rounded-lg border border-line bg-card p-3">
-      <button onClick={() => setOpen(!open)} className="text-sm font-medium text-brand">
-        {open ? "▾" : "▸"} Nutzer anlegen
-      </button>
-      {open && (
-        <div className="mt-3 space-y-2">
-          {err && <div className="text-sm text-red-400">{err}</div>}
-          {ok && <div className="text-sm text-brand">{ok}</div>}
-          <div className="flex flex-wrap gap-2">
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="E-Mail (optional)" className={`flex-1 ${inp}`} />
-            <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={tr("admin.benutzername")} className={`w-40 ${inp}`} />
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={tr("admin.anzeigename_optional")} className={`w-48 ${inp}`} />
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              placeholder={tr("admin.passwort_optional_8_zeichen")} className={`flex-1 ${inp}`} />
-            <select value={globalRole} onChange={(e) => setGlobalRole(e.target.value)} className={inp}>
+    <Dialog titel={tr("admin.nutzer_anlegen")} onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={submit} laeuft={laeuft}
+        deaktiviert={!username.trim()} speichernText={tr("common.anlegen")} />}>
+      <Fehlerzeile text={err} />
+      <div className="space-y-3">
+        <Feld label={tr("admin.benutzername")}>
+          <input value={username} autoFocus onChange={(e) => setUsername(e.target.value)} className={EINGABE} />
+        </Feld>
+        <Feld label={tr("admin.anzeigename_optional")}>
+          <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} className={EINGABE} />
+        </Feld>
+        <Feld label={tr("admin.email_optional")}>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} className={EINGABE} />
+        </Feld>
+        <Feld label={tr("admin.passwort_optional_8_zeichen")}>
+          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className={EINGABE} />
+        </Feld>
+        <div className="grid grid-cols-2 gap-3">
+          <Feld label={tr("admin.rolle")}>
+            <select value={globalRole} onChange={(e) => setGlobalRole(e.target.value)} className={EINGABE}>
               <option value="user">user</option>
               <option value="admin">admin</option>
             </select>
-            <select value={statusVal} onChange={(e) => setStatusVal(e.target.value)} className={inp}>
-              <option value="active">aktiv</option>
-              <option value="pending">wartend</option>
+          </Feld>
+          <Feld label={tr("admin.status")} hinweis={tr("admin.aktive_nutzer_koennen_sich_sofort_anmeld")}>
+            <select value={statusVal} onChange={(e) => setStatusVal(e.target.value)} className={EINGABE}>
+              <option value="active">{tr("admin.aktiv")}</option>
+              <option value="pending">{tr("admin.wartend")}</option>
             </select>
-            <button onClick={submit} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("admin.anlegen")}</button>
-          </div>
-          <p className="text-xs text-muted">{tr("admin.aktive_nutzer_koennen_sich_sofort_anmeld")}</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => void; onSaved: () => void }) {
-  const [email, setEmail] = useState(user.email);
-  const [username, setUsername] = useState(user.username);
-  const [displayName, setDisplayName] = useState(user.display_name);
-  const [maxRunners, setMaxRunners] = useState(user.max_runners);
-  const [newPassword, setNewPassword] = useState("");
-  const [err, setErr] = useState("");
-  const [msg, setMsg] = useState("");
-
-  const save = async () => {
-    setErr("");
-    try {
-      await api.put(`/users/${user.id}`, {
-        email, username, display_name: displayName, max_runners: Number(maxRunners),
-      });
-      onSaved();
-    } catch (e: any) { setErr(e?.message || "Speichern fehlgeschlagen"); }
-  };
-  const resetPw = async () => {
-    setErr(""); setMsg("");
-    if (newPassword.length < 8) { setErr("Mindestens 8 Zeichen."); return; }
-    try {
-      await api.post(`/users/${user.id}/reset-password`, { new_password: newPassword });
-      setNewPassword(""); setMsg("Passwort gesetzt.");
-    } catch (e: any) { setErr(e?.message || "Fehlgeschlagen"); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md rounded-xl border border-line bg-card p-5 shadow-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-base font-semibold">{tr("admin.nutzer_bearbeiten")}</h2>
-          <button onClick={onClose} className="text-muted hover:text-ink">✕</button>
-        </div>
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs text-muted">{tr("admin.anzeigename")}</label>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
-          </div>
-          <div>
-            <label className="text-xs text-muted">E-Mail</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
-          </div>
-          <div>
-            <label className="text-xs text-muted">{tr("admin.benutzername")}</label>
-            <input value={username} onChange={(e) => setUsername(e.target.value)}
-              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
-          </div>
-          <div>
-            <label className="text-xs text-muted">{tr("admin.max_gleichzeitige_agenten_laeufe")}</label>
-            <input type="number" min={0} max={20} value={maxRunners}
-              onChange={(e) => setMaxRunners(e.target.value)}
-              className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5" />
-          </div>
-          <div className="border-t border-line pt-3">
-            <label className="text-xs text-muted">{tr("admin.neues_passwort_setzen")}</label>
-            <div className="mt-1 flex gap-2">
-              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="mind. 8 Zeichen"
-                className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
-              <button onClick={resetPw} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">{tr("admin.setzen")}</button>
-            </div>
-          </div>
-          {err && <div className="text-sm text-red-400">{err}</div>}
-          {msg && <div className="text-sm text-green-400">{msg}</div>}
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">{tr("admin.schliessen")}</button>
-          <button onClick={save} className="rounded bg-brand px-4 py-1.5 text-sm text-white">{tr("admin.speichern")}</button>
+          </Feld>
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }
 
-/** MCP server allocation per user (hard separation; the token is produced by the provision script). */
 function McpAssign({ userId }: { userId: number }) {
   const { data, refetch } = useQuery({
     queryKey: ["user-mcp", userId], queryFn: () => api.get<any>(`/users/${userId}/mcp`),
@@ -493,20 +469,96 @@ function McpAssign({ userId }: { userId: number }) {
 function Cost() {
   const { data } = useQuery({ queryKey: ["cost-global"], queryFn: () => api.get<any>("/costs/global") });
   return (
-    <div>
-      <div className="mb-3 text-2xl font-semibold">${data?.total_usd?.toFixed(4) ?? "0"}</div>
+    <Bereich hinweis={<>Summe aller Läufe: <span className="text-xl font-semibold text-ink">
+      ${data?.total_usd?.toFixed(4) ?? "0"}</span></>}>
       {/* Modellnamen sind lang und Zahlen kurz: als Tabelle quetschte das auf dem Handy den
           Namen auf ein Wort je Zeile. Eine Zeile je Modell, Zahlen rechts. */}
-      <div className="divide-y divide-line text-sm">
+      <Liste>
         {data?.by_model?.map((m: any) => (
-          <div key={m.model} className="flex flex-wrap items-baseline gap-x-3 py-2">
-            <span className="min-w-0 flex-1 break-all">{m.model}</span>
-            <span className="tabular-nums text-ink">${m.usd}</span>
-            <span className="tabular-nums text-xs text-muted">{tr("admin.calls_n", { anzahl: m.calls })}</span>
-          </div>
+          <ListenZeile key={m.model}>
+            <div className="flex flex-wrap items-baseline gap-x-3">
+              <span className="min-w-0 flex-1 break-all text-ink">{m.model}</span>
+              <span className="tabular-nums text-ink">${m.usd}</span>
+              <span className="tabular-nums text-xs text-muted">{tr("admin.calls_n", { anzahl: m.calls })}</span>
+            </div>
+          </ListenZeile>
         ))}
+        {(!data?.by_model || data.by_model.length === 0) && (
+          <ListeLeer>{tr("admin.noch_keine_kosten")}</ListeLeer>
+        )}
+      </Liste>
+    </Bereich>
+  );
+}
+
+function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => void; onSaved: () => void }) {
+  const [email, setEmail] = useState(user.email || "");
+  const [username, setUsername] = useState(user.username);
+  const [displayName, setDisplayName] = useState(user.display_name);
+  const [maxRunners, setMaxRunners] = useState(user.max_runners);
+  const [newPassword, setNewPassword] = useState("");
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const [laeuft, setLaeuft] = useState(false);
+
+  const save = async () => {
+    setErr("");
+    setLaeuft(true);
+    try {
+      await api.put(`/users/${user.id}`, {
+        email, username, display_name: displayName, max_runners: Number(maxRunners),
+      });
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : tr("common.speichern_fehlgeschlagen"));
+    } finally { setLaeuft(false); }
+  };
+  // The password is set separately: it takes effect at once and has nothing to do with the
+  // rest of the form, which is why it does not hang off "save".
+  const resetPw = async () => {
+    setErr(""); setMsg("");
+    if (newPassword.length < 8) { setErr(tr("admin.passwort_zu_kurz")); return; }
+    try {
+      await api.post(`/users/${user.id}/reset-password`, { new_password: newPassword });
+      setNewPassword(""); setMsg(tr("admin.passwort_gesetzt"));
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+    }
+  };
+
+  return (
+    <Dialog titel={tr("admin.nutzer_bearbeiten")} onClose={onClose}
+      fuss={<DialogFuss onAbbrechen={onClose} onSpeichern={save} laeuft={laeuft}
+        deaktiviert={!username.trim()} />}>
+      <Fehlerzeile text={err} />
+      <div className="space-y-3">
+        <Feld label={tr("admin.anzeigename")}>
+          <input value={displayName} autoFocus onChange={(e) => setDisplayName(e.target.value)} className={EINGABE} />
+        </Feld>
+        <Feld label="E-Mail">
+          <input value={email} onChange={(e) => setEmail(e.target.value)} className={EINGABE} />
+        </Feld>
+        <Feld label={tr("admin.benutzername")}>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} className={EINGABE} />
+        </Feld>
+        <Feld label={tr("admin.max_gleichzeitige_agenten_laeufe")}>
+          <input type="number" min={0} max={20} value={maxRunners}
+            onChange={(e) => setMaxRunners(e.target.value)} className={EINGABE} />
+        </Feld>
+        <div className="border-t border-line pt-3">
+          <Feld label={tr("admin.neues_passwort_setzen")}>
+            <div className="flex gap-2">
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                placeholder={tr("admin.mind_8_zeichen")} className={EINGABE} />
+              <button onClick={resetPw} disabled={!newPassword}
+                className="shrink-0 rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink disabled:opacity-40">
+                {tr("admin.setzen")}
+              </button>
+            </div>
+          </Feld>
+          {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
+        </div>
       </div>
-      {(!data?.by_model || data.by_model.length === 0) && <div className="text-sm text-muted">{tr("admin.noch_keine_kosten")}</div>}
-    </div>
+    </Dialog>
   );
 }
