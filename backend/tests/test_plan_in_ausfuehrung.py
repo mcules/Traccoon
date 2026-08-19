@@ -36,7 +36,7 @@ async def _nachrichten(db, monkeypatch, mode: str, plan: str) -> list[dict]:
 
     async def fake_chat(**kw):
         gesehen.extend(kw["messages"])
-    raise RuntimeError("stop")           # after building the prompt that is enough
+        raise RuntimeError("stop")       # after building the prompt that is enough
 
     monkeypatch.setattr(runtime.router, "chat", fake_chat)
     try:
