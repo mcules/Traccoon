@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { setzeZeitzone } from "./lib/formatTime";
 import { api, getToken, setToken, User } from "./api";
 
 interface AuthCtx {
@@ -25,6 +26,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const me = await api.get<User>("/auth/me");
       setUser(me);
+      // Alle Uhrzeiten der Oberfläche laufen ab hier in der Zone dieser Person, nicht in der
+      // des Browsers — dieselbe Angabe, mit der der Server ihre Zeitpläne rechnet.
+      setzeZeitzone(me.timezone);
       // The server is the source of the theme: apply it on loading (no toggle UI here).
       if (me.theme === "light" || me.theme === "dark") {
         document.documentElement.setAttribute("data-theme", me.theme);

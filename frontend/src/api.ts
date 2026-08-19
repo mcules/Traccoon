@@ -111,6 +111,7 @@ export const api = {
 export interface User {
   id: number; email: string | null; username: string; display_name: string;
   global_role: string; status: string; onboarded: boolean; theme: string;
+  timezone?: string;           // IANA-Zone: Uhrzeiten der Oberfläche und der eigenen Jobs
   ticket_open_mode?: string;   // popup | page — wie ein Ticket per Linksklick öffnet
   ticket_layout?: { left?: string[]; right?: string[] };  // nutzerspez. Block-Anordnung
   pm_chat_style?: string;      // bubbles | cli — Darstellung des PM-Chats
@@ -233,6 +234,20 @@ export const destinationApi = {
 // missing. The API delivers text fields as an empty string instead of `null`; both are treated the same here.
 
 /** Filter of the read API. `other` = everything that neither runs nor is ok/failed (above all `cancelled`). */
+export type GraphSave = {
+  ergebnis: "layout" | "entwurf" | "neuer_entwurf";
+  hinweis: string;
+  version: WfVer;
+};
+
+export type WfDiffFeld = { feld: string; vorher: string; nachher: string };
+export type WfDiffKnoten = { id: string; label: string; felder: WfDiffFeld[] };
+export type WfDiff = {
+  von: number | null; bis: number; gleich: boolean;
+  knoten_neu: WfDiffKnoten[]; knoten_weg: WfDiffKnoten[]; knoten_geaendert: WfDiffKnoten[];
+  kanten_neu: string[]; kanten_weg: string[];
+};
+
 export type DeploymentStatusFilter = "all" | "running" | "ok" | "failed" | "other";
 
 export interface DeploymentRow {
@@ -341,6 +356,13 @@ export const workflowApi = {
   editable: (id: number) => api.get<WfVer>(`/workflows/${id}/editable`),
   saveVersion: (id: number, vid: number, body: { graph: WfGraph; notes?: string }) =>
     api.put<WfVer>(`/workflows/${id}/versions/${vid}`, body),
+  /** Speichert den Editor-Stand. Der Server entscheidet, ob das eine Fassung wert ist:
+   *  gleiche Inhalte heißt Anordnung (`layout`), sonst entsteht bzw. wächst ein Entwurf. */
+  saveGraph: (id: number, body: { graph: WfGraph; notes?: string }) =>
+    api.put<GraphSave>(`/workflows/${id}/graph`, body),
+  discardDraft: (id: number) => api.del(`/workflows/${id}/draft`),
+  diff: (id: number, vid: number, gegen?: number) =>
+    api.get<WfDiff>(`/workflows/${id}/versions/${vid}/diff${gegen ? `?gegen=${gegen}` : ""}`),
   validate: (id: number, vid: number) =>
     api.post<{ ok: boolean; errors: string[] }>(`/workflows/${id}/versions/${vid}/validate`),
   publish: (id: number, vid: number) => api.post<WfVer>(`/workflows/${id}/versions/${vid}/publish`),

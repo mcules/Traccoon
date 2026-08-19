@@ -50,6 +50,8 @@ class UserOut(BaseModel):
     max_runners: int
     onboarded: bool
     default_project_view: str
+    # Zeitzone (IANA): die Oberfläche rechnet ihre Uhrzeiten damit, nicht mit der des Browsers.
+    timezone: str = "Europe/Berlin"
     ticket_open_mode: str = "popup"
     ticket_layout: dict = {}
     pm_chat_style: str = "bubbles"
