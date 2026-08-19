@@ -5,7 +5,7 @@ import HttpRequestConfig from "./HttpRequestConfig";
 import ActionParams from "./ActionParams";
 import { ACTION_SPECS } from "./actionFields";
 
-/** Aktionen nach Themen gruppiert — sonst wird die Liste unübersichtlich. */
+/** Actions grouped by topic; otherwise the list becomes confusing. */
 const GROUPS: [string, [AutoActionName, string][]][] = [
   ["Artefakt", [
     ["set_status", "Zustand setzen"],
@@ -44,8 +44,8 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
   ]],
 ];
 
-/** Wiederholen und Fehlerzweig gelten für JEDE Aktion — deshalb stehen sie unter der
- *  Auswahl und nicht in den Feldern einer einzelnen. */
+/** Retrying and the error branch apply to EVERY action, which is why they stand below the
+ *  selection and not in the fields of an individual one. */
 function Fehlerverhalten({ config, onChange }: { config: NodeConfig; onChange: (c: NodeConfig) => void }) {
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
   return (
@@ -96,9 +96,9 @@ export default function AutoActionConfig({
   subjectKind?: string;
 }) {
   const action: AutoAction = config.action || { action: "notify", params: {} };
-  // Nur zeigen, was zum Subjekt des Ablaufs passt — ein Hardware-Prozess braucht kein
-  // „Branch mergen", ein Ticket-Prozess keinen Beschaffungs-Status. Die aktuell gewählte
-  // Aktion bleibt immer sichtbar, auch wenn sie (noch) nicht passt.
+  // Show only what fits the subject of the flow: a hardware process needs no "merge branch",
+  // and a ticket process no procurement status. The currently chosen action always stays
+  // visible, even when it does not (yet) fit.
   const passt = (name: AutoActionName) => {
     const s = ACTION_SPECS[name]?.subjects;
     return !s || !subjectKind || s.includes(subjectKind as any);
@@ -106,7 +106,7 @@ export default function AutoActionConfig({
   const gruppen = GROUPS
     .map(([g, items]) => [g, items.filter(([k]) => passt(k) || k === action.action)] as const)
     .filter(([, items]) => items.length);
-  // Aktion gewechselt → Parameter der alten nicht mitschleppen.
+  // Action changed: do not carry the parameters of the old one along.
   const setAction = (name: AutoActionName) =>
     onChange({ ...config, action: { action: name, params: {} } });
   const setParams = (params: Record<string, any>) =>

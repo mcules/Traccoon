@@ -3,11 +3,11 @@ import type { KontextFeld } from "../contextFields";
 import { tr } from "../../../i18n";
 
 /**
- * Was durchlaufen wird und wie das Element im Ablauf heißt.
+ * What is walked through and what the element is called in the flow.
  *
- * Die Liste ist ein Kontext-Pfad — meist das Ergebnis eines Schritts davor
- * (`tool.json.items`, `http.body.zeilen`) oder etwas, das der Auslöser mitgebracht hat.
- * Der Rest sind Namen: unter welchem Schlüssel das aktuelle Element steht und wo der
+ * The list is a context path, usually the result of a step before it (`tool.json.items`,
+ * `http.body.zeilen`) or something the trigger brought along. The rest are names: under
+ * which key the current element stands and where the counter lands.
  * Zähler landet.
  */
 export default function LoopConfig({
@@ -21,8 +21,8 @@ export default function LoopConfig({
 }) {
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
   const set = (p: Partial<NodeConfig>) => onChange({ ...config, ...p });
-  // Listen zuerst: alles andere lässt sich zwar durchlaufen (ein Einzelwert zählt als ein
-  // Element), gemeint ist aber fast immer eine.
+  // Lists first: everything else can be walked through as well (a single value counts as one
+  // element), but a list is almost always what is meant.
   const listen = felder.filter((f) => f.typ === "liste" || f.typ === "objekt");
 
   return (

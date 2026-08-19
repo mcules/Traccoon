@@ -19,10 +19,10 @@ const STATUS_COLOR: Record<string, string> = {
 
 /**
  * Workflow-Ansicht eines Hardware-Exemplars (Etappe 4, Dual-Run — additiv neben AssetProcurement).
- * - Ohne Instanz + mit Projekt: Startbutton für die Beschaffungs-Workflow-Instanz.
- * - Ohne Instanz + ohne Projekt (Vorrat/Lager): Hinweis.
- * - Mit Instanz: Read-only-Graph (WorkflowInstanceView) + offene Schritte (WorkflowTaskForm).
- * Annahme: Bei mehreren Instanzen zählt die neueste (höchste id).
+ * - Without an instance and with a project: the start button for the procurement workflow instance.
+ * - Without an instance and without a project (stock, storage): a hint.
+ * - With an instance: the read-only graph (WorkflowInstanceView) plus open steps (WorkflowTaskForm).
+ * Assumption: with several instances the newest one (the highest id) counts.
  */
 export default function AssetWorkflow({
   assetId, projectId, assetLabel,
@@ -62,7 +62,7 @@ export default function AssetWorkflow({
     );
   }
 
-  // ── Keine Instanz ────────────────────────────────────────────────────────────
+  // ── No instance ──────────────────────────────────────────────────────────────
   if (!latest) {
     if (projectId == null) {
       return (
@@ -107,7 +107,7 @@ function InstancePanel({
   const qc = useQueryClient();
   const iid = initial.id;
 
-  // Live-Instanz (geteilter Query-Key mit WorkflowInstanceView → WS + Polling greifen).
+  // Live instance (a query key shared with WorkflowInstanceView, so WS plus polling take hold).
   const { data: live } = useQuery({
     queryKey: ["workflow-instance", iid],
     queryFn: () => workflowApi.instance(iid),
@@ -122,7 +122,7 @@ function InstancePanel({
     enabled: projectId != null,
   });
 
-  // node_id → NodeConfig aus dem gepinnten Graph.
+  // node_id to NodeConfig from the pinned graph.
   const configByNode = useMemo(() => {
     const m: Record<string, NodeConfig> = {};
     for (const n of instance.graph?.nodes ?? []) m[n.id] = n.data.config;

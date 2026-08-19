@@ -19,7 +19,7 @@ router = APIRouter(tags=["skills-mcp"])
 # ---------------- Skills (versioniert) ----------------
 
 class SkillIn(BaseModel):
-    key: str = ""          # optional — leer = automatisch aus dem Namen abgeleitet
+    key: str = ""          # optional: empty means derived automatically from the name
     name: str = ""
     description: str = ""
     body: str
@@ -50,7 +50,7 @@ async def list_skills(_: User = Depends(get_current_user), db: AsyncSession = De
 
 @router.post("/skills", status_code=201)
 async def create_skill(data: SkillIn, _: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
-    # Key ist optional: leer → aus dem Namen ableiten (sonst gibt es keinen Namen → Fehler).
+    # The key is optional: empty means derive it from the name (otherwise there is no name, which is an error).
     key = data.key.strip() or _slug(data.name)
     if not data.name.strip() and not data.key.strip():
         raise HTTPException(400, "Name (oder Key) erforderlich")
@@ -88,7 +88,7 @@ class McpIn(BaseModel):
     env: dict = {}
     url: str = ""
     headers: dict = {}
-    variables: list = []   # [{key,label,secret,required}] — Slots für Instanzen
+    variables: list = []   # [{key,label,secret,required}]: slots for instances
     enabled: bool = False
 
 
@@ -123,7 +123,7 @@ async def update_mcp(mid: int, data: McpIn, user: User = Depends(get_current_use
     m.name, m.display_name = data.name, data.display_name or data.name
     m.transport, m.command, m.args = data.transport, data.command, data.args
     m.url, m.headers, m.variables, m.enabled = data.url, data.headers, data.variables, data.enabled
-    if data.env:  # leeres env lässt bestehende server-feste Secrets unangetastet
+    if data.env:  # an empty env leaves existing server-fixed secrets untouched
         m.env_enc = encrypt_secret(json.dumps(data.env))
     await db.commit()
 
@@ -152,7 +152,7 @@ async def _agent_owned(db: AsyncSession, agent_id: int, user: User) -> AgentDefi
 
 
 def _check_required_vars(srv: McpServer, values: dict) -> None:
-    """Prüft, dass alle als `required` markierten Variablen des Servers in `values` nicht-leer gesetzt sind."""
+    """Checks that all variables of the server marked as `required` are set non-empty in `values`."""
     missing = []
     for var in (srv.variables or []):
         if not var.get("required"):
@@ -192,7 +192,7 @@ async def add_instance(agent_id: int, data: McpInstanceIn, user: User = Depends(
                        name=data.name or srv.name,
                        values_enc=encrypt_secret(json.dumps(data.values)) if data.values else "")
     db.add(inst)
-    if a.origin_agent_id is not None:  # verknüpfte Kopie ändern → bearbeitet
+    if a.origin_agent_id is not None:  # changing a linked copy marks it as edited
         a.customized = True
     await db.commit()
     await db.refresh(inst)
@@ -232,7 +232,7 @@ async def del_instance(agent_id: int, iid: int, user: User = Depends(get_current
 
 
 async def load_skill_bodies(db: AsyncSession, keys: list[str]) -> str:
-    """Aktive, neueste Versionen der genannten Skills als Text (für den Agenten-Prompt)."""
+    """Active, newest versions of the named skills as text (for the agent prompt)."""
     if not keys:
         return ""
     parts = []
