@@ -1,16 +1,16 @@
-"""Test-Fixtures: App gegen eine In-Memory-SQLite statt Postgres.
+"""Test fixtures: the app against an in-memory SQLite instead of Postgres.
 
-Warum SQLite trägt: alle Modelle nutzen `SAEnum(..., values_callable=pg_enum_values)`
-mit lowercase-Values — unter SQLite werden daraus CHECK-Constraint-Strings. Die
-Zugriffs-Helper in `deps.py`/`hardware.py` sind reine ORM-Queries ohne PG-Spezifika.
-Das Schema kommt über `Base.metadata.create_all` (nicht Alembic), damit die Tests
-unabhängig vom Migrationsstand laufen.
+Why SQLite carries: all models use `SAEnum(..., values_callable=pg_enum_values)` with lower
+case values, and under SQLite those become CHECK constraint strings. The access helpers in
+`deps.py`/`hardware.py` are pure ORM queries without PG specifics. The schema comes over
+`Base.metadata.create_all` (not Alembic), so that the tests run independently of the
+migration state.
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-# Pflicht-Settings, bevor app.config gelesen wird.
+# Mandatory settings, before app.config is read.
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite://")
 os.environ.setdefault("JWT_SECRET", "test-secret")
 os.environ.setdefault("INTERNAL_TOKEN", "test-internal")
@@ -33,9 +33,9 @@ from app.models.enums import (  # noqa: E402
 )
 
 
-# Module, die sich ihre eigene Session holen (Engine, Tick, Testumgebungen). Damit sie im
-# Test dieselbe In-Memory-DB sehen wie der HTTP-Client, wird ihr `SessionLocal` umgehängt —
-# sonst liefe die Prozess-Engine gegen eine leere zweite Datenbank.
+# Modules that fetch a session of their own (engine, tick, test environments). So that they
+# see the same in-memory database in the test as the HTTP client, their `SessionLocal` is
+# rehung; otherwise the process engine would run against an empty second database.
 _SESSION_MODULES = (
     "app.db", "app.services.workflow_engine", "app.services.dispatcher",
     "app.services.scheduler", "app.services.testenv", "app.worker.__main__",
@@ -44,7 +44,7 @@ _SESSION_MODULES = (
 
 @pytest_asyncio.fixture
 async def db(monkeypatch):
-    """Frische In-Memory-DB pro Test (StaticPool = alle Sessions auf derselben Verbindung)."""
+    """A fresh in-memory database per test (StaticPool = all sessions on the same connection)."""
     engine = create_async_engine(
         "sqlite+aiosqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool,
     )
@@ -59,8 +59,8 @@ async def db(monkeypatch):
     async with session_factory() as session:
         session.__test_factory__ = session_factory
         yield session
-    # Wächter-Tasks der Engine beenden, bevor die DB verschwindet — sonst warten sie im
-    # nächsten Test auf eine längst geschlossene Verbindung und der Lauf hängt.
+    # End the watcher tasks of the engine before the database disappears; otherwise they
+    # wait in the next test on a long closed connection and the run hangs.
     import app.services.workflow_engine as enginemod
     for task in list(enginemod._BACKGROUND):
         task.cancel()
@@ -70,19 +70,19 @@ async def db(monkeypatch):
 
 @pytest_asyncio.fixture
 async def seeded(db):
-    """DB mit dem ausgelieferten Standard-Satz (Ticket-Lebenszyklus, Abnahme, …)."""
+    """Database with the shipped default set (ticket lifecycle, acceptance, …)."""
     from app.services.workflow_seed import ensure_builtin_set
     return await ensure_builtin_set(db)
 
 
 @pytest.fixture(autouse=True)
 def kein_mcp(monkeypatch):
-    """Kein Test spricht mit einem echten MCP-Dienst.
+    """No test talks to a real MCP service.
 
-    Der Mail-Eingang ruft am Ende `imap-mcp` und verschiebt damit echte Post. Im Test lief
-    das gegen den laufenden Dienst — die Mailkennung aus den Testdaten zeigt zwar auf keine
-    existierende Nachricht, aber darauf darf sich nichts verlassen. Wer den Aufruf prüfen
-    will, ersetzt `call_tool` selbst (siehe `imap_stub` in den Spam-Tests).
+    The mail inbox calls `imap-mcp` at the end and thereby moves real post. In the test that
+    ran against the running service; the mail id from the test data does point at no existing
+    message, but nothing may rely on that. Whoever wants to check the call replaces
+    `call_tool` themselves (see `imap_stub` in the spam tests).
     """
     import app.services.mcp_client as mcpmod
 
@@ -100,14 +100,13 @@ def kein_mcp(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def redis_stub(monkeypatch):
-    """Redis/Worker-Ersatz für alle Tests.
+    """Redis and worker replacement for all tests.
 
-    Ohne das würden Prozess-Schritte (Ereignis senden, Agentenlauf einreihen) in einen
-    echten Redis laufen und minutenlang in Timeouts hängen. `results` füllt der Test:
-    `results["*"] = {...}` beantwortet jeden Lauf, `results["<task_id>"]` einen bestimmten.
-    Eine LISTE wird der Reihe nach abgearbeitet, der letzte Eintrag bleibt stehen — damit
-    lässt sich „erst Zwischenstand, dann fertig" abbilden, ohne dass ein Prozess in einer
-    Fortsetzungs-Schleife bis zum Cap dreht.
+    Without it, process steps (sending an event, queueing an agent run) would run into a real
+    Redis and hang in timeouts for minutes. `results` is filled by the test:
+    `results["*"] = {...}` answers every run, `results["<task_id>"]` a particular one. A LIST
+    is worked off in order and the last entry stays, which lets "first an interim state, then
+    finished" be reproduced without a process turning in a continuation loop up to the cap.
     """
     import app.core.redis as redismod
     results: dict[str, object] = {}
@@ -153,7 +152,7 @@ def redis_stub(monkeypatch):
     }
     for name, fn in stubs.items():
         monkeypatch.setattr(redismod, name, fn, raising=False)
-    # Module, die die Funktionen beim Import gebunden haben, brauchen denselben Ersatz.
+    # Modules that bound the functions at import time need the same replacement.
     import importlib
     for modname in ("app.services.workflow_engine", "app.services.dispatcher",
                     "app.services.scheduler"):
@@ -166,10 +165,10 @@ def redis_stub(monkeypatch):
 
 @pytest_asyncio.fixture
 async def client(db):
-    """HTTP-Client gegen die API; `get_session` zeigt auf die Test-DB.
-    Die Routen hängen an der unter /api gemounteten Sub-App `api` — deren
-    dependency_overrides sind von denen der äußeren App getrennt.
-    Lifespan läuft bewusst nicht (kein Dispatcher/Scheduler im Test)."""
+    """HTTP client against the API; `get_session` points at the test database. The routes hang
+    off the sub-app `api` mounted under /api, whose dependency_overrides are separate from
+    those of the outer app. The lifespan deliberately does not run (no dispatcher or scheduler
+    in the test)."""
     async def _override():
         yield db
     api.dependency_overrides[get_session] = _override
@@ -179,7 +178,7 @@ async def client(db):
     api.dependency_overrides.clear()
 
 
-# ── Helfer zum Anlegen von Testdaten ─────────────────────────────────────────
+# ── Helpers for creating test data ───────────────────────────────────────────
 
 async def make_user(db, username: str, admin: bool = False) -> User:
     u = User(
@@ -248,7 +247,7 @@ async def make_asset(db, model_name: str, project: Project | None = None,
 
 @pytest.fixture
 def helpers():
-    """Bündel der Anlege-Helfer, damit Tests nur eine Fixture importieren müssen."""
+    """Bundle of the creation helpers, so that tests have to import only one fixture."""
     return type("H", (), {
         "make_user": staticmethod(make_user), "auth": staticmethod(auth),
         "make_project": staticmethod(make_project), "add_member": staticmethod(add_member),
@@ -258,9 +257,9 @@ def helpers():
 
 @pytest.fixture(autouse=True)
 def _i18n_frisch():
-    """Übersetzungen kommen aus einem prozessweiten Zwischenspeicher (30 s), damit nicht jede
-    Benachrichtigung eine Abfrage kostet. Zwischen zwei Tests ist das ein Fehler: der Text,
-    den ein Test überschreibt, gälte im nächsten weiter."""
+    """Translations come from a process wide cache (30 s), so that not every notification
+    costs a query. Between two tests that is a bug: the text one test overwrites would keep
+    applying in the next."""
     from app.services.i18n import verwerfen
     verwerfen()
     yield
