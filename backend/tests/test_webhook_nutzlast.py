@@ -1,10 +1,10 @@
-"""Webhooks von Fremdsystemen: filtern, anschreiben, nicht doppelt melden.
+"""Webhooks from foreign systems: filtering, addressing, not reporting twice.
 
-Traccoon-eigene Absender schicken flache Nutzlasten mit Kopfzeilen. Alles andere tut das
-nicht: ein Tracker meldet Zündung, Standort und Alarm über *dieselbe* URL, ohne Kopfzeile,
-mit verschachteltem JSON. Vorher hieß das: kein Filter möglich (der Ereignis-Typ kam nur
-aus einer Kopfzeile), keine Anrede tiefer Felder (`{position.address}` blieb als Text
-stehen) und jede Wiederholung des Absenders eine zweite Nachricht.
+Traccoon's own senders send flat payloads with headers. Everything else does not: a tracker
+reports ignition, position and alarm over the *same* URL, without a header, with nested
+JSON. Before, that meant: no filter possible (the event type came only from a header), no
+addressing of deep fields (`{position.address}` stayed as text) and every repetition of the
+sender a second message.
 """
 import pytest
 from app.models.notification import Notification
@@ -49,7 +49,7 @@ async def test_tiefe_felder_werden_eingesetzt(client, db):
 
 
 async def test_filter_aus_der_nutzlast(client, db):
-    """Ohne Kopfzeile: der Ereignis-Typ steht in der Nutzlast — sonst kommt alles durch."""
+    """Without a header: the event type stands in the payload; otherwise everything comes through."""
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker2",
                     event_header="payload:event.attributes.alarm", event_filter="vibration")
@@ -64,7 +64,7 @@ async def test_filter_aus_der_nutzlast(client, db):
 
 
 async def test_kopfzeilen_filter_bleibt(client, db):
-    """Der bisherige Weg darf sich nicht ändern — GitHub & Co. schicken Kopfzeilen."""
+    """The previous way must not change: GitHub and company send headers."""
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="gh", event_header="X-GitHub-Event", event_filter="push")
     r = await client.post(f"/hooks/{w.public_id}", json={"a": 1},
@@ -83,7 +83,7 @@ async def test_dieselbe_meldung_nur_einmal(client, db):
     assert zweite.json().get("duplicate") is True
     assert len(await _letzte(db)) == 1
 
-    # Ein anderes Ereignis ist keine Wiederholung.
+    # Another event is not a repetition.
     anders = {**NUTZLAST, "event": {**NUTZLAST["event"], "id": 1892}}
     assert (await _melden(client, w, anders)).status_code == 202
     assert len(await _letzte(db)) == 2
@@ -98,7 +98,7 @@ async def test_ohne_bezugsfeld_kein_unterdruecken(client, db):
 
 
 async def test_workflow_modus_erkennt_wiederholungen(client, db):
-    """Auch der Ablauf-Modus muss den Bezug tief in der Nutzlast finden."""
+    """The flow mode has to find the reference deep in the payload as well."""
     from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
     from app.models.workflow import WorkflowDefinition, WorkflowInstance, WorkflowVersion
 
@@ -133,8 +133,8 @@ async def test_workflow_modus_erkennt_wiederholungen(client, db):
 # ── Bearbeiten darf nichts verlieren ─────────────────────────────────────────
 
 async def test_bearbeiten_behaelt_die_vorlagen(client, db):
-    """Die Antwort trug die Vorlagen nicht — das Formular füllte sie mit Standardwerten
-    nach, und Speichern setzte den eingetragenen Text still zurück."""
+    """The answer did not carry the templates: the form filled them with defaults, and saving
+    silently reset the entered text."""
     anna = await make_user(db, "anna")
     r = await client.post("/webhooks", headers=auth(anna), json={
         "route": "vorlagen", "mode": "notify",
@@ -148,7 +148,7 @@ async def test_bearbeiten_behaelt_die_vorlagen(client, db):
     assert gelesen["title_template"] == "Alarm {device.name}"
     assert gelesen["body_template"] == "{device.name}: {event.type}"
 
-    # Genau das tut die Oberfläche: gelesene Werte zurückschreiben.
+    # That is exactly what the interface does: write read values back.
     zurueck = await client.put(f"/webhooks/{wid}", headers=auth(anna), json={
         "route": gelesen["route"], "mode": gelesen["mode"],
         "title_template": gelesen["title_template"],
@@ -165,7 +165,7 @@ async def test_ereignisname_kommt_zurueck(client, db):
 
 
 async def test_sammelfenster_ueberlebt_doppelte_routennamen(db):
-    """Zwei Webhooks dürfen denselben Routennamen tragen — der Tick darf daran nicht sterben."""
+    """Two webhooks may carry the same route name; the tick must not die of it."""
     import datetime as dt
 
     from app.models.ops import WebhookCoalesce

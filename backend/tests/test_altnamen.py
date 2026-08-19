@@ -1,10 +1,10 @@
-"""Ein Name je Sache — und Alt-Namen brechen trotzdem nichts.
+"""One name per thing, and old names still break nothing.
 
-Vor dem Artefakt-Register gab es je Subjekt eine eigene Zustands-Aktion
-(`set_agent_status`, `set_purchase_status`). Beide sind heute `set_status`. Die alten
-Namen stehen aber weiter in veröffentlichten Versionen, und die sind unveränderlich —
-laufende Instanzen hängen daran. Diese Tests halten beides fest: die Alt-Namen wirken
-unverändert, und die ausgelieferten Abläufe benutzen sie nicht mehr.
+Before the artifact register there was a status action of its own per subject
+(`set_agent_status`, `set_purchase_status`). Both are `set_status` today. The old names
+still stand in published versions though, and those are immutable, because running instances
+hang off them. These tests record both: the old names act unchanged, and the shipped flows
+no longer use them.
 """
 from app.models.enums import PurchaseStatus, TicketAgentStatus, WorkflowSubjectKind
 from app.models.workflow import WorkflowInstance
@@ -26,7 +26,7 @@ def _knoten(action: str, **params) -> dict:
 
 
 async def _instanz(db, proj, subject, **bindung) -> WorkflowInstance:
-    """Instanz mit minimaler Definition — die Aktion braucht nur die Bindung."""
+    """Instance with a minimal definition: the action needs only the binding."""
     from app.models.enums import WorkflowVersionStatus
     from app.models.workflow import WorkflowDefinition, WorkflowVersion
     d = WorkflowDefinition(project_id=proj.id, key="alt", name="Alt", subject_kind=subject)
@@ -71,7 +71,7 @@ async def test_ausgelieferte_ablaeufe_kennen_keine_altnamen():
 
 
 async def test_alter_ticket_name_setzt_weiter_den_zustand(db):
-    """`set_agent_status` aus einer veröffentlichten Version wirkt wie `set_status`."""
+    """`set_agent_status` from a published version acts like `set_status`."""
     await art.ensure_builtin_types(db)
     proj = await make_project(db, "ALT", "Alt")
     issue = await _ticket(db, proj)
@@ -82,7 +82,7 @@ async def test_alter_ticket_name_setzt_weiter_den_zustand(db):
     await db.commit()
     await db.refresh(issue)
     assert issue.agent_status == TicketAgentStatus.plan_review
-    # `hold_reason` hieß beim Vorgänger so — der neue Weg nennt es `reason`.
+    # `hold_reason` was called that in the predecessor; the new way calls it `reason`.
     assert issue.hold_reason.value == "plan_split"
     a = await art.ensure_for_issue(db, issue)
     assert a.status_key == "plan_review"
@@ -107,7 +107,7 @@ async def test_alter_hardware_name_setzt_weiter_den_zustand(db):
 # ── Auffrischen maschinell erzeugter Beschaffungs-Ketten ─────────────────────
 
 def _alte_form(graph: dict) -> dict:
-    """Denselben Graphen in der Schreibweise von früher: flache Aktion, alter Name."""
+    """The same graph in the old notation: a flat action, the old name."""
     aus = {"nodes": [], "edges": [dict(e) for e in graph["edges"]]}
     for n in graph["nodes"]:
         n = {**n, "data": {**n["data"], "config": dict(n["data"]["config"])}}
@@ -121,7 +121,7 @@ def _alte_form(graph: dict) -> dict:
 
 
 async def test_alte_kette_wird_gehoben(db):
-    """Nur die Schreibweise unterscheidet sich → auf die aktuelle Bauform heben."""
+    """Only the notation differs, so lift it to the current shape."""
     from app.models.workflow import WorkflowDefinition, WorkflowVersion
     from app.models.enums import WorkflowVersionStatus
     from app.services.hardware_workflow import HARDWARE_DEF_KEY
@@ -147,12 +147,12 @@ async def test_alte_kette_wird_gehoben(db):
     assert "set_purchase_status" not in text
     assert "set_status" in text
 
-    # Zweiter Lauf findet nichts mehr — sonst entstünde bei jedem Start eine neue Version.
+    # A second run finds nothing more; otherwise a new version would arise on every start.
     assert await refresh_generated_definitions(db) == 0
 
 
 async def test_angepasste_kette_bleibt_unberuehrt(db):
-    """Wer den Ablauf inhaltlich geändert hat, darf ihn nicht beim Start verlieren."""
+    """Whoever changed the flow in substance must not lose it at the start."""
     from app.models.workflow import WorkflowDefinition, WorkflowVersion
     from app.models.enums import WorkflowVersionStatus
     from app.services.hardware_workflow import HARDWARE_DEF_KEY, _project_steps
