@@ -1,13 +1,12 @@
-"""Ein verlorener Wächter muss wieder angebunden werden — nicht erst beim nächsten Neustart.
+"""A lost watcher has to be reattached, not only at the next restart.
 
-Der Wächter, der auf das Ergebnis eines Agentenlaufs wartet, lebt im Backend-Prozess. Geht
+The watcher waiting for the result of an agent run lives in the backend process. If it is lost, nobody waits any more: on 2026-08-07 one hung in a half dead Redis connection (the
 er verloren, wartet niemand mehr: am 2026-08-07 hing einer in einer halb toten
-Redis-Verbindung (der Client hatte weder keepalive noch socket_timeout — der Worker warnt
-im eigenen Code davor). Das fertige Ergebnis für ABC-31 lag ab 19:54 unabgeholt in Redis,
-das Ticket stand eine Stunde still, und von außen sah es aus, als arbeite der Agent noch.
+client had neither keepalive nor socket_timeout, and the worker warns about that in its own
+code). The finished result for ABC-31 lay unfetched in Redis from 19:54, the ticket stood
+still for an hour, and from the outside it looked as if the agent were still working.
 
-Angebunden wurde bisher nur beim Backend-Start. Jetzt in jedem Tick — und höchstens einmal
-je Schritt.
+Reattaching used to happen only at the backend start. Now it happens in every tick, and at most once per step.
 """
 from app.models.enums import WorkflowInstanceStatus as IStatus
 from app.models.enums import WorkflowStepStatus as SStatus
@@ -43,7 +42,7 @@ async def test_verwaister_schritt_bekommt_wieder_einen_waechter(db, monkeypatch,
 
 
 async def test_kein_zweiter_waechter_auf_dasselbe_ergebnis(db, monkeypatch, prozess):
-    """Zwei Wächter auf einem Ergebnis würden beide schalten — der Schritt liefe doppelt."""
+    """Two watchers on one result would both switch, and the step would run twice."""
     inst, token = prozess
     step = await _schritt(db, inst, token)
     gestartet: list[int] = []
@@ -53,7 +52,7 @@ async def test_kein_zweiter_waechter_auf_dasselbe_ergebnis(db, monkeypatch, proz
 
     monkeypatch.setattr(we, "_await_agent", fake_await_agent)
     we._WAECHTER.clear()
-    we._WAECHTER.add(step.id)          # hier wartet bereits einer
+    we._WAECHTER.add(step.id)          # one is already waiting here
     try:
         await we.recover_workflow_agents()
         await we.drain()
@@ -86,7 +85,7 @@ import pytest  # noqa: E402
 
 @pytest.fixture
 async def prozess(db):
-    """Minimale laufende Instanz mit Token — mehr braucht das Wiederanbinden nicht."""
+    """Minimal running instance with a token: reattaching needs no more."""
     from app.models.workflow import (WorkflowDefinition, WorkflowInstance, WorkflowToken,
                                      WorkflowVersion)
     from app.models.enums import WorkflowTokenState as TState

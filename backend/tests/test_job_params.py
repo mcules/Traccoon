@@ -1,7 +1,6 @@
-"""Platzhalter und Vorlagen für Jobs.
+"""Placeholders and templates for jobs.
 
-Anlass: der KI-&-Tech-News-Job trug Thema, Quellen und Aufbau fest im Prompt. Ein zweiter
-Digest wäre eine Kopie gewesen. Jetzt: Vorlage + Parameter (`jobs.args` als Objekt).
+The occasion: the AI and tech news job carried topic, sources and structure firmly in the prompt. A second digest would have been a copy. Now: a template plus parameters (`jobs.args` as an object).
 """
 import datetime as dt
 
@@ -19,15 +18,15 @@ def test_liste_wird_zur_aufzaehlung():
 
 
 def test_unbekannter_platzhalter_bleibt_stehen():
-    """Stilles Leeren würde eine Vorgabe lautlos aus dem Auftrag entfernen — sichtbar
-    falsch ist besser als unsichtbar falsch."""
+    """Emptying silently would remove a rule from the assignment without a sound; visibly
+    wrong is better than invisibly wrong."""
     assert rendere("Quellen: {{quellen}}", {"thema": "x"}) == "Quellen: {{quellen}}"
     assert offene_platzhalter("Quellen: {{quellen}}", {"thema": "x"}) == ["quellen"]
 
 
 def test_script_argumente_bleiben_unangetastet():
-    """`args` ist historisch die Argumentliste der script-Jobs. Nur ein Objekt ist ein
-    Parametersatz — eine Liste darf nichts ersetzen."""
+    """`args` is historically the argument list of the script jobs. Only an object is a
+    parameter set; a list must replace nothing."""
     assert rendere("{{thema}}", ["--flag", "wert"]) == "{{thema}}"
 
 
@@ -40,7 +39,7 @@ def test_zeitfenster_kommt_aus_dem_letzten_lauf():
 
 
 def test_ohne_letzten_lauf_24_stunden_zurueck():
-    """Erster Lauf oder Job war aus: ein Digest braucht trotzdem eine Untergrenze."""
+    """First run or the job was off: a digest still needs a lower bound."""
     jetzt = dt.datetime(2026, 7, 29, 6, 0, tzinfo=dt.timezone.utc)
     assert "2026-07-28 08:00 bis 2026-07-29 08:00" in rendere("{{zeitfenster}}", {}, jetzt=jetzt)
 
@@ -53,12 +52,12 @@ def test_vorlage_liefert_felder_und_parameter():
     felder = anwenden("recherche-digest", {"titel": "Security-News"})
     assert felder["kind"] == "prompt" and felder["result_html"] is True
     assert felder["args"]["titel"] == "Security-News"
-    # Nicht überschriebene Vorgaben bleiben erhalten.
+    # Defaults that are not overridden are kept.
     assert felder["args"]["sprache"] == "Deutsch" and felder["args"]["quellen"]
 
 
 def test_vorlage_rendert_ohne_offene_platzhalter():
-    """Eine Vorlage, die out of the box Lücken lässt, wäre eine Falle."""
+    """A template that leaves gaps out of the box would be a trap."""
     felder = anwenden("recherche-digest")
     assert offene_platzhalter(felder["prompt"], felder["args"]) == []
     text = rendere(felder["prompt"], felder["args"])

@@ -1,12 +1,11 @@
-"""Ein Lauf, hinter dem niemand mehr steht, darf nicht ewig „läuft" bleiben.
+"""A run nobody stands behind any more must not stay "running" forever.
 
-Lauf 753 am 2026-08-07: der Prozess starb an einem Deadlock beim Schreiben der
-Schrittzeile — an einer Stelle also, an der er sich nicht mehr abmelden konnte. Die Zeile
-blieb auf `running`, der Prozess war längst über den Störungs-Zweig weitergezogen, und die
-Board-Regel („wer arbeitet, steht auf In Arbeit") hielt das Ticket in der Arbeit fest,
-obwohl es auf eine Rückmeldung wartete.
+Run 753 on 2026-08-07: the process died of a deadlock while writing the step row, so at a
+place where it could no longer sign off. The row stayed on `running`, the process had long
+moved on over the disturbance branch, and the board rule ("whoever works stands on in
+progress") held the ticket in the work although it was waiting for a reply.
 
-Maßstab ist das Lebenszeichen, nicht die Uhr: ein Agent darf Stunden brauchen.
+The measure is the sign of life, not the clock: an agent may take hours.
 """
 import datetime as dt
 
@@ -40,7 +39,7 @@ async def test_lauf_ohne_lebenszeichen_wird_geschlossen(db, monkeypatch):
 
 
 async def test_lebender_lauf_bleibt_unangetastet(db, monkeypatch):
-    """Die wichtigere Hälfte: ein Agent, der seit Stunden arbeitet, wird NICHT abgeräumt."""
+    """The more important half: an agent that has been working for hours is NOT cleared away."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     run = await _lauf(db, issue, "wf-1-1-exec-lebt", alter_sek=7200)
 
@@ -52,8 +51,8 @@ async def test_lebender_lauf_bleibt_unangetastet(db, monkeypatch):
 
 
 async def test_junger_lauf_bleibt_in_der_gnadenfrist(db, monkeypatch):
-    """Innerhalb der Gnadenfrist wird gar nicht erst gefragt — der Puls kann Sekunden
-    hinterherhinken, und ein gerade gestarteter Lauf ist kein Fall für die Bestattung."""
+    """Within the grace period nothing is asked at all: the pulse can lag behind by seconds,
+    and a run that has just started is no case for the undertaker."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     run = await _lauf(db, issue, "wf-1-1-exec-jung", alter_sek=5)
 
