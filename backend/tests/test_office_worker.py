@@ -1,14 +1,13 @@
-"""Was der Worker im Büro hinterlässt (Welle B der Instrumentierung).
+"""What the worker leaves behind in the office (the instrumentation wave).
 
-Geprüft wird der Weg vom Modellzug bis zur `run_steps`-Zeile — mit gescriptetem Provider
-und ohne echten MCP-Server. Die Umformung Zeile → Ereignis ist anderswo geprüft
-(`test_office_normalize`); hier interessiert, ob die Zeilen ÜBERHAUPT die richtigen
-Felder tragen und in der richtigen Reihenfolge entstehen.
+What is checked is the way from the model turn to the `run_steps` row, with a scripted
+provider and without a real MCP server. The transformation from row to event is checked
+elsewhere (`test_office_normalize`); here what matters is whether the rows carry the right
+fields AT ALL and come into being in the right order.
 
-Die harten Regressionen dieser Welle stehen ausdrücklich als eigene Tests da:
-ein abgelehntes Werkzeug darf keinen offenen Start hinterlassen, ein Provider-Fehler
-darf keine Tokens verlieren, und ein Fallback muss mit dem Modell bepreist werden,
-das tatsächlich geantwortet hat.
+The hard regressions of this wave stand explicitly as tests of their own: a rejected tool
+must not leave an open start behind, a provider error must not lose tokens, and a fallback
+has to be priced with the model that actually answered.
 """
 import asyncio
 from contextlib import asynccontextmanager
@@ -25,7 +24,7 @@ from conftest import make_project, make_user
 from sqlalchemy import select
 
 
-# ── Gerüst ───────────────────────────────────────────────────────────────────
+# ── Scaffolding ──────────────────────────────────────────────────────────────
 
 def antwort(text: str = "", *, calls: list[ToolCall] | None = None, in_tok: int = 0,
             out_tok: int = 0, cache: int = 0, provider: str = "", model: str = "") -> ChatResponse:
@@ -35,8 +34,8 @@ def antwort(text: str = "", *, calls: list[ToolCall] | None = None, in_tok: int 
 
 
 def agentdef(**kw) -> rt.AgentDef:
-    """Ein Agent ohne Fähigkeiten: kein Workspace, kein Gedächtnis, keine Skills.
-    `learns=False` hält die Rückschau aus dem Weg — sie ist ein eigener Modellzug."""
+    """An agent without abilities: no workspace, no memory, no skills. `learns=False` keeps
+    the review out of the way; it is a model turn of its own."""
     d = dict(id=None, name="dev", role="dev", system_prompt="Du bist dev.",
              provider="claude_code", model="sonnet", token_name="", fallback=None,
              fallback_model="", fallback_token_name="", temperature=0.3, max_tokens=1024,
@@ -62,8 +61,8 @@ class _Mcp:
 
 @pytest.fixture(autouse=True)
 def kein_redis(monkeypatch):
-    """`publish_step` schluckt Fehler — aber es soll gar nicht erst jemand einen echten
-    Redis suchen. Der Ersatz sammelt, was gesendet wurde: der Live-Strom ist Teil der Naht."""
+    """`publish_step` swallows errors, but nobody should look for a real Redis in the first
+    place. The replacement collects what was sent: the live stream is part of the seam."""
     import app.core.redis as redismod
     gesendet: list[tuple[str, str]] = []
 
@@ -77,10 +76,10 @@ def kein_redis(monkeypatch):
 
 @pytest.fixture
 def lauf(db, monkeypatch):
-    """Startet `run_agent` gegen ein Skript von Provider-Antworten.
+    """Starts `run_agent` against a script of provider answers.
 
-    Ein Eintrag im Skript, der eine Ausnahme IST, wird geworfen statt zurückgegeben —
-    so lässt sich der Provider-Fehler mitten im Lauf abbilden.
+    An entry in the script that IS an exception is raised instead of returned, which lets the
+    provider error in the middle of the run be reproduced.
     """
     async def starte(skript, *, mcp: _Mcp | None = None, agent: rt.AgentDef | None = None,
                      issue: dict | None = None, project: dict | None = None, **kw):
@@ -145,7 +144,7 @@ async def ticket(db, projekt):
     return i
 
 
-# ── Der Grundfall ────────────────────────────────────────────────────────────
+# ── The basic case ───────────────────────────────────────────────────────────
 
 async def test_lauf_schreibt_die_ereignisse_in_seq_reihenfolge(db, lauf):
     _, _ = await lauf([
@@ -182,15 +181,15 @@ async def test_werkzeug_wird_geoeffnet_und_geschlossen(db, lauf):
 
 
 async def test_reiner_werkzeugzug_sagt_nichts_im_raum(db, lauf):
-    """Ohne Text bleibt der Zug eine reine Kostenzeile — sonst sagte jeder Agent
-    alle paar Sekunden „(Tool-Call)"."""
+    """Without text the turn stays a pure cost row; otherwise every agent would say
+    "(Tool-Call)" every few seconds."""
     await lauf([
         antwort(calls=[ToolCall(id="t1", name="open_tasks", arguments={})], in_tok=50, out_tok=5),
         antwort("fertig"),
     ])
     run = await letzter_lauf(db)
     zug = (await schritte(db))[2]
-    assert zug.kind == "usage" and zug.content == "(Tool-Call)"     # Inhalt wie bisher
+    assert zug.kind == "usage" and zug.content == "(Tool-Call)"     # the content as before
     assert [e["kind"] for e in office.step_events(zug, office.RunCtx.from_run(run))] == ["usage"]
 
 
@@ -201,7 +200,7 @@ async def test_fehlerhaftes_werkzeug_ist_belegt_gescheitert(db, lauf):
     ])
     ende = next(s for s in await schritte(db) if s.kind == "tool_result")
     assert ende.ok is False and ende.content.startswith("FEHLER:")
-    assert ende.target == "gibtsnicht"      # Beschriftung aus der Tabelle, nicht geraten
+    assert ende.target == "gibtsnicht"      # the label from the table, not guessed
 
 
 async def test_dauer_waechst_mit_dem_langsamen_werkzeug(db, lauf):
@@ -213,11 +212,11 @@ async def test_dauer_waechst_mit_dem_langsamen_werkzeug(db, lauf):
     assert ende.duration_ms >= 40
 
 
-# ── Regressionswächter: Gate vor Werkzeugstart ───────────────────────────────
+# ── Regression guard: the gate before the tool start ─────────────────────────
 
 async def test_abgelehntes_werkzeug_erzeugt_keinen_start(db, lauf):
-    """Der `deny`-Zweig macht `continue`. Stünde der Start davor, säße im Raum ein Agent,
-    der für immer an einem Werkzeug tippt, das nie zurückkommt."""
+    """The `deny` branch does `continue`. If the start stood before it, an agent would sit in
+    the room typing forever on a tool that never comes back."""
     ergebnis, _ = await lauf([
         antwort(calls=[ToolCall(id="t1", name="obsidian__obsidian_write_note",
                                 arguments={"path": "a.md"})]),
@@ -237,8 +236,8 @@ async def test_delegation_verbindet_eltern_und_kind(db, lauf):
     await lauf([
         antwort(calls=[ToolCall(id="d1", name="delegate",
                                 arguments={"role": "reviewer", "task": "Bitte prüfen"})]),
-        antwort("Unterauftrag erledigt."),      # der Kindlauf
-        antwort("fertig"),                      # der Elternlauf danach
+        antwort("Unterauftrag erledigt."),      # the child run
+        antwort("fertig"),                      # the parent run afterwards
     ], agent=agentdef(can_delegate=True, delegate_to=["reviewer"]), delegate_loader=loader,
         issue={"id": None, "key": "TST-1", "summary": "Tu was", "description": "Bitte.",
                "plan": None})
@@ -253,12 +252,12 @@ async def test_delegation_verbindet_eltern_und_kind(db, lauf):
     kind_start = next(s for s in alle if s.run_id == kind.id and s.kind == "run_start")
     kind_ende = next(s for s in alle if s.run_id == kind.id and s.kind == "run_end")
     ergebnis = next(s for s in alle if s.kind == "tool_result" and s.tool_name == "delegate")
-    # Die Ankunftsreihenfolge IST die id-Reihenfolge (SERIAL) — und genau die zeichnet der Raum.
+    # The arrival order IS the id order (SERIAL), and exactly that is what the room draws.
     assert start.id < kind_start.id < kind_ende.id < ergebnis.id
     assert start.target == "reviewer"
 
 
-# ── Zuordnung des Laufs ──────────────────────────────────────────────────────
+# ── Affiliation of the run ───────────────────────────────────────────────────
 
 async def test_ticketlauf_traegt_projekt_und_owner(db, lauf):
     nutzer = await make_user(db, "anna")
@@ -277,11 +276,11 @@ async def test_joblauf_hat_kein_projekt_aber_einen_menschen(db, lauf):
     nutzer = await make_user(db, "anna")
     await lauf([antwort("fertig")], owner_id=nutzer.id)
     run = await letzter_lauf(db)
-    # Projektlos ist der Normalfall für Job- und Assistentenläufe, kein Fehler.
+    # Project-less is the normal case for job and assistant runs, not an error.
     assert run.project_id is None and run.owner_id == nutzer.id
 
 
-# ── Tokens und Kosten ────────────────────────────────────────────────────────
+# ── Tokens and costs ─────────────────────────────────────────────────────────
 
 async def test_schritt_tokens_summieren_sich_zum_lauf(db, lauf):
     await lauf([
@@ -296,7 +295,7 @@ async def test_schritt_tokens_summieren_sich_zum_lauf(db, lauf):
 
 
 async def test_provider_fehler_verliert_die_tokens_nicht(db, lauf):
-    """Bis zum Fehler ist alles bezahlt — bisher fiel der ganze Lauf aus der Rechnung."""
+    """Up to the error everything is paid for; until now the whole run fell out of the bill."""
     ergebnis, _ = await lauf([
         antwort("Erster Zug.", in_tok=500, out_tok=60,
                 calls=[ToolCall(id="t1", name="open_tasks", arguments={})]),
@@ -307,7 +306,7 @@ async def test_provider_fehler_verliert_die_tokens_nicht(db, lauf):
     assert run.input_tokens == 500 and run.output_tokens == 60
     eintraege = (await db.execute(select(CostEntry))).scalars().all()
     assert len(eintraege) == 1 and eintraege[0].input_tokens == 500
-    # Der Lauf verlässt den Raum auch im Fehlerfall.
+    # The run leaves the room in the error case as well.
     assert (await schritte(db))[-1].kind == "run_end"
 
 
@@ -336,8 +335,8 @@ async def test_lauf_ohne_tokens_bekommt_eine_ausgeschriebene_null(db, lauf):
 
 
 async def test_fallback_landet_am_schritt_nicht_am_lauf(db, lauf):
-    """Der Lauf ist auf claude_code eingestellt; geantwortet hat der Fallback. Ohne das
-    am Schritt wäre der Zug mit dem falschen Modell bepreist."""
+    """The run is configured on claude_code; what answered was the fallback. Without that on
+    the step the turn would be priced with the wrong model."""
     await lauf([antwort("fertig", in_tok=10, out_tok=2, provider="codex", model="gpt-5-codex")])
     run = await letzter_lauf(db)
     zug = next(s for s in await schritte(db) if s.kind == "agent_text")
@@ -355,7 +354,7 @@ async def test_run_end_traegt_den_abschlussbericht(db, lauf):
     ereignis = office.step_events(ende, office.RunCtx.from_run(run))[0]
     assert ereignis["status"] == "success" and ereignis["ok"] is True
     assert ereignis["in_tokens"] == 10 and ereignis["out_tokens"] == 2
-    assert ereignis["cost_priced"] is False      # kein Katalogeintrag im Test
+    assert ereignis["cost_priced"] is False      # no catalog entry in the test
 
 
 async def test_blockierter_lauf_nennt_den_grund(db, lauf):
