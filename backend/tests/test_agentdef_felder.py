@@ -1,10 +1,10 @@
-"""Was der Lauf am Agenten liest, muss der Agent auch tragen.
+"""What the run reads on the agent, the agent has to carry.
 
-Anlass: Die Kompaktierung las `agent.max_context_tokens`, das Feld gab es aber nur am
-DB-Modell, nicht am AgentDef des Laufs. Jeder Lauf, der die Stelle erreichte, starb an einem
-AttributeError — und der Fehlerzweig verdeckte ihn: dort hiess `log` das Schrittprotokoll
-(eine Funktion), `log.exception(...)` sprengte den Handler. Gemeldet wurde deshalb
-„'function' object has no attribute 'exception'", der eigentliche Fehler stand nirgends.
+The occasion: the compaction read `agent.max_context_tokens`, but the field existed only on
+the database model, not on the AgentDef of the run. Every run that reached the place died of
+an AttributeError, and the error branch covered it: there `log` was the step log (a
+function), and `log.exception(...)` blew the handler. What was reported was therefore
+"'function' object has no attribute 'exception'", and the actual error stood nowhere.
 """
 import ast
 import inspect
@@ -26,7 +26,7 @@ def test_agentdef_traegt_kontextgrenze():
 
 
 def test_lauf_liest_nur_vorhandene_agentfelder():
-    """Jedes `agent.<feld>` in runtime.py muss es am AgentDef geben."""
+    """Every `agent.<field>` in runtime.py has to exist on the AgentDef."""
     quelle = Path(inspect.getfile(runtime)).read_text()
     felder = set(AgentDef.__dataclass_fields__) | {
         n for n, _ in inspect.getmembers(AgentDef, predicate=inspect.isfunction)}
@@ -40,7 +40,7 @@ def test_lauf_liest_nur_vorhandene_agentfelder():
 
 
 def test_fehlerzweig_meldet_den_echten_fehler(caplog):
-    """`log` im Lauf muss der Logger sein — sonst verschluckt der Handler die Ursache."""
+    """`log` in the run has to be the logger; otherwise the handler swallows the cause."""
     assert isinstance(runtime.log, logging.Logger)
     with caplog.at_level(logging.ERROR):
         runtime.log.exception("Probe")
@@ -48,10 +48,10 @@ def test_fehlerzweig_meldet_den_echten_fehler(caplog):
 
 
 async def test_watchdog_meldet_stillstand_genau_einmal(monkeypatch, caplog):
-    """Steht der Loop, hilft keine Coroutine mehr beim Melden — der Wächter ist ein Thread.
+    """If the loop stands, no coroutine helps with reporting any more: the watcher is a thread.
 
-    Anlass: Der Worker stand über eine Stunde ohne eine einzige Logzeile; von außen sah der
-    Container gesund aus.
+    The occasion: the worker stood for over an hour without a single log line, and from the
+    outside the container looked healthy.
     """
     from app.worker import __main__ as worker
 
@@ -65,17 +65,17 @@ async def test_watchdog_meldet_stillstand_genau_einmal(monkeypatch, caplog):
     assert gemeldet and dumps == [1]
     assert "tickt seit" in caplog.text
 
-    # Zweiter Durchgang bei anhaltendem Stillstand: kein zweiter Dump (kein Log-Fluten).
+    # Second pass with a persisting standstill: no second dump (no log flooding).
     assert worker.watchdog_pruefe(True) is True
     assert dumps == [1]
 
-    # Loop läuft wieder → Entwarnung, Zustand zurück.
+    # The loop runs again, so the all-clear, and the state goes back.
     worker._loop_tick()
     assert worker.watchdog_pruefe(True) is False
 
 
 async def test_modellkatalog_traegt_kontext_und_tempo(db):
-    """Bei lokalen Modellen ist der Preis 0 — die Wahl entscheidet sich an Fenster und Tempo."""
+    """With local models the price is 0: the choice is decided by the window and the speed."""
     from app.api.cost import PriceIn, list_models, upsert_model
     from app.models.user import User as _User
     from conftest import make_user
@@ -91,8 +91,8 @@ async def test_modellkatalog_traegt_kontext_und_tempo(db):
 
 
 async def test_modellabruf_ueberschreibt_gepflegte_namen_nicht(db, monkeypatch):
-    """OpenAI-kompatible Endpoints geben als „Namen" die Modell-ID zurück — ohne Schutz
-    hätte jeder Abruf einen von Hand vergebenen Anzeigenamen wieder plattgemacht."""
+    """OpenAI-compatible endpoints return the model id as the "name", and without protection
+    every fetch would have flattened a display name given by hand."""
     from app.api import cost as cost_api
     from app.models.ops import ProviderModel
     from app.models.secrets import ProviderToken
@@ -118,4 +118,4 @@ async def test_modellabruf_ueberschreibt_gepflegte_namen_nicht(db, monkeypatch):
     rows = {r.model: r.display_name for r in
             (await db.execute(_select(ProviderModel))).scalars().all()}
     assert rows["qwen3.6-35b-q8"] == "Qwen3.6 35B q8 (lokal)"   # gepflegt → bleibt
-    assert rows["frisch"] == "Frisch benannt"                    # war = Modell-ID → darf mit
+    assert rows["frisch"] == "Frisch benannt"                    # was the model id, so it may come along
