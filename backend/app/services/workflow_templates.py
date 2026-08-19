@@ -211,6 +211,209 @@ def _aufruf_mit_wiederholung() -> dict:
     ]}
 
 
+def _mail_eingang() -> dict:
+    """What happens to an incoming mail, previously fixed in `mail_intake.py`.
+
+    Triggered by the event `mail.received` (the mail webhook reports it). The context brings
+    `mail` (raw payload of the watcher) and `eingang` (settings of the trigger); everything
+    else is written by the steps themselves (see `services/mail_actions.py`).
+
+    The order of the branches is the guard rail of the detection:
+
+        detection off        → let through (the emergency stop goes before everything)
+        known sender         → let through (acquittal from the contact list)
+        learned: spam        → report and move (an error has to be noticeable)
+        certain enough       → move, the card carries the way back (off by default);
+                               takes hold above the auto threshold or on the server verdict
+        learned: wanted      → let through without asking again
+        suspicion            → ask and wait; only the answer moves the mail
+                               (both spam paths end in the same execution node)
+        inconspicuous        → assistant item, as with every normal mail
+
+    The forgery suspicion is already accounted for in the verdict: it lifts both the
+    acquittal of the contact list and that of the memory (`spam_review.beurteilen`). A known
+    name is the rewarding target, and exactly there the whitelist must not take hold.
+
+    Reporting is a step of its own, not a side effect of the verdict: `spam_card` writes the
+    verdict and the text, a notify node sends it, and a branch in front of it decides whether
+    it is sent at all (setting `spam_auto_melden`). Whoever does not want to read about every
+    automatically cleared mail therefore keeps the sorting, the learning and the overview —
+    only the phone stays quiet.
+
+    "Not spam" deliberately leads NOT into nothing but into the assistant branch: a mail
+    that was suspected wrongly should be workable completely normally afterwards. Before, it
+    stayed lying around as an item without a card.
+    """
+    nodes = [
+        _n("start", "start", 0, 0, {
+            "label": "Mail eingegangen",
+            "trigger": {"event": "mail.received"},
+        }),
+        _n("classify", "auto_action", 0, 1,
+           _action("mail_classify", "Mail einordnen")),
+        _n("evaluate", "auto_action", 0, 2,
+           _action("spam_evaluate", "Spam beurteilen")),
+        # Every reason gets its own exit although four of them lead to the same step: the
+        # history of an instance should show WHY a mail was let through ("sender known" is
+        # something other than "inconspicuous"). Two branches with the same exit name would
+        # moreover be two exits with the same identifier on the same node, and which edge
+        # hangs off it would be a matter of chance.
+        _n("weiche", "decision", 0, 3, {
+            "label": "Spam?",
+            "branches": [
+                {"handle": "aus", "label": "Erkennung aus",
+                 "guard": {"==": [{"var": "spam.aktiv"}, False]}},
+                {"handle": "kontakt", "label": "bekannter Absender",
+                 "guard": {"==": [{"var": "spam.bekannter_kontakt"}, True]}},
+                {"handle": "geklaert_spam", "label": "gelernt: Spam", "guard": {"and": [
+                    {"==": [{"var": "spam.geklaert"}, True]},
+                    {"==": [{"var": "spam.geklaert_urteil"}, "spam"]},
+                ]}},
+                {"handle": "geklaert_ham", "label": "gelernt: erwünscht",
+                 "guard": {"==": [{"var": "spam.geklaert"}, True]}},
+                # Stands BEFORE the question: what takes hold here is no longer asked about
+                # but moved, with a way back on the card. Two paths there: the score above
+                # the auto threshold OR the verdict of one's own mail server. The latter
+                # because it goes under in the weighted mixture: 13 spam points from the own
+                # server give an overall verdict of ~0.55, and with that every sensible auto
+                # threshold would be out of reach. The bracket `auto_ab <= 1` keeps the whole
+                # branch out as long as nobody has deliberately set the threshold.
+                {"handle": "auto", "label": "sicher genug (Auto)", "guard": {"and": [
+                    {"<=": [{"var": "spam.auto_ab"}, 1]},
+                    {"or": [
+                        {">=": [{"var": "spam.score"}, {"var": "spam.auto_ab"}]},
+                        {"==": [{"var": "spam.serverurteil"}, True]},
+                    ]},
+                ]}},
+                {"handle": "frage", "label": "Verdacht",
+                 "guard": {">=": [{"var": "spam.score"}, {"var": "spam.frage_ab"}]}},
+                {"handle": "sauber", "label": "unauffällig"},
+            ],
+            "default_handle": "sauber",
+        }),
+
+        # ── Settled case: move, but report ───────────────────────────────────
+        # Two steps, deliberately: the verdict comes into being here, the message goes out
+        # one node further. Whoever does not want to read about every automatically cleared
+        # mail switches the message off — and the sorting keeps working, because the verdict
+        # is what the moving and the learning hang off.
+        _n("karte_gelernt", "auto_action", 3, 4,
+           _action("spam_card", "Gelernten Fall festhalten", vorentschieden=True, melden=False)),
+        _n("melden_gelernt_frage", "decision", 4, 4, {
+            "label": "Gelernten Fall melden?",
+            "branches": [{"handle": "still", "label": "Melden ist aus",
+                          "guard": {"==": [{"var": "spam.auto_melden"}, False]}},
+                         {"handle": "melden", "label": "melden"}],
+            "default_handle": "melden",
+        }),
+        _n("melde_gelernt", "auto_action", 5, 4, _action(
+            "notify", "Gelernten Fall melden",
+            to={"mode": "context", "path": "eingang.owner_id"},
+            title="{{ spam.karte_titel }}", text="{{ spam.karte_text }}",
+            kind="{{ spam.karte_art }}", bezug={"spam_verdict_id": "{{ spam.verdict_id }}"})),
+
+        # ── Sicher genug: verschieben, aber widersprechlich ─────────────────
+        _n("karte_auto", "auto_action", 3, 5,
+           _action("spam_card", "Aussortierung festhalten", rueckholbar=True, melden=False)),
+        _n("melden_auto_frage", "decision", 4, 5, {
+            "label": "Aussortierung melden?",
+            "branches": [{"handle": "still", "label": "Melden ist aus",
+                          "guard": {"==": [{"var": "spam.auto_melden"}, False]}},
+                         {"handle": "melden", "label": "melden"}],
+            "default_handle": "melden",
+        }),
+        _n("melde_auto", "auto_action", 5, 5, _action(
+            "notify", "Aussortierung melden",
+            to={"mode": "context", "path": "eingang.owner_id"},
+            title="{{ spam.karte_titel }}", text="{{ spam.karte_text }}",
+            kind="{{ spam.karte_art }}", bezug={"spam_verdict_id": "{{ spam.verdict_id }}"})),
+
+        # ── Suspicion: ask, wait, execute ────────────────────────────────────
+        _n("karte", "auto_action", 1, 4, _action("spam_card", "Rückfrage stellen")),
+        _n("rueckfrage", "approval", 1, 5, {
+            "label": "Ist das Spam?",
+            "instructions": "Freigabe verschiebt die Mail in den Spam-Ordner. "
+                            "Ablehnung merkt den Absender als erwünscht.",
+            "assignee": {"mode": "context", "path": "eingang.owner_id"},
+            # The question has already been asked, as a card with buttons (the step before
+            # respectively the digest card of the scheduler beat). A second report would be noise.
+            "notify": False,
+        }),
+        # ONE execution node for both spam paths: the answer of the human and the verdict of
+        # the memory end in the same action. `decided_by` deliberately stays empty; the
+        # action takes it from the context (`telegram` when a human answered, otherwise
+        # `auto`). With a fixed value here the memory would book every human decision as
+        # automatic.
+        _n("weg", "auto_action", 2, 6,
+           _action("spam_apply", "In den Spam-Ordner", entscheidung="spam")),
+        # What the mail was recognised by belongs in the knowledge, not only in the log. The
+        # path carries the kind, so a new kind (invoice fraud, sextortion, whatever comes)
+        # writes its own note without anybody touching the flow.
+        _n("notiz", "auto_action", 2, 7, _action(
+            "notiz_anhaengen", "Erkenntnis notieren",
+            pfad="04 Wissen/Erkennung/{{ spam.art }}.md",
+            text="- {{ spam.sender_domain }} · {{ spam.subject }}: {{ spam.befunde_text }}")),
+        _n("end_spam", "end", 2, 8, {"label": "Als Spam weggeräumt", "outcome": "completed"}),
+        # Stands on the way back to the middle: from here the mail runs into the assistant.
+        _n("kein_spam", "auto_action", 1, 7,
+           _action("spam_apply", "Absender merken", entscheidung="ham")),
+
+        # ── Normaler Weg: Assistent ──────────────────────────────────────────
+        _n("item", "auto_action", 0, 8, _action("assistant_task", "Assistent-Item anlegen")),
+        _n("ist_auto", "decision", 0, 9, {
+            "label": "Automatisch freigegeben?",
+            "branches": [
+                {"handle": "auto", "label": "gelernte Regel",
+                 "guard": {"==": [{"var": "policy.auto"}, True]}},
+                {"handle": "fragen", "label": "Freigabe einholen"},
+            ],
+            "default_handle": "fragen",
+        }),
+        _n("lauf", "auto_action", -1, 10, _action("assistant_run", "Assistenten starten")),
+        _n("freigabe_karte", "auto_action", 1, 10,
+           _action("assistant_card", "Freigabekarte schicken")),
+        _n("end_item", "end", 0, 11, {"label": "Übergeben", "outcome": "completed"}),
+    ]
+
+    edges = [
+        _e("start", "classify"),
+        _e("classify", "evaluate"),
+        _e("evaluate", "weiche"),
+
+        _e("weiche", "karte_gelernt", "geklaert_spam"),
+        _e("karte_gelernt", "melden_gelernt_frage"),
+        _e("melden_gelernt_frage", "melde_gelernt", "melden"),
+        _e("melden_gelernt_frage", "weg", "still", "ohne Nachricht"),
+        _e("melde_gelernt", "weg"),
+        _e("weiche", "karte_auto", "auto"),
+        _e("karte_auto", "melden_auto_frage"),
+        _e("melden_auto_frage", "melde_auto", "melden"),
+        _e("melden_auto_frage", "weg", "still", "ohne Nachricht"),
+        _e("melde_auto", "weg"),
+
+        _e("weiche", "karte", "frage"),
+        _e("karte", "rueckfrage"),
+        _e("rueckfrage", "weg", "approved", "ist Spam"),
+        _e("rueckfrage", "kein_spam", "rejected", "kein Spam"),
+        _e("weg", "notiz"),
+        _e("notiz", "end_spam"),
+        # Suspected wrongly: the sender is remembered, the mail goes its normal way.
+        _e("kein_spam", "item"),
+
+        # Four paths, one target: the assistant handles the mail like any other.
+        _e("weiche", "item", "sauber"),
+        _e("weiche", "item", "aus", "Erkennung aus"),
+        _e("weiche", "item", "kontakt", "bekannt"),
+        _e("weiche", "item", "geklaert_ham", "gelernt: erwünscht"),
+        _e("item", "ist_auto"),
+        _e("ist_auto", "lauf", "auto"),
+        _e("ist_auto", "freigabe_karte", "fragen"),
+        _e("lauf", "end_item"),
+        _e("freigabe_karte", "end_item"),
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 VORLAGEN: list[dict] = [
     {"key": "meldung-von-aussen",
      "name": "Meldung von außen verarbeiten",
@@ -230,6 +433,15 @@ VORLAGEN: list[dict] = [
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "In der Schleife den Pfad zur Liste eintragen (z. B. tool.json.items).",
      "build": _liste_abarbeiten},
+    {"key": "mail-eingang",
+     "name": "Mail-Eingang",
+     "description": "Eingegangene Mail einordnen, auf Spam prüfen und entweder wegräumen "
+                    "oder dem Assistenten geben.",
+     "subject_kind": WorkflowSubjectKind.standalone,
+     "hinweis": "Hört auf das Ereignis `mail.received`. Nur EIN Ablauf sollte das tun, "
+                "sonst läuft jede Mail mehrfach. Schwellen und Schalter stehen in den "
+                "Einstellungen (spam_*), die Texte im Melde-Knoten.",
+     "build": _mail_eingang},
     {"key": "aufruf-mit-wiederholung",
      "name": "Aufruf mit Wiederholung",
      "description": "Ziel aufrufen, bei Fehler wiederholen, später noch einmal, dann melden.",
@@ -256,3 +468,38 @@ def graph(key: str) -> dict | None:
 
 def vorlage(key: str) -> dict | None:
     return _NACH_KEY.get(key)
+
+
+async def anlegen(db, key: str, *, besitzer_id: int | None, def_key: str = "",
+                  name: str = "", veroeffentlicht: bool = True):
+    """Create a flow FROM a template — as somebody's own, not as a shipped one.
+
+    The difference matters: what stands in a set is maintained by Traccoon and overwritten on
+    every start (`ensure_builtin_set`). What comes out of here belongs to the person who
+    created it, including every change they make to it afterwards.
+    """
+    import datetime as dt
+
+    from ..models.enums import WorkflowVersionStatus
+    from ..models.workflow import WorkflowDefinition, WorkflowVersion
+
+    v = _NACH_KEY.get(key)
+    if v is None:
+        raise ValueError(f"Unbekannte Vorlage '{key}'")
+    d = WorkflowDefinition(
+        project_id=None, key=def_key or key, name=name or v["name"],
+        description=v["description"], subject_kind=v["subject_kind"],
+        enabled=True, created_by=besitzer_id)
+    db.add(d)
+    await db.flush()
+    version = WorkflowVersion(
+        definition_id=d.id, version=1, graph=v["build"](), created_by=besitzer_id,
+        status=(WorkflowVersionStatus.published if veroeffentlicht
+                else WorkflowVersionStatus.draft),
+        published_at=dt.datetime.now(tz=dt.timezone.utc) if veroeffentlicht else None,
+        notes=f"Aus der Vorlage „{v['name']}“")
+    db.add(version)
+    await db.flush()
+    if veroeffentlicht:
+        d.current_version_id = version.id
+    return d

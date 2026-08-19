@@ -172,7 +172,9 @@ class WorkflowSlot(str, enum.Enum):
     acceptance = "acceptance"                      # acceptance: clear the test env, merge, deploy
     hardware_procurement = "hardware_procurement"  # procurement of a unit
     ticket_intake = "ticket_intake"                # inbox (webhook, mail) to ticket
-    mail_intake = "mail_intake"                    # mail inbox: classify, spam, assistant
+    # The mail inbox deliberately does NOT stand here any more: it is nobody's default but
+    # one person's flow. It lives as the template `mail-eingang` (workflow_templates), is
+    # created once and belongs to whoever created it — including every change to it.
 
 
 class WorkflowTokenState(str, enum.Enum):

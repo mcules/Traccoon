@@ -800,9 +800,42 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
     from ..models.notification import Notification
     from .runtime import run_agent
     tid = job["assistant_task_id"]
+
+    async def _melde(status: str, text: str) -> None:
+        """Publish the result under the task id. A waiting process step reads exactly this.
+
+        Silence would not be neutral here: whoever waits (`assistent_auftrag` with `warten`)
+        would sit out the whole time limit and then read "run vanished" although the run had
+        long finished.
+        """
+        try:
+            await redis.set(f"{PREFIX}result:{job['task_id']}", json.dumps(
+                {"status": status, "success": status == "done", "output": text[:20000],
+                 "summary": text[:2000]}), ex=ERGEBNIS_TTL)
+            await redis.publish(f"{PREFIX}results", job["task_id"])
+        except Exception:  # noqa: BLE001
+            log.exception("assistant task %s: result could not be published", tid)
+
     async with SessionLocal() as db:
         t = await db.get(AssistantTask, tid)
-        if t is None or t.status not in ("approved",):
+        if t is None:
+            # Race against the commit of whoever ordered the work: the process step queues
+            # the job and only commits its transaction afterwards, so for a moment the item
+            # does not exist for anybody else. Dropping it here silently cost a whole run on
+            # 2026-08-19 — the item stayed on `approved`, the worker said nothing.
+            for _ in range(5):
+                await asyncio.sleep(1)
+                db.expire_all()
+                t = await db.get(AssistantTask, tid)
+                if t is not None:
+                    break
+        if t is None:
+            log.warning("assistant task %s does not exist (also not after waiting) — dropped", tid)
+            await _melde("error", f"Assistent-Item {tid} nicht gefunden")
+            return
+        if t.status not in ("approved",):
+            log.info("assistant task %s stands on '%s', not on 'approved' — no run", tid, t.status)
+            await _melde("error", f"Assistent-Item {tid} steht auf '{t.status}'")
             return
         t.status = "running"
         await db.commit()
@@ -931,6 +964,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             # entry without a chat id it would be noise, so nothing at all.
             log.info("assistant task %s quietly done (mode %s)", tid, modus)
         await db.commit()
+    await _melde(status, (err if status == "error" else out) or "")
     log.info("assistant task %s -> %s", tid, status)
     # Trigger the memory upkeep, after the work is done and as a task of its own. `kuratiere`
     # decides for itself whether anything is due (at most once per day and note).
