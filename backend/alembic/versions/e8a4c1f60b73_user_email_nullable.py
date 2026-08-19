@@ -19,5 +19,5 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Vor dem Wiederherstellen von NOT NULL müssten NULL-E-Mails aufgefüllt werden.
+    # Before restoring NOT NULL, NULL e-mails would have to be filled in.
     op.alter_column('users', 'email', existing_type=sa.String(length=255), nullable=False)

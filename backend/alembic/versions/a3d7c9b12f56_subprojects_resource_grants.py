@@ -9,8 +9,8 @@ import sqlalchemy as sa
 
 
 revision = 'a3d7c9b12f56'
-# Ursprünglich gegen e4f9c2a81b73 geschrieben; beim Nachmergen des Sub-Projekt-Branches
-# hinter den inzwischen gewachsenen Strang gehängt (single head).
+# Originally written against e4f9c2a81b73; while merging the sub-project branch afterwards it
+# was hung behind the strand that had grown meanwhile (single head).
 down_revision = 'a1d3e5f70c95'
 branch_labels = None
 depends_on = None

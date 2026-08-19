@@ -1,4 +1,4 @@
-"""autoload_skills + Agent-Verknüpfung + McpServer.variables + McpInstance
+"""autoload_skills plus the agent link plus McpServer.variables plus McpInstance
 
 Revision ID: f9a3c1e57d24
 Revises: e7c2f4a81b56

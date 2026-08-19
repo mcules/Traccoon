@@ -1,4 +1,4 @@
-"""Deployment.self_deploy — Self-Deploy nur explizit
+"""Deployment.self_deploy: a self-deploy only explicitly
 
 Revision ID: d3e8b1c40f92
 Revises: c2d9a4f81e30
