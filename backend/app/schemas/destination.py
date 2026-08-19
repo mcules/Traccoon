@@ -24,8 +24,8 @@ class _DestinationBase(BaseModel):
     verify_tls: bool = True
     enabled: bool = True
     allow_agents: bool = False
-    # Wie viel der Antwort der Aufrufer höchstens sieht. Standard schützt den Kontext;
-    # anheben nur für Gegenstellen, die ihre Lage bewusst in einem Abruf liefern.
+    # How much of the answer the caller sees at most. The default protects the context;
+    # raise it only for counterparts that deliberately deliver their state in one call.
     max_response_chars: int = Field(default=4000, ge=500, le=60000)
 
 
@@ -34,7 +34,7 @@ class DestinationCreate(_DestinationBase):
     # Geltungsbereich: beides leer = systemweit
     user_id: int | None = None
     project_id: int | None = None
-    # Genau eines davon füllen — je nach Verfahren; landet verschlüsselt im selben Feld.
+    # Fill exactly one of these, depending on the method; it lands encrypted in the same field.
     password: str | None = None       # basic
     token: str | None = None          # bearer
     api_key: str | None = None        # api_key
@@ -79,13 +79,13 @@ class DestinationOut(_DestinationBase):
     user_id: int | None
     project_id: int | None
     scope: str                 # global | user | project
-    has_secret: bool           # nur, OB eines hinterlegt ist
+    has_secret: bool           # only WHETHER one is stored
     last_used_at: dt.datetime | None = None
     created_at: dt.datetime
 
 
 class DestinationTestIn(BaseModel):
-    """Probeaufruf. Default bewusst GET — ein Test soll nichts verändern."""
+    """Test call. The default is deliberately GET: a test should change nothing."""
     method: str = "GET"
     path: str = ""
     query: dict | None = None

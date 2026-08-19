@@ -1,8 +1,8 @@
-"""Einfacher SMTP-Mailversand (z. B. für Projekt-Einladungen).
+"""Simple SMTP mail sending (for project invitations for instance).
 
-Konfiguration primär aus AppSettings (DB, per Admin-UI änderbar), Fallback auf
-ENV (config.py). Läuft synchron in einem Thread (kein aiosmtplib-Dependency
-nötig — smtplib aus der Stdlib reicht für gelegentlichen Versand)."""
+The configuration comes primarily from AppSettings (database, changeable over the admin UI),
+with a fallback to the environment (config.py). It runs synchronously in a thread (no
+aiosmtplib dependency needed; smtplib from the standard library is enough for occasional sending)."""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +22,7 @@ _KEYS = ("smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from", "s
 
 
 async def get_mail_config(db: AsyncSession) -> dict:
-    """SMTP-Konfiguration: DB-Werte (AppSettings) überschreiben ENV-Defaults."""
+    """SMTP configuration: database values (AppSettings) override the environment defaults."""
     cfg = {
         "smtp_host": settings.smtp_host,
         "smtp_port": settings.smtp_port,
@@ -73,7 +73,7 @@ def _send_sync(cfg: dict, to_addr: str, subject: str, html_body: str, text_body:
 
 
 async def send_mail(db: AsyncSession, to_addr: str, subject: str, html_body: str, text_body: str) -> bool:
-    """Sendet eine Mail. Ohne konfigurierten SMTP-Host wird nur geloggt (Dev-Fallback)."""
+    """Sends a mail. Without a configured SMTP host it is only logged (a dev fallback)."""
     cfg = await get_mail_config(db)
     if not cfg["smtp_host"]:
         log.warning("SMTP nicht konfiguriert — Mail an %s wird NICHT gesendet (nur geloggt): %s",

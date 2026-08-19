@@ -58,10 +58,10 @@ async def project_ws(websocket: WebSocket, project_id: int, token: str = ""):
         if user is None or project is None:
             await websocket.close(code=4404)
             return
-        # Fehlerbehebung: Der Socket war bisher der einzige Eingang ohne diese beiden
-        # Prüfungen — ein deaktiviertes Konto und ein durch Passwortwechsel widerrufenes
-        # Token kamen hier noch herein, während `deps.get_current_user` sie an jedem
-        # Request abwies. Ein Token allein ist kein Zugang, solange das Konto dahinter
+        # Fix: the socket used to be the only entrance without these two checks. A
+        # deactivated account and a token revoked by a password change still got in here,
+        # while `deps.get_current_user` rejected them on every request. A token alone is not
+        # access as long as the account behind it is locked or the token devalued.
         # gesperrt oder das Token entwertet ist.
         revoked = (user.password_changed_at is not None
                    and int(payload.get("iat", 0) or 0) < int(user.password_changed_at.timestamp()))
@@ -130,7 +130,7 @@ async def list_messages(project_id: int, token: str = "", limit: int = 100):
 
 
 async def event_bridge() -> None:
-    """Abonniert traccoon:events:* und broadcastet an die passenden Projekt-Räume."""
+    """Subscribes to traccoon:events:* and broadcasts to the matching project rooms."""
     r = get_redis()
     pubsub = r.pubsub()
     await pubsub.psubscribe(f"{PREFIX}events:*")

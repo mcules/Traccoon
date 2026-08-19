@@ -39,10 +39,10 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   const [showAdv, setShowAdv] = useState(false);
   const inv = () => qc.invalidateQueries({ queryKey: key });
   const tokensFor = (p?: string) => (tokens || []).filter((t) => t.provider === p);
-  // Deaktivierte Modelle (Endpoint kennt sie nicht mehr) raus aus den Vorschlägen.
+  // Deactivated models (the endpoint no longer knows them) drop out of the suggestions.
   const modelsFor = (p?: string) => (models || []).filter((m) => m.provider === p && m.enabled !== false);
-  // Was das Modell trägt und wie schnell es schreibt — die Auswahl entscheidet sich daran,
-  // nicht am Namen. Bei lokalen Modellen ist es die einzige Unterscheidung (Preis ist 0).
+  // What the model carries and how fast it writes: the choice is decided by that, not by the
+  // name. With local models it is the only distinction (the price is 0).
   const modelLabel = (m: any) => {
     const teile = [m.display_name || m.model];
     if (m.context_tokens) teile.push(`${Math.round(m.context_tokens / 1000)}k Kontext`);
@@ -50,7 +50,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
     return teile.join(" · ");
   };
 
-  // Im Projekt-Modus nur die projekt-eigenen Agenten anzeigen; projektlose sind „geerbt".
+  // In project mode show only the project-owned agents; project-less ones are "inherited".
   const agents = projectId ? (allAgents || []).filter((a) => a.project_id === projectId) : allAgents;
   const inherited = projectId ? (allAgents || []).filter((a) => a.project_id == null) : [];
   const newAgent = () => setEdit({ ...EMPTY, project_id: projectId ?? null });
@@ -241,7 +241,7 @@ function Sec({ title, children }: { title: string; children: any }) {
   );
 }
 
-/** Skills wählen (bekommt) + je Skill Auto-Load-Toggle. */
+/** Choose skills (which the agent gets) plus an auto-load toggle per skill. */
 function SkillPicker({ skills, allowed, autoload, onChange }: {
   skills: any[]; allowed: string[]; autoload: string[];
   onChange: (allowed: string[], autoload: string[]) => void;
@@ -281,7 +281,7 @@ function SkillPicker({ skills, allowed, autoload, onChange }: {
   );
 }
 
-/** Pro Agent: MCP-Instanzen (Server wählen → Variablen ausfüllen). */
+/** Per agent: MCP instances (choose a server, then fill in the variables). */
 function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
   const qc = useQueryClient();
   const { data: instances } = useQuery({

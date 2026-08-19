@@ -1,7 +1,7 @@
-"""Projekt-Dashboard: berechnete Kennzahlen aus Tickets, Läufen und Kosten.
+"""Project dashboard: computed key figures from tickets, runs and costs.
 
-Alles wird zur Abfragezeit aggregiert — keine gespeicherten Gadgets, die
-ohne Daten leer blieben.
+Everything is aggregated at query time: no stored gadgets that would stay empty without
+data.
 """
 import datetime as dt
 
@@ -24,7 +24,7 @@ async def dashboard(access: Access = Depends(get_project_access),
     pid = access.project.id
     since = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days)
 
-    # Tickets nach Workflow-Kategorie (todo/in_progress/done)
+    # Tickets by workflow category (todo/in_progress/done)
     cat_rows = (await db.execute(
         select(WorkflowStatus.category, func.count(Issue.id))
         .join(Issue, Issue.status_id == WorkflowStatus.id)
@@ -32,7 +32,7 @@ async def dashboard(access: Access = Depends(get_project_access),
     by_category = {c.value if hasattr(c, "value") else str(c): n for c, n in cat_rows}
     total = sum(by_category.values())
 
-    # Tickets, die auf einen Menschen warten — die eigentliche Arbeitsliste
+    # Tickets waiting for a human: the actual work list
     waiting_states = [TicketAgentStatus.plan_review, TicketAgentStatus.to_test, TicketAgentStatus.hold]
     waiting = (await db.execute(
         select(func.count(Issue.id)).where(
@@ -50,7 +50,7 @@ async def dashboard(access: Access = Depends(get_project_access),
             Issue.project_id == pid, Issue.resolved_at.isnot(None),
             Issue.resolved_at >= since))).scalar() or 0
 
-    # Läufe + Kosten im Zeitfenster (Runs hängen über die Tickets am Projekt)
+    # Runs plus costs in the time window (runs hang off the project over the tickets)
     run_rows = (await db.execute(
         select(Run.status, func.count(Run.id), func.coalesce(func.sum(Run.cost_usd), 0.0),
                func.coalesce(func.sum(Run.output_tokens), 0))

@@ -30,16 +30,16 @@ const ORDER: WorkflowNodeType[] = [
 ];
 
 /**
- * Die Bausteine des Editors.
+ * The building blocks of the editor.
  *
- * Am Schreibtisch zieht man sie auf die Fläche. Auf einem Handy gibt es kein Ziehen: HTML5
- * kennt dort keine Zieh-Ereignisse, der Editor war damit schlicht nicht bedienbar. Deshalb
- * ist jeder Baustein zugleich ein Knopf — ein Tipp hängt ihn hinter den ausgewählten
- * Baustein, dieselbe Regel, die auch beim Ablegen ohne Linie gilt.
+ * At the desk one drags them onto the canvas. On a phone there is no dragging: HTML5 knows
+ * no drag events there, and the editor was therefore simply not operable. That is why every
+ * building block is a button at the same time; a tap hangs it behind the selected block, the
+ * same rule that applies when dropping without a line.
  */
 export default function NodePalette({ onAdd, kompakt }: {
   onAdd?: (t: WorkflowNodeType) => void;
-  /** Nebeneinander statt untereinander — für die schmale Ansicht über der Fläche. */
+  /** Side by side instead of below each other, for the narrow view above the canvas. */
   kompakt?: boolean;
 }) {
   return (
