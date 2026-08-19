@@ -1,33 +1,32 @@
-// Der Schnitt — aus einem ganzen Bürotag werden 300 Bilder.
+// The cut: 300 frames are made out of a whole office day.
 //
-// Der Satz, auf dem alles steht, ist eine Eigenschaft von `replay.ts::settle()` und keine
-// Vermutung: die Simulationszeit zwischen zwei Ereignissen ist `min(MAX_GAP_MS, ts - anchor)`.
-// Sobald `ts - anchor` die Grenze erreicht, sättigt der Wert, `want === spent`, und jedes
-// weitere Vorrücken integriert **null**. Ab 20 s nach dem letzten Ereignis ist damit jedes Bild
-// bitgleich mit dem vorigen — Stille zu überspringen verliert beweisbar nichts. Aus 14 Stunden
-// Wanduhr werden so 20–80 Minuten Simulationszeit.
+// The sentence everything rests on is a property of `replay.ts::settle()` and not an
+// assumption: the simulation time between two events is `min(MAX_GAP_MS, ts - anchor)`. As
+// soon as `ts - anchor` reaches the limit the value saturates, `want === spent`, and every
+// further advance integrates **nothing**. From 20 s after the last event on, every frame is
+// therefore bit identical to the previous one, and skipping silence provably loses nothing.
+// Out of 14 hours of wall clock 20 to 80 minutes of simulation time arise that way.
 //
-// Was daraus **nicht** folgt: eine feste Bildrate. 45 Minuten auf 25 s bei 12 fps sind 2,25 s
-// Simulationszeit je Bild; ein Gang durch den Raum (rund 3 s) bekäme ein einziges Bild und die
-// Figuren sprängen von Platz zu Platz. Deshalb Kapitel: wenige Inseln in Echtzeit statt aller
-// Inseln im Zeitraffer.
+// What does **not** follow from that: a fixed frame rate. 45 minutes in 25 s at 12 fps are
+// 2.25 s of simulation time per frame; a walk through the room (about 3 s) would get a single
+// frame and the figures would jump from seat to seat. Hence chapters: a few islands in real time.
 
 import { MAX_GAP_MS, REPLAY_CAP } from "../../src/components/office/const.ts";
 
-/** Statuswerte, die als Fehlschlag zählen — dieselbe Zusammenfassung wie in der Personalakte
- *  (`loop_exhausted` ist ein Abbruch, kein eigener Zustand für den Zuschauer). */
+/** Status values that count as a failure, the same summary as in the personnel file
+ *  (`loop_exhausted` is an abort, not a state of its own for the viewer). */
 const FEHLER_STATUS = new Set(["failed", "loop_exhausted"]);
 
 /**
- * Aktivitätsinseln: zusammenhängende Zeitfenster, zwischen denen mehr als `luecke` Stille liegt.
+ * Activity islands: contiguous time windows between which more than `luecke` of silence lies.
  *
- * `bis` ist bewusst **nicht** der letzte Zeitstempel, sondern `letztes ts + luecke`: bis dorthin
- * bewegt sich der Raum noch (der Gang zum Tisch endet, die Blase läuft ab), erst danach steht
- * er nachweislich still. Wer bei `letztes ts` abschneidet, schneidet mitten in der Bewegung ab.
+ * `bis` is deliberately **not** the last timestamp but `last ts + luecke`: until then the room
+ * still moves (the walk to the table ends, the bubble expires), and only after that does it
+ * demonstrably stand still. Whoever cuts at `last ts` cuts in the middle of the movement.
  *
- * Das Log wird hier — und nur hier — nach `ts` sortiert. Für den Replay wäre das ein Fehler
- * (er setzte die Wirkung vor die Ursache), gemessen wird aber nichts abgespielt: gesucht sind
- * die Zeitfenster, in denen überhaupt etwas passiert ist. Die Kopie schützt den Aufrufer.
+ * The log is sorted by `ts` here, and only here. For the replay that would be a mistake (it
+ * would put the effect before the cause), but nothing is replayed while measuring: what is
+ * sought are the time windows in which anything happened at all. The copy protects the caller.
  */
 export function inseln(log, luecke) {
   const spalte = luecke > 0 ? luecke : MAX_GAP_MS;
@@ -47,10 +46,10 @@ export function inseln(log, luecke) {
 
   for (const i of out) {
     i.bis += spalte;
-    // Deterministisch und ohne Stellschraube: Fehler wiegen am schwersten (sie erklären den
-    // Tag), Gates danach (ein wartender Raum ist die häufigste Ursache für Stille), die Zahl
-    // der Beteiligten macht ein Bild voll, und die schiere Ereignismenge geht nur logarithmisch
-    // ein — sonst gewönne jede lange Werkzeugkette gegen jeden interessanten Moment.
+    // Deterministic and without a knob: errors weigh the most (they explain the day), gates
+    // after them (a waiting room is the most common cause of silence), the number of
+    // participants fills a picture, and the sheer number of events enters only
+    // logarithmically; otherwise every long tool chain would win against every interesting moment.
     i.gewicht = 3 * i.fehler + 2 * i.gates + i.agenten.size + 0.5 * Math.log(1 + i.ereignisse);
   }
   return out;
@@ -66,14 +65,13 @@ function zaehle(insel, c) {
 }
 
 /**
- * Der Bildplan: welcher Zeitpunkt bekommt welches Bild.
+ * The frame plan: which moment gets which frame.
  *
- * `kapitel` steht hier zusätzlich zu den vier im Vertrag genannten Optionen, weil die Zahl der
- * Kapitel aus dem HTTP-Auftrag kommt und die Budgetrechnung sie braucht.
+ * `kapitel` stands here in addition to the four options named in the contract, because the
+ * number of chapters comes from the HTTP request and the budget computation needs it.
  *
- * Rückgabe: `bilder[]` in Abspielreihenfolge (`kapitel` = Nummer der Trennkarte, `null` =
- * gewöhnliches Bild), die gewählten `kapitel[]`, die Zahl der **nicht** gezeigten Inseln und
- * `gekappt`.
+ * Returns: `bilder[]` in playing order (`kapitel` = number of the chapter card, `null` = an
+ * ordinary frame), the chosen `kapitel[]`, the number of islands not shown and `gekappt`.
  */
 export function bildplan(log, opts) {
   const fps = opts.fps > 0 ? opts.fps : 12;
@@ -87,12 +85,12 @@ export function bildplan(log, opts) {
   const leer = { bilder: [], kapitel: [], uebersprungen: 0, gekappt: log.length >= REPLAY_CAP };
   if (alle.length === 0) return leer;
 
-  // Gleichstand bricht `von` auf: zwei gleich gewichtete Inseln dürfen nicht davon abhängen,
-  // wie die Sortierung des Laufzeitsystems gerade schaufelt — sonst ist derselbe Tag zweimal
-  // ein anderer Film.
+  // A tie breaks on `von`: two islands of equal weight must not depend on how the sort of the
+  // runtime happens to shovel, because otherwise the same day is a different film twice.
+  //
   const rang = alle.slice().sort((a, b) => (b.gewicht - a.gewicht) || (a.von - b.von));
 
-  // Ein Kapitel unter `minBilder` wäre ein Zucken statt einer Szene: lieber weniger Kapitel.
+  // A chapter below `minBilder` would be a twitch instead of a scene: better fewer chapters.
   const passt = Math.floor(budget / (kartenBilder + minBilder));
   const n = Math.max(1, Math.min(rang.length, wunsch, passt));
   const gewaehlt = rang.slice(0, n).sort((a, b) => a.von - b.von);
@@ -116,19 +114,19 @@ export function bildplan(log, opts) {
     bilder,
     kapitel: gewaehlt.map((i) => ({ von: i.von, bis: i.bis, gewicht: i.gewicht })),
     uebersprungen: alle.length - gewaehlt.length,
-    // Der Recorder kappt am **ältesten** Ende: ein Log an der Kappgrenze hat mit hoher
-    // Wahrscheinlichkeit den Morgen verloren. Still zu verlieren wäre der schlimmste Fehler
-    // dieses Features, deshalb wandert die Zahl als Kopfzeile bis in die Bildunterschrift.
+    // The recorder truncates at the **oldest** end: a log at the truncation limit has most
+    // likely lost the morning. Losing that silently would be the worst error of this feature,
+    // which is why the number travels as a header all the way into the caption.
     gekappt: log.length >= REPLAY_CAP,
   };
 }
 
 /**
- * Bilder je Kapitel nach `√Gewicht`.
+ * Frames per chapter by the square root of the weight.
  *
- * Die Wurzel und nicht das Gewicht selbst: linear verteilt bekäme die stärkste Insel eines
- * Fehlertages zwei Drittel des Films und die übrigen sieben Kapitel je zwölf Bilder. Die Wurzel
- * dämpft genau so weit, dass die Rangfolge sichtbar bleibt, ohne dass ein Kapitel verhungert.
+ * The square root and not the weight itself: distributed linearly, the strongest island of a
+ * day of errors would get two thirds of the film and the other seven chapters twelve frames
+ * each. The square root damps just far enough that the ranking stays visible.
  */
 function verteile(kapitel, rest, minBilder) {
   let summe = 0;
@@ -136,9 +134,9 @@ function verteile(kapitel, rest, minBilder) {
   const anteile = kapitel.map((k) =>
     Math.max(minBilder, summe > 0 ? Math.round((rest * Math.sqrt(Math.max(0, k.gewicht))) / summe) : minBilder));
 
-  // Runden und Untergrenze sprengen das Budget in beide Richtungen. Ausgeglichen wird immer am
-  // größten bzw. kleinsten Kapitel, bei Gleichstand am vorderen — dieselbe Regel wie oben, und
-  // aus demselben Grund.
+  // Rounding and the lower bound blow the budget in both directions. Balancing always happens
+  // at the largest respectively the smallest chapter, on a tie at the front one: the same rule
+  // as above, and for the same reason.
   let ist = anteile.reduce((a, b) => a + b, 0);
   while (ist > rest) {
     let idx = -1;

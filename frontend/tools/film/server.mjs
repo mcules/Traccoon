@@ -1,20 +1,20 @@
-// Der filmer — ein nackter `node:http`-Server, mehr braucht es nicht.
+// The filmer: a bare `node:http` server, no more is needed.
 //
-// Kein Framework, weil es nichts zu routen gibt: zwei Pfade, ein Verb je Pfad. Jede
-// Abhängigkeit hier wäre eine `package.json`, ein Lockfile und ein npm-Schritt im Bild — für
-// dreißig Zeilen, die seit Node 0.x unverändert funktionieren.
+// No framework, because there is nothing to route: two paths, one verb per path. Every
+// dependency here would be a `package.json`, a lockfile and an npm step in the image, for
+// thirty lines that have worked unchanged since Node 0.x.
 //
-// **Keine Authentifizierungsfläche, weil es nichts zu schützen gibt.** Der Dienst holt nichts,
-// kennt keine Zugangsdaten und keine Datenbank; das Backend schickt den Log mit und bekommt ein
-// Bild zurück. Er hängt am internen Compose-Netz und veröffentlicht keinen Port.
+// **No authentication surface, because there is nothing to protect.** The service fetches
+// nothing, knows no credentials and no database; the backend sends the log along and gets a
+// picture back. It hangs on the internal compose network and publishes no port.
 
 import { createServer } from "node:http";
 import { baueFilm } from "./film.mjs";
 
 const PORT = Number(process.env.FILMER_PORT ?? 8710);
 
-/** Ein Tag mit 20 000 Ereignissen ist rund 12 MB JSON; 64 MB lassen genug Luft und verhindern
- *  trotzdem, dass ein kaputter Aufrufer den Speicher des Sidecars füllt. */
+/** A day with 20 000 events is around 12 MB of JSON; 64 MB leave enough air and still prevent
+ *  a broken caller from filling the memory of the sidecar. */
 const MAX_BODY = 64 * 1024 * 1024;
 
 const server = createServer((req, res) => {
@@ -59,16 +59,16 @@ const server = createServer((req, res) => {
     try {
       film = baueFilm(auftrag);
     } catch (e) {
-      // Der Fehlertext geht an das Backend, nicht an einen Nutzer: er landet im Job-Log, und
-      // ohne ihn stünde dort nur „500" für einen Tag, der sich nie wiederholt.
+      // The error text goes to the backend, not to a user: it lands in the job log, and without
+      // it only "500" would stand there for a day that never repeats.
       console.error("[filmer] Aufbau gescheitert:", e);
       res.writeHead(500, { "Content-Type": "text/plain; charset=utf-8" });
       res.end("Film gescheitert: " + fehlerText(e));
       return;
     }
 
-    // Ein Tag ohne Ereignisse ist kein Fehler. Python schreibt dann die Nachricht ohne Medium
-    // („Heute war es still im Büro") — ein leeres GIF wäre die schlechtere Antwort.
+    // A day without events is not an error. Python then writes the message without a medium
+    // ("it was quiet in the office today"); an empty GIF would be the worse answer.
     if (film === null) {
       res.writeHead(204);
       res.end();
