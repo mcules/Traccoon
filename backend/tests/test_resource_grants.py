@@ -1,8 +1,8 @@
-"""Sicherheitsrelevante Pfade der granularen Freigaben (TRA-23) und der
-Projekt-Rollen-Vererbung entlang des parent_id-Baums (TRA-22).
+"""Security relevant paths of the granular grants (TRA-23) and of the project role
+inheritance along the parent_id tree (TRA-22).
 
-Deckt den „Wart"-Fall ab: ein Nutzer ohne Projekt-Mitgliedschaft sieht/verwaltet
-ausschließlich das ihm freigegebene Wasserhäuschen samt der Masten darunter.
+Covers the caretaker case: a user without a project membership sees and manages exclusively
+the pump house granted to them including the masts below it.
 """
 from app.models.enums import GrantLevel, ProjectRole, ResourceType
 from app.models.project import ResourceGrant
@@ -108,7 +108,7 @@ async def test_doppelter_grant_gibt_409(client, db):
 
 
 async def test_recursive_wird_bei_assets_normalisiert(client, db):
-    """`recursive` ist bei Exemplaren bedeutungslos → immer False ablegen."""
+    """`recursive` is meaningless with units, so always store False."""
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
@@ -125,7 +125,7 @@ async def test_recursive_wird_bei_assets_normalisiert(client, db):
     assert r.json()["recursive"] is False
 
 
-# ── Zugriff über Grants ──────────────────────────────────────────────────────
+# ── Access over grants ───────────────────────────────────────────────────────
 
 async def test_grant_user_sieht_nur_freigegebenes_asset(client, db):
     owner = await make_user(db, "owner")
@@ -245,9 +245,9 @@ async def test_rolle_wird_an_subprojekt_vererbt_owner_gecappt(client, db):
     r = await client.get(f"/projects/{sub.id}", headers=auth(regio))
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["my_role"] == "maintainer"     # Owner wird bei Vererbung gecappt
+    assert body["my_role"] == "maintainer"     # the owner is capped on inheritance
     assert body["my_role_inherited"] is True
-    assert body["is_member"] is True           # geerbt zählt als Mitglied, nicht als "fremd"
+    assert body["is_member"] is True           # inherited counts as a member, not as "foreign"
 
 
 async def test_vererbung_abschaltbar(client, db):
@@ -293,7 +293,7 @@ async def test_list_projects_enthaelt_geerbte_subprojekte(client, db):
     assert keys == {top.key, sub.key}
 
 
-# ── Zyklus-Schutz beim Umhängen ──────────────────────────────────────────────
+# ── Cycle protection while rehanging ─────────────────────────────────────────
 
 async def test_parent_darf_kein_nachfahre_sein(client, db):
     owner = await make_user(db, "owner")

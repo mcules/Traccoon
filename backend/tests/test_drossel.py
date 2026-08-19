@@ -1,12 +1,12 @@
-"""Drossel: höchstens alle N Minuten dieselbe Nachricht.
+"""Throttle: the same message at most every N minutes.
 
-Der Anlass ist ein Gerät, das nicht selbst zusammenfasst: solange sein Alarmbit steht,
-meldet es bei jeder Position erneut — im Sekundentakt. Aus zehn Minuten Erschütterung
-würden rund 120 gleichlautende Nachrichten. Die Idempotenz über eine Ereignis-ID hilft da
-nicht, denn jede dieser Meldungen ist ein eigenes Ereignis.
+The occasion is a device that does not summarise itself: as long as its alarm bit is set it
+reports again with every position, every second. Ten minutes of shaking would give around
+120 identical messages. Idempotency over an event id does not help there, because every one
+of these reports is an event of its own.
 
-Wichtig ist die Trennlinie: gedrosselt wird die **Nachricht**, nicht die Verarbeitung. Der
-Ablauf läuft weiter, Messwerte werden weiter geschrieben — nur der Bote schweigt.
+What matters is the dividing line: what is throttled is the **message**, not the processing.
+The flow runs on and measurements keep being written; only the messenger stays silent.
 """
 import datetime as dt
 
@@ -77,7 +77,7 @@ async def test_zwei_menschen_schalten_sich_nicht_gegenseitig_stumm(db):
 
 
 async def test_ohne_drossel_bleibt_alles_wie_bisher(db):
-    """Regressionsschutz: jede bestehende Benachrichtigung geht unverändert durch."""
+    """Regression protection: every existing notification goes through unchanged."""
     anna = await make_user(db, "anna")
     for _ in range(3):
         await zustellen(db, user=anna, kind="test", title="Immer wieder")
@@ -108,7 +108,7 @@ def _knoten(params: dict) -> dict:
 
 
 async def test_knoten_drosselt_sich_selbst(db):
-    """Eine Zahl soll genügen — den Schlüssel denkt sich sonst niemand aus."""
+    """A number should be enough; nobody would think up the key otherwise."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna)
     p = {"to": {"mode": "user", "user_id": anna.id}, "title": "Alarm", "drossel_minuten": 15}
@@ -121,7 +121,7 @@ async def test_knoten_drosselt_sich_selbst(db):
 
 
 async def test_schluessel_aus_dem_kontext_trennt_die_faelle(db):
-    """Zwei Alarmarten am selben Knoten dürfen sich nicht gegenseitig verschlucken."""
+    """Two kinds of alarm on the same node must not swallow each other."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna)
 

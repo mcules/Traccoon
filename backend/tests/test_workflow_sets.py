@@ -1,7 +1,7 @@
-"""Prozess-Sätze: Auflösungskette, Anpassen (copy-on-write) und Zurücksetzen.
+"""Process sets: the resolution chain, adjusting (copy-on-write) and resetting.
 
-Kern der Zusage an den Nutzer: „Projekte bekommen einen Standard-Satz, den man jederzeit
-zurücksetzen kann; ein eigener Satz gilt für alle Projekte, in denen ich Owner bin."
+The core of the promise to the user: "projects get a default set that can be reset at any
+time; an own set applies to all projects in which I am the owner".
 """
 from app.models.enums import ProjectRole, WorkflowSlot
 from app.models.workflow import WorkflowDefinition, WorkflowInstance
@@ -26,7 +26,7 @@ async def test_eigener_satz_gilt_fuer_meine_owner_projekte(db, seeded):
     anderes = await make_project(db, "AND", "Anderes")
     await add_member(db, meins, owner, ProjectRole.owner)
     await add_member(db, anderes, fremd, ProjectRole.owner)
-    # Nur Mitglied (nicht Owner) → mein Satz gilt hier NICHT.
+    # Only a member (not the owner), so my set does NOT apply here.
     await add_member(db, anderes, owner, ProjectRole.member)
 
     eigener = await sets.create_user_set(db, owner, "Meine Prozesse")
@@ -46,18 +46,18 @@ async def test_anpassen_entkoppelt_und_zuruecksetzen_bindet_wieder(db, seeded):
     info = await sets.resolve_source(db, proj.id, LIFECYCLE)
     assert info["origin"] == "project" and info["definition"].id == kopie.id
 
-    # Zweimal anpassen legt keine zweite Kopie an.
+    # Adjusting twice creates no second copy.
     assert (await sets.customize(db, proj, LIFECYCLE, owner.id)).id == kopie.id
 
     assert await sets.reset(db, proj, LIFECYCLE) is True
     assert (await sets.resolve_source(db, proj.id, LIFECYCLE))["origin"] == "builtin"
-    # Die Kopie bleibt als Archiv erhalten (Historie/laufende Instanzen).
+    # The copy is kept as an archive (history, running instances).
     await db.refresh(kopie)
     assert kopie.archived_at is not None
 
 
 async def test_zuruecksetzen_laesst_laufende_instanz_unberuehrt(db, seeded, client):
-    """Eine laufende Instanz hängt an ihrer Version — Zurücksetzen darf sie nicht kippen."""
+    """A running instance hangs off its version: resetting must not topple it."""
     from app.models.enums import WorkflowInstanceStatus, WorkflowSubjectKind
     from app.services.workflow_engine import start_workflow
 
@@ -127,8 +127,8 @@ async def test_fremder_persoenlicher_satz_ist_tabu(client, db, seeded):
 
 
 async def test_instanz_kennt_projekt_auch_bei_satz_vorlage(db, seeded):
-    """Vorlagen sind projektlos — die Instanz muss trotzdem am Projekt hängen, sonst
-    greifen Rechteprüfung und Live-Events nicht."""
+    """Templates are project-less; the instance still has to hang off the project, because
+    otherwise the rights check and the live events do not work."""
     from app.models.enums import TicketAgentStatus
     from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
     from app.models.enums import StatusCategory

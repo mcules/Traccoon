@@ -1,10 +1,10 @@
-"""Kein Werkzeug anbieten, dessen Antwort schon feststeht.
+"""Do not offer a tool whose answer is already settled.
 
-Der Deployer lehnt jeden Auftrag ohne eigenes Stack-Verzeichnis ab — sonst würde Traccoon
-sich mitten im Lauf selbst neu starten. Gemerkt hat das bisher erst er: der Agent legte eine
-Deployment-Zeile an, wartete im 3-Sekunden-Takt und bekam die Absage nach dem Umweg. 56 der
-186 Zeilen in `deployments` sind genau diese Absage; die Läufe 753 und 754 haben am
-2026-08-07 je einen Zug dafür verbraucht.
+The deployer rejects every assignment without a stack directory of its own; otherwise
+Traccoon would restart itself in the middle of a run. Until now only it noticed that: the
+agent created a deployment row, waited every 3 seconds and got the refusal after the detour.
+56 of the 186 rows in `deployments` are exactly this refusal; runs 753 and 754 each spent a
+turn on it on 2026-08-07.
 """
 import pytest
 
@@ -14,7 +14,7 @@ from app.worker.runtime import deploy_gesperrt
 def test_ohne_stack_verzeichnis_gesperrt():
     grund = deploy_gesperrt("")
     assert "kein eigenes Stack-Verzeichnis" in grund
-    assert "check" in grund          # der Agent erfährt, was stattdessen zu tun ist
+    assert "check" in grund          # the agent learns what to do instead
 
 
 def test_traccoon_selbst_gesperrt(monkeypatch):
@@ -29,8 +29,8 @@ def test_fremdes_projekt_darf(monkeypatch):
 
 @pytest.mark.parametrize("selbst", ["", "/opt/docker/stacks/traccoon"])
 def test_ohne_gesetzten_selbstpfad_bleibt_das_urteil_stabil(monkeypatch, selbst):
-    """Der Worker-Container kennt `SELF_STACK_DIR` heute nicht — die leere Prüfung muss
-    deshalb für sich allein tragen, und ein gesetzter Pfad darf fremde Ziele nicht sperren."""
+    """The worker container does not know `SELF_STACK_DIR` today, so the empty check has to
+    carry on its own, and a set path must not lock foreign targets."""
     monkeypatch.setenv("SELF_STACK_DIR", selbst)
     assert deploy_gesperrt("") != ""
     assert deploy_gesperrt("/opt/docker/stacks/uniwar") == ""

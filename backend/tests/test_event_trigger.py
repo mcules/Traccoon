@@ -1,7 +1,7 @@
-"""Ereignis-Trigger: der Ablauf entscheidet, worauf er hört — nicht der Auslöser.
+"""Event triggers: the flow decides what it listens for, not the trigger.
 
-Bisher musste ein Webhook oder Job eine bestimmte Definition benennen. Jetzt meldet
-Traccoon ein Ereignis, und jeder Ablauf mit passendem Trigger am Start-Knoten läuft an.
+Until now a webhook or a job had to name a particular definition. Now Traccoon reports an
+event, and every flow with a matching trigger on its start node starts up.
 """
 from app.models.enums import (
     ProjectRole, WorkflowInstanceStatus, WorkflowSubjectKind, WorkflowVersionStatus,
@@ -46,7 +46,7 @@ async def test_ereignis_startet_alle_zuhoerer(db):
     await _ablauf(db, key="a", trigger={"event": "mail.received"})
     await _ablauf(db, key="b", trigger={"event": "mail.received"})
     await _ablauf(db, key="c", trigger={"event": "issue.created"})
-    await _ablauf(db, key="d", trigger=None)          # kein Auslöser → nur manuell
+    await _ablauf(db, key="d", trigger=None)          # no trigger, so manual only
 
     ids = await emit(db, "mail.received", payload={"betreff": "Rechnung"})
     assert len(ids) == 2
@@ -54,7 +54,7 @@ async def test_ereignis_startet_alle_zuhoerer(db):
     assert {i.definition_id for i in inst} == {
         d.id for d in (await db.execute(select(WorkflowDefinition)
                                         .where(WorkflowDefinition.key.in_(["a", "b"])))).scalars()}
-    # Der Inhalt des Ereignisses steht dem Ablauf zur Verfügung.
+    # The content of the event is available to the flow.
     assert inst[0].context["betreff"] == "Rechnung"
     assert inst[0].context["event"]["name"] == "mail.received"
 
@@ -65,7 +65,7 @@ async def test_trigger_auf_ein_projekt_begrenzt(db):
     await _ablauf(db, key="nur_p1", trigger={"event": "x", "project_id": p1.id})
     await _ablauf(db, key="ueberall", trigger={"event": "x"})
 
-    assert len(await emit(db, "x", project_id=p2.id)) == 1      # nur der ungebundene
+    assert len(await emit(db, "x", project_id=p2.id)) == 1      # only the unbound one
     assert len(await emit(db, "x", project_id=p1.id)) == 2      # beide
 
 
@@ -95,11 +95,11 @@ async def test_doppelte_meldung_startet_nur_einmal(db):
 
 
 async def test_kaputter_ablauf_stoppt_die_anderen_nicht(db):
-    """Ein Ereignis ist eine Meldung, kein Auftrag — ein defekter Zuhörer darf weder den
-    Auslöser noch die übrigen Abläufe mitreißen."""
+    """An event is a report, not an assignment: a broken listener must neither tear the
+    trigger nor the other flows with it."""
     kaputt = await _ablauf(db, key="kaputt", trigger={"event": "x"})
     v = await db.get(WorkflowVersion, kaputt.current_version_id)
-    v.graph = {"nodes": [], "edges": []}          # kein Start-Knoten mehr
+    v.graph = {"nodes": [], "edges": []}          # no start node any more
     await db.commit()
     await _ablauf(db, key="heil", trigger={"event": "x"})
 
@@ -108,7 +108,7 @@ async def test_kaputter_ablauf_stoppt_die_anderen_nicht(db):
 
 
 async def test_ticket_anlegen_meldet_das_ereignis(client, db, seeded):
-    """Der wichtigste Anschluss: ein neues Ticket löst `issue.created` aus."""
+    """The most important connection: a new ticket triggers `issue.created`."""
     from app.models.enums import StatusCategory
     from app.models.ticket import IssueCounter, IssueType, WorkflowStatus
 

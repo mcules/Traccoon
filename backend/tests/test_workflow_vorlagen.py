@@ -1,9 +1,8 @@
-"""Vorlagen: was zum Kopieren angeboten wird, muss auch laufen.
+"""Templates: what is offered for copying has to run as well.
 
-Eine Vorlage, die beim Veröffentlichen an der Prüfung scheitert, ist schlimmer als keine —
-sie schickt jemanden mit einem kaputten Graphen los und lässt ihn den Fehler suchen, den
-er nicht gemacht hat. Deshalb geht jede Vorlage hier durch dieselbe Prüfung wie ein
-selbst gebauter Ablauf.
+A template that fails the validation on publishing is worse than none: it sends somebody off
+with a broken graph and lets them look for the error they did not make. That is why every
+template goes through the same validation here as a self-built flow.
 """
 import pytest
 
@@ -17,7 +16,7 @@ def test_liste_ohne_graphen():
     liste = vorlagen.liste()
     assert len(liste) >= 4
     for v in liste:
-        assert "build" not in v          # der Graph gehört nicht in die Übersicht
+        assert "build" not in v      # the graph does not belong in the overview
         assert v["key"] and v["name"] and v["description"] and v["hinweis"]
 
 
@@ -31,7 +30,7 @@ def test_vorlage_ist_gueltig(key):
 
 @pytest.mark.parametrize("key", [v["key"] for v in vorlagen.VORLAGEN])
 def test_graph_ist_frisch(key):
-    """Zwei Aufrufe dürfen sich nicht dasselbe dict teilen — sonst färbt ein Umbau ab."""
+    """Two calls must not share the same dict; otherwise a rebuild bleeds through."""
     a, b = vorlagen.graph(key), vorlagen.graph(key)
     assert a == b and a is not b
     a["nodes"][0]["data"]["config"]["label"] = "verbogen"
@@ -44,22 +43,22 @@ def test_unbekannte_vorlage():
 
 
 def test_alle_standalone():
-    """Ohne Ticket im Rücken: die Vorlagen sollen auch projektlos anlegbar sein."""
+    """Without a ticket behind it: the templates should be creatable project-less as well."""
     assert all(v["subject_kind"] == WorkflowSubjectKind.standalone for v in vorlagen.VORLAGEN)
 
 
-# ── Aus einer Vorlage anlegen (API) ──────────────────────────────────────────
+# ── Creating from a template (API) ───────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_anlegen_aus_vorlage_bringt_den_ganzen_ablauf(client, db):
-    """Wer eine Vorlage nimmt, bekommt keinen leeren Entwurf, sondern den Graphen."""
+    """Whoever takes a template gets not an empty draft but the graph."""
     anna = await make_user(db, "anna")
     r = await client.post("/workflows", headers=auth(anna), json={
         "project_id": None, "key": "meldungen", "name": "Meldungen",
         "template": "meldung-von-aussen"})
     assert r.status_code == 201, r.text
     d = r.json()
-    # Beschreibung kommt aus der Vorlage, wenn keine angegeben wurde.
+    # The description comes from the template when none was given.
     assert "Webhook" in d["description"]
 
     versionen = (await client.get(f"/workflows/{d['id']}/versions", headers=auth(anna))).json()
