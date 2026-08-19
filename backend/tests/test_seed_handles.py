@@ -1,27 +1,27 @@
-"""Jede Kante der ausgelieferten Abläufe muss an einem Ausgang hängen, den die Oberfläche
+"""Every edge of the shipped flows has to hang off an exit the interface actually draws.
 auch zeichnet.
 
-Anlass: die Abnahme zeigte einen Schritt „in der Luft". Die Kanten waren da, aber der
-Aktions-Knoten bot nur den Standard-Ausgang an — React Flow zeichnet eine Kante nur, wenn
-es den benannten Ausgang wirklich gibt, und verschluckt sie sonst kommentarlos.
+The occasion: the acceptance showed a step "in the air". The edges were there, but the
+action node offered only the default exit; React Flow draws an edge only when the named exit
+really exists and swallows it without a word otherwise.
 """
 import pytest
 from app.services.workflow_engine import node_config, node_type
 from app.services.workflow_seed import BUILDERS
 
-# Was ein Knotentyp an Ausgängen anbieten kann (Spiegel der Node-Komponenten).
+# What a node type can offer as exits (a mirror of the node components).
 ERLAUBT = {
     "start": {"out"},
     "human_task": {"out"},
     "approval": {"approved", "rejected"},
     "subflow": {"completed", "failed", "cancelled", "out"},
-    "wait_event": {"out"},          # zzgl. der konfigurierten Ereignisse
+    "wait_event": {"out"},          # plus the configured events
     "agent_task": {"planned", "done", "blocked", "failed", "loop_exhausted", "err", "out"},
     "auto_action": {"out", "merged", "pr_open", "no_git", "conflict", "push_failed",
                     "pr_failed", "gone", "error"},
     "loop": {"element", "fertig"},
     "timer": {"out"},
-    "decision": set(),              # kommt aus den Zweigen
+    "decision": set(),              # comes from the branches
     "end": set(),
 }
 
@@ -61,11 +61,11 @@ def test_kein_schritt_haengt_in_der_luft(slot):
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
 def test_standard_zweig_ist_ein_zweig(slot):
-    """Der Standard-Zweig muss in der Zweig-Liste stehen.
+    """The default branch has to stand in the branch list.
 
-    Sonst zeigt der Knoten einen Ausgang, den die Konfiguration nicht kennt: das Panel
-    stellt ihn als „— keiner —" dar, und beim nächsten Speichern hinge seine Kante in der
-    Luft. Genau das war im Ticket-Eingang der Fall.
+    Otherwise the node shows an exit the configuration does not know: the panel presents it
+    as "- none -", and on the next save its edge would hang in the air. Exactly that was the
+    case in the ticket inbox.
     """
     graph = BUILDERS[slot]()
     for n in graph["nodes"]:
@@ -82,11 +82,11 @@ def test_standard_zweig_ist_ein_zweig(slot):
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
 def test_aktionen_in_einheitlicher_form(slot):
-    """Aktions-Knoten müssen die verschachtelte Form nutzen.
+    """Action nodes have to use the nested form.
 
-    In der flachen Form (`{"action": "name", "status": …}`) zeigt der Editor weder Aktion
-    noch Parameter an — und die erste Bearbeitung überschreibt sie. Das Backend versteht
-    zwar beide Formen, die Oberfläche ist damit aber unbrauchbar.
+    In the flat form (`{"action": "name", "status": …}`) the editor shows neither the action
+    nor the parameters, and the first edit overwrites them. The backend does understand both
+    forms, but the interface is unusable that way.
     """
     for n in BUILDERS[slot]()["nodes"]:
         if node_type(n) != "auto_action":
@@ -99,8 +99,8 @@ def test_aktionen_in_einheitlicher_form(slot):
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
 def test_keine_zwei_knoten_auf_derselben_stelle(slot):
-    """Zwei Knoten an derselben Position verdecken einander — und mit ihnen die Kante,
-    die dort hängt. Im Mail-Eingang fiel genau das erst am Bild auf."""
+    """Two nodes at the same position cover each other, and with them the edge that hangs
+    there. In the mail inbox exactly that stood out only in the picture."""
     if slot == "ticket_lifecycle":
         pytest.skip("cap_baseline/st_approved liegen aufeinander — Altbestand, eigener Fall")
     graph = BUILDERS[slot]()

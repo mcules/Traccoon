@@ -1,9 +1,9 @@
-"""Schleifen: durch die Daten hindurch, nicht nur an sie heran.
+"""Loops: through the data, not only up to it.
 
-Bis hierhin führte ein Ablauf jeden Schritt genau einmal aus. Geprüft wird das, was dabei
-leicht schiefgeht: dass der Zähler einen Wartepunkt überlebt, dass eine leere Liste nicht
-in den Körper läuft, dass zwei Schleifen nacheinander wieder von vorn beginnen — und dass
-eine Liste ohne Ende trotzdem eines hat.
+Until now a flow executed every step exactly once. What is checked is what easily goes wrong
+there: that the counter survives a waiting point, that an empty list does not run into the
+body, that two loops one after another begin from the front again, and that a list without
+an end still has one.
 """
 import pytest
 from app.models.enums import (
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.asyncio
 
 
 def _graph(*, liste="posten", max_=None, sammle=None) -> dict:
-    """start → Schleife → (je Element: Kontext setzen) → zurück; fertig → Ende."""
+    """start, loop, (per element: set the context), back; when finished, end."""
     cfg = {"label": "Für jedes", "liste": liste, "element": "posten_eins", "index": "nr"}
     if max_ is not None:
         cfg["max"] = max_
@@ -66,9 +66,9 @@ async def _lauf(db, graph: dict, kontext: dict) -> WorkflowInstance:
 async def test_jedes_element_kommt_einmal_dran(db):
     inst = await _lauf(db, _graph(), {"posten": ["eins", "zwei", "drei"]})
     assert inst.status == WorkflowInstanceStatus.completed
-    # Der Körper hat zuletzt das dritte Element gesehen …
+    # The body last saw the third element …
     assert inst.context["gesehen"] == "drei"
-    # … und der Zähler ist danach aufgeräumt, nicht als Rest im Kontext liegengeblieben.
+    # … and the counter is cleaned up afterwards, not left lying in the context.
     assert inst.context.get("_schleifen") == {}
     assert "posten_eins" not in inst.context
 
@@ -80,16 +80,16 @@ async def test_leere_liste_geht_gar_nicht_erst_hinein(db):
 
 
 async def test_fehlende_liste_ist_kein_absturz(db):
-    """Ein Pfad, den es nicht gibt, ist im Betrieb der Normalfall (Gegenstelle liefert
-    nichts) — er darf den Lauf nicht kippen."""
+    """A path that does not exist is the normal case in operation (the counterpart delivers
+    nothing), and it must not topple the run."""
     inst = await _lauf(db, _graph(liste="gibts.nicht"), {"posten": ["x"]})
     assert inst.status == WorkflowInstanceStatus.completed
     assert "gesehen" not in inst.context
 
 
 async def test_einzelwert_wird_wie_eine_liste_mit_einem_element_behandelt(db):
-    """Viele Gegenstellen liefern bei genau einem Treffer kein Array — das ist kein Fehler
-    des Menschen, der den Ablauf gebaut hat."""
+    """Many counterparts deliver no array with exactly one hit, and that is no error of the
+    human who built the flow."""
     inst = await _lauf(db, _graph(), {"posten": "allein"})
     assert inst.context["gesehen"] == "allein"
 
@@ -101,17 +101,17 @@ async def test_sammeln_haelt_die_ergebnisse_fest(db):
 
 
 async def test_lange_liste_wird_gedeckelt(db):
-    """Gegen die Liste, die aus Versehen 100 000 Zeilen hat: der Knoten hat sein eigenes
-    Maß, unabhängig von der Zyklus-Bremse der Engine."""
+    """Against the list that accidentally has 100 000 rows: the node has a measure of its own,
+    independently of the cycle brake of the engine."""
     inst = await _lauf(db, _graph(max_=3), {"posten": list("abcdefgh")})
     assert inst.status == WorkflowInstanceStatus.completed
-    assert inst.context["gesehen"] == "c"          # nach dem dritten ist Schluss
-    assert inst.context["nr_gesamt"] == 8          # gemeldet wird die wahre Länge
+    assert inst.context["gesehen"] == "c"          # after the third it stops
+    assert inst.context["nr_gesamt"] == 8          # what is reported is the true length
 
 
 async def test_zwei_durchlaeufe_beginnen_wieder_von_vorn(db):
-    """Läuft derselbe Ablauf ein zweites Mal (oder eine äußere Schleife), darf kein Zähler
-    von gestern übrig sein."""
+    """If the same flow runs a second time (or an outer loop), no counter from yesterday may
+    be left."""
     graph = _graph()
     erste = await _lauf(db, graph, {"posten": ["a", "b"]})
     assert erste.context["gesehen"] == "b"
