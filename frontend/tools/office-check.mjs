@@ -1,22 +1,22 @@
-// Prüfer für das „Büro" (src/components/office). Null Abhängigkeiten.
+// Checker for the "office" (src/components/office). No dependencies.
 //
 //   docker run --rm -v "$PWD/frontend":/w -v "$PWD/backend":/backend -w /w node:22-alpine \
 //     node --experimental-strip-types tools/office-check.mjs
 //
-// bzw. `npm run check:office` (aus `frontend/`, dann liegt das Backend unter `../backend`).
-// Bewusst **nicht** Teil von `npm run build`: der Docker-Bau darf nicht davon abhängen, und
-// eine devDependency scheidet aus, weil das Dockerfile bei jedem Bau `npm install` ohne
-// Lockfile macht.
+// respectively `npm run check:office` (from `frontend/`, and then the backend lies under `../backend`).
+// Deliberately **not** part of `npm run build`: the Docker build must not depend on it, and a
+// devDependency is out because the Dockerfile runs `npm install` without a lockfile on every
+// build.
 //
-// **Warum auch `backend/` eingehängt wird**: die Vollständigkeitsprüfung der Werkzeug-Tabelle
-// zieht ihre Sollliste aus `backend/app/worker/*.py`. Eine abgeschriebene Liste prüfte nur, ob
-// die Abschrift zu sich selbst passt — genau die Drift, die sie verhindern soll, sähe sie nie.
-// Ohne eingehängtes Backend bricht der Prüfer deshalb, statt still weniger zu prüfen.
+// **Why `backend/` is mounted as well**: the completeness check of the tool table draws its
+// target list from `backend/app/worker/*.py`. A copied list would only check whether the copy
+// matches itself, and exactly the drift it is meant to prevent it would never see. Without a
+// mounted backend the checker therefore breaks instead of silently checking less.
 //
-// `--experimental-strip-types` ist nötig, weil der Prüfer die Schichten 0 und 1 direkt lädt.
+// `--experimental-strip-types` is needed because the checker loads layers 0 and 1 directly.
 //
-//   --bless   schreibt tools/golden.json neu. Siehe die Warnung dort — das Erneuern eines
-//             goldenen Bildes ist eine Entscheidung, keine Reparatur.
+//   --bless   rewrites tools/golden.json. See the warning there: renewing a golden picture is
+//             a decision, not a repair.
 //
 // Regelwerk: src/components/office/PIXEL-CONTRACT.md
 
@@ -42,16 +42,16 @@ const BLESS = process.argv.includes("--bless");
 
 // ── Schichten (PIXEL-CONTRACT.md Regel 4) ────────────────────────────────────
 
-/** Schicht 2, obwohl `.ts`: die React-nahen Bausteine ohne JSX. */
+/** Layer 2 despite `.ts`: the React-near building blocks without JSX. */
 const LAYER2_TS = new Set(["api", "useOfficeFeed", "useTheme"]);
 
-/** Was Schicht 1 aus Schicht 0 sehen darf — und sonst nichts. */
+/** What layer 1 may see of layer 0, and nothing else. */
 const LAYER1_MAY_IMPORT_FROM_LAYER0 = new Set(["types", "ids", "const"]);
 
 /**
- * Ordnet eine Datei ihrer Schicht zu. Fail-closed: eine unbekannte `.ts` direkt in
- * `office/` gilt als Schicht 0 und muss also rein sein. Wer bewusst Schicht 2 baut,
- * nimmt `.tsx` oder trägt den Namen in LAYER2_TS ein.
+ * Assigns a file to its layer. Fail-closed: an unknown `.ts` directly in `office/` counts as
+ * layer 0 and therefore has to be pure. Whoever deliberately builds layer 2 takes `.tsx` or
+ * enters the name in LAYER2_TS.
  * @param {string} rel POSIX-Pfad relativ zu OFFICE_DIR, z. B. "pixel/art.ts"
  * @returns {0|1|2}
  */
@@ -88,9 +88,9 @@ const FILES = collect(OFFICE_DIR).map((rel) => {
 });
 
 /**
- * Ersetzt Kommentarinhalte durch Leerzeichen und lässt Zeilenumbrüche stehen, damit
- * Zeilennummern erhalten bleiben. Nötig, weil die Kommentare hier deutsch sind und die
- * verbotenen Bezeichner (`Date.now`, `Math.random`, …) darin **erklärt** werden.
+ * Replaces comment contents by spaces and leaves the line breaks standing, so that line
+ * numbers are kept. Necessary because the forbidden identifiers (`Date.now`, `Math.random`, …)
+ * are **explained** in the comments.
  */
 function stripComments(src) {
   let out = "";
@@ -138,10 +138,10 @@ function lineOf(src, index) {
   return line;
 }
 
-// ═══ Prüfung 1 — Reinheits-Grep (Regel 3.1) ══════════════════════════════════
+// ═══ Check 1: purity grep (rule 3.1) ═════════════════════════════════════════
 //
-// Schicht 0 und 1 dürfen keine Uhr, keinen Würfel und keine Browser-Umgebung anfassen.
-// Sonst zeigt dasselbe Log beim zweiten Abspielen ein anderes Bild.
+// Layers 0 and 1 must touch no clock, no dice and no browser environment. Otherwise the same
+// log shows a different picture on the second replay.
 
 const FORBIDDEN = [
   "Math.random", "Date.now", "performance.now", "new Date",
@@ -164,12 +164,12 @@ function checkPurity() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Prüfung 2 — Schicht-Import-Regel (Regel 4 und 5) ════════════════════════
+// ═══ Check 2: the layer import rule (rules 4 and 5) ══════════════════════════
 //
-// Prüft drei Dinge in einem Durchgang:
-//   · Schicht 0 importiert nur Schicht 0; Schicht 1 nur Schicht 1 + types/ids/const.
-//   · Schicht 0 und 1 importieren gar keine Pakete (sonst nicht ohne Bundler ladbar).
-//   · Relative Importe tragen die `.ts`-Endung (Nodes ESM-Auflösung kennt keine Ergänzung).
+// Checks three things in one pass:
+//   · layer 0 imports only layer 0; layer 1 only layer 1 plus types/ids/const.
+//   · layers 0 and 1 import no packages at all (otherwise they are not loadable without a bundler).
+//   · relative imports carry the `.ts` extension (Node's ESM resolution knows no completion).
 
 const IMPORT_RES = [
   /(?:^|\n)\s*import\s+(?:type\s+)?[^;'"]*?from\s*["']([^"']+)["']/g,
@@ -223,15 +223,15 @@ function checkLayers() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Werkzeug: tiefer Vergleich, der sagt WO ═══════════════════════════════════
+// ═══ Tool: a deep comparison that says WHERE ═══════════════════════════════════
 //
-// „ungleich" ist als Fehlermeldung wertlos: ein `Frame` hat drei Aktoren zu je dreißig
-// Feldern. Der Vergleich unten liefert deshalb den **ersten** Unterschied als Pfad
-// (`actors[1:run:8872].pose`) samt erwartet/bekommen — das ist der Unterschied zwischen
-// „irgendwas an der Engine" und „die Pose kippt einen Tick zu früh".
+// "unequal" is worthless as an error message: a `Frame` has three actors with thirty fields
+// each. The comparison below therefore delivers the **first** difference as a path
+// (`actors[1:run:8872].pose`) including expected and got, which is the difference between
+// "something about the engine" and "the pose tips one tick too early".
 
-/** Kanonische Form: Schlüssel sortiert, `undefined` weg. Nötig, damit ein Feld, das mal
- *  gesetzt und mal weggelassen wird, nicht allein durch die Schlüsselreihenfolge auffällt. */
+/** Canonical form: keys sorted, `undefined` gone. Necessary so that a field that is sometimes
+ *  set and sometimes left out does not stand out through the key order alone. */
 function canon(v) {
   if (v === undefined) return null;
   if (v === null || typeof v !== "object") return v;
@@ -248,7 +248,7 @@ function typeOf(v) {
   return v === null ? "null" : Array.isArray(v) ? "array" : typeof v;
 }
 
-/** Der erste Unterschied als lesbarer Satz, oder `null`. */
+/** The first difference as a readable sentence, or `null`. */
 function firstDiff(got, want, path = "") {
   if (got === want) return null;
   const here = path || "<Wurzel>";
@@ -278,17 +278,17 @@ function firstDiff(got, want, path = "") {
   return `${here}: ${JSON.stringify(got)} — erwartet ${JSON.stringify(want)}`;
 }
 
-/** FNV-1a über eine Zeichenkette, als 8-stelliges Hex. `hash32` kommt aus `ids.ts` —
- *  dieselbe Funktion, die auch die Figuren streut, und damit eine weniger im Repo. */
+/** FNV-1a over a string, as an 8 digit hex. `hash32` comes from `ids.ts`, the same function
+ *  that spreads the figures, and therefore one function less in the repository. */
 function hex(s) {
   return hash32(s).toString(16).padStart(8, "0");
 }
 
-// ═══ Das Log der Fixture ═══════════════════════════════════════════════════════
+// ═══ The log of the fixture ════════════════════════════════════════════════════
 //
-// Bewusst durch den **echten** `Recorder` gedreht statt von Hand zu `LogEntry` gebaut: so
-// laufen `mapEvent`, die Dedup über `seq` und die Zeitstempel-Umrechnung mit im Test. Ein
-// selbstgebautes Log prüfte die Engine gegen eine zweite Übersetzung derselben Ereignisse.
+// Deliberately turned through the **real** `Recorder` instead of built to `LogEntry` by hand:
+// that way `mapEvent`, the dedup over `seq` and the timestamp conversion run along in the test.
+// A self-built log would check the engine against a second translation of the same events.
 
 function buildLog() {
   const rec = new Recorder();
@@ -300,14 +300,14 @@ function buildLog() {
 const LOG = buildLog();
 const AT = GOLDEN_OFFSETS.map((off) => T_FROM + off);
 
-/** Fingerabdruck der Fixture. Ändert er sich, ist jedes goldene Bild darunter hinfällig —
- *  und die Meldung soll das sagen, statt acht Bild-Unterschiede zu melden. */
+/** Fingerprint of the fixture. If it changes, every golden picture below it is void, and the
+ *  message should say that instead of reporting eight picture differences. */
 const FIXTURE_HASH = hex(JSON.stringify(EVENTS) + JSON.stringify(ROSTER));
 
-// ═══ Prüfung 3 — goldenes Bild an 8 Zeitpunkten (Regel 3) ═════════════════════
+// ═══ Check 3: the golden picture at 8 moments (rule 3) ════════════════════════
 //
-// Die eine Aussage, in der der ganze Determinismus steckt: dasselbe Log, derselbe Zeitpunkt,
-// dasselbe Bild — auf jedem Rechner, in jeder Zeitzone, bei jedem Lauf.
+// The one statement the whole determinism sits in: the same log, the same moment, the same
+// picture, on every machine, in every time zone, on every run.
 
 function goldenFrames() {
   return AT.map((ts, i) => ({ at: GOLDEN_OFFSETS[i], frame: canon(frameAt(LOG, ts)) }));
@@ -343,12 +343,12 @@ function checkGoldenFrames(golden) {
   }
 }
 
-// ═══ Prüfung 4 — Seek-Idempotenz (Regel 3) ════════════════════════════════════
+// ═══ Check 4: seek idempotency (rule 3) ═══════════════════════════════════════
 //
-// `seek(t)` baut die Engine neu auf. Bleibt dabei irgendwo Zustand am `Replay` hängen (ein
-// nicht zurückgesetzter Logzeiger, ein Anker, eine verbrauchte Zeitspanne), liefert der
-// zweite Sprung auf denselben Zeitpunkt ein anderes Bild als der erste. Das fällt im Betrieb
-// erst auf, wenn jemand zweimal dieselbe Stelle anklickt.
+// `seek(t)` rebuilds the engine. If state stays hanging on the `Replay` anywhere (a log pointer
+// not reset, an anchor, a spent time span), the second jump to the same moment delivers a
+// different picture from the first. In operation that only stands out when somebody clicks the
+// same place twice.
 
 function checkSeekIdempotent() {
   const bad = [];
@@ -361,8 +361,8 @@ function checkSeekIdempotent() {
     const d = firstDiff(zweit, erst);
     if (d) bad.push(`seek(t0+${GOLDEN_OFFSETS[i]} ms) zweimal  ${d}`);
 
-    // Und derselbe Zeitpunkt über einen frischen Replay: `frameAt` ist der Einstieg, den
-    // die goldenen Bilder benutzen — er muss dasselbe liefern wie ein wiederverwendeter.
+    // And the same moment over a fresh replay: `frameAt` is the entry the golden pictures use,
+    // and it has to deliver the same as a reused one.
     const d2 = firstDiff(canon(frameAt(LOG, AT[i])), erst);
     if (d2) bad.push(`frameAt(t0+${GOLDEN_OFFSETS[i]} ms) ≠ Replay.seek  ${d2}`);
   }
@@ -370,25 +370,25 @@ function checkSeekIdempotent() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Prüfung 5 — seek ≡ advance (Regel 3.4) ═══════════════════════════════════
+// ═══ Check 5: seek is advance (rule 3.4) ═════════════════════════════════════
 //
-// Zurückspulen springt in `REPLAY_STEP_MS`, der Livebetrieb läuft in rAF-Abständen vorwärts.
-// Zeigten die beiden Wege denselben Zeitpunkt verschieden, wäre die Zeitleiste eine Lüge über
-// die Bühne. Die krummen Schrittweiten sind Absicht: 250 und 100 sind genau die Zahlen, für
-// die der Code gebaut ist, 37 und 313 sind es nicht — und ein Fehler, der nur bei einem
-// „schönen" Teiler verschwindet, ist kein behobener Fehler.
+// Rewinding jumps in `REPLAY_STEP_MS`, while live operation runs forward in rAF intervals. If
+// the two ways showed the same moment differently, the timeline would be a lie about the
+// stage. The odd step sizes are deliberate: 250 and 100 are exactly the numbers the code is
+// built for, 37 and 313 are not, and an error that disappears only with a "nice" divisor is
+// not a fixed error.
 
 const STEPS = [250, 100, 37, 313, 1000];
 
 function checkSeekEqualsAdvance() {
   const bad = [];
   for (const step of STEPS) {
-    // Der Vorwärtsläufer wird zuerst auf `t0` gesetzt. Nicht aus Bequemlichkeit: `advance(dt)`
-    // lässt **Zeit vergehen**, es ist kein Einstiegspunkt. Ein frisch gebauter `Replay` hat noch
-    // nichts angewandt, und `advance(0)` steigt sofort wieder aus — „von t0 aus vorwärts, aber
-    // null Millisekunden weit" wäre also ein leerer Raum und verglichen mit `seek(t0)`
-    // ein Unterschied ohne Aussage. In Schicht 2 stellt sich die Frage nicht: die Bühne ruft
-    // immer entweder `seek` oder ein `advance` mit echtem `dt`.
+    // The forward runner is set to `t0` first. Not out of convenience: `advance(dt)` lets
+    // **time pass**, it is not an entry point. A freshly built `Replay` has applied nothing
+    // yet, and `advance(0)` gets out again immediately, so "forward from t0, but zero
+    // milliseconds far" would be an empty room and compared with `seek(t0)` a difference
+    // without a statement. In layer 2 the question does not arise: the stage always calls
+    // either `seek` or an `advance` with a real `dt`.
     const vor = new Replay(LOG);
     vor.seek(T_FROM);
     for (let i = 0; i < AT.length; i++) {
@@ -409,14 +409,14 @@ function checkSeekEqualsAdvance() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Prüfung 6 — dt-Split-Invarianz (Regel 3.4) ═══════════════════════════════
+// ═══ Check 6: dt split invariance (rule 3.4) ══════════════════════════════════
 //
-// `tick(200)` muss denselben Zustand ergeben wie `tick(25)` achtmal. Bricht bei jeder Phase,
-// die aus einem Tick-Zähler statt aus `engine.t` kommt, und bei jedem Übergang, der zum
-// Tick-Zeitpunkt statt zu seinem eigenen Zeitpunkt wirkt.
+// `tick(200)` has to give the same state as `tick(25)` eight times. It breaks with every phase
+// that comes from a tick counter instead of from `engine.t`, and with every transition that
+// acts at the tick moment instead of at its own moment.
 //
-// Zweimal geprüft: nackt (ein paar Kommandos, dann Zeit) und über das ganze Kommando-Skript
-// der Fixture. Das nackte findet den Fehler, das Skript findet ihn im Zusammenspiel.
+// Checked twice: bare (a few commands, then time) and over the whole command script of the
+// fixture. The bare one finds the error, the script finds it in the interplay.
 
 function tickBy(eng, total, step) {
   let left = total;
@@ -427,8 +427,8 @@ function tickBy(eng, total, step) {
   }
 }
 
-/** Ein Aufwärmskript aus echten Kommandos — ohne Aktoren tickt eine leere Engine ins Leere
- *  und die Invarianz wäre trivial erfüllt. */
+/** A warm-up script of real commands: without actors an empty engine ticks into nothing and
+ *  the invariance would be trivially fulfilled. */
 const NACKT = [
   { k: "ensureActor", id: "run:1", role: "exec_agent", issue: "TRA-1", phase: "execute", model: "sonnet" },
   { k: "ensureActor", id: "run:2", role: "review_agent", issue: "TRA-1", phase: "execute", model: "sonnet", parent: "run:1" },
@@ -445,8 +445,8 @@ function nacktesBild(step, total) {
   return canon(eng.frame());
 }
 
-/** Das Kommando-Skript der Fixture: je Zeitstempel alle Kommandos, danach die geklemmte
- *  Lücke bis zum nächsten — genau die Zerlegung, die `Replay.run` fährt. */
+/** The command script of the fixture: per timestamp all commands, then the clamped gap up to
+ *  the next one, exactly the decomposition `Replay.run` drives. */
 function script() {
   const out = [];
   let i = 0;
@@ -477,8 +477,8 @@ function skriptBild(step) {
 function checkDtSplit() {
   const bad = [];
 
-  // Die Regel wörtlich: 200 in einem Stück gegen 25 achtmal, über mehrere Gesamtdauern —
-  // sonst träfe man nur zufällig einen Übergang.
+  // The rule literally: 200 in one piece against 25 eight times, over several total durations;
+  // otherwise one would hit a transition only by chance.
   for (const total of [200, 1000, 4200, 12_000]) {
     const grob = nacktesBild(200, total);
     const fein = nacktesBild(25, total);
@@ -486,7 +486,7 @@ function checkDtSplit() {
     if (d) bad.push(`nackt, ${total} ms: tick(25)×${total / 25} ≠ tick(200)×${total / 200}  ${d}`);
   }
 
-  // Und dasselbe über das ganze Skript, mit einer krummen Schrittweite als drittem Zeugen.
+  // And the same over the whole script, with an odd step size as a third witness.
   const grob = skriptBild(200);
   for (const step of [25, 7, 1000]) {
     const d = firstDiff(skriptBild(step), grob);
@@ -497,15 +497,15 @@ function checkDtSplit() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Der ctx-Stub — Regel 2.1 als ausführbarer Test ═══════════════════════════
+// ═══ The ctx stub: rule 2.1 as an executable test ═════════════════════════════
 //
-// Ein `Proxy`, der genau drei Namen durchlässt und bei **jedem** anderen Zugriff wirft. Damit
-// ist der Pixel-Vertrag kein Dokument mehr, sondern eine Zusicherung: ein `ctx.beginPath()`
-// in Schicht 1 bricht diesen Lauf, nicht erst die Bildqualität in einem fremden Browser.
+// A `Proxy` that lets exactly three names through and raises on **every** other access. That
+// makes the pixel contract no longer a document but an assurance: a `ctx.beginPath()` in layer
+// 1 breaks this run, not only the picture quality in a foreign browser.
 //
-// Zusätzlich wird auf ganzzahlige Koordinaten bestanden (Regel 2.3). Ein `fillRect` mit
-// x = 12.4 läuft im Browser über zwei Spalten mit halber Deckkraft — bei einer laufenden
-// Figur flimmert das sichtbar, und niemand sucht den Fehler in der Engine.
+// In addition integer coordinates are insisted on (rule 2.3). A `fillRect` with x = 12.4 runs
+// over two columns with half opacity in the browser; with a walking figure that flickers
+// visibly, and nobody looks for the error in the engine.
 
 const CTX_ERLAUBT = new Set(["fillStyle", "globalAlpha", "fillRect"]);
 
@@ -547,7 +547,7 @@ function strictCtx() {
 
 const GRADES_ZU_PRUEFEN = ["day", "night"];
 
-// ═══ Prüfung 7 — Pixel-Vertrag (ctx-Proxy) ════════════════════════════════════
+// ═══ Check 7: the pixel contract (ctx proxy) ══════════════════════════════════
 
 function checkCtxProxy() {
   const bad = [];
@@ -555,12 +555,12 @@ function checkCtxProxy() {
   for (let i = 0; i < AT.length; i++) {
     const frame = frameAt(LOG, AT[i]);
     for (const grade of GRADES_ZU_PRUEFEN) {
-      // Einmal mit der Vollbildkamera (der Kontext wird unverändert durchgereicht) und einmal
-      // gezoomt (die `viewOf`-Hülle rechnet jedes Rechteck um) — beide müssen den Vertrag
-      // halten, und nur der zweite Fall prüft die Hülle.
+      // Once with the full screen camera (the context is passed through unchanged) and once
+      // zoomed (the `viewOf` wrapper converts every rectangle): both have to keep the contract,
+      // and only the second case checks the wrapper.
       for (const cam of [CAM_FULL, { x: 160, y: 120, zoom: 4 }]) {
-        // Der Sitzungsfilter dimmt über eine zweite `Ctx`-Hülle — die muss den Vertrag
-        // genauso halten wie der nackte Kontext, sonst wäre der Filter das eine Loch darin.
+        // The session filter dims over a second `Ctx` wrapper, and that has to keep the
+        // contract just like the bare context; otherwise the filter would be the one hole in it.
         for (const dimmed of [undefined, new Set(["run:8872", "run:8873"])]) {
           const { ctx } = strictCtx();
           try {
@@ -579,12 +579,12 @@ function checkCtxProxy() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Prüfung 8 — goldene Pixel-Ops (Regel 2) ══════════════════════════════════
+// ═══ Check 8: golden pixel ops (rule 2) ═══════════════════════════════════════
 //
-// Kopfloses Bildvergleichen ohne Browser und ohne Abhängigkeit: derselbe Stub sammelt die
-// `fillRect`-Folge samt Farbe und Deckkraft, daraus wird ein Hex je Bild. Der ctx-Proxy sagt
-// „nichts Verbotenes benutzt", diese Prüfung sagt „und es kam dasselbe heraus". Eine um einen
-// Pixel verrutschte Möbelzeile sieht der Proxy nicht, dieser Hash schon.
+// Headless picture comparison without a browser and without a dependency: the same stub
+// collects the `fillRect` sequence including colour and opacity, and a hex per picture comes
+// out of it. The ctx proxy says "nothing forbidden used", this check says "and the same came
+// out". A furniture row shifted by one pixel the proxy does not see, this hash does.
 
 function opsHashes() {
   const out = [];
@@ -638,21 +638,21 @@ function checkPixelOpHashes(golden) {
   }
 }
 
-// ═══ Prüfung 9 — Werkzeug-Tabelle vollständig ═════════════════════════════════
+// ═══ Check 9: the tool table is complete ══════════════════════════════════════
 //
-// Die höchstwertige Prüfung, weil sie die einzige ist, die über die Sprachgrenze schaut. Die
-// Sollliste wird aus `backend/app/worker/*.py` **gezogen**, nicht abgeschrieben: eine Abschrift
-// prüfte nur, ob die Abschrift zu sich selbst passt, und ein neu gebautes Werkzeug fiele
-// stillschweigend in die MCP-Heuristik — der Zuschauer sähe dann ein Bild, das niemand
-// vergeben hat.
+// The most valuable check, because it is the only one that looks across the language boundary.
+// The target list is **drawn** from `backend/app/worker/*.py`, not copied: a copy would only
+// check whether the copy matches itself, and a newly built tool would fall silently into the
+// MCP heuristic, so the viewer would see a picture nobody
+// ever assigned.
 //
-// Vier Aussagen in einem Durchgang (Logik übernommen aus der Wegwerf-Prüfung der Welle F):
-//   1. `NATIVE_TOOLS` ≡ Schlüsselmenge von `TOOL_ACT`,
-//   2. jedes native Werkzeug löst über die **Tabelle** auf und nie über die Heuristik,
-//   3. die Heuristik feuert ausschließlich bei MCP-Namen (`server__tool`),
-//   4. die Sollliste des Backends ≡ `NATIVE_TOOLS`.
+// Four statements in one pass (the logic taken over from the throwaway check of an earlier wave):
+//   1. `NATIVE_TOOLS` equals the key set of `TOOL_ACT`,
+//   2. every native tool resolves over the **table** and never over the heuristic,
+//   3. the heuristic fires exclusively on MCP names (`server__tool`),
+//   4. the target list of the backend equals `NATIVE_TOOLS`.
 
-/** Wo `backend/app/worker` liegen kann. Erster Treffer gewinnt. */
+/** Where `backend/app/worker` can lie. The first hit wins. */
 const BACKEND_ORTE = [
   join(FRONTEND, "..", "backend", "app", "worker"),  // Repo im Ganzen (npm run, Repo-Mount)
   "/backend/app/worker",                             // backend/ separat eingehängt
@@ -668,11 +668,11 @@ function backendDir() {
   return null;
 }
 
-/** Die Sollliste, aus dem Quelltext des Workers gelesen.
+/** The target list, read from the source of the worker.
  *
- *  `runtime.py` schreibt Werkzeugdefinitionen als `"name": "<wort>"`; ein Parameter heißt
- *  `"name": {…}` und fällt damit durch dasselbe Muster heraus. `tools_memory.py` und
- *  `tools_traccoon.py` bauen ihre Definitionen über `_def("<name>", …)`. */
+ *  `runtime.py` writes tool definitions as `"name": "<word>"`; a parameter is called
+ *  `"name": {…}` and thereby falls out of the same pattern. `tools_memory.py` and
+ *  `tools_traccoon.py` build their definitions over `_def("<name>", …)`. */
 function backendSoll(dir) {
   const out = new Set();
   const rt = readFileSync(join(dir, "runtime.py"), "utf8");
@@ -684,7 +684,7 @@ function backendSoll(dir) {
   return out;
 }
 
-/** Die Heuristik darf **nur** MCP sehen und nur `read`/`write`/`run` liefern. */
+/** The heuristic may see **only** MCP and deliver only `read`/`write`/`run`. */
 const HEURISTIK_FAELLE = [
   ["get_something", "other"],          // kein "__" → keine Heuristik, auch wenn „get" passte
   ["list_orders", "other"],
@@ -714,7 +714,7 @@ function checkToolTable() {
     if (nat.indexOf(nat[i]) !== i) bad.push(`toolAct.ts: "${nat[i]}" steht doppelt in NATIVE_TOOLS`);
   }
 
-  // 2 — jedes native Werkzeug über die Tabelle, nie über die Heuristik
+  // 2: every native tool over the table, never over the heuristic
   for (const n of nat) {
     if (!has(TOOL_ACT, n)) continue; // schon gemeldet
     if (n.includes("__")) {
@@ -726,13 +726,13 @@ function checkToolTable() {
     }
   }
 
-  // 3 — Heuristik nur für MCP
+  // 3: the heuristic only for MCP
   for (const [name, want] of HEURISTIK_FAELLE) {
     const got = toolAct(name);
     if (got !== want) bad.push(`toolAct.ts: toolAct("${name}") = ${got} — erwartet ${want}`);
   }
 
-  // 4 — Sollliste aus dem Backend
+  // 4: the target list from the backend
   const dir = backendDir();
   if (dir === null) {
     bad.push("Backend nicht erreichbar — gesucht in: " + [...new Set(BACKEND_ORTE)].join(", "));
@@ -758,12 +758,12 @@ function checkToolTable() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Prüfung 10 — die doppelte Sitzgeometrie (Regel 4) ════════════════════════
+// ═══ Check 10: the doubled seat geometry (rule 4) ═════════════════════════════
 //
-// `pixel/scene.ts` hält die Plätze ein zweites Mal, weil Schicht 1 `room.ts` nicht sehen darf.
-// Genau dafür exportiert sie `SEATS_PX`: die Doppelung ist damit keine stille Gefahr mehr,
-// sondern eine geprüfte Zusage. Läuft sie auseinander, sitzen die Figuren neben ihren Stühlen —
-// und das sieht aus wie ein Renderfehler, ist aber eine Zahl in einer von zwei Dateien.
+// `pixel/scene.ts` holds the seats a second time, because layer 1 must not see `room.ts`.
+// Exactly for that it exports `SEATS_PX`: the doubling is thereby no longer a silent danger
+// but a checked promise. If it drifts apart, the figures sit beside their chairs, and that
+// looks like a rendering bug but is a number in one of two files.
 
 function checkSeatGeometry() {
   const bad = [];
@@ -789,13 +789,13 @@ function checkSeatGeometry() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Prüfung 11 — Rack-Geometrie (Regel 4) ════════════════════════════════════
+// ═══ Check 11: rack geometry (rule 4) ═════════════════════════════════════════
 //
-// Dieselbe Doppelung wie bei den Sitzen und derselbe Zwang dahinter: `pixel/scene.ts` darf
-// `room.ts` nicht sehen und hält den Standplatz vor dem Serverschrank deshalb ein zweites Mal.
-// Läuft er auseinander, geht die auslösende Figur an eine Stelle, an der kein Schrank steht,
-// und das Urteil („✓"/„✗") schwebt daneben in der Luft. Beides sieht nach einem Zeichenfehler
-// aus und ist eine Zahl in einer von zwei Dateien.
+// The same doubling as with the seats and the same compulsion behind it: `pixel/scene.ts` must
+// not see `room.ts` and therefore holds the standing place in front of the server rack a second
+// time. If it drifts apart, the triggering figure goes to a place where no rack stands, and
+// the verdict ("✓"/"✗") floats beside it in the air. Both look like a drawing bug and are a
+// number in one of two files.
 
 function checkRackGeometry() {
   const bad = [];
@@ -815,12 +815,12 @@ function checkRackGeometry() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
-// ═══ Prüfung 12 — das Rack leuchtet in der Fixture wirklich ═══════════════════
+// ═══ Check 12: the rack really lights up in the fixture ═══════════════════════
 //
-// Die Ops-Hashes (Prüfung 8) sind blind dafür, ob sie den neuen Zeichenzweig je betreten haben:
-// sie melden nur „dieselben Aufrufe wie beim letzten Bless". Ohne einen goldenen Rahmen mit
-// leuchtendem Rack wäre die ganze LED-Zeichnung ungeprüft und der Bless-Diff bedeutungslos.
-// Diese Prüfung sagt, dass die Fixture den Code auch wirklich ausführt.
+// The ops hashes (check 8) are blind to whether they ever entered the new drawing branch: they
+// only report "the same calls as at the last bless". Without a golden frame with a glowing
+// rack the whole LED drawing would be unchecked and the bless diff meaningless. This check
+// says that the fixture really executes the code.
 
 function checkRackImFrame() {
   const gesehen = new Set();
