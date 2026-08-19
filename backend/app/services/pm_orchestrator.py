@@ -1,7 +1,7 @@
-"""PM-Chat-Orchestrierung (Read-only): PM plant + delegiert per <tickets>-Ops.
+"""PM chat orchestration (read-only): the PM plans and delegates over <tickets> ops.
 
-Läuft im Backend (Orchestrierung, keine Code-Ausführung). Legt Tickets an / weist
-Agenten zu; die eigentliche Arbeit übernimmt der Worker über den Dispatcher.
+Runs in the backend (orchestration, no code execution). Creates tickets and assigns agents;
+the actual work is done by the worker over the dispatcher.
 """
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ from ..worker.secrets import resolve_provider_token
 log = logging.getLogger("traccoon.pm")
 MAX_ROUNDS = 10
 HISTORY_LIMIT = 20
-# Ab dieser Gesamtlänge wird der Verlauf gekürzt, damit lange Chats nicht ins Kontextlimit laufen.
+# From this total length on the history is truncated so that long chats do not run into the context limit.
 COMPACT_CHARS = 24000
 KEEP_RECENT = 6
 
@@ -90,8 +90,8 @@ async def _create_ticket(db: AsyncSession, project: Project, summary: str, descr
 
 
 def _parse_ops(text: str) -> tuple[str, list[dict], bool]:
-    """<tickets> ist der Vertrag; <tasks> wird als Synonym akzeptiert, damit ein
-    Modell, das die andere Schreibweise wählt, nicht stillschweigend nichts bewirkt."""
+    """<tickets> is the contract; <tasks> is accepted as a synonym so that a model choosing
+    the other spelling does not silently achieve nothing."""
     done = "<done/>" in text
     ops: list[dict] = []
     for tag in ("tickets", "tasks"):
@@ -108,7 +108,7 @@ def _parse_ops(text: str) -> tuple[str, list[dict], bool]:
 
 
 def _compact(convo: list[dict]) -> list[dict]:
-    """Langen Verlauf kürzen: älteren Teil zu einer Notiz zusammenfassen, Jüngstes behalten."""
+    """Truncate a long history: summarise the older part into a note, keep the most recent."""
     total = sum(len(m["content"]) for m in convo)
     if total <= COMPACT_CHARS or len(convo) <= KEEP_RECENT:
         return convo
@@ -121,8 +121,8 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
     project = await db.get(Project, project_id)
     if project is None:
         return
-    # Zweite Prüfung des KI-Rechts: der WS-Handler cacht es beim Verbinden, und der PM
-    # weist hier Agenten zu — die Zuweisung darf nie ohne ai_assign passieren.
+    # Second check of the AI right: the WS handler caches it on connecting, and the PM assigns
+    # agents here; the assignment must never happen without ai_assign.
     from ..api.deps import build_access
     from ..models.user import User
     user = await db.get(User, user_id)
@@ -135,8 +135,8 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
     db.add(Message(project_id=project_id, user_id=user_id, role="user", author_label="User", content=text))
     await db.commit()
 
-    # Claude-Token auflösen: Projekt-Standard-Subscription überschreibt den persönlichen
-    # Default (nur wenn sie für claude_code gesetzt ist). Rückfall auf Alt-Feld/System-Secret.
+    # Resolve the Claude token: the project default subscription overrides the personal
+    # default (only when it is set for claude_code). Fallback to the legacy field or system secret.
     pm_token_name = project.default_token_name if project.default_provider == "claude_code" else ""
     token = await resolve_provider_token(db, user_id, "claude_code", pm_token_name)
     tokens = {"claude_code": token}
@@ -197,7 +197,7 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
         if done:
             break
         if not ops:
-            # Runde 0 ohne Ops: einmal nachfassen, damit reines Zurückplaudern nicht als Abschluss zählt.
+            # Round 0 without ops: follow up once, so that mere chatting back does not count as a conclusion.
             if rnd == 0:
                 convo.append({"role": "user", "content":
                               "Wenn daraus Arbeit folgt, lege jetzt die Tickets im <tickets>-Block an "

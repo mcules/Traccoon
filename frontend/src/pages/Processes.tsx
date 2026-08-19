@@ -12,16 +12,15 @@ import MessreihenPanel from "../components/workflow/MessreihenPanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 
 /**
- * Prozess-Verwaltung — die Sicht über alle Abläufe hinweg.
+ * Process administration: the view across all flows.
  *
- * Seit jeder Ablauf ein Graph ist, verteilt sich das Wissen darüber auf Sätze, Projekt-Kopien,
- * Versionen und laufende Vorgänge. Diese Seite führt es zusammen: was ist der Standard, wer
- * weicht ab, was läuft gerade, und was stößt es an.
+ * Since every flow is a graph, the knowledge about it is spread over sets, project copies,
+ * versions and running processes. This page brings it together: what is the default, who
+ * deviates, what is running right now, and what sets it off.
  *
- * Der erste Reiter sind die **eigenen** Abläufe: frei angelegt, an keinen Slot und an kein
- * Projekt gebunden. Sie standen früher in den Einstellungen — am falschen Ort, denn Abläufe
- * sind neben dem Assistenten und den Projekten ein tragender Teil von Traccoon und keine
- * Nebeneinstellung.
+ * The first tab holds the **own** flows: freely created, bound to no slot and no project.
+ * They used to stand in the settings, in the wrong place, because flows are a load bearing
+ * part of Traccoon beside the assistant and the projects and not a side setting.
  */
 type Tab = "eigene" | "standard" | "betrieb" | "ausloeser" | "messreihen";
 const TABS: [Tab, string][] = [
@@ -142,7 +141,7 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
   );
 }
 
-/** Versionshistorie mit Zurückrollen — die alte Fassung wird als neue veröffentlicht. */
+/** Version history with rolling back; the old version is published as a new one. */
 function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boolean }) {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
@@ -233,8 +232,8 @@ function Betrieb() {
   const [nurHaengt, setNurHaengt] = useState(false);
   const [mitFertigen, setMitFertigen] = useState(false);
   const [err, setErr] = useState("");
-  // Aufgeklappter Lauf: Graph plus Protokoll. Ein Vorgang, der hängt oder gescheitert ist,
-  // wirft immer dieselbe Frage auf — was kam zurück, und warum ging es dann dort weiter?
+  // Expanded run: graph plus log. A process that is stuck or has failed always raises the
+  // same question: what came back, and why did it then continue there?
   const [offen, setOffen] = useState<number | null>(null);
 
   const { data: laeufe } = useQuery({
@@ -345,7 +344,7 @@ function Betrieb() {
   );
 }
 
-// ── Auslöser ─────────────────────────────────────────────────────────────────
+// ── Triggers ─────────────────────────────────────────────────────────────────
 
 const KIND: Record<ProcAusloeser["kind"], { label: string; cls: string }> = {
   event: { label: "processes.ausloeser_event", cls: "bg-violet-500/15 text-violet-300" },

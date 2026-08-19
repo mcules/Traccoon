@@ -18,12 +18,12 @@ interface Antwort {
 const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
 /**
- * Die Felder eines Artefakts am konkreten Exemplar — Ticket, Hardware oder eigener Typ.
+ * The fields of an artifact on the concrete unit: ticket, hardware or an own type.
  *
- * Welche Felder es gibt, sagt das Register (Administration → Artefakte); hier werden nur
- * Werte zugeordnet. Gespeichert wird je Feld beim Verlassen bzw. bei der Auswahl, damit
- * niemand einen Speichern-Knopf sucht. Ein Feld mit Mehrfachauswahl zeigt seine Werte als
- * an-/abwählbare Marken.
+ * Which fields exist is said by the register (Administration → Artifacts); here only values
+ * are assigned. Saving happens per field on leaving respectively on the selection, so that
+ * nobody looks for a save button. A field with multiple selection shows its values as marks
+ * that can be selected and deselected.
  */
 export default function ArtifactFields({ artifactId, compact, alle }: {
   artifactId: number; compact?: boolean; alle?: boolean;
@@ -45,15 +45,15 @@ export default function ArtifactFields({ artifactId, compact, alle }: {
     },
     onError: (e) => {
       setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen");
-      // Zurück auf den Stand der Datenbank — sonst zeigte die Oberfläche etwas an,
-      // das gar nicht gespeichert ist.
+      // Back to the state of the database; otherwise the interface would show something that
+      // is not stored at all.
       qc.invalidateQueries({ queryKey: ["artifact-values", artifactId] });
     },
   });
 
-  // Eingebaute Felder (Status, Priorität, Vorgangsart …) haben ihre gewohnten Masken —
-  // sie hier zusätzlich zu zeigen, hieße dieselbe Angabe zweimal auf einem Bildschirm.
-  // `alle` blendet sie bewusst ein (z. B. für einen eigenen Artefakt-Typ ohne Maske).
+  // Built-in fields (status, priority, issue type …) have their familiar masks, and showing
+  // them here as well would mean the same entry twice on one screen. `alle` shows them
+  // deliberately (for an own artifact type without a mask for instance).
   const aktive = (data?.fields || []).filter((f) => f.enabled && (alle || !f.source));
   if (isLoading || aktive.length === 0) return null;
 
@@ -153,7 +153,7 @@ function EinzelText({ wert, kind, onSet }: {
   wert: any; kind: string; onSet: (w: string) => void;
 }) {
   const [text, setText] = useState(wert != null ? String(wert) : "");
-  // Von außen geänderte Werte (anderer Nutzer, Neuladen) übernehmen.
+  // Take over values changed from outside (another user, a reload).
   useEffect(() => { setText(wert != null ? String(wert) : ""); }, [wert]);
   return (
     <input

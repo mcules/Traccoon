@@ -6,33 +6,33 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # Infrastruktur — Zugangsdaten ausschließlich aus der Umgebung (.env), keine Defaults im Code.
-    database_url: str = ""   # DATABASE_URL (aus .env/compose), z. B. postgresql+asyncpg://<user>:<pw>@db:5432/<db>
-    redis_url: str = ""      # REDIS_URL (aus .env/compose)
+    # Infrastructure: credentials exclusively from the environment (.env), no defaults in the code.
+    database_url: str = ""   # DATABASE_URL (from .env or compose), for instance postgresql+asyncpg://<user>:<pw>@db:5432/<db>
+    redis_url: str = ""      # REDIS_URL (from .env or compose)
 
-    # Auth / Krypto — müssen aus der Umgebung kommen; leer = klar erkennbar unkonfiguriert.
+    # Auth and crypto: have to come from the environment; empty = clearly unconfigured.
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 720
-    secret_encryption_key: str = ""  # Fernet; leer = Klartext (nur Dev)
+    secret_encryption_key: str = ""  # Fernet; empty = plain text (dev only)
 
     allowed_origins: str = "*"
 
-    # Bootstrap-Admin (nur wenn 0 User existieren)
+    # Bootstrap admin (only when 0 users exist)
     bootstrap_admin_email: str = ""
     bootstrap_admin_username: str = ""
     bootstrap_admin_password: str = ""
 
-    # Dev: Tabellen per create_all statt Alembic
+    # Dev: tables over create_all instead of Alembic
     dev_create_all: bool = True
 
-    # Öffentliche Basis-URL (für Einladungslinks etc.), z. B. https://traccoon.example.com
+    # Public base URL (for invitation links and the like), for instance https://traccoon.example.com
     app_base_url: str = ""
 
-    # Mail-Webhook/Assistent werden vollständig über die WebUI/DB konfiguriert (WebhookSub +
-    # Klassifizier-/Handler-Agent) — bewusst KEINE MAIL_*-Env/Datei-Konfig mehr.
+    # The mail webhook and the assistant are configured completely over the web UI and the
+    # database (WebhookSub plus classifying and handler agent): deliberately NO MAIL_* env or file config any more.
 
-    # MCPJungle — Self-Service-Provisionierung der User-MCP-Gruppe (backend am mcp-backends-Netz).
+    # MCPJungle: self-service provisioning of the user MCP group (backend on the mcp-backends network).
     mcpjungle_base: str = "http://mcpjungle:8080"   # MCPJUNGLE_BASE
     mcpjungle_admin_token: str = ""                 # MCPJUNGLE_ADMIN_TOKEN
 

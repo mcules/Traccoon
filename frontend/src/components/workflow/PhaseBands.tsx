@@ -2,7 +2,7 @@ import { ViewportPortal } from "@xyflow/react";
 import { tr } from "../../i18n";
 import type { FlowNode } from "./nodes/shared";
 
-/** Phasen eines Ablaufs — Reihenfolge bestimmt die Farbe, nicht die Anordnung. */
+/** Phases of a flow; the order determines the colour, not the arrangement. */
 export const PHASES: [string, string, string][] = [
   ["start", "Eingang", "59 130 246"],
   ["planung", "Planung", "168 85 247"],
@@ -13,17 +13,17 @@ export const PHASES: [string, string, string][] = [
 ];
 
 /**
- * Beschriftete Bänder hinter den Knoten — ein Blick genügt, um „wo bin ich" zu beantworten.
+ * Labelled bands behind the nodes: one look answers "where am I".
  *
- * Die Bänder werden aus den tatsächlichen Positionen der Knoten einer Phase berechnet
- * (`config.group`), nicht fest gesetzt: verschiebt jemand einen Knoten, wandert das Band mit.
- * Ohne Gruppen-Angaben erscheint gar nichts — ältere und selbstgebaute Abläufe sehen aus
+ * The bands are computed from the actual positions of the nodes of a phase (`config.group`)
+ * and not set fixed: if somebody moves a node, the band moves with it. Without group
+ * entries nothing appears at all, so older and self-built flows look as before.
  * wie bisher.
  */
 export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
-  // Ein Band je zusammenhängendem Block einer Phase — NICHT eine Hülle um alles. Läuft ein
-  // Nebenzweig neben einer anderen Phase her, entstünden sonst zwei ineinander liegende
-  // Kästen, und man sieht nicht mehr, was wozu gehört.
+  // One band per contiguous block of a phase, NOT one hull around everything. If a side
+  // branch runs along beside another phase, two boxes lying inside each other would
+  // otherwise come into being, and one no longer sees what belongs to what.
   const felder = PHASES.flatMap(([key, label, rgb]) => {
     const teile = nodes.filter((n) => n.data.config.group === key);
     if (!teile.length) return [];
@@ -33,7 +33,7 @@ export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
     for (const n of sortiert) {
       const letzter = bloecke[bloecke.length - 1];
       const vorheriges = letzter?.[letzter.length - 1];
-      // Anschluss, wenn der nächste Knoten unmittelbar folgt (max. eine Zeile Abstand).
+      // Connect when the next node follows immediately (at most one line of distance).
       const anschluss = vorheriges
         && n.position.y - (vorheriges.position.y + hoehe(vorheriges)) < hoehe(n) + 80;
       if (anschluss) letzter.push(n);
@@ -59,7 +59,7 @@ export default function PhaseBands({ nodes }: { nodes: FlowNode[] }) {
       {felder.map((f) => (
         <div
           key={f.key}
-          // Hinter den Knoten und für Klicks durchlässig — es ist nur Orientierung.
+          // Behind the nodes and transparent to clicks: it is only orientation.
           style={{
             position: "absolute",
             transform: `translate(${f.x}px, ${f.y}px)`,

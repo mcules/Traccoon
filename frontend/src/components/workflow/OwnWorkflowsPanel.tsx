@@ -10,16 +10,16 @@ const EMPTY = { key: "", name: "", subject_kind: "standalone" as WorkflowSubject
 const inp = "rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
 
 /**
- * Eigene, projektlose Prozesse: alles, was zu keinem Projekt und zu keinem Slot gehört.
+ * Own, project-less processes: everything that belongs to no project and no slot.
  *
- * Gedacht für Abläufe, die kein Ticket als Gegenstand haben (Gegenstand `standalone`) und von
- * einem Job, einem Webhook oder einem Agenten angestoßen werden — z. B. ein nächtlicher
- * Preisabgleich mit Freigabe-Schritt.
+ * Meant for flows that have no ticket as their subject (subject `standalone`) and are set
+ * off by a job, a webhook or an agent, for instance a nightly price comparison with an
+ * approval step.
  *
- * Angelegt wird entweder ein Gerüst (Start + Ende) oder eine **Vorlage**: ein fertiger
- * Ablauf zum Umbauen. Das Gerüst beantwortet nicht, wie man aus zwei Knoten etwas macht,
- * das wirklich läuft — die Vorlagen zeigen die vier Muster, aus denen fast jeder eigene
- * Ablauf besteht. Veröffentlicht wird in beiden Fällen erst im Editor.
+ * What is created is either a skeleton (start plus end) or a **template**: a finished flow
+ * to rebuild. The skeleton does not answer how one makes something that really runs out of
+ * two nodes; the templates show the four patterns almost every own flow consists of.
+ * Publishing happens in the editor in both cases.
  */
 export default function OwnWorkflowsPanel() {
   const qc = useQueryClient();
@@ -31,7 +31,7 @@ export default function OwnWorkflowsPanel() {
   const { data: vorlagen } = useQuery({
     queryKey: ["workflow-templates"], queryFn: workflowApi.templates, staleTime: 30 * 60_000 });
   const gewaehlt = (vorlagen || []).find((v) => v.key === f.template);
-  // Slot-Abläufe stehen oben im Prozess-Satz, Projekt-Abläufe im jeweiligen Projekt.
+  // Slot flows stand at the top in the process set, project flows in the respective project.
   const eigene = (alle || []).filter((d) => d.project_id === null && !d.slot && !d.archived_at);
 
   const inv = () => qc.invalidateQueries({ queryKey: ["workflows-all"] });
@@ -62,8 +62,8 @@ export default function OwnWorkflowsPanel() {
       {err && <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-sm text-red-300">{err}</div>}
 
       {eigene.length > 0 ? (
-        /* Keine Tabelle: auf einem Handy stünden fünf Spalten über den Rand hinaus, und was
-           man nicht sieht, sucht man auch nicht. Die Zeile bricht stattdessen um. */
+        /* No table: on a phone five columns would stand out over the edge, and what one does
+           not see one does not look for. The row wraps instead. */
         <div className="space-y-2">
           {eigene.map((d) => (
             <div key={d.id}
