@@ -1,17 +1,17 @@
-"""Die Personalakte: Kennzahlen je **Rolle**, nicht je Lauf.
+"""The personnel file: key figures per **role**, not per run.
 
-Der wichtigste Test dieser Datei ist `test_project_manager_steht_nicht_bei_null`. Eine
-Erfolgsquote `success/runs` wiese den `project_manager` mit 0 % aus — er hat in der
-laufenden Instanz 0 `success` und 7 `planned` — und den `architect` mit 6 % statt 78 %.
-`office/engine.ts::verdictOf` behandelt `planned` dagegen **schon heute** als „ok". Eine
-Zahl, die dem eigenen Code widerspricht, ist keine Kennzahl, sondern eine Verleumdung.
-Deshalb rechnet der Server drei disjunkte Mengen aus und liefert sie fertig: `delivered`,
-`waiting`, `aborted`. Sobald irgendwo im Frontend wieder `success/total` stünde, wäre die
-Lüge zurück — diese Tests nageln die Semantik im Backend fest.
+The most important test of this file is `test_project_manager_steht_nicht_bei_null`. A
+success rate of `success/runs` would report the `project_manager` at 0 % (it has 0 `success`
+and 7 `planned` in the running instance) and the `architect` at 6 % instead of 78 %.
+`office/engine.ts::verdictOf` on the other hand treats `planned` as "ok" **today already**. A
+number that contradicts one's own code is not a key figure but a slander. That is why the
+server computes three disjoint sets and delivers them ready: `delivered`, `waiting`,
+`aborted`. As soon as `success/total` stood anywhere in the frontend again, the lie would be
+back, and these tests nail the semantics down in the backend.
 
-Die zweite Klammer ist die Ehrlichkeit der Verteilungen: Dauer als Median/p90/max plus
-Histogramm (nie als Mittelwert — ein Lauf dauerte 36,5 Stunden), `iterations` und Schritte
-getrennt, und jede Kostensumme als Untergrenze, solange `priced` NULL ist.
+The second bracket is the honesty of the distributions: duration as median, p90 and maximum
+plus a histogram (never as an average, because one run took 36.5 hours), `iterations` and
+steps separated, and every cost sum as a lower bound as long as `priced` is NULL.
 """
 import datetime as dt
 
@@ -77,14 +77,14 @@ def rolle(payload: dict, name: str) -> dict:
     raise AssertionError(f"Rolle {name!r} fehlt in {[r['agent'] for r in payload['agents']]}")
 
 
-# ── Die drei Balken ──────────────────────────────────────────────────────────
+# ── The three bars ───────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_project_manager_steht_nicht_bei_null(client, db):
-    """Der Test, um den es geht: 0 `success`, 7 `planned` — und trotzdem 7 von 11 geliefert.
+    """The test it is all about: 0 `success`, 7 `planned`, and 7 of 11 delivered regardless.
 
-    Nachgebaut ist die echte Verteilung des `project_manager` in der laufenden Instanz
-    (7 planned, 2 blocked, 2 failed). `success/runs` ergäbe 0 %; richtig sind 7/11 = 64 %.
+    What is reproduced is the real distribution of the `project_manager` in the running
+    instance (7 planned, 2 blocked, 2 failed). `success/runs` would give 0 %; right is 7/11 = 64 %.
     """
     user, proj, issue = await buehne(db)
     for _ in range(7):
@@ -99,10 +99,10 @@ async def test_project_manager_steht_nicht_bei_null(client, db):
     pm = rolle(r.json(), "project_manager")
     assert pm["runs"] == 11
     assert pm["by_status"] == {"planned": 7, "blocked": 2, "failed": 2}
-    assert pm["delivered"] == 7      # NICHT 0
+    assert pm["delivered"] == 7      # NOT 0
     assert pm["waiting"] == 2
     assert pm["aborted"] == 2
-    # Die drei Mengen sind disjunkt und vollständig — sonst verschwände ein Lauf lautlos.
+    # The three sets are disjoint and complete; otherwise a run would disappear silently.
     assert pm["delivered"] + pm["waiting"] + pm["aborted"] == pm["runs"]
 
 
@@ -121,10 +121,10 @@ async def test_architekt_78_prozent(client, db):
 
 @pytest.mark.asyncio
 async def test_status_zuordnung(client, db):
-    """`planned` → abgeliefert, `blocked` → wartend, `loop_exhausted` → abgebrochen.
+    """`planned` means delivered, `blocked` waiting, `loop_exhausted` aborted.
 
-    `loop_exhausted` ist der Fall, den eine naive Zuordnung übersieht: der Lauf hat sein
-    Rundenlimit aufgebraucht, ohne fertig zu werden — das ist ein Abbruch, kein Warten.
+    `loop_exhausted` is the case a naive assignment overlooks: the run used up its round
+    limit without finishing, and that is an abort, not waiting.
     """
     user, proj, issue = await buehne(db)
     await lauf(db, issue, agent="developer", status="success")
@@ -140,7 +140,7 @@ async def test_status_zuordnung(client, db):
     assert d["waiting"] == 1
     assert d["aborted"] == 2
     assert d["running"] == 1
-    # Der laufende Lauf ist in KEINEM der drei Balken — er hat noch nichts entschieden.
+    # The running run is in NONE of the three bars: it has decided nothing yet.
     assert d["delivered"] + d["waiting"] + d["aborted"] + d["running"] == d["runs"]
 
 
@@ -148,7 +148,7 @@ async def test_status_zuordnung(client, db):
 
 @pytest.mark.asyncio
 async def test_fremdes_projekt_ist_404(client, db):
-    """Nicht-Mitglied bekommt 404, nie 403 — eine 403 verriete die Existenz des Projekts."""
+    """A non-member gets a 404, never a 403; a 403 would reveal the existence of the project."""
     user, proj, issue = await buehne(db)
     fremder = await make_user(db, "bob")
     await lauf(db, issue, agent="developer")
@@ -159,8 +159,8 @@ async def test_fremdes_projekt_ist_404(client, db):
 
 @pytest.mark.asyncio
 async def test_viewer_genuegt(client, db):
-    """Ein Viewer darf die Akte lesen. `/costs/global` ist `require_admin` — das Büro
-    ausdrücklich nicht, sonst stünde dort für die meisten Nutzer ein leerer Reiter."""
+    """A viewer may read the file. `/costs/global` is `require_admin`; the office explicitly
+    is not, because otherwise an empty tab would stand there for most users."""
     user, proj, issue = await buehne(db, rolle=ProjectRole.viewer)
     await lauf(db, issue, agent="developer")
 
@@ -171,8 +171,8 @@ async def test_viewer_genuegt(client, db):
 
 @pytest.mark.asyncio
 async def test_global_zeigt_fremdes_nicht(client, db):
-    """Global ist keine 404-Fläche (es gibt keinen Pfad, dessen Existenz verraten würde),
-    sondern schlicht leer — der Fremde sieht keine fremden Rollen."""
+    """Global is no 404 surface (there is no path whose existence would be revealed) but
+    simply empty: the stranger sees no foreign roles."""
     user, proj, issue = await buehne(db)
     fremder = await make_user(db, "bob")
     await lauf(db, issue, agent="developer")
@@ -209,8 +209,8 @@ async def test_agent_filter_verengt(client, db):
 
 @pytest.mark.asyncio
 async def test_fenster_klemmt_und_steht_in_der_antwort(client, db):
-    """`since_hours` wird geklemmt und mitgeliefert — die Ansicht soll „der letzten N
-    Stunden" sagen können, weil `run_retention_days` ältere Läufe löscht."""
+    """`since_hours` is clamped and delivered along: the view should be able to say "of the
+    last N hours", because `run_retention_days` deletes older runs."""
     user, proj, issue = await buehne(db)
     await lauf(db, issue, agent="developer", alter_h=1)
     await lauf(db, issue, agent="developer", alter_h=1000)
@@ -219,7 +219,7 @@ async def test_fenster_klemmt_und_steht_in_der_antwort(client, db):
     assert r.json()["since_hours"] == 24
     assert rolle(r.json(), "developer")["runs"] == 1
 
-    # 0 klemmt auf 1, Unsinn nach oben auf ein Jahr.
+    # 0 clamps to 1, and nonsense upwards to one year.
     assert (await client.get("/office/agents?since_hours=0",
                              headers=auth(user))).json()["since_hours"] == 1
     weit = (await client.get("/office/agents?since_hours=999999", headers=auth(user))).json()
@@ -227,19 +227,19 @@ async def test_fenster_klemmt_und_steht_in_der_antwort(client, db):
     assert rolle(weit, "developer")["runs"] == 2
 
 
-# ── Dauer: Verteilung statt Mittelwert ───────────────────────────────────────
+# ── Duration: a distribution instead of an average ───────────────────────────
 
 @pytest.mark.asyncio
 async def test_perzentile_und_histogramm(client, db):
-    """Handgerechnete Verteilung: 12 s · 25 s · 100 s · 480 s · 1700 s.
+    """A distribution computed by hand: 12 s · 25 s · 100 s · 480 s · 1700 s.
 
-    p50 ist der 3. Wert (100 s) → er liegt im Leiter-Eimer bis 120 s, also `p50_ms=120000`.
-    p90 ist der 5. Wert (1700 s) → Eimer bis 1 800 000 ms, geklemmt auf das gemessene
-    Maximum → `p90_ms=1 700 000`. Die Klemmung ist der Grund, warum die Obergrenze eines
-    Eimers nie mehr behauptet, als gemessen wurde.
+    p50 is the 3rd value (100 s), so it lies in the ladder bucket up to 120 s, giving `p50_ms=120000`.
+    p90 is the 5th value (1700 s), so the bucket up to 1 800 000 ms, clamped to the measured
+    maximum, giving `p90_ms=1 700 000`. The clamping is the reason why the upper bound of a
+    bucket never claims more than was measured.
 
-    Ein Mittelwert läge bei 463 s und beschriebe keinen einzigen dieser Läufe — genau der
-    Fehler, den die 36,5-Stunden-Sitzung in der echten Instanz erzwingt.
+    An average would lie at 463 s and describe not a single one of these runs, exactly the
+    error the 36.5 hour session forces in the real instance.
     """
     user, proj, issue = await buehne(db)
     for s in (12, 25, 100, 480, 1700):
@@ -261,8 +261,8 @@ async def test_perzentile_und_histogramm(client, db):
 
 @pytest.mark.asyncio
 async def test_laufender_lauf_hat_keine_dauer(client, db):
-    """Ein noch laufender Lauf zählt in `running`, aber in keinen Dauer-Eimer: „bis jetzt"
-    ist keine Dauer, sondern eine Zahl, die sich beim nächsten Abruf ändert."""
+    """A still running run counts in `running` but in no duration bucket: "until now" is not
+    a duration but a number that changes on the next fetch."""
     user, proj, issue = await buehne(db)
     await lauf(db, issue, agent="developer", status="running")
 
@@ -273,12 +273,12 @@ async def test_laufender_lauf_hat_keine_dauer(client, db):
     assert sum(b["n"] for b in d["duration"]["buckets"]) == 0
 
 
-# ── Runden und Schritte sind zwei Dinge ──────────────────────────────────────
+# ── Rounds and steps are two things ──────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_runden_und_schritte_getrennt(client, db):
-    """`iterations` (Runden) und `run_steps` (Schritte) haben eigene Felder — in echt
-    stehen sie bei Ø 6,9 gegen Ø 21,5, ein gemeinsames Feld hätte beide unlesbar gemacht."""
+    """`iterations` (rounds) and `run_steps` (steps) have fields of their own: in reality they
+    stand at an average of 6.9 against 21.5, and a common field would have made both unreadable."""
     user, proj, issue = await buehne(db)
     a = await lauf(db, issue, agent="developer", iterations=2)
     b = await lauf(db, issue, agent="developer", iterations=8)
@@ -294,25 +294,25 @@ async def test_runden_und_schritte_getrennt(client, db):
 
 @pytest.mark.asyncio
 async def test_schrittschnitt_zaehlt_nur_laeufe_mit_schritten(client, db):
-    """Ein Lauf, dessen Schritte die Aufbewahrungsfrist gelöscht hat, hatte nicht
-    „0 Schritte" — er zieht den Schnitt deshalb nicht nach unten."""
+    """A run whose steps the retention deleted did not have "0 steps", so it does not pull the
+    average down."""
     user, proj, issue = await buehne(db)
     a = await lauf(db, issue, agent="developer")
-    await lauf(db, issue, agent="developer")          # geräumt: keine Schrittzeilen mehr
+    await lauf(db, issue, agent="developer")          # cleared: no step rows any more
     for i in range(10):
         await schritt(db, a, seq=i)
 
     d = rolle((await client.get("/office/agents", headers=auth(user))).json(), "developer")
     assert d["runs"] == 2
-    assert d["steps_avg"] == 10.0                      # nicht 5.0
+    assert d["steps_avg"] == 10.0                      # not 5.0
 
 
-# ── Kosten: immer eine Untergrenze ───────────────────────────────────────────
+# ── Costs: always a lower bound ──────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_cost_partial_solange_priced_null(client, db):
-    """`priced IS NULL` heißt „nie festgehalten, ob es einen Katalogeintrag gab" — in der
-    laufenden Instanz gilt das für ALLE 411 Posten. Jede Summe ist damit eine Untergrenze."""
+    """`priced IS NULL` means "never recorded whether there was a catalog entry", and in the
+    running instance that applies to ALL 411 entries. Every sum is therefore a lower bound."""
     user, proj, issue = await buehne(db)
     r1 = await lauf(db, issue, agent="developer")
     await posten(db, r1, cost=2.5, priced=None, ein=100, aus=20, cache=7)
@@ -331,7 +331,7 @@ async def test_cost_partial_falsch_wenn_alles_bepreist(client, db):
     d = rolle((await client.get("/office/agents", headers=auth(user))).json(), "developer")
     assert d["cost_partial"] is False
 
-    # Ein einziger unbepreister Posten kippt die ganze Rolle auf „mindestens".
+    # A single unpriced entry tips the whole role to "at least".
     await posten(db, r1, cost=0.0, priced=False)
     d = rolle((await client.get("/office/agents", headers=auth(user))).json(), "developer")
     assert d["cost_partial"] is True
@@ -339,9 +339,9 @@ async def test_cost_partial_falsch_wenn_alles_bepreist(client, db):
 
 @pytest.mark.asyncio
 async def test_kosten_ueberleben_den_lauf(client, db):
-    """Gruppiert wird nach `cost_entries.agent`, nicht nach `runs.agent`: `run_id` ist
-    `SET NULL`, ein Posten überlebt die Lauflöschung. Über `runs.agent` gerechnet
-    verschwände die Rechnung mit dem Lauf."""
+    """Grouping happens by `cost_entries.agent`, not by `runs.agent`: `run_id` is `SET NULL`,
+    and an entry survives the deletion of the run. Computed over `runs.agent` the bill would
+    disappear with the run."""
     user, proj, issue = await buehne(db)
     r1 = await lauf(db, issue, agent="uniwar-operator")
     await posten(db, r1, cost=3.0)
@@ -366,7 +366,7 @@ async def test_werkzeuge_reihenfolge_und_kappung(client, db):
         for _ in range(n):
             seq += 1
             await schritt(db, r1, tool=tool, ok=(tool != "check"), seq=seq)
-    # Ein Schritt ohne Werkzeug (Modellzug) gehört nicht in die Tabelle.
+    # A step without a tool (a model turn) does not belong in the table.
     await schritt(db, r1, seq=99)
 
     voll = rolle((await client.get("/office/agents", headers=auth(user))).json(), "developer")

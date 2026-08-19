@@ -1,15 +1,15 @@
-"""Deployments im Büro-Ereignisstrom — Watcher, Anker, geliehene `seq`.
+"""Deployments in the office event stream: watcher, anchor, borrowed `seq`.
 
-Drei Dinge werden hier festgenagelt, weil sie sonst still kaputtgehen:
+Three things are nailed down here because they would otherwise break silently:
 
-1. **Idempotenz** liegt in einer Spalte (`announced_status`), nicht im Prozess. Zweimal
-   hinsehen darf nicht zweimal erzählen — auch nicht nach einem Neustart.
-2. **Wartungs-Updates bekommen kein Bühnen-Ereignis.** Das sieht wie eine Lücke aus und
-   ist eine Entscheidung: ein Self-Deploy recreated den Container, der die Bühne
-   beliefert. Ohne diesen Test „repariert" das irgendwann jemand.
-3. **Slot 3 hat zwei Bewerber.** Die synthetisierte `run_end`-Grenze gewinnt, das
-   Bestands-Deployment weicht auf die Vorgängerzeile aus. Kollidierten sie, verlöre der
-   Recorder eines von beiden — er entdoppelt ausschließlich über `seq`.
+1. **Idempotency** lies in a column (`announced_status`), not in the process. Looking twice
+   must not tell twice, not even after a restart.
+2. **Maintenance updates get no stage event.** That looks like a gap and is a decision: a
+   self-deploy recreates the container that supplies the stage. Without this test somebody
+   would "repair" that eventually.
+3. **Slot 3 has two applicants.** The synthesised `run_end` boundary wins, and the existing
+   deployment moves to the preceding row. If they collided, the recorder would lose one of
+   the two: it deduplicates exclusively over `seq`.
 """
 import datetime as dt
 
@@ -31,7 +31,7 @@ NOW = dt.datetime.now(dt.timezone.utc)
 
 @pytest.fixture(autouse=True)
 def kein_redis(monkeypatch):
-    """Kein echter Redis im Test — und was gesendet wurde, ist prüfbar."""
+    """No real Redis in the test, and what was sent is checkable."""
     import app.core.redis as redismod
     gesendet: list[tuple[str, str]] = []
 
@@ -69,7 +69,7 @@ async def lauf(db, *, issue=None, projekt=None, status="success", agent="develop
 
 
 async def schritte(db, run: Run, anzahl: int, *, ab_sekunden: int = 300) -> list[RunStep]:
-    """Altzeilen (`kind=''`) mit aufsteigendem Zeitstempel — je Zeile ein Ereignis."""
+    """Legacy rows (`kind=''`) with an ascending timestamp: one event per row."""
     rows = [RunStep(run_id=run.id, seq=i + 1, role="assistant", content=f"Schritt {i + 1}",
                     created_at=NOW - dt.timedelta(seconds=ab_sekunden - i * 10))
             for i in range(anzahl)]
@@ -108,7 +108,7 @@ async def test_zweimal_watchen_erzaehlt_einmal(db):
     assert [s.content for s in await deploy_schritte(db, run.id)] == [
         '{"deployment_id": %d, "state": "start", "log_head": ""}' % dep.id]
 
-    # Der Ausgang ist ein neuer Zustand — und auch er wird nur einmal erzählt.
+    # The outcome is a new state, and it is told only once as well.
     dep.status = "ok"
     dep.log = "fertig gebaut"
     await db.commit()
@@ -124,12 +124,12 @@ async def test_zweimal_watchen_erzaehlt_einmal(db):
     ("building", "ok", ["ok"]),
     ("building", "failed", ["fail"]),
     ("building", "rolledback", ["back"]),
-    # Zwischen zwei Takten komplett durchgelaufen: der Auftakt wird nachgeholt, sonst
-    # leuchtete das Rack auf, ohne dass je jemand hingelaufen ist.
+    # Run through completely between two beats: the opening is caught up, because otherwise
+    # the rack would light up without anybody ever having walked over.
     ("", "ok", ["start", "ok"]),
     ("pending", "failed", ["start", "fail"]),
-    # Nichts zu zeigen: eine Warteschlange ist kein Vorgang, und `cancelled` schreibt
-    # kein Codepfad (handgeschriebene Aufräumaktion, siehe `models/ops.Deployment`).
+    # Nothing to show: a queue is not a process, and `cancelled` is written by no code path
+    # (a hand written clean-up, see `models/ops.Deployment`).
     ("", "pending", []),
     ("pending", "cancelled", []),
 ])
@@ -140,8 +140,8 @@ def test_states_for(announced, status, erwartet):
 # ── Ankerwahl ────────────────────────────────────────────────────────────────
 
 async def test_anker_agentenwerkzeug_ist_der_wartende_lauf(db):
-    """`worktree <> ''` heißt: ein Agent hat `deploy` gerufen und wartet inline. Die Zeile
-    gehört SEINEM Lauf, nicht dem jüngsten — der kann längst ein Review sein."""
+    """`worktree <> ''` means: an agent called `deploy` and is waiting inline. The row
+    belongs to ITS run, not to the most recent one, which may long be a review."""
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     wartend = await lauf(db, issue=issue, status="running")
@@ -155,8 +155,8 @@ async def test_anker_agentenwerkzeug_ist_der_wartende_lauf(db):
 
 
 async def test_anker_merge_ist_der_juengste_lauf(db):
-    """Ohne Worktree hat kein Agent gewartet (Merge/Workflow) — dann erzählt der jüngste
-    Lauf des Tickets, weil er der ist, den der Raum gerade zeigt."""
+    """Without a worktree no agent waited (merge, workflow), and then the most recent run of
+    the ticket tells it, because it is the one the room is showing right now."""
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     aelter = await lauf(db, issue=issue, status="running")
@@ -170,26 +170,26 @@ async def test_anker_merge_ist_der_juengste_lauf(db):
 
 
 async def test_wartungsupdate_erzeugt_kein_ereignis(db, kein_redis):
-    """**Entscheidung, kein Versehen.** Ein Self-Deploy recreated den Backend-Container,
-    der die Bühne beliefert: der WebSocket fällt mitten in der Animation, der Prozess, der
-    sie zeichnen ließe, stirbt an ihr. Einen Vorgang zu animieren, der den Animierenden
-    tötet, ist ein Kategorienfehler — diese Zeilen leben in der Liste, nicht im Raum."""
+    """**A decision, not an oversight.** A self-deploy recreates the backend container that
+    supplies the stage: the WebSocket falls in the middle of the animation, and the process
+    that would draw it dies of it. Animating a process that kills the animator is a category
+    error; these rows live in the list, not in the room."""
     projekt = await make_project(db, "TRA", "Traccoon")
-    run = await lauf(db, projekt=projekt)           # es GÄBE einen Lauf zum Anhängen
+    run = await lauf(db, projekt=projekt)           # there WOULD be a run to hang it off
     dep = await deployment(db, project_id=projekt.id, self_deploy=True, stack_dir="",
                            source="maintenance", status="building")
 
     assert await dw.tick(db) == 0
     assert await deploy_schritte(db, run.id) == []
     assert kein_redis == []
-    # Quittiert wird trotzdem — sonst läge die Zeile bei jedem Takt wieder auf dem Tisch.
+    # Acknowledging happens regardless; otherwise the row would lie on the table every beat.
     await db.refresh(dep)
     assert dep.announced_status == "building"
 
 
 async def test_ohne_lauf_kein_ereignis(db):
-    """Ein Ticket ohne einen einzigen Lauf hat keinen Anker. Lieber eine Lücke als eine
-    Zeile in einem Lauf, der mit dem Deploy nichts zu tun hat."""
+    """A ticket without a single run has no anchor. Better a gap than a row in a run that has
+    nothing to do with the deploy."""
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     await deployment(db, issue_id=issue.id, project_id=projekt.id, status="ok")
@@ -197,8 +197,8 @@ async def test_ohne_lauf_kein_ereignis(db):
 
 
 async def test_altbestand_bleibt_stumm(db):
-    """Die 186 Bestandszeilen haben `announced_status=''` und wären sonst alle „neu" — der
-    erste Takt erzählte drei Monate Historie, als wäre sie eben passiert."""
+    """The 186 existing rows have `announced_status=''` and would otherwise all be "new": the
+    first beat would tell three months of history as if it had just happened."""
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     run = await lauf(db, issue=issue)
@@ -209,8 +209,8 @@ async def test_altbestand_bleibt_stumm(db):
 
 
 async def test_angefangene_geschichte_wird_zu_ende_erzaehlt(db):
-    """Auftakt erzählt, Ausgang erst nach einem langen Backend-Ausfall: das Fenster darf
-    die Zeile jetzt nicht fallen lassen, sonst bliebe das Rack für immer am Bauen."""
+    """The opening was told, the outcome only after a long backend outage: the window must
+    not drop the row now, because otherwise the rack would stay building forever."""
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     run = await lauf(db, issue=issue, status="running")
@@ -224,7 +224,7 @@ async def test_angefangene_geschichte_wird_zu_ende_erzaehlt(db):
 # ── Freier Anschluss: deployment.finished ────────────────────────────────────
 
 async def test_deployment_finished_feuert_einmal(db, monkeypatch):
-    """Der Triggername steht seit jeher in `BUILTIN_EVENTS` und hat nie gefeuert."""
+    """The trigger name has been in `BUILTIN_EVENTS` all along and has never fired."""
     import app.services.events as eventsmod
     gesehen: list[tuple[str, dict]] = []
 
@@ -240,7 +240,7 @@ async def test_deployment_finished_feuert_einmal(db, monkeypatch):
     dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="building")
 
     await dw.tick(db)
-    assert gesehen == []                       # `building` ist kein Abschluss
+    assert gesehen == []                       # `building` is no conclusion
 
     dep.status = "ok"
     await db.commit()
@@ -251,12 +251,12 @@ async def test_deployment_finished_feuert_einmal(db, monkeypatch):
     assert kw["payload"]["deployment"]["ok"] is True
 
     await dw.tick(db)
-    assert len(gesehen) == 1                   # quittiert ist quittiert
+    assert len(gesehen) == 1                   # acknowledged is acknowledged
 
 
 async def test_deployment_finished_auch_ohne_buehne(db, monkeypatch):
-    """Das Wartungs-Update bekommt kein Bühnen-Ereignis — der Prozess-Auslöser hängt aber
-    nicht an der Bühne, sondern am Abschluss."""
+    """The maintenance update gets no stage event, but the process trigger hangs off the
+    conclusion, not off the stage."""
     import app.services.events as eventsmod
     gesehen: list[str] = []
 
@@ -276,7 +276,7 @@ async def test_deployment_finished_auch_ohne_buehne(db, monkeypatch):
 # ── Geliehene `seq` (Bestand) ────────────────────────────────────────────────
 
 class _Zeile:
-    """Minimale `run_steps`-Attrappe — `deploy_anchor_step_id` liest nur zwei Felder."""
+    """Minimal `run_steps` dummy: `deploy_anchor_step_id` reads only two fields."""
 
     def __init__(self, step_id: int, sekunden: int):
         self.id = step_id
@@ -306,21 +306,21 @@ def test_bestand_haengt_an_der_letzten_zeile_davor():
 
 
 def test_slot3_kollision_weicht_auf_die_vorgaengerzeile():
-    """Die `run_end`-Grenze sitzt auf `last*4+3` — genau dem Platz, den das Deployment
-    leihen wollte. Sie hat Vorrang (sie beendet einen Lauf, das Deployment illustriert
-    ihn), das Deployment rutscht eine Zeile zurück."""
+    """The `run_end` boundary sits on `last*4+3`, exactly the place the deployment wanted to
+    borrow. It has precedence (it ends a run, while the deployment illustrates one), so the
+    deployment slips back one row."""
     zeilen = [_Zeile(100, 60), _Zeile(101, 40), _Zeile(102, 10)]
     anker = deploy_anchor_step_id(zeilen, _Dep().created_at, blocked={101})
     assert anker == 100
     ev = deployment_events(_Dep(), ctx(), anchor_step_id=anker)[0]
     assert ev["seq"] == 100 * SEQ_SLOTS + 3
-    # Und wenn auch die Vorgängerzeile belegt ist, wird weiter zurückgegangen.
+    # And when the preceding row is taken as well, it goes further back.
     assert deploy_anchor_step_id(zeilen, _Dep().created_at, blocked={100, 101}) is None
 
 
 def test_bestand_ohne_zeile_davor_bekommt_nichts():
-    """Ein Deploy, der vor der ersten geladenen Zeile liegt, hat keinen ehrlichen Platz —
-    vorn eingehängt stünde er vor seinem eigenen Auslöser."""
+    """A deploy lying before the first loaded row has no honest place: hung in at the front
+    it would stand before its own trigger."""
     zeilen = [_Zeile(100, 5)]
     assert deploy_anchor_step_id(zeilen, _Dep().created_at) is None
     assert deployment_events(_Dep(), ctx(), anchor_step_id=None) == []
@@ -349,23 +349,23 @@ async def test_api_zeigt_bestandsdeployment_an_seiner_stelle(client, db):
     deploys = [e for e in events if e["kind"] == "deploy"]
     assert len(deploys) == 1
     assert deploys[0]["deployment_id"] == dep.id and deploys[0]["state"] == "fail"
-    # Zwischen der zweiten und der dritten Zeile — und die Reihenfolge bleibt monoton.
+    # Between the second and the third row, and the order stays monotonic.
     assert deploys[0]["seq"] == zeilen[1].id * SEQ_SLOTS + 3
     assert [e["seq"] for e in events] == sorted(e["seq"] for e in events)
-    # Die synthetisierte `run_end`-Grenze steht weiter hinter allem.
+    # The synthesised `run_end` boundary still stands behind everything.
     ende = [e for e in events if e["kind"] == "run_end"][0]
     assert ende["seq"] > deploys[0]["seq"]
 
 
 async def test_api_erzaehlt_nicht_doppelt(client, db):
-    """Was der Watcher als echte Zeile geschrieben hat, wird nicht noch einmal geliehen."""
+    """What the watcher wrote as a real row is not borrowed a second time."""
     user = await make_user(db, "anna", admin=True)
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     run = await lauf(db, issue=issue, status="running")
     await schritte(db, run, 2)
     dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="ok")
-    await dw.tick(db)   # schreibt start + ok als echte Zeilen
+    await dw.tick(db)   # writes start plus ok as real rows
 
     r = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(user))
     deploys = [e for e in r.json()["events"] if e["kind"] == "deploy"]
@@ -373,7 +373,7 @@ async def test_api_erzaehlt_nicht_doppelt(client, db):
     assert {e["deployment_id"] for e in deploys} == {dep.id}
 
 
-# ── Der Live-Weg ─────────────────────────────────────────────────────────────
+# ── The live path ────────────────────────────────────────────────────────────
 
 async def test_watcher_sendet_in_den_kanal(db, kein_redis):
     projekt = await make_project(db, "TRA", "Traccoon")
@@ -385,8 +385,8 @@ async def test_watcher_sendet_in_den_kanal(db, kein_redis):
 
 
 async def test_publish_step_schluckt_redis_ausfall(db, monkeypatch):
-    """Die Ansicht ist ein Zuschauer, kein Beteiligter: ein toter Redis darf einen
-    Deploy nicht zum Fehler machen."""
+    """The view is a spectator, not a participant: a dead Redis must not turn a deploy into
+    an error."""
     import app.core.redis as redismod
 
     class _Tot:
@@ -399,8 +399,8 @@ async def test_publish_step_schluckt_redis_ausfall(db, monkeypatch):
     run = await lauf(db, issue=issue, status="running")
     await deployment(db, issue_id=issue.id, project_id=projekt.id, status="building")
 
-    assert await dw.tick(db) == 1               # kein Fehler nach oben
-    assert len(await deploy_schritte(db, run.id)) == 1   # und die Zeile steht
+    assert await dw.tick(db) == 1               # no error upwards
+    assert len(await deploy_schritte(db, run.id)) == 1   # and the row stands
 
     step = (await deploy_schritte(db, run.id))[0]
-    await publish_step(RunCtx(run_id=run.id), step)      # auch direkt gerufen: still
+    await publish_step(RunCtx(run_id=run.id), step)      # called directly as well: silent
