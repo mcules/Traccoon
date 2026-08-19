@@ -1,17 +1,17 @@
-// tools/film/raster.mjs — ein `Ctx` ohne Browser.
+// tools/film/raster.mjs: a `Ctx` without a browser.
 //
-// Warum überhaupt: der Feierabendfilm entsteht in einem Sidecar ohne Chromium. Die Pixel-Schicht
-// des Büros kennt aber nur drei Kanäle (`fillStyle`, `globalAlpha`, `fillRect`, PIXEL-CONTRACT
-// Regel 2.1) — genau wenig genug, dass ein zweiseitiger Rasterer sie vollständig bedient. Damit
-// bleibt der Renderer derselbe wie im Browser; verglichen wird echter Bürocode, keine Nachbildung.
+// Why at all: the after-work film comes into being in a sidecar without Chromium. The pixel
+// layer of the office knows only three channels though (`fillStyle`, `globalAlpha`, `fillRect`,
+// PIXEL-CONTRACT rule 2.1), just few enough for a two page rasteriser to serve them completely.
+// That keeps the renderer the same as in the browser; what is compared is real office code.
 //
-// Dieses Modul kennt die Büro-Quellen **nicht** und importiert nichts aus `src/components/office`.
-// Es nimmt Zeichenbefehle entgegen und gibt einen RGB-Puffer heraus. Deshalb ist die Kette
-// Rasterer→Encoder als Ganzes gegen einen anderen Ausgang (MP4) austauschbar.
+// This module does **not** know the office sources and imports nothing from
+// `src/components/office`. It takes drawing commands and hands out an RGB buffer. That is why
+// the chain rasteriser to encoder is exchangeable as a whole against another output (MP4).
 
-/** `#rrggbb` (und, geduldet, `#rgb`) → drei Kanäle.
- *  Nachbau von `parse()` in `pixel/palette.ts` — dort bewusst nicht exportiert, und ein Import
- *  aus `office/` würde die Unabhängigkeit dieses Moduls aufgeben. */
+/** `#rrggbb` (and, tolerated, `#rgb`) to three channels.
+ *  A rebuild of `parse()` in `pixel/palette.ts`, which is deliberately not exported there, and
+ *  an import from `office/` would give up the independence of this module. */
 function zerlege(s) {
   if (typeof s === "string" && s.charCodeAt(0) === 35 /* # */) {
     if (s.length === 7) {
@@ -25,13 +25,13 @@ function zerlege(s) {
       }
     }
   }
-  // Unbekannte Form (Verlauf-Objekt, `rgba(…)`) gäbe es im Vertrag gar nicht — schwarz statt Wurf,
-  // damit ein Film nicht an einer einzigen exotischen Farbe stirbt.
+  // An unknown form (a gradient object, `rgba(…)`) would not exist in the contract at all:
+  // black instead of a throw, so that a film does not die of a single exotic colour.
   return [0, 0, 0];
 }
 
-/** Ein `Ctx` nach der Form in `office/types.ts` (nur `fillStyle`, `globalAlpha`, `fillRect`),
- *  der in einen RGB-Puffer schreibt.
+/** A `Ctx` in the shape of `office/types.ts` (only `fillStyle`, `globalAlpha`, `fillRect`) that
+ *  writes into an RGB buffer.
  *  @param {number} w
  *  @param {number} h
  *  @returns {{ctx: object, buf: Uint8Array, reset: () => void}} `buf` = w*h*3, zeilenweise */
@@ -41,8 +41,8 @@ export function rasterCtx(w, h) {
   }
   const buf = new Uint8Array(w * h * 3);
 
-  // Hexparsen memoisieren: 3000–5000 `fillStyle`-Zuweisungen je Bild × 300 Bilder wären 1,5 Mio.
-  // `parseInt`-Aufrufe; über eine Map sind es so viele wie es Farbtöne gibt (Größenordnung 50).
+  // Memoise the hex parsing: 3000 to 5000 `fillStyle` assignments per frame times 300 frames
+  // would be 1.5 million `parseInt` calls; over a map there are as many as there are tones.
   const cache = new Map();
   let stil = "#000000";
   let r = 0, g = 0, b = 0;
@@ -62,17 +62,16 @@ export function rasterCtx(w, h) {
       const a = ctx.globalAlpha;
       if (!(a > 0) || !bw || !bh) return;   // fängt auch NaN und 0-Maße ab
 
-      // Negative Maße normalisiert die Canvas-Spezifikation (das Rechteck wächst nach links/oben),
-      // nicht: sie ist ein Fehler. Genauso hier, sonst driftet der Film vom Browser weg.
+      // The canvas specification normalises negative dimensions (the rectangle grows to the
+      // left and upwards); this does not: it is an error, because otherwise the film drifts away from the browser.
       let x0 = bw < 0 ? x + bw : x, x1 = x0 + (bw < 0 ? -bw : bw);
       let y0 = bh < 0 ? y + bh : y, y1 = y0 + (bh < 0 ? -bh : bh);
       x0 = Math.round(x0); x1 = Math.round(x1);
       y0 = Math.round(y0); y1 = Math.round(y1);
 
-      // Klemmen ist keine Vorsicht, sondern Pflicht: allein in den acht Fixture-Bildern liegen
-      // 368 `fillRect` außerhalb von 480×270 (Sprechblasen und Namensschilder ragen über den
-      // Rand). Der Browser klippt; ohne das hier liefe die Schleife über Zeilenenden hinweg und
-      // malte diagonale Streifen quer durchs Bild.
+      // Clamping is not caution but duty: in the eight fixture frames alone 368 `fillRect` lie
+      // outside 480x270 (speech bubbles and name tags stick out over the edge). The browser
+      // clips; without this the loop would run over line ends and paint diagonal stripes.
       if (x0 < 0) x0 = 0;
       if (y0 < 0) y0 = 0;
       if (x1 > w) x1 = w;
@@ -86,8 +85,8 @@ export function rasterCtx(w, h) {
         }
         return;
       }
-      // Eine einzige Mischformel im ganzen Modul: `(src*a + dst*(1-a) + 0.5)|0`. `Math.round` und
-      // `|0` gemischt ergäben je nach Zweig andere Werte — und der Encoder zählt hinterher Farben.
+      // A single mixing formula in the whole module: `(src*a + dst*(1-a) + 0.5)|0`. `Math.round`
+      // and `|0` mixed would give different values per branch, and the encoder counts colours.
       const ia = 1 - a, sr = r * a, sg = g * a, sb = b * a;
       for (let yy = y0; yy < y1; yy++) {
         let p = (yy * w + x0) * 3;
@@ -100,9 +99,9 @@ export function rasterCtx(w, h) {
     },
   };
 
-  // `renderFrame` deckt den Puffer vollständig ab, ein `clearRect` gibt es also nicht. `reset()`
-  // existiert trotzdem, damit ein Aufrufer denselben Puffer über 300 Bilder wiederverwenden kann,
-  // ohne sich auf diese Zusicherung verlassen zu müssen.
+  // `renderFrame` covers the buffer completely, so there is no `clearRect`. `reset()` exists
+  // regardless, so that a caller can reuse the same buffer over 300 frames without having to
+  // rely on that assurance.
   const reset = () => { buf.fill(0); };
 
   return { ctx, buf, reset };

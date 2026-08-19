@@ -1,47 +1,47 @@
-// Die zwei Einblendungen des Films: die dauernde Zeile unten und die Trennkarte.
+// The two overlays of the film: the permanent line at the bottom and the chapter card.
 //
-// Beide zeichnen mit denselben Mitteln wie die Bühne — `drawText`/`fill`/`fillA` aus Schicht 1
-// — und halten damit den `Ctx`-Vertrag (nur `fillStyle`, `globalAlpha`, `fillRect`) ohne eine
-// zweite Zeichenwelt. Eine eigene Schriftroutine wäre die zweite Wahrheit über die 3×5-Schrift,
-// und die erste Abweichung fiele erst im fertigen GIF auf.
+// Both draw with the same means as the stage (`drawText`/`fill`/`fillA` from layer 1) and
+// thereby keep the `Ctx` contract (only `fillStyle`, `globalAlpha`, `fillRect`) without a
+// second drawing world. A font routine of its own would be the second truth about the 3x5
+// font, and the first deviation would stand out only in the finished GIF.
 //
-// **Kein Wort entsteht hier.** Uhrzeit, Titel und Beschriftung kommen fertig herein: die
-// Zeitrechnung als ganzzahlige Arithmetik aus `film.mjs`, alles Sprachliche aus Python. Ein
-// `toLocaleTimeString` an dieser Stelle machte das Bild von der ICU-Version des Basis-Images
-// abhängig — und damit den goldenen Hash von einem Bibliotheks-Update.
+// **No word comes into being here.** Time, title and label arrive ready made: the time
+// computation as integer arithmetic from `film.mjs`, everything linguistic from Python. A
+// `toLocaleTimeString` at this place would make the picture depend on the ICU version of the
+// base image, and thereby the golden hash on a library update.
 
 import { ART } from "../../src/components/office/const.ts";
 import { fill, fillA } from "../../src/components/office/pixel/art.ts";
 import { GRADES } from "../../src/components/office/pixel/palette.ts";
 import { drawText, textW } from "../../src/components/office/pixel/props.ts";
 
-/** Höhe des Balkens: 5 Pixel Schrift plus je 3 Luft. Schmaler und die Unterlängen kleben am
- *  Bildrand, breiter und der Balken frisst die vordere Schreibtischreihe. */
+/** Height of the bar: 5 pixels of font plus 3 of air each. Narrower and the descenders stick
+ *  to the edge of the picture, wider and the bar eats the front desk row. */
 const BAND_H = 11;
 
 /**
- * Die Zeile am unteren Rand. Steht **dauerhaft** — sie ist der einzige Ort, an dem der
- * Zuschauer sieht, dass zwischen zwei Kapiteln eine Stunde vergangen ist. Ohne sie wirkte der
- * Zeitraffer wie eine durchgehende Aufnahme, und genau das wäre gelogen.
+ * The line at the bottom edge. It stands **permanently**: it is the only place where the
+ * viewer sees that an hour passed between two chapters. Without it the time lapse would look
+ * like a continuous recording, and exactly that would be a lie.
  */
 export function hudZeile(ctx, grade, text) {
   const pal = GRADES[grade];
   const y = ART.h - BAND_H;
   fillA(ctx, pal, "shadow", 0.62, 0, y, ART.w, BAND_H);
-  // Eine Kante nach oben, sonst schwimmt der Balken über dem Boden statt auf ihm zu liegen.
+  // One edge upwards; otherwise the bar floats above the floor instead of lying on it.
   fill(ctx, pal, "ink", 0, y, ART.w, 1);
   drawText(ctx, pal, "paper", 4, y + 3, text);
 }
 
 /**
- * Die Trennkarte zwischen zwei Kapiteln.
+ * The chapter card between two chapters.
  *
- * Sie verdeckt die Szene nur, sie ersetzt sie nicht: darunter läuft das Bild des Zeitpunkts
- * weiter, auf den die Karte zeigt. Ein schwarzes Vollbild wäre billiger und wäre der Moment,
- * in dem der Film aufhört, ein Fenster in den Raum zu sein.
+ * It only covers the scene, it does not replace it: below it the picture of the moment the
+ * card points at keeps running. A black full screen would be cheaper and would be the moment
+ * the film stops being a window into the room.
  *
- * `k` (0..1) ist Ein- und Ausblendung. Der Aufrufer bestimmt den Verlauf; hier wird er nur
- * angewandt, damit die Karte keine eigene Zeitvorstellung hat.
+ * `k` (0..1) is the fade in and out. The caller determines the curve; here it is only applied,
+ * so that the card has no time notion of its own.
  */
 export function kapitelKarte(ctx, grade, titel, zeit, k) {
   const a = k <= 0 ? 0 : k >= 1 ? 1 : k;
@@ -50,8 +50,8 @@ export function kapitelKarte(ctx, grade, titel, zeit, k) {
 
   fillA(ctx, pal, "shadow", 0.82 * a, 0, 0, ART.w, ART.h);
 
-  // Ein Kasten hinter der Schrift, nicht nur ein Schleier: der Raum hat helle Monitore und
-  // einen gemusterten Teppich, und eine 3×5-Schrift darüber liest sich aus drei Metern nicht.
+  // A box behind the text, not only a veil: the room has bright monitors and a patterned
+  // carpet, and a 3x5 font over that cannot be read from three metres.
   const breite = Math.max(textW(titel), textW(zeit)) + 22;
   const hoehe = 26;
   const x0 = (ART.w - breite) >> 1;
