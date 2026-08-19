@@ -1,10 +1,10 @@
-"""Die lokale Vorklassifizierung — der Schritt, der verhindert, dass Rohtext nach außen geht.
+"""The local pre-classification: the step that prevents raw text from going outside.
 
-Anlass: Sie lief monatelang ins Leere. Das eingestellte Modell verbrauchte sein ganzes
-Ausgabe-Budget im Reasoning und lieferte leeren Text; die Antwort war unparsbar und jede Mail
-fiel auf den Notnagel zurück (sensitive=True, keine Zusammenfassung). Nach außen sah das nach
-„nichts Auffälliges" aus — der Assistent bekam schlicht nie eine Zusammenfassung und musste
-jede Mail selbst über IMAP lesen.
+The occasion: it ran into nothing for months. The configured model used its whole output
+budget on reasoning and delivered empty text; the answer was unparsable and every mail fell
+back on the emergency default (sensitive=True, no summary). From the outside that looked
+like "nothing conspicuous": the assistant simply never got a summary and had to read every
+mail itself over IMAP.
 """
 import pytest
 from app.models.agents import AgentDefinition
@@ -29,7 +29,7 @@ async def anna(db):
 
 
 async def test_denken_wird_abgeschaltet(db, anna, monkeypatch):
-    """Ohne das Abschalten kommt leerer Text zurück — und niemand merkt es."""
+    """Without switching it off, empty text comes back, and nobody notices."""
     gesehen = {}
 
     async def fake_chat(self, **kw):
@@ -48,7 +48,7 @@ async def test_denken_wird_abgeschaltet(db, anna, monkeypatch):
 
 
 async def test_leere_antwort_faellt_sicher_zurueck(db, anna, monkeypatch):
-    """Der Notnagel darf nichts nach außen geben: sensitive, ohne Zusammenfassung."""
+    """The emergency default must give nothing outside: sensitive, without a summary."""
     async def fake_chat(self, **kw):
         return ChatResponse(text="")
 

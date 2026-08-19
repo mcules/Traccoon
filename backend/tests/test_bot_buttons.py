@@ -1,8 +1,8 @@
-"""Beantwortete Telegram-Fragen tragen keine Knöpfe mehr.
+"""Answered Telegram questions carry no buttons any more.
 
-Anlass: Nach einem Druck blieb die Tastatur stehen. Im Verlauf war dann nicht mehr zu sehen,
-welche Frage schon beantwortet war und welche noch offen — und die alten Knöpfe luden weiter
-zum Drücken ein.
+The occasion: after a press the keyboard stayed. In the history it was then no longer visible
+which question had already been answered and which was still open, and the old buttons kept
+inviting a press.
 """
 import pytest
 from app.bot.__main__ import _erledigt
@@ -34,14 +34,14 @@ class FakeCq:
 async def test_vermerk_ersetzt_die_tastatur():
     msg = FakeMessage()
     await _erledigt(FakeCq(msg), "✅ Freigegeben")
-    # edit_text ohne reply_markup entfernt die Tastatur mit — und der Ausgang steht dran.
+    # edit_text without reply_markup removes the keyboard with it, and the outcome stands there.
     assert msg.bearbeitet.startswith("<b>Frage</b>\nInhalt")
     assert "✅ Freigegeben" in msg.bearbeitet
     assert "<i>" in msg.bearbeitet
 
 
 async def test_alte_nachricht_verliert_wenigstens_die_knoepfe():
-    """Zu alt/unverändert → Text bleibt, aber die Knöpfe müssen weg."""
+    """Too old or unchanged means the text stays, but the buttons have to go."""
     msg = FakeMessage(edit_text_fehler=True)
     await _erledigt(FakeCq(msg), "✅ Freigegeben")
     assert msg.markup_entfernt
@@ -53,7 +53,7 @@ async def test_ohne_nachricht_kein_absturz():
 
 @pytest.mark.parametrize("roh,erwartet", [("<b>böse</b>", "&lt;b&gt;"), ("A & B", "&amp;")])
 async def test_vermerk_wird_maskiert(roh, erwartet):
-    """Der Vermerk geht als HTML raus — ungeschütztes Markup zerlegt die Nachricht."""
+    """The note goes out as HTML: unescaped markup takes the message apart."""
     msg = FakeMessage()
     await _erledigt(FakeCq(msg), roh)
     assert erwartet in msg.bearbeitet

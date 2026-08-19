@@ -1,8 +1,8 @@
-"""Tickets als Artefakte — und der Abgleich, der alle Schreibstellen erfasst.
+"""Tickets as artifacts, and the reconciliation that covers all write sites.
 
-`agent_status` wird an 21 Stellen in 10 Dateien gesetzt (Endpunkte, Telegram-Bot, PM-Chat,
-Worker, Prozess-Aktionen). Statt jede davon zu pflegen, gleicht ein Lauf die Artefakt-Zeilen
-an — beim Start und im 30-Sekunden-Tick der Prozess-Engine.
+`agent_status` is set in 21 places in 10 files (endpoints, Telegram bot, PM chat, worker,
+process actions). Instead of maintaining each of them, one pass aligns the artifact rows, at
+the start and in the 30 second tick of the process engine.
 """
 from app.models.artifact import Artifact
 from app.models.enums import StatusCategory, TicketAgentStatus, WorkflowSubjectKind
@@ -51,14 +51,14 @@ async def test_abgleich_legt_fehlende_zeilen_an(db, register):
 
 
 async def test_abgleich_holt_beliebige_schreibstellen_nach(db, register):
-    """Der eigentliche Zweck: eine Stelle setzt agent_status direkt (wie Bot, PM-Chat oder
-    Worker es tun) — der Abgleich zieht die Artefakt-Zeile nach."""
+    """The actual purpose: a place sets agent_status directly (as the bot, the PM chat or the
+    worker do), and the reconciliation pulls the artifact row along."""
     proj = await make_project(db, "TST", "Test")
     i = await _ticket(db, proj, "Alt", 1)
     await art.reconcile(db)
     await db.refresh(i)
 
-    i.agent_status = TicketAgentStatus.hold        # direkt, ohne apply_status
+    i.agent_status = TicketAgentStatus.hold        # directly, without apply_status
     i.summary = "Neu benannt"
     await db.commit()
 

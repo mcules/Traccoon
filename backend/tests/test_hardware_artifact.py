@@ -1,7 +1,7 @@
-"""Hardware ist ein echtes Artefakt: gemeinsame Identität, ein führender Zustand.
+"""Hardware is a real artifact: a common identity, one authoritative state.
 
-Das Exemplar behält seine Detailtabelle (Modell, Ort, Kosten, Garantie) — Identität,
-Projekt und Zustand liegen in `artifacts`, worauf auch Prozesse und Verweise zeigen.
+The unit keeps its detail table (model, place, cost, warranty); identity, project and state
+lie in `artifacts`, which processes and references point at as well.
 """
 from app.models.artifact import Artifact
 from app.models.enums import PurchaseStatus, WorkflowSubjectKind
@@ -38,7 +38,7 @@ async def test_zustand_steht_an_beiden_stellen_gleich(db):
     await db.commit()
     a = await db.get(Artifact, asset.artifact_id)
     assert asset.purchase_status == PurchaseStatus.installed
-    assert a.status_key == "installed"          # führend, und deckungsgleich
+    assert a.status_key == "installed"          # authoritative, and congruent
 
 
 async def test_nachtragen_ist_idempotent(db):

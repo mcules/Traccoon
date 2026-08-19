@@ -1,4 +1,4 @@
-"""Der Weg, um den es geht: ein Prozess ruft über ein Ziel eine externe Stelle auf."""
+"""The way it is about: a process calls an external place over a destination."""
 import httpx
 import pytest
 from app.models.destination import Destination
@@ -76,11 +76,11 @@ async def test_prozess_ruft_ziel_auf(db, calls):
     r = calls[0]
     assert r.method == "POST"
     assert str(r.url) == "https://crm.test/api/tickets?quelle=traccoon"
-    assert r.headers["authorization"] == "Bearer t0k"          # Anmeldung aus dem Ziel
-    assert r.headers["x-referenz"] == "R-9"                    # Kopfzeile aus der Aktion
-    assert r.read() == b'{"titel": "Neue St\\u00f6rung"}'      # Body mit eingesetzter Variable
+    assert r.headers["authorization"] == "Bearer t0k"          # the login from the destination
+    assert r.headers["x-referenz"] == "R-9"                    # the header from the action
+    assert r.read() == b'{"titel": "Neue St\\u00f6rung"}'      # the body with the inserted variable
 
-    # Antwort steht dem Prozess zur Verfügung.
+    # The answer is available to the process.
     assert inst.context["http"]["status_code"] == 201
     assert inst.context["http"]["json"] == {"id": "EXT-7"}
     assert inst.status.value == "completed"

@@ -1,8 +1,8 @@
-"""`_upload_name_typ` bildet den von Telegram gelieferten `mime_type` NICHT ungeprüft auf den
-HTTP-Content-Type des Multipart-Teils ab, das an den Whisper-Container geht — `mime_type` ist
-ein vom sendenden Client frei befülltes Metadatum (potentiell vom Angreifer/Nutzer), keine
-verifizierte serverseitige Eigenschaft. Nur bekannte Audio-MIME-Typen werden durchgelassen,
-alles andere fällt auf einen sicheren Default zurück.
+"""`_upload_name_typ` does NOT map the `mime_type` delivered by Telegram unchecked onto the
+HTTP content type of the multipart part that goes to the Whisper container: `mime_type` is a
+metadatum filled freely by the sending client (potentially by an attacker or user), not a
+verified server side property. Only known audio MIME types are let through, and everything
+else falls back on a safe default.
 """
 from app.bot.__main__ import _upload_name_typ
 
@@ -28,7 +28,7 @@ def test_mp3_variante_wird_normiert():
 
 
 def test_unbekannter_mime_faellt_auf_sicheren_default():
-    # Nicht gelistet — z. B. ein exotisches/falsches Format.
+    # Not listed, for instance an exotic or wrong format.
     name, mime = _upload_name_typ("audio", "audio/x-irgendwas")
     assert (name, mime) == ("audio.mp3", "audio/mpeg")
 
@@ -39,8 +39,8 @@ def test_kein_mime_type_faellt_auf_sicheren_default():
 
 
 def test_manipulierter_mime_type_landet_nicht_im_content_type():
-    """Der eigentliche Angriffsvektor: ein präparierter mime_type mit Kontroll-/
-    Sonderzeichen darf NIEMALS 1:1 als HTTP-Content-Type-Header-Wert enden."""
+    """The actual attack vector: a prepared mime_type with control or special characters must
+    NEVER end up one to one as an HTTP content type header value."""
     boesartig = "audio/mpeg\r\nX-Injected: 1"
     name, mime = _upload_name_typ("audio", boesartig)
     assert mime == "audio/mpeg"
