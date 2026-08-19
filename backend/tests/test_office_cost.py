@@ -3,7 +3,6 @@
 `cost_usd_billed` is the billed amount from `cost_entries`; it stays what it was, even when
 the catalog has changed since (`api/cost.py:148`). `cost_usd_estimated` computes the **step**
 tokens against today's catalog. Both stand side by side, and neither overwrites the other.
-keine überschreibt die andere.
 
 The distinction it is about: a catalog entry with the price 0.00 means *priced and free* (the
 local model), while no entry at all means *unknown*. Until now both gave the same 0.00 in the
