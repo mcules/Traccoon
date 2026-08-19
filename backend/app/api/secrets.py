@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..core.security import encrypt_secret
 from ..db import get_session
 from ..models.agents import AgentDefinition
@@ -39,9 +40,10 @@ async def list_provider_tokens(user: User = Depends(get_current_user),
 async def add_provider_token(data: ProviderTokenIn, user: User = Depends(get_current_user),
                              db: AsyncSession = Depends(get_session)):
     if data.provider not in PROVIDERS:
-        raise HTTPException(400, f"Unknown provider (allowed: {', '.join(PROVIDERS)})")
+        raise Fehler(400, "err.unknown_provider_allowed",
+                     "Unknown provider (allowed: {erlaubt})", erlaubt=', '.join(PROVIDERS))
     if not data.token.strip():
-        raise HTTPException(400, "Token erforderlich")
+        raise Fehler(400, "err.token_required", "A token is required")
     name = data.name.strip() or "Standard"   # the name is optional
     provider_rows = (await db.execute(select(ProviderToken).where(
         ProviderToken.user_id == user.id, ProviderToken.provider == data.provider))).scalars().all()
@@ -68,7 +70,7 @@ async def set_default_provider_token(tid: int, user: User = Depends(get_current_
     """Make this token the default of its provider (the others lose the status)."""
     row = await db.get(ProviderToken, tid)
     if row is None or row.user_id != user.id:
-        raise HTTPException(404, "Token not found")
+        raise Fehler(404, "err.token_not_found", "Token not found")
     for other in (await db.execute(select(ProviderToken).where(
             ProviderToken.user_id == user.id,
             ProviderToken.provider == row.provider))).scalars().all():
@@ -90,7 +92,7 @@ async def update_provider_token(tid: int, data: ProviderTokenPatch,
     token only when a new value is passed along (values are never returned)."""
     row = await db.get(ProviderToken, tid)
     if row is None or row.user_id != user.id:
-        raise HTTPException(404, "Token not found")
+        raise Fehler(404, "err.token_not_found", "Token not found")
     if data.token is not None and data.token.strip():
         row.value_enc = encrypt_secret(data.token.strip())
     if data.base_url is not None:

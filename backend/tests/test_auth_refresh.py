@@ -38,7 +38,7 @@ def kopf(token: str) -> dict[str, str]:
 
 
 async def test_gueltiges_token_wird_verlaengert(client, db):
-    """Der Normalfall: neues Token, und das neue Token trägt."""
+    """The normal case: a new token, and the new token carries."""
     user = await make_user(db, "wandschirm")
     alt = create_access_token(user.id)
 

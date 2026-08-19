@@ -194,12 +194,12 @@ async def tick(db: AsyncSession) -> int:
 
 
 async def run_deploy_watch() -> None:
-    log.info("deploy-watch gestartet (tick=%ss)", TICK_SECONDS)
+    log.info("deploy-watch started (tick=%ss)", TICK_SECONDS)
     await asyncio.sleep(5)
     while True:
         try:
             async with SessionLocal() as db:
                 await tick(db)
         except Exception:  # noqa: BLE001 - the stage is a spectator, not a participant
-            log.exception("deploy-watch fehlgeschlagen")
+            log.exception("deploy-watch failed")
         await asyncio.sleep(TICK_SECONDS)

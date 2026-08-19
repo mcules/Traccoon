@@ -292,7 +292,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
     from ..services.workflow_engine import start_workflow
 
     async def _erlaubt(d: WorkflowDefinition) -> bool:
-        """Darf der Mensch diesen Prozess starten?"""
+        """May this human start this process?"""
         if d.project_id is None:
             return True
         project = await db.get(Project, d.project_id)

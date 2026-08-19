@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..core.security import hash_password
 from ..db import get_session
 from ..models.enums import GlobalRole, UserStatus
@@ -75,10 +76,11 @@ async def set_user_mcp_servers(user_id: int, data: McpServersIn, _: User = Depen
 
 async def _get_manageable(user_id: int, db: AsyncSession) -> User:
     if user_id == SYSTEM_USER_ID:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "System users cannot be managed")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.system_users_cannot_managed",
+                     "System users cannot be managed")
     u = await db.get(User, user_id)
     if u is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.user_not_found", "User not found")
     return u
 
 
@@ -153,7 +155,8 @@ async def create_user(data: UserCreateIn, _: User = Depends(require_admin),
         cond = cond | (User.email == email)
     exists = (await db.execute(select(User).where(cond))).scalar_one_or_none()
     if exists is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "E-mail or user name already taken")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.e_mail_user_name_already_taken",
+                     "E-mail or user name already taken")
     try:
         role = GlobalRole(data.global_role)
     except ValueError:
@@ -194,7 +197,8 @@ async def disable(
     user_id: int, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
 ):
     if user_id == admin.id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Do not deactivate yourself")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.do_not_deactivate_yourself",
+                     "Do not deactivate yourself")
     u = await _get_manageable(user_id, db)
     u.status = UserStatus.disabled
     await db.commit()
@@ -217,7 +221,8 @@ async def update_user(
             )
         ).scalars().first()
         if conflict is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "E-mail already taken")
+            raise Fehler(status.HTTP_409_CONFLICT, "err.e_mail_already_taken",
+                         "E-mail already taken")
     if data.username is not None:
         conflict = (
             await db.execute(
@@ -225,7 +230,8 @@ async def update_user(
             )
         ).scalars().first()
         if conflict is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "User name already taken")
+            raise Fehler(status.HTTP_409_CONFLICT, "err.user_name_already_taken",
+                         "User name already taken")
     if data.email is not None:
         u.email = data.email
     if data.username is not None:
@@ -264,7 +270,8 @@ async def set_role(
     db: AsyncSession = Depends(get_session),
 ):
     if user_id == admin.id and role != GlobalRole.admin:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Do not demote yourself")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.do_not_demote_yourself",
+                     "Do not demote yourself")
     u = await _get_manageable(user_id, db)
     u.global_role = role
     await db.commit()

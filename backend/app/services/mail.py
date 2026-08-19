@@ -83,5 +83,5 @@ async def send_mail(db: AsyncSession, to_addr: str, subject: str, html_body: str
         await asyncio.to_thread(_send_sync, cfg, to_addr, subject, html_body, text_body)
         return True
     except Exception:
-        log.exception("Mailversand an %s fehlgeschlagen", to_addr)
+        log.exception("Sending mail to %s failed", to_addr)
         return False

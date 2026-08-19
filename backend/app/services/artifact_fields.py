@@ -163,7 +163,7 @@ async def values_of(db: AsyncSession, artifact_id: int) -> dict[str, list]:
 
 
 def _lesbar(feld: ArtifactField, text: str):
-    """Gespeicherten Text in den Typ des Feldes zurückverwandeln."""
+    """Turn the stored text back into the type of the field."""
     if feld.kind == "number":
         try:
             zahl = float(text)
@@ -269,7 +269,7 @@ async def schreibe(db: AsyncSession, artifact_id: int, feld: ArtifactField,
 
 async def set_values(db: AsyncSession, artifact_id: int, feld: ArtifactField, werte: list,
                      project_id: int | None = None) -> list:
-    """Der EINE Weg für ein einzelnes Feld: prüfen und schreiben."""
+    """The ONE way for a single field: check it and write it."""
     return await schreibe(db, artifact_id, feld,
                           await pruefe(db, feld, werte, project_id))
 

@@ -158,7 +158,7 @@ class CodexProvider(Provider):
                         if etype == "response.completed":
                             final = ev.get("response")
                         elif etype in ("response.failed", "error"):
-                            raise ProviderError(f"codex: Stream-Fehler: {str(ev)[:300]}", retryable=True)
+                            raise ProviderError(f"codex: stream error: {str(ev)[:300]}", retryable=True)
         except httpx.HTTPError as exc:
             raise ProviderError(f"codex: Verbindungsfehler: {exc}", retryable=True) from exc
 

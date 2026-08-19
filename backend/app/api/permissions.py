@@ -1,10 +1,11 @@
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.enums import PurchaseStatus, TicketAgentStatus  # noqa: F401
 from ..models.ops import PermAction, PermGrant, Permission, PermRequest
@@ -46,7 +47,7 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
                  db: AsyncSession = Depends(get_session)):
     pr = await db.get(PermRequest, req_id)
     if pr is None or pr.status != "pending":
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.request_not_found", "Request not found")
     issue = await db.get(Issue, pr.issue_id)
     # Check the access (membership plus ai_assign)
     from ..models.project import Project
@@ -54,7 +55,8 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
     from .deps import build_access
     access = await build_access(project, user, db)
     if not access.ai_assign:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "KI-Recht erforderlich")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.ai_right_required",
+                     "The AI right is required")
 
     dec = data.decision
     if dec == "once":
@@ -64,7 +66,8 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
     elif dec == "never":
         db.add(Permission(project_id=issue.project_id, tool=pr.tool, resource="*", action=PermAction.deny))
     else:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "decision has to be once|always|never")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.decision_has_once_always_never",
+                     "decision has to be once|always|never")
 
     pr.status = "decided"
     pr.decision = dec
@@ -84,7 +87,8 @@ async def answer_blocker(data: AnswerIn, pair: tuple[Issue, Access] = Depends(ge
                          db: AsyncSession = Depends(get_session)):
     issue, access = pair
     if not access.ai_assign:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "KI-Recht erforderlich")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.ai_right_required",
+                     "The AI right is required")
     blocker = (
         await db.execute(
             select(Blocker).where(Blocker.issue_id == issue.id, Blocker.answer.is_(None))
@@ -92,7 +96,7 @@ async def answer_blocker(data: AnswerIn, pair: tuple[Issue, Access] = Depends(ge
         )
     ).scalars().first()
     if blocker is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No open question")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.no_open_question", "No open question")
     blocker.answer = data.answer
     blocker.answered_at = _now()
     blocker.answered_by = access.user.id

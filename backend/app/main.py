@@ -16,6 +16,7 @@ from .api import (
     runs, secrets, skills, testenv, users, workflows, ws,
 )
 from .config import settings
+from .core.fehler import Fehler, fehler_handler
 from .db import Base, SessionLocal, engine
 from .seed import seed
 from .services.dispatcher import recover_on_start, run_dispatcher
@@ -460,6 +461,8 @@ app.add_middleware(
 )
 
 api = FastAPI(title="Traccoon API", version=VERSION)
+# Error texts carry their key along, so a browser can show them in its own language.
+api.add_exception_handler(Fehler, fehler_handler)
 api.include_router(auth.router)
 api.include_router(me.router)
 api.include_router(users.router)

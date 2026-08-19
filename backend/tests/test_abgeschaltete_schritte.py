@@ -90,6 +90,6 @@ async def test_ohne_modus_wird_uebersprungen(db):
 
 
 async def test_pruefung_bleibt_zufrieden(db):
-    """Ein abgeschalteter Schritt ist kein Fehler im Graphen."""
+    """A disabled step is not an error in the graph."""
     assert validate_graph(WorkflowSubjectKind.standalone,
                           _graph({"deaktiviert": True})) == []

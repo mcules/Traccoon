@@ -1,4 +1,4 @@
-"""Seed: System-User + Bootstrap-Admin beim ersten Start."""
+"""Seed: the system user and the bootstrap admin on the first start."""
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 

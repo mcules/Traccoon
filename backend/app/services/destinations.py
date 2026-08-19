@@ -122,7 +122,7 @@ async def _oauth_token(db: AsyncSession, dest: Destination) -> str:
             auth=(dest.oauth_client_id, secret),   # client_secret_basic (widely supported)
             headers={"Accept": "application/json"}, timeout=dest.timeout_sec or 30)
     if resp.status_code >= 400:
-        raise ValueError(f"Ziel '{dest.name}': Token-Abruf fehlgeschlagen "
+        raise ValueError(f"Destination '{dest.name}': fetching the token failed "
                          f"({resp.status_code}: {resp.text[:200]})")
     payload = resp.json()
     token = payload.get("access_token") or ""
@@ -234,7 +234,7 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
             ergebnis["text"] = text
     if not ergebnis["ok"]:
         ergebnis["error"] = text[:500] or f"HTTP {resp.status_code}"
-    log.info("Ziel %s: %s %s → %s", dest.name, verb, urlsplit(ergebnis["url"]).path or "/",
+    log.info("Destination %s: %s %s -> %s", dest.name, verb, urlsplit(ergebnis["url"]).path or "/",
              resp.status_code)
     return ergebnis
 
@@ -242,7 +242,7 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
 async def call_by_name(db: AsyncSession, name: str, *, project_id: int | None = None,
                        owner_id: int | None = None, agents_only: bool = False,
                        **kwargs) -> dict:
-    """Bequemer Einstieg: Ziel auflösen und aufrufen."""
+    """The comfortable entry: resolve the destination and call it."""
     dest = await resolve(db, name, project_id=project_id, owner_id=owner_id)
     if dest is None:
         raise ValueError(f"Unknown or disabled destination '{name}'")

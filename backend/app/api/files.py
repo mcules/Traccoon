@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.enums import ProjectRole
 from ..models.project import Project
@@ -27,7 +28,7 @@ async def file_changes(pair: tuple[Issue, Access] = Depends(get_issue_access),
 @router.get("/issues/{key}/diff")
 async def issue_diff(pair: tuple[Issue, Access] = Depends(get_issue_access),
                      db: AsyncSession = Depends(get_session)):
-    """Kompletter Git-Diff des Ticket-Branches (für den Review)."""
+    """The complete git diff of the ticket branch (for the review)."""
     from urllib.parse import urlsplit
 
     from ..models.project import Project
@@ -63,10 +64,12 @@ async def upload_attachment(file: UploadFile, pair: tuple[Issue, Access] = Depen
                             db: AsyncSession = Depends(get_session)):
     issue, access = pair
     if not access.has_role(ProjectRole.member):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Schreibrecht erforderlich")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.write_rights_required",
+                     "Write rights are required")
     raw = await file.read()
     if len(raw) > 20 * 1024 * 1024:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "File too large (>20MB)")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.file_too_large_mb",
+                     "File too large (>20MB)")
     a = Attachment(issue_id=issue.id, uploader_id=access.user.id, filename=file.filename or "datei",
                    mime_type=file.content_type or "application/octet-stream", size=len(raw), data=raw)
     db.add(a)
@@ -79,14 +82,15 @@ async def _attachment_access(aid: int, user: User, db: AsyncSession) -> Attachme
     """The attachment is only for members of the associated project (respectively admins)."""
     a = await db.get(Attachment, aid)
     if a is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.attachment_not_found", "Attachment not found")
     issue = await db.get(Issue, a.issue_id)
     project = await db.get(Project, issue.project_id) if issue else None
     if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.attachment_not_found", "Attachment not found")
     access = await build_access(project, user, db)
     if not access.has_role(ProjectRole.viewer):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "No access to this project")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.no_access_project",
+                     "No access to this project")
     return a
 
 
@@ -107,6 +111,7 @@ async def delete_attachment(aid: int, user: User = Depends(get_current_user),
         project = await db.get(Project, issue.project_id)
         access = await build_access(project, user, db)
         if not access.has_role(ProjectRole.maintainer):
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the uploader or a maintainer may delete")
+            raise Fehler(status.HTTP_403_FORBIDDEN, "err.only_uploader_maintainer_may_delete",
+                         "Only the uploader or a maintainer may delete")
     await db.delete(a)
     await db.commit()

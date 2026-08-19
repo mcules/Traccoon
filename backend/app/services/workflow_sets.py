@@ -264,7 +264,7 @@ async def customize(db: AsyncSession, project: Project, slot: str, actor_id: int
                                   key=schluessel, name=name)
     await db.commit()
     await db.refresh(copy)
-    log.info("Projekt %s: Slot %s angepasst (Definition %s)", project.key, slot, copy.id)
+    log.info("Project %s: slot %s adjusted (definition %s)", project.key, slot, copy.id)
     return copy
 
 

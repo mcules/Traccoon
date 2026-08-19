@@ -1101,7 +1101,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # As with the token budget: `break` falls into the loop_exhausted ending.
                     gelaufen = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - frist)
                     grenze_grund = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(MAX_RUN_SECONDS)}s)."
-                    log.warning("Run %s: Zeitlimit erreicht (%ds) → loop_exhausted", run_id, gelaufen)
+                    log.warning("Run %s: time limit reached (%ds), loop_exhausted", run_id, gelaufen)
                     await protokoll("system", None,
                               f"⚠️ {grenze_grund} → loop_exhausted (Fortsetzung in frischem Run)",
                               kind="system")
@@ -1171,7 +1171,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # `break` falls into the loop_exhausted ending below (the same
                     # _end_run/RunResult path) so that the continuation semantics apply.
                     grenze_grund = f"Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS})."
-                    log.warning("Run %s: Token-Budget erreicht (%d ≥ %d) → loop_exhausted",
+                    log.warning("Run %s: token budget reached (%d >= %d), loop_exhausted",
                                 run_id, in_tok, MAX_RUN_INPUT_TOKENS)
                     await protokoll("system", None,
                               f"⚠️ Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS}) "
@@ -1466,7 +1466,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             return RunResult("loop_exhausted", exhausted, iteration, run_id=run_id)
 
     except Exception as exc:  # noqa: BLE001
-        log.exception("run_agent(%s) Laufzeitfehler", agent.name)
+        log.exception("run_agent(%s) runtime error", agent.name)
         # The tokens here as well: the run died somewhere in the middle, but it is paid for
         # all the same. That is why the counters stand above, BEFORE the `try`.
         await _end_run(db, run_id, "failed", error=str(exc), in_tok=in_tok, out_tok=out_tok,

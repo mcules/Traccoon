@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.artifact import (
     Artifact, ArtifactField, ArtifactFieldOption, ArtifactType,
@@ -35,7 +36,7 @@ class StatusOut(BaseModel):
 
 
 class OptionOut(BaseModel):
-    """Ein Eintrag der Werteliste eines Feldes."""
+    """One entry of the value list of a field."""
     id: int
     value: str
     label: str
@@ -110,7 +111,8 @@ class TypeUpdate(BaseModel):
 
 def _admin(user: User) -> None:
     if user.global_role != GlobalRole.admin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only an admin may maintain artifacts")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.only_admin_may_maintain_artifacts",
+                     "Only an admin may maintain artifacts")
 
 
 async def _darf_feld(db: AsyncSession, user: User, project_id: int | None) -> None:
@@ -127,11 +129,11 @@ async def _darf_feld(db: AsyncSession, user: User, project_id: int | None) -> No
     from .deps import build_access
     projekt = await db.get(Project, project_id)
     if projekt is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
     access = await build_access(projekt, user, db)     # 404 on a foreign project
     if not access.has_role(ProjectRole.maintainer):
-        raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "Rolle owner|maintainer erforderlich")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.role_owner_maintainer_required",
+                     "Role owner|maintainer is required")
 
 
 async def _felder(db: AsyncSession, type_id: int,
@@ -189,7 +191,7 @@ async def list_types(
 
 
 class ArtifactOut(BaseModel):
-    """Eine Sache in Traccoon — quer über alle Typen."""
+    """One thing in Traccoon, across all types."""
     id: int
     type_key: str
     type_name: str
@@ -281,7 +283,8 @@ async def create_type(
 ):
     _admin(user)
     if await svc.type_by_key(db, data.key) is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"The type '{data.key}' already exists")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.type_already_exists",
+                     "The type '{name}' already exists", name=data.key)
     t = ArtifactType(**data.model_dump(), backing="generic", builtin=False)
     db.add(t)
     await db.commit()
@@ -297,7 +300,7 @@ async def update_type(
     _admin(user)
     t = await db.get(ArtifactType, tid)
     if t is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Type not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.type_not_found", "Type not found")
     for feld, wert in data.model_dump(exclude_unset=True).items():
         setattr(t, feld, wert)
     await db.commit()
@@ -312,12 +315,12 @@ async def delete_type(
     _admin(user)
     t = await db.get(ArtifactType, tid)
     if t is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Type not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.type_not_found", "Type not found")
     if t.builtin:
         # Ticket and hardware hang off hard wired columns; without their entry the editor
         # would no longer know which states exist.
-        raise HTTPException(status.HTTP_409_CONFLICT,
-                            "Built-in types cannot be deleted (only switched off)")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.builtin_type_cannot_be_deleted",
+                     "Built-in types cannot be deleted (only switched off)")
     await db.delete(t)
     await db.commit()
 
@@ -351,7 +354,7 @@ class FieldUpdate(BaseModel):
 async def _get_field(db: AsyncSession, fid: int) -> ArtifactField:
     f = await db.get(ArtifactField, fid)
     if f is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Field not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.field_not_found", "Field not found")
     return f
 
 
@@ -368,16 +371,18 @@ async def add_field(
     await _darf_feld(db, user, project_id)
     t = await db.get(ArtifactType, tid)
     if t is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Artifact not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.artifact_not_found", "Artifact not found")
     if data.kind not in felder.KINDS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            f"Unknown field kind '{data.kind}' (allowed: {', '.join(felder.KINDS)})")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_field_kind",
+                     "Unknown field kind '{name}' (allowed: {erlaubt})",
+                     name=data.kind, erlaubt=', '.join(felder.KINDS))
     # Check against the general ones as well: a project field must not cover a shipped one,
     # because then nobody would know which one is meant.
     vorhanden = [f for f in await felder.fields_of(db, tid, project_id, nur_aktive=False)
                  if f.key == data.key]
     if vorhanden:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"The field '{data.key}' already exists here")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.field_already_exists_here",
+                     "The field '{name}' already exists here", name=data.key)
     db.add(ArtifactField(type_id=tid, project_id=project_id, **data.model_dump()))
     await db.commit()
     await db.refresh(t)
@@ -393,7 +398,8 @@ async def update_field(
     await _darf_feld(db, user, f.project_id)
     werte = data.model_dump(exclude_unset=True)
     if "kind" in werte and werte["kind"] not in felder.KINDS:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unbekannter Feldtyp '{werte['kind']}'")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_field_kind_named",
+                     "Unknown field kind '{name}'", name=werte['kind'])
     # Going back from "several" to "one" is only clean when nobody carries several values.
     if werte.get("multi") is False and f.multi:
         from sqlalchemy import func as _func
@@ -404,10 +410,9 @@ async def update_field(
                 .group_by(ArtifactValue.artifact_id)
                 .having(_func.count() > 1).subquery()))).scalar() or 0
         if zuviel:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT,
-                f"{zuviel} artifact(s) carry several values here, clean that up first, "
-                "otherwise values would quietly get lost")
+            raise Fehler(status.HTTP_409_CONFLICT, "err.several_values_before_single",
+                         "{anzahl} artifact(s) carry several values here, clean that up first, "
+                         "otherwise values would quietly get lost", anzahl=zuviel)
     for feld_name, wert in werte.items():
         setattr(f, feld_name, wert)
     await db.commit()
@@ -425,15 +430,15 @@ async def delete_field(
     f = await _get_field(db, fid)
     await _darf_feld(db, user, f.project_id)
     if f.builtin:
-        raise HTTPException(status.HTTP_409_CONFLICT,
-                            "A shipped field cannot be deleted, the board, the sprints "
-                            "and the AI lifecycle run on it. Disabling it works.")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.builtin_field_cannot_be_deleted",
+                     "A shipped field cannot be deleted, the board, the sprints and the AI "
+                     "lifecycle run on it. Disabling it works.")
     benutzt = await felder.field_usage(db, fid)
     if benutzt and not force:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"The field carries values in {benutzt} place(s). To disable it set "
-            "`enabled=false`, to delete it for good repeat with force=true.")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.field_still_carries_values",
+                     "The field carries values in {anzahl} place(s). To disable it set "
+                     "`enabled=false`, to delete it for good repeat with force=true.",
+                     anzahl=benutzt)
     await db.delete(f)
     await db.commit()
 
@@ -466,13 +471,14 @@ async def add_option(
     f = await _get_field(db, fid)
     await _darf_feld(db, user, f.project_id)
     if f.kind != "select":
-        raise HTTPException(status.HTTP_409_CONFLICT,
-                            "Only a field of type \u201echoice\u201c has a value list")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.only_choice_has_value_list",
+                     'Only a field of type "choice" has a value list')
     vorhanden = (await db.execute(select(ArtifactFieldOption).where(
         ArtifactFieldOption.field_id == fid,
         ArtifactFieldOption.value == data.value))).scalars().first()
     if vorhanden is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"The value '{data.value}' is already in the list")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.value_already_list",
+                     "The value '{wert}' is already in the list", wert=data.value)
     db.add(ArtifactFieldOption(field_id=fid, **data.model_dump()))
     await db.commit()
     t = await db.get(ArtifactType, f.type_id)
@@ -488,7 +494,7 @@ async def update_option(
     _admin(user)
     o = await db.get(ArtifactFieldOption, oid)
     if o is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Value not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.value_not_found", "Value not found")
     for feld_name, wert in data.model_dump(exclude_unset=True).items():
         setattr(o, feld_name, wert)
     await db.commit()
@@ -504,13 +510,13 @@ async def delete_option(
     _admin(user)
     o = await db.get(ArtifactFieldOption, oid)
     if o is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Value not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.value_not_found", "Value not found")
     benutzt = await felder.option_usage(db, oid)
     if benutzt:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"This value is assigned to {benutzt} artifact(s). To hide it set "
-            "`enabled=false`, then it stays there but can no longer be picked.")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.value_still_assigned",
+                     "This value is assigned to {anzahl} artifact(s). To hide it set "
+                     "`enabled=false`, then it stays there but can no longer be picked.",
+                     anzahl=benutzt)
     await db.delete(o)
     await db.commit()
 
@@ -528,7 +534,7 @@ async def _artifact_access(db: AsyncSession, user: User, aid: int) -> Artifact:
     from ..models.project import Project
     a = await db.get(Artifact, aid)
     if a is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Artifact not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.artifact_not_found", "Artifact not found")
     if a.project_id is not None:
         projekt = await db.get(Project, a.project_id)
         await build_access(projekt, user, db)   # 404/403 when access is missing
@@ -564,8 +570,8 @@ async def write_values(
     for key, werte in data.values.items():
         f = bekannt.get(key)
         if f is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                f"The field '{key}' does not exist on this artifact")
+            raise Fehler(status.HTTP_400_BAD_REQUEST, "err.field_does_not_exist_artifact",
+                         "The field '{name}' does not exist on this artifact", name=key)
         try:
             geprueft.append((f, await felder.pruefe(db, f, werte, a.project_id)))
         except felder.FieldError as e:

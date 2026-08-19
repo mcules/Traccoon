@@ -85,7 +85,7 @@ async def project_ws(websocket: WebSocket, project_id: int, token: str = ""):
                 continue
             if data.get("type") == "chat" and (data.get("content") or "").strip():
                 if not ai_assign:
-                    await websocket.send_json({"type": "error", "data": {"message": "KI-Recht erforderlich"}})
+                    await websocket.send_json({"type": "error", "data": {"message": "The AI right is required"}})
                     continue
                 asyncio.create_task(_run_pm(project_id, user_id, data["content"].strip()))
     except WebSocketDisconnect:
@@ -98,7 +98,7 @@ async def _run_pm(project_id: int, user_id: int, text: str) -> None:
         try:
             await run_pm_chat(db, project_id, user_id, text)
         except Exception:  # noqa: BLE001
-            log.exception("PM-Chat-Fehler")
+            log.exception("PM chat error")
 
 
 @router.get("/projects/{project_id}/messages")
@@ -133,7 +133,7 @@ async def event_bridge() -> None:
     r = get_redis()
     pubsub = r.pubsub()
     await pubsub.psubscribe(f"{PREFIX}events:*")
-    log.info("event-bridge aktiv")
+    log.info("event bridge active")
     async for msg in pubsub.listen():
         if msg.get("type") != "pmessage":
             continue

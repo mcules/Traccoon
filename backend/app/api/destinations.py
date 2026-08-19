@@ -10,10 +10,11 @@ client secret; the answers only report whether one is stored.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..core.security import encrypt_secret
 from ..db import get_session
 from ..models.destination import Destination
@@ -54,25 +55,27 @@ async def _require_write(db: AsyncSession, user: User, *, user_id: int | None,
     if project_id is not None:
         project = await db.get(Project, project_id)
         if project is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
+            raise Fehler(status.HTTP_404_NOT_FOUND, "err.project_not_found", "Project not found")
         access = await build_access(project, user, db)   # 404 on a foreign project
         if not access.has_role(ProjectRole.maintainer):
-            raise HTTPException(status.HTTP_403_FORBIDDEN,
-                                "Rolle owner|maintainer erforderlich")
+            raise Fehler(status.HTTP_403_FORBIDDEN, "err.role_owner_maintainer_required",
+                         "Role owner|maintainer is required")
         return
     if user_id is not None:
         if user_id != user.id and user.global_role != GlobalRole.admin:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Foreign personal destination")
+            raise Fehler(status.HTTP_403_FORBIDDEN, "err.foreign_personal_destination",
+                         "Foreign personal destination")
         return
     if user.global_role != GlobalRole.admin:
-        raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "Only an admin may create system-wide destinations")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.only_admin_may_create_system_wide",
+                     "Only an admin may create system-wide destinations")
 
 
 async def _get(db: AsyncSession, did: int) -> Destination:
     d = await db.get(Destination, did)
     if d is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Destination not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.destination_not_found",
+                     "Destination not found")
     return d
 
 
@@ -117,14 +120,14 @@ async def create_destination(
 ):
     await _require_write(db, user, user_id=data.user_id, project_id=data.project_id)
     if data.auth_type not in svc.AUTH_TYPES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                            f"Unbekanntes Verfahren '{data.auth_type}'")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_method_named",
+                     "Unknown method '{name}'", name=data.auth_type)
     doppelt = await svc.resolve(db, data.name, project_id=data.project_id,
                                 owner_id=data.user_id)
     if doppelt is not None and (doppelt.user_id, doppelt.project_id) == (data.user_id,
                                                                         data.project_id):
-        raise HTTPException(status.HTTP_409_CONFLICT,
-                            f"The destination '{data.name}' already exists in this scope")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.destination_already_exists_scope",
+                     "The destination '{name}' already exists in this scope", name=data.name)
     werte = data.model_dump(exclude={"user_id", "project_id", *SECRET_FIELDS})
     d = Destination(**werte, user_id=data.user_id, project_id=data.project_id,
                     created_by=user.id)
@@ -144,7 +147,7 @@ async def update_destination(
     await _require_write(db, user, user_id=d.user_id, project_id=d.project_id)
     werte = data.model_dump(exclude_unset=True, exclude={*SECRET_FIELDS})
     if "auth_type" in werte and werte["auth_type"] not in svc.AUTH_TYPES:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Unbekanntes Verfahren")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_method", "Unknown method")
     for feld, wert in werte.items():
         setattr(d, feld, wert)
     if "auth_type" in werte:
@@ -182,6 +185,7 @@ async def test_destination(
                               query=data.query or {}, headers=data.headers or {},
                               body=data.body, timeout=data.timeout_sec)
     except Exception as e:  # noqa: BLE001 - network and auth errors belong in the answer
-        raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"Aufruf fehlgeschlagen: {e}")
+        raise Fehler(status.HTTP_502_BAD_GATEWAY, "err.call_failed",
+                     "The call failed: {grund}", grund=e)
     finally:
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben

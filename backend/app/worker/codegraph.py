@@ -94,7 +94,7 @@ async def ensure_indexed(root: str) -> None:
             await _git_exclude_codegraph(root)
             rc, out = await _exec(_BIN, "init", cwd=root, timeout=_INIT_TIMEOUT)
             if rc != 0:
-                log.warning("codegraph init fehlgeschlagen in %s: %s", root, out[:300])
+                log.warning("codegraph init failed in %s: %s", root, out[:300])
 
 
 async def query(root: str | None, command: str, arg: str) -> str:

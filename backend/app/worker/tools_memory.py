@@ -107,7 +107,7 @@ def note_path(root: str, bereich: str, agent_role: str = "", project_key: str = 
 
 
 async def memory_root(db: AsyncSession, owner_id: int | None) -> str:
-    """Gedächtnis-Ordner des Owners — leer heißt: Funktion aus."""
+    """The memory folder of the owner; empty means the feature is off."""
     if not owner_id:
         return ""
     user = await db.get(User, owner_id)

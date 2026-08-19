@@ -1,4 +1,4 @@
-"""Schemas für Ziele. Geheimnisse gehen nur hinein, nie hinaus."""
+"""Schemas for destinations. Secrets only go in, never out."""
 import datetime as dt
 
 from pydantic import BaseModel, Field

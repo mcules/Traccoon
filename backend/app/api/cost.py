@@ -1,11 +1,12 @@
 import re
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.agents import CostEntry
 from ..core.security import decrypt_secret
@@ -149,7 +150,7 @@ async def delete_model(model_id: int, _: User = Depends(require_admin),
     finished amount, not the catalog reference."""
     m = await db.get(ProviderModel, model_id)
     if m is None:
-        raise HTTPException(404, "Model not found")
+        raise Fehler(404, "err.model_not_found", "Model not found")
     await db.delete(m)
     await db.commit()
     return {"ok": True}

@@ -103,13 +103,13 @@ async def provision_user_mcp(db: AsyncSession, user: User, servers: list[str]) -
         rg = await c.post(f"{_base()}/api/v0/tool-groups", headers=hdr, json={
             "name": group, "description": f"Traccoon-User {user.username}", "included_servers": chosen})
         if rg.status_code >= 400:
-            raise McpProvisionError(f"Gruppe anlegen fehlgeschlagen: {rg.status_code} {rg.text[:200]}")
+            raise McpProvisionError(f"Creating the group failed: {rg.status_code} {rg.text[:200]}")
 
         # allow_list is the ONLY field that scopes the token (verified).
         rc = await c.post(f"{_base()}/api/v0/clients", headers=hdr, json={
             "name": group, "description": f"Traccoon-User {user.username}", "allow_list": chosen})
         if rc.status_code >= 400:
-            raise McpProvisionError(f"Client anlegen fehlgeschlagen: {rc.status_code} {rc.text[:200]}")
+            raise McpProvisionError(f"Creating the client failed: {rc.status_code} {rc.text[:200]}")
         token = (rc.json() or {}).get("access_token")
         if not token:
             raise McpProvisionError("No access token received from MCPJungle.")

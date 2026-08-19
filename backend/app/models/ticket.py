@@ -220,7 +220,7 @@ class Issue(TimestampMixin, Base):
 
 
 class Blocker(Base):
-    """Strukturierte ask_human-Rückfrage für Resume."""
+    """The structured ask_human question, for the resume."""
     __tablename__ = "blockers"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -234,7 +234,7 @@ class Blocker(Base):
 
 
 class TicketFileChange(Base):
-    """Vom Agenten geänderte Dateien (aus dem Git-Diff)."""
+    """Files the agent changed (from the git diff)."""
     __tablename__ = "ticket_file_changes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

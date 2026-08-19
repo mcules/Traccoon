@@ -23,7 +23,7 @@ def _tage(n: float) -> dt.datetime:
 
 
 async def _akku_verlauf(db, owner, werte):
-    """werte = [(tage_zurück, wert)] — der jüngste zuletzt."""
+    """werte = [(days back, value)], the youngest one last."""
     for zurueck, wert in werte:
         await metrics.erfassen(db, owner.id, "akku.shelter", wert, einheit="%", ts=_tage(zurueck))
     await db.commit()
@@ -151,7 +151,7 @@ async def test_unsinnige_werte_kommen_nicht_in_die_reihe(db):
 
 
 async def test_werte_aus_wenigen_minuten_ergeben_keinen_tagestrend(db):
-    """Vier Spannungswerte aus drei Minuten ergaben „+14 V pro Tag" — Rauschen, hochgerechnet."""
+    """Four voltage values out of three minutes gave +14 V per day: noise, extrapolated."""
     anna = await make_user(db, "anna")
     for minuten, wert in [(6, 3.50), (4, 3.50), (2, 3.50), (0, 3.52)]:
         await metrics.erfassen(db, anna.id, "spannung", wert, einheit="V",

@@ -60,7 +60,7 @@ def _mindestens(feature: str) -> int:
 
 
 def _logodds(spam: int, ham: int, basis: float) -> float:
-    """Gewicht eines Merkmals in Log-Odds, geglättet und gedeckelt."""
+    """The weight of a feature in log odds, smoothed and capped."""
     p = (spam + _ALPHA * basis) / (spam + ham + _ALPHA)
     p = min(max(p, 1e-4), 1 - 1e-4)
     return max(-_MAX_GEWICHT, min(_MAX_GEWICHT, math.log(p / (1 - p)) - math.log(basis / (1 - basis))))

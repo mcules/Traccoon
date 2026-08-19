@@ -67,7 +67,7 @@ def keys_of(kind: str) -> set[str]:
 
 
 class RunZeile:
-    """Minimale `runs`-Attrappe für die Lauf-Grenzen."""
+    """A minimal `runs` stub for the run boundaries."""
 
     def __init__(self, **kw):
         self.__dict__.update({

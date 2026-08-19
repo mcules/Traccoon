@@ -58,7 +58,7 @@ async def _ticket(db, proj):
 
 
 async def test_ausgelieferte_ablaeufe_kennen_keine_altnamen():
-    """Der Standard-Satz darf den Übergang nicht verewigen."""
+    """The default set must not make the transition permanent."""
     for name, graph in (
         ("ticket_lifecycle", build_ticket_lifecycle()),
         ("acceptance", build_acceptance()),

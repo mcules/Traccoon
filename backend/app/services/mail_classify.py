@@ -136,12 +136,12 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
             # noticing. For triage the thinking is wasted anyway.
             extra_body={"chat_template_kwargs": {"enable_thinking": False}})
     except ProviderError as exc:
-        log.warning("Mail-Klassifizierung fehlgeschlagen: %s → Fallback", exc)
+        log.warning("Mail classification failed: %s, falling back", exc)
         return fallback
 
     data = _parse_json(resp.text)
     if not data:
-        log.warning("Mail-Klassifizierung: unparsbare Antwort → Fallback")
+        log.warning("Mail classification: unparsable answer, falling back")
         return fallback
 
     prio = str(data.get("priority", "normal")).lower().strip()

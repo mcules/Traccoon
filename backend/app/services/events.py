@@ -45,7 +45,7 @@ BUILTIN_EVENTS: list[tuple[str, str]] = [
 
 
 def trigger_of(graph: dict) -> dict | None:
-    """Trigger-Angaben am Start-Knoten eines Graphen (oder None)."""
+    """The trigger settings on the start node of a graph (or None)."""
     for n in (graph or {}).get("nodes") or []:
         if node_type(n) == "start":
             cfg = (n.get("data") or {}).get("config") or n.get("config") or {}
@@ -144,7 +144,7 @@ async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,
                 if not safe_eval(regel, ctx):
                     continue
             except JsonLogicError as e:
-                log.warning("Ablauf %s: Trigger-Filter fehlerhaft (%s)", d.key, e)
+                log.warning("Flow %s: the trigger filter is faulty (%s)", d.key, e)
                 continue
         # Doppelte Zustellung desselben Ereignisses erzeugt keinen zweiten Lauf.
         if source_ref:
@@ -164,7 +164,7 @@ async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,
                 context=ctx, actor_id=actor_id, source=f"event:{event}", source_ref=source_ref,
             )
             gestartet.append(inst.id)
-            log.info("Ereignis %s → Ablauf %s gestartet (Instanz %s)", event, d.key, inst.id)
+            log.info("Event %s started flow %s (instance %s)", event, d.key, inst.id)
         except Exception:  # noqa: BLE001, a broken flow must not disturb the trigger
             log.exception("Event %s: flow %s could not start", event, d.key)
     return gestartet

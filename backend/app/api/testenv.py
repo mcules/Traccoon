@@ -8,11 +8,12 @@ from __future__ import annotations
 import asyncio
 import os
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.enums import ProjectRole
 from ..models.testenv import BranchTestenv
@@ -48,7 +49,8 @@ class LogsIn(BaseModel):
 
 def _require_enabled(access: Access) -> None:
     if not access.project.testenv_enabled:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Test environments are off for this project")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.test_environments_off_project",
+                     "Test environments are off for this project")
 
 
 @router.get("/projects/{project_id}/branches")
@@ -104,7 +106,8 @@ async def stop_branch_testenv(
 ):
     row = await db.get(BranchTestenv, env_id)
     if row is None or row.project_id != access.project.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Test environment not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.test_environment_not_found",
+                     "Test environment not found")
     await svc.stop_branch_testenv(db, access.project, row)
 
 
@@ -159,5 +162,6 @@ async def testenv_logs(
         select(BranchTestenv).where(BranchTestenv.project_id == access.project.id)
     )).scalars().all()}
     if name not in known:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Test environment not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.test_environment_not_found",
+                     "Test environment not found")
     return await svc.runner_logs(name, data.service, data.tail)

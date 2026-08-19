@@ -35,7 +35,7 @@ LIVE = (WorkflowInstanceStatus.running, WorkflowInstanceStatus.waiting)
 
 
 async def live_instance(db: AsyncSession, issue: Issue) -> WorkflowInstance | None:
-    """Laufende Lebenszyklus-Instanz des Tickets (oder None)."""
+    """The running lifecycle instance of the ticket (or None)."""
     if issue.workflow_instance_id:
         inst = await db.get(WorkflowInstance, issue.workflow_instance_id)
         if inst is not None and inst.status in LIVE:
@@ -84,7 +84,7 @@ async def start_lifecycle(db: AsyncSession, issue: Issue, actor_id: int | None =
         context=ctx, actor_id=actor_id or issue.assigned_by_user_id or issue.reporter_id,
         source="ticket", advance_now=advance_now,
     )
-    log.info("Ticket %s: Lebenszyklus gestartet (Instanz %s, Einstieg %s)",
+    log.info("Ticket %s: lifecycle started (instance %s, entry %s)",
              issue.key, inst.id, entry)
     return inst
 

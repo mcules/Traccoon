@@ -10,12 +10,13 @@ import zipfile
 from urllib.parse import urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.plugins import Plugin, PluginData, PluginFile
 from ..models.user import User
@@ -44,24 +45,24 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     try:
         zf = zipfile.ZipFile(io.BytesIO(raw))
     except zipfile.BadZipFile:
-        raise HTTPException(400, "Not a valid zip file")
+        raise Fehler(400, "err.not_valid_zip_file", "Not a valid zip file")
     # Manifest finden (flachstes gewinnt)
     manifests = [n for n in zf.namelist() if n.endswith("manifest.json")]
     if not manifests:
-        raise HTTPException(400, "manifest.json is missing")
+        raise Fehler(400, "err.manifest_json_missing", "manifest.json is missing")
     manifests.sort(key=lambda n: n.count("/"))
     base = manifests[0].rsplit("manifest.json", 1)[0]
     try:
         manifest = json.loads(zf.read(manifests[0]))
     except json.JSONDecodeError:
-        raise HTTPException(400, "manifest.json is invalid")
+        raise Fehler(400, "err.manifest_json_invalid", "manifest.json is invalid")
     slug = manifest.get("slug") or manifest.get("id")
     if not slug or not all(c.isalnum() or c in "-_" for c in slug):
-        raise HTTPException(400, "invalid slug")
+        raise Fehler(400, "err.invalid_slug", "invalid slug")
 
     total = sum(i.file_size for i in zf.infolist())
     if total > MAX_UNZIP:
-        raise HTTPException(400, "Plugin too large (>25MB)")
+        raise Fehler(400, "err.plugin_too_large_mb", "Plugin too large (>25MB)")
 
     plugin = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if plugin is None:
@@ -110,11 +111,11 @@ def _ctype(path: str) -> str:
 async def serve_file(slug: str, path: str, db: AsyncSession = Depends(get_session)):
     plugin = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if plugin is None:
-        raise HTTPException(404, "Plugin not found")
+        raise Fehler(404, "err.plugin_not_found", "Plugin not found")
     f = (await db.execute(select(PluginFile).where(PluginFile.plugin_id == plugin.id,
                                                    PluginFile.path == (path or plugin.entry)))).scalar_one_or_none()
     if f is None:
-        raise HTTPException(404, "File not found")
+        raise Fehler(404, "err.file_not_found", "File not found")
     return Response(content=f.data, media_type=f.content_type, headers={"Cache-Control": "no-cache"})
 
 
@@ -131,14 +132,15 @@ async def delete_plugin(slug: str, _: User = Depends(require_admin), db: AsyncSe
 async def _plugin(db: AsyncSession, slug: str) -> Plugin:
     p = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if p is None:
-        raise HTTPException(404, "Plugin not found")
+        raise Fehler(404, "err.plugin_not_found", "Plugin not found")
     return p
 
 
 def _validate_row(plugin: Plugin, table: str, row: dict) -> dict:
     schema = (plugin.table_schema or {}).get(table)
     if schema is None:
-        raise HTTPException(400, f"The table '{table}' is not in the plugin schema")
+        raise Fehler(400, "err.table_not_plugin_schema",
+                     "The table '{name}' is not in the plugin schema", name=table)
     allowed = set(schema.keys())
     return {k: v for k, v in row.items() if k in allowed}
 
@@ -206,10 +208,11 @@ async def fetch_proxy(slug: str, data: FetchIn, _: User = Depends(get_current_us
                       db: AsyncSession = Depends(get_session)):
     plugin = await _plugin(db, slug)
     if not _ssrf_ok(data.url, plugin.allowed_hosts or []):
-        raise HTTPException(400, "URL not allowed (SSRF protection / allowed_hosts)")
+        raise Fehler(400, "err.url_not_allowed",
+                     "URL not allowed (SSRF protection / allowed_hosts)")
     try:
         async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
             r = await client.request(data.method, data.url, headers=data.headers, content=data.body)
         return {"status": r.status_code, "body": r.text[:5 * 1024 * 1024]}
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(502, f"Fetch-Fehler: {exc}")
+        raise Fehler(502, "err.fetch_error", "Fetch error: {grund}", grund=exc)
