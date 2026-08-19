@@ -1,7 +1,7 @@
-"""Ziele: benannte externe Gegenstellen mit Basis-URL + Authentifizierung
+"""Destinations: named external counterparts with a base URL plus authentication
 
-Ein Ziel bündelt Basis-URL und Anmeldung (Basic, Bearer, API-Key, HMAC, OAuth2 Client
-Credentials). Aufrufe aus Prozessen, Jobs und dem Agenten-Werkzeug nennen nur den Namen.
+A destination bundles the base URL and the login (basic, bearer, API key, HMAC, OAuth2 client
+credentials). Calls from processes, jobs and the agent tool name only the name.
 
 Revision ID: b3d5f81a20c7
 Revises: a1c7e94f30b2
@@ -55,7 +55,7 @@ def upgrade() -> None:
     op.create_index('ix_destinations_name', 'destinations', ['name'])
     op.create_index('ix_destinations_user_id', 'destinations', ['user_id'])
     op.create_index('ix_destinations_project_id', 'destinations', ['project_id'])
-    # Ein Name je Geltungsbereich (NULL-Spalten gelten als verschieden → partielle Indizes).
+    # One name per scope (NULL columns count as different, hence partial indexes).
     op.create_index('uq_destination_global', 'destinations', ['name'], unique=True,
                     postgresql_where=sa.text('user_id IS NULL AND project_id IS NULL'))
     op.create_index('uq_destination_user', 'destinations', ['user_id', 'name'], unique=True,
@@ -63,7 +63,7 @@ def upgrade() -> None:
     op.create_index('uq_destination_project', 'destinations', ['project_id', 'name'], unique=True,
                     postgresql_where=sa.text('project_id IS NOT NULL'))
 
-    # Job-Art „http": Ziel + Aufrufdaten nach Zeitplan.
+    # Job kind "http": destination plus call data on a schedule.
     op.add_column('jobs', sa.Column('destination_id', sa.Integer(),
                                     sa.ForeignKey('destinations.id', ondelete='SET NULL'),
                                     nullable=True))

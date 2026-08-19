@@ -1,8 +1,8 @@
-"""Tickets werden Artefakte: gemeinsame Identität + Zustand in `artifacts`
+"""Tickets become artifacts: a common identity plus state in `artifacts`
 
-Wie zuvor bei der Hardware: `issues` bleibt die Detailtabelle (Board, Sprint, Plan, Agent,
-Merge, Testumgebung) und zeigt per `artifact_id` auf die gemeinsame Zeile. `agent_status`
-wird weiter mitgeschrieben, solange Oberfläche, Filter und Dispatcher darauf laufen.
+As with the hardware before: `issues` stays the detail table (board, sprint, plan, agent,
+merge, test environment) and points at the common row over `artifact_id`. `agent_status` is
+written along as long as the interface, the filters and the dispatcher run on it.
 
 Revision ID: e6b2f04d1a37
 Revises: d5a1c93e7b28
@@ -25,8 +25,8 @@ def upgrade() -> None:
     op.create_index('uq_issue_artifact', 'issues', ['artifact_id'], unique=True,
                     postgresql_where=sa.text('artifact_id IS NOT NULL'))
 
-    # Je Ticket eine Artefakt-Zeile. Die Zuordnung läuft über eine Hilfsspalte, damit sie
-    # auch bei gleichen Titeln eindeutig bleibt.
+    # One artifact row per ticket. The assignment runs over a helper column, so that it stays
+    # unambiguous with identical titles as well.
     op.execute("ALTER TABLE artifacts ADD COLUMN IF NOT EXISTS _issue_id INTEGER")
     op.execute("""
         INSERT INTO artifacts (type_id, project_id, title, status_key, data,
@@ -43,7 +43,7 @@ def upgrade() -> None:
     """)
     op.execute("ALTER TABLE artifacts DROP COLUMN IF EXISTS _issue_id")
 
-    # Prozess-Instanzen eines Tickets auf das Artefakt umhängen.
+    # Rehang the process instances of a ticket onto the artifact.
     op.execute("""
         UPDATE workflow_instances w SET artifact_id = i.artifact_id
         FROM issues i WHERE w.issue_id = i.id AND w.artifact_id IS NULL

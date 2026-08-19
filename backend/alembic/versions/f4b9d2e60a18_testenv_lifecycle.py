@@ -44,7 +44,7 @@ def upgrade() -> None:
         sa.Column('started_at', sa.DateTime(timezone=True), nullable=True),
     )
 
-    # „Testen"-Spalte für Bestandsprojekte anlegen und vor „Fertig" einsortieren.
+    # Create the "testing" column for existing projects and sort it before "done".
     op.execute("""
         INSERT INTO workflow_statuses (project_id, name, category, "order")
         SELECT p.id, 'Testen', 'in_progress',
@@ -54,8 +54,8 @@ def upgrade() -> None:
         WHERE NOT EXISTS (SELECT 1 FROM workflow_statuses s
                           WHERE s.project_id = p.id AND s.name = 'Testen')
     """)
-    # „Fertig" hinter „Testen" schieben — absolut statt inkrementell, damit ein
-    # wiederholter Lauf die Reihenfolge nicht weiter aufbläht.
+    # Push "done" behind "testing", absolutely instead of incrementally, so that a repeated
+    # run does not inflate the order further.
     op.execute("""
         UPDATE workflow_statuses d SET "order" = t."order" + 1
         FROM workflow_statuses t
@@ -71,7 +71,7 @@ def upgrade() -> None:
           AND NOT EXISTS (SELECT 1 FROM board_columns c
                           WHERE c.board_id = b.id AND c.status_id = s.id)
     """)
-    # Spaltenreihenfolge am Status ausrichten (sonst kollidiert „Testen" mit „Fertig").
+    # Align the column order with the status (otherwise "testing" collides with "done").
     op.execute("""
         UPDATE board_columns c SET "order" = s."order"
         FROM workflow_statuses s

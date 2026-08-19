@@ -1,9 +1,9 @@
-"""Hardware wird ein Artefakt: gemeinsame Identität + Zustand in `artifacts`
+"""Hardware becomes an artifact: a common identity plus state in `artifacts`
 
-Das Exemplar behält seine Detailtabelle (Modell, Ort, Kosten, Garantie); Identität,
-Projekt und Zustand liegen künftig in `artifacts`, worauf auch Prozesse zeigen. Die alte
-Spalte `purchase_status` wird vorerst mitgeschrieben, damit Oberfläche und Filter weiter
-laufen — sie entfällt in einer späteren Etappe.
+The unit keeps its detail table (model, place, cost, warranty); identity, project and state
+lie in `artifacts` from now on, which processes point at as well. The old column
+`purchase_status` is written along for the time being, so that the interface and the filters
+keep running; it falls away in a later stage.
 
 Revision ID: d5a1c93e7b28
 Revises: c4e7b2a91f60
@@ -30,7 +30,7 @@ def upgrade() -> None:
         nullable=True))
     op.create_index('ix_workflow_instances_artifact', 'workflow_instances', ['artifact_id'])
 
-    # Artefakt-Zeile je Exemplar anlegen und verknüpfen. Titel = Modell · Seriennummer.
+    # Create an artifact row per unit and link it. The title is model · serial number.
     op.execute("""
         INSERT INTO artifacts (type_id, project_id, title, status_key, data, created_at, updated_at)
         SELECT t.id, h.project_id,
@@ -51,7 +51,7 @@ def upgrade() -> None:
           AND a.status_key = h.purchase_status::text
           AND a.project_id IS NOT DISTINCT FROM h.project_id
     """)
-    # Laufende Beschaffungs-Prozesse auf das Artefakt umhängen.
+    # Rehang running procurement processes onto the artifact.
     op.execute("""
         UPDATE workflow_instances w SET artifact_id = h.artifact_id
         FROM hardware_assets h
