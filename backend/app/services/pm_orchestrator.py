@@ -101,7 +101,7 @@ def _parse_ops(text: str) -> tuple[str, list[dict], bool]:
         try:
             ops.extend(json.loads(m.group(1)))
         except json.JSONDecodeError:
-            log.warning("PM: %s-Block ist kein gültiges JSON", tag)
+            log.warning("PM: the %s block is not valid JSON", tag)
     clean = re.sub(r"<(tickets|tasks)>.*?</\1>", "", text, flags=re.DOTALL)
     clean = clean.replace("<done/>", "").strip()
     return clean, ops, done
@@ -127,7 +127,7 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
     from ..models.user import User
     user = await db.get(User, user_id)
     if user is None or not (await build_access(project, user, db)).ai_assign:
-        log.warning("PM-Chat ohne KI-Recht abgewiesen (user=%s, projekt=%s)", user_id, project_id)
+        log.warning("PM chat rejected without the AI right (user=%s, project=%s)", user_id, project_id)
         await publish_event(project_id, {"type": "pm_chat", "role": "system",
                                          "content": "KI-Recht (ai_assign) erforderlich.",
                                          "created_at": _now().isoformat()})

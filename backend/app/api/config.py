@@ -99,7 +99,7 @@ async def delete_type(
 ):
     t = await db.get(IssueType, type_id)
     if t is None or t.project_id != access.project.id:
-        raise HTTPException(404, "Typ nicht gefunden")
+        raise HTTPException(404, "Type not found")
     await db.delete(t)
     await db.commit()
 
@@ -140,7 +140,7 @@ async def update_status(
     """Status umbenennen / Kategorie ändern."""
     s = await db.get(WorkflowStatus, status_id)
     if s is None or s.project_id != access.project.id:
-        raise HTTPException(404, "Status nicht gefunden")
+        raise HTTPException(404, "Status not found")
     s.name = data.name
     s.category = data.category
     await db.commit()
@@ -163,7 +163,7 @@ async def reorder_statuses(
         WorkflowStatus.project_id == access.project.id))).scalars().all()
     by_id = {s.id: s for s in rows}
     if set(data.ordered_ids) != set(by_id):
-        raise HTTPException(400, "Liste muss genau alle Status des Projekts enthalten")
+        raise HTTPException(400, "The list has to contain exactly all statuses of the project")
     boards = (await db.execute(select(Board).where(Board.project_id == access.project.id))).scalars().all()
     cols = (await db.execute(select(BoardColumn).where(
         BoardColumn.board_id.in_([b.id for b in boards])))).scalars().all() if boards else []
@@ -184,13 +184,13 @@ async def delete_status(
 ):
     s = await db.get(WorkflowStatus, status_id)
     if s is None or s.project_id != access.project.id:
-        raise HTTPException(404, "Status nicht gefunden")
+        raise HTTPException(404, "Status not found")
     # Do not delete the last status; otherwise the board would have no column and new
     # tickets would have no target status.
     count = (await db.execute(select(func.count(WorkflowStatus.id)).where(
         WorkflowStatus.project_id == access.project.id))).scalar() or 0
     if count <= 1:
-        raise HTTPException(409, "Der letzte Status kann nicht gelöscht werden")
+        raise HTTPException(409, "The last status cannot be deleted")
     # Tickets in this status block the deletion (an FK without cascade), with a clear message.
     n_issues = (await db.execute(select(func.count(Issue.id)).where(
         Issue.status_id == status_id))).scalar() or 0
@@ -210,7 +210,7 @@ async def add_sprint(
 ):
     board = (await db.execute(select(Board).where(Board.project_id == access.project.id))).scalars().first()
     if board is None:
-        raise HTTPException(400, "Kein Board")
+        raise HTTPException(400, "No board")
     sp = Sprint(board_id=board.id, name=data.name, goal=data.goal, state=data.state,
                 start_date=data.start_date, end_date=data.end_date)
     db.add(sp)
@@ -228,12 +228,12 @@ async def start_sprint(
     """Start a sprint. Only one is active per board; otherwise "the current sprint" is ambiguous."""
     sp = await _sprint_of_project(db, sprint_id, access.project.id)
     if sp.state == SprintState.closed:
-        raise HTTPException(409, "Abgeschlossener Sprint kann nicht gestartet werden")
+        raise HTTPException(409, "A finished sprint cannot be started")
     laufend = (await db.execute(select(Sprint).where(
         Sprint.board_id == sp.board_id, Sprint.state == SprintState.active,
         Sprint.id != sp.id))).scalars().first()
     if laufend is not None:
-        raise HTTPException(409, f"Sprint „{laufend.name}“ läuft noch — erst abschließen")
+        raise HTTPException(409, f"The sprint \"{laufend.name}\" is still running, close it first")
     sp.state = SprintState.active
     sp.start_date = sp.start_date or dt.datetime.now(tz=dt.timezone.utc)
     await db.commit()
@@ -263,10 +263,10 @@ async def complete_sprint(
 async def _sprint_of_project(db: AsyncSession, sprint_id: int, project_id: int) -> Sprint:
     sp = await db.get(Sprint, sprint_id)
     if sp is None:
-        raise HTTPException(404, "Sprint nicht gefunden")
+        raise HTTPException(404, "Sprint not found")
     board = await db.get(Board, sp.board_id)
     if board is None or board.project_id != project_id:
-        raise HTTPException(404, "Sprint nicht gefunden")  # no hint at foreign projects
+        raise HTTPException(404, "Sprint not found")  # no hint at foreign projects
     return sp
 
 

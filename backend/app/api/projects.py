@@ -114,7 +114,7 @@ async def _gen_project_key(db: AsyncSession, name: str) -> str:
         cand = (base[: 3 - len(suf)] + suf)[:3]
         if await free(cand):
             return cand
-    raise HTTPException(status.HTTP_409_CONFLICT, "Kein freier Projekt-Key")
+    raise HTTPException(status.HTTP_409_CONFLICT, "No free project key")
 
 
 async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db: AsyncSession) -> None:
@@ -123,11 +123,11 @@ async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db
     if parent_id is None:
         return
     if await db.get(Project, parent_id) is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Übergeordnetes Projekt existiert nicht")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The parent project does not exist")
     if project_id is None:
         return
     if parent_id == project_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ein Projekt kann sich nicht selbst übergeordnet sein")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "A project cannot be its own parent")
     # Walk up from the new parent: if the project itself turns up, it would be a cycle.
     seen: set[int] = set()
     cur = parent_id
@@ -136,7 +136,7 @@ async def _assert_valid_parent(project_id: int | None, parent_id: int | None, db
         if cur == project_id:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                "Übergeordnetes Projekt liegt unterhalb dieses Projekts (Zyklus)",
+                "The parent project lies below this project (cycle)",
             )
         node = await db.get(Project, cur)
         cur = node.parent_id if node is not None else None
@@ -280,7 +280,7 @@ async def add_member(
         )
     ).scalar_one_or_none()
     if dup is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Bereits Mitglied")
+        raise HTTPException(status.HTTP_409_CONFLICT, "Already a member")
     ai = data.ai_assign if data.ai_assign is not None else default_ai_assign(data.role)
     m = ProjectMember(project_id=access.project.id, user_id=data.user_id, role=data.role, ai_assign=ai)
     db.add(m)
@@ -305,7 +305,7 @@ async def update_member(
         )
     ).scalar_one_or_none()
     if m is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kein Mitglied")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not a member")
     if data.role is not None:
         m.role = data.role
         if data.ai_assign is None:
@@ -333,9 +333,9 @@ async def remove_member(
         )
     ).scalar_one_or_none()
     if m is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Kein Mitglied")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not a member")
     if m.role == ProjectRole.owner and access.role != ProjectRole.owner:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Owner darf nur von Owner entfernt werden")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "An owner may only be removed by an owner")
     await db.delete(m)
     await db.commit()
 
@@ -394,12 +394,12 @@ async def add_resource_grant(
     else:
         exists = await db.get(HardwareAsset, data.resource_id)
     if exists is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Objekt existiert nicht")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The object does not exist")
     # The object has to belong to the granting project; otherwise a maintainer could hand out
     # grants for foreign locations or assets from other projects (privilege escalation).
     if exists.project_id != access.project.id:
         raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Objekt gehört nicht zu diesem Projekt"
+            status.HTTP_400_BAD_REQUEST, "The object does not belong to this project"
         )
     dup = (
         await db.execute(
@@ -411,7 +411,7 @@ async def add_resource_grant(
         )
     ).scalar_one_or_none()
     if dup is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Freigabe existiert bereits")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The grant already exists")
     # `recursive` only makes sense with locations (inheritance to child locations). With
     # units it is normalised so that equivalent grants are not stored differently.
     recursive = data.recursive if data.resource_type == ResourceType.location else False
@@ -433,6 +433,6 @@ async def remove_resource_grant(
 ):
     g = await db.get(ResourceGrant, grant_id)
     if g is None or g.project_id != access.project.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Freigabe nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Grant not found")
     await db.delete(g)
     await db.commit()

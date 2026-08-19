@@ -243,7 +243,7 @@ async def entwerfen(db: AsyncSession, *, owner_id: int, beschreibung: str,
     """
     token = await resolve_provider_token(db, owner_id, "claude_code", token_name)
     if not token:
-        raise RuntimeError("Kein Claude-Zugang hinterlegt (Einstellungen → Provider)")
+        raise RuntimeError("No Claude access stored (Settings -> providers)")
 
     from .workflow_expr import katalog as filter_katalog
 
@@ -287,7 +287,7 @@ async def entwerfen(db: AsyncSession, *, owner_id: int, beschreibung: str,
         if not fehler or runde == 1:
             break
         # Fix-up round with the very sentences the editor would show.
-        log.info("Entwurf hat %d Fehler → eine Nachbesserung", len(fehler))
+        log.info("The draft has %d errors, so one correction", len(fehler))
         verlauf += [
             {"role": "assistant", "content": resp.text or ""},
             {"role": "user", "content":

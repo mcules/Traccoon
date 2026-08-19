@@ -167,7 +167,7 @@ async def announce(db: AsyncSession, dep: Deployment) -> list[RunStep]:
     dep.announced_status = dep.status or ""
     await db.commit()
     if steps:
-        log.info("Deployment %s: %s → %s im Raum von Lauf %s",
+        log.info("Deployment %s: %s -> %s in the room of run %s",
                  dep.id, vorher or "—", dep.status, ctx.run_id if ctx else "—")
     # Send only after the commit: before it the row has no `id` and therefore no `seq`.
     for step in steps:

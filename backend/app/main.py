@@ -396,7 +396,7 @@ async def lifespan(app: FastAPI):
                 try:
                     await conn.execute(text(_ddl))
                 except Exception as exc:  # noqa: BLE001 - a lock conflict must not topple the start
-                    log.warning("Schema-Nachzug übersprungen (%s): %s", _ddl[:60], exc)
+                    log.warning("Schema update skipped (%s): %s", _ddl[:60], exc)
     async with SessionLocal() as db:
         await seed(db)
         # Add the shipped flows (ticket lifecycle, acceptance, procurement, inbox) as the

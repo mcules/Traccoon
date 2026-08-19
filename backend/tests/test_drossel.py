@@ -37,7 +37,7 @@ async def test_zweite_meldung_im_fenster_bleibt_aus(db):
     await db.commit()
     assert erste["kanal"] != "gedrosselt"
     assert zweite["unterdrueckt"] is True and zweite["wieder_ab"]
-    assert len(await _zeilen(db)) == 1, "auch keine Glocken-Zeile — sonst nur Lärm woanders"
+    assert len(await _zeilen(db)) == 1, "no bell row either, otherwise the noise only moves elsewhere"
 
 
 async def test_nach_dem_fenster_geht_wieder_eine_raus(db):

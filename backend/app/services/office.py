@@ -683,7 +683,7 @@ async def publish_step(ctx: RunCtx, step) -> None:
         for event in step_events(step, ctx):
             await client.publish(CHANNEL, json.dumps(event, ensure_ascii=False))
     except Exception:  # noqa: BLE001 — bewusst alles
-        log.debug("Büro: Ereignis von Lauf %s nicht gesendet", ctx.run_id, exc_info=True)
+        log.debug("Office: event of run %s not sent", ctx.run_id, exc_info=True)
 
 
 async def open_room(db: AsyncSession, ctx: RunCtx, *, agent, mode: str, issue: dict) -> None:

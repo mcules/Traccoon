@@ -110,7 +110,7 @@ async def _pruefe_worker_puls() -> None:
     wartend = await r.llen(QUEUE)
     steht = puls is None and wartend > 0
     if steht and not _puls_gemeldet:
-        log.error("Worker ohne Puls, %s Auftrag/Aufträge warten", wartend)
+        log.error("Worker without a pulse, %s assignment(s) waiting", wartend)
         async with SessionLocal() as db:
             # To the operator: without a worker neither the assistant nor an agent runs.
             admin = (await db.execute(select(User).where(User.telegram_chat_id.isnot(None))

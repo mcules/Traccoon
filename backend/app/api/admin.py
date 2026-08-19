@@ -58,7 +58,7 @@ async def set_maintenance(data: MaintenanceIn, _: User = Depends(require_admin),
     if data.project_id is not None:
         proj = await db.get(Project, data.project_id)
         if proj is None:
-            raise HTTPException(404, "Projekt nicht gefunden")
+            raise HTTPException(404, "Project not found")
     await set_setting(db, MAINT_KEY, str(data.project_id) if data.project_id else "")
     return await _status(db)
 
@@ -69,9 +69,9 @@ async def request_update(user: User = Depends(require_admin), db: AsyncSession =
     self-deploys the maintenance project over the deployer sidecar."""
     mp = await get_setting(db, MAINT_KEY, "")
     if not mp.isdigit():
-        raise HTTPException(409, "Kein Wartungsprojekt gesetzt (Admin → Wartung).")
+        raise HTTPException(409, "No maintenance project set (Admin -> maintenance).")
     if await get_flag("update_in_progress"):
-        raise HTTPException(409, "Ein Update läuft bereits.")
+        raise HTTPException(409, "An update is already running.")
     await set_flag("update_pending", True)
     return await _status(db)
 
@@ -108,7 +108,7 @@ async def put_testenv_config(
     values = data.model_dump(exclude_unset=True, exclude_none=True)
     lo, hi = values.get("testenv_port_lo"), values.get("testenv_port_hi")
     if lo is not None and hi is not None and lo > hi:
-        raise HTTPException(400, "Portbereich: untere Grenze über der oberen")
+        raise HTTPException(400, "Port range: the lower bound is above the upper one")
     for key, value in values.items():
         await set_setting(db, key, str(value))
     return await get_config(db)

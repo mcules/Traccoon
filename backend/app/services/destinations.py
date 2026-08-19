@@ -108,7 +108,7 @@ async def _oauth_token(db: AsyncSession, dest: Destination) -> str:
         if rest > TOKEN_SKEW_SECONDS:
             return decrypt_secret(dest.oauth_token_enc)
     if not (dest.oauth_token_url and dest.oauth_client_id):
-        raise ValueError(f"Ziel '{dest.name}': OAuth2 ohne Token-URL/Client-ID")
+        raise ValueError(f"Destination '{dest.name}': OAuth2 without a token URL or client id")
 
     data = {"grant_type": "client_credentials"}
     if dest.oauth_scope:
@@ -127,7 +127,7 @@ async def _oauth_token(db: AsyncSession, dest: Destination) -> str:
     payload = resp.json()
     token = payload.get("access_token") or ""
     if not token:
-        raise ValueError(f"Ziel '{dest.name}': Antwort ohne access_token")
+        raise ValueError(f"Destination '{dest.name}': answer without an access_token")
     ttl = int(payload.get("expires_in") or 3600)
     dest.oauth_token_enc = encrypt_secret(token)
     dest.oauth_expires_at = _now() + dt.timedelta(seconds=ttl)
@@ -189,7 +189,7 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
     """
     verb = (method or "POST").upper()
     if verb not in METHODS:
-        raise ValueError(f"Methode '{method}' wird nicht unterstützt")
+        raise ValueError(f"The method '{method}' is not supported")
 
     kopf = {**(dest.default_headers or {}), **(headers or {})}
     q = dict(query or {})
@@ -245,7 +245,7 @@ async def call_by_name(db: AsyncSession, name: str, *, project_id: int | None = 
     """Bequemer Einstieg: Ziel auflösen und aufrufen."""
     dest = await resolve(db, name, project_id=project_id, owner_id=owner_id)
     if dest is None:
-        raise ValueError(f"Unbekanntes oder deaktiviertes Ziel '{name}'")
+        raise ValueError(f"Unknown or disabled destination '{name}'")
     if agents_only and not dest.allow_agents:
-        raise ValueError(f"Ziel '{name}' ist nicht für KI-Agenten freigegeben")
+        raise ValueError(f"The destination '{name}' is not released for AI agents")
     return await call(db, dest, **kwargs)

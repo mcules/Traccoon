@@ -64,7 +64,7 @@ async def test_kaputte_einstellung_faellt_auf_auto_zurueck(db, monkeypatch):
 
 async def test_fehlschlag_reisst_den_hauptlauf_nicht_mit(db, monkeypatch):
     async def fake_chat(**kw):
-        raise RuntimeError("Modell nicht erreichbar")
+        raise RuntimeError("Model not reachable")
 
     monkeypatch.setattr(aux.router, "chat", fake_chat)
     assert await aux.aux_chat(db, owner_id=None, task="compression", messages=[],

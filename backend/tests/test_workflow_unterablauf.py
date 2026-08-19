@@ -60,7 +60,7 @@ async def test_unterablauf_ruft_einen_benannten_ablauf(client, db):
 
     kinder = (await db.execute(select(WorkflowInstance).where(
         WorkflowInstance.definition_id == kind.id))).scalars().all()
-    assert len(kinder) == 1, "der benannte Ablauf muss als Kind-Instanz gelaufen sein"
+    assert len(kinder) == 1, "the named flow has to have run as a child instance"
 
 
 async def test_ohne_ablauf_meckert_die_pruefung():

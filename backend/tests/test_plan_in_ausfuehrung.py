@@ -59,7 +59,7 @@ async def test_ausfuehrung_bekommt_den_plan(monkeypatch, db):
     texte = " ".join(m.get("content") or "" for m in await _nachrichten(db, monkeypatch, "execute", PLAN))
 
     assert "Freigegebener Umsetzungsplan" in texte
-    assert "__main__.py:554" in texte, "der Plan selbst fehlt im Prompt"
+    assert "__main__.py:554" in texte, "the plan itself is missing from the prompt"
     assert "Arbeite ihn ab" in texte
 
 

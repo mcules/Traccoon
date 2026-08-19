@@ -41,8 +41,8 @@ def test_ausgaenge_sind_am_knoten_vorhanden(slot):
             erlaubt |= set(cfg.get("events") or ["comment", "manual"])
         handle = e.get("sourceHandle") or "out"
         assert handle in erlaubt, (
-            f"{slot}: Kante {e['id']} nutzt den Ausgang '{handle}' an einem "
-            f"{typ}-Knoten — den zeichnet die Oberfläche dort nicht.")
+            f"{slot}: edge {e['id']} uses the output '{handle}' on a "
+            f"{typ} node, and the interface does not draw that one there.")
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
@@ -76,7 +76,7 @@ def test_standard_zweig_ist_ein_zweig(slot):
             continue
         std = cfg.get("default_handle")
         assert std in zweige, (
-            f"{slot}/{n['id']}: Standard-Zweig '{std}' ist keiner der Zweige {sorted(zweige)}")
+            f"{slot}/{n['id']}: the default branch '{std}' is none of the branches {sorted(zweige)}")
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))

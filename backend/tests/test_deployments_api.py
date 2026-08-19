@@ -235,7 +235,7 @@ async def test_ok_ist_dreiwertig(db, client, status, phase, ok):
 
     zeile = (await client.get(f"/projects/{projekt.id}/deployments",
                               headers=auth(nutzer))).json()["items"][0]
-    assert zeile["status"] == status, "der rohe Status geht ungeschönt durch"
+    assert zeile["status"] == status, "the raw status passes through unembellished"
     assert zeile["phase"] == phase
     assert zeile["ok"] is ok
 
@@ -508,10 +508,10 @@ async def test_ohne_stack_verzeichnis_400(db, client):
     r = await client.post(f"/projects/{projekt.id}/deployments", json={},
                           headers=auth(pfleger))
     assert r.status_code == 400
-    assert "Stack-Verzeichnis" in r.json()["detail"]
+    assert "stack directory" in r.json()["detail"]
 
     liste = await client.get(f"/projects/{projekt.id}/deployments", headers=auth(pfleger))
-    assert liste.json()["items"] == [], "eine abgelehnte Anfrage hinterlässt keine Zeile"
+    assert liste.json()["items"] == [], "a rejected request leaves no row"
 
 
 @pytest.mark.asyncio
@@ -532,7 +532,7 @@ async def test_zweiter_deploy_bei_offenem_ist_409(db, client):
 
     zweite = await client.post(pfad, json={}, headers=auth(pfleger))
     assert zweite.status_code == 409
-    assert f"#{erste_id}" in zweite.json()["detail"], "die laufende Zeile wird benannt"
+    assert f"#{erste_id}" in zweite.json()["detail"], "the running row is named"
 
     # Only one row has come into being.
     assert (await client.get(pfad, headers=auth(pfleger))).json()["count"] == 1
@@ -577,7 +577,7 @@ async def test_eingereihte_zeile_ist_pending_und_manual(db, client):
     assert zeile["status"] == "pending"
     assert zeile["phase"] == "queued" and zeile["ok"] is None
     assert zeile["source"] == "manual"
-    assert zeile["kind"] == "stack", "kein Self-Deploy und keine bloße Prüfung"
+    assert zeile["kind"] == "stack", "no self deploy and no mere check"
     assert zeile["stack_dir"] == STACK
     assert zeile["project_key"] == "TRA"
     assert zeile["issue_id"] is None and zeile["issue_key"] == ""

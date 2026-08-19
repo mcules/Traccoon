@@ -102,7 +102,7 @@ class RunZeile:
 def test_schluesselmenge_je_kind(kind, step):
     events = step_events(step, ctx())
     haupt = [e for e in events if e["kind"] == kind]
-    assert len(haupt) == 1, f"{kind}: genau ein Hauptereignis erwartet, {events}"
+    assert len(haupt) == 1, f"{kind}: exactly one main event expected, {events}"
     assert set(haupt[0]) == keys_of(kind)
     assert haupt[0]["v"] == EVENT_VERSION
 

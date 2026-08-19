@@ -104,13 +104,13 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
 
     cfg = await resolve_classify_from_agent(db, owner_id, classify_agent)
     if cfg is None:
-        log.warning("Klassifizier-Agent '%s' nicht gefunden → Fallback (nichts nach außen)", classify_agent)
+        log.warning("Classifying agent '%s' not found, falling back (nothing goes outside)", classify_agent)
         return fallback
     provider, model, token_name = cfg
     token = await resolve_provider_token(db, owner_id, provider, token_name)
     base_url = await resolve_provider_base_url(db, owner_id, provider, token_name)
     if not token or not base_url or not model:
-        log.warning("Mail-Klassifizierung nicht konfiguriert (token/base_url/model fehlt) → Fallback")
+        log.warning("Mail classification not configured (token/base_url/model missing), falling back")
         return fallback
 
     impl = OpenAIProvider(base_url=base_url)

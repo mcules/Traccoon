@@ -39,7 +39,7 @@ def _out(t: AssistantTask) -> dict:
 async def _get_owned(tid: int, user: User, db: AsyncSession) -> AssistantTask:
     t = await db.get(AssistantTask, tid)
     if t is None or not is_owner_or_admin(t.owner_user_id, user):
-        raise HTTPException(404, "Nicht gefunden")
+        raise HTTPException(404, "Not found")
     return t
 
 
@@ -79,7 +79,7 @@ async def approve_inbox(tid: int, data: ApproveIn | None = None,
     d = data or ApproveIn()
     t = await _get_owned(tid, user, db)
     if t.status not in ("new", "error"):
-        raise HTTPException(409, f"Item ist nicht freigebbar (Status {t.status})")
+        raise HTTPException(409, f"The item cannot be approved (status {t.status})")
     await approve_assistant_task(db, t, scope=d.scope, redaction=d.redaction, action_note=d.action_note)
     await db.refresh(t)
     return _out(t)
@@ -117,7 +117,7 @@ class PolicyIn(BaseModel):
 async def _pol_owned(pid: int, user: User, db: AsyncSession) -> AssistantPolicy:
     p = await db.get(AssistantPolicy, pid)
     if p is None or not is_owner_or_admin(p.owner_user_id, user):
-        raise HTTPException(404, "Regel nicht gefunden")
+        raise HTTPException(404, "Rule not found")
     return p
 
 
@@ -198,7 +198,7 @@ async def delete_tool_perm(pid: int, user: User = Depends(get_current_user),
                            db: AsyncSession = Depends(get_session)):
     p = await db.get(AssistantPermission, pid)
     if p is None or not is_owner_or_admin(p.owner_user_id, user):
-        raise HTTPException(404, "Nicht gefunden")
+        raise HTTPException(404, "Not found")
     await db.delete(p)
     await db.commit()
 
@@ -252,9 +252,9 @@ async def chat_decide(tid: int, data: DecideIn, user: User = Depends(get_current
                       db: AsyncSession = Depends(get_session)):
     t = await _get_owned(tid, user, db)
     if t.status != "awaiting":
-        raise HTTPException(409, "Keine offene Freigabe")
+        raise HTTPException(409, "No open approval")
     if data.decision not in ("once", "always", "never"):
-        raise HTTPException(400, "Ungültige Entscheidung")
+        raise HTTPException(400, "Invalid decision")
     from ..worker.assistant_gate import apply_perm_decision
     await apply_perm_decision(db, t, data.decision)
     await db.refresh(t)

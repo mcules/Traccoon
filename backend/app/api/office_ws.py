@@ -351,7 +351,7 @@ async def office_ws(websocket: WebSocket, token: str = "") -> None:
     except WebSocketDisconnect:
         pass
     except Exception:  # noqa: BLE001
-        log.debug("Büro-Socket beendet", exc_info=True)
+        log.debug("Office socket ended", exc_info=True)
     finally:
         manager.remove(conn)
         pump.cancel()
@@ -373,7 +373,7 @@ async def office_bridge() -> None:
     try:
         pubsub = get_redis().pubsub()
         await pubsub.subscribe(CHANNEL)
-        log.info("büro-bridge aktiv (%s)", CHANNEL)
+        log.info("office bridge active (%s)", CHANNEL)
         async for msg in pubsub.listen():
             if msg.get("type") != "message":
                 continue
@@ -397,4 +397,4 @@ async def acl_sweeper() -> None:
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
-            log.warning("Büro: ACL-Auffrischung fehlgeschlagen", exc_info=True)
+            log.warning("Office: refreshing the ACL failed", exc_info=True)

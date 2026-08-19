@@ -112,7 +112,7 @@ async def test_tastatur_kommt_auf_beiden_wegen_mit(tmp_path, pfad_da):
 async def test_sendefehler_setzt_notified_at_trotzdem():
     class KaputterBot(FakeBot):
         async def send_message(self, *a, **kw):
-            raise RuntimeError("Telegram antwortet nicht")
+            raise RuntimeError("Telegram does not answer")
 
     n = FakeNotification()
     await _zustellen(KaputterBot(), n, "Text", None)

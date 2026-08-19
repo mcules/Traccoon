@@ -68,11 +68,11 @@ async def _require_def_write(db: AsyncSession, user: User, project_id: int | Non
         return
     project = await db.get(Project, project_id)
     if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Projekt nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
     access = await build_access(project, user, db)  # 404 on a foreign project
     if not (access.has_role(ProjectRole.maintainer) or access.ai_assign):
         raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "Rolle owner|maintainer oder KI-Recht (ai_assign) erforderlich")
+                            "Role owner|maintainer or the AI right (ai_assign) is required")
 
 
 async def _require_write(db: AsyncSession, user: User, d) -> None:
@@ -87,7 +87,7 @@ async def _require_write(db: AsyncSession, user: User, d) -> None:
     if d.project_id is None and not d.slot:
         if not (_gehoert(d, user) or _ist_admin(user)):
             raise HTTPException(status.HTTP_403_FORBIDDEN,
-                                "Dieser Ablauf gehört jemand anderem")
+                                "This flow belongs to somebody else")
         return
     await _require_def_write(db, user, d.project_id)
 
@@ -98,14 +98,14 @@ async def _require_project_read(db: AsyncSession, user: User, project_id: int | 
         return
     project = await db.get(Project, project_id)
     if project is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Projekt nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Project not found")
     await build_access(project, user, db)  # raises 404 when access is missing
 
 
 async def _get_def(db: AsyncSession, def_id: int) -> WorkflowDefinition:
     d = await db.get(WorkflowDefinition, def_id)
     if d is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Workflow nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Workflow not found")
     return d
 
 
@@ -299,7 +299,7 @@ async def _get_set(db: AsyncSession, set_id: int):
     from ..models.workflow import WorkflowSet
     s = await db.get(WorkflowSet, set_id)
     if s is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Prozess-Satz nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Process set not found")
     return s
 
 
@@ -308,11 +308,11 @@ async def _require_set_write(db: AsyncSession, user: User, s) -> None:
     from ..models.enums import GlobalRole, WorkflowSetScope
     if s.scope == WorkflowSetScope.user:
         if s.user_id != user.id and user.global_role != GlobalRole.admin:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Fremder persönlicher Prozess-Satz")
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Foreign personal process set")
         return
     if user.global_role != GlobalRole.admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN,
-                            "Globale Prozess-Sätze darf nur ein Admin ändern")
+                            "Only an admin may change global process sets")
 
 
 @router.get("/workflow-sets", response_model=list[WorkflowSetOut])
@@ -357,7 +357,7 @@ async def create_my_set(
     """Create an own default set (a copy of the global one); it then applies to all projects
     in which I have the owner role and which have not chosen a set of their own."""
     if user.workflow_set_id:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Es gibt bereits einen persönlichen Satz")
+        raise HTTPException(status.HTTP_409_CONFLICT, "A personal set already exists")
     return await sets.create_user_set(db, user, data.name, data.source_set_id)
 
 
@@ -475,7 +475,7 @@ async def create_workflow(
         WorkflowDefinition.project_id == data.project_id, WorkflowDefinition.key == data.key
     ))).scalar_one_or_none()
     if exists is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Key im Projekt bereits vergeben")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The key is already taken in the project")
     from ..services import workflow_templates
     vorlage = workflow_templates.vorlage(data.template) if data.template else None
     if data.template and vorlage is None:
@@ -589,7 +589,7 @@ async def editable_version(
 async def _get_draft(db: AsyncSession, def_id: int, vid: int) -> WorkflowVersion:
     v = await db.get(WorkflowVersion, vid)
     if v is None or v.definition_id != def_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Version nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Version not found")
     return v
 
 
@@ -602,7 +602,7 @@ async def update_version(
     await _require_write(db, user, d)
     v = await _get_draft(db, def_id, vid)
     if v.status != WorkflowVersionStatus.draft:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Veröffentlichte Version ist unveränderlich")
+        raise HTTPException(status.HTTP_409_CONFLICT, "A published version is immutable")
     v.graph = data.graph
     if data.notes is not None:
         v.notes = data.notes
@@ -658,12 +658,12 @@ async def rollback_version(
     await _require_write(db, user, d)
     alt = await db.get(WorkflowVersion, vid)
     if alt is None or alt.definition_id != def_id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Version nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Version not found")
     if alt.status != WorkflowVersionStatus.published:
         raise HTTPException(status.HTTP_409_CONFLICT,
-                            "Nur auf eine veröffentlichte Fassung lässt sich zurückrollen")
+                            "Rolling back is only possible onto a published version")
     if d.current_version_id == vid:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Diese Fassung ist bereits die aktuelle")
+        raise HTTPException(status.HTTP_409_CONFLICT, "This version is already the current one")
     errors = engine.validate_graph(d.subject_kind, alt.graph or {})
     if errors:
         # Can happen when the validation rules have grown stricter since.
@@ -699,13 +699,13 @@ async def _require_subjekt_recht(db: AsyncSession, user: User, issue_id: int | N
         from ..models.ticket import Issue
         issue = await db.get(Issue, issue_id)
         if issue is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket nicht gefunden")
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
         pids.append(issue.project_id)
     if hardware_asset_id is not None:
         from ..models.hardware import HardwareAsset
         asset = await db.get(HardwareAsset, hardware_asset_id)
         if asset is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Exemplar nicht gefunden")
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Unit not found")
         if asset.project_id is not None:
             pids.append(asset.project_id)
     for pid in pids:
@@ -715,7 +715,7 @@ async def _require_subjekt_recht(db: AsyncSession, user: User, issue_id: int | N
         access = await build_access(project, user, db)   # 404 when access is missing
         if not access.has_role(ProjectRole.member):
             raise HTTPException(status.HTTP_403_FORBIDDEN,
-                                "Auf dieses Artefakt hast du keine Rechte")
+                                "You have no rights on this artifact")
 
 
 @router.post("/workflows/{def_id}/instances", response_model=InstanceOut, status_code=201)
@@ -725,7 +725,7 @@ async def start_instance(
 ):
     d = await _get_def(db, def_id)
     if d.current_version_id is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Workflow hat keine veröffentlichte Version")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The workflow has no published version")
     # Starting instances: project membership (with a project-bound workflow)
     if d.project_id is not None:
         project = await db.get(Project, d.project_id)
@@ -733,7 +733,7 @@ async def start_instance(
         if not access.has_role(ProjectRole.member):
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Projekt-Mitgliedschaft erforderlich")
     elif not d.slot and not (_gehoert(d, user) or _ist_admin(user)):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Dieser Ablauf gehört jemand anderem")
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This flow belongs to somebody else")
     # A flow acts on its subject, so whoever starts it must have rights on that subject.
     await _require_subjekt_recht(db, user, data.issue_id, data.hardware_asset_id)
     try:
@@ -820,7 +820,7 @@ async def probelauf(
             select(WorkflowVersion).where(WorkflowVersion.definition_id == d.id)
             .order_by(WorkflowVersion.version.desc()))).scalars().first()
         if version is None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Der Ablauf hat noch keine Fassung")
+            raise HTTPException(status.HTTP_409_CONFLICT, "The flow has no version yet")
         graph = version.graph or {}
     fehler = engine.validate_graph(d.subject_kind, graph)
     if fehler:
@@ -874,7 +874,7 @@ async def my_tasks(
 ):
     """Open steps (waiting, human_task|approval) of the current user."""
     if assignee != "me":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nur assignee=me unterstützt")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only assignee=me is supported")
     rows = (await db.execute(
         select(WorkflowStepRun, WorkflowInstance, WorkflowDefinition)
         .join(WorkflowInstance, WorkflowInstance.id == WorkflowStepRun.instance_id)
@@ -915,7 +915,7 @@ async def my_tasks(
 async def _get_instance(db: AsyncSession, iid: int) -> WorkflowInstance:
     inst = await db.get(WorkflowInstance, iid)
     if inst is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Instanz nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Instance not found")
     return inst
 
 
@@ -928,7 +928,7 @@ async def list_instances(
         kind, raw = subject.split(":", 1)
         sid = int(raw)
     except ValueError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "subject muss 'issue:<id>' oder 'hardware_asset:<id>' sein")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "subject has to be 'issue:<id>' or 'hardware_asset:<id>'")
     q = select(WorkflowInstance)
     if kind == "issue":
         q = q.where(WorkflowInstance.issue_id == sid)
@@ -974,9 +974,9 @@ async def complete_step(
     await _instance_access(db, user, inst, ProjectRole.member)
     step = await db.get(WorkflowStepRun, sid)
     if step is None or step.instance_id != iid:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Schritt nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Step not found")
     if step.node_type != WorkflowNodeType.human_task or step.status != WorkflowStepStatus.waiting:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Schritt ist keine offene human_task")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The step is not an open human_task")
     step.status = WorkflowStepStatus.done
     step.decision = "out"
     step.form_data = data.form_data
@@ -1038,9 +1038,9 @@ async def _decide(db: AsyncSession, user: User, iid: int, sid: int, decision: st
     inst = await _get_instance(db, iid)
     step = await db.get(WorkflowStepRun, sid)
     if step is None or step.instance_id != iid:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Schritt nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Step not found")
     if step.node_type != WorkflowNodeType.approval or step.status != WorkflowStepStatus.waiting:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Schritt ist keine offene Genehmigung")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The step is not an open approval")
     # Gate: node.config.gate == "ai_assign" → ai_assign; otherwise the configured role
     version = await db.get(WorkflowVersion, inst.version_id)
     graph = (version.graph if version else None) or {}
@@ -1098,7 +1098,7 @@ async def cancel_instance(
     from ..models.enums import WorkflowInstanceStatus, WorkflowTokenState
     if inst.status in (WorkflowInstanceStatus.completed, WorkflowInstanceStatus.failed,
                        WorkflowInstanceStatus.cancelled):
-        raise HTTPException(status.HTTP_409_CONFLICT, "Instanz ist bereits beendet")
+        raise HTTPException(status.HTTP_409_CONFLICT, "The instance has already ended")
     inst.status = WorkflowInstanceStatus.cancelled
     inst.finished_at = dt.datetime.now(tz=dt.timezone.utc)
     tokens = (await db.execute(select(WorkflowToken).where(

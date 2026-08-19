@@ -104,22 +104,22 @@ async def kuratiere_notiz(db, mcp, *, owner_id: int, pfad: str, agent, tokens: d
         return None
     geteilt = _teile(antwort)
     if geteilt is None:
-        log.warning("Curator: Antwort folgt nicht dem Format — %s bleibt unverändert", pfad)
+        log.warning("Curator: the answer does not follow the format, %s stays unchanged", pfad)
         return None
     behalten, archiv = geteilt
 
     # Safety nets against an overeager model. They take hold BEFORE writing, because an
     # overwritten memory could only be rescued from the archive.
     if not _zeilen(behalten):
-        log.warning("Curator: Ergebnis hat keine Einträge — %s bleibt unverändert", pfad)
+        log.warning("Curator: the result has no entries, %s stays unchanged", pfad)
         return None
     fehlend = [z for z in angepinnt if z not in behalten]
     if fehlend:
-        log.warning("Curator: %d angepinnte Zeile(n) fehlten im Ergebnis — %s bleibt unverändert",
+        log.warning("Curator: %d pinned line(s) were missing in the result, %s stays unchanged",
                     len(fehlend), pfad)
         return None
     if len(_zeilen(behalten)) < len(_zeilen(inhalt)) / 3:
-        log.warning("Curator: Ergebnis wirft mehr als zwei Drittel weg — %s bleibt unverändert", pfad)
+        log.warning("Curator: the result throws more than two thirds away, %s stays unchanged", pfad)
         return None
 
     kopf = f"# {pfad.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
@@ -132,7 +132,7 @@ async def kuratiere_notiz(db, mcp, *, owner_id: int, pfad: str, agent, tokens: d
                            {"target": _note_target(arch_pfad),
                             "content": f"\n## Aussortiert am {stempel}\n{archiv}\n"})
         except Exception as exc:  # noqa: BLE001
-            log.warning("Curator: Archiv %s nicht schreibbar (%s) — %s bleibt unverändert",
+            log.warning("Curator: archive %s not writable (%s), %s stays unchanged",
                         arch_pfad, exc, pfad)
             return None
 
@@ -141,7 +141,7 @@ async def kuratiere_notiz(db, mcp, *, owner_id: int, pfad: str, agent, tokens: d
                        {"target": _note_target(pfad), "content": kopf + behalten + "\n",
                         "overwrite": True})
     except Exception as exc:  # noqa: BLE001
-        log.warning("Curator: %s nicht schreibbar (%s)", pfad, exc)
+        log.warning("Curator: %s not writable (%s)", pfad, exc)
         return None
 
     await set_setting(db, await _zuletzt_key(owner_id, pfad),

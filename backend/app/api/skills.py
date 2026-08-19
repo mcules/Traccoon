@@ -53,7 +53,7 @@ async def create_skill(data: SkillIn, _: User = Depends(get_current_user), db: A
     # The key is optional: empty means derive it from the name (otherwise there is no name, which is an error).
     key = data.key.strip() or _slug(data.name)
     if not data.name.strip() and not data.key.strip():
-        raise HTTPException(400, "Name (oder Key) erforderlich")
+        raise HTTPException(400, "A name (or key) is required")
     maxv = (await db.execute(select(func.max(Skill.version)).where(Skill.key == key))).scalar_one()
     s = Skill(key=key, name=data.name or key, description=data.description, body=data.body,
               scope=data.scope, project_id=data.project_id, autostart=data.autostart, version=(maxv or 0) + 1)
@@ -119,7 +119,7 @@ async def update_mcp(mid: int, data: McpIn, user: User = Depends(get_current_use
     import json
     m = await db.get(McpServer, mid)
     if m is None or (m.user_id != user.id and user.global_role.value != "admin"):
-        raise HTTPException(404, "MCP-Server nicht gefunden")
+        raise HTTPException(404, "MCP server not found")
     m.name, m.display_name = data.name, data.display_name or data.name
     m.transport, m.command, m.args = data.transport, data.command, data.args
     m.url, m.headers, m.variables, m.enabled = data.url, data.headers, data.variables, data.enabled
@@ -147,7 +147,7 @@ class McpInstanceIn(BaseModel):
 async def _agent_owned(db: AsyncSession, agent_id: int, user: User) -> AgentDefinition:
     a = await db.get(AgentDefinition, agent_id)
     if a is None or not is_owner_or_admin(a.user_id, user):
-        raise HTTPException(404, "Agent nicht gefunden")
+        raise HTTPException(404, "Agent not found")
     return a
 
 
@@ -163,7 +163,7 @@ def _check_required_vars(srv: McpServer, values: dict) -> None:
         if not val:
             missing.append(var.get("label") or var.get("key"))
     if missing:
-        raise HTTPException(400, f"Pflicht-Variable fehlt: {', '.join(missing)}")
+        raise HTTPException(400, f"A required variable is missing: {', '.join(missing)}")
 
 
 @router.get("/agents/{agent_id}/mcp-instances")
@@ -186,7 +186,7 @@ async def add_instance(agent_id: int, data: McpInstanceIn, user: User = Depends(
     a = await _agent_owned(db, agent_id, user)
     srv = await db.get(McpServer, data.server_id)
     if srv is None:
-        raise HTTPException(404, "MCP-Server nicht gefunden")
+        raise HTTPException(404, "MCP server not found")
     _check_required_vars(srv, data.values)
     inst = McpInstance(agent_id=agent_id, server_id=data.server_id,
                        name=data.name or srv.name,
@@ -206,7 +206,7 @@ async def update_instance(agent_id: int, iid: int, data: McpInstanceIn,
     a = await _agent_owned(db, agent_id, user)
     inst = await db.get(McpInstance, iid)
     if inst is None or inst.agent_id != agent_id:
-        raise HTTPException(404, "Instanz nicht gefunden")
+        raise HTTPException(404, "Instance not found")
     inst.name = data.name or inst.name
     if data.values:
         srv = await db.get(McpServer, inst.server_id)

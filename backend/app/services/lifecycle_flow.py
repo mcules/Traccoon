@@ -76,7 +76,7 @@ async def start_lifecycle(db: AsyncSession, issue: Issue, actor_id: int | None =
     definition = await resolve_definition(db, issue.project_id, LIFECYCLE_SLOT,
                                           issue.type_id)
     if definition is None or definition.current_version_id is None:
-        log.warning("Ticket %s: kein veröffentlichter Lebenszyklus-Ablauf", issue.key)
+        log.warning("Ticket %s: no published lifecycle flow", issue.key)
         return None
     ctx = {"entry": entry, "issue_key": issue.key, **(context or {})}
     inst = await start_workflow(
@@ -189,7 +189,7 @@ async def adopt_orphans(db: AsyncSession) -> int:
         adopted += 1
     if adopted:
         await db.commit()
-        log.info("Umstieg: %d Bestandsticket(s) in den Lebenszyklus-Prozess übernommen", adopted)
+        log.info("Switch: %d existing ticket(s) taken into the lifecycle process", adopted)
     return adopted
 
 

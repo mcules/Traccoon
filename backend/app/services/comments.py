@@ -55,7 +55,7 @@ async def apply_user_comment(db: AsyncSession, issue: Issue, text: str,
     from .lifecycle_flow import live_instance, start_lifecycle
     from .workflow_engine import resume_on_event
     if await resume_on_event(issue_id, "comment", {"text": text[:2000], "user_id": user_id}):
-        log.info("Ticket %s: Kommentar hat den Prozess fortgesetzt", issue_key)
+        log.info("Ticket %s: the comment continued the process", issue_key)
         return
     # No waiting event node: either no process is running at all (then we start one) or it is
     # waiting for an approval, and a comment must NOT skip that, because otherwise human

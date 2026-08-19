@@ -183,7 +183,7 @@ async def merken(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool,
     anzahl = await merkmale_zaehlen(db, verdict.owner_user_id, list(verdict.features or []),
                                     ist_spam, vorher=vorher)
     if anzahl:
-        log.info("Spam-Gedächtnis: %d Merkmale aus Urteil #%s (%s)",
+        log.info("Spam memory: %d features from verdict #%s (%s)",
                  anzahl, verdict.id, "spam" if ist_spam else "ham")
 
 

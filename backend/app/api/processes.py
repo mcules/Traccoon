@@ -105,11 +105,11 @@ async def slot_uebersicht(
         s = (await db.execute(select(WorkflowSet).where(
             WorkflowSet.key == sets.BUILTIN_SET_KEY))).scalars().first()
         if s is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Kein globaler Standard-Satz")
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "No global default set")
     else:
         s = await db.get(WorkflowSet, set_id)
         if s is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Prozess-Satz nicht gefunden")
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Process set not found")
 
     sichtbar = await _sichtbare_projekte(db, user)
     # Project-owned copies per slot (not archived): those are exactly the deviations.

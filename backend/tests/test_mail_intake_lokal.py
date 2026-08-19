@@ -31,7 +31,7 @@ async def _mail(db, owner_id, agent: str, uid: int) -> AssistantTask:
         {"account": "privat", "uid": uid, "from": "rechnung@beispiel.de",
          "subject": "Rechnung 4711", "body": "IBAN DE12 3456 7890, 129,90 EUR"},
         source="mail", agent=agent)
-    assert ids, "der ausgelieferte Mail-Eingang hört nicht auf mail.received"
+    assert ids, "the shipped mail inbox does not listen for mail.received"
     return (await db.execute(select(AssistantTask).where(
         AssistantTask.source_ref == f"privat:{uid}"))).scalars().one()
 

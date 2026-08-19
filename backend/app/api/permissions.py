@@ -46,7 +46,7 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
                  db: AsyncSession = Depends(get_session)):
     pr = await db.get(PermRequest, req_id)
     if pr is None or pr.status != "pending":
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Anfrage nicht gefunden")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found")
     issue = await db.get(Issue, pr.issue_id)
     # Check the access (membership plus ai_assign)
     from ..models.project import Project
@@ -64,7 +64,7 @@ async def decide(req_id: int, data: DecisionIn, user=Depends(get_current_user),
     elif dec == "never":
         db.add(Permission(project_id=issue.project_id, tool=pr.tool, resource="*", action=PermAction.deny))
     else:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "decision muss once|always|never sein")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "decision has to be once|always|never")
 
     pr.status = "decided"
     pr.decision = dec
@@ -92,7 +92,7 @@ async def answer_blocker(data: AnswerIn, pair: tuple[Issue, Access] = Depends(ge
         )
     ).scalars().first()
     if blocker is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Keine offene Rückfrage")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No open question")
     blocker.answer = data.answer
     blocker.answered_at = _now()
     blocker.answered_by = access.user.id

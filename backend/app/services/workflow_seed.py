@@ -573,7 +573,7 @@ async def ensure_builtin_set(db: AsyncSession) -> WorkflowSet:
 
     if changed:
         s.builtin_revision = BUILTIN_REVISION
-        log.info("Standard-Satz aktualisiert: %d Ablauf/Abläufe neu veröffentlicht", changed)
+        log.info("Default set updated: %d flow(s) republished", changed)
     await db.commit()
     await db.refresh(s)
     return s

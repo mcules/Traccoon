@@ -106,20 +106,20 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
     """
     root = Path(vault_root or VAULT_ROOT)
     if not root.is_dir():
-        log.warning("Vault nicht erreichbar (%s) — Kontakt-Abgleich übersprungen", root)
+        log.warning("Vault not reachable (%s), contact reconciliation skipped", root)
         return 0, 0
 
     gefunden: dict[str, tuple[str, str, str]] = {}  # adresse → (name, pfad, herkunft)
     for ordner in KONTAKT_ORDNER:
         verzeichnis = root / ordner
         if not verzeichnis.is_dir():
-            log.info("Kontaktordner fehlt im Vault: %s", ordner)
+            log.info("Contact folder missing in the vault: %s", ordner)
             continue
         for datei in verzeichnis.rglob("*.md"):
             try:
                 text = datei.read_text(encoding="utf-8", errors="replace")
             except OSError as exc:
-                log.warning("Kontaktnotiz %s nicht lesbar: %s", datei, exc)
+                log.warning("Contact note %s not readable: %s", datei, exc)
                 continue
             rel = str(datei.relative_to(root))
             for adresse, herkunft in adressen_aus_notiz(text):
@@ -128,7 +128,7 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
                     gefunden[adresse] = (_titel(datei), rel, herkunft)
 
     if not gefunden:
-        log.warning("Vault-Abgleich fand keine einzige Adresse — Bestand bleibt unangetastet")
+        log.warning("The vault reconciliation found no address at all, the existing set stays untouched")
         return 0, 0
 
     # Only the vault part is mirrored: addresses from the sent folder (`source_kind='sent'`)
@@ -155,7 +155,7 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
         await db.delete(row)
     entfernt = len(bestand)
     await db.commit()
-    log.info("Vault-Kontakte abgeglichen: %d Adressen, %d geändert, %d entfernt",
+    log.info("Vault contacts reconciled: %d addresses, %d changed, %d removed",
              len(gefunden), geaendert, entfernt)
     return geaendert, entfernt
 

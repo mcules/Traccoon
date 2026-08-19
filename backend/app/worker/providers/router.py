@@ -90,7 +90,7 @@ class Router:
             base_url = base_urls.get(prov)
             impl = self._impl(prov, base_url)
             if impl is None:
-                last_err = ProviderError(f"Provider '{prov}' nicht verfügbar")
+                last_err = ProviderError(f"Provider '{prov}' is not available")
                 continue
             # Every provider has its own model names: primary to model, fallback to
             # fallback_model (empty means the provider default); the primary model is not carried over.

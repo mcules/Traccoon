@@ -208,7 +208,7 @@ async def apply_status(db: AsyncSession, *, subject_kind, issue=None, asset=None
         try:
             status = TicketAgentStatus(status_key)
         except ValueError:
-            raise ValueError(f"'{status_key}' ist kein Zustand eines Tickets")
+            raise ValueError(f"'{status_key}' is not a state of a ticket")
         grund = reason or (HoldReason.question if status == TicketAgentStatus.hold else None)
         try:
             await set_ticket_status(db, issue, status, reason=grund)
@@ -224,7 +224,7 @@ async def apply_status(db: AsyncSession, *, subject_kind, issue=None, asset=None
         try:
             PurchaseStatus(status_key)
         except ValueError:
-            raise ValueError(f"'{status_key}' ist kein Zustand eines Hardware-Exemplars")
+            raise ValueError(f"'{status_key}' is not a state of a hardware unit")
         await set_asset_status(db, asset, status_key)
         return {"artifact": "hardware", "status": status_key}
 
@@ -363,7 +363,7 @@ async def reconcile(db: AsyncSession) -> dict:
             await set_ticket_status(db, issue, ziel)
         issue.agent_working = True
         if vorher != (getattr(issue.agent_status, "value", "—"), issue.status_id):
-            log.info("Abgleich: %s läuft (%s), stand auf %s/Spalte %s → %s/Spalte %s",
+            log.info("Reconciliation: %s is running (%s), stood on %s/column %s -> %s/column %s",
                      issue.key, phase, vorher[0], vorher[1],
                      getattr(issue.agent_status, "value", "—"), issue.status_id)
     ergebnis["laufende_richtiggestellt"] = len(gesehen)

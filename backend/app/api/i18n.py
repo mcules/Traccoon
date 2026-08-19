@@ -39,7 +39,7 @@ class ImportIn(BaseModel):
 def _locale(roh: str) -> str:
     kurz = (roh or "").strip().lower().replace("_", "-")[:10]
     if not kurz or not kurz.replace("-", "").isalnum():
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ungültige Sprachkennung")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid language code")
     return kurz
 
 
@@ -85,7 +85,7 @@ async def create_locale(data: LocaleIn, _: User = Depends(require_admin),
     """Create a language. It exists from now on, even before its first text."""
     lc = _locale(data.locale)
     if (await db.execute(select(UiLocale).where(UiLocale.locale == lc))).scalar_one_or_none():
-        raise HTTPException(status.HTTP_409_CONFLICT, "Diese Sprache gibt es schon")
+        raise HTTPException(status.HTTP_409_CONFLICT, "This language already exists")
     db.add(UiLocale(locale=lc, name=data.name.strip() or lc.upper()))
     await db.commit()
     return {"locale": lc}
@@ -106,7 +106,7 @@ async def update_locale(locale: str, data: LocaleUpdate, _: User = Depends(requi
     if data.enabled is not None:
         if lc == "de" and not data.enabled:
             raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                "Die Quellsprache lässt sich nicht abschalten")
+                                "The source language cannot be switched off")
         zeile.enabled = data.enabled
     await db.commit()
 
@@ -190,7 +190,7 @@ async def drop_locale(locale: str, _: User = Depends(require_admin),
     """
     lc = _locale(locale)
     if lc == "de":
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Die Quellsprache bleibt")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The source language stays")
     await db.execute(delete(UiTranslation).where(UiTranslation.locale == lc))
     await db.execute(delete(UiLocale).where(UiLocale.locale == lc))
     await db.commit()

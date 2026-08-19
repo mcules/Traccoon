@@ -54,7 +54,7 @@ async def available() -> bool:
         rc, _ = await _exec(_BIN, "version", cwd="/tmp", timeout=15)
         _bin_ok = rc == 0
         if not _bin_ok:
-            log.warning("codegraph-Binary nicht aufrufbar (%s) — Tool deaktiviert", _BIN)
+            log.warning("codegraph binary not callable (%s), the tool is disabled", _BIN)
     return _bin_ok
 
 

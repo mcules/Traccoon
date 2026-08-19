@@ -95,7 +95,7 @@ class CodexProvider(Provider):
 
     def _headers(self, token: str | None) -> dict[str, str]:
         if not token:
-            raise ProviderError("codex: kein Access-Token (Secret-Tresor leer).")
+            raise ProviderError("codex: no access token (the secret vault is empty).")
         h = {
             "Authorization": f"Bearer {token}",
             "User-Agent": "codex_cli_rs/0.0.0 (traccoon)",
@@ -163,7 +163,7 @@ class CodexProvider(Provider):
             raise ProviderError(f"codex: Verbindungsfehler: {exc}", retryable=True) from exc
 
         if final is None:
-            raise ProviderError("codex: kein response.completed-Event empfangen", retryable=True)
+            raise ProviderError("codex: no response.completed event received", retryable=True)
         return self._parse(final)
 
     def _parse(self, data: dict[str, Any]) -> ChatResponse:

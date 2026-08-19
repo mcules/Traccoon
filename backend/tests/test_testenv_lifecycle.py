@@ -50,7 +50,7 @@ async def test_direkter_sprung_auf_fertig_wird_abgewiesen(client, db):
                          json={"status_id": stats["Fertig"].id, "position": 0},
                          headers=auth(owner))
     assert r.status_code == 409
-    assert "Auf Fertig setzen" in r.json()["detail"]
+    assert "set to done" in r.json()["detail"]
 
 
 async def test_move_in_andere_spalten_bleibt_erlaubt(client, db):
@@ -89,7 +89,7 @@ async def _bis_zur_abnahme(db, issue, merge_result, redis_stub):
     redis_stub["*"] = merge_result
     await adopt_orphans(db)
     await db.refresh(issue)
-    assert issue.workflow_instance_id, "Ticket wurde nicht in den Prozess übernommen"
+    assert issue.workflow_instance_id, "the ticket was not taken into the process"
 
 
 async def test_complete_setzt_kein_fertig_bei_merge_konflikt(client, db, seeded, redis_stub):

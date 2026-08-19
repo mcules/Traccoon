@@ -75,7 +75,7 @@ async def _mail_holen(account: str, folder: str, uid: int) -> dict | None:
             "account": account, "folder": folder, "uid": uid, "body_format": "both",
             "max_body_bytes": 20000})
     except McpError as exc:
-        log.debug("Rückschau: %s/%s/%s nicht lesbar (%s)", account, folder, uid, exc)
+        log.debug("Review: %s/%s/%s not readable (%s)", account, folder, uid, exc)
         return None
     daten = ergebnis_json(antwort) or {}
     kopf = daten.get("headers") or {}

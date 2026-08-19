@@ -55,7 +55,7 @@ async def aux_config(db: AsyncSession, task: str) -> dict:
     try:
         cfg = json.loads(raw)
     except ValueError:
-        log.warning("aux.%s: Einstellung ist kein gültiges JSON — nutze den Haupt-Provider", task)
+        log.warning("aux.%s: the setting is not valid JSON, using the main provider", task)
         return {}
     return cfg if isinstance(cfg, dict) and cfg.get("provider") else {}
 
@@ -103,7 +103,7 @@ async def aux_chat(db: AsyncSession, *, owner_id: int | None, task: str, message
                         tokens=use_tokens, base_urls=use_base_urls, extra_body=extra),
             timeout=timeout)
     except (ProviderError, asyncio.TimeoutError, Exception) as exc:  # noqa: BLE001
-        log.warning("aux.%s fehlgeschlagen (%s) — Aufrufer arbeitet ohne das Ergebnis weiter", task, exc)
+        log.warning("aux.%s failed (%s), the caller continues without the result", task, exc)
         return None
     text = (resp.text or "").strip()
     return text or None

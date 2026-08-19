@@ -62,7 +62,7 @@ async def test_vorwarnung_kommt_genau_einmal(db):
     r = await _akku_verlauf(db, anna, [(22, 65), (14, 50), (6, 37), (0, 25)])
     stand = await metrics.trend(db, r, ziel=0.0)
     assert metrics.vorwarnen(r, stand["rest_tage"], 20) is True
-    assert metrics.vorwarnen(r, stand["rest_tage"], 20) is False, "nicht zweimal dasselbe"
+    assert metrics.vorwarnen(r, stand["rest_tage"], 20) is False, "not the same thing twice"
 
 
 async def test_neuer_akku_darf_wieder_warnen(db):
@@ -141,7 +141,7 @@ async def test_unsinnige_werte_kommen_nicht_in_die_reihe(db):
     r = await run_action(db, inst, node)
     assert r["ignoriert"] is True
     r2 = await metrics.reihe(db, anna.id, "akku.shelter")
-    assert r2.last_value == 25.0, "der letzte echte Wert bleibt stehen"
+    assert r2.last_value == 25.0, "the last real value stays"
     stand = await metrics.trend(db, r2)
     assert stand["punkte"] == 4 and stand["pro_tag"] < 0
 
@@ -183,7 +183,7 @@ async def test_fehlender_wert_wird_uebersprungen(db):
     assert inst.context["messreihe"]["wert"] == 30.0
     reihe = await metrics.reihe(db, anna.id, "akku.shelter")
     assert reihe.last_value == 30.0
-    assert (await metrics.trend(db, reihe))["punkte"] == 3, "kein Punkt dazugekommen"
+    assert (await metrics.trend(db, reihe))["punkte"] == 3, "no point was added"
 
 
 async def test_pflichtwert_bleibt_ein_fehler(db):
@@ -219,7 +219,7 @@ async def test_stille_wird_genau_einmal_gemeldet(db):
     r = await _akku_verlauf(db, anna, [(9, 60), (6, 50), (3, 40)])
     alter = (await metrics.trend(db, r))["alter_stunden"]
     assert metrics.stille_melden(r, alter, 26) is True
-    assert metrics.stille_melden(r, alter, 26) is False, "ein stündlicher Wächter darf nicht nerven"
+    assert metrics.stille_melden(r, alter, 26) is False, "an hourly watchdog must not be annoying"
 
 
 async def test_neuer_wert_beendet_die_stille(db):
@@ -252,7 +252,7 @@ async def test_aktion_liest_ohne_zu_schreiben(db):
         "params": {"reihe": "akku.shelter", "still_stunden": 26}}}}}
     erg = await run_action(db, inst, node)
     assert erg["still"] is True and erg["still_melden"] is True
-    assert (await metrics.trend(db, r))["punkte"] == 3, "es darf kein Punkt entstehen"
+    assert (await metrics.trend(db, r))["punkte"] == 3, "no point may be created"
     stand = inst.context["messreihe"]
     assert stand["gefunden"] is True and stand["wert"] == 40.0
 
@@ -315,7 +315,7 @@ async def test_punkte_kommen_mit_id_und_trend(client, db):
     assert r.status_code == 200
     daten = r.json()
     assert [p["wert"] for p in daten["punkte"]] == [60.0, 50.0, 40.0]
-    assert all(p["id"] for p in daten["punkte"]), "zum Löschen braucht es die ID"
+    assert all(p["id"] for p in daten["punkte"]), "deleting needs the id"
     assert daten["trend"]["pro_tag"] < 0
 
 
@@ -343,7 +343,7 @@ async def test_einzelnen_ausreisser_entfernen(client, db):
     assert weg.status_code == 204
     r = await metrics.reihe(db, anna.id, "akku.shelter")
     await db.refresh(r)
-    assert r.last_value == 40.0, "der Kopf der Reihe rückt nach"
+    assert r.last_value == 40.0, "the head of the series moves up"
     danach = (await client.get("/metrics/akku.shelter/punkte", headers=auth(anna))).json()
     assert len(danach["punkte"]) == 3
 

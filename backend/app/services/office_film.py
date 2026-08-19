@@ -394,7 +394,7 @@ def _fenster(opt: dict) -> tuple[dt.datetime, dt.datetime]:
         from zoneinfo import ZoneInfo
         zone: dt.tzinfo = ZoneInfo(name)
     except Exception:  # noqa: BLE001 — fehlende tzdata darf keinen Film kosten
-        log.warning("Zeitzone %s unbekannt — Film läuft auf UTC", name)
+        log.warning("Time zone %s unknown, the film runs on UTC", name)
         zone = dt.timezone.utc
     jetzt = dt.datetime.now(tz=zone)
     return jetzt.replace(hour=0, minute=0, second=0, microsecond=0), jetzt
@@ -414,7 +414,7 @@ def _notification(*, kind: str, title: str, body: str, chat_id: str | None,
             n.media_path = medium
             n.media_kind = medienart
         else:
-            log.warning("Notification ohne Medienspalten — Film %s bleibt Text", medium)
+            log.warning("Notification without media columns, film %s stays text", medium)
     return n
 
 

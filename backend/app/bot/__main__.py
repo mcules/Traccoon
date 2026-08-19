@@ -109,7 +109,7 @@ async def _vokabular() -> str:
                     User.status == UserStatus.active))).scalars().all():
                 woerter.append((u.display_name or u.username or "").strip())
     except Exception:  # noqa: BLE001 — transcribing without a vocabulary beats not at all
-        log.exception("Vokabular konnte nicht gebildet werden — Transkription läuft ohne")
+        log.exception("The vocabulary could not be built, the transcription runs without it")
 
     if VOICE_VOKABULAR:
         woerter += [w.strip() for w in VOICE_VOKABULAR.replace(".", ",").split(",")]
@@ -253,9 +253,9 @@ async def _transkribieren(audio: bytes, medienart: str = "voice",
         try:
             return await _transkribieren_qwen(audio, medienart, mime_type)
         except Exception as exc:  # noqa: BLE001
-            log.warning("Qwen3-ASR gescheitert (%s) — weiter mit Whisper", exc)
+            log.warning("Qwen3-ASR failed (%s), continuing with Whisper", exc)
     if not WHISPER_URL:
-        raise RuntimeError("kein WHISPER_URL konfiguriert (lokaler Whisper-Container fehlt)")
+        raise RuntimeError("no WHISPER_URL configured (the local whisper container is missing)")
     timeout = max(120.0, VOICE_MAX_SECONDS + 60.0)
     dateiname, content_type = _upload_name_typ(medienart, mime_type)
     vokabular = await _vokabular()
@@ -308,7 +308,7 @@ async def _erledigt(cq: CallbackQuery, vermerk: str) -> None:
         try:
             await msg.edit_reply_markup(reply_markup=None)
         except Exception:  # noqa: BLE001
-            log.warning("Konnte Tastatur an Nachricht %s nicht entfernen", msg.message_id)
+            log.warning("Could not remove the keyboard on message %s", msg.message_id)
 
 
 def _now() -> dt.datetime:
@@ -414,7 +414,7 @@ async def _zustellen(bot, n, text: str, markup) -> None:
                                          **_gif_masse(roh))
         else:
             if pfad:
-                log.warning("Medium %s nicht lesbar — Notification %s geht als Text", pfad, n.id)
+                log.warning("Medium %s not readable, notification %s goes as text", pfad, n.id)
             await bot.send_message(int(n.chat_id), text, parse_mode="HTML", reply_markup=markup)
     except Exception:  # noqa: BLE001
         log.exception("Send an %s fehlgeschlagen", n.chat_id)
@@ -475,7 +475,7 @@ async def _voice_transkript(bot, m) -> str | None:
         puffer = await bot.download_file(datei.file_path)
         roh = puffer.read() if hasattr(puffer, "read") else bytes(puffer)
     except Exception as exc:  # noqa: BLE001
-        log.warning("Sprachnachricht %s nicht ladbar: %s", media.file_id, exc)
+        log.warning("Voice message %s not loadable: %s", media.file_id, exc)
         await m.answer("🙉 Sprachnachricht konnte nicht geladen werden — bitte als Text schicken.")
         return ""
     medienart = "voice" if m.voice else ("video_note" if m.video_note else "audio")
@@ -501,7 +501,7 @@ async def _voice_transkript(bot, m) -> str | None:
 
 async def run_bot() -> None:
     if not TOKEN:
-        log.warning("Kein TELEGRAM_BOT_TOKEN — Bot im Ruhemodus.")
+        log.warning("No TELEGRAM_BOT_TOKEN, the bot stays idle.")
         while True:
             await asyncio.sleep(3600)
 
@@ -841,7 +841,7 @@ async def run_bot() -> None:
                 _, action, sid = data.split(":", 2)
                 t = await db.get(AssistantTask, int(sid))
                 if t is None:
-                    await cq.answer("Nicht gefunden")
+                    await cq.answer("Not found")
                     await _erledigt(cq, "⏭ Aufgabe nicht mehr vorhanden")
                 elif t.status not in ("new", "error"):
                     await cq.answer(f"schon erledigt ({t.status})")
@@ -862,7 +862,7 @@ async def run_bot() -> None:
                 _, antwort, vid = data.split(":", 2)
                 v = await db.get(SpamVerdict, int(vid))
                 if v is None:
-                    await cq.answer("Nicht gefunden")
+                    await cq.answer("Not found")
                     await _erledigt(cq, "⏭ Urteil nicht mehr vorhanden")
                 elif v.status not in ("pending", "spam", "ham"):
                     await cq.answer(f"schon erledigt ({v.status})")
@@ -880,7 +880,7 @@ async def run_bot() -> None:
                 _, vid = data.split(":", 1)
                 v = await db.get(SpamVerdict, int(vid))
                 if v is None:
-                    await cq.answer("Nicht gefunden")
+                    await cq.answer("Not found")
                     await _erledigt(cq, "⏭ Urteil nicht mehr vorhanden")
                 else:
                     ergebnis = await zurueckholen(db, v)

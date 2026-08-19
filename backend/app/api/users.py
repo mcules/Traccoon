@@ -49,7 +49,7 @@ class UserCreateIn(BaseModel):
     @classmethod
     def _check_password(cls, v):
         if v and len(v) < 8:
-            raise ValueError("Passwort muss mindestens 8 Zeichen haben")
+            raise ValueError("The password has to have at least 8 characters")
         return v or None
 
 
@@ -75,7 +75,7 @@ async def set_user_mcp_servers(user_id: int, data: McpServersIn, _: User = Depen
 
 async def _get_manageable(user_id: int, db: AsyncSession) -> User:
     if user_id == SYSTEM_USER_ID:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "System-User nicht verwaltbar")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "System users cannot be managed")
     u = await db.get(User, user_id)
     if u is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
@@ -153,7 +153,7 @@ async def create_user(data: UserCreateIn, _: User = Depends(require_admin),
         cond = cond | (User.email == email)
     exists = (await db.execute(select(User).where(cond))).scalar_one_or_none()
     if exists is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "E-Mail oder Benutzername bereits vergeben")
+        raise HTTPException(status.HTTP_409_CONFLICT, "E-mail or user name already taken")
     try:
         role = GlobalRole(data.global_role)
     except ValueError:
@@ -194,7 +194,7 @@ async def disable(
     user_id: int, admin: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
 ):
     if user_id == admin.id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nicht sich selbst deaktivieren")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Do not deactivate yourself")
     u = await _get_manageable(user_id, db)
     u.status = UserStatus.disabled
     await db.commit()
@@ -217,7 +217,7 @@ async def update_user(
             )
         ).scalars().first()
         if conflict is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "E-Mail bereits vergeben")
+            raise HTTPException(status.HTTP_409_CONFLICT, "E-mail already taken")
     if data.username is not None:
         conflict = (
             await db.execute(
@@ -225,7 +225,7 @@ async def update_user(
             )
         ).scalars().first()
         if conflict is not None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Benutzername bereits vergeben")
+            raise HTTPException(status.HTTP_409_CONFLICT, "User name already taken")
     if data.email is not None:
         u.email = data.email
     if data.username is not None:
@@ -264,7 +264,7 @@ async def set_role(
     db: AsyncSession = Depends(get_session),
 ):
     if user_id == admin.id and role != GlobalRole.admin:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Nicht sich selbst degradieren")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Do not demote yourself")
     u = await _get_manageable(user_id, db)
     u.global_role = role
     await db.commit()

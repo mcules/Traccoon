@@ -81,7 +81,7 @@ async def test_erfolg_liefert_transkript_und_meldet_es_sichtbar(monkeypatch):
 
 async def test_zu_lange_dauer_wird_ohne_transkription_abgesagt(monkeypatch):
     def darf_nicht_laufen(*a, **kw):
-        raise AssertionError("Transkription hätte nie starten dürfen")
+        raise AssertionError("the transcription should never have started")
 
     monkeypatch.setattr(bot_main, "_transkribieren", darf_nicht_laufen)
     monkeypatch.setattr(bot_main, "VOICE_MAX_SECONDS", 600)
@@ -95,7 +95,7 @@ async def test_zu_lange_dauer_wird_ohne_transkription_abgesagt(monkeypatch):
 
 async def test_zu_grosse_datei_wird_ohne_transkription_abgesagt(monkeypatch):
     def darf_nicht_laufen(*a, **kw):
-        raise AssertionError("Transkription hätte nie starten dürfen")
+        raise AssertionError("the transcription should never have started")
 
     monkeypatch.setattr(bot_main, "_transkribieren", darf_nicht_laufen)
     monkeypatch.setattr(bot_main, "VOICE_MAX_BYTES", 1000)
@@ -127,7 +127,7 @@ async def test_datei_nicht_ladbar_wird_ehrlich_abgesagt():
 
 async def test_transkriptionsfehler_wird_ehrlich_mit_grund_abgesagt(monkeypatch):
     async def kaputt(audio, medienart="voice", mime_type=None):
-        raise RuntimeError("kein WHISPER_URL konfiguriert")
+        raise RuntimeError("no WHISPER_URL configured")
 
     monkeypatch.setattr(bot_main, "_transkribieren", kaputt)
     m = FakeMessage(voice=FakeMedia())

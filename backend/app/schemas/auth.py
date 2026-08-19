@@ -8,7 +8,7 @@ from ..models.enums import GlobalRole, UserStatus
 def _valid_email(v: str) -> str:
     v = v.strip().lower()
     if "@" not in v or v.startswith("@") or v.endswith("@"):
-        raise ValueError("Ungültige E-Mail-Adresse")
+        raise ValueError("Invalid email address")
     return v
 
 

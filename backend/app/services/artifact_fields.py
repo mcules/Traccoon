@@ -188,18 +188,18 @@ def _als_text(feld: ArtifactField, wert) -> str:
             return "true"
         if str(wert).strip().lower() in ("false", "0", "nein", "no"):
             return "false"
-        raise FieldError(f'„{feld.label}“ erwartet Ja oder Nein, nicht „{wert}“')
+        raise FieldError(f'"{feld.label}" expects yes or no, not "{wert}"')
     text = str(wert).strip()
     if feld.kind == "number":
         try:
             float(text)
         except ValueError:
-            raise FieldError(f'„{feld.label}“ erwartet eine Zahl, nicht „{text}“')
+            raise FieldError(f'"{feld.label}" expects a number, not "{text}"')
     elif feld.kind == "date":
         try:
             dt.date.fromisoformat(text[:10])
         except ValueError:
-            raise FieldError(f'„{feld.label}“ erwartet ein Datum (JJJJ-MM-TT), nicht „{text}“')
+            raise FieldError(f'"{feld.label}" expects a date (YYYY-MM-DD), not "{text}"')
     return text
 
 
@@ -213,9 +213,9 @@ async def pruefe(db: AsyncSession, feld: ArtifactField, werte: list,
     """
     sauber = [w for w in (werte or []) if not (w is None or str(w).strip() == "")]
     if not feld.multi and len(sauber) > 1:
-        raise FieldError(f'„{feld.label}“ nimmt nur einen Wert — es kamen {len(sauber)}')
+        raise FieldError(f'"{feld.label}" takes only one value, {len(sauber)} arrived')
     if feld.required and not sauber:
-        raise FieldError(f'„{feld.label}“ ist ein Pflichtfeld')
+        raise FieldError(f'"{feld.label}" is a required field')
 
     if feld.kind != "select":
         return [(_als_text(feld, w), None) for w in sauber]
@@ -227,7 +227,7 @@ async def pruefe(db: AsyncSession, feld: ArtifactField, werte: list,
             if str(w) not in erlaubte:
                 namen = ", ".join(erlaubte.values()) or "— nichts im Projekt vorhanden"
                 raise FieldError(
-                    f'„{w}“ ist kein gültiger Wert für „{feld.label}“ ({namen})')
+                    f'"{w}" is not a valid value for "{feld.label}" ({namen})')
         return [(str(w), None) for w in sauber]
 
     moeglich = {o.value: o for o in await options_of(db, feld.id)}
@@ -238,7 +238,7 @@ async def pruefe(db: AsyncSession, feld: ArtifactField, werte: list,
         if treffer is None:
             erlaubt = ", ".join(moeglich) or "— die Werteliste ist leer"
             raise FieldError(
-                f'„{text}“ steht nicht in der Werteliste von „{feld.label}“ ({erlaubt})')
+                f'"{text}" is not in the value list of "{feld.label}" ({erlaubt})')
         zuordnung.append((treffer.value, treffer.id))
     return zuordnung
 
@@ -255,7 +255,7 @@ async def schreibe(db: AsyncSession, artifact_id: int, feld: ArtifactField,
         artefakt = await db.get(Artifact, artifact_id)
         row = await detailzeile(db, artefakt) if artefakt else None
         if row is None:
-            raise FieldError(f'„{feld.label}“ gehört zu einer Detailtabelle, die es hier nicht gibt')
+            raise FieldError(f'"{feld.label}" belongs to a detail table that does not exist here')
         return await _in_spalte(db, feld, row, [t for t, _ in zuordnung])
 
     await db.execute(delete(ArtifactValue).where(
@@ -439,5 +439,5 @@ async def uebernimm_alte_zustaende(db: AsyncSession) -> int:
     if uebernommen:
         import logging
         logging.getLogger("artifacts").info(
-            "Zustände in die Werteliste übernommen: %s", uebernommen)
+            "States taken over into the value list: %s", uebernommen)
     return uebernommen

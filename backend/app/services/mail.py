@@ -76,7 +76,7 @@ async def send_mail(db: AsyncSession, to_addr: str, subject: str, html_body: str
     """Sends a mail. Without a configured SMTP host it is only logged (a dev fallback)."""
     cfg = await get_mail_config(db)
     if not cfg["smtp_host"]:
-        log.warning("SMTP nicht konfiguriert — Mail an %s wird NICHT gesendet (nur geloggt): %s",
+        log.warning("SMTP not configured, mail to %s is NOT sent (only logged): %s",
                     to_addr, subject)
         return False
     try:

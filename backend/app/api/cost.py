@@ -149,7 +149,7 @@ async def delete_model(model_id: int, _: User = Depends(require_admin),
     finished amount, not the catalog reference."""
     m = await db.get(ProviderModel, model_id)
     if m is None:
-        raise HTTPException(404, "Modell nicht gefunden")
+        raise HTTPException(404, "Model not found")
     await db.delete(m)
     await db.commit()
     return {"ok": True}

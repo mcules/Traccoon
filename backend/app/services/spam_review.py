@@ -146,7 +146,7 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # that is the strongest "wanted" statement a mailbox can produce.
     bekannter_kontakt = treffer in ("frontmatter", "sent") and not faelschungsverdacht
     if bekannter_kontakt:
-        log.debug("Mail von bekanntem Kontakt %s — kein Spam-Verdacht", regel.sender_email)
+        log.debug("Mail from the known contact %s, no spam suspicion", regel.sender_email)
     if treffer and faelschungsverdacht:
         regel.reasons.append("bekannter Absender, aber Echtheitsprüfung fehlgeschlagen "
                              "(Fälschungsverdacht)")
@@ -216,7 +216,7 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
         "sofort_ab": await _zahl(db, SOFORT_AB_KEY),
         "auto_ab": await _zahl(db, AUTO_AB_KEY),
     }
-    log.info("Spam-Urteil (%.2f: regel=%.2f modell=%.2f gelernt=%.2f, geklärt=%s) von %s",
+    log.info("Spam verdict (%.2f: rule=%.2f model=%.2f learnt=%.2f, resolved=%s) from %s",
              score, regel.score, modell, gelernt_score, urteil["geklaert_urteil"] or "nein",
              regel.sender_email)
     return urteil
@@ -305,7 +305,7 @@ async def melden(db: AsyncSession, owner_id: int | None, verdict: SpamVerdict, *
         kind="spam_auto" if rueckholbar else "spam_review",
         chat_id=owner.telegram_chat_id, title=titel[:200], body=text[:4000]))
     if not sofort:
-        log.debug("Urteil #%s wartet auf die Sammel-Karte", verdict.id)
+        log.debug("Verdict #%s is waiting for the collection card", verdict.id)
 
 
 async def digest_faellig(db: AsyncSession) -> int:
@@ -426,7 +426,7 @@ async def _an_ablauf_melden(db: AsyncSession, verdict: SpamVerdict, ist_spam: bo
                           "entschieden_von": decided_by}},
     ) if inst is not None else False
     if not entschieden:
-        log.warning("Urteil #%s: kein wartender Ablauf (Instanz %s) — direkt ausgeführt",
+        log.warning("Verdict #%s: no waiting flow (instance %s), executed directly",
                     verdict.id, verdict.workflow_instance_id)
         await festschreiben(db, verdict, ist_spam, decided_by=decided_by)
         ergebnis = await imap_aktion(verdict, ist_spam)
@@ -452,10 +452,10 @@ async def imap_aktion(verdict: SpamVerdict, ist_spam: bool) -> str:
         ergebnis = await call_tool(IMAP_MCP_URL, werkzeug, {
             "account": verdict.account, "folder": verdict.folder, "uid": verdict.uid})
     except McpError as exc:
-        log.warning("%s für Urteil #%s fehlgeschlagen: %s", werkzeug, verdict.id, exc)
+        log.warning("%s failed for verdict #%s: %s", werkzeug, verdict.id, exc)
         return f"nicht verschoben: {exc}"
     text = ergebnis_text(ergebnis) or "verschoben"
-    log.info("%s für Urteil #%s: %s", werkzeug, verdict.id, text)
+    log.info("%s for verdict #%s: %s", werkzeug, verdict.id, text)
     return text
 
 
@@ -474,7 +474,7 @@ async def zurueckholen(db: AsyncSession, verdict: SpamVerdict, *,
     ergebnis = await imap_aktion(verdict, False)
     verdict.action_result = ergebnis[:2000]
     await db.commit()
-    log.info("Urteil #%s zurückgeholt: %s", verdict.id, ergebnis)
+    log.info("Verdict #%s taken back: %s", verdict.id, ergebnis)
     return ergebnis
 
 

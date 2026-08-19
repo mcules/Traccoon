@@ -160,7 +160,7 @@ def _sid(kind: str, ref: int) -> str:
 def _not_found() -> HTTPException:
     """One single wording for "does not exist" and "is not yours". Two distinguishable
     answers would be a directory of other people's tickets."""
-    return HTTPException(404, "Session nicht gefunden")
+    return HTTPException(404, "Session not found")
 
 
 # ── Autorisierung ───────────────────────────────────────────────────────────
@@ -433,7 +433,7 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
     limit = _clamp(limit, 1, SESSION_LIMIT_MAX)
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     if status not in SESSION_STATUS:
-        raise HTTPException(400, f"status muss eines von {', '.join(SESSION_STATUS)} sein")
+        raise HTTPException(400, f"status has to be one of {', '.join(SESSION_STATUS)}")
     now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - dt.timedelta(hours=since_hours)
     scan = min(limit * RUN_SCAN_FACTOR, RUN_SCAN_MAX)

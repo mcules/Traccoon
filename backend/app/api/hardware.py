@@ -77,7 +77,7 @@ async def _require_location_manage(loc: Location, user: User, db: AsyncSession) 
         return
     proj = await db.get(Project, loc.project_id)
     if proj is None:
-        raise HTTPException(400, "Projekt existiert nicht")
+        raise HTTPException(400, "The project does not exist")
     try:
         access = await build_access(proj, user, db)
     except HTTPException:
@@ -87,7 +87,7 @@ async def _require_location_manage(loc: Location, user: User, db: AsyncSession) 
     level = await _location_grant_level(loc.id, user, db)
     if level == GrantLevel.manage:
         return
-    raise HTTPException(403, "Kein Zugriff auf diesen Ort")
+    raise HTTPException(403, "No access to this location")
 
 
 async def _compute_full_path(loc: Location, db: AsyncSession) -> str:
@@ -121,9 +121,9 @@ async def create_location(
     if data.project_id is not None:
         proj = await db.get(Project, data.project_id)
         if proj is None:
-            raise HTTPException(400, "Projekt existiert nicht")
+            raise HTTPException(400, "The project does not exist")
         if not (await build_access(proj, user, db)).has_role(ProjectRole.maintainer):
-            raise HTTPException(403, "Kein Zugriff auf dieses Projekt")
+            raise HTTPException(403, "No access to this project")
     loc = Location(
         name=data.name, type=data.type, parent_id=data.parent_id,
         project_id=data.project_id, notes=data.notes,
@@ -143,7 +143,7 @@ async def update_location(
 ):
     loc = await db.get(Location, loc_id)
     if loc is None:
-        raise HTTPException(404, "Ort nicht gefunden")
+        raise HTTPException(404, "Location not found")
     await _require_location_manage(loc, user, db)
     # Moving into another project additionally requires maintainer+ in the TARGET project;
     # otherwise a maintainer of project A could simply move a location into project B.
@@ -151,9 +151,9 @@ async def update_location(
         if data.project_id is not None:
             target_proj = await db.get(Project, data.project_id)
             if target_proj is None:
-                raise HTTPException(400, "Projekt existiert nicht")
+                raise HTTPException(400, "The project does not exist")
             if not (await build_access(target_proj, user, db)).has_role(ProjectRole.maintainer):
-                raise HTTPException(403, "Kein Zugriff auf das Zielprojekt")
+                raise HTTPException(403, "No access to the target project")
     loc.name, loc.type, loc.parent_id = data.name, data.type, data.parent_id
     loc.project_id, loc.notes = data.project_id, data.notes
     await db.flush()
@@ -173,7 +173,7 @@ async def delete_location(
 ):
     loc = await db.get(Location, loc_id)
     if loc is None:
-        raise HTTPException(404, "Ort nicht gefunden")
+        raise HTTPException(404, "Location not found")
     await _require_location_manage(loc, user, db)
     await db.delete(loc)
     await db.commit()
@@ -204,7 +204,7 @@ async def delete_model(
 ):
     m = await db.get(HardwareModel, model_id)
     if m is None:
-        raise HTTPException(404, "Modell nicht gefunden")
+        raise HTTPException(404, "Model not found")
     n = (await db.execute(select(func.count(HardwareAsset.id)).where(
         HardwareAsset.model_id == model_id))).scalar() or 0
     if n:
@@ -276,9 +276,9 @@ async def _require_project_member(project_id: int | None, user: User, db: AsyncS
         return  # stock or storage without a project
     proj = await db.get(Project, project_id)
     if proj is None:
-        raise HTTPException(400, "Projekt existiert nicht")
+        raise HTTPException(400, "The project does not exist")
     if not (await build_access(proj, user, db)).has_role(ProjectRole.member):
-        raise HTTPException(403, "Kein Zugriff auf dieses Projekt")
+        raise HTTPException(403, "No access to this project")
 
 
 async def _require_asset_manage(asset: HardwareAsset, user: User, db: AsyncSession) -> None:
@@ -288,7 +288,7 @@ async def _require_asset_manage(asset: HardwareAsset, user: User, db: AsyncSessi
         return
     proj = await db.get(Project, asset.project_id)
     if proj is None:
-        raise HTTPException(400, "Projekt existiert nicht")
+        raise HTTPException(400, "The project does not exist")
     try:
         access = await build_access(proj, user, db)
     except HTTPException:
@@ -301,7 +301,7 @@ async def _require_asset_manage(asset: HardwareAsset, user: User, db: AsyncSessi
         loc = await db.get(Location, asset.location_id)
         if loc is not None and (await _location_grant_level(loc.id, user, db)) == GrantLevel.manage:
             return
-    raise HTTPException(403, "Kein Zugriff auf dieses Exemplar")
+    raise HTTPException(403, "No access to this unit")
 
 
 @router.post("/hardware/assets", response_model=AssetOut, status_code=201)
@@ -309,7 +309,7 @@ async def create_asset(
     data: AssetIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)
 ):
     if await db.get(HardwareModel, data.model_id) is None:
-        raise HTTPException(400, "Modell existiert nicht")
+        raise HTTPException(400, "The model does not exist")
     await _require_project_member(data.project_id, user, db)
     a = HardwareAsset(**data.model_dump())
     db.add(a)
@@ -330,7 +330,7 @@ async def update_asset(
 ):
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise HTTPException(404, "Exemplar nicht gefunden")
+        raise HTTPException(404, "Unit not found")
     await _require_asset_manage(a, user, db)
     fields = data.model_dump(exclude_unset=True)
     # Moving into another project additionally requires member+ in the TARGET project;
@@ -353,7 +353,7 @@ async def delete_asset(
 ):
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise HTTPException(404, "Exemplar nicht gefunden")
+        raise HTTPException(404, "Unit not found")
     await _require_asset_manage(a, user, db)
     await db.delete(a)
     await db.commit()
@@ -367,9 +367,9 @@ async def asset_issues(
     from ..models.ticket import Issue, WorkflowStatus
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise HTTPException(404, "Exemplar nicht gefunden")
+        raise HTTPException(404, "Unit not found")
     if not await _can_view_asset(a, user, db):
-        raise HTTPException(403, "Kein Zugriff auf dieses Exemplar")
+        raise HTTPException(403, "No access to this unit")
     rows = (
         await db.execute(
             select(Issue).where(Issue.asset_id == asset_id).order_by(Issue.number.desc())
@@ -468,9 +468,9 @@ async def asset_steps(
 ):
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise HTTPException(404, "Exemplar nicht gefunden")
+        raise HTTPException(404, "Unit not found")
     if not await _can_view_asset(a, user, db):
-        raise HTTPException(403, "Kein Zugriff auf dieses Exemplar")
+        raise HTTPException(403, "No access to this unit")
     await _instantiate_steps(a, db)
     rows = (
         await db.execute(
@@ -502,10 +502,10 @@ async def start_asset_workflow(
     """Starts (idempotently) a procurement workflow instance for a unit."""
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise HTTPException(404, "Exemplar nicht gefunden")
+        raise HTTPException(404, "Unit not found")
     await _require_project_member(a.project_id, user, db)
     if a.project_id is None:
-        raise HTTPException(409, "Vorrat/Lager ohne Projekt hat keinen Beschaffungs-Workflow")
+        raise HTTPException(409, "A supply or stock without a project has no procurement workflow")
     from ..services.hardware_workflow import start_hardware_instance
     inst = await start_hardware_instance(db, a, user.id)
     return {"instance_id": inst.id, "status": inst.status.value, "definition_id": inst.definition_id}
@@ -518,10 +518,10 @@ async def complete_step(
 ):
     step = await db.get(HardwareAssetStep, step_id)
     if step is None or step.asset_id != asset_id:
-        raise HTTPException(404, "Schritt nicht gefunden")
+        raise HTTPException(404, "Step not found")
     a = await db.get(HardwareAsset, asset_id)
     if a is None:
-        raise HTTPException(404, "Exemplar nicht gefunden")
+        raise HTTPException(404, "Unit not found")
     await _require_asset_manage(a, user, db)
     step.status = "DONE"
     step.completed_at = dt.datetime.now(tz=dt.timezone.utc)

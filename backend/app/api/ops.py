@@ -98,7 +98,7 @@ async def _check_webhook_project(project_id: int | None, user: User, db: AsyncSe
     from ..models.project import Project
     proj = await db.get(Project, project_id)
     if proj is None:
-        raise HTTPException(400, "Zielprojekt existiert nicht")
+        raise HTTPException(400, "The target project does not exist")
     if not (await build_access(proj, user, db)).ai_assign:
         raise HTTPException(403, "KI-Recht im Zielprojekt erforderlich")
 
@@ -119,7 +119,7 @@ async def update_webhook(wid: int, data: WebhookIn, user: User = Depends(get_cur
                          db: AsyncSession = Depends(get_session)):
     w = await db.get(WebhookSub, wid)
     if w is None or not is_owner_or_admin(w.owner_user_id, user):
-        raise HTTPException(404, "Webhook nicht gefunden")
+        raise HTTPException(404, "Webhook not found")
     await _check_webhook_project(data.project_id, user, db)
     for field, value in data.model_dump().items():
         if field == "secret" and not value:
@@ -140,7 +140,7 @@ async def set_webhook_enabled(wid: int, data: EnabledIn, user: User = Depends(ge
     """On/off without deleting: deactivated, the inbound endpoint rejects (404)."""
     w = await db.get(WebhookSub, wid)
     if w is None or not is_owner_or_admin(w.owner_user_id, user):
-        raise HTTPException(404, "Webhook nicht gefunden")
+        raise HTTPException(404, "Webhook not found")
     w.enabled = data.enabled
     await db.commit()
     await db.refresh(w)
@@ -182,7 +182,7 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         sig = request.headers.get("X-Webhook-Signature", "")
         expected = hmac.new(sub.secret.encode(), raw, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(sig, expected):
-            raise HTTPException(401, "Signatur ungültig")
+            raise HTTPException(401, "Invalid signature")
     try:
         payload = await request.json()
     except Exception:
@@ -306,10 +306,10 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         from ..services.jsonlogic import _dig
         from ..services.workflow_engine import start_workflow
         if sub.workflow_definition_id is None:
-            raise HTTPException(400, "Webhook ohne workflow_definition_id")
+            raise HTTPException(400, "Webhook without workflow_definition_id")
         definition = await db.get(WorkflowDefinition, sub.workflow_definition_id)
         if definition is None or definition.current_version_id is None:
-            raise HTTPException(400, "Workflow-Definition fehlt oder ist nicht veröffentlicht")
+            raise HTTPException(400, "The workflow definition is missing or not published")
         # Idempotenz via ref_field → source_ref.
         src_ref = None
         if sub.ref_field and isinstance(payload, dict):
@@ -361,17 +361,17 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
 
     # mode == task: Ticket anlegen
     if sub.project_id is None:
-        raise HTTPException(400, "Webhook ohne project_id kann kein Ticket anlegen")
+        raise HTTPException(400, "A webhook without project_id cannot create a ticket")
     t = (await db.execute(select(IssueType).where(IssueType.project_id == sub.project_id).order_by(IssueType.order))).scalars().first()
     s = (await db.execute(select(WorkflowStatus).where(WorkflowStatus.project_id == sub.project_id).order_by(WorkflowStatus.order))).scalars().first()
     if t is None or s is None:
-        raise HTTPException(400, "Projekt ohne Typ/Status")
+        raise HTTPException(400, "Project without a type or status")
     from ..models.project import Project
     project = await db.get(Project, sub.project_id)
     counter = (await db.execute(select(IssueCounter).where(
         IssueCounter.project_id == sub.project_id).with_for_update())).scalar_one_or_none()
     if project is None or counter is None:
-        raise HTTPException(400, "Zielprojekt nicht mehr verfügbar")
+        raise HTTPException(400, "The target project is no longer available")
     counter.last_number += 1
     n = counter.last_number
     from ..models.user import SYSTEM_USER_ID
@@ -467,7 +467,7 @@ async def update_job(jid: int, data: JobIn, user: User = Depends(get_current_use
                     db: AsyncSession = Depends(get_session)):
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
-        raise HTTPException(404, "Job nicht gefunden")
+        raise HTTPException(404, "Job not found")
     for field, value in data.model_dump().items():
         setattr(job, field, value)
     await db.commit()
@@ -482,7 +482,7 @@ async def run_job_now(jid: int, user: User = Depends(get_current_user),
     from ..services.scheduler import run_job_kind
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
-        raise HTTPException(404, "Job nicht gefunden")
+        raise HTTPException(404, "Job not found")
     jr = JobRun(job_id=job.id, status="running")
     db.add(jr)
     job.last_run_at = dt.datetime.now(tz=dt.timezone.utc)
@@ -510,7 +510,7 @@ async def set_job_enabled(jid: int, data: EnabledIn, user: User = Depends(get_cu
     Reactivating also lifts a pause_on_success `paused` again."""
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
-        raise HTTPException(404, "Job nicht gefunden")
+        raise HTTPException(404, "Job not found")
     job.enabled = data.enabled
     if data.enabled:
         job.paused = False
@@ -524,7 +524,7 @@ async def job_runs(jid: int, user: User = Depends(get_current_user),
                    db: AsyncSession = Depends(get_session)):
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
-        raise HTTPException(404, "Job nicht gefunden")
+        raise HTTPException(404, "Job not found")
     rows = (await db.execute(select(JobRun).where(JobRun.job_id == jid).order_by(JobRun.id.desc()))).scalars().all()
     return [{"id": r.id, "status": r.status, "output": r.output, "started_at": r.started_at} for r in rows]
 

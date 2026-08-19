@@ -614,7 +614,7 @@ async def test_entscheidungen_wirken_auf_die_naechste_mail(db):
 
     nachher, gruende, sicher = await spam_learn.bewerten(db, user.id, merkmale)
     assert nachher > vorher
-    assert sicher, "ein dreimal einhellig entschiedener Absender gilt als geklärt"
+    assert sicher, "a sender decided unanimously three times counts as resolved"
     assert any("3× Spam" in g for g in gruende)
 
 
