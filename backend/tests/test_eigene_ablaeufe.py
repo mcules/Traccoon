@@ -1,9 +1,9 @@
-"""Eigene Abläufe: jeder darf sie anlegen — sie wirken aber nur dort, wo er selbst darf.
+"""Own flows: everybody may create them, but they act only where the creator is allowed to.
 
-Ein freier Ablauf (kein Projekt, kein Slot) gehört seinem Ersteller. Das ist mehr als eine
-Anzeigeregel: die Definition liegt projektlos in derselben Tabelle wie die ausgelieferten
-Vorlagen, und ihre Aktionen fassen Artefakte an. Geprüft wird deshalb an drei Stellen —
-sehen, starten, und auf ein Ereignis anspringen.
+A free flow (no project, no slot) belongs to its creator. That is more than a display rule:
+the definition lies project-less in the same table as the shipped templates, and its actions
+touch artifacts. That is why checking happens in three places: seeing, starting and reacting
+to an event.
 """
 import pytest
 from app.models.enums import (
@@ -44,7 +44,7 @@ async def _freier_ablauf(db, besitzer, key: str, *, trigger: dict | None = None,
 
 
 async def test_jeder_darf_einen_eigenen_ablauf_anlegen(client, db):
-    """Ein eigener Ablauf ist kein Adminrecht — sonst hat ihn niemand außer dem Admin."""
+    """An own flow is not an admin right; otherwise nobody but the admin has one."""
     anna = await make_user(db, "anna")
     r = await client.post("/workflows", headers=auth(anna), json={
         "project_id": None, "key": "abendrunde", "name": "Abendrunde",
@@ -80,7 +80,7 @@ async def test_admin_sieht_und_darf_alles(client, db):
 
 
 async def test_start_verlangt_rechte_am_artefakt(client, db):
-    """Der Ablauf gehört Anna — das Ticket nicht. Was er anfasst, entscheidet das Projekt."""
+    """The flow belongs to Anna, the ticket does not. What it touches is decided by the project."""
     from app.models.ticket import Issue, IssueType, WorkflowStatus
 
     anna = await make_user(db, "anna")
@@ -103,8 +103,8 @@ async def test_start_verlangt_rechte_am_artefakt(client, db):
 
 
 async def test_ereignis_startet_nur_bei_eigenen_projekten(db):
-    """Ohne diese Grenze liefe Annas Ablauf bei JEDEM Ticket-Ereignis mit — auch in
-    Projekten, die sie gar nicht sehen darf."""
+    """Without this boundary Anna's flow would run along with EVERY ticket event, in projects
+    she may not even see."""
     anna = await make_user(db, "anna")
     chef = await make_user(db, "chef", admin=True)
     ihrs = await make_project(db, "IHR", "Annas Projekt")
@@ -116,8 +116,8 @@ async def test_ereignis_startet_nur_bei_eigenen_projekten(db):
 
     assert len(await emit(db, "issue.created", project_id=fremd.id)) == 0
     assert len(await emit(db, "issue.created", project_id=ihrs.id)) == 1
-    # Die Instanz selbst bleibt projektlos (das Subjekt ist `standalone`) — im Kontext
-    # steht aber, aus welchem Projekt das Ereignis kam.
+    # The instance itself stays project-less (the subject is `standalone`), but the context
+    # says which project the event came from.
     lauf = (await db.execute(select(WorkflowInstance))).scalars().one()
     assert lauf.project_id is None
     assert lauf.context["event"]["project_id"] == ihrs.id
@@ -130,11 +130,11 @@ async def test_admin_ablauf_hoert_ueberall(db):
     assert len(await emit(db, "issue.created", project_id=fremd.id)) == 1
 
 
-# ── Webhook als Quelle ───────────────────────────────────────────────────────
+# ── The webhook as a source ──────────────────────────────────────────────────
 
 async def test_ablauf_bekommt_eine_eigene_adresse(client, db):
-    """Nicht jedes System spricht MCP oder kennt Traccoons Ereignisse — einen Webhook
-    schickt fast jedes. Die Adresse entsteht jetzt im Ablauf, nicht am anderen Ende."""
+    """Not every system speaks MCP or knows Traccoon's events; almost every one sends a
+    webhook. The address now comes into being in the flow, not at the other end."""
     anna = await make_user(db, "anna")
     d = await _freier_ablauf(db, anna, "stoerungsmelder")
 
@@ -146,8 +146,8 @@ async def test_ablauf_bekommt_eine_eigene_adresse(client, db):
     assert hook["public_id"] and hook["secret"]
     assert hook["url"].endswith(f"/api/hooks/{hook['public_id']}")
 
-    # Ein zweiter Aufruf gibt dieselbe Adresse — sonst sammelte sich bei jedem Klick eine
-    # weitere, und niemand wüsste, welche das fremde System benutzt.
+    # A second call gives the same address; otherwise another one would pile up with every
+    # click and nobody would know which one the foreign system uses.
     wieder = await client.post(f"/workflows/{d.id}/webhook", headers=auth(anna))
     assert wieder.json()["public_id"] == hook["public_id"]
 
@@ -161,8 +161,8 @@ async def test_fremder_gibt_keinem_ablauf_eine_adresse(client, db):
 
 
 async def test_webhook_startet_den_ablauf_wirklich(client, db):
-    """Der Beweis, dass die Adresse trägt: Aufruf rein, Instanz raus — mit der Nutzlast
-    im Kontext, damit die Verzweigungen etwas zu lesen haben."""
+    """The proof that the address carries: a call in, an instance out, with the payload in
+    the context so that the branches have something to read."""
     import hashlib
     import hmac
     import json as _json
@@ -187,7 +187,7 @@ async def test_webhook_startet_den_ablauf_wirklich(client, db):
     assert inst[0].context["vorgang"]["titel"] == "Störung"
 
 
-# ── Das Artefakt kommt aus der Nutzlast ──────────────────────────────────────
+# ── The artifact comes from the payload ──────────────────────────────────────
 
 async def _ticket(db, chef, key="ABC-1"):
     from app.models.ticket import Issue, IssueType, WorkflowStatus
@@ -241,8 +241,8 @@ async def _rufen(client, hook, nutzlast: dict):
 
 
 async def test_webhook_bindet_das_ticket_aus_der_nutzlast(client, db):
-    """Das fremde System kennt Traccoons Nummern nicht — es nennt die Kennung, die es
-    kennt. Ohne diese Bindung liefen alle Ticket-Aktionen des Ablaufs ins Leere."""
+    """The foreign system does not know Traccoon's numbers; it names the identifier it knows.
+    Without this binding all ticket actions of the flow would run into nothing."""
     chef = await make_user(db, "chef", admin=True)
     _, issue = await _ticket(db, chef, "ABC-7")
     d = await _mit_subjektfeld(db, chef, "vorgang.ticket")
@@ -255,7 +255,7 @@ async def test_webhook_bindet_das_ticket_aus_der_nutzlast(client, db):
     inst = (await db.execute(select(WorkflowInstance).where(
         WorkflowInstance.definition_id == d.id))).scalars().one()
     assert inst.issue_id == issue.id
-    # Das Projekt des Tickets wird mitgeführt — sonst greifen Rechte und Live-Ereignisse nicht.
+    # The project of the ticket travels along; otherwise rights and live events do not work.
     assert inst.project_id == issue.project_id
 
 
@@ -269,8 +269,7 @@ async def test_auch_die_nummer_geht(client, db):
 
 
 async def test_fehlendes_feld_sagt_es_deutlich(client, db):
-    """Ein Ablauf, der ein Artefakt braucht, aber keines bekommt, darf nicht stumm
-    ins Leere starten."""
+    """A flow that needs an artifact but gets none must not start mutely into nothing."""
     chef = await make_user(db, "chef", admin=True)
     await _ticket(db, chef, "ABC-3")
     d = await _mit_subjektfeld(db, chef, "vorgang.ticket")
@@ -286,8 +285,8 @@ async def test_fehlendes_feld_sagt_es_deutlich(client, db):
 
 
 async def test_fremdes_ticket_bleibt_fremd(client, db):
-    """Die Rechte kommen vom Besitzer des Auslösers, nicht vom Anrufer — eine
-    Webhook-Adresse kann jeder kennen."""
+    """The rights come from the owner of the trigger, not from the caller: anybody can know
+    a webhook address."""
     chef = await make_user(db, "chef", admin=True)
     anna = await make_user(db, "anna")
     _, issue = await _ticket(db, chef, "GEH-4")
