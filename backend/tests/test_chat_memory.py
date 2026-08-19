@@ -1,8 +1,8 @@
-"""Der Gesprächsfaden des Assistenten.
+"""The conversation thread of the assistant.
 
-Vorher ein reines Zeitfenster: nach 12 Stunden oder 8 Wortwechseln wusste er schlagartig
-nichts mehr. Jetzt bleibt das Jüngste wörtlich, das Ältere wandert in eine mitwachsende
-Zusammenfassung — die Tests bewachen vor allem, dass dabei nichts still verlorengeht.
+Before it was a pure time window: after 12 hours or 8 exchanges it knew nothing abruptly.
+Now the most recent stays verbatim and the older part wanders into a growing summary; the
+tests guard above all that nothing is silently lost in the process.
 """
 import datetime as dt
 
@@ -20,7 +20,7 @@ async def anna(db):
 
 @pytest.fixture(autouse=True)
 def kein_echtes_modell(monkeypatch):
-    """Agent-/Token-Auflösung wegmocken; das Aux-Modell setzt jeder Test selbst."""
+    """Mock away the agent and token resolution; every test sets the aux model itself."""
     async def fake_load_agent(*a, **kw):
         class A:
             role = name = "assistent"
@@ -59,7 +59,7 @@ def _mock_aux(monkeypatch, text):
 
 
 async def test_kurzes_gespraech_bleibt_woertlich(db, anna, monkeypatch):
-    """Wenig gesagt → nichts zusammenfassen, kein Aux-Aufruf, keine Kosten."""
+    """Little said means nothing to summarise, no aux call, no cost."""
     aux = _mock_aux(monkeypatch, "sollte nicht gerufen werden")
     for i in range(3):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
@@ -79,7 +79,7 @@ async def test_aelteres_wandert_in_die_zusammenfassung(db, anna, monkeypatch):
 
     assert verlauf[0]["label"] == "Woran du dich erinnerst"
     assert "News-Jobs offen" in verlauf[0]["body"]
-    # Die jüngsten 8 stehen wörtlich da, die ältesten nicht mehr.
+    # The most recent 8 stand there verbatim, the oldest no longer.
     woertlich = [w["body"] for w in verlauf if w["role"] == "user"]
     assert "Frage 15" in woertlich and "Frage 0" not in woertlich
 
@@ -88,8 +88,8 @@ async def test_aelteres_wandert_in_die_zusammenfassung(db, anna, monkeypatch):
 
 
 async def test_zusammenfassung_wird_fortgeschrieben_nicht_ersetzt(db, anna, monkeypatch):
-    """Beim zweiten Mal muss das bisherige Gedächtnis mit in den Auftrag — sonst verliert der
-    Assistent bei jedem Nachrücken alles, was vorher zusammengefasst war."""
+    """The second time, the existing memory has to go into the assignment as well; otherwise
+    the assistant loses everything summarised before on every shift."""
     _mock_aux(monkeypatch, "- Runde eins")
     for i in range(16):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
@@ -105,8 +105,8 @@ async def test_zusammenfassung_wird_fortgeschrieben_nicht_ersetzt(db, anna, monk
 
 
 async def test_nur_neues_wird_gefasst(db, anna, monkeypatch):
-    """Was schon in der Zusammenfassung steht, darf nicht erneut durchs Modell — sonst
-    kostet jede Nachricht den ganzen Verlauf."""
+    """What already stands in the summary must not go through the model again; otherwise every
+    message costs the whole history."""
     _mock_aux(monkeypatch, "- alles bekannt")
     for i in range(16):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
@@ -114,11 +114,11 @@ async def test_nur_neues_wird_gefasst(db, anna, monkeypatch):
 
     aux2 = _mock_aux(monkeypatch, "- nichts Neues")
     await worker._chat_history(db, await _chat(db, anna, "y", ""))
-    assert not hasattr(aux2, "gesehen")     # nichts nachgerückt → kein Aufruf
+    assert not hasattr(aux2, "gesehen")     # nothing shifted, so no call
 
 
 async def test_ohne_aux_bleibt_das_alte_gedaechtnis(db, anna, monkeypatch):
-    """Aux nicht erreichbar: lieber ein etwas veraltetes Gedächtnis als ein gerissener Faden."""
+    """Aux unreachable: better a slightly outdated memory than a torn thread."""
     _mock_aux(monkeypatch, "- Stand von gestern")
     for i in range(16):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")

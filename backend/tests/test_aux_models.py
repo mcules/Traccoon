@@ -1,8 +1,8 @@
-"""Nebenaufgaben auf einem eigenen Modell.
+"""Side tasks on a model of their own.
 
-Vorbild Predecessor: `auxiliary:`-Block mit Modell je Aufgabe, Default `auto`. Wichtig ist vor
-allem, was NICHT passiert — ohne Einstellung ändert sich nichts, und ein Fehlschlag reißt
-den Hauptlauf nicht mit.
+The model is Predecessor: an `auxiliary:` block with a model per task, the default `auto`. What
+matters above all is what does NOT happen: without a setting nothing changes, and a failure
+does not tear the main run with it.
 """
 import json
 
@@ -22,7 +22,7 @@ class FakeResp:
 
 
 async def test_ohne_einstellung_gilt_auto(db, monkeypatch):
-    """Kein Eintrag → Provider und Modell des Agenten. Wer nichts einstellt, merkt nichts."""
+    """No entry means the provider and model of the agent. Whoever sets nothing notices nothing."""
     gesehen = {}
 
     async def fake_chat(**kw):
@@ -57,7 +57,7 @@ async def test_eingestelltes_modell_wird_genommen(db, monkeypatch):
 
 
 async def test_kaputte_einstellung_faellt_auf_auto_zurueck(db, monkeypatch):
-    """Ein Tippfehler in der Einstellung darf keinen Lauf lahmlegen."""
+    """A typo in the setting must not paralyse a run."""
     await set_setting(db, "aux.compression", "{kein json")
     assert await aux.aux_config(db, "compression") == {}
 
@@ -85,7 +85,7 @@ async def test_zeitueberschreitung_liefert_nichts_statt_zu_haengen(db, monkeypat
     monkeypatch.setattr(aux.router, "chat", fake_chat)
     monkeypatch.setattr(aux, "resolve_provider_token", fake_token)
     monkeypatch.setattr(aux, "resolve_provider_base_url", fake_token)
-    # Der Deckel greift, ohne dass der Test 30 s wartet: 10 s Frist, wir prüfen nur das Ergebnis.
+    # The cap takes hold without the test waiting 30 s: a 10 s deadline, and we only check the result.
     import asyncio
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(
@@ -107,14 +107,14 @@ async def test_admin_kann_nebenaufgaben_einstellen(client, db):
     r = await client.get("/admin/aux-models", headers=auth(admin))
     assert r.status_code == 200
     assert {e["task"] for e in r.json()} == set(aux.AUX_TASKS)
-    assert all(e["config"] is None for e in r.json())        # zunächst überall `auto`
+    assert all(e["config"] is None for e in r.json())        # `auto` everywhere at first
 
     r = await client.put("/admin/aux-models/compression", headers=auth(admin),
                          json={"provider": "openai", "model": "qwen3.6-35b-q3", "timeout": 300})
     assert r.status_code == 200 and r.json()["config"]["model"] == "qwen3.6-35b-q3"
     assert (await aux.aux_config(db, "compression"))["timeout"] == 300
 
-    # Provider leeren = zurück auf `auto`.
+    # Emptying the provider means back to `auto`.
     r = await client.put("/admin/aux-models/compression", headers=auth(admin), json={})
     assert r.json()["config"] is None
 
@@ -127,9 +127,9 @@ async def test_unbekannte_nebenaufgabe_wird_abgewiesen(client, db):
 
 
 async def test_denkendes_modell_bekommt_das_denken_abgeschaltet(db, monkeypatch):
-    """qwen3.6 & Co. verbrauchen ihr ganzes Ausgabe-Budget im Reasoning und liefern dann
-    LEEREN Text — 231 Completion-Tokens für ein „OK", davon 229 Denken. Für Fleißarbeit ist
-    das verschenkt, also standardmäßig aus."""
+    """qwen3.6 and company use their whole output budget on reasoning and then deliver EMPTY
+    text: 231 completion tokens for an "OK", 229 of them thinking. For diligence work that is
+    wasted, so it is off by default."""
     await set_setting(db, "aux.compression", json.dumps({"provider": "openai", "model": "qwen"}))
     gesehen = {}
 
@@ -167,7 +167,7 @@ async def test_eigenes_extra_body_schlaegt_die_voreinstellung(db, monkeypatch):
 
 
 async def test_auto_bekommt_kein_extra_body(db, monkeypatch):
-    """Die Subscription-Provider kennen das Feld nicht — dort wäre es ein 400er."""
+    """The subscription providers do not know the field; there it would be a 400."""
     gesehen = {}
 
     async def fake_chat(**kw):

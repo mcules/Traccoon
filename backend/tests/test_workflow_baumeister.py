@@ -1,9 +1,8 @@
-"""Der Baumeister: aus einer Beschreibung ein Graph — und was passiert, wenn er patzt.
+"""The builder: a graph out of a description, and what happens when it slips.
 
-Geprüft wird nicht das Modell (das kann niemand testen), sondern alles drumherum: dass
-aus einer krummen Antwort ein sauberer Graph wird, dass die Prüfung greift, dass eine
-fehlerhafte Zeichnung genau EINE Nachbesserung bekommt und dass ein Entwurf nichts
-speichert.
+What is checked is not the model (nobody can test that) but everything around it: that a
+clean graph comes out of a crooked answer, that the validation takes hold, that a faulty
+drawing gets exactly ONE correction and that a draft stores nothing.
 """
 import json
 
@@ -38,7 +37,7 @@ KAPUTT = {
             "branches": [{"handle": "ja"}, {"handle": "nein"}], "default_handle": "nein"}}},
         {"id": "ende", "type": "end", "data": {"config": {"outcome": "completed"}}},
     ],
-    # Der Zweig "ja" hat keine Kante — genau das meldet die Prüfung.
+    # The branch "ja" has no edge, and exactly that the validation reports.
     "edges": [{"id": "e1", "source": "start", "target": "weiche"},
               {"id": "e2", "source": "weiche", "target": "ende", "sourceHandle": "nein"}],
 }
@@ -49,7 +48,7 @@ class _Antwort:
 
 
 def _modell(monkeypatch, *antworten):
-    """Ersetzt den LLM-Aufruf durch feste Antworten; zählt die Runden mit."""
+    """Replaces the LLM call by fixed answers; counts the rounds."""
     zaehler = {"n": 0}
 
     async def chat(**kwargs):
@@ -79,12 +78,12 @@ async def test_sauberer_entwurf(db, monkeypatch):
     assert r["fehler"] == []
     assert r["erklaerung"].startswith("Meldet")
     assert [n["id"] for n in r["graph"]["nodes"]] == ["start", "melden", "ende"]
-    # Positionen kommen vom Server, nicht vom Modell — sonst läge alles übereinander.
+    # Positions come from the server, not from the model; otherwise everything would lie on top of each other.
     assert {n["position"]["y"] for n in r["graph"]["nodes"]} == {0, 130, 260}
 
 
 async def test_konfiguration_wird_auch_flach_gefunden(db, monkeypatch):
-    """Modelle legen die Konfiguration gern woanders hin — leer darf sie nie ankommen."""
+    """Models like to put the configuration somewhere else; it must never arrive empty."""
     anna = await make_user(db, "anna")
     flach = {"erklaerung": "x", "edges": GUT["edges"], "nodes": [
         {"id": "start", "type": "start", "config": {"label": "Start"}},
@@ -100,8 +99,8 @@ async def test_konfiguration_wird_auch_flach_gefunden(db, monkeypatch):
 
 
 async def test_vergessener_standardzweig_wird_gesetzt(db, monkeypatch):
-    """Eine Weiche ohne Standard-Zweig verlangte eine Kante namens 'default' — die
-    niemand zeichnet. Das schließen wir selbst, statt eine Modellrunde dafür zu opfern."""
+    """A branch without a default path demanded an edge called 'default', which nobody draws.
+    We close that ourselves instead of sacrificing a model round for it."""
     anna = await make_user(db, "anna")
     ohne = {"erklaerung": "x", "nodes": [
         {"id": "start", "type": "start", "data": {"config": {}}},
@@ -137,13 +136,13 @@ async def test_fehler_werden_zurueckgegeben_und_einmal_nachgebessert(db, monkeyp
                               subject_kind=WorkflowSubjectKind.standalone)
     assert zaehler["n"] == 2, "genau eine Nachbesserung"
     assert r["fehler"] == []
-    # Die Nachbesserung bekommt die echten Prüfsätze zu sehen.
+    # The correction gets the real validation sentences to see.
     nachricht = chat.letzte["messages"][-1]["content"]
     assert "Kante für Ausgang 'ja' fehlt" in nachricht
 
 
 async def test_hartnaeckig_kaputt_kommt_trotzdem_an(db, monkeypatch):
-    """Ein fast fertiger Graph ist mehr wert als eine Fehlermeldung."""
+    """An almost finished graph is worth more than an error message."""
     anna = await make_user(db, "anna")
     zaehler, _ = _modell(monkeypatch, json.dumps(KAPUTT))
     r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
