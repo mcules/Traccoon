@@ -1,14 +1,14 @@
-"""Live-Transport des Büros: eine Definition von „darf sehen", und ein Socket, der
-nicht schwächer ist als ein Request.
+"""Live transport of the office: one definition of "may see", and a socket that is not
+weaker than a request.
 
-Der wertvollste Test hier ist die **Gleichheit** `compute_acl(db, user)` ≡ die Menge aus
-`GET /projects`. Sie ist der Grund, warum es keine zweite, langsam davondriftende
-Vorstellung davon geben kann, welche Projekte ein Nutzer sehen darf. Fällt sie, zeigt der
-Live-Strom entweder zu wenig (ärgerlich) oder zu viel (ein Leck).
+The most valuable test here is the **equality** `compute_acl(db, user)` with the set from
+`GET /projects`. It is the reason why there can be no second, slowly drifting notion of which
+projects a user may see. If it falls, the live stream shows either too little (annoying) or
+too much (a leak).
 
-Keine neue Test-Abhängigkeit: geprüft werden die reinen Funktionen und der Fan-out gegen
-einen Fake-Socket. Die Endpunkte werden direkt aufgerufen — für die Auth-Prüfung braucht
-es keinen echten WebSocket-Handshake, nur ein Objekt, das `close()` mitschreibt.
+No new test dependency: what is checked are the pure functions and the fan-out against a fake
+socket. The endpoints are called directly; for the auth check no real WebSocket handshake is
+needed, only an object that records `close()`.
 """
 import asyncio
 import datetime as dt
@@ -31,7 +31,7 @@ from conftest import add_member, auth, make_project, make_user
 # ── Fake-Socket ──────────────────────────────────────────────────────────────
 
 class FakeWS:
-    """Was der Endpunkt von einem WebSocket wirklich benutzt — mehr braucht es nicht."""
+    """What the endpoint really uses of a WebSocket; no more is needed."""
 
     def __init__(self, incoming: list[str] | None = None) -> None:
         self.accepted = False
@@ -61,14 +61,14 @@ def conn(user_id: int = 1, *, is_admin: bool = False, allowed: set[int] | None =
 
 
 def ev(project_id: int | None, owner_id: int | None = None, **kw) -> dict:
-    """Ein Büro-Ereignis, verkürzt auf die Felder, die über die Sichtbarkeit entscheiden."""
+    """An office event, shortened to the fields that decide the visibility."""
     return {"v": 1, "seq": 41, "kind": "tool_start",
             "project_id": project_id, "owner_id": owner_id, **kw}
 
 
 def use_test_db(monkeypatch, db) -> None:
-    """Die WS-Endpunkte holen sich ihre eigene Session (kein `Depends`), und sie haben
-    `SessionLocal` beim Import gebunden — der conftest-Patch auf `app.db` erreicht sie
+    """The WS endpoints fetch a session of their own (no `Depends`), and they bound
+    `SessionLocal` at import time, so the conftest patch on `app.db` does not reach them."""
     deshalb nicht."""
     import app.api.office_ws as rtws
     import app.api.ws as wsmod
@@ -86,7 +86,7 @@ async def projects_from_api(client, user) -> set[int]:
 
 
 async def test_acl_gleich_projects_fuer_mitglied(client, db):
-    """Direktes Mitglied: genau seine Projekte — und keins der fremden."""
+    """Direct member: exactly their projects, and none of the foreign ones."""
     user = await make_user(db, "mitglied")
     mein = await make_project(db, "MEI", "Meins")
     await make_project(db, "FRE", "Fremdes")
@@ -97,8 +97,8 @@ async def test_acl_gleich_projects_fuer_mitglied(client, db):
 
 
 async def test_acl_gleich_projects_fuer_geerbtes_unterprojekt(client, db):
-    """Mitglied im Elternprojekt: das Unterprojekt kommt über die Vererbung mit — und
-    genau darin steckt die Verzweigung, die eine zweite ACL-Definition falsch abbildete."""
+    """Member in the parent project: the sub-project comes along over the inheritance, and
+    exactly there sits the branching a second ACL definition mapped wrongly."""
     user = await make_user(db, "erbe")
     eltern = await make_project(db, "ELT", "Eltern")
     kind = await make_project(db, "KIN", "Kind", parent_id=eltern.id, inherit_members=True)
@@ -112,8 +112,8 @@ async def test_acl_gleich_projects_fuer_geerbtes_unterprojekt(client, db):
 
 
 async def test_acl_gleich_projects_fuer_admin(client, db):
-    """Der Admin sieht alles — ohne Sonderzweig in `compute_acl`, sonst wäre genau das
-    die Stelle, an der die beiden Definitionen auseinanderliefen."""
+    """The admin sees everything, without a special branch in `compute_acl`; otherwise that
+    would be exactly the place where the two definitions drifted apart."""
     admin = await make_user(db, "chef", admin=True)
     a = await make_project(db, "AAA", "A")
     b = await make_project(db, "BBB", "B")
@@ -122,7 +122,7 @@ async def test_acl_gleich_projects_fuer_admin(client, db):
     assert acl == await projects_from_api(client, admin) == {a.id, b.id}
 
 
-# ── visible(): die Matrix ────────────────────────────────────────────────────
+# ── visible(): the matrix ────────────────────────────────────────────────────
 
 @pytest.mark.parametrize(
     ("wer", "was", "erwartet"),
@@ -131,9 +131,9 @@ async def test_acl_gleich_projects_fuer_admin(client, db):
         ("mitglied", "projekt", True),
         ("mitglied", "eigenes_projektlos", True),
         ("mitglied", "fremdes_projektlos", False),
-        # Nicht-Mitglied (user 8)
+        # Non-member (user 8)
         ("fremd", "projekt", False),
-        ("fremd", "eigenes_projektlos", False),   # gehört user 7, nicht ihm
+        ("fremd", "eigenes_projektlos", False),   # belongs to user 7, not to them
         ("fremd", "fremdes_projektlos", False),
         # Admin
         ("admin", "projekt", True),
@@ -159,16 +159,16 @@ def test_visible_ohne_projekt_und_ohne_owner_ist_niemandes_ereignis():
     assert visible(ev(None, None), conn(7, allowed={27})) is False
 
 
-# ── Scope verengt nur ────────────────────────────────────────────────────────
+# ── The scope only narrows ───────────────────────────────────────────────────
 
 def test_scope_auf_fremdes_projekt_liefert_stille():
-    """`scope={99}` auf ein Projekt, in dem der Nutzer nicht ist: kein Ereignis kommt an.
-    Die Verengung des Clients kann die Servermenge nicht aufmachen."""
+    """`scope={99}` on a project the user is not in: no event arrives. The narrowing of the
+    client cannot open the server set up."""
     c = conn(7, allowed={27}, scope={99})
     fremd = ev(99, 3)
     assert visible(fremd, c) is False
     assert (visible(fremd, c) and in_scope(fremd, c)) is False
-    # Und das eigene Projekt fällt jetzt aus dem Scope — verengt bleibt verengt.
+    # And the own project now falls out of the scope: narrowed stays narrowed.
     eigen = ev(27, 3)
     assert visible(eigen, c) is True
     assert in_scope(eigen, c) is False
@@ -181,19 +181,19 @@ def test_scope_none_ist_alles_erlaubte():
 
 
 def test_scope_projekt_schliesst_projektlose_aus():
-    """Ein Projekt-Abonnement (der Reiter im Projekt) will die globalen Job-Läufe nicht."""
+    """A project subscription (the tab in the project) does not want the global job runs."""
     c = conn(7, allowed={27}, scope={27})
     assert in_scope(ev(27, 3), c) is True
     assert in_scope(ev(None, 7), c) is False
 
 
 def test_parse_scopes_faellt_eng_aus():
-    assert parse_scopes({"type": "subscribe"}) is None                       # ohne = global
+    assert parse_scopes({"type": "subscribe"}) is None                       # without it: global
     assert parse_scopes({"scopes": [{"kind": "global"}]}) is None
     assert parse_scopes({"scopes": [{"kind": "project", "id": 27}]}) == {27}
-    # Global gewinnt, wenn beides drinsteht — es ist die Menge, die er ohnehin sehen darf.
+    # Global wins when both are in there: it is the set they may see anyway.
     assert parse_scopes({"scopes": [{"kind": "project", "id": 27}, {"kind": "global"}]}) is None
-    # Unlesbares wird zu Stille, NICHT zu „alles".
+    # Unreadable becomes silence, NOT "everything".
     assert parse_scopes({"scopes": [{"kind": "project"}, "quatsch"]}) == set()
     assert parse_scopes({"scopes": []}) == set()
 
@@ -229,9 +229,8 @@ async def test_fanout_projektlos_nur_an_den_eigentuemer():
 
 
 async def test_langsamer_client_faellt_statt_die_bruecke_zu_bremsen():
-    """Volle Warteschlange = die Verbindung fliegt raus. Sie hat dann eine Lücke und muss
-    über den Snapshot wiederkommen; weiterzuschicken hieße, einen lückenlosen Strom
-    vorzuspielen."""
+    """A full queue means the connection flies out. It then has a gap and has to come back
+    over the snapshot; sending on would fake a gapless stream."""
     m = UserConnectionManager()
     c = conn(7, allowed={27})
     m.add(c)
@@ -241,13 +240,13 @@ async def test_langsamer_client_faellt_statt_die_bruecke_zu_bremsen():
     await m.dispatch(ev(27, 3))
 
     assert c not in m.conns
-    await asyncio.sleep(0)  # dem Schließ-Task einen Zug geben
+    await asyncio.sleep(0)  # give the closing task a turn
     assert c.ws.closed == CLOSE_TOO_SLOW
 
 
 async def test_sweeper_frischt_nur_abgelaufene_acls_auf(db, monkeypatch):
-    """Die ACL hängt an der Verbindung und wird vom Sweeper aufgefrischt — nie je
-    Ereignis. Eine frische Verbindung fasst er gar nicht erst an."""
+    """The ACL hangs off the connection and is refreshed by the sweeper, never per event. A
+    fresh connection it does not touch at all."""
     use_test_db(monkeypatch, db)
     user = await make_user(db, "spaet")
     proj = await make_project(db, "SPT", "Später")
@@ -294,13 +293,13 @@ async def test_socket_lehnt_kaputtes_token_ab(db, monkeypatch):
 
 
 async def test_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch):
-    """Ein Token, das vor der letzten Passwortänderung ausgestellt wurde, ist tot —
-    sonst bliebe ein gestohlenes Token trotz Passwortwechsel live."""
+    """A token issued before the last password change is dead; otherwise a stolen token would
+    stay live despite the password change."""
     use_test_db(monkeypatch, db)
     user = await make_user(db, "wechsler")
     token = create_access_token(user.id)
-    # Deutlich in der Zukunft, damit der Test unabhängig von der Zeitzone der Datenbank
-    # bleibt (SQLite gibt den Zeitstempel naiv zurück).
+    # Clearly in the future, so that the test stays independent of the time zone of the
+    # database (SQLite returns the timestamp naively).
     user.password_changed_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=2)
     await db.commit()
 
@@ -311,8 +310,8 @@ async def test_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch):
 
 
 async def test_projekt_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch):
-    """Regression für `/api/projects/{id}/ws`: derselbe Anspruch am alten Socket. Er hat
-    die Prüfung bis Welle D nicht gemacht — ein widerrufenes Token kam durch."""
+    """Regression for `/api/projects/{id}/ws`: the same claim on the old socket. It did not
+    do the check until this wave, and a revoked token got through."""
     use_test_db(monkeypatch, db)
     user = await make_user(db, "wechsler2")
     proj = await make_project(db, "WEC", "Wechsel")
@@ -356,9 +355,9 @@ async def test_projekt_socket_lehnt_inaktiven_nutzer_ab(db, monkeypatch):
 # ── Protokoll ────────────────────────────────────────────────────────────────
 
 async def test_hello_und_subscribe(db, monkeypatch):
-    """Verbinden → `hello` mit der Servermenge; `subscribe` verengt und wird bestätigt.
-    Die Bestätigung läuft durch dieselbe Warteschlange wie die Ereignisse — auf einem
-    Socket schreibt nur die Pumpe."""
+    """Connect, then `hello` with the server set; `subscribe` narrows and is confirmed. The
+    confirmation runs through the same queue as the events: on a socket only the pump
+    writes."""
     use_test_db(monkeypatch, db)
     import app.api.office_ws as rtws
     user = await make_user(db, "hallo")
@@ -372,12 +371,12 @@ async def test_hello_und_subscribe(db, monkeypatch):
     monkeypatch.setattr(rtws.manager, "add",
                         lambda c: (gesehen.append(c), echtes_add(c))[1])
 
-    await office_ws(ws, token=token)   # endet mit WebSocketDisconnect
+    await office_ws(ws, token=token)   # ends with WebSocketDisconnect
 
     assert ws.accepted is True
     assert ws.sent[0]["type"] == "hello"
     assert ws.sent[0]["projects"] == [proj.id]
     assert gesehen and gesehen[0].scope == {proj.id}
-    # Die Bestätigung liegt in der Warteschlange (die Pumpe wurde beim Abbau gestoppt).
+    # The confirmation lies in the queue (the pump was stopped while tearing down).
     assert gesehen[0].queue.get_nowait() == {"type": "subscribed", "scope": [proj.id]}
     assert gesehen[0] not in rtws.manager.conns   # sauber abgemeldet
