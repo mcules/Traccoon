@@ -1,7 +1,7 @@
-"""Ziele: Authentifizierung, URL-Bau und Auflösungs-Reihenfolge.
+"""Destinations: authentication, URL building and the resolution order.
 
-Geprüft wird gegen einen Schein-Server (httpx MockTransport) — jeder Aufruf landet dort,
-sodass sich Kopfzeilen, URL und Body exakt nachsehen lassen, ohne echtes Netz.
+Checking happens against a mock server (httpx MockTransport), so that every call lands there
+and headers, URL and body can be looked at exactly, without a real network.
 """
 import base64
 import hashlib
@@ -18,7 +18,7 @@ from conftest import add_member, auth, make_project, make_user
 
 
 def _mock(aufzeichnung: list, status: int = 200, body: str = '{"ok":true}'):
-    """httpx-Client, der jeden Request aufzeichnet und fest antwortet."""
+    """httpx client that records every request and answers fixedly."""
     def handler(request: httpx.Request) -> httpx.Response:
         aufzeichnung.append(request)
         return httpx.Response(status, content=body, headers={"Content-Type": "application/json"})
@@ -50,7 +50,7 @@ async def _dest(db, **kw) -> Destination:
 
 
 def test_url_bau():
-    """Basis-URL + Pfad + Query — ohne doppelte oder fehlende Schrägstriche."""
+    """Base URL plus path plus query, without doubled or missing slashes."""
     b = svc.build_url
     assert b("https://a.test/v1", "orders") == "https://a.test/v1/orders"
     assert b("https://a.test/v1/", "/orders") == "https://a.test/v1/orders"
@@ -58,7 +58,7 @@ def test_url_bau():
     assert b("https://a.test", "/x", {"a": 1, "b": "z"}) == "https://a.test/x?a=1&b=z"
     # Bereits vorhandene Query bleibt erhalten.
     assert b("https://a.test/x?t=1", "", {"a": 2}) == "https://a.test/x?t=1&a=2"
-    # Leere Werte fliegen raus, nicht als "None" in die URL.
+    # Empty values fly out instead of landing in the URL as "None".
     assert b("https://a.test", "/x", {"a": None, "b": 1}) == "https://a.test/x?b=1"
 
 
@@ -86,13 +86,13 @@ async def test_api_key_header_und_query(db, calls):
     await db.commit()
     res = await svc.call(db, d, method="GET", path="/x", query={"a": 1})
     assert "apikey=abc" in str(calls[1].url)
-    # Der Schlüssel darf NICHT in der zurückgegebenen URL stehen.
+    # The key must NOT stand in the returned URL.
     assert "abc" not in res["url"]
 
 
 async def test_hmac_signatur_ohne_praefix(db, calls):
-    """Signatur über den gesendeten Body; Präfix ist konfigurierbar und standardmäßig leer
-    (Predecessor weist ein „sha256="-Präfix ab)."""
+    """Signature over the sent body; the prefix is configurable and empty by default (Predecessor
+    rejects a `sha256=` prefix)."""
     d = await _dest(db, auth_type="hmac", secret_enc=encrypt_secret("s3cr3t"),
                     hmac_header="X-Webhook-Signature")
     await svc.call(db, d, method="POST", body={"a": 1})
@@ -108,7 +108,7 @@ async def test_hmac_signatur_ohne_praefix(db, calls):
 
 
 async def test_oauth2_holt_token_und_merkt_ihn(db, monkeypatch):
-    """Client Credentials: einmal Token holen, danach aus dem Zwischenspeicher."""
+    """Client credentials: fetch the token once, take it from the cache afterwards."""
     aufrufe: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -146,7 +146,7 @@ async def test_methoden_und_body(db, calls):
     for verb in ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"):
         await svc.call(db, d, method=verb, body={"x": 1})
     assert [r.method for r in calls] == ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
-    # Bei GET/HEAD/DELETE/OPTIONS wird der Body bewusst weggelassen.
+    # With GET/HEAD/DELETE/OPTIONS the body is deliberately left out.
     ohne = {r.method: r.content for r in calls}
     assert ohne["GET"] == b"" and ohne["DELETE"] == b""
     assert json.loads(ohne["POST"]) == {"x": 1}
@@ -159,7 +159,7 @@ async def test_kopfzeilen_des_ziels_und_des_aufrufs(db, calls):
     d = await _dest(db, auth_type="none", default_headers={"X-Mandant": "a", "X-Fest": "1"})
     await svc.call(db, d, method="GET", headers={"X-Mandant": "b", "X-Extra": "2"})
     h = calls[0].headers
-    assert h["x-mandant"] == "b"   # Aufruf schlägt Ziel
+    assert h["x-mandant"] == "b"   # the call beats the destination
     assert h["x-fest"] == "1" and h["x-extra"] == "2"
 
 
@@ -176,7 +176,7 @@ async def test_aufloesung_projekt_vor_nutzer_vor_global(db):
     assert (g.base_url, u.base_url, p.base_url) == (
         "https://global.test", "https://persoenlich.test", "https://projekt.test")
 
-    # Deaktivierte Ziele werden übersprungen.
+    # Deactivated destinations are skipped.
     p.enabled = False
     await db.commit()
     assert (await svc.resolve(db, "crm", owner_id=nutzer.id,
@@ -208,7 +208,7 @@ async def test_geheimnis_wird_nie_zurueckgegeben(client, db):
     liste = await client.get("/destinations", headers=auth(admin))
     assert "streng" not in liste.text
 
-    # Leeres Geheimnis beim Ändern lässt das alte stehen.
+    # An empty secret while editing leaves the old one standing.
     did = r.json()["id"]
     r2 = await client.put(f"/destinations/{did}", headers=auth(admin), json={"label": "CRM"})
     assert r2.json()["has_secret"] is True
@@ -220,7 +220,7 @@ async def test_systemweites_ziel_nur_admin(client, db):
         "name": "extern", "base_url": "https://api.test"})
     assert r.status_code == 403
 
-    # Persönlich darf er.
+    # Personally they may.
     r = await client.post("/destinations", headers=auth(normal), json={
         "name": "extern", "base_url": "https://api.test", "user_id": normal.id})
     assert r.status_code == 201, r.text
@@ -240,22 +240,22 @@ GROSSE_ANTWORT = json.dumps({"lage": "z" * 9000})
 
 @pytest.fixture
 def grosse_antwort(monkeypatch):
-    """Schein-Server, der bewusst mehr liefert, als der alte Pauschal-Deckel durchliess."""
+    """A mock server that deliberately delivers more than the old flat cap let through."""
     monkeypatch.setattr(svc.httpx, "AsyncClient", _mock([], body=GROSSE_ANTWORT))
     return GROSSE_ANTWORT
 
 
 async def test_antwortgrenze_standard_kuerzt(db, grosse_antwort):
-    """Ohne eigene Angabe bleibt es bei 4000 Zeichen — bestehende Ziele ändern sich nicht."""
+    """Without an entry of its own it stays at 4000 characters: existing destinations do not change."""
     d = await _dest(db, name="klein")
     assert d.max_response_chars == 4000
     res = await svc.call(db, d, method="GET")
     assert res["max_chars"] == 4000
-    assert "text" not in res          # zu lang → nur als json, Volltext unterdrückt
+    assert "text" not in res          # too long, so only as json, the full text suppressed
 
 
 async def test_antwortgrenze_je_ziel_greift(db, grosse_antwort):
-    """Ein Ziel darf mehr durchlassen — sonst plante ein Agent auf abgeschnittenem JSON."""
+    """A destination may let more through; otherwise an agent would plan on truncated JSON."""
     d = await _dest(db, name="gross", max_response_chars=40000)
     res = await svc.call(db, d, method="GET")
     assert res["max_chars"] == 40000
@@ -263,7 +263,7 @@ async def test_antwortgrenze_je_ziel_greift(db, grosse_antwort):
 
 
 async def test_http_call_kuerzt_nicht_nochmal(db, grosse_antwort):
-    """Das Agenten-Werkzeug darf die Erlaubnis des Ziels nicht wieder einkassieren."""
+    """The agent tool must not revoke the permission of the destination."""
     from app.worker.tools_traccoon import call_traccoon_tool
     u = await make_user(db, "zielnutzer")
     await _dest(db, name="gameproj-bot", user_id=u.id, allow_agents=True,
@@ -275,8 +275,8 @@ async def test_http_call_kuerzt_nicht_nochmal(db, grosse_antwort):
 
 
 async def test_http_call_meldet_den_schnitt(db, grosse_antwort):
-    """Wird doch gekürzt, muss der Agent es sehen — ein stiller Schnitt ist schlimmer
-    als eine kurze Antwort, weil er auf Bruchstücken weiterplant."""
+    """If it is truncated after all, the agent has to see it: a silent cut is worse than a
+    short answer, because it plans on fragments."""
     from app.worker.tools_traccoon import call_traccoon_tool
     u = await make_user(db, "knappnutzer")
     await _dest(db, name="knapp", user_id=u.id, allow_agents=True, max_response_chars=500)

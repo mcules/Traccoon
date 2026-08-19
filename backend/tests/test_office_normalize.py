@@ -1,10 +1,10 @@
-"""Der Vertrag des Büros — rein, ohne Datenbank.
+"""The contract of the office, pure, without a database.
 
-Diese Datei ist die Absicherung der einen Naht: `step_events` beliefert die Historie-API
-UND den Live-Publisher. Weicht ihre Form ab, laufen Nachlese und Live-Ansicht auseinander,
-und das Zurückspulen zeigt etwas anderes als das Zuschauen. Deshalb wird hier die exakte
-Schlüsselmenge geprüft und nicht bloß „enthält" — ein zusätzliches Feld ist genauso ein
-Vertragsbruch wie ein fehlendes.
+This file secures the one seam: `step_events` supplies the history API AND the live
+publisher. If its shape deviates, follow-up reading and the live view drift apart, and
+rewinding shows something other than watching. That is why the exact key set is checked here
+and not merely "contains": an additional field is just as much a breach of contract as a
+missing one.
 """
 import datetime as dt
 
@@ -18,13 +18,13 @@ from app.services.office import (
 
 TS = dt.datetime(2026, 8, 5, 11, 22, 33, 412000, tzinfo=dt.timezone.utc)
 
-# Umschlag — an JEDEM Ereignis, unabhängig von der Art.
+# Envelope: on EVERY event, independently of the kind.
 BASE_KEYS = {"v", "seq", "ts", "sid", "project_id", "owner_id", "run_id", "agent_id", "kind"}
 
-# Die kind-eigenen Felder. Diese Tabelle IST der Vertrag. Eine Art *hinzuzufügen* ist
-# additiv — eine Oberfläche, die `deploy` nicht kennt, ignoriert es und zeigt alles andere
-# weiter. Ein Feld *umzudeuten* ist es nicht: dann muss `EVENT_VERSION` steigen, damit die
-# Ansicht lieber verweigert als falsch zeichnet (`services/office.py` sagt dasselbe und
+# The kind-owned fields. This table IS the contract. *Adding* a kind is additive: an
+# interface that does not know `deploy` ignores it and shows everything else. *Reinterpreting*
+# a field is not: then `EVENT_VERSION` has to rise so that the view refuses rather than draws
+# wrongly (`services/office.py` says the same and is the source).
 # ist die Quelle).
 FIELD_KEYS = {
     "session_seen": {"title", "issue_key", "project_key", "started_at"},
@@ -54,8 +54,8 @@ def ctx() -> RunCtx:
 
 
 def mk(step_id: int, **kw) -> RunStep:
-    """RunStep ohne Session — die Spalten-Defaults greifen erst beim Flush, die Felder sind
-    also None. Genau so kommen sie auch aus einer alten Zeile."""
+    """RunStep without a session: the column defaults only take hold at the flush, so the
+    fields are None. Exactly that way they come out of an old row as well."""
     kw.setdefault("created_at", TS)
     kw.setdefault("run_id", 8871)
     step = RunStep(**kw)
@@ -79,7 +79,7 @@ class RunZeile:
         })
 
 
-# ── Schlüsselmengen je Art ───────────────────────────────────────────────────
+# ── Key sets per kind ────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("kind,step", [
     ("run_start", mk(10, kind="run_start", role="system")),
@@ -116,8 +116,8 @@ def test_session_seen_schluesselmenge():
 
 
 def test_umschlag_traegt_projekt_und_owner():
-    # Die WS-Brücke autorisiert allein damit — fehlt es an einem Ereignis, muss sie
-    # nachschlagen oder (schlimmer) durchlassen.
+    # The WS bridge authorises with that alone; if it is missing on an event, it has to look
+    # up or (worse) let it through.
     for ev in step_events(mk(20, kind="system", role="system", content="x"), ctx()):
         assert ev["project_id"] == 27 and ev["owner_id"] == 3
         assert ev["agent_id"] == "run:8871" and ev["sid"] == "issue:412"
@@ -161,8 +161,8 @@ def test_altzeile_werkzeug_wird_gespalten():
     start, ergebnis = events
     assert start["kind"] == "tool_start" and ergebnis["kind"] == "tool_result"
     assert start["seq"] < ergebnis["seq"] == 777 * 4 + 1
-    # Gleicher Zeitstempel: die Dauer wurde damals nicht gemessen, und sie zu schätzen
-    # hieße, Zeit zu erfinden.
+    # The same timestamp: the duration was not measured back then, and estimating it would
+    # mean inventing time.
     assert start["ts"] == ergebnis["ts"]
     assert ergebnis["duration_ms"] is None
     assert start["tool_use_id"] == ergebnis["tool_use_id"] == "legacy:777"
@@ -197,7 +197,7 @@ def test_tool_ok_erkennt_jedes_bekannte_fehlerpraefix(prefix):
 
 
 def test_tool_ok_raet_niemals_erfolg():
-    # Keine Fehlermarke heißt „nicht als Fehler erkannt", nicht „gelungen".
+    # No error mark means "not recognised as an error", not "succeeded".
     assert tool_ok("Datei geschrieben (42 Zeilen)") is None
     assert tool_ok("") is None
     assert tool_ok("✅ OK") is None
@@ -209,7 +209,7 @@ def test_tool_ok_raet_niemals_erfolg():
     ("delegate", {"role": "reviewer", "task": "prüfen"}, "reviewer"),
     ("traccoon_http_call", {"url": "https://api.example.com/x"}, "https://api.example.com/x"),
     ("read_attachment", {"name": "shot.png"}, "shot.png"),
-    # MCP-Werkzeug: die Argumentnamen sind unbeschränkt, jede Regel wäre geraten.
+    # MCP tool: the argument names are unrestricted, and every rule would be guessed.
     ("obsidian__obsidian_get_note", {"target": {"path": "x.md"}}, None),
     ("fs_read", {}, None),
 ])
@@ -239,8 +239,8 @@ def test_agent_spawn_begleiter_nur_bei_delegate():
     events = step_events(step, ctx())
     assert [e["kind"] for e in events] == ["tool_start", "agent_spawn"]
     spawn = events[1]
-    # Ohne Kind-Lauf-ID: die ist beim Werkzeugstart noch unbekannt. Der Verbund entsteht
-    # über `parent_tool_use_id` im `run_start` des Kindes.
+    # Without the child run id: that is still unknown at the tool start. The link comes into
+    # being over `parent_tool_use_id` in the `run_start` of the child.
     assert set(spawn) == keys_of("agent_spawn") and spawn["run_id"] == 8871
     assert spawn["child_role"] == "reviewer" and spawn["prompt"] == "Bitte prüfen"
     assert spawn["tool_use_id"] == "tu-5" and spawn["background"] is False
