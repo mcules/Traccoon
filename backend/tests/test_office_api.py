@@ -156,7 +156,6 @@ async def test_admin_sieht_alles(client, db):
 
 async def test_project_id_verengt_und_autorisiert_nicht(client, db):
     """`?project_id=` is a filter, not a key: entering a foreign project yields silence, no access."""
-    liefert Stille, keinen Zugang."""
     anna = await make_user(db, "anna")
     meins = await make_project(db, "AAA", "Alpha")
     fremd = await make_project(db, "BBB", "Beta")
