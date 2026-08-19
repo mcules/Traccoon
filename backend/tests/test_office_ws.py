@@ -69,7 +69,6 @@ def ev(project_id: int | None, owner_id: int | None = None, **kw) -> dict:
 def use_test_db(monkeypatch, db) -> None:
     """The WS endpoints fetch a session of their own (no `Depends`), and they bound
     `SessionLocal` at import time, so the conftest patch on `app.db` does not reach them."""
-    deshalb nicht."""
     import app.api.office_ws as rtws
     import app.api.ws as wsmod
     factory = db.__test_factory__
