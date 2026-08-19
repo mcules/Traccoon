@@ -14,12 +14,12 @@ const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "prompt",
 export default function JobsPanel() {
   const qc = useQueryClient();
   const { data: jobs } = useQuery({ queryKey: ["jobs"], queryFn: () => api.get<any[]>("/jobs") });
-  // Für kind=workflow: veröffentlichte Definitionen zur Auswahl.
+  // For kind=workflow: published definitions to choose from.
   const { data: defs } = useQuery({
     queryKey: ["workflow-defs"],
     queryFn: () => api.get<{ id: number; name: string; key: string; current_version_id: number | null }[]>("/workflows"),
   });
-  // Vorlagen füllen das Formular nur vor — der Job trägt danach seine eigenen Felder.
+  // Templates only prefill the form; the job carries its own fields afterwards.
   const { data: templates } = useQuery({
     queryKey: ["job-templates"],
     queryFn: () => api.get<{ key: string; label: string; beschreibung: string;
@@ -27,7 +27,7 @@ export default function JobsPanel() {
   });
   const [f, setF] = useState(EMPTY);
   const [editId, setEditId] = useState<number | null>(null);
-  // Parameter als JSON-Text, damit ein Tippfehler beim Bearbeiten nicht sofort den Wert frisst.
+  // Parameters as JSON text, so that a typo while editing does not eat the value at once.
   const [paramText, setParamText] = useState("");
   const paramFehler = (() => {
     if (!paramText.trim()) return "";
@@ -44,7 +44,7 @@ export default function JobsPanel() {
       if (v && typeof v === "object" && !Array.isArray(v)) setF((p) => ({ ...p, args: v }));
     } catch { /* ungültig: Text stehen lassen, Job-Feld unverändert */ }
   };
-  // Platzhalter ohne Wert — dieselbe Regel wie serverseitig (services/job_params).
+  // Placeholders without a value: the same rule as server side (services/job_params).
   const EINGEBAUT = ["heute", "jetzt", "seit", "zeitfenster"];
   const fehlend = Array.from(new Set(
     [...(f.prompt || "").matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g)].map((m) => m[1]),

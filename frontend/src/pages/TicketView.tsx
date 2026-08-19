@@ -6,8 +6,8 @@ import { usePageChrome } from "../pageChrome";
 import { projectChromeTabs } from "../projectTabs";
 import TicketDrawer from "../components/TicketDrawer";
 
-// Volle Ticket-Seite (Route /projects/:key/tickets/:ticketKey). Nutzt den TicketDrawer im
-// asPage-Modus (kein Popup). Deep-linkbar, teilbar, echter Zurück-Weg zum Board.
+// Full ticket page (route /projects/:key/tickets/:ticketKey). Uses the TicketDrawer in
+// asPage mode (no popup). Deep linkable, shareable, with a real way back to the board.
 export default function TicketView() {
   const { key, ticketKey } = useParams();
   const navigate = useNavigate();
@@ -28,8 +28,8 @@ export default function TicketView() {
     enabled: !!project,
   });
 
-  // Untermenü des Projekts bleibt auf der Ticket-Seite sichtbar (kein Reiter ist aktiv —
-  // der Weg zurück ins Projekt ist damit immer einen Klick entfernt).
+  // The sub-menu of the project stays visible on the ticket page (no tab is active, so the
+  // way back into the project is always one click away).
   usePageChrome(ticketKey ?? "Ticket", projectChromeTabs(project));
 
   if (!project) return <div className="text-muted">{tr("ticket_view.projekt_nicht_gefunden")}</div>;

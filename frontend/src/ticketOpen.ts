@@ -1,12 +1,12 @@
 import type { MouseEvent } from "react";
 
-// onOpen bekommt das Event mit, damit der Aufrufer Links-/Mittelklick unterscheiden kann.
+// onOpen gets the event along so that the caller can tell a left click from a middle click.
 export type OnOpenTicket = (key: string, e?: MouseEvent) => void;
 
-// Handler-Bündel für ein ticket-öffnendes Element (Board-Karte, Listenzeile, Backlog-Key):
-//  - Linksklick  → onOpen(key, e)           (Aufrufer entscheidet Popup vs. Seite je Präferenz)
-//  - Mittelklick → onOpen(key, e)           (Aufrufer öffnet die volle Seite in neuem Tab)
-//  - Mousedown der mittleren Taste wird unterdrückt, um das Browser-Autoscroll zu vermeiden.
+// Bundle of handlers for a ticket-opening element (board card, list row, backlog key):
+//  - left click   -> onOpen(key, e)   (the caller decides popup versus page by preference)
+//  - middle click -> onOpen(key, e)   (the caller opens the full page in a new tab)
+//  - the mousedown of the middle button is suppressed in order to avoid the browser autoscroll.
 export function ticketOpenHandlers(key: string, onOpen: OnOpenTicket) {
   return {
     onClick: (e: MouseEvent) => onOpen(key, e),

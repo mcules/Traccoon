@@ -5,7 +5,7 @@ import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
 
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
 
-// Modal zum Anlegen eines Tickets mit allen relevanten Feldern + Anhängen (ABC-5).
+// Modal for creating a ticket with all the relevant fields plus attachments (ABC-5).
 export default function NewTicketModal({
   project, meta, onClose, onCreated,
 }: {
@@ -22,7 +22,7 @@ export default function NewTicketModal({
   const [previews, setPreviews] = useState<string[]>([]);
   const [err, setErr] = useState("");
 
-  // Bild-Vorschauen als Object-URLs verwalten (und sauber wieder freigeben).
+  // Manage image previews as object URLs (and release them again cleanly).
   useEffect(() => {
     const urls = files.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : ""));
     setPreviews(urls);
@@ -36,7 +36,7 @@ export default function NewTicketModal({
   };
   const removeFile = (i: number) => setFiles((prev) => prev.filter((_, idx) => idx !== i));
 
-  // Screenshots direkt aus der Zwischenablage einfügen (Strg+V).
+  // Paste screenshots straight from the clipboard (Ctrl+V).
   const onPaste = (e: React.ClipboardEvent) => {
     const imgs: File[] = [];
     for (const it of Array.from(e.clipboardData.items)) {
@@ -57,9 +57,9 @@ export default function NewTicketModal({
         type_id: typeId,
         status_id: statusId,
       });
-      // Zuweisung separat über den eigenen (Membership-geprüften) Endpoint setzen.
+      // Set the assignment separately over its own (membership checked) endpoint.
       if (assigneeId) await api.post(`/issues/${issue.key}/assignee`, { user_id: Number(assigneeId) });
-      // Anhänge erst nach dem Anlegen hochladen — brauchen den Ticket-Key.
+      // Upload attachments only after creating: they need the ticket key.
       for (const f of files) await api.upload(`/issues/${issue.key}/attachments`, f);
       return issue;
     },

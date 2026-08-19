@@ -1,4 +1,4 @@
-"""Projekt-Einladungen per E-Mail: Einladen, Vorschau (öffentlich), Annehmen."""
+"""Project invitations by e-mail: inviting, preview (public), accepting."""
 from __future__ import annotations
 
 import datetime as dt
@@ -83,8 +83,8 @@ async def invite_member(
     access: Access = Depends(require_role(ProjectRole.maintainer)),
     db: AsyncSession = Depends(get_session),
 ):
-    """Lädt einen User per E-Mail ein. Existiert der User bereits (z. B. aus einem
-    anderen Projekt bekannt), wird er DIREKT zugeordnet — ohne Mail-Umweg."""
+    """Invites a user by e-mail. If the user already exists (known from another project for
+    instance), they are assigned DIRECTLY, without the detour over mail."""
     if ROLE_RANK[data.role] > ROLE_RANK[access.role]:
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
@@ -117,7 +117,7 @@ async def invite_member(
                                 display_name=target.display_name, role=m.role, ai_assign=m.ai_assign),
         }
 
-    # Kein bestehender User → Einladung per Mail. Bestehende pending-Einladung erneuern.
+    # No existing user, so an invitation by mail. An existing pending invitation is renewed.
     existing = (
         await db.execute(
             select(ProjectInvitation).where(
@@ -160,7 +160,7 @@ async def revoke_invitation(
     await db.commit()
 
 
-# ---------- Öffentlich (Token-basiert, ohne Projekt-Zugriff) ----------
+# ---------- Public (token based, without project access) ----------
 
 async def _load_valid(db: AsyncSession, token: str) -> tuple[ProjectInvitation | None, Project | None, str | None]:
     inv = (await db.execute(select(ProjectInvitation).where(ProjectInvitation.token == token))).scalar_one_or_none()

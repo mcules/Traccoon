@@ -1,7 +1,7 @@
-"""Berechtigungs-Gate (Port aus dem Vorläufer (perms.py)) + DB-Grant/Request-Helfer.
+"""Permission gate (ported from the predecessor (perms.py)) plus database grant and request helpers.
 
-Regeln kommen aus der Permission-Tabelle (als Liste [{tool,resource,action}]).
-Präzedenz deny > allow > ask; Default ask für mutierende Tools.
+The rules come from the permission table (as a list [{tool,resource,action}]).
+The precedence is deny before allow before ask; the default is ask for mutating tools.
 """
 from __future__ import annotations
 
@@ -67,7 +67,7 @@ def evaluate(rules: list[dict[str, Any]], tool: str, resource: str) -> str:
 
 
 async def take_grant(db: AsyncSession, issue_id: int, tool: str, resource: str) -> bool:
-    """Einmal-Freigabe konsumieren (atomar). True wenn eine passende Grant vorhanden war."""
+    """Consume a one-off grant (atomically). True when a matching grant was present."""
     rows = (
         await db.execute(
             select(PermGrant).where(
