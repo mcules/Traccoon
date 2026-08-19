@@ -1,7 +1,7 @@
-"""Artefakt-Register: Typen, Zustände und generische Artefakte
+"""Artifact register: types, states and generic artifacts
 
-Ticket und Hardware bekommen eine gemeinsame, im Admin pflegbare Beschreibung; frei
-definierte Typen speichern ihre Instanzen in `artifacts`.
+Ticket and hardware get a common description that is maintainable in the admin area;
+freely defined types store their instances in `artifacts`.
 
 Revision ID: c4e7b2a91f60
 Revises: b3d5f81a20c7
