@@ -62,7 +62,6 @@ async def project_ws(websocket: WebSocket, project_id: int, token: str = ""):
         # deactivated account and a token revoked by a password change still got in here,
         # while `deps.get_current_user` rejected them on every request. A token alone is not
         # access as long as the account behind it is locked or the token devalued.
-        # gesperrt oder das Token entwertet ist.
         revoked = (user.password_changed_at is not None
                    and int(payload.get("iat", 0) or 0) < int(user.password_changed_at.timestamp()))
         if user.status != UserStatus.active or revoked:
