@@ -11,9 +11,9 @@ def escape(text: str) -> str:
 
 def md_to_html(text: str) -> str:
     out = escape(text or "")
-    # Code-Spans zuerst (Inhalt nicht weiter formatieren)
+    # Code spans first (their content is not formatted further)
     out = re.sub(r"`([^`]+)`", lambda m: f"<code>{m.group(1)}</code>", out)
-    # **bold** und __bold__
+    # **bold** and __bold__
     out = re.sub(r"\*\*([^*]+)\*\*", lambda m: f"<b>{m.group(1)}</b>", out)
     out = re.sub(r"(?m)^#{1,6}\s*(.+)$", lambda m: f"<b>{m.group(1)}</b>", out)
     # *italic*

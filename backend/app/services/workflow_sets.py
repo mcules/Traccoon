@@ -204,7 +204,7 @@ async def _copy_definition(db: AsyncSession, source: WorkflowDefinition, *, proj
             if source.current_version_id else None)
     graph = (base.graph if base else None) or {"nodes": [], "edges": []}
     # The issue type binding belongs in the INSERT: the unique index applies at once,
-    # und eine erst danach gesetzte Bindung kollidierte mit der allgemeinen Kopie.
+    # and a binding set only afterwards would collide with the generic copy.
     copy = WorkflowDefinition(
         project_id=project_id, set_id=set_id, slot=source.slot,
         key=key or source.key, name=name or source.name,
@@ -286,7 +286,7 @@ async def reset(db: AsyncSession, project: Project, slot: str,
     else:
         own = await project_override(db, project.id, slot)
         if own is not None and own.issue_type_id is not None:
-            own = None          # nur die allgemeine Kopie ist gemeint
+            own = None          # only the generic copy is meant
     if own is None:
         return False
     own.archived_at = _now()

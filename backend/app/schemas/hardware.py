@@ -21,7 +21,7 @@ class LocationOut(BaseModel):
     project_id: int | None
     full_path: str
     notes: str | None
-    # Gemeinsame Artefakt-Identität — daran hängen die freien Felder.
+    # Common artifact identity; the free fields hang off it.
     artifact_id: int | None = None
     model_config = {"from_attributes": True}
 
@@ -97,7 +97,7 @@ class StepOut(BaseModel):
 class WorkflowStepIn(BaseModel):
     name: str
     order: int = 0
-    # AssigneeSpec der Workflow-Engine: {"mode": user|role|context|reporter, ...}
+    # AssigneeSpec of the workflow engine: {"mode": user|role|context|reporter, ...}
     assignee: dict = {}
 
 

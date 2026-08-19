@@ -6,9 +6,9 @@ import { KeyValueEditor } from "../kv";
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
 
 /**
- * Aufruf eines hinterlegten Ziels: Basis-URL und Anmeldung kommen von dort, hier stehen
- * Methode, Pfad-Ergänzung, Query, Kopfzeilen und Body. Alle Textfelder verstehen
- * `{{pfad}}` aus dem Prozess-Kontext.
+ * Call of a stored destination: the base URL and the login come from there, while method,
+ * path addition, query, headers and body stand here. All text fields understand
+ * `{{path}}` from the process context.
  */
 export default function HttpRequestConfig({
   params,

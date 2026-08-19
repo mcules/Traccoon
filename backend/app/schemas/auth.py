@@ -58,7 +58,7 @@ class UserOut(BaseModel):
     notify_default: str = "telegram"
     notify_email: str | None = None
     telegram_chat_id: str | None = None
-    # Persönlicher Prozess-Satz (gilt für alle Projekte, in denen der Nutzer Owner ist).
+    # Personal process set (applies to all projects in which the user is an owner).
     workflow_set_id: int | None = None
     claude_token_set: bool
     created_at: dt.datetime

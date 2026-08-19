@@ -9,9 +9,9 @@ const EVENT_LABEL: Record<string, string> = {
 };
 
 /**
- * Haltepunkt, bis von außen etwas passiert — ein Kommentar am Ticket, die Antwort auf eine
- * Rückfrage oder ein manuelles Weiter. Jedes angenommene Ereignis kann einen eigenen
- * Ausgang bekommen; ohne passende Kante läuft es über „weiter".
+ * Stopping point until something happens from outside: a comment on the ticket, the answer
+ * to a question or a manual continue. Every accepted event can get an exit of its own;
+ * without a matching edge it runs over "weiter".
  */
 export default function WaitEventNode({ id, data, selected }: FlowNodeProps) {
   const events = data.config.events?.length ? data.config.events : ["comment", "manual"];

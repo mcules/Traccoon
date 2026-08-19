@@ -1,8 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-// Schlanker Markdown-Renderer für Pläne/Beschreibungen (ohne Typography-Plugin,
-// Styling über Arbitrary-Variants). GFM aktiv → Tabellen, Task-Listen, ~~Strike~~.
+// Lean markdown renderer for plans and descriptions (without the typography plugin,
+// styled over arbitrary variants). GFM is active, so tables, task lists and ~~strike~~.
 export default function Markdown({ text }: { text: string }) {
   return (
     <div className="text-sm leading-relaxed

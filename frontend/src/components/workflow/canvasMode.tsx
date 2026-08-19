@@ -1,9 +1,9 @@
 import { createContext, useContext } from "react";
 
 /**
- * Ist die Fläche nur Anzeige? Kanten und Knoten liegen tief in React Flow und bekommen
- * keine eigenen Props durchgereicht — über diesen Kontext wissen sie trotzdem, ob sie
- * Bearbeiten anbieten dürfen (Editor) oder nicht (Laufzeit-Ansicht einer Instanz).
+ * Is the canvas display only? Edges and nodes lie deep in React Flow and get no props of
+ * their own passed through; over this context they still know whether they may offer
+ * editing (editor) or not (the runtime view of an instance).
  */
 const CanvasReadOnly = createContext(false);
 

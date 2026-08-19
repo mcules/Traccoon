@@ -9,7 +9,7 @@ const ROLE_LABEL: Record<string, string> = {
   viewer: "Betrachter",
 };
 
-/** Kurzbeschriftung eines AssigneeSpec (für Node-Vorschau & Konfig). */
+/** Short label of an AssigneeSpec (for the node preview and the config). */
 export function assigneeLabel(spec: AssigneeSpec | undefined, members?: MemberLite[]): string {
   if (!spec) return "—";
   switch (spec.mode) {
@@ -28,7 +28,7 @@ export function assigneeLabel(spec: AssigneeSpec | undefined, members?: MemberLi
   }
 }
 
-/** Kombiniertes Auswahl-Widget für einen AssigneeSpec. */
+/** Combined selection widget for an AssigneeSpec. */
 export function AssigneeEditor({
   value,
   onChange,

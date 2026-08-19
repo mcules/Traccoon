@@ -16,7 +16,7 @@ class InvitationStatus:
 
 
 class ProjectInvitation(Base):
-    """Einladung eines Users per E-Mail in ein Projekt (Token-Link)."""
+    """Invitation of a user by e-mail into a project (a token link)."""
     __tablename__ = "project_invitations"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

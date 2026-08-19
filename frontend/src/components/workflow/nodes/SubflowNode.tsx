@@ -3,9 +3,9 @@ import { tr } from "../../../i18n";
 import { SLOT_LABELS } from "../types";
 
 /**
- * Ruft einen anderen Ablauf auf und wartet auf ihn. Welcher Graph das konkret ist,
- * entscheidet die Auflösung des Projekts (eigene Anpassung → Satz → Standard) — ein
- * angepasster Abnahme-Prozess wirkt damit überall, wo er aufgerufen wird.
+ * Calls another flow and waits for it. Which graph that concretely is is decided by the
+ * resolution of the project (own adjustment, then set, then default), so an adjusted
+ * acceptance process takes effect everywhere it is called.
  */
 export default function SubflowNode({ id, data, selected }: FlowNodeProps) {
   const sources: SourceHandleDef[] = [
