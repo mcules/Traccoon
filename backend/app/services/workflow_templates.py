@@ -173,7 +173,7 @@ def _liste_abarbeiten() -> dict:
     ]}
 
 
-# -- 4) Aufruf mit Wiederholung --------------------
+# -- 4) Call with a retry ---------------------------
 
 def _aufruf_mit_wiederholung() -> dict:
     """Call outside, and do not give up at the first trouble.

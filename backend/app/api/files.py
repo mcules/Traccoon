@@ -76,7 +76,7 @@ async def upload_attachment(file: UploadFile, pair: tuple[Issue, Access] = Depen
 
 
 async def _attachment_access(aid: int, user: User, db: AsyncSession) -> Attachment:
-    """Anhang nur für Mitglieder des zugehörigen Projekts (bzw. Admins)."""
+    """The attachment is only for members of the associated project (respectively admins)."""
     a = await db.get(Attachment, aid)
     if a is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Anhang nicht gefunden")

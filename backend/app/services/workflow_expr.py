@@ -49,7 +49,7 @@ def _zahl(wert, fallback=0.0) -> float:
 
 
 def _zeit(wert) -> dt.datetime | None:
-    """Text/Zahl → Zeitpunkt. Versteht ISO-Zeitstempel und Unix-Sekunden."""
+    """Text or number to a point in time. Understands ISO timestamps and Unix seconds."""
     if isinstance(wert, dt.datetime):
         return wert
     if isinstance(wert, (int, float)):

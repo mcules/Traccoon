@@ -98,7 +98,7 @@ export default function FilesPanel({ project }: { project: Project }) {
   useEffect(() => {
     if (file.data && file.data.path === sel) { setValue(file.data.content); setOrig(file.data.content); }
   }, [file.data, sel]);
-  // Beim Wechsel auf eine Markdown-Datei die Vorschau zurücksetzen.
+  // Reset the preview when switching to a markdown file.
   useEffect(() => { setPreview(false); }, [sel]);
   // Bild laden (authentifiziert → Object-URL), sauber freigeben.
   useEffect(() => {
@@ -109,7 +109,7 @@ export default function FilesPanel({ project }: { project: Project }) {
       .catch(fail);
     return () => { alive = false; if (url) URL.revokeObjectURL(url); };
   }, [img, sel, pid]);
-  // Bei aktivem Filter die Ordner der Treffer aufklappen.
+  // With an active filter, expand the folders of the hits.
   useEffect(() => {
     if (!filter) return;
     const matched = (tree.data?.files || []).filter((f) => f.toLowerCase().includes(filter.toLowerCase()));

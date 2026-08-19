@@ -38,7 +38,6 @@ column, and that is assigned **before** the commit. Two parallel workers can the
 make their rows visible in reverse order, and a poller that remembers its high water mark
 would skip the row that lands later with a smaller id. `after_seq` is exclusively the gap
 filling directly after a reconnect, where the buffer covers the gap anyway.
-Puffer die Lücke ohnehin deckt.
 
 **Authorisation.** The permitted project set is computed ONCE on connect, over exactly the
 same pattern as `GET /projects` (`api/projects.py:74-91`: two queries plus

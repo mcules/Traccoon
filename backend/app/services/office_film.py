@@ -486,7 +486,6 @@ async def run_film_job(db: AsyncSession, job, jr) -> None:
     no other job falls due. That is accepted deliberately (the precedent is `_run_script` with
     `run_timeout=600`), and that is why the httpx timeout lies below `job.run_timeout`: the job
     has to be able to write its own error, otherwise the JobRun would stay on "running" forever.
-    schreiben können, sonst bliebe der JobRun für immer auf „running".
 
     Nothing escapes from here. An exception out of this branch would tear off the whole tick, and
     every other job due in that round would fall away with it, for one film.
@@ -579,7 +578,6 @@ async def _film_bauen(db: AsyncSession, job, jr, opt: dict) -> None:
     )
     # The bot assembles `<b>{title}</b>\n{body}`, so split at the first line that gives exactly
     # the caption again. A second title above the text would have shown the date twice.
-    # das Datum doppelt gezeigt.
     kopfzeile, _, rest = untertitel.partition("\n")
     if not still:
         db.add(_notification(kind="film", title=kopfzeile, body=rest,

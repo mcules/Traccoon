@@ -13,8 +13,8 @@ const ROLE_LABEL: Record<string, string> = {
   assigned: "agent_task_node.assigned",
 };
 
-/** Ausgänge = mögliche Ergebnisse eines Laufs. Nicht gezeichnete Ausgänge fallen auf
- *  „weiter" zurück, damit einfache Graphen mit einer Kante auskommen. */
+/** Exits = possible results of a run. Exits that are not drawn fall back on "weiter", so
+ *  that simple graphs get by with one edge. */
 function outcomes(phase?: string): SourceHandleDef[] {
   const erst = phase === "planning"
     ? { id: "planned", label: "Plan da", color: "!bg-green-500" }
@@ -24,7 +24,7 @@ function outcomes(phase?: string): SourceHandleDef[] {
     { id: "loop_exhausted", label: "Zwischenstand", color: "!bg-amber-500" },
     { id: "blocked", label: tr("agent.ausgang.rueckfrage"), color: "!bg-yellow-500" },
     { id: "failed", label: "Fehler", color: "!bg-red-500" },
-    // Auffangnetz: unbekannte Ergebnisse landen laut Standard-Abbildung auf „err".
+    // Safety net: unknown results land on "err" by the default mapping.
     { id: "err", label: "sonstiges", color: "!bg-red-500" },
   ];
 }

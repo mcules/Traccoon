@@ -66,7 +66,7 @@ async def listeners(db: AsyncSession, event: str, project_id: int | None) -> lis
             WorkflowDefinition.enabled.is_(True),
             WorkflowDefinition.archived_at.is_(None),
             WorkflowDefinition.current_version_id.isnot(None),
-            # Ein projektgebundener Ablauf reagiert nur auf sein eigenes Projekt.
+            # A project bound flow reacts only to its own project.
             or_(WorkflowDefinition.project_id.is_(None),
                 WorkflowDefinition.project_id == project_id) if project_id
             else WorkflowDefinition.project_id.is_(None),
@@ -116,7 +116,7 @@ async def _darf_hoeren(db: AsyncSession, d: WorkflowDefinition, project_id: int 
     if projekt is None:
         return False
     try:
-        await build_access(projekt, besitzer, db)   # wirft bei fehlendem Zugriff
+        await build_access(projekt, besitzer, db)   # raises when access is missing
     except Exception:                              # noqa: BLE001, 403/404 means not listening
         log.info("Ablauf %s hört nicht auf Projekt %s: Eigentümer ohne Zugriff",
                  d.key, project_id)

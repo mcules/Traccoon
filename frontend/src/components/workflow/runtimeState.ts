@@ -1,7 +1,7 @@
 import type { WorkflowInstance } from "./types";
 import type { RuntimeState } from "./nodes/shared";
 
-/** Leitet je Knoten einen Laufzeit-Zustand aus steps + tokens ab. */
+/** Derives a runtime state per node from steps plus tokens. */
 export function runtimeStates(instance: WorkflowInstance): Record<string, RuntimeState> {
   const out: Record<string, RuntimeState> = {};
 
@@ -18,7 +18,7 @@ export function runtimeStates(instance: WorkflowInstance): Record<string, Runtim
     else out[nodeId] = "pending";
   }
 
-  // Aktive/wartende Tokens markieren den aktuellen Knoten.
+  // Active and waiting tokens mark the current node.
   for (const t of instance.tokens) {
     if ((t.state === "active" || t.state === "waiting") && out[t.node_id] !== "done") {
       out[t.node_id] = "active";
