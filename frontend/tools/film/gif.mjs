@@ -1,20 +1,20 @@
-// tools/film/gif.mjs — GIF89a von Hand, ohne eine einzige Abhängigkeit.
+// tools/film/gif.mjs: GIF89a by hand, without a single dependency.
 //
-// Warum GIF und nicht ffmpeg: dieser Encoder ist **rein** — gleiche Bytes hinein, gleiche Bytes
-// heraus — und damit byte-golden prüfbar. Eine ffmpeg-Pipeline ist das nicht: sie hängt an einem
-// Binärstand im Basis-Image, und jedes Update verschiebt still ein paar Bytes, worauf jeder
-// goldene Hash rot wird und niemand mehr weiß, ob sich das Bild geändert hat oder der Encoder.
-// Dazu passt null Abhängigkeit zu einem Haus, das eine 3×5-Bitmapschrift von Hand setzt.
-// Fluchtweg, falls es doch MP4 sein muss: `mp4.mjs` hinter derselben Signatur — nur diese Datei
-// wird getauscht, der Rasterer und der Schnitt bleiben unberührt.
+// Why GIF and not ffmpeg: this encoder is **pure** (the same bytes in, the same bytes out) and
+// therefore byte-golden checkable. An ffmpeg pipeline is not: it depends on a binary version in
+// the base image, and every update silently shifts a few bytes, whereupon every golden hash
+// turns red and nobody knows any more whether the picture changed or the encoder. Zero
+// dependencies also fit a house that sets a 3x5 bitmap font by hand. The way out, should it
+// have to be MP4 after all: `mp4.mjs` behind the same signature; only this file is swapped,
+// while the rasteriser and the cut stay untouched.
 //
-// Das Modul kennt die Büro-Quellen nicht. Es sieht `Uint8Array`-Puffer und liefert Bytes.
+// The module does not know the office sources. It sees `Uint8Array` buffers and delivers bytes.
 //
 // Vier Teile: Farbzensus + Median-Cut · LZW · GIF89a-Container · Differenz-Rechtecke.
 
 // ── Kleiner wachsender Byte-Puffer ───────────────────────────────────────────
-// Ein Array aus Zahlen wäre bei ~40 KiB je Bild und 300 Bildern spürbar; `Buffer.concat` über
-// Tausende Stücke ebenso. Deshalb dieser Zweizeiler statt einer Abhängigkeit.
+// An array of numbers would be noticeable at about 40 KiB per frame with 300 frames, and so
+// would `Buffer.concat` over thousands of pieces. Hence this two-liner instead of a dependency.
 
 function senke(n) {
   return { b: new Uint8Array(n > 16 ? n : 16), n: 0 };
@@ -30,15 +30,15 @@ function schreib(s, v) {
 
 // ── Teil 1: Farbzensus + Median-Cut ──────────────────────────────────────────
 //
-// Eine feste 256er-Palette geht nachweislich nicht auf: `globalAlpha` mischt, und über acht
-// Fixture-Bilder entstehen bei *einer* Figur bis zu 344 verschiedene RGB-Werte aus 102
-// verschiedenen Alphawerten. Also wird die Palette je Film gezählt. Bleiben es ≤ 256 Farben,
-// ist das Ergebnis **verlustfrei** — `gemergt: 0` ist die Zielmarke, nicht die Ausnahme.
+// A fixed 256 colour palette demonstrably does not work out: `globalAlpha` mixes, and over
+// eight fixture frames up to 344 different RGB values from 102 different alpha values arise
+// with *one* figure. So the palette is counted per film. If it stays at 256 colours or fewer,
+// the result is **lossless**; `gemergt: 0` is the target, not the exception.
 
 const kanal = (k, c) => (c === 0 ? (k >> 16) & 0xff : c === 1 ? (k >> 8) & 0xff : k & 0xff);
 
-/** Statistik eines Eimers: längste Achse (bei Gleichstand R vor G vor B — feste Reihenfolge,
- *  damit der Schnitt reproduzierbar bleibt) und Pixelgewicht. */
+/** Statistics of a bucket: the longest axis (on a tie R before G before B, a fixed order so
+ *  that the cut stays reproducible) and the pixel weight. */
 function statistik(e, ord, keys, cnt) {
   const min = [255, 255, 255], max = [0, 0, 0];
   let summe = 0;
@@ -58,8 +58,8 @@ function statistik(e, ord, keys, cnt) {
   e.summe = summe;
 }
 
-/** Median-Cut auf die Liste der *verschiedenen* Farben (nicht auf die Pixel — das wären 39 Mio.
- *  statt ein paar Tausend). Rückgabe: Eimer in fester Reihenfolge; jeder trägt seinen
+/** Median cut on the list of *distinct* colours (not on the pixels, which would be 39 million
+ *  instead of a few thousand). Returns: buckets in a fixed order, each carrying its weighted average tone. */
  *  gewichteten Mittelton. */
 function medianCut(keys, cnt, ziel, ord) {
   const eimer = [{ s: 0, e: keys.length }];
@@ -75,8 +75,8 @@ function medianCut(keys, cnt, ziel, ord) {
     if (wahl < 0) break;                       // nichts mehr teilbar: weniger Farben als gewünscht
     const e = eimer[wahl];
     const ach = e.achse;
-    // Totalordnung (Kanal, dann voller Schlüssel) — dann ist das Ergebnis von der Stabilität der
-    // Sortierung unabhängig, und die Bytes sind über Node-Versionen hinweg dieselben.
+    // A total order (channel, then the full key): then the result is independent of the
+    // stability of the sort, and the bytes are the same across Node versions.
     const teil = ord.subarray(e.s, e.e);
     teil.sort((i, j) => kanal(keys[i], ach) - kanal(keys[j], ach) || keys[i] - keys[j]);
     let cum = 0, m = e.s;
@@ -100,11 +100,11 @@ function medianCut(keys, cnt, ziel, ord) {
   return eimer;
 }
 
-// ── Teil 2: LZW mit variabler Codebreite ─────────────────────────────────────
+// ── Part 2: LZW with a variable code width ───────────────────────────────────
 //
-// Die Reihenfolge unten ist nicht beliebig: erst den Code ausgeben, dann die Tabelle erweitern,
-// und die Codebreite **vor** dem Eintragen prüfen. Der Encoder ist dem Decoder immer einen
-// Eintrag voraus; wächst er einen Schritt zu früh, liest jeder Decoder ab dem 512. Code Unsinn.
+// The order below is not arbitrary: first output the code, then extend the table, and check
+// the code width **before** entering. The encoder is always one entry ahead of the decoder; if
+// it grows one step too early, every decoder reads nonsense from the 512th code on.
 
 function lzw(px, minCodeSize) {
   const clear = 1 << minCodeSize, eoi = clear + 1;
@@ -126,7 +126,7 @@ function lzw(px, minCodeSize) {
     if (treffer !== undefined) { prev = treffer; continue; }
     gib(prev, codeSize);
     if (next === 4096) {
-      // Tabelle voll — zurück auf Anfang. Neustartfest, weil der Decoder denselben Reset sieht.
+      // The table is full, so back to the start. Restart proof, because the decoder sees the same reset.
       gib(clear, codeSize);
       dict = new Map();
       next = eoi + 1;
@@ -143,7 +143,7 @@ function lzw(px, minCodeSize) {
   return out.b.subarray(0, out.n);
 }
 
-/** Codestrom → GIF-Sub-Blöcke (je ≤ 255 Bytes, Längenpräfix, 0x00 als Abschluss). */
+/** Code stream to GIF sub-blocks (each <= 255 bytes, a length prefix, 0x00 as the terminator). */
 function subBloecke(bytes) {
   const teile = Math.ceil(bytes.length / 255);
   const out = new Uint8Array(bytes.length + teile + 1);
@@ -158,22 +158,22 @@ function subBloecke(bytes) {
   return out;
 }
 
-// ── Teil 3+4: Container und Differenz-Rechtecke ──────────────────────────────
+// ── Parts 3+4: container and difference rectangles ───────────────────────────
 
 const u16 = (v) => [v & 0xff, (v >> 8) & 0xff];
 
-/** Baut einen ganzen Film. **Alle Bilder müssen gleichzeitig vorliegen** — der Farbzensus geht
- *  einmal über den kompletten Film, bevor das erste Byte entsteht. Bei 300 Bildern à 480×270
- *  sind das 116 MiB Eingabe plus 64 MiB Zählfeld, gemessen 195 MiB RSS; ein Aufrufer darf also
- *  **nicht** einen einzigen Rasterpuffer über `reset()` wiederverwenden.
+/** Builds a whole film. **All frames have to be present at once**: the colour census goes over
+ *  the complete film once before the first byte comes into being. With 300 frames of 480x270
+ *  that is 116 MiB of input plus a 64 MiB counting array, measured at 195 MiB RSS, so a caller
+ *  must **not** reuse a single raster buffer over `reset()`.
  *
  *  @param {Uint8Array[]} bilder  RGB, je w*h*3, zeilenweise
  *  @param {{w:number,h:number,delaysMs:number[],loop?:boolean}} opt
  *  @returns {{bytes:Buffer, farben:number, gemergt:number, proBild:number[]}}
- *    `farben` = Einträge der Palette · `gemergt` = wie viele verschiedene Eingabefarben dabei
- *    verlorengingen (**0 = verlustfrei**, gilt immer bei ≤ 256 Farben im ganzen Film) ·
- *    `proBild` = Bytes je Bild, additiv zur zugesagten Form und nur zur Diagnose
- *    (der Prüfer soll „5 KiB je Bild" belegen können, statt es zu behaupten). */
+ *    `farben` = entries of the palette · `gemergt` = how many different input colours were
+ *    lost in the process (**0 = lossless**, which always holds at 256 colours or fewer in the
+ *    whole film) · `proBild` = bytes per frame, additive to the promised shape and only for
+ *    diagnosis (the checker should be able to prove "5 KiB per frame" instead of claiming it). */
 export function gif(bilder, opt) {
   const w = opt.w | 0, h = opt.h | 0, n = bilder.length;
   if (!Number.isInteger(opt.w) || !Number.isInteger(opt.h) || w <= 0 || h <= 0) {
@@ -191,9 +191,9 @@ export function gif(bilder, opt) {
     }
   }
 
-  // Zensus über den ganzen Film. 2^24 Zähler sind 64 MiB und eine Zeile; eine `Map` über 39 Mio.
-  // Pixel wäre um Größenordnungen langsamer. Dasselbe Feld wird gleich zur Nachschlagtabelle
-  // Farbe→Index umgewidmet — die Zählstände braucht danach niemand mehr.
+  // A census over the whole film. 2^24 counters are 64 MiB and one line; a `Map` over 39
+  // million pixels would be orders of magnitude slower. The same array is repurposed as the
+  // colour-to-index lookup table right away: nobody needs the counts afterwards.
   const tabelle = new Uint32Array(1 << 24);
   for (const bild of bilder) {
     for (let p = 0; p < bild.length; p += 3) {
@@ -211,7 +211,7 @@ export function gif(bilder, opt) {
   const ord = new Int32Array(verschieden);
   for (let i = 0; i < verschieden; i++) ord[i] = i;
   if (verschieden <= 256) {
-    // Der verlustfreie Fall: jede vorkommende Farbe bekommt ihren eigenen Eintrag.
+    // The lossless case: every occurring colour gets an entry of its own.
     for (let i = 0; i < verschieden; i++) {
       const k = keys[i];
       palette.push([(k >> 16) & 0xff, (k >> 8) & 0xff, k & 0xff]);
@@ -228,8 +228,8 @@ export function gif(bilder, opt) {
   const farben = palette.length;
   const gemergt = verschieden - farben;
 
-  // Die globale Farbtabelle muss eine Zweierpotenz sein (2…256). Aufgefüllt wird mit Schwarz;
-  // diese Einträge referenziert kein Pixel.
+  // The global colour table has to be a power of two (2…256). It is padded with black, and no
+  // pixel references those entries.
   let bitsGct = 1;
   while (1 << bitsGct < farben) bitsGct++;
   const gctN = 1 << bitsGct;
@@ -249,7 +249,7 @@ export function gif(bilder, opt) {
   }
   teile.push(gct);
   if (opt.loop !== false) {
-    // NETSCAPE2.0 — die einzige Art, eine Endlosschleife in ein GIF zu schreiben.
+    // NETSCAPE2.0: the only way to write an endless loop into a GIF.
     teile.push(Buffer.from([
       0x21, 0xff, 0x0b, ...Buffer.from("NETSCAPE2.0", "ascii"),
       0x03, 0x01, 0x00, 0x00, 0x00,
@@ -265,9 +265,9 @@ export function gif(bilder, opt) {
       idx[j] = tabelle[(bild[p] << 16) | (bild[p + 1] << 8) | bild[p + 2]];
     }
 
-    // Differenz-Rechteck: die Bühne ist weitgehend statisch, also wird nur der umschließende
-    // Kasten der geänderten Pixel neu gezeichnet. `disposal = 1` (nichts zurücksetzen) lässt
-    // alles Übrige stehen — deshalb genügt der Kasten und es braucht keine Transparenz.
+    // Difference rectangle: the stage is largely static, so only the enclosing box of the
+    // changed pixels is redrawn. `disposal = 1` (reset nothing) leaves everything else
+    // standing, so the box is enough and no transparency is needed.
     let x0 = 0, y0 = 0, x1 = w, y1 = h;
     if (vorher) {
       x0 = w; y0 = h; x1 = -1; y1 = -1;
@@ -283,8 +283,8 @@ export function gif(bilder, opt) {
         }
       }
       if (x1 < 0) {
-        // Bitgleich zum Vorgänger. Trotzdem muss ein Bild heraus, sonst geht die Zeit verloren:
-        // ein 1×1-Pixel mit dem Wert, der dort ohnehin steht, kostet rund 20 Bytes.
+        // Bit identical to the predecessor. A frame still has to come out, because otherwise
+        // the time would be lost: a 1x1 pixel with the value already there costs about 20 bytes.
         x0 = 0; y0 = 0; x1 = 0; y1 = 0;
       }
       x1 += 1; y1 += 1;
@@ -298,9 +298,9 @@ export function gif(bilder, opt) {
       }
     }
 
-    // Verzögerung in Hundertstelsekunden. Untergrenze 2: Browser ersetzen 0 und 1 stillschweigend
-    // durch 10, was einen 12-fps-Film auf 10 fps bremsen würde — bei realistischen Bildabständen
-    // (≈ 83 ms) greift die Klemme nie.
+    // The delay in hundredths of a second. A lower bound of 2: browsers silently replace 0 and
+    // 1 by 10, which would brake a 12 fps film to 10 fps; with realistic frame distances
+    // (about 83 ms) the clamp never takes hold.
     const cs = Math.max(2, Math.round(opt.delaysMs[i] / 10));
     teile.push(Buffer.from([0x21, 0xf9, 0x04, 0x04, ...u16(cs), 0x00, 0x00]));
     teile.push(Buffer.from([0x2c, ...u16(x0), ...u16(y0), ...u16(bw), ...u16(bh), 0x00]));
