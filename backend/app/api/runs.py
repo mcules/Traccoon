@@ -26,7 +26,7 @@ def _run_out(r: Run, issue_key: str) -> dict:
 @router.get("/projects/{project_id}/runs")
 async def project_runs(access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session),
                        limit: int = 40, archived: bool = False):
-    """Flache Liste (Alt-Verhalten). `archived=true` zeigt die archivierten Läufe."""
+    """Flat list (the old behaviour). `archived=true` shows the archived runs."""
     rows = (
         await db.execute(
             select(Run, Issue.key).join(Issue, Issue.id == Run.issue_id)
@@ -42,10 +42,10 @@ async def project_runs_grouped(
     access: Access = Depends(get_project_access), db: AsyncSession = Depends(get_session),
     limit: int = 200, archived: bool = False,
 ):
-    """Agentenläufe nach Ticket gruppiert (ABC-29) — eine Gruppe je Ticket, jüngstes zuerst.
+    """Agent runs grouped by ticket (ABC-29): one group per ticket, the most recent first.
 
-    `limit` begrenzt die betrachteten Läufe (nicht die Gruppen); wird er erreicht,
-    meldet `truncated`, dass ältere Läufe außen vor blieben.
+    `limit` limits the runs considered (not the groups); when it is reached, `truncated`
+    reports that older runs were left out.
     """
     rows = (
         await db.execute(
@@ -71,9 +71,9 @@ async def project_runs_grouped(
 
 @router.get("/projects/{project_id}/active-runs")
 async def active_runs(access: Access = Depends(get_project_access)):
-    """Was der Worker gerade wirklich bearbeitet (Redis-Hash, nicht die DB).
+    """What the worker is really working on right now (the Redis hash, not the database).
 
-    Zeigt auch Läufe, deren Ticket-Status noch nicht geschrieben wurde.
+    Shows runs whose ticket status has not been written yet as well.
     """
     import json
     import time
@@ -98,14 +98,14 @@ async def active_runs(access: Access = Depends(get_project_access)):
 @router.get("/runs/{run_id}/steps")
 async def run_steps(run_id: int, user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
-    # Zugriff nur für Projektmitglieder des zum Lauf gehörenden Tickets (sonst 404 statt Leak).
+    # Access only for project members of the ticket the run belongs to (404 instead of a leak).
     run = await db.get(Run, run_id)
     if run is None:
         raise HTTPException(404, "Lauf nicht gefunden")
     issue = await db.get(Issue, run.issue_id) if run.issue_id else None
     project = await db.get(Project, issue.project_id) if issue else None
     if project is None:
-        # Job-Lauf ohne Ticket: nur Admin (Job-Owner-Bindung fehlt am Run).
+        # Job run without a ticket: admins only (the job owner binding is missing on the run).
         if user.global_role.value != "admin":
             raise HTTPException(404, "Lauf nicht gefunden")
     else:
