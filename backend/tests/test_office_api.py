@@ -460,7 +460,6 @@ async def test_alle_ereignisse_kappen_vom_aeltesten_ende_und_behalten_den_roster
     Raum, obwohl sie noch arbeitet. Zwei Dinge fangen das: die Fenstergrenzen werden aus
     den GELADENEN Zeilen gerechnet (der Lauf bekommt also ein frisches `run_start` an
     seinem ersten sichtbaren Schritt), und `agents[]` kommt aus `runs`, nicht aus den
-    Ereignissen.
 
     Wer gar keinen sichtbaren Schritt mehr hat, steht auch nicht im Roster — anders als
     bei `session_events` ist der Roster hier die Besetzung des **gezeigten** Fensters, und
