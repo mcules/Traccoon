@@ -1,13 +1,13 @@
-"""Kosten einer Session — zwei Zahlen, und die eine Unterscheidung, die Traccoon fehlte.
+"""Costs of a session: two numbers, and the one distinction Traccoon lacked.
 
-`cost_usd_billed` ist der abgerechnete Betrag aus `cost_entries`; er bleibt, was er war,
-auch wenn der Katalog sich seither geändert hat (`api/cost.py:148`). `cost_usd_estimated`
-rechnet die **Schritt**-Tokens gegen den heutigen Katalog. Beide stehen nebeneinander,
+`cost_usd_billed` is the billed amount from `cost_entries`; it stays what it was, even when
+the catalog has changed since (`api/cost.py:148`). `cost_usd_estimated` computes the **step**
+tokens against today's catalog. Both stand side by side, and neither overwrites the other.
 keine überschreibt die andere.
 
-Die Unterscheidung, um die es geht: ein Katalogeintrag mit Preis 0,00 heißt *bepreist und
-gratis* (das lokale Modell), gar kein Eintrag heißt *unbekannt*. Bisher ergab beides
-dieselbe 0,00 in der Anzeige, und jede Lücke im Katalog las sich wie ein Geschenk.
+The distinction it is about: a catalog entry with the price 0.00 means *priced and free* (the
+local model), while no entry at all means *unknown*. Until now both gave the same 0.00 in the
+display, and every gap in the catalog read like a gift.
 """
 import datetime as dt
 
@@ -27,8 +27,8 @@ MIO = 1_000_000
 
 @pytest.fixture(autouse=True)
 def router_registriert():
-    """Siehe `test_office_api.py`: Welle C registriert ihren Router nicht in
-    `main.py`, weil zwei Wellen parallel an der Datei hängen."""
+    """See `test_office_api.py`: this wave does not register its router in `main.py`, because
+    two waves hang on the file in parallel."""
     if not any(getattr(r, "path", "") == "/office/sessions" for r in api.routes):
         api.include_router(rt_api.router)
 
@@ -36,7 +36,7 @@ def router_registriert():
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
 async def buehne(db):
-    """Nutzer, Projekt, Ticket — das Minimum, damit eine Session autorisierbar ist."""
+    """User, project, ticket: the minimum for a session to be authorisable."""
     user = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, user, ProjectRole.member)
@@ -65,7 +65,7 @@ async def lauf(db, issue, *, agent="developer", parent=None, provider="claude_co
 
 
 async def zug(db, run, *, provider, model, in_tok=0, out_tok=0, cache=0, seq=1):
-    """Ein Modellzug als Schrittzeile — mit dem Modell, das TATSÄCHLICH geantwortet hat."""
+    """A model turn as a step row, with the model that ACTUALLY answered."""
     db.add(RunStep(run_id=run.id, seq=seq, role="assistant", kind="agent_text",
                    content="…", provider=provider, model=model, in_tokens=in_tok,
                    out_tokens=out_tok, cache_read_tokens=cache, created_at=NOW))
@@ -93,7 +93,7 @@ async def kosten(client, user, issue):
     return r.json()
 
 
-# ── priced: die drei Zustände ────────────────────────────────────────────────
+# ── priced: the three states ─────────────────────────────────────────────────
 
 async def test_bepreister_posten_ist_vollstaendig(client, db):
     user, _proj, issue = await buehne(db)
@@ -108,8 +108,8 @@ async def test_bepreister_posten_ist_vollstaendig(client, db):
 
 
 async def test_altzeile_ohne_katalogeintrag_ist_eine_preisluecke(client, db):
-    """`priced IS NULL` ist die Altzeile, die die Unterscheidung nie kannte. Zur Lesezeit
-    gegen den Katalog aufgelöst — und ohne Eintrag ist die 0,00 eben eine Lücke."""
+    """`priced IS NULL` is the old row that never knew the distinction. It is resolved against
+    the catalog at read time, and without an entry the 0.00 is a gap."""
     user, _proj, issue = await buehne(db)
     run = await lauf(db, issue)
     await posten(db, run, priced=None, cost=0.0, provider="lokal", model="qwen3.6")
@@ -132,8 +132,8 @@ async def test_altzeile_mit_katalogeintrag_gilt_als_bepreist(client, db):
 
 
 async def test_katalogeintrag_mit_preis_null_ist_gratis_nicht_unbekannt(client, db):
-    """Der Fall des lokalen Modells: alle Preise 0,00, aber es GIBT einen Eintrag.
-    Genau diese Unterscheidung konnte Traccoon bisher nicht treffen."""
+    """The case of the local model: all prices 0.00, but there IS an entry. Exactly this
+    distinction Traccoon could not make until now."""
     user, _proj, issue = await buehne(db)
     await katalog(db, "lokal", "qwen3.6", ein=0.0, aus=0.0, cache=0.0)
     run = await lauf(db, issue, provider="lokal", model="qwen3.6")
@@ -149,11 +149,11 @@ async def test_katalogeintrag_mit_preis_null_ist_gratis_nicht_unbekannt(client, 
     assert body["total"]["cost_usd_estimated"] == 0.0
 
 
-# ── Aggregation über den Baum ────────────────────────────────────────────────
+# ── Aggregation over the tree ────────────────────────────────────────────────
 
 async def test_by_agent_summiert_ueber_den_baum_inklusive_delegierter(client, db):
-    """Zwei Läufe desselben Agenten (Ausführung + Fortsetzung) und ein delegierter
-    Unteragent — alle drei gehören zur selben Session und damit in dieselbe Rechnung."""
+    """Two runs of the same agent (execution plus continuation) and one delegated sub-agent:
+    all three belong to the same session and therefore in the same bill."""
     user, _proj, issue = await buehne(db)
     a1 = await lauf(db, issue, agent="developer")
     a2 = await lauf(db, issue, agent="developer")
@@ -173,9 +173,9 @@ async def test_by_agent_summiert_ueber_den_baum_inklusive_delegierter(client, db
 
 
 async def test_by_model_gruppiert_nach_dem_modell_des_schritts(client, db):
-    """Der Lauf ist mitten drin auf den Fallback-Provider gewechselt. Nach `run.model`
-    gruppiert wäre das EINE Zeile — und die falsche: sie schriebe die Tokens des einen
-    Modells dem anderen zu."""
+    """The run switched to the fallback provider in the middle. Grouped by `run.model` that
+    would be ONE row, and the wrong one: it would attribute the tokens of one model to the
+    other."""
     user, _proj, issue = await buehne(db)
     await katalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)
     await katalog(db, "openai", "gpt-x", ein=1.0, aus=4.0)
@@ -193,13 +193,13 @@ async def test_by_model_gruppiert_nach_dem_modell_des_schritts(client, db):
 
 
 async def test_abgerechnet_und_geschaetzt_stehen_nebeneinander(client, db):
-    """Der Katalogpreis hat sich nach der Abrechnung geändert. Beide Zahlen bleiben —
-    die eine sagt, was es gekostet hat, die andere, was es heute kosten würde."""
+    """The catalog price changed after the billing. Both numbers stay: one says what it cost,
+    the other what it would cost today."""
     user, _proj, issue = await buehne(db)
     run = await lauf(db, issue)
     await zug(db, run, provider="claude_code", model="sonnet", in_tok=MIO)
     await posten(db, run, priced=True, cost=1.0, in_tok=MIO)
-    await katalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)   # heute teurer
+    await katalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)   # more expensive today
 
     body = await kosten(client, user, issue)
     assert body["total"]["cost_usd_billed"] == 1.0
@@ -210,9 +210,9 @@ async def test_abgerechnet_und_geschaetzt_stehen_nebeneinander(client, db):
 
 
 async def test_altlauf_ohne_schritt_tokens_faellt_auf_die_laufzeile_zurueck(client, db):
-    """Ein Lauf von vor der Instrumentierung hat keine Tokens an den Schritten, wohl aber
-    seine Summen am Lauf. Ohne diesen Rückfall wäre die Schätzung am ersten Tag überall 0
-    und die Kostenansicht nutzlos."""
+    """A run from before the instrumentation has no tokens on the steps but does have its sums
+    on the run. Without this fallback the estimate would be 0 everywhere on the first day and
+    the cost view useless."""
     user, _proj, issue = await buehne(db)
     await katalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)
     run = await lauf(db, issue, in_tok=MIO, out_tok=MIO)
@@ -225,8 +225,8 @@ async def test_altlauf_ohne_schritt_tokens_faellt_auf_die_laufzeile_zurueck(clie
 
 
 async def test_fremder_bekommt_404_auf_die_kosten(client, db):
-    """Kosten sind Projektinterna — die Berechtigung kommt aus der Session, nicht aus
-    dem Pfad, und ein Fremder erfährt nicht einmal, dass die Session existiert."""
+    """Costs are project internals: the permission comes from the session, not from the path,
+    and a stranger does not even learn that the session exists."""
     _user, _proj, issue = await buehne(db)
     fremd = await make_user(db, "fremd")
     await lauf(db, issue)
