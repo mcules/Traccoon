@@ -3,7 +3,6 @@
 Vorher setzten 21 Stellen `agent_status` direkt; die Artefakt-Zeile lief dann bis zum
 nächsten Abgleich hinterher. Jetzt geht alles über `set_ticket_status`/`set_asset_status`,
 die beides in einem Zug schreiben. Der Abgleich bleibt als Netz, ist aber nicht mehr der
-Mechanismus.
 """
 import pathlib
 import re
@@ -18,7 +17,7 @@ from conftest import make_asset, make_project
 
 APP = pathlib.Path(__file__).resolve().parent.parent / "app"
 # Hier darf direkt zugewiesen werden: die Umsetzung selbst bzw. die Neuanlage eines Tickets,
-# dessen Artefakt-Zeile unmittelbar danach entsteht.
+# ticket whose artifact row comes into being immediately afterwards.
 ERLAUBT = {"services/artifacts.py", "services/workflow_actions.py"}
 
 
@@ -184,7 +183,6 @@ async def test_stehengebliebene_spalte_wird_nachgezogen(db):
     TRA-32 am 2026-08-07: das Ticket wurde aus dem Störungs-Zweig heraus fortgesetzt, der
     Agent lief mit `in_progress` — die Board-Spalte blieb auf „Warten", weil sie beim Parken
     gesetzt und nie wieder angefasst wurde. Ein Abgleich, der nur `agent_status` prüft, sieht
-    daran nichts Falsches.
     """
     from app.models.agents import Run
     from app.models.enums import TicketAgentStatus
