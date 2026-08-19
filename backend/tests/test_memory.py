@@ -1,9 +1,9 @@
-"""Gedächtnis der Agenten im Obsidian-Vault (ABC-30).
+"""Memory of the agents in the Obsidian vault (ABC-30).
 
-Der wichtigste Test hier ist `test_erinnere_dich_baut_target_als_objekt`: der obsidian-MCP
-beschreibt `target` als `oneOf` ohne `type`, und ältere Modelle schicken dafür einen String
-statt eines Objekts — jeder Aufruf endet dann in `MCP error -32602`. Weil Traccoon das
-Argument selbst baut, kann das hier nicht passieren; der Test hält es fest.
+The most important test here is `test_erinnere_dich_baut_target_als_objekt`: the obsidian MCP
+describes `target` as a `oneOf` without a `type`, and older models send a string for it
+instead of an object, and then every call ends in `MCP error -32602`. Because Traccoon builds
+the argument itself, that cannot happen here; the test records it.
 """
 import pytest
 from conftest import auth, make_user
@@ -14,7 +14,7 @@ from app.worker.tools_memory import (
 
 
 class FakeMcp:
-    """MCP-Session-Ersatz: zeichnet Aufrufe auf und beantwortet get_note aus `notes`."""
+    """MCP session replacement: records calls and answers get_note out of `notes`."""
 
     def __init__(self, notes: dict[str, str] | None = None, fail: set[str] | None = None):
         self.notes = dict(notes or {})
@@ -54,14 +54,14 @@ ROOT = "04 Traccoon/Gedächtnis"
 
 
 def test_pfade():
-    """Jeder Bereich hat seine Notiz; unpassende Bereiche liefern keinen Pfad."""
+    """Every area has its note; areas that do not fit yield no path."""
     assert note_path(ROOT, "mensch") == f"{ROOT}/Mensch.md"
     assert note_path(ROOT, "agent", "developer") == f"{ROOT}/Agent-developer.md"
     assert note_path(ROOT, "projekt", "developer", "TRA") == f"{ROOT}/Projekt-TRA.md"
-    # Ohne Rolle bzw. Projekt gibt es die Notiz nicht — der Aufrufer muss 'mensch' nehmen.
+    # Without a role respectively a project the note does not exist: the caller has to take 'mensch'.
     assert note_path(ROOT, "agent") is None
     assert note_path(ROOT, "projekt", "developer") is None
-    # Kein Ordner konfiguriert = Funktion aus.
+    # No folder configured means the function is off.
     assert note_path("", "mensch") is None
     assert note_path("  ", "mensch") is None
 
@@ -86,7 +86,7 @@ async def test_abruf_sammelt_vom_allgemeinen_zum_besonderen():
 
 
 async def test_abruf_fehlende_notiz_ist_kein_fehler():
-    """Nur Mensch.md existiert — der Rest fehlt einfach, ohne Ausnahme."""
+    """Only Mensch.md exists; the rest is simply missing, without an exception."""
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "- Eine Vorgabe."})
     text = await read_memory(mcp, ROOT, "developer", "TRA")
     assert "Eine Vorgabe" in text
@@ -107,7 +107,7 @@ async def test_abruf_gekappt():
 
 
 async def test_ohne_vault_sagt_es_dem_agenten(db):
-    """Ohne gesetzten Ordner bekommt der Agent eine klare Absage statt eines Fehlers."""
+    """Without a folder set, the agent gets a clear refusal instead of an error."""
     u = await make_user(db, "ohnevault")
     mcp = FakeMcp()
     out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
@@ -117,10 +117,10 @@ async def test_ohne_vault_sagt_es_dem_agenten(db):
 
 
 async def test_erinnere_dich_baut_target_als_objekt(db):
-    """REGRESSION: `target` muss ein Objekt sein — ein String ist `MCP error -32602`.
+    """REGRESSION: `target` has to be an object; a string is `MCP error -32602`.
 
-    Genau daran scheitern ältere Modelle, wenn sie den obsidian-MCP selbst aufrufen. Weil
-    Traccoon das Argument baut, darf das hier nie passieren.
+    Exactly on that older models fail when they call the obsidian MCP themselves. Because
+    Traccoon builds the argument, that must never happen here.
     """
     u = await make_user(db, "merker")
     u.vault_memory_path = ROOT
@@ -137,7 +137,7 @@ async def test_erinnere_dich_baut_target_als_objekt(db):
 
 
 async def test_erinnere_dich_legt_fehlende_notiz_an(db):
-    """Die erste Erkenntnis erzeugt die Notiz — Anhängen allein scheitert daran."""
+    """The first insight creates the note; appending alone fails on that."""
     u = await make_user(db, "erster")
     u.vault_memory_path = ROOT
     await db.commit()
@@ -151,7 +151,7 @@ async def test_erinnere_dich_legt_fehlende_notiz_an(db):
 
 
 async def test_erinnere_dich_meldet_scheitern(db):
-    """Klappt beides nicht, erfährt der Agent das — statt sich in Sicherheit zu wiegen."""
+    """If neither works, the agent learns that, instead of feeling safe."""
     u = await make_user(db, "pech")
     u.vault_memory_path = ROOT
     await db.commit()
@@ -162,7 +162,7 @@ async def test_erinnere_dich_meldet_scheitern(db):
 
 
 async def test_projekt_bereich_ohne_projekt(db):
-    """Im projektlosen Assistenten-Lauf gibt es kein Projekt-Gedächtnis — mit Hinweis."""
+    """In a project-less assistant run there is no project memory, and it says so."""
     u = await make_user(db, "projektlos")
     u.vault_memory_path = ROOT
     await db.commit()
@@ -221,8 +221,8 @@ async def test_memory_root_leer_ohne_owner(db):
 # ── Verdrahtung im Lauf ──────────────────────────────────────────────────────
 
 def test_gedaechtnis_tools_immer_erlaubt():
-    """`allowed_tools` ist deny-by-default — die Gedächtnis-Tools müssen daran vorbei,
-    sonst lernt ein frisch angelegter Agent still nie etwas."""
+    """`allowed_tools` is deny by default, and the memory tools have to get past it;
+    otherwise a freshly created agent silently never learns anything."""
     from app.worker.runtime import AgentDef
     from app.worker.tools_memory import MEMORY_TOOL_NAMES
 
@@ -251,7 +251,7 @@ def test_lernschalter_kommt_aus_der_zeile():
 
 
 async def test_lernschalter_in_der_api(db, client):
-    """Der Schalter ist über die Agenten-API setzbar und wird zurückgegeben."""
+    """The switch is settable over the agent API and is returned."""
     u = await make_user(db, "agentenchef")
     r = await client.post("/agents", headers=auth(u),
                           json={"role": "lerner", "provider": "claude_code"})
@@ -264,27 +264,27 @@ async def test_lernschalter_in_der_api(db, client):
 
 
 async def test_gedaechtnis_ordner_in_der_api(db, client):
-    """Ordner setzen (mit Schrägstrichen), wieder abschalten.
+    """Set the folder (with slashes), switch it off again.
 
-    Geprüft wird die Spalte, nicht `/me/flags`: der `redis_stub` der Test-Umgebung kann die
-    Flag-Abfrage nicht bedienen.
+    What is checked is the column, not `/me/flags`: the `redis_stub` of the test environment
+    cannot serve the flag query.
     """
     u = await make_user(db, "vaultnutzer")
     r = await client.put("/me/vault-memory-path", headers=auth(u), json={"value": f"/{ROOT}/"})
     assert r.status_code == 204
     await db.refresh(u)
-    assert u.vault_memory_path == ROOT          # führende/schließende Schrägstriche weg
+    assert u.vault_memory_path == ROOT          # leading and trailing slashes gone
     assert (await client.put("/me/vault-memory-path", headers=auth(u),
                              json={"value": ""})).status_code == 204
     await db.refresh(u)
-    assert u.vault_memory_path == ""            # leer = Gedächtnis aus
+    assert u.vault_memory_path == ""            # empty = memory off
     assert await memory_root(db, u.id) == ""
 
 
-# ── Gesprächsverlauf im Chat ─────────────────────────────────────────────────
+# ── Conversation history in the chat ─────────────────────────────────────────
 
 async def test_chat_verlauf(db):
-    """Der Chat trägt die jüngsten Wortwechsel mit — Altes und Fremdes bleibt draußen."""
+    """The chat carries the most recent exchanges along; old and foreign ones stay outside."""
     import datetime as dt
 
     from app.models.assistant import AssistantTask
@@ -300,8 +300,8 @@ async def test_chat_verlauf(db):
         return AssistantTask(**d)
 
     db.add_all([
-        # Zu alt ist jetzt eine Frage von Wochen, nicht von Stunden: seit dem Gesprächs-
-        # gedächtnis wandert Älteres in die Zusammenfassung, statt ersatzlos wegzufallen.
+        # Too old is now a question of weeks, not of hours: since the conversation memory,
+        # older material wanders into the summary instead of falling away without replacement.
         task(title="alt", meta={"chat_text": "Uraltes"}, result="Uralte Antwort",
              created_at=jetzt - dt.timedelta(days=30)),
         task(title="fremd", meta={"chat_text": "Fremdes"}, result="A", owner_user_id=fremd.id),
@@ -325,7 +325,7 @@ async def test_chat_verlauf(db):
 
 
 async def test_chat_verlauf_getrennt_je_agent(db):
-    """Ein Fach-Agent hat sein eigenes Gespräch, nicht das des Assistenten."""
+    """A specialist agent has its own conversation, not that of the assistant."""
     from app.models.assistant import AssistantTask
     from app.worker.__main__ import _chat_history
 
@@ -347,7 +347,7 @@ async def test_chat_verlauf_getrennt_je_agent(db):
     assert "GameProj-Frage" in texte and "Assistenten-Frage" not in texte
 
 
-# ── Rückschau ────────────────────────────────────────────────────────────────
+# ── Review ───────────────────────────────────────────────────────────────────
 
 class FakeResp:
     def __init__(self, text="", tool_calls=None):
@@ -365,7 +365,7 @@ class FakeCall:
 
 
 async def test_rueckschau_merkt_und_zaehlt_tokens(db, monkeypatch):
-    """Die Rückschau darf merken — und ihr Verbrauch landet auf den Zählern des Laufs."""
+    """The review may remember, and its consumption lands on the counters of the run."""
     from app.worker import runtime
     from app.worker.runtime import AgentDef, _reflect
 
@@ -403,20 +403,20 @@ async def test_rueckschau_merkt_und_zaehlt_tokens(db, monkeypatch):
                                      project_key="", messages=[{"role": "user", "content": "x"}],
                                      summary="Habe alles erledigt.", protokoll=log,
                                      tokens={}, base_urls={})
-    assert (ein, aus, cache) == (20, 10, 0)          # zwei Züge
+    assert (ein, aus, cache) == (20, 10, 0)          # two turns
     assert "Deutsche Commits." in mcp.notes[f"{ROOT}/Mensch.md"]
     assert any(t == "erinnere_dich" for _r, t, _c in protokoll)
 
-    # Der Auftrag muss als user-Zug am Ende stehen: role=system würde bei Anthropic zu einem
-    # System-Block umgebaut und stünde nicht mehr am Gesprächsende. Und die
-    # Abschluss-Zusammenfassung des Laufs gehört davor — sie ist dessen Ergebnis.
+    # The assignment has to stand as a user turn at the end: role=system would be rebuilt
+    # into a system block at Anthropic and would no longer stand at the end of the
+    # conversation. And the closing summary of the run belongs before it: it is its result.
     letzte = gesehen[0][-2:]
     assert letzte[0] == {"role": "assistant", "content": "Habe alles erledigt."}
     assert letzte[1]["role"] == "user" and "Rückschau" in letzte[1]["content"]
 
 
 async def test_rueckschau_ohne_lehre_schreibt_nichts(db, monkeypatch):
-    """Der Normalfall: nichts gelernt, ein kurzer Zug, kein Vault-Schreibzugriff."""
+    """The normal case: nothing learned, one short turn, no vault write access."""
     from app.worker import runtime
     from app.worker.runtime import AgentDef, _reflect
 
@@ -444,7 +444,7 @@ async def test_rueckschau_ohne_lehre_schreibt_nichts(db, monkeypatch):
 
 
 async def test_rueckschau_verweigert_fremde_tools(db, monkeypatch):
-    """In der Rückschau darf nichts anderes mehr passieren als lernen."""
+    """In the review nothing else may happen any more than learning."""
     from app.worker import runtime
     from app.worker.runtime import AgentDef, _reflect
 
@@ -486,7 +486,7 @@ async def test_unbekannter_bereich(db, bereich):
     out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
                                  {"bereich": bereich, "text": "y"})
     if bereich.strip().lower() == "mensch":
-        assert "Gemerkt" in out          # Groß/Klein und Leerzeichen sind verzeihlich
+        assert "Gemerkt" in out          # case and spaces are forgivable
     else:
         assert out.startswith("FEHLER")
         assert mcp.calls == []

@@ -1,10 +1,9 @@
-"""Das Review-Gate darf keine Befunde erfinden.
+"""The review gate must not invent findings.
 
-ABC-31 am 2026-08-07: der Prüfer-Lauf starb an „Antwort bei max_tokens abgeschnitten".
-Das Gate prüfte nur, ob `<review-ok/>` im Text steht — stand es nicht drin, galt der Text
-als Befundliste. Der Entwickler wurde daraufhin losgeschickt, eine Provider-Fehlermeldung
-zu „beheben": eine erfundene Aufgabe, die eine der zwei Korrektur-Runden kostet und danach
-im Review-Hold endet.
+ABC-31 on 2026-08-07: the reviewer run died on "answer truncated at max_tokens". The gate
+only checked whether `<review-ok/>` stood in the text, and if it did not, the text counted
+as a list of findings. The developer was then sent off to "fix" a provider error message: an
+invented task that costs one of the two correction rounds and afterwards ends in the review hold.
 """
 import app.worker.__main__ as worker
 from app.worker.runtime import RunResult
@@ -27,15 +26,15 @@ async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x", run
         laeufe.append(rolle)
         if rolle != "code_reviewer":
             return RunResult("done", "korrigiert")
-        # Erster Prüfer-Lauf: der Fall, um den es geht. Ab dem zweiten sauber bestanden,
-        # sonst dreht die Gegenprobe zwei volle Runden und prüft nicht mehr, was sie soll.
+        # First reviewer run: the case it is all about. From the second on it passes cleanly,
+        # because otherwise the counter-check turns two full rounds and no longer checks what it should.
         return rev if laeufe.count("code_reviewer") == 1 else RunResult("done", "<review-ok/>")
 
     runden = {"n": 0}
 
     async def fake_diff(_ctx):
-        # Eine Korrektur, die wirkt, verändert den Diff — sonst greift (zu Recht) die
-        # Stillstands-Erkennung, und die prüft ein eigener Test.
+        # A correction that takes effect changes the diff; otherwise the standstill detection
+        # (rightly) takes hold, and that has a test of its own.
         if not diff:
             return diff
         runden["n"] += 1
@@ -51,8 +50,8 @@ async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x", run
     async def fake_flag(_name, *a, **k):
         return False
 
-    # `get_flag` ist im Worker beim Import gebunden — der autouse-Stub ersetzt nur
-    # `app.core.redis`, nicht dieses Modul. Ohne das liefe der Test in echten Redis.
+    # `get_flag` is bound in the worker at import time, and the autouse stub only replaces
+    # `app.core.redis`, not this module. Without that the test would run into a real Redis.
     monkeypatch.setattr(worker, "get_flag", fake_flag)
     monkeypatch.setattr(worker, "run_agent", fake_run_agent)
     monkeypatch.setattr(worker.gitops, "diff_text", fake_diff)
@@ -77,12 +76,12 @@ async def test_abgebrochener_pruefer_erzeugt_keinen_auftrag(db, monkeypatch):
 
 
 async def test_echte_befunde_loesen_weiter_eine_korrektur_aus(db, monkeypatch):
-    """Die Gegenprobe: ein Prüfer, der SAUBER durchläuft und etwas findet, schickt den
-    Entwickler los wie bisher."""
+    """The counter-check: a reviewer that runs through CLEANLY and finds something sends the
+    developer off as before."""
     ergebnis, laeufe, _ = await _gate(
         db, monkeypatch, RunResult("done", "1. foo.ts:12 — Nullprüfung fehlt"))
-    # Befund → Korrektur → erneute Prüfung, die diesmal besteht. Genau diese Kette darf der
-    # abgebrochene Prüfer NICHT auslösen.
+    # Finding, correction, renewed check that passes this time. Exactly this chain must NOT
+    # be triggered by the aborted reviewer.
     assert laeufe == ["code_reviewer", "developer", "code_reviewer"]
     assert ergebnis.status == "done"
 
@@ -94,11 +93,11 @@ async def test_bestandener_review_laesst_alles_stehen(db, monkeypatch):
 
 
 async def test_verbrauchte_runden_ueberleben_den_neustart(db, monkeypatch):
-    """Der Runden-Zähler gehört ans Ticket, nicht in die Schleife.
+    """The round counter belongs on the ticket, not in the loop.
 
-    ABC-32 am 2026-08-07: der Worker wurde mitten in Korrektur-Runde 2 neu gestartet, das
-    Gate begann wieder bei Runde 1 — prüfen → korrigieren → Neustart → prüfen → korrigieren.
-    Die Grenze, die den Menschen holen soll, wurde nie erreicht.
+    ABC-32 on 2026-08-07: the worker was restarted in the middle of correction round 2, and
+    the gate began at round 1 again: check, correct, restart, check, correct. The limit that
+    is supposed to fetch the human was never reached.
     """
     ergebnis, laeufe, _ = await _gate(
         db, monkeypatch, RunResult("done", "1. Befund"), runden=worker.REVIEW_RUNDEN)
@@ -108,8 +107,8 @@ async def test_verbrauchte_runden_ueberleben_den_neustart(db, monkeypatch):
 
 
 async def test_begonnene_runde_wird_sofort_verbucht(db, monkeypatch):
-    """Verbucht wird beim Start der Korrektur, nicht bei ihrem Ende — sonst zählt genau die
-    Runde nicht, die der Neustart trifft."""
+    """Booking happens at the start of the correction, not at its end; otherwise exactly the
+    round the restart hits does not count."""
     _, laeufe, issue = await _gate(db, monkeypatch, RunResult("done", "1. Befund"))
 
     assert "developer" in laeufe
@@ -117,10 +116,10 @@ async def test_begonnene_runde_wird_sofort_verbucht(db, monkeypatch):
 
 
 async def test_offene_befunde_landen_am_ticket(db, monkeypatch):
-    """Wer entscheiden soll, braucht den Grund am selben Ort wie die Entscheidung.
+    """Whoever has to decide needs the reason in the same place as the decision.
 
-    ABC-32 am 2026-08-07: das Gate gab das Ticket nach zwei Runden an den Menschen — am
-    Ticket stand „hold: review" und sonst nichts. Die Befunde steckten im Lauf.
+    ABC-32 on 2026-08-07: the gate handed the ticket to the human after two rounds, and on
+    the ticket stood "hold: review" and nothing else. The findings sat in the run.
     """
     from sqlalchemy import select
 
@@ -136,10 +135,10 @@ async def test_offene_befunde_landen_am_ticket(db, monkeypatch):
 
 
 async def test_stillstand_beendet_das_gate_statt_der_rundenzahl(db, monkeypatch):
-    """Die Grenze ist Stillstand, nicht eine Zahl.
+    """The limit is standstill, not a number.
 
-    Ein Ticket soll durchlaufen, solange es vorankommt. Erst wenn eine Korrektur am Code
-    nichts mehr ändert, bringen weitere Runden nichts — dann (und nur dann) der Mensch.
+    A ticket should run as long as it makes progress. Only when a correction changes nothing
+    in the code any more do further rounds bring nothing, and then (and only then) the human.
     """
     from app.worker.runtime import RunResult
 
@@ -148,12 +147,12 @@ async def test_stillstand_beendet_das_gate_statt_der_rundenzahl(db, monkeypatch)
 
     async def fake_run_agent(**kw):
         laeufe.append(kw["agent"].role)
-        # Der Prüfer findet immer etwas, der Entwickler ändert nie etwas → Stillstand.
+        # The reviewer always finds something, the developer never changes anything: standstill.
         return (RunResult("done", "1. Immer derselbe Befund") if kw["agent"].role == "code_reviewer"
                 else RunResult("done", "nichts geändert"))
 
     async def fake_diff(_ctx):
-        return "--- a\n+++ b\n+unveraendert\n"      # bleibt über alle Runden gleich
+        return "--- a\n+++ b\n+unveraendert\n"      # stays the same over all rounds
 
     async def fake_load_agent(_db, role, *a, **k):
         class A:
@@ -176,13 +175,13 @@ async def test_stillstand_beendet_das_gate_statt_der_rundenzahl(db, monkeypatch)
 
     assert ergebnis.blocker_kind == "review"
     assert "Stillstand" in (ergebnis.text or "")
-    # Prüfen → korrigieren → der Diff ist unverändert → Schluss. NICHT erst nach
-    # REVIEW_RUNDEN, und keine zweite Prüfung auf demselben Stand.
+    # Check, correct, the diff is unchanged, stop. NOT only after REVIEW_RUNDEN, and no
+    # second check on the same state.
     assert laeufe.count("code_reviewer") == 1 < worker.REVIEW_RUNDEN
 
 
 async def test_fortschritt_darf_weiterlaufen(db, monkeypatch):
-    """Gegenprobe: solange sich der Diff ändert, läuft das Gate weiter — bis es besteht."""
+    """Counter-check: as long as the diff changes, the gate runs on, until it passes."""
     from app.worker.runtime import RunResult
 
     _, proj, issue, _ = await _projekt_mit_ticket(db)
@@ -192,11 +191,11 @@ async def test_fortschritt_darf_weiterlaufen(db, monkeypatch):
         if kw["agent"].role != "code_reviewer":
             return RunResult("done", "korrigiert")
         runde["n"] += 1
-        # Erst in Runde 4 zufrieden — deutlich mehr als die früheren zwei.
+        # Satisfied only in round 4, clearly more than the earlier two.
         return RunResult("done", "<review-ok/>" if runde["n"] >= 4 else f"{runde['n']}. Befund")
 
     async def fake_diff(_ctx):
-        return f"--- a\n+++ b\n+stand {runde['n']}\n"   # ändert sich jede Runde
+        return f"--- a\n+++ b\n+stand {runde['n']}\n"   # changes every round
 
     async def fake_load_agent(_db, role, *a, **k):
         class A:
@@ -222,12 +221,12 @@ async def test_fortschritt_darf_weiterlaufen(db, monkeypatch):
 
 
 async def test_pannenmeldungen_erreichen_den_prompt_nicht(db):
-    """Eine Fehlermeldung der Infrastruktur ist kein Arbeitsauftrag.
+    """An error message of the infrastructure is not a work assignment.
 
-    Am 2026-08-07 las ein Agent „❌ Fehlgeschlagen: claude: Antwort bei max_tokens
-    abgeschnitten – max_tokens erhöhen" im Kommentarverlauf seines Tickets, hielt das für
-    seine Aufgabe und baute eine Eskalation in den Provider-Router — in einem Ticket über
-    einen fehlschlagenden Job. Solche Meldungen bleiben im Ticket sichtbar, aber aus dem
+    On 2026-08-07 an agent read "❌ failed: claude: answer truncated at max_tokens, raise
+    max_tokens" in the comment history of its ticket, took that for its task and built an
+    escalation into the provider router, in a ticket about a failing job. Such messages stay
+    visible in the ticket but out of the prompt.
     Prompt draußen.
     """
     from app.models.ticket import Comment
@@ -244,7 +243,7 @@ async def test_pannenmeldungen_erreichen_den_prompt_nicht(db):
 
     assert "agent_fail" in arten and "Worker-Neustart" in arten["agent_fail"]
     assert "agent" in arten and "Erkenntnisse" in arten["agent"]
-    # Der Prompt-Verlauf filtert exakt auf `kind == "agent"` (siehe worker/__main__.py).
+    # The prompt history filters exactly on `kind == "agent"` (see worker/__main__.py).
     verlauf = [c.body for c in rows if c.kind == "agent"]
     assert not any("Worker-Neustart" in b for b in verlauf)
     assert any("Erkenntnisse" in b for b in verlauf)
