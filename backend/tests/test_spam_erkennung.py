@@ -1012,3 +1012,73 @@ async def test_phishing_kommt_ueber_die_frageschwelle():
     assert {"marke_im_anzeigenamen", "server_blockliste",
             "geschaeft_an_domain_ohne_geschaeft"} <= set(res.signals)
     assert res.score >= 0.9
+
+
+# --- Die Identität, die sich die Mail selbst gibt ---------------------------------------
+
+def _anspruch(name: str, addr: str, betreff: str, text: str, links: list) -> dict:
+    return _mail(**{"from": [{"name": name, "addr": addr}], "subject": betreff,
+                    "body_text": text,
+                    "links": [{"href": h, "text": t} for h, t in links],
+                    "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
+                                "Return-Path": f"<{addr}>", "Received-Count": 3}})
+
+
+async def test_identitaet_ohne_deckung_braucht_keine_markenliste():
+    """The point of the rule: it works for a house nobody wrote down anywhere.
+
+    The mail delivers the comparison value itself — it names the domain it claims to belong
+    to. Whether that name stands on a list is irrelevant.
+    """
+    mail = _anspruch("Stadtwerke Hintertupfing", "service@swh-abrechnung.info",
+                     "Ihre Abschlagszahlung konnte nicht gebucht werden",
+                     "Bitte prüfen Sie Ihre Daten. Fragen? service@stadtwerke-hintertupfing.de",
+                     [("https://kunden-portal-swh.top/login", "Jetzt prüfen")])
+    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+                   body=mail_text(mail))
+    assert "identitaet_ohne_deckung" in res.signals
+    assert "marke_im_anzeigenamen" not in res.signals      # steht auf keiner Liste
+    assert res.ist_newsletter is False
+
+
+async def test_echte_post_verlinkt_ihr_eigenes_haus():
+    """The hardest honest case, taken from the real inbox: `Verti via CHECK24` sends over the
+    comparison portal, names verti.de in the imprint — and links to click.email.verti.de.
+    Exactly that link is the cover, and it is the reason the rule stays quiet."""
+    mail = _anspruch("Verti via CHECK24", "agd7e36j9xadmv2.v@as.check24.de",
+                     "Willkommen bei Verti, Herr Muster!",
+                     "Herzlich willkommen! Es gelten die auf www.verti-empfehlen.de genannten "
+                     "Bedingungen. Verti Versicherung AG, Rheinstraße 7A. www.verti.de",
+                     [("https://click.email.verti.de/?qs=abc", "Zum Kundenportal")])
+    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+                   body=mail_text(mail))
+    assert "identitaet_ohne_deckung" not in res.signals
+
+
+async def test_eigene_domain_ist_kein_fremder_anspruch():
+    """Every mail quotes my address; that is not a claimed identity."""
+    mail = _anspruch("Newsletter", "news@fremd.example", "Nachricht für meine-domain.de",
+                     "Unsere Nachricht hat Sie über ich@meine-domain.de erreicht.",
+                     [("https://fremd.example/x", "hier")])
+    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+                   body=mail_text(mail))
+    assert "identitaet_ohne_deckung" not in res.signals
+
+
+async def test_erwaehnter_partner_ist_kein_anspruch():
+    """Whoever mentions a service provider in passing does not present themselves as one."""
+    mail = _anspruch("Der Verein", "info@verein.example", "Einladung zur Versammlung",
+                     "Die Anmeldung läuft über eventbrite.com, bitte bis Freitag.",
+                     [("https://verein.example/anmeldung", "Anmeldung")])
+    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+                   body=mail_text(mail))
+    assert "identitaet_ohne_deckung" not in res.signals
+
+
+async def test_ohne_links_kein_urteil_ueber_das_ziel():
+    """Without a single link there is nothing to compare, and a mention alone says nothing."""
+    mail = _anspruch("N26 Support", "support@fremd.example", "Ihr Konto",
+                     "Melden Sie sich bei support@n26.com.", [])
+    res = evaluate(mail, meine_adressen=frozenset({"ich@meine-domain.de"}),
+                   body=mail_text(mail))
+    assert "identitaet_ohne_deckung" in res.signals or "marke_im_anzeigenamen" in res.signals

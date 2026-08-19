@@ -46,15 +46,35 @@ FREEMAIL_DOMAINS = frozenset({
 })
 
 # Brands worth forging. Whoever writes under one of these names and does not send from the
-# matching domain claims a relationship they cannot keep. Deliberately short and only names
-# that stand for a contract (bank, parcel, account): a list of every brand in the world would
-# turn every mention into a suspicion. Ambiguous tokens stay out on purpose ("ing" would fire
-# on every "Dipl.-Ing.", "ups" on every "Ups!").
+# matching domain claims a relationship they cannot keep.
+#
+# This list is the fallback, not the mechanism. The mechanism is `identitaet_ohne_deckung`
+# further down: it takes the comparison value out of the mail itself and therefore also works
+# for a house nobody wrote down here. The list catches what is left over, the mail that names
+# the brand only in its display name and nowhere else ("DPD Logistik
+# <info@fremde-firma.example>", 2026-08-18). It stays short on purpose, and ambiguous
+# tokens stay out ("ing" would fire on every "Dipl.-Ing.", "ups" on every "Ups!", "wise" and
+# "booking" are ordinary English words).
 MARKEN = frozenset({
+    # Geld
     "n26", "paypal", "klarna", "sparkasse", "volksbank", "raiffeisen", "commerzbank",
     "postbank", "dkb", "comdirect", "targobank", "santander", "revolut", "mastercard",
-    "amazon", "apple", "microsoft", "netflix", "ebay", "telekom", "vodafone",
-    "dhl", "hermes", "dpd", "gls", "fedex", "whatsapp", "spotify",
+    "consorsbank", "norisbank", "hypovereinsbank", "unicredit", "apobank", "sparda", "diba",
+    "bunq", "amex", "giropay", "paydirekt", "payoneer", "skrill", "moneygram",
+    "binance", "coinbase", "bitpanda", "metamask",
+    # Pakete
+    "dhl", "hermes", "dpd", "gls", "fedex",
+    # Konten und Abos
+    "amazon", "apple", "microsoft", "google", "youtube", "netflix", "ebay", "telekom",
+    "vodafone", "congstar", "whatsapp", "spotify", "instagram", "facebook", "linkedin",
+    "tiktok", "adobe", "dropbox", "github", "playstation", "nintendo", "disney", "dazn",
+    "ionos", "strato", "godaddy", "gmx",
+    # Handel und Reise
+    "zalando", "mediamarkt", "lidl", "aldi", "rewe", "edeka", "ikea", "hornbach", "shein",
+    "temu", "alibaba", "aliexpress", "etsy", "airbnb", "expedia", "ryanair", "lufthansa",
+    "payback",
+    # Sicherheitssoftware und Behörden
+    "mcafee", "norton", "kaspersky", "avast", "elster",
 })
 
 # Hits in DNS blacklists, as SpamAssassin names them in `tests=`. Only the hard lists: the
@@ -170,6 +190,10 @@ _GEWICHT = {
     # all most mail programs show. Weighted like the address variant, because it works the same
     # way and is seen more often.
     "marke_im_anzeigenamen": 0.40,
+    # The mail names the house it claims to belong to, and nothing about it belongs there.
+    # That is not a guess but a comparison the mail supplies itself, which is why it weighs
+    # more than the brand list next to it: it works for a house nobody put on a list.
+    "identitaet_ohne_deckung": 0.45,
     # An entry in a DNS blacklist is a fact somebody else established, not an estimate of ours.
     # It travels in the header of every mail and used to be read only through the total score.
     "server_blockliste": 0.35,
@@ -496,6 +520,77 @@ def _pruefe_echtheit(res: RuleResult, headers: dict, payload: dict, *,
 
 
 
+
+
+_TEXT_DOMAIN_RE = re.compile(r"\b(?:https?://|www\.)?([a-z0-9][a-z0-9-]{1,62}(?:\.[a-z0-9-]{2,63})+)",
+                             re.IGNORECASE)
+
+
+def _genannte_domains(text: str) -> set[str]:
+    """Every domain the mail writes out itself: in an address, a URL or as bare text."""
+    raus = set()
+    for treffer in _TEXT_DOMAIN_RE.finditer(text or ""):
+        d = treffer.group(1).lower().strip(".")
+        if "." in d and not d.rsplit(".", 1)[-1].isdigit():
+            raus.add(d)
+    return raus
+
+
+def _identitaet_ohne_deckung(res: RuleResult, subject: str, body: str, ziele: set[str],
+                             meine_domains: frozenset[str]) -> tuple[str, str]:
+    """Which identity does the mail claim, and does anything about it belong to that identity?
+
+    This needs no list of brands, and that is the point. A forged mail names its victim
+    itself: in the signature, in the imprint, in "write to us at support@…". So the mail
+    delivers the comparison value, and the comparison is a fact — either the sender or a link
+    belongs to the named house, or nothing does.
+
+    Three things have to come together, and each one alone would be normal:
+
+    1. The mail **names a foreign domain** in its text (`n26.com`).
+    2. It **presents itself under that name**: the name of the domain stands in the display
+       name or in the subject ("Support-N26", "… – N26 Sicherheitsteam").
+    3. **Nothing leads there**: neither the sender domain nor a single link target carries the
+       name.
+
+    An honest mail from that house fails at 3, because it comes from its own domain or at
+    least links there. Whoever mentions a partner in passing fails at 2. Only the forgery
+    fulfils all three.
+    """
+    anspruch = f"{res.sender_name} {subject}".lower()
+    worte = set(re.findall(r"[a-z0-9]+", anspruch))
+    kompakt = re.sub(r"[^a-z0-9]", "", anspruch)
+    quelle = f"{subject}\n{body[:4000]}"
+    eigene = set(meine_domains) | {_wurzel(a.rpartition("@")[2]) for a in res.recipients}
+    for genannt in sorted(_genannte_domains(quelle)):
+        wurzel = _wurzel(genannt)
+        marke = wurzel.split(".", 1)[0]
+        if len(marke) < 3 or wurzel in FREEMAIL_DOMAINS or marke in _KEINE_MARKE:
+            continue
+        # My own domain is not a claimed identity: it stands in the mail because I am the
+        # recipient ("delivered to …"), and a forged mail quotes it as readily as an honest one.
+        if wurzel in eigene:
+            continue
+        # A name is written with a space, a domain with a hyphen or with nothing at all
+        # ("Stadtwerke Hintertupfing" / stadtwerke-hintertupfing.de). So compare the letters,
+        # not the spelling. As a whole word always, run together only from six letters on:
+        # "verti" would otherwise be found inside "konvertieren".
+        eng = marke.replace("-", "")
+        if marke not in worte and not (len(eng) >= 6 and eng in kompakt):
+            continue
+        gedeckt = [res.sender_domain, *ziele]
+        if any(marke in d or eng in d.replace("-", "") for d in gedeckt):
+            continue
+        return marke, genannt
+    return "", ""
+
+
+# Words that stand in every second domain and say nothing about who is writing.
+_KEINE_MARKE = frozenset({
+    "www", "mail", "email", "web", "news", "info", "shop", "service", "support", "kunde",
+    "kunden", "portal", "online", "login", "account", "konto", "sicherheit", "security",
+    "bank", "post", "cloud", "server", "host", "site", "page", "link", "click", "track",
+})
 
 
 def _marke_ohne_deckung(name: str, domain: str) -> str:
@@ -876,6 +971,14 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
     _pruefe_namenstaeuschung(res, bekannte_domains)
     _pruefe_kopfhygiene(res, headers, payload)
     _pruefe_links(res, payload, ist_liste=ist_liste, bekannte_domains=bekannte_domains)
+    ziele = {_wirt(l.get("href")) for l in (payload.get("links") or [])
+             if isinstance(l, dict) and l.get("href")}
+    marke, genannt = _identitaet_ohne_deckung(res, str(payload.get("subject") or ""), body,
+                                              {z for z in ziele if z}, meine_domains)
+    if marke:
+        res.treffer("identitaet_ohne_deckung",
+                    f"gibt sich als „{marke}“ aus und nennt {genannt}, aber weder der Absender "
+                    f"({res.sender_domain}) noch ein Link führt dorthin")
     _pruefe_anhaenge(res, payload, body)
     _pruefe_fassade(res, payload, hat_unsubscribe=bool(unsubscribe))
     _pruefe_rollenadresse(res, str(payload.get("subject") or ""), body,
@@ -912,6 +1015,7 @@ _FAELSCHUNG = frozenset({
     # that was recognised.
     "server_spam_flag", "server_spam_hoch", "server_spam_mittel", "betreff_spam_markiert",
     "punycode_absender", "schriftmischung", "marke_als_subdomain", "marke_im_anzeigenamen",
+    "identitaet_ohne_deckung",
     # A listed link target is not "requested advertising" either, however tidy the unsubscribe
     # footer underneath looks.
     "server_blockliste",
