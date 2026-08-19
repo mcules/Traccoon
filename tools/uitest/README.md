@@ -36,6 +36,7 @@ The other probes start the same way:
 | `editor-stand.mjs` | the unsaved and published markers in the editor |
 | `abschalter.mjs` | switching a step off, skip or stop |
 | `sprache.mjs`, `sprachverwaltung.mjs` | switching language, and creating, renaming, disabling and deleting one |
+| `fehlertext.mjs` | a server error in a German and in an English browser, no login needed |
 | `schuss.mjs` | screenshots only, `SEITEN=name:/pfad,...` and `BREIT=1` for the desktop width |
 
 **Clean up afterwards**, the probe creates real flows:
