@@ -1,13 +1,13 @@
-"""Die Lese-API des Büros: was eine Session ist, wer sie sehen darf, was sie liefert.
+"""The read API of the office: what a session is, who may see it, what it delivers.
 
-Der Schwerpunkt liegt auf den beiden Stellen, an denen eine neue Lesefläche gefährlich
-wird: **Sichtbarkeit** (fremde Projekte dürfen nicht einmal ihre Existenz verraten — 404,
-nie 403) und **Reihenfolge** (die Ansicht spult nach `seq` zurück; eine falsch sortierte
-oder still gekappte Antwort zeigt einen Raum, den es so nie gab).
+The focus lies on the two places where a new reading surface becomes dangerous:
+**visibility** (foreign projects must not even reveal their existence: 404, never 403) and
+**order** (the view rewinds by `seq`; a wrongly sorted or silently truncated answer shows a
+room that never existed that way).
 
-Alle Läufe hier tragen `kind=''`-Schritte, also den ALTDATEN-Pfad. Das ist Absicht: die
-API muss am ersten Tag auf dem Bestand funktionieren, und was schon auf Altzeilen läuft,
-läuft auf den instrumentierten Zeilen von Welle B erst recht.
+All runs here carry `kind=''` steps, so the LEGACY path. That is deliberate: the API has to
+work on the existing data on the first day, and what already runs on old rows runs on the
+instrumented rows all the more.
 """
 import datetime as dt
 
@@ -26,9 +26,9 @@ NOW = dt.datetime.now(dt.timezone.utc)
 
 @pytest.fixture(autouse=True)
 def router_registriert():
-    """Welle C hängt ihren Router nicht selbst in `main.py` ein (zwei Wellen arbeiten
-    parallel an der Datei). Für die Tests wird er hier registriert — idempotent, damit
-    er nach der Registrierung in `main.py` nicht ein zweites Mal landet."""
+    """This wave does not hang its router into `main.py` itself (two waves work on the file
+    in parallel). For the tests it is registered here, idempotently, so that it does not land
+    a second time after the registration in `main.py`."""
     if not any(getattr(r, "path", "") == "/office/sessions" for r in api.routes):
         api.include_router(rt_api.router)
 
@@ -80,9 +80,9 @@ def sids(payload: dict) -> set[str]:
 # ── Sessionliste je Projekt ──────────────────────────────────────────────────
 
 async def test_projektliste_zeigt_nur_dieses_projekt(client, db):
-    """Der Reiter eines Projekts ist der Raum dieses Projekts — auch für jemanden, der
-    das Nachbarprojekt genauso sehen dürfte. Die Liste filtert nach Zugehörigkeit, nicht
-    nach Berechtigung."""
+    """The tab of a project is the room of this project, even for somebody who would be
+    allowed to see the neighbouring project just as well. The list filters by affiliation,
+    not by permission."""
     user = await make_user(db, "anna")
     a = await make_project(db, "AAA", "Alpha")
     b = await make_project(db, "BBB", "Beta")
@@ -106,8 +106,8 @@ async def test_projektliste_zeigt_nur_dieses_projekt(client, db):
 
 
 async def test_nichtmitglied_bekommt_404_statt_403(client, db):
-    """Ein fremdes Projekt existiert für den Fremden nicht. Ein 403 wäre die Auskunft
-    „das Projekt gibt es" — genau die, die `deps.build_access` überall verweigert."""
+    """A foreign project does not exist for the stranger. A 403 would be the statement "the
+    project exists", exactly the one `deps.build_access` refuses everywhere."""
     owner = await make_user(db, "owner")
     fremd = await make_user(db, "fremd")
     proj = await make_project(db, "AAA", "Alpha")
@@ -120,9 +120,9 @@ async def test_nichtmitglied_bekommt_404_statt_403(client, db):
 # ── Globale Sessionliste ─────────────────────────────────────────────────────
 
 async def test_globale_liste_zeigt_eigene_projekte_und_eigene_projektlose_laeufe(client, db):
-    """Die Vollbildseite zeigt beides: was über ein Projekt sichtbar ist UND die eigenen
-    Läufe ohne Projekt (Assistent, Job). Der projektlose Lauf eines anderen bleibt außen —
-    für ihn gibt es keinen Projektraum, über den er je sichtbar würde."""
+    """The full screen page shows both: what is visible over a project AND one's own runs
+    without a project (assistant, job). The project-less run of somebody else stays outside:
+    for it there is no project room over which it would ever become visible."""
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
     proj = await make_project(db, "AAA", "Alpha")
@@ -155,7 +155,7 @@ async def test_admin_sieht_alles(client, db):
 
 
 async def test_project_id_verengt_und_autorisiert_nicht(client, db):
-    """`?project_id=` ist ein Filter, kein Schlüssel: ein fremdes Projekt einzutragen
+    """`?project_id=` is a filter, not a key: entering a foreign project yields silence, no access."""
     liefert Stille, keinen Zugang."""
     anna = await make_user(db, "anna")
     meins = await make_project(db, "AAA", "Alpha")
@@ -188,25 +188,25 @@ async def test_ereignisse_streng_nach_seq_und_after_seq_schliesst_aus(client, db
     assert seqs == sorted(seqs) and len(seqs) == len(set(seqs))
     assert body["truncated"] is False and body["purged"] is False
     assert body["seq_from"] == seqs[0] and body["seq_to"] == seqs[-1]
-    # Altlauf ohne eigene Grenzzeilen: die Grenzen kommen aus `run_boundary_events`.
+    # Legacy run without boundary rows of its own: the boundaries come from `run_boundary_events`.
     kinds = [e["kind"] for e in body["events"]]
     assert kinds[0] == "session_seen" and "run_start" in kinds and kinds[-1] == "run_end"
 
-    grenze = rows[1].id * 4 + 1     # das Hauptereignis der zweiten Zeile
+    grenze = rows[1].id * 4 + 1     # the main event of the second row
     r = await client.get(
         f"/office/sessions/issue/{issue.id}/events?after_seq={grenze}", headers=auth(anna))
     weiter = [e["seq"] for e in r.json()["events"]]
     assert weiter and min(weiter) > grenze
     assert weiter == sorted(weiter)
-    # Die Kopfzeile kommt nur beim Vollabruf — sonst käme sie beim Nachfassen mit neuer
-    # `seq` ein zweites Mal in den Recorder.
+    # The header comes only with the full fetch; otherwise it would come into the recorder a
+    # second time with a new `seq` while following up.
     assert "session_seen" not in [e["kind"] for e in r.json()["events"]]
 
 
 async def test_kappung_meldet_truncated_und_behaelt_den_roster(client, db):
-    """Gekappt wird vom ÄLTESTEN Ende — der Raum soll die Gegenwart zeigen. Damit fallen
-    zuerst die `run_start`-Ereignisse weg; dass trotzdem alle Agenten im Raum stehen,
-    ist genau die Aufgabe von `agents[]`."""
+    """Truncation happens from the OLDEST end: the room should show the present. With that
+    the `run_start` events fall away first, and that all agents still stand in the room is
+    exactly the job of `agents[]`."""
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
@@ -225,18 +225,18 @@ async def test_kappung_meldet_truncated_und_behaelt_den_roster(client, db):
     assert body["truncated"] is True
     assert body["seq_from"] > aeltestes
     assert all(e["seq"] >= body["seq_from"] for e in body["events"])
-    # Der abgeschnittene Elternlauf ist im Log nicht mehr zu sehen (die Kopfzeile trägt
-    # seine `run_id`, weil sie am Wurzellauf hängt — sie ist kein Schritt des Laufs).
+    # The truncated parent run can no longer be seen in the log (the header carries its
+    # `run_id`, because it hangs off the root run: it is not a step of the run).
     assert eltern.id not in {e["run_id"] for e in body["events"] if e["kind"] != "session_seen"}
     assert alt[0].id * 4 + 1 < body["seq_from"]
-    # … steht aber vollständig im Roster.
+    # … but stands completely in the roster.
     assert {a["run_id"] for a in body["agents"]} == {eltern.id, kind.id}
     assert {a["agent"] for a in body["agents"]} == {"developer", "reviewer"}
 
 
 async def test_run_session_eigentuemer_fremder_admin(client, db):
-    """Ein projektloser Lauf gehört seinem Eigentümer und dem Admin — sonst niemandem,
-    und für sonst niemanden existiert er."""
+    """A project-less run belongs to its owner and to the admin, to nobody else, and for
+    nobody else does it exist."""
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
     chef = await make_user(db, "chef", admin=True)
@@ -250,8 +250,8 @@ async def test_run_session_eigentuemer_fremder_admin(client, db):
 
 
 async def test_kindlauf_ist_nicht_selbst_adressierbar(client, db):
-    """Nur Wurzeln sind eine `run:`-Adresse. Hätte ein Kindlauf eine eigene, gäbe es zwei
-    Räume für denselben Baum und der Link entschiede, was man sieht."""
+    """Only roots are a `run:` address. If a child run had one of its own, there would be two
+    rooms for the same tree and the link would decide what one sees."""
     anna = await make_user(db, "anna")
     wurzel = await lauf(db, owner=anna, agent="assistant")
     kind = await lauf(db, owner=anna, agent="reviewer", parent=wurzel, spawn_depth=1)
@@ -264,8 +264,8 @@ async def test_kindlauf_ist_nicht_selbst_adressierbar(client, db):
 
 
 async def test_aufgeraeumte_session_meldet_purged(client, db):
-    """Ticket steht, Läufe sind der Aufbewahrung zum Opfer gefallen. Eine 404 wäre hier
-    eine Lüge — den Raum gab es, und die UI soll das sagen dürfen."""
+    """The ticket stands, the runs have fallen to the retention. A 404 would be a lie here:
+    the room existed, and the UI should be allowed to say so."""
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
@@ -279,8 +279,8 @@ async def test_aufgeraeumte_session_meldet_purged(client, db):
 
 
 async def test_issue_sid_enthaelt_delegierte_kindlaeufe(client, db):
-    """Der Raum eines Tickets ist der ganze Laufbaum: Planung, Ausführung UND jeder
-    delegierte Unteragent. Ein eigenes Büro je Unteragent wäre die falsche Einheit."""
+    """The room of a ticket is the whole run tree: planning, execution AND every delegated
+    sub-agent. An office of its own per sub-agent would be the wrong unit."""
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
@@ -305,12 +305,12 @@ async def test_issue_sid_enthaelt_delegierte_kindlaeufe(client, db):
 # ── Ereignisse ALLER Sitzungen (`GET /office/events`) ─────────────────────────
 
 async def test_alle_ereignisse_mischen_sitzungen_in_ein_log(client, db):
-    """Der Raum der globalen Seite: mehrere Sitzungen, EIN Log, streng nach `seq`.
+    """The room of the global page: several sessions, ONE log, strictly by `seq`.
 
-    Das trägt nur, weil `seq` aus `run_steps.id` kommt — einer SERIAL-Spalte, die über
-    Läufe und Projekte hinweg monoton ist. Dass die Folge streng aufsteigend und
-    doppelfrei ist, ist deshalb keine Kosmetik: `Recorder.push` entdoppelt genau über
-    diese Zahl und verwürfe sonst still ein Ereignis.
+    That only carries because `seq` comes from `run_steps.id`, a SERIAL column that is
+    monotonic across runs and projects. That the sequence is strictly ascending and duplicate
+    free is therefore not cosmetics: `Recorder.push` deduplicates over exactly this number
+    and would otherwise silently discard an event.
     """
     anna = await make_user(db, "anna")
     a = await make_project(db, "AAA", "Alpha")
@@ -335,13 +335,13 @@ async def test_alle_ereignisse_mischen_sitzungen_in_ein_log(client, db):
     assert body["sessions"] == 3 and body["runs"] == 3
     assert body["seq_from"] == seqs[0] and body["seq_to"] == seqs[-1]
     assert body["count"] == len(seqs) and body["truncated"] is False
-    # Statt einer `sid` trägt die Antwort das Fenster.
+    # Instead of a `sid` the answer carries the window.
     assert "sid" not in body
     assert body["since_hours"] == rt_api.EVENTS_SINCE_HOURS_DEFAULT
     assert body["window_from"] < body["window_to"]
-    # Keine Kopfzeile: vierzehn Titel für einen Raum wären vierzehn Widersprüche.
+    # No header: fourteen titles for one room would be fourteen contradictions.
     assert "session_seen" not in {e["kind"] for e in body["events"]}
-    # Jede Figur kommt herein und geht wieder — über alle drei Sitzungen hinweg.
+    # Every figure comes in and leaves again, across all three sessions.
     assert {e["run_id"] for e in body["events"] if e["kind"] == "run_start"} == {
         ra.id, rb.id, eigen.id}
     assert {e["run_id"] for e in body["events"] if e["kind"] == "run_end"} == {
@@ -349,17 +349,17 @@ async def test_alle_ereignisse_mischen_sitzungen_in_ein_log(client, db):
 
     roster = {a_["run_id"]: a_ for a_ in body["agents"]}
     assert set(roster) == {ra.id, rb.id, eigen.id}
-    # Ohne `project_key`/`issue_key` fiele in der Kopfzeile jede Figur in „(ohne Projekt)"
-    # und die Sitzungsreiter blieben unsichtbar.
+    # Without `project_key`/`issue_key` every figure would fall into "(without a project)" in
+    # the header and the session tabs would stay invisible.
     assert roster[ra.id]["project_key"] == "AAA" and roster[ra.id]["issue_key"] == "AAA-1"
     assert roster[rb.id]["project_key"] == "BBB"
     assert roster[eigen.id]["project_key"] == "" and roster[eigen.id]["project_id"] is None
 
 
 async def test_alle_ereignisse_zeigen_nur_erlaubtes(client, db):
-    """Dieselbe Sichtbarkeitsmenge wie `/office/sessions` — es gibt genau eine Definition
-    von „darf sehen" (`_visible_runs`). Der projektlose Lauf eines anderen bleibt draußen,
-    der Admin sieht beides."""
+    """The same visibility set as `/office/sessions`: there is exactly one definition of "may
+    see" (`_visible_runs`). The project-less run of somebody else stays outside, and the admin
+    sees both."""
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
     chef = await make_user(db, "chef", admin=True)
@@ -382,8 +382,8 @@ async def test_alle_ereignisse_zeigen_nur_erlaubtes(client, db):
 
 
 async def test_alle_ereignisse_project_id_verengt_und_autorisiert_nicht(client, db):
-    """`?project_id=` ist ein Filter, kein Schlüssel. Ein fremdes Projekt liefert Stille —
-    keinen Zugang und auch keine 403, die dessen Existenz verriete."""
+    """`?project_id=` is a filter, not a key. A foreign project yields silence: no access and
+    no 403 either, which would reveal its existence."""
     anna = await make_user(db, "anna")
     meins = await make_project(db, "AAA", "Alpha")
     fremd = await make_project(db, "BBB", "Beta")
@@ -407,14 +407,14 @@ async def test_alle_ereignisse_project_id_verengt_und_autorisiert_nicht(client, 
 
 
 async def test_alle_ereignisse_klemmen_das_run_start_auf_den_fensteranfang(client, db):
-    """Ein Lauf, der VOR dem Fenster begann, bekommt seine `run_start`-Grenze mit
-    `run.started_at` — also mit einem Zeitstempel von gestern. Ungeklemmt zöge die
-    Zeitleiste den ganzen Raum dorthin auf, und das sähe aus wie ein Engine-Fehler."""
+    """A run that began BEFORE the window gets its `run_start` boundary with `run.started_at`,
+    so with a timestamp from yesterday. Unclamped, the timeline would pull the whole room
+    there, and that would look like an engine bug."""
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
     issue = await ticket(db, proj)
-    # Startet vor 30 Stunden, arbeitet aber noch — die Schritte liegen im Fenster.
+    # Starts 30 hours ago but is still working: the steps lie in the window.
     alt = await lauf(db, issue=issue, minuten=30 * 60)
     await schritte(db, alt, 2)
 
@@ -426,10 +426,10 @@ async def test_alle_ereignisse_klemmen_das_run_start_auf_den_fensteranfang(clien
 
 
 async def test_alle_ereignisse_ohne_seq_kollision_am_laufuebergang(client, db):
-    """Zwei Läufe mit benachbarten Zeilen-IDs: das `run_end` des einen (`letzte*4+3`) und
-    das `run_start` des nächsten (`erste*4-1`) sind DIESELBE Zahl. Über Sitzungen hinweg
-    ist das der Normalfall, nicht der Ausreißer — und `Recorder.push` verwürfe das zweite
-    Ereignis still. Also muss die Antwort die Kollision selbst auflösen."""
+    """Two runs with neighbouring row ids: the `run_end` of one (`letzte*4+3`) and the
+    `run_start` of the next (`erste*4-1`) are THE SAME number. Across sessions that is the
+    normal case, not the outlier, and `Recorder.push` would silently discard the second event.
+    So the answer has to resolve the collision itself."""
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
@@ -440,7 +440,7 @@ async def test_alle_ereignisse_ohne_seq_kollision_am_laufuebergang(client, db):
     zeilen_erst = await schritte(db, erst, 2)
     zweit = await lauf(db, issue=i2, agent="architect")
     zeilen_zweit = await schritte(db, zweit, 2)
-    # Der Aufbau muss die Kollision überhaupt erzeugen, sonst prüft der Test nichts.
+    # The setup has to produce the collision at all, because otherwise the test checks nothing.
     assert zeilen_zweit[0].id == zeilen_erst[-1].id + 1
 
     body = (await client.get("/office/events", headers=auth(anna))).json()
@@ -449,21 +449,21 @@ async def test_alle_ereignisse_ohne_seq_kollision_am_laufuebergang(client, db):
     grenzen = [(e["kind"], e["run_id"]) for e in body["events"]
                if e["kind"] in ("run_start", "run_end")]
     assert ("run_end", erst.id) in grenzen and ("run_start", zweit.id) in grenzen
-    # Das Ende geht dem nächsten Anfang voraus: erst geht jemand, dann kommt der Nächste.
+    # The end precedes the next start: first somebody leaves, then the next one comes.
     assert grenzen.index(("run_end", erst.id)) < grenzen.index(("run_start", zweit.id))
 
 
 async def test_alle_ereignisse_kappen_vom_aeltesten_ende_und_behalten_den_roster(client, db):
-    """Gekappt wird vom ÄLTESTEN Ende — der Raum zeigt die Gegenwart.
+    """Truncation happens from the OLDEST end: the room shows the present.
 
-    Damit fällt zuerst das `run_start` weg, und ohne Gegenmaßnahme fehlte die Figur im
-    Raum, obwohl sie noch arbeitet. Zwei Dinge fangen das: die Fenstergrenzen werden aus
-    den GELADENEN Zeilen gerechnet (der Lauf bekommt also ein frisches `run_start` an
-    seinem ersten sichtbaren Schritt), und `agents[]` kommt aus `runs`, nicht aus den
+    With that the `run_start` falls away first, and without a countermeasure the figure would
+    be missing in the room although it is still working. Two things catch that: the window
+    boundaries are computed from the LOADED rows (so the run gets a fresh `run_start` at its
+    first visible step), and `agents[]` comes from `runs`, not from the events.
 
-    Wer gar keinen sichtbaren Schritt mehr hat, steht auch nicht im Roster — anders als
-    bei `session_events` ist der Roster hier die Besetzung des **gezeigten** Fensters, und
-    die Kopfzeile soll die Summe über das zählen, was im Raum steht.
+    Whoever has no visible step left does not stand in the roster either: unlike with
+    `session_events` the roster here is the cast of the **shown** window, and the header
+    should count its sum over what stands in the room.
     """
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
@@ -483,15 +483,15 @@ async def test_alle_ereignisse_kappen_vom_aeltesten_ende_und_behalten_den_roster
     voll = (await client.get("/office/events", headers=auth(anna))).json()
     aeltestes = min(e["seq"] for e in voll["events"])
 
-    # Vier Zeilen: der letzte Schritt von `halb` plus die drei von `neu_`.
+    # Four rows: the last step of `halb` plus the three of `neu_`.
     body = (await client.get("/office/events?limit=4", headers=auth(anna))).json()
     assert body["truncated"] is True
     assert body["seq_from"] > aeltestes
     assert all(e["seq"] >= body["seq_from"] for e in body["events"])
     assert zeilen_halb[0].id * 4 + 1 < body["seq_from"]
 
-    # `halb` hat noch einen sichtbaren Schritt — also kommt die Figur herein, obwohl ihr
-    # echtes `run_start` unter der Kappung liegt.
+    # `halb` still has a visible step, so the figure comes in although its real `run_start`
+    # lies below the truncation.
     assert {e["run_id"] for e in body["events"] if e["kind"] == "run_start"} == {
         halb.id, neu_.id}
     assert {a_["run_id"] for a_ in body["agents"]} == {halb.id, neu_.id}
@@ -499,7 +499,7 @@ async def test_alle_ereignisse_kappen_vom_aeltesten_ende_und_behalten_den_roster
 
 
 async def test_alle_ereignisse_halten_sich_ans_fenster(client, db):
-    """`since_hours` ist die ganze Aussage: was älter ist, gehört nicht in den Raum."""
+    """`since_hours` is the whole statement: what is older does not belong in the room."""
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
