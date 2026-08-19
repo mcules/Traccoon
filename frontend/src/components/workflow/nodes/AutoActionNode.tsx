@@ -32,7 +32,7 @@ const ACTION_LABEL: Record<string, string> = {
   assistant_run: "action.assistant_run",
 };
 
-/** Aktionen, die asynchron laufen und ihren Ausgang nach dem Ergebnis benennen. */
+/** Actions that run asynchronously and name their exit after the result. */
 const OUTCOMES: Record<string, SourceHandleDef[]> = {
   accept_merge: [
     { id: "merged", label: "gemerged", color: "!bg-green-500" },
@@ -44,10 +44,10 @@ const OUTCOMES: Record<string, SourceHandleDef[]> = {
 
 export default function AutoActionNode({ id, data, selected }: FlowNodeProps) {
   const a = data.config.action;
-  // Ohne benannte Ausgänge blieben Kanten wie „merged" oder „conflict" ungezeichnet.
+  // Without named exits, edges like "merged" or "conflict" would stay undrawn.
   const basis = OUTCOMES[a?.action ?? ""] ?? [{ id: "out" }];
-  // Der Fehlerausgang existierte in der Engine längst, im Bild aber nicht — wer ihn
-  // verdrahten wollte, hatte keinen Punkt, an den er die Kante hängen konnte.
+  // The error exit had long existed in the engine but not in the picture, so whoever wanted
+  // to wire it had no point to hang the edge on.
   const sources = useSourceHandles(id, [
     ...basis,
     { id: "error", label: "Fehler", color: "!bg-red-500" },

@@ -11,9 +11,9 @@ interface Me {
 }
 
 /**
- * Persönlicher Prozess-Satz: gilt für alle Projekte, in denen ich die Owner-Rolle habe und
- * die nichts Eigenes gewählt haben. Angelegt wird er als vollständige Kopie des
- * ausgelieferten Standards — danach ist er unabhängig.
+ * Personal process set: applies to all projects in which I have the owner role and which
+ * have chosen nothing of their own. It is created as a complete copy of the shipped
+ * standard, and is independent afterwards.
  */
 export default function MySetPanel() {
   const qc = useQueryClient();

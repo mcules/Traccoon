@@ -14,15 +14,15 @@ import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Profile from "./pages/Profile";
 import Inbox from "./pages/Inbox";
-// Canvas, Pixelwelt und Engine des Büros sind ein eigener Brocken. Statisch importiert läge
-// er im Haupt-Bundle und die Aufteilung im Projekt-Reiter (ProjectView) wäre umsonst.
+// Canvas, pixel world and engine of the office are a chunk of their own. Imported
+// statically it would lie in the main bundle and the split in ProjectView would be in vain.
 const Office = lazy(() => import("./pages/Office"));
 import Layout from "./components/Layout";
 import { PageChromeProvider } from "./pageChrome";
 
 export default function App() {
   const { user, loading } = useAuth();
-  // Die Sprache hängt am angemeldeten Menschen; ohne Anmeldung entscheidet der Browser.
+  // The language hangs off the logged-in human; without a login the browser decides.
   useSpracheVonNutzer(user?.locale);
   useSprache();
 

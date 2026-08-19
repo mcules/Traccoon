@@ -1,5 +1,5 @@
-"""Plugin-System (kompakt): Zip-in-DB, Serve, generische Table-CRUD (JSON, Schema-Whitelist),
-SSRF-geschützter Fetch-Proxy."""
+"""Plugin system (compact): zip in the database, serving, generic table CRUD (JSON, schema whitelist),
+SSRF protected fetch proxy."""
 from __future__ import annotations
 
 import io
@@ -147,7 +147,7 @@ def _validate_row(plugin: Plugin, table: str, row: dict) -> dict:
 async def data_list(slug: str, table: str, user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
     plugin = await _plugin(db, slug)
-    _validate_row(plugin, table, {})  # prüft, dass Tabelle existiert
+    _validate_row(plugin, table, {})  # checks that the table exists
     rows = (await db.execute(select(PluginData).where(
         PluginData.plugin_id == plugin.id, PluginData.table_name == table,
         (PluginData.user_id == user.id) | (PluginData.user_id.is_(None))))).scalars().all()
@@ -188,7 +188,7 @@ def _ssrf_ok(url: str, allowed_hosts: list[str]) -> bool:
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         return False
-    # Leere allowed_hosts = nichts erlaubt (kein offener Proxy). Whitelist ist Pflicht.
+    # An empty allowed_hosts means nothing is allowed (no open proxy). The whitelist is mandatory.
     if not allowed_hosts or parts.hostname not in allowed_hosts:
         return False
     try:

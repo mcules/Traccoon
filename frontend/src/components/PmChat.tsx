@@ -12,7 +12,7 @@ export default function PmChat({ project }: { project: Project }) {
   const [text, setText] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-  // Darstellung ist eine Nutzer-Einstellung (Profil) und gilt projektübergreifend — ABC-21.
+  // The presentation is a user setting (profile) and applies across projects (ABC-21).
   const { user } = useAuth();
   const cli = user?.pm_chat_style === "cli";
 
@@ -84,13 +84,13 @@ function BubbleChat({ messages, text, setText, send, boxRef }: ViewProps) {
   );
 }
 
-// Terminal-Palette (fest, unabhängig vom App-Theme — ein Terminal ist immer dunkel).
+// Terminal palette (fixed, independent of the app theme: a terminal is always dark).
 const T = {
   bg: "#1b1a17", border: "#33302b", ink: "#e6e2db", dim: "#8b857a",
   accent: "#d97757", user: "#87b7c9", err: "#e0685f",
 };
 
-/** Terminal-Look wie die Claude-Code-CLI im Darkmode. */
+/** Terminal look like the Claude Code CLI in dark mode. */
 function CliChat({ messages, text, setText, send, boxRef, project }: ViewProps & { project: Project }) {
   return (
     <div className="flex h-[70vh] flex-col overflow-hidden rounded-lg border font-mono text-[13px] leading-relaxed"
