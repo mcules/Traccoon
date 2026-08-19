@@ -25,7 +25,6 @@ BASE_KEYS = {"v", "seq", "ts", "sid", "project_id", "owner_id", "run_id", "agent
 # interface that does not know `deploy` ignores it and shows everything else. *Reinterpreting*
 # a field is not: then `EVENT_VERSION` has to rise so that the view refuses rather than draws
 # wrongly (`services/office.py` says the same and is the source).
-# ist die Quelle).
 FIELD_KEYS = {
     "session_seen": {"title", "issue_key", "project_key", "started_at"},
     "run_start": {"agent", "phase", "provider", "model", "parent_run_id",
