@@ -35,6 +35,8 @@ import { validateGraph } from "../components/workflow/validate";
 import type { FlowNode } from "../components/workflow/nodes/shared";
 import { projektPfad } from "../projectTabs";
 import { SCHIENE_FREILASSEN } from "../nav";
+import VersionsDiff from "../components/workflow/VersionsDiff";
+import { BestaetigenDialog } from "../components/ui";
 
 function defaultConfig(type: WorkflowNodeType): NodeConfig {
   switch (type) {
@@ -149,6 +151,8 @@ export default function WorkflowEditor() {
   const [errors, setErrors] = useState<string[]>([]);
   const [msg, setMsg] = useState("");
   const [saving, setSaving] = useState(false);
+  const [zeigeDiff, setZeigeDiff] = useState(false);
+  const [frageVerwerfen, setFrageVerwerfen] = useState(false);
   const seeded = useRef(false);
   // The last saved graph as text. On it hangs the only question one really has when leaving
   // the editor: is this saved yet? Before, there was a message that disappeared after the
@@ -482,10 +486,29 @@ export default function WorkflowEditor() {
             {tr(geaendert ? "editor.ungespeichert" : "editor.gespeichert")}
           </span>
         )}
-        <span className={`rounded px-1.5 py-0.5 text-xs ${veroeffentlichung.stil}`}
-          title={veroeffentlichung.titel}>
-          {veroeffentlichung.text}
-        </span>
+        {/* Die Abweichung ist anklickbar: „weicht von v7 ab" beantwortet nicht, WAS abweicht,
+            und genau danach sucht man in dem Moment. */}
+        {!gleichWieLive && liveVersion && version?.id && version.id !== liveVersion.id ? (
+          <button onClick={() => setZeigeDiff(true)}
+            className={`rounded px-1.5 py-0.5 text-xs underline decoration-dotted ${veroeffentlichung.stil}`}
+            title={tr("editor.unterschied_ansehen")}>
+            {veroeffentlichung.text}
+          </button>
+        ) : (
+          <span className={`rounded px-1.5 py-0.5 text-xs ${veroeffentlichung.stil}`}
+            title={veroeffentlichung.titel}>
+            {veroeffentlichung.text}
+          </span>
+        )}
+        {/* Entwurf wegwerfen: es gab keinen Weg zurück, außer den Graphen von Hand
+            zurückzubauen. Nur sichtbar, wenn es wirklich einen offenen Entwurf gibt. */}
+        {!nurLesen && version?.status === "draft" && version.id > 0 && (
+          <button onClick={() => setFrageVerwerfen(true)}
+            className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-red-400 hover:text-red-300"
+            title={tr("editor.entwurf_verwerfen_titel")}>
+            {tr("editor.entwurf_verwerfen")}
+          </button>
+        )}
         <div className="flex-1" />
         {msg && <span className="text-xs text-muted">{msg}</span>}
         {schmal && (
@@ -625,6 +648,20 @@ export default function WorkflowEditor() {
           )}
         </div>
       </div>
+      {zeigeDiff && liveVersion && version && (
+        <VersionsDiff defId={wfId} versionId={version.id} gegen={liveVersion.id}
+          titel={tr("editor.unterschied_titel", { version: liveVersion.version })}
+          onClose={() => setZeigeDiff(false)} />
+      )}
+      {frageVerwerfen && (
+        <BestaetigenDialog
+          titel={tr("editor.entwurf_verwerfen")}
+          text={tr("editor.entwurf_verwerfen_frage")}
+          hinweis={tr("editor.entwurf_verwerfen_hinweis")}
+          bestaetigenText={tr("editor.entwurf_verwerfen")}
+          onClose={() => setFrageVerwerfen(false)}
+          onBestaetigen={() => { setFrageVerwerfen(false); void verwerfen(); }} />
+      )}
     </div>
   );
 }

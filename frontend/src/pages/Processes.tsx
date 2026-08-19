@@ -15,6 +15,8 @@ import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 import { projektPfad } from "../projectTabs";
 import MessreihenPanel from "../components/workflow/MessreihenPanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
+import VersionsDiff from "../components/workflow/VersionsDiff";
+import { BestaetigenDialog, ICON, IconKnopf } from "../components/ui";
 
 /**
  * Process administration: the view across all flows.
@@ -139,6 +141,8 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
 function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boolean }) {
   const qc = useQueryClient();
   const [err, setErr] = useState("");
+  const [diffVon, setDiffVon] = useState<{ id: number; version: number } | null>(null);
+  const [zurueck, setZurueck] = useState<{ id: number; version: number } | null>(null);
   const { data: versionen } = useQuery({
     queryKey: ["wf-versions", defId], queryFn: () => workflowApi.versions(defId),
   });
@@ -150,6 +154,7 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
     mutationFn: (vid: number) => workflowApi.rollback(defId, vid),
     onSuccess: () => {
       setErr("");
+      setZurueck(null);
       qc.invalidateQueries({ queryKey: ["wf-versions", defId] });
       qc.invalidateQueries({ queryKey: ["wf-def", defId] });
       qc.invalidateQueries({ queryKey: ["proc-slots"] });
@@ -182,21 +187,33 @@ function Versionen({ defId, darfSchreiben }: { defId: number; darfSchreiben: boo
               <span className="shrink-0 text-muted">
                 {formatDate(v.published_at)}
               </span>
+              <IconKnopf icon="⇄" titel={tr("proc.unterschiede")}
+                onClick={() => setDiffVon({ id: v.id, version: v.version })} />
               {darfSchreiben && !aktuell && v.status === "published" && (
-                <button
-                  onClick={() => rollback.mutate(v.id)}
-                  disabled={rollback.isPending}
-                  className="shrink-0 rounded border border-line px-1.5 py-0.5 hover:border-amber-400 disabled:opacity-50"
-                  title={tr("processes.diese_fassung_wieder_in_kraft_setzen_als")}
-                >
-                  {tr("proc.zurueckrollen")}
-                </button>
+                <IconKnopf icon={ICON.zurueck} titel={tr("processes.diese_fassung_wieder_in_kraft_setzen_als")}
+                  onClick={() => setZurueck({ id: v.id, version: v.version })} />
               )}
             </div>
           );
         })}
         {versionen?.length === 0 && <div className="text-xs text-muted">{tr("processes.noch_keine_version")}</div>}
       </div>
+
+      {diffVon && (
+        <VersionsDiff defId={defId} versionId={diffVon.id}
+          titel={tr("proc.unterschiede_zu_vorgaenger", { version: diffVon.version })}
+          onClose={() => setDiffVon(null)} />
+      )}
+      {zurueck && (
+        <BestaetigenDialog
+          titel={tr("proc.zurueckrollen")}
+          text={tr("proc.zurueckrollen_frage", { version: zurueck.version })}
+          hinweis={tr("proc.zurueckrollen_hinweis")}
+          bestaetigenText={tr("proc.zurueckrollen")} gefahr={false}
+          laeuft={rollback.isPending}
+          onClose={() => setZurueck(null)}
+          onBestaetigen={() => rollback.mutate(zurueck.id)} />
+      )}
     </div>
   );
 }
