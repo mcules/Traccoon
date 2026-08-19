@@ -1,15 +1,14 @@
-"""Die Vorgangsart wählt den Prozess
+"""The issue type chooses the process
 
-Bis hierher fuhr jedes Ticket eines Projekts denselben Lebenszyklus. Eine Projekt-Kopie darf
-jetzt an eine Vorgangsart gebunden sein: ein Bug bekommt einen eigenen Ablauf, Aufgabe und
-Anforderung folgen weiter dem Satz.
+Until now every ticket of a project ran the same lifecycle. A project copy may now be bound
+to an issue type: a bug gets a flow of its own, while task and requirement keep following the
+set.
 
-Auflösung (services/workflow_sets.resolve_definition):
-    Vorgangsart → projekteigen (allgemein) → Satz → Owner-Satz → Standard
+Resolution (services/workflow_sets.resolve_definition):
+    issue type -> project-owned (generic) -> set -> owner set -> default
 
-Der Unique-Index wird dafür neu gezogen. `COALESCE(issue_type_id, 0)` ist nötig, weil NULLs
-in einem Unique-Index als verschieden gelten — sonst entstünden beliebig viele allgemeine
-Kopien je Slot.
+The unique index is rebuilt for that. `COALESCE(issue_type_id, 0)` is necessary because NULLs
+count as different in a unique index; otherwise any number of generic copies per slot arise.
 
 Revision ID: b9f5c37a2e81
 Revises: a8d4e21c6b73
@@ -41,8 +40,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Abläufe, die an einer Vorgangsart hängen, haben ohne die Spalte keinen Sinn mehr —
-    # sie werden archiviert statt gelöscht, damit laufende Instanzen lesbar bleiben.
+    # Flows that hang off an issue type make no sense without the column, so they are archived
+    # instead of deleted, in order to keep running instances readable.
     op.execute("UPDATE workflow_definitions SET archived_at = now(), enabled = FALSE "
                "WHERE issue_type_id IS NOT NULL AND archived_at IS NULL")
     op.drop_index("uq_workflow_def_project_slot", table_name="workflow_definitions")

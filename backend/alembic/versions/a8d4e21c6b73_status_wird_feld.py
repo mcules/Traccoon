@@ -1,16 +1,16 @@
-"""Der Zustand wird ein Feld — und die echten Spalten werden es auch
+"""The state becomes a field, and the real columns become fields as well
 
-Bis hierher gab es zwei Modelle nebeneinander: `artifact_statuses` für den Zustand und
-`artifact_fields` für alles andere. Beides ist dasselbe — ein Auswahlfeld mit Werteliste.
+Until now there were two models side by side: `artifact_statuses` for the state and
+`artifact_fields` for everything else. Both are the same thing: a choice field with a value list.
 
-Die Zustände wandern deshalb in die Werteliste des Feldes `status` (Kategorie und „wartet"
-werden Eigenschaften des Werts), und die gewachsenen Spalten von Ticket und Exemplar
-(Priorität, Vorgangsart, Sprint, Seriennummer …) erscheinen als eingebaute Felder mit
-`source` = Spaltenname. Geschrieben wird weiter in die echte Spalte; Board, Sprints und der
-KI-Lebenszyklus lesen unverändert dort.
+The states therefore wander into the value list of the field `status` (category and "waiting"
+become properties of the value), and the grown columns of ticket and unit (priority, issue
+type, sprint, serial number …) appear as built-in fields with `source` = the column name.
+Writing keeps going into the real column; board, sprints and the AI lifecycle read there
+unchanged.
 
-Dass Engine und Board ein Feld namens `status` erwarten, trägt `builtin`: bei eingebauten
-Feldern sind Schlüssel, Typ und Herkunft gesperrt.
+That engine and board expect a field called `status` is carried by `builtin`: with built-in
+fields the key, the type and the origin are locked.
 
 Revision ID: a8d4e21c6b73
 Revises: f7c3a15b8d49
@@ -38,9 +38,9 @@ def upgrade() -> None:
     op.add_column("artifact_field_options", sa.Column("waiting", sa.Boolean(), nullable=False,
                                                       server_default=sa.false()))
 
-    # Zustände übernehmen: je Artefakt ein Feld `status`, dessen Werteliste die alten Zeilen
-    # sind. Beschriftung, Kategorie und „wartet" bleiben erhalten — wer sie angepasst hatte,
-    # behält sie.
+    # Take the states over: one field `status` per artifact, whose value list is the old rows.
+    # Label, category and "waiting" are kept; whoever adjusted them keeps them.
+    #
     op.execute("""
         INSERT INTO artifact_fields (type_id, "key", label, kind, multi, required, "order",
                                      description, enabled, source, options_source, builtin,
@@ -66,9 +66,9 @@ def upgrade() -> None:
     """)
     op.drop_table("artifact_statuses")
 
-    # Die übrigen eingebauten Felder legt der Programmstart an
-    # (`services/artifact_fields.ensure_builtin_fields`) — sie stehen im Code, damit
-    # Schema und Verzeichnis nicht auseinanderlaufen können.
+    # The remaining built-in fields are created by the program start
+    # (`services/artifact_fields.ensure_builtin_fields`): they stand in the code, so that the
+    # schema and the directory cannot drift apart.
 
 
 def downgrade() -> None:

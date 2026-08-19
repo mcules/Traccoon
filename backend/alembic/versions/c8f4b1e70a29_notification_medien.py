@@ -1,20 +1,20 @@
-"""Notification bekommt einen Medienausgang (media_path, media_kind)
+"""Notification gets a media output (media_path, media_kind)
 
-Der Weg nach Telegram ist der Notifier im `telegram-bot`-Prozess, und zwar als einziger:
-dem backend-Container fehlt `TELEGRAM_BOT_TOKEN` vollständig (er hat nur
-`TELEGRAM_OWNER_CHAT`), und `bot.send_message` steht in `app/bot/__main__.py` an genau
-einer Stelle. Damit das Backend trotzdem eine Datei mitschicken kann, trägt die
-Notification den Pfad — der Bot liest ihn, wenn er die Zeile ohnehin abholt.
+The way to Telegram is the notifier in the `telegram-bot` process, and it is the only one:
+the backend container lacks `TELEGRAM_BOT_TOKEN` entirely (it only has
+`TELEGRAM_OWNER_CHAT`), and `bot.send_message` stands in `app/bot/__main__.py` in exactly one
+place. So that the backend can send a file along regardless, the notification carries the
+path, and the bot reads it when it fetches the row anyway.
 
-Beide Spalten sind nullable und ohne Vorgabe: für bestehende Zeilen ändert sich nichts,
-der Notifier fällt bei leerem `media_path` auf den unveränderten Textweg zurück.
+Both columns are nullable and without a default: nothing changes for existing rows, and with
+an empty `media_path` the notifier falls back on the unchanged text path.
 
-`media_kind` ist absichtlich VARCHAR und kein Enum (animation|photo|document): der Wert
-entscheidet nur, welche aiogram-Methode gerufen wird, und ein Enum-Typ wäre in Postgres
-ein Migrations-Hindernis für eine Liste, die sich mit Telegram ändert.
+`media_kind` is deliberately a VARCHAR and not an enum (animation|photo|document): the value
+only decides which aiogram method is called, and an enum type would be an obstacle for
+migrations of a list that changes with Telegram.
 
-Der Live-Pfad ist `main.py::dev_create_all` (dort steht dasselbe DDL idempotent);
-diese Revision ist der Pfad für `MIGRATE=1`.
+The live path is `main.py::dev_create_all` (the same DDL stands there idempotently); this
+revision is the path for `MIGRATE=1`.
 
 Revision ID: c8f4b1e70a29
 Revises: b2e7f9c14a08
