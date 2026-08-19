@@ -188,5 +188,5 @@ KNOTEN: dict[str, list[dict]] = {
 
 
 def katalog() -> dict:
-    """Der ganze Katalog, wie ihn der Editor braucht."""
+    """The whole catalog, the way the editor needs it."""
     return {"basis": BASIS, "ausloeser": AUSLOESER, "aktionen": AKTIONEN, "knoten": KNOTEN}

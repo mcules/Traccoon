@@ -189,7 +189,7 @@ async def test_lauf_nach_dem_fenster_verliert_sein_ende(db):
 
 
 async def test_schritte_ausserhalb_des_fensters_fehlen(db):
-    """Das Fenster schneidet die Schritte, nicht die Läufe."""
+    """The window cuts the steps, not the runs."""
     p = await make_project(db, "TRA", "Traccoon")
     r = await lauf(db, issue=await ticket(db, p, 1), start=VON - dt.timedelta(days=1),
                    ende=MITTAG)

@@ -389,7 +389,7 @@ async def test_link_auf_nackte_ip():
 
 
 async def test_at_trick_im_link():
-    """Alles vor dem @ ist Zierde — das Ziel ist boese.top."""
+    """Everything before the @ is decoration, the target is boese.top."""
     res = evaluate(_mail(links=[{"href": "https://paypal.de@boese.top/login", "text": "Konto"}]))
     assert "link_at_trick" in res.signals
 
@@ -744,7 +744,7 @@ async def test_geklaerter_absender_wird_nicht_erneut_gefragt(db):
 
 @pytest.fixture
 def imap_stub(monkeypatch):
-    """`imap-mcp` durch einen Mitschrieb ersetzen."""
+    """Replace `imap-mcp` by a transcript."""
     aufrufe = []
 
     async def fake_call_tool(url, tool, arguments, **kw):
@@ -789,7 +789,7 @@ async def test_fehlgeschlagenes_verschieben_behaelt_die_entscheidung(db, monkeyp
     from app.services.mcp_client import McpError
 
     async def kaputt(*a, **k):
-        raise McpError("Verbindung abgelehnt")
+        raise McpError("Connection refused")
 
     monkeypatch.setattr(spam_review, "call_tool", kaputt)
     user = await _owner(db)

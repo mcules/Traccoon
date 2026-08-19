@@ -91,7 +91,7 @@ async def test_angepinntes_muss_ueberleben(db, monkeypatch):
 
 
 async def test_kahlschlag_wird_verweigert(db, monkeypatch):
-    """Zwei Drittel weg ist kein Aufräumen mehr."""
+    """Two thirds gone is no longer tidying up."""
     _aux(monkeypatch, "### BEHALTEN\n- eins\n### ARCHIV\n- der ganze Rest")
     mcp = FakeMcp()
     assert await _lauf(db, mcp) is None

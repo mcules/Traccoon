@@ -32,7 +32,7 @@ async def owner(db):
 
 @pytest.fixture
 def imap_stub(monkeypatch):
-    """`imap-mcp` durch einen Mitschrieb ersetzen."""
+    """Replace `imap-mcp` by a transcript."""
     aufrufe = []
 
     async def fake_call_tool(url, tool, arguments, **kw):

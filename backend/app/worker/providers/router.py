@@ -67,7 +67,7 @@ class Router:
         cd = exc.retry_after if exc.retry_after else _COOLDOWN_DEFAULT
         cd = max(1.0, min(cd, _COOLDOWN_MAX))
         self._cooldown[prov] = time.monotonic() + cd
-        log.warning("Provider '%s' rate-limited (HTTP %s) → Cooldown %ss", prov, exc.status, int(cd))
+        log.warning("Provider '%s' rate limited (HTTP %s), cooldown %ss", prov, exc.status, int(cd))
 
     def cooldown_status(self) -> dict[str, int]:
         now = time.monotonic()

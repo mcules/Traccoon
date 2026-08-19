@@ -431,7 +431,7 @@ def preview_logs(project_name, service, tail):
 
 
 def preview_list():
-    """Laufende Testumgebungen, gruppiert nach Compose-Projekt."""
+    """The running test environments, grouped by compose project."""
     fmt = '{{.Label "com.docker.compose.project"}}\t{{.Label "com.docker.compose.service"}}\t{{.Names}}\t{{.Status}}'
     p = subprocess.run(["docker", "ps", "-a", "--format", fmt],
                        capture_output=True, text=True, timeout=30)

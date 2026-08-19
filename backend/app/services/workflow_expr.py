@@ -233,7 +233,7 @@ def auswerten(ausdruck: str, ctx: dict):
         name = name.strip()
         eintrag = FILTER.get(name)
         if eintrag is None:
-            log.debug("Unbekannter Filter %r in %r", name, ausdruck)
+            log.debug("Unknown filter %r in %r", name, ausdruck)
             continue
         fn = eintrag[0]
         try:

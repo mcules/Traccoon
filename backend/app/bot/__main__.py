@@ -417,7 +417,7 @@ async def _zustellen(bot, n, text: str, markup) -> None:
                 log.warning("Medium %s not readable, notification %s goes as text", pfad, n.id)
             await bot.send_message(int(n.chat_id), text, parse_mode="HTML", reply_markup=markup)
     except Exception:  # noqa: BLE001
-        log.exception("Send an %s fehlgeschlagen", n.chat_id)
+        log.exception("Sending to %s failed", n.chat_id)
     finally:
         n.notified_at = _now()
 
@@ -483,7 +483,7 @@ async def _voice_transkript(bot, m) -> str | None:
     try:
         text = await _transkribieren(roh, medienart=medienart, mime_type=mime_type)
     except Exception as exc:  # noqa: BLE001
-        log.warning("Transkription fehlgeschlagen: %s", exc)
+        log.warning("Transcription failed: %s", exc)
         await m.answer(f"🙉 Transkription nicht möglich ({exc}) — bitte als Text schicken.")
         return ""
     if not text:
@@ -616,7 +616,7 @@ async def run_bot() -> None:
                         await _zustellen(bot, n, text, markup)
                     await db.commit()
             except Exception:  # noqa: BLE001
-                log.exception("notifier-Fehler")
+                log.exception("notifier error")
             await asyncio.sleep(3)
 
     @dp.message(Command("start"))
@@ -928,7 +928,7 @@ async def run_bot() -> None:
                     await _erledigt(cq, f"🔑 Freigabe: {_DEC_TEXT.get(dec, dec)}")
         await cq.answer()
 
-    log.info("Traccoon-Bot gestartet (allowed=%s)", ALLOWED or "alle")
+    log.info("Traccoon bot started (allowed=%s)", ALLOWED or "alle")
     asyncio.create_task(notifier())
     await dp.start_polling(bot)
 

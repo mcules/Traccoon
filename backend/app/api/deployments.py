@@ -44,6 +44,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.enums import GlobalRole, ProjectRole
 from ..models.ops import Deployment
@@ -289,7 +290,8 @@ async def _payload(db: AsyncSession, *, where, limit: int, since_hours: int,
     list, on the other hand, would poison it.
     """
     if status not in STATUS_FILTER:
-        raise HTTPException(400, f"status has to be one of {', '.join(STATUS_FILTER)}")
+        raise Fehler(400, "err.status_one_of",
+                     "status has to be one of {erlaubt}", erlaubt=', '.join(STATUS_FILTER))
     limit = _clamp(limit, 1, LIMIT_MAX)
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=since_hours)
@@ -459,18 +461,16 @@ async def create_deployment(
     project = access.project
     stack_dir = (project.workspace_dir or "").strip()
     if not stack_dir:
-        raise HTTPException(
-            400,
-            "This project has no stack directory (Settings -> Git -> working "
-            "directory). Without a target the deploy would point at the Traccoon stack "
-            "itself, and only the maintenance update builds that, never a project.",
-        )
+        raise Fehler(400, "err.no_stack_directory",
+                     "This project has no stack directory (Settings -> Git -> working "
+                     "directory). Without a target the deploy would point at the Traccoon stack "
+                     "itself, and only the maintenance update builds that, never a project.")
 
     issue_id = data.issue_id if data else None
     if issue_id is not None:
         issue = await db.get(Issue, issue_id)
         if issue is None or issue.project_id != project.id:
-            raise HTTPException(404, "Ticket not found")
+            raise Fehler(404, "err.ticket_not_found", "Ticket not found")
 
     # Only against the **open** statuses, not against "last built": a failed deploy from
     # earlier must not block a new attempt.
@@ -481,12 +481,10 @@ async def create_deployment(
         .order_by(Deployment.id.desc()).limit(1)
     )).scalar_one_or_none()
     if laufend is not None:
-        raise HTTPException(
-            409,
-            f"A deployment is already running for this project (#{laufend}). "
-            "Wait until it is through, two simultaneous builds in the same stack "
-            "directory get in each other's way.",
-        )
+        raise Fehler(409, "err.deployment_already_running",
+                     "A deployment is already running for this project (#{id}). Wait until it is "
+                     "through, two simultaneous builds in the same stack directory get in each "
+                     "other's way.", id=laufend)
 
     # `self_deploy`/`check_only`/`worktree` stay on their defaults (False/False/""): what
     # gets built is the project's stack from its own directory, nothing else.

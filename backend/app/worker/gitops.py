@@ -100,7 +100,7 @@ async def _ensure_repo(ctx: GitCtx) -> bool:
             rc, out = await _git(os.path.dirname(ctx.workdir), "clone",
                                  _authed_url(ctx.remote, ctx.token), os.path.basename(ctx.workdir))
             if rc != 0:
-                log.warning("git clone fehlgeschlagen: %s", _redact(out, ctx.token))
+                log.warning("git clone failed: %s", _redact(out, ctx.token))
                 # Fallback: leeres Repo
                 await _git(ctx.workdir, "init", "-b", ctx.main)
         else:
@@ -360,7 +360,7 @@ async def setup_conflict_resolution(ctx: GitCtx) -> list[str] | None:
 
 
 async def accept(ctx: GitCtx) -> str:
-    """Bei Abnahme: Ticket-Branch → main mergen + push."""
+    """On acceptance: merge the ticket branch into main and push."""
     if not ctx.enabled or not await _is_repo(ctx.workdir):
         return "git: kein Repo"
     rc, _ = await _git(ctx.workdir, "checkout", ctx.main)
@@ -435,4 +435,4 @@ async def remove_worktree(ctx: GitCtx) -> None:
             log.warning("Branch %s NOT deleted (unmerged): %s", ctx.branch, out.strip())
         await _git(ctx.workdir, "worktree", "prune")
     except Exception:  # noqa: BLE001
-        log.exception("worktree-remove fehlgeschlagen")
+        log.exception("worktree remove failed")

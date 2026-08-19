@@ -67,13 +67,13 @@ def test_pfade():
 
 
 def test_pfade_ohne_pfadwechsel():
-    """Rolle/Projekt-Key dürfen den Ordner nicht verlassen können."""
+    """Role and project key must not be able to leave the folder."""
     p = note_path(ROOT, "projekt", "", "../../etc")
     assert p is not None and ".." not in p and p.count("/") == ROOT.count("/") + 1
 
 
 async def test_abruf_sammelt_vom_allgemeinen_zum_besonderen():
-    """Alle drei Notizen landen im Block, das Spezifische zuletzt."""
+    """All three notes land in the block, the specific one last."""
     mcp = FakeMcp({
         f"{ROOT}/Mensch.md": "- Commit-Betreffe auf Deutsch.",
         f"{ROOT}/Agent-developer.md": "- Immer Tests mitliefern.",
@@ -94,14 +94,14 @@ async def test_abruf_fehlende_notiz_ist_kein_fehler():
 
 
 async def test_abruf_ohne_ordner_ruft_nichts():
-    """Kein Gedächtnis konfiguriert → kein einziger MCP-Aufruf."""
+    """No memory configured means not a single MCP call."""
     mcp = FakeMcp()
     assert await read_memory(mcp, "", "developer", "TRA") == ""
     assert mcp.calls == []
 
 
 async def test_abruf_gekappt():
-    """Ein ausgeuferter Vault deckt den Auftrag nicht zu."""
+    """A vault that got out of hand does not bury the assignment."""
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "- Zeile\n" * 5000})
     assert len(await read_memory(mcp, ROOT, "", "")) <= 6000
 
@@ -174,7 +174,7 @@ async def test_projekt_bereich_ohne_projekt(db):
 
 
 async def test_vergiss_entfernt_nur_die_passende_zeile(db):
-    """Überholtes fällt weg, der Rest bleibt stehen."""
+    """What is outdated falls away, the rest stays."""
     u = await make_user(db, "vergesser")
     u.vault_memory_path = ROOT
     await db.commit()
@@ -189,7 +189,7 @@ async def test_vergiss_entfernt_nur_die_passende_zeile(db):
 
 
 async def test_vergiss_ohne_treffer_aendert_nichts(db):
-    """Kein Treffer heißt: nicht schreiben, sondern sagen."""
+    """No hit means: do not write, say so."""
     u = await make_user(db, "trefferlos")
     u.vault_memory_path = ROOT
     await db.commit()
@@ -201,7 +201,7 @@ async def test_vergiss_ohne_treffer_aendert_nichts(db):
 
 
 async def test_suche_bleibt_im_gedaechtnis_ordner(db):
-    """Die Suche darf nicht den ganzen Vault durchwühlen."""
+    """The search must not rummage through the whole vault."""
     u = await make_user(db, "sucher")
     u.vault_memory_path = ROOT
     await db.commit()
@@ -214,7 +214,7 @@ async def test_suche_bleibt_im_gedaechtnis_ordner(db):
 
 
 async def test_memory_root_leer_ohne_owner(db):
-    """Ein Lauf ohne Nutzerkontext hat kein Gedächtnis."""
+    """A run without a user context has no memory."""
     assert await memory_root(db, None) == ""
 
 
@@ -238,7 +238,7 @@ def test_gedaechtnis_tools_immer_erlaubt():
 
 
 def test_lernschalter_kommt_aus_der_zeile():
-    """`learns=false` am Agenten schaltet Abruf und Rückschau ab."""
+    """`learns=false` on the agent switches lookup and review off."""
     from app.models.agents import AgentDefinition
     from app.worker.runtime import agent_def_from_row
 
@@ -478,7 +478,7 @@ async def test_rueckschau_verweigert_fremde_tools(db, monkeypatch):
 
 @pytest.mark.parametrize("bereich", ["quatsch", "", "MENSCH "])
 async def test_unbekannter_bereich(db, bereich):
-    """Ein erfundener Bereich schreibt nirgendwohin."""
+    """An invented scope writes nowhere."""
     u = await make_user(db, f"bereich{abs(hash(bereich)) % 1000}")
     u.vault_memory_path = ROOT
     await db.commit()

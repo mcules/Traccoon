@@ -64,7 +64,7 @@ async def lauf(db, *, issue=None, projekt=None, owner=None, agent="developer",
 
 
 async def schritte(db, run: Run, anzahl: int) -> list[RunStep]:
-    """`anzahl` Altzeilen (kind='') — je Zeile genau EIN Ereignis."""
+    """`anzahl` old rows (kind=''), exactly ONE event per row."""
     rows = [RunStep(run_id=run.id, seq=i + 1, role="assistant", content=f"Schritt {i + 1}",
                     created_at=NOW - dt.timedelta(minutes=4, seconds=anzahl - i))
             for i in range(anzahl)]

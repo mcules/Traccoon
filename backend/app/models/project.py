@@ -103,7 +103,7 @@ class ProjectMember(TimestampMixin, Base):
 
 
 def default_ai_assign(role: ProjectRole) -> bool:
-    """Rollenbasierte Vorbelegung des KI-Rechts (überschreibbar)."""
+    """Role based default of the AI right (can be overridden)."""
     return role in (ProjectRole.owner, ProjectRole.maintainer)
 
 

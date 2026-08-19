@@ -44,7 +44,7 @@ class FakeBot:
 
 
 class FakeNotification:
-    """Nur die Felder, die `_zustellen` anfasst."""
+    """Only the fields `_zustellen` touches."""
 
     def __init__(self, media_path=None, media_kind=None):
         self.id = 7

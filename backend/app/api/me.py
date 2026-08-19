@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..core.redis import get_flag, get_user_flag, set_flag, set_user_flag
 from ..db import get_session
 from ..models.user import User
@@ -103,8 +104,8 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
     from ..services.notify import KANAELE
     if d.notify_default is not None:
         if d.notify_default not in KANAELE:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST,
-                                f"Unknown channel, possible: {', '.join(KANAELE)}")
+            raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_channel_possible",
+                         "Unknown channel, possible: {moeglich}", moeglich=', '.join(KANAELE))
         u.notify_default = d.notify_default
     if d.notify_email is not None:
         roh = d.notify_email.strip()
@@ -141,7 +142,7 @@ async def set_email(d: StrIn, u: User = Depends(get_current_user), db: AsyncSess
     other = (await db.execute(
         select(User).where(User.email == email, User.id != u.id))).scalar_one_or_none()
     if other is not None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "E-mail already taken")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.e_mail_already_taken", "E-mail already taken")
     u.email = email
     await db.commit()
 

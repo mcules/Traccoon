@@ -23,7 +23,7 @@ from .base import TimestampMixin
 
 
 class MetricSeries(TimestampMixin, Base):
-    """Eine benannte Reihe — „akku.shelter", „temperatur.serverraum"."""
+    """A named series: akku.shelter, temperatur.serverraum."""
     __tablename__ = "metric_series"
     __table_args__ = (UniqueConstraint("owner_user_id", "key", name="uq_metric_series_owner_key"),)
 

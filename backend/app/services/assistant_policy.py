@@ -54,7 +54,7 @@ async def note_hit(db: AsyncSession, policy: AssistantPolicy) -> None:
 async def upsert_policy(db: AsyncSession, owner_id: int | None, *, match_kind: str,
                         match_value: str, auto_approve: bool = True,
                         redaction: str = "redacted", action_hint: str = "") -> AssistantPolicy:
-    """Regel für (owner, kind, value) anlegen oder aktualisieren."""
+    """Create or update the rule for (owner, kind, value)."""
     if match_kind not in _ALLOWED_KIND:
         match_kind = "sender"
     if redaction not in _ALLOWED_REDACTION:

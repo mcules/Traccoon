@@ -261,7 +261,7 @@ async def assistent_item(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
 
 
 async def assistent_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Freigabekarte für das Assistent-Item (Telegram/Glocke)."""
+    """The approval card for the assistant item (Telegram, bell)."""
     owner_id = _owner(inst, ctx)
     task = dict(ctx.get("task") or {})
     klasse = dict(ctx.get("klasse") or {})

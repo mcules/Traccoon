@@ -168,7 +168,7 @@ async def handle(job: dict, redis: Redis) -> None:
         try:
             res = await _handle_accept(job, redis)
         except Exception as exc:  # noqa: BLE001
-            log.exception("accept fehlgeschlagen")
+            log.exception("accept failed")
             res = {"status": "failed", "error": str(exc)[:500]}
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps(res or {"status": "failed"}), ex=ERGEBNIS_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
@@ -337,7 +337,7 @@ async def handle(job: dict, redis: Redis) -> None:
         await redis.publish(f"{PREFIX}results", task_id)
         await redis.publish(f"{PREFIX}events:{project.id}",
                             json.dumps({"type": "issue_update", "issue_key": issue.key}))
-    log.info("verarbeitet %s → %s", task_id, result.status)
+    log.info("processed %s -> %s", task_id, result.status)
 
 
 # Safety net for the correction rounds of the review gate, NOT the normal stop. What ends it
@@ -395,7 +395,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             base_urls=base_urls,
             verify_command="", screenshot_enabled=False, owner_id=owner_id, task_id=task_id)
         if "<review-ok/>" in (rev.text or ""):
-            log.info("review %s: bestanden (Runde %d)", issue.key, attempt + 1)
+            log.info("review %s: passed (round %d)", issue.key, attempt + 1)
             return result
         # An ABORTED reviewer has no findings, it did not review at all. Without this
         # distinction its error message was passed on as an assignment: on 2026-08-07 ABC-31
@@ -504,7 +504,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                                    body=f"⛔ Merge-Konflikt nach {issue.merge_conflict_rounds - 1} "
                                         f"Auflösungsversuchen ungelöst — an den Menschen eskaliert. "
                                         f"Konflikt in: {', '.join(pre.conflict_files[:8])}"))
-                    log.info("accept %s → Konflikt-Limit erreicht, eskaliert", job["issue_id"])
+                    log.info("accept %s: the conflict limit was reached, escalated", job["issue_id"])
                 else:
                     # Put the conflict markers into the worktree so the agent can resolve them.
                     await gitops.setup_conflict_resolution(ctx)
@@ -534,7 +534,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                 await db.commit()
                 await redis.publish(f"{PREFIX}events:{project.id}",
                                     json.dumps({"type": "issue_update", "issue_key": issue.key}))
-                log.info("accept %s → %s", job["issue_id"], res.split(":", 1)[0])
+                log.info("accept %s -> %s", job["issue_id"], res.split(":", 1)[0])
                 return ({"status": "pr_open"} if issue.merge_status == "pr_open"
                         else {"status": "pr_failed", "error": issue.merge_error})
             res = await gitops.accept(ctx)
@@ -577,7 +577,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
             await db.commit()
         await redis.publish(f"{PREFIX}events:{project.id}",
                             json.dumps({"type": "issue_update", "issue_key": issue.key}))
-    log.info("accept %s → merge=%s deploy=%s", job["issue_id"], issue.merge_status, project.auto_deploy)
+    log.info("accept %s -> merge=%s deploy=%s", job["issue_id"], issue.merge_status, project.auto_deploy)
     if not (project.git_enabled and issue.branch_name):
         return {"status": "no_git"}   # project without git: nothing to merge, acceptance is free
     if issue.merge_status == "merged":
@@ -662,7 +662,7 @@ async def _handle_job(job: dict, redis: Redis) -> None:
                 body = f"/digest/{jr.id}"
             db.add(Notification(kind="job", title=title, body=body[:4000], chat_id=notify_chat))
         await db.commit()
-    log.info("job %s → %s", job["job_id"], status)
+    log.info("job %s -> %s", job["job_id"], status)
 
 
 # Conversation history in chat (ABC-30): a chat used to be a series of independent runs, so a
@@ -929,9 +929,9 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         elif not t.notified:
             # Done quietly: the result stands in the assistant's inbox. As an unread bell
             # entry without a chat id it would be noise, so nothing at all.
-            log.info("assistant-task %s still erledigt (Modus %s)", tid, modus)
+            log.info("assistant task %s quietly done (mode %s)", tid, modus)
         await db.commit()
-    log.info("assistant-task %s → %s", tid, status)
+    log.info("assistant task %s -> %s", tid, status)
     # Trigger the memory upkeep, after the work is done and as a task of its own. `kuratiere`
     # decides for itself whether anything is due (at most once per day and note).
     if owner_id:
@@ -974,7 +974,7 @@ async def _handle_curator(job: dict) -> None:
             for b in berichte:
                 log.info("Curator: %s", b)
         except Exception:  # noqa: BLE001
-            log.exception("Curator fehlgeschlagen (folgenlos)")
+            log.exception("Curator failed (without consequences)")
 
 
 def _now_dt():
@@ -1203,7 +1203,7 @@ async def pull_loop(redis: Redis) -> None:
                     if note not in ("main aktualisiert", "kein Remote"):
                         log.debug("pull %s: %s", project.key, note)
         except Exception:  # noqa: BLE001
-            log.exception("pull-loop-Fehler")
+            log.exception("pull loop error")
 
 
 # Running runs per ticket key, for the kill channel (aborting from the interface)
@@ -1259,7 +1259,7 @@ async def main() -> None:
     asyncio.create_task(pull_loop(redis))
     start_loop_watchdog()
     _signale_annehmen()
-    log.info("Traccoon-Worker gestartet (concurrency=%d, Auslaufzeit %ds)",
+    log.info("Traccoon worker started (concurrency=%d, drain time %ds)",
              MAX_CONCURRENT, DRAIN_SEC)
 
     async def _run(job: dict, raw: str) -> None:
@@ -1279,7 +1279,7 @@ async def main() -> None:
                 # Clean pass, so ACK: remove exactly the popped entry from PROCESSING.
                 await redis.lrem(PROCESSING, 1, raw)
             except asyncio.CancelledError:
-                log.info("Lauf %s abgebrochen (kill)", key)
+                log.info("Run %s aborted (kill)", key)
                 await redis.set(f"{PREFIX}result:{job['task_id']}", json.dumps(
                     {"status": "failed", "success": False,
                      "output": "Abgebrochen (Stopp durch Nutzer)"}), ex=ERGEBNIS_TTL)
@@ -1295,7 +1295,7 @@ async def main() -> None:
                 # No ACK: the entry stays in PROCESSING, so recovery brings it back into QUEUE
                 # at the next worker start (no data loss on abort or crash).
             except Exception as exc:  # noqa: BLE001
-                log.exception("handle-Fehler")
+                log.exception("handle error")
                 # IMPORTANT: publish the result, otherwise the dispatcher hangs until the
                 # 1800 s timeout and the ticket stays agent_working=True (blocking a slot).
                 tid = job.get("task_id")
@@ -1351,7 +1351,7 @@ async def main() -> None:
         except RedisTimeoutError:
             continue      # the socket limit hit before the answer, nothing special
         except Exception:  # noqa: BLE001
-            log.exception("loop-Fehler")
+            log.exception("loop error")
             await asyncio.sleep(1)
 
     await _auslaufen()

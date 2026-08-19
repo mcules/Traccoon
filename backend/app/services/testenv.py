@@ -126,7 +126,7 @@ def _compose_file(project, workdir: str) -> str:
 
 
 async def _up(payload: dict) -> tuple[bool, str]:
-    """Start beim Runner anstoßen. Liefert (ok, Log/Fehlertext)."""
+    """Ask the runner to start. Returns (ok, log or error text)."""
     try:
         async with httpx.AsyncClient(timeout=600) as client:
             r = await client.post(f"{DEPLOYER_URL}/preview/up", json=payload,
@@ -147,7 +147,7 @@ async def _down(project_name: str, compose_file: str) -> None:
                               json={"project_name": project_name, "compose_file": compose_file},
                               headers={"X-Traccoon-Internal": INTERNAL_TOKEN})
     except Exception as exc:  # noqa: BLE001
-        log.warning("Testumgebung %s stoppen fehlgeschlagen: %s", project_name, exc)
+        log.warning("Stopping the test environment %s failed: %s", project_name, exc)
 
 
 def _base_payload(project, cfg: dict, name: str, workdir: str, port: int,

@@ -107,7 +107,7 @@ async def test_die_andere_seite_der_weiche_laesst_sich_genauso_pruefen(client, d
 
 
 async def test_probelauf_nimmt_den_entwurf_nicht_das_veroeffentlichte(client, db):
-    """Geprüft werden soll, was man gerade gebaut hat."""
+    """What gets checked is what you just built."""
     anna = await make_user(db, "anna")
     d = await _ablauf(db, anna, veroeffentlicht=True)
     entwurf = _graph()

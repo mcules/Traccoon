@@ -68,7 +68,7 @@ async def type_by_key(db: AsyncSession, key: str) -> ArtifactType | None:
 
 
 async def type_for_subject(db: AsyncSession, subject_kind) -> ArtifactType | None:
-    """Artefakt-Typ, den ein Ablauf mit diesem Subjekt bearbeitet."""
+    """The artifact type a flow with this subject works on."""
     key = SUBJECT_TYPE.get(getattr(subject_kind, "value", str(subject_kind)))
     return await type_by_key(db, key) if key else None
 
@@ -262,7 +262,7 @@ async def backfill_hardware_artifacts(db: AsyncSession) -> int:
             inst.artifact_id = asset.artifact_id
     if offen or instanzen:
         await db.commit()
-        log.info("Artefakte nachgetragen: %d Exemplare, %d Prozess-Instanzen",
+        log.info("Artifacts added later: %d units, %d process instances",
                  len(offen), len(instanzen))
     return len(offen)
 
@@ -381,5 +381,5 @@ async def reconcile(db: AsyncSession) -> dict:
 
     if any(ergebnis.values()):
         await db.commit()
-        log.info("Artefakte abgeglichen: %s", ergebnis)
+        log.info("Artifacts reconciled: %s", ergebnis)
     return ergebnis

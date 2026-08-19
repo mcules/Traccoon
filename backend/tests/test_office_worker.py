@@ -132,7 +132,7 @@ def ereignisse(steps: list[RunStep], run: Run) -> list[dict]:
 
 
 async def ticket(db, projekt):
-    """Ein echtes Ticket — der Lauf soll an einem hängen können."""
+    """A real ticket: the run has to be able to hang off one."""
     typ = IssueType(project_id=projekt.id, name="Aufgabe")
     status = WorkflowStatus(project_id=projekt.id, name="To Do", category=StatusCategory.todo)
     db.add_all([typ, status, IssueCounter(project_id=projekt.id, last_number=0)])

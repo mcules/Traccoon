@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.agents import AgentDefinition
 from ..models.user import User
@@ -78,7 +79,7 @@ async def update_agent(agent_id: int, data: AgentIn, user: User = Depends(get_cu
                        db: AsyncSession = Depends(get_session)):
     a = await db.get(AgentDefinition, agent_id)
     if a is None or not is_owner_or_admin(a.user_id, user):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Agent not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.agent_not_found", "Agent not found")
     for field, value in data.model_dump().items():
         setattr(a, field, value)
     # Editing a linked copy marks it as "edited", so no more syncing.
@@ -119,16 +120,17 @@ async def copy_to_project(agent_id: int, data: CopyToProjectIn, user: User = Dep
     """Load a global agent into a project as a linked copy (a snapshot, but syncable)."""
     src = await db.get(AgentDefinition, agent_id)
     if src is None or src.user_id not in (None, user.id):
-        raise HTTPException(404, "Agent not found")
+        raise Fehler(404, "err.agent_not_found", "Agent not found")
     # The target project has to exist and the user has to be at least a maintainer there.
     from ..models.project import Project
     proj = await db.get(Project, data.project_id)
     if proj is None:
-        raise HTTPException(404, "Target project not found")
+        raise Fehler(404, "err.target_project_not_found", "Target project not found")
     from .deps import build_access
     from ..models.enums import ProjectRole
     if not (await build_access(proj, user, db)).has_role(ProjectRole.maintainer):
-        raise HTTPException(403, "Maintainer-Recht im Zielprojekt erforderlich")
+        raise Fehler(403, "err.maintainer_rights_target_project",
+                     "Maintainer rights in the target project are required")
     copy = AgentDefinition(user_id=user.id, role=src.role, project_id=data.project_id,
                            origin_agent_id=src.id, customized=False,
                            **{f: getattr(src, f) for f in _COPY_FIELDS})
@@ -147,7 +149,7 @@ async def sync_linked(agent_id: int, user: User = Depends(get_current_user),
     from ..models.plugins import McpInstance
     src = await db.get(AgentDefinition, agent_id)
     if src is None or src.user_id not in (None, user.id):
-        raise HTTPException(404, "Agent not found")
+        raise Fehler(404, "err.agent_not_found", "Agent not found")
     # Update only ONE'S OWN unedited copies, never those of other users.
     copies = (await db.execute(select(AgentDefinition).where(
         AgentDefinition.origin_agent_id == agent_id,

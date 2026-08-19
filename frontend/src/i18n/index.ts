@@ -49,6 +49,23 @@ export function tr(key: string, vars?: Record<string, string | number>): string 
     vars[name] !== undefined ? String(vars[name]) : ganz);
 }
 
+/**
+ * One text, but only when this language really knows the key.
+ *
+ * The fallback chain of `tr` ends in German, which is right for the interface: a half
+ * translated screen stays usable. For a server error it would be wrong. The server already
+ * sends the sentence in English, and an English sentence beats a German one for somebody
+ * who reads neither the catalog nor German. So: the override, the catalog of the chosen
+ * language, otherwise nothing, and the caller keeps what the server wrote.
+ */
+export function trBekannt(key: string, vars?: Record<string, string | number>): string | null {
+  const text = overrides[key] ?? AUSGELIEFERT[aktuell]?.[key];
+  if (text === undefined) return null;
+  if (!vars) return text;
+  return text.replace(/\{(\w+)\}/g, (ganz, name) =>
+    vars[name] !== undefined ? String(vars[name]) : ganz);
+}
+
 /** Set the language and pull in what the admin changed. */
 export async function setzeSprache(locale: string): Promise<void> {
   aktuell = locale && locale in AUSGELIEFERT ? locale : (locale || QUELLSPRACHE);

@@ -34,9 +34,25 @@ The code says what happens. A comment says why it is this way and not another, p
 with the case that led to the solution. Comments that retell the next line get flagged in
 review.
 
+## Error texts
+
+An error that reaches a person goes out as `Fehler`, not as `HTTPException`:
+
+    raise Fehler(404, "err.ticket_not_found", "Ticket not found")
+    raise Fehler(409, "err.type_already_exists", "The type '{name}' already exists", name=key)
+
+The English sentence is what the API answers; the key beside it is what the browser looks up
+so a German interface says it in German. Both catalogs (`frontend/src/i18n/de.json` and
+`en.json`) get the new key, with the same `{placeholders}` in both.
+
+`HTTPException` is left for the cases that only pass a foreign message through (`str(exc)`)
+and have no sentence of their own to name.
+
 ## Building and checking
 
 - `check` runs inside the worktree and has to be green before you report done.
+- `npm run check:fehlertexte` (in `frontend/`) says whether every error key exists in both
+  catalogs.
 - No manual deploy: this project has no stack directory of its own, the deployer rejects the
   request. Changes go live through review and merge.
 - Tests belong to the change, not to a follow-up ticket.

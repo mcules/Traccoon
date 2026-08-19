@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.metrics import MetricPoint, MetricSeries
 from ..models.user import User
@@ -55,7 +56,8 @@ async def series_points(key: str, tage: int = Query(60, ge=1, le=3650),
     """
     r = await metrics.reihe(db, user.id, key)
     if r is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Metric series not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
+                     "Metric series not found")
     seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=tage)
     ps = await metrics.punkte(db, r.id, seit=seit)
     return {**_reihe_out(r, await metrics.trend(db, r, ziel=ziel, fenster_tage=tage)),
@@ -75,10 +77,12 @@ async def delete_point(key: str, punkt_id: int, user: User = Depends(get_current
     """
     r = await metrics.reihe(db, user.id, key)
     if r is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Metric series not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
+                     "Metric series not found")
     punkt = await db.get(MetricPoint, punkt_id)
     if punkt is None or punkt.series_id != r.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "The value does not belong to this series")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.value_does_not_belong_series",
+                     "The value does not belong to this series")
     await db.delete(punkt)
     await db.flush()
     # The head of the series points at the last value; if that was it, it has to move up.

@@ -224,7 +224,7 @@ async def test_qwen_ist_erste_wahl_whisper_faengt_auf(monkeypatch):
 
     async def qwen_kaputt(audio, medienart, mime_type):
         versuche.append("qwen")
-        raise RuntimeError("Verbindung abgelehnt")
+        raise RuntimeError("Connection refused")
 
     async def whisper_ok(*a, **k):
         versuche.append("whisper")

@@ -54,6 +54,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, case, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.agents import CostEntry, Run, RunStep
 from ..models.enums import GlobalRole, ProjectRole
@@ -433,7 +434,8 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
     limit = _clamp(limit, 1, SESSION_LIMIT_MAX)
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     if status not in SESSION_STATUS:
-        raise HTTPException(400, f"status has to be one of {', '.join(SESSION_STATUS)}")
+        raise Fehler(400, "err.status_one_of",
+                     "status has to be one of {erlaubt}", erlaubt=', '.join(SESSION_STATUS))
     now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - dt.timedelta(hours=since_hours)
     scan = min(limit * RUN_SCAN_FACTOR, RUN_SCAN_MAX)

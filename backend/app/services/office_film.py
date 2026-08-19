@@ -495,7 +495,7 @@ async def run_film_job(db: AsyncSession, job, jr) -> None:
         await _film_bauen(db, job, jr, opt)
     except Exception as e:  # noqa: BLE001 — bewusst alles
         jr.status, jr.error = "error", str(e)[:2000]
-        log.exception("film-job %s fehlgeschlagen", getattr(job, "name", "?"))
+        log.exception("film job %s failed", getattr(job, "name", "?"))
     weg = _aufraeumen(_int(opt, "behalten_tage", STD_BEHALTEN_TAGE))
     if weg:
         jr.output = (jr.output or "") + f"\n{weg} alte Filme gelöscht."

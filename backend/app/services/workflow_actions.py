@@ -233,7 +233,7 @@ async def _webhook(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
 
     url = _interp(params.get("url") or "", tctx).strip()
     if not url:
-        raise ValueError("webhook: 'url' erforderlich")
+        raise ValueError("webhook: 'url' is required")
     method = str(params.get("method") or "POST").upper()
     timeout = float(params.get("timeout_sec") or 10)
     headers = {k: _interp(str(v), tctx) for k, v in (params.get("headers") or {}).items()}
@@ -634,7 +634,7 @@ async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     key = str(params.get("context_key") or "tool")
     inst.context = {**ctx, key: ergebnis}
     if params.get("fail_on_error") and not ergebnis["ok"]:
-        raise ValueError(f"Werkzeug {name!r}: {ergebnis.get('error', 'fehlgeschlagen')}")
+        raise ValueError(f"Tool {name!r}: {ergebnis.get('error', 'failed')}")
     return {"action": "tool_call", "tool": name, "ok": ergebnis["ok"],
             "error": ergebnis.get("error")}
 

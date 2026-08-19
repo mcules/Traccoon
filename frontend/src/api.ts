@@ -1,3 +1,5 @@
+import { trBekannt } from "./i18n";
+
 const TOKEN_KEY = "traccoon_token";
 
 export function getToken(): string | null {
@@ -10,9 +12,13 @@ export function setToken(t: string | null) {
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /** The key of the error text, when the server named one. Lets a view react to the case
+   *  itself instead of matching on the wording. */
+  key?: string;
+  constructor(status: number, message: string, key?: string) {
     super(message);
     this.status = status;
+    this.key = key;
   }
 }
 
@@ -34,13 +40,20 @@ export async function request<T = any>(
   }
   if (!res.ok) {
     let detail = res.statusText;
+    let key: string | undefined;
     try {
       const j = await res.json();
       detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail);
+      // The server names its error texts; the English sentence beside it is the fallback for
+      // a key this language does not carry.
+      if (typeof j.key === "string") {
+        key = j.key;
+        detail = trBekannt(j.key, j.werte) ?? detail;
+      }
     } catch {
       /* ignore */
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, key);
   }
   if (res.status === 204) return undefined as T;
   return res.json();

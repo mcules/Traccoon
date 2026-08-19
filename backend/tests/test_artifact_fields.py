@@ -352,7 +352,7 @@ async def test_prozess_versteht_komma_und_vorlagen(db, register):
 
 
 async def test_prozess_meldet_unbekanntes_feld(db, register):
-    """Ein Tippfehler im Graphen darf nicht still ins Leere laufen."""
+    """A typo in the graph must not quietly run into nothing."""
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
     issue = await _ticket(db, proj)
@@ -499,7 +499,7 @@ async def test_projekt_feld_gilt_nur_dort(client, db, register):
 
 
 async def test_projekt_feld_erscheint_am_ticket(client, db, register):
-    """„Erweiterte Felder müssen in der Ticketansicht erscheinen."""
+    """Extended fields have to appear in the ticket view."""
     chef = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "TKT", "Ticketansicht")
     await add_member(db, proj, chef, ProjectRole.owner)
@@ -546,7 +546,7 @@ async def test_ohne_projekt_bleibt_es_admin_sache(client, db, register):
 
 
 async def test_ausgeliefertes_feld_laesst_sich_nicht_entfernen(client, db, register):
-    """„Die bisher notwendigen Felder können nicht entfernt werden."""
+    """The fields needed so far cannot be removed."""
     chef = await make_user(db, "chef", admin=True)
     typ = await art.type_by_key(db, "ticket")
     status = await felder.status_field(db, typ.id)

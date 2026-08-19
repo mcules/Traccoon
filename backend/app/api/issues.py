@@ -2,11 +2,12 @@ import datetime as dt
 import hashlib
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import func, select, text, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.enums import ProjectRole, TicketAgentStatus, UserStatus
 from ..models.project import Project, ProjectMember, default_ai_assign
@@ -30,7 +31,7 @@ async def get_issue_access(
 ) -> tuple[Issue, Access]:
     issue = (await db.execute(select(Issue).where(Issue.key == key))).scalar_one_or_none()
     if issue is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+        raise Fehler(status.HTTP_404_NOT_FOUND, "err.ticket_not_found", "Ticket not found")
     project = await db.get(Project, issue.project_id)
     access = await build_access(project, user, db)  # 404 on a foreign project
     return issue, access
@@ -38,7 +39,8 @@ async def get_issue_access(
 
 def _require_write(access: Access) -> None:
     if not access.has_role(ProjectRole.member):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Schreibrecht (member) erforderlich")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.write_rights_member_required",
+                     "Write rights (member) are required")
 
 
 async def _assert_asset_in_project(asset_id: int, project_id: int, db: AsyncSession) -> None:
@@ -47,11 +49,11 @@ async def _assert_asset_in_project(asset_id: int, project_id: int, db: AsyncSess
     from ..models.hardware import HardwareAsset
     asset = await db.get(HardwareAsset, asset_id)
     if asset is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The unit does not exist")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unit_does_not_exist",
+                     "The unit does not exist")
     if asset.project_id != project_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "The unit does not belong to this project"
-        )
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unit_does_not_belong_project",
+                     "The unit does not belong to this project")
 
 
 # ---------- Liste / Anlegen ----------
@@ -92,7 +94,8 @@ async def create_issue(
             )
         ).scalars().first()
         if t is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "The project has no issue types")
+            raise Fehler(status.HTTP_400_BAD_REQUEST, "err.project_has_no_issue_types",
+                         "The project has no issue types")
         type_id = t.id
 
     status_id = data.status_id
@@ -105,7 +108,8 @@ async def create_issue(
             )
         ).scalars().first()
         if s is None:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "The project has no statuses")
+            raise Fehler(status.HTTP_400_BAD_REQUEST, "err.project_has_no_statuses",
+                         "The project has no statuses")
         status_id = s.id
 
     # Race safe key allocation over a counter row lock.
@@ -170,7 +174,8 @@ async def delete_issue(
 ):
     issue, access = pair
     if not access.has_role(ProjectRole.maintainer):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Deleting requires maintainer")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.deleting_requires_maintainer",
+                     "Deleting requires maintainer")
     if issue.testenv_status:
         from ..services.testenv import stop_testenv
         await stop_testenv(db, issue, access.project.key)
@@ -232,7 +237,8 @@ async def assign_agent(
 ):
     issue, access = pair
     if not access.ai_assign:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "KI-Recht (ai_assign) erforderlich")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.ai_right_ai_assign_required",
+                     "The AI right (ai_assign) is required")
     issue.assigned_agent = data.agent
     issue.assigned_by_user_id = access.user.id
     issue.assigned_at = dt.datetime.now(tz=dt.timezone.utc)
@@ -264,9 +270,11 @@ async def unassign_agent(
 ):
     issue, access = pair
     if not access.ai_assign:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "KI-Recht (ai_assign) erforderlich")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.ai_right_ai_assign_required",
+                     "The AI right (ai_assign) is required")
     if issue.agent_working:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Agent arbeitet gerade — erst stoppen")
+        raise Fehler(status.HTTP_409_CONFLICT, "err.agent_working_right_now_stop_first",
+                     "The agent is working right now, stop it first")
     # Without an agent there is no lifecycle any more: end a running instance, because
     # otherwise it would want to keep running on the next tick.
     from ..services.lifecycle_flow import cancel_lifecycle
@@ -347,9 +355,9 @@ async def _get_or_create_placeholder(db: AsyncSession, project_id: int, display_
         except IntegrityError:
             continue
         return user
-    raise HTTPException(
-        status.HTTP_500_INTERNAL_SERVER_ERROR, "The placeholder account could not be created"
-    )
+    raise Fehler(status.HTTP_500_INTERNAL_SERVER_ERROR,
+                 "err.placeholder_account_could_not_created",
+                 "The placeholder account could not be created")
 
 
 async def _ensure_member(db: AsyncSession, project_id: int, user_id: int) -> None:
@@ -402,12 +410,13 @@ async def set_assignee(
             )
         ).scalar_one_or_none()
         if target is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Person not found")
+            raise Fehler(status.HTTP_404_NOT_FOUND, "err.person_not_found", "Person not found")
     elif data.display_name:
         target = await _get_or_create_placeholder(db, issue.project_id, data.display_name)
         await _ensure_member(db, issue.project_id, target.id)
     else:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "user_id or display_name is required")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.user_id_display_name_required",
+                     "user_id or display_name is required")
 
     issue.assignee_user_id = target.id
     await db.commit()
@@ -453,9 +462,11 @@ async def add_comment(
 ):
     issue, access = pair
     if access.role == ProjectRole.viewer:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "A viewer may not comment")
+        raise Fehler(status.HTTP_403_FORBIDDEN, "err.viewer_may_not_comment",
+                     "A viewer may not comment")
     if data.kind not in ("agent", "internal"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "kind has to be agent|internal")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.kind_has_agent_internal",
+                     "kind has to be agent|internal")
     from ..services.comments import apply_user_comment
     label = access.user.display_name or access.user.username
     await apply_user_comment(db, issue, data.body, access.user.id, label, data.kind)
@@ -484,11 +495,9 @@ async def _guard_done_transition(issue: Issue, target: WorkflowStatus, db: Async
     project = await db.get(Project, issue.project_id)
     if project is None or not project.testenv_enabled:
         return
-    raise HTTPException(
-        status.HTTP_409_CONFLICT,
-        'On to "done" only over "set to done", which stops the test environment '
-        "and merges the branch.",
-    )
+    raise Fehler(status.HTTP_409_CONFLICT, "err.direct_jump_to_done",
+                 'On to "done" only over "set to done", which stops the test environment and '
+                 "merges the branch.")
 
 
 @router.put("/issues/{key}/move", response_model=IssueOut)
@@ -501,7 +510,8 @@ async def move_issue(
     _require_write(access)
     target_status = await db.get(WorkflowStatus, data.status_id)
     if target_status is None or target_status.project_id != issue.project_id:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The status does not belong to the project")
+        raise Fehler(status.HTTP_400_BAD_REQUEST, "err.status_does_not_belong_project",
+                     "The status does not belong to the project")
     await _guard_done_transition(issue, target_status, db)
     issue.status_id = data.status_id
     await db.flush()

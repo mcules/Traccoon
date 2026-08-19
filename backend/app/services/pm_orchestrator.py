@@ -185,7 +185,7 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
                             await set_ticket_status(db, iss, TicketAgentStatus.planning)
                         created_keys.append(iss.key)
             except Exception:  # noqa: BLE001
-                log.exception("PM-Op fehlgeschlagen")
+                log.exception("PM operation failed")
         pm_text = clean + (f"\n\n🎫 {', '.join(created_keys)}" if created_keys else "")
         pm_created_at = _now()
         db.add(Message(project_id=project_id, role="pm", author_label="PM", content=pm_text, round=rnd,

@@ -80,7 +80,7 @@ async def test_abgleich_ist_idempotent(db, register):
 
 
 async def test_zustand_setzen_schreibt_sofort_mit(db, register):
-    """Der häufige Weg wartet nicht auf den Abgleich."""
+    """The common path does not wait for the reconciliation."""
     proj = await make_project(db, "TST", "Test")
     i = await _ticket(db, proj, "Sofort", 1)
     await art.reconcile(db)

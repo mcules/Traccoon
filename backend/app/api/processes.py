@@ -17,11 +17,12 @@ from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..db import get_session
 from ..models.enums import (
     WorkflowInstanceStatus, WorkflowSubjectKind, WorkflowTokenState,
@@ -105,11 +106,13 @@ async def slot_uebersicht(
         s = (await db.execute(select(WorkflowSet).where(
             WorkflowSet.key == sets.BUILTIN_SET_KEY))).scalars().first()
         if s is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "No global default set")
+            raise Fehler(status.HTTP_404_NOT_FOUND, "err.no_global_default_set",
+                         "No global default set")
     else:
         s = await db.get(WorkflowSet, set_id)
         if s is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "Process set not found")
+            raise Fehler(status.HTTP_404_NOT_FOUND, "err.process_set_not_found",
+                         "Process set not found")
 
     sichtbar = await _sichtbare_projekte(db, user)
     # Project-owned copies per slot (not archived): those are exactly the deviations.

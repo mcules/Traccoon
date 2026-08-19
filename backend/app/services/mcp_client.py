@@ -82,7 +82,7 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
             await client.post(url, headers=basis, json={
                 "jsonrpc": "2.0", "method": "notifications/initialized"})
         except httpx.HTTPError as exc:      # not fatal: some servers do not need it
-            log.debug("notifications/initialized fehlgeschlagen: %s", exc)
+            log.debug("notifications/initialized failed: %s", exc)
 
         try:
             resp = await client.post(url, headers=basis, json={
@@ -90,7 +90,7 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
                 "params": {"name": tool, "arguments": arguments}})
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise McpError(f"{tool} fehlgeschlagen: {exc}") from exc
+            raise McpError(f"{tool} failed: {exc}") from exc
 
     daten = _entpacken(resp)
     if "error" in daten:

@@ -22,7 +22,7 @@ from test_lifecycle_process import _projekt_mit_ticket
 
 
 class FakeRedis:
-    """Nur so viel Redis, wie `wait_result`/`lauf_lebt` anfassen."""
+    """Only as much Redis as `wait_result` and `lauf_lebt` touch."""
 
     def __init__(self, ergebnis_ab=None, puls=False, queue=None):
         self.werte = {}
@@ -71,7 +71,7 @@ async def test_verschwundener_lauf_wird_aufgegeben(monkeypatch):
 
 
 async def test_auftrag_in_der_warteschlange_zaehlt_als_lebend(monkeypatch):
-    """Noch nicht drangekommen ist nicht dasselbe wie verschwunden."""
+    """Not started yet is not the same as disappeared."""
     fake = FakeRedis(ergebnis_ab=25, puls=False, queue=['{"task_id": "t1"}'])
     monkeypatch.setattr(redismod, "get_redis", lambda: fake)
     monkeypatch.setattr(redismod, "lauf_lebt", echtes_lauf_lebt)

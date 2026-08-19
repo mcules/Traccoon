@@ -359,7 +359,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                 if safe_eval(guard, inst.context or {}):
                     return Outcome(handle=b.get("handle"))
             except JsonLogicError as e:
-                log.warning("Instanz %s: Guard-Fehler in %s: %s", inst.id, node["id"], e)
+                log.warning("Instance %s: guard error in %s: %s", inst.id, node["id"], e)
                 continue
         return Outcome(handle=cfg.get("default_handle", "default"))
 
@@ -423,7 +423,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
             ))
             return Outcome(handle="out")
         except Exception as e:  # noqa: BLE001
-            log.exception("Instanz %s: auto_action %s fehlgeschlagen", inst.id, node["id"])
+            log.exception("Instance %s: auto_action %s failed", inst.id, node["id"])
             db.add(WorkflowStepRun(
                 instance_id=inst.id, token_id=token.id, node_id=node["id"],
                 node_type=NType.auto_action, status=SStatus.failed, error=str(e)[:2000],
@@ -447,7 +447,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                         result={"faellig": (_now() + dt.timedelta(seconds=warte)).isoformat(),
                                 "versuch": bisher + 1, "von": versuche}))
                     await db.flush()
-                    log.info("Instanz %s: %s scheitert (%d/%d) — neuer Versuch in %.0fs",
+                    log.info("Instance %s: %s fails (%d/%d), new attempt in %.0fs",
                              inst.id, node["id"], bisher + 1, versuche, warte)
                     return Outcome(wait=True, waiting_for="timer")
                 # Used up: the counter has to go, otherwise the next attempt (loop,
@@ -602,7 +602,7 @@ async def _timer(db, inst, node, token, cfg) -> Outcome:
         node_type=NType.timer, status=SStatus.waiting,
         result={"faellig": faellig.isoformat()}))
     await db.flush()
-    log.info("Instanz %s wartet bis %s (%s)", inst.id, faellig.isoformat(), node["id"])
+    log.info("Instance %s waits until %s (%s)", inst.id, faellig.isoformat(), node["id"])
     return Outcome(wait=True, waiting_for="timer")
 
 
@@ -908,7 +908,7 @@ async def _park_on_gate(db, inst, issue, node, token, verdict) -> Outcome:
     step.error = detail[:2000]
     step.result = {**(step.result or {}), "gate": verdict.reason}
     await db.flush()
-    log.info("Instanz %s: Agentenlauf vertagt (%s)", inst.id, detail)
+    log.info("Instance %s: the agent run was postponed (%s)", inst.id, detail)
     await publish_event(inst.project_id or 0, {
         "type": "workflow_step", "instance_id": inst.id, "node_id": node["id"],
         "node_type": "agent_task", "status": "gate", "reason": verdict.reason,
@@ -1463,7 +1463,7 @@ async def _move(db, inst, token, edges, node, handle) -> bool:
         inst.error = f"Keine Kante von '{node['id']}' für Ausgang '{handle}'"
         inst.finished_at = _now()
         token.state = TState.consumed
-        log.warning("Instanz %s: Dangling-Kante %s/%s", inst.id, node["id"], handle)
+        log.warning("Instance %s: dangling edge %s/%s", inst.id, node["id"], handle)
         return False
     token.node_id = target
     token.state = TState.active
@@ -1552,7 +1552,7 @@ async def _drive(instance_id: int) -> None:
             ).scalars().all()
             for t in actives:
                 t.state = TState.consumed
-            log.warning("Instanz %s: MAX_STEPS erreicht → failed", inst.id)
+            log.warning("Instance %s: MAX_STEPS reached, failed", inst.id)
 
         await db.commit()
         for watcher in spawn_after:
@@ -1885,7 +1885,7 @@ async def _engine_tick() -> None:
         async with SessionLocal() as db:
             await reconcile(db)
     except Exception:  # noqa: BLE001, reconciling must never block the tick
-        log.exception("Artefakt-Abgleich fehlgeschlagen")
+        log.exception("The artifact reconciliation failed")
 
     # Wake expired timers before the latecomers run: a woken run is not a latecomer, and a
     # waiting timer should not count as stuck either.
@@ -1910,7 +1910,7 @@ async def _engine_tick() -> None:
         if n:
             log.info("Tick: %d orphaned ticket(s) pulled into the lifecycle", n)
     except Exception:  # noqa: BLE001, must never block the tick
-        log.exception("Einsammeln verwaister Tickets fehlgeschlagen")
+        log.exception("Collecting orphaned tickets failed")
 
     gated = await _retry_gated()
     async with SessionLocal() as db:
@@ -1975,10 +1975,10 @@ async def recover_workflow_agents() -> None:
                                 int(cfg.get("timeout_sec") or ACTION_DEFAULT_TIMEOUT), omap,
                                 str((s.result or {}).get("context_key") or "action")))
     for instance_id, token_id, step_id, task_id, omap, timeout in agents:
-        log.info("workflow reattach: agent-Schritt %s (task %s)", step_id, task_id)
+        log.info("workflow reattach: agent step %s (task %s)", step_id, task_id)
         _spawn(_await_agent(instance_id, token_id, step_id, task_id, omap, timeout))
     for instance_id, token_id, step_id, task_id, timeout, omap, ckey in actions:
-        log.info("workflow reattach: Aktions-Schritt %s (task %s)", step_id, task_id)
+        log.info("workflow reattach: action step %s (task %s)", step_id, task_id)
         _spawn(_await_action(instance_id, token_id, step_id, task_id, timeout,
                                           ckey, omap))
 
@@ -1986,11 +1986,11 @@ async def recover_workflow_agents() -> None:
 async def run_workflow_engine() -> None:
     """30 second loop: finds stuck running instances with an active token and advances
     them. A safety net after a crash or restart, normal operation runs synchronously."""
-    log.info("workflow-engine gestartet (tick=%ss)", TICK_SECONDS)
+    log.info("workflow engine started (tick=%ss)", TICK_SECONDS)
     try:
         await recover_workflow_agents()
     except Exception:  # noqa: BLE001
-        log.exception("recover_workflow_agents fehlgeschlagen")
+        log.exception("recover_workflow_agents failed")
     await asyncio.sleep(7)
     while True:
         try:

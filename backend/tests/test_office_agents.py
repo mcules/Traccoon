@@ -28,7 +28,7 @@ NOW = dt.datetime.now(dt.timezone.utc)
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
 async def buehne(db, *, rolle=ProjectRole.viewer):
-    """Nutzer (standardmäßig nur Viewer!), Projekt, Ticket."""
+    """User (a viewer by default!), project, ticket."""
     user = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, user, rolle)

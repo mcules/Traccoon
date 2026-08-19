@@ -1,11 +1,12 @@
 """Admin: Wartungsprojekt-Einstellung + Update-Flow (drain → Self-Deploy via Sidecar)."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.fehler import Fehler
 from ..core.redis import get_flag, set_flag
 from ..db import get_session
 from ..models.project import Project
@@ -58,7 +59,7 @@ async def set_maintenance(data: MaintenanceIn, _: User = Depends(require_admin),
     if data.project_id is not None:
         proj = await db.get(Project, data.project_id)
         if proj is None:
-            raise HTTPException(404, "Project not found")
+            raise Fehler(404, "err.project_not_found", "Project not found")
     await set_setting(db, MAINT_KEY, str(data.project_id) if data.project_id else "")
     return await _status(db)
 
@@ -69,9 +70,10 @@ async def request_update(user: User = Depends(require_admin), db: AsyncSession =
     self-deploys the maintenance project over the deployer sidecar."""
     mp = await get_setting(db, MAINT_KEY, "")
     if not mp.isdigit():
-        raise HTTPException(409, "No maintenance project set (Admin -> maintenance).")
+        raise Fehler(409, "err.no_maintenance_project_set_admin",
+                     "No maintenance project set (Admin -> maintenance).")
     if await get_flag("update_in_progress"):
-        raise HTTPException(409, "An update is already running.")
+        raise Fehler(409, "err.update_already_running", "An update is already running.")
     await set_flag("update_pending", True)
     return await _status(db)
 
@@ -108,7 +110,8 @@ async def put_testenv_config(
     values = data.model_dump(exclude_unset=True, exclude_none=True)
     lo, hi = values.get("testenv_port_lo"), values.get("testenv_port_hi")
     if lo is not None and hi is not None and lo > hi:
-        raise HTTPException(400, "Port range: the lower bound is above the upper one")
+        raise Fehler(400, "err.port_range_reversed",
+                     "Port range: the lower bound is above the upper one")
     for key, value in values.items():
         await set_setting(db, key, str(value))
     return await get_config(db)
@@ -122,7 +125,7 @@ class LayoutGapIn(BaseModel):
 async def put_workflow_layout(
     data: LayoutGapIn, _: User = Depends(require_admin), db: AsyncSession = Depends(get_session)
 ):
-    """Abstand (px) zwischen den Knoten beim „Anordnen" im Prozess-Editor."""
+    """Distance (px) between the nodes when arranging them in the process editor."""
     from ..services.appsettings import LAYOUT_GAP_KEY
     await set_setting(db, LAYOUT_GAP_KEY, str(data.gap))
     return {"gap": data.gap}
@@ -134,7 +137,7 @@ class RunRetentionIn(BaseModel):
 
 @router.get("/admin/run-retention")
 async def get_run_retention(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """Aufbewahrung archivierter Agentenläufe in Tagen (ABC-29)."""
+    """How many days archived agent runs are kept (ABC-29)."""
     from ..services.scheduler import RUN_RETENTION_DEFAULT, RUN_RETENTION_KEY
     raw = await get_setting(db, RUN_RETENTION_KEY, str(RUN_RETENTION_DEFAULT))
     return {"days": int(raw) if raw.isdigit() else RUN_RETENTION_DEFAULT}
@@ -203,7 +206,7 @@ async def put_aux_model(task: str, data: AuxTaskIn, _: User = Depends(require_ad
 
     from ..worker.aux import AUX_TASKS, setting_key
     if task not in AUX_TASKS:
-        raise HTTPException(404, f"Unbekannte Nebenaufgabe '{task}'")
+        raise Fehler(404, "err.unknown_side_task", "Unknown side task '{name}'", name=task)
     werte = {k: v for k, v in data.model_dump().items() if v not in (None, "")}
     # No provider means delete the setting, not leave half a fragment standing.
     await set_setting(db, setting_key(task), _json.dumps(werte) if werte.get("provider") else "")

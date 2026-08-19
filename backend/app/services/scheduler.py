@@ -168,7 +168,7 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         jr.status = "ok"; jr.output = f"Workflow-Instanz #{inst.id} gestartet"
     except Exception as e:  # noqa: BLE001
         jr.status = "error"; jr.error = str(e)[:2000]
-        log.exception("workflow-job %s fehlgeschlagen", job.name)
+        log.exception("workflow job %s failed", job.name)
     jr.finished_at = _now()
 
 
@@ -203,7 +203,7 @@ async def _run_http_job(db, job: Job, jr: JobRun) -> None:
             jr.error = f"HTTP {res['status_code']}: {res.get('error', '')[:500]}"
     except Exception as e:  # noqa: BLE001
         jr.status = "error"; jr.error = str(e)[:2000]
-        log.exception("http-job %s fehlgeschlagen", job.name)
+        log.exception("http job %s failed", job.name)
     jr.finished_at = _now()
 
 
@@ -238,7 +238,7 @@ async def _flush_coalesced() -> None:
                                route=row.route, anzahl=n, schluessel=row.event_key),
                 body=json.dumps(row.payloads[:10], ensure_ascii=False)[:4000],
                 chat_id=sub.notify_chat if sub else None))
-            log.info("coalesce geflusht: %s/%s (%d Ereignisse)", row.route, row.event_key, n)
+            log.info("coalesce flushed: %s/%s (%d events)", row.route, row.event_key, n)
         await db.commit()
 
 

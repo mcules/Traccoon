@@ -138,7 +138,7 @@ class InvitationOut(BaseModel):
 
 
 class InvitationPreview(BaseModel):
-    """Was der Einladungslink vor dem Login/Register anzeigt."""
+    """What the invitation link shows before login or registration."""
     project_key: str
     project_name: str
     email: str

@@ -126,7 +126,7 @@ async def _pruefe_worker_puls() -> None:
                 await db.commit()
         _puls_gemeldet = True
     elif not steht and _puls_gemeldet:
-        log.info("Worker wieder da")
+        log.info("The worker is back")
         _puls_gemeldet = False
 
 
@@ -151,13 +151,13 @@ async def _tick() -> None:
             db.add(Deployment(project_id=int(mp), stack_dir="", self_deploy=True,
                               status="pending", source="maintenance"))
             await db.commit()
-            log.info("Wartungs-Update: letzter Agent fertig → Self-Deploy eingereiht (Projekt %s)", mp)
+            log.info("Maintenance update: the last agent is done, the self deploy is queued (project %s)", mp)
     await set_flag("update_pending", False)
     await set_flag("update_in_progress", True)
 
 
 async def run_dispatcher() -> None:
-    log.info("betriebs-tick gestartet (tick=%ss)", TICK_SECONDS)
+    log.info("operations tick started (tick=%ss)", TICK_SECONDS)
     await asyncio.sleep(5)
     while True:
         try:
@@ -185,7 +185,7 @@ async def recover_on_start() -> None:
     if just_updated:
         await set_flag("update_in_progress", False)
         await set_flag("update_pending", False)
-        log.info("Wartungs-Update abgeschlossen — Betrieb fortgesetzt.")
+        log.info("The maintenance update is finished, operation continues.")
     async with SessionLocal() as db:
         if just_updated:
             from .appsettings import set_setting
@@ -211,7 +211,7 @@ async def recover_on_start() -> None:
                 if not alive and await peek_result(run.task_id):
                     alive = True  # the worker was finished, the result still lies in Redis
             if alive:
-                log.info("recover: Lauf %s lebt — Engine bindet ihn wieder an", run.task_id)
+                log.info("recover: run %s is alive, the engine reattaches it", run.task_id)
                 continue
             issue.agent_working = False
             if issue.agent_status == TicketAgentStatus.in_progress:

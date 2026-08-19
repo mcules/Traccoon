@@ -19,7 +19,7 @@ MAX_DEPTH = 25
 
 
 class JsonLogicError(Exception):
-    """Ungültiger/unerlaubter JSONLogic-Ausdruck."""
+    """An invalid or forbidden JSONLogic expression."""
 
 
 def _truthy(v) -> bool:
@@ -81,7 +81,7 @@ def _dig(data, path: str):
 
 
 def evaluate(rule, data: dict, _depth: int = 0):
-    """Wertet einen JSONLogic-Ausdruck gegen `data` aus."""
+    """Evaluate a JSONLogic expression against `data`."""
     if _depth > MAX_DEPTH:
         raise JsonLogicError("Recursion depth exceeded")
     # Literale

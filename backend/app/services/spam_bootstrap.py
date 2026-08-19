@@ -50,7 +50,7 @@ def _stand_key(account: str, folder: str) -> str:
 
 
 def _payload(treffer: dict) -> dict:
-    """Suchtreffer → das Wenige, was für stabile Merkmale reicht."""
+    """A search hit reduced to the little that is enough for stable features."""
     return {
         "from": treffer.get("from") or [],
         "to": treffer.get("to") or [],
@@ -112,7 +112,7 @@ async def nachlernen(db: AsyncSession, owner_id: int | None, account: str, folde
     try:
         treffer = await _suchen(account, folder, limit)
     except McpError as exc:
-        log.warning("Anlernen %s/%s fehlgeschlagen: %s", account, folder, exc)
+        log.warning("Learning %s/%s failed: %s", account, folder, exc)
         return 0, 0
 
     neu = [t for t in treffer if int(t.get("uid") or 0) > stand]
@@ -207,7 +207,7 @@ async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
         try:
             treffer = await _suchen(alias, ordnername, limit)
         except McpError as exc:
-            log.warning("Gesendet-Abgleich %s fehlgeschlagen: %s", alias, exc)
+            log.warning("The sent folder reconciliation %s failed: %s", alias, exc)
             continue
         frisch = [t for t in treffer if int(t.get("uid") or 0) > stand]
         if not frisch:
@@ -241,7 +241,7 @@ JAHRE_ZURUECK = 3
 
 
 def ist_ham_ordner(name: str, *, spam_folder: str | None, jetzt_jahr: int) -> bool:
-    """Taugt dieser Ordner als Beleg für „erwünscht"?"""
+    """Does this folder work as evidence for something wanted?"""
     if spam_folder and name == spam_folder:
         return False
     erstes = name.split("/")[0].lower()
