@@ -5,15 +5,15 @@ import type { FlowNode } from "./nodes/shared";
 import Schrittprotokoll, { type Schritt } from "./Schrittprotokoll";
 
 /**
- * Den Ablauf durchspielen, bevor er echt läuft.
+ * Play the flow through before it runs for real.
  *
- * Bis hierhin merkte man erst am ersten scharfen Lauf, ob ein Ausdruck stimmt und ob die
- * Weiche in den gedachten Zweig führt — mit allen Wirkungen nach außen. Der Probelauf geht
- * denselben Graphen durch (echte Bedingungen, echte Vorlagen), aber jede Aktion meldet nur,
- * was sie täte.
+ * Until now one only noticed at the first live run whether an expression is right and
+ * whether the branch leads into the intended path, with all the effects on the outside. The
+ * trial run goes through the same graph (real conditions, real templates), but every action
+ * only reports what it would do.
  *
- * Als Eingabe dient die Beispiel-Nutzlast vom Start-Knoten: sie ist ohnehin schon da, und
- * wer sie gepflegt hat, hat damit auch seinen Testfall.
+ * The example payload from the start node serves as the input: it is there anyway, and
+ * whoever maintained it has their test case with it.
  */
 export default function ProbelaufPanel(
   { defId, nodes, graph }: { defId?: number; nodes: FlowNode[]; graph: () => unknown },
@@ -31,7 +31,7 @@ export default function ProbelaufPanel(
     if (!defId) return;
     setLäuft(true); setFehler(""); setSchritte(null);
     try {
-      // Der Stand aus dem Editor, nicht der gespeicherte — sonst prüft man von gestern.
+      // The state from the editor, not the saved one; otherwise one checks yesterday's.
       const r = await workflowApi.probelauf(defId, probe, graph());
       setSchritte(r.steps);
       const klartext: Record<string, string> = {

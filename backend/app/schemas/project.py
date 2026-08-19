@@ -7,7 +7,7 @@ from .auth import _valid_email
 
 
 class ProjectCreate(BaseModel):
-    # Key wird serverseitig aus dem Namen generiert (global eindeutig) — kein Eingabefeld mehr.
+    # The key is generated server side from the name (globally unique); no longer an input field.
     name: str = Field(min_length=1, max_length=255)
     description: str = ""
     parent_id: int | None = None
@@ -30,7 +30,7 @@ class ProjectUpdate(BaseModel):
 
 
 class ProjectSettings(BaseModel):
-    """Agenten-/Git-/Deploy-Konfiguration eines Projekts (ohne Geheimnisse)."""
+    """Agent, git and deploy configuration of a project (without secrets)."""
     managed: bool | None = None
     has_hardware: bool | None = None
     pm_chat_enabled: bool | None = None
@@ -41,7 +41,7 @@ class ProjectSettings(BaseModel):
     screenshot_enabled: bool | None = None
     plan_agent: str | None = None
     exec_agent: str | None = None
-    # Standard-Subscription des Projekts (überschreibt den persönlichen Default)
+    # Default subscription of the project (overrides the personal default)
     default_provider: str | None = None
     default_token_name: str | None = None
     vault_moc_path: str | None = None
@@ -83,12 +83,12 @@ class ProjectOut(BaseModel):
     has_hardware: bool
     git_enabled: bool = False
     testenv_enabled: bool = True
-    # Sicht des aktuellen Nutzers auf dieses Projekt
+    # View of the current user on this project
     my_role: ProjectRole
     my_ai_assign: bool
-    is_member: bool = True     # False = fremdes Projekt (nur Admin sieht das)
-    is_new: bool = False       # kürzlich (≤7 Tage) hinzugefügtes Mitglied
-    # War die Rolle direkt (Mitgliedschaft dieses Projekts) oder vom Eltern-Baum geerbt?
+    is_member: bool = True     # False = a foreign project (only an admin sees that)
+    is_new: bool = False       # recently (<= 7 days) added member
+    # Was the role direct (membership of this project) or inherited from the parent tree?
     my_role_inherited: bool = False
 
     model_config = {"from_attributes": True}

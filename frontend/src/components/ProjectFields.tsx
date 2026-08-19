@@ -27,13 +27,13 @@ const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 /**
  * Eigene Felder dieses Projekts.
  *
- * Ein Artefakt ist zunächst etwas Undefiniertes — seine Bedeutung bekommt es erst durch
- * seine Felder. Ticket und Hardware bringen einen ausgelieferten Satz mit; hier ergänzt das
- * Projekt eigene. Die ausgelieferten stehen nur zur Ansicht: Board, Sprints und der
- * KI-Lebenszyklus laufen darauf, deshalb lassen sie sich nicht entfernen.
+ * An artifact is initially something undefined; it gets its meaning only through its fields.
+ * Ticket and hardware bring a shipped set along; here the project adds its own. The shipped
+ * ones are for viewing only: board, sprints and the AI lifecycle run on them, which is why
+ * they cannot be removed.
  *
- * Was hier entsteht, gilt ausschließlich für dieses Projekt und erscheint sofort in der
- * Ticket- bzw. Hardware-Ansicht.
+ * What comes into being here applies exclusively to this project and appears immediately in
+ * the ticket respectively hardware view.
  */
 export default function ProjectFields({ project }: { project: Project }) {
   const qc = useQueryClient();
@@ -47,7 +47,7 @@ export default function ProjectFields({ project }: { project: Project }) {
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
   const ok = () => { setErr(""); inv(); };
 
-  // Nur, was dieses Projekt betrifft: Hardware nur in Hardware-Projekten.
+  // Only what concerns this project: hardware only in hardware projects.
   const sichtbar = (typen || []).filter(
     (t) => t.backing !== "hardware_asset" || project.has_hardware);
 
@@ -84,8 +84,8 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
     mutationFn: (id: number) => api.del(`/artifact-fields/${id}`), onSuccess: onOk, onError: onFail,
   });
 
-  // Bearbeitbar ist nur, was DIESEM Projekt gehört. Ausgelieferte Felder und solche, die
-  // überall gelten, stehen hier bloß zur Ansicht — sie zu ändern beträfe alle Projekte.
+  // Editable is only what belongs to THIS project. Shipped fields and those applying
+  // everywhere stand here merely for viewing; changing them would concern all projects.
   const fest = t.fields.filter((f) => f.project_id !== projectId);
   const eigene = t.fields.filter((f) => f.project_id === projectId);
 

@@ -122,7 +122,7 @@ async def add_status(
     s = WorkflowStatus(project_id=access.project.id, name=data.name, category=data.category, order=order)
     db.add(s)
     await db.flush()
-    # In alle Boards als Spalte aufnehmen
+    # Take it into all boards as a column
     boards = (await db.execute(select(Board).where(Board.project_id == access.project.id))).scalars().all()
     for b in boards:
         db.add(BoardColumn(board_id=b.id, status_id=s.id, order=order))
@@ -158,7 +158,7 @@ async def reorder_statuses(
     access: Access = Depends(require_role(ProjectRole.maintainer)),
     db: AsyncSession = Depends(get_session),
 ):
-    """Spaltenreihenfolge setzen. Wirkt auf Status-order UND Board-Spalten."""
+    """Set the column order. Acts on the status order AND the board columns."""
     rows = (await db.execute(select(WorkflowStatus).where(
         WorkflowStatus.project_id == access.project.id))).scalars().all()
     by_id = {s.id: s for s in rows}
@@ -185,13 +185,13 @@ async def delete_status(
     s = await db.get(WorkflowStatus, status_id)
     if s is None or s.project_id != access.project.id:
         raise HTTPException(404, "Status nicht gefunden")
-    # Letzten Status nicht löschen — sonst hätte das Board keine Spalte, und neue
-    # Tickets hätten keinen Zielstatus.
+    # Do not delete the last status; otherwise the board would have no column and new
+    # tickets would have no target status.
     count = (await db.execute(select(func.count(WorkflowStatus.id)).where(
         WorkflowStatus.project_id == access.project.id))).scalar() or 0
     if count <= 1:
         raise HTTPException(409, "Der letzte Status kann nicht gelöscht werden")
-    # Tickets in diesem Status blockieren das Löschen (FK ohne Cascade) — mit klarer Ansage.
+    # Tickets in this status block the deletion (an FK without cascade), with a clear message.
     n_issues = (await db.execute(select(func.count(Issue.id)).where(
         Issue.status_id == status_id))).scalar() or 0
     if n_issues:
@@ -225,7 +225,7 @@ async def start_sprint(
     access: Access = Depends(require_role(ProjectRole.member)),
     db: AsyncSession = Depends(get_session),
 ):
-    """Sprint starten. Nur einer je Board aktiv — sonst ist „der aktuelle Sprint“ mehrdeutig."""
+    """Start a sprint. Only one is active per board; otherwise "the current sprint" is ambiguous."""
     sp = await _sprint_of_project(db, sprint_id, access.project.id)
     if sp.state == SprintState.closed:
         raise HTTPException(409, "Abgeschlossener Sprint kann nicht gestartet werden")
@@ -247,7 +247,7 @@ async def complete_sprint(
     access: Access = Depends(require_role(ProjectRole.member)),
     db: AsyncSession = Depends(get_session),
 ):
-    """Sprint abschließen. Unerledigte Tickets wandern zurück in den Backlog."""
+    """Finish a sprint. Unfinished tickets wander back into the backlog."""
     sp = await _sprint_of_project(db, sprint_id, access.project.id)
     offen = (await db.execute(select(Issue).where(
         Issue.sprint_id == sp.id, Issue.resolved_at.is_(None)))).scalars().all()
@@ -266,7 +266,7 @@ async def _sprint_of_project(db: AsyncSession, sprint_id: int, project_id: int) 
         raise HTTPException(404, "Sprint nicht gefunden")
     board = await db.get(Board, sp.board_id)
     if board is None or board.project_id != project_id:
-        raise HTTPException(404, "Sprint nicht gefunden")  # kein Hinweis auf fremde Projekte
+        raise HTTPException(404, "Sprint nicht gefunden")  # no hint at foreign projects
     return sp
 
 
