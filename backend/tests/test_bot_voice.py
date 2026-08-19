@@ -1,7 +1,7 @@
-"""Sprachnachrichten werden lokal (faster-whisper) transkribiert — kein Cloud-Aufruf.
+"""Voice messages are transcribed locally (faster-whisper), with no cloud call.
 
-Getestet wird `_transkribieren` gegen einen Schein-Server (httpx MockTransport), nach dem
-Muster von `test_destinations.py`: kein echtes Netz, jeder Request lässt sich nachsehen.
+What is tested is `_transkribieren` against a mock server (httpx MockTransport), following
+the pattern of `test_destinations.py`: no real network, and every request can be inspected.
 """
 import httpx
 import pytest
@@ -10,7 +10,7 @@ from app.bot import __main__ as bot_main
 
 
 def _mock(aufzeichnung: list, antworten: list[dict]):
-    """httpx-Client, der Requests aufzeichnet und die Antworten der Reihe nach ausliefert."""
+    """httpx client that records requests and delivers the answers in order."""
     def handler(request: httpx.Request) -> httpx.Response:
         aufzeichnung.append(request)
         antwort = antworten.pop(0) if len(antworten) > 1 else antworten[0]
@@ -33,7 +33,7 @@ async def test_transkription_liefert_den_text(monkeypatch):
     text = await bot_main._transkribieren(b"fake-ogg-bytes")
 
     assert text == "was liegt heute an"
-    # Erster Versuch geht mit language=de raus — Deutsch ist der häufigste Fall.
+    # The first attempt goes out with language=de: German is the most common case.
     assert aufzeichnung[0].url.params.get("language") == "de"
 
 
@@ -77,11 +77,11 @@ async def test_ohne_whisper_url_bricht_sofort_ab(monkeypatch):
 
 
 async def test_vokabular_geht_als_initial_prompt_mit(monkeypatch):
-    """Eigennamen sind der Unterschied zwischen brauchbar und unbrauchbar.
+    """Proper names are the difference between usable and unusable.
 
-    Am 2026-08-07 auf diesem Host gemessen, derselbe Satz, dasselbe Modell (large-v3-turbo):
-    ohne Vokabelliste „Ticket Terra 1 und 30 in Trakon … Digist … Univer", mit Liste
-    wortgenau „Ticket ABC-31 in Traccoon … Digest … GameProj".
+    Measured on this host on 2026-08-07, the same sentence, the same model (large-v3-turbo):
+    without a vocabulary list "Ticket Terra 1 und 30 in Trakon … Digist … Univer", with the
+    list word for word "Ticket ABC-31 in Traccoon … Digest … GameProj".
     """
     import app.bot.__main__ as bot
 
@@ -120,7 +120,7 @@ async def test_vokabular_geht_als_initial_prompt_mit(monkeypatch):
 
 
 async def test_ohne_vokabular_kein_feld(monkeypatch):
-    """Leer heißt aus — kein leerer `initial_prompt`, der die Erkennung nur verwirrt."""
+    """Empty means off: no empty `initial_prompt` that only confuses the recognition."""
     import app.bot.__main__ as bot
 
     gesehen: list[dict] = []
@@ -151,9 +151,9 @@ async def test_ohne_vokabular_kein_feld(monkeypatch):
     import httpx
     monkeypatch.setattr(httpx, "AsyncClient", _Client)
 
-    # Leer heißt: nichts von Hand UND nichts in der Datenbank. Die Liste baut sich seit
-    # `_vokabular()` aus den eigenen Daten — die Umgebungsvariable allein leerzuräumen
-    # prüfte deshalb nur noch, dass die Testdatenbank leer ist, nicht das Verhalten.
+    # Empty means: nothing by hand AND nothing in the database. The list has been built from
+    # our own data since `_vokabular()`, so emptying the environment variable alone would
+    # only check that the test database is empty, not the behaviour.
     async def _leer():
         return ""
 
@@ -165,8 +165,8 @@ async def test_ohne_vokabular_kein_feld(monkeypatch):
 
 
 async def test_vokabular_landet_im_prompt(monkeypatch):
-    """Und umgekehrt: was in der Liste steht, bekommt Whisper auch zu sehen. Ohne das hört
-    es „Trakon" statt „Traccoon" — der ganze Grund für die Liste."""
+    """And the other way round: what stands in the list Whisper gets to see. Without that it
+    hears "Trakon" instead of "Traccoon", which is the whole reason for the list."""
     import app.bot.__main__ as bot
 
     gesehen: list[dict] = []
@@ -206,8 +206,8 @@ async def test_vokabular_landet_im_prompt(monkeypatch):
 
 
 def test_asr_text_schaelt_die_steuermarken():
-    """Qwen3-ASR schreibt seine Marken in den Text — ohne Schnitt stünde „language German
-    <asr_text>…" als „🎙 verstanden" im Chat und ginge so an den Assistenten weiter."""
+    """Qwen3-ASR writes its marks into the text; without the cut, "language German
+    <asr_text>…" would stand as "🎙 understood" in the chat and go on to the assistant that way."""
     import app.bot.__main__ as bot
 
     assert bot._asr_text("language German<asr_text>Hallo Welt.") == "Hallo Welt."
@@ -216,8 +216,8 @@ def test_asr_text_schaelt_die_steuermarken():
 
 
 async def test_qwen_ist_erste_wahl_whisper_faengt_auf(monkeypatch):
-    """Der Rückfall ist der Punkt: ein Nachrichtenverlust wäre teurer als eine langsamere
-    Erkennung. Scheitert die GPU (Container weg, Modell lädt noch), übernimmt Whisper."""
+    """The fallback is the point: losing a message would be more expensive than a slower
+    recognition. If the GPU fails (container gone, model still loading), Whisper takes over."""
     import app.bot.__main__ as bot
 
     versuche: list[str] = []
@@ -232,7 +232,7 @@ async def test_qwen_ist_erste_wahl_whisper_faengt_auf(monkeypatch):
 
     monkeypatch.setattr(bot, "ASR_URL", "http://asr-gpu:9100")
     monkeypatch.setattr(bot, "_transkribieren_qwen", qwen_kaputt)
-    monkeypatch.setattr(bot, "_vokabular", whisper_ok)   # nur damit der Whisper-Pfad läuft
+    monkeypatch.setattr(bot, "_vokabular", whisper_ok)   # only so that the Whisper path runs
 
     class _Resp:
         status_code = 200
