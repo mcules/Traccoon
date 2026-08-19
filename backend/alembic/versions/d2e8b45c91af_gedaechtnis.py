@@ -9,7 +9,6 @@ korrigieren soll. Der Vault-Zugriff läuft über die MCP-Gruppe des Owners, das 
 also zwingend persönlich — daher hängt der Ordner am Nutzer und nicht am Projekt.
 
 `agent_definitions.learns` schaltet Abruf und Rückschau pro Agent. Standard ist an; ohne
-gesetzten `users.vault_memory_path` passiert trotzdem nichts.
 
 Revision ID: d2e8b45c91af
 Revises: c1a7e94f5d32

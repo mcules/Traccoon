@@ -3,7 +3,6 @@
 Ein Artefakt (Ticket, Hardware, eigener Typ) trägt typisierte Felder; ein Auswahl-Feld hat
 eine gepflegte Werteliste, und `multi` sagt, ob ein Exemplar einen oder mehrere Werte daraus
 tragen darf. Die Werte hängen an `artifacts.id` — die gemeinsame Identität, die Ticket und
-Hardware seit `d5a1c93e7b28`/`e6b2f04d1a37` ohnehin haben.
 
 Darüber kommt mit `artifact_groups` eine reine Ordnungsebene („Vorgang" über Ticket und Bug).
 

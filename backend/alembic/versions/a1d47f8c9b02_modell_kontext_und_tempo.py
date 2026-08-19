@@ -1,13 +1,13 @@
-"""Modellkatalog: Kontextfenster und ungefähre Ausgabegeschwindigkeit
+"""Model catalog: context window and approximate output speed
 
-Der Katalog kannte nur Preise. Für die Modelle hinter dem eigenen Endpoint (LiteLLM & Co.)
-ist der Preis aber 0 — die Wahl entscheidet sich dort an etwas anderem: wie viel Kontext ein
-Modell trägt und wie schnell es schreibt. Beides stand bisher nirgends, also musste man es
-wissen oder ausprobieren.
+The catalog knew only prices. For the models behind one's own endpoint (LiteLLM and company)
+the price is 0 though, and the choice is decided by something else there: how much context a
+model carries and how fast it writes. Neither stood anywhere until now, so one had to know it
+or try it out.
 
-`context_tokens` füllt der models.dev-Abgleich für die Cloud-Modelle mit; bei lokalen bleibt
-es Handarbeit, ebenso `speed_tps` — die Geschwindigkeit hängt an der Maschine, nicht am
-Modell, und lässt sich nur messen.
+`context_tokens` is filled by the models.dev reconciliation for the cloud models; with local
+ones it stays hand work, as does `speed_tps`: the speed hangs off the machine, not off the
+model, and can only be measured.
 
 Revision ID: a1d47f8c9b02
 Revises: f2c8a91d40e5

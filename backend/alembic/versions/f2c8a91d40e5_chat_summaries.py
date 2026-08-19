@@ -1,13 +1,12 @@
-"""Gesprächsgedächtnis: fortgeschriebene Zusammenfassung je Gesprächsfaden
+"""Conversation memory: a continuously written summary per conversation thread
 
-Der Verlauf des Assistenten war ein Zeitfenster — die letzten acht Wortwechsel innerhalb von
-zwölf Stunden, alles davor ersatzlos weg. Der Bezug ging damit nicht allmählich verloren,
-sondern schlagartig: der Mensch bezog sich auf gestern, der Assistent kannte nur die letzte
-Stunde und wirkte ahnungslos.
+The history of the assistant was a time window: the last eight exchanges within twelve hours,
+everything before that gone without replacement. The reference was therefore not lost
+gradually but abruptly: the human referred to yesterday, the assistant knew only the last
+hour and seemed clueless.
 
-Ältere Wortwechsel wandern jetzt in eine Zusammenfassung, die mitwächst (Vorbild: die
-Kontext-Kompaktierung von Predecessor). Eine Zeile je (Mensch, Agent) — sie wird fortgeschrieben,
-nicht vermehrt.
+Older exchanges now wander into a summary that grows along (the model being the context
+compaction of Predecessor). One row per (human, agent): it is written on, not multiplied.
 
 Revision ID: f2c8a91d40e5
 Revises: e3f9c07a2b16
