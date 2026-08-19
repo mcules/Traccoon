@@ -8,7 +8,7 @@ const KATEGORIEN: [string, string][] = [
   ["todo", "Offen"], ["in_progress", "In Arbeit"], ["done", "Erledigt"],
 ];
 
-/** Verwaltung der Board-Spalten (Status) eines Projekts. */
+/** Management of the board columns (statuses) of a project. */
 export default function StatusManager({ project }: { project: Project }) {
   const qc = useQueryClient();
   const { data: meta } = useQuery({

@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 
-// Assistent-Inbox-Link mit Zähler ungelesener (Status "new") Eingänge.
+// Assistant inbox link with a counter of unread (status "new") items.
 export default function InboxBadge() {
   const { data = [] } = useQuery({
     queryKey: ["inbox"], queryFn: () => api.get<{ status: string }[]>("/assistant/inbox"),

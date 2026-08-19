@@ -13,7 +13,7 @@ export default function SkillsPanel() {
     mutationFn: () => api.post("/skills", { name, body, autostart }),  // Key leitet das Backend ab
     onSuccess: () => { setName(""); setBody(""); inv(); },
   });
-  // Vorschau des abgeleiteten Keys
+  // Preview of the derived key
   const keyPreview = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const del = useMutation({ mutationFn: (id: number) => api.del(`/skills/${id}`), onSuccess: inv });
 

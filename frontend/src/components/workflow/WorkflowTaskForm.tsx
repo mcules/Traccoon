@@ -5,7 +5,7 @@ import type { MemberLite } from "../../api";
 import { DynamicForm, defaultValues, missingRequired } from "./formFields";
 import { tr } from "../../i18n";
 
-/** Bearbeitungsformular für einen offenen Schritt (human_task oder approval). */
+/** Editing form for an open step (human_task or approval). */
 export default function WorkflowTaskForm({
   iid,
   sid,

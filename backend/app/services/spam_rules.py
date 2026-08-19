@@ -846,7 +846,6 @@ def evaluate(payload: dict, *, meine_adressen: frozenset[str] = frozenset(),
 
 # Signals that indicate a forgery. Whatever carries one of them is no longer a "newsletter" and
 # is not acquitted by a known sender either: the known name is precisely the worthwhile target.
-# Name ist das lohnende Ziel.
 _FAELSCHUNG = frozenset({
     "dmarc_fail", "spf_fail", "dkim_fail", "dkim_nicht_ausgerichtet", "returnpath_mismatch",
     # If our own server has already said spam, it is not "requested advertising" even when an

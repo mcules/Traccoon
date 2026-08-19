@@ -8,7 +8,7 @@ type Step = {
   status: string; note: string | null; completed_at: string | null; completed_by_id: number | null;
 };
 
-/** Beschaffungsschritte eines Exemplars: abhaken + optionale Übergabe an die nächste Person. */
+/** Procurement steps of a unit: ticking off plus an optional handover to the next person. */
 export default function AssetProcurement({
   assetId, project, onChange,
 }: {

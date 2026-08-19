@@ -1,4 +1,4 @@
-/** Einfacher Schlüssel/Wert-Editor (für auto_action.params & outcomes_map). */
+/** Simple key/value editor (for auto_action.params and outcomes_map). */
 import { tr } from "../../i18n";
 export function KeyValueEditor({
   value,

@@ -8,7 +8,7 @@ import MyWork from "../components/MyWork";
 import { usePageChrome } from "../pageChrome";
 
 export default function Projects() {
-  // Titel ohne Untermenü — sonst bliebe das der zuletzt besuchten Seite stehen.
+  // Title without a sub-menu; otherwise the one of the last visited page would stay.
   usePageChrome(tr("nav.projects"), []);
   const qc = useQueryClient();
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });

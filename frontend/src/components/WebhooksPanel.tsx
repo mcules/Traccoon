@@ -44,7 +44,7 @@ export default function WebhooksPanel() {
   const qc = useQueryClient();
   const { data: hooks } = useQuery({ queryKey: ["webhooks"], queryFn: () => api.get<any[]>("/webhooks") });
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
-  // Für mode=workflow: veröffentlichte Prozess-Definitionen zur Auswahl.
+  // For mode=workflow: published process definitions to choose from.
   const { data: defs } = useQuery({
     queryKey: ["workflow-defs"],
     queryFn: () => api.get<{ id: number; name: string; key: string; current_version_id: number | null }[]>("/workflows"),

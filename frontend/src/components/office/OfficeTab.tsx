@@ -21,7 +21,6 @@ export default function OfficeTab({ project }: { project: Project }): JSX.Elemen
   const navigate = useNavigate();
   // Stable identity: `useOfficeFeed` does hang its socket off a derived key, but an object
   // that renews itself on every render is a trap one does not have to lay.
-  // die man nicht auslegen muss.
   const scope = useMemo<Scope>(
     () => ({ kind: "project", projectId: project.id, projectKey: project.key }),
     [project.id, project.key],

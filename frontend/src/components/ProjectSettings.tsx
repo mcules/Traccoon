@@ -81,7 +81,7 @@ export default function ProjectSettings({ project }: { project: Project }) {
       const { git_token_set, testenv_env_set, ...body } = s;
       await api.put(`/projects/${project.id}/settings`, body);
       await refetch();
-      // has_hardware/managed/pm_chat steuern die Tabs in ProjectView (aus ["projects"]).
+      // has_hardware/managed/pm_chat control the tabs in ProjectView (from ["projects"]).
       qc.invalidateQueries({ queryKey: ["projects"] });
       flash("Gespeichert.");
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Speichern fehlgeschlagen"); }

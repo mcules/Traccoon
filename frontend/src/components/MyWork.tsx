@@ -134,7 +134,7 @@ function TaskModal({ task, onClose }: { task: WorkflowTaskLite; onClose: () => v
 }
 
 function ProjektGruppen({ tickets }: { tickets: MyTicket[] }) {
-  // Nach Projekt gruppieren, Reihenfolge des ersten Auftretens (bereits nach updated_at sortiert) behalten.
+  // Group by project, keeping the order of first appearance (already sorted by updated_at).
   const gruppen: { id: number; key: string; name: string; items: MyTicket[] }[] = [];
   const idx = new Map<number, number>();
   for (const t of tickets) {

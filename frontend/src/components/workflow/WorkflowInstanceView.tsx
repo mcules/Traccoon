@@ -24,7 +24,7 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: "text-muted",
 };
 
-/** Read-only-Graph einer laufenden/erledigten Instanz mit hervorgehobenem Fortschritt. */
+/** Read-only graph of a running or finished instance with the progress highlighted. */
 export default function WorkflowInstanceView({
   iid,
   projectId,

@@ -6,7 +6,7 @@ import { api } from "../api";
 type Step = { key: string; title: string; hint: string; done: boolean; required: boolean };
 type Status = { steps: Step[]; ready: boolean; projects: number; dismissed: boolean };
 
-/** Zielort je Schritt — sonst weiß niemand, wo er klicken soll. */
+/** Target place per step; otherwise nobody knows where to click. */
 const ZIEL: Record<string, { to: string; label: string }> = {
   claude_token: { to: "/settings", label: "onboarding.ziel_tresor" },
   project: { to: "/", label: "onboarding.ziel_projekt_anlegen" },

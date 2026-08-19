@@ -168,7 +168,7 @@ AKTIONEN: dict[str, list[dict]] = {
                        _f("task.auto", "ja/nein", "Von einer gelernten Regel freigegeben")],
 }
 
-# Knotentypen, die selbst etwas hinterlassen.
+# Node types that leave something behind themselves.
 KNOTEN: dict[str, list[dict]] = {
     "agent_task": [
         _f("agent.status", "text", "Ergebnis des Laufs (done, blocked, failed, …)"),
