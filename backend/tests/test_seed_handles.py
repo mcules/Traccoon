@@ -1,5 +1,4 @@
 """Every edge of the shipped flows has to hang off an exit the interface actually draws.
-auch zeichnet.
 
 The occasion: the acceptance showed a step "in the air". The edges were there, but the
 action node offered only the default exit; React Flow draws an edge only when the named exit
