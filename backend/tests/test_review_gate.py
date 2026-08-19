@@ -227,7 +227,6 @@ async def test_pannenmeldungen_erreichen_den_prompt_nicht(db):
     max_tokens" in the comment history of its ticket, took that for its task and built an
     escalation into the provider router, in a ticket about a failing job. Such messages stay
     visible in the ticket but out of the prompt.
-    Prompt draußen.
     """
     from app.models.ticket import Comment
     from app.services.workflow_engine import _agent_note
