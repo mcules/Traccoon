@@ -1,4 +1,4 @@
-"""UserStatus.placeholder — Platzhalter-Konten für Personen-Zuweisung ohne Login
+"""UserStatus.placeholder: placeholder accounts for person assignment without a login
 
 Revision ID: b4e6f1a92c83
 Revises: a3b1c9d72f40
@@ -14,10 +14,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Neuer Enum-Wert für Konten, die nur als Zuweisungsziel existieren (kein Login).
+    # A new enum value for accounts that exist only as an assignment target (no login).
     op.execute("ALTER TYPE userstatus ADD VALUE IF NOT EXISTS 'placeholder'")
 
 
 def downgrade() -> None:
-    # Postgres kann Enum-Werte nicht entfernen — Downgrade ist ein No-Op (Doku-Zweck).
+    # Postgres cannot remove enum values, so the downgrade is a no-op (for documentation).
     pass

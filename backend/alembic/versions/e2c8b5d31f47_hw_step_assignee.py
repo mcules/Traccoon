@@ -1,4 +1,4 @@
-"""Zuständige je Beschaffungsschritt: hardware_workflow_steps.assignee (TRA-26)
+"""Responsible person per procurement step: hardware_workflow_steps.assignee (TRA-26)
 
 Revision ID: e2c8b5d31f47
 Revises: d9a3f6c14b72

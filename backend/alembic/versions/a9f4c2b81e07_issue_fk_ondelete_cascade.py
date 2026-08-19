@@ -14,8 +14,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Alle drei Spalten sind NOT NULL -> SET NULL wuerde Nullable-Semantik brechen,
-    # daher CASCADE (fachlich korrekt: Issue kann ohne gueltigen Typ/Status/Reporter nicht existieren).
+    # All three columns are NOT NULL, so SET NULL would break the nullable semantics; hence
+    # CASCADE (correct in substance: an issue cannot exist without a valid type, status or reporter).
     op.drop_constraint('issues_type_id_fkey', 'issues', type_='foreignkey')
     op.create_foreign_key(None, 'issues', 'issue_types', ['type_id'], ['id'], ondelete='CASCADE')
 
