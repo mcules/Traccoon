@@ -16,7 +16,7 @@ import Admin from "./pages/Admin";
 import Konto from "./pages/Konto";
 import Inbox from "./pages/Inbox";
 import Mail from "./pages/Mail";
-import PluginRahmen from "./pages/PluginRahmen";
+import PluginHost from "./pages/PluginHost";
 // Canvas, pixel world and engine of the office are a chunk of their own. Imported
 // statically it would lie in the main bundle and the split in ProjectView would be in vain.
 const Office = lazy(() => import("./pages/Office"));
@@ -112,7 +112,7 @@ export default function App() {
         <Route path="/profil" element={<AlteAdresse to="/account" />} />
         {/* Plugins liegen unter einem eigenen kurzen Praefix — sie sind Bereiche,
             aber keine eingebauten. */}
-        <Route path="/p/:slug" element={<PluginRahmen />} />
+        <Route path="/p/:slug" element={<PluginHost />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/settings/:tab" element={<EinstellungenTab />} />
         <Route path="/documents/:key" element={<AblageSeite />} />

@@ -28,8 +28,8 @@ def _zip(manifest: dict, dateien: dict[str, str] | None = None) -> bytes:
 
 MANIFEST = {
     "slug": "probe", "name": "Probe", "version": "1.0.0", "entry": "index.html",
-    "liest": ["series:number"],
-    "contributions": [{"typ": "seite", "pfad": "", "label": "Probe"}],
+    "reads": ["series:number"],
+    "contributions": [{"type": "page", "path": "", "label": "Probe"}],
 }
 
 
@@ -48,8 +48,8 @@ async def test_neues_plugin_bekommt_nichts_geschenkt(client, db):
     assert r.status_code == 201, r.text
 
     (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
-    assert p["liest"] == ["series:number"]
-    assert p["liest_erlaubt"] == []
+    assert p["reads"] == ["series:number"]
+    assert p["reads_granted"] == []
 
 
 async def test_nur_admins_spielen_ein(client, db):
@@ -65,13 +65,13 @@ async def test_freigabe_gilt_und_laesst_sich_zuruecknehmen(client, db):
     await _einspielen(client, admin)
 
     r = await client.put("/plugins/probe/rechte", headers=auth(admin),
-                         json={"liest_erlaubt": ["series:number"]})
+                         json={"reads_granted": ["series:number"]})
     assert r.status_code == 200
-    assert r.json()["liest_erlaubt"] == ["series:number"]
+    assert r.json()["reads_granted"] == ["series:number"]
 
     r = await client.put("/plugins/probe/rechte", headers=auth(admin),
-                         json={"liest_erlaubt": []})
-    assert r.json()["liest_erlaubt"] == []
+                         json={"reads_granted": []})
+    assert r.json()["reads_granted"] == []
 
 
 async def test_ungefordertes_recht_laesst_sich_nicht_erlauben(client, db):
@@ -81,7 +81,7 @@ async def test_ungefordertes_recht_laesst_sich_nicht_erlauben(client, db):
     await _einspielen(client, admin)
 
     r = await client.put("/plugins/probe/rechte", headers=auth(admin),
-                         json={"liest_erlaubt": ["series:location"]})
+                         json={"reads_granted": ["series:location"]})
     assert r.status_code == 400
     assert r.json()["key"] == "err.right_not_requested"
 
@@ -92,29 +92,29 @@ async def test_neue_fassung_darf_sich_nicht_selbst_mehr_erlauben(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _einspielen(client, admin)
     await client.put("/plugins/probe/rechte", headers=auth(admin),
-                     json={"liest_erlaubt": ["series:number"]})
+                     json={"reads_granted": ["series:number"]})
 
     gierig = {**MANIFEST, "version": "2.0.0",
-              "liest": ["series:number", "series:location", "series:text"]}
+              "reads": ["series:number", "series:location", "series:text"]}
     assert (await _einspielen(client, admin, gierig)).status_code == 201
 
     (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
-    assert p["liest"] == ["series:number", "series:location", "series:text"]
+    assert p["reads"] == ["series:number", "series:location", "series:text"]
     # Das Alte gilt weiter, das Neue faengt bei null an.
-    assert p["liest_erlaubt"] == ["series:number"]
+    assert p["reads_granted"] == ["series:number"]
 
 
 async def test_weggefallenes_recht_verschwindet_auch_aus_der_freigabe(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _einspielen(client, admin)
     await client.put("/plugins/probe/rechte", headers=auth(admin),
-                     json={"liest_erlaubt": ["series:number"]})
+                     json={"reads_granted": ["series:number"]})
 
-    schlank = {**MANIFEST, "version": "2.0.0", "liest": []}
+    schlank = {**MANIFEST, "version": "2.0.0", "reads": []}
     await _einspielen(client, admin, schlank)
 
     (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
-    assert p["liest"] == [] and p["liest_erlaubt"] == []
+    assert p["reads"] == [] and p["reads_granted"] == []
 
 
 # ── Sichtbarkeit ─────────────────────────────────────────────────────────────

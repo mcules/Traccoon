@@ -1,13 +1,13 @@
-"""Pluginsystem: Zip in der Datenbank, Ausliefern, generische Tabellen (JSON gegen eine
-Schema-Whitelist), SSRF-geschuetzter Fetch-Proxy — und die Rechte, unter denen ein Plugin
-Traccoon-Daten sehen darf.
+"""Plugin system: a zip in the database, serving it, generic tables (JSON against a schema
+whitelist), an SSRF-protected fetch proxy — and the rights under which a plugin may see
+Traccoon data.
 
-Ein Plugin laeuft im Browser in einem iframe **ohne** `allow-same-origin`. Es hat damit eine
-undurchsichtige Herkunft und kommt weder an den Token im `localStorage` noch an die API. Was
-es an Daten braucht, erfragt es beim Wirt (`frontend/src/pages/PluginRahmen.tsx`), und der
-gibt nur heraus, was das Manifest angemeldet (`liest`) und ein Mensch freigegeben hat
-(`liest_erlaubt`). Deny-default, wie bei den Werkzeugen der Agenten: Fordern darf ein
-Manifest alles, erlauben nur ein Admin.
+A plugin runs in the browser in an iframe **without** `allow-same-origin`. It therefore has
+an opaque origin and reaches neither the token in `localStorage` nor the API. Whatever data
+it needs it asks the host for (`frontend/src/pages/PluginHost.tsx`), and the host hands out
+only what the manifest declared (`reads`) and a human granted (`reads_granted`). Deny by
+default, as with the tools of the agents: a manifest may ask for anything, only an admin
+grants it.
 """
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ async def list_plugins(user: User = Depends(get_current_user), db: AsyncSession 
                         # Der Wirt braucht die Freigaben, um jeden Ruf des Plugins daran zu
                         # messen. `liest` steht daneben, damit die Oberflaeche zeigen kann,
                         # was ein Plugin verlangt und noch nicht bekommen hat.
-                        "liest": p.liest or [], "liest_erlaubt": p.liest_erlaubt or []})
+                        "reads": p.reads or [], "reads_granted": p.reads_granted or []})
     return out
 
 
@@ -60,8 +60,8 @@ async def list_all(_: User = Depends(require_admin), db: AsyncSession = Depends(
     return [{"slug": p.slug, "name": p.name, "version": p.version, "icon": p.icon,
              "description": p.description, "entry": p.entry, "enabled": p.enabled,
              "all_users": p.all_users, "allowed_user_ids": p.allowed_user_ids or [],
-             "contributions": p.contributions or [], "liest": p.liest or [],
-             "liest_erlaubt": p.liest_erlaubt or [], "csp": p.csp or {},
+             "contributions": p.contributions or [], "reads": p.reads or [],
+             "reads_granted": p.reads_granted or [], "csp": p.csp or {},
              "allowed_hosts": p.allowed_hosts or []} for p in rows]
 
 
@@ -103,12 +103,12 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     plugin.allowed_hosts = manifest.get("allowed_hosts", [])
     plugin.contributions = manifest.get("contributions", [])
     plugin.csp = manifest.get("csp", {}) or {}
-    gefordert = [str(r) for r in (manifest.get("liest") or [])]
+    gefordert = [str(r) for r in (manifest.get("reads") or [])]
     # Eine neue Fassung darf sich nicht selbst mehr erlauben: Bestehende Freigaben bleiben,
     # aber nur solange sie noch gefordert werden. Alles Neue faengt bei "nicht erlaubt" an
     # und braucht wieder einen Menschen.
-    plugin.liest_erlaubt = [r for r in (plugin.liest_erlaubt or []) if r in gefordert]
-    plugin.liest = gefordert
+    plugin.reads_granted = [r for r in (plugin.reads_granted or []) if r in gefordert]
+    plugin.reads = gefordert
     await db.flush()
     # Alte Dateien ersetzen. Das `flush` danach ist nicht kosmetisch: Ohne es fuehrt
     # SQLAlchemy erst die neuen INSERTs und dann die DELETEs aus, und der eindeutige Index
@@ -232,7 +232,7 @@ async def serve_file(slug: str, path: str, request: Request,
 
 class RechteIn(BaseModel):
     """Was ein Mensch an einem Plugin entscheidet."""
-    liest_erlaubt: list[str] | None = None
+    reads_granted: list[str] | None = None
     enabled: bool | None = None
     all_users: bool | None = None
     allowed_user_ids: list[int] | None = None
@@ -247,13 +247,13 @@ async def set_rechte(slug: str, data: RechteIn, _: User = Depends(require_admin)
     ueber diesen Weg an Rechte kommen, die niemand an ihm gelesen hat.
     """
     plugin = await _plugin(db, slug)
-    if data.liest_erlaubt is not None:
-        gefordert = set(plugin.liest or [])
-        unbekannt = [r for r in data.liest_erlaubt if r not in gefordert]
+    if data.reads_granted is not None:
+        gefordert = set(plugin.reads or [])
+        unbekannt = [r for r in data.reads_granted if r not in gefordert]
         if unbekannt:
             raise Fehler(400, "err.right_not_requested",
                          "The plugin does not ask for the right '{recht}'", recht=unbekannt[0])
-        plugin.liest_erlaubt = list(data.liest_erlaubt)
+        plugin.reads_granted = list(data.reads_granted)
     if data.enabled is not None:
         plugin.enabled = data.enabled
     if data.all_users is not None:
@@ -263,10 +263,10 @@ async def set_rechte(slug: str, data: RechteIn, _: User = Depends(require_admin)
     await db.commit()
     return {"slug": plugin.slug, "enabled": plugin.enabled, "all_users": plugin.all_users,
             "allowed_user_ids": plugin.allowed_user_ids or [],
-            "liest_erlaubt": plugin.liest_erlaubt or []}
+            "reads_granted": plugin.reads_granted or []}
 
 
-@router.get("/_bruecke.js")
+@router.get("/_bridge.js")
 async def bruecke_js():
     """Das Stueck JavaScript, das ein Plugin als `traccoon` einbindet.
 
@@ -274,7 +274,7 @@ async def bruecke_js():
     keine Kopie im Zip jedes Plugins: Sonst traegt jedes Plugin seinen eigenen, irgendwann
     veralteten Stand der Bruecke mit sich herum.
     """
-    datei = Path(__file__).resolve().parent.parent / "static" / "plugin_bruecke.js"
+    datei = Path(__file__).resolve().parent.parent / "static" / "plugin_bridge.js"
     return Response(content=datei.read_bytes(), media_type="application/javascript",
                     headers={"Cache-Control": "no-cache"})
 

@@ -85,7 +85,7 @@ export default function PluginsPanel() {
               </div>
               {p.description && <div className="text-xs text-muted">{p.description}</div>}
               <Rechte plugin={p} onSetzen={(liste) =>
-                rechte.mutate({ slug: p.slug, body: { liest_erlaubt: liste } })} />
+                rechte.mutate({ slug: p.slug, body: { reads_granted: liste } })} />
               {(p.allowed_hosts || []).length > 0 && (
                 <div className="text-xs text-muted">
                   {tr("plugins.fremde_quellen")}: {p.allowed_hosts.join(", ")}
@@ -111,11 +111,11 @@ export default function PluginsPanel() {
 function Rechte({ plugin, onSetzen }: {
   plugin: PluginVerwaltung; onSetzen: (liste: string[]) => void;
 }) {
-  const gefordert = plugin.liest || [];
+  const gefordert = plugin.reads || [];
   if (gefordert.length === 0) {
     return <div className="text-xs text-muted">{tr("plugins.keine_rechte")}</div>;
   }
-  const erlaubt = plugin.liest_erlaubt || [];
+  const erlaubt = plugin.reads_granted || [];
   const umschalten = (recht: string) =>
     onSetzen(erlaubt.includes(recht) ? erlaubt.filter((r) => r !== recht) : [...erlaubt, recht]);
 

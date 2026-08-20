@@ -119,10 +119,10 @@ needs it asks the host for over `postMessage`:
 
 ```js
 const series = await traccoon.live("location");
-const points = await traccoon.punkte("tracker.phone", { von: "2026-08-01T00:00:00Z" });
+const points = await traccoon.points("tracker.phone", { from: "2026-08-01T00:00:00Z" });
 ```
 
-The host measures every call against two things: what the manifest declares under `liest`,
+The host measures every call against two things: what the manifest declares under `reads`,
 and what an admin has ticked off. Deny by default, like the tools of the agents — a manifest
 may ask for anything, only a human grants it. A plugin never sees more than the logged-in
 person may see, because the host uses the same endpoints as the UI.

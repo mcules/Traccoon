@@ -359,9 +359,9 @@ export interface PluginInfo {
   icon: string;
   entry: string;
   contributions: PluginBeitrag[];
-  /** Rechte, die das Manifest anmeldet — und die, die ein Mensch davon freigegeben hat. */
-  liest: string[];
-  liest_erlaubt: string[];
+  /** Rights the manifest declares — and those a human has granted of them. */
+  reads: string[];
+  reads_granted: string[];
 }
 
 export interface PluginVerwaltung extends PluginInfo {
@@ -379,7 +379,7 @@ export const pluginApi = {
   /** Alles, auch Abgeschaltetes — die Sicht der Verwaltung. */
   alle: () => api.get<PluginVerwaltung[]>("/plugins/alle"),
   rechte: (slug: string, body: {
-    liest_erlaubt?: string[]; enabled?: boolean;
+    reads_granted?: string[]; enabled?: boolean;
     all_users?: boolean; allowed_user_ids?: number[];
   }) => api.put<PluginVerwaltung>(`/plugins/${slug}/rechte`, body),
   del: (slug: string) => api.del(`/plugins/${slug}`),
