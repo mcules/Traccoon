@@ -94,8 +94,9 @@ On top of that:
 ### Connecting systems without code
 
 - **Inbound:** webhooks with a GUID address, optional HMAC, filters on a header **or** on
-  the payload (`payload:event.type`), idempotency over an arbitrarily deep field, modes for
-  ticket, message, event and starting a flow
+  the payload (`payload:event.type`), idempotency over an arbitrarily deep field. Two modes
+  only — raise an event, or start a flow. Everything a webhook used to do on its own (open a
+  ticket, send a message, ask the assistant) is a node in that flow now
 - **Outbound:** **destinations** hold base URL and authentication (basic, bearer, api key,
   HMAC, OAuth2 client credentials) in one place, callable from flows, jobs and, once
   granted, from agents
@@ -103,8 +104,33 @@ On top of that:
   up in the flow editor as an action
 - **Jobs:** cron, interval or one-shot, running a prompt, a script, an HTTP call or a flow.
   A job's parameter set becomes the flow's start context
-- **Plugins:** a zip in the database, table CRUD, fetch proxy with SSRF protection
+- **Plugins:** own views as a zip — see below
 - **Skills:** versioned instructions that agents receive
+
+### Plugins
+
+Traccoon itself needs no map. What it needs are series, sharing and triggers; drawing them
+is exchangeable. So views live in plugins, and a plugin is a zip with a `manifest.json`.
+
+A plugin runs in an iframe **without** `allow-same-origin`. It therefore has an opaque
+origin: no access to the token in `localStorage`, none to the API, and the delivered CSP
+sets `connect-src 'none'` — it cannot reach the network on its own at all. Whatever data it
+needs it asks the host for over `postMessage`:
+
+```js
+const series = await traccoon.live("location");
+const points = await traccoon.punkte("tracker.phone", { von: "2026-08-01T00:00:00Z" });
+```
+
+The host measures every call against two things: what the manifest declares under `liest`,
+and what an admin has ticked off. Deny by default, like the tools of the agents — a manifest
+may ask for anything, only a human grants it. A plugin never sees more than the logged-in
+person may see, because the host uses the same endpoints as the UI.
+
+Third-party libraries belong in the zip, not in a CDN: the CSP loads no foreign scripts, and
+a plugin should start without internet. The map plugin ships Leaflet that way.
+
+Plugins live in their own repository: [mcules/Traccoon-Plugins](https://github.com/mcules/Traccoon-Plugins).
 
 ### Assistant, mail and spam
 
@@ -115,10 +141,13 @@ On top of that:
   from your own decisions. Questions come back as a message with buttons, and the result is
   measured against your own hit rate
 
-### Measurement series
+### Data series
 
-Flows record numbers (battery level, fill level, disk space). That answers the question you
-actually have: where is this heading, and when do I have to act?
+A series is a name, a kind and a sequence of points. The kind decides which fields count —
+**number** (battery level, fill level), **location** (lat/lon) or **text**. One concept, one
+write action, one place for sharing and clean-up, instead of the same structure three times.
+
+Numbers answer the question you actually have: where is this heading, and when do I act?
 
 - Least squares line over a selectable window: change per day, days left, date, quality
 - Early warning N days ahead, exactly once per refill instead of daily
@@ -126,6 +155,23 @@ actually have: where is this heading, and when do I have to act?
   side is down and can no longer report its own failure
 - Plausibility bounds, because devices report nonsense when they do not know a value. The
   view shows the history, a dashed forecast and lets you drop single outliers
+
+Locations are the same mechanism with a different shape:
+
+- **One address per device.** `POST|GET /api/ingest/<token>` recognises OwnTracks, Overland,
+  Traccar/OsmAnd and flat JSON (what Home Assistant sends) **by their content**. You paste
+  the address into the device and it works — no format setting anywhere
+- **A rest filter** keeps the table from growing at a desk overnight as fast as on the
+  motorway. A point is stored when the device moved far enough, or after an interval
+- **Named places raise events.** Entering and leaving start flows, which is the whole reason
+  locations live here and not in a map application next door. The fence deliberately does
+  *not* depend on the rest filter: walking across a boundary takes fewer metres than the
+  filter wants to see
+- Devices are shared per device, not all-or-nothing
+
+Deliberately no PostGIS: the extension is not in the image, the tests run against SQLite,
+and for a handful of places per person a haversine loop in Python answers faster than a
+database could accept the query.
 
 ### Notifications
 
@@ -166,13 +212,13 @@ actually have: where is this heading, and when do I have to act?
 | `db` | PostgreSQL 16 | storage |
 | `redis` | Redis 7 | queue, event fan-out, flags |
 | `deployer` | Python, docker socket | build, deploy, rollback, test environments |
-| `chat-bot` | Python | notifications and questions in the messenger |
+| `telegram-bot` | Python | notifications and questions in the messenger |
 | `shotter` | Node, headless browser | screenshots for agents |
 | `whisper`, `asr-gpu` | Python | local speech recognition (CPU or GPU) |
 | `filmer` | Node | end-of-day office film as a GIF |
 
-About 89,000 lines of code and 893 automated tests, plus browser probes under
-`tools/uitest` for what only shows up in a browser.
+About 107,000 lines of code and 1,141 automated tests across 98 files, plus browser probes
+under `tools/uitest` for what only shows up in a browser.
 
 ## Getting started
 
@@ -221,6 +267,9 @@ Out of the box Traccoon is a complete ticket system. Everything else is opt-in:
 - The agent path needs a deployable project with `compose.preview.yml` for test
   environments and review to run end to end.
 - Model prices and identifiers in the catalog are defaults and editable in the UI.
+- **The Alembic history currently has three heads.** With `DEV_CREATE_ALL` (the default) that
+  does not matter, because the schema is applied at startup. Anyone who wants to migrate
+  properly has to write a merge revision first.
 
 ## Contributing
 
