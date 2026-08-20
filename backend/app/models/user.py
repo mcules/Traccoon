@@ -40,9 +40,15 @@ class User(TimestampMixin, Base):
     # Which way this person gets messages when the sender names none. The way belongs to the
     # person, not to the message: whoever triggers a notification rarely knows whether the
     # recipient uses Telegram at all.
-    notify_default: Mapped[str] = mapped_column(String(20), default="telegram")  # telegram|email
+    notify_default: Mapped[str] = mapped_column(String(20), default="telegram")  # telegram|email|ziel
     # Different address for notifications; empty = the login address (`email`).
     notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Kanal „ziel“: der Aufruf geht an dieses Ziel (Basis-URL und Anmeldung stehen dort).
+    # Damit ist jeder Dienst erreichbar, der eine URL annimmt — ntfy, Matrix, Gotify, ein
+    # eigener Bot —, ohne dass Traccoon ihn kennen müsste. Ein neuer Melder ist damit ein
+    # Eintrag unter „Ziele“ und keine Codeänderung mehr.
+    notify_destination_id: Mapped[int | None] = mapped_column(
+        ForeignKey("destinations.id", ondelete="SET NULL"), nullable=True)
     # UI language. German is the source language of the shipped catalogs, everything else
     # is a translation, so an unknown value simply falls back to it.
     locale: Mapped[str] = mapped_column(String(10), default="de")
@@ -51,6 +57,14 @@ class User(TimestampMixin, Base):
     # der Server in UTC und in einer fest verdrahteten Zone — ein Cron-Job „0 8 * * *" lief
     # damit um 10 Uhr, und niemand sah warum.
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Berlin")
+    # Welches Postfach zuletzt offen war. Am Menschen und nicht im Browser gespeichert: wer
+    # sich am Abend am anderen Rechner anmeldet, will dort weitermachen, wo er aufgehört hat.
+    mail_last_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("mail_accounts.id", ondelete="SET NULL"), nullable=True)
+    # Token, mit dem ein Agent den MCP-Zugang dieser Person benutzt (Bearer). Er steht hier
+    # verschlüsselt und wird beim Erzeugen genau einmal angezeigt — danach nur noch neu
+    # setzbar. Wer ihn hat, sieht die freigegebenen Postfächer dieser Person.
+    mail_mcp_token_enc: Mapped[str] = mapped_column(String, default="")
 
     # MCP-Gateway (MCPJungle) pro User — harte serverseitige Tool-Trennung.
     mcp_group: Mapped[str] = mapped_column(String(120), default="")          # MCPJungle-Gruppe

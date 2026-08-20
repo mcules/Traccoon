@@ -219,9 +219,10 @@ export function ListenKopf({ spalten, children }: { spalten: string; children: R
  *  click, context menu) and therefore cannot be a `ListenZeile`. */
 export const ZEILE = "group block bg-surface px-3 py-2.5 text-sm transition-colors hover:bg-card";
 
-export function ListenZeile({ spalten, gedimmt = false, warnung = false, onClick, children }: {
-  spalten?: string; gedimmt?: boolean; warnung?: boolean; onClick?: () => void;
-  children: ReactNode;
+export function ListenZeile({ spalten, gedimmt = false, warnung = false, dicht = false,
+                             onClick, children }: {
+  spalten?: string; gedimmt?: boolean; warnung?: boolean; dicht?: boolean;
+  onClick?: () => void; children: ReactNode;
 }) {
   // Without columns the entry only gets the surface and its padding; the layout inside is
   // the caller's business. That way an entry with a second line (a URL, a last run) does not
@@ -232,7 +233,7 @@ export function ListenZeile({ spalten, gedimmt = false, warnung = false, onClick
   return (
     <div
       onClick={onClick}
-      className={`group bg-surface px-3 py-2.5 text-sm transition-colors ${layout} ${
+      className={`group bg-surface px-3 text-sm transition-colors ${dicht ? "py-1.5" : "py-2.5"} ${layout} ${
         onClick ? "cursor-pointer hover:bg-card" : ""} ${gedimmt ? "opacity-55" : ""} ${
         // Ein Streifen links statt einer eingefärbten Fläche: die Zeile bleibt lesbar, und
         // in einer langen Liste sieht man die auffälligen Einträge trotzdem von weitem.
@@ -278,14 +279,17 @@ export function Bereich({ titel, nebentitel, hinweis, werkzeuge, children }: {
  * not have to learn a second language for the same movement. What it does not do is change
  * the address — that stays the job of `usePageChrome`.
  */
-export function Reiter<T extends string>({ aktiv, auswahl, onWaehlen }: {
-  aktiv: T; auswahl: [T, string][]; onWaehlen: (wert: T) => void;
+export function Reiter<T extends string>({ aktiv, auswahl, onWaehlen, senkrecht = false }: {
+  aktiv: T; auswahl: [T, string][]; onWaehlen: (wert: T) => void; senkrecht?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-1 border-b border-line pb-2">
+    <div className={senkrecht
+      ? "flex shrink-0 flex-row flex-wrap gap-1 sm:w-40 sm:flex-col sm:flex-nowrap sm:border-r sm:border-line sm:pr-3"
+      : "flex flex-wrap gap-1 border-b border-line pb-2"}>
       {auswahl.map(([wert, label]) => (
         <button key={wert} onClick={() => onWaehlen(wert)}
           className={`rounded-md px-2.5 py-1.5 text-sm transition-colors ${
+            senkrecht ? "text-left" : ""} ${
             aktiv === wert
               ? "bg-brand/15 font-medium text-brand ring-1 ring-inset ring-brand/30"
               : "text-muted hover:bg-card hover:text-ink"}`}>

@@ -45,6 +45,71 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+class PersonenKanal:
+    """Ein Kanal je Person statt je Projekt.
+
+    Die Projekträume tragen, was ein Projekt angeht. Post gehört keinem Projekt, sondern
+    einem Menschen — und sie soll ankommen, egal auf welcher Seite er gerade steht (der
+    Zähler in der Leiste ist überall).
+    """
+
+    def __init__(self) -> None:
+        self.offen: dict[int, set[WebSocket]] = {}
+
+    async def verbinden(self, user_id: int, ws: WebSocket) -> None:
+        await ws.accept()
+        self.offen.setdefault(user_id, set()).add(ws)
+
+    def trennen(self, user_id: int, ws: WebSocket) -> None:
+        self.offen.get(user_id, set()).discard(ws)
+
+    def jemand_da(self, user_id: int) -> bool:
+        return bool(self.offen.get(user_id))
+
+    async def senden(self, user_id: int, nachricht: dict) -> None:
+        tot = []
+        for ws in list(self.offen.get(user_id, set())):
+            try:
+                await ws.send_json(nachricht)
+            except Exception:  # noqa: BLE001
+                tot.append(ws)
+        for ws in tot:
+            self.trennen(user_id, ws)
+
+
+personen = PersonenKanal()
+
+
+@router.websocket("/ws/me")
+async def personen_ws(websocket: WebSocket, token: str = ""):
+    """Der persönliche Kanal: hier kommt an, was den Menschen angeht (neue Post)."""
+    try:
+        payload = decode_access_token(token)
+    except jwt.PyJWTError:
+        await websocket.close(code=4401)
+        return
+    async with SessionLocal() as db:
+        user = await db.get(User, int(payload.get("sub", 0)))
+        if user is None or user.status != UserStatus.active:
+            await websocket.close(code=4403)
+            return
+        widerrufen = (user.password_changed_at is not None
+                      and int(payload.get("iat", 0) or 0)
+                      < int(user.password_changed_at.timestamp()))
+        if widerrufen:
+            await websocket.close(code=4403)
+            return
+        user_id = user.id
+
+    await personen.verbinden(user_id, websocket)
+    try:
+        while True:
+            # Der Kanal ist eine Einbahnstraße; empfangen wird nur, um das Trennen zu merken.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        personen.trennen(user_id, websocket)
+
+
 @router.websocket("/projects/{project_id}/ws")
 async def project_ws(websocket: WebSocket, project_id: int, token: str = ""):
     try:

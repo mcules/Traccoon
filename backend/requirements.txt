@@ -14,6 +14,13 @@ alembic==1.14.0
 python-multipart==0.0.20
 croniter==5.0.1
 aiogram>=3.13,<4
+# Mail-Client: IMAP (lesen, Ordner, Entwuerfe) und HTML-Umwandlung fuer die Vorschau.
+# Synchron und im Threadpool aufgerufen — dieselbe Bibliothek, die sich im imap-mcp bewaehrt hat.
+imapclient>=3.0
+html2text>=2024.2.26
+# HTML einer fremden Mail saeubern, bevor es ueberhaupt in die Naehe eines Browsers kommt.
+# Der Rahmen im Frontend ist abgeschottet (sandbox + CSP) — das hier ist die zweite Tuer.
+nh3>=0.2.17
 # Tests (laufen im selben Image; Prod-Pfade unberührt)
 pytest==8.3.4
 pytest-asyncio==0.25.0
