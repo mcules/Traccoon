@@ -668,7 +668,7 @@ async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     if not pfad or not text:
         # Not an error: a flow that has nothing to write should not fail because of it.
         inst.context = {**ctx, key: {"ok": False, "error": "kein Pfad oder kein Text"}}
-        return {"action": "notiz_anhaengen", "ok": False, "grund": "leer"}
+        return {"action": "note_append", "ok": False, "reason": "leer"}
 
     argumente: dict = {"target": {"type": "path", "path": pfad}, "content": text}
     if ueberschrift:
@@ -683,7 +683,10 @@ async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     werkzeug = str(params.get("tool") or "obsidian__obsidian_append_to_note").strip()
     ergebnis = await aufrufen(db, await _besitzer(db, inst), werkzeug, argumente)
     inst.context = {**ctx, key: ergebnis}
-    return {"action": "notiz_anhaengen", "pfad": pfad, "ok": ergebnis["ok"],
+    # Der Rueckgabewert nennt die Aktion so, wie sie heisst. Er landet im Schritt-Protokoll
+    # und nicht im Kontext — der Kontext-Schluessel `notiz` bleibt deshalb, wie er ist:
+    # Der steht in gespeicherten Graphen.
+    return {"action": "note_append", "path": pfad, "ok": ergebnis["ok"],
             "error": ergebnis.get("error")}
 
 
