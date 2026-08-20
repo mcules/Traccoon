@@ -76,13 +76,13 @@ class Plugin(TimestampMixin, Base):
     table_schema: Mapped[dict] = mapped_column(JSON, default=dict)   # {table: {col: type}} — Whitelist
     allowed_hosts: Mapped[list] = mapped_column(JSON, default=list)  # SSRF-Allowlist
     contributions: Mapped[list] = mapped_column(JSON, default=list)
-    # Welche Traccoon-Daten das Plugin lesen will (aus dem Manifest) und was ein Admin davon
-    # freigegeben hat. Deny-default wie bei den Werkzeugen der Agenten: Das Manifest fordert,
-    # ein Mensch erlaubt. Ohne Haken antwortet die Bruecke mit einer Sperre.
-    liest: Mapped[list] = mapped_column(JSON, default=list)
-    liest_erlaubt: Mapped[list] = mapped_column(JSON, default=list)
-    # Zusaetzliche CSP-Quellen aus dem Manifest, etwa der Kachelserver einer Karte. Ohne das
-    # laedt ein Plugin nur eigene Dateien, denn die Vorgabe verbietet jede fremde Herkunft.
+    # What Traccoon data the plugin wants to read (from its manifest) and what an admin has
+    # granted of it. Deny by default, as with the tools of the agents: a manifest asks, a
+    # human allows. Without the tick the bridge answers with a refusal.
+    reads: Mapped[list] = mapped_column(JSON, default=list)
+    reads_granted: Mapped[list] = mapped_column(JSON, default=list)
+    # Extra CSP sources from the manifest, a map's tile server for instance. Without them a
+    # plugin loads only its own files, because the default forbids every foreign origin.
     csp: Mapped[dict] = mapped_column(JSON, default=dict)
     service_spec: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

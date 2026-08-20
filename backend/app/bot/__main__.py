@@ -619,9 +619,28 @@ async def run_bot() -> None:
                 log.exception("notifier error")
             await asyncio.sleep(3)
 
+    async def _agent_rollen(db, user_id: int | None) -> list[str]:
+        """Die Agenten, die dieser Mensch ansprechen kann.
+
+        Aus der Datenbank statt aus einer Liste im Code: Wer einen Agenten anlegt, soll ihn
+        auch im Chat erreichen, ohne dass jemand den Bot anfasst. Der persoenliche Assistent
+        faellt raus — der ist der Normalfall und braucht kein Praefix davor.
+        """
+        from ..models.agents import AgentDefinition
+        if user_id is None:
+            return []
+        rows = (await db.execute(select(AgentDefinition.role).where(
+            AgentDefinition.user_id == user_id,
+            AgentDefinition.project_id.is_(None)))).scalars().all()
+        return sorted({r for r in rows if r and r != "assistent"})
+
     @dp.message(Command("start"))
     async def _start(m: Message):
-        await m.answer("🦝 Traccoon-Bot. /tasks · /comment &lt;KEY&gt; &lt;Text&gt; · /gameproj &lt;Text&gt;")
+        async with SessionLocal() as db:
+            user = await _acting_user(db, m.chat.id)
+            rollen = await _agent_rollen(db, user.id if user else None)
+        agenten = " \u00b7 /agent <" + "|".join(rollen) + "> <Text>" if rollen else ""
+        await m.answer("\U0001f99d Traccoon-Bot. /tasks \u00b7 /comment <KEY> <Text>" + agenten)
 
     @dp.message(Command("tasks"))
     async def _tasks(m: Message):
@@ -653,23 +672,39 @@ async def run_bot() -> None:
             await apply_user_comment(db, iss, text, user.id if user else None, "Telegram")
         await m.answer(f"Kommentar zu {key} gespeichert.")
 
-    @dp.message(Command("gameproj"))
-    async def _uniwar_chat(m: Message):
-        # Chat with the GameProj operator instead of the personal assistant. The same path as
-        # `_assistant_chat`, only with meta.agent set: `_handle_assistant_task` resolves the
-        # agent from it (otherwise it falls back to 'assistent').
+    @dp.message(Command("agent"))
+    async def _agent_chat(m: Message):
+        """Mit einem benannten Agenten reden statt mit dem persoenlichen Assistenten.
+
+        Das war einmal ein Handler je Agent — `/gameproj` fuer genau einen Operator, fest in
+        den Bot gebaut. Ein zweiter Agent haette einen zweiten Handler und ein Deployment
+        gebraucht. Jetzt ist der Name ein Argument, und welche Namen es gibt, kommt aus den
+        Agenten, die dieser Mensch tatsaechlich hat.
+
+        Der Weg ist derselbe wie bei `_assistant_chat`, nur mit gesetztem meta.agent:
+        `_handle_assistant_task` loest den Agenten daraus auf (sonst faellt es auf
+        'assistent' zurueck).
+        """
         if not await _allowed(m.from_user.id):
             return
-        text = (m.text or "").split(maxsplit=1)
-        text = text[1].strip() if len(text) > 1 else ""
-        if not text:
-            await m.answer("Nutzung: /gameproj &lt;Frage oder Auftrag&gt;")
-            return
+        teile = (m.text or "").split(maxsplit=2)
+        name = teile[1].strip().lower() if len(teile) > 1 else ""
+        text = teile[2].strip() if len(teile) > 2 else ""
+
         async with SessionLocal() as db:
             user = await _acting_user(db, m.chat.id)
+            rollen = await _agent_rollen(db, user.id if user else None)
+            if not name or name not in rollen:
+                bekannt = ", ".join(rollen) or "keine"
+                await m.answer("Nutzung: /agent <name> <Frage oder Auftrag>\n"
+                               f"Verfuegbar: {bekannt}")
+                return
+            if not text:
+                await m.answer(f"Nutzung: /agent {name} <Frage oder Auftrag>")
+                return
             await create_chat_task(db, user.id if user else None, text, str(m.chat.id),
-                                   agent="gameproj-operator")
-        await m.answer("🛰 …")
+                                   agent=name)
+        await m.answer("\U0001f6f0 \u2026")
 
     @dp.message(F.reply_to_message)
     async def _reply(m: Message):

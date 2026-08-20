@@ -76,6 +76,11 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("SET lock_timeout = '3s'"))
             # Add additive columns idempotently (create_all only creates them on FRESH
             # tables, not on existing ones). Order and style as with ADD COLUMN IF NOT EXISTS.
+            # Jedes Schema-Update laeuft in einem eigenen Sicherungspunkt. Ohne den riss ein
+            # einziges fehlerhaftes DDL alle anderen mit: Die Ausnahme wurde zwar gefangen,
+            # aber die Transaktion war ab da tot, jedes folgende Statement lief in
+            # "current transaction is aborted", und beim Verlassen des Blocks rollte alles
+            # zurueck — waehrend der Start erfolgreich aussah.
             for _ddl in (
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cap_baseline_run_id INTEGER",
                 # Correction rounds spent at the review gate: on the ticket instead of in
@@ -408,10 +413,22 @@ async def lifespan(app: FastAPI):
                 # Plugins: was sie an Traccoon-Daten lesen wollen, was davon freigegeben ist
                 # und welche fremden Quellen ihre Seite laden darf. Ohne diese drei Spalten
                 # bleibt die Bruecke zum Wirt geschlossen, denn sie fragt genau danach.
-                "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS liest JSON "
+                "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads JSON "
                 "DEFAULT '[]'::json NOT NULL",
-                "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS liest_erlaubt JSON "
+                "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads_granted JSON "
                 "DEFAULT '[]'::json NOT NULL",
+                # Die Spalten hiessen anfangs deutsch. Umbenennen statt neu anlegen, damit
+                # erteilte Freigaben nicht verlorengehen; der DO-Block macht es wiederholbar.
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='plugins' AND column_name='liest') THEN "
+                "UPDATE plugins SET reads = liest WHERE reads::text = '[]'; "
+                "ALTER TABLE plugins DROP COLUMN liest; END IF; "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='plugins' AND column_name='liest_erlaubt') THEN "
+                "UPDATE plugins SET reads_granted = liest_erlaubt "
+                "WHERE reads_granted::text = '[]'; "
+                "ALTER TABLE plugins DROP COLUMN liest_erlaubt; END IF; END $$;",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS csp JSON "
                 "DEFAULT '{}'::json NOT NULL",
                 # Datenreihen: create_all legt die Tabellen an, den zusammengesetzten Index
@@ -426,7 +443,8 @@ async def lifespan(app: FastAPI):
                 if not await _fehlt_noch(conn, _ddl):
                     continue
                 try:
-                    await conn.execute(text(_ddl))
+                    async with conn.begin_nested():
+                        await conn.execute(text(_ddl))
                 except Exception as exc:  # noqa: BLE001 - a lock conflict must not topple the start
                     log.warning("Schema update skipped (%s): %s", _ddl[:60], exc)
     async with SessionLocal() as db:
