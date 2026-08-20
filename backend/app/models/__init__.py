@@ -8,6 +8,7 @@ from .enums import (  # noqa: F401
 from .user import SYSTEM_USER_ID, User  # noqa: F401
 from .project import Project, ProjectMember, ResourceGrant, default_ai_assign  # noqa: F401
 from .invitation import ProjectInvitation  # noqa: F401
+from .mail import MailAccount, MailIdentity  # noqa: F401
 from .ticket import (  # noqa: F401
     ActivityLog, Attachment, Blocker, Board, BoardColumn, Comment, Issue, IssueCounter,
     IssueLink, IssueTag, IssueType, SavedFilter, Sprint, Tag, TicketFileChange, WorkflowStatus,
@@ -24,6 +25,7 @@ from .ops import (  # noqa: F401
     ProviderModel, WebhookCoalesce, WebhookSub,
 )
 from .i18n import UiLocale, UiTranslation  # noqa: F401
+from .documents import DocEntry, DocSeries  # noqa: F401
 from .metrics import MetricPoint, MetricSeries  # noqa: F401
 from .secrets import UserSecret  # noqa: F401
 from .destination import Destination  # noqa: F401
