@@ -664,7 +664,7 @@ async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     text = str(_interp(params.get("text") or "", ctx)).strip()
     ueberschrift = str(_interp(params.get("heading") or params.get("heading") or "",
                                ctx)).strip()
-    key = str(params.get("context_key") or "notiz")
+    key = str(params.get("context_key") or "note")
     if not pfad or not text:
         # Not an error: a flow that has nothing to write should not fail because of it.
         inst.context = {**ctx, key: {"ok": False, "error": "kein Pfad oder kein Text"}}
@@ -1085,7 +1085,7 @@ async def _assistent_auftrag(db, inst: WorkflowInstance, params: dict, ctx: dict
         # seine Sache mitbringt (Betreff, Zusammenfassung, Volltext), ist auch ohne Prompt
         # bearbeitbar — der Assistent hat dann seinen eigenen.
         return {"action": "assistant_task", "started": False, "reason": "kein Auftrag"}
-    besitzer = params.get("owner_id") or inst.started_by or _dig(ctx, "eingang.owner_id")
+    besitzer = params.get("owner_id") or inst.started_by or _dig(ctx, "intake.owner_id")
     try:
         besitzer = int(besitzer) if besitzer is not None else None
     except (TypeError, ValueError):

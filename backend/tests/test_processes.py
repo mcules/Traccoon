@@ -220,18 +220,18 @@ async def test_kontextfelder_nennen_ihre_herkunft(client, db):
     r = await client.get("/workflow-context-fields", headers=auth(anna))
     assert r.status_code == 200, r.text
     k = r.json()
-    assert {"basis", "ausloeser", "aktionen", "knoten"} <= set(k)
+    assert {"base", "triggers", "actions", "nodes"} <= set(k)
 
     # A trigger brings its payload along …
-    mail = [f["pfad"] for f in k["ausloeser"]["mail.received"]]
-    assert "mail.subject" in mail and "eingang.owner_id" in mail
+    mail = [f["path"] for f in k["triggers"]["mail.received"]]
+    assert "mail.subject" in mail and "intake.owner_id" in mail
     # … an action its results …
-    assert "spam.score" in [f["pfad"] for f in k["aktionen"]["spam_evaluate"]]
-    assert "project.needs_acceptance" in [f["pfad"] for f in k["aktionen"]["refresh_facts"]]
+    assert "spam.score" in [f["path"] for f in k["actions"]["spam_evaluate"]]
+    assert "project.needs_acceptance" in [f["path"] for f in k["actions"]["refresh_facts"]]
     # … and an agent run what the lifecycle branches on.
-    assert "agent.has_subtickets" in [f["pfad"] for f in k["knoten"]["agent_task"]]
+    assert "agent.has_subtickets" in [f["path"] for f in k["nodes"]["agent_task"]]
     # Every field explains itself.
-    assert all(f["beschreibung"] and f["typ"] for f in k["basis"])
+    assert all(f["description"] and f["type"] for f in k["base"])
 
 
 async def test_kontextfelder_decken_die_guards_des_standardsatzes(client, db):
@@ -241,10 +241,10 @@ async def test_kontextfelder_decken_die_guards_des_standardsatzes(client, db):
 
     anna = await make_user(db, "anna")
     k = (await client.get("/workflow-context-fields", headers=auth(anna))).json()
-    bekannt = {f["pfad"] for gruppe in ("basis",) for f in k[gruppe]}
-    for topf in ("ausloeser", "aktionen", "knoten"):
+    bekannt = {f["path"] for gruppe in ("base",) for f in k[gruppe]}
+    for topf in ("triggers", "actions", "nodes"):
         for felder in k[topf].values():
-            bekannt |= {f["pfad"] for f in felder}
+            bekannt |= {f["path"] for f in felder}
 
     def vars_von(regel, raus: set):
         if isinstance(regel, dict):

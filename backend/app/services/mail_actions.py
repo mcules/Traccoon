@@ -8,8 +8,8 @@ their order is drawn by the graph (template `mail-eingang`, `workflow_templates`
 The context of an instance is the shared language of these steps:
 
     mail      raw payload of the watcher (from/to/subject/body/headers/account/folder/uid)
-    eingang   settings of the trigger (classifying agent, assistant, prompt, owner)
-    klasse    result of the local classification (category, urgency, short version)
+    intake    settings of the trigger (classifying agent, assistant, prompt, owner)
+    classification  result of the local classification (category, urgency, short version)
     policy    learned rule about the sender (redaction, hint, auto approval)
     spam      verdict of the spam detection plus, later, the answer of the human
     task      the created assistant item
@@ -32,7 +32,7 @@ def _mail(ctx: dict) -> dict:
 
 
 def _eingang(ctx: dict) -> dict:
-    e = ctx.get("eingang")
+    e = ctx.get("intake")
     return e if isinstance(e, dict) else {}
 
 
@@ -101,7 +101,7 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     if eingang.get("auto_run"):  # the trigger enforces a chatless immediate run.
         auto = True
 
-    inst.context = {**ctx, "klasse": klasse,
+    inst.context = {**ctx, "classification": klasse,
                     "policy": {"redaction": redaction, "action_hint": action_hint or "",
                                "auto": bool(auto), "id": policy.id if policy else None}}
     return {"action": "mail_classify", "category": klasse["category"],
@@ -120,7 +120,7 @@ async def spam_beurteilen(db, inst: WorkflowInstance, params: dict, ctx: dict) -
     from .spam_review import beurteilen
 
     urteil = await beurteilen(db, _owner(inst, ctx), _mail(ctx),
-                              cls=(ctx.get("klasse") or {}))
+                              cls=(ctx.get("classification") or {}))
     inst.context = {**ctx, "spam": {**((ctx.get("spam") or {})), **urteil}}
     return {"action": "spam_evaluate", "score": urteil["score"],
             "geklaert": urteil["geklaert_urteil"] or "nein",
@@ -217,21 +217,21 @@ async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -
 # Parametersatz, damit Vorlage und Altnamen dieselben benutzen.
 AUFTRAG_PARAMS: dict = {
     "kind": "email",
-    "source": "{{ eingang.source }}",
-    "reference": "{{ eingang.source_ref }}",
-    "agent": "{{ eingang.agent }}",
+    "source": "{{ intake.source }}",
+    "reference": "{{ intake.source_ref }}",
+    "agent": "{{ intake.agent }}",
     "title": "{{ mail.subject | default:\"(kein Betreff)\" }}",
-    "task": "{{ eingang.prompt_tmpl }}",
-    "category": "{{ klasse.category }}",
-    "priority": "{{ klasse.priority | default:\"normal\" }}",
-    "summary": "{{ klasse.redacted_summary }}",
+    "task": "{{ intake.prompt_tmpl }}",
+    "category": "{{ classification.category }}",
+    "priority": "{{ classification.priority | default:\"normal\" }}",
+    "summary": "{{ classification.redacted_summary }}",
     "hint": "{{ policy.action_hint }}",
     "redaction": "{{ policy.redaction | default:\"redacted\" }}",
     # Welches Feld den Text trägt, hängt am Absender der Mail, nicht am Ablauf.
     "full_text": "{{ mail.body_text | default:mail.body | default:mail.body_html_as_text }}",
     "meta": {"account": "{{ mail.account }}", "uid": "{{ mail.uid }}",
              "from": "{{ mail.from }}", "subject": "{{ mail.subject }}",
-             "sensitive": "{{ klasse.sensitive }}"},
+             "sensitive": "{{ classification.sensitive }}"},
     # Eine gelernte Regel gibt frei, alles andere fragt.
     "approval": {"!": {"var": "policy.auto"}},
 }
@@ -244,7 +244,7 @@ KARTE_PARAMS: dict = {
     # `from` kommt je nach Melder als Text oder als Liste von {name, addr}; die Filterkette
     # holt in beiden Fällen die Adresse heraus, statt eine Python-Liste hinzuschreiben.
     "text": "Von {{ mail.from | field:\"addr\" | join:\", \" | default:\"?\" }}\n"
-            "{{ klasse.redacted_summary }}",
+            "{{ classification.redacted_summary }}",
 }
 
 
