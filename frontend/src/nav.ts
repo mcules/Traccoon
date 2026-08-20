@@ -27,15 +27,16 @@ export type NavEintrag = {
   label: string;
   icon: string;
   to: string;
-  /** Counter of what waits there (currently only the assistant inbox). */
-  zaehler?: "inbox";
+  /** Counter of what waits there: the assistant inbox, or unread mail across all accounts. */
+  zaehler?: "inbox" | "mail";
 };
 
 export function hauptNavigation(istAdmin: boolean): NavEintrag[] {
   return [
     { key: "projekte", label: tr("layout.projekte"), icon: "🗂️", to: "/" },
     { key: "inbox", label: tr("layout.inbox"), icon: "📥", to: "/inbox", zaehler: "inbox" },
-    { key: "buero", label: tr("layout.buero_2"), icon: "🏢", to: "/buero" },
+    { key: "mail", label: "Mail", icon: "✉️", to: "/mail", zaehler: "mail" },
+    { key: "buero", label: tr("layout.buero_2"), icon: "🏢", to: "/office" },
     { key: "prozesse", label: tr("layout.prozesse"), icon: "🔀", to: "/processes" },
     { key: "einstellungen", label: tr("layout.einstellungen"), icon: "⚙️", to: "/settings" },
     ...(istAdmin ? [{ key: "admin", label: tr("layout.admin"), icon: "🛠️", to: "/admin" }] : []),

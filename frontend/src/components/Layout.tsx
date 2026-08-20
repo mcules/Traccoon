@@ -1,8 +1,8 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { api, Project } from "../api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, getToken, Project } from "../api";
 import { useAuth } from "../auth";
 import { useChrome, type ChromeTab } from "../pageChrome";
 import { hauptNavigation, istBereich, SCHIENE_BREITE, type NavEintrag } from "../nav";
@@ -82,6 +82,71 @@ function useInboxZaehler(): number {
 }
 
 /**
+ * Der persönliche Kanal: das Postfach meldet sich selbst.
+ *
+ * Das Gegenstück zu `mail_watch` im Backend — dort hält ein Wächter die IMAP-Verbindung
+ * offen (IDLE), hier hört die Oberfläche zu. Gemeldet wird nur, DASS sich etwas getan hat;
+ * den Stand holen die üblichen Abfragen. Zwei Quellen für dieselbe Zahl wären eine zu viel.
+ *
+ * Der Kanal hängt am Layout und nicht an der Mail-Seite: der Zähler in der Leiste ist
+ * überall, also muss die Meldung auch überall ankommen.
+ */
+function useMailPush(): void {
+  const qc = useQueryClient();
+  useEffect(() => {
+    const token = getToken();
+    if (!token) return;
+    const adresse = `${location.origin.replace(/^http/, "ws")}/api/ws/me`
+      + `?token=${encodeURIComponent(token)}`;
+    let ws: WebSocket | null = null;
+    let wiederholen: number | undefined;
+    let zu = false;
+
+    const verbinden = () => {
+      if (zu) return;
+      ws = new WebSocket(adresse);
+      ws.onmessage = (e) => {
+        try {
+          if (JSON.parse(e.data)?.type !== "mail") return;
+        } catch { return; }
+        qc.invalidateQueries({ queryKey: ["mail-unread"] });
+        qc.invalidateQueries({ queryKey: ["mail-folders"] });
+        qc.invalidateQueries({ queryKey: ["mail-list"] });
+      };
+      // Ein abgerissener Kanal ist der Normalfall (Schlaf, Netzwechsel, Neustart des
+      // Backends). Ohne Wiederaufbau wäre die Oberfläche danach still und niemand wüsste,
+      // warum nichts mehr kommt.
+      ws.onclose = () => { if (!zu) wiederholen = window.setTimeout(verbinden, 5000); };
+    };
+    verbinden();
+
+    return () => {
+      zu = true;
+      window.clearTimeout(wiederholen);
+      ws?.close();
+    };
+  }, [qc]);
+}
+
+/**
+ * Ungelesene Post über alle Postfächer.
+ *
+ * Seltener als der Assistenten-Eingang abgefragt: dahinter steckt je Postfach eine
+ * IMAP-Verbindung, und wer neue Post auf die Sekunde sehen will, hat den Reiter ohnehin
+ * offen.
+ */
+function useMailZaehler(): number {
+  const { data } = useQuery({
+    queryKey: ["mail-unread"],
+    queryFn: () => api.get<{ total: number }>("/mailbox/unread"),
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    retry: false,
+  });
+  return data?.total ?? 0;
+}
+
+/**
  * The areas as a narrow rail on the left, from the medium width on.
  *
  * A rail and not a bar in the header: the header already carries the project (title,
@@ -93,6 +158,8 @@ function BereichsSchiene() {
   const { user } = useAuth();
   const loc = useLocation();
   const wartend = useInboxZaehler();
+  const neueMails = useMailZaehler();
+  useMailPush();
   const eintraege = hauptNavigation(user?.global_role === "admin");
 
   return (
@@ -100,7 +167,7 @@ function BereichsSchiene() {
       <Link to="/" title={tr("layout.traccoon_start")} className="mb-2 text-2xl">🦝</Link>
       {eintraege.map((e) => (
         <SchienenKnopf key={e.key} eintrag={e} aktiv={istBereich(loc.pathname, e.to)}
-          zaehler={e.zaehler === "inbox" ? wartend : 0} />
+          zaehler={e.zaehler === "inbox" ? wartend : e.zaehler === "mail" ? neueMails : 0} />
       ))}
     </nav>
   );
@@ -139,6 +206,7 @@ function MobileMenu() {
   const { user } = useAuth();
   const loc = useLocation();
   const wartend = useInboxZaehler();
+  const neueMails = useMailZaehler();
   const eintraege = hauptNavigation(user?.global_role === "admin");
   const close = () => setOpen(false);
 
@@ -160,8 +228,10 @@ function MobileMenu() {
                 }`}>
                 <span>{e.icon}</span>
                 <span className="flex-1">{e.label}</span>
-                {e.zaehler === "inbox" && wartend > 0 && (
-                  <span className="rounded-full bg-brand px-1.5 text-xs text-white tabular-nums">{wartend}</span>
+                {((e.zaehler === "inbox" && wartend > 0) || (e.zaehler === "mail" && neueMails > 0)) && (
+                  <span className="rounded-full bg-brand px-1.5 text-xs text-white tabular-nums">
+                    {e.zaehler === "inbox" ? wartend : neueMails}
+                  </span>
                 )}
               </Link>
             ))}
@@ -194,7 +264,7 @@ function UserMenu() {
           <div className="absolute right-0 z-30 mt-2 w-48 rounded-lg border border-line bg-card p-1 text-sm shadow-2xl">
             <div className="truncate px-2 py-1.5 text-xs text-muted">{name}</div>
             <div className="my-1 border-t border-line" />
-            <Link to="/konto" onClick={() => setOpen(false)}
+            <Link to="/account" onClick={() => setOpen(false)}
               className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.konto")}</Link>
             <button onClick={logout}
               className="block w-full rounded px-2 py-1.5 text-left text-ink hover:bg-surface">{tr("layout.abmelden")}</button>

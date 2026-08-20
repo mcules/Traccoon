@@ -11,7 +11,7 @@ from . import models  # noqa: F401  (fills the metadata for create_all)
 from .api import (
     admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, deployments,
     destinations, files, hardware, invitations,
-    i18n as i18n_api, issues, lifecycle, mail, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
+    documents as documents_api, i18n as i18n_api, issues, lifecycle, mail, mailbox, mcp_server, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
     projects, repo, office,
     runs, secrets, skills, testenv, users, workflows, ws,
 )
@@ -417,9 +417,27 @@ async def lifespan(app: FastAPI):
         # global default set: idempotent, published only on a change.
         from .services.workflow_seed import ensure_builtin_set
         await ensure_builtin_set(db)
+        # Webhooks der alten Modi (Ticket, Meldung, Assistent) laufen ab jetzt über Abläufe.
+        # Einmalig und idempotent — wer schon umgestellt ist, wird nicht angefasst.
+        from .services.webhook_modes import umstellen as webhooks_umstellen
+        anzahl = await webhooks_umstellen(db)
+        if anzahl:
+            log.info("%s Webhook(s) auf Abläufe umgestellt", anzahl)
+        # Dasselbe für die Job-Arten: Prompt, Skript und HTTP sind Knoten im Ablauf.
+        from .services.job_modes import umstellen as jobs_umstellen
+        anzahl = await jobs_umstellen(db)
+        if anzahl:
+            log.info("%s Job(s) auf Abläufe umgestellt", anzahl)
         # Lift the automatically created procurement chains of the projects to the same shape.
         from .services.hardware_workflow import refresh_generated_definitions
         await refresh_generated_definitions(db)
+        # Abläufe sprechen englisch: Aktionsnamen, Parameter und Kontextfelder. Erst NACH den
+        # Erzeugern, sonst schriebe der nächste Seed-Lauf seine frische Fassung ohne Marke
+        # daneben und die Umstellung liefe bei jedem Start wieder an.
+        from .services.workflow_terms import migriere_alle as begriffe_umstellen
+        anzahl = await begriffe_umstellen(db)
+        if anzahl:
+            log.info("%s Ablauf-Fassung(en) auf englische Begriffe umgeschrieben", anzahl)
         # Artifact register (ticket, hardware): maintainable in the admin area, missing
         # states are added, existing labels stay.
         from .services.artifacts import backfill_hardware_artifacts, ensure_builtin_types
@@ -458,7 +476,13 @@ async def lifespan(app: FastAPI):
         # regularly be over before anyone looks.
         asyncio.create_task(run_deploy_watch()),
     ]
+    # Postfächer, die sich von selbst melden (IMAP IDLE). Läuft nur, solange jemand
+    # zuschaut — siehe `mail_watch`.
+    from .services import mail_watch
+    await mail_watch.starten()
+
     yield
+    await mail_watch.stoppen()
     for t in tasks:
         t.cancel()
 
@@ -490,9 +514,12 @@ api.include_router(processes.router)
 api.include_router(ops.router)
 api.include_router(destinations.router)
 api.include_router(metrics_api.router)
+api.include_router(documents_api.router)
 api.include_router(i18n_api.router)
 api.include_router(artifacts_api.router)
 api.include_router(mail.router)
+api.include_router(mailbox.router)
+api.include_router(mcp_server.router)
 api.include_router(secrets.router)
 api.include_router(permissions.router)
 api.include_router(notifications.router)
