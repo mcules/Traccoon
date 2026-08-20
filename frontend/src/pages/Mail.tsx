@@ -903,7 +903,9 @@ function VerfassenDialog({ kontoId, start, onClose, onFehler }: {
   });
 
   return (
-    <Dialog breit titel="Nachricht verfassen" onClose={onClose}
+    // Festgehalten: Wer eine Mail schreibt, verliert bei einem danebengegangenen Klick
+    // sonst den halben Text. Geschlossen wird über ✕, Abbrechen, Entwurf oder Senden.
+    <Dialog breit festhalten titel="Nachricht verfassen" onClose={onClose}
       fuss={
         <div className="flex items-center gap-2">
           <Zeilenknopf onClick={() => entwurf.mutate()}>Als Entwurf sichern</Zeilenknopf>

@@ -54,10 +54,15 @@ export type KnopfStand = "gut" | "schlecht" | "offen";
 const RUMPF = "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 "
   + "text-sm leading-none transition-colors disabled:cursor-not-allowed "
   + "disabled:border-line disabled:bg-transparent disabled:text-muted";
+// Blau heißt: die FLÄCHE ist blau, nicht die Schrift. Ein Knopf mit blauem Rahmen und
+// blauer Schrift ist immer noch überwiegend Hintergrund — und damit fast so leise wie der
+// graue, den er ablösen sollte.
 const FARBE = {
   haupt: "border border-brand bg-brand text-white hover:bg-brand/90",
-  neben: "border border-brand/50 text-brand hover:bg-brand/10",
-  gefahr: "border border-red-500/50 text-red-300 hover:bg-red-500/10 hover:text-red-200",
+  // Optisch gleich: „haupt" sagt im Code, worum es auf der Fläche geht, und ist kein
+  // Versprechen auf ein anderes Aussehen. Wer später abstufen will, ändert diese eine Zeile.
+  neben: "border border-brand bg-brand text-white hover:bg-brand/90",
+  gefahr: "border border-red-600 bg-red-600 text-white hover:bg-red-600/90",
 } as const;
 export const KNOPF = {
   haupt: `${RUMPF} ${FARBE.haupt}`,
@@ -127,9 +132,9 @@ export function IconKnopf({ icon, titel, onClick, gefahr = false, disabled = fal
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm
         leading-none transition-colors disabled:border-line disabled:text-muted
         disabled:opacity-60 ${
-        aktiv ? "border-brand bg-brand/20 text-brand"
-          : gefahr ? "border-red-500/40 text-red-300 hover:bg-red-500/10 hover:text-red-200"
-                   : "border-brand/40 text-brand hover:bg-brand/10"
+        aktiv ? "border-brand bg-brand text-white ring-2 ring-brand/40"
+          : gefahr ? "border-red-600 bg-red-600 text-white hover:bg-red-600/90"
+                   : "border-brand bg-brand text-white hover:bg-brand/90"
       }`}
     >
       {icon}
@@ -148,20 +153,26 @@ export function Aktionen({ children }: { children: ReactNode }) {
  * Escape closes, a click beside it closes, and the body does not scroll underneath while it
  * is open. The heading says what is being edited, because the row it came from is covered.
  */
-export function Dialog({ titel, onClose, children, fuss, breit = false }: {
+export function Dialog({ titel, onClose, children, fuss, breit = false, festhalten = false }: {
   titel: string; onClose: () => void; children: ReactNode; fuss?: ReactNode; breit?: boolean;
+  /** Kein Escape, kein Klick daneben — nur die eigenen Knöpfe schließen.
+   *
+   *  Für Dialoge, in denen etwas entsteht: Ein danebengegangener Klick hat einen halb
+   *  geschriebenen Text gekostet, und „Escape" tippt man beim Formulieren schneller, als man
+   *  denkt. Wo nur ausgewählt wird, bleibt beides — dort ist Wegklicken bequem, nicht teuer. */
+  festhalten?: boolean;
 }) {
   useEffect(() => {
-    const zu = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const zu = (e: KeyboardEvent) => { if (e.key === "Escape" && !festhalten) onClose(); };
     window.addEventListener("keydown", zu);
     const vorher = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", zu); document.body.style.overflow = vorher; };
-  }, [onClose]);
+  }, [onClose, festhalten]);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
-      onClick={onClose} role="dialog" aria-modal="true" aria-label={titel}>
+      onClick={festhalten ? undefined : onClose} role="dialog" aria-modal="true" aria-label={titel}>
       <div onClick={(e) => e.stopPropagation()}
         className={`flex max-h-[88vh] w-full flex-col rounded-xl border border-line bg-card shadow-2xl ${
           breit ? "max-w-3xl" : "max-w-lg"}`}>

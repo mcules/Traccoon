@@ -36,11 +36,19 @@ holen" bedeutet, der Normalzustand war.
 
 Drei Arten, mehr braucht es nicht:
 
+**Blau ist die Fläche, nicht die Schrift.** Ein Knopf mit blauem Rahmen und blauer Schrift
+ist immer noch überwiegend Hintergrund — und damit fast so leise wie der graue, den er
+ablösen sollte.
+
 | Art | Aussehen | Wofür |
 |-----|----------|-------|
 | `haupt` | gefüllt blau | die eine Handlung, um die es auf dieser Fläche geht |
-| `neben` (Vorgabe) | blauer Rahmen, blaue Schrift | alles andere, was man tun kann |
-| `gefahr` | roter Rahmen | was man nicht versehentlich tut |
+| `neben` (Vorgabe) | gefüllt blau | alles andere, was man tun kann |
+| `gefahr` | gefüllt rot | was man nicht versehentlich tut |
+
+`haupt` und `neben` sehen gleich aus. Der Unterschied steht im Code, nicht im Bild: Er sagt,
+worum es auf der Fläche geht, und ist kein Versprechen auf ein anderes Aussehen. Wer später
+abstufen will, ändert eine Zeile in `ui.tsx`.
 
 ```tsx
 <Knopf art="haupt" onClick={speichern} disabled={!geaendert}>Speichern</Knopf>
