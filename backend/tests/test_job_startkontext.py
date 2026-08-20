@@ -64,10 +64,21 @@ async def test_script_argumente_bleiben_draussen(db):
     """A list is a script argument, not a context: regression protection."""
     anna = await make_user(db, "anna")
     _jr, inst = await _lauf(db, anna, ["-x", "42"])
-    assert inst.context == {}
+    assert "reihe" not in inst.context
 
 
 async def test_ohne_parameter_wie_bisher(db):
     anna = await make_user(db, "anna")
     _jr, inst = await _lauf(db, anna, [])
-    assert inst.context == {}
+    # Was ohne Parametersatz bleibt, ist der Rahmen des Laufs: wer ihn bestellt hat und die
+    # Zeitwerte, die jeder wiederkehrende Ablauf braucht.
+    assert set(inst.context) == {"job", "today", "now", "since", "window"}
+
+
+async def test_der_lauf_weiss_wer_ihn_bestellt_hat(db):
+    """Ohne das könnte ein Ablauf weder seinen Namen nennen noch den Digest verlinken —
+    beides brauchte er, als die Job-Arten zu Abläufen wurden."""
+    anna = await make_user(db, "anna")
+    jr, inst = await _lauf(db, anna, {})
+    assert inst.context["job"] == {"id": jr.job_id, "name": "Wächter", "run_id": jr.id}
+    assert jr.workflow_instance_id == inst.id

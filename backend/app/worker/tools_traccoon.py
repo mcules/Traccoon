@@ -261,21 +261,13 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         db.add(jr)
         j.last_run_at = _now()
         await db.flush()
-        # Run script/workflow/http directly here (as the scheduler and the API do). Without
-        # that, a workflow job ran as a prompt job at the assistant, with no workflow and no error.
+        # Ein Weg für alle Arten (wie im Zeitplan und in der API).
         from ..services.scheduler import run_job_kind
-        if await run_job_kind(db, j, jr):
-            await db.commit()
-            return (f"Job #{j.id} '{j.name}' ({j.kind}) ausgeführt: {jr.status}"
-                    + (f" — {jr.output[:500]}" if jr.output else "")
-                    + (f" — FEHLER: {jr.error[:500]}" if jr.error else ""))
-        # Commit FIRST, queue AFTERWARDS; otherwise a free worker grabs the assignment before
-        # the JobRun exists and the run stays on "running" forever (see api/ops.py).
+        await run_job_kind(db, j, jr)
         await db.commit()
-        from ..core.redis import enqueue_task
-        await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}", "job_id": j.id,
-                            "job_run_id": jr.id})
-        return f"Job #{j.id} '{j.name}' läuft (Lauf {jr.id}). Das Ergebnis kommt getrennt."
+        return (f"Job #{j.id} '{j.name}' ({j.kind}) ausgeführt: {jr.status}"
+                + (f" — {jr.output[:500]}" if jr.output else "")
+                + (f" — FEHLER: {jr.error[:500]}" if jr.error else ""))
 
     return f"FEHLER: unbekanntes Job-Tool '{name}'."
 

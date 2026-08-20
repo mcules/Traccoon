@@ -173,14 +173,14 @@ async def handle(job: dict, redis: Redis) -> None:
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps(res or {"status": "failed"}), ex=ERGEBNIS_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
         return
-    if kind == "job":
-        await _handle_job(job, redis)
-        return
     if kind == "assistant":
         await _handle_assistant_task(job, redis)
         return
     if kind == "curator":
         await _handle_curator(job)
+        return
+    if kind == "agent_frei":
+        await _handle_agent_frei(job, redis)
         return
     if kind:  # infrastructure task (testenv_start and so on), later
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps({"status": "failed",
@@ -585,84 +585,49 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
     return {"status": issue.merge_status or "failed", "error": issue.merge_error}
 
 
-async def _handle_job(job: dict, redis: Redis) -> None:
-    """Prompt job: runs through the full agent tool loop of its owner (run_agent), with their
-    token, their assistant and their tool servers (scoped to the owner).
+async def _handle_agent_frei(job: dict, redis: Redis) -> None:
+    """Ein Agentenlauf ohne alles: ohne Ticket, ohne Projekt, ohne Eingang.
 
-    Standalone, not on the board (no ws_root, no permission gates). notify_mode drives the
+    Genau das konnte bisher nur ein Prompt-Job — die Fähigkeit steckte in der Job-Art fest
+    und war aus einem Ablauf heraus nicht zu haben. Jetzt ist es eine Aufgabe wie jede
+    andere: Wer sie stellt (Job, Ablauf-Knoten), ist von hier aus einerlei, und das Ergebnis
+    geht denselben Weg zurück wie bei allen wartenden Schritten.
     """
-    from ..models.ops import Job, JobRun
-    from ..models.notification import Notification
     from .runtime import run_agent
-    job_run_id = job["job_run_id"]
+    task_id = job["task_id"]
+
+    async def melde(status: str, text: str) -> None:
+        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(
+            {"status": status, "success": status == "done", "output": text[:20000],
+             "summary": text[:2000]}), ex=ERGEBNIS_TTL)
+        await redis.publish(f"{PREFIX}results", task_id)
+
+    owner_id = job.get("owner_id")
+    prompt = str(job.get("prompt") or "")
+    name = str(job.get("name") or "Lauf")
     async with SessionLocal() as db:
-        jr = await db.get(JobRun, job_run_id)
-        j = await db.get(Job, job["job_id"]) if job.get("job_id") else None
-        if jr is None or j is None:
-            # This used to be a silent `return`: the job run stayed on "running" forever,
-            # without an error and without a run. It happened when the task was queued before
-            # the commit and a free worker was faster than the transaction.
-            log.warning("Job assignment %s without a record (job_run=%s, job=%s), skipped",
-                        job.get("task_id"), job_run_id, job.get("job_id"))
-            return
-        # Safety net: script, workflow and http run at their own trigger (scheduler, API, agent
-        # tool) and must not arrive here. If they did, the assistant would run on the prompt
-        # field of a job that has no prompt, so a visible error is preferable.
-        if j.kind not in ("", "prompt"):
-            jr.status = "error"
-            jr.error = f"Job-Art '{j.kind}' gehört nicht in den Worker (Auslöser hat nicht verzweigt)"
-            jr.finished_at = _now_dt()
-            await db.commit()
-            log.error("Job %s (%s) fell into the prompt path", j.name, j.kind)
-            return
-        # Owner of the job: their token, their assistant agent, their tool servers, their delivery.
-        owner_id = j.user_id
-        notify_chat = j.notify_chat
-        out, status, err = "", "ok", ""
         try:
-            # Resolve token and agent inside the try, otherwise a JobRun stays on "running".
-            agent = await _load_agent(db, j.agent or "assistent", 0, "execute", owner_id)
+            agent = await _load_agent(db, job.get("agent") or "assistent", 0, "execute", owner_id)
             tokens, base_urls = await _build_tokens(db, owner_id, agent)
-            if not notify_chat and owner_id:
-                owner = await db.get(User, owner_id)
-                notify_chat = owner.telegram_chat_id if owner else None
-            # Fill placeholders in the prompt from the job parameters (`jobs.args` as an
-            # object). `last_run_at` already stands on NOW here, so the previous run comes from
-            # the one before it. Without that a daily digest would ask for "since a moment ago".
-            # Only SUCCESSFUL runs count: if the job was broken yesterday, the window has to
-            # take the gap along, otherwise a day falls silently under the table.
-            from ..services.job_params import rendere
-            vorlauf = (await db.execute(
-                select(JobRun.started_at).where(JobRun.job_id == j.id, JobRun.id != jr.id,
-                                                JobRun.status == "ok")
-                .order_by(JobRun.id.desc()).limit(1))).scalar()
-            prompt_text = rendere(j.prompt, j.args, letzter_lauf=vorlauf)
             result = await run_agent(
                 db=db, agent=agent,
-                issue={"id": None, "key": f"job-{jr.id}", "summary": j.name,
-                       "description": prompt_text, "plan": None},
+                issue={"id": None, "key": task_id, "summary": name,
+                       "description": prompt, "plan": None},
                 project={"id": None, "key": "", "system_prompt": "", "vault_moc_path": None},
                 mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
-                base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"])
-            out = result.summary or result.text or ""
-            if result.status not in ("done",):
-                status, err = "error", (result.text or result.status)
-        except Exception as exc:  # noqa: BLE001
-            status, err = "error", str(exc)
-        jr.status = status
-        jr.output = out[:20000]
-        jr.error = err[:2000]
-        jr.finished_at = _now_dt()
-        # Benachrichtigung je notify_mode
-        if j.notify_mode == "always" or (j.notify_mode == "on_output" and out) or \
-                (j.notify_mode == "on_error" and status == "error"):
-            title = f"Job: {j.name}" + (" fehlgeschlagen" if status == "error" else "")
-            body = err if status == "error" else out
-            if j.result_html:
-                body = f"/digest/{jr.id}"
-            db.add(Notification(kind="job", title=title, body=body[:4000], chat_id=notify_chat))
-        await db.commit()
-    log.info("job %s -> %s", job["job_id"], status)
+                base_urls=base_urls, owner_id=owner_id, task_id=task_id)
+            text = result.summary or result.text or ""
+            await db.commit()
+            await melde("done" if result.status == "done" else "failed",
+                        text if result.status == "done" else (result.text or result.status))
+        except Exception as exc:  # noqa: BLE001 — wer wartet, muss es erfahren
+            log.exception("free agent run %s failed", task_id)
+            await melde("failed", str(exc)[:2000])
+
+
+# Den Prompt-Job gibt es nicht mehr: Ein Job ist Zeitplan plus Ablauf, und der Agentenlauf
+# darin ist `agent_frei` (oben). Damit fällt auch der Weg über diese Warteschlange weg — er
+# war der einzige Grund, warum ein Job nur genau eine Sache tun konnte.
 
 
 # Conversation history in chat (ABC-30): a chat used to be a series of independent runs, so a

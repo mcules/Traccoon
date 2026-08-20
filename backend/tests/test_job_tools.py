@@ -91,25 +91,17 @@ async def test_abschalten_ueber_update(db, anna):
     assert j.enabled is False and "enabled" in out
 
 
-async def test_lauf_wird_erst_nach_dem_commit_eingereiht(db, anna, monkeypatch):
-    """The other way round a free worker grabs the assignment before the JobRun exists, and the
-    run would stay on 'running' forever (the same bug as in api/ops.py)."""
+async def test_der_agent_bekommt_das_ergebnis_des_laufs(db, anna, redis_stub):
+    """Ein Job wird hier ausgeführt, nicht eingereiht: Seit die Arten Abläufe sind, gibt es
+    keinen zweiten Weg mehr, auf dem ein Lauf am Zeitplan vorbei startet."""
     db.add(Job(user_id=anna.id, name="Digest", kind="prompt", prompt="x"))
     await db.commit()
     j = (await db.execute(select(Job))).scalars().one()
 
-    gesehen = {}
-
-    async def fake_enqueue(payload):
-        # At the moment of queueing the JobRun MUST already stand in the database.
-        factory = getattr(db, "__test_factory__")
-        async with factory() as s2:
-            gesehen["run"] = await s2.get(JobRun, payload["job_run_id"])
-
-    import app.core.redis as redis_mod
-    monkeypatch.setattr(redis_mod, "enqueue_task", fake_enqueue)
     out = await _tool(db, anna, "traccoon_run_job", job_id=j.id)
-    assert "läuft" in out and gesehen["run"] is not None
+    assert "ausgeführt" in out
+    lauf = (await db.execute(select(JobRun).order_by(JobRun.id.desc()))).scalars().first()
+    assert lauf.workflow_instance_id is not None
 
 
 async def test_schreibende_jobtools_brauchen_freigabe(db):
