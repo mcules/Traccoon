@@ -17,6 +17,7 @@
 // Afterwards the message stays: failing visibly is better than circling silently.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { KNOPF_KLEIN } from "./ui";
 
 /** Prefix of the keys in the `sessionStorage`. Deliberately `session`, not `local`: a brake
  *  should brake a running tab, not the machine for tomorrow. */
@@ -109,7 +110,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
         <button
           type="button"
           onClick={this.jetztNeuladen}
-          className="rounded border border-line px-3 py-1 text-xs text-muted hover:border-brand hover:text-ink"
+          className={KNOPF_KLEIN.neben}
         >
           Jetzt neu laden
         </button>

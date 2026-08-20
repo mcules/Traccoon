@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
+import { KNOPF } from "./ui";
 
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
 
@@ -160,7 +161,7 @@ export default function NewTicketModal({
 
         <div className="flex justify-end gap-2">
           <button onClick={onClose}
-            className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">{tr("new_ticket_modal.abbrechen")}</button>
+            className={KNOPF.neben}>{tr("new_ticket_modal.abbrechen")}</button>
           <button disabled={!canSave} onClick={() => create.mutate()}
             className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40">
             {tr(create.isPending ? "new_ticket_modal.legt_an" : "common.speichern")}

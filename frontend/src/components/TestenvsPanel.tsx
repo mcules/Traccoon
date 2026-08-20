@@ -3,8 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import {
-  Bereich, Etikett, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile, Zeilenknopf,
-} from "./ui";
+  Bereich, Etikett, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile, Zeilenknopf, KNOPF_KLEIN} from "./ui";
 
 interface Svc { service: string; container: string; status: string }
 interface Env {
@@ -105,11 +104,11 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <button onClick={() => holeLogs(e)}
-                      className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
+                      className={KNOPF_KLEIN.neben}>
                       {tr("testenvs.logs_alle")}</button>
                     {e.services.map((s) => (
                       <button key={s.container} onClick={() => holeLogs(e, s.service)}
-                        className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
+                        className={KNOPF_KLEIN.neben}>
                         Logs {s.service}</button>
                     ))}
                   </div>

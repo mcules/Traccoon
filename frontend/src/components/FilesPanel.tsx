@@ -5,6 +5,7 @@ import Editor from "@monaco-editor/react";
 import { api, ApiError, Project } from "../api";
 import { langOf } from "../monaco";
 import Markdown from "./Markdown";
+import { KNOPF } from "./ui";
 
 type RepoStatus = { branch: string; dirty: string[]; ahead: number; behind: number; has_remote: boolean };
 type Node = { name: string; path: string; dir: boolean; children: Node[] };
@@ -273,7 +274,7 @@ function CommitModal({ pid, onClose, onDone }: { pid: number; onClose: () => voi
           className="mb-3 mt-1 w-full rounded border border-line bg-surface px-3 py-2 text-sm" />
         {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">{tr("files_panel.abbrechen")}</button>
+          <button onClick={onClose} className={KNOPF.neben}>{tr("files_panel.abbrechen")}</button>
           <button onClick={() => title.trim() && commit.mutate()} disabled={!title.trim() || commit.isPending}
             className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:opacity-40">{commit.isPending ? "Committet…" : "Committen"}</button>
         </div>

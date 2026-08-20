@@ -20,6 +20,92 @@ export const ICON = {
 } as const;
 
 /**
+ * Ein Knopf.
+ *
+ * Ein Knopf ist blau. Vorher waren die meisten grau umrandet, und grau ist die Farbe, mit
+ * der eine Oberfläche „hier ist nichts zu holen" sagt: In einer Kopfzeile mit vier davon
+ * ging jeder einzelne unter, und die Farbe, die eigentlich „abgeschaltet" heißt, war der
+ * Normalzustand.
+ *
+ * Deshalb gilt hier: **Grau heißt abgeschaltet, sonst nichts.**
+ *
+ * Drei Arten, mehr braucht es nicht:
+ *
+ * * `haupt` — die eine Handlung, um die es auf dieser Fläche geht (gefüllt blau).
+ * * `neben` — alles andere, was man tun kann (blauer Rahmen, blaue Schrift). Bleibt lesbar
+ *   und ordnet sich der Hauptsache unter, ohne ins Graue zu rutschen.
+ * * `gefahr` — was man nicht versehentlich tut (rot).
+ *
+ * `zeichen` ist das Kurzzeichen für schmale Bildschirme: Dort steht nur es, sonst der Text.
+ * `stand` hängt ein Ergebnis an den Knopf (✓/✗) — für Handlungen, deren Ausgang man später
+ * noch sehen will, ohne sie zu wiederholen.
+ */
+export type KnopfArt = "haupt" | "neben" | "gefahr";
+export type KnopfStand = "gut" | "schlecht" | "offen";
+
+/**
+ * Die Klassen dazu, für die Stellen, die (noch) ein blankes `<button>` brauchen —
+ * abgeschaltete Zustände inbegriffen, damit auch dort Grau nur „geht gerade nicht" heißt.
+ *
+ * Eine Quelle, zwei Zugänge: Die Komponente unten benutzt dieselben Zeilen. Neu geschrieben
+ * wird mit `<Knopf>`; die Konstanten sind für Knöpfe mit eigener Mechanik (Umschalter,
+ * Dateiauswahl, Reiter), die keine Komponente sein wollen.
+ */
+const RUMPF = "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 "
+  + "text-sm leading-none transition-colors disabled:cursor-not-allowed "
+  + "disabled:border-line disabled:bg-transparent disabled:text-muted";
+const FARBE = {
+  haupt: "border border-brand bg-brand text-white hover:bg-brand/90",
+  neben: "border border-brand/50 text-brand hover:bg-brand/10",
+  gefahr: "border border-red-500/50 text-red-300 hover:bg-red-500/10 hover:text-red-200",
+} as const;
+export const KNOPF = {
+  haupt: `${RUMPF} ${FARBE.haupt}`,
+  neben: `${RUMPF} ${FARBE.neben}`,
+  gefahr: `${RUMPF} ${FARBE.gefahr}`,
+} as const;
+
+/** Dieselben Knöpfe in klein — für Zeilen und Werkzeugleisten, wo die volle Höhe die
+ *  Zeile auseinanderzöge. Farbe und Bedeutung bleiben gleich. */
+const RUMPF_KLEIN = RUMPF.replace("px-3 py-1.5 text-sm", "px-2 py-1 text-xs");
+export const KNOPF_KLEIN = {
+  haupt: `${RUMPF_KLEIN} ${FARBE.haupt}`,
+  neben: `${RUMPF_KLEIN} ${FARBE.neben}`,
+  gefahr: `${RUMPF_KLEIN} ${FARBE.gefahr}`,
+} as const;
+
+export function Knopf({ art = "neben", zeichen, stand, titel, onClick, type = "button",
+                        disabled = false, laeuft = false, breit = false, klein = false,
+                        children }: {
+  art?: KnopfArt; zeichen?: string; stand?: KnopfStand; titel?: string;
+  onClick?: () => void; type?: "button" | "submit"; disabled?: boolean; laeuft?: boolean;
+  breit?: boolean; klein?: boolean; children: ReactNode;
+}) {
+  const aus = disabled || laeuft;
+  // Abgeschaltet ist abgeschaltet: keine Farbe, kein Zeiger, kein Hover. Sonst sieht ein
+  // Knopf, der gerade nichts kann, aus wie einer, der etwas kann.
+  const farbe = aus
+    ? `${klein ? RUMPF_KLEIN : RUMPF} border border-line bg-transparent text-muted cursor-not-allowed`
+    : (klein ? KNOPF_KLEIN : KNOPF)[art];
+  const zeigen = { gut: "✓", schlecht: "✗", offen: "" }[stand ?? "offen"];
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={aus}
+      title={titel}
+      className={`${breit ? "w-full" : ""} ${farbe}`}
+    >
+      {zeigen && (
+        <span className={stand === "gut" ? "text-green-400" : "text-red-400"}>{zeigen}</span>
+      )}
+      {zeichen && <span className="sm:hidden">{zeichen}</span>}
+      <span className={zeichen ? "hidden sm:inline" : ""}>{children}</span>
+    </button>
+  );
+}
+
+/**
  * An action as an icon.
  *
  * `titel` is not decoration: it is the tooltip AND the accessible name, and without it an
@@ -36,10 +122,14 @@ export function IconKnopf({ icon, titel, onClick, gefahr = false, disabled = fal
       title={titel}
       aria-label={titel}
       disabled={disabled}
-      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-line text-sm leading-none transition-colors disabled:opacity-40 ${
-        aktiv ? "bg-brand/20 text-brand"
-          : gefahr ? "text-muted hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400"
-                   : "text-muted hover:bg-surface hover:text-ink"
+      // Auch hier: Grau heißt abgeschaltet. Ein Handgriff, den es gibt, ist blau — nur
+      // ohne Füllung, sonst wäre eine Liste mit zwanzig Zeilen ein Feuerwerk.
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm
+        leading-none transition-colors disabled:border-line disabled:text-muted
+        disabled:opacity-60 ${
+        aktiv ? "border-brand bg-brand/20 text-brand"
+          : gefahr ? "border-red-500/40 text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                   : "border-brand/40 text-brand hover:bg-brand/10"
       }`}
     >
       {icon}
@@ -98,13 +188,10 @@ export function DialogFuss({ onAbbrechen, onSpeichern, speichernText, laeuft = f
 }) {
   return (
     <>
-      <button onClick={onAbbrechen} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">
-        {tr("common.abbrechen")}
-      </button>
-      <button onClick={onSpeichern} disabled={laeuft || deaktiviert}
-        className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:opacity-50">
+      <Knopf onClick={onAbbrechen}>{tr("common.abbrechen")}</Knopf>
+      <Knopf art="haupt" onClick={onSpeichern} disabled={deaktiviert} laeuft={laeuft}>
         {speichernText || tr("common.speichern")}
-      </button>
+      </Knopf>
     </>
   );
 }
@@ -140,14 +227,10 @@ export function BestaetigenDialog({ titel, text, hinweis, bestaetigenText, gefah
   return (
     <Dialog titel={titel} onClose={onClose} fuss={
       <>
-        <button onClick={onClose} className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">
-          {tr("common.abbrechen")}
-        </button>
-        <button onClick={onBestaetigen} disabled={laeuft}
-          className={`rounded px-4 py-1.5 text-sm text-white disabled:opacity-50 ${
-            gefahr ? "bg-red-600" : "bg-brand"}`}>
+        <Knopf onClick={onClose}>{tr("common.abbrechen")}</Knopf>
+        <Knopf art={gefahr ? "gefahr" : "haupt"} onClick={onBestaetigen} laeuft={laeuft}>
           {bestaetigenText}
-        </button>
+        </Knopf>
       </>
     }>
       <p className="text-sm text-ink">{text}</p>

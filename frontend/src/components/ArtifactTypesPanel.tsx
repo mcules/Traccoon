@@ -4,8 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
 import {
   Aktionen, Dialog, DialogFuss, EINGABE, Feld as Formularfeld, Fehlerzeile, ICON, IconKnopf,
-  LoeschDialog, Bereich, Liste, ListenZeile,
-} from "./ui";
+  LoeschDialog, Bereich, Liste, ListenZeile, KNOPF, KNOPF_KLEIN } from "./ui";
 
 interface Wert {
   id: number; value: string; label: string; color: string; order: number; enabled: boolean;
@@ -107,7 +106,7 @@ export default function ArtifactTypesPanel() {
       </Liste>
 
       <button onClick={() => { setErr(""); setNeuDialog(true); }}
-        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} {tr("artifact_types_panel.eigenes_artefakt_anlegen")}
       </button>
 
@@ -187,7 +186,7 @@ function ArtefaktKarte({ t: typ, onFail, onOk, onDelete }: {
         </div>
         <Aktionen>
           <button onClick={() => setZeigeFelder(!zeigeFelder)}
-            className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+            className={KNOPF_KLEIN.neben}>
             {zeigeFelder ? tr("artifact_types_panel.felder_ausblenden") : tr("artifact_types_panel.felder")}
           </button>
           {!typ.builtin && (

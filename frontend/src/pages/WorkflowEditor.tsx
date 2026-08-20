@@ -36,7 +36,7 @@ import type { FlowNode } from "../components/workflow/nodes/shared";
 import { projektPfad } from "../projectTabs";
 import { SCHIENE_FREILASSEN } from "../nav";
 import VersionsDiff from "../components/workflow/VersionsDiff";
-import { BestaetigenDialog } from "../components/ui";
+import { BestaetigenDialog, Knopf } from "../components/ui";
 
 function defaultConfig(type: WorkflowNodeType): NodeConfig {
   switch (type) {
@@ -150,6 +150,9 @@ export default function WorkflowEditor() {
   const [fokus, setFokus] = useState<{ x: number; y: number; token: number } | undefined>();
   const [errors, setErrors] = useState<string[]>([]);
   const [msg, setMsg] = useState("");
+  // Woran man sieht, ob die Prüfung noch gilt: Sie gehört zu EINEM Stand des Graphen. Wer
+  // danach etwas verschiebt, hat kein geprüftes Ergebnis mehr, sondern ein altes.
+  const [geprueft, setGeprueft] = useState<{ signatur: string; ok: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [zeigeDiff, setZeigeDiff] = useState(false);
   const [frageVerwerfen, setFrageVerwerfen] = useState(false);
@@ -373,8 +376,10 @@ export default function WorkflowEditor() {
       setStand((n) => n + 1);
       const r = await workflowApi.validate(wfId, gespeichert.version.id);
       setErrors(r.errors || []);
+      setGeprueft({ signatur: graphSignatur(graph), ok: !!r.ok });
       setMsg(r.ok ? "Validierung ok." : `${r.errors.length} Problem(e) gefunden.`);
     } catch (e) {
+      setGeprueft(null);
       setMsg(e instanceof ApiError ? e.message : "Validierung fehlgeschlagen");
     }
   };
@@ -464,7 +469,8 @@ export default function WorkflowEditor() {
             if (geaendert && !confirm(tr("editor.zurueck_trotz_aenderungen"))) return;
             nav(herkunft);
           }}
-          className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-brand/50
+            px-3 py-1.5 text-sm leading-none text-brand transition-colors hover:bg-brand/10"
         >
           <span className="sm:hidden">←</span>
           <span className="hidden sm:inline">{tr("editor.zurueck")}</span>
@@ -522,48 +528,35 @@ export default function WorkflowEditor() {
             ))}
           </div>
         )}
-        <button
-          onClick={autoLayout}
-          disabled={nodes.length === 0}
-          hidden={nurLesen}
-          title={tr("editor.anordnen_titel", { abstand: gap })}
-          className="rounded border border-line px-3 py-1 text-sm text-ink hover:border-brand disabled:opacity-50"
-        >
-          <span className="sm:hidden">⇅</span>
-          <span className="hidden sm:inline">{tr("editor.anordnen")}</span>
-        </button>
-        <button
-          onClick={save}
-          disabled={saving || !version}
-          hidden={nurLesen}
-          className={`rounded border px-3 py-1 text-sm disabled:opacity-50 ${
-            geaendert ? "border-amber-400 text-amber-200 hover:border-amber-300"
-                      : "border-line text-ink hover:border-brand"}`}
-        >
-          <span className="sm:hidden">💾</span>
-          <span className="hidden sm:inline">
-            {tr(saving ? "editor.speichert" : "common.speichern")}
-          </span>
-        </button>
-        <button
-          onClick={validateServer}
-          disabled={!version}
-          hidden={nurLesen}
-          className="rounded border border-line px-3 py-1 text-sm text-ink hover:border-brand disabled:opacity-50"
-        >
-          <span className="sm:hidden">✓</span>
-          <span className="hidden sm:inline">{tr("editor.validieren")}</span>
-        </button>
-        <button
-          onClick={publish}
-          disabled={!version || clientErrors.length > 0}
-          hidden={nurLesen}
-          title={clientErrors.length ? tr("editor.erst_fehler_beheben") : tr("editor.veroeffentlichen")}
-          className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50"
-        >
-          <span className="sm:hidden">⬆</span>
-          <span className="hidden sm:inline">{tr("editor.veroeffentlichen")}</span>
-        </button>
+        <Knopf onClick={autoLayout} disabled={nodes.length === 0 || nurLesen} zeichen="⇅"
+          titel={tr("editor.anordnen_titel", { abstand: gap })}>
+          {tr("editor.anordnen")}
+        </Knopf>
+        {/* Speichern kann nur, was sich geändert hat — sonst ist der Knopf ein Versprechen,
+            das er nicht einlöst. */}
+        <Knopf onClick={save} disabled={!geaendert || saving || !version || nurLesen}
+          zeichen="💾" titel={geaendert ? undefined : tr("editor.nichts_zu_speichern")}>
+          {tr(saving ? "editor.speichert" : "common.speichern")}
+        </Knopf>
+        {/* Das Ergebnis bleibt am Knopf stehen: Wer geprüft hat, will es später noch sehen,
+            ohne noch einmal zu prüfen. Nach der nächsten Änderung ist es wieder offen. */}
+        <Knopf onClick={validateServer} disabled={!version || nurLesen} zeichen="✓"
+          stand={geprueft && geprueft.signatur === jetzt
+            ? (geprueft.ok ? "gut" : "schlecht") : "offen"}
+          titel={geprueft && geprueft.signatur === jetzt
+            ? (geprueft.ok ? tr("editor.geprueft_ok") : tr("editor.geprueft_fehler"))
+            : tr("editor.noch_nicht_geprueft")}>
+          {tr("editor.validieren")}
+        </Knopf>
+        {/* Nichts Neues, nichts zu veröffentlichen. Vorher lud der Knopf dazu ein und
+            antwortete danach „nur die Anordnung war anders". */}
+        <Knopf art="haupt" onClick={publish} zeichen="⬆"
+          disabled={!version || clientErrors.length > 0 || gleichWieLive || nurLesen}
+          titel={clientErrors.length ? tr("editor.erst_fehler_beheben")
+            : gleichWieLive ? tr("editor.nichts_zu_veroeffentlichen")
+              : tr("editor.veroeffentlichen")}>
+          {tr("editor.veroeffentlichen")}
+        </Knopf>
       </div>
 
       {/* Arbeitsfläche */}

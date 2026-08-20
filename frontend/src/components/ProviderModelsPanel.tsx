@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
 import {
-  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, Bereich, ListeLeer} from "./ui";
+  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, Bereich, ListeLeer, KNOPF} from "./ui";
 
 interface Modell {
   id: number; provider: string; model: string; display_name: string;
@@ -97,12 +97,12 @@ export default function ProviderModelsPanel() {
       <Bereich hinweis={tr("provider_models_panel.einleitung")} werkzeuge={<>
         <div className="flex shrink-0 flex-wrap gap-2">
           <button onClick={() => abrufen.mutate()} disabled={abrufen.isPending}
-            className="rounded border border-line px-3 py-1.5 text-sm text-ink hover:bg-surface disabled:opacity-50">
+            className={KNOPF.neben}>
             {abrufen.isPending ? tr("common.laedt") : `↻ ${tr("provider_models_panel.modelle_abrufen")}`}
           </button>
           <button onClick={() => preise.mutate()} disabled={preise.isPending}
             title={tr("provider_models_panel.preise_aus_dem_offenen_katalog_models_de")}
-            className="rounded border border-line px-3 py-1.5 text-sm text-ink hover:bg-surface disabled:opacity-50">
+            className={KNOPF.neben}>
             {preise.isPending ? tr("common.laedt") : `💲 ${tr("provider_models_panel.preise")} (models.dev)`}
           </button>
         </div>

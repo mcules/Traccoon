@@ -11,6 +11,7 @@ import WorkflowInstanceView from "./workflow/WorkflowInstanceView";
 import LifecycleView from "./workflow/LifecycleView";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 import { NODE_TYPE_LABELS } from "./workflow/types";
+import { KNOPF } from "./ui";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
@@ -741,7 +742,7 @@ export default function TicketDrawer({
               ) : issue.testenv_status === "running" && issue.testenv_url ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <a href={issue.testenv_url} target="_blank" rel="noreferrer"
-                    className="rounded bg-brand px-3 py-1 text-sm text-white">{tr("ticket_drawer.testumgebung_oeffnen")}</a>
+                    className={KNOPF.haupt}>{tr("ticket_drawer.testumgebung_oeffnen")}</a>
                   <button onClick={() => life.mutate("testenv/stop")}
                     className="rounded border border-line px-3 py-1 text-sm text-muted hover:text-red-400">
                     Stoppen</button>

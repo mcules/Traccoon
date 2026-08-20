@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
 import { waitInfo } from "../lib/waitReason";
 import { ticketOpenHandlers, type OnOpenTicket } from "../ticketOpen";
+import { KNOPF, KNOPF_KLEIN } from "./ui";
 
 const PRIO_FARBE: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400",
@@ -82,11 +83,11 @@ export default function Backlog({
               <div className="flex-1" />
               {s.state === "active" ? (
                 <button onClick={() => aktion.mutate({ id: s.id, was: "complete" })}
-                  className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+                  className={KNOPF_KLEIN.neben}>
                   {tr("backlog.abschliessen")}</button>
               ) : (
                 <button onClick={() => aktion.mutate({ id: s.id, was: "start" })}
-                  className="rounded bg-brand px-2 py-1 text-xs text-white">{tr("backlog.starten")}</button>
+                  className={KNOPF.haupt}>{tr("backlog.starten")}</button>
               )}
               {!drin.length && (
                 <button onClick={() => loeschen.mutate(s.id)}
@@ -109,7 +110,7 @@ export default function Backlog({
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("backlog.neuer_sprint")}
             className="rounded border border-line bg-surface px-2 py-1 text-xs" />
           <button onClick={() => name.trim() && neu.mutate()}
-            className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">+ Sprint</button>
+            className={KNOPF_KLEIN.neben}>+ Sprint</button>
         </div>
         <div className="space-y-1">
           {backlog.length ? backlog.map(Zeile)

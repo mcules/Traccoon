@@ -4,8 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
   Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog,
-} from "./ui";
+  ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "./ui";
 
 /**
  * Skills: reusable prompt blocks, versioned.
@@ -56,7 +55,7 @@ export default function SkillsPanel() {
         {skills?.length === 0 && <ListeLeer>{tr("skills_panel.keine_skills")}</ListeLeer>}
       </Liste>
       <button onClick={() => { setErr(""); setDialog({}); }}
-        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} {tr("skills_panel.skill_anlegen")}
       </button>
 

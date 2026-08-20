@@ -5,8 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../api";
 import {
   Aktionen, Bereich, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile,
-  LoeschDialog,
-} from "../ui";
+  LoeschDialog, KNOPF_KLEIN} from "../ui";
 
 interface Trend {
   points: number; wert: number | null; einheit: string;
@@ -227,7 +226,7 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
         <span className="text-[11px] text-muted">{tr("messreihen_panel.werte_im_zeitraum", { anzahl: punkte.length })}</span>
         <div className="flex-1" />
         <button onClick={loeschen}
-          className="rounded border border-line px-2 py-1 text-[11px] text-red-400 hover:bg-card">
+          className={KNOPF_KLEIN.gefahr}>
           {tr("messreihen_panel.ganze_reihe_loeschen")}
         </button>
       </div>

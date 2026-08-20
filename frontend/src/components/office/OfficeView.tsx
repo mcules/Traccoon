@@ -75,6 +75,7 @@ import TopBar, { passtZumFilter, type Tempo } from "./TopBar.tsx";
 import { officeApi, parseSid, sidKey, type Scope, type SessionSummary } from "./api.ts";
 import { ALLE_FENSTER_H, useOfficeFeed } from "./useOfficeFeed.ts";
 import { useTheme } from "./useTheme.ts";
+import { KNOPF, KNOPF_KLEIN} from "../ui";
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
 
@@ -674,7 +675,7 @@ function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.E
           <h2 className="text-sm font-semibold">🏢 {tr("office_view.tastenkuerzel_titel")}</h2>
           <div className="flex-1" />
           <button type="button" onClick={onClose} autoFocus
-            className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-brand hover:text-ink">
+            className={KNOPF_KLEIN.neben}>
             {tr("office_view.schliessen")}
           </button>
         </div>

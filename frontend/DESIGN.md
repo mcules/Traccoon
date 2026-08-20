@@ -26,6 +26,54 @@ Erklärende). Akzentfarbe ist `brand` — sie markiert, wo man ist und was der H
 
 ## Bausteine
 
+### `Knopf` — jede Handlung
+
+**Ein Knopf ist blau. Grau heißt abgeschaltet, sonst nichts.**
+
+Vorher war es umgekehrt: Die meisten Knöpfe waren grau umrandet, und in einer Kopfzeile mit
+vier davon ging jeder einzelne unter — während die Farbe, die eigentlich „hier ist nichts zu
+holen" bedeutet, der Normalzustand war.
+
+Drei Arten, mehr braucht es nicht:
+
+| Art | Aussehen | Wofür |
+|-----|----------|-------|
+| `haupt` | gefüllt blau | die eine Handlung, um die es auf dieser Fläche geht |
+| `neben` (Vorgabe) | blauer Rahmen, blaue Schrift | alles andere, was man tun kann |
+| `gefahr` | roter Rahmen | was man nicht versehentlich tut |
+
+```tsx
+<Knopf art="haupt" onClick={speichern} disabled={!geaendert}>Speichern</Knopf>
+<Knopf onClick={pruefen} zeichen="✓" stand={geprueft ? "gut" : "offen"}>Prüfen</Knopf>
+<Knopf art="gefahr" onClick={() => setLoeschen(true)}>Löschen</Knopf>
+```
+
+**Ein Knopf, der nichts tun kann, ist abgeschaltet** — nicht klickbar mit anschließender
+Fehlermeldung. „Speichern" ohne Änderung, „Veröffentlichen" ohne neuen Stand: beide `disabled`,
+mit einem `titel`, der den Grund nennt. Das ist der Unterschied zwischen einer Oberfläche, die
+den Zustand zeigt, und einer, die ihn verschweigt und danach schimpft.
+
+`zeichen` ist das Kurzzeichen für schmale Bildschirme: Dort steht nur es, sonst der Text.
+
+`stand` hängt ein Ergebnis an den Knopf: `gut` (grüner Haken), `schlecht` (rotes Kreuz),
+`offen` (nichts). Für Handlungen, deren Ausgang man später noch sehen will, ohne sie zu
+wiederholen — eine Prüfung zum Beispiel. Wichtig: Das Ergebnis gehört zu EINEM Stand der
+Sache. Ändert sich die, steht der Knopf wieder auf `offen`, sonst zeigt er ein Ergebnis, das
+für etwas anderes galt.
+
+In Zeilen und Werkzeugleisten dieselben Knöpfe in klein: `<Knopf klein>` bzw.
+`KNOPF_KLEIN.*`. Farbe und Bedeutung bleiben, nur die Höhe zieht die Zeile nicht auseinander.
+
+`IconKnopf` folgt derselben Regel — blauer Rahmen, blaues Zeichen, aber ohne Füllung: Eine
+Liste mit zwanzig Zeilen à drei Handgriffen wäre sonst ein Feuerwerk.
+
+Knöpfe mit eigener Mechanik (Umschalter, Dateiauswahl, Reiter) bleiben `<button>`, nehmen
+aber dieselben Klassen: `className={KNOPF.haupt}` / `KNOPF.neben` / `KNOPF.gefahr`. Eine
+Quelle, zwei Zugänge — neu geschrieben wird mit `<Knopf>`.
+
+**Nicht** darunter fallen echte Umschalter (ein Reiter, der aktiv oder inaktiv ist): Dort
+heißt Grau „gerade nicht gewählt", nicht „abgeschaltet", und Blau markiert die Auswahl.
+
 ### `Bereich` — der Rahmen eines Reiters
 
 Jeder Reiter, jede abgeschlossene Einheit einer Seite steckt in genau einem `Bereich`:

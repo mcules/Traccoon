@@ -26,6 +26,7 @@ import { tr } from "../../i18n";
 import type { Scope } from "./api.ts";
 import type { GateKind, Roster, RosterEntry, RunStatus } from "./types.ts";
 import type { FeedTotals } from "./useOfficeFeed.ts";
+import { KNOPF_KLEIN } from "../ui";
 
 // ── Gates ───────────────────────────────────────────────────────────────────────────────────
 
@@ -248,7 +249,7 @@ export default function TopBar({
             </span>
             {!kiosk && (
               <button type="button" onClick={onBackToLive}
-                className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand">
+                className={KNOPF_KLEIN.neben}>
                 {tr("buero.zurueck_zu_live")}
               </button>
             )}
@@ -282,7 +283,7 @@ export default function TopBar({
 
         {!kiosk && onFullscreen && (
           <button type="button" onClick={onFullscreen}
-            className="rounded border border-line px-2 py-0.5 text-xs hover:border-brand"
+            className={KNOPF_KLEIN.neben}
             title={tr("buero.ganze_seite")}>
             ⤢ {tr("buero.vollbild")}
           </button>

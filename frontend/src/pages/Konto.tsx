@@ -10,6 +10,7 @@ import {
   AgentenBetriebPanel, AssistentMeldungenPanel, GedaechtnisPanel, MeineSchalterPanel, ZeitzonePanel,
   NachtFensterPanel,
 } from "../components/KontoPanels";
+import { KNOPF } from "../components/ui";
 
 /**
  * Everything that belongs to the person, on one page.
@@ -172,7 +173,7 @@ function SprachePanel() {
             .filter((s) => s.enabled)
             .map((s) => <option key={s.locale} value={s.locale}>{s.name}</option>)}
         </select>
-        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        <button onClick={save} className={KNOPF.haupt}>
           {tr("profile.speichern")}
         </button>
       </div>
@@ -207,7 +208,7 @@ function EmailPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("profile.speichern")}</button>
+        <button onClick={save} className={KNOPF.haupt}>{tr("profile.speichern")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
@@ -304,7 +305,7 @@ function BenachrichtigungenPanel() {
           {tr("profile.kein_weg_hinterlegt")}
         </div>
       )}
-      <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("profile.speichern")}</button>
+      <button onClick={save} className={KNOPF.haupt}>{tr("profile.speichern")}</button>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
     </section>
@@ -337,7 +338,7 @@ function PasswordPanel() {
         <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
           placeholder={tr("profile.neues_passwort_8_zeichen")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className="rounded bg-brand px-3 py-1.5 text-sm text-white">{tr("profile.aendern")}</button>
+        <button onClick={save} className={KNOPF.haupt}>{tr("profile.aendern")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}

@@ -6,8 +6,7 @@ import { ApiError, workflowApi } from "../../api";
 import type { WorkflowDefinition, WorkflowSubjectKind } from "./types";
 import {
   Aktionen, Bereich, Dialog, DialogFuss, Etikett, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog, Zustand,
-} from "../ui";
+  ListeLeer, ListenZeile, LoeschDialog, Zustand, KNOPF } from "../ui";
 
 const EMPTY = { key: "", name: "", subject_kind: "standalone" as WorkflowSubjectKind,
                 description: "", template: "" };
@@ -149,7 +148,7 @@ export default function OwnWorkflowsPanel() {
       )}
 
       <button onClick={() => { setErr(""); setNeuDialog(true); }}
-        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} {tr("own_workflows_panel.ablauf_anlegen")}
       </button>
 

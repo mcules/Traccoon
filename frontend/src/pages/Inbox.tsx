@@ -6,8 +6,7 @@ import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
 import AssistantChat from "../components/AssistantChat";
 import {
-  Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, Reiter,
-} from "../components/ui";
+  Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, Reiter, KNOPF } from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 interface InboxItem {
@@ -203,11 +202,11 @@ function InboxList() {
                 {(eintrag.status === "new" || eintrag.status === "error") && (
                   <>
                     <button onClick={() => { setErr(""); setApproveId(approveId === eintrag.id ? null : eintrag.id); }}
-                      className="rounded bg-brand px-3 py-1 text-sm text-white">
+                      className={KNOPF.haupt}>
                       {eintrag.status === "error" ? "Erneut freigeben" : "Freigeben…"}
                     </button>
                     <button onClick={() => { setErr(""); reject.mutate(eintrag.id); }} disabled={reject.isPending}
-                      className="rounded border border-line px-3 py-1 text-sm text-muted hover:text-ink">
+                      className={KNOPF.neben}>
                       Verwerfen
                     </button>
                   </>
@@ -295,7 +294,7 @@ function ApprovePanel({ item, onDone, onError }:
       </div>
       <div className="flex items-center gap-2">
         <button onClick={() => approve.mutate()} disabled={approve.isPending}
-          className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50">
+          className={KNOPF.haupt}>
           {tr(scope === "once" ? "inbox.freigeben" : "inbox.freigeben_merken")}
         </button>
         {scope !== "once" && <span className="text-xs text-muted">{tr("inbox.legt_regel_an")}</span>}

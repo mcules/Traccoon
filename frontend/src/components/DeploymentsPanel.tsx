@@ -6,6 +6,7 @@ import {
   ApiError, DeploymentListe, DeploymentRow, DeploymentStatusFilter, deploymentApi,
 } from "../api";
 import { formatTime } from "../lib/formatTime";
+import { KNOPF, KNOPF_KLEIN } from "./ui";
 
 // One component for both places (dashboard card and Settings → Deployment), so that there
 // are no two truths about status, durations and log head. The shell (card, section) is
@@ -164,7 +165,7 @@ export default function DeploymentsPanel(
 
       {!kompakt && data.truncated && max < LIMIT_MAX && (
         <button onClick={() => setMax(Math.min(LIMIT_MAX, max + 50))}
-          className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+          className={KNOPF_KLEIN.neben}>
           Mehr laden
         </button>
       )}
@@ -223,7 +224,7 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
       <div className="flex flex-wrap items-center gap-2">
         <button onClick={() => { setFrage(true); setFehler(""); setEingereiht(null); }}
           disabled={!!grund || frage || sendet}
-          className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-40">
+          className={KNOPF.haupt}>
           Jetzt deployen
         </button>
         <span className="text-xs text-muted">
@@ -244,11 +245,11 @@ function Ausloeser({ projectId, issueId, stackDir, erlaubt, laufend, nachziehen 
           </ul>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button onClick={ausloesen} disabled={sendet}
-              className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-40">
+              className={KNOPF.haupt}>
               {tr(sendet ? "deployments_panel.wird_eingereiht" : "deployments_panel.ja_deployen")}
             </button>
             <button onClick={() => setFrage(false)} disabled={sendet}
-              className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink">
+              className={KNOPF.neben}>
               Abbrechen
             </button>
           </div>

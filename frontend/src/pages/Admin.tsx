@@ -8,8 +8,7 @@ import ArtifactTypesPanel from "../components/ArtifactTypesPanel";
 import { SystemSchalterPanel } from "../components/KontoPanels";
 import {
   Aktionen, Bereich, BestaetigenDialog, Dialog, DialogFuss, EINGABE, Etikett, Feld,
-  Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile,
-} from "../components/ui";
+  Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile, KNOPF } from "../components/ui";
 import ProviderModelsPanel from "../components/ProviderModelsPanel";
 import TranslationsPanel from "../components/TranslationsPanel";
 
@@ -167,7 +166,7 @@ function WorkflowLayout() {
           onChange={(e) => setGap(Number(e.target.value))}
           className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <span className="text-xs text-muted">px</span>
-        <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        <button onClick={() => save.mutate()} className={KNOPF.haupt}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
       </div>
@@ -219,7 +218,7 @@ function TestenvConfig() {
         {feld("testenv_max_builds", "admin.feld_testenv_max_builds")}
       </div>
       <div className="mt-2 flex items-center gap-2">
-        <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        <button onClick={() => save.mutate()} className={KNOPF.haupt}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
         {save.error && (
@@ -259,7 +258,7 @@ function RunRetention() {
           onChange={(e) => setDays(Number(e.target.value))}
           className="w-24 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
         <span className="text-xs text-muted">{tr("admin.tage")}</span>
-        <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        <button onClick={() => save.mutate()} className={KNOPF.haupt}>
           Speichern</button>
         {msg && <span className="text-sm text-green-400">{msg}</span>}
       </div>
@@ -459,7 +458,7 @@ function McpAssign({ userId }: { userId: number }) {
       <div className="flex gap-2">
         <input value={val} onChange={(e) => setText(e.target.value)}
           className="flex-1 rounded border border-line bg-surface px-2 py-1" />
-        <button onClick={save} className="rounded bg-brand px-3 py-1 text-white">{tr("admin.speichern")}</button>
+        <button onClick={save} className={KNOPF.haupt}>{tr("admin.speichern")}</button>
       </div>
       <div className="mt-1 text-muted">{tr("admin.mcp_provisionieren_hinweis")}</div>
     </div>
@@ -551,7 +550,7 @@ function EditUserModal({ user, onClose, onSaved }: { user: any; onClose: () => v
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
                 placeholder={tr("admin.mind_8_zeichen")} className={EINGABE} />
               <button onClick={resetPw} disabled={!newPassword}
-                className="shrink-0 rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink disabled:opacity-40">
+                className={KNOPF.neben}>
                 {tr("admin.setzen")}
               </button>
             </div>

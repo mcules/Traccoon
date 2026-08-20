@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Liste, ListeLeer, ListenZeile} from "./ui";
+  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Liste, ListeLeer, ListenZeile, KNOPF} from "./ui";
 
 interface Policy {
   id: number; match_kind: string; match_value: string;
@@ -71,7 +71,7 @@ export default function AssistantPolicies() {
         )}
       </Liste>
 
-      <button onClick={() => setDialog({})} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+      <button onClick={() => setDialog({})} className={KNOPF.haupt}>
         {ICON.neu} {tr("assistant_policies.regel_anlegen")}
       </button>
       </Bereich>
@@ -125,7 +125,7 @@ function ToolPermissions() {
           <option value="allow">allow</option><option value="deny">deny</option><option value="ask">ask</option>
         </select>
         <button onClick={() => { if (tool.trim()) { save.mutate({ tool: tool.trim(), action }); setTool(""); } }}
-          className="rounded bg-brand px-3 py-1 text-sm text-white">+ Regel</button>
+          className={KNOPF.haupt}>+ Regel</button>
       </div>
     </Bereich>
   );

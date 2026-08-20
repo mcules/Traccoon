@@ -1,6 +1,7 @@
 import type { NodeConfig, DecisionBranch, JsonLogic } from "../types";
 import { tr } from "../../../i18n";
 import type { KontextFeld, KontextFilter } from "../contextFields";
+import { KNOPF_KLEIN } from "../../ui";
 
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 
@@ -114,7 +115,7 @@ export default function DecisionConfig({
         </datalist>
       )}
 
-      <button onClick={add} className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+      <button onClick={add} className={KNOPF_KLEIN.neben}>
         + Zweig
       </button>
 
