@@ -99,14 +99,118 @@ async def darf_aendern(db: AsyncSession, reihe: Series, user_id: int,
     return bool(freigabe and freigabe.level == "manage")
 
 
+# ── Finden und Anlegen ───────────────────────────────────────────────────────
+
+async def reihe(db: AsyncSession, owner_id: int | None, key: str, *, kind: str = "location",
+                anlegen: bool = False, name: str = "", farbe: str = "") -> Series | None:
+    """Eine Reihe holen — auf Wunsch mit Anlegen beim ersten Punkt.
+
+    Wie bei den Messreihen: Ein Ablauf soll eine Reihe nicht erst von Hand angelegt bekommen
+    muessen. Wer eine Position wegschreibt, meint damit auch, dass es diese Reihe geben soll.
+    """
+    r = (await db.execute(select(Series).where(
+        Series.owner_user_id == owner_id, Series.key == key))).scalar_one_or_none()
+    if r is None and anlegen:
+        r = Series(owner_user_id=owner_id, key=key, kind=kind, name=name or key, color=farbe)
+        db.add(r)
+        await db.flush()
+    return r
+
+
 # ── Aufnehmen ────────────────────────────────────────────────────────────────
 
 async def aufnehmen(db: AsyncSession, reihe: Series, punkte: list[dict],
                     quelle: str = "") -> dict:
-    """Punkte anhaengen. Liefert, was ankam, was wegfiel und welche Orte sich aenderten."""
-    if reihe.kind != "location":
-        raise ValueError(f"aufnehmen: Reihe {reihe.key} ist keine Standortreihe")
+    """Punkte anhaengen — welche Art, entscheidet die Reihe.
 
+    Das Anhaengen selbst ist fuer alle Arten dasselbe: Zeitstempel, Werte, Stand nachziehen.
+    Verschieden ist nur, was einen Punkt ausmacht (eine Zahl, ein Ort, ein Text) und was
+    dabei zusaetzlich passiert — der Ruhefilter und die Geozaeune gibt es nur bei Standorten,
+    weil nur dort dieselbe Angabe hundertmal hintereinander kommt.
+    """
+    if reihe.kind == "location":
+        return await _standorte_aufnehmen(db, reihe, punkte, quelle)
+    return await _werte_aufnehmen(db, reihe, punkte, quelle)
+
+
+async def _werte_aufnehmen(db: AsyncSession, reihe: Series, punkte: list[dict],
+                           quelle: str) -> dict:
+    """Zahlen und Texte: schreiben, Stand nachziehen, bei Texten aufraeumen.
+
+    Kein Ruhefilter: Ein Messwert, der sich nicht geaendert hat, ist trotzdem eine Aussage
+    ("das Geraet lebt und meldet 22 %"), und ein Text ist ohnehin jedesmal ein neuer.
+    """
+    grenzen = reihe.settings or {}
+    unten, oben = grenzen.get("min"), grenzen.get("max")
+    geschrieben, verworfen = 0, 0
+    letzter, letzte_zeit = None, None
+
+    for p in sorted(punkte, key=lambda x: x.get("ts") or _jetzt()):
+        ts = _mit_zone(p.get("ts")) or _jetzt()
+        eintrag = SeriesPoint(series_id=reihe.id, ts=ts, source=p.get("source") or quelle,
+                              context=p.get("context") or {})
+        if reihe.kind == "number":
+            wert = p.get("value")
+            if wert is None:
+                verworfen += 1
+                continue
+            # Plausibilitaetsgrenzen wie beim Messwert: Geraete melden Unsinn, wenn sie
+            # etwas nicht wissen — und ein Ausreisser verzieht jede Auswertung danach.
+            if (unten is not None and wert < unten) or (oben is not None and wert > oben):
+                verworfen += 1
+                continue
+            eintrag.value = float(wert)
+        else:
+            text = str(p.get("body") or "")
+            if not text.strip():
+                verworfen += 1
+                continue
+            eintrag.title = str(p.get("title") or "")[:200]
+            eintrag.body = text
+            eintrag.format = str(p.get("format") or "markdown")
+        db.add(eintrag)
+        geschrieben += 1
+        letzter, letzte_zeit = eintrag, ts
+
+    reihe.points = (reihe.points or 0) + geschrieben
+    if letzter is not None:
+        bisher = _mit_zone(reihe.last_at)
+        if bisher is None or letzte_zeit >= bisher:
+            stand = dict(reihe.state or {})
+            if reihe.kind == "number":
+                stand["value"] = letzter.value
+            else:
+                stand["title"] = letzter.title
+            reihe.state = stand
+            reihe.last_at = letzte_zeit
+            reihe.still_at = None
+        await _aufraeumen(db, reihe)
+
+    return {"accepted": geschrieben, "skipped": verworfen, "still": 0,
+            "betreten": [], "verlassen": []}
+
+
+async def _aufraeumen(db: AsyncSession, reihe: Series) -> None:
+    """Alte Eintraege wegwerfen, wenn die Reihe eine Obergrenze nennt.
+
+    Nur nach Anzahl und nur, wenn `keep` gesetzt ist. Eine Zeitgrenze waere bei Standorten
+    das Falsche (ein Jahr Spur ist der Sinn der Sache), und ohne Angabe wird nichts geloescht
+    — stilles Verschwinden von Daten will niemand geerbt bekommen.
+    """
+    grenze = int((reihe.settings or {}).get("keep") or 0)
+    if grenze <= 0:
+        return
+    alte = (await db.execute(select(SeriesPoint).where(SeriesPoint.series_id == reihe.id)
+                             .order_by(SeriesPoint.id.desc()).offset(grenze))).scalars().all()
+    for e in alte:
+        await db.delete(e)
+    if alte:
+        reihe.points = max(0, (reihe.points or 0) - len(alte))
+
+
+async def _standorte_aufnehmen(db: AsyncSession, reihe: Series, punkte: list[dict],
+                               quelle: str = "") -> dict:
+    """Standorte: mit Ruhefilter und Geozaun."""
     genau_genug = einstellung(reihe, "max_accuracy_m")
     mindest_m = einstellung(reihe, "min_distance_m")
     mindest_s = einstellung(reihe, "min_interval_s")

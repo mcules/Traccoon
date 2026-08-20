@@ -139,6 +139,18 @@ AKTIONEN: dict[str, list[dict]] = {
         _f("metric.points", "zahl", "Wieviele Messpunkte im Fenster liegen"),
         _f("metric.warn", "ja/nein", "Vorwarnzeit erreicht — jetzt Bescheid geben"),
     ],
+    "series_record": [
+        _f("series.kind", "text", "Art der Reihe: number, location oder text"),
+        _f("series.stored", "ja/nein", "Wurde der Punkt gespeichert"),
+        _f("series.value", "zahl", "Bei Zahlen: der eben festgehaltene Wert"),
+        _f("series.lat", "zahl", "Bei Standorten: Breite des letzten Punktes"),
+        _f("series.lon", "zahl", "Bei Standorten: Länge des letzten Punktes"),
+        _f("series.battery", "zahl", "Akkustand, wenn das Gerät einen mitschickt"),
+        _f("series.places", "liste", "Orte, in denen das Gerät jetzt steht"),
+        _f("series.entered", "liste", "Orte, die mit diesem Punkt betreten wurden"),
+        _f("series.left", "liste", "Orte, die mit diesem Punkt verlassen wurden"),
+        _f("series.points", "zahl", "Wieviele Punkte die Reihe insgesamt hat"),
+    ],
     "metric_read": [
         _f("metric.value", "zahl", "Letzter Wert der Reihe"),
         _f("metric.alter_stunden", "zahl", "Wie alt der letzte Wert ist (Stunden)"),

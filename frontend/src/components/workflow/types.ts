@@ -48,6 +48,7 @@ export interface DecisionBranch {
 export type AutoActionName =
   | "create_ticket" | "notify" | "webhook" | "http_request" | "tool_call"
   | "set_context" | "set_board_status" | "metric_record" | "metric_read"
+  | "series_record"
   | "note_append"
   | "comment" | "refresh_facts"
   // Zustand eines Artefakts (Ticket, Hardware, eigene Typen)
