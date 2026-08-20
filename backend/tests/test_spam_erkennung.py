@@ -1189,3 +1189,119 @@ async def test_gelernter_spam_absender_bleibt_geklaert(db):
     urteil = await spam_review.beurteilen(db, user.id, _mail(), cls={
         "spam_score": 0.95, "category": "sonstiges", "betrug": True})
     assert urteil["geklaert"] is True and urteil["geklaert_urteil"] == "spam"
+
+
+# --- Der Fall vom 2026-08-20: der PayPal-Beleg im Spam-Ordner ------------------------
+
+async def _gelernt(db, owner_id, feature: str, spam: int, ham: int):
+    from app.models.assistant import SpamFeatureStat
+    db.add(SpamFeatureStat(owner_user_id=owner_id, feature=feature,
+                           spam_count=spam, ham_count=ham))
+    await db.commit()
+
+
+async def test_die_eigene_adresse_entscheidet_nichts(db):
+    """Ein Beleg landete im Spam, weil die Adresse, an die er ging, viermal auf Spam stand.
+
+    Die eigene Empfängeradresse ist kein Merkmal der Mail, sondern eines des Postfachs: Sie
+    steht in jeder erwünschten genauso wie in jedem Spam. Weil aber fast nur Spam ausdrücklich
+    entschieden wird, sammelt sie einseitig Zähler — und wurde so zur selbsterfüllenden Regel.
+    """
+    user = await _owner(db)
+    await _gelernt(db, user.id, "to:paypal@meine.domain", spam=4, ham=0)
+
+    score, gruende, sicher = await spam_learn.bewerten(
+        db, user.id, ["to:paypal@meine.domain"])
+    assert sicher is False, "die eigene Adresse darf nichts allein entscheiden"
+
+
+async def test_einigkeit_heisst_ohne_widerspruch(db):
+    """Zwei starke Merkmale, die in verschiedene Richtungen zeigen, sind keine Einigkeit."""
+    user = await _owner(db)
+    await _gelernt(db, user.id, "from:service@paypal.de", spam=0, ham=282)
+    await _gelernt(db, user.id, "dom:zahlung-xy.top", spam=9, ham=0)
+
+    _score, _gruende, sicher = await spam_learn.bewerten(
+        db, user.id, ["from:service@paypal.de", "dom:zahlung-xy.top"])
+    assert sicher is False
+
+
+async def test_bekannter_absender_gegen_betrugsverdacht_wird_gefragt(db):
+    """Modell und Gedächtnis widersprechen sich — dann entscheidet niemand allein.
+
+    Der echte PayPal-Beleg wurde vom Modell für Markenmissbrauch gehalten und automatisch
+    weggeräumt, obwohl dieses Postfach den Absender hundertfach als erwünscht kannte. Und weil
+    eine verschobene Mail beim Zurückholen eine neue Nummer bekommt, ging das bei jedem
+    Zurückholen von vorn los.
+    """
+    user = await _owner(db)
+    await _gelernt(db, user.id, "from:service@paypal.de", spam=0, ham=282)
+
+    urteil = await spam_review.beurteilen(db, user.id, _mail(
+        **{"from": [{"name": "PayPal", "addr": "service@paypal.de"}],
+           "subject": "Beleg für Ihre Zahlung",
+           "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
+                       "Received-Count": 3}}),
+        cls={"spam_score": 0.95, "category": "phishing",
+             "spam_reason": "Phishing-Versuch mit fremder Marke"})
+
+    assert urteil["score"] < 1.0
+    assert urteil["score"] >= urteil["frage_ab"], "gezeigt wird sie trotzdem"
+    assert urteil["geklaert"] is False, "nichts ist geklärt, solange man sich streitet"
+    assert any("erwünscht" in g for g in urteil["reasons"])
+
+
+async def test_unbekannter_absender_bleibt_betrug(db):
+    """Die Bremse gilt nur für Absender, die dieses Postfach wirklich kennt."""
+    user = await _owner(db)
+    urteil = await spam_review.beurteilen(db, user.id, _mail(
+        **{"from": [{"name": "PayPal", "addr": "service@paypal-sicherheit.top"}],
+           "subject": "Ihr Konto wurde gesperrt"}),
+        cls={"spam_score": 0.95, "category": "phishing",
+             "spam_reason": "Phishing-Versuch mit fremder Marke"})
+    assert urteil["score"] >= 0.95
+
+
+async def test_wer_einmal_widerspricht_wird_nicht_wieder_gefragt(db):
+    """„Ich habe die Mail zweimal als kein Spam markiert" — das muss reichen.
+
+    Ein ausdrücklicher Widerspruch wiegt schwerer als jede Statistik und schwerer als das
+    Modell. Wer zweimal widerspricht und beim dritten Mal wieder gefragt wird, hat recht,
+    wenn er die Erkennung für kaputt hält.
+    """
+    user = await _owner(db)
+    await _gelernt(db, user.id, "from:service@paypal.de", spam=0, ham=282)
+    db.add(SpamVerdict(owner_user_id=user.id, sender_email="service@paypal.de",
+                       subject="Beleg", status="ham", decided_by="mailbox", features=[]))
+    await db.commit()
+
+    urteil = await spam_review.beurteilen(db, user.id, _mail(
+        **{"from": [{"name": "PayPal", "addr": "service@paypal.de"}],
+           "subject": "Beleg für Ihre Zahlung",
+           "headers": {"Authentication-Results": "mx; spf=pass; dkim=pass; dmarc=pass",
+                       "Received-Count": 3}}),
+        cls={"spam_score": 0.95, "category": "phishing",
+             "spam_reason": "Phishing-Versuch mit fremder Marke"})
+
+    assert urteil["score"] < urteil["frage_ab"], "die Frage ist beantwortet"
+    assert any("ausdrücklich" in g for g in urteil["reasons"])
+
+
+async def test_ein_widerspruch_ist_kein_freifahrtschein(db):
+    """Eine gefälschte Mail unter demselben Namen bleibt Betrug — sonst wäre der einmal
+    freigegebene Absender die bequemste Tür ins Haus."""
+    user = await _owner(db)
+    await _gelernt(db, user.id, "from:service@paypal.de", spam=0, ham=282)
+    db.add(SpamVerdict(owner_user_id=user.id, sender_email="service@paypal.de",
+                       subject="Beleg", status="ham", decided_by="mailbox", features=[]))
+    await db.commit()
+
+    urteil = await spam_review.beurteilen(db, user.id, _mail(
+        **{"from": [{"name": "PayPal", "addr": "service@paypal.de"}],
+           "reply_to": [{"name": "", "addr": "kasse@ganz-woanders.top"}],
+           "subject": "Ihr Konto wurde gesperrt",
+           "headers": {"Authentication-Results": "mx; spf=fail; dkim=fail; dmarc=fail",
+                       "Return-Path": "<b@ganz-woanders.top>", "Received-Count": 1}}),
+        cls={"spam_score": 0.95, "category": "phishing",
+             "spam_reason": "Phishing-Versuch mit gefälschtem Absender"})
+    assert urteil["score"] >= urteil["frage_ab"]
