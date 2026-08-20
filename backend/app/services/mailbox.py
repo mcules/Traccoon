@@ -18,8 +18,12 @@ import datetime as dt
 import email
 import email.policy
 import logging
+import os
 import smtplib
 import ssl
+import threading
+import time
+from contextlib import contextmanager
 from email.message import EmailMessage
 from email.utils import formataddr, parseaddr
 
@@ -35,11 +39,95 @@ log = logging.getLogger("mailbox")
 MAX_TEXT = 200_000
 
 
-def _imap(account: MailAccount) -> IMAPClient:
+def _verbinden(account: MailAccount) -> IMAPClient:
     client = IMAPClient(account.imap_host, port=account.imap_port, ssl=account.imap_ssl,
                         timeout=30)
     client.login(account.imap_user, decrypt_secret(account.imap_password_enc))
     return client
+
+
+# ── Offene Verbindungen ──────────────────────────────────────────────────────
+# Anmelden kostet einen TLS-Handschlag und ein LOGIN: gemessen 266 ms, und zwar bei JEDEM
+# Aufruf. Beim Aufbau der Seite sind das drei, vier Anmeldungen hintereinander für Fragen,
+# die zusammen keine 300 ms Arbeit sind.
+#
+# Also bleibt die Verbindung liegen und wird wiederverwendet. IMAP ist zustandsbehaftet (ein
+# SELECT gilt für die Verbindung, nicht für den Aufruf), deshalb leiht sich jeder Aufruf
+# genau eine — parallele Nutzung derselben Verbindung würde die Ordner durcheinanderbringen.
+POOL_MAX = int(os.getenv("MAIL_POOL", "3"))       # je Konto
+LEERLAUF_S = 240.0                                 # danach ist sie vermutlich tot
+
+_pool: dict[int, list[tuple[IMAPClient, float]]] = {}
+_pool_lock = threading.Lock()
+
+
+def _aus_pool(account: MailAccount) -> IMAPClient | None:
+    """Eine liegende Verbindung, sofern sie noch lebt."""
+    with _pool_lock:
+        vorrat = _pool.get(account.id) or []
+        while vorrat:
+            client, zuletzt = vorrat.pop()
+            if time.monotonic() - zuletzt > LEERLAUF_S:
+                _schliessen(client)
+                continue
+            _pool[account.id] = vorrat
+            return client
+        _pool[account.id] = []
+    return None
+
+
+def _zurueck(account_id: int, client: IMAPClient) -> None:
+    with _pool_lock:
+        vorrat = _pool.setdefault(account_id, [])
+        if len(vorrat) >= POOL_MAX:
+            _schliessen(client)
+            return
+        vorrat.append((client, time.monotonic()))
+
+
+def _schliessen(client: IMAPClient) -> None:
+    try:
+        client.logout()
+    except Exception:  # noqa: BLE001 — eine tote Verbindung zu schließen darf nichts kosten
+        pass
+
+
+def pool_leeren(account_id: int | None = None) -> None:
+    """Alle liegenden Verbindungen wegwerfen — nach geänderten Zugangsdaten."""
+    with _pool_lock:
+        konten = [account_id] if account_id is not None else list(_pool)
+        for k in konten:
+            for client, _ in _pool.pop(k, []):
+                _schliessen(client)
+
+
+@contextmanager
+def _imap(account: MailAccount):
+    """Eine Verbindung ausleihen. Sie geht zurück in den Vorrat, wenn nichts schiefging.
+
+    Eine gebrauchte Verbindung kann still gestorben sein (der Server trennt nach ein paar
+    Minuten Ruhe). Deshalb wird sie mit NOOP angetippt, bevor sie jemand bekommt — ein
+    Roundtrip statt eines Fehlers mitten in einer Antwort.
+    """
+    client = _aus_pool(account)
+    if client is not None:
+        try:
+            client.noop()
+        except Exception:  # noqa: BLE001 — dann eben eine frische
+            _schliessen(client)
+            client = None
+    if client is None:
+        client = _verbinden(account)
+    try:
+        yield client
+    except Exception:
+        # Nach einem Fehler ist der Zustand der Verbindung unklar (halb gelesene Antwort,
+        # abgebrochener FETCH). Eine solche zurückzulegen hieße, den Fehler an den nächsten
+        # Aufruf weiterzureichen.
+        _schliessen(client)
+        raise
+    else:
+        _zurueck(account.id, client)
 
 
 def _text_aus(msg: email.message.Message) -> tuple[str, str]:

@@ -21,6 +21,7 @@ from ..db import get_session
 from ..models.mail import MailAccount, MailIdentity
 from ..models.user import User
 from ..services import mailbox
+from ..services import mailbox_cache as cache
 from .deps import get_current_user
 
 router = APIRouter(prefix="/mailbox", tags=["mailbox"])
@@ -129,6 +130,9 @@ async def konto_aendern(kid: int, data: KontoIn, user: User = Depends(get_curren
         a.smtp_password_enc = encrypt_secret(smtp_pw)
     await db.commit()
     await db.refresh(a)
+    # Geänderte Zugangsdaten oder Ordnernamen: Was noch offen liegt, gehört zum alten Stand.
+    mailbox.pool_leeren(a.id)
+    await cache.entwerten(a.id)
     return _konto_out(a)
 
 
@@ -157,7 +161,8 @@ async def ungelesen(user: User = Depends(get_current_user),
     async def einer(konto: MailAccount) -> dict:
         try:
             return {"account_id": konto.id, "name": konto.name,
-                    "unseen": await mailbox.ungelesen(konto)}
+                    "unseen": await cache.gecacht(konto.id, "unread", cache.TTL_UNGELESEN,
+                                                  lambda: mailbox.ungelesen(konto))}
         except Exception:  # noqa: BLE001 — ein stiller Server darf die Übersicht nicht sprengen
             return {"account_id": konto.id, "name": konto.name, "unseen": None}
 
@@ -273,8 +278,14 @@ async def _nur_eine_vorgabe(db: AsyncSession, kid: int, ident: MailIdentity) -> 
 async def ordner(kid: int, counts: bool = False, user: User = Depends(get_current_user),
                  db: AsyncSession = Depends(get_session)):
     """Der Ordnerbaum. `counts=true` fragt zusätzlich die Ungelesen-Zahlen ab — das ist ein
-    Aufruf je Ordner und deshalb nichts, was bei jedem Klick mitlaufen sollte."""
-    return await mailbox.ordner(await _konto(db, kid, user), counts)
+    Aufruf je Ordner und deshalb nichts, was bei jedem Klick mitlaufen sollte.
+
+    Mit Zählern sind das bei 33 Ordnern rund 900 ms; deshalb kommt die Antwort aus dem Cache,
+    solange sich am Konto nichts getan hat (`services/mailbox_cache`).
+    """
+    konto = await _konto(db, kid, user)
+    return await cache.gecacht(konto.id, f"folders:{int(counts)}", cache.TTL_ORDNER,
+                               lambda: mailbox.ordner(konto, counts))
 
 
 class OrdnerIn(BaseModel):
@@ -303,7 +314,9 @@ async def alle_gelesen(kid: int, data: OrdnerIn, user: User = Depends(get_curren
                        db: AsyncSession = Depends(get_session)):
     """Alles Ungelesene im Ordner auf gelesen setzen. Gibt zurück, wie viele es waren."""
     konto = await _konto(db, kid, user)
-    return {"marked": await mailbox.alle_gelesen(konto, data.folder)}
+    anzahl = await mailbox.alle_gelesen(konto, data.folder)
+    await cache.entwerten(konto.id)
+    return {"marked": anzahl}
 
 
 @router.post("/accounts/{kid}/folders/delete", status_code=204)
@@ -313,14 +326,21 @@ async def ordner_loeschen(kid: int, data: OrdnerIn, user: User = Depends(get_cur
     konto = await _konto(db, kid, user)
     _pruefe_loeschbar(konto, data.folder)
     await mailbox.ordner_loeschen(konto, data.folder)
+    await cache.entwerten(konto.id)
 
 
 @router.get("/accounts/{kid}/messages")
 async def nachrichten(kid: int, folder: str = "INBOX", q: str = "", offset: int = 0,
                       limit: int = 50, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    return await mailbox.liste(await _konto(db, kid, user), folder, q, offset,
-                               max(1, min(limit, 200)))
+    konto = await _konto(db, kid, user)
+    grenze = max(1, min(limit, 200))
+    # Die Suche bleibt ungecacht: Sie ist selten dieselbe zweimal, und ein Treffer, der
+    # eigentlich schon verschoben ist, wäre in einer Suche besonders ärgerlich.
+    if q:
+        return await mailbox.liste(konto, folder, q, offset, grenze)
+    return await cache.gecacht(konto.id, f"list:{folder}:{offset}:{grenze}", cache.TTL_LISTE,
+                               lambda: mailbox.liste(konto, folder, "", offset, grenze))
 
 
 @router.get("/accounts/{kid}/messages/{uid}")
@@ -355,7 +375,9 @@ class FlagIn(BaseModel):
 async def flag_setzen(kid: int, uid: int, data: FlagIn,
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    await mailbox.flag(await _konto(db, kid, user), data.folder, uid, data.flag, data.on)
+    konto = await _konto(db, kid, user)
+    await mailbox.flag(konto, data.folder, uid, data.flag, data.on)
+    await cache.entwerten(konto.id)
 
 
 class MoveIn(BaseModel):
@@ -367,7 +389,9 @@ class MoveIn(BaseModel):
 async def verschieben(kid: int, uid: int, data: MoveIn,
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    await mailbox.verschieben(await _konto(db, kid, user), data.folder, uid, data.target)
+    konto = await _konto(db, kid, user)
+    await mailbox.verschieben(konto, data.folder, uid, data.target)
+    await cache.entwerten(konto.id)
 
 
 class HandgriffIn(BaseModel):
@@ -385,6 +409,7 @@ async def archivieren(kid: int, uid: int, data: HandgriffIn,
         raise Fehler(400, "err.no_archive_folder",
                      "This account has no archive folder configured")
     ziel = await mailbox.archivieren(konto, data.folder, uid)
+    await cache.entwerten(konto.id)
     # Der Zielordner ist eine Auskunft wert: bei einem Muster sieht man erst hier, wo die
     # Mail wirklich gelandet ist.
     return {"folder": ziel}
@@ -420,6 +445,7 @@ async def als_spam(kid: int, uid: int, data: HandgriffIn,
     if not konto.folder_junk:
         raise Fehler(400, "err.no_junk_folder", "This account has no junk folder configured")
     await mailbox.verschieben(konto, data.folder, uid, konto.folder_junk)
+    await cache.entwerten(konto.id)
 
 
 @router.post("/accounts/{kid}/messages/{uid}/delete", status_code=204)
@@ -436,6 +462,7 @@ async def loeschen(kid: int, uid: int, data: HandgriffIn,
         await mailbox.endgueltig_loeschen(konto, data.folder, uid)
     else:
         await mailbox.verschieben(konto, data.folder, uid, konto.folder_trash)
+    await cache.entwerten(konto.id)
 
 
 # ── Senden und Entwürfe ─────────────────────────────────────────────────────
@@ -477,6 +504,7 @@ async def senden(kid: int, data: SendenIn, user: User = Depends(get_current_user
     if not felder.get("to"):
         raise Fehler(400, "err.no_recipient", "No recipient")
     await mailbox.senden(konto, ident, felder)
+    await cache.entwerten(konto.id)
 
 
 @router.post("/accounts/{kid}/draft", status_code=204)
@@ -484,6 +512,7 @@ async def entwurf(kid: int, data: SendenIn, user: User = Depends(get_current_use
                   db: AsyncSession = Depends(get_session)):
     konto, ident, felder = await _felder(db, kid, data, user)
     await mailbox.entwurf_speichern(konto, ident, felder)
+    await cache.entwerten(konto.id)
 
 
 # ── Aktionen (Abläufe) ──────────────────────────────────────────────────────
