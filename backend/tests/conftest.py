@@ -245,6 +245,48 @@ async def make_asset(db, model_name: str, project: Project | None = None,
     return a
 
 
+async def make_webhook(db, owner: User, route: str, **felder) -> "WebhookSub":
+    """Webhook anlegen und gleich umstellen, falls er noch einen alten Modus trägt.
+
+    Tests, die einen Auslöser von außen brauchen, gehen damit denselben Weg wie der Betrieb:
+    Was früher ein eigener Modus war (Ticket, Meldung, Assistent), ist heute ein Ablauf, und
+    `webhook_modes.umstellen` ist die Stelle, die das herstellt.
+    """
+    import uuid as _uuid
+
+    from app.models.ops import WebhookSub
+    from app.services.webhook_modes import umstellen
+
+    sub = WebhookSub(public_id=str(_uuid.uuid4()), route=route,
+                     owner_user_id=owner.id, **felder)
+    db.add(sub)
+    await db.commit()
+    await umstellen(db)
+    await db.refresh(sub)
+    return sub
+
+
+async def melde(db, sub, payload: dict) -> list[int]:
+    """Zustellung eines Webhooks ohne HTTP — Kontext und Referenz wie in `api/ops`."""
+    from app.api.ops import _kontext, _referenz
+    from app.models.workflow import WorkflowDefinition
+    from app.services.events import emit
+    from app.services.workflow_engine import start_workflow
+
+    ctx, ref = _kontext(sub, payload), _referenz(sub, payload)
+    if sub.mode == "event":
+        ids = await emit(db, str(sub.event_name), project_id=sub.project_id, payload=ctx,
+                         actor_id=sub.owner_user_id, source_ref=ref)
+        await db.commit()
+        return ids
+    definition = await db.get(WorkflowDefinition, sub.workflow_definition_id)
+    inst = await start_workflow(db, definition, subject_kind=definition.subject_kind,
+                                context=ctx, actor_id=sub.owner_user_id,
+                                source=f"webhook:{sub.route}", source_ref=ref)
+    await db.commit()
+    return [inst.id]
+
+
 @pytest.fixture
 def helpers():
     """Bundle of the creation helpers, so that tests have to import only one fixture."""
@@ -252,6 +294,7 @@ def helpers():
         "make_user": staticmethod(make_user), "auth": staticmethod(auth),
         "make_project": staticmethod(make_project), "add_member": staticmethod(add_member),
         "make_location": staticmethod(make_location), "make_asset": staticmethod(make_asset),
+        "make_webhook": staticmethod(make_webhook), "melde": staticmethod(melde),
     })
 
 

@@ -12,11 +12,10 @@ from app.core.security import encrypt_secret
 from app.models.agents import AgentDefinition
 from app.models.assistant import AssistantTask
 from app.models.secrets import ProviderToken
-from app.services import mail_intake
 from app.services import workflow_templates
 from sqlalchemy import select
 
-from conftest import make_user
+from conftest import make_user, make_webhook, melde
 
 
 @pytest.fixture
@@ -27,12 +26,12 @@ async def anna(db):
     return user
 
 
-async def _mail(db, owner_id, agent: str, uid: int) -> AssistantTask:
-    ids = await mail_intake.intake_mail(
-        db, owner_id,
-        {"account": "privat", "uid": uid, "from": "rechnung@beispiel.de",
-         "subject": "Rechnung 4711", "body": "IBAN DE12 3456 7890, 129,90 EUR"},
-        source="mail", agent=agent)
+async def _mail(db, owner, agent: str, uid: int) -> AssistantTask:
+    sub = await make_webhook(db, owner, "mail-test", mode="assistant", agent=agent,
+                             classify_agent="mail_classifier")
+    ids = await melde(db, sub, {"account": "privat", "uid": uid,
+                                "from": "rechnung@beispiel.de", "subject": "Rechnung 4711",
+                                "body": "IBAN DE12 3456 7890, 129,90 EUR"})
     assert ids, "the shipped mail inbox does not listen for mail.received"
     return (await db.execute(select(AssistantTask).where(
         AssistantTask.source_ref == f"privat:{uid}"))).scalars().one()
@@ -46,7 +45,7 @@ async def test_lokaler_agent_bekommt_den_volltext(db, anna):
                            model="qwen3.6-35b-q8", token_name="local", system_prompt=""))
     await db.commit()
 
-    task = await _mail(db, anna.id, "hausmeister", 1)
+    task = await _mail(db, anna, "hausmeister", 1)
     assert task.redaction == "unredacted"
     assert "IBAN DE12 3456 7890" in (task.raw_body or "")
 
@@ -57,7 +56,7 @@ async def test_agent_beim_anbieter_bleibt_geschwaerzt(db, anna):
                            model="claude-opus-5", system_prompt=""))
     await db.commit()
 
-    task = await _mail(db, anna.id, "assistent", 2)
+    task = await _mail(db, anna, "assistent", 2)
     assert task.redaction == "redacted"
     assert task.raw_body is None
 
@@ -70,18 +69,23 @@ async def test_openai_ohne_eigenen_endpoint_bleibt_geschwaerzt(db, anna):
                            model="gpt-4o", token_name="cloud", system_prompt=""))
     await db.commit()
 
-    task = await _mail(db, anna.id, "wolke", 3)
+    task = await _mail(db, anna, "wolke", 3)
     assert task.redaction == "redacted"
     assert task.raw_body is None
 
 
 async def test_dieselbe_mail_zweimal_bleibt_ein_item(db, anna):
-    """The watcher likes to deliver twice on restarts, and that must double nothing."""
-    await _mail(db, anna.id, "assistent", 4)
-    ids = await mail_intake.intake_mail(
-        db, anna.id, {"account": "privat", "uid": 4, "from": "rechnung@beispiel.de",
-                      "subject": "Rechnung 4711", "body": "egal"},
-        source="mail", agent="assistent")
+    """The watcher likes to deliver twice on restarts, and that must double nothing.
+
+    Der Schlüssel dagegen steht am Auslöser (`{account}:{uid}`) und nicht mehr im Code des
+    Mail-Eingangs — damit hat ihn jeder Webhook, nicht nur dieser eine.
+    """
+    sub = await make_webhook(db, anna, "mail-test", mode="assistant", agent="assistent")
+    nutzlast = {"account": "privat", "uid": 4, "from": "rechnung@beispiel.de",
+                "subject": "Rechnung 4711", "body": "IBAN DE12 3456 7890, 129,90 EUR"}
+    assert await melde(db, sub, nutzlast), "die erste Zustellung muss laufen"
+
+    ids = await melde(db, sub, {**nutzlast, "body": "egal"})
     assert ids == []
     items = (await db.execute(select(AssistantTask).where(
         AssistantTask.source_ref == "privat:4"))).scalars().all()

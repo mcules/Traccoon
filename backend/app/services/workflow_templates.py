@@ -20,6 +20,7 @@ it, and that copy belongs to them.
 from __future__ import annotations
 
 from ..models.enums import WorkflowSubjectKind
+from .mail_actions import AUFTRAG_PARAMS, KARTE_PARAMS
 
 _COL, _ROW = 260, 130
 
@@ -116,7 +117,7 @@ def _pruefung_mit_freigabe() -> dict:
         _n("handeln", "auto_action", 0, 4, _action(
             "notify", "Handeln",
             title="Freigegeben — ausgeführt",
-            text="Ergebnis: {{ tool.text | kurz:300 }}")),
+            text="Ergebnis: {{ tool.text | truncate:300 }}")),
         _ende("end_ok", 0, 5, "Erledigt"),
         _ende("end_nein", 1, 3, "Nichts Auffälliges"),
         _ende("end_abgelehnt", 2, 4, "Abgelehnt"),
@@ -160,7 +161,7 @@ def _liste_abarbeiten() -> dict:
         _n("bericht", "auto_action", 0, 4, _action(
             "notify", "Zusammenfassung",
             title="Durchlauf fertig",
-            text="{{ ergebnisse | anzahl }} Elemente verarbeitet")),
+            text="{{ ergebnisse | count }} Elemente verarbeitet")),
         _ende("end_ok", 0, 5, "Fertig"),
     ]
     return {"nodes": nodes, "edges": [
@@ -310,7 +311,7 @@ def _mail_eingang() -> dict:
             "notify", "Gelernten Fall melden",
             to={"mode": "context", "path": "eingang.owner_id"},
             title="{{ spam.karte_titel }}", text="{{ spam.karte_text }}",
-            kind="{{ spam.karte_art }}", bezug={"spam_verdict_id": "{{ spam.verdict_id }}"})),
+            kind="{{ spam.karte_art }}", ref={"spam_verdict_id": "{{ spam.verdict_id }}"})),
 
         # ── Sicher genug: verschieben, aber widersprechlich ─────────────────
         _n("karte_auto", "auto_action", 3, 5,
@@ -326,7 +327,7 @@ def _mail_eingang() -> dict:
             "notify", "Aussortierung melden",
             to={"mode": "context", "path": "eingang.owner_id"},
             title="{{ spam.karte_titel }}", text="{{ spam.karte_text }}",
-            kind="{{ spam.karte_art }}", bezug={"spam_verdict_id": "{{ spam.verdict_id }}"})),
+            kind="{{ spam.karte_art }}", ref={"spam_verdict_id": "{{ spam.verdict_id }}"})),
 
         # ── Suspicion: ask, wait, execute ────────────────────────────────────
         _n("karte", "auto_action", 1, 4, _action("spam_card", "Rückfrage stellen")),
@@ -350,8 +351,8 @@ def _mail_eingang() -> dict:
         # path carries the kind, so a new kind (invoice fraud, sextortion, whatever comes)
         # writes its own note without anybody touching the flow.
         _n("notiz", "auto_action", 2, 7, _action(
-            "notiz_anhaengen", "Erkenntnis notieren",
-            pfad="04 Wissen/Erkennung/{{ spam.art }}.md",
+            "note_append", "Erkenntnis notieren",
+            path="04 Wissen/Erkennung/{{ spam.art }}.md",
             text="- {{ spam.sender_domain }} · {{ spam.subject }}: {{ spam.befunde_text }}")),
         _n("end_spam", "end", 2, 8, {"label": "Als Spam weggeräumt", "outcome": "completed"}),
         # Stands on the way back to the middle: from here the mail runs into the assistant.
@@ -359,7 +360,12 @@ def _mail_eingang() -> dict:
            _action("spam_apply", "Absender merken", entscheidung="ham")),
 
         # ── Normaler Weg: Assistent ──────────────────────────────────────────
-        _n("item", "auto_action", 0, 8, _action("assistant_task", "Assistent-Item anlegen")),
+        # Kein Mail-Sonderweg mehr: Der Eingang wird mit dem allgemeinen Knoten angelegt und
+        # startet dabei selbst, wenn eine gelernte Regel ihn freigibt. Was den Mail-Fall
+        # ausmacht, sind seine Werte — sie stehen in `mail_actions.AUFTRAG_PARAMS`, damit
+        # Vorlage und Altnamen nicht auseinanderlaufen.
+        _n("item", "auto_action", 0, 8,
+           _action("assistant_task", "Assistent-Eingang anlegen", **AUFTRAG_PARAMS)),
         _n("ist_auto", "decision", 0, 9, {
             "label": "Automatisch freigegeben?",
             "branches": [
@@ -369,9 +375,8 @@ def _mail_eingang() -> dict:
             ],
             "default_handle": "fragen",
         }),
-        _n("lauf", "auto_action", -1, 10, _action("assistant_run", "Assistenten starten")),
         _n("freigabe_karte", "auto_action", 1, 10,
-           _action("assistant_card", "Freigabekarte schicken")),
+           _action("notify", "Freigabekarte schicken", **KARTE_PARAMS)),
         _n("end_item", "end", 0, 11, {"label": "Übergeben", "outcome": "completed"}),
     ]
 
@@ -406,12 +411,99 @@ def _mail_eingang() -> dict:
         _e("weiche", "item", "kontakt", "bekannt"),
         _e("weiche", "item", "geklaert_ham", "gelernt: erwünscht"),
         _e("item", "ist_auto"),
-        _e("ist_auto", "lauf", "auto"),
+        # Der freigegebene Weg braucht keinen Schritt mehr: Er läuft schon.
+        _e("ist_auto", "end_item", "auto", "läuft bereits"),
         _e("ist_auto", "freigabe_karte", "fragen"),
-        _e("lauf", "end_item"),
         _e("freigabe_karte", "end_item"),
     ]
     return {"nodes": nodes, "edges": edges}
+
+
+def _anhang_nach_paperless() -> dict:
+    """Ein Knopf an jedem Anhang: Rechnung ins Archiv, ohne Umweg über den Rechner.
+
+    Zeigt den ganzen Weg einer Mail-Aktion — Anhang holen, Werkzeug rufen, Bescheid geben —
+    und ist gleichzeitig die Antwort auf die Frage, wie man sich weitere solche Knöpfe baut.
+    """
+    nodes = [
+        _n("start", "start", 0, 0, {
+            "label": "Knopf am Anhang",
+            "trigger": {"kind": "mail_action", "scope": "attachment"},
+        }),
+        _n("holen", "auto_action", 0, 1,
+           _action("mail_attachment", "Anhang holen", context_key="attachment")),
+        _n("ablegen", "auto_action", 0, 2, _action(
+            "tool_call", "In Paperless ablegen",
+            tool="paperless__post_document",
+            arguments={"file": "{{ attachment.base64 }}",
+                       "filename": "{{ attachment.filename }}",
+                       "title": "{{ mail.subject }}"},
+            context_key="paperless")),
+        _n("melden", "auto_action", 0, 3, _action(
+            "notify", "Bescheid geben",
+            to={"mode": "context", "path": "mail.owner_id"},
+            title="📄 {{ attachment.filename }} liegt in Paperless",
+            text="Aus der Mail „{{ mail.subject }}\" von {{ mail.from }}.")),
+        _n("fertig", "end", 0, 4, {"label": "Abgelegt", "outcome": "completed"}),
+    ]
+    edges = [_e("start", "holen"), _e("holen", "ablegen"), _e("ablegen", "melden"),
+             _e("melden", "fertig")]
+    return {"nodes": nodes, "edges": edges}
+
+
+# -- 5) was früher Webhook-Modi waren ----------------------------------------
+# Ein Webhook konnte einmal selbst ein Ticket anlegen, eine Nachricht schicken oder den
+# Assistenten beauftragen — jeder Weg mit eigenen Spalten am Webhook und nur dort zu haben.
+# Dieselbe Arbeit machen heute Knoten, die JEDER Ablauf benutzen kann; diese drei Vorlagen
+# sind der kurze Weg dorthin und zugleich das, worauf `webhook_modes` Bestehendes umstellt.
+
+def _webhook_assistent() -> dict:
+    """Auslöser von außen, und der Assistent arbeitet damit."""
+    nodes = [
+        _n("start", "start", 0, 0, {
+            "label": "Auslöser von außen",
+            "trigger": {"kind": "webhook",
+                        "sample": {"titel": "Batterie schwach", "quelle": "monitoring"}}}),
+        _n("auftrag", "auto_action", 0, 1, _action(
+            "assistant_task", "Assistent beauftragen",
+            agent="assistent",
+            title="{{ titel | default:Auftrag von außen }}",
+            task="Kümmere dich um diese Meldung:\n\n{{ titel }}\n\nQuelle: "
+                    "{{ quelle | default:Webhook }}",
+            approval=False)),
+        _ende("fertig", 0, 2, "Beauftragt"),
+    ]
+    return {"nodes": nodes, "edges": [_e("start", "auftrag"), _e("auftrag", "fertig")]}
+
+
+def _webhook_melden() -> dict:
+    """Auslöser von außen, und es kommt eine Nachricht an."""
+    nodes = [
+        _n("start", "start", 0, 0, {
+            "label": "Auslöser von außen",
+            "trigger": {"kind": "webhook", "sample": {"message": "Etwas ist passiert"}}}),
+        _n("melden", "auto_action", 0, 1, _action(
+            "notify", "Bescheid geben",
+            title="{{ titel | default:Meldung }}",
+            text="{{ message }}")),
+        _ende("fertig", 0, 2, "Gemeldet"),
+    ]
+    return {"nodes": nodes, "edges": [_e("start", "melden"), _e("melden", "fertig")]}
+
+
+def _webhook_ticket() -> dict:
+    """Auslöser von außen, und daraus wird ein Ticket."""
+    nodes = [
+        _n("start", "start", 0, 0, {
+            "label": "Auslöser von außen",
+            "trigger": {"kind": "webhook",
+                        "sample": {"title": "Anfrage von außen", "body": "Der Text dazu"}}}),
+        _n("ticket", "auto_action", 0, 1, _action(
+            "create_ticket", "Ticket anlegen",
+            summary="{{ title }}", description="{{ body }}")),
+        _ende("fertig", 0, 2, "Angelegt"),
+    ]
+    return {"nodes": nodes, "edges": [_e("start", "ticket"), _e("ticket", "fertig")]}
 
 
 VORLAGEN: list[dict] = [
@@ -433,6 +525,14 @@ VORLAGEN: list[dict] = [
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "In der Schleife den Pfad zur Liste eintragen (z. B. tool.json.items).",
      "build": _liste_abarbeiten},
+    {"key": "anhang-paperless",
+     "name": "Anhang nach Paperless",
+     "description": "Ein Knopf an jedem Anhang: holen, ablegen, Bescheid geben.",
+     "subject_kind": WorkflowSubjectKind.standalone,
+     "hinweis": "Erscheint im Postfach an jedem Anhang. Das Werkzeug paperless__post_document "
+                "muss dem Ablauf freigegeben sein; Titel und Schlagworte im Schritt "
+                "„In Paperless ablegen\" anpassen.",
+     "build": _anhang_nach_paperless},
     {"key": "mail-eingang",
      "name": "Mail-Eingang",
      "description": "Eingegangene Mail einordnen, auf Spam prüfen und entweder wegräumen "
@@ -442,6 +542,28 @@ VORLAGEN: list[dict] = [
                 "sonst läuft jede Mail mehrfach. Schwellen und Schalter stehen in den "
                 "Einstellungen (spam_*), die Texte im Melde-Knoten.",
      "build": _mail_eingang},
+    {"key": "webhook-assistent",
+     "name": "Auslöser → Assistent",
+     "description": "Etwas kommt von außen, der Assistent kümmert sich darum.",
+     "subject_kind": WorkflowSubjectKind.standalone,
+     "hinweis": "Den Auftragstext im Knoten „Assistent beauftragen\" auf die eigene Nutzlast "
+                "anpassen ({{ feld }}). „Erst freigeben lassen\" an: der Auftrag wartet im "
+                "Eingang, statt sofort zu laufen.",
+     "build": _webhook_assistent},
+    {"key": "webhook-melden",
+     "name": "Auslöser → Nachricht",
+     "description": "Etwas kommt von außen, und es kommt eine Nachricht an.",
+     "subject_kind": WorkflowSubjectKind.standalone,
+     "hinweis": "Empfänger und Text im Melde-Knoten setzen; ohne Empfänger geht die "
+                "Nachricht an den Besitzer des Ablaufs.",
+     "build": _webhook_melden},
+    {"key": "webhook-ticket",
+     "name": "Auslöser → Ticket",
+     "description": "Etwas kommt von außen und wird zu einem Ticket.",
+     "subject_kind": WorkflowSubjectKind.standalone,
+     "hinweis": "Zielprojekt im Knoten „Ticket anlegen\" eintragen; ein Agent dort setzt "
+                "den Ticket-Lebenszyklus gleich in Gang.",
+     "build": _webhook_ticket},
     {"key": "aufruf-mit-wiederholung",
      "name": "Aufruf mit Wiederholung",
      "description": "Ziel aufrufen, bei Fehler wiederholen, später noch einmal, dann melden.",
@@ -470,8 +592,35 @@ def vorlage(key: str) -> dict | None:
     return _NACH_KEY.get(key)
 
 
+async def freier_schluessel(db, wunsch: str, projekt_id: int | None = None) -> str:
+    """Ein Schlüssel, den es hier noch nicht gibt — aus einem Namen gemacht.
+
+    Namen und Schlüssel beschreiben die Sache, nicht ihren Auslöser: `ki-tech-news`, nicht
+    `job-3`. Wer denselben Namen zweimal vergibt, bekommt eine Nummer angehängt, statt an
+    einem Unique-Fehler zu scheitern.
+    """
+    from sqlalchemy import select
+
+    from ..core.slug import slug
+    from ..models.workflow import WorkflowDefinition
+
+    basis = slug(wunsch, 50) or "ablauf"
+    bedingung = (WorkflowDefinition.project_id.is_(None) if projekt_id is None
+                 else WorkflowDefinition.project_id == projekt_id)
+    vergeben = set((await db.execute(select(WorkflowDefinition.key).where(
+        bedingung))).scalars().all())
+    if basis not in vergeben:
+        return basis
+    for n in range(2, 100):
+        kandidat = f"{basis}-{n}"
+        if kandidat not in vergeben:
+            return kandidat
+    return f"{basis}-{len(vergeben)}"
+
+
 async def anlegen(db, key: str, *, besitzer_id: int | None, def_key: str = "",
-                  name: str = "", veroeffentlicht: bool = True):
+                  name: str = "", veroeffentlicht: bool = True, graph: dict | None = None,
+                  projekt_id: int | None = None):
     """Create a flow FROM a template — as somebody's own, not as a shipped one.
 
     The difference matters: what stands in a set is maintained by Traccoon and overwritten on
@@ -487,13 +636,15 @@ async def anlegen(db, key: str, *, besitzer_id: int | None, def_key: str = "",
     if v is None:
         raise ValueError(f"Unbekannte Vorlage '{key}'")
     d = WorkflowDefinition(
-        project_id=None, key=def_key or key, name=name or v["name"],
+        project_id=projekt_id, key=def_key or key, name=name or v["name"],
         description=v["description"], subject_kind=v["subject_kind"],
         enabled=True, created_by=besitzer_id)
     db.add(d)
     await db.flush()
     version = WorkflowVersion(
-        definition_id=d.id, version=1, graph=v["build"](), created_by=besitzer_id,
+        # `graph` erlaubt der Umstellung, die Vorlage mit den Werten des alten Webhooks zu
+        # füllen (Agent, Auftragstext, Empfänger), statt sie hinterher zu patchen.
+        definition_id=d.id, version=1, graph=graph or v["build"](), created_by=besitzer_id,
         status=(WorkflowVersionStatus.published if veroeffentlicht
                 else WorkflowVersionStatus.draft),
         published_at=dt.datetime.now(tz=dt.timezone.utc) if veroeffentlicht else None,

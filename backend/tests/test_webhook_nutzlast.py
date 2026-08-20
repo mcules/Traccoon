@@ -11,7 +11,7 @@ from app.models.notification import Notification
 from app.models.ops import WebhookSub
 from sqlalchemy import select
 
-from conftest import auth, make_user
+from conftest import auth, make_user, make_webhook
 
 pytestmark = pytest.mark.asyncio
 
@@ -23,12 +23,15 @@ NUTZLAST = {
 
 
 async def _hook(db, besitzer, **felder) -> WebhookSub:
-    w = WebhookSub(public_id=f"probe-{felder.get('route', 'r')}", route=felder.pop("route", "r"),
-                   owner_user_id=besitzer.id, mode="notify",
-                   body_template="{device.name}: {event.attributes.alarm}", **felder)
-    db.add(w)
-    await db.commit()
-    return w
+    """Ein Melder, wie man ihn früher als `mode=notify` angelegt hat.
+
+    Die Meldung selbst macht heute ein Melde-Knoten im Ablauf; was hier geprüft wird, ist die
+    Arbeit des Auslösers davor — filtern, tiefe Felder finden, nicht doppelt melden. Der Weg
+    dahin führt über die Umstellung, damit auch sie unter Beobachtung steht.
+    """
+    return await make_webhook(db, besitzer, felder.pop("route", "r"), mode="notify",
+                              body_template="{device.name}: {event.attributes.alarm}",
+                              **felder)
 
 
 async def _melden(client, w, nutzlast=NUTZLAST):
@@ -132,29 +135,28 @@ async def test_workflow_modus_erkennt_wiederholungen(client, db):
 
 # ── Bearbeiten darf nichts verlieren ─────────────────────────────────────────
 
-async def test_bearbeiten_behaelt_die_vorlagen(client, db):
+async def test_bearbeiten_behaelt_den_kontext(client, db):
     """The answer did not carry the templates: the form filled them with defaults, and saving
-    silently reset the entered text."""
+    silently reset the entered text. Dieselbe Falle steht heute beim Kontext offen."""
     anna = await make_user(db, "anna")
     r = await client.post("/webhooks", headers=auth(anna), json={
-        "route": "vorlagen", "mode": "notify",
-        "title_template": "Alarm {device.name}",
-        "body_template": "{device.name}: {event.type}"})
+        "route": "kontext", "mode": "event", "event_name": "tracker.alarm",
+        "context_map": {"melder": "device.name"},
+        "context_fixed": {"quelle": "Tracker {device.id}"}})
     assert r.status_code in (200, 201), r.text
     wid = r.json()["id"]
 
     gelesen = [w for w in (await client.get("/webhooks", headers=auth(anna))).json()
                if w["id"] == wid][0]
-    assert gelesen["title_template"] == "Alarm {device.name}"
-    assert gelesen["body_template"] == "{device.name}: {event.type}"
+    assert gelesen["context_map"] == {"melder": "device.name"}
+    assert gelesen["context_fixed"] == {"quelle": "Tracker {device.id}"}
 
     # That is exactly what the interface does: write read values back.
     zurueck = await client.put(f"/webhooks/{wid}", headers=auth(anna), json={
         "route": gelesen["route"], "mode": gelesen["mode"],
-        "title_template": gelesen["title_template"],
-        "body_template": gelesen["body_template"]})
+        "context_map": gelesen["context_map"], "context_fixed": gelesen["context_fixed"]})
     assert zurueck.status_code == 200
-    assert zurueck.json()["body_template"] == "{device.name}: {event.type}"
+    assert zurueck.json()["context_fixed"] == {"quelle": "Tracker {device.id}"}
 
 
 async def test_ereignisname_kommt_zurueck(client, db):
