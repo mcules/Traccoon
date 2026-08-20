@@ -526,6 +526,35 @@ async def get_workflow(
     return d
 
 
+async def _schluessel_setzen(db: AsyncSession, d: WorkflowDefinition, roh: str) -> None:
+    """Den Schlüssel eines Ablaufs ändern — mit den drei Regeln, die daran hängen.
+
+    Er ist mehr als eine Beschriftung: Ein Slot findet seinen Ablauf darüber, und ein
+    ausgelieferter Satz wird bei jedem Start danach abgeglichen. Wo das zutrifft, bleibt er,
+    wie er ist; überall sonst darf er heißen, wonach die Sache heißt.
+    """
+    from ..core.slug import slug
+
+    schluessel = slug(roh, 60)
+    if not schluessel:
+        raise Fehler(400, "err.key_invalid",
+                     "Der Schlüssel braucht Buchstaben oder Ziffern")
+    if schluessel == d.key:
+        return
+    if d.slot or d.set_id:
+        raise Fehler(400, "err.key_fixed",
+                     "Dieser Ablauf gehört zu einem Satz oder einer festen Aufgabe — "
+                     "sein Schlüssel bleibt")
+    schon = (await db.execute(select(WorkflowDefinition).where(
+        WorkflowDefinition.project_id.is_(None) if d.project_id is None
+        else WorkflowDefinition.project_id == d.project_id,
+        WorkflowDefinition.key == schluessel,
+        WorkflowDefinition.id != d.id))).scalars().first()
+    if schon is not None:
+        raise Fehler(400, "err.key_taken", "Diesen Schlüssel gibt es hier schon")
+    d.key = schluessel
+
+
 @router.put("/workflows/{def_id}", response_model=WorkflowDefinitionOut)
 async def update_workflow(
     def_id: int, data: WorkflowDefinitionUpdate,
@@ -534,7 +563,12 @@ async def update_workflow(
     d = await _get_def(db, def_id)
     await _require_write(db, user, d)
     if data.name is not None:
-        d.name = data.name
+        name = data.name.strip()
+        if not name:
+            raise Fehler(400, "err.name_required", "Der Ablauf braucht einen Namen")
+        d.name = name
+    if data.key is not None:
+        await _schluessel_setzen(db, d, data.key)
     if data.description is not None:
         d.description = data.description
     if data.enabled is not None:
@@ -684,12 +718,12 @@ async def discard_draft(
 
 @router.get("/workflows/{def_id}/versions/{vid}/diff", response_model=DiffOut)
 async def version_diff(
-    def_id: int, vid: int, gegen: int | None = None,
+    def_id: int, vid: int, against: int | None = None,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
     """What changed between two versions, in the words of the editor.
 
-    Without `gegen` the comparison runs against the version before it, which is the question
+    Without `against` the comparison runs against the version before it, which is the question
     one usually has ("what did this version change?"). Positions are left out: they are not
     what a version is about.
     """
@@ -698,8 +732,8 @@ async def version_diff(
     neu = await db.get(WorkflowVersion, vid)
     if neu is None or neu.definition_id != def_id:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.version_not_found", "Version not found")
-    if gegen is not None:
-        alt = await db.get(WorkflowVersion, gegen)
+    if against is not None:
+        alt = await db.get(WorkflowVersion, against)
         if alt is None or alt.definition_id != def_id:
             raise Fehler(status.HTTP_404_NOT_FOUND, "err.version_not_found", "Version not found")
     else:
@@ -899,7 +933,7 @@ class EntwurfIn(BaseModel):
     graph: dict | None = None
 
 
-@router.post("/workflows/{def_id}/entwurf")
+@router.post("/workflows/{def_id}/draft")
 async def workflow_entwurf(
     def_id: int, data: EntwurfIn,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
@@ -925,7 +959,7 @@ async def workflow_entwurf(
                      "The draft failed: {grund}", grund=str(exc)[:270])
 
 
-@router.post("/workflows/{def_id}/probelauf", response_model=InstanceOut, status_code=201)
+@router.post("/workflows/{def_id}/dry-run", response_model=InstanceOut, status_code=201)
 async def probelauf(
     def_id: int, data: ProbelaufIn,
     user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
