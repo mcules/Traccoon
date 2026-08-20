@@ -110,7 +110,7 @@ export default function DecisionConfig({
       {felder.length > 0 && (
         <datalist id="wf-kontextfelder">
           {felder.map((f) => (
-            <option key={f.path} value={f.path}>{`${f.description} · ${f.source}`}</option>
+            <option key={f.path} value={f.path}>{`${tr(f.description)} · ${f.source}`}</option>
           ))}
         </datalist>
       )}
@@ -155,7 +155,7 @@ export default function DecisionConfig({
                   <span className="shrink-0 text-[11px] opacity-70">{f.type}</span>
                 </div>
                 <div className="text-[11px] leading-snug">
-                  {f.description} · <span className="opacity-70">{f.source}</span>
+                  {tr(f.description)} · <span className="opacity-70">{f.source}</span>
                 </div>
               </li>
             ))}

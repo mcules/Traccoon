@@ -38,7 +38,7 @@ export default function LoopConfig({
         {felder.length > 0 && (
           <datalist id="wf-listenfelder">
             {[...listen, ...felder].map((f) => (
-              <option key={f.path} value={f.path}>{`${f.description} · ${f.source}`}</option>
+              <option key={f.path} value={f.path}>{`${tr(f.description)} · ${f.source}`}</option>
             ))}
           </datalist>
         )}
