@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { KNOPF_KLEIN } from "./ui";
 
 /**
  * The switches that hang off `/me/flags`, one panel per subject.
@@ -55,7 +56,7 @@ export function AgentenBetriebPanel() {
           onChange={(e) => setRunners(+e.target.value)} className={`w-20 ${FELD}`} />
         <button onClick={async () => {
           await api.put("/me/runner-limit", { value: runners }); inv(); flash(tr("konto.limit_gespeichert"));
-        }} className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
+        }} className={KNOPF_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
       </div>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>
@@ -153,7 +154,7 @@ export function GedaechtnisPanel() {
         <button onClick={async () => {
           await api.put("/me/vault-memory-path", { value: pfad });
           inv(); flash(tr(pfad ? "preferences_panel.gedaechtnis_gespeichert" : "preferences_panel.gedaechtnis_aus"));
-        }} className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
+        }} className={KNOPF_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
       </div>
       <p className="mt-2 text-[11px] text-muted">{tr("preferences_panel.gedaechtnis_hinweis")}</p>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
@@ -193,7 +194,7 @@ export function NachtFensterPanel() {
         <button onClick={async () => {
           await api.put("/me/night-window", { start_hour: start, end_hour: ende, days: tage });
           inv(); flash(tr("preferences_panel.fenster_gespeichert"));
-        }} className="rounded bg-brand px-3 py-1 text-white">{tr("preferences_panel.speichern")}</button>
+        }} className={KNOPF_KLEIN.haupt}>{tr("preferences_panel.speichern")}</button>
       </div>
       <div className="mb-3 flex gap-1">
         {DAYS.map((d, i) => (

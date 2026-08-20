@@ -275,7 +275,7 @@ function Felder({ t: typ, onFail, onOk, offen }: {
       </div>
 
       <button onClick={() => setDialog({})}
-        className="mt-2 rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+        className={KNOPF_KLEIN.neben}>
         {ICON.neu} {tr("artifact_types_panel.feld_anlegen")}
       </button>
 

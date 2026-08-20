@@ -73,7 +73,7 @@ export default function WorkflowTaskForm({
           <button
             disabled={approve.isPending}
             onClick={() => approve.mutate()}
-            className="rounded bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+            className={KNOPF.zusage}
           >
             ✅ Genehmigen
           </button>

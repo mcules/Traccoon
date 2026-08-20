@@ -2,6 +2,7 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Project } from "../api";
+import { KNOPF_KLEIN } from "./ui";
 
 const ST_COLOR: Record<string, string> = {
   running: "text-yellow-400", success: "text-green-400", done: "text-green-400",
@@ -65,7 +66,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
                 <span className="text-xs text-muted">seit {fmtDauer(a.running_seconds)}</span>
                 <div className="flex-1" />
                 <button onClick={() => stop.mutate(a.issue_key)}
-                  className="rounded border border-red-400/50 px-2 py-1 text-xs text-red-400 hover:bg-red-400/10">
+                  className={KNOPF_KLEIN.gefahr}>
                   ⏹ Stoppen</button>
               </div>
             ))}
@@ -86,7 +87,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
                 <div className="flex-1" />
                 {["once", "always", "never"].map((d) => (
                   <button key={d} onClick={() => decide.mutate({ id: p.id, decision: d })}
-                    className="rounded border border-line px-2 py-1 hover:border-brand">
+                    className={KNOPF_KLEIN.neben}>
                     {tr(d === "once" ? "agent_monitor.einmal" : d === "always" ? "agent_monitor.immer" : "agent_monitor.nie")}</button>
                 ))}
               </div>

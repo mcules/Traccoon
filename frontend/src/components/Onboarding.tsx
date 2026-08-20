@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tr } from "../i18n";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import { KNOPF_TEXT } from "./ui";
 
 type Step = { key: string; title: string; hint: string; done: boolean; required: boolean };
 type Status = { steps: Step[]; ready: boolean; projects: number; dismissed: boolean };
@@ -43,7 +44,7 @@ export default function Onboarding() {
             {tr(data.ready ? "onboarding.rest_optional" : "onboarding.pflicht_offen")}
           </p>
         </div>
-        <button onClick={dismiss} className="text-xs text-muted hover:text-ink">{tr("onboarding.ausblenden")}</button>
+        <button onClick={dismiss} className={KNOPF_TEXT.neben}>{tr("onboarding.ausblenden")}</button>
       </div>
 
       <div className="mt-3 space-y-2">

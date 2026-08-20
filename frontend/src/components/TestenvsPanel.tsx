@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import {
-  Bereich, Etikett, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile, Zeilenknopf, KNOPF_KLEIN} from "./ui";
+  Bereich, Etikett, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile, Zeilenknopf, KNOPF_KLEIN, KNOPF_TEXT, KNOPF} from "./ui";
 
 interface Svc { service: string; container: string; status: string }
 interface Env {
@@ -75,7 +75,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                 <span className="min-w-0 flex-1 truncate text-ink">{e.label}</span>
                 {e.url && (
                   <a href={e.url} target="_blank" rel="noreferrer"
-                    className="shrink-0 text-brand hover:underline">{tr("testenvs_panel.oeffnen")}</a>
+                    className={KNOPF_TEXT.neben}>{tr("testenvs_panel.oeffnen")}</a>
                 )}
                 <Zeilenknopf onClick={() => setOffen(offen === e.container ? null : e.container)}>
                   {offen === e.container ? "▾ Details" : "▸ Details"}
@@ -133,7 +133,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
               {branches?.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
             <button onClick={() => branch && start.mutate()} disabled={!branch || start.isPending}
-              className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-40">
+              className={KNOPF.haupt}>
               {start.isPending ? "startet…" : "Starten"}</button>
           </div>
         </Bereich>

@@ -3,7 +3,7 @@ import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { FlowNode } from "./nodes/shared";
 import Schrittprotokoll, { type Schritt } from "./Schrittprotokoll";
-import { KNOPF_KLEIN } from "../ui";
+import { KNOPF_KLEIN, KNOPF_TEXT} from "../ui";
 
 /**
  * Play the flow through before it runs for real.
@@ -76,7 +76,7 @@ export default function ProbelaufPanel(
               Probelauf — {schritte.length} Schritt{schritte.length === 1 ? "" : "e"}
             </span>
             <button onClick={() => setSchritte(null)}
-              className="text-muted hover:text-ink" title={tr("probelauf_panel.schliessen")}>✕</button>
+              className={KNOPF_TEXT.neben} title={tr("probelauf_panel.schliessen")}>✕</button>
           </div>
           <Schrittprotokoll schritte={schritte} maxHoehe="18rem"
             leerText={tr("probelauf.kein_schritt")} />

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
   Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "./ui";
+  ListeLeer, ListenZeile, LoeschDialog, KNOPF, KNOPF_TEXT} from "./ui";
 
 type Variable = { key: string; label: string; secret: boolean; required: boolean };
 const EMPTY = { id: 0, name: "", display_name: "", transport: "http", url: "", variables: [] as Variable[], enabled: true };
@@ -156,7 +156,7 @@ function ServerDialog({ start, fehler, laeuft, onClose, onSpeichern }: {
           ))}
           <button type="button"
             onClick={() => setForm({ ...form, variables: [...form.variables, { key: "", label: "", secret: true, required: false }] })}
-            className="text-xs text-brand hover:underline">+ {tr("mcp_panel.variable")}</button>
+            className={KNOPF_TEXT.neben}>+ {tr("mcp_panel.variable")}</button>
         </div>
       </div>
     </Dialog>

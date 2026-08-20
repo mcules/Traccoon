@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { WorkflowGraph } from "./types";
-import { KNOPF_KLEIN } from "../ui";
+import { KNOPF_KLEIN, KNOPF_TEXT} from "../ui";
 
 /**
  * "Describe it, I draw it": the entry for everybody who has no graph in their head.
@@ -80,7 +80,7 @@ export default function BaumeisterPanel({
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted">{tr("baumeister_panel.beschreiben_statt_bauen")}</span>
         <button onClick={() => setOffen(false)} title={tr("baumeister_panel.schliessen")}
-          className="text-xs text-muted hover:text-ink">✕</button>
+          className={KNOPF_TEXT.neben}>✕</button>
       </div>
 
       <textarea

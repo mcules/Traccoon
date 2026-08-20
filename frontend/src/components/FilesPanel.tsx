@@ -5,7 +5,7 @@ import Editor from "@monaco-editor/react";
 import { api, ApiError, Project } from "../api";
 import { langOf } from "../monaco";
 import Markdown from "./Markdown";
-import { KNOPF } from "./ui";
+import { KNOPF, KNOPF_KLEIN, KNOPF_TEXT} from "./ui";
 
 type RepoStatus = { branch: string; dirty: string[]; ahead: number; behind: number; has_remote: boolean };
 type Node = { name: string; path: string; dir: boolean; children: Node[] };
@@ -162,13 +162,13 @@ export default function FilesPanel({ project }: { project: Project }) {
         {st?.has_remote && (
           <>
             <button onClick={() => pull.mutate()} disabled={pull.isPending}
-              className="rounded border border-line px-2 py-1 text-xs hover:text-brand disabled:opacity-50">{pull.isPending ? "…" : "↓ Pull"}</button>
+              className={KNOPF_KLEIN.neben}>{pull.isPending ? "…" : "↓ Pull"}</button>
             <button onClick={() => push.mutate()} disabled={push.isPending}
-              className="rounded border border-line px-2 py-1 text-xs hover:text-brand disabled:opacity-50">{push.isPending ? "…" : "↑ Push"}</button>
+              className={KNOPF_KLEIN.neben}>{push.isPending ? "…" : "↑ Push"}</button>
           </>
         )}
         <button onClick={() => { setErr(""); setCommitOpen(true); }} disabled={!st || st.dirty.length === 0}
-          className="rounded bg-brand px-3 py-1 text-xs text-white disabled:opacity-40">{tr("files_panel.commit")}</button>
+          className={KNOPF_KLEIN.haupt}>{tr("files_panel.commit")}</button>
       </div>
       {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
       {msg && <div className="mb-2 text-sm text-green-400">{msg}</div>}
@@ -197,12 +197,12 @@ export default function FilesPanel({ project }: { project: Project }) {
                 <div className="flex-1" />
                 {isMarkdown(sel) && (
                   <button onClick={() => setPreview((v) => !v)}
-                    className="rounded border border-line px-2 py-1 text-muted hover:text-brand">
+                    className={KNOPF_KLEIN.neben}>
                     {preview ? "✎ Editor" : "👁 Vorschau"}</button>
                 )}
                 {!img && (
                   <button onClick={() => save.mutate()} disabled={!dirty || save.isPending}
-                    className="rounded bg-brand px-3 py-1 text-white disabled:opacity-40">{save.isPending ? "…" : "Speichern (⌘S)"}</button>
+                    className={KNOPF_KLEIN.haupt}>{save.isPending ? "…" : "Speichern (⌘S)"}</button>
                 )}
               </div>
               <div className="min-h-0 flex-1">
@@ -260,12 +260,12 @@ function CommitModal({ pid, onClose, onDone }: { pid: number; onClose: () => voi
       <div className="w-full max-w-xl rounded-xl border border-line bg-card p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-semibold">{tr("files_panel.commit")}</h2>
-          <button onClick={onClose} className="text-muted hover:text-ink">✕</button>
+          <button onClick={onClose} className={KNOPF_TEXT.neben}>✕</button>
         </div>
         <div className="mb-2 flex items-center gap-2">
           <label className="text-xs text-muted">{tr("files_panel.titel")}</label>
           <button onClick={() => gen.mutate()} disabled={gen.isPending}
-            className="text-xs text-muted hover:text-brand disabled:opacity-50">{gen.isPending ? "generiert…" : "↻ neu generieren"}</button>
+            className={KNOPF_TEXT.neben}>{gen.isPending ? "generiert…" : "↻ neu generieren"}</button>
         </div>
         <input value={title} onChange={(e) => setTitle(e.target.value)}
           className="mb-3 w-full rounded border border-line bg-surface px-3 py-2 text-sm" />
@@ -276,7 +276,7 @@ function CommitModal({ pid, onClose, onDone }: { pid: number; onClose: () => voi
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className={KNOPF.neben}>{tr("files_panel.abbrechen")}</button>
           <button onClick={() => title.trim() && commit.mutate()} disabled={!title.trim() || commit.isPending}
-            className="rounded bg-brand px-4 py-1.5 text-sm text-white disabled:opacity-40">{commit.isPending ? "Committet…" : "Committen"}</button>
+            className={KNOPF.haupt}>{commit.isPending ? "Committet…" : "Committen"}</button>
         </div>
       </div>
     </div>

@@ -90,7 +90,7 @@ function MailConfig() {
           onChange={(e) => setForm({ ...form, smtp_use_tls: e.target.checked })} />
         STARTTLS verwenden
       </label>
-      <button onClick={() => save.mutate()} className="rounded bg-brand px-3 py-1.5 text-white">{tr("admin.speichern")}</button>
+      <button onClick={() => save.mutate()} className={KNOPF.haupt}>{tr("admin.speichern")}</button>
       {msg && <span className="ml-3 text-sm text-green-400">{msg}</span>}
     </Bereich></div>
   );
@@ -335,7 +335,7 @@ function Users() {
       ))}
     </Liste>
     <button onClick={() => { setErr(""); setNeuOffen(true); }}
-      className="mt-3 rounded bg-brand px-3 py-1.5 text-sm text-white">
+      className={KNOPF.haupt}>
       {ICON.neu} {tr("admin.nutzer_anlegen")}
     </button>
 

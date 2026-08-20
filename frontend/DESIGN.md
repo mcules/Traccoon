@@ -44,6 +44,7 @@ ablösen sollte.
 |-----|----------|-------|
 | `haupt` | gefüllt blau | die eine Handlung, um die es auf dieser Fläche geht |
 | `neben` (Vorgabe) | gefüllt blau | alles andere, was man tun kann |
+| `zusage` | gefüllt grün | zustimmen, freigeben, abnehmen |
 | `gefahr` | gefüllt rot | was man nicht versehentlich tut |
 
 `haupt` und `neben` sehen gleich aus. Der Unterschied steht im Code, nicht im Bild: Er sagt,
@@ -78,6 +79,10 @@ Liste mit zwanzig Zeilen à drei Handgriffen wäre sonst ein Feuerwerk.
 Knöpfe mit eigener Mechanik (Umschalter, Dateiauswahl, Reiter) bleiben `<button>`, nehmen
 aber dieselben Klassen: `className={KNOPF.haupt}` / `KNOPF.neben` / `KNOPF.gefahr`. Eine
 Quelle, zwei Zugänge — neu geschrieben wird mit `<Knopf>`.
+
+Handlungen **ohne Fläche** (ein „mehr anzeigen", ein × zum Entfernen, ein Link mitten im
+Text) nehmen `KNOPF_TEXT.neben` bzw. `.gefahr`: blaue bzw. rote Schrift, keine Fläche. Auch
+hier heißt Grau abgeschaltet.
 
 **Nicht** darunter fallen echte Umschalter (ein Reiter, der aktiv oder inaktiv ist): Dort
 heißt Grau „gerade nicht gewählt", nicht „abgeschaltet", und Blau markiert die Auswahl.

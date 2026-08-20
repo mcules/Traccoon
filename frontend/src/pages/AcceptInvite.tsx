@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { api, ApiError, Project } from "../api";
 import { useAuth } from "../auth";
-import { KNOPF } from "../components/ui";
+import { KNOPF, KNOPF_TEXT} from "../components/ui";
 
 interface Preview {
   project_key: string; project_name: string; email: string; role: string;
@@ -140,7 +140,7 @@ export default function AcceptInvite() {
           {tr(mode === "login" ? "accept_invite.anmelden_beitreten" : "accept_invite.registrieren_beitreten")}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className="mt-3 w-full text-sm text-muted hover:text-ink">
+          className={KNOPF_TEXT.neben}>
           {tr(mode === "login" ? "accept_invite.neu_hier" : "accept_invite.bereits_registriert")}
         </button>
       </form>

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../api";
 import {
   Aktionen, Bereich, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile,
-  LoeschDialog, KNOPF_KLEIN} from "../ui";
+  LoeschDialog, KNOPF_KLEIN, KNOPF_TEXT} from "../ui";
 
 interface Trend {
   points: number; wert: number | null; einheit: string;
@@ -82,7 +82,7 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
   return (
     <ListenZeile warnung={knapp}>
       <div className="flex flex-wrap items-baseline gap-2">
-        <button onClick={umschalten} className="font-medium text-ink hover:text-brand">
+        <button onClick={umschalten} className={KNOPF_TEXT.neben}>
           {offen ? "▾" : "▸"} {reihe.name}
         </button>
         <code className="font-mono text-[11px] text-muted">{reihe.key}</code>

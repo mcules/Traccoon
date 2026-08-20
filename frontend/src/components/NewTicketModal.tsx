@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
-import { KNOPF } from "./ui";
+import { KNOPF, KNOPF_TEXT} from "./ui";
 
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
 
@@ -80,7 +80,7 @@ export default function NewTicketModal({
         className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-line bg-card p-5 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-base font-semibold">{tr("new_ticket_modal.neues_ticket")}</h2>
-          <button onClick={onClose} className="text-muted hover:text-ink">✕</button>
+          <button onClick={onClose} className={KNOPF_TEXT.neben}>✕</button>
         </div>
 
         <label className="text-xs text-muted">{tr("new_ticket_modal.titel")}</label>

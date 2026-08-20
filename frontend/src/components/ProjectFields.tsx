@@ -4,8 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, type Project } from "../api";
 import {
   Aktionen, Dialog, DialogFuss, EINGABE, Feld as Formularfeld, Fehlerzeile, ICON, IconKnopf,
-  LoeschDialog,
-} from "./ui";
+  LoeschDialog, KNOPF_KLEIN} from "./ui";
 
 interface Wert {
   id: number; value: string; label: string; color: string; order: number; enabled: boolean;
@@ -145,7 +144,7 @@ function ArtefaktFelder({ t, projectId, onFail, onOk }: {
       </div>
 
       <button onClick={() => setDialog({})}
-        className="mt-2 rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+        className={KNOPF_KLEIN.neben}>
         {ICON.neu} {tr("artifact_types_panel.feld_anlegen")}
       </button>
 

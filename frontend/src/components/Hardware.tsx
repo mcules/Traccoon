@@ -8,7 +8,7 @@ import AssetWorkflow from "./AssetWorkflow";
 import ArtifactFields from "./ArtifactFields";
 import { AssigneeEditor } from "./workflow/assignee";
 import type { AssigneeSpec } from "./workflow/types";
-import { ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, KNOPF, KNOPF_KLEIN} from "./ui";
+import { ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, KNOPF, KNOPF_KLEIN, KNOPF_TEXT} from "./ui";
 
 interface Model { id: number; name: string; category: string | null; manufacturer: string | null; }
 interface Location { id: number; name: string; type: string; parent_id: number | null; full_path: string; }
@@ -309,10 +309,10 @@ function WorkflowConfig({ project }: { project: Project }) {
                 className="flex-1 rounded border border-line bg-card px-2 py-1 text-sm" />
               <button title={tr("hardware.nach_oben")} disabled={i === 0}
                 onClick={() => { const n = [...schritte]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; aendern(n); }}
-                className="text-muted hover:text-ink disabled:opacity-30">↑</button>
+                className={KNOPF_TEXT.neben}>↑</button>
               <button title={tr("hardware.nach_unten")} disabled={i === schritte.length - 1}
                 onClick={() => { const n = [...schritte]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; aendern(n); }}
-                className="text-muted hover:text-ink disabled:opacity-30">↓</button>
+                className={KNOPF_TEXT.neben}>↓</button>
               <IconKnopf icon={ICON.loeschen} titel={tr("hardware.schritt_entfernen")} gefahr
                 onClick={() => aendern(schritte.filter((_, j) => j !== i))} />
             </div>
@@ -323,7 +323,7 @@ function WorkflowConfig({ project }: { project: Project }) {
                 onChange={(v) => aendern(schritte.map((x, j) => j === i ? { ...x, assignee: v } : x))} />
               {s.assignee?.mode && (
                 <button onClick={() => aendern(schritte.map((x, j) => j === i ? { ...x, assignee: {} as AssigneeSpec } : x))}
-                  className="text-xs text-muted hover:text-ink">{tr("hardware.zuruecksetzen")}</button>
+                  className={KNOPF_TEXT.neben}>{tr("hardware.zuruecksetzen")}</button>
               )}
             </div>
           </ListenZeile>
@@ -336,7 +336,7 @@ function WorkflowConfig({ project }: { project: Project }) {
         <button onClick={() => speichern.mutate()} disabled={!entwurf}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-40">{tr("hardware.speichern")}</button>
         <button onClick={() => alsProzess.mutate()} disabled={alsProzess.isPending}
-          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-50"
+          className={KNOPF_KLEIN.neben}
           title={tr("hardware.diese_schrittliste_als_grafischen_workfl")}>
           🧭 {tr("hardware.als_prozess_bearbeiten")}
         </button>

@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Aktionen, Bereich, Dialog, DialogFuss, Fehlerzeile, ICON, IconKnopf, Liste, ListenZeile, LoeschDialog, KNOPF, KNOPF_KLEIN} from "./ui";
+  Aktionen, Bereich, Dialog, DialogFuss, Fehlerzeile, ICON, IconKnopf, Liste, ListenZeile, LoeschDialog, KNOPF, KNOPF_KLEIN, KNOPF_TEXT} from "./ui";
 
 interface Agent {
   id: number; role: string; display_name: string; system_prompt: string;
@@ -98,12 +98,12 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
         <p className="flex-1 text-sm text-muted">
           {tr(projectId ? "agents_panel.einleitung_projekt" : "agents_panel.einleitung_eigene")}</p>
         {!projectId && (!allAgents || allAgents.length === 0) && (
-          <button onClick={() => seed.mutate()} className="rounded border border-line px-3 py-1.5 text-sm">
+          <button onClick={() => seed.mutate()} className={KNOPF.neben}>
             {tr("agents_panel.standard_agenten_anlegen")}</button>
         )}
         <button onClick={() => fetchModels.mutate()} disabled={fetchModels.isPending}
           title={tr("agents_panel.verfuegbare_modelle_live_bei_den_provide")}
-          className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink disabled:opacity-50">
+          className={KNOPF.neben}>
           {fetchModels.isPending ? tr("common.laedt") : `↻ ${tr("agents_panel.modelle_abrufen")}`}</button>
         <button onClick={newAgent} className={KNOPF.haupt}>
           + Agent</button>
@@ -147,7 +147,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
         <div key={`inh-${a.id}`} className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-dashed border-line px-2.5 py-1.5 text-sm text-muted">
           <span className="font-mono">{a.role}</span><span className="text-xs">geerbt (global)</span>
           <div className="flex-1" />
-          <button onClick={() => loadInto.mutate(a.id)} className="text-brand hover:underline">{tr("agents_panel.in_projekt_laden")}</button>
+          <button onClick={() => loadInto.mutate(a.id)} className={KNOPF_TEXT.neben}>{tr("agents_panel.in_projekt_laden")}</button>
         </div>
       ))}
 
@@ -207,7 +207,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                   : <div className="text-xs text-muted">{tr("agents_panel.erst_speichern_dann_mcp_server_freigeben")}</div>}
               </Sec>
 
-              <button onClick={() => setShowAdv(!showAdv)} className="text-xs text-muted hover:text-ink">
+              <button onClick={() => setShowAdv(!showAdv)} className={KNOPF_TEXT.neben}>
                 {showAdv ? "▾" : "▸"} Erweitert (Fähigkeiten, Limits)
               </button>
               {showAdv && (
