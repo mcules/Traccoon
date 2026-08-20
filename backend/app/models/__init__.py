@@ -26,6 +26,8 @@ from .ops import (  # noqa: F401
 )
 from .i18n import UiLocale, UiTranslation  # noqa: F401
 from .documents import DocEntry, DocSeries  # noqa: F401
+from .datastore import DataStore  # noqa: F401
+from .series import Series, SeriesPlace, SeriesPoint, SeriesShare  # noqa: F401
 from .metrics import MetricPoint, MetricSeries  # noqa: F401
 from .secrets import UserSecret  # noqa: F401
 from .destination import Destination  # noqa: F401
@@ -60,4 +62,5 @@ __all__ = [
     "WorkflowDefinition", "WorkflowVersion", "WorkflowInstance", "WorkflowToken",
     "WorkflowStepRun", "WorkflowSet", "BranchTestenv", "Destination",
     "ArtifactType", "Artifact",
+    "DataStore", "Series", "SeriesPoint", "SeriesPlace", "SeriesShare",
 ]

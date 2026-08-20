@@ -73,6 +73,10 @@ services:
       # Ohne diese Zeile testet `docker compose exec backend pytest` die Kopie aus dem Image
       # — die veraltet still und meldet Grün für Code, der so gar nicht mehr existiert.
       - ./backend/tests:/app/tests
+      # Wartungsskripte (Uebernahmen, einmalige Umbauten). Gemountet und nicht ins Abbild
+      # gebacken: Sie laufen von Hand, oft genau einmal, und sollen dabei die Fassung aus
+      # dem Arbeitsverzeichnis sein.
+      - ./backend/scripts:/app/scripts
       - ./data/workspace:/workspace   # Repo-Browser/Editor (api/repo.py) liest/schreibt hier
       # Medienablage für Telegram: hier SCHREIBT das Backend, der telegram-bot LIEST.
       # Beide Mounts gehören zusammen — fehlt er drüben, findet der Bot die Datei nie
