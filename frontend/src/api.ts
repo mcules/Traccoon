@@ -88,8 +88,30 @@ async function upload<T = any>(path: string, file: File): Promise<T> {
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`/api${path}`, { method: "POST", headers, body: fd });
-  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  if (!res.ok) throw await fehlerAus(res);
   return res.json();
+}
+
+/**
+ * Die Begruendung des Servers aus einer misslungenen Antwort holen.
+ *
+ * Ohne das stand beim Hochladen nur "Bad Request" — die Auskunft, welche Datei im Zip fehlt,
+ * blieb im Rumpf liegen.
+ */
+async function fehlerAus(res: Response): Promise<ApiError> {
+  let detail = res.statusText;
+  let key: string | undefined;
+  try {
+    const j = await res.json();
+    if (typeof j.detail === "string") detail = j.detail;
+    if (typeof j.key === "string") {
+      key = j.key;
+      detail = trBekannt(j.key, j.werte) ?? detail;
+    }
+  } catch {
+    /* keine JSON-Antwort */
+  }
+  return new ApiError(res.status, detail, key);
 }
 
 /** Authenticated download: fetch the blob and open it as an object URL. */
@@ -249,6 +271,51 @@ export const destinationApi = {
   test: (id: number, body: { method?: string; path?: string; query?: Record<string, any>;
                              headers?: Record<string, any>; body?: any }) =>
     api.post<HttpCallResult>(`/destinations/${id}/test`, body),
+};
+
+// ---------- Plugins ----------
+
+/** Was ein Plugin beitraegt: bisher nur Seiten, mehr braucht es noch nicht. */
+export interface PluginBeitrag {
+  typ: "seite";
+  pfad: string;
+  label: string;
+  icon?: string;
+}
+
+export interface PluginInfo {
+  slug: string;
+  name: string;
+  version: string;
+  icon: string;
+  entry: string;
+  contributions: PluginBeitrag[];
+  /** Rechte, die das Manifest anmeldet — und die, die ein Mensch davon freigegeben hat. */
+  liest: string[];
+  liest_erlaubt: string[];
+}
+
+export interface PluginVerwaltung extends PluginInfo {
+  description: string;
+  enabled: boolean;
+  all_users: boolean;
+  allowed_user_ids: number[];
+  csp: Record<string, string[]>;
+  allowed_hosts: string[];
+}
+
+export const pluginApi = {
+  /** Was dieser Mensch sehen darf (eingeschaltet und fuer ihn freigegeben). */
+  meine: () => api.get<PluginInfo[]>("/plugins"),
+  /** Alles, auch Abgeschaltetes — die Sicht der Verwaltung. */
+  alle: () => api.get<PluginVerwaltung[]>("/plugins/alle"),
+  rechte: (slug: string, body: {
+    liest_erlaubt?: string[]; enabled?: boolean;
+    all_users?: boolean; allowed_user_ids?: number[];
+  }) => api.put<PluginVerwaltung>(`/plugins/${slug}/rechte`, body),
+  del: (slug: string) => api.del(`/plugins/${slug}`),
+  /** Zip hochladen; Manifest und Dateien wertet der Server aus. */
+  hochladen: (datei: File) => upload<{ slug: string; files: number }>("/plugins", datei),
 };
 
 // ---------- Deployments ----------

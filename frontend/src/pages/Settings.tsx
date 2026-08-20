@@ -8,6 +8,7 @@ import SkillsPanel from "../components/SkillsPanel";
 import McpPanel from "../components/McpPanel";
 import { DestinationsBereich } from "../components/DestinationsPanel";
 import WebhooksPanel from "../components/WebhooksPanel";
+import PluginsPanel from "../components/PluginsPanel";
 import JobsPanel from "../components/JobsPanel";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
@@ -23,7 +24,8 @@ import {
  * elsewhere. What belongs to the person now stands on `/account`, the flows under `/processes`,
  * and what remains has one thing in common: they are things an agent works with.
  */
-type Tab = "secrets" | "destinations" | "agents" | "mcp" | "jobs" | "webhooks" | "skills";
+type Tab = "secrets" | "destinations" | "agents" | "mcp" | "jobs" | "webhooks" | "skills"
+  | "plugins";
 const TABS: [Tab, string, string][] = [
   ["secrets", "settings.tabs.vault", "\u{1F510}"],
   ["destinations", "settings.tabs.ziele", "\u{1F3AF}"],
@@ -32,15 +34,20 @@ const TABS: [Tab, string, string][] = [
   ["jobs", "settings.tabs.jobs", "\u{23F1}"],
   ["webhooks", "settings.tabs.webhooks", "\u{1FA9D}"],
   ["skills", "settings.tabs.skills", "\u{2728}"],
+  // Nur für Admins: Wer ein Plugin einspielt, entscheidet auch, was es sehen darf.
+  ["plugins", "settings.tabs.plugins", "\u{1F9E9}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
+const NUR_ADMIN: Tab[] = ["plugins"];
 
 export default function Settings() {
   const { tab: tabParam } = useParams();
   // Derive the active tab from the URL; unknown becomes the default "secrets".
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "secrets") as Tab;
   const { user } = useAuth();
-  usePageChrome(tr("nav.settings"), TABS.map(([key, label, icon]) => ({
+  const istAdmin = user?.global_role === "admin";
+  const sichtbar = TABS.filter(([key]) => istAdmin || !NUR_ADMIN.includes(key));
+  usePageChrome(tr("nav.settings"), sichtbar.map(([key, label, icon]) => ({
     key, label: tr(label), to: `/settings/${key}`, icon,
   })), tab, "seite");
   return (
@@ -52,6 +59,7 @@ export default function Settings() {
       {tab === "jobs" && <JobsPanel />}
       {tab === "webhooks" && <WebhooksPanel />}
       {tab === "skills" && <SkillsPanel />}
+      {tab === "plugins" && istAdmin && <PluginsPanel />}
     </div>
   );
 }

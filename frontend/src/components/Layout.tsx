@@ -6,6 +6,7 @@ import { api, getToken, Project } from "../api";
 import { useAuth } from "../auth";
 import { useChrome, type ChromeTab } from "../pageChrome";
 import { hauptNavigation, istBereich, SCHIENE_BREITE, type NavEintrag } from "../nav";
+import { pluginNav, usePlugins } from "../plugins";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
 import UpdateFooter from "./UpdateFooter";
@@ -160,13 +161,13 @@ function BereichsSchiene() {
   const wartend = useInboxZaehler();
   const neueMails = useMailZaehler();
   useMailPush();
-  const eintraege = hauptNavigation(user?.global_role === "admin");
+  const eintraege = hauptNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
 
   return (
     <nav className={`sticky top-0 hidden h-screen ${SCHIENE_BREITE} shrink-0 flex-col items-center gap-1 border-r border-line bg-card py-3 md:flex`}>
       <Link to="/" title={tr("layout.traccoon_start")} className="mb-2 text-2xl">🦝</Link>
       {eintraege.map((e) => (
-        <SchienenKnopf key={e.key} eintrag={e} aktiv={istBereich(loc.pathname, e.to)}
+        <SchienenKnopf key={e.key} eintrag={e} aktiv={istBereich(loc.pathname + loc.hash, e.to)}
           zaehler={e.zaehler === "inbox" ? wartend : e.zaehler === "mail" ? neueMails : 0} />
       ))}
     </nav>
@@ -207,7 +208,7 @@ function MobileMenu() {
   const loc = useLocation();
   const wartend = useInboxZaehler();
   const neueMails = useMailZaehler();
-  const eintraege = hauptNavigation(user?.global_role === "admin");
+  const eintraege = hauptNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
   const close = () => setOpen(false);
 
   return (
@@ -224,7 +225,7 @@ function MobileMenu() {
             {eintraege.map((e) => (
               <Link key={e.key} to={e.to} onClick={close}
                 className={`flex items-center gap-2 rounded px-2 py-2 text-sm ${
-                  istBereich(loc.pathname, e.to) ? "bg-surface text-ink" : "text-ink hover:bg-surface"
+                  istBereich(loc.pathname + loc.hash, e.to) ? "bg-surface text-ink" : "text-ink hover:bg-surface"
                 }`}>
                 <span>{e.icon}</span>
                 <span className="flex-1">{e.label}</span>

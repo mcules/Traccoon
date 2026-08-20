@@ -1,5 +1,14 @@
-"""Plugin system (compact): zip in the database, serving, generic table CRUD (JSON, schema whitelist),
-SSRF protected fetch proxy."""
+"""Pluginsystem: Zip in der Datenbank, Ausliefern, generische Tabellen (JSON gegen eine
+Schema-Whitelist), SSRF-geschuetzter Fetch-Proxy — und die Rechte, unter denen ein Plugin
+Traccoon-Daten sehen darf.
+
+Ein Plugin laeuft im Browser in einem iframe **ohne** `allow-same-origin`. Es hat damit eine
+undurchsichtige Herkunft und kommt weder an den Token im `localStorage` noch an die API. Was
+es an Daten braucht, erfragt es beim Wirt (`frontend/src/pages/PluginRahmen.tsx`), und der
+gibt nur heraus, was das Manifest angemeldet (`liest`) und ein Mensch freigegeben hat
+(`liest_erlaubt`). Deny-default, wie bei den Werkzeugen der Agenten: Fordern darf ein
+Manifest alles, erlauben nur ein Admin.
+"""
 from __future__ import annotations
 
 import io
@@ -7,13 +16,14 @@ import ipaddress
 import json
 import socket
 import zipfile
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, UploadFile
+from fastapi import APIRouter, Depends, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.fehler import Fehler
@@ -35,8 +45,24 @@ async def list_plugins(user: User = Depends(get_current_user), db: AsyncSession 
                                  or user.global_role.value == "admin")
         if visible:
             out.append({"slug": p.slug, "name": p.name, "version": p.version, "icon": p.icon,
-                        "entry": p.entry, "contributions": p.contributions})
+                        "entry": p.entry, "contributions": p.contributions,
+                        # Der Wirt braucht die Freigaben, um jeden Ruf des Plugins daran zu
+                        # messen. `liest` steht daneben, damit die Oberflaeche zeigen kann,
+                        # was ein Plugin verlangt und noch nicht bekommen hat.
+                        "liest": p.liest or [], "liest_erlaubt": p.liest_erlaubt or []})
     return out
+
+
+@router.get("/alle")
+async def list_all(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
+    """Alles, auch Abgeschaltetes — die Sicht der Verwaltung."""
+    rows = (await db.execute(select(Plugin))).scalars().all()
+    return [{"slug": p.slug, "name": p.name, "version": p.version, "icon": p.icon,
+             "description": p.description, "entry": p.entry, "enabled": p.enabled,
+             "all_users": p.all_users, "allowed_user_ids": p.allowed_user_ids or [],
+             "contributions": p.contributions or [], "liest": p.liest or [],
+             "liest_erlaubt": p.liest_erlaubt or [], "csp": p.csp or {},
+             "allowed_hosts": p.allowed_hosts or []} for p in rows]
 
 
 @router.post("", status_code=201)
@@ -76,10 +102,20 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     plugin.table_schema = manifest.get("table_schema", {})
     plugin.allowed_hosts = manifest.get("allowed_hosts", [])
     plugin.contributions = manifest.get("contributions", [])
+    plugin.csp = manifest.get("csp", {}) or {}
+    gefordert = [str(r) for r in (manifest.get("liest") or [])]
+    # Eine neue Fassung darf sich nicht selbst mehr erlauben: Bestehende Freigaben bleiben,
+    # aber nur solange sie noch gefordert werden. Alles Neue faengt bei "nicht erlaubt" an
+    # und braucht wieder einen Menschen.
+    plugin.liest_erlaubt = [r for r in (plugin.liest_erlaubt or []) if r in gefordert]
+    plugin.liest = gefordert
     await db.flush()
-    # alte Dateien ersetzen
-    for f in (await db.execute(select(PluginFile).where(PluginFile.plugin_id == plugin.id))).scalars().all():
-        await db.delete(f)
+    # Alte Dateien ersetzen. Das `flush` danach ist nicht kosmetisch: Ohne es fuehrt
+    # SQLAlchemy erst die neuen INSERTs und dann die DELETEs aus, und der eindeutige Index
+    # (plugin_id, path) schlaegt zu — eine neue Fassung eines Plugins liess sich damit gar
+    # nicht einspielen.
+    await db.execute(sa_delete(PluginFile).where(PluginFile.plugin_id == plugin.id))
+    await db.flush()
     for name in zf.namelist():
         if name.endswith("/") or "/../" in name or name.startswith("/"):
             continue
@@ -95,28 +131,152 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     return {"slug": slug, "files": len(zf.namelist())}
 
 
+# Der Dateityp muss stimmen: Ausgeliefert wird mit `nosniff`, ein Stylesheet als
+# `octet-stream` wuerde der Browser gar nicht erst anwenden.
+TYPEN = {
+    ".html": "text/html", ".js": "application/javascript", ".mjs": "application/javascript",
+    ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml",
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+    ".webp": "image/webp", ".ico": "image/x-icon", ".woff": "font/woff",
+    ".woff2": "font/woff2", ".ttf": "font/ttf", ".map": "application/json",
+    ".txt": "text/plain", ".md": "text/markdown",
+}
+
+
 def _ctype(path: str) -> str:
-    if path.endswith(".html"):
-        return "text/html"
-    if path.endswith(".js"):
-        return "application/javascript"
-    if path.endswith(".css"):
-        return "text/css"
-    if path.endswith(".json"):
-        return "application/json"
-    return "application/octet-stream"
+    punkt = path.rfind(".")
+    return TYPEN.get(path[punkt:].lower(), "application/octet-stream") if punkt >= 0 \
+        else "application/octet-stream"
+
+
+# Was ein Plugin an fremden Quellen nachladen darf, ist eine kurze Liste — mehr Richtungen
+# aufzumachen hiesse, Loecher auf Vorrat zu bohren.
+CSP_RICHTUNGEN = ("img-src", "style-src", "font-src", "media-src")
+
+
+def _herkunft(request: Request) -> str:
+    """Die eigene Adresse fuer die CSP — als Rechnername mit offenem Port.
+
+    Sie muss ausgeschrieben dort stehen: Ein iframe ohne `allow-same-origin` hat die Herkunft
+    `null`, und `'self'` zeigt dann ins Leere — die eigenen Dateien des Plugins waeren als
+    erstes gesperrt.
+
+    Ausgeschrieben wird bewusst **nur der Rechnername**, mit `*` als Port und ohne Schema.
+    Der Grund ist, dass der Server die Adresse, die der Browser benutzt hat, gar nicht sicher
+    kennt: Der nginx davor reicht `Host` ohne Port weiter und setzt keine `X-Forwarded-`
+    Kopfzeilen, Traefik in der anderen Richtung setzt sie schon. Ein geratener Port sperrt
+    dann genau die Dateien aus, um die es geht. Ein offener Port auf demselben Rechnernamen
+    erlaubt nichts, was ein Plugin nicht ohnehin haette — es liegt selbst dort.
+    """
+    host = (request.headers.get("x-forwarded-host", "").split(",")[0].strip()
+            or request.headers.get("host", "").strip()
+            or request.url.netloc)
+    # Port abschneiden, IPv6 in Klammern beachten (`[::1]:8800`).
+    if host.startswith("["):
+        host = host.split("]")[0] + "]"
+    elif ":" in host:
+        host = host.rsplit(":", 1)[0]
+    return f"{host}:*" if host else "'self'"
+
+
+def _csp(request: Request, plugin: Plugin) -> str:
+    """Der Zaun um eine Plugin-Seite.
+
+    `connect-src 'none'` ist der Kern: Ein Plugin kann von sich aus gar nicht ins Netz — weder
+    zu Traccoon noch nach draussen. Daten bekommt es ueber die Bruecke zum Wirt, fremde Dienste
+    ueber den `allowed_hosts`-Proxy. Was es darueber hinaus laden darf (Kacheln einer Karte
+    etwa), steht im Manifest und nur dort.
+    """
+    ich = _herkunft(request)
+    zusatz = plugin.csp or {}
+    teile = [
+        "default-src 'none'",
+        f"script-src {ich} 'unsafe-inline'",
+        f"style-src {ich} 'unsafe-inline'",
+        "connect-src 'none'",
+        "frame-ancestors *",
+    ]
+    for richtung in CSP_RICHTUNGEN:
+        quellen = [q for q in (zusatz.get(richtung) or []) if isinstance(q, str) and " " not in q]
+        if richtung == "img-src":
+            teile.append(" ".join([f"img-src {ich}", "data:", *quellen]))
+        elif quellen:
+            teile.append(" ".join([f"{richtung} {ich}", *quellen]))
+    return "; ".join(teile)
 
 
 @router.get("/{slug}/app/{path:path}")
-async def serve_file(slug: str, path: str, db: AsyncSession = Depends(get_session)):
+async def serve_file(slug: str, path: str, request: Request,
+                     db: AsyncSession = Depends(get_session)):
+    """Eine Datei des Plugins.
+
+    Bewusst ohne Anmeldung: Das iframe hat keine Herkunft und schickt daher weder Cookie noch
+    Token mit. Ausgeliefert wird ohnehin nur der Code des Plugins, keine Daten — die gibt es
+    ausschliesslich ueber die Bruecke, und die haengt am angemeldeten Menschen.
+    """
     plugin = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if plugin is None:
+        raise Fehler(404, "err.plugin_not_found", "Plugin not found")
+    if not plugin.enabled:
         raise Fehler(404, "err.plugin_not_found", "Plugin not found")
     f = (await db.execute(select(PluginFile).where(PluginFile.plugin_id == plugin.id,
                                                    PluginFile.path == (path or plugin.entry)))).scalar_one_or_none()
     if f is None:
         raise Fehler(404, "err.file_not_found", "File not found")
-    return Response(content=f.data, media_type=f.content_type, headers={"Cache-Control": "no-cache"})
+    return Response(content=f.data, media_type=f.content_type, headers={
+        "Cache-Control": "no-cache",
+        "Content-Security-Policy": _csp(request, plugin),
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
+class RechteIn(BaseModel):
+    """Was ein Mensch an einem Plugin entscheidet."""
+    liest_erlaubt: list[str] | None = None
+    enabled: bool | None = None
+    all_users: bool | None = None
+    allowed_user_ids: list[int] | None = None
+
+
+@router.put("/{slug}/rechte")
+async def set_rechte(slug: str, data: RechteIn, _: User = Depends(require_admin),
+                     db: AsyncSession = Depends(get_session)):
+    """Freigaben und Sichtbarkeit setzen.
+
+    Erlauben laesst sich nur, was das Manifest auch angemeldet hat. Ein Plugin koennte sonst
+    ueber diesen Weg an Rechte kommen, die niemand an ihm gelesen hat.
+    """
+    plugin = await _plugin(db, slug)
+    if data.liest_erlaubt is not None:
+        gefordert = set(plugin.liest or [])
+        unbekannt = [r for r in data.liest_erlaubt if r not in gefordert]
+        if unbekannt:
+            raise Fehler(400, "err.right_not_requested",
+                         "The plugin does not ask for the right '{recht}'", recht=unbekannt[0])
+        plugin.liest_erlaubt = list(data.liest_erlaubt)
+    if data.enabled is not None:
+        plugin.enabled = data.enabled
+    if data.all_users is not None:
+        plugin.all_users = data.all_users
+    if data.allowed_user_ids is not None:
+        plugin.allowed_user_ids = list(data.allowed_user_ids)
+    await db.commit()
+    return {"slug": plugin.slug, "enabled": plugin.enabled, "all_users": plugin.all_users,
+            "allowed_user_ids": plugin.allowed_user_ids or [],
+            "liest_erlaubt": plugin.liest_erlaubt or []}
+
+
+@router.get("/_bruecke.js")
+async def bruecke_js():
+    """Das Stueck JavaScript, das ein Plugin als `traccoon` einbindet.
+
+    Es kapselt nur das Hin und Her mit dem Wirt. Absichtlich eine ausgelieferte Datei und
+    keine Kopie im Zip jedes Plugins: Sonst traegt jedes Plugin seinen eigenen, irgendwann
+    veralteten Stand der Bruecke mit sich herum.
+    """
+    datei = Path(__file__).resolve().parent.parent / "static" / "plugin_bruecke.js"
+    return Response(content=datei.read_bytes(), media_type="application/javascript",
+                    headers={"Cache-Control": "no-cache"})
 
 
 @router.delete("/{slug}", status_code=204)
