@@ -47,8 +47,8 @@ export interface DecisionBranch {
 
 export type AutoActionName =
   | "create_ticket" | "notify" | "webhook" | "http_request" | "tool_call"
-  | "set_context" | "set_board_status" | "messwert" | "messreihe_lesen"
-  | "notiz_anhaengen"
+  | "set_context" | "set_board_status" | "metric_record" | "metric_read"
+  | "note_append"
   | "comment" | "refresh_facts"
   // Zustand eines Artefakts (Ticket, Hardware, eigene Typen)
   | "set_status" | "set_field"
@@ -58,9 +58,15 @@ export type AutoActionName =
   | "stop_agent"
   // Mail-Eingang (Slot mail_intake)
   | "mail_classify" | "spam_evaluate" | "spam_card" | "spam_apply"
-  | "assistant_task" | "assistant_card" | "assistant_run"
+  | "mail_assistant_task" | "mail_assistant_card" | "mail_assistant_run"
   // Assistent allgemein (ohne Mail, ohne Ticket) und die Antwort eines Ablaufs
-  | "assistent_auftrag" | "antwort";
+  | "assistant_task" | "answer"
+  // Was einmal eigene Job-Arten waren: freier Agentenlauf und Skript
+  | "agent_run" | "script" | "job_pause"
+  // Ablagen: Texte mit Verlauf, das Gegenstück zu den Messreihen
+  | "document" | "document_read"
+  // Mail-Client: den Anhang einer Mail in den Kontext holen
+  | "mail_attachment";
 
 export interface AutoActionConfig {
   action: AutoActionName;
@@ -80,9 +86,12 @@ export interface NodeConfig {
     event?: string;
     project_id?: number;
     filter?: Record<string, any>;
-    /** `webhook` = called from outside, `ereignis` = listens for an event;
+    /** `webhook` = called from outside, `ereignis` = listens for an event,
+     *  `mail_action` = a button on a mail respectively on one of its attachments;
      *  missing = by hand respectively over a job. */
-    kind?: "webhook" | "ereignis";
+    kind?: "webhook" | "ereignis" | "mail_action";
+    /** Nur bei `mail_action`: woran der Knopf haengt (Nachricht oder einzelner Anhang). */
+    scope?: "message" | "attachment";
     /** Example payload, only for deriving fields in the editor, never at runtime. */
     sample?: Record<string, any>;
     /** Field of the payload the artifact stands in (ticket key or number, unit). */

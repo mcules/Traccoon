@@ -91,8 +91,8 @@ REGELN (daran wird geprüft, ein Verstoß macht den Ablauf unbrauchbar):
     set_status    {"status": "<agent-status>", "hold_reason": "…"}
     set_board_status {"status": "<spalte>"}
 - Texte in Parametern dürfen Kontextwerte einsetzen: "{{ pfad }}", mit Filtern
-  "{{ pfad | kurz:80 }}", "{{ liste | anzahl }}". Es gibt NUR die unten aufgezählten
-  Filter — erfinde keine. Ohne Kontext gibt es zusätzlich "{{ jetzt }}" (Zeitpunkt) und
+  "{{ pfad | truncate:80 }}", "{{ liste | count }}". Es gibt NUR die unten aufgezählten
+  Filter — erfinde keine. Ohne Kontext gibt es zusätzlich "{{ now }}" (Zeitpunkt) und
   "{{ heute }}" (Datum).
 - Ein Ablauf, der zu einer Uhrzeit laufen soll, hat KEINEN Auslöser im Graphen: er
   bekommt keinen `trigger`, und gestartet wird er später über einen Job (Zeitplan).
