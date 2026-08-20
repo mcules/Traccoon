@@ -32,20 +32,20 @@ def _reihe_out(r: MetricSeries, stand: dict | None = None) -> dict:
 
 
 @router.get("/metrics")
-async def list_series(mit_trend: bool = Query(True), ziel: float = Query(0.0),
+async def list_series(with_trend: bool = Query(True), target: float = Query(0.0),
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     """One's own series. Nobody sees foreign ones: they are operating data of their devices."""
     rows = (await db.execute(select(MetricSeries)
                              .where(MetricSeries.owner_user_id == user.id)
                              .order_by(MetricSeries.key))).scalars().all()
-    return [_reihe_out(r, await metrics.trend(db, r, ziel=ziel) if mit_trend else None)
+    return [_reihe_out(r, await metrics.trend(db, r, ziel=target) if with_trend else None)
             for r in rows]
 
 
-@router.get("/metrics/{key:path}/punkte")
-async def series_points(key: str, tage: int = Query(60, ge=1, le=3650),
-                        ziel: float = Query(0.0),
+@router.get("/metrics/{key:path}/points")
+async def series_points(key: str, days: int = Query(60, ge=1, le=3650),
+                        target: float = Query(0.0),
                         user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
     """The points of a series in the chosen period, including the trend to the same target value.
@@ -58,15 +58,15 @@ async def series_points(key: str, tage: int = Query(60, ge=1, le=3650),
     if r is None:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
                      "Metric series not found")
-    seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=tage)
+    seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days)
     ps = await metrics.punkte(db, r.id, seit=seit)
-    return {**_reihe_out(r, await metrics.trend(db, r, ziel=ziel, fenster_tage=tage)),
-            "ziel": ziel,
-            "punkte": [{"id": p.id, "ts": metrics._mit_zone(p.ts).isoformat(),
-                        "wert": p.value, "kontext": p.context or {}} for p in ps]}
+    return {**_reihe_out(r, await metrics.trend(db, r, ziel=target, fenster_tage=days)),
+            "target": target,
+            "points": [{"id": p.id, "ts": metrics._mit_zone(p.ts).isoformat(),
+                        "value": p.value, "context": p.context or {}} for p in ps]}
 
 
-@router.delete("/metrics/{key:path}/punkte/{punkt_id}", status_code=204)
+@router.delete("/metrics/{key:path}/points/{punkt_id}", status_code=204)
 async def delete_point(key: str, punkt_id: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     """Remove a single value.

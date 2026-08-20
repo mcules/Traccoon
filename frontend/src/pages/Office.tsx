@@ -180,7 +180,7 @@ export default function Office(): JSX.Element {
 
   // Back to where the office came from: into the project tab when a project is involved,
   // otherwise to the project list.
-  const zurueck = () => navigate(projectKey ? projektPfad(projectKey, "betrieb", "buero") : "/");
+  const zurueck = () => navigate(projectKey ? projektPfad(projectKey, "operations", "office") : "/");
 
   /** Esc in the kiosk: one level back into the operable full screen page, not out of the
    *  office; room and jump point stay, because usually you want to intervene right here. */

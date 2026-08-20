@@ -18,7 +18,7 @@ async def test_ausgelieferte_sprachen_stehen_ohne_zeile_da(client, db):
     r = await client.get("/i18n/locales", headers=auth(anna))
     assert r.status_code == 200
     nach = {s["locale"]: s for s in r.json()}
-    assert nach["de"]["name"] == "Deutsch" and nach["de"]["eingebaut"]
+    assert nach["de"]["name"] == "Deutsch" and nach["de"]["builtin"]
     assert nach["en"]["enabled"] is True
 
 
@@ -39,13 +39,13 @@ async def test_sprache_anlegen_umbenennen_abschalten_loeschen(client, db):
                    if s["locale"] == "fr")
     assert eintrag["name"] == "Français"
     assert eintrag["enabled"] is False
-    assert eintrag["eigene_texte"] == 1          # Abschalten wirft nichts weg
-    assert eintrag["eingebaut"] is False
+    assert eintrag["own_texts"] == 1          # Abschalten wirft nichts weg
+    assert eintrag["builtin"] is False
 
     assert (await client.delete("/i18n/locales/fr", headers=h)).status_code == 204
     danach = (await client.get("/i18n/locales", headers=h)).json()
     assert not [s for s in danach if s["locale"] == "fr"]
-    assert (await client.get("/i18n/fr", headers=h)).json()["texte"] == {}
+    assert (await client.get("/i18n/fr", headers=h)).json()["texts"] == {}
 
 
 async def test_quellsprache_bleibt(client, db):
@@ -64,7 +64,7 @@ async def test_umbenennen_der_ausgelieferten_sprache_legt_erst_dann_eine_zeile_a
     await client.put("/i18n/locales/en", json={"name": "British English"}, headers=h)
     nach = {s["locale"]: s for s in (await client.get("/i18n/locales", headers=h)).json()}
     assert nach["en"]["name"] == "British English"
-    assert nach["en"]["eingebaut"] is True       # stays shipped, only named differently
+    assert nach["en"]["builtin"] is True       # stays shipped, only named differently
 
 
 async def test_nur_admin_darf_sprachen_verwalten(client, db):
@@ -78,18 +78,18 @@ async def test_leerer_text_stellt_die_ausgelieferte_fassung_wieder_her(client, d
     admin = await make_user(db, "chef", admin=True)
     h = auth(admin)
     await client.put("/i18n/en/menu.start", json={"text": "Home sweet home"}, headers=h)
-    assert (await client.get("/i18n/en", headers=h)).json()["texte"]["menu.start"]
+    assert (await client.get("/i18n/en", headers=h)).json()["texts"]["menu.start"]
     await client.put("/i18n/en/menu.start", json={"text": "  "}, headers=h)
-    assert (await client.get("/i18n/en", headers=h)).json()["texte"] == {}
+    assert (await client.get("/i18n/en", headers=h)).json()["texts"] == {}
 
 
 async def test_server_katalog_steht_zur_uebersetzung(client, db):
     """The server writes texts of its own (notifications, setup). Without this list the
     administration could not offer them, and they would stay German forever."""
     anna = await make_user(db, "anna")
-    r = await client.get("/i18n/server-katalog", headers=auth(anna))
+    r = await client.get("/i18n/server-catalog", headers=auth(anna))
     assert r.status_code == 200
-    texte = r.json()["texte"]
+    texte = r.json()["texts"]
     assert texte["server.onboarding.project"] == "Projekt anlegen"
     assert all(k.startswith("server.") for k in texte)
 

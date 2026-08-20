@@ -86,7 +86,7 @@ async def test_ohne_entscheidungen_gibt_es_keine_quote(db):
 async def test_endpunkt_liefert_beides(db, client):
     anna = await make_user(db, "anna")
     await _urteil(db, anna.id, "phishing", "spam")
-    r = await client.get("/assistant/statistik?tage=7", headers=auth(anna))
+    r = await client.get("/assistant/stats?days=7", headers=auth(anna))
     assert r.status_code == 200
     daten = r.json()
     assert daten["tage"] == 7

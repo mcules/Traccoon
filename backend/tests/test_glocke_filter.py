@@ -43,7 +43,7 @@ def _meldung(user, kind: str, *, gesendet: bool, **kw) -> Notification:
 
 
 async def _titel(client, user, alle: bool = False) -> list[str]:
-    r = await client.get("/notifications" + ("?alle=1" if alle else ""), headers=auth(user))
+    r = await client.get("/notifications" + ("?all=1" if alle else ""), headers=auth(user))
     assert r.status_code == 200
     return [n["title"] for n in r.json()]
 
@@ -132,5 +132,5 @@ async def test_alle_gelesen_raeumt_auch_das_verborgene(db, client):
     await db.commit()
 
     await client.post("/notifications/read-all", headers=auth(anna))
-    r = await client.get("/notifications?alle=1", headers=auth(anna))
+    r = await client.get("/notifications?all=1", headers=auth(anna))
     assert all(n["read"] for n in r.json())

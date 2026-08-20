@@ -62,7 +62,7 @@ export default function SlotList({ project }: { project: Project }) {
     onSuccess: (d) => {
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } });
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "settings", "processes") } });
     },
     onError: fail,
     onSettled: () => setBusy(""),
@@ -125,7 +125,7 @@ export default function SlotList({ project }: { project: Project }) {
                 <div className="flex-1" />
                 {s.definition_id && (
                   <Zeilenknopf onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`,
-                    { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } })}>
+                    { state: { from: projektPfad(project.key, "settings", "processes") } })}>
                     {tr(s.origin === "project" ? "slot_list.bearbeiten" : "slot_list.ansehen")}
                   </Zeilenknopf>
                 )}
@@ -152,7 +152,7 @@ export default function SlotList({ project }: { project: Project }) {
                   {(s.per_issue_type || []).map((v) => (
                     <span key={v.issue_type_id}
                           className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
-                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } })}
+                      <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: projektPfad(project.key, "settings", "processes") } })}
                               title={tr("slot_list.eigenen_ablauf_dieser_vorgangsart_bearbe")}>
                         {v.issue_type_name}
                       </button>

@@ -191,7 +191,7 @@ async def test_endpunkt_speichert_nichts(client, db, monkeypatch):
     await db.commit()
 
     _modell(monkeypatch, json.dumps(GUT))
-    r = await client.post(f"/workflows/{d.id}/entwurf", headers=auth(anna),
+    r = await client.post(f"/workflows/{d.id}/draft", headers=auth(anna),
                           json={"beschreibung": "melde Störungen"})
     assert r.status_code == 200, r.text
     assert len(r.json()["graph"]["nodes"]) == 3
@@ -208,7 +208,7 @@ async def test_fremder_darf_nicht_bauen(client, db, monkeypatch):
     db.add(d)
     await db.commit()
     _modell(monkeypatch, json.dumps(GUT))
-    r = await client.post(f"/workflows/{d.id}/entwurf", headers=auth(bert),
+    r = await client.post(f"/workflows/{d.id}/draft", headers=auth(bert),
                           json={"beschreibung": "irgendwas"})
     assert r.status_code == 403
 
@@ -220,7 +220,7 @@ async def test_ohne_zugang_klare_ansage(client, db, monkeypatch):
     db.add(d)
     await db.commit()
     monkeypatch.setattr(autor, "resolve_provider_token", lambda *a, **k: _fertig(""))
-    r = await client.post(f"/workflows/{d.id}/entwurf", headers=auth(anna),
+    r = await client.post(f"/workflows/{d.id}/draft", headers=auth(anna),
                           json={"beschreibung": "melde Störungen"})
     assert r.status_code == 409
     assert "Claude access" in r.json()["detail"]

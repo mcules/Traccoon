@@ -5,7 +5,7 @@ import { Aktionen, ICON, IconKnopf, LoeschDialog, Bereich, Fehlerzeile, Liste, L
 import { alleSchluessel, ausgeliefert, QUELLSPRACHE, setzeSprache, sprache, tr } from "../i18n";
 
 interface SpracheInfo {
-  locale: string; name: string; eigene_texte: number; eingebaut: boolean; enabled: boolean;
+  locale: string; name: string; own_texts: number; builtin: boolean; enabled: boolean;
 }
 
 /**
@@ -31,22 +31,22 @@ export default function TranslationsPanel() {
   // (notifications, setup steps) are known only to the server. Without the second part half
   // the application would stay German while the other half switches.
   const { data: serverTexte } = useQuery({
-    queryKey: ["i18n-server-katalog", locale],
-    queryFn: () => api.get<{ texte: Record<string, string>; ausgeliefert: Record<string, string> }>(
-      `/i18n/server-katalog?locale=${locale}`),
+    queryKey: ["i18n-server-catalog", locale],
+    queryFn: () => api.get<{ texts: Record<string, string>; shipped: Record<string, string> }>(
+      `/i18n/server-catalog?locale=${locale}`),
   });
-  const quelle = { ...alleSchluessel(), ...(serverTexte?.texte || {}) };
+  const quelle = { ...alleSchluessel(), ...(serverTexte?.texts || {}) };
   // The shipped translation comes from the server as well; otherwise its texts would count
   // as open here although they have long been translated.
   const geliefertAlle = (l: string) => (
-    l === locale ? { ...ausgeliefert(l), ...(serverTexte?.ausgeliefert || {}) } : ausgeliefert(l));
+    l === locale ? { ...ausgeliefert(l), ...(serverTexte?.shipped || {}) } : ausgeliefert(l));
   const { data: sprachen } = useQuery({
     queryKey: ["i18n-locales"],
     queryFn: () => api.get<SpracheInfo[]>("/i18n/locales"),
   });
   const { data: overrides } = useQuery({
     queryKey: ["i18n", locale],
-    queryFn: () => api.get<{ locale: string; texte: Record<string, string> }>(`/i18n/${locale}`),
+    queryFn: () => api.get<{ locale: string; texts: Record<string, string> }>(`/i18n/${locale}`),
   });
 
   const speichern = useMutation({
@@ -65,7 +65,7 @@ export default function TranslationsPanel() {
     mutationFn: (texte: Record<string, string>) =>
       api.post(`/i18n/${locale}/import`, { texte, ersetzen: false }),
     onSuccess: (r: any) => {
-      setErr(""); setOk(tr("translations_panel.texte_uebernommen", { anzahl: r.uebernommen }));
+      setErr(""); setOk(tr("translations_panel.texte_uebernommen", { anzahl: r.imported }));
       qc.invalidateQueries({ queryKey: ["i18n", locale] });
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Import fehlgeschlagen"),
@@ -73,7 +73,7 @@ export default function TranslationsPanel() {
 
   const zeilen = useMemo(() => {
     const geliefert = geliefertAlle(locale);
-    const eigene = overrides?.texte || {};
+    const eigene = overrides?.texts || {};
     return Object.entries(quelle)
       .map(([key, deutsch]) => ({
         key, deutsch,
@@ -88,13 +88,13 @@ export default function TranslationsPanel() {
 
   const offen = useMemo(() => {
     const geliefert = geliefertAlle(locale);
-    const eigene = overrides?.texte || {};
+    const eigene = overrides?.texts || {};
     return Object.keys(quelle).filter((k) => !(eigene[k] ?? geliefert[k])).length;
   }, [quelle, overrides, locale]);
 
   const exportieren = () => {
     const geliefert = geliefertAlle(locale);
-    const eigene = overrides?.texte || {};
+    const eigene = overrides?.texts || {};
     const alles: Record<string, string> = {};
     Object.keys(quelle).forEach((k) => { alles[k] = eigene[k] ?? geliefert[k] ?? ""; });
     const blob = new Blob([JSON.stringify(alles, null, 2)], { type: "application/json" });
@@ -121,7 +121,7 @@ export default function TranslationsPanel() {
         <select value={locale} onChange={(e) => setLocale(e.target.value)} className={inp}>
           {(sprachen || []).filter((s) => s.locale !== QUELLSPRACHE).map((s) => (
             <option key={s.locale} value={s.locale}>
-              {s.name} ({s.locale}){s.eingebaut ? ` · ${tr("translations_panel.ausgeliefert")}` : ""}
+              {s.name} ({s.locale}){s.builtin ? ` · ${tr("translations_panel.ausgeliefert")}` : ""}
             </option>
           ))}
         </select>
@@ -240,9 +240,9 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
                   && aendern.mutate({ locale: s.locale, body: { name: e.target.value } })}
                 className={`${inp} w-36`} />
               <span className="text-muted">
-                {s.eingebaut ? tr("translations_panel.ausgeliefert") : tr("translations_panel.eigene")}
+                {s.builtin ? tr("translations_panel.ausgeliefert") : tr("translations_panel.eigene")}
                 {" · "}
-                {tr("translations_panel.eigene_texte", { anzahl: s.eigene_texte })}
+                {tr("translations_panel.own_texts", { anzahl: s.own_texts })}
               </span>
               {s.locale !== QUELLSPRACHE && (
                 <label className="flex items-center gap-1 text-muted">

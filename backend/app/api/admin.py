@@ -195,7 +195,7 @@ async def get_aux_models(_: User = Depends(require_admin), db: AsyncSession = De
     """Which side task runs on which model. Without an entry `auto` applies, and then the
     agent does it itself, on its own (expensive) model."""
     from ..worker.aux import AUX_TASKS, aux_config
-    return [{"task": t, "beschreibung": beschreibung, "config": await aux_config(db, t) or None}
+    return [{"task": t, "description": beschreibung, "config": await aux_config(db, t) or None}
             for t, beschreibung in AUX_TASKS.items()]
 
 

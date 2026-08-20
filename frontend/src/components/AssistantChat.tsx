@@ -8,7 +8,7 @@ interface ChatMsg {
   id: number; text: string; status: string; result: string; error: string;
   pending_tool: string | null; created_at: string;
 }
-type Seite = { nachrichten: ChatMsg[]; mehr: boolean };
+type Seite = { messages: ChatMsg[]; more: boolean };
 
 const LAEUFT = ["new", "approved", "running", "awaiting"];
 
@@ -48,8 +48,8 @@ export default function AssistantChat() {
   const inv = () => qc.invalidateQueries({ queryKey: ["assistant-chat"] });
   const fehler = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
 
-  const nachrichten = [...aeltere, ...(data?.nachrichten || [])];
-  const mehr = aeltere.length ? nochMehr : !!data?.mehr;
+  const nachrichten = [...aeltere, ...(data?.messages || [])];
+  const mehr = aeltere.length ? nochMehr : !!data?.more;
 
   // Switching between conversation and archive starts over; the pages of the one have
   // nothing to do with the other.
@@ -87,8 +87,8 @@ export default function AssistantChat() {
     try {
       const seite = await api.get<Seite>(
         `/assistant/chat?limit=20&vor=${aelteste}${archiv ? "&archiv=1" : ""}`);
-      setAeltere((v) => [...seite.nachrichten, ...v]);
-      setNochMehr(seite.mehr);
+      setAeltere((v) => [...seite.messages, ...v]);
+      setNochMehr(seite.more);
     } catch (e) { fehler(e); }
   }
 

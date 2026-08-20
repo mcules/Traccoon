@@ -7,7 +7,7 @@ import { api } from "../api";
 type Meldung = {
   id: number; kind: string; title: string; body: string;
   issue_key: string; project_key: string; assistant_task_id: number | null;
-  gesendet: boolean; read: boolean; created_at: string;
+  sent: boolean; read: boolean; created_at: string;
 };
 
 /**
@@ -16,7 +16,7 @@ type Meldung = {
  * It deliberately does not show everything. Whatever went out over the messenger has been
  * read there; repeating it here made the bell a second inbox with a red dot that could not
  * be worked off (400 of 420 rows). The server decides that (see `api/notifications.py`),
- * `?alle=1` brings the history back for the "where was that message again" case.
+ * `?all=1` brings the history back for the "where was that message again" case.
  */
 export default function NotificationBell() {
   const qc = useQueryClient();
@@ -28,7 +28,7 @@ export default function NotificationBell() {
   });
   const { data: list } = useQuery({
     queryKey: ["notif-list", alle],
-    queryFn: () => api.get<Meldung[]>("/notifications" + (alle ? "?alle=1" : "")),
+    queryFn: () => api.get<Meldung[]>("/notifications" + (alle ? "?all=1" : "")),
     enabled: open,
   });
 
@@ -87,7 +87,7 @@ export default function NotificationBell() {
                 <div className="flex items-start gap-1.5">
                   <span className="flex-1 font-medium">{n.title}</span>
                   {/* Went out somewhere else and still standing here: this one is waiting. */}
-                  {n.gesendet && !alle && <span className="shrink-0 text-[11px] text-amber-400">{tr("notification_bell.wartet")}</span>}
+                  {n.sent && !alle && <span className="shrink-0 text-[11px] text-amber-400">{tr("notification_bell.wartet")}</span>}
                 </div>
                 {n.body && <div className="line-clamp-3 text-xs text-muted">{n.body}</div>}
               </>

@@ -128,7 +128,7 @@ async def visible_users(user: User = Depends(get_current_user),
              # How this person is reached belongs in the selection: otherwise one chooses
              # somebody and never learns that no channel is stored for them at all.
              "notify_default": u.notify_default,
-             "kanaele": [k for k in ("telegram", "email")
+             "channels": [k for k in ("telegram", "email")
                          if (u.telegram_chat_id if k == "telegram"
                              else (u.notify_email or u.email))]}
             for u in rows]

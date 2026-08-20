@@ -75,8 +75,8 @@ async def list_locales(user: User = Depends(get_current_user),
     alle = sorted(set(EINGEBAUT) | set(gezaehlt) | set(eigene))
     return [{"locale": l,
              "name": (eigene[l].name if l in eigene and eigene[l].name else NAMEN.get(l, l)),
-             "eigene_texte": gezaehlt.get(l, 0),
-             "eingebaut": l in EINGEBAUT,
+             "own_texts": gezaehlt.get(l, 0),
+             "builtin": l in EINGEBAUT,
              "enabled": eigene[l].enabled if l in eigene else True}
             for l in alle]
 
@@ -114,7 +114,7 @@ async def update_locale(locale: str, data: LocaleUpdate, _: User = Depends(requi
     await db.commit()
 
 
-@router.get("/server-katalog")
+@router.get("/server-catalog")
 async def server_katalog(locale: str = "", _: User = Depends(get_current_user)):
     """The German texts the server itself writes: notifications, the setup checklist.
 
@@ -124,8 +124,8 @@ async def server_katalog(locale: str = "", _: User = Depends(get_current_user)):
     admin area would count every one of these texts as untranslated.
     """
     lc = _locale(locale) if locale else ""
-    return {"texte": server_texte.quelle(),
-            "ausgeliefert": dict(server_texte.KATALOG.get(lc, {})) if lc else {}}
+    return {"texts": server_texte.quelle(),
+            "shipped": dict(server_texte.KATALOG.get(lc, {})) if lc else {}}
 
 
 @router.get("/{locale}")
@@ -135,7 +135,7 @@ async def overrides(locale: str, user: User = Depends(get_current_user),
     lc = _locale(locale)
     rows = (await db.execute(select(UiTranslation).where(
         UiTranslation.locale == lc))).scalars().all()
-    return {"locale": lc, "texte": {r.key: r.text for r in rows if r.text}}
+    return {"locale": lc, "texts": {r.key: r.text for r in rows if r.text}}
 
 
 @router.put("/{locale}/{key:path}", status_code=204)
@@ -179,7 +179,7 @@ async def import_texts(locale: str, data: ImportIn, _: User = Depends(require_ad
             db.add(UiTranslation(locale=lc, key=str(key)[:200], text=text[:4000]))
         geschrieben += 1
     await db.commit()
-    return {"locale": lc, "uebernommen": geschrieben}
+    return {"locale": lc, "imported": geschrieben}
 
 
 @router.delete("/locales/{locale}", status_code=204)

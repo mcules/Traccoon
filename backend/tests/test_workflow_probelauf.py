@@ -75,7 +75,7 @@ async def test_probelauf_laeuft_durch_und_zeigt_was_er_taete(client, db, monkeyp
 
     anna = await make_user(db, "anna")
     d = await _ablauf(db, anna)
-    r = await client.post(f"/workflows/{d.id}/probelauf", headers=auth(anna),
+    r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna),
                           json={"context": {"vorgang": {"titel": "Störung in der Halle",
                                                         "stufe": 5}}})
     assert r.status_code == 201, r.text
@@ -97,7 +97,7 @@ async def test_probelauf_laeuft_durch_und_zeigt_was_er_taete(client, db, monkeyp
 async def test_die_andere_seite_der_weiche_laesst_sich_genauso_pruefen(client, db):
     anna = await make_user(db, "anna")
     d = await _ablauf(db, anna)
-    r = await client.post(f"/workflows/{d.id}/probelauf", headers=auth(anna),
+    r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna),
                           json={"context": {"vorgang": {"titel": "Kleinkram", "stufe": 1}}})
     schritte = {s["node_id"]: s for s in r.json()["steps"]}
     assert "warten" in schritte and "ticket" not in schritte
@@ -116,7 +116,7 @@ async def test_probelauf_nimmt_den_entwurf_nicht_das_veroeffentlichte(client, db
                            status=WorkflowVersionStatus.draft))
     await db.commit()
 
-    r = await client.post(f"/workflows/{d.id}/probelauf", headers=auth(anna),
+    r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna),
                           json={"context": {"vorgang": {"titel": "x", "stufe": 9}}})
     schritte = {s["node_id"]: s for s in r.json()["steps"]}
     assert "neues__werkzeug" in schritte["werkzeug"]["result"]["probe"]
@@ -131,7 +131,7 @@ async def test_unschluessiger_ablauf_wird_nicht_durchgespielt(client, db):
     kaputt = _graph()
     kaputt["edges"] = [e for e in kaputt["edges"] if e.get("sourceHandle") != "ja"]
     d = await _ablauf(db, anna, graph=kaputt)
-    r = await client.post(f"/workflows/{d.id}/probelauf", headers=auth(anna), json={})
+    r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna), json={})
     assert r.status_code == 422 and "ja" in r.text
 
 
@@ -139,7 +139,7 @@ async def test_fremder_darf_nicht_proben(client, db):
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
     d = await _ablauf(db, anna)
-    assert (await client.post(f"/workflows/{d.id}/probelauf", headers=auth(bert),
+    assert (await client.post(f"/workflows/{d.id}/dry-run", headers=auth(bert),
                               json={})).status_code == 403
 
 
@@ -153,7 +153,7 @@ async def test_probelauf_prueft_den_stand_aus_dem_editor(client, db):
 
     editor = _graph()
     editor["nodes"][1]["data"]["config"]["action"]["params"]["tool"] = "gerade__gebaut"
-    r = await client.post(f"/workflows/{d.id}/probelauf", headers=auth(anna),
+    r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna),
                           json={"context": {"vorgang": {"titel": "x", "stufe": 9}},
                                 "graph": editor})
     assert r.status_code == 201, r.text

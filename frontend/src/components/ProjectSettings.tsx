@@ -26,19 +26,19 @@ const PROVIDER_LABEL: Record<string, string> = {
  * jumped out of the settings instead of one section back. The flows moved in here from
  * their own top level tab, because a slot assignment is a setting, not a place of work.
  */
-type Tab = "allgemein" | "mitglieder" | "agenten" | "prozesse" | "board" | "felder" | "git"
-  | "testumgebung" | "deployment" | "ziele";
+type Tab = "general" | "members" | "agents" | "processes" | "board" | "fields" | "git"
+  | "testenv" | "deployment" | "destinations";
 const TABS: [Tab, string, string][] = [
-  ["allgemein", "project_settings.tab_allgemein", "\u{2699}\u{FE0F}"],
-  ["mitglieder", "project_settings.tab_mitglieder", "\u{1F465}"],
-  ["agenten", "project_settings.tab_agenten", "\u{1F916}"],
-  ["prozesse", "project_settings.tab_prozesse", "\u{1F500}"],
+  ["general", "project_settings.tab_allgemein", "\u{2699}\u{FE0F}"],
+  ["members", "project_settings.tab_mitglieder", "\u{1F465}"],
+  ["agents", "project_settings.tab_agenten", "\u{1F916}"],
+  ["processes", "project_settings.tab_prozesse", "\u{1F500}"],
   ["board", "project_settings.tab_board", "\u{1F5C2}\u{FE0F}"],
-  ["felder", "project_settings.tab_felder", "\u{1F4DD}"],
+  ["fields", "project_settings.tab_felder", "\u{1F4DD}"],
   ["git", "project_settings.tab_git", "\u{1F4C1}"],
-  ["testumgebung", "project_settings.tab_testumgebung", "\u{1F9EA}"],
+  ["testenv", "project_settings.tab_testumgebung", "\u{1F9EA}"],
   ["deployment", "project_settings.tab_deployment", "\u{1F680}"],
-  ["ziele", "project_settings.tab_ziele", "\u{1F3AF}"],
+  ["destinations", "project_settings.tab_ziele", "\u{1F3AF}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -66,7 +66,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
     queryFn: () => api.get<{ id: number; provider: string; name: string; is_default: boolean }[]>("/me/provider-tokens"),
   });
   const [s, setS] = useState<Settings | null>(null);
-  const tab: Tab = (TAB_KEYS.includes(bereich as Tab) ? bereich : "allgemein") as Tab;
+  const tab: Tab = (TAB_KEYS.includes(bereich as Tab) ? bereich : "general") as Tab;
   const [token, setToken] = useState("");
   const [envText, setEnvText] = useState("");
   const [msg, setMsg] = useState("");
@@ -122,14 +122,14 @@ export default function ProjectSettings({ project, bereich }: { project: Project
     } catch (e) { setErr(e instanceof ApiError ? e.message : "Fehler"); }
   };
 
-  const showSave = tab !== "board" && tab !== "agenten" && tab !== "mitglieder"
-    && tab !== "ziele" && tab !== "prozesse";
+  const showSave = tab !== "board" && tab !== "agents" && tab !== "members"
+    && tab !== "destinations" && tab !== "processes";
   return (
     <div className="flex flex-col gap-4 md:flex-row md:gap-6">
       {/* Ten sections wrapped into three lines of pills; as a column they simply stand there. */}
       <nav className="flex shrink-0 flex-wrap gap-1 rounded-lg border border-line bg-card p-1 md:w-48 md:flex-col md:flex-nowrap">
         {TABS.map(([t, label, icon]) => (
-          <Link key={t} to={projektPfad(project.key, "einstellungen", t)}
+          <Link key={t} to={projektPfad(project.key, "settings", t)}
             className={`flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm md:min-h-0 ${
               tab === t ? "bg-surface font-medium text-ink" : "text-muted hover:bg-surface hover:text-ink"}`}>
             <span className="text-base leading-none">{icon}</span>
@@ -139,7 +139,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
       </nav>
 
       <div className="min-w-0 max-w-2xl flex-1 space-y-4">
-      {tab === "mitglieder" && (
+      {tab === "members" && (
         <div className="space-y-8">
           <Members project={project} />
           {s.has_hardware && (
@@ -151,7 +151,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
           )}
         </div>
       )}
-      {tab === "allgemein" && (
+      {tab === "general" && (
       <Section title={tr("project_settings.allgemein")}>
         <Check label={tr("project_settings.projekt_hat_hardware")} hint={tr("project_settings.blendet_den_hardware_tab_katalog_exemplare_b")}
           on={s.has_hardware} onChange={(v) => set({ has_hardware: v })} />
@@ -178,7 +178,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
       </Section>
       )}
 
-      {tab === "allgemein" && project.parent_id != null && (
+      {tab === "general" && project.parent_id != null && (
         <Section title={tr("project_settings.vererbung")}>
           <Check label={tr("project_settings.rechte_vom_uebergeordneten_projekt_ueber")}
             hint={tr("project_settings.aus_mitglieder_des_eltern_projekts_sehen_die")}
@@ -186,7 +186,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
         </Section>
       )}
 
-      {tab === "allgemein" && project.my_role === "owner" && (
+      {tab === "general" && project.my_role === "owner" && (
         <div className="rounded-lg border border-red-500/40 bg-card p-4">
           <div className="mb-2 text-sm font-medium text-red-400">{tr("project_settings.gefahrenzone")}</div>
           <p className="mb-2 text-xs text-muted">
@@ -202,7 +202,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
         </div>
       )}
 
-      {tab === "agenten" && (
+      {tab === "agents" && (
         <div className="space-y-4">
           <Section title={tr("project_settings.rollen_zuordnung")}>
             <p className="text-xs text-muted">{tr("project_settings.welche_rolle_plant_bzw_fuehrt_aus_danach")}</p>
@@ -242,11 +242,11 @@ export default function ProjectSettings({ project, bereich }: { project: Project
       )}
 
       {tab === "board" && <StatusManager project={project} />}
-      {tab === "felder" && <ProjectFields project={project} />}
+      {tab === "fields" && <ProjectFields project={project} />}
 
-      {tab === "ziele" && <DestinationsBereich projectId={project.id} />}
+      {tab === "destinations" && <DestinationsBereich projectId={project.id} />}
       {/* Slots and own flows of the project: which graph runs on which occasion. */}
-      {tab === "prozesse" && (
+      {tab === "processes" && (
         <div className="space-y-8">
           <SlotList project={project} />
           <div>
@@ -287,7 +287,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
       </Section>
       )}
 
-      {tab === "testumgebung" && (
+      {tab === "testenv" && (
       <Section title={tr("project_settings.testumgebung")}>
         <Check label={tr("project_settings.testumgebungs_schritt")}
           hint={tr("project_settings.hint_testschritt")}
