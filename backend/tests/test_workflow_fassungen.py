@@ -216,7 +216,7 @@ async def test_diff_gegen_eine_bestimmte_fassung(db, client):
     d = await _ablauf(db, anna)
     v1 = (await _fassungen(db, d.id))[0]
 
-    r = await client.get(f"/workflows/{d.id}/versions/{v1.id}/diff?gegen={v1.id}",
+    r = await client.get(f"/workflows/{d.id}/versions/{v1.id}/diff?against={v1.id}",
                          headers=auth(anna))
     assert r.json()["gleich"] is True
 

@@ -272,7 +272,7 @@ export default function Inspector({
             </Link>
           )}
           {projektKey && (
-            <Link to={projektPfad(projektKey, "betrieb", "monitor")}
+            <Link to={projektPfad(projektKey, "operations", "monitor")}
               className="rounded border border-line px-2 py-0.5 hover:border-brand">
               📈 Agenten-Monitor
             </Link>

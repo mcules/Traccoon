@@ -9,7 +9,7 @@ import {
 } from "../ui";
 
 interface Trend {
-  punkte: number; wert: number | null; einheit: string;
+  points: number; wert: number | null; einheit: string;
   pro_tag: number | null; rest_tage: number | null; leer_am: string | null;
   guete: number | null; alter_stunden: number | null; letzter_am: string | null;
   erster_wert: number | null; erster_am: string | null;
@@ -19,8 +19,8 @@ interface Reihe {
   last_value: number | null; last_at: string | null; warned_at: string | null;
   trend: Trend | null;
 }
-interface Punkt { id: number; ts: string; wert: number; kontext: Record<string, any> }
-interface Verlauf extends Reihe { ziel: number; punkte: Punkt[] }
+interface Punkt { id: number; ts: string; value: number; context: Record<string, any> }
+interface Verlauf extends Reihe { target: number; points: Punkt[] }
 
 const ZEITRAeUME: [number, string][] = [[7, "7 Tage"], [30, "30 Tage"], [90, "90 Tage"],
                                         [365, "1 Jahr"]];
@@ -103,10 +103,10 @@ function ReihenZeile({ reihe, offen, umschalten, loeschen }: {
             {tr("messreihen.noch_tage", { tage: t.rest_tage, datum: t.leer_am ?? "" })}
           </span>
         ) : (
-          <span>{tr((t?.punkte ?? 0) < 3 ? "messreihen.zu_wenige_werte" : "messreihen.kein_ende")}</span>
+          <span>{tr((t?.points ?? 0) < 3 ? "messreihen.zu_wenige_werte" : "messreihen.kein_ende")}</span>
         )}
         {t?.guete != null && <span>{tr("messreihen.guete", { wert: t.guete })}</span>}
-        <span>{t?.punkte ?? 0} Werte</span>
+        <span>{t?.points ?? 0} Werte</span>
         {alt && t?.alter_stunden != null && (
           <span className="text-amber-300">
             {tr("messreihen.kein_neuer_wert", { stunden: Math.round(t.alter_stunden) })}
@@ -130,11 +130,11 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
   const [tage, setTage] = useState(30);
   const [ziel, setZiel] = useState(0);
   const [err, setErr] = useState("");
-  const pfad = `/metrics/${encodeURIComponent(reihe.key)}/punkte`;
+  const pfad = `/metrics/${encodeURIComponent(reihe.key)}/points`;
 
   const { data: verlauf, isFetching } = useQuery({
     queryKey: ["metric-points", reihe.key, tage, ziel],
-    queryFn: () => api.get<Verlauf>(`${pfad}?tage=${tage}&ziel=${ziel}`),
+    queryFn: () => api.get<Verlauf>(`${pfad}?days=${tage}&target=${ziel}`),
   });
 
   const wegwerfen = useMutation({
@@ -147,7 +147,7 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
 
-  const punkte = verlauf?.punkte || [];
+  const punkte = verlauf?.points || [];
   const t = verlauf?.trend;
 
   return (
@@ -170,13 +170,13 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
         </label>
       </div>
 
-      <Verlaufsbild punkte={punkte} einheit={reihe.unit} trend={t} ziel={verlauf?.ziel ?? 0} />
+      <Verlaufsbild punkte={punkte} einheit={reihe.unit} trend={t} ziel={verlauf?.target ?? 0} />
 
       {t?.rest_tage != null && (
         <p className="text-xs text-muted">
           Die gestrichelte Linie ist die Fortschreibung dieser Punkte:{" "}
           <b className="text-ink">{t.pro_tag} {reihe.unit}/Tag</b>, erreicht{" "}
-          <b className="text-ink">{verlauf?.ziel} {reihe.unit}</b> am{" "}
+          <b className="text-ink">{verlauf?.target} {reihe.unit}</b> am{" "}
           <b className="text-ink">{t.leer_am}</b> — in {t.rest_tage} Tagen. Güte {t.guete}
           {(t.guete ?? 1) < 0.8 && " (die Punkte streuen — die Zahl ist grob)"}.
         </p>
@@ -200,10 +200,10 @@ function Detail({ reihe, loeschen }: { reihe: Reihe; loeschen: () => void }) {
                 <td className="whitespace-nowrap px-2 py-1 text-muted">
                   {formatDateTime(new Date(p.ts).toISOString())}
                 </td>
-                <td className="px-2 py-1 text-ink">{p.wert} {reihe.unit}</td>
+                <td className="px-2 py-1 text-ink">{p.value} {reihe.unit}</td>
                 <td className="px-2 py-1 text-[11px] text-muted">
-                  {p.kontext?.quelle
-                    || (p.kontext?.instanz ? `Lauf #${p.kontext.instanz}` : "—")}
+                  {p.context?.quelle
+                    || (p.context?.instanz ? `Lauf #${p.context.instanz}` : "—")}
                 </td>
                 <td className="px-2 py-1 text-right">
                   <div className="flex justify-end">
@@ -251,7 +251,7 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
   const B = 900, H = 260, li = 46, re = 16, ob = 14, un = 26;
 
   const xs = punkte.map((p) => new Date(p.ts).getTime());
-  const ys = punkte.map((p) => p.wert);
+  const ys = punkte.map((p) => p.value);
   const ende = trend?.leer_am ? new Date(trend.leer_am + "T12:00:00").getTime() : null;
 
   const x0 = Math.min(...xs);
@@ -262,11 +262,11 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
 
   const px = (x: number) => li + ((x - x0) / Math.max(1, x1 - x0)) * (B - li - re);
   const py = (y: number) => H - un - ((y - y0) / spanne) * (H - ob - un);
-  const linie = punkte.map((p) => `${px(new Date(p.ts).getTime())},${py(p.wert)}`).join(" ");
+  const linie = punkte.map((p) => `${px(new Date(p.ts).getTime())},${py(p.value)}`).join(" ");
 
   const letzter = punkte[punkte.length - 1];
   const prognose = ende && trend?.rest_tage != null
-    ? { x1: px(new Date(letzter.ts).getTime()), y1: py(letzter.wert),
+    ? { x1: px(new Date(letzter.ts).getTime()), y1: py(letzter.value),
         x2: px(ende), y2: py(ziel) }
     : null;
 
@@ -303,9 +303,9 @@ function Verlaufsbild({ punkte, einheit, trend, ziel }: {
 
         <polyline points={linie} fill="none" className="stroke-brand" strokeWidth="2" />
         {punkte.map((p) => (
-          <circle key={p.id} cx={px(new Date(p.ts).getTime())} cy={py(p.wert)} r="3"
+          <circle key={p.id} cx={px(new Date(p.ts).getTime())} cy={py(p.value)} r="3"
                   className="fill-brand">
-            <title>{formatDateTime(new Date(p.ts).toISOString())} — {p.wert} {einheit}</title>
+            <title>{formatDateTime(new Date(p.ts).toISOString())} — {p.value} {einheit}</title>
           </circle>
         ))}
 

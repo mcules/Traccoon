@@ -446,8 +446,8 @@ export default function WorkflowEditor() {
   const kontextFelder = useMemo(
     () => verfuegbareFelder(nodes, katalog), [nodes, katalog]);
   const herkunft = (ort.state as { from?: string } | null)?.from
-    || (key ? projektPfad(key, "einstellungen", "prozesse")
-            : def?.slot ? "/processes/standard" : "/processes/eigene");
+    || (key ? projektPfad(key, "settings", "processes")
+            : def?.slot ? "/processes/default" : "/processes/own");
 
   return (
     // Wie im Büro: die Bereichsschiene bleibt stehen, der Rest der Seite verschwindet.

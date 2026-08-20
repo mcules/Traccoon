@@ -5,7 +5,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Issue, Project, ProjectMeta } from "../api";
 import { usePageChrome } from "../pageChrome";
 import {
-  altenTabUmleiten, arbeitAnsichten, betriebAnsichten, canManage, canWrite, projectChromeTabs,
+  ALT_ABSCHNITT, ALT_UNTER, altenTabUmleiten, arbeitAnsichten, betriebAnsichten, canManage,
+  canWrite, projectChromeTabs,
   projectTabs, projektPfad, type ProjectTab,
 } from "../projectTabs";
 import { useAuth } from "../auth";
@@ -53,7 +54,14 @@ export default function ProjectView() {
     if (t) { navigate(`/projects/${key}/tickets/${t}`, { replace: true }); return; }
     const alt = searchParams.get("tab");
     const ziel = alt && key ? altenTabUmleiten(key, alt) : null;
-    if (ziel) navigate(ziel, { replace: true });
+    if (ziel) { navigate(ziel, { replace: true }); return; }
+    // Deutsche Abschnitte im Pfad (`/projects/X/arbeit/liste`) auf die englischen: Adressen
+    // sind englisch, und was in Lesezeichen steht, soll trotzdem ankommen.
+    const neuTab = tab ? ALT_ABSCHNITT[tab] : undefined;
+    const neuUnter = unter ? ALT_UNTER[unter] : undefined;
+    if (key && (neuTab || neuUnter)) {
+      navigate(projektPfad(key, (neuTab || tab) as any, neuUnter || unter), { replace: true });
+    }
   }, []);
 
   const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: () => api.get<Project[]>("/projects") });
@@ -73,7 +81,7 @@ export default function ProjectView() {
   const { data: archivedIssues } = useQuery({
     queryKey: ["issues-archived", project?.id],
     queryFn: () => api.get<Issue[]>(`/projects/${project!.id}/issues?archived=true`),
-    enabled: !!project && unter === "archiv",
+    enabled: !!project && unter === "archive",
   });
 
   // Live updates over the real WebSocket (dispatcher and runner events)
@@ -115,14 +123,14 @@ export default function ProjectView() {
   // Role and flag dependent tab list (shared with the ticket page). Computed before the
   // project guard so that usePageChrome (a hook) is called unconditionally.
   const tabs = useMemo<[ProjectTab, string][]>(() => projectTabs(project), [project]);
-  const tab: ProjectTab = tabs.some(([k]) => k === tabParam) ? (tabParam as ProjectTab) : "arbeit";
+  const tab: ProjectTab = tabs.some(([k]) => k === tabParam) ? (tabParam as ProjectTab) : "work";
 
   // Views of the current group. Unknown or missing falls back to the first one, so that a
   // project without an office does not end up on an empty page.
   const arbeit = arbeitAnsichten();
   const betrieb = useMemo(() => betriebAnsichten(project), [project]);
   const ansichten: [string, string][] =
-    tab === "arbeit" ? arbeit : tab === "betrieb" ? betrieb : [];
+    tab === "work" ? arbeit : tab === "operations" ? betrieb : [];
   const ansicht = ansichten.some(([k]) => k === unter) ? unter! : (ansichten[0]?.[0] ?? "");
 
   usePageChrome(
@@ -141,7 +149,7 @@ export default function ProjectView() {
         {!project.my_ai_assign && (
           <span className="rounded bg-surface px-2 py-0.5 text-xs text-muted">{tr("project_view.ticketsystem_kein_ki_recht")}</span>
         )}
-        {tab === "arbeit" && issues && meta && (
+        {tab === "work" && issues && meta && (
           <div className="flex items-center gap-3 text-xs text-muted">
             <span>◷ {tr("project_view.gesamt", { anzahl: issues.length })}</span>
             <span>⚡ {tr("project_view.aktiv", { anzahl: issues.filter((i) => i.agent_working).length })}</span>
@@ -165,7 +173,7 @@ export default function ProjectView() {
           </div>
         )}
         <div className="hidden flex-1 sm:block" />
-        {darfSchreiben && tab === "arbeit" && (
+        {darfSchreiben && tab === "work" && (
           <button onClick={() => setNewOpen(true)} title={tr("project_view.neues_ticket")}
             className="rounded bg-brand px-3 py-1.5 text-sm text-white">
             + <span className="hidden sm:inline">{tr("project_view.neues_ticket")}</span>
@@ -173,12 +181,12 @@ export default function ProjectView() {
         )}
       </div>
 
-      {tab === "arbeit" && meta && issues && (
+      {tab === "work" && meta && issues && (
         <>
           {ansicht === "board" && <Board project={project} meta={meta} issues={issues} onOpen={openTicket} />}
-          {ansicht === "liste" && <IssueList project={project} meta={meta} issues={issues} onOpen={openTicket} />}
+          {ansicht === "list" && <IssueList project={project} meta={meta} issues={issues} onOpen={openTicket} />}
           {ansicht === "backlog" && <Backlog project={project} meta={meta} issues={issues} onOpen={openTicket} />}
-          {ansicht === "archiv" && (
+          {ansicht === "archive" && (
             (archivedIssues && archivedIssues.length > 0)
               ? <IssueList project={project} meta={meta} issues={archivedIssues} onOpen={openTicket} />
               : <div className="text-sm text-muted">{tr("project_view.keine_archivierten_tickets")}</div>
@@ -192,10 +200,10 @@ export default function ProjectView() {
       )}
       {tab === "dashboard" && <Dashboard project={project} />}
       {tab === "pm" && <PmChat project={project} />}
-      {tab === "betrieb" && (
+      {tab === "operations" && (
         <>
           {ansicht === "monitor" && <AgentMonitor project={project} />}
-          {ansicht === "buero" && (
+          {ansicht === "office" && (
             <Suspense fallback={<div className="text-sm text-muted">{tr("project_view.buero_laedt")}</div>}>
               <OfficeTab project={project} />
             </Suspense>
@@ -204,7 +212,7 @@ export default function ProjectView() {
           {ansicht === "hardware" && <Hardware project={project} />}
         </>
       )}
-      {tab === "einstellungen" && darfVerwalten && (
+      {tab === "settings" && darfVerwalten && (
         <ProjectSettings project={project} bereich={unter} />
       )}
 

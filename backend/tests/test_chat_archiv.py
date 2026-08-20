@@ -38,19 +38,19 @@ async def test_seite_haelt_ihre_groesse_und_meldet_aeltere(db, client):
 
     r = await client.get("/assistant/chat?limit=10", headers=auth(anna))
     seite = r.json()
-    assert [n["text"] for n in seite["nachrichten"]] == [f"Frage {i}" for i in range(15, 25)], \
+    assert [n["text"] for n in seite["messages"]] == [f"Frage {i}" for i in range(15, 25)], \
         "newest last, so that the conversation reads from top to bottom"
-    assert seite["mehr"] is True
+    assert seite["more"] is True
 
-    aelteste = seite["nachrichten"][0]["id"]
+    aelteste = seite["messages"][0]["id"]
     davor = (await client.get(f"/assistant/chat?limit=10&vor={aelteste}", headers=auth(anna))).json()
-    assert [n["text"] for n in davor["nachrichten"]] == [f"Frage {i}" for i in range(5, 15)]
-    assert davor["mehr"] is True
+    assert [n["text"] for n in davor["messages"]] == [f"Frage {i}" for i in range(5, 15)]
+    assert davor["more"] is True
 
-    anfang = (await client.get(f"/assistant/chat?limit=10&vor={davor['nachrichten'][0]['id']}",
+    anfang = (await client.get(f"/assistant/chat?limit=10&vor={davor['messages'][0]['id']}",
                                headers=auth(anna))).json()
-    assert len(anfang["nachrichten"]) == 5
-    assert anfang["mehr"] is False, "nothing lies before the first message"
+    assert len(anfang["messages"]) == 5
+    assert anfang["more"] is False, "nothing lies before the first message"
 
 
 async def test_archivierte_nachricht_verschwindet_aus_dem_verlauf(db, client):
@@ -59,15 +59,15 @@ async def test_archivierte_nachricht_verschwindet_aus_dem_verlauf(db, client):
 
     await client.post(f"/assistant/chat/{eine.id}/archive", headers=auth(anna))
     verlauf = (await client.get("/assistant/chat", headers=auth(anna))).json()
-    assert [n["id"] for n in verlauf["nachrichten"]] == [andere.id]
+    assert [n["id"] for n in verlauf["messages"]] == [andere.id]
 
     archiv = (await client.get("/assistant/chat?archiv=1", headers=auth(anna))).json()
-    assert [n["id"] for n in archiv["nachrichten"]] == [eine.id]
+    assert [n["id"] for n in archiv["messages"]] == [eine.id]
 
     # Out of the view, not out of the world: it comes back.
     await client.post(f"/assistant/chat/{eine.id}/unarchive", headers=auth(anna))
     verlauf = (await client.get("/assistant/chat", headers=auth(anna))).json()
-    assert {n["id"] for n in verlauf["nachrichten"]} == {eine.id, andere.id}
+    assert {n["id"] for n in verlauf["messages"]} == {eine.id, andere.id}
 
 
 async def test_laufende_nachricht_bleibt_stehen(db, client):
@@ -79,10 +79,10 @@ async def test_laufende_nachricht_bleibt_stehen(db, client):
     assert r.status_code == 409
 
     r = await client.post("/assistant/chat/archive-all", headers=auth(anna))
-    assert r.json()["archiviert"] == 1
+    assert r.json()["archived"] == 1
     verlauf = (await client.get("/assistant/chat", headers=auth(anna))).json()
-    assert [n["id"] for n in verlauf["nachrichten"]] == [laeuft.id]
-    assert fertig.id not in [n["id"] for n in verlauf["nachrichten"]]
+    assert [n["id"] for n in verlauf["messages"]] == [laeuft.id]
+    assert fertig.id not in [n["id"] for n in verlauf["messages"]]
 
 
 async def test_eingaenge_zeigen_keine_chat_nachrichten(db, client):

@@ -112,11 +112,13 @@ export interface User {
   id: number; email: string | null; username: string; display_name: string;
   global_role: string; status: string; onboarded: boolean; theme: string;
   timezone?: string;           // IANA-Zone: Uhrzeiten der Oberfläche und der eigenen Jobs
+  mail_last_account_id?: number | null;  // zuletzt geöffnetes Postfach
   ticket_open_mode?: string;   // popup | page — wie ein Ticket per Linksklick öffnet
   ticket_layout?: { left?: string[]; right?: string[] };  // nutzerspez. Block-Anordnung
   pm_chat_style?: string;      // bubbles | cli — Darstellung des PM-Chats
   locale?: string;             // Sprache der Oberfläche (Quelle: de)
-  notify_default?: string;     // telegram | email — Weg, wenn der Absender keinen nennt
+  notify_default?: string;     // telegram | email | ziel — Weg, wenn der Absender keinen nennt
+  notify_destination_id?: number | null;   // Kanal „ziel“: welches Ziel aufgerufen wird
   notify_email?: string | null;
   telegram_chat_id?: string | null;
 }
@@ -332,11 +334,11 @@ export const workflowApi = {
     api.post<{ status: string; error?: string | null;
                steps: { node_id: string; node_type: string; status: string;
                         decision?: string | null; result?: Record<string, any> | null;
-                        error?: string | null }[] }>(`/workflows/${id}/probelauf`, { context, graph }),
+                        error?: string | null }[] }>(`/workflows/${id}/dry-run`, { context, graph }),
   /** Have a flow drawn from a description (saves nothing). */
   entwurf: (id: number, beschreibung: string, graph?: unknown) =>
     api.post<{ graph: { nodes: any[]; edges: any[] }; fehler: string[]; erklaerung: string }>(
-      `/workflows/${id}/entwurf`, { beschreibung, graph }),
+      `/workflows/${id}/draft`, { beschreibung, graph }),
   /** Which context fields exist, per trigger, action and node type (for the editor). */
   contextFields: () => api.get<import("./components/workflow/contextFields").KontextKatalog>(
     "/workflow-context-fields"),
@@ -348,7 +350,7 @@ export const workflowApi = {
     description?: string; subject_kind: WfSubject; template?: string;
   }) => api.post<WfDef>("/workflows", body),
   get: (id: number) => api.get<WfDef>(`/workflows/${id}`),
-  update: (id: number, body: { name?: string; description?: string; enabled?: boolean }) =>
+  update: (id: number, body: { name?: string; key?: string; description?: string; enabled?: boolean }) =>
     api.put<WfDef>(`/workflows/${id}`, body),
   del: (id: number) => api.del(`/workflows/${id}`),
 
@@ -362,7 +364,7 @@ export const workflowApi = {
     api.put<GraphSave>(`/workflows/${id}/graph`, body),
   discardDraft: (id: number) => api.del(`/workflows/${id}/draft`),
   diff: (id: number, vid: number, gegen?: number) =>
-    api.get<WfDiff>(`/workflows/${id}/versions/${vid}/diff${gegen ? `?gegen=${gegen}` : ""}`),
+    api.get<WfDiff>(`/workflows/${id}/versions/${vid}/diff${gegen ? `?against=${gegen}` : ""}`),
   validate: (id: number, vid: number) =>
     api.post<{ ok: boolean; errors: string[] }>(`/workflows/${id}/versions/${vid}/validate`),
   publish: (id: number, vid: number) => api.post<WfVer>(`/workflows/${id}/versions/${vid}/publish`),

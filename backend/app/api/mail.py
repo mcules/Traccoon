@@ -107,8 +107,8 @@ async def reject_inbox(tid: int, user: User = Depends(get_current_user),
     return _out(t)
 
 
-@router.get("/assistant/statistik")
-async def statistik(tage: int = 30, user: User = Depends(get_current_user),
+@router.get("/assistant/stats")
+async def statistik(days: int = 30, user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
     """As what mail was classified, plus how well the local model judged.
 
@@ -118,7 +118,7 @@ async def statistik(tage: int = 30, user: User = Depends(get_current_user),
     """
     from ..services.spam_report import bilanz, einstufungen
 
-    daten = await einstufungen(db, user.id, tage=tage)
+    daten = await einstufungen(db, user.id, tage=days)
     daten["betrieb"] = await bilanz(db, user.id)
     return daten
 
@@ -275,7 +275,7 @@ async def chat_history(vor: int | None = None, limit: int = 20, archiv: bool = F
     rows = (await db.execute(q.limit(n + 1))).scalars().all()
     mehr = len(rows) > n
     seite = rows[:n]
-    return {"nachrichten": [_chat_out(t) for t in reversed(seite)], "mehr": mehr}
+    return {"messages": [_chat_out(t) for t in reversed(seite)], "more": mehr}
 
 
 # Running messages stay: archiving something that is still being worked on would hide the
@@ -294,7 +294,7 @@ async def chat_archive_all(user: User = Depends(get_current_user),
                AssistantTask.status.not_in(_LAEUFT))
         .values(archived_at=dt.datetime.now(tz=dt.timezone.utc)))).rowcount
     await db.commit()
-    return {"archiviert": n or 0}
+    return {"archived": n or 0}
 
 
 @router.post("/assistant/chat/{tid}/archive")

@@ -43,7 +43,7 @@ export default function WorkflowList({ project }: { project: Project }) {
       setF(EMPTY);
       setErr("");
       inv();
-      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } });
+      nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "settings", "processes") } });
     },
     onError: fail,
   });
@@ -91,7 +91,7 @@ export default function WorkflowList({ project }: { project: Project }) {
             </button>
             <button
               title={tr("workflow_list.bearbeiten")}
-              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "einstellungen", "prozesse") } })}
+              onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "settings", "processes") } })}
               className={ico + " hover:text-brand"}
             >
               ✎

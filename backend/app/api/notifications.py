@@ -13,7 +13,7 @@ So the bell keeps two sorts of row:
   decision (a plan in review, a pending permission request, an inbox item nobody
   released).
 
-Everything else is history and reachable over `?alle=1`, because "where was that message
+Everything else is history and reachable over `?all=1`, because "where was that message
 again" needs a place to look.
 """
 import datetime as dt
@@ -84,10 +84,10 @@ def _q_sichtbar(user: User, alle: bool = False):
 
 
 @router.get("")
-async def list_notifications(alle: bool = False, user: User = Depends(get_current_user),
+async def list_notifications(all: bool = False, user: User = Depends(get_current_user),
                              db: AsyncSession = Depends(get_session)):
     rows = (
-        await db.execute(select(Notification).where(_q_sichtbar(user, alle))
+        await db.execute(select(Notification).where(_q_sichtbar(user, all))
                          .order_by(Notification.id.desc()).limit(50))
     ).scalars().all()
     # Ticket key and project key alongside, so a click on the card can lead somewhere. The
@@ -107,7 +107,7 @@ async def list_notifications(alle: bool = False, user: User = Depends(get_curren
              "assistant_task_id": n.assistant_task_id,
              # `gesendet` says whether the message also went out somewhere else. In the
              # unfiltered list that is the difference between "still open" and "history".
-             "gesendet": n.notified_at is not None,
+             "sent": n.notified_at is not None,
              "read": n.read_at is not None, "created_at": n.created_at} for n in rows]
 
 
@@ -131,7 +131,7 @@ async def mark_read(nid: int, user: User = Depends(get_current_user), db: AsyncS
 @router.post("/read-all", status_code=204)
 async def read_all(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session)):
     # Marks the hidden rows as well: whoever clears the bell means the whole backlog, and a
-    # row that reappears later (`?alle=1`) as unread would be a counter without a bell.
+    # row that reappears later (`?all=1`) as unread would be a counter without a bell.
     await db.execute(update(Notification).where(_q_own(user), Notification.read_at.is_(None))
                      .values(read_at=dt.datetime.now(tz=dt.timezone.utc)))
     await db.commit()

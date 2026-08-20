@@ -89,7 +89,7 @@ function Statistik() {
   const [tage, setTage] = useState(30);
   const { data } = useQuery({
     queryKey: ["assistant-statistik", tage],
-    queryFn: () => api.get<StatistikDaten>(`/assistant/statistik?tage=${tage}`),
+    queryFn: () => api.get<StatistikDaten>(`/assistant/stats?days=${tage}`),
   });
   const arten = Object.entries(data?.arten || {});
   const groesste = Math.max(1, ...arten.map(([, w]) => w.gesamt));

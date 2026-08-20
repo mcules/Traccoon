@@ -21,7 +21,7 @@ import {
  *
  * They used to hold both: the vault and the MCP servers next to the runner limit, the night
  * window and the switches of one human, and a link saying that the own flows had moved
- * elsewhere. What belongs to the person now stands on `/konto`, the flows under `/processes`,
+ * elsewhere. What belongs to the person now stands on `/account`, the flows under `/processes`,
  * and what remains has one thing in common: they are things an agent works with.
  */
 type Tab = "secrets" | "destinations" | "agents" | "mcp" | "jobs" | "webhooks" | "skills";

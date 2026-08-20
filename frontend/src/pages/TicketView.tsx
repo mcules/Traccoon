@@ -43,7 +43,7 @@ export default function TicketView() {
       meta={meta}
       issues={issues || []}
       onOpen={(k) => navigate(`/projects/${project.key}/tickets/${k}`)}
-      onClose={() => navigate(projektPfad(project.key, "arbeit", "board"))}
+      onClose={() => navigate(projektPfad(project.key, "work", "board"))}
     />
   );
 }

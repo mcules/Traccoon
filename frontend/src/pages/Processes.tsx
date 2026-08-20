@@ -14,6 +14,7 @@ import {
 import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 import { projektPfad } from "../projectTabs";
 import MessreihenPanel from "../components/workflow/MessreihenPanel";
+import AblagenPanel from "../components/workflow/AblagenPanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 import VersionsDiff from "../components/workflow/VersionsDiff";
 import { BestaetigenDialog, ICON, IconKnopf } from "../components/ui";
@@ -29,21 +30,22 @@ import { BestaetigenDialog, ICON, IconKnopf } from "../components/ui";
  * They used to stand in the settings, in the wrong place, because flows are a load bearing
  * part of Traccoon beside the assistant and the projects and not a side setting.
  */
-type Tab = "eigene" | "standard" | "betrieb" | "ausloeser" | "messreihen";
+type Tab = "own" | "default" | "operations" | "triggers" | "metrics" | "documents";
 const TABS: [Tab, string][] = [
-  ["eigene", "processes.tabs.own"], ["standard", "processes.tabs.default_set"], ["betrieb", "processes.tabs.operations"],
-  ["ausloeser", "processes.tabs.triggers"], ["messreihen", "processes.tabs.series"],
+  ["own", "processes.tabs.own"], ["default", "processes.tabs.default_set"],
+  ["operations", "processes.tabs.operations"], ["triggers", "processes.tabs.triggers"],
+  ["metrics", "processes.tabs.series"], ["documents", "processes.tabs.storage"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
 export default function Processes() {
   const { tab: tabParam } = useParams();
-  const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "eigene") as Tab;
+  const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "own") as Tab;
   const { data: me } = useQuery({ queryKey: ["me"], queryFn: () => api.get<User>("/auth/me") });
   usePageChrome(tr("nav.processes"), TABS.map(([key, label]) => ({
     key, label: tr(label), to: `/processes/${key}`,
-    icon: { eigene: "✍️", standard: "🔀", betrieb: "📡", ausloeser: "⚡",
-            messreihen: "📈" }[key],
+    icon: { own: "✍️", default: "🔀", operations: "📡", triggers: "⚡",
+            metrics: "📈", documents: "📄" }[key],
   })), tab, "seite");
   return (
     <div>
@@ -51,11 +53,12 @@ export default function Processes() {
           Slots und hilft genau dort nicht, wo man ihn nehmen wollte — ereignisgetriebene
           Abläufe liefen doppelt, weil `events.listeners` nach Triggern sucht, nicht nach
           Sätzen. Wer einen Ablauf anders haben will, legt einen eigenen an. */}
-      {tab === "eigene" && <OwnWorkflowsPanel />}
-      {tab === "messreihen" && <MessreihenPanel />}
-      {tab === "standard" && <StandardSatz />}
-      {tab === "betrieb" && <Betrieb />}
-      {tab === "ausloeser" && <Ausloeser />}
+      {tab === "own" && <OwnWorkflowsPanel />}
+      {tab === "metrics" && <MessreihenPanel />}
+      {tab === "documents" && <AblagenPanel />}
+      {tab === "default" && <StandardSatz />}
+      {tab === "operations" && <Betrieb />}
+      {tab === "triggers" && <Ausloeser />}
     </div>
   );
 }
@@ -81,7 +84,7 @@ function StandardSatz() {
             key={s.slot} s={s} admin={admin}
             offen={offen === s.definition_id}
             onToggle={() => setOffen(offen === s.definition_id ? null : s.definition_id)}
-            onEdit={() => s.definition_id && nav(`/workflows/${s.definition_id}`, { state: { from: "/processes/standard" } })}
+            onEdit={() => s.definition_id && nav(`/workflows/${s.definition_id}`, { state: { from: "/processes/default" } })}
           />
         ))}
         {slots?.length === 0 && <ListeLeer>{tr("proc.kein_standard_satz")}</ListeLeer>}
@@ -122,7 +125,7 @@ function SlotZeile({ s, admin, offen, onToggle, onEdit }: {
           {s.abweichungen.map((a) => (
             <button
               key={a.project_id}
-              onClick={() => nav(`/projects/${a.project_key}/workflows/${a.definition_id}`, { state: { from: "/processes/standard" } })}
+              onClick={() => nav(`/projects/${a.project_key}/workflows/${a.definition_id}`, { state: { from: "/processes/default" } })}
               className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-300 hover:bg-amber-500/20"
               title={`${a.project_name} — eigene Fassung ansehen`}
             >
@@ -292,7 +295,7 @@ function Betrieb() {
               {l.subject_ref && (
                 <button
                   onClick={() => nav(l.subject_ref?.startsWith("HW-")
-                    ? projektPfad(l.project_key!, "betrieb", "hardware")
+                    ? projektPfad(l.project_key!, "operations", "hardware")
                     : `/projects/${l.project_key}/tickets/${l.subject_ref}`)}
                   className="rounded bg-surface px-1.5 py-0.5 text-xs text-ink hover:text-brand"
                 >
