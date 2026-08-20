@@ -36,8 +36,8 @@ from app.models.series import Series, SeriesPoint               # noqa: E402
 
 # Welcher `tracker_id` in welche Reihe wandert, und wie sie heisst.
 REIHEN = {
-    "s26-ultra": ("handy.s26-ultra", "S26 Ultra", "#3b82f6"),
-    "google-verlauf": ("archiv.google-verlauf", "Google-Verlauf (Archiv)", "#6b7280"),
+    "s26-ultra": ("tracker.s26-ultra", "S26 Ultra", "#3b82f6"),
+    "google-verlauf": ("tracker.google-verlauf", "Google-Verlauf (Archiv)", "#6b7280"),
 }
 STAPEL = 500
 

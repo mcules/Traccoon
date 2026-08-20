@@ -1845,6 +1845,7 @@
   "standorte.schluessel": "Schlüssel",
   "standorte.schluessel_fest": "Der Schlüssel lässt sich nicht mehr ändern",
   "standorte.schluessel_hinweis": "Kurz und dauerhaft, etwa handy.pixel — er steht später in Abläufen.",
+  "standorte.schluessel_umbenennen": "Umbenennen ist möglich — Abläufe, die diese Reihe beim Schlüssel nennen, muss man dann mitziehen. Das Gerät meldet weiter, sein Token hängt an der Reihe und nicht am Namen.",
   "standorte.still": "still",
   "standorte.token_erneuern": "Neu erzeugen",
   "standorte.token_erneuern_hinweis": "Die alte Adresse gilt danach nicht mehr",

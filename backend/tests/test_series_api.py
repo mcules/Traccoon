@@ -251,3 +251,35 @@ async def test_punkt_loeschen_zieht_den_zaehler_nach(client, db):
                                 headers=auth(ich))).status_code == 204
     daten = (await client.get("/series/handy/points", headers=auth(ich))).json()
     assert daten["series"]["points"] == 1
+
+
+async def test_umbenennen(client, db):
+    """Namen aendern sich. Was dabei nicht geht, ist ein Schluessel, den es schon gibt."""
+    ich = await make_user(db, "ich")
+    await _reihe(client, ich, "handy.alt")
+    await _reihe(client, ich, "handy.belegt")
+
+    r = await client.put("/series/handy.alt", headers=auth(ich),
+                         json={"key": "tracker.neu", "name": "Neu"})
+    assert r.status_code == 200 and r.json()["key"] == "tracker.neu"
+    assert (await client.get("/series/handy.alt/points", headers=auth(ich))).status_code == 404
+    assert (await client.get("/series/tracker.neu/points", headers=auth(ich))).status_code == 200
+
+    r = await client.put("/series/tracker.neu", headers=auth(ich),
+                         json={"key": "handy.belegt"})
+    assert r.status_code == 409
+
+
+async def test_umbenennen_behaelt_punkte_und_token(client, db):
+    ich = await make_user(db, "ich")
+    await _reihe(client, ich, "handy.alt", settings={"min_distance_m": 0, "min_interval_s": 0})
+    tok = await _token(client, ich, "handy.alt")
+    await client.post(f"/ingest/{tok}", json={"lat": 50.08, "lon": 10.56})
+
+    await client.put("/series/handy.alt", headers=auth(ich), json={"key": "tracker.neu"})
+
+    daten = (await client.get("/series/tracker.neu/points", headers=auth(ich))).json()
+    assert len(daten["points"]) == 1
+    # Das Token haengt an der Reihe, nicht am Schluessel — das Geraet meldet weiter.
+    r = await client.post(f"/ingest/{tok}", json={"lat": 50.09, "lon": 10.57})
+    assert r.status_code == 202 and r.json()["accepted"] == 1
