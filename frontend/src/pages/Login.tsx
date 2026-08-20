@@ -2,7 +2,7 @@ import { FormEvent, useState } from "react";
 import { tr } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
-import { KNOPF } from "../components/ui";
+import { KNOPF, KNOPF_TEXT} from "../components/ui";
 
 export default function Login() {
   const { login } = useAuth();
@@ -53,7 +53,7 @@ export default function Login() {
           {mode === "login" ? "Anmelden" : "Registrieren"}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className="mt-3 w-full text-sm text-muted hover:text-ink">
+          className={KNOPF_TEXT.neben}>
           {tr(mode === "login" ? "login.neu_hier" : "login.zurueck_zum_login")}
         </button>
       </form>

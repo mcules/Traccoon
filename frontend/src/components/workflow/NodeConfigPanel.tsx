@@ -13,6 +13,7 @@ import AgentTaskConfig from "./config/AgentTaskConfig";
 import WaitEventConfig from "./config/WaitEventConfig";
 import SubflowConfig from "./config/SubflowConfig";
 import StartConfig from "./config/StartConfig";
+import { KNOPF_TEXT } from "../ui";
 
 const OUTCOMES: [WorkflowInstanceStatus, string][] = [
   ["completed", "abgeschlossen"],
@@ -60,7 +61,7 @@ export default function NodeConfigPanel({
         {node.type !== "start" && (
           <button
             onClick={() => onDelete(node.id)}
-            className="text-sm text-muted hover:text-red-400"
+            className={KNOPF_TEXT.gefahr}
             title={tr("node_config_panel.knoten_loeschen")}
           >
             🗑

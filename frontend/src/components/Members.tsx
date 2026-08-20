@@ -156,7 +156,7 @@ export default function Members({ project }: { project: Project }) {
           </select>
         </label>
         <button disabled={!emailValid} onClick={() => emailValid && invite.mutate()}
-          className="rounded bg-brand px-3 py-1.5 text-white disabled:opacity-50">
+          className={KNOPF.haupt}>
           Einladen
         </button>
         {err && <span className="text-sm text-red-400">{err}</span>}

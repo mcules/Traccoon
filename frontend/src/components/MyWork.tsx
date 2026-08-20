@@ -6,7 +6,7 @@ import { api, workflowApi, MyDashboard, MyTicket, ProjectMeta, WorkflowTaskLite 
 import { waitInfo } from "../lib/waitReason";
 import { formatTime } from "../lib/formatTime";
 import { NODE_TYPE_LABELS } from "./workflow/types";
-import { Bereich, Liste, ZEILE } from "./ui";
+import { Bereich, Liste, ZEILE, KNOPF_TEXT} from "./ui";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 
 const PRIO_FARBE: Record<string, string> = {
@@ -112,7 +112,7 @@ function TaskModal({ task, onClose }: { task: WorkflowTaskLite; onClose: () => v
       >
         <div className="mb-3 flex items-center justify-between">
           <div className="text-sm font-medium">{task.node_config.label || task.definition_name}</div>
-          <button onClick={onClose} className="text-muted hover:text-ink">
+          <button onClick={onClose} className={KNOPF_TEXT.neben}>
             ✕
           </button>
         </div>

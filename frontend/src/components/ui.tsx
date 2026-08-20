@@ -40,7 +40,7 @@ export const ICON = {
  * `stand` hängt ein Ergebnis an den Knopf (✓/✗) — für Handlungen, deren Ausgang man später
  * noch sehen will, ohne sie zu wiederholen.
  */
-export type KnopfArt = "haupt" | "neben" | "gefahr";
+export type KnopfArt = "haupt" | "neben" | "zusage" | "gefahr";
 export type KnopfStand = "gut" | "schlecht" | "offen";
 
 /**
@@ -59,6 +59,9 @@ const RUMPF = "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-
 // graue, den er ablösen sollte.
 const FARBE = {
   haupt: "border border-brand bg-brand text-white hover:bg-brand/90",
+  // Grün ist keine Willkür, sondern eine Bedeutung wie Rot: „ich stimme zu" — freigeben,
+  // abnehmen, bestätigen. Deshalb bleibt sie, statt in Blau aufzugehen.
+  zusage: "border border-green-600 bg-green-600 text-white hover:bg-green-600/90",
   // Optisch gleich: „haupt" sagt im Code, worum es auf der Fläche geht, und ist kein
   // Versprechen auf ein anderes Aussehen. Wer später abstufen will, ändert diese eine Zeile.
   neben: "border border-brand bg-brand text-white hover:bg-brand/90",
@@ -67,7 +70,20 @@ const FARBE = {
 export const KNOPF = {
   haupt: `${RUMPF} ${FARBE.haupt}`,
   neben: `${RUMPF} ${FARBE.neben}`,
+  zusage: `${RUMPF} ${FARBE.zusage}`,
   gefahr: `${RUMPF} ${FARBE.gefahr}`,
+} as const;
+
+/**
+ * Handlungen ohne Fläche: „mehr anzeigen", ein × zum Entfernen, ein Link in einer Zeile.
+ *
+ * Auch hier gilt Grau nur für abgeschaltet — eine Aktion, die es gibt, ist blau. Ein
+ * Textknopf ist trotzdem kein Knopf mit Fläche: Er ordnet sich dem Text unter, in dem er
+ * steht, statt ihn zu unterbrechen.
+ */
+export const KNOPF_TEXT = {
+  neben: "text-brand transition-colors hover:underline disabled:text-muted disabled:no-underline",
+  gefahr: "text-red-400 transition-colors hover:text-red-300 disabled:text-muted",
 } as const;
 
 /** Dieselben Knöpfe in klein — für Zeilen und Werkzeugleisten, wo die volle Höhe die
@@ -76,6 +92,7 @@ const RUMPF_KLEIN = RUMPF.replace("px-3 py-1.5 text-sm", "px-2 py-1 text-xs");
 export const KNOPF_KLEIN = {
   haupt: `${RUMPF_KLEIN} ${FARBE.haupt}`,
   neben: `${RUMPF_KLEIN} ${FARBE.neben}`,
+  zusage: `${RUMPF_KLEIN} ${FARBE.zusage}`,
   gefahr: `${RUMPF_KLEIN} ${FARBE.gefahr}`,
 } as const;
 

@@ -36,7 +36,7 @@ import type { FlowNode } from "../components/workflow/nodes/shared";
 import { projektPfad } from "../projectTabs";
 import { SCHIENE_FREILASSEN } from "../nav";
 import VersionsDiff from "../components/workflow/VersionsDiff";
-import { BestaetigenDialog, Knopf } from "../components/ui";
+import { BestaetigenDialog, KNOPF, Knopf } from "../components/ui";
 
 function defaultConfig(type: WorkflowNodeType): NodeConfig {
   switch (type) {
@@ -469,8 +469,7 @@ export default function WorkflowEditor() {
             if (geaendert && !confirm(tr("editor.zurueck_trotz_aenderungen"))) return;
             nav(herkunft);
           }}
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-brand/50
-            px-3 py-1.5 text-sm leading-none text-brand transition-colors hover:bg-brand/10"
+          className={KNOPF.neben}
         >
           <span className="sm:hidden">←</span>
           <span className="hidden sm:inline">{tr("editor.zurueck")}</span>

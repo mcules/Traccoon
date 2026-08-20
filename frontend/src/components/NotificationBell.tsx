@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
+import { KNOPF_TEXT } from "./ui";
 
 type Meldung = {
   id: number; kind: string; title: string; body: string;
@@ -74,7 +75,7 @@ export default function NotificationBell() {
               {alle ? tr("notification_bell.verlauf") : tr("notification_bell.offen")}
             </span>
             <div className="flex items-center gap-2">
-              <button onClick={() => setAlle((v) => !v)} className="text-xs text-muted hover:text-ink">
+              <button onClick={() => setAlle((v) => !v)} className={KNOPF_TEXT.neben}>
                 {alle ? tr("notification_bell.nur_offene") : tr("notification_bell.alle_zeigen")}
               </button>
               <button onClick={readAll} className="text-xs text-brand">{tr("notification_bell.alle_gelesen")}</button>

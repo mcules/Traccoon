@@ -8,8 +8,7 @@ import { formatDateTime } from "../lib/formatTime";
 import { KontoDialog, type MailKonto, type MailIdentitaet } from "../components/MailKontenPanel";
 import {
   Bereich, BestaetigenDialog, Dialog, DialogFuss, EINGABE, Etikett, Feld, Fehlerzeile,
-  IconKnopf, Knopf, KNOPF, Liste, ListeLeer, ListenZeile, Reiter, Zeilenknopf,
-} from "../components/ui";
+  IconKnopf, Knopf, KNOPF, Liste, ListeLeer, ListenZeile, Reiter, Zeilenknopf, KNOPF_TEXT} from "../components/ui";
 
 /**
  * Das Postfach.
@@ -153,7 +152,7 @@ export default function Mail() {
           )}
         </form>
         <button onClick={() => setVerfassen({})}
-          className="shrink-0 rounded bg-brand px-3 py-1.5 text-sm text-white">
+          className={KNOPF.haupt}>
           ✉️ Verfassen
         </button>
       </div>
@@ -294,7 +293,7 @@ function OrdnerBaum({ ordner, aktiv, onWaehlen }: {
                style={{ paddingLeft: `${o.level * 0.85}rem` }}>
             {hatKinder(o) ? (
               <button onClick={(e) => { e.stopPropagation(); umschalten(o.name); }}
-                className="text-[10px] leading-none text-muted hover:text-ink"
+                className={KNOPF_TEXT.neben}
                 title={auf.has(o.name) ? "zuklappen" : "aufklappen"}>
                 {auf.has(o.name) ? "▼" : "▶"}
               </button>

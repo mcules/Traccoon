@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Issue, Project, ProjectMeta } from "../api";
 import { waitInfo } from "../lib/waitReason";
 import { ticketOpenHandlers, type OnOpenTicket } from "../ticketOpen";
-import { KNOPF, KNOPF_KLEIN } from "./ui";
+import { KNOPF, KNOPF_KLEIN, KNOPF_TEXT} from "./ui";
 
 const PRIO_FARBE: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400",
@@ -49,7 +49,7 @@ export default function Backlog({
 
   const Zeile = (i: Issue) => (
     <div key={i.id} className="flex items-center gap-3 rounded border border-line bg-card px-2 py-1.5 text-sm">
-      <button {...ticketOpenHandlers(i.key, onOpen)} className="font-mono text-xs text-muted hover:text-brand">{i.key}</button>
+      <button {...ticketOpenHandlers(i.key, onOpen)} className={KNOPF_TEXT.neben}>{i.key}</button>
       <span className="flex-1 truncate">{i.summary}</span>
       {(() => { const w = waitInfo(i); return w && (
         <span title={`${w.title}: ${w.label}`} className="text-xs">{w.icon}</span>
@@ -91,7 +91,7 @@ export default function Backlog({
               )}
               {!drin.length && (
                 <button onClick={() => loeschen.mutate(s.id)}
-                  className="text-xs text-muted hover:text-red-400">{tr("common.loeschen_klein")}</button>
+                  className={KNOPF_TEXT.gefahr}>{tr("common.loeschen_klein")}</button>
               )}
             </div>
             <div className="space-y-1">

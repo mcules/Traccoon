@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi, type Project, type WorkflowSubjectKind } from "../../api";
 import { projektPfad } from "../../projectTabs";
-import { Liste, ListeLeer, ListenZeile } from "../ui";
+import { Liste, ListeLeer, ListenZeile, KNOPF} from "../ui";
 
 const SUBJECT_LABEL: Record<WorkflowSubjectKind, string> = {
   issue: "Ticket",
@@ -92,11 +92,11 @@ export default function WorkflowList({ project }: { project: Project }) {
             <button
               title={tr("workflow_list.bearbeiten")}
               onClick={() => nav(`/projects/${project.key}/workflows/${d.id}`, { state: { from: projektPfad(project.key, "settings", "processes") } })}
-              className={ico + " hover:text-brand"}
+              className={ico + " hover:opacity-80"}
             >
               ✎
             </button>
-            <button title={tr("workflow_list.loeschen")} onClick={() => del.mutate(d.id)} className={ico + " hover:text-red-400"}>
+            <button title={tr("workflow_list.loeschen")} onClick={() => del.mutate(d.id)} className={"text-base leading-none text-red-400 hover:text-red-300"}>
               🗑
             </button>
             </div>
@@ -135,7 +135,7 @@ export default function WorkflowList({ project }: { project: Project }) {
         />
         <button
           onClick={() => f.key.trim() && f.name.trim() && create.mutate()}
-          className="col-span-2 rounded bg-brand py-1.5 text-white"
+          className={KNOPF.haupt}
         >
           + Prozess anlegen &amp; bearbeiten
         </button>
@@ -145,4 +145,5 @@ export default function WorkflowList({ project }: { project: Project }) {
   );
 }
 
-const ico = "text-base leading-none text-muted hover:text-ink";
+// Auch hier: eine Handlung ist blau, Grau bliebe fuer abgeschaltet.
+const ico = "text-base leading-none text-brand transition-colors";

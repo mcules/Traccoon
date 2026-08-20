@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
-import { ICON, IconKnopf } from "./ui";
+import { ICON, IconKnopf, KNOPF} from "./ui";
 
 interface Grant {
   id: number; project_id: number; user_id: number; username: string; display_name: string;
@@ -141,7 +141,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
             {tr("resource_grants.auch_kind_orte")}
           </label>
         )}
-        <button onClick={() => uid && rid && add.mutate()} className="rounded bg-brand px-3 py-1.5 text-white">
+        <button onClick={() => uid && rid && add.mutate()} className={KNOPF.haupt}>
           Freigeben
         </button>
         {err && <span className="text-sm text-red-400">{err}</span>}

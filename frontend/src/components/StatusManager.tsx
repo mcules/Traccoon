@@ -3,8 +3,7 @@ import { tr } from "../i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import {
-  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog,
-} from "./ui";
+  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, KNOPF, KNOPF_TEXT} from "./ui";
 
 type Status = { id: number; name: string; category: string; order: number };
 const KATEGORIEN: [string, string][] = [
@@ -67,10 +66,10 @@ export default function StatusManager({ project }: { project: Project }) {
             <div className="flex flex-col">
               <button onClick={() => move(i, -1)} disabled={i === 0}
                 title={tr("status_manager.nach_oben")} aria-label={tr("status_manager.nach_oben")}
-                className="leading-none text-muted hover:text-ink disabled:opacity-30">▲</button>
+                className={KNOPF_TEXT.neben}>▲</button>
               <button onClick={() => move(i, 1)} disabled={i === rows.length - 1}
                 title={tr("status_manager.nach_unten")} aria-label={tr("status_manager.nach_unten")}
-                className="leading-none text-muted hover:text-ink disabled:opacity-30">▼</button>
+                className={KNOPF_TEXT.neben}>▼</button>
             </div>
             <span className="flex-1">{s.name}</span>
             <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{katLabel(s.category)}</span>
@@ -83,7 +82,7 @@ export default function StatusManager({ project }: { project: Project }) {
         ))}
       </div>
       <button onClick={() => setDialog({})}
-        className="mt-3 rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} {tr("status_manager.neue_spalte")}
       </button>
       <p className="mt-2 text-xs text-muted">{tr("status_manager.kategorie_hinweis")}</p>

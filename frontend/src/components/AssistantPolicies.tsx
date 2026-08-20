@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Liste, ListeLeer, ListenZeile, KNOPF} from "./ui";
+  Aktionen, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Liste, ListeLeer, ListenZeile, KNOPF, KNOPF_TEXT} from "./ui";
 
 interface Policy {
   id: number; match_kind: string; match_value: string;
@@ -110,8 +110,8 @@ function ToolPermissions() {
             {p.resource !== "*" && <code className="text-xs text-muted">{p.resource}</code>}
             <Etikett farbe={A[p.action] || A.ask}>{p.action}</Etikett>
             <div className="flex-1" />
-            {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className="text-xs text-muted hover:text-emerald-400">→ allow</button>}
-            {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className="text-xs text-muted hover:text-red-400">→ deny</button>}
+            {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className={KNOPF_TEXT.neben}>→ allow</button>}
+            {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className={KNOPF_TEXT.gefahr}>→ deny</button>}
             <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => del.mutate(p.id)} />
             </div>
           </ListenZeile>

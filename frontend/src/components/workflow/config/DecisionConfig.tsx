@@ -1,7 +1,7 @@
 import type { NodeConfig, DecisionBranch, JsonLogic } from "../types";
 import { tr } from "../../../i18n";
 import type { KontextFeld, KontextFilter } from "../contextFields";
-import { KNOPF_KLEIN } from "../../ui";
+import { KNOPF_KLEIN, KNOPF_TEXT} from "../../ui";
 
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 
@@ -71,7 +71,7 @@ export default function DecisionConfig({
                   placeholder={tr("decision_config.beschriftung")}
                   className={`flex-1 ${inp}`}
                 />
-                <button onClick={() => remove(i)} className="text-muted hover:text-red-400" title={tr("decision_config.zweig_entfernen")}>
+                <button onClick={() => remove(i)} className={KNOPF_TEXT.gefahr} title={tr("decision_config.zweig_entfernen")}>
                   ✕
                 </button>
               </div>

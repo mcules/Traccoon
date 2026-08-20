@@ -273,7 +273,7 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
         <input value={name} onChange={(e) => setName(e.target.value)}
           placeholder={tr("translations_panel.name_platzhalter")} className={`${inp} w-40`} />
         <button onClick={() => kennung.trim() && anlegen.mutate()}
-          className="rounded border border-line px-2 py-1 text-ink hover:bg-surface">
+          className={KNOPF_KLEIN.neben}>
           {tr("translations_panel.anlegen")}
         </button>
       </div>

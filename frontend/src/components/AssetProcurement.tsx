@@ -2,6 +2,7 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
+import { KNOPF_KLEIN } from "./ui";
 
 type Step = {
   id: number; name: string; order: number; assignee_id: number | null;
@@ -83,7 +84,7 @@ export default function AssetProcurement({
               {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name || m.username}</option>)}
             </select>
             <button onClick={() => complete.mutate(naechsterOffen.id)}
-              className="rounded bg-brand px-3 py-1 text-xs text-white">✓ {naechsterOffen.name} erledigt</button>
+              className={KNOPF_KLEIN.haupt}>✓ {naechsterOffen.name} erledigt</button>
           </div>
         </div>
       ) : (

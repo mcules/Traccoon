@@ -26,7 +26,7 @@ import { projektPfad } from "../../projectTabs";
 import {
   GATE_TEXT, dauerText, statusFarbe, statusText, uhrText, usdText, zahl,
 } from "./TopBar.tsx";
-import { KNOPF_KLEIN } from "../ui";
+import { KNOPF_KLEIN, KNOPF_TEXT} from "../ui";
 
 /** This many steps back the inspector shows. More is the job of the dock. */
 const SCHRITTE = 10;
@@ -216,7 +216,7 @@ export default function Inspector({
               <span className="text-muted">— (Wurzellauf)</span>
             ) : onSelect ? (
               <button type="button" onClick={() => onSelect(elternId)}
-                className="text-brand hover:underline">
+                className={KNOPF_TEXT.neben}>
                 {eltern?.agent || elternId}
               </button>
             ) : (
@@ -262,7 +262,7 @@ export default function Inspector({
           {onOpenAkte && entry.agent && (
             <button type="button" onClick={() => onOpenAkte(entry.agent)}
               title={tr("inspector.alle_laeufe", { rolle: entry.agent })}
-              className="rounded border border-line px-2 py-0.5 hover:border-brand">
+              className={KNOPF_KLEIN.neben}>
               📇 Personalakte: {entry.agent}
             </button>
           )}

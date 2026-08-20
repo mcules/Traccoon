@@ -5,8 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, workflowApi, type IssueType, type Project } from "../../api";
 import type { WorkflowSlotInfo } from "./types";
 import {
-  Bereich, Etikett, Fehlerzeile, Liste, ListenZeile, Zeilenknopf,
-} from "../ui";
+  Bereich, Etikett, Fehlerzeile, Liste, ListenZeile, Zeilenknopf, KNOPF_TEXT} from "../ui";
 import { projektPfad } from "../../projectTabs";
 
 /** Where the applicable flow comes from: the most important information on this page. */
@@ -158,7 +157,7 @@ export default function SlotList({ project }: { project: Project }) {
                       </button>
                       <button onClick={() => reset.mutate({ slot: s.slot, art: v.issue_type_id })}
                               title={tr("slot_list.eigenen_ablauf_verwerfen_die_vorgangsart")}
-                              className="hover:text-red-300">✕</button>
+                              className={KNOPF_TEXT.gefahr}>✕</button>
                     </span>
                   ))}
                   <select

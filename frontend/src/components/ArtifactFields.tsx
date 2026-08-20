@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
+import { KNOPF_TEXT } from "./ui";
 
 interface Wert { id: number; value: string; label: string; enabled: boolean }
 interface Feld {
@@ -177,7 +178,7 @@ function MehrfachText({ werte, kind, onSet }: {
         <span key={`${w}-${i}`} className="flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-xs">
           {String(w)}
           <button onClick={() => onSet(werte.filter((_, j) => j !== i))}
-            className="text-muted hover:text-red-300" title={tr("artifact_fields.entfernen")}>✕</button>
+            className={KNOPF_TEXT.gefahr} title={tr("artifact_fields.entfernen")}>✕</button>
         </span>
       ))}
       <input

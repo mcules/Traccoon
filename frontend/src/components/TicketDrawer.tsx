@@ -11,7 +11,7 @@ import WorkflowInstanceView from "./workflow/WorkflowInstanceView";
 import LifecycleView from "./workflow/LifecycleView";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 import { NODE_TYPE_LABELS } from "./workflow/types";
-import { KNOPF } from "./ui";
+import { KNOPF, KNOPF_KLEIN, KNOPF_TEXT} from "./ui";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
@@ -291,30 +291,31 @@ export default function TicketDrawer({
     ? "mx-auto max-w-6xl rounded-xl border border-line bg-card p-6"
     : "max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-line bg-card p-5 shadow-2xl";
   // Archiving and deleting right at the top beside the ticket id (clear icon buttons).
-  const iconBtn = "rounded-md border border-line p-1.5 text-lg leading-none";
+  // Icon-Knopf in der Seitenleiste: blau wie jeder Knopf, nur ohne Beschriftung.
+  const iconBtn = "rounded-md border border-brand bg-brand p-1.5 text-lg leading-none text-white";
   const headerActions = issue && (canWrite || kannVerwalten) && (
     <div className="flex items-center gap-1.5">
       {canWrite && issue.archived && (
         <>
           <span className="rounded bg-line px-1.5 text-[11px] uppercase text-muted">archiviert</span>
           <button onClick={() => archive.mutate()} title={tr("ticket_drawer.wiederherstellen")}
-            className={`${iconBtn} text-muted hover:bg-surface hover:text-brand`}>♻️</button>
+            className={`${iconBtn} hover:bg-brand/90`}>♻️</button>
         </>
       )}
       {canWrite && !issue.archived && isDone && (
         <button onClick={() => archive.mutate()} title={tr("ticket_drawer.ticket_archivieren")}
-          className={`${iconBtn} text-muted hover:bg-surface hover:text-brand`}>📦</button>
+          className={`${iconBtn} hover:bg-brand/90`}>📦</button>
       )}
       {kannVerwalten && (confirmDel ? (
         <span className="flex items-center gap-1 text-sm">
           <span className="text-red-400">{tr("ticket_drawer.loeschen")}</span>
-          <button onClick={() => del.mutate()} className="rounded bg-red-500 px-2 py-1 text-xs text-white">{tr("ticket_drawer.ja")}</button>
+          <button onClick={() => del.mutate()} className={KNOPF_KLEIN.gefahr}>{tr("ticket_drawer.ja")}</button>
           <button onClick={() => setConfirmDel(false)}
-            className="rounded border border-line px-2 py-1 text-xs text-muted">{tr("ticket_drawer.nein")}</button>
+            className={KNOPF_KLEIN.neben}>{tr("ticket_drawer.nein")}</button>
         </span>
       ) : (
         <button onClick={() => setConfirmDel(true)} title={tr("ticket_drawer.ticket_loeschen")}
-          className={`${iconBtn} text-muted hover:bg-surface hover:text-red-400`}>🗑️</button>
+          className={`rounded-md border border-red-600 bg-red-600 p-1.5 text-lg leading-none text-white hover:bg-red-600/90`}>🗑️</button>
       ))}
     </div>
   );
@@ -331,7 +332,7 @@ export default function TicketDrawer({
           {editLayout ? "✓ Layout fertig" : "⤢ Layout bearbeiten"}
         </button>
       )}
-      <button onClick={onClose} className="text-muted hover:text-ink">
+      <button onClick={onClose} className={KNOPF_TEXT.neben}>
         {asPage ? `← ${tr("common.zurueck")}` : "✕"}
       </button>
     </div>
@@ -396,7 +397,7 @@ export default function TicketDrawer({
       </button>
       {dirty && (
         <button onClick={() => setDraft(seed(issue))}
-          className="rounded border border-line px-3 py-1.5 text-muted hover:text-ink">{tr("ticket_drawer.verwerfen")}</button>
+          className={KNOPF.neben}>{tr("ticket_drawer.verwerfen")}</button>
       )}
       {dirty && <span className="text-xs text-yellow-400">{tr("ticket_drawer.ungespeicherte_aenderungen")}</span>}
     </div>
@@ -480,7 +481,7 @@ export default function TicketDrawer({
         <div className="flex-1" />
         {fileChanges && fileChanges.length > 0 && (
           <button onClick={() => setShowDiff((v) => !v)}
-            className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-brand">
+            className={KNOPF_KLEIN.neben}>
             {showDiff ? "Diff ausblenden" : "Diff ansehen"}</button>
         )}
       </div>
@@ -527,15 +528,15 @@ export default function TicketDrawer({
           {issue.testenv_status === "running" && issue.testenv_url ? (
             <>
               <a href={issue.testenv_url} target="_blank" rel="noreferrer"
-                className="text-brand hover:underline">🖥 {issue.testenv_url}</a>
+                className={KNOPF_TEXT.neben}>🖥 {issue.testenv_url}</a>
               <button onClick={() => life.mutate("testenv/stop")}
-                className="rounded border border-line px-2 py-0.5 text-muted hover:text-red-400">{tr("ticket_drawer.stoppen")}</button>
+                className={KNOPF_KLEIN.gefahr}>{tr("ticket_drawer.stoppen")}</button>
             </>
           ) : issue.testenv_status === "starting" ? (
             <span className="text-muted">{tr("ticket_drawer.testumgebung_startet")}</span>
           ) : (
             <button onClick={() => life.mutate("testenv/start")}
-              className="rounded border border-line px-2 py-0.5 text-muted hover:text-brand">🖥 Starten</button>
+              className={KNOPF_KLEIN.neben}>🖥 Starten</button>
           )}
           {issue.testenv_status === "error" && (
             <span className="text-red-400">Fehler{issue.testenv_error ? `: ${issue.testenv_error.slice(0, 120)}` : ""}</span>
@@ -550,7 +551,7 @@ export default function TicketDrawer({
               className="flex-1 truncate text-left text-brand hover:underline">📎 {a.filename}</button>
             <span className="text-muted">{Math.round(a.size / 1024)} KB</span>
             <button onClick={() => delAttachment.mutate(a.id)}
-              className="text-muted hover:text-red-400">✕</button>
+              className={KNOPF_TEXT.gefahr}>✕</button>
           </div>
         ))}
       </div>
@@ -570,7 +571,7 @@ export default function TicketDrawer({
         <input value={comment} onChange={(e) => setComment(e.target.value)}
           placeholder={tr("ticket_drawer.kommentar")} className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
         <button onClick={() => comment.trim() && addComment.mutate()}
-          className="rounded bg-brand px-3 py-1.5 text-white">{tr("ticket_drawer.senden")}</button>
+          className={KNOPF.haupt}>{tr("ticket_drawer.senden")}</button>
       </div>
       <div className="space-y-2">
         {[...(comments || [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((c) => (
@@ -686,12 +687,12 @@ export default function TicketDrawer({
             <div className="flex-1" />
             {issue.agent_working ? (
               <button onClick={() => life.mutate("stop")}
-                className="rounded border border-red-400/50 px-2 py-1 text-red-400 hover:bg-red-400/10">
+                className={KNOPF_KLEIN.gefahr}>
                 ⏹ Stoppen
               </button>
             ) : (
               <button onClick={() => unassign.mutate()}
-                className="rounded border border-line px-2 py-1 text-muted hover:text-ink">
+                className={KNOPF_KLEIN.neben}>
                 aufheben
               </button>
             )}
@@ -700,7 +701,7 @@ export default function TicketDrawer({
           {!issue.agent_working && (issue.agent_status === null || issue.agent_status === "open"
             || issue.agent_status === "failed") && (
             <button onClick={() => life.mutate("plan")}
-              className="rounded bg-brand px-3 py-1 text-white">
+              className={KNOPF_KLEIN.haupt}>
               🧭 {issue.agent_status === "failed" ? "Erneut planen" : "Planung starten"}
             </button>
           )}
@@ -712,7 +713,7 @@ export default function TicketDrawer({
             {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
           <button onClick={() => assign.mutate()}
-            className="rounded bg-brand px-3 py-1 text-white">{tr("ticket_drawer.zur_planung_uebergeben")}</button>
+            className={KNOPF_KLEIN.haupt}>{tr("ticket_drawer.zur_planung_uebergeben")}</button>
           <span className="text-xs text-muted">{tr("ticket_drawer.startet_die_planung_standard_pm_entschei")}</span>
         </div>
       )}
@@ -721,13 +722,13 @@ export default function TicketDrawer({
         <div className="mt-3 flex gap-2">
           {issue.hold_reason === "plan_split" ? (
             <button onClick={() => life.mutate("approve-split")}
-              className="rounded bg-green-600 px-3 py-1 text-sm text-white">✅ Aufteilung freigeben (Sub-Tickets anlegen)</button>
+              className={KNOPF.zusage}>✅ Aufteilung freigeben (Sub-Tickets anlegen)</button>
           ) : (
             <button onClick={() => life.mutate("approve-plan")}
-              className="rounded bg-green-600 px-3 py-1 text-sm text-white">✅ Plan freigeben</button>
+              className={KNOPF.zusage}>✅ Plan freigeben</button>
           )}
           <button onClick={() => life.mutate("reject-plan")}
-            className="rounded border border-line px-3 py-1 text-sm text-muted">
+            className={KNOPF.neben}>
             {issue.hold_reason === "plan_split" ? "Verwerfen" : "Ablehnen"}
           </button>
         </div>
@@ -744,13 +745,13 @@ export default function TicketDrawer({
                   <a href={issue.testenv_url} target="_blank" rel="noreferrer"
                     className={KNOPF.haupt}>{tr("ticket_drawer.testumgebung_oeffnen")}</a>
                   <button onClick={() => life.mutate("testenv/stop")}
-                    className="rounded border border-line px-3 py-1 text-sm text-muted hover:text-red-400">
+                    className={KNOPF.gefahr}>
                     Stoppen</button>
                   <span className="text-xs text-muted">{issue.testenv_url}</span>
                 </div>
               ) : (
                 <button onClick={() => life.mutate("testenv/start")}
-                  className="rounded border border-line px-3 py-1 text-sm text-muted hover:text-brand">
+                  className={KNOPF.neben}>
                   🖥 Testumgebung starten</button>
               )}
               {issue.testenv_status === "error" && issue.testenv_error && (
@@ -761,7 +762,7 @@ export default function TicketDrawer({
           )}
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => life.mutate("complete")} disabled={life.isPending}
-              className="rounded bg-green-600 px-3 py-1 text-sm text-white disabled:opacity-50">
+              className={KNOPF.zusage}>
               ✅ Auf Fertig setzen</button>
             <span className="text-xs text-muted">
               stoppt die Testumgebung, mergt den Branch und setzt erst dann „Fertig".
@@ -780,7 +781,7 @@ export default function TicketDrawer({
                   if (e.key === "Enter" && v.trim()) { answerBlocker.mutate(v); (e.target as HTMLInputElement).value = ""; } }} />
               <button onClick={() => { const el = document.getElementById("ans") as HTMLInputElement;
                 if (el?.value.trim()) { answerBlocker.mutate(el.value); el.value = ""; } }}
-                className="rounded bg-brand px-3 py-1.5 text-white">{tr("ticket_drawer.antworten")}</button>
+                className={KNOPF.haupt}>{tr("ticket_drawer.antworten")}</button>
             </div>
           ) : issue.hold_reason === "permission" ? (
             <div className="mt-1 text-muted">{tr("ticket_drawer.berechtigung_entscheiden")}</div>
@@ -788,11 +789,11 @@ export default function TicketDrawer({
             <div className="mt-2 space-y-2">
               <div className="text-muted">{tr("ticket_drawer.review_befunde_offen_pruefe_den_diff_unt")}</div>
               <button onClick={() => life.mutate("complete")}
-                className="rounded bg-green-600 px-3 py-1 text-sm text-white">✅ Abnehmen</button>
+                className={KNOPF.zusage}>✅ Abnehmen</button>
             </div>
           ) : (
             <button onClick={() => life.mutate("plan")}
-              className="mt-2 rounded bg-brand px-3 py-1 text-white">↻ Neu planen</button>
+              className={KNOPF_KLEIN.haupt}>↻ Neu planen</button>
           )}
         </div>
       )}

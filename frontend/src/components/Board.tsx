@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, Issue, Project, ProjectMeta, Status } from "../api";
 import { waitInfo } from "../lib/waitReason";
 import { ticketOpenHandlers, type OnOpenTicket } from "../ticketOpen";
+import { KNOPF_TEXT } from "./ui";
 
 const PRIO_COLOR: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400", medium: "text-yellow-400",
@@ -174,7 +175,7 @@ export default function Board({
       {moveErr && (
         <div className="mb-3 flex items-center justify-between rounded border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400">
           <span>{moveErr}</span>
-          <button onClick={() => setMoveErr(null)} className="text-red-400 hover:text-red-300">✕</button>
+          <button onClick={() => setMoveErr(null)} className={KNOPF_TEXT.gefahr}>✕</button>
         </div>
       )}
 

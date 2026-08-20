@@ -497,7 +497,7 @@ export default function OfficeView({
         onClick={() => setPaused((v) => !v)}
         aria-pressed={paused}
         title={paused ? "Wiedergabe fortsetzen (Leertaste)" : "Wiedergabe anhalten (Leertaste)"}
-        className="rounded border border-line px-2 py-1 text-muted hover:border-brand hover:text-ink"
+        className={KNOPF_KLEIN.neben}
       >
         {paused ? "▶ Fortsetzen" : "⏸ Anhalten"}
       </button>
@@ -508,7 +508,7 @@ export default function OfficeView({
           onClick={() => setDockOpen((v) => !v)}
           aria-pressed={dockOpen}
           title={tr("office_view.dock_umschalten")}
-          className="rounded border border-line px-2 py-1 text-muted hover:border-brand hover:text-ink"
+          className={KNOPF_KLEIN.neben}
         >
           {dockOpen ? "▸ Dock ausblenden" : "◂ Dock einblenden"}
         </button>
@@ -522,7 +522,7 @@ export default function OfficeView({
         type="button"
         onClick={() => setHelpOpen(true)}
         title={tr("office_view.tastenkuerzel")}
-        className="rounded border border-line px-2 py-1 text-muted hover:border-brand hover:text-ink"
+        className={KNOPF_KLEIN.neben}
       >
         ? Tasten
       </button>
