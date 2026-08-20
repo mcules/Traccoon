@@ -273,6 +273,75 @@ export const destinationApi = {
     api.post<HttpCallResult>(`/destinations/${id}/test`, body),
 };
 
+// ---------- Datenreihen ----------
+
+export interface Reihe {
+  id: number;
+  key: string;
+  kind: "number" | "location" | "text";
+  name: string;
+  description: string;
+  color: string;
+  settings: Record<string, any>;
+  /** Letzter Stand, art-abhängig: lat/lon/battery bei Standorten, value bei Zahlen. */
+  state: Record<string, any>;
+  points: number;
+  active: boolean;
+  expected_rows: number;
+  store_id: number | null;
+  last_at: string | null;
+  owner_user_id: number | null;
+  /** Gehört mir — oder ist sie mir nur freigegeben? */
+  own: boolean;
+  /** Name der besitzenden Person, wenn sie mir nicht gehört. */
+  owner: string;
+  has_token: boolean;
+}
+
+export interface Ort {
+  id: number;
+  key: string;
+  name: string;
+  lat: number;
+  lon: number;
+  radius_m: number;
+  color: string;
+  notify: boolean;
+  series_key: string;
+}
+
+export interface Freigabe {
+  id: number;
+  user_id: number;
+  username: string;
+  level: "view" | "manage";
+}
+
+export const seriesApi = {
+  list: (kind?: string) => api.get<Reihe[]>(`/series${kind ? `?kind=${kind}` : ""}`),
+  live: (kind = "location") => api.get<Reihe[]>(`/series-live?kind=${kind}`),
+  create: (body: Record<string, any>) => api.post<Reihe>("/series", body),
+  update: (key: string, body: Record<string, any>) =>
+    api.put<Reihe>(`/series/${encodeURIComponent(key)}`, body),
+  del: (key: string) => api.del(`/series/${encodeURIComponent(key)}`),
+  points: (key: string, q = "") =>
+    api.get<{ series: Reihe; points: any[] }>(`/series/${encodeURIComponent(key)}/points${q}`),
+  /** Ein frisches Token — das alte gilt danach nicht mehr. */
+  neuesToken: (key: string) =>
+    api.post<{ token: string; path: string }>(`/series/${encodeURIComponent(key)}/token`, {}),
+  token: (key: string) =>
+    api.get<{ token: string; path: string }>(`/series/${encodeURIComponent(key)}/token`),
+  shares: (key: string) => api.get<Freigabe[]>(`/series/${encodeURIComponent(key)}/shares`),
+  share: (key: string, body: { user_id: number; level: string }) =>
+    api.post<Freigabe>(`/series/${encodeURIComponent(key)}/shares`, body),
+  unshare: (key: string, id: number) =>
+    api.del(`/series/${encodeURIComponent(key)}/shares/${id}`),
+  orte: () => api.get<Ort[]>("/places"),
+  ortAnlegen: (body: Record<string, any>) => api.post<Ort>("/places", body),
+  ortAendern: (id: number, body: Record<string, any>) => api.put<Ort>(`/places/${id}`, body),
+  ortLoeschen: (id: number) => api.del(`/places/${id}`),
+};
+
 // ---------- Plugins ----------
 
 /** Was ein Plugin beitraegt: bisher nur Seiten, mehr braucht es noch nicht. */

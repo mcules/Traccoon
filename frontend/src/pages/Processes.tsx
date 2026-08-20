@@ -15,6 +15,7 @@ import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 import { projektPfad } from "../projectTabs";
 import MessreihenPanel from "../components/workflow/MessreihenPanel";
 import AblagenPanel from "../components/workflow/AblagenPanel";
+import StandortePanel from "../components/workflow/StandortePanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 import VersionsDiff from "../components/workflow/VersionsDiff";
 import { BestaetigenDialog, ICON, IconKnopf } from "../components/ui";
@@ -30,11 +31,13 @@ import { BestaetigenDialog, ICON, IconKnopf } from "../components/ui";
  * They used to stand in the settings, in the wrong place, because flows are a load bearing
  * part of Traccoon beside the assistant and the projects and not a side setting.
  */
-type Tab = "own" | "default" | "operations" | "triggers" | "metrics" | "documents";
+type Tab = "own" | "default" | "operations" | "triggers" | "metrics" | "documents"
+  | "locations";
 const TABS: [Tab, string][] = [
   ["own", "processes.tabs.own"], ["default", "processes.tabs.default_set"],
   ["operations", "processes.tabs.operations"], ["triggers", "processes.tabs.triggers"],
   ["metrics", "processes.tabs.series"], ["documents", "processes.tabs.storage"],
+  ["locations", "processes.tabs.locations"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -45,7 +48,7 @@ export default function Processes() {
   usePageChrome(tr("nav.processes"), TABS.map(([key, label]) => ({
     key, label: tr(label), to: `/processes/${key}`,
     icon: { own: "✍️", default: "🔀", operations: "📡", triggers: "⚡",
-            metrics: "📈", documents: "📄" }[key],
+            metrics: "📈", documents: "📄", locations: "📍" }[key],
   })), tab, "seite");
   return (
     <div>
@@ -56,6 +59,7 @@ export default function Processes() {
       {tab === "own" && <OwnWorkflowsPanel />}
       {tab === "metrics" && <MessreihenPanel />}
       {tab === "documents" && <AblagenPanel />}
+      {tab === "locations" && <StandortePanel />}
       {tab === "default" && <StandardSatz />}
       {tab === "operations" && <Betrieb />}
       {tab === "triggers" && <Ausloeser />}
