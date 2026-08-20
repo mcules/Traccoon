@@ -5,7 +5,7 @@ import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -424,6 +424,11 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
 
 class JobIn(BaseModel):
     name: str
+    # Der Zeitplan: cron | interval | once. Anders als bei `kind` wird hier geprueft, und der
+    # Grund steht in `services/scheduler.ZEITPLAN_ARTEN`: Ein unbekannter Wert macht den Job
+    # nicht kaputt, sondern still — er ist einfach nie faellig, waehrend die Oberflaeche
+    # "eingeschaltet" anzeigt. Genau so lag ein Job 13 Tage lang tot, weil dort `prompt`
+    # stand, also die Art der Arbeit statt des Zeitplans.
     type: str = "interval"
     schedule: str = "60"
     # prompt | script | workflow | http | film. Deliberately a free `str` without validation:
@@ -448,6 +453,16 @@ class JobIn(BaseModel):
     result_html: bool = False
     pause_on_success: bool = False
     run_timeout: int = 600
+
+    @field_validator("type")
+    @classmethod
+    def _zeitplan_pruefen(cls, wert: str) -> str:
+        from ..services.scheduler import ZEITPLAN_ARTEN
+        if wert not in ZEITPLAN_ARTEN:
+            raise ValueError(
+                f"'{wert}' ist kein Zeitplan. Erlaubt: {', '.join(ZEITPLAN_ARTEN)}. "
+                f"Die Art der Arbeit (prompt, workflow, film …) gehoert in `kind`.")
+        return wert
 
 
 class JobOut(BaseModel):
