@@ -40,7 +40,7 @@ const STATUS: Record<string, { label: string; farbe: EtikettFarbe }> = {
   error: { label: "inbox.status_error", farbe: "rot" },
 };
 
-// Pull mcules@… out of "Name <mail>", for the "always from …" label.
+// Pull the local part out of "Name <mail>", for the "always from …" label.
 function senderEmail(from: string | null): string {
   const m = (from || "").match(/[\w.+-]+@[\w-]+\.[\w.-]+/);
   return m ? m[0] : (from || "");
