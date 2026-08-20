@@ -1193,6 +1193,117 @@ async def _agent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict,
     return ergebnis
 
 
+async def _reihe_schreiben(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Einen Punkt in eine Datenreihe schreiben — gleich welcher Art.
+
+    Es gibt genau eine Sorte Reihe im Kern, mit einer Art daran (Zahl, Standort, Text). Also
+    gibt es auch genau eine Aktion, die hineinschreibt; welche Felder gelten, entscheidet die
+    Art. Drei Aktionen fuer "haenge einen Punkt an" waeren dieselbe Dreifachstruktur, die es
+    in den Tabellen nicht mehr gibt.
+
+    Gedacht ist das fuer Quellen, die ihre Daten nebenbei mitschicken: Traccar schickt zu
+    jedem Alarm die ganze Position samt Akkustand mit. Wer selbst und laufend meldet, nimmt
+    besser den Aufnahmepfad (`/api/ingest/<token>`) — der kostet keine Ablauf-Instanz je Punkt.
+
+    Parameter (`reihe`, `art`, `wert`, `quelle` und `pflicht` gehen auch deutsch, weil
+    `workflow_terms.PARAMS` sie abbildet):
+      series       Schluessel der Reihe (`tracker.shelter`), noetig
+      kind         number | location | text — nur noetig, wenn die Reihe neu entsteht
+      value        bei `number`: die Zahl
+      lat · lon    bei `location`: die Koordinaten
+      title · body bei `text`: Ueberschrift und Text
+      ts           Zeitstempel (Vorgabe: jetzt) — Unix-Sekunden oder ISO
+      accuracy · altitude · speed · course · battery   was ein Geraet sonst mitschickt
+      name · color Anzeigename und Farbe, wenn die Reihe neu entsteht
+      source       woher der Punkt kam (Vorgabe `flow`)
+      required     ohne Wert abbrechen statt uebergehen
+      context_key  wo das Ergebnis landet (Vorgabe `series`)
+    """
+    from . import series as reihen
+    from . import series_formats
+
+    schluessel = str(_interp(params.get("series") or "", ctx)).strip()
+    if not schluessel:
+        raise ValueError("reihe: keine Reihe genannt")
+    schluessel_ctx = str(params.get("context_key") or "series")
+    besitzer = await _besitzer(db, inst)
+
+    # Die Art steht an der Reihe, sobald es sie gibt. Der Parameter zaehlt nur beim Anlegen —
+    # sonst koennte ein Ablauf die Art einer bestehenden Reihe unter sich wegziehen.
+    vorhanden = await reihen.reihe(db, besitzer, schluessel)
+    art = vorhanden.kind if vorhanden else str(params.get("kind") or "number").strip()
+    if art not in ("number", "location", "text"):
+        raise ValueError(f"reihe: unbekannte Art '{art}'")
+
+    eintrag, fehlt = _eintrag_bauen(art, params, ctx, series_formats)
+    if fehlt:
+        if params.get("required"):
+            raise ValueError(f"reihe: {fehlt}")
+        # Der Normalfall, nicht der Fehler: Ein Geraet meldet auch seinen Zustand, wenn es
+        # gerade keinen Fix hat oder einen Wert nicht kennt.
+        inst.context = {**ctx, schluessel_ctx: {"series": schluessel, "kind": art,
+                                                "stored": False, "reason": fehlt}}
+        return {"action": "series_record", "series": schluessel, "kind": art,
+                "stored": False, "ignored": True, "skipped": True, "reason": fehlt}
+
+    reihe = vorhanden or await reihen.reihe(
+        db, besitzer, schluessel, kind=art, anlegen=True,
+        name=str(_interp(params.get("name") or "", ctx)).strip(),
+        farbe=str(params.get("color") or ""))
+
+    ergebnis = await reihen.aufnehmen(db, reihe, [eintrag])
+    stand = reihe.state or {}
+    aus = {"series": schluessel, "kind": art, "stored": ergebnis["accepted"] > 0,
+           "skipped": ergebnis["skipped"], "points": reihe.points,
+           **{n: stand.get(n) for n in ("value", "lat", "lon", "battery", "accuracy", "title")
+              if stand.get(n) is not None},
+           "places": stand.get("places") or [],
+           "entered": ergebnis["betreten"], "left": ergebnis["verlassen"]}
+    inst.context = {**ctx, schluessel_ctx: aus}
+    return {"action": "series_record", **aus}
+
+
+def _eintrag_bauen(art: str, params: dict, ctx: dict, formate) -> tuple[dict, str]:
+    """Aus den Parametern einen Punkt machen. Zweiter Rueckgabewert nennt, was fehlt."""
+    ts = formate.zeitpunkt(_interp(params.get("ts"), ctx))
+    quelle = str(params.get("source") or "flow")
+
+    if art == "location":
+        # Ueber dieselbe Formatschicht wie der Aufnahmepfad: Dann gelten hier dieselben
+        # Regeln fuer Komma-Zahlen, Zeitstempel und den Akku als Bruchteil oder Prozent.
+        punkte = formate.normalisiere({
+            "lat": _interp(params.get("lat"), ctx), "lon": _interp(params.get("lon"), ctx),
+            "ts": _interp(params.get("ts"), ctx),
+            "accuracy": _interp(params.get("accuracy"), ctx),
+            "altitude": _interp(params.get("altitude"), ctx),
+            "speed": _interp(params.get("speed"), ctx),
+            "course": _interp(params.get("course"), ctx),
+            "battery": _interp(params.get("battery"), ctx),
+            "source": quelle,
+        })
+        return (punkte[0], "") if punkte else ({}, "keine Position in der Nutzlast")
+
+    if art == "text":
+        text = str(_interp(params.get("body") or params.get("text") or "", ctx))
+        if not text.strip():
+            return {}, "kein Text in der Nutzlast"
+        titel = str(_interp(params.get("title") or "", ctx)).strip()
+        if not titel:
+            titel = next((z.strip("# ").strip() for z in text.splitlines() if z.strip()), "")
+        return {"title": titel[:200], "body": text, "ts": ts, "source": quelle,
+                "format": str(params.get("format") or "markdown")}, ""
+
+    roh = _interp(params.get("value"), ctx)
+    if isinstance(roh, str):
+        roh = roh.strip().replace("%", "").replace(",", ".")
+    if roh is None or (isinstance(roh, str) and roh.lower() in ("", "none", "null")):
+        return {}, "kein Wert in der Nutzlast"
+    try:
+        return {"value": float(roh), "ts": ts, "source": quelle}, ""
+    except (TypeError, ValueError):
+        return {}, f"'{roh}' ist keine Zahl"
+
+
 async def _dokument(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Einen Text in einer Ablage hinlegen — das Gegenstück zum Messwert.
 
@@ -1452,6 +1563,8 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     if action == "note_append":
         return await _notiz_anhaengen(db, inst, params, ctx)
 
+    if action == "series_record":
+        return await _reihe_schreiben(db, inst, params, ctx)
     if action == "metric_record":
         return await _messwert(db, inst, params, ctx)
 
