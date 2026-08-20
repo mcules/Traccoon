@@ -49,7 +49,7 @@ async def _instanz(db, anna, context: dict) -> WorkflowInstance:
 
 def _knoten(**params) -> dict:
     return {"id": "n", "type": "auto_action", "data": {"config": {"action": {
-        "action": "notiz_anhaengen", "params": params}}}}
+        "action": "note_append", "params": params}}}}
 
 
 async def test_pfad_und_text_kommen_aus_dem_kontext(db, mcp_stub):
@@ -70,7 +70,7 @@ async def test_pfad_und_text_kommen_aus_dem_kontext(db, mcp_stub):
     assert argumente["target"] == {"type": "path", "path": "04 Wissen/Erkennung/phishing.md"}
     assert argumente["content"] == "- gibt sich als N26 aus"
     assert "section" not in argumente, "ohne Abschnitt wird auch keiner mitgeschickt"
-    assert inst.context["notiz"]["ok"] is True
+    assert inst.context["note"]["ok"] is True
 
 
 async def test_werkzeug_ist_uebersteuerbar(db, mcp_stub):
@@ -100,7 +100,7 @@ async def test_ohne_text_wird_nichts_geschrieben(db, mcp_stub):
     r = await run_action(db, inst, _knoten(pfad="a.md", text="{{ spam.befunde_text }}"))
 
     assert r["ok"] is False and mcp_stub == []
-    assert inst.context["notiz"]["ok"] is False
+    assert inst.context["note"]["ok"] is False
 
 
 # ── Was passiert, wenn es das Werkzeug gar nicht gibt ────────────────────────

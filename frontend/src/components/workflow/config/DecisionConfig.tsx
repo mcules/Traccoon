@@ -110,7 +110,7 @@ export default function DecisionConfig({
       {felder.length > 0 && (
         <datalist id="wf-kontextfelder">
           {felder.map((f) => (
-            <option key={f.pfad} value={f.pfad}>{`${f.beschreibung} · ${f.quelle}`}</option>
+            <option key={f.path} value={f.path}>{`${f.description} · ${f.source}`}</option>
           ))}
         </datalist>
       )}
@@ -149,13 +149,13 @@ export default function DecisionConfig({
               rechts aus dem Bild — sie ist aber genau das, was man wissen will. */}
           <ul className="mt-2 space-y-1.5">
             {felder.map((f) => (
-              <li key={f.pfad}>
+              <li key={f.path}>
                 <div className="flex items-baseline gap-1.5">
-                  <code className="break-all font-mono text-ink">{f.pfad}</code>
-                  <span className="shrink-0 text-[11px] opacity-70">{f.typ}</span>
+                  <code className="break-all font-mono text-ink">{f.path}</code>
+                  <span className="shrink-0 text-[11px] opacity-70">{f.type}</span>
                 </div>
                 <div className="text-[11px] leading-snug">
-                  {f.beschreibung} · <span className="opacity-70">{f.quelle}</span>
+                  {f.description} · <span className="opacity-70">{f.source}</span>
                 </div>
               </li>
             ))}

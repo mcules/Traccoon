@@ -12,7 +12,7 @@ here does not happen.
 
     {{ mail.subject | truncate:40 }}
     {{ spam.score | times:100 | round:1 }} %
-    {{ klasse.category | default:"sonstiges" | upper }}
+    {{ classification.category | default:"sonstiges" | upper }}
     {{ now | date:"%d.%m.%Y" }}
     {{ tool.json.items | count }}
 """

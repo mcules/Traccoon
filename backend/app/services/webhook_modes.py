@@ -122,14 +122,14 @@ async def umstellen(db: AsyncSession) -> int:
             sub.ref_field = ref
             sub.context_map = {"mail": ""}
             sub.context_fixed = {
-                "eingang.source": f"webhook:{sub.route}",
-                "eingang.source_ref": ref,
-                "eingang.classify_agent": sub.classify_agent or "",
-                "eingang.agent": sub.agent or "assistent",
-                "eingang.prompt_tmpl": sub.prompt_tmpl or "",
-                "eingang.ref_field": "",
-                "eingang.auto_run": bool(sub.auto_run),
-                "eingang.owner_id": sub.owner_user_id,
+                "intake.source": f"webhook:{sub.route}",
+                "intake.source_ref": ref,
+                "intake.classify_agent": sub.classify_agent or "",
+                "intake.agent": sub.agent or "assistent",
+                "intake.prompt_tmpl": sub.prompt_tmpl or "",
+                "intake.ref_field": "",
+                "intake.auto_run": bool(sub.auto_run),
+                "intake.owner_id": sub.owner_user_id,
             }
             sub.mode = "event"
             sub.event_name = "mail.received"

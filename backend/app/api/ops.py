@@ -240,7 +240,7 @@ def _fuellen(tpl: str, nutzlast) -> str:
 
 
 def _setze_tief(ziel: dict, pfad: str, wert) -> None:
-    """`eingang.agent` legt {"eingang": {"agent": …}} an — ein Punkt im ZIEL verschachtelt."""
+    """`intake.agent` legt {"intake": {"agent": …}} an — ein Punkt im ZIEL verschachtelt."""
     teile = [t for t in str(pfad).split(".") if t]
     if not teile:
         return

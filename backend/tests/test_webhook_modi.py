@@ -128,10 +128,10 @@ async def test_mail_meldet_ein_ereignis_statt_zu_handeln(db, owner):
 
     ctx = _kontext(sub, {"account": "privat", "uid": 9, "subject": "Rechnung"})
     assert ctx["mail"]["subject"] == "Rechnung"
-    assert ctx["eingang"]["agent"] == "assistent"
-    assert ctx["eingang"]["classify_agent"] == "mail_classifier"
-    assert ctx["eingang"]["source_ref"] == "privat:9"
-    assert ctx["eingang"]["owner_id"] == owner.id
+    assert ctx["intake"]["agent"] == "assistent"
+    assert ctx["intake"]["classify_agent"] == "mail_classifier"
+    assert ctx["intake"]["source_ref"] == "privat:9"
+    assert ctx["intake"]["owner_id"] == owner.id
 
 
 async def test_umstellung_fasst_umgestellte_nicht_wieder_an(db, owner):

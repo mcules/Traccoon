@@ -22,7 +22,7 @@ export default function LoopConfig({
   const set = (p: Partial<NodeConfig>) => onChange({ ...config, ...p });
   // Lists first: everything else can be walked through as well (a single value counts as one
   // element), but a list is almost always what is meant.
-  const listen = felder.filter((f) => f.typ === "liste" || f.typ === "objekt");
+  const listen = felder.filter((f) => f.type === "list" || f.type === "object");
 
   return (
     <div className="space-y-3">
@@ -38,7 +38,7 @@ export default function LoopConfig({
         {felder.length > 0 && (
           <datalist id="wf-listenfelder">
             {[...listen, ...felder].map((f) => (
-              <option key={f.pfad} value={f.pfad}>{`${f.beschreibung} · ${f.quelle}`}</option>
+              <option key={f.path} value={f.path}>{`${f.description} · ${f.source}`}</option>
             ))}
           </datalist>
         )}

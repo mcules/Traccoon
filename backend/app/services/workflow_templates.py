@@ -309,7 +309,7 @@ def _mail_eingang() -> dict:
         }),
         _n("melde_gelernt", "auto_action", 5, 4, _action(
             "notify", "Gelernten Fall melden",
-            to={"mode": "context", "path": "eingang.owner_id"},
+            to={"mode": "context", "path": "intake.owner_id"},
             title="{{ spam.karte_titel }}", text="{{ spam.karte_text }}",
             kind="{{ spam.karte_art }}", ref={"spam_verdict_id": "{{ spam.verdict_id }}"})),
 
@@ -325,7 +325,7 @@ def _mail_eingang() -> dict:
         }),
         _n("melde_auto", "auto_action", 5, 5, _action(
             "notify", "Aussortierung melden",
-            to={"mode": "context", "path": "eingang.owner_id"},
+            to={"mode": "context", "path": "intake.owner_id"},
             title="{{ spam.karte_titel }}", text="{{ spam.karte_text }}",
             kind="{{ spam.karte_art }}", ref={"spam_verdict_id": "{{ spam.verdict_id }}"})),
 
@@ -335,7 +335,7 @@ def _mail_eingang() -> dict:
             "label": "Ist das Spam?",
             "instructions": "Freigabe verschiebt die Mail in den Spam-Ordner. "
                             "Ablehnung merkt den Absender als erwünscht.",
-            "assignee": {"mode": "context", "path": "eingang.owner_id"},
+            "assignee": {"mode": "context", "path": "intake.owner_id"},
             # The question has already been asked, as a card with buttons (the step before
             # respectively the digest card of the scheduler beat). A second report would be noise.
             "notify": False,

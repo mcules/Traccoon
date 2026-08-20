@@ -30,7 +30,7 @@ log = logging.getLogger("traccoon.terms")
 # Umstellung ein zweites Mal über ihr eigenes Ergebnis — und `assistant_task` (neu: der
 # allgemeine Auftrag) würde zum Mail-Weg, weil derselbe Name früher genau das hieß.
 MARKE = "terms"
-STAND = "en4"
+STAND = "en7"
 
 # ── Aktionen ────────────────────────────────────────────────────────────────
 AKTIONEN: dict[str, str] = {
@@ -164,6 +164,12 @@ KONTEXT_SCHLUESSEL: dict[str, str] = {
     "auftrag": "task",
     "antwort": "answer",
     "ergebnis": "result",
+    # Nachzuegler aus dem Mail-Weg und der Notiz-Aktion (Stand en5). Sie standen in
+    # gespeicherten Graphen als `{{ eingang.owner_id }}`, `{{ klasse.category }}` und
+    # `{{ notiz.ok }}` — ohne diese drei Zeilen zeigen die nach der Umbenennung ins Leere.
+    "eingang": "intake",
+    "klasse": "classification",
+    "notiz": "note",
 }
 
 
@@ -222,12 +228,31 @@ def _segmente(inhalt: str) -> str:
     return re.sub(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*", pfad, inhalt)
 
 
+def _ist_kontextpfad(wert: str) -> bool:
+    """Ist dieser nackte String ein Kontextpfad, dessen erstes Segment umbenannt wurde?
+
+    Absichtlich eng: Ein `path` steht auch fuer eine Vault-Datei, eine URL oder ein
+    Verzeichnis. Angefasst wird nur, was mit einem Namen beginnt, den die Tabelle kennt —
+    alles andere bleibt Zeichen fuer Zeichen, wie es war.
+    """
+    kopf = wert.split(".", 1)[0]
+    return "." in wert and "/" not in wert and " " not in wert and kopf in KONTEXT_SCHLUESSEL
+
+
 def _var_ersetzen(knoten):
-    """Die `var`-Pfade der Weichen (JSONLogic) mitnehmen."""
+    """Die `var`-Pfade der Weichen (JSONLogic) mitnehmen.
+
+    Und die nackten Pfade, die nicht in `{{ }}` stehen: Ein Empfaenger wird als
+    `{"mode": "context", "path": "intake.owner_id"}` genannt, ohne Klammern. Ohne diesen
+    Zweig blieb genau dieser Pfad bei einer Umbenennung stehen und zeigte danach ins Leere —
+    die Meldung ging an niemanden, und auffallen wuerde das erst, wenn jemand sie vermisst.
+    """
     if isinstance(knoten, dict):
         aus = {}
         for k, v in knoten.items():
             if k == "var" and isinstance(v, str):
+                aus[k] = _segmente(v)
+            elif k == "path" and isinstance(v, str) and _ist_kontextpfad(v):
                 aus[k] = _segmente(v)
             else:
                 aus[k] = _var_ersetzen(v)
@@ -275,10 +300,12 @@ def migriere_graph(graph: dict) -> tuple[dict, bool]:
         elif isinstance(aktion, str):
             cfg["action"] = normalisiere_aktion(EINMALIG.get(aktion, aktion) if erstmals
                                                 else aktion)
-        # Weichen, Beschriftungen, Auslöser: überall dürfen Pfade stehen.
-        for feld in ("branches", "trigger", "label", "guard", "text", "list_path",
-                     "context_key", "outcomes"):
-            if feld in cfg:
+        # Die ganze Config durchlaufen statt einer Liste von Feldern. Die Liste hier war
+        # eine Aufzählung dessen, woran jemand gedacht hatte — `assignee.path` stand nicht
+        # darin und blieb bei einer Umbenennung stehen. `_var_ersetzen` fasst ohnehin nur
+        # an, was wie ein Pfad aussieht.
+        for feld in list(cfg):
+            if feld != "action":
                 cfg[feld] = _var_ersetzen(cfg[feld])
         daten["config"] = cfg
         node["data"] = daten
