@@ -27,33 +27,33 @@ async def test_reiner_pfad_verhaelt_sich_wie_frueher():
 
 
 async def test_filterkette_wird_von_links_nach_rechts_angewendet():
-    assert fuellen("{{ spam.score | mal:100 | rund:1 }}", CTX) == "91.2"
-    assert fuellen("{{ mail.subject | kurz:12 }}", CTX) == "Ihre Domain…"
-    assert fuellen("{{ mail.subject | klein | kurz:11,\"\" }}", CTX) == "ihre domain"
+    assert fuellen("{{ spam.score | times:100 | round:1 }}", CTX) == "91.2"
+    assert fuellen("{{ mail.subject | truncate:12 }}", CTX) == "Ihre Domain…"
+    assert fuellen("{{ mail.subject | lower | truncate:11,\"\" }}", CTX) == "ihre domain"
 
 
 async def test_default_greift_nur_bei_leer():
     assert fuellen('{{ mail.from | default:"unbekannt" }}', CTX) == "unbekannt"
     assert fuellen('{{ leer.wert | default:"x" }}', CTX) == "x"
-    assert fuellen('{{ mail.subject | default:"x" | kurz:4,"" }}', CTX) == "Ihre"
+    assert fuellen('{{ mail.subject | default:"x" | truncate:4,"" }}', CTX) == "Ihre"
 
 
 async def test_listen_und_tiefe_pfade():
-    assert fuellen("{{ tool.json.items | anzahl }}", CTX) == "2"
+    assert fuellen("{{ tool.json.items | count }}", CTX) == "2"
     assert fuellen("{{ tool.json.items.0.name }}", CTX) == "eins"
-    assert fuellen('{{ tool.json.items | erstes | json }}', CTX) == '{"name": "eins"}'
+    assert fuellen('{{ tool.json.items | first | json }}', CTX) == '{"name": "eins"}'
 
 
 async def test_zeit_rechnen_und_formatieren():
     heute = dt.datetime.now(tz=dt.timezone.utc)
-    assert fuellen('{{ jetzt | datum:"%Y" }}', CTX) == str(heute.year)
+    assert fuellen('{{ now | date:"%Y" }}', CTX) == str(heute.year)
     # Two hours later is another point in time: what is checked is the shift itself.
-    vorher = auswerten("jetzt", CTX)
-    nachher = auswerten('jetzt | plus_zeit:2,"h"', CTX)
+    vorher = auswerten("now", CTX)
+    nachher = auswerten('jetzt | add_time:2,"h"', CTX)
     assert dt.datetime.fromisoformat(nachher) - dt.datetime.fromisoformat(vorher) \
         >= dt.timedelta(hours=1, minutes=59)
     # An ISO timestamp from the context can be formatted just as well.
-    assert fuellen('{{ zeit | datum:"%d.%m.%Y" }}',
+    assert fuellen('{{ zeit | date:"%d.%m.%Y" }}',
                    {"zeit": "2026-08-18T06:31:32+00:00"}) == "18.08.2026"
 
 
@@ -61,9 +61,9 @@ async def test_schiefe_vorlage_kippt_keinen_lauf():
     """A typo in the filter, a text instead of a number: that may at most give an ugly result,
     never an abort in the middle of the flow."""
     assert fuellen("{{ mail.subject | gibtsnicht }}", CTX) == CTX["mail"]["subject"]
-    assert fuellen("{{ mail.subject | mal:2 }}", CTX) == "0.0"
+    assert fuellen("{{ mail.subject | times:2 }}", CTX) == "0.0"
     assert fuellen("{{ }}", CTX) == ""
-    assert fuellen("{{ tool.json | kurz:5 }}", CTX).endswith("…")
+    assert fuellen("{{ tool.json | truncate:5 }}", CTX).endswith("…")
 
 
 async def test_boolesche_werte_lesen_sich_wie_erwartet():
@@ -73,7 +73,7 @@ async def test_boolesche_werte_lesen_sich_wie_erwartet():
 async def test_katalog_erklaert_jeden_filter():
     """The list feeds the help in the editor: a filter without an explanation is worthless there."""
     eintraege = katalog()
-    assert {"kurz", "default", "datum", "anzahl", "mal"} <= {e["name"] for e in eintraege}
+    assert {"truncate", "default", "date", "count", "times"} <= {e["name"] for e in eintraege}
     assert all(e["hilfe"] for e in eintraege)
 
 
@@ -98,7 +98,7 @@ async def test_unbekannter_pfad_bleibt_als_text_stehen():
 
 
 async def test_zahlen_bleiben_zahlen():
-    assert fuellen("{{ text | kurz:4 }}", {"text": "abcdefgh"}) == "abc…"
+    assert fuellen("{{ text | truncate:4 }}", {"text": "abcdefgh"}) == "abc…"
 
 
 # --- Listen und Pfade ------------------------------------------------------------------
@@ -106,20 +106,20 @@ async def test_zahlen_bleiben_zahlen():
 async def test_feld_zieht_aus_einer_objektliste():
     """Der Weg vom Suchtreffer zum Satz: ohne das bleibt eine Trefferliste unbenutzbar."""
     ctx = {"t": {"hits": [{"filename": "a/VW T5.md", "x": 1}, {"filename": "b/Corsa C.md"}]}}
-    assert fuellen('{{ t.hits | feld:"filename" | verbinde:", " }}', ctx) == "a/VW T5.md, b/Corsa C.md"
+    assert fuellen('{{ t.hits | field:"filename" | join:", " }}', ctx) == "a/VW T5.md, b/Corsa C.md"
     # Einzelnes Objekt: derselbe Filter, ein Wert.
-    assert fuellen('{{ t | feld:"hits" | anzahl }}', ctx) == "2"
+    assert fuellen('{{ t | field:"hits" | count }}', ctx) == "2"
 
 
 async def test_feld_ueberspringt_was_es_nicht_hat():
     ctx = {"l": [{"a": 1}, {"b": 2}, "kein Objekt"]}
-    assert fuellen('{{ l | feld:"a" | verbinde:"," }}', ctx) == "1"
+    assert fuellen('{{ l | field:"a" | join:"," }}', ctx) == "1"
 
 
 async def test_dateiname_macht_aus_pfaden_namen():
     ctx = {"p": ["03 Bereiche/Fahrzeuge/VW T5 Multivan.md", "Opel Corsa C.md"]}
-    assert fuellen('{{ p | dateiname | verbinde:" und " }}', ctx) == "VW T5 Multivan und Opel Corsa C"
-    assert fuellen("{{ p | erstes | dateiname }}", ctx) == "VW T5 Multivan"
+    assert fuellen('{{ p | basename | join:" und " }}', ctx) == "VW T5 Multivan und Opel Corsa C"
+    assert fuellen("{{ p | first | basename }}", ctx) == "VW T5 Multivan"
 
 
 async def test_max_beantwortet_die_frage_die_eine_weiche_nicht_stellen_kann():
@@ -137,4 +137,4 @@ async def test_max_beantwortet_die_frage_die_eine_weiche_nicht_stellen_kann():
 async def test_neue_filter_stehen_im_katalog():
     """Was der Editor nicht anbietet, findet niemand."""
     namen = {e["name"] for e in katalog()}
-    assert {"feld", "dateiname", "max", "min"} <= namen
+    assert {"field", "basename", "max", "min"} <= namen

@@ -10,11 +10,11 @@ the text. A closed list of filters applied from left to right. That stays readab
 people who are not developers, and by construction it cannot do damage: what is not listed
 here does not happen.
 
-    {{ mail.subject | kurz:40 }}
-    {{ spam.score | mal:100 | rund:1 }} %
-    {{ klasse.category | default:"sonstiges" | gross }}
-    {{ jetzt | datum:"%d.%m.%Y" }}
-    {{ tool.json.items | anzahl }}
+    {{ mail.subject | truncate:40 }}
+    {{ spam.score | times:100 | round:1 }} %
+    {{ klasse.category | default:"sonstiges" | upper }}
+    {{ now | date:"%d.%m.%Y" }}
+    {{ tool.json.items | count }}
 """
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ def _f_anzahl(wert):
 
 
 def _f_feld(wert, name=""):
-    """Pull one field out of a list of objects: `{{ treffer | feld:"filename" }}`.
+    """Pull one field out of a list of objects: `{{ treffer | field:"filename" }}`.
 
     The counterpart to `verbinde`, and the piece that was missing to get from a search
     result to a sentence. A single object gives a single value, so the filter also works
@@ -183,31 +183,31 @@ def _f_rund(wert, stellen="0"):
 
 FILTER = {
     # Text
-    "gross": (lambda w: ("" if w is None else str(w)).upper(), "Text in Großbuchstaben"),
-    "klein": (lambda w: ("" if w is None else str(w)).lower(), "Text in Kleinbuchstaben"),
-    "trimmen": (lambda w: ("" if w is None else str(w)).strip(), "Leerzeichen außen weg"),
-    "kurz": (_f_kurz, "Auf n Zeichen kürzen — kurz:40"),
-    "ersetze": (_f_ersetze, "Textteil austauschen — ersetze:\"alt\",\"neu\""),
+    "upper": (lambda w: ("" if w is None else str(w)).upper(), "Text in Großbuchstaben"),
+    "lower": (lambda w: ("" if w is None else str(w)).lower(), "Text in Kleinbuchstaben"),
+    "trim": (lambda w: ("" if w is None else str(w)).strip(), "Leerzeichen außen weg"),
+    "truncate": (_f_kurz, "Auf n Zeichen kürzen — truncate:40"),
+    "replace": (_f_ersetze, "Textteil austauschen — replace:\"alt\",\"neu\""),
     # Zahlen
-    "mal": (lambda w, f="1": _zahl(w) * _zahl(f, 1), "Multiplizieren — mal:100"),
+    "times": (lambda w, f="1": _zahl(w) * _zahl(f, 1), "Multiplizieren — times:100"),
     "plus": (lambda w, f="0": _zahl(w) + _zahl(f), "Addieren — plus:1"),
     "minus": (lambda w, f="0": _zahl(w) - _zahl(f), "Subtrahieren — minus:1"),
-    "rund": (_f_rund, "Runden — rund:1 (Nachkommastellen)"),
+    "round": (_f_rund, "Runden — round:1 (Nachkommastellen)"),
     # "loses -1.95 % per day" reads wrong: the sign is already in the verb.
-    "betrag": (lambda w: abs(_zahl(w)), "Vorzeichen weglassen"),
+    "abs": (lambda w: abs(_zahl(w)), "Vorzeichen weglassen"),
     # Listen
-    "anzahl": (_f_anzahl, "Wie viele Einträge (bzw. Zeichen)"),
-    "erstes": (lambda w: w[0] if isinstance(w, (list, tuple)) and w else "", "Erster Eintrag"),
-    "letztes": (lambda w: w[-1] if isinstance(w, (list, tuple)) and w else "", "Letzter Eintrag"),
-    "verbinde": (_f_verbinde, "Liste zu Text — verbinde:\", \""),
-    "feld": (_f_feld, "Ein Feld aus einer Objektliste — feld:\"name\""),
-    "dateiname": (_f_dateiname, "Notizname aus dem Pfad (ohne Ordner und .md)"),
+    "count": (_f_anzahl, "Wie viele Einträge (bzw. Zeichen)"),
+    "first": (lambda w: w[0] if isinstance(w, (list, tuple)) and w else "", "Erster Eintrag"),
+    "last": (lambda w: w[-1] if isinstance(w, (list, tuple)) and w else "", "Letzter Eintrag"),
+    "join": (_f_verbinde, "Liste zu Text — join:\", \""),
+    "field": (_f_feld, "Ein Feld aus einer Objektliste — field:\"name\""),
+    "basename": (_f_dateiname, "Notizname aus dem Pfad (ohne Ordner und .md)"),
     "max": (_f_max, "Größter Zahlwert einer Liste"),
-    "zeilen_mit": (_f_zeilen_mit, "Zeilen eines Textes, die etwas enthalten — zeilen_mit:\"### \""),
+    "lines_with": (_f_zeilen_mit, "Zeilen eines Textes, die etwas enthalten — lines_with:\"### \""),
     "min": (_f_min, "Kleinster Zahlwert einer Liste"),
     # Zeit
-    "datum": (_f_datum, "Zeit formatieren — datum:\"%d.%m.%Y\""),
-    "plus_zeit": (_f_plus_zeit, "Zeit verschieben — plus_zeit:2,\"h\" (t=Tage, h=Stunden, m=Minuten)"),
+    "date": (_f_datum, "Zeit formatieren — date:\"%d.%m.%Y\""),
+    "add_time": (_f_plus_zeit, "Zeit verschieben — add_time:2,\"h\" (t=Tage, h=Stunden, m=Minuten)"),
     # Allgemein
     "default": (_f_default,
                 "Ersatz, wenn leer — default:\"sonstiges\" (in Anführungszeichen wörtlich, "
@@ -218,8 +218,8 @@ FILTER = {
 
 # Sources that do not come from the context.
 SONDERQUELLEN = {
-    "jetzt": lambda: dt.datetime.now(tz=dt.timezone.utc).isoformat(),
-    "heute": lambda: dt.date.today().isoformat(),
+    "now": lambda: dt.datetime.now(tz=dt.timezone.utc).isoformat(),
+    "today": lambda: dt.date.today().isoformat(),
 }
 
 

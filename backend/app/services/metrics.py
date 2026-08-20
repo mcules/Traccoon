@@ -124,13 +124,13 @@ async def trend(db: AsyncSession, r: MetricSeries, *, ziel: float = 0.0,
     # series that has been quiet for weeks otherwise keeps serving its old line, and nobody
     # notices that it stopped being fed long ago.
     letzter = _mit_zone(r.last_at) if r.last_at else None
-    ergebnis = {"punkte": len(ps), "wert": r.last_value, "einheit": r.unit,
-                "pro_tag": None, "rest_tage": None, "leer_am": None, "guete": None,
-                "letzter_am": letzter.isoformat() if letzter else None,
-                "alter_stunden": (round((_jetzt() - letzter).total_seconds() / 3600.0, 2)
+    ergebnis = {"points": len(ps), "value": r.last_value, "unit": r.unit,
+                "per_day": None, "days_left": None, "empty_at": None, "fit": None,
+                "last_at": letzter.isoformat() if letzter else None,
+                "age_hours": (round((_jetzt() - letzter).total_seconds() / 3600.0, 2)
                                   if letzter else None),
-                "erster_wert": ps[0].value if ps else None,
-                "erster_am": _mit_zone(ps[0].ts).isoformat() if ps else None}
+                "first_value": ps[0].value if ps else None,
+                "first_at": _mit_zone(ps[0].ts).isoformat() if ps else None}
     if len(ps) < MIN_PUNKTE:
         return ergebnis
     basis = _mit_zone(ps[0].ts)
@@ -139,15 +139,15 @@ async def trend(db: AsyncSession, r: MetricSeries, *, ziel: float = 0.0,
     if werte[-1][0] < MIN_SPANNE_TAGE:
         return ergebnis
     a, b, r2 = gerade(werte)
-    ergebnis["pro_tag"] = round(a, 4)
-    ergebnis["guete"] = round(r2, 3)
+    ergebnis["per_day"] = round(a, 4)
+    ergebnis["fit"] = round(r2, 3)
     jetzt_x = (_jetzt() - basis).total_seconds() / 86400.0
     aktuell = a * jetzt_x + b
     if abs(a) > 1e-9:
         rest = (ziel - aktuell) / a
         if rest >= 0:
-            ergebnis["rest_tage"] = round(rest, 1)
-            ergebnis["leer_am"] = (_jetzt() + dt.timedelta(days=rest)).date().isoformat()
+            ergebnis["days_left"] = round(rest, 1)
+            ergebnis["empty_at"] = (_jetzt() + dt.timedelta(days=rest)).date().isoformat()
     return ergebnis
 
 
