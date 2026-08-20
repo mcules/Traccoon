@@ -8,7 +8,7 @@ import {
   ListeLeer, ListenZeile, LoeschDialog,
 } from "./ui";
 
-const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "prompt",
+const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "workflow",
                 agent: "", prompt: "", command: "", notify_mode: "on_output", notify_chat: "",
                 result_html: false, pause_on_success: false, run_timeout: 600,
                 // Liste = Script-Argumente, Objekt = Parameter eines prompt-Jobs.
@@ -136,12 +136,6 @@ function JobDialog({ job, fehler, laeuft, onClose, onSpeichern }: {
       if (v && typeof v === "object" && !Array.isArray(v)) setF((p: any) => ({ ...p, args: v }));
     } catch { /* ungültig: Text stehen lassen, Job-Feld unverändert */ }
   };
-  // Placeholders without a value: the same rule as server side (services/job_params).
-  const EINGEBAUT = ["heute", "jetzt", "seit", "zeitfenster"];
-  const fehlend = Array.from(new Set(
-    [...(f.prompt || "").matchAll(/\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g)].map((m: any) => m[1]),
-  )).filter((k) => !EINGEBAUT.includes(k as string)
-    && !(f.args && !Array.isArray(f.args) && (k as string) in (f.args as any)));
   const useTemplate = (key: string) => {
     const t = templates?.find((x) => x.key === key);
     if (!t) return;
@@ -178,23 +172,15 @@ function JobDialog({ job, fehler, laeuft, onClose, onSpeichern }: {
             <option value="cron">cron</option><option value="interval">interval</option><option value="once">once</option>
           </select>
         </Feld>
+        {/* Ein Job ist Zeitplan plus Ablauf. Fragen, Skript, Aufruf — das waren einmal
+            eigene Arten, die je genau eins konnten; heute sind es Knoten IM Ablauf. */}
         <Feld label={tr("jobs_panel.art")}>
           <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={EINGABE}>
-            <option value="prompt">prompt</option><option value="script">script</option>
-            <option value="workflow">workflow</option><option value="film">film</option>
+            <option value="workflow">{tr("jobs_panel.art_ablauf")}</option>
+            <option value="film">{tr("jobs_panel.art_film")}</option>
           </select>
         </Feld>
 
-        {f.kind === "prompt" && (
-          <Feld label={tr("jobs_panel.agent_z_b_news")}>
-            <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} className={EINGABE} />
-          </Feld>
-        )}
-        {f.kind === "script" && (
-          <Feld label={tr("jobs_panel.script_datei")}>
-            <input value={f.command} onChange={(e) => setF({ ...f, command: e.target.value })} className={EINGABE} />
-          </Feld>
-        )}
         {f.kind === "workflow" && (
           <Feld label={tr("jobs_panel.prozess_waehlen")}>
             <select value={f.workflow_definition_id ?? ""}
@@ -207,49 +193,33 @@ function JobDialog({ job, fehler, laeuft, onClose, onSpeichern }: {
             </select>
           </Feld>
         )}
-        {f.kind === "prompt" && (
+        {f.kind === "workflow" && (
           <div className="sm:col-span-2">
-            <Feld label={tr("jobs_panel.prompt")}>
-              <textarea value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} rows={6}
-                placeholder={tr("jobs_panel.prompt_platzhalter")} className={`${EINGABE} font-mono text-xs`} />
-            </Feld>
-          </div>
-        )}
-        {/* Parameter gibt es für beide: beim Prompt füllen sie die Platzhalter, beim
-            Ablauf sind sie sein Startkontext — derselbe Ablauf, andere Messreihe. */}
-        {(f.kind === "prompt" || f.kind === "workflow") && (
-          <div className="sm:col-span-2">
-            <Feld label={tr(f.kind === "workflow" ? "jobs_panel.startkontext" : "jobs_panel.parameter")}>
+            <Feld label={tr("jobs_panel.startkontext")}>
               <textarea value={paramText} onChange={(e) => setParams(e.target.value)} rows={4}
-                placeholder={tr(f.kind === "workflow"
-                  ? "jobs_panel.startkontext_platzhalter" : "jobs_panel.parameter_platzhalter")}
+                placeholder={tr("jobs_panel.startkontext_platzhalter")}
                 className={`${EINGABE} font-mono text-xs`} />
             </Feld>
             <div className="mt-1 text-xs">
               {paramFehler
                 ? <span className="text-red-400">{paramFehler} — {tr("jobs_panel.parameter_nicht_uebernommen")}</span>
-                : f.kind === "workflow"
-                  ? <span className="text-muted">{tr("jobs_panel.startkontext_hinweis")}</span>
-                  : fehlend.length
-                    ? <span className="text-amber-400">{tr("jobs_panel.ohne_wert", { namen: fehlend.join(", ") })}</span>
-                    : <span className="text-muted">{tr("jobs_panel.eingebaut_heute_jetzt_seit_zeitfenster")}</span>}
+                : <span className="text-muted">{tr("jobs_panel.startkontext_hinweis")}</span>}
             </div>
           </div>
         )}
-
-        <Feld label={tr("jobs_panel.meldung")}>
-          <select value={f.notify_mode} onChange={(e) => setF({ ...f, notify_mode: e.target.value })} className={EINGABE}>
-            <option value="on_output">{tr("jobs_panel.notify_bei_output")}</option>
-            <option value="always">{tr("jobs_panel.notify_immer")}</option>
-            <option value="on_error">{tr("jobs_panel.notify_fehler")}</option>
-            <option value="never">{tr("jobs_panel.notify_nie")}</option>
-          </select>
-        </Feld>
-        <label className="flex items-end gap-2 pb-1.5 text-sm text-ink">
-          <input type="checkbox" checked={f.result_html}
-            onChange={(e) => setF({ ...f, result_html: e.target.checked })} />
-          {tr("jobs_panel.html_digest")}
-        </label>
+        {f.kind === "film" && (
+          <Feld label={tr("jobs_panel.meldung")}>
+            <select value={f.notify_mode} onChange={(e) => setF({ ...f, notify_mode: e.target.value })} className={EINGABE}>
+              <option value="always">{tr("jobs_panel.notify_immer")}</option>
+              <option value="never">{tr("jobs_panel.notify_nie")}</option>
+            </select>
+          </Feld>
+        )}
+        {f.kind === "workflow" && (
+          <p className="text-xs text-muted sm:col-span-2">
+            {tr("jobs_panel.meldung_im_ablauf")}
+          </p>
+        )}
       </div>
     </Dialog>
   );

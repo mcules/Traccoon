@@ -11,16 +11,15 @@ from croniter import croniter
 from zoneinfo import ZoneInfo
 from sqlalchemy import select
 
-from ..core.redis import enqueue_task
 from ..db import SessionLocal
 from ..models.ops import Job, JobRun
+from .job_modes import ALTE_ARTEN
 from ..models.notification import Notification
 from ..models.user import User
 
 log = logging.getLogger("scheduler")
 INTERVAL = 15
 SCRIPT_DIR = os.getenv("JOB_SCRIPT_DIR", "/scripts")
-EX_SUCCESS = 42
 
 
 def _now() -> dt.datetime:
@@ -77,67 +76,42 @@ def _resolve_script(command: str) -> str | None:
     return None
 
 
-async def _run_script(db, job: Job, jr: JobRun) -> None:
-    script = _resolve_script(job.command)
-    if not script or not os.path.isfile(script):
-        jr.status, jr.error = "error", f"Script nicht im erlaubten Verzeichnis: {job.command}"
-        jr.finished_at = _now()
-        return
-    try:
-        p = await asyncio.create_subprocess_exec(
-            script, *[str(a) for a in (job.args or [])],
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-        out, _ = await asyncio.wait_for(p.communicate(), timeout=job.run_timeout)
-        rc = p.returncode or 0
-        jr.output = out.decode("utf-8", "replace")[:20000]
-        jr.exit_code = rc
-        jr.status = "ok" if rc in (0, EX_SUCCESS) else "error"
-        if rc == EX_SUCCESS and job.pause_on_success:
-            job.paused = True
-    except asyncio.TimeoutError:
-        jr.status, jr.error = "error", "Script-Timeout"
-    jr.finished_at = _now()
-    if job.notify_mode == "always" or (job.notify_mode == "on_output" and jr.output) or \
-            (job.notify_mode == "on_error" and jr.status == "error"):
-        from .i18n import tr
-        besitzer = await db.get(User, job.user_id) if job.user_id else None
-        db.add(Notification(
-            kind="job",
-            title=await tr(db, "server.notify.job", getattr(besitzer, "locale", None),
-                           name=job.name),
-            body=(jr.output or jr.error)[:4000], chat_id=job.notify_chat))
 
+async def run_job_kind(db, job: Job, jr: JobRun) -> None:
+    """Führt einen Job aus. Danach steht sein Lauf auf fertig oder auf laufend.
 
-async def run_job_kind(db, job: Job, jr: JobRun) -> bool:
-    """Runs the non-prompt kinds of a job.
+    Hier stand einmal die einzige Verzweigung über fünf Job-Arten. Vier davon waren dieselbe
+    Sache in vier Ausführungen — jede mit eigener Fehlerbehandlung, eigener Benachrichtigung
+    und der Beschränkung, genau eins tun zu können. Sie sind Knoten geworden
+    (`agent_lauf`, `skript`, `http_request`), und ein Job ist seitdem Zeitplan plus Ablauf.
 
-    Returns `True` = done (the JobRun is set finished), `False` = prompt job, which belongs
-    in the Redis queue of the worker.
-
-    The only place where `kind` branches: before, the branching stood only in the scheduler,
-    which is why "run now" (API and agent tool) silently gave workflow and http jobs to the
-    assistant as a prompt job: instead of the workflow instance an agent ran on an empty
-    prompt.
+    Der Film bleibt eine Art für sich: Er tut nichts weiter als sich selbst, und ihn aus
+    seinen 500 Zeilen zu lösen brächte für einen einzigen Job keinen Gewinn. Er hält den Tick
+    (15 s) für die Dauer seines Baus auf — bewusst, aus demselben Grund wie früher das
+    Skript: Ein zweiter Ausführungsweg daneben wäre ein zweiter Zeitplan, eine zweite
+    Historie und ein zweiter Pausenschalter.
     """
-    if job.kind == "script":
-        await _run_script(db, job, jr)
-        return True
+    # Eine alte Art wird hier umgestellt, nicht abgewiesen: Sonst gäbe es ein Zeitfenster
+    # (Eintrag von Hand in der Datenbank, Wiedereinspielen einer Sicherung), in dem ein Job
+    # anders liefe, als am Bildschirm steht.
+    if job.kind in ALTE_ARTEN:
+        from .job_modes import als_ablauf
+        await als_ablauf(db, job)
+        await db.flush()
+
     if job.kind == "workflow":
         await _start_workflow_job(db, job, jr)
-        return True
-    if job.kind == "http":
-        await _run_http_job(db, job, jr)
-        return True
+        return
     if job.kind == "film":
-        # The after-work film builds for 15 to 20 s and holds up the tick (15 s) for exactly
-        # that long. Accepted for the same reason as with `_run_script`: a second execution
-        # path beside this one would be a second schedule, a second history and a second
-        # pause switch. The httpx timeout in the job lies below `job.run_timeout` so that the
-        # JobRun can still write its error itself.
         from .office_film import run_film_job
         await run_film_job(db, job, jr)
-        return True
-    return False
+        return
+    # Eine Art, die es nicht gibt: früher fiel so ein Job stumm in die Warteschlange und
+    # lief beim Assistenten auf dem leeren Prompt-Feld auf. Ein sichtbarer Fehler ist
+    # besser als ein Lauf, der etwas anderes tut, als draufsteht.
+    jr.status = "error"
+    jr.error = f"Unbekannte Job-Art „{job.kind}“"
+    jr.finished_at = _now()
 
 
 async def _tick() -> None:
@@ -146,7 +120,6 @@ async def _tick() -> None:
         jobs = (
             await db.execute(select(Job).where(Job.enabled.is_(True), Job.paused.is_(False)))
         ).scalars().all()
-        nachreichen: list[dict] = []
         # Die Zonen einmal je Besitzer holen statt je Job: es sind wenige Menschen und viele
         # Jobs.
         zonen: dict[int | None, ZoneInfo] = {}
@@ -160,17 +133,9 @@ async def _tick() -> None:
             jr = JobRun(job_id=job.id, status="running")
             db.add(jr)
             await db.flush()
-            if not await run_job_kind(db, job, jr):  # prompt → Worker
-                nachreichen.append({"kind": "job", "task_id": f"job-{jr.id}",
-                                    "job_id": job.id, "job_run_id": jr.id})
+            await run_job_kind(db, job, jr)
             log.info("job %s triggered (%s)", job.name, job.kind)
         await db.commit()
-        # Commit FIRST, queue AFTERWARDS. The other way round the assignment lies in Redis
-        # before the JobRun exists in the database; a free worker grabs it within
-        # milliseconds, finds `jr is None` and returns SILENTLY (worker/__main__.py:494). The
-        # job run then stays on "running" forever, without an error and without a run.
-        for auftrag in nachreichen:
-            await enqueue_task(auftrag)
 
 
 async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
@@ -190,51 +155,37 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         # with prompt jobs (only an object counts, a list stays a script argument). Before,
         # `{}` stood here: the same flow for a second metric series would have needed a
         # second flow although only one word changes.
-        from .job_params import parameter
+        from .job_params import eingebaute_werte, parameter
+        # Die Zeitwerte gehören dazu, seit die Prompt-Jobs Abläufe sind: `{{ seit }}` und
+        # `{{ zeitfenster }}` standen in ihren Aufträgen und kamen aus der Job-Welt. Nur
+        # ERFOLGREICHE Läufe zählen — war der Job gestern kaputt, muss das Fenster die Lücke
+        # mitnehmen, sonst fällt ein Tag lautlos unter den Tisch.
+        vorlauf = (await db.execute(
+            select(JobRun.started_at).where(JobRun.job_id == job.id, JobRun.id != jr.id,
+                                            JobRun.status == "ok")
+            .order_by(JobRun.id.desc()).limit(1))).scalar()
+        besitzer = await db.get(User, job.user_id) if job.user_id else None
+        # Wer den Lauf bestellt hat, gehört in den Kontext: Ein Ablauf, der etwas meldet,
+        # will seinen Namen nennen können, und der Digest-Link hängt an der Lauf-Nummer.
         inst = await start_workflow(
-            db, definition, subject_kind=definition.subject_kind, context=parameter(job.args),
+            db, definition, subject_kind=definition.subject_kind,
+            context={**eingebaute_werte(letzter_lauf=vorlauf, zone=zone_of(besitzer)),
+                     **parameter(job.args),
+                     "job": {"id": job.id, "name": job.name, "run_id": jr.id}},
             actor_id=job.user_id, source=f"job:{job.id}",
         )
-        jr.status = "ok"; jr.output = f"Workflow-Instanz #{inst.id} gestartet"
+        jr.workflow_instance_id = inst.id
+        jr.status = "ok"
+        # Kurze Abläufe sind hier schon fertig; dann steht ihr Ergebnis gleich in der
+        # Historie statt „gestartet“. Alle anderen trägt die Engine nach, wenn sie enden.
+        from .workflow_engine import job_antwort_text
+        text = job_antwort_text(inst) if inst.finished_at is not None else ""
+        jr.output = text[:20000] if text else f"Workflow-Instanz #{inst.id} gestartet"
     except Exception as e:  # noqa: BLE001
         jr.status = "error"; jr.error = str(e)[:2000]
         log.exception("workflow job %s failed", job.name)
     jr.finished_at = _now()
 
-
-async def _run_http_job(db, job: Job, jr: JobRun) -> None:
-    """kind=http: calls a stored destination when due.
-
-    The call stands in `job.http_request` ({method, path, query, headers, body}), the same
-    shape as the process action, so that a flow can move effortlessly between schedule and
-    process. Errors land as job errors (and therefore in the usual notify path).
-    """
-    from ..models.destination import Destination
-    from . import destinations
-    if job.destination_id is None:
-        jr.status = "error"; jr.error = "Job ohne Ziel"; jr.finished_at = _now()
-        return
-    dest = await db.get(Destination, job.destination_id)
-    if dest is None or not dest.enabled:
-        jr.status = "error"; jr.error = "Ziel fehlt oder ist deaktiviert"; jr.finished_at = _now()
-        return
-    req = job.http_request or {}
-    try:
-        res = await destinations.call(
-            db, dest,
-            method=req.get("method") or "POST", path=req.get("path") or "",
-            query=req.get("query") or {}, headers=req.get("headers") or {},
-            body=req.get("body"), timeout=job.run_timeout or None,
-        )
-        jr.status = "ok" if res["ok"] else "error"
-        jr.exit_code = res["status_code"]
-        jr.output = (res.get("text") or json.dumps(res.get("json", ""), ensure_ascii=False))[:20000]
-        if not res["ok"]:
-            jr.error = f"HTTP {res['status_code']}: {res.get('error', '')[:500]}"
-    except Exception as e:  # noqa: BLE001
-        jr.status = "error"; jr.error = str(e)[:2000]
-        log.exception("http job %s failed", job.name)
-    jr.finished_at = _now()
 
 
 async def _flush_coalesced() -> None:

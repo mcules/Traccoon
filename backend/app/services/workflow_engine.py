@@ -1052,6 +1052,43 @@ async def _warte(task_id: str, timeout: int, was: str) -> tuple[dict | None, dic
                   "verloren": True, "task_id": task_id}
 
 
+def job_antwort_text(inst: WorkflowInstance) -> str:
+    """Was der Ablauf als Ergebnis hinterlassen hat.
+
+    Dieselbe Regel wie beim wartenden Webhook: Ergebnis ist, was er als `antwort` geschrieben
+    hat. Ein Job hatte bis jetzt keins — in seiner Historie stand „Instanz #N gestartet“, und
+    wer wissen wollte, was dabei herauskam, musste es sich suchen.
+    """
+    antwort = (inst.context or {}).get("answer")
+    if isinstance(antwort, (dict, list)):
+        import json
+        return json.dumps(antwort, ensure_ascii=False, indent=2)
+    return "" if antwort is None else str(antwort)
+
+
+async def _job_ergebnis(db, inst: WorkflowInstance) -> None:
+    """Das Ergebnis in die Job-Historie zurücktragen, sobald der Ablauf endet.
+
+    Nur für Abläufe, die länger brauchen als ihr Anstoß: Wer gleich durchläuft, wird schon
+    beim Start ausgewertet (`scheduler._start_workflow_job`) — dort ist der Lauf noch in
+    derselben Sitzung, hier ist er es nicht mehr.
+    """
+    if not str(inst.source or "").startswith("job:"):
+        return
+    from ..models.ops import JobRun
+    lauf = (await db.execute(select(JobRun).where(
+        JobRun.workflow_instance_id == inst.id))).scalars().first()
+    if lauf is None:
+        return
+    text = job_antwort_text(inst)
+    if text:
+        lauf.output = text[:20000]
+    if inst.status == IStatus.failed:
+        lauf.status = "error"
+        lauf.error = (inst.error or "Der Ablauf ist fehlgeschlagen")[:2000]
+    lauf.finished_at = _now()
+
+
 async def _await_action(instance_id: int, token_id: int, step_id: int, task_id: str,
                         timeout: int, context_key: str, outcomes_map: dict) -> None:
     """Watcher for asynchronous auto actions (merge and friends): waits for the worker
@@ -1554,6 +1591,8 @@ async def _drive(instance_id: int) -> None:
                 t.state = TState.consumed
             log.warning("Instance %s: MAX_STEPS reached, failed", inst.id)
 
+        if inst.status in (IStatus.completed, IStatus.failed):
+            await _job_ergebnis(db, inst)
         await db.commit()
         for watcher in spawn_after:
             _spawn(watcher)

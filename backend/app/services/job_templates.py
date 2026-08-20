@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-_DIGEST_PROMPT = """Erstelle den Rückblick „{{titel}}" für das Zeitfenster {{zeitfenster}}.
+_DIGEST_PROMPT = """Erstelle den Rückblick „{{titel}}" für das Zeitfenster {{window}}.
 Autonom, keine Rückfragen.
 
 Thema: {{thema}}
@@ -24,7 +24,7 @@ quellenübergreifend deduplizieren; Einordnung auf {{sprache}}.
 Gib das Ergebnis als **Markdown** aus (es wird zu einer HTML-Seite gerendert — KEINE
 Längenbegrenzung, KEIN eigenes HTML, KEINE Telegram-Rücksicht). Struktur:
 
-# {{symbol}} {{titel}} — Stand {{heute}}
+# {{symbol}} {{titel}} — Stand {{today}}
 
 ## Auf einen Blick
 - {{umfang}} knappe Bulletpoints mit den wichtigsten Themen.
