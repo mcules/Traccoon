@@ -414,6 +414,14 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '[]'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS csp JSON "
                 "DEFAULT '{}'::json NOT NULL",
+                # Datenreihen: create_all legt die Tabellen an, den zusammengesetzten Index
+                # nicht. Er ist der einzige, der bei einer Million Standortpunkten zaehlt —
+                # jede Abfrage lautet "diese Reihe, dieser Zeitraum".
+                "CREATE INDEX IF NOT EXISTS ix_series_points_series_ts "
+                "ON series_points (series_id, ts DESC)",
+                # Das Aufnahme-Token wird bei jedem einzelnen Punkt nachgeschlagen.
+                "CREATE INDEX IF NOT EXISTS ix_series_token_hash "
+                "ON series (token_hash)",
             ):
                 if not await _fehlt_noch(conn, _ddl):
                     continue
@@ -525,6 +533,7 @@ api.include_router(ops.router)
 api.include_router(destinations.router)
 api.include_router(metrics_api.router)
 api.include_router(documents_api.router)
+api.include_router(series_api.router)
 api.include_router(i18n_api.router)
 api.include_router(artifacts_api.router)
 api.include_router(mail.router)
