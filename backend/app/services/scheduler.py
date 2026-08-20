@@ -42,9 +42,32 @@ def zone_of(user) -> ZoneInfo:
         return STD_TZ
 
 
+def _sekunden(schedule: str) -> int:
+    """Der Abstand eines Intervall-Jobs.
+
+    `900` und `interval:900` meinen dasselbe — die zweite Schreibweise steht in aelteren
+    Jobs. Unlesbares ergibt eine Minute: Lieber zu oft als gar nicht, denn ein Job, der still
+    nie laeuft, faellt niemandem auf.
+    """
+    roh = (schedule or "").strip().removeprefix("interval:").strip()
+    return int(roh) if roh.isdigit() and int(roh) > 0 else 60
+
+
+# Was in `type` stehen darf. `kind` ist etwas anderes — die Art der Arbeit (workflow, film).
+# Die beiden zu verwechseln ist der naheliegende Fehler, und er faellt nicht auf: Ein Job mit
+# unbekanntem `type` ist einfach nie faellig, waehrend die Oberflaeche "eingeschaltet, alle
+# 15 Minuten" anzeigt. Genau so lag der Job "Predecessor-Posteingang" 13 Tage still.
+ZEITPLAN_ARTEN = ("cron", "interval", "once")
+
+
 def _due(job: Job, now: dt.datetime, zone: ZoneInfo = STD_TZ) -> bool:
+    if job.type not in ZEITPLAN_ARTEN:
+        log.warning("Job %s (%s) hat den Zeitplan-Typ '%s' — erlaubt sind %s. Er laeuft "
+                    "deshalb nie; gemeint war vermutlich `kind`.",
+                    job.id, job.name, job.type, "/".join(ZEITPLAN_ARTEN))
+        return False
     if job.type == "interval":
-        secs = int(job.schedule) if job.schedule.isdigit() else 60
+        secs = _sekunden(job.schedule)
         return job.last_run_at is None or (now - job.last_run_at).total_seconds() >= secs
     if job.type == "cron":
         # In der Zone des Besitzers rechnen und erst danach wieder vergleichen: croniter
