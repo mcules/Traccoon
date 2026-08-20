@@ -67,12 +67,24 @@ class WebhookSub(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     route: Mapped[str] = mapped_column(String(120), nullable=False)  # label (no longer globally unique)
     secret: Mapped[str] = mapped_column(String(200), default="")
-    mode: Mapped[str] = mapped_column(String(20), default="task")  # task | notify | assistant | workflow
+    # workflow = einen Ablauf starten, event = ein Ereignis melden. Die früheren Modi
+    # `task`, `notify` und `assistant` gibt es nicht mehr: Ticket anlegen, melden und den
+    # Assistenten beauftragen sind Knoten im Ablauf und damit für jeden Auslöser zu haben.
+    # `services/webhook_modes.py` stellt bestehende Webhooks einmalig um.
+    mode: Mapped[str] = mapped_column(String(20), default="workflow")  # workflow | event
     project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"), nullable=True)
     # Mode 'workflow': starts an instance of this definition; context_map maps payload to context.
     workflow_definition_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_definitions.id", ondelete="SET NULL"), nullable=True)
-    context_map: Mapped[dict] = mapped_column(JSON, default=dict)  # {context_key: payload_path}
+    # Kontext des Laufs, für beide Arten der Zustellung: `context_map` holt aus der Nutzlast
+    # ({ziel: punkt.pfad}, leerer Pfad = die ganze Nutzlast), `context_fixed` setzt feste
+    # Werte, in deren Text `{feld}` aus der Nutzlast gefüllt wird. Punkte im ZIEL
+    # verschachteln ("eingang.agent"). Ohne beides ist die Nutzlast der Kontext.
+    context_map: Mapped[dict] = mapped_column(JSON, default=dict)   # {ziel: payload_pfad}
+    context_fixed: Mapped[dict] = mapped_column(JSON, default=dict)  # {ziel: fester Wert}
+    # ── Altlast der alten Modi ───────────────────────────────────────────────
+    # Diese Spalten trugen die Fachlogik, die heute im Ablauf steht. Sie bleiben, bis
+    # `webhook_modes.umstellen()` überall gelaufen ist — danach liest sie niemand mehr.
     agent: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Modus 'assistant' (E-Mail): projektlose AssistantTask + lokale Vorklassifizierung durch
     # this agent (its provider, model and token). Empty = no classification (passthrough).
@@ -164,6 +176,10 @@ class JobRun(Base):
     output: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str] = mapped_column(Text, default="")
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Der Lauf, den dieser Job angestoßen hat. Damit trägt die Historie nach, was dabei
+    # herauskam: Ein Ablauf endet später als der Anstoß, und „gestartet“ ist kein Ergebnis.
+    workflow_instance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workflow_instances.id", ondelete="SET NULL"), nullable=True)
     started_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

@@ -10,12 +10,12 @@ from app.models.assistant import AssistantTask, SpamVerdict
 from app.models.enums import WorkflowInstanceStatus, WorkflowStepStatus
 from app.models.notification import Notification
 from app.models.workflow import WorkflowInstance, WorkflowStepRun
-from app.services import mail_intake, spam_learn, spam_review
+from app.services import spam_learn, spam_review
 from app.services.appsettings import set_setting
 from app.services import workflow_templates
 from sqlalchemy import select
 
-from conftest import make_user
+from conftest import make_webhook, melde, make_user
 
 
 @pytest.fixture
@@ -71,9 +71,15 @@ def _verdaechtig(uid: int = 5001) -> dict:
                     "Return-Path": "<b@anders.ru>", "Received-Count": 1}})
 
 
-async def _melden(db, owner, payload) -> WorkflowInstance:
-    ids = await mail_intake.intake_mail(db, owner.id, payload, source="mail",
-                                        agent="assistent")
+async def _melden(db, owner, payload, *, classify_agent: str = "") -> WorkflowInstance:
+    """Den Weg gehen, den der Betrieb geht: Webhook rein, Ereignis raus, Ablauf läuft.
+
+    Der Mail-Eingang hängt an keinem Sonderweg mehr — er ist ein Auslöser wie jeder andere,
+    und was die Schritte über ihn wissen müssen, baut der Webhook in den Kontext.
+    """
+    sub = await make_webhook(db, owner, "mail-test", mode="assistant", agent="assistent",
+                             classify_agent=classify_agent)
+    ids = await melde(db, sub, payload)
     assert len(ids) == 1, "exactly one shipped mail inbox should start"
     return await db.get(WorkflowInstance, ids[0])
 
@@ -357,10 +363,7 @@ def _n26(uid: int = 9101) -> dict:
 
 
 async def _melden_klassifiziert(db, owner, payload) -> WorkflowInstance:
-    ids = await mail_intake.intake_mail(db, owner.id, payload, source="mail",
-                                        agent="assistent", classify_agent="mail_classifier")
-    assert len(ids) == 1
-    return await db.get(WorkflowInstance, ids[0])
+    return await _melden(db, owner, payload, classify_agent="mail_classifier")
 
 
 async def test_modellurteil_raeumt_ohne_rueckfrage_weg(db, owner, imap_stub, modell_stub):

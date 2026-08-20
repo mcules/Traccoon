@@ -11,9 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.fehler import Fehler
 from ..db import get_session
-from ..models.enums import ProjectRole, TicketAgentStatus
+from ..models.enums import ProjectRole
 from ..models.ops import Job, JobRun, PermAction, Permission, WebhookCoalesce, WebhookSub
-from ..models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
 from ..models.user import User
 from .deps import (
     Access, build_access, get_current_user, is_owner_or_admin, owned_or_global,
@@ -28,27 +27,26 @@ router = APIRouter(tags=["ops"])
 class WebhookIn(BaseModel):
     route: str
     secret: str = ""
-    mode: str = "task"
+    # workflow = einen Ablauf starten, event = ein Ereignis melden. Mehr braucht ein Auslöser
+    # nicht: Ticket, Meldung und Assistenten-Auftrag sind Knoten IM Ablauf.
+    mode: str = "workflow"
     project_id: int | None = None
-    agent: str | None = None
-    classify_agent: str | None = None
-    prompt_tmpl: str | None = None
-    auto_run: bool = False
-    title_template: str = "{title}"
-    body_template: str = "{body}"
-    silent: bool = False
-    # Filter / Idempotenz / Coalescing / Alerts
+    # Filter / Idempotenz / Coalescing / Alarme
     event_header: str | None = None
     event_filter: str | None = None
     event_key_header: str | None = None
     event_cooldowns: dict = {}
     alert_events: list = []
+    # Feld der Nutzlast ODER Vorlage aus mehreren ({account}:{uid}) — daraus wird der
+    # Schlüssel gegen Doppel-Zustellung.
     ref_field: str | None = None
-    notify_chat: str | None = None
-    # mode=workflow: which definition is started and how the payload is mapped
-    # ({context_key: payload.dot.path}; empty = the complete payload as context).
+    # mode=workflow: welche Definition startet.
     workflow_definition_id: int | None = None
+    # Kontext des Laufs: aus der Nutzlast ({ziel: punkt.pfad}; leerer Pfad = alles) und fest
+    # ({ziel: wert}, `{feld}` darin wird aus der Nutzlast gefüllt). Punkte im Ziel
+    # verschachteln. Ohne beides ist die Nutzlast der Kontext.
     context_map: dict = {}
+    context_fixed: dict = {}
     # mode=event: name of the reported event (empty = webhook.<route>).
     event_name: str | None = None
     # mode=workflow: hold the request open until the flow answers (seconds, 0 = off), and
@@ -59,17 +57,13 @@ class WebhookIn(BaseModel):
 
 class WebhookOut(BaseModel):
     id: int; public_id: str; route: str; mode: str; project_id: int | None
-    owner_user_id: int | None; agent: str | None; classify_agent: str | None
-    prompt_tmpl: str | None = None; auto_run: bool = False
-    # The templates belong in the response: the frontend fills its form from them and
-    # otherwise falls back to "{title}"/"{body}", so every save of an existing webhook
-    # silently reset the entered texts.
-    title_template: str = "{title}"; body_template: str = "{body}"
-    silent: bool; enabled: bool; secret_set: bool
+    owner_user_id: int | None
+    enabled: bool; secret_set: bool
     event_header: str | None = None; event_filter: str | None = None
     event_key_header: str | None = None; event_cooldowns: dict = {}
-    alert_events: list = []; ref_field: str | None = None; notify_chat: str | None = None
-    workflow_definition_id: int | None = None; context_map: dict = {}
+    alert_events: list = []; ref_field: str | None = None
+    workflow_definition_id: int | None = None
+    context_map: dict = {}; context_fixed: dict = {}
     event_name: str | None = None
     response_timeout: int = 0; response_map: dict = {}
 
@@ -77,15 +71,13 @@ class WebhookOut(BaseModel):
 def _wh_out(w: WebhookSub) -> WebhookOut:
     return WebhookOut(
         id=w.id, public_id=w.public_id, route=w.route, mode=w.mode, project_id=w.project_id,
-        owner_user_id=w.owner_user_id, agent=w.agent, classify_agent=w.classify_agent,
-        prompt_tmpl=w.prompt_tmpl, auto_run=w.auto_run,
-        title_template=w.title_template, body_template=w.body_template,
-        silent=w.silent, enabled=w.enabled, secret_set=bool(w.secret),
+        owner_user_id=w.owner_user_id, enabled=w.enabled, secret_set=bool(w.secret),
         event_name=w.event_name,
         event_header=w.event_header, event_filter=w.event_filter,
         event_key_header=w.event_key_header, event_cooldowns=w.event_cooldowns or {},
-        alert_events=w.alert_events or [], ref_field=w.ref_field, notify_chat=w.notify_chat,
+        alert_events=w.alert_events or [], ref_field=w.ref_field,
         workflow_definition_id=w.workflow_definition_id, context_map=w.context_map or {},
+        context_fixed=w.context_fixed or {},
         response_timeout=w.response_timeout or 0, response_map=w.response_map or {})
 
 
@@ -220,7 +212,7 @@ async def _warte_auf_antwort(instance_id: int, sub: WebhookSub) -> dict:
         if karte:
             bereit = fertig or all(_dig_payload(ctx, pfad) is not None for pfad in karte.values())
         else:
-            bereit = fertig or "antwort" in ctx
+            bereit = fertig or "answer" in ctx
         if bereit or uhr() >= ende:
             break
         await asyncio.sleep(0.4)
@@ -228,9 +220,74 @@ async def _warte_auf_antwort(instance_id: int, sub: WebhookSub) -> dict:
     if karte:
         antwort = {schluessel: _dig_payload(ctx, pfad) for schluessel, pfad in karte.items()}
     else:
-        antwort = ctx.get("antwort")
-    return {"instance_id": instance_id, "status": status, "fertig": fertig,
-            "antwort": antwort}
+        antwort = ctx.get("answer")
+    return {"instance_id": instance_id, "status": status, "done": fertig,
+            "answer": antwort}
+
+
+def _fuellen(tpl: str, nutzlast) -> str:
+    """Füllt `{feld}` aus der Nutzlast, `{a.b.c}` auch tief.
+
+    Verschachtelte Nutzlasten sind der Normalfall, sobald der Absender nicht Traccoon ist:
+    `{position.address}` oder `{event.attributes.alarm}` waren früher nicht adressierbar.
+    """
+    out = tpl
+    for treffer in set(re.findall(r"\{([A-Za-z0-9_.]+)\}", tpl)):
+        wert = _dig_payload(nutzlast, treffer)
+        if wert is not None:
+            out = out.replace("{" + treffer + "}", str(wert))
+    return out
+
+
+def _setze_tief(ziel: dict, pfad: str, wert) -> None:
+    """`eingang.agent` legt {"eingang": {"agent": …}} an — ein Punkt im ZIEL verschachtelt."""
+    teile = [t for t in str(pfad).split(".") if t]
+    if not teile:
+        return
+    knoten = ziel
+    for t in teile[:-1]:
+        naechster = knoten.get(t)
+        if not isinstance(naechster, dict):
+            naechster = {}
+            knoten[t] = naechster
+        knoten = naechster
+    knoten[teile[-1]] = wert
+
+
+def _kontext(sub: WebhookSub, nutzlast) -> dict:
+    """Der Kontext des Laufs — an einer Stelle, für jede Art der Zustellung.
+
+    `context_map` holt Werte aus der Nutzlast (Punktpfad; **leerer** Pfad = die ganze
+    Nutzlast, so landet sie unter einem eigenen Schlüssel statt flach im Kontext),
+    `context_fixed` setzt feste Werte, in deren Text `{feld}` aus der Nutzlast gefüllt wird.
+    Ohne beides ist die Nutzlast der Kontext, wie vorher.
+    """
+    nutz = nutzlast if isinstance(nutzlast, dict) else {"payload": nutzlast}
+    cmap = sub.context_map or {}
+    fest = sub.context_fixed or {}
+    if not cmap and not fest:
+        return nutz
+    ctx: dict = {}
+    for ziel, pfad in cmap.items():
+        _setze_tief(ctx, str(ziel), nutz if not pfad else _dig_payload(nutz, str(pfad)))
+    for ziel, wert in fest.items():
+        _setze_tief(ctx, str(ziel), _fuellen(wert, nutz) if isinstance(wert, str) else wert)
+    return ctx
+
+
+def _referenz(sub: WebhookSub, nutzlast) -> str | None:
+    """Der Schlüssel gegen Doppel-Zustellung: ein Feld der Nutzlast oder eine Vorlage.
+
+    Ein Schlüssel aus mehreren Feldern (`{account}:{uid}`) ist der Normalfall, sobald das
+    fremde System keine eigene Id mitschickt — früher stand genau diese Zusammensetzung fest
+    im Mail-Eingang und war für keinen anderen Auslöser zu haben.
+    """
+    feld = (sub.ref_field or "").strip()
+    nutz = nutzlast if isinstance(nutzlast, dict) else {}
+    if not feld:
+        return None
+    wert = _fuellen(feld, nutz) if "{" in feld else _dig_payload(nutz, feld)
+    return str(wert) if wert not in (None, "") else None
 
 
 @router.post("/hooks/{public_id}", status_code=202)
@@ -252,22 +309,6 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
     except Exception:
         payload = {}
 
-    def fill(tpl: str) -> str:
-        """Fill placeholders: {field} for the top level, {a.b.c} deeper down.
-
-        Nested payloads are the normal case as soon as the sender is not Traccoon:
-        `{position.address}` or `{event.attributes.alarm}` could not be addressed before,
-        and the message then contained the placeholder in plain text.
-        """
-        out = tpl
-        for treffer in set(re.findall(r"\{([A-Za-z0-9_.]+)\}", tpl)):
-            wert = _dig_payload(payload, treffer)
-            if wert is not None:
-                out = out.replace("{" + treffer + "}", str(wert))
-        return out
-
-    from ..models.notification import Notification
-
     # Where the event type comes from: from a header (X-GitHub-Event) or, when the sender
     # sets none, from the payload itself (`payload:event.type`). Without the second way
     # everything that sends headers could be filtered and nothing else; Traccar for instance
@@ -283,19 +324,13 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         if event not in allowed:
             return {"accepted": True, "ignored": True, "event": event}
 
-    # Alert events bypass the coalescing and report immediately.
-    if event and event in (sub.alert_events or []):
-        db.add(Notification(kind="webhook_alert", title=f"🚨 {route}: {event}",
-                            body=(fill(sub.body_template) or fill(sub.title_template))[:4000],
-                            chat_id=sub.notify_chat))
-        await db.commit()
-        # mode=assistant: alert AND agent run (for instance a gameproj attack, autopilot reacts).
-        # Only notify/task: finished here (a pure immediate report).
-        if sub.mode != "assistant":
-            return {"accepted": True, "alert": True, "event": event}
+    # Alarm-Ereignisse überspringen das Sammelfenster: Sie sollen durchlaufen, nicht auf die
+    # Zusammenfassung warten. WAS dabei gemeldet wird, sagt der Ablauf (notify-Knoten) — der
+    # Webhook selbst verschickt nichts mehr, sonst hinge die Nachricht wieder an ihm fest.
+    sofort = bool(event) and event in (sub.alert_events or [])
 
     # Coalescing: within the cooldown window only collect, the scheduler summarises.
-    cooldown = int((sub.event_cooldowns or {}).get(event, 0)) if event else 0
+    cooldown = 0 if sofort else (int((sub.event_cooldowns or {}).get(event, 0)) if event else 0)
     if cooldown > 0:
         now = dt.datetime.now(tz=dt.timezone.utc)
         ekey = (request.headers.get(sub.event_key_header, "") if sub.event_key_header else "") or event
@@ -312,171 +347,77 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         db.add(WebhookCoalesce(route=route, event_key=ekey,
                                window_until=now + dt.timedelta(seconds=cooldown), payloads=[]))
 
-    if sub.mode == "assistant":
-        # E-mail becomes the event `mail.received`. What comes of it (classifying, spam,
-        # assistant) stands in the flow of the slot `mail_intake`, including the creation of
-        # the item and the start of the assistant. That is why nothing is queued here any more.
-        from ..services.mail_intake import intake_mail
-        ids = await intake_mail(
-            db, sub.owner_user_id, payload if isinstance(payload, dict) else {},
-            source=f"webhook:{route}", classify_agent=sub.classify_agent or "",
-            agent=sub.agent or "assistent", prompt_tmpl=sub.prompt_tmpl or "",
-            ref_field=sub.ref_field or "", auto_run=sub.auto_run)
-        if not ids:
-            return {"accepted": True, "ignored": True}
-        return {"accepted": True, "mode": "assistant", "instances": ids}
-
-    if sub.mode == "notify":
-        # Rendered template as a notification (the Telegram bot delivers it).
-        titel = f"Webhook: {route}"
-        if sub.ref_field:
-            # Idempotency: not the same message twice. Senders repeat the call when the
-            # answer fails to arrive, and with the alarm of a motion detector the second
-            # message is not information but noise. The reference stands in the title so that
-            # the comparison gets by without a new column.
-            ref = str(_dig_payload(payload, sub.ref_field) or "")
-            if ref:
-                titel = f"{titel} #{ref}"
-                seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(hours=24)
-                schon = (await db.execute(select(Notification).where(
-                    Notification.kind == "webhook", Notification.title == titel,
-                    Notification.created_at >= seit))).scalars().first()
-                if schon is not None:
-                    return {"accepted": True, "mode": "notify", "duplicate": True, "ref": ref}
-        db.add(Notification(kind="webhook", title=titel[:500],
-                            body=(fill(sub.body_template) or fill(sub.title_template))[:4000],
-                            chat_id=sub.notify_chat))
-        await db.commit()
-        return {"accepted": True, "mode": "notify"}
+    # ── Zustellung ───────────────────────────────────────────────────────────
+    # Ein Webhook nimmt entgegen und prüft; was daraus WIRD, steht im Ablauf. Darum gibt es
+    # nur noch zwei Wege: einen Ablauf starten oder ein Ereignis melden. Melden, ein Ticket
+    # anlegen und den Assistenten beauftragen waren eigene Modi mit eigenen Spalten am
+    # Webhook (`agent`, `prompt_tmpl`, `auto_run`, `notify_chat`, `title_template` …) — sie
+    # sind heute Knoten und damit für JEDEN Auslöser zu haben, nicht nur für Webhooks.
+    # Bestehende Webhooks stellt `services/webhook_modes.py` beim Start um.
+    ctx = _kontext(sub, payload)
+    src_ref = _referenz(sub, payload)
 
     if sub.mode == "event":
-        # Reports an event; who listens for it is decided by the flows themselves over the
-        # trigger on their start node. `event_name` on the webhook or `event` in the payload.
+        # Meldet ein Ereignis; wer darauf hört, entscheiden die Abläufe selbst über den
+        # Auslöser an ihrem Start-Knoten. Name: `event_name` oder `event` aus der Nutzlast.
         from ..services.events import emit
         name = (sub.event_name or (payload.get("event") if isinstance(payload, dict) else "")
                 or f"webhook.{route}")
-        ref = None
-        if sub.ref_field and isinstance(payload, dict):
-            ref = str(payload.get(sub.ref_field) or "") or None
-        ids = await emit(db, str(name), project_id=sub.project_id,
-                         payload=payload if isinstance(payload, dict) else {"payload": payload},
-                         actor_id=sub.owner_user_id, source_ref=ref)
+        ids = await emit(db, str(name), project_id=sub.project_id, payload=ctx,
+                         actor_id=sub.owner_user_id, source_ref=src_ref)
         return {"accepted": True, "mode": "event", "event": name, "instances": ids}
 
-    if sub.mode == "workflow":
-        # Starts a workflow instance. context_map = {context_key: payload_path} (dot paths);
-        # without a mapping the complete payload is taken over as the context.
-        from ..models.workflow import WorkflowDefinition
-        from ..services.jsonlogic import _dig
-        from ..services.workflow_engine import start_workflow
-        if sub.workflow_definition_id is None:
-            raise Fehler(400, "err.webhook_without_workflow_definition_id",
-                         "Webhook without workflow_definition_id")
-        definition = await db.get(WorkflowDefinition, sub.workflow_definition_id)
-        if definition is None or definition.current_version_id is None:
-            raise Fehler(400, "err.workflow_definition_missing_not",
-                         "The workflow definition is missing or not published")
-        # Idempotenz via ref_field → source_ref.
-        src_ref = None
-        if sub.ref_field and isinstance(payload, dict):
-            # A dot path as everywhere else: the reference of a foreign system almost never
-            # sits on the top level (`event.id`), and without it every repetition of the
-            # sender would run as a second flow.
-            src_ref = str(_dig_payload(payload, sub.ref_field) or "") or None
-            if src_ref:
-                from ..models.workflow import WorkflowInstance
-                dup = (await db.execute(select(WorkflowInstance).where(
-                    WorkflowInstance.source == f"webhook:{route}",
-                    WorkflowInstance.source_ref == src_ref))).scalar_one_or_none()
-                if dup is not None:
-                    return {"accepted": True, "duplicate": True, "instance_id": dup.id}
-        cmap = sub.context_map or {}
-        if cmap and isinstance(payload, dict):
-            ctx = {k: _dig(payload, path) for k, path in cmap.items()}
-        else:
-            ctx = payload if isinstance(payload, dict) else {"payload": payload}
-        # What the run hangs off is said by the payload: the start node names the field the
-        # artifact stands in (ticket key, ticket id, unit id). Without this binding a flow
-        # with a ticket subject would run into nothing: its actions (setting a state,
-        # commenting, assigning) would find nothing to act on.
-        from ..services.workflow_subject import subjekt_aus_nutzlast
-        issue_id, asset_id, fehler = await subjekt_aus_nutzlast(
-            db, definition, payload if isinstance(payload, dict) else {}, ctx,
-            besitzer_id=sub.owner_user_id)
-        if fehler:
-            raise HTTPException(400, fehler)
-        inst = await start_workflow(
-            db, definition, subject_kind=definition.subject_kind, context=ctx,
-            issue_id=issue_id, hardware_asset_id=asset_id,
-            actor_id=sub.owner_user_id, source=f"webhook:{route}", source_ref=src_ref,
-        )
-        if int(sub.response_timeout or 0) > 0:
-            # The caller wants the answer of the flow, not only the receipt. What goes back
-            # is what the flow wrote: a dict answer IS the body (so the far side sees exactly
-            # the fields it was promised), anything else is wrapped.
-            from fastapi.responses import JSONResponse
-            ergebnis = await _warte_auf_antwort(inst.id, sub)
-            antwort = ergebnis["antwort"]
-            if isinstance(antwort, dict):
-                rumpf = antwort
-            elif antwort is None:
-                rumpf = {"accepted": True, "mode": "workflow", "antwort": None,
-                         "instance_id": inst.id, "status": ergebnis["status"],
-                         "fertig": ergebnis["fertig"]}
-            else:
-                rumpf = {"antwort": antwort}
-            return JSONResponse(rumpf, status_code=200 if antwort is not None else 202)
-        return {"accepted": True, "mode": "workflow", "instance_id": inst.id,
-                "status": inst.status.value,
-                **({"issue_id": issue_id} if issue_id else {}),
-                **({"hardware_asset_id": asset_id} if asset_id else {})}
-
-    # Idempotency: ref_field to source_ref; a double delivery creates no second ticket.
-    src_ref = None
-    if sub.ref_field and isinstance(payload, dict):
-        src_ref = str(payload.get(sub.ref_field) or "") or None
-        if src_ref:
-            dup = (await db.execute(select(Issue).where(
-                Issue.source == f"webhook:{route}", Issue.source_ref == src_ref))).scalar_one_or_none()
-            if dup is not None:
-                return {"accepted": True, "duplicate": True, "issue_key": dup.key}
-
-    # mode == task: Ticket anlegen
-    if sub.project_id is None:
-        raise Fehler(400, "err.webhook_without_project",
-                     "A webhook without project_id cannot create a ticket")
-    t = (await db.execute(select(IssueType).where(IssueType.project_id == sub.project_id).order_by(IssueType.order))).scalars().first()
-    s = (await db.execute(select(WorkflowStatus).where(WorkflowStatus.project_id == sub.project_id).order_by(WorkflowStatus.order))).scalars().first()
-    if t is None or s is None:
-        raise Fehler(400, "err.project_without_type_status", "Project without a type or status")
-    from ..models.project import Project
-    project = await db.get(Project, sub.project_id)
-    counter = (await db.execute(select(IssueCounter).where(
-        IssueCounter.project_id == sub.project_id).with_for_update())).scalar_one_or_none()
-    if project is None or counter is None:
-        raise Fehler(400, "err.target_project_no_longer_available",
-                     "The target project is no longer available")
-    counter.last_number += 1
-    n = counter.last_number
-    from ..models.user import SYSTEM_USER_ID
-    # The owner of the webhook is the reporter, so the agent runs with their token plus MCP.
-    owner = sub.owner_user_id or SYSTEM_USER_ID
-    issue = Issue(
-        project_id=sub.project_id, number=n, key=f"{project.key}-{n}"[:50],
-        type_id=t.id, status_id=s.id, summary=fill(sub.title_template)[:500] or f"Webhook {sub.route}",
-        description=fill(sub.body_template), reporter_id=owner, rank=f"{n:08d}",
-        source=f"webhook:{sub.route}", source_ref=src_ref,
+    # mode == "workflow": genau eine Instanz dieser Definition.
+    from ..models.workflow import WorkflowDefinition, WorkflowInstance
+    from ..services.workflow_engine import start_workflow
+    if sub.workflow_definition_id is None:
+        raise Fehler(400, "err.webhook_without_workflow_definition_id",
+                     "Webhook without workflow_definition_id")
+    definition = await db.get(WorkflowDefinition, sub.workflow_definition_id)
+    if definition is None or definition.current_version_id is None:
+        raise Fehler(400, "err.workflow_definition_missing_not",
+                     "The workflow definition is missing or not published")
+    if src_ref:
+        dup = (await db.execute(select(WorkflowInstance).where(
+            WorkflowInstance.source == f"webhook:{route}",
+            WorkflowInstance.source_ref == src_ref))).scalar_one_or_none()
+        if dup is not None:
+            return {"accepted": True, "duplicate": True, "instance_id": dup.id}
+    # What the run hangs off is said by the payload: the start node names the field the
+    # artifact stands in (ticket key, ticket id, unit id). Without this binding a flow
+    # with a ticket subject would run into nothing: its actions (setting a state,
+    # commenting, assigning) would find nothing to act on.
+    from ..services.workflow_subject import subjekt_aus_nutzlast
+    issue_id, asset_id, fehler = await subjekt_aus_nutzlast(
+        db, definition, payload if isinstance(payload, dict) else {}, ctx,
+        besitzer_id=sub.owner_user_id)
+    if fehler:
+        raise HTTPException(400, fehler)
+    inst = await start_workflow(
+        db, definition, subject_kind=definition.subject_kind, context=ctx,
+        issue_id=issue_id, hardware_asset_id=asset_id,
+        actor_id=sub.owner_user_id, source=f"webhook:{route}", source_ref=src_ref,
     )
-    if sub.agent:
-        issue.assigned_agent = sub.agent
-        issue.assigned_by_user_id = sub.owner_user_id  # owner token resolution in the worker
-        issue.assigned_at = dt.datetime.now(tz=dt.timezone.utc)
-        from ..services.artifacts import set_ticket_status
-        await set_ticket_status(db, issue, TicketAgentStatus.planning)
-    db.add(issue)
-    await db.commit()
-    await db.refresh(issue)
-    return {"accepted": True, "issue_key": issue.key}
+    if int(sub.response_timeout or 0) > 0:
+        # The caller wants the answer of the flow, not only the receipt. What goes back
+        # is what the flow wrote: a dict answer IS the body (so the far side sees exactly
+        # the fields it was promised), anything else is wrapped.
+        from fastapi.responses import JSONResponse
+        ergebnis = await _warte_auf_antwort(inst.id, sub)
+        antwort = ergebnis["answer"]
+        if isinstance(antwort, dict):
+            rumpf = antwort
+        elif antwort is None:
+            rumpf = {"accepted": True, "mode": "workflow", "answer": None,
+                     "instance_id": inst.id, "status": ergebnis["status"],
+                     "done": ergebnis["done"]}
+        else:
+            rumpf = {"answer": antwort}
+        return JSONResponse(rumpf, status_code=200 if antwort is not None else 202)
+    return {"accepted": True, "mode": "workflow", "instance_id": inst.id,
+            "status": inst.status.value,
+            **({"issue_id": issue_id} if issue_id else {}),
+            **({"hardware_asset_id": asset_id} if asset_id else {})}
 
 
 # ================= Jobs =================
@@ -541,6 +482,13 @@ async def create_job(data: JobIn, user: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
     job = Job(**data.model_dump(), user_id=user.id)
     db.add(job)
+    await db.flush()
+    # Wer noch eine alte Art einträgt (Vorlage, Agenten-Werkzeug, altes Skript), bekommt
+    # gleich einen Ablauf. Sonst stünde hier ein Weg offen, den ein späterer Neustart erst
+    # wieder einsammeln müsste — und bis dahin liefe der Job anders als angezeigt.
+    from ..services.job_modes import ALTE_ARTEN, als_ablauf
+    if job.kind in ALTE_ARTEN:
+        await als_ablauf(db, job)
     await db.commit()
     await db.refresh(job)
     return job
@@ -554,6 +502,9 @@ async def update_job(jid: int, data: JobIn, user: User = Depends(get_current_use
         raise Fehler(404, "err.job_not_found", "Job not found")
     for field, value in data.model_dump().items():
         setattr(job, field, value)
+    from ..services.job_modes import ALTE_ARTEN, als_ablauf
+    if job.kind in ALTE_ARTEN:
+        await als_ablauf(db, job)
     await db.commit()
     await db.refresh(job)
     return job
@@ -562,7 +513,6 @@ async def update_job(jid: int, data: JobIn, user: User = Depends(get_current_use
 @router.post("/jobs/{jid}/run", response_model=JobOut)
 async def run_job_now(jid: int, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    from ..core.redis import enqueue_task
     from ..services.scheduler import run_job_kind
     job = await db.get(Job, jid)
     if job is None or not is_owner_or_admin(job.user_id, user):
@@ -571,18 +521,10 @@ async def run_job_now(jid: int, user: User = Depends(get_current_user),
     db.add(jr)
     job.last_run_at = dt.datetime.now(tz=dt.timezone.utc)
     await db.flush()
-    # script/workflow/http run directly here (as in the scheduler); only prompt jobs need the
-    # worker. Without the kind branching a workflow job would land at the agent as a prompt.
-    if await run_job_kind(db, job, jr):
-        await db.commit()
-    else:
-        # Commit FIRST, queue AFTERWARDS. The other way round the assignment lies in Redis
-        # before the JobRun exists in the database; a free worker grabs it within
-        # milliseconds, finds `jr is None` and returns SILENTLY (worker/__main__.py:494). The
-        # job run then stays on "running" forever, without an error and without a run.
-        await db.commit()
-        await enqueue_task({"kind": "job", "task_id": f"job-{jr.id}", "job_id": job.id,
-                            "job_run_id": jr.id})
+    # Ein Weg für alle Arten (wie im Zeitplan und im Agenten-Werkzeug). Die Arbeit selbst
+    # steht im Ablauf; wo sie länger dauert, wartet der Ablauf darauf, nicht dieser Aufruf.
+    await run_job_kind(db, job, jr)
+    await db.commit()
     await db.refresh(job)
     return job
 

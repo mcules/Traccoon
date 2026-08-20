@@ -62,12 +62,16 @@ export default function StartConfig({
   // content: otherwise "event" would fall back to "by hand" immediately on switching as
   // long as no event name is entered yet, so one chooses something and apparently nothing
   // happens. (`t.event` still counts as an event, which is the existing data.)
-  const art: "manuell" | "ereignis" | "webhook" =
-    t.kind === "webhook" ? "webhook" : (t.kind === "ereignis" || t.event) ? "ereignis" : "manuell";
+  const art: "manuell" | "ereignis" | "webhook" | "mail_action" =
+    t.kind === "webhook" ? "webhook"
+      : t.kind === "mail_action" ? "mail_action"
+        : (t.kind === "ereignis" || t.event) ? "ereignis" : "manuell";
   const setArt = (neu: typeof art) => {
     const rest = { ...t };
     delete rest.event; delete rest.project_id; delete rest.filter; delete rest.kind;
+    delete rest.scope;
     if (neu !== "manuell") rest.kind = neu;
+    if (neu === "mail_action") rest.scope = "message";
     onChange({
       ...config,
       trigger: Object.keys(rest).length ? (rest as NodeConfig["trigger"]) : undefined,
@@ -100,8 +104,31 @@ export default function StartConfig({
           <option value="manuell">{tr("start_config.von_hand")}</option>
           <option value="ereignis">{tr("start_config.ereignis_in_traccoon")}</option>
           <option value="webhook">{tr("start_config.aufruf_von_aussen_webhook")}</option>
+          <option value="mail_action">Knopf an einer Mail</option>
         </select>
       </label>
+
+      {art === "mail_action" && (
+        <div className="space-y-2">
+          <label className="block text-xs font-medium text-muted">
+            Woran der Knopf haengt
+            <select value={t.scope || "message"} onChange={(e) => setT({ scope: e.target.value })}
+              className={`mt-1 ${inp}`}>
+              <option value="message">an der Nachricht</option>
+              <option value="attachment">an jedem Anhang</option>
+            </select>
+          </label>
+          {/* Ohne diese Zeile muesste man raten, was im Kontext steht — und raten heisst hier:
+              Platzhalter schreiben, die still leer bleiben. */}
+          <p className="text-[11px] text-muted">
+            Im Kontext stehen <code>mail.account</code>, <code>mail.folder</code>,{" "}
+            <code>mail.uid</code>, <code>mail.subject</code>, <code>mail.from</code>,{" "}
+            <code>mail.text</code>, <code>mail.attachments</code> — bei einem Anhang zusätzlich{" "}
+            <code>anhang.index</code>, <code>anhang.filename</code>,{" "}
+            <code>anhang.content_type</code>.
+          </p>
+        </div>
+      )}
 
       {art === "ereignis" && (
       <label className="block text-xs font-medium text-muted">

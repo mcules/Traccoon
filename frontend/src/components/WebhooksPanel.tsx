@@ -8,12 +8,11 @@ import {
 } from "./ui";
 
 const EMPTY = {
-  route: "", mode: "task", secret: "", project_id: "", agent: "", classify_agent: "", prompt_tmpl: "",
-  auto_run: false, title_template: "{title}", body_template: "{body}",
+  route: "", mode: "workflow", secret: "", project_id: "",
   event_header: "", event_filter: "", event_key_header: "",
-  event_cooldowns: "", alert_events: "", ref_field: "", notify_chat: "",
-  workflow_definition_id: "", context_map: "",
-  response_timeout: "", response_map: "",
+  event_cooldowns: "", alert_events: "", ref_field: "",
+  workflow_definition_id: "", context_map: "", context_fixed: "",
+  event_name: "", response_timeout: "", response_map: "",
 };
 
 /** "push:300, issue:60" → {push: 300, issue: 60} */
@@ -43,6 +42,29 @@ function parseContextMap(s: string): Record<string, string> {
 }
 function fmtContextMap(o: Record<string, string> | undefined): string {
   return Object.entries(o || {}).map(([k, v]) => `${k}: ${v}`).join(", ");
+}
+
+/** Eine Zuweisung je Zeile: `ziel = wert`.
+ *
+ * Kommagetrennt geht hier nicht: In festen Werten steht Text, und Text enthält Kommata
+ * („Konto {account}, Nachricht {uid}“). Ein Wert, der als JSON durchgeht, wird auch als
+ * JSON übernommen — so kommen `true` und Zahlen in den Kontext und nicht ihre Schreibweise.
+ */
+function parseZuweisungen(s: string): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const zeile of s.split("\n")) {
+    const i = zeile.indexOf("=");
+    if (i <= 0) continue;
+    const k = zeile.slice(0, i).trim();
+    const roh = zeile.slice(i + 1).trim();
+    if (!k) continue;
+    try { out[k] = JSON.parse(roh); } catch { out[k] = roh; }
+  }
+  return out;
+}
+function fmtZuweisungen(o: Record<string, any> | undefined): string {
+  return Object.entries(o || {})
+    .map(([k, v]) => `${k} = ${typeof v === "string" ? v : JSON.stringify(v)}`).join("\n");
 }
 
 /**
@@ -144,15 +166,15 @@ function WebhookDialog({ hook, fehler, laeuft, onClose, onSpeichern }: {
   const [f, setF] = useState(hook ? {
     route: hook.route, mode: hook.mode, secret: "",
     project_id: hook.project_id ? String(hook.project_id) : "",
-    agent: hook.agent || "", classify_agent: hook.classify_agent || "", prompt_tmpl: hook.prompt_tmpl || "",
-    auto_run: !!hook.auto_run, title_template: hook.title_template || "{title}",
-    body_template: hook.body_template || "{body}", event_header: hook.event_header || "",
+    event_header: hook.event_header || "",
     event_filter: hook.event_filter || "", event_key_header: hook.event_key_header || "",
     event_cooldowns: fmtCooldowns(hook.event_cooldowns),
     alert_events: (hook.alert_events || []).join(", "),
-    ref_field: hook.ref_field || "", notify_chat: hook.notify_chat || "",
+    ref_field: hook.ref_field || "",
     workflow_definition_id: hook.workflow_definition_id ? String(hook.workflow_definition_id) : "",
     context_map: fmtContextMap(hook.context_map),
+    context_fixed: fmtZuweisungen(hook.context_fixed),
+    event_name: hook.event_name || "",
     response_timeout: hook.response_timeout ? String(hook.response_timeout) : "",
     response_map: fmtContextMap(hook.response_map),
   } : EMPTY);
@@ -160,16 +182,16 @@ function WebhookDialog({ hook, fehler, laeuft, onClose, onSpeichern }: {
 
   const body = () => ({
     route: f.route, mode: f.mode, secret: f.secret,
-    project_id: f.project_id ? +f.project_id : null, agent: f.agent || null,
-    classify_agent: f.classify_agent || null, prompt_tmpl: f.prompt_tmpl || null, auto_run: f.auto_run,
-    title_template: f.title_template, body_template: f.body_template,
+    project_id: f.project_id ? +f.project_id : null,
     event_header: f.event_header || null, event_filter: f.event_filter || null,
     event_key_header: f.event_key_header || null,
     event_cooldowns: parseCooldowns(f.event_cooldowns),
     alert_events: f.alert_events.split(",").map((x: string) => x.trim()).filter(Boolean),
-    ref_field: f.ref_field || null, notify_chat: f.notify_chat || null,
+    ref_field: f.ref_field || null,
     workflow_definition_id: f.workflow_definition_id ? +f.workflow_definition_id : null,
     context_map: parseContextMap(f.context_map),
+    context_fixed: parseZuweisungen(f.context_fixed),
+    event_name: f.event_name || null,
     response_timeout: f.response_timeout ? +f.response_timeout : 0,
     response_map: parseContextMap(f.response_map),
   });
@@ -187,44 +209,21 @@ function WebhookDialog({ hook, fehler, laeuft, onClose, onSpeichern }: {
         </Feld>
         <Feld label={tr("webhooks_panel.modus")}>
           <select value={f.mode} onChange={(e) => setF({ ...f, mode: e.target.value })} className={EINGABE}>
-            <option value="task">task (Ticket)</option><option value="notify">notify</option>
-            <option value="assistant">assistant (Mail)</option>
-            <option value="workflow">workflow (Prozess starten)</option>
+            <option value="workflow">{tr("webhooks_panel.modus_ablauf")}</option>
+            <option value="event">{tr("webhooks_panel.modus_ereignis")}</option>
           </select>
         </Feld>
         <Feld label={tr("webhooks_panel.secret")}
           hinweis={hook ? tr("webhooks_panel.secret_unveraendert") : undefined}>
           <input value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value })} className={EINGABE} />
         </Feld>
-        {f.mode === "assistant" ? (
-          <Feld label={tr("webhooks_panel.klassifizier_agent_z_b_mail_classifier")}>
-            <input value={f.classify_agent} onChange={(e) => setF({ ...f, classify_agent: e.target.value })} className={EINGABE} />
-          </Feld>
-        ) : (
-          <Feld label={tr("webhooks_panel.projekt_fuer_task")}>
-            <select value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })} className={EINGABE}>
-              <option value="">—</option>
-              {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </Feld>
-        )}
-        <Feld label={tr("webhooks_panel.agent_optional")}>
-          <input value={f.agent} onChange={(e) => setF({ ...f, agent: e.target.value })} className={EINGABE} />
+        <Feld label={tr("webhooks_panel.projekt_optional")}>
+          <select value={f.project_id} onChange={(e) => setF({ ...f, project_id: e.target.value })} className={EINGABE}>
+            <option value="">—</option>
+            {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
         </Feld>
-        {f.mode === "assistant" ? (
-          <div className="sm:col-span-2">
-            <Feld label={tr("webhooks_panel.task_prompt")}>
-              <textarea value={f.prompt_tmpl} onChange={(e) => setF({ ...f, prompt_tmpl: e.target.value })}
-                placeholder={tr("webhooks_panel.task_prompt_platzhalter")} rows={8}
-                className={`${EINGABE} font-mono text-xs`} />
-            </Feld>
-          </div>
-        ) : (
-          <Feld label={tr("webhooks_panel.titel_vorlage")}>
-            <input value={f.title_template} onChange={(e) => setF({ ...f, title_template: e.target.value })} className={EINGABE} />
-          </Feld>
-        )}
-        {f.mode === "workflow" && (
+        {f.mode === "workflow" ? (
           <>
             <Feld label={tr("webhooks_panel.prozess_waehlen")}>
               <select value={f.workflow_definition_id}
@@ -235,26 +234,38 @@ function WebhookDialog({ hook, fehler, laeuft, onClose, onSpeichern }: {
                 ))}
               </select>
             </Feld>
-            <Feld label={tr("webhooks_panel.kontext_mapping")} hinweis={tr("webhooks_panel.ohne_mapping")}>
-              <input value={f.context_map} onChange={(e) => setF({ ...f, context_map: e.target.value })}
-                placeholder={tr("webhooks_panel.kontext_mapping_asset_id_data_id_ort_dat")} className={EINGABE} />
-            </Feld>
             <Feld label={tr("webhooks_panel.antwort_abwarten")}>
               <input type="number" min={0} max={120} value={f.response_timeout}
                 onChange={(e) => setF({ ...f, response_timeout: e.target.value })} className={EINGABE} />
             </Feld>
-            <Feld label={tr("webhooks_panel.antwort_felder")} hinweis={tr("webhooks_panel.antwort_hinweis")}>
-              <input value={f.response_map} onChange={(e) => setF({ ...f, response_map: e.target.value })}
-                placeholder="status: antwort.status, text: assistent.output" className={EINGABE} />
-            </Feld>
+            <div className="sm:col-span-2">
+              <Feld label={tr("webhooks_panel.antwort_felder")} hinweis={tr("webhooks_panel.antwort_hinweis")}>
+                <input value={f.response_map} onChange={(e) => setF({ ...f, response_map: e.target.value })}
+                  placeholder="status: antwort.status, text: assistent.output" className={EINGABE} />
+              </Feld>
+            </div>
           </>
+        ) : (
+          <Feld label={tr("webhooks_panel.ereignisname")} hinweis={tr("webhooks_panel.ereignisname_hinweis")}>
+            <input value={f.event_name} onChange={(e) => setF({ ...f, event_name: e.target.value })}
+              placeholder="mail.received" className={EINGABE} />
+          </Feld>
         )}
-        {f.mode === "assistant" && (
-          <label className="flex items-center gap-2 text-sm text-ink sm:col-span-2">
-            <input type="checkbox" checked={f.auto_run} onChange={(e) => setF({ ...f, auto_run: e.target.checked })} />
-            {tr("webhooks_panel.sofort_ausfuehren")}
-          </label>
-        )}
+        {/* Der Kontext gilt für beide Wege: Was der Auslöser weitergibt, hängt nicht daran,
+            ob ein Ablauf startet oder ein Ereignis gemeldet wird. */}
+        <div className="sm:col-span-2">
+          <Feld label={tr("webhooks_panel.kontext_aus_nutzlast")} hinweis={tr("webhooks_panel.ohne_mapping")}>
+            <input value={f.context_map} onChange={(e) => setF({ ...f, context_map: e.target.value })}
+              placeholder={tr("webhooks_panel.kontext_mapping_asset_id_data_id_ort_dat")} className={EINGABE} />
+          </Feld>
+        </div>
+        <div className="sm:col-span-2">
+          <Feld label={tr("webhooks_panel.kontext_fest")} hinweis={tr("webhooks_panel.kontext_fest_hinweis")}>
+            <textarea value={f.context_fixed} onChange={(e) => setF({ ...f, context_fixed: e.target.value })}
+              rows={3} placeholder={"quelle = Tracker {device.id}\nstumm = true"}
+              className={`${EINGABE} font-mono text-xs`} />
+          </Feld>
+        </div>
 
         <button type="button" onClick={() => setMehr(!mehr)}
           className="text-left text-xs text-muted hover:text-ink sm:col-span-2">
@@ -278,11 +289,8 @@ function WebhookDialog({ hook, fehler, laeuft, onClose, onSpeichern }: {
             <Feld label={tr("webhooks_panel.gruppier_header_optional")}>
               <input value={f.event_key_header} onChange={(e) => setF({ ...f, event_key_header: e.target.value })} className={EINGABE} />
             </Feld>
-            <Feld label={tr("webhooks_panel.idempotenz_feld_im_payload_z_b_id")}>
+            <Feld label={tr("webhooks_panel.idempotenz_feld")} hinweis={tr("webhooks_panel.idempotenz_hinweis")}>
               <input value={f.ref_field} onChange={(e) => setF({ ...f, ref_field: e.target.value })} className={EINGABE} />
-            </Feld>
-            <Feld label={tr("webhooks_panel.telegram_chat_id_optional")}>
-              <input value={f.notify_chat} onChange={(e) => setF({ ...f, notify_chat: e.target.value })} className={EINGABE} />
             </Feld>
           </>
         )}
