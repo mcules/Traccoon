@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { tr } from "../../../i18n";
 import { api } from "../../../api";
@@ -20,30 +21,56 @@ export default function AgentTaskConfig({
     staleTime: 5 * 60_000,
   });
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
+  // Ein Rollenname, den es (noch) nicht gibt, bleibt bedienbar: das Feld springt dann von
+  // selbst auf die freie Eingabe, statt den Wert stillschweigend zu verwerfen.
+  const bekannt = new Set(["plan_agent", "exec_agent", "review_agent", "assigned",
+                           ...agentOptions(agents).map(([w]) => w)]);
+  const [eigeneRolle, setEigeneRolle] = useState(
+    !!config.agent_role && !bekannt.has(config.agent_role));
+
   return (
     <div className="space-y-3">
+      {/* Auswahl statt Vorschlagsliste: ein Textfeld mit `datalist` zeigt erst beim Tippen,
+          was es gibt — man muss also wissen, wonach man sucht. Bei einer Handvoll Rollen ist
+          das eine Gedächtnisprüfung ohne Grund. */}
       <label className="block text-xs font-medium text-muted">
         Wer arbeitet
-        <input
-          list="agent-rollen"
-          value={config.agent_role || ""}
-          onChange={(e) => onChange({ ...config, agent_role: e.target.value })}
-          placeholder="exec_agent"
+        <select
+          value={eigeneRolle ? "__frei__" : (config.agent_role || "exec_agent")}
+          onChange={(e) => {
+            const wert = e.target.value;
+            // „Andere Rolle" schaltet auf ein Textfeld um, statt sofort etwas zu setzen:
+            // sonst stünde beim Umschalten kurz ein Rollenname da, den niemand gewählt hat.
+            setEigeneRolle(wert === "__frei__");
+            if (wert !== "__frei__") onChange({ ...config, agent_role: wert });
+          }}
           className={`mt-1 ${inp}`}
-        />
-        <datalist id="agent-rollen">
-          <option value="plan_agent">{tr("agent_task_config.planer_des_projekts_standard_architekt")}</option>
-          <option value="exec_agent">{tr("agent_task_config.ausfuehrender_des_projekts_standard_deve")}</option>
-          <option value="review_agent">{tr("agent_task_config.pruefer_des_projekts")}</option>
-          <option value="assigned">{tr("agent_task_config.der_am_ticket_zugewiesene_agent")}</option>
-          {/* Konkrete Rollen mit Herkunft der Definition, die tatsächlich greift. */}
-          {agentOptions(agents).map(([wert, beschriftung]) => (
-            <option key={wert} value={wert}>{beschriftung}</option>
-          ))}
-        </datalist>
+        >
+          <optgroup label="Aus den Projekt-Einstellungen">
+            <option value="plan_agent">{tr("agent_task_config.planer_des_projekts_standard_architekt")}</option>
+            <option value="exec_agent">{tr("agent_task_config.ausfuehrender_des_projekts_standard_deve")}</option>
+            <option value="review_agent">{tr("agent_task_config.pruefer_des_projekts")}</option>
+            <option value="assigned">{tr("agent_task_config.der_am_ticket_zugewiesene_agent")}</option>
+          </optgroup>
+          <optgroup label="Fester Agent">
+            {/* Konkrete Rollen mit Herkunft der Definition, die tatsächlich greift. */}
+            {agentOptions(agents).filter(([wert]) => wert).map(([wert, beschriftung]) => (
+              <option key={wert} value={wert}>{beschriftung}</option>
+            ))}
+          </optgroup>
+          <option value="__frei__">Andere Rolle (eintippen)…</option>
+        </select>
+        {eigeneRolle && (
+          <input
+            value={config.agent_role || ""}
+            onChange={(e) => onChange({ ...config, agent_role: e.target.value })}
+            placeholder="rolle_die_es_noch_nicht_gibt"
+            className={`mt-1 ${inp} font-mono`}
+          />
+        )}
         <span className="mt-1 block text-[11px] text-muted">
-          Die vier Platzhalter binden den Ablauf an die Projekt-Einstellungen. Ein konkreter
-          Rollenname (z. B. <code>developer</code>) setzt sie fest.
+          Die vier Platzhalter binden den Ablauf an die Projekt-Einstellungen. Ein fester
+          Agent (z. B. <code>developer</code>) gilt unabhängig davon, was am Projekt steht.
         </span>
       </label>
 
