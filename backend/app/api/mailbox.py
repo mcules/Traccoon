@@ -448,6 +448,36 @@ async def als_spam(kid: int, uid: int, data: HandgriffIn,
     await cache.entwerten(konto.id)
 
 
+@router.post("/accounts/{kid}/messages/{uid}/not-spam")
+async def kein_spam(kid: int, uid: int, data: HandgriffIn,
+                    user: User = Depends(get_current_user),
+                    db: AsyncSession = Depends(get_session)):
+    """Zurück in den Posteingang — und die Erkennung lernt daraus.
+
+    Im Spam-Ordner ist „als Spam markieren" kein Angebot, sondern eine Wiederholung. Was dort
+    fehlt, ist der Widerspruch: Diese Mail gehört nicht hierher.
+
+    Gibt es zu der Mail ein Urteil der Spam-Erkennung, wird der Widerspruch dort eingetragen
+    (`spam_review.zurueckholen`) — dann merkt sich das Gedächtnis den Absender als erwünscht,
+    statt morgen denselben Fehler zu machen. Ohne Urteil (von Hand einsortiert, oder die Mail
+    ist älter als die Erkennung) wird sie einfach zurückgeschoben.
+    """
+    from ..models.assistant import SpamVerdict
+    from ..services import spam_review
+
+    konto = await _konto(db, kid, user)
+    urteil = (await db.execute(select(SpamVerdict).where(
+        SpamVerdict.owner_user_id == user.id, SpamVerdict.account == konto.name,
+        SpamVerdict.uid == uid).order_by(SpamVerdict.id.desc()))).scalars().first()
+    if urteil is not None and urteil.status in ("spam", "pending"):
+        ergebnis = await spam_review.zurueckholen(db, urteil, decided_by="mailbox")
+        await cache.entwerten(konto.id)
+        return {"moved": True, "learned": True, "result": ergebnis}
+    await mailbox.verschieben(konto, data.folder, uid, "INBOX")
+    await cache.entwerten(konto.id)
+    return {"moved": True, "learned": False}
+
+
 @router.post("/accounts/{kid}/messages/{uid}/delete", status_code=204)
 async def loeschen(kid: int, uid: int, data: HandgriffIn,
                    user: User = Depends(get_current_user),

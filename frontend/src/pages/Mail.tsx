@@ -1,13 +1,14 @@
+import { tr } from "../i18n";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError } from "../api";
+import { api, ApiError, holeDatei } from "../api";
 import { usePageChrome } from "../pageChrome";
 import { useAuth } from "../auth";
 import { formatDateTime } from "../lib/formatTime";
 import { KontoDialog, type MailKonto, type MailIdentitaet } from "../components/MailKontenPanel";
 import {
   Bereich, BestaetigenDialog, Dialog, DialogFuss, EINGABE, Etikett, Feld, Fehlerzeile,
-  IconKnopf, Liste, ListeLeer, ListenZeile, Reiter, Zeilenknopf,
+  IconKnopf, Knopf, KNOPF, Liste, ListeLeer, ListenZeile, Reiter, Zeilenknopf,
 } from "../components/ui";
 
 /**
@@ -497,12 +498,87 @@ function NachrichtenListe({ kontoId, ordner, suche, onOeffnen, onFehler,
   );
 }
 
+/**
+ * Ein Anhang zum Ansehen.
+ *
+ * Vorher stand dort ein Link auf die API-Adresse — und der Browser schickt den Token nicht
+ * mit, den er nicht kennt. Was ankam, war „Not authenticated". Jetzt wird die Datei mit
+ * Anmeldung geholt und hier gezeigt; was sich nicht zeigen lässt, kann man immer noch
+ * speichern.
+ *
+ * Die Blob-Adresse wird beim Schließen wieder freigegeben: Sonst hält jeder angesehene
+ * Anhang seinen Speicher, bis die Seite neu lädt.
+ */
+function AnhangDialog({ pfad, anhang, onClose }: {
+  pfad: string; anhang: Anhang; onClose: () => void;
+}) {
+  const [quelle, setQuelle] = useState("");
+  const [typ, setTyp] = useState("");
+  const [text, setText] = useState("");
+  const [fehler, setFehler] = useState("");
+
+  useEffect(() => {
+    let adresse = "";
+    let lebt = true;
+    holeDatei(pfad)
+      .then(async ({ blob, typ: t }) => {
+        if (!lebt) return;
+        setTyp(t);
+        // Text wird gelesen, nicht eingebettet: In einem Rahmen stünde er ohne Umbruch und
+        // mit der Schrift der Seite, die er nicht meint.
+        if (t.startsWith("text/") || t.includes("json")) setText(await blob.text());
+        else {
+          adresse = URL.createObjectURL(blob);
+          setQuelle(adresse);
+        }
+      })
+      .catch((e) => setFehler(e instanceof ApiError ? e.message : "Anhang nicht ladbar"));
+    return () => { lebt = false; if (adresse) URL.revokeObjectURL(adresse); };
+  }, [pfad]);
+
+  const bild = typ.startsWith("image/");
+  const pdf = typ.includes("pdf");
+  return (
+    <Dialog breit titel={`📎 ${anhang.filename}`} onClose={onClose} fuss={
+      <>
+        <Knopf onClick={onClose}>{tr("common.schliessen")}</Knopf>
+        {quelle && (
+          <a href={quelle} download={anhang.filename} className={KNOPF.haupt}>
+            {tr("mail.anhang_speichern")}
+          </a>
+        )}
+      </>
+    }>
+      <Fehlerzeile text={fehler} />
+      {!fehler && !quelle && !text && (
+        <div className="p-6 text-center text-sm text-muted">{tr("common.laedt")}</div>
+      )}
+      {bild && quelle && (
+        <img src={quelle} alt={anhang.filename} className="mx-auto max-h-[70vh] rounded" />
+      )}
+      {pdf && quelle && (
+        <iframe src={quelle} title={anhang.filename} className="h-[70vh] w-full rounded bg-white" />
+      )}
+      {text && (
+        <pre className="max-h-[70vh] overflow-auto whitespace-pre-wrap rounded bg-surface p-3
+          text-xs text-ink">{text}</pre>
+      )}
+      {quelle && !bild && !pdf && (
+        <div className="p-6 text-center text-sm text-muted">
+          {tr("mail.anhang_keine_vorschau", { typ })}
+        </div>
+      )}
+    </Dialog>
+  );
+}
+
 function Leseansicht({ kontoId, konto, ordner, uid, onZurueck, onAntworten, onFehler }: {
   kontoId: number; konto: MailKonto | undefined; ordner: string; uid: number;
   onZurueck: () => void; onAntworten: (f: Record<string, string>) => void;
   onFehler: (m: string) => void;
 }) {
   const [verschiebenOffen, setVerschiebenOffen] = useState(false);
+  const [anhangAuf, setAnhangAuf] = useState<Anhang | null>(null);
   const qc = useQueryClient();
   const [lauf, setLauf] = useState("");
   const [ansicht, setAnsicht] = useState<"html" | "text">("html");
@@ -610,6 +686,10 @@ function Leseansicht({ kontoId, konto, ordner, uid, onZurueck, onAntworten, onFe
     mutationFn: () => api.post(`${basis}/spam`, { folder: ordner }),
     onSuccess: danach, onError: schiefgelaufen("Als Spam markieren"),
   });
+  const keinSpam = useMutation({
+    mutationFn: () => api.post(`${basis}/not-spam`, { folder: ordner }),
+    onSuccess: danach, onError: schiefgelaufen("Zurückholen"),
+  });
   const loeschen = useMutation({
     mutationFn: () => api.post(`${basis}/delete`, { folder: ordner }),
     onSuccess: danach, onError: schiefgelaufen("Löschen"),
@@ -644,9 +724,15 @@ function Leseansicht({ kontoId, konto, ordner, uid, onZurueck, onAntworten, onFe
         {(konto?.archive_mode === "pattern" ? konto?.archive_pattern : konto?.folder_archive) && (
           <Zeilenknopf onClick={() => archivieren.mutate()}>📦 Archivieren</Zeilenknopf>
         )}
-        {konto?.folder_junk && (
+        {/* Im Spam-Ordner ist „als Spam markieren" keine Handlung, sondern eine
+            Wiederholung. Was dort fehlt, ist der Widerspruch. */}
+        {konto?.folder_junk && (ordner === konto.folder_junk ? (
+          <Zeilenknopf onClick={() => keinSpam.mutate()} titel={tr("mail.kein_spam_titel")}>
+            ✅ {tr("mail.kein_spam")}
+          </Zeilenknopf>
+        ) : (
           <Zeilenknopf onClick={() => alsSpam.mutate()}>🚫 Spam</Zeilenknopf>
-        )}
+        ))}
         <Zeilenknopf onClick={() => setVerschiebenOffen(true)}>📁 Verschieben</Zeilenknopf>
         <div className="flex-1" />
         <Zeilenknopf gefahr onClick={() => loeschen.mutate()}>🗑 Löschen</Zeilenknopf>
@@ -686,8 +772,10 @@ function Leseansicht({ kontoId, konto, ordner, uid, onZurueck, onAntworten, onFe
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 flex-1 truncate">📎 {a.filename}</span>
                     <Etikett>{Math.max(1, Math.round(a.size / 1024))} kB</Etikett>
-                    <a href={`/api${basis}/attachments/${a.index}?folder=${encodeURIComponent(ordner)}`}
-                      className="shrink-0 text-brand hover:underline">Laden</a>
+                    <Zeilenknopf onClick={() => setAnhangAuf(a)}
+                      titel={tr("mail.anhang_ansehen")}>
+                      {tr("mail.anhang_ansehen")}
+                    </Zeilenknopf>
                     {fuerAnhang.map((akt) => (
                       <Zeilenknopf key={akt.definition_id}
                         onClick={() => starten.mutate({ definition_id: akt.definition_id,
@@ -731,6 +819,12 @@ function Leseansicht({ kontoId, konto, ordner, uid, onZurueck, onAntworten, onFe
           )}
           {lauf && <div className="text-xs text-green-400">{lauf}</div>}
         </>
+      )}
+
+      {anhangAuf && (
+        <AnhangDialog
+          pfad={`${basis}/attachments/${anhangAuf.index}?folder=${encodeURIComponent(ordner)}`}
+          anhang={anhangAuf} onClose={() => setAnhangAuf(null)} />
       )}
 
       {verschiebenOffen && (

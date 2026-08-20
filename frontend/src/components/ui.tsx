@@ -416,9 +416,9 @@ export function Zeilenknopf({ onClick, titel, gefahr = false, children }: {
   onClick: () => void; titel?: string; gefahr?: boolean; children: ReactNode;
 }) {
   return (
+    // Auch der Zeilenknopf ist ein Knopf: blau, nicht grau (siehe DESIGN.md).
     <button onClick={(e) => { e.stopPropagation(); onClick(); }} title={titel}
-      className={`shrink-0 rounded border border-line px-2 py-1 text-xs text-muted transition-colors ${
-        gefahr ? "hover:border-red-400 hover:text-red-300" : "hover:border-brand hover:text-ink"}`}>
+      className={gefahr ? KNOPF_KLEIN.gefahr : KNOPF_KLEIN.neben}>
       {children}
     </button>
   );
