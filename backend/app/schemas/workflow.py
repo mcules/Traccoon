@@ -27,6 +27,10 @@ class WorkflowDefinitionCreate(BaseModel):
 
 class WorkflowDefinitionUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=200)
+    # Der Schlüssel darf mit: Er entstand oft nebenbei (aus einer Route, aus einer
+    # Job-Nummer) und beschreibt dann den Auslöser statt der Sache. Was an einem Slot hängt
+    # oder zu einem ausgelieferten Satz gehört, behält seinen — dort ist er die Verbindung.
+    key: str | None = Field(default=None, max_length=60)
     description: str | None = None
     enabled: bool | None = None
 

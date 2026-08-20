@@ -34,6 +34,11 @@ export default function OwnWorkflowsPanel() {
   const [err, setErr] = useState("");
   const [neuDialog, setNeuDialog] = useState(false);
   const [loeschAblauf, setLoeschAblauf] = useState<WorkflowDefinition | null>(null);
+  // Umbenennen: Name und Schlüssel entstehen oft nebenbei (aus einer Route, aus einem
+  // Job-Namen) und beschreiben dann den Auslöser statt der Sache.
+  const [umbenennen, setUmbenennen] = useState<WorkflowDefinition | null>(null);
+  const [nameNeu, setNameNeu] = useState("");
+  const [keyNeu, setKeyNeu] = useState("");
 
   const { data: alle } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
   const { data: vorlagen } = useQuery({
@@ -43,7 +48,7 @@ export default function OwnWorkflowsPanel() {
   const eigene = (alle || []).filter((d) => d.project_id === null && !d.slot && !d.archived_at);
 
   const oeffnen = (d: WorkflowDefinition) =>
-    nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } });
+    nav(`/workflows/${d.id}`, { state: { from: "/processes/own" } });
   const inv = () => qc.invalidateQueries({ queryKey: ["workflows-all"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
@@ -53,12 +58,17 @@ export default function OwnWorkflowsPanel() {
       subject_kind: f.subject_kind, description: f.description.trim() || undefined,
       template: f.template || undefined,
     }),
-    onSuccess: (d) => { setF(EMPTY); setErr(""); setNeuDialog(false); inv(); nav(`/workflows/${d.id}`, { state: { from: "/processes/eigene" } }); },
+    onSuccess: (d) => { setF(EMPTY); setErr(""); setNeuDialog(false); inv(); nav(`/workflows/${d.id}`, { state: { from: "/processes/own" } }); },
     onError: fail,
   });
   const umschalten = useMutation({
     mutationFn: (d: WorkflowDefinition) => workflowApi.update(d.id, { enabled: !d.enabled }),
     onSuccess: () => { setErr(""); inv(); }, onError: fail,
+  });
+  const speichern = useMutation({
+    mutationFn: () => workflowApi.update(umbenennen!.id,
+      { name: nameNeu.trim(), key: keyNeu.trim() }),
+    onSuccess: () => { setErr(""); setUmbenennen(null); inv(); }, onError: fail,
   });
   const loeschen = useMutation({
     mutationFn: (id: number) => workflowApi.del(id),
@@ -100,6 +110,8 @@ export default function OwnWorkflowsPanel() {
                 <Aktionen>
                   <IconKnopf icon={ICON.bearbeiten} titel={tr("own_workflows_panel.editor")}
                     onClick={() => oeffnen(d)} />
+                  <IconKnopf icon="🏷" titel={tr("own_workflows_panel.umbenennen")}
+                    onClick={() => { setErr(""); setNameNeu(d.name); setKeyNeu(d.key); setUmbenennen(d); }} />
                   <IconKnopf icon={d.enabled ? "⏸" : "⏵"} onClick={() => umschalten.mutate(d)}
                     titel={tr(d.enabled ? "own_workflows_panel.aus" : "own_workflows_panel.an")} />
                   <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
@@ -111,6 +123,29 @@ export default function OwnWorkflowsPanel() {
         </Liste>
       ) : (
         <Liste><ListeLeer>{tr("own_workflows_panel.noch_keine_eigenen_prozesse")}</ListeLeer></Liste>
+      )}
+
+      {umbenennen && (
+        <Dialog titel={tr("own_workflows_panel.umbenennen")} onClose={() => setUmbenennen(null)}
+          fuss={<DialogFuss onAbbrechen={() => setUmbenennen(null)}
+            deaktiviert={!nameNeu.trim() || !keyNeu.trim()} laeuft={speichern.isPending}
+            onSpeichern={() => speichern.mutate()} />}>
+          <div className="space-y-3">
+            <label className="block text-xs font-medium text-muted">
+              {tr("own_workflows_panel.name")}
+              <input value={nameNeu} autoFocus onChange={(e) => setNameNeu(e.target.value)}
+                className={`mt-1 w-full ${inp}`} />
+            </label>
+            <label className="block text-xs font-medium text-muted">
+              {tr("own_workflows_panel.schluessel")}
+              <input value={keyNeu} onChange={(e) => setKeyNeu(e.target.value)}
+                className={`mt-1 w-full font-mono ${inp}`} />
+              <span className="mt-1 block text-[11px] text-muted">
+                {tr("own_workflows_panel.schluessel_hinweis")}
+              </span>
+            </label>
+          </div>
+        </Dialog>
       )}
 
       <button onClick={() => { setErr(""); setNeuDialog(true); }}
