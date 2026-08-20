@@ -22,6 +22,27 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Eine Datei holen — mit Anmeldung.
+ *
+ * Ein `<a href="/api/…">` schickt den Token nicht mit: Der Browser kennt ihn nicht, er steht
+ * im Speicher der Anwendung. Genau deshalb kam beim Klick auf einen Anhang „Not
+ * authenticated" statt der Datei.
+ */
+export async function holeDatei(path: string): Promise<{ blob: Blob; typ: string }> {
+  const token = getToken();
+  const res = await fetch(`/api${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (res.status === 401) {
+    setToken(null);
+    if (location.pathname !== "/login") location.href = "/login";
+  }
+  if (!res.ok) throw new ApiError(res.status, res.statusText);
+  const blob = await res.blob();
+  return { blob, typ: res.headers.get("Content-Type") || blob.type || "application/octet-stream" };
+}
+
 export async function request<T = any>(
   path: string,
   opts: { method?: string; body?: any } = {}
