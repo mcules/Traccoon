@@ -462,7 +462,7 @@
   "assistant_policies.tool_glob_z_b_obsidian": "Tool-Glob, z. B. obsidian__*",
   "assistant_policies.trifft_auf": "Trifft auf",
   "assistant_policies.verarbeitung": "Verarbeitung",
-  "assistant_policies.wert_z_b_news_darc_de": "Wert (z. B. news@verband.de)",
+  "assistant_policies.wert_z_b_news_verband_de": "Wert (z. B. news@verband.de)",
   "auto_action_config.wenn_es_schiefgeht": "Wenn es schiefgeht",
   "auto_action_config.wiederholung_hinweis": "Ein Fehlschlag nach außen ist meist einer des Augenblicks. Sind die Versuche aufgebraucht, geht es über den roten Ausgang „Fehler“ weiter — ist der nicht verdrahtet, endet der Lauf.",
   "backlog.abschliessen": "Abschließen",

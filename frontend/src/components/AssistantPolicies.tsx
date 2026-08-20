@@ -167,7 +167,7 @@ function RegelDialog({ regel, laeuft, onClose, onSpeichern }: {
             <option value="category">{tr("assistant_policies.kategorie")}</option>
           </select>
         </Feld>
-        <Feld label={tr("assistant_policies.wert_z_b_news_darc_de")}>
+        <Feld label={tr("assistant_policies.wert_z_b_news_verband_de")}>
           <input value={value} autoFocus onChange={(e) => setValue(e.target.value)} className={EINGABE} />
         </Feld>
         <Feld label={tr("assistant_policies.verarbeitung")}>

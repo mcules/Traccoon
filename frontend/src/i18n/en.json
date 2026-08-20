@@ -462,7 +462,7 @@
   "assistant_policies.tool_glob_z_b_obsidian": "Tool glob, e.g. obsidian__*",
   "assistant_policies.trifft_auf": "Matches",
   "assistant_policies.verarbeitung": "Processing",
-  "assistant_policies.wert_z_b_news_darc_de": "Value (e.g. news@verband.de)",
+  "assistant_policies.wert_z_b_news_verband_de": "Value (e.g. news@verband.de)",
   "auto_action_config.wenn_es_schiefgeht": "When it goes wrong",
   "auto_action_config.wiederholung_hinweis": "A call to the outside usually fails for a moment only. Once the attempts are used up the run continues through the red error outlet, and ends if that one is not wired.",
   "backlog.abschliessen": "Finish",
