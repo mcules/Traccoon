@@ -23,11 +23,12 @@ def user_out(u: User) -> UserOut:
         avatar_color=u.avatar_color, theme=u.theme, global_role=u.global_role,
         status=u.status, max_runners=u.max_runners, onboarded=u.onboarded_at is not None,
         default_project_view=u.default_project_view, ticket_open_mode=u.ticket_open_mode,
-        timezone=u.timezone,
+        timezone=u.timezone, mail_last_account_id=u.mail_last_account_id,
         ticket_layout=u.ticket_layout or {}, pm_chat_style=u.pm_chat_style,
         workflow_set_id=u.workflow_set_id,
         locale=u.locale, notify_default=u.notify_default, notify_email=u.notify_email,
         telegram_chat_id=u.telegram_chat_id,
+        notify_destination_id=u.notify_destination_id,
         claude_token_set=bool(u.claude_oauth_token_enc), created_at=u.created_at,
     )
 

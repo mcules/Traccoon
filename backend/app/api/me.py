@@ -110,9 +110,11 @@ async def set_telegram(d: StrIn, u: User = Depends(get_current_user), db: AsyncS
 
 class NotifyIn(BaseModel):
     """How this person wants to be reached. Empty fields stay unchanged."""
-    notify_default: str | None = None       # telegram | email
+    notify_default: str | None = None       # telegram | email | ziel
     notify_email: str | None = None         # leer = Anmelde-Adresse benutzen
     telegram_chat_id: str | None = None
+    # Kanal „ziel“: welches Ziel aufgerufen wird (0 = keins).
+    notify_destination_id: int | None = None
 
 
 @router.put("/me/notify", status_code=204)
@@ -135,6 +137,17 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
         u.notify_email = _valid_email(roh) if roh else None
     if d.telegram_chat_id is not None:
         u.telegram_chat_id = d.telegram_chat_id.strip() or None
+    if d.notify_destination_id is not None:
+        # Nur ein Ziel, das diese Person auch aufrufen darf — sonst wäre der Kanal ein Weg
+        # an fremde Anmeldedaten.
+        from ..services.destinations import visible
+        ziel_id = int(d.notify_destination_id) or None
+        if ziel_id is not None:
+            erlaubt = {z.id for z in await visible(db, owner_id=u.id)}
+            if ziel_id not in erlaubt:
+                raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_destination",
+                             "Unknown destination")
+        u.notify_destination_id = ziel_id
     await db.commit()
 
 

@@ -5,7 +5,7 @@ The occasion: the AI and tech news job carried topic, sources and structure firm
 import datetime as dt
 
 import pytest
-from app.services.job_params import TZ, offene_platzhalter, rendere
+from app.services.job_params import STD_TZ as TZ, offene_platzhalter, rendere
 from app.services.job_templates import JOB_TEMPLATES, anwenden, liste
 
 
@@ -33,7 +33,7 @@ def test_script_argumente_bleiben_unangetastet():
 def test_zeitfenster_kommt_aus_dem_letzten_lauf():
     jetzt = dt.datetime(2026, 7, 29, 8, 0, tzinfo=dt.timezone.utc)
     letzter = dt.datetime(2026, 7, 28, 8, 0, tzinfo=dt.timezone.utc)
-    text = rendere("{{zeitfenster}} · {{heute}} · {{seit}}", {}, jetzt=jetzt, letzter_lauf=letzter)
+    text = rendere("{{window}} · {{today}} · {{since}}", {}, jetzt=jetzt, letzter_lauf=letzter)
     assert "2026-07-28 10:00 bis 2026-07-29 10:00" in text   # Europe/Berlin (UTC+2)
     assert "2026-07-29" in text and TZ.key == "Europe/Berlin"
 
@@ -41,11 +41,11 @@ def test_zeitfenster_kommt_aus_dem_letzten_lauf():
 def test_ohne_letzten_lauf_24_stunden_zurueck():
     """First run or the job was off: a digest still needs a lower bound."""
     jetzt = dt.datetime(2026, 7, 29, 6, 0, tzinfo=dt.timezone.utc)
-    assert "2026-07-28 08:00 bis 2026-07-29 08:00" in rendere("{{zeitfenster}}", {}, jetzt=jetzt)
+    assert "2026-07-28 08:00 bis 2026-07-29 08:00" in rendere("{{window}}", {}, jetzt=jetzt)
 
 
 def test_eigener_parameter_schlaegt_eingebauten():
-    assert rendere("{{heute}}", {"heute": "Sankt Nimmerlein"}) == "Sankt Nimmerlein"
+    assert rendere("{{today}}", {"today": "Sankt Nimmerlein"}) == "Sankt Nimmerlein"
 
 
 def test_vorlage_liefert_felder_und_parameter():

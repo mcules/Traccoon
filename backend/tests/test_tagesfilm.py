@@ -409,12 +409,13 @@ async def test_filmer_nicht_erreichbar_kippt_den_tick_nicht(db, filmer, monkeypa
     assert list(tmp_path.iterdir()) == []
 
 
-async def test_film_ist_die_vierte_art_von_run_job_kind(db, filmer, monkeypatch, tmp_path):
-    """`run_job_kind` is the only place where `kind` branches, and it knows `film`. Without
-    the branch the job would run as an empty prompt at the assistant."""
+async def test_film_bleibt_eine_eigene_art(db, filmer, monkeypatch, tmp_path):
+    """`run_job_kind` ist die einzige Stelle, an der `kind` verzweigt — und von den fünf
+    Arten sind nur der Film und der Ablauf übrig. Ohne den Zweig liefe der Job ins Leere."""
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
     job, jr = await film_job(db)
-    assert await scheduler.run_job_kind(db, job, jr) is True
+    await scheduler.run_job_kind(db, job, jr)
+    assert jr.finished_at is not None and jr.status in ("ok", "error")
 
 
 async def test_aufraeumen_loescht_nur_alte_filme(monkeypatch, tmp_path):

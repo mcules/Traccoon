@@ -491,6 +491,13 @@ async def run_film_job(db: AsyncSession, job, jr) -> None:
     every other job due in that round would fall away with it, for one film.
     """
     opt = _opt(job)
+    if not opt.get("tz"):
+        # Der Bürotag endet dort, wo der steht, dem der Job gehört. Ohne das wäre „bis
+        # Mitternacht“ die Wanduhr des Servers, und der Film zeigte in Tokio den halben Tag.
+        from ..models.user import User
+        from .scheduler import zone_of
+        besitzer = await db.get(User, job.user_id) if getattr(job, "user_id", None) else None
+        opt = {**opt, "tz": zone_of(besitzer).key}
     try:
         await _film_bauen(db, job, jr, opt)
     except Exception as e:  # noqa: BLE001 — bewusst alles

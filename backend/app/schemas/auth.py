@@ -52,6 +52,7 @@ class UserOut(BaseModel):
     default_project_view: str
     # Zeitzone (IANA): die Oberfläche rechnet ihre Uhrzeiten damit, nicht mit der des Browsers.
     timezone: str = "Europe/Berlin"
+    mail_last_account_id: int | None = None
     ticket_open_mode: str = "popup"
     ticket_layout: dict = {}
     pm_chat_style: str = "bubbles"
@@ -60,6 +61,7 @@ class UserOut(BaseModel):
     notify_default: str = "telegram"
     notify_email: str | None = None
     telegram_chat_id: str | None = None
+    notify_destination_id: int | None = None
     # Personal process set (applies to all projects in which the user is an owner).
     workflow_set_id: int | None = None
     claude_token_set: bool

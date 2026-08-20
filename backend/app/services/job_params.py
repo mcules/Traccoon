@@ -17,7 +17,9 @@ import json
 import re
 from zoneinfo import ZoneInfo
 
-TZ = ZoneInfo("Europe/Berlin")
+# Rückfall, wenn niemand eine Zone nennt. Die Zone der Person steht in ihrem Profil und
+# wird durchgereicht — „seit gestern 8 Uhr“ heißt in Tokio etwas anderes als hier.
+STD_TZ = ZoneInfo("Europe/Berlin")
 
 _PLATZHALTER = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
 
@@ -36,21 +38,23 @@ def _als_text(wert) -> str:
 
 
 def eingebaute_werte(*, jetzt: dt.datetime | None = None,
-                     letzter_lauf: dt.datetime | None = None) -> dict[str, str]:
+                     letzter_lauf: dt.datetime | None = None,
+                     zone: ZoneInfo | None = None) -> dict[str, str]:
     """Time values practically every recurring job needs.
 
     `seit` is the last run; without it (first run, job was off) 24 hours back. That way a
     daily digest asks for "since the last time" instead of for a number that stands in the
     prompt and silently becomes wrong when the schedule is changed.
     """
+    TZ = zone or STD_TZ
     jetzt = (jetzt or dt.datetime.now(tz=dt.timezone.utc)).astimezone(TZ)
     seit = (letzter_lauf.astimezone(TZ) if letzter_lauf else jetzt - dt.timedelta(days=1))
     return {
-        "heute": jetzt.strftime("%Y-%m-%d"),
-        "jetzt": jetzt.strftime("%Y-%m-%d %H:%M"),
-        "seit": seit.strftime("%Y-%m-%d %H:%M"),
-        "zeitfenster": f"{seit.strftime('%Y-%m-%d %H:%M')} bis {jetzt.strftime('%Y-%m-%d %H:%M')} "
-                       f"({TZ.key})",
+        "today": jetzt.strftime("%Y-%m-%d"),
+        "now": jetzt.strftime("%Y-%m-%d %H:%M"),
+        "since": seit.strftime("%Y-%m-%d %H:%M"),
+        "window": f"{seit.strftime('%Y-%m-%d %H:%M')} bis {jetzt.strftime('%Y-%m-%d %H:%M')} "
+                  f"({TZ.key})",
     }
 
 
@@ -60,14 +64,14 @@ def parameter(args) -> dict:
 
 
 def rendere(prompt: str, args=None, *, jetzt: dt.datetime | None = None,
-            letzter_lauf: dt.datetime | None = None) -> str:
+            letzter_lauf: dt.datetime | None = None, zone: ZoneInfo | None = None) -> str:
     """Replace `{{name}}`: first the parameters of the job, then the built-in time values.
 
     An unknown placeholder stays VERBATIM. Emptying it silently would be the worse outcome:
     the assignment would lose a rule without a sound, instead of `{{quellen}}` standing
     visibly in the result and the error being noticed.
     """
-    werte = {**eingebaute_werte(jetzt=jetzt, letzter_lauf=letzter_lauf)}
+    werte = {**eingebaute_werte(jetzt=jetzt, letzter_lauf=letzter_lauf, zone=zone)}
     werte.update({k: _als_text(v) for k, v in parameter(args).items()})
 
     def ersetze(m: re.Match) -> str:
