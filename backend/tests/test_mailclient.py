@@ -477,3 +477,61 @@ async def test_gewoehnlicher_ordner_darf_geloescht_werden(db, client, monkeypatc
     r = await client.post(f"/mailbox/accounts/{kid}/folders/delete", headers=auth(anna),
                           json={"folder": "Alte Newsletter"})
     assert r.status_code == 204 and geloescht == ["Alte Newsletter"]
+
+
+# ── Was ein Ablauf mit einer Mail tun kann ───────────────────────────────────
+
+async def test_ablauf_markiert_eine_mail_als_gelesen(db, monkeypatch):
+    """Der häufigste Handgriff überhaupt — und bis eben der einzige, den ein Ablauf nicht
+    tun konnte: Wer eine Mail einsortiert hat, will sie danach als gelesen wissen."""
+    from app.services.workflow_actions import _mail_flag
+
+    anna = await make_user(db, "anna")
+    konto = MailAccount(owner_user_id=anna.id, name="privat", imap_host="imap.example.org")
+    db.add(konto)
+    await db.commit()
+
+    gesetzt = []
+
+    async def flag(k, ordner, uid, art, an):
+        gesetzt.append((k.id, ordner, uid, art, an))
+
+    monkeypatch.setattr(mailbox, "flag", flag)
+    inst = type("Inst", (), {"context": {}, "started_by": anna.id,
+                             "definition_id": 1, "id": 1})()
+    ergebnis = await _mail_flag(db, inst, {}, {"mail": {"account_id": konto.id,
+                                                        "folder": "INBOX", "uid": 7}})
+
+    assert ergebnis["set"] is True and ergebnis["flag"] == "seen" and ergebnis["on"] is True
+    assert gesetzt == [(konto.id, "INBOX", 7, "seen", True)]
+
+
+async def test_ohne_mail_im_kontext_sagt_der_knoten_warum(db):
+    """Ein Ablauf, der von einem Job kommt, hat keine Mail — das ist kein Absturz."""
+    from app.services.workflow_actions import _mail_flag
+
+    inst = type("Inst", (), {"context": {}, "started_by": None, "definition_id": 1, "id": 1})()
+    ergebnis = await _mail_flag(db, inst, {}, {})
+    assert ergebnis["set"] is False and "keine Mail" in ergebnis["reason"]
+
+
+async def test_verschieben_ohne_ziel_geht_ins_archiv(db, monkeypatch):
+    """So kann ein Ablauf „erledigt, weg damit" sagen, ohne den Ordnernamen zu kennen."""
+    from app.services.workflow_actions import _mail_move
+
+    anna = await make_user(db, "anna")
+    konto = MailAccount(owner_user_id=anna.id, name="privat", imap_host="imap.example.org",
+                        folder_archive="Archive")
+    db.add(konto)
+    await db.commit()
+
+    async def archivieren(k, ordner, uid):
+        return "Archive/2026"
+
+    monkeypatch.setattr(mailbox, "archivieren", archivieren)
+    inst = type("Inst", (), {"context": {}, "started_by": anna.id,
+                             "definition_id": 1, "id": 1})()
+    ergebnis = await _mail_move(db, inst, {}, {"mail": {"account_id": konto.id,
+                                                        "folder": "INBOX", "uid": 9}})
+    assert ergebnis == {"action": "mail_move", "moved": True,
+                        "target": "Archive/2026", "uid": 9}

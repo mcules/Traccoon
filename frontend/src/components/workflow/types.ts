@@ -66,7 +66,7 @@ export type AutoActionName =
   // Ablagen: Texte mit Verlauf, das Gegenstück zu den Messreihen
   | "document" | "document_read"
   // Mail-Client: den Anhang einer Mail in den Kontext holen
-  | "mail_attachment";
+  | "mail_attachment" | "mail_flag" | "mail_move";
 
 export interface AutoActionConfig {
   action: AutoActionName;
