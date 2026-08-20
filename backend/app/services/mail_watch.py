@@ -41,9 +41,13 @@ _aufseher: asyncio.Task | None = None
 
 def _idle_runde(account: MailAccount, dauer: int) -> list:
     """Eine Runde IDLE, blockierend — gehört deshalb in einen Thread."""
-    from ..services.mailbox import _imap
+    # Bewusst eine EIGENE Verbindung, nicht die aus dem Vorrat: Diese hier steht zwanzig
+    # Minuten in IDLE. Sie zurückzulegen hieße, dem nächsten Aufruf eine Leitung zu geben,
+    # die auf eine Ankündigung wartet statt auf seine Frage.
+    from ..services.mailbox import _verbinden
 
-    with _imap(account) as client:
+    client = _verbinden(account)
+    try:
         client.select_folder("INBOX", readonly=True)
         client.idle()
         try:
@@ -53,12 +57,18 @@ def _idle_runde(account: MailAccount, dauer: int) -> list:
                 client.idle_done()
             except Exception:  # noqa: BLE001 — die Verbindung wird ohnehin geschlossen
                 pass
+    finally:
+        try:
+            client.logout()
+        except Exception:  # noqa: BLE001
+            pass
 
 
 async def _waechter(konto_id: int, user_id: int) -> None:
     from ..api.ws import personen
 
     pause = 5
+    schon_gewaermt = False
     while True:
         try:
             async with SessionLocal() as db:
@@ -73,11 +83,26 @@ async def _waechter(konto_id: int, user_id: int) -> None:
                 await asyncio.sleep(20)
                 continue
 
+            if not schon_gewaermt:
+                # Einmal beim Zusehen: Wer eingeloggt ist, hat den Wächter laufen, bevor er
+                # das Postfach überhaupt öffnet. Dann ist auch der erste Blick warm.
+                from .mailbox_cache import vorwaermen
+                asyncio.create_task(vorwaermen(konto))
+                schon_gewaermt = True
+
             ereignisse = await asyncio.to_thread(_idle_runde, konto, ERNEUERN)
             pause = 5
             # EXISTS (neue Nachricht), EXPUNGE (weg), FETCH (Flag geändert) — welches davon,
             # ist der Oberfläche egal: sie holt sich den Stand ohnehin frisch.
             if ereignisse:
+                # Erst vergessen, dann melden: Sonst fragt die Oberfläche im selben Moment
+                # nach und bekommt den Stand von vor der neuen Mail.
+                from .mailbox_cache import entwerten, vorwaermen
+                await entwerten(konto_id)
+                # Und gleich neu holen: Die Meldung kommt beim Menschen an, während der
+                # Stand schon unterwegs ist — sonst wartet er auf die Sekunde, die wir
+                # gerade erst weggeworfen haben.
+                asyncio.create_task(vorwaermen(konto))
                 await personen.senden(user_id, {
                     "type": "mail",
                     "data": {"account_id": konto_id, "folder": "INBOX"},

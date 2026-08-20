@@ -288,6 +288,30 @@ async def melde(db, sub, payload: dict) -> list[int]:
 
 
 @pytest.fixture
+def redis_stub_echt(monkeypatch):
+    """Ein Redis, das wirklich etwas behält — im Speicher, nur für den Test.
+
+    Der große `redis_stub` ersetzt die Warteschlange; hier geht es um den Cache, und der
+    braucht ein Gegenüber, das sich merkt, was es bekommen hat.
+    """
+    speicher: dict[str, str] = {}
+
+    class Falsches:
+        async def get(self, key):
+            return speicher.get(key)
+
+        async def set(self, key, wert, ex=None):
+            speicher[key] = wert
+
+        async def incr(self, key):
+            speicher[key] = str(int(speicher.get(key, 0)) + 1)
+            return int(speicher[key])
+
+    monkeypatch.setattr("app.services.mailbox_cache.get_redis", lambda: Falsches())
+    return speicher
+
+
+@pytest.fixture
 def helpers():
     """Bundle of the creation helpers, so that tests have to import only one fixture."""
     return type("H", (), {
