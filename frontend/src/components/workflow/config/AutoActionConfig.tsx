@@ -5,50 +5,56 @@ import HttpRequestConfig from "./HttpRequestConfig";
 import ActionParams from "./ActionParams";
 import { ACTION_SPECS } from "./actionFields";
 
-/** Actions grouped by topic; otherwise the list becomes confusing. */
+/** Actions grouped by topic; otherwise the list becomes confusing.
+ *
+ * Nur Schlüssel, keine Klartexte: Gemischt war beides, und was als Klartext dastand, blieb
+ * in der englischen Oberfläche deutsch — während zwei Eintraege, die schon Schlüssel waren,
+ * roh als `action.spam_card` in der Liste standen. */
 const GROUPS: [string, [AutoActionName, string][]][] = [
   ["Artefakt", [
-    ["set_status", "Zustand setzen"],
+    ["set_status", "action.set_status"],
   ]],
   ["Allgemein", [
-    ["http_request", "Ziel aufrufen (HTTP)"],
-    ["tool_call", "Werkzeug aufrufen (MCP)"],
-    ["set_context", "Kontext setzen"],
-    ["comment", "Kommentar schreiben"],
-    ["notify", "Benachrichtigen"],
-    ["webhook", "Freie URL aufrufen"],
-    ["create_ticket", "Ticket anlegen"],
-    ["refresh_facts", "Projekt-Fakten lesen"],
-    ["assistant_task", "Assistent beauftragen"],
-    ["agent_run", "Agenten arbeiten lassen"],
-    ["script", "Skript ausführen"],
-    ["job_pause", "Zeitplan anhalten"],
-    ["document", "Text ablegen"],
-    ["document_read", "Abgelegten Text holen"],
-    ["answer", "Antwort setzen"],
-    ["mail_attachment", "Anhang einer Mail holen"],
+    ["http_request", "action.http_request"],
+    ["tool_call", "action.tool_call"],
+    ["set_context", "action.set_context"],
+    ["comment", "action.comment"],
+    ["notify", "action.notify"],
+    ["webhook", "action.webhook"],
+    ["create_ticket", "action.create_ticket"],
+    ["refresh_facts", "action.refresh_facts"],
+    ["assistant_task", "action.assistant_task"],
+    ["agent_run", "action.agent_run"],
+    ["script", "action.script"],
+    ["job_pause", "action.job_pause"],
+    ["document", "action.document"],
+    ["document_read", "action.document_read"],
+    ["answer", "action.answer"],
+    ["mail_attachment", "action.mail_attachment"],
+    ["mail_flag", "action.mail_flag"],
+    ["mail_move", "action.mail_move"],
   ]],
   ["Ticket", [
-    ["set_board_status", "Board-Spalte setzen"],
-    ["assign_agent", "Agent zuweisen"],
+    ["set_board_status", "action.set_board_status"],
+    ["assign_agent", "action.assign_agent"],
     ["set_cap_baseline", "action.set_cap_baseline"],
-    ["split_tickets", "Teilaufgaben anlegen"],
-    ["stop_agent", "Laufenden Agenten stoppen"],
+    ["split_tickets", "action.split_tickets"],
+    ["stop_agent", "action.stop_agent"],
   ]],
   ["Mail-Eingang", [
-    ["mail_classify", "Mail einordnen"],
-    ["spam_evaluate", "Spam beurteilen"],
+    ["mail_classify", "action.mail_classify"],
+    ["spam_evaluate", "action.spam_evaluate"],
     ["spam_card", "action.spam_card"],
     ["spam_apply", "action.spam_apply"],
-    ["mail_assistant_task", "Assistent-Item anlegen"],
-    ["mail_assistant_card", "Freigabekarte schicken"],
-    ["mail_assistant_run", "Assistenten starten"],
+    ["mail_assistant_task", "action.mail_assistant_task"],
+    ["mail_assistant_card", "action.mail_assistant_card"],
+    ["mail_assistant_run", "action.mail_assistant_run"],
   ]],
   ["Auslieferung", [
-    ["start_testenv", "Testumgebung starten"],
+    ["start_testenv", "action.start_testenv"],
     ["stop_testenv", "action.stop_testenv"],
     ["accept_merge", "action.accept_merge"],
-    ["deploy", "Deployment einreihen"],
+    ["deploy", "action.deploy"],
   ]],
 ];
 
@@ -134,7 +140,7 @@ export default function AutoActionConfig({
             <optgroup key={gruppe} label={gruppe}>
               {items.map(([k, l]) => (
                 <option key={k} value={k}>
-                  {l}
+                  {tr(l)}
                 </option>
               ))}
             </optgroup>

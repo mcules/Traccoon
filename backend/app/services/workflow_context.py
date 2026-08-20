@@ -119,6 +119,8 @@ AKTIONEN: dict[str, list[dict]] = {
         _f("assistant.output", "text", "Antwort des Assistenten (nur mit „warten“)"),
         _f("assistant.status", "text", "done oder error (nur mit „warten“)"),
     ],
+    "mail_flag": [],
+    "mail_move": [],
     "mail_attachment": [
         _f("attachment.filename", "text", "Dateiname des geholten Anhangs"),
         _f("attachment.content_type", "text", "Art der Datei (application/pdf …)"),

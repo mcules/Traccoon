@@ -119,6 +119,35 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     ],
   },
 
+  mail_flag: {
+    summary: "Markiert eine Mail als gelesen, wichtig oder beantwortet.",
+    fields: [
+      { key: "flag", label: "Markierung", type: "select",
+        options: [["seen", "gelesen"], ["flagged", "wichtig"], ["answered", "beantwortet"]] },
+      { key: "on", label: "Setzen", type: "boolean",
+        hint: "An: Markierung setzen. Aus: wieder wegnehmen (z. B. als ungelesen)." },
+      { key: "folder", label: "Ordner", type: "text",
+        hint: "Leer = der Ordner der Mail aus dem Auslöser." },
+      { key: "uid", label: "Nummer der Mail", type: "number",
+        hint: "Leer = die Mail aus dem Auslöser. {{ mail.uid }} tut dasselbe." },
+    ],
+    outcomes: "Kontext danach: unverändert. Ergebnis: flag, on, uid.",
+  },
+
+  mail_move: {
+    summary: "Verschiebt eine Mail in einen Ordner — ohne Ziel ins Archiv des Kontos.",
+    fields: [
+      { key: "target", label: "Zielordner", type: "text",
+        placeholder: "Archive/2026",
+        hint: "Leer = das Archiv des Kontos, samt Muster ({jahr}, {monat})." },
+      { key: "folder", label: "Ordner", type: "text",
+        hint: "Leer = der Ordner der Mail aus dem Auslöser." },
+      { key: "uid", label: "Nummer der Mail", type: "number",
+        hint: "Leer = die Mail aus dem Auslöser." },
+    ],
+    outcomes: "Kontext danach: unverändert. Ergebnis: moved, target.",
+  },
+
   mail_attachment: {
     subjects: ["standalone"],
     summary: "Holt den Anhang einer Mail in den Kontext (Base64) — fuer Werkzeuge, die eine Datei erwarten.",

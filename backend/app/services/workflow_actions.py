@@ -903,6 +903,80 @@ async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
             "age_hours": alter, "silent": still, "report_silence": melden}
 
 
+async def _mail_konto(db, params: dict, ctx: dict):
+    """Konto, Ordner und Nummer der Mail, um die es geht.
+
+    Vorgabe ist die Mail aus dem Auslöser (`mail` im Kontext) — das ist der Normalfall, wenn
+    ein Knopf am Postfach oder der Mail-Eingang den Ablauf gestartet hat. Wer eine andere
+    meint, sagt es im Knoten.
+    """
+    from ..models.mail import MailAccount
+
+    mail = dict(ctx.get("mail") or {})
+    konto_id = params.get("account_id") or mail.get("account_id")
+    uid = params.get("uid") or mail.get("uid")
+    ordner = str(_interp(params.get("folder") or "", ctx)).strip() \
+        or str(mail.get("folder") or "INBOX")
+    if konto_id is None or uid in (None, ""):
+        return None, ordner, None
+    konto = await db.get(MailAccount, int(konto_id))
+    return konto, ordner, int(uid)
+
+
+async def _cache_leeren(konto_id: int) -> None:
+    """Was der Ablauf am Postfach ändert, darf die Oberfläche nicht aus dem Cache lesen."""
+    from .mailbox_cache import entwerten
+
+    await entwerten(konto_id)
+
+
+async def _mail_flag(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Eine Mail markieren: gelesen, wichtig, beantwortet.
+
+    Der häufigste Handgriff überhaupt und bis jetzt der einzige, den ein Ablauf nicht tun
+    konnte: Wer eine Mail einsortiert oder beantwortet hat, will sie danach als gelesen
+    wissen, ohne sie noch einmal anzufassen.
+
+    Parameter: `flag` (seen | flagged | answered, Vorgabe `seen`), `on` (Vorgabe an),
+    `folder`/`uid`/`account_id` (Vorgabe: die Mail aus dem Auslöser).
+    """
+    from . import mailbox
+
+    konto, ordner, uid = await _mail_konto(db, params, ctx)
+    if konto is None or uid is None:
+        return {"action": "mail_flag", "set": False,
+                "reason": "keine Mail im Kontext (Auslöser ist keine Mail-Aktion?)"}
+    flag = str(_interp(params.get("flag") or "", ctx)).strip().lower() or "seen"
+    an = _ja(params.get("on"), ctx) if params.get("on") is not None else True
+    await mailbox.flag(konto, ordner, uid, flag, an)
+    await _cache_leeren(konto.id)
+    return {"action": "mail_flag", "set": True, "flag": flag, "on": an, "uid": uid}
+
+
+async def _mail_move(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+    """Eine Mail in einen Ordner verschieben — oder ins Archiv, wenn keiner genannt ist.
+
+    Ohne Ziel gilt, was am Konto als Archiv eingetragen ist, samt Muster: So kann ein Ablauf
+    „erledigt, weg damit" sagen, ohne den Ordnernamen zu kennen.
+    """
+    from . import mailbox
+
+    konto, ordner, uid = await _mail_konto(db, params, ctx)
+    if konto is None or uid is None:
+        return {"action": "mail_move", "moved": False,
+                "reason": "keine Mail im Kontext (Auslöser ist keine Mail-Aktion?)"}
+    ziel = str(_interp(params.get("target") or "", ctx)).strip()
+    if ziel:
+        await mailbox.verschieben(konto, ordner, uid, ziel)
+    elif konto.folder_archive:
+        ziel = await mailbox.archivieren(konto, ordner, uid)
+    else:
+        return {"action": "mail_move", "moved": False,
+                "reason": "kein Ziel genannt und kein Archiv am Konto"}
+    await _cache_leeren(konto.id)
+    return {"action": "mail_move", "moved": True, "target": ziel, "uid": uid}
+
+
 async def _mail_anhang(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Holt den Anhang einer Mail in den Kontext — als Base64, wie ihn Werkzeuge erwarten.
 
@@ -1344,6 +1418,12 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     from .mail_actions import HANDLER as MAIL_HANDLER
     if action in MAIL_HANDLER:
         return await MAIL_HANDLER[action](db, inst, params, ctx)
+
+    if action == "mail_flag":
+        return await _mail_flag(db, inst, params, ctx)
+
+    if action == "mail_move":
+        return await _mail_move(db, inst, params, ctx)
 
     if action == "mail_attachment":
         return await _mail_anhang(db, inst, params, ctx)
