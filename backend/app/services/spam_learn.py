@@ -50,11 +50,29 @@ _MAX_GEWICHT = 1.6
 _SICHER_AB = 3
 
 # Kinds of feature that may carry on their own. A subject word never may.
-_STARKE_ARTEN = ("from:", "to:", "dom:")
+#
+# `to:` steht hier bewusst NICHT mehr — die eigene Adresse ist kein Merkmal der Mail,
+# sondern eines des Postfachs: Sie steht in jeder erwünschten genauso wie in jedem Spam.
+# Weil man aber fast nur Spam ausdrücklich entscheidet, sammelt sie einseitig Spam-Zähler
+# und wird zur selbsterfüllenden Regel. Fall vom 2026-08-20: Ein PayPal-Beleg an einen
+# frischen Alias (`to:` 4:0 Spam) wurde weggeräumt, obwohl derselbe Absender 282-mal als
+# erwünscht gelernt war — `to:` löste „sicher" aus und übersprang alles andere.
+_STARKE_ARTEN = ("from:", "dom:")
+
+# Als Merkmal darf die Empfängeradresse mitzählen (ein Wegwerf-Alias, der wirklich nur
+# Werbung bekommt, sagt etwas), aber sie entscheidet nichts allein.
+_SCHWACHE_STARKE = ("to:",)
 
 
 def _mindestens(feature: str) -> int:
-    """How many observations this feature needs in order to have a say."""
+    """How many observations this feature needs in order to have a say.
+
+    Die eigene Empfängeradresse braucht mehr als ein Absender: Sie steht in JEDER Mail an
+    dieses Postfach, und weil fast nur Spam ausdrücklich entschieden wird, sammelt sie
+    einseitig Zähler, ohne etwas über die einzelne Mail zu sagen.
+    """
+    if (feature or "").startswith(_SCHWACHE_STARKE):
+        return _MIN_EVIDENZ_STARK * 4
     return (_MIN_EVIDENZ_STARK if (feature or "").startswith(_STARKE_ARTEN)
             else _MIN_EVIDENZ_SCHWACH)
 
@@ -104,6 +122,7 @@ async def bewerten(db: AsyncSession, owner_id: int | None,
     summe = math.log(basis / (1 - basis))
     beitraege: list[tuple[float, str]] = []
     sicher = False
+    einig: list[SpamFeatureStat] = []
     for row in rows:
         gesamt = (row.spam_count or 0) + (row.ham_count or 0)
         if gesamt < _mindestens(row.feature):
@@ -116,7 +135,15 @@ async def bewerten(db: AsyncSession, owner_id: int | None,
         if row.feature.startswith(_STARKE_ARTEN) and gesamt >= _SICHER_AB:
             if row.ham_count == 0 or row.spam_count == 0:
                 sicher = True
+                einig.append(row)
 
+    # „Sicher" heißt einig — und einig ist man nur, wenn niemand widerspricht. Zeigt ein
+    # zweites starkes Merkmal in die Gegenrichtung (derselbe Absender 282-mal erwünscht,
+    # während ein anderes Merkmal dreimal auf Spam steht), ist die Sache eben nicht klar.
+    if sicher and len(einig) > 1:
+        richtungen = {r.spam_count == 0 for r in einig}
+        if len(richtungen) > 1:
+            sicher = False
     score = 1 / (1 + math.exp(-summe))
     beitraege.sort(key=lambda b: abs(b[0]), reverse=True)
     return round(score, 3), [text for _, text in beitraege[:4]], sicher
@@ -135,6 +162,51 @@ def _erklaerung(row: SpamFeatureStat) -> str:
     if h and not s:
         return f"{label}: bisher {h}× erwünscht"
     return f"{label}: {s}× Spam / {h}× erwünscht"
+
+
+async def absender_vertraut(db: AsyncSession, owner_id: int | None, absender: str,
+                            *, ab: int = 20, anteil: float = 0.95) -> bool:
+    """Kennt dieses Postfach den Absender als erwünscht — deutlich und über lange Zeit?
+
+    Nicht der gelernte Score, sondern die Erfahrung dahinter: „286-mal erwünscht" ist etwas
+    anderes als „dreimal gesehen und für gut befunden". Nur bei dieser Deutlichkeit darf das
+    Gedächtnis dem Modell widersprechen.
+
+    Gefragt ist das Verhältnis, nicht die Makellosigkeit: Ein einziger Fehlgriff — ein
+    versehentliches „ist Spam", eine gefälschte Mail unter dem Namen — darf nicht 286 gute
+    Beobachtungen aufheben. Genau daran scheiterte die erste Fassung dieser Bremse.
+    """
+    if not absender:
+        return False
+    row = (await db.execute(select(SpamFeatureStat).where(
+        SpamFeatureStat.owner_user_id == owner_id,
+        SpamFeatureStat.feature == f"from:{absender}"))).scalars().first()
+    if row is None:
+        return False
+    ham, spam = row.ham_count or 0, row.spam_count or 0
+    return ham >= ab and ham >= anteil * (ham + spam)
+
+
+async def schon_widersprochen(db: AsyncSession, owner_id: int | None, absender: str) -> bool:
+    """Hat ein Mensch für diesen Absender schon einmal ausdrücklich „kein Spam" gesagt?
+
+    Das ist die stärkste Auskunft, die es gibt — stärker als jede Statistik und stärker als
+    das Modell. Wer zweimal widerspricht und beim dritten Mal wieder gefragt wird, hat recht,
+    wenn er die Erkennung für kaputt hält.
+
+    Gezählt werden nur menschliche Entscheidungen: `auto` ist die Maschine, die sich selbst
+    bestätigt.
+    """
+    from ..models.assistant import SpamVerdict
+
+    if not absender:
+        return False
+    row = (await db.execute(select(SpamVerdict).where(
+        SpamVerdict.owner_user_id == owner_id,
+        SpamVerdict.sender_email == absender,
+        SpamVerdict.status == "ham",
+        SpamVerdict.decided_by.notin_(("auto", ""))).limit(1))).scalars().first()
+    return row is not None
 
 
 async def merkmale_zaehlen(db: AsyncSession, owner_id: int | None, merkmale: list[str],

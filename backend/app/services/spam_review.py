@@ -117,6 +117,12 @@ _BETRUG_SCORE = 0.95
 # it keeps the technical findings out that the flow passes into the prompt (they contain the
 # word "Fälschungsverdacht" themselves).
 _BETRUG_TEXT_AB = 0.8
+# Bei Streit zwischen Modell und Gedächtnis: über der Frage-Schwelle, unter jeder sinnvollen
+# Auto-Schwelle. Die Mail wird also gezeigt, aber nicht angefasst.
+_STREIT_SCORE = 0.6
+# Und wenn ein Mensch für diesen Absender schon einmal widersprochen hat: durchlassen. Unter
+# jeder Frage-Schwelle, denn die Frage ist beantwortet.
+_ENTSCHIEDEN_SCORE = 0.2
 _BETRUG_WORTE = re.compile(r"phish|betrug|scam|f[äa]lsch|identit[äa]tsdiebstahl", re.I)
 
 
@@ -224,6 +230,13 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # --- Memory ---------------------------------------------------------------
     gelernt_score, gelernt_gruende, sicher = await spam_learn.bewerten(db, owner_id, merkmale)
     hat_gedaechtnis = bool(gelernt_gruende) or sicher
+    # Wie gut kennt das Postfach diesen Absender? Nicht der Score, sondern die Erfahrung:
+    # „286-mal erwünscht, nie Spam" ist etwas anderes als „dreimal gesehen".
+    vertraut = await spam_learn.absender_vertraut(db, owner_id, regel.sender_email)
+    # Und ob schon einmal jemand ausdrücklich widersprochen hat. Das wiegt schwerer als
+    # jede Statistik: Wer zweimal „kein Spam" sagt und beim dritten Mal wieder gefragt wird,
+    # hat recht, wenn er die Erkennung für kaputt hält.
+    widersprochen = await spam_learn.schon_widersprochen(db, owner_id, regel.sender_email)
 
     score = _mischen(regel.score, modell, gelernt_score if hat_gedaechtnis else None)
 
@@ -240,7 +253,34 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     if betrug:
         score = round(max(score, modell, _BETRUG_SCORE), 3)
 
+    # Widerspruch zwischen Modell und Gedächtnis: fragen, nicht wegräumen.
+    #
+    # Das Modell irrt anders als das Gedächtnis. Bei einem Absender, den dieses Postfach
+    # hundertfach als erwünscht kennt und nie als Spam, ist „Markenmissbrauch" die
+    # unwahrscheinlichere Erklärung — aber sicher ist es eben auch nicht. Also entscheidet
+    # niemand allein: Die Mail kommt in die Rückfrage.
+    #
+    # Fall vom 2026-08-20: Ein echter PayPal-Beleg (`service@paypal.de`, 282-mal erwünscht)
+    # wurde vom Modell als Marken-Phishing gewertet und automatisch weggeräumt — und weil
+    # eine verschobene Mail beim Zurückholen eine neue Nummer bekommt, ging das Spiel bei
+    # jedem Zurückholen von vorn los.
+    streit = bool(betrug and vertraut and not faelschungsverdacht)
+    gruende_streit = ""
+    if streit and widersprochen:
+        # Entschieden ist entschieden. Nur die Echtheitsprüfung hebt das noch auf, und die
+        # steht in `faelschungsverdacht` — sonst wäre ein einmal freigegebener Absender ein
+        # Freifahrtschein für jeden, der seinen Namen benutzt.
+        score = min(score, _ENTSCHIEDEN_SCORE)
+        gruende_streit = (f"{regel.sender_email} wurde hier schon einmal ausdrücklich als "
+                          f"kein Spam entschieden")
+    elif streit:
+        score = min(score, _STREIT_SCORE)
+        gruende_streit = (f"das Modell hält es für Betrug, dieses Postfach kennt "
+                          f"{regel.sender_email} aber als erwünscht — deshalb die Rückfrage")
+
     gruende = list(regel.reasons)
+    if gruende_streit:
+        gruende.append(gruende_streit)
     if betrug:
         gruende.append("das lokale Modell erkennt einen Betrugsversuch")
     if cls.get("spam_reason"):
@@ -257,6 +297,10 @@ async def beurteilen(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # condition keeps the `geklaert_spam` path intact, which clears away regardless of the
     # auto threshold.
     if geklaert and betrug and gelernt_score < 0.5:
+        geklaert = False
+    # …es sei denn, das Postfach kennt den Absender wirklich. Dann bleibt es beim Streit
+    # (Rückfrage) statt beim stillen Wegräumen — siehe oben.
+    if streit:
         geklaert = False
     # The verdict of one's own mail server stands for itself. In the weighted mixture it
     # would go under: with rule = 1.0 and a silent model, even a mail the own server gives 13

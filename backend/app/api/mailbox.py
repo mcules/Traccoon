@@ -466,9 +466,25 @@ async def kein_spam(kid: int, uid: int, data: HandgriffIn,
     from ..services import spam_review
 
     konto = await _konto(db, kid, user)
-    urteil = (await db.execute(select(SpamVerdict).where(
-        SpamVerdict.owner_user_id == user.id, SpamVerdict.account == konto.name,
-        SpamVerdict.uid == uid).order_by(SpamVerdict.id.desc()))).scalars().first()
+    # Das Urteil über die UID zu suchen, geht schief: Beim Verschieben in den Spam-Ordner
+    # bekommt die Mail dort eine NEUE Nummer, im Urteil steht aber die des Posteingangs.
+    # Deshalb wird die Mail gelesen und über Absender und Betreff zugeordnet — das sind die
+    # Angaben, die das Verschieben überlebt haben.
+    kopf = await mailbox.nachricht(konto, data.folder, uid)
+    absender = (kopf.get("from") or [{}])[0].get("addr", "") if kopf.get("from") else ""
+    bedingungen = [SpamVerdict.owner_user_id == user.id, SpamVerdict.account == konto.name]
+    if absender:
+        bedingungen.append(SpamVerdict.sender_email == absender)
+    if kopf.get("subject"):
+        bedingungen.append(SpamVerdict.subject == kopf["subject"][:500])
+    urteil = (await db.execute(select(SpamVerdict).where(*bedingungen)
+                               .order_by(SpamVerdict.id.desc()))).scalars().first()
+    if urteil is None:
+        # Zweiter Versuch über die Nummer — für Urteile aus der Zeit, in der die Mail noch
+        # im Posteingang lag und dort entschieden wurde.
+        urteil = (await db.execute(select(SpamVerdict).where(
+            SpamVerdict.owner_user_id == user.id, SpamVerdict.account == konto.name,
+            SpamVerdict.uid == uid).order_by(SpamVerdict.id.desc()))).scalars().first()
     if urteil is not None and urteil.status in ("spam", "pending"):
         ergebnis = await spam_review.zurueckholen(db, urteil, decided_by="mailbox")
         await cache.entwerten(konto.id)
