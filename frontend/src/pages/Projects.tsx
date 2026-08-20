@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import Onboarding from "../components/Onboarding";
 import MyWork from "../components/MyWork";
-import { Etikett } from "../components/ui";
+import { Etikett, KNOPF} from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 export default function Projects() {
@@ -39,7 +39,7 @@ export default function Projects() {
       <MyWork />
       <div className="mb-4 flex items-center justify-between">
         <h1 className="text-lg font-semibold">{tr("projects.projekte")}</h1>
-        <button onClick={() => setShow(!show)} className="rounded bg-brand px-3 py-1.5 text-white">
+        <button onClick={() => setShow(!show)} className={KNOPF.haupt}>
           + Projekt
         </button>
       </div>
@@ -61,7 +61,7 @@ export default function Projects() {
             <input type="checkbox" checked={managed} onChange={(e) => setManaged(e.target.checked)} />
             KI-gemanagt
           </label>
-          <button className="rounded bg-brand px-3 py-1.5 text-white">{tr("projects.anlegen")}</button>
+          <button className={KNOPF.haupt}>{tr("projects.anlegen")}</button>
           {err && <span className="text-sm text-red-400">{err}</span>}
         </form>
       )}

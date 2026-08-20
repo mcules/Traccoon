@@ -76,6 +76,7 @@ import { useWakeLock } from "../hooks/useWakeLock.ts";
 import { useTokenKeepalive } from "../hooks/useTokenKeepalive.ts";
 import { projektPfad } from "../projectTabs";
 import { SCHIENE_FREILASSEN } from "../nav";
+import { KNOPF } from "../components/ui";
 
 // ── Adjustable settings of the watchdog ─────────────────────────────────────────────────────
 
@@ -243,7 +244,7 @@ export default function Office(): JSX.Element {
           {projectKey && (
             <button
               onClick={zurueck}
-              className="rounded border border-line px-2 py-1 text-sm text-muted hover:text-ink"
+              className={KNOPF.neben}
             >
               ← {tr("office.zurueck_projekt")}
             </button>

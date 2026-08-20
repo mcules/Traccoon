@@ -7,6 +7,7 @@ import {
 } from "../api";
 import WorkflowInstanceView from "./workflow/WorkflowInstanceView";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
+import { KNOPF } from "./ui";
 
 const STATUS_LABEL: Record<string, string> = {
   running: "instanz.running", waiting: "instanz.waiting", completed: "instanz.completed",
@@ -76,7 +77,7 @@ export default function AssetWorkflow({
         <button
           onClick={() => start.mutate()}
           disabled={start.isPending}
-          className="rounded bg-brand px-3 py-1 text-sm text-white disabled:opacity-50"
+          className={KNOPF.haupt}
         >
           🧭 {tr("asset_workflow.beschaffung_starten")}
         </button>

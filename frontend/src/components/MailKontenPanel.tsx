@@ -4,8 +4,7 @@ import { api, ApiError } from "../api";
 import { tr } from "../i18n";
 import {
   Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Etikett, Feld, Fehlerzeile, ICON, IconKnopf,
-  Liste, ListeLeer, ListenZeile, LoeschDialog, Zeilenknopf, Zustand, Reiter,
-} from "./ui";
+  Liste, ListeLeer, ListenZeile, LoeschDialog, Zeilenknopf, Zustand, Reiter, KNOPF } from "./ui";
 
 /**
  * Mail-Konten und ihre Identitäten.
@@ -93,7 +92,7 @@ export default function MailKontenPanel() {
       </Liste>
 
       <button onClick={() => { setErr(""); setDialog({ ...LEER }); }}
-        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} Postfach hinzufügen
       </button>
 

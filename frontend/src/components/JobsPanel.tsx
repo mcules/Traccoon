@@ -5,8 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
   Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog,
-} from "./ui";
+  ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "./ui";
 
 const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "workflow",
                 agent: "", prompt: "", command: "", notify_mode: "on_output", notify_chat: "",
@@ -76,7 +75,7 @@ export default function JobsPanel() {
         {jobs?.length === 0 && <ListeLeer>{tr("jobs_panel.keine_jobs")}</ListeLeer>}
       </Liste>
       <button onClick={() => { setErr(""); setDialog({}); }}
-        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} {tr("jobs_panel.job_anlegen")}
       </button>
 

@@ -3,6 +3,7 @@ import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { FlowNode } from "./nodes/shared";
 import Schrittprotokoll, { type Schritt } from "./Schrittprotokoll";
+import { KNOPF_KLEIN } from "../ui";
 
 /**
  * Play the flow through before it runs for real.
@@ -53,7 +54,7 @@ export default function ProbelaufPanel(
         <button
           onClick={los}
           disabled={!defId || läuft}
-          className="rounded border border-line px-2 py-1 text-ink hover:bg-surface disabled:opacity-50"
+          className={KNOPF_KLEIN.neben}
         >
           {tr(läuft ? "probelauf.laeuft" : "probelauf.starten")}
         </button>

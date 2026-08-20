@@ -1,5 +1,6 @@
 import type { FormField } from "./types";
 import { tr } from "../../i18n";
+import { KNOPF_KLEIN } from "../ui";
 
 export function emptyField(): FormField {
   return { key: "", label: "", type: "text", required: false };
@@ -92,7 +93,7 @@ export function FormFieldsEditor({
       ))}
       <button
         onClick={() => onChange([...fields, emptyField()])}
-        className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink"
+        className={KNOPF_KLEIN.neben}
       >
         + Feld
       </button>

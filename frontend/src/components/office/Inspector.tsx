@@ -26,6 +26,7 @@ import { projektPfad } from "../../projectTabs";
 import {
   GATE_TEXT, dauerText, statusFarbe, statusText, uhrText, usdText, zahl,
 } from "./TopBar.tsx";
+import { KNOPF_KLEIN } from "../ui";
 
 /** This many steps back the inspector shows. More is the job of the dock. */
 const SCHRITTE = 10;
@@ -174,7 +175,7 @@ export default function Inspector({
         <span className="font-mono text-[11px] text-muted">#{entry.run_id}</span>
         {onClose && (
           <button type="button" onClick={onClose} title={tr("inspector.schliessen")}
-            className="rounded border border-line px-1.5 text-xs text-muted hover:border-brand">✕</button>
+            className={KNOPF_KLEIN.neben}>✕</button>
         )}
       </div>
 

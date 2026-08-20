@@ -12,6 +12,7 @@ import {
 import { useAuth } from "../auth";
 import TicketDrawer from "../components/TicketDrawer";
 import NewTicketModal from "../components/NewTicketModal";
+import { KNOPF } from "../components/ui";
 // Monaco is large, so load it only when the code tab is opened.
 const FilesPanel = lazy(() => import("../components/FilesPanel"));
 // Canvas, pixel world and engine of the office do not belong in the main bundle: whoever
@@ -175,7 +176,7 @@ export default function ProjectView() {
         <div className="hidden flex-1 sm:block" />
         {darfSchreiben && tab === "work" && (
           <button onClick={() => setNewOpen(true)} title={tr("project_view.neues_ticket")}
-            className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+            className={KNOPF.haupt}>
             + <span className="hidden sm:inline">{tr("project_view.neues_ticket")}</span>
           </button>
         )}

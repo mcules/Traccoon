@@ -8,7 +8,7 @@ import AssetWorkflow from "./AssetWorkflow";
 import ArtifactFields from "./ArtifactFields";
 import { AssigneeEditor } from "./workflow/assignee";
 import type { AssigneeSpec } from "./workflow/types";
-import { ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile} from "./ui";
+import { ICON, IconKnopf, LoeschDialog, Bereich, Etikett, Fehlerzeile, Liste, ListeLeer, ListenZeile, KNOPF, KNOPF_KLEIN} from "./ui";
 
 interface Model { id: number; name: string; category: string | null; manufacturer: string | null; }
 interface Location { id: number; name: string; type: string; parent_id: number | null; full_path: string; }
@@ -148,7 +148,7 @@ export default function Hardware({ project }: { project: Project }) {
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
               {STATUS.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
-            <button onClick={() => aModel && addAsset.mutate()} className="rounded bg-brand px-3 py-1 text-sm text-white">
+            <button onClick={() => aModel && addAsset.mutate()} className={KNOPF.haupt}>
               + Exemplar
             </button>
           </div>
@@ -175,7 +175,7 @@ export default function Hardware({ project }: { project: Project }) {
             <div className="flex gap-2">
               <input value={mName} onChange={(e) => setMName(e.target.value)} placeholder={tr("hardware.modellname")}
                 className="flex-1 rounded border border-line bg-surface px-2 py-1 text-sm" />
-              <button onClick={() => mName && addModel.mutate()} className="rounded bg-brand px-3 py-1 text-sm text-white">+</button>
+              <button onClick={() => mName && addModel.mutate()} className={KNOPF.haupt}>+</button>
             </div>
           </Bereich>
 
@@ -207,7 +207,7 @@ export default function Hardware({ project }: { project: Project }) {
                 <option value="">{tr("hardware.uebergeordnet")}</option>
                 {locations.data?.map((l) => <option key={l.id} value={l.id}>{l.full_path}</option>)}
               </select>
-              <button onClick={() => lName && addLoc.mutate()} className="rounded bg-brand px-3 py-1 text-sm text-white">+</button>
+              <button onClick={() => lName && addLoc.mutate()} className={KNOPF.haupt}>+</button>
             </div>
           </Bereich>
         </section>
@@ -332,7 +332,7 @@ function WorkflowConfig({ project }: { project: Project }) {
       </Liste>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => aendern([...schritte, { name: "", order: schritte.length, assignee: {} as AssigneeSpec }])}
-          className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">+ {tr("hardware.schritt")}</button>
+          className={KNOPF_KLEIN.neben}>+ {tr("hardware.schritt")}</button>
         <button onClick={() => speichern.mutate()} disabled={!entwurf}
           className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink disabled:opacity-40">{tr("hardware.speichern")}</button>
         <button onClick={() => alsProzess.mutate()} disabled={alsProzess.isPending}

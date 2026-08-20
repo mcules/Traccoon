@@ -2,6 +2,7 @@ import { useState } from "react";
 import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { WorkflowGraph } from "./types";
+import { KNOPF_KLEIN } from "../ui";
 
 /**
  * "Describe it, I draw it": the entry for everybody who has no graph in their head.
@@ -67,7 +68,7 @@ export default function BaumeisterPanel({
     return (
       <div className="border-t border-line p-3">
         <button onClick={() => setOffen(true)}
-          className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
+          className={KNOPF_KLEIN.neben}>
           ✍ Beschreiben statt bauen
         </button>
       </div>
@@ -99,12 +100,12 @@ export default function BaumeisterPanel({
 
       <div className="flex items-center gap-2">
         <button onClick={bauen} disabled={laeuft || !text.trim() || !defId}
-          className="rounded bg-brand px-2 py-1 text-xs text-white disabled:opacity-50">
+          className={KNOPF_KLEIN.haupt}>
           {laeuft ? "zeichnet…" : "Zeichnen lassen"}
         </button>
         {vorher && (
           <button onClick={zurueck}
-            className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
+            className={KNOPF_KLEIN.neben}>
             {tr("baumeister.zurueck_zum_stand")}
           </button>
         )}

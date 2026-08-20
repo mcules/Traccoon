@@ -1,5 +1,6 @@
 /** Simple key/value editor (for auto_action.params and outcomes_map). */
 import { tr } from "../../i18n";
+import { KNOPF_KLEIN } from "../ui";
 export function KeyValueEditor({
   value,
   onChange,
@@ -49,7 +50,7 @@ export function KeyValueEditor({
           </button>
         </div>
       ))}
-      <button onClick={add} className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:text-ink">
+      <button onClick={add} className={KNOPF_KLEIN.neben}>
         + Eintrag
       </button>
     </div>

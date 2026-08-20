@@ -3,6 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import Markdown from "./Markdown";
+import { KNOPF_KLEIN, KNOPF} from "./ui";
 
 interface ChatMsg {
   id: number; text: string; status: string; result: string; error: string;
@@ -122,12 +123,12 @@ export default function AssistantChat() {
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <p className="flex-1 text-sm text-muted">{tr("assistant_chat.einleitung")}</p>
         <button onClick={() => setArchiv((v) => !v)}
-          className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+          className={KNOPF_KLEIN.neben}>
           {archiv ? tr("assistant_chat.zurueck_zum_verlauf") : tr("assistant_chat.archiv_zeigen")}
         </button>
         {!archiv && nachrichten.length > 0 && (
           <button onClick={() => alleArchivieren.mutate()} disabled={alleArchivieren.isPending}
-            className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+            className={KNOPF_KLEIN.neben}>
             {tr("assistant_chat.verlauf_archivieren")}
           </button>
         )}
@@ -138,7 +139,7 @@ export default function AssistantChat() {
         {mehr && (
           <div className="flex justify-center">
             <button onClick={aeltereLaden}
-              className="rounded border border-line px-3 py-1 text-xs text-muted hover:text-ink">
+              className={KNOPF_KLEIN.neben}>
               {tr("assistant_chat.aeltere_laden")}
             </button>
           </div>
@@ -172,7 +173,7 @@ export default function AssistantChat() {
                     <div className="flex gap-1">
                       {(["once", "always", "never"] as const).map((d) => (
                         <button key={d} onClick={() => decide.mutate({ id: m.id, decision: d })}
-                          className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+                          className={KNOPF_KLEIN.neben}>
                           {d === "once" ? "Einmal" : d === "always" ? "Immer" : "Nie"}</button>
                       ))}
                     </div>
@@ -196,7 +197,7 @@ export default function AssistantChat() {
           placeholder={tr("assistant_chat.nachricht_an_den_assistenten")}
           className="flex-1 rounded border border-line bg-card px-3 py-2 text-ink outline-none" />
         <button type="submit" disabled={send.isPending || !input.trim()}
-          className="rounded bg-brand px-4 py-2 text-sm text-white disabled:opacity-50">{tr("assistant_chat.senden")}</button>
+          className={KNOPF.haupt}>{tr("assistant_chat.senden")}</button>
       </form>
     </div>
   );

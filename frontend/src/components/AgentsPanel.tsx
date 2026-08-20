@@ -3,8 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Aktionen, Bereich, Dialog, DialogFuss, Fehlerzeile, ICON, IconKnopf, Liste, ListenZeile, LoeschDialog,
-} from "./ui";
+  Aktionen, Bereich, Dialog, DialogFuss, Fehlerzeile, ICON, IconKnopf, Liste, ListenZeile, LoeschDialog, KNOPF, KNOPF_KLEIN} from "./ui";
 
 interface Agent {
   id: number; role: string; display_name: string; system_prompt: string;
@@ -106,7 +105,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
           title={tr("agents_panel.verfuegbare_modelle_live_bei_den_provide")}
           className="rounded border border-line px-3 py-1.5 text-sm text-muted hover:text-ink disabled:opacity-50">
           {fetchModels.isPending ? tr("common.laedt") : `↻ ${tr("agents_panel.modelle_abrufen")}`}</button>
-        <button onClick={newAgent} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        <button onClick={newAgent} className={KNOPF.haupt}>
           + Agent</button>
       </div>
 
@@ -346,7 +345,7 @@ function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
                 className="w-full rounded border border-line bg-card px-2 py-1 text-sm" />
             ))}
             {(server.variables || []).length === 0 && <div className="text-xs text-muted">{tr("agents_panel.dieser_server_braucht_keine_variablen")}</div>}
-            <button onClick={add} className="rounded bg-brand px-3 py-1 text-xs text-white">{tr("agents_panel.instanz_hinzufuegen")}</button>
+            <button onClick={add} className={KNOPF_KLEIN.haupt}>{tr("agents_panel.instanz_hinzufuegen")}</button>
           </div>
         )}
       </div>

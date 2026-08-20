@@ -4,8 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
   Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog,
-} from "./ui";
+  ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "./ui";
 
 type Variable = { key: string; label: string; secret: boolean; required: boolean };
 const EMPTY = { id: 0, name: "", display_name: "", transport: "http", url: "", variables: [] as Variable[], enabled: true };
@@ -50,7 +49,7 @@ export default function McpPanel() {
           </div>
           <div className="flex-1" />
           <button onClick={() => importMcp.mutate()} disabled={importMcp.isPending}
-            className="rounded bg-brand px-3 py-1.5 text-sm text-white disabled:opacity-50">
+            className={KNOPF.haupt}>
             {tr(importMcp.isPending ? "mcp_panel.uebernehme" : "mcp_panel.server_uebernehmen")}</button>
         </div>
       )}
@@ -84,7 +83,7 @@ export default function McpPanel() {
       </Liste>
 
       <button onClick={() => { setErr(""); setDialog({ ...EMPTY, variables: [] }); }}
-        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} {tr("mcp_panel.server_anlegen")}
       </button>
 

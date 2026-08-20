@@ -13,6 +13,7 @@ import DeploymentsPanel from "./DeploymentsPanel";
 import SlotList from "./workflow/SlotList";
 import WorkflowList from "./workflow/WorkflowList";
 import { projektPfad } from "../projectTabs";
+import { KNOPF_KLEIN, KNOPF} from "./ui";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PROVIDER_LABEL: Record<string, string> = {
@@ -196,7 +197,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
             <input value={delConfirm} onChange={(e) => setDelConfirm(e.target.value)} placeholder={project.key}
               className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
             <button onClick={delProject} disabled={delConfirm !== project.key}
-              className="rounded bg-red-500 px-3 py-1.5 text-sm text-white disabled:opacity-40">
+              className={KNOPF.gefahr}>
               {tr("project_settings.projekt_loeschen")}</button>
           </div>
         </div>
@@ -232,7 +233,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
                 {tr("project_settings.subscription_hinweis")}
               </div>
             </div>
-            <button onClick={save} className="rounded bg-brand px-4 py-2 text-sm text-white">{tr("project_settings.zuordnung_speichern")}</button>
+            <button onClick={save} className={KNOPF.haupt}>{tr("project_settings.zuordnung_speichern")}</button>
             {msg && <span className="ml-2 text-sm text-green-400">{msg}</span>}
           </Section>
           <div className="rounded-lg border border-line bg-card p-4">
@@ -272,7 +273,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
             <div className="mt-1 flex gap-1">
               <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
                 placeholder="ghp_…" className="w-full rounded border border-line bg-surface px-2 py-1.5" />
-              <button onClick={saveToken} className="rounded border border-line px-2 text-sm text-muted hover:text-ink">OK</button>
+              <button onClick={saveToken} className={KNOPF_KLEIN.neben}>OK</button>
             </div>
           </div>
         </div>
@@ -330,7 +331,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
             placeholder={"KEY=wert\nANDERER=wert"}
             className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 font-mono text-xs" />
           <div className="mt-1 flex items-center gap-2">
-            <button onClick={saveEnv} className="rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
+            <button onClick={saveEnv} className={KNOPF_KLEIN.neben}>
               {tr("project_settings.verschluesselt_speichern")}</button>
             <span className="text-xs text-muted">{tr("project_settings.wird_nach_dem_speichern_nicht_mehr_angez")}</span>
           </div>
@@ -367,7 +368,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
 
       {showSave && (
         <div className="mt-4 flex items-center gap-3">
-          <button onClick={save} className="rounded bg-brand px-4 py-2 text-white">{tr("project_settings.speichern")}</button>
+          <button onClick={save} className={KNOPF.haupt}>{tr("project_settings.speichern")}</button>
           {msg && <span className="text-sm text-green-400">{msg}</span>}
           {err && <span className="text-sm text-red-400">{err}</span>}
         </div>

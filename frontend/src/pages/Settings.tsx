@@ -13,8 +13,7 @@ import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 import {
   Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf,
-  Etikett, Liste, ListeLeer, ListenZeile, LoeschDialog,
-} from "../components/ui";
+  Etikett, Liste, ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "../components/ui";
 
 /**
  * The settings hold resources, not a person.
@@ -121,7 +120,7 @@ function NamedSecrets() {
         {vault.length === 0 && <ListeLeer>{tr("settings.noch_keine_secrets_im_tresor")}</ListeLeer>}
       </Liste>
       <button onClick={() => setDialog({ name: "", description: "" })}
-        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} {tr("settings.secret_anlegen")}
       </button>
 
@@ -231,7 +230,7 @@ function ProviderTokens() {
         ))}
         {toks?.length === 0 && <ListeLeer>{tr("settings.noch_keine_keys_hinterlegt")}</ListeLeer>}
       </Liste>
-      <button onClick={() => setDialog({})} className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+      <button onClick={() => setDialog({})} className={KNOPF.haupt}>
         {ICON.neu} {tr("settings.token_anlegen")}
       </button>
 

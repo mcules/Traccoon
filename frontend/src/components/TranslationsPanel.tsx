@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
-import { Aktionen, ICON, IconKnopf, LoeschDialog, Bereich, Fehlerzeile, Liste, ListeLeer, ListenZeile} from "./ui";
+import { Aktionen, ICON, IconKnopf, LoeschDialog, Bereich, Fehlerzeile, Liste, ListeLeer, ListenZeile, KNOPF_KLEIN} from "./ui";
 import { alleSchluessel, ausgeliefert, QUELLSPRACHE, setzeSprache, sprache, tr } from "../i18n";
 
 interface SpracheInfo {
@@ -136,7 +136,7 @@ export default function TranslationsPanel() {
         </span>
         <div className="flex-1" />
         <button onClick={exportieren}
-          className="rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
+          className={KNOPF_KLEIN.neben}>
           Export
         </button>
         <label className="cursor-pointer rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">

@@ -3,7 +3,7 @@ import { formatDate } from "../lib/formatTime";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
-import { Aktionen, ICON, IconKnopf, LoeschDialog } from "./ui";
+import { Aktionen, ICON, IconKnopf, LoeschDialog, KNOPF} from "./ui";
 
 interface Member {
   id: number; user_id: number; username: string; display_name: string;
@@ -137,7 +137,7 @@ export default function Members({ project }: { project: Project }) {
                   {u.status !== "active" && <span className="ml-1 text-xs text-muted">({u.status})</span>}
                 </span>
                 <button onClick={() => addExisting.mutate(u.id)}
-                  className="rounded bg-brand px-2 py-1 text-xs text-white">{tr("members.als_rolle", { rolle: role })}</button>
+                  className={KNOPF.haupt}>{tr("members.als_rolle", { rolle: role })}</button>
               </div>
             ))}
           </div>

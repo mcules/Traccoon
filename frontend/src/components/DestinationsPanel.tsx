@@ -5,8 +5,7 @@ import { ApiError, destinationApi, type Destination, type DestinationScope } fro
 import { KeyValueEditor } from "./workflow/kv";
 import {
   Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog,
-} from "./ui";
+  ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "./ui";
 import { useAuth } from "../auth";
 
 // Keys instead of texts: the list comes into being while the module loads, and a tr() here
@@ -139,7 +138,7 @@ export default function DestinationsPanel({
       </Liste>
 
       <button onClick={() => { setErr(""); setDialog({}); }}
-        className="rounded bg-brand px-3 py-1.5 text-sm text-white">
+        className={KNOPF.haupt}>
         {ICON.neu} {tr("destinations_panel.neues_ziel")}
       </button>
 

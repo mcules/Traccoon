@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import { tr } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
+import { KNOPF } from "../components/ui";
 
 export default function Login() {
   const { login } = useAuth();
@@ -48,7 +49,7 @@ export default function Login() {
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         {info && <div className="mt-3 text-sm text-green-400">{info}</div>}
-        <button className="mt-4 w-full rounded bg-brand py-2 font-medium text-white">
+        <button className={`mt-4 w-full ${KNOPF.haupt}`}>
           {mode === "login" ? "Anmelden" : "Registrieren"}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
