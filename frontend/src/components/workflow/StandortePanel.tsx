@@ -49,6 +49,8 @@ export default function StandortePanel() {
       const settings = { min_distance_m, min_interval_s, max_accuracy_m };
       return key ? seriesApi.update(key, { ...rest, settings })
                  : seriesApi.create({ ...rest, kind: "location", settings });
+      // `rest` trägt den Schlüssel mit: Beim Anlegen ist er der Name, beim Ändern das
+      // Umbenennen. Der Server prüft, ob der neue schon vergeben ist.
     },
     onSuccess: () => { setDialog(null); setErr(""); inv(); }, onError: fail,
   });
@@ -250,9 +252,9 @@ function GeraetDialog({ reihe, laeuft, onClose, onSpeichern }: {
         onSpeichern={() => onSpeichern(form)} />}>
       <div className="space-y-3">
         <Feld label={tr("standorte.schluessel")}
-          hinweis={reihe ? tr("standorte.schluessel_fest") : tr("standorte.schluessel_hinweis")}>
-          <input value={form.key} disabled={!!reihe} className={EINGABE}
-            placeholder="handy.pixel" onChange={(e) => setz("key", e.target.value)} />
+          hinweis={reihe ? tr("standorte.schluessel_umbenennen") : tr("standorte.schluessel_hinweis")}>
+          <input value={form.key} className={EINGABE}
+            placeholder="tracker.pixel" onChange={(e) => setz("key", e.target.value)} />
         </Feld>
         <Feld label={tr("standorte.name")}>
           <input value={form.name} className={EINGABE} placeholder="Pixel 9"

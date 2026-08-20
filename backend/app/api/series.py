@@ -79,6 +79,7 @@ class SeriesIn(BaseModel):
 
 
 class SeriesPatch(BaseModel):
+    key: str | None = None
     name: str | None = None
     description: str | None = None
     color: str | None = None
@@ -163,7 +164,22 @@ async def update_series(key: str, data: SeriesPatch, user: User = Depends(get_cu
     reihe = await _meine(db, user, key)
     if not await dienst.darf_aendern(db, reihe, user.id, _ist_admin(user)):
         raise Fehler(403, "err.series_read_only", "You may only read this series")
-    for feld, wert in data.model_dump(exclude_unset=True).items():
+    felder = data.model_dump(exclude_unset=True)
+
+    # Umbenennen ist erlaubt, aber es ist kein harmloses Feld: Ablaeufe nennen die Reihe beim
+    # Schluessel. Wer umbenennt, muss sie mitziehen — deshalb steht der Hinweis auch in der
+    # Oberflaeche. Verhindert wird nur, was die Datenbank ohnehin nicht traegt.
+    neuer = (felder.pop("key", None) or "").strip()
+    if neuer and neuer != reihe.key:
+        belegt = (await db.execute(select(Series).where(
+            Series.owner_user_id == reihe.owner_user_id,
+            Series.key == neuer))).scalar_one_or_none()
+        if belegt is not None:
+            raise Fehler(409, "err.series_exists", "Series '{reihe}' already exists",
+                         reihe=neuer)
+        reihe.key = neuer
+
+    for feld, wert in felder.items():
         setattr(reihe, feld, wert)
     await db.commit()
     await db.refresh(reihe)

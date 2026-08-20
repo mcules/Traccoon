@@ -1845,6 +1845,7 @@
   "standorte.schluessel": "Key",
   "standorte.schluessel_fest": "The key cannot be changed any more",
   "standorte.schluessel_hinweis": "Short and permanent, e.g. handy.pixel — flows refer to it later.",
+  "standorte.schluessel_umbenennen": "Renaming is possible — flows that name this series by its key have to be updated. The device keeps reporting; its token belongs to the series, not to the name.",
   "standorte.still": "silent",
   "standorte.token_erneuern": "Regenerate",
   "standorte.token_erneuern_hinweis": "The old address stops working",
