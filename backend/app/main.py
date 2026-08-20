@@ -11,7 +11,8 @@ from . import models  # noqa: F401  (fills the metadata for create_all)
 from .api import (
     admin, agents, artifacts as artifacts_api, auth, config, cost, dashboard, deployments,
     destinations, files, hardware, invitations,
-    documents as documents_api, i18n as i18n_api, issues, lifecycle, mail, mailbox, mcp_server, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
+    documents as documents_api,
+    series as series_api, i18n as i18n_api, issues, lifecycle, mail, mailbox, mcp_server, metrics as metrics_api, me, notifications, ops, permissions, plugins, processes,
     projects, repo, office,
     runs, secrets, skills, testenv, users, workflows, ws,
 )
@@ -404,6 +405,15 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '[]'::json NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_assistant_tasks_archived_at "
                 "ON assistant_tasks (archived_at)",
+                # Plugins: was sie an Traccoon-Daten lesen wollen, was davon freigegeben ist
+                # und welche fremden Quellen ihre Seite laden darf. Ohne diese drei Spalten
+                # bleibt die Bruecke zum Wirt geschlossen, denn sie fragt genau danach.
+                "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS liest JSON "
+                "DEFAULT '[]'::json NOT NULL",
+                "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS liest_erlaubt JSON "
+                "DEFAULT '[]'::json NOT NULL",
+                "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS csp JSON "
+                "DEFAULT '{}'::json NOT NULL",
             ):
                 if not await _fehlt_noch(conn, _ddl):
                     continue

@@ -31,13 +31,16 @@ export type NavEintrag = {
   zaehler?: "inbox" | "mail";
 };
 
-export function hauptNavigation(istAdmin: boolean): NavEintrag[] {
+export function hauptNavigation(istAdmin: boolean, plugins: NavEintrag[] = []): NavEintrag[] {
   return [
     { key: "projekte", label: tr("layout.projekte"), icon: "🗂️", to: "/" },
     { key: "inbox", label: tr("layout.inbox"), icon: "📥", to: "/inbox", zaehler: "inbox" },
     { key: "mail", label: "Mail", icon: "✉️", to: "/mail", zaehler: "mail" },
     { key: "buero", label: tr("layout.buero_2"), icon: "🏢", to: "/office" },
     { key: "prozesse", label: tr("layout.prozesse"), icon: "🔀", to: "/processes" },
+    // Plugins stehen vor den Einstellungen: Sie sind Bereiche wie die anderen, und die
+    // Einstellungen sollen der letzte Punkt vor der Verwaltung bleiben.
+    ...plugins,
     { key: "einstellungen", label: tr("layout.einstellungen"), icon: "⚙️", to: "/settings" },
     ...(istAdmin ? [{ key: "admin", label: tr("layout.admin"), icon: "🛠️", to: "/admin" }] : []),
   ];
