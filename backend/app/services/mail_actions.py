@@ -20,9 +20,6 @@ from __future__ import annotations
 
 import logging
 
-from ..models.assistant import AssistantTask
-from ..models.notification import Notification
-from ..models.user import User
 from ..models.workflow import WorkflowInstance
 from .i18n import tr
 
@@ -47,22 +44,6 @@ def _owner(inst: WorkflowInstance, ctx: dict) -> int | None:
         return inst.started_by
 
 
-def _mail_koerper(payload: dict) -> str:
-    from .spam_rules import mail_text
-    return mail_text(payload)
-
-
-def _fill_prompt(tmpl: str, payload: dict) -> str:
-    """Fill {placeholders} from the payload: EVERY payload field (mail OR paperless-linked:
-    {document_id}/{url}/{note}/{hinweis}…). Missing ones stay empty. Safe replacement (no
-    str.format, so that code examples with { } in the prompt do not break)."""
-    import re
-
-    out = tmpl
-    for k, v in (payload or {}).items():
-        out = out.replace("{" + k + "}", "" if v is None else str(v))
-    out = out.replace("{body_text}", str(payload.get("body_text", payload.get("body", "")) or ""))
-    return re.sub(r"\{[a-z_]+\}", "", out)
 
 
 async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
@@ -228,88 +209,71 @@ async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -
             "entscheidung": "spam" if ist_spam else "ham", "ergebnis": ergebnis}
 
 
+# ── Assistent: nur noch die Übersetzung, nicht mehr die Arbeit ───────────────
+# Den Eingang anlegen, ihn starten, die Freigabekarte schicken — das konnte einmal nur der
+# Mail-Weg, mit drei eigenen Aktionen. Es sind aber keine Mail-Sachen: `assistent_auftrag`
+# legt den Eingang an (und startet ihn, wenn keine Freigabe nötig ist), `notify` schickt die
+# Karte. Was der Mail-Eingang beisteuert, sind seine Werte — und die stehen hier als
+# Parametersatz, damit Vorlage und Altnamen dieselben benutzen.
+AUFTRAG_PARAMS: dict = {
+    "kind": "email",
+    "source": "{{ eingang.source }}",
+    "reference": "{{ eingang.source_ref }}",
+    "agent": "{{ eingang.agent }}",
+    "title": "{{ mail.subject | default:\"(kein Betreff)\" }}",
+    "task": "{{ eingang.prompt_tmpl }}",
+    "category": "{{ klasse.category }}",
+    "priority": "{{ klasse.priority | default:\"normal\" }}",
+    "summary": "{{ klasse.redacted_summary }}",
+    "hint": "{{ policy.action_hint }}",
+    "redaction": "{{ policy.redaction | default:\"redacted\" }}",
+    # Welches Feld den Text trägt, hängt am Absender der Mail, nicht am Ablauf.
+    "full_text": "{{ mail.body_text | default:mail.body | default:mail.body_html_as_text }}",
+    "meta": {"account": "{{ mail.account }}", "uid": "{{ mail.uid }}",
+             "from": "{{ mail.from }}", "subject": "{{ mail.subject }}",
+             "sensitive": "{{ klasse.sensitive }}"},
+    # Eine gelernte Regel gibt frei, alles andere fragt.
+    "approval": {"!": {"var": "policy.auto"}},
+}
+
+# Die Karte zum Freigeben: eine gewöhnliche Nachricht mit Art und Bezug.
+KARTE_PARAMS: dict = {
+    "kind": "assistant_review",
+    "ref": {"assistant_task_id": "{{ task.id }}"},
+    "title": "📥 {{ mail.subject | default:\"(kein Betreff)\" }}",
+    # `from` kommt je nach Melder als Text oder als Liste von {name, addr}; die Filterkette
+    # holt in beiden Fällen die Adresse heraus, statt eine Python-Liste hinzuschreiben.
+    "text": "Von {{ mail.from | field:\"addr\" | join:\", \" | default:\"?\" }}\n"
+            "{{ klasse.redacted_summary }}",
+}
+
+
 async def assistent_item(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Turn the mail into an assistant item (the thing the human then approves).
+    """Altname `assistant_task`, umgeleitet auf den allgemeinen Knoten.
 
-    A double delivery creates no second item: the key is the same as with the trigger
-    (configured field, otherwise account:UID).
+    Er steht in veröffentlichten Fassungen, und die sind unveränderlich — laufende Instanzen
+    hängen daran. Deshalb umgeleitet statt zweimal gepflegt, wie bei `_ALT_AKTIONEN`.
     """
-    from sqlalchemy import select
-
-    payload = _mail(ctx)
-    eingang = _eingang(ctx)
-    owner_id = _owner(inst, ctx)
-    klasse = dict(ctx.get("klasse") or {})
-    policy = dict(ctx.get("policy") or {})
-    quelle = str(eingang.get("source") or "workflow")
-    src_ref = eingang.get("source_ref") or None
-
-    if src_ref:
-        dup = (await db.execute(select(AssistantTask).where(
-            AssistantTask.source == quelle,
-            AssistantTask.source_ref == str(src_ref)))).scalar_one_or_none()
-        if dup is not None:
-            inst.context = {**ctx, "task": {"id": dup.id, "status": dup.status, "auto": False}}
-            return {"action": "assistant_task", "task_id": dup.id, "duplicate": True}
-
-    redaction = str(policy.get("redaction") or "redacted")
-    prompt_tmpl = str(eingang.get("prompt_tmpl") or "")
-    task = AssistantTask(
-        owner_user_id=owner_id, kind="email", source=quelle,
-        source_ref=str(src_ref) if src_ref else None,
-        title=(str(payload.get("subject") or "") or "(kein Betreff)")[:500],
-        category=klasse.get("category", ""), priority=klasse.get("priority", "normal"),
-        redacted_summary=klasse.get("redacted_summary", ""),
-        meta={"account": str(payload.get("account") or ""), "uid": payload.get("uid"),
-              "from": str(payload.get("from") or ""),
-              "subject": str(payload.get("subject") or ""),
-              "sensitive": klasse.get("sensitive", False),
-              "agent": str(eingang.get("agent") or "assistent"),
-              **({"prompt": _fill_prompt(prompt_tmpl, payload)} if prompt_tmpl else {})},
-        redaction=redaction, action_hint=str(policy.get("action_hint") or ""),
-        raw_body=(_mail_koerper(payload) if redaction == "unredacted" else None),
-        status=("approved" if policy.get("auto") else "new"),
-    )
-    db.add(task)
-    await db.flush()
-    inst.context = {**ctx, "task": {"id": task.id, "status": task.status,
-                                    "auto": bool(policy.get("auto"))}}
-    log.info("Mail item #%s (%s, prio=%s, auto=%s) over flow %s",
-             task.id, task.category, task.priority, policy.get("auto"), inst.id)
-    return {"action": "assistant_task", "task_id": task.id, "status": task.status}
+    from .workflow_actions import _assistent_auftrag
+    return await _assistent_auftrag(db, inst, {**AUFTRAG_PARAMS, **params}, ctx, "item")
 
 
 async def assistent_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """The approval card for the assistant item (Telegram, bell)."""
-    owner_id = _owner(inst, ctx)
-    task = dict(ctx.get("task") or {})
-    klasse = dict(ctx.get("klasse") or {})
-    if not (owner_id and task.get("id")):
-        return {"action": "assistant_card", "sent": False, "reason": "kein Item/Besitzer"}
-    owner = await db.get(User, owner_id)
-    if owner is None or not owner.telegram_chat_id:
-        return {"action": "assistant_card", "sent": False, "reason": "kein Telegram-Ziel"}
-    titel = str(_mail(ctx).get("subject") or "(kein Betreff)")
-    db.add(Notification(
-        user_id=owner_id, assistant_task_id=int(task["id"]), kind="assistant_review",
-        chat_id=owner.telegram_chat_id,
-        title=(await tr(db, "server.notify.mail_eingang", owner.locale, titel=titel))[:200],
-        body=(await tr(db, "server.notify.mail_von", owner.locale,
-                       absender=_mail(ctx).get("from") or "?")
-              + "\n" + str(klasse.get("redacted_summary", "")))[:1000]))
-    return {"action": "assistant_card", "sent": True, "task_id": task["id"]}
+    """Altname `assistant_card`: die Freigabekarte ist eine Nachricht wie jede andere."""
+    from .workflow_actions import run_action
+    return await run_action(db, inst, {"id": "freigabe_karte", "data": {"config": {
+        "action": {"action": "notify", "params": {**KARTE_PARAMS, **params}}}}})
 
 
 async def assistent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
-    """Let the assistant run immediately (auto approval through a learned rule)."""
-    from ..core.redis import enqueue_task
+    """Altname `assistant_run`: der Eingang startet heute schon beim Anlegen.
 
+    Ein zweiter Anstoß wäre ein zweiter Lauf derselben Sache — deshalb wird hier nur
+    berichtet, was ohnehin geschehen ist.
+    """
     task = dict(ctx.get("task") or {})
-    if not task.get("id"):
-        return {"action": "assistant_run", "queued": False, "reason": "kein Item"}
-    await enqueue_task({"kind": "assistant", "task_id": f"assistant-{task['id']}",
-                        "assistant_task_id": int(task["id"])})
-    return {"action": "assistant_run", "queued": True, "task_id": task["id"]}
+    return {"action": "assistant_run", "queued": False, "task_id": task.get("id"),
+            "grund": "läuft bereits mit dem Anlegen"}
 
 
 HANDLER = {
@@ -317,7 +281,10 @@ HANDLER = {
     "spam_evaluate": spam_beurteilen,
     "spam_card": spam_karte,
     "spam_apply": spam_ausfuehren,
-    "assistant_task": assistent_item,
-    "assistant_card": assistent_karte,
-    "assistant_run": assistent_lauf,
+    # Die Altnamen des Mail-Wegs. `assistant_task` heißt heute der ALLGEMEINE Auftrag —
+    # deshalb tragen die alten hier ein `mail_`-Vorzeichen, und die einmalige Umstellung
+    # (`workflow_terms.EINMALIG`) schreibt sie in den gespeicherten Fassungen darauf um.
+    "mail_assistant_task": assistent_item,
+    "mail_assistant_card": assistent_karte,
+    "mail_assistant_run": assistent_lauf,
 }

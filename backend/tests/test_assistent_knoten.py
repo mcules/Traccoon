@@ -26,19 +26,19 @@ def _graph(auftrag_params: dict, mit_antwort: bool = False) -> dict:
          "data": {"config": {"label": "Start", "trigger": {"kind": "webhook"}}}},
         {"id": "beauftragen", "type": "auto_action", "position": {"x": 0, "y": 1},
          "data": {"config": {"label": "Assistent",
-                             "action": {"action": "assistent_auftrag",
+                             "action": {"action": "assistant_task",
                                         "params": auftrag_params}}}},
     ]
     kanten = [{"id": "e1", "source": "s", "target": "beauftragen"}]
     vorher = "beauftragen"
     if mit_antwort:
-        knoten.append({"id": "antwort", "type": "auto_action", "position": {"x": 0, "y": 2},
+        knoten.append({"id": "answer", "type": "auto_action", "position": {"x": 0, "y": 2},
                        "data": {"config": {"label": "Antwort",
-                                           "action": {"action": "antwort", "params": {
-                                               "felder": {"ergebnis": "{{ assistent.output }}",
-                                                          "quelle": "{{ doc_id }}"}}}}}})
-        kanten.append({"id": "e2", "source": vorher, "target": "antwort"})
-        vorher = "antwort"
+                                           "action": {"action": "answer", "params": {
+                                               "fields": {"ergebnis": "{{ assistant.output }}",
+                                                          "source": "{{ doc_id }}"}}}}}})
+        kanten.append({"id": "e2", "source": vorher, "target": "answer"})
+        vorher = "answer"
     knoten.append({"id": "ende", "type": "end", "position": {"x": 0, "y": 3},
                    "data": {"config": {"outcome": "completed"}}})
     kanten.append({"id": "e3", "source": vorher, "target": "ende"})
@@ -81,14 +81,14 @@ async def _definition(db, name: str, graph: dict, besitzer):
 async def test_knoten_legt_auftrag_an_und_reiht_ihn_ein(db):
     """Ohne Mail und ohne Ticket: der Auftrag steht im Knoten und wird gerendert."""
     user = await make_user(db, "chefin")
-    d = await _definition(db, "auftrag", _graph({
-        "auftrag": "Lies Dokument {{ doc_id }} und halte Wissenswertes fest.",
-        "titel": "Dokument {{ doc_id }}"}), user)
+    d = await _definition(db, "task", _graph({
+        "task": "Lies Dokument {{ doc_id }} und halte Wissenswertes fest.",
+        "title": "Dokument {{ doc_id }}"}), user)
     inst = await start_workflow(db, d, subject_kind=WorkflowSubjectKind.standalone,
                                 context={"doc_id": "3464"}, actor_id=user.id)
 
     task = (await db.execute(select(AssistantTask))).scalars().one()
-    assert task.kind == "auftrag" and task.status == "approved"
+    assert task.kind == "task" and task.status == "approved"
     assert task.owner_user_id == user.id
     assert task.title == "Dokument 3464"
     # Der Auftrag ist der Prompt — der Worker nimmt ihn aus `meta.prompt`.
@@ -101,8 +101,8 @@ async def test_knoten_legt_auftrag_an_und_reiht_ihn_ein(db):
 async def test_freigabe_haelt_den_auftrag_im_eingang(db):
     """Mit Freigabe wartet der Auftrag auf den Menschen, statt sofort zu laufen."""
     user = await make_user(db, "vorsichtig")
-    d = await _definition(db, "freigabe", _graph({
-        "auftrag": "Mach etwas", "freigabe": True}), user)
+    d = await _definition(db, "approval", _graph({
+        "task": "Mach etwas", "approval": True}), user)
     await start_workflow(db, d, subject_kind=WorkflowSubjectKind.standalone,
                          context={}, actor_id=user.id)
     task = (await db.execute(select(AssistantTask))).scalars().one()
@@ -114,15 +114,15 @@ async def test_warten_holt_das_ergebnis_in_den_kontext(db, redis_stub):
     redis_stub["*"] = {"status": "done", "output": "nichts wissenswertes",
                        "summary": "nichts wissenswertes"}
     user = await make_user(db, "geduldig")
-    d = await _definition(db, "warten", _graph(
-        {"auftrag": "Lies {{ doc_id }}", "warten": True}, mit_antwort=True), user)
+    d = await _definition(db, "wait", _graph(
+        {"task": "Lies {{ doc_id }}", "wait": True}, mit_antwort=True), user)
     inst = await start_workflow(db, d, subject_kind=WorkflowSubjectKind.standalone,
                                 context={"doc_id": "77"}, actor_id=user.id)
 
     frisch = await _warte_bis_fertig(db, inst.id)
-    assert frisch.context["assistent"]["output"] == "nichts wissenswertes"
+    assert frisch.context["assistant"]["output"] == "nichts wissenswertes"
     # Die Antwort des Ablaufs ist gerendert, nicht die Vorlage.
-    assert frisch.context["antwort"] == {"ergebnis": "nichts wissenswertes", "quelle": "77"}
+    assert frisch.context["answer"] == {"ergebnis": "nichts wissenswertes", "source": "77"}
     assert frisch.status == WorkflowInstanceStatus.completed
 
 
@@ -131,13 +131,13 @@ def _nur_antwort() -> dict:
     return {"nodes": [
         {"id": "s", "type": "start", "position": {"x": 0, "y": 0},
          "data": {"config": {"trigger": {"kind": "webhook"}}}},
-        {"id": "antwort", "type": "auto_action", "position": {"x": 0, "y": 1},
-         "data": {"config": {"action": {"action": "antwort", "params": {
+        {"id": "answer", "type": "auto_action", "position": {"x": 0, "y": 1},
+         "data": {"config": {"action": {"action": "answer", "params": {
              "felder": {"ergebnis": "{{ text }}", "wer": "Traccoon"}}}}}},
         {"id": "ende", "type": "end", "position": {"x": 0, "y": 2},
          "data": {"config": {"outcome": "completed"}}},
-    ], "edges": [{"id": "e1", "source": "s", "target": "antwort"},
-                 {"id": "e2", "source": "antwort", "target": "ende"}]}
+    ], "edges": [{"id": "e1", "source": "s", "target": "answer"},
+                 {"id": "e2", "source": "answer", "target": "ende"}]}
 
 
 async def test_webhook_bekommt_die_antwort_des_ablaufs(db, client):
@@ -160,7 +160,7 @@ async def test_webhook_ohne_antwort_quittiert_und_sagt_es(db, client):
     user = await make_user(db, "ungeduldig")
     # Ein Ablauf, der auf den Assistenten wartet und nie ein Ergebnis bekommt
     # (redis_stub ohne Eintrag): die Zeitgrenze greift.
-    d = await _definition(db, "haengt", _graph({"auftrag": "Tu was", "warten": True}), user)
+    d = await _definition(db, "haengt", _graph({"task": "Tu was", "wait": True}), user)
     hook = WebhookSub(public_id="test-hook-2", owner_user_id=user.id, route="haengt",
                       mode="workflow", workflow_definition_id=d.id, response_timeout=1)
     db.add(hook)
@@ -169,4 +169,4 @@ async def test_webhook_ohne_antwort_quittiert_und_sagt_es(db, client):
     antwort = await client.post("/hooks/test-hook-2", json={})
     assert antwort.status_code == 202
     rumpf = antwort.json()
-    assert rumpf["antwort"] is None and rumpf["accepted"] is True
+    assert rumpf["answer"] is None and rumpf["accepted"] is True
