@@ -26,7 +26,10 @@ OWNER_CHAT = os.getenv("TELEGRAM_OWNER_CHAT", "")
 
 log = logging.getLogger("traccoon.notify")
 
-KANAELE = ("telegram", "email")
+# Drei Wege hinaus. Der dritte ist der offene: Er ruft ein Ziel auf (Basis-URL und
+# Anmeldung stehen dort), und was dahinter steckt — ntfy, Matrix, Gotify, ein eigener Bot —
+# ist Traccoons Sache nicht mehr. Ein weiterer Melder ist damit ein Eintrag unter „Ziele“.
+KANAELE = ("telegram", "email", "ziel")
 
 
 def _mit_zone(ts: dt.datetime) -> dt.datetime:
@@ -42,6 +45,8 @@ def kanal_adresse(user: User | None, kanal: str) -> str:
         return user.telegram_chat_id or ""
     if kanal == "email":
         return (user.notify_email or user.email or "").strip()
+    if kanal == "ziel":
+        return str(user.notify_destination_id or "")
     return ""
 
 
@@ -128,6 +133,27 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
         if feld in BEZUEGE and wert is not None:
             setattr(n, feld, int(wert))
     db.add(n)
+
+    if gewaehlt == "ziel":
+        # Was hinausgeht, ist die Nachricht selbst als JSON. Wer ein anderes Format braucht,
+        # hängt es am Ziel auf (Pfad, Kopfzeilen, Anmeldung) — genau dafür gibt es Ziele.
+        from ..models.destination import Destination
+        from . import destinations
+        dest = await db.get(Destination, int(ziel)) if ziel else None
+        if dest is None or not dest.enabled:
+            log.warning("no (active) destination for user %s, bell only",
+                        user.id if user else None)
+            return {"kanal": "bell", "grund": "kein Ziel"}
+        try:
+            antwort = await destinations.call(
+                db, dest, method="POST",
+                body={"art": kind, "titel": title, "text": body or title})
+            n.notified_at = dt.datetime.now(tz=dt.timezone.utc)
+            return {"kanal": "ziel", "ziel": dest.name, "ok": True,
+                    "status": antwort.get("status_code")}
+        except Exception as e:  # noqa: BLE001 — die Glocke trägt die Nachricht ohnehin
+            log.warning("destination %s failed (%s), stays in the bell", dest.name, e)
+            return {"kanal": "ziel", "ziel": dest.name, "ok": False}
 
     if gewaehlt == "email":
         if not ziel:

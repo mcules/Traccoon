@@ -5,6 +5,7 @@ import { tr, setzeSprache } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
+import MailKontenPanel from "../components/MailKontenPanel";
 import {
   AgentenBetriebPanel, AssistentMeldungenPanel, GedaechtnisPanel, MeineSchalterPanel, ZeitzonePanel,
   NachtFensterPanel,
@@ -20,12 +21,13 @@ import {
  * it under. One page now, four subjects, and the settings keep what they are: resources
  * (vault, destinations, MCP, skills, jobs, webhooks), not a person.
  */
-type Tab = "person" | "ansicht" | "meldungen" | "agenten";
+type Tab = "person" | "appearance" | "notifications" | "mail" | "agents";
 const TABS: [Tab, string, string][] = [
   ["person", "konto.tabs.person", "\u{1F464}"],
-  ["ansicht", "konto.tabs.ansicht", "\u{1F3A8}"],
-  ["meldungen", "konto.tabs.meldungen", "\u{1F514}"],
-  ["agenten", "konto.tabs.agenten", "\u{1F916}"],
+  ["appearance", "konto.tabs.ansicht", "\u{1F3A8}"],
+  ["notifications", "konto.tabs.meldungen", "\u{1F514}"],
+  ["mail", "Mail-Konten", "\u{2709}\uFE0F"],
+  ["agents", "konto.tabs.agenten", "\u{1F916}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -35,7 +37,7 @@ export default function Konto() {
   // Beside the content, like the settings and the administration: the account is one of the
   // configuring pages, and those all carry their sections in a column on the left.
   usePageChrome(tr("nav.konto"), TABS.map(([key, label, icon]) => ({
-    key, label: tr(label), to: `/konto/${key}`, icon,
+    key, label: tr(label), to: `/account/${key}`, icon,
   })), tab, "seite");
 
   return (
@@ -43,9 +45,10 @@ export default function Konto() {
       {/* Die Zeitzone gehört zur Person, nicht zu den Agenten: sie entscheidet, was auf
           dieser Oberfläche „8 Uhr" heißt — und damit auch im Nachtfenster und im Zeitplan. */}
       {tab === "person" && <><SprachePanel /><ZeitzonePanel /><EmailPanel /><PasswordPanel /></>}
-      {tab === "ansicht" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
-      {tab === "meldungen" && <><BenachrichtigungenPanel /><AssistentMeldungenPanel /></>}
-      {tab === "agenten" && (
+      {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
+      {tab === "notifications" && <><BenachrichtigungenPanel /><AssistentMeldungenPanel /></>}
+      {tab === "mail" && <MailKontenPanel />}
+      {tab === "agents" && (
         <><AgentenBetriebPanel /><NachtFensterPanel /><GedaechtnisPanel /><MeineSchalterPanel /></>
       )}
     </div>
@@ -225,14 +228,22 @@ function BenachrichtigungenPanel() {
   const [standard, setStandard] = useState(user?.notify_default ?? "telegram");
   const [chat, setChat] = useState(user?.telegram_chat_id ?? "");
   const [mail, setMail] = useState(user?.notify_email ?? "");
+  const [zielId, setZielId] = useState(String(user?.notify_destination_id ?? ""));
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
+  // Ziele tragen Basis-URL und Anmeldung schon; was dahinter steckt (ntfy, Matrix, Gotify,
+  // ein eigener Bot), muss Traccoon nicht wissen.
+  const { data: ziele } = useQuery({
+    queryKey: ["destinations"],
+    queryFn: () => api.get<{ id: number; name: string }[]>("/destinations"),
+  });
 
   const save = async () => {
     setErr(""); setOk("");
     try {
       await api.put("/me/notify", {
         notify_default: standard, telegram_chat_id: chat.trim(), notify_email: mail.trim(),
+        notify_destination_id: zielId ? +zielId : 0,
       });
       await refresh();
       setOk("Gespeichert.");
@@ -243,6 +254,7 @@ function BenachrichtigungenPanel() {
 
   const feld = "w-full rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
   const fehlt = standard === "telegram" ? !chat.trim()
+    : standard === "ziel" ? !zielId
     : !(mail.trim() || user?.email);
 
   return (
@@ -257,7 +269,19 @@ function BenachrichtigungenPanel() {
         <select value={standard} onChange={(e) => setStandard(e.target.value)} className={`mt-1 ${feld}`}>
           <option value="telegram">{tr("profile.telegram")}</option>
           <option value="email">E-Mail</option>
+          <option value="ziel">Ziel (eigener Dienst)</option>
         </select>
+      </label>
+
+      <label className="block text-xs font-medium text-muted">
+        Ziel
+        <select value={zielId} onChange={(e) => setZielId(e.target.value)} className={`mt-1 ${feld}`}>
+          <option value="">—</option>
+          {ziele?.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+        </select>
+        <span className="mt-1 block text-[11px] text-muted">
+          Bekommt die Nachricht als JSON (art, titel, text). Ziele stehen unter Einstellungen → Ziele.
+        </span>
       </label>
 
       <label className="block text-xs font-medium text-muted">

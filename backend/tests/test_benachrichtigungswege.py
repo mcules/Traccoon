@@ -126,4 +126,69 @@ async def test_sichtbare_personen_zeigen_ihre_wege(client, db):
     anna = await _person(db, "anna", chat="111", mail=None, standard="telegram")
     ich = [u for u in (await client.get("/users/visible", headers=auth(anna))).json()
            if u["username"] == "anna"][0]
-    assert ich["kanaele"] == ["telegram"] and ich["notify_default"] == "telegram"
+    assert ich["channels"] == ["telegram"] and ich["notify_default"] == "telegram"
+
+
+# ── Der offene Weg: ein Ziel ─────────────────────────────────────────────────
+
+async def _ziel(db, besitzer, name="ntfy"):
+    from app.models.destination import Destination
+    d = Destination(name=name, base_url="https://ntfy.example/traccoon", user_id=besitzer.id,
+                    auth_type="none", enabled=True)
+    db.add(d)
+    await db.commit()
+    await db.refresh(d)
+    return d
+
+
+async def test_ziel_als_weg_hinaus(db, monkeypatch):
+    """Telegram und E-Mail waren die einzigen Wege — jeder weitere hätte Code gekostet.
+
+    Ein Ziel trägt Basis-URL und Anmeldung schon; was dahinter steckt (ntfy, Matrix, Gotify,
+    ein eigener Bot), muss Traccoon nicht wissen.
+    """
+    gerufen = []
+
+    async def call(db_, dest, **kw):
+        gerufen.append((dest.name, kw))
+        return {"status_code": 200, "ok": True}
+
+    from app.services import destinations
+    monkeypatch.setattr(destinations, "call", call)
+
+    anna = await _person(db, "anna", chat=None, mail=None, standard="ziel")
+    ziel = await _ziel(db, anna)
+    anna.notify_destination_id = ziel.id
+    await db.commit()
+
+    weg = await notify.zustellen(db, user=anna, kind="test", title="Hallo", body="Text")
+    assert weg["kanal"] == "ziel" and weg["ok"] is True
+    (name, kw) = gerufen[0]
+    assert name == "ntfy" and kw["body"] == {"art": "test", "titel": "Hallo", "text": "Text"}
+    # Die Glocke trägt sie trotzdem, und der Zeitstempel sagt, dass draußen nichts aussteht.
+    n = (await db.execute(select(Notification))).scalars().one()
+    assert n.notified_at is not None
+
+
+async def test_ziel_ohne_ziel_bleibt_in_der_glocke(db):
+    anna = await _person(db, "anna", chat=None, mail=None, standard="ziel")
+    weg = await notify.zustellen(db, user=anna, kind="test", title="Hallo")
+    assert weg["kanal"] == "bell"
+
+
+async def test_fremdes_ziel_darf_man_nicht_waehlen(client, db):
+    """Sonst wäre der Kanal ein Weg an fremde Anmeldedaten."""
+    anna = await _person(db, "anna")
+    bert = await _person(db, "bert")
+    fremd = await _ziel(db, bert, name="bertfunk")
+
+    schlecht = await client.put("/me/notify", headers=auth(anna),
+                                json={"notify_destination_id": fremd.id})
+    assert schlecht.status_code == 400
+
+    eigen = await _ziel(db, anna, name="annafunk")
+    gut = await client.put("/me/notify", headers=auth(anna),
+                           json={"notify_default": "ziel", "notify_destination_id": eigen.id})
+    assert gut.status_code == 204
+    await db.refresh(anna)
+    assert (anna.notify_default, anna.notify_destination_id) == ("ziel", eigen.id)
