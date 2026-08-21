@@ -554,8 +554,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
     subjects: ["issue"],
     summary: "action_fields.merges_the_ticket_branch_or_opens_a_pull_requ",
     fields: [{ key: "timeout_sec", label: "action_fields.timeout_s", type: "number", placeholder: "900" }],
-    outcomes: "action_fields.runs_asynchronously_the_outlet_is_named_after"
-      + "pr_open, no_git, push_failed — sonst „weiter\".",
+    outcomes: "action_fields.runs_asynchronously_the_outlet_is_named_after",
   },
 
   deploy: {

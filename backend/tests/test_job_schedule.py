@@ -41,7 +41,7 @@ def test_an_interval_with_a_prefix_is_understood():
     assert _seconds("interval:900") == 900
     assert _seconds("900") == 900
     assert _seconds(" interval:900 ") == 900
-    # Unlesbares ergibt eine Minute: lieber zu oft als nie.
+    # Something unreadable yields one minute: better too often than never.
     assert _seconds("alle 15 min") == 60
     assert _seconds("") == 60
     assert _seconds("0") == 60

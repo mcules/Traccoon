@@ -34,7 +34,7 @@ def test_without_a_mapping_the_payload_is_the_context():
 
 
 def test_an_empty_path_puts_the_whole_payload_under_one_key():
-    """So kommt die Mail unter `mail`, statt ihre Felder flach im Kontext zu verstreuen."""
+    """That way the mail arrives under `mail` instead of scattering its fields flat in the context."""
     ctx = _context(_sub(context_map={"mail": ""}), {"uid": 7, "subject": "Hallo"})
     assert ctx == {"mail": {"uid": 7, "subject": "Hallo"}}
 

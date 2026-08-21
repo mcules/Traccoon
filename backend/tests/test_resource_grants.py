@@ -16,7 +16,7 @@ async def test_a_maintainer_may_grant_and_withdraw(client, db):
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
-    loc = await make_location(db, "Wasserhäuschen", project=proj)
+    loc = await make_location(db, "Water tower", project=proj)
 
     r = await client.post(
         f"/projects/{proj.id}/resource-grants",
@@ -26,7 +26,7 @@ async def test_a_maintainer_may_grant_and_withdraw(client, db):
     )
     assert r.status_code == 201, r.text
     gid = r.json()["id"]
-    assert r.json()["resource_label"] == "Wasserhäuschen"
+    assert r.json()["resource_label"] == "Water tower"
 
     listed = await client.get(f"/projects/{proj.id}/resource-grants", headers=auth(owner))
     assert [g["id"] for g in listed.json()] == [gid]
@@ -44,7 +44,7 @@ async def test_a_member_may_not_grant(client, db):
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
     await add_member(db, proj, plain, ProjectRole.member)
-    loc = await make_location(db, "Wasserhäuschen", project=proj)
+    loc = await make_location(db, "Water tower", project=proj)
 
     r = await client.post(
         f"/projects/{proj.id}/resource-grants",
@@ -98,7 +98,7 @@ async def test_a_duplicate_grant_gives_409(client, db):
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
-    loc = await make_location(db, "Wasserhäuschen", project=proj)
+    loc = await make_location(db, "Water tower", project=proj)
     body = {"user_id": guest.id, "resource_type": "location", "resource_id": loc.id}
 
     assert (await client.post(f"/projects/{proj.id}/resource-grants", json=body,
@@ -152,7 +152,7 @@ async def test_without_a_grant_and_without_membership_nothing_is_visible(client,
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
     await make_asset(db, "Mast 1", project=proj)
-    await make_location(db, "Wasserhäuschen", project=proj)
+    await make_location(db, "Water tower", project=proj)
 
     assert (await client.get("/hardware/assets", headers=auth(outsider))).json() == []
     assert (await client.get("/locations", headers=auth(outsider))).json() == []
@@ -163,7 +163,7 @@ async def test_a_recursive_location_grant_covers_the_child_location(client, db):
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
-    house = await make_location(db, "Wasserhäuschen", project=proj)
+    house = await make_location(db, "Water tower", project=proj)
     mast = await make_location(db, "Mast 1", project=proj, parent=house)
 
     db.add(ResourceGrant(project_id=proj.id, user_id=guest.id,
@@ -180,7 +180,7 @@ async def test_a_non_recursive_location_grant_does_not_cover_the_child_location(
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
-    house = await make_location(db, "Wasserhäuschen", project=proj)
+    house = await make_location(db, "Water tower", project=proj)
     mast = await make_location(db, "Mast 1", project=proj, parent=house)
 
     db.add(ResourceGrant(project_id=proj.id, user_id=guest.id,
@@ -221,7 +221,7 @@ async def test_a_manage_grant_on_a_location_allows_managing_its_assets(client, d
     manager = await make_user(db, "manager")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
-    house = await make_location(db, "Wasserhäuschen", project=proj)
+    house = await make_location(db, "Water tower", project=proj)
     asset = await make_asset(db, "Mast 1", project=proj, location=house)
 
     db.add(ResourceGrant(project_id=proj.id, user_id=manager.id,
@@ -229,7 +229,7 @@ async def test_a_manage_grant_on_a_location_allows_managing_its_assets(client, d
                          level=GrantLevel.manage, recursive=True))
     await db.commit()
 
-    r = await client.put(f"/hardware/assets/{asset.id}", json={"notes": "geprüft"},
+    r = await client.put(f"/hardware/assets/{asset.id}", json={"notes": "checked"},
                          headers=auth(manager))
     assert r.status_code == 200, r.text
 
@@ -238,7 +238,7 @@ async def test_a_manage_grant_on_a_location_allows_managing_its_assets(client, d
 
 async def test_the_role_is_inherited_by_the_subproject_owner_capped(client, db):
     regio = await make_user(db, "regio")
-    top = await make_project(db, "FFB", "Freifunk Haßberge")
+    top = await make_project(db, "FFB", "Community Network")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
     await add_member(db, top, regio, ProjectRole.owner)
 
@@ -252,7 +252,7 @@ async def test_the_role_is_inherited_by_the_subproject_owner_capped(client, db):
 
 async def test_inheritance_can_be_switched_off(client, db):
     regio = await make_user(db, "regio")
-    top = await make_project(db, "FFB", "Freifunk Haßberge")
+    top = await make_project(db, "FFB", "Community Network")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id, inherit_members=False)
     await add_member(db, top, regio, ProjectRole.owner)
 
@@ -261,7 +261,7 @@ async def test_inheritance_can_be_switched_off(client, db):
 
 async def test_a_direct_role_beats_an_inherited_one(client, db):
     user = await make_user(db, "u")
-    top = await make_project(db, "FFB", "Freifunk Haßberge")
+    top = await make_project(db, "FFB", "Community Network")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
     await add_member(db, top, user, ProjectRole.owner)
     await add_member(db, sub, user, ProjectRole.viewer)
@@ -273,7 +273,7 @@ async def test_a_direct_role_beats_an_inherited_one(client, db):
 
 async def test_an_inherited_role_sees_the_hardware_of_the_subproject(client, db):
     regio = await make_user(db, "regio")
-    top = await make_project(db, "FFB", "Freifunk Haßberge")
+    top = await make_project(db, "FFB", "Community Network")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
     await add_member(db, top, regio, ProjectRole.owner)
     asset = await make_asset(db, "Mast 1", project=sub)
@@ -284,7 +284,7 @@ async def test_an_inherited_role_sees_the_hardware_of_the_subproject(client, db)
 
 async def test_listing_projects_includes_inherited_subprojects(client, db):
     regio = await make_user(db, "regio")
-    top = await make_project(db, "FFB", "Freifunk Haßberge")
+    top = await make_project(db, "FFB", "Community Network")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
     await make_project(db, "FRD", "Fremd")
     await add_member(db, top, regio, ProjectRole.owner)
@@ -297,7 +297,7 @@ async def test_listing_projects_includes_inherited_subprojects(client, db):
 
 async def test_a_parent_may_not_be_a_descendant(client, db):
     owner = await make_user(db, "owner")
-    top = await make_project(db, "FFB", "Freifunk Haßberge")
+    top = await make_project(db, "FFB", "Community Network")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)
     await add_member(db, top, owner, ProjectRole.owner)
 

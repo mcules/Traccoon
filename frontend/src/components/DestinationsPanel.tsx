@@ -5,7 +5,7 @@ import { ApiError, destinationApi, type Destination, type DestinationScope } fro
 import { KeyValueEditor } from "./workflow/kv";
 import {
   Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
-  ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "./ui";
+  ListingEmpty, ListRow, DeleteDialog, BUTTON } from "./ui";
 import { useAuth } from "../auth";
 
 // Keys instead of texts: the list comes into being while the module loads, and a tr() here
@@ -106,7 +106,7 @@ export default function DestinationsPanel({
 
       <Listing>
         {targets?.map((d) => (
-          <ListenLine key={d.id} dimmed={!d.enabled}>
+          <ListRow key={d.id} dimmed={!d.enabled}>
             <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -132,7 +132,7 @@ export default function DestinationsPanel({
                 <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteTarget(d)} />
               </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {targets?.length === 0 && <ListingEmpty>{tr("destinations_panel.no_destinations_yet")}</ListingEmpty>}
       </Listing>

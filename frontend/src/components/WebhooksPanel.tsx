@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import {
   Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
-  ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "./ui";
+  ListingEmpty, ListRow, DeleteDialog, BUTTON } from "./ui";
 
 const EMPTY = {
   route: "", mode: "workflow", secret: "", project_id: "",
@@ -100,7 +100,7 @@ export default function WebhooksPanel() {
       <Errorrow text={err} />
       <Listing className="mb-4">
         {hooks?.map((w) => (
-          <ListenLine key={w.id} dimmed={!w.enabled}>
+          <ListRow key={w.id} dimmed={!w.enabled}>
             <div className="flex items-center gap-2">
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span className="font-medium">{w.route}</span><span className="text-muted">{w.mode}</span>
@@ -130,7 +130,7 @@ export default function WebhooksPanel() {
               <IconButton icon={ICON.copy} title={tr("webhooks_panel.copy_url")}
                 onClick={() => navigator.clipboard?.writeText(`${location.origin}/api/hooks/${w.public_id}`)} />
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {hooks?.length === 0 && <ListingEmpty>{tr("webhooks_panel.no_webhooks")}</ListingEmpty>}
       </Listing>

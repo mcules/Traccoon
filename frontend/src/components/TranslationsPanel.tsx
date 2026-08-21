@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
-import { Actions, ICON, IconButton, DeleteDialog, Area, Errorrow, Listing, ListingEmpty, ListenLine, BUTTON_SMALL} from "./ui";
+import { Actions, ICON, IconButton, DeleteDialog, Area, Errorrow, Listing, ListingEmpty, ListRow, BUTTON_SMALL} from "./ui";
 import { allKey, shipped, SOURCELANGUAGE, setLanguage, language, tr } from "../i18n";
 
 interface LanguageInfo {
@@ -157,7 +157,7 @@ export default function TranslationsPanel() {
       <div className="max-h-[60vh] overflow-auto">
       <Listing>
         {lines.map((z) => (
-          <ListenLine key={z.key}>
+          <ListRow key={z.key}>
             <div className="break-all font-mono text-[11px] text-muted">{z.key}</div>
             <div className="mt-1 gap-2 sm:flex">
               <div className="min-w-0 flex-1 text-ink">{z.german}</div>
@@ -172,7 +172,7 @@ export default function TranslationsPanel() {
                 className={`mt-1 w-full rounded border bg-card px-1.5 py-1 text-ink sm:mt-0 sm:flex-1 ${
                   z.geaendert ? "border-brand" : "border-line"}`} />
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {!lines.length && (
           <ListingEmpty>

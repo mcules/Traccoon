@@ -160,7 +160,7 @@ async def test_the_served_page_carries_its_fence(client, db):
 
 
 async def test_the_manifest_opens_only_the_declared_direction(client, db):
-    """Ein Kachelserver darf als Bild geladen werden — Skripte bleiben trotzdem zu."""
+    """A tile server may be loaded as an image — scripts stay shut all the same."""
     admin = await make_user(db, "chef", admin=True)
     with_map = {**MANIFEST, "csp": {"img-src": ["https://tile.openstreetmap.org"],
                                      "script-src": ["https://boeser.example"]}}

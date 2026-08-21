@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api } from "../api";
 import {
   Actions, Dialog, DialogFoot, INPUT_VALUE, Field as Formfield, Errorrow, ICON, IconButton,
-  DeleteDialog, Area, Listing, ListenLine, BUTTON, BUTTON_SMALL } from "./ui";
+  DeleteDialog, Area, Listing, ListRow, BUTTON, BUTTON_SMALL } from "./ui";
 
 interface Value {
   id: number; value: string; label: string; color: string; order: number; enabled: boolean;
@@ -169,7 +169,7 @@ function ArtifactKarte({ t: kind, onFail, onOk, onDelete }: {
 }) {
   const [showFields, setShowFields] = useState(false);
   return (
-    <ListenLine>
+    <ListRow>
       <div className="mb-2 flex items-center gap-2">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <span className="text-lg">{kind.icon}</span>
@@ -199,7 +199,7 @@ function ArtifactKarte({ t: kind, onFail, onOk, onDelete }: {
       </div>
 
       <Fields t={kind} onFail={onFail} onOk={onOk} open={showFields} />
-    </ListenLine>
+    </ListRow>
   );
 }
 

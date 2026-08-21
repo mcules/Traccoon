@@ -2,11 +2,13 @@ import type { AssigneeSpec } from "./types";
 import { tr } from "../../i18n";
 import type { MemberLite } from "../../api";
 
+// Catalog keys, not texts: the table comes into being while the module loads, a `tr()`
+// here would freeze the language of the first render.
 const ROLE_LABEL: Record<string, string> = {
-  owner: "Owner",
-  maintainer: "Maintainer",
-  member: tr("assignee.member"),
-  viewer: "Betrachter",
+  owner: "assignee.owner",
+  maintainer: "assignee.maintainer",
+  member: "assignee.member",
+  viewer: "assignee.viewer",
 };
 
 /** Short label of an AssigneeSpec (for the node preview and the config). */
@@ -15,10 +17,11 @@ export function assigneeLabel(spec: AssigneeSpec | undefined, members?: MemberLi
   switch (spec.mode) {
     case "user": {
       const m = members?.find((x) => x.user_id === spec.user_id);
-      return m ? m.display_name || m.username : spec.user_id ? `Nutzer #${spec.user_id}` : "Nutzer?";
+      return m ? m.display_name || m.username : spec.user_id ? tr("assignee.user_n", { id: spec.user_id }) : tr("assignee.user_q");
     }
     case "role":
-      return `Rolle: ${ROLE_LABEL[spec.role || ""] || spec.role || "?"}`;
+      return tr("assignee.role_prefix",
+                { role: ROLE_LABEL[spec.role || ""] ? tr(ROLE_LABEL[spec.role || ""]) : spec.role || "?" });
     case "context":
       return `Kontext: ${spec.context_key || "?"}`;
     case "reporter":

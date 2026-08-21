@@ -5,7 +5,7 @@ export function KeyValueEditor({
   value,
   onChange,
   keyPlaceholder = "",
-  valuePlaceholder = "Wert",
+  valuePlaceholder = tr("kv.value"),
 }: {
   value: Record<string, any>;
   onChange: (v: Record<string, any>) => void;

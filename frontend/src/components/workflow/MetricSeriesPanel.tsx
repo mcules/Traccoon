@@ -4,7 +4,7 @@ import { tr } from "../../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../../api";
 import {
-  Actions, Area, Errorrow, ICON, IconButton, Listing, ListingEmpty, ListenLine,
+  Actions, Area, Errorrow, ICON, IconButton, Listing, ListingEmpty, ListRow,
   DeleteDialog, BUTTON_SMALL, BUTTON_TEXT} from "../ui";
 
 interface Trend {
@@ -82,7 +82,7 @@ function SeriesLine({ series: series, open: open, toggle, remove: remove }: {
   const old = (t?.age_hours ?? 0) > 26;
 
   return (
-    <ListenLine warning={knapp}>
+    <ListRow warning={knapp}>
       <div className="flex flex-wrap items-baseline gap-2">
         <button onClick={toggle} className={BUTTON_TEXT.secondary}>
           {open ? "▾" : "▸"} {series.name}
@@ -121,7 +121,7 @@ function SeriesLine({ series: series, open: open, toggle, remove: remove }: {
       </div>
 
       {open && <Detail series={series} remove={remove} />}
-    </ListenLine>
+    </ListRow>
   );
 }
 

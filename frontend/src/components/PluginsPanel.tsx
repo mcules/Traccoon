@@ -4,7 +4,7 @@ import { ApiError, pluginApi, type PluginAdmin } from "../api";
 import { tr } from "../i18n";
 import {
   Actions, Area, Tag, Errorrow, ICON, IconButton, Button, Listing, ListingEmpty,
-  ListenLine, DeleteDialog } from "./ui";
+  ListRow, DeleteDialog } from "./ui";
 
 /**
  * Plugins verwalten: einspielen, freigeben, abschalten.
@@ -66,7 +66,7 @@ export default function PluginsPanel() {
       <Errorrow text={err} />
       <Listing>
         {(plugins || []).map((p) => (
-          <ListenLine key={p.slug} dimmed={!p.enabled}>
+          <ListRow key={p.slug} dimmed={!p.enabled}>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <span className="text-lg leading-none">{p.icon || "\u{1F9E9}"}</span>
@@ -92,7 +92,7 @@ export default function PluginsPanel() {
                 </div>
               )}
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {plugins?.length === 0 && <ListingEmpty>{tr("plugins.no_plugin_installed_yet")}</ListingEmpty>}
       </Listing>

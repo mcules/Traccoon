@@ -4,11 +4,13 @@ import type { FlowNode } from "./nodes/shared";
 
 /** Phases of a flow; the order determines the colour, not the arrangement. */
 export const PHASES: [string, string, string][] = [
-  ["start", "Eingang", "59 130 246"],
-  ["planung", "Planung", "168 85 247"],
-  ["umsetzung", "Umsetzung", "34 197 94"],
-  ["aufteilung", "Aufteilung", "236 72 153"],
-  ["abnahme", "Abnahme", "234 179 8"],
+  // The second column is a CATALOG KEY, not a text: the table comes into being while the
+  // module loads, long before a language is chosen. It is translated at render time.
+  ["start", "phase.intake", "59 130 246"],
+  ["planung", "phase.planning", "168 85 247"],
+  ["umsetzung", "phase.execution", "34 197 94"],
+  ["aufteilung", "phase.split", "236 72 153"],
+  ["abnahme", "phase.acceptance", "234 179 8"],
   ["stoerung", "phase.faults", "239 68 68"],
 ];
 

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
   Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
-  ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "./ui";
+  ListingEmpty, ListRow, DeleteDialog, BUTTON } from "./ui";
 
 /**
  * Skills: reusable prompt blocks, versioned.
@@ -36,7 +36,7 @@ export default function SkillsPanel() {
       <Errorrow text={err} />
       <Listing className="mb-4">
         {skills?.map((s) => (
-          <ListenLine key={s.id}>
+          <ListRow key={s.id}>
             <div className="flex items-center gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
               <span className="font-mono">{s.key}</span>
@@ -50,7 +50,7 @@ export default function SkillsPanel() {
               <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteSkill(s)} />
             </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {skills?.length === 0 && <ListingEmpty>{tr("skills_panel.no_skills")}</ListingEmpty>}
       </Listing>

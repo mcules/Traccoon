@@ -52,7 +52,7 @@ async def test_the_same_spec_in_another_zone():
 
 
 async def test_an_unknown_zone_halts_nothing():
-    """Ein Tippfehler in der Zone darf keinen Zeitplan lahmlegen."""
+    """A typo in the zone must not cripple a schedule."""
     assert zone_of(Person("Erde/Mitte")) == ZoneInfo("Europe/Berlin")
     assert zone_of(Person("")) == ZoneInfo("Europe/Berlin")
     assert zone_of(None) == ZoneInfo("Europe/Berlin")

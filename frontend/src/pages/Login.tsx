@@ -50,7 +50,7 @@ export default function Login() {
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         {info && <div className="mt-3 text-sm text-green-400">{info}</div>}
         <button className={`mt-4 w-full ${BUTTON.primary}`}>
-          {mode === "login" ? "Anmelden" : "Registrieren"}
+          {tr(mode === "login" ? "login.sign_in" : "login.register")}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
           className={BUTTON_TEXT.secondary}>

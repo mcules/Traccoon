@@ -2,7 +2,7 @@ import { BaseNode, type FlowNodeProps, type SourceHandleDef } from "./shared";
 import { tr } from "../../../i18n";
 
 const PHASE_LABEL: Record<string, string> = {
-  planning: "Planung",
+  planning: "agent_task_node.planning",
   execution: "agent.execution",
 };
 

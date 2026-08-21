@@ -58,7 +58,7 @@ export default function AgentTaskConfig({
               <option key={value} value={value}>{label}</option>
             ))}
           </optgroup>
-          <option value="__frei__">Andere Rolle (eintippen)…</option>
+          <option value="__frei__">{tr("agent_task_config.other_role")}</option>
         </select>
         {ownRole && (
           <input

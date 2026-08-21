@@ -104,17 +104,17 @@ export default function StartConfig({
           <option value="manuell">{tr("start_config.hand_through_job")}</option>
           <option value="ereignis">{tr("start_config.event_inside_traccoon")}</option>
           <option value="webhook">{tr("start_config.call_from_outside_webhook")}</option>
-          <option value="mail_action">Knopf an einer Mail</option>
+          <option value="mail_action">{tr("start_config.button_on_a_mail")}</option>
         </select>
       </label>
 
       {art === "mail_action" && (
         <div className="space-y-2">
           <label className="block text-xs font-medium text-muted">
-            Woran der Knopf haengt
+            {tr("start_config.what_the_button_hangs_on")}
             <select value={t.scope || "message"} onChange={(e) => setT({ scope: e.target.value })}
               className={`mt-1 ${inp}`}>
-              <option value="message">an der Nachricht</option>
+              <option value="message">{tr("start_config.on_the_message")}</option>
               <option value="attachment">{tr("start_config.on_every_attachment")}</option>
             </select>
           </label>

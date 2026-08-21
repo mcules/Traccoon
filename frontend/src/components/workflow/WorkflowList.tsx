@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi, type Project, type WorkflowSubjectKind } from "../../api";
 import { projectPath } from "../../projectTabs";
-import { Listing, ListingEmpty, ListenLine, BUTTON} from "../ui";
+import { Listing, ListingEmpty, ListRow, BUTTON} from "../ui";
 
 const SUBJECT_LABEL: Record<WorkflowSubjectKind, string> = {
   issue: "Ticket",
@@ -68,7 +68,7 @@ export default function WorkflowList({ project }: { project: Project }) {
 
       <Listing className="mb-4">
         {defs?.map((d) => (
-          <ListenLine key={d.id} dimmed={!d.enabled}>
+          <ListRow key={d.id} dimmed={!d.enabled}>
             <div className="flex flex-wrap items-center gap-3">
             <span className="font-mono text-xs text-muted">{d.key}</span>
             <span className="font-medium">{d.name}</span>
@@ -100,7 +100,7 @@ export default function WorkflowList({ project }: { project: Project }) {
               🗑
             </button>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {defs?.length === 0 && <ListingEmpty>{tr("workflow_list.no_own_flows_yet")}</ListingEmpty>}
       </Listing>

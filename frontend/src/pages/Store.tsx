@@ -6,7 +6,7 @@ import { formatDateTime } from "../lib/formatTime";
 import { tr } from "../i18n";
 import { usePageChrome } from "../pageChrome";
 import {
-  Area, Errorrow, ICON, IconButton, Listing, ListingEmpty, ListenLine,
+  Area, Errorrow, ICON, IconButton, Listing, ListingEmpty, ListRow,
 } from "../components/ui";
 import Markdown from "../components/Markdown";
 
@@ -57,7 +57,7 @@ export default function StorePage() {
         <Listing>
           {(listing?.entries || []).length === 0 && <ListingEmpty>{tr("store.storage_still_empty")}</ListingEmpty>}
           {(listing?.entries || []).map((e) => (
-            <ListenLine key={e.id} columns="sm:grid-cols-[minmax(0,1fr)_auto]" dense
+            <ListRow key={e.id} columns="sm:grid-cols-[minmax(0,1fr)_auto]" dense
               onClick={() => nav(`/documents/${encodeURIComponent(key)}/${e.id}`)}>
               <div className="min-w-0">
                 <div className={`truncate text-sm ${e.id === chosen ? "font-medium text-ink" : "text-muted"}`}>
@@ -69,7 +69,7 @@ export default function StorePage() {
                 <IconButton icon={ICON.remove} danger title={tr("common.delete")}
                   onClick={() => remove.mutate(e.id)} />
               </div>
-            </ListenLine>
+            </ListRow>
           ))}
         </Listing>
 

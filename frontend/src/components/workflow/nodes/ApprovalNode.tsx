@@ -2,9 +2,11 @@ import { BaseNode, type FlowNodeProps } from "./shared";
 import { tr } from "../../../i18n";
 import { assigneeLabel } from "../assignee";
 
+// Catalog keys, not texts: the table comes into being while the module loads, a `tr()` here
+// would freeze the language of the first render.
 const GATE_LABEL: Record<string, string> = {
-  ai_assign: tr("approval_node.ai_right"),
-  role: tr("approval_node.role"),
+  ai_assign: "approval_node.ai_right",
+  role: "approval_node.role",
   none: "approval.no_gate",
 };
 
@@ -13,7 +15,7 @@ export default function ApprovalNode({ id, data, selected }: FlowNodeProps) {
   return (
     <BaseNode
       nodeId={id}
-      title={c.label || "Freigabe"}
+      title={c.label || tr("approval_node.approval")}
       icon="✅"
       accent="border-t-emerald-500"
       selected={selected}

@@ -722,10 +722,10 @@ export default function TicketDrawer({
         <div className="mt-3 flex gap-2">
           {issue.hold_reason === "plan_split" ? (
             <button onClick={() => life.mutate("approve-split")}
-              className={BUTTON.confirm}>✅ Aufteilung freigeben (Sub-Tickets anlegen)</button>
+              className={BUTTON.confirm}>{tr("ticket_drawer.approve_split")}</button>
           ) : (
             <button onClick={() => life.mutate("approve-plan")}
-              className={BUTTON.confirm}>✅ Plan freigeben</button>
+              className={BUTTON.confirm}>{tr("ticket_drawer.approve_plan")}</button>
           )}
           <button onClick={() => life.mutate("reject-plan")}
             className={BUTTON.secondary}>
@@ -789,11 +789,11 @@ export default function TicketDrawer({
             <div className="mt-2 space-y-2">
               <div className="text-muted">{tr("ticket_drawer.review_findings_are_open_check_the_diff_below")}</div>
               <button onClick={() => life.mutate("complete")}
-                className={BUTTON.confirm}>✅ Abnehmen</button>
+                className={BUTTON.confirm}>{tr("ticket_drawer.accept")}</button>
             </div>
           ) : (
             <button onClick={() => life.mutate("plan")}
-              className={BUTTON_SMALL.primary}>↻ Neu planen</button>
+              className={BUTTON_SMALL.primary}>{tr("ticket_drawer.plan_again")}</button>
           )}
         </div>
       )}

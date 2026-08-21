@@ -162,7 +162,7 @@ function InstancePanel({
             return (
               <div key={s.id} className="rounded border border-line bg-surface p-2.5">
                 <div className="mb-1.5 text-sm text-ink">
-                  {cfg.label || (s.node_type === "approval" ? "Freigabe" : tr("asset_workflow.task"))}
+                  {cfg.label || (s.node_type === "approval" ? tr("asset_workflow.approval") : tr("asset_workflow.task"))}
                 </div>
                 <WorkflowTaskForm
                   iid={iid}
