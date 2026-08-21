@@ -69,7 +69,7 @@ export default function NewTicketModal({
       onCreated?.(issue.key);
       onClose();
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Anlegen fehlgeschlagen"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("new_ticket_modal.create_failed")),
   });
 
   const canSave = !!summary.trim() && !create.isPending;

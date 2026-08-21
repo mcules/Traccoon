@@ -11,7 +11,7 @@ import { tr } from "../../../i18n";
  */
 export default function LoopNode({ id, data, selected }: FlowNodeProps) {
   const sources: SourceHandleDef[] = [
-    { id: "element", label: "je Element", color: "!bg-brand" },
+    { id: "element", label: tr("loop_node.per_element"), color: "!bg-brand" },
     { id: "fertig", label: "fertig", color: "!bg-green-500" },
   ];
   const listing = data.config.list as string | undefined;

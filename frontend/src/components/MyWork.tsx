@@ -13,7 +13,7 @@ const PRIO_COLOR: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400", medium: "text-yellow-400",
   low: "text-sky-400", lowest: "text-slate-400",
 };
-const CAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
+const CAT_LABEL: Record<string, string> = { todo: tr("common.open_state"), in_progress: tr("common.in_progress"), done: tr("common.done_state") };
 
 export default function MyWork() {
   const { data } = useQuery({

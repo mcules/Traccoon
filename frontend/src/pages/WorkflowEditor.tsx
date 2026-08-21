@@ -343,11 +343,11 @@ export default function WorkflowEditor() {
       const r = await workflowApi.saveGraph(wfId, { graph });
       secured.current = graphSignature(graph);
       setState((n) => n + 1);
-      setMsg(r.hint || "Gespeichert.");
+      setMsg(r.hint || tr("common.saved"));
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
     } catch (e) {
-      setMsg(e instanceof ApiError ? `Speichern fehlgeschlagen: ${e.message}` : "Speichern fehlgeschlagen");
+      setMsg(e instanceof ApiError ? `Speichern fehlgeschlagen: ${e.message}` : tr("common.save_failed"));
     } finally {
       setSaving(false);
     }
@@ -361,9 +361,9 @@ export default function WorkflowEditor() {
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
       seeded.current = false;      // the graph is reloaded from the live version
-      setMsg("Entwurf verworfen.");
+      setMsg(tr("editor.draft_discarded"));
     } catch (e) {
-      setMsg(e instanceof ApiError ? e.message : "Verwerfen fehlgeschlagen");
+      setMsg(e instanceof ApiError ? e.message : tr("editor.discard_failed"));
     }
   };
 

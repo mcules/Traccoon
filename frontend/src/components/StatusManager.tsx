@@ -7,7 +7,7 @@ import {
 
 type Status = { id: number; name: string; category: string; order: number };
 const CATEGORIES: [string, string][] = [
-  ["todo", "Offen"], ["in_progress", "In Arbeit"], ["done", "Erledigt"],
+  ["todo", tr("common.open_state")], ["in_progress", tr("common.in_progress")], ["done", tr("common.done_state")],
 ];
 
 /**

@@ -15,7 +15,7 @@ export default function SubflowNode({ id, data, selected }: FlowNodeProps) {
   return (
     <BaseNode
       nodeId={id}
-      title={data.config.label || "Anderer Ablauf"}
+      title={data.config.label || tr("subflow_node.other_flow")}
       icon="🔗"
       accent="border-t-indigo-500"
       selected={selected}

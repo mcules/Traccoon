@@ -11,10 +11,10 @@ import { ACTION_SPECS } from "./actionFields";
  * in the English UI — while two entries that were keys already
  * roh als `action.spam_card` in der Liste standen. */
 const GROUPS: [string, [AutoActionName, string][]][] = [
-  ["Artefakt", [
+  [tr("auto_action_config.artifact"), [
     ["set_status", "action.set_status"],
   ]],
-  ["Allgemein", [
+  [tr("auto_action_config.general"), [
     ["http_request", "action.http_request"],
     ["tool_call", "action.tool_call"],
     ["set_context", "action.set_context"],

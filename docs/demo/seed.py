@@ -117,16 +117,20 @@ def main() -> None:
             call("POST", f"/ingest/{van_token}", point, quiet=True)
         print(f"{len(route)} positions")
 
-    # ── A scheduled flow, so the job list is not empty ───────────────────────
-    flows = call("GET", "/workflows") or []
-    daily = next((w for w in flows if w.get("key") == "daily-review"), None)
-    if not daily:
-        daily = call("POST", "/workflows", {"name": "Daily review", "key": "daily-review",
-                                            "subject_kind": "standalone",
-                                            "template": "assistant"}, quiet=True)
-    call("POST", "/jobs", {"name": "Daily review", "type": "cron", "schedule": "0 18 * * 1-5",
-                           "kind": "workflow", "workflow_key": "daily-review", "enabled": True}, quiet=True)
-    print("job: daily review")
+    # ── Flows out of the shipped templates, so the lists are not empty ───────
+    flows = [
+        ("disk-alert", "Disk almost full", "report-from-outside"),
+        ("nightly-backup-check", "Nightly backup check", "check-with-approval"),
+        ("invoice-to-paperless", "Invoice to Paperless", "attachment-to-paperless"),
+        ("delivery-arrived", "Delivery van arrived", "trigger-to-message"),
+    ]
+    for key, name, template in flows:
+        call("POST", "/workflows", {"key": key, "name": name, "template": template,
+                                    "subject_kind": "standalone"}, quiet=True)
+    print(f"{len(flows)} flows")
+
+    # ── The map plugin, if it has been built next door ───────────────────────
+    print("done — upload docs/demo/../../../traccoon-plugins/build/map.zip by hand for the map")
 
 
 if __name__ == "__main__":

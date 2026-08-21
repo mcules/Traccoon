@@ -27,7 +27,7 @@ export default function Projects() {
       qc.invalidateQueries({ queryKey: ["projects"] });
       setShow(false); setName(""); setManaged(false); setParentId(""); setErr("");
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   function submit(e: FormEvent) { e.preventDefault(); create.mutate(); }

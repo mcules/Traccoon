@@ -49,7 +49,7 @@ export default function OwnWorkflowsPanel() {
   const open_it = (d: WorkflowDefinition) =>
     nav(`/workflows/${d.id}`, { state: { from: "/processes/own" } });
   const inv = () => qc.invalidateQueries({ queryKey: ["workflows-all"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const create = useMutation({
     mutationFn: () => workflowApi.create({

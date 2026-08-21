@@ -42,7 +42,7 @@ export default function DryrunPanel(
       setResult(r.error ? `${plaintext[r.status] || r.status} — ${r.error}`
                           : (plaintext[r.status] || r.status));
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Probelauf fehlgeschlagen");
+      setError(e instanceof ApiError ? e.message : tr("dry_run.failed"));
     } finally {
       setRuns(false);
     }

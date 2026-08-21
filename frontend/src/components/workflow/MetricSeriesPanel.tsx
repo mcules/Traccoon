@@ -21,8 +21,8 @@ interface Series {
 interface Point { id: number; ts: string; value: number; context: Record<string, any> }
 interface History extends Series { target: number; points: Point[] }
 
-const TIMESPANS: [number, string][] = [[7, "7 Tage"], [30, "30 Tage"], [90, "90 Tage"],
-                                        [365, "1 Jahr"]];
+const TIMESPANS: [number, string][] = [[7, tr("common.days_7")], [30, tr("common.days_30")], [90, tr("common.days_90")],
+                                        [365, tr("common.year_1")]];
 
 /**
  * Metric series: the numbers flows write along.
@@ -47,7 +47,7 @@ export default function MetricseriesPanel() {
   const remove = useMutation({
     mutationFn: (key: string) => api.del(`/metrics/${encodeURIComponent(key)}`),
     onSuccess: () => { setErr(""); qc.invalidateQueries({ queryKey: ["metrics"] }); },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   return (
@@ -143,7 +143,7 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
       qc.invalidateQueries({ queryKey: ["metric-points", series.key] });
       qc.invalidateQueries({ queryKey: ["metrics"] });
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   const points = history?.points || [];

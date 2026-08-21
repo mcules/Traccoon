@@ -115,10 +115,10 @@ function SlotLine({ s, admin, open: open, onToggle, onEdit }: {
         )}
         <div className="flex-1" />
         <Rowbutton onClick={onToggle}>
-          {open ? "Versionen ausblenden" : "Versionen"}
+          {open ? tr("processes.hide_versions") : tr("processes.versions")}
         </Rowbutton>
         {s.definition_id && (
-          <Rowbutton onClick={onEdit}>{admin ? "Bearbeiten" : "Ansehen"}</Rowbutton>
+          <Rowbutton onClick={onEdit}>{admin ? tr("processes.edit") : "Ansehen"}</Rowbutton>
         )}
       </div>
       <div className="mt-1 text-xs text-muted">{s.description}</div>
@@ -166,7 +166,7 @@ function Versions({ defId, mayWrite: mayWrite }: { defId: number; mayWrite: bool
       qc.invalidateQueries({ queryKey: ["wf-def", defId] });
       qc.invalidateQueries({ queryKey: ["proc-slots"] });
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   return (
@@ -263,7 +263,7 @@ function Operation() {
       setErr("");
       qc.invalidateQueries({ queryKey: ["proc-running"] });
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   const hang = runs?.filter((l) => l.hangs).length ?? 0;

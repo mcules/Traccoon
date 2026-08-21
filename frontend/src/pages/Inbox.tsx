@@ -98,7 +98,7 @@ function Stats() {
       <Area
         hint={tr("inbox.what_mail_classified_counted")}
         tools={<Tab active={String(days)} onChoose={(w) => setDays(Number(w))} selection={[
-          ["7", "7 Tage"], ["30", "30 Tage"], ["90", "90 Tage"], ["365", "1 Jahr"],
+          ["7", tr("common.days_7")], ["30", tr("common.days_30")], ["90", tr("common.days_90")], ["365", tr("common.year_1")],
         ]} />}
       >
         {kinds.length === 0 && <p className="text-sm text-muted">{tr("inbox.nothing_classified_period")}</p>}
@@ -157,7 +157,7 @@ function InboxList() {
   const inv = () => { qc.invalidateQueries({ queryKey: ["inbox"] }); qc.invalidateQueries({ queryKey: ["policies"] }); };
   const reject = useMutation({
     mutationFn: (id: number) => api.post(`/assistant/inbox/${id}/reject`),
-    onSuccess: inv, onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onSuccess: inv, onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   const items = data.filter((entry) =>
@@ -169,7 +169,7 @@ function InboxList() {
       </div>
       <Area
         tools={<Tab active={filter} onChoose={setFilter} selection={[
-          ["offen", "Offen"], ["erledigt", "Erledigt"], ["alle", "Alle"],
+          ["offen", tr("common.open_state")], ["erledigt", tr("common.done_state")], ["alle", tr("common.all")],
         ]} />}
       >
       <Errorrow text={err} />
@@ -253,7 +253,7 @@ function ApprovePanel({ item, onDone, onError }:
   const approve = useMutation({
     mutationFn: () => api.post(`/assistant/inbox/${item.id}/approve`,
       { scope, redaction, action_note: note }),
-    onSuccess: onDone, onError: (e) => onError(e instanceof ApiError ? e.message : "Fehler"),
+    onSuccess: onDone, onError: (e) => onError(e instanceof ApiError ? e.message : tr("common.error")),
   });
   const mail = senderEmail(item.from);
 

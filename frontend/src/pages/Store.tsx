@@ -45,7 +45,7 @@ export default function StorePage() {
     mutationFn: (eid: number) =>
       api.del(`/documents/${encodeURIComponent(key)}/entries/${eid}`),
     onSuccess: () => { setErr(""); qc.invalidateQueries({ queryKey: ["ablage", key] }); },
-    onError: (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   usePageChrome(listing?.storage?.name || key, [], "", "seite");

@@ -23,7 +23,7 @@ export default function Backlog({
     qc.invalidateQueries({ queryKey: ["issues", project.id] });
     qc.invalidateQueries({ queryKey: ["meta", project.id] });
   };
-  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const setSprint = useMutation({
     mutationFn: (v: { key: string; sprint_id: number | null }) =>

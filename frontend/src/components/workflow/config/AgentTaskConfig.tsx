@@ -91,7 +91,7 @@ export default function AgentTaskConfig({
         <KeyValueEditor
           value={config.outcomes_map || {}}
           onChange={(m) => onChange({ ...config, outcomes_map: m as Record<string, string> })}
-          keyPlaceholder="Ergebnis"
+          keyPlaceholder={tr("agent_task_config.result")}
           valuePlaceholder="Handle/Status"
         />
         <div className="mt-1 text-[11px] text-muted">

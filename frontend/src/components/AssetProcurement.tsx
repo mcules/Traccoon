@@ -38,7 +38,7 @@ export default function AssetProcurement({
       qc.invalidateQueries({ queryKey: ["hw-steps", assetId] });
       onChange();
     },
-    onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
+    onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
   if (!steps) return <div className="text-xs text-muted">{tr("asset_procurement.loading")}</div>;

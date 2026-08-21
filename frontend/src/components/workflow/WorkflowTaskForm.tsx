@@ -34,7 +34,7 @@ export default function WorkflowTaskForm({
     qc.invalidateQueries({ queryKey: ["my-dashboard"] });
     onDone?.();
   };
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const complete = useMutation({
     mutationFn: () =>

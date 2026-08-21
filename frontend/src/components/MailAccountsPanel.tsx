@@ -48,7 +48,7 @@ export default function MailAccountsPanel() {
   const { data: accounts } = useQuery({
     queryKey: ["mail-accounts"], queryFn: () => api.get<MailAccount[]>("/mailbox/accounts") });
   const inv = () => qc.invalidateQueries({ queryKey: ["mail-accounts"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const save = useMutation({
     mutationFn: (f: typeof EMPTY & { id?: number }) =>
@@ -164,10 +164,10 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
         <div className="flex flex-col gap-4 sm:flex-row">
           <Tab vertical active={part} onChoose={setPart} selection={[
             ["empfang", "📥 Empfang"],
-            ["senden", "📤 Senden"],
-            ["ordner", "📁 Ordner"],
+            ["senden", tr("mail_accounts.send_group")],
+            ["ordner", tr("mail_accounts.folders_group")],
             ["identitaeten", tr("mail_accounts.identities")],
-            ["agenten", "🤖 Agenten"],
+            ["agenten", tr("mail_accounts.agents_group")],
           ]} />
 
           <div className="min-w-0 flex-1 space-y-4">
@@ -232,7 +232,7 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
           </p>
         )}
         <div className="grid gap-2 sm:grid-cols-2">
-          <FolderField label="Gesendet" value={f.folder_sent} folder={folder}
+          <FolderField label={tr("mail_accounts.sent")} value={f.folder_sent} folder={folder}
             onChoose={(v) => set({ folder_sent: v })} />
           <FolderField label={tr("mail_accounts.drafts")} value={f.folder_drafts} folder={folder}
             onChoose={(v) => set({ folder_drafts: v })} />
@@ -253,7 +253,7 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
           </select>
         </Field>
         {f.archive_mode === "folder" ? (
-          <FolderField label="Archiv-Ordner" value={f.folder_archive} folder={folder}
+          <FolderField label={tr("mail_accounts.archive_folder")} value={f.folder_archive} folder={folder}
             onChoose={(v) => set({ folder_archive: v })} />
         ) : (
           <PatternField accountId={start.id} value={f.archive_pattern}
@@ -269,7 +269,7 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
         {part === "identitaeten" && (
           start.id ? (
             <Identities accountId={start.id}
-              onError={(e) => setErr(e instanceof ApiError ? e.message : "Fehler")} />
+              onError={(e) => setErr(e instanceof ApiError ? e.message : tr("common.error"))} />
           ) : (
             <p className="text-sm text-muted">
               Identitäten gibt es, sobald das Postfach gespeichert ist — sie hängen daran.
@@ -334,7 +334,7 @@ function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
         <code className="min-w-0 flex-1 truncate rounded bg-surface px-1.5 py-0.5 text-xs">
           {address}
         </code>
-        <IconButton icon={ICON.copy} title="Adresse kopieren"
+        <IconButton icon={ICON.copy} title={tr("mail_accounts.copy_address")}
           onClick={() => navigator.clipboard?.writeText(address)} />
       </div>
       {fresh ? (
@@ -344,14 +344,14 @@ function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
           </div>
           <div className="flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate text-xs text-ink">{fresh}</code>
-            <IconButton icon={ICON.copy} title="Token kopieren"
+            <IconButton icon={ICON.copy} title={tr("mail_accounts.copy_token")}
               onClick={() => navigator.clipboard?.writeText(fresh)} />
           </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2">
           <Rowbutton onClick={() => create.mutate()}>
-            {state?.token_set ? "Neues Token erzeugen" : "Token erzeugen"}
+            {state?.token_set ? tr("mail_accounts.new_token") : tr("mail_accounts.create_token")}
           </Rowbutton>
           {state?.token_set && (
             <>
@@ -392,7 +392,7 @@ function AgentsGrant({ f, set: set, folder: folder }: {
   });
 
   const GROUP: Record<string, string> = {
-    lesen: "Lesen", change: "Umsortieren", send: "Senden",
+    lesen: "Lesen", change: "Umsortieren", send: tr("mail_accounts.send"),
   };
   const toggle = (name: string) => {
     const inside = f.mcp_tools.includes(name);
@@ -628,14 +628,14 @@ function Identities({ accountId, onError: onError }: { accountId: number; onErro
           foot={<DialogFoot onCancel={() => setDialog(null)} runs={save.isPending}
             disabled={!dialog.email?.trim()} onSave={() => save.mutate(dialog)} />}>
           <div className="space-y-3">
-            <Field label="Absender-Adresse"><input value={dialog.email || ""} className={INPUT_VALUE}
+            <Field label={tr("mail_accounts.sender_address")}><input value={dialog.email || ""} className={INPUT_VALUE}
               onChange={(e) => setDialog({ ...dialog, email: e.target.value })} /></Field>
             <Field label="Angezeigter Name"><input value={dialog.display_name || ""} className={INPUT_VALUE}
               onChange={(e) => setDialog({ ...dialog, display_name: e.target.value })} /></Field>
-            <Field label="Antwort an" hint={tr("mail_accounts.reply_to_hint")}>
+            <Field label={tr("mail_accounts.reply_to")} hint={tr("mail_accounts.reply_to_hint")}>
               <input value={dialog.reply_to || ""} className={INPUT_VALUE}
                 onChange={(e) => setDialog({ ...dialog, reply_to: e.target.value })} /></Field>
-            <Field label="Signatur">
+            <Field label={tr("mail_accounts.signature")}>
               <textarea value={dialog.signature || ""} rows={4} className={`${INPUT_VALUE} font-mono text-xs`}
                 onChange={(e) => setDialog({ ...dialog, signature: e.target.value })} /></Field>
             <label className="flex items-center gap-2 text-sm text-muted">

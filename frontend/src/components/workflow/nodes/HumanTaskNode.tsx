@@ -7,7 +7,7 @@ export default function HumanTaskNode({ id, data, selected }: FlowNodeProps) {
   return (
     <BaseNode
       nodeId={id}
-      title={c.label || "Aufgabe"}
+      title={c.label || tr("human_task_node.task")}
       icon="🧑"
       accent="border-t-brand"
       selected={selected}

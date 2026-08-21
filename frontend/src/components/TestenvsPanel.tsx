@@ -35,7 +35,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
   const [logs, setLogs] = useState<Record<string, string>>({});
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["testenvs", project.id] });
-  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const start = useMutation({
     mutationFn: () => api.post(`/projects/${project.id}/branch-testenvs`, { branch }),
@@ -134,7 +134,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
             </select>
             <button onClick={() => branch && start.mutate()} disabled={!branch || start.isPending}
               className={BUTTON.primary}>
-              {start.isPending ? "startet…" : "Starten"}</button>
+              {start.isPending ? "startet…" : tr("testenvs_panel.start")}</button>
           </div>
         </Area>
       )}

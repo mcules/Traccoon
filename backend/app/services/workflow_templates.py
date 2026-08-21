@@ -67,7 +67,7 @@ def _notice_from_outside() -> dict:
                         "sample": {"title": "Disk almost full", "severity": "high",
                                    "source": "monitoring"}}}),
         _n("weiche", "decision", 0, 1, {
-            "label": "Dringend?",
+            "label": "Urgent?",
             "branches": [
                 {"handle": "dringend", "label": "yes",
                  "guard": {"==": [{"var": "schwere"}, "hoch"]}},
@@ -75,16 +75,16 @@ def _notice_from_outside() -> dict:
             ],
             "default_handle": "egal"}),
         _n("melden", "auto_action", 0, 2, _action(
-            "notify", "Bescheid geben",
+            "notify", "Say so",
             title="{{ title }}",
             text="Reported by {{ source | default:external }}: {{ title }}")),
-        _end("end_ok", 0, 3, "Gemeldet"),
+        _end("end_ok", 0, 3, "Reported"),
         _end("end_egal", 1, 2, "Nothing to do"),
     ]
     return {"nodes": nodes, "edges": [
         _e("start", "weiche"),
-        _e("weiche", "melden", "dringend", "dringend"),
-        _e("weiche", "end_egal", "egal", "kann warten"),
+        _e("weiche", "melden", "dringend", "urgent"),
+        _e("weiche", "end_egal", "egal", "can wait"),
         _e("melden", "end_ok"),
     ]}
 
@@ -196,7 +196,7 @@ def _call_with_repeat() -> dict:
             "http_request", "Letzter Versuch",
             destination="", method="POST", path="/", fail_on_error=True)),
         _n("aufgeben", "auto_action", 2, 4, _action(
-            "notify", "Bescheid geben",
+            "notify", "Say so",
             title="The call failed for good",
             text="The straggler did not get through either.")),
         _end("end_fail", 2, 5, "Fehlgeschlagen", outcome="failed"),
@@ -440,7 +440,7 @@ def _attachment_to_paperless() -> dict:
                        "title": "{{ mail.subject }}"},
             context_key="paperless")),
         _n("melden", "auto_action", 0, 3, _action(
-            "notify", "Bescheid geben",
+            "notify", "Say so",
             to={"mode": "context", "path": "mail.owner_id"},
             title="📄 {{ attachment.filename }} liegt in Paperless",
             text="From the mail \"{{ mail.subject }}\" by {{ mail.from }}.")),
@@ -483,7 +483,7 @@ def _webhook_report() -> dict:
             "label": "A trigger from outside",
             "trigger": {"kind": "webhook", "sample": {"message": "Something happened"}}}),
         _n("melden", "auto_action", 0, 1, _action(
-            "notify", "Bescheid geben",
+            "notify", "Say so",
             title="{{ title | default:Report }}",
             text="{{ message }}")),
         _end("fertig", 0, 2, "Gemeldet"),

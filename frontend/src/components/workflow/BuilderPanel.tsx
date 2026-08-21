@@ -50,7 +50,7 @@ export default function BuilderPanel({
       setExplanation(r.explanation || "");
       setError(r.error || []);
     } catch (e) {
-      setErr(e instanceof ApiError ? e.message : "Fehler");
+      setErr(e instanceof ApiError ? e.message : tr("common.error"));
     } finally {
       setRunning(false);
     }

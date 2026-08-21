@@ -574,7 +574,7 @@ export default function OfficeView({
           type="button"
           onClick={fullscreenToggle}
           title={tr("office_view.turn_full_screen_off")}
-          aria-label="Vollbild umschalten"
+          aria-label={tr("office_view.fullscreen")}
           className={"absolute right-3 top-3 z-10 rounded border border-line bg-card/80 px-2 py-1 "
             + "text-sm text-muted transition-opacity hover:border-brand hover:text-ink "
             + (buttonVisible ? "opacity-80" : "pointer-events-none opacity-0")}
@@ -649,7 +649,7 @@ function Help({ full, onClose }: { full: boolean; onClose: () => void }): JSX.El
   const lines: [string, string][] = [
     ["?", tr("office_view.show_hide_help")],
     ...(full ? ([
-      ["1 2 3 4", "Dock: Chat, Agenten, Werkzeuge, Personalakte"],
+      ["1 2 3 4", tr("office_view.dock")],
       ["B", tr("office_view.show_hide_dock")],
     ] as [string, string][]) : []),
     ["L", tr("office_room.back_live")],

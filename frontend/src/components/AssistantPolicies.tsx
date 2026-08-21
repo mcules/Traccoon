@@ -11,7 +11,7 @@ interface Policy {
   enabled: boolean; hit_count: number; last_used_at: string | null; created_at: string;
 }
 
-const KIND_LABEL: Record<string, string> = { sender: "Absender", domain: "Domain", category: "Kategorie" };
+const KIND_LABEL: Record<string, string> = { sender: tr("assistant_policies.sender"), domain: "Domain", category: tr("assistant_policies.category") };
 
 export default function AssistantPolicies() {
   const qc = useQueryClient();
@@ -22,7 +22,7 @@ export default function AssistantPolicies() {
     queryKey: ["policies"], queryFn: () => api.get<Policy[]>("/assistant/policies"),
   });
   const inv = () => qc.invalidateQueries({ queryKey: ["policies"] });
-  const guard = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const guard = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const save = useMutation({
     mutationFn: (p: Partial<Policy> & { id?: number }) =>
@@ -37,7 +37,7 @@ export default function AssistantPolicies() {
   return (
     <div className="space-y-4">
       <ToolPermissions />
-      <Area title="📥 Eingangs-Regeln (Mail)" hint={tr("assistant_policies.rules_assistant_learned_when")}>
+      <Area title={tr("assistant_policies.intake_rules")} hint={tr("assistant_policies.rules_assistant_learned_when")}>
       <Errorrow text={err} />
 
       {isLoading && <div className="text-sm text-muted">{tr("assistant_policies.loading")}</div>}

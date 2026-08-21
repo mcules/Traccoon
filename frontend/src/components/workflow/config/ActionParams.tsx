@@ -133,7 +133,7 @@ export default function ActionParams({
         : [["", tr("action_params.no_tool_servers_registered")]];
     }
     if (f.source === "member") {
-      return [["", "— niemand —"],
+      return [["", tr("action_params.nobody")],
               ...members.map((m) => [String(m.user_id), m.display_name] as [string, string])];
     }
     if (f.source === "person") {

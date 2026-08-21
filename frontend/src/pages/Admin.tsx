@@ -53,7 +53,7 @@ function MailConfig() {
   const save = useMutation({
     mutationFn: () => api.put("/admin/mail-config", form),
     onSuccess: () => {
-      setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setForm({});
+      setMsg(tr("common.saved")); setTimeout(() => setMsg(""), 2000); setForm({});
       qc.invalidateQueries({ queryKey: ["mail-config"] });
     },
   });
@@ -103,7 +103,7 @@ function Maintenance() {
   const [msg, setMsg] = useState("");
   const save = useMutation({
     mutationFn: (project_id: number | null) => api.put("/admin/maintenance", { project_id }),
-    onSuccess: () => { setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); qc.invalidateQueries({ queryKey: ["admin-status"] }); },
+    onSuccess: () => { setMsg(tr("common.saved")); setTimeout(() => setMsg(""), 2000); qc.invalidateQueries({ queryKey: ["admin-status"] }); },
   });
 
   return (
@@ -150,7 +150,7 @@ function WorkflowLayout() {
   const save = useMutation({
     mutationFn: () => workflowApi.setLayout(value),
     onSuccess: () => {
-      setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setGap(null);
+      setMsg(tr("common.saved")); setTimeout(() => setMsg(""), 2000); setGap(null);
       qc.invalidateQueries({ queryKey: ["workflow-layout"] });
     },
   });
@@ -191,7 +191,7 @@ function TestenvConfig() {
         .filter((k) => k in form).map((k) => [k, Number(form[k])])),
     }),
     onSuccess: () => {
-      setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setForm({});
+      setMsg(tr("common.saved")); setTimeout(() => setMsg(""), 2000); setForm({});
       qc.invalidateQueries({ queryKey: ["testenv-config"] });
     },
   });
@@ -223,7 +223,7 @@ function TestenvConfig() {
         {msg && <span className="text-sm text-green-400">{msg}</span>}
         {save.error && (
           <span className="text-sm text-red-400">
-            {save.error instanceof ApiError ? save.error.message : "Fehler"}</span>
+            {save.error instanceof ApiError ? save.error.message : tr("common.error")}</span>
         )}
       </div>
     </div>
@@ -242,7 +242,7 @@ function RunRetention() {
   const save = useMutation({
     mutationFn: () => api.put("/admin/run-retention", { days: value }),
     onSuccess: () => {
-      setMsg("Gespeichert."); setTimeout(() => setMsg(""), 2000); setDays(null);
+      setMsg(tr("common.saved")); setTimeout(() => setMsg(""), 2000); setDays(null);
       qc.invalidateQueries({ queryKey: ["run-retention"] });
     },
   });

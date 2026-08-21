@@ -45,7 +45,7 @@ export default function Hardware({ project }: { project: Project }) {
   const [deletePlace, setDeletePlace] = useState<any | null>(null);
   const [view, setView] = useState<"klassisch" | "workflow">("klassisch");
   const [err, setErr] = useState("");
-  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const invAssets = () => qc.invalidateQueries({ queryKey: ["hw-assets", project.id] });
   const addModel = useMutation({

@@ -47,7 +47,7 @@ const ACTION_LABEL: Record<string, string> = {
 const OUTCOMES: Record<string, SourceHandleDef[]> = {
   accept_merge: [
     { id: "merged", label: "gemerged", color: "!bg-green-500" },
-    { id: "pr_open", label: "PR offen", color: "!bg-sky-500" },
+    { id: "pr_open", label: tr("auto_action_node.pr_open"), color: "!bg-sky-500" },
     { id: "conflict", label: "Konflikt", color: "!bg-red-500" },
     { id: "out", label: "sonst" },
   ],
@@ -61,7 +61,7 @@ export default function AutoActionNode({ id, data, selected }: FlowNodeProps) {
   // to wire it had no point to hang the edge on.
   const sources = useSourceHandles(id, [
     ...basis,
-    { id: "error", label: "Fehler", color: "!bg-red-500" },
+    { id: "error", label: tr("common.error"), color: "!bg-red-500" },
   ]);
   return (
     <BaseNode
