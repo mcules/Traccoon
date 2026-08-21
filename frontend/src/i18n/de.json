@@ -1910,7 +1910,6 @@
   "skills_panel.reusable_prompt_building_blocks_versioned_age": "Wiederverwendbare Prompt-Bausteine (versioniert). Agenten laden sie\n        über „allowed_skills\". autostart = dauerhaft aktiver Modus.",
   "slot.acceptance": "Abnahme & Auslieferung",
   "slot.hardware_procurement": "Hardware-Beschaffung",
-  "slot.mail_intake": "Mail-Eingang",
   "slot.ticket_intake": "Ticket-Eingang",
   "slot.ticket_lifecycle": "KI-Ticket-Lebenszyklus",
   "slot_list.view": "Ansehen",

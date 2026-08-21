@@ -11,8 +11,7 @@ export type WorkflowNodeType =
 
 /** Firmly named flows Traccoon triggers itself (backend: WorkflowSlot). */
 export type WorkflowSlot =
-  | "ticket_lifecycle" | "acceptance" | "hardware_procurement" | "ticket_intake"
-  | "mail_intake";
+  | "ticket_lifecycle" | "acceptance" | "hardware_procurement" | "ticket_intake";
 export type WorkflowStepStatus =
   | "pending" | "running" | "waiting" | "done" | "failed" | "skipped";
 
@@ -57,7 +56,8 @@ export type AutoActionName =
   | "assign_agent" | "set_cap_baseline"
   | "start_testenv" | "stop_testenv" | "accept_merge" | "deploy" | "split_tickets"
   | "stop_agent"
-  // Mail-Eingang (Slot mail_intake)
+  // The mail inbox. No slot of its own any more: it is nobody's default but one person's
+  // flow, and comes out of the template `mail-intake`.
   | "mail_classify" | "spam_evaluate" | "spam_card" | "spam_apply"
   | "mail_assistant_task" | "mail_assistant_card" | "mail_assistant_run"
   // The assistant in general (without a mail, without a ticket) and the answer of a flow
@@ -275,7 +275,6 @@ export const SLOT_LABELS: Record<WorkflowSlot, string> = {
   acceptance: "slot.acceptance",
   hardware_procurement: "slot.hardware_procurement",
   ticket_intake: "slot.ticket_intake",
-  mail_intake: "slot.mail_intake",
 };
 
 /** Process set (shipped globally or personal). */
