@@ -22,8 +22,8 @@ from conftest import make_webhook, report, make_user
 async def owner(db):
     user = await make_user(db, "dennis")
     user.telegram_chat_id = "4242"
-    # Der Mail-Eingang ist KEIN ausgelieferter Ablauf mehr, sondern einer aus der Vorlage —
-    # er gehört der Person, die ihn angelegt hat. Also legt ihn der Test auch so an.
+    # The mail intake is NOT a shipped flow any more but one out of the template — it belongs
+    # to the person who created it. So the test creates it that way too.
     await workflow_templates.create(db, "mail-eingang", owner_id=user.id)
     await db.commit()
     # So that the question comes as a card of its own immediately in the test instead of
@@ -72,10 +72,10 @@ def _suspicious(uid: int = 5001) -> dict:
 
 
 async def _report(db, owner, payload, *, classify_agent: str = "") -> WorkflowInstance:
-    """Den Weg gehen, den der Betrieb geht: Webhook rein, Ereignis raus, Ablauf läuft.
+    """Take the path production takes: a webhook in, an event out, the flow runs.
 
-    Der Mail-Eingang hängt an keinem Sonderweg mehr — er ist ein Auslöser wie jeder andere,
-    und was die Schritte über ihn wissen müssen, baut der Webhook in den Kontext.
+    The mail intake hangs on no special path any more — it is a trigger like any other, and
+    what the steps need to know about it the webhook builds into the context.
     """
     sub = await make_webhook(db, owner, "mail-test", mode="assistant", agent="assistent",
                              classify_agent=classify_agent)
@@ -248,10 +248,10 @@ async def test_the_server_verdict_stays_quiet_while_auto_is_off(db, owner, imap_
     assert imap_stub == []
 
 
-# ── Melden ist ein Schritt, kein Nebeneffekt ─────────────────────────────────
+# ── Reporting is a step, not a side effect ──────────────────────────────────
 
 async def _report_node_disable(db, node_id: str) -> None:
-    """Den Melde-Schritt abschalten — dasselbe, was das Häkchen im Editor tut."""
+    """Switch the report step off — the same thing the checkbox in the editor does."""
     import copy
 
     from app.models.enums import WorkflowVersionStatus
@@ -273,11 +273,11 @@ async def _report_node_disable(db, node_id: str) -> None:
 
 
 async def test_reporting_can_be_switched_off_without_the_filing(db, owner, imap_stub):
-    """Der eigentliche Zweck der Trennung: kein Ton, aber die Mail geht trotzdem weg.
+    """The actual point of the separation: no sound, but the mail goes away all the same.
 
-    Vorher hing die Karte in derselben Aktion wie das Urteil. Wer die Nachricht loswerden
-    wollte, hätte den Schritt abschalten müssen — und damit das Urteil, an dem Verschieben
-    und Lernen hängen. Jetzt trifft der Schalter nur die Nachricht.
+    Before, the card hung in the same action as the verdict. Whoever wanted to get rid of the
+    message would have had to switch the step off — and with it the verdict that moving and
+    learning hang on. Now the switch hits the message only.
     """
     await set_setting(db, spam_review.AUTO_FROM_KEY, "0.5")
     await _report_node_disable(db, "melde_auto")
@@ -292,7 +292,7 @@ async def test_reporting_can_be_switched_off_without_the_filing(db, owner, imap_
 
 
 async def test_the_notify_node_attaches_the_card_to_the_verdict(db, owner, imap_stub):
-    """Die Karte muss handhabbar bleiben: der Knopf „zurückholen" braucht den Bezug."""
+    """The card has to stay actionable: the button "recall" needs the reference."""
     await set_setting(db, spam_review.AUTO_FROM_KEY, "0.5")
     inst = await _report(db, owner, _suspicious(uid=8101))
 
@@ -304,11 +304,11 @@ async def test_the_notify_node_attaches_the_card_to_the_verdict(db, owner, imap_
 
 
 async def test_the_setting_switches_off_the_notice_not_the_filing(db, owner, imap_stub):
-    """Der Schalter für den Alltag: ohne Kopie des Ablaufs, nur über die Einstellung.
+    """The switch for everyday use: without a copy of the flow, only through the setting.
 
-    Ein eigener Prozess-Satz wäre hier der falsche Weg — er ist eine Vollkopie und liefe
-    neben dem ausgelieferten Ablauf, also zweimal pro Mail. Deswegen liest die Weiche vor dem
-    Melde-Schritt den Wert aus dem Urteil.
+    A process set of its own would be the wrong way here — it is a full copy and would run
+    next to the shipped flow, so twice per mail. That is why the decision in front of the
+    report step reads the value out of the verdict.
     """
     await set_setting(db, spam_review.AUTO_FROM_KEY, "0.5")
     await set_setting(db, spam_review.AUTO_REPORT_KEY, "0")
@@ -323,8 +323,8 @@ async def test_the_setting_switches_off_the_notice_not_the_filing(db, owner, ima
 
 
 async def test_the_question_remains_despite_auto_reporting_being_off(db, owner, imap_stub):
-    """Wer gefragt werden will, wird gefragt: der Schalter gilt nur für das, was OHNE
-    Rückfrage weggeräumt wird."""
+    """Whoever wants to be asked is asked: the switch applies only to what is cleared away
+    WITHOUT a question."""
     await set_setting(db, spam_review.AUTO_REPORT_KEY, "0")
 
     inst = await _report(db, owner, _suspicious(uid=8201))

@@ -64,8 +64,8 @@ async def test_path_and_text_come_from_the_context(db, mcp_stub):
 
     assert r["ok"] is True
     name, arguments = mcp_stub[0]
-    # Mit Server-Präfix: ohne es findet die Sitzung kein Werkzeug und antwortet mit einem
-    # HINWEIS ALS TEXT, den `aufrufen` als Erfolg zurückgibt. Die Notiz bliebe leer.
+    # With a server prefix: without it the session finds no tool and answers with a HINT AS
+    # TEXT, which `call` returns as a success. The note would stay empty.
     assert name == "obsidian__obsidian_append_to_note"
     assert arguments["target"] == {"type": "path", "path": "04 Wissen/Erkennung/phishing.md"}
     assert arguments["content"] == "- gibt sich als N26 aus"
@@ -74,7 +74,7 @@ async def test_path_and_text_come_from_the_context(db, mcp_stub):
 
 
 async def test_the_tool_can_be_overridden(db, mcp_stub):
-    """Ein Vault an einem anderen Server soll erreichbar bleiben, ohne neue Aktion."""
+    """A vault on another server should stay reachable without a new action."""
     anna = await make_user(db, "anna")
     inst = await _instance(db, anna, {})
     await run_action(db, inst, _node(path="a.md", text="x", tool="zweitvault__append"))
@@ -87,7 +87,7 @@ async def test_the_section_is_passed_through(db, mcp_stub):
     await run_action(db, inst, _node(path="a.md", text="x", heading="Fälle"))
     arguments = mcp_stub[0][1]
     assert arguments["section"] == {"type": "heading", "target": "Fälle"}
-    # Ohne das schlägt der Aufruf an einer Notiz fehl, die den Abschnitt noch nicht hat.
+    # Without this the call fails on a note that does not have the section yet.
     assert arguments["createTargetIfMissing"] is True
 
 
@@ -103,22 +103,22 @@ async def test_nothing_is_written_without_text(db, mcp_stub):
     assert inst.context["note"]["ok"] is False
 
 
-# ── Was passiert, wenn es das Werkzeug gar nicht gibt ────────────────────────
+# ── What happens when the tool does not exist at all ────────────────────────
 
 async def test_a_missing_tool_is_an_error_not_text():
-    """Der Fall vom 19.08.2026: Ohne Server-Präfix fand die Sitzung nichts, antwortete mit
-    einem Hinweis ALS TEXT, und der Aufrufer verbuchte das als Erfolg. Die Notiz blieb leer,
-    der Ablauf meldete grün."""
+    """The case of 2026-08-19: without a server prefix the session found nothing, answered with
+    a hint AS TEXT, and the caller booked that as a success. The note stayed empty, the flow
+    reported green."""
     from app.worker.mcp_client import McpNotAvailable, MultiMcpSession
 
-    session = MultiMcpSession()          # kein Gateway, keine Server
+    session = MultiMcpSession()          # no gateway, no servers
     with pytest.raises(McpNotAvailable):
         await session.call("obsidian_append_to_note", {"content": "x"})
 
 
 async def test_the_call_reports_it_as_not_ok(db):
-    """`workflow_tools.aufrufen` fängt jede Ausnahme ab; entscheidend ist, dass daraus ein
-    `ok: False` wird und nicht ein Erfolg mit Prosa im Text."""
+    """`workflow_tools.call` catches every exception; what matters is that an `ok: False`
+    comes of it and not a success with prose in the text."""
     from app.services.workflow_tools import call
 
     anna = await make_user(db, "anna")

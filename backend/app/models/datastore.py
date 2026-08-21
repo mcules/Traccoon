@@ -1,15 +1,15 @@
 """Speicher: benannte Orte, an denen Datenreihen liegen.
 
-Was ein **Ziel** (`models/destination.Destination`) fuer ausgehende Aufrufe ist, ist ein
-**Speicher** fuer Daten: Der Name steht in der Reihe, die Zugangsdaten stehen an genau einer
-Stelle, verschluesselt, und tauchen weder in Ablaeufen noch in Protokollen auf.
+What a **destination** (`models/destination.Destination`) is for outgoing calls, a **storage**
+is for data: the name stands on the series, the credentials stand in exactly one place,
+encrypted, and turn up neither in flows nor in logs.
 
-Der Sinn ist die Wahl: Ein paar tausend Messwerte gehoeren in diese Datenbank — zusammen mit
-den Freigaben, an denen sie haengen. Millionen Punkte im Sekundentakt gehoeren in etwas, das
-dafuer gebaut ist. Womit ein Mensch rechnet, sagt er beim Anlegen der Reihe; welcher Speicher
+The point is the choice: a few thousand measurements belong in this database — together with
+the grants they hang on. Millions of points at a one-second beat belong in something built for
+that. What a person reckons with they say when creating the series; which storage
 dazu passt, schlaegt `services/stores/wahl.py` vor.
 
-Der Geltungsbereich ist der der Ziele: `project_id` gesetzt heisst nur dieses Projekt,
+The scope is that of the destinations: `project_id` set means this project only,
 `user_id` gesetzt heisst alle Projekte dieses Menschen, beides NULL heisst systemweit.
 """
 from __future__ import annotations
@@ -24,8 +24,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 from .base import TimestampMixin
 
-# Der eingebaute Speicher — diese Datenbank. Er wird beim Start angelegt, falls er fehlt, und
-# laesst sich nicht loeschen: Ohne ihn haette eine frische Anlage nirgends hin.
+# The built-in storage — this database. It is created at startup if it is missing and cannot be
+# deleted: without it a fresh installation would have nowhere to put anything.
 INTERN = "intern"
 
 
@@ -33,7 +33,7 @@ class DataStore(TimestampMixin, Base):
     __tablename__ = "data_stores"
     __table_args__ = (
         # Ein Name je Geltungsbereich. NULL-Spalten gelten in Postgres als verschieden,
-        # deshalb Teilindizes statt einer UniqueConstraint — wie bei den Zielen.
+        # hence partial indexes instead of a UniqueConstraint — as with the destinations.
         Index("uq_datastore_global", "name", unique=True,
               postgresql_where=sa_text("user_id IS NULL AND project_id IS NULL"),
               sqlite_where=sa_text("user_id IS NULL AND project_id IS NULL")),
@@ -60,13 +60,13 @@ class DataStore(TimestampMixin, Base):
     url: Mapped[str] = mapped_column(String(1000), default="")
     # Fernet: Passwort einer fremden Datenbank bzw. Token einer Influx.
     secret_enc: Mapped[str] = mapped_column(Text, default="")
-    # Was der Anschluss sonst braucht: {"org": …, "bucket": …, "schema": …}
+    # What the connection otherwise needs: {"org": …, "bucket": …, "schema": …}
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
     # Welche Datenarten er traegt. Eine reine Messwert-Datenbank traegt keinen Fliesstext.
     kinds: Mapped[list] = mapped_column(JSON, default=list)
 
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
-    # Ergebnis des letzten Verbindungstests — damit die Liste zeigen kann, was laeuft, ohne
+    # Result of the last connection test — so the list can show what runs without
     # bei jedem Blick alle Anschluesse anzufassen.
     last_check_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)

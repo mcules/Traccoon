@@ -1,12 +1,12 @@
-"""Der Zeitplan eines Jobs — und die Verwechslung, die ihn still stillegt.
+"""The schedule of a job — and the mix-up that silences it quietly.
 
-`type` ist der Zeitplan (cron/interval/once), `kind` die Art der Arbeit (workflow, film …).
-Steht in `type` versehentlich eine Art, ist der Job nie fällig: Die Oberfläche zeigt
-weiterhin "eingeschaltet, alle 15 Minuten", und es passiert nichts. Genau so lag der Job
-"Hermes-Posteingang" 13 Tage still, ohne dass es jemandem auffiel.
+`type` is the schedule (cron/interval/once), `kind` the sort of work (workflow, film …). If a
+sort accidentally stands in `type`, the job is never due: the UI still shows "enabled, every 15
+minutes", and nothing happens. Exactly that way the job "Hermes-Posteingang" lay still for 13
+days without anyone noticing.
 
-Zwei Sicherungen dagegen — eine, die es nicht mehr entstehen lässt, und eine, die vorhandene
-Fälle sichtbar macht.
+Two safeguards against it — one that stops it coming into being, and one that makes existing
+cases visible.
 """
 import datetime as dt
 
@@ -26,7 +26,7 @@ def _job(**fields) -> Job:
 NOW = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
 
 
-# ── Fällig oder nicht ────────────────────────────────────────────────────────
+# ── Due or not ──────────────────────────────────────────────────────────────
 
 def test_an_interval_runs_after_the_waiting_time():
     job = _job(type="interval", schedule="900",
@@ -37,7 +37,7 @@ def test_an_interval_runs_after_the_waiting_time():
 
 
 def test_an_interval_with_a_prefix_is_understood():
-    """`interval:900` steht in älteren Jobs und meint dasselbe wie `900`."""
+    """`interval:900` stands in older jobs and means the same as `900`."""
     assert _seconds("interval:900") == 900
     assert _seconds("900") == 900
     assert _seconds(" interval:900 ") == 900
@@ -52,12 +52,12 @@ def test_a_new_job_without_a_run_is_due_at_once():
 
 
 def test_a_wrong_schedule_makes_the_job_silent(caplog):
-    """Der Fall, um den es geht: In `type` steht eine Art statt eines Zeitplans."""
+    """The case this is about: a sort stands in `type` instead of a schedule."""
     job = _job(type="prompt", schedule="interval:900",
                last_run_at=NOW - dt.timedelta(days=13))
     with caplog.at_level("WARNING"):
         assert _due(job, NOW) is False
-    # Still bleibt er — aber nicht mehr unbemerkt.
+    # Silent it stays — but no longer unnoticed.
     assert "prompt" in caplog.text and "nie" in caplog.text
 
 
@@ -68,7 +68,7 @@ def test_cron_stays_untouched():
     assert _due(_job(type="cron", schedule="kein cron"), NOW) is False
 
 
-# ── Es soll gar nicht erst entstehen ─────────────────────────────────────────
+# ── It should not come into being in the first place ────────────────────────
 
 async def test_a_job_with_a_kind_instead_of_a_schedule_is_rejected(client, db):
     user = await make_user(db, "chef")

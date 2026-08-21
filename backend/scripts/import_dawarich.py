@@ -1,19 +1,19 @@
-"""Den Standortbestand aus dawarich uebernehmen.
+"""Adopt the location stock out of dawarich.
 
-dawarich war die Zwischenstation, solange Traccoon selbst keine Standorte kannte. Was dort
-liegt, sind zwei sehr verschiedene Dinge: die Spur des Handys der letzten Tage und ein von
-Hand hochgeladener Google-Verlauf, der bis 2012 zurueckreicht. Beides soll erhalten bleiben,
-in getrennten Reihen — der Google-Bestand ist ein Archiv, kein Geraet, das noch meldet.
+dawarich was the way station as long as Traccoon knew no locations itself. What lies there are
+two very different things: the trace of the phone of the last few days and a Google history
+uploaded by hand that reaches back to 2012. Both are to be kept, in separate series — the
+Google stock is an archive, not a device that still reports.
 
-Der Ruhefilter bleibt hier bewusst aus: Was schon einmal gespeichert wurde, ist die
-Entscheidung von damals. Ihn nachtraeglich anzuwenden hiesse, fremde Daten auszuduennen, und
-dabei faellt in einem Google-Verlauf mit stundenlangen Luecken das Falsche weg.
+The rest filter deliberately stays off here: what has already been stored is the decision of
+back then. Applying it retroactively would mean thinning out foreign data, and in a Google
+history with gaps of hours the wrong thing gets dropped.
 
 Aufruf (im Backend-Container):
 
     python scripts/import_dawarich.py <csv> <besitzer-id> [--trocken]
 
-Die CSV kommt aus dawarich:
+The CSV comes out of dawarich:
 
     \\copy (select coalesce(tracker_id,'google-verlauf'), timestamp,
                   st_y(lonlat::geometry), st_x(lonlat::geometry),
@@ -34,7 +34,7 @@ from sqlalchemy import select                                   # noqa: E402
 from app.db import SessionLocal                                 # noqa: E402
 from app.models.series import Series, SeriesPoint               # noqa: E402
 
-# Welcher `tracker_id` in welche Reihe wandert, und wie sie heisst.
+# Which `tracker_id` goes into which series, and what it is called.
 SERIES = {
     "s26-ultra": ("tracker.s26-ultra", "S26 Ultra", "#3b82f6"),
     "google-verlauf": ("tracker.google-verlauf", "Google-Verlauf (Archiv)", "#6b7280"),
@@ -43,10 +43,10 @@ STAPEL = 500
 
 
 def _ident(ts, lat, lon) -> tuple:
-    """Woran ein Punkt wiedererkannt wird: Sekunde und Ort.
+    """How a point is recognised again: the second and the place.
 
-    Auf sechs Nachkommastellen gerundet — das sind gut 10 cm, feiner als jedes GPS, und
-    gleichzeitig unempfindlich gegen die letzte Stelle, die beim Weg durch zwei Datenbanken
+    Rounded to six decimals — that is a good 10 cm, finer than any GPS, and at the same time
+    insensitive to the last digit, which on the way through two databases
     schon einmal kippt.
     """
     exactly = ts.replace(tzinfo=None) if ts else None
@@ -83,9 +83,9 @@ async def run_import(csv_path: str, owner: int, dry: bool) -> None:
 
     async with SessionLocal() as db:
         series: dict[str, Series] = {}
-        # Was schon drin liegt, damit ein zweiter Lauf nichts verdoppelt. Als Kennung dient
-        # Zeitstempel **und** Position: Der Zeitstempel allein waere naheliegend, verschluckt
-        # aber echte Punkte — im Google-Bestand stehen vier Paare, die dieselbe Sekunde
+        # What already lies in there, so a second run duplicates nothing. As the identifier
+        # serve the timestamp **and** the position: the timestamp alone would be the obvious
+        # choice but swallows real points — in the Google stock there are four pairs that share
         # tragen und trotzdem an verschiedenen Orten liegen.
         known: dict[str, set] = {}
         counted = {"neu": 0, "doppelt": 0, "kaputt": 0}
@@ -137,7 +137,7 @@ async def run_import(csv_path: str, owner: int, dry: bool) -> None:
             print(f"TROCKEN: {counted}")
             return
 
-        # Zaehler und letzten Stand nachziehen — sonst zeigt die Uebersicht null Punkte.
+        # Update the counter and the latest state — otherwise the overview shows zero points.
         for key, series in series.items():
             points = (await db.execute(select(SeriesPoint).where(
                 SeriesPoint.series_id == series.id)

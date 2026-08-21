@@ -1,11 +1,11 @@
-"""Der Auftrag, den der Agent eines Jobs sieht.
+"""The assignment the agent of a job sees.
 
-Die Platzhalter-Mechanik steht anderswo (test_job_params); hier geht es um die Stelle, an der
-sie greift, und um das Zeitfenster aus den vorigen Läufen.
+The placeholder mechanism is checked elsewhere (test_job_params); here it is about the place
+where it takes effect, and about the time window out of the previous runs.
 
-Seit die Job-Arten Abläufe sind, führt der Weg über den Knoten `agent_lauf`: Der Prompt wird
-sein Auftrag, der Parametersatz sein Startkontext. Geprüft wird deshalb, was in der
-Warteschlange landet — dort steht der fertige Text, den der Agent zu sehen bekommt.
+Ever since the job kinds became flows, the way leads through the node `agent_run`: the prompt
+becomes its assignment, the parameter set its start context. What is checked is therefore what
+lands in the queue — there stands the finished text the agent gets to see.
 """
 import datetime as dt
 
@@ -29,7 +29,7 @@ async def anna(db):
 
 
 async def _run(db, monkeypatch, job: Job) -> str:
-    """Den Job einmal auslösen; liefert den Auftrag, den der Agent bekommen hat."""
+    """Fire the job once; returns the assignment the agent was given."""
     tasks: list[dict] = []
 
     async def enqueue_task(payload):
@@ -54,13 +54,13 @@ async def test_the_prompt_is_filled_with_parameters(db, anna, monkeypatch, redis
             args={"thema": "Funk", "quellen": ["ARRL", "DARC"], "sprache": "Deutsch"})
     db.add(j)
     await db.commit()
-    # Die Liste wird zur Aufzählung, nicht zu ihrer Schreibweise — dafür sorgt die
-    # Umstellung, indem sie den Platzhalter um den Filter ergänzt.
+    # The list becomes an enumeration, not its spelling — the conversion sees to that by
+    # extending the placeholder with the filter.
     assert await _run(db, monkeypatch, j) == "Berichte über Funk aus ARRL, DARC auf Deutsch."
 
 
 async def test_script_arguments_do_not_open_a_parameter_set(db, anna, redis_stub):
-    """Eine `args`-Liste war ein Skript-Argument und darf im Auftrag nichts ersetzen."""
+    """An `args` list was a script argument and must replace nothing in the assignment."""
     from app.models.workflow import WorkflowDefinition, WorkflowVersion
 
     j = Job(user_id=anna.id, name="Alt", kind="prompt", agent="news",
@@ -77,8 +77,8 @@ async def test_script_arguments_do_not_open_a_parameter_set(db, anna, redis_stub
 
 
 async def test_the_time_window_skips_broken_runs(db, anna, monkeypatch, redis_stub):
-    """War der Job gestern kaputt, muss das Fenster bis zum letzten ERFOLG zurückreichen;
-    sonst fällt der Tag des Ausfalls lautlos aus dem Rückblick."""
+    """If the job was broken yesterday, the window has to reach back to the last SUCCESS;
+    otherwise the day of the outage falls silently out of the review."""
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news",
             prompt="{{since}}", args={})
     db.add(j)
@@ -90,7 +90,7 @@ async def test_the_time_window_skips_broken_runs(db, anna, monkeypatch, redis_st
 
 
 async def test_the_run_stays_open_until_the_result_is_there(db, anna, monkeypatch, redis_stub):
-    """Der Job stößt an, der Agent arbeitet — das Ergebnis trägt die Engine nach."""
+    """The job kicks off, the agent works — the result the engine fills in."""
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news", prompt="x", args={})
     db.add(j)
     await db.commit()

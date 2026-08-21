@@ -1,13 +1,13 @@
-"""Was ein Plugin sehen darf — und wie es dazu kommt.
+"""What a plugin may see — and how it comes to that.
 
-Ein Plugin ist fremder Code, der im Browser einer angemeldeten Person laeuft. Es kann sich
-seine Rechte deshalb nicht selbst geben: Sein Manifest *fordert*, ein Admin *erlaubt*. Diese
-Trennung ist die ganze Sicherheit des Systems, und sie hat drei Stellen, an denen sie
-brechen koennte — das Einspielen, das Nachreichen einer neuen Fassung und das Setzen der
+A plugin is foreign code that runs in the browser of a logged-in person. It therefore cannot
+give itself its rights: its manifest *demands*, an admin *allows*. This separation is the whole
+security of the system, and it has three places where it could break — the install, the
+submission of a new version and the setting of the
 Haken.
 
-Der Zaun um die ausgelieferte Seite gehoert dazu: Ohne `connect-src 'none'` haette ein
-Plugin einen zweiten Weg ins Netz und die Bruecke waere Zierrat.
+The fence around the delivered page belongs to it: without `connect-src 'none'` a plugin would
+have a second way into the network and the bridge would be decoration.
 """
 import io
 import json
@@ -42,7 +42,7 @@ async def _feed(client, admin, manifest=None, files=None):
 # ── Einspielen und Fordern ───────────────────────────────────────────────────
 
 async def test_a_new_plugin_gets_nothing_for_free(client, db):
-    """Was das Manifest fordert, ist noch lange nicht erlaubt."""
+    """What the manifest demands is far from allowed."""
     admin = await make_user(db, "chef", admin=True)
     r = await _feed(client, admin)
     assert r.status_code == 201, r.text
@@ -75,7 +75,7 @@ async def test_a_grant_applies_and_can_be_withdrawn(client, db):
 
 
 async def test_an_unrequested_right_cannot_be_granted(client, db):
-    """Sonst waere die Liste im Manifest nur Deko: Wer den Haken setzt, soll vorher gelesen
+    """Otherwise the list in the manifest would be mere decoration: whoever ticks the box should have read
     haben, wonach gefragt wurde."""
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin)
@@ -87,7 +87,7 @@ async def test_an_unrequested_right_cannot_be_granted(client, db):
 
 
 async def test_a_new_version_may_not_grant_itself_more(client, db):
-    """Der gefaehrlichste Weg: ein harmloses Plugin einspielen, freigeben lassen und in der
+    """The most dangerous path: install a harmless plugin, get it released and in the
     naechsten Fassung stillschweigend mehr fordern."""
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin)
@@ -100,7 +100,7 @@ async def test_a_new_version_may_not_grant_itself_more(client, db):
 
     (p,) = (await client.get("/plugins/alle", headers=auth(admin))).json()
     assert p["reads"] == ["series:number", "series:location", "series:text"]
-    # Das Alte gilt weiter, das Neue faengt bei null an.
+    # The old one keeps applying, the new one starts at zero.
     assert p["reads_granted"] == ["series:number"]
 
 
@@ -125,7 +125,7 @@ async def test_a_disabled_plugin_is_neither_visible_nor_fetchable(client, db):
     await client.put("/plugins/probe/rechte", headers=auth(admin), json={"enabled": False})
 
     assert (await client.get("/plugins", headers=auth(admin))).json() == []
-    # Auch die Dateien: Ein abgeschaltetes Plugin soll nicht ueber die Adresse weiterleben.
+    # The files too: a disabled plugin must not live on through its address.
     assert (await client.get("/plugins/probe/app/")).status_code == 404
 
 
@@ -144,7 +144,7 @@ async def test_only_released_people_see_it(client, db):
         == ["probe"]
 
 
-# ── Der Zaun um die Seite ────────────────────────────────────────────────────
+# ── The fence around the page ───────────────────────────────────────────────
 
 async def test_the_served_page_carries_its_fence(client, db):
     admin = await make_user(db, "chef", admin=True)
@@ -153,7 +153,7 @@ async def test_the_served_page_carries_its_fence(client, db):
     r = await client.get("/plugins/probe/app/")
     assert r.status_code == 200
     csp = r.headers["content-security-policy"]
-    # Der Kern: kein eigener Weg ins Netz, nichts ausser dem Erlaubten.
+    # The core: no way into the network of its own, nothing beyond what is allowed.
     assert "connect-src 'none'" in csp
     assert "default-src 'none'" in csp
     assert r.headers["x-content-type-options"] == "nosniff"
@@ -168,12 +168,12 @@ async def test_the_manifest_opens_only_the_declared_direction(client, db):
 
     csp = (await client.get("/plugins/probe/app/")).headers["content-security-policy"]
     assert "https://tile.openstreetmap.org" in csp
-    # script-src steht nicht in den erlaubten Richtungen und wird stillschweigend verworfen.
+    # script-src is not among the allowed directions and is silently discarded.
     assert "boeser.example" not in csp
 
 
 async def test_the_file_types_are_right(client, db):
-    """Mit `nosniff` wendet der Browser ein Stylesheet nur an, wenn der Typ stimmt."""
+    """With `nosniff` the browser applies a stylesheet only when the type is right."""
     admin = await make_user(db, "chef", admin=True)
     await _feed(client, admin, files={
         "index.html": "<h1>hi</h1>", "stil.css": "body{}", "app.js": "1",

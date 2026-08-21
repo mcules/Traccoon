@@ -1,13 +1,13 @@
 /**
- * Uhrzeiten in der Zeitzone der angemeldeten Person — nicht in der des Browsers.
+ * Times in the timezone of the logged-in person — not in that of the browser.
  *
- * Der Unterschied fällt genau dann auf, wenn er zählt: unterwegs, auf einem Rechner mit
- * falsch gestellter Zone, oder wenn jemand seine Jobs nach deutscher Zeit plant und die
- * Oberfläche daneben etwas anderes behauptet. Serverseitig entscheidet dieselbe Angabe, was
- * „8 Uhr" in einem Zeitplan und im Nachtfenster heißt (`users.timezone`).
+ * The difference stands out exactly when it counts: on the road, on a machine with a wrongly
+ * set zone, or when somebody plans their jobs by German time and the UI claims something else
+ * next to it. On the server the same entry decides what "8 o'clock" means in a schedule and in
+ * the night window (`users.timezone`).
  *
- * `setzeZeitzone` wird einmal beim Anmelden gesetzt; ohne sie bleibt es bei der Zone des
- * Browsers, was für den ersten Seitenaufbau genau richtig ist.
+ * `setTimezone` is set once on login; without it the zone of the browser applies, which is
+ * exactly right for the first page build.
  */
 let zone: string | undefined;
 
@@ -23,7 +23,7 @@ function withZone(opt: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions {
   return zone ? { ...opt, timeZone: zone } : opt;
 }
 
-/** Ein Format für Zeitstempel in Kommentaren und Chat (Tag.Monat Stunde:Minute). */
+/** A format for timestamps in comments and chat (day.month hour:minute). */
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -33,7 +33,7 @@ export function formatTime(iso: string | null | undefined): string {
   }));
 }
 
-/** Datum und Uhrzeit ausgeschrieben (Listen, Verläufe, „zuletzt gelaufen"). */
+/** Date and time spelled out (lists, histories, "last run"). */
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -44,7 +44,7 @@ export function formatDateTime(iso: string | null | undefined): string {
   }));
 }
 
-/** Nur der Tag (Versionslisten, Stichtage). */
+/** The day only (version lists, deadlines). */
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);

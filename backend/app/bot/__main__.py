@@ -620,11 +620,11 @@ async def run_bot() -> None:
             await asyncio.sleep(3)
 
     async def _agent_roles(db, user_id: int | None) -> list[str]:
-        """Die Agenten, die dieser Mensch ansprechen kann.
+        """The agents this person can address.
 
-        Aus der Datenbank statt aus einer Liste im Code: Wer einen Agenten anlegt, soll ihn
-        auch im Chat erreichen, ohne dass jemand den Bot anfasst. Der persoenliche Assistent
-        faellt raus — der ist der Normalfall und braucht kein Praefix davor.
+        Out of the database instead of a list in the code: whoever creates an agent should be
+        able to reach it in the chat as well, without anyone touching the bot. The personal
+        assistant drops out — it is the normal case and needs no prefix in front of it.
         """
         from ..models.agents import AgentDefinition
         if user_id is None:
@@ -674,15 +674,15 @@ async def run_bot() -> None:
 
     @dp.message(Command("agent"))
     async def _agent_chat(m: Message):
-        """Mit einem benannten Agenten reden statt mit dem persoenlichen Assistenten.
+        """Talk to a named agent instead of to the personal assistant.
 
-        Das war einmal ein Handler je Agent — `/uniwar` fuer genau einen Operator, fest in
-        den Bot gebaut. Ein zweiter Agent haette einen zweiten Handler und ein Deployment
-        gebraucht. Jetzt ist der Name ein Argument, und welche Namen es gibt, kommt aus den
-        Agenten, die dieser Mensch tatsaechlich hat.
+        This used to be one handler per agent — `/uniwar` for exactly one operator, built into
+        the bot. A second agent would have needed a second handler and a deployment. Now the
+        name is an argument, and which names exist comes out of the agents this person
+        actually has.
 
-        Der Weg ist derselbe wie bei `_assistant_chat`, nur mit gesetztem meta.agent:
-        `_handle_assistant_task` loest den Agenten daraus auf (sonst faellt es auf
+        The way is the same as with `_assistant_chat`, only with meta.agent set:
+        `_handle_assistant_task` resolves the agent from it (otherwise it falls back to
         'assistent' zurueck).
         """
         if not await _allowed(m.from_user.id):
