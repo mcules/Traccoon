@@ -60,10 +60,9 @@ function MailConfig() {
   return (
     <div className="max-w-xl"><Area>
       <p className="text-xs text-muted">
-        SMTP-Server für ausgehende Mails (z. B. Projekt-Einladungen). Ohne Host wird nicht
-        versendet — nur geloggt.
+        {tr("admin.smtp_hint")}
       </p>
-      <label className="block text-xs text-muted">Host
+      <label className="block text-xs text-muted">{tr("admin.host")}
         <input value={val("smtp_host")} onChange={(e) => setForm({ ...form, smtp_host: e.target.value })}
           className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1.5 text-ink" />
       </label>
@@ -111,8 +110,7 @@ function Maintenance() {
       <div>
         <div className="text-sm font-medium">{tr("admin.maintenance_project")}</div>
         <p className="mt-1 text-xs text-muted">
-          Nur das hier gewählte Projekt darf sich selbst deployen — und ausschließlich über den
-          Update-Button (🤖-Icon oben). Agenten und Auto-Deploy lösen <b>niemals</b> einen Self-Deploy aus.
+          <span dangerouslySetInnerHTML={{ __html: tr("admin.maintenance_hint") }} />
         </p>
       </div>
       <div>
@@ -158,8 +156,7 @@ function WorkflowLayout() {
     <div className="border-t border-line pt-3">
       <div className="text-sm font-medium">{tr("admin.flow_editor_node_spacing")}</div>
       <p className="mt-1 text-xs text-muted">
-        Gilt für „Anordnen" — derselbe Abstand waagerecht wie senkrecht, gemessen zwischen den
-        Kartenrändern. Kleinere Werte packen lange Abläufe enger zusammen.
+        {tr("admin.node_spacing_hint")}
       </p>
       <div className="mt-2 flex items-center gap-2">
         <input type="number" min={8} max={400} value={value}
@@ -250,8 +247,7 @@ function RunRetention() {
     <div className="border-t border-line pt-3">
       <div className="text-sm font-medium">{tr("admin.keep_agent_runs")}</div>
       <p className="mt-1 text-xs text-muted">
-        Wird ein Ticket archiviert, wandern seine Agentenläufe mit ins Archiv. Nach dieser
-        Frist werden sie samt Schritten endgültig gelöscht. <b>{tr("admin.0_never_delete")}</b>
+        {tr("admin.keep_runs_hint")} <b>{tr("admin.0_never_delete")}</b>
       </p>
       <div className="mt-2 flex items-center gap-2">
         <input type="number" min={0} value={value}
@@ -296,8 +292,8 @@ function Users() {
   return (
     <>
     <Errorrow text={err} />
-    {/* Keine Tabelle: vier Spalten auf 390 px hießen ein Wort je Zeile, und die drei
-        Knöpfe stapelten sich rechts übereinander. Eine Zeile je Nutzer bricht sauber um
+    {/* No table: four columns on 390 px meant one word per line, and the three buttons
+        stacked on top of each other on the right. One row per user wraps cleanly
         and reads the same at every width. */}
     <Area>
     <Listing>
@@ -470,8 +466,8 @@ function Cost() {
   return (
     <Area hint={<>{tr("admin.sum_of_all_runs")} <span className="text-xl font-semibold text-ink">
       ${data?.total_usd?.toFixed(4) ?? "0"}</span></>}>
-      {/* Modellnamen sind lang und Zahlen kurz: als Tabelle quetschte das auf dem Handy den
-          Namen auf ein Wort je Zeile. Eine Zeile je Modell, Zahlen rechts. */}
+      {/* Model names are long and numbers short: as a table that squeezed the name to one
+          word per line on a phone. One row per model, numbers on the right. */}
       <Listing>
         {data?.by_model?.map((m: any) => (
           <ListenLine key={m.model}>

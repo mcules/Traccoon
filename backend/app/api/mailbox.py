@@ -48,7 +48,7 @@ class AccountIn(BaseModel):
     folder_junk: str = "Junk"
     folder_archive: str = "Archive"
     archive_mode: str = "folder"          # folder | pattern
-    archive_pattern: str = "Archive/{jahr}"
+    archive_pattern: str = "Archive/{year}"
     mcp_enabled: bool = False
     mcp_ignore_folders: list[str] = []
     mcp_tools: list[str] = []
@@ -403,7 +403,7 @@ async def archive(kid: int, uid: int, data: HandgripIn,
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     """Into the archive. Where exactly is up to the account: a fixed folder or a pattern built
-    from the date OF THE MAIL (`Archive/{jahr}`). Missing folders are created along the way."""
+    from the date OF THE MAIL (`Archive/{year}`). Missing folders are created along the way."""
     account = await _account(db, kid, user)
     if account.archive_mode != "pattern" and not account.folder_archive:
         raise Error(400, "err.no_archive_folder",

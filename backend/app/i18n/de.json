@@ -16,7 +16,7 @@
   "server.onboarding.project_hint": "Mindestens ein Projekt, in dem du das KI-Recht hast.",
   "server.onboarding.runner": "Worker erreichbar",
   "server.onboarding.runner_hint": "Der Worker-Container muss laufen, sonst bleibt jede Zuweisung liegen.",
-  "server.onboarding.telegram": "Chat verbinden (optional)",
+  "server.onboarding.telegram": "Chat verbinden",
   "server.onboarding.telegram_hint": "Benachrichtigungen und Freigaben per Chat.",
   "server.onboarding.verify": "Prüfbefehl setzen",
   "server.onboarding.verify_hint": "Zum Beispiel „npm run build“ — sonst kann niemand belegen, dass die Arbeit grün ist."

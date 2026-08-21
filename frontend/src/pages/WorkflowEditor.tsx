@@ -404,7 +404,7 @@ export default function WorkflowEditor() {
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
       if (project) qc.invalidateQueries({ queryKey: ["workflows", project.id] });
     } catch (e) {
-      setMsg(e instanceof ApiError ? `Veröffentlichen abgelehnt: ${e.message}` : tr("editor.publishing_failed"));
+      setMsg(e instanceof ApiError ? tr("editor.publishing_rejected", { message: e.message }) : tr("editor.publishing_failed"));
     }
   };
 
@@ -431,9 +431,9 @@ export default function WorkflowEditor() {
     ? { text: tr("editor.never_published"), style: "text-muted",
         title: tr("editor.flow_runs_nowhere_yet") }
     : sameAsLive
-      ? { text: `veröffentlicht (v${liveVersion?.version ?? "?"})`, style: "text-green-400",
+      ? { text: tr("editor.published_v", { version: liveVersion?.version ?? "?" }), style: "text-green-400",
           title: tr("editor.what_canvas_here_also") }
-      : { text: `weicht von v${liveVersion?.version ?? "?"} ab`, style: "text-amber-300",
+      : { text: tr("editor.deviates_from_v", { version: liveVersion?.version ?? "?" }), style: "text-amber-300",
           title: tr("editor.outside_published_version_runs") };
 
   // Ask when leaving the window with unsaved work: the browser only allows its own text, but
@@ -491,7 +491,7 @@ export default function WorkflowEditor() {
             {tr(changed ? "editor.unsaved" : "editor.saved")}
           </span>
         )}
-        {/* Die Abweichung ist anklickbar: „weicht von v7 ab" beantwortet nicht, WAS abweicht,
+        {/* The deviation is clickable: "deviates from v7" does not answer WHAT deviates,
             and that is exactly what one looks for in that moment. */}
         {!sameAsLive && liveVersion && version?.id && version.id !== liveVersion.id ? (
           <button onClick={() => setShowDiff(true)}
@@ -505,8 +505,8 @@ export default function WorkflowEditor() {
             {publication.text}
           </span>
         )}
-        {/* Entwurf wegwerfen: es gab keinen Weg zurück, außer den Graphen von Hand
-            back. Only visible when there really is an open draft. */}
+        {/* Throw the draft away: there was no way back except building the graph by hand
+            again. Only visible when there really is an open draft. */}
         {!onlyRead && version?.status === "draft" && version.id > 0 && (
           <button onClick={() => setQuestionDiscard(true)}
             className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-red-400 hover:text-red-300"
@@ -531,13 +531,13 @@ export default function WorkflowEditor() {
           title={tr("editor.arrange_blocks_top_bottom", { distance: gap })}>
           {tr("editor.arrange")}
         </Button>
-        {/* Speichern kann nur, was sich geändert hat — sonst ist der Knopf ein Versprechen,
+        {/* Only what has changed can be saved — otherwise the button is a promise
             that it does not redeem. */}
         <Button onClick={save} disabled={!changed || saving || !version || onlyRead}
           symbol="💾" title={changed ? undefined : tr("editor.nothing_changed")}>
           {tr(saving ? "editor.saving" : "common.save")}
         </Button>
-        {/* Das Ergebnis bleibt am Knopf stehen: Wer geprüft hat, will es später noch sehen,
+        {/* The result stays on the button: whoever checked wants to see it later,
             without checking again. After the next change it is open again. */}
         <Button onClick={validateServer} disabled={!version || onlyRead} symbol="✓"
           state={checked && checked.signature === now
@@ -547,7 +547,7 @@ export default function WorkflowEditor() {
             : tr("editor.version_not_been_checked")}>
           {tr("editor.check")}
         </Button>
-        {/* Nichts Neues, nichts zu veröffentlichen. Vorher lud der Knopf dazu ein und
+        {/* Nothing new, nothing to publish. Before, the button invited one in and
             answered afterwards "only the arrangement was different". */}
         <Button variant="primary" onClick={publish} symbol="⬆"
           disabled={!version || clientErrors.length > 0 || sameAsLive || onlyRead}
@@ -558,7 +558,7 @@ export default function WorkflowEditor() {
         </Button>
       </div>
 
-      {/* Arbeitsfläche */}
+      {/* The canvas */}
       <div className="flex min-h-0 flex-1">
         {!onlyRead && !narrow && (
           <div className="w-52 shrink-0 overflow-y-auto border-r border-line bg-card p-3">
@@ -587,8 +587,8 @@ export default function WorkflowEditor() {
 
         <div className={`flex flex-col overflow-y-auto border-l border-line bg-card ${
           narrow ? `w-full ${column === "baustein" ? "" : "hidden"}` : "w-80 shrink-0"}`}>
-          {/* Am Handy steht die Palette hier oben: ohne sie käme man in dieser Ansicht an
-              no new building block, and the surface has no room for a bar. */}
+          {/* On a phone the palette stands up here: without it one would get to
+              no new building block in this view, and the surface has no room for a bar. */}
           {narrow && !onlyRead && (
             <div className="border-b border-line p-2">
               <div className="mb-1.5 text-xs font-medium text-muted">{tr("node_palette.blocks")}</div>
@@ -598,9 +598,8 @@ export default function WorkflowEditor() {
           <div className="border-b border-line px-3 py-2 text-xs font-medium text-muted">{tr("workflow_editor.configuration")}</div>
           {onlyRead ? (
             <p className="p-3 text-sm text-muted">
-              Dieser Ablauf gehört zu einem Prozess-Satz und wird hier nur angezeigt. Zum Ändern
-              im Projekt unter <b>{tr("workflow_editor.flows")}</b> auf <b>{tr("workflow_editor.customize")}</b> gehen — das legt eine Kopie
-              für dieses Projekt an.
+              <span dangerouslySetInnerHTML={{ __html: tr("editor.readonly_from_set", {
+                flows: tr("workflow_editor.flows"), customize: tr("workflow_editor.customize") }) }} />
             </p>
           ) : (
             <NodeConfigPanel node={selected} members={members} onChange={updateConfig}

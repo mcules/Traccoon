@@ -66,7 +66,7 @@ export const EVENTS = [
   // Header of the room. `seq: 0`: it stands before everything else (`api/office.py` pushes it
   // in front with `events.insert(0, …)`).
   ev(8871, 0, 0, 0, "session_seen", {
-    title: "Anmeldung schlägt bei Umlauten fehl", issue_key: "TRA-412",
+    title: "The login fails on accented characters", issue_key: "TRA-412",
     project_key: "TRA", started_at: ts(0),
   }),
 
@@ -78,7 +78,7 @@ export const EVENTS = [
   }),
   ev(8871, 101, 1, 1200, "user_message", {
     source: "ticket",
-    text: "Beim Login mit Umlauten im Passwort kommt ein 500er. Bitte fixen und testen.",
+    text: "A login with accented characters in the password returns a 500. Please fix and test.",
   }),
   ev(8871, 102, 1, 3400, "agent_text", {
     text: "Ich schaue mir zuerst den Login-Handler an.",
@@ -104,8 +104,8 @@ export const EVENTS = [
   }),
   ev(8871, 106, 1, 5900, "tool_result", {
     tool: "codegraph", tool_use_id: "tu-2", ok: false,
-    error: "FEHLER: kein Index für diesen Worktree",
-    duration_ms: 902, result_preview: "FEHLER: kein Index für diesen Worktree",
+    error: "ERROR: no index for this worktree",
+    duration_ms: 902, result_preview: "ERROR: no index for this worktree",
   }),
 
   // Delegation. The spawn hangs off the **start** (`step_events`), not off the result: the
@@ -127,9 +127,10 @@ export const EVENTS = [
   }),
   // Above `THINK_FROM_CHARS` (180), so it becomes a thinking bubble, not a speech bubble.
   ev(8872, 109, 1, 9000, "agent_text", {
-    text: "Der Handler dekodiert das Passwort mit latin-1, bevor er es an bcrypt reicht; bei "
-      + "einem Umlaut im Klartext wirft das eine UnicodeDecodeError. Ich prüfe, ob dieselbe "
-      + "Stelle auch beim Registrieren steht, sonst schlagen Anlegen und Anmelden verschieden fehl.",
+    text: "The handler decodes the password with latin-1 before handing it to bcrypt; with an "
+      + "accented character in the plain text that throws a UnicodeDecodeError. I am checking "
+      + "whether the same place stands in the registration too, otherwise creating an account "
+      + "and logging in fail differently.",
   }),
   ev(8872, 110, 1, 10500, "tool_start", {
     tool: "fs_write", target: "backend/app/api/auth.py", tool_use_id: "tu-4",
@@ -143,7 +144,7 @@ export const EVENTS = [
   ev(8872, 111, 2, 10900, "file_edit", { path: "backend/app/api/auth.py" }),
   ev(8872, 112, 1, 12000, "run_end", {
     ok: true, status: "success", blocker_kind: null,
-    summary: "Kodierung auf utf-8 umgestellt, Testfall ergänzt.", error: "",
+    summary: "Switched the encoding to utf-8, added a test case.", error: "",
     iterations: 4, in_tokens: 18400, out_tokens: 1120, cache_read_tokens: 16000,
     cost_usd: 0.0412, cost_priced: true,
   }),
@@ -156,7 +157,7 @@ export const EVENTS = [
   }),
   ev(8871, 113, 1, 12200, "tool_result", {
     tool: "delegate", tool_use_id: "tu-3", ok: true, error: "", duration_ms: 5180,
-    result_preview: "review_agent: Kodierung auf utf-8 umgestellt, Testfall ergänzt.",
+    result_preview: "review_agent: switched the encoding to utf-8, added a test case.",
   }),
 
   // ── The server rack goes on ────────────────────────────────────────────────
@@ -177,7 +178,7 @@ export const EVENTS = [
     continuation_index: 0, task_id: null, issue_key: "TRA-412",
   }),
   ev(8873, 116, 1, 45500, "user_message", {
-    source: "chat", text: "Wie viele Tickets hängen noch an diesem Fehler?",
+    source: "chat", text: "How many tickets still hang off this bug?",
   }),
   ev(8873, 117, 1, 46200, "tool_start", {
     tool: "traccoon_list_issues", target: null, tool_use_id: "tu-5",
@@ -190,7 +191,7 @@ export const EVENTS = [
   }),
   ev(8873, 119, 1, 48000, "run_end", {
     ok: null, status: "blocked", blocker_kind: "ask_human",
-    summary: "Soll TRA-418 mit erledigt werden?", error: "",
+    summary: "Should TRA-418 be finished along with it?", error: "",
     iterations: 2, in_tokens: 3100, out_tokens: 240, cache_read_tokens: 2900,
     cost_usd: 0.0071, cost_priced: false,
   }),
@@ -201,7 +202,7 @@ export const EVENTS = [
   }),
 
   // ── Conclusion of the root run ─────────────────────────────────────────────
-  ev(8871, 121, 1, 52000, "agent_text", { text: "Fix ist drin, Prüfung läuft grün." }),
+  ev(8871, 121, 1, 52000, "agent_text", { text: "The fix is in, the check runs green." }),
 
   // The counterpart to the `start` above, with **the same** `deployment_id`. Exactly for that
   // the rack state needs no expiry: both ends are real events. `log_head` carries the guard
@@ -210,12 +211,12 @@ export const EVENTS = [
   ev(8871, 122, 1, 52500, "deploy", {
     deployment_id: 341, state: "fail",
     target: "/opt/docker/stacks/traccoon",
-    log_head: "Abgelehnt: Self-Deploy nur über das explizite Wartungs-Kommando.",
+    log_head: "Rejected: a self-deploy goes through the explicit maintenance command only.",
   }),
 
   ev(8871, 123, 1, 54000, "run_end", {
     ok: true, status: "success", blocker_kind: null,
-    summary: "Login akzeptiert jetzt Umlaute; Regressionstest ergänzt.", error: "",
+    summary: "The login accepts accented characters now; a regression test was added.", error: "",
     iterations: 9, in_tokens: 52000, out_tokens: 3400, cache_read_tokens: 47000,
     cost_usd: 0.1938, cost_priced: true,
   }),

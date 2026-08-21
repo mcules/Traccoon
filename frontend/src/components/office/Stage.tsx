@@ -863,9 +863,10 @@ export default function Stage(props: StageProps): JSX.Element {
       onPointerLeave={onPointerLeave}
       onClick={onClick}
     >
-      {/* Absolut gesetzt, weil Größe und Lage aus `layout()` kommen: die Bühne ist das größte
-          16:9-Rechteck im Host und sitzt mittig darin. Aus dem Fluss genommen kann sie den Host
-          nicht auseinanderdrücken — sonst zöge der `ResizeObserver` sich selbst am Schopf.
+      {/* Set absolutely, because size and position come out of `layout()`: the stage is the
+          largest 16:9 rectangle in the host and sits in the middle of it. Taken out of the flow
+          it cannot push the host apart — otherwise the `ResizeObserver` would pull itself up by
+          its own hair.
           `.pixel-canvas` keeps the browser from smoothing while scaling up. */}
       <canvas
         ref={canvasRef}
@@ -879,9 +880,9 @@ export default function Stage(props: StageProps): JSX.Element {
         }
       />
 
-      {/* Namensschilder als echte Spans: markierbar und vorlesbar. Ihre Lage setzt die
-          Schleife imperativ, ihr Text kommt von React — ein wandernder Agent kostet damit
-          keinen Renderdurchlauf. */}
+      {/* Name tags as real spans: selectable and readable aloud. The loop sets their position
+          imperatively, their text comes from React — a wandering agent therefore costs no
+          render pass. */}
       {selText !== undefined && (
         <span
           ref={selTagRef}
@@ -904,8 +905,9 @@ export default function Stage(props: StageProps): JSX.Element {
         </span>
       )}
 
-      {/* Wandschirm: wer gerade in der Bildmitte steht. Dezent unten, nicht am Kopf der Figur —
-          aus drei Metern liest man eine feste Zeile, kein wanderndes Schild. Text und
+      {/* The wall screen: who stands in the middle of the picture. Discreetly at the bottom,
+          not over the head of the figure — from three metres one reads a fixed line, not a
+          wandering sign. Text and
           visibility the loop sets imperatively, which is why nothing stands in here. */}
       {kiosk === true && (
         <span
@@ -917,13 +919,13 @@ export default function Stage(props: StageProps): JSX.Element {
         />
       )}
 
-      {/* Leerer Zustand: ein ruhiger, leerer Raum und ein Satz. Kein Spinner, keine
+      {/* The empty state: a quiet, empty room and one sentence. No spinner, no
           error message — nothing is broken after all, only nothing happened. */}
       {empty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <p className="rounded border border-line bg-card/90 px-3 py-2 text-sm text-muted">
-            {/* Bewusst ohne „in diesem Projekt": die Bühne steht auch auf der
-                projektübergreifenden Seite, und leer heißt hier nur „im geladenen
+            {/* Deliberately without "in this project": the stage also stands on the
+                cross-project page, and empty here only means "in the loaded
                 window nothing happened" — not "there was never an agent here". */}
             {tr("stage.no_agent_run_see")}
           </p>

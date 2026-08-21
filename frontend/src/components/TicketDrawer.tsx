@@ -141,7 +141,7 @@ export default function TicketDrawer({
   const dropOn = (col: LayoutCol, beforeKey: string | null) => {
     const dk = dragKey;
     setDragKey(null); setOverCol(null); setOverKey(null);
-    if (!dk || dk === beforeKey) return; // Drop auf sich selbst = No-Op
+    if (!dk || dk === beforeKey) return; // a drop on itself is a no-op
     setLayout((prev) => {
       // Remove the key from its old position in BOTH columns (dedupe), then insert it anew.
       const left = prev.left.filter((k) => k !== dk);
@@ -435,7 +435,7 @@ export default function TicketDrawer({
       ) : split.error ? (
         <div>
           <div className="mb-1 text-xs text-red-400">
-            ⚠ Vorschlag nicht lesbar — bitte Planung neu anstoßen oder korrigieren.
+            {tr("ticket_drawer.proposal_unreadable")}
           </div>
           <pre className="max-h-48 overflow-y-auto whitespace-pre-wrap rounded bg-surface p-2 text-xs">{split.raw}</pre>
         </div>
@@ -599,7 +599,7 @@ export default function TicketDrawer({
           {meta.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
       </label>
-      <label className="text-xs text-muted">Priorität
+      <label className="text-xs text-muted">{tr("ticket_drawer.priority")}
         <select value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}
           className="mt-1 block rounded border border-line bg-surface px-2 py-1 text-ink">
           {PRIOS.map((p) => <option key={p} value={p}>{p}</option>)}
@@ -667,7 +667,7 @@ export default function TicketDrawer({
       </select>
       {issue.asset_id != null && (
         <p className="mt-1 text-xs text-muted">
-          Dieses Ticket ist am Exemplar vermerkt und dort unter „Tickets" sichtbar.
+          {tr("ticket_drawer.noted_on_asset")}
         </p>
       )}
     </div>
@@ -763,9 +763,9 @@ export default function TicketDrawer({
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => life.mutate("complete")} disabled={life.isPending}
               className={BUTTON.confirm}>
-              ✅ Auf Fertig setzen</button>
+              {tr("ticket_drawer.set_done")}</button>
             <span className="text-xs text-muted">
-              stoppt die Testumgebung, mergt den Branch und setzt erst dann „Fertig".
+              {tr("ticket_drawer.set_done_hint")}
             </span>
           </div>
         </div>
@@ -938,8 +938,7 @@ export default function TicketDrawer({
           <>
             {editLayout && (
               <div className="mb-3 rounded-md border border-brand/40 bg-brand/10 px-3 py-1.5 text-xs text-muted">
-                Ziehe die Blöcke am Griff <span className="text-brand">⠿</span> an eine andere Position oder in die
-                andere Spalte. Deine Anordnung wird gespeichert.
+                {tr("ticket_drawer.drag_blocks_hint")}
               </div>
             )}
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

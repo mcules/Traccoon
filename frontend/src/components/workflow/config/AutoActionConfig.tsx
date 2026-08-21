@@ -9,7 +9,7 @@ import { ACTION_SPECS } from "./actionFields";
  *
  * Keys only, no plain texts: both were mixed, and what stood there as plain text stayed German
  * in the English UI — while two entries that were keys already
- * roh als `action.spam_card` in der Liste standen. */
+ * stood raw as `action.spam_card` in the list. */
 const GROUPS: [string, [AutoActionName, string][]][] = [
   ["auto_action_config.artifact", [
     ["set_status", "action.set_status"],

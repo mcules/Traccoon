@@ -75,7 +75,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
   });
   const syncLinked = useMutation({
     mutationFn: (id: number) => api.post<any>(`/agents/${id}/sync-linked`),
-    onSuccess: (r: any) => { setNote(`${r?.synced ?? 0} verknüpfte Kopie(n) aktualisiert.`); setTimeout(() => setNote(""), 3000); inv(); },
+    onSuccess: (r: any) => { setNote(tr("agents_panel.copies_updated", { n: r?.synced ?? 0 })); setTimeout(() => setNote(""), 3000); inv(); },
     onError: fail,
   });
   const fetchModels = useMutation({
@@ -110,8 +110,8 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
       </div>
 
       {projectId && inherited.length > 0 && (agents?.length ?? 0) === 0 && (
-        <p className="mb-2 text-xs text-muted">Aktuell erben alle Rollen deine persönlichen Agenten
-          ({inherited.map((a) => a.role).join(", ")}). Lege hier einen an, um sie fürs Projekt zu überschreiben.</p>
+        <p className="mb-2 text-xs text-muted">{tr("agents_panel.inherit_hint",
+          { roles: inherited.map((a) => a.role).join(", ") })}</p>
       )}
 
       <Listing>
@@ -208,7 +208,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
               </Sec>
 
               <button onClick={() => setShowAdv(!showAdv)} className={BUTTON_TEXT.secondary}>
-                {showAdv ? "▾" : "▸"} Erweitert (Fähigkeiten, Limits)
+                {showAdv ? "▾" : "▸"} {tr("agents_panel.advanced")}
               </button>
               {showAdv && (
                 <div className="space-y-2 rounded border border-line bg-surface/50 p-2">

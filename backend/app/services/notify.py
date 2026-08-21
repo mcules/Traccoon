@@ -29,7 +29,17 @@ log = logging.getLogger("traccoon.notify")
 # Three ways out. The third is the open one: it calls a destination (base URL and login stand
 # there), and what sits behind it — ntfy, Matrix, Gotify, a bot of one's own — is no longer
 # Traccoon's business. A further messenger is thereby an entry under "destinations".
-CHANNELS = ("telegram", "email", "ziel")
+CHANNELS = ("telegram", "email", "destination")
+
+# What the channel was called before the house became English. Stored values keep standing in
+# `users.notify_default` and in published flow graphs, so they are read, not rejected.
+LEGACY_CHANNELS = {"ziel": "destination"}
+
+
+def _channel(name: str) -> str:
+    """The canonical name of a channel, legacy spellings included."""
+    name = (name or "").strip()
+    return LEGACY_CHANNELS.get(name, name)
 
 
 def _with_zone(ts: dt.datetime) -> dt.datetime:
@@ -40,12 +50,12 @@ def _with_zone(ts: dt.datetime) -> dt.datetime:
 def channel_address(user: User | None, channel: str) -> str:
     """The address this channel uses for this person, empty when there is none."""
     if user is None:
-        return OWNER_CHAT if channel == "telegram" else ""
-    if channel == "telegram":
+        return OWNER_CHAT if _channel(channel) == "telegram" else ""
+    if _channel(channel) == "telegram":
         return user.telegram_chat_id or ""
-    if channel == "email":
+    if _channel(channel) == "email":
         return (user.notify_email or user.email or "").strip()
-    if channel == "ziel":
+    if _channel(channel) == "destination":
         return str(user.notify_destination_id or "")
     return ""
 
@@ -58,7 +68,7 @@ def choose_channel(user: User | None, wanted: str = "") -> str:
     that reaches nobody is the worst outcome, worse than one on the second favourite
     channel.
     """
-    order = [k for k in (wanted, (user.notify_default if user else ""), "telegram")
+    order = [k for k in (_channel(wanted), _channel(user.notify_default if user else ""), "telegram")
                    if k in CHANNELS]
     order += [k for k in CHANNELS if k not in order]
     for channel in order:
@@ -90,7 +100,7 @@ async def deliver(db: AsyncSession, *, user: User | None, kind: str, title: str 
     which is what a flow needs: its notification is written by a person and belongs to nobody
     else's language.
 
-    With `drossel_key` and `drossel_minuten` the same message is suppressed inside the
+    With `throttle_key` and `throttle_minutes` the same message is suppressed inside the
     window, completely, including the bell. Putting it there only would push the noise one
     floor down: 120 identical rows make a list with an unread counter as useless as 120
     messages. It stays traceable anyway, because the step in the flow records that it was
@@ -109,12 +119,12 @@ async def deliver(db: AsyncSession, *, user: User | None, kind: str, title: str 
         if last is not None:
             again = _with_zone(last) + dt.timedelta(minutes=throttle_minutes)
             log.info("throttled: %s (open again at %s)", throttle_key, again.isoformat())
-            return {"kanal": "gedrosselt", "unterdrueckt": True, "drossel_key": throttle_key,
-                    "wieder_ab": again.isoformat()}
+            return {"channel": "throttled", "suppressed": True, "throttle_key": throttle_key,
+                    "open_again_at": again.isoformat()}
 
     if title_key or body_key:
         from .i18n import tr
-        language = getattr(user, "locale", None) or "de"
+        language = getattr(user, "locale", None) or "en"
         if title_key:
             title = await tr(db, title_key, language, **(values or {}))
         if body_key:
@@ -134,7 +144,7 @@ async def deliver(db: AsyncSession, *, user: User | None, kind: str, title: str 
             setattr(n, field, int(value))
     db.add(n)
 
-    if chosen == "ziel":
+    if chosen == "destination":
         # What goes out is the message itself as JSON. Whoever needs a different format hangs
         # it on the destination (path, headers, login) — that is exactly what destinations are for.
         from ..models.destination import Destination
@@ -143,23 +153,26 @@ async def deliver(db: AsyncSession, *, user: User | None, kind: str, title: str 
         if dest is None or not dest.enabled:
             log.warning("no (active) destination for user %s, bell only",
                         user.id if user else None)
-            return {"kanal": "bell", "grund": "kein Ziel"}
+            return {"channel": "bell", "reason": "no destination"}
         try:
             answer = await destinations.call(
                 db, dest, method="POST",
-                body={"art": kind, "titel": title, "text": body or title})
+                body={"kind": kind, "title": title, "text": body or title,
+                      # The German names of the first two years. Whoever built a receiver back
+                      # then keeps reading it; new ones take the English keys.
+                      "art": kind, "titel": title})
             n.notified_at = dt.datetime.now(tz=dt.timezone.utc)
-            return {"kanal": "ziel", "ziel": dest.name, "ok": True,
+            return {"channel": "destination", "target": dest.name, "ok": True,
                     "status": answer.get("status_code")}
         except Exception as e:  # noqa: BLE001 — the bell carries the message anyway
             log.warning("destination %s failed (%s), stays in the bell", dest.name, e)
-            return {"kanal": "ziel", "ziel": dest.name, "ok": False}
+            return {"channel": "destination", "target": dest.name, "ok": False}
 
     if chosen == "email":
         if not target:
             log.warning("no email address for user %s, bell only",
                         user.id if user else None)
-            return {"kanal": "bell", "grund": "keine Adresse"}
+            return {"channel": "bell", "reason": "no address"}
         from . import mail
         ok = await mail.send_mail(db, target, title[:200] or "Traccoon",
                                   html_body=_html(title, body), text_body=body or title)
@@ -167,8 +180,8 @@ async def deliver(db: AsyncSession, *, user: User | None, kind: str, title: str 
             n.notified_at = dt.datetime.now(tz=dt.timezone.utc)
         else:
             log.warning("email to %s failed, stays in the bell", target)
-        return {"kanal": "email", "ziel": target, "ok": ok}
-    return {"kanal": "telegram", "ziel": n.chat_id or ""}
+        return {"channel": "email", "target": target, "ok": ok}
+    return {"channel": "telegram", "target": n.chat_id or ""}
 
 
 def _html(title: str, body: str) -> str:

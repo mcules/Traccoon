@@ -115,17 +115,17 @@ export default function StartConfig({
             <select value={t.scope || "message"} onChange={(e) => setT({ scope: e.target.value })}
               className={`mt-1 ${inp}`}>
               <option value="message">an der Nachricht</option>
-              <option value="attachment">an jedem Anhang</option>
+              <option value="attachment">{tr("start_config.on_every_attachment")}</option>
             </select>
           </label>
-          {/* Ohne diese Zeile muesste man raten, was im Kontext steht — und raten heisst hier:
-              Platzhalter schreiben, die still leer bleiben. */}
+          {/* Without this line one would have to guess what stands in the context — and
+              guessing here means writing placeholders that stay quietly empty. */}
           <p className="text-[11px] text-muted">
-            Im Kontext stehen <code>mail.account</code>, <code>mail.folder</code>,{" "}
+            {tr("start_config.mail_context_1")} <code>mail.account</code>, <code>mail.folder</code>,{" "}
             <code>mail.uid</code>, <code>mail.subject</code>, <code>mail.from</code>,{" "}
-            <code>mail.text</code>, <code>mail.attachments</code> — bei einem Anhang zusätzlich{" "}
-            <code>anhang.index</code>, <code>anhang.filename</code>,{" "}
-            <code>anhang.content_type</code>.
+            <code>mail.text</code>, <code>mail.attachments</code> {tr("start_config.mail_context_2")}{" "}
+            <code>attachment.index</code>, <code>attachment.filename</code>,{" "}
+            <code>attachment.content_type</code>.
           </p>
         </div>
       )}

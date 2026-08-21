@@ -36,17 +36,17 @@ function transparent(ch: string): boolean {
 export function defineArt(rows: readonly string[], map: Readonly<Record<string, PalKey>>): Art {
   if (rows.length === 0) throw new Error("Art ohne Zeilen");
   const w = rows[0].length;
-  if (w === 0) throw new Error("Art mit leerer Zeile 0");
+  if (w === 0) throw new Error("art with an empty row 0");
   for (let y = 0; y < rows.length; y++) {
     const row = rows[y];
     if (row.length !== w) {
-      throw new Error(`Art: Zeile ${y} ist ${row.length} Zeichen breit, Zeile 0 aber ${w}`);
+      throw new Error(`art: row ${y} is ${row.length} characters wide, row 0 is ${w}`);
     }
     for (let x = 0; x < w; x++) {
       const ch = row[x];
       if (transparent(ch)) continue;
       if (!(ch in map)) {
-        throw new Error(`Art: Zeichen "${ch}" bei ${x},${y} steht nicht in map`);
+        throw new Error(`art: the character "${ch}" at ${x},${y} is not in the map`);
       }
     }
   }

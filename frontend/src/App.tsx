@@ -110,7 +110,7 @@ export default function App() {
         <Route path="/konto" element={<OldAddress to="/account" />} />
         <Route path="/account/:tab" element={<AlterSection karte={ACCOUNT_OLD} target="/account" />} />
         <Route path="/profil" element={<OldAddress to="/account" />} />
-        {/* Plugins liegen unter einem eigenen kurzen Praefix — sie sind Bereiche,
+        {/* Plugins live under a short prefix of their own — they are areas,
             but no built-in ones. */}
         <Route path="/p/:slug" element={<PluginHost />} />
         <Route path="/settings" element={<Settings />} />
@@ -122,7 +122,7 @@ export default function App() {
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/:tab" element={<AdminTab />} />
         <Route path="/projects/:key/workflows/:id" element={<WorkflowEditor />} />
-        {/* Vorlagen eines Prozess-Satzes gehören zu keinem Projekt. */}
+        {/* The templates of a process set belong to no project. */}
         <Route path="/workflows/:id" element={<WorkflowEditor />} />
         <Route path="/projects/:key/tickets/:ticketKey" element={<TicketView />} />
         {/* Area and view stand in the path (`/projects/UNI/operations/office`); the old

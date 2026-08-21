@@ -55,7 +55,7 @@ export const TOOL_ACT: Record<string, ToolAct> = {
   load_skill: "read",
 
   // ── worker/tools_memory.py: the memory tools ───────────────────────────────
-  remember_this: "write",
+  remember: "write",
   forget: "write",
   memory_search: "read",
 
@@ -99,7 +99,7 @@ export const NATIVE_TOOLS: readonly string[] = [
   "check", "deploy", "screenshot", "read_attachment", "open_tasks", "codegraph",
   "delegate", "load_skill",
   // tools_memory.py (3)
-  "erinnere_dich", "vergiss", "gedaechtnis_suchen",
+  "remember", "forget", "memory_search",
   // tools_traccoon.py (20)
   "traccoon_list_projects", "traccoon_list_issues", "traccoon_get_issue",
   "traccoon_create_issue", "traccoon_comment", "traccoon_assign_agent",

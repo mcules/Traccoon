@@ -67,7 +67,7 @@ const HOLD_REASON: Record<string, string> = {
   permission: "lifecycle.permission",
 };
 
-// Hauptfluss (links → rechts) — Reihenfolge bestimmt „erledigte Vorgänger".
+// The main flow (left → right) — the order decides what counts as "finished predecessors".
 const MAIN: NodeId[] = [
   "open", "planning", "plan_review", "approved", "in_progress", "to_test", "done",
 ];

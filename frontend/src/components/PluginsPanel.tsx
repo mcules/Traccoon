@@ -16,7 +16,7 @@ import {
  */
 
 /** What a right stands for, in one sentence. Unknown ones the list shows raw — better the bare
- *  Bezeichner als eine erfundene Beschreibung. */
+ *  identifier than an invented description. */
 const RIGHT_TEXT: Record<string, string> = {
   "series:number": "plugins.read_metric_series_values",
   "series:location": "plugins.read_location_series_points",

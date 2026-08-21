@@ -94,7 +94,7 @@ export default function Dashboard({ project }: { project: Project }) {
         </Karte>
       </div>
 
-      {/* Ungegatet: wer ein Ticket gemergt hat, will wissen, ob es draußen ist — und ist nicht
+      {/* Ungated: whoever merged a ticket wants to know whether it is out there — and is not
           necessarily a maintainer. The full list stands under Settings → Deployment. */}
       <Karte title={tr("dashboard.recent_deployments")}>
         <DeploymentsPanel projectId={project.id} variant="kompakt" limit={5} />

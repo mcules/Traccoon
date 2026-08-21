@@ -151,9 +151,9 @@ export default function TranslationsPanel() {
       <Errorrow text={err} />
       {ok && <div className="text-xs text-green-400">{ok}</div>}
 
-      {/* Keine Tabelle: drei Spalten (Schlüssel, deutsche Quelle, Übersetzung) sind auf einem
-          Handy nicht zu halten — der Schlüssel allein ist breiter als der Bildschirm. Ab sm
-          stehen Quelle und Feld nebeneinander, darunter untereinander. */}
+      {/* No table: three columns (key, source text, translation) cannot be held on a phone —
+          the key alone is wider than the screen. From sm on, source and field stand side by
+          side, below that stacked. */}
       <div className="max-h-[60vh] overflow-auto">
       <Listing>
         {lines.map((z) => (

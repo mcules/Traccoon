@@ -115,8 +115,7 @@ export function TimezonePanel() {
     <div className={KARTE}>
       <div className="mb-1 text-sm font-medium">Zeitzone</div>
       <p className="mb-3 text-xs text-muted">
-        Gilt für die Uhrzeiten hier, für das Nachtfenster und für den Zeitplan deiner Jobs:
-        „0 8 * * *" heißt acht Uhr in dieser Zone.
+        {tr("account.timezone_hint")}
       </p>
       <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
         <select value={zone} onChange={async (e) => {
@@ -127,7 +126,7 @@ export function TimezonePanel() {
           {!zones && <option value={zone}>{zone || "…"}</option>}
           {zones?.map((z) => <option key={z} value={z}>{z}</option>)}
         </select>
-        {now && <span className="text-xs text-muted">dort ist es gerade {now} Uhr</span>}
+        {now && <span className="text-xs text-muted">{tr("account.local_time_now", { time: now })}</span>}
       </div>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>

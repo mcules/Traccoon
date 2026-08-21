@@ -207,8 +207,8 @@ export default function Board({
               <button {...ticketOpenHandlers(i.key, onOpen)} className="block w-full p-3 pr-28 text-left">
                 {cardContent(i)}
               </button>
-              {/* Am Handy zeigt die Spaltenauswahl oben schon, wo die Karte steht — die
-                  Beschriftung „Status" daneben war eine Zeile Wiederholung je Karte. */}
+              {/* On a phone the column select at the top already shows where the card stands —
+                  the label "status" beside it was one row of repetition per card. */}
               {canMove ? (
                 <div className="absolute right-2 top-2">
                   <select

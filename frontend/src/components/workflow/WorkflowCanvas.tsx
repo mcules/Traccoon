@@ -132,7 +132,7 @@ function Inner(props: WorkflowCanvasProps) {
       <PhaseBands nodes={nodes} />
       <Background className="!bg-surface" />
       <Controls />
-      {/* Die Übersichtskarte deckte am Handy ein Viertel der Fläche zu — dort ist die
+      {/* The minimap covered a quarter of the surface on a phone — there the
           surface itself is already the overview. */}
       <MiniMap pannable zoomable className="!bg-card !hidden md:!block" />
     </ReactFlow>

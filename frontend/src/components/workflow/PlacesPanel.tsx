@@ -97,7 +97,7 @@ export default function LocationsPanel() {
   );
 }
 
-// ── Ein Gerät ────────────────────────────────────────────────────────────────
+// ── One device ───────────────────────────────────────────────────────────────
 
 function DeviceLine({ series: series, open: open, onOpen: onOpen_it, onEdit, onDelete: onDelete, onError: onError }: {
   series: Series; open: boolean; onOpen: () => void;

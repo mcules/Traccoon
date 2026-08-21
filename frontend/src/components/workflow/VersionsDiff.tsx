@@ -64,7 +64,7 @@ function DiffContent({ d }: { d: WfDiff }) {
                   {k.fields.map((f) => (
                     <div key={f.field}>
                       <div className="font-mono text-[11px] text-muted">{f.field}</div>
-                      {/* Zwei Zeilen statt einer: bei langen Werten sucht man sonst die
+                      {/* Two rows instead of one: with long values one otherwise hunts for the
                           place where they diverge, in the middle of the prose. */}
                       <div className="mt-0.5 break-all rounded bg-red-500/10 px-1.5 py-0.5 text-[11px] text-red-300">
                         − {f.before || "—"}

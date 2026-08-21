@@ -65,13 +65,13 @@ export default function IssueList({
         </select>
         <label className="flex items-center gap-1.5 text-sm text-muted">
           <input type="checkbox" checked={onlyAi} onChange={(e) => setOnlyAi(e.target.checked)} />
-          nur mit Agent
+          {tr("issue_list.only_with_agent")}
         </label>
         <div className="flex-1" />
         <span className="text-xs text-muted">{filtered.length} / {issues.length}</span>
       </div>
 
-      {/* Fünf Spalten sind am Handy nicht zu halten: die Titelspalte blieb auf zwei Wörter je
+      {/* Five columns cannot be held on a phone: the title column was left with two words per
           Zeile zusammengequetscht. Ab sm die sortierbare Tabelle, darunter Karten. */}
       <table className="hidden w-full text-sm sm:table">
         <thead>

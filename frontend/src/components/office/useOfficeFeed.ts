@@ -422,8 +422,8 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
         if (msg.type === "hello" && msg.v !== EVENT_VERSION) {
           // The backend speaks a different contract. Do not guess, do not reconnect.
           closingRef.current = true;
-          setWsError(`Das Büro spricht Vertragsversion ${msg.v}, diese Ansicht kennt `
-            + `${EVENT_VERSION}. Bitte die Seite neu laden.`);
+          setWsError(tr("office_feed.contract_mismatch",
+            { server: String(msg.v), client: String(EVENT_VERSION) }));
           ws.close();
         }
       };

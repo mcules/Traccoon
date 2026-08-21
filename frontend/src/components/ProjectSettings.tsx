@@ -350,10 +350,10 @@ export default function ProjectSettings({ project, area: area }: { project: Proj
           </div>
         )}
       </Section>
-      {/* Der Schalter und seine Folgen auf einer Seite — die volle Liste direkt darunter.
-          Der Knopf steht bewusst hier und nicht im Dashboard: wer von Hand ausrollt, soll
-          den Auto-Deploy-Schalter und die bisherigen Läufe im selben Blick haben.
-          `workspace_dir` kommt aus den geladenen Einstellungen (nicht aus `project`), die
+      {/* The switch and what follows from it on one page — the full list right below it.
+          The button stands here on purpose and not in the dashboard: whoever rolls out by hand
+          should have the auto-deploy switch and the past runs in the same glance.
+          `workspace_dir` comes out of the loaded settings (not out of `project`), which
           role out of the project — the server checks both again. */}
       <Section title={tr("project_settings.past_deployments")}>
         <DeploymentsPanel projectId={project.id} variant="voll"

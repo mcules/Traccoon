@@ -108,9 +108,11 @@ export default function HttpRequestConfig({
         </label>
       </div>
       <p className="text-[11px] text-muted">
-        Ohne den Haken läuft der Prozess weiter und kann selbst über
+        {tr("http_request_config.without_tick_1")}
         <code className="mx-1 rounded bg-surface px-1">{"{{http.status_code}}"}</code>
-        bzw. <code className="rounded bg-surface px-1">{"{{http.ok}}"}</code> verzweigen.
+        {tr("http_request_config.without_tick_2")}{" "}
+        <code className="rounded bg-surface px-1">{"{{http.ok}}"}</code>{" "}
+        {tr("http_request_config.without_tick_3")}
       </p>
     </div>
   );

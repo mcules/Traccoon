@@ -52,9 +52,9 @@ export default function Processes() {
   })), tab, "side");
   return (
     <div>
-      {/* Kein persönlicher Prozess-Satz mehr an dieser Stelle: er ist eine Vollkopie ALLER
-          Slots und hilft genau dort nicht, wo man ihn nehmen wollte — ereignisgetriebene
-          Abläufe liefen doppelt, weil `events.listeners` nach Triggern sucht, nicht nach
+      {/* No personal process set at this place any more: it is a full copy of ALL slots and
+          does not help exactly where one wanted to take it — event-driven flows ran twice,
+          because `events.listeners` looks for triggers, not for
           sets. Whoever wants a flow differently creates one of their own. */}
       {tab === "own" && <OwnWorkflowsPanel />}
       {tab === "metrics" && <MetricseriesPanel />}

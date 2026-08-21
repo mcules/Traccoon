@@ -43,8 +43,7 @@ export default function LoopConfig({
           </datalist>
         )}
         <span className="mt-1 block text-[11px] text-muted">
-          Ein einzelner Wert zählt als Liste mit einem Element; fehlt der Pfad, wird der
-          Körper übersprungen.
+          {tr("loop_config.single_value_hint")}
         </span>
       </label>
 
@@ -94,7 +93,7 @@ export default function LoopConfig({
           className={`mt-1 ${inp}`}
         />
         <span className="mt-1 block text-[11px] text-muted">
-          Schutz gegen die Liste, die aus Versehen sehr lang ist. Mehr als 500 geht nicht.
+          {tr("loop_config.cap_hint")}
         </span>
       </label>
     </div>

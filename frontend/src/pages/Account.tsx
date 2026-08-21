@@ -43,7 +43,7 @@ export default function Account() {
 
   return (
     <div className="max-w-2xl space-y-4">
-      {/* Die Zeitzone gehört zur Person, nicht zu den Agenten: sie entscheidet, was auf
+      {/* The time zone belongs to the person, not to the agents: it decides what stands on
           "8 o'clock" means in this UI — and thereby in the night window and in the schedule too. */}
       {tab === "person" && <><LanguagePanel /><TimezonePanel /><EmailPanel /><PasswordPanel /></>}
       {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
@@ -255,7 +255,7 @@ function NotificationsPanel() {
 
   const field = "w-full rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
   const missing = standard === "telegram" ? !chat.trim()
-    : standard === "ziel" ? !targetId
+    : standard === "destination" ? !targetId
     : !(mail.trim() || user?.email);
 
   return (
@@ -266,22 +266,22 @@ function NotificationsPanel() {
       </p>
 
       <label className="block text-xs font-medium text-muted">
-        Standard-Weg
+        {tr("profile.default_way")}
         <select value={standard} onChange={(e) => setStandard(e.target.value)} className={`mt-1 ${field}`}>
           <option value="telegram">{tr("profile.telegram")}</option>
-          <option value="email">E-Mail</option>
-          <option value="ziel">Ziel (eigener Dienst)</option>
+          <option value="email">{tr("profile.email")}</option>
+          <option value="destination">{tr("profile.destination_own_service")}</option>
         </select>
       </label>
 
       <label className="block text-xs font-medium text-muted">
-        Ziel
+        {tr("profile.destination")}
         <select value={targetId} onChange={(e) => setTargetId(e.target.value)} className={`mt-1 ${field}`}>
           <option value="">—</option>
           {targets?.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
         </select>
         <span className="mt-1 block text-[11px] text-muted">
-          Bekommt die Nachricht als JSON (art, titel, text). Ziele stehen unter Einstellungen → Ziele.
+          {tr("profile.destination_hint")}
         </span>
       </label>
 

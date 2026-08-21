@@ -274,7 +274,7 @@ export const ACTION_SPECS: Record<AutoActionName, ActionSpec> = {
       { key: "hint", label: "action_fields.hint_for_assistant", type: "text",
         hint: "action_fields.what_should_happen" },
     ],
-    outcomes: "Kontext danach: task.task_id, task.status sowie task.id/status. Mit „warten\" zusätzlich <Ergebnis unter>.output und .status.",
+    outcomes: "action_fields.outcome_assistant_task",
   },
 
   answer: {

@@ -407,6 +407,10 @@ async def lifespan(app: FastAPI):
                 # prescribe a channel but need not, and then this one applies.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_default VARCHAR(20) "
                 "DEFAULT 'telegram' NOT NULL",
+                # The channel "ziel" became "destination" with the English house. The value
+                # stands in the row, not in the schema, so it is carried over here.
+                "UPDATE users SET notify_default = 'destination' "
+                "WHERE notify_default = 'ziel'",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS notify_email VARCHAR(255)",
                 # Throttle per message kind: "the same thing every N minutes at most".
                 "ALTER TABLE notifications ADD COLUMN IF NOT EXISTS throttle_key VARCHAR(160)",

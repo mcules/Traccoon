@@ -71,7 +71,7 @@ export type AutoActionName =
 
 export interface AutoActionConfig {
   action: AutoActionName;
-  params: Record<string, any>;   // action-spezifisch (Werte dürfen {{var}} referenzieren)
+  params: Record<string, any>;   // specific to the action (values may reference {{var}})
 }
 
 /** node.data.config: a subset of the fields per node type. */
@@ -128,7 +128,7 @@ export interface NodeConfig {
   inherit_context?: boolean;
   // loop: walks through `liste` element by element; the body hangs off the exit `element`
   // and leads back here over a back edge.
-  list?: string;                // Kontext-Pfad auf die Liste
+  list?: string;                // the context path to the list
   element?: string;              // under this key stands the current element
   index?: string;                // … and here the counter
   collect?: string;               // Pfad, dessen Wert je Durchlauf eingesammelt wird
@@ -137,7 +137,7 @@ export interface NodeConfig {
   // timer
   duration?: number;                // Menge …
   unit?: string;              // … in s | m | h | t
-  to?: string;                  // …oder ein fester Zeitpunkt (Vorlagen erlaubt)
+  to?: string;                  // …or a fixed moment (templates allowed)
   // auto_action: retry instead of giving up
   retries?: number;
   retry_wait_sec?: number;

@@ -16,7 +16,7 @@
   "server.onboarding.project_hint": "At least one project where you hold the AI permission.",
   "server.onboarding.runner": "Worker reachable",
   "server.onboarding.runner_hint": "The worker container has to run, otherwise every assignment sits still.",
-  "server.onboarding.telegram": "Connect chat (optional)",
+  "server.onboarding.telegram": "Connect chat",
   "server.onboarding.telegram_hint": "Notifications and approvals through the messenger.",
   "server.onboarding.verify": "Set a verify command",
   "server.onboarding.verify_hint": "For instance \"npm run build\", otherwise nobody can show that the work is green."
