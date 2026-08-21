@@ -158,10 +158,10 @@ def _explanation(row: SpamFeatureStat) -> str:
     }.get(kind, row.feature)
     s, h = row.spam_count or 0, row.ham_count or 0
     if s and not h:
-        return f"{label}: bisher {s}× Spam"
+        return f"{label}: {s}× spam so far"
     if h and not s:
-        return f"{label}: bisher {h}× erwünscht"
-    return f"{label}: {s}× Spam / {h}× erwünscht"
+        return f"{label}: wanted {h}× so far"
+    return f"{label}: {s}× spam / {h}× wanted"
 
 
 async def sender_trusted(db: AsyncSession, owner_id: int | None, sender: str,
@@ -173,8 +173,8 @@ async def sender_trusted(db: AsyncSession, owner_id: int | None, sender: str,
     model.
 
     What is asked for is the ratio, not spotlessness: a single misgrab — an accidental "is
-    spam", a forged mail under the name — must not outweigh 286 good
-    Beobachtungen aufheben. Genau daran scheiterte die erste Fassung dieser Bremse.
+    spam", a forged mail under the name — must not cancel out 286 good
+    observations. That is exactly where the first version of this brake failed.
     """
     if not sender:
         return False
@@ -194,8 +194,8 @@ async def already_contradicted(db: AsyncSession, owner_id: int | None, sender: s
     stronger than the model. Whoever contradicts twice and is asked again the third time is
     right to consider the detection broken.
 
-    Only human decisions are counted: `auto` is the machine that would otherwise
-    bestätigt.
+    Only human decisions are counted: `auto` is the machine, which would otherwise confirm
+    itself.
     """
     from ..models.assistant import SpamVerdict
 

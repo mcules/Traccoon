@@ -171,7 +171,7 @@ async def test_a_settled_sender_is_filed_away_without_asking(db, owner, imap_stu
     assert fresh.status == "spam" and fresh.decided_by == "auto"
     karte = (await db.execute(select(Notification).where(
         Notification.spam_verdict_id == fresh.id))).scalars().one()
-    assert "gelernt" in karte.title.lower()
+    assert "learned" in karte.title.lower()
 
 
 # ── Stage 2: moving without asking, but contestably ──────────────────────────
@@ -187,7 +187,7 @@ async def test_the_auto_threshold_moves_it_without_asking(db, owner, imap_stub):
     assert verdict.status == "spam" and verdict.decided_by == "auto"
     karte = (await db.execute(select(Notification))).scalars().one()
     assert karte.kind == "spam_auto"
-    assert "rückgängig" in karte.body.lower() or "zurück" in karte.body.lower()
+    assert "brings it back" in karte.body.lower()
 
 
 async def test_recovering_learns_the_sender_as_wanted(db, owner, imap_stub):
