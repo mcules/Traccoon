@@ -1,12 +1,12 @@
-"""Der MCP-Zugang zu den eigenen Postfächern.
+"""The MCP access to one's own mailboxes.
 
-Traccoon hat bisher nur fremde MCP-Server benutzt; das hier ist der erste, den es selbst
-anbietet. Das Protokoll ist bewusst von Hand bedient statt mit einer Bibliothek: gebraucht
-werden drei Methoden (`initialize`, `tools/list`, `tools/call`), und dafür eine Abhängigkeit
-mit eigenem Server-Modell in ein bestehendes FastAPI zu ziehen, wäre mehr Aufbau als Nutzen.
+Traccoon has only used foreign MCP servers so far; this is the first one it offers itself. The
+protocol is deliberately served by hand instead of with a library: three methods are needed
+(`initialize`, `tools/list`, `tools/call`), and pulling a dependency with a server model of its
+own into an existing FastAPI for that would be more scaffolding than benefit.
 
-Angemeldet wird mit einem Token der Person (`Authorization: Bearer …`). Es ist kein Login:
-Wer es hat, darf genau das, was diese Person an ihren Postfächern freigegeben hat — nicht
+Logging in happens with a token of the person (`Authorization: Bearer …`). It is no login:
+whoever has it may do exactly what this person has released on their mailboxes — not
 mehr, und nichts anderes in Traccoon.
 """
 import hashlib
@@ -34,12 +34,12 @@ LOG = "2024-11-05"
 
 
 async def _person(db: AsyncSession, header: str | None) -> User:
-    """Die Person hinter dem Token. Verglichen wird in konstanter Zeit, nicht mit `==`."""
+    """The person behind the token. Compared in constant time, not with `==`."""
     raw = (header or "").removeprefix("Bearer ").strip()
     if not raw:
         raise PermissionError("kein Token")
-    # Die Tokens liegen verschlüsselt; es sind wenige (eines je Person), also reicht das
-    # Durchgehen. Ein Hash-Index wäre schneller und hier trotzdem nur Ballast.
+    # The tokens are stored encrypted; there are few of them (one per person), so walking
+    # through them is enough. A hash index would be faster and still only ballast here.
     rows = (await db.execute(select(User).where(User.mail_mcp_token_enc != ""))).scalars().all()
     for u in rows:
         if hmac.compare_digest(decrypt_secret(u.mail_mcp_token_enc), raw):
@@ -56,7 +56,7 @@ def _answer(id_, result=None, error=None) -> dict:
 @router.post("/mcp/mail")
 async def mcp_mail(request: Request, authorization: str | None = Header(default=None),
                    db: AsyncSession = Depends(get_session)):
-    """Ein Aufruf des MCP-Protokolls (JSON-RPC 2.0 über HTTP)."""
+    """One call of the MCP protocol (JSON-RPC 2.0 over HTTP)."""
     try:
         message = await request.json()
     except Exception:  # noqa: BLE001
@@ -66,7 +66,7 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
     id_ = message.get("id")
     params = message.get("params") or {}
 
-    # Benachrichtigungen (ohne id) werden quittiert, nicht beantwortet.
+    # Notifications (without an id) are acknowledged, not answered.
     if methode.startswith("notifications/"):
         return {}
 
@@ -81,8 +81,8 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "traccoon-mail", "version": "1"},
         }
-        # `instructions` gehört zum Protokoll und wird beim Verbinden gelesen — also noch
-        # bevor das erste Werkzeug läuft. Genau dort gehören Hausregeln hin.
+        # `instructions` belongs to the protocol and is read on connecting — so before the
+        # first tool runs. That is exactly where house rules belong.
         hinweise = await mail_mcp.instructions(db, user)
         if hinweise:
             result["instructions"] = hinweise
@@ -97,7 +97,7 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
         try:
             result = await mail_mcp.execute(db, user, name, args)
         except PermissionError as exc:
-            # Eine Sperre ist kein Absturz: der Agent soll lesen können, warum es nicht geht,
+            # A block is no crash: the agent should be able to read why it does not work,
             # statt es als Serverfehler zu behandeln und wieder zu versuchen.
             return _answer(id_, {"content": [{"type": "text", "text": f"Nicht erlaubt: {exc}"}],
                                   "isError": True})
@@ -116,12 +116,12 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
     return _answer(id_, error={"code": -32601, "message": f"Unbekannte Methode {methode}"})
 
 
-# ── Token verwalten (aus der Oberfläche) ────────────────────────────────────
+# ── Manage the token (from the UI) ──────────────────────────────────────────
 
 @router.post("/mailbox/mcp-token")
 async def token_renew(user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
-    """Erzeugt ein neues Token und zeigt es EINMAL. Ein altes wird damit ungültig."""
+    """Creates a new token and shows it ONCE. An old one becomes invalid with it."""
     raw = "trmcp_" + secrets.token_urlsafe(32)
     user.mail_mcp_token_enc = encrypt_secret(raw)
     await db.commit()
@@ -130,7 +130,7 @@ async def token_renew(user: User = Depends(get_current_user),
 
 @router.get("/mailbox/mcp-status")
 async def token_state(user: User = Depends(get_current_user)):
-    """Nur ob eines existiert — das Token selbst kommt nie wieder heraus."""
+    """Only whether one exists — the token itself never comes out again."""
     return {"token_set": bool(user.mail_mcp_token_enc),
             "fingerprint": (hashlib.sha256(user.mail_mcp_token_enc.encode()).hexdigest()[:8]
                             if user.mail_mcp_token_enc else "")}

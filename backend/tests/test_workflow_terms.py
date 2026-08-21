@@ -1,9 +1,9 @@
-"""Abläufe sprechen englisch — und verstehen weiter, was auf Deutsch geschrieben wurde.
+"""Flows speak English — and still understand what was written in German.
 
-Die Namen stehen in gespeicherten Fassungen, und veröffentlichte sind unveränderlich,
-solange Instanzen an ihnen hängen. Deshalb zwei Wege: übersetzen beim Ausführen und einmal
-umschreiben. Geprüft wird beides — vor allem, dass das Umschreiben genau EINMAL geschieht:
-`assistant_task` hieß früher der Mail-Eingang und heute der allgemeine Auftrag.
+The names stand in stored versions, and published ones are immutable as long as instances hang
+on them. Hence two ways: translate at run time and rewrite once. Both are checked — above all
+that the rewriting happens exactly ONCE: `assistant_task` used to mean the mail intake and
+today means the general assignment.
 """
 import pytest
 from app.services import workflow_terms as terms
@@ -20,10 +20,10 @@ def _graph(action: str, params: dict, guard: dict | None = None) -> dict:
 
 
 def test_translation_happens_when_running():
-    """Ein alter Graph läuft weiter, ohne dass er angefasst wurde."""
+    """An old graph keeps running without having been touched."""
     assert terms.normalise_action("messwert") == "metric_record"
     assert terms.normalise_params({"reihe": "akku", "wert": 25}) == {"series": "akku", "value": 25}
-    # Was schon englisch ist, bleibt.
+    # What is already English stays.
     assert terms.normalise_params({"series": "akku"}) == {"series": "akku"}
 
 
@@ -34,7 +34,7 @@ def test_paths_and_filters_are_carried_along():
 
 
 def test_a_word_without_a_dot_belongs_to_the_person():
-    """`{{ titel }}` ist ein Job-Parameter, kein Kontextname — der bleibt."""
+    """`{{ titel }}` is a job parameter, not a context name — that one stays."""
     assert terms._paths_replace("{{ titel }} / {{ thema }}") == "{{ titel }} / {{ thema }}"
 
 
@@ -53,8 +53,8 @@ def test_the_graph_is_rewritten():
 
 
 def test_rewriting_twice_does_not_turn_the_names_further():
-    """`assistant_task` hieß früher der Mail-Eingang und heute der allgemeine Auftrag —
-    ein zweiter Durchgang über das eigene Ergebnis würde ihn zurückbiegen."""
+    """`assistant_task` used to mean the mail intake and today the general assignment —
+    a second pass over its own result would bend it back."""
     old = _graph("assistent_auftrag", {"auftrag": "Mach was"})
     once, _ = terms.migrate_graph(old)
     assert once["nodes"][0]["data"]["config"]["action"]["action"] == "assistant_task"
@@ -65,16 +65,16 @@ def test_rewriting_twice_does_not_turn_the_names_further():
 
 
 def test_the_old_mail_path_keeps_its_meaning():
-    """In einem alten Graphen meinte `assistant_task` den Mail-Eingang."""
+    """In an old graph `assistant_task` meant the mail intake."""
     new, _ = terms.migrate_graph(_graph("assistant_task", {}))
     assert new["nodes"][0]["data"]["config"]["action"]["action"] == "mail_assistant_task"
 
 
 def test_a_follow_up_may_pull_in_new_words():
-    """Kommt später ein Wort dazu, wird noch einmal gelesen — aber ohne die Namen, die
+    """If a word is added later, it is read again — but without the names that
     ihre Bedeutung gewechselt haben."""
     already = _graph("assistant_task", {"task": "x", "titel": "Alt"})
-    already[terms.MARK] = "en"          # eine ältere Marke: der erste Durchgang war schon
+    already[terms.MARK] = "en"          # an older mark: the first pass had already happened
     new, different = terms.migrate_graph(already)
     assert different
     action = new["nodes"][0]["data"]["config"]["action"]

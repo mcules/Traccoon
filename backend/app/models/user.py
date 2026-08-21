@@ -43,27 +43,27 @@ class User(TimestampMixin, Base):
     notify_default: Mapped[str] = mapped_column(String(20), default="telegram")  # telegram|email|ziel
     # Different address for notifications; empty = the login address (`email`).
     notify_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # Kanal „ziel“: der Aufruf geht an dieses Ziel (Basis-URL und Anmeldung stehen dort).
-    # Damit ist jeder Dienst erreichbar, der eine URL annimmt — ntfy, Matrix, Gotify, ein
-    # eigener Bot —, ohne dass Traccoon ihn kennen müsste. Ein neuer Melder ist damit ein
-    # Eintrag unter „Ziele“ und keine Codeänderung mehr.
+    # Channel "destination": the call goes to this destination (base URL and login stand
+    # there). That makes every service reachable that accepts a URL — ntfy, Matrix, Gotify, a
+    # bot of one's own — without Traccoon having to know it. A new messenger is thereby an
+    # entry under "destinations" and no longer a code change.
     notify_destination_id: Mapped[int | None] = mapped_column(
         ForeignKey("destinations.id", ondelete="SET NULL"), nullable=True)
     # UI language. German is the source language of the shipped catalogs, everything else
     # is a translation, so an unknown value simply falls back to it.
     locale: Mapped[str] = mapped_column(String(10), default="de")
-    # Zeitzone dieser Person (IANA, z. B. "Europe/Berlin"). Sie entscheidet, was „8 Uhr"
-    # heißt: in der Oberfläche, im Nachtfenster und im Zeitplan ihrer Jobs. Ohne sie rechnete
-    # der Server in UTC und in einer fest verdrahteten Zone — ein Cron-Job „0 8 * * *" lief
-    # damit um 10 Uhr, und niemand sah warum.
+    # Timezone of this person (IANA, e.g. "Europe/Berlin"). It decides what "8 o'clock" means:
+    # in the UI, in the night window and in the schedule of their jobs. Without it the server
+    # computed in UTC and in a hard-wired zone — a cron job "0 8 * * *" then ran at 10, and
+    # nobody saw why.
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Berlin")
-    # Welches Postfach zuletzt offen war. Am Menschen und nicht im Browser gespeichert: wer
-    # sich am Abend am anderen Rechner anmeldet, will dort weitermachen, wo er aufgehört hat.
+    # Which mailbox was open last. Stored on the person and not in the browser: whoever logs in
+    # at the other machine in the evening wants to carry on where they left off.
     mail_last_account_id: Mapped[int | None] = mapped_column(
         ForeignKey("mail_accounts.id", ondelete="SET NULL"), nullable=True)
-    # Token, mit dem ein Agent den MCP-Zugang dieser Person benutzt (Bearer). Er steht hier
-    # verschlüsselt und wird beim Erzeugen genau einmal angezeigt — danach nur noch neu
-    # setzbar. Wer ihn hat, sieht die freigegebenen Postfächer dieser Person.
+    # Token an agent uses this person's MCP access with (bearer). It stands here encrypted and
+    # is shown exactly once on creation — afterwards it can only be set anew. Whoever has it
+    # sees the released mailboxes of this person.
     mail_mcp_token_enc: Mapped[str] = mapped_column(String, default="")
 
     # MCP-Gateway (MCPJungle) pro User — harte serverseitige Tool-Trennung.

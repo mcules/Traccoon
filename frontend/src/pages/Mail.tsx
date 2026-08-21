@@ -78,7 +78,7 @@ export default function Mail() {
     setAccountId(id);
     setFolder("INBOX");
     setUid(null);
-    api.post(`/mailbox/accounts/${id}/last`, {}).catch(() => {/* Merken ist kein Muss */});
+    api.post(`/mailbox/accounts/${id}/last`, {}).catch(() => {/* Remembering is no must */});
   };
 
   const { data: folderListing } = useQuery({
@@ -101,7 +101,7 @@ export default function Mail() {
     <div className="space-y-3">
       <Errorrow text={err} />
       {/* Eine Zeile für alles, was zum Postfach gehört: welches, seine Einstellungen, und
-          die einzige Handlung, die nicht von einer Nachricht ausgeht. */}
+          the only action that does not start from a message. */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted">Postfach</span>
         <select value={accountId ?? ""} onChange={(e) => accountSwitch(Number(e.target.value))}
@@ -125,7 +125,7 @@ export default function Mail() {
           onClick={() => setSettings(accounts.find((k) => k.id === accountId) || null)} />
         {/* Die anderen Postfächer mit neuer Post — sichtbar, ohne das Auswahlfeld zu öffnen,
             und ein Klick springt hin. Wer nichts liegen hat, taucht hier nicht auf: eine
-            Reihe von Nullen wäre keine Auskunft, sondern Tapete. */}
+            row of zeroes would be no information but wallpaper. */}
         {accounts.filter((k) => {
           const open = unread?.accounts.find((a) => a.account_id === k.id)?.unseen;
           return k.id !== accountId && !!open;
@@ -140,7 +140,7 @@ export default function Mail() {
           </button>
         ))}
         {/* Die Suche gehört zum Postfach, nicht zur Liste darunter: sie gilt für den ganzen
-            Ordner und bleibt auch dann sichtbar, wenn rechts eine Nachricht offen ist. */}
+            folder and stays visible even when a message is open on the right. */}
         <form onSubmit={(e) => { e.preventDefault(); setSearch(question); setUid(null); }}
               className="flex min-w-0 flex-1 items-center gap-2">
           <input value={question} onChange={(e) => setQuestion(e.target.value)}
@@ -172,7 +172,7 @@ export default function Mail() {
                 onChoose={(n) => { setFolder(n); setUid(null); setSearch(""); setQuestion(""); }} />
               {/* Handgriffe am GEWÄHLTEN Ordner. Sie stehen unter dem Baum und nicht in
                   jeder Zeile: gebraucht werden sie selten, und ein Löschknopf neben jedem
-                  Ordner ist ein Löschknopf zu viel. */}
+                  folder one delete button is one too many. */}
               {accountId && (
                 <FolderHandgrips accountId={accountId} folder={folder}
                   onDeleted={() => { setFolder("INBOX"); setUid(null); }}
@@ -288,7 +288,7 @@ function FolderTree({ folder: folder, active, onChoose }: {
       {folder.filter(visible).map((o) => (
         <ListenLine key={o.name} dense onClick={() => onChoose(o.name)}>
           {/* Feste Spalten statt Flex mit Platzhaltern: nur so steht das Ordnersymbol jeder
-              Zeile an derselben Stelle, egal ob davor ein Klapp-Pfeil sitzt oder nicht. */}
+              line in the same place, whether or not a fold arrow sits in front of it. */}
           <div className="grid grid-cols-[0.75rem_1.25rem_minmax(0,1fr)_auto] items-center gap-1.5"
                style={{ paddingLeft: `${o.level * 0.85}rem` }}>
             {hasChildren(o) ? (
@@ -463,7 +463,7 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
       </>}
     >
       {/* Schmal heißt: die Liste steht neben der geöffneten Mail und scrollt für sich. Ohne
-          eigene Höhe würde die Seite so lang wie das Postfach. */}
+          its own height would make the page as long as the mailbox. */}
       <div className={narrow ? "max-h-[55vh] overflow-y-auto" : ""}>
       <Listing>
         {data?.messages.map((m) => (
@@ -708,7 +708,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
         <Rowbutton onClick={() => onReplies(answerFields(false))}>Antworten</Rowbutton>
         {/* Nur wenn er wirklich etwas anderes tut: gezählt wird, was nach Abzug der eigenen
             Adressen übrig bleibt. Sonst stünde bei einer Mail, die an mich und eine zweite
-            eigene Adresse ging, ein Knopf, der dasselbe macht wie sein Nachbar. */}
+            own address, a button that does the same as its neighbour. */}
         {moreRecipient() && (
           <Rowbutton onClick={() => onReplies(answerFields(true))}>
             Allen antworten
@@ -722,12 +722,12 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
             + `Datum: ${m?.date || ""}\nBetreff: ${m?.subject || ""}\n\n${m?.text || ""}`,
         })}>Weiterleiten</Rowbutton>
         {/* Archiv und Spam erscheinen nur, wenn am Konto ein Ziel dafür steht — ein Knopf,
-            der beim Drücken erklärt, dass er nicht kann, ist keiner. */}
+            that explains on being pressed that it cannot is none. */}
         {(account?.archive_mode === "pattern" ? account?.archive_pattern : account?.folder_archive) && (
           <Rowbutton onClick={() => archive.mutate()}>📦 Archivieren</Rowbutton>
         )}
         {/* Im Spam-Ordner ist „als Spam markieren" keine Handlung, sondern eine
-            Wiederholung. Was dort fehlt, ist der Widerspruch. */}
+            repetition. What is missing there is the contradiction. */}
         {account?.folder_junk && (folder === account.folder_junk ? (
           <Rowbutton onClick={() => noSpam.mutate()} title={tr("mail.back_inbox_detection_learns")}>
             ✅ {tr("mail.not_spam")}
@@ -744,7 +744,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
         <>
           {/* Zwei Zeilen statt vier: wer geschrieben hat und wann, ist die Frage beim
               Öffnen — an wen und in Kopie liest man nur nach, wenn man antwortet. Die volle
-              Liste steht im Tooltip, damit Kürzen nichts verschluckt. */}
+              list stands in the tooltip, so that shortening swallows nothing. */}
           <div className="space-y-0.5">
             <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
               <span className="font-medium text-ink">
@@ -833,7 +833,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
         <Dialog title="Verschieben nach" onClose={() => setMoveOpen(false)}>
           {/* Der Baum wie in der Ordnerspalte, nur ohne Zähler: hier wird gewählt, nicht
               gestöbert. Ein Klick verschiebt und schließt — ein zweiter Knopf „Übernehmen"
-              wäre ein Schritt, den niemand braucht. */}
+              would be a step nobody needs. */}
           <Listing>
             {(allFolder || []).filter((o) => o.name !== folder).map((o) => (
               <ListenLine key={o.name} dense

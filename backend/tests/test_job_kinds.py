@@ -92,7 +92,7 @@ async def test_long_text_goes_into_a_storage(db):
     assert store["action"] == "document"
     assert store["params"]["storage"] == "pruefer" and store["params"]["name"] == "Prüfer"
     # What is reported is the reference, not the text.
-    assert node["report"]["action"]["params"]["text"] == "{{ document.title }}\n{{ document.url }}"
+    assert node["melden"]["action"]["params"]["text"] == "{{ document.title }}\n{{ document.url }}"
     # And the storing stands BEFORE the reporting question: a silent job keeps its text too.
     edges = {(e["source"], e["target"]) for e in graph["edges"]}
     assert ("arbeit", "ablegen") in edges and ("ablegen", "answer") in edges

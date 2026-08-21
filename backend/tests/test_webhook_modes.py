@@ -1,9 +1,9 @@
-"""Ein Webhook nimmt entgegen und prüft — was daraus wird, steht im Ablauf.
+"""A webhook receives and checks — what becomes of it is written in the flow.
 
-Früher konnte er selbst ein Ticket anlegen, eine Nachricht schicken oder den Assistenten
-beauftragen: drei Wege im Code, jeder mit eigenen Spalten und nur für Webhooks zu haben.
-Geprüft wird hier beides — dass der Kontext generisch entsteht (aus der Nutzlast, aus festen
-Werten, verschachtelt) und dass die Umstellung nichts von dem verliert, was die alten Modi
+It used to be able to create a ticket itself, send a message or assign the assistant: three
+ways in the code, each with columns of its own and available to webhooks only. What is checked
+here is both — that the context comes into being generically (from the payload, from fixed
+values, nested) and that the conversion loses nothing of what the old modes
 konnten.
 """
 import pytest
@@ -53,7 +53,7 @@ def test_fixed_values_may_be_filled_from_the_payload():
 
 
 def test_a_reference_built_from_several_fields():
-    """Ein fremdes System schickt selten eine eigene Id — dann setzt man sie zusammen."""
+    """A foreign system rarely sends an id of its own — then one composes it."""
     assert _reference(_sub(ref_field="{account}:{uid}"), {"account": "privat", "uid": 4}) \
         == "privat:4"
     assert _reference(_sub(ref_field="event.id"), {"event": {"id": 12}}) == "12"
@@ -71,9 +71,9 @@ async def test_the_assistant_becomes_a_flow(db, owner, redis_stub):
     await report(db, sub, {"entity_id": "sensor.tuer"})
     task = (await db.execute(select(AssistantTask))).scalars().one()
     assert task.meta["agent"] == "hausmeister"
-    # Der Prompt wird zum Auftragstext, und die Platzhalter füllt jetzt der Ablauf.
+    # The prompt becomes the assignment text, and the placeholders the flow now fills.
     assert task.meta["prompt"] == "Sensor sensor.tuer ist leer."
-    # `auto_run` hieß „ohne Rückfrage laufen“ — daraus wird der Freigabe-Schalter.
+    # `auto_run` meant "run without asking" — out of it comes the approval switch.
     assert task.status == "approved"
 
 
@@ -119,8 +119,8 @@ async def test_a_ticket_becomes_a_flow(db, owner):
 
 
 async def test_mail_reports_an_event_instead_of_acting(db, owner):
-    """Der Mail-Eingang ist der eine Fall, der kein eigener Ablauf wird: Er meldet, dass eine
-    Mail da ist, und wer darauf hört, entscheidet der Ablauf mit dem passenden Auslöser."""
+    """The mail intake is the one case that does not become a flow of its own: it reports that a
+    mail is there, and who listens to that the flow with the matching trigger decides."""
     sub = await make_webhook(db, owner, "new-email", mode="assistant", agent="assistent",
                              classify_agent="mail_classifier", prompt_tmpl="Betreff: {subject}")
     assert sub.mode == "event" and sub.event_name == "mail.received"
@@ -146,10 +146,10 @@ async def test_the_conversion_does_not_touch_the_converted_again(db, owner):
     assert len((await db.execute(select(WorkflowDefinition))).scalars().all()) == 1
 
 
-# ── Name und Schlüssel gehören der Sache ─────────────────────────────────────
+# ── Name and key belong to the matter ───────────────────────────────────────
 
 async def test_the_name_describes_the_matter_not_the_trigger(db, owner, redis_stub):
-    """„Webhook: ha-battery-low“ benannte den Briefkasten, nicht den Brief."""
+    """"Webhook: ha-battery-low" named the letterbox, not the letter."""
     sub = await make_webhook(db, owner, "ha-battery-low", mode="assistant",
                              agent="assistent", prompt_tmpl="Batterie leer.")
     d = await db.get(WorkflowDefinition, sub.workflow_definition_id)
@@ -172,7 +172,7 @@ async def test_renaming_works_through_the_api(client, db, owner):
     r = await client.put(f"/workflows/{sub.workflow_definition_id}", headers=auth(owner),
                          json={"name": "Post sortieren", "key": "Post Sortieren!"})
     assert r.status_code == 200, r.text
-    # Aus der Eingabe wird ein sauberer Schlüssel, statt sie abzulehnen.
+    # Out of the input comes a clean key instead of refusing it.
     assert r.json()["key"] == "post-sortieren" and r.json()["name"] == "Post sortieren"
 
 
@@ -188,7 +188,7 @@ async def test_a_taken_key_is_refused(client, db, owner):
 
 
 async def test_a_preset_flow_keeps_its_key(client, db, owner):
-    """Dort ist der Schlüssel die Verbindung, nicht die Beschriftung."""
+    """There the key is the connection, not the label."""
     from app.models.enums import WorkflowSubjectKind
     from conftest import auth
 

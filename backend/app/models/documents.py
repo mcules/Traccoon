@@ -1,13 +1,13 @@
-"""Ablagen: Texte, die ein Ablauf schreibt und die man später ansehen will.
+"""Stores: texts a flow writes and that one wants to look at later.
 
-Ein Ablauf konnte seinen Text nirgends hinlegen. Der Rückblick, den ein Agent jeden Morgen
-schreibt, landete im Ausgabefeld eines Job-Laufs — abgeschnitten bei 20.000 Zeichen, ohne
-Überschrift, ohne Ansicht, und nur zu finden, wenn man wusste, welcher Lauf es war. Die
-Meldung dazu verwies auf eine Seite, die es nie gab.
+A flow had nowhere to put its text. The review an agent writes every morning ended up in the
+output field of a job run — truncated at 20,000 characters, without a heading, without a view,
+and findable only if one knew which run it was. The report about it pointed at a page that
+never existed.
 
-Aufgebaut wie die Messreihen und aus demselben Grund: Eine Ablage ist ein Name und eine
-Folge von Fassungen. Was darin steht (Rückblick, Bericht, Protokoll, Notiz) und was daraus
-folgt, weiß der Ablauf — hier steht nur, dass es aufgehoben wird.
+Built like the metric series and for the same reason: a store is a name and a sequence of
+versions. What stands in it (a review, a report, a log, a note) and what follows from it the
+flow knows — here stands only that it is kept.
 """
 from __future__ import annotations
 
@@ -28,23 +28,23 @@ class DocSeries(TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("owner_user_id", "key", name="uq_doc_series_owner_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Ablagen gehören einem Menschen: Sie entstehen aus seinen Abläufen und enthalten, was
-    # deren Agenten für ihn geschrieben haben.
+    # Stores belong to a person: they come out of their flows and hold what the agents of
+    # those flows wrote for them.
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     key: Mapped[str] = mapped_column(String(120), nullable=False)
     name: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
-    # Wie viele Fassungen aufgehoben werden. Ein täglicher Rückblick wäre nach einem Jahr
-    # 365 Fassungen, von denen niemand mehr als die letzten paar Dutzend ansieht.
+    # How many versions are kept. A daily review would be 365 versions after a year, of which
+    # nobody looks at more than the last few dozen.
     keep: Mapped[int] = mapped_column(Integer, default=60)
-    # Letzter Stand; erspart der Übersicht den Blick in die Fassungen.
+    # Latest state; saves the overview a look into the versions.
     last_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_title: Mapped[str] = mapped_column(String(300), default="")
 
 
 class DocEntry(Base):
-    """Eine Fassung. `context` hält fest, woher sie kam (Ablauf, Lauf, Job)."""
+    """One version. `context` records where it came from (a flow, a run, a job)."""
     __tablename__ = "doc_entries"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -54,7 +54,7 @@ class DocEntry(Base):
                                             index=True)
     title: Mapped[str] = mapped_column(String(300), default="")
     body: Mapped[str] = mapped_column(Text, default="")
-    # markdown | text. Kein HTML: Was hier hineingeht, kommt von einem Modell, und HTML aus
-    # einem Modell wäre eine fremde Seite in der eigenen Oberfläche.
+    # markdown | text. No HTML: what goes in here comes from a model, and HTML from a model
+    # would be a foreign page inside our own UI.
     format: Mapped[str] = mapped_column(String(20), default="markdown")
     context: Mapped[dict] = mapped_column(JSON, default=dict)

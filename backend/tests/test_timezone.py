@@ -1,8 +1,8 @@
-"""Was heißt hier „8 Uhr"? — die Zeitzone der Person.
+"""What does "8 o'clock" mean here? — the timezone of the person.
 
-Geprüft wird die Mechanik an den zwei Stellen, an denen eine falsche Zone wirklich weh tut:
-im Zeitplan eines Jobs und im Nachtfenster. Die Oberfläche rechnet mit derselben Angabe,
-das lässt sich hier nicht prüfen.
+What is checked is the mechanism at the two places where a wrong zone really hurts: in the
+schedule of a job and in the night window. The UI computes with the same entry, which cannot be
+checked here.
 """
 import datetime as dt
 from zoneinfo import ZoneInfo
@@ -26,7 +26,7 @@ class Person:
 
 
 async def test_cron_means_the_persons_clock_not_utc():
-    """Sommerzeit: 8 Uhr in Berlin sind 6 Uhr UTC. Vorher lief der Job um 10."""
+    """Summer time: 8 o'clock in Berlin is 6 UTC. Before, the job ran at 10."""
     job = _job(last_run_at=dt.datetime(2026, 7, 1, 4, 0, tzinfo=dt.timezone.utc))
 
     six_utc = dt.datetime(2026, 7, 1, 6, 1, tzinfo=dt.timezone.utc)
@@ -37,17 +37,17 @@ async def test_cron_means_the_persons_clock_not_utc():
 
 
 async def test_the_same_spec_in_another_zone():
-    """Derselbe Plan, andere Person: der Job gehört ihrer Uhr, nicht der des Servers.
+    """The same schedule, a different person: the job belongs to their clock, not to the server's.
 
-    8 Uhr in Tokio ist 23 Uhr UTC des Vortags — ein Job mit demselben Text läuft also zu
-    einer ganz anderen Stunde des Servers, und genau so soll es sein.
+    8 o'clock in Tokyo is 23 UTC of the previous day — a job with the same text therefore runs
+    at a completely different hour of the server, and that is exactly how it should be.
     """
     tokio = ZoneInfo("Asia/Tokyo")
     job = _job(last_run_at=dt.datetime(2026, 6, 30, 20, 0, tzinfo=dt.timezone.utc))
 
     assert _due(job, dt.datetime(2026, 6, 30, 23, 1, tzinfo=dt.timezone.utc), tokio) is True
     assert _due(job, dt.datetime(2026, 6, 30, 22, 0, tzinfo=dt.timezone.utc), tokio) is False
-    # Und in Berlin wäre derselbe Job zu dieser Stunde noch lange nicht dran.
+    # And in Berlin the same job would be nowhere near due at this hour.
     assert _due(job, dt.datetime(2026, 6, 30, 23, 1, tzinfo=dt.timezone.utc), BERLIN) is False
 
 
@@ -60,7 +60,7 @@ async def test_an_unknown_zone_halts_nothing():
 
 
 async def test_the_night_window_applies_in_the_persons_zone(db):
-    """22 bis 6 ist keine Angabe in UTC, sondern im Alltag dessen, der schläft."""
+    """22 to 6 is no entry in UTC but in the everyday life of whoever sleeps."""
     from app.services.agent_gate import zone_of as gate_zone
 
     from conftest import make_user

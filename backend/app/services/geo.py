@@ -1,17 +1,17 @@
-"""Rechnen auf der Kugel — so wenig, wie fuer Geozaeune und Karten noetig ist.
+"""Arithmetic on the sphere — as little as geofences and maps need.
 
-PostGIS steht nicht zur Verfuegung: Das Abbild `postgres:16-alpine` bringt die Erweiterung
-nicht mit, und die Tests laufen gegen SQLite. Fuer die Fragen, die hier gestellt werden — wie
-weit ist dieser Punkt vom letzten entfernt, steht er in diesem Kreis — reicht die
-Haversine-Formel in Python vollkommen: Bei einer Handvoll Orten je Mensch ist die Schleife
-darueber schneller, als eine Datenbank die Anfrage entgegennehmen koennte.
+PostGIS is not available: the image `postgres:16-alpine` does not bring the extension along,
+and the tests run against SQLite. For the questions asked here — how far is this point from
+the last one, does it stand inside this circle — the haversine formula in Python is entirely
+enough: with a handful of places per person the loop over them is faster than a database could
+even accept the query.
 """
 from __future__ import annotations
 
 import math
 
-# Mittlerer Erdradius (IUGG). Der Fehler gegenueber dem echten Ellipsoid liegt bei 0,3 % —
-# bei einem Zaun mit 150 m Radius sind das 45 cm, und das GPS eines Telefons streut um das
+# Mean earth radius (IUGG). The error against the real ellipsoid is 0.3 % — with a fence of
+# 150 m radius that is 45 cm, and the GPS of a phone scatters by about
 # Zwanzigfache davon.
 ERDRADIUS_M = 6_371_008.8
 
@@ -26,15 +26,15 @@ def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 def frame(lat: float, lon: float, meter: float) -> tuple[float, float, float, float]:
-    """Das Rechteck um einen Punkt: (lat_min, lat_max, lon_min, lon_max).
+    """The rectangle around a point: (lat_min, lat_max, lon_min, lon_max).
 
-    Fuer die Vorauswahl in SQL, wenn einmal mehr Punkte da sind, als man durchgehen mag. Die
-    Laengengrade ruecken zu den Polen hin zusammen, deshalb der Kosinus; direkt am Pol
-    entartet die Rechnung, dort wird das Rechteck auf die ganze Breite geoeffnet.
+    For the preselection in SQL, once there are more points than one cares to walk through. The
+    lines of longitude move together towards the poles, hence the cosine; right at the pole the
+    arithmetic degenerates, and there the rectangle is opened to the full width.
     """
-    # Ein Hauch mehr, als gefragt war. Der Rahmen ist eine Vorauswahl; waere er auf den
-    # Meter genau, schnitte er wegen der Fliesskomma-Rundung gelegentlich genau den Punkt ab,
-    # der noch drin liegt. Ein Promille plus ein Meter kostet nichts und verhindert das.
+    # A touch more than was asked for. The frame is a preselection; were it accurate to the
+    # metre, floating point rounding would occasionally cut off exactly the point that is still
+    # inside. A per mille plus a metre costs nothing and prevents that.
     meter = meter * 1.001 + 1.0
     d_lat = math.degrees(meter / ERDRADIUS_M)
     kos = math.cos(math.radians(lat))

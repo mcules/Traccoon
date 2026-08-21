@@ -98,7 +98,7 @@ async def test_outliers_are_dropped_without_toppling_the_call(db):
         _p(0, 0),                          # Null-Insel
         _p(91.0, 10.0),                    # unmoeglich
         _p(*THERE_DRUEBEN, ts=morgen),        # Uhr kaputt
-        _p(*HERE, accuracy=10),            # this one counts
+        _p(*HIER, accuracy=10),            # this one counts
     ])
     await db.commit()
     assert (e["accepted"], e["skipped"]) == (1, 4)

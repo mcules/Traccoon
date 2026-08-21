@@ -83,14 +83,14 @@ function useInboxCounter(): number {
 }
 
 /**
- * Der persönliche Kanal: das Postfach meldet sich selbst.
+ * The personal channel: the mailbox reports by itself.
  *
- * Das Gegenstück zu `mail_watch` im Backend — dort hält ein Wächter die IMAP-Verbindung
- * offen (IDLE), hier hört die Oberfläche zu. Gemeldet wird nur, DASS sich etwas getan hat;
- * den Stand holen die üblichen Abfragen. Zwei Quellen für dieselbe Zahl wären eine zu viel.
+ * The counterpart to `mail_watch` in the backend — there a watcher keeps the IMAP connection
+ * open (IDLE), here the UI listens. Only THAT something has happened is reported; the state the
+ * usual queries fetch. Two sources for the same number would be one too many.
  *
- * Der Kanal hängt am Layout und nicht an der Mail-Seite: der Zähler in der Leiste ist
- * überall, also muss die Meldung auch überall ankommen.
+ * The channel hangs on the layout and not on the mail page: the counter in the bar is
+ * everywhere, so the report has to arrive everywhere too.
  */
 function useMailPush(): void {
   const qc = useQueryClient();
@@ -114,8 +114,8 @@ function useMailPush(): void {
         qc.invalidateQueries({ queryKey: ["mail-folders"] });
         qc.invalidateQueries({ queryKey: ["mail-list"] });
       };
-      // Ein abgerissener Kanal ist der Normalfall (Schlaf, Netzwechsel, Neustart des
-      // Backends). Ohne Wiederaufbau wäre die Oberfläche danach still und niemand wüsste,
+      // A torn channel is the normal case (sleep, a network change, a restart of the
+      // backend). Without a rebuild the UI would be silent afterwards and nobody would know
       // warum nichts mehr kommt.
       ws.onclose = () => { if (!to) retry = window.setTimeout(join, 5000); };
     };
@@ -130,10 +130,10 @@ function useMailPush(): void {
 }
 
 /**
- * Ungelesene Post über alle Postfächer.
+ * Unread mail across all mailboxes.
  *
- * Seltener als der Assistenten-Eingang abgefragt: dahinter steckt je Postfach eine
- * IMAP-Verbindung, und wer neue Post auf die Sekunde sehen will, hat den Reiter ohnehin
+ * Asked for less often than the assistant inbox: behind it sits an IMAP connection per
+ * mailbox, and whoever wants to see new mail to the second has the tab open anyway
  * offen.
  */
 function useMailCounter(): number {
@@ -297,7 +297,7 @@ export default function Layout({ children }: { children: ReactNode }) {
               <span className="truncate font-semibold text-ink">{chrome.title}</span>
             )}
             {/* Der Wechsler ist auf einer projektlosen Seite am Handy nur Platzverbrauch —
-                dort steht der Seitentitel, und die Projektliste hängt im Menü. */}
+                that is where the page title stands, and the project list hangs in the menu. */}
             <div className={!onProjectPage && chrome.title ? "hidden sm:block" : ""}>
               <ProjectSwitcher />
             </div>

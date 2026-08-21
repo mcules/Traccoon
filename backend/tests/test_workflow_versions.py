@@ -59,7 +59,7 @@ async def _versions(db, def_id: int) -> list[WorkflowVersion]:
 # ── Der Schnitt: Inhalt gegen Anordnung ──────────────────────────────────────
 
 async def test_moving_is_not_a_change():
-    """Drei Zentimeter nach links sind keine Aussage über das Verhalten."""
+    """Three centimetres to the left are no statement about behaviour."""
     a = _graph(x=0)
     b = _graph(x=750)
     assert wgraph.same_content(a, b)
@@ -71,14 +71,14 @@ async def test_a_different_parameter_is_a_change():
 
 
 async def test_the_order_of_the_nodes_does_not_count():
-    """Der Editor liefert Knoten in wechselnder Reihenfolge; das ist kein Unterschied."""
+    """The editor delivers nodes in changing order; that is no difference."""
     a = _graph()
     b = {"nodes": list(reversed(a["nodes"])), "edges": list(reversed(a["edges"]))}
     assert wgraph.same_content(a, b)
 
 
 async def test_differences_name_the_field_not_the_lump():
-    """„Die Aktion hat sich geändert" ist keine Antwort, wenn die Aktion zwei Seiten JSON ist."""
+    """"The action has changed" is no answer when the action is two pages of JSON."""
     u = wgraph.differences(_graph(tool="alt"), _graph(tool="neu"))
     (node,) = u["nodes_changed"]
     assert node["id"] == "tun"
@@ -97,10 +97,10 @@ async def test_new_and_removed_nodes_and_edges():
     assert u["nodes_added"] == [] and u["edges_added"] == []
 
 
-# ── Was der Editor daraus macht ──────────────────────────────────────────────
+# ── What the editor makes of it ─────────────────────────────────────────────
 
 async def test_viewing_creates_nothing(db, client):
-    """Der eigentliche Anlass: Hinsehen darf keine Fassung kosten."""
+    """The actual occasion: looking must not cost a version."""
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
 
@@ -121,7 +121,7 @@ async def test_rearranging_saves_without_a_new_version(db, client):
     assert r.status_code == 200 and r.json()["result"] == "layout"
     versions = await _versions(db, d.id)
     assert len(versions) == 1 and versions[0].status == WorkflowVersionStatus.published
-    # Die Anordnung ist trotzdem da, sonst wäre das Speichern eine Lüge.
+    # The arrangement is there all the same, otherwise saving would be a lie.
     await db.refresh(versions[0])
     assert wgraph.positions(versions[0].graph)["start"]["x"] == 900
 
@@ -146,7 +146,7 @@ async def test_a_substantive_change_creates_exactly_one_draft(db, client):
 
 
 async def test_rearranging_in_the_draft_stays_in_the_draft(db, client):
-    """Wer schon einen Entwurf offen hat, ordnet darin an und nicht in der Live-Fassung."""
+    """Whoever already has a draft open arranges in it and not in the live version."""
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
     await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
@@ -172,7 +172,7 @@ async def test_the_editor_receives_the_open_draft(db, client):
 
 
 async def test_discarding_the_draft_leaves_nothing_behind(db, client):
-    """Ohne diesen Weg musste man einen verfahrenen Graphen von Hand zurückbauen."""
+    """Without this way one had to unpick a stuck graph by hand."""
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
     await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
@@ -183,7 +183,7 @@ async def test_discarding_the_draft_leaves_nothing_behind(db, client):
     assert r.status_code == 204
     versions = await _versions(db, d.id)
     assert len(versions) == 1 and versions[0].status == WorkflowVersionStatus.published
-    # Und der Editor zeigt danach wieder die Live-Fassung.
+    # And afterwards the editor shows the live version again.
     assert (await client.get(f"/workflows/{d.id}/editable",
                              headers=auth(anna))).json()["status"] == "published"
 
@@ -194,7 +194,7 @@ async def test_discarding_without_a_draft_is_not_an_error(db, client):
     assert (await client.delete(f"/workflows/{d.id}/draft", headers=auth(anna))).status_code == 204
 
 
-# ── Vergleichen und zurückrollen ─────────────────────────────────────────────
+# ── Comparing and rolling back ──────────────────────────────────────────────
 
 async def test_the_diff_compares_with_the_predecessor_by_default(db, client):
     anna = await make_user(db, "anna")
@@ -222,8 +222,8 @@ async def test_a_diff_against_a_particular_version(db, client):
 
 
 async def test_rolling_back_creates_a_new_version(db, client):
-    """Nicht den Zeiger biegen: laufende Instanzen hängen an ihrer Fassung, und die
-    Geschichte soll zeigen, dass zurückgerollt wurde."""
+    """Do not bend the pointer: running instances hang on their version, and the history
+    should show that a rollback happened."""
     anna = await make_user(db, "anna")
     d = await _flow(db, anna)
     v1 = (await _versions(db, d.id))[0]

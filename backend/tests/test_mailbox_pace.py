@@ -1,9 +1,9 @@
-"""Warum das Postfach schnell aufgeht — und woran es ehrlich bleibt.
+"""Why the mailbox opens fast — and what keeps it honest.
 
-Gemessen kostete der Aufbau 1,9 Sekunden: 266 ms allein fürs Anmelden (bei JEDEM Aufruf) und
-900 ms für einen STATUS je Ordner. Beides ist vermeidbar, aber nur mit zwei Zusagen: Eine
-Verbindung, die einen Fehler gesehen hat, wird nicht weitergereicht, und was sich geändert
-hat, kommt nicht mehr aus dem Cache.
+Measured, building it cost 1.9 seconds: 266 ms for logging in alone (on EVERY call) and 900 ms
+for one STATUS per folder. Both are avoidable, but only with two promises: a connection that
+has seen an error is not passed on, and what has changed does not come from the cache any
+more.
 """
 import pytest
 from app.services import mailbox, mailbox_cache as cache
@@ -12,7 +12,7 @@ from app.services import mailbox, mailbox_cache as cache
 
 
 class FakeClient:
-    """Ein Postfach, das mitzählt, wie oft man es tatsächlich gefragt hat."""
+    """A mailbox that counts how often it has actually been asked."""
     def __init__(self, broken_at_noop: bool = False):
         self.noops = 0
         self.closed = False
@@ -39,7 +39,7 @@ def empty_pool():
 
 
 def test_the_connection_is_reused(monkeypatch):
-    """Anmelden kostet einen TLS-Handschlag; bei jedem Aufruf wäre das die halbe Wartezeit."""
+    """Logging in costs a TLS handshake; on every call that would be half the waiting time."""
     built = []
     monkeypatch.setattr(mailbox, "_join", lambda a: built.append(FakeClient()) or built[-1])
 
@@ -53,12 +53,12 @@ def test_the_connection_is_reused(monkeypatch):
 
 
 def test_a_dead_connection_is_replaced(monkeypatch):
-    """Server trennen nach ein paar Minuten Ruhe. Das darf niemand mitten in einer Antwort
+    """Servers disconnect after a few minutes of silence. Nobody may hit that in the middle of
     erfahren."""
     built = []
 
     def join(_a):
-        # Die erste ist tot, die zweite lebt.
+        # The first one is dead, the second alive.
         client = FakeClient(broken_at_noop=not built)
         built.append(client)
         return client
@@ -74,8 +74,8 @@ def test_a_dead_connection_is_replaced(monkeypatch):
 
 
 def test_after_an_error_it_is_not_put_back(monkeypatch):
-    """Nach einem Abbruch ist der Zustand unklar (halb gelesene Antwort). Eine solche
-    zurückzulegen hieße, den Fehler an den nächsten Aufruf weiterzureichen."""
+    """After an abort the state is unclear (a half-read answer). Putting one like that back
+    would mean passing the error on to the next call."""
     built = []
     monkeypatch.setattr(mailbox, "_join", lambda a: built.append(FakeClient()) or built[-1])
 
@@ -107,7 +107,7 @@ async def test_the_question_is_asked_only_once(redis_stub_real):
 
 @pytest.mark.asyncio
 async def test_what_has_changed_does_not_come_from_the_cache(redis_stub_real):
-    """Eine gelesene Mail, eine verschobene, eine neue: danach ist der alte Stand falsch."""
+    """One mail read, one moved, one new: afterwards the old state is wrong."""
     ask = []
 
     async def fetch():
@@ -123,7 +123,7 @@ async def test_what_has_changed_does_not_come_from_the_cache(redis_stub_real):
 
 @pytest.mark.asyncio
 async def test_without_redis_everything_runs_as_before(monkeypatch):
-    """Der Cache ist eine Bequemlichkeit, keine Bedingung."""
+    """The cache is a convenience, not a condition."""
     def broken():
         raise OSError("kein Redis")
 
