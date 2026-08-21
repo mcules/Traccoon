@@ -1,46 +1,68 @@
 # Traccoon
 
-**Your own place where work, systems and AI agents meet — and where nothing runs that
-nobody asked for.**
+**A personal assistant with the keys to your own house — and the machinery that keeps it
+running.**
 
-Traccoon started as a ticket system and is no longer one. What it does today is hold the
-things a small operation actually runs on: the work (tickets, sprints, hardware), the
-machinery around it (flows, jobs, webhooks, destinations, tool servers), the mail that
-starts most of it, the numbers and locations your devices report — and agents that can be
-handed a piece of it, on demand, under supervision.
+Traccoon started as a ticket system and is no longer one. What stands at the front today is
+an assistant that belongs to one person: it sits above the projects, reads the mail as it
+arrives, prepares drafts, keeps appointments and contacts, files documents and notes, and
+asks before it does anything that reaches the outside world. You talk to it in the browser
+or from your messenger, and it works with the tools you already run — your mailbox, your
+document archive, your notes, your calendar, your photos.
+
+Behind it stands the rest: flows drawn instead of programmed, jobs, webhooks, data series,
+a ticket system with agents that write code. That part is why the assistant can act at all —
+but it is the basement, not the front door.
 
 Everything self-hosted, on your own Docker host, in your own database.
 
 ## Why you would run it
 
-**One house instead of six services.** Tickets in one place, cron in another, a workflow
-tool next door, a notifier somewhere else, and a tracker on top of it — every one with its
-own login, its own idea of a user, its own outage. Traccoon holds all of it, and because
-they share one house they can reach each other: a mail becomes a ticket, a sensor value
-becomes a decision, a deadline becomes a message, an agent picks the ticket up.
+**An assistant that actually reaches into things.** Not a chat window next to your work but
+one that opens your mailbox, writes into your vault, files a PDF, looks up an appointment.
+In the instance this is written in, 579 assignments have reached it since it went up: 438
+came out of mail, 129 from a Telegram chat, the rest were free assignments. It decides on
+its own what to do with a matter — and stops before anything that leaves the house: sending
+a mail, an appointment with other people, deleting something. That is a question, not an
+action.
 
-**AI you invite, not AI that happens to you.** An agent moves only after an explicit
+**Local models next to commercial ones — for the data that must not leave.** Every agent
+picks its own provider and model. Here the mail classifier runs on a **local** Qwen while
+the assistant thinks with Claude. That is the whole point: a mail is read in-house first,
+summarised and redacted locally, and only the redacted summary travels on. The full text
+stays on the IMAP server; it is fetched only when it is really needed for a step. The same
+applies to voice messages, which are transcribed locally, and to the spam judgement, whose
+model never leaves the machine. Providers are named tokens (private, work, local), with a
+fallback per agent — no key in an environment variable, no single account for everything.
+
+**A mail client, not a mail integration.** Accounts, identities, folders, an archive pattern
+built from the date OF THE MAIL, search, drafts, sending — a real client in the browser. The
+same mailbox is what the assistant works in, with a per-tool release: reading, refiling and
+sending are three separate switches, and folders can be made invisible to tools entirely.
+Above it sits spam detection out of three voices (rules, the local model, and a memory of
+your own decisions), which asks back instead of deciding silently.
+
+**Your messenger is the second window.** Telegram carries the notifications, and a
+notification is a card with buttons: approve a plan, recall a spam decision, answer a
+question. What you write back becomes a comment or an answer inside a running flow. Voice
+messages work too — transcribed locally, never in a cloud.
+
+**Drawn, not programmed.** Every process — the mail intake, a nightly check, procurement,
+the ticket lifecycle — is a graph in the browser. New behaviour costs a few nodes, not a
+deployment. Describe it in one sentence and a model drafts the graph; a dry run plays it
+through without touching anything.
+
+**AI you invite, not AI that happens to you.** A code agent moves only after an explicit
 assignment, and only where the AI permission was granted. It plans first, a person approves
 the plan, it works in a git worktree of its own, the build has to be green, and the result
-goes to review. Cost, iteration and time limits are hard walls, not settings nobody looks
-at. Without the permission the entire AI surface stays hidden and you have a plain,
-perfectly usable project tool.
+goes to review. Cost, iteration and time limits are hard walls. Without the permission the
+entire AI surface stays hidden and you have a plain, perfectly usable project tool.
 
-**Drawn, not programmed.** Every process — the ticket lifecycle, mail intake, procurement,
-your own night-time check — is a graph in the browser. New behaviour costs a few nodes, not
-a deployment. Describe it in one sentence and a model drafts the graph for you; a dry run
-plays it through without touching anything.
-
-**It talks to what you already have.** Webhooks in, destinations out, MCP tool servers,
-mailboxes over IMAP/SMTP, plugins for views. A device reports its position to one address
-and Traccoon recognises the format by itself.
-
-**Your data stays yours.** Self-hosted, Postgres, no telemetry. The spam model runs
-locally, voice messages are transcribed locally, secrets are encrypted at rest, and a plugin
-runs in a sandbox that cannot reach the network at all.
-
-**It explains itself.** Every non-obvious decision carries its reason in a comment, the
-error texts say what to do, and the flow editor shows what a step actually did.
+**One house instead of six services.** Mail, assistant, cron, workflows, notifications,
+tickets, sensor readings and locations under one login — and because they share one house
+they reach each other: a mail becomes a ticket, a sensor value becomes a decision, a
+deadline becomes a message, a device reports its position and a place it enters starts a
+flow.
 
 > **Status:** in production here, but there are no releases, no upgrade guarantees and no
 > tenant isolation. You should be comfortable with Docker and PostgreSQL. See
@@ -49,25 +71,84 @@ error texts say what to do, and the flow editor shows what a step actually did.
 ## In pictures
 
 The screenshots come from a demo instance with invented data (`docs/demo/`) — Ada Lovelace
-works at Acme, and the delivery van drives through Berlin.
+works at Acme, her mail comes from a throwaway mail server, and the delivery van drives
+through Berlin. Nothing in them belongs to a real person.
 
 | | |
 |---|---|
+| ![The assistant](docs/screenshots/inbox.png) **The assistant** — what came in, what it did, what it wants a yes for. | ![Mail](docs/screenshots/mail.png) **Mail** — your own mailbox, read and written in the house itself. |
 | ![Start page](docs/screenshots/home.png) **Start page** — what waits for you, across projects. | ![Board](docs/screenshots/board.png) **Board** — tickets, states and who is on them. |
 | ![Flow editor](docs/screenshots/editor.png) **Flow editor** — a process as a graph, with a dry run. | ![Flows](docs/screenshots/flows.png) **Flows** — your own, the shipped set, triggers, series. |
 | ![Metric series](docs/screenshots/series.png) **Series** — a number with a forecast: when is it empty? | ![Map](docs/screenshots/map.jpg) **Map plugin** — locations, drawn by a plugin, not by the core. |
 
-## The core rule
+## The two rules
 
-An agent touches a ticket **only on explicit assignment**. Assigning requires the AI
+**The assistant acts, but stops at the door.** It decides on its own what to do with a
+matter — note it in the vault, prepare a draft, file a document, look something up. It does
+not decide anything that reaches the outside world: sending a mail, an appointment with
+other people, deleting something. Those become a question with buttons in your messenger,
+and the answer travels back into the running flow.
+
+**A code agent touches a ticket only on explicit assignment.** Assigning requires the AI
 permission `ai_assign` in that project, a separate permission next to the role. Without it
-the entire AI surface stays hidden and Traccoon is a plain ticket system.
-
-Assignment usually goes to the **project manager agent**, which decides staffing and
-splitting and delegates to execution agents. Two points always stay with a human: plan
-approval and final review.
+the entire AI surface stays hidden and Traccoon is a plain ticket system. Assignment usually
+goes to the **project manager agent**, which decides staffing and splitting and delegates to
+execution agents. Two points always stay with a human: plan approval and final review.
 
 ## What it does
+
+### The assistant
+
+- **It belongs to one person, not to a project.** Its own inbox, its own memory, its own
+  tool set. Every item shows where it came from (a mail, the chat, a flow) and what the
+  assistant did about it
+- **Tools instead of talk:** whatever you run as an MCP server it can use — a mailbox, a
+  document archive, a vault of notes, a calendar and contacts, photos, time tracking. In
+  this instance thirteen of them, each released per tool, not per server
+- **A memory that outlasts the run.** What your person taught it lands as a line in a note
+  in your vault — visible, correctable by hand, and hung into the next prompt. It writes
+  there itself with `remember`, corrects itself with `forget`
+- **Two ways in:** the inbox in the browser, and the messenger. A voice message works as
+  well as a typed one
+- **Free assignments too:** a flow can hand it a job (`assistent_auftrag`), with or without
+  waiting for the result
+
+### Mail
+
+- **A real client:** accounts and identities, folders as a tree, search, drafts, sending,
+  attachments. An archive pattern (`Archive/{jahr}/{monat}`) is filled from the date OF THE
+  MAIL, so an invoice from 2023 still lands in 2023
+- **Actions are flows.** A button on a mail or on an attachment starts a graph and puts
+  account, folder, UID and the chosen attachment into its context. "Attachment to Paperless"
+  is a template, not a feature
+- **The same mailbox for the assistant**, with a release per tool: reading, refiling and
+  sending are three separate switches, and folders in the ignore list do not exist for tools
+  at all. House rules per mailbox travel into the prompt, so "never send without asking"
+  applies where it belongs
+- **The mailbox reports by itself** (IMAP IDLE) instead of being polled
+
+### Spam, judged by three voices
+
+- **Rules** (SPF, DKIM, DMARC, forgery patterns, role addresses, link and attachment
+  checks), a **local model** so that nothing raw leaves the house, and a **memory** that
+  learns from your own decisions — in this instance about 1600 learned features
+- A question comes back as a card with buttons; the verdict is measured against your own hit
+  rate afterwards. Whoever contradicts twice is not asked a third time
+- The local classifier also decides what travels: only the redacted summary goes on to the
+  bigger model, the full text stays on the server
+
+### Models, local and commercial
+
+- Every agent picks its provider and model itself, with a fallback: a subscription
+  account for the big steps, a **local** endpoint for what must not leave the house.
+  In this instance the mail classifier runs on a local Qwen while the assistant thinks
+  with Claude
+- Providers are **named tokens** (private, work, local) instead of one key in an
+  environment variable — an account is chosen per agent, not per installation
+- Anything that speaks the chat-completions protocol works as a local endpoint
+  (llama.cpp, Ollama, LiteLLM in front of them). Cost per run is measured either way,
+  and a local model simply costs nothing
+- Voice messages are transcribed locally as well, on the CPU or on the iGPU
 
 ### Projects, tickets, hardware
 
@@ -170,15 +251,6 @@ a plugin should start without internet. The map plugin ships Leaflet that way.
 
 Plugins live in their own repository: [mcules/Traccoon-Plugins](https://github.com/mcules/Traccoon-Plugins).
 
-### Assistant, mail and spam
-
-- Personal assistant above all projects, with its own inbox
-- Mail intake as a process: classify, judge, ask back, file away or hand to the assistant
-- **Spam detection from three voices:** rules (SPF, DKIM, DMARC, facade patterns, role
-  addresses), a **local** model so nothing raw leaves the house, and a memory that learns
-  from your own decisions. Questions come back as a message with buttons, and the result is
-  measured against your own hit rate
-
 ### Data series
 
 A series is a name, a kind and a sequence of points. The kind decides which fields count —
@@ -211,15 +283,20 @@ Deliberately no PostGIS: the extension is not in the image, the tests run agains
 and for a handful of places per person a haversine loop in Python answers faster than a
 database could accept the query.
 
-### Notifications
+### Notifications and the messenger
 
-- Everyone manages their own channels in the profile (chat, email) and which one applies
-  when the sender names none. That is the normal case: a flow often learns its recipient
-  only at runtime
+- **Telegram is the second window.** A notification is not a dead line of text but a card
+  with buttons: approve a plan, recall a spam decision, answer a question. What you write
+  back becomes a comment or the answer of a waiting step
+- You can talk to the assistant there directly, and to any other agent by name — the list
+  comes from the agents you actually have, not from a hard-wired handler
+- **Voice messages** are transcribed **locally** (CPU or iGPU, both in-house), including a
+  vocabulary of proper nouns the model could not know
+- Everyone manages their own channels in the profile (chat, e-mail, or a destination of
+  their own) and which one applies when the sender names none. That is the normal case: a
+  flow often learns its recipient only at runtime
 - **Throttle:** at most one message per key per N minutes. The message is throttled, the
   processing is not
-- **Chat integration:** notifications land in the messenger, replies become comments,
-  approvals are buttons, voice messages are transcribed **locally**
 
 ### Language and devices
 
