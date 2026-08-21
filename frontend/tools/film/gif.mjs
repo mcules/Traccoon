@@ -39,9 +39,9 @@ const kanal = (k, c) => (c === 0 ? (k >> 16) & 0xff : c === 1 ? (k >> 8) & 0xff 
 
 /** Statistics of a bucket: the longest axis (on a tie R before G before B, a fixed order so
  *  that the cut stays reproducible) and the pixel weight. */
-function statistik(e, ord, keys, cnt) {
+function stats(e, ord, keys, cnt) {
   const min = [255, 255, 255], max = [0, 0, 0];
-  let summe = 0;
+  let sum = 0;
   for (let i = e.s; i < e.e; i++) {
     const k = keys[ord[i]];
     for (let c = 0; c < 3; c++) {
@@ -49,46 +49,46 @@ function statistik(e, ord, keys, cnt) {
       if (v < min[c]) min[c] = v;
       if (v > max[c]) max[c] = v;
     }
-    summe += cnt[ord[i]];
+    sum += cnt[ord[i]];
   }
-  let achse = 0, span = max[0] - min[0];
-  for (let c = 1; c < 3; c++) if (max[c] - min[c] > span) { span = max[c] - min[c]; achse = c; }
-  e.achse = achse;
+  let axis = 0, span = max[0] - min[0];
+  for (let c = 1; c < 3; c++) if (max[c] - min[c] > span) { span = max[c] - min[c]; axis = c; }
+  e.axis = axis;
   e.span = span;
-  e.summe = summe;
+  e.sum = sum;
 }
 
 /** Median cut on the list of *distinct* colours (not on the pixels, which would be 39 million
- *  instead of a few thousand). Returns: buckets in a fixed order, each carrying its weighted average tone. */
- *  gewichteten Mittelton. */
-function medianCut(keys, cnt, ziel, ord) {
-  const eimer = [{ s: 0, e: keys.length }];
-  statistik(eimer[0], ord, keys, cnt);
-  while (eimer.length < ziel) {
+ *  instead of a few thousand). Returns: buckets in a fixed order, each carrying its
+ *  weighted average tone. */
+function medianCut(keys, cnt, target, ord) {
+  const buckets = [{ s: 0, e: keys.length }];
+  stats(buckets[0], ord, keys, cnt);
+  while (buckets.length < target) {
     let choice = -1;
-    for (let i = 0; i < eimer.length; i++) {
-      const e = eimer[i];
+    for (let i = 0; i < buckets.length; i++) {
+      const e = buckets[i];
       if (e.e - e.s < 2 || e.span === 0) continue;
-      const b = choice < 0 ? null : eimer[choice];
-      if (!b || e.span > b.span || (e.span === b.span && e.summe > b.summe)) choice = i;
+      const b = choice < 0 ? null : buckets[choice];
+      if (!b || e.span > b.span || (e.span === b.span && e.sum > b.sum)) choice = i;
     }
     if (choice < 0) break;                       // nothing left to split: fewer colours than wanted
-    const e = eimer[choice];
-    const ach = e.achse;
+    const e = buckets[choice];
+    const ach = e.axis;
     // A total order (channel, then the full key): then the result is independent of the
     // stability of the sort, and the bytes are the same across Node versions.
     const teil = ord.subarray(e.s, e.e);
     teil.sort((i, j) => kanal(keys[i], ach) - kanal(keys[j], ach) || keys[i] - keys[j]);
     let cum = 0, m = e.s;
-    const halb = e.summe / 2;
+    const halb = e.sum / 2;
     while (m < e.e - 1) { cum += cnt[ord[m]]; m++; if (cum >= halb) break; }
     const rechts = { s: m, e: e.e };
     e.e = m;
-    statistik(e, ord, keys, cnt);
-    statistik(rechts, ord, keys, cnt);
-    eimer.splice(choice + 1, 0, rechts);
+    stats(e, ord, keys, cnt);
+    stats(rechts, ord, keys, cnt);
+    buckets.splice(choice + 1, 0, rechts);
   }
-  for (const e of eimer) {
+  for (const e of buckets) {
     let sr = 0, sg = 0, sb = 0, tot = 0;
     for (let i = e.s; i < e.e; i++) {
       const k = keys[ord[i]], c = cnt[ord[i]];
@@ -97,7 +97,7 @@ function medianCut(keys, cnt, ziel, ord) {
     }
     e.rgb = [Math.round(sr / tot), Math.round(sg / tot), Math.round(sb / tot)];
   }
-  return eimer;
+  return buckets;
 }
 
 // ── Part 2: LZW with a variable code width ───────────────────────────────────
@@ -169,8 +169,8 @@ const u16 = (v) => [v & 0xff, (v >> 8) & 0xff];
  *
  *  @param {Uint8Array[]} images  RGB, je w*h*3, zeilenweise
  *  @param {{w:number,h:number,delaysMs:number[],loop?:boolean}} opt
- *  @returns {{bytes:Buffer, farben:number, gemergt:number, proBild:number[]}}
- *    `farben` = entries of the palette · `gemergt` = how many different input colours were
+ *  @returns {{bytes:Buffer, colours:number, gemergt:number, proBild:number[]}}
+ *    `colours` = entries of the palette · `gemergt` = how many different input colours were
  *    lost in the process (**0 = lossless**, which always holds at 256 colours or fewer in the
  *    whole film) · `proBild` = bytes per frame, additive to the promised shape and only for
  *    diagnosis (the checker should be able to prove "5 KiB per frame" instead of claiming it). */
@@ -218,20 +218,20 @@ export function gif(images, opt) {
       tabelle[k] = i;
     }
   } else {
-    const eimer = medianCut(keys, cnt, 256, ord);
-    for (let bi = 0; bi < eimer.length; bi++) {
-      const e = eimer[bi];
+    const buckets = medianCut(keys, cnt, 256, ord);
+    for (let bi = 0; bi < buckets.length; bi++) {
+      const e = buckets[bi];
       palette.push(e.rgb);
       for (let i = e.s; i < e.e; i++) tabelle[keys[ord[i]]] = bi;
     }
   }
-  const farben = palette.length;
-  const gemergt = verschieden - farben;
+  const colours = palette.length;
+  const gemergt = verschieden - colours;
 
   // The global colour table has to be a power of two (2…256). It is padded with black, and no
   // pixel references those entries.
   let bitsGct = 1;
-  while (1 << bitsGct < farben) bitsGct++;
+  while (1 << bitsGct < colours) bitsGct++;
   const gctN = 1 << bitsGct;
   const minCodeSize = Math.max(2, bitsGct);
 
@@ -244,7 +244,7 @@ export function gif(images, opt) {
     0,                                            // pixel aspect ratio
   ]));
   const gct = Buffer.alloc(gctN * 3);
-  for (let i = 0; i < farben; i++) {
+  for (let i = 0; i < colours; i++) {
     gct[i * 3] = palette[i][0]; gct[i * 3 + 1] = palette[i][1]; gct[i * 3 + 2] = palette[i][2];
   }
   teile.push(gct);
@@ -312,5 +312,5 @@ export function gif(images, opt) {
   }
   teile.push(Buffer.from([0x3b]));
 
-  return { bytes: Buffer.concat(teile), farben, gemergt, proBild };
+  return { bytes: Buffer.concat(teile), colours, gemergt, proBild };
 }

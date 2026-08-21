@@ -103,7 +103,7 @@ const measure = ({ grenze, handy }) => {
 
   // Clipped instead of scrolled: an element whose content is wider than itself, with no way
   // to scroll. That is the worse case, because it looks as if everything were there.
-  const abgeschnitten = [];
+  const clipped = [];
   for (const el of document.querySelectorAll("body *")) {
     const s = getComputedStyle(el);
     if (s.overflowX === "auto" || s.overflowX === "scroll") continue;
@@ -113,7 +113,7 @@ const measure = ({ grenze, handy }) => {
     const r = el.getBoundingClientRect();
     if (r.width < 40 || r.height < 12) continue;
     if (gezeichnet(el)) continue;
-    abgeschnitten.push({ el, name: el.tagName.toLowerCase() + " +"
+    clipped.push({ el, name: el.tagName.toLowerCase() + " +"
       + (el.scrollWidth - el.clientWidth) + "px: "
       + (el.textContent || "").replace(/\s+/g, " ").trim().slice(0, 30) });
   }
@@ -152,7 +152,7 @@ const measure = ({ grenze, handy }) => {
   return {
     // Only the innermost offender counts: a field that is too wide makes every ancestor too
     // wide as well, and the report "some div is too wide" helps nobody.
-    abgeschnitten: abgeschnitten
+    clipped: clipped
       .filter((v, _i, all) => !all.some((w) => w !== v && v.el.contains(w.el)))
       .slice(0, 5).map(({ name }) => name),
     tabellen,
@@ -175,7 +175,7 @@ const browser = await chromium.launch({
   executablePath: "/ms-playwright/chromium-1194/chrome-linux/chrome",
 });
 const bericht = { marke: MARKE, seiten: {} };
-let punkte = 0, maxPunkte = 0;
+let points = 0, maxPoints = 0;
 
 for (const [gname, breite, hoehe] of BREITEN) {
   const ctx = await browser.newContext({ viewport: { width: breite, height: hoehe },
@@ -193,32 +193,32 @@ for (const [gname, breite, hoehe] of BREITEN) {
     if (breite >= 500) m.sideways = [];
     bericht.seiten[`${sname} @ ${gname}`] = m;
     // Score: one point per measure when it comes out clean.
-    maxPunkte += 3;
-    if (m.overflow <= 2) punkte++;
-    maxPunkte++; if (m.abgeschnitten.length === 0) punkte++;
+    maxPoints += 3;
+    if (m.overflow <= 2) points++;
+    maxPoints++; if (m.clipped.length === 0) points++;
     if (breite < 500) {
-      maxPunkte += 3;
-      if (m.sideways.length === 0) punkte++;
-      if (m.tabellen.length === 0) punkte++;
-      if (m.wasserfall.length === 0) punkte++;
+      maxPoints += 3;
+      if (m.sideways.length === 0) points++;
+      if (m.tabellen.length === 0) points++;
+      if (m.wasserfall.length === 0) points++;
     }
-    if (m.tippziele_klein === 0) punkte++;
-    if (m.kleinschrift === 0) punkte++;
+    if (m.tippziele_klein === 0) points++;
+    if (m.kleinschrift === 0) points++;
   }
   await ctx.close();
 }
 await browser.close();
 
-bericht.punkte = punkte;
-bericht.maxPunkte = maxPunkte;
-bericht.quote = Math.round((punkte / maxPunkte) * 100);
+bericht.points = points;
+bericht.maxPoints = maxPoints;
+bericht.quote = Math.round((points / maxPoints) * 100);
 
 const pfad = "/w/findings-usability.json";
 const alt = existsSync(pfad) ? JSON.parse(readFileSync(pfad, "utf8")) : null;
 writeFileSync(pfad, JSON.stringify(bericht, null, 2) + "\n");
 
-console.log(`\n${MARKE}: ${punkte}/${maxPunkte} sauber (${bericht.quote} %)`);
-if (alt) console.log(`vorher (${alt.marke}): ${alt.punkte}/${alt.maxPunkte} (${alt.quote} %)`);
+console.log(`\n${MARKE}: ${points}/${maxPoints} sauber (${bericht.quote} %)`);
+if (alt) console.log(`vorher (${alt.marke}): ${alt.points}/${alt.maxPoints} (${alt.quote} %)`);
 console.log("");
 for (const [name, m] of Object.entries(bericht.seiten)) {
   const flaws = [];
@@ -226,7 +226,7 @@ for (const [name, m] of Object.entries(bericht.seiten)) {
   if (m.tippziele_klein) flaws.push(`${m.tippziele_klein} zu kleine Tippziele`);
   if (m.kleinschrift) flaws.push(`${m.kleinschrift}× Schrift < 11px`);
   if (m.sideways?.length) flaws.push(`hidden sideways: ${m.sideways.join(", ")}`);
-  if (m.abgeschnitten?.length) flaws.push(`abgeschnitten: ${m.abgeschnitten.join(" | ")}`);
+  if (m.clipped?.length) flaws.push(`clipped: ${m.clipped.join(" | ")}`);
   if (m.tabellen?.length) flaws.push(`Tabelle am Handy: ${m.tabellen.join(", ")}`);
   if (m.wasserfall?.length) flaws.push(`Textwasserfall: ${m.wasserfall.join(", ")}`);
   console.log(flaws.length ? `FEHL ${name}: ${flaws.join(" · ")}` : `OK   ${name}`);

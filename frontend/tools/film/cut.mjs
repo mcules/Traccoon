@@ -129,10 +129,10 @@ export function imagePlan(log, opts) {
  * each. The square root damps just far enough that the ranking stays visible.
  */
 function verteile(chapter, rest, minImages) {
-  let summe = 0;
-  for (const k of chapter) summe += Math.sqrt(Math.max(0, k.weight));
+  let sum = 0;
+  for (const k of chapter) sum += Math.sqrt(Math.max(0, k.weight));
   const anteile = chapter.map((k) =>
-    Math.max(minImages, summe > 0 ? Math.round((rest * Math.sqrt(Math.max(0, k.weight))) / summe) : minImages));
+    Math.max(minImages, sum > 0 ? Math.round((rest * Math.sqrt(Math.max(0, k.weight))) / sum) : minImages));
 
   // Rounding and the lower bound blow the budget in both directions. Balancing always happens
   // at the largest respectively the smallest chapter, on a tie at the front one: the same rule
