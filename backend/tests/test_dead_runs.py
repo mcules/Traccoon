@@ -35,7 +35,7 @@ async def test_a_run_without_a_sign_of_life_is_closed(db, monkeypatch):
     await db.refresh(run)
     assert run.status == "failed"
     assert run.finished_at is not None
-    assert "Kein Lebenszeichen" in (run.error or "")
+    assert "No sign of life" in (run.error or "")
 
 
 async def test_a_living_run_stays_untouched(db, monkeypatch):

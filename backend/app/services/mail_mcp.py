@@ -33,15 +33,15 @@ log = logging.getLogger("mail_mcp")
 # without knowing it a second time.
 TOOLS: list[dict] = [
     {"name": "mail_accounts", "art": "lesen", "immer": True,
-     "beschreibung": "Freigegebene Postfächer auflisten.",
+     "description": "List the released mailboxes.",
      "schema": {"type": "object", "properties": {}}},
     {"name": "mail_folders", "art": "lesen",
-     "beschreibung": "Ordner eines Postfachs (ohne die ignorierten).",
+     "description": "The folders of a mailbox (without the ignored ones).",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string", "description": "Name des Postfachs"}},
          "required": ["account"]}},
     {"name": "mail_search", "art": "lesen",
-     "beschreibung": "Nachrichten eines Ordners auflisten oder durchsuchen (Volltext).",
+     "description": "Nachrichten eines Ordners auflisten oder durchsuchen (Volltext).",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"},
          "query": {"type": "string", "description": "Volltext, leer = alle"},
@@ -49,19 +49,19 @@ TOOLS: list[dict] = [
          "offset": {"type": "integer", "default": 0}},
          "required": ["account"]}},
     {"name": "mail_get", "art": "lesen",
-     "beschreibung": "Eine Nachricht mit Text und Anhangliste holen.",
+     "description": "Fetch a message with its text and attachment list.",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"},
          "uid": {"type": "integer"}},
          "required": ["account", "uid"]}},
     {"name": "mail_attachment", "art": "lesen",
-     "beschreibung": "Einen Anhang als Base64 holen.",
+     "description": "Einen Anhang als Base64 holen.",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"},
          "uid": {"type": "integer"}, "index": {"type": "integer"}},
          "required": ["account", "uid", "index"]}},
     {"name": "mail_flag", "art": "aendern",
-     "beschreibung": "Eine Nachricht als gelesen/ungelesen oder markiert kennzeichnen.",
+     "description": "Mark a message as read, unread or flagged.",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"},
          "uid": {"type": "integer"},
@@ -69,25 +69,25 @@ TOOLS: list[dict] = [
          "on": {"type": "boolean", "default": True}},
          "required": ["account", "uid"]}},
     {"name": "mail_move", "art": "aendern",
-     "beschreibung": "Eine Nachricht in einen anderen Ordner verschieben.",
+     "description": "Eine Nachricht in einen anderen Ordner verschieben.",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"},
          "uid": {"type": "integer"}, "target": {"type": "string"}},
          "required": ["account", "uid", "target"]}},
     {"name": "mail_archive", "art": "aendern",
-     "beschreibung": "Eine Nachricht archivieren (Ordner bzw. Muster des Kontos).",
+     "description": "Eine Nachricht archivieren (Ordner bzw. Muster des Kontos).",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"},
          "uid": {"type": "integer"}},
          "required": ["account", "uid"]}},
     {"name": "mail_spam", "art": "aendern",
-     "beschreibung": "Eine Nachricht in den Spam-Ordner des Kontos verschieben.",
+     "description": "Move a message into the spam folder of the account.",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"},
          "uid": {"type": "integer"}},
          "required": ["account", "uid"]}},
     {"name": "mail_draft", "art": "senden",
-     "beschreibung": "Einen Entwurf im Postfach ablegen (verschickt nichts).",
+     "description": "Einen Entwurf im Postfach ablegen (verschickt nichts).",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "identity": {"type": "string"},
          "to": {"type": "array", "items": {"type": "string"}},
@@ -95,7 +95,7 @@ TOOLS: list[dict] = [
          "subject": {"type": "string"}, "text": {"type": "string"}},
          "required": ["account", "to"]}},
     {"name": "mail_send", "art": "senden",
-     "beschreibung": "Eine Nachricht wirklich verschicken.",
+     "description": "Eine Nachricht wirklich verschicken.",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "identity": {"type": "string"},
          "to": {"type": "array", "items": {"type": "string"}},
@@ -133,7 +133,7 @@ async def toollist(db: AsyncSession, user: User) -> list[dict]:
     free = {"mail_accounts"}
     for account in await accounts(db, user):
         free.update(account.mcp_tools or [])
-    return [{"name": w["name"], "description": w["beschreibung"], "inputSchema": w["schema"]}
+    return [{"name": w["name"], "description": w["description"], "inputSchema": w["schema"]}
             for w in TOOLS if w["name"] in free]
 
 
@@ -146,7 +146,7 @@ async def instructions(db: AsyncSession, user: User) -> str:
             parts.append(f"Postfach „{k.name}\": {k.mcp_instructions.strip()}")
     if not parts:
         return ""
-    return ("Hausregeln der freigegebenen Postfächer — sie gelten vor allem anderen:\n\n"
+    return ("House rules of the released mailboxes — they apply before anything else:\n\n"
             + "\n\n".join(parts))
 
 
@@ -155,7 +155,7 @@ async def _account(db: AsyncSession, user: User, name: str, tool: str) -> MailAc
         if account.name == name:
             if tool != "mail_accounts" and tool not in (account.mcp_tools or []):
                 raise PermissionError(
-                    f"Das Postfach „{name}\" gibt „{tool}\" nicht frei")
+                    f"The mailbox \"{name}\" does not release \"{tool}\"")
             return account
     raise LookupError(f"Kein freigegebenes Postfach „{name}\"")
 
@@ -180,7 +180,7 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
     account = await _account(db, user, str(args.get("account") or ""), name)
     folder = str(args.get("folder") or "INBOX")
     if name != "mail_folders" and ignores(folder, account.mcp_ignore_folders):
-        raise PermissionError(f"Der Ordner „{folder}\" ist für Werkzeuge gesperrt")
+        raise PermissionError(f"The folder \"{folder}\" is blocked for tools")
 
     if name == "mail_folders":
         all_rows = await mailbox.folder(account, count=True)
@@ -212,7 +212,7 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
         # A blocked folder is no target either — otherwise the ignore list would be a screen
         # one can push mail through.
         if ignores(target, account.mcp_ignore_folders):
-            raise PermissionError(f"Der Ordner „{target}\" ist für Werkzeuge gesperrt")
+            raise PermissionError(f"The folder \"{target}\" is blocked for tools")
         await mailbox.move(account, folder, int(args["uid"]), target)
         return {"ok": True, "folder": target}
 
@@ -233,12 +233,12 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
                   "text": str(args.get("text") or ""),
                   "in_reply_to": str(args.get("in_reply_to") or ""), "attachments": []}
         if not fields["to"]:
-            raise ValueError("Ohne Empfänger geht nichts raus")
+            raise ValueError("Nothing goes out without a recipient")
         if name == "mail_draft":
             await mailbox.draft_save(account, ident, fields)
             return {"ok": True, "draft": True}
         await mailbox.send(account, ident, fields)
-        log.info("MCP: Mail von %s über Konto %s an %s", user.id, account.name, fields["to"])
+        log.info("MCP: mail from %s through account %s to %s", user.id, account.name, fields["to"])
         return {"ok": True, "sent": True}
 
     raise LookupError(f"Unbekanntes Werkzeug „{name}\"")
@@ -248,10 +248,10 @@ async def _identity(db: AsyncSession, account: MailAccount, wish: str) -> MailId
     rows = (await db.execute(select(MailIdentity).where(
         MailIdentity.account_id == account.id))).scalars().all()
     if not rows:
-        raise ValueError(f"Das Postfach „{account.name}\" hat keine Identität")
+        raise ValueError(f"The mailbox \"{account.name}\" has no identity")
     if wish:
         for i in rows:
             if i.email.lower() == wish.lower():
                 return i
-        raise ValueError(f"Keine Identität „{wish}\" an diesem Postfach")
+        raise ValueError(f"No identity \"{wish}\" on this mailbox")
     return next((i for i in rows if i.is_default), rows[0])

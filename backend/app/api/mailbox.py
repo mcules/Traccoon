@@ -178,7 +178,7 @@ async def tools(_: User = Depends(get_current_user)):
     """The catalog: what a mailbox CAN release to agents, with the kind of permission."""
     from ..services.mail_mcp import TOOLS
 
-    return [{"name": w["name"], "kind": w["art"], "description": w["beschreibung"],
+    return [{"name": w["name"], "kind": w["art"], "description": w["description"],
              "always": bool(w.get("immer"))} for w in TOOLS]
 
 

@@ -84,7 +84,7 @@ async def test_without_aux_it_still_shortens_but_says_so(db, monkeypatch):
     new = await compact(db, messages=m, limit_tokens=100_000, measured=90_000,
                             owner_id=1, agent=None, tokens={}, base_urls={})
     assert new is not None and len(new) < len(m)
-    assert "nicht möglich" in new[2]["content"] and "verloren" in new[2]["content"]
+    assert "no summary possible" in new[2]["content"] and "lost" in new[2]["content"]
 
 
 async def test_nothing_to_do_returns_none(db):
@@ -170,8 +170,8 @@ async def test_the_handover_carries_the_thread_on(db, monkeypatch):
 
     async def fake_aux(*a, **kw):
         seen.append(kw["messages"][0]["content"])
-        return ("**Erkenntnisse** fleets.ts trägt dispatchExpedition\n"
-                "**Erledigt** nichts geändert\n**Nächster Schritt** computeSammeln anlegen")
+        return ("**Findings** fleets.ts trägt dispatchExpedition\n"
+                "**Erledigt** nichts geändert\n**Next step** computeSammeln anlegen")
 
     monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
     m = [{"role": "system", "content": "sys"}, {"role": "user", "content": "Auftrag"}]
@@ -184,8 +184,8 @@ async def test_the_handover_carries_the_thread_on(db, monkeypatch):
         owner_id=1, agent=None, tokens={}, base_urls={})
 
     assert text.startswith("Zeitlimit erreicht")          # WELCHE Grenze, bleibt vorn
-    assert "Nächster Schritt" in text and "computeSammeln" in text
-    assert any("Übergabe" in g or "Erkenntnisse" in g for g in seen)
+    assert "Next step" in text and "computeSammeln" in text
+    assert any("Übergabe" in g or "Findings" in g for g in seen)
 
 
 async def test_the_handover_falls_back_honestly(db, monkeypatch):
@@ -203,7 +203,7 @@ async def test_the_handover_falls_back_honestly(db, monkeypatch):
         db, messages=m, reason="Iterations-Limit erreicht.", last_text="war gerade bei X",
         owner_id=1, agent=None, tokens={}, base_urls={})
     assert "Iterations-Limit erreicht." in text
-    assert "war gerade bei X" in text or "nicht möglich" in text
+    assert "war gerade bei X" in text or "no summary possible" in text
 
 
 async def test_a_handover_on_a_short_run_stays_plain(db, monkeypatch):

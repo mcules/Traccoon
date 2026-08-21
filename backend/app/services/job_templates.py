@@ -46,7 +46,7 @@ Nutze echte URLs als Markdown-Links `[Quelle](https://…)`."""
 JOB_TEMPLATES: dict[str, dict] = {
     "recherche-digest": {
         "label": "Recherche-Digest",
-        "beschreibung": "Wiederkehrender Themen-Rückblick per Web-Suche, als HTML-Seite. "
+        "description": "Wiederkehrender Themen-Rückblick per Web-Suche, als HTML-Seite. "
                         "Thema, Quellen und Umfang kommen aus den Parametern.",
         "felder": {
             "type": "cron",
@@ -75,7 +75,7 @@ JOB_TEMPLATES: dict[str, dict] = {
 
 def listing() -> list[dict]:
     """Templates for the selection (key, label, parameters with default values)."""
-    return [{"key": k, "label": v["label"], "beschreibung": v["beschreibung"],
+    return [{"key": k, "label": v["label"], "description": v["description"],
              "params": deepcopy(v["params"]), "felder": deepcopy(v["felder"])}
             for k, v in JOB_TEMPLATES.items()]
 

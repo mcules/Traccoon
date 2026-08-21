@@ -138,7 +138,7 @@ async def test_errors_are_returned_and_repaired_once(db, monkeypatch):
     assert r["errors"] == []
     # The correction gets the real validation sentences to see.
     message = chat.last["messages"][-1]["content"]
-    assert "Kante für Ausgang 'ja' fehlt" in message
+    assert "the edge for the outlet 'ja' is missing" in message
 
 
 async def test_stubbornly_broken_still_arrives(db, monkeypatch):

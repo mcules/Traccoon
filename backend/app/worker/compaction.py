@@ -136,26 +136,26 @@ def _as_text(messages: list[dict]) -> str:
 
 
 TASK = (
-    "Fasse den folgenden Ausschnitt eines Agenten-Laufs zusammen. Die Zusammenfassung ERSETZT "
-    "den Ausschnitt — was hier fehlt, ist für den weiteren Lauf verloren.\n\n"
-    "Nimm auf: erledigte Schritte und ihr Ergebnis, getroffene Entscheidungen samt Begründung, "
-    "gefundene Fakten (Namen, Pfade, IDs, Zahlen), offene Fäden und alles, was der Mensch "
-    "vorgegeben hat. Lass weg: Wiederholungen, Werkzeug-Rohausgaben, Höflichkeiten.\n\n"
+    "Summarise the following excerpt of an agent run. The summary REPLACES the excerpt — what "
+    "is missing here is lost for the rest of the run.\n\n"
+    "Take in: finished steps and their result, decisions taken including the reasoning, facts "
+    "found (names, paths, ids, numbers), open threads and everything the person laid down. "
+    "Leave out: repetitions, raw tool output, politeness.\n\n"
     "Schreib in Stichpunkten, deutsch, ohne Vorrede.\n\n--- Ausschnitt ---\n"
 )
 
 
 HANDOVER_TASK = (
-    "Der folgende Agenten-Lauf wurde an einer Grenze beendet (Zeit, Iterationen oder Tokens) "
-    "und wird gleich in einem FRISCHEN Lauf fortgesetzt — der weiß nichts außer dem, was du "
-    "jetzt aufschreibst. Schreib die Übergabe an ihn, in genau diesen drei Abschnitten:\n\n"
-    "**Erkenntnisse** — was ich über den Code herausgefunden habe, mit Datei-Pfaden, "
-    "Funktions- und Feldnamen. Das erspart dem nächsten Lauf das erneute Suchen.\n"
-    "**Erledigt** — welche Dateien ich bereits geändert habe und was darin steht. Wenn "
-    "nichts geändert wurde: schreib genau das hin.\n"
-    "**Nächster Schritt** — was der nächste Lauf ALS ERSTES tun soll, konkret.\n\n"
-    "Keine Vorrede, deutsch, dicht. Erfinde nichts: was nicht im Ausschnitt steht, gehört "
-    "nicht in die Übergabe.\n\n--- Lauf ---\n"
+    "The following agent run was ended at a limit (time, iterations or tokens) and will be "
+    "continued in a FRESH run in a moment — one that knows nothing except what you write down "
+    "now. Write the handover to it, in exactly these three sections:\n\n"
+    "**Findings** — what I found out about the code, with file paths, function and field names. "
+    "That saves the next run the searching.\n"
+    "**Done** — which files I already changed and what stands in them. If nothing was changed: "
+    "write exactly that.\n"
+    "**Next step** — what the next run is to do FIRST, concretely.\n\n"
+    "No preamble, dense. Invent nothing: what does not stand in the excerpt does not belong in "
+    "the handover.\n\n--- The run ---\n"
 )
 
 
@@ -192,7 +192,7 @@ async def handover(db, *, messages: list[dict], reason: str, last_text: str,
         agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1500)
     if not text:
         log.warning("Handover without an aux model, the last state stays")
-        return f"{reason}\n\nStand aus dem Verlauf:\n{raw}"
+        return f"{reason}\n\nState from the history:\n{raw}"
     return f"{reason}\n\n{text.strip()}"
 
 
@@ -246,8 +246,8 @@ async def _summarise(db, messages: list[dict], chunks: list[tuple[int, int]], *,
             return text.strip()
         log.warning("Compaction: piece %d/%d without a summary (aux not available)",
                     nr, len(chunks))
-        return (f"- (Teil {nr}: {b - a} Nachrichten, Zusammenfassung nicht möglich — "
-                "dieser Abschnitt ist verloren, im Zweifel nachprüfen.)")
+        return (f"- (part {nr}: {b - a} messages, no summary possible — "
+                "this section is lost, check it if in doubt.)")
 
     parts = await asyncio.gather(*[_piece(nr, a, b)
                                    for nr, (a, b) in enumerate(chunks, 1)])
@@ -277,7 +277,7 @@ async def compact(db, *, messages: list[dict], limit_tokens: int, measured: int,
              to - von, len(chunks))
 
     replacement = ("# Zusammenfassung des bisherigen Verlaufs\n"
-              "(Der ausführliche Verlauf wurde gekürzt, um im Kontextfenster zu bleiben. "
+              "(The detailed history was shortened to stay inside the context window. "
               "Was hier steht, ist alles, was davon bleibt — arbeite damit weiter, statt "
               "noch einmal von vorn zu beginnen.)\n\n" + summary)
 

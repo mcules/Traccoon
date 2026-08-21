@@ -221,7 +221,7 @@ async def _toollist(db: AsyncSession, owner_id: int | None) -> str:
         all_rows = await tools(db, owner_id)
     except Exception:  # noqa: BLE001, drawing works without the tool list too
         return ""
-    lines = [f"- {w['name']}({', '.join(w['pflicht'][:6])}) — {w['beschreibung'][:90]}"
+    lines = [f"- {w['name']}({', '.join(w['required'][:6])}) — {w['description'][:90]}"
               for w in all_rows[:MAX_TOOLS]]
     if not lines:
         return ""
