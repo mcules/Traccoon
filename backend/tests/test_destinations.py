@@ -65,8 +65,8 @@ def test_url_bau():
 async def test_basic_auth(db, calls):
     d = await _dest(db, auth_type="basic", username="anna", secret_enc=encrypt_secret("geheim"))
     await svc.call(db, d, method="GET", path="/me")
-    kopf = calls[0].headers["authorization"]
-    assert kopf == "Basic " + base64.b64encode(b"anna:geheim").decode()
+    header = calls[0].headers["authorization"]
+    assert header == "Basic " + base64.b64encode(b"anna:geheim").decode()
 
 
 async def test_bearer_auth(db, calls):
@@ -163,28 +163,28 @@ async def test_kopfzeilen_des_ziels_und_des_aufrufs(db, calls):
     assert h["x-fest"] == "1" and h["x-extra"] == "2"
 
 
-async def test_aufloesung_projekt_vor_nutzer_vor_global(db):
-    nutzer = await make_user(db, "anna")
+async def test_aufloesung_projekt_vor_user_vor_global(db):
+    user = await make_user(db, "anna")
     proj = await make_project(db, "TST", "Test")
     await _dest(db, name="crm", base_url="https://global.test")
-    await _dest(db, name="crm", base_url="https://persoenlich.test", user_id=nutzer.id)
+    await _dest(db, name="crm", base_url="https://persoenlich.test", user_id=user.id)
     await _dest(db, name="crm", base_url="https://projekt.test", project_id=proj.id)
 
     g = await svc.resolve(db, "crm")
-    u = await svc.resolve(db, "crm", owner_id=nutzer.id)
-    p = await svc.resolve(db, "crm", owner_id=nutzer.id, project_id=proj.id)
+    u = await svc.resolve(db, "crm", owner_id=user.id)
+    p = await svc.resolve(db, "crm", owner_id=user.id, project_id=proj.id)
     assert (g.base_url, u.base_url, p.base_url) == (
         "https://global.test", "https://persoenlich.test", "https://projekt.test")
 
     # Deactivated destinations are skipped.
     p.enabled = False
     await db.commit()
-    assert (await svc.resolve(db, "crm", owner_id=nutzer.id,
+    assert (await svc.resolve(db, "crm", owner_id=user.id,
                               project_id=proj.id)).base_url == "https://persoenlich.test"
     assert await svc.resolve(db, "gibtsnicht") is None
 
 
-async def test_agenten_nur_ueber_freigegebene_ziele(db, calls):
+async def test_agenten_nur_ueber_freigegebene_targets(db, calls):
     await _dest(db, name="intern", auth_type="none")
     with pytest.raises(ValueError, match="not released for AI agents"):
         await svc.call_by_name(db, "intern", agents_only=True, method="GET")
@@ -205,8 +205,8 @@ async def test_geheimnis_wird_nie_zurueckgegeben(client, db):
     assert r.json()["has_secret"] is True
     assert "streng" not in r.text
 
-    liste = await client.get("/destinations", headers=auth(admin))
-    assert "streng" not in liste.text
+    listing = await client.get("/destinations", headers=auth(admin))
+    assert "streng" not in listing.text
 
     # An empty secret while editing leaves the old one standing.
     did = r.json()["id"]
@@ -214,7 +214,7 @@ async def test_geheimnis_wird_nie_zurueckgegeben(client, db):
     assert r2.json()["has_secret"] is True
 
 
-async def test_systemweites_ziel_nur_admin(client, db):
+async def test_systemweites_target_nur_admin(client, db):
     normal = await make_user(db, "otto")
     r = await client.post("/destinations", headers=auth(normal), json={
         "name": "extern", "base_url": "https://api.test"})
@@ -235,17 +235,17 @@ async def test_systemweites_ziel_nur_admin(client, db):
 
 # ── Antwortgrenze je Ziel (TRA-31) ───────────────────────────────────────────
 
-GROSSE_ANTWORT = json.dumps({"lage": "z" * 9000})
+GROSSE_ANSWER = json.dumps({"lage": "z" * 9000})
 
 
 @pytest.fixture
-def grosse_antwort(monkeypatch):
+def grosse_answer(monkeypatch):
     """A mock server that deliberately delivers more than the old flat cap let through."""
-    monkeypatch.setattr(svc.httpx, "AsyncClient", _mock([], body=GROSSE_ANTWORT))
-    return GROSSE_ANTWORT
+    monkeypatch.setattr(svc.httpx, "AsyncClient", _mock([], body=GROSSE_ANSWER))
+    return GROSSE_ANSWER
 
 
-async def test_antwortgrenze_standard_kuerzt(db, grosse_antwort):
+async def test_antwortgrenze_standard_kuerzt(db, grosse_answer):
     """Without an entry of its own it stays at 4000 characters: existing destinations do not change."""
     d = await _dest(db, name="klein")
     assert d.max_response_chars == 4000
@@ -254,15 +254,15 @@ async def test_antwortgrenze_standard_kuerzt(db, grosse_antwort):
     assert "text" not in res          # too long, so only as json, the full text suppressed
 
 
-async def test_antwortgrenze_je_ziel_greift(db, grosse_antwort):
+async def test_antwortgrenze_je_target_greift(db, grosse_answer):
     """A destination may let more through; otherwise an agent would plan on truncated JSON."""
     d = await _dest(db, name="gross", max_response_chars=40000)
     res = await svc.call(db, d, method="GET")
     assert res["max_chars"] == 40000
-    assert res["text"] == grosse_antwort
+    assert res["text"] == grosse_answer
 
 
-async def test_http_call_kuerzt_nicht_nochmal(db, grosse_antwort):
+async def test_http_call_kuerzt_nicht_nochmal(db, grosse_answer):
     """The agent tool must not revoke the permission of the destination."""
     from app.worker.tools_traccoon import call_traccoon_tool
     u = await make_user(db, "zielnutzer")
@@ -274,7 +274,7 @@ async def test_http_call_kuerzt_nicht_nochmal(db, grosse_antwort):
     assert len(out) > 9000
 
 
-async def test_http_call_meldet_den_schnitt(db, grosse_antwort):
+async def test_http_call_meldet_den_schnitt(db, grosse_answer):
     """If it is truncated after all, the agent has to see it: a silent cut is worse than a
     short answer, because it plans on fragments."""
     from app.worker.tools_traccoon import call_traccoon_tool

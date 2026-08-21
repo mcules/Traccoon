@@ -104,8 +104,8 @@ async def visible(db: AsyncSession, *, project_id: int | None = None,
 async def _oauth_token(db: AsyncSession, dest: Destination) -> str:
     """Fetch an access token over client credentials, cached until shortly before expiry."""
     if dest.oauth_token_enc and dest.oauth_expires_at:
-        rest = (dest.oauth_expires_at - _now()).total_seconds()
-        if rest > TOKEN_SKEW_SECONDS:
+        remainder = (dest.oauth_expires_at - _now()).total_seconds()
+        if remainder > TOKEN_SKEW_SECONDS:
             return decrypt_secret(dest.oauth_token_enc)
     if not (dest.oauth_token_url and dest.oauth_client_id):
         raise ValueError(f"Destination '{dest.name}': OAuth2 without a token URL or client id")
@@ -147,11 +147,11 @@ async def _apply_auth(db: AsyncSession, dest: Destination, headers: dict, query:
     elif kind == "bearer":
         headers["Authorization"] = f"Bearer {secret}"
     elif kind == "api_key":
-        feld = dest.api_key_name or "X-API-Key"
+        field = dest.api_key_name or "X-API-Key"
         if (dest.api_key_in or "header") == "query":
-            query[feld] = secret
+            query[field] = secret
         else:
-            headers[feld] = secret
+            headers[field] = secret
     elif kind == "hmac":
         algo = getattr(hashlib, (dest.hmac_algo or "sha256").lower(), hashlib.sha256)
         sig = hmac.new(secret.encode(), body_bytes, algo).hexdigest()
@@ -191,28 +191,28 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
     if verb not in METHODS:
         raise ValueError(f"The method '{method}' is not supported")
 
-    kopf = {**(dest.default_headers or {}), **(headers or {})}
+    header = {**(dest.default_headers or {}), **(headers or {})}
     q = dict(query or {})
 
     daten: bytes | None = None
     if verb not in BODYLESS and body is not None:
         if isinstance(body, (dict, list)):
             daten = json.dumps(body).encode()
-            kopf.setdefault("Content-Type", "application/json")
+            header.setdefault("Content-Type", "application/json")
         else:
             daten = str(body).encode()
-            kopf.setdefault("Content-Type", "text/plain; charset=utf-8")
+            header.setdefault("Content-Type", "text/plain; charset=utf-8")
 
-    kopf, q, basic = await _apply_auth(db, dest, kopf, q, daten or b"")
+    header, q, basic = await _apply_auth(db, dest, header, q, daten or b"")
     url = build_url(dest.base_url, path, q)
 
     async with httpx.AsyncClient(verify=dest.verify_tls, follow_redirects=True) as client:
         resp = await client.request(
-            verb, url, headers=kopf, content=daten, auth=basic,
+            verb, url, headers=header, content=daten, auth=basic,
             timeout=timeout or dest.timeout_sec or 30)
 
     dest.last_used_at = _now()
-    ergebnis: dict = {
+    result: dict = {
         "destination": dest.name,
         "method": verb,
         # Without the query: an API key could stand there (api_key_in=query).
@@ -223,20 +223,20 @@ async def call(db: AsyncSession, dest: Destination, *, method: str = "POST", pat
     text = resp.text or ""
     # The limit comes from the destination (TRA-31). It stands in the result as well, so that
     # the caller does not truncate a second time and thereby revoke the permission again.
-    grenze = dest.max_response_chars or MAX_RESPONSE_CHARS
-    ergebnis["max_chars"] = grenze
+    limit = dest.max_response_chars or MAX_RESPONSE_CHARS
+    result["max_chars"] = limit
     try:
-        ergebnis["json"] = resp.json()
+        result["json"] = resp.json()
     except Exception:  # noqa: BLE001 - no JSON: text is enough
-        ergebnis["text"] = text[:grenze]
+        result["text"] = text[:limit]
     else:
-        if len(text) <= grenze:
-            ergebnis["text"] = text
-    if not ergebnis["ok"]:
-        ergebnis["error"] = text[:500] or f"HTTP {resp.status_code}"
-    log.info("Destination %s: %s %s -> %s", dest.name, verb, urlsplit(ergebnis["url"]).path or "/",
+        if len(text) <= limit:
+            result["text"] = text
+    if not result["ok"]:
+        result["error"] = text[:500] or f"HTTP {resp.status_code}"
+    log.info("Destination %s: %s %s -> %s", dest.name, verb, urlsplit(result["url"]).path or "/",
              resp.status_code)
-    return ergebnis
+    return result
 
 
 async def call_by_name(db: AsyncSession, name: str, *, project_id: int | None = None,

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.enums import ProjectRole, SprintState
 from ..models.project import ProjectMember
@@ -198,7 +198,7 @@ async def delete_status(
         Issue.status_id == status_id))).scalar() or 0
     if n_issues:
         raise Fehler(409, "err.status_still_has_tickets",
-                     "{anzahl} ticket(s) stand in this status, move them first", anzahl=n_issues)
+                     "{count} ticket(s) stand in this status, move them first", count=n_issues)
     await db.delete(s)
     await db.commit()
 

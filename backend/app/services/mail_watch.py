@@ -31,15 +31,15 @@ log = logging.getLogger("mail_watch")
 AN = os.getenv("MAIL_IDLE", "1") not in ("0", "false", "no")
 # Nach spätestens 29 Minuten muss IDLE erneuert werden (RFC 2177 nennt 29 als sichere Grenze;
 # viele Server werfen früher raus).
-ERNEUERN = 20 * 60
+RENEW = 20 * 60
 # Wieviele Postfächer gleichzeitig beobachtet werden. Jedes ist eine offene Verbindung.
-MAX_WAECHTER = int(os.getenv("MAIL_IDLE_MAX", "20"))
+MAX_WATCHDOG = int(os.getenv("MAIL_IDLE_MAX", "20"))
 
 _laufend: dict[int, asyncio.Task] = {}
 _aufseher: asyncio.Task | None = None
 
 
-def _idle_runde(account: MailAccount, dauer: int) -> list:
+def _idle_runde(account: MailAccount, duration: int) -> list:
     """Eine Runde IDLE, blockierend — gehört deshalb in einen Thread."""
     # Bewusst eine EIGENE Verbindung, nicht die aus dem Vorrat: Diese hier steht zwanzig
     # Minuten in IDLE. Sie zurückzulegen hieße, dem nächsten Aufruf eine Leitung zu geben,
@@ -51,7 +51,7 @@ def _idle_runde(account: MailAccount, dauer: int) -> list:
         client.select_folder("INBOX", readonly=True)
         client.idle()
         try:
-            return client.idle_check(timeout=dauer) or []
+            return client.idle_check(timeout=duration) or []
         finally:
             try:
                 client.idle_done()
@@ -64,7 +64,7 @@ def _idle_runde(account: MailAccount, dauer: int) -> list:
             pass
 
 
-async def _waechter(konto_id: int, user_id: int) -> None:
+async def _watchdog(konto_id: int, user_id: int) -> None:
     from ..api.ws import personen
 
     pause = 5
@@ -90,7 +90,7 @@ async def _waechter(konto_id: int, user_id: int) -> None:
                 asyncio.create_task(vorwaermen(konto))
                 schon_gewaermt = True
 
-            ereignisse = await asyncio.to_thread(_idle_runde, konto, ERNEUERN)
+            ereignisse = await asyncio.to_thread(_idle_runde, konto, RENEW)
             pause = 5
             # EXISTS (neue Nachricht), EXPUNGE (weg), FETCH (Flag geändert) — welches davon,
             # ist der Oberfläche egal: sie holt sich den Stand ohnehin frisch.
@@ -124,12 +124,12 @@ async def _aufseher_schleife() -> None:
                 konten = (await db.execute(select(MailAccount).where(
                     MailAccount.enabled.is_(True),
                     MailAccount.imap_host != ""))).scalars().all()
-                gewollt = {k.id: k.owner_user_id for k in konten[:MAX_WAECHTER]}
+                gewollt = {k.id: k.owner_user_id for k in konten[:MAX_WATCHDOG]}
 
             for kid, uid in gewollt.items():
                 task = _laufend.get(kid)
                 if task is None or task.done():
-                    _laufend[kid] = asyncio.create_task(_waechter(kid, uid))
+                    _laufend[kid] = asyncio.create_task(_watchdog(kid, uid))
             for kid in list(_laufend):
                 if kid not in gewollt:
                     _laufend.pop(kid).cancel()
@@ -140,7 +140,7 @@ async def _aufseher_schleife() -> None:
         await asyncio.sleep(60)
 
 
-async def starten() -> None:
+async def start() -> None:
     global _aufseher
     if not AN or _aufseher is not None:
         return
@@ -148,7 +148,7 @@ async def starten() -> None:
     log.info("Postfach-Wächter (IMAP IDLE) gestartet")
 
 
-async def stoppen() -> None:
+async def stop() -> None:
     global _aufseher
     if _aufseher is not None:
         _aufseher.cancel()

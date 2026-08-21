@@ -10,7 +10,7 @@ The measure is the sign of life, not the clock: an agent may take hours.
 import datetime as dt
 
 from app.models.agents import Run
-from app.services.workflow_engine import tote_laeufe_schliessen
+from app.services.workflow_engine import tote_runs_schliessen
 from test_lifecycle_process import _projekt_mit_ticket
 
 
@@ -30,7 +30,7 @@ async def test_lauf_ohne_lebenszeichen_wird_geschlossen(db, monkeypatch):
     run = await _lauf(db, issue, "wf-1-1-exec-tot", alter_sek=3600)
 
     monkeypatch.setattr("app.core.redis.lauf_lebt", _nein)
-    assert await tote_laeufe_schliessen() == 1
+    assert await tote_runs_schliessen() == 1
 
     await db.refresh(run)
     assert run.status == "failed"
@@ -44,7 +44,7 @@ async def test_lebender_lauf_bleibt_unangetastet(db, monkeypatch):
     run = await _lauf(db, issue, "wf-1-1-exec-lebt", alter_sek=7200)
 
     monkeypatch.setattr("app.core.redis.lauf_lebt", _ja)
-    assert await tote_laeufe_schliessen() == 0
+    assert await tote_runs_schliessen() == 0
 
     await db.refresh(run)
     assert run.status == "running"
@@ -57,7 +57,7 @@ async def test_junger_lauf_bleibt_in_der_gnadenfrist(db, monkeypatch):
     run = await _lauf(db, issue, "wf-1-1-exec-jung", alter_sek=5)
 
     monkeypatch.setattr("app.core.redis.lauf_lebt", _nein)
-    assert await tote_laeufe_schliessen() == 0
+    assert await tote_runs_schliessen() == 0
 
     await db.refresh(run)
     assert run.status == "running"

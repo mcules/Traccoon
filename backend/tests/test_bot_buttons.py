@@ -9,15 +9,15 @@ from app.bot.__main__ import _erledigt
 
 
 class FakeMessage:
-    def __init__(self, text="<b>Frage</b>\nInhalt", edit_text_fehler=False):
+    def __init__(self, text="<b>Frage</b>\nInhalt", edit_text_error=False):
         self.html_text = text
         self.message_id = 42
-        self.edit_text_fehler = edit_text_fehler
+        self.edit_text_error = edit_text_error
         self.bearbeitet = None
         self.markup_entfernt = False
 
     async def edit_text(self, text, **_kw):
-        if self.edit_text_fehler:
+        if self.edit_text_error:
             raise RuntimeError("message is not modified")
         self.bearbeitet = text
 
@@ -40,14 +40,14 @@ async def test_vermerk_ersetzt_die_tastatur():
     assert "<i>" in msg.bearbeitet
 
 
-async def test_alte_nachricht_verliert_wenigstens_die_knoepfe():
+async def test_alte_message_verliert_wenigstens_die_knoepfe():
     """Too old or unchanged means the text stays, but the buttons have to go."""
-    msg = FakeMessage(edit_text_fehler=True)
+    msg = FakeMessage(edit_text_error=True)
     await _erledigt(FakeCq(msg), "✅ Freigegeben")
     assert msg.markup_entfernt
 
 
-async def test_ohne_nachricht_kein_absturz():
+async def test_ohne_message_kein_absturz():
     await _erledigt(FakeCq(None), "✅ Freigegeben")
 
 

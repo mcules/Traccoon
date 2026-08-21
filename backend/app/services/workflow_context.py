@@ -12,7 +12,7 @@ actions, and anything missing here can still be typed by hand.
 from __future__ import annotations
 
 
-def _f(path: str, typ: str, description: str) -> dict:
+def _f(path: str, kind: str, description: str) -> dict:
     """Ein Katalogeintrag.
 
     Die Schluessel sind englisch, weil der Editor sie liest und die Doku sie zeigt — der
@@ -20,7 +20,7 @@ def _f(path: str, typ: str, description: str) -> dict:
     **i18n-Schluessel**, kein Text: Der Editor zeigt ihn dem Menschen in dessen Sprache, und
     beide Kataloge (de/en) tragen ihn vollstaendig.
     """
-    return {"path": path, "type": typ, "description": description}
+    return {"path": path, "type": kind, "description": description}
 
 
 # Always present, regardless of trigger and actions.
@@ -31,7 +31,7 @@ BASIS = [
 ]
 
 # What a trigger brings along. Key = event name (see events.BUILTIN_EVENTS).
-AUSLOESER: dict[str, list[dict]] = {
+TRIGGER: dict[str, list[dict]] = {
     "issue.created": [
         _f("issue.key", "text", "ctx.ticket_kennung_z_b_tra_31"),
         _f("issue.summary", "text", "ctx.titel_des_tickets"),
@@ -102,7 +102,7 @@ AUSLOESER: dict[str, list[dict]] = {
 }
 
 # What an action writes into the context. Key = action name (workflow_actions).
-AKTIONEN: dict[str, list[dict]] = {
+ACTIONS: dict[str, list[dict]] = {
     "refresh_facts": [
         _f("project.needs_acceptance", "boolean", "ctx.projekt_verlangt_eine_abnahme"),
         _f("project.auto_deploy", "boolean", "ctx.deployment_laeuft_automatisch"),
@@ -229,7 +229,7 @@ AKTIONEN: dict[str, list[dict]] = {
 }
 
 # Node types that leave something behind themselves.
-KNOTEN: dict[str, list[dict]] = {
+NODE: dict[str, list[dict]] = {
     "agent_task": [
         _f("agent.status", "text", "ctx.ergebnis_des_laufs_done_blocked_failed"),
         _f("agent.stalled", "boolean", "ctx.der_lauf_kam_nicht_mehr_voran"),
@@ -249,4 +249,4 @@ KNOTEN: dict[str, list[dict]] = {
 
 def katalog() -> dict:
     """The whole catalog, the way the editor needs it."""
-    return {"base": BASIS, "triggers": AUSLOESER, "actions": AKTIONEN, "nodes": KNOTEN}
+    return {"base": BASIS, "triggers": TRIGGER, "actions": ACTIONS, "nodes": NODE}

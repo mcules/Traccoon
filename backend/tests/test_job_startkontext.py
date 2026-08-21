@@ -17,7 +17,7 @@ from conftest import make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def _ablauf(db, anna) -> WorkflowDefinition:
+async def _flow(db, anna) -> WorkflowDefinition:
     d = WorkflowDefinition(project_id=None, key="waechter", name="Wächter", created_by=anna.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
@@ -37,7 +37,7 @@ async def _ablauf(db, anna) -> WorkflowDefinition:
 
 
 async def _lauf(db, anna, args):
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     job = Job(name="Wächter", type="cron", schedule="0 * * * *", kind="workflow",
               workflow_definition_id=d.id, user_id=anna.id, args=args)
     db.add(job)

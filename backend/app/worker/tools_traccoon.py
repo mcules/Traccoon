@@ -149,7 +149,7 @@ async def _issue_access(db: AsyncSession, user: User, key: str):
     return iss, acc, project
 
 
-_JOB_FELDER = ("name", "prompt", "agent", "type", "schedule", "enabled", "notify_mode")
+_JOB_FIELDS = ("name", "prompt", "agent", "type", "schedule", "enabled", "notify_mode")
 
 
 async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
@@ -160,7 +160,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
     """
     from ..models.ops import Job, JobRun
     from ..services.job_params import offene_platzhalter, parameter
-    from ..services.job_templates import JOB_TEMPLATES, anwenden, liste
+    from ..services.job_templates import JOB_TEMPLATES, anwenden, listing
 
     async def _job(jid) -> Job | None:
         j = await db.get(Job, int(jid or 0))
@@ -170,7 +170,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
     if name == "traccoon_job_templates":
         return "\n".join(
             f"- {v['key']}: {v['label']} — {v['beschreibung']}\n"
-            f"  Parameter: {', '.join(v['params'])}" for v in liste()) or "Keine Vorlagen."
+            f"  Parameter: {', '.join(v['params'])}" for v in listing()) or "Keine Vorlagen."
 
     if name == "traccoon_list_jobs":
         rows = (await db.execute(select(Job).where(Job.user_id == user.id)
@@ -188,7 +188,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         j = await _job(args.get("job_id"))
         if j is None:
             return "Job nicht gefunden."
-        laeufe = (await db.execute(select(JobRun).where(JobRun.job_id == j.id)
+        runs = (await db.execute(select(JobRun).where(JobRun.job_id == j.id)
                                    .order_by(JobRun.id.desc()).limit(5))).scalars().all()
         p = parameter(j.args)
         return (f"#{j.id} {j.name}\n"
@@ -199,31 +199,31 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
                    if (o := offene_platzhalter(j.prompt, j.args)) else "")
                 + f"Prompt:\n{(j.prompt or '')[:2000]}\n"
                 + "Letzte Läufe: " + (", ".join(
-                    f"{r.started_at:%Y-%m-%d %H:%M} {r.status}" for r in laeufe) or "keine"))
+                    f"{r.started_at:%Y-%m-%d %H:%M} {r.status}" for r in runs) or "keine"))
 
     if name == "traccoon_create_job":
-        felder: dict = {}
+        fields: dict = {}
         if args.get("template"):
             try:
-                felder = anwenden(str(args["template"]), args.get("params") or {})
+                fields = anwenden(str(args["template"]), args.get("params") or {})
             except KeyError:
                 return (f"Vorlage '{args['template']}' gibt es nicht. Verfügbar: "
                         f"{', '.join(JOB_TEMPLATES)}.")
         elif args.get("params"):
-            felder["args"] = dict(args["params"])
-        for f in _JOB_FELDER:
+            fields["args"] = dict(args["params"])
+        for f in _JOB_FIELDS:
             if args.get(f) is not None:
-                felder[f] = args[f]
-        if not (felder.get("prompt") or "").strip():
+                fields[f] = args[f]
+        if not (fields.get("prompt") or "").strip():
             return "Ohne Prompt (oder Vorlage) kein Job."
-        felder.setdefault("kind", "prompt")
-        felder.setdefault("type", "cron")
-        felder.setdefault("schedule", "0 6 * * *")
-        felder.setdefault("agent", "assistent")
-        felder["name"] = str(args.get("name") or "Namenloser Job")[:255]
+        fields.setdefault("kind", "prompt")
+        fields.setdefault("type", "cron")
+        fields.setdefault("schedule", "0 6 * * *")
+        fields.setdefault("agent", "assistent")
+        fields["name"] = str(args.get("name") or "Namenloser Job")[:255]
         # The message goes to the same chat as everything else from it.
-        felder.setdefault("notify_chat", user.telegram_chat_id)
-        j = Job(user_id=user.id, **felder)
+        fields.setdefault("notify_chat", user.telegram_chat_id)
+        j = Job(user_id=user.id, **fields)
         db.add(j)
         await db.commit()
         await db.refresh(j)
@@ -236,22 +236,22 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         j = await _job(args.get("job_id"))
         if j is None:
             return "Job nicht gefunden."
-        geaendert = []
-        for f in _JOB_FELDER:
+        changed = []
+        for f in _JOB_FIELDS:
             if args.get(f) is not None and getattr(j, f) != args[f]:
                 setattr(j, f, args[f])
-                geaendert.append(f)
+                changed.append(f)
         if args.get("params"):
             # Update, do not replace: otherwise a job loses all its other parameters when
             # one value is changed.
             j.args = {**parameter(j.args), **args["params"]}
-            geaendert.append("params")
-        if not geaendert:
+            changed.append("params")
+        if not changed:
             return f"Job #{j.id}: nichts zu ändern."
-        if "enabled" in geaendert and j.enabled:
+        if "enabled" in changed and j.enabled:
             j.paused = False
         await db.commit()
-        return f"Job #{j.id} geändert: {', '.join(geaendert)}."
+        return f"Job #{j.id} geändert: {', '.join(changed)}."
 
     if name == "traccoon_run_job":
         j = await _job(args.get("job_id"))
@@ -283,7 +283,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
     from ..models.workflow import WorkflowDefinition
     from ..services.workflow_engine import start_workflow
 
-    async def _erlaubt(d: WorkflowDefinition) -> bool:
+    async def _allowed(d: WorkflowDefinition) -> bool:
         """May this human start this process?"""
         if d.project_id is None:
             return True
@@ -310,23 +310,23 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
             q = q.where(or_(WorkflowDefinition.project_id == p.id,
                             WorkflowDefinition.project_id.is_(None)))
         rows = (await db.execute(q.order_by(WorkflowDefinition.id))).scalars().all()
-        zeilen = []
+        lines = []
         for d in rows:
-            if not await _erlaubt(d):
+            if not await _allowed(d):
                 continue
             projekt = "projektlos"
             if d.project_id is not None:
                 p = await db.get(Project, d.project_id)
                 projekt = p.key if p else f"Projekt {d.project_id}"
-            zeilen.append(f"- id {d.id} · {d.key}: {d.name} ({projekt}, "
+            lines.append(f"- id {d.id} · {d.key}: {d.name} ({projekt}, "
                           f"Gegenstand {d.subject_kind.value if hasattr(d.subject_kind, 'value') else d.subject_kind})")
-        return "\n".join(zeilen) or "Keine startbaren Prozesse."
+        return "\n".join(lines) or "Keine startbaren Prozesse."
 
     if name == "traccoon_start_workflow":
         d = await db.get(WorkflowDefinition, int(args.get("workflow_id") or 0))
         if d is None or d.archived_at is not None:
             return "Prozess nicht gefunden."
-        if not await _erlaubt(d):
+        if not await _allowed(d):
             return "Kein Zugriff auf diesen Prozess."
         if not d.enabled:
             return f"Prozess '{d.key}' ist abgeschaltet."
@@ -335,17 +335,17 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
         sk = d.subject_kind.value if hasattr(d.subject_kind, "value") else str(d.subject_kind)
         issue_id = None
         if args.get("issue_key"):
-            iss, _acc, fehler = await _issue_access(db, user, args["issue_key"])
+            iss, _acc, error = await _issue_access(db, user, args["issue_key"])
             if iss is None:
-                return fehler
+                return error
             issue_id = iss.id
         elif sk == "issue":
             return f"Prozess '{d.key}' läuft auf einem Ticket — issue_key angeben."
-        kontext = args.get("context")
+        context = args.get("context")
         try:
             inst = await start_workflow(
                 db, d, subject_kind=d.subject_kind, issue_id=issue_id,
-                context=kontext if isinstance(kontext, dict) else {},
+                context=context if isinstance(context, dict) else {},
                 actor_id=user.id, source=f"agent:{user.id}",
             )
         except ValueError as e:
@@ -514,11 +514,11 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         # or bell message out of an assistant run; the closing report stays silent otherwise
         # (exceptions: errors and chat).
         from ..models.notification import Notification
-        titel = str(args.get("title") or "").strip() or "Hinweis deines Assistenten"
+        title = str(args.get("title") or "").strip() or "Hinweis deines Assistenten"
         dringend = str(args.get("urgency") or "").lower() == "high"
         db.add(Notification(
             user_id=user.id, kind="assistant",
-            title=(("❗ " if dringend else "") + titel)[:200],
+            title=(("❗ " if dringend else "") + title)[:200],
             body=str(args.get("text") or "")[:4000],
             chat_id=user.telegram_chat_id))
         if assistant_task_id:
@@ -549,19 +549,19 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         except Exception as e:  # noqa: BLE001
             return f"FEHLER: {e}"
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben
-        kopf = f"{res['method']} {res['url']} → HTTP {res['status_code']}"
+        header = f"{res['method']} {res['url']} → HTTP {res['status_code']}"
         # The limit was set by the destination (TRA-31): do NOT truncate again flatly here,
         # because otherwise an agent would get only the beginning of a deliberately large
         # answer and would plan on truncated JSON without the cut being noticeable.
-        grenze = int(res.get("max_chars") or 4000)
+        max_chars = int(res.get("max_chars") or 4000)
         inhalt = res.get("text")
         if inhalt is None and "json" in res:
             import json as _json
             inhalt = _json.dumps(res["json"], ensure_ascii=False)
         inhalt = inhalt or ""
-        if len(inhalt) > grenze:
-            inhalt = inhalt[:grenze] + f"\n… ABGESCHNITTEN bei {grenze} Zeichen."
-        return f"{kopf}\n{inhalt}".strip()
+        if len(inhalt) > max_chars:
+            inhalt = inhalt[:max_chars] + f"\n… ABGESCHNITTEN bei {max_chars} Zeichen."
+        return f"{header}\n{inhalt}".strip()
 
     if name in ("traccoon_list_jobs", "traccoon_get_job", "traccoon_job_templates",
                 "traccoon_create_job", "traccoon_update_job", "traccoon_run_job"):

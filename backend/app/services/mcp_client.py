@@ -35,9 +35,9 @@ def _entpacken(resp: httpx.Response) -> dict[str, Any]:
     an event stream; both occur, depending on the server and the call."""
     ctype = resp.headers.get("content-type", "")
     if "text/event-stream" in ctype:
-        for zeile in resp.text.splitlines():
-            if zeile.startswith("data:"):
-                roh = zeile[5:].strip()
+        for line in resp.text.splitlines():
+            if line.startswith("data:"):
+                roh = line[5:].strip()
                 if roh:
                     try:
                         return json.loads(roh)
@@ -73,9 +73,9 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
             raise McpError(f"{url} not reachable: {exc}") from exc
         _entpacken(init)
         # The server assigns the session only here; all following calls have to carry it.
-        sitzung = init.headers.get("mcp-session-id")
-        if sitzung:
-            basis["Mcp-Session-Id"] = sitzung
+        session = init.headers.get("mcp-session-id")
+        if session:
+            basis["Mcp-Session-Id"] = session
 
         # Without this notification, strict servers reject every further call.
         try:
@@ -94,36 +94,36 @@ async def call_tool(url: str, tool: str, arguments: dict[str, Any], *,
 
     daten = _entpacken(resp)
     if "error" in daten:
-        fehler = daten["error"]
-        raise McpError(f"{tool}: {fehler.get('message') or fehler}")
-    ergebnis = daten.get("result") or {}
-    if ergebnis.get("isError"):
-        raise McpError(f"{tool}: {_text(ergebnis)}")
-    return ergebnis
+        error = daten["error"]
+        raise McpError(f"{tool}: {error.get('message') or error}")
+    result = daten.get("result") or {}
+    if result.get("isError"):
+        raise McpError(f"{tool}: {_text(result)}")
+    return result
 
 
-def _text(ergebnis: dict[str, Any]) -> str:
+def _text(result: dict[str, Any]) -> str:
     """Pull the text parts of an MCP result together (for messages and the log)."""
-    teile = [c.get("text", "") for c in (ergebnis.get("content") or [])
+    parts = [c.get("text", "") for c in (result.get("content") or [])
              if isinstance(c, dict) and c.get("type") == "text"]
-    return " ".join(t for t in teile if t).strip()
+    return " ".join(t for t in parts if t).strip()
 
 
-def ergebnis_text(ergebnis: dict[str, Any]) -> str:
-    return _text(ergebnis)
+def result_text(result: dict[str, Any]) -> str:
+    return _text(result)
 
 
-def ergebnis_json(ergebnis: dict[str, Any]) -> dict | None:
+def result_json(result: dict[str, Any]) -> dict | None:
     """Structured result of a tool (or None).
 
     Tools deliver their result twice: as `structuredContent` and as JSON text. Whoever wants
     to compute with it instead of only reporting it takes this path; taking the text apart by
     hand again would be the same work in a second place.
     """
-    inhalt = ergebnis.get("structuredContent")
+    inhalt = result.get("structuredContent")
     if isinstance(inhalt, dict):
         return inhalt
-    text = _text(ergebnis)
+    text = _text(result)
     if not text:
         return None
     try:

@@ -20,30 +20,30 @@ from ..models.enums import GlobalRole, ProjectRole, WorkflowSubjectKind
 log = logging.getLogger("workflow_subject")
 
 
-def _feld(definition, version_graph: dict) -> str:
+def _field(definition, version_graph: dict) -> str:
     """The field named in the start node (`trigger.subjekt_feld`), empty when there is none."""
     for n in (version_graph or {}).get("nodes") or []:
-        typ = n.get("type") or (n.get("data") or {}).get("type")
-        if typ == "start":
+        kind = n.get("type") or (n.get("data") or {}).get("type")
+        if kind == "start":
             cfg = (n.get("data") or {}).get("config") or n.get("config") or {}
             return str((cfg.get("trigger") or {}).get("subjekt_feld") or "").strip()
     return ""
 
 
-def _dig(daten, pfad: str):
+def _dig(daten, path: str):
     cur = daten
-    for teil in str(pfad).split("."):
-        if isinstance(cur, dict) and teil in cur:
-            cur = cur[teil]
-        elif isinstance(cur, list) and teil.isdigit() and int(teil) < len(cur):
-            cur = cur[int(teil)]
+    for part in str(path).split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        elif isinstance(cur, list) and part.isdigit() and int(part) < len(cur):
+            cur = cur[int(part)]
         else:
             return None
     return cur
 
 
-async def subjekt_aus_nutzlast(db: AsyncSession, definition, payload: dict, ctx: dict, *,
-                               besitzer_id: int | None) -> tuple[int | None, int | None, str]:
+async def subjekt_aus_payload(db: AsyncSession, definition, payload: dict, ctx: dict, *,
+                               owner_id: int | None) -> tuple[int | None, int | None, str]:
     """(issue_id, hardware_asset_id, error). An empty error means everything is fine.
 
     The lookup goes through the payload first, then through the mapped context: anyone
@@ -54,45 +54,45 @@ async def subjekt_aus_nutzlast(db: AsyncSession, definition, payload: dict, ctx:
     if definition.subject_kind == WorkflowSubjectKind.standalone:
         return None, None, ""
     version = await db.get(WorkflowVersion, definition.current_version_id)
-    pfad = _feld(definition, (version.graph if version else {}) or {})
-    if not pfad:
+    path = _field(definition, (version.graph if version else {}) or {})
+    if not path:
         # No field named: the flow needs an artifact, the trigger delivers none.
         # That is a setup error and should stand out instead of running into nothing silently.
         return None, None, (f"Dieser Ablauf hängt an einem Artefakt "
                             f"({definition.subject_kind.value}); im Start-Knoten ist aber "
                             f"kein Feld dafür benannt.")
 
-    roh = _dig(payload, pfad)
+    roh = _dig(payload, path)
     if roh is None:
-        roh = _dig(ctx, pfad)
+        roh = _dig(ctx, path)
     if roh is None or str(roh).strip() == "":
-        return None, None, f"Feld {pfad!r} fehlt in der Nutzlast — kein Artefakt bestimmbar."
-    wert = str(roh).strip()
+        return None, None, f"Feld {path!r} fehlt in der Nutzlast — kein Artefakt bestimmbar."
+    value = str(roh).strip()
 
     if definition.subject_kind == WorkflowSubjectKind.issue:
         from ..models.ticket import Issue
         issue = None
-        if wert.isdigit():
-            issue = await db.get(Issue, int(wert))
+        if value.isdigit():
+            issue = await db.get(Issue, int(value))
         if issue is None:
             issue = (await db.execute(select(Issue).where(
-                Issue.key == wert.upper()))).scalar_one_or_none()
+                Issue.key == value.upper()))).scalar_one_or_none()
         if issue is None:
-            return None, None, f"Kein Ticket zu {wert!r} gefunden."
-        if not await _darf(db, besitzer_id, issue.project_id):
+            return None, None, f"Kein Ticket zu {value!r} gefunden."
+        if not await _may(db, owner_id, issue.project_id):
             return None, None, f"Keine Rechte am Projekt von {issue.key}."
         return issue.id, None, ""
 
     from ..models.hardware import HardwareAsset
-    asset = await db.get(HardwareAsset, int(wert)) if wert.isdigit() else None
+    asset = await db.get(HardwareAsset, int(value)) if value.isdigit() else None
     if asset is None:
-        return None, None, f"Kein Exemplar zu {wert!r} gefunden."
-    if asset.project_id and not await _darf(db, besitzer_id, asset.project_id):
+        return None, None, f"Kein Exemplar zu {value!r} gefunden."
+    if asset.project_id and not await _may(db, owner_id, asset.project_id):
         return None, None, "Keine Rechte am Projekt dieses Exemplars."
     return None, asset.id, ""
 
 
-async def _darf(db: AsyncSession, besitzer_id: int | None, project_id: int | None) -> bool:
+async def _may(db: AsyncSession, owner_id: int | None, project_id: int | None) -> bool:
     """May the owner of the trigger work on this project?
 
     A webhook is an address anyone might know, so the permissions do not come from the
@@ -100,20 +100,20 @@ async def _darf(db: AsyncSession, besitzer_id: int | None, project_id: int | Non
     """
     if project_id is None:
         return True
-    if besitzer_id is None:
+    if owner_id is None:
         return False
     from ..api.deps import build_access
     from ..models.project import Project
     from ..models.user import User
 
-    person = await db.get(User, besitzer_id)
+    person = await db.get(User, owner_id)
     projekt = await db.get(Project, project_id)
     if person is None or projekt is None:
         return False
     if person.global_role == GlobalRole.admin:
         return True
     try:
-        zugriff = await build_access(projekt, person, db)
+        access = await build_access(projekt, person, db)
     except Exception:  # noqa: BLE001, a 403 or 404 means no access
         return False
-    return zugriff.has_role(ProjectRole.member)
+    return access.has_role(ProjectRole.member)

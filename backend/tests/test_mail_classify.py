@@ -30,10 +30,10 @@ async def anna(db):
 
 async def test_denken_wird_abgeschaltet(db, anna, monkeypatch):
     """Without switching it off, empty text comes back, and nobody notices."""
-    gesehen = {}
+    seen = {}
 
     async def fake_chat(self, **kw):
-        gesehen.update(kw)
+        seen.update(kw)
         return ChatResponse(text='{"category": "rechnung", "priority": "normal", '
                                  '"sensitive": true, "redacted_summary": "Eine Rechnung liegt vor."}')
 
@@ -42,12 +42,12 @@ async def test_denken_wird_abgeschaltet(db, anna, monkeypatch):
         db, anna.id, account="privat", sender="rechnung@beispiel.de",
         subject="Rechnung 4711", body="IBAN DE12 3456", classify_agent="mail_classifier")
 
-    assert gesehen["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert seen["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
     assert out["category"] == "rechnung"
     assert out["redacted_summary"] == "Eine Rechnung liegt vor."
 
 
-async def test_leere_antwort_faellt_sicher_zurueck(db, anna, monkeypatch):
+async def test_leere_answer_faellt_sicher_zurueck(db, anna, monkeypatch):
     """The emergency default must give nothing outside: sensitive, without a summary."""
     async def fake_chat(self, **kw):
         return ChatResponse(text="")
@@ -88,7 +88,7 @@ def test_merkmale_werden_normalisiert_und_gedeckelt():
     assert all(k["kennung"] for k in aus)
 
 
-def test_merkmale_ohne_liste_bleiben_leer():
+def test_merkmale_ohne_listing_bleiben_leer():
     from app.services.mail_classify import merkmale
 
     assert merkmale(None) == [] and merkmale("phishing") == [] and merkmale({}) == []

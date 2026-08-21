@@ -18,27 +18,27 @@ from __future__ import annotations
 import json
 
 
-def _sortiert(wert):
+def _sortiert(value):
     """Deep sort of dict keys so that a re-saved graph does not look different.
 
     Lists keep their order: in a graph the order of nodes says nothing, but the order inside
     a config (the branches of a decision) says everything.
     """
-    if isinstance(wert, dict):
-        return {k: _sortiert(wert[k]) for k in sorted(wert)
-                if wert[k] is not None}
-    if isinstance(wert, list):
-        return [_sortiert(v) for v in wert]
-    return wert
+    if isinstance(value, dict):
+        return {k: _sortiert(value[k]) for k in sorted(value)
+                if value[k] is not None}
+    if isinstance(value, list):
+        return [_sortiert(v) for v in value]
+    return value
 
 
-def knoten_inhalt(node: dict) -> dict:
+def node_inhalt(node: dict) -> dict:
     """One node, without anything that only concerns the picture."""
     return {"id": str(node.get("id") or ""), "type": str(node.get("type") or ""),
             "config": _sortiert((node.get("data") or {}).get("config") or {})}
 
 
-def kanten_inhalt(edge: dict) -> dict:
+def edges_inhalt(edge: dict) -> dict:
     """One edge. The id travels along because the editor addresses edges by it, but the
     meaning sits in source, handle and target."""
     return {"id": str(edge.get("id") or ""), "source": str(edge.get("source") or ""),
@@ -51,9 +51,9 @@ def inhalt(graph: dict | None) -> dict:
     """The functional content of a graph: nodes and edges, sorted, without positions."""
     graph = graph or {}
     return {
-        "nodes": sorted((knoten_inhalt(n) for n in (graph.get("nodes") or [])),
+        "nodes": sorted((node_inhalt(n) for n in (graph.get("nodes") or [])),
                         key=lambda n: n["id"]),
-        "edges": sorted((kanten_inhalt(e) for e in (graph.get("edges") or [])),
+        "edges": sorted((edges_inhalt(e) for e in (graph.get("edges") or [])),
                         key=lambda e: (e["source"], e["handle"], e["target"], e["id"])),
     }
 
@@ -76,7 +76,7 @@ def positionen(graph: dict | None) -> dict[str, dict]:
     return out
 
 
-def mit_positionen(graph: dict | None, neue: dict[str, dict]) -> dict:
+def mit_positionen(graph: dict | None, new: dict[str, dict]) -> dict:
     """A copy of the graph with the given positions, content untouched.
 
     Used to save an arrangement into a version that has already been published: the flow does
@@ -84,25 +84,25 @@ def mit_positionen(graph: dict | None, neue: dict[str, dict]) -> dict:
     """
     kopie = json.loads(json.dumps(graph or {"nodes": [], "edges": []}))
     for node in kopie.get("nodes") or []:
-        pos = neue.get(str(node.get("id") or ""))
+        pos = new.get(str(node.get("id") or ""))
         if pos:
             node["position"] = {"x": pos.get("x", 0), "y": pos.get("y", 0)}
     return kopie
 
 
-def _flach(wert, praefix: str = "") -> dict[str, object]:
+def _flach(value, praefix: str = "") -> dict[str, object]:
     """A config as flat paths: `action.params.reihe` instead of one lump called `action`.
 
     Whoever compares whole configs learns that "the action changed" and has to read two
     pages of JSON to find out what. Lists stay whole: their order carries meaning (the
     branches of a decision), and an index in the path would be more confusing than helpful.
     """
-    if isinstance(wert, dict):
+    if isinstance(value, dict):
         out: dict[str, object] = {}
-        for k in sorted(wert):
-            out.update(_flach(wert[k], f"{praefix}.{k}" if praefix else str(k)))
+        for k in sorted(value):
+            out.update(_flach(value[k], f"{praefix}.{k}" if praefix else str(k)))
         return out
-    return {praefix: wert}
+    return {praefix: value}
 
 
 def _label(node: dict) -> str:
@@ -110,12 +110,12 @@ def _label(node: dict) -> str:
     return str(cfg.get("label") or node.get("id") or "")
 
 
-def _kante_text(kante: dict) -> str:
-    pfeil = f"{kante['source']} → {kante['target']}"
-    return f"{pfeil} ({kante['handle']})" if kante["handle"] else pfeil
+def _edge_text(edge: dict) -> str:
+    pfeil = f"{edge['source']} → {edge['target']}"
+    return f"{pfeil} ({edge['handle']})" if edge["handle"] else pfeil
 
 
-def unterschiede(alt: dict | None, neu: dict | None) -> dict:
+def unterschiede(alt: dict | None, new: dict | None) -> dict:
     """What changed between two graphs, in the words of the editor.
 
     Deliberately not a text diff over JSON: a moved brace is not an answer to "what does the
@@ -123,34 +123,34 @@ def unterschiede(alt: dict | None, neu: dict | None) -> dict:
     changed node says WHICH of its settings changed, because that is the line a human looks
     for.
     """
-    a, b = inhalt(alt), inhalt(neu)
-    a_knoten = {n["id"]: n for n in a["nodes"]}
-    b_knoten = {n["id"]: n for n in b["nodes"]}
-    a_kanten = {(e["source"], e["handle"], e["target"]): e for e in a["edges"]}
-    b_kanten = {(e["source"], e["handle"], e["target"]): e for e in b["edges"]}
+    a, b = inhalt(alt), inhalt(new)
+    a_node = {n["id"]: n for n in a["nodes"]}
+    b_node = {n["id"]: n for n in b["nodes"]}
+    a_edges = {(e["source"], e["handle"], e["target"]): e for e in a["edges"]}
+    b_edges = {(e["source"], e["handle"], e["target"]): e for e in b["edges"]}
 
-    geaendert = []
-    for nid in sorted(set(a_knoten) & set(b_knoten)):
-        vorher, nachher = a_knoten[nid]["config"], b_knoten[nid]["config"]
-        if vorher == nachher and a_knoten[nid]["type"] == b_knoten[nid]["type"]:
+    changed = []
+    for nid in sorted(set(a_node) & set(b_node)):
+        vorher, nachher = a_node[nid]["config"], b_node[nid]["config"]
+        if vorher == nachher and a_node[nid]["type"] == b_node[nid]["type"]:
             continue
         v_flach, n_flach = _flach(vorher), _flach(nachher)
-        felder = sorted(set(v_flach) | set(n_flach))
-        geaendert.append({
-            "id": nid, "label": _label(b_knoten[nid]),
-            "felder": [{"feld": f,
-                        "vorher": json.dumps(v_flach.get(f), ensure_ascii=False)[:400],
-                        "nachher": json.dumps(n_flach.get(f), ensure_ascii=False)[:400]}
-                       for f in felder if v_flach.get(f) != n_flach.get(f)],
+        fields = sorted(set(v_flach) | set(n_flach))
+        changed.append({
+            "id": nid, "label": _label(b_node[nid]),
+            "fields": [{"field": f,
+                        "before": json.dumps(v_flach.get(f), ensure_ascii=False)[:400],
+                        "after": json.dumps(n_flach.get(f), ensure_ascii=False)[:400]}
+                       for f in fields if v_flach.get(f) != n_flach.get(f)],
         })
 
     return {
-        "knoten_neu": [{"id": n, "label": _label(b_knoten[n])}
-                       for n in sorted(set(b_knoten) - set(a_knoten))],
-        "knoten_weg": [{"id": n, "label": _label(a_knoten[n])}
-                       for n in sorted(set(a_knoten) - set(b_knoten))],
-        "knoten_geaendert": geaendert,
-        "kanten_neu": [_kante_text(b_kanten[k]) for k in sorted(set(b_kanten) - set(a_kanten))],
-        "kanten_weg": [_kante_text(a_kanten[k]) for k in sorted(set(a_kanten) - set(b_kanten))],
-        "gleich": inhalts_signatur(alt) == inhalts_signatur(neu),
+        "nodes_added": [{"id": n, "label": _label(b_node[n])}
+                       for n in sorted(set(b_node) - set(a_node))],
+        "nodes_removed": [{"id": n, "label": _label(a_node[n])}
+                       for n in sorted(set(a_node) - set(b_node))],
+        "nodes_changed": changed,
+        "edges_added": [_edge_text(b_edges[k]) for k in sorted(set(b_edges) - set(a_edges))],
+        "edges_removed": [_edge_text(a_edges[k]) for k in sorted(set(a_edges) - set(b_edges))],
+        "identical": inhalts_signatur(alt) == inhalts_signatur(new),
     }

@@ -31,7 +31,7 @@ VAULT_ROOT = os.getenv("VAULT_PATH", "/vault")
 # Folders with people and companies. Deliberately a fixed list: the rest of the vault
 # contains addresses from invoices, error messages and clipboards, and those do not belong
 # on an acquittal list.
-KONTAKT_ORDNER = (
+KONTAKT_FOLDER = (
     "03 Bereiche/Personen",
     "03 Bereiche/Kontakte",
     "03 Bereiche/Firmen",
@@ -50,10 +50,10 @@ def _frontmatter_und_body(text: str) -> tuple[list[str], str]:
     """Note to (frontmatter lines, rest). Without frontmatter: ([], the whole text)."""
     if not text.startswith("---"):
         return [], text
-    zeilen = text.splitlines()
-    for i in range(1, len(zeilen)):
-        if zeilen[i].strip() in ("---", "..."):
-            return zeilen[1:i], "\n".join(zeilen[i + 1:])
+    lines = text.splitlines()
+    for i in range(1, len(lines)):
+        if lines[i].strip() in ("---", "..."):
+            return lines[1:i], "\n".join(lines[i + 1:])
     return [], text
 
 
@@ -67,18 +67,18 @@ def adressen_aus_notiz(text: str) -> list[tuple[str, str]]:
     fm, body = _frontmatter_und_body(text)
     out: list[tuple[str, str]] = []
     in_mail_block = False
-    for zeile in fm:
-        if _MAIL_KEY_RE.match(zeile):
+    for line in fm:
+        if _MAIL_KEY_RE.match(line):
             in_mail_block = True
-            for m in _EMAIL_RE.finditer(zeile):
+            for m in _EMAIL_RE.finditer(line):
                 out.append((m.group(0).lower(), "frontmatter"))
             continue
         # Continuation lines of a list (`  - address@…`) still belong to the address field.
-        if in_mail_block and re.match(r"^\s+-\s", zeile):
-            for m in _EMAIL_RE.finditer(zeile):
+        if in_mail_block and re.match(r"^\s+-\s", line):
+            for m in _EMAIL_RE.finditer(line):
                 out.append((m.group(0).lower(), "frontmatter"))
             continue
-        if zeile.strip() and not zeile.startswith((" ", "\t")):
+        if line.strip() and not line.startswith((" ", "\t")):
             in_mail_block = False
     for m in _EMAIL_RE.finditer(body):
         out.append((m.group(0).lower(), "body"))
@@ -92,8 +92,8 @@ def adressen_aus_notiz(text: str) -> list[tuple[str, str]]:
     return sorted(beste.items())
 
 
-def _titel(pfad: Path) -> str:
-    return pfad.stem
+def _title(path: Path) -> str:
+    return path.stem
 
 
 async def sync_contacts(db: AsyncSession, owner_id: int | None,
@@ -110,22 +110,22 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
         return 0, 0
 
     gefunden: dict[str, tuple[str, str, str]] = {}  # adresse → (name, pfad, herkunft)
-    for ordner in KONTAKT_ORDNER:
-        verzeichnis = root / ordner
-        if not verzeichnis.is_dir():
-            log.info("Contact folder missing in the vault: %s", ordner)
+    for folder in KONTAKT_FOLDER:
+        directory = root / folder
+        if not directory.is_dir():
+            log.info("Contact folder missing in the vault: %s", folder)
             continue
-        for datei in verzeichnis.rglob("*.md"):
+        for file in directory.rglob("*.md"):
             try:
-                text = datei.read_text(encoding="utf-8", errors="replace")
+                text = file.read_text(encoding="utf-8", errors="replace")
             except OSError as exc:
-                log.warning("Contact note %s not readable: %s", datei, exc)
+                log.warning("Contact note %s not readable: %s", file, exc)
                 continue
-            rel = str(datei.relative_to(root))
+            rel = str(file.relative_to(root))
             for adresse, herkunft in adressen_aus_notiz(text):
                 vorher = gefunden.get(adresse)
                 if vorher is None or (vorher[2] == "body" and herkunft == "frontmatter"):
-                    gefunden[adresse] = (_titel(datei), rel, herkunft)
+                    gefunden[adresse] = (_title(file), rel, herkunft)
 
     if not gefunden:
         log.warning("The vault reconciliation found no address at all, the existing set stays untouched")
@@ -139,28 +139,28 @@ async def sync_contacts(db: AsyncSession, owner_id: int | None,
             AssistantContact.owner_user_id == owner_id,
             AssistantContact.source_kind.in_(("frontmatter", "body"))))).scalars().all()
     }
-    geaendert = 0
-    for adresse, (name, pfad, herkunft) in gefunden.items():
+    changed = 0
+    for adresse, (name, path, herkunft) in gefunden.items():
         row = bestand.pop(adresse, None)
         if row is None:
             db.add(AssistantContact(
                 owner_user_id=owner_id, email=adresse,
                 domain=adresse.split("@", 1)[1] if "@" in adresse else "",
-                name=name[:300], source_path=pfad[:500], source_kind=herkunft))
-            geaendert += 1
-        elif (row.name, row.source_path, row.source_kind) != (name[:300], pfad[:500], herkunft):
-            row.name, row.source_path, row.source_kind = name[:300], pfad[:500], herkunft
-            geaendert += 1
+                name=name[:300], source_path=path[:500], source_kind=herkunft))
+            changed += 1
+        elif (row.name, row.source_path, row.source_kind) != (name[:300], path[:500], herkunft):
+            row.name, row.source_path, row.source_kind = name[:300], path[:500], herkunft
+            changed += 1
     for row in bestand.values():   # no longer present in the vault
         await db.delete(row)
     entfernt = len(bestand)
     await db.commit()
     log.info("Vault contacts reconciled: %d addresses, %d changed, %d removed",
-             len(gefunden), geaendert, entfernt)
-    return geaendert, entfernt
+             len(gefunden), changed, entfernt)
+    return changed, entfernt
 
 
-_TITEL_RE = re.compile(r"^\s*(herr|frau|dr\.?|prof\.?|dipl\.?-?\w*|mr\.?|mrs\.?|ms\.?)\s+",
+_TITLE_RE = re.compile(r"^\s*(herr|frau|dr\.?|prof\.?|dipl\.?-?\w*|mr\.?|mrs\.?|ms\.?)\s+",
                        re.IGNORECASE)
 
 
@@ -172,7 +172,7 @@ def _namensform(name: str) -> str:
     """
     name = (name or "").strip().strip("\"'")
     while True:
-        gekuerzt = _TITEL_RE.sub("", name)
+        gekuerzt = _TITLE_RE.sub("", name)
         if gekuerzt == name:
             break
         name = gekuerzt
@@ -224,7 +224,7 @@ async def namens_kollision(db: AsyncSession, owner_id: int | None, anzeigename: 
     return passende[0].name
 
 
-async def kontakt_treffer(db: AsyncSession, owner_id: int | None,
+async def kontakt_hits(db: AsyncSession, owner_id: int | None,
                           sender_email: str, sender_domain: str) -> str:
     """'frontmatter' | 'body' | 'domain' | '': how well the sender is known.
 

@@ -29,13 +29,13 @@ class _Agent:
     effort = ""
 
 
-async def _nachrichten(db, monkeypatch, mode: str, plan: str) -> list[dict]:
+async def _messages(db, monkeypatch, mode: str, plan: str) -> list[dict]:
     """Builds the prompt up to the first model turn and returns the messages."""
     _, proj, issue, _ = await _projekt_mit_ticket(db)
-    gesehen: list[dict] = []
+    seen: list[dict] = []
 
     async def fake_chat(**kw):
-        gesehen.extend(kw["messages"])
+        seen.extend(kw["messages"])
         raise RuntimeError("stop")       # after building the prompt that is enough
 
     monkeypatch.setattr(runtime.router, "chat", fake_chat)
@@ -49,29 +49,29 @@ async def _nachrichten(db, monkeypatch, mode: str, plan: str) -> list[dict]:
             mode=mode, permissions={}, ws_root="", gate_on=False, tokens={})
     except Exception:  # noqa: BLE001 - the abort is intended
         pass
-    return gesehen
+    return seen
 
 
 PLAN = "## Ursache\n`__main__.py:554` wertet `loop_exhausted` als Fehler.\n## Umsetzung\n1. …"
 
 
 async def test_ausfuehrung_bekommt_den_plan(monkeypatch, db):
-    texte = " ".join(m.get("content") or "" for m in await _nachrichten(db, monkeypatch, "execute", PLAN))
+    texte = " ".join(m.get("content") or "" for m in await _messages(db, monkeypatch, "execute", PLAN))
 
     assert "Freigegebener Umsetzungsplan" in texte
     assert "__main__.py:554" in texte, "the plan itself is missing from the prompt"
     assert "Arbeite ihn ab" in texte
 
 
-async def test_ohne_plan_kein_leerer_abschnitt(monkeypatch, db):
-    texte = " ".join(m.get("content") or "" for m in await _nachrichten(db, monkeypatch, "execute", ""))
+async def test_ohne_plan_kein_leerer_section(monkeypatch, db):
+    texte = " ".join(m.get("content") or "" for m in await _messages(db, monkeypatch, "execute", ""))
 
     assert "Freigegebener Umsetzungsplan" not in texte
 
 
 async def test_planungslauf_behaelt_seine_eigene_formulierung(monkeypatch, db):
     """In the planning the plan is revised, not worked off."""
-    texte = " ".join(m.get("content") or "" for m in await _nachrichten(db, monkeypatch, "plan", PLAN))
+    texte = " ".join(m.get("content") or "" for m in await _messages(db, monkeypatch, "plan", PLAN))
 
     assert "Bestehender Plan" in texte
     assert "Freigegebener Umsetzungsplan" not in texte

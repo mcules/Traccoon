@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..core.redis import get_flag, get_user_flag, set_flag, set_user_flag
 from ..db import get_session
 from ..models.user import User
@@ -126,11 +126,11 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
     the normal case: a flow often knows its recipient only at runtime and knows nothing about
     their habits.
     """
-    from ..services.notify import KANAELE
+    from ..services.notify import CHANNELS
     if d.notify_default is not None:
-        if d.notify_default not in KANAELE:
+        if d.notify_default not in CHANNELS:
             raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_channel_possible",
-                         "Unknown channel, possible: {moeglich}", moeglich=', '.join(KANAELE))
+                         "Unknown channel, possible: {moeglich}", moeglich=', '.join(CHANNELS))
         u.notify_default = d.notify_default
     if d.notify_email is not None:
         roh = d.notify_email.strip()
@@ -141,13 +141,13 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
         # Nur ein Ziel, das diese Person auch aufrufen darf — sonst wäre der Kanal ein Weg
         # an fremde Anmeldedaten.
         from ..services.destinations import visible
-        ziel_id = int(d.notify_destination_id) or None
-        if ziel_id is not None:
-            erlaubt = {z.id for z in await visible(db, owner_id=u.id)}
-            if ziel_id not in erlaubt:
+        target_id = int(d.notify_destination_id) or None
+        if target_id is not None:
+            allowed = {z.id for z in await visible(db, owner_id=u.id)}
+            if target_id not in allowed:
                 raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_destination",
                              "Unknown destination")
-        u.notify_destination_id = ziel_id
+        u.notify_destination_id = target_id
     await db.commit()
 
 
@@ -155,8 +155,8 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
 async def set_locale(d: StrIn, u: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
     """UI language of this person. Unknown values fall back to the source language."""
-    wert = (d.value or "de").strip().lower().replace("_", "-")[:10]
-    u.locale = wert if wert and wert.replace("-", "").isalnum() else "de"
+    value = (d.value or "de").strip().lower().replace("_", "-")[:10]
+    u.locale = value if value and value.replace("-", "").isalnum() else "de"
     await db.commit()
 
 
@@ -285,7 +285,7 @@ async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Dep
     # Label and hint come from the server catalog, in the language of the reader: the list is
     # the first thing somebody sees after logging in.
     from ..services.i18n import tr
-    fertig = {"claude_token": has_token, "runner": await runner_connected(),
+    done = {"claude_token": has_token, "runner": await runner_connected(),
               "project": bool(can_assign), "git": bool(git_ready),
               "verify": bool(verify_ready), "telegram": bool(u.telegram_chat_id)}
     pflicht = {"claude_token", "runner", "project"}
@@ -293,7 +293,7 @@ async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Dep
         {"key": k,
          "title": await tr(db, f"server.onboarding.{k}", u.locale),
          "hint": await tr(db, f"server.onboarding.{k}_hinweis", u.locale),
-         "done": fertig[k], "required": k in pflicht}
+         "done": done[k], "required": k in pflicht}
         for k in ("claude_token", "runner", "project", "git", "verify", "telegram")
     ]
     offen = [s for s in steps if not s["done"] and s["required"]]

@@ -35,8 +35,8 @@ BUILTIN_REVISION = 14
 # time, tokens) has ended it. Implementation may stay on it longer than planning: it leaves
 # work behind in the worktree, while a planning that has no plan after ten attempts needs a
 # human, not the eleventh attempt.
-EXEC_FORTSETZUNGEN = 30
-PLAN_FORTSETZUNGEN = 10
+EXEC_CONTINUATIONS = 30
+PLAN_CONTINUATIONS = 10
 
 _COL = 260   # column spacing for branches
 _ROW = 130   # Zeilenabstand
@@ -111,7 +111,7 @@ def build_ticket_lifecycle() -> dict:
             "branches": [
                 {"handle": "stop", "label": "anhalten", "guard": {"or": [
                     {"==": [{"var": "project.auto_continue"}, False]},
-                    {">=": [{"var": "continuation"}, PLAN_FORTSETZUNGEN]},
+                    {">=": [{"var": "continuation"}, PLAN_CONTINUATIONS]},
                 ]}},
                 {"handle": "continue", "label": "weiter"},
             ],
@@ -173,7 +173,7 @@ def build_ticket_lifecycle() -> dict:
                 {"handle": "stop", "label": "anhalten", "guard": {"or": [
                     {"==": [{"var": "agent.stalled"}, True]},
                     {"==": [{"var": "project.auto_continue"}, False]},
-                    {">=": [{"var": "continuation"}, EXEC_FORTSETZUNGEN]},
+                    {">=": [{"var": "continuation"}, EXEC_CONTINUATIONS]},
                 ]}},
                 {"handle": "continue", "label": "weiter"},
             ],

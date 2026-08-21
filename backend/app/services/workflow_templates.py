@@ -20,7 +20,7 @@ it, and that copy belongs to them.
 from __future__ import annotations
 
 from ..models.enums import WorkflowSubjectKind
-from .mail_actions import AUFTRAG_PARAMS, KARTE_PARAMS
+from .mail_actions import TASK_PARAMS, KARTE_PARAMS
 
 _COL, _ROW = 260, 130
 
@@ -43,8 +43,8 @@ def _e(source: str, target: str, handle: str | None = None, label: str = "") -> 
 def _action(name: str, label: str, **cfg) -> dict:
     """auto_action config in the same shape the editor writes."""
     params = {k: v for k, v in cfg.items() if k not in ("wiederholungen", "warte_sek")}
-    rest = {k: v for k, v in cfg.items() if k in ("wiederholungen", "warte_sek")}
-    return {"label": label, "action": {"action": name, "params": params}, **rest}
+    remainder = {k: v for k, v in cfg.items() if k in ("wiederholungen", "warte_sek")}
+    return {"label": label, "action": {"action": name, "params": params}, **remainder}
 
 
 def _ende(node_id: str, col: int, row: int, label: str, outcome: str = "completed") -> dict:
@@ -53,7 +53,7 @@ def _ende(node_id: str, col: int, row: int, label: str, outcome: str = "complete
 
 # -- 1) incoming report ------------------------------------------------------
 
-def _meldung_von_aussen() -> dict:
+def _notice_von_aussen() -> dict:
     """Webhook in, decision, message out.
 
     The sample payload on the start node is more than decoration: the editor builds the
@@ -91,7 +91,7 @@ def _meldung_von_aussen() -> dict:
 
 # -- 2) scheduled check with approval ----------------------------------------
 
-def _pruefung_mit_freigabe() -> dict:
+def _check_mit_grant() -> dict:
     """Fetch something, look at it, and act only after approval.
 
     The flow starts by hand or through a job (Settings, Jobs, kind `workflow`), which is
@@ -135,7 +135,7 @@ def _pruefung_mit_freigabe() -> dict:
 
 # -- 3) Liste abarbeiten --------------------
 
-def _liste_abarbeiten() -> dict:
+def _listing_abarbeiten() -> dict:
     """Fetch a list and do something with it item by item.
 
     The edge from the body back to the loop is the whole trick: it turns a straight flow
@@ -176,7 +176,7 @@ def _liste_abarbeiten() -> dict:
 
 # -- 4) Call with a retry ---------------------------
 
-def _aufruf_mit_wiederholung() -> dict:
+def _call_mit_wiederholung() -> dict:
     """Call outside, and do not give up at the first trouble.
 
     Two nets on top of each other: the node retries three times on its own (with a delay,
@@ -212,7 +212,7 @@ def _aufruf_mit_wiederholung() -> dict:
     ]}
 
 
-def _mail_eingang() -> dict:
+def _mail_intake() -> dict:
     """What happens to an incoming mail, previously fixed in `mail_intake.py`.
 
     Triggered by the event `mail.received` (the mail webhook reports it). The context brings
@@ -299,7 +299,7 @@ def _mail_eingang() -> dict:
         # mail switches the message off — and the sorting keeps working, because the verdict
         # is what the moving and the learning hang off.
         _n("karte_gelernt", "auto_action", 3, 4,
-           _action("spam_card", "Gelernten Fall festhalten", vorentschieden=True, melden=False)),
+           _action("spam_card", "Gelernten Fall festhalten", predecided=True, report=False)),
         _n("melden_gelernt_frage", "decision", 4, 4, {
             "label": "Gelernten Fall melden?",
             "branches": [{"handle": "still", "label": "Melden ist aus",
@@ -315,7 +315,7 @@ def _mail_eingang() -> dict:
 
         # ── Sicher genug: verschieben, aber widersprechlich ─────────────────
         _n("karte_auto", "auto_action", 3, 5,
-           _action("spam_card", "Aussortierung festhalten", rueckholbar=True, melden=False)),
+           _action("spam_card", "Aussortierung festhalten", recoverable=True, report=False)),
         _n("melden_auto_frage", "decision", 4, 5, {
             "label": "Aussortierung melden?",
             "branches": [{"handle": "still", "label": "Melden ist aus",
@@ -365,7 +365,7 @@ def _mail_eingang() -> dict:
         # ausmacht, sind seine Werte — sie stehen in `mail_actions.AUFTRAG_PARAMS`, damit
         # Vorlage und Altnamen nicht auseinanderlaufen.
         _n("item", "auto_action", 0, 8,
-           _action("assistant_task", "Assistent-Eingang anlegen", **AUFTRAG_PARAMS)),
+           _action("assistant_task", "Assistent-Eingang anlegen", **TASK_PARAMS)),
         _n("ist_auto", "decision", 0, 9, {
             "label": "Automatisch freigegeben?",
             "branches": [
@@ -419,7 +419,7 @@ def _mail_eingang() -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-def _anhang_nach_paperless() -> dict:
+def _attachment_nach_paperless() -> dict:
     """Ein Knopf an jedem Anhang: Rechnung ins Archiv, ohne Umweg über den Rechner.
 
     Zeigt den ganzen Weg einer Mail-Aktion — Anhang holen, Werkzeug rufen, Bescheid geben —
@@ -476,7 +476,7 @@ def _webhook_assistent() -> dict:
     return {"nodes": nodes, "edges": [_e("start", "auftrag"), _e("auftrag", "fertig")]}
 
 
-def _webhook_melden() -> dict:
+def _webhook_report() -> dict:
     """Auslöser von außen, und es kommt eine Nachricht an."""
     nodes = [
         _n("start", "start", 0, 0, {
@@ -506,25 +506,25 @@ def _webhook_ticket() -> dict:
     return {"nodes": nodes, "edges": [_e("start", "ticket"), _e("ticket", "fertig")]}
 
 
-VORLAGEN: list[dict] = [
+TEMPLATES: list[dict] = [
     {"key": "meldung-von-aussen",
      "name": "Meldung von außen verarbeiten",
      "description": "Webhook rein, Weiche nach Dringlichkeit, Nachricht raus.",
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Beispiel-Nutzlast am Start anpassen — daraus entstehen die Kontextfelder.",
-     "build": _meldung_von_aussen},
+     "build": _notice_von_aussen},
     {"key": "pruefung-mit-freigabe",
      "name": "Geplante Prüfung mit Freigabe",
      "description": "Daten holen, hinsehen, und erst nach Freigabe handeln.",
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Werkzeug im Schritt „Daten holen\" wählen; Start über einen Job.",
-     "build": _pruefung_mit_freigabe},
+     "build": _check_mit_grant},
     {"key": "liste-abarbeiten",
      "name": "Liste Element für Element abarbeiten",
      "description": "Liste holen, durchlaufen, je Element etwas tun, am Ende berichten.",
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "In der Schleife den Pfad zur Liste eintragen (z. B. tool.json.items).",
-     "build": _liste_abarbeiten},
+     "build": _listing_abarbeiten},
     {"key": "anhang-paperless",
      "name": "Anhang nach Paperless",
      "description": "Ein Knopf an jedem Anhang: holen, ablegen, Bescheid geben.",
@@ -532,7 +532,7 @@ VORLAGEN: list[dict] = [
      "hinweis": "Erscheint im Postfach an jedem Anhang. Das Werkzeug paperless__post_document "
                 "muss dem Ablauf freigegeben sein; Titel und Schlagworte im Schritt "
                 "„In Paperless ablegen\" anpassen.",
-     "build": _anhang_nach_paperless},
+     "build": _attachment_nach_paperless},
     {"key": "mail-eingang",
      "name": "Mail-Eingang",
      "description": "Eingegangene Mail einordnen, auf Spam prüfen und entweder wegräumen "
@@ -541,7 +541,7 @@ VORLAGEN: list[dict] = [
      "hinweis": "Hört auf das Ereignis `mail.received`. Nur EIN Ablauf sollte das tun, "
                 "sonst läuft jede Mail mehrfach. Schwellen und Schalter stehen in den "
                 "Einstellungen (spam_*), die Texte im Melde-Knoten.",
-     "build": _mail_eingang},
+     "build": _mail_intake},
     {"key": "webhook-assistent",
      "name": "Auslöser → Assistent",
      "description": "Etwas kommt von außen, der Assistent kümmert sich darum.",
@@ -556,7 +556,7 @@ VORLAGEN: list[dict] = [
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Empfänger und Text im Melde-Knoten setzen; ohne Empfänger geht die "
                 "Nachricht an den Besitzer des Ablaufs.",
-     "build": _webhook_melden},
+     "build": _webhook_report},
     {"key": "webhook-ticket",
      "name": "Auslöser → Ticket",
      "description": "Etwas kommt von außen und wird zu einem Ticket.",
@@ -569,30 +569,30 @@ VORLAGEN: list[dict] = [
      "description": "Ziel aufrufen, bei Fehler wiederholen, später noch einmal, dann melden.",
      "subject_kind": WorkflowSubjectKind.standalone,
      "hinweis": "Ziel eintragen (Einstellungen → Ziele) — Basis-URL und Anmeldung stecken dort.",
-     "build": _aufruf_mit_wiederholung},
+     "build": _call_mit_wiederholung},
 ]
 
-_NACH_KEY = {v["key"]: v for v in VORLAGEN}
+_NACH_KEY = {v["key"]: v for v in TEMPLATES}
 
 
-def liste() -> list[dict]:
+def listing() -> list[dict]:
     """What is on offer, without the graphs themselves (the overview does not need them)."""
     return [{k: (v.value if hasattr(v, "value") else v)
-             for k, v in vorlage.items() if k != "build"}
-            for vorlage in VORLAGEN]
+             for k, v in template.items() if k != "build"}
+            for template in TEMPLATES]
 
 
 def graph(key: str) -> dict | None:
     """The graph of a template, built fresh so nobody shares it by accident."""
-    vorlage = _NACH_KEY.get(key)
-    return vorlage["build"]() if vorlage else None
+    template = _NACH_KEY.get(key)
+    return template["build"]() if template else None
 
 
-def vorlage(key: str) -> dict | None:
+def template(key: str) -> dict | None:
     return _NACH_KEY.get(key)
 
 
-async def freier_schluessel(db, wunsch: str, projekt_id: int | None = None) -> str:
+async def freier_key(db, wunsch: str, projekt_id: int | None = None) -> str:
     """Ein Schlüssel, den es hier noch nicht gibt — aus einem Namen gemacht.
 
     Namen und Schlüssel beschreiben die Sache, nicht ihren Auslöser: `ki-tech-news`, nicht
@@ -618,7 +618,7 @@ async def freier_schluessel(db, wunsch: str, projekt_id: int | None = None) -> s
     return f"{basis}-{len(vergeben)}"
 
 
-async def anlegen(db, key: str, *, besitzer_id: int | None, def_key: str = "",
+async def create(db, key: str, *, owner_id: int | None, def_key: str = "",
                   name: str = "", veroeffentlicht: bool = True, graph: dict | None = None,
                   projekt_id: int | None = None):
     """Create a flow FROM a template — as somebody's own, not as a shipped one.
@@ -638,13 +638,13 @@ async def anlegen(db, key: str, *, besitzer_id: int | None, def_key: str = "",
     d = WorkflowDefinition(
         project_id=projekt_id, key=def_key or key, name=name or v["name"],
         description=v["description"], subject_kind=v["subject_kind"],
-        enabled=True, created_by=besitzer_id)
+        enabled=True, created_by=owner_id)
     db.add(d)
     await db.flush()
     version = WorkflowVersion(
         # `graph` erlaubt der Umstellung, die Vorlage mit den Werten des alten Webhooks zu
         # füllen (Agent, Auftragstext, Empfänger), statt sie hinterher zu patchen.
-        definition_id=d.id, version=1, graph=graph or v["build"](), created_by=besitzer_id,
+        definition_id=d.id, version=1, graph=graph or v["build"](), created_by=owner_id,
         status=(WorkflowVersionStatus.published if veroeffentlicht
                 else WorkflowVersionStatus.draft),
         published_at=dt.datetime.now(tz=dt.timezone.utc) if veroeffentlicht else None,

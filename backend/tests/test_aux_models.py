@@ -21,28 +21,28 @@ class FakeResp:
         self.text = text
 
 
-async def test_ohne_einstellung_gilt_auto(db, monkeypatch):
+async def test_ohne_setting_gilt_auto(db, monkeypatch):
     """No entry means the provider and model of the agent. Whoever sets nothing notices nothing."""
-    gesehen = {}
+    seen = {}
 
     async def fake_chat(**kw):
-        gesehen.update(kw)
+        seen.update(kw)
         return FakeResp("kurz gefasst")
 
     monkeypatch.setattr(aux.router, "chat", fake_chat)
     out = await aux.aux_chat(db, owner_id=None, task="compression", messages=[{"role": "user", "content": "x"}],
                              agent=FakeAgent(), tokens={"claude_code": "t"}, base_urls={})
     assert out == "kurz gefasst"
-    assert gesehen["provider"] == "claude_code" and gesehen["model"] == "claude-sonnet-5"
+    assert seen["provider"] == "claude_code" and seen["model"] == "claude-sonnet-5"
 
 
 async def test_eingestelltes_modell_wird_genommen(db, monkeypatch):
     await set_setting(db, "aux.compression", json.dumps(
         {"provider": "openai", "model": "qwen3.6-35b-q3", "base_url": "http://litellm:4000/v1"}))
-    gesehen = {}
+    seen = {}
 
     async def fake_chat(**kw):
-        gesehen.update(kw)
+        seen.update(kw)
         return FakeResp("lokal gefasst")
 
     async def fake_token(*a, **kw):
@@ -52,11 +52,11 @@ async def test_eingestelltes_modell_wird_genommen(db, monkeypatch):
     monkeypatch.setattr(aux, "resolve_provider_token", fake_token)
     out = await aux.aux_chat(db, owner_id=1, task="compression", messages=[], agent=FakeAgent())
     assert out == "lokal gefasst"
-    assert gesehen["provider"] == "openai" and gesehen["model"] == "qwen3.6-35b-q3"
-    assert gesehen["base_urls"] == {"openai": "http://litellm:4000/v1"}
+    assert seen["provider"] == "openai" and seen["model"] == "qwen3.6-35b-q3"
+    assert seen["base_urls"] == {"openai": "http://litellm:4000/v1"}
 
 
-async def test_kaputte_einstellung_faellt_auf_auto_zurueck(db, monkeypatch):
+async def test_kaputte_setting_faellt_auf_auto_zurueck(db, monkeypatch):
     """A typo in the setting must not paralyse a run."""
     await set_setting(db, "aux.compression", "{kein json")
     assert await aux.aux_config(db, "compression") == {}
@@ -93,7 +93,7 @@ async def test_zeitueberschreitung_liefert_nichts_statt_zu_haengen(db, monkeypat
             timeout=0.2)
 
 
-async def test_leere_antwort_gilt_als_kein_ergebnis(db, monkeypatch):
+async def test_leere_answer_gilt_as_kein_result(db, monkeypatch):
     async def fake_chat(**kw):
         return FakeResp("   ")
 
@@ -131,10 +131,10 @@ async def test_denkendes_modell_bekommt_das_denken_abgeschaltet(db, monkeypatch)
     text: 231 completion tokens for an "OK", 229 of them thinking. For diligence work that is
     wasted, so it is off by default."""
     await set_setting(db, "aux.compression", json.dumps({"provider": "openai", "model": "qwen"}))
-    gesehen = {}
+    seen = {}
 
     async def fake_chat(**kw):
-        gesehen.update(kw)
+        seen.update(kw)
         return FakeResp("kurz")
 
     async def fake_token(*a, **kw):
@@ -144,16 +144,16 @@ async def test_denkendes_modell_bekommt_das_denken_abgeschaltet(db, monkeypatch)
     monkeypatch.setattr(aux, "resolve_provider_token", fake_token)
     monkeypatch.setattr(aux, "resolve_provider_base_url", fake_token)
     await aux.aux_chat(db, owner_id=1, task="compression", messages=[], agent=FakeAgent())
-    assert gesehen["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert seen["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 async def test_eigenes_extra_body_schlaegt_die_voreinstellung(db, monkeypatch):
     await set_setting(db, "aux.compression", json.dumps(
         {"provider": "openai", "model": "qwen", "extra_body": {"top_k": 20}}))
-    gesehen = {}
+    seen = {}
 
     async def fake_chat(**kw):
-        gesehen.update(kw)
+        seen.update(kw)
         return FakeResp("kurz")
 
     async def fake_token(*a, **kw):
@@ -163,17 +163,17 @@ async def test_eigenes_extra_body_schlaegt_die_voreinstellung(db, monkeypatch):
     monkeypatch.setattr(aux, "resolve_provider_token", fake_token)
     monkeypatch.setattr(aux, "resolve_provider_base_url", fake_token)
     await aux.aux_chat(db, owner_id=1, task="compression", messages=[], agent=FakeAgent())
-    assert gesehen["extra_body"] == {"top_k": 20}
+    assert seen["extra_body"] == {"top_k": 20}
 
 
 async def test_auto_bekommt_kein_extra_body(db, monkeypatch):
     """The subscription providers do not know the field; there it would be a 400."""
-    gesehen = {}
+    seen = {}
 
     async def fake_chat(**kw):
-        gesehen.update(kw)
+        seen.update(kw)
         return FakeResp("kurz")
 
     monkeypatch.setattr(aux.router, "chat", fake_chat)
     await aux.aux_chat(db, owner_id=None, task="compression", messages=[], agent=FakeAgent())
-    assert gesehen["extra_body"] is None
+    assert seen["extra_body"] is None

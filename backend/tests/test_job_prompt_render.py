@@ -11,7 +11,7 @@ import datetime as dt
 
 import pytest
 from app.models.ops import Job, JobRun
-from app.services.job_modes import als_ablauf
+from app.services.job_modes import as_flow
 from app.services.scheduler import run_job_kind
 from conftest import make_user
 from sqlalchemy import select
@@ -30,22 +30,22 @@ async def anna(db):
 
 async def _lauf(db, monkeypatch, job: Job) -> str:
     """Den Job einmal auslösen; liefert den Auftrag, den der Agent bekommen hat."""
-    auftraege: list[dict] = []
+    tasks: list[dict] = []
 
     async def enqueue_task(payload):
-        auftraege.append(payload)
+        tasks.append(payload)
 
     import app.services.workflow_actions as wa
     monkeypatch.setattr("app.core.redis.enqueue_task", enqueue_task)
     monkeypatch.setattr(wa, "enqueue_task", enqueue_task, raising=False)
 
-    await als_ablauf(db, job)
+    await as_flow(db, job)
     jr = JobRun(job_id=job.id, status="running")
     db.add(jr)
     await db.flush()
     await run_job_kind(db, job, jr)
     await db.commit()
-    return next(a["prompt"] for a in auftraege if a.get("kind") == "agent_frei")
+    return next(a["prompt"] for a in tasks if a.get("kind") == "agent_frei")
 
 
 async def test_prompt_wird_mit_parametern_gefuellt(db, anna, monkeypatch, redis_stub):
@@ -67,7 +67,7 @@ async def test_script_argumente_machen_keinen_parametersatz_auf(db, anna, redis_
             prompt="Unverändert {{thema}}", args=["--flag"])
     db.add(j)
     await db.commit()
-    await als_ablauf(db, j)
+    await as_flow(db, j)
     await db.commit()
 
     d = await db.get(WorkflowDefinition, j.workflow_definition_id)
@@ -76,7 +76,7 @@ async def test_script_argumente_machen_keinen_parametersatz_auf(db, anna, redis_
     assert arbeit["data"]["config"]["action"]["params"]["task"] == "Unverändert {{thema}}"
 
 
-async def test_zeitfenster_ueberspringt_kaputte_laeufe(db, anna, monkeypatch, redis_stub):
+async def test_zeitfenster_ueberspringt_kaputte_runs(db, anna, monkeypatch, redis_stub):
     """War der Job gestern kaputt, muss das Fenster bis zum letzten ERFOLG zurückreichen;
     sonst fällt der Tag des Ausfalls lautlos aus dem Rückblick."""
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news",
@@ -89,7 +89,7 @@ async def test_zeitfenster_ueberspringt_kaputte_laeufe(db, anna, monkeypatch, re
     assert await _lauf(db, monkeypatch, j) == "2026-07-27 08:00"    # Europe/Berlin
 
 
-async def test_der_lauf_bleibt_offen_bis_das_ergebnis_da_ist(db, anna, monkeypatch, redis_stub):
+async def test_der_lauf_bleibt_open_bis_das_result_da_ist(db, anna, monkeypatch, redis_stub):
     """Der Job stößt an, der Agent arbeitet — das Ergebnis trägt die Engine nach."""
     j = Job(user_id=anna.id, name="Digest", kind="prompt", agent="news", prompt="x", args={})
     db.add(j)

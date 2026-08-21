@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.metrics import MetricPoint, MetricSeries
 from ..models.user import User
@@ -22,13 +22,13 @@ from .deps import get_current_user
 router = APIRouter(tags=["metrics"])
 
 
-def _reihe_out(r: MetricSeries, stand: dict | None = None) -> dict:
+def _series_out(r: MetricSeries, state: dict | None = None) -> dict:
     return {"id": r.id, "key": r.key, "name": r.name or r.key, "unit": r.unit,
             "description": r.description,
             "last_value": r.last_value,
             "last_at": metrics._mit_zone(r.last_at).isoformat() if r.last_at else None,
             "warned_at": metrics._mit_zone(r.warned_at).isoformat() if r.warned_at else None,
-            "trend": stand}
+            "trend": state}
 
 
 @router.get("/metrics")
@@ -39,7 +39,7 @@ async def list_series(with_trend: bool = Query(True), target: float = Query(0.0)
     rows = (await db.execute(select(MetricSeries)
                              .where(MetricSeries.owner_user_id == user.id)
                              .order_by(MetricSeries.key))).scalars().all()
-    return [_reihe_out(r, await metrics.trend(db, r, ziel=target) if with_trend else None)
+    return [_series_out(r, await metrics.trend(db, r, target=target) if with_trend else None)
             for r in rows]
 
 
@@ -59,15 +59,15 @@ async def series_points(key: str, days: int = Query(60, ge=1, le=3650),
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
                      "Metric series not found")
     seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days)
-    ps = await metrics.punkte(db, r.id, seit=seit)
-    return {**_reihe_out(r, await metrics.trend(db, r, ziel=target, fenster_tage=days)),
+    ps = await metrics.points(db, r.id, seit=seit)
+    return {**_series_out(r, await metrics.trend(db, r, target=target, window_days=days)),
             "target": target,
             "points": [{"id": p.id, "ts": metrics._mit_zone(p.ts).isoformat(),
                         "value": p.value, "context": p.context or {}} for p in ps]}
 
 
-@router.delete("/metrics/{key:path}/points/{punkt_id}", status_code=204)
-async def delete_point(key: str, punkt_id: int, user: User = Depends(get_current_user),
+@router.delete("/metrics/{key:path}/points/{point_id}", status_code=204)
+async def delete_point(key: str, point_id: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     """Remove a single value.
 
@@ -79,18 +79,18 @@ async def delete_point(key: str, punkt_id: int, user: User = Depends(get_current
     if r is None:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.metric_series_not_found",
                      "Metric series not found")
-    punkt = await db.get(MetricPoint, punkt_id)
+    punkt = await db.get(MetricPoint, point_id)
     if punkt is None or punkt.series_id != r.id:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.value_does_not_belong_series",
                      "The value does not belong to this series")
     await db.delete(punkt)
     await db.flush()
     # The head of the series points at the last value; if that was it, it has to move up.
-    letzter = (await db.execute(
+    last = (await db.execute(
         select(MetricPoint).where(MetricPoint.series_id == r.id)
         .order_by(MetricPoint.ts.desc()).limit(1))).scalars().first()
-    r.last_value = letzter.value if letzter else None
-    r.last_at = letzter.ts if letzter else None
+    r.last_value = last.value if last else None
+    r.last_at = last.ts if last else None
     await db.commit()
 
 

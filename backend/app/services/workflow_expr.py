@@ -29,32 +29,32 @@ log = logging.getLogger("workflow_expr")
 AUSDRUCK_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 
 
-def _dig(data, pfad: str):
+def _dig(data, path: str):
     cur = data
-    for teil in str(pfad).split("."):
-        if isinstance(cur, dict) and teil in cur:
-            cur = cur[teil]
-        elif isinstance(cur, list) and teil.isdigit() and int(teil) < len(cur):
-            cur = cur[int(teil)]
+    for part in str(path).split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        elif isinstance(cur, list) and part.isdigit() and int(part) < len(cur):
+            cur = cur[int(part)]
         else:
             return None
     return cur
 
 
-def _zahl(wert, fallback=0.0) -> float:
+def _zahl(value, fallback=0.0) -> float:
     try:
-        return float(str(wert).replace(",", "."))
+        return float(str(value).replace(",", "."))
     except (TypeError, ValueError):
         return fallback
 
 
-def _zeit(wert) -> dt.datetime | None:
+def _ts(value) -> dt.datetime | None:
     """Text or number to a point in time. Understands ISO timestamps and Unix seconds."""
-    if isinstance(wert, dt.datetime):
-        return wert
-    if isinstance(wert, (int, float)):
-        return dt.datetime.fromtimestamp(float(wert), tz=dt.timezone.utc)
-    text = str(wert or "").strip()
+    if isinstance(value, dt.datetime):
+        return value
+    if isinstance(value, (int, float)):
+        return dt.datetime.fromtimestamp(float(value), tz=dt.timezone.utc)
+    text = str(value or "").strip()
     if not text:
         return None
     try:
@@ -67,57 +67,57 @@ def _zeit(wert) -> dt.datetime | None:
 # Each one takes (value, *arguments) and returns a value. An error is not fatal: a template
 # that does not fit in one spot must not bring down the whole run.
 
-def _f_kurz(wert, laenge="40", endung="…"):
-    text = "" if wert is None else str(wert)
+def _f_kurz(value, laenge="40", extension="…"):
+    text = "" if value is None else str(value)
     n = int(_zahl(laenge, 40))
-    return text if len(text) <= n else text[: max(0, n - len(endung))] + endung
+    return text if len(text) <= n else text[: max(0, n - len(extension))] + extension
 
 
-def _f_default(wert, ersatz=""):
-    leer = wert is None or wert == "" or wert == [] or wert == {}
-    return ersatz if leer else wert
+def _f_default(value, replacement=""):
+    leer = value is None or value == "" or value == [] or value == {}
+    return replacement if leer else value
 
 
-def _f_datum(wert, form="%d.%m.%Y"):
-    zeit = _zeit(wert)
-    return zeit.strftime(form) if zeit else ""
+def _f_datum(value, form="%d.%m.%Y"):
+    ts = _ts(value)
+    return ts.strftime(form) if ts else ""
 
 
-def _f_plus_zeit(wert, menge="0", einheit="t"):
-    zeit = _zeit(wert) or dt.datetime.now(tz=dt.timezone.utc)
-    n = _zahl(menge, 0)
+def _f_plus_ts(value, amount="0", unit="t"):
+    ts = _ts(value) or dt.datetime.now(tz=dt.timezone.utc)
+    n = _zahl(amount, 0)
     delta = {"t": dt.timedelta(days=n), "h": dt.timedelta(hours=n),
-             "m": dt.timedelta(minutes=n)}.get(str(einheit)[:1].lower(), dt.timedelta(days=n))
-    return (zeit + delta).isoformat()
+             "m": dt.timedelta(minutes=n)}.get(str(unit)[:1].lower(), dt.timedelta(days=n))
+    return (ts + delta).isoformat()
 
 
-def _f_verbinde(wert, trenner=", "):
-    if isinstance(wert, (list, tuple)):
-        return trenner.join("" if x is None else str(x) for x in wert)
-    return "" if wert is None else str(wert)
+def _f_verbinde(value, trenner=", "):
+    if isinstance(value, (list, tuple)):
+        return trenner.join("" if x is None else str(x) for x in value)
+    return "" if value is None else str(value)
 
 
-def _f_anzahl(wert):
-    if isinstance(wert, (list, tuple, dict, str)):
-        return len(wert)
-    return 0 if wert is None else 1
+def _f_count(value):
+    if isinstance(value, (list, tuple, dict, str)):
+        return len(value)
+    return 0 if value is None else 1
 
 
-def _f_feld(wert, name=""):
+def _f_field(value, name=""):
     """Pull one field out of a list of objects: `{{ treffer | field:"filename" }}`.
 
     The counterpart to `verbinde`, and the piece that was missing to get from a search
     result to a sentence. A single object gives a single value, so the filter also works
     where a path happens to hold one result rather than many.
     """
-    if isinstance(wert, dict):
-        return wert.get(name)
-    if isinstance(wert, (list, tuple)):
-        return [e.get(name) for e in wert if isinstance(e, dict) and e.get(name) is not None]
-    return wert
+    if isinstance(value, dict):
+        return value.get(name)
+    if isinstance(value, (list, tuple)):
+        return [e.get(name) for e in value if isinstance(e, dict) and e.get(name) is not None]
+    return value
 
 
-def _f_dateiname(wert):
+def _f_dateiname(value):
     """Path to note name: `03 Bereiche/Fahrzeuge/VW T5.md` becomes `VW T5`.
 
     Element wise over a list, because that is where paths usually arrive. What is wanted in
@@ -126,32 +126,32 @@ def _f_dateiname(wert):
     def eins(x):
         t = "" if x is None else str(x)
         return t.rsplit("/", 1)[-1].removesuffix(".md")
-    if isinstance(wert, (list, tuple)):
-        return [eins(x) for x in wert]
-    return eins(wert)
+    if isinstance(value, (list, tuple)):
+        return [eins(x) for x in value]
+    return eins(value)
 
 
-def _f_max(wert):
+def _f_max(value):
     """Largest number in a list, 0 when there is nothing to compare.
 
     A guard cannot walk a list (JSONLogic knows no `some` here on purpose), so the question
     "does any day bring snow" is answered by turning the list into one number first.
     """
-    if isinstance(wert, (list, tuple)):
-        zahlen = [_zahl(x) for x in wert if x is not None]
+    if isinstance(value, (list, tuple)):
+        zahlen = [_zahl(x) for x in value if x is not None]
         return max(zahlen) if zahlen else 0
-    return _zahl(wert)
+    return _zahl(value)
 
 
-def _f_min(wert):
+def _f_min(value):
     """Smallest number in a list, the counterpart to `max`."""
-    if isinstance(wert, (list, tuple)):
-        zahlen = [_zahl(x) for x in wert if x is not None]
+    if isinstance(value, (list, tuple)):
+        zahlen = [_zahl(x) for x in value if x is not None]
         return min(zahlen) if zahlen else 0
-    return _zahl(wert)
+    return _zahl(value)
 
 
-def _f_zeilen_mit(wert, muster=""):
+def _f_lines_mit(value, pattern=""):
     """The lines of a text that contain `muster`, as a list.
 
     Not every tool answers in JSON. The vault server, for instance, renders its search hits
@@ -159,25 +159,25 @@ def _f_zeilen_mit(wert, muster=""):
     be usable whole, and a flow would have to paste a page of markdown where one sentence
     belongs. Without a pattern: every non empty line.
     """
-    text = "" if wert is None else str(wert)
-    zeilen = [z.strip() for z in text.splitlines() if z.strip()]
-    return [z for z in zeilen if muster in z] if muster else zeilen
+    text = "" if value is None else str(value)
+    lines = [z.strip() for z in text.splitlines() if z.strip()]
+    return [z for z in lines if pattern in z] if pattern else lines
 
 
-def _f_json(wert):
+def _f_json(value):
     try:
-        return json.dumps(wert, ensure_ascii=False)
+        return json.dumps(value, ensure_ascii=False)
     except (TypeError, ValueError):
-        return str(wert)
+        return str(value)
 
 
-def _f_ersetze(wert, alt="", neu=""):
-    return ("" if wert is None else str(wert)).replace(alt, neu)
+def _f_ersetze(value, alt="", new=""):
+    return ("" if value is None else str(value)).replace(alt, new)
 
 
-def _f_rund(wert, stellen="0"):
+def _f_rund(value, stellen="0"):
     n = int(_zahl(stellen, 0))
-    z = round(_zahl(wert), n)
+    z = round(_zahl(value), n)
     return int(z) if n <= 0 else z
 
 
@@ -196,18 +196,18 @@ FILTER = {
     # "loses -1.95 % per day" reads wrong: the sign is already in the verb.
     "abs": (lambda w: abs(_zahl(w)), "Vorzeichen weglassen"),
     # Listen
-    "count": (_f_anzahl, "Wie viele Einträge (bzw. Zeichen)"),
+    "count": (_f_count, "Wie viele Einträge (bzw. Zeichen)"),
     "first": (lambda w: w[0] if isinstance(w, (list, tuple)) and w else "", "Erster Eintrag"),
     "last": (lambda w: w[-1] if isinstance(w, (list, tuple)) and w else "", "Letzter Eintrag"),
     "join": (_f_verbinde, "Liste zu Text — join:\", \""),
-    "field": (_f_feld, "Ein Feld aus einer Objektliste — field:\"name\""),
+    "field": (_f_field, "Ein Feld aus einer Objektliste — field:\"name\""),
     "basename": (_f_dateiname, "Notizname aus dem Pfad (ohne Ordner und .md)"),
     "max": (_f_max, "Größter Zahlwert einer Liste"),
-    "lines_with": (_f_zeilen_mit, "Zeilen eines Textes, die etwas enthalten — lines_with:\"### \""),
+    "lines_with": (_f_lines_mit, "Zeilen eines Textes, die etwas enthalten — lines_with:\"### \""),
     "min": (_f_min, "Kleinster Zahlwert einer Liste"),
     # Zeit
     "date": (_f_datum, "Zeit formatieren — date:\"%d.%m.%Y\""),
-    "add_time": (_f_plus_zeit, "Zeit verschieben — add_time:2,\"h\" (t=Tage, h=Stunden, m=Minuten)"),
+    "add_time": (_f_plus_ts, "Zeit verschieben — add_time:2,\"h\" (t=Tage, h=Stunden, m=Minuten)"),
     # Allgemein
     "default": (_f_default,
                 "Ersatz, wenn leer — default:\"sonstiges\" (in Anführungszeichen wörtlich, "
@@ -217,30 +217,30 @@ FILTER = {
 }
 
 # Sources that do not come from the context.
-SONDERQUELLEN = {
+SPECIAL_SOURCES = {
     "now": lambda: dt.datetime.now(tz=dt.timezone.utc).isoformat(),
     "today": lambda: dt.date.today().isoformat(),
 }
 
 
-def _teile(ausdruck: str) -> list[str]:
+def _parts(ausdruck: str) -> list[str]:
     """Split on `|`, but not inside quotes."""
-    teile, aktuell, quote = [], "", ""
-    for zeichen in ausdruck:
+    parts, current, quote = [], "", ""
+    for chars in ausdruck:
         if quote:
-            aktuell += zeichen
-            if zeichen == quote:
+            current += chars
+            if chars == quote:
                 quote = ""
-        elif zeichen in "\"'":
-            quote = zeichen
-            aktuell += zeichen
-        elif zeichen == "|":
-            teile.append(aktuell.strip())
-            aktuell = ""
+        elif chars in "\"'":
+            quote = chars
+            current += chars
+        elif chars == "|":
+            parts.append(current.strip())
+            current = ""
         else:
-            aktuell += zeichen
-    teile.append(aktuell.strip())
-    return [t for t in teile if t]
+            current += chars
+    parts.append(current.strip())
+    return [t for t in parts if t]
 
 
 def _argumente(roh: str) -> list[tuple[str, bool]]:
@@ -254,33 +254,33 @@ def _argumente(roh: str) -> list[tuple[str, bool]]:
     parser swallows the intent and silently applies the default.
     """
     out: list[tuple[str, bool]] = []
-    aktuell, quote, zitiert = "", "", False
-    for zeichen in roh:
+    current, quote, zitiert = "", "", False
+    for chars in roh:
         if quote:
-            if zeichen == quote:
+            if chars == quote:
                 quote = ""
             else:
-                aktuell += zeichen
-        elif zeichen in "\"'":
-            quote, zitiert = zeichen, True
-        elif zeichen == ",":
-            if zitiert or aktuell.strip() != "":
-                out.append((aktuell.strip() if not zitiert else aktuell, zitiert))
-            aktuell, zitiert = "", False
+                current += chars
+        elif chars in "\"'":
+            quote, zitiert = chars, True
+        elif chars == ",":
+            if zitiert or current.strip() != "":
+                out.append((current.strip() if not zitiert else current, zitiert))
+            current, zitiert = "", False
         else:
-            aktuell += zeichen
-    if zitiert or aktuell.strip() != "":
-        out.append((aktuell.strip() if not zitiert else aktuell, zitiert))
+            current += chars
+    if zitiert or current.strip() != "":
+        out.append((current.strip() if not zitiert else current, zitiert))
     return out
 
 
-def _quelle(text: str, ctx: dict):
+def _source(text: str, ctx: dict):
     """First link of a chain: a literal, a special source, or a context path."""
     text = text.strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
         return text[1:-1]
-    if text in SONDERQUELLEN:
-        return SONDERQUELLEN[text]()
+    if text in SPECIAL_SOURCES:
+        return SPECIAL_SOURCES[text]()
     try:
         return float(text) if "." in text else int(text)
     except ValueError:
@@ -290,23 +290,23 @@ def _quelle(text: str, ctx: dict):
 
 def auswerten(ausdruck: str, ctx: dict):
     """Evaluate one expression (without the braces), returns a value or None."""
-    glieder = _teile(ausdruck)
+    glieder = _parts(ausdruck)
     if not glieder:
         return None
-    wert = _quelle(glieder[0], ctx)
+    value = _source(glieder[0], ctx)
     for glied in glieder[1:]:
         name, _, roh = glied.partition(":")
         name = name.strip()
-        eintrag = FILTER.get(name)
-        if eintrag is None:
+        entry = FILTER.get(name)
+        if entry is None:
             log.debug("Unknown filter %r in %r", name, ausdruck)
             continue
-        fn = eintrag[0]
+        fn = entry[0]
         try:
-            wert = fn(wert, *_filterargumente(roh, ctx)) if roh else fn(wert)
+            value = fn(value, *_filterargumente(roh, ctx)) if roh else fn(value)
         except Exception:  # noqa: BLE001, a broken template must not fail the run
-            log.info("Filter %r on %r failed", name, wert)
-    return wert
+            log.info("Filter %r on %r failed", name, value)
+    return value
 
 
 def _filterargumente(roh: str, ctx: dict) -> list[str]:
@@ -318,29 +318,29 @@ def _filterargumente(roh: str, ctx: dict) -> list[str]:
     would then have been the same case. If the path resolves to nothing, the text stays, so
     a fallback like `default:unknown` behaves as before.
     """
-    fertig: list[str] = []
+    done: list[str] = []
     for text, zitiert in _argumente(roh):
         if not zitiert and text and not text.replace(".", "", 1).lstrip("-").isdigit():
             aus_ctx = _dig(ctx, text)
             if aus_ctx is not None:
-                fertig.append(aus_ctx if isinstance(aus_ctx, str) else str(aus_ctx))
+                done.append(aus_ctx if isinstance(aus_ctx, str) else str(aus_ctx))
                 continue
-        fertig.append(text)
-    return fertig
+        done.append(text)
+    return done
 
 
-def fuellen(text: str, ctx: dict) -> str:
+def fill(text: str, ctx: dict) -> str:
     """Replace every `{{…}}` inside a text."""
-    def ersetzen(m: re.Match) -> str:
-        wert = auswerten(m.group(1), ctx)
-        if wert is None:
+    def replace(m: re.Match) -> str:
+        value = auswerten(m.group(1), ctx)
+        if value is None:
             return ""
-        if isinstance(wert, (dict, list)):
-            return _f_json(wert)
-        if isinstance(wert, bool):
-            return "true" if wert else "false"
-        return str(wert)
-    return AUSDRUCK_RE.sub(ersetzen, text)
+        if isinstance(value, (dict, list)):
+            return _f_json(value)
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return str(value)
+    return AUSDRUCK_RE.sub(replace, text)
 
 
 def katalog() -> list[dict]:

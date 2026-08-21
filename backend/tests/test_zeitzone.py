@@ -16,8 +16,8 @@ pytestmark = pytest.mark.asyncio
 BERLIN = ZoneInfo("Europe/Berlin")
 
 
-def _job(**felder) -> Job:
-    return Job(name="morgens", type="cron", schedule="0 8 * * *", kind="prompt", **felder)
+def _job(**fields) -> Job:
+    return Job(name="morgens", type="cron", schedule="0 8 * * *", kind="prompt", **fields)
 
 
 class Person:

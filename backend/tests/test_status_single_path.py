@@ -11,34 +11,34 @@ import pytest
 from app.models.artifact import Artifact
 from app.models.enums import HoldReason, PurchaseStatus, StatusCategory, TicketAgentStatus
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
-from app.services import artifacts as art
+from app.services import artifacts as kind
 from sqlalchemy import select
 from conftest import make_asset, make_project
 
 APP = pathlib.Path(__file__).resolve().parent.parent / "app"
 # Direct assignment is allowed here: the implementation itself respectively the creation of a
 # ticket whose artifact row comes into being immediately afterwards.
-ERLAUBT = {"services/artifacts.py", "services/workflow_actions.py"}
+ALLOWED = {"services/artifacts.py", "services/workflow_actions.py"}
 
 
-def test_niemand_setzt_den_zustand_an_der_zentrale_vorbei():
-    treffer = []
-    for datei in APP.rglob("*.py"):
-        rel = str(datei.relative_to(APP))
-        if rel in ERLAUBT:
+def test_niemand_setzt_den_state_an_der_zentrale_vorbei():
+    hits = []
+    for file in APP.rglob("*.py"):
+        rel = str(file.relative_to(APP))
+        if rel in ALLOWED:
             continue
-        for nr, zeile in enumerate(datei.read_text().splitlines(), 1):
+        for nr, line in enumerate(file.read_text().splitlines(), 1):
             # Assignment, not comparison: "= x" yes, "== x" and "!= x" no.
-            if re.search(r"\.(agent_status|purchase_status)\s*=(?!=)", zeile):
-                treffer.append(f"{rel}:{nr}: {zeile.strip()}")
-    assert not treffer, (
+            if re.search(r"\.(agent_status|purchase_status)\s*=(?!=)", line):
+                hits.append(f"{rel}:{nr}: {line.strip()}")
+    assert not hits, (
         "The state is set directly instead of over set_ticket_status/set_asset_status, "
-        "the artifact row would drift apart:\n" + "\n".join(treffer))
+        "the artifact row would drift apart:\n" + "\n".join(hits))
 
 
 @pytest.fixture
 async def register(db):
-    await art.ensure_builtin_types(db)
+    await kind.ensure_builtin_types(db)
 
 
 async def _ticket(db, proj) -> Issue:
@@ -59,11 +59,11 @@ async def _ticket(db, proj) -> Issue:
     return i
 
 
-async def test_ein_aufruf_setzt_zustand_board_und_artefakt(db, register):
+async def test_ein_call_setzt_state_board_und_artefakt(db, register):
     proj = await make_project(db, "TST", "Test")
     issue = await _ticket(db, proj)
 
-    await art.set_ticket_status(db, issue, TicketAgentStatus.hold, reason=HoldReason.merge)
+    await kind.set_ticket_status(db, issue, TicketAgentStatus.hold, reason=HoldReason.merge)
     await db.commit()
 
     a = await db.get(Artifact, issue.artifact_id)
@@ -74,15 +74,15 @@ async def test_ein_aufruf_setzt_zustand_board_und_artefakt(db, register):
     assert spalte.name == "Warten"          # Board ebenso
 
 
-async def test_zustand_zuruecknehmen_laesst_das_board_stehen(db, register):
+async def test_state_zuruecknehmen_laesst_das_board_stehen(db, register):
     """The agent was pulled off: no state any more, but the ticket does not jump back."""
     proj = await make_project(db, "TST", "Test")
     issue = await _ticket(db, proj)
-    await art.set_ticket_status(db, issue, TicketAgentStatus.in_progress)
+    await kind.set_ticket_status(db, issue, TicketAgentStatus.in_progress)
     await db.commit()
     vorher = issue.status_id
 
-    await art.set_ticket_status(db, issue, None, board=False)
+    await kind.set_ticket_status(db, issue, None, board=False)
     await db.commit()
     a = await db.get(Artifact, issue.artifact_id)
     assert issue.agent_status is None and issue.hold_reason is None
@@ -90,13 +90,13 @@ async def test_zustand_zuruecknehmen_laesst_das_board_stehen(db, register):
     assert a.status_key == ""
 
 
-async def test_hardware_zustand_fuehrt_die_datumsfelder_mit(db, register):
+async def test_hardware_state_fuehrt_die_datumsfelder_mit(db, register):
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
-    await art.ensure_for_asset(db, asset)
+    await kind.ensure_for_asset(db, asset)
     await db.commit()
 
-    await art.set_asset_status(db, asset, "ordered")
+    await kind.set_asset_status(db, asset, "ordered")
     await db.commit()
     a = await db.get(Artifact, asset.artifact_id)
     assert asset.purchase_status == PurchaseStatus.ordered
@@ -104,17 +104,17 @@ async def test_hardware_zustand_fuehrt_die_datumsfelder_mit(db, register):
     assert a.status_key == "ordered"
 
 
-async def test_abgleich_findet_nichts_mehr_zu_tun(db, register):
+async def test_reconcile_findet_nichts_mehr_zu_tun(db, register):
     """When the one path is used, the reconciliation has nothing to catch up."""
     proj = await make_project(db, "TST", "Test")
     issue = await _ticket(db, proj)
-    await art.set_ticket_status(db, issue, TicketAgentStatus.to_test)
+    await kind.set_ticket_status(db, issue, TicketAgentStatus.to_test)
     await db.commit()
 
-    assert (await art.reconcile(db))["tickets_angeglichen"] == 0
+    assert (await kind.reconcile(db))["tickets_angeglichen"] == 0
 
 
-async def test_laufender_agent_steht_nie_auf_warten(db):
+async def test_laufender_agent_steht_nie_auf_wait(db):
     """The rule without an exception: if an agent is running for a ticket, it is "in progress".
 
     A run starts over several paths (process step, review round in the worker, follow-up of
@@ -157,7 +157,7 @@ async def test_planungslauf_steht_auf_planung(db):
     assert issue.agent_status == TicketAgentStatus.planning
 
 
-async def test_beendeter_lauf_ruehrt_den_zustand_nicht_an(db):
+async def test_beendeter_lauf_ruehrt_den_state_nicht_an(db):
     """The counter-check: a FINISHED run is no reason to touch a waiting ticket; otherwise the
     reconciliation would tear every completed ticket back into the work."""
     import datetime as dt
@@ -202,7 +202,7 @@ async def test_stehengebliebene_spalte_wird_nachgezogen(db):
     assert issue.agent_working is True
 
 
-async def test_abgenommenes_ticket_bleibt_fertig(db):
+async def test_abgenommenes_ticket_bleibt_done(db):
     """Counter-check: a manually accepted ticket is not pulled back into the work by the
     reconciliation, even when a run is still trailing."""
     from app.models.agents import Run

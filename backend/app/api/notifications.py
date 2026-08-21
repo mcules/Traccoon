@@ -35,7 +35,7 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 # Ticket cards: the kind names the AI state the ticket has to be in for the card to still
 # be waiting. Moves the ticket on, the card is done, no matter who moved it or where.
-_TICKET_ZUSTAND = {
+_TICKET_STATE = {
     "plan_review": TicketAgentStatus.plan_review,
     "to_test": TicketAgentStatus.to_test,
     "failed": TicketAgentStatus.failed,
@@ -52,8 +52,8 @@ def _offen():
     ticket = [
         and_(Notification.kind == kind,
              select(Issue.id).where(Issue.id == Notification.issue_id,
-                                    Issue.agent_status == zustand).exists())
-        for kind, zustand in _TICKET_ZUSTAND.items()
+                                    Issue.agent_status == state).exists())
+        for kind, state in _TICKET_STATE.items()
     ]
     return or_(
         *ticket,
@@ -77,7 +77,7 @@ def _q_own(user: User):
     return or_(Notification.user_id == user.id, Notification.user_id.is_(None))
 
 
-def _q_sichtbar(user: User, alle: bool = False):
+def _q_visible(user: User, alle: bool = False):
     if alle:
         return _q_own(user)
     return and_(_q_own(user), or_(Notification.notified_at.is_(None), _offen()))
@@ -87,23 +87,23 @@ def _q_sichtbar(user: User, alle: bool = False):
 async def list_notifications(all: bool = False, user: User = Depends(get_current_user),
                              db: AsyncSession = Depends(get_session)):
     rows = (
-        await db.execute(select(Notification).where(_q_sichtbar(user, all))
+        await db.execute(select(Notification).where(_q_visible(user, all))
                          .order_by(Notification.id.desc()).limit(50))
     ).scalars().all()
     # Ticket key and project key alongside, so a click on the card can lead somewhere. The
     # bare `issue_id` is of no use to the browser: the ticket page runs on keys.
     ids = {n.issue_id for n in rows if n.issue_id}
-    ziele: dict[int, tuple[str, str]] = {}
+    targets: dict[int, tuple[str, str]] = {}
     if ids:
         from ..models.project import Project
         for issue_key, projekt_key, iid in (await db.execute(
                 select(Issue.key, Project.key, Issue.id)
                 .join(Project, Project.id == Issue.project_id).where(Issue.id.in_(ids)))).all():
-            ziele[iid] = (issue_key, projekt_key)
+            targets[iid] = (issue_key, projekt_key)
     return [{"id": n.id, "kind": n.kind, "title": n.title, "body": n.body,
              "issue_id": n.issue_id, "project_id": n.project_id,
-             "issue_key": ziele.get(n.issue_id or 0, ("", ""))[0],
-             "project_key": ziele.get(n.issue_id or 0, ("", ""))[1],
+             "issue_key": targets.get(n.issue_id or 0, ("", ""))[0],
+             "project_key": targets.get(n.issue_id or 0, ("", ""))[1],
              "assistant_task_id": n.assistant_task_id,
              # `gesendet` says whether the message also went out somewhere else. In the
              # unfiltered list that is the difference between "still open" and "history".
@@ -116,7 +116,7 @@ async def unread_count(user: User = Depends(get_current_user), db: AsyncSession 
     """Counts only what the bell shows. A counter over hidden rows could never be cleared."""
     c = (await db.execute(
         select(func.count()).select_from(Notification)
-        .where(_q_sichtbar(user), Notification.read_at.is_(None)))).scalar_one()
+        .where(_q_visible(user), Notification.read_at.is_(None)))).scalar_one()
     return {"count": c}
 
 

@@ -23,25 +23,25 @@ from conftest import make_user
 pytestmark = pytest.mark.asyncio
 
 
-def _graph(timer: dict | None = None, aktion: dict | None = None) -> dict:
-    knoten = [{"id": "s", "type": "start", "position": {"x": 0, "y": 0},
+def _graph(timer: dict | None = None, action: dict | None = None) -> dict:
+    node = [{"id": "s", "type": "start", "position": {"x": 0, "y": 0},
                "data": {"config": {"label": "Start"}}}]
-    kanten = []
+    edges = []
     vorher = "s"
     if timer is not None:
-        knoten.append({"id": "warten", "type": "timer", "position": {"x": 0, "y": 1},
+        node.append({"id": "warten", "type": "timer", "position": {"x": 0, "y": 1},
                        "data": {"config": timer}})
-        kanten.append({"id": "e1", "source": vorher, "target": "warten"})
+        edges.append({"id": "e1", "source": vorher, "target": "warten"})
         vorher = "warten"
-    if aktion is not None:
-        knoten.append({"id": "tun", "type": "auto_action", "position": {"x": 0, "y": 2},
-                       "data": {"config": aktion}})
-        kanten.append({"id": "e2", "source": vorher, "target": "tun"})
+    if action is not None:
+        node.append({"id": "tun", "type": "auto_action", "position": {"x": 0, "y": 2},
+                       "data": {"config": action}})
+        edges.append({"id": "e2", "source": vorher, "target": "tun"})
         vorher = "tun"
-    knoten.append({"id": "ende", "type": "end", "position": {"x": 0, "y": 3},
+    node.append({"id": "ende", "type": "end", "position": {"x": 0, "y": 3},
                    "data": {"config": {"outcome": "completed"}}})
-    kanten.append({"id": "e3", "source": vorher, "target": "ende"})
-    return {"nodes": knoten, "edges": kanten}
+    edges.append({"id": "e3", "source": vorher, "target": "ende"})
+    return {"nodes": node, "edges": edges}
 
 
 async def _lauf(db, graph: dict, name: str):
@@ -70,12 +70,12 @@ async def test_timer_haelt_den_lauf_an(db):
     # restart.
     step = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.instance_id == inst.id))).scalars().one()
-    faellig = dt.datetime.fromisoformat(step.result["faellig"])
-    assert dt.timedelta(minutes=29) < faellig - dt.datetime.now(dt.timezone.utc) \
+    due = dt.datetime.fromisoformat(step.result["faellig"])
+    assert dt.timedelta(minutes=29) < due - dt.datetime.now(dt.timezone.utc) \
         <= dt.timedelta(minutes=30)
 
 
-async def test_faelliger_timer_weckt_und_laeuft_weiter(db):
+async def test_faelliger_timer_weckt_und_running_weiter(db):
     inst = await _lauf(db, _graph(timer={"dauer": 30, "einheit": "m"}), "geweckt")
     step = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.instance_id == inst.id))).scalars().one()
@@ -92,7 +92,7 @@ async def test_faelliger_timer_weckt_und_laeuft_weiter(db):
     assert inst.status == WorkflowInstanceStatus.completed
 
 
-async def test_zeitpunkt_in_der_vergangenheit_wartet_nicht(db):
+async def test_moment_in_der_vergangenheit_wartet_nicht(db):
     """A point in time that has already passed means "now", not "never"."""
     gestern = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).isoformat()
     inst = await _lauf(db, _graph(timer={"bis": gestern}), "vergangen")
@@ -101,7 +101,7 @@ async def test_zeitpunkt_in_der_vergangenheit_wartet_nicht(db):
     assert inst.status == WorkflowInstanceStatus.completed
 
 
-async def test_wiederholung_haelt_abstand_und_gibt_dann_auf(db, monkeypatch):
+async def test_wiederholung_haelt_distance_und_gibt_dann_auf(db, monkeypatch):
     """A failure to the outside is mostly one of the moment. So: wait, try again, but not
     endlessly."""
     versuche = {"n": 0}
@@ -111,7 +111,7 @@ async def test_wiederholung_haelt_abstand_und_gibt_dann_auf(db, monkeypatch):
         raise ValueError("Gegenstelle weg")
 
     monkeypatch.setattr(workflow_actions, "run_action", kaputt)
-    inst = await _lauf(db, _graph(aktion={
+    inst = await _lauf(db, _graph(action={
         "action": {"action": "notify", "params": {}}, "wiederholungen": 2, "warte_sek": 1,
     }), "wiederholt")
 
@@ -119,7 +119,7 @@ async def test_wiederholung_haelt_abstand_und_gibt_dann_auf(db, monkeypatch):
     assert inst.status == WorkflowInstanceStatus.waiting     # waits for the second attempt
     assert inst.context["_versuche"]["tun"] == 1
 
-    async def faellig_stellen():
+    async def due_stellen():
         for st in (await db.execute(select(WorkflowStepRun).where(
                 WorkflowStepRun.instance_id == inst.id,
                 WorkflowStepRun.status == "waiting"))).scalars().all():
@@ -127,10 +127,10 @@ async def test_wiederholung_haelt_abstand_und_gibt_dann_auf(db, monkeypatch):
                                      - dt.timedelta(seconds=1)).isoformat()}
         await db.commit()
 
-    await faellig_stellen()
+    await due_stellen()
     await faellige_timer()
     assert versuche["n"] == 2
-    await faellig_stellen()
+    await due_stellen()
     await faellige_timer()
     assert versuche["n"] == 3          # the third is the last (two retries)
 
@@ -146,7 +146,7 @@ async def test_fehlerzweig_faengt_den_fehlschlag_auf(db, monkeypatch):
         raise ValueError("kaputt")
 
     monkeypatch.setattr(workflow_actions, "run_action", kaputt)
-    graph = _graph(aktion={"action": {"action": "notify", "params": {}}})
+    graph = _graph(action={"action": {"action": "notify", "params": {}}})
     graph["nodes"].append({"id": "aufgefangen", "type": "end", "position": {"x": 1, "y": 3},
                            "data": {"config": {"outcome": "completed"}}})
     graph["edges"].append({"id": "e9", "source": "tun", "target": "aufgefangen",
@@ -156,13 +156,13 @@ async def test_fehlerzweig_faengt_den_fehlschlag_auf(db, monkeypatch):
     assert inst.status == WorkflowInstanceStatus.completed
 
 
-async def test_validierung_verlangt_dauer_oder_zeitpunkt():
+async def test_validierung_verlangt_duration_oder_moment():
     assert validate_graph("standalone", _graph(timer={"dauer": 5, "einheit": "m"})) == []
-    fehler = validate_graph("standalone", _graph(timer={}))
-    assert any("weder Dauer noch Zeitpunkt" in f for f in fehler)
+    error = validate_graph("standalone", _graph(timer={}))
+    assert any("weder Dauer noch Zeitpunkt" in f for f in error)
 
 
 async def test_lange_wartezeit_wird_gedeckelt():
     """A flow that sleeps for two years is almost always a typo."""
-    faellig = workflow_engine._faellig_ab({"dauer": 900, "einheit": "t"}, {})
-    assert faellig - dt.datetime.now(dt.timezone.utc) <= dt.timedelta(days=90)
+    due = workflow_engine._due_ab({"dauer": 900, "einheit": "t"}, {})
+    assert due - dt.datetime.now(dt.timezone.utc) <= dt.timedelta(days=90)

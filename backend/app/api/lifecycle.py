@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.enums import (
     HoldReason, TicketAgentStatus, WorkflowNodeType, WorkflowStepStatus,

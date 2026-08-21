@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..core.security import decrypt_secret, encrypt_secret
 from ..db import get_session
 from ..models.agents import AgentDefinition

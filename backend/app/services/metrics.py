@@ -21,17 +21,17 @@ from ..models.metrics import MetricPoint, MetricSeries
 
 log = logging.getLogger("traccoon.metrics")
 
-FENSTER_TAGE = 30       # how far back the trend reads
-MIN_PUNKTE = 3          # below that, any line is coincidence
+WINDOW_DAYS = 30       # how far back the trend reads
+MIN_POINTS = 3          # below that, any line is coincidence
 # And below this it extrapolates noise: four voltage readings from three minutes produced
 # "+14 V per day". There has to be real time between the first and the last point.
-MIN_SPANNE_TAGE = 0.5
+MIN_SPAN_DAYS = 0.5
 # How far a value has to rise for the series to count as refilled (new battery, topped up
 # tank), which also expires a warning that was already sent.
 AUFFUELL_SPRUNG = 10.0
 
 
-def _jetzt() -> dt.datetime:
+def _now() -> dt.datetime:
     return dt.datetime.now(tz=dt.timezone.utc)
 
 
@@ -41,30 +41,30 @@ def _mit_zone(ts: dt.datetime) -> dt.datetime:
 
 
 async def reihe(db: AsyncSession, owner_id: int | None, key: str,
-                *, anlegen: bool = False, name: str = "", einheit: str = "") -> MetricSeries | None:
+                *, create: bool = False, name: str = "", unit: str = "") -> MetricSeries | None:
     r = (await db.execute(select(MetricSeries).where(
         MetricSeries.owner_user_id == owner_id, MetricSeries.key == key))).scalar_one_or_none()
-    if r is None and anlegen:
-        r = MetricSeries(owner_user_id=owner_id, key=key, name=name or key, unit=einheit)
+    if r is None and create:
+        r = MetricSeries(owner_user_id=owner_id, key=key, name=name or key, unit=unit)
         db.add(r)
         await db.flush()
     return r
 
 
-async def erfassen(db: AsyncSession, owner_id: int | None, key: str, wert: float, *,
-                   name: str = "", einheit: str = "", ts: dt.datetime | None = None,
-                   kontext: dict | None = None) -> tuple[MetricSeries, MetricPoint]:
+async def record(db: AsyncSession, owner_id: int | None, key: str, value: float, *,
+                   name: str = "", unit: str = "", ts: dt.datetime | None = None,
+                   context: dict | None = None) -> tuple[MetricSeries, MetricPoint]:
     """Record a value. The series comes into existence with its first value."""
-    r = await reihe(db, owner_id, key, anlegen=True, name=name, einheit=einheit)
+    r = await reihe(db, owner_id, key, create=True, name=name, unit=unit)
     if name and not r.name:
         r.name = name
-    if einheit and not r.unit:
-        r.unit = einheit
-    punkt = MetricPoint(series_id=r.id, ts=ts or _jetzt(), value=float(wert),
-                        context=kontext or {})
+    if unit and not r.unit:
+        r.unit = unit
+    punkt = MetricPoint(series_id=r.id, ts=ts or _now(), value=float(value),
+                        context=context or {})
     db.add(punkt)
     # A clear rise means somebody refilled it, so the old warning no longer applies.
-    if r.last_value is not None and float(wert) - r.last_value >= AUFFUELL_SPRUNG:
+    if r.last_value is not None and float(value) - r.last_value >= AUFFUELL_SPRUNG:
         r.warned_at = None
         r.warned_value = None
     # Any value ends a phase of silence, even a bad one. The next silence may report
@@ -74,101 +74,101 @@ async def erfassen(db: AsyncSession, owner_id: int | None, key: str, wert: float
     # Otherwise a backfilled old value makes the series look current: the chart showed a
     # reading from two days ago as "now", and the forecast started from there.
     if r.last_at is None or _mit_zone(punkt.ts) >= _mit_zone(r.last_at):
-        r.last_value = float(wert)
+        r.last_value = float(value)
         r.last_at = punkt.ts
     await db.flush()
     return r, punkt
 
 
-async def punkte(db: AsyncSession, series_id: int, *, seit: dt.datetime | None = None,
-                 grenze: int = 500) -> list[MetricPoint]:
+async def points(db: AsyncSession, series_id: int, *, seit: dt.datetime | None = None,
+                 limit: int = 500) -> list[MetricPoint]:
     q = select(MetricPoint).where(MetricPoint.series_id == series_id)
     if seit is not None:
         q = q.where(MetricPoint.ts >= seit)
-    return list((await db.execute(q.order_by(MetricPoint.ts.desc()).limit(grenze)))
+    return list((await db.execute(q.order_by(MetricPoint.ts.desc()).limit(limit)))
                 .scalars().all())[::-1]
 
 
-def gerade(werte: list[tuple[float, float]]) -> tuple[float, float, float]:
+def line_fit(values: list[tuple[float, float]]) -> tuple[float, float, float]:
     """Least squares line y = a*x + b over (x=days, y=value), returns (a, b, r squared)."""
-    n = len(werte)
+    n = len(values)
     if n < 2:
-        return 0.0, (werte[0][1] if werte else 0.0), 0.0
-    sx = sum(x for x, _ in werte)
-    sy = sum(y for _, y in werte)
-    sxx = sum(x * x for x, _ in werte)
-    sxy = sum(x * y for x, y in werte)
+        return 0.0, (values[0][1] if values else 0.0), 0.0
+    sx = sum(x for x, _ in values)
+    sy = sum(y for _, y in values)
+    sxx = sum(x * x for x, _ in values)
+    sxy = sum(x * y for x, y in values)
     nenner = n * sxx - sx * sx
     if abs(nenner) < 1e-9:
         return 0.0, sy / n, 0.0
     a = (n * sxy - sx * sy) / nenner
     b = (sy - a * sx) / n
     mittel = sy / n
-    ss_tot = sum((y - mittel) ** 2 for _, y in werte)
-    ss_res = sum((y - (a * x + b)) ** 2 for x, y in werte)
+    ss_tot = sum((y - mittel) ** 2 for _, y in values)
+    ss_res = sum((y - (a * x + b)) ** 2 for x, y in values)
     r2 = 1.0 - (ss_res / ss_tot) if ss_tot > 1e-12 else 1.0
     return a, b, max(0.0, min(1.0, r2))
 
 
-async def trend(db: AsyncSession, r: MetricSeries, *, ziel: float = 0.0,
-                fenster_tage: int = FENSTER_TAGE) -> dict:
+async def trend(db: AsyncSession, r: MetricSeries, *, target: float = 0.0,
+                window_days: int = WINDOW_DAYS) -> dict:
     """Where the series is heading, and when it reaches the target value.
 
     `rest_tage` stays None as long as no direction can be read: too few points, or the
     series moves away from the target. No number is more honest than one made up from two
     readings.
     """
-    seit = _jetzt() - dt.timedelta(days=fenster_tage)
-    ps = await punkte(db, r.id, seit=seit)
+    seit = _now() - dt.timedelta(days=window_days)
+    ps = await points(db, r.id, seit=seit)
     # The age of the last value belongs to every answer, including the short ones. A
     # series that has been quiet for weeks otherwise keeps serving its old line, and nobody
     # notices that it stopped being fed long ago.
-    letzter = _mit_zone(r.last_at) if r.last_at else None
-    ergebnis = {"points": len(ps), "value": r.last_value, "unit": r.unit,
+    last = _mit_zone(r.last_at) if r.last_at else None
+    result = {"points": len(ps), "value": r.last_value, "unit": r.unit,
                 "per_day": None, "days_left": None, "empty_at": None, "fit": None,
-                "last_at": letzter.isoformat() if letzter else None,
-                "age_hours": (round((_jetzt() - letzter).total_seconds() / 3600.0, 2)
-                                  if letzter else None),
+                "last_at": last.isoformat() if last else None,
+                "age_hours": (round((_now() - last).total_seconds() / 3600.0, 2)
+                                  if last else None),
                 "first_value": ps[0].value if ps else None,
                 "first_at": _mit_zone(ps[0].ts).isoformat() if ps else None}
-    if len(ps) < MIN_PUNKTE:
-        return ergebnis
+    if len(ps) < MIN_POINTS:
+        return result
     basis = _mit_zone(ps[0].ts)
-    werte = [((_mit_zone(p.ts) - basis).total_seconds() / 86400.0, p.value) for p in ps]
-    ergebnis["spanne_tage"] = round(werte[-1][0], 2)
-    if werte[-1][0] < MIN_SPANNE_TAGE:
-        return ergebnis
-    a, b, r2 = gerade(werte)
-    ergebnis["per_day"] = round(a, 4)
-    ergebnis["fit"] = round(r2, 3)
-    jetzt_x = (_jetzt() - basis).total_seconds() / 86400.0
-    aktuell = a * jetzt_x + b
+    values = [((_mit_zone(p.ts) - basis).total_seconds() / 86400.0, p.value) for p in ps]
+    result["spanne_tage"] = round(values[-1][0], 2)
+    if values[-1][0] < MIN_SPAN_DAYS:
+        return result
+    a, b, r2 = line_fit(values)
+    result["per_day"] = round(a, 4)
+    result["fit"] = round(r2, 3)
+    now_x = (_now() - basis).total_seconds() / 86400.0
+    current = a * now_x + b
     if abs(a) > 1e-9:
-        rest = (ziel - aktuell) / a
-        if rest >= 0:
-            ergebnis["days_left"] = round(rest, 1)
-            ergebnis["empty_at"] = (_jetzt() + dt.timedelta(days=rest)).date().isoformat()
-    return ergebnis
+        remainder = (target - current) / a
+        if remainder >= 0:
+            result["days_left"] = round(remainder, 1)
+            result["empty_at"] = (_now() + dt.timedelta(days=remainder)).date().isoformat()
+    return result
 
 
-def vorwarnen(r: MetricSeries, rest_tage: float | None, vorwarn_tage: float) -> bool:
+def vorwarnen(r: MetricSeries, remainder_days: float | None, vorwarn_days: float) -> bool:
     """Whether to warn NOW, exactly once per refill.
 
     Without that, a device reporting daily would produce the same warning every day. After
     three days you mute it and miss the one that mattered. When the value rises again
     (`erfassen`), the mark expires, so a new battery may warn again.
     """
-    if rest_tage is None or rest_tage > vorwarn_tage:
+    if remainder_days is None or remainder_days > vorwarn_days:
         return False
     if r.warned_at is not None:
         return False
-    r.warned_at = _jetzt()
+    r.warned_at = _now()
     r.warned_value = r.last_value
     return True
 
 
-def stille_melden(r: MetricSeries, alter_stunden: float | None,
-                  schwelle_stunden: float) -> bool:
+def silence_report(r: MetricSeries, alter_hours: float | None,
+                  threshold_hours: float) -> bool:
     """Whether to report NOW that the series went quiet, once per phase of silence.
 
     Built like `vorwarnen` and for the same reason: an hourly watchdog must not say the
@@ -179,9 +179,9 @@ def stille_melden(r: MetricSeries, alter_stunden: float | None,
     this notices that nothing arrives at all, including the case where the far side is down
     and can no longer even report its own failure.
     """
-    if alter_stunden is None or schwelle_stunden <= 0 or alter_stunden < schwelle_stunden:
+    if alter_hours is None or threshold_hours <= 0 or alter_hours < threshold_hours:
         return False
     if r.still_at is not None:
         return False
-    r.still_at = _jetzt()
+    r.still_at = _now()
     return True

@@ -30,7 +30,7 @@ def _gif(breite=480, hoehe=270, hundertstel=100) -> bytes:
 class FakeBot:
     def __init__(self):
         self.animation = None
-        self.nachricht = None
+        self.message = None
         self.foto = None
 
     async def send_animation(self, chat_id, **kw):
@@ -40,7 +40,7 @@ class FakeBot:
         self.foto = (chat_id, kw)
 
     async def send_message(self, chat_id, text, **kw):
-        self.nachricht = (chat_id, text, kw)
+        self.message = (chat_id, text, kw)
 
 
 class FakeNotification:
@@ -57,15 +57,15 @@ class FakeNotification:
 MARKUP = object()   # stands for the inline keyboard; `_zustellen` only passes it through
 
 
-async def test_medium_geht_als_animation_mit_beschriftung(tmp_path):
-    datei = tmp_path / "buero.gif"
-    datei.write_bytes(_gif())
-    bot, n = FakeBot(), FakeNotification(str(datei), "animation")
+async def test_medium_geht_as_animation_mit_beschriftung(tmp_path):
+    file = tmp_path / "buero.gif"
+    file.write_bytes(_gif())
+    bot, n = FakeBot(), FakeNotification(str(file), "animation")
 
     await _zustellen(bot, n, "<b>Feierabend</b>", MARKUP)
 
     chat_id, kw = bot.animation
-    assert chat_id == 4711 and bot.nachricht is None
+    assert chat_id == 4711 and bot.message is None
     assert kw["caption"] == "<b>Feierabend</b>" and kw["parse_mode"] == "HTML"
     # The dimensions come from the file, not from a constant: Telegram sizes the bubble from
     # them BEFORE the GIF is loaded.
@@ -78,34 +78,34 @@ async def test_ohne_medium_bleibt_der_textweg_unveraendert():
 
     await _zustellen(bot, n, "<b>Ticket</b>\nfertig", MARKUP)
 
-    chat_id, text, kw = bot.nachricht
+    chat_id, text, kw = bot.message
     assert (chat_id, text) == (4711, "<b>Ticket</b>\nfertig")
     assert kw["parse_mode"] == "HTML" and bot.animation is None
     assert n.notified_at is not None
 
 
-async def test_fehlende_datei_faellt_still_auf_text_zurueck(tmp_path):
+async def test_fehlende_file_faellt_still_auf_text_zurueck(tmp_path):
     """A film that is not there must not swallow a message."""
     bot, n = FakeBot(), FakeNotification(str(tmp_path / "gibt-es-nicht.gif"), "animation")
 
     await _zustellen(bot, n, "<b>Feierabend</b>", MARKUP)
 
     assert bot.animation is None
-    assert bot.nachricht[1] == "<b>Feierabend</b>"
+    assert bot.message[1] == "<b>Feierabend</b>"
     # And acknowledged regardless: otherwise the poller retries the same row every 3 s forever.
     assert isinstance(n.notified_at, dt.datetime)
 
 
-@pytest.mark.parametrize("pfad_da", [True, False])
-async def test_tastatur_kommt_auf_beiden_wegen_mit(tmp_path, pfad_da):
-    datei = tmp_path / "buero.gif"
-    if pfad_da:
-        datei.write_bytes(_gif())
-    bot, n = FakeBot(), FakeNotification(str(datei) if pfad_da else None, "animation")
+@pytest.mark.parametrize("path_da", [True, False])
+async def test_tastatur_kommt_auf_beiden_wegen_mit(tmp_path, path_da):
+    file = tmp_path / "buero.gif"
+    if path_da:
+        file.write_bytes(_gif())
+    bot, n = FakeBot(), FakeNotification(str(file) if path_da else None, "animation")
 
     await _zustellen(bot, n, "Frage", MARKUP)
 
-    gesendet = bot.animation[1] if pfad_da else bot.nachricht[2]
+    gesendet = bot.animation[1] if path_da else bot.message[2]
     assert gesendet["reply_markup"] is MARKUP
 
 
@@ -121,9 +121,9 @@ async def test_sendefehler_setzt_notified_at_trotzdem():
 
 async def test_beschriftung_wird_auf_1024_gekappt(tmp_path):
     """Telegram rejects captions that are too long, and then nothing would arrive at all."""
-    datei = tmp_path / "buero.gif"
-    datei.write_bytes(_gif())
-    bot, n = FakeBot(), FakeNotification(str(datei), "animation")
+    file = tmp_path / "buero.gif"
+    file.write_bytes(_gif())
+    bot, n = FakeBot(), FakeNotification(str(file), "animation")
 
     await _zustellen(bot, n, "x" * 2000, None)
 
@@ -131,9 +131,9 @@ async def test_beschriftung_wird_auf_1024_gekappt(tmp_path):
 
 
 async def test_media_kind_photo_nimmt_den_foto_weg(tmp_path):
-    datei = tmp_path / "bild.png"
-    datei.write_bytes(b"\x89PNG\r\n\x1a\n")
-    bot, n = FakeBot(), FakeNotification(str(datei), "photo")
+    file = tmp_path / "bild.png"
+    file.write_bytes(b"\x89PNG\r\n\x1a\n")
+    bot, n = FakeBot(), FakeNotification(str(file), "photo")
 
     await _zustellen(bot, n, "Bild", None)
 
@@ -146,7 +146,7 @@ def test_gif_masse_schweigt_bei_fremdem_format():
     assert _gif_masse(b"") == {}
 
 
-def test_gif_masse_summiert_alle_verzoegerungen():
+def test_gif_masse_summiert_all_verzoegerungen():
     # Two frames at 1.5 s give 3 s. A single frame GIF (0) gets no duration at all.
     doppelt = _gif(hundertstel=150)[:-1] + _gif(hundertstel=150)[13:]
     assert _gif_masse(doppelt)["duration"] == 3

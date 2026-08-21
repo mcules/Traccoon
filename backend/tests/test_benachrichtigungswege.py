@@ -44,7 +44,7 @@ async def test_standard_der_person_entscheidet(db, monkeypatch):
     assert n.chat_id is None and n.notified_at is not None, "per Mail zugestellt, nichts offen"
 
 
-async def test_absender_darf_den_weg_vorgeben(db, monkeypatch):
+async def test_absender_may_den_weg_vorgeben(db, monkeypatch):
     gesendet = []
     _kein_smtp(monkeypatch, gesendet)
     anna = await _person(db, "anna", chat="111", mail="anna@example.org", standard="email")
@@ -131,9 +131,9 @@ async def test_sichtbare_personen_zeigen_ihre_wege(client, db):
 
 # ── Der offene Weg: ein Ziel ─────────────────────────────────────────────────
 
-async def _ziel(db, besitzer, name="ntfy"):
+async def _target(db, owner, name="ntfy"):
     from app.models.destination import Destination
-    d = Destination(name=name, base_url="https://ntfy.example/traccoon", user_id=besitzer.id,
+    d = Destination(name=name, base_url="https://ntfy.example/traccoon", user_id=owner.id,
                     auth_type="none", enabled=True)
     db.add(d)
     await db.commit()
@@ -141,7 +141,7 @@ async def _ziel(db, besitzer, name="ntfy"):
     return d
 
 
-async def test_ziel_als_weg_hinaus(db, monkeypatch):
+async def test_target_as_weg_hinaus(db, monkeypatch):
     """Telegram und E-Mail waren die einzigen Wege — jeder weitere hätte Code gekostet.
 
     Ein Ziel trägt Basis-URL und Anmeldung schon; was dahinter steckt (ntfy, Matrix, Gotify,
@@ -157,8 +157,8 @@ async def test_ziel_als_weg_hinaus(db, monkeypatch):
     monkeypatch.setattr(destinations, "call", call)
 
     anna = await _person(db, "anna", chat=None, mail=None, standard="ziel")
-    ziel = await _ziel(db, anna)
-    anna.notify_destination_id = ziel.id
+    target = await _target(db, anna)
+    anna.notify_destination_id = target.id
     await db.commit()
 
     weg = await notify.zustellen(db, user=anna, kind="test", title="Hallo", body="Text")
@@ -170,23 +170,23 @@ async def test_ziel_als_weg_hinaus(db, monkeypatch):
     assert n.notified_at is not None
 
 
-async def test_ziel_ohne_ziel_bleibt_in_der_glocke(db):
+async def test_target_ohne_target_bleibt_in_der_glocke(db):
     anna = await _person(db, "anna", chat=None, mail=None, standard="ziel")
     weg = await notify.zustellen(db, user=anna, kind="test", title="Hallo")
     assert weg["kanal"] == "bell"
 
 
-async def test_fremdes_ziel_darf_man_nicht_waehlen(client, db):
+async def test_fremdes_target_may_man_nicht_waehlen(client, db):
     """Sonst wäre der Kanal ein Weg an fremde Anmeldedaten."""
     anna = await _person(db, "anna")
     bert = await _person(db, "bert")
-    fremd = await _ziel(db, bert, name="bertfunk")
+    fremd = await _target(db, bert, name="bertfunk")
 
     schlecht = await client.put("/me/notify", headers=auth(anna),
                                 json={"notify_destination_id": fremd.id})
     assert schlecht.status_code == 400
 
-    eigen = await _ziel(db, anna, name="annafunk")
+    eigen = await _target(db, anna, name="annafunk")
     gut = await client.put("/me/notify", headers=auth(anna),
                            json={"notify_default": "ziel", "notify_destination_id": eigen.id})
     assert gut.status_code == 204

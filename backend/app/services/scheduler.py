@@ -13,7 +13,7 @@ from sqlalchemy import select
 
 from ..db import SessionLocal
 from ..models.ops import Job, JobRun
-from .job_modes import ALTE_ARTEN
+from .job_modes import ALTE_KINDS
 from ..models.notification import Notification
 from ..models.user import User
 
@@ -42,7 +42,7 @@ def zone_of(user) -> ZoneInfo:
         return STD_TZ
 
 
-def _sekunden(schedule: str) -> int:
+def _seconds(schedule: str) -> int:
     """Der Abstand eines Intervall-Jobs.
 
     `900` und `interval:900` meinen dasselbe — die zweite Schreibweise steht in aelteren
@@ -57,36 +57,36 @@ def _sekunden(schedule: str) -> int:
 # Die beiden zu verwechseln ist der naheliegende Fehler, und er faellt nicht auf: Ein Job mit
 # unbekanntem `type` ist einfach nie faellig, waehrend die Oberflaeche "eingeschaltet, alle
 # 15 Minuten" anzeigt. Genau so lag der Job "Hermes-Posteingang" 13 Tage still.
-ZEITPLAN_ARTEN = ("cron", "interval", "once")
+ZEITPLAN_KINDS = ("cron", "interval", "once")
 
 
 def _due(job: Job, now: dt.datetime, zone: ZoneInfo = STD_TZ) -> bool:
-    if job.type not in ZEITPLAN_ARTEN:
+    if job.type not in ZEITPLAN_KINDS:
         log.warning("Job %s (%s) hat den Zeitplan-Typ '%s' — erlaubt sind %s. Er laeuft "
                     "deshalb nie; gemeint war vermutlich `kind`.",
-                    job.id, job.name, job.type, "/".join(ZEITPLAN_ARTEN))
+                    job.id, job.name, job.type, "/".join(ZEITPLAN_KINDS))
         return False
     if job.type == "interval":
-        secs = _sekunden(job.schedule)
+        secs = _seconds(job.schedule)
         return job.last_run_at is None or (now - job.last_run_at).total_seconds() >= secs
     if job.type == "cron":
         # In der Zone des Besitzers rechnen und erst danach wieder vergleichen: croniter
         # arbeitet mit der Wanduhr, die es bekommt.
-        jetzt_lokal = now.astimezone(zone)
+        now_lokal = now.astimezone(zone)
         base = (job.last_run_at or (now - dt.timedelta(minutes=1))).astimezone(zone)
         try:
-            return croniter(job.schedule, base).get_next(dt.datetime) <= jetzt_lokal
+            return croniter(job.schedule, base).get_next(dt.datetime) <= now_lokal
         except (ValueError, KeyError):
             return False
     if job.type == "once":
         if job.last_run_at is not None:
             return False
         try:
-            zeitpunkt = dt.datetime.fromisoformat(job.schedule)
+            moment = dt.datetime.fromisoformat(job.schedule)
             # Ohne Zeitzone im Text ist die des Besitzers gemeint, nicht UTC.
-            if zeitpunkt.tzinfo is None:
-                zeitpunkt = zeitpunkt.replace(tzinfo=zone)
-            return zeitpunkt <= now
+            if moment.tzinfo is None:
+                moment = moment.replace(tzinfo=zone)
+            return moment <= now
         except ValueError:
             return False
     return False
@@ -117,9 +117,9 @@ async def run_job_kind(db, job: Job, jr: JobRun) -> None:
     # Eine alte Art wird hier umgestellt, nicht abgewiesen: Sonst gäbe es ein Zeitfenster
     # (Eintrag von Hand in der Datenbank, Wiedereinspielen einer Sicherung), in dem ein Job
     # anders liefe, als am Bildschirm steht.
-    if job.kind in ALTE_ARTEN:
-        from .job_modes import als_ablauf
-        await als_ablauf(db, job)
+    if job.kind in ALTE_KINDS:
+        from .job_modes import as_flow
+        await as_flow(db, job)
         await db.flush()
 
     if job.kind == "workflow":
@@ -148,8 +148,8 @@ async def _tick() -> None:
         zonen: dict[int | None, ZoneInfo] = {}
         for job in jobs:
             if job.user_id not in zonen:
-                besitzer = await db.get(User, job.user_id) if job.user_id else None
-                zonen[job.user_id] = zone_of(besitzer)
+                owner = await db.get(User, job.user_id) if job.user_id else None
+                zonen[job.user_id] = zone_of(owner)
             if not _due(job, now, zonen[job.user_id]):
                 continue
             job.last_run_at = now
@@ -178,7 +178,7 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         # with prompt jobs (only an object counts, a list stays a script argument). Before,
         # `{}` stood here: the same flow for a second metric series would have needed a
         # second flow although only one word changes.
-        from .job_params import eingebaute_werte, parameter
+        from .job_params import eingebaute_values, parameter
         # Die Zeitwerte gehören dazu, seit die Prompt-Jobs Abläufe sind: `{{ seit }}` und
         # `{{ zeitfenster }}` standen in ihren Aufträgen und kamen aus der Job-Welt. Nur
         # ERFOLGREICHE Läufe zählen — war der Job gestern kaputt, muss das Fenster die Lücke
@@ -187,12 +187,12 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
             select(JobRun.started_at).where(JobRun.job_id == job.id, JobRun.id != jr.id,
                                             JobRun.status == "ok")
             .order_by(JobRun.id.desc()).limit(1))).scalar()
-        besitzer = await db.get(User, job.user_id) if job.user_id else None
+        owner = await db.get(User, job.user_id) if job.user_id else None
         # Wer den Lauf bestellt hat, gehört in den Kontext: Ein Ablauf, der etwas meldet,
         # will seinen Namen nennen können, und der Digest-Link hängt an der Lauf-Nummer.
         inst = await start_workflow(
             db, definition, subject_kind=definition.subject_kind,
-            context={**eingebaute_werte(letzter_lauf=vorlauf, zone=zone_of(besitzer)),
+            context={**eingebaute_values(last_lauf=vorlauf, zone=zone_of(owner)),
                      **parameter(job.args),
                      "job": {"id": job.id, "name": job.name, "run_id": jr.id}},
             actor_id=job.user_id, source=f"job:{job.id}",
@@ -201,8 +201,8 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         jr.status = "ok"
         # Kurze Abläufe sind hier schon fertig; dann steht ihr Ergebnis gleich in der
         # Historie statt „gestartet“. Alle anderen trägt die Engine nach, wenn sie enden.
-        from .workflow_engine import job_antwort_text
-        text = job_antwort_text(inst) if inst.finished_at is not None else ""
+        from .workflow_engine import job_answer_text
+        text = job_answer_text(inst) if inst.finished_at is not None else ""
         jr.output = text[:20000] if text else f"Workflow-Instanz #{inst.id} gestartet"
     except Exception as e:  # noqa: BLE001
         jr.status = "error"; jr.error = str(e)[:2000]
@@ -233,13 +233,13 @@ async def _flush_coalesced() -> None:
                 WebhookSub.route == row.route).order_by(WebhookSub.id))).scalars().first()
             n = len(row.payloads)
             from .i18n import tr
-            besitzer = (await db.get(User, sub.owner_user_id)
+            owner = (await db.get(User, sub.owner_user_id)
                         if sub and sub.owner_user_id else None)
             db.add(Notification(
                 kind="webhook",
                 title=await tr(db, "server.notify.webhook_weitere",
-                               getattr(besitzer, "locale", None),
-                               route=row.route, anzahl=n, schluessel=row.event_key),
+                               getattr(owner, "locale", None),
+                               route=row.route, count=n, event_key=row.event_key),
                 body=json.dumps(row.payloads[:10], ensure_ascii=False)[:4000],
                 chat_id=sub.notify_chat if sub else None))
             log.info("coalesce flushed: %s/%s (%d events)", row.route, row.event_key, n)
@@ -285,13 +285,13 @@ async def _purge_archived_runs() -> None:
 
 async def _spam_digest() -> None:
     """Digest card for spam suspicions below the immediate threshold."""
-    from .spam_review import digest_faellig
+    from .spam_review import digest_due
 
     async with SessionLocal() as db:
-        await digest_faellig(db)
+        await digest_due(db)
 
 
-async def _postfach_lernen() -> None:
+async def _mailbox_lernen() -> None:
     """Collect what the human decided themselves, without asking.
 
     Two paths, both without a question and without a model: mails they moved into the spam
@@ -299,7 +299,7 @@ async def _postfach_lernen() -> None:
     The former is spam learning material, the latter an acquittal.
     """
     from ..models.ops import WebhookSub
-    from .spam_bootstrap import antwort_kontakte, spam_rueckkopplung
+    from .spam_bootstrap import answer_kontakte, spam_rueckkopplung
 
     async with SessionLocal() as db:
         owner_ids = (await db.execute(select(WebhookSub.owner_user_id).where(
@@ -308,7 +308,7 @@ async def _postfach_lernen() -> None:
         for owner_id in owner_ids:
             try:
                 await spam_rueckkopplung(db, owner_id)
-                await antwort_kontakte(db, owner_id)
+                await answer_kontakte(db, owner_id)
             except Exception:  # noqa: BLE001
                 log.exception("Mailbox reconciliation for user %s failed", owner_id)
 
@@ -348,7 +348,7 @@ async def run_scheduler() -> None:
             if loop.time() >= _vault_after:
                 _vault_after = loop.time() + 3600
                 await _vault_kontakte()
-                await _postfach_lernen()
+                await _mailbox_lernen()
         except Exception:  # noqa: BLE001
             log.exception("scheduler tick failed")
         await asyncio.sleep(INTERVAL)

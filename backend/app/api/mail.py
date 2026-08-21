@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.assistant import AssistantPermission, AssistantPolicy, AssistantTask
 from ..models.user import User
@@ -118,7 +118,7 @@ async def statistik(days: int = 30, user: User = Depends(get_current_user),
     """
     from ..services.spam_report import bilanz, einstufungen
 
-    daten = await einstufungen(db, user.id, tage=days)
+    daten = await einstufungen(db, user.id, days=days)
     daten["betrieb"] = await bilanz(db, user.id)
     return daten
 
@@ -274,13 +274,13 @@ async def chat_history(vor: int | None = None, limit: int = 20, archiv: bool = F
     # One row more than asked for: that is the answer to "is there anything older".
     rows = (await db.execute(q.limit(n + 1))).scalars().all()
     mehr = len(rows) > n
-    seite = rows[:n]
-    return {"messages": [_chat_out(t) for t in reversed(seite)], "more": mehr}
+    page = rows[:n]
+    return {"messages": [_chat_out(t) for t in reversed(page)], "more": mehr}
 
 
 # Running messages stay: archiving something that is still being worked on would hide the
 # answer one is waiting for.
-_LAEUFT = ("new", "approved", "running", "awaiting")
+_RUNNING = ("new", "approved", "running", "awaiting")
 
 
 @router.post("/assistant/chat/archive-all")
@@ -291,7 +291,7 @@ async def chat_archive_all(user: User = Depends(get_current_user),
         update(AssistantTask)
         .where(AssistantTask.owner_user_id == user.id, AssistantTask.kind == "chat",
                AssistantTask.archived_at.is_(None),
-               AssistantTask.status.not_in(_LAEUFT))
+               AssistantTask.status.not_in(_RUNNING))
         .values(archived_at=dt.datetime.now(tz=dt.timezone.utc)))).rowcount
     await db.commit()
     return {"archived": n or 0}
@@ -301,7 +301,7 @@ async def chat_archive_all(user: User = Depends(get_current_user),
 async def chat_archive(tid: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     t = await _get_owned(tid, user, db)
-    if t.status in _LAEUFT:
+    if t.status in _RUNNING:
         raise Fehler(409, "err.still_running", "The message is still being worked on")
     t.archived_at = dt.datetime.now(tz=dt.timezone.utc)
     await db.commit()

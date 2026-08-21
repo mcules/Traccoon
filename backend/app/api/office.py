@@ -54,7 +54,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, case, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.agents import CostEntry, Run, RunStep
 from ..models.enums import GlobalRole, ProjectRole
@@ -435,7 +435,7 @@ async def _sessions_payload(db: AsyncSession, *, where, limit: int, since_hours:
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     if status not in SESSION_STATUS:
         raise Fehler(400, "err.status_one_of",
-                     "status has to be one of {erlaubt}", erlaubt=', '.join(SESSION_STATUS))
+                     "status has to be one of {allowed}", allowed=', '.join(SESSION_STATUS))
     now = dt.datetime.now(dt.timezone.utc)
     cutoff = now - dt.timedelta(hours=since_hours)
     scan = min(limit * RUN_SCAN_FACTOR, RUN_SCAN_MAX)
@@ -889,15 +889,15 @@ async def all_events(
     # and its agent would never sit at a desk. As a side effect all synthesised boundaries lie
     # between `steps[0]` and `steps[-1]`, which is why no extra truncation floor is needed here
     # (unlike in `session_events`).
-    fenster: dict[int, dict] = {}
+    window: dict[int, dict] = {}
     for s in steps:
-        b = fenster.setdefault(s.run_id, {"first": s.id, "last": s.id,
+        b = window.setdefault(s.run_id, {"first": s.id, "last": s.id,
                                           "has_start": False, "has_end": False})
         b["last"] = s.id
-        art = (getattr(s, "kind", "") or "").strip()
-        if art == "run_start":
+        kind = (getattr(s, "kind", "") or "").strip()
+        if kind == "run_start":
             b["has_start"] = True
-        elif art == "run_end":
+        elif kind == "run_end":
             b["has_end"] = True
 
     events: list[dict] = []
@@ -908,7 +908,7 @@ async def all_events(
 
     fensteranfang = ts_text(cutoff)
     for run in runs:
-        b = fenster.get(run.id)
+        b = window.get(run.id)
         if b is None:
             continue
         grenzen = run_boundary_events(
@@ -945,19 +945,19 @@ async def all_events(
     entdoppeln_seq(events)
 
     billed = await _billed_by_run(db, run_ids, await PriceTable.load(db))
-    antwort = leer(
+    answer = leer(
         agents=[_agent_row(r, billed.get(r.id),
                            issue_key=issue_keys.get(r.issue_id or 0, ""),
                            project_key=project_keys.get(r.project_id or 0, ""))
                 for r in runs],
         events=events, truncated=truncated)
-    antwort.update({
+    answer.update({
         "sessions": len({ctx.sid for ctx in ctxs.values()}),
         "seq_from": events[0]["seq"] if events else 0,
         "seq_to": events[-1]["seq"] if events else 0,
         "count": len(events),
     })
-    return antwort
+    return answer
 
 
 # ── Kosten ──────────────────────────────────────────────────────────────────
@@ -1093,10 +1093,10 @@ def _percentile_ms(counts: list[int], q: float, max_ms: int | None) -> int | Non
     if total <= 0:
         return None
     rang = max(1, math.ceil(q * total))          # the next rank, not interpolation
-    gesehen = 0
+    seen = 0
     for i, n in enumerate(counts):
-        gesehen += n
-        if gesehen >= rang:
+        seen += n
+        if seen >= rang:
             if i >= len(DURATION_LADDER_MS):
                 return None
             edge = DURATION_LADDER_MS[i]
@@ -1169,7 +1169,7 @@ async def _agents_payload(
     # (1) Runs per (role, status). Grouping by status instead of fixed counters also records
     # a status this code does not know yet: `by_status` is the raw truth, the three bars are
     # the reading of it.
-    for name, status, n, it_sum, it_max, letzter in (await db.execute(
+    for name, status, n, it_sum, it_max, last in (await db.execute(
         _runs(select(Run.agent, Run.status, func.count(),
                      func.sum(Run.iterations), func.max(Run.iterations),
                      func.max(Run.started_at)))
@@ -1189,17 +1189,17 @@ async def _agents_payload(
             row["waiting"] += int(n or 0)
         elif status in ABORTED_STATUS:
             row["aborted"] += int(n or 0)
-        iso = _iso(letzter)
+        iso = _iso(last)
         if iso and (row["last_run_at"] is None or iso > row["last_run_at"]):
             row["last_run_at"] = iso
 
     # (2) Duration buckets. Finished runs only: a running run has no duration yet, and
     # reporting the time elapsed so far as a duration would be a number that changes on the
     # next fetch without anything having happened.
-    dauer = _duration_ms_expr(db)
-    eimer = _bucket_expr(dauer)
+    duration = _duration_ms_expr(db)
+    eimer = _bucket_expr(duration)
     for name, idx, n, max_ms in (await db.execute(
-        _runs(select(Run.agent, eimer, func.count(), func.max(dauer)))
+        _runs(select(Run.agent, eimer, func.count(), func.max(duration)))
         .where(Run.finished_at.is_not(None))
         .group_by(Run.agent, eimer)
     )).all():
@@ -1256,7 +1256,7 @@ async def _agents_payload(
     # are rows where nobody looked (in this instance that is the majority, `fs_read` has 1531
     # calls and 0 proven verdicts). Computing a rate `ok/n` from that would paint half the
     # table red for no reason, because the difference is "unknown", not "failed".
-    werkzeuge: dict[str, list[dict]] = {}
+    tools: dict[str, list[dict]] = {}
     for name, tool, n, ok, schlecht in (await db.execute(
         _runs(select(Run.agent, RunStep.tool_name, func.count(),
                      func.sum(case((RunStep.ok.is_(True), 1), else_=0)),
@@ -1266,7 +1266,7 @@ async def _agents_payload(
         .group_by(Run.agent, RunStep.tool_name)
     )).all():
         _agent_slot(agents, name or "")
-        werkzeuge.setdefault(name or "", []).append(
+        tools.setdefault(name or "", []).append(
             {"tool": tool, "n": int(n or 0), "ok": int(ok or 0), "failed": int(schlecht or 0)})
 
     for name, row in agents.items():
@@ -1278,7 +1278,7 @@ async def _agents_payload(
         d["p50_ms"] = _percentile_ms(row["_buckets"], 0.5, d["max_ms"])
         d["p90_ms"] = _percentile_ms(row["_buckets"], 0.9, d["max_ms"])
         row["cost_usd"] = round(row["cost_usd"], 6)
-        row["tools"] = sorted(werkzeuge.get(name, []),
+        row["tools"] = sorted(tools.get(name, []),
                               key=lambda t: (-t["n"], t["tool"]))[:tool_limit]
         for hilf in ("_iter_sum", "_step_sum", "_step_runs", "_buckets"):
             row.pop(hilf)
@@ -1341,10 +1341,10 @@ async def global_agents(
     the live socket. A non member gets no 403 but an empty list: there is no path whose
     existence could be betrayed here.
     """
-    sichtbar = await _visible_runs(db, user)
+    visible = await _visible_runs(db, user)
 
     def scope_runs(stmt):
-        return stmt.where(sichtbar)
+        return stmt.where(visible)
 
     if user.global_role == GlobalRole.admin:
         kosten_cond = true()
@@ -1353,9 +1353,9 @@ async def global_agents(
         # projectless ones (assistant, job) hang on the run, hence the outer join. A
         # projectless entry whose run is already deleted stays invisible to non admins:
         # better a gap than somebody else's bill.
-        erlaubt = await compute_acl(db, user)
+        allowed = await compute_acl(db, user)
         kosten_cond = or_(
-            CostEntry.project_id.in_(erlaubt),
+            CostEntry.project_id.in_(allowed),
             and_(CostEntry.project_id.is_(None), Run.owner_id == user.id),
         )
 

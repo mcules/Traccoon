@@ -33,9 +33,9 @@ router = APIRouter(tags=["mcp-server"])
 PROTOKOLL = "2024-11-05"
 
 
-async def _person(db: AsyncSession, kopf: str | None) -> User:
+async def _person(db: AsyncSession, header: str | None) -> User:
     """Die Person hinter dem Token. Verglichen wird in konstanter Zeit, nicht mit `==`."""
-    roh = (kopf or "").removeprefix("Bearer ").strip()
+    roh = (header or "").removeprefix("Bearer ").strip()
     if not roh:
         raise PermissionError("kein Token")
     # Die Tokens liegen verschlüsselt; es sind wenige (eines je Person), also reicht das
@@ -47,10 +47,10 @@ async def _person(db: AsyncSession, kopf: str | None) -> User:
     raise PermissionError("unbekanntes Token")
 
 
-def _antwort(id_, ergebnis=None, fehler=None) -> dict:
-    if fehler is not None:
-        return {"jsonrpc": "2.0", "id": id_, "error": fehler}
-    return {"jsonrpc": "2.0", "id": id_, "result": ergebnis}
+def _answer(id_, result=None, error=None) -> dict:
+    if error is not None:
+        return {"jsonrpc": "2.0", "id": id_, "error": error}
+    return {"jsonrpc": "2.0", "id": id_, "result": result}
 
 
 @router.post("/mcp/mail")
@@ -58,13 +58,13 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
                    db: AsyncSession = Depends(get_session)):
     """Ein Aufruf des MCP-Protokolls (JSON-RPC 2.0 über HTTP)."""
     try:
-        nachricht = await request.json()
+        message = await request.json()
     except Exception:  # noqa: BLE001
-        return _antwort(None, fehler={"code": -32700, "message": "Kein gültiges JSON"})
+        return _answer(None, error={"code": -32700, "message": "Kein gültiges JSON"})
 
-    methode = str(nachricht.get("method") or "")
-    id_ = nachricht.get("id")
-    params = nachricht.get("params") or {}
+    methode = str(message.get("method") or "")
+    id_ = message.get("id")
+    params = message.get("params") or {}
 
     # Benachrichtigungen (ohne id) werden quittiert, nicht beantwortet.
     if methode.startswith("notifications/"):
@@ -73,10 +73,10 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
     try:
         user = await _person(db, authorization)
     except PermissionError as exc:
-        return _antwort(id_, fehler={"code": -32001, "message": str(exc)})
+        return _answer(id_, error={"code": -32001, "message": str(exc)})
 
     if methode == "initialize":
-        ergebnis = {
+        result = {
             "protocolVersion": PROTOKOLL,
             "capabilities": {"tools": {"listChanged": False}},
             "serverInfo": {"name": "traccoon-mail", "version": "1"},
@@ -85,41 +85,41 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
         # bevor das erste Werkzeug läuft. Genau dort gehören Hausregeln hin.
         hinweise = await mail_mcp.anweisungen(db, user)
         if hinweise:
-            ergebnis["instructions"] = hinweise
-        return _antwort(id_, ergebnis)
+            result["instructions"] = hinweise
+        return _answer(id_, result)
 
     if methode == "tools/list":
-        return _antwort(id_, {"tools": await mail_mcp.werkzeugliste(db, user)})
+        return _answer(id_, {"tools": await mail_mcp.werkzeugliste(db, user)})
 
     if methode == "tools/call":
         name = str(params.get("name") or "")
         args = params.get("arguments") or {}
         try:
-            ergebnis = await mail_mcp.ausfuehren(db, user, name, args)
+            result = await mail_mcp.ausfuehren(db, user, name, args)
         except PermissionError as exc:
             # Eine Sperre ist kein Absturz: der Agent soll lesen können, warum es nicht geht,
             # statt es als Serverfehler zu behandeln und wieder zu versuchen.
-            return _antwort(id_, {"content": [{"type": "text", "text": f"Nicht erlaubt: {exc}"}],
+            return _answer(id_, {"content": [{"type": "text", "text": f"Nicht erlaubt: {exc}"}],
                                   "isError": True})
         except (LookupError, ValueError) as exc:
-            return _antwort(id_, {"content": [{"type": "text", "text": str(exc)}],
+            return _answer(id_, {"content": [{"type": "text", "text": str(exc)}],
                                   "isError": True})
         except Exception as exc:  # noqa: BLE001
             log.exception("MCP-Werkzeug %s gescheitert", name)
-            return _antwort(id_, {"content": [{"type": "text", "text": f"Fehler: {exc}"}],
+            return _answer(id_, {"content": [{"type": "text", "text": f"Fehler: {exc}"}],
                                   "isError": True})
         import json
-        return _antwort(id_, {"content": [{"type": "text",
-                                           "text": json.dumps(ergebnis, ensure_ascii=False,
+        return _answer(id_, {"content": [{"type": "text",
+                                           "text": json.dumps(result, ensure_ascii=False,
                                                               default=str)}]})
 
-    return _antwort(id_, fehler={"code": -32601, "message": f"Unbekannte Methode {methode}"})
+    return _answer(id_, error={"code": -32601, "message": f"Unbekannte Methode {methode}"})
 
 
 # ── Token verwalten (aus der Oberfläche) ────────────────────────────────────
 
 @router.post("/mailbox/mcp-token")
-async def token_erneuern(user: User = Depends(get_current_user),
+async def token_renew(user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
     """Erzeugt ein neues Token und zeigt es EINMAL. Ein altes wird damit ungültig."""
     roh = "trmcp_" + secrets.token_urlsafe(32)
@@ -129,7 +129,7 @@ async def token_erneuern(user: User = Depends(get_current_user),
 
 
 @router.get("/mailbox/mcp-status")
-async def token_stand(user: User = Depends(get_current_user)):
+async def token_state(user: User = Depends(get_current_user)):
     """Nur ob eines existiert — das Token selbst kommt nie wieder heraus."""
     return {"token_set": bool(user.mail_mcp_token_enc),
             "fingerprint": (hashlib.sha256(user.mail_mcp_token_enc.encode()).hexdigest()[:8]
@@ -137,7 +137,7 @@ async def token_stand(user: User = Depends(get_current_user)):
 
 
 @router.delete("/mailbox/mcp-token", status_code=204)
-async def token_loeschen(user: User = Depends(get_current_user),
+async def token_delete(user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
     user.mail_mcp_token_enc = ""
     await db.commit()

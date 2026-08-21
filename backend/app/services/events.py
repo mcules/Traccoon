@@ -72,7 +72,7 @@ async def listeners(db: AsyncSession, event: str, project_id: int | None) -> lis
             else WorkflowDefinition.project_id.is_(None),
         ))).scalars().all()
 
-    treffer = []
+    hits = []
     for d in rows:
         version = await db.get(WorkflowVersion, d.current_version_id)
         t = trigger_of(version.graph if version else {})
@@ -82,13 +82,13 @@ async def listeners(db: AsyncSession, event: str, project_id: int | None) -> lis
         gewuenscht = t.get("project_id")
         if gewuenscht and int(gewuenscht) != (project_id or 0):
             continue
-        if not await _darf_hoeren(db, d, project_id):
+        if not await _may_hoeren(db, d, project_id):
             continue
-        treffer.append(d)
-    return treffer
+        hits.append(d)
+    return hits
 
 
-async def _darf_hoeren(db: AsyncSession, d: WorkflowDefinition, project_id: int | None) -> bool:
+async def _may_hoeren(db: AsyncSession, d: WorkflowDefinition, project_id: int | None) -> bool:
     """May this flow react to an event FROM THIS PROJECT?
 
     A free-standing flow belongs to a person but hangs off no project. Without this check
@@ -107,16 +107,16 @@ async def _darf_hoeren(db: AsyncSession, d: WorkflowDefinition, project_id: int 
     from ..models.user import User
     from ..api.deps import build_access
 
-    besitzer = await db.get(User, d.created_by)
-    if besitzer is None:
+    owner = await db.get(User, d.created_by)
+    if owner is None:
         return False
-    if besitzer.global_role == GlobalRole.admin:
+    if owner.global_role == GlobalRole.admin:
         return True
     projekt = await db.get(Project, project_id)
     if projekt is None:
         return False
     try:
-        await build_access(projekt, besitzer, db)   # raises when access is missing
+        await build_access(projekt, owner, db)   # raises when access is missing
     except Exception:                              # noqa: BLE001, 403/404 means not listening
         log.info("Flow %s does not listen to project %s: the owner has no access",
                  d.key, project_id)
@@ -138,10 +138,10 @@ async def emit(db: AsyncSession, event: str, *, project_id: int | None = None,
     for d in await listeners(db, event, project_id):
         version = await db.get(WorkflowVersion, d.current_version_id)
         t = trigger_of(version.graph if version else {}) or {}
-        regel = t.get("filter")
-        if regel:
+        rule = t.get("filter")
+        if rule:
             try:
-                if not safe_eval(regel, ctx):
+                if not safe_eval(rule, ctx):
                     continue
             except JsonLogicError as e:
                 log.warning("Flow %s: the trigger filter is faulty (%s)", d.key, e)

@@ -199,7 +199,7 @@ class SpamVerdict(TimestampMixin, Base):
     # What the mail was classified as (the model's kind: phishing, werbung, rechnung …).
     # Deliberately a free value and not an enum: the statistics group by whatever stands
     # here, so a new kind needs no migration and no code.
-    art: Mapped[str] = mapped_column(String(40), default="", index=True)
+    kind: Mapped[str] = mapped_column(String(40), default="", index=True)
     # Findings of both sources in one shape: [{quelle, kennung, text}]. The rules have
     # carried key plus plain text forever (`RuleResult.treffer`), the model now delivers the
     # same. Card, note and statistics read from here.

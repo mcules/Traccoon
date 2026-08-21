@@ -30,10 +30,10 @@ log = logging.getLogger("traccoon.terms")
 # Umstellung ein zweites Mal über ihr eigenes Ergebnis — und `assistant_task` (neu: der
 # allgemeine Auftrag) würde zum Mail-Weg, weil derselbe Name früher genau das hieß.
 MARKE = "terms"
-STAND = "en7"
+STATE = "en7"
 
 # ── Aktionen ────────────────────────────────────────────────────────────────
-AKTIONEN: dict[str, str] = {
+ACTIONS: dict[str, str] = {
     "agent_lauf": "agent_run",
     "antwort": "answer",
     "assistent_auftrag": "assistant_task",
@@ -60,6 +60,12 @@ EINMALIG: dict[str, str] = {
 # Viele hatten schon ein englisches Gegenstück, das der Code als Zweitname las; hier steht
 # jetzt, welches gilt.
 PARAMS: dict[str, str] = {
+    # Nachzuegler aus der Umstellung auf durchgehend englische Namen (Stand en8). Sie stehen
+    # als Schluessel in gespeicherten Graphen; ohne diese drei Zeilen liest die Aktion nach
+    # der Umbenennung ins Leere, und ein Zweig, der auf einen Parameter wartet, greift nie.
+    "vorentschieden": "predecided",
+    "rueckholbar": "recoverable",
+    "melden": "report",
     "ablage": "storage",
     "argumente": "args",
     "art": "kind",
@@ -102,7 +108,7 @@ PARAMS: dict[str, str] = {
 
 # ── Kontext-Wörter ──────────────────────────────────────────────────────────
 # Was Aktionen in den Kontext schreiben, und wie Abläufe es lesen (`{{ akku.rest_tage }}`).
-KONTEXT: dict[str, str] = {
+CONTEXT: dict[str, str] = {
     "alter_stunden": "age_hours",
     "ablage": "storage",
     "auftrag": "task",
@@ -136,7 +142,7 @@ KONTEXT: dict[str, str] = {
 # Was ein Ablauf ohne Punkt liest: die Zeitwerte, die jeder wiederkehrende Lauf mitbekommt.
 # Sie stehen allein in der Klammer (`{{ zeitfenster }}`), deshalb reicht die Pfad-Ersetzung
 # nicht — die greift erst ab dem ersten Punkt.
-KONTEXT_EINZELN: dict[str, str] = {
+CONTEXT_EINZELN: dict[str, str] = {
     "heute": "today",
     "jetzt": "now",
     "seit": "since",
@@ -154,7 +160,7 @@ FILTER: dict[str, str] = {
 
 # Die Schlüssel, unter denen Aktionen ihr Ergebnis ablegen, wenn niemand etwas anderes sagt.
 # Sie stehen als erstes Segment in den Pfaden (`{{ messreihe.wert }}`).
-KONTEXT_SCHLUESSEL: dict[str, str] = {
+CONTEXT_KEY: dict[str, str] = {
     "messreihe": "metric",
     "dokument": "document",
     "lauf": "run",
@@ -173,11 +179,11 @@ KONTEXT_SCHLUESSEL: dict[str, str] = {
 }
 
 
-def normalisiere_aktion(name: str) -> str:
-    return AKTIONEN.get(name, name)
+def normalise_action(name: str) -> str:
+    return ACTIONS.get(name, name)
 
 
-def normalisiere_params(params: dict) -> dict:
+def normalise_params(params: dict) -> dict:
     """Deutsche Parameter auf ihre englischen Namen. Ein schon englischer bleibt stehen.
 
     Steht beides im selben Knoten (aus einer halb umgestellten Fassung), gewinnt der
@@ -186,60 +192,60 @@ def normalisiere_params(params: dict) -> dict:
     if not isinstance(params, dict):
         return params
     aus: dict = {}
-    for schluessel, wert in params.items():
-        neu = PARAMS.get(schluessel, schluessel)
-        if neu in aus and schluessel != neu:
+    for key, value in params.items():
+        new = PARAMS.get(key, key)
+        if new in aus and key != new:
             continue
-        aus[neu] = wert
+        aus[new] = value
     return aus
 
 
 # ── Migration gespeicherter Graphen ─────────────────────────────────────────
 
-def _pfade_ersetzen(text: str) -> str:
+def _pfade_replace(text: str) -> str:
     """`{{ akku.rest_tage }}` → `{{ akku.days_left }}`, auch mit Filtern dahinter."""
     def eine(m: re.Match) -> str:
         # Dieselbe Zerlegung wie beim Auswerten: ein `|` in Anführungszeichen trennt nicht.
-        from .workflow_expr import _teile
+        from .workflow_expr import _parts
 
-        teile = _teile(m.group(1))
-        kopf = _segmente(teile[0].strip())
+        parts = _parts(m.group(1))
+        header = _segmente(parts[0].strip())
         # Hinter dem Strich stehen Filter, nicht Pfade: `verbinde:", "` wird `join:", "`,
         # sein Argument bleibt, wie es ist.
-        rest = []
-        for t in teile[1:]:
+        remainder = []
+        for t in parts[1:]:
             name, doppelpunkt, arg = t.strip().partition(":")
-            rest.append(FILTER.get(name, name) + (doppelpunkt + arg if doppelpunkt else ""))
-        return "{{ " + " | ".join([kopf, *rest]) + " }}"
+            remainder.append(FILTER.get(name, name) + (doppelpunkt + arg if doppelpunkt else ""))
+        return "{{ " + " | ".join([header, *remainder]) + " }}"
     return re.sub(r"\{\{([^}]*)\}\}", eine, text)
 
 
 def _segmente(inhalt: str) -> str:
     """Punktpfade im Ausdruck übersetzen, den Rest (Filter, Text) unangetastet lassen."""
-    def pfad(m: re.Match) -> str:
-        teile = m.group(0).split(".")
-        if len(teile) == 1:
+    def path(m: re.Match) -> str:
+        parts = m.group(0).split(".")
+        if len(parts) == 1:
             # Ein Wort ohne Punkt ist nur dann ein Kontextname, wenn wir ihn kennen —
             # alles andere gehört dem Menschen (`{{ titel }}` aus seinen Job-Parametern).
-            return KONTEXT_EINZELN.get(teile[0], teile[0])
-        kopf = KONTEXT_SCHLUESSEL.get(teile[0], teile[0])
-        rest = [KONTEXT.get(t, t) for t in teile[1:]]
-        return ".".join([kopf, *rest])
-    return re.sub(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*", pfad, inhalt)
+            return CONTEXT_EINZELN.get(parts[0], parts[0])
+        header = CONTEXT_KEY.get(parts[0], parts[0])
+        remainder = [CONTEXT.get(t, t) for t in parts[1:]]
+        return ".".join([header, *remainder])
+    return re.sub(r"[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*", path, inhalt)
 
 
-def _ist_kontextpfad(wert: str) -> bool:
+def _ist_kontextpfad(value: str) -> bool:
     """Ist dieser nackte String ein Kontextpfad, dessen erstes Segment umbenannt wurde?
 
     Absichtlich eng: Ein `path` steht auch fuer eine Vault-Datei, eine URL oder ein
     Verzeichnis. Angefasst wird nur, was mit einem Namen beginnt, den die Tabelle kennt —
     alles andere bleibt Zeichen fuer Zeichen, wie es war.
     """
-    kopf = wert.split(".", 1)[0]
-    return "." in wert and "/" not in wert and " " not in wert and kopf in KONTEXT_SCHLUESSEL
+    header = value.split(".", 1)[0]
+    return "." in value and "/" not in value and " " not in value and header in CONTEXT_KEY
 
 
-def _var_ersetzen(knoten):
+def _var_replace(node):
     """Die `var`-Pfade der Weichen (JSONLogic) mitnehmen.
 
     Und die nackten Pfade, die nicht in `{{ }}` stehen: Ein Empfaenger wird als
@@ -247,24 +253,24 @@ def _var_ersetzen(knoten):
     Zweig blieb genau dieser Pfad bei einer Umbenennung stehen und zeigte danach ins Leere —
     die Meldung ging an niemanden, und auffallen wuerde das erst, wenn jemand sie vermisst.
     """
-    if isinstance(knoten, dict):
+    if isinstance(node, dict):
         aus = {}
-        for k, v in knoten.items():
+        for k, v in node.items():
             if k == "var" and isinstance(v, str):
                 aus[k] = _segmente(v)
             elif k == "path" and isinstance(v, str) and _ist_kontextpfad(v):
                 aus[k] = _segmente(v)
             else:
-                aus[k] = _var_ersetzen(v)
+                aus[k] = _var_replace(v)
         return aus
-    if isinstance(knoten, list):
-        return [_var_ersetzen(v) for v in knoten]
-    if isinstance(knoten, str):
-        return _pfade_ersetzen(knoten)
-    return knoten
+    if isinstance(node, list):
+        return [_var_replace(v) for v in node]
+    if isinstance(node, str):
+        return _pfade_replace(node)
+    return node
 
 
-def migriere_graph(graph: dict) -> tuple[dict, bool]:
+def migrate_graph(graph: dict) -> tuple[dict, bool]:
     """Einen Graphen auf die englischen Begriffe bringen. Gibt (Graph, geändert) zurück.
 
     Genau einmal: Die Marke am Graphen hält fest, dass er umgeschrieben ist. Ein zweiter
@@ -272,49 +278,49 @@ def migriere_graph(graph: dict) -> tuple[dict, bool]:
     """
     import json
 
-    if (graph or {}).get(MARKE) == STAND:
+    if (graph or {}).get(MARKE) == STATE:
         return graph, False
     # Die Namen, die ihre Bedeutung gewechselt haben, werden GENAU EINMAL umgebogen: beim
     # ersten Durchgang. Ein späterer Nachlauf (neue Wörter in der Tabelle) darf sie nicht
     # noch einmal anfassen, sonst würde aus dem allgemeinen Auftrag der Mail-Weg.
     erstmals = not (graph or {}).get(MARKE)
     vorher = json.dumps(graph, sort_keys=True, ensure_ascii=False)
-    neu = {**graph, MARKE: STAND, "nodes": []}
+    new = {**graph, MARKE: STATE, "nodes": []}
     for node in graph.get("nodes") or []:
         node = dict(node)
         daten = dict(node.get("data") or {})
         cfg = dict(daten.get("config") or {})
-        aktion = cfg.get("action")
-        if isinstance(aktion, dict):
-            name = str(aktion.get("action") or "")
-            params = _var_ersetzen(normalisiere_params(aktion.get("params") or {}))
+        action = cfg.get("action")
+        if isinstance(action, dict):
+            name = str(action.get("action") or "")
+            params = _var_replace(normalise_params(action.get("params") or {}))
             # Der Wert von `context_key` IST ein Kontextname; ohne ihn zeigten die Pfade
             # daneben ins Leere („{{ result.output }}“ neben `context_key: ergebnis“).
             if isinstance(params.get("context_key"), str):
-                params["context_key"] = KONTEXT_SCHLUESSEL.get(params["context_key"],
+                params["context_key"] = CONTEXT_KEY.get(params["context_key"],
                                                                params["context_key"])
-            aktion = {**aktion,
-                      "action": normalisiere_aktion(EINMALIG.get(name, name) if erstmals else name),
+            action = {**action,
+                      "action": normalise_action(EINMALIG.get(name, name) if erstmals else name),
                       "params": params}
-            cfg["action"] = aktion
-        elif isinstance(aktion, str):
-            cfg["action"] = normalisiere_aktion(EINMALIG.get(aktion, aktion) if erstmals
-                                                else aktion)
+            cfg["action"] = action
+        elif isinstance(action, str):
+            cfg["action"] = normalise_action(EINMALIG.get(action, action) if erstmals
+                                                else action)
         # Die ganze Config durchlaufen statt einer Liste von Feldern. Die Liste hier war
         # eine Aufzählung dessen, woran jemand gedacht hatte — `assignee.path` stand nicht
         # darin und blieb bei einer Umbenennung stehen. `_var_ersetzen` fasst ohnehin nur
         # an, was wie ein Pfad aussieht.
-        for feld in list(cfg):
-            if feld != "action":
-                cfg[feld] = _var_ersetzen(cfg[feld])
+        for field in list(cfg):
+            if field != "action":
+                cfg[field] = _var_replace(cfg[field])
         daten["config"] = cfg
         node["data"] = daten
-        neu["nodes"].append(node)
-    neu["edges"] = graph.get("edges") or []
-    return neu, json.dumps(neu, sort_keys=True, ensure_ascii=False) != vorher
+        new["nodes"].append(node)
+    new["edges"] = graph.get("edges") or []
+    return new, json.dumps(new, sort_keys=True, ensure_ascii=False) != vorher
 
 
-async def migriere_alle(db) -> int:
+async def migrate_all(db) -> int:
     """Alle gespeicherten Fassungen umschreiben. Gibt die Anzahl der geänderten zurück.
 
     Auch veröffentlichte: Es ist eine Umbenennung, kein anderer Ablauf — und eine Instanz,
@@ -325,13 +331,13 @@ async def migriere_alle(db) -> int:
 
     from ..models.workflow import WorkflowVersion
 
-    geaendert = 0
+    changed = 0
     for v in (await db.execute(select(WorkflowVersion))).scalars().all():
-        neu, anders = migriere_graph(v.graph or {})
+        new, anders = migrate_graph(v.graph or {})
         if anders:
-            v.graph = neu
-            geaendert += 1
-    if geaendert:
+            v.graph = new
+            changed += 1
+    if changed:
         await db.commit()
-        log.info("%s Ablauf-Fassungen auf die englischen Begriffe umgeschrieben", geaendert)
-    return geaendert
+        log.info("%s Ablauf-Fassungen auf die englischen Begriffe umgeschrieben", changed)
+    return changed

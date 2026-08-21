@@ -74,8 +74,8 @@ async def test_agent_startet_prozess_und_sieht_nur_startbare(db, anna):
     startbar = await _prozess(db, key="startbar")
     await _prozess(db, key="entwurf", published=False)
 
-    liste = await call_traccoon_tool(db, anna.id, "traccoon_list_workflows", {})
-    assert "startbar" in liste and "entwurf" not in liste
+    listing = await call_traccoon_tool(db, anna.id, "traccoon_list_workflows", {})
+    assert "startbar" in listing and "entwurf" not in listing
 
     out = await call_traccoon_tool(db, anna.id, "traccoon_start_workflow",
                                    {"workflow_id": startbar.id, "context": {"quelle": "models.dev"}})
@@ -101,7 +101,7 @@ async def test_prozess_ohne_veroeffentlichung_startet_nicht(db, anna):
     assert await _instanzen(db) == []
 
 
-async def test_prozess_starten_braucht_freigabe(db):
+async def test_prozess_start_braucht_grant(db):
     """A process can set off agent runs, approvals and calls to the outside."""
     assert "traccoon_start_workflow" in TRACCOON_GATED_TOOLS
     assert "traccoon_list_workflows" not in TRACCOON_GATED_TOOLS

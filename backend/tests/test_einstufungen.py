@@ -15,18 +15,18 @@ from conftest import auth, make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def _urteil(db, owner_id, art, status, *, model_score=0.95, tage=0) -> SpamVerdict:
-    v = SpamVerdict(owner_user_id=owner_id, art=art, status=status,
+async def _urteil(db, owner_id, kind, status, *, model_score=0.95, days=0) -> SpamVerdict:
+    v = SpamVerdict(owner_user_id=owner_id, kind=kind, status=status,
                     model_score=model_score, sender_email="wer@spam.xyz", subject="x")
     db.add(v)
     await db.flush()
-    if tage:
-        v.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=tage)
+    if days:
+        v.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days)
     await db.commit()
     return v
 
 
-async def test_arten_werden_gezaehlt_auch_unbekannte(db):
+async def test_kinds_werden_gezaehlt_auch_unbekannte(db):
     """`erpressung` steht in keiner Liste im Code. Genau darum geht es."""
     anna = await make_user(db, "anna")
     await _urteil(db, anna.id, "phishing", "spam")
@@ -51,18 +51,18 @@ async def test_arten_werden_gezaehlt_auch_unbekannte(db):
     assert list(daten["arten"])[0] == "phishing"
 
 
-async def test_chat_zaehlt_nicht_als_post(db):
+async def test_chat_zaehlt_nicht_as_post(db):
     anna = await make_user(db, "anna")
     db.add(AssistantTask(owner_user_id=anna.id, kind="chat", category="", title="frage"))
     await db.commit()
     assert (await einstufungen(db, anna.id))["arten"] == {}
 
 
-async def test_alte_zeilen_fallen_aus_dem_fenster(db):
+async def test_alte_lines_fallen_aus_dem_window(db):
     anna = await make_user(db, "anna")
-    await _urteil(db, anna.id, "phishing", "spam", tage=60)
-    assert (await einstufungen(db, anna.id, tage=30))["arten"] == {}
-    assert (await einstufungen(db, anna.id, tage=90))["arten"]["phishing"]["gesamt"] == 1
+    await _urteil(db, anna.id, "phishing", "spam", days=60)
+    assert (await einstufungen(db, anna.id, days=30))["arten"] == {}
+    assert (await einstufungen(db, anna.id, days=90))["arten"]["phishing"]["gesamt"] == 1
 
 
 async def test_trefferquote_misst_nur_entschiedenes(db):

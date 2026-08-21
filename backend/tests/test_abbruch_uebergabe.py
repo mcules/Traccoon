@@ -8,38 +8,38 @@ worktree. The facts about that lie in the database.
 import datetime as dt
 
 from app.models.agents import Run, RunStep
-from app.worker.runtime import _abbruch_uebergabe
+from app.worker.runtime import _abbruch_handover
 from test_lifecycle_process import _projekt_mit_ticket
 
 
-async def _lauf(db, issue, *, status, minuten_her=5, last_text="", fehler="Worker-Neustart") -> Run:
-    jetzt = dt.datetime.now(dt.UTC)
+async def _lauf(db, issue, *, status, minutes_her=5, last_text="", error="Worker-Neustart") -> Run:
+    now = dt.datetime.now(dt.UTC)
     run = Run(issue_id=issue.id, project_id=issue.project_id, task_id="wf-1-1-exec-x",
               agent="developer", phase="execution", provider="claude_code",
-              model="claude-sonnet-5", status=status, last_text=last_text, error=fehler,
-              started_at=jetzt - dt.timedelta(minutes=minuten_her + 5),
-              finished_at=jetzt - dt.timedelta(minutes=minuten_her))
+              model="claude-sonnet-5", status=status, last_text=last_text, error=error,
+              started_at=now - dt.timedelta(minutes=minutes_her + 5),
+              finished_at=now - dt.timedelta(minutes=minutes_her))
     db.add(run)
     await db.commit()
     await db.refresh(run)
     return run
 
 
-async def _schritt(db, run, *, tool, target, ok=True, rolle="tool", kind="tool_result", seq=1):
+async def _step(db, run, *, tool, target, ok=True, rolle="tool", kind="tool_result", seq=1):
     db.add(RunStep(run_id=run.id, seq=seq, role=rolle, kind=kind, tool_name=tool,
                    target=target, ok=ok, content="x"))
     await db.commit()
 
 
-async def test_geaenderte_dateien_werden_uebergeben(db):
+async def test_geaenderte_files_werden_uebergeben(db):
     _, _, issue, _ = await _projekt_mit_ticket(db)
     vor = await _lauf(db, issue, status="failed", last_text="Ich war beim Timeout-Fix.")
-    await _schritt(db, vor, tool="fs_edit", target="backend/app/bot/__main__.py", seq=1)
-    await _schritt(db, vor, tool="fs_write", target="backend/tests/test_voice.py", seq=2)
-    await _schritt(db, vor, tool="fs_read", target="README.md", seq=3)   # reading does not count
-    await _schritt(db, vor, tool=None, target=None, rolle="assistant", kind="usage", seq=4)
+    await _step(db, vor, tool="fs_edit", target="backend/app/bot/__main__.py", seq=1)
+    await _step(db, vor, tool="fs_write", target="backend/tests/test_voice.py", seq=2)
+    await _step(db, vor, tool="fs_read", target="README.md", seq=3)   # reading does not count
+    await _step(db, vor, tool=None, target=None, rolle="assistant", kind="usage", seq=4)
 
-    text = await _abbruch_uebergabe(db, issue.id, run_id=vor.id + 999)
+    text = await _abbruch_handover(db, issue.id, run_id=vor.id + 999)
 
     assert "backend/app/bot/__main__.py" in text
     assert "backend/tests/test_voice.py" in text
@@ -48,38 +48,38 @@ async def test_geaenderte_dateien_werden_uebergeben(db):
     assert "Worker-Neustart" in text
 
 
-async def test_ohne_schreibzugriff_keine_uebergabe(db):
+async def test_ohne_schreibzugriff_keine_handover(db):
     """Whoever wrote nothing leaves nothing behind, and then silence is more honest than a
     handover that only says "I have read"."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     vor = await _lauf(db, issue, status="failed")
-    await _schritt(db, vor, tool="fs_read", target="README.md")
+    await _step(db, vor, tool="fs_read", target="README.md")
 
-    assert await _abbruch_uebergabe(db, issue.id, run_id=vor.id + 999) == ""
+    assert await _abbruch_handover(db, issue.id, run_id=vor.id + 999) == ""
 
 
 async def test_geordnet_beendeter_lauf_wird_nicht_uebergeben(db):
     """`loop_exhausted` has its own, better handover; this one is only the stopgap."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     vor = await _lauf(db, issue, status="loop_exhausted")
-    await _schritt(db, vor, tool="fs_edit", target="a.py")
+    await _step(db, vor, tool="fs_edit", target="a.py")
 
-    assert await _abbruch_uebergabe(db, issue.id, run_id=vor.id + 999) == ""
+    assert await _abbruch_handover(db, issue.id, run_id=vor.id + 999) == ""
 
 
 async def test_alter_abbruch_bleibt_liegen(db):
     """An abort from yesterday does not describe today's worktree."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
-    vor = await _lauf(db, issue, status="failed", minuten_her=600)
-    await _schritt(db, vor, tool="fs_edit", target="a.py")
+    vor = await _lauf(db, issue, status="failed", minutes_her=600)
+    await _step(db, vor, tool="fs_edit", target="a.py")
 
-    assert await _abbruch_uebergabe(db, issue.id, run_id=vor.id + 999) == ""
+    assert await _abbruch_handover(db, issue.id, run_id=vor.id + 999) == ""
 
 
 async def test_eigener_lauf_zaehlt_nicht(db):
     """The running run must not see itself as its predecessor."""
     _, _, issue, _ = await _projekt_mit_ticket(db)
     vor = await _lauf(db, issue, status="failed")
-    await _schritt(db, vor, tool="fs_edit", target="a.py")
+    await _step(db, vor, tool="fs_edit", target="a.py")
 
-    assert await _abbruch_uebergabe(db, issue.id, run_id=vor.id) == ""
+    assert await _abbruch_handover(db, issue.id, run_id=vor.id) == ""

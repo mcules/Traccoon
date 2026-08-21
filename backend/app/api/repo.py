@@ -16,7 +16,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.enums import ProjectRole
 from ..worker import gitops
@@ -161,7 +161,7 @@ async def repo_commit(data: CommitIn, access: Access = Depends(require_role(Proj
         msg += "\n\n" + data.description.strip()
     rc, out = await gitops._git(wd, "commit", "-m", msg)
     if rc != 0:
-        raise Fehler(500, "err.commit_failed", "The commit failed: {grund}", grund=out[:200])
+        raise Fehler(500, "err.commit_failed", "The commit failed: {reason}", reason=out[:200])
     _, sha = await gitops._git(wd, "rev-parse", "HEAD")
     return {"ok": True, "commit": sha.strip()}
 
@@ -191,7 +191,7 @@ async def repo_commit_message(access: Access = Depends(require_role(ProjectRole.
                                      temperature=0.2, max_tokens=500,
                                      tokens={"claude_code": token})
     except Exception as exc:  # noqa: BLE001
-        raise Fehler(502, "err.llm_error", "LLM error: {grund}", grund=str(exc)[:180])
+        raise Fehler(502, "err.llm_error", "LLM error: {reason}", reason=str(exc)[:180])
     text = resp.text.strip()
     m = re.search(r"\{.*\}", text, re.DOTALL)
     if m:
@@ -216,7 +216,7 @@ async def repo_pull(access: Access = Depends(require_role(ProjectRole.maintainer
     rc, out = await gitops._git(wd, "pull", "--ff-only", url, branch)
     out = gitops._redact(out, token)
     if rc != 0:
-        raise Fehler(409, "err.pull_failed", "The pull failed: {grund}", grund=out[:300])
+        raise Fehler(409, "err.pull_failed", "The pull failed: {reason}", reason=out[:300])
     return {"ok": True, "output": out[:500]}
 
 

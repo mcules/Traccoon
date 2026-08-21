@@ -34,7 +34,7 @@ from .tools_memory import (
     MEMORY_TOOL_NAMES, MEMORY_TOOLS, REFLEXION_PROMPT, call_memory_tool, memory_root, read_memory,
 )
 from .compaction import kompaktiere as _kompaktiere
-from .compaction import uebergabe as _uebergabe
+from .compaction import handover as _handover
 from .tools_traccoon import (
     TRACCOON_GATED_TOOLS,
     TRACCOON_TOOL_NAMES,
@@ -194,21 +194,21 @@ CODE_WORKFLOW = (
 FS_TOOL_NAMES = {"fs_read", "fs_list", "fs_write", "fs_edit"}
 # How a run delivers its result. Everything else is preparation: useful, but gone after the
 # run ends (the worktree survives, the conversation does not).
-ERGEBNIS_TOOLS = {"execute": {"fs_write", "fs_edit"}, "plan": {"submit_plan"}}
+RESULT_TOOLS = {"execute": {"fs_write", "fs_edit"}, "plan": {"submit_plan"}}
 # After which share of the iteration or time budget without a result a reminder follows.
 # Twice, then enough: one reminder gets overlooked, three are nagging.
-ERMAHNUNG_BEI = (0.35, 0.65)
+REMINDER_BEI = (0.35, 0.65)
 
 
-def ermahnungen_faellig(verbraucht: float, bereits: int) -> int:
+def ermahnungen_due(verbraucht: float, bereits: int) -> int:
     """How many reminders should have been given at this point of the budget."""
     n = bereits
-    while n < len(ERMAHNUNG_BEI) and verbraucht >= ERMAHNUNG_BEI[n]:
+    while n < len(REMINDER_BEI) and verbraucht >= REMINDER_BEI[n]:
         n += 1
     return n
 
 
-def ermahnung_text(mode: str, verbraucht: float, scharf: bool) -> str:
+def reminder_text(mode: str, verbraucht: float, scharf: bool) -> str:
     """Remind a run that spends its budget without delivering anything.
 
     The tone rises once: first a request to check, then a demand. Both name the same point:
@@ -351,12 +351,12 @@ def deploy_gesperrt(stack_dir: str) -> str:
     Whoever knows the answer already should give it right away.
     """
     selbst = (os.getenv("SELF_STACK_DIR") or "").rstrip("/")
-    ziel = (stack_dir or "").rstrip("/")
-    if not ziel:
+    target = (stack_dir or "").rstrip("/")
+    if not target:
         return ("Dieses Projekt hat kein eigenes Stack-Verzeichnis — ein Deploy ist hier "
                 "nicht vorgesehen und würde abgelehnt. Prüfe deine Änderung mit `check`; "
                 "live geht sie über Abnahme und Merge, das Wartungs-Update löst ein Mensch aus.")
-    if selbst and ziel == selbst:
+    if selbst and target == selbst:
         return ("Das Ziel ist Traccoon selbst. Ein Self-Deploy läuft ausschließlich über das "
                 "explizite Wartungs-Update (ein Mensch löst es aus) — er würde den eigenen "
                 "Lauf mitten im Arbeiten neu starten. Prüfe mit `check` und schließe ab.")
@@ -366,8 +366,8 @@ def deploy_gesperrt(stack_dir: str) -> str:
 async def _do_deploy(db: AsyncSession, issue_id: int, project_id: int, stack_dir: str,
                      worktree: str | None, check_only: bool = False) -> str:
     """Queue a deployment (deployments table) and wait for the result of the deployer sidecar."""
-    if not check_only and (grund := deploy_gesperrt(stack_dir)):
-        return f"❌ NICHT MÖGLICH\n{grund}"
+    if not check_only and (reason := deploy_gesperrt(stack_dir)):
+        return f"❌ NICHT MÖGLICH\n{reason}"
     from ..models.ops import Deployment
     dep = Deployment(issue_id=issue_id, project_id=project_id, stack_dir=stack_dir,
                      worktree=worktree or "", check_only=check_only, source="agent",
@@ -690,11 +690,11 @@ def _read_conventions(ws_root: str | None) -> str:
     if not ws_root:
         return ""
     for name in CONVENTION_FILES:
-        pfad = os.path.join(ws_root, name)
+        path = os.path.join(ws_root, name)
         try:
-            if not os.path.isfile(pfad):
+            if not os.path.isfile(path):
                 continue
-            with open(pfad, encoding="utf-8", errors="replace") as fh:
+            with open(path, encoding="utf-8", errors="replace") as fh:
                 text = fh.read().strip()
         except OSError:
             continue
@@ -938,8 +938,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
     ctx = office.RunCtx.from_run(run, issue_key=str(issue.get("key") or ""))
 
     async def protokoll(role: str, tool: str | None, content: str, *, kind: str = "",
-                        **felder: Any) -> None:
-        await _add_step(db, ctx, role, tool, content, kind=kind, **felder)
+                        **fields: Any) -> None:
+        await _add_step(db, ctx, role, tool, content, kind=kind, **fields)
 
     # The agent enters the room, and it says why: `run_start` plus the assignment as
     # `user_message`, beides in einer Transaktion.
@@ -988,7 +988,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         # worktree already carries half the work. For an abort (worker restart, crash) the
         # handover can be built from the data: which files the predecessor touched stands in
         # its step rows. Costs no model turn.
-        if (abbruch := await _abbruch_uebergabe(db, int(issue["id"]), run_id)):
+        if (abbruch := await _abbruch_handover(db, int(issue["id"]), run_id)):
             messages.append({"role": "system", "content": abbruch})
     if comment_history:
         thread = "\n".join(f"- **{c['label']}** ({c['role']}): {c['body']}" for c in comment_history)
@@ -1086,24 +1086,24 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             last_text = ""
             empties = 0
             build_gate_fails = 0
-            letzter_kontext = 0     # real context size of the last call (for the compaction)
+            last_context = 0     # real context size of the last call (for the compaction)
             frist = (asyncio.get_running_loop().time() + MAX_RUN_SECONDS) if MAX_RUN_SECONDS else 0.0
             # Has this run delivered anything yet (a change or a plan)? That decides whether a
             # reminder follows, not how much it has read.
-            ergebnis_tools = ERGEBNIS_TOOLS["plan" if mode == "plan" else "execute"] & {
+            result_tools = RESULT_TOOLS["plan" if mode == "plan" else "execute"] & {
                 t["function"]["name"] for t in openai_tools}
-            ergebnis_da = False
+            result_da = False
             ermahnt = 0
-            grenze_grund = "Iterations-Limit erreicht."
+            limit_reason = "Iterations-Limit erreicht."
             iteration = 0       # in case max_iterations is 0, the loop never runs
             for iteration in range(1, agent.max_iterations + 1):
                 if frist and asyncio.get_running_loop().time() > frist:
                     # As with the token budget: `break` falls into the loop_exhausted ending.
                     gelaufen = int(MAX_RUN_SECONDS + asyncio.get_running_loop().time() - frist)
-                    grenze_grund = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(MAX_RUN_SECONDS)}s)."
+                    limit_reason = f"Zeitlimit erreicht ({gelaufen}s, Grenze {int(MAX_RUN_SECONDS)}s)."
                     log.warning("Run %s: time limit reached (%ds), loop_exhausted", run_id, gelaufen)
                     await protokoll("system", None,
-                              f"⚠️ {grenze_grund} → loop_exhausted (Fortsetzung in frischem Run)",
+                              f"⚠️ {limit_reason} → loop_exhausted (Fortsetzung in frischem Run)",
                               kind="system")
                     break
                 if iteration == max(2, agent.max_iterations - 2):
@@ -1113,33 +1113,33 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 # Remind while it still helps: budget spent without any result at all. On
                 # 2026-08-07 UNI-12 read 190 files across three runs and wrote not a line. The
                 # only reminder came at round 78 of 80, long after the time was gone.
-                if ergebnis_tools and not ergebnis_da:
+                if result_tools and not result_da:
                     verbraucht = max(
                         iteration / max(1, agent.max_iterations),
                         ((MAX_RUN_SECONDS - (frist - asyncio.get_running_loop().time()))
                          / MAX_RUN_SECONDS) if frist else 0.0)
-                    faellig = ermahnungen_faellig(verbraucht, ermahnt)
-                    while ermahnt < faellig:
+                    due = ermahnungen_due(verbraucht, ermahnt)
+                    while ermahnt < due:
                         ermahnt += 1
-                        text = ermahnung_text(mode, verbraucht, scharf=ermahnt >= len(ERMAHNUNG_BEI))
+                        text = reminder_text(mode, verbraucht, scharf=ermahnt >= len(REMINDER_BEI))
                         messages.append({"role": "system", "content": text})
                         await protokoll("system", None,
                                         f"⚠️ {int(verbraucht * 100)} % Budget ohne Ergebnis — nachgehakt",
                                         kind="system")
                 # Shorten the context BEFORE it bursts the provider. What is measured is the
                 # real context size of the last call; without `max_context_tokens` nothing happens.
-                if agent.max_context_tokens and letzter_kontext:
-                    _neu = await _kompaktiere(
-                        db, messages=messages, grenze_tokens=agent.max_context_tokens,
-                        gemessen=letzter_kontext, owner_id=owner_id, agent=agent,
+                if agent.max_context_tokens and last_context:
+                    _new = await _kompaktiere(
+                        db, messages=messages, limit_tokens=agent.max_context_tokens,
+                        gemessen=last_context, owner_id=owner_id, agent=agent,
                         tokens=tokens, base_urls=base_urls)
-                    if _neu is not None:
+                    if _new is not None:
                         await protokoll("system", None,
-                                  f"Verlauf kompaktiert: {len(messages)} → {len(_neu)} Nachrichten "
-                                  f"(Kontext {letzter_kontext} von {agent.max_context_tokens}).",
+                                  f"Verlauf kompaktiert: {len(messages)} → {len(_new)} Nachrichten "
+                                  f"(Kontext {last_context} von {agent.max_context_tokens}).",
                                   kind="system")
-                        messages = _neu
-                        letzter_kontext = 0     # measurement spent: measure again, then shorten again
+                        messages = _new
+                        last_context = 0     # measurement spent: measure again, then shorten again
                 try:
                     resp = await router.chat(provider=agent.provider, model=agent.model, messages=messages,
                                              tools=openai_tools, temperature=agent.temperature,
@@ -1164,13 +1164,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                 # For the compaction the ENTIRE context of this call counts, so the uncached
                 # remainder PLUS the cached share. Taking only `input_tokens` would be almost
                 # zero on a good cache hit, and the limit would never take effect.
-                letzter_kontext = (int(resp.usage.get("input_tokens", 0) or 0)
+                last_context = (int(resp.usage.get("input_tokens", 0) or 0)
                                    + int(resp.cache_read_tokens or 0))
                 if in_tok >= MAX_RUN_INPUT_TOKENS:
                     # Hard token budget reached: end the run exactly as on the iteration limit.
                     # `break` falls into the loop_exhausted ending below (the same
                     # _end_run/RunResult path) so that the continuation semantics apply.
-                    grenze_grund = f"Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS})."
+                    limit_reason = f"Token-Budget erreicht ({in_tok} ≥ {MAX_RUN_INPUT_TOKENS})."
                     log.warning("Run %s: token budget reached (%d >= %d), loop_exhausted",
                                 run_id, in_tok, MAX_RUN_INPUT_TOKENS)
                     await protokoll("system", None,
@@ -1341,13 +1341,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     # before execution. Every gate above does `continue` or `return`; a start
                     # before them would leave a tool that is never closed, and an agent would
                     # sit in the room typing forever.
-                    _ziel = office.tool_target(call.name, call.arguments)
+                    _target = office.tool_target(call.name, call.arguments)
                     _args_json = json.dumps(call.arguments, ensure_ascii=False)
                     # A monotonic clock, the same one as the runtime limit above: the wall
                     # clock may jump, a measured duration may not.
                     _t0 = asyncio.get_running_loop().time()
                     await protokoll("tool", call.name, _args_json[:400], kind="tool_start",
-                                    tool_use_id=call.id, target=_ziel)
+                                    tool_use_id=call.id, target=_target)
 
                     if call.name == "open_tasks":
                         result: Any = await _open_tasks(db)
@@ -1393,8 +1393,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         result = _fs_dispatch(call.name, ws_root, call.arguments)
                         # Delivered means what actually worked: a rejected write attempt must
                         # not switch the reminders off.
-                        if call.name in ergebnis_tools and not result.startswith("FEHLER"):
-                            ergebnis_da = True
+                        if call.name in result_tools and not result.startswith("FEHLER"):
+                            result_da = True
                     elif call.name == "codegraph":
                         result = await _codegraph.query(
                             ws_root, (call.arguments.get("command") or "explore").strip(),
@@ -1423,13 +1423,13 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                             result = f"TOOL-FEHLER: {exc}"
 
                     # The counterpart to the start above: only this closes the tool again.
-                    _dauer_ms = max(0, int((asyncio.get_running_loop().time() - _t0) * 1000))
+                    _duration_ms = max(0, int((asyncio.get_running_loop().time() - _t0) * 1000))
                     if isinstance(result, list):
                         # An image or block result: the call came back, an error would have
                         # become a string, so success is proven here.
                         await protokoll("tool", call.name, "(Bild/Block-Ergebnis)",
-                                        kind="tool_result", tool_use_id=call.id, target=_ziel,
-                                        ok=True, duration_ms=_dauer_ms)
+                                        kind="tool_result", tool_use_id=call.id, target=_target,
+                                        ok=True, duration_ms=_duration_ms)
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result})
                     else:
@@ -1445,8 +1445,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                         # derive a `file_edit` from it at all.
                         _ok = office.tool_ok(result)
                         await protokoll("tool", call.name, result[:2000], kind="tool_result",
-                                        tool_use_id=call.id, target=_ziel,
-                                        ok=True if _ok is None else _ok, duration_ms=_dauer_ms)
+                                        tool_use_id=call.id, target=_target,
+                                        ok=True if _ok is None else _ok, duration_ms=_duration_ms)
                         messages.append({"role": "tool", "tool_call_id": call.id, "name": call.name,
                                          "content": result[:cap]})
 
@@ -1455,8 +1455,8 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
             # rest is the handover to the continuation: findings, what is done, the next step,
             # taken from the HISTORY and not from the last sentence. Without it every
             # continuation run started from zero (UNI-12: three runs, not a line of code).
-            exhausted = await _uebergabe(
-                db, messages=messages, grund=grenze_grund, letzter_text=last_text,
+            exhausted = await _handover(
+                db, messages=messages, reason=limit_reason, last_text=last_text,
                 owner_id=owner_id, agent=agent, tokens=tokens, base_urls=base_urls)
             fp = await _gitops.worktree_fingerprint(ws_root) if ws_root else None
             # Report the ACTUAL number of rounds: the time and token limits end a run early,
@@ -1474,10 +1474,10 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         return RunResult("failed", str(exc), 0, run_id=run_id)
 
 
-ABBRUCH_FENSTER_MIN = 120
+ABBRUCH_WINDOW_MIN = 120
 
 
-async def _abbruch_uebergabe(db: AsyncSession, issue_id: int, run_id: int) -> str:
+async def _abbruch_handover(db: AsyncSession, issue_id: int, run_id: int) -> str:
     """What the aborted predecessor already did, from the step rows and without a model turn.
 
     A run that ends in order hands over (`compaction.uebergabe`). An aborted one does not: at
@@ -1492,29 +1492,29 @@ async def _abbruch_uebergabe(db: AsyncSession, issue_id: int, run_id: int) -> st
     import datetime as _dt
 
     from ..models.agents import Run, RunStep
-    grenze = _dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=ABBRUCH_FENSTER_MIN)
+    limit = _dt.datetime.now(_dt.UTC) - _dt.timedelta(minutes=ABBRUCH_WINDOW_MIN)
     vor = (await db.execute(
         select(Run).where(Run.issue_id == issue_id, Run.id != run_id, Run.status == "failed",
-                          Run.finished_at.isnot(None), Run.finished_at > grenze)
+                          Run.finished_at.isnot(None), Run.finished_at > limit)
         .order_by(Run.id.desc()).limit(1))).scalars().first()
     if vor is None:
         return ""
-    schritte = (await db.execute(
+    steps = (await db.execute(
         select(RunStep.tool_name, RunStep.target).where(
             RunStep.run_id == vor.id, RunStep.kind == "tool_result",
             RunStep.tool_name.in_(("fs_write", "fs_edit")), RunStep.ok.is_(True)))).all()
-    dateien = sorted({t for _, t in schritte if t})
-    if not dateien:
+    files = sorted({t for _, t in steps if t})
+    if not files:
         return ""      # nothing written, nothing to hand over, the successor searches itself
     zuege = (await db.scalar(select(func.count()).select_from(RunStep).where(
         RunStep.run_id == vor.id, RunStep.role == "assistant"))) or 0
-    letzter = (vor.last_text or "").strip()[:600]
+    last = (vor.last_text or "").strip()[:600]
     return ("## Vorlauf abgebrochen — der Worktree trägt seine Arbeit bereits\n"
             f"Der vorige Lauf (#{vor.id}) endete nach {zuege} Zügen unfreiwillig "
             f"({(vor.error or 'ohne Meldung').strip()[:160]}).\n"
             "Bereits geänderte Dateien (Stand liegt im Worktree, NICHT neu schreiben ohne "
-            "vorher zu lesen):\n" + "\n".join(f"- {d}" for d in dateien[:40]) +
-            (f"\n\nSein letzter Satz war:\n{letzter}" if letzter else "") +
+            "vorher zu lesen):\n" + "\n".join(f"- {d}" for d in files[:40]) +
+            (f"\n\nSein letzter Satz war:\n{last}" if last else "") +
             "\n\nLies diese Dateien, bevor du sie erneut änderst, und mache dort weiter, "
             "statt von vorn anzufangen.")
 

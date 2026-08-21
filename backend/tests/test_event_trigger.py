@@ -12,7 +12,7 @@ from sqlalchemy import select
 from conftest import add_member, auth, make_project, make_user
 
 
-async def _ablauf(db, *, key: str, trigger: dict | None, project_id=None,
+async def _flow(db, *, key: str, trigger: dict | None, project_id=None,
                   subject=WorkflowSubjectKind.standalone) -> WorkflowDefinition:
     start_cfg = {"label": "Start"}
     if trigger:
@@ -42,11 +42,11 @@ async def _instanzen(db) -> list[WorkflowInstance]:
     return list((await db.execute(select(WorkflowInstance))).scalars().all())
 
 
-async def test_ereignis_startet_alle_zuhoerer(db):
-    await _ablauf(db, key="a", trigger={"event": "mail.received"})
-    await _ablauf(db, key="b", trigger={"event": "mail.received"})
-    await _ablauf(db, key="c", trigger={"event": "issue.created"})
-    await _ablauf(db, key="d", trigger=None)          # no trigger, so manual only
+async def test_ereignis_startet_all_zuhoerer(db):
+    await _flow(db, key="a", trigger={"event": "mail.received"})
+    await _flow(db, key="b", trigger={"event": "mail.received"})
+    await _flow(db, key="c", trigger={"event": "issue.created"})
+    await _flow(db, key="d", trigger=None)          # no trigger, so manual only
 
     ids = await emit(db, "mail.received", payload={"betreff": "Rechnung"})
     assert len(ids) == 2
@@ -62,24 +62,24 @@ async def test_ereignis_startet_alle_zuhoerer(db):
 async def test_trigger_auf_ein_projekt_begrenzt(db):
     p1 = await make_project(db, "AAA", "Eins")
     p2 = await make_project(db, "BBB", "Zwei")
-    await _ablauf(db, key="nur_p1", trigger={"event": "x", "project_id": p1.id})
-    await _ablauf(db, key="ueberall", trigger={"event": "x"})
+    await _flow(db, key="nur_p1", trigger={"event": "x", "project_id": p1.id})
+    await _flow(db, key="ueberall", trigger={"event": "x"})
 
     assert len(await emit(db, "x", project_id=p2.id)) == 1      # only the unbound one
     assert len(await emit(db, "x", project_id=p1.id)) == 2      # beide
 
 
-async def test_projektgebundener_ablauf_hoert_nur_auf_sein_projekt(db):
+async def test_projektgebundener_flow_hoert_nur_auf_sein_projekt(db):
     p1 = await make_project(db, "AAA", "Eins")
     p2 = await make_project(db, "BBB", "Zwei")
-    await _ablauf(db, key="im_p1", trigger={"event": "x"}, project_id=p1.id)
+    await _flow(db, key="im_p1", trigger={"event": "x"}, project_id=p1.id)
 
     assert await listeners(db, "x", p2.id) == []
     assert len(await listeners(db, "x", p1.id)) == 1
 
 
 async def test_bedingung_filtert(db):
-    await _ablauf(db, key="nur_dringend", trigger={
+    await _flow(db, key="nur_dringend", trigger={
         "event": "issue.created",
         "filter": {"==": [{"var": "issue.priority"}, "highest"]},
     })
@@ -87,27 +87,27 @@ async def test_bedingung_filtert(db):
     assert len(await emit(db, "issue.created", payload={"issue": {"priority": "highest"}})) == 1
 
 
-async def test_doppelte_meldung_startet_nur_einmal(db):
-    await _ablauf(db, key="a", trigger={"event": "mail.received"})
+async def test_doppelte_notice_startet_nur_einmal(db):
+    await _flow(db, key="a", trigger={"event": "mail.received"})
     erst = await emit(db, "mail.received", source_ref="uid-42")
     zweit = await emit(db, "mail.received", source_ref="uid-42")
     assert len(erst) == 1 and zweit == []
 
 
-async def test_kaputter_ablauf_stoppt_die_anderen_nicht(db):
+async def test_kaputter_flow_stoppt_die_anderen_nicht(db):
     """An event is a report, not an assignment: a broken listener must neither tear the
     trigger nor the other flows with it."""
-    kaputt = await _ablauf(db, key="kaputt", trigger={"event": "x"})
+    kaputt = await _flow(db, key="kaputt", trigger={"event": "x"})
     v = await db.get(WorkflowVersion, kaputt.current_version_id)
     v.graph = {"nodes": [], "edges": []}          # no start node any more
     await db.commit()
-    await _ablauf(db, key="heil", trigger={"event": "x"})
+    await _flow(db, key="heil", trigger={"event": "x"})
 
     ids = await emit(db, "x")
     assert len(ids) == 1
 
 
-async def test_ticket_anlegen_meldet_das_ereignis(client, db, seeded):
+async def test_ticket_create_meldet_das_ereignis(client, db, seeded):
     """The most important connection: a new ticket triggers `issue.created`."""
     from app.models.enums import StatusCategory
     from app.models.ticket import IssueCounter, IssueType, WorkflowStatus
@@ -121,7 +121,7 @@ async def test_ticket_anlegen_meldet_das_ereignis(client, db, seeded):
         IssueCounter(project_id=proj.id, last_number=0),
     ])
     await db.commit()
-    await _ablauf(db, key="auf_neues_ticket", trigger={"event": "issue.created"})
+    await _flow(db, key="auf_neues_ticket", trigger={"event": "issue.created"})
 
     r = await client.post(f"/projects/{proj.id}/issues", headers=auth(owner),
                           json={"summary": "Neu"})

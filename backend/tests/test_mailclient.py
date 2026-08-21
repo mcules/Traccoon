@@ -19,11 +19,11 @@ pytestmark = pytest.mark.asyncio
 
 
 def _konto(**over) -> dict:
-    werte = {"name": "privat", "imap_host": "imap.example.org", "imap_user": "ich",
+    values = {"name": "privat", "imap_host": "imap.example.org", "imap_user": "ich",
              "imap_password": "geheim", "smtp_host": "smtp.example.org",
              "smtp_user": "ich", "smtp_password": "auch geheim"}
-    werte.update(over)
-    return werte
+    values.update(over)
+    return values
 
 
 async def test_kennwort_kommt_nie_zurueck(db, client):
@@ -66,7 +66,7 @@ async def test_fremde_konten_bleiben_fremd(db, client):
     assert (await client.get("/mailbox/accounts", headers=auth(bert))).json() == []
 
 
-async def test_nur_eine_vorgabe_identitaet(db, client):
+async def test_nur_eine_vorgabe_identity(db, client):
     anna = await make_user(db, "anna")
     kid = (await client.post("/mailbox/accounts", headers=auth(anna),
                              json=_konto())).json()["id"]
@@ -82,17 +82,17 @@ async def test_nur_eine_vorgabe_identitaet(db, client):
     assert vorgaben[0].email == "vorstand@example.org", "die zuletzt gesetzte gilt"
 
 
-async def test_aktion_startet_ablauf_mit_der_mail_im_kontext(db, client, monkeypatch):
+async def test_action_startet_flow_mit_der_mail_im_context(db, client, monkeypatch):
     anna = await make_user(db, "anna")
     kid = (await client.post("/mailbox/accounts", headers=auth(anna),
                              json=_konto())).json()["id"]
 
-    async def fake_nachricht(konto, ordner, uid):
+    async def fake_message(konto, folder, uid):
         return {"subject": "Rechnung 2026-08", "from": [{"addr": "shop@example.org"}],
                 "date": "2026-08-19", "message_id": "<abc@example.org>", "text": "Anbei.",
                 "attachments": [{"index": 3, "filename": "rechnung.pdf",
                                  "content_type": "application/pdf", "size": 1234}]}
-    monkeypatch.setattr(mailbox, "nachricht", fake_nachricht)
+    monkeypatch.setattr(mailbox, "message", fake_message)
 
     d = WorkflowDefinition(project_id=None, key="anhang-paperless", name="Anhang nach Paperless",
                            created_by=anna.id, subject_kind=WorkflowSubjectKind.standalone)
@@ -127,15 +127,15 @@ async def test_aktion_startet_ablauf_mit_der_mail_im_kontext(db, client, monkeyp
     assert inst.source_ref == "INBOX:42:3", "zweimal dieselbe Aktion ist derselbe Vorgang"
 
 
-async def test_aktion_kennt_den_anhang_nicht(db, client, monkeypatch):
+async def test_action_kennt_den_attachment_nicht(db, client, monkeypatch):
     """Ein Anhang, den es nicht gibt, ist ein Fehler und kein leerer Ablauf."""
     anna = await make_user(db, "anna")
     kid = (await client.post("/mailbox/accounts", headers=auth(anna),
                              json=_konto())).json()["id"]
 
-    async def fake_nachricht(konto, ordner, uid):
+    async def fake_message(konto, folder, uid):
         return {"subject": "ohne", "from": [], "attachments": []}
-    monkeypatch.setattr(mailbox, "nachricht", fake_nachricht)
+    monkeypatch.setattr(mailbox, "message", fake_message)
 
     d = WorkflowDefinition(project_id=None, key="leer", name="leer", created_by=anna.id,
                            subject_kind=WorkflowSubjectKind.standalone)
@@ -221,7 +221,7 @@ async def test_unterordner_stehen_unter_ihrem_elternteil():
     ], "Sonderordner zuerst, Kinder direkt unter ihrem Elternteil"
 
 
-async def test_ordner_ohne_elternteil_ist_eine_wurzel():
+async def test_folder_ohne_elternteil_ist_eine_wurzel():
     """Manche Server listen `Archives/2024` ohne `Archives`. Eingerückt ins Leere zu zeigen
     wäre schlimmer als eine Ebene weniger."""
     from app.services.mailbox import baum_sortieren
@@ -244,21 +244,21 @@ async def test_sonderordner_stehen_in_gewohnter_reihenfolge():
 
 # ── Archiv nach Muster ──────────────────────────────────────────────────────
 
-def _konto_muster(muster: str = "Archive/{jahr}") -> MailAccount:
-    return MailAccount(name="p", archive_mode="pattern", archive_pattern=muster,
+def _konto_pattern(pattern: str = "Archive/{jahr}") -> MailAccount:
+    return MailAccount(name="p", archive_mode="pattern", archive_pattern=pattern,
                        folder_archive="Archive")
 
 
-async def test_muster_nimmt_das_datum_der_mail_nicht_von_heute():
+async def test_pattern_nimmt_das_datum_der_mail_nicht_von_heute():
     """Der eigentliche Zweck: eine Rechnung von 2023 gehört auch 2026 noch ins Jahr 2023."""
     import datetime as dt
 
-    from app.services.mailbox import archiv_ziel
+    from app.services.mailbox import archiv_target
 
     alt = dt.datetime(2023, 3, 7, 9, 0, tzinfo=dt.timezone.utc)
-    assert archiv_ziel(_konto_muster(), alt) == "Archive/2023"
-    assert archiv_ziel(_konto_muster("Archive/{jahr}/{monat}"), alt) == "Archive/2023/03"
-    assert archiv_ziel(_konto_muster("Archiv/{jahr}-{quartal}"), alt) == "Archiv/2023-Q1"
+    assert archiv_target(_konto_pattern(), alt) == "Archive/2023"
+    assert archiv_target(_konto_pattern("Archive/{jahr}/{monat}"), alt) == "Archive/2023/03"
+    assert archiv_target(_konto_pattern("Archiv/{jahr}-{quartal}"), alt) == "Archiv/2023-Q1"
 
 
 async def test_trenner_des_servers_wird_eingesetzt():
@@ -266,51 +266,51 @@ async def test_trenner_des_servers_wird_eingesetzt():
     nicht wissen müssen, wie sein Server Ordner schachtelt."""
     import datetime as dt
 
-    from app.services.mailbox import archiv_ziel
+    from app.services.mailbox import archiv_target
 
     wann = dt.datetime(2026, 8, 19, tzinfo=dt.timezone.utc)
-    assert archiv_ziel(_konto_muster("Archive/{jahr}"), wann, trenner=".") == "Archive.2026"
-    assert archiv_ziel(_konto_muster("Archive/{jahr}"), wann, trenner="/") == "Archive/2026"
+    assert archiv_target(_konto_pattern("Archive/{jahr}"), wann, trenner=".") == "Archive.2026"
+    assert archiv_target(_konto_pattern("Archive/{jahr}"), wann, trenner="/") == "Archive/2026"
 
 
-async def test_absender_im_muster():
+async def test_absender_im_pattern():
     import datetime as dt
 
-    from app.services.mailbox import archiv_ziel
+    from app.services.mailbox import archiv_target
 
-    ziel = archiv_ziel(_konto_muster("Archive/{absender_domain}/{jahr}"),
+    target = archiv_target(_konto_pattern("Archive/{absender_domain}/{jahr}"),
                        dt.datetime(2026, 1, 2, tzinfo=dt.timezone.utc), "support@haendler.example")
-    assert ziel == "Archive/haendler.example/2026"
+    assert target == "Archive/haendler.example/2026"
 
 
-async def test_tippfehler_im_muster_legt_keinen_klammer_ordner_an():
+async def test_tippfehler_im_pattern_legt_keinen_klammer_folder_an():
     """`{jhar}` ist ein Tippfehler. Er soll auffallen — aber keinen Ordner mit geschweiften
     Klammern im Namen erzeugen, den man hinterher von Hand wegräumt."""
     import datetime as dt
 
-    from app.services.mailbox import archiv_ziel
+    from app.services.mailbox import archiv_target
 
-    ziel = archiv_ziel(_konto_muster("Archive/{jhar}"),
+    target = archiv_target(_konto_pattern("Archive/{jhar}"),
                        dt.datetime(2026, 1, 2, tzinfo=dt.timezone.utc))
-    assert "{" not in ziel and ziel == "Archive"
+    assert "{" not in target and target == "Archive"
 
 
-async def test_fester_ordner_bleibt_fester_ordner():
+async def test_fester_folder_bleibt_fester_folder():
     import datetime as dt
 
-    from app.services.mailbox import archiv_ziel
+    from app.services.mailbox import archiv_target
 
     konto = MailAccount(name="p", archive_mode="folder", folder_archive="Archiv",
                         archive_pattern="Archive/{jahr}")
-    assert archiv_ziel(konto, dt.datetime(2023, 5, 5, tzinfo=dt.timezone.utc)) == "Archiv"
+    assert archiv_target(konto, dt.datetime(2023, 5, 5, tzinfo=dt.timezone.utc)) == "Archiv"
 
 
 # ── Büroklammer in der Liste ────────────────────────────────────────────────
 
-async def test_anhang_wird_ohne_laden_der_mail_erkannt():
+async def test_attachment_wird_ohne_laden_der_mail_erkannt():
     """Die Büroklammer entsteht aus der BODYSTRUCTURE — eine Liste von fünfzig Nachrichten
     soll keine fünfzig Anhänge durchs Netz ziehen."""
-    from app.services.mailbox import _hat_anhang
+    from app.services.mailbox import _hat_attachment
 
     mit = ((b"text", b"plain", (b"charset", b"utf-8"), None, None, b"7bit", 12, 1),
            (b"application", b"pdf", (b"name", b"r.pdf"), None, None, b"base64", 9000,
@@ -319,35 +319,35 @@ async def test_anhang_wird_ohne_laden_der_mail_erkannt():
             (b"text", b"html", (b"charset", b"utf-8"), None, None, b"7bit", 40, 2),
             b"alternative")
 
-    assert _hat_anhang(mit) is True
-    assert _hat_anhang(ohne) is False
-    assert _hat_anhang(None) is False
+    assert _hat_attachment(mit) is True
+    assert _hat_attachment(ohne) is False
+    assert _hat_attachment(None) is False
 
 
-async def test_eingebettetes_logo_ist_kein_anhang():
+async def test_eingebettetes_logo_ist_kein_attachment():
     """Sonst trüge jede Werbemail eine Büroklammer, und die wäre keine Auskunft mehr."""
-    from app.services.mailbox import _hat_anhang
+    from app.services.mailbox import _hat_attachment
 
     inline = ((b"text", b"html", (b"charset", b"utf-8"), None, None, b"7bit", 40, 2),
               (b"image", b"png", (b"name", b"logo.png"), b"<logo>", None, b"base64", 500,
                (b"inline", (b"filename", b"logo.png"))), b"related")
-    assert _hat_anhang(inline) is False
+    assert _hat_attachment(inline) is False
 
 
 # ── Postfächer als MCP ──────────────────────────────────────────────────────
 
 async def _mcp_konto(db, user, **over) -> MailAccount:
-    werte = {"name": "privat", "owner_user_id": user.id, "enabled": True,
+    values = {"name": "privat", "owner_user_id": user.id, "enabled": True,
              "mcp_enabled": True, "mcp_tools": ["mail_folders", "mail_search"],
              "mcp_ignore_folders": ["Junk", "Privat*"]}
-    werte.update(over)
-    k = MailAccount(**werte)
+    values.update(over)
+    k = MailAccount(**values)
     db.add(k)
     await db.commit()
     return k
 
 
-async def test_nur_freigegebene_werkzeuge_stehen_im_verzeichnis(db):
+async def test_nur_freigegebene_tools_stehen_im_directory(db):
     """Voreinstellung ist nichts. Was im Verzeichnis steht, hat jemand eingeschaltet."""
     from app.services.mail_mcp import werkzeugliste
 
@@ -359,7 +359,7 @@ async def test_nur_freigegebene_werkzeuge_stehen_im_verzeichnis(db):
     assert "mail_send" not in namen
 
 
-async def test_abgeschaltetes_postfach_gibt_es_nicht(db):
+async def test_abgeschaltetes_mailbox_gibt_es_nicht(db):
     from app.services.mail_mcp import ausfuehren, werkzeugliste
 
     anna = await make_user(db, "anna")
@@ -370,7 +370,7 @@ async def test_abgeschaltetes_postfach_gibt_es_nicht(db):
         await ausfuehren(db, anna, "mail_folders", {"account": "privat"})
 
 
-async def test_gesperrtes_werkzeug_wird_abgelehnt(db):
+async def test_gesperrtes_tool_wird_abgelehnt(db):
     from app.services.mail_mcp import ausfuehren
 
     anna = await make_user(db, "anna")
@@ -389,7 +389,7 @@ async def test_fremde_postfaecher_bleiben_unsichtbar(db):
         await ausfuehren(db, bert, "mail_folders", {"account": "privat"})
 
 
-async def test_ignorierte_ordner_sind_kein_sichtschutz_sondern_eine_sperre(db, monkeypatch):
+async def test_ignorierte_folder_sind_kein_sichtschutz_sondern_eine_block(db, monkeypatch):
     """Ein ausgeblendeter Ordner darf auch kein Ziel sein — sonst könnte man Post hinter den
     Sichtschutz schieben."""
     from app.services import mail_mcp
@@ -397,12 +397,12 @@ async def test_ignorierte_ordner_sind_kein_sichtschutz_sondern_eine_sperre(db, m
     anna = await make_user(db, "anna")
     await _mcp_konto(db, anna, mcp_tools=["mail_folders", "mail_move"])
 
-    async def fake_ordner(konto, zaehlen=False):
+    async def fake_folder(konto, count=False):
         return [{"name": "INBOX"}, {"name": "Junk"}, {"name": "Privat.Familie"}]
-    monkeypatch.setattr(mail_mcp.mailbox, "ordner", fake_ordner)
+    monkeypatch.setattr(mail_mcp.mailbox, "folder", fake_folder)
 
-    sichtbar = await mail_mcp.ausfuehren(db, anna, "mail_folders", {"account": "privat"})
-    assert [o["name"] for o in sichtbar] == ["INBOX"]
+    visible = await mail_mcp.ausfuehren(db, anna, "mail_folders", {"account": "privat"})
+    assert [o["name"] for o in visible] == ["INBOX"]
 
     with pytest.raises(PermissionError):
         await mail_mcp.ausfuehren(db, anna, "mail_move",
@@ -413,7 +413,7 @@ async def test_ignorierte_ordner_sind_kein_sichtschutz_sondern_eine_sperre(db, m
                                    "target": "INBOX"})
 
 
-async def test_muster_der_ignorierliste():
+async def test_pattern_der_ignorierliste():
     from app.services.mail_mcp import ignoriert
 
     assert ignoriert("Junk", ["Junk"]) is True
@@ -437,7 +437,7 @@ async def test_anweisungen_stehen_beim_verbinden_und_am_konto(db):
     assert konten[0]["instructions"].startswith("Sachlich")
 
 
-async def test_ohne_anweisung_kein_leeres_feld(db):
+async def test_ohne_anweisung_kein_leeres_field(db):
     """Ein leerer Hinweis ist schlechter als keiner: er sieht aus wie eine Regel."""
     from app.services.mail_mcp import anweisungen, ausfuehren
 
@@ -449,19 +449,19 @@ async def test_ohne_anweisung_kein_leeres_feld(db):
 
 # ── Handgriffe am ganzen Ordner ─────────────────────────────────────────────
 
-async def test_sonderordner_sind_vor_dem_loeschen_geschuetzt(db, client):
+async def test_sonderordner_sind_vor_dem_delete_geschuetzt(db, client):
     """Wer seinen Papierkorb löscht, hat danach ein Löschen, das nicht mehr funktioniert."""
     anna = await make_user(db, "anna")
     kid = (await client.post("/mailbox/accounts", headers=auth(anna),
                              json=_konto(folder_trash="Trash"))).json()["id"]
 
-    for ordner in ("INBOX", "Trash"):
+    for folder in ("INBOX", "Trash"):
         r = await client.post(f"/mailbox/accounts/{kid}/folders/delete", headers=auth(anna),
-                              json={"folder": ordner})
-        assert r.status_code == 400, f"{ordner} muss geschützt sein"
+                              json={"folder": folder})
+        assert r.status_code == 400, f"{folder} muss geschützt sein"
 
 
-async def test_gewoehnlicher_ordner_darf_geloescht_werden(db, client, monkeypatch):
+async def test_gewoehnlicher_folder_may_geloescht_werden(db, client, monkeypatch):
     from app.services import mailbox as mb
 
     anna = await make_user(db, "anna")
@@ -470,9 +470,9 @@ async def test_gewoehnlicher_ordner_darf_geloescht_werden(db, client, monkeypatc
 
     geloescht = []
 
-    async def fake_loeschen(konto, ordner):
-        geloescht.append(ordner)
-    monkeypatch.setattr(mb, "ordner_loeschen", fake_loeschen)
+    async def fake_delete(konto, folder):
+        geloescht.append(folder)
+    monkeypatch.setattr(mb, "folder_delete", fake_delete)
 
     r = await client.post(f"/mailbox/accounts/{kid}/folders/delete", headers=auth(anna),
                           json={"folder": "Alte Newsletter"})
@@ -481,7 +481,7 @@ async def test_gewoehnlicher_ordner_darf_geloescht_werden(db, client, monkeypatc
 
 # ── Was ein Ablauf mit einer Mail tun kann ───────────────────────────────────
 
-async def test_ablauf_markiert_eine_mail_als_gelesen(db, monkeypatch):
+async def test_flow_markiert_eine_mail_as_gelesen(db, monkeypatch):
     """Der häufigste Handgriff überhaupt — und bis eben der einzige, den ein Ablauf nicht
     tun konnte: Wer eine Mail einsortiert hat, will sie danach als gelesen wissen."""
     from app.services.workflow_actions import _mail_flag
@@ -493,29 +493,29 @@ async def test_ablauf_markiert_eine_mail_als_gelesen(db, monkeypatch):
 
     gesetzt = []
 
-    async def flag(k, ordner, uid, art, an):
-        gesetzt.append((k.id, ordner, uid, art, an))
+    async def flag(k, folder, uid, kind, an):
+        gesetzt.append((k.id, folder, uid, kind, an))
 
     monkeypatch.setattr(mailbox, "flag", flag)
     inst = type("Inst", (), {"context": {}, "started_by": anna.id,
                              "definition_id": 1, "id": 1})()
-    ergebnis = await _mail_flag(db, inst, {}, {"mail": {"account_id": konto.id,
+    result = await _mail_flag(db, inst, {}, {"mail": {"account_id": konto.id,
                                                         "folder": "INBOX", "uid": 7}})
 
-    assert ergebnis["set"] is True and ergebnis["flag"] == "seen" and ergebnis["on"] is True
+    assert result["set"] is True and result["flag"] == "seen" and result["on"] is True
     assert gesetzt == [(konto.id, "INBOX", 7, "seen", True)]
 
 
-async def test_ohne_mail_im_kontext_sagt_der_knoten_warum(db):
+async def test_ohne_mail_im_context_sagt_der_node_warum(db):
     """Ein Ablauf, der von einem Job kommt, hat keine Mail — das ist kein Absturz."""
     from app.services.workflow_actions import _mail_flag
 
     inst = type("Inst", (), {"context": {}, "started_by": None, "definition_id": 1, "id": 1})()
-    ergebnis = await _mail_flag(db, inst, {}, {})
-    assert ergebnis["set"] is False and "keine Mail" in ergebnis["reason"]
+    result = await _mail_flag(db, inst, {}, {})
+    assert result["set"] is False and "keine Mail" in result["reason"]
 
 
-async def test_verschieben_ohne_ziel_geht_ins_archiv(db, monkeypatch):
+async def test_move_ohne_target_geht_ins_archiv(db, monkeypatch):
     """So kann ein Ablauf „erledigt, weg damit" sagen, ohne den Ordnernamen zu kennen."""
     from app.services.workflow_actions import _mail_move
 
@@ -525,13 +525,13 @@ async def test_verschieben_ohne_ziel_geht_ins_archiv(db, monkeypatch):
     db.add(konto)
     await db.commit()
 
-    async def archivieren(k, ordner, uid):
+    async def archivieren(k, folder, uid):
         return "Archive/2026"
 
     monkeypatch.setattr(mailbox, "archivieren", archivieren)
     inst = type("Inst", (), {"context": {}, "started_by": anna.id,
                              "definition_id": 1, "id": 1})()
-    ergebnis = await _mail_move(db, inst, {}, {"mail": {"account_id": konto.id,
+    result = await _mail_move(db, inst, {}, {"mail": {"account_id": konto.id,
                                                         "folder": "INBOX", "uid": 9}})
-    assert ergebnis == {"action": "mail_move", "moved": True,
+    assert result == {"action": "mail_move", "moved": True,
                         "target": "Archive/2026", "uid": 9}

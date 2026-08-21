@@ -50,9 +50,9 @@ _PRIORITAET = [
 ]
 
 
-def _f(key, label, kind, source, **rest) -> dict:
+def _f(key, label, kind, source, **remainder) -> dict:
     return {"key": key, "label": label, "kind": kind, "source": source,
-            "options": [], "options_source": "", "multi": False, **rest}
+            "options": [], "options_source": "", "multi": False, **remainder}
 
 
 # Key of the artifact type to its built-in fields, in display order.

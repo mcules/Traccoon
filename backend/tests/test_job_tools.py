@@ -21,12 +21,12 @@ async def anna(db):
     return u
 
 
-async def _tool(db, user, werkzeug, **args) -> str:
+async def _tool(db, user, tool, **args) -> str:
     # `werkzeug` instead of `name`: the job name is an argument itself.
-    return await call_traccoon_tool(db, user.id, werkzeug, args)
+    return await call_traccoon_tool(db, user.id, tool, args)
 
 
-async def test_jobs_auflisten_zeigt_zeitplan_und_zustand(db, anna):
+async def test_jobs_auflisten_zeigt_zeitplan_und_state(db, anna):
     db.add(Job(user_id=anna.id, name="KI- & Tech-News", type="cron", schedule="0 6 * * *",
                kind="prompt", agent="news", enabled=True))
     await db.commit()
@@ -43,7 +43,7 @@ async def test_fremde_jobs_sind_unsichtbar(db, anna):
     assert await _tool(db, anna, "traccoon_get_job", job_id=j.id) == "Job nicht gefunden."
 
 
-async def test_anlegen_ueber_vorlage(db, anna):
+async def test_create_ueber_template(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="Security-News",
                       template="recherche-digest",
                       params={"titel": "Security-News", "thema": "IT-Sicherheit"})
@@ -55,18 +55,18 @@ async def test_anlegen_ueber_vorlage(db, anna):
     assert j.notify_chat == "123"                  # meldet an denselben Chat
 
 
-async def test_anlegen_meldet_offene_platzhalter(db, anna):
+async def test_create_meldet_offene_platzhalter(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="Halbfertig",
                       prompt="Berichte über {{thema}} aus {{quellen}}.", params={"thema": "x"})
     assert "ACHTUNG" in out and "quellen" in out
 
 
-async def test_anlegen_ohne_prompt_und_vorlage(db, anna):
+async def test_create_ohne_prompt_und_template(db, anna):
     assert "Ohne Prompt" in await _tool(db, anna, "traccoon_create_job", name="Leer")
     assert (await db.execute(select(Job))).scalars().first() is None
 
 
-async def test_unbekannte_vorlage_nennt_die_echten(db, anna):
+async def test_unbekannte_template_nennt_die_echten(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="X", template="quatsch")
     assert "recherche-digest" in out
 
@@ -91,7 +91,7 @@ async def test_abschalten_ueber_update(db, anna):
     assert j.enabled is False and "enabled" in out
 
 
-async def test_der_agent_bekommt_das_ergebnis_des_laufs(db, anna, redis_stub):
+async def test_der_agent_bekommt_das_result_des_laufs(db, anna, redis_stub):
     """Ein Job wird hier ausgeführt, nicht eingereiht: Seit die Arten Abläufe sind, gibt es
     keinen zweiten Weg mehr, auf dem ein Lauf am Zeitplan vorbei startet."""
     db.add(Job(user_id=anna.id, name="Digest", kind="prompt", prompt="x"))
@@ -104,7 +104,7 @@ async def test_der_agent_bekommt_das_ergebnis_des_laufs(db, anna, redis_stub):
     assert lauf.workflow_instance_id is not None
 
 
-async def test_schreibende_jobtools_brauchen_freigabe(db):
+async def test_schreibende_jobtools_brauchen_grant(db):
     """A schedule keeps acting permanently, unlike a comment on a ticket."""
     assert TRACCOON_GATED_TOOLS <= TRACCOON_TOOL_NAMES
     assert "traccoon_create_job" in TRACCOON_GATED_TOOLS

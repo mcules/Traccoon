@@ -26,7 +26,7 @@ def mcp_stub(monkeypatch):
         aufrufe.append((name, argumente))
         return {"ok": True, "text": "angehängt", "json": None}
 
-    monkeypatch.setattr(workflow_tools, "aufrufen", fake)
+    monkeypatch.setattr(workflow_tools, "call", fake)
     return aufrufe
 
 
@@ -47,19 +47,19 @@ async def _instanz(db, anna, context: dict) -> WorkflowInstance:
     return inst
 
 
-def _knoten(**params) -> dict:
+def _node(**params) -> dict:
     return {"id": "n", "type": "auto_action", "data": {"config": {"action": {
         "action": "note_append", "params": params}}}}
 
 
-async def test_pfad_und_text_kommen_aus_dem_kontext(db, mcp_stub):
+async def test_path_und_text_kommen_aus_dem_context(db, mcp_stub):
     """The point of the whole thing: the kind decides the note, so a new kind writes its own
     without anybody touching the flow."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna, {"spam": {"art": "phishing", "befunde_text": "gibt sich als N26 aus"}})
 
-    r = await run_action(db, inst, _knoten(
-        pfad="04 Wissen/Erkennung/{{ spam.art }}.md",
+    r = await run_action(db, inst, _node(
+        path="04 Wissen/Erkennung/{{ spam.art }}.md",
         text="- {{ spam.befunde_text }}"))
 
     assert r["ok"] is True
@@ -73,31 +73,31 @@ async def test_pfad_und_text_kommen_aus_dem_kontext(db, mcp_stub):
     assert inst.context["note"]["ok"] is True
 
 
-async def test_werkzeug_ist_uebersteuerbar(db, mcp_stub):
+async def test_tool_ist_uebersteuerbar(db, mcp_stub):
     """Ein Vault an einem anderen Server soll erreichbar bleiben, ohne neue Aktion."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna, {})
-    await run_action(db, inst, _knoten(pfad="a.md", text="x", werkzeug="zweitvault__append"))
+    await run_action(db, inst, _node(path="a.md", text="x", tool="zweitvault__append"))
     assert mcp_stub[0][0] == "zweitvault__append"
 
 
-async def test_abschnitt_wird_durchgereicht(db, mcp_stub):
+async def test_section_wird_durchgereicht(db, mcp_stub):
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna, {})
-    await run_action(db, inst, _knoten(pfad="a.md", text="x", ueberschrift="Fälle"))
+    await run_action(db, inst, _node(path="a.md", text="x", ueberschrift="Fälle"))
     argumente = mcp_stub[0][1]
     assert argumente["section"] == {"type": "heading", "target": "Fälle"}
     # Ohne das schlägt der Aufruf an einer Notiz fehl, die den Abschnitt noch nicht hat.
     assert argumente["createTargetIfMissing"] is True
 
 
-async def test_ohne_text_wird_nichts_geschrieben(db, mcp_stub):
+async def test_ohne_text_wird_nichts_written(db, mcp_stub):
     """A flow that has nothing to write must not fail because of it: the note is an aside,
     not the purpose of the run."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna, {"spam": {}})
 
-    r = await run_action(db, inst, _knoten(pfad="a.md", text="{{ spam.befunde_text }}"))
+    r = await run_action(db, inst, _node(path="a.md", text="{{ spam.befunde_text }}"))
 
     assert r["ok"] is False and mcp_stub == []
     assert inst.context["note"]["ok"] is False
@@ -105,22 +105,22 @@ async def test_ohne_text_wird_nichts_geschrieben(db, mcp_stub):
 
 # ── Was passiert, wenn es das Werkzeug gar nicht gibt ────────────────────────
 
-async def test_fehlendes_werkzeug_ist_ein_fehler_kein_text():
+async def test_fehlendes_tool_ist_ein_error_kein_text():
     """Der Fall vom 19.08.2026: Ohne Server-Präfix fand die Sitzung nichts, antwortete mit
     einem Hinweis ALS TEXT, und der Aufrufer verbuchte das als Erfolg. Die Notiz blieb leer,
     der Ablauf meldete grün."""
     from app.worker.mcp_client import McpNichtVerfuegbar, MultiMcpSession
 
-    sitzung = MultiMcpSession()          # kein Gateway, keine Server
+    session = MultiMcpSession()          # kein Gateway, keine Server
     with pytest.raises(McpNichtVerfuegbar):
-        await sitzung.call("obsidian_append_to_note", {"content": "x"})
+        await session.call("obsidian_append_to_note", {"content": "x"})
 
 
-async def test_aufrufen_meldet_das_als_nicht_ok(db):
+async def test_call_meldet_das_as_nicht_ok(db):
     """`workflow_tools.aufrufen` fängt jede Ausnahme ab; entscheidend ist, dass daraus ein
     `ok: False` wird und nicht ein Erfolg mit Prosa im Text."""
-    from app.services.workflow_tools import aufrufen
+    from app.services.workflow_tools import call
 
     anna = await make_user(db, "anna")
-    r = await aufrufen(db, anna.id, "obsidian_append_to_note", {"content": "x"})
+    r = await call(db, anna.id, "obsidian_append_to_note", {"content": "x"})
     assert r["ok"] is False and r["error"]

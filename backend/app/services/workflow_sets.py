@@ -247,15 +247,15 @@ async def customize(db: AsyncSession, project: Project, slot: str, actor_id: int
         raise ValueError(f"There is no flow to copy for the slot '{slot}'")
     # The key is unique per project, so the copy for an issue type needs one of its own,
     # and the name should say at a glance who it applies to.
-    schluessel = name = None
+    key = name = None
     if issue_type_id is not None:
         from ..models.ticket import IssueType
-        art = await db.get(IssueType, issue_type_id)
-        schluessel = f"{source.key}-{issue_type_id}"
-        name = f"{source.name} ({art.name})" if art else source.name
+        kind = await db.get(IssueType, issue_type_id)
+        key = f"{source.key}-{issue_type_id}"
+        name = f"{source.name} ({kind.name})" if kind else source.name
     copy = await _copy_definition(db, source, project_id=project.id, set_id=None,
                                   actor_id=actor_id, issue_type_id=issue_type_id,
-                                  key=schluessel, name=name)
+                                  key=key, name=name)
     await db.commit()
     await db.refresh(copy)
     log.info("Project %s: slot %s adjusted (definition %s)", project.key, slot, copy.id)

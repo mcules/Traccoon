@@ -82,8 +82,8 @@ def _interp(value, ctx: dict):
     """
     if not isinstance(value, str):
         return value
-    from .workflow_expr import fuellen
-    return fuellen(value, ctx)
+    from .workflow_expr import fill
+    return fill(value, ctx)
 
 
 def _normalize_action(cfg: dict) -> tuple[str, dict]:
@@ -117,26 +117,26 @@ async def _create_ticket(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     from ..models.user import SYSTEM_USER_ID
 
     pid = _as_int(_interp(params.get("project_id"), ctx)) if params.get("project_id") is not None else None
-    fremdes_ziel = pid is not None and pid != inst.project_id
+    fremdes_target = pid is not None and pid != inst.project_id
     pid = pid or inst.project_id
     if pid is None:
         raise ValueError("create_ticket: no project_id (neither a parameter nor the instance project)")
     # A flow may only create where the person behind it could create as well. Without this
     # check a free-standing flow would be a way into foreign projects: the definition
     # belongs to its creator, the target project does not.
-    if fremdes_ziel and inst.started_by is not None:
+    if fremdes_target and inst.started_by is not None:
         from ..api.deps import build_access
         from ..models.enums import GlobalRole, ProjectRole
         from ..models.user import User as _User
         starter = await db.get(_User, inst.started_by)
-        ziel = await db.get(Project, pid)
-        if starter is None or ziel is None:
+        target = await db.get(Project, pid)
+        if starter is None or target is None:
             raise ValueError("create_ticket: target project or trigger unknown")
         if starter.global_role != GlobalRole.admin:
-            zugriff = await build_access(ziel, starter, db)
-            if not zugriff.has_role(ProjectRole.member):
+            access = await build_access(target, starter, db)
+            if not access.has_role(ProjectRole.member):
                 raise ValueError(
-                    f"create_ticket: no rights on the project {ziel.key}")
+                    f"create_ticket: no rights on the project {target.key}")
     t = (await db.execute(select(IssueType).where(IssueType.project_id == pid)
                           .order_by(IssueType.order))).scalars().first()
     s = (await db.execute(select(WorkflowStatus).where(WorkflowStatus.project_id == pid)
@@ -266,7 +266,7 @@ async def _webhook(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
 # Before the artifact registry there was one action per subject. Both are `set_status`
 # today, but the old names still sit in published versions, and those are immutable
 # (running instances hang off them). So they are redirected instead of maintained twice.
-_ALT_AKTIONEN = {"set_agent_status", "set_purchase_status"}
+_ALT_ACTIONS = {"set_agent_status", "set_purchase_status"}
 
 # Which agent status triggers which notification, identical to the earlier post-processing
 # in the dispatcher so messenger and bell behave unchanged.
@@ -292,17 +292,17 @@ async def _artefakt_von(db, inst: WorkflowInstance):
     do not have it yet and are resolved through the ticket or the hardware item.
     """
     from ..models.artifact import Artifact
-    from . import artifacts as art
+    from . import artifacts as svc
 
     if inst.artifact_id:
         return await db.get(Artifact, inst.artifact_id)
     if inst.issue_id:
         issue = await _issue_of(db, inst)
-        return await art.ensure_for_issue(db, issue) if issue else None
+        return await svc.ensure_for_issue(db, issue) if issue else None
     if inst.hardware_asset_id:
         from ..models.hardware import HardwareAsset
         asset = await db.get(HardwareAsset, inst.hardware_asset_id)
-        return await art.ensure_for_asset(db, asset) if asset else None
+        return await svc.ensure_for_asset(db, asset) if asset else None
     return None
 
 
@@ -325,32 +325,32 @@ async def _set_field(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     if artefakt is None:
         return {"action": "set_field", "applied": False, "reason": "kein Artefakt an diesem Ablauf"}
 
-    feld = next((f for f in await af.fields_of(db, artefakt.type_id, artefakt.project_id)
+    field = next((f for f in await af.fields_of(db, artefakt.type_id, artefakt.project_id)
                  if f.key == key), None)
-    if feld is None:
+    if field is None:
         raise ValueError(f"The field '{key}' does not exist on this artifact")
 
     # Values may arrive as a list, as a single value or comma separated.
     roh = params.get("values", params.get("value"))
     if roh is None:
-        neue = []
+        new = []
     elif isinstance(roh, list):
-        neue = [_interp(v, ctx) for v in roh]
+        new = [_interp(v, ctx) for v in roh]
     else:
         text = str(_interp(roh, ctx))
-        neue = [t.strip() for t in text.split(",")] if "," in text else [text]
-    neue = [v for v in neue if str(v).strip() != ""]
+        new = [t.strip() for t in text.split(",")] if "," in text else [text]
+    new = [v for v in new if str(v).strip() != ""]
 
     modus = str(params.get("mode") or "set").lower()
     if modus in ("add", "remove"):
         vorhanden = [str(v) for v in (await af.values_of(db, artefakt.id)).get(key, [])]
         if modus == "add":
-            neue = vorhanden + [str(v) for v in neue if str(v) not in vorhanden]
+            new = vorhanden + [str(v) for v in new if str(v) not in vorhanden]
         else:
-            weg = {str(v) for v in neue}
-            neue = [v for v in vorhanden if v not in weg]
+            weg = {str(v) for v in new}
+            new = [v for v in vorhanden if v not in weg]
 
-    gesetzt = await af.set_values(db, artefakt.id, feld, neue)
+    gesetzt = await af.set_values(db, artefakt.id, field, new)
     inst.context = {**ctx, "fields": {**(ctx.get("fields") or {}), key: gesetzt}}
     return {"action": "set_field", "field": key, "mode": modus, "values": gesetzt}
 
@@ -363,39 +363,39 @@ async def _set_status(db, inst: WorkflowInstance, params: dict, ctx: dict) -> di
     flow hangs off. The old names `set_agent_status` and `set_purchase_status` end up here
     through `_ALT_AKTIONEN` as well, because they still sit in published versions.
     """
-    from . import artifacts as art
+    from . import artifacts as svc
     from ..models.hardware import HardwareAsset
 
-    wert = str(_interp(params.get("status") or params.get("value") or "", ctx)).strip()
-    if not wert:
+    value = str(_interp(params.get("status") or params.get("value") or "", ctx)).strip()
+    if not value:
         import logging
         logging.getLogger("workflow_actions").warning(
             "set_status without a state (template %r empty), going to hold", params.get("status"))
-        wert = "hold"
+        value = "hold"
     issue = await _issue_of(db, inst)
     asset = (await db.get(HardwareAsset, inst.hardware_asset_id)
              if inst.hardware_asset_id else None)
-    ergebnis = await art.apply_status(
-        db, subject_kind=inst.subject_kind, issue=issue, asset=asset, status_key=wert,
+    result = await svc.apply_status(
+        db, subject_kind=inst.subject_kind, issue=issue, asset=asset, status_key=value,
         reason=str(_interp(params.get("reason") or params.get("hold_reason") or "", ctx)).strip(),
     )
     # Messages stay on the ticket (board, messenger and bell read agent_status).
-    if issue is not None and params.get("notify", True) and wert in _NOTIFY_ON:
-        kind, label = _NOTIFY_ON[wert]
+    if issue is not None and params.get("notify", True) and value in _NOTIFY_ON:
+        kind, label = _NOTIFY_ON[value]
         from .notify import notify_issue
         detail = (ctx.get("agent") or {}).get("summary") or issue.summary
-        if wert == "hold" and issue.hold_reason:
+        if value == "hold" and issue.hold_reason:
             label = f"blockiert ({issue.hold_reason.value})"
         await notify_issue(db, issue, kind, f"{issue.key}: {label}", str(detail)[:400])
-        ergebnis["notified"] = True
+        result["notified"] = True
     if issue is not None:
         from .events import emit
-        await emit(db, "issue.done" if wert == "done" else "issue.agent_status_changed",
+        await emit(db, "issue.done" if value == "done" else "issue.agent_status_changed",
                    project_id=issue.project_id, issue_id=issue.id,
                    payload={"issue": {
-                       "key": issue.key, "agent_status": wert,
+                       "key": issue.key, "agent_status": value,
                        "hold_reason": issue.hold_reason.value if issue.hold_reason else None}})
-    return {"action": "set_status", **ergebnis}
+    return {"action": "set_status", **result}
 
 
 async def _refresh_facts(db, inst: WorkflowInstance, ctx: dict) -> dict:
@@ -601,7 +601,7 @@ async def _stop_agent(db, inst: WorkflowInstance) -> dict:
     return {"action": "stop_agent", "applied": True}
 
 
-async def _besitzer(db, inst: WorkflowInstance) -> int | None:
+async def _owner(db, inst: WorkflowInstance) -> int | None:
     """On whose behalf the run reaches outside.
 
     The starter, otherwise the person behind the ticket. The MCP group and the destinations
@@ -628,19 +628,19 @@ async def _tool_call(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     Without `fail_on_error` the flow decides for itself: `tool.ok` sits in the context and
     can be tested at a decision.
     """
-    from .workflow_tools import aufrufen
+    from .workflow_tools import call
 
     name = str(_interp(params.get("tool") or params.get("name") or "", ctx)).strip()
     argumente = _interp_deep(params.get("arguments") or params.get("args") or {}, ctx)
     if not isinstance(argumente, dict):
         argumente = {}
-    ergebnis = await aufrufen(db, await _besitzer(db, inst), name, argumente)
+    result = await call(db, await _owner(db, inst), name, argumente)
     key = str(params.get("context_key") or "tool")
-    inst.context = {**ctx, key: ergebnis}
-    if params.get("fail_on_error") and not ergebnis["ok"]:
-        raise ValueError(f"Tool {name!r}: {ergebnis.get('error', 'failed')}")
-    return {"action": "tool_call", "tool": name, "ok": ergebnis["ok"],
-            "error": ergebnis.get("error")}
+    inst.context = {**ctx, key: result}
+    if params.get("fail_on_error") and not result["ok"]:
+        raise ValueError(f"Tool {name!r}: {result.get('error', 'failed')}")
+    return {"action": "tool_call", "tool": name, "ok": result["ok"],
+            "error": result.get("error")}
 
 
 async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
@@ -658,19 +658,19 @@ async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     in the arguments of every flow gets it wrong once and then wonders why the note stays
     empty. The knowledge sits in exactly one place now, the same as in `tools_memory`.
     """
-    from .workflow_tools import aufrufen
+    from .workflow_tools import call
 
-    pfad = str(_interp(params.get("path") or params.get("path") or "", ctx)).strip()
+    path = str(_interp(params.get("path") or params.get("path") or "", ctx)).strip()
     text = str(_interp(params.get("text") or "", ctx)).strip()
     ueberschrift = str(_interp(params.get("heading") or params.get("heading") or "",
                                ctx)).strip()
     key = str(params.get("context_key") or "note")
-    if not pfad or not text:
+    if not path or not text:
         # Not an error: a flow that has nothing to write should not fail because of it.
         inst.context = {**ctx, key: {"ok": False, "error": "kein Pfad oder kein Text"}}
         return {"action": "note_append", "ok": False, "reason": "leer"}
 
-    argumente: dict = {"target": {"type": "path", "path": pfad}, "content": text}
+    argumente: dict = {"target": {"type": "path", "path": path}, "content": text}
     if ueberschrift:
         # A section is addressed as an object, and it has to be created when it is missing:
         # otherwise the call fails on a note that does not carry that heading yet. Without
@@ -680,14 +680,14 @@ async def _notiz_anhaengen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     # With the server prefix: without it the session finds no tool and answers with a HINT
     # AS TEXT, and `aufrufen` reports ok because it got an answer. The note stays empty and
     # nobody notices. The name may be overridden, for a vault hanging off another server.
-    werkzeug = str(params.get("tool") or "obsidian__obsidian_append_to_note").strip()
-    ergebnis = await aufrufen(db, await _besitzer(db, inst), werkzeug, argumente)
-    inst.context = {**ctx, key: ergebnis}
+    tool = str(params.get("tool") or "obsidian__obsidian_append_to_note").strip()
+    result = await call(db, await _owner(db, inst), tool, argumente)
+    inst.context = {**ctx, key: result}
     # Der Rueckgabewert nennt die Aktion so, wie sie heisst. Er landet im Schritt-Protokoll
     # und nicht im Kontext — der Kontext-Schluessel `notiz` bleibt deshalb, wie er ist:
     # Der steht in gespeicherten Graphen.
-    return {"action": "note_append", "path": pfad, "ok": ergebnis["ok"],
-            "error": ergebnis.get("error")}
+    return {"action": "note_append", "path": path, "ok": result["ok"],
+            "error": result.get("error")}
 
 
 async def _http_request(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
@@ -756,7 +756,7 @@ def _zahl(params: dict, ctx: dict, *namen, default: float = 0.0) -> float:
 
 
 def _kein_messwert(inst: WorkflowInstance, ctx: dict, params: dict, key: str,
-                   grund: str, roh=None, letzter=None, einheit: str = "") -> dict:
+                   reason: str, roh=None, last=None, unit: str = "") -> dict:
     """Nothing recorded, but nothing broken either.
 
     Two cases end up here: the value is missing (an event without a reading) or it is not
@@ -767,10 +767,10 @@ def _kein_messwert(inst: WorkflowInstance, ctx: dict, params: dict, key: str,
     key_ctx = str(params.get("context_key") or "metric")
     vorher = ctx.get(key_ctx) if isinstance(ctx.get(key_ctx), dict) else {}
     inst.context = {**ctx, key_ctx: {**vorher, "series": key, "ignored": True,
-                                     "warn": False, "value": letzter, "unit": einheit,
+                                     "warn": False, "value": last, "unit": unit,
                                      "raw": roh}}
     return {"action": "metric_record", "series": key, "ignored": True, "skipped": True,
-            "reason": grund, "last_good": letzter}
+            "reason": reason, "last_good": last}
 
 
 async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
@@ -806,16 +806,16 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     # reports "I am online" or "I am down" without a position, and therefore without a
     # charge level. The step then has nothing to do and should not look as if something
     # broke. Whoever needs the value sets `pflicht`.
-    fehlt = roh is None or (isinstance(roh, str) and roh.lower() in ("", "none", "null"))
-    if fehlt and not params.get("required"):
+    missing = roh is None or (isinstance(roh, str) and roh.lower() in ("", "none", "null"))
+    if missing and not params.get("required"):
         # The last known reading stays in the context: on a failure notice it is the
         # most interesting number still available.
-        bekannt = await metrics.reihe(db, await _besitzer(db, inst), key)
+        known = await metrics.reihe(db, await _owner(db, inst), key)
         return _kein_messwert(inst, ctx, params, key, "kein Wert in der Nutzlast",
-                              letzter=bekannt.last_value if bekannt else None,
-                              einheit=bekannt.unit if bekannt else "")
+                              last=known.last_value if known else None,
+                              unit=known.unit if known else "")
     try:
-        wert = float(roh)
+        value = float(roh)
     except (TypeError, ValueError):
         raise ValueError(f"messwert: '{roh}' is not a number")
 
@@ -827,36 +827,36 @@ async def _messwert(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     hat_oben = params.get("max", params.get("maximum")) not in (None, "")
     unten = _zahl(params, ctx, "min", "minimum") if hat_unten else None
     oben = _zahl(params, ctx, "max", "maximum") if hat_oben else None
-    ausserhalb = ((unten is not None and wert < unten)
-                  or (oben is not None and wert > oben))
+    ausserhalb = ((unten is not None and value < unten)
+                  or (oben is not None and value > oben))
     if ausserhalb:
         # During alarms the tracker reported "231 %", and without this bound that went out.
-        vorhanden = await metrics.reihe(db, await _besitzer(db, inst), key)
-        return _kein_messwert(inst, ctx, params, key, f"außerhalb {unten}…{oben}", roh=wert,
-                              letzter=vorhanden.last_value if vorhanden else None,
-                              einheit=vorhanden.unit if vorhanden else "")
+        vorhanden = await metrics.reihe(db, await _owner(db, inst), key)
+        return _kein_messwert(inst, ctx, params, key, f"außerhalb {unten}…{oben}", roh=value,
+                              last=vorhanden.last_value if vorhanden else None,
+                              unit=vorhanden.unit if vorhanden else "")
 
-    ziel = _zahl(params, ctx, "target")
+    target = _zahl(params, ctx, "target")
     vorwarn = _zahl(params, ctx, "warn_days", default=7.0)
-    fenster = int(_zahl(params, ctx, "window_days",
-                        default=float(metrics.FENSTER_TAGE)))
+    window = int(_zahl(params, ctx, "window_days",
+                        default=float(metrics.WINDOW_DAYS)))
 
-    owner = await _besitzer(db, inst)
-    reihe, _punkt = await metrics.erfassen(
-        db, owner, key, wert,
+    owner = await _owner(db, inst)
+    reihe, _point = await metrics.record(
+        db, owner, key, value,
         name=str(_interp(params.get("name") or "", ctx)),
-        einheit=str(params.get("unit") or ""),
-        kontext={"instanz": inst.id, "definition": inst.definition_id})
-    stand = await metrics.trend(db, reihe, ziel=ziel, fenster_tage=fenster)
-    warnen = metrics.vorwarnen(reihe, stand["days_left"], vorwarn) if vorwarn > 0 else False
-    stand = {**stand, "series": key, "target": ziel, "warn_days": vorwarn, "warn": warnen}
+        unit=str(params.get("unit") or ""),
+        context={"instanz": inst.id, "definition": inst.definition_id})
+    state = await metrics.trend(db, reihe, target=target, window_days=window)
+    warnen = metrics.vorwarnen(reihe, state["days_left"], vorwarn) if vorwarn > 0 else False
+    state = {**state, "series": key, "target": target, "warn_days": vorwarn, "warn": warnen}
     key_ctx = str(params.get("context_key") or "metric")
-    inst.context = {**ctx, key_ctx: stand}
-    return {"action": "metric_record", "series": key, "value": wert,
-            "per_day": stand["per_day"], "days_left": stand["days_left"], "warn": warnen}
+    inst.context = {**ctx, key_ctx: state}
+    return {"action": "metric_record", "series": key, "value": value,
+            "per_day": state["per_day"], "days_left": state["days_left"], "warn": warnen}
 
 
-async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def _messreihe_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Look at a series without feeding it, for flows that come from the clock.
 
     `messwert` answers "where do we stand after this value", here the question is "where do
@@ -883,7 +883,7 @@ async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     still_ab = _zahl(params, ctx, "silence_hours", "silent_from")
     key_ctx = str(params.get("context_key") or "metric")
 
-    owner = await _besitzer(db, inst)
+    owner = await _owner(db, inst)
     reihe = await metrics.reihe(db, owner, key)
     if reihe is None:
         # Not an error: a typo in the key would otherwise be a red run every hour. The
@@ -892,18 +892,18 @@ async def _messreihe_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) 
                                          "report_silence": False, "value": None}}
         return {"action": "metric_read", "series": key, "found": False}
 
-    stand = await metrics.trend(
-        db, reihe, ziel=_zahl(params, ctx, "target"),
-        fenster_tage=int(_zahl(params, ctx, "window_days",
-                               default=float(metrics.FENSTER_TAGE))))
-    alter = stand.get("age_hours")
+    state = await metrics.trend(
+        db, reihe, target=_zahl(params, ctx, "target"),
+        window_days=int(_zahl(params, ctx, "window_days",
+                               default=float(metrics.WINDOW_DAYS))))
+    alter = state.get("age_hours")
     still = bool(still_ab > 0 and alter is not None and alter >= still_ab)
-    melden = metrics.stille_melden(reihe, alter, still_ab)
-    stand = {**stand, "series": key, "found": True, "silence_hours": still_ab,
-             "silent": still, "report_silence": melden}
-    inst.context = {**ctx, key_ctx: stand}
-    return {"action": "metric_read", "series": key, "value": stand["value"],
-            "age_hours": alter, "silent": still, "report_silence": melden}
+    report = metrics.silence_report(reihe, alter, still_ab)
+    state = {**state, "series": key, "found": True, "silence_hours": still_ab,
+             "silent": still, "report_silence": report}
+    inst.context = {**ctx, key_ctx: state}
+    return {"action": "metric_read", "series": key, "value": state["value"],
+            "age_hours": alter, "silent": still, "report_silence": report}
 
 
 async def _mail_konto(db, params: dict, ctx: dict):
@@ -918,12 +918,12 @@ async def _mail_konto(db, params: dict, ctx: dict):
     mail = dict(ctx.get("mail") or {})
     konto_id = params.get("account_id") or mail.get("account_id")
     uid = params.get("uid") or mail.get("uid")
-    ordner = str(_interp(params.get("folder") or "", ctx)).strip() \
+    folder = str(_interp(params.get("folder") or "", ctx)).strip() \
         or str(mail.get("folder") or "INBOX")
     if konto_id is None or uid in (None, ""):
-        return None, ordner, None
+        return None, folder, None
     konto = await db.get(MailAccount, int(konto_id))
-    return konto, ordner, int(uid)
+    return konto, folder, int(uid)
 
 
 async def _cache_leeren(konto_id: int) -> None:
@@ -945,13 +945,13 @@ async def _mail_flag(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     """
     from . import mailbox
 
-    konto, ordner, uid = await _mail_konto(db, params, ctx)
+    konto, folder, uid = await _mail_konto(db, params, ctx)
     if konto is None or uid is None:
         return {"action": "mail_flag", "set": False,
                 "reason": "keine Mail im Kontext (Auslöser ist keine Mail-Aktion?)"}
     flag = str(_interp(params.get("flag") or "", ctx)).strip().lower() or "seen"
     an = _ja(params.get("on"), ctx) if params.get("on") is not None else True
-    await mailbox.flag(konto, ordner, uid, flag, an)
+    await mailbox.flag(konto, folder, uid, flag, an)
     await _cache_leeren(konto.id)
     return {"action": "mail_flag", "set": True, "flag": flag, "on": an, "uid": uid}
 
@@ -964,23 +964,23 @@ async def _mail_move(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     """
     from . import mailbox
 
-    konto, ordner, uid = await _mail_konto(db, params, ctx)
+    konto, folder, uid = await _mail_konto(db, params, ctx)
     if konto is None or uid is None:
         return {"action": "mail_move", "moved": False,
                 "reason": "keine Mail im Kontext (Auslöser ist keine Mail-Aktion?)"}
-    ziel = str(_interp(params.get("target") or "", ctx)).strip()
-    if ziel:
-        await mailbox.verschieben(konto, ordner, uid, ziel)
+    target = str(_interp(params.get("target") or "", ctx)).strip()
+    if target:
+        await mailbox.move(konto, folder, uid, target)
     elif konto.folder_archive:
-        ziel = await mailbox.archivieren(konto, ordner, uid)
+        target = await mailbox.archivieren(konto, folder, uid)
     else:
         return {"action": "mail_move", "moved": False,
                 "reason": "kein Ziel genannt und kein Archiv am Konto"}
     await _cache_leeren(konto.id)
-    return {"action": "mail_move", "moved": True, "target": ziel, "uid": uid}
+    return {"action": "mail_move", "moved": True, "target": target, "uid": uid}
 
 
-async def _mail_anhang(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def _mail_attachment(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Holt den Anhang einer Mail in den Kontext — als Base64, wie ihn Werkzeuge erwarten.
 
     Der Auslöser einer Mail-Aktion legt nur die Beschreibung des Anhangs in den Kontext
@@ -997,10 +997,10 @@ async def _mail_anhang(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
     from . import mailbox
 
     mail = dict(ctx.get("mail") or {})
-    anhang = dict(ctx.get("anhang") or {})
+    attachment = dict(ctx.get("anhang") or {})
     konto_id = mail.get("account_id")
     index = params.get("index")
-    index = int(index) if index not in (None, "") else anhang.get("index")
+    index = int(index) if index not in (None, "") else attachment.get("index")
     if konto_id is None or mail.get("uid") is None or index is None:
         return {"action": "mail_attachment", "fetched": False,
                 "grund": "kein Anhang im Kontext (Auslöser ist keine Mail-Aktion?)"}
@@ -1008,21 +1008,21 @@ async def _mail_anhang(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
     if konto is None:
         return {"action": "mail_attachment", "fetched": False, "grund": "Konto gibt es nicht mehr"}
 
-    name, typ, daten = await mailbox.anhang(konto, str(mail.get("folder") or "INBOX"),
+    name, kind, daten = await mailbox.attachment(konto, str(mail.get("folder") or "INBOX"),
                                             int(mail["uid"]), int(index))
-    grenze = int(float(params.get("max_mb") or 25) * 1024 * 1024)
-    if len(daten) > grenze:
+    limit = int(float(params.get("max_mb") or 25) * 1024 * 1024)
+    if len(daten) > limit:
         # Lieber eine klare Ansage als ein Kontext, der die Datenbankzeile sprengt.
         raise ValueError(f"Anhang {name} ist {len(daten) // 1024 // 1024} MB groß "
-                         f"(Grenze {grenze // 1024 // 1024} MB)")
+                         f"(Grenze {limit // 1024 // 1024} MB)")
     key = str(params.get("context_key") or "attachment")
-    inst.context = {**ctx, key: {"filename": name, "content_type": typ, "size": len(daten),
+    inst.context = {**ctx, key: {"filename": name, "content_type": kind, "size": len(daten),
                                  "base64": base64.b64encode(daten).decode()}}
     return {"action": "mail_attachment", "fetched": True, "filename": name, "size": len(daten),
             "context_key": key}
 
 
-def _ja(wert, ctx: dict) -> bool:
+def _ja(value, ctx: dict) -> bool:
     """Ein Schalter, der auch aus dem Lauf kommen darf.
 
     Fest (`true`), aus dem Kontext (`"{{ policy.auto }}"`) oder als Bedingung in derselben
@@ -1030,21 +1030,21 @@ def _ja(wert, ctx: dict) -> bool:
     Ablauf für „mal so, mal so“ zwei Knoten führen, die sich nur in einem Häkchen
     unterscheiden — und beide gepflegt werden wollen.
     """
-    if isinstance(wert, bool):
-        return wert
-    if isinstance(wert, dict):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, dict):
         from .jsonlogic import JsonLogicError, safe_eval
         try:
-            return bool(safe_eval(wert, ctx))
+            return bool(safe_eval(value, ctx))
         except JsonLogicError:
             return False
-    if isinstance(wert, str):
-        text = str(_interp(wert, ctx)).strip().lower()
+    if isinstance(value, str):
+        text = str(_interp(value, ctx)).strip().lower()
         return text in ("true", "1", "ja", "yes", "an")
-    return bool(wert)
+    return bool(value)
 
 
-async def _assistent_auftrag(db, inst: WorkflowInstance, params: dict, ctx: dict,
+async def _assistent_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
                              node_id: str) -> dict:
     """Give the personal assistant a free assignment — no mail, no ticket, no project.
 
@@ -1053,7 +1053,7 @@ async def _assistent_auftrag(db, inst: WorkflowInstance, params: dict, ctx: dict
     so ANY flow can hand work to the assistant.
 
     Parameters:
-      auftrag      the assignment itself ({{…}} out of the context), required
+      assignment      the assignment itself ({{…}} out of the context), required
       titel        heading in the inbox (default: first line of the assignment)
       agent        role of the agent (default `assistent`)
       freigabe     true = the item waits for the person, false (default) = it runs at once.
@@ -1063,7 +1063,7 @@ async def _assistent_auftrag(db, inst: WorkflowInstance, params: dict, ctx: dict
       timeout_sek  limit for the wait (0 = the engine default)
 
     Und was der Mail-Weg mitbrachte, bis es ihn nicht mehr gibt — dieselben Angaben, nur
-    ohne Mail: `art` (wonach der Eingang sortiert, Vorgabe `auftrag`), `quelle`/`referenz`
+    ohne Mail: `art` (wonach der Eingang sortiert, Vorgabe `assignment`), `quelle`/`referenz`
     (der Schlüssel gegen Doppelanlage; ohne sie Ablauf und Knoten), `zusammenfassung`,
     `volltext` samt `schwaerzen` (der Volltext wird nur bei `unredacted` überhaupt
     gespeichert), `hinweis` und `meta` für alles Weitere.
@@ -1076,21 +1076,21 @@ async def _assistent_auftrag(db, inst: WorkflowInstance, params: dict, ctx: dict
     from ..core.redis import enqueue_task
     from ..models.assistant import AssistantTask
 
-    auftrag = str(_interp(params.get("task") or params.get("prompt") or "", ctx)).strip()
+    assignment = str(_interp(params.get("task") or params.get("prompt") or "", ctx)).strip()
     rolle = str(_interp(params.get("agent") or "", ctx)).strip() or "assistent"
-    titel = str(_interp(params.get("title") or "", ctx)).strip() \
-        or (auftrag.splitlines()[0][:200] if auftrag else "")
-    if not (auftrag or titel):
+    title = str(_interp(params.get("title") or "", ctx)).strip() \
+        or (assignment.splitlines()[0][:200] if assignment else "")
+    if not (assignment or title):
         # Ein Auftragstext ist der Normalfall, aber nicht die Bedingung: Ein Eingang, der
         # seine Sache mitbringt (Betreff, Zusammenfassung, Volltext), ist auch ohne Prompt
         # bearbeitbar — der Assistent hat dann seinen eigenen.
         return {"action": "assistant_task", "started": False, "reason": "kein Auftrag"}
-    besitzer = params.get("owner_id") or inst.started_by or _dig(ctx, "intake.owner_id")
+    owner = params.get("owner_id") or inst.started_by or _dig(ctx, "intake.owner_id")
     try:
-        besitzer = int(besitzer) if besitzer is not None else None
+        owner = int(owner) if owner is not None else None
     except (TypeError, ValueError):
-        besitzer = None
-    if besitzer is None:
+        owner = None
+    if owner is None:
         # Without an owner there is no token and no MCP group, so the run would start and
         # immediately have nothing to work with. Say so instead of failing later.
         return {"action": "assistant_task", "started": False,
@@ -1099,22 +1099,22 @@ async def _assistent_auftrag(db, inst: WorkflowInstance, params: dict, ctx: dict
     # Woran die Doppelanlage erkannt wird. Ohne eigene Angabe ist es der Knoten selbst (ein
     # Neustart soll nicht zweimal beauftragen); mit eigener Angabe die Sache, um die es geht
     # — dieselbe Mail über zwei Wege bleibt ein Eingang.
-    quelle = str(_interp(params.get("source") or "", ctx)).strip() or f"ablauf:{inst.definition_id}"
-    quelle_ref = str(_interp(params.get("reference") or "", ctx)).strip() or f"{inst.id}:{node_id}"
+    source = str(_interp(params.get("source") or "", ctx)).strip() or f"ablauf:{inst.definition_id}"
+    source_ref = str(_interp(params.get("reference") or "", ctx)).strip() or f"{inst.id}:{node_id}"
     task = (await db.execute(select(AssistantTask).where(
-        AssistantTask.source == quelle,
-        AssistantTask.source_ref == quelle_ref))).scalar_one_or_none()
-    neu_angelegt = task is None
+        AssistantTask.source == source,
+        AssistantTask.source_ref == source_ref))).scalar_one_or_none()
+    new_angelegt = task is None
     if task is None:
-        freigabe = _ja(params.get("approval"), ctx)
+        grant = _ja(params.get("approval"), ctx)
         schwaerzen = str(_interp(params.get("redaction") or "", ctx)).strip() or "redacted"
         volltext = str(_interp(params.get("full_text") or "", ctx))
-        zusatz = _interp_deep(params.get("meta"), ctx) if isinstance(params.get("meta"), dict) else {}
+        extra = _interp_deep(params.get("meta"), ctx) if isinstance(params.get("meta"), dict) else {}
         task = AssistantTask(
-            owner_user_id=besitzer,
+            owner_user_id=owner,
             kind=str(_interp(params.get("kind") or "", ctx)).strip() or "task",
-            source=quelle, source_ref=quelle_ref,
-            title=titel[:500],
+            source=source, source_ref=source_ref,
+            title=title[:500],
             category=str(_interp(params.get("category") or "", ctx))[:80],
             priority=str(_interp(params.get("priority")
                                  or params.get("priority") or "normal", ctx)) or "normal",
@@ -1126,33 +1126,33 @@ async def _assistent_auftrag(db, inst: WorkflowInstance, params: dict, ctx: dict
             raw_body=volltext if (volltext and schwaerzen == "unredacted") else None,
             # The assignment IS the prompt; the worker takes it out of `meta.prompt`, the
             # same way it takes the ported mail prompt of a webhook.
-            meta={**zusatz, "agent": rolle, "prompt": auftrag,
+            meta={**extra, "agent": rolle, "prompt": assignment,
                   "ablauf": {"instanz": inst.id, "knoten": node_id,
                              "definition": inst.definition_id}},
-            status="new" if freigabe else "approved",
+            status="new" if grant else "approved",
         )
         db.add(task)
         await db.flush()
 
     task_id = f"assistant-{task.id}"
-    warten = _ja(params.get("wait"), ctx)
-    if neu_angelegt and task.status == "approved":
+    wait = _ja(params.get("wait"), ctx)
+    if new_angelegt and task.status == "approved":
         await enqueue_task({"kind": "assistant", "task_id": task_id,
                             "assistant_task_id": int(task.id)})
-    ergebnis = {"action": "assistant_task", "task_id": task.id, "agent": rolle,
+    result = {"action": "assistant_task", "task_id": task.id, "agent": rolle,
                 "status": task.status, "started": task.status == "approved",
-                "reused": not neu_angelegt}
-    if warten and task.status == "approved":
-        ergebnis["_wait"] = {"task_id": task_id,
+                "reused": not new_angelegt}
+    if wait and task.status == "approved":
+        result["_wait"] = {"task_id": task_id,
                              "timeout": int(params.get("timeout_sec") or 0),
                              "context_key": str(params.get("context_key") or "assistant")}
-    # `auftrag` und `task` tragen dasselbe: Der Mail-Weg hat immer `task` gelesen, und die
+    # `assignment` und `task` tragen dasselbe: Der Mail-Weg hat immer `task` gelesen, und die
     # Karte danach soll den Eingang finden, ohne zu wissen, welcher Knoten ihn angelegt hat.
     inst.context = {**ctx, "task": {"task_id": task.id, "status": task.status,
                                     "agent": rolle},
                     "task": {"id": task.id, "status": task.status,
                              "auto": task.status == "approved"}}
-    return ergebnis
+    return result
 
 
 async def _agent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict,
@@ -1174,29 +1174,29 @@ async def _agent_lauf(db, inst: WorkflowInstance, params: dict, ctx: dict,
     """
     from ..core.redis import enqueue_task
 
-    auftrag = str(_interp(params.get("task") or params.get("prompt") or "", ctx)).strip()
-    if not auftrag:
+    task = str(_interp(params.get("task") or params.get("prompt") or "", ctx)).strip()
+    if not task:
         return {"action": "agent_run", "started": False, "reason": "kein Auftrag"}
     rolle = str(_interp(params.get("agent") or "", ctx)).strip() or "assistent"
-    titel = str(_interp(params.get("title") or "", ctx)).strip() or auftrag.splitlines()[0][:200]
-    besitzer = params.get("owner_id") or inst.started_by
-    if besitzer is None:
+    title = str(_interp(params.get("title") or "", ctx)).strip() or task.splitlines()[0][:200]
+    owner = params.get("owner_id") or inst.started_by
+    if owner is None:
         # Ohne Besitzer kein Token und keine Werkzeuge — der Lauf startete und stünde sofort
         # mit leeren Händen da.
         return {"action": "agent_run", "started": False, "reason": "kein Besitzer"}
 
     task_id = f"lauf-{inst.id}-{node_id}"
     await enqueue_task({"kind": "agent_frei", "task_id": task_id, "agent": rolle,
-                        "prompt": auftrag, "name": titel, "owner_id": int(besitzer)})
-    ergebnis = {"action": "agent_run", "started": True, "agent": rolle, "task_id": task_id}
+                        "prompt": task, "name": title, "owner_id": int(owner)})
+    result = {"action": "agent_run", "started": True, "agent": rolle, "task_id": task_id}
     if params.get("wait") is None or _ja(params.get("wait"), ctx):
-        ergebnis["_wait"] = {"task_id": task_id,
+        result["_wait"] = {"task_id": task_id,
                              "timeout": int(params.get("timeout_sec") or 0),
                              "context_key": str(params.get("context_key") or "run")}
-    return ergebnis
+    return result
 
 
-async def _reihe_schreiben(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Einen Punkt in eine Datenreihe schreiben — gleich welcher Art.
 
     Es gibt genau eine Sorte Reihe im Kern, mit einer Art daran (Zahl, Standort, Text). Also
@@ -1222,59 +1222,59 @@ async def _reihe_schreiben(db, inst: WorkflowInstance, params: dict, ctx: dict) 
       required     ohne Wert abbrechen statt uebergehen
       context_key  wo das Ergebnis landet (Vorgabe `series`)
     """
-    from . import series as reihen
+    from . import series as series
     from . import series_formats
 
-    schluessel = str(_interp(params.get("series") or "", ctx)).strip()
-    if not schluessel:
+    key = str(_interp(params.get("series") or "", ctx)).strip()
+    if not key:
         raise ValueError("reihe: keine Reihe genannt")
-    schluessel_ctx = str(params.get("context_key") or "series")
-    besitzer = await _besitzer(db, inst)
+    key_ctx = str(params.get("context_key") or "series")
+    owner = await _owner(db, inst)
 
     # Die Art steht an der Reihe, sobald es sie gibt. Der Parameter zaehlt nur beim Anlegen —
     # sonst koennte ein Ablauf die Art einer bestehenden Reihe unter sich wegziehen.
-    vorhanden = await reihen.reihe(db, besitzer, schluessel)
-    art = vorhanden.kind if vorhanden else str(params.get("kind") or "number").strip()
-    if art not in ("number", "location", "text"):
-        raise ValueError(f"reihe: unbekannte Art '{art}'")
+    vorhanden = await series.reihe(db, owner, key)
+    kind = vorhanden.kind if vorhanden else str(params.get("kind") or "number").strip()
+    if kind not in ("number", "location", "text"):
+        raise ValueError(f"reihe: unbekannte Art '{kind}'")
 
-    eintrag, fehlt = _eintrag_bauen(art, params, ctx, series_formats)
-    if fehlt:
+    entry, missing = _entry_bauen(kind, params, ctx, series_formats)
+    if missing:
         if params.get("required"):
-            raise ValueError(f"reihe: {fehlt}")
+            raise ValueError(f"reihe: {missing}")
         # Der Normalfall, nicht der Fehler: Ein Geraet meldet auch seinen Zustand, wenn es
         # gerade keinen Fix hat oder einen Wert nicht kennt.
-        inst.context = {**ctx, schluessel_ctx: {"series": schluessel, "kind": art,
-                                                "stored": False, "reason": fehlt}}
-        return {"action": "series_record", "series": schluessel, "kind": art,
-                "stored": False, "ignored": True, "skipped": True, "reason": fehlt}
+        inst.context = {**ctx, key_ctx: {"series": key, "kind": kind,
+                                                "stored": False, "reason": missing}}
+        return {"action": "series_record", "series": key, "kind": kind,
+                "stored": False, "ignored": True, "skipped": True, "reason": missing}
 
-    reihe = vorhanden or await reihen.reihe(
-        db, besitzer, schluessel, kind=art, anlegen=True,
+    reihe = vorhanden or await series.reihe(
+        db, owner, key, kind=kind, create=True,
         name=str(_interp(params.get("name") or "", ctx)).strip(),
         farbe=str(params.get("color") or ""))
 
-    ergebnis = await reihen.aufnehmen(db, reihe, [eintrag])
-    stand = reihe.state or {}
-    aus = {"series": schluessel, "kind": art, "stored": ergebnis["accepted"] > 0,
-           "skipped": ergebnis["skipped"], "points": reihe.points,
-           **{n: stand.get(n) for n in ("value", "lat", "lon", "battery", "accuracy", "title")
-              if stand.get(n) is not None},
-           "places": stand.get("places") or [],
-           "entered": ergebnis["betreten"], "left": ergebnis["verlassen"]}
-    inst.context = {**ctx, schluessel_ctx: aus}
+    result = await series.ingest(db, reihe, [entry])
+    state = reihe.state or {}
+    aus = {"series": key, "kind": kind, "stored": result["accepted"] > 0,
+           "skipped": result["skipped"], "points": reihe.points,
+           **{n: state.get(n) for n in ("value", "lat", "lon", "battery", "accuracy", "title")
+              if state.get(n) is not None},
+           "places": state.get("places") or [],
+           "entered": result["betreten"], "left": result["verlassen"]}
+    inst.context = {**ctx, key_ctx: aus}
     return {"action": "series_record", **aus}
 
 
-def _eintrag_bauen(art: str, params: dict, ctx: dict, formate) -> tuple[dict, str]:
+def _entry_bauen(kind: str, params: dict, ctx: dict, formate) -> tuple[dict, str]:
     """Aus den Parametern einen Punkt machen. Zweiter Rueckgabewert nennt, was fehlt."""
-    ts = formate.zeitpunkt(_interp(params.get("ts"), ctx))
-    quelle = str(params.get("source") or "flow")
+    ts = formate.moment(_interp(params.get("ts"), ctx))
+    source = str(params.get("source") or "flow")
 
-    if art == "location":
+    if kind == "location":
         # Ueber dieselbe Formatschicht wie der Aufnahmepfad: Dann gelten hier dieselben
         # Regeln fuer Komma-Zahlen, Zeitstempel und den Akku als Bruchteil oder Prozent.
-        punkte = formate.normalisiere({
+        points = formate.normalise({
             "lat": _interp(params.get("lat"), ctx), "lon": _interp(params.get("lon"), ctx),
             "ts": _interp(params.get("ts"), ctx),
             "accuracy": _interp(params.get("accuracy"), ctx),
@@ -1282,18 +1282,18 @@ def _eintrag_bauen(art: str, params: dict, ctx: dict, formate) -> tuple[dict, st
             "speed": _interp(params.get("speed"), ctx),
             "course": _interp(params.get("course"), ctx),
             "battery": _interp(params.get("battery"), ctx),
-            "source": quelle,
+            "source": source,
         })
-        return (punkte[0], "") if punkte else ({}, "keine Position in der Nutzlast")
+        return (points[0], "") if points else ({}, "keine Position in der Nutzlast")
 
-    if art == "text":
+    if kind == "text":
         text = str(_interp(params.get("body") or params.get("text") or "", ctx))
         if not text.strip():
             return {}, "kein Text in der Nutzlast"
-        titel = str(_interp(params.get("title") or "", ctx)).strip()
-        if not titel:
-            titel = next((z.strip("# ").strip() for z in text.splitlines() if z.strip()), "")
-        return {"title": titel[:200], "body": text, "ts": ts, "source": quelle,
+        title = str(_interp(params.get("title") or "", ctx)).strip()
+        if not title:
+            title = next((z.strip("# ").strip() for z in text.splitlines() if z.strip()), "")
+        return {"title": title[:200], "body": text, "ts": ts, "source": source,
                 "format": str(params.get("format") or "markdown")}, ""
 
     roh = _interp(params.get("value"), ctx)
@@ -1302,7 +1302,7 @@ def _eintrag_bauen(art: str, params: dict, ctx: dict, formate) -> tuple[dict, st
     if roh is None or (isinstance(roh, str) and roh.lower() in ("", "none", "null")):
         return {}, "kein Wert in der Nutzlast"
     try:
-        return {"value": float(roh), "ts": ts, "source": quelle}, ""
+        return {"value": float(roh), "ts": ts, "source": source}, ""
     except (TypeError, ValueError):
         return {}, f"'{roh}' ist keine Zahl"
 
@@ -1326,55 +1326,55 @@ async def _dokument(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     from ..config import settings
     from . import documents
 
-    schluessel = str(_interp(params.get("storage") or params.get("key") or "", ctx)).strip()
+    key = str(_interp(params.get("storage") or params.get("key") or "", ctx)).strip()
     text = str(_interp(params.get("text") or "", ctx))
-    if not schluessel:
+    if not key:
         return {"action": "document", "stored": False, "reason": "keine Ablage genannt"}
     if not text.strip():
         # Nichts hinlegen ist besser als eine leere Fassung: Sie verdrängte im Verlauf eine
         # echte und stünde als „Stand von heute" da, obwohl nichts erarbeitet wurde.
         return {"action": "document", "stored": False, "reason": "kein Text"}
-    besitzer = params.get("owner_id") or inst.started_by
-    titel = str(_interp(params.get("title") or "", ctx)).strip()
-    if not titel:
-        erste = next((z.strip("# ").strip() for z in text.splitlines() if z.strip()), "")
-        titel = erste[:200]
-    eintrag = await documents.hinlegen(
-        db, int(besitzer) if besitzer is not None else None, schluessel,
-        titel=titel, text=text,
+    owner = params.get("owner_id") or inst.started_by
+    title = str(_interp(params.get("title") or "", ctx)).strip()
+    if not title:
+        first = next((z.strip("# ").strip() for z in text.splitlines() if z.strip()), "")
+        title = first[:200]
+    entry = await documents.hinlegen(
+        db, int(owner) if owner is not None else None, key,
+        title=title, text=text,
         format=str(params.get("format") or "markdown"),
         name=str(_interp(params.get("name") or "", ctx)).strip(),
         behalten=int(params.get("keep") or 0),
         context={"ablauf": inst.definition_id, "instanz": inst.id,
                  **({"job": (inst.context or {}).get("job")} if (inst.context or {}).get("job") else {})})
-    schluessel_ctx = str(params.get("context_key") or "document")
-    inst.context = {**ctx, schluessel_ctx: {
-        "id": eintrag.id, "storage": schluessel, "title": titel,
+    key_ctx = str(params.get("context_key") or "document")
+    inst.context = {**ctx, key_ctx: {
+        "id": entry.id, "storage": key, "title": title,
         # Der Link, der in eine Meldung gehört. Ohne Basis-Adresse bleibt er relativ — dann
         # ist er in der Oberfläche richtig und im Messenger unbrauchbar, was besser ist als
         # ein Link auf „localhost".
-        "url": f"{settings.app_base_url.rstrip('/')}/documents/{schluessel}"
-               if settings.app_base_url else f"/documents/{schluessel}"}}
-    return {"action": "document", "stored": True, "entry_id": eintrag.id,
-            "storage": schluessel, "context_key": schluessel_ctx}
+        "url": f"{settings.app_base_url.rstrip('/')}/documents/{key}"
+               if settings.app_base_url else f"/documents/{key}"}}
+    return {"action": "document", "stored": True, "entry_id": entry.id,
+            "storage": key, "context_key": key_ctx}
 
 
-async def _dokument_lesen(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+async def _dokument_read(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Die letzte Fassung einer Ablage in den Kontext holen — für Abläufe, die auf dem
     aufbauen, was beim letzten Mal herauskam."""
     from . import documents
 
-    schluessel = str(_interp(params.get("storage") or params.get("key") or "", ctx)).strip()
-    besitzer = params.get("owner_id") or inst.started_by
-    eintrag = await documents.letzte(
-        db, int(besitzer) if besitzer is not None else None, schluessel) if schluessel else None
-    schluessel_ctx = str(params.get("context_key") or "document")
-    inst.context = {**ctx, schluessel_ctx: {
-        "found": eintrag is not None,
-        "title": eintrag.title if eintrag else "",
-        "text": eintrag.body if eintrag else "",
-        "ts": (eintrag.ts.isoformat() if eintrag and eintrag.ts else "")}}
-    return {"action": "document_read", "found": eintrag is not None, "storage": schluessel}
+    key = str(_interp(params.get("storage") or params.get("key") or "", ctx)).strip()
+    owner = params.get("owner_id") or inst.started_by
+    entry = await documents.last(
+        db, int(owner) if owner is not None else None, key) if key else None
+    key_ctx = str(params.get("context_key") or "document")
+    inst.context = {**ctx, key_ctx: {
+        "found": entry is not None,
+        "title": entry.title if entry else "",
+        "text": entry.body if entry else "",
+        "ts": (entry.ts.isoformat() if entry and entry.ts else "")}}
+    return {"action": "document_read", "found": entry is not None, "storage": key}
 
 
 async def _job_pausieren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
@@ -1413,23 +1413,23 @@ async def _skript(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
         return {"action": "script", "ok": False,
                 "error": f"Skript nicht im erlaubten Verzeichnis: {befehl}"}
     argumente = _interp_deep(params.get("args") or [], ctx)
-    grenze = int(params.get("timeout_sec") or 600)
+    limit = int(params.get("timeout_sec") or 600)
     try:
         p = await asyncio.create_subprocess_exec(
             skript, *[str(a) for a in argumente],
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
-        aus, _ = await asyncio.wait_for(p.communicate(), timeout=grenze)
+        aus, _ = await asyncio.wait_for(p.communicate(), timeout=limit)
         rc = p.returncode or 0
         text = aus.decode("utf-8", "replace")[:20000]
     except asyncio.TimeoutError:
         return {"action": "script", "ok": False, "error": "Zeitgrenze überschritten"}
-    schluessel = str(params.get("context_key") or "script")
-    inst.context = {**ctx, schluessel: {"output": text, "exit_code": rc, "ok": rc == 0}}
-    return {"action": "script", "ok": rc == 0, "exit_code": rc, "context_key": schluessel}
+    key = str(params.get("context_key") or "script")
+    inst.context = {**ctx, key: {"output": text, "exit_code": rc, "ok": rc == 0}}
+    return {"action": "script", "ok": rc == 0, "exit_code": rc, "context_key": key}
 
 
 
-def _antwort(inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
+def _answer(inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Set the answer this run gives back to whoever started it.
 
     A webhook that waits (`response_timeout`) reads exactly this: `context.antwort`. Free
@@ -1437,15 +1437,15 @@ def _antwort(inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     the same `{{…}}` templating as everywhere else.
     """
     if params.get("text") is not None:
-        antwort = _interp(params.get("text") or "", ctx)
+        answer = _interp(params.get("text") or "", ctx)
     else:
-        felder = params.get("fields") if isinstance(params.get("fields"), dict) else \
+        fields = params.get("fields") if isinstance(params.get("fields"), dict) else \
             {k: v for k, v in params.items() if k not in ("felder", "text")}
-        antwort = _interp_deep(felder, ctx)
-    schluessel = str(params.get("context_key") or "answer")
-    inst.context = {**ctx, schluessel: antwort}
-    return {"action": "answer", "context_key": schluessel,
-            "fields": list(antwort) if isinstance(antwort, dict) else "text"}
+        answer = _interp_deep(fields, ctx)
+    key = str(params.get("context_key") or "answer")
+    inst.context = {**ctx, key: answer}
+    return {"action": "answer", "context_key": key,
+            "fields": list(answer) if isinstance(answer, dict) else "text"}
 
 
 async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
@@ -1454,8 +1454,8 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     # Englisch ist die Vorgabe; die deutschen Namen bleiben lesbar, weil sie in
     # veröffentlichten Fassungen stehen (`services/workflow_terms.py` schreibt sie um,
     # aber eine Instanz kann an einer alten Fassung hängen).
-    action = terms.normalisiere_aktion(action)
-    params = terms.normalisiere_params(params)
+    action = terms.normalise_action(action)
+    params = terms.normalise_params(params)
     ctx = dict(inst.context or {})
 
     if action == "set_context":
@@ -1493,7 +1493,7 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
     if action == "tool_call":
         return await _tool_call(db, inst, params, ctx)
 
-    if action in _ALT_AKTIONEN or action == "set_status":
+    if action in _ALT_ACTIONS or action == "set_status":
         return await _set_status(db, inst, params, ctx)
 
     if action == "set_field":
@@ -1540,7 +1540,7 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         return await _mail_move(db, inst, params, ctx)
 
     if action == "mail_attachment":
-        return await _mail_anhang(db, inst, params, ctx)
+        return await _mail_attachment(db, inst, params, ctx)
 
     if action == "agent_run":
         return await _agent_lauf(db, inst, params, ctx, str(node.get("id") or ""))
@@ -1552,27 +1552,27 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         return await _dokument(db, inst, params, ctx)
 
     if action == "document_read":
-        return await _dokument_lesen(db, inst, params, ctx)
+        return await _dokument_read(db, inst, params, ctx)
 
     if action == "job_pause":
         return await _job_pausieren(db, inst, params, ctx)
 
     if action == "assistant_task":
-        return await _assistent_auftrag(db, inst, params, ctx, str(node.get("id") or ""))
+        return await _assistent_task(db, inst, params, ctx, str(node.get("id") or ""))
 
     if action == "answer":
-        return _antwort(inst, params, ctx)
+        return _answer(inst, params, ctx)
 
     if action == "note_append":
         return await _notiz_anhaengen(db, inst, params, ctx)
 
     if action == "series_record":
-        return await _reihe_schreiben(db, inst, params, ctx)
+        return await _series_write(db, inst, params, ctx)
     if action == "metric_record":
         return await _messwert(db, inst, params, ctx)
 
     if action == "metric_read":
-        return await _messreihe_lesen(db, inst, params, ctx)
+        return await _messreihe_read(db, inst, params, ctx)
 
     if action == "notify":
         target = await _resolve_target(db, inst, params.get("to") or {})
@@ -1584,7 +1584,7 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         # flow often learns its recipient only at runtime and cannot know which messenger
         # they use.
         kanal = str(_interp(params.get("channel") or "", ctx)).strip()
-        empfaenger = await db.get(User, target) if target is not None else None
+        recipient = await db.get(User, target) if target is not None else None
         # Throttle: "at most the same thing every N minutes". Without a key of its own the
         # node throttles itself, because for the normal case a number should be enough
         # without inventing a name. A key with `{{ … }}` separates by device or kind of
@@ -1597,21 +1597,21 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         # Bot hängt seine Knöpfe an der Art auf und findet über den Bezug die Sache, um die
         # es geht (ein Spam-Urteil zum Zurückholen, ein Eingang zum Freigeben). Ohne beides
         # bleibt es eine gewöhnliche Meldung — der Normalfall.
-        art = str(_interp(params.get("kind") or "", ctx)).strip() \
+        kind = str(_interp(params.get("kind") or "", ctx)).strip() \
             or "workflow_notify"
-        roh_bezug = params.get("ref") if isinstance(params.get("ref"), dict) else {}
-        bezug: dict[str, int] = {}
-        for feld, wert in roh_bezug.items():
-            wert = _interp(wert, ctx)
-            zahl = _as_int(wert)
+        roh_reference = params.get("ref") if isinstance(params.get("ref"), dict) else {}
+        reference: dict[str, int] = {}
+        for field, value in roh_reference.items():
+            value = _interp(value, ctx)
+            zahl = _as_int(value)
             if zahl is not None:
-                bezug[str(feld)] = zahl
-        weg = await zustellen(db, user=empfaenger, kind=art, title=title,
+                reference[str(field)] = zahl
+        weg = await zustellen(db, user=recipient, kind=kind, title=title,
                               body=body, kanal=kanal, project_id=inst.project_id,
-                              issue_id=inst.issue_id, bezug=bezug or None,
-                              drossel_key=drossel_key, drossel_minuten=drossel)
-        return {"action": "notify", "user_id": target, "kind": art,
-                **({"bezug": bezug} if bezug else {}), **weg}
+                              issue_id=inst.issue_id, reference=reference or None,
+                              drossel_key=drossel_key, drossel_minutes=drossel)
+        return {"action": "notify", "user_id": target, "kind": kind,
+                **({"bezug": reference} if reference else {}), **weg}
 
     # Unknown or deliberate noop action: not an error, so the workflow keeps running.
     return {"action": "noop", "requested": action}

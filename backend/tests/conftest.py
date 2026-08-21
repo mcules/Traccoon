@@ -245,7 +245,7 @@ async def make_asset(db, model_name: str, project: Project | None = None,
     return a
 
 
-async def make_webhook(db, owner: User, route: str, **felder) -> "WebhookSub":
+async def make_webhook(db, owner: User, route: str, **fields) -> "WebhookSub":
     """Webhook anlegen und gleich umstellen, falls er noch einen alten Modus trägt.
 
     Tests, die einen Auslöser von außen brauchen, gehen damit denselben Weg wie der Betrieb:
@@ -255,25 +255,25 @@ async def make_webhook(db, owner: User, route: str, **felder) -> "WebhookSub":
     import uuid as _uuid
 
     from app.models.ops import WebhookSub
-    from app.services.webhook_modes import umstellen
+    from app.services.webhook_modes import convert
 
     sub = WebhookSub(public_id=str(_uuid.uuid4()), route=route,
-                     owner_user_id=owner.id, **felder)
+                     owner_user_id=owner.id, **fields)
     db.add(sub)
     await db.commit()
-    await umstellen(db)
+    await convert(db)
     await db.refresh(sub)
     return sub
 
 
 async def melde(db, sub, payload: dict) -> list[int]:
     """Zustellung eines Webhooks ohne HTTP — Kontext und Referenz wie in `api/ops`."""
-    from app.api.ops import _kontext, _referenz
+    from app.api.ops import _context, _referenz
     from app.models.workflow import WorkflowDefinition
     from app.services.events import emit
     from app.services.workflow_engine import start_workflow
 
-    ctx, ref = _kontext(sub, payload), _referenz(sub, payload)
+    ctx, ref = _context(sub, payload), _referenz(sub, payload)
     if sub.mode == "event":
         ids = await emit(db, str(sub.event_name), project_id=sub.project_id, payload=ctx,
                          actor_id=sub.owner_user_id, source_ref=ref)
@@ -294,21 +294,21 @@ def redis_stub_echt(monkeypatch):
     Der große `redis_stub` ersetzt die Warteschlange; hier geht es um den Cache, und der
     braucht ein Gegenüber, das sich merkt, was es bekommen hat.
     """
-    speicher: dict[str, str] = {}
+    store: dict[str, str] = {}
 
     class Falsches:
         async def get(self, key):
-            return speicher.get(key)
+            return store.get(key)
 
-        async def set(self, key, wert, ex=None):
-            speicher[key] = wert
+        async def set(self, key, value, ex=None):
+            store[key] = value
 
         async def incr(self, key):
-            speicher[key] = str(int(speicher.get(key, 0)) + 1)
-            return int(speicher[key])
+            store[key] = str(int(store.get(key, 0)) + 1)
+            return int(store[key])
 
     monkeypatch.setattr("app.services.mailbox_cache.get_redis", lambda: Falsches())
-    return speicher
+    return store
 
 
 @pytest.fixture

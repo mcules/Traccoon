@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.enums import PurchaseStatus, TicketAgentStatus  # noqa: F401
 from ..models.ops import PermAction, PermGrant, Permission, PermRequest

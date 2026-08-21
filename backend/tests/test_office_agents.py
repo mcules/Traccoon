@@ -32,30 +32,30 @@ async def buehne(db, *, rolle=ProjectRole.viewer):
     user = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, user, rolle)
-    typ = IssueType(project_id=proj.id, name="Aufgabe")
+    kind = IssueType(project_id=proj.id, name="Aufgabe")
     status = WorkflowStatus(project_id=proj.id, name="To Do", category=StatusCategory.todo)
-    db.add_all([typ, status, IssueCounter(project_id=proj.id, last_number=0)])
+    db.add_all([kind, status, IssueCounter(project_id=proj.id, last_number=0)])
     await db.commit()
-    issue = Issue(project_id=proj.id, number=1, key="AAA-1", type_id=typ.id,
+    issue = Issue(project_id=proj.id, number=1, key="AAA-1", type_id=kind.id,
                   status_id=status.id, summary="Tu was", reporter_id=user.id, rank="1")
     db.add(issue)
     await db.commit()
     return user, proj, issue
 
 
-async def lauf(db, issue, *, agent="developer", status="success", dauer_s=60,
+async def lauf(db, issue, *, agent="developer", status="success", duration_s=60,
               iterations=0, alter_h=1) -> Run:
     start = NOW - dt.timedelta(hours=alter_h)
     r = Run(issue_id=issue.id, project_id=issue.project_id, agent=agent, phase="execute",
             provider="claude_code", model="sonnet", status=status, iterations=iterations,
             started_at=start,
-            finished_at=None if status == "running" else start + dt.timedelta(seconds=dauer_s))
+            finished_at=None if status == "running" else start + dt.timedelta(seconds=duration_s))
     db.add(r)
     await db.commit()
     return r
 
 
-async def schritt(db, run, *, tool=None, ok=None, seq=1):
+async def step(db, run, *, tool=None, ok=None, seq=1):
     db.add(RunStep(run_id=run.id, seq=seq, role="tool" if tool else "assistant",
                    kind="tool_call" if tool else "agent_text", tool_name=tool,
                    content="…", ok=ok, created_at=NOW))
@@ -120,7 +120,7 @@ async def test_architekt_78_prozent(client, db):
 
 
 @pytest.mark.asyncio
-async def test_status_zuordnung(client, db):
+async def test_status_mapping(client, db):
     """`planned` means delivered, `blocked` waiting, `loop_exhausted` aborted.
 
     `loop_exhausted` is the case a naive assignment overlooks: the run used up its round
@@ -208,7 +208,7 @@ async def test_agent_filter_verengt(client, db):
 
 
 @pytest.mark.asyncio
-async def test_fenster_klemmt_und_steht_in_der_antwort(client, db):
+async def test_window_klemmt_und_steht_in_der_answer(client, db):
     """`since_hours` is clamped and delivered along: the view should be able to say "of the
     last N hours", because `run_retention_days` deletes older runs."""
     user, proj, issue = await buehne(db)
@@ -243,7 +243,7 @@ async def test_perzentile_und_histogramm(client, db):
     """
     user, proj, issue = await buehne(db)
     for s in (12, 25, 100, 480, 1700):
-        await lauf(db, issue, agent="developer", dauer_s=s, alter_h=2)
+        await lauf(db, issue, agent="developer", duration_s=s, alter_h=2)
 
     d = rolle((await client.get("/office/agents", headers=auth(user))).json(),
               "developer")["duration"]
@@ -260,7 +260,7 @@ async def test_perzentile_und_histogramm(client, db):
 
 
 @pytest.mark.asyncio
-async def test_laufender_lauf_hat_keine_dauer(client, db):
+async def test_laufender_lauf_hat_keine_duration(client, db):
     """A still running run counts in `running` but in no duration bucket: "until now" is not
     a duration but a number that changes on the next fetch."""
     user, proj, issue = await buehne(db)
@@ -276,16 +276,16 @@ async def test_laufender_lauf_hat_keine_dauer(client, db):
 # ── Rounds and steps are two things ──────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_runden_und_schritte_getrennt(client, db):
+async def test_runden_und_steps_getrennt(client, db):
     """`iterations` (rounds) and `run_steps` (steps) have fields of their own: in reality they
     stand at an average of 6.9 against 21.5, and a common field would have made both unreadable."""
     user, proj, issue = await buehne(db)
     a = await lauf(db, issue, agent="developer", iterations=2)
     b = await lauf(db, issue, agent="developer", iterations=8)
     for i in range(3):
-        await schritt(db, a, seq=i)
+        await step(db, a, seq=i)
     for i in range(7):
-        await schritt(db, b, seq=i)
+        await step(db, b, seq=i)
 
     d = rolle((await client.get("/office/agents", headers=auth(user))).json(), "developer")
     assert d["iterations_avg"] == 5.0 and d["iterations_max"] == 8
@@ -293,14 +293,14 @@ async def test_runden_und_schritte_getrennt(client, db):
 
 
 @pytest.mark.asyncio
-async def test_schrittschnitt_zaehlt_nur_laeufe_mit_schritten(client, db):
+async def test_schrittschnitt_zaehlt_nur_runs_mit_schritten(client, db):
     """A run whose steps the retention deleted did not have "0 steps", so it does not pull the
     average down."""
     user, proj, issue = await buehne(db)
     a = await lauf(db, issue, agent="developer")
     await lauf(db, issue, agent="developer")          # cleared: no step rows any more
     for i in range(10):
-        await schritt(db, a, seq=i)
+        await step(db, a, seq=i)
 
     d = rolle((await client.get("/office/agents", headers=auth(user))).json(), "developer")
     assert d["runs"] == 2
@@ -358,16 +358,16 @@ async def test_kosten_ueberleben_den_lauf(client, db):
 # ── Werkzeugtabelle ──────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_werkzeuge_reihenfolge_und_kappung(client, db):
+async def test_tools_reihenfolge_und_kappung(client, db):
     user, proj, issue = await buehne(db)
     r1 = await lauf(db, issue, agent="developer")
     seq = 0
     for tool, n in (("fs_read", 5), ("codegraph", 3), ("fs_list", 2), ("check", 1)):
         for _ in range(n):
             seq += 1
-            await schritt(db, r1, tool=tool, ok=(tool != "check"), seq=seq)
+            await step(db, r1, tool=tool, ok=(tool != "check"), seq=seq)
     # A step without a tool (a model turn) does not belong in the table.
-    await schritt(db, r1, seq=99)
+    await step(db, r1, seq=99)
 
     voll = rolle((await client.get("/office/agents", headers=auth(user))).json(), "developer")
     assert [t["tool"] for t in voll["tools"]] == ["fs_read", "codegraph", "fs_list", "check"]
@@ -386,11 +386,11 @@ async def test_projektakte_zeigt_nur_das_projekt(client, db):
     user, proj, issue = await buehne(db)
     zweit = await make_project(db, "BBB", "Beta")
     await add_member(db, zweit, user, ProjectRole.viewer)
-    typ = IssueType(project_id=zweit.id, name="Aufgabe")
+    kind = IssueType(project_id=zweit.id, name="Aufgabe")
     status = WorkflowStatus(project_id=zweit.id, name="To Do", category=StatusCategory.todo)
-    db.add_all([typ, status, IssueCounter(project_id=zweit.id, last_number=0)])
+    db.add_all([kind, status, IssueCounter(project_id=zweit.id, last_number=0)])
     await db.commit()
-    issue2 = Issue(project_id=zweit.id, number=1, key="BBB-1", type_id=typ.id,
+    issue2 = Issue(project_id=zweit.id, number=1, key="BBB-1", type_id=kind.id,
                    status_id=status.id, summary="Anderswo", reporter_id=user.id, rank="1")
     db.add(issue2)
     await db.commit()

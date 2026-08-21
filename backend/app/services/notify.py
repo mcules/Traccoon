@@ -29,7 +29,7 @@ log = logging.getLogger("traccoon.notify")
 # Drei Wege hinaus. Der dritte ist der offene: Er ruft ein Ziel auf (Basis-URL und
 # Anmeldung stehen dort), und was dahinter steckt — ntfy, Matrix, Gotify, ein eigener Bot —
 # ist Traccoons Sache nicht mehr. Ein weiterer Melder ist damit ein Eintrag unter „Ziele“.
-KANAELE = ("telegram", "email", "ziel")
+CHANNELS = ("telegram", "email", "ziel")
 
 
 def _mit_zone(ts: dt.datetime) -> dt.datetime:
@@ -59,8 +59,8 @@ def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
     channel.
     """
     reihenfolge = [k for k in (gewuenscht, (user.notify_default if user else ""), "telegram")
-                   if k in KANAELE]
-    reihenfolge += [k for k in KANAELE if k not in reihenfolge]
+                   if k in CHANNELS]
+    reihenfolge += [k for k in CHANNELS if k not in reihenfolge]
     for kanal in reihenfolge:
         if kanal_adresse(user, kanal):
             return kanal
@@ -69,16 +69,16 @@ def waehle_kanal(user: User | None, gewuenscht: str = "") -> str:
 
 # What a notification can hang off besides project and ticket. The bot decides by `kind`
 # which buttons it attaches, and it finds the thing they act on over exactly these columns.
-BEZUEGE = ("issue_id", "assistant_task_id", "spam_verdict_id", "project_id")
+REFERENCES = ("issue_id", "assistant_task_id", "spam_verdict_id", "project_id")
 
 
 async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: str = "",
                     body: str = "", kanal: str = "", project_id: int | None = None,
                     issue_id: int | None = None,
-                    drossel_key: str = "", drossel_minuten: float = 0,
+                    drossel_key: str = "", drossel_minutes: float = 0,
                     title_key: str = "", body_key: str = "",
-                    werte: dict[str, object] | None = None,
-                    bezug: dict[str, int] | None = None) -> dict:
+                    values: dict[str, object] | None = None,
+                    reference: dict[str, int] | None = None) -> dict:
     """Create a notification and send it out on the fitting channel.
 
     The messenger is still handled by the bot process, the only one holding the bot token,
@@ -96,42 +96,42 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
     messages. It stays traceable anyway, because the step in the flow records that it was
     throttled.
     """
-    if drossel_key and drossel_minuten > 0:
-        grenze = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=drossel_minuten)
-        letzte = (await db.execute(
+    if drossel_key and drossel_minutes > 0:
+        limit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=drossel_minutes)
+        last = (await db.execute(
             select(Notification.created_at)
             .where(Notification.drossel_key == drossel_key,
                    # Separated by recipient: two people using the same key must not
                    # mute each other.
                    Notification.user_id == (user.id if user else None),
-                   Notification.created_at >= grenze)
+                   Notification.created_at >= limit)
             .order_by(Notification.created_at.desc()).limit(1))).scalars().first()
-        if letzte is not None:
-            wieder = _mit_zone(letzte) + dt.timedelta(minutes=drossel_minuten)
+        if last is not None:
+            wieder = _mit_zone(last) + dt.timedelta(minutes=drossel_minutes)
             log.info("throttled: %s (open again at %s)", drossel_key, wieder.isoformat())
             return {"kanal": "gedrosselt", "unterdrueckt": True, "drossel_key": drossel_key,
                     "wieder_ab": wieder.isoformat()}
 
     if title_key or body_key:
         from .i18n import tr
-        sprache = getattr(user, "locale", None) or "de"
+        language = getattr(user, "locale", None) or "de"
         if title_key:
-            title = await tr(db, title_key, sprache, **(werte or {}))
+            title = await tr(db, title_key, language, **(values or {}))
         if body_key:
-            body = await tr(db, body_key, sprache, **(werte or {}))
+            body = await tr(db, body_key, language, **(values or {}))
 
     gewaehlt = waehle_kanal(user, kanal)
-    ziel = kanal_adresse(user, gewaehlt)
+    target = kanal_adresse(user, gewaehlt)
     n = Notification(user_id=(user.id if user else None), project_id=project_id,
                      issue_id=issue_id, kind=kind, title=title[:500], body=(body or "")[:4000],
                      drossel_key=(drossel_key or None),
-                     chat_id=(ziel or OWNER_CHAT or None) if gewaehlt == "telegram" else None)
+                     chat_id=(target or OWNER_CHAT or None) if gewaehlt == "telegram" else None)
     # A reference makes the message actionable: only with it does the bot know WHICH verdict
     # its "get it back" button undoes. Unknown keys are ignored instead of failing — the
     # sender is a flow, and a typo there must not tear down the notification.
-    for feld, wert in (bezug or {}).items():
-        if feld in BEZUEGE and wert is not None:
-            setattr(n, feld, int(wert))
+    for field, value in (reference or {}).items():
+        if field in REFERENCES and value is not None:
+            setattr(n, field, int(value))
     db.add(n)
 
     if gewaehlt == "ziel":
@@ -139,43 +139,43 @@ async def zustellen(db: AsyncSession, *, user: User | None, kind: str, title: st
         # hängt es am Ziel auf (Pfad, Kopfzeilen, Anmeldung) — genau dafür gibt es Ziele.
         from ..models.destination import Destination
         from . import destinations
-        dest = await db.get(Destination, int(ziel)) if ziel else None
+        dest = await db.get(Destination, int(target)) if target else None
         if dest is None or not dest.enabled:
             log.warning("no (active) destination for user %s, bell only",
                         user.id if user else None)
             return {"kanal": "bell", "grund": "kein Ziel"}
         try:
-            antwort = await destinations.call(
+            answer = await destinations.call(
                 db, dest, method="POST",
                 body={"art": kind, "titel": title, "text": body or title})
             n.notified_at = dt.datetime.now(tz=dt.timezone.utc)
             return {"kanal": "ziel", "ziel": dest.name, "ok": True,
-                    "status": antwort.get("status_code")}
+                    "status": answer.get("status_code")}
         except Exception as e:  # noqa: BLE001 — die Glocke trägt die Nachricht ohnehin
             log.warning("destination %s failed (%s), stays in the bell", dest.name, e)
             return {"kanal": "ziel", "ziel": dest.name, "ok": False}
 
     if gewaehlt == "email":
-        if not ziel:
+        if not target:
             log.warning("no email address for user %s, bell only",
                         user.id if user else None)
             return {"kanal": "bell", "grund": "keine Adresse"}
         from . import mail
-        ok = await mail.send_mail(db, ziel, title[:200] or "Traccoon",
+        ok = await mail.send_mail(db, target, title[:200] or "Traccoon",
                                   html_body=_html(title, body), text_body=body or title)
         if ok:
             n.notified_at = dt.datetime.now(tz=dt.timezone.utc)
         else:
-            log.warning("email to %s failed, stays in the bell", ziel)
-        return {"kanal": "email", "ziel": ziel, "ok": ok}
+            log.warning("email to %s failed, stays in the bell", target)
+        return {"kanal": "email", "ziel": target, "ok": ok}
     return {"kanal": "telegram", "ziel": n.chat_id or ""}
 
 
 def _html(title: str, body: str) -> str:
     """Plain HTML. The text is the message, not the layout."""
     from html import escape
-    zeilen = "<br>".join(escape(z) for z in (body or "").splitlines())
-    return f"<p><b>{escape(title)}</b></p><p>{zeilen}</p>"
+    lines = "<br>".join(escape(z) for z in (body or "").splitlines())
+    return f"<p><b>{escape(title)}</b></p><p>{lines}</p>"
 
 
 async def notify_issue(db: AsyncSession, issue: Issue, kind: str, title: str, body: str = "") -> None:

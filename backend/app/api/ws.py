@@ -66,11 +66,11 @@ class PersonenKanal:
     def jemand_da(self, user_id: int) -> bool:
         return bool(self.offen.get(user_id))
 
-    async def senden(self, user_id: int, nachricht: dict) -> None:
+    async def senden(self, user_id: int, message: dict) -> None:
         tot = []
         for ws in list(self.offen.get(user_id, set())):
             try:
-                await ws.send_json(nachricht)
+                await ws.send_json(message)
             except Exception:  # noqa: BLE001
                 tot.append(ws)
         for ws in tot:

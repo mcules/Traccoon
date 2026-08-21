@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..core.security import encrypt_secret
 from ..db import get_session
 from ..models.mail import MailAccount, MailIdentity
@@ -101,11 +101,11 @@ async def konten(user: User = Depends(get_current_user), db: AsyncSession = Depe
 
 
 @router.post("/accounts", response_model=KontoOut, status_code=201)
-async def konto_anlegen(data: KontoIn, user: User = Depends(get_current_user),
+async def konto_create(data: KontoIn, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    werte = data.model_dump()
-    imap_pw, smtp_pw = werte.pop("imap_password"), werte.pop("smtp_password")
-    a = MailAccount(**werte, owner_user_id=user.id,
+    values = data.model_dump()
+    imap_pw, smtp_pw = values.pop("imap_password"), values.pop("smtp_password")
+    a = MailAccount(**values, owner_user_id=user.id,
                     imap_password_enc=encrypt_secret(imap_pw) if imap_pw else "",
                     smtp_password_enc=encrypt_secret(smtp_pw) if smtp_pw else "")
     db.add(a)
@@ -115,13 +115,13 @@ async def konto_anlegen(data: KontoIn, user: User = Depends(get_current_user),
 
 
 @router.put("/accounts/{kid}", response_model=KontoOut)
-async def konto_aendern(kid: int, data: KontoIn, user: User = Depends(get_current_user),
+async def konto_update(kid: int, data: KontoIn, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
     a = await _konto(db, kid, user)
-    werte = data.model_dump()
-    imap_pw, smtp_pw = werte.pop("imap_password"), werte.pop("smtp_password")
-    for feld, wert in werte.items():
-        setattr(a, feld, wert)
+    values = data.model_dump()
+    imap_pw, smtp_pw = values.pop("imap_password"), values.pop("smtp_password")
+    for field, value in values.items():
+        setattr(a, field, value)
     # Ein leeres Feld heißt „unverändert": die Oberfläche bekommt das Kennwort nie zu sehen
     # und könnte es sonst beim Speichern der Ordnernamen versehentlich löschen.
     if imap_pw:
@@ -137,7 +137,7 @@ async def konto_aendern(kid: int, data: KontoIn, user: User = Depends(get_curren
 
 
 @router.delete("/accounts/{kid}", status_code=204)
-async def konto_loeschen(kid: int, user: User = Depends(get_current_user),
+async def konto_delete(kid: int, user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
     a = await _konto(db, kid, user)
     await db.delete(a)
@@ -168,22 +168,22 @@ async def ungelesen(user: User = Depends(get_current_user),
 
     # Nebeneinander statt nacheinander: bei drei Postfächern ist das der Unterschied
     # zwischen einer und drei Wartezeiten.
-    ergebnis = await asyncio.gather(*(einer(k) for k in rows))
-    return {"accounts": list(ergebnis),
-            "total": sum(e["unseen"] or 0 for e in ergebnis)}
+    result = await asyncio.gather(*(einer(k) for k in rows))
+    return {"accounts": list(result),
+            "total": sum(e["unseen"] or 0 for e in result)}
 
 
 @router.get("/mcp-tools")
-async def werkzeuge(_: User = Depends(get_current_user)):
+async def tools(_: User = Depends(get_current_user)):
     """Der Katalog: was ein Postfach an Agenten freigeben KANN, mit Art der Berechtigung."""
-    from ..services.mail_mcp import WERKZEUGE
+    from ..services.mail_mcp import TOOLS
 
     return [{"name": w["name"], "kind": w["art"], "description": w["beschreibung"],
-             "always": bool(w.get("immer"))} for w in WERKZEUGE]
+             "always": bool(w.get("immer"))} for w in TOOLS]
 
 
 @router.post("/accounts/{kid}/last", status_code=204)
-async def zuletzt_geoeffnet(kid: int, user: User = Depends(get_current_user),
+async def latest_geoeffnet(kid: int, user: User = Depends(get_current_user),
                             db: AsyncSession = Depends(get_session)):
     """Merkt sich, welches Postfach zuletzt offen war — für den nächsten Besuch."""
     await _konto(db, kid, user)
@@ -192,14 +192,14 @@ async def zuletzt_geoeffnet(kid: int, user: User = Depends(get_current_user),
 
 
 @router.post("/accounts/{kid}/test")
-async def konto_pruefen(kid: int, user: User = Depends(get_current_user),
+async def konto_check(kid: int, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    return await mailbox.pruefen(await _konto(db, kid, user))
+    return await mailbox.check(await _konto(db, kid, user))
 
 
 # ── Identitäten ─────────────────────────────────────────────────────────────
 
-class IdentitaetIn(BaseModel):
+class IdentityIn(BaseModel):
     display_name: str = ""
     email: str
     reply_to: str = ""
@@ -207,12 +207,12 @@ class IdentitaetIn(BaseModel):
     is_default: bool = False
 
 
-class IdentitaetOut(IdentitaetIn):
+class IdentityOut(IdentityIn):
     id: int
     account_id: int
 
 
-@router.get("/accounts/{kid}/identities", response_model=list[IdentitaetOut])
+@router.get("/accounts/{kid}/identities", response_model=list[IdentityOut])
 async def identitaeten(kid: int, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     await _konto(db, kid, user)
@@ -221,8 +221,8 @@ async def identitaeten(kid: int, user: User = Depends(get_current_user),
     return rows
 
 
-@router.post("/accounts/{kid}/identities", response_model=IdentitaetOut, status_code=201)
-async def identitaet_anlegen(kid: int, data: IdentitaetIn,
+@router.post("/accounts/{kid}/identities", response_model=IdentityOut, status_code=201)
+async def identity_create(kid: int, data: IdentityIn,
                              user: User = Depends(get_current_user),
                              db: AsyncSession = Depends(get_session)):
     await _konto(db, kid, user)
@@ -234,16 +234,16 @@ async def identitaet_anlegen(kid: int, data: IdentitaetIn,
     return ident
 
 
-@router.put("/identities/{iid}", response_model=IdentitaetOut)
-async def identitaet_aendern(iid: int, data: IdentitaetIn,
+@router.put("/identities/{iid}", response_model=IdentityOut)
+async def identity_update(iid: int, data: IdentityIn,
                              user: User = Depends(get_current_user),
                              db: AsyncSession = Depends(get_session)):
     ident = await db.get(MailIdentity, iid)
     if ident is None:
         raise Fehler(404, "err.identity_not_found", "Identity not found")
     await _konto(db, ident.account_id, user)
-    for feld, wert in data.model_dump().items():
-        setattr(ident, feld, wert)
+    for field, value in data.model_dump().items():
+        setattr(ident, field, value)
     await _nur_eine_vorgabe(db, ident.account_id, ident)
     await db.commit()
     await db.refresh(ident)
@@ -251,7 +251,7 @@ async def identitaet_aendern(iid: int, data: IdentitaetIn,
 
 
 @router.delete("/identities/{iid}", status_code=204)
-async def identitaet_loeschen(iid: int, user: User = Depends(get_current_user),
+async def identity_delete(iid: int, user: User = Depends(get_current_user),
                               db: AsyncSession = Depends(get_session)):
     ident = await db.get(MailIdentity, iid)
     if ident is None:
@@ -275,7 +275,7 @@ async def _nur_eine_vorgabe(db: AsyncSession, kid: int, ident: MailIdentity) -> 
 # ── Postfach ────────────────────────────────────────────────────────────────
 
 @router.get("/accounts/{kid}/folders")
-async def ordner(kid: int, counts: bool = False, user: User = Depends(get_current_user),
+async def folder(kid: int, counts: bool = False, user: User = Depends(get_current_user),
                  db: AsyncSession = Depends(get_session)):
     """Der Ordnerbaum. `counts=true` fragt zusätzlich die Ungelesen-Zahlen ab — das ist ein
     Aufruf je Ordner und deshalb nichts, was bei jedem Klick mitlaufen sollte.
@@ -284,84 +284,84 @@ async def ordner(kid: int, counts: bool = False, user: User = Depends(get_curren
     solange sich am Konto nichts getan hat (`services/mailbox_cache`).
     """
     konto = await _konto(db, kid, user)
-    return await cache.gecacht(konto.id, f"folders:{int(counts)}", cache.TTL_ORDNER,
-                               lambda: mailbox.ordner(konto, counts))
+    return await cache.gecacht(konto.id, f"folders:{int(counts)}", cache.TTL_FOLDER,
+                               lambda: mailbox.folder(konto, counts))
 
 
-class OrdnerIn(BaseModel):
+class FolderIn(BaseModel):
     folder: str
 
 
-def _pruefe_loeschbar(konto, ordner: str) -> None:
+def _check_loeschbar(konto, folder: str) -> None:
     """Ordner, die nicht gelöscht werden dürfen.
 
     Der Posteingang ist nicht löschbar (der Server verweigert es ohnehin), und die vier
     Sonderordner hängen an den Knöpfen der Oberfläche: Wer seinen Papierkorb löscht, hat
     danach ein Löschen, das nicht mehr funktioniert.
     """
-    if ordner.upper() == "INBOX":
+    if folder.upper() == "INBOX":
         raise Fehler(400, "err.inbox_not_deletable", "The inbox cannot be deleted")
     rollen = {konto.folder_sent: "sent", konto.folder_drafts: "drafts",
               konto.folder_trash: "trash", konto.folder_junk: "junk"}
-    if ordner and ordner in rollen:
+    if folder and folder in rollen:
         raise Fehler(400, "err.folder_has_role",
                      "'{folder}' is the {role} folder of this account. Change that first.",
-                     folder=ordner, role=rollen[ordner])
+                     folder=folder, role=rollen[folder])
 
 
 @router.post("/accounts/{kid}/folders/read-all")
-async def alle_gelesen(kid: int, data: OrdnerIn, user: User = Depends(get_current_user),
+async def all_gelesen(kid: int, data: FolderIn, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     """Alles Ungelesene im Ordner auf gelesen setzen. Gibt zurück, wie viele es waren."""
     konto = await _konto(db, kid, user)
-    anzahl = await mailbox.alle_gelesen(konto, data.folder)
+    count = await mailbox.all_gelesen(konto, data.folder)
     await cache.entwerten(konto.id)
-    return {"marked": anzahl}
+    return {"marked": count}
 
 
 @router.post("/accounts/{kid}/folders/delete", status_code=204)
-async def ordner_loeschen(kid: int, data: OrdnerIn, user: User = Depends(get_current_user),
+async def folder_delete(kid: int, data: FolderIn, user: User = Depends(get_current_user),
                           db: AsyncSession = Depends(get_session)):
     """Einen Ordner samt Inhalt löschen. Sonderordner sind geschützt."""
     konto = await _konto(db, kid, user)
-    _pruefe_loeschbar(konto, data.folder)
-    await mailbox.ordner_loeschen(konto, data.folder)
+    _check_loeschbar(konto, data.folder)
+    await mailbox.folder_delete(konto, data.folder)
     await cache.entwerten(konto.id)
 
 
 @router.get("/accounts/{kid}/messages")
-async def nachrichten(kid: int, folder: str = "INBOX", q: str = "", offset: int = 0,
+async def messages(kid: int, folder: str = "INBOX", q: str = "", offset: int = 0,
                       limit: int = 50, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     konto = await _konto(db, kid, user)
-    grenze = max(1, min(limit, 200))
+    capped = max(1, min(limit, 200))
     # Die Suche bleibt ungecacht: Sie ist selten dieselbe zweimal, und ein Treffer, der
     # eigentlich schon verschoben ist, wäre in einer Suche besonders ärgerlich.
     if q:
-        return await mailbox.liste(konto, folder, q, offset, grenze)
-    return await cache.gecacht(konto.id, f"list:{folder}:{offset}:{grenze}", cache.TTL_LISTE,
-                               lambda: mailbox.liste(konto, folder, "", offset, grenze))
+        return await mailbox.listing(konto, folder, q, offset, capped)
+    return await cache.gecacht(konto.id, f"list:{folder}:{offset}:{capped}", cache.TTL_LISTING,
+                               lambda: mailbox.listing(konto, folder, "", offset, capped))
 
 
 @router.get("/accounts/{kid}/messages/{uid}")
-async def nachricht(kid: int, uid: int, folder: str = "INBOX",
+async def message(kid: int, uid: int, folder: str = "INBOX",
                     user: User = Depends(get_current_user),
                     db: AsyncSession = Depends(get_session)):
     try:
-        return await mailbox.nachricht(await _konto(db, kid, user), folder, uid)
+        return await mailbox.message(await _konto(db, kid, user), folder, uid)
     except LookupError:
         raise Fehler(404, "err.mail_not_found", "Message not found")
 
 
 @router.get("/accounts/{kid}/messages/{uid}/attachments/{index}")
-async def anhang(kid: int, uid: int, index: int, folder: str = "INBOX",
+async def attachment(kid: int, uid: int, index: int, folder: str = "INBOX",
                  user: User = Depends(get_current_user),
                  db: AsyncSession = Depends(get_session)):
     try:
-        name, typ, daten = await mailbox.anhang(await _konto(db, kid, user), folder, uid, index)
+        name, kind, daten = await mailbox.attachment(await _konto(db, kid, user), folder, uid, index)
     except LookupError:
         raise Fehler(404, "err.attachment_not_found", "Attachment not found")
-    return Response(content=daten, media_type=typ,
+    return Response(content=daten, media_type=kind,
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
@@ -372,7 +372,7 @@ class FlagIn(BaseModel):
 
 
 @router.post("/accounts/{kid}/messages/{uid}/flag", status_code=204)
-async def flag_setzen(kid: int, uid: int, data: FlagIn,
+async def flag_set(kid: int, uid: int, data: FlagIn,
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     konto = await _konto(db, kid, user)
@@ -386,11 +386,11 @@ class MoveIn(BaseModel):
 
 
 @router.post("/accounts/{kid}/messages/{uid}/move", status_code=204)
-async def verschieben(kid: int, uid: int, data: MoveIn,
+async def move(kid: int, uid: int, data: MoveIn,
                       user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     konto = await _konto(db, kid, user)
-    await mailbox.verschieben(konto, data.folder, uid, data.target)
+    await mailbox.move(konto, data.folder, uid, data.target)
     await cache.entwerten(konto.id)
 
 
@@ -408,21 +408,21 @@ async def archivieren(kid: int, uid: int, data: HandgriffIn,
     if konto.archive_mode != "pattern" and not konto.folder_archive:
         raise Fehler(400, "err.no_archive_folder",
                      "This account has no archive folder configured")
-    ziel = await mailbox.archivieren(konto, data.folder, uid)
+    target = await mailbox.archivieren(konto, data.folder, uid)
     await cache.entwerten(konto.id)
     # Der Zielordner ist eine Auskunft wert: bei einem Muster sieht man erst hier, wo die
     # Mail wirklich gelandet ist.
-    return {"folder": ziel}
+    return {"folder": target}
 
 
-class MusterIn(BaseModel):
+class PatternIn(BaseModel):
     archive_pattern: str
     date: str = ""       # Beispieldatum (RFC-2822 oder ISO); leer = heute
     sender: str = ""
 
 
 @router.post("/accounts/{kid}/archive-preview")
-async def muster_vorschau(kid: int, data: MusterIn, user: User = Depends(get_current_user),
+async def pattern_vorschau(kid: int, data: PatternIn, user: User = Depends(get_current_user),
                           db: AsyncSession = Depends(get_session)):
     """Zeigt, welcher Ordnername aus einem Muster entsteht — beim Tippen, nicht erst beim
     ersten Klick auf „Archivieren"."""
@@ -432,11 +432,11 @@ async def muster_vorschau(kid: int, data: MusterIn, user: User = Depends(get_cur
     probe = MailAccount(archive_mode="pattern", archive_pattern=data.archive_pattern,
                         folder_archive=konto.folder_archive)
     wann = data.date or dt.datetime.now(dt.timezone.utc)
-    return {"folder": mailbox.archiv_ziel(probe, wann, data.sender or "name@example.org")}
+    return {"folder": mailbox.archiv_target(probe, wann, data.sender or "name@example.org")}
 
 
 @router.post("/accounts/{kid}/messages/{uid}/spam", status_code=204)
-async def als_spam(kid: int, uid: int, data: HandgriffIn,
+async def as_spam(kid: int, uid: int, data: HandgriffIn,
                    user: User = Depends(get_current_user),
                    db: AsyncSession = Depends(get_session)):
     """In den Spam-Ordner des Kontos. Das Urteil trifft der Mensch; gelernt wird daraus in
@@ -444,7 +444,7 @@ async def als_spam(kid: int, uid: int, data: HandgriffIn,
     konto = await _konto(db, kid, user)
     if not konto.folder_junk:
         raise Fehler(400, "err.no_junk_folder", "This account has no junk folder configured")
-    await mailbox.verschieben(konto, data.folder, uid, konto.folder_junk)
+    await mailbox.move(konto, data.folder, uid, konto.folder_junk)
     await cache.entwerten(konto.id)
 
 
@@ -470,13 +470,13 @@ async def kein_spam(kid: int, uid: int, data: HandgriffIn,
     # bekommt die Mail dort eine NEUE Nummer, im Urteil steht aber die des Posteingangs.
     # Deshalb wird die Mail gelesen und über Absender und Betreff zugeordnet — das sind die
     # Angaben, die das Verschieben überlebt haben.
-    kopf = await mailbox.nachricht(konto, data.folder, uid)
-    absender = (kopf.get("from") or [{}])[0].get("addr", "") if kopf.get("from") else ""
+    header = await mailbox.message(konto, data.folder, uid)
+    absender = (header.get("from") or [{}])[0].get("addr", "") if header.get("from") else ""
     bedingungen = [SpamVerdict.owner_user_id == user.id, SpamVerdict.account == konto.name]
     if absender:
         bedingungen.append(SpamVerdict.sender_email == absender)
-    if kopf.get("subject"):
-        bedingungen.append(SpamVerdict.subject == kopf["subject"][:500])
+    if header.get("subject"):
+        bedingungen.append(SpamVerdict.subject == header["subject"][:500])
     urteil = (await db.execute(select(SpamVerdict).where(*bedingungen)
                                .order_by(SpamVerdict.id.desc()))).scalars().first()
     if urteil is None:
@@ -486,16 +486,16 @@ async def kein_spam(kid: int, uid: int, data: HandgriffIn,
             SpamVerdict.owner_user_id == user.id, SpamVerdict.account == konto.name,
             SpamVerdict.uid == uid).order_by(SpamVerdict.id.desc()))).scalars().first()
     if urteil is not None and urteil.status in ("spam", "pending"):
-        ergebnis = await spam_review.zurueckholen(db, urteil, decided_by="mailbox")
+        result = await spam_review.zurueckholen(db, urteil, decided_by="mailbox")
         await cache.entwerten(konto.id)
-        return {"moved": True, "learned": True, "result": ergebnis}
-    await mailbox.verschieben(konto, data.folder, uid, "INBOX")
+        return {"moved": True, "learned": True, "result": result}
+    await mailbox.move(konto, data.folder, uid, "INBOX")
     await cache.entwerten(konto.id)
     return {"moved": True, "learned": False}
 
 
 @router.post("/accounts/{kid}/messages/{uid}/delete", status_code=204)
-async def loeschen(kid: int, uid: int, data: HandgriffIn,
+async def delete(kid: int, uid: int, data: HandgriffIn,
                    user: User = Depends(get_current_user),
                    db: AsyncSession = Depends(get_session)):
     """Löschen heißt verschieben — außer man steht schon im Papierkorb, dann heißt es weg.
@@ -505,15 +505,15 @@ async def loeschen(kid: int, uid: int, data: HandgriffIn,
     """
     konto = await _konto(db, kid, user)
     if not konto.folder_trash or data.folder == konto.folder_trash:
-        await mailbox.endgueltig_loeschen(konto, data.folder, uid)
+        await mailbox.endgueltig_delete(konto, data.folder, uid)
     else:
-        await mailbox.verschieben(konto, data.folder, uid, konto.folder_trash)
+        await mailbox.move(konto, data.folder, uid, konto.folder_trash)
     await cache.entwerten(konto.id)
 
 
 # ── Senden und Entwürfe ─────────────────────────────────────────────────────
 
-class AnhangIn(BaseModel):
+class AttachmentIn(BaseModel):
     filename: str
     content_type: str = "application/octet-stream"
     data_base64: str
@@ -527,37 +527,37 @@ class SendenIn(BaseModel):
     subject: str = ""
     text: str = ""
     in_reply_to: str = ""
-    attachments: list[AnhangIn] = []
+    attachments: list[AttachmentIn] = []
 
 
-async def _felder(db: AsyncSession, kid: int, data: SendenIn, user: User):
+async def _fields(db: AsyncSession, kid: int, data: SendenIn, user: User):
     konto = await _konto(db, kid, user)
     ident = await db.get(MailIdentity, data.identity_id)
     if ident is None or ident.account_id != konto.id:
         raise Fehler(400, "err.identity_not_of_account",
                      "The identity does not belong to this account")
-    felder = data.model_dump(exclude={"identity_id", "attachments"})
-    felder["attachments"] = [
+    fields = data.model_dump(exclude={"identity_id", "attachments"})
+    fields["attachments"] = [
         {"filename": a.filename, "content_type": a.content_type,
          "data": base64.b64decode(a.data_base64)} for a in data.attachments]
-    return konto, ident, felder
+    return konto, ident, fields
 
 
 @router.post("/accounts/{kid}/send", status_code=204)
 async def senden(kid: int, data: SendenIn, user: User = Depends(get_current_user),
                  db: AsyncSession = Depends(get_session)):
-    konto, ident, felder = await _felder(db, kid, data, user)
-    if not felder.get("to"):
+    konto, ident, fields = await _fields(db, kid, data, user)
+    if not fields.get("to"):
         raise Fehler(400, "err.no_recipient", "No recipient")
-    await mailbox.senden(konto, ident, felder)
+    await mailbox.senden(konto, ident, fields)
     await cache.entwerten(konto.id)
 
 
 @router.post("/accounts/{kid}/draft", status_code=204)
 async def entwurf(kid: int, data: SendenIn, user: User = Depends(get_current_user),
                   db: AsyncSession = Depends(get_session)):
-    konto, ident, felder = await _felder(db, kid, data, user)
-    await mailbox.entwurf_speichern(konto, ident, felder)
+    konto, ident, fields = await _fields(db, kid, data, user)
+    await mailbox.entwurf_speichern(konto, ident, fields)
     await cache.entwerten(konto.id)
 
 
@@ -579,7 +579,7 @@ def _start_trigger(graph: dict) -> dict:
 
 
 @router.get("/actions")
-async def aktionen(user: User = Depends(get_current_user),
+async def actions(user: User = Depends(get_current_user),
                    db: AsyncSession = Depends(get_session)):
     """Eigene Abläufe, deren Start-Knoten auf Mails wartet (`trigger.kind = "mail_action"`)."""
     from ..models.workflow import WorkflowDefinition, WorkflowVersion
@@ -605,14 +605,14 @@ async def aktionen(user: User = Depends(get_current_user),
     return out
 
 
-class AktionIn(BaseModel):
+class ActionIn(BaseModel):
     definition_id: int
     folder: str = "INBOX"
     attachment: int | None = None
 
 
 @router.post("/accounts/{kid}/messages/{uid}/action")
-async def aktion_starten(kid: int, uid: int, data: AktionIn,
+async def action_start(kid: int, uid: int, data: ActionIn,
                          user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
     """Startet den Ablauf mit allem, was er über die Mail wissen muss."""
@@ -625,22 +625,22 @@ async def aktion_starten(kid: int, uid: int, data: AktionIn,
     if definition is None or definition.current_version_id is None:
         raise Fehler(400, "err.workflow_definition_missing_not",
                      "The workflow definition is missing or not published")
-    kopf = await mailbox.nachricht(konto, data.folder, uid)
-    anhaenge = kopf.get("attachments") or []
+    header = await mailbox.message(konto, data.folder, uid)
+    attachments = header.get("attachments") or []
     gewaehlt = None
     if data.attachment is not None:
-        gewaehlt = next((a for a in anhaenge if a["index"] == data.attachment), None)
+        gewaehlt = next((a for a in attachments if a["index"] == data.attachment), None)
         if gewaehlt is None:
             raise Fehler(404, "err.attachment_not_found", "Attachment not found")
-    kontext = {
+    context = {
         "mail": {
             "account": konto.name, "account_id": konto.id, "folder": data.folder, "uid": uid,
-            "subject": kopf.get("subject", ""),
-            "from": (kopf.get("from") or [{}])[0].get("addr", ""),
-            "date": kopf.get("date", ""),
-            "message_id": kopf.get("message_id", ""),
-            "text": (kopf.get("text") or "")[:20000],
-            "attachments": anhaenge,
+            "subject": header.get("subject", ""),
+            "from": (header.get("from") or [{}])[0].get("addr", ""),
+            "date": header.get("date", ""),
+            "message_id": header.get("message_id", ""),
+            "text": (header.get("text") or "")[:20000],
+            "attachments": attachments,
             # Auch ein Ablauf, der den Assistenten beauftragt, soll die Hausregeln des
             # Postfachs kennen — sonst gälten sie nur über MCP.
             "instructions": konto.mcp_instructions,
@@ -648,7 +648,7 @@ async def aktion_starten(kid: int, uid: int, data: AktionIn,
         "attachment": gewaehlt or {},
     }
     inst = await start_workflow(
-        db, definition, subject_kind=WorkflowSubjectKind.standalone, context=kontext,
+        db, definition, subject_kind=WorkflowSubjectKind.standalone, context=context,
         actor_id=user.id, source=f"mail:{konto.name}",
         source_ref=f"{data.folder}:{uid}" + (f":{data.attachment}" if gewaehlt else ""))
     return {"instance_id": inst.id, "status": inst.status.value}

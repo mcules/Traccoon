@@ -24,16 +24,16 @@ async def test_neuer_lauf_schliesst_die_leiche_desselben_auftrags(db):
     leiche = await _lauf(db, issue, "wf-1-1-exec-abc")
     assert leiche.status == "running"
 
-    neu = await _lauf(db, issue, "wf-1-1-exec-abc")
+    new = await _lauf(db, issue, "wf-1-1-exec-abc")
 
     await db.refresh(leiche)
     assert leiche.status == "failed"
     assert leiche.finished_at is not None
     assert "neu gestartet" in (leiche.error or "")
-    assert neu.status == "running"          # the fresh run stays untouched
+    assert new.status == "running"          # the fresh run stays untouched
 
 
-async def test_fremder_auftrag_bleibt_unberuehrt(db):
+async def test_fremder_task_bleibt_unberuehrt(db):
     _, _, issue, _ = await _projekt_mit_ticket(db)
     anderer = await _lauf(db, issue, "wf-1-1-exec-xyz")
     await _lauf(db, issue, "wf-1-1-exec-abc")
@@ -51,5 +51,5 @@ async def test_delegierter_unterlauf_raeumt_seinen_elternlauf_nicht_ab(db):
 
     await db.refresh(eltern)
     assert eltern.status == "running", "the parent run was cleared away by its own child"
-    laeufe = (await db.execute(select(Run).where(Run.task_id == "wf-1-1-exec-abc"))).scalars().all()
-    assert len(laeufe) == 2
+    runs = (await db.execute(select(Run).where(Run.task_id == "wf-1-1-exec-abc"))).scalars().all()
+    assert len(runs) == 2

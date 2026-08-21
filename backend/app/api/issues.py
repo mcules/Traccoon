@@ -7,7 +7,7 @@ from sqlalchemy import func, select, text, update as sa_update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.enums import ProjectRole, TicketAgentStatus, UserStatus
 from ..models.project import Project, ProjectMember, default_ai_assign

@@ -29,9 +29,9 @@ def calls(monkeypatch):
     return aufzeichnung
 
 
-async def test_prozess_ruft_ziel_auf(db, calls):
+async def test_prozess_ruft_target_auf(db, calls):
     from app.core.security import encrypt_secret
-    nutzer = await make_user(db, "anna")
+    user = await make_user(db, "anna")
     proj = await make_project(db, "TST", "Test")
     db.add(Destination(name="crm", base_url="https://crm.test/api", auth_type="bearer",
                        secret_enc=encrypt_secret("t0k"), project_id=proj.id))
@@ -68,7 +68,7 @@ async def test_prozess_ruft_ziel_auf(db, calls):
 
     inst = await start_workflow(db, d, subject_kind=WorkflowSubjectKind.standalone,
                                 context={"titel": "Neue Störung", "ref": "R-9"},
-                                actor_id=nutzer.id)
+                                actor_id=user.id)
     await drain()
     await db.refresh(inst)
 

@@ -26,7 +26,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.plugins import Plugin, PluginData, PluginFile
 from ..models.user import User
@@ -151,7 +151,7 @@ def _ctype(path: str) -> str:
 
 # Was ein Plugin an fremden Quellen nachladen darf, ist eine kurze Liste — mehr Richtungen
 # aufzumachen hiesse, Loecher auf Vorrat zu bohren.
-CSP_RICHTUNGEN = ("img-src", "style-src", "font-src", "media-src")
+CSP_DIRECTIONS = ("img-src", "style-src", "font-src", "media-src")
 
 
 def _herkunft(request: Request) -> str:
@@ -188,21 +188,21 @@ def _csp(request: Request, plugin: Plugin) -> str:
     etwa), steht im Manifest und nur dort.
     """
     ich = _herkunft(request)
-    zusatz = plugin.csp or {}
-    teile = [
+    extra = plugin.csp or {}
+    parts = [
         "default-src 'none'",
         f"script-src {ich} 'unsafe-inline'",
         f"style-src {ich} 'unsafe-inline'",
         "connect-src 'none'",
         "frame-ancestors *",
     ]
-    for richtung in CSP_RICHTUNGEN:
-        quellen = [q for q in (zusatz.get(richtung) or []) if isinstance(q, str) and " " not in q]
+    for richtung in CSP_DIRECTIONS:
+        quellen = [q for q in (extra.get(richtung) or []) if isinstance(q, str) and " " not in q]
         if richtung == "img-src":
-            teile.append(" ".join([f"img-src {ich}", "data:", *quellen]))
+            parts.append(" ".join([f"img-src {ich}", "data:", *quellen]))
         elif quellen:
-            teile.append(" ".join([f"{richtung} {ich}", *quellen]))
-    return "; ".join(teile)
+            parts.append(" ".join([f"{richtung} {ich}", *quellen]))
+    return "; ".join(parts)
 
 
 @router.get("/{slug}/app/{path:path}")
@@ -267,15 +267,15 @@ async def set_rechte(slug: str, data: RechteIn, _: User = Depends(require_admin)
 
 
 @router.get("/_bridge.js")
-async def bruecke_js():
+async def bridge_js():
     """Das Stueck JavaScript, das ein Plugin als `traccoon` einbindet.
 
     Es kapselt nur das Hin und Her mit dem Wirt. Absichtlich eine ausgelieferte Datei und
     keine Kopie im Zip jedes Plugins: Sonst traegt jedes Plugin seinen eigenen, irgendwann
     veralteten Stand der Bruecke mit sich herum.
     """
-    datei = Path(__file__).resolve().parent.parent / "static" / "plugin_bridge.js"
-    return Response(content=datei.read_bytes(), media_type="application/javascript",
+    file = Path(__file__).resolve().parent.parent / "static" / "plugin_bridge.js"
+    return Response(content=file.read_bytes(), media_type="application/javascript",
                     headers={"Cache-Control": "no-cache"})
 
 
@@ -375,4 +375,4 @@ async def fetch_proxy(slug: str, data: FetchIn, _: User = Depends(get_current_us
             r = await client.request(data.method, data.url, headers=data.headers, content=data.body)
         return {"status": r.status_code, "body": r.text[:5 * 1024 * 1024]}
     except Exception as exc:  # noqa: BLE001
-        raise Fehler(502, "err.fetch_error", "Fetch error: {grund}", grund=exc)
+        raise Fehler(502, "err.fetch_error", "Fetch error: {reason}", reason=exc)

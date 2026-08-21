@@ -15,7 +15,7 @@ from app.worker.providers.anthropic import AnthropicProvider
 from app.worker.providers.base import ProviderError
 
 
-def _antwort(text="fertig", *, stop="end_turn"):
+def _answer(text="fertig", *, stop="end_turn"):
     return {"content": [{"type": "text", "text": text}], "stop_reason": stop,
             "usage": {"input_tokens": 10, "output_tokens": 5}}
 
@@ -46,20 +46,20 @@ async def _chat(monkeypatch, fake, **kw):
 
 
 async def test_effort_geht_mit(monkeypatch):
-    fake = _Fake(_antwort())
+    fake = _Fake(_answer())
     await _chat(monkeypatch, fake, effort="medium")
     assert fake.bodies[0]["output_config"] == {"effort": "medium"}
 
 
-async def test_ohne_effort_kein_feld(monkeypatch):
+async def test_ohne_effort_kein_field(monkeypatch):
     """Empty means the vendor default: send no `output_config` along."""
-    fake = _Fake(_antwort())
+    fake = _Fake(_answer())
     await _chat(monkeypatch, fake)
     assert "output_config" not in fake.bodies[0]
 
 
 async def test_abgeschnitten_wird_ohne_denken_gerettet(monkeypatch):
-    fake = _Fake(_leer_abgeschnitten(), _antwort("<review-ok/>"))
+    fake = _Fake(_leer_abgeschnitten(), _answer("<review-ok/>"))
     resp = await _chat(monkeypatch, fake, effort="medium")
     assert resp.text == "<review-ok/>"
     assert len(fake.bodies) == 2
@@ -71,7 +71,7 @@ async def test_abgeschnitten_wird_ohne_denken_gerettet(monkeypatch):
 
 async def test_hohe_stufe_faellt_beim_rettungsversuch_weg(monkeypatch):
     """`thinking: disabled` is a 400 above `high`: the level has to give way."""
-    fake = _Fake(_leer_abgeschnitten(), _antwort())
+    fake = _Fake(_leer_abgeschnitten(), _answer())
     await _chat(monkeypatch, fake, effort="max")
     assert "output_config" not in fake.bodies[1]
 
@@ -85,12 +85,12 @@ async def test_zweimal_abgeschnitten_meldet_ehrlich(monkeypatch):
     assert len(fake.bodies) == 2      # no endless following up
 
 
-async def test_halbe_tool_argumente_zaehlen_als_abgeschnitten(monkeypatch):
+async def test_halbe_tool_argumente_count_as_abgeschnitten(monkeypatch):
     """The second case: text was already there, but the tool call stayed incomplete."""
     halb = {"content": [{"type": "text", "text": "ich schaue mal"},
                         {"type": "tool_use", "id": "t1", "name": "mcp__fs_read", "input": {}}],
             "stop_reason": "max_tokens", "usage": {}}
-    fake = _Fake(halb, _antwort())
+    fake = _Fake(halb, _answer())
     resp = await _chat(monkeypatch, fake)
     assert resp.text == "fertig"
     assert fake.bodies[1]["thinking"] == {"type": "disabled"}

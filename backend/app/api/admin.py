@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..core.redis import get_flag, set_flag
 from ..db import get_session
 from ..models.project import Project
@@ -195,8 +195,8 @@ async def get_aux_models(_: User = Depends(require_admin), db: AsyncSession = De
     """Which side task runs on which model. Without an entry `auto` applies, and then the
     agent does it itself, on its own (expensive) model."""
     from ..worker.aux import AUX_TASKS, aux_config
-    return [{"task": t, "description": beschreibung, "config": await aux_config(db, t) or None}
-            for t, beschreibung in AUX_TASKS.items()]
+    return [{"task": t, "description": description, "config": await aux_config(db, t) or None}
+            for t, description in AUX_TASKS.items()]
 
 
 @router.put("/admin/aux-models/{task}")
@@ -207,8 +207,8 @@ async def put_aux_model(task: str, data: AuxTaskIn, _: User = Depends(require_ad
     from ..worker.aux import AUX_TASKS, setting_key
     if task not in AUX_TASKS:
         raise Fehler(404, "err.unknown_side_task", "Unknown side task '{name}'", name=task)
-    werte = {k: v for k, v in data.model_dump().items() if v not in (None, "")}
+    values = {k: v for k, v in data.model_dump().items() if v not in (None, "")}
     # No provider means delete the setting, not leave half a fragment standing.
-    await set_setting(db, setting_key(task), _json.dumps(werte) if werte.get("provider") else "")
+    await set_setting(db, setting_key(task), _json.dumps(values) if values.get("provider") else "")
     from ..worker.aux import aux_config
     return {"task": task, "config": await aux_config(db, task) or None}

@@ -34,25 +34,25 @@ def kein_echtes_modell(monkeypatch):
     monkeypatch.setattr(worker, "_build_tokens", fake_tokens)
 
 
-async def _chat(db, anna, frage: str, antwort: str, *, tage_alt: int = 0,
+async def _chat(db, anna, question: str, answer: str, *, days_alt: int = 0,
                 agent: str | None = None) -> AssistantTask:
-    meta = {"chat_text": frage}
+    meta = {"chat_text": question}
     if agent:
         meta["agent"] = agent
-    t = AssistantTask(owner_user_id=anna.id, kind="chat", title=frage[:200], status="done",
-                      result=antwort, meta=meta)
+    t = AssistantTask(owner_user_id=anna.id, kind="chat", title=question[:200], status="done",
+                      result=answer, meta=meta)
     db.add(t)
     await db.commit()
     await db.refresh(t)
-    if tage_alt:
-        t.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=tage_alt)
+    if days_alt:
+        t.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=days_alt)
         await db.commit()
     return t
 
 
 def _mock_aux(monkeypatch, text):
     async def fake_aux(*a, **kw):
-        fake_aux.gesehen = kw.get("messages", [{}])[0].get("content", "")
+        fake_aux.seen = kw.get("messages", [{}])[0].get("content", "")
         return text
     monkeypatch.setattr("app.worker.aux.aux_chat", fake_aux)
     return fake_aux
@@ -63,10 +63,10 @@ async def test_kurzes_gespraech_bleibt_woertlich(db, anna, monkeypatch):
     aux = _mock_aux(monkeypatch, "sollte nicht gerufen werden")
     for i in range(3):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
-    neu = await _chat(db, anna, "Und jetzt?", "")
-    verlauf = await worker._chat_history(db, neu)
+    new = await _chat(db, anna, "Und jetzt?", "")
+    verlauf = await worker._chat_history(db, new)
     assert [w["body"] for w in verlauf if w["role"] == "user"] == ["Frage 0", "Frage 1", "Frage 2"]
-    assert not hasattr(aux, "gesehen")
+    assert not hasattr(aux, "seen")
     assert (await db.execute(select(ChatSummary))).scalars().first() is None
 
 
@@ -74,8 +74,8 @@ async def test_aelteres_wandert_in_die_zusammenfassung(db, anna, monkeypatch):
     _mock_aux(monkeypatch, "- Mensch mag knappe Antworten\n- Umzug des News-Jobs offen")
     for i in range(16):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
-    neu = await _chat(db, anna, "Und jetzt?", "")
-    verlauf = await worker._chat_history(db, neu)
+    new = await _chat(db, anna, "Und jetzt?", "")
+    verlauf = await worker._chat_history(db, new)
 
     assert verlauf[0]["label"] == "Woran du dich erinnerst"
     assert "News-Jobs offen" in verlauf[0]["body"]
@@ -100,7 +100,7 @@ async def test_zusammenfassung_wird_fortgeschrieben_nicht_ersetzt(db, anna, monk
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
     await worker._chat_history(db, await _chat(db, anna, "y", ""))
 
-    assert "Bisheriges Gedächtnis" in aux2.gesehen and "Runde eins" in aux2.gesehen
+    assert "Bisheriges Gedächtnis" in aux2.seen and "Runde eins" in aux2.seen
     assert (await db.execute(select(ChatSummary))).scalars().one().text == "- Runde eins\n- Runde zwei"
 
 
@@ -114,7 +114,7 @@ async def test_nur_neues_wird_gefasst(db, anna, monkeypatch):
 
     aux2 = _mock_aux(monkeypatch, "- nichts Neues")
     await worker._chat_history(db, await _chat(db, anna, "y", ""))
-    assert not hasattr(aux2, "gesehen")     # nothing shifted, so no call
+    assert not hasattr(aux2, "seen")     # nothing shifted, so no call
 
 
 async def test_ohne_aux_bleibt_das_alte_gedaechtnis(db, anna, monkeypatch):
@@ -137,14 +137,14 @@ async def test_fachagent_hat_ein_eigenes_gespraech(db, anna, monkeypatch):
     _mock_aux(monkeypatch, "- egal")
     await _chat(db, anna, "Assistenten-Sache", "ok")
     await _chat(db, anna, "UniWar-Sache", "ok", agent="uniwar-operator")
-    neu = await _chat(db, anna, "Weiter", "", agent="uniwar-operator")
-    verlauf = await worker._chat_history(db, neu)
+    new = await _chat(db, anna, "Weiter", "", agent="uniwar-operator")
+    verlauf = await worker._chat_history(db, new)
     assert [w["body"] for w in verlauf if w["role"] == "user"] == ["UniWar-Sache"]
 
 
-async def test_sehr_alte_gespraeche_zaehlen_nicht_mehr(db, anna, monkeypatch):
+async def test_sehr_alte_gespraeche_count_nicht_mehr(db, anna, monkeypatch):
     _mock_aux(monkeypatch, "- egal")
-    await _chat(db, anna, "Uralt", "ok", tage_alt=30)
+    await _chat(db, anna, "Uralt", "ok", days_alt=30)
     await _chat(db, anna, "Neulich", "ok")
     verlauf = await worker._chat_history(db, await _chat(db, anna, "Weiter", ""))
     assert [w["body"] for w in verlauf if w["role"] == "user"] == ["Neulich"]

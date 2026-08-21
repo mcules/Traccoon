@@ -17,7 +17,7 @@ from .api import (
     runs, secrets, skills, testenv, users, workflows, ws,
 )
 from .config import settings
-from .core.fehler import Fehler, fehler_handler
+from .core.error import Fehler, error_handler
 from .db import Base, SessionLocal, engine
 from .seed import seed
 from .services.dispatcher import recover_on_start, run_dispatcher
@@ -31,7 +31,7 @@ VERSION = "0.1.0"
 log = logging.getLogger("traccoon.start")
 
 
-async def _fehlt_noch(conn, ddl: str) -> bool:
+async def _missing_noch(conn, ddl: str) -> bool:
     """Does this `ADD COLUMN IF NOT EXISTS` need to run at all?
 
     `IF NOT EXISTS` prevents the error, not the lock: for every ALTER, Postgres first takes
@@ -413,6 +413,15 @@ async def lifespan(app: FastAPI):
                 # Plugins: was sie an Traccoon-Daten lesen wollen, was davon freigegeben ist
                 # und welche fremden Quellen ihre Seite laden darf. Ohne diese drei Spalten
                 # bleibt die Bruecke zum Wirt geschlossen, denn sie fragt genau danach.
+                # Ein umbenanntes Modell-Attribut ist eine umbenannte Spalte. Die Tests
+                # laufen gegen SQLite und legen die Tabelle jedesmal frisch aus dem Modell
+                # an — sie koennen diesen Bruch gar nicht sehen. Postgres schon.
+                "DO $$ BEGIN "
+                "IF EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='spam_verdicts' AND column_name='art') "
+                "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name='spam_verdicts' AND column_name='kind') THEN "
+                "ALTER TABLE spam_verdicts RENAME COLUMN art TO kind; END IF; END $$;",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads_granted JSON "
@@ -440,7 +449,7 @@ async def lifespan(app: FastAPI):
                 "CREATE INDEX IF NOT EXISTS ix_series_token_hash "
                 "ON series (token_hash)",
             ):
-                if not await _fehlt_noch(conn, _ddl):
+                if not await _missing_noch(conn, _ddl):
                     continue
                 try:
                     async with conn.begin_nested():
@@ -455,25 +464,25 @@ async def lifespan(app: FastAPI):
         await ensure_builtin_set(db)
         # Webhooks der alten Modi (Ticket, Meldung, Assistent) laufen ab jetzt über Abläufe.
         # Einmalig und idempotent — wer schon umgestellt ist, wird nicht angefasst.
-        from .services.webhook_modes import umstellen as webhooks_umstellen
-        anzahl = await webhooks_umstellen(db)
-        if anzahl:
-            log.info("%s Webhook(s) auf Abläufe umgestellt", anzahl)
+        from .services.webhook_modes import convert as webhooks_convert
+        count = await webhooks_convert(db)
+        if count:
+            log.info("%s Webhook(s) auf Abläufe umgestellt", count)
         # Dasselbe für die Job-Arten: Prompt, Skript und HTTP sind Knoten im Ablauf.
-        from .services.job_modes import umstellen as jobs_umstellen
-        anzahl = await jobs_umstellen(db)
-        if anzahl:
-            log.info("%s Job(s) auf Abläufe umgestellt", anzahl)
+        from .services.job_modes import convert as jobs_convert
+        count = await jobs_convert(db)
+        if count:
+            log.info("%s Job(s) auf Abläufe umgestellt", count)
         # Lift the automatically created procurement chains of the projects to the same shape.
         from .services.hardware_workflow import refresh_generated_definitions
         await refresh_generated_definitions(db)
         # Abläufe sprechen englisch: Aktionsnamen, Parameter und Kontextfelder. Erst NACH den
         # Erzeugern, sonst schriebe der nächste Seed-Lauf seine frische Fassung ohne Marke
         # daneben und die Umstellung liefe bei jedem Start wieder an.
-        from .services.workflow_terms import migriere_alle as begriffe_umstellen
-        anzahl = await begriffe_umstellen(db)
-        if anzahl:
-            log.info("%s Ablauf-Fassung(en) auf englische Begriffe umgeschrieben", anzahl)
+        from .services.workflow_terms import migrate_all as begriffe_convert
+        count = await begriffe_convert(db)
+        if count:
+            log.info("%s Ablauf-Fassung(en) auf englische Begriffe umgeschrieben", count)
         # Artifact register (ticket, hardware): maintainable in the admin area, missing
         # states are added, existing labels stay.
         from .services.artifacts import backfill_hardware_artifacts, ensure_builtin_types
@@ -515,10 +524,10 @@ async def lifespan(app: FastAPI):
     # Postfächer, die sich von selbst melden (IMAP IDLE). Läuft nur, solange jemand
     # zuschaut — siehe `mail_watch`.
     from .services import mail_watch
-    await mail_watch.starten()
+    await mail_watch.start()
 
     yield
-    await mail_watch.stoppen()
+    await mail_watch.stop()
     for t in tasks:
         t.cancel()
 
@@ -535,7 +544,7 @@ app.add_middleware(
 
 api = FastAPI(title="Traccoon API", version=VERSION)
 # Error texts carry their key along, so a browser can show them in its own language.
-api.add_exception_handler(Fehler, fehler_handler)
+api.add_exception_handler(Fehler, error_handler)
 api.include_router(auth.router)
 api.include_router(me.router)
 api.include_router(users.router)

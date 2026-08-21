@@ -6,14 +6,14 @@ import datetime as dt
 
 import pytest
 from app.services.job_params import STD_TZ as TZ, offene_platzhalter, rendere
-from app.services.job_templates import JOB_TEMPLATES, anwenden, liste
+from app.services.job_templates import JOB_TEMPLATES, anwenden, listing
 
 
 def test_parameter_werden_eingesetzt():
     assert rendere("Thema: {{thema}}", {"thema": "Funk"}) == "Thema: Funk"
 
 
-def test_liste_wird_zur_aufzaehlung():
+def test_listing_wird_zur_aufzaehlung():
     assert rendere("{{quellen}}", {"quellen": ["a", "b"]}) == "a, b"
 
 
@@ -31,45 +31,45 @@ def test_script_argumente_bleiben_unangetastet():
 
 
 def test_zeitfenster_kommt_aus_dem_letzten_lauf():
-    jetzt = dt.datetime(2026, 7, 29, 8, 0, tzinfo=dt.timezone.utc)
-    letzter = dt.datetime(2026, 7, 28, 8, 0, tzinfo=dt.timezone.utc)
-    text = rendere("{{window}} · {{today}} · {{since}}", {}, jetzt=jetzt, letzter_lauf=letzter)
+    now = dt.datetime(2026, 7, 29, 8, 0, tzinfo=dt.timezone.utc)
+    last = dt.datetime(2026, 7, 28, 8, 0, tzinfo=dt.timezone.utc)
+    text = rendere("{{window}} · {{today}} · {{since}}", {}, now=now, last_lauf=last)
     assert "2026-07-28 10:00 bis 2026-07-29 10:00" in text   # Europe/Berlin (UTC+2)
     assert "2026-07-29" in text and TZ.key == "Europe/Berlin"
 
 
-def test_ohne_letzten_lauf_24_stunden_zurueck():
+def test_ohne_letzten_lauf_24_hours_zurueck():
     """First run or the job was off: a digest still needs a lower bound."""
-    jetzt = dt.datetime(2026, 7, 29, 6, 0, tzinfo=dt.timezone.utc)
-    assert "2026-07-28 08:00 bis 2026-07-29 08:00" in rendere("{{window}}", {}, jetzt=jetzt)
+    now = dt.datetime(2026, 7, 29, 6, 0, tzinfo=dt.timezone.utc)
+    assert "2026-07-28 08:00 bis 2026-07-29 08:00" in rendere("{{window}}", {}, now=now)
 
 
 def test_eigener_parameter_schlaegt_eingebauten():
     assert rendere("{{today}}", {"today": "Sankt Nimmerlein"}) == "Sankt Nimmerlein"
 
 
-def test_vorlage_liefert_felder_und_parameter():
-    felder = anwenden("recherche-digest", {"titel": "Security-News"})
-    assert felder["kind"] == "prompt" and felder["result_html"] is True
-    assert felder["args"]["titel"] == "Security-News"
+def test_template_liefert_fields_und_parameter():
+    fields = anwenden("recherche-digest", {"titel": "Security-News"})
+    assert fields["kind"] == "prompt" and fields["result_html"] is True
+    assert fields["args"]["titel"] == "Security-News"
     # Defaults that are not overridden are kept.
-    assert felder["args"]["sprache"] == "Deutsch" and felder["args"]["quellen"]
+    assert fields["args"]["sprache"] == "Deutsch" and fields["args"]["quellen"]
 
 
-def test_vorlage_rendert_ohne_offene_platzhalter():
+def test_template_rendert_ohne_offene_platzhalter():
     """A template that leaves gaps out of the box would be a trap."""
-    felder = anwenden("recherche-digest")
-    assert offene_platzhalter(felder["prompt"], felder["args"]) == []
-    text = rendere(felder["prompt"], felder["args"])
+    fields = anwenden("recherche-digest")
+    assert offene_platzhalter(fields["prompt"], fields["args"]) == []
+    text = rendere(fields["prompt"], fields["args"])
     assert "{{" not in text and "Hacker News" in text
 
 
-def test_unbekannte_vorlage():
+def test_unbekannte_template():
     with pytest.raises(KeyError):
         anwenden("gibtsnicht")
 
 
-def test_liste_zeigt_parameter():
-    eintraege = {v["key"]: v for v in liste()}
-    assert set(eintraege) == set(JOB_TEMPLATES)
-    assert "quellen" in eintraege["recherche-digest"]["params"]
+def test_listing_zeigt_parameter():
+    entries = {v["key"]: v for v in listing()}
+    assert set(entries) == set(JOB_TEMPLATES)
+    assert "quellen" in entries["recherche-digest"]["params"]

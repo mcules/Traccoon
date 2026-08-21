@@ -31,7 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import spam_learn
 from .appsettings import get_setting, set_setting
-from .mcp_client import McpError, call_tool, ergebnis_json
+from .mcp_client import McpError, call_tool, result_json
 from .spam_rules import evaluate, features, ist_meine
 from .spam_review import meine_adressen
 
@@ -40,24 +40,24 @@ log = logging.getLogger("traccoon.spam")
 IMAP_MCP_URL = os.getenv("IMAP_MCP_URL", "http://imap-mcp:3010/mcp")
 
 # Mark per account and folder: up to which UID learning has already happened.
-STAND_KEY = "spam_lernstand"
+STATE_KEY = "spam_lernstand"
 # How many messages one pass looks at per folder at most (imap-mcp caps at 500).
 STAPEL = 500
 
 
-def _stand_key(account: str, folder: str) -> str:
-    return f"{STAND_KEY}:{account}:{folder}"
+def _state_key(account: str, folder: str) -> str:
+    return f"{STATE_KEY}:{account}:{folder}"
 
 
-def _payload(treffer: dict) -> dict:
+def _payload(hits: dict) -> dict:
     """A search hit reduced to the little that is enough for stable features."""
     return {
-        "from": treffer.get("from") or [],
-        "to": treffer.get("to") or [],
-        "cc": treffer.get("cc") or [],
-        "subject": treffer.get("subject") or "",
-        "message_id": treffer.get("message_id") or "",
-        "date": treffer.get("date") or "",
+        "from": hits.get("from") or [],
+        "to": hits.get("to") or [],
+        "cc": hits.get("cc") or [],
+        "subject": hits.get("subject") or "",
+        "message_id": hits.get("message_id") or "",
+        "date": hits.get("date") or "",
         "headers": {},
         "links": [],
         "attachments": [],
@@ -73,25 +73,25 @@ def _payload(treffer: dict) -> dict:
 # words thereby fell from 0.55 to 0.14 and was no longer asked about. The same applies to `to:`: everything goes to a catch-all alias anyway, so the
 # feature separates nothing. From a REAL decision both may still be learned, because there
 # both stand in a ratio that means something.
-_NACHLAUF_ARTEN = ("from:", "dom:")
+_NACHLAUF_KINDS = ("from:", "dom:")
 
 
-def stabile_merkmale(treffer: dict, meine: frozenset[str]) -> list[str]:
+def stabile_merkmale(hits: dict, meine: frozenset[str]) -> list[str]:
     """Features that carry even without complete headers AND without class balance.
 
     That is the sender identity and nothing else: who writes (address, domain) is meaningful
     independently of how many mails the follow-up is reading right now.
     """
-    payload = _payload(treffer)
+    payload = _payload(hits)
     res = evaluate(payload, meine_adressen=meine, body="")
     return [m for m in features(res, payload["subject"])
-            if m.startswith(_NACHLAUF_ARTEN)]
+            if m.startswith(_NACHLAUF_KINDS)]
 
 
-async def _suchen(account: str, folder: str, limit: int) -> list[dict]:
-    antwort = await call_tool(IMAP_MCP_URL, "search_emails", {
+async def _search(account: str, folder: str, limit: int) -> list[dict]:
+    answer = await call_tool(IMAP_MCP_URL, "search_emails", {
         "account": account, "folder": folder, "limit": limit})
-    daten = ergebnis_json(antwort) or {}
+    daten = result_json(answer) or {}
     return list(daten.get("results") or [])
 
 
@@ -103,54 +103,54 @@ async def nachlernen(db: AsyncSession, owner_id: int | None, account: str, folde
     most recent `limit` messages count; for the purpose (who writes to me, what lies in the
     rubbish) the more recent stock is enough, and the mailboxes stay untouched.
     """
-    key = _stand_key(account, folder)
+    key = _state_key(account, folder)
     try:
-        stand = int(await get_setting(db, key, "0") or 0)
+        state = int(await get_setting(db, key, "0") or 0)
     except ValueError:
-        stand = 0
+        state = 0
 
     try:
-        treffer = await _suchen(account, folder, limit)
+        hits = await _search(account, folder, limit)
     except McpError as exc:
         log.warning("Learning %s/%s failed: %s", account, folder, exc)
         return 0, 0
 
-    neu = [t for t in treffer if int(t.get("uid") or 0) > stand]
-    if not neu:
-        return len(treffer), 0
+    new = [t for t in hits if int(t.get("uid") or 0) > state]
+    if not new:
+        return len(hits), 0
 
     meine = await meine_adressen(db)
     gelernt = 0
-    for t in neu:
+    for t in new:
         merkmale = stabile_merkmale(t, meine)
         if merkmale:
-            await spam_learn.merkmale_zaehlen(db, owner_id, merkmale, ist_spam)
+            await spam_learn.merkmale_count(db, owner_id, merkmale, ist_spam)
             gelernt += 1
-    hoechste = max(int(t.get("uid") or 0) for t in neu)
+    hoechste = max(int(t.get("uid") or 0) for t in new)
     await db.commit()
     await set_setting(db, key, str(hoechste))
     log.info("Learned: %s/%s -> %d messages as %s (now at %d)",
              account, folder, gelernt, "Spam" if ist_spam else "erwünscht", hoechste)
-    return len(treffer), gelernt
+    return len(hits), gelernt
 
 
 async def konten(db: AsyncSession) -> list[dict]:
     """Accounts of imap-mcp with their folder roles (inbox, spam)."""
     try:
-        antwort = await call_tool(IMAP_MCP_URL, "list_accounts", {})
+        answer = await call_tool(IMAP_MCP_URL, "list_accounts", {})
     except McpError as exc:
         log.warning("Account list not fetchable: %s", exc)
         return []
-    return list((ergebnis_json(antwort) or {}).get("accounts") or [])
+    return list((result_json(answer) or {}).get("accounts") or [])
 
 
-async def ordner(db: AsyncSession, account: str) -> list[str]:
+async def folder(db: AsyncSession, account: str) -> list[str]:
     try:
-        antwort = await call_tool(IMAP_MCP_URL, "list_folders", {"account": account})
+        answer = await call_tool(IMAP_MCP_URL, "list_folders", {"account": account})
     except McpError as exc:
         log.warning("Folder list %s not fetchable: %s", account, exc)
         return []
-    daten = ergebnis_json(antwort) or {}
+    daten = result_json(answer) or {}
     return [f["name"] for f in (daten.get("folders") or []) if not f.get("ignored")]
 
 
@@ -158,7 +158,7 @@ _SENT_NAMEN = ("sent", "gesendet", "sent items", "gesendete elemente", "sent mes
                "gesendete objekte")
 
 
-def sent_ordner(namen: list[str]) -> str | None:
+def sent_folder(namen: list[str]) -> str | None:
     """Find the sent folder in a folder list (the name differs per server)."""
     for name in namen:
         letztes = name.split("/")[-1].strip().lower()
@@ -167,19 +167,19 @@ def sent_ordner(namen: list[str]) -> str | None:
     return None
 
 
-def empfaenger(treffer: dict, meine: frozenset[str]) -> list[tuple[str, str]]:
+def recipient(hits: dict, meine: frozenset[str]) -> list[tuple[str, str]]:
     """(Address, display name) of all recipients of a sent mail, without one's own addresses."""
     out: list[tuple[str, str]] = []
-    for feld in ("to", "cc"):
-        for eintrag in treffer.get(feld) or []:
-            adresse = str((eintrag or {}).get("addr") or "").strip().lower()
+    for field in ("to", "cc"):
+        for entry in hits.get(field) or []:
+            adresse = str((entry or {}).get("addr") or "").strip().lower()
             if not adresse or "@" not in adresse or ist_meine(adresse, meine):
                 continue
-            out.append((adresse, str((eintrag or {}).get("name") or "").strip()))
+            out.append((adresse, str((entry or {}).get("name") or "").strip()))
     return out
 
 
-async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
+async def answer_kontakte(db: AsyncSession, owner_id: int | None,
                            limit: int = STAPEL) -> int:
     """Whoever I have written to is wanted. Returns the number of new addresses.
 
@@ -192,28 +192,28 @@ async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
     from sqlalchemy import select as _select
 
     meine = await meine_adressen(db)
-    neu = 0
+    new = 0
     for konto in await konten(db):
         alias = konto["alias"]
-        ordnername = sent_ordner(await ordner(db, alias))
+        ordnername = sent_folder(await folder(db, alias))
         if not ordnername:
             log.info("Account %s: no sent folder found", alias)
             continue
-        key = _stand_key(alias, ordnername)
+        key = _state_key(alias, ordnername)
         try:
-            stand = int(await get_setting(db, key, "0") or 0)
+            state = int(await get_setting(db, key, "0") or 0)
         except ValueError:
-            stand = 0
+            state = 0
         try:
-            treffer = await _suchen(alias, ordnername, limit)
+            hits = await _search(alias, ordnername, limit)
         except McpError as exc:
             log.warning("The sent folder reconciliation %s failed: %s", alias, exc)
             continue
-        frisch = [t for t in treffer if int(t.get("uid") or 0) > stand]
+        frisch = [t for t in hits if int(t.get("uid") or 0) > state]
         if not frisch:
             continue
         for t in frisch:
-            for adresse, name in empfaenger(t, meine):
+            for adresse, name in recipient(t, meine):
                 vorhanden = (await db.execute(_select(AssistantContact).where(
                     AssistantContact.owner_user_id == owner_id,
                     AssistantContact.email == adresse))).scalar_one_or_none()
@@ -223,12 +223,12 @@ async def antwort_kontakte(db: AsyncSession, owner_id: int | None,
                     owner_user_id=owner_id, email=adresse,
                     domain=adresse.split("@", 1)[1], name=name[:300],
                     source_path=f"{alias}/{ordnername}"[:500], source_kind="sent"))
-                neu += 1
+                new += 1
         await db.commit()
         await set_setting(db, key, str(max(int(t.get("uid") or 0) for t in frisch)))
-    if neu:
-        log.info("Sent folder reconciliation: %d new wanted addresses", neu)
-    return neu
+    if new:
+        log.info("Sent folder reconciliation: %d new wanted addresses", new)
+    return new
 
 
 # Folders that are no learning material for "wanted": one's own (I am the sender there),
@@ -237,10 +237,10 @@ _KEIN_HAM = ("sent", "gesendet", "drafts", "entwürfe", "entwuerfe", "notes", "n
              "templates", "vorlagen", "outbox", "postausgang")
 # How far back archives still say something about today's post. Older years carry addresses
 # that have long been dead; they would inflate the memory without ever turning up again.
-JAHRE_ZURUECK = 3
+YEARS_ZURUECK = 3
 
 
-def ist_ham_ordner(name: str, *, spam_folder: str | None, jetzt_jahr: int) -> bool:
+def ist_ham_folder(name: str, *, spam_folder: str | None, now_jahr: int) -> bool:
     """Does this folder work as evidence for something wanted?"""
     if spam_folder and name == spam_folder:
         return False
@@ -248,7 +248,7 @@ def ist_ham_ordner(name: str, *, spam_folder: str | None, jetzt_jahr: int) -> bo
     if erstes in _KEIN_HAM:
         return False
     jahr = "".join(ch for ch in name.split("/")[-1] if ch.isdigit())
-    if len(jahr) == 4 and int(jahr) < jetzt_jahr - JAHRE_ZURUECK:
+    if len(jahr) == 4 and int(jahr) < now_jahr - YEARS_ZURUECK:
         return False
     return True
 
@@ -274,7 +274,7 @@ async def kaltstart(db: AsyncSession, owner_id: int | None, *,
     """
     import datetime as dt
 
-    jetzt_jahr = dt.datetime.now(tz=dt.timezone.utc).year
+    now_jahr = dt.datetime.now(tz=dt.timezone.utc).year
     bilanz = {"spam": 0, "ham": 0}
     for konto in await konten(db):
         alias = konto["alias"]
@@ -282,11 +282,11 @@ async def kaltstart(db: AsyncSession, owner_id: int | None, *,
             _, n = await nachlernen(db, owner_id, alias, konto["spam_folder"],
                                     ist_spam=True, limit=limit)
             bilanz["spam"] += n
-        ham_ordner = [konto.get("inbox_folder") or "INBOX"]
-        ham_ordner += [f for f in await ordner(db, alias)
-                       if ist_ham_ordner(f, spam_folder=konto.get("spam_folder"),
-                                         jetzt_jahr=jetzt_jahr)]
-        for f in dict.fromkeys(ham_ordner):
+        ham_folder = [konto.get("inbox_folder") or "INBOX"]
+        ham_folder += [f for f in await folder(db, alias)
+                       if ist_ham_folder(f, spam_folder=konto.get("spam_folder"),
+                                         now_jahr=now_jahr)]
+        for f in dict.fromkeys(ham_folder):
             _, n = await nachlernen(db, owner_id, alias, f, ist_spam=False, limit=limit)
             bilanz["ham"] += n
     log.info("Cold start: %d messages learned as spam, %d as wanted",

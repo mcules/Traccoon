@@ -394,17 +394,17 @@ export const pluginApi = {
 
 /** Filter of the read API. `other` = everything that neither runs nor is ok/failed (above all `cancelled`). */
 export type GraphSave = {
-  ergebnis: "layout" | "entwurf" | "neuer_entwurf";
+  result: "layout" | "entwurf" | "neuer_entwurf";
   hinweis: string;
   version: WfVer;
 };
 
-export type WfDiffFeld = { feld: string; vorher: string; nachher: string };
-export type WfDiffKnoten = { id: string; label: string; felder: WfDiffFeld[] };
+export type WfDiffFeld = { field: string; before: string; after: string };
+export type WfDiffKnoten = { id: string; label: string; fields: WfDiffFeld[] };
 export type WfDiff = {
-  von: number | null; bis: number; gleich: boolean;
-  knoten_neu: WfDiffKnoten[]; knoten_weg: WfDiffKnoten[]; knoten_geaendert: WfDiffKnoten[];
-  kanten_neu: string[]; kanten_weg: string[];
+  from_version: number | null; to_version: number; identical: boolean;
+  nodes_added: WfDiffKnoten[]; nodes_removed: WfDiffKnoten[]; nodes_changed: WfDiffKnoten[];
+  edges_added: string[]; edges_removed: string[];
 };
 
 export type DeploymentStatusFilter = "all" | "running" | "ok" | "failed" | "other";

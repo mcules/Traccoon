@@ -19,16 +19,16 @@ async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x", run
     if runden:
         issue.review_rounds = runden
         await db.commit()
-    laeufe = []
+    runs = []
 
     async def fake_run_agent(**kw):
         rolle = kw["agent"].role
-        laeufe.append(rolle)
+        runs.append(rolle)
         if rolle != "code_reviewer":
             return RunResult("done", "korrigiert")
         # First reviewer run: the case it is all about. From the second on it passes cleanly,
         # because otherwise the counter-check turns two full rounds and no longer checks what it should.
-        return rev if laeufe.count("code_reviewer") == 1 else RunResult("done", "<review-ok/>")
+        return rev if runs.count("code_reviewer") == 1 else RunResult("done", "<review-ok/>")
 
     runden = {"n": 0}
 
@@ -56,18 +56,18 @@ async def _gate(db, monkeypatch, rev: RunResult, *, diff="--- a\n+++ b\n+x", run
     monkeypatch.setattr(worker, "run_agent", fake_run_agent)
     monkeypatch.setattr(worker.gitops, "diff_text", fake_diff)
     monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
-    ergebnis = await worker._review_gate(
+    result = await worker._review_gate(
         db, proj, issue, await fake_load_agent(db, "developer"), "/ws", False, {}, [],
         RunResult("done", "fertig"), _Ctx(), owner_id=None, task_id="t-1", base_urls={})
-    return ergebnis, laeufe, issue
+    return result, runs, issue
 
 
-async def test_abgebrochener_pruefer_erzeugt_keinen_auftrag(db, monkeypatch):
-    ergebnis, laeufe, issue = await _gate(
+async def test_abgebrochener_pruefer_erzeugt_keinen_task(db, monkeypatch):
+    result, runs, issue = await _gate(
         db, monkeypatch, RunResult("failed", "claude: Antwort bei max_tokens abgeschnitten"))
 
-    assert laeufe == ["code_reviewer"], "the developer was set on a phantom finding"
-    assert ergebnis.status == "done"
+    assert runs == ["code_reviewer"], "the developer was set on a phantom finding"
+    assert result.status == "done"
     from app.models.ticket import Comment
     from sqlalchemy import select
     texte = [c.body for c in (await db.execute(select(Comment).where(
@@ -78,18 +78,18 @@ async def test_abgebrochener_pruefer_erzeugt_keinen_auftrag(db, monkeypatch):
 async def test_echte_befunde_loesen_weiter_eine_korrektur_aus(db, monkeypatch):
     """The counter-check: a reviewer that runs through CLEANLY and finds something sends the
     developer off as before."""
-    ergebnis, laeufe, _ = await _gate(
+    result, runs, _ = await _gate(
         db, monkeypatch, RunResult("done", "1. foo.ts:12 — Nullprüfung fehlt"))
     # Finding, correction, renewed check that passes this time. Exactly this chain must NOT
     # be triggered by the aborted reviewer.
-    assert laeufe == ["code_reviewer", "developer", "code_reviewer"]
-    assert ergebnis.status == "done"
+    assert runs == ["code_reviewer", "developer", "code_reviewer"]
+    assert result.status == "done"
 
 
 async def test_bestandener_review_laesst_alles_stehen(db, monkeypatch):
-    ergebnis, laeufe, _ = await _gate(db, monkeypatch, RunResult("done", "<review-ok/>"))
-    assert laeufe == ["code_reviewer"]
-    assert ergebnis.text == "fertig"
+    result, runs, _ = await _gate(db, monkeypatch, RunResult("done", "<review-ok/>"))
+    assert runs == ["code_reviewer"]
+    assert result.text == "fertig"
 
 
 async def test_verbrauchte_runden_ueberleben_den_neustart(db, monkeypatch):
@@ -99,19 +99,19 @@ async def test_verbrauchte_runden_ueberleben_den_neustart(db, monkeypatch):
     the gate began at round 1 again: check, correct, restart, check, correct. The limit that
     is supposed to fetch the human was never reached.
     """
-    ergebnis, laeufe, _ = await _gate(
+    result, runs, _ = await _gate(
         db, monkeypatch, RunResult("done", "1. Befund"), runden=worker.REVIEW_RUNDEN)
 
-    assert laeufe == [], "used up rounds must not start another run"
-    assert ergebnis.blocker_kind == "review"
+    assert runs == [], "used up rounds must not start another run"
+    assert result.blocker_kind == "review"
 
 
 async def test_begonnene_runde_wird_sofort_verbucht(db, monkeypatch):
     """Booking happens at the start of the correction, not at its end; otherwise exactly the
     round the restart hits does not count."""
-    _, laeufe, issue = await _gate(db, monkeypatch, RunResult("done", "1. Befund"))
+    _, runs, issue = await _gate(db, monkeypatch, RunResult("done", "1. Befund"))
 
-    assert "developer" in laeufe
+    assert "developer" in runs
     assert issue.review_rounds >= 1
 
 
@@ -125,10 +125,10 @@ async def test_offene_befunde_landen_am_ticket(db, monkeypatch):
 
     from app.models.ticket import Comment
 
-    ergebnis, _, issue = await _gate(db, monkeypatch, RunResult("done", "1. Der Timeout ist zu kurz."),
+    result, _, issue = await _gate(db, monkeypatch, RunResult("done", "1. Der Timeout ist zu kurz."),
                                      runden=worker.REVIEW_RUNDEN - 1)
 
-    assert ergebnis.blocker_kind == "review"
+    assert result.blocker_kind == "review"
     texte = [c.body for c in (await db.execute(
         select(Comment).where(Comment.issue_id == issue.id))).scalars().all()]
     assert any("Der Timeout ist zu kurz." in t for t in texte), "the findings are missing on the ticket"
@@ -143,10 +143,10 @@ async def test_stillstand_beendet_das_gate_statt_der_rundenzahl(db, monkeypatch)
     from app.worker.runtime import RunResult
 
     _, proj, issue, _ = await _projekt_mit_ticket(db)
-    laeufe = []
+    runs = []
 
     async def fake_run_agent(**kw):
-        laeufe.append(kw["agent"].role)
+        runs.append(kw["agent"].role)
         # The reviewer always finds something, the developer never changes anything: standstill.
         return (RunResult("done", "1. Immer derselbe Befund") if kw["agent"].role == "code_reviewer"
                 else RunResult("done", "nichts geändert"))
@@ -169,18 +169,18 @@ async def test_stillstand_beendet_das_gate_statt_der_rundenzahl(db, monkeypatch)
     monkeypatch.setattr(worker.gitops, "diff_text", fake_diff)
     monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
 
-    ergebnis = await worker._review_gate(
+    result = await worker._review_gate(
         db, proj, issue, await fake_load_agent(db, "developer"), "/ws", False, {}, [],
         RunResult("done", "fertig"), _Ctx(), owner_id=None, task_id="t-1", base_urls={})
 
-    assert ergebnis.blocker_kind == "review"
-    assert "Stillstand" in (ergebnis.text or "")
+    assert result.blocker_kind == "review"
+    assert "Stillstand" in (result.text or "")
     # Check, correct, the diff is unchanged, stop. NOT only after REVIEW_RUNDEN, and no
     # second check on the same state.
-    assert laeufe.count("code_reviewer") == 1 < worker.REVIEW_RUNDEN
+    assert runs.count("code_reviewer") == 1 < worker.REVIEW_RUNDEN
 
 
-async def test_fortschritt_darf_weiterlaufen(db, monkeypatch):
+async def test_fortschritt_may_weiterlaufen(db, monkeypatch):
     """Counter-check: as long as the diff changes, the gate runs on, until it passes."""
     from app.worker.runtime import RunResult
 
@@ -212,11 +212,11 @@ async def test_fortschritt_darf_weiterlaufen(db, monkeypatch):
     monkeypatch.setattr(worker.gitops, "diff_text", fake_diff)
     monkeypatch.setattr(worker, "_load_agent", fake_load_agent)
 
-    ergebnis = await worker._review_gate(
+    result = await worker._review_gate(
         db, proj, issue, await fake_load_agent(db, "developer"), "/ws", False, {}, [],
         RunResult("done", "fertig"), _Ctx(), owner_id=None, task_id="t-1", base_urls={})
 
-    assert ergebnis.blocker_kind is None, "a passed review must not block"
+    assert result.blocker_kind is None, "a passed review must not block"
     assert runde["n"] == 4
 
 
@@ -238,10 +238,10 @@ async def test_pannenmeldungen_erreichen_den_prompt_nicht(db):
 
     from sqlalchemy import select
     rows = (await db.execute(select(Comment).where(Comment.issue_id == issue.id))).scalars().all()
-    arten = {c.kind: c.body for c in rows}
+    kinds = {c.kind: c.body for c in rows}
 
-    assert "agent_fail" in arten and "Worker-Neustart" in arten["agent_fail"]
-    assert "agent" in arten and "Erkenntnisse" in arten["agent"]
+    assert "agent_fail" in kinds and "Worker-Neustart" in kinds["agent_fail"]
+    assert "agent" in kinds and "Erkenntnisse" in kinds["agent"]
     # The prompt history filters exactly on `kind == "agent"` (see worker/__main__.py).
     verlauf = [c.body for c in rows if c.kind == "agent"]
     assert not any("Worker-Neustart" in b for b in verlauf)

@@ -52,26 +52,26 @@ async def _lauf(db, cfg: dict) -> WorkflowInstance:
     return await db.get(WorkflowInstance, inst.id)
 
 
-async def _schritte(db, inst) -> dict:
+async def _steps(db, inst) -> dict:
     rows = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.instance_id == inst.id))).scalars().all()
     return {r.node_id: r for r in rows}
 
 
-async def test_aktiver_schritt_wirkt_wie_bisher(db):
+async def test_aktiver_step_wirkt_wie_bisher(db):
     inst = await _lauf(db, {})
     assert inst.status.value == "completed"
     assert inst.context["a"] == "1" and inst.context["b"] == "2"
 
 
-async def test_uebersprungen_laesst_den_rest_laufen(db):
+async def test_uebersprungen_laesst_den_remainder_laufen(db):
     inst = await _lauf(db, {"deaktiviert": True, "deaktiviert_modus": "ueberspringen"})
     assert inst.status.value == "completed"
     assert "a" not in inst.context, "the disabled action must not have done anything"
     assert inst.context["b"] == "2", "it has to continue after that"
-    schritte = await _schritte(db, inst)
-    assert schritte["tut_was"].status.value == "skipped"
-    assert schritte["tut_was"].result["deaktiviert"] is True
+    steps = await _steps(db, inst)
+    assert steps["tut_was"].status.value == "skipped"
+    assert steps["tut_was"].result["deaktiviert"] is True
 
 
 async def test_abbrechen_beendet_den_lauf(db):
@@ -79,8 +79,8 @@ async def test_abbrechen_beendet_den_lauf(db):
     assert inst.status.value == "cancelled"
     assert "abgeschaltet" in (inst.error or "")
     assert "a" not in inst.context and "b" not in inst.context
-    schritte = await _schritte(db, inst)
-    assert "danach" not in schritte, "nothing may run after the abort"
+    steps = await _steps(db, inst)
+    assert "danach" not in steps, "nothing may run after the abort"
 
 
 async def test_ohne_modus_wird_uebersprungen(db):
@@ -89,7 +89,7 @@ async def test_ohne_modus_wird_uebersprungen(db):
     assert inst.status.value == "completed" and inst.context["b"] == "2"
 
 
-async def test_pruefung_bleibt_zufrieden(db):
+async def test_check_bleibt_zufrieden(db):
     """A disabled step is not an error in the graph."""
     assert validate_graph(WorkflowSubjectKind.standalone,
                           _graph({"deaktiviert": True})) == []

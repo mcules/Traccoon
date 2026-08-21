@@ -29,7 +29,7 @@ PULS_TAKT = 15
 PULS_TTL = 90
 # Results stay for a day. Formerly one hour, which was too short: a result fetched only after
 # a backend outage was gone with it and the work lost.
-ERGEBNIS_TTL = 86400
+RESULT_TTL = 86400
 # This long a run may stay without ANY sign of life before it counts as disappeared.
 GNADENFRIST = 300
 # Beat of the liveness check (the result poll runs faster but costs only one query). As a
@@ -88,8 +88,8 @@ async def lauf_lebt(task_id: str) -> bool:
     r = get_redis()
     if await r.get(puls_key(task_id)) is not None:
         return True
-    for liste in (QUEUE, PROCESSING):
-        for raw in await r.lrange(liste, 0, -1):
+    for listing in (QUEUE, PROCESSING):
+        for raw in await r.lrange(listing, 0, -1):
             if task_id in raw:
                 return True
     for raw in (await r.hvals(ACTIVE)) or []:
@@ -118,8 +118,8 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
     uhr = asyncio.get_running_loop().time
     start = uhr()
     tot_seit: float | None = None
-    naechste_pruefung = 0.0
-    letzte_meldung = start
+    naechste_check = 0.0
+    last_notice = start
     while True:
         try:
             raw = await r.get(key)
@@ -132,24 +132,24 @@ async def wait_result(task_id: str, timeout: float | None = None, poll: float = 
             # forever. Try again on the next round.
             log.warning("Fetching the result for %s failed, trying again", task_id,
                         exc_info=True)
-        jetzt = uhr()
-        if timeout and jetzt - start >= timeout:
+        now = uhr()
+        if timeout and now - start >= timeout:
             return None
         # Check the sign of life only every few seconds: the result poll runs fast, while the
         # check costs several Redis queries.
-        if jetzt >= naechste_pruefung:
-            naechste_pruefung = jetzt + PRUEF_TAKT
+        if now >= naechste_check:
+            naechste_check = now + PRUEF_TAKT
             if await lauf_lebt(task_id):
                 tot_seit = None
             elif tot_seit is None:
-                tot_seit = jetzt
-            elif jetzt - tot_seit >= gnadenfrist:
+                tot_seit = now
+            elif now - tot_seit >= gnadenfrist:
                 log.warning("Run %s without a sign of life for %.0fs, counts as disappeared",
-                            task_id, jetzt - tot_seit)
+                            task_id, now - tot_seit)
                 return None
-        if jetzt - letzte_meldung >= 1800:
-            letzte_meldung = jetzt
-            log.info("still waiting for %s (%.0f min, the run is alive)", task_id, (jetzt - start) / 60)
+        if now - last_notice >= 1800:
+            last_notice = now
+            log.info("still waiting for %s (%.0f min, the run is alive)", task_id, (now - start) / 60)
         await asyncio.sleep(poll)
 
 

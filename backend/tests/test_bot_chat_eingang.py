@@ -21,7 +21,7 @@ async def anna(db):
     return u
 
 
-async def test_chat_auftrag_wird_angelegt_und_eingereiht(db, anna, monkeypatch):
+async def test_chat_task_wird_angelegt_und_eingereiht(db, anna, monkeypatch):
     eingereiht = []
 
     async def fake_enqueue(payload):
@@ -51,7 +51,7 @@ async def _nichts():
     return None
 
 
-async def test_langer_text_kuerzt_nur_den_titel(db, anna, monkeypatch):
+async def test_langer_text_kuerzt_nur_den_title(db, anna, monkeypatch):
     """The title is limited to 200 characters; the assignment itself must not be cut, because
     otherwise the assistant works on a truncated question."""
     import app.core.redis as redis_mod
@@ -65,38 +65,38 @@ async def test_langer_text_kuerzt_nur_den_titel(db, anna, monkeypatch):
     assert len(rows) == 1
 
 
-async def test_antwort_traegt_den_bezug_mit(db, anna, monkeypatch):
+async def test_answer_traegt_den_reference_mit(db, anna, monkeypatch):
     """An answer means EXACTLY the quoted message; otherwise "do that" lacks its object."""
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
 
     t = await create_chat_task(db, anna.id, "ja, mach das", "277",
-                               bezug="Rücksendung erfasst\nSoll ich die Erstattung überwachen?")
+                               reference="Rücksendung erfasst\nSoll ich die Erstattung überwachen?")
     assert t.meta["bezug_text"].startswith("Rücksendung erfasst")
     assert "bezug_task_id" not in t.meta      # no matching notification, so no process
 
 
-async def test_antwort_findet_den_ursprungsvorgang(db, anna, monkeypatch):
+async def test_answer_findet_den_ursprungsvorgang(db, anna, monkeypatch):
     """Quoted assistant messages come from notifications, and over them the way leads back to
     the inbox item that should be worked on further."""
     from app.models.notification import Notification
     import app.core.redis as redis_mod
     monkeypatch.setattr(redis_mod, "enqueue_task", lambda payload: _nichts())
 
-    eingang = AssistantTask(owner_user_id=anna.id, kind="email", source="mail",
+    intake = AssistantTask(owner_user_id=anna.id, kind="email", source="mail",
                             title="Rücksendung Bias Tee", status="done",
                             result="Bestellung auf retourniert gesetzt.")
-    db.add(eingang)
+    db.add(intake)
     await db.commit()
-    await db.refresh(eingang)
+    await db.refresh(intake)
     db.add(Notification(user_id=anna.id, kind="assistant", title="Rücksendung Bias Tee",
                         body="Bestellung auf retourniert gesetzt.", chat_id="277",
-                        assistant_task_id=eingang.id))
+                        assistant_task_id=intake.id))
     await db.commit()
 
     t = await create_chat_task(db, anna.id, "und die Erstattung?", "277",
-                               bezug="Rücksendung Bias Tee\nBestellung auf retourniert gesetzt.")
-    assert t.meta["bezug_task_id"] == eingang.id
+                               reference="Rücksendung Bias Tee\nBestellung auf retourniert gesetzt.")
+    assert t.meta["bezug_task_id"] == intake.id
 
 
 async def test_fremder_chat_wird_nicht_verknuepft(db, anna, monkeypatch):
@@ -114,5 +114,5 @@ async def test_fremder_chat_wird_nicht_verknuepft(db, anna, monkeypatch):
                         body="…", chat_id="999", assistant_task_id=fremd.id))
     await db.commit()
 
-    t = await create_chat_task(db, anna.id, "hm?", "277", bezug="Fremde Sache\n…")
+    t = await create_chat_task(db, anna.id, "hm?", "277", reference="Fremde Sache\n…")
     assert "bezug_task_id" not in t.meta
