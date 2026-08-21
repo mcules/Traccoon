@@ -39,71 +39,70 @@ DEFAULT_MODEL = os.getenv("DEFAULT_CLAUDE_MODEL", "claude-sonnet-4-5")
 MAX_TOOLS = 220          # prompt cap, the picker in the editor stays complete
 COLUMN, LINE = 260, 130     # same grid the shipped graphs use
 
-KONTRAKT = """\
-Du zeichnest Abläufe für Traccoon als gerichteten Graphen. Antworte AUSSCHLIESSLICH mit
-einem JSON-Objekt, ohne Fließtext und ohne Code-Zäune:
+CONTRACT = """\
+You draw flows for Traccoon as a directed graph. Answer ONLY with a JSON object, without prose
+and without code fences:
 
-{"erklaerung": "1-3 Sätze, was der Ablauf tut", "nodes": [...], "edges": [...]}
+{"explanation": "1-3 sentences on what the flow does", "nodes": [...], "edges": [...]}
 
-Ein Knoten: {"id": "kurz_und_eindeutig", "type": "<typ>", "data": {"config": {...}}}
-Eine Kante: {"id": "e1", "source": "<knoten>", "target": "<knoten>", "sourceHandle": "<ausgang oder weg>", "label": "optional"}
-Positionen lässt du weg — die werden gesetzt.
+A node: {"id": "short_and_unique", "type": "<type>", "data": {"config": {...}}}
+An edge: {"id": "e1", "source": "<node>", "target": "<node>", "sourceHandle": "<outlet or none>", "label": "optional"}
+Leave the positions out — they are set for you.
 
-REGELN (daran wird geprüft, ein Verstoß macht den Ablauf unbrauchbar):
-- Genau EIN start-Knoten, mindestens ein end-Knoten, jedes Ende vom Start erreichbar.
-- Jeder Knoten außer start hat eine eingehende, jeder außer end eine ausgehende Kante.
-- Knoten mit festen Ausgängen brauchen für JEDEN eine Kante:
-    decision  → je Zweig ein `handle`, dazu der Standard-Zweig (`default_handle`,
-                der einer der Zweige sein MUSS)
-    approval  → "approved" und "rejected"
-    loop      → "element" (Schleifenkörper) und "fertig"; der Körper führt per Kante
-                OHNE sourceHandle zur Schleife zurück
-    subflow   → "completed" und "failed"
-    auto_action → normal ohne sourceHandle; zusätzlich optional "error"
-- Knotentypen und ihre Konfiguration:
-    start       {"label", "trigger": {"kind": "webhook"|"ereignis", "event": "...",
-                 "sample": {...Beispiel-Nutzlast...}}}  — ohne trigger: manueller Start/Job
+RULES (they are checked; breaking one makes the flow unusable):
+- Exactly ONE start node, at least one end node, every end reachable from the start.
+- Every node except start has an incoming edge, every one except end an outgoing one.
+- Nodes with fixed outlets need an edge for EVERY one of them:
+    decision  → one `handle` per branch, plus the default branch (`default_handle`,
+                which MUST be one of the branches)
+    approval  → "approved" and "rejected"
+    loop      → "element" (the loop body) and "fertig"; the body leads back to the loop
+                with an edge WITHOUT a sourceHandle
+    subflow   → "completed" and "failed"
+    auto_action → the normal one without a sourceHandle; additionally an optional "error"
+- Node types and their configuration:
+    start       {"label", "trigger": {"kind": "webhook"|"event", "event": "...",
+                 "sample": {...example payload...}}}  — without a trigger: a manual start or a job
     end         {"label", "outcome": "completed"|"failed"}
     auto_action {"label", "action": {"action": "<name>", "params": {...}},
-                 "wiederholungen": 3, "warte_sek": 60}
+                 "retries": 3, "retry_wait_sec": 60}
     decision    {"label", "branches": [{"handle": "x", "label": "…", "guard": <JSONLogic>}],
                  "default_handle": "x"}
     approval    {"label", "gate": "none"|"ai_assign"|"role"}
     human_task  {"label", "instructions", "form": [{"key","label","type"}]}
-    loop        {"label", "liste": "<kontextpfad>", "element": "element", "index": "i"}
-    timer       {"label", "dauer": 30, "einheit": "m"|"h"|"t"}   oder {"bis": "<ISO>"}
+    loop        {"label", "list": "<context path>", "element": "element", "index": "i"}
+    timer       {"label", "duration": 30, "unit": "m"|"h"|"d"}   or {"until": "<ISO>"}
     wait_event  {"label", "events": ["comment", "manual"]}
-    subflow     {"label", "slot": "<slot>"}  oder {"label", "definition_id": <id>}
-    agent_task  nur wenn der Ablauf an einem Ticket hängt (subject_kind=issue)
-- Aktionen (`action.action`) und ihre wichtigsten Parameter:
-    notify        {"to": {...}, "title", "text"} — Empfänger: {"mode":"user","user_id":N},
-                  {"mode":"role","role":"owner"}, {"mode":"reporter"} oder
-                  {"mode":"context","path":"<kontextpfad zur User-ID>"}. Ohne `to` geht die
-                  Nachricht an den Betreiber — für einen eigenen Ablauf oft richtig.
-    comment       {"text"}                        (nur bei Ticket-Abläufen)
-    set_context   {"<schlüssel>": "<wert>"}       schreibt in den Kontext
-    tool_call     {"tool": "<mcp-werkzeug>", "arguments": {...}, "context_key": "tool",
+    subflow     {"label", "slot": "<slot>"}  or {"label", "definition_id": <id>}
+    agent_task  only when the flow hangs on a ticket (subject_kind=issue)
+- Actions (`action.action`) and their most important parameters:
+    notify        {"to": {...}, "title", "text"} — recipient: {"mode":"user","user_id":N},
+                  {"mode":"role","role":"owner"}, {"mode":"reporter"} or
+                  {"mode":"context","path":"<context path to the user id>"}. Without `to` the
+                  message goes to the owner — often the right thing for a flow of your own.
+    comment       {"text"}                        (only in ticket flows)
+    set_context   {"<key>": "<value>"}            writes into the context
+    tool_call     {"tool": "<mcp tool>", "arguments": {...}, "context_key": "tool",
                    "fail_on_error": true}         → tool.ok / tool.text / tool.json
-    http_request  {"destination": "<ziel>", "method", "path", "body", "query", "headers",
+    http_request  {"destination": "<destination>", "method", "path", "body", "query", "headers",
                    "fail_on_error": true}         → http.status_code / http.ok / http.json
     create_ticket {"project_id", "title", "description", "type", "priority"}
-    set_field     {"<feld>": "<wert>"}            Felder des Artefakts
-    set_status    {"status": "<agent-status>", "hold_reason": "…"}
-    set_board_status {"status": "<spalte>"}
-- Texte in Parametern dürfen Kontextwerte einsetzen: "{{ pfad }}", mit Filtern
-  "{{ pfad | truncate:80 }}", "{{ liste | count }}". Es gibt NUR die unten aufgezählten
-  Filter — erfinde keine. Ohne Kontext gibt es zusätzlich "{{ now }}" (Zeitpunkt) und
-  "{{ heute }}" (Datum).
-- Ein Ablauf, der zu einer Uhrzeit laufen soll, hat KEINEN Auslöser im Graphen: er
-  bekommt keinen `trigger`, und gestartet wird er später über einen Job (Zeitplan).
-  Erfinde dafür kein Ereignis.
-- Bedingungen (`guard`) sind JSONLogic, z. B. {"==": [{"var": "schwere"}, "hoch"]},
-  {">": [{"var": "http.status_code"}, 399]}, {"and": [ … ]}. Der Standard-Zweig braucht
-  keinen guard.
-- Nimm nur Werkzeuge aus der mitgelieferten Liste. Ist keins passend, lass `tool` leer
-  und benenne im Label, was dort hingehört.
-- Halte den Ablauf so klein wie möglich: lieber fünf Knoten, die stimmen, als zwölf,
-  die etwas vortäuschen. Deutsche Labels.
+    set_field     {"<field>": "<value>"}          fields of the artifact
+    set_status    {"status": "<agent status>", "hold_reason": "…"}
+    set_board_status {"status": "<column>"}
+- Texts in parameters may insert context values: "{{ path }}", with filters
+  "{{ path | truncate:80 }}", "{{ list | count }}". ONLY the filters listed below exist —
+  invent none. Without a context there are additionally "{{ now }}" (a point in time) and
+  "{{ today }}" (a date).
+- A flow that is meant to run at a certain time has NO trigger in the graph: it gets no
+  `trigger`, and it is started later through a job (a schedule). Do not invent an event for
+  that.
+- Conditions (`guard`) are JSONLogic, {"==": [{"var": "severity"}, "high"]} for instance,
+  {">": [{"var": "http.status_code"}, 399]}, {"and": [ … ]}. The default branch needs no guard.
+- Take tools from the supplied list only. If none fits, leave `tool` empty and name in the
+  label what belongs there.
+- Keep the flow as small as possible: five nodes that are right beat twelve that pretend
+  something. Write the labels in English.
 """
 
 
@@ -227,15 +226,15 @@ async def _toollist(db: AsyncSession, owner_id: int | None) -> str:
     if not lines:
         return ""
     remainder = max(0, len(all_rows) - MAX_TOOLS)
-    header = f"Verfügbare Werkzeuge ({len(all_rows)}"
-    header += f", davon {remainder} hier nicht aufgeführt" if remainder else ""
+    header = f"Available tools ({len(all_rows)}"
+    header += f", {remainder} of them not listed here" if remainder else ""
     return header + "):\n" + "\n".join(lines)
 
 
 async def compose(db: AsyncSession, *, owner_id: int, description: str,
                     subject_kind: WorkflowSubjectKind, existing: dict | None = None,
                     token_name: str = "") -> dict:
-    """Returns {"graph": {...}, "fehler": [...], "erklaerung": "..."}.
+    """Returns {"graph": {...}, "errors": [...], "explanation": "..."}.
 
     `vorhanden` is the graph currently on the canvas. Then this is not a new drawing but a
     rebuild ("put an approval in front of the deployment"). The difference lives in the
@@ -247,25 +246,25 @@ async def compose(db: AsyncSession, *, owner_id: int, description: str,
 
     from .workflow_expr import catalog as filter_catalog
 
-    filter_text = "Filter für {{ … | filter:arg }}:\n" + "\n".join(
+    filter_text = "Filters for {{ … | filter:arg }}:\n" + "\n".join(
         f"- {f['name']}: {f['hilfe']}" for f in filter_catalog())
-    parts = [KONTRAKT, "\n" + filter_text,
+    parts = [CONTRACT, "\n" + filter_text,
              f"\nGegenstand des Ablaufs: subject_kind={subject_kind.value}."]
     if subject_kind != WorkflowSubjectKind.issue:
-        parts.append("Kein Ticket im Rücken: agent_task, comment und die Ticket-Status-"
-                     "Aktionen stehen NICHT zur Verfügung.")
+        parts.append("No ticket behind it: agent_task, comment and the ticket status actions "
+                     "are NOT available.")
     tools_text = await _toollist(db, owner_id)
     if tools_text:
         parts.append("\n" + tools_text)
     system = "\n".join(parts)
 
     if existing and (existing.get("nodes") or []):
-        task = ("Hier ist der bestehende Ablauf:\n"
+        task = ("Here is the existing flow:\n"
                    f"{json.dumps(_clean(existing), ensure_ascii=False)}\n\n"
-                   f"Baue ihn nach diesem Wunsch um: {description}\n"
-                   "Behalte, was nicht betroffen ist — inklusive der Knoten-IDs.")
+                   f"Rebuild it along this wish: {description}\n"
+                   "Keep what is not affected — the node ids included.")
     else:
-        task = f"Zeichne einen Ablauf für: {description}"
+        task = f"Draw a flow for: {description}"
 
     history = [{"role": "user", "content": task}]
     graph: dict = {"nodes": [], "edges": []}
@@ -281,7 +280,7 @@ async def compose(db: AsyncSession, *, owner_id: int, description: str,
         if not raw.get("nodes"):
             error = ["Das Modell hat keinen Graphen geliefert."]
             break
-        explanation = str(raw.get("erklaerung") or "")[:500]
+        explanation = str(raw.get("explanation") or raw.get("erklaerung") or "")[:500]
         graph = arrange(_clean(raw))
         error = validate_graph(subject_kind, graph)
         if not error or round_no == 1:
@@ -291,8 +290,8 @@ async def compose(db: AsyncSession, *, owner_id: int, description: str,
         history += [
             {"role": "assistant", "content": resp.text or ""},
             {"role": "user", "content":
-             "Die Prüfung meldet:\n" + "\n".join(f"- {f}" for f in error)
-             + "\nGib den vollständigen, korrigierten Graphen erneut als JSON aus."},
+             "The check reports:\n" + "\n".join(f"- {f}" for f in error)
+             + "\nOutput the complete, corrected graph as JSON again."},
         ]
 
-    return {"graph": graph, "fehler": error, "erklaerung": explanation}
+    return {"graph": graph, "errors": error, "explanation": explanation}
