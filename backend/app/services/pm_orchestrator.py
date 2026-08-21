@@ -30,24 +30,27 @@ COMPACT_CHARS = 24000
 KEEP_RECENT = 6
 
 PM_SYSTEM = (
-    "Du bist der Project Manager (PM) von Traccoon. Du bist der einzige KI-Ansprechpartner des Nutzers. "
-    "Verstehe die Anfrage, plane, und DELEGIERE die Arbeit, indem du Tickets anlegst und Agenten zuweist. "
-    "Du planst und programmierst NIE selbst.\n\n"
-    "Verfügbare Agenten-Rollen: architect (plant), developer (setzt um), code_reviewer, tester, devops.\n\n"
-    "STANDARD-KETTE für jede Arbeit: der Architekt erstellt den Plan, der Developer setzt ihn als Code um. "
-    "Das ist automatisch — jedes zugewiesene Ticket wird zuerst vom Architekten geplant (Freigabe durch den "
-    "Menschen), danach führt der zugewiesene Agent (i. d. R. developer) aus. Du musst die Planung also nicht "
-    "extra vergeben: weise Code-Tickets direkt dem `developer` zu; der Architekt-Plan läuft davor von allein. "
-    "Nur reine Analyse-/Design-Tickets ohne Umsetzung weist du dem `architect` zu.\n\n"
-    "Um Tickets anzulegen/zuzuweisen, gib EINEN JSON-Block aus:\n"
-    "<tickets>\n[{\"op\":\"create\",\"summary\":\"...\",\"description\":\"...\",\"assign\":\"developer\"},\n"
-    " {\"op\":\"assign\",\"key\":\"ABC-1\",\"agent\":\"architect\"}]\n</tickets>\n\n"
-    "`op:create` legt ein Ticket an (optional `assign` = Agenten-Rolle, die es sofort übernimmt). "
-    "`op:assign` weist einem bestehenden Ticket (per key) einen Agenten zu. "
-    "Antworte dem Nutzer zusätzlich in normaler Sprache. Wenn alles delegiert/erledigt ist, schreibe <done/>.\n"
-    "Du kannst Tickets NICHT selbst freigeben oder abnehmen — das macht der Mensch.\n"
-    "Du hast mehrere Runden Zeit: lege erst die Tickets an, prüfe im nächsten Zug das Board und ergänze, "
-    "was fehlt. Schreibe <done/> erst, wenn nichts mehr offen ist."
+    "You are the project manager (PM) of Traccoon. You are the only AI counterpart of the "
+    "person. Understand the request, plan, and DELEGATE the work by creating tickets and "
+    "assigning agents. You never plan or program yourself.\n\n"
+    "Available agent roles: architect (plans), developer (implements), code_reviewer, tester, "
+    "devops.\n"
+    "THE STANDARD CHAIN for every piece of work: the architect writes the plan, the developer "
+    "turns it into code. That happens automatically — every assigned ticket is planned by the "
+    "architect first (approved by a person), after which the assigned agent (usually the "
+    "developer) carries it out. So you do not have to hand the planning out separately: assign "
+    "code tickets to the `developer` directly; the architect plan runs before it by itself. "
+    "Only pure analysis or design tickets without an implementation go to the `architect`.\n\n"
+    "Answer with operations in a fenced block:\n"
+    "```ops\n[{\"op\": \"create\", \"project\": \"KEY\", \"summary\": \"…\", "
+    "\"description\": \"…\", \"assign\": \"developer\"}]\n```\n"
+    "`op:create` creates a ticket (optionally `assign` = the agent role that takes it over right "
+    "away). `op:assign` assigns an agent to an existing ticket.\n"
+    "Answer the person in ordinary language as well. When everything is delegated or done, write "
+    "<done/>.\n"
+    "You can NOT approve or accept tickets yourself — a person does that.\n"
+    "You have several rounds: create the tickets first, look at the board in the next move and "
+    "add what is missing.
 )
 
 
@@ -114,7 +117,7 @@ def _compact(convo: list[dict]) -> list[dict]:
         return convo
     old, recent = convo[:-KEEP_RECENT], convo[-KEEP_RECENT:]
     summary = " | ".join(f"{m['role']}: {m['content'][:200]}" for m in old)[:4000]
-    return [{"role": "user", "content": f"[Gekürzter Verlauf der bisherigen Unterhaltung]\n{summary}"}, *recent]
+    return [{"role": "user", "content": f"[Shortened history of the conversation so far]\n{summary}"}, *recent]
 
 
 async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str) -> None:
@@ -201,6 +204,6 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
             if rnd == 0:
                 convo.append({"role": "user", "content":
                               "Wenn daraus Arbeit folgt, lege jetzt die Tickets im <tickets>-Block an "
-                              "und weise Agenten zu. Wenn nichts zu tun ist, antworte mit <done/>."})
+                              "and assign agents. When there is nothing to do, answer with <done/>."})
                 continue
             break

@@ -311,8 +311,8 @@ async def handle(job: dict, redis: Redis) -> None:
             if not changes:
                 db.add(Comment(
                     issue_id=issue.id, author_id=None, author_label="System", kind="internal",
-                    body="⚠️ Keine Code-Änderungen vorgenommen. Der Agent hat nichts umgesetzt "
-                         "(Anforderung evtl. bereits erfüllt oder nicht erkannt) — bitte prüfen."))
+                    body="⚠️ No code changes made. The agent implemented nothing "
+                         "(the requirement may already be met, or was not recognised) — please check."))
             from ..models.ticket import TicketFileChange
             for o in (await db.execute(select(TicketFileChange).where(
                     TicketFileChange.issue_id == issue.id))).scalars().all():
@@ -375,9 +375,9 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
             log.warning("review %s: round %d changed nothing, standstill",
                         issue.key, attempt)
             db.add(Comment(
-                issue_id=issue.id, author_id=None, author_label="Prüfer", kind="internal",
+                issue_id=issue.id, author_id=None, author_label="Reviewer", kind="internal",
                 body=("🛑 Stillstand im Review: die letzte Korrektur hat am Code nichts "
-                      "geändert. Weitere Runden würden nur Tokens kosten.\n\nOffene "
+                      "changed. Further rounds would only cost tokens.\n\nOpen "
                       "Befunde:\n\n" + (getattr(rev, "text", "") or "(kein Text)")[:4000])))
             await db.commit()
             from .runtime import RunResult
@@ -385,10 +385,10 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                              run_id=result.run_id, blocker_kind="review")
         previous_diff = diff
         rev_prompt = (
-            "Prüfe den folgenden Diff strikt (Bugs, Security, Edge Cases). Antworte GENAU `<review-ok/>` "
+            "Check the following diff strictly (bugs, security, edge cases). Answer EXACTLY `<review-ok/>` "
             "(nichts sonst), wenn keine korrektur-erzwingenden Befunde vorliegen. Sonst nummeriere die "
             "Befunde (Datei/Stelle/Problem/erwartete Korrektur) als Arbeitsauftrag. Schreibe keine Dateien.\n\n"
-            f"# Diff für {issue.key}: {issue.summary}\n```diff\n{diff}\n```")
+            f"# Diff for {issue.key}: {issue.summary}\n```diff\n{diff}\n```")
         rev = await run_agent(
             db=db, agent=reviewer,
             issue={"id": issue.id, "key": issue.key, "summary": f"Review {issue.key}",
@@ -411,11 +411,11 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                         issue.key, rev.status, attempt + 1)
             db.add(Comment(
                 issue_id=issue.id, author_id=None, author_label="System", kind="internal",
-                body=(f"⚠️ Prüfer-Lauf abgebrochen ({rev.status}): "
+                body=(f"⚠️ The review run was aborted ({rev.status}): "
                       f"{(rev.text or '(ohne Meldung)')[:400]}\n\n"
-                      "Der Diff ist damit UNGEPRÜFT. Das Ergebnis geht trotzdem weiter — "
-                      "eine abgebrochene Prüfung ist kein Befund, und den Entwickler auf "
-                      "eine Fehlermeldung anzusetzen wäre eine erfundene Aufgabe.")))
+                      "The diff is therefore UNCHECKED. The result goes on all the same — "
+                      "an aborted check is no finding, and setting the developer onto "
+                      "an error message would be an invented task.")))
             await db.commit()
             return result
         log.info("review %s: findings (round %d of %d), correcting",
@@ -444,14 +444,14 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
     # the reason in the same place as the decision.
     open_ones = (getattr(rev, "text", "") or "").strip()
     db.add(Comment(
-        issue_id=issue.id, author_id=None, author_label="Prüfer", kind="internal",
+        issue_id=issue.id, author_id=None, author_label="Reviewer", kind="internal",
         body=(f"🛑 Nach {REVIEW_ROUNDS} Korrektur-Runden sind noch Befunde offen — "
-              "das Ticket wartet auf dich.\n\n" +
+              "the ticket is waiting for you.\n\n" +
               (open_ones[:4000] if open_ones else
-               "(das Korrektur-Budget war schon vor diesem Durchgang verbraucht — die "
-               "Befunde stehen im vorigen Prüfer-Eintrag)") +
-              "\n\nWeiterarbeiten lassen: Ticket erneut anstoßen (das Korrektur-Budget "
-              "beginnt dann von vorn). Abnehmen: die Befunde bewusst überstimmen.")))
+               "(the correction budget was used up before this round — the "
+               "findings stand in the previous reviewer entry)") +
+              "\n\nLet it work on: kick the ticket off again (the correction budget "
+              "then starts over). Accept it: overrule the findings deliberately.")))
     await db.commit()
     from .runtime import RunResult
     return RunResult("blocked", f"Review-Gate: Befunde nach {REVIEW_ROUNDS} Runden offen",
@@ -469,7 +469,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
         issue = await db.get(Issue, job["issue_id"])
         project = await db.get(Project, job["project_id"])
         if issue is None or project is None:
-            return {"status": "gone", "error": "Ticket oder Projekt existiert nicht mehr"}
+            return {"status": "gone", "error": "The ticket or the project no longer exists"}
         # Idempotence: do NOT merge an already merged ticket again. This prevents duplicate or
         # late accept jobs (from queue recovery, for instance) from touching a cleanly merged
         # branch and running into a phantom conflict, which is a source of loops.
@@ -505,7 +505,7 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                 if escalate:
                     db.add(Comment(issue_id=issue.id, author_id=None, kind="internal",
                                    body=f"⛔ Merge-Konflikt nach {issue.merge_conflict_rounds - 1} "
-                                        f"Auflösungsversuchen ungelöst — an den Menschen eskaliert. "
+                                        f"attempts to resolve it — escalated to the person. "
                                         f"Konflikt in: {', '.join(pre.conflict_files[:8])}"))
                     log.info("accept %s: the conflict limit was reached, escalated", job["issue_id"])
                 else:
@@ -528,12 +528,12 @@ async def _handle_accept(job: dict, redis: Redis) -> dict:
                     url = res.split(":", 1)[1]
                     issue.merge_status = "pr_open"
                     db.add(Comment(issue_id=issue.id, author_id=None, kind="agent",
-                                   body=f"Pull Request geöffnet: {url}"))
+                                   body=f"Pull request opened: {url}"))
                 else:
                     issue.merge_status = "pr_failed"
                     issue.merge_error = res
                     db.add(Comment(issue_id=issue.id, author_id=None, kind="agent",
-                                   body=f"Pull Request konnte nicht geöffnet werden: {res}"))
+                                   body=f"The pull request could not be opened: {res}"))
                 await db.commit()
                 await redis.publish(f"{PREFIX}events:{project.id}",
                                     json.dumps({"type": "issue_update", "issue_key": issue.key}))
@@ -651,12 +651,13 @@ CHAT_MEMORY_DAYS = 14
 CHAT_SUMMARY_BLOCK = 4
 
 _SUMMARISE = (
-    "Du führst das Gedächtnis eines persönlichen Assistenten. Fasse das bisherige Gespräch so "
-    "zusammen, dass er es später fortsetzen kann, ohne dass sein Mensch sich wiederholen muss.\n\n"
-    "Nimm auf: was der Mensch will und entschieden hat, seine Vorlieben und Vorgaben, offene "
-    "Fragen, vereinbarte nächste Schritte, konkrete Fakten (Namen, Zahlen, Pfade, IDs). Lass "
-    "weg: Höflichkeiten, Wiederholungen, alles Erledigte ohne Nachwirkung.\n\n"
-    "Stichpunkte, deutsch, ohne Vorrede. Halte dich kurz, aber verliere keine Zusage."
+    "You keep the memory of a personal assistant. Summarise the conversation so far in such a "
+    "way that it can be carried on later without its person having to repeat themselves.\n\n"
+    "Take in: what the person wants and has decided, their preferences and rules, open "
+    "questions, agreed next steps, concrete facts (names, numbers, paths, ids). Leave out: "
+    "politeness, repetitions, everything finished without an aftermath.\n\n"
+    "Bullet points, in the language of the conversation, without a preamble. Keep it short, but "
+    "lose no commitment."
 )
 
 
@@ -703,7 +704,7 @@ async def _chat_history(db, t) -> list[dict]:
         sofar = (summary.text if summary else "").strip()
         raw = "\n".join(f"{w['label']}: {w['body']}" for r in new_to_grasp for w in exchange(r))
         task = (_SUMMARISE
-                   + ("\n\n--- Bisheriges Gedächtnis (fortschreiben, nichts verlieren) ---\n" + sofar
+                   + ("\n\n--- The memory so far (carry it on, lose nothing) ---\n" + sofar
                       if sofar else "")
                    + "\n\n--- Neue Wortwechsel ---\n" + raw)
         from .aux import aux_chat
@@ -724,8 +725,8 @@ async def _chat_history(db, t) -> list[dict]:
 
     history: list[dict] = []
     if summary and summary.text.strip():
-        history.append({"label": "Woran du dich erinnerst", "role": "agent",
-                        "body": "# Früheres aus diesem Gespräch\n" + summary.text.strip()})
+        history.append({"label": "What you remember", "role": "agent",
+                        "body": "# Earlier parts of this conversation\n" + summary.text.strip()})
     for r in young:
         history.extend(exchange(r))
     return history
@@ -735,9 +736,9 @@ async def _chat_history(db, t) -> list[dict]:
 REPORT_RULE = (
     "WICHTIG — Melden: Deine Abschluss-Zusammenfassung geht NICHT an deinen Menschen, sie "
     "landet nur still im Posteingang. Soll er etwas erfahren (Frist, Geldbetrag, "
-    "Entscheidung, Störung, etwas das er beantworten muss), rufe `traccoon_notify_human` "
-    "mit einer kurzen, konkreten Meldung. Für Erledigtes ohne Handlungsbedarf (abgelegt, "
-    "vermerkt, nichts zu tun) meldest du dich NICHT."
+    "a decision, a fault, something they have to answer), call `traccoon_notify_human` with a "
+    "short, concrete report. For things finished without anything to do (filed, noted, nothing "
+    "to do) you do NOT report."
 )
 
 
@@ -749,7 +750,7 @@ async def _reference_source(db, task_id) -> str:
     source = await db.get(AssistantTask, int(task_id))
     if source is None:
         return ""
-    parts = [f"Diese Nachricht gehört zu deinem Vorgang „{source.title}\" "
+    parts = [f"This message belongs to your case \"{source.title}\" "
              f"({source.kind}, Stand {source.status})."]
     if source.result:
         parts.append(f"Was du dort zuletzt berichtet hast:\n{source.result[:1500]}")
@@ -813,19 +814,19 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         acc, uid = meta.get("account", ""), meta.get("uid", "")
         is_chat = t.kind == "chat"
         head = (f"Von: {meta.get('from', '')}\nBetreff: {meta.get('subject', '')}\n"
-                f"Kategorie: {t.category} · Priorität: {t.priority}\n\n")
+                f"Category: {t.category} · priority: {t.priority}\n\n")
         if t.redaction == "unredacted" and t.raw_body:
             # The source is marked trustworthy by a rule, so the full text goes in directly.
-            content = f"Volltext (für diese Quelle freigegeben):\n{t.raw_body}\n\n"
+            content = f"Full text (released for this source):\n{t.raw_body}\n\n"
         elif t.redacted_summary:
-            content = (f"Zusammenfassung (geschwärzt):\n{t.redacted_summary}\n\n"
-                       f"Der Volltext liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies ihn NUR über "
-                       "die imap-Tools, falls du ihn zum Handeln wirklich brauchst.\n\n")
+            content = (f"Summary (redacted):\n{t.redacted_summary}\n\n"
+                       f"The full text lies in the IMAP account '{acc}' under UID {uid}. Read it ONLY "
+                       "through the imap tools if you really need it to act.\n\n")
         else:
             # Passthrough (no pre-classification, as in the predecessor): the agent reads the mail itself.
-            content = (f"Die Mail liegt im IMAP-Konto '{acc}' unter UID {uid}. Lies sie über die "
+            content = (f"The mail lies in the IMAP account '{acc}' under UID {uid}. Read it through the "
                        "imap-Tools.\n\n")
-        learned = (f"Gelernte Vorgabe deines Menschen für solche Eingänge: {t.action_hint}\n\n"
+        learned = (f"A learned rule of your person for such intakes: {t.action_hint}\n\n"
                    if t.action_hint else "")
         if is_chat:
             # Direct chat: the message IS the assignment. The system is operated through the
@@ -842,17 +843,17 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                     f"---\n{meta['bezug_text']}\n---\n"
                     + source +
                     "Seine Antwort darauf ist dein Auftrag — arbeite an genau dieser Sache "
-                    "weiter, statt sie nur zur Kenntnis zu nehmen:\n\n" + prompt
+                    "on instead of merely taking note of it:\n\n" + prompt
                 )
         elif meta.get("prompt"):
             # The full task prompt from the webhook (ported knowledge about handling mail).
             prompt = meta["prompt"] + (learned if t.action_hint else "") + "\n\n" + REPORT_RULE
         else:
             prompt = (
-                "Eingang für deinen Menschen (lokal vorklassifiziert).\n" + head + content + learned +
-                "Entscheide eigenständig und im Sinne deines Menschen, was zu tun ist (im Vault "
-                "vermerken, einen Entwurf vorbereiten, einen Termin anlegen, ablegen …) und führe es "
-                "aus. Fasse am Ende knapp zusammen, was du getan hast.\n\n" + REPORT_RULE
+                "An intake for your person (pre-classified locally).\n" + head + content + learned +
+                "Decide on your own and in the spirit of your person what is to be done (note it in "
+                "the vault, prepare a draft, create an appointment, file it …) and carry it "
+                "out. Summarise briefly at the end what you did.\n\n" + REPORT_RULE
             )
         # In chat the run carries the conversation so far, otherwise a person would have to
         # repeat every reference in every message.
@@ -872,7 +873,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 mode="execute", permissions=[], ws_root=None, gate_on=False, tokens=tokens,
                 base_urls=base_urls, owner_id=owner_id, task_id=job["task_id"],
                 comment_history=history,
-                history_title="# Bisheriges Gespräch (älteste Nachricht zuerst)",
+                history_title="# The conversation so far (oldest message first)",
                 assistant_task_id=t.id)
             if result.status == "blocked" and getattr(result, "blocker_kind", None) == "assistant_perm":
                 # Tool gate: the item waits for approval (status awaiting, chat card set).
@@ -923,7 +924,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 else f"🛰 {meta['agent']}"
             title = (label if is_chat else f"{label}: {t.title}") + (
                 " — Fehler" if status == "error"
-                else " — Rückfrage" if question_open and not is_chat else "")
+                else " — a question" if question_open and not is_chat else "")
             db.add(Notification(kind="assistant", title=title[:200],
                                 body=(err if status == "error" else out)[:4000],
                                 chat_id=owner.telegram_chat_id if owner else None))
@@ -1107,7 +1108,7 @@ async def sweep_corpses_and_report() -> None:
     from ..models.notification import Notification
     import datetime as _dt
     limit = _now_dt() - _dt.timedelta(seconds=STALE_GRACE_SEC)
-    hint = "Worker-Neustart: der Lauf war beim Abbruch nicht zu Ende und wird nicht fortgesetzt."
+    hint = "Worker restart: the run was not finished when it was aborted and is not continued."
     async with SessionLocal() as db:
         runs = (await db.execute(select(Run).where(
             Run.status == "running", Run.started_at < limit))).scalars().all()
@@ -1136,7 +1137,7 @@ async def sweep_corpses_and_report() -> None:
         def _listing(ids: list[int]) -> str:
             return ", ".join(str(i) for i in ids[:10]) + (" …" if len(ids) > 10 else "")
 
-        body = (f"Der Worker wurde neu gestartet. Abgebrochen: {len(runs)} Lauf/Läufe"
+        body = (f"The worker was restarted. Aborted: {len(runs)} run(s)"
                 f"{' (' + _listing([r.id for r in runs]) + ')' if runs else ''}"
                 f", {len(tasks)} Assistent-Aufgabe(n)"
                 f"{' (' + _listing([t.id for t in tasks]) + ')' if tasks else ''}.\n\n"
@@ -1292,7 +1293,7 @@ async def main() -> None:
                 # although somebody had simply pressed stop. Whoever knows the cause should
                 # write it down.
                 await _run_finish(job.get("task_id", ""),
-                                         "Abgebrochen: Stopp über den Kill-Kanal (Knopf, "
+                                         "Aborted: a stop over the kill channel (a button, "
                                          "Prozess-Schritt oder Wartungs-Update).")
                 # No ACK: the entry stays in PROCESSING, so recovery brings it back into QUEUE
                 # at the next worker start (no data loss on abort or crash).

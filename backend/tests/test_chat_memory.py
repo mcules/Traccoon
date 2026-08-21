@@ -77,7 +77,7 @@ async def test_older_parts_move_into_the_summary(db, anna, monkeypatch):
     new = await _chat(db, anna, "Und jetzt?", "")
     history = await worker._chat_history(db, new)
 
-    assert history[0]["label"] == "Woran du dich erinnerst"
+    assert history[0]["label"] == "What you remember"
     assert "News-Jobs offen" in history[0]["body"]
     # The most recent 8 stand there verbatim, the oldest no longer.
     literal = [w["body"] for w in history if w["role"] == "user"]
@@ -100,7 +100,7 @@ async def test_the_summary_is_extended_not_replaced(db, anna, monkeypatch):
         await _chat(db, anna, f"Frage {i}", f"Antwort {i}")
     await worker._chat_history(db, await _chat(db, anna, "y", ""))
 
-    assert "Bisheriges Gedächtnis" in aux2.seen and "Runde eins" in aux2.seen
+    assert "The memory so far" in aux2.seen and "Runde eins" in aux2.seen
     assert (await db.execute(select(ChatSummary))).scalars().one().text == "- Runde eins\n- Runde zwei"
 
 

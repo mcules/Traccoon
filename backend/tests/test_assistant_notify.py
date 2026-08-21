@@ -139,7 +139,7 @@ async def test_callback_without_chat_reports_despite_the_mode(db, owner, monkeyp
     await db.commit()
     await _run(db, monkeypatch, owner=owner, status="blocked", blocker_kind="ask_human")
     n = await _messages(db)
-    assert len(n) == 1 and "Rückfrage" in n[0].title
+    assert len(n) == 1 and "a question" in n[0].title
 
 
 async def test_tool_grant_stays_quiet_and_open(db, owner, monkeypatch):
