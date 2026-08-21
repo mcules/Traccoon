@@ -70,7 +70,7 @@ async def test_without_a_flow_the_check_complains():
         extra_edges=[{"id": "a", "source": "s", "target": "unter"},
                      {"id": "b", "source": "unter", "target": "e", "sourceHandle": "completed"}])
     error = engine.validate_graph(WorkflowSubjectKind.standalone, graph)
-    assert any("kein Ablauf gewählt" in f for f in error)
+    assert any("no flow chosen" in f for f in error)
 
 
 async def test_a_named_flow_satisfies_the_check():

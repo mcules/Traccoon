@@ -271,7 +271,7 @@ async def _notify_assignee(db, inst: WorkflowInstance, node: dict, ntype: str, a
         ))
     if inst.issue_id:
         from .comments import add_system_comment
-        who = f" (Zuständig: User #{assignee})" if assignee else ""
+        who = f" (responsible: user #{assignee})" if assignee else ""
         await add_system_comment(
             db, inst.issue_id, f"⏳ Workflow wartet auf {verb.lower()}: „{label}“{who}",
             author_label="Workflow",
@@ -368,7 +368,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
 
     if ntype == "human_task":
         if _is_probe(inst):
-            _probe_step(db, inst, node, token, ntype, "würde auf einen Menschen warten")
+            _probe_step(db, inst, node, token, ntype, "would wait for a person")
             return Outcome(handle="out")
         await _ensure_wait_step(db, inst, node, ntype, token, "human_task")
         return Outcome(wait=True, waiting_for="human_task")
@@ -378,7 +378,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
             # The dry run takes the approved path, which is the one you want to see. The
             # rejected one deserves a trial of its own and is not checked in secret.
             _probe_step(db, inst, node, token, ntype,
-                           "würde auf eine Freigabe warten (Probe nimmt „genehmigt\")",
+                           "would wait for an approval (the dry run takes \"approved\")",
                            decision="approved")
             return Outcome(handle="approved")
         await _ensure_wait_step(db, inst, node, ntype, token, "approval")
@@ -393,7 +393,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
                 target = params.get("tool") or params.get("destination") or params.get("status") \
                     or params.get("agent") or ""
                 _probe_step(db, inst, node, token, "auto_action",
-                               f"würde ausführen: {name}" + (f" ({target})" if target else ""))
+                               f"would run: {name}" + (f" ({target})" if target else ""))
                 return Outcome(handle="out")
         # Idempotency: an asynchronous action (a merge, say) is already running, do not restart.
         running = await _latest_step(db, inst.id, node["id"])
@@ -465,7 +465,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
     if ntype == "agent_task":
         if _is_probe(inst):
             _probe_step(db, inst, node, token, ntype,
-                           f"würde den Agenten „{cfg.get('agent_role') or '?'}\" starten",
+                           f"would start the agent \"{cfg.get('agent_role') or '?'}\"",
                            decision="done")
             return Outcome(handle="done")
         return await _start_agent_task(db, inst, node, token, cfg, spawn_after)
@@ -473,14 +473,14 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
     if ntype == "wait_event":
         if _is_probe(inst):
             _probe_step(db, inst, node, token, ntype,
-                           f"würde warten auf: {', '.join(_accepted_events(cfg))}")
+                           f"would wait for: {', '.join(_accepted_events(cfg))}")
             return Outcome(handle="out")
         return await _wait_for_event(db, inst, node, token, cfg)
 
     if ntype == "subflow":
         if _is_probe(inst):
             _probe_step(db, inst, node, token, ntype,
-                           f"würde den Ablauf „{cfg.get('slot') or '?'}\" aufrufen",
+                           f"would call the flow \"{cfg.get('slot') or '?'}\"",
                            decision="completed")
             return Outcome(handle="completed")
         return await _start_subflow(db, inst, node, token, cfg)
@@ -491,7 +491,7 @@ async def _run_node(db, inst, node, ntype, token, edges, spawn_after: list) -> O
     if ntype == "timer":
         if _is_probe(inst):
             to = cfg.get("bis") or f"{cfg.get('dauer', '?')} {cfg.get('einheit', 'm')}"
-            _probe_step(db, inst, node, token, ntype, f"würde warten: {to}")
+            _probe_step(db, inst, node, token, ntype, f"would wait: {to}")
             return Outcome(handle="out")
         return await _timer(db, inst, node, token, cfg)
 
@@ -800,7 +800,7 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
         whatfor = f"Slot '{slot}'"
     if definition is None or definition.current_version_id is None:
         return Outcome(terminal=True, instance_status="failed",
-                       error=f"Kein veröffentlichter Ablauf für {whatfor}")
+                       error=f"No published flow for {whatfor}")
     if definition.id == inst.definition_id:
         return Outcome(terminal=True, instance_status="failed",
                        error=f"subflow-Knoten '{node['id']}' ruft sich selbst auf")
@@ -1015,7 +1015,7 @@ async def _start_agent_task(db, inst, node, token, cfg, spawn_after: list) -> Ou
         from .comments import add_system_comment
         label = cfg.get("label") or node["id"]
         await add_system_comment(
-            db, inst.issue_id, f"🤖 Workflow startet KI-Agent „{role}“ für Schritt „{label}“",
+            db, inst.issue_id, f"🤖 The flow starts the AI agent \"{role}\" for the step \"{label}\"",
             author_label="Workflow",
         )
     # Start the result watcher only AFTER the commit: it reads step and token in a session
@@ -1049,7 +1049,7 @@ async def _wait(task_id: str, timeout: int, was: str) -> tuple[dict | None, dict
                 "Der Lauf selbst kann noch arbeiten.")
     else:
         text = (f"Lauf verschwunden — seit {int(GRACE / 60)} Minuten kein Lebenszeichen "
-                "(kein Worker-Puls, nicht mehr in der Warteschlange).")
+                "(no worker pulse, no longer in the queue).")
     log.warning("Watchdog %s (%s) without a result after %ds: %s", task_id, was, duration, text)
     return None, {"status": "failed", "success": False, "output": text, "summary": text,
                   "verloren": True, "task_id": task_id}
@@ -1088,7 +1088,7 @@ async def _job_result(db, inst: WorkflowInstance) -> None:
         run.output = text[:20000]
     if inst.status == IStatus.failed:
         run.status = "error"
-        run.error = (inst.error or "Der Ablauf ist fehlgeschlagen")[:2000]
+        run.error = (inst.error or "The flow failed")[:2000]
     run.finished_at = _now()
 
 
@@ -1500,7 +1500,7 @@ async def _move(db, inst, token, edges, node, handle) -> bool:
     target = next_node(edges, node["id"], handle)
     if target is None:
         inst.status = IStatus.failed
-        inst.error = f"Keine Kante von '{node['id']}' für Ausgang '{handle}'"
+        inst.error = f"No edge from '{node['id']}' for the outlet '{handle}'"
         inst.finished_at = _now()
         token.state = TState.consumed
         log.warning("Instance %s: dangling edge %s/%s", inst.id, node["id"], handle)
@@ -1663,7 +1663,7 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
             handles = _outgoing_handles(edges, nid)
             for req in ("approved", "rejected"):
                 if req not in handles:
-                    errors.append(f"Approval-Knoten '{nid}': Kante für Ausgang '{req}' fehlt")
+                    errors.append(f"Approval node '{nid}': the edge for the outlet '{req}' is missing")
 
         if ntype == "decision":
             cfg = node_config(n)
@@ -1674,12 +1674,12 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
             # outlet the config does not know, which would be gone on the next edit and
             if cfg.get("branches") and default_h not in branch_handles:
                 errors.append(
-                    f"Decision-Knoten '{nid}': Standard-Zweig '{default_h}' ist keiner der "
+                    f"Decision node '{nid}': the default branch '{default_h}' is none of the "
                     f"Zweige ({', '.join(sorted(h for h in branch_handles if h))})")
             needed = {h for h in branch_handles if h} | {default_h}
             for h in sorted(needed):
                 if h not in handles:
-                    errors.append(f"Decision-Knoten '{nid}': Kante für Ausgang '{h}' fehlt")
+                    errors.append(f"Decision node '{nid}': the edge for the outlet '{h}' is missing")
             for b in cfg.get("branches") or []:
                 guard = b.get("guard")
                 if guard in (None, {}, True, ""):
@@ -1695,7 +1695,7 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
             cfg = node_config(n)
             slot = cfg.get("slot") or cfg.get("workflow_slot")
             if not slot and not cfg.get("definition_id"):
-                errors.append(f"Subflow-Knoten '{nid}': kein Ablauf gewählt")
+                errors.append(f"Subflow node '{nid}': no flow chosen")
             elif slot:
                 from ..models.enums import WorkflowSlot
                 if slot not in {s.value for s in WorkflowSlot}:
@@ -1710,7 +1710,7 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
             handles = _outgoing_handles(edges, nid)
             for req in ("element", "fertig"):
                 if req not in handles:
-                    errors.append(f"Schleifen-Knoten '{nid}': Kante für Ausgang '{req}' fehlt")
+                    errors.append(f"Loop node '{nid}': the edge for the outlet '{req}' is missing")
             if not node_config(n).get("liste"):
                 errors.append(f"Schleifen-Knoten '{nid}': keine Liste angegeben")
 
@@ -1724,7 +1724,7 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
     if starts and ends and not dupes:
         reach = _reachable(starts[0].get("id"), edges)
         if not any(e.get("id") in reach for e in ends):
-            errors.append("Kein End-Knoten ist vom Start-Knoten erreichbar")
+            errors.append("No end node is reachable from the start node")
 
     return errors
 
@@ -1841,8 +1841,8 @@ async def stragglers_collect() -> None:
                 from .comments import add_system_comment
                 await add_system_comment(
                     db, inst.issue_id,
-                    "↩ Das Ergebnis des verloren geglaubten Laufs ist doch noch eingetroffen "
-                    "— der Prozess läuft an dieser Stelle weiter.", author_label="Workflow")
+                    "↩ The result of the run believed lost has arrived after all "
+                    "— the flow carries on at this point.", author_label="Workflow")
             omap = dict(cfg.get("outcomes_map") or {})
             if s.node_type == NType.agent_task:
                 again.append(("agent", s.instance_id, token.id, s.id, task_id, omap,
@@ -1893,8 +1893,8 @@ async def dead_runs_close() -> int:
             run.status = "failed"
             run.finished_at = _dt.datetime.now(_dt.UTC)
             run.error = ((run.error or "") +
-                         "Kein Lebenszeichen mehr: der Lauf wurde abgebrochen, ohne sich "
-                         "abmelden zu können (z. B. Absturz beim Schreiben).").strip()
+                         "No sign of life any more: the run was aborted without being able "
+                         "to sign off (a crash while writing, say).").strip()
             log.warning("Run %s (%s, assignment %s) closed without a sign of life",
                         run.id, run.agent, run.task_id)
             closed += 1

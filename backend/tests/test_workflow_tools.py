@@ -65,10 +65,10 @@ async def test_the_tool_list_names_the_required_fields(db, anna, monkeypatch):
                         lambda db_, owner: _done(session))
     listing = await workflow_tools.tools(db, anna.id)
     assert listing[0]["name"] == "obsidian__obsidian_append_to_note"
-    assert listing[0]["pflicht"] == ["path"]
+    assert listing[0]["required"] == ["path"]
     assert listing[0]["felder"] == ["path", "content"]
     # Only the first line of the description: the rest blows up every selection list.
-    assert listing[0]["beschreibung"] == "Anhängen"
+    assert listing[0]["description"] == "Anhängen"
 
 
 async def _done(value):

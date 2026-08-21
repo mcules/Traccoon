@@ -85,11 +85,11 @@ async def test_the_dry_run_runs_through_and_shows_what_it_would_do(client, db, m
     steps = {s["node_id"]: s for s in data["steps"]}
     # The tool was NOT called: it only says what it would do.
     assert called == []
-    assert "würde ausführen: tool_call" in steps["werkzeug"]["result"]["probe"]
+    assert "would run: tool_call" in steps["werkzeug"]["result"]["probe"]
     assert "obsidian__obsidian_append_to_note" in steps["werkzeug"]["result"]["probe"]
     # The branch really computed: level 5 >= 3, so the important path.
     assert "ticket" in steps and "warten" not in steps
-    assert "würde ausführen: create_ticket" in steps["ticket"]["result"]["probe"]
+    assert "would run: create_ticket" in steps["ticket"]["result"]["probe"]
     # And no ticket has come into being.
     assert (await db.execute(select(Issue))).scalars().all() == []
 
@@ -102,7 +102,7 @@ async def test_the_other_side_of_the_decision_can_be_checked_the_same_way(client
     steps = {s["node_id"]: s for s in r.json()["steps"]}
     assert "warten" in steps and "ticket" not in steps
     # The timer does not stop the trial run; otherwise one would never see the end.
-    assert "würde warten: 2 h" in steps["warten"]["result"]["probe"]
+    assert "would wait: 2 h" in steps["warten"]["result"]["probe"]
     assert r.json()["status"] == WorkflowInstanceStatus.completed.value
 
 

@@ -85,9 +85,9 @@ async def tools(db: AsyncSession, owner_id: int | None) -> list[dict]:
         out.append({
             "name": t.name,
             "server": t.name.split("__", 1)[0] if "__" in t.name else "",
-            "beschreibung": (t.description or "").strip().split("\n")[0][:300],
+            "description": (t.description or "").strip().split("\n")[0][:300],
             "felder": fields[:20],
-            "pflicht": list(schema.get("required") or [])[:20],
+            "required": list(schema.get("required") or [])[:20],
         })
     return sorted(out, key=lambda w: w["name"])
 
