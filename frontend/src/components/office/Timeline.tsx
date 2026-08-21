@@ -201,16 +201,15 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
   if (all.length === 0) {
     return (
       <div className={`rounded border border-line bg-card px-3 py-2 text-xs text-muted ${className ?? ""}`}>
-        Noch keine Ereignisse in dieser Sitzung.
+        {tr("timeline.no_events_yet")}
       </div>
     );
   }
 
   const capTitle = capped
-    ? `Der Anfang der Sitzung ist nicht mehr im Speicher: das Büro hält höchstens `
-      + `${REPLAY_CAP.toLocaleString("de-DE")} Ereignisse und verwirft die ältesten.`
-      + (hidden > 0 ? ` Zusätzlich liegen ${hidden} Sekunden links außerhalb des Fensters.` : "")
-    : `${hidden} Sekunden liegen links außerhalb des Fensters.`;
+    ? tr("timeline.start_out_of_memory", { cap: REPLAY_CAP.toLocaleString() })
+      + (hidden > 0 ? ` ${tr("timeline.also_seconds_left", { seconds: hidden })}` : "")
+    : tr("timeline.seconds_left_outside", { seconds: hidden });
 
   return (
     <div className={`rounded border border-line bg-card px-2 py-1.5 ${className ?? ""}`}>

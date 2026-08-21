@@ -18,6 +18,7 @@
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { BUTTON_SMALL } from "./ui";
+import { tr } from "../i18n";
 
 /** Prefix of the keys in the `sessionStorage`. Deliberately `session`, not `local`: a brake
  *  should brake a running tab, not the machine for tomorrow. */
@@ -35,8 +36,8 @@ export function safeReload(reason: string, minDistanceMs: number): boolean {
     const before = Number(sessionStorage.getItem(key) ?? "0");
     const now = Date.now();
     if (Number.isFinite(before) && now - before < minDistanceMs) {
-      console.warn(`[traccoon] Neuladen (${reason}) unterdrückt — zuletzt vor `
-        + `${Math.round((now - before) / 1000)} s.`);
+      console.warn(`[traccoon] reload (${reason}) suppressed — the last one was `
+        + `${Math.round((now - before) / 1000)} s ago.`);
       return false;
     }
     sessionStorage.setItem(key, String(now));
@@ -104,7 +105,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
         </div>
         {this.props.reloadAfterMs !== undefined && (
           <div className="text-xs text-muted">
-            Es wird gleich von selbst neu geladen.
+            {tr("error_boundary.reloads_by_itself")}
           </div>
         )}
         <button

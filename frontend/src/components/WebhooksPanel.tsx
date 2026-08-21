@@ -250,7 +250,7 @@ function WebhookDialog({ hook, error: error, runs: running, onClose, onSave }: {
               placeholder="mail.received" className={INPUT_VALUE} />
           </Field>
         )}
-        {/* Der Kontext gilt für beide Wege: Was der Auslöser weitergibt, hängt nicht daran,
+        {/* The context applies to both ways: what the trigger hands on does not depend on
             whether a flow starts or an event is reported. */}
         <div className="sm:col-span-2">
           <Field label={tr("webhooks_panel.context_payload")} hint={tr("webhooks_panel.without_mapping_whole_payload")}>

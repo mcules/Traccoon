@@ -290,13 +290,13 @@ export default function Layout({ children }: { children: ReactNode }) {
       <AreaRail />
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex items-center gap-2 border-b border-line bg-card px-3 py-2 sm:gap-3 sm:px-5 relative">
-          {/* Links: Menü (mobil) + Projekt-Titel/Switcher bzw. Seitentitel */}
+          {/* On the left: the menu (on mobile) plus project title/switcher or page title */}
           <div className="flex min-w-0 shrink items-center gap-2 sm:gap-3">
             <MobileMenu />
             {!onProjectPage && chrome.title && (
               <span className="truncate font-semibold text-ink">{chrome.title}</span>
             )}
-            {/* Der Wechsler ist auf einer projektlosen Seite am Handy nur Platzverbrauch —
+            {/* On a project-less page the switcher only takes up room on a phone —
                 that is where the page title stands, and the project list hangs in the menu. */}
             <div className={!onProjectPage && chrome.title ? "hidden sm:block" : ""}>
               <ProjectSwitcher />
@@ -311,7 +311,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <UserMenu />
           </div>
         </header>
-        {/* [&>*]:mx-auto zentriert begrenzte Seiten-Spalten; volle Breite bleibt unberührt. */}
+        {/* [&>*]:mx-auto centres bounded page columns; full width stays untouched. */}
         <main className="mx-auto w-full max-w-[1400px] flex-1 p-3 [&>*]:mx-auto sm:p-5">
           {sideways ? (
             <div className="flex flex-col gap-4 md:flex-row md:gap-6">

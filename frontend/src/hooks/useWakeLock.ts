@@ -45,7 +45,7 @@ export function useWakeLock(active: boolean): void {
   useEffect(() => {
     if (!active) return;
     const wl = (navigator as unknown as { wakeLock?: WakeLockLike }).wakeLock;
-    if (!wl) return;                              // Merkmalsprüfung: Firefox/Safari-Altstand
+    if (!wl) return;                              // feature check: older Firefox/Safari
 
     let release = false;
     let block: WakeLockSentinelLike | null = null;

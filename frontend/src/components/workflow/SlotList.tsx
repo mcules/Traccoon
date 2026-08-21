@@ -142,8 +142,8 @@ export default function SlotList({ project }: { project: Project }) {
               </div>
               <div className="mt-1 text-xs text-muted">{s.description}</div>
 
-              {/* Ein Ticket-Ablauf darf je Vorgangsart ein eigener sein: ein Bug fährt dann
-                  einen anderen Lebenszyklus als eine Aufgabe, alle übrigen folgen weiter
+              {/* A ticket flow may be its own per kind of matter: a bug then runs a different
+                  lifecycle than a task, all the others keep following
                   dem Satz. */}
               {s.subject_kind === "issue" && (meta?.types?.length ?? 0) > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line pt-2">

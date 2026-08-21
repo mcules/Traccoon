@@ -190,7 +190,7 @@ export default function ActionParams({
             {f.type === "select" && !isTemplate(value) && (
               <select value={value ?? ""} onChange={(e) => update(e.target.value)}
                 className={`mt-1 ${inp}`}>
-                {/* Ohne Vorbelegung zuerst einen leeren Eintrag, sonst zeigt das Feld einen
+                {/* Without a preset an empty entry comes first, otherwise the field shows a
                     a value that is not stored at all. */}
                 {(value ?? "") === "" && !selection(f).some(([k]) => k === "") && (
                   <option value="">{tr("action_params.choose")}</option>

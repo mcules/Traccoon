@@ -133,7 +133,7 @@ function JobDialog({ job, error: error, runs: running, onClose, onSave }: {
     try {
       const v = JSON.parse(text);
       if (v && typeof v === "object" && !Array.isArray(v)) setF((p: any) => ({ ...p, args: v }));
-    } catch { /* ungültig: Text stehen lassen, Job-Feld unverändert */ }
+    } catch { /* invalid: leave the text be, the job field stays unchanged */ }
   };
   const useTemplate = (key: string) => {
     const t = templates?.find((x) => x.key === key);
@@ -171,7 +171,7 @@ function JobDialog({ job, error: error, runs: running, onClose, onSave }: {
             <option value="cron">cron</option><option value="interval">interval</option><option value="once">once</option>
           </select>
         </Field>
-        {/* Ein Job ist Zeitplan plus Ablauf. Fragen, Skript, Aufruf — das waren einmal
+        {/* A job is a schedule plus a flow. Question, script, call — those were once
             kinds of their own, each able to do exactly one thing; today they are nodes IN the flow. */}
         <Field label={tr("jobs_panel.kind")}>
           <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={INPUT_VALUE}>

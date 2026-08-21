@@ -77,8 +77,8 @@ export default function WorkflowInstanceView({
           {instance.error && <span className="text-red-400">— {instance.error}</span>}
         </div>
       )}
-      {/* Der Graph zeigt, wo der Lauf steht — das Protokoll, was dabei herauskam.
-          Aufgeklappt in einer Liste zählt das Protokoll: „Wo steht er?" beantwortet die
+      {/* The graph shows where the run stands — the log shows what came out of it.
+          Expanded in a list the log counts: "where does it stand?" is answered by the
           line above has long done, "what came back?" nobody so far. */}
       {compact ? (
         <>

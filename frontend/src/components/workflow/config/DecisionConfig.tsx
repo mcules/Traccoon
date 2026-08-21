@@ -76,8 +76,9 @@ export default function DecisionConfig({
                 </button>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
-                {/* Auswahl statt Ratefläche: die Pfade stehen im Kontext dieses Ablaufs.
-                    Freie Eingabe bleibt möglich — der Katalog beschreibt, er schreibt nicht
+                {/* A choice instead of a guessing field: the paths stand in the context of
+                    this flow. Free input stays possible — the catalogue describes, it does not
+                    prescribe
                     beforehand (fields of its own out of a destination call, say, it does not know). */}
                 <input
                   value={s.field}
@@ -100,7 +101,7 @@ export default function DecisionConfig({
                   className={`w-24 ${inp}`}
                 />
                 <span className="text-[11px] text-muted">
-                  leeres Feld = greift immer (Auffang-Zweig, gehört ans Ende)
+                  {tr("decision_config.empty_field_always")}
                 </span>
               </div>
             </div>
@@ -122,12 +123,13 @@ export default function DecisionConfig({
       {filter.length > 0 && (
         <details className="rounded border border-line bg-surface p-2 text-xs text-muted">
           <summary className="cursor-pointer">
-            Vorlagen-Filter ({filter.length}) — für Texte in Aktionen
+            {tr("decision_config.template_filters", { count: filter.length })}
           </summary>
           <p className="mt-1 text-[11px]">
-            Schreibweise <code className="rounded bg-card px-1">{"{{ pfad | filter:argument }}"}</code>,
-            von links nach rechts. Beispiel:{" "}
-            <code className="rounded bg-card px-1">{"{{ spam.score | mal:100 | rund:1 }}"}</code>
+            {tr("decision_config.filter_syntax_1")}{" "}
+            <code className="rounded bg-card px-1">{"{{ path | filter:argument }}"}</code>,{" "}
+            {tr("decision_config.filter_syntax_2")}{" "}
+            <code className="rounded bg-card px-1">{"{{ spam.score | times:100 | round:1 }}"}</code>
           </p>
           <table className="mt-2 w-full">
             <tbody>
@@ -144,8 +146,8 @@ export default function DecisionConfig({
 
       {fields.length > 0 && (
         <details className="rounded border border-line bg-surface p-2 text-xs text-muted">
-          <summary className="cursor-pointer">Verfügbare Kontext-Felder ({fields.length})</summary>
-          {/* Untereinander statt vier Spalten: im schmalen Panel lief die Herkunft
+          <summary className="cursor-pointer">{tr("decision_config.available_context_fields", { count: fields.length })}</summary>
+          {/* Stacked instead of four columns: in the narrow panel the origin ran
               off the picture on the right — but it is exactly what one wants to know. */}
           <ul className="mt-2 space-y-1.5">
             {fields.map((f) => (
@@ -164,30 +166,30 @@ export default function DecisionConfig({
       )}
 
       <label className="block text-xs font-medium text-muted">
-        Standard-Zweig (wenn keine Bedingung greift)
+        {tr("decision_config.default_branch")}
         <select
           value={config.default_handle || ""}
           onChange={(e) => onChange({ ...config, default_handle: e.target.value || undefined })}
           className={`mt-1 w-full ${inp}`}
         >
-          <option value="">— keiner —</option>
+          <option value="">{tr("decision_config.none_dash")}</option>
           {branches.map((b) => (
             <option key={b.handle} value={b.handle}>
               {b.label || b.handle}
             </option>
           ))}
-          {/* Zeigt einen Standard, der (noch) kein Zweig ist — sonst stünde hier stumm
+          {/* Shows a default that is (not yet) a branch — otherwise "none" would stand here
+              silently
               "none", and on the next save the matching edge would be orphaned. */}
           {config.default_handle && !branches.some((b) => b.handle === config.default_handle) && (
             <option value={config.default_handle}>
-              {config.default_handle} — kein Zweig, bitte anlegen
+              {config.default_handle} — {tr("decision_config.no_branch_create")}
             </option>
           )}
         </select>
         {config.default_handle && !branches.some((b) => b.handle === config.default_handle) && (
           <span className="mt-1 block text-[11px] text-amber-400">
-            Dieser Ausgang ist verdrahtet, aber nicht als Zweig beschrieben. Lege einen Zweig
-            mit dieser Kennung an (ohne Bedingung = greift immer).
+            {tr("decision_config.wired_not_described")}
           </span>
         )}
       </label>

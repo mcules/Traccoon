@@ -290,8 +290,8 @@ export default function TopBar({
         )}
       </div>
 
-      {/* Sitzungsreiter — ein Filter auf den Roster, kein zweites Log.
-          Im Kiosk weg: ein Filter, den niemand umstellen kann, ist eine Behauptung über
+      {/* The session tabs — a filter on the roster, no second log.
+          Gone in kiosk mode: a filter nobody can change is a claim about
           the room, no controls. */}
       {!kiosk && tab.length > 1 && (
         <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" role="group"

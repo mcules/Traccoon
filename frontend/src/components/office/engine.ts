@@ -339,7 +339,7 @@ export class Engine {
         }
 
         // The verdict: the same `emote` kind `done` already uses, no fifth `FxKind`. `back`
-        // gets "✗", because the deployment did fail; that it was also healed is told by the LED
+        // gets "✗", because the deployment did fail; that it healed is told by the LED
         // rows (`ok` below), not by the sign above the rack.
         if (cmd.state !== "start") {
           const rack = this.room.rack;
@@ -378,7 +378,7 @@ export class Engine {
    *  Two lists would be two truths. */
   frame(): Frame {
     const actors = [...this.actors.values()];
-    actors.sort((x, y) => x.y - y.y); // stabil (ES2019) → Gleichstand behält Einfügereihenfolge
+    actors.sort((x, y) => x.y - y.y); // stable (ES2019) → a tie keeps the insertion order
     // `rack` as a copy, for the same reason as `actors`: the engine never hands out its own
     // state. A caller overwriting `frame().rack.state` would otherwise change the room, and on
     // the next replay it would stand differently.

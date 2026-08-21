@@ -11,7 +11,7 @@ import {
   IconButton, Button, BUTTON, Listing, ListingEmpty, ListenLine, Tab, Rowbutton, BUTTON_TEXT} from "../components/ui";
 
 /**
- * Das Postfach.
+ * The mailbox.
  *
  * Three columns like in every mail program, and for the same reason: folders change rarely,
  * the list often, the message with every click. What Traccoon adds sits at the end of a mail
@@ -56,8 +56,8 @@ export default function Mail() {
 
   const { data: accounts } = useQuery({
     queryKey: ["mail-accounts"], queryFn: () => api.get<MailAccount[]>("/mailbox/accounts") });
-  // So one can see where mail waits without going in. Asked rarely: behind it sits one
-  // Postfach eine IMAP-Verbindung.
+  // So one can see where mail waits without going in. Asked rarely: behind every mailbox
+  // sits an IMAP connection.
   const { data: unread } = useQuery({
     queryKey: ["mail-unread"],
     queryFn: () => api.get<{ accounts: { account_id: number; unseen: number | null }[] }>(
@@ -91,7 +91,7 @@ export default function Mail() {
     return (
       <Area hint={tr("mail.no_mailbox_yet")}>
         <p className="text-sm text-muted">
-          Konten und Identitäten stehen im Konto unter <b>Mail-Konten</b>.
+          <span dangerouslySetInnerHTML={{ __html: tr("mail.accounts_in_account") }} />
         </p>
       </Area>
     );
@@ -100,38 +100,38 @@ export default function Mail() {
   return (
     <div className="space-y-3">
       <Errorrow text={err} />
-      {/* Eine Zeile für alles, was zum Postfach gehört: welches, seine Einstellungen, und
+      {/* One row for everything that belongs to the mailbox: which one, its settings, and
           the only action that does not start from a message. */}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted">Postfach</span>
+        <span className="text-xs text-muted">{tr("mail.mailbox")}</span>
         <select value={accountId ?? ""} onChange={(e) => accountSwitch(Number(e.target.value))}
           className={`${INPUT_VALUE} max-w-[16rem]`}>
           {accounts.map((k) => {
             const open = unread?.accounts.find((a) => a.account_id === k.id)?.unseen;
             return (
               <option key={k.id} value={k.id}>
-                {k.name}{k.enabled ? "" : " (aus)"}{open ? ` — ${open} neu` : ""}
+                {k.name}{k.enabled ? "" : ` (${tr("mail.off_short")})`}{open ? ` — ${open} ${tr("mail.new_short")}` : ""}
               </option>
             );
           })}
         </select>
-        <IconButton icon="⟳" title="Jetzt nachsehen"
+        <IconButton icon="⟳" title={tr("mail.look_now")}
           onClick={() => {
             qc.invalidateQueries({ queryKey: ["mail-unread"] });
             qc.invalidateQueries({ queryKey: ["mail-folders"] });
             qc.invalidateQueries({ queryKey: ["mail-list"] });
           }} />
-        <IconButton icon="⚙" title="Einstellungen dieses Postfachs"
+        <IconButton icon="⚙" title={tr("mail.settings_of_mailbox")}
           onClick={() => setSettings(accounts.find((k) => k.id === accountId) || null)} />
-        {/* Die anderen Postfächer mit neuer Post — sichtbar, ohne das Auswahlfeld zu öffnen,
-            und ein Klick springt hin. Wer nichts liegen hat, taucht hier nicht auf: eine
+        {/* The other mailboxes with new mail — visible without opening the select, and one
+            click jumps there. Whoever has nothing waiting does not turn up here: a
             row of zeroes would be no information but wallpaper. */}
         {accounts.filter((k) => {
           const open = unread?.accounts.find((a) => a.account_id === k.id)?.unseen;
           return k.id !== accountId && !!open;
         }).map((k) => (
           <button key={k.id} onClick={() => accountSwitch(k.id)}
-            title={`Zu „${k.name}" wechseln`}
+            title={tr("mail.switch_to", { name: k.name })}
             className="flex shrink-0 items-center gap-1.5 rounded border border-brand/40 bg-brand/15 px-2 py-1 text-xs text-brand transition-colors hover:bg-brand/25">
             {k.name}
             <span className="rounded-full bg-brand px-1.5 text-[11px] text-white tabular-nums">
@@ -139,7 +139,7 @@ export default function Mail() {
             </span>
           </button>
         ))}
-        {/* Die Suche gehört zum Postfach, nicht zur Liste darunter: sie gilt für den ganzen
+        {/* The search belongs to the mailbox, not to the list below it: it applies to the whole
             folder and stays visible even when a message is open on the right. */}
         <form onSubmit={(e) => { e.preventDefault(); setSearch(question); setUid(null); }}
               className="flex min-w-0 flex-1 items-center gap-2">
@@ -147,31 +147,31 @@ export default function Mail() {
             placeholder={tr("mail.search_fulltext")} className={`${INPUT_VALUE} min-w-0 max-w-md flex-1`} />
           {search && (
             <Rowbutton onClick={() => { setQuestion(""); setSearch(""); }}>
-              zurücksetzen
+              {tr("mail.reset")}
             </Rowbutton>
           )}
         </form>
         <button onClick={() => setCompose({})}
           className={BUTTON.primary}>
-          ✉️ Verfassen
+          {tr("mail.compose_button")}
         </button>
       </div>
 
-      {/* Ab `sm` nebeneinander: die Ordnerspalte braucht keine 300 px, und untereinander
-          schiebt sie die Nachrichtenliste unter den Bildschirmrand — genau das, wofür man
-          ein Mail-Programm nicht aufmacht. */}
-      {/* Zwei Zustände, eine Anordnung: ohne geöffnete Mail liegt die Liste rechts und darf
-          breit sein. Ist eine Mail offen, rückt die Liste unter die Ordner — man bleibt in
-          der Übersicht, springt zur nächsten Mail und liest daneben weiter, statt zwischen
-          zwei Ansichten hin und her zu wechseln. */}
+      {/* Side by side from `sm` on: the folder column needs no 300 px, and stacked it pushes
+          the message list below the edge of the screen — exactly what one does not open a
+          mail program for. */}
+      {/* Two states, one arrangement: with no mail open the list sits on the right and may be
+          wide. With a mail open the list moves under the folders — one keeps the overview,
+          jumps to the next mail and reads on beside it, instead of switching back and forth
+          between two views. */}
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className={`sm:shrink-0 ${uid === null ? "sm:w-48 lg:w-56" : "sm:w-72 lg:w-80"}`}>
           <div className="space-y-3">
             <Area>
               <FolderTree folder={folderListing} active={folder}
                 onChoose={(n) => { setFolder(n); setUid(null); setSearch(""); setQuestion(""); }} />
-              {/* Handgriffe am GEWÄHLTEN Ordner. Sie stehen unter dem Baum und nicht in
-                  jeder Zeile: gebraucht werden sie selten, und ein Löschknopf neben jedem
+              {/* Handles for the CHOSEN folder. They stand below the tree and not in every
+                  row: they are needed rarely, and beside every
                   folder one delete button is one too many. */}
               {accountId && (
                 <FolderHandgrips accountId={accountId} folder={folder}
@@ -252,7 +252,7 @@ function FolderTree({ folder: folder, active, onChoose }: {
   // does not want to see all of those when opening it. What one needs daily are the six
   // special folders — the rest is one click away.
   const [on, setOn] = useState<Set<string>>(new Set());
-  if (!folder) return <Listing><ListingEmpty>Ordner werden geladen…</ListingEmpty></Listing>;
+  if (!folder) return <Listing><ListingEmpty>{tr("mail.folders_loading")}</ListingEmpty></Listing>;
 
   const hasChildren = (o: Folder) => folder.some((k) => k.parent === o.name);
   /**
@@ -287,7 +287,8 @@ function FolderTree({ folder: folder, active, onChoose }: {
     <Listing>
       {folder.filter(visible).map((o) => (
         <ListenLine key={o.name} dense onClick={() => onChoose(o.name)}>
-          {/* Feste Spalten statt Flex mit Platzhaltern: nur so steht das Ordnersymbol jeder
+          {/* Fixed columns instead of flex with placeholders: only that way does the folder
+              icon of every
               line in the same place, whether or not a fold arrow sits in front of it. */}
           <div className="grid grid-cols-[0.75rem_1.25rem_minmax(0,1fr)_auto] items-center gap-1.5"
                style={{ paddingLeft: `${o.level * 0.85}rem` }}>
@@ -313,7 +314,7 @@ function FolderTree({ folder: folder, active, onChoose }: {
               const onlyChildren = to && !o.unseen;
               return (
                 <Tag color={onlyChildren ? "neutral" : "brand"}
-                  title={onlyChildren ? "in Unterordnern" : "ungelesen"}>
+                  title={onlyChildren ? tr("mail.in_subfolders") : tr("mail.unread")}>
                   {number}
                 </Tag>
               );
@@ -333,7 +334,7 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
   const [question, setQuestion] = useState<"gelesen" | "loeschen" | null>(null);
   const [notice, setNotice] = useState("");
   const gonewrong = (was: string) => (e: unknown) =>
-    onError(e instanceof ApiError ? e.message : `${was} fehlgeschlagen`);
+    onError(e instanceof ApiError ? e.message : tr("mail.failed_suffix", { what: was }));
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["mail-folders"] });
     qc.invalidateQueries({ queryKey: ["mail-list"] });
@@ -344,10 +345,10 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
       `/mailbox/accounts/${accountId}/folders/read-all`, { folder: folder }),
     onSuccess: (r) => {
       setQuestion(null);
-      setNotice(r.marked ? `${r.marked} Nachrichten als gelesen markiert` : tr("mail.nothing_unread"));
+      setNotice(r.marked ? tr("mail.marked_read_n", { n: r.marked }) : tr("mail.nothing_unread"));
       refresh();
     },
-    onError: (e) => { setQuestion(null); gonewrong("Markieren")(e); },
+    onError: (e) => { setQuestion(null); gonewrong(tr("mail.marking"))(e); },
   });
   const remove = useMutation({
     mutationFn: () => api.post(`/mailbox/accounts/${accountId}/folders/delete`, { folder: folder }),
@@ -358,7 +359,7 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
   return (
     <>
       <div className="flex flex-wrap gap-2">
-        <Rowbutton onClick={() => setQuestion("gelesen")}>✓ Alle gelesen</Rowbutton>
+        <Rowbutton onClick={() => setQuestion("gelesen")}>{tr("mail.mark_all_read")}</Rowbutton>
         <Rowbutton danger onClick={() => setQuestion("loeschen")}>{tr("mail.delete_folder")}</Rowbutton>
       </div>
       {notice && <div className="text-xs text-green-400">{notice}</div>}
@@ -366,14 +367,14 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
       {question === "gelesen" && (
         <ConfirmDialog
           title={tr("mail.mark_all_read_q")}
-          text={`Alles Ungelesene in „${folder}" wird auf gelesen gesetzt.`}
+          text={tr("mail.everything_unread_in", { folder })}
           hint={tr("mail.undo_message_by_message")}
-          danger={false} confirmText="Markieren" runs={read.isPending}
+          danger={false} confirmText={tr("mail.mark")} runs={read.isPending}
           onClose={() => setQuestion(null)} onConfirm={() => read.mutate()} />
       )}
       {question === "loeschen" && (
         <ConfirmDialog
-          title={`Ordner „${folder}" löschen?`}
+          title={tr("mail.delete_folder_q", { folder })}
           text={tr("mail.folder_disappears")}
           hint={tr("mail.final_special_protected")}
           confirmText={tr("mail.delete_finally")} runs={remove.isPending}
@@ -411,9 +412,8 @@ function HtmlView({ html, remoteimages }: { html: string; remoteimages: boolean 
     <div className="space-y-2">
       {remoteimages && !images && (
         <div className="flex flex-wrap items-center gap-2 rounded border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-          Bilder von fremden Servern wurden nicht geladen — das würde dem Absender verraten,
-          dass du die Mail gelesen hast.
-          <Rowbutton onClick={() => setImages(true)}>Bilder laden</Rowbutton>
+          {tr("mail.remote_images_blocked")}
+          <Rowbutton onClick={() => setImages(true)}>{tr("mail.load_images")}</Rowbutton>
         </div>
       )}
       <iframe
@@ -455,14 +455,14 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
     <Area
       title={folder}
       tools={<>
-        {search && <Tag color="brand">Suche: {search}</Tag>}
+        {search && <Tag color="brand">{tr("mail.search_label")}: {search}</Tag>}
         <div className="flex-1" />
         <span className="text-xs text-muted">
-          {data?.total ?? 0} {search ? "Treffer" : tr("mail.messages")}
+          {data?.total ?? 0} {search ? tr("mail.hits") : tr("mail.messages")}
         </span>
       </>}
     >
-      {/* Schmal heißt: die Liste steht neben der geöffneten Mail und scrollt für sich. Ohne
+      {/* Narrow means: the list stands beside the open mail and scrolls on its own. Without
           its own height would make the page as long as the mailbox. */}
       <div className={narrow ? "max-h-[55vh] overflow-y-auto" : ""}>
       <Listing>
@@ -474,24 +474,24 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
                 m.uid === open ? "font-medium" : m.seen ? "text-ink" : "font-semibold text-ink"}`}>
                 {m.subject || tr("mail.no_subject")}
               </span>
-              {!m.seen && <Tag color="brand">neu</Tag>}
+              {!m.seen && <Tag color="brand">{tr("mail.new_short")}</Tag>}
               {m.has_attachment && <span title={tr("mail.has_attachment")}>📎</span>}
-              {m.flagged && <span title="markiert">⭐</span>}
-              {m.answered && <span title="beantwortet">↩</span>}
+              {m.flagged && <span title={tr("mail.flagged")}>⭐</span>}
+              {m.answered && <span title={tr("mail.answered")}>↩</span>}
               <span className="shrink-0 text-xs text-muted">{formatDateTime(m.date)}</span>
             </div>
             <div className="mt-0.5 truncate text-xs text-muted">{m.from}</div>
           </ListenLine>
         ))}
-        {isLoading && <ListingEmpty>Wird geladen…</ListingEmpty>}
-        {!isLoading && !data?.messages.length && <ListingEmpty>Nichts in diesem Ordner.</ListingEmpty>}
+        {isLoading && <ListingEmpty>{tr("mail.loading")}</ListingEmpty>}
+        {!isLoading && !data?.messages.length && <ListingEmpty>{tr("mail.nothing_in_folder")}</ListingEmpty>}
       </Listing>
       </div>
       {(data?.total ?? 0) > limit && (
         <div className="flex items-center gap-2">
-          <Rowbutton onClick={() => setPage(Math.max(0, page - 1))}>← neuer</Rowbutton>
+          <Rowbutton onClick={() => setPage(Math.max(0, page - 1))}>{tr("mail.newer")}</Rowbutton>
           <span className="text-xs text-muted">
-            {page * limit + 1}–{Math.min((page + 1) * limit, data!.total)} von {data!.total}
+            {page * limit + 1}–{Math.min((page + 1) * limit, data!.total)} {tr("mail.of")} {data!.total}
           </span>
           <Rowbutton onClick={() => setPage(page + 1)}>{tr("mail.older")}</Rowbutton>
         </div>
@@ -605,9 +605,9 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   });
 
   /**
-   * Empfänger einer Antwort.
+   * The recipients of a reply.
    *
-   * `allen` additionally takes along everyone who was already on it — minus one's own
+   * `all` additionally takes along everyone who was already on it — minus one's own
    * addresses, because answering oneself is the classic one notices only after sending. If a
    * `Reply-To` stands in the mail it takes precedence over the sender: that is exactly what it
    * is there for.
@@ -678,7 +678,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
 
   const move = useMutation({
     mutationFn: (target: string) => api.post(`${basis}/move`, { folder: folder, target }),
-    onSuccess: after, onError: gonewrong("Verschieben"),
+    onSuccess: after, onError: gonewrong(tr("mail.move")),
   });
   const archive = useMutation({
     mutationFn: () => api.post<{ folder: string }>(`${basis}/archive`, { folder: folder }),
@@ -686,7 +686,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   });
   const asSpam = useMutation({
     mutationFn: () => api.post(`${basis}/spam`, { folder: folder }),
-    onSuccess: after, onError: gonewrong("Als Spam markieren"),
+    onSuccess: after, onError: gonewrong(tr("mail.mark_as_spam")),
   });
   const noSpam = useMutation({
     mutationFn: () => api.post(`${basis}/not-spam`, { folder: folder }),
@@ -704,46 +704,46 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
     <Area
       title={m?.subject || "…"}
       tools={<>
-        <Rowbutton onClick={onBack}>← Liste</Rowbutton>
-        <Rowbutton onClick={() => onReplies(answerFields(false))}>Antworten</Rowbutton>
-        {/* Nur wenn er wirklich etwas anderes tut: gezählt wird, was nach Abzug der eigenen
-            Adressen übrig bleibt. Sonst stünde bei einer Mail, die an mich und eine zweite
+        <Rowbutton onClick={onBack}>{tr("mail.back_to_list")}</Rowbutton>
+        <Rowbutton onClick={() => onReplies(answerFields(false))}>{tr("mail.reply")}</Rowbutton>
+        {/* Only when it really does something different: what counts is what is left after
+            one's own addresses are taken off. Otherwise a mail addressed to me and a second
             own address, a button that does the same as its neighbour. */}
         {moreRecipient() && (
           <Rowbutton onClick={() => onReplies(answerFields(true))}>
-            Allen antworten
+            {tr("mail.reply_all")}
           </Rowbutton>
         )}
         <Rowbutton onClick={() => onReplies({
           identity: String(matchingIdentity() ?? ""),
           subject: `Fwd: ${m?.subject || ""}`,
-          text: `\n\n--- Weitergeleitete Nachricht ---\n`
-            + `Von: ${(m?.from || []).map((a) => a.addr).join(", ")}\n`
-            + `Datum: ${m?.date || ""}\nBetreff: ${m?.subject || ""}\n\n${m?.text || ""}`,
-        })}>Weiterleiten</Rowbutton>
-        {/* Archiv und Spam erscheinen nur, wenn am Konto ein Ziel dafür steht — ein Knopf,
+          text: `\n\n${tr("mail.forwarded_message")}\n`
+            + `${tr("mail.from_label")}: ${(m?.from || []).map((a) => a.addr).join(", ")}\n`
+            + `${tr("mail.date_label")}: ${m?.date || ""}\n${tr("mail.subject")}: ${m?.subject || ""}\n\n${m?.text || ""}`,
+        })}>{tr("mail.forward")}</Rowbutton>
+        {/* Archive and spam appear only when the account names a target for them — a button
             that explains on being pressed that it cannot is none. */}
         {(account?.archive_mode === "pattern" ? account?.archive_pattern : account?.folder_archive) && (
-          <Rowbutton onClick={() => archive.mutate()}>📦 Archivieren</Rowbutton>
+          <Rowbutton onClick={() => archive.mutate()}>{tr("mail.archive_button")}</Rowbutton>
         )}
-        {/* Im Spam-Ordner ist „als Spam markieren" keine Handlung, sondern eine
+        {/* In the spam folder "mark as spam" is not an action but a
             repetition. What is missing there is the contradiction. */}
         {account?.folder_junk && (folder === account.folder_junk ? (
           <Rowbutton onClick={() => noSpam.mutate()} title={tr("mail.back_inbox_detection_learns")}>
             ✅ {tr("mail.not_spam")}
           </Rowbutton>
         ) : (
-          <Rowbutton onClick={() => asSpam.mutate()}>🚫 Spam</Rowbutton>
+          <Rowbutton onClick={() => asSpam.mutate()}>{tr("mail.spam_button")}</Rowbutton>
         ))}
-        <Rowbutton onClick={() => setMoveOpen(true)}>📁 Verschieben</Rowbutton>
+        <Rowbutton onClick={() => setMoveOpen(true)}>{tr("mail.move_button")}</Rowbutton>
         <div className="flex-1" />
         <Rowbutton danger onClick={() => remove.mutate()}>{tr("mail.delete_3")}</Rowbutton>
       </>}
     >
       {m && (
         <>
-          {/* Zwei Zeilen statt vier: wer geschrieben hat und wann, ist die Frage beim
-              Öffnen — an wen und in Kopie liest man nur nach, wenn man antwortet. Die volle
+          {/* Two rows instead of four: who wrote and when is the question on opening — to whom
+              and in copy one looks up only when replying. The full
               list stands in the tooltip, so that shortening swallows nothing. */}
           <div className="space-y-0.5">
             <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
@@ -759,11 +759,11 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               </span>
             </div>
             <div className="truncate text-xs text-muted"
-                 title={[`An: ${m.to.map((a) => a.addr).join(", ") || "—"}`,
-                         m.cc.length ? `Kopie: ${m.cc.map((a) => a.addr).join(", ")}` : ""]
+                 title={[`${tr("mail.to_label")}: ${m.to.map((a) => a.addr).join(", ") || "—"}`,
+                         m.cc.length ? `${tr("mail.cc_label")}: ${m.cc.map((a) => a.addr).join(", ")}` : ""]
                         .filter(Boolean).join("\n")}>
-              An {m.to.map((a) => a.addr).join(", ") || "—"}
-              {m.cc.length > 0 && <> · Kopie {m.cc.map((a) => a.addr).join(", ")}</>}
+              {tr("mail.to_label")} {m.to.map((a) => a.addr).join(", ") || "—"}
+              {m.cc.length > 0 && <> · {tr("mail.cc_label")} {m.cc.map((a) => a.addr).join(", ")}</>}
             </div>
           </div>
 
@@ -794,7 +794,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           {m.html ? (
             <div className="space-y-2">
               <Tab active={view} onChoose={setView} selection={[
-                ["html", "Formatiert"], ["text", "Nur Text"],
+                ["html", tr("mail.formatted")], ["text", tr("mail.text_only")],
               ]} />
               {view === "html"
                 ? <HtmlView html={m.html} remoteimages={m.remote_images} />
@@ -810,7 +810,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
 
           {forMail.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted">Aktionen:</span>
+              <span className="text-xs text-muted">{tr("mail.actions_label")}</span>
               {forMail.map((act) => (
                 <Rowbutton key={act.definition_id} title={act.description}
                   onClick={() => start.mutate({ definition_id: act.definition_id })}>
@@ -830,9 +830,9 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
       )}
 
       {moveOpen && (
-        <Dialog title="Verschieben nach" onClose={() => setMoveOpen(false)}>
-          {/* Der Baum wie in der Ordnerspalte, nur ohne Zähler: hier wird gewählt, nicht
-              gestöbert. Ein Klick verschiebt und schließt — ein zweiter Knopf „Übernehmen"
+        <Dialog title={tr("mail.move_to")} onClose={() => setMoveOpen(false)}>
+          {/* The tree as in the folder column, only without counters: here one chooses, one
+              does not browse. A click moves and closes — a second "apply" button
               would be a step nobody needs. */}
           <Listing>
             {(allFolder || []).filter((o) => o.name !== folder).map((o) => (
@@ -845,7 +845,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                 </div>
               </ListenLine>
             ))}
-            {!allFolder?.length && <ListingEmpty>Keine weiteren Ordner.</ListingEmpty>}
+            {!allFolder?.length && <ListingEmpty>{tr("mail.no_further_folders")}</ListingEmpty>}
           </Listing>
         </Dialog>
       )}
@@ -910,7 +910,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
     <Dialog wide hold title={tr("mail.compose")} onClose={onClose}
       foot={
         <div className="flex items-center gap-2">
-          <Rowbutton onClick={() => draft.mutate()}>Als Entwurf sichern</Rowbutton>
+          <Rowbutton onClick={() => draft.mutate()}>{tr("mail.save_as_draft")}</Rowbutton>
           <div className="flex-1" />
           <DialogFoot onCancel={onClose} runs={send.isPending}
             disabled={!identity || !f.to.trim()} saveText={tr("mail.send")}
@@ -921,7 +921,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
         {!identities?.length && (
           <Errorrow text={tr("mail.account_without_identity")} />
         )}
-        <Field label="Von">
+        <Field label={tr("mail.from_label")}>
           <select value={identity ?? ""} className={INPUT_VALUE}
             onChange={(e) => setIdentity(Number(e.target.value))}>
             {identities?.map((i) => (
@@ -931,7 +931,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
             ))}
           </select>
         </Field>
-        <Field label="An" hint="Mehrere Adressen mit Komma trennen.">
+        <Field label={tr("mail.to_label")} hint={tr("mail.several_addresses_comma")}>
           <input value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} className={INPUT_VALUE} />
         </Field>
         <Field label={tr("mail.copy")}>
@@ -940,7 +940,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
         <Field label={tr("mail.subject")}>
           <input value={f.subject} onChange={(e) => setF({ ...f, subject: e.target.value })} className={INPUT_VALUE} />
         </Field>
-        <Field label="Text">
+        <Field label={tr("mail.text_label")}>
           <textarea value={f.text} rows={14} className={`${INPUT_VALUE} font-mono text-xs`}
             onChange={(e) => setF({ ...f, text: e.target.value })} />
         </Field>
@@ -956,7 +956,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
                       <Tag>{Math.max(1, Math.round(a.size / 1024))} kB</Tag>
                       <Rowbutton danger
                         onClick={() => setAttachments(attachments.filter((_, j) => j !== i))}>
-                        Entfernen
+                        {tr("mail.remove")}
                       </Rowbutton>
                     </div>
                   </ListenLine>
@@ -964,7 +964,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
               </Listing>
             )}
             <label className="inline-block cursor-pointer rounded border border-line px-2 py-1 text-xs text-muted hover:border-brand hover:text-ink">
-              + Datei anhängen
+              {tr("mail.attach_file")}
               <input type="file" multiple className="hidden" onChange={async (e) => {
                 const files = Array.from(e.target.files || []);
                 const fresh = await Promise.all(files.map(async (d) => ({

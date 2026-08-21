@@ -80,14 +80,14 @@ export default function OwnWorkflowsPanel() {
 
       {own.length > 0 ? (
         /* Without column headers: with a handful of entries name, key and state explain
-           themselves, and a heading row would be a row of noise above
-           fünf Zeilen Inhalt. */
+           themselves, and a heading row would be a row of noise above five rows of
+           content. */
         <Listing>
           {own.map((d) => (
             <ListenLine key={d.id} columns={COLUMNS} dimmed={!d.enabled}
               onClick={() => open_it(d)}>
-              {/* Zwei Zeilen statt fünf Spalten: der Name trägt den Eintrag, alles
-                  Technische steht eine Etage tiefer und leiser. Das hält die Liste auch
+              {/* Two rows instead of five columns: the name carries the entry, everything
+                  technical stands one floor lower and quieter. That keeps the list
                   aligned when one name is long and the next one short. */}
               <div className="min-w-0 basis-full sm:basis-auto">
                 <div className="truncate font-medium text-ink">{d.name}</div>
@@ -102,7 +102,8 @@ export default function OwnWorkflowsPanel() {
                 : d.current_version_id
                   ? <State color="green" text={tr("proc.published")} />
                   : <State color="yellow" text={tr("own_workflows.draft_only")} />}
-              {/* Klicks auf die Knöpfe gehören den Knöpfen — sonst öffnete sich hinter dem
+              {/* Clicks on the buttons belong to the buttons — otherwise the editor would
+                  open behind the
                   delete dialog the editor as well. */}
               <div className="ml-auto shrink-0 sm:ml-0 sm:justify-self-end"
                 onClick={(e) => e.stopPropagation()}>

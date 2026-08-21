@@ -30,16 +30,16 @@ export default function AgentTaskConfig({
 
   return (
     <div className="space-y-3">
-      {/* Auswahl statt Vorschlagsliste: ein Textfeld mit `datalist` zeigt erst beim Tippen,
-          was es gibt — man muss also wissen, wonach man sucht. Bei einer Handvoll Rollen ist
+      {/* A select instead of a suggestion list: a text field with `datalist` shows what there
+          is only while typing — so one has to know what to look for. With a handful of roles
           that would be a memory check without a reason. */}
       <label className="block text-xs font-medium text-muted">
-        Wer arbeitet
+        {tr("agent_task_config.who_works")}
         <select
           value={ownRole ? "__frei__" : (config.agent_role || "exec_agent")}
           onChange={(e) => {
             const value = e.target.value;
-            // „Andere Rolle" schaltet auf ein Textfeld um, statt sofort etwas zu setzen:
+            // "Another role" switches to a text field instead of setting something at once:
             // otherwise a role name nobody chose would briefly stand there while switching.
             setOwnRole(value === "__frei__");
             if (value !== "__frei__") onChange({ ...config, agent_role: value });
@@ -69,13 +69,12 @@ export default function AgentTaskConfig({
           />
         )}
         <span className="mt-1 block text-[11px] text-muted">
-          Die vier Platzhalter binden den Ablauf an die Projekt-Einstellungen. Ein fester
-          Agent (z. B. <code>developer</code>) gilt unabhängig davon, was am Projekt steht.
+          <span dangerouslySetInnerHTML={{ __html: tr("agent_task_config.placeholders_hint") }} />
         </span>
       </label>
 
       <label className="block text-xs font-medium text-muted">
-        Phase
+        {tr("agent_task_config.phase")}
         <select
           value={config.phase || "execution"}
           onChange={(e) => onChange({ ...config, phase: e.target.value as NodeConfig["phase"] })}
@@ -92,11 +91,10 @@ export default function AgentTaskConfig({
           value={config.outcomes_map || {}}
           onChange={(m) => onChange({ ...config, outcomes_map: m as Record<string, string> })}
           keyPlaceholder={tr("agent_task_config.result")}
-          valuePlaceholder="Handle/Status"
+          valuePlaceholder={tr("agent_task_config.handle_status")}
         />
         <div className="mt-1 text-[11px] text-muted">
-          Nur nötig, wenn ein Ergebnis auf einen anders benannten Ausgang gehen soll — die
-          Ausgänge am Knoten (fertig/Zwischenstand/Rückfrage/Fehler) greifen von allein.
+          {tr("agent_task_config.outcomes_hint")}
         </div>
       </div>
 

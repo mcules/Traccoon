@@ -234,12 +234,12 @@ export default function Office(): JSX.Element {
     // The area rail stays free: the office covers the page, not the way out.
     // In kiosk mode there is no way out (a wall screen), and there it really covers everything.
     <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${kiosk ? "" : RAIL_LEAVEBLANK}`}>
-      {/* Die Kopfzeile dieser Seite (Zurück-Knopf) ist Bedienung — im Kiosk fällt sie weg.
+      {/* The header of this page (the back button) is operation — in kiosk mode it falls away.
           What the wall screen needs in labels stands in the header of the view. */}
       {!kiosk && (
         <div className="flex shrink-0 items-center gap-3 border-b border-line bg-card px-4 py-2">
-          {/* Zurück nur mit Projekt-Bezug: dorthin führt die Bereichsschiene nicht. Aus dem
-              globalen Büro geht es über die Schiene hinaus, ein zweiter Ausgang wäre nur ein
+          {/* Back only with a project: the area rail does not lead there. Out of the global
+              office one leaves through the rail, a second exit would only be a
               second place one looks for it. */}
           {projectKey && (
             <button

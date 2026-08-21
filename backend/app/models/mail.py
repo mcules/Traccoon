@@ -56,7 +56,7 @@ class MailAccount(TimestampMixin, Base):
     # name from placeholders, built from the date OF THE MAIL (not from today — otherwise
     # eine alte Rechnung im laufenden Jahr).
     archive_mode: Mapped[str] = mapped_column(String(10), default="folder")  # folder | pattern
-    archive_pattern: Mapped[str] = mapped_column(String(255), default="Archive/{jahr}")
+    archive_pattern: Mapped[str] = mapped_column(String(255), default="Archive/{year}")
 
     # ── What agents may see of this mailbox ─────────────────────────────────
     # A mailbox is the mail of a person, no data store. That is why everything here is off

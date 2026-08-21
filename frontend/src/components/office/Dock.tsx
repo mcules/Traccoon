@@ -220,8 +220,8 @@ export default function Dock({
             className={"rounded-t border-b-2 px-2.5 py-1 text-xs "
               + (tab === t.key ? "border-brand text-ink" : "border-transparent text-muted hover:text-ink")}>
             {t.icon} {tr(t.label)}
-            {/* Die Akte bekommt keine Zahl: wie viele Rollen es gibt, weiß erst ihre eigene
-                Abfrage — eine Zahl aus dem Roster wäre eine andere Menge mit demselben
+            {/* The file gets no number: how many roles there are only its own query knows —
+                a number out of the roster would be a different set with the same
                 Aussehen. */}
             {t.key !== "akte" && (
               <span className="ml-1 text-[11px] text-muted">
@@ -231,7 +231,7 @@ export default function Dock({
           </button>
         ))}
         <div className="flex-1" />
-        {/* Der Einfrierhinweis gilt für die drei Log-Reiter. Die Akte friert nicht ein — sie
+        {/* The freeze notice applies to the three log tabs. The file does not freeze — it
             names its own window in its own heading. */}
         {seekTs !== null && tab !== "akte" && (
           <span className="self-center pb-1 text-[11px] text-orange-400"

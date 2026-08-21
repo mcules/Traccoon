@@ -126,7 +126,7 @@ export default function NewTicketModal({
           </label>
         </div>
 
-        {/* Anhänge / Screenshots */}
+        {/* Attachments / screenshots */}
         <label className="text-xs text-muted">{tr("new_ticket_modal.attachments")}</label>
         <div className="mb-4 mt-1 rounded-lg border border-dashed border-line p-3">
           {files.length > 0 && (

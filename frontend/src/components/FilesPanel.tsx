@@ -152,12 +152,12 @@ export default function FilesPanel({ project }: { project: Project }) {
 
   return (
     <div>
-      {/* Branch-Leiste */}
+      {/* The branch bar */}
       <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-card px-3 py-2 text-sm">
         <span className="font-mono">🌿 {st?.branch || "…"}</span>
         {st && st.behind > 0 && <span className="rounded bg-yellow-500/20 px-1.5 text-xs text-yellow-300">↓ {st.behind}</span>}
         {st && st.ahead > 0 && <span className="rounded bg-brand/20 px-1.5 text-xs text-brand">↑ {st.ahead}</span>}
-        {st && st.dirty.length > 0 && <span className="rounded bg-orange-500/20 px-1.5 text-xs text-orange-300">● {st.dirty.length} geändert</span>}
+        {st && st.dirty.length > 0 && <span className="rounded bg-orange-500/20 px-1.5 text-xs text-orange-300">● {st.dirty.length} {tr("files_panel.changed")}</span>}
         <div className="flex-1" />
         {st?.has_remote && (
           <>

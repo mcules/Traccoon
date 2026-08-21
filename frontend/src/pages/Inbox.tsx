@@ -185,14 +185,14 @@ function InboxList() {
                 <Tag color={st.color}>{tr(st.label)}</Tag>
                 <Tag color={prio.color}>{tr(prio.label)}</Tag>
                 {entry.category && <Tag>{entry.category}</Tag>}
-                {entry.sensitive && <span title="sensibel — vertraulich behandeln">🔒</span>}
+                {entry.sensitive && <span title={tr("inbox.sensitive_title")}>🔒</span>}
                 {entry.redaction === "unredacted" && (
                   <Tag color="yellow" title={tr("inbox.full_text_released")}>{tr("inbox.unredacted")}</Tag>
                 )}
                 <span className="ml-auto text-xs text-muted">{formatTime(entry.created_at)}</span>
               </div>
               <div className="truncate font-medium text-ink">{entry.subject || entry.title}</div>
-              {entry.from && <div className="truncate text-xs text-muted">von {entry.from}</div>}
+              {entry.from && <div className="truncate text-xs text-muted">{tr("inbox.from")} {entry.from}</div>}
               {entry.redacted_summary && <p className="mt-1.5 break-words text-sm text-muted">{entry.redacted_summary}</p>}
               {entry.action_hint && (
                 <p className="mt-1.5 break-words text-xs text-brand">↳ {tr("inbox.learned_rule")}: {entry.action_hint}</p>
@@ -203,20 +203,20 @@ function InboxList() {
                   <>
                     <button onClick={() => { setErr(""); setApproveId(approveId === entry.id ? null : entry.id); }}
                       className={BUTTON.primary}>
-                      {entry.status === "error" ? "Erneut freigeben" : "Freigeben…"}
+                      {entry.status === "error" ? tr("inbox.approve_again") : tr("inbox.approve_dots")}
                     </button>
                     <button onClick={() => { setErr(""); reject.mutate(entry.id); }} disabled={reject.isPending}
                       className={BUTTON.secondary}>
-                      Verwerfen
+                      {tr("inbox.discard")}
                     </button>
                   </>
                 )}
                 {entry.status === "approved" && <span className="text-sm text-muted">{tr("inbox.waiting_processed")}</span>}
-                {entry.status === "running" && <span className="text-sm text-brand">🔄 Assistent arbeitet…</span>}
+                {entry.status === "running" && <span className="text-sm text-brand">{tr("inbox.assistant_working")}</span>}
                 {(entry.result || entry.error) && (
                   <button onClick={() => setOpenId(expanded ? null : entry.id)}
                     className="ml-auto rounded border border-line px-2 py-1 text-xs text-muted hover:text-ink">
-                    {expanded ? "Details ausblenden" : "Details"}
+                    {expanded ? tr("inbox.hide_details") : tr("inbox.details")}
                   </button>
                 )}
               </div>
@@ -236,7 +236,7 @@ function InboxList() {
           );
         })}
         {!isLoading && items.length === 0 && (
-          <ListingEmpty>Nichts hier. Eingehende Mails erscheinen automatisch.</ListingEmpty>
+          <ListingEmpty>{tr("inbox.nothing_here")}</ListingEmpty>
         )}
       </Listing>
       </Area>

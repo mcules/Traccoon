@@ -39,7 +39,7 @@ async def test_the_persons_default_decides(db, monkeypatch):
     anna = await _person(db, "anna", chat="111", mail="anna@example.org", standard="email")
     path = await notify.deliver(db, user=anna, kind="test", title="Hallo", body="Text")
     await db.commit()
-    assert path["kanal"] == "email" and sent[0]["to"] == "anna@example.org"
+    assert path["channel"] == "email" and sent[0]["to"] == "anna@example.org"
     (n,) = (await db.execute(select(Notification))).scalars().all()
     assert n.chat_id is None and n.notified_at is not None, "per Mail zugestellt, nichts offen"
 
@@ -50,7 +50,7 @@ async def test_the_sender_may_dictate_the_channel(db, monkeypatch):
     anna = await _person(db, "anna", chat="111", mail="anna@example.org", standard="email")
     path = await notify.deliver(db, user=anna, kind="test", title="Hallo", channel="telegram")
     await db.commit()
-    assert path["kanal"] == "telegram" and not sent
+    assert path["channel"] == "telegram" and not sent
     (n,) = (await db.execute(select(Notification))).scalars().all()
     assert n.chat_id == "111"
 
@@ -62,7 +62,7 @@ async def test_a_missing_channel_falls_back_to_the_other(db, monkeypatch):
     bert = await _person(db, "bert", chat=None, mail="bert@example.org", standard="telegram")
     path = await notify.deliver(db, user=bert, kind="test", title="Hallo")
     await db.commit()
-    assert path["kanal"] == "email" and sent[0]["to"] == "bert@example.org"
+    assert path["channel"] == "email" and sent[0]["to"] == "bert@example.org"
 
 
 async def test_a_differing_address_beats_the_login_address(db, monkeypatch):
@@ -82,7 +82,7 @@ async def test_without_any_channel_the_bell_remains(db, monkeypatch):
     mute = await _person(db, "stumm", chat=None, mail=None, standard="email")
     path = await notify.deliver(db, user=mute, kind="test", title="Hallo")
     await db.commit()
-    assert path["kanal"] == "bell" and not sent
+    assert path["channel"] == "bell" and not sent
     (n,) = (await db.execute(select(Notification))).scalars().all()
     assert n.user_id == mute.id and n.notified_at is None
 
@@ -156,24 +156,27 @@ async def test_destination_as_a_way_out(db, monkeypatch):
     from app.services import destinations
     monkeypatch.setattr(destinations, "call", call)
 
-    anna = await _person(db, "anna", chat=None, mail=None, standard="ziel")
+    anna = await _person(db, "anna", chat=None, mail=None, standard="destination")
     target = await _target(db, anna)
     anna.notify_destination_id = target.id
     await db.commit()
 
     path = await notify.deliver(db, user=anna, kind="test", title="Hallo", body="Text")
-    assert path["kanal"] == "ziel" and path["ok"] is True
+    assert path["channel"] == "destination" and path["ok"] is True
     (name, kw) = called[0]
-    assert name == "ntfy" and kw["body"] == {"art": "test", "titel": "Hallo", "text": "Text"}
+    assert name == "ntfy" and kw["body"] == {
+        "kind": "test", "title": "Hallo", "text": "Text",
+        # The German keys of the first years travel along, so old receivers keep working.
+        "art": "test", "titel": "Hallo"}
     # The bell carries it all the same, and the timestamp says that nothing is pending outside.
     n = (await db.execute(select(Notification))).scalars().one()
     assert n.notified_at is not None
 
 
 async def test_channel_without_a_destination_stays_in_the_bell(db):
-    anna = await _person(db, "anna", chat=None, mail=None, standard="ziel")
+    anna = await _person(db, "anna", chat=None, mail=None, standard="destination")
     path = await notify.deliver(db, user=anna, kind="test", title="Hallo")
-    assert path["kanal"] == "bell"
+    assert path["channel"] == "bell"
 
 
 async def test_a_foreign_destination_cannot_be_picked(client, db):
@@ -188,7 +191,7 @@ async def test_a_foreign_destination_cannot_be_picked(client, db):
 
     own = await _target(db, anna, name="annafunk")
     good = await client.put("/me/notify", headers=auth(anna),
-                           json={"notify_default": "ziel", "notify_destination_id": own.id})
+                           json={"notify_default": "destination", "notify_destination_id": own.id})
     assert good.status_code == 204
     await db.refresh(anna)
-    assert (anna.notify_default, anna.notify_destination_id) == ("ziel", own.id)
+    assert (anna.notify_default, anna.notify_destination_id) == ("destination", own.id)

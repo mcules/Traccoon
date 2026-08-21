@@ -56,7 +56,7 @@ export default function ProjectView() {
     const old = searchParams.get("tab");
     const target = old && key ? redirectOldTab(key, old) : null;
     if (target) { navigate(target, { replace: true }); return; }
-    // Deutsche Abschnitte im Pfad (`/projects/X/arbeit/liste`) auf die englischen: Adressen
+    // German sections in the path (`/projects/X/arbeit/liste`) onto the English ones: addresses
     // are English, and what stands in bookmarks should still arrive.
     const newTab = tab ? OLD_SECTION[tab] : undefined;
     const newUnder = under ? OLD_SUBVIEW[under] : undefined;

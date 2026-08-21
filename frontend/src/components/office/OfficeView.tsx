@@ -294,7 +294,7 @@ export default function OfficeView({
     if (!kiosk) return;
     let timer: number | null = null;
     const show = (v: boolean) => {
-      if (buttonRef.current === v) return;   // je Mausbewegung ein Renderdurchlauf wäre absurd
+      if (buttonRef.current === v) return;   // one render pass per mouse move would be absurd
       buttonRef.current = v;
       setButtonVisible(v);
     };

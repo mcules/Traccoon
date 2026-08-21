@@ -13,8 +13,8 @@ export default function StartNode({ id, data, selected }: FlowNodeProps) {
       runtimeState={data.runtimeState}
       hasTarget={false}
     >
-      {/* Der Auslöser gehört auf die Karte — sonst sieht man einem Ablauf nicht an,
-          wodurch er überhaupt startet. */}
+      {/* The trigger belongs on the card — otherwise one cannot tell from a flow what starts
+          it in the first place. */}
       <div>{t?.event ? t.event
         : t?.kind === "webhook" ? tr("start_config.call_from_outside_webhook")
         : tr("start.manual_start")}</div>

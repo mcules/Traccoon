@@ -166,7 +166,7 @@ function align(
     width.set(it.node.id, it.s.width);
   }));
 
-  const high = new Map<string, string[]>();   // Vorgänger
+  const high = new Map<string, string[]>();   // the predecessors
   const down = new Map<string, string[]>(); // Nachfolger
   for (const e of forward) {
     if (!x.has(e.source) || !x.has(e.target)) continue;

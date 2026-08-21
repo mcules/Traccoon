@@ -110,10 +110,10 @@ async def set_telegram(d: StrIn, u: User = Depends(get_current_user), db: AsyncS
 
 class NotifyIn(BaseModel):
     """How this person wants to be reached. Empty fields stay unchanged."""
-    notify_default: str | None = None       # telegram | email | ziel
-    notify_email: str | None = None         # leer = Anmelde-Adresse benutzen
+    notify_default: str | None = None       # telegram | email | destination
+    notify_email: str | None = None         # empty = use the login address
     telegram_chat_id: str | None = None
-    # Kanal „ziel“: welches Ziel aufgerufen wird (0 = keins).
+    # Channel "destination": which destination is called (0 = none).
     notify_destination_id: int | None = None
 
 
@@ -126,8 +126,10 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
     the normal case: a flow often knows its recipient only at runtime and knows nothing about
     their habits.
     """
-    from ..services.notify import CHANNELS
+    from ..services.notify import CHANNELS, _channel
     if d.notify_default is not None:
+        # A client from before the rename still sends "ziel"; it means the same channel.
+        d.notify_default = _channel(d.notify_default)
         if d.notify_default not in CHANNELS:
             raise Error(status.HTTP_400_BAD_REQUEST, "err.unknown_channel_possible",
                          "Unknown channel, possible: {possible}", possible=', '.join(CHANNELS))

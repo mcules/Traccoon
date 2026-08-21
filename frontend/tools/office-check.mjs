@@ -40,7 +40,7 @@ const OFFICE_DIR = join(FRONTEND, "src", "components", "office");
 const GOLDEN_FILE = join(HERE, "golden.json");
 const BLESS = process.argv.includes("--bless");
 
-// ── Schichten (PIXEL-CONTRACT.md Regel 4) ────────────────────────────────────
+// ── Layers (PIXEL-CONTRACT.md rule 4) ────────────────────────────────────────
 
 /** Layer 2 despite `.ts`: the React-near building blocks without JSX. */
 const LAYER2_TS = new Set(["api", "useOfficeFeed", "useTheme"]);
@@ -59,12 +59,12 @@ function layerOf(rel) {
   if (rel.endsWith(".tsx")) return 2;
   const parts = rel.split("/");
   if (parts.length > 1 && parts[0] === "pixel") return 1;
-  if (parts.length > 1) return 2; // andere Unterordner sind Schicht 2
+  if (parts.length > 1) return 2; // other subfolders are layer 2
   const base = parts[0].replace(/\.[^.]+$/, "");
   return LAYER2_TS.has(base) ? 2 : 0;
 }
 
-// ── Dateien einsammeln ───────────────────────────────────────────────────────
+// ── Collect the files ────────────────────────────────────────────────────────
 
 /** @returns {string[]} POSIX-Pfade relativ zu OFFICE_DIR */
 function collect(dir, out = [], base = dir) {
@@ -72,7 +72,7 @@ function collect(dir, out = [], base = dir) {
   try {
     entries = readdirSync(dir, { withFileTypes: true });
   } catch {
-    return out; // Verzeichnis existiert noch nicht — das ist kein Fehler
+    return out; // the directory does not exist yet — that is no error
   }
   for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
     const abs = join(dir, e.name);
@@ -159,8 +159,8 @@ function checkPurity() {
       }
     });
   }
-  report("Reinheit (Schicht 0+1)", bad.length === 0,
-    `${scanned.length} Dateien, ${bad.length} Verstöße`);
+  report("purity (layers 0+1)", bad.length === 0,
+    `${scanned.length} files, ${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -195,31 +195,31 @@ function checkLayers() {
     for (const { spec, at } of importsOf(f.code)) {
       const where = `${f.rel}:${lineOf(f.code, at)}`;
       if (!spec.startsWith(".")) {
-        bad.push(`${where}  Paket-Import "${spec}" — Schicht ${f.layer} lädt nichts aus node_modules`);
+        bad.push(`${where}  package import "${spec}" — layer ${f.layer} loads nothing out of node_modules`);
         continue;
       }
       if (!spec.endsWith(".ts")) {
-        bad.push(`${where}  "${spec}" ohne .ts-Endung — Node löst das in ESM nicht auf`);
+        bad.push(`${where}  "${spec}" without a .ts ending — Node does not resolve that in ESM`);
         continue;
       }
       const target = posix.normalize(posix.join(posix.dirname(f.rel), spec));
       if (target.startsWith("..")) {
-        bad.push(`${where}  "${spec}" verlässt office/ — Schicht ${f.layer} bleibt drinnen`);
+        bad.push(`${where}  "${spec}" leaves office/ — layer ${f.layer} stays inside`);
         continue;
       }
       const tl = layerOf(target);
       const base = target.split("/").pop().replace(/\.[^.]+$/, "");
       if (f.layer === 0 && tl !== 0) {
-        bad.push(`${where}  Schicht 0 → Schicht ${tl} ("${spec}")`);
+        bad.push(`${where}  layer 0 → layer ${tl} ("${spec}")`);
       } else if (f.layer === 1 && tl === 2) {
-        bad.push(`${where}  Schicht 1 → Schicht 2 ("${spec}")`);
+        bad.push(`${where}  layer 1 → layer 2 ("${spec}")`);
       } else if (f.layer === 1 && tl === 0 && !LAYER1_MAY_IMPORT_FROM_LAYER0.has(base)) {
-        bad.push(`${where}  Schicht 1 → "${base}" — erlaubt sind nur types/ids/const, nie die Engine`);
+        bad.push(`${where}  layer 1 → "${base}" — allowed are only types/ids/const, never the engine`);
       }
     }
   }
-  report("Schicht-Import-Regel", bad.length === 0,
-    `${scanned.length} Dateien, ${bad.length} Verstöße`);
+  report("layer import rule", bad.length === 0,
+    `${scanned.length} files, ${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -314,18 +314,18 @@ function goldenFrames() {
 }
 
 function checkGoldenFrames(golden) {
-  if (!golden) return; // Meldung kam schon beim Laden
+  if (!golden) return; // the message came while loading already
   const got = goldenFrames();
   const want = golden.frames;
   if (!Array.isArray(want) || want.length !== got.length) {
-    report("goldenes Bild (8 Zeitpunkte)", false,
+    report("golden image (8 moments)", false,
       `tools/golden.json: ${Array.isArray(want) ? want.length : "kein"} Bild(er), erwartet ${got.length}`);
     return;
   }
   if (golden.fixture !== FIXTURE_HASH) {
-    report("goldenes Bild (8 Zeitpunkte)", false,
-      `tools/fixture.mjs hat sich geändert (${golden.fixture} → ${FIXTURE_HASH})`);
-    console.log("            Die goldenen Bilder gehören zur alten Fixture. Erneuern ist eine");
+    report("golden image (8 moments)", false,
+      `tools/fixture.mjs has changed (${golden.fixture} → ${FIXTURE_HASH})`);
+    console.log("            The golden images belong to the old fixture. Renewing them is a");
     console.log("            Entscheidung: `node … tools/office-check.mjs --bless`.");
     return;
   }
@@ -334,12 +334,12 @@ function checkGoldenFrames(golden) {
     const d = firstDiff(got[i].frame, want[i].frame);
     if (d) bad.push(`tools/golden.json frames[${i}] (t0+${got[i].at} ms)  ${d}`);
   }
-  report("goldenes Bild (8 Zeitpunkte)", bad.length === 0,
-    `${got.length} Zeitpunkte, ${bad.length} abweichend`);
+  report("golden image (8 moments)", bad.length === 0,
+    `${got.length} moments, ${bad.length} deviating`);
   for (const b of bad) console.log(`            ${b}`);
   if (bad.length > 0) {
-    console.log("            Ist die Änderung gewollt? Dann `--bless` — das ist eine Entscheidung,");
-    console.log("            keine Reparatur, und sie gehört in die Commit-Nachricht.");
+    console.log("            Is the change wanted? Then `--bless` — that is a decision,");
+    console.log("            not a repair, and it belongs in the commit message.");
   }
 }
 
@@ -366,7 +366,7 @@ function checkSeekIdempotent() {
     const d2 = firstDiff(canon(frameAt(LOG, AT[i])), erst);
     if (d2) bad.push(`frameAt(t0+${GOLDEN_OFFSETS[i]} ms) ≠ Replay.seek  ${d2}`);
   }
-  report("Seek-Idempotenz", bad.length === 0, `${AT.length} Zeitpunkte, ${bad.length} Verstöße`);
+  report("seek idempotence", bad.length === 0, `${AT.length} moments, ${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -405,7 +405,7 @@ function checkSeekEqualsAdvance() {
     }
   }
   report("seek ≡ advance", bad.length === 0,
-    `${STEPS.length} Schrittweiten × ${AT.length} Zeitpunkte, ${bad.length} Verstöße`);
+    `${STEPS.length} step sizes × ${AT.length} moments, ${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -493,7 +493,7 @@ function checkDtSplit() {
     if (d) bad.push(`Skript (${SKRIPT.length} Kommandostellen), tick(${step}) ≠ tick(200)  ${d}`);
   }
 
-  report("dt-Split-Invarianz", bad.length === 0, `${bad.length} Verstöße`);
+  report("dt split invariance", bad.length === 0, `${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -517,44 +517,44 @@ function strictCtx() {
     fillRect(x, y, w, h) {
       for (const [name, v] of [["x", x], ["y", y], ["w", w], ["h", h]]) {
         if (!Number.isInteger(v)) {
-          throw new Error(`fillRect(${x}, ${y}, ${w}, ${h}): ${name} ist nicht ganzzahlig `
-            + "(PIXEL-CONTRACT.md Regel 2.3)");
+          throw new Error(`fillRect(${x}, ${y}, ${w}, ${h}): ${name} is not a whole number `
+            + "(PIXEL-CONTRACT.md rule 2.3)");
         }
       }
       ops.push(`${x},${y},${w},${h},${String(ziel.fillStyle)},${ziel.globalAlpha}`);
     },
   };
-  const wirf = (was, prop) => {
-    throw new Error(`ctx.${String(prop)} ${was} — Regel 2.1 erlaubt nur `
+  const throw_ = (was, prop) => {
+    throw new Error(`ctx.${String(prop)} ${was} — rule 2.1 allows only `
       + "fillStyle, globalAlpha und fillRect");
   };
   const proxy = new Proxy(ziel, {
     get(t, prop) {
-      if (typeof prop !== "string" || !CTX_ERLAUBT.has(prop)) wirf("gelesen", prop);
+      if (typeof prop !== "string" || !CTX_ERLAUBT.has(prop)) throw_("gelesen", prop);
       return t[prop];
     },
     set(t, prop, value) {
-      if (typeof prop !== "string" || !CTX_ERLAUBT.has(prop)) wirf("geschrieben", prop);
+      if (typeof prop !== "string" || !CTX_ERLAUBT.has(prop)) throw_("geschrieben", prop);
       t[prop] = value;
       return true;
     },
-    has(t, prop) { wirf("mit `in` geprüft", prop); },
-    deleteProperty(t, prop) { wirf("gelöscht", prop); },
-    ownKeys() { throw new Error("ctx wurde aufgezählt — Regel 2.1"); },
+    has(t, prop) { throw_("checked with `in`", prop); },
+    deleteProperty(t, prop) { throw_("deleted", prop); },
+    ownKeys() { throw new Error("ctx was enumerated — rule 2.1"); },
   });
   return { ctx: proxy, ops };
 }
 
-const GRADES_ZU_PRUEFEN = ["day", "night"];
+const GRADES_TO_CHECK = ["day", "night"];
 
 // ═══ Check 7: the pixel contract (ctx proxy) ══════════════════════════════════
 
 function checkCtxProxy() {
   const bad = [];
-  let bilder = 0;
+  let images = 0;
   for (let i = 0; i < AT.length; i++) {
     const frame = frameAt(LOG, AT[i]);
-    for (const grade of GRADES_ZU_PRUEFEN) {
+    for (const grade of GRADES_TO_CHECK) {
       // Once with the full screen camera (the context is passed through unchanged) and once
       // zoomed (the `viewOf` wrapper converts every rectangle): both have to keep the contract,
       // and only the second case checks the wrapper.
@@ -566,7 +566,7 @@ function checkCtxProxy() {
           try {
             renderFrame(ctx, frame, cam, grade,
               { selected: "run:8871", hover: "run:8872", dimmed });
-            bilder++;
+            images++;
           } catch (e) {
             bad.push(`pixel/scene.ts · t0+${GOLDEN_OFFSETS[i]} ms · ${grade} · zoom ${cam.zoom}`
               + ` · ${dimmed ? "gedimmt" : "ungedimmt"}  ${e && e.message ? e.message : e}`);
@@ -575,7 +575,7 @@ function checkCtxProxy() {
       }
     }
   }
-  report("Pixel-Vertrag (ctx-Proxy)", bad.length === 0, `${bilder} Bilder, ${bad.length} Verstöße`);
+  report("pixel contract (ctx proxy)", bad.length === 0, `${images} images, ${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -591,7 +591,7 @@ function opsHashes() {
   for (let i = 0; i < AT.length; i++) {
     const frame = frameAt(LOG, AT[i]);
     const eintrag = { at: GOLDEN_OFFSETS[i] };
-    for (const grade of GRADES_ZU_PRUEFEN) {
+    for (const grade of GRADES_TO_CHECK) {
       const { ctx, ops } = strictCtx();
       renderFrame(ctx, frame, CAM_FULL, grade);
       eintrag[grade] = { n: ops.length, hash: hex(ops.join("\n")) };
@@ -607,19 +607,19 @@ function checkPixelOpHashes(golden) {
   try {
     got = opsHashes();
   } catch (e) {
-    report("goldene Pixel-Ops-Hashes", false,
+    report("golden pixel ops hashes", false,
       `pixel/scene.ts wirft: ${e && e.message ? e.message : e}`);
     return;
   }
   const want = golden.ops;
   if (!Array.isArray(want) || want.length !== got.length) {
-    report("goldene Pixel-Ops-Hashes", false,
-      `tools/golden.json: ${Array.isArray(want) ? want.length : "kein"} Eintrag/Einträge, erwartet ${got.length}`);
+    report("golden pixel ops hashes", false,
+      `tools/golden.json: ${Array.isArray(want) ? want.length : "no"} entry/entries, expected ${got.length}`);
     return;
   }
   const bad = [];
   for (let i = 0; i < got.length; i++) {
-    for (const grade of GRADES_ZU_PRUEFEN) {
+    for (const grade of GRADES_TO_CHECK) {
       const g = got[i][grade];
       const w = want[i] ? want[i][grade] : undefined;
       if (!w) { bad.push(`tools/golden.json ops[${i}].${grade} fehlt`); continue; }
@@ -630,11 +630,11 @@ function checkPixelOpHashes(golden) {
           : ` (${g.n > w.n ? "+" : ""}${g.n - w.n} Zeichenaufrufe)`));
     }
   }
-  report("goldene Pixel-Ops-Hashes", bad.length === 0,
-    `${got.length} Bilder × ${GRADES_ZU_PRUEFEN.length} Tageszeiten, ${bad.length} abweichend`);
+  report("golden pixel ops hashes", bad.length === 0,
+    `${got.length} images × ${GRADES_TO_CHECK.length} times of day, ${bad.length} deviating`);
   for (const b of bad) console.log(`            ${b}`);
   if (bad.length > 0) {
-    console.log("            Gewollt? Dann `--bless`. Ein neues goldenes Bild ist eine Entscheidung.");
+    console.log("            Wanted? Then `--bless`. A new golden image is a decision.");
   }
 }
 
@@ -655,7 +655,7 @@ function checkPixelOpHashes(golden) {
 /** Where `backend/app/worker` can lie. The first hit wins. */
 const BACKEND_ORTE = [
   join(FRONTEND, "..", "backend", "app", "worker"),  // Repo im Ganzen (npm run, Repo-Mount)
-  "/backend/app/worker",                             // backend/ separat eingehängt
+  "/backend/app/worker",                             // backend/ mounted separately
 ];
 
 function backendDir() {
@@ -663,7 +663,7 @@ function backendDir() {
     try {
       readFileSync(join(dir, "runtime.py"), "utf8");
       return dir;
-    } catch { /* nächster Ort */ }
+    } catch { /* the next place */ }
   }
   return null;
 }
@@ -686,7 +686,7 @@ function backendSoll(dir) {
 
 /** The heuristic may see **only** MCP and deliver only `read`/`write`/`run`. */
 const HEURISTIK_FAELLE = [
-  ["get_something", "other"],          // kein "__" → keine Heuristik, auch wenn „get" passte
+  ["get_something", "other"],          // no "__" → no heuristic, even though "get" would fit
   ["list_orders", "other"],
   ["", "other"],
   ["srv__get_thing", "read"],
@@ -696,9 +696,9 @@ const HEURISTIK_FAELLE = [
   ["homeassistant__call_service", "run"],
   ["srv__zzz_qqq", "other"],           // nichts erkannt → ehrlich „other"
   ["srv__fetch_web_page", "read"],     // „web" im Namen darf NIE browse ergeben
-  ["srv__open_web_browser", "other"],  // browse/delegate sind aus der Heuristik unerreichbar
-  ["proj__fs_read", "read"],           // MCP-Präfix vor einem Tabellennamen
-  ["srv__constructor", "other"],       // Prototypenkette darf kein Bild liefern
+  ["srv__open_web_browser", "other"],  // browse/delegate are out of reach for the heuristic
+  ["proj__fs_read", "read"],           // an MCP prefix in front of a table name
+  ["srv__constructor", "other"],       // the prototype chain must deliver no image
 ];
 
 function checkToolTable() {
@@ -718,7 +718,7 @@ function checkToolTable() {
   for (const n of nat) {
     if (!has(TOOL_ACT, n)) continue; // schon gemeldet
     if (n.includes("__")) {
-      bad.push(`toolAct.ts: "${n}" enthält "__" und sähe damit wie ein MCP-Name aus`);
+      bad.push(`toolAct.ts: "${n}" contains "__" and would therefore look like an MCP name`);
       continue;
     }
     if (toolAct(n) !== TOOL_ACT[n]) {
@@ -737,24 +737,24 @@ function checkToolTable() {
   if (dir === null) {
     bad.push("Backend nicht erreichbar — gesucht in: " + [...new Set(BACKEND_ORTE)].join(", "));
     bad.push('Abhilfe: docker run … -v "$PWD/frontend":/w -v "$PWD/backend":/backend -w /w …');
-    bad.push("Die Sollliste kommt aus dem Backend; sie hier abzuschreiben hieße, die Drift zu");
-    bad.push("verstecken, die diese Prüfung finden soll.");
+    bad.push("The wanted list comes out of the backend; copying it here would mean hiding the");
+    bad.push("very drift this check is meant to find.");
   } else {
-    const soll = backendSoll(dir);
-    const natSet = new Set(nat);
-    for (const n of [...soll].sort()) {
-      if (!natSet.has(n)) bad.push(`${relative(FRONTEND, dir) || dir}: "${n}" kennt das Backend, toolAct.ts nicht`);
+    const wanted = backendSoll(dir);
+    const nativeSet = new Set(nat);
+    for (const n of [...wanted].sort()) {
+      if (!nativeSet.has(n)) bad.push(`${relative(FRONTEND, dir) || dir}: "${n}" is known to the backend, not to toolAct.ts`);
     }
     for (const n of nat) {
-      if (!soll.has(n)) bad.push(`toolAct.ts: "${n}" kennt das Frontend, das Backend nicht (mehr?)`);
+      if (!wanted.has(n)) bad.push(`toolAct.ts: "${n}" is known to the frontend, not (any more?) to the backend`);
     }
-    report("Werkzeug-Tabelle vollständig", bad.length === 0,
-      `${nat.length} native Werkzeuge, Backend-Soll ${soll.size}, ${bad.length} Verstöße`);
+    report("tool table complete", bad.length === 0,
+      `${nat.length} native tools, backend wants ${wanted.size}, ${bad.length} violations`);
     for (const b of bad) console.log(`            ${b}`);
     return;
   }
 
-  report("Werkzeug-Tabelle vollständig", false, `${nat.length} native Werkzeuge, ${bad.length} Verstöße`);
+  report("tool table complete", false, `${nat.length} native tools, ${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -767,25 +767,25 @@ function checkToolTable() {
 
 function checkSeatGeometry() {
   const bad = [];
-  const soll = ROOM.seats;
-  if (soll.length !== SEATS_PX.length) {
-    bad.push(`room.ts hat ${soll.length} Sitze, pixel/scene.ts ${SEATS_PX.length}`);
+  const wanted = ROOM.seats;
+  if (wanted.length !== SEATS_PX.length) {
+    bad.push(`room.ts has ${wanted.length} seats, pixel/scene.ts ${SEATS_PX.length}`);
   }
-  const n = Math.min(soll.length, SEATS_PX.length);
+  const n = Math.min(wanted.length, SEATS_PX.length);
   for (let i = 0; i < n; i++) {
-    const wx = Math.round(soll[i].sit.x * POS_SCALE);
-    const wy = Math.round(soll[i].sit.y * POS_SCALE);
+    const wx = Math.round(wanted[i].sit.x * POS_SCALE);
+    const wy = Math.round(wanted[i].sit.y * POS_SCALE);
     const g = SEATS_PX[i].sit;
     if (g.x !== wx || g.y !== wy) {
       bad.push(`pixel/scene.ts SEATS_PX[${i}].sit = (${g.x}, ${g.y}) — `
         + `room.ts ROOM.seats[${i}].sit × POS_SCALE = (${wx}, ${wy})`);
     }
-    if (SEATS_PX[i].flip !== soll[i].flip) {
+    if (SEATS_PX[i].flip !== wanted[i].flip) {
       bad.push(`pixel/scene.ts SEATS_PX[${i}].flip = ${SEATS_PX[i].flip} — `
-        + `room.ts sagt ${soll[i].flip}`);
+        + `room.ts sagt ${wanted[i].flip}`);
     }
   }
-  report("Sitzgeometrie room ≡ scene", bad.length === 0, `${n} Sitze, ${bad.length} Verstöße`);
+  report("seat geometry room ≡ scene", bad.length === 0, `${n} seats, ${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -799,19 +799,19 @@ function checkSeatGeometry() {
 
 function checkRackGeometry() {
   const bad = [];
-  const soll = ROOM.rack;
-  if (!soll) {
+  const wanted = ROOM.rack;
+  if (!wanted) {
     bad.push("room.ts: ROOM.rack fehlt");
   } else {
-    const wx = Math.round(soll.x * POS_SCALE);
-    const wy = Math.round(soll.y * POS_SCALE);
+    const wx = Math.round(wanted.x * POS_SCALE);
+    const wy = Math.round(wanted.y * POS_SCALE);
     if (RACK_PX.x !== wx || RACK_PX.y !== wy) {
       bad.push(`pixel/scene.ts RACK_PX = (${RACK_PX.x}, ${RACK_PX.y}) — `
         + `room.ts ROOM.rack × POS_SCALE = (${wx}, ${wy})`);
     }
   }
-  report("Rack-Geometrie room ≡ scene", bad.length === 0,
-    soll ? `ROOM.rack = (${soll.x}, ${soll.y}), ${bad.length} Verstöße` : `${bad.length} Verstöße`);
+  report("rack geometry room ≡ scene", bad.length === 0,
+    wanted ? `ROOM.rack = (${wanted.x}, ${wanted.y}), ${bad.length} violations` : `${bad.length} violations`);
   for (const b of bad) console.log(`            ${b}`);
 }
 
@@ -822,33 +822,33 @@ function checkRackGeometry() {
 // rack the whole LED drawing would be unchecked and the bless diff meaningless. This check
 // says that the fixture really executes the code.
 
-function checkRackImFrame() {
-  const gesehen = new Set();
-  for (const ts of AT) gesehen.add(frameAt(LOG, ts).rack.state);
-  const leuchtend = [...gesehen].filter((s) => s !== "idle").sort();
-  const ok = leuchtend.length >= 2;
-  report("Rack leuchtet in der Fixture", ok,
-    `Zustände über 8 Bilder: ${[...gesehen].sort().join(", ")}`);
+function checkRackInFrame() {
+  const seen = new Set();
+  for (const ts of AT) seen.add(frameAt(LOG, ts).rack.state);
+  const lit = [...seen].filter((s) => s !== "idle").sort();
+  const ok = lit.length >= 2;
+  report("the rack lights up in the fixture", ok,
+    `states across 8 images: ${[...seen].sort().join(", ")}`);
   if (!ok) {
-    console.log("            tools/fixture.mjs braucht `deploy`-Ereignisse VOR einem goldenen");
-    console.log("            Zeitpunkt — sonst prüfen die Ops-Hashes die neue Zeichnung nie.");
+    console.log("            tools/fixture.mjs needs `deploy` events BEFORE a golden");
+    console.log("            moment — otherwise the ops hashes never check the new drawing.");
   }
 }
 
 // ── golden.json ──────────────────────────────────────────────────────────────
 
-const GOLDEN_WARNUNG = [
-  "ERZEUGT von tools/office-check.mjs --bless. NICHT von Hand ändern.",
-  "Dies ist das eingefrorene Bild, das tools/fixture.mjs ergeben MUSS. Weicht ein Lauf ab,",
-  "hat sich das Verhalten geändert — erneuern ist eine Entscheidung, keine Reparatur, und die",
-  "Begründung gehört in die Commit-Nachricht.",
+const GOLDEN_WARNING = [
+  "GENERATED by tools/office-check.mjs --bless. Do NOT change by hand.",
+  "This is the frozen image that tools/fixture.mjs MUST produce. If a run deviates,",
+  "the behaviour has changed — renewing is a decision, not a repair, and the",
+  "reason belongs in the commit message.",
 ];
 
 function ladeGolden() {
   try {
     return JSON.parse(readFileSync(GOLDEN_FILE, "utf8"));
   } catch (e) {
-    report("goldenes Bild (8 Zeitpunkte)", false,
+    report("golden image (8 moments)", false,
       `tools/golden.json nicht lesbar (${e && e.code ? e.code : e}) — `
       + "einmalig erzeugen mit `--bless`");
     return null;
@@ -857,28 +857,28 @@ function ladeGolden() {
 
 function bless() {
   const daten = {
-    _warnung: GOLDEN_WARNUNG,
+    _warnung: GOLDEN_WARNING,
     fixture: FIXTURE_HASH,
     frames: goldenFrames(),
     ops: opsHashes(),
   };
   writeFileSync(GOLDEN_FILE, `${JSON.stringify(daten, null, 1)}\n`, "utf8");
   console.log("");
-  console.log("  ██ --bless: tools/golden.json wurde NEU GESCHRIEBEN.");
-  console.log("  ██ Das ist eine Entscheidung, keine Reparatur: ab jetzt gilt das neue Verhalten");
-  console.log("  ██ als richtig. Sieh dir den Diff an und schreib in die Commit-Nachricht, WARUM");
-  console.log(`  ██ sich das Bild ändern durfte. Fixture-Fingerabdruck: ${FIXTURE_HASH}`);
+  console.log("  ██ --bless: tools/golden.json was REWRITTEN.");
+  console.log("  ██ This is a decision, not a repair: from now on the new behaviour counts");
+  console.log("  ██ as right. Look at the diff and write into the commit message WHY");
+  console.log(`  ██ the image was allowed to change. Fixture fingerprint: ${FIXTURE_HASH}`);
   console.log("");
 }
 
 // ── Lauf ─────────────────────────────────────────────────────────────────────
 
-console.log(`office-check — ${FILES.length} Dateien unter src/components/office`);
-console.log(`  Schicht 0: ${FILES.filter((f) => f.layer === 0).length} · ` +
-  `Schicht 1: ${FILES.filter((f) => f.layer === 1).length} · ` +
-  `Schicht 2: ${FILES.filter((f) => f.layer === 2).length}`);
-console.log(`  Fixture: ${EVENTS.length} Ereignisse, ${LOG.length} Logzeilen, `
-  + `${(T_TO - T_FROM) / 1000} s, Fingerabdruck ${FIXTURE_HASH}`);
+console.log(`office-check — ${FILES.length} files under src/components/office`);
+console.log(`  layer 0: ${FILES.filter((f) => f.layer === 0).length} · ` +
+  `layer 1: ${FILES.filter((f) => f.layer === 1).length} · ` +
+  `layer 2: ${FILES.filter((f) => f.layer === 2).length}`);
+console.log(`  fixture: ${EVENTS.length} events, ${LOG.length} log rows, `
+  + `${(T_TO - T_FROM) / 1000} s, fingerprint ${FIXTURE_HASH}`);
 
 if (BLESS) bless();
 
@@ -895,10 +895,10 @@ checkPixelOpHashes(GOLDEN);
 checkToolTable();
 checkSeatGeometry();
 checkRackGeometry();
-checkRackImFrame();
+checkRackInFrame();
 
 if (failed > 0) {
-  console.log(`\n${failed} Prüfung(en) fehlgeschlagen — siehe PIXEL-CONTRACT.md`);
+  console.log(`\n${failed} check(s) failed — see PIXEL-CONTRACT.md`);
   process.exit(1);
 }
-console.log("\nalles grün");
+console.log("\nall green");

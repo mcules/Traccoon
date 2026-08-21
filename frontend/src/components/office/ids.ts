@@ -12,7 +12,7 @@
 
 /** FNV-1a, 32 bit. Every UTF-16 code unit goes in with **both** bytes: Traccoon's role and
  *  tool names are German (`erinnere_dich`, `gedaechtnis_suchen`, umlauts in titles), and an
- *  `& 0xff` alone would let "ä" and "ö" fall onto the same value. */
+ *  `& 0xff` alone would let two accented characters fall onto the same value. */
 export function hash32(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {

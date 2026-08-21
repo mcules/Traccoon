@@ -34,7 +34,7 @@ const EMPTY = {
   imap_host: "", imap_port: 993, imap_ssl: true, imap_user: "", imap_password: "",
   smtp_host: "", smtp_port: 587, smtp_security: "starttls", smtp_user: "", smtp_password: "",
   folder_sent: "Sent", folder_drafts: "Drafts", folder_trash: "Trash", folder_junk: "Junk",
-  folder_archive: "Archive", archive_mode: "folder", archive_pattern: "Archive/{jahr}",
+  folder_archive: "Archive", archive_mode: "folder", archive_pattern: "Archive/{year}",
   mcp_enabled: false, mcp_ignore_folders: [] as string[], mcp_tools: [] as string[],
   mcp_instructions: "",
 };
@@ -61,7 +61,7 @@ export default function MailAccountsPanel() {
   });
 
   return (
-    <Area hint="Postfächer, die du hier liest und aus denen du schreibst. Zugang, Ordner, Identitäten und der Verbindungstest stehen im Dialog hinter dem Stift; das Kennwort wird verschlüsselt abgelegt und nie wieder angezeigt.">
+    <Area hint={tr("mail_accounts.area_hint")}>
       <Errorrow text={err} />
 
       <Listing>
@@ -72,13 +72,13 @@ export default function MailAccountsPanel() {
                 <div className="truncate font-medium text-ink">{k.name}</div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
                   <span className="truncate font-mono">{k.imap_user || k.imap_host}</span>
-                  {!k.smtp_host && <Tag color="yellow">nur lesen</Tag>}
-                  {!k.imap_password_set && <Tag color="red">kein Kennwort</Tag>}
+                  {!k.smtp_host && <Tag color="yellow">{tr("mail_accounts.read_only")}</Tag>}
+                  {!k.imap_password_set && <Tag color="red">{tr("mail_accounts.no_password")}</Tag>}
                 </div>
               </div>
               {k.enabled
-                ? <State color="green" text="aktiv" />
-                : <State color="grey" text="aus" />}
+                ? <State color="green" text={tr("mail_accounts.active_state")} />
+                : <State color="grey" text={tr("mail_accounts.off_state")} />}
               <Actions>
                 <IconButton icon={ICON.edit} title={tr("common.edit")}
                   onClick={() => { setErr(""); setDialog({ ...EMPTY, ...k, imap_password: "", smtp_password: "" }); }} />
@@ -93,7 +93,7 @@ export default function MailAccountsPanel() {
 
       <button onClick={() => { setErr(""); setDialog({ ...EMPTY }); }}
         className={BUTTON.primary}>
-        {ICON.fresh} Postfach hinzufügen
+        {ICON.fresh} {tr("mail_accounts.add_mailbox")}
       </button>
 
       <McpAccess onError={fail} />
@@ -145,25 +145,25 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
         onSave={() => onSave(f)} />}>
       <Errorrow text={error || err} />
       <div className="space-y-4">
-        {/* Name und Schalter stehen über dem Menü: sie gehören zu keinem der vier Teile,
-            sondern zum Postfach als Ganzem. */}
+        {/* Name and switch stand above the menu: they belong to none of the four parts but
+            to the mailbox as a whole. */}
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-48 flex-1">
-            <Field label="Name" hint={tr("mail_accounts.short_name_hint")}>
+            <Field label={tr("mail_accounts.name")} hint={tr("mail_accounts.short_name_hint")}>
               <input value={f.name} onChange={(e) => set({ name: e.target.value })}
-                placeholder="privat" className={INPUT_VALUE} />
+                placeholder="private" className={INPUT_VALUE} />
             </Field>
           </div>
           <label className="flex items-center gap-2 pb-1.5 text-sm text-muted">
             <input type="checkbox" checked={f.enabled}
               onChange={(e) => set({ enabled: e.target.checked })} />
-            Aktiv
+            {tr("mail_accounts.active")}
           </label>
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row">
           <Tab vertical active={part} onChoose={setPart} selection={[
-            ["empfang", "📥 Empfang"],
+            ["empfang", tr("mail_accounts.receive_group")],
             ["senden", tr("mail_accounts.send_group")],
             ["ordner", tr("mail_accounts.folders_group")],
             ["identitaeten", tr("mail_accounts.identities")],
@@ -173,43 +173,42 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
           <div className="min-w-0 flex-1 space-y-4">
         {part === "empfang" && (<>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Server"><input value={f.imap_host} className={INPUT_VALUE}
+          <Field label={tr("mail_accounts.server")}><input value={f.imap_host} className={INPUT_VALUE}
             onChange={(e) => set({ imap_host: e.target.value })} placeholder="imap.example.org" /></Field>
-          <Field label="Port"><input type="number" value={f.imap_port} className={INPUT_VALUE}
+          <Field label={tr("mail_accounts.port")}><input type="number" value={f.imap_port} className={INPUT_VALUE}
             onChange={(e) => set({ imap_port: Number(e.target.value) })} /></Field>
-          <Field label="Benutzer"><input value={f.imap_user} className={INPUT_VALUE}
+          <Field label={tr("mail_accounts.user")}><input value={f.imap_user} className={INPUT_VALUE}
             onChange={(e) => set({ imap_user: e.target.value })} /></Field>
-          <Field label="Kennwort" hint={start.id ? tr("mail_accounts.empty_means_unchanged") : ""}>
+          <Field label={tr("mail_accounts.password")} hint={start.id ? tr("mail_accounts.empty_means_unchanged") : ""}>
             <input type="password" value={f.imap_password} className={INPUT_VALUE}
               onChange={(e) => set({ imap_password: e.target.value })} /></Field>
           <label className="flex items-center gap-2 text-sm text-muted">
             <input type="checkbox" checked={f.imap_ssl}
               onChange={(e) => set({ imap_ssl: e.target.checked })} />
-            Verschlüsselt (SSL/TLS)
+            {tr("mail_accounts.encrypted_ssl")}
           </label>
         </div>
         </>)}
 
         {part === "senden" && (<>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Field label="Server"><input value={f.smtp_host} className={INPUT_VALUE}
+          <Field label={tr("mail_accounts.server")}><input value={f.smtp_host} className={INPUT_VALUE}
             onChange={(e) => set({ smtp_host: e.target.value })} placeholder="smtp.example.org" /></Field>
-          <Field label="Port"><input type="number" value={f.smtp_port} className={INPUT_VALUE}
+          <Field label={tr("mail_accounts.port")}><input type="number" value={f.smtp_port} className={INPUT_VALUE}
             onChange={(e) => set({ smtp_port: Number(e.target.value) })} /></Field>
-          <Field label="Benutzer"><input value={f.smtp_user} className={INPUT_VALUE}
+          <Field label={tr("mail_accounts.user")}><input value={f.smtp_user} className={INPUT_VALUE}
             onChange={(e) => set({ smtp_user: e.target.value })} /></Field>
-          <Field label="Kennwort" hint={start.id ? "Leer lassen heißt: unverändert." : ""}>
+          <Field label={tr("mail_accounts.password")} hint={start.id ? tr("mail_accounts.empty_means_unchanged") : ""}>
             <input type="password" value={f.smtp_password} className={INPUT_VALUE}
               onChange={(e) => set({ smtp_password: e.target.value })} /></Field>
           <Field label={tr("mail_accounts.encryption")}
-            hint={'587 rüstet auf (STARTTLS), 465 ist von Anfang an verschlüsselt. '
-              + 'Passt beides nicht zusammen, meldet der Server „wrong version number".'}>
+            hint={tr("mail_accounts.port_hint")}>
             <select value={f.smtp_security} className={INPUT_VALUE}
               onChange={(e) => {
                 const art = e.target.value;
                 // Pull the port along as long as it is the usual one of the other variant:
                 // whoever switches the encryption almost always means the matching port too —
-                // und ein eigens eingetragener Port (2525 …) bleibt unangetastet.
+                // and a port entered on purpose (2525 …) stays untouched.
                 const port = art === "ssl" && f.smtp_port === 587 ? 465
                   : art === "starttls" && f.smtp_port === 465 ? 587
                     : f.smtp_port;
@@ -227,8 +226,7 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
         {part === "ordner" && (<>
         {!start.id && (
           <p className="text-xs text-muted">
-            Nach dem Speichern kannst du die Ordner aus dem Postfach auswählen — bis dahin
-            stehen hier die üblichen Namen.
+            {tr("mail_accounts.folders_after_saving")}
           </p>
         )}
         <div className="grid gap-2 sm:grid-cols-2">
@@ -236,20 +234,20 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
             onChoose={(v) => set({ folder_sent: v })} />
           <FolderField label={tr("mail_accounts.drafts")} value={f.folder_drafts} folder={folder}
             onChoose={(v) => set({ folder_drafts: v })} />
-          <FolderField label="Papierkorb" value={f.folder_trash} folder={folder}
+          <FolderField label={tr("mail_accounts.trash")} value={f.folder_trash} folder={folder}
             onChoose={(v) => set({ folder_trash: v })} />
-          <FolderField label="Spam" value={f.folder_junk} folder={folder}
-            hint={'Ziel des Knopfes „Spam" — ohne Ordner erscheint der Knopf nicht.'}
+          <FolderField label={tr("mail_accounts.spam")} value={f.folder_junk} folder={folder}
+            hint={tr("mail_accounts.junk_hint")}
             onChoose={(v) => set({ folder_junk: v })} />
         </div>
 
-        <div className="text-xs font-medium uppercase tracking-wider text-muted/70">Archiv</div>
-        <Field label="Aufteilung"
-          hint={'Ziel des Knopfes „Archivieren" — ohne Ziel erscheint der Knopf nicht.'}>
+        <div className="text-xs font-medium uppercase tracking-wider text-muted/70">{tr("mail_accounts.archive_group")}</div>
+        <Field label={tr("mail_accounts.split")}
+          hint={tr("mail_accounts.archive_hint")}>
           <select value={f.archive_mode} className={INPUT_VALUE}
             onChange={(e) => set({ archive_mode: e.target.value })}>
             <option value="folder">{tr("mail_accounts.one_folder_for_all")}</option>
-            <option value="pattern">Nach Muster aufteilen (Jahr, Monat …)</option>
+            <option value="pattern">{tr("mail_accounts.split_by_pattern")}</option>
           </select>
         </Field>
         {f.archive_mode === "folder" ? (
@@ -272,7 +270,7 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
               onError={(e) => setErr(e instanceof ApiError ? e.message : tr("common.error"))} />
           ) : (
             <p className="text-sm text-muted">
-              Identitäten gibt es, sobald das Postfach gespeichert ist — sie hängen daran.
+              {tr("mail_accounts.identities_after_saving")}
             </p>
           )
         )}
@@ -284,7 +282,7 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
             <Rowbutton onClick={() => { setErr(""); testing.mutate(); }}>
               {testing.isPending ? tr("mail_accounts.checking") : tr("mail_accounts.check_imap_smtp")}
             </Rowbutton>
-            {/* Der Test benutzt, was gespeichert ist — nicht, was gerade im Formular steht.
+            {/* The test uses what is saved — not what stands in the form right now.
                 Anything else would mean sending half-finished credentials to the server. */}
             <span className="text-xs text-muted">
               {check || tr("mail_accounts.checks_stored_state")}
@@ -301,8 +299,8 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
  *
  * One token per person, not per mailbox: whoever has it sees exactly what is released on the
  * individual mailboxes — the details stand there and not here. It is shown exactly once; a
- * second time only whoever stores it could, and then it would be no
- * Geheimnis mehr, sondern eine Kopie.
+ * second time only whoever stores it could, and then it would be no secret any more but a
+ * copy.
  */
 function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
   const qc = useQueryClient();
@@ -326,9 +324,8 @@ function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
     <div className="mt-4 space-y-2 border-t border-line pt-4">
       <div className="text-sm font-medium text-ink">{tr("mail_accounts.agent_access_mcp")}</div>
       <p className="text-xs text-muted">
-        Diese Adresse trägt man in MCPJungle (oder einen anderen Client) ein, mit dem Token
-        als <code>Authorization: Bearer …</code>. Freigegeben ist nur, was am jeweiligen
-        Postfach unter <b>Agenten</b> steht.
+        {tr("mail_accounts.mcp_address_hint_1")} <code>Authorization: Bearer …</code>.{" "}
+        <span dangerouslySetInnerHTML={{ __html: tr("mail_accounts.mcp_address_hint_2") }} />
       </p>
       <div className="flex items-center gap-2">
         <code className="min-w-0 flex-1 truncate rounded bg-surface px-1.5 py-0.5 text-xs">
@@ -340,7 +337,7 @@ function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
       {fresh ? (
         <div className="space-y-1 rounded border border-amber-500/30 bg-amber-500/10 p-2">
           <div className="text-xs text-amber-300">
-            Einmalig sichtbar — jetzt kopieren, danach nur noch neu erzeugbar.
+            {tr("mail_accounts.visible_once")}
           </div>
           <div className="flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate text-xs text-ink">{fresh}</code>
@@ -355,13 +352,13 @@ function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
           </Rowbutton>
           {state?.token_set && (
             <>
-              <Tag color="green">Token gesetzt · {state.fingerprint}</Tag>
-              <Rowbutton danger onClick={() => remove.mutate()}>Zugang sperren</Rowbutton>
+              <Tag color="green">{tr("mail_accounts.token_set")} · {state.fingerprint}</Tag>
+              <Rowbutton danger onClick={() => remove.mutate()}>{tr("mail_accounts.block_access")}</Rowbutton>
             </>
           )}
           {state?.token_set && (
             <span className="text-xs text-muted">
-              Ein neues Token macht das alte sofort ungültig.
+              {tr("mail_accounts.new_token_invalidates")}
             </span>
           )}
         </div>
@@ -375,8 +372,7 @@ function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
  *
  * The default is: nothing. A mailbox is the mail of a person and no data store — which is why
  * release happens per tool instead of "access yes/no", and reading, refiling and sending stand
- * there as three separate groups and not as levels
- * einer Leiter.
+ * there as three separate groups and not as the rungs of a ladder.
  */
 function AgentsGrant({ f, set: set, folder: folder }: {
   f: typeof EMPTY & { id?: number };
@@ -392,7 +388,8 @@ function AgentsGrant({ f, set: set, folder: folder }: {
   });
 
   const GROUP: Record<string, string> = {
-    lesen: "Lesen", change: "Umsortieren", send: tr("mail_accounts.send"),
+    lesen: tr("mail_accounts.group_read"), change: tr("mail_accounts.group_change"),
+    send: tr("mail_accounts.send"),
   };
   const toggle = (name: string) => {
     const inside = f.mcp_tools.includes(name);
@@ -414,27 +411,26 @@ function AgentsGrant({ f, set: set, folder: folder }: {
       <label className="flex items-center gap-2 text-sm text-ink">
         <input type="checkbox" checked={f.mcp_enabled}
           onChange={(e) => set({ mcp_enabled: e.target.checked })} />
-        Dieses Postfach für Agenten freigeben
+        {tr("mail_accounts.release_for_agents")}
       </label>
       <p className="text-xs text-muted">
-        Agenten erreichen es über den MCP-Zugang deines Kontos (Konto → Mail-Konten, unten).
-        Ohne Häkchen existiert das Postfach für sie nicht.
+        {tr("mail_accounts.release_hint")}
       </p>
 
       {f.mcp_enabled && (<>
         <div className="text-xs font-medium uppercase tracking-wider text-muted/70">
-          Anweisungen
+          {tr("mail_accounts.instructions_group")}
         </div>
         <Field label={tr("mail_accounts.what_agent_must_know")}
           hint={tr("mail_accounts.read_on_connect")}>
           <textarea value={f.mcp_instructions} rows={5} className={`${INPUT_VALUE} text-xs`}
-            placeholder={"Vereinspostfach des Vorstands. Sachlich und in Sie-Form antworten.\n"
+            placeholder={tr("mail_accounts.instructions_example")
               + tr("mail_accounts.house_rules_example")}
             onChange={(e) => set({ mcp_instructions: e.target.value })} />
         </Field>
 
         <div className="text-xs font-medium uppercase tracking-wider text-muted/70">
-          Werkzeuge
+          {tr("mail_accounts.tools_group")}
         </div>
         {["lesen", "aendern", "senden"].map((group) => (
           <div key={group} className="space-y-1">
@@ -454,19 +450,18 @@ function AgentsGrant({ f, set: set, folder: folder }: {
         ))}
 
         <div className="text-xs font-medium uppercase tracking-wider text-muted/70">
-          Ordner ausblenden
+          {tr("mail_accounts.hide_folders_group")}
         </div>
         <p className="text-xs text-muted">
-          Was hier steht, gibt es für Agenten nicht — weder in der Ordnerliste noch in einer
-          Suche, und verschieben können sie auch nichts dorthin. Muster mit <code>*</code>
-          sind erlaubt (<code>Privat*</code>).
+          {tr("mail_accounts.hide_folders_hint_1")} <code>*</code>{" "}
+          {tr("mail_accounts.hide_folders_hint_2")} (<code>Private*</code>).
         </p>
         <Listing>
           {f.mcp_ignore_folders.map((m) => (
             <ListenLine key={m} dense>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 truncate">{m}</code>
-                <Rowbutton danger onClick={() => patternPath(m)}>Entfernen</Rowbutton>
+                <Rowbutton danger onClick={() => patternPath(m)}>{tr("mail_accounts.remove")}</Rowbutton>
               </div>
             </ListenLine>
           ))}
@@ -518,21 +513,21 @@ function PatternField({ accountId, value: value, onChange: onUpdate }: {
 
   return (
     <div className="space-y-2">
-      <Field label="Muster" hint={tr("mail_accounts.slash_separates")}>
+      <Field label={tr("mail_accounts.pattern")} hint={tr("mail_accounts.slash_separates")}>
         <input value={value} className={`${INPUT_VALUE} font-mono`}
-          onChange={(e) => onUpdate(e.target.value)} placeholder="Archive/{jahr}" />
+          onChange={(e) => onUpdate(e.target.value)} placeholder="Archive/{year}" />
       </Field>
       {preview && (
         <p className="text-xs text-muted">
-          Eine Mail von heute landet in <code className="text-brand">{preview}</code>.
-          Fehlende Ordner werden angelegt.
+          {tr("mail_accounts.pattern_preview_1")} <code className="text-brand">{preview}</code>.{" "}
+          {tr("mail_accounts.pattern_preview_2")}
         </p>
       )}
       <p className="text-[11px] text-muted">
-        Platzhalter: <code>{"{jahr}"}</code> <code>{"{jahr_kurz}"}</code>{" "}
-        <code>{"{monat}"}</code> <code>{"{monatsname}"}</code> <code>{"{tag}"}</code>{" "}
-        <code>{"{quartal}"}</code> <code>{"{kw}"}</code> <code>{"{absender}"}</code>{" "}
-        <code>{"{absender_domain}"}</code>
+        {tr("mail_accounts.placeholders")} <code>{"{year}"}</code> <code>{"{year_short}"}</code>{" "}
+        <code>{"{month}"}</code> <code>{"{month_name}"}</code> <code>{"{day}"}</code>{" "}
+        <code>{"{quarter}"}</code> <code>{"{week}"}</code> <code>{"{sender}"}</code>{" "}
+        <code>{"{sender_domain}"}</code>
       </p>
     </div>
   );
@@ -544,7 +539,7 @@ function PatternField({ accountId, value: value, onChange: onUpdate }: {
  * Typing would mean guessing: depending on the provider folders are called `Sent`, `Gesendet`,
  * `INBOX.Sent` or `[Gmail]/Gesendet`, and a typo is noticed only when a sent mail does not turn
  * up in one's own mailbox. If the connection does not stand yet (a new account, a wrong
- * Kennwort), bleibt das Textfeld — besser als ein leeres Auswahlfeld.
+ * password), the text field stays — better than an empty select.
  */
 function FolderField({ label, hint: hint, value: value, folder: folder, onChoose }: {
   label: string; hint?: string; value: string;
@@ -576,7 +571,7 @@ function FolderField({ label, hint: hint, value: value, folder: folder, onChoose
   );
 }
 
-/** Identitäten eines Kontos: wer als Absender auftritt. */
+/** The identities of an account: who appears as the sender. */
 function Identities({ accountId, onError: onError }: { accountId: number; onError: (e: unknown) => void }) {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<Partial<MailIdentity> | null>(null);
@@ -606,7 +601,7 @@ function Identities({ accountId, onError: onError }: { accountId: number; onErro
                 <span className="text-ink">{i.display_name || i.email}</span>
                 {i.display_name && <span className="ml-2 text-xs text-muted">{i.email}</span>}
               </span>
-              {i.is_default && <Tag color="brand">Vorgabe</Tag>}
+              {i.is_default && <Tag color="brand">{tr("mail_accounts.default")}</Tag>}
               <Actions>
                 <IconButton icon={ICON.edit} title={tr("common.edit")}
                   onClick={() => setDialog(i)} />
@@ -620,7 +615,7 @@ function Identities({ accountId, onError: onError }: { accountId: number; onErro
       </Listing>
       <button onClick={() => setDialog({ email: "", display_name: "", is_default: !data?.length })}
         className="mt-2 rounded border border-line px-2 py-1 text-xs text-muted hover:border-brand hover:text-ink">
-        + Identität
+        {tr("mail_accounts.add_identity")}
       </button>
 
       {dialog && (
@@ -630,7 +625,7 @@ function Identities({ accountId, onError: onError }: { accountId: number; onErro
           <div className="space-y-3">
             <Field label={tr("mail_accounts.sender_address")}><input value={dialog.email || ""} className={INPUT_VALUE}
               onChange={(e) => setDialog({ ...dialog, email: e.target.value })} /></Field>
-            <Field label="Angezeigter Name"><input value={dialog.display_name || ""} className={INPUT_VALUE}
+            <Field label={tr("mail_accounts.display_name")}><input value={dialog.display_name || ""} className={INPUT_VALUE}
               onChange={(e) => setDialog({ ...dialog, display_name: e.target.value })} /></Field>
             <Field label={tr("mail_accounts.reply_to")} hint={tr("mail_accounts.reply_to_hint")}>
               <input value={dialog.reply_to || ""} className={INPUT_VALUE}
@@ -641,7 +636,7 @@ function Identities({ accountId, onError: onError }: { accountId: number; onErro
             <label className="flex items-center gap-2 text-sm text-muted">
               <input type="checkbox" checked={!!dialog.is_default}
                 onChange={(e) => setDialog({ ...dialog, is_default: e.target.checked })} />
-              Vorgabe für dieses Konto
+              {tr("mail_accounts.default_for_account")}
             </label>
           </div>
         </Dialog>

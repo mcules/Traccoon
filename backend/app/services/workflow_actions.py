@@ -1577,7 +1577,7 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
 
     if action == "notify":
         target = await _resolve_target(db, inst, params.get("to") or {})
-        title = _interp(params.get("title") or "Workflow-Benachrichtigung", ctx)
+        title = _interp(params.get("title") or "Workflow notification", ctx)
         body = _interp(params.get("text") or params.get("message") or "", ctx)
         from ..models.user import User
         from .notify import deliver
@@ -1593,7 +1593,7 @@ async def run_action(db, inst: WorkflowInstance, node: dict) -> dict:
         throttle = float(params.get("throttle_minutes") or 0)
         throttle_key = str(_interp(params.get("throttle_key") or "", ctx)).strip()
         if throttle > 0 and not throttle_key:
-            throttle_key = f"ablauf:{inst.definition_id}:{node.get('id')}"
+            throttle_key = f"flow:{inst.definition_id}:{node.get('id')}"
         # Kind and reference turn the message into a card one can act on: the bot hangs its
         # buttons on the kind and finds through the reference the matter at hand (a spam
         # verdict to take back, an intake to approve). Without both it stays an ordinary

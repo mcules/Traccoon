@@ -477,16 +477,18 @@ def _move_sync(account: MailAccount, folder: str, uid: int, target: str) -> None
             client.expunge()
 
 
-# What may appear in an archive pattern. Deliberately German and spelled out: everyone reads
-# `{jahr}`, `%Y` has to be looked up. The short forms next to it because they suggest
-# themselves while typing once one knows them.
+# What may appear in an archive pattern. Deliberately spelled out: everyone reads `{year}`,
+# `%Y` has to be looked up. The short forms next to it because they suggest themselves while
+# typing once one knows them. The German names stay in the map: patterns saved before the
+# rename still stand in accounts, and a pattern that suddenly no longer resolves would put
+# mail into a folder literally called "Archive/{jahr}".
 PLACEHOLDER = {
-    "jahr": "%Y", "YYYY": "%Y",
-    "jahr_kurz": "%y", "YY": "%y",
-    "monat": "%m", "MM": "%m",
-    "monatsname": "%B",
-    "tag": "%d", "DD": "%d",
-    "kw": "%V",
+    "year": "%Y", "YYYY": "%Y", "jahr": "%Y",
+    "year_short": "%y", "YY": "%y", "jahr_kurz": "%y",
+    "month": "%m", "MM": "%m", "monat": "%m",
+    "month_name": "%B", "monatsname": "%B",
+    "day": "%d", "DD": "%d", "tag": "%d",
+    "week": "%V", "kw": "%V",
 }
 
 
@@ -518,9 +520,11 @@ def archive_target(account: MailAccount, message_date, sender: str = "",
 
     sender = (sender or "").strip()
     values = {name: when.strftime(pattern) for name, pattern in PLACEHOLDER.items()}
-    values["quartal"] = f"Q{(when.month - 1) // 3 + 1}"
-    values["absender"] = sender
-    values["absender_domain"] = sender.rpartition("@")[2] if "@" in sender else sender
+    quarter = f"Q{(when.month - 1) // 3 + 1}"
+    domain = sender.rpartition("@")[2] if "@" in sender else sender
+    values["quarter"] = values["quartal"] = quarter
+    values["sender"] = values["absender"] = sender
+    values["sender_domain"] = values["absender_domain"] = domain
 
     target = account.archive_pattern
     for name, value in values.items():

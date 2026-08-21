@@ -50,7 +50,7 @@ export default function Projects() {
             <input className="mt-1 rounded border border-line bg-surface px-2 py-1.5 text-ink"
               value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("projects.project_name")} />
           </label>
-          <label className="flex flex-col text-xs text-muted">Übergeordnetes Projekt
+          <label className="flex flex-col text-xs text-muted">{tr("projects.parent_project")}
             <select value={parentId} onChange={(e) => setParentId(e.target.value)}
               className="mt-1 rounded border border-line bg-surface px-2 py-1.5 text-ink">
               <option value="">{tr("projects.standalone_option")}</option>
