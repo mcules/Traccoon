@@ -30,7 +30,7 @@ log = logging.getLogger("traccoon.terms")
 # conversion would run a second time over its own result — and `assistant_task` (now: the
 # general assignment) would become the mail path, because that name used to mean exactly that.
 MARK = "terms"
-STATE = "en9"
+STATE = "en10"
 
 # ── Aktionen ────────────────────────────────────────────────────────────────
 ACTIONS: dict[str, str] = {
@@ -58,13 +58,18 @@ EINMALIG: dict[str, str] = {
 
 # ── Parameter ───────────────────────────────────────────────────────────────
 # Many already had an English counterpart that the code read as a second name; here stands
-# jetzt, welches gilt.
+# the one that counts.
 PARAMS: dict[str, str] = {
     # Latecomers from the switch to consistently English names (state en8). They appear as
     # keys in stored graphs; without these three lines the action reads into the void after
     # the rename, and a branch waiting for a parameter never fires.
     # Node flags (state en9): they stand in the same `config` dict as the parameters, and
     # the engine now reads the English key first.
+    # The three fields of a timer node (state en10). `einheit` was carried over in en8, the
+    # other two were forgotten — the editor wrote `duration`/`to` while the engine kept reading
+    # the German names, so a freshly configured timer waited its default minute.
+    "dauer": "duration",
+    "bis": "to",
     "deaktiviert": "disabled",
     "deaktiviert_modus": "disabled_mode",
     "vorentschieden": "predecided",

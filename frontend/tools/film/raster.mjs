@@ -37,7 +37,7 @@ function zerlege(s) {
  *  @returns {{ctx: object, buf: Uint8Array, reset: () => void}} `buf` = w*h*3, zeilenweise */
 export function rasterCtx(w, h) {
   if (!Number.isInteger(w) || !Number.isInteger(h) || w <= 0 || h <= 0) {
-    throw new Error(`rasterCtx: ungültige Maße ${w}×${h}`);
+    throw new Error(`rasterCtx: invalid size ${w}×${h}`);
   }
   const buf = new Uint8Array(w * h * 3);
 
@@ -60,7 +60,7 @@ export function rasterCtx(w, h) {
     },
     fillRect(x, y, bw, bh) {
       const a = ctx.globalAlpha;
-      if (!(a > 0) || !bw || !bh) return;   // fängt auch NaN und 0-Maße ab
+      if (!(a > 0) || !bw || !bh) return;   // also catches NaN and zero sizes
 
       // The canvas specification normalises negative dimensions (the rectangle grows to the
       // left and upwards); this does not: it is an error, because otherwise the film drifts away from the browser.

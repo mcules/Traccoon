@@ -90,7 +90,7 @@ async def test_two_sessions_yield_one_ascending_sequence(db):
     for i, run in enumerate((a, b, a, b)):
         await step(db, run, when=MITTAG + dt.timedelta(seconds=i))
 
-    events, roster, balance = await of.daily_events(db, von=FROM, to=TO)
+    events, roster, balance = await of.daily_events(db, start=FROM, to=TO)
 
     seqs = [e["seq"] for e in events]
     assert seqs == sorted(seqs)
@@ -121,7 +121,7 @@ async def test_consecutive_runs_do_not_collide_on_the_same_seq(db):
         last = await step(db, r, when=MITTAG + dt.timedelta(minutes=n))
         assert last is not None
 
-    events, _r, _b = await of.daily_events(db, von=FROM, to=TO)
+    events, _r, _b = await of.daily_events(db, start=FROM, to=TO)
 
     seqs = [e["seq"] for e in events]
     assert len(set(seqs)) == len(seqs), "duplicate seq, the recorder discards the second one"
@@ -146,7 +146,7 @@ async def test_a_run_before_the_window_clamps_the_start_to_the_window_begin(db):
                    start=FROM - dt.timedelta(hours=4), end=MITTAG)
     await step(db, r, when=MITTAG)
 
-    events, _roster, _balance = await of.daily_events(db, von=FROM, to=TO)
+    events, _roster, _balance = await of.daily_events(db, start=FROM, to=TO)
 
     starts = kinds(events, "run_start")
     assert len(starts) == 1
@@ -161,7 +161,7 @@ async def test_a_start_inside_the_window_stays_untouched(db):
     r = await make_run(db, issue=await ticket(db, p, 1), start=MITTAG, end=MITTAG + dt.timedelta(minutes=5))
     await step(db, r, when=MITTAG + dt.timedelta(minutes=1))
 
-    events, _r, _b = await of.daily_events(db, von=FROM, to=TO)
+    events, _r, _b = await of.daily_events(db, start=FROM, to=TO)
     assert kinds(events, "run_start")[0]["ts"] == of._iso_ms(MITTAG)
 
 
@@ -180,7 +180,7 @@ async def test_a_run_past_the_window_loses_its_end(db):
     await step(db, over, when=MITTAG)
     await step(db, inside, when=MITTAG)
 
-    events, _roster, _balance = await of.daily_events(db, von=FROM, to=TO)
+    events, _roster, _balance = await of.daily_events(db, start=FROM, to=TO)
 
     ends = kinds(events, "run_end")
     assert [e["run_id"] for e in ends] == [inside.id]
@@ -196,7 +196,7 @@ async def test_steps_outside_the_window_are_missing(db):
     await step(db, r, when=FROM - dt.timedelta(hours=2), text="gestern")
     await step(db, r, when=MITTAG, text="heute")
 
-    events, _r, balance = await of.daily_events(db, von=FROM, to=TO)
+    events, _r, balance = await of.daily_events(db, start=FROM, to=TO)
     texts = [e["text"] for e in kinds(events, "agent_text")]
     assert texts == ["heute"]
     assert balance.events == len(events)
@@ -216,7 +216,7 @@ async def test_the_balance_counts_failures_questions_and_cost(db):
                      cost_usd=1.83, priced=None))
     await db.commit()
 
-    _e, _r, balance = await of.daily_events(db, von=FROM, to=TO)
+    _e, _r, balance = await of.daily_events(db, start=FROM, to=TO)
     assert (balance.failures, balance.questions) == (1, 1)
     assert balance.cost_usd == pytest.approx(1.83)
     assert balance.cost_partial is True
@@ -232,13 +232,13 @@ def test_a_caption_for_a_full_day():
     text = of.caption(
         balance(runs=19, sessions=19, events=609, failures=2, questions=1,
                cost_usd=1.83, cost_partial=True,
-               longest={"key": "ABC-412", "titel": "Büro aufräumen", "minuten": 47}),
+               longest={"key": "ABC-412", "title": "Tidy the office", "minutes": 47}),
         chapter=8, islands=67, seconds=24, capped=False)
-    assert text == ("🎬 Feierabend · Mi 05.08.\n"
-                    "19 Läufe in 19 Sitzungen · 609 Ereignisse\n"
-                    "2 Fehlschläge · 1 Rückfrage · ≥ 1,83 $\n"
-                    "Längster: ABC-412 „Büro aufräumen“ · 47 min\n"
-                    "8 von 67 Szenen · 24 s")
+    assert text == ("🎬 End of the day · Mi 05.08.\n"
+                    "19 runs in 19 sessions · 609 events\n"
+                    "2 failures · 1 question · ≥ 1,83 $\n"
+                    "the longest: ABC-412 „Tidy the office“ · 47 min\n"
+                    "8 of 67 scenes · 24 s")
 
 
 def test_a_caption_in_the_singular():
@@ -246,9 +246,9 @@ def test_a_caption_in_the_singular():
     text = of.caption(
         balance(runs=1, sessions=1, events=1, failures=1, questions=1),
         chapter=1, islands=1, seconds=3, capped=False)
-    assert "1 Lauf in 1 Sitzung · 1 Ereignis" in text
-    assert "1 Fehlschlag · 1 Rückfrage" in text
-    assert "1 von 1 Szene · 3 s" in text
+    assert "1 run in 1 session · 1 event" in text
+    assert "1 failure · 1 question" in text
+    assert "1 of 1 scene · 3 s" in text
 
 
 def test_a_caption_leaves_empty_statements_out():
@@ -257,18 +257,18 @@ def test_a_caption_leaves_empty_statements_out():
     text = of.caption(
         balance(runs=3, sessions=2, events=40), chapter=2, islands=5, seconds=10,
         capped=False)
-    assert text.splitlines() == ["🎬 Feierabend · Mi 05.08.",
-                                 "3 Läufe in 2 Sitzungen · 40 Ereignisse",
-                                 "2 von 5 Szenen · 10 s"]
-    assert "$" not in text and "Längster" not in text
+    assert text.splitlines() == ["🎬 End of the day · Mi 05.08.",
+                                 "3 runs in 2 sessions · 40 events",
+                                 "2 of 5 scenes · 10 s"]
+    assert "$" not in text and "the longest" not in text
 
 
 def test_a_caption_reports_truncation_and_stays_below_1024():
-    long = {"key": "ABC-1", "titel": "x" * 400, "minuten": 2190}
+    long = {"key": "ABC-1", "title": "x" * 400, "minutes": 2190}
     text = of.caption(balance(runs=900, sessions=900, events=99999,
                                       longest=long),
                                chapter=8, islands=140, seconds=25, capped=True)
-    assert text.endswith("· gekappt")
+    assert text.endswith("· capped")
     assert len(text) <= of.SUBTITLE_MAX
     assert "36,5 h" in text          # 2190 min liest niemand
 
@@ -288,13 +288,13 @@ def filmer(monkeypatch):
     including its error handling runs through the tests.
     """
     # The headers come LOWER CASED, exactly as `httpx` returns them, while the renderer sets
-    # them as "X-Film-Kapitel". With the constants as keys the test would run green and
+    # them as "X-Film-Chapter". With the constants as keys the test would run green and
     # reality would read 0 everywhere.
     state = {"aufrufe": [], "antwort": FakeAnswer(200, b"GIF89a-film", {
-        "content-type": "image/gif", "x-film-kapitel": "8", "x-film-inseln": "67",
-        # 293 frames at 12 fps = 24.4 s of playing time. `x-film-dauer-ms` is the BUILD time
+        "content-type": "image/gif", "x-film-chapter": "8", "x-film-islands": "67",
+        # 293 frames at 12 fps = 24.4 s of playing time. `x-film-duration-ms` is the BUILD time
         # of the renderer (`film.mjs`: `Date.now() - t0`) and is no good for that.
-        "x-film-bilder": "293", "x-film-gekappt": "0", "x-film-dauer-ms": "884"}),
+        "x-film-images": "293", "x-film-capped": "0", "x-film-duration-ms": "884"}),
         "fehler": None}
 
     class FakeClient:
@@ -368,7 +368,7 @@ async def test_the_film_is_built_and_stored_as_media(db, filmer, monkeypatch, tm
     (url, payload), = filmer["aufrufe"]
     assert url.endswith("/film")
     assert payload["grade"] == "night" and payload["fps"] == 12
-    assert payload["titel"] == "Mi 05.08." and payload["tz_offset_min"] == 0
+    assert payload["title"] == "Mi 05.08." and payload["tz_offset_min"] == 0
     assert [e["kind"] for e in payload["events"]][:1] == ["run_start"]
     # The httpx timeout has to lie BELOW `job.run_timeout`; otherwise the job no longer
     # writes its own error.
@@ -379,10 +379,10 @@ async def test_the_film_is_built_and_stored_as_media(db, filmer, monkeypatch, tm
     n = (await notifications(db))[0]
     # The bot assembles `<b>{title}</b>\n{body}`, which together gives exactly the caption,
     # without showing the date twice.
-    assert f"{n.title}\n{n.body}".startswith("🎬 Feierabend · Mi 05.08.")
+    assert f"{n.title}\n{n.body}".startswith("🎬 End of the day · Mi 05.08.")
     # 8 chapters out of 67 islands, and the playing time from frames over fps (293/12), not
     # the ordered 25 s and certainly not the 884 ms of build time.
-    assert "8 von 67 Szenen · 24 s" in n.body
+    assert "8 of 67 scenes · 24 s" in n.body
     if hasattr(Notification, "media_path"):     # the columns are created by the Telegram wave
         assert n.media_path == str(tmp_path / "buero-2026-08-05.gif")
         assert n.media_kind == "animation"

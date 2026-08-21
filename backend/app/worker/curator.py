@@ -33,37 +33,37 @@ DISTANCE_HOURS = 24
 PIN = "📌"
 
 TASK = (
-    "Du räumst die Gedächtnis-Notiz eines Assistenten auf. Sie ist eine Liste gelernter "
-    "Vorgaben seines Menschen.\n\n"
-    "REGELN:\n"
-    "1. Führe Dubletten und offensichtlich Gleichbedeutendes zu EINER Zeile zusammen.\n"
-    "2. Widersprechen sich zwei Zeilen, behalte die JÜNGERE (weiter unten) und wirf die "
-    "ältere raus.\n"
-    "3. Wirf raus, was erkennbar erledigt oder überholt ist.\n"
-    "4. Alles andere bleibt — im Zweifel BEHALTEN. Erfinde nichts, deute nichts um, "
-    "formuliere Inhalte nicht sinnverändernd neu.\n"
-    f"5. Zeilen mit {PIN} bleiben Wort für Wort unverändert und in ihrer Reihenfolge.\n\n"
-    "Antworte in genau zwei Abschnitten, ohne Vorrede:\n"
-    "### BEHALTEN\n"
-    "<die aufgeräumte Liste, eine Bullet-Zeile je Erkenntnis>\n"
-    "### ARCHIV\n"
-    "<die entfernten Zeilen, unverändert, je eine Bullet-Zeile — oder das Wort: keine>\n\n"
-    "--- Notiz ---\n"
+    "You are tidying up the memory note of an assistant. It is a list of instructions it has "
+    "learned from its person.\n\n"
+    "RULES:\n"
+    "1. Merge duplicates and obviously equivalent lines into ONE line.\n"
+    "2. If two lines contradict each other, keep the YOUNGER one (further down) and throw the "
+    "older one out.\n"
+    "3. Throw out what is recognisably done or overtaken.\n"
+    "4. Everything else stays — when in doubt, KEEP it. Invent nothing, reinterpret nothing, "
+    "do not rewrite content in a way that changes its meaning.\n"
+    f"5. Lines with {PIN} stay word for word unchanged and in their order.\n\n"
+    "Answer in exactly two sections, without a preamble:\n"
+    "### KEEP\n"
+    "<the tidied list, one bullet line per insight>\n"
+    "### ARCHIVE\n"
+    "<the removed lines, unchanged, one bullet line each — or the word: none>\n\n"
+    "--- Note ---\n"
 )
 
 
 def _parts(answer: str) -> tuple[str, str] | None:
     """(keep, archive) from the model answer; None when it does not follow the format."""
-    if "### BEHALTEN" not in answer:
+    if "### KEEP" not in answer:
         return None
-    remainder = answer.split("### BEHALTEN", 1)[1]
-    if "### ARCHIV" in remainder:
-        keep, archive = remainder.split("### ARCHIV", 1)
+    remainder = answer.split("### KEEP", 1)[1]
+    if "### ARCHIVE" in remainder:
+        keep, archive = remainder.split("### ARCHIVE", 1)
     else:
         keep, archive = remainder, ""
     keep = keep.strip()
     archive = archive.strip()
-    if archive.lower() in ("keine", "keine.", "-", ""):
+    if archive.lower() in ("none", "none.", "-", ""):
         archive = ""
     return (keep, archive) if keep else None
 
@@ -146,8 +146,8 @@ async def curate_note(db, mcp, *, owner_id: int, path: str, agent, tokens: dict,
 
     await set_setting(db, await _latest_key(owner_id, path),
                       dt.datetime.now(tz=dt.timezone.utc).isoformat())
-    before, nachher = len(_lines(content)), len(_lines(keep))
-    return f"{path}: {before} → {nachher} Einträge, {len(_lines(archive))} archiviert"
+    before, after = len(_lines(content)), len(_lines(keep))
+    return f"{path}: {before} → {after} entries, {len(_lines(archive))} archived"
 
 
 async def curate(db, mcp, *, owner_id: int, agent_role: str = "", project_key: str = "",

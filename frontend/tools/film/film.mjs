@@ -3,7 +3,7 @@
 // The wiring is short because every piece already exists: `Recorder` deduplicates and
 // translates (`mapEvent`), `Replay` replays, `renderFrame` paints, `raster.mjs` clips and
 // `gif.mjs` encodes. New is only **which** moments are painted, and that is decided by
-// `schnitt.mjs`.
+// `cut.mjs`.
 //
 // Two rules this file carries and that are easily violated:
 //
@@ -23,36 +23,36 @@ import { ART } from "../../src/components/office/const.ts";
 import { Recorder } from "../../src/components/office/recorder.ts";
 import { Replay } from "../../src/components/office/replay.ts";
 import { renderFrame } from "../../src/components/office/pixel/scene.ts";
-import { bildplan } from "./schnitt.mjs";
-import { hudZeile, kapitelKarte } from "./hud.mjs";
+import { imagePlan } from "./cut.mjs";
+import { hudLine, chapterCard } from "./hud.mjs";
 import { rasterCtx } from "./raster.mjs";
 import { gif } from "./gif.mjs";
 
 /** How many frames a chapter card stays (at 12 fps a third of a second). Fewer and one does
  *  not read the time, more and eight cards eat a sixth of the film. */
-const KARTEN_BILDER = 4;
+const CARD_IMAGES = 4;
 
 // The film stays on the art level (480x270) for now: its picture is as coarse today as the art
 // is, and a GIF four times as large would bring not one more stroke of detail. As soon as the
 // art is drawn finely, it moves onto the buffer as well.
 const CAM_FILM = { x: ART.w / 2, y: ART.h / 2, zoom: 1 };
 /** Below this many frames a chapter is no longer a chapter but a twitch. */
-const MIN_BILDER = 6;
+const MIN_IMAGES = 6;
 
 /**
- * Builds the film. `auftrag` is the body of `POST /film`, field by field.
+ * Builds the film. `order` is the body of `POST /film`, field by field.
  *
  * Returns: the GIF bytes and the numbers that go into the answer as `X-Film-*`; Python writes
  * the caption out of them ("8 of 67 scenes").
  */
-export function baueFilm(auftrag) {
+export function buildFilm(order) {
   const t0 = Date.now();
-  const events = Array.isArray(auftrag.events) ? auftrag.events : [];
-  const grade = auftrag.grade === "day" ? "day" : "night";
-  const fps = zahl(auftrag.fps, 12);
-  const sekunden = zahl(auftrag.sekunden, 25);
-  const versatz = zahl(auftrag.tz_offset_min, 0);
-  const titel = typeof auftrag.titel === "string" ? auftrag.titel : "";
+  const events = Array.isArray(order.events) ? order.events : [];
+  const grade = order.grade === "day" ? "day" : "night";
+  const fps = num(order.fps, 12);
+  const seconds = num(order.seconds, 25);
+  const offset = num(order.tz_offset_min, 0);
+  const title = typeof order.title === "string" ? order.title : "";
 
   const rec = new Recorder();
   // The roster is **rebuilt** from the `run_start` rows instead of being sent along: the same
@@ -60,32 +60,32 @@ export function baueFilm(auftrag) {
   // figure would have the empty role, so all would look the same (the role determines shirt,
   // hair and torso) and the handover at the end of a run would drop out, because `mapEvent`
   // knows the parent run only from the roster. A second field in the contract would be superfluous.
-  rec.setRoster(rosterAus(events));
+  rec.setRoster(rosterFrom(events));
   for (const ev of events) rec.push(ev);
 
   const log = rec.entries();
-  const grenzen = rec.bounds();
+  const bounds = rec.bounds();
   if (log.length === 0) return null;
 
-  const plan = bildplan(log, {
-    fps, sekunden, kapitel: zahl(auftrag.kapitel, 8),
-    minBilder: MIN_BILDER, kartenBilder: KARTEN_BILDER,
+  const plan = imagePlan(log, {
+    fps, seconds, chapter: num(order.chapter, 8),
+    minImages: MIN_IMAGES, cardImages: CARD_IMAGES,
   });
-  if (plan.bilder.length === 0) return null;
+  if (plan.images.length === 0) return null;
 
-  const marken = sitzungsMarken(events);
+  const marks = sessionMarks(events);
   const replay = new Replay(log);
   const { ctx, buf, reset } = rasterCtx(ART.w, ART.h);
-  const bilder = [];
+  const images = [];
 
   // The first jump is a `seek`, not an `advance`: a fresh `Replay` stands at the beginning but
   // has applied **no** event yet, and `advance(0)` is a no-op. Without this line the first
   // frame of every chapter would show an empty room.
-  replay.seek(plan.bilder[0].ts);
+  replay.seek(plan.images[0].ts);
 
-  let karteIdx = -1;
-  let karteLauf = 0;
-  for (const b of plan.bilder) {
+  let cardIdx = -1;
+  let cardRun = 0;
+  for (const b of plan.images) {
     const dt = b.ts - replay.position;
     if (dt > 0) replay.advance(dt);
 
@@ -93,37 +93,37 @@ export function baueFilm(auftrag) {
     const frame = replay.frame();
     renderFrame(ctx, frame, CAM_FILM, grade);
 
-    const zeit = uhrzeit(b.ts, versatz);
-    hudZeile(ctx, grade, zeile(zeit, marken, b.ts, frame));
+    const time = clockTime(b.ts, offset);
+    hudLine(ctx, grade, line(time, marks, b.ts, frame));
 
-    if (b.kapitel === null) {
-      karteIdx = -1;
-      karteLauf = 0;
+    if (b.chapter === null) {
+      cardIdx = -1;
+      cardRun = 0;
     } else {
-      if (b.kapitel !== karteIdx) { karteIdx = b.kapitel; karteLauf = 0; }
-      kapitelKarte(ctx, grade, titel, zeit, blende(karteLauf, KARTEN_BILDER));
-      karteLauf++;
+      if (b.chapter !== cardIdx) { cardIdx = b.chapter; cardRun = 0; }
+      chapterCard(ctx, grade, title, time, fade(cardRun, CARD_IMAGES));
+      cardRun++;
     }
 
     // The rasteriser writes into the **same** buffer; without a copy the GIF would contain the
     // last frame 300 times. The bug looks like an encoder bug and is none.
-    bilder.push(buf.slice());
+    images.push(buf.slice());
   }
 
   const verzoegerung = Math.max(20, Math.round(1000 / (fps > 0 ? fps : 12)));
-  const kodiert = gif(bilder, {
+  const kodiert = gif(images, {
     w: ART.w, h: ART.h,
-    delaysMs: bilder.map(() => verzoegerung),
+    delaysMs: images.map(() => verzoegerung),
     loop: 0,
   });
 
   return {
     bytes: kodiert.bytes,
-    kapitel: plan.kapitel.length,
-    inseln: plan.kapitel.length + plan.uebersprungen,
-    bilder: bilder.length,
-    gekappt: plan.gekappt || grenzen.dropped,
-    dauerMs: Date.now() - t0,
+    chapter: plan.chapter.length,
+    islands: plan.chapter.length + plan.uebersprungen,
+    images: images.length,
+    capped: plan.capped || bounds.dropped,
+    durationMs: Date.now() - t0,
   };
 }
 
@@ -132,7 +132,7 @@ export function baueFilm(auftrag) {
 /** `ts + offset` to `HH:MM:SS`. Pure integer arithmetic, no `Date`, no `Intl`. The offset is
  *  fixed for the whole day: Python computed it, because only Python knows which zone the
  *  viewer sits in and whether the clock was changed on that day. */
-export function uhrzeit(ms, versatzMin) {
+export function clockTime(ms, versatzMin) {
   const t = Math.floor(ms) + Math.round(versatzMin) * 60000;
   let s = Math.floor(t / 1000) % 86400;
   if (s < 0) s += 86400;
@@ -149,11 +149,11 @@ function p2(n) {
  *
  *  The number stands there without a word: every label would be language, and in this feature
  *  language is built exclusively by Python (the caption says what the film shows anyway). */
-function zeile(zeit, marken, ts, frame) {
-  let leute = 0;
-  for (const a of frame.actors) if (a.retired !== true) leute++;
-  const wo = markeBei(marken, ts);
-  return wo ? `${zeit} | ${wo} | ${leute}` : `${zeit} | ${leute}`;
+function line(time, marks, ts, frame) {
+  let people = 0;
+  for (const a of frame.actors) if (a.retired !== true) people++;
+  const where = markeBei(marks, ts);
+  return where ? `${time} | ${where} | ${people}` : `${time} | ${people}`;
 }
 
 /** Label changes over the day: one entry per event, ascending by `ts`.
@@ -161,7 +161,7 @@ function zeile(zeit, marken, ts, frame) {
  *  Necessary because `LogEntry` does not carry the session: the recorder translates into
  *  commands, and commands know only figures. A day contains many sessions, and without this
  *  track the line would show the same ticket over the whole film. */
-function sitzungsMarken(events) {
+function sessionMarks(events) {
   const namen = new Map();
   for (const ev of events) {
     const key = typeof ev.issue_key === "string" && ev.issue_key.length > 0 ? ev.issue_key : null;
@@ -179,9 +179,9 @@ function sitzungsMarken(events) {
 
 /** The last mark with `ts <= at`. Searched linearly: the frames come in ascending order, but a
  *  pointer over two data series would be one state variable more for the same answer. */
-function markeBei(marken, at) {
-  let text = marken.length > 0 ? marken[0].text : "";
-  for (const m of marken) {
+function markeBei(marks, at) {
+  let text = marks.length > 0 ? marks[0].text : "";
+  for (const m of marks) {
     if (m.ts > at) break;
     text = m.text;
   }
@@ -192,18 +192,18 @@ function markeBei(marken, at) {
 
 /** Fading the chapter card in and out: the first and the last frame half, full in between. A
  *  longer transition would only waste reading time with four frames. */
-function blende(i, m) {
+function fade(i, m) {
   if (m <= 1) return 1;
   return i === 0 || i === m - 1 ? 0.5 : 1;
 }
 
-function zahl(v, ersatz) {
+function num(v, ersatz) {
   return typeof v === "number" && Number.isFinite(v) && v > 0 ? v : ersatz;
 }
 
 /** The roster from the `run_start` rows. Only the five fields `mapEvent` really reads: a
  *  complete `RosterEntry` would be an invention here, not completeness. */
-function rosterAus(events) {
+function rosterFrom(events) {
   const out = [];
   const gesehen = new Set();
   for (const ev of events) {

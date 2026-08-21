@@ -89,16 +89,16 @@ def owner_of(issue: Issue) -> int | None:
 async def schedule_ok(db, issue: Issue) -> GateVerdict:
     """Time gates: planned start, end of the working day of the owner, night window."""
     if issue.start_at and issue.start_at > _now():
-        return GateVerdict(False, "start_at", detail=f"geplant für {issue.start_at:%d.%m. %H:%M}")
+        return GateVerdict(False, "start_at", detail=f"scheduled for {issue.start_at:%d.%m. %H:%M}")
     owner_id = owner_of(issue)
     if await get_user_flag("shift_end", owner_id):
-        return GateVerdict(False, "shift_end", detail="Feierabend des Eigentümers")
+        return GateVerdict(False, "shift_end", detail="the owner has called it a day")
     if issue.night_task:
         user = await db.get(User, owner_id) if owner_id else None
         if user and not user.night_override:
             now = dt.datetime.now(zone_of(user))
             if now.weekday() not in (user.night_days or [0, 1, 2, 3, 4, 5, 6]):
-                return GateVerdict(False, "night", detail="außerhalb der Nacht-Wochentage")
+                return GateVerdict(False, "night", detail="outside the night weekdays")
             s, e, h = user.night_start_hour, user.night_end_hour, now.hour
             in_window = (s <= h < e) if s < e else (h >= s or h < e)
             if not in_window:
@@ -114,13 +114,13 @@ async def runner_slot_free(db, issue: Issue) -> GateVerdict:
     running = (await db.execute(select(Issue).where(Issue.agent_working.is_(True)))).scalars().all()
     running = [r for r in running if r.id != issue.id]
     if len(running) >= MAX_CONCURRENT:
-        return GateVerdict(False, "runners", detail=f"{len(running)} Läufe global aktiv")
+        return GateVerdict(False, "runners", detail=f"{len(running)} runs active globally")
     owner_id = owner_of(issue)
     mine = sum(1 for r in running if (r.assigned_by_user_id or r.reporter_id) == owner_id)
     owner = await db.get(User, owner_id) if owner_id else None
     cap = owner.max_runners if owner else MAX_CONCURRENT
     if mine >= cap:
-        return GateVerdict(False, "runners", detail=f"{mine}/{cap} eigene Läufe aktiv")
+        return GateVerdict(False, "runners", detail=f"{mine}/{cap} own runs active")
     return OK
 
 
@@ -142,7 +142,7 @@ async def cap_ok(db, issue: Issue) -> GateVerdict:
         log.warning("Ticket %s: runaway cap reached (%d runs / %d input tokens), going to hold",
                     issue.key, run_count, in_tok)
         return GateVerdict(False, "cap", hold=True, hold_reason=HoldReason.cap,
-                           detail=f"{run_count} Läufe / {in_tok} Input-Tokens")
+                           detail=f"{run_count} runs / {in_tok} input tokens")
 
     if in_tok >= WARN_INPUT_TOKENS_PER_TICKET:
         warned = (await db.execute(
@@ -150,8 +150,8 @@ async def cap_ok(db, issue: Issue) -> GateVerdict:
                                      Comment.kind == "cost_warn").limit(1)
         )).first()
         if warned is None:
-            text = (f"⚠️ Kostenwarnung {issue.key}: {run_count} Läufe / {in_tok} Input-Tokens. "
-                    f"Hard-Cap bei {MAX_RUNS_PER_TICKET} Läufen / "
+            text = (f"⚠️ Cost warning {issue.key}: {run_count} runs / {in_tok} input tokens. "
+                    f"The hard cap is at {MAX_RUNS_PER_TICKET} runs / "
                     f"{MAX_INPUT_TOKENS_PER_TICKET} Tokens → hold.")
             db.add(Comment(issue_id=issue.id, author_id=None, author_label="System",
                            body=text, kind="cost_warn"))

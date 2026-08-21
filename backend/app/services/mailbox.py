@@ -4,8 +4,8 @@ Why synchronous and in a thread pool: `imapclient` is a proven, blocking library
 one that has been running in `imap-mcp` for months. An asynchronous IMAP rebuild would be a
 second building site without a gain; the waiting time sits in the network anyway, not in the
 CPU. Every call opens its connection and closes it again: mailboxes are used in bursts here
-(one list, one message), and an open connection per person would be a state that
-niemand aufräumt.
+(one list, one message), and an open connection per person would be a state nobody
+tidies up.
 
 What does NOT happen here: deciding. This layer reads and writes, it judges nothing. What is
 to happen to a mail is written in a flow (`mail_action`) or lies in the hands of the person
@@ -342,7 +342,7 @@ def _folder_sync(account: MailAccount, count: bool) -> list[dict]:
                     entry["unseen"] = int(state.get(b"UNSEEN", 0))
                     entry["total"] = int(state.get(b"MESSAGES", 0))
                 except Exception:  # noqa: BLE001 — a folder without an answer is no error
-                    log.debug("Kein Status für %s", entry["name"])
+                    log.debug("no status for %s", entry["name"])
 
         return tree_sort(raw)
 
@@ -454,7 +454,7 @@ def _attachment_sync(account: MailAccount, folder: str, uid: int, index: int) ->
     raise LookupError("Anhang nicht gefunden")
 
 
-# ── Ändern ──────────────────────────────────────────────────────────────────
+# ── Changing ────────────────────────────────────────────────────────────────
 
 def _flag_sync(account: MailAccount, folder: str, uid: int, flag: str, an: bool) -> None:
     with _imap(account) as client:
@@ -565,7 +565,7 @@ def _archive_sync(account: MailAccount, folder: str, uid: int) -> str:
             try:
                 client.subscribe_folder(target)
             except Exception:  # noqa: BLE001 — not every server knows subscriptions
-                log.debug("Kein Abonnement für %s", target)
+                log.debug("no subscription for %s", target)
         if client.has_capability("MOVE"):
             client.move([uid], target)
         else:
@@ -580,7 +580,7 @@ def _unread_sync(account: MailAccount, folder: str = "INBOX") -> int:
 
     Deliberately only the inbox and not the sum over all folders: "new mail" means what has
     come in, not the two hundred unread newsletters in the archive. And it
-    ist ein Aufruf statt vierzig.
+    is one call instead of forty.
     """
     with _imap(account) as client:
         state = client.folder_status(folder, ["UNSEEN"])
@@ -684,15 +684,15 @@ def _clearer(error: Exception, account: MailAccount, smtp: bool) -> str:
     if "WRONG_VERSION_NUMBER" in text or "record layer failure" in text:
         port = account.smtp_port if smtp else account.imap_port
         kind = account.smtp_security if smtp else ("ssl" if account.imap_ssl else "none")
-        advice = ("Port 587 spricht STARTTLS, Port 465 ist von Anfang an verschlüsselt"
+        advice = ("port 587 speaks STARTTLS, port 465 is encrypted from the start"
                if smtp else
-               "Port 993 ist von Anfang an verschlüsselt, Port 143 rüstet erst auf")
-        return (f"{text} — Port {port} und Verschlüsselung „{kind}\" passen nicht zusammen. "
+               "port 993 is encrypted from the start, port 143 upgrades on the way")
+        return (f"{text} — port {port} and the encryption \"{kind}\" do not match. "
                 f"{advice}.")
     if "CERTIFICATE_VERIFY_FAILED" in text:
-        return f"{text} — das Zertifikat des Servers ist nicht überprüfbar."
+        return f"{text} — the certificate of the server cannot be checked."
     if "AUTHENTICATIONFAILED" in text.upper() or "authentication failed" in text.lower():
-        return f"{text} — Benutzername oder Kennwort stimmen nicht."
+        return f"{text} — the user name or the password is wrong."
     return text
 
 
@@ -788,7 +788,7 @@ async def send(account: MailAccount, identity: MailIdentity, fields: dict) -> No
     try:
         await asyncio.to_thread(_store_sync, account, account.folder_sent, msg.as_bytes())
     except Exception:  # noqa: BLE001
-        log.exception("Kopie im Ordner %s fehlgeschlagen (die Mail ist raus)",
+        log.exception("the copy in the folder %s failed (the mail went out)",
                       account.folder_sent)
 
 

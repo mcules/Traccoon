@@ -24,7 +24,7 @@ const BAND_H = 11;
  * viewer sees that an hour passed between two chapters. Without it the time lapse would look
  * like a continuous recording, and exactly that would be a lie.
  */
-export function hudZeile(ctx, grade, text) {
+export function hudLine(ctx, grade, text) {
   const pal = GRADES[grade];
   const y = ART.h - BAND_H;
   fillA(ctx, pal, "shadow", 0.62, 0, y, ART.w, BAND_H);
@@ -43,7 +43,7 @@ export function hudZeile(ctx, grade, text) {
  * `k` (0..1) is the fade in and out. The caller determines the curve; here it is only applied,
  * so that the card has no time notion of its own.
  */
-export function kapitelKarte(ctx, grade, titel, zeit, k) {
+export function chapterCard(ctx, grade, title, time, k) {
   const a = k <= 0 ? 0 : k >= 1 ? 1 : k;
   if (a <= 0) return;
   const pal = GRADES[grade];
@@ -52,14 +52,14 @@ export function kapitelKarte(ctx, grade, titel, zeit, k) {
 
   // A box behind the text, not only a veil: the room has bright monitors and a patterned
   // carpet, and a 3x5 font over that cannot be read from three metres.
-  const breite = Math.max(textW(titel), textW(zeit)) + 22;
-  const hoehe = 26;
-  const x0 = (ART.w - breite) >> 1;
-  const y0 = (ART.h - hoehe) >> 1;
-  fillA(ctx, pal, "ink", 0.92 * a, x0, y0, breite, hoehe);
-  fillA(ctx, pal, "acc", 0.9 * a, x0, y0, breite, 1);
-  fillA(ctx, pal, "acc", 0.9 * a, x0, y0 + hoehe - 1, breite, 1);
+  const width = Math.max(textW(title), textW(time)) + 22;
+  const height = 26;
+  const x0 = (ART.w - width) >> 1;
+  const y0 = (ART.h - height) >> 1;
+  fillA(ctx, pal, "ink", 0.92 * a, x0, y0, width, height);
+  fillA(ctx, pal, "acc", 0.9 * a, x0, y0, width, 1);
+  fillA(ctx, pal, "acc", 0.9 * a, x0, y0 + height - 1, width, 1);
 
-  drawText(ctx, pal, "paper", (ART.w - textW(titel)) >> 1, y0 + 6, titel, a);
-  drawText(ctx, pal, "acc", (ART.w - textW(zeit)) >> 1, y0 + 15, zeit, a);
+  drawText(ctx, pal, "paper", (ART.w - textW(title)) >> 1, y0 + 6, title, a);
+  drawText(ctx, pal, "acc", (ART.w - textW(time)) >> 1, y0 + 15, time, a);
 }

@@ -187,7 +187,7 @@ async def handle(job: dict, redis: Redis) -> None:
         return
     if kind:  # infrastructure task (testenv_start and so on), later
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps({"status": "failed",
-                        "output": f"Infra-Task {kind} noch nicht implementiert"}), ex=RESULT_TTL)
+                        "output": f"the infrastructure task {kind} is not implemented yet"}), ex=RESULT_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
         return
 
@@ -376,18 +376,18 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
                         issue.key, attempt)
             db.add(Comment(
                 issue_id=issue.id, author_id=None, author_label="Reviewer", kind="internal",
-                body=("🛑 Stillstand im Review: die letzte Korrektur hat am Code nichts "
-                      "changed. Further rounds would only cost tokens.\n\nOpen "
-                      "Befunde:\n\n" + (getattr(rev, "text", "") or "(kein Text)")[:4000])))
+                body=("🛑 Standstill in the review: the last correction changed nothing in the "
+                      "code. Further rounds would only cost tokens.\n\nOpen "
+                      "findings:\n\n" + (getattr(rev, "text", "") or "(no text)")[:4000])))
             await db.commit()
             from .runtime import RunResult
-            return RunResult("blocked", "Review-Gate: Korrektur ohne Wirkung (Stillstand)",
+            return RunResult("blocked", "review gate: a correction without effect (standstill)",
                              run_id=result.run_id, blocker_kind="review")
         previous_diff = diff
         rev_prompt = (
             "Check the following diff strictly (bugs, security, edge cases). Answer EXACTLY `<review-ok/>` "
-            "(nichts sonst), wenn keine korrektur-erzwingenden Befunde vorliegen. Sonst nummeriere die "
-            "Befunde (Datei/Stelle/Problem/erwartete Korrektur) als Arbeitsauftrag. Schreibe keine Dateien.\n\n"
+            "(nothing else) when there are no findings that force a correction. Otherwise number the "
+            "findings (file/place/problem/expected correction) as a work order. Write no files.\n\n"
             f"# Diff for {issue.key}: {issue.summary}\n```diff\n{diff}\n```")
         rev = await run_agent(
             db=db, agent=reviewer,
@@ -445,7 +445,7 @@ async def _review_gate(db, project, issue, exec_agent, ws_root, gate_on, tokens,
     open_ones = (getattr(rev, "text", "") or "").strip()
     db.add(Comment(
         issue_id=issue.id, author_id=None, author_label="Reviewer", kind="internal",
-        body=(f"🛑 Nach {REVIEW_ROUNDS} Korrektur-Runden sind noch Befunde offen — "
+        body=(f"🛑 After {REVIEW_ROUNDS} rounds of correction findings are still open — "
               "the ticket is waiting for you.\n\n" +
               (open_ones[:4000] if open_ones else
                "(the correction budget was used up before this round — the "
@@ -623,7 +623,7 @@ async def _handle_agent_free(job: dict, redis: Redis) -> None:
             await db.commit()
             await report("done" if result.status == "done" else "failed",
                         text if result.status == "done" else (result.text or result.status))
-        except Exception as exc:  # noqa: BLE001 — wer wartet, muss es erfahren
+        except Exception as exc:  # noqa: BLE001 — whoever waits has to be told
             log.exception("free agent run %s failed", task_id)
             await report("failed", str(exc)[:2000])
 
@@ -804,7 +804,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             return
         if t.status not in ("approved",):
             log.info("assistant task %s stands on '%s', not on 'approved' — no run", tid, t.status)
-            await _report("error", f"Assistent-Item {tid} steht auf '{t.status}'")
+            await _report("error", f"the assistant item {tid} stands on '{t.status}'")
             return
         t.status = "running"
         await db.commit()
@@ -839,11 +839,11 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             if meta.get("bezug_text"):
                 source = await _reference_source(db, meta.get("bezug_task_id"))
                 prompt = (
-                    "Dein Mensch antwortet DIREKT auf diese deine Nachricht:\n"
+                    "Your person is answering DIRECTLY to this message of yours:\n"
                     f"---\n{meta['bezug_text']}\n---\n"
                     + source +
-                    "Seine Antwort darauf ist dein Auftrag — arbeite an genau dieser Sache "
-                    "on instead of merely taking note of it:\n\n" + prompt
+                    "Their answer to it is your task — work on exactly that matter "
+                    "instead of merely taking note of it:\n\n" + prompt
                 )
         elif meta.get("prompt"):
             # The full task prompt from the webhook (ported knowledge about handling mail).
@@ -1139,13 +1139,13 @@ async def sweep_corpses_and_report() -> None:
 
         body = (f"The worker was restarted. Aborted: {len(runs)} run(s)"
                 f"{' (' + _listing([r.id for r in runs]) + ')' if runs else ''}"
-                f", {len(tasks)} Assistent-Aufgabe(n)"
+                f", {len(tasks)} assistant task(s)"
                 f"{' (' + _listing([t.id for t in tasks]) + ')' if tasks else ''}.\n\n"
-                "Diese Arbeit wird NICHT automatisch wiederholt — wenn sie noch gebraucht wird, "
-                "schick sie bitte erneut.")
+                "This work is NOT repeated automatically — if it is still needed, please "
+                "send it again.")
         for u in users:
             db.add(Notification(user_id=u.id, kind="failed",
-                                title="⚠️ Worker nach Abbruch neu gestartet",
+                                title="⚠️ The worker restarted after an abort",
                                 body=body[:4000], chat_id=u.telegram_chat_id))
         await db.commit()
     log.warning("Clean-up after the restart: %d run(s) and %d assistant task(s) finished",

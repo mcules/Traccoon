@@ -88,13 +88,13 @@ TITLE_MAX = 60
 
 # Response headers of the renderer. Looked up case insensitively (`_kopf`): httpx returns the
 # names in lower case, the renderer writes them capitalised.
-HEADER_CHAPTER = "X-Film-Kapitel"
-HEADER_ISLANDS = "X-Film-Inseln"
-HEADER_IMAGES = "X-Film-Bilder"
-HEADER_CAPPED = "X-Film-Gekappt"
+HEADER_CHAPTER = "X-Film-Chapter"
+HEADER_ISLANDS = "X-Film-Islands"
+HEADER_IMAGES = "X-Film-Images"
+HEADER_CAPPED = "X-Film-Capped"
 # **Build time**, not playing time (`film.mjs`: `Date.now() - t0`). How long the film runs stands
 # nowhere: that is `frames / fps` and is computed here.
-HEADER_DURATION = "X-Film-Dauer-Ms"
+HEADER_DURATION = "X-Film-Duration-Ms"
 
 # How much room the HTTP call leaves under `job.run_timeout`. The job has to be able to write
 # the error itself; if the scheduler timeout beats it, the JobRun would stay on
@@ -144,14 +144,14 @@ class Dailybalance:
     # As long as any cost entry has `priced IS NULL` (today that is all 411 of them), the sum is
     # a lower bound. The "≥" is then a duty, not decoration.
     cost_partial: bool = False
-    longest: dict | None = None   # {"key", "titel", "minuten"}
+    longest: dict | None = None   # {"key", "title", "minutes"}
     # The day had more events than a film can hold: the morning is missing.
     capped: bool = False
 
 
 # ── The events of one day ───────────────────────────────────────────────────
 
-async def daily_events(db: AsyncSession, *, von: dt.datetime,
+async def daily_events(db: AsyncSession, *, start: dt.datetime,
                            to: dt.datetime) -> tuple[list[dict], list[dict], Dailybalance]:
     """All events of a window, **across sessions** and strictly by `seq`.
 
@@ -161,16 +161,16 @@ async def daily_events(db: AsyncSession, *, von: dt.datetime,
     room that day should not have to ask a second time and get a second set of runs.
     room that day should not have to ask a second time and get a second set of runs.
 
-    `von` may (and should) stand in the zone of the job: the date label lives on that. For the
+    `start` may (and should) stand in the zone of the job: the date label lives on that. For the
     query it is converted to UTC, because SQLite stores `DateTime` as a bare string **without** a
     zone, so a Berlin timestamp as a bind parameter would be compared against UTC strings there
     and would be two hours off in summer.
     """
     from ..api.office import _agent_row, _billed_by_run   # price and roster truth: ONE
 
-    from_utc = von.astimezone(dt.timezone.utc)
+    from_utc = start.astimezone(dt.timezone.utc)
     to_utc = to.astimezone(dt.timezone.utc)
-    balance = Dailybalance(date=date_label(von))
+    balance = Dailybalance(date=date_label(start))
 
     # Fetch descending and turn it around afterwards, the same truncation as in
     # `api/office.py`: the OLDEST is cut, because half a film would rather show the evening than
@@ -304,8 +304,8 @@ def _longest(runs: list[Run], tickets: dict[int, tuple[str, str]]) -> dict | Non
         return None
     duration, run = best
     key, title = tickets.get(run.issue_id or 0, ("", ""))
-    return {"key": key or (run.agent or f"Lauf {run.id}"), "titel": title,
-            "minuten": int(duration // 60)}
+    return {"key": key or (run.agent or f"run {run.id}"), "title": title,
+            "minutes": int(duration // 60)}
 
 
 # ── Bildunterschrift ────────────────────────────────────────────────────────
@@ -330,16 +330,16 @@ def caption(balance: Dailybalance, *, chapter: int, islands: int, seconds: int,
     comes from the response headers of the renderer. Empty statements fall away, because
     "0 failures · $0.00" is not a message but noise.
     """
-    lines = [f"🎬 Feierabend · {balance.date}",
-              f"{_pl(balance.runs, 'Lauf', 'Läufe')} in "
-              f"{_pl(balance.sessions, 'Sitzung', 'Sitzungen')} · "
-              f"{_pl(balance.events, 'Ereignis', 'Ereignisse')}"]
+    lines = [f"🎬 End of the day · {balance.date}",
+              f"{_pl(balance.runs, 'run', 'runs')} in "
+              f"{_pl(balance.sessions, 'session', 'sessions')} · "
+              f"{_pl(balance.events, 'event', 'events')}"]
 
     situation: list[str] = []
     if balance.failures:
-        situation.append(_pl(balance.failures, "Fehlschlag", "Fehlschläge"))
+        situation.append(_pl(balance.failures, "failure", "failures"))
     if balance.questions:
-        situation.append(_pl(balance.questions, "Rückfrage", "Rückfragen"))
+        situation.append(_pl(balance.questions, "question", "questions"))
     if balance.cost_usd > 0:
         situation.append(_money(balance.cost_usd, partial=balance.cost_partial))
     if situation:
@@ -347,19 +347,19 @@ def caption(balance: Dailybalance, *, chapter: int, islands: int, seconds: int,
 
     long = balance.longest
     if long:
-        title = (long.get("titel") or "").strip()
+        title = (long.get("title") or "").strip()
         if len(title) > TITLE_MAX:
             title = title[:TITLE_MAX - 1].rstrip() + "…"
-        piece = f"Längster: {long['key']}"
+        piece = f"the longest: {long['key']}"
         if title:
             piece += f" „{title}“"
-        lines.append(f"{piece} · {_duration(int(long['minuten']))}")
+        lines.append(f"{piece} · {_duration(int(long['minutes']))}")
 
-    end = f"{chapter} von {_pl(islands, 'Szene', 'Szenen')} · {seconds} s"
+    end = f"{chapter} of {_pl(islands, 'scene', 'scenes')} · {seconds} s"
     if capped:
         # The renderer had to truncate: the morning is missing. That belongs under the film and
         # not only in the log, otherwise somebody takes the gap for a quiet day.
-        end += " · gekappt"
+        end += " · capped"
     lines.append(end)
 
     text = "\n".join(lines)
@@ -375,9 +375,15 @@ def _opt(job) -> dict:
     return dict(args) if isinstance(args, dict) else {}
 
 
+# The job options of the film job, English name first. The German ones stand in jobs that were
+# set up before the rename; reading both spares everybody an edit in the job form.
+_OPTION_ALIAS = {"seconds": "sekunden", "chapters": "kapitel", "keep_days": "behalten_tage"}
+
+
 def _int(opt: dict, key: str, standard: int) -> int:
+    raw = opt.get(key, opt.get(_OPTION_ALIAS.get(key, key), standard))
     try:
-        return int(opt.get(key, standard))
+        return int(raw)
     except (TypeError, ValueError):
         return standard
 
@@ -386,14 +392,14 @@ def _window(opt: dict) -> tuple[dt.datetime, dt.datetime]:
     """The office day: from local midnight until now.
 
     "End of day" means the job runs in the evening and shows the day behind us, hence
-    `bis = jetzt` and not 24:00. A job running after midnight would film the fresh day; the
+    `end = now` and not 24:00. A job running after midnight would film the fresh day; the
     schedule belongs in the evening.
     """
     name = str(opt.get("tz") or STD_TZ)
     try:
         from zoneinfo import ZoneInfo
         zone: dt.tzinfo = ZoneInfo(name)
-    except Exception:  # noqa: BLE001 — fehlende tzdata darf keinen Film kosten
+    except Exception:  # noqa: BLE001 — missing tzdata must not cost a film
         log.warning("Time zone %s unknown, the film runs on UTC", name)
         zone = dt.timezone.utc
     now = dt.datetime.now(tz=zone)
@@ -433,14 +439,28 @@ async def _film_fetch(payload: dict, *, timeout: float) -> tuple[int, bytes, dic
     return r.status_code, r.content, dict(r.headers)
 
 
+# What the headers were called before the house became English. A renderer image that has not
+# been rebuilt yet still writes these, and a film with "0 of 0 scenes" under it would be the
+# only visible sign of it.
+_HEADER_LEGACY = {
+    "x-film-chapter": "x-film-kapitel",
+    "x-film-islands": "x-film-inseln",
+    "x-film-images": "x-film-bilder",
+    "x-film-capped": "x-film-gekappt",
+    "x-film-duration-ms": "x-film-dauer-ms",
+}
+
+
 def _header(header: dict, name: str) -> str:
     """One response header, independent of its spelling. `httpx` returns the names in lower case,
-    the renderer writes them as `X-Film-Kapitel`, so a direct `.get()` would find nothing and
+    the renderer writes them as `X-Film-Chapter`, so a direct `.get()` would find nothing and
     read every value as 0."""
     target = name.lower()
-    for key, value in header.items():
-        if str(key).lower() == target:
-            return str(value)
+    wanted = (target, _HEADER_LEGACY.get(target, target))
+    for spelling in wanted:
+        for key, value in header.items():
+            if str(key).lower() == spelling:
+                return str(value)
     return ""
 
 
@@ -503,15 +523,15 @@ async def run_film_job(db: AsyncSession, job, jr) -> None:
     except Exception as e:  # noqa: BLE001 — bewusst alles
         jr.status, jr.error = "error", str(e)[:2000]
         log.exception("film job %s failed", getattr(job, "name", "?"))
-    removed = _prune(_int(opt, "behalten_tage", STD_KEEP_DAYS))
+    removed = _prune(_int(opt, "keep_days", STD_KEEP_DAYS))
     if removed:
-        jr.output = (jr.output or "") + f"\n{removed} alte Filme gelöscht."
+        jr.output = (jr.output or "") + f"\n{removed} old films deleted."
     jr.finished_at = _now()
 
 
 async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
-    von, to = _window(opt)
-    events, _roster, balance = await daily_events(db, von=von, to=to)
+    start, to = _window(opt)
+    events, _roster, balance = await daily_events(db, start=start, to=to)
     # `notify_mode="never"` means "build it but do not send it" for the film: the file lies there
     # afterwards anyway. The finer modes (`on_output`/`on_error`) do not fit here: a film is
     # always output, and the distinction would be meaningless.
@@ -526,7 +546,7 @@ async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
         # An explicit branch, not an emergency: an empty room would give 300 bit identical
         # frames. And no HTTP call, because the renderer would have nothing to render.
         jr.status = "ok"
-        jr.output = f"{balance.date}: keine Läufe — kein Film."
+        jr.output = f"{balance.date}: no runs — no film."
         if not still:
             db.add(_notification(
                 kind="film",
@@ -535,17 +555,17 @@ async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
                 chat_id=job.notify_chat))
         return
 
-    seconds = _int(opt, "sekunden", STD_SECONDS)
+    seconds = _int(opt, "seconds", STD_SECONDS)
     fps = _int(opt, "fps", STD_FPS)
     payload = {
         "events": events,
         "grade": str(opt.get("grade") or STD_GRADE),
-        "sekunden": seconds,
+        "seconds": seconds,
         "fps": fps,
-        "kapitel": _int(opt, "kapitel", STD_CHAPTER),
+        "chapter": _int(opt, "chapters", STD_CHAPTER),
         # The renderer formats no time itself: it is told the offset.
-        "tz_offset_min": int((von.utcoffset() or dt.timedelta()).total_seconds() // 60),
-        "titel": balance.date,
+        "tz_offset_min": int((start.utcoffset() or dt.timedelta()).total_seconds() // 60),
+        "title": balance.date,
     }
     timeout = max(30.0, float(job.run_timeout or 600) - TIMEOUT_BUFFER_S)
     status, data, header = await _film_fetch(payload, timeout=timeout)
@@ -554,7 +574,7 @@ async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
         # The renderer could not make a single scene out of the log. That is not an error, it is
         # the same quiet day, only this time it noticed.
         jr.status = "ok"
-        jr.output = f"{balance.date}: der Renderer fand keine Ereignisse (204)."
+        jr.output = f"{balance.date}: the renderer found no events (204)."
         if not still:
             db.add(_notification(
                 kind="film",
@@ -568,7 +588,7 @@ async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
         return
 
     os.makedirs(FILM_DIR, exist_ok=True)
-    path = os.path.join(FILM_DIR, f"buero-{von:%Y-%m-%d}.gif")
+    path = os.path.join(FILM_DIR, f"buero-{start:%Y-%m-%d}.gif")
     with open(path, "wb") as fh:
         fh.write(data)
 
@@ -578,7 +598,7 @@ async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
         chapter=_header_int(header, HEADER_CHAPTER),
         islands=_header_int(header, HEADER_ISLANDS),
         # How long the film really runs, not how long it was ordered: the cut lands on whole
-        # frames and never hits the 25 s exactly. `X-Film-Dauer-Ms` is NOT good for that, it is
+        # frames and never hits the 25 s exactly. `X-Film-Duration-Ms` is NOT good for that, it is
         # the build time of the renderer.
         seconds=round(images / fps) if images and fps else seconds,
         capped=balance.capped or _header_yes(header, HEADER_CAPPED),
@@ -590,6 +610,6 @@ async def _film_build(db: AsyncSession, job, jr, opt: dict) -> None:
         db.add(_notification(kind="film", title=header_line, body=remainder,
                              chat_id=job.notify_chat, medium=path, mediakind="animation"))
     jr.status = "ok"
-    jr.output = (f"{balance.date}: {_header_int(header, HEADER_CHAPTER)} von "
+    jr.output = (f"{balance.date}: {_header_int(header, HEADER_CHAPTER)} of "
                  f"{_header_int(header, HEADER_ISLANDS)} Szenen, {images} Bilder, "
                  f"{len(data) // 1024} kB in {_header_int(header, HEADER_DURATION)} ms → {path}")

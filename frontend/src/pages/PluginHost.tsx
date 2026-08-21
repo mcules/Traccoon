@@ -34,8 +34,8 @@ type Call = {
 /** Query part from what a plugin asked for — only known fields, nothing passed through. */
 function range(a: any): string {
   const parts: string[] = [];
-  if (a?.from) parts.push(`von=${encodeURIComponent(String(a.from))}`);
-  if (a?.to) parts.push(`bis=${encodeURIComponent(String(a.to))}`);
+  if (a?.from) parts.push(`from=${encodeURIComponent(String(a.from))}`);
+  if (a?.to) parts.push(`to=${encodeURIComponent(String(a.to))}`);
   const limit = Number(a?.limit);
   if (Number.isFinite(limit) && limit > 0) {
     parts.push(`limit=${Math.min(50000, Math.floor(limit))}`);

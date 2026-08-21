@@ -183,10 +183,10 @@ def _f_round(value, spots="0"):
 
 FILTER = {
     # Text
-    "upper": (lambda w: ("" if w is None else str(w)).upper(), "Text in Großbuchstaben"),
+    "upper": (lambda w: ("" if w is None else str(w)).upper(), "the text in capitals"),
     "lower": (lambda w: ("" if w is None else str(w)).lower(), "Text in Kleinbuchstaben"),
-    "trim": (lambda w: ("" if w is None else str(w)).strip(), "Leerzeichen außen weg"),
-    "truncate": (_f_short, "Auf n Zeichen kürzen — truncate:40"),
+    "trim": (lambda w: ("" if w is None else str(w)).strip(), "spaces on the outside removed"),
+    "truncate": (_f_short, "shorten to n characters — truncate:40"),
     "replace": (_f_replace, "Textteil austauschen — replace:\"alt\",\"neu\""),
     # Zahlen
     "times": (lambda w, f="1": _number(w) * _number(f, 1), "Multiplizieren — times:100"),
@@ -196,22 +196,22 @@ FILTER = {
     # "loses -1.95 % per day" reads wrong: the sign is already in the verb.
     "abs": (lambda w: abs(_number(w)), "Vorzeichen weglassen"),
     # Listen
-    "count": (_f_count, "Wie viele Einträge (bzw. Zeichen)"),
+    "count": (_f_count, "how many entries (or characters)"),
     "first": (lambda w: w[0] if isinstance(w, (list, tuple)) and w else "", "Erster Eintrag"),
     "last": (lambda w: w[-1] if isinstance(w, (list, tuple)) and w else "", "Letzter Eintrag"),
     "join": (_f_join, "Liste zu Text — join:\", \""),
     "field": (_f_field, "Ein Feld aus einer Objektliste — field:\"name\""),
-    "basename": (_f_filename, "Notizname aus dem Pfad (ohne Ordner und .md)"),
-    "max": (_f_max, "Größter Zahlwert einer Liste"),
-    "lines_with": (_f_lines_with, "Zeilen eines Textes, die etwas enthalten — lines_with:\"### \""),
+    "basename": (_f_filename, "the note name out of the path (without folder and .md)"),
+    "max": (_f_max, "the largest number in a list"),
+    "lines_with": (_f_lines_with, "the lines of a text that contain something — lines_with:\"### \""),
     "min": (_f_min, "Kleinster Zahlwert einer Liste"),
     # Zeit
     "date": (_f_date, "Zeit formatieren — date:\"%d.%m.%Y\""),
     "add_time": (_f_plus_ts, "Zeit verschieben — add_time:2,\"h\" (t=Tage, h=Stunden, m=Minuten)"),
     # Allgemein
     "default": (_f_default,
-                "Ersatz, wenn leer — default:\"sonstiges\" (in Anführungszeichen wörtlich, "
-                "ohne Anführungszeichen ein Kontextpfad: default:event.type)"),
+                "a stand-in when empty — default:\"other\" (in quotes taken literally, "
+                "without quotes a context path: default:event.type)"),
     "json": (_f_json, "Als JSON-Text"),
     "text": (lambda w: "" if w is None else str(w), "Als Text"),
 }

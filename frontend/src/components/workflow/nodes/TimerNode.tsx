@@ -11,10 +11,8 @@ import { tr } from "../../../i18n";
 export default function TimerNode({ id, data, selected }: FlowNodeProps) {
   const cfg = data.config;
   const text = cfg.to
-    ? `bis ${cfg.to}`
-    : `${cfg.duration ?? "?"} ${{ s: "Sek.", m: "Min.", h: "Std.", t: "Tage" }[
-        (cfg.unit as string) || "m"
-      ] || "Min."}`;
+    ? `${tr("timer_node.until")} ${cfg.to}`
+    : `${cfg.duration ?? "?"} ${tr(`timer_node.unit_${(cfg.unit as string) || "m"}`)}`;
   return (
     <BaseNode
       nodeId={id}

@@ -323,7 +323,7 @@ async def _set_field(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
         return {"action": "set_field", "applied": False, "reason": "kein Feld angegeben"}
     artifact = await _artifact_from(db, inst)
     if artifact is None:
-        return {"action": "set_field", "applied": False, "reason": "kein Artefakt an diesem Ablauf"}
+        return {"action": "set_field", "applied": False, "reason": "no artifact on this flow"}
 
     field = next((f for f in await af.fields_of(db, artifact.type_id, artifact.project_id)
                  if f.key == key), None)
@@ -586,7 +586,7 @@ async def _split_tickets(db, inst: WorkflowInstance, params: dict) -> dict:
     await set_ticket_status(db, umbrella, None, board=False)
     from .comments import add_system_comment
     await add_system_comment(
-        db, umbrella.id, f"✅ Aufteilung übernommen — {len(keys)} Teilaufgaben angelegt.",
+        db, umbrella.id, f"✅ The split was taken over — {len(keys)} sub-tasks created.",
         author_label="Workflow")
     return {"action": "split_tickets", "created": len(keys), "keys": keys}
 
@@ -667,7 +667,7 @@ async def _note_append(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
     key = str(params.get("context_key") or "note")
     if not path or not text:
         # Not an error: a flow that has nothing to write should not fail because of it.
-        inst.context = {**ctx, key: {"ok": False, "error": "kein Pfad oder kein Text"}}
+        inst.context = {**ctx, key: {"ok": False, "error": "no path or no text"}}
         return {"action": "note_append", "ok": False, "reason": "leer"}
 
     arguments: dict = {"target": {"type": "path", "path": path}, "content": text}
@@ -811,7 +811,7 @@ async def _measurement(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
         # The last known reading stays in the context: on a failure notice it is the
         # most interesting number still available.
         known = await metrics.series(db, await _owner(db, inst), key)
-        return _no_measurement(inst, ctx, params, key, "kein Wert in der Nutzlast",
+        return _no_measurement(inst, ctx, params, key, "no value in the payload",
                               last=known.last_value if known else None,
                               unit=known.unit if known else "")
     try:
@@ -832,7 +832,7 @@ async def _measurement(db, inst: WorkflowInstance, params: dict, ctx: dict) -> d
     if outside:
         # During alarms the tracker reported "231 %", and without this bound that went out.
         existing = await metrics.series(db, await _owner(db, inst), key)
-        return _no_measurement(inst, ctx, params, key, f"außerhalb {below}…{above}", raw=value,
+        return _no_measurement(inst, ctx, params, key, f"outside {below}…{above}", raw=value,
                               last=existing.last_value if existing else None,
                               unit=existing.unit if existing else "")
 
@@ -948,7 +948,7 @@ async def _mail_flag(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     account, folder, uid = await _mail_account(db, params, ctx)
     if account is None or uid is None:
         return {"action": "mail_flag", "set": False,
-                "reason": "keine Mail im Kontext (Auslöser ist keine Mail-Aktion?)"}
+                "reason": "no mail in the context (is the trigger not a mail action?)"}
     flag = str(_interp(params.get("flag") or "", ctx)).strip().lower() or "seen"
     an = _yes(params.get("on"), ctx) if params.get("on") is not None else True
     await mailbox.flag(account, folder, uid, flag, an)
@@ -967,7 +967,7 @@ async def _mail_move(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     account, folder, uid = await _mail_account(db, params, ctx)
     if account is None or uid is None:
         return {"action": "mail_move", "moved": False,
-                "reason": "keine Mail im Kontext (Auslöser ist keine Mail-Aktion?)"}
+                "reason": "no mail in the context (is the trigger not a mail action?)"}
     target = str(_interp(params.get("target") or "", ctx)).strip()
     if target:
         await mailbox.move(account, folder, uid, target)
@@ -975,7 +975,7 @@ async def _mail_move(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
         target = await mailbox.archive(account, folder, uid)
     else:
         return {"action": "mail_move", "moved": False,
-                "reason": "kein Ziel genannt und kein Archiv am Konto"}
+                "reason": "no target named and no archive on the account"}
     await _cache_empty(account.id)
     return {"action": "mail_move", "moved": True, "target": target, "uid": uid}
 
@@ -1003,17 +1003,17 @@ async def _mail_attachment(db, inst: WorkflowInstance, params: dict, ctx: dict) 
     index = int(index) if index not in (None, "") else attachment.get("index")
     if account_id is None or mail.get("uid") is None or index is None:
         return {"action": "mail_attachment", "fetched": False,
-                "grund": "kein Anhang im Kontext (Auslöser ist keine Mail-Aktion?)"}
+                "reason": "no attachment in the context (is the trigger not a mail action?)"}
     account = await db.get(MailAccount, int(account_id))
     if account is None:
-        return {"action": "mail_attachment", "fetched": False, "grund": "Konto gibt es nicht mehr"}
+        return {"action": "mail_attachment", "fetched": False, "reason": "the account does not exist any more"}
 
     name, kind, data = await mailbox.attachment(account, str(mail.get("folder") or "INBOX"),
                                             int(mail["uid"]), int(index))
     limit = int(float(params.get("max_mb") or 25) * 1024 * 1024)
     if len(data) > limit:
         # A clear word is better than a context that blows up the database row.
-        raise ValueError(f"Anhang {name} ist {len(data) // 1024 // 1024} MB groß "
+        raise ValueError(f"the attachment {name} is {len(data) // 1024 // 1024} MB "
                          f"(Grenze {limit // 1024 // 1024} MB)")
     key = str(params.get("context_key") or "attachment")
     inst.context = {**ctx, key: {"filename": name, "content_type": kind, "size": len(data),
@@ -1084,7 +1084,7 @@ async def _assistant_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
         # An assignment text is the normal case but not the condition: an intake that brings
         # its own matter along (subject, summary, full text) can be worked on without a prompt
         # as well — the assistant then has its own.
-        return {"action": "assistant_task", "started": False, "reason": "kein Auftrag"}
+        return {"action": "assistant_task", "started": False, "reason": "no task"}
     owner = params.get("owner_id") or inst.started_by or _dig(ctx, "intake.owner_id")
     try:
         owner = int(owner) if owner is not None else None
@@ -1094,7 +1094,7 @@ async def _assistant_task(db, inst: WorkflowInstance, params: dict, ctx: dict,
         # Without an owner there is no token and no MCP group, so the run would start and
         # immediately have nothing to work with. Say so instead of failing later.
         return {"action": "assistant_task", "started": False,
-                "reason": "kein Besitzer (weder am Ablauf noch am Knoten)"}
+                "reason": "no owner (neither on the flow nor on the node)"}
 
     # How duplicate creation is recognised. Without an entry of its own it is the node itself
     # (a restart must not assign twice); with an entry of its own it is the matter at hand
@@ -1165,18 +1165,18 @@ async def _agent_run(db, inst: WorkflowInstance, params: dict, ctx: dict,
     buildable instead of chaining three jobs one after another.
 
     Parameter:
-      auftrag      what the agent is to do ({{…}} from the context), required
-      agent        Rolle (Vorgabe `assistent`)
-      titel        Überschrift des Laufs (Vorgabe: erste Zeile des Auftrags)
+      task         what the agent is to do ({{…}} from the context), required
+      agent        the role (default `assistent`)
+      title        the heading of the run (default: the first line of the task)
       context_key  where the result goes (default `lauf`) — `.output` is the text
       timeout_sek  time limit (0 = the engine default)
-      warten       off: only kick it off, do not wait for the result (default: on)
+      wait         off: only kick it off, do not wait for the result (default: on)
     """
     from ..core.redis import enqueue_task
 
     task = str(_interp(params.get("task") or params.get("prompt") or "", ctx)).strip()
     if not task:
-        return {"action": "agent_run", "started": False, "reason": "kein Auftrag"}
+        return {"action": "agent_run", "started": False, "reason": "no task"}
     role = str(_interp(params.get("agent") or "", ctx)).strip() or "assistent"
     title = str(_interp(params.get("title") or "", ctx)).strip() or task.splitlines()[0][:200]
     owner = params.get("owner_id") or inst.started_by
@@ -1219,9 +1219,9 @@ async def _series_write(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
       ts           timestamp (default: now) — unix seconds or ISO
       accuracy · altitude · speed · course · battery   what a device otherwise sends along
       name · color display name and colour when the series is newly created
-      source       woher der Punkt kam (Vorgabe `flow`)
-      required     ohne Wert abbrechen statt uebergehen
-      context_key  wo das Ergebnis landet (Vorgabe `series`)
+      source       where the point came from (default `flow`)
+      required     abort without a value instead of passing over it
+      context_key  where the result goes (default `series`)
     """
     from . import series as series
     from . import series_formats
@@ -1285,12 +1285,12 @@ def _entry_build(kind: str, params: dict, ctx: dict, formats) -> tuple[dict, str
             "battery": _interp(params.get("battery"), ctx),
             "source": source,
         })
-        return (points[0], "") if points else ({}, "keine Position in der Nutzlast")
+        return (points[0], "") if points else ({}, "no position in the payload")
 
     if kind == "text":
         text = str(_interp(params.get("body") or params.get("text") or "", ctx))
         if not text.strip():
-            return {}, "kein Text in der Nutzlast"
+            return {}, "no text in the payload"
         title = str(_interp(params.get("title") or "", ctx)).strip()
         if not title:
             title = next((z.strip("# ").strip() for z in text.splitlines() if z.strip()), "")
@@ -1301,11 +1301,11 @@ def _entry_build(kind: str, params: dict, ctx: dict, formats) -> tuple[dict, str
     if isinstance(raw, str):
         raw = raw.strip().replace("%", "").replace(",", ".")
     if raw is None or (isinstance(raw, str) and raw.lower() in ("", "none", "null")):
-        return {}, "kein Wert in der Nutzlast"
+        return {}, "no value in the payload"
     try:
         return {"value": float(raw), "ts": ts, "source": source}, ""
     except (TypeError, ValueError):
-        return {}, f"'{raw}' ist keine Zahl"
+        return {}, f"'{raw}' is not a number"
 
 
 async def _document(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
@@ -1353,7 +1353,7 @@ async def _document(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
         "id": entry.id, "storage": key, "title": title,
         # The link that belongs in a report. Without a base address it stays relative — then
         # it is right in the UI and useless in the messenger, which is better than
-        # ein Link auf „localhost".
+        # a link to "localhost".
         "url": f"{settings.app_base_url.rstrip('/')}/documents/{key}"
                if settings.app_base_url else f"/documents/{key}"}}
     return {"action": "document", "stored": True, "entry_id": entry.id,
@@ -1402,7 +1402,7 @@ async def _script(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
     """Run a stored script — the same check as with the script job.
 
     Only what lies in the allowed directory runs; the path comes from the flow, not from
-    der Nutzlast eines Fremden.
+    out of a stranger's payload.
     """
     import asyncio
 
@@ -1423,7 +1423,7 @@ async def _script(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
         rc = p.returncode or 0
         text = aus.decode("utf-8", "replace")[:20000]
     except asyncio.TimeoutError:
-        return {"action": "script", "ok": False, "error": "Zeitgrenze überschritten"}
+        return {"action": "script", "ok": False, "error": "the time limit was exceeded"}
     key = str(params.get("context_key") or "script")
     inst.context = {**ctx, key: {"output": text, "exit_code": rc, "ok": rc == 0}}
     return {"action": "script", "ok": rc == 0, "exit_code": rc, "context_key": key}

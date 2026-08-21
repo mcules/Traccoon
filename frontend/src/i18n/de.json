@@ -2676,5 +2676,12 @@
   "projects.parent_project": "Übergeordnetes Projekt",
   "error_boundary.reloads_by_itself": "Es wird gleich von selbst neu geladen.",
   "office_feed.contract_mismatch": "Das Büro spricht Vertragsversion {server}, diese Ansicht kennt {client}. Bitte die Seite neu laden.",
-  "action_fields.outcome_assistant_task": "Kontext danach: task.task_id, task.status sowie task.id/status. Mit „warten\" zusätzlich <Ergebnis unter>.output und .status."
+  "action_fields.outcome_assistant_task": "Kontext danach: task.task_id, task.status sowie task.id/status. Mit „warten\" zusätzlich <Ergebnis unter>.output und .status.",
+  "timer_node.until": "bis",
+  "timer_node.unit_s": "Sek.",
+  "timer_node.unit_m": "Min.",
+  "timer_node.unit_h": "Std.",
+  "timer_node.unit_t": "Tage",
+  "timer_config.duration": "Dauer",
+  "timer_config.unit": "Einheit"
 }
