@@ -30,7 +30,7 @@ import { MAX_GAP_MS, POS_SCALE } from "../src/components/office/const.ts";
 import { Engine } from "../src/components/office/engine.ts";
 import { Recorder } from "../src/components/office/recorder.ts";
 import { Replay, frameAt } from "../src/components/office/replay.ts";
-import { ROOM } from "../src/components/office/room.ts";
+import { BLOCKED, ROOM, route } from "../src/components/office/room.ts";
 import { NATIVE_TOOLS, TOOL_ACT, toolAct } from "../src/components/office/toolAct.ts";
 import { CAM_FULL, RACK_PX, SEATS_PX, renderFrame } from "../src/components/office/pixel/scene.ts";
 
@@ -758,6 +758,58 @@ function checkToolTable() {
   for (const b of bad) console.log(`            ${b}`);
 }
 
+// ═══ Check: no route runs through the furniture ═══════════════════════════════
+//
+// The engine has **no** collision detection at tick time and is not supposed to have any: a
+// figure is not an obstacle, and a route recomputed while walking would depend on the tick
+// size and would take the replay with it (rule 3.4). What it does have is a route computed
+// once, out of a fixed list of rectangles.
+//
+// So this is the check that has to hold: **every** route between two places anybody actually
+// walks to stays out of every piece of furniture. Sampled densely along the polyline, because
+// a route can enter a rectangle between two waypoints without either of them being inside it.
+//
+// Rectangles containing one of the two ends are left out: a seat stands in front of its own
+// desk, and the coffee target is the machine itself. Whoever walks *to* something is allowed
+// to reach it.
+
+function insideBox(p, r, pad) {
+  return Math.abs(p.x - r.x) <= r.w / 2 + pad && Math.abs(p.y - r.y) <= r.h / 2 + pad;
+}
+
+function checkRoutesFree() {
+  const spots = [
+    ["door", ROOM.door], ["coffee", ROOM.coffee], ["rack", ROOM.rack],
+    ...ROOM.huddle.map((h, i) => [`huddle${i}`, h]),
+    ...ROOM.seats.map((s, i) => [`seat${i}`, s.sit]),
+  ];
+  const bad = [];
+  let legs = 0;
+  for (const [an, a] of spots) {
+    for (const [bn, b] of spots) {
+      if (an === bn) continue;
+      legs++;
+      const path = route(a, b, BLOCKED);
+      let prev = a;
+      for (const q of path) {
+        const n = Math.max(1, Math.round(Math.hypot(q.x - prev.x, q.y - prev.y) / 8));
+        for (let i = 1; i <= n && bad.length < 6; i++) {
+          const pt = { x: prev.x + (q.x - prev.x) * i / n, y: prev.y + (q.y - prev.y) * i / n };
+          for (let k = 0; k < BLOCKED.length; k++) {
+            const r = BLOCKED[k];
+            if (insideBox(a, r, 0) || insideBox(b, r, 0)) continue;
+            if (insideBox(pt, r, 0)) { bad.push(`${an} → ${bn} runs through furniture #${k}`); break; }
+          }
+        }
+        prev = q;
+      }
+    }
+  }
+  report("routes avoid the furniture", bad.length === 0,
+    `${legs} routes, ${BLOCKED.length} obstacles, ${bad.length} violations`);
+  for (const line of bad) console.log(`            ${line}`);
+}
+
 // ═══ Check 10: the doubled seat geometry (rule 4) ═════════════════════════════
 //
 // `pixel/scene.ts` holds the seats a second time, because layer 1 must not see `room.ts`.
@@ -893,6 +945,7 @@ checkDtSplit();
 checkCtxProxy();
 checkPixelOpHashes(GOLDEN);
 checkToolTable();
+checkRoutesFree();
 checkSeatGeometry();
 checkRackGeometry();
 checkRackInFrame();

@@ -414,6 +414,11 @@ export function thoughtBubble(
 
 // ═══ Namensschild ════════════════════════════════════════════════════════════
 
+/** Height of a name plate without a second line. The emote and the speech bubble have to know
+ *  it in order to stay clear of the plate; recomputing it there is exactly how the two drift
+ *  apart on the next change of type size. */
+export const PLATE_H = GH + 4;
+
 export interface PlateOpts {
   /** Zweite Zeile, kleiner gesetzt (Ticket, Modell). */
   sub?: string;
@@ -422,15 +427,19 @@ export interface PlateOpts {
 }
 
 /**
- * The plate under a character. `yBase` is its lower edge.
+ * The plate over a character. `yBase` is its lower edge, so the row just above the head.
  *
- * A dark area instead of a light one: it lies on the plank floor, and a light plate on light
- * wood needs a border to be read at all. The border in turn is the only black line in the whole
- * room in the day picture and would then draw all the attention.
+ * A dark area instead of a light one: it hangs in front of the wall and over the floor, and a
+ * light plate on light parquet needs a border to be read at all. The border in turn would be
+ * the only hard line in the day picture and would draw all the attention.
+ *
+ * Returns its **height**, because the speech bubble has to know how far up it has to move to
+ * clear the plate. Reading that out of a second calculation in `scene.ts` is exactly how the
+ * two drift apart on the next change of type size.
  */
 export function nameplate(
   ctx: Ctx, cx: number, yBase: number, pal: Pal, name: string, o?: PlateOpts,
-): void {
+): number {
   const sub = o?.sub;
   const wName = textW(name);
   const wSub = sub ? textW(sub) : 0;
@@ -443,9 +452,10 @@ export function nameplate(
   const sel = o?.selected === true;
   const alpha = dim ? 0.40 : sel ? 0.92 : 0.72;
 
-  panel(ctx, pal, x0, y0, w, h, "screen", sel ? "acc" : "ink", alpha);
+  panel(ctx, pal, x0, y0, w, h, "line", sel ? "acc" : "line", alpha);
   drawText(ctx, pal, "paper", x0 + 3, y0 + 2, name, dim ? 0.65 : 1);
   if (sub) drawText(ctx, pal, "metal", x0 + 3, y0 + 2 + LINE_H, sub, dim ? 0.55 : 0.9);
+  return h;
 }
 
 // ═══ Emote ═══════════════════════════════════════════════════════════════════

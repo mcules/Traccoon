@@ -38,13 +38,14 @@ import { fillA } from "./art.ts";
 import type { Pal } from "./palette.ts";
 import { GRADES, lookOf, palFor, rolesSeed } from "./palette.ts";
 import {
-  SIZE, WALL_H, WINDOW_STEP, drawBoard, drawCabinet, drawChair, drawClock, drawCoffee,
-  drawDesk, drawDoor, drawFloor, drawMonitor, drawPlant, drawMeetingTable, drawRack, drawRug,
-  drawLight, drawTableChair, drawWall, drawWindow, drawWindowLight,
+  COOLER, LOUNGE, SHELF, SIZE, WALL_H, WINDOW_STEP, drawBoard, drawCabinet, drawChair,
+  drawClock, drawCoffee, drawCooler, drawDesk, drawDoor, drawFloor, drawLowTable, drawMonitor,
+  drawPicture, drawPlant, drawMeetingTable, drawRack, drawRoomEdges, drawRug, drawShelf,
+  drawPartitions, drawSofa, drawWindowFront, drawWalls, drawZone, drawLight, drawTableChair, drawWall, drawWindow, drawWindowLight,
 } from "./furniture.ts";
 import { FIG_H, FIG_W, actorBox, drawActor, drawGhost } from "./person.ts";
 import {
-  dust, emotePop, footPuff, linkLine, nameplate, revealOf, spark, speechBubble, steam,
+  PLATE_H, dust, emotePop, footPuff, linkLine, nameplate, revealOf, spark, speechBubble, steam,
   thoughtBubble,
 } from "./props.ts";
 
@@ -154,61 +155,54 @@ function px(v: number): number {
   return Math.round(v * POS_SCALE);
 }
 
-const BANK_X: readonly number[] = [Math.round(SCENE.w * 0.23), Math.round(SCENE.w * 0.79)];
-const ROW_Y: readonly number[] = [
-  Math.round(SCENE.h * 0.37), Math.round(SCENE.h * 0.58), Math.round(SCENE.h * 0.78),
-];
-const SEAT_DX = 92;
-const SEAT_DY = 14;
-
-export interface SeatPx {
-  /** Foot point of the seated character. */
+/** One workplace in buffer pixels: where the person sits, where their desk stands, where the
+ *  screen stands on it, and which way they face. */
+interface SeatPx {
   sit: Pt;
-  /** Centre of its own half of the desk. */
   desk: Pt;
-  /** Centre of the monitor on this half of the desk. */
   mon: Pt;
-  /** Sits to the left of the desk and faces right? */
   flip: boolean;
 }
 
+// The floor plan a second time, in buffer pixels. Layer 1 must not see `room.ts` (rule 4), so
+// it inevitably holds the geometry twice; check 10 holds the two against each other.
+const CLUSTERS: readonly Pt[] = [
+  { x: 300, y: 467 }, { x: 833, y: 467 }, { x: 567, y: 740 },
+];
+const SEAT_DX = 63;
+const SEAT_DY_ROW = 73;
+
+/** How far the desk stands above its seat, in **buffer pixels**. */
+const DESK_UP = 16;
+
 /**
- * The thirteen seats in buffer pixels.
+ * The thirteen seats in buffer pixels: three clusters of four plus the chief's desk.
  *
- * A desk is a **bench for two** in `room.ts`: two seats at distance `±SEAT_DX` around a shared
- * desk centre. The desk art 26 pixels wide does not cover those 55 pixels, so **per seat** half
- * a desk stands here, shifted 14 pixels towards the centre of the bench. The two halves meet
- * exactly in the middle and make a bench 54 pixels long. A single desk in the middle would have
- * let both characters sit 14 pixels beside the desk: technically correct and visibly wrong.
- * let both characters sit 14 pixels beside the desk: technically correct and visibly wrong.
+ * A desk stands **over** its seat and centred on it. In a room seen from above a person sits
+ * in front of their own desk; the old plan (half a desk pushed sideways towards the middle of
+ * a bench for two) came from the front view and put every colleague at the corner of a table
+ * as soon as the projection was right.
  */
 function buildSeats(): SeatPx[] {
   const out: SeatPx[] = [];
-  for (const bx of BANK_X) {
-    for (const ry of ROW_Y) {
-      for (const side of [0, 1]) {
-        const left = side === 0;
-        const sit = { x: px(bx + (left ? -SEAT_DX : SEAT_DX)), y: px(ry + SEAT_DY) };
-        const dir = left ? 1 : -1;
+  for (const c of CLUSTERS) {
+    for (const dy of [-SEAT_DY_ROW, SEAT_DY_ROW]) {
+      for (const dx of [-SEAT_DX, SEAT_DX]) {
+        const sit = { x: px(c.x + dx), y: px(c.y + dy) };
         out.push({
           sit,
-          desk: { x: sit.x + dir * 14, y: px(ry) },
-          // Monitor towards the centre of the bench: the two screens of a bench stand back to
-          // back, as at a real double bench. Placed outwards they would look like partitions.
-          mon: { x: sit.x + dir * 19, y: px(ry) },
-          flip: !left,
+          desk: { x: sit.x, y: sit.y - DESK_UP },
+          mon: { x: sit.x, y: sit.y - DESK_UP },
+          flip: dx > 0,
         });
       }
     }
   }
-  // Boss seat: 61 % / 32 %. It sits **in front of** its desk with the same x centre, the only
-  // character in the room that turns its back to us. `person.ts` reads that off `deskIndex === -1`.
-  const cx = Math.round(SCENE.w * 0.61);
-  const cy = Math.round(SCENE.h * 0.32);
+  const boss = { x: px(1067), y: px(433) };
   out.push({
-    sit: { x: px(cx), y: px(cy + SEAT_DY) },
-    desk: { x: px(cx), y: px(cy) },
-    mon: { x: px(cx), y: px(cy) },
+    sit: boss,
+    desk: { x: boss.x, y: boss.y - DESK_UP },
+    mon: { x: boss.x, y: boss.y - DESK_UP },
     flip: true,
   });
   return out;
@@ -218,8 +212,8 @@ function buildSeats(): SeatPx[] {
 export const SEATS_PX: readonly SeatPx[] = buildSeats();
 
 const DOOR = { x: px(Math.round(SCENE.w * 0.73)), y: px(Math.round(SCENE.h * 0.135)) };
-const TABLE = { x: px(Math.round(SCENE.w * 0.51)), y: px(Math.round(SCENE.h * 0.55)) };
-const COFFEE = { x: px(Math.round(SCENE.w * 0.065)), y: px(Math.round(SCENE.h * 0.25)) };
+const TABLE = { x: px(1390), y: px(467) };
+const COFFEE = { x: px(83), y: px(400) };
 
 /** Bands of windows left and right of the centre of the wall. The numbers are buffer pixels and
  *  derived from no scene dimension: the wall is scenery, not a place where something happens. */
@@ -232,12 +226,9 @@ const WIN_RIGHT_N = 3;
 /** The centres of all windows, for the fields of light on the floor. Built from the same
  *  constants as the windows themselves; a second list would be the first place where windows
  *  and light drift apart. */
-const WIN_XS: readonly number[] = [
-  ...Array.from({ length: WIN_LEFT_N }, (_, i) => WIN_LEFT_X + i * WINDOW_STEP + 11),
-  ...Array.from({ length: WIN_RIGHT_N }, (_, i) => WIN_RIGHT_X + i * WINDOW_STEP + 11),
-];
-const BOARD_X = 190;
-const CLOCK_X = 246;
+const WIN_XS: readonly number[] = [42, 96, 150, 396, 442];
+const BOARD_X = 214;
+const CLOCK_X = 320;
 
 /** Filing cabinet with a potted plant, under the whiteboard. Pure furnishing. */
 const CABINET_X = 196;
@@ -258,6 +249,26 @@ const CABINET_Y = 60;
  */
 const RACK_X = 224;
 const RACK_Y = 60;
+
+/**
+ * The lounge, the shelves and the water cooler: scenery in the front strip of the room.
+ *
+ * All of it stands **below row 200**, so behind the last row of desks (their foot point is
+ * 196) and in front of nothing. That is the one condition: a piece of furniture in the aisle
+ * would stand in the way of every figure walking to its seat, and the engine knows nothing
+ * about it, so the figure would walk straight through it.
+ */
+const LOUNGE_X = 322;
+const LOUNGE_Y = 255;
+const SHELF_X = 400;
+const SHELF_Y = 243;
+const COOLER_X = 300;
+const COOLER_Y = 74;
+
+/** Two pictures on the wall, left and right of the whiteboard. */
+const PICTURE_LEFT_X = 194;
+const PICTURE_RIGHT_X = 300;
+const PICTURE_Y = 26;
 
 /**
  * The standing place in front of the server rack, in buffer pixels.
@@ -323,7 +334,10 @@ interface Piece {
 
 /** Top edge of the desktop, what a monitor is placed on. */
 function deskTop(yBase: number): number {
-  return yBase - SIZE.desk.h + 1;
+  // Five rows into the desktop, not on its far edge. A screen whose foot sits exactly on the
+  // edge floats above the desk; a few rows in, it **stands** on it, and that is the whole
+  // difference between a picture of a workplace and a collage of one.
+  return yBase - SIZE.desk.h + 5;
 }
 
 // ═══ Building the image ══════════════════════════════════════════════════════
@@ -360,15 +374,25 @@ export function renderFrame(
 
   // ── 1 shell ───────────────────────────────────────────────────────────────
   drawWall(vh, env);
-  for (let i = 0; i < WIN_LEFT_N; i++) drawWindow(v, WIN_LEFT_X + i * WINDOW_STEP, WIN_Y, env);
-  for (let i = 0; i < WIN_RIGHT_N; i++) drawWindow(v, WIN_RIGHT_X + i * WINDOW_STEP, WIN_Y, env);
+  // Two continuous bands instead of eight single windows: one from the corner to the solid
+  // piece of wall that carries the whiteboard and the rack, one from the door to the far
+  // corner. The gaps are where something hangs, not where the glass happened to stop.
+  drawWindowFront(vh, env, 14, 178, 8, 20);
+  drawWindowFront(vh, env, 372, 466, 8, 20);
   drawBoard(v, BOARD_X, 34, env);
+  drawPicture(v, PICTURE_LEFT_X, PICTURE_Y, env, "rug");
+  drawPicture(v, PICTURE_RIGHT_X, PICTURE_Y, env, "clay");
   drawClock(v, CLOCK_X, 26, env);
   drawDoor(v, DOOR.x, WALL_H, env, { open: anyoneTravelling(frame) });
   drawFloor(vh, env);
   // Light comes after the floor and before the furniture: it lies on the planks but under
   // everything standing on them, otherwise desks would glow from the inside.
   drawLight(vh, env, WIN_XS, day);
+  // The frame of the room, drawn after the floor and before everything standing on it: it is
+  // the edge of the floor, not a piece of furniture.
+  drawRoomEdges(vh, env);
+  drawWalls(vh, env);
+  drawPartitions(vh, env);
   drawCabinet(v, CABINET_X, CABINET_Y, env);
   drawPlant(v, CABINET_X, CABINET_Y - SIZE.cabinet.h, env, { small: true });
   // The rack is the only piece of scenery that tells something: on `idle` it draws unchanged,
@@ -379,8 +403,8 @@ export function renderFrame(
   if (day) {
     // Two carpets of light under the bands of windows. They are the only reason the day room
     // looks like day and not like "a brighter night".
-    drawWindowLight(v, WIN_LEFT_X + 2 * WINDOW_STEP, WALL_H + 58, 104, 58, env);
-    drawWindowLight(v, WIN_RIGHT_X + WINDOW_STEP, WALL_H + 58, 76, 58, env);
+    drawWindowLight(v, 96, WALL_H + 58, 150, 58, env);
+    drawWindowLight(v, 419, WALL_H + 58, 88, 58, env);
   } else {
     // In the evening the light comes from the screens. A soft patch under every **occupied**
     // seat; the empty ones stay dark, and exactly that shows how full the room is.
@@ -394,7 +418,13 @@ export function renderFrame(
   }
 
   // ── 3 Teppich ─────────────────────────────────────────────────────────────
-  drawRug(v, TABLE.x, TABLE.y + 41, 112, 62, env);
+  //
+  // Carpets are drawn **before** the sorted layer and not in it. They lie flat: their front
+  // edge is not a foot point, and sorted along with the furniture they would land behind the
+  // sofa standing on them and cover it. That was a real bug, and it looked as if the sofa had
+  // never been drawn at all.
+  drawZone(vh, TABLE.x, TABLE.y + 34, 104, 76, env);
+  drawZone(vh, LOUNGE_X, LOUNGE_Y + 4, 64, 44, env);
 
   // ── 4 Bodenschicht ────────────────────────────────────────────────────────
   const world: Piece[] = [];
@@ -465,7 +495,7 @@ function buildRoom(world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame): voi
     world.push({
       y: s.desk.y,
       draw(): void {
-        drawDesk(vh, s.desk.x, s.desk.y, env);
+        drawDesk(vh, s.desk.x, s.desk.y, env, { toward: s.flip ? 1 : -1 });
         drawMonitor(v, s.mon.x, deskTop(s.desk.y), env, { screen, mood, flip: s.flip });
       },
     });
@@ -491,8 +521,30 @@ function buildRoom(world: Piece[], v: Ctx, vh: Ctx, env: Pal, frame: Frame): voi
   world.push({ y: TABLE.y + 14, draw: () => drawTableChair(v, TABLE.x + 30, TABLE.y + 14, env) });
 
   world.push({ y: COFFEE.y - 6, draw: () => drawCoffee(v, COFFEE.x, COFFEE.y - 6, env) });
-  world.push({ y: 214, draw: () => drawPlant(v, 12, 214, env) });
-  world.push({ y: 258, draw: () => drawPlant(v, ART.w - 14, 258, env) });
+
+  // ── The lounge, front left ────────────────────────────────────────────────
+  //
+  // The front strip of the room (from row 215 down) was empty over its whole width: no seat,
+  // no path, nothing. That is a third of the picture, and an empty third reads as a level that
+  // was never finished. It gets what an office has and this one did not: somewhere to sit that
+  // is not a desk.
+  //
+  // The places are fixed numbers and not fractions of `SCENE`, because none of them is a place
+  // where anything **happens**: nobody walks there, no seat is resolved there. Scenery is
+  // measured in buffer pixels, the same argument as for the windows and the rack.
+  world.push({ y: LOUNGE_Y - 13, draw: () => drawSofa(v, LOUNGE_X, LOUNGE_Y - 13, env) });
+  world.push({ y: LOUNGE_Y, draw: () => drawLowTable(v, LOUNGE_X + 4, LOUNGE_Y, env) });
+  world.push({ y: LOUNGE_Y - 6, draw: () => drawPlant(v, LOUNGE_X + 24, LOUNGE_Y - 6, env) });
+
+  // ── Shelves, front right ──────────────────────────────────────────────────
+  world.push({ y: SHELF_Y, draw: () => drawShelf(v, SHELF_X, SHELF_Y, env) });
+  world.push({ y: SHELF_Y, draw: () => drawShelf(v, SHELF_X + SHELF.w + 3, SHELF_Y, env) });
+  world.push({ y: SHELF_Y + 14, draw: () => drawPlant(v, SHELF_X + 40, SHELF_Y + 14, env) });
+
+  // The water cooler stands beside the door, where one stands anyway.
+  world.push({ y: COOLER_Y, draw: () => drawCooler(v, COOLER_X, COOLER_Y, env) });
+
+  world.push({ y: 250, draw: () => drawPlant(v, 24, 250, env) });
 }
 
 /** Put characters into the same sorting list: that is the core of layer 4. */
@@ -625,13 +677,20 @@ function drawOverlays(
 
     // Plates for everybody, but pale: a room with twelve equally bright labels reads as a
     // table, not as a room. Only what was asked for becomes bright.
-    nameplate(c, cx, yBase + 11, env, shortRole(a.role), {
+    //
+    // **Above the head, not under the feet.** Under the feet the label sat on the floor in
+    // front of the character and covered the very row that says where they stand; and with
+    // twelve of them the floor read as a list of captions. Above the head it belongs to its
+    // figure and follows it, which is what every game that shows names over avatars does.
+    const plateH = nameplate(c, cx, yBase - FIG_H - 2, env, shortRole(a.role), {
       sub: chosen ? (a.issue ?? a.model ?? undefined) : undefined,
       selected: chosen,
       dim: !chosen && !hovered,
     });
 
-    const top = yBase - FIG_H - 2;
+    // The bubble moves up by exactly the height of the plate: both belong to the same figure,
+    // and one covering the other would make the room look broken.
+    const top = yBase - FIG_H - 3 - plateH;
     if (a.say !== undefined) {
       speechBubble(c, cx, top, env, a.say, {
         reveal: revealOf(a.say, a.sayAt !== undefined ? t - a.sayAt : 0),
@@ -650,7 +709,9 @@ function drawOverlays(
     if (g !== "✓" && g !== "✗" && g !== "!") continue;
     const span = Math.max(1, fx.until - fx.t0);
     const age = Math.max(0, Math.min(1, (t - fx.t0) / span));
-    emotePop(v, px(fx.x) + 9, px(fx.y) - FIG_H - 3, env, g, age);
+    // Above the name plate, not over it. The plate moved over the head, and an emote at the
+    // old height landed exactly in the middle of the word.
+    emotePop(v, px(fx.x) + 9, px(fx.y) - FIG_H - 4 - PLATE_H, env, g, age);
   }
 }
 
