@@ -76,10 +76,10 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("SET lock_timeout = '3s'"))
             # Add additive columns idempotently (create_all only creates them on FRESH
             # tables, not on existing ones). Order and style as with ADD COLUMN IF NOT EXISTS.
-            # Jedes Schema-Update laeuft in einem eigenen Sicherungspunkt. Ohne den riss ein
-            # einziges fehlerhaftes DDL alle anderen mit: Die Ausnahme wurde zwar gefangen,
-            # aber die Transaktion war ab da tot, jedes folgende Statement lief in
-            # "current transaction is aborted", und beim Verlassen des Blocks rollte alles
+            # Every schema update runs in a savepoint of its own. Without one a single faulty
+            # DDL dragged all the others down with it: the exception was caught, but the
+            # transaction was dead from then on, every following statement ran into
+            # "current transaction is aborted", and on leaving the block everything rolled
             # zurueck — waehrend der Start erfolgreich aussah.
             for _ddl in (
                 "ALTER TABLE issues ADD COLUMN IF NOT EXISTS cap_baseline_run_id INTEGER",
@@ -435,7 +435,7 @@ async def lifespan(app: FastAPI):
                 # the statistics group by, the findings are what the knowledge note is fed
                 # from; both used to exist only inside one log line.
                 # Drei weitere Attribute wurden englisch — dieselbe Regel wie oben:
-                # Attribut umbenannt heisst Spalte umbenannt, und nur Postgres sieht es.
+                # A renamed attribute means a renamed column, and only Postgres sees it.
                 "ALTER TABLE spam_verdicts ADD COLUMN IF NOT EXISTS kind VARCHAR(40) "
                 "DEFAULT '' NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_spam_verdicts_art ON spam_verdicts (kind)",
@@ -444,18 +444,18 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '[]'::json NOT NULL",
                 "CREATE INDEX IF NOT EXISTS ix_assistant_tasks_archived_at "
                 "ON assistant_tasks (archived_at)",
-                # Plugins: was sie an Traccoon-Daten lesen wollen, was davon freigegeben ist
-                # und welche fremden Quellen ihre Seite laden darf. Ohne diese drei Spalten
-                # bleibt die Bruecke zum Wirt geschlossen, denn sie fragt genau danach.
-                # Ein umbenanntes Modell-Attribut ist eine umbenannte Spalte. Die Tests
-                # laufen gegen SQLite und legen die Tabelle jedesmal frisch aus dem Modell
-                # an — sie koennen diesen Bruch gar nicht sehen. Postgres schon.
+                # Plugins: what they want to read of Traccoon's data, what of that is released
+                # and which foreign sources their page may load. Without these three columns
+                # the bridge to the host stays closed, because it asks for exactly that.
+                # A renamed model attribute is a renamed column. The tests run against SQLite
+                # and create the table freshly from the model every time — they cannot see
+                # this break at all. Postgres can.
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads JSON "
                 "DEFAULT '[]'::json NOT NULL",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS reads_granted JSON "
                 "DEFAULT '[]'::json NOT NULL",
-                # Die Spalten hiessen anfangs deutsch. Umbenennen statt neu anlegen, damit
-                # erteilte Freigaben nicht verlorengehen; der DO-Block macht es wiederholbar.
+                # The columns were German at first. Renaming instead of creating anew so that
+                # granted releases are not lost; the DO block makes it repeatable.
                 "DO $$ BEGIN "
                 "IF EXISTS (SELECT 1 FROM information_schema.columns "
                 "WHERE table_name='plugins' AND column_name='liest') THEN "
@@ -468,12 +468,12 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE plugins DROP COLUMN liest_erlaubt; END IF; END $$;",
                 "ALTER TABLE plugins ADD COLUMN IF NOT EXISTS csp JSON "
                 "DEFAULT '{}'::json NOT NULL",
-                # Datenreihen: create_all legt die Tabellen an, den zusammengesetzten Index
-                # nicht. Er ist der einzige, der bei einer Million Standortpunkten zaehlt —
+                # Data series: create_all creates the tables, the composite index it does not.
+                # It is the only one that counts with a million location points —
                 # jede Abfrage lautet "diese Reihe, dieser Zeitraum".
                 "CREATE INDEX IF NOT EXISTS ix_series_points_series_ts "
                 "ON series_points (series_id, ts DESC)",
-                # Das Aufnahme-Token wird bei jedem einzelnen Punkt nachgeschlagen.
+                # The ingest token is looked up on every single point.
                 "CREATE INDEX IF NOT EXISTS ix_series_token_hash "
                 "ON series (token_hash)",
             ):
@@ -490,13 +490,13 @@ async def lifespan(app: FastAPI):
         # global default set: idempotent, published only on a change.
         from .services.workflow_seed import ensure_builtin_set
         await ensure_builtin_set(db)
-        # Webhooks der alten Modi (Ticket, Meldung, Assistent) laufen ab jetzt über Abläufe.
-        # Einmalig und idempotent — wer schon umgestellt ist, wird nicht angefasst.
+        # Webhooks of the old modes (ticket, report, assistant) run through flows from now on.
+        # Once and idempotent — whoever is already converted is not touched.
         from .services.webhook_modes import convert as webhooks_convert
         count = await webhooks_convert(db)
         if count:
             log.info("%s Webhook(s) auf Abläufe umgestellt", count)
-        # Dasselbe für die Job-Arten: Prompt, Skript und HTTP sind Knoten im Ablauf.
+        # The same for the job kinds: prompt, script and HTTP are nodes in the flow.
         from .services.job_modes import convert as jobs_convert
         count = await jobs_convert(db)
         if count:
@@ -504,9 +504,9 @@ async def lifespan(app: FastAPI):
         # Lift the automatically created procurement chains of the projects to the same shape.
         from .services.hardware_workflow import refresh_generated_definitions
         await refresh_generated_definitions(db)
-        # Abläufe sprechen englisch: Aktionsnamen, Parameter und Kontextfelder. Erst NACH den
-        # Erzeugern, sonst schriebe der nächste Seed-Lauf seine frische Fassung ohne Marke
-        # daneben und die Umstellung liefe bei jedem Start wieder an.
+        # Flows speak English: action names, parameters and context fields. Only AFTER the
+        # creators, otherwise the next seed run would write its fresh version without a mark
+        # next to it and the conversion would start over on every boot.
         from .services.workflow_terms import migrate_all as terms_convert
         count = await terms_convert(db)
         if count:
@@ -549,7 +549,7 @@ async def lifespan(app: FastAPI):
         # regularly be over before anyone looks.
         asyncio.create_task(run_deploy_watch()),
     ]
-    # Postfächer, die sich von selbst melden (IMAP IDLE). Läuft nur, solange jemand
+    # Mailboxes that report by themselves (IMAP IDLE). Runs only as long as somebody
     # zuschaut — siehe `mail_watch`.
     from .services import mail_watch
     await mail_watch.start()

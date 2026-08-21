@@ -1,9 +1,9 @@
-"""Assistent als Knoten — und die Antwort eines Ablaufs an seinen Auslöser.
+"""The assistant as a node — and the answer of a flow to its trigger.
 
-Bis hierher konnte nur der Mail-Eingang dem Assistenten Arbeit geben; sein Auftrag stand in
-einer Mail. Geprüft wird die Mechanik des allgemeinen Weges: dass ein Knoten einen Auftrag
-anlegt und einreiht, dass „warten" das Ergebnis in den Kontext holt, und dass ein Webhook die
-Antwort zurückbekommt, die der Ablauf selbst geschrieben hat.
+Until here only the mail intake could give the assistant work; its assignment stood in a mail.
+What is checked is the mechanism of the general way: that a node creates an assignment and
+queues it, that "wait" fetches the result into the context, and that a webhook gets back the
+answer the flow wrote itself.
 """
 import pytest
 from app.models.assistant import AssistantTask
@@ -46,10 +46,10 @@ def _graph(task_params: dict, with_answer: bool = False) -> dict:
 
 
 async def _wait_to_done(db, instance_id: int, seconds: float = 3.0):
-    """Dem Wächter Zeit geben: er wartet auf den Lauf und schaltet dann selbst weiter.
+    """Give the watchdog time: it waits for the run and then advances by itself.
 
-    Ohne dieses Zusehen prüfte der Test den Zustand, bevor der Hintergrund-Schritt überhaupt
-    an der Reihe war — und hätte „unfertig" gemeldet, wo nur „noch nicht dran" stand.
+    Without this watching the test checked the state before the background step had even had
+    its turn — and would have reported "unfinished" where only "not yet due" stood.
     """
     import asyncio
 
@@ -79,7 +79,7 @@ async def _definition(db, name: str, graph: dict, owner):
 
 
 async def test_node_creates_the_task_and_queues_it(db):
-    """Ohne Mail und ohne Ticket: der Auftrag steht im Knoten und wird gerendert."""
+    """Without a mail and without a ticket: the assignment stands in the node and is rendered."""
     user = await make_user(db, "chefin")
     d = await _definition(db, "task", _graph({
         "task": "Lies Dokument {{ doc_id }} und halte Wissenswertes fest.",
@@ -91,15 +91,15 @@ async def test_node_creates_the_task_and_queues_it(db):
     assert task.kind == "task" and task.status == "approved"
     assert task.owner_user_id == user.id
     assert task.title == "Dokument 3464"
-    # Der Auftrag ist der Prompt — der Worker nimmt ihn aus `meta.prompt`.
+    # The assignment is the prompt — the worker takes it from `meta.prompt`.
     assert task.meta["prompt"] == "Lies Dokument 3464 und halte Wissenswertes fest."
     assert task.meta["agent"] == "assistent"
-    # Ohne „warten" läuft der Ablauf weiter, statt am Assistenten zu hängen.
+    # Without "wait" the flow carries on instead of hanging on the assistant.
     assert inst.status == WorkflowInstanceStatus.completed
 
 
 async def test_a_pending_grant_keeps_the_task_in_the_inbox(db):
-    """Mit Freigabe wartet der Auftrag auf den Menschen, statt sofort zu laufen."""
+    """With an approval the assignment waits for the person instead of running at once."""
     user = await make_user(db, "vorsichtig")
     d = await _definition(db, "approval", _graph({
         "task": "Mach etwas", "approval": True}), user)
@@ -110,7 +110,7 @@ async def test_a_pending_grant_keeps_the_task_in_the_inbox(db):
 
 
 async def test_wait_pulls_the_result_into_the_context(db, redis_stub):
-    """Mit „warten" steht die Antwort des Assistenten im Kontext — und damit im Ablauf."""
+    """With "wait" the answer of the assistant stands in the context — and thereby in the flow."""
     redis_stub["*"] = {"status": "done", "output": "nichts wissenswertes",
                        "summary": "nichts wissenswertes"}
     user = await make_user(db, "geduldig")
@@ -121,13 +121,13 @@ async def test_wait_pulls_the_result_into_the_context(db, redis_stub):
 
     fresh = await _wait_to_done(db, inst.id)
     assert fresh.context["assistant"]["output"] == "nichts wissenswertes"
-    # Die Antwort des Ablaufs ist gerendert, nicht die Vorlage.
+    # The answer of the flow is rendered, not the template.
     assert fresh.context["answer"] == {"ergebnis": "nichts wissenswertes", "source": "77"}
     assert fresh.status == WorkflowInstanceStatus.completed
 
 
 def _only_answer() -> dict:
-    """Ablauf, der ohne Umweg antwortet — dafür braucht es keinen Agenten."""
+    """A flow that answers without a detour — no agent is needed for that."""
     return {"nodes": [
         {"id": "s", "type": "start", "position": {"x": 0, "y": 0},
          "data": {"config": {"trigger": {"kind": "webhook"}}}},
@@ -141,7 +141,7 @@ def _only_answer() -> dict:
 
 
 async def test_webhook_receives_the_answer_of_the_flow(db, client):
-    """Ein Webhook ist ein Auslöser — und darf eine Antwort haben."""
+    """A webhook is a trigger — and may have an answer."""
     user = await make_user(db, "aufrufer")
     d = await _definition(db, "rueckkanal", _only_answer(), user)
     hook = WebhookSub(public_id="test-hook-1", owner_user_id=user.id, route="rueckkanal",
@@ -151,15 +151,15 @@ async def test_webhook_receives_the_answer_of_the_flow(db, client):
 
     answer = await client.post("/hooks/test-hook-1", json={"text": "fertig"})
     assert answer.status_code == 200
-    # Der Rumpf IST die Antwort des Ablaufs, ohne Hülle drumherum.
+    # The body IS the answer of the flow, without a wrapper around it.
     assert answer.json() == {"ergebnis": "fertig", "wer": "Traccoon"}
 
 
 async def test_webhook_without_an_answer_acknowledges_and_says_so(db, client):
-    """Läuft der Ablauf noch, kommt keine erfundene Antwort, sondern eine Auskunft."""
-    user = await make_user(db, "ungeduldig")
-    # Ein Ablauf, der auf den Assistenten wartet und nie ein Ergebnis bekommt
-    # (redis_stub ohne Eintrag): die Zeitgrenze greift.
+    """If the flow is still running, no invented answer comes but a piece of information."""
+    user = await make_user(db, "impatient")
+    # A flow that waits for the assistant and never gets a result
+    # (redis_stub without an entry): the time limit applies.
     d = await _definition(db, "haengt", _graph({"task": "Tu was", "wait": True}), user)
     hook = WebhookSub(public_id="test-hook-2", owner_user_id=user.id, route="haengt",
                       mode="workflow", workflow_definition_id=d.id, response_timeout=1)

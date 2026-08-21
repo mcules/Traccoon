@@ -1014,7 +1014,7 @@ async def test_phishing_passes_the_asking_threshold():
     assert res.score >= 0.9
 
 
-# --- Die Identität, die sich die Mail selbst gibt ---------------------------------------
+# --- The identity the mail gives itself -------------------------------------------------
 
 def _claim(name: str, addr: str, subject: str, text: str, links: list) -> dict:
     return _mail(**{"from": [{"name": name, "addr": addr}], "subject": subject,
@@ -1144,7 +1144,7 @@ async def test_the_wording_replaces_the_missing_field(db):
 
 
 async def test_negated_wording_fires_nothing(db):
-    """"kein Betrug, nur Werbung" must not become the opposite verdict."""
+    """"no fraud, just advertising" must not become the opposite verdict."""
     user = await _owner(db)
     verdict = await spam_review.judge(db, user.id, _mail(), cls={
         "spam_score": 0.3, "category": "werbung", "spam_reason": "kein Betrug, nur Werbung"})
@@ -1191,7 +1191,7 @@ async def test_a_learned_spam_sender_stays_settled(db):
     assert verdict["geklaert"] is True and verdict["geklaert_urteil"] == "spam"
 
 
-# --- Der Fall vom 2026-08-20: der PayPal-Beleg im Spam-Ordner ------------------------
+# --- The case of 2026-08-20: the PayPal receipt in the spam folder --------------------
 
 async def _learned(db, owner_id, feature: str, spam: int, ham: int):
     from app.models.assistant import SpamFeatureStat
@@ -1201,11 +1201,11 @@ async def _learned(db, owner_id, feature: str, spam: int, ham: int):
 
 
 async def test_ones_own_address_decides_nothing(db):
-    """Ein Beleg landete im Spam, weil die Adresse, an die er ging, viermal auf Spam stand.
+    """A receipt ended up in spam because the address it went to stood at spam four times.
 
-    Die eigene Empfängeradresse ist kein Merkmal der Mail, sondern eines des Postfachs: Sie
-    steht in jeder erwünschten genauso wie in jedem Spam. Weil aber fast nur Spam ausdrücklich
-    entschieden wird, sammelt sie einseitig Zähler — und wurde so zur selbsterfüllenden Regel.
+    One's own recipient address is no feature of the mail but one of the mailbox: it appears in
+    every wanted one just as in every spam. But because almost only spam is decided explicitly,
+    it collects counters one-sidedly — and thereby became a self-fulfilling rule.
     """
     user = await _owner(db)
     await _learned(db, user.id, "to:paypal@meine.domain", spam=4, ham=0)
@@ -1216,7 +1216,7 @@ async def test_ones_own_address_decides_nothing(db):
 
 
 async def test_agreement_means_without_contradiction(db):
-    """Zwei starke Merkmale, die in verschiedene Richtungen zeigen, sind keine Einigkeit."""
+    """Two strong features pointing in different directions are no agreement."""
     user = await _owner(db)
     await _learned(db, user.id, "from:service@paypal.de", spam=0, ham=282)
     await _learned(db, user.id, "dom:zahlung-xy.top", spam=9, ham=0)
@@ -1227,12 +1227,11 @@ async def test_agreement_means_without_contradiction(db):
 
 
 async def test_a_known_sender_against_a_fraud_suspicion_gets_asked(db):
-    """Modell und Gedächtnis widersprechen sich — dann entscheidet niemand allein.
+    """Model and memory contradict each other — then nobody decides alone.
 
-    Der echte PayPal-Beleg wurde vom Modell für Markenmissbrauch gehalten und automatisch
-    weggeräumt, obwohl dieses Postfach den Absender hundertfach als erwünscht kannte. Und weil
-    eine verschobene Mail beim Zurückholen eine neue Nummer bekommt, ging das bei jedem
-    Zurückholen von vorn los.
+    The real PayPal receipt was taken by the model for brand abuse and cleared away
+    automatically, although this mailbox knew the sender a hundred times over as wanted. And
+    because a moved mail gets a new number when recalled, that started over with every recall.
     """
     user = await _owner(db)
     await _learned(db, user.id, "from:service@paypal.de", spam=0, ham=282)
@@ -1252,7 +1251,7 @@ async def test_a_known_sender_against_a_fraud_suspicion_gets_asked(db):
 
 
 async def test_an_unknown_sender_stays_fraud(db):
-    """Die Bremse gilt nur für Absender, die dieses Postfach wirklich kennt."""
+    """The brake applies only to senders this mailbox really knows."""
     user = await _owner(db)
     verdict = await spam_review.judge(db, user.id, _mail(
         **{"from": [{"name": "PayPal", "addr": "service@paypal-sicherheit.top"}],
@@ -1263,11 +1262,11 @@ async def test_an_unknown_sender_stays_fraud(db):
 
 
 async def test_whoever_contradicts_once_is_not_asked_again(db):
-    """„Ich habe die Mail zweimal als kein Spam markiert" — das muss reichen.
+    """"I marked the mail as not spam twice" — that has to be enough.
 
-    Ein ausdrücklicher Widerspruch wiegt schwerer als jede Statistik und schwerer als das
-    Modell. Wer zweimal widerspricht und beim dritten Mal wieder gefragt wird, hat recht,
-    wenn er die Erkennung für kaputt hält.
+    An explicit contradiction weighs more than any statistic and more than the model. Whoever
+    contradicts twice and is asked again the third time is right to consider the detection
+    broken.
     """
     user = await _owner(db)
     await _learned(db, user.id, "from:service@paypal.de", spam=0, ham=282)
@@ -1288,8 +1287,8 @@ async def test_whoever_contradicts_once_is_not_asked_again(db):
 
 
 async def test_one_contradiction_is_no_free_pass(db):
-    """Eine gefälschte Mail unter demselben Namen bleibt Betrug — sonst wäre der einmal
-    freigegebene Absender die bequemste Tür ins Haus."""
+    """A forged mail under the same name stays fraud — otherwise the sender released once
+    would be the most convenient door into the house."""
     user = await _owner(db)
     await _learned(db, user.id, "from:service@paypal.de", spam=0, ham=282)
     db.add(SpamVerdict(owner_user_id=user.id, sender_email="service@paypal.de",

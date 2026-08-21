@@ -1,17 +1,17 @@
-"""Traccoon als MCP-Server für die eigenen Postfächer.
+"""Traccoon as an MCP server for its own mailboxes.
 
-Bisher hat Traccoon nur fremde MCP-Server benutzt. Hier bietet es zum ersten Mal selbst
-welche an — und zwar genau das, was der alte `imap-mcp` konnte, aber mit den Konten, die
-eine Person in Traccoon pflegt statt mit denen aus der `.env` eines Stacks.
+Until now Traccoon only used foreign MCP servers. Here it offers some itself for the first
+time — exactly what the old `imap-mcp` could do, but with the accounts a person maintains in
+Traccoon instead of the ones from the `.env` of a stack.
 
-Drei Regeln, die den Unterschied zu einem Postfach-Zugang ausmachen:
+Three rules that make the difference to a mailbox login:
 
-* **Nichts ist offen, bis es jemand öffnet.** Je Konto wird einzeln freigegeben, welche
-  Werkzeuge es gibt. Ein Konto ohne Freigabe existiert für Agenten nicht.
-* **Ordner können verschwinden.** Was in der Ignorierliste steht, taucht weder in der
-  Ordnerliste noch in einer Suche auf — das private Postfach im selben Konto geht niemanden
-  etwas an, auch keinen eigenen Agenten.
-* **Schreiben ist ein eigener Schritt.** Lesen, Umsortieren und Senden sind drei
+* **Nothing is open until somebody opens it.** Which tools exist is released per account. An
+  account without a release does not exist for agents.
+* **Folders can disappear.** What stands in the ignore list turns up neither in the folder
+  list nor in a search — the private mailbox in the same account is nobody's business, not
+  even one's own agent's.
+* **Writing is a step of its own.** Reading, refiling and sending are three
   verschiedene Freigaben, keine Stufen einer Leiter.
 """
 from __future__ import annotations
@@ -29,8 +29,8 @@ from . import mailbox
 
 log = logging.getLogger("mail_mcp")
 
-# Der Katalog. `art` ist die Berechtigung, die dahinter steckt — sie steht hier, damit die
-# Oberfläche sie anzeigen kann, ohne sie ein zweites Mal zu wissen.
+# The catalog. `kind` is the permission behind it — it stands here so the UI can show it
+# without knowing it a second time.
 TOOLS: list[dict] = [
     {"name": "mail_accounts", "art": "lesen", "immer": True,
      "beschreibung": "Freigegebene Postfächer auflisten.",
@@ -108,7 +108,7 @@ BY_NAME = {w["name"]: w for w in TOOLS}
 
 
 def ignores(name: str, pattern: list) -> bool:
-    """Ist dieser Ordner für Werkzeuge unsichtbar? Muster wie `Privat*` oder `INBOX.Familie`."""
+    """Is this folder invisible to tools? Patterns like `Privat*` or `INBOX.Familie`."""
     for m in pattern or []:
         m = str(m).strip()
         if m and (fnmatch.fnmatch(name, m) or fnmatch.fnmatch(name.lower(), m.lower())):
@@ -125,10 +125,10 @@ async def accounts(db: AsyncSession, user: User) -> list[MailAccount]:
 
 
 async def toollist(db: AsyncSession, user: User) -> list[dict]:
-    """Was dieser Zugang anbieten darf: die Vereinigung der Freigaben aller Konten.
+    """What this access may offer: the union of the releases of all accounts.
 
-    Welches Konto welches Werkzeug erlaubt, entscheidet sich beim Aufruf — hier steht nur,
-    was überhaupt existiert. Sonst müsste ein Agent raten, warum ein Werkzeug fehlt.
+    Which account allows which tool is decided at call time — here stands only what exists at
+    all. Otherwise an agent would have to guess why a tool is missing.
     """
     free = {"mail_accounts"}
     for account in await accounts(db, user):
@@ -138,8 +138,8 @@ async def toollist(db: AsyncSession, user: User) -> list[dict]:
 
 
 async def instructions(db: AsyncSession, user: User) -> str:
-    """Die Hausregeln aller freigegebenen Postfächer, für das `instructions`-Feld des
-    Protokolls: Es wird beim Verbinden gelesen, also noch bevor das erste Werkzeug läuft."""
+    """The house rules of all released mailboxes, for the `instructions` field of the
+    protocol: it is read on connecting, so before the first tool runs."""
     parts = []
     for k in await accounts(db, user):
         if k.mcp_instructions:
@@ -161,7 +161,7 @@ async def _account(db: AsyncSession, user: User, name: str, tool: str) -> MailAc
 
 
 async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
-    """Ein Werkzeug ausführen. Alles, was hier ankommt, ist bereits durch die Freigaben."""
+    """Run a tool. Everything that arrives here has already passed the releases."""
     if name not in BY_NAME:
         raise LookupError(f"Unbekanntes Werkzeug „{name}\"")
 
@@ -170,8 +170,8 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
         for k in await accounts(db, user):
             entry = {"name": k.name, "tools": sorted(k.mcp_tools or []),
                        "ignored_folders": list(k.mcp_ignore_folders or [])}
-            # Die Hausregeln des Postfachs gehören an die Stelle, an der ein Agent es
-            # kennenlernt — nicht in eine Datei, die er vielleicht liest.
+            # The house rules of the mailbox belong at the place where an agent gets to know
+            # it — not into a file it might read.
             if k.mcp_instructions:
                 entry["instructions"] = k.mcp_instructions
             out.append(entry)
@@ -209,8 +209,8 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
 
     if name == "mail_move":
         target = str(args["target"])
-        # Ein gesperrter Ordner ist auch kein Ziel — sonst wäre die Ignorierliste ein
-        # Sichtschutz, durch den man Post schieben kann.
+        # A blocked folder is no target either — otherwise the ignore list would be a screen
+        # one can push mail through.
         if ignores(target, account.mcp_ignore_folders):
             raise PermissionError(f"Der Ordner „{target}\" ist für Werkzeuge gesperrt")
         await mailbox.move(account, folder, int(args["uid"]), target)

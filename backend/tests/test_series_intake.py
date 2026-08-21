@@ -1,8 +1,8 @@
-"""Was beim Aufnehmen von Standortpunkten passiert — und was mit Absicht nicht passiert.
+"""What happens when location points are taken in — and what deliberately does not.
 
-Der Ruhefilter und das Verwerfen sind die beiden Stellen, an denen absichtlich Daten
-verlorengehen. Beide muessen genau treffen: Zu streng, und die Spur bekommt Loecher; zu
-lasch, und die Tabelle fuellt sich ueber Nacht am Schreibtisch.
+The rest filter and the discarding are the two places where data is lost on purpose. Both have
+to hit precisely: too strict, and the trace gets holes; too lax, and the table fills up
+overnight at the desk.
 """
 import datetime as dt
 
@@ -11,7 +11,7 @@ from app.services import series as service
 from conftest import make_user
 from sqlalchemy import select
 
-# Zwei Punkte, gut 200 m auseinander (rund um den Standort aus Home Assistant).
+# Two points, a good 200 m apart (around the location from Home Assistant).
 HIER = (50.0825308, 10.5663527)
 THERE_DRUEBEN = (50.0843000, 10.5663527)
 
@@ -47,7 +47,7 @@ async def test_the_first_point_always_arrives(db):
 
 
 async def test_the_rest_filter_leaves_standstill_out(db):
-    """Dasselbe Fleckchen, kurz hintereinander: nur der erste Punkt zaehlt."""
+    """The same spot, shortly after one another: only the first point counts."""
     user = await make_user(db, "wanderer")
     series = await _series(db, user, min_distance_m=25, min_interval_s=300)
     start = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
@@ -62,7 +62,7 @@ async def test_the_rest_filter_leaves_standstill_out(db):
 
 
 async def test_the_rest_filter_gives_way_after_the_interval(db):
-    """Auch wer sich nicht bewegt, soll ab und zu ein Lebenszeichen hinterlassen."""
+    """Even someone who does not move should leave a sign of life now and then."""
     user = await make_user(db, "wanderer")
     series = await _series(db, user, min_distance_m=25, min_interval_s=300)
     start = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
@@ -98,14 +98,14 @@ async def test_outliers_are_dropped_without_toppling_the_call(db):
         _p(0, 0),                          # Null-Insel
         _p(91.0, 10.0),                    # unmoeglich
         _p(*THERE_DRUEBEN, ts=morgen),        # Uhr kaputt
-        _p(*HIER, accuracy=10),            # dieser hier zaehlt
+        _p(*HERE, accuracy=10),            # this one counts
     ])
     await db.commit()
     assert (e["accepted"], e["skipped"]) == (1, 4)
 
 
 async def test_a_batch_is_ordered_by_time(db):
-    """Overland schickt Stapel; die Reihenfolge darin ist nicht garantiert."""
+    """Overland sends batches; the order in them is not guaranteed."""
     user = await make_user(db, "wanderer")
     series = await _series(db, user, min_distance_m=0, min_interval_s=0)
     start = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
@@ -118,12 +118,12 @@ async def test_a_batch_is_ordered_by_time(db):
     await db.commit()
     times = [p.ts for p in await _points(db, series)]
     assert times == sorted(times)
-    # Der Stand zeigt auf den juengsten Punkt, nicht auf den zuletzt uebergebenen.
+    # The state points at the youngest point, not at the one handed over last.
     assert series.state["lat"] == 50.10
 
 
 async def test_a_backfill_does_not_disturb_the_current_state(db):
-    """Ein Punkt aus dem Vorjahr ist kein Lebenszeichen."""
+    """A point from last year is no sign of life."""
     user = await make_user(db, "wanderer")
     series = await _series(db, user, min_distance_m=0, min_interval_s=0)
     now = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
@@ -168,14 +168,14 @@ async def test_entering_and_leaving_once_each(db):
 
 
 async def test_hysteresis_at_the_edge(db):
-    """Knapp ausserhalb des Radius gilt noch als drin — sonst flattert GPS-Rauschen."""
+    """Just outside the radius still counts as inside — otherwise GPS noise flutters."""
     user = await make_user(db, "wanderer")
     series = await _series(db, user, min_distance_m=0, min_interval_s=0)
     await _place(db, user, "zuhause", *HIER, radius=100)
     start = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
 
     await service.ingest(db, series, [_p(*HIER, ts=start)])
-    # 120 m weg: ausserhalb der 100 m, aber innerhalb der 150 m mit Zuschlag.
+    # 120 m away: outside the 100 m, but inside the 150 m with the margin.
     e = await service.ingest(db, series, [
         _p(50.0836100, 10.5663527, ts=start + dt.timedelta(minutes=1))])
     assert e["verlassen"] == []
@@ -195,7 +195,7 @@ async def test_a_silent_place_reports_nothing(db):
 
     e = await service.ingest(db, series, [_p(*HIER)])
     await db.commit()
-    # Der Stand merkt sich den Ort trotzdem — nur gemeldet wird nichts.
+    # The state remembers the place all the same — only nothing is reported.
     assert e["betreten"] == ["leise"]
     assert series.state["places"] == ["leise"]
 
@@ -213,22 +213,22 @@ async def test_foreign_places_do_not_count(db):
 
 
 async def test_the_fence_applies_even_when_the_point_rests(db):
-    """Wer langsam ueber die Grenze geht, kommt trotzdem an.
+    """Whoever crosses the boundary slowly still arrives.
 
-    Der Ruhefilter entscheidet, ob ein Punkt gespeichert wird — nicht, wo das Geraet ist.
-    Waeren beide dasselbe, verschoebe sich das Betreten um bis zu eine Ruheperiode.
+    The rest filter decides whether a point is stored — not where the device is. Were both the
+    same thing, the entering would shift by up to one rest period.
     """
     user = await make_user(db, "wanderer")
     series = await _series(db, user, min_distance_m=25, min_interval_s=300)
     start = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
-    # Zaun mit 20 m Radius, direkt neben dem Startpunkt.
+    # A fence with a 20 m radius, right next to the starting point.
     await _place(db, user, "tuer", 50.0825308, 10.5663527, radius=20)
 
     # Erster Punkt: 60 m weg vom Zaun, also draussen.
     e = await service.ingest(db, series, [_p(50.0830700, 10.5663527, ts=start)])
     assert e["betreten"] == []
 
-    # Zwei Minuten spaeter 60 m naeher — zu wenig fuer den Ruhefilter, aber im Zaun.
+    # Two minutes later 60 m closer — too little for the rest filter, but inside the fence.
     e = await service.ingest(db, series, [
         _p(50.0825308, 10.5663527, ts=start + dt.timedelta(minutes=2))])
     await db.commit()
@@ -237,7 +237,7 @@ async def test_the_fence_applies_even_when_the_point_rests(db):
 
 
 async def test_the_fence_applies_to_a_truly_standing_device(db):
-    """Ein Ort, der angelegt wird, waehrend das Geraet schon drinsteht."""
+    """A place that is created while the device already stands in it."""
     user = await make_user(db, "wanderer")
     series = await _series(db, user, min_distance_m=25, min_interval_s=300)
     start = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
@@ -245,7 +245,7 @@ async def test_the_fence_applies_to_a_truly_standing_device(db):
     await service.ingest(db, series, [_p(*HIER, ts=start)])
     await _place(db, user, "zuhause", *HIER, radius=150)
 
-    # Dieselbe Stelle, eine Minute spaeter: ruht, meldet aber trotzdem die Ankunft.
+    # The same spot a minute later: it rests, but reports the arrival all the same.
     e = await service.ingest(db, series, [_p(*HIER, ts=start + dt.timedelta(minutes=1))])
     await db.commit()
     assert (e["still"], e["betreten"]) == (1, ["zuhause"])
@@ -260,13 +260,13 @@ async def test_seen_and_stored_are_two_separate_facts(db):
     await service.ingest(db, series, [_p(*HIER, ts=start + dt.timedelta(minutes=1))])
     await db.commit()
 
-    # Gespeichert wurde nur der erste, gemeldet hat sich das Geraet zuletzt eine Minute spaeter.
+    # Only the first was stored, the device last reported a minute later.
     assert series.last_at.replace(tzinfo=dt.timezone.utc) == start
     assert series.state["seen_at"].startswith("2026-08-20T12:01")
 
 
 async def test_a_backfill_reports_no_arrival(db):
-    """Ein Punkt von gestern darf nicht behaupten, man sei gerade angekommen."""
+    """A point from yesterday must not claim that one has just arrived."""
     user = await make_user(db, "wanderer")
     series = await _series(db, user, min_distance_m=0, min_interval_s=0)
     now = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)

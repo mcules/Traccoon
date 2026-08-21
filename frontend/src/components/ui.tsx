@@ -22,48 +22,48 @@ export const ICON = {
 /**
  * Ein Knopf.
  *
- * Ein Knopf ist blau. Vorher waren die meisten grau umrandet, und grau ist die Farbe, mit
- * der eine Oberfläche „hier ist nichts zu holen" sagt: In einer Kopfzeile mit vier davon
- * ging jeder einzelne unter, und die Farbe, die eigentlich „abgeschaltet" heißt, war der
+ * A button is blue. Before, most of them had a grey border, and grey is the colour a UI says
+ * "nothing to get here" with: in a header with four of them every single one went under, and
+ * the colour that actually means "disabled" was the
  * Normalzustand.
  *
- * Deshalb gilt hier: **Grau heißt abgeschaltet, sonst nichts.**
+ * So the rule here is: **grey means disabled, nothing else.**
  *
  * Drei Arten, mehr braucht es nicht:
  *
- * * `haupt` — die eine Handlung, um die es auf dieser Fläche geht (gefüllt blau).
- * * `neben` — alles andere, was man tun kann (blauer Rahmen, blaue Schrift). Bleibt lesbar
- *   und ordnet sich der Hauptsache unter, ohne ins Graue zu rutschen.
- * * `gefahr` — was man nicht versehentlich tut (rot).
+ * * `primary` — the one action this surface is about (filled blue).
+ * * `secondary` — everything else one can do (blue border, blue text). Stays readable and
+ *   subordinates itself to the main matter without sliding into grey.
+ * * `danger` — what one does not do by accident (red).
  *
- * `zeichen` ist das Kurzzeichen für schmale Bildschirme: Dort steht nur es, sonst der Text.
- * `stand` hängt ein Ergebnis an den Knopf (✓/✗) — für Handlungen, deren Ausgang man später
- * noch sehen will, ohne sie zu wiederholen.
+ * `symbol` is the short sign for narrow screens: there only it stands, otherwise the text.
+ * `state` hangs a result on the button (✓/✗) — for actions whose outcome one wants to see
+ * later without repeating them.
  */
 export type ButtonVariant = "primary" | "secondary" | "confirm" | "danger";
 export type ButtonState = "good" | "bad" | "open";
 
 /**
- * Die Klassen dazu, für die Stellen, die (noch) ein blankes `<button>` brauchen —
- * abgeschaltete Zustände inbegriffen, damit auch dort Grau nur „geht gerade nicht" heißt.
+ * The classes for it, for the places that (still) need a bare `<button>` — disabled states
+ * included, so that grey only means "not possible right now" there as well.
  *
- * Eine Quelle, zwei Zugänge: Die Komponente unten benutzt dieselben Zeilen. Neu geschrieben
- * wird mit `<Knopf>`; die Konstanten sind für Knöpfe mit eigener Mechanik (Umschalter,
- * Dateiauswahl, Reiter), die keine Komponente sein wollen.
+ * One source, two entrances: the component below uses the same lines. New code is written
+ * with `<Button>`; the constants are for buttons with a mechanism of their own (toggles, file
+ * pickers, tabs) that do not want to be a component.
  */
 const BASE = "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 "
   + "text-sm leading-none transition-colors disabled:cursor-not-allowed "
   + "disabled:border-line disabled:bg-transparent disabled:text-muted";
-// Blau heißt: die FLÄCHE ist blau, nicht die Schrift. Ein Knopf mit blauem Rahmen und
-// blauer Schrift ist immer noch überwiegend Hintergrund — und damit fast so leise wie der
-// graue, den er ablösen sollte.
+// Blue means: the SURFACE is blue, not the text. A button with a blue border and blue text is
+// still mostly background — and thereby almost as quiet as the grey one it was meant to
+// replace.
 const COLOR = {
   primary: "border border-brand bg-brand text-white hover:bg-brand/90",
-  // Grün ist keine Willkür, sondern eine Bedeutung wie Rot: „ich stimme zu" — freigeben,
-  // abnehmen, bestätigen. Deshalb bleibt sie, statt in Blau aufzugehen.
+  // Green is no arbitrariness but a meaning like red: "I agree" — release, accept, confirm.
+  // That is why it stays instead of being absorbed into blue.
   confirm: "border border-green-600 bg-green-600 text-white hover:bg-green-600/90",
-  // Optisch gleich: „haupt" sagt im Code, worum es auf der Fläche geht, und ist kein
-  // Versprechen auf ein anderes Aussehen. Wer später abstufen will, ändert diese eine Zeile.
+  // Visually the same: "primary" says in the code what the surface is about and is no promise
+  // of a different look. Whoever wants to grade them later changes this one line.
   secondary: "border border-brand bg-brand text-white hover:bg-brand/90",
   danger: "border border-red-600 bg-red-600 text-white hover:bg-red-600/90",
 } as const;
@@ -75,10 +75,10 @@ export const BUTTON = {
 } as const;
 
 /**
- * Handlungen ohne Fläche: „mehr anzeigen", ein × zum Entfernen, ein Link in einer Zeile.
+ * Actions without a surface: "show more", an × to remove, a link inside a line.
  *
- * Auch hier gilt Grau nur für abgeschaltet — eine Aktion, die es gibt, ist blau. Ein
- * Textknopf ist trotzdem kein Knopf mit Fläche: Er ordnet sich dem Text unter, in dem er
+ * Here too grey only stands for disabled — an action that exists is blue. A text button is
+ * still no button with a surface: it subordinates itself to the text it stands in
  * steht, statt ihn zu unterbrechen.
  */
 export const BUTTON_TEXT = {
@@ -86,8 +86,8 @@ export const BUTTON_TEXT = {
   danger: "text-red-400 transition-colors hover:text-red-300 disabled:text-muted",
 } as const;
 
-/** Dieselben Knöpfe in klein — für Zeilen und Werkzeugleisten, wo die volle Höhe die
- *  Zeile auseinanderzöge. Farbe und Bedeutung bleiben gleich. */
+/** The same buttons in small — for rows and toolbars where the full height would pull the
+ *  line apart. Colour and meaning stay the same. */
 const BASE_SMALL = BASE.replace("px-3 py-1.5 text-sm", "px-2 py-1 text-xs");
 export const BUTTON_SMALL = {
   primary: `${BASE_SMALL} ${COLOR.primary}`,
@@ -104,8 +104,8 @@ export function Button({ variant = "secondary", symbol: chars, state, title: tit
   wide?: boolean; small?: boolean; children: ReactNode;
 }) {
   const from = disabled || running;
-  // Abgeschaltet ist abgeschaltet: keine Farbe, kein Zeiger, kein Hover. Sonst sieht ein
-  // Knopf, der gerade nichts kann, aus wie einer, der etwas kann.
+  // Disabled is disabled: no colour, no pointer, no hover. Otherwise a button that can do
+  // nothing right now looks like one that can do something.
   const color = from
     ? `${small ? BASE_SMALL : BASE} border border-line bg-transparent text-muted cursor-not-allowed`
     : (small ? BUTTON_SMALL : BUTTON)[variant];
@@ -144,8 +144,8 @@ export function IconButton({ icon, title: title, onClick, danger = false, disabl
       title={title}
       aria-label={title}
       disabled={disabled}
-      // Auch hier: Grau heißt abgeschaltet. Ein Handgriff, den es gibt, ist blau — nur
-      // ohne Füllung, sonst wäre eine Liste mit zwanzig Zeilen ein Feuerwerk.
+      // Here too: grey means disabled. A handgrip that exists is blue — only without a fill,
+      // otherwise a list of twenty rows would be a fireworks display.
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md border text-sm
         leading-none transition-colors disabled:border-line disabled:text-muted
         disabled:opacity-60 ${
@@ -172,11 +172,11 @@ export function Actions({ children }: { children: ReactNode }) {
  */
 export function Dialog({ title: title, onClose, children, foot, wide = false, hold = false }: {
   title: string; onClose: () => void; children: ReactNode; foot?: ReactNode; wide?: boolean;
-  /** Kein Escape, kein Klick daneben — nur die eigenen Knöpfe schließen.
+  /** No escape, no click beside it — only its own buttons close it.
    *
-   *  Für Dialoge, in denen etwas entsteht: Ein danebengegangener Klick hat einen halb
-   *  geschriebenen Text gekostet, und „Escape" tippt man beim Formulieren schneller, als man
-   *  denkt. Wo nur ausgewählt wird, bleibt beides — dort ist Wegklicken bequem, nicht teuer. */
+   *  For dialogs in which something comes into being: a misplaced click has cost a half
+   *  written text, and "escape" is typed faster while composing than one thinks. Where only a
+   *  choice is made, both stay — there clicking away is convenient, not expensive. */
   hold?: boolean;
 }) {
   useEffect(() => {
@@ -346,8 +346,8 @@ export function ListenLine({ columns, dimmed = false, warning = false, dense = f
       onClick={onClick}
       className={`group bg-surface px-3 text-sm transition-colors ${dense ? "py-1.5" : "py-2.5"} ${layout} ${
         onClick ? "cursor-pointer hover:bg-card" : ""} ${dimmed ? "opacity-55" : ""} ${
-        // Ein Streifen links statt einer eingefärbten Fläche: die Zeile bleibt lesbar, und
-        // in einer langen Liste sieht man die auffälligen Einträge trotzdem von weitem.
+        // A stripe on the left instead of a coloured surface: the row stays readable, and in a
+        // long list one still sees the conspicuous entries from afar.
         warning ? "border-l-2 border-amber-400 pl-[calc(0.75rem-2px)]" : ""}`}
     >
       {children}
@@ -444,7 +444,7 @@ export function Rowbutton({ onClick, title: title, danger = false, children }: {
   onClick: () => void; title?: string; danger?: boolean; children: ReactNode;
 }) {
   return (
-    // Auch der Zeilenknopf ist ein Knopf: blau, nicht grau (siehe DESIGN.md).
+    // The row button is a button too: blue, not grey (see DESIGN.md).
     <button onClick={(e) => { e.stopPropagation(); onClick(); }} title={title}
       className={danger ? BUTTON_SMALL.danger : BUTTON_SMALL.secondary}>
       {children}

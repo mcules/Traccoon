@@ -23,10 +23,10 @@ export class ApiError extends Error {
 }
 
 /**
- * Eine Datei holen — mit Anmeldung.
+ * Fetch a file — with the login.
  *
- * Ein `<a href="/api/…">` schickt den Token nicht mit: Der Browser kennt ihn nicht, er steht
- * im Speicher der Anwendung. Genau deshalb kam beim Klick auf einen Anhang „Not
+ * An `<a href="/api/…">` does not send the token along: the browser does not know it, it sits
+ * in the memory of the application. That is exactly why clicking an attachment produced "Not
  * authenticated" statt der Datei.
  */
 export async function fetchFile(path: string): Promise<{ blob: Blob; kind: string }> {
@@ -93,9 +93,9 @@ async function upload<T = any>(path: string, file: File): Promise<T> {
 }
 
 /**
- * Die Begruendung des Servers aus einer misslungenen Antwort holen.
+ * Get the server's reasoning out of a failed response.
  *
- * Ohne das stand beim Hochladen nur "Bad Request" — die Auskunft, welche Datei im Zip fehlt,
+ * Without it an upload only said "Bad Request" — the information which file is missing in the
  * blieb im Rumpf liegen.
  */
 async function errorFrom(res: Response): Promise<ApiError> {
@@ -154,13 +154,13 @@ export const api = {
 export interface User {
   id: number; email: string | null; username: string; display_name: string;
   global_role: string; status: string; onboarded: boolean; theme: string;
-  timezone?: string;           // IANA-Zone: Uhrzeiten der Oberfläche und der eigenen Jobs
-  mail_last_account_id?: number | null;  // zuletzt geöffnetes Postfach
-  ticket_open_mode?: string;   // popup | page — wie ein Ticket per Linksklick öffnet
+  timezone?: string;           // IANA zone: times in the UI and of one's own jobs
+  mail_last_account_id?: number | null;  // the mailbox opened last
+  ticket_open_mode?: string;   // popup | page — how a ticket opens on a left click
   ticket_layout?: { left?: string[]; right?: string[] };  // nutzerspez. Block-Anordnung
   pm_chat_style?: string;      // bubbles | cli — Darstellung des PM-Chats
-  locale?: string;             // Sprache der Oberfläche (Quelle: de)
-  notify_default?: string;     // telegram | email | ziel — Weg, wenn der Absender keinen nennt
+  locale?: string;             // language of the UI (source: de)
+  notify_default?: string;     // telegram | email | destination — the way when the sender names none
   notify_destination_id?: number | null;   // Kanal „ziel“: welches Ziel aufgerufen wird
   notify_email?: string | null;
   telegram_chat_id?: string | null;
@@ -283,7 +283,7 @@ export interface Series {
   description: string;
   color: string;
   settings: Record<string, any>;
-  /** Letzter Stand, art-abhängig: lat/lon/battery bei Standorten, value bei Zahlen. */
+  /** Latest state, depending on the kind: lat/lon/battery for locations, value for numbers. */
   state: Record<string, any>;
   points: number;
   active: boolean;
@@ -291,9 +291,9 @@ export interface Series {
   store_id: number | null;
   last_at: string | null;
   owner_user_id: number | null;
-  /** Gehört mir — oder ist sie mir nur freigegeben? */
+  /** Mine — or only shared with me? */
   own: boolean;
-  /** Name der besitzenden Person, wenn sie mir nicht gehört. */
+  /** Name of the owning person, when it is not mine. */
   owner: string;
   has_token: boolean;
 }
@@ -326,7 +326,7 @@ export const seriesApi = {
   del: (key: string) => api.del(`/series/${encodeURIComponent(key)}`),
   points: (key: string, q = "") =>
     api.get<{ series: Series; points: any[] }>(`/series/${encodeURIComponent(key)}/points${q}`),
-  /** Ein frisches Token — das alte gilt danach nicht mehr. */
+  /** A fresh token — the old one stops working afterwards. */
   newToken: (key: string) =>
     api.post<{ token: string; path: string }>(`/series/${encodeURIComponent(key)}/token`, {}),
   token: (key: string) =>
@@ -344,7 +344,7 @@ export const seriesApi = {
 
 // ---------- Plugins ----------
 
-/** Was ein Plugin beitraegt: bisher nur Seiten, mehr braucht es noch nicht. */
+/** What a plugin contributes: pages only so far, more is not needed yet. */
 export interface PluginContribution {
   kind: "seite";
   path: string;
@@ -374,16 +374,16 @@ export interface PluginAdmin extends PluginInfo {
 }
 
 export const pluginApi = {
-  /** Was dieser Mensch sehen darf (eingeschaltet und fuer ihn freigegeben). */
+  /** What this person may see (enabled and released for them). */
   my: () => api.get<PluginInfo[]>("/plugins"),
-  /** Alles, auch Abgeschaltetes — die Sicht der Verwaltung. */
+  /** Everything, disabled ones included — the administrator's view. */
   all: () => api.get<PluginAdmin[]>("/plugins/alle"),
   rights: (slug: string, body: {
     reads_granted?: string[]; enabled?: boolean;
     all_users?: boolean; allowed_user_ids?: number[];
   }) => api.put<PluginAdmin>(`/plugins/${slug}/rechte`, body),
   del: (slug: string) => api.del(`/plugins/${slug}`),
-  /** Zip hochladen; Manifest und Dateien wertet der Server aus. */
+  /** Upload a zip; the server evaluates the manifest and the files. */
   upload: (file: File) => upload<{ slug: string; files: number }>("/plugins", file),
 };
 
@@ -515,8 +515,8 @@ export const workflowApi = {
   editable: (id: number) => api.get<WfVer>(`/workflows/${id}/editable`),
   saveVersion: (id: number, vid: number, body: { graph: WfGraph; notes?: string }) =>
     api.put<WfVer>(`/workflows/${id}/versions/${vid}`, body),
-  /** Speichert den Editor-Stand. Der Server entscheidet, ob das eine Fassung wert ist:
-   *  gleiche Inhalte heißt Anordnung (`layout`), sonst entsteht bzw. wächst ein Entwurf. */
+  /** Saves the editor state. The server decides whether that is worth a version: the same
+   *  content means an arrangement (`layout`), otherwise a draft comes into being or grows. */
   saveGraph: (id: number, body: { graph: WfGraph; notes?: string }) =>
     api.put<GraphSave>(`/workflows/${id}/graph`, body),
   discardDraft: (id: number) => api.del(`/workflows/${id}/draft`),

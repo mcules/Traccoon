@@ -1,18 +1,18 @@
-"""Was das Postfach schon weiß, muss es nicht noch einmal fragen.
+"""What the mailbox already knows it need not ask again.
 
-Der Aufbau der Seite kostete gemessen 1,9 Sekunden, und fast alles davon waren Fragen ans
-Postfach, deren Antwort sich zwischen zwei Klicks nicht ändert: die Ordnerliste (33 Ordner)
-und die Ungelesen-Zahlen (ein STATUS je Ordner, allein 900 ms).
+Building the page cost a measured 1.9 seconds, and almost all of that were questions to the
+mailbox whose answer does not change between two clicks: the folder list (33 folders) and the
+unread counts (one STATUS per folder, 900 ms on their own).
 
 Zwei Dinge halten den Cache ehrlich:
 
-* Eine **kurze Haltbarkeit**, denn eine Mail kann auch am Telefon gelesen werden, und davon
-  erfährt Traccoon erst beim nächsten Blick.
-* Ein **Generationszähler** je Konto. Wer etwas ändert (lesen, verschieben, löschen, senden)
-  oder vom Postfach eine Ankündigung bekommt (IDLE), zählt ihn hoch — und alle Einträge der
-  alten Generation sind damit unerreichbar, ohne dass jemand Schlüssel suchen muss.
+* A **short shelf life**, because a mail can be read on the phone too, and Traccoon learns of
+  that only on the next look.
+* A **generation counter** per account. Whoever changes something (read, move, delete, send)
+  or receives an announcement from the mailbox (IDLE) bumps it — and all entries of the old
+  generation are thereby unreachable without anyone having to search for keys.
 
-Fällt Redis aus, ist das kein Fehler: Dann wird eben jedes Mal gefragt, wie vorher.
+If Redis fails that is no error: then everything is asked every time, as before.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from ..core.redis import get_redis
 log = logging.getLogger("traccoon.mailbox")
 
 PREFIX = "traccoon:mailbox"
-# Ordner ändern sich selten, Listen dauernd. Beides überlebt einen Klick, keines eine Pause.
+# Folders change rarely, lists constantly. Both survive a click, neither a pause.
 TTL_FOLDER = 120
 TTL_LISTING = 45
 TTL_UNREAD = 60
@@ -34,12 +34,12 @@ async def _generation(account_id: int) -> int:
     try:
         value = await get_redis().get(f"{PREFIX}:{account_id}:gen")
         return int(value) if value else 0
-    except Exception:  # noqa: BLE001 — ohne Redis läuft alles wie vorher, nur langsamer
+    except Exception:  # noqa: BLE001 — without Redis everything runs as before, only slower
         return -1
 
 
 async def invalidate(account_id: int) -> None:
-    """Alles zu diesem Konto vergessen. Ein INCR, kein Suchen nach Schlüsseln."""
+    """Forget everything about this account. One INCR, no searching for keys."""
     try:
         await get_redis().incr(f"{PREFIX}:{account_id}:gen")
     except Exception:  # noqa: BLE001
@@ -69,9 +69,9 @@ async def put(account_id: int, part: str, value, ttl: int) -> None:
 
 
 async def cached(account_id: int, part: str, ttl: int, fetch):
-    """Aus dem Cache, sonst holen und hinlegen.
+    """From the cache, otherwise fetch and put down.
 
-    `holen` ist die teure Frage ans Postfach; sie läuft nur, wenn der Cache nichts hat.
+    `fetch` is the expensive question to the mailbox; it runs only when the cache has nothing.
     """
     existing = await fetch_part(account_id, part)
     if existing is not None:
@@ -84,12 +84,12 @@ async def cached(account_id: int, part: str, ttl: int, fetch):
 async def prewarm(account) -> None:
     """Den Stand holen, bevor jemand danach fragt.
 
-    Ohne das wäre der Cache genau dann kalt, wenn er gebraucht wird: Eine neue Mail entwertet
-    ihn, und der nächste Blick ins Postfach zahlt wieder die volle Sekunde. Wer zusieht, hat
-    ohnehin einen Wächter laufen — der weiß es zuerst und kann die Fragen gleich stellen.
+    Without this the cache would be cold exactly when it is needed: a new mail invalidates it,
+    and the next look into the mailbox pays the full second again. Whoever is watching has a
+    watcher running anyway — it knows first and can ask the questions right away.
 
-    Fehler bleiben hier: Vorwärmen ist eine Bequemlichkeit, kein Auftrag. Was nicht klappt,
-    wird beim nächsten Abruf eben normal geholt.
+    Errors stay here: prewarming is a convenience, not an assignment. What does not work is
+    simply fetched normally on the next call.
     """
     import asyncio
 
