@@ -169,7 +169,7 @@ async def spam_card(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict
     kind = "rueckholbar" if recoverable else ("sofort" if immediate else "sammel")
     # The text belongs to the spam knowledge, not into the graph: which reasons are named and
     # how a recall hint reads changes with the detection. The report node takes
-    # ihn als `{{ spam.card_title }}` / `{{ spam.card_text }}` und bleibt selbst allgemein.
+    # it as `{{ spam.card_title }}` / `{{ spam.card_text }}` and stays general itself.
     title, text = karte(verdict, predecided=predecided, recoverable=recoverable)
     inst.context = {**ctx, "spam": {**verdict_row, "verdict_id": verdict.id, "karte": kind,
                                     "card_title": title, "card_text": text,
@@ -273,7 +273,7 @@ async def assistant_run(db, inst: WorkflowInstance, params: dict, ctx: dict) -> 
     """
     task = dict(ctx.get("task") or {})
     return {"action": "assistant_run", "queued": False, "task_id": task.get("id"),
-            "grund": "läuft bereits mit dem Anlegen"}
+            "reason": "it already runs as part of the creation"}
 
 
 HANDLER = {

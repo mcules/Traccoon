@@ -28,12 +28,12 @@ BUILTIN: dict[str, dict] = {
     "ticket": {
         "name": "Ticket", "plural": "Tickets", "icon": "🎫", "color": "#58a6ff",
         "backing": "issue",
-        "description": "Vorgang mit KI-Lebenszyklus, Board-Spalte und Agenten-Zuweisung.",
+        "description": "A matter with an AI lifecycle, a board column and an agent assignment.",
     },
     "hardware": {
         "name": "Hardware-Exemplar", "plural": "Hardware", "icon": "🖥️", "color": "#a371f7",
         "backing": "hardware_asset",
-        "description": "Gerät im Bestand — von der Bestellung bis zur Ausmusterung.",
+        "description": "A device in stock — from the order to the day it is retired.",
     },
 }
 
@@ -233,7 +233,7 @@ async def apply_status(db: AsyncSession, *, subject_kind, issue=None, asset=None
         return {"artifact": "generic", "status": status_key}
 
     return {"artifact": kind, "status": status_key, "applied": False,
-            "reason": "kein Artefakt an diesem Ablauf"}
+            "reason": "no artifact on this flow"}
 
 
 async def backfill_hardware_artifacts(db: AsyncSession) -> int:

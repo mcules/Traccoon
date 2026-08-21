@@ -233,7 +233,7 @@ async def promote_split(db: AsyncSession, child: Issue) -> None:
         await set_ticket_status(db, nxt, TicketAgentStatus.approved)
         await add_system_comment(
             db, nxt.id,
-            f"▶️ Automatisch freigegeben — Vorgänger {child.key} ist fertig.")
+            f"▶️ Approved automatically — the predecessor {child.key} is done.")
         await db.flush()
         # Sub-tasks already have their plan, so straight into the implementation.
         await start_lifecycle(db, nxt, entry="exec")

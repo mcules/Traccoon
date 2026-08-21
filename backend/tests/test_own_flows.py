@@ -281,7 +281,7 @@ async def test_a_missing_field_says_so_clearly(client, db):
     empty = await _with_subjectfield(db, boss, None)
     hook2 = (await client.post(f"/workflows/{empty.id}/webhook", headers=auth(boss))).json()
     r2 = await _call(client, hook2, {"vorgang": {"ticket": "ABC-3"}})
-    assert r2.status_code == 400 and "kein Feld" in r2.text
+    assert r2.status_code == 400 and "names no field" in r2.text
 
 
 async def test_a_foreign_ticket_stays_foreign(client, db):

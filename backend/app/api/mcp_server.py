@@ -60,7 +60,7 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
     try:
         message = await request.json()
     except Exception:  # noqa: BLE001
-        return _answer(None, error={"code": -32700, "message": "Kein gültiges JSON"})
+        return _answer(None, error={"code": -32700, "message": "not valid JSON"})
 
     methode = str(message.get("method") or "")
     id_ = message.get("id")
@@ -98,7 +98,7 @@ async def mcp_mail(request: Request, authorization: str | None = Header(default=
             result = await mail_mcp.execute(db, user, name, args)
         except PermissionError as exc:
             # A block is no crash: the agent should be able to read why it does not work,
-            # statt es als Serverfehler zu behandeln und wieder zu versuchen.
+            # instead of treating it as a server error and trying again.
             return _answer(id_, {"content": [{"type": "text", "text": f"Nicht erlaubt: {exc}"}],
                                   "isError": True})
         except (LookupError, ValueError) as exc:

@@ -48,8 +48,8 @@ async def gate_check(db: AsyncSession, task: AssistantTask, owner_id: int | None
         res = f" auf `{resource}`" if resource else ""
         db.add(Notification(
             user_id=owner_id, assistant_task_id=task.id, kind="assistant_perm",
-            chat_id=owner.telegram_chat_id, title="🔐 Freigabe nötig",
-            body=f"Der Assistent möchte `{tool}`{res} ausführen.\n({task.title})"[:1000]))
+            chat_id=owner.telegram_chat_id, title="🔐 An approval is needed",
+            body=f"The assistant wants to run `{tool}`{res}.\n({task.title})"[:1000]))
     await db.commit()
     return "ask"
 

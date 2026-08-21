@@ -36,12 +36,12 @@ class AccountIn(BaseModel):
     imap_port: int = 993
     imap_ssl: bool = True
     imap_user: str = ""
-    imap_password: str = ""          # leer = unverändert lassen
+    imap_password: str = ""          # empty = leave unchanged
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_security: str = "starttls"
     smtp_user: str = ""
-    smtp_password: str = ""          # leer = unverändert lassen
+    smtp_password: str = ""          # empty = leave unchanged
     folder_sent: str = "Sent"
     folder_drafts: str = "Drafts"
     folder_trash: str = "Trash"
@@ -197,7 +197,7 @@ async def account_check(kid: int, user: User = Depends(get_current_user),
     return await mailbox.check(await _account(db, kid, user))
 
 
-# ── Identitäten ─────────────────────────────────────────────────────────────
+# ── Identities ──────────────────────────────────────────────────────────────
 
 class IdentityIn(BaseModel):
     display_name: str = ""
@@ -561,7 +561,7 @@ async def draft(kid: int, data: SendIn, user: User = Depends(get_current_user),
     await cache.invalidate(account.id)
 
 
-# ── Aktionen (Abläufe) ──────────────────────────────────────────────────────
+# ── Actions (flows) ─────────────────────────────────────────────────────────
 
 def _start_trigger(graph: dict) -> dict:
     """The trigger entry on the start node, read raw.

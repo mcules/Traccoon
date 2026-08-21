@@ -179,10 +179,14 @@ async def repo_commit_message(access: Access = Depends(require_role(ProjectRole.
     # Prefer the project default subscription, otherwise the personal default.
     tok_name = p.default_token_name if p.default_provider == "claude_code" else ""
     token = await resolve_provider_token(db, access.user.id, "claude_code", tok_name)
+    # The message is written in the language of the person pressing the button, not in the
+    # language of the house: a commit lands in their repository and stands next to what they
+    # wrote by hand.
+    language = "German" if (getattr(access.user, "locale", "") or "en") == "de" else "English"
     prompt = (
-        "Du bekommst einen Git-Diff. Erzeuge einen prägnanten Commit-Titel (Imperativ, "
-        "max. 72 Zeichen, Deutsch) und eine kurze Beschreibung (2–4 Zeilen, Stichpunkte ok). "
-        "Antworte NUR als JSON: {\"title\": \"...\", \"description\": \"...\"}\n\n"
+        "You are given a git diff. Produce a terse commit title (imperative, at most 72 "
+        f"characters, in {language}) and a short description (2-4 lines, bullet points are "
+        "fine). Answer ONLY as JSON: {\"title\": \"...\", \"description\": \"...\"}\n\n"
         f"```diff\n{diff[:15000]}\n```"
     )
     try:
@@ -201,9 +205,9 @@ async def repo_commit_message(access: Access = Depends(require_role(ProjectRole.
                     "description": (data.get("description") or "").strip()}
         except json.JSONDecodeError:
             pass
-    # Fallback: erste Zeile = Titel, Rest = Beschreibung
+    # Fallback: the first line is the title, the rest is the description
     lines = [ln for ln in text.splitlines() if ln.strip()]
-    return {"title": lines[0][:72] if lines else "Änderungen", "description": "\n".join(lines[1:])[:600]}
+    return {"title": lines[0][:72] if lines else "Changes", "description": "\n".join(lines[1:])[:600]}
 
 
 @router.post("/projects/{project_id}/repo/pull")

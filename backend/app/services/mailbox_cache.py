@@ -43,7 +43,7 @@ async def invalidate(account_id: int) -> None:
     try:
         await get_redis().incr(f"{PREFIX}:{account_id}:gen")
     except Exception:  # noqa: BLE001
-        log.debug("Cache für Konto %s nicht entwertet", account_id)
+        log.debug("the cache of account %s was not invalidated", account_id)
 
 
 async def fetch_part(account_id: int, part: str):
@@ -65,7 +65,7 @@ async def put(account_id: int, part: str, value, ttl: int) -> None:
         await get_redis().set(f"{PREFIX}:{account_id}:{gen}:{part}",
                               json.dumps(value, ensure_ascii=False), ex=ttl)
     except Exception:  # noqa: BLE001
-        log.debug("Cache für Konto %s nicht geschrieben (%s)", account_id, part)
+        log.debug("the cache of account %s was not written (%s)", account_id, part)
 
 
 async def cached(account_id: int, part: str, ttl: int, fetch):
@@ -99,7 +99,7 @@ async def prewarm(account) -> None:
         try:
             await put(account.id, part, await fetch(), ttl)
         except Exception:  # noqa: BLE001
-            log.debug("Vorwärmen (%s) für Konto %s ging nicht", part, account.id)
+            log.debug("prewarming (%s) for account %s did not work", part, account.id)
 
     await asyncio.gather(
         one("folders:1", TTL_FOLDER, lambda: mailbox.folder(account, True)),

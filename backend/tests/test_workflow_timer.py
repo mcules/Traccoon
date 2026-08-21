@@ -159,7 +159,7 @@ async def test_the_error_branch_catches_the_failure(db, monkeypatch):
 async def test_validation_demands_a_duration_or_a_moment():
     assert validate_graph("standalone", _graph(timer={"dauer": 5, "einheit": "m"})) == []
     error = validate_graph("standalone", _graph(timer={}))
-    assert any("weder Dauer noch Zeitpunkt" in f for f in error)
+    assert any("neither a duration nor a moment" in f for f in error)
 
 
 async def test_a_long_wait_is_capped():

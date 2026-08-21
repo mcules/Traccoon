@@ -45,20 +45,20 @@ async def test_foreign_jobs_are_invisible(db, anna):
 
 async def test_creating_from_a_template(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="Security-News",
-                      template="recherche-digest",
-                      params={"titel": "Security-News", "thema": "IT-Sicherheit"})
-    assert "angelegt" in out and "ACHTUNG" not in out
+                      template="research-digest",
+                      params={"title": "Security news", "topic": "IT security"})
+    assert "created" in out and "CAREFUL" not in out
     j = (await db.execute(select(Job))).scalars().one()
     assert j.user_id == anna.id and j.kind == "prompt" and j.result_html is True
-    assert j.args["thema"] == "IT-Sicherheit"
-    j.args["sprache"] == "Deutsch"          # the default of the template stays
+    assert j.args["topic"] == "IT security"
+    j.args["language"] == "English"        # the default of the template stays
     assert j.notify_chat == "123"                  # meldet an denselben Chat
 
 
 async def test_creating_reports_open_placeholders(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="Halbfertig",
-                      prompt="Berichte über {{thema}} aus {{quellen}}.", params={"thema": "x"})
-    assert "ACHTUNG" in out and "quellen" in out
+                      prompt="Report on {{topic}} out of {{sources}}.", params={"topic": "x"})
+    assert "CAREFUL" in out and "sources" in out
 
 
 async def test_creating_without_a_prompt_and_a_template(db, anna):
@@ -68,7 +68,7 @@ async def test_creating_without_a_prompt_and_a_template(db, anna):
 
 async def test_an_unknown_template_names_the_real_ones(db, anna):
     out = await _tool(db, anna, "traccoon_create_job", name="X", template="quatsch")
-    assert "recherche-digest" in out
+    assert "research-digest" in out
 
 
 async def test_parameters_are_merged_not_replaced(db, anna):

@@ -119,7 +119,7 @@ ACTIONS: dict[str, list[dict]] = {
         _f("created_ticket.id", "number", "ctx.ticket_created"),
         _f("created_ticket.key", "text", "ctx.key_of_the_created_ticket"),
     ],
-    "set_field": [_f("fields.<schlüssel>", "text", "ctx.field_values_set_on_the_artifact")],
+    "set_field": [_f("fields.<key>", "text", "ctx.field_values_set_on_the_artifact")],
     "assistant_task": [
         _f("task.task_id", "number", "ctx.number_of_the_task_in_the_assistant_inbox"),
         _f("task.status", "text", "ctx.approved_running_new_waiting_for_release"),

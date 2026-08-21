@@ -34,14 +34,14 @@ def test_the_time_window_comes_from_the_last_run():
     now = dt.datetime(2026, 7, 29, 8, 0, tzinfo=dt.timezone.utc)
     last = dt.datetime(2026, 7, 28, 8, 0, tzinfo=dt.timezone.utc)
     text = render("{{window}} · {{today}} · {{since}}", {}, now=now, last_run=last)
-    assert "2026-07-28 10:00 bis 2026-07-29 10:00" in text   # Europe/Berlin (UTC+2)
+    assert "2026-07-28 10:00 to 2026-07-29 10:00" in text   # Europe/Berlin (UTC+2)
     assert "2026-07-29" in text and TZ.key == "Europe/Berlin"
 
 
 def test_without_a_last_run_24_hours_back():
     """First run or the job was off: a digest still needs a lower bound."""
     now = dt.datetime(2026, 7, 29, 6, 0, tzinfo=dt.timezone.utc)
-    assert "2026-07-28 08:00 bis 2026-07-29 08:00" in render("{{window}}", {}, now=now)
+    assert "2026-07-28 08:00 to 2026-07-29 08:00" in render("{{window}}", {}, now=now)
 
 
 def test_an_own_parameter_beats_a_builtin_one():
@@ -49,16 +49,16 @@ def test_an_own_parameter_beats_a_builtin_one():
 
 
 def test_the_template_delivers_fields_and_parameters():
-    fields = apply("recherche-digest", {"titel": "Security-News"})
+    fields = apply("research-digest", {"title": "Security news"})
     assert fields["kind"] == "prompt" and fields["result_html"] is True
-    assert fields["args"]["titel"] == "Security-News"
+    assert fields["args"]["title"] == "Security news"
     # Defaults that are not overridden are kept.
-    assert fields["args"]["sprache"] == "Deutsch" and fields["args"]["quellen"]
+    assert fields["args"]["language"] == "English" and fields["args"]["sources"]
 
 
 def test_the_template_renders_without_open_placeholders():
     """A template that leaves gaps out of the box would be a trap."""
-    fields = apply("recherche-digest")
+    fields = apply("research-digest")
     assert open_placeholder(fields["prompt"], fields["args"]) == []
     text = render(fields["prompt"], fields["args"])
     assert "{{" not in text and "Hacker News" in text
@@ -72,4 +72,4 @@ def test_an_unknown_template():
 def test_the_listing_shows_parameters():
     entries = {v["key"]: v for v in listing()}
     assert set(entries) == set(JOB_TEMPLATES)
-    assert "quellen" in entries["recherche-digest"]["params"]
+    assert "sources" in entries["research-digest"]["params"]

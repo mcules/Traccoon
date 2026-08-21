@@ -45,8 +45,8 @@ async def test_capping_says_so_and_ends_on_a_line_boundary(monkeypatch):
     raw = _diff(4, 60)
     text = await _text(monkeypatch, raw, 1000)
 
-    assert "Diff gekappt" in text
-    assert "KEIN unvollständiger Code" in text
+    assert "the diff was capped" in text
+    assert "NOT incomplete code" in text
     header = text.split("\n[... Diff gekappt")[0]
     assert header.endswith("\n") or header == "", "cut in the middle of the row"
 
@@ -55,7 +55,7 @@ async def test_missing_files_are_named(monkeypatch):
     """So that the reviewer knows where to look itself, instead of guessing."""
     text = await _text(monkeypatch, _diff(4, 60), 1000)
 
-    assert "datei_3.py" in text.split("Diff gekappt")[1]
+    assert "datei_3.py" in text.split("the diff was capped")[1]
 
 
 async def test_the_diff_also_shows_uncommitted_fixes(monkeypatch, tmp_path):

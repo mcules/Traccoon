@@ -39,17 +39,17 @@ def _invite_link(token: str) -> str:
 
 async def _send_invite_mail(db: AsyncSession, inv: ProjectInvitation, project: Project) -> None:
     link = _invite_link(inv.token)
-    subject = f"Einladung zum Projekt „{project.name}“ auf Traccoon"
+    subject = f"An invitation to the project \u201c{project.name}\u201d on Traccoon"
     text = (
-        f"Du wurdest zum Projekt „{project.name}“ ({project.key}) auf Traccoon eingeladen.\n\n"
-        f"Klicke auf folgenden Link, um beizutreten (anmelden oder registrieren):\n{link}\n\n"
-        f"Der Link ist {INVITE_TTL_DAYS} Tage gültig."
+        f"You have been invited to the project \u201c{project.name}\u201d ({project.key}) on Traccoon.\n\n"
+        f"Follow this link to join (sign in or register):\n{link}\n\n"
+        f"The link is valid for {INVITE_TTL_DAYS} days."
     )
     html = (
-        f"<p>Du wurdest zum Projekt <b>{project.name}</b> ({project.key}) auf "
-        f"🦝 Traccoon eingeladen.</p>"
-        f"<p><a href=\"{link}\">Jetzt beitreten</a> (anmelden oder registrieren).</p>"
-        f"<p style=\"color:#888;font-size:12px\">Der Link ist {INVITE_TTL_DAYS} Tage gültig.</p>"
+        f"<p>You have been invited to the project <b>{project.name}</b> ({project.key}) on "
+        f"\U0001f99d Traccoon.</p>"
+        f"<p><a href=\"{link}\">Join now</a> (sign in or register).</p>"
+        f"<p style=\"color:#888;font-size:12px\">The link is valid for {INVITE_TTL_DAYS} days.</p>"
     )
     await send_mail(db, inv.email, subject, html, text)
 

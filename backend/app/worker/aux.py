@@ -35,9 +35,9 @@ log = logging.getLogger("traccoon.aux")
 # The side tasks for which a setting of its own exists. Deliberately few: every further one
 # wants a justification, because otherwise the configuration frays into settings nobody maintains.
 AUX_TASKS = {
-    "compression": "Langen Gesprächsverlauf zusammenfassen (Kontext-Kompaktierung)",
-    "title": "Kurzen Titel für einen Eingang oder ein Gespräch bilden",
-    "curator": "Gelerntes Gedächtnis sichten und aufräumen",
+    "compression": "Summarise a long conversation (compacting the context)",
+    "title": "Form a short title for an intake or a conversation",
+    "curator": "Look through the learned memory and tidy it up",
 }
 
 # Key in app_settings, for instance `aux.compression`. The value is JSON:

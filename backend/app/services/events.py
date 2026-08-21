@@ -32,7 +32,7 @@ log = logging.getLogger("events")
 # Events Traccoon reports itself. Names of your own are allowed (webhook, API), this list
 # only feeds the picker in the editor.
 BUILTIN_EVENTS: list[tuple[str, str]] = [
-    ("issue.created", "Ticket angelegt"),
+    ("issue.created", "a ticket was created"),
     ("issue.assigned", "Agent zugewiesen"),
     ("issue.status_changed", "Board-Spalte gewechselt"),
     ("issue.agent_status_changed", "KI-Zustand gewechselt"),

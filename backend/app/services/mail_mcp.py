@@ -41,7 +41,7 @@ TOOLS: list[dict] = [
          "account": {"type": "string", "description": "Name des Postfachs"}},
          "required": ["account"]}},
     {"name": "mail_search", "art": "lesen",
-     "description": "Nachrichten eines Ordners auflisten oder durchsuchen (Volltext).",
+     "description": "List or search the messages of a folder (full text).",
      "schema": {"type": "object", "properties": {
          "account": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"},
          "query": {"type": "string", "description": "Volltext, leer = alle"},
@@ -222,7 +222,7 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
 
     if name == "mail_spam":
         if not account.folder_junk:
-            raise ValueError("Dieses Postfach hat keinen Spam-Ordner")
+            raise ValueError("this mailbox has no spam folder")
         await mailbox.move(account, folder, int(args["uid"]), account.folder_junk)
         return {"ok": True, "folder": account.folder_junk}
 

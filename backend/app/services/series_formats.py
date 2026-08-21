@@ -73,7 +73,7 @@ def moment(value: Any) -> dt.datetime | None:
 def _battery(value: Any) -> float | None:
     """Akkustand in Prozent.
 
-    OwnTracks meldet 0–100, andere melden 0–1 als Bruchteil. Ein Wert unter 1 ist deshalb
+    OwnTracks reports 0-100, others report 0-1 as a fraction. A value below 1 is therefore
     ambiguous — here it counts as a fraction, because a phone with 0.8 % battery would long
     since be off. Exactly this mix-up once produced 8200 % on the way to dawarich.
     """

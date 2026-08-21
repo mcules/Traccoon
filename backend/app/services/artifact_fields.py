@@ -236,7 +236,7 @@ async def check(db: AsyncSession, field: ArtifactField, values: list,
         text = str(w).strip()
         hits = possible.get(text)
         if hits is None:
-            allowed = ", ".join(possible) or "— die Werteliste ist leer"
+            allowed = ", ".join(possible) or "— the list of values is empty"
             raise FieldError(
                 f'"{text}" is not in the value list of "{field.label}" ({allowed})')
         mapping.append((hits.value, hits.id))

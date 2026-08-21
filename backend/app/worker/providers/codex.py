@@ -40,7 +40,7 @@ def _text_of(content: Any) -> str:
             if b.get("type") == "text":
                 parts.append(b.get("text") or "")
             elif b.get("type") == "image":
-                parts.append("[Screenshot/Bild – für dieses Modell nicht darstellbar]")
+                parts.append("[a screenshot/image – this model cannot show it]")
         return "\n".join(p for p in parts if p)
     return str(content or "")
 

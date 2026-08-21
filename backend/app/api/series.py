@@ -55,7 +55,7 @@ async def ingest_post(token: str, request: Request, db: AsyncSession = Depends(g
     """OwnTracks, Overland, Home Assistant und alles Flache."""
     try:
         payload = await request.json()
-    except Exception:  # noqa: BLE001 - ein leerer Rumpf ist erlaubt (Traccar per POST)
+    except Exception:  # noqa: BLE001 - an empty body is allowed (Traccar over POST)
         payload = {}
     return await _ingest(db, token, payload, dict(request.query_params))
 

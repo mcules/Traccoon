@@ -58,15 +58,15 @@ async def subject_from_payload(db: AsyncSession, definition, payload: dict, ctx:
     if not path:
         # No field named: the flow needs an artifact, the trigger delivers none.
         # That is a setup error and should stand out instead of running into nothing silently.
-        return None, None, (f"Dieser Ablauf hängt an einem Artefakt "
-                            f"({definition.subject_kind.value}); im Start-Knoten ist aber "
-                            f"kein Feld dafür benannt.")
+        return None, None, (f"This flow hangs off an artifact "
+                            f"({definition.subject_kind.value}); the start node names no field "
+                            f"for it, though.")
 
     raw = _dig(payload, path)
     if raw is None:
         raw = _dig(ctx, path)
     if raw is None or str(raw).strip() == "":
-        return None, None, f"Feld {path!r} fehlt in der Nutzlast — kein Artefakt bestimmbar."
+        return None, None, f"The field {path!r} is missing from the payload — no artifact can be found."
     value = str(raw).strip()
 
     if definition.subject_kind == WorkflowSubjectKind.issue:
