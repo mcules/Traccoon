@@ -183,8 +183,8 @@ async def execute(db: AsyncSession, user: User, name: str, args: dict) -> Any:
         raise PermissionError(f"Der Ordner „{folder}\" ist für Werkzeuge gesperrt")
 
     if name == "mail_folders":
-        alle = await mailbox.folder(account, count=True)
-        return [o for o in alle if not ignores(o["name"], account.mcp_ignore_folders)]
+        all_rows = await mailbox.folder(account, count=True)
+        return [o for o in all_rows if not ignores(o["name"], account.mcp_ignore_folders)]
 
     if name == "mail_search":
         return await mailbox.listing(account, folder, str(args.get("query") or ""),

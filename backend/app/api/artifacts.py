@@ -271,9 +271,9 @@ async def list_artifacts(
         ))
     if with_values and out:
         # One collective query for the whole list instead of one per row.
-        alle = await fields.values_for(db, [o.id for o in out])
+        all_rows = await fields.values_for(db, [o.id for o in out])
         for o in out:
-            o.values = alle.get(o.id, {})
+            o.values = all_rows.get(o.id, {})
     return out
 
 

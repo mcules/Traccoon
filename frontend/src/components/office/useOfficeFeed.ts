@@ -61,6 +61,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getToken } from "../../api";
+import { tr } from "../../i18n";
 import {
   EVENT_PAGE_LIMIT, EVENT_VERSION, officeApi, officeWsUrl, sidKey, subscribeMessage,
   type CostRollup, type EventPage, type Scope, type Sid, type WsIn,
@@ -435,7 +436,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
         // 4401/4403 come from the authentication of the socket, and retrying does not help. A
         // 401 on the HTTP path is already redirected hard by `src/api.ts`.
         if (e.code === 4401 || e.code === 4403) {
-          setWsError("Keine Berechtigung für den Live-Strom des Büros.");
+          setWsError(tr("office.no_permission_live"));
           return;
         }
         const wait = RECONNECT_MS[Math.min(attemptRef.current, RECONNECT_MS.length - 1)];

@@ -34,7 +34,7 @@ export default function AssistantChat() {
   const [showArchive, setShowArchive] = useState(false);
   // Older pages, fetched on demand. They stand before the live page and do not refresh
   // themselves: what is past does not change.
-  const [aeltere, setAeltere] = useState<ChatMsg[]>([]);
+  const [older, setOlder] = useState<ChatMsg[]>([]);
   const [stillMore, setStillMore] = useState(false);
   const listingRef = useRef<HTMLDivElement>(null);
   const firstImage = useRef(true);
@@ -49,13 +49,13 @@ export default function AssistantChat() {
   const inv = () => qc.invalidateQueries({ queryKey: ["assistant-chat"] });
   const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
-  const messages = [...aeltere, ...(data?.messages || [])];
-  const more = aeltere.length ? stillMore : !!data?.more;
+  const messages = [...older, ...(data?.messages || [])];
+  const more = older.length ? stillMore : !!data?.more;
 
   // Switching between conversation and archive starts over; the pages of the one have
   // nothing to do with the other.
   useEffect(() => {
-    setAeltere([]); setStillMore(false); firstImage.current = true;
+    setOlder([]); setStillMore(false); firstImage.current = true;
   }, [showArchive]);
 
   const send = useMutation({
@@ -72,12 +72,12 @@ export default function AssistantChat() {
     mutationFn: (id: number) => api.post(`/assistant/chat/${id}/${showArchive ? "unarchive" : "archive"}`),
     // The id comes back as the second argument, so the loaded older pages can drop that one
     // row instead of being thrown away and reloaded.
-    onSuccess: (_answer, id) => { setAeltere((v) => v.filter((m) => m.id !== id)); inv(); },
+    onSuccess: (_answer, id) => { setOlder((v) => v.filter((m) => m.id !== id)); inv(); },
     onError: error,
   });
   const allArchive = useMutation({
     mutationFn: () => api.post("/assistant/chat/archive-all"),
-    onSuccess: () => { setAeltere([]); setStillMore(false); firstImage.current = true; inv(); },
+    onSuccess: () => { setOlder([]); setStillMore(false); firstImage.current = true; inv(); },
     onError: error,
   });
 
@@ -88,7 +88,7 @@ export default function AssistantChat() {
     try {
       const page = await api.get<Page>(
         `/assistant/chat?limit=20&before=${oldest}${showArchive ? "&archive=1" : ""}`);
-      setAeltere((v) => [...page.messages, ...v]);
+      setOlder((v) => [...page.messages, ...v]);
       setStillMore(page.more);
     } catch (e) { error(e); }
   }
@@ -116,7 +116,7 @@ export default function AssistantChat() {
     // would be torn away by every answer.
     const belowNear = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
     if (belowNear) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
-  }, [lastId, states, aeltere.length]);
+  }, [lastId, states, older.length]);
 
   return (
     <div className="flex h-[calc(100vh-16rem)] flex-col">

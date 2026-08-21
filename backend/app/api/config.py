@@ -254,9 +254,9 @@ async def complete_sprint(
 ):
     """Finish a sprint. Unfinished tickets wander back into the backlog."""
     sp = await _sprint_of_project(db, sprint_id, access.project.id)
-    offen = (await db.execute(select(Issue).where(
+    open_ones = (await db.execute(select(Issue).where(
         Issue.sprint_id == sp.id, Issue.resolved_at.is_(None)))).scalars().all()
-    for issue in offen:
+    for issue in open_ones:
         issue.sprint_id = None
     sp.state = SprintState.closed
     sp.end_date = sp.end_date or dt.datetime.now(tz=dt.timezone.utc)

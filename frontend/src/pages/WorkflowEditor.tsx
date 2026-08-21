@@ -391,7 +391,7 @@ export default function WorkflowEditor() {
       const stored = await workflowApi.saveGraph(wfId, { graph });
       // Nothing substantive changed: then there is nothing to publish either.
       if (stored.result === "layout" && stored.version.status === "published") {
-        setMsg("Nichts zu veröffentlichen — nur die Anordnung war anders.");
+        setMsg(tr("editor.nothing_to_publish"));
         return;
       }
       await workflowApi.publish(wfId, stored.version.id);

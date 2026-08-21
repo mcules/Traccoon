@@ -53,7 +53,7 @@ export default function Projects() {
           <label className="flex flex-col text-xs text-muted">Übergeordnetes Projekt
             <select value={parentId} onChange={(e) => setParentId(e.target.value)}
               className="mt-1 rounded border border-line bg-surface px-2 py-1.5 text-ink">
-              <option value="">— Eigenständig —</option>
+              <option value="">{tr("projects.standalone_option")}</option>
               {projects?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </label>

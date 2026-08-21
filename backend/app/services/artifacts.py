@@ -245,11 +245,11 @@ async def backfill_hardware_artifacts(db: AsyncSession) -> int:
     from ..models.hardware import HardwareAsset
     from ..models.workflow import WorkflowInstance
 
-    offen = (await db.execute(
+    open_ones = (await db.execute(
         select(HardwareAsset).where(HardwareAsset.artifact_id.is_(None)))).scalars().all()
-    for asset in offen:
+    for asset in open_ones:
         await ensure_for_asset(db, asset)
-    if offen:
+    if open_ones:
         await db.flush()
 
     instances = (await db.execute(
@@ -260,11 +260,11 @@ async def backfill_hardware_artifacts(db: AsyncSession) -> int:
         asset = await db.get(HardwareAsset, inst.hardware_asset_id)
         if asset is not None and asset.artifact_id:
             inst.artifact_id = asset.artifact_id
-    if offen or instances:
+    if open_ones or instances:
         await db.commit()
         log.info("Artifacts added later: %d units, %d process instances",
-                 len(offen), len(instances))
-    return len(offen)
+                 len(open_ones), len(instances))
+    return len(open_ones)
 
 
 async def reconcile(db: AsyncSession) -> dict:
@@ -288,11 +288,11 @@ async def reconcile(db: AsyncSession) -> dict:
     result = {"tickets_neu": 0, "tickets_angeglichen": 0, "hardware_angeglichen": 0}
 
     # 1) Fehlende Artefakt-Zeilen anlegen.
-    offen = (await db.execute(
+    open_ones = (await db.execute(
         select(Issue).where(Issue.artifact_id.is_(None)))).scalars().all()
-    for issue in offen:
+    for issue in open_ones:
         await ensure_for_issue(db, issue)
-    result["tickets_neu"] = len(offen)
+    result["tickets_neu"] = len(open_ones)
 
     def _title(text: str | None, replacement: str) -> str:
         return (text or replacement)[:500]

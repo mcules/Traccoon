@@ -350,9 +350,9 @@ async def _set_field(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
             path = {str(v) for v in new}
             new = [v for v in existing if v not in path]
 
-    gesetzt = await af.set_values(db, artifact.id, field, new)
-    inst.context = {**ctx, "fields": {**(ctx.get("fields") or {}), key: gesetzt}}
-    return {"action": "set_field", "field": key, "mode": mode, "values": gesetzt}
+    marked = await af.set_values(db, artifact.id, field, new)
+    inst.context = {**ctx, "fields": {**(ctx.get("fields") or {}), key: marked}}
+    return {"action": "set_field", "field": key, "mode": mode, "values": marked}
 
 
 async def _set_status(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:

@@ -171,7 +171,7 @@ def _dig_payload(data, path: str):
 
 # Hard ceiling for a held-open request. Whoever waits here occupies a connection, and a
 # sender that runs into ITS own timeout meanwhile gets nothing out of a longer wait.
-ANSWER_MAX_SEK = 120
+ANSWER_MAX_SEC = 120
 
 
 async def _wait_on_answer(instance_id: int, sub: WebhookSub) -> dict:
@@ -191,7 +191,7 @@ async def _wait_on_answer(instance_id: int, sub: WebhookSub) -> dict:
     from ..models.enums import WorkflowInstanceStatus as IStatus
     from ..models.workflow import WorkflowInstance
 
-    limit = max(0, min(int(sub.response_timeout or 0), ANSWER_MAX_SEK))
+    limit = max(0, min(int(sub.response_timeout or 0), ANSWER_MAX_SEC))
     clock = asyncio.get_running_loop().time
     end = clock() + limit
     karte = sub.response_map or {}
@@ -246,11 +246,11 @@ def _set_deep(target: dict, path: str, value) -> None:
         return
     node = target
     for t in parts[:-1]:
-        naechster = node.get(t)
-        if not isinstance(naechster, dict):
-            naechster = {}
-            node[t] = naechster
-        node = naechster
+        next_one = node.get(t)
+        if not isinstance(next_one, dict):
+            next_one = {}
+            node[t] = next_one
+        node = next_one
     node[parts[-1]] = value
 
 

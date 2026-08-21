@@ -187,7 +187,7 @@ function InboxList() {
                 {entry.category && <Tag>{entry.category}</Tag>}
                 {entry.sensitive && <span title="sensibel — vertraulich behandeln">🔒</span>}
                 {entry.redaction === "unredacted" && (
-                  <Tag color="yellow" title={tr("inbox.full_text_released")}>ungeschwärzt</Tag>
+                  <Tag color="yellow" title={tr("inbox.full_text_released")}>{tr("inbox.unredacted")}</Tag>
                 )}
                 <span className="ml-auto text-xs text-muted">{formatTime(entry.created_at)}</span>
               </div>

@@ -54,11 +54,11 @@ def _task(job: Job) -> str:
     # A placeholder without a value stayed put literally in the job world — visibly wrong
     # instead of silently empty. The flow language fills it with nothing, so it is said here:
     # whoever needs it enters the value into the start context.
-    offen = sorted({m for m in re.findall(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", text)}
+    open_ones = sorted({m for m in re.findall(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", text)}
                    - set(values) - set(ZEITWERTE))
-    if offen:
+    if open_ones:
         log.warning("Job %s: %s ohne Wert im Parametersatz — im Ablauf bleiben sie leer",
-                    job.name, ", ".join(offen))
+                    job.name, ", ".join(open_ones))
     return text
 
 _COL, _ROW = 260, 130

@@ -42,7 +42,7 @@ IMAP_MCP_URL = os.getenv("IMAP_MCP_URL", "http://imap-mcp:3010/mcp")
 # Mark per account and folder: up to which UID learning has already happened.
 STATE_KEY = "spam_lernstand"
 # How many messages one pass looks at per folder at most (imap-mcp caps at 500).
-STAPEL = 500
+BATCH = 500
 
 
 def _state_key(account: str, folder: str) -> str:
@@ -96,7 +96,7 @@ async def _search(account: str, folder: str, limit: int) -> list[dict]:
 
 
 async def relearn(db: AsyncSession, owner_id: int | None, account: str, folder: str, *,
-                     is_spam: bool, limit: int = STAPEL) -> tuple[int, int]:
+                     is_spam: bool, limit: int = BATCH) -> tuple[int, int]:
     """Neue Nachrichten eines Ordners lernen. → (gelesen, gelernt).
 
     "New" means: UID greater than the mark. On the first pass the mark is empty, and then the
@@ -180,7 +180,7 @@ def recipient(hits: dict, my: frozenset[str]) -> list[tuple[str, str]]:
 
 
 async def answer_contacts(db: AsyncSession, owner_id: int | None,
-                           limit: int = STAPEL) -> int:
+                           limit: int = BATCH) -> int:
     """Whoever I have written to is wanted. Returns the number of new addresses.
 
     The strongest ham signal a mailbox can produce, and it costs no question: whoever got an
@@ -266,7 +266,7 @@ async def spam_feedback(db: AsyncSession, owner_id: int | None) -> int:
 
 
 async def coldstart(db: AsyncSession, owner_id: int | None, *,
-                    limit: int = STAPEL) -> dict[str, int]:
+                    limit: int = BATCH) -> dict[str, int]:
     """Once over everything that is already decided: spam folder and inbox or archive.
 
     Archives count as well: the post somebody kept stands there, and that is exactly the

@@ -47,7 +47,7 @@ export default function SubflowConfig({
       <label className="block text-xs font-medium text-muted">
         Aufzurufender Ablauf
         <select value={value} onChange={(e) => set(e.target.value)} className={`mt-1 ${inp}`}>
-          <option value="">— wählen —</option>
+          <option value="">{tr("subflow_config.choose")}</option>
           <optgroup label={tr("subflow_config.named_flows_resolved_per_project")}>
             {SLOTS.map((s) => (
               <option key={s} value={`slot:${s}`}>{tr(SLOT_LABELS[s])}</option>

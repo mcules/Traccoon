@@ -491,10 +491,10 @@ async def test_a_flow_marks_a_mail_as_read(db, monkeypatch):
     db.add(account)
     await db.commit()
 
-    gesetzt = []
+    marked = []
 
     async def flag(k, folder, uid, kind, an):
-        gesetzt.append((k.id, folder, uid, kind, an))
+        marked.append((k.id, folder, uid, kind, an))
 
     monkeypatch.setattr(mailbox, "flag", flag)
     inst = type("Inst", (), {"context": {}, "started_by": anna.id,
@@ -503,7 +503,7 @@ async def test_a_flow_marks_a_mail_as_read(db, monkeypatch):
                                                         "folder": "INBOX", "uid": 7}})
 
     assert result["set"] is True and result["flag"] == "seen" and result["on"] is True
-    assert gesetzt == [(account.id, "INBOX", 7, "seen", True)]
+    assert marked == [(account.id, "INBOX", 7, "seen", True)]
 
 
 async def test_without_a_mail_in_the_context_the_node_says_why(db):

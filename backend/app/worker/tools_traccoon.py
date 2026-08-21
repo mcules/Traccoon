@@ -227,10 +227,10 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         db.add(j)
         await db.commit()
         await db.refresh(j)
-        offen = open_placeholder(j.prompt, j.args)
+        open_ones = open_placeholder(j.prompt, j.args)
         return (f"Job #{j.id} '{j.name}' angelegt ({j.type}:{j.schedule}, "
                 f"{'an' if j.enabled else 'aus'})."
-                + (f" ACHTUNG: Platzhalter ohne Wert: {', '.join(offen)}." if offen else ""))
+                + (f" ACHTUNG: Platzhalter ohne Wert: {', '.join(open_ones)}." if open_ones else ""))
 
     if name == "traccoon_update_job":
         j = await _job(args.get("job_id"))

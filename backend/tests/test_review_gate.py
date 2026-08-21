@@ -185,17 +185,17 @@ async def test_progress_may_carry_on(db, monkeypatch):
     from app.worker.runtime import RunResult
 
     _, proj, issue, _ = await _project_with_ticket(db)
-    runde = {"n": 0}
+    round_no = {"n": 0}
 
     async def fake_run_agent(**kw):
         if kw["agent"].role != "code_reviewer":
             return RunResult("done", "korrigiert")
-        runde["n"] += 1
+        round_no["n"] += 1
         # Satisfied only in round 4, clearly more than the earlier two.
-        return RunResult("done", "<review-ok/>" if runde["n"] >= 4 else f"{runde['n']}. Befund")
+        return RunResult("done", "<review-ok/>" if round_no["n"] >= 4 else f"{round_no['n']}. Befund")
 
     async def fake_diff(_ctx):
-        return f"--- a\n+++ b\n+stand {runde['n']}\n"   # changes every round
+        return f"--- a\n+++ b\n+stand {round_no['n']}\n"   # changes every round
 
     async def fake_load_agent(_db, role, *a, **k):
         class A:
@@ -217,7 +217,7 @@ async def test_progress_may_carry_on(db, monkeypatch):
         RunResult("done", "fertig"), _Ctx(), owner_id=None, task_id="t-1", base_urls={})
 
     assert result.blocker_kind is None, "a passed review must not block"
-    assert runde["n"] == 4
+    assert round_no["n"] == 4
 
 
 async def test_breakdown_notices_do_not_reach_the_prompt(db):

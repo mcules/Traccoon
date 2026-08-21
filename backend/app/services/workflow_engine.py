@@ -1884,10 +1884,10 @@ async def dead_runs_close() -> int:
     limit = _dt.datetime.now(_dt.UTC) - _dt.timedelta(seconds=GRACE)
     closed = 0
     async with SessionLocal() as db:
-        offen = (await db.execute(select(Run).where(
+        open_ones = (await db.execute(select(Run).where(
             Run.status == "running", Run.finished_at.is_(None),
             Run.started_at < limit))).scalars().all()
-        for run in offen:
+        for run in open_ones:
             if await run_alive(run.task_id):
                 continue
             run.status = "failed"

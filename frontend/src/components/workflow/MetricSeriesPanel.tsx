@@ -173,11 +173,11 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
 
       {t?.days_left != null && (
         <p className="text-xs text-muted">
-          Die gestrichelte Linie ist die Fortschreibung dieser Punkte:{" "}
-          <b className="text-ink">{t.per_day} {series.unit}/Tag</b>, erreicht{" "}
-          <b className="text-ink">{history?.target} {series.unit}</b> am{" "}
-          <b className="text-ink">{t.empty_at}</b> — in {t.days_left} Tagen. Güte {t.fit}
-          {(t.fit ?? 1) < 0.8 && " (die Punkte streuen — die Zahl ist grob)"}.
+          {tr("metric_series_panel.trend_line", { per_day: `${t.per_day} ${series.unit}`,
+                                                  target: `${history?.target} ${series.unit}`,
+                                                  date: String(t.empty_at), days: String(t.days_left),
+                                                  fit: String(t.fit) })}
+          {(t.fit ?? 1) < 0.8 && ` ${tr("metric_series_panel.points_scatter")}`}
         </p>
       )}
 

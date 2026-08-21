@@ -89,7 +89,7 @@ export default function Mail() {
 
   if (!accounts?.length) {
     return (
-      <Area hint="Noch kein Postfach hinterlegt.">
+      <Area hint={tr("mail.no_mailbox_yet")}>
         <p className="text-sm text-muted">
           Konten und Identitäten stehen im Konto unter <b>Mail-Konten</b>.
         </p>
@@ -352,14 +352,14 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
   const remove = useMutation({
     mutationFn: () => api.post(`/mailbox/accounts/${accountId}/folders/delete`, { folder: folder }),
     onSuccess: () => { setQuestion(null); refresh(); onDeleted(); },
-    onError: (e) => { setQuestion(null); gonewrong("Löschen")(e); },
+    onError: (e) => { setQuestion(null); gonewrong(tr("mail.delete"))(e); },
   });
 
   return (
     <>
       <div className="flex flex-wrap gap-2">
         <Rowbutton onClick={() => setQuestion("gelesen")}>✓ Alle gelesen</Rowbutton>
-        <Rowbutton danger onClick={() => setQuestion("loeschen")}>🗑 Ordner löschen</Rowbutton>
+        <Rowbutton danger onClick={() => setQuestion("loeschen")}>{tr("mail.delete_folder")}</Rowbutton>
       </div>
       {notice && <div className="text-xs text-green-400">{notice}</div>}
 
@@ -367,16 +367,16 @@ function FolderHandgrips({ accountId, folder: folder, onDeleted, onError: onErro
         <ConfirmDialog
           title="Alle als gelesen markieren?"
           text={`Alles Ungelesene in „${folder}" wird auf gelesen gesetzt.`}
-          hint="Rückgängig geht das nur Nachricht für Nachricht."
+          hint={tr("mail.undo_message_by_message")}
           danger={false} confirmText="Markieren" runs={read.isPending}
           onClose={() => setQuestion(null)} onConfirm={() => read.mutate()} />
       )}
       {question === "loeschen" && (
         <ConfirmDialog
           title={`Ordner „${folder}" löschen?`}
-          text="Der Ordner und alles darin verschwindet — auf dem Server, nicht nur hier."
-          hint="Das ist endgültig. Sonderordner (Posteingang, Gesendet, Entwürfe, Papierkorb, Spam) sind geschützt."
-          confirmText="Endgültig löschen" runs={remove.isPending}
+          text={tr("mail.folder_disappears")}
+          hint={tr("mail.final_special_protected")}
+          confirmText={tr("mail.delete_finally")} runs={remove.isPending}
           onClose={() => setQuestion(null)} onConfirm={() => remove.mutate()} />
       )}
     </>
@@ -493,7 +493,7 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
           <span className="text-xs text-muted">
             {page * limit + 1}–{Math.min((page + 1) * limit, data!.total)} von {data!.total}
           </span>
-          <Rowbutton onClick={() => setPage(page + 1)}>älter →</Rowbutton>
+          <Rowbutton onClick={() => setPage(page + 1)}>{tr("mail.older")}</Rowbutton>
         </div>
       )}
     </Area>
@@ -690,11 +690,11 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
   });
   const noSpam = useMutation({
     mutationFn: () => api.post(`${basis}/not-spam`, { folder: folder }),
-    onSuccess: after, onError: gonewrong("Zurückholen"),
+    onSuccess: after, onError: gonewrong(tr("mail.recall")),
   });
   const remove = useMutation({
     mutationFn: () => api.post(`${basis}/delete`, { folder: folder }),
-    onSuccess: after, onError: gonewrong("Löschen"),
+    onSuccess: after, onError: gonewrong(tr("mail.delete_2")),
   });
 
   const forMail = (actions || []).filter((a) => a.scope !== "attachment");
@@ -737,7 +737,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
         ))}
         <Rowbutton onClick={() => setMoveOpen(true)}>📁 Verschieben</Rowbutton>
         <div className="flex-1" />
-        <Rowbutton danger onClick={() => remove.mutate()}>🗑 Löschen</Rowbutton>
+        <Rowbutton danger onClick={() => remove.mutate()}>{tr("mail.delete_3")}</Rowbutton>
       </>}
     >
       {m && (
@@ -919,7 +919,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
       }>
       <div className="space-y-3">
         {!identities?.length && (
-          <Errorrow text="Dieses Konto hat noch keine Identität — ohne sie steht kein Absender fest." />
+          <Errorrow text={tr("mail.account_without_identity")} />
         )}
         <Field label="Von">
           <select value={identity ?? ""} className={INPUT_VALUE}
@@ -945,7 +945,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
             onChange={(e) => setF({ ...f, text: e.target.value })} />
         </Field>
 
-        <Field label="Anhänge">
+        <Field label={tr("mail.attachments")}>
           <div className="space-y-2">
             {attachments.length > 0 && (
               <Listing>

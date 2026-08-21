@@ -46,7 +46,7 @@ export default function AgentTaskConfig({
           }}
           className={`mt-1 ${inp}`}
         >
-          <optgroup label="Aus den Projekt-Einstellungen">
+          <optgroup label={tr("agent_task_config.from_project_settings")}>
             <option value="plan_agent">{tr("agent_task_config.planner_of_the_project_default_architect")}</option>
             <option value="exec_agent">{tr("agent_task_config.executor_of_the_project_default_developer")}</option>
             <option value="review_agent">{tr("agent_task_config.reviewer_project")}</option>

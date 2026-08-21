@@ -294,7 +294,7 @@ function Operation() {
             <div className="flex flex-wrap items-center gap-2">
               <Tag color={STATUS_COLOR[l.status]}>{tr(STATUS_TEXT[l.status])}</Tag>
               <span className="font-medium text-ink">{l.definition_name}</span>
-              {l.hangs && <Tag color="yellow" title="Steht ungewöhnlich lange">hängt</Tag>}
+              {l.hangs && <Tag color="yellow" title={tr("processes.standing_unusually_long")}>{tr("processes.hangs")}</Tag>}
               {l.project_key && <Tag>{l.project_key}</Tag>}
               {l.subject_ref && (
                 <button
@@ -408,7 +408,7 @@ function Trigger() {
                 <span className="min-w-0 flex-1 truncate">{e.label}</span>
                 <code className="hidden shrink-0 text-[11px] text-muted sm:block">{e.event}</code>
                 <Tag color={e.listeners ? "violet" : "neutral"}
-                  title={e.listeners ? "So viele Abläufe hören darauf" : "Niemand hört darauf"}>
+                  title={e.listeners ? tr("processes.this_many_listen") : tr("processes.nobody_listens")}>
                   {e.listeners || "—"}
                 </Tag>
               </div>
