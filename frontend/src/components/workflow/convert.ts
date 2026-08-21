@@ -120,11 +120,11 @@ export function flowToGraph(nodes: FlowNode[], edges: Edge[]): WorkflowGraph {
  * down to the essentials.
  */
 /**
- * Der funktionale Inhalt eines Graphen, ohne die Anordnung.
+ * The functional content of a graph, without the arrangement.
  *
- * Das Gegenstück zu `workflow_graph.inhalts_signatur` im Backend, und beide müssen dieselbe
- * Antwort geben: sonst zeigt der Editor eine Abweichung, die der Server nicht sieht (oder
- * umgekehrt). Positionen fehlen bewusst — ein verschobener Kasten ändert nichts daran, was
+ * The counterpart to `workflow_graph.content_signature` in the backend, and both have to give
+ * the same answer: otherwise the editor shows a deviation the server does not see (or the other
+ * way round). Positions are deliberately missing — a moved box changes nothing about what
  * der Ablauf tut.
  */
 export function contentSignature(graph: WorkflowGraph | null | undefined): string {

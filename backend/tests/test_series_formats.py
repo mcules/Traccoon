@@ -1,4 +1,4 @@
-"""Die vier Sprachen der Standortmeldung, jede an ihrer eigenen Falle gemessen."""
+"""The four languages of a location report, each measured against its own trap."""
 import datetime as dt
 
 from app.services.series_formats import normalise, moment
@@ -28,7 +28,7 @@ def test_an_overland_batch_and_the_swapped_order():
     ]})
     assert len(points) == 2
     assert points[0]["lat"] == 50.0825 and points[0]["lon"] == 10.5663
-    # 0,42 ist ein Bruchteil, keine 0,42 Prozent.
+    # 0.42 is a fraction, not 0.42 percent.
     assert points[0]["extra"]["battery"] == 42.0
     assert points[0]["source"] == "overland"
 
@@ -71,13 +71,13 @@ def test_timestamps_in_all_common_shapes():
     assert moment(1787227200000) == should        # Millisekunden
     assert moment("2026-08-20T12:00:00Z") == should
     assert moment("2026-08-20T14:00:00+02:00") == should
-    # Ohne Zone gilt UTC — sonst haengt das Ergebnis an der Zone des Servers.
+    # Without a zone UTC applies — otherwise the result hangs on the zone of the server.
     assert moment("2026-08-20T12:00:00") == should
     assert moment("") is None and moment(None) is None and moment("gestern") is None
 
 
 def test_battery_as_a_fraction_and_as_a_percentage():
-    """Der Fehler, der beim Weg nach dawarich 8200 Prozent ergeben hat."""
+    """The mistake that produced 8200 percent on the way to dawarich."""
     assert normalise({"lat": 1, "lon": 1, "battery": 0.82})[0]["extra"]["battery"] == 82.0
     assert normalise({"lat": 1, "lon": 1, "battery": 82})[0]["extra"]["battery"] == 82.0
     assert normalise({"lat": 1, "lon": 1, "battery": 8200})[0]["extra"]["battery"] == 100.0

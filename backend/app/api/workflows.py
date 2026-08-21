@@ -527,11 +527,11 @@ async def get_workflow(
 
 
 async def _key_set(db: AsyncSession, d: WorkflowDefinition, raw: str) -> None:
-    """Den Schlüssel eines Ablaufs ändern — mit den drei Regeln, die daran hängen.
+    """Change the key of a flow — with the three rules that hang on it.
 
-    Er ist mehr als eine Beschriftung: Ein Slot findet seinen Ablauf darüber, und ein
-    ausgelieferter Satz wird bei jedem Start danach abgeglichen. Wo das zutrifft, bleibt er,
-    wie er ist; überall sonst darf er heißen, wonach die Sache heißt.
+    It is more than a label: a slot finds its flow through it, and a shipped set is matched
+    against it at every start. Where that applies it stays as it is; everywhere else it may be
+    called what the matter is called.
     """
     from ..core.slug import slug
 

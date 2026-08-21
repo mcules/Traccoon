@@ -55,7 +55,7 @@ export default function Processes() {
       {/* Kein persönlicher Prozess-Satz mehr an dieser Stelle: er ist eine Vollkopie ALLER
           Slots und hilft genau dort nicht, wo man ihn nehmen wollte — ereignisgetriebene
           Abläufe liefen doppelt, weil `events.listeners` nach Triggern sucht, nicht nach
-          Sätzen. Wer einen Ablauf anders haben will, legt einen eigenen an. */}
+          sets. Whoever wants a flow differently creates one of their own. */}
       {tab === "own" && <OwnWorkflowsPanel />}
       {tab === "metrics" && <MetricseriesPanel />}
       {tab === "documents" && <StoresPanel />}

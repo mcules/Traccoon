@@ -21,8 +21,8 @@ export default function AgentTaskConfig({
     staleTime: 5 * 60_000,
   });
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
-  // Ein Rollenname, den es (noch) nicht gibt, bleibt bedienbar: das Feld springt dann von
-  // selbst auf die freie Eingabe, statt den Wert stillschweigend zu verwerfen.
+  // A role name that does (not yet) exist stays operable: the field then switches to free
+  // input by itself instead of discarding the value silently.
   const known = new Set(["plan_agent", "exec_agent", "review_agent", "assigned",
                            ...agentOptions(agents).map(([w]) => w)]);
   const [ownRole, setOwnRole] = useState(
@@ -32,7 +32,7 @@ export default function AgentTaskConfig({
     <div className="space-y-3">
       {/* Auswahl statt Vorschlagsliste: ein Textfeld mit `datalist` zeigt erst beim Tippen,
           was es gibt — man muss also wissen, wonach man sucht. Bei einer Handvoll Rollen ist
-          das eine Gedächtnisprüfung ohne Grund. */}
+          that would be a memory check without a reason. */}
       <label className="block text-xs font-medium text-muted">
         Wer arbeitet
         <select
@@ -40,7 +40,7 @@ export default function AgentTaskConfig({
           onChange={(e) => {
             const value = e.target.value;
             // „Andere Rolle" schaltet auf ein Textfeld um, statt sofort etwas zu setzen:
-            // sonst stünde beim Umschalten kurz ein Rollenname da, den niemand gewählt hat.
+            // otherwise a role name nobody chose would briefly stand there while switching.
             setOwnRole(value === "__frei__");
             if (value !== "__frei__") onChange({ ...config, agent_role: value });
           }}
@@ -53,7 +53,7 @@ export default function AgentTaskConfig({
             <option value="assigned">{tr("agent_task_config.the_agent_assigned_to_the_ticket")}</option>
           </optgroup>
           <optgroup label="Fester Agent">
-            {/* Konkrete Rollen mit Herkunft der Definition, die tatsächlich greift. */}
+            {/* Concrete roles with the origin of the definition that actually applies. */}
             {agentOptions(agents).filter(([value]) => value).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}

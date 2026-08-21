@@ -24,7 +24,7 @@ const RS: Record<RuntimeState, { icon: string; ring: string; text: string }> = {
 export interface SourceHandleDef {
   id: string;
   label?: string;
-  color?: string; // Tailwind-bg-Klasse für den Punkt
+  color?: string; // Tailwind bg class for the dot
 }
 
 const handleDot = "!h-2.5 !w-2.5 !border !border-card";
@@ -68,7 +68,7 @@ export function BaseNode({
   nodeId?: string;
   title: string;
   icon?: string;
-  accent: string; // Tailwind-border-Klasse für die obere Akzentkante
+  accent: string; // Tailwind border class for the accent edge at the top
   selected?: boolean;
   runtimeState?: RuntimeState;
   /** Switched off step: visibly pale, so that it is not overlooked in the graph. */

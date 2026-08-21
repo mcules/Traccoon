@@ -104,7 +104,7 @@ async def test_numbers_stay_numbers():
 # --- Listen und Pfade ------------------------------------------------------------------
 
 async def test_field_pulls_from_a_list_of_objects():
-    """Der Weg vom Suchtreffer zum Satz: ohne das bleibt eine Trefferliste unbenutzbar."""
+    """The way from a search hit to a sentence: without it a hit list stays unusable."""
     ctx = {"t": {"hits": [{"filename": "a/VW T5.md", "x": 1}, {"filename": "b/Corsa C.md"}]}}
     assert fill('{{ t.hits | field:"filename" | join:", " }}', ctx) == "a/VW T5.md, b/Corsa C.md"
     # Einzelnes Objekt: derselbe Filter, ein Wert.
@@ -123,18 +123,18 @@ async def test_basename_turns_paths_into_names():
 
 
 async def test_max_answers_the_question_a_decision_cannot_ask():
-    """JSONLogic kennt hier kein `some`; „bringt irgendein Tag Schnee" wird deshalb erst zu
-    einer Zahl gemacht und dann verglichen."""
+    """JSONLogic knows no `some` here; "does any day bring snow" is therefore turned into a
+    number first and compared afterwards."""
     ctx = {"w": {"schnee": [0, 0, 1.4, 0.2], "leer": [], "text": ["0,5", "2"]}}
     assert fill("{{ w.schnee | max }}", ctx) == "1.4"
     assert fill("{{ w.schnee | min }}", ctx) == "0.0"
     assert fill("{{ w.leer | max }}", ctx) == "0", "nichts zu vergleichen ist kein Fehler"
     assert fill("{{ w.leer | min }}", ctx) == "0"
-    # Zahlen als Text (JSON-APIs liefern das gern) zählen mit.
+    # Numbers as text (JSON APIs like to deliver that) count along.
     assert fill("{{ w.text | max }}", ctx) == "2.0"
 
 
 async def test_new_filters_stand_in_the_catalog():
-    """Was der Editor nicht anbietet, findet niemand."""
+    """What the editor does not offer nobody finds."""
     names = {e["name"] for e in catalog()}
     assert {"field", "basename", "max", "min"} <= names

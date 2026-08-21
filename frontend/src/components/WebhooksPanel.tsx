@@ -45,9 +45,9 @@ function fmtContextMap(o: Record<string, string> | undefined): string {
 
 /** Eine Zuweisung je Zeile: `ziel = wert`.
  *
- * Kommagetrennt geht hier nicht: In festen Werten steht Text, und Text enthält Kommata
- * („Konto {account}, Nachricht {uid}“). Ein Wert, der als JSON durchgeht, wird auch als
- * JSON übernommen — so kommen `true` und Zahlen in den Kontext und nicht ihre Schreibweise.
+ * Comma separated does not work here: fixed values hold text, and text contains commas
+ * ("account {account}, message {uid}"). A value that passes as JSON is adopted as JSON — that
+ * is how `true` and numbers reach the context and not their spelling.
  */
 function parseAssignments(s: string): Record<string, any> {
   const out: Record<string, any> = {};
@@ -251,7 +251,7 @@ function WebhookDialog({ hook, error: error, runs: running, onClose, onSave }: {
           </Field>
         )}
         {/* Der Kontext gilt für beide Wege: Was der Auslöser weitergibt, hängt nicht daran,
-            ob ein Ablauf startet oder ein Ereignis gemeldet wird. */}
+            whether a flow starts or an event is reported. */}
         <div className="sm:col-span-2">
           <Field label={tr("webhooks_panel.context_payload")} hint={tr("webhooks_panel.without_mapping_whole_payload")}>
             <input value={f.context_map} onChange={(e) => setF({ ...f, context_map: e.target.value })}

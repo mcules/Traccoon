@@ -73,21 +73,21 @@ async def set_assistant_notify(d: StrIn, u: User = Depends(get_current_user),
 @router.put("/me/timezone", status_code=204)
 async def set_timezone(d: StrIn, u: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
-    """Zeitzone dieser Person (IANA). Sie entscheidet, was „8 Uhr" heißt — in der Oberfläche,
+    """Timezone of this person (IANA). It decides what "8 o'clock" means — in the UI,
     im Nachtfenster und im Zeitplan ihrer Jobs."""
     from zoneinfo import ZoneInfo, available_timezones
 
     name = (d.value or "").strip()
     if name not in available_timezones():
         raise Error(400, "err.unknown_timezone", "Unknown time zone '{name}'", name=name)
-    ZoneInfo(name)   # lädt sie einmal, damit ein kaputter Datenstand hier auffällt
+    ZoneInfo(name)   # loads it once, so a broken state of the data stands out here
     u.timezone = name
     await db.commit()
 
 
 @router.get("/timezones")
 async def list_timezones(_: User = Depends(get_current_user)) -> list[str]:
-    """Auswahl für die Oberfläche: die Zonen, die dieser Server wirklich kennt."""
+    """A choice for the UI: the zones this server really knows."""
     from zoneinfo import available_timezones
 
     return sorted(available_timezones())
@@ -138,7 +138,7 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
     if d.telegram_chat_id is not None:
         u.telegram_chat_id = d.telegram_chat_id.strip() or None
     if d.notify_destination_id is not None:
-        # Nur ein Ziel, das diese Person auch aufrufen darf — sonst wäre der Kanal ein Weg
+        # Only a destination this person may call as well — otherwise the channel would be a way
         # an fremde Anmeldedaten.
         from ..services.destinations import visible
         target_id = int(d.notify_destination_id) or None

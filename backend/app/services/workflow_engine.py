@@ -1056,11 +1056,11 @@ async def _wait(task_id: str, timeout: int, was: str) -> tuple[dict | None, dict
 
 
 def job_answer_text(inst: WorkflowInstance) -> str:
-    """Was der Ablauf als Ergebnis hinterlassen hat.
+    """What the flow left behind as its result.
 
-    Dieselbe Regel wie beim wartenden Webhook: Ergebnis ist, was er als `antwort` geschrieben
-    hat. Ein Job hatte bis jetzt keins — in seiner Historie stand „Instanz #N gestartet“, und
-    wer wissen wollte, was dabei herauskam, musste es sich suchen.
+    The same rule as with the waiting webhook: the result is what it wrote as `answer`. A job
+    had none until now — its history said "instance #N started", and whoever wanted to know what
+    came of it had to go looking.
     """
     answer = (inst.context or {}).get("answer")
     if isinstance(answer, (dict, list)):
@@ -1070,11 +1070,11 @@ def job_answer_text(inst: WorkflowInstance) -> str:
 
 
 async def _job_result(db, inst: WorkflowInstance) -> None:
-    """Das Ergebnis in die Job-Historie zurücktragen, sobald der Ablauf endet.
+    """Carry the result back into the job history as soon as the flow ends.
 
-    Nur für Abläufe, die länger brauchen als ihr Anstoß: Wer gleich durchläuft, wird schon
-    beim Start ausgewertet (`scheduler._start_workflow_job`) — dort ist der Lauf noch in
-    derselben Sitzung, hier ist er es nicht mehr.
+    Only for flows that take longer than their kick-off: whoever runs straight through is
+    evaluated at the start already (`scheduler._start_workflow_job`) — there the run is still in
+    the same session, here it is not any more.
     """
     if not str(inst.source or "").startswith("job:"):
         return

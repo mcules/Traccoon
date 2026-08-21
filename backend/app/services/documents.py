@@ -1,7 +1,7 @@
-"""Was eine Ablage kann: eine Fassung hinlegen, die letzte holen, alte vergessen.
+"""What a store can do: put a version down, fetch the latest, forget old ones.
 
-Das Gegenstück zu `services/metrics.py` für Texte. Bewusst schlicht: kein Format, keine
-Umwandlung, keine Suche — eine Fassung ist Überschrift plus Text plus Zeitpunkt.
+The counterpart to `services/metrics.py` for texts. Deliberately plain: no format, no
+conversion, no search — a version is a heading plus a text plus a point in time.
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def _now() -> dt.datetime:
 
 async def store(db: AsyncSession, owner_id: int | None, key: str, *, create: bool = False,
                  name: str = "", keep: int = 0) -> DocSeries | None:
-    """Die Ablage zu diesem Schlüssel; mit `anlegen` entsteht sie beim ersten Schreiben."""
+    """The store for this key; with `create` it comes into being on the first write."""
     a = (await db.execute(select(DocSeries).where(
         DocSeries.owner_user_id == owner_id, DocSeries.key == key))).scalars().first()
     if a is None and create:
@@ -40,7 +40,7 @@ async def store(db: AsyncSession, owner_id: int | None, key: str, *, create: boo
 async def put(db: AsyncSession, owner_id: int | None, key: str, *, title: str, text: str,
                    format: str = "markdown", name: str = "", keep: int = 0,
                    context: dict | None = None) -> DocEntry:
-    """Eine neue Fassung ablegen. Legt die Ablage an, wenn es sie noch nicht gibt."""
+    """Put a new version down. Creates the store if it does not exist yet."""
     a = await store(db, owner_id, key, create=True, name=name, keep=keep)
     entry = DocEntry(series_id=a.id, title=title[:300], body=text,
                        format=format or "markdown", context=context or {})
@@ -60,7 +60,7 @@ async def last(db: AsyncSession, owner_id: int | None, key: str) -> DocEntry | N
 
 
 async def _prune(db: AsyncSession, a: DocSeries) -> None:
-    """Alte Fassungen vergessen — sonst wächst ein täglicher Rückblick ohne Ende."""
+    """Forget old versions — otherwise a daily review grows without end."""
     limit = max(1, int(a.keep or STD_KEEP))
     old = (await db.execute(select(DocEntry).where(DocEntry.series_id == a.id)
                              .order_by(DocEntry.id.desc()).offset(limit))).scalars().all()

@@ -60,7 +60,7 @@ async def test_an_empty_answer_falls_back_safely(db, anna, monkeypatch):
     assert "geheim" not in str(out)
 
 
-# --- Was das Modell zurückgibt ---------------------------------------------------------
+# --- What the model returns ------------------------------------------------------------
 
 def test_the_string_false_is_not_a_yes():
     """`bool("false")` is True. Small models answer with exactly that string, and without

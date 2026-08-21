@@ -866,7 +866,7 @@ export default function Stage(props: StageProps): JSX.Element {
       {/* Absolut gesetzt, weil Größe und Lage aus `layout()` kommen: die Bühne ist das größte
           16:9-Rechteck im Host und sitzt mittig darin. Aus dem Fluss genommen kann sie den Host
           nicht auseinanderdrücken — sonst zöge der `ResizeObserver` sich selbst am Schopf.
-          `.pixel-canvas` hält den Browser beim Hochskalieren vom Weichzeichnen ab. */}
+          `.pixel-canvas` keeps the browser from smoothing while scaling up. */}
       <canvas
         ref={canvasRef}
         className="pixel-canvas absolute block"
@@ -906,7 +906,7 @@ export default function Stage(props: StageProps): JSX.Element {
 
       {/* Wandschirm: wer gerade in der Bildmitte steht. Dezent unten, nicht am Kopf der Figur —
           aus drei Metern liest man eine feste Zeile, kein wanderndes Schild. Text und
-          Sichtbarkeit setzt die Schleife imperativ, deshalb steht hier nichts drin. */}
+          visibility the loop sets imperatively, which is why nothing stands in here. */}
       {kiosk === true && (
         <span
           ref={midTagRef}
@@ -918,13 +918,13 @@ export default function Stage(props: StageProps): JSX.Element {
       )}
 
       {/* Leerer Zustand: ein ruhiger, leerer Raum und ein Satz. Kein Spinner, keine
-          Fehlermeldung — es ist ja nichts kaputt, es ist nur nichts passiert. */}
+          error message — nothing is broken after all, only nothing happened. */}
       {empty && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
           <p className="rounded border border-line bg-card/90 px-3 py-2 text-sm text-muted">
             {/* Bewusst ohne „in diesem Projekt": die Bühne steht auch auf der
                 projektübergreifenden Seite, und leer heißt hier nur „im geladenen
-                Fenster ist nichts passiert" — nicht „es gab hier nie einen Agenten". */}
+                window nothing happened" — not "there was never an agent here". */}
             {tr("stage.no_agent_run_see")}
           </p>
         </div>

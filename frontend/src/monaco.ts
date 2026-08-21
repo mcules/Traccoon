@@ -32,7 +32,7 @@ export function prewarmMonaco(): void {
     const ts = new tsWorker();
     const ed = new editorWorker();
     setTimeout(() => { try { ts.terminate(); ed.terminate(); } catch { /* egal */ } }, 5000);
-  } catch { /* Vorwärmen ist optional */ }
+  } catch { /* prewarming is optional */ }
 }
 
 // Language from the file extension (Monaco derives much over the path; here the most common ones).

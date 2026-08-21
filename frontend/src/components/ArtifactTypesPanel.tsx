@@ -92,8 +92,8 @@ export default function ArtifactTypesPanel() {
     onSuccess: () => { setDeleteKind(null); ok(); }, onError: fail,
   });
 
-  // Ein Satz, ein Schlüssel: die Hervorhebungen fallen weg, weil sich Markup mitten im Satz
-  // nicht mitübersetzen lässt (die Wortstellung ist anderswo eine andere).
+  // One sentence, one key: the highlights fall away, because markup in the middle of a sentence
+  // cannot be translated along (the word order is a different one elsewhere).
   return (
     <Area hint={tr("artifact_types_panel.artifact_starts_undefined_meaning")}>
       <Errorrow text={err} />

@@ -26,8 +26,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const me = await api.get<User>("/auth/me");
       setUser(me);
-      // Alle Uhrzeiten der Oberfläche laufen ab hier in der Zone dieser Person, nicht in der
-      // des Browsers — dieselbe Angabe, mit der der Server ihre Zeitpläne rechnet.
+      // All times of the UI run in the zone of this person from here on, not in that of the
+      // browser — the same entry the server computes their schedules with.
       setTimezone(me.timezone);
       // The server is the source of the theme: apply it on loading (no toggle UI here).
       if (me.theme === "light" || me.theme === "dark") {

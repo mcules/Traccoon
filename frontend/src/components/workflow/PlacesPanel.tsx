@@ -9,17 +9,17 @@ import {
   IconButton, Button, Listing, ListingEmpty, ListenLine, DeleteDialog } from "../ui";
 
 /**
- * Standortreihen: die Geräte, deren Spur Traccoon mitschreibt.
+ * Location series: the devices whose trace Traccoon records.
  *
- * Hier steht die Verwaltung, nicht die Karte — die ist ein Plugin. Was ein Gerät braucht, um
- * zu melden, ist eine Adresse mit Token; was Traccoon daraus macht, entscheiden drei Regeln
- * (Ruhefilter, Mindestabstand, Genauigkeitsgrenze) und die benannten Orte weiter unten.
+ * Here stands the administration, not the map — that is a plugin. What a device needs in order
+ * to report is an address with a token; what Traccoon makes of it is decided by three rules
+ * (rest filter, minimum distance, accuracy limit) and the named places further down.
  */
 
 const COLORS = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#a855f7", "#06b6d4", "#ec4899"];
 
-/** Tausender in der Sprache der Oberfläche, nicht in der des Browsers — die beiden sind hier
- *  nicht dasselbe: Die Sprache haengt am angemeldeten Menschen. */
+/** Thousands in the language of the UI, not in that of the browser — the two are not the same
+ *  thing here: the language hangs on the logged-in person. */
 const number = (n: number) => n.toLocaleString(language());
 
 const EMPTY = {
@@ -49,8 +49,8 @@ export default function LocationsPanel() {
       const settings = { min_distance_m, min_interval_s, max_accuracy_m };
       return key ? seriesApi.update(key, { ...remainder, settings })
                  : seriesApi.create({ ...remainder, kind: "location", settings });
-      // `rest` trägt den Schlüssel mit: Beim Anlegen ist er der Name, beim Ändern das
-      // Umbenennen. Der Server prüft, ob der neue schon vergeben ist.
+      // `rest` carries the key along: on creation it is the name, on a change the renaming.
+      // The server checks whether the new one is already taken.
     },
     onSuccess: () => { setDialog(null); setErr(""); inv(); }, onError: fail,
   });
@@ -146,7 +146,7 @@ function DeviceLine({ series: series, open: open, onOpen: onOpen_it, onEdit, onD
   );
 }
 
-/** Adresse zum Melden und die Freigaben — beides erst auf Klick, beides nur für Besitzer. */
+/** The address for reporting and the grants — both only on a click, both for owners only. */
 function Connection({ series: series, onError: onError }: { series: Series; onError: (e: unknown) => void }) {
   const qc = useQueryClient();
   const [address, setAddress] = useState("");

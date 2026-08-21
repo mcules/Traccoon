@@ -23,11 +23,11 @@ PAYLOAD = {
 
 
 async def _hook(db, owner, **fields) -> WebhookSub:
-    """Ein Melder, wie man ihn früher als `mode=notify` angelegt hat.
+    """A reporter of the kind one used to create as `mode=notify`.
 
-    Die Meldung selbst macht heute ein Melde-Knoten im Ablauf; was hier geprüft wird, ist die
-    Arbeit des Auslösers davor — filtern, tiefe Felder finden, nicht doppelt melden. Der Weg
-    dahin führt über die Umstellung, damit auch sie unter Beobachtung steht.
+    The report itself is made today by a report node in the flow; what is checked here is the
+    work of the trigger in front of it — filtering, finding deep fields, not reporting twice. The
+    way there leads through the conversion, so that it is under observation as well.
     """
     return await make_webhook(db, owner, fields.pop("route", "r"), mode="notify",
                               body_template="{device.name}: {event.attributes.alarm}",
@@ -137,7 +137,7 @@ async def test_workflow_mode_recognises_repetitions(client, db):
 
 async def test_editing_keeps_the_context(client, db):
     """The answer did not carry the templates: the form filled them with defaults, and saving
-    silently reset the entered text. Dieselbe Falle steht heute beim Kontext offen."""
+    silently reset the entered text. The same trap stands open today at the context."""
     anna = await make_user(db, "anna")
     r = await client.post("/webhooks", headers=auth(anna), json={
         "route": "kontext", "mode": "event", "event_name": "tracker.alarm",

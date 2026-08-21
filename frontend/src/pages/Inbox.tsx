@@ -112,7 +112,7 @@ function Stats() {
                   {w.open > 0 && ` · ${tr("inbox.count_open", { count: w.open })}`}
                 </span>
               </div>
-              {/* Zwei Abschnitte auf einem Balken: was weggeräumt wurde, was blieb. */}
+              {/* Two sections on one bar: what was cleared away, what stayed. */}
               <div className="flex h-2.5 overflow-hidden rounded bg-surface"
                 style={{ width: `${Math.round((w.total / largest) * 100)}%`, minWidth: "6%" }}>
                 <div className="bg-red-500/60" style={{ flexGrow: w.sortedout || 0 }} />

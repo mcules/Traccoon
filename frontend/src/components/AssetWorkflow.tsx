@@ -37,7 +37,7 @@ export default function AssetWorkflow({
   const { data: instances, isLoading, error } = useQuery({
     queryKey: ["asset-workflow", assetId],
     queryFn: () => workflowApi.instancesForSubject(`hardware_asset:${assetId}`),
-    refetchInterval: 8000, // Fallback; die Instanz selbst wird zusätzlich per WS invalidiert.
+    refetchInterval: 8000, // fallback; the instance itself is additionally invalidated by WS.
   });
 
   // Neueste Instanz gewinnt.

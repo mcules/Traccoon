@@ -1,9 +1,9 @@
-"""Die Ablauf-Aktion `series_record` — eine für alle Arten.
+"""The flow action `series_record` — one for all kinds.
 
-Es gibt eine Sorte Reihe mit einer Art daran, also auch genau eine Aktion, die hineinschreibt.
-Was sich je Art unterscheidet, sind die Felder — nicht der Vorgang. Geprüft wird deshalb vor
-allem, dass die Art aus der Reihe kommt und nicht aus dem Parameter: Sonst könnte ein Ablauf
-die Art einer bestehenden Reihe unter sich wegziehen.
+There is one sort of series with a kind attached, so there is exactly one action that writes
+into it. What differs per kind are the fields — not the procedure. What is checked is therefore
+above all that the kind comes from the series and not from the parameter: otherwise a flow
+could pull the kind of an existing series out from under it.
 """
 import datetime as dt
 
@@ -88,7 +88,7 @@ async def test_writing_text_takes_the_first_line_as_the_title(db):
 
 
 async def test_the_kind_comes_from_the_series_not_from_the_parameter(db):
-    """Sonst zoege ein Ablauf einer bestehenden Reihe die Art unter den Fuessen weg."""
+    """Otherwise a flow would pull the kind of an existing series out from under its feet."""
     user = await make_user(db, "chef")
     inst = await _run(db, user)
     await run_action(db, inst, _node({"series": "a.b", "kind": "number", "value": "1"}))
@@ -99,13 +99,13 @@ async def test_the_kind_comes_from_the_series_not_from_the_parameter(db):
     await db.commit()
 
     assert aus["kind"] == "number"
-    # Ohne Zahl im Parameter gibt es nichts zu schreiben — aber die Reihe bleibt, was sie ist.
+    # Without a number in the parameter there is nothing to write — but the series stays what it is.
     assert aus["stored"] is False
     assert (await _series(db, "a.b")).kind == "number"
 
 
 async def test_a_missing_value_is_not_an_error(db):
-    """Ein Geraet meldet auch seinen Zustand, wenn es einen Wert gerade nicht kennt."""
+    """A device reports its state as well when it does not know a value right now."""
     user = await make_user(db, "chef")
     inst = await _run(db, user)
 
@@ -113,7 +113,7 @@ async def test_a_missing_value_is_not_an_error(db):
         "series": "akku.shelter", "kind": "number", "value": "{{ gibt.es.nicht }}"}))
     await db.commit()
     assert aus["stored"] is False and aus["skipped"] is True
-    # Ohne Wert entsteht auch keine leere Reihe.
+    # Without a value no empty series comes into being either.
     assert await _series(db, "akku.shelter") is None
 
 

@@ -34,7 +34,7 @@ const TABS: [Tab, string, string][] = [
   ["jobs", "settings.jobs", "\u{23F1}"],
   ["webhooks", "settings.webhooks", "\u{1FA9D}"],
   ["skills", "settings.skills", "\u{2728}"],
-  // Nur für Admins: Wer ein Plugin einspielt, entscheidet auch, was es sehen darf.
+  // For admins only: whoever installs a plugin also decides what it may see.
   ["plugins", "settings.plugins", "\u{1F9E9}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);

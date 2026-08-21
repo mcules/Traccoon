@@ -39,7 +39,7 @@ export default function McpPanel() {
 
   return (
     <Area>
-      {/* Verfügbare MCP-Server aus MCPJungle als echte Registry-Einträge übernehmen */}
+      {/* Adopt available MCP servers from MCPJungle as real registry entries */}
       {(myMcp?.available?.length ?? 0) > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3">
           <div className="text-sm">

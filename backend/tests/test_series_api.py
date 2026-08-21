@@ -1,8 +1,8 @@
 """Die Reihen ueber HTTP: aufnehmen, sehen, teilen.
 
-Der Schwerpunkt liegt auf dem, was schiefgehen darf: Eine fremde Reihe muss unsichtbar sein
-(und zwar als 404, nicht als 403 — sonst verraet die Antwort ihre Existenz), eine
-Lese-Freigabe darf nicht zum Schreiben reichen, und ein neu vergebenes Token muss das alte
+The emphasis lies on what may go wrong: a foreign series has to be invisible (as a 404, not as
+a 403 — otherwise the answer reveals its existence), a read grant must not be enough for
+writing, and a newly issued token has to make the old one
 sofort wertlos machen.
 """
 from conftest import auth, make_user
@@ -46,7 +46,7 @@ async def test_the_same_key_twice_does_not_work(client, db):
 
 
 async def test_two_people_may_have_the_same_key(client, db):
-    """Der Schluessel ist je Mensch eindeutig, nicht im ganzen Haus."""
+    """The key is unique per person, not across the whole house."""
     a = await make_user(db, "a")
     b = await make_user(db, "b")
     await _series(client, a, "handy")
@@ -112,7 +112,7 @@ async def test_a_new_token_makes_the_old_one_worthless(client, db):
 
 
 async def test_the_token_can_be_looked_at_again(client, db):
-    """Man muss es in ein Telefon eintragen — einmal zeigen reicht da nicht."""
+    """One has to type it into a phone — showing it once is not enough there."""
     me = await make_user(db, "ich")
     await _series(client, me, "handy")
     tok = await _token(client, me)
@@ -129,7 +129,7 @@ async def test_a_foreign_series_is_invisible(client, db):
     await _series(client, me, "handy")
 
     assert (await client.get("/series", headers=auth(foreign))).json() == []
-    # 404 und nicht 403: Eine 403 wuerde bestaetigen, dass es die Reihe gibt.
+    # 404 and not 403: a 403 would confirm that the series exists.
     r = await client.get("/series/handy/points", headers=auth(foreign))
     assert r.status_code == 404
 
@@ -158,7 +158,7 @@ async def test_read_access_is_not_enough_to_change(client, db):
 
     r = await client.put("/series/handy", headers=auth(friend), json={"name": "meins jetzt"})
     assert r.status_code == 403
-    # Auch kein neues Token: Damit koennte man die Reihe des anderen kapern.
+    # No new token either: with that one could hijack the other person's series.
     assert (await client.post("/series/handy/token", headers=auth(friend))).status_code == 403
 
 
@@ -203,7 +203,7 @@ async def test_live_shows_the_latest_state(client, db):
 
 
 async def test_a_series_called_live_does_not_displace_the_endpoint(client, db):
-    """`{key:path}` ist gierig — deshalb liegt der Live-Stand auf einer eigenen Adresse."""
+    """`{key:path}` is greedy — which is why the live state sits on an address of its own."""
     me = await make_user(db, "ich")
     await _series(client, me, "live")
     r = await client.get("/series-live", headers=auth(me))
@@ -254,7 +254,7 @@ async def test_deleting_a_point_updates_the_counter(client, db):
 
 
 async def test_renaming(client, db):
-    """Namen aendern sich. Was dabei nicht geht, ist ein Schluessel, den es schon gibt."""
+    """Names change. What does not work is a key that already exists."""
     me = await make_user(db, "ich")
     await _series(client, me, "handy.alt")
     await _series(client, me, "handy.belegt")
@@ -280,6 +280,6 @@ async def test_renaming_keeps_points_and_token(client, db):
 
     data = (await client.get("/series/tracker.neu/points", headers=auth(me))).json()
     assert len(data["points"]) == 1
-    # Das Token haengt an der Reihe, nicht am Schluessel — das Geraet meldet weiter.
+    # The token hangs on the series, not on the key — the device keeps reporting.
     r = await client.post(f"/ingest/{tok}", json={"lat": 50.09, "lon": 10.57})
     assert r.status_code == 202 and r.json()["accepted"] == 1

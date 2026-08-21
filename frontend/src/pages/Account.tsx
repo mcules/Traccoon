@@ -44,7 +44,7 @@ export default function Account() {
   return (
     <div className="max-w-2xl space-y-4">
       {/* Die Zeitzone gehört zur Person, nicht zu den Agenten: sie entscheidet, was auf
-          dieser Oberfläche „8 Uhr" heißt — und damit auch im Nachtfenster und im Zeitplan. */}
+          "8 o'clock" means in this UI — and thereby in the night window and in the schedule too. */}
       {tab === "person" && <><LanguagePanel /><TimezonePanel /><EmailPanel /><PasswordPanel /></>}
       {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
       {tab === "notifications" && <><NotificationsPanel /><AssistantNoticesPanel /></>}
@@ -232,8 +232,8 @@ function NotificationsPanel() {
   const [targetId, setTargetId] = useState(String(user?.notify_destination_id ?? ""));
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
-  // Ziele tragen Basis-URL und Anmeldung schon; was dahinter steckt (ntfy, Matrix, Gotify,
-  // ein eigener Bot), muss Traccoon nicht wissen.
+  // Destinations carry a base URL and a login already; what sits behind them (ntfy, Matrix,
+  // Gotify, a bot of one's own) Traccoon need not know.
   const { data: targets } = useQuery({
     queryKey: ["destinations"],
     queryFn: () => api.get<{ id: number; name: string }[]>("/destinations"),

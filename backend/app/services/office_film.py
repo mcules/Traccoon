@@ -492,8 +492,8 @@ async def run_film_job(db: AsyncSession, job, jr) -> None:
     """
     opt = _opt(job)
     if not opt.get("tz"):
-        # Der Bürotag endet dort, wo der steht, dem der Job gehört. Ohne das wäre „bis
-        # Mitternacht“ die Wanduhr des Servers, und der Film zeigte in Tokio den halben Tag.
+        # The office day ends where the one the job belongs to stands. Without this "until
+        # midnight" would be the wall clock of the server, and the film would show half a day in Tokyo.
         from ..models.user import User
         from .scheduler import zone_of
         owner = await db.get(User, job.user_id) if getattr(job, "user_id", None) else None

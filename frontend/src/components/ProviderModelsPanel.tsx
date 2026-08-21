@@ -113,7 +113,7 @@ export default function ProviderModelsPanel() {
 
       {provider.map((p) => (
         <Area key={p} title={PROVIDER_LABEL[p] ? tr(PROVIDER_LABEL[p]) : p} subtitle={p}>
-          {/* Werte statt Eingabefelder: die Tabelle darf scrollen, die Seite nicht. */}
+          {/* Values instead of input fields: the table may scroll, the page may not. */}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>

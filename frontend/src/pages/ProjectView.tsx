@@ -57,7 +57,7 @@ export default function ProjectView() {
     const target = old && key ? redirectOldTab(key, old) : null;
     if (target) { navigate(target, { replace: true }); return; }
     // Deutsche Abschnitte im Pfad (`/projects/X/arbeit/liste`) auf die englischen: Adressen
-    // sind englisch, und was in Lesezeichen steht, soll trotzdem ankommen.
+    // are English, and what stands in bookmarks should still arrive.
     const newTab = tab ? OLD_SECTION[tab] : undefined;
     const newUnder = under ? OLD_SUBVIEW[under] : undefined;
     if (key && (newTab || newUnder)) {
@@ -77,7 +77,7 @@ export default function ProjectView() {
     queryKey: ["issues", project?.id],
     queryFn: () => api.get<Issue[]>(`/projects/${project!.id}/issues`),
     enabled: !!project,
-    refetchInterval: 8000, // Fallback, falls WS nicht verfügbar
+    refetchInterval: 8000, // fallback in case WS is unavailable
   });
   const { data: archivedIssues } = useQuery({
     queryKey: ["issues-archived", project?.id],
@@ -158,7 +158,7 @@ export default function ProjectView() {
               meta.statuses.find((s) => s.id === i.status_id)?.category === "done").length })}</span>
           </div>
         )}
-        {/* Die Ansichten einer Gruppe: eine Segmentleiste, keine eigene Menü-Ebene. */}
+        {/* The views of a group: a segmented bar, not a menu level of its own. */}
         {views.length > 1 && (
           <div className="flex flex-wrap gap-1.5">
             {views.map(([k, label]) => (

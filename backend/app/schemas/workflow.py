@@ -27,9 +27,9 @@ class WorkflowDefinitionCreate(BaseModel):
 
 class WorkflowDefinitionUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=200)
-    # Der Schlüssel darf mit: Er entstand oft nebenbei (aus einer Route, aus einer
-    # Job-Nummer) und beschreibt dann den Auslöser statt der Sache. Was an einem Slot hängt
-    # oder zu einem ausgelieferten Satz gehört, behält seinen — dort ist er die Verbindung.
+    # The key may come along: it often came into being in passing (out of a route, out of a job
+    # number) and then describes the trigger instead of the matter. What hangs on a slot or
+    # belongs to a shipped set keeps its own — there it is the connection.
     key: str | None = Field(default=None, max_length=60)
     description: str | None = None
     enabled: bool | None = None

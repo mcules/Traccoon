@@ -11,7 +11,7 @@ API keeps what it had. Next to it travel the key of that sentence and the values
 filled into it; a browser looks the key up in its catalog and shows its own wording, and
 falls back to the English detail when it does not know the key.
 
-The text here is a template, not an f-string: `Fehler(404, "err.x", "No {was}", was="board")`.
+The text here is a template, not an f-string: `Error(404, "err.x", "No {what}", what="board")`.
 That way the placeholders of the English sentence and of every translation are the same set
 of names, and a translator can move them around inside their sentence.
 """

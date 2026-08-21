@@ -363,7 +363,7 @@ export default function OfficeView({
         // The mapping is generic (`DOCK_TABS[digit - 1]`): a fifth tab would only need its
         // digit here. `4` is the personnel file.
         case "1": case "2": case "3": case "4": {
-          if (!s.full) return;                       // im Reiter gibt es kein Dock
+          if (!s.full) return;                       // in the tab there is no dock
           const t = DOCK_TABS[Number(e.key) - 1];
           if (!t) return;
           setDockTab(t.key);
@@ -481,7 +481,7 @@ export default function OfficeView({
             title={tr("office_view.which_room_shown_tabs")}
             className="max-w-[22rem] truncate rounded border border-line bg-surface px-2 py-1 text-ink"
           >
-            {/* Erste Option und Vorgabe: der ganze Betrieb in einem Raum. */}
+            {/* The first option and the default: the whole operation in one room. */}
             {allPossible && (
               <option value={ALL}>{tr("office_view.all_sessions_last_hours_2", { hours: ALL_WINDOW_H })}</option>
             )}

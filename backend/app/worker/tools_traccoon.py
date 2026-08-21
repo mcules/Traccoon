@@ -261,7 +261,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         db.add(jr)
         j.last_run_at = _now()
         await db.flush()
-        # Ein Weg für alle Arten (wie im Zeitplan und in der API).
+        # One way for all kinds (as in the schedule and in the API).
         from ..services.scheduler import run_job_kind
         await run_job_kind(db, j, jr)
         await db.commit()

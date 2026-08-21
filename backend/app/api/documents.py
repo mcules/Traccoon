@@ -1,7 +1,7 @@
-"""Ablagen ansehen: die Texte, die Abläufe geschrieben haben.
+"""Look at stores: the texts flows have written.
 
-Das Gegenstück zu `api/metrics.py`. Eine Ablage gehört einem Menschen — fremde sieht
-niemand, denn darin steht, was seine Agenten für ihn geschrieben haben.
+The counterpart to `api/metrics.py`. A store belongs to a person — foreign ones nobody sees,
+because what stands in them is what their agents wrote for them.
 """
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ async def list_stores(user: User = Depends(get_current_user),
 async def list_entries(key: str, limit: int = Query(30, ge=1, le=200),
                          user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
-    """Die Fassungen, neueste zuerst — ohne Text, sonst hinge die Liste an einem Rückblick
+    """The versions, newest first — without the text, otherwise the list would hang on a review
     von 30.000 Zeichen."""
     a = await _my(db, user, key)
     rows = (await db.execute(select(DocEntry).where(DocEntry.series_id == a.id)
@@ -78,7 +78,7 @@ async def get_entry(key: str, entry_id: int, user: User = Depends(get_current_us
 @router.get("/documents/{key:path}/latest")
 async def get_last(key: str, user: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
-    """Der aktuelle Stand — darauf zeigt der Link in einer Meldung."""
+    """The current state — that is what the link in a report points at."""
     a = await _my(db, user, key)
     e = await documents.last(db, user.id, key)
     if e is None:
@@ -100,8 +100,8 @@ async def delete_entry(key: str, entry_id: int, user: User = Depends(get_current
 @router.delete("/documents/{key:path}", status_code=204)
 async def delete_store(key: str, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):
-    """Die ganze Ablage samt Fassungen. Ein Ablauf, der weiter hineinschreibt, legt sie
-    beim nächsten Mal neu an — löschen heißt hier vergessen, nicht abschalten."""
+    """The whole store including its versions. A flow that keeps writing into it creates it
+    anew next time — deleting means forgetting here, not switching off."""
     a = await _my(db, user, key)
     await db.delete(a)
     await db.commit()

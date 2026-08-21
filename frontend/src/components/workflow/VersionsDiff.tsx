@@ -4,12 +4,12 @@ import { workflowApi, type WfDiff, type WfDiffNode } from "../../api";
 import { Dialog, Errorrow } from "../ui";
 
 /**
- * Was sich zwischen zwei Fassungen geändert hat.
+ * What has changed between two versions.
  *
- * Bewusst kein Textvergleich über das JSON: eine verrutschte Klammer beantwortet nicht die
- * Frage „was macht der Ablauf jetzt anders". Verglichen wird nach Knoten und Kanten, und ein
- * geänderter Knoten sagt, WELCHE seiner Einstellungen anders ist — das ist die Zeile, nach
- * der man sucht. Die Anordnung bleibt außen vor; sie ist keine Fassung wert und deshalb auch
+ * Deliberately no text comparison over the JSON: a slipped bracket does not answer the question
+ * "what does the flow do differently now". The comparison happens by nodes and edges, and a
+ * changed node says WHICH of its settings is different — that is the line one is looking for.
+ * The arrangement stays out of it; it is not worth a version and therefore also
  * kein Unterschied.
  */
 export default function VersionsDiff({ defId, versionId, against, title: title, onClose }: {
@@ -65,7 +65,7 @@ function DiffContent({ d }: { d: WfDiff }) {
                     <div key={f.field}>
                       <div className="font-mono text-[11px] text-muted">{f.field}</div>
                       {/* Zwei Zeilen statt einer: bei langen Werten sucht man sonst die
-                          Stelle, an der sie auseinandergehen, mitten im Fließtext. */}
+                          place where they diverge, in the middle of the prose. */}
                       <div className="mt-0.5 break-all rounded bg-red-500/10 px-1.5 py-0.5 text-[11px] text-red-300">
                         − {f.before || "—"}
                       </div>

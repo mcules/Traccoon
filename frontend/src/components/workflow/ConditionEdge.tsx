@@ -22,7 +22,7 @@ function ruecklaufPath(
   const offset = (Math.abs(hash(id)) % 4) * 26;
   const page = sx >= tx ? 1 : -1;
   const lane = page > 0 ? edge.right + 48 + offset : edge.links - 48 - offset;
-  const down = sy + 26;                 // erst ein Stück unter die Quelle
+  const down = sy + 26;                 // first a bit below the source
   const up = ty - 26;                   // und oberhalb des Ziels wieder herein
   const r = 14 * page;
   return [
@@ -104,7 +104,7 @@ export default function ConditionEdge({
           opacity: feedback && !selected ? 0.55 : 1,
         }}
       />
-      {/* Eigener Streifen nur fürs Überfahren — BaseEdge meldet kein hover. */}
+      {/* A stripe of its own only for hovering — BaseEdge reports no hover. */}
       <path
         d={path}
         fill="none"

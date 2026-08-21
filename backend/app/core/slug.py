@@ -1,8 +1,8 @@
-"""Aus einem Namen ein Schlüssel.
+"""A key out of a name.
 
-An drei Stellen gebraucht (Ablauf, Ablage, Umbenennen in der Oberfläche), und an jeder mit
-derselben Falle: Ein deutscher Name hat Umlaute, und wer nur `[^a-z0-9]` ersetzt, macht aus
-„Prüfer" ein „pr-fer". Deshalb einmal hier, mit Umschrift.
+Needed in three places (a flow, a store, renaming in the UI), and in each with the same trap: a
+German name has umlauts, and whoever only replaces `[^a-z0-9]` turns "Prüfer" into "pr-fer".
+Hence once here, with transliteration.
 """
 from __future__ import annotations
 
@@ -16,6 +16,6 @@ TRANSLITERATION = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss",
 
 
 def slug(text: str, length: int = 100) -> str:
-    """Kleinbuchstaben, Ziffern, Bindestriche — leer, wenn nichts davon übrig bleibt."""
+    """Lower case, digits, hyphens — empty when none of that is left."""
     raw = (text or "").lower().translate(TRANSLITERATION)
     return re.sub(r"[^a-z0-9]+", "-", raw).strip("-")[:length]

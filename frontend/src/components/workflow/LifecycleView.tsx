@@ -141,7 +141,7 @@ function LifecycleNode({ data }: NodeProps<Node<LifecycleNodeData>>) {
 
   return (
     <div className={`relative min-w-[112px] rounded-md border px-3 py-2 shadow-sm ${box} ${pulse}`}>
-      {/* Verdeckte Handles für die fest verdrahteten Kanten (read-only). */}
+      {/* Hidden handles for the hard-wired edges (read-only). */}
       <Handle type="target" id="t-left" position={Position.Left} className={handleDot} isConnectable={false} />
       <Handle type="target" id="t-top" position={Position.Top} className={handleDot} isConnectable={false} />
       <Handle type="target" id="t-bottom" position={Position.Bottom} className={handleDot} isConnectable={false} />

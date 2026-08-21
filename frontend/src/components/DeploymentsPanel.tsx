@@ -332,7 +332,7 @@ function Line({ d, compact, on, toggle }: {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
             <span className={ST_TEXT[d.status] || "text-muted"}>{ST_LABEL[d.status] || d.status}</span>
             {/* `stack` ist der Normalfall und steht an jeder zweiten Zeile — nur die
-                Abweichungen sind eine Nachricht. */}
+                deviations are a message. */}
             {d.kind && d.kind !== "stack" && (
               <span className="text-xs text-muted">{KIND_LABEL[d.kind] || d.kind}</span>
             )}

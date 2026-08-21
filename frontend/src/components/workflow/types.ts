@@ -60,13 +60,13 @@ export type AutoActionName =
   // Mail-Eingang (Slot mail_intake)
   | "mail_classify" | "spam_evaluate" | "spam_card" | "spam_apply"
   | "mail_assistant_task" | "mail_assistant_card" | "mail_assistant_run"
-  // Assistent allgemein (ohne Mail, ohne Ticket) und die Antwort eines Ablaufs
+  // The assistant in general (without a mail, without a ticket) and the answer of a flow
   | "assistant_task" | "answer"
-  // Was einmal eigene Job-Arten waren: freier Agentenlauf und Skript
+  // What used to be job kinds of their own: a free agent run and a script
   | "agent_run" | "script" | "job_pause"
-  // Ablagen: Texte mit Verlauf, das Gegenstück zu den Messreihen
+  // Stores: texts with a history, the counterpart to the metric series
   | "document" | "document_read"
-  // Mail-Client: den Anhang einer Mail in den Kontext holen
+  // Mail client: fetch the attachment of a mail into the context
   | "mail_attachment" | "mail_flag" | "mail_move";
 
 export interface AutoActionConfig {
@@ -91,7 +91,7 @@ export interface NodeConfig {
      *  `mail_action` = a button on a mail respectively on one of its attachments;
      *  missing = by hand respectively over a job. */
     kind?: "webhook" | "ereignis" | "mail_action";
-    /** Nur bei `mail_action`: woran der Knopf haengt (Nachricht oder einzelner Anhang). */
+    /** Only with `mail_action`: what the button hangs on (a message or a single attachment). */
     scope?: "message" | "attachment";
     /** Example payload, only for deriving fields in the editor, never at runtime. */
     sample?: Record<string, any>;
@@ -129,8 +129,8 @@ export interface NodeConfig {
   // loop: walks through `liste` element by element; the body hangs off the exit `element`
   // and leads back here over a back edge.
   list?: string;                // Kontext-Pfad auf die Liste
-  element?: string;              // unter diesem Schlüssel steht das aktuelle Element
-  index?: string;                // … und hier der Zähler
+  element?: string;              // under this key stands the current element
+  index?: string;                // … and here the counter
   collect?: string;               // Pfad, dessen Wert je Durchlauf eingesammelt wird
   results?: string;           // wohin das Eingesammelte am Ende kommt
   max?: number;                  // Deckel gegen versehentlich riesige Listen
@@ -238,7 +238,7 @@ export interface WorkflowInstance {
   finished_at: string | null;
   tokens: WorkflowTokenLite[];
   steps: WorkflowStepRun[];
-  graph: WorkflowGraph;        // von der gepinnten Version, für die Read-only-Ansicht
+  graph: WorkflowGraph;        // of the pinned version, for the read-only view
 }
 
 /** Entry of the personal task inbox (open human_task/approval). */

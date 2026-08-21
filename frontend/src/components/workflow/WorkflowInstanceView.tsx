@@ -79,7 +79,7 @@ export default function WorkflowInstanceView({
       )}
       {/* Der Graph zeigt, wo der Lauf steht — das Protokoll, was dabei herauskam.
           Aufgeklappt in einer Liste zählt das Protokoll: „Wo steht er?" beantwortet die
-          Zeile darüber längst, „was kam zurück?" bisher niemand. */}
+          line above has long done, "what came back?" nobody so far. */}
       {compact ? (
         <>
           <Steplog steps={instance.steps} maxHeight="16rem"

@@ -314,7 +314,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     const map = rosterRef.current;
     const prev = map.get(ev.agent_id);
     if (ev.kind === "run_start") {
-      if (prev) return;                       // der Schnappschuss kennt ihn schon
+      if (prev) return;                       // the snapshot knows it already
       const fresh = rosterFromRunStart(ev);
       // The event carries the project **id**, not the key, which only the snapshot knows. If
       // somebody from the same project already stands in the room, the key is
@@ -462,7 +462,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
       bufferRef.current = [];
       liveRef.current = false;
     };
-  }, [scopeKey, accept]);   // `accept` ist über `useCallback` stabil
+  }, [scopeKey, accept]);   // `accept` is stable through `useCallback`
 
   // ── The snapshot ──────────────────────────────────────────────────────────────────────────
   //

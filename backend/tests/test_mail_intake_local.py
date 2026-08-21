@@ -77,8 +77,8 @@ async def test_openai_without_an_own_endpoint_stays_redacted(db, anna):
 async def test_the_same_mail_twice_stays_one_item(db, anna):
     """The watcher likes to deliver twice on restarts, and that must double nothing.
 
-    Der Schlüssel dagegen steht am Auslöser (`{account}:{uid}`) und nicht mehr im Code des
-    Mail-Eingangs — damit hat ihn jeder Webhook, nicht nur dieser eine.
+    The key on the other hand stands on the trigger (`{account}:{uid}`) and no longer in the code
+    of the mail intake — with that every webhook has it, not only this one.
     """
     sub = await make_webhook(db, anna, "mail-test", mode="assistant", agent="assistent")
     payload = {"account": "privat", "uid": 4, "from": "rechnung@beispiel.de",

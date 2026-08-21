@@ -191,7 +191,7 @@ export default function ActionParams({
               <select value={value ?? ""} onChange={(e) => update(e.target.value)}
                 className={`mt-1 ${inp}`}>
                 {/* Ohne Vorbelegung zuerst einen leeren Eintrag, sonst zeigt das Feld einen
-                    Wert an, der gar nicht gespeichert ist. */}
+                    a value that is not stored at all. */}
                 {(value ?? "") === "" && !selection(f).some(([k]) => k === "") && (
                   <option value="">{tr("action_params.choose")}</option>
                 )}

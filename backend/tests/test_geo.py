@@ -1,4 +1,4 @@
-"""Die Kugelrechnung, an Strecken gemessen, die man nachschlagen kann."""
+"""The spherical arithmetic, measured against distances one can look up."""
 import math
 
 from app.services.geo import distance_m, frame
@@ -22,7 +22,7 @@ def test_the_same_point_is_zero():
 def test_the_bounding_box_encloses_the_radius():
     lat, lon, r = 50.0825, 10.5663, 150.0
     lat_min, lat_max, lon_min, lon_max = frame(lat, lon, r)
-    # Die Kanten liegen mindestens so weit weg wie der Radius — sonst schnitte die
+    # The edges lie at least as far away as the radius — otherwise the
     # Vorauswahl Punkte ab, die drin liegen.
     assert distance_m(lat, lon, lat_max, lon) >= r
     assert distance_m(lat, lon, lat, lon_max) >= r

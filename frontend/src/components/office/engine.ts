@@ -584,7 +584,7 @@ export class Engine {
     let k = 0;
     for (const a of crowd) {
       const p = this.privOf(a);
-      p.spokeAt = -HUDDLE_WINDOW_MS; // zählt nicht zweimal
+      p.spokeAt = -HUDDLE_WINDOW_MS; // does not count twice
       const spot = spots[k % spots.length];
       k++;
       if (!spot) continue;
@@ -700,7 +700,7 @@ export class Engine {
       a.deskIndex !== -2 && !a.retired && t >= p.lastAct + IDLE_COFFEE_MS
     ) {
       const at = p.lastAct + IDLE_COFFEE_MS;
-      p.lastAct = at; // der nächste Kaffee frühestens in einer weiteren Leerlaufperiode
+      p.lastAct = at; // the next coffee at the earliest after another idle period
       this.enqueue(a, this.makeCoffee(at));
     }
 

@@ -70,14 +70,14 @@ async def test_script_arguments_stay_outside(db):
 async def test_without_parameters_as_before(db):
     anna = await make_user(db, "anna")
     _jr, inst = await _run(db, anna, [])
-    # Was ohne Parametersatz bleibt, ist der Rahmen des Laufs: wer ihn bestellt hat und die
-    # Zeitwerte, die jeder wiederkehrende Ablauf braucht.
+    # What remains without a parameter set is the frame of the run: who ordered it and the
+    # time values every recurring flow needs.
     assert set(inst.context) == {"job", "today", "now", "since", "window"}
 
 
 async def test_the_run_knows_who_ordered_it(db):
-    """Ohne das könnte ein Ablauf weder seinen Namen nennen noch den Digest verlinken —
-    beides brauchte er, als die Job-Arten zu Abläufen wurden."""
+    """Without this a flow could neither name itself nor link the digest — it needed both when
+    the job kinds became flows."""
     anna = await make_user(db, "anna")
     jr, inst = await _run(db, anna, {})
     assert inst.context["job"] == {"id": jr.job_id, "name": "Wächter", "run_id": jr.id}

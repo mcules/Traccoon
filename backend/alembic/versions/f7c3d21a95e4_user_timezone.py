@@ -1,4 +1,4 @@
-"""users.timezone (was heißt hier 8 Uhr?)
+"""users.timezone (what does 8 o'clock mean here?)
 
 Revision ID: f7c3d21a95e4
 Revises: e5a2c81f7b40
@@ -15,8 +15,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Bis hierher rechnete der Server in UTC und an drei Stellen fest in Europe/Berlin. Ein
-    # Cron-Job „0 8 * * *" lief damit um zehn, und das Nachtfenster galt für alle gleich.
+    # Until here the server computed in UTC and in three places hard-wired in Europe/Berlin. A
+    # cron job "0 8 * * *" therefore ran at ten, and the night window applied to everyone alike.
     op.add_column('users', sa.Column('timezone', sa.String(64), nullable=False,
                                      server_default='Europe/Berlin'))
 

@@ -9,13 +9,13 @@ import {
 /**
  * Plugins verwalten: einspielen, freigeben, abschalten.
  *
- * Der Kern dieser Seite sind die Haken bei den Rechten. Ein Plugin läuft im Browser eines
- * angemeldeten Menschen; was es an Traccoon-Daten sehen darf, kann deshalb nicht das Plugin
- * selbst bestimmen. Sein Manifest *fordert* — hier *erlaubt* jemand. Ohne Haken antwortet
- * die Brücke im Wirt mit einer Sperre, egal was im Zip steht.
+ * The core of this page are the ticks on the rights. A plugin runs in the browser of a
+ * logged-in person; what it may see of Traccoon's data can therefore not be decided by the
+ * plugin itself. Its manifest *demands* — here somebody *allows*. Without a tick the bridge in
+ * the host answers with a block, whatever stands in the zip.
  */
 
-/** Wofür ein Recht steht, in einem Satz. Unbekannte zeigt die Liste roh — besser der nackte
+/** What a right stands for, in one sentence. Unknown ones the list shows raw — better the bare
  *  Bezeichner als eine erfundene Beschreibung. */
 const RIGHT_TEXT: Record<string, string> = {
   "series:number": "plugins.read_metric_series_values",
@@ -32,8 +32,8 @@ export default function PluginsPanel() {
   const { data: plugins } = useQuery({
     queryKey: ["plugins", "alle"], queryFn: () => pluginApi.all(),
   });
-  // Beide Listen erneuern: Die Verwaltung sieht alles, die Bereichsschiene nur das
-  // Freigegebene — nach einem Häkchen muss auch sie sich rühren.
+  // Refresh both lists: the administration sees everything, the area rail only what is
+  // released — after a tick it has to move as well.
   const inv = () => qc.invalidateQueries({ queryKey: ["plugins"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
@@ -107,7 +107,7 @@ export default function PluginsPanel() {
   );
 }
 
-/** Die Haken: was das Manifest fordert, und was davon gilt. */
+/** The ticks: what the manifest demands, and what of it applies. */
 function Rights({ plugin, onSet: onSet }: {
   plugin: PluginAdmin; onSet: (listing: string[]) => void;
 }) {

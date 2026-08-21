@@ -172,7 +172,7 @@ function JobDialog({ job, error: error, runs: running, onClose, onSave }: {
           </select>
         </Field>
         {/* Ein Job ist Zeitplan plus Ablauf. Fragen, Skript, Aufruf — das waren einmal
-            eigene Arten, die je genau eins konnten; heute sind es Knoten IM Ablauf. */}
+            kinds of their own, each able to do exactly one thing; today they are nodes IN the flow. */}
         <Field label={tr("jobs_panel.kind")}>
           <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={INPUT_VALUE}>
             <option value="workflow">{tr("jobs_panel.flow")}</option>

@@ -145,5 +145,5 @@ export default function WorkflowList({ project }: { project: Project }) {
   );
 }
 
-// Auch hier: eine Handlung ist blau, Grau bliebe fuer abgeschaltet.
+// Here too: an action is blue, grey would stay for disabled.
 const ico = "text-base leading-none text-brand transition-colors";

@@ -64,7 +64,7 @@ export function useWakeLock(active: boolean): void {
 
     const onVisibility = () => {
       if (document.visibilityState === "visible") {
-        block = null;                            // beim Verstecken hat der Browser sie gelöst
+        block = null;                            // on hiding, the browser released it
         void anfordern();
       }
     };
