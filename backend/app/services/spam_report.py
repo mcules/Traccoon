@@ -179,22 +179,20 @@ async def classifications(db: AsyncSession, owner_id: int | None, *, days: int =
 
     kinds: dict[str, dict] = {}
     for kind, status, n in suspicions:
-        entry = kinds.setdefault(kind or "unbekannt",
-                                   {"gesamt": 0, "aussortiert": 0, "durchgelassen": 0,
-                                    "offen": 0})
-        entry["gesamt"] += n
+        entry = kinds.setdefault(kind or "unknown",
+                                   {"total": 0, "sortedout": 0, "passed": 0, "open": 0})
+        entry["total"] += n
         if status == "spam":
-            entry["aussortiert"] += n
+            entry["sortedout"] += n
         elif status == "pending":
-            entry["offen"] += n
+            entry["open"] += n
         else:
-            entry["durchgelassen"] += n
+            entry["passed"] += n
     for category, n in passed:
-        entry = kinds.setdefault(category or "unbekannt",
-                                   {"gesamt": 0, "aussortiert": 0, "durchgelassen": 0,
-                                    "offen": 0})
-        entry["gesamt"] += n
-        entry["durchgelassen"] += n
+        entry = kinds.setdefault(category or "unknown",
+                                   {"total": 0, "sortedout": 0, "passed": 0, "open": 0})
+        entry["total"] += n
+        entry["passed"] += n
 
     # How well the model judged, measured against what the human decided. Only rows that were
     # decided count: a pending question says nothing about anybody being right.
@@ -205,10 +203,10 @@ async def classifications(db: AsyncSession, owner_id: int | None, *, days: int =
     hits = sum(1 for score, status in decided
                   if (score >= 0.5) == (status == "spam"))
     return {
-        "tage": days,
-        "arten": dict(sorted(kinds.items(), key=lambda p: -p[1]["gesamt"])),
-        "modell": {"entschieden": len(decided), "treffer": hits,
-                   "quote": round(hits / len(decided), 3) if decided else None},
+        "days": days,
+        "kinds": dict(sorted(kinds.items(), key=lambda p: -p[1]["total"])),
+        "model": {"decided": len(decided), "hits": hits,
+                  "quote": round(hits / len(decided), 3) if decided else None},
     }
 
 
@@ -229,6 +227,6 @@ async def balance(db: AsyncSession, owner_id: int | None) -> dict:
             ((SpamFeatureStat.spam_count >= 3) & (SpamFeatureStat.ham_count == 0))
             | ((SpamFeatureStat.ham_count >= 3) & (SpamFeatureStat.spam_count == 0))))).scalar()
     return {
-        "urteile": {f"{st}/{by or '—'}": n for st, by, n in lines},
-        "geklaerte_absender": int(settled or 0),
+        "verdicts": {f"{st}/{by or '—'}": n for st, by, n in lines},
+        "settled_senders": int(settled or 0),
     }

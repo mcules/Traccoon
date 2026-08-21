@@ -74,7 +74,7 @@ type Classification = { total: number; sortedout: number; passed: number; open: 
 type StatsData = {
   days: number;
   kinds: Record<string, Classification>;
-  model: { decided: number; treffer: number; quote: number | null };
+  model: { decided: number; hits: number; quote: number | null };
 };
 
 /**
@@ -124,16 +124,16 @@ function Stats() {
       </Area>
 
       <Area title={tr("inbox.hit_rate_local_model")} hint={tr("inbox.how_often_model_judged")}>
-        {data?.model.quote === null || data?.model.decided === 0 ? (
+        {!data || data.model?.quote == null || data.model?.decided === 0 ? (
           <p className="text-sm text-muted">{tr("inbox.nothing_decided_yet")}</p>
         ) : (
           <p className="text-sm text-ink">
             <span className="text-2xl font-semibold">
-              {Math.round((data?.model.quote ?? 0) * 100)}%
+              {Math.round((data.model?.quote ?? 0) * 100)}%
             </span>{" "}
             <span className="text-muted">
               {tr("inbox.hits_total_agreement", {
-                hits: data?.model.treffer ?? 0, total: data?.model.decided ?? 0,
+                hits: data.model?.hits ?? 0, total: data.model?.decided ?? 0,
               })}
             </span>
           </p>
