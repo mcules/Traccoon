@@ -7,11 +7,11 @@ import {
   Listing, ListingEmpty, ListenLine, DeleteDialog, Rowbutton, State, Tab, BUTTON } from "./ui";
 
 /**
- * Mail-Konten und ihre Identitäten.
+ * Mail accounts and their identities.
  *
- * Sie gehören auf die Konto-Seite und nicht in die Einstellungen: ein Postfach ist keine
- * Ressource, mit der Agenten arbeiten, sondern die Post einer Person. Kennwörter kommen vom
- * Server nie zurück — ein leeres Feld heißt deshalb „unverändert" und nicht „löschen".
+ * They belong on the account page and not into the settings: a mailbox is no resource agents
+ * work with but the mail of a person. Passwords never come back from the server — an empty
+ * field therefore means "unchanged" and not "delete".
  */
 export interface MailAccount {
   id: number; name: string; enabled: boolean;
@@ -128,9 +128,9 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
     onSuccess: (r) => setCheck(`IMAP: ${r.imap || "—"} · SMTP: ${r.smtp || "—"}`),
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Prüfen fehlgeschlagen"),
   });
-  // Die Ordner des Kontos selbst — aber erst, wenn es eines gibt: bei einem neuen Postfach
-  // ist noch keine Verbindung möglich, und ein leeres Auswahlfeld wäre schlechter als ein
-  // Textfeld, in das man den Namen tippen kann.
+  // The folders of the account itself — but only once there is one: with a new mailbox no
+  // connection is possible yet, and an empty select would be worse than a text field one can
+  // type the name into.
   const { data: folder } = useQuery({
     queryKey: ["mail-folders", start.id],
     queryFn: () => api.get<{ name: string; display: string; level: number }[]>(
@@ -207,8 +207,8 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
             <select value={f.smtp_security} className={INPUT_VALUE}
               onChange={(e) => {
                 const art = e.target.value;
-                // Den Port mitziehen, solange er der übliche der anderen Variante ist: wer
-                // die Verschlüsselung umstellt, meint fast immer auch den passenden Port —
+                // Pull the port along as long as it is the usual one of the other variant:
+                // whoever switches the encryption almost always means the matching port too —
                 // und ein eigens eingetragener Port (2525 …) bleibt unangetastet.
                 const port = art === "ssl" && f.smtp_port === 587 ? 465
                   : art === "starttls" && f.smtp_port === 465 ? 587
@@ -285,7 +285,7 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
               {testing.isPending ? "prüft…" : "🔌 IMAP und SMTP prüfen"}
             </Rowbutton>
             {/* Der Test benutzt, was gespeichert ist — nicht, was gerade im Formular steht.
-                Anders ginge es nicht, ohne halbfertige Zugangsdaten zum Server zu schicken. */}
+                Anything else would mean sending half-finished credentials to the server. */}
             <span className="text-xs text-muted">
               {check || "prüft den gespeicherten Stand"}
             </span>
@@ -297,11 +297,11 @@ export function AccountDialog({ start, error: error, runs: running, onClose, onS
 }
 
 /**
- * Der Zugang, über den Agenten die freigegebenen Postfächer erreichen.
+ * The access agents reach the released mailboxes through.
  *
- * Ein Token je Person, nicht je Postfach: Wer es hat, sieht genau das, was an den einzelnen
- * Postfächern freigegeben ist — die Feinheiten stehen dort und nicht hier. Angezeigt wird es
- * genau einmal; ein zweites Mal könnte es nur, wer es speichert, und dann wäre es kein
+ * One token per person, not per mailbox: whoever has it sees exactly what is released on the
+ * individual mailboxes — the details stand there and not here. It is shown exactly once; a
+ * second time only whoever stores it could, and then it would be no
  * Geheimnis mehr, sondern eine Kopie.
  */
 function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
@@ -371,11 +371,11 @@ function McpAccess({ onError: onError }: { onError: (e: unknown) => void }) {
 }
 
 /**
- * Was Agenten von diesem Postfach sehen und tun dürfen.
+ * What agents may see and do with this mailbox.
  *
- * Die Voreinstellung ist: nichts. Ein Postfach ist die Post eines Menschen und kein
- * Datenbestand — deshalb wird je Werkzeug einzeln freigegeben statt „Zugriff ja/nein", und
- * Lesen, Umsortieren und Senden stehen als drei getrennte Gruppen da und nicht als Stufen
+ * The default is: nothing. A mailbox is the mail of a person and no data store — which is why
+ * release happens per tool instead of "access yes/no", and reading, refiling and sending stand
+ * there as three separate groups and not as levels
  * einer Leiter.
  */
 function AgentsGrant({ f, set: set, folder: folder }: {
@@ -494,11 +494,11 @@ function AgentsGrant({ f, set: set, folder: folder }: {
 }
 
 /**
- * Das Archiv-Muster, mit Vorschau beim Tippen.
+ * The archive pattern, with a preview while typing.
  *
- * Gefüllt wird es aus dem Datum DER MAIL, nicht aus dem heutigen: eine Rechnung von 2023
- * gehört auch 2026 noch ins Jahr 2023. Der Schrägstrich trennt die Ebenen, egal wie der
- * Server das intern macht — das rechnet der Server um.
+ * It is filled from the date OF THE MAIL, not from today's: an invoice from 2023 still belongs
+ * in the year 2023 in 2026. The slash separates the levels, no matter how the server does that
+ * internally — the server converts it.
  */
 function PatternField({ accountId, value: value, onChange: onUpdate }: {
   accountId?: number; value: string; onChange: (v: string) => void;
@@ -539,11 +539,11 @@ function PatternField({ accountId, value: value, onChange: onUpdate }: {
 }
 
 /**
- * Ein Ordner des Kontos — als Auswahl, sobald das Postfach erreichbar ist.
+ * A folder of the account — as a select, as soon as the mailbox is reachable.
  *
- * Tippen hieße raten: Ordner heißen je nach Anbieter `Sent`, `Gesendet`, `INBOX.Sent` oder
- * `[Gmail]/Gesendet`, und ein Tippfehler fällt erst auf, wenn eine gesendete Mail nicht im
- * eigenen Postfach auftaucht. Steht die Verbindung noch nicht (neues Konto, falsches
+ * Typing would mean guessing: depending on the provider folders are called `Sent`, `Gesendet`,
+ * `INBOX.Sent` or `[Gmail]/Gesendet`, and a typo is noticed only when a sent mail does not turn
+ * up in one's own mailbox. If the connection does not stand yet (a new account, a wrong
  * Kennwort), bleibt das Textfeld — besser als ein leeres Auswahlfeld.
  */
 function FolderField({ label, hint: hint, value: value, folder: folder, onChoose }: {
@@ -558,8 +558,8 @@ function FolderField({ label, hint: hint, value: value, folder: folder, onChoose
       </Field>
     );
   }
-  // Ein eingetragener Ordner, den es (nicht mehr) gibt, bleibt sichtbar statt still
-  // verlorenzugehen — sonst ändert schon das Öffnen des Dialogs die Einstellung.
+  // An entered folder that does (no longer) exist stays visible instead of getting lost
+  // quietly — otherwise merely opening the dialog would change the setting.
   const unknown = value && !folder.some((o) => o.name === value);
   return (
     <Field label={label} hint={hint}>

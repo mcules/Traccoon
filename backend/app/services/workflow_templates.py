@@ -360,10 +360,10 @@ def _mail_intake() -> dict:
            _action("spam_apply", "Absender merken", decision="ham")),
 
         # ── Normaler Weg: Assistent ──────────────────────────────────────────
-        # Kein Mail-Sonderweg mehr: Der Eingang wird mit dem allgemeinen Knoten angelegt und
-        # startet dabei selbst, wenn eine gelernte Regel ihn freigibt. Was den Mail-Fall
-        # ausmacht, sind seine Werte — sie stehen in `mail_actions.AUFTRAG_PARAMS`, damit
-        # Vorlage und Altnamen nicht auseinanderlaufen.
+        # No mail special path any more: the intake is created with the general node and
+        # starts itself when a learned rule releases it. What makes the mail case are its
+        # values — they stand in `mail_actions.ASSIGNMENT_PARAMS` so that the template and the
+        # legacy names do not drift apart.
         _n("item", "auto_action", 0, 8,
            _action("assistant_task", "Assistent-Eingang anlegen", **TASK_PARAMS)),
         _n("ist_auto", "decision", 0, 9, {
@@ -411,7 +411,7 @@ def _mail_intake() -> dict:
         _e("weiche", "item", "kontakt", "bekannt"),
         _e("weiche", "item", "geklaert_ham", "gelernt: erwünscht"),
         _e("item", "ist_auto"),
-        # Der freigegebene Weg braucht keinen Schritt mehr: Er läuft schon.
+        # The released path needs no step any more: it is already running.
         _e("ist_auto", "end_item", "auto", "läuft bereits"),
         _e("ist_auto", "freigabe_karte", "fragen"),
         _e("freigabe_karte", "end_item"),
@@ -420,10 +420,10 @@ def _mail_intake() -> dict:
 
 
 def _attachment_to_paperless() -> dict:
-    """Ein Knopf an jedem Anhang: Rechnung ins Archiv, ohne Umweg über den Rechner.
+    """A button on every attachment: an invoice into the archive, without a detour via the machine.
 
     Zeigt den ganzen Weg einer Mail-Aktion — Anhang holen, Werkzeug rufen, Bescheid geben —
-    und ist gleichzeitig die Antwort auf die Frage, wie man sich weitere solche Knöpfe baut.
+    and is at the same time the answer to the question of how one builds further buttons like it.
     """
     nodes = [
         _n("start", "start", 0, 0, {
@@ -451,14 +451,14 @@ def _attachment_to_paperless() -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-# -- 5) was früher Webhook-Modi waren ----------------------------------------
-# Ein Webhook konnte einmal selbst ein Ticket anlegen, eine Nachricht schicken oder den
-# Assistenten beauftragen — jeder Weg mit eigenen Spalten am Webhook und nur dort zu haben.
-# Dieselbe Arbeit machen heute Knoten, die JEDER Ablauf benutzen kann; diese drei Vorlagen
-# sind der kurze Weg dorthin und zugleich das, worauf `webhook_modes` Bestehendes umstellt.
+# -- 5) what used to be webhook modes ----------------------------------------
+# A webhook could once create a ticket itself, send a message or assign the assistant — every
+# way with columns of its own on the webhook and available only there. The same work is done
+# today by nodes EVERY flow can use; these three templates are the short way there and at the
+# same time what `webhook_modes` converts existing ones onto.
 
 def _webhook_assistant() -> dict:
-    """Auslöser von außen, und der Assistent arbeitet damit."""
+    """A trigger from outside, and the assistant works with it."""
     nodes = [
         _n("start", "start", 0, 0, {
             "label": "Auslöser von außen",
@@ -477,7 +477,7 @@ def _webhook_assistant() -> dict:
 
 
 def _webhook_report() -> dict:
-    """Auslöser von außen, und es kommt eine Nachricht an."""
+    """A trigger from outside, and a message arrives."""
     nodes = [
         _n("start", "start", 0, 0, {
             "label": "Auslöser von außen",
@@ -492,7 +492,7 @@ def _webhook_report() -> dict:
 
 
 def _webhook_ticket() -> dict:
-    """Auslöser von außen, und daraus wird ein Ticket."""
+    """A trigger from outside, and a ticket comes of it."""
     nodes = [
         _n("start", "start", 0, 0, {
             "label": "Auslöser von außen",
@@ -593,10 +593,10 @@ def template(key: str) -> dict | None:
 
 
 async def free_key(db, wish: str, project_id: int | None = None) -> str:
-    """Ein Schlüssel, den es hier noch nicht gibt — aus einem Namen gemacht.
+    """A key that does not exist here yet — made out of a name.
 
-    Namen und Schlüssel beschreiben die Sache, nicht ihren Auslöser: `ki-tech-news`, nicht
-    `job-3`. Wer denselben Namen zweimal vergibt, bekommt eine Nummer angehängt, statt an
+    Names and keys describe the matter, not its trigger: `ki-tech-news`, not `job-3`. Whoever
+    gives the same name twice gets a number appended instead of
     einem Unique-Fehler zu scheitern.
     """
     from sqlalchemy import select
@@ -642,8 +642,8 @@ async def create(db, key: str, *, owner_id: int | None, def_key: str = "",
     db.add(d)
     await db.flush()
     version = WorkflowVersion(
-        # `graph` erlaubt der Umstellung, die Vorlage mit den Werten des alten Webhooks zu
-        # füllen (Agent, Auftragstext, Empfänger), statt sie hinterher zu patchen.
+        # `graph` lets the conversion fill the template with the values of the old webhook
+        # (agent, assignment text, recipient) instead of patching it afterwards.
         definition_id=d.id, version=1, graph=graph or v["build"](), created_by=owner_id,
         status=(WorkflowVersionStatus.published if published
                 else WorkflowVersionStatus.draft),

@@ -1,10 +1,10 @@
-"""Ein Job ist Zeitplan plus Ablauf — nicht fünf Ausführungen derselben Sache.
+"""A job is schedule plus flow — not five executions of the same matter.
 
-`kind` verzweigte über prompt, script, http, workflow und film. Vier davon taten dasselbe in
-vier Ausführungen, jede mit eigener Fehlerbehandlung, eigener Benachrichtigung und der
-Beschränkung, genau eins tun zu können: „erst fragen, dann prüfen, dann melden“ ging in
-keiner. Geprüft wird, dass die Umstellung nichts davon verliert — und dass das Ergebnis des
-Ablaufs in der Job-Historie ankommt, wo vorher nur „gestartet“ stand.
+`kind` branched over prompt, script, http, workflow and film. Four of them did the same thing
+in four executions, each with its own error handling, its own notification and the limit of
+being able to do exactly one thing: "first ask, then check, then report" worked in none of
+them. What is checked is that the conversion loses none of it — and that the result of the
+flow arrives in the job history, where only "started" used to stand.
 """
 import pytest
 from app.models.notification import Notification
@@ -53,7 +53,7 @@ async def test_a_prompt_job_becomes_a_flow(db):
     assert work["action"] == "agent_run"
     assert work["params"]["agent"] == "news"
     assert work["params"]["task"] == "Fasse die Woche zusammen."
-    # Das Ergebnis des Laufs ist die Antwort des Ablaufs — daran hängt die Job-Historie.
+    # The result of the run is the answer of the flow — the job history hangs on it.
     assert node["answer"]["action"]["params"]["text"] == "{{ result.output }}"
 
 
@@ -66,7 +66,7 @@ async def test_a_script_job_becomes_a_flow(db):
     assert node["arbeit"]["action"]["params"] == {
         "command": "pruefe.sh", "args": ["-x", "42"], "timeout_sec": 600,
         "context_key": "result"}
-    # `never` heißt: kein Melde-Knoten, nicht etwa eine Weiche, die nie greift.
+    # `never` means: no report node, not a decision that never fires.
     assert "melden" not in node
 
 
@@ -81,8 +81,8 @@ async def test_the_notify_mode_becomes_a_decision(db):
 
 
 async def test_long_text_goes_into_a_storage(db):
-    """`result_html` verwies auf `/digest/<Lauf>` — eine Seite, die es nie gab, und der Text
-    lag abgeschnitten im Ausgabefeld eines Laufs. Jetzt wird er hingelegt wie ein Messwert."""
+    """`result_html` pointed at `/digest/<run>` — a page that never existed, and the text lay
+    truncated in the output field of a run. Now it is put down like a measurement."""
     anna = await make_user(db, "anna")
     job = await _job(db, anna, prompt="Digest", result_html=True)
     await convert(db)
@@ -91,9 +91,9 @@ async def test_long_text_goes_into_a_storage(db):
     store = node["ablegen"]["action"]
     assert store["action"] == "document"
     assert store["params"]["storage"] == "pruefer" and store["params"]["name"] == "Prüfer"
-    # Gemeldet wird der Verweis, nicht der Text.
-    assert node["melden"]["action"]["params"]["text"] == "{{ document.title }}\n{{ document.url }}"
-    # Und das Ablegen steht VOR der Melde-Frage: auch ein stiller Job behält seinen Text.
+    # What is reported is the reference, not the text.
+    assert node["report"]["action"]["params"]["text"] == "{{ document.title }}\n{{ document.url }}"
+    # And the storing stands BEFORE the reporting question: a silent job keeps its text too.
     edges = {(e["source"], e["target"]) for e in graph["edges"]}
     assert ("arbeit", "ablegen") in edges and ("ablegen", "answer") in edges
 
@@ -109,7 +109,7 @@ async def test_the_conversion_does_not_touch_the_converted_again(db):
 
 
 async def test_the_film_stays_its_own_kind(db):
-    """Er tut nichts weiter als sich selbst — ein Ablauf drumherum brächte nichts."""
+    """It does nothing but itself — a flow around it would bring nothing."""
     anna = await make_user(db, "anna")
     job = await _job(db, anna, kind="film")
     assert await convert(db) == 0
@@ -118,11 +118,11 @@ async def test_the_film_stays_its_own_kind(db):
 
 
 async def test_the_result_lands_in_the_job_history(db, redis_stub):
-    """Vorher stand dort „Instanz #N gestartet“ — das Ergebnis musste man sich suchen."""
+    """Before, "instance #N started" stood there — the result one had to go looking for."""
     anna = await make_user(db, "anna")
     job = await _job(db, anna, prompt="Sag Hallo", notify_mode="never")
     await convert(db)
-    # Statt eines echten Agentenlaufs: der Ablauf hält gleich eine Antwort fest.
+    # Instead of a real agent run: the flow records an answer right away.
     d = await db.get(WorkflowDefinition, job.workflow_definition_id)
     v = await db.get(WorkflowVersion, d.current_version_id)
     v.graph = {"nodes": [
@@ -147,7 +147,7 @@ async def test_the_result_lands_in_the_job_history(db, redis_stub):
 
 
 async def test_a_free_agent_run_waits_for_its_result(db, redis_stub, monkeypatch):
-    """Der freie Lauf steckte in der Job-Art fest; als Knoten kann ihn jeder Ablauf haben."""
+    """The free run was stuck in the job kind; as a node every flow can have it."""
     from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
     from app.services.workflow_actions import run_action
 
@@ -184,7 +184,7 @@ async def test_a_free_agent_run_waits_for_its_result(db, redis_stub, monkeypatch
         "action": "agent_run",
         "params": {"agent": "news", "task": "Berichte über {{ was }}"}}}}})
     assert result["started"] is True and result["agent"] == "news"
-    # Ohne das Warten liefe der Ablauf weiter, bevor die Antwort da ist.
+    # Without the waiting the flow would carry on before the answer is there.
     assert result["_wait"]["context_key"] == "run"
     (task,) = [t for t in tasks if t.get("kind") == "agent_frei"]
     assert task["prompt"] == "Berichte über die Lage"
@@ -194,7 +194,7 @@ async def test_a_free_agent_run_waits_for_its_result(db, redis_stub, monkeypatch
 # ── Ablagen: wohin ein Ablauf seinen Text legt ───────────────────────────────
 
 async def test_the_text_lands_in_the_storage(db, redis_stub):
-    """Vorher lag er im Ausgabefeld eines Laufs und die Meldung verwies ins Leere."""
+    """Before, it lay in the output field of a run and the report pointed into the void."""
     from app.models.documents import DocEntry, DocSeries
     from app.services.workflow_actions import run_action
     from app.services.workflow_engine import start_workflow
@@ -230,16 +230,16 @@ async def test_the_text_lands_in_the_storage(db, redis_stub):
 
     entry = (await db.execute(select(DocEntry))).scalars().one()
     assert entry.body.startswith("# Montag")
-    # Die Überschrift kommt aus dem Text, wenn keine genannt wurde.
+    # The heading comes out of the text when none was named.
     assert entry.title == "Montag"
     store = (await db.execute(select(DocSeries))).scalars().one()
     assert store.key == "rueckblick" and store.last_title == "Montag"
-    # Der Verweis gehört in die Meldung — er ist der Grund, warum überhaupt abgelegt wird.
+    # The reference belongs in the report — it is the reason for storing at all.
     assert inst.context["document"]["url"].endswith("/documents/rueckblick")
 
 
 async def test_empty_text_files_nothing(db, redis_stub):
-    """Eine leere Fassung verdrängte im Verlauf eine echte und stünde als „Stand von heute“ da."""
+    """An empty version would displace a real one in the history and stand there as "today's state"."""
     from app.models.documents import DocEntry
     from app.services.workflow_actions import run_action
     from app.services.workflow_engine import start_workflow
@@ -272,7 +272,7 @@ async def test_empty_text_files_nothing(db, redis_stub):
 
 
 async def test_old_versions_are_forgotten(db):
-    """Ein täglicher Rückblick wäre nach einem Jahr 365 Fassungen."""
+    """A daily review would be 365 versions after a year."""
     from app.models.documents import DocEntry
     from app.services import documents
 

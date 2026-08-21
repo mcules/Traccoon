@@ -83,7 +83,7 @@ export default function WorkflowEditor() {
   const place = useLocation();
   const { data: catalog } = useQuery({
     queryKey: ["workflow-context-fields"], queryFn: workflowApi.contextFields,
-    staleTime: 60 * 60 * 1000,   // ändert sich nur mit einem Deploy
+    staleTime: 60 * 60 * 1000,   // changes only with a deploy
   });
   const wfId = Number(id);
   const nav = useNavigate();
@@ -150,8 +150,8 @@ export default function WorkflowEditor() {
   const [focus, setFocus] = useState<{ x: number; y: number; token: number } | undefined>();
   const [errors, setErrors] = useState<string[]>([]);
   const [msg, setMsg] = useState("");
-  // Woran man sieht, ob die Prüfung noch gilt: Sie gehört zu EINEM Stand des Graphen. Wer
-  // danach etwas verschiebt, hat kein geprüftes Ergebnis mehr, sondern ein altes.
+  // How one sees whether the check still holds: it belongs to ONE state of the graph. Whoever
+  // moves something afterwards no longer has a checked result but an old one.
   const [checked, setChecked] = useState<{ signature: string; ok: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
   const [showDiff, setShowDiff] = useState(false);
@@ -328,12 +328,12 @@ export default function WorkflowEditor() {
   const selected = nodes.find((n) => n.id === selectedId) || null;
 
   /**
-   * Speichern heißt nicht mehr „schreib in Fassung X".
+   * Saving no longer means "write into version X".
    *
-   * Der Server sieht sich an, was sich geändert hat: eine reine Anordnung landet in der
-   * Fassung, die ohnehin gilt (auch in einer veröffentlichten), alles andere in einem
-   * Entwurf, den es erst dann gibt. Vorher kostete jedes Hinsehen eine Fassungsnummer, und
-   * ein verschobener Kasten machte aus „veröffentlicht" ein „weicht ab".
+   * The server looks at what has changed: a pure arrangement lands in the version that applies
+   * anyway (a published one included), everything else in a draft that only then exists.
+   * Before, every look cost a version number, and a moved box turned "published" into
+   * "deviates".
    */
   const save = async () => {
     setSaving(true);
@@ -353,14 +353,14 @@ export default function WorkflowEditor() {
     }
   };
 
-  /** Entwurf wegwerfen und zurück auf das, was läuft. */
+  /** Throw the draft away and back to what is running. */
   const discard = async () => {
     setMsg("");
     try {
       await workflowApi.discardDraft(wfId);
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
-      seeded.current = false;      // der Graph wird aus der Live-Fassung neu geladen
+      seeded.current = false;      // the graph is reloaded from the live version
       setMsg("Entwurf verworfen.");
     } catch (e) {
       setMsg(e instanceof ApiError ? e.message : "Verwerfen fehlgeschlagen");
@@ -389,7 +389,7 @@ export default function WorkflowEditor() {
     try {
       const graph = flowToGraph(nodes, edges);
       const stored = await workflowApi.saveGraph(wfId, { graph });
-      // Nichts Inhaltliches geändert: dann gibt es auch nichts zu veröffentlichen.
+      // Nothing substantive changed: then there is nothing to publish either.
       if (stored.result === "layout" && stored.version.status === "published") {
         setMsg("Nichts zu veröffentlichen — nur die Anordnung war anders.");
         return;
@@ -422,8 +422,8 @@ export default function WorkflowEditor() {
   // fresh draft version that carries a new number but contains the same thing character for
   // character. Going by the number would mean marking every flow as "not published" on mere
   // viewing.
-  // Verglichen wird der INHALT: eine andere Anordnung ist keine Abweichung, sonst stünde
-  // nach jedem Aufräumen „weicht von v7 ab" da, obwohl der Ablauf derselbe ist.
+  // What is compared is the CONTENT: a different arrangement is no deviation, otherwise
+  // "deviates from v7" would stand there after every tidy-up although the flow is the same.
   const contentNow = useMemo(
     () => contentSignature(flowToGraph(nodes, edges)), [nodes, edges]);
   const sameAsLive = !!liveVersion && contentNow === contentSignature(liveVersion.graph);
@@ -455,7 +455,7 @@ export default function WorkflowEditor() {
             : def?.slot ? "/processes/default" : "/processes/own");
 
   return (
-    // Wie im Büro: die Bereichsschiene bleibt stehen, der Rest der Seite verschwindet.
+    // As in the office: the area rail stays, the rest of the page disappears.
     <div className={`fixed inset-0 z-30 flex flex-col bg-surface ${RAIL_LEAVEBLANK}`}>
       {/* Kopfzeile */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-line bg-card px-3 py-2 sm:px-4">
@@ -492,7 +492,7 @@ export default function WorkflowEditor() {
           </span>
         )}
         {/* Die Abweichung ist anklickbar: „weicht von v7 ab" beantwortet nicht, WAS abweicht,
-            und genau danach sucht man in dem Moment. */}
+            and that is exactly what one looks for in that moment. */}
         {!sameAsLive && liveVersion && version?.id && version.id !== liveVersion.id ? (
           <button onClick={() => setShowDiff(true)}
             className={`rounded px-1.5 py-0.5 text-xs underline decoration-dotted ${publication.style}`}
@@ -506,7 +506,7 @@ export default function WorkflowEditor() {
           </span>
         )}
         {/* Entwurf wegwerfen: es gab keinen Weg zurück, außer den Graphen von Hand
-            zurückzubauen. Nur sichtbar, wenn es wirklich einen offenen Entwurf gibt. */}
+            back. Only visible when there really is an open draft. */}
         {!onlyRead && version?.status === "draft" && version.id > 0 && (
           <button onClick={() => setQuestionDiscard(true)}
             className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-red-400 hover:text-red-300"
@@ -532,13 +532,13 @@ export default function WorkflowEditor() {
           {tr("editor.arrange")}
         </Button>
         {/* Speichern kann nur, was sich geändert hat — sonst ist der Knopf ein Versprechen,
-            das er nicht einlöst. */}
+            that it does not redeem. */}
         <Button onClick={save} disabled={!changed || saving || !version || onlyRead}
           symbol="💾" title={changed ? undefined : tr("editor.nothing_changed")}>
           {tr(saving ? "editor.saving" : "common.save")}
         </Button>
         {/* Das Ergebnis bleibt am Knopf stehen: Wer geprüft hat, will es später noch sehen,
-            ohne noch einmal zu prüfen. Nach der nächsten Änderung ist es wieder offen. */}
+            without checking again. After the next change it is open again. */}
         <Button onClick={validateServer} disabled={!version || onlyRead} symbol="✓"
           state={checked && checked.signature === now
             ? (checked.ok ? "good" : "bad") : "open"}
@@ -548,7 +548,7 @@ export default function WorkflowEditor() {
           {tr("editor.check")}
         </Button>
         {/* Nichts Neues, nichts zu veröffentlichen. Vorher lud der Knopf dazu ein und
-            antwortete danach „nur die Anordnung war anders". */}
+            answered afterwards "only the arrangement was different". */}
         <Button variant="primary" onClick={publish} symbol="⬆"
           disabled={!version || clientErrors.length > 0 || sameAsLive || onlyRead}
           title={clientErrors.length ? tr("editor.fix_errors_first")
@@ -588,7 +588,7 @@ export default function WorkflowEditor() {
         <div className={`flex flex-col overflow-y-auto border-l border-line bg-card ${
           narrow ? `w-full ${column === "baustein" ? "" : "hidden"}` : "w-80 shrink-0"}`}>
           {/* Am Handy steht die Palette hier oben: ohne sie käme man in dieser Ansicht an
-              keinen neuen Baustein, und die Fläche hat für eine Leiste keinen Platz. */}
+              no new building block, and the surface has no room for a bar. */}
           {narrow && !onlyRead && (
             <div className="border-b border-line p-2">
               <div className="mb-1.5 text-xs font-medium text-muted">{tr("node_palette.blocks")}</div>

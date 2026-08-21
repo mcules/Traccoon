@@ -1,10 +1,10 @@
-"""Der Mail-Client: Konten, Identitäten und Aktionen.
+"""The mail client: accounts, identities and actions.
 
-Was hier NICHT geprüft wird, ist IMAP selbst — dafür bräuchte es einen echten Server, und
-`imapclient` ist nicht die Stelle, an der unsere Fehler entstehen. Geprüft wird, was uns
-gehört: dass ein Kennwort nie zurückkommt, dass es beim Speichern anderer Felder nicht
-verlorengeht, dass es nur eine Vorgabe-Identität gibt und dass eine Mail-Aktion den Ablauf
-mit allem startet, was er über die Mail wissen muss.
+What is NOT checked here is IMAP itself — that would need a real server, and `imapclient` is
+not the place where our mistakes come into being. What is checked is what belongs to us: that
+a password never comes back, that it does not get lost while saving other fields, that there
+is only one default identity and that a mail action starts the flow with everything it needs
+to know about the mail.
 """
 import pytest
 from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
@@ -34,13 +34,13 @@ async def test_the_password_never_comes_back(db, client):
     assert data["imap_password_set"] is True and data["smtp_password_set"] is True
     assert "geheim" not in r.text, "das Kennwort darf die Oberfläche nie erreichen"
 
-    # Und in der Datenbank steht es nicht im Klartext.
+    # And in the database it does not stand in the clear.
     account = (await db.execute(select(MailAccount))).scalars().one()
     assert account.imap_password_enc and account.imap_password_enc != "geheim"
 
 
 async def test_an_empty_password_means_unchanged(db, client):
-    """Der häufigste Bedienfehler wäre sonst: Ordnernamen ändern und das Konto entsperren."""
+    """The most common operating mistake would otherwise be: change folder names and unlock the account."""
     anna = await make_user(db, "anna")
     kid = (await client.post("/mailbox/accounts", headers=auth(anna),
                              json=_account())).json()["id"]
@@ -111,7 +111,7 @@ async def test_the_action_starts_a_flow_with_the_mail_in_the_context(db, client,
     d.current_version_id = v.id
     await db.commit()
 
-    # Die Oberfläche fragt, welche Abläufe an eine Mail passen.
+    # The UI asks which flows fit a mail.
     offer = (await client.get("/mailbox/actions", headers=auth(anna))).json()
     assert [a["key"] for a in offer] == ["anhang-paperless"]
     assert offer[0]["scope"] == "attachment"
@@ -128,7 +128,7 @@ async def test_the_action_starts_a_flow_with_the_mail_in_the_context(db, client,
 
 
 async def test_the_action_does_not_know_the_attachment(db, client, monkeypatch):
-    """Ein Anhang, den es nicht gibt, ist ein Fehler und kein leerer Ablauf."""
+    """An attachment that does not exist is an error and not an empty flow."""
     anna = await make_user(db, "anna")
     kid = (await client.post("/mailbox/accounts", headers=auth(anna),
                              json=_account())).json()["id"]
@@ -161,7 +161,7 @@ async def test_the_action_does_not_know_the_attachment(db, client, monkeypatch):
 # ── HTML einer fremden Mail ─────────────────────────────────────────────────
 
 async def test_html_is_cleaned_and_remote_images_stay():
-    """Drei Dinge auf einmal: kein Skript, kein Formular, kein stiller Bildabruf."""
+    """Three things at once: no script, no form, no silent image fetch."""
     from app.services.mailbox import clean
 
     clean, fern = clean(
@@ -174,10 +174,10 @@ async def test_html_is_cleaned_and_remote_images_stay():
     assert "script" not in clean and "onclick" not in clean
     assert "<form" not in clean and "<input" not in clean
     assert "javascript:" not in clean
-    # Das Fernbild bleibt sichtbar, lädt aber nichts nach.
+    # The remote image stays visible but loads nothing.
     assert 'data-fern="https://tracker.example/pixel.gif"' in clean
     assert fern is True
-    # Ein eingebettetes Bild ist kein Fernbild und bleibt, wie es ist.
+    # An embedded image is no remote image and stays as it is.
     assert 'src="data:image/png;base64,AAA"' in clean
 
 
@@ -196,8 +196,8 @@ def _o(name: str, parent: str = "", special: str = "", separator: str = ".") -> 
 
 
 async def test_subfolders_sit_under_their_parent():
-    """Der Fehler, den man sieht: `Archives` steht alphabetisch vor `INBOX.Aliexpress`, also
-    rutschten die Unterordner des Posteingangs unter das Archiv — eingerückt, was den
+    """The mistake one sees: `Archives` comes alphabetically before `INBOX.Aliexpress`, so the
+    subfolders of the inbox slid below the archive — indented, which makes the
     falschen Eindruck perfekt machte."""
     from app.services.mailbox import tree_sort
 
@@ -222,8 +222,8 @@ async def test_subfolders_sit_under_their_parent():
 
 
 async def test_a_folder_without_a_parent_is_a_root():
-    """Manche Server listen `Archives/2024` ohne `Archives`. Eingerückt ins Leere zu zeigen
-    wäre schlimmer als eine Ebene weniger."""
+    """Some servers list `Archives/2024` without `Archives`. Pointing indented into the void
+    would be worse than one level less."""
     from app.services.mailbox import tree_sort
 
     tree = tree_sort([_o("INBOX", special="inbox"),
@@ -250,7 +250,7 @@ def _account_pattern(pattern: str = "Archive/{jahr}") -> MailAccount:
 
 
 async def test_the_pattern_takes_the_date_of_the_mail_not_of_today():
-    """Der eigentliche Zweck: eine Rechnung von 2023 gehört auch 2026 noch ins Jahr 2023."""
+    """The actual point: an invoice from 2023 still belongs in the year 2023 in 2026."""
     import datetime as dt
 
     from app.services.mailbox import archive_target
@@ -262,8 +262,8 @@ async def test_the_pattern_takes_the_date_of_the_mail_not_of_today():
 
 
 async def test_the_separator_of_the_server_is_used():
-    """Dasselbe Muster auf Courier (Punkt) und Dovecot (Schrägstrich) — der Mensch soll
-    nicht wissen müssen, wie sein Server Ordner schachtelt."""
+    """The same pattern on Courier (a dot) and Dovecot (a slash) — the person should not have
+    to know how their server nests folders."""
     import datetime as dt
 
     from app.services.mailbox import archive_target
@@ -284,8 +284,8 @@ async def test_the_sender_in_the_pattern():
 
 
 async def test_a_typo_in_the_pattern_creates_no_bracket_folder():
-    """`{jhar}` ist ein Tippfehler. Er soll auffallen — aber keinen Ordner mit geschweiften
-    Klammern im Namen erzeugen, den man hinterher von Hand wegräumt."""
+    """`{jhar}` is a typo. It should stand out — but not produce a folder with curly braces in
+    its name that one clears away by hand afterwards."""
     import datetime as dt
 
     from app.services.mailbox import archive_target
@@ -305,11 +305,11 @@ async def test_a_fixed_folder_stays_a_fixed_folder():
     assert archive_target(account, dt.datetime(2023, 5, 5, tzinfo=dt.timezone.utc)) == "Archiv"
 
 
-# ── Büroklammer in der Liste ────────────────────────────────────────────────
+# ── The paperclip in the list ───────────────────────────────────────────────
 
 async def test_an_attachment_is_recognised_without_loading_the_mail():
-    """Die Büroklammer entsteht aus der BODYSTRUCTURE — eine Liste von fünfzig Nachrichten
-    soll keine fünfzig Anhänge durchs Netz ziehen."""
+    """The paperclip comes out of the BODYSTRUCTURE — a list of fifty messages must not drag
+    fifty attachments across the network."""
     from app.services.mailbox import _has_attachment
 
     mit = ((b"text", b"plain", (b"charset", b"utf-8"), None, None, b"7bit", 12, 1),
@@ -325,7 +325,7 @@ async def test_an_attachment_is_recognised_without_loading_the_mail():
 
 
 async def test_an_embedded_logo_is_not_an_attachment():
-    """Sonst trüge jede Werbemail eine Büroklammer, und die wäre keine Auskunft mehr."""
+    """Otherwise every advertising mail would carry a paperclip, and it would be no information any more."""
     from app.services.mailbox import _has_attachment
 
     inline = ((b"text", b"html", (b"charset", b"utf-8"), None, None, b"7bit", 40, 2),
@@ -348,7 +348,7 @@ async def _mcp_account(db, user, **over) -> MailAccount:
 
 
 async def test_only_released_tools_appear_in_the_catalog(db):
-    """Voreinstellung ist nichts. Was im Verzeichnis steht, hat jemand eingeschaltet."""
+    """The default is nothing. What stands in the listing somebody switched on."""
     from app.services.mail_mcp import toollist
 
     anna = await make_user(db, "anna")
@@ -390,7 +390,7 @@ async def test_foreign_mailboxes_stay_invisible(db):
 
 
 async def test_ignored_folders_are_not_a_screen_but_a_block(db, monkeypatch):
-    """Ein ausgeblendeter Ordner darf auch kein Ziel sein — sonst könnte man Post hinter den
+    """A hidden folder must be no target either — otherwise one could push mail behind the
     Sichtschutz schieben."""
     from app.services import mail_mcp
 
@@ -422,7 +422,7 @@ async def test_the_pattern_of_the_ignore_list():
 
 
 async def test_instructions_appear_on_connect_and_on_the_account(db):
-    """Hausregeln gehören dorthin, wo ein Agent das Postfach kennenlernt — nicht in eine
+    """House rules belong where an agent gets to know the mailbox — not into a
     Datei, die er vielleicht liest."""
     from app.services.mail_mcp import instructions, execute
 
@@ -438,7 +438,7 @@ async def test_instructions_appear_on_connect_and_on_the_account(db):
 
 
 async def test_no_empty_field_without_an_instruction(db):
-    """Ein leerer Hinweis ist schlechter als keiner: er sieht aus wie eine Regel."""
+    """An empty hint is worse than none: it looks like a rule."""
     from app.services.mail_mcp import instructions, execute
 
     anna = await make_user(db, "anna")
@@ -450,7 +450,7 @@ async def test_no_empty_field_without_an_instruction(db):
 # ── Handgriffe am ganzen Ordner ─────────────────────────────────────────────
 
 async def test_special_folders_are_protected_from_deletion(db, client):
-    """Wer seinen Papierkorb löscht, hat danach ein Löschen, das nicht mehr funktioniert."""
+    """Whoever deletes their trash afterwards has a delete that no longer works."""
     anna = await make_user(db, "anna")
     kid = (await client.post("/mailbox/accounts", headers=auth(anna),
                              json=_account(folder_trash="Trash"))).json()["id"]
@@ -479,11 +479,11 @@ async def test_an_ordinary_folder_may_be_deleted(db, client, monkeypatch):
     assert r.status_code == 204 and deleted == ["Alte Newsletter"]
 
 
-# ── Was ein Ablauf mit einer Mail tun kann ───────────────────────────────────
+# ── What a flow can do with a mail ──────────────────────────────────────────
 
 async def test_a_flow_marks_a_mail_as_read(db, monkeypatch):
-    """Der häufigste Handgriff überhaupt — und bis eben der einzige, den ein Ablauf nicht
-    tun konnte: Wer eine Mail einsortiert hat, will sie danach als gelesen wissen."""
+    """The most common handgrip of all — and until just now the only one a flow could not do:
+    whoever has filed a mail wants it marked as read afterwards."""
     from app.services.workflow_actions import _mail_flag
 
     anna = await make_user(db, "anna")
@@ -507,7 +507,7 @@ async def test_a_flow_marks_a_mail_as_read(db, monkeypatch):
 
 
 async def test_without_a_mail_in_the_context_the_node_says_why(db):
-    """Ein Ablauf, der von einem Job kommt, hat keine Mail — das ist kein Absturz."""
+    """A flow that comes from a job has no mail — that is no crash."""
     from app.services.workflow_actions import _mail_flag
 
     inst = type("Inst", (), {"context": {}, "started_by": None, "definition_id": 1, "id": 1})()
@@ -516,7 +516,7 @@ async def test_without_a_mail_in_the_context_the_node_says_why(db):
 
 
 async def test_a_move_without_a_target_goes_to_the_archive(db, monkeypatch):
-    """So kann ein Ablauf „erledigt, weg damit" sagen, ohne den Ordnernamen zu kennen."""
+    """That way a flow can say "done, away with it" without knowing the folder name."""
     from app.services.workflow_actions import _mail_move
 
     anna = await make_user(db, "anna")
