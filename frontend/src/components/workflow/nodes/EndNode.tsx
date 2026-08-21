@@ -1,9 +1,10 @@
 import { BaseNode, type FlowNodeProps } from "./shared";
+import { tr } from "../../../i18n";
 
 const OUTCOME_LABEL: Record<string, string> = {
-  completed: "abgeschlossen",
-  failed: "fehlgeschlagen",
-  cancelled: "abgebrochen",
+  completed: "outcome.completed",
+  failed: "outcome.failed",
+  cancelled: "outcome.cancelled",
 };
 
 export default function EndNode({ data, selected }: FlowNodeProps) {
@@ -17,7 +18,7 @@ export default function EndNode({ data, selected }: FlowNodeProps) {
       runtimeState={data.runtimeState}
       sources={[]}
     >
-      {o && <div>Ergebnis: {OUTCOME_LABEL[o] || o}</div>}
+      {o && <div>{tr("node.outcome")}: {OUTCOME_LABEL[o] ? tr(OUTCOME_LABEL[o]) : o}</div>}
     </BaseNode>
   );
 }

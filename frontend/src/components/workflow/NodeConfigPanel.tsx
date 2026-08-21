@@ -16,9 +16,9 @@ import StartConfig from "./config/StartConfig";
 import { BUTTON_TEXT } from "../ui";
 
 const OUTCOMES: [WorkflowInstanceStatus, string][] = [
-  ["completed", "abgeschlossen"],
-  ["failed", "fehlgeschlagen"],
-  ["cancelled", "abgebrochen"],
+  ["completed", "outcome.completed"],
+  ["failed", "outcome.failed"],
+  ["cancelled", "outcome.cancelled"],
 ];
 
 export default function NodeConfigPanel({
@@ -109,7 +109,7 @@ export default function NodeConfigPanel({
           >
             {OUTCOMES.map(([k, l]) => (
               <option key={k} value={k}>
-                {l}
+                {tr(l)}
               </option>
             ))}
           </select>

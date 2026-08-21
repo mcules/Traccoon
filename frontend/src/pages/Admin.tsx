@@ -30,7 +30,7 @@ export default function Admin() {
     key, label: tr(label), to: `/admin/${key}`,
     icon: { users: "👥", cost: "💶", models: "🧠", maintenance: "🔧", mail: "✉️",
             artifacts: "📦", translations: "🌐" }[key],
-  })), tab, "seite");
+  })), tab, "side");
   return (
     <div>
       {tab === "users" && <Users />}

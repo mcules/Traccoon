@@ -27,7 +27,7 @@ const TABS: [Tab, string, string][] = [
   ["person", "account.person", "\u{1F464}"],
   ["appearance", "account.appearance", "\u{1F3A8}"],
   ["notifications", "account.notifications", "\u{1F514}"],
-  ["mail", tr("account.mail_accounts"), "\u{2709}\uFE0F"],
+  ["mail", "account.mail_accounts", "\u{2709}\uFE0F"],
   ["agents", "account.agents", "\u{1F916}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
@@ -39,7 +39,7 @@ export default function Account() {
   // configuring pages, and those all carry their sections in a column on the left.
   usePageChrome(tr("nav.account"), TABS.map(([key, label, icon]) => ({
     key, label: tr(label), to: `/account/${key}`, icon,
-  })), tab, "seite");
+  })), tab, "side");
 
   return (
     <div className="max-w-2xl space-y-4">

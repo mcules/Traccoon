@@ -7,7 +7,7 @@ import {
 
 type Status = { id: number; name: string; category: string; order: number };
 const CATEGORIES: [string, string][] = [
-  ["todo", tr("common.open_state")], ["in_progress", tr("common.in_progress")], ["done", tr("common.done_state")],
+  ["todo", "common.open_state"], ["in_progress", "common.in_progress"], ["done", "common.done_state"],
 ];
 
 /**
@@ -117,7 +117,7 @@ function StatusDialog({ status, onClose, onSave }: {
         </Field>
         <Field label={tr("status_manager.category")} hint={tr("status_manager.category_drives_statistics_throughput")}>
           <select value={category} onChange={(e) => setCategory(e.target.value)} className={INPUT_VALUE}>
-            {CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {CATEGORIES.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
           </select>
         </Field>
       </div>

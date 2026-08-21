@@ -58,7 +58,7 @@ export default function DryrunPanel(
         >
           {tr(runs ? "dry_run.running" : "dry_run.dry_run")}
         </button>
-        {result && <span className="text-[11px]">Ergebnis: <b>{result}</b></span>}
+        {result && <span className="text-[11px]">{tr("dry_run.result")}: <b>{result}</b></span>}
       </div>
       <p className="text-[11px]">
         {hatProbe

@@ -30,7 +30,7 @@ export default function TicketView() {
 
   // The sub-menu of the project stays visible on the ticket page (no tab is active, so the
   // way back into the project is always one click away).
-  usePageChrome(ticketKey ?? "Ticket", projectChromeTabs(project), undefined, "seite");
+  usePageChrome(ticketKey ?? "Ticket", projectChromeTabs(project), undefined, "side");
 
   if (!project) return <div className="text-muted">{tr("ticket_view.project_not_found")}</div>;
   if (!meta) return <div className="text-muted">{tr("ticket_view.loading")}</div>;

@@ -49,7 +49,7 @@ export default function Settings() {
   const visible = TABS.filter(([key]) => isAdmin || !ONLY_ADMIN.includes(key));
   usePageChrome(tr("nav.settings"), visible.map(([key, label, icon]) => ({
     key, label: tr(label), to: `/settings/${key}`, icon,
-  })), tab, "seite");
+  })), tab, "side");
   return (
     <div className="max-w-3xl">
       {tab === "secrets" && <Secrets />}

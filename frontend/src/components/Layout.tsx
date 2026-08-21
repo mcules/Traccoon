@@ -283,7 +283,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const isActive = (t: ChromeTab) => chrome.active ? t.key === chrome.active
     : (loc.pathname === t.to || current === t.to);
   const onProjectPage = /^\/projects\//.test(loc.pathname);
-  const sideways = chrome.layout === "seite" && chrome.tabs.length > 0;
+  const sideways = chrome.layout === "side" && chrome.tabs.length > 0;
 
   return (
     <div className="flex min-h-full">

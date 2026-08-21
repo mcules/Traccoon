@@ -11,7 +11,7 @@ interface Policy {
   enabled: boolean; hit_count: number; last_used_at: string | null; created_at: string;
 }
 
-const KIND_LABEL: Record<string, string> = { sender: tr("assistant_policies.sender"), domain: "Domain", category: tr("assistant_policies.category") };
+const KIND_KEY: Record<string, string> = { sender: "assistant_policies.sender", domain: "assistant_policies.domain", category: "assistant_policies.category" };
 
 export default function AssistantPolicies() {
   const qc = useQueryClient();
@@ -46,7 +46,7 @@ export default function AssistantPolicies() {
         {data.map((p) => (
           <ListenLine key={p.id} dimmed={!p.enabled}>
             <div className="flex flex-wrap items-center gap-1.5">
-              <Tag>{KIND_LABEL[p.match_kind] || p.match_kind}</Tag>
+              <Tag>{KIND_KEY[p.match_kind] ? tr(KIND_KEY[p.match_kind]) : p.match_kind}</Tag>
               <span className="font-medium text-ink">{p.match_value}</span>
               <span className={`rounded px-1.5 text-xs ${p.auto_approve ? "bg-green-600/15 text-green-400" : "bg-surface text-muted"}`}>
                 {tr(p.auto_approve ? "assistant_policies.auto_approve" : "assistant_policies.hint_only")}</span>

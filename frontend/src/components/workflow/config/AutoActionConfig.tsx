@@ -11,10 +11,10 @@ import { ACTION_SPECS } from "./actionFields";
  * in the English UI — while two entries that were keys already
  * roh als `action.spam_card` in der Liste standen. */
 const GROUPS: [string, [AutoActionName, string][]][] = [
-  [tr("auto_action_config.artifact"), [
+  ["auto_action_config.artifact", [
     ["set_status", "action.set_status"],
   ]],
-  [tr("auto_action_config.general"), [
+  ["auto_action_config.general", [
     ["http_request", "action.http_request"],
     ["tool_call", "action.tool_call"],
     ["set_context", "action.set_context"],
@@ -137,7 +137,7 @@ export default function AutoActionConfig({
           className={`mt-1 ${inp}`}
         >
           {groups.map(([group, items]) => (
-            <optgroup key={group} label={group}>
+            <optgroup key={group} label={tr(group)}>
               {items.map(([k, l]) => (
                 <option key={k} value={k}>
                   {tr(l)}

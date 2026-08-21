@@ -49,7 +49,7 @@ export default function Processes() {
     key, label: tr(label), to: `/processes/${key}`,
     icon: { own: "✍️", default: "🔀", operations: "📡", triggers: "⚡",
             metrics: "📈", documents: "📄", locations: "📍" }[key],
-  })), tab, "seite");
+  })), tab, "side");
   return (
     <div>
       {/* Kein persönlicher Prozess-Satz mehr an dieser Stelle: er ist eine Vollkopie ALLER

@@ -21,8 +21,8 @@ interface Kind {
 }
 
 const FIELDTYPE: [string, string][] = [
-  ["text", "Text"], ["number", tr("project_fields.number")], ["date", tr("project_fields.date")],
-  ["boolean", tr("project_fields.yes_no")], ["select", tr("project_fields.choice")],
+  ["text", "common.text"], ["number", "project_fields.number"], ["date", "project_fields.date"],
+  ["boolean", "project_fields.yes_no"], ["select", "project_fields.choice"],
 ];
 
 const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
@@ -196,7 +196,7 @@ function FieldDialog({ field: field, runs: running, onClose, onCreate: onCreate,
         </Formfield>
         <Formfield label={tr("artifact_types_panel.type")}>
           <select value={kind} onChange={(e) => setKind(e.target.value)} className={INPUT_VALUE}>
-            {FIELDTYPE.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {FIELDTYPE.map(([k, l]) => <option key={k} value={k}>{tr(l)}</option>)}
           </select>
         </Formfield>
         <div className="space-y-1.5">

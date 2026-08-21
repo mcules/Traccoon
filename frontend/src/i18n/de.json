@@ -2469,5 +2469,12 @@
   "mail.compose": "Nachricht verfassen",
   "mail.send": "Senden",
   "mail.copy": "Kopie",
-  "mail.subject": "Betreff"
+  "mail.subject": "Betreff",
+  "outcome.completed": "abgeschlossen",
+  "outcome.failed": "fehlgeschlagen",
+  "outcome.cancelled": "abgebrochen",
+  "node.outcome": "Ergebnis",
+  "builder_panel.describe_instead": "✍ Beschreiben statt bauen",
+  "dry_run.result": "Ergebnis",
+  "metric_series_panel.count_values": "{count} Werte"
 }

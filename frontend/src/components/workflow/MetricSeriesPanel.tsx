@@ -21,8 +21,10 @@ interface Series {
 interface Point { id: number; ts: string; value: number; context: Record<string, any> }
 interface History extends Series { target: number; points: Point[] }
 
-const TIMESPANS: [number, string][] = [[7, tr("common.days_7")], [30, tr("common.days_30")], [90, tr("common.days_90")],
-                                        [365, tr("common.year_1")]];
+// The keys, not the texts: `tr` on module level would run before the language of the
+// logged-in person is known, and the English UI would show German buttons.
+const TIMESPANS: [number, string][] = [[7, "common.days_7"], [30, "common.days_30"],
+                                       [90, "common.days_90"], [365, "common.year_1"]];
 
 /**
  * Metric series: the numbers flows write along.
@@ -105,7 +107,7 @@ function SeriesLine({ series: series, open: open, toggle, remove: remove }: {
           <span>{tr((t?.points ?? 0) < 3 ? "metric_series.too_few_values_forecast" : "metric_series.no_end_sight")}</span>
         )}
         {t?.fit != null && <span>{tr("metric_series.quality_value", { value: t.fit })}</span>}
-        <span>{t?.points ?? 0} Werte</span>
+        <span>{tr("metric_series_panel.count_values", { count: t?.points ?? 0 })}</span>
         {old && t?.age_hours != null && (
           <span className="text-amber-300">
             {tr("metric_series.no_new_value_hours", { hours: Math.round(t.age_hours) })}
@@ -157,7 +159,7 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
           <button key={d} onClick={() => setDays(d)}
             className={`rounded border px-2 py-0.5 ${
               days === d ? "border-brand text-brand" : "border-line text-muted hover:text-ink"}`}>
-            {label}
+            {tr(label)}
           </button>
         ))}
         <div className="flex-1" />
