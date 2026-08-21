@@ -346,7 +346,7 @@ async def trigger(
             if target is None:
                 continue
             out.append(TriggerOut(**header(target), kind="subflow", source=d.name,
-                                    label=f"Aufruf aus „{d.name}“"))
+                                    label=f"Called from \"{d.name}\""))
 
     # 4) Everything without a trigger: runs only when a human (or code) starts it.
     with_trigger = {a.definition_id for a in out}
