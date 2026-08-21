@@ -51,25 +51,25 @@ _SAFE_FROM = 3
 
 # Kinds of feature that may carry on their own. A subject word never may.
 #
-# `to:` steht hier bewusst NICHT mehr — die eigene Adresse ist kein Merkmal der Mail,
-# sondern eines des Postfachs: Sie steht in jeder erwünschten genauso wie in jedem Spam.
-# Weil man aber fast nur Spam ausdrücklich entscheidet, sammelt sie einseitig Spam-Zähler
-# und wird zur selbsterfüllenden Regel. Fall vom 2026-08-20: Ein PayPal-Beleg an einen
-# frischen Alias (`to:` 4:0 Spam) wurde weggeräumt, obwohl derselbe Absender 282-mal als
-# erwünscht gelernt war — `to:` löste „sicher" aus und übersprang alles andere.
+# `to:` deliberately does NOT stand here any more — one's own address is no feature of the
+# mail but one of the mailbox: it appears in every wanted one just as in every spam. But
+# because almost only spam gets decided explicitly, it collects spam counters one-sidedly and
+# becomes a self-fulfilling rule. Case of 2026-08-20: a PayPal receipt to a fresh alias (`to:`
+# 4:0 spam) was cleared away although the same sender had been learned as wanted 282 times —
+# `to:` triggered "certain" and skipped everything else.
 _STARKE_KINDS = ("from:", "dom:")
 
-# Als Merkmal darf die Empfängeradresse mitzählen (ein Wegwerf-Alias, der wirklich nur
-# Werbung bekommt, sagt etwas), aber sie entscheidet nichts allein.
+# As a feature the recipient address may count along (a throwaway alias that really only gets
+# advertising says something), but it decides nothing on its own.
 _SCHWACHE_STARKE = ("to:",)
 
 
 def _atleast(feature: str) -> int:
     """How many observations this feature needs in order to have a say.
 
-    Die eigene Empfängeradresse braucht mehr als ein Absender: Sie steht in JEDER Mail an
-    dieses Postfach, und weil fast nur Spam ausdrücklich entschieden wird, sammelt sie
-    einseitig Zähler, ohne etwas über die einzelne Mail zu sagen.
+    One's own recipient address needs more than a sender does: it appears in EVERY mail to
+    this mailbox, and because almost only spam is decided explicitly, it collects counters
+    one-sidedly without saying anything about the individual mail.
     """
     if (feature or "").startswith(_SCHWACHE_STARKE):
         return _MIN_EVIDENZ_STARK * 4
@@ -137,9 +137,9 @@ async def rate(db: AsyncSession, owner_id: int | None,
                 safe = True
                 agreed.append(row)
 
-    # „Sicher" heißt einig — und einig ist man nur, wenn niemand widerspricht. Zeigt ein
-    # zweites starkes Merkmal in die Gegenrichtung (derselbe Absender 282-mal erwünscht,
-    # während ein anderes Merkmal dreimal auf Spam steht), ist die Sache eben nicht klar.
+    # "Certain" means agreed — and one is only agreed when nobody contradicts. If a second
+    # strong feature points the other way (the same sender wanted 282 times while another
+    # feature stands at spam three times), the matter is simply not clear.
     if safe and len(agreed) > 1:
         directions = {r.spam_count == 0 for r in agreed}
         if len(directions) > 1:
@@ -166,14 +166,14 @@ def _explanation(row: SpamFeatureStat) -> str:
 
 async def sender_trusted(db: AsyncSession, owner_id: int | None, sender: str,
                             *, ab: int = 20, share: float = 0.95) -> bool:
-    """Kennt dieses Postfach den Absender als erwünscht — deutlich und über lange Zeit?
+    """Does this mailbox know the sender as wanted — clearly and over a long time?
 
-    Nicht der gelernte Score, sondern die Erfahrung dahinter: „286-mal erwünscht" ist etwas
-    anderes als „dreimal gesehen und für gut befunden". Nur bei dieser Deutlichkeit darf das
-    Gedächtnis dem Modell widersprechen.
+    Not the learned score but the experience behind it: "wanted 286 times" is something other
+    than "seen three times and found good". Only at this clarity may the memory contradict the
+    model.
 
-    Gefragt ist das Verhältnis, nicht die Makellosigkeit: Ein einziger Fehlgriff — ein
-    versehentliches „ist Spam", eine gefälschte Mail unter dem Namen — darf nicht 286 gute
+    What is asked for is the ratio, not spotlessness: a single misgrab — an accidental "is
+    spam", a forged mail under the name — must not outweigh 286 good
     Beobachtungen aufheben. Genau daran scheiterte die erste Fassung dieser Bremse.
     """
     if not sender:
@@ -188,13 +188,13 @@ async def sender_trusted(db: AsyncSession, owner_id: int | None, sender: str,
 
 
 async def already_contradicted(db: AsyncSession, owner_id: int | None, sender: str) -> bool:
-    """Hat ein Mensch für diesen Absender schon einmal ausdrücklich „kein Spam" gesagt?
+    """Has a person ever explicitly said "not spam" for this sender?
 
-    Das ist die stärkste Auskunft, die es gibt — stärker als jede Statistik und stärker als
-    das Modell. Wer zweimal widerspricht und beim dritten Mal wieder gefragt wird, hat recht,
-    wenn er die Erkennung für kaputt hält.
+    That is the strongest piece of information there is — stronger than any statistic and
+    stronger than the model. Whoever contradicts twice and is asked again the third time is
+    right to consider the detection broken.
 
-    Gezählt werden nur menschliche Entscheidungen: `auto` ist die Maschine, die sich selbst
+    Only human decisions are counted: `auto` is the machine that would otherwise
     bestätigt.
     """
     from ..models.assistant import SpamVerdict

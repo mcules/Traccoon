@@ -46,16 +46,16 @@ async def list_plugins(user: User = Depends(get_current_user), db: AsyncSession 
         if visible:
             out.append({"slug": p.slug, "name": p.name, "version": p.version, "icon": p.icon,
                         "entry": p.entry, "contributions": p.contributions,
-                        # Der Wirt braucht die Freigaben, um jeden Ruf des Plugins daran zu
-                        # messen. `liest` steht daneben, damit die Oberflaeche zeigen kann,
-                        # was ein Plugin verlangt und noch nicht bekommen hat.
+                        # The host needs the grants to measure every call of the plugin
+                        # against them. `reads` stands next to them so the UI can show what a
+                        # plugin demands and has not been given yet.
                         "reads": p.reads or [], "reads_granted": p.reads_granted or []})
     return out
 
 
 @router.get("/alle")
 async def list_all(_: User = Depends(require_admin), db: AsyncSession = Depends(get_session)):
-    """Alles, auch Abgeschaltetes — die Sicht der Verwaltung."""
+    """Everything, disabled ones included — the administrator's view."""
     rows = (await db.execute(select(Plugin))).scalars().all()
     return [{"slug": p.slug, "name": p.name, "version": p.version, "icon": p.icon,
              "description": p.description, "entry": p.entry, "enabled": p.enabled,
@@ -104,15 +104,15 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     plugin.contributions = manifest.get("contributions", [])
     plugin.csp = manifest.get("csp", {}) or {}
     requested = [str(r) for r in (manifest.get("reads") or [])]
-    # Eine neue Fassung darf sich nicht selbst mehr erlauben: Bestehende Freigaben bleiben,
-    # aber nur solange sie noch gefordert werden. Alles Neue faengt bei "nicht erlaubt" an
-    # und braucht wieder einen Menschen.
+    # A new version must not grant itself more: existing grants stay, but only as long as they
+    # are still being demanded. Everything new starts at "not allowed" and needs a person
+    # again.
     plugin.reads_granted = [r for r in (plugin.reads_granted or []) if r in requested]
     plugin.reads = requested
     await db.flush()
-    # Alte Dateien ersetzen. Das `flush` danach ist nicht kosmetisch: Ohne es fuehrt
-    # SQLAlchemy erst die neuen INSERTs und dann die DELETEs aus, und der eindeutige Index
-    # (plugin_id, path) schlaegt zu — eine neue Fassung eines Plugins liess sich damit gar
+    # Replace the old files. The `flush` afterwards is not cosmetic: without it SQLAlchemy
+    # runs the new INSERTs first and the DELETEs afterwards, and the unique index
+    # (plugin_id, path) fires — a new version of a plugin could not be installed at all
     # nicht einspielen.
     await db.execute(sa_delete(PluginFile).where(PluginFile.plugin_id == plugin.id))
     await db.flush()
@@ -131,8 +131,8 @@ async def upload_plugin(file: UploadFile, _: User = Depends(require_admin), db: 
     return {"slug": slug, "files": len(zf.namelist())}
 
 
-# Der Dateityp muss stimmen: Ausgeliefert wird mit `nosniff`, ein Stylesheet als
-# `octet-stream` wuerde der Browser gar nicht erst anwenden.
+# The content type has to be right: delivery happens with `nosniff`, and a stylesheet as
+# `octet-stream` is something the browser would not even apply.
 TYPES = {
     ".html": "text/html", ".js": "application/javascript", ".mjs": "application/javascript",
     ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml",
@@ -149,24 +149,24 @@ def _ctype(path: str) -> str:
         else "application/octet-stream"
 
 
-# Was ein Plugin an fremden Quellen nachladen darf, ist eine kurze Liste — mehr Richtungen
+# What a plugin may load from foreign sources is a short list — opening more directions
 # aufzumachen hiesse, Loecher auf Vorrat zu bohren.
 CSP_DIRECTIONS = ("img-src", "style-src", "font-src", "media-src")
 
 
 def _origin(request: Request) -> str:
-    """Die eigene Adresse fuer die CSP — als Rechnername mit offenem Port.
+    """Our own address for the CSP — as a hostname with an open port.
 
-    Sie muss ausgeschrieben dort stehen: Ein iframe ohne `allow-same-origin` hat die Herkunft
-    `null`, und `'self'` zeigt dann ins Leere — die eigenen Dateien des Plugins waeren als
+    It has to stand there spelled out: an iframe without `allow-same-origin` has the origin
+    `null`, and `'self'` then points into the void — the plugin's own files would be locked
     erstes gesperrt.
 
-    Ausgeschrieben wird bewusst **nur der Rechnername**, mit `*` als Port und ohne Schema.
-    Der Grund ist, dass der Server die Adresse, die der Browser benutzt hat, gar nicht sicher
-    kennt: Der nginx davor reicht `Host` ohne Port weiter und setzt keine `X-Forwarded-`
-    Kopfzeilen, Traefik in der anderen Richtung setzt sie schon. Ein geratener Port sperrt
-    dann genau die Dateien aus, um die es geht. Ein offener Port auf demselben Rechnernamen
-    erlaubt nichts, was ein Plugin nicht ohnehin haette — es liegt selbst dort.
+    Deliberately only the **hostname** is spelled out, with `*` as the port and without a
+    scheme. The reason is that the server does not reliably know the address the browser used:
+    the nginx in front passes `Host` on without the port and sets no `X-Forwarded-` headers,
+    while Traefik in the other direction does set them. A guessed port then locks out exactly
+    the files this is about. An open port on the same hostname allows nothing a plugin would
+    not have anyway — it lies there itself.
     """
     host = (request.headers.get("x-forwarded-host", "").split(",")[0].strip()
             or request.headers.get("host", "").strip()
@@ -180,12 +180,12 @@ def _origin(request: Request) -> str:
 
 
 def _csp(request: Request, plugin: Plugin) -> str:
-    """Der Zaun um eine Plugin-Seite.
+    """The fence around a plugin page.
 
-    `connect-src 'none'` ist der Kern: Ein Plugin kann von sich aus gar nicht ins Netz — weder
-    zu Traccoon noch nach draussen. Daten bekommt es ueber die Bruecke zum Wirt, fremde Dienste
-    ueber den `allowed_hosts`-Proxy. Was es darueber hinaus laden darf (Kacheln einer Karte
-    etwa), steht im Manifest und nur dort.
+    `connect-src 'none'` is the core: a plugin cannot reach the network by itself — neither
+    Traccoon nor the outside. Data reaches it through the bridge to the host, foreign services
+    through the `allowed_hosts` proxy. What it may load beyond that (map tiles, say) stands in
+    the manifest and only there.
     """
     me = _origin(request)
     extra = plugin.csp or {}
@@ -210,9 +210,9 @@ async def serve_file(slug: str, path: str, request: Request,
                      db: AsyncSession = Depends(get_session)):
     """Eine Datei des Plugins.
 
-    Bewusst ohne Anmeldung: Das iframe hat keine Herkunft und schickt daher weder Cookie noch
-    Token mit. Ausgeliefert wird ohnehin nur der Code des Plugins, keine Daten — die gibt es
-    ausschliesslich ueber die Bruecke, und die haengt am angemeldeten Menschen.
+    Deliberately without a login: the iframe has no origin and therefore sends neither cookie
+    nor token. Only the code of the plugin is delivered anyway, no data — that exists solely
+    through the bridge, and the bridge hangs on the logged-in person.
     """
     plugin = (await db.execute(select(Plugin).where(Plugin.slug == slug))).scalar_one_or_none()
     if plugin is None:
@@ -231,7 +231,7 @@ async def serve_file(slug: str, path: str, request: Request,
 
 
 class RightsIn(BaseModel):
-    """Was ein Mensch an einem Plugin entscheidet."""
+    """What a person decides about a plugin."""
     reads_granted: list[str] | None = None
     enabled: bool | None = None
     all_users: bool | None = None
@@ -243,8 +243,8 @@ async def set_rights(slug: str, data: RightsIn, _: User = Depends(require_admin)
                      db: AsyncSession = Depends(get_session)):
     """Freigaben und Sichtbarkeit setzen.
 
-    Erlauben laesst sich nur, was das Manifest auch angemeldet hat. Ein Plugin koennte sonst
-    ueber diesen Weg an Rechte kommen, die niemand an ihm gelesen hat.
+    Only what the manifest has declared can be allowed. A plugin could otherwise obtain rights
+    through this path that nobody read on it.
     """
     plugin = await _plugin(db, slug)
     if data.reads_granted is not None:
@@ -268,11 +268,11 @@ async def set_rights(slug: str, data: RightsIn, _: User = Depends(require_admin)
 
 @router.get("/_bridge.js")
 async def bridge_js():
-    """Das Stueck JavaScript, das ein Plugin als `traccoon` einbindet.
+    """The piece of JavaScript a plugin includes as `traccoon`.
 
-    Es kapselt nur das Hin und Her mit dem Wirt. Absichtlich eine ausgelieferte Datei und
-    keine Kopie im Zip jedes Plugins: Sonst traegt jedes Plugin seinen eigenen, irgendwann
-    veralteten Stand der Bruecke mit sich herum.
+    It only wraps the back and forth with the host. Deliberately a delivered file and not a
+    copy in the zip of every plugin: otherwise every plugin would carry its own, eventually
+    outdated state of the bridge around with it.
     """
     file = Path(__file__).resolve().parent.parent / "static" / "plugin_bridge.js"
     return Response(content=file.read_bytes(), media_type="application/javascript",

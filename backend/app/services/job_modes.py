@@ -1,18 +1,18 @@
-"""Jobs der alten Arten einmalig auf Abläufe umstellen.
+"""Convert jobs of the old kinds to flows, once.
 
-Ein Job konnte fünferlei sein: einen Agenten fragen (`prompt`), ein Skript starten
-(`script`), ein Ziel aufrufen (`http`), einen Ablauf anstoßen (`workflow`) oder den
-Feierabendfilm bauen (`film`). Vier davon waren dieselbe Sache in vier Ausführungen — mit
-vier Wegen für Wiederholung, Fehler und Benachrichtigung, und alle vier konnten nur genau
-eins. „Erst fragen, dann prüfen, dann melden“ ging in keinem davon.
+A job could be five things: ask an agent (`prompt`), start a script (`script`), call a
+destination (`http`), kick off a flow (`workflow`) or build the end-of-day film (`film`).
+Four of them were the same matter in four executions — with four ways for retry, error and
+notification, and all four could do exactly one thing. "First ask, then check, then report"
+worked in none of them.
 
-Es bleiben zwei Arten: `workflow` (Zeitplan plus Ablauf) und `film`. Der Film bleibt eine
-Art für sich, weil er nichts weiter tut als sich selbst — ihn aus seinen 500 Zeilen zu
-lösen, brächte für einen einzigen Job keinen Gewinn.
+Two kinds remain: `workflow` (schedule plus flow) and `film`. The film stays a kind of its
+own because it does nothing but itself — prising it out of its 500 lines would bring no gain
+for a single job.
 
-Die Umstellung verliert nichts: Der Prompt wird zum Auftrag des Agenten-Knotens, der
-Parametersatz bleibt Kontext, `notify_mode` wird zu einer Weiche vor dem Melde-Knoten, und
-`result_html` bleibt der Digest-Link, weil die Lauf-Nummer im Kontext steht.
+The conversion loses nothing: the prompt becomes the assignment of the agent node, the
+parameter set stays context, `notify_mode` becomes a decision in front of the report node,
+and `result_html` stays the digest link, because the run number is in the context.
 """
 from __future__ import annotations
 
@@ -29,17 +29,17 @@ log = logging.getLogger("traccoon.jobs")
 
 OLD_KINDS = ("prompt", "script", "http", "")
 
-# Was jeder wiederkehrende Ablauf mitbekommt, ohne dass es im Parametersatz steht
+# What every recurring flow is given without it standing in the parameter set
 # (`scheduler._start_workflow_job` legt es in den Startkontext).
 ZEITWERTE = ("today", "now", "since", "window")
 
 
 def _task(job: Job) -> str:
-    """Der Prompt, wie ihn die Ablauf-Sprache versteht.
+    """The prompt the way the flow language understands it.
 
-    Beide kennen `{{name}}`, aber eine Liste setzte die Job-Welt als Aufzählung ein und die
-    Ablauf-Sprache als das, was sie ist — aus acht Quellen würde sonst `['Hacker News', …]`
-    mitten im Auftrag. Der Filter sagt dasselbe, nur ausdrücklich.
+    Both know `{{name}}`, but the job world inserted a list as an enumeration and the flow
+    language as what it is — out of eight sources `['Hacker News', …]` would otherwise land in
+    the middle of the assignment. The filter says the same thing, only explicitly.
     """
     import re
 
@@ -51,9 +51,9 @@ def _task(job: Job) -> str:
         if isinstance(value, (list, tuple)):
             text = re.sub(r"\{\{\s*" + re.escape(name) + r"\s*\}\}",
                           "{{ " + name + ' | join:", " }}', text)
-    # Ein Platzhalter ohne Wert blieb in der Job-Welt wörtlich stehen — sichtbar falsch statt
-    # lautlos leer. Die Ablauf-Sprache füllt ihn mit nichts, also wird er hier gesagt: Wer
-    # ihn braucht, trägt den Wert in den Startkontext nach.
+    # A placeholder without a value stayed put literally in the job world — visibly wrong
+    # instead of silently empty. The flow language fills it with nothing, so it is said here:
+    # whoever needs it enters the value into the start context.
     offen = sorted({m for m in re.findall(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", text)}
                    - set(values) - set(ZEITWERTE))
     if offen:
@@ -80,15 +80,15 @@ def _e(source: str, target: str, handle: str | None = None, label: str = "") -> 
 
 
 def _action(_name: str, _label: str, **params) -> dict:
-    """Unterstrich vorn, damit ein Aktionsparameter `name` heißen darf (die Ablage hat einen)."""
+    """Leading underscore so an action parameter may be called `name` (the store has one)."""
     return {"label": _label, "action": {"action": _name, "params": params}}
 
 
 def _workstep(job: Job, target_name: str = "") -> tuple[dict, str, dict]:
-    """Der Schritt, der die eigentliche Arbeit macht.
+    """The step that does the actual work.
 
-    Zurück kommen der Knoten, der Ausdruck für sein Ergebnis und die Bedingung, an der man
-    einen Fehlschlag erkennt — jede Art meldet ihn anders (`status`, `ok`).
+    Back come the node, the expression for its result and the condition by which a failure is
+    recognised — every kind reports it differently (`status`, `ok`).
     """
     if job.kind == "script":
         return (_n("arbeit", "auto_action", 1, _action(
@@ -104,7 +104,7 @@ def _workstep(job: Job, target_name: str = "") -> tuple[dict, str, dict]:
             query=call.get("query") or {}, headers=call.get("headers") or {},
             body=call.get("body"), context_key="result")),
             "{{ result.response | json }}", {"==": [{"var": "result.ok"}, False]})
-    # prompt (und die leere Altform)
+    # prompt (and the empty legacy form)
     return (_n("arbeit", "auto_action", 1, _action(
         "agent_run", "Agenten arbeiten lassen", agent=job.agent or "assistent",
         task=_task(job), title=job.name,
@@ -113,7 +113,7 @@ def _workstep(job: Job, target_name: str = "") -> tuple[dict, str, dict]:
 
 
 def _key(name: str) -> str:
-    """Aus dem Job-Namen ein Ablagen-Schlüssel: `KI- & Tech-News` → `ki-tech-news`."""
+    """A store key out of the job name: `KI- & Tech-News` → `ki-tech-news`."""
     from ..core.slug import slug
 
     return slug(name) or "ablage"
@@ -124,18 +124,18 @@ def _graph(job: Job, target_name: str = "") -> dict:
     nodes = [
         _n("start", "start", 0, {"label": job.name, "trigger": {"kind": "job"}}),
         work,
-        # Die Antwort ist das Ergebnis des Jobs: Der Lauf trägt sie in seine Historie zurück,
-        # genau wie ein wartender Webhook sie an seinen Aufrufer zurückgibt.
+        # The answer is the result of the job: the run carries it back into its history, just
+        # as a waiting webhook returns it to its caller.
         _n("answer", "auto_action", 2, _action(
             "answer", "Ergebnis festhalten", text=result_text)),
     ]
     edges = [_e("start", "arbeit"), _e("arbeit", "answer")]
 
-    # `result_html` hieß: „schick nicht den Text, schick den Link auf die Seite". Die Seite
-    # gab es nie — der Link zeigte auf `/digest/<Lauf-Nummer>`, und dahinter lag nichts. Ein
-    # langer Text gehört auch nicht in ein Meldungsfeld: Er wird in einer Ablage hingelegt
-    # (wie ein Messwert in seiner Reihe), und gemeldet wird der Verweis darauf. Das steht vor
-    # der Melde-Frage, denn auch ein stiller Job soll behalten, was er erarbeitet hat.
+    # `result_html` meant: "do not send the text, send the link to the page". The page never
+    # existed — the link pointed at `/digest/<run number>`, and behind it lay nothing. A long
+    # text does not belong in a message field either: it is put down in a store (like a
+    # measurement in its series), and what is reported is the reference to it. That stands
+    # before the reporting question, because a silent job should keep what it worked out too.
     if job.result_html:
         nodes.insert(2, _n("ablegen", "auto_action", 2, _action(
             "document", "In die Ablage legen", storage=_key(job.name), name=job.name,
@@ -177,23 +177,22 @@ def _graph(job: Job, target_name: str = "") -> dict:
 
 
 async def as_flow(db: AsyncSession, job: Job) -> None:
-    """Diesen einen Job auf einen Ablauf umstellen (ohne commit).
+    """Convert this one job to a flow (without a commit).
 
-    Auch beim Anlegen benutzt: Wer einen Job über die API, das Agenten-Werkzeug oder eine
-    Vorlage einträgt, bekommt keinen alten Weg mehr aufgemacht, den ein späterer Neustart
-    dann wieder einsammeln müsste.
+    Used on creation as well: whoever enters a job through the API, the agent tool or a
+    template no longer gets an old path opened that a later restart would have to collect.
     """
     import datetime as dt
 
     target_name = ""
     if job.kind == "http" and job.destination_id:
-        # Der Aufruf im Ablauf nennt den Namen, nicht die Nummer — Ziele werden über den
-        # Namen aufgelöst (Projekt, dann Nutzer, dann systemweit).
+        # The call in the flow names the name, not the number — destinations are resolved by
+        # name (project, then user, then system-wide).
         from ..models.destination import Destination
         target = await db.get(Destination, job.destination_id)
         target_name = target.name if target else ""
-    # Name und Schlüssel beschreiben die Sache, nicht den Auslöser: Der Job heißt schon so,
-    # wie das gemeint ist, was er tut — „KI- & Tech-News“, nicht „Job: 3“.
+    # Name and key describe the matter, not the trigger: the job is already called what what
+    # it does is meant to be — "KI- & Tech-News", not "Job: 3".
     from .workflow_templates import free_key
     d = WorkflowDefinition(
         project_id=job.project_id,
@@ -216,7 +215,7 @@ async def as_flow(db: AsyncSession, job: Job) -> None:
 
 
 async def convert(db: AsyncSession) -> int:
-    """Stellt jeden Job um, der noch eine alte Art trägt. Gibt die Anzahl zurück."""
+    """Converts every job that still carries an old kind. Returns the count."""
     jobs = (await db.execute(select(Job).where(Job.kind.in_(OLD_KINDS)))).scalars().all()
     for job in jobs:
         await as_flow(db, job)

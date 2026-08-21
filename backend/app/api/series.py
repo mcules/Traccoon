@@ -1,10 +1,10 @@
-"""Datenreihen: anlegen, lesen, teilen — und der Weg, auf dem Punkte hereinkommen.
+"""Data series: create, read, share — and the path points come in on.
 
-Der Aufnahmepfad `POST /ingest/{token}` ist der einzige hier ohne Anmeldung und das vierte
-Auth-Muster im Haus (neben JWT, Webhook-GUID und MCP-Token). Der Grund ist die Menge: Der
-Weg ueber einen Webhook wuerde je Meldung eine Ablauf-Instanz samt Schritt-Zeilen anlegen,
-und ein Telefon meldet 375-mal am Tag. Der Webhook bleibt fuer alles Ereignisfoermige; ein
-Standortpunkt ist keins — erst das Betreten eines Ortes ist eins.
+The ingest path `POST /ingest/{token}` is the only one here without a login and the fourth
+auth pattern in the house (next to JWT, webhook GUID and MCP token). The reason is the
+volume: the way through a webhook would create a flow instance including step rows per
+report, and a phone reports 375 times a day. The webhook stays for everything event-shaped; a
+location point is not one — only entering a place is.
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ async def _ingest(db: AsyncSession, token: str, payload, query: dict) -> dict:
     series = await _series_to_token(db, token)
     points = series_formats.normalise(payload, query)
     if not points:
-        # Kein Fehler: Ein Geraet meldet auch mal seinen Zustand ohne Position, und eine 400
+        # No error: a device reports its state without a position now and then, and a 400
         # wuerde es in eine Wiederholungsschleife schicken.
         return {"accepted": 0, "skipped": 0, "still": 0, "ignored": True}
     result = await service.ingest(db, series, points)
@@ -62,7 +62,7 @@ async def ingest_post(token: str, request: Request, db: AsyncSession = Depends(g
 
 @router.get("/ingest/{token}", status_code=202)
 async def ingest_get(token: str, request: Request, db: AsyncSession = Depends(get_session)):
-    """Traccar und OsmAnd: alles steht in der Adresse."""
+    """Traccar and OsmAnd: everything stands in the address."""
     return await _ingest(db, token, {}, dict(request.query_params))
 
 
@@ -100,13 +100,13 @@ def _out(r: Series, *, owner: str = "", own: bool = True) -> dict:
         "expected_rows": r.expected_rows or 0, "store_id": r.store_id,
         "last_at": r.last_at.isoformat() if r.last_at else None,
         "owner_user_id": r.owner_user_id, "own": own, "owner": owner,
-        # Das Token selbst steht hier nie — nur, ob eins vergeben ist.
+        # The token itself never stands here — only whether one has been issued.
         "has_token": bool(r.token_hash),
     }
 
 
 async def _my(db: AsyncSession, user: User, key: str) -> Series:
-    """Eine Reihe, die dieser Mensch sehen darf — sonst 404 statt 403 (nichts verraten)."""
+    """A series this person may see — otherwise 404 instead of 403 (reveal nothing)."""
     series = (await db.execute(select(Series).where(
         Series.key == key, service.visible(user.id, _is_admin(user))))).scalar_one_or_none()
     if series is None:
@@ -166,9 +166,9 @@ async def update_series(key: str, data: SeriesPatch, user: User = Depends(get_cu
         raise Error(403, "err.series_read_only", "You may only read this series")
     fields = data.model_dump(exclude_unset=True)
 
-    # Umbenennen ist erlaubt, aber es ist kein harmloses Feld: Ablaeufe nennen die Reihe beim
-    # Schluessel. Wer umbenennt, muss sie mitziehen — deshalb steht der Hinweis auch in der
-    # Oberflaeche. Verhindert wird nur, was die Datenbank ohnehin nicht traegt.
+    # Renaming is allowed, but it is no harmless field: flows name the series by its key.
+    # Whoever renames has to pull them along — which is why the hint stands in the UI as well.
+    # Prevented is only what the database would not carry anyway.
     new = (fields.pop("key", None) or "").strip()
     if new and new != series.key:
         taken = (await db.execute(select(Series).where(
@@ -189,7 +189,7 @@ async def update_series(key: str, data: SeriesPatch, user: User = Depends(get_cu
 @router.post("/series/{key:path}/token")
 async def new_token(key: str, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    """Ein frisches Aufnahme-Token. Das alte gilt ab sofort nicht mehr."""
+    """A fresh ingest token. The old one stops working immediately."""
     series = await _my(db, user, key)
     if not await service.may_update(db, series, user.id, _is_admin(user)):
         raise Error(403, "err.series_read_only", "You may only read this series")
@@ -201,11 +201,11 @@ async def new_token(key: str, user: User = Depends(get_current_user),
 @router.get("/series/{key:path}/token")
 async def show_token(key: str, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
-    """Das vergebene Token noch einmal ansehen.
+    """Look at the issued token again.
 
-    Anders als beim MCP-Token bewusst wieder abrufbar: Man muss es in ein Telefon eintragen,
-    und "einmal sehen und dann nie wieder" heisst in der Praxis, dass man es jedesmal neu
-    vergibt und dabei die alte Einrichtung abraeumt.
+    Unlike the MCP token deliberately retrievable: one has to type it into a phone, and "see
+    it once and then never again" means in practice that one issues a new one every time and
+    clears away the old setup in the process.
     """
     series = await _my(db, user, key)
     if series.owner_user_id != user.id and not _is_admin(user):
@@ -238,8 +238,8 @@ async def list_points(key: str, von: str | None = Query(None), to: str | None = 
         question = question.where(SeriesPoint.ts >= a)
     if to and (b := series_formats.moment(to)):
         question = question.where(SeriesPoint.ts <= b)
-    # Neueste zuerst holen und dann drehen: Bei einer Begrenzung will man die juengsten
-    # Punkte, gezeichnet werden sie aber in der Reihenfolge der Zeit.
+    # Fetch the newest first and turn them around afterwards: with a limit one wants the
+    # youngest points, but they are drawn in the order of time.
     points = (await db.execute(
         question.order_by(SeriesPoint.ts.desc()).limit(limit))).scalars().all()
     return {"series": _out(series, own=series.owner_user_id == user.id),
@@ -265,10 +265,10 @@ async def delete_point(key: str, point_id: int, user: User = Depends(get_current
 @router.get("/series-live")
 async def live(kind: str = Query("location"), user: User = Depends(get_current_user),
                db: AsyncSession = Depends(get_session)):
-    """Der letzte Stand jeder sichtbaren Reihe — was eine Karte zum Aufmachen braucht.
+    """The latest state of every visible series — what a map needs to open.
 
-    Eine eigene Adresse ohne `/series/`-Praefix, weil `{key:path}` sonst auch `live`
-    schlucken wuerde und die Reihe mit dem Namen "live" den Endpunkt verdraengte.
+    An address of its own without the `/series/` prefix, because `{key:path}` would otherwise
+    swallow `live` too and the series named "live" would displace the endpoint.
     """
     series = (await db.execute(select(Series).where(
         Series.kind == kind, Series.active.is_(True),
@@ -371,7 +371,7 @@ async def list_shares(key: str, user: User = Depends(get_current_user),
 async def create_share(key: str, data: ShareIn, user: User = Depends(get_current_user),
                        db: AsyncSession = Depends(get_session)):
     series = await _my(db, user, key)
-    # Weiterreichen darf nur, wem sie gehoert: Sonst gaebe ein `manage` das Recht, die Reihe
+    # Only the owner may pass it on: otherwise a `manage` would grant the right to
     # an beliebig viele weitere Menschen zu verteilen.
     if series.owner_user_id != user.id and not _is_admin(user):
         raise Error(403, "err.series_not_yours", "Only the owner may share this series")
@@ -406,9 +406,9 @@ async def delete_share(key: str, share_id: int, user: User = Depends(get_current
     await db.commit()
 
 
-# Ganz zum Schluss, und das mit Absicht: `{key:path}` ist gierig. Stuende dieses DELETE
-# weiter oben, faenge es auch `/series/handy/points/5` ab — mit dem Schluessel
-# "handy/points/5" und einem 404 als Ergebnis, das nach einem fehlenden Punkt aussieht.
+# Right at the end, and on purpose: `{key:path}` is greedy. If this DELETE stood further up it
+# would catch `/series/handy/points/5` as well — with the key "handy/points/5" and a 404 as
+# the result, which looks like a missing point.
 @router.delete("/series/{key:path}", status_code=204)
 async def delete_series(key: str, user: User = Depends(get_current_user),
                         db: AsyncSession = Depends(get_session)):

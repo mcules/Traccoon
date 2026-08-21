@@ -1,15 +1,15 @@
-"""Datenreihen: benannte Folgen von Punkten, die eine Art haben.
+"""Data series: named sequences of points that have a kind.
 
-Traccoon kannte bisher zwei Sorten davon, jede mit eigenen Tabellen: Messreihen (Zahl mit
-Einheit) und Ablagen (Titel und Text). Mit den Standorten waere eine dritte dazugekommen,
-und mit ihr ein drittes Mal derselbe Aufbau — Kopf mit Besitzer, Punkte mit Zeitstempel,
+Traccoon knew two sorts of them so far, each with tables of its own: metric series (a number
+with a unit) and stores (a heading and a text). With locations a third would have come along,
+and with it the same structure a third time — a head with an owner, points with a timestamp,
 Freigaben, Aufraeumen.
 
-Also einmal, mit einer `kind`-Spalte: `number`, `location`, `text`. Was eine Art besonders
-macht, steht in `settings` und in den Spalten, die nur sie fuellt. Was alle teilen — wem die
-Reihe gehoert, wer sie sehen darf, wann zuletzt etwas ankam — steht genau einmal hier.
+So once, with a `kind` column: `number`, `location`, `text`. What makes a kind special sits
+in `settings` and in the columns only it fills. What all of them share — who owns the series,
+who may see it, when something last arrived — stands here exactly once.
 
-Absichtlich **nicht** `Location` genannt: Der Name ist im Haus vergeben, dort ist er der
+Deliberately **not** called `Location`: the name is taken in the house, there it is the
 Standortbaum der Hardware-Verwaltung.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 from .base import TimestampMixin
 
-# Die Arten, die es gibt. Eine neue kostet eine Zeile hier plus die Spalten, die sie fuellt.
+# The kinds there are. A new one costs a line here plus the columns it fills.
 KINDS = ("number", "location", "text")
 
 
@@ -34,45 +34,45 @@ class Series(TimestampMixin, Base):
     __table_args__ = (UniqueConstraint("owner_user_id", "key", name="uq_series_owner_key"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    # Reihen gehoeren einem Menschen: Sie entstehen aus seinen Ablaeufen und enthalten Daten
-    # seiner Geraete. NULL heisst systemweit — das darf nur ein Admin anlegen.
+    # Series belong to a person: they come out of their flows and hold data from their
+    # devices. NULL means system-wide — only an admin may create that.
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     key: Mapped[str] = mapped_column(String(120), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), default="number", index=True)
     name: Mapped[str] = mapped_column(String(200), default="")
     description: Mapped[str] = mapped_column(Text, default="")
-    # Farbe, in der eine Darstellung diese Reihe zeichnet (#rrggbb). Gehoert an die Reihe und
-    # nicht in ein Plugin: Wer zwei Handys auf einer Karte sieht, soll sie auch im Diagramm
+    # The colour a view draws this series in (#rrggbb). Belongs on the series and not in a
+    # plugin: whoever sees two phones on a map should recognise them in the chart
     # in denselben Farben wiederfinden.
     color: Mapped[str] = mapped_column(String(7), default="")
 
-    # Wohin die Punkte geschrieben werden. NULL heisst: in diese Datenbank.
+    # Where the points are written. NULL means: into this database.
     store_id: Mapped[int | None] = mapped_column(
         ForeignKey("data_stores.id", ondelete="SET NULL"), nullable=True, index=True)
-    # Womit der Mensch rechnet — die Grundlage fuer den Speichervorschlag.
+    # What the person reckons with — the basis for the storage suggestion.
     expected_rows: Mapped[int] = mapped_column(Integer, default=0)
 
     # Art-abhaengig: unit (number) · min_distance_m, min_interval_s, max_accuracy_m
     # (location) · keep_entries (text). Bewusst ein JSON statt zwoelf Spalten, von denen je
     # Art acht leer waeren.
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
-    # Der letzte Stand, denormalisiert: erspart der Uebersicht und der Karte den Blick in die
+    # The latest state, denormalised: saves the overview and the map a look into the
     # Punkte. Art-abhaengig belegt (value/lat/lon/battery/places).
     state: Mapped[dict] = mapped_column(JSON, default=dict)
     last_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    # Wieviele Punkte drin liegen. Gezaehlt beim Schreiben statt bei jedem Blick: `count(*)`
-    # ueber eine Million Zeilen fuer eine Listenzeile waere zuviel verlangt.
+    # How many points lie in it. Counted while writing instead of on every look: `count(*)`
+    # over a million rows for one list row would be asking too much.
     points: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Marken der Auslöser, aus MetricSeries uebernommen: einmal warnen, einmal Stille melden.
+    # Trigger marks, adopted from MetricSeries: warn once, report silence once.
     warned_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     warned_value: Mapped[float | None] = mapped_column(Float, nullable=True)
     still_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Nur bei Reihen, die von aussen beliefert werden. Der Hash sucht in gleichbleibender
-    # Zeit, die verschluesselte Fassung laesst die Adresse noch einmal anzeigen — man muss sie
-    # in ein Telefon eintragen, und "einmal sehen und dann nie wieder" ist dort keine Hilfe.
+    # Only on series that are supplied from outside. The hash looks up in constant time, the
+    # encrypted version lets the address be shown again — one has to type it into a phone, and
+    # "see it once and then never again" is no help there.
     token_hash: Mapped[str] = mapped_column(String(64), default="", index=True)
     token_enc: Mapped[str] = mapped_column(Text, default="")
 
@@ -80,11 +80,11 @@ class Series(TimestampMixin, Base):
 
 
 class SeriesPoint(Base):
-    """Ein Punkt. Welche Spalten belegt sind, entscheidet die Art der Reihe.
+    """A point. Which columns are filled is decided by the kind of the series.
 
-    Eine Tabelle mit leeren Spalten statt drei Tabellen: In Postgres kostet ein NULL ueber die
-    Null-Bitmap fast nichts, `lat`/`lon` bleiben indizierbar, und eine neue Art ist dann eine
-    Spalte — nicht eine neue Tabelle mit eigenem Aufraeumen und eigenen Freigaben.
+    One table with empty columns instead of three tables: in Postgres a NULL costs almost
+    nothing thanks to the null bitmap, `lat`/`lon` stay indexable, and a new kind is then a
+    column — not a new table with its own pruning and its own grants.
     """
     __tablename__ = "series_points"
 
@@ -100,12 +100,12 @@ class SeriesPoint(Base):
     # kind=number
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
 
-    # kind=location. Float und nicht Numeric: Gerechnet wird ohnehin in Fliesskomma, und
-    # PostGIS steht nicht zur Verfuegung — die Erweiterung ist im Abbild nicht enthalten.
+    # kind=location. Float and not Numeric: the arithmetic happens in floating point anyway,
+    # and PostGIS is not available — the extension is not part of the image.
     lat: Mapped[float | None] = mapped_column(Float, nullable=True)
     lon: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # accuracy, altitude, speed, course, battery — alles, was ein Geraet mitschickt und was
-    # keine eigene Spalte verdient, weil kaum jemand danach sucht.
+    # accuracy, altitude, speed, course, battery — everything a device sends along that does
+    # not deserve a column of its own because hardly anyone searches by it.
     extra: Mapped[dict] = mapped_column(JSON, default=dict)
 
     # kind=text
@@ -115,10 +115,10 @@ class SeriesPoint(Base):
 
 
 class SeriesPlace(Base):
-    """Ein benannter Ort mit Radius — der Geozaun.
+    """A named place with a radius — the geofence.
 
-    Betreten und Verlassen sind Ereignisse wie eine eingegangene Mail: Sie starten Ablaeufe.
-    Genau deshalb liegen die Standorte in Traccoon und nicht in einer Karte daneben.
+    Entering and leaving are events like an incoming mail: they start flows. That is exactly
+    why the places live in Traccoon and not in a map next to it.
     """
     __tablename__ = "series_places"
     __table_args__ = (UniqueConstraint("owner_user_id", "key", name="uq_series_place_owner_key"),)
@@ -126,8 +126,8 @@ class SeriesPlace(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     owner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    # Gesetzt: gilt nur fuer diese eine Reihe. NULL: fuer alle Standortreihen des Menschen —
-    # der Normalfall, denn "zu Hause" ist fuer jedes Geraet derselbe Ort.
+    # Set: applies to this one series only. NULL: to all location series of the person —
+    # the normal case, because "home" is the same place for every device.
     series_id: Mapped[int | None] = mapped_column(
         ForeignKey("series.id", ondelete="CASCADE"), nullable=True, index=True)
     key: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -136,16 +136,16 @@ class SeriesPlace(Base):
     lon: Mapped[float] = mapped_column(Float, nullable=False)
     radius_m: Mapped[int] = mapped_column(Integer, default=150)
     color: Mapped[str] = mapped_column(String(7), default="")
-    # Aus: der Ort wird nur gezeichnet und loest nichts aus.
+    # Off: the place is only drawn and fires nothing.
     notify: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class SeriesShare(Base):
     """Wer eine fremde Reihe sehen darf.
 
-    Eine eigene Tabelle statt `ResourceGrant`: Dessen `project_id` ist NOT NULL und die
-    Vergabe haengt unter `/projects/{id}/resource-grants` hinter der Maintainer-Rolle. Reihen
-    sind wie Messreihen und Ablagen projektlos. Drei Spalten sind billiger, als das
+    A table of its own instead of `ResourceGrant`: its `project_id` is NOT NULL and granting
+    hangs under `/projects/{id}/resource-grants` behind the maintainer role. Series are
+    project-less like metric series and stores. Three columns are cheaper than
     Projektmodell dafuer aufzuweichen.
     """
     __tablename__ = "series_shares"

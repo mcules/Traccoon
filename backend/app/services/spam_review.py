@@ -110,18 +110,18 @@ def _mix(rule: float, model: float, learned: float | None) -> float:
 # with a single rule signal (0.4) even a model at 0.95 reaches 0.76 at most, and every
 # sensible auto threshold stays out of reach. Case of 2026-08-19 (verdict #42): a "Bank" mail
 # from fremde-firma.example, SPF, DKIM and DMARC all passing, model 0.95 with "Phishing-Versuch
-# mit gefälschtem Absender", overall verdict 0.731, and so it stayed in the inbox.
+# with a forged sender", overall verdict 0.731, and so it stayed in the inbox.
 _FRAUD_SCORE = 0.95
 # From here on the wording of the reason counts as a statement of its own. The floor keeps a
-# negation ("kein Betrugsversuch, nur Werbung") from turning into the opposite verdict, and
+# negation ("no attempted fraud, just advertising") from turning into the opposite verdict, and
 # it keeps the technical findings out that the flow passes into the prompt (they contain the
 # word "Fälschungsverdacht" themselves).
 _FRAUD_TEXT_FROM = 0.8
-# Bei Streit zwischen Modell und Gedächtnis: über der Frage-Schwelle, unter jeder sinnvollen
-# Auto-Schwelle. Die Mail wird also gezeigt, aber nicht angefasst.
+# When model and memory are in dispute: above the asking threshold, below any sensible auto
+# threshold. So the mail is shown but not touched.
 _DISPUTE_SCORE = 0.6
-# Und wenn ein Mensch für diesen Absender schon einmal widersprochen hat: durchlassen. Unter
-# jeder Frage-Schwelle, denn die Frage ist beantwortet.
+# And once a person has contradicted for this sender: let it through. Below any asking
+# threshold, because the question has been answered.
 _DECIDED_SCORE = 0.2
 _FRAUD_WORDS = re.compile(r"phish|betrug|scam|f[äa]lsch|identit[äa]tsdiebstahl", re.I)
 
@@ -230,12 +230,12 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # --- Memory ---------------------------------------------------------------
     learned_score, learned_reasons, safe = await spam_learn.rate(db, owner_id, feature_list)
     has_memory = bool(learned_reasons) or safe
-    # Wie gut kennt das Postfach diesen Absender? Nicht der Score, sondern die Erfahrung:
-    # „286-mal erwünscht, nie Spam" ist etwas anderes als „dreimal gesehen".
+    # How well does the mailbox know this sender? Not the score but the experience: "wanted
+    # 286 times, never spam" is something other than "seen three times".
     trusted = await spam_learn.sender_trusted(db, owner_id, rule.sender_email)
-    # Und ob schon einmal jemand ausdrücklich widersprochen hat. Das wiegt schwerer als
-    # jede Statistik: Wer zweimal „kein Spam" sagt und beim dritten Mal wieder gefragt wird,
-    # hat recht, wenn er die Erkennung für kaputt hält.
+    # And whether somebody has already contradicted explicitly. That weighs more than any
+    # statistic: whoever says "not spam" twice and is asked again the third time is right to
+    # consider the detection broken.
     contradicted = await spam_learn.already_contradicted(db, owner_id, rule.sender_email)
 
     score = _mix(rule.score, model, learned_score if has_memory else None)
@@ -253,23 +253,21 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
     if fraud:
         score = round(max(score, model, _FRAUD_SCORE), 3)
 
-    # Widerspruch zwischen Modell und Gedächtnis: fragen, nicht wegräumen.
+    # Contradiction between model and memory: ask, do not clear away.
     #
-    # Das Modell irrt anders als das Gedächtnis. Bei einem Absender, den dieses Postfach
-    # hundertfach als erwünscht kennt und nie als Spam, ist „Markenmissbrauch" die
-    # unwahrscheinlichere Erklärung — aber sicher ist es eben auch nicht. Also entscheidet
-    # niemand allein: Die Mail kommt in die Rückfrage.
+    # The model errs differently from the memory. With a sender this mailbox knows a hundred
+    # times over as wanted and never as spam, "brand abuse" is the less likely explanation —
+    # but certain it is not either. So nobody decides alone: the mail goes into the question.
     #
     # Fall vom 2026-08-20: Ein echter PayPal-Beleg (`service@paypal.de`, 282-mal erwünscht)
-    # wurde vom Modell als Marken-Phishing gewertet und automatisch weggeräumt — und weil
-    # eine verschobene Mail beim Zurückholen eine neue Nummer bekommt, ging das Spiel bei
-    # jedem Zurückholen von vorn los.
+    # was rated by the model as brand phishing and cleared away automatically — and because a
+    # moved mail gets a new number when recalled, the game started over with every recall.
     dispute = bool(fraud and trusted and not forgery_suspicion)
     reasons_dispute = ""
     if dispute and contradicted:
-        # Entschieden ist entschieden. Nur die Echtheitsprüfung hebt das noch auf, und die
-        # steht in `faelschungsverdacht` — sonst wäre ein einmal freigegebener Absender ein
-        # Freifahrtschein für jeden, der seinen Namen benutzt.
+        # Decided is decided. Only the authenticity check still overrides that, and it stands
+        # in `forgery_suspicion` — otherwise a sender released once would be a free pass for
+        # anyone using their name.
         score = min(score, _DECIDED_SCORE)
         reasons_dispute = (f"{rule.sender_email} wurde hier schon einmal ausdrücklich als "
                           f"kein Spam entschieden")
@@ -298,8 +296,8 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
     # auto threshold.
     if settled and fraud and learned_score < 0.5:
         settled = False
-    # …es sei denn, das Postfach kennt den Absender wirklich. Dann bleibt es beim Streit
-    # (Rückfrage) statt beim stillen Wegräumen — siehe oben.
+    # …unless the mailbox really knows the sender. Then it stays at the dispute (a question)
+    # instead of the silent clearing away — see above.
     if dispute:
         settled = False
     # The verdict of one's own mail server stands for itself. In the weighted mixture it

@@ -1,19 +1,19 @@
-"""Postfächer, die sich von selbst melden — IMAP IDLE (RFC 2177).
+"""Mailboxes that report by themselves — IMAP IDLE (RFC 2177).
 
-Vorher fragte die Oberfläche jede Minute nach. Das ist für einen Zähler in Ordnung und für
-Post ärgerlich: Eine Nachricht, die vor 55 Sekunden ankam, ist noch nicht da, und wer
-daneben sitzt, drückt nach. IDLE dreht die Richtung um — die Verbindung bleibt offen, und
+Before, the UI asked every minute. That is fine for a counter and annoying for mail: a
+message that arrived 55 seconds ago is not there yet, and whoever sits next to it hits
+refresh. IDLE turns the direction around — the connection stays open, and
 der Server sagt Bescheid.
 
-Wie es hier läuft:
+How it runs here:
 
-* Ein Wächter je aktivem Postfach, in einem eigenen Thread, weil `imapclient` blockiert.
-* Er meldet nur, DASS sich etwas getan hat. Was genau, holt sich der Browser danach über die
-  normalen Wege — sonst hätten wir zwei Quellen für denselben Stand.
-* Niemand da, kein Wächter: Solange kein Fenster dieser Person offen ist, hält niemand eine
-  Verbindung offen. Ein Postfach ist kein Abonnement, das im Hintergrund Strom zieht.
-* Eine Verbindung, die stirbt, wird neu aufgebaut — mit wachsender Pause, damit ein Server,
-  der gerade nicht mag, nicht im Sekundentakt gefragt wird.
+* One watcher per active mailbox, in a thread of its own, because `imapclient` blocks.
+* It reports only THAT something has happened. What exactly, the browser fetches afterwards
+  through the normal ways — otherwise we would have two sources for the same state.
+* Nobody there, no watcher: as long as no window of this person is open, nobody keeps a
+  connection open. A mailbox is not a subscription that draws power in the background.
+* A connection that dies is rebuilt — with a growing pause, so that a server that does not
+  feel like it right now is not asked once a second.
 """
 from __future__ import annotations
 
@@ -29,10 +29,10 @@ from ..models.mail import MailAccount
 log = logging.getLogger("mail_watch")
 
 AN = os.getenv("MAIL_IDLE", "1") not in ("0", "false", "no")
-# Nach spätestens 29 Minuten muss IDLE erneuert werden (RFC 2177 nennt 29 als sichere Grenze;
+# After 29 minutes at the latest IDLE has to be renewed (RFC 2177 names 29 as the safe limit;
 # viele Server werfen früher raus).
 RENEW = 20 * 60
-# Wieviele Postfächer gleichzeitig beobachtet werden. Jedes ist eine offene Verbindung.
+# How many mailboxes are watched at once. Every one is an open connection.
 MAX_WATCHDOG = int(os.getenv("MAIL_IDLE_MAX", "20"))
 
 _running: dict[int, asyncio.Task] = {}
@@ -40,10 +40,10 @@ _overseer: asyncio.Task | None = None
 
 
 def _idle_round(account: MailAccount, duration: int) -> list:
-    """Eine Runde IDLE, blockierend — gehört deshalb in einen Thread."""
-    # Bewusst eine EIGENE Verbindung, nicht die aus dem Vorrat: Diese hier steht zwanzig
-    # Minuten in IDLE. Sie zurückzulegen hieße, dem nächsten Aufruf eine Leitung zu geben,
-    # die auf eine Ankündigung wartet statt auf seine Frage.
+    """One round of IDLE, blocking — which is why it belongs in a thread."""
+    # Deliberately a connection of ITS OWN, not one from the pool: this one stands in IDLE for
+    # twenty minutes. Putting it back would mean handing the next call a line that waits for
+    # an announcement instead of for its question.
     from ..services.mailbox import _join
 
     client = _join(account)
@@ -55,7 +55,7 @@ def _idle_round(account: MailAccount, duration: int) -> list:
         finally:
             try:
                 client.idle_done()
-            except Exception:  # noqa: BLE001 — die Verbindung wird ohnehin geschlossen
+            except Exception:  # noqa: BLE001 — the connection is being closed anyway
                 pass
     finally:
         try:
@@ -75,7 +75,7 @@ async def _watchdog(account_id: int, user_id: int) -> None:
                 account = await db.get(MailAccount, account_id)
                 if account is None or not account.enabled:
                     return
-                # Losgelöst von der Sitzung weiterbenutzen: der Thread darf nicht an einer
+                # Keep using it detached from the session: the thread must not hang on a
                 # Datenbankverbindung hängen, während er minutenlang wartet.
                 db.expunge(account)
 
@@ -84,8 +84,8 @@ async def _watchdog(account_id: int, user_id: int) -> None:
                 continue
 
             if not already_warmed:
-                # Einmal beim Zusehen: Wer eingeloggt ist, hat den Wächter laufen, bevor er
-                # das Postfach überhaupt öffnet. Dann ist auch der erste Blick warm.
+                # Once while watching: whoever is logged in has the watcher running before
+                # they even open the mailbox. Then the first look is warm too.
                 from .mailbox_cache import prewarm
                 asyncio.create_task(prewarm(account))
                 already_warmed = True
@@ -93,14 +93,14 @@ async def _watchdog(account_id: int, user_id: int) -> None:
             events = await asyncio.to_thread(_idle_round, account, RENEW)
             pause = 5
             # EXISTS (neue Nachricht), EXPUNGE (weg), FETCH (Flag geändert) — welches davon,
-            # ist der Oberfläche egal: sie holt sich den Stand ohnehin frisch.
+            # does not matter to the UI: it fetches the state fresh anyway.
             if events:
-                # Erst vergessen, dann melden: Sonst fragt die Oberfläche im selben Moment
-                # nach und bekommt den Stand von vor der neuen Mail.
+                # Forget first, then report: otherwise the UI asks in the same moment and gets
+                # the state from before the new mail.
                 from .mailbox_cache import invalidate, prewarm
                 await invalidate(account_id)
-                # Und gleich neu holen: Die Meldung kommt beim Menschen an, während der
-                # Stand schon unterwegs ist — sonst wartet er auf die Sekunde, die wir
+                # And fetch again right away: the report reaches the person while the state is
+                # already on its way — otherwise they wait for the second we
                 # gerade erst weggeworfen haben.
                 asyncio.create_task(prewarm(account))
                 await persons.send(user_id, {
@@ -117,7 +117,7 @@ async def _watchdog(account_id: int, user_id: int) -> None:
 
 
 async def _overseer_loop() -> None:
-    """Startet und beendet Wächter, wenn Postfächer dazukommen oder verschwinden."""
+    """Starts and ends watchers when mailboxes appear or disappear."""
     while True:
         try:
             async with SessionLocal() as db:
