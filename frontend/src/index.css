@@ -26,8 +26,8 @@ body {
   font-size: 14px;
 }
 
-/* Bildlaufleisten am Theme ausrichten — sonst zeichnet der Browser im Dark-Mode
-   die weiße Default-Leiste (z.B. am waagerecht scrollenden Board). */
+/* Align the scrollbars with the theme — otherwise the browser draws its white default bar in
+   dark mode (on the horizontally scrolling board, say). */
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--line)) transparent;
@@ -41,27 +41,26 @@ body {
 ::-webkit-scrollbar-thumb:hover { background: rgb(var(--muted)); }
 ::-webkit-scrollbar-corner { background: transparent; }
 
-/* Der Pixelpuffer der Büro-Bühne. Der Rückspeicher des Canvas ist ein ganzzahliges Vielfaches
-   von 480×270 (siehe office/PIXEL-CONTRACT.md Regel 1); auf die sichtbare Fläche skaliert ihn
-   der Browser — und zwar **hart**, ohne Weichzeichner. Ohne diese Regel interpoliert er beim
-   Hochskalieren bilinear und macht aus jeder Pixelkante einen Farbverlauf.
+/* The pixel buffer of the office stage. The backing store of the canvas is an integer multiple
+   of 480×270 (see office/PIXEL-CONTRACT.md rule 1); the browser scales it onto the visible
+   area — and it does so **hard**, without smoothing. Without this rule it interpolates
+   bilinearly while scaling up and turns every pixel edge into a gradient.
 
-   Zwei Deklarationen, weil ältere Firefox-Fassungen `pixelated` nicht kennen; wer beide
-   versteht, nimmt die letzte. In React nicht als `style`-Objekt möglich — dort trüge eine
-   Eigenschaft nur einen Wert, und der Rückfall fiele lautlos weg. */
+   Two declarations, because older Firefox versions do not know `pixelated`; whoever
+   understands both takes the last one. Not possible as a `style` object in React — there a
+   property carries only one value, and the fallback would fall away silently. */
 .pixel-canvas {
   image-rendering: -moz-crisp-edges;
   image-rendering: pixelated;
 }
 
-/* Auf einem Handy zählt die Fläche, nicht die Dichte: ein Knopf mit 28 px Höhe ist am
-   Bildschirm hübsch und unter dem Daumen ein Glücksspiel. Die Messung (tools/uitest/
-   usability.mjs) hat auf jeder Seite zwischen 8 und 44 solcher Ziele gefunden, die
-   meisten davon in der Kopfzeile und in Listenzeilen.
+/* On a phone the area counts, not the density: a button 28 px high looks pretty on the screen
+   and is a gamble under a thumb. The measurement (tools/uitest/usability.mjs) found between 8
+   and 44 such targets on every page, most of them in the header and in list rows.
 
-   Die Regel greift nur bei grobem Zeigegerät, die Maus behält also die dichte Darstellung.
-   `min-height` wirkt nur auf Elemente, die nicht `inline` sind — ein Link mitten im Fließtext
-   bleibt deshalb unangetastet, ein Knopf (von Haus aus `inline-block`) wächst. */
+   The rule applies to a coarse pointer only, so the mouse keeps the dense layout.
+   `min-height` affects elements that are not `inline` — a link in the middle of prose stays
+   untouched, a button (an `inline-block` by default) grows. */
 @media (pointer: coarse) {
   button,
   select,
@@ -69,23 +68,23 @@ body {
   [role="button"] {
     min-height: 36px;
   }
-  /* Kästchen nicht auf 36 px aufblasen: der Browser zeichnet sie dann als weißen Klotz.
-     20 px sind gut zu treffen, die Fläche drumherum liefert das <label>. */
+  /* Do not blow checkboxes up to 36 px: the browser then draws them as a white lump.
+     20 px are easy to hit, and the area around them comes from the <label>. */
   input[type="checkbox"],
   input[type="radio"] {
     width: 20px;
     height: 20px;
   }
-  /* Getippt wird auf die Beschriftung: sie ist die Fläche, das Kästchen nur ihr Anfang. */
+  /* One taps the label: it is the area, the box only its beginning. */
   label:has(> input[type="checkbox"]),
   label:has(> input[type="radio"]) {
     min-height: 36px;
   }
-  /* Ein Knopf mit nur einem Zeichen („✕") ist elf Pixel breit und unter dem Daumen nicht zu
-     treffen. `min-width` ersetzt dabei den Vorgabewert `auto`, mit dem ein Flex-Element sonst
-     nicht unter seinen Inhalt schrumpft — deshalb kommt `flex-shrink: 0` dazu, sonst stand
-     „+ Token" halb neben seinem eigenen Feld. (`max(36px, max-content)` geht nicht: `max()`
-     rechnet nur mit Längen, das Schlüsselwort macht die ganze Regel ungültig.) */
+  /* A button with a single character ("✕") is eleven pixels wide and cannot be hit with a
+     thumb. `min-width` replaces the default `auto`, with which a flex element otherwise
+     does not shrink below its content — hence `flex-shrink: 0` on top, otherwise "+ Token"
+     stood half beside its own field. (`max(36px, max-content)` does not work: `max()` computes
+     with lengths only, and the keyword makes the whole rule invalid.) */
   button,
   [role="button"] {
     min-width: 36px;
@@ -96,8 +95,8 @@ body {
   select {
     min-height: 40px;
   }
-  /* Unter 16 px zoomt iOS beim Hineintippen in ein Feld die ganze Seite heran und kommt
-     nicht von allein zurück. */
+  /* Below 16 px iOS zooms the whole page in when a field is tapped and does not come back by
+     itself. */
   input,
   select,
   textarea {
@@ -105,8 +104,8 @@ body {
   }
 }
 
-/* Auch mit der Maus ist ein 16 px hoher Textknopf („bearbeiten", „als Standard") ein Ziel,
-   das man verfehlt. 24 px kosten optisch nichts, weil die Zeile ohnehin so hoch steht. */
+/* With a mouse too, a text button 16 px high ("edit", "make default") is a target one misses.
+   24 px cost nothing visually, because the row stands that high anyway. */
 @media (pointer: fine) {
   button,
   select,
@@ -122,15 +121,15 @@ body {
   }
 }
 
-/* Ein <select> ist von sich aus so breit wie seine längste Option. „Nur wenn ich etwas wissen
-   muss (empfohlen)" schob damit die ganze Seite über den Rand. Der Text wird dann gekürzt,
-   aufgeklappt steht er trotzdem vollständig da. */
+/* A <select> is as wide as its longest option by itself. "Only when I need to know something
+   (recommended)" pushed the whole page over the edge that way. The text is shortened, and
+   expanded it still stands there in full. */
 select {
   max-width: 100%;
 }
 
-/* Lange Bezeichner ohne Leerzeichen (QUEUE_FULL/NOT_ENOUGH_RESOURCES, URLs, Hashes) brechen
-   sonst nicht und schieben ihren Absatz über den Rand. */
+/* Long identifiers without spaces (QUEUE_FULL/NOT_ENOUGH_RESOURCES, URLs, hashes) otherwise
+   do not break and push their paragraph over the edge. */
 p, li, td, dd, blockquote {
   overflow-wrap: anywhere;
 }

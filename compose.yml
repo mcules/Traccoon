@@ -3,9 +3,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER erforderlich (siehe .env)}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD erforderlich (siehe .env)}
-      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB erforderlich (siehe .env)}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER required (see .env)}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required (see .env)}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB required (see .env)}
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
@@ -45,12 +45,12 @@ services:
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME:-}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
       DEV_CREATE_ALL: ${DEV_CREATE_ALL:-true}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN erforderlich (siehe .env)}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN required (see .env)}
       DEPLOYER_URL: ${DEPLOYER_URL:-http://deployer:8661}
       SHOTTER_URL: ${SHOTTER_URL:-http://shotter:8700}
       FILMER_URL: ${FILMER_URL:-http://filmer:8710}
       WORKSPACE_ROOT: /workspace
-      WORKSPACE_HOST_PATH: ${WORKSPACE_HOST_PATH:?WORKSPACE_HOST_PATH erforderlich (siehe .env)}
+      WORKSPACE_HOST_PATH: ${WORKSPACE_HOST_PATH:?WORKSPACE_HOST_PATH required (see .env)}
       TESTENV_HOST: ${TESTENV_HOST:-localhost}
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
       APP_BASE_URL: ${APP_BASE_URL:-}
@@ -70,27 +70,27 @@ services:
       - ./backend/app:/app/app
       - ./backend/alembic:/app/alembic
       - ./backend/alembic.ini:/app/alembic.ini
-      # Ohne diese Zeile testet `docker compose exec backend pytest` die Kopie aus dem Image
-      # — die veraltet still und meldet Grün für Code, der so gar nicht mehr existiert.
+      # Without this line `docker compose exec backend pytest` tests the copy from the image
+      # — which goes stale quietly and reports green for code that no longer exists.
       - ./backend/tests:/app/tests
-      # Wartungsskripte (Uebernahmen, einmalige Umbauten). Gemountet und nicht ins Abbild
-      # gebacken: Sie laufen von Hand, oft genau einmal, und sollen dabei die Fassung aus
-      # dem Arbeitsverzeichnis sein.
+      # Maintenance scripts (imports, one-off conversions). Mounted and not baked into the
+      # image: they run by hand, often exactly once, and should be the version from the working
+      # directory while they do.
       - ./backend/scripts:/app/scripts
-      - ./data/workspace:/workspace   # Repo-Browser/Editor (api/repo.py) liest/schreibt hier
-      # Medienablage für Telegram: hier SCHREIBT das Backend, der telegram-bot LIEST.
-      # Beide Mounts gehören zusammen — fehlt er drüben, findet der Bot die Datei nie
-      # und die Nachricht geht (still, aber ohne Film) als Text raus.
+      - ./data/workspace:/workspace   # the repo browser/editor (api/repo.py) reads and writes here
+      # Media store for Telegram: the backend WRITES here, the telegram-bot READS.
+      # Both mounts belong together — if it is missing over there, the bot never finds the file
+      # and the message goes out as text (quietly, but without the film).
       - ./data/film:/data/film
-      # Obsidian-Vault NUR LESEND: die Spam-Erkennung zieht daraus die bekannten Adressen
-      # (Freispruch-Liste). Der Vault ist eine Syncthing-Replik — hier hineinzuschreiben
-      # hieße, gegen Obsidian und den Sync anzuschreiben.
+      # Obsidian vault READ ONLY: the spam detection pulls the known addresses out of it
+      # (the acquittal list). The vault is a Syncthing replica — writing into it here would mean
+      # writing against Obsidian and the sync.
       - ${VAULT_HOST_PATH:-/opt/docker/stacks/syncthing/data/sync/Sync/Obsidian/Second Brain}:/vault:ro
     networks:
       default:
         aliases:
-          - traccoon-backend   # eindeutig, damit das Frontend am proxy-Netz nicht kollidiert
-      mcp-backends: {}         # erreicht mcpjungle:8080 (Self-Service-MCP-Provisionierung)
+          - traccoon-backend   # unique, so the frontend on the proxy network does not collide
+      mcp-backends: {}         # reaches mcpjungle:8080 (self-service MCP provisioning)
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8800", "--reload"]
 
   worker:
@@ -108,20 +108,20 @@ services:
       WORKSPACE_ROOT: /workspace
       DEPLOYER_URL: ${DEPLOYER_URL:-http://deployer:8661}
       SHOTTER_URL: ${SHOTTER_URL:-http://shotter:8700}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN erforderlich (siehe .env)}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN required (see .env)}
       MCP_GATEWAY_URL: ${MCP_GATEWAY_URL:-}
       MCP_GATEWAY_TOKEN: ${MCP_GATEWAY_TOKEN:-}
       MCPJUNGLE_BASE: ${MCPJUNGLE_BASE:-http://mcpjungle:8080}
       DEFAULT_CLAUDE_MODEL: ${DEFAULT_CLAUDE_MODEL:-claude-sonnet-4-5}
       DEFAULT_CODEX_MODEL: ${DEFAULT_CODEX_MODEL:-gpt-5}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-3}
-      # Damit der Worker eine aussichtslose Anfrage erkennt, bevor er sie einreiht: ein
-      # Deploy auf Traccoon selbst lehnt der Deployer grundsätzlich ab (`runtime.deploy_gesperrt`).
+      # So the worker recognises a hopeless request before queueing it: a deploy onto Traccoon
+      # itself is refused by the deployer on principle (`runtime.deploy_locked`).
       SELF_STACK_DIR: ${SELF_STACK_DIR:-}
       WORKER_DRAIN_SEC: ${WORKER_DRAIN_SEC:-120}
-    # Muss über WORKER_DRAIN_SEC liegen: der Worker nimmt bei SIGTERM keine neuen Aufträge
-    # mehr an und lässt die laufenden auslaufen. Ohne diese Frist tötete Docker nach 10 s —
-    # und damit jeden Agenten mitten im Zug.
+    # Has to be above WORKER_DRAIN_SEC: on SIGTERM the worker takes no new assignments and
+    # lets the running ones drain. Without this grace period Docker killed after 10 s — and with
+    # it every agent in mid-move.
     stop_grace_period: 150s
     volumes:
       - ./backend/app:/app/app
@@ -142,36 +142,36 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ALLOWED_IDS: ${TELEGRAM_ALLOWED_IDS:-}
       TELEGRAM_OWNER_CHAT: ${TELEGRAM_OWNER_CHAT:-}
-      # Sprachnachrichten: lokaler Transkriptions-Container (kein Cloud-Aufruf, siehe `whisper`
-      # unten) — kein Audio verlässt das Haus.
+      # Voice messages: a local transcription container (no cloud call, see `whisper` below) —
+      # no audio leaves the house.
       WHISPER_URL: ${WHISPER_URL:-http://whisper:9000}
       TELEGRAM_VOICE_MAX_SECONDS: ${TELEGRAM_VOICE_MAX_SECONDS:-600}
-      # 19 MB Default (< Telegram-Bot-API-Hardlimit 20 MB für getFile/Download ohne eigenen
-      # Bot-API-Server) — darüber würde der Download scheitern statt der klaren "zu groß"-
-      # Meldung, siehe Kommentar in app/bot/__main__.py.
+      # 19 MB default (< the Telegram bot API hard limit of 20 MB for getFile/download without
+      # a bot API server of one's own) — above that the download would fail instead of giving the
+      # clear "too large" message, see the comment in app/bot/__main__.py.
       TELEGRAM_VOICE_MAX_BYTES: ${TELEGRAM_VOICE_MAX_BYTES:-19922944}
-      # Eigennamen, die Whisper nicht kennen kann (Produkte, Projekte, Ticket-Präfixe) —
-      # gehen als `initial_prompt` mit. Ohne sie hört auch das große Modell „Trakon".
-      TELEGRAM_VOICE_VOKABULAR: ${TELEGRAM_VOICE_VOKABULAR:-}
-      # Qwen3-ASR auf der iGPU als erste Wahl; Whisper bleibt als Rückfall erreichbar.
+      # Proper nouns Whisper cannot know (products, projects, ticket prefixes) — they travel
+      # along as the `initial_prompt`. Without them even the large model hears "Trakon".
+      TELEGRAM_VOICE_VOCABULARY: ${TELEGRAM_VOICE_VOCABULARY:-${TELEGRAM_VOICE_VOKABULAR:-}}
+      # Qwen3-ASR on the iGPU as the first choice; Whisper stays reachable as the fallback.
       ASR_URL: ${ASR_URL:-http://asr-gpu:9100}
-      # Bestätigte Spam-Entscheidungen verschiebt der Bot selbst per IMAP-MCP — dafür einen
-      # Agentenlauf zu starten wäre teuer und langsam für eine Handbewegung.
+      # The bot moves confirmed spam decisions itself over IMAP-MCP — starting an agent run for
+      # that would be expensive and slow for a flick of the wrist.
       IMAP_MCP_URL: ${IMAP_MCP_URL:-http://imap-mcp:3010/mcp}
     volumes:
       - ./backend/app:/app/app
-      # Lesend: `Notification.media_path` zeigt hierher. Ohne diesen Mount fällt der
-      # Notifier bei JEDER Medien-Nachricht auf Text zurück, ohne dass irgendwo etwas
-      # kaputtgeht — genau deshalb steht der Hinweis hier und nicht nur drüben.
+      # Read only: `Notification.media_path` points here. Without this mount the notifier falls
+      # back to text on EVERY media message without anything breaking anywhere — which is exactly
+      # why the hint stands here and not only over there.
       - ./data/film:/data/film:ro
-    networks: [default, mcp-backends]   # mcp-backends: banking-mcp für 2FA-OTP-Reply erreichbar
+    networks: [default, mcp-backends]   # mcp-backends: banking-mcp reachable for the 2FA OTP reply
     command: ["python", "-m", "app.bot"]
 
-  # Lokale Sprache→Text für Telegram-Sprachnachrichten (faster-whisper unter der Haube).
-  # Bewusst im eigenen Haus statt Cloud-API: kein Audio verlässt den Server, keine laufenden
-  # Kosten pro Minute. `ASR_ENGINE=faster_whisper` ist der schnelle CPU-Pfad des Images.
-  # Modell per WHISPER_MODEL wählbar (default "small" — guter Deutsch-Kompromiss aus
-  # Genauigkeit und CPU-Zeit ohne GPU).
+  # Local speech→text for Telegram voice messages (faster-whisper under the hood).
+  # Deliberately in our own house instead of a cloud API: no audio leaves the server, no running
+  # cost per minute. `ASR_ENGINE=faster_whisper` is the fast CPU path of the image.
+  # The model is chosen with WHISPER_MODEL (default "small" — a good compromise between accuracy
+  # and CPU time without a GPU).
   whisper:
     image: onerahmet/openai-whisper-asr-webservice:latest
     restart: unless-stopped
@@ -179,12 +179,12 @@ services:
       ASR_ENGINE: faster_whisper
       ASR_MODEL: ${WHISPER_MODEL:-small}
     volumes:
-      # Modell-Cache: ohne diesen Mount lädt der Container das Modell (small ≈ 500 MB) bei
-      # JEDEM Neustart neu aus dem Netz — mit Mount bleibt es über Neustarts erhalten.
+      # Model cache: without this mount the container downloads the model (small ≈ 500 MB) on
+      # EVERY restart — with it, it survives restarts.
       - ./data/whisper:/root/.cache/whisper
-    # Explizit im `default`-Netz (kein eigener Eintrag nötig, Compose würde das auch ohne
-    # diese Zeile so setzen — hier bewusst sichtbar, weil genau darüber `telegram-bot` den
-    # Container unter `http://whisper:9000` erreicht; kein Port nach außen, kein Cloud-Zugriff).
+    # Explicitly on the `default` network (no entry of its own would be needed, Compose would do
+    # this without the line — deliberately visible here, because that is exactly how `telegram-bot`
+    # reaches the container at `http://whisper:9000`; no port outwards, no cloud access).
     networks:
       - default
     # `/docs` statt eines dedizierten `/health`: das Image (FastAPI/Swagger) garantiert diesen
@@ -197,10 +197,10 @@ services:
       retries: 5
       start_period: 60s
 
-  # Dasselbe in schnell: whisper.cpp auf der iGPU (Radeon 8060S) statt faster-whisper auf der
-  # CPU. Der Grund für den zweiten Dienst ist der Unterbau — CTranslate2 (faster-whisper) kann
-  # nur CUDA, auf einer AMD-Karte bleibt ihm die CPU. ggml/Vulkan kann sie. Geräte-Einbindung
-  # 1:1 wie der bereits laufende llama.cpp-RPC-Container auf demselben Chip.
+  # The same thing in fast: whisper.cpp on the iGPU (Radeon 8060S) instead of faster-whisper on
+  # the CPU. The reason for the second service is the substructure — CTranslate2 (faster-whisper)
+  # speaks CUDA only, and on an AMD card it is left with the CPU. ggml/Vulkan can use it. Device
+  # binding 1:1 as in the llama.cpp RPC container already running on the same chip.
   whisper-gpu:
     build:
       context: ./whisper-gpu
@@ -210,13 +210,13 @@ services:
     group_add:
       - video
     environment:
-      # Das große Modell — der ganze Sinn der GPU: Genauigkeit ohne die Wartezeit, die es
-      # auf der CPU kosten würde.
+      # The large model — the whole point of the GPU: accuracy without the waiting time it would
+      # cost on the CPU.
       WHISPER_MODEL: ${WHISPER_GPU_MODEL:-large-v3}
       WHISPER_LANG: ${WHISPER_GPU_LANG:-de}
-      # whisper.cpp sucht ab Werk GIERIG (`--beam-size -1`), faster-whisper mit Beam 5 —
-      # daran lag der erste Vergleich, nicht am Modell: „Drakon" statt „Traccoon",
-      # „Spermel" statt „Sperrmüll". Die GPU hat die Reserve dafür (sie war 3x schneller).
+      # whisper.cpp searches GREEDILY out of the box (`--beam-size -1`), faster-whisper with beam
+      # 5 — that is what the first comparison came down to, not the model: "Drakon" instead of
+      # "Traccoon", "Spermel" instead of "Sperrmuell". The GPU has the headroom (it was 3x faster).
       WHISPER_EXTRA_ARGS: ${WHISPER_GPU_ARGS:---beam-size 5 --best-of 5}
     volumes:
       # Modelle liegen neben den Daten, nicht im Image (large-v3 ≈ 3 GB).
@@ -228,11 +228,11 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 300s      # erster Start lädt das Modell herunter
+      start_period: 300s      # the first start downloads the model
 
-  # Qwen3-ASR auf der iGPU — ein Sprachmodell mit Audio-Eingang statt eines reinen
-  # Transkribierers. Gemessen am 2026-08-07: whisper.cpp war auf derselben GPU zwar schnell,
-  # verhunzte aber Eigennamen; Qwen versteht den Kontext im Prompt, statt ihn zu streifen.
+  # Qwen3-ASR on the iGPU — a language model with an audio input instead of a pure transcriber.
+  # Measured on 2026-08-07: whisper.cpp was fast on the same GPU but mangled proper nouns; Qwen
+  # understands the context in the prompt instead of brushing past it.
   asr-gpu:
     build:
       context: ./asr-gpu
@@ -252,7 +252,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 300s      # erster Start lädt Modell + Audio-Projektor
+      start_period: 300s      # the first start downloads the model plus the audio projector
 
   shotter:
     build: ./shotter
@@ -264,10 +264,10 @@ services:
       SHOT_LOGIN_PASSWORD: ${SHOT_LOGIN_PASSWORD:-}
       SHOT_TOKEN_KEY: ${SHOT_TOKEN_KEY:-}
 
-  # Der Renderer des Feierabendfilms. Gebaut aus dem `frontend/`-Kontext, weil er genau dessen
-  # Schichten 0 und 1 ausführt (Engine, Replay, Pixelzeichnung) — dieselben Dateien, die im
-  # Browser das Büro malen, ohne Browser. Kein npm, kein Port nach außen, keine Zugangsdaten:
-  # das Backend schickt den Ereignis-Log mit und bekommt ein GIF zurück.
+  # The renderer of the end-of-day film. Built from the `frontend/` context because it runs
+  # exactly its layers 0 and 1 (engine, replay, pixel drawing) — the same files that paint the
+  # office in the browser, without a browser. No npm, no port outwards, no credentials: the
+  # backend sends the event log along and gets a GIF back.
   filmer:
     build:
       context: ./frontend
@@ -282,10 +282,10 @@ services:
         condition: service_healthy
     environment:
       PG_DSN: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      SELF_STACK_DIR: ${SELF_STACK_DIR:?SELF_STACK_DIR erforderlich (siehe .env)}
+      SELF_STACK_DIR: ${SELF_STACK_DIR:?SELF_STACK_DIR required (see .env)}
       SELF_SERVICES: "backend worker frontend"
       HEALTH_URL: http://backend:8800/api/health
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN erforderlich (siehe .env)}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:?INTERNAL_TOKEN required (see .env)}
       PREVIEW_MEMORY: ${PREVIEW_MEMORY:-2g}
       PREVIEW_CPUS: ${PREVIEW_CPUS:-2}
       # Testumgebungen (ABC-18): Build-Deckel + Wartezeit der Liveness-Nachpruefung.
@@ -294,7 +294,7 @@ services:
       TESTENV_LIVENESS_WAIT: ${TESTENV_LIVENESS_WAIT:-6}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ${DOCKER_STACKS_DIR:?DOCKER_STACKS_DIR erforderlich (siehe .env)}:${DOCKER_STACKS_DIR}
+      - ${DOCKER_STACKS_DIR:?DOCKER_STACKS_DIR required (see .env)}:${DOCKER_STACKS_DIR}
       - ./deployer/deploy_watch.py:/deploy_watch.py:ro
 
   frontend:
@@ -310,7 +310,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=proxy"
-      - "traefik.http.routers.traccoon.rule=Host(`${TRACCOON_HOST:?TRACCOON_HOST erforderlich (siehe .env)}`)"
+      - "traefik.http.routers.traccoon.rule=Host(`${TRACCOON_HOST:?TRACCOON_HOST required (see .env)}`)"
       - "traefik.http.routers.traccoon.entrypoints=websecure"
       - "traefik.http.routers.traccoon.tls.certresolver=le"
       - "traefik.http.services.traccoon.loadbalancer.server.port=80"
