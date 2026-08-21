@@ -173,7 +173,8 @@ def _graph(job: Job, target_name: str = "") -> dict:
     ]
     edges += [_e("answer", "melden_wenn"), _e("melden_wenn", "melden", "melden"),
               _e("melden_wenn", "fertig", "still", "ohne Nachricht"), _e("melden", "fertig")]
-    return {"nodes": nodes, "edges": edges}
+    from .workflow_terms import stamp
+    return stamp({"nodes": nodes, "edges": edges})
 
 
 async def as_flow(db: AsyncSession, job: Job) -> None:

@@ -288,6 +288,22 @@ def _var_replace(node):
     return node
 
 
+def stamp(graph: dict) -> dict:
+    """Mark a graph as speaking today's vocabulary.
+
+    Everything the current code produces — a template, a converted job, the editor state out
+    of the browser — is already English. Without the mark the one-off conversion cannot see
+    that: it reads a missing mark as "this comes from before the rename" and applies the
+    names that changed their meaning. A freshly built `assistant_task` (the free assignment)
+    then became `mail_assistant_task` (the mail intake) on the next boot, and a flow that has
+    nothing to do with mail was suddenly filing its item as one.
+
+    So: whoever writes a graph out of today's code stamps it. Only what comes out of the
+    database unstamped is genuinely old.
+    """
+    return {**(graph or {}), MARK: STATE}
+
+
 def migrate_graph(graph: dict) -> tuple[dict, bool]:
     """Bring a graph onto the English vocabulary. Returns (graph, changed).
 

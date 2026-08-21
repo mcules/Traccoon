@@ -602,9 +602,15 @@ def listing() -> list[dict]:
 
 
 def graph(key: str) -> dict | None:
-    """The graph of a template, built fresh so nobody shares it by accident."""
+    """The graph of a template, built fresh so nobody shares it by accident.
+
+    Stamped with the current vocabulary: a template is written in today's words, and without
+    the mark the one-off terms conversion would read it as an old graph on the next boot.
+    """
+    from .workflow_terms import stamp
+
     template = _BY_KEY.get(_resolve(key))
-    return template["build"]() if template else None
+    return stamp(template["build"]()) if template else None
 
 
 def template(key: str) -> dict | None:
