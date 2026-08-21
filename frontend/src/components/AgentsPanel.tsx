@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Actions, Area, Dialog, DialogFoot, Errorrow, ICON, IconButton, Listing, ListenLine, DeleteDialog, BUTTON, BUTTON_SMALL, BUTTON_TEXT} from "./ui";
+  Actions, Area, Dialog, DialogFoot, Errorrow, ICON, IconButton, Listing, ListRow, DeleteDialog, BUTTON, BUTTON_SMALL, BUTTON_TEXT} from "./ui";
 
 interface Agent {
   id: number; role: string; display_name: string; system_prompt: string;
@@ -82,8 +82,10 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
     mutationFn: () => api.post<Record<string, any>>("/providers/models/fetch"),
     onSuccess: (r) => {
       const parts = Object.entries(r).map(([p, v]: [string, any]) =>
-        v.error ? `${p}: Fehler` : `${p}: ${v.total} (${v.added} neu)`);
-      setNote(parts.length ? `Modelle aktualisiert — ${parts.join(", ")}` : "Keine Provider-Tokens hinterlegt.");
+        v.error ? `${p}: ${tr("agents_panel.error_short")}`
+          : `${p}: ${tr("agents_panel.n_new", { total: v.total, added: v.added })}`);
+      setNote(parts.length ? tr("agents_panel.models_updated", { parts: parts.join(", ") })
+        : tr("agents_panel.no_provider_tokens"));
       setTimeout(() => setNote(""), 5000);
       qc.invalidateQueries({ queryKey: ["provider-models"] });
     },
@@ -116,7 +118,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
 
       <Listing>
         {agents?.map((a) => (
-          <ListenLine key={a.id}>
+          <ListRow key={a.id}>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="font-mono font-medium">{a.role}</span>
             <span className="text-xs text-muted">{a.provider}{a.model ? ` · ${a.model}` : ""}</span>
@@ -138,7 +140,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
               <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteAgent(a)} />
             </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
       </Listing>
 

@@ -8,7 +8,7 @@ import ArtifactTypesPanel from "../components/ArtifactTypesPanel";
 import { SystemSwitchPanel } from "../components/AccountPanels";
 import {
   Actions, Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field,
-  Errorrow, ICON, IconButton, Listing, ListingEmpty, ListenLine, BUTTON } from "../components/ui";
+  Errorrow, ICON, IconButton, Listing, ListingEmpty, ListRow, BUTTON } from "../components/ui";
 import ProviderModelsPanel from "../components/ProviderModelsPanel";
 import TranslationsPanel from "../components/TranslationsPanel";
 
@@ -298,7 +298,7 @@ function Users() {
     <Area>
     <Listing>
       {users?.map((u) => (
-        <ListenLine key={u.id}>
+        <ListRow key={u.id}>
           <div className="flex items-center gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
               <span className="font-medium">{u.display_name}</span>
@@ -327,7 +327,7 @@ function Users() {
               )}
             </Actions>
           </div>
-        </ListenLine>
+        </ListRow>
       ))}
     </Listing>
     <button onClick={() => { setErr(""); setNewOpen(true); }}
@@ -470,13 +470,13 @@ function Cost() {
           word per line on a phone. One row per model, numbers on the right. */}
       <Listing>
         {data?.by_model?.map((m: any) => (
-          <ListenLine key={m.model}>
+          <ListRow key={m.model}>
             <div className="flex flex-wrap items-baseline gap-x-3">
               <span className="min-w-0 flex-1 break-all text-ink">{m.model}</span>
               <span className="tabular-nums text-ink">${m.usd}</span>
               <span className="tabular-nums text-xs text-muted">{tr("admin.calls_n", { count: m.calls })}</span>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {(!data?.by_model || data.by_model.length === 0) && (
           <ListingEmpty>{tr("admin.no_costs_yet")}</ListingEmpty>

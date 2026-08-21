@@ -14,7 +14,7 @@ import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 import {
   Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton,
-  Tag, Listing, ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "../components/ui";
+  Tag, Listing, ListingEmpty, ListRow, DeleteDialog, BUTTON } from "../components/ui";
 
 /**
  * The settings hold resources, not a person.
@@ -111,7 +111,7 @@ function NamedSecrets() {
       <Errorrow text={err} />
       <Listing className="mb-3">
         {vault.map((s) => (
-          <ListenLine key={s.name}>
+          <ListRow key={s.name}>
             <div className="flex items-center gap-2">
               <code className="shrink-0 font-mono text-xs text-brand">secret:{s.name}</code>
               {s.description && <span className="min-w-0 flex-1 truncate text-xs text-muted">{s.description}</span>}
@@ -123,7 +123,7 @@ function NamedSecrets() {
                   onClick={() => setDelete(s.name)} />
               </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {vault.length === 0 && <ListingEmpty>{tr("settings.no_secrets_in_the_vault_yet")}</ListingEmpty>}
       </Listing>
@@ -215,7 +215,7 @@ function ProviderTokens() {
       <Errorrow text={err} />
       <Listing className="mb-3">
         {toks?.map((t) => (
-          <ListenLine key={t.id}>
+          <ListRow key={t.id}>
             <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2">
@@ -234,7 +234,7 @@ function ProviderTokens() {
               <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDelete(t)} />
             </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {toks?.length === 0 && <ListingEmpty>{tr("settings.no_keys_stored_yet")}</ListingEmpty>}
       </Listing>

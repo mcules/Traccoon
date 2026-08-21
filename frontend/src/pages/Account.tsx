@@ -124,7 +124,7 @@ function TicketOpenPanel() {
       </p>
       <div className="flex gap-2">
         {btn("popup", tr("profile.als_popup"))}
-        {btn("page", "Ganze Seite")}
+        {btn("page", tr("profile.whole_page"))}
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
     </section>

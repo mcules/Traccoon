@@ -1,4 +1,5 @@
 import { Handle, Position, useStore, type Node, type NodeProps } from "@xyflow/react";
+import { tr } from "../../../i18n";
 import type { NodeConfig, WorkflowNodeType } from "../types";
 
 /** Runtime state of a node for the read-only instance view. */
@@ -120,7 +121,9 @@ export function BaseNode({
                 className="pointer-events-none absolute bottom-0.5 max-w-[88px] -translate-x-1/2 truncate text-center text-[9px] text-muted"
                 style={{ left: `${left * 100}%` }}
               >
-                {s.label}
+                {/* A catalog key when it comes from a table in the code, a text when it comes
+                    out of the flow: `tr` hands an unknown key back unchanged. */}
+                {tr(s.label)}
               </span>
             )}
           </div>

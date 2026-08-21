@@ -9,7 +9,7 @@ import {
 } from "../api";
 import { usePageChrome } from "../pageChrome";
 import {
-  Area, Tag, Errorrow, Listing, ListingEmpty, ListenLine, Rowbutton,
+  Area, Tag, Errorrow, Listing, ListingEmpty, ListRow, Rowbutton,
 } from "../components/ui";
 import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 import { projectPath } from "../projectTabs";
@@ -102,7 +102,7 @@ function SlotLine({ s, admin, open: open, onToggle, onEdit }: {
 }) {
   const nav = useNavigate();
   return (
-    <ListenLine>
+    <ListRow>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-ink">{s.name}</span>
         {s.published
@@ -140,7 +140,7 @@ function SlotLine({ s, admin, open: open, onToggle, onEdit }: {
       )}
 
       {open && s.definition_id && <Versions defId={s.definition_id} mayWrite={admin} />}
-    </ListenLine>
+    </ListRow>
   );
 }
 
@@ -290,7 +290,7 @@ function Operation() {
 
       <Listing>
         {runs?.map((l) => (
-          <ListenLine key={l.id}>
+          <ListRow key={l.id}>
             <div className="flex flex-wrap items-center gap-2">
               <Tag color={STATUS_COLOR[l.status]}>{tr(STATUS_TEXT[l.status])}</Tag>
               <span className="font-medium text-ink">{l.definition_name}</span>
@@ -336,7 +336,7 @@ function Operation() {
                                      height="260px" compact />
               </div>
             )}
-          </ListenLine>
+          </ListRow>
         ))}
         {runs?.length === 0 && (
           <ListingEmpty>{onlyHangs ? tr("proc.nothing_unusual_no_run") : tr("proc.no_run_going_right")}</ListingEmpty>
@@ -370,7 +370,7 @@ function Trigger() {
           {trigger?.map((t, i) => {
             const k = KIND[t.kind];
             return (
-              <ListenLine key={`${t.definition_id}-${t.kind}-${i}`} dimmed={!t.enabled}>
+              <ListRow key={`${t.definition_id}-${t.kind}-${i}`} dimmed={!t.enabled}>
                 <div className="flex flex-wrap items-center gap-2">
                   <Tag color={k.color}>{tr(k.label)}</Tag>
                   <span className="font-medium text-ink">{t.definition_name}</span>
@@ -387,7 +387,7 @@ function Trigger() {
                   {t.label}
                   {t.only_project_id && ` ${tr("proc.one_specific_project_only")}`}
                 </div>
-              </ListenLine>
+              </ListRow>
             );
           })}
           {trigger?.length === 0 && <ListingEmpty>{tr("processes.no_version_yet")}</ListingEmpty>}
@@ -403,7 +403,7 @@ function Trigger() {
       </>}>
         <Listing>
           {events?.map((e) => (
-            <ListenLine key={e.event}>
+            <ListRow key={e.event}>
               <div className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate">{e.label}</span>
                 <code className="hidden shrink-0 text-[11px] text-muted sm:block">{e.event}</code>
@@ -412,7 +412,7 @@ function Trigger() {
                   {e.listeners || "—"}
                 </Tag>
               </div>
-            </ListenLine>
+            </ListRow>
           ))}
         </Listing>
       </Area>

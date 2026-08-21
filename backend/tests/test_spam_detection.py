@@ -851,7 +851,7 @@ def _phish(**over) -> dict:
         **{"from": [{"name": "Kundenkonto Verwaltung", "addr": "admin@unbekannt.example"}],
            "to": [{"name": "", "addr": "fragen@mitmachverein.de"}],
            "subject": "Ihre Domain-Rechnung wartet auf Bearbeitung",
-           "body_text": "Handlungsbedarf: Domain freifunk-ebs.de - Zahlungsinformation",
+           "body_text": "Handlungsbedarf: Domain mitmachverein.de - Zahlungsinformation",
            "links": [],
            "headers": {"Authentication-Results": "strato.com; dmarc=pass; dkim=pass; "
                                                  "spf=softfail",

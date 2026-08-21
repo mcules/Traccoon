@@ -80,9 +80,9 @@ async def item(db, run, *, priced, cost=1.0, provider="claude_code", model="sonn
     await db.commit()
 
 
-async def catalog(db, provider, model, *, ein=0.0, aus=0.0, cache=0.0):
+async def catalog(db, provider, model, *, price_in=0.0, price_out=0.0, cache=0.0):
     db.add(ProviderModel(provider=provider, model=model, display_name=model,
-                         price_input=ein, price_output=aus, price_cache_read=cache))
+                         price_input=price_in, price_output=price_out, price_cache_read=cache))
     await db.commit()
 
 
@@ -121,7 +121,7 @@ async def test_an_old_row_without_a_catalog_entry_is_a_price_gap(client, db):
 
 async def test_an_old_row_with_a_catalog_entry_counts_as_priced(client, db):
     user, _proj, issue = await stage(db)
-    await catalog(db, "lokal", "qwen3.6", ein=0.1, aus=0.4)
+    await catalog(db, "lokal", "qwen3.6", price_in=0.1, price_out=0.4)
     run = await make_run(db, issue)
     await item(db, run, priced=None, cost=0.0, provider="lokal", model="qwen3.6")
 
@@ -134,7 +134,7 @@ async def test_a_catalog_entry_priced_zero_is_free_not_unknown(client, db):
     """The case of the local model: all prices 0.00, but there IS an entry. Exactly this
     distinction Traccoon could not make until now."""
     user, _proj, issue = await stage(db)
-    await catalog(db, "lokal", "qwen3.6", ein=0.0, aus=0.0, cache=0.0)
+    await catalog(db, "lokal", "qwen3.6", price_in=0.0, price_out=0.0, cache=0.0)
     run = await make_run(db, issue, provider="lokal", model="qwen3.6")
     await move(db, run, provider="lokal", model="qwen3.6", in_tok=MIO, out_tok=MIO)
     await item(db, run, priced=True, cost=0.0, provider="lokal", model="qwen3.6")
@@ -176,8 +176,8 @@ async def test_by_model_groups_by_the_model_of_the_step(client, db):
     would be ONE row, and the wrong one: it would attribute the tokens of one model to the
     other."""
     user, _proj, issue = await stage(db)
-    await catalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)
-    await catalog(db, "openai", "gpt-x", ein=1.0, aus=4.0)
+    await catalog(db, "claude_code", "sonnet", price_in=3.0, price_out=15.0)
+    await catalog(db, "openai", "gpt-x", price_in=1.0, price_out=4.0)
     run = await make_run(db, issue, provider="claude_code", model="sonnet")
     await move(db, run, provider="claude_code", model="sonnet", in_tok=MIO, seq=1)
     await move(db, run, provider="openai", model="gpt-x", in_tok=2 * MIO, seq=2)
@@ -198,7 +198,7 @@ async def test_billed_and_estimated_stand_side_by_side(client, db):
     run = await make_run(db, issue)
     await move(db, run, provider="claude_code", model="sonnet", in_tok=MIO)
     await item(db, run, priced=True, cost=1.0, in_tok=MIO)
-    await catalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)   # more expensive today
+    await catalog(db, "claude_code", "sonnet", price_in=3.0, price_out=15.0)   # more expensive today
 
     body = await cost(client, user, issue)
     assert body["total"]["cost_usd_billed"] == 1.0
@@ -213,7 +213,7 @@ async def test_an_old_run_without_step_tokens_falls_back_to_the_run_row(client, 
     on the run. Without this fallback the estimate would be 0 everywhere on the first day and
     the cost view useless."""
     user, _proj, issue = await stage(db)
-    await catalog(db, "claude_code", "sonnet", ein=3.0, aus=15.0)
+    await catalog(db, "claude_code", "sonnet", price_in=3.0, price_out=15.0)
     run = await make_run(db, issue, in_tok=MIO, out_tok=MIO)
     db.add(RunStep(run_id=run.id, seq=1, role="assistant", content="alt", created_at=NOW))
     await db.commit()

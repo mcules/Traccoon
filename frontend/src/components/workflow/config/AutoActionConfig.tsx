@@ -41,7 +41,7 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
     ["split_tickets", "action.split_tickets"],
     ["stop_agent", "action.stop_agent"],
   ]],
-  ["Mail-Eingang", [
+  ["auto_action_config.group_mail_intake", [
     ["mail_classify", "action.mail_classify"],
     ["spam_evaluate", "action.judge_spam"],
     ["spam_card", "action.spam_card"],

@@ -45,11 +45,12 @@ const ACTION_LABEL: Record<string, string> = {
 
 /** Actions that run asynchronously and name their exit after the result. */
 const OUTCOMES: Record<string, SourceHandleDef[]> = {
+  // The labels are catalog keys; `BaseNode` translates them at render time.
   accept_merge: [
-    { id: "merged", label: "gemerged", color: "!bg-green-500" },
-    { id: "pr_open", label: tr("auto_action_node.pr_open"), color: "!bg-sky-500" },
-    { id: "conflict", label: "Konflikt", color: "!bg-red-500" },
-    { id: "out", label: "sonst" },
+    { id: "merged", label: "auto_action_node.merged", color: "!bg-green-500" },
+    { id: "pr_open", label: "auto_action_node.pr_open", color: "!bg-sky-500" },
+    { id: "conflict", label: "auto_action_node.conflict", color: "!bg-red-500" },
+    { id: "out", label: "auto_action_node.otherwise" },
   ],
 };
 

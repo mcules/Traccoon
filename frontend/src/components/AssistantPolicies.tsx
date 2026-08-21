@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Actions, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, DeleteDialog, Area, Tag, Listing, ListingEmpty, ListenLine, BUTTON, BUTTON_TEXT} from "./ui";
+  Actions, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, DeleteDialog, Area, Tag, Listing, ListingEmpty, ListRow, BUTTON, BUTTON_TEXT} from "./ui";
 
 interface Policy {
   id: number; match_kind: string; match_value: string;
@@ -44,7 +44,7 @@ export default function AssistantPolicies() {
 
       <Listing>
         {data.map((p) => (
-          <ListenLine key={p.id} dimmed={!p.enabled}>
+          <ListRow key={p.id} dimmed={!p.enabled}>
             <div className="flex flex-wrap items-center gap-1.5">
               <Tag>{KIND_KEY[p.match_kind] ? tr(KIND_KEY[p.match_kind]) : p.match_kind}</Tag>
               <span className="font-medium text-ink">{p.match_value}</span>
@@ -64,7 +64,7 @@ export default function AssistantPolicies() {
                 <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteRule(p)} />
               </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {!isLoading && data.length === 0 && (
           <ListingEmpty>{tr("assistant_policies.no_rules_yet_choose")}</ListingEmpty>
@@ -104,7 +104,7 @@ function ToolPermissions() {
     <Area title="🔐 Tool-Freigaben" hint={tr("assistant_policies.what_assistant_may_do")}>
       <Listing>
         {data.map((p) => (
-          <ListenLine key={p.id}>
+          <ListRow key={p.id}>
             <div className="flex items-center gap-2">
             <code className="text-ink">{p.tool}</code>
             {p.resource !== "*" && <code className="text-xs text-muted">{p.resource}</code>}
@@ -114,7 +114,7 @@ function ToolPermissions() {
             {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className={BUTTON_TEXT.danger}>→ deny</button>}
             <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => del.mutate(p.id)} />
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {data.length === 0 && <ListingEmpty>{tr("assistant_policies.none_the_assistant_asks_before_every_sensitiv")}</ListingEmpty>}
       </Listing>

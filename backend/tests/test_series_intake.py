@@ -224,7 +224,7 @@ async def test_the_fence_applies_even_when_the_point_rests(db):
     # A fence with a 20 m radius, right next to the starting point.
     await _place(db, user, "tuer", 50.0825308, 10.5663527, radius=20)
 
-    # Erster Punkt: 60 m weg vom Zaun, also draussen.
+    # The first point: 60 m away from the fence, so outside.
     e = await service.ingest(db, series, [_p(50.0830700, 10.5663527, ts=start)])
     assert e["betreten"] == []
 

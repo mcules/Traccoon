@@ -6,7 +6,7 @@ import { formatTime } from "../lib/formatTime";
 import AssistantPolicies from "../components/AssistantPolicies";
 import AssistantChat from "../components/AssistantChat";
 import {
-  Area, Tag, Errorrow, Listing, ListingEmpty, ListenLine, Tab, BUTTON } from "../components/ui";
+  Area, Tag, Errorrow, Listing, ListingEmpty, ListRow, Tab, BUTTON } from "../components/ui";
 import { usePageChrome } from "../pageChrome";
 
 interface InboxItem {
@@ -180,7 +180,7 @@ function InboxList() {
           const st = STATUS[entry.status] || { label: entry.status, color: "neutral" as const };
           const expanded = openId === entry.id;
           return (
-            <ListenLine key={entry.id}>
+            <ListRow key={entry.id}>
               <div className="mb-1 flex flex-wrap items-center gap-1.5">
                 <Tag color={st.color}>{tr(st.label)}</Tag>
                 <Tag color={prio.color}>{tr(prio.label)}</Tag>
@@ -232,7 +232,7 @@ function InboxList() {
                   {entry.result && <div className="text-sm text-ink whitespace-pre-wrap">{entry.result}</div>}
                 </div>
               )}
-            </ListenLine>
+            </ListRow>
           );
         })}
         {!isLoading && items.length === 0 && (

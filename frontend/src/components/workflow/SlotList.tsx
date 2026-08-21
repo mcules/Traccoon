@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, workflowApi, type IssueType, type Project } from "../../api";
 import type { WorkflowSlotInfo } from "./types";
 import {
-  Area, Tag, Errorrow, Listing, ListenLine, Rowbutton, BUTTON_TEXT} from "../ui";
+  Area, Tag, Errorrow, Listing, ListRow, Rowbutton, BUTTON_TEXT} from "../ui";
 import { projectPath } from "../../projectTabs";
 
 /** Where the applicable flow comes from: the most important information on this page. */
@@ -114,7 +114,7 @@ export default function SlotList({ project }: { project: Project }) {
         {slots?.map((s) => {
           const o = ORIGIN[s.origin];
           return (
-            <ListenLine key={s.slot}>
+            <ListRow key={s.slot}>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-medium text-ink">{s.name}</span>
                 <Tag color={o.color} title={tr(o.hint)}>{tr(o.label)}</Tag>
@@ -177,7 +177,7 @@ export default function SlotList({ project }: { project: Project }) {
                 {tr(o.hint)}
                 {s.set_name && s.origin !== "project" ? ` (${s.set_name})` : ""}
               </div>
-            </ListenLine>
+            </ListRow>
           );
         })}
       </Listing>

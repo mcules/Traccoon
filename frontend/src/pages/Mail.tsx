@@ -8,7 +8,7 @@ import { formatDateTime } from "../lib/formatTime";
 import { AccountDialog, type MailAccount, type MailIdentity } from "../components/MailAccountsPanel";
 import {
   Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
-  IconButton, Button, BUTTON, Listing, ListingEmpty, ListenLine, Tab, Rowbutton, BUTTON_TEXT} from "../components/ui";
+  IconButton, Button, BUTTON, Listing, ListingEmpty, ListRow, Tab, Rowbutton, BUTTON_TEXT} from "../components/ui";
 
 /**
  * The mailbox.
@@ -286,7 +286,7 @@ function FolderTree({ folder: folder, active, onChoose }: {
   return (
     <Listing>
       {folder.filter(visible).map((o) => (
-        <ListenLine key={o.name} dense onClick={() => onChoose(o.name)}>
+        <ListRow key={o.name} dense onClick={() => onChoose(o.name)}>
           {/* Fixed columns instead of flex with placeholders: only that way does the folder
               icon of every
               line in the same place, whether or not a fold arrow sits in front of it. */}
@@ -320,7 +320,7 @@ function FolderTree({ folder: folder, active, onChoose }: {
               );
             })()}
           </div>
-        </ListenLine>
+        </ListRow>
       ))}
     </Listing>
   );
@@ -467,7 +467,7 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
       <div className={narrow ? "max-h-[55vh] overflow-y-auto" : ""}>
       <Listing>
         {data?.messages.map((m) => (
-          <ListenLine key={m.uid} dense={narrow} onClick={() => onOpen_it(m.uid)}>
+          <ListRow key={m.uid} dense={narrow} onClick={() => onOpen_it(m.uid)}>
             <div className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 ${
               m.uid === open ? "text-brand" : ""}`}>
               <span className={`min-w-0 flex-1 truncate ${
@@ -481,7 +481,7 @@ function MessagesListing({ accountId, folder: folder, search, onOpen: onOpen_it,
               <span className="shrink-0 text-xs text-muted">{formatDateTime(m.date)}</span>
             </div>
             <div className="mt-0.5 truncate text-xs text-muted">{m.from}</div>
-          </ListenLine>
+          </ListRow>
         ))}
         {isLoading && <ListingEmpty>{tr("mail.loading")}</ListingEmpty>}
         {!isLoading && !data?.messages.length && <ListingEmpty>{tr("mail.nothing_in_folder")}</ListingEmpty>}
@@ -770,7 +770,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
           {m.attachments.length > 0 && (
             <Listing>
               {m.attachments.map((a) => (
-                <ListenLine key={a.index}>
+                <ListRow key={a.index}>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="min-w-0 flex-1 truncate">📎 {a.filename}</span>
                     <Tag>{Math.max(1, Math.round(a.size / 1024))} kB</Tag>
@@ -786,7 +786,7 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                       </Rowbutton>
                     ))}
                   </div>
-                </ListenLine>
+                </ListRow>
               ))}
             </Listing>
           )}
@@ -836,14 +836,14 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
               would be a step nobody needs. */}
           <Listing>
             {(allFolder || []).filter((o) => o.name !== folder).map((o) => (
-              <ListenLine key={o.name} dense
+              <ListRow key={o.name} dense
                 onClick={() => { setMoveOpen(false); move.mutate(o.name); }}>
                 <div className="flex items-center gap-2"
                      style={{ paddingLeft: `${o.level * 0.85}rem` }}>
                   <span>{SPECIAL[o.special] || "📁"}</span>
                   <span className="min-w-0 flex-1 truncate">{o.display}</span>
                 </div>
-              </ListenLine>
+              </ListRow>
             ))}
             {!allFolder?.length && <ListingEmpty>{tr("mail.no_further_folders")}</ListingEmpty>}
           </Listing>
@@ -950,7 +950,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
             {attachments.length > 0 && (
               <Listing>
                 {attachments.map((a, i) => (
-                  <ListenLine key={`${a.filename}-${i}`}>
+                  <ListRow key={`${a.filename}-${i}`}>
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate">📎 {a.filename}</span>
                       <Tag>{Math.max(1, Math.round(a.size / 1024))} kB</Tag>
@@ -959,7 +959,7 @@ function ComposeDialog({ accountId, start, onClose, onError: onError }: {
                         {tr("mail.remove")}
                       </Rowbutton>
                     </div>
-                  </ListenLine>
+                  </ListRow>
                 ))}
               </Listing>
             )}

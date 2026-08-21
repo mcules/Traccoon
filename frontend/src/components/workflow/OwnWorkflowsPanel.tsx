@@ -6,7 +6,7 @@ import { ApiError, workflowApi } from "../../api";
 import type { WorkflowDefinition, WorkflowSubjectKind } from "./types";
 import {
   Actions, Area, Dialog, DialogFoot, Tag, Errorrow, ICON, IconButton, Listing,
-  ListingEmpty, ListenLine, DeleteDialog, State, BUTTON } from "../ui";
+  ListingEmpty, ListRow, DeleteDialog, State, BUTTON } from "../ui";
 
 const EMPTY = { key: "", name: "", subject_kind: "standalone" as WorkflowSubjectKind,
                 description: "", template: "" };
@@ -84,7 +84,7 @@ export default function OwnWorkflowsPanel() {
            content. */
         <Listing>
           {own.map((d) => (
-            <ListenLine key={d.id} columns={COLUMNS} dimmed={!d.enabled}
+            <ListRow key={d.id} columns={COLUMNS} dimmed={!d.enabled}
               onClick={() => open_it(d)}>
               {/* Two rows instead of five columns: the name carries the entry, everything
                   technical stands one floor lower and quieter. That keeps the list
@@ -118,7 +118,7 @@ export default function OwnWorkflowsPanel() {
                     onClick={() => setDeleteFlow(d)} />
                 </Actions>
               </div>
-            </ListenLine>
+            </ListRow>
           ))}
         </Listing>
       ) : (

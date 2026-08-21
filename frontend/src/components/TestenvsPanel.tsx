@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import {
-  Area, Tag, Errorrow, ICON, IconButton, Listing, ListingEmpty, ListenLine, Rowbutton, BUTTON_SMALL, BUTTON_TEXT, BUTTON} from "./ui";
+  Area, Tag, Errorrow, ICON, IconButton, Listing, ListingEmpty, ListRow, Rowbutton, BUTTON_SMALL, BUTTON_TEXT, BUTTON} from "./ui";
 
 interface Svc { service: string; container: string; status: string }
 interface Env {
@@ -68,7 +68,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
       <Area title={tr("testenvs_panel.running_environments")}>
         <Listing>
           {envs?.map((e) => (
-            <ListenLine key={e.container}>
+            <ListRow key={e.container}>
               <div className="flex flex-wrap items-center gap-2">
                 <Tag color={BADGE[e.status] || "neutral"}>{e.status || "—"}</Tag>
                 <Tag>{e.kind === "ticket" ? "Ticket" : "Branch"}</Tag>
@@ -118,7 +118,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                   )}
                 </div>
               )}
-            </ListenLine>
+            </ListRow>
           ))}
           {envs?.length === 0 && <ListingEmpty>{tr("testenvs_panel.no_running_test_environment")}</ListingEmpty>}
         </Listing>

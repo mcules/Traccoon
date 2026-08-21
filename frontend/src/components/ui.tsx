@@ -312,7 +312,7 @@ export function ListingEmpty({ children }: { children: ReactNode }) {
  * bright bar across the list and cut the very surface in two that was meant to hold it
  * together. What separates the heading is the type — small, quiet, spaced out — not a wall.
  */
-export function ListenHeader({ columns, children }: { columns: string; children: ReactNode }) {
+export function ListHeader({ columns, children }: { columns: string; children: ReactNode }) {
   return (
     <div className={`hidden gap-x-3 bg-surface px-3 pb-1 pt-2 text-[10px] uppercase tracking-wider text-muted/70 sm:grid ${columns}`}>
       {children}
@@ -330,7 +330,7 @@ export function ListenHeader({ columns, children }: { columns: string; children:
  *  click, context menu) and therefore cannot be a `ListenZeile`. */
 export const LINE = "group block bg-surface px-3 py-2.5 text-sm transition-colors hover:bg-card";
 
-export function ListenLine({ columns, dimmed = false, warning = false, dense = false,
+export function ListRow({ columns, dimmed = false, warning = false, dense = false,
                              onClick, children }: {
   columns?: string; dimmed?: boolean; warning?: boolean; dense?: boolean;
   onClick?: () => void; children: ReactNode;

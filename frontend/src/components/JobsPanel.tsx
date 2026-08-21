@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
   Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
-  ListingEmpty, ListenLine, DeleteDialog, BUTTON } from "./ui";
+  ListingEmpty, ListRow, DeleteDialog, BUTTON } from "./ui";
 
 const EMPTY = { name: "", type: "cron", schedule: "0 8 * * *", kind: "workflow",
                 agent: "", prompt: "", command: "", notify_mode: "on_output", notify_chat: "",
@@ -48,7 +48,7 @@ export default function JobsPanel() {
       <Errorrow text={err} />
       <Listing className="mb-4">
         {jobs?.map((j) => (
-          <ListenLine key={j.id} dimmed={!j.enabled}>
+          <ListRow key={j.id} dimmed={!j.enabled}>
             <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
@@ -70,7 +70,7 @@ export default function JobsPanel() {
               <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteJob(j)} />
             </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {jobs?.length === 0 && <ListingEmpty>{tr("jobs_panel.no_jobs")}</ListingEmpty>}
       </Listing>

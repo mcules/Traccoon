@@ -6,7 +6,7 @@ import {
   ApiError, seriesApi, type Grant, type Place, type Series } from "../../api";
 import {
   Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow, ICON,
-  IconButton, Button, Listing, ListingEmpty, ListenLine, DeleteDialog } from "../ui";
+  IconButton, Button, Listing, ListingEmpty, ListRow, DeleteDialog } from "../ui";
 
 /**
  * Location series: the devices whose trace Traccoon records.
@@ -107,7 +107,7 @@ function DeviceLine({ series: series, open: open, onOpen: onOpen_it, onEdit, onD
   const places: string[] = state.places || [];
 
   return (
-    <ListenLine dimmed={!series.active}>
+    <ListRow dimmed={!series.active}>
       <div className="space-y-2">
         <div className="flex items-center gap-2">
           <span className="h-3 w-3 shrink-0 rounded-full"
@@ -142,7 +142,7 @@ function DeviceLine({ series: series, open: open, onOpen: onOpen_it, onEdit, onD
         </div>
         {open && series.own && <Connection series={series} onError={onError} />}
       </div>
-    </ListenLine>
+    </ListRow>
   );
 }
 
@@ -317,7 +317,7 @@ function Places({ onError: onError }: { onError: (e: unknown) => void }) {
         {tr("places.add_place")}</Button>}>
       <Listing>
         {places?.map((o) => (
-          <ListenLine key={o.id}>
+          <ListRow key={o.id}>
             <div className="flex items-center gap-2">
               <span className="h-3 w-3 shrink-0 rounded-full"
                 style={{ background: o.color || "#f59e0b" }} />
@@ -335,7 +335,7 @@ function Places({ onError: onError }: { onError: (e: unknown) => void }) {
                   onClick={() => setDeleteTarget(o)} />
               </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {places?.length === 0 && <ListingEmpty>{tr("places.no_place_yet")}</ListingEmpty>}
       </Listing>

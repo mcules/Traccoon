@@ -8,7 +8,7 @@ import AssetWorkflow from "./AssetWorkflow";
 import ArtifactFields from "./ArtifactFields";
 import { AssigneeEditor } from "./workflow/assignee";
 import type { AssigneeSpec } from "./workflow/types";
-import { ICON, IconButton, DeleteDialog, Area, Tag, Errorrow, Listing, ListingEmpty, ListenLine, BUTTON, BUTTON_SMALL, BUTTON_TEXT} from "./ui";
+import { ICON, IconButton, DeleteDialog, Area, Tag, Errorrow, Listing, ListingEmpty, ListRow, BUTTON, BUTTON_SMALL, BUTTON_TEXT} from "./ui";
 
 interface Model { id: number; name: string; category: string | null; manufacturer: string | null; }
 interface Location { id: number; name: string; type: string; parent_id: number | null; full_path: string; }
@@ -83,7 +83,7 @@ export default function Hardware({ project }: { project: Project }) {
         <Area title={tr("hardware.items_project")}>
           <Listing>
             {assets.data?.map((a) => (
-              <ListenLine key={a.id}>
+              <ListRow key={a.id}>
                 <div className="flex items-start gap-2">
                   <button onClick={() => setOpen(open === a.id ? null : a.id)} className="min-w-0 flex-1 text-left">
                     <div className="truncate font-medium text-ink">{modelName(a.model_id)}</div>
@@ -129,7 +129,7 @@ export default function Hardware({ project }: { project: Project }) {
                     <AssetIssues assetId={a.id} projectKey={project.key} />
                   </div>
                 )}
-              </ListenLine>
+              </ListRow>
             ))}
             {assets.data?.length === 0 && <ListingEmpty>{tr("hardware.no_items")}</ListingEmpty>}
           </Listing>
@@ -160,7 +160,7 @@ export default function Hardware({ project }: { project: Project }) {
           <Area title={tr("hardware.catalog_models")}>
             <Listing>
               {models.data?.map((m) => (
-                <ListenLine key={m.id}>
+                <ListRow key={m.id}>
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-ink">{m.name}</span>
                     {canManage && (
@@ -168,7 +168,7 @@ export default function Hardware({ project }: { project: Project }) {
                         onClick={() => setDeleteModel(m)} />
                     )}
                   </div>
-                </ListenLine>
+                </ListRow>
               ))}
               {models.data?.length === 0 && <ListingEmpty>{tr("hardware.no_model_in_catalog")}</ListingEmpty>}
             </Listing>
@@ -182,7 +182,7 @@ export default function Hardware({ project }: { project: Project }) {
           <Area title={tr("hardware.locations")}>
             <Listing>
               {locations.data?.map((l) => (
-                <ListenLine key={l.id}>
+                <ListRow key={l.id}>
                   <div className="flex items-center gap-2">
                     <span className="min-w-0 flex-1 truncate">📍 {l.full_path}</span>
                     <Tag>{l.type}</Tag>
@@ -191,7 +191,7 @@ export default function Hardware({ project }: { project: Project }) {
                         onClick={() => setDeletePlace(l)} />
                     )}
                   </div>
-                </ListenLine>
+                </ListRow>
               ))}
               {locations.data?.length === 0 && <ListingEmpty>{tr("hardware.no_location_yet")}</ListingEmpty>}
             </Listing>
@@ -300,7 +300,7 @@ function WorkflowConfig({ project }: { project: Project }) {
     <Area title={tr("hardware.procurement_flow")} hint={tr("hardware.steps_every_new_item")}>
       <Listing>
         {steps.map((s, i) => (
-          <ListenLine key={i}>
+          <ListRow key={i}>
             <div className="flex items-center gap-2">
               <span className="w-5 text-xs text-muted">{i + 1}.</span>
               <input value={s.name}
@@ -326,7 +326,7 @@ function WorkflowConfig({ project }: { project: Project }) {
                   className={BUTTON_TEXT.secondary}>{tr("hardware.reset")}</button>
               )}
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {steps.length === 0 && <ListingEmpty>{tr("hardware.no_steps_yet")}</ListingEmpty>}
       </Listing>

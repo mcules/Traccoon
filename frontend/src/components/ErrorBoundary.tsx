@@ -74,15 +74,15 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error(`[traccoon] Renderfehler in ${this.props.label ?? "der Ansicht"}:`,
+    console.error(`[traccoon] a render error in ${this.props.label ?? "the view"}:`,
       error, info.componentStack);
-    const nach = this.props.reloadAfterMs;
-    if (nach === undefined || this.timer !== null) return;
+    const after = this.props.reloadAfterMs;
+    if (after === undefined || this.timer !== null) return;
     this.timer = window.setTimeout(() => {
       this.timer = null;
       safeReload(`boundary:${this.props.label ?? "view"}`,
         this.props.reloadMinGapMs ?? 10 * 60_000);
-    }, nach);
+    }, after);
   }
 
   componentWillUnmount(): void {

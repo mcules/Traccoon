@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
   Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Field, Errorrow, ICON, IconButton, Listing,
-  ListingEmpty, ListenLine, DeleteDialog, BUTTON, BUTTON_TEXT} from "./ui";
+  ListingEmpty, ListRow, DeleteDialog, BUTTON, BUTTON_TEXT} from "./ui";
 
 type Variable = { key: string; label: string; secret: boolean; required: boolean };
 const EMPTY = { id: 0, name: "", display_name: "", transport: "http", url: "", variables: [] as Variable[], enabled: true };
@@ -60,7 +60,7 @@ export default function McpPanel() {
 
       <Listing className="mb-4">
         {servers?.map((m) => (
-          <ListenLine key={m.id}>
+          <ListRow key={m.id}>
             <div className="flex items-center gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
               <span className="font-mono">{m.name}</span><span className="text-muted">{m.transport}</span>
@@ -77,7 +77,7 @@ export default function McpPanel() {
               <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteServer(m)} />
             </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {servers?.length === 0 && <ListingEmpty>{tr("mcp_panel.no_mcp_servers")}</ListingEmpty>}
       </Listing>

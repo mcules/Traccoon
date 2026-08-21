@@ -19,7 +19,7 @@ def test_owntracks_ignores_what_is_not_a_location():
 
 
 def test_an_overland_batch_and_the_swapped_order():
-    """GeoJSON zaehlt lon zuerst — wer das dreht, landet im Indischen Ozean."""
+    """GeoJSON counts lon first — whoever turns that around lands in the Indian Ocean."""
     points = normalise({"locations": [
         {"geometry": {"coordinates": [10.5663, 50.0825]},
          "properties": {"timestamp": "2026-08-20T12:00:00Z", "battery_level": 0.42,

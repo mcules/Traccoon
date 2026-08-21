@@ -71,8 +71,8 @@ def test_the_old_mail_path_keeps_its_meaning():
 
 
 def test_a_follow_up_may_pull_in_new_words():
-    """If a word is added later, it is read again — but without the names that
-    ihre Bedeutung gewechselt haben."""
+    """If a word is added later, it is read again — but without the names that have changed
+    their meaning."""
     already = _graph("assistant_task", {"task": "x", "titel": "Alt"})
     already[terms.MARK] = "en"          # an older mark: the first pass had already happened
     new, different = terms.migrate_graph(already)

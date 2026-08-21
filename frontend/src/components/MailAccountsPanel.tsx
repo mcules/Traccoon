@@ -4,7 +4,7 @@ import { api, ApiError } from "../api";
 import { tr } from "../i18n";
 import {
   Actions, Area, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow, ICON, IconButton,
-  Listing, ListingEmpty, ListenLine, DeleteDialog, Rowbutton, State, Tab, BUTTON } from "./ui";
+  Listing, ListingEmpty, ListRow, DeleteDialog, Rowbutton, State, Tab, BUTTON } from "./ui";
 
 /**
  * Mail accounts and their identities.
@@ -66,7 +66,7 @@ export default function MailAccountsPanel() {
 
       <Listing>
         {accounts?.map((k) => (
-          <ListenLine key={k.id} dimmed={!k.enabled}>
+          <ListRow key={k.id} dimmed={!k.enabled}>
             <div className="flex flex-wrap items-center gap-2">
               <div className="min-w-0 flex-1">
                 <div className="truncate font-medium text-ink">{k.name}</div>
@@ -86,7 +86,7 @@ export default function MailAccountsPanel() {
                   onClick={() => setDeleteAccount(k)} />
               </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {accounts?.length === 0 && <ListingEmpty>{tr("mail_accounts.no_mailbox_yet")}</ListingEmpty>}
       </Listing>
@@ -458,12 +458,12 @@ function AgentsGrant({ f, set: set, folder: folder }: {
         </p>
         <Listing>
           {f.mcp_ignore_folders.map((m) => (
-            <ListenLine key={m} dense>
+            <ListRow key={m} dense>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 truncate">{m}</code>
                 <Rowbutton danger onClick={() => patternPath(m)}>{tr("mail_accounts.remove")}</Rowbutton>
               </div>
-            </ListenLine>
+            </ListRow>
           ))}
           {!f.mcp_ignore_folders.length && <ListingEmpty>Nichts ausgeblendet.</ListingEmpty>}
         </Listing>
@@ -477,7 +477,7 @@ function AgentsGrant({ f, set: set, folder: folder }: {
               </option>
             ))}
           </select>
-          <input value={newPattern} placeholder="oder Muster: Privat*"
+          <input value={newPattern} placeholder={tr("mail_accounts.or_pattern")}
             className={`${INPUT_VALUE} max-w-xs font-mono`}
             onChange={(e) => setNewPattern(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); patternHint(newPattern); } }} />
@@ -595,7 +595,7 @@ function Identities({ accountId, onError: onError }: { accountId: number; onErro
     <div className="mt-2 border-t border-line pt-2.5">
       <Listing>
         {data?.map((i) => (
-          <ListenLine key={i.id}>
+          <ListRow key={i.id}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 flex-1 truncate">
                 <span className="text-ink">{i.display_name || i.email}</span>
@@ -609,7 +609,7 @@ function Identities({ accountId, onError: onError }: { accountId: number; onErro
                   onClick={() => remove.mutate(i.id)} />
               </Actions>
             </div>
-          </ListenLine>
+          </ListRow>
         ))}
         {data?.length === 0 && <ListingEmpty>{tr("mail_accounts.no_identity_yet")}</ListingEmpty>}
       </Listing>

@@ -334,7 +334,7 @@ async def test_an_embedded_logo_is_not_an_attachment():
     assert _has_attachment(inline) is False
 
 
-# ── Postfächer als MCP ──────────────────────────────────────────────────────
+# ── Mailboxes as MCP ────────────────────────────────────────────────────────
 
 async def _mcp_account(db, user, **over) -> MailAccount:
     values = {"name": "privat", "owner_user_id": user.id, "enabled": True,
