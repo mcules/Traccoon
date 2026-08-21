@@ -278,7 +278,7 @@ async def compact(db, *, messages: list[dict], limit_tokens: int, measured: int,
 
     replacement = ("# Zusammenfassung des bisherigen Verlaufs\n"
               "(The detailed history was shortened to stay inside the context window. "
-              "Was hier steht, ist alles, was davon bleibt — arbeite damit weiter, statt "
-              "noch einmal von vorn zu beginnen.)\n\n" + summary)
+              "What stands here is all that is left of it — work on with that instead of "
+              "starting from the beginning again.)\n\n" + summary)
 
     return messages[:von] + [{"role": "system", "content": replacement}] + messages[to:]

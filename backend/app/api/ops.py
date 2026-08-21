@@ -38,7 +38,7 @@ class WebhookIn(BaseModel):
     event_cooldowns: dict = {}
     alert_events: list = []
     # A field of the payload OR a template out of several ({account}:{uid}) — that becomes the
-    # Schlüssel gegen Doppel-Zustellung.
+    # a key against a double delivery.
     ref_field: str | None = None
     # mode=workflow: welche Definition startet.
     workflow_definition_id: int | None = None
@@ -367,7 +367,7 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
                          actor_id=sub.owner_user_id, source_ref=src_ref)
         return {"accepted": True, "mode": "event", "event": name, "instances": ids}
 
-    # mode == "workflow": genau eine Instanz dieser Definition.
+    # mode == "workflow": exactly one instance of this definition.
     from ..models.workflow import WorkflowDefinition, WorkflowInstance
     from ..services.workflow_engine import start_workflow
     if sub.workflow_definition_id is None:
@@ -460,7 +460,7 @@ class JobIn(BaseModel):
         from ..services.scheduler import SCHEDULE_KINDS
         if value not in SCHEDULE_KINDS:
             raise ValueError(
-                f"'{value}' ist kein Zeitplan. Erlaubt: {', '.join(SCHEDULE_KINDS)}. "
+                f"'{value}' is no schedule. Allowed: {', '.join(SCHEDULE_KINDS)}. "
                 f"Die Art der Arbeit (prompt, workflow, film …) gehoert in `kind`.")
         return value
 

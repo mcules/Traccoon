@@ -32,7 +32,7 @@ from .events import emit
 log = logging.getLogger("series")
 
 # Defaults of a location device. They sit in `Series.settings` and can be overridden per
-# aendern; ein Auto darf enger takten als ein Telefon.
+# change; a car may report more often than a phone.
 DEFAULTS_LOCATION = {
     "min_distance_m": 25,     # Closer to the last point: do not write …
     "min_interval_s": 300,    # … unless it has been this long.
@@ -65,7 +65,7 @@ def setting(series: Series, name: str) -> int:
 def token_hash(raw: str) -> str:
     """The lookup key for a token.
 
-    sha256 statt eines Vergleichs ueber alle Reihen: Bei zwei Geraeten waere beides gleich
+    sha256 instead of a comparison over all series: with two devices both would be the same
     fast, but the ingest path is the one that runs more often than anything else in the house.
     """
     return hashlib.sha256(raw.encode()).hexdigest()
@@ -82,7 +82,7 @@ def new_token(series: Series) -> str:
 # ── Sichtbarkeit ─────────────────────────────────────────────────────────────
 
 def visible(user_id: int, is_admin: bool = False):
-    """Filter fuer Reihen, die dieser Mensch sehen darf: eigene, geteilte, globale."""
+    """The filter for the series this person may see: their own, shared ones, global ones."""
     if is_admin:
         return True
     shared = select(SeriesShare.series_id).where(SeriesShare.user_id == user_id)

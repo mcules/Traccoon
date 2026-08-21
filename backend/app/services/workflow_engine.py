@@ -818,7 +818,7 @@ async def _start_subflow(db, inst, node, token, cfg) -> Outcome:
                        error=f"No published flow for {whatfor}")
     if definition.id == inst.definition_id:
         return Outcome(terminal=True, instance_status="failed",
-                       error=f"subflow-Knoten '{node['id']}' ruft sich selbst auf")
+                       error=f"the subflow node '{node['id']}' calls itself")
 
     reference = {"slot": slot} if slot else {"definition_id": definition.id}
     step = WorkflowStepRun(
@@ -1061,7 +1061,7 @@ async def _wait(task_id: str, timeout: int, was: str) -> tuple[dict | None, dict
     duration = int(clock() - start)
     if timeout and duration >= timeout:
         text = (f"Zeitgrenze dieses Schrittes erreicht ({duration}s ≥ {timeout}s). "
-                "Der Lauf selbst kann noch arbeiten.")
+                "The run itself can still work.")
     else:
         text = (f"Lauf verschwunden — seit {int(GRACE / 60)} Minuten kein Lebenszeichen "
                 "(no worker pulse, no longer in the queue).")
@@ -1348,7 +1348,7 @@ async def start_workflow(
     graph = version.graph or {}
     start = next((n for n in _nodes(graph) if node_type(n) == "start"), None)
     if start is None:
-        raise ValueError("Graph hat keinen Start-Knoten")
+        raise ValueError("the graph has no start node")
 
     sk = subject_kind if isinstance(subject_kind, WorkflowSubjectKind) else WorkflowSubjectKind(subject_kind)
     # Templates from a set are project-less, but the instance still belongs to the project
@@ -1597,7 +1597,7 @@ async def _drive(instance_id: int) -> None:
         else:
             # Zyklus-Bremse
             inst.status = IStatus.failed
-            inst.error = f"Zyklus-Bremse: mehr als {MAX_STEPS} Schritte in einem Durchlauf"
+            inst.error = f"cycle brake: more than {MAX_STEPS} steps in one pass"
             inst.finished_at = _now()
             actives = (
                 await db.execute(
@@ -1634,7 +1634,7 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
     nodes = graph.get("nodes")
     edges = graph.get("edges")
     if not isinstance(nodes, list) or not isinstance(edges, list):
-        return ["Graph muss 'nodes' und 'edges' als Listen enthalten"]
+        return ["the graph has to hold 'nodes' and 'edges' as lists"]
 
     ids = [n.get("id") for n in nodes]
     dupes = {i for i in ids if ids.count(i) > 1 and i is not None}
@@ -1670,9 +1670,9 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
         nid = n.get("id")
         ntype = node_type(n)
         if ntype != "start" and incoming.get(nid, 0) == 0:
-            errors.append(f"Knoten '{nid}' hat keine eingehende Kante")
+            errors.append(f"the node '{nid}' has no incoming edge")
         if ntype != "end" and outgoing.get(nid, 0) == 0:
-            errors.append(f"Knoten '{nid}' hat keine ausgehende Kante")
+            errors.append(f"the node '{nid}' has no outgoing edge")
 
         if ntype == "approval":
             handles = _outgoing_handles(edges, nid)
@@ -1714,12 +1714,12 @@ def validate_graph(subject_kind, graph: dict) -> list[str]:
             elif slot:
                 from ..models.enums import WorkflowSlot
                 if slot not in {s.value for s in WorkflowSlot}:
-                    errors.append(f"Subflow-Knoten '{nid}': unbekannter Slot '{slot}'")
+                    errors.append(f"subflow node '{nid}': unknown slot '{slot}'")
 
         if ntype == "timer":
             cfg = node_config(n)
             if not (_timer_amount(cfg) or _timer_to(cfg)):
-                errors.append(f"Timer-Knoten '{nid}': weder Dauer noch Zeitpunkt angegeben")
+                errors.append(f"timer node '{nid}': neither a duration nor a moment was given")
 
         if ntype == "loop":
             handles = _outgoing_handles(edges, nid)

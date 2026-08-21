@@ -92,7 +92,7 @@ def _workstep(job: Job, target_name: str = "") -> tuple[dict, str, dict]:
     """
     if job.kind == "script":
         return (_n("arbeit", "auto_action", 1, _action(
-            "script", "Skript ausführen", command=job.command or "",
+            "script", "Run the script", command=job.command or "",
             args=job.args if isinstance(job.args, list) else [],
             timeout_sec=int(job.run_timeout or 600), context_key="result")),
             "{{ result.output }}", {"==": [{"var": "result.ok"}, False]})
@@ -205,11 +205,11 @@ async def as_flow(db: AsyncSession, job: Job) -> None:
         definition_id=d.id, version=1, graph=_graph(job, target_name), created_by=job.user_id,
         status=WorkflowVersionStatus.published,
         published_at=dt.datetime.now(tz=dt.timezone.utc),
-        notes="Umstellung der Job-Arten auf Abläufe")
+        notes="the job kinds were switched over to flows")
     db.add(version)
     await db.flush()
     d.current_version_id = version.id
-    log.info("Job %s (%s) läuft jetzt über den Ablauf %s", job.name, job.kind or "prompt", d.key)
+    log.info("job %s (%s) now runs through the flow %s", job.name, job.kind or "prompt", d.key)
     job.kind = "workflow"
     job.workflow_definition_id = d.id
 

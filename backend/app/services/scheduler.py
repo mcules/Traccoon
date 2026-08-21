@@ -34,11 +34,11 @@ def zone_of(user) -> ZoneInfo:
 
     A schedule is written by people: "0 8 * * *" means eight in the morning where the one who
     entered it stands — not eight UTC. Until here everything computed in UTC,
-    und ein Morgenjob lief im Sommer um zehn.
+    and a morning job ran at ten in summer.
     """
     try:
         return ZoneInfo(getattr(user, "timezone", "") or STD_TZ.key)
-    except Exception:  # noqa: BLE001 — eine unbekannte Zone darf keinen Job anhalten
+    except Exception:  # noqa: BLE001 — an unknown zone must not stop a job
         return STD_TZ
 
 
@@ -62,7 +62,7 @@ SCHEDULE_KINDS = ("cron", "interval", "once")
 
 def _due(job: Job, now: dt.datetime, zone: ZoneInfo = STD_TZ) -> bool:
     if job.type not in SCHEDULE_KINDS:
-        log.warning("Job %s (%s) hat den Zeitplan-Typ '%s' — erlaubt sind %s. Er laeuft "
+        log.warning("job %s (%s) has the schedule kind '%s' — allowed are %s. It runs "
                     "deshalb nie; gemeint war vermutlich `kind`.",
                     job.id, job.name, job.type, "/".join(SCHEDULE_KINDS))
         return False
@@ -112,11 +112,11 @@ async def run_job_kind(db, job: Job, jr: JobRun) -> None:
     500 lines would bring no gain for a single job. It holds the tick (15 s) up for the
     duration of its build — deliberately, for the same reason the script did before: a second
     execution path next to it would be a second schedule, a second
-    Historie und ein zweiter Pausenschalter.
+    history and a second pause switch.
     """
     # An old kind is converted here, not refused: otherwise there would be a window (an entry
     # made by hand in the database, a restored backup) in which a job
-    # anders liefe, als am Bildschirm steht.
+    # would run differently from what stands on the screen.
     if job.kind in OLD_KINDS:
         from .job_modes import as_flow
         await as_flow(db, job)
@@ -131,7 +131,7 @@ async def run_job_kind(db, job: Job, jr: JobRun) -> None:
         return
     # A kind that does not exist: such a job used to fall mutely into the queue and ran into
     # the empty prompt field at the assistant. A visible error is
-    # besser als ein Lauf, der etwas anderes tut, als draufsteht.
+    # better than a run that does something other than what it says.
     jr.status = "error"
     jr.error = f"Unbekannte Job-Art „{job.kind}“"
     jr.finished_at = _now()
@@ -170,7 +170,7 @@ async def _start_workflow_job(db, job: Job, jr: JobRun) -> None:
         return
     definition = await db.get(WorkflowDefinition, job.workflow_definition_id)
     if definition is None or definition.current_version_id is None:
-        jr.status = "error"; jr.error = "Definition fehlt oder nicht veröffentlicht"
+        jr.status = "error"; jr.error = "the definition is missing or not published"
         jr.finished_at = _now()
         return
     try:

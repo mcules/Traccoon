@@ -1001,7 +1001,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
         messages.append({"role": "system", "content":
                          "# Attachments on the ticket\nThis ticket has file attachments. Use the "
                          "tool `read_attachment` with the file name to look at one — "
-                         "Bilder/Screenshots werden dir als Bild gezeigt.\n" + _lst})
+                         "Images/screenshots are shown to you as a picture.\n" + _lst})
 
     gw_url, gw_token = await _owner_gateway(db, owner_id)
     # The token counters live OUTSIDE the `try`: the outer `except` below passes them to
@@ -1065,7 +1065,7 @@ async def run_agent(*, db: AsyncSession, agent: AgentDef, issue: dict, project: 
                     messages.append({"role": "system", "content":
                         "# Memory (learned earlier, still applies)\n" + _mem +
                         "\n\nThis is what your person taught you — keep to it without them having "
-                        "es wiederholen muss. Widerspricht der aktuelle Auftrag einer Erinnerung, "
+                        "it has to repeat it. If the current task contradicts a memory, "
                         "the assignment applies: correct the memory with `forget` and "
                         "`erinnere_dich`."})
 

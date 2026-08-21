@@ -82,7 +82,7 @@ async def get_last(key: str, user: User = Depends(get_current_user),
     a = await _my(db, user, key)
     e = await documents.last(db, user.id, key)
     if e is None:
-        raise Error(status.HTTP_404_NOT_FOUND, "err.storage_empty", "Die Ablage ist noch leer")
+        raise Error(status.HTTP_404_NOT_FOUND, "err.storage_empty", "The storage is still empty")
     return {"storage": _store_out(a), "entry": _entry_out(e)}
 
 

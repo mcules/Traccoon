@@ -30,7 +30,7 @@ log = logging.getLogger("mail_watch")
 
 AN = os.getenv("MAIL_IDLE", "1") not in ("0", "false", "no")
 # After 29 minutes at the latest IDLE has to be renewed (RFC 2177 names 29 as the safe limit;
-# viele Server werfen früher raus).
+# many servers throw one out earlier).
 RENEW = 20 * 60
 # How many mailboxes are watched at once. Every one is an open connection.
 MAX_WATCHDOG = int(os.getenv("MAIL_IDLE_MAX", "20"))
@@ -76,7 +76,7 @@ async def _watchdog(account_id: int, user_id: int) -> None:
                 if account is None or not account.enabled:
                     return
                 # Keep using it detached from the session: the thread must not hang on a
-                # Datenbankverbindung hängen, während er minutenlang wartet.
+                # database connection while it waits for minutes on end.
                 db.expunge(account)
 
             if not persons.somebody_there(user_id):
@@ -92,7 +92,7 @@ async def _watchdog(account_id: int, user_id: int) -> None:
 
             events = await asyncio.to_thread(_idle_round, account, RENEW)
             pause = 5
-            # EXISTS (neue Nachricht), EXPUNGE (weg), FETCH (Flag geändert) — welches davon,
+            # EXISTS (a new message), EXPUNGE (gone), FETCH (a flag changed) — which of them,
             # does not matter to the UI: it fetches the state fresh anyway.
             if events:
                 # Forget first, then report: otherwise the UI asks in the same moment and gets
@@ -110,7 +110,7 @@ async def _watchdog(account_id: int, user_id: int) -> None:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            log.info("Wächter für Konto %s: %s — neuer Versuch in %ss",
+            log.info("watcher for account %s: %s — trying again in %ss",
                      account_id, str(exc)[:120], pause)
             await asyncio.sleep(pause)
             pause = min(pause * 2, 300)
@@ -136,7 +136,7 @@ async def _overseer_loop() -> None:
         except asyncio.CancelledError:
             raise
         except Exception:  # noqa: BLE001
-            log.exception("Aufseher der Postfach-Wächter gestolpert")
+            log.exception("the supervisor of the mailbox watchers stumbled")
         await asyncio.sleep(60)
 
 
@@ -145,7 +145,7 @@ async def start() -> None:
     if not AN or _overseer is not None:
         return
     _overseer = asyncio.create_task(_overseer_loop())
-    log.info("Postfach-Wächter (IMAP IDLE) gestartet")
+    log.info("the mailbox watchers (IMAP IDLE) started")
 
 
 async def stop() -> None:

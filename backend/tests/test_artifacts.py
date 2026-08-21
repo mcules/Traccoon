@@ -163,7 +163,7 @@ async def test_combined_listing_shows_ticket_and_hardware(client, db, register):
     r = await client.get("/artifacts?waiting=true", headers=auth(owner))
     waiting = r.json()
     assert [a["ref"] for a in waiting] == ["TST-1"]
-    assert waiting[0]["status_label"] == "Plan wartet auf Freigabe"
+    assert waiting[0]["status_label"] == "The plan waits for approval"
 
 
 async def test_foreign_projects_stay_invisible(client, db, register):

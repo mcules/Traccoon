@@ -54,7 +54,7 @@ class Series(TimestampMixin, Base):
     expected_rows: Mapped[int] = mapped_column(Integer, default=0)
 
     # Art-abhaengig: unit (number) · min_distance_m, min_interval_s, max_accuracy_m
-    # (location) · keep_entries (text). Bewusst ein JSON statt zwoelf Spalten, von denen je
+    # (location) · keep_entries (text). Deliberately one JSON instead of twelve columns of
     # Art acht leer waeren.
     settings: Mapped[dict] = mapped_column(JSON, default=dict)
     # The latest state, denormalised: saves the overview and the map a look into the
@@ -141,7 +141,7 @@ class SeriesPlace(Base):
 
 
 class SeriesShare(Base):
-    """Wer eine fremde Reihe sehen darf.
+    """Who may see somebody else's series.
 
     A table of its own instead of `ResourceGrant`: its `project_id` is NOT NULL and granting
     hangs under `/projects/{id}/resource-grants` behind the maintainer role. Series are

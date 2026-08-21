@@ -42,7 +42,7 @@ def builtin_values(*, now: dt.datetime | None = None,
                      zone: ZoneInfo | None = None) -> dict[str, str]:
     """Time values practically every recurring job needs.
 
-    `seit` is the last run; without it (first run, job was off) 24 hours back. That way a
+    `since` is the last run; without it (first run, job was off) 24 hours back. That way a
     daily digest asks for "since the last time" instead of for a number that stands in the
     prompt and silently becomes wrong when the schedule is changed.
     """
@@ -53,7 +53,7 @@ def builtin_values(*, now: dt.datetime | None = None,
         "today": now.strftime("%Y-%m-%d"),
         "now": now.strftime("%Y-%m-%d %H:%M"),
         "since": since.strftime("%Y-%m-%d %H:%M"),
-        "window": f"{since.strftime('%Y-%m-%d %H:%M')} bis {now.strftime('%Y-%m-%d %H:%M')} "
+        "window": f"{since.strftime('%Y-%m-%d %H:%M')} to {now.strftime('%Y-%m-%d %H:%M')} "
                   f"({TZ.key})",
     }
 
@@ -68,7 +68,7 @@ def render(prompt: str, args=None, *, now: dt.datetime | None = None,
     """Replace `{{name}}`: first the parameters of the job, then the built-in time values.
 
     An unknown placeholder stays VERBATIM. Emptying it silently would be the worse outcome:
-    the assignment would lose a rule without a sound, instead of `{{quellen}}` standing
+    the assignment would lose a rule without a sound, instead of `{{sources}}` standing
     visibly in the result and the error being noticed.
     """
     values = {**builtin_values(now=now, last_run=last_run, zone=zone)}

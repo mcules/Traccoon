@@ -1,13 +1,13 @@
 """Convert webhooks of the old modes to flows, once.
 
-Ein Webhook konnte einmal selbst ein Ticket anlegen (`task`), eine Nachricht schicken
+A webhook could once create a ticket itself (`task`), send a message
 (`notify`) or assign the assistant (`assistant`). Each of these ways had columns of its own on
 the webhook — `agent`, `prompt_tmpl`, `auto_run`, `title_template`, `notify_chat` — and was
 available only there: whoever wanted the same thing out of a job or an event was out of luck.
 
 The same work is done today by nodes that can stand in any flow. What is left for the webhook
 is what a trigger really is: receive, check, pass on — as a flow
-(`workflow`) oder als Ereignis (`event`).
+(`workflow`) or as an event (`event`).
 
 Here stands the transition. It runs at startup, is idempotent (converted webhooks carry the
 new mode and are not touched again) and loses nothing: the prompt becomes the assignment text,
@@ -77,7 +77,7 @@ async def _recipient(db: AsyncSession, sub: WebhookSub) -> int | None:
             User.telegram_chat_id == sub.notify_chat))).scalars().first()
         if who is not None:
             return who.id
-        log.warning("Webhook %s: Chat %s gehört zu niemandem — die Nachricht geht künftig "
+        log.warning("webhook %s: the chat %s belongs to nobody — from now on the message goes "
                     "an den Besitzer", sub.route, sub.notify_chat)
     return sub.owner_user_id
 
@@ -103,7 +103,7 @@ async def _as_flow(db: AsyncSession, sub: WebhookSub, key: str, graph: dict,
     await db.flush()
     sub.mode = "workflow"
     sub.workflow_definition_id = d.id
-    log.info("Webhook %s (%s) läuft jetzt über den Ablauf %s", sub.route, key, d.key)
+    log.info("webhook %s (%s) now runs through the flow %s", sub.route, key, d.key)
 
 
 async def convert(db: AsyncSession) -> int:

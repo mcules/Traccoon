@@ -1230,7 +1230,7 @@ async def _agents_payload(
     # (4) Cost and tokens from the cost entries. Tokens come from the same source as the
     # amount so that both tell the same story ("what was billed"): `runs.input_tokens` does
     # not know cached tokens at all.
-    for name, usd, ein, aus, cache, open_ones in (await db.execute(
+    for name, usd, in_tok, out_tok, cache, open_ones in (await db.execute(
         _costs(select(CostEntry.agent, func.sum(CostEntry.cost_usd),
                       func.sum(CostEntry.input_tokens), func.sum(CostEntry.output_tokens),
                       func.sum(CostEntry.cache_read_tokens),
@@ -1239,8 +1239,8 @@ async def _agents_payload(
     )).all():
         row = _agent_slot(agents, name or "")
         row["cost_usd"] += float(usd or 0.0)
-        row["in_tokens"] += int(ein or 0)
-        row["out_tokens"] += int(aus or 0)
+        row["in_tokens"] += int(in_tok or 0)
+        row["out_tokens"] += int(out_tok or 0)
         row["cache_read_tokens"] += int(cache or 0)
         # `priced` is three valued; only proven priced counts as complete here. NULL (an old
         # row, today ALL 411 entries) means "never recorded whether a catalog entry existed".

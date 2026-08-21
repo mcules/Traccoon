@@ -158,13 +158,13 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
     if len(out) <= max_chars:
         return out
     header = out[:max_chars]
-    header = header[:header.rfind("\n") + 1] or header      # nie mitten in einer Zeile enden
+    header = header[:header.rfind("\n") + 1] or header      # never end in the middle of a line
     missing = sorted({z.split(" b/", 1)[1].strip() for z in out[len(header):].splitlines()
                     if z.startswith("diff --git ") and " b/" in z})
-    hint = (f"\n[... Diff gekappt: {len(header)} von {len(out)} Zeichen gezeigt. Der Rest "
-               "fehlt hier — das ist eine Grenze der Anzeige, KEIN unvollständiger Code.")
+    hint = (f"\n[... the diff was capped: {len(header)} of {len(out)} characters shown. The rest "
+               "is missing here — that is a limit of the display, NOT incomplete code.")
     if missing:
-        hint += (" Nicht enthaltene Dateien (bei Bedarf mit `fs_read` selbst ansehen): "
+        hint += (" Files not included (look at them yourself with `fs_read` if needed): "
                     + ", ".join(missing[:25]) + (", …" if len(missing) > 25 else ""))
     return header + hint + "]\n"
 
@@ -218,7 +218,7 @@ async def refresh_main(ctx: GitCtx) -> str:
     # Only when main is checked out as well (worktrees have their own branches).
     rc, cur = await _git(ctx.workdir, "rev-parse", "--abbrev-ref", "HEAD")
     if rc != 0 or cur.strip() != ctx.main:
-        return "main nicht ausgecheckt — nur FETCH_HEAD aktualisiert"
+        return "main is not checked out — only FETCH_HEAD was updated"
     rc, out = await _git(ctx.workdir, "merge", "--ff-only", "FETCH_HEAD")
     if rc != 0:
         log.info("main not fast-forwardable (%s): %s", ctx.main, out.strip()[:200])
@@ -285,7 +285,7 @@ async def ensure_branch(ctx: GitCtx, branch: str, base: str) -> str:
     if rc != 0:
         return f"git: Branch {branch} anlegen fehlgeschlagen: {out[:200]}"
     await _push(ctx, ctx.workdir, branch)
-    return f"git: Branch {branch} angelegt (von {base_ref})"
+    return f"git: the branch {branch} was created (from {base_ref})"
 
 
 async def commit(ctx: GitCtx, message: str) -> str:
@@ -352,7 +352,7 @@ async def setup_conflict_resolution(ctx: GitCtx) -> list[str] | None:
         ref = ctx.main
     await _git(ctx.worktree, "merge", "--abort")
     rc, _ = await _git(ctx.worktree, "merge", "--no-ff", "-m",
-                       f"Merge {ctx.main} into {ctx.branch} (Konflikt-Auflösung)", ref)
+                       f"Merge {ctx.main} into {ctx.branch} (conflict resolution)", ref)
     if rc == 0:
         return []
     rc_u, files = await _git(ctx.worktree, "diff", "--name-only", "--diff-filter=U")
@@ -394,7 +394,7 @@ async def open_pull_request(ctx: GitCtx, title: str, body: str = "") -> str:
         return "pr-fehler:kein Remote konfiguriert"
     slug = _github_slug(ctx.remote)
     if not slug:
-        return "pr-fehler:nur GitHub-Remotes werden unterstützt"
+        return "pr-error:only GitHub remotes are supported"
     if not ctx.token:
         return "pr-fehler:kein Git-Token hinterlegt"
 

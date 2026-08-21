@@ -477,7 +477,7 @@ async def lifespan(app: FastAPI):
                 "DEFAULT '{}'::json NOT NULL",
                 # Data series: create_all creates the tables, the composite index it does not.
                 # It is the only one that counts with a million location points —
-                # jede Abfrage lautet "diese Reihe, dieser Zeitraum".
+                # every query reads "this series, this period".
                 "CREATE INDEX IF NOT EXISTS ix_series_points_series_ts "
                 "ON series_points (series_id, ts DESC)",
                 # The ingest token is looked up on every single point.
@@ -502,12 +502,12 @@ async def lifespan(app: FastAPI):
         from .services.webhook_modes import convert as webhooks_convert
         count = await webhooks_convert(db)
         if count:
-            log.info("%s Webhook(s) auf Abläufe umgestellt", count)
+            log.info("%s webhook(s) switched over to flows", count)
         # The same for the job kinds: prompt, script and HTTP are nodes in the flow.
         from .services.job_modes import convert as jobs_convert
         count = await jobs_convert(db)
         if count:
-            log.info("%s Job(s) auf Abläufe umgestellt", count)
+            log.info("%s job(s) switched over to flows", count)
         # Lift the automatically created procurement chains of the projects to the same shape.
         from .services.hardware_workflow import refresh_generated_definitions
         await refresh_generated_definitions(db)

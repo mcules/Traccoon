@@ -129,7 +129,7 @@ async def ensure_hardware_definition(db, project_id: int, actor_id: int | None =
     definition = WorkflowDefinition(
         project_id=project_id, key=HARDWARE_DEF_KEY, slot=HARDWARE_SLOT,
         name="Hardware-Beschaffung",
-        description="Aus der Schrittliste des Projekts erzeugt — überschreibt den Satz.",
+        description="Built out of the step list of the project — it overrides the set.",
         subject_kind=WorkflowSubjectKind.hardware_asset, created_by=actor_id,
     )
     db.add(definition)

@@ -278,7 +278,7 @@ async def compose(db: AsyncSession, *, owner_id: int, description: str,
             temperature=0.2, max_tokens=8000, tokens={"claude_code": token})
         raw = _json_from(resp.text or "")
         if not raw.get("nodes"):
-            error = ["Das Modell hat keinen Graphen geliefert."]
+            error = ["The model delivered no graph."]
             break
         explanation = str(raw.get("explanation") or raw.get("erklaerung") or "")[:500]
         graph = arrange(_clean(raw))

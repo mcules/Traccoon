@@ -47,7 +47,7 @@ _SYSTEM = (
     "and briefly, so that a person can decide whether and how to act. Answer ONLY with a JSON "
     "object, no prose, no code fences.\n"
     "Fields:\n"
-    '  "category": a short keyword (rechnung, termin, newsletter, behörde, say)\n'
+    '  "category": a short keyword (invoice, appointment, newsletter, authority, say)\n'
     '  "priority": low | normal | high\n'
     '  "sensitive": true when the mail holds sensitive or private data, otherwise false\n'
     '  "redacted_summary": 1-3 sentences, redacted, without PII or secrets\n'

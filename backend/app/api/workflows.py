@@ -505,7 +505,7 @@ async def create_workflow(
         graph=workflow_templates.graph(data.template) if template else {
             "nodes": [
                 {"id": "start", "type": "start", "position": {"x": 0, "y": 0},
-                 "data": {"config": {"label": "Auslöser"}}},
+                 "data": {"config": {"label": "Trigger"}}},
                 {"id": "ende", "type": "end", "position": {"x": 0, "y": 260},
                  "data": {"config": {"label": "Done", "outcome": "completed"}}},
             ],
@@ -538,20 +538,20 @@ async def _key_set(db: AsyncSession, d: WorkflowDefinition, raw: str) -> None:
     key = slug(raw, 60)
     if not key:
         raise Error(400, "err.key_invalid",
-                     "Der Schlüssel braucht Buchstaben oder Ziffern")
+                     "The key needs letters or digits")
     if key == d.key:
         return
     if d.slot or d.set_id:
         raise Error(400, "err.key_fixed",
-                     "Dieser Ablauf gehört zu einem Satz oder einer festen Aufgabe — "
-                     "sein Schlüssel bleibt")
+                     "This flow belongs to a set or to a fixed task — "
+                     "its key stays")
     already = (await db.execute(select(WorkflowDefinition).where(
         WorkflowDefinition.project_id.is_(None) if d.project_id is None
         else WorkflowDefinition.project_id == d.project_id,
         WorkflowDefinition.key == key,
         WorkflowDefinition.id != d.id))).scalars().first()
     if already is not None:
-        raise Error(400, "err.key_taken", "Diesen Schlüssel gibt es hier schon")
+        raise Error(400, "err.key_taken", "That key already exists here")
     d.key = key
 
 
@@ -681,13 +681,13 @@ async def save_graph(
         definition_id=def_id, version=await _next_version_number(db, def_id),
         graph=graph, status=WorkflowVersionStatus.draft, created_by=user.id,
         notes=data.notes if data.notes is not None else (
-            f"Änderung an v{live.version}" if live else "Erster Entwurf"),
+            f"a change to v{live.version}" if live else "the first draft"),
     )
     db.add(draft)
     await db.commit()
     await db.refresh(draft)
     return GraphSaveOut(result="neuer_entwurf", version=draft,
-                        hint="Entwurf angelegt (der Inhalt weicht ab)")
+                        hint="a draft was created (the content deviates)")
 
 
 @router.delete("/workflows/{def_id}/draft", status_code=204)
@@ -835,7 +835,7 @@ async def rollback_version(
         definition_id=def_id, version=await _next_version_number(db, def_id),
         graph=old.graph, status=WorkflowVersionStatus.published,
         published_at=dt.datetime.now(tz=dt.timezone.utc), created_by=user.id,
-        notes=f"Zurückgerollt auf Fassung {old.version}",
+        notes=f"rolled back to version {old.version}",
     )
     db.add(new)
     await db.flush()
@@ -1229,7 +1229,7 @@ async def _decide(db: AsyncSession, user: User, iid: int, sid: int, decision: st
         from ..services.comments import add_system_comment
         verb = "genehmigt" if decision == "approved" else "abgelehnt"
         who = user.display_name or user.username
-        txt = f"Workflow-Genehmigung „{step.node_id}“ {verb} von {who}"
+        txt = f"flow approval \"{step.node_id}\" {verb} by {who}"
         if reason:
             txt += f": {reason}"
         await add_system_comment(db, inst.issue_id, txt, author_label="Workflow")

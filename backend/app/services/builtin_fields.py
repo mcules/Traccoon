@@ -22,31 +22,31 @@ from ..models.enums import Priority, PurchaseStatus, TicketAgentStatus
 
 # (value, label, category, waits for a human)
 _TICKET_STATUS: list[tuple[str, str, str, bool]] = [
-    (TicketAgentStatus.open.value, "Offen", "todo", False),
-    (TicketAgentStatus.planning.value, "Planung läuft", "in_progress", False),
-    (TicketAgentStatus.plan_review.value, "Plan wartet auf Freigabe", "in_progress", True),
-    (TicketAgentStatus.approved.value, "Freigegeben", "in_progress", False),
-    (TicketAgentStatus.in_progress.value, "In Umsetzung", "in_progress", False),
-    (TicketAgentStatus.to_test.value, "Zur Abnahme bereit", "in_progress", True),
-    (TicketAgentStatus.testing.value, "In Abnahme", "in_progress", True),
-    (TicketAgentStatus.hold.value, "Angehalten", "in_progress", True),
-    (TicketAgentStatus.failed.value, "Fehlgeschlagen", "in_progress", True),
+    (TicketAgentStatus.open.value, "Open", "todo", False),
+    (TicketAgentStatus.planning.value, "Planning", "in_progress", False),
+    (TicketAgentStatus.plan_review.value, "The plan waits for approval", "in_progress", True),
+    (TicketAgentStatus.approved.value, "Approved", "in_progress", False),
+    (TicketAgentStatus.in_progress.value, "In progress", "in_progress", False),
+    (TicketAgentStatus.to_test.value, "Ready for acceptance", "in_progress", True),
+    (TicketAgentStatus.testing.value, "In acceptance", "in_progress", True),
+    (TicketAgentStatus.hold.value, "On hold", "in_progress", True),
+    (TicketAgentStatus.failed.value, "Failed", "in_progress", True),
     (TicketAgentStatus.done.value, "Done", "done", False),
 ]
 
 _HARDWARE_STATUS: list[tuple[str, str, str, bool]] = [
-    (PurchaseStatus.planned.value, "Geplant", "todo", False),
-    (PurchaseStatus.ordered.value, "Bestellt", "in_progress", False),
-    (PurchaseStatus.delivered.value, "Erhalten", "in_progress", False),
-    (PurchaseStatus.stored.value, "Eingelagert", "in_progress", False),
-    (PurchaseStatus.installed.value, "Eingebaut", "done", False),
-    (PurchaseStatus.retired.value, "Ausgemustert", "done", False),
+    (PurchaseStatus.planned.value, "Planned", "todo", False),
+    (PurchaseStatus.ordered.value, "Ordered", "in_progress", False),
+    (PurchaseStatus.delivered.value, "Delivered", "in_progress", False),
+    (PurchaseStatus.stored.value, "Stored", "in_progress", False),
+    (PurchaseStatus.installed.value, "Installed", "done", False),
+    (PurchaseStatus.retired.value, "Retired", "done", False),
 ]
 
-_PRIORITAET = [
-    (Priority.lowest.value, "Sehr niedrig"), (Priority.low.value, "Niedrig"),
-    (Priority.medium.value, "Mittel"), (Priority.high.value, "Hoch"),
-    (Priority.highest.value, "Sehr hoch"),
+_PRIORITY = [
+    (Priority.lowest.value, "Lowest"), (Priority.low.value, "Low"),
+    (Priority.medium.value, "Medium"), (Priority.high.value, "High"),
+    (Priority.highest.value, "Highest"),
 ]
 
 
@@ -56,31 +56,35 @@ def _f(key, label, kind, source, **remainder) -> dict:
 
 
 # Key of the artifact type to its built-in fields, in display order.
+#
+# The KEYS stay German. They stand in the field configuration of every project, in published
+# flows (`set_field`) and in the layouts people arranged for themselves; renaming them is a
+# data migration and not a translation. The labels above them are what one reads.
 BUILTIN_FIELDS: dict[str, list[dict]] = {
     "ticket": [
         _f("status", "Status", "select", "agent_status", options=_TICKET_STATUS),
-        _f("vorgangsart", "Vorgangsart", "select", "type_id", options_source="issue_type"),
-        _f("board", "Board-Spalte", "select", "status_id", options_source="board_status"),
-        _f("prioritaet", "Priorität", "select", "priority",
-           options=[(w, l, "", False) for w, l in _PRIORITAET]),
-        _f("zustaendig", "Zuständig", "select", "assignee_user_id", options_source="member"),
+        _f("vorgangsart", "Kind of matter", "select", "type_id", options_source="issue_type"),
+        _f("board", "Board column", "select", "status_id", options_source="board_status"),
+        _f("prioritaet", "Priority", "select", "priority",
+           options=[(w, l, "", False) for w, l in _PRIORITY]),
+        _f("zustaendig", "Assignee", "select", "assignee_user_id", options_source="member"),
         _f("sprint", "Sprint", "select", "sprint_id", options_source="sprint"),
         _f("story_points", "Story Points", "number", "story_points"),
-        _f("faellig", "Fällig am", "date", "due_date"),
-        _f("start", "Frühestens ab", "date", "start_at"),
-        _f("nachts", "Nachtlauf erlaubt", "boolean", "night_task"),
+        _f("faellig", "Due on", "date", "due_date"),
+        _f("start", "Not before", "date", "start_at"),
+        _f("nachts", "A night run is allowed", "boolean", "night_task"),
     ],
     "hardware": [
         _f("status", "Status", "select", "purchase_status", options=_HARDWARE_STATUS),
-        _f("seriennummer", "Seriennummer", "text", "serial_number"),
-        _f("hersteller", "Lieferant", "text", "vendor"),
-        _f("kosten", "Kosten", "number", "cost"),
-        _f("standort", "Standort", "select", "location_id", options_source="location"),
-        _f("bestellt_am", "Bestellt am", "date", "order_date"),
-        _f("geliefert_am", "Geliefert am", "date", "delivery_date"),
-        _f("eingebaut_am", "Eingebaut am", "date", "install_date"),
-        _f("garantie_bis", "Garantie bis", "date", "warranty_until"),
-        _f("notizen", "Notizen", "text", "notes"),
+        _f("seriennummer", "Serial number", "text", "serial_number"),
+        _f("hersteller", "Supplier", "text", "vendor"),
+        _f("kosten", "Cost", "number", "cost"),
+        _f("standort", "Location", "select", "location_id", options_source="location"),
+        _f("bestellt_am", "Ordered on", "date", "order_date"),
+        _f("geliefert_am", "Delivered on", "date", "delivery_date"),
+        _f("eingebaut_am", "Installed on", "date", "install_date"),
+        _f("garantie_bis", "Warranty until", "date", "warranty_until"),
+        _f("notizen", "Notes", "text", "notes"),
     ],
 }
 

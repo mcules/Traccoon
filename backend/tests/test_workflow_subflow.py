@@ -102,4 +102,4 @@ async def test_calling_itself_is_refused(client, db):
         WorkflowInstance.definition_id == d.id))).scalars().all()
     assert len(inst) == 1
     assert inst[0].status.value == "failed"
-    assert "selbst" in (inst[0].error or "")
+    assert "calls itself" in (inst[0].error or "")

@@ -181,7 +181,7 @@ async def start_testenv(db: AsyncSession, issue: Issue, project_key: str) -> dic
     port = await _alloc_port(cfg)
     if port is None:
         issue.testenv_status = "error"
-        issue.testenv_error = ("Kein freier Port bzw. Höchstzahl paralleler Testumgebungen "
+        issue.testenv_error = ("No free port, or the maximum number of parallel previews "
                                f"({cfg['testenv_max_concurrent']}) erreicht.")
         await db.commit()
         return {"ok": False, "error": issue.testenv_error}
@@ -245,7 +245,7 @@ async def start_branch_testenv(db: AsyncSession, project, branch: str, user_id: 
     port = await _alloc_port(cfg)
     if port is None:
         row.status = "error"
-        row.error = ("Kein freier Port bzw. Höchstzahl paralleler Testumgebungen "
+        row.error = ("No free port, or the maximum number of parallel previews "
                      f"({cfg['testenv_max_concurrent']}) erreicht.")
         await db.commit()
         return {"ok": False, "id": row.id, "error": row.error}

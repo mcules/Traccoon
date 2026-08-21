@@ -115,7 +115,7 @@ PARAMS: dict[str, str] = {
     "zusammenfassung": "summary",
 }
 
-# ── Kontext-Wörter ──────────────────────────────────────────────────────────
+# ── Context words ───────────────────────────────────────────────────────────
 # What actions write into the context, and how flows read it (`{{ akku.rest_tage }}`).
 CONTEXT: dict[str, str] = {
     "alter_stunden": "age_hours",
@@ -253,7 +253,7 @@ def _segments(content: str) -> str:
 
 
 def _is_contextpath(value: str) -> bool:
-    """Ist dieser nackte String ein Kontextpfad, dessen erstes Segment umbenannt wurde?
+    """Is this bare string a context path whose first segment was renamed?
 
     Deliberately narrow: a `path` also stands for a vault file, a URL or a directory. Only
     what begins with a name the table knows is touched — everything else stays character for
@@ -356,5 +356,5 @@ async def migrate_all(db) -> int:
             changed += 1
     if changed:
         await db.commit()
-        log.info("%s Ablauf-Fassungen auf die englischen Begriffe umgeschrieben", changed)
+        log.info("%s flow versions rewritten to the English words", changed)
     return changed

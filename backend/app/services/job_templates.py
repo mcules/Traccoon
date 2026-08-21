@@ -13,42 +13,42 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-_DIGEST_PROMPT = """Erstelle den Rückblick „{{titel}}" für das Zeitfenster {{window}}.
-Autonom, keine Rückfragen.
+_DIGEST_PROMPT = """Write the review "{{title}}" for the window {{window}}.
+Autonomous, no questions back.
 
-Thema: {{thema}}
+Topic: {{topic}}
 
-Recherchiere per Web-Suche aus: {{quellen}}. Nur echte, belegte Meldungen; Themen STRENG
-quellenübergreifend deduplizieren; Einordnung auf {{sprache}}.
+Research it over web search from: {{sources}}. Only real, sourced reports; deduplicate topics
+STRICTLY across sources; write the assessment in {{language}}.
 
-Gib das Ergebnis als **Markdown** aus (es wird zu einer HTML-Seite gerendert — KEINE
-Längenbegrenzung, KEIN eigenes HTML, KEINE Telegram-Rücksicht). Struktur:
+Give the result as **Markdown** (it is rendered into an HTML page — NO length limit, NO HTML
+of your own, NO consideration for Telegram). Structure:
 
-# {{symbol}} {{titel}} — Stand {{today}}
+# {{symbol}} {{title}} — as of {{today}}
 
-## Auf einen Blick
-- {{umfang}} knappe Bulletpoints mit den wichtigsten Themen.
+## At a glance
+- {{scope}} terse bullet points with the most important topics.
 
-## Top-Meldungen
-Pro Meldung:
-### <Kategorie> — <Überschrift>
-2–4 Sätze Einordnung. Quelle(n) als Markdown-Link.
+## Top reports
+Per report:
+### <category> — <headline>
+2-4 sentences of assessment. The source(s) as a Markdown link.
 
-## Diskussionen & Signale
-Relevante Debatten mit Link + kurzem Kontext (warum diskutiert).
+## Discussions and signals
+Relevant debates with a link plus a short context (why it is being discussed).
 
-## Weitere Quellen
-Wichtige Artikel mit Link + Kurzkontext.
+## Further sources
+Important articles with a link plus a short context.
 
-Nutze echte URLs als Markdown-Links `[Quelle](https://…)`."""
+Use real URLs as Markdown links `[source](https://…)`."""
 
 
 JOB_TEMPLATES: dict[str, dict] = {
-    "recherche-digest": {
-        "label": "Recherche-Digest",
-        "description": "Wiederkehrender Themen-Rückblick per Web-Suche, als HTML-Seite. "
-                        "Thema, Quellen und Umfang kommen aus den Parametern.",
-        "felder": {
+    "research-digest": {
+        "label": "Research digest",
+        "description": "A recurring review of a topic over web search, as an HTML page. "
+                        "Topic, sources and scope come out of the parameters.",
+        "fields": {
             "type": "cron",
             "schedule": "0 6 * * *",
             "kind": "prompt",
@@ -60,12 +60,12 @@ JOB_TEMPLATES: dict[str, dict] = {
         # The default is the proven AI and tech digest. Whoever wants another topic changes
         # parameters, not the prompt.
         "params": {
-            "titel": "KI- & Tech-News",
+            "title": "AI and tech news",
             "symbol": "🗞️",
-            "thema": "Künstliche Intelligenz, Software und Technik allgemein",
-            "sprache": "Deutsch",
-            "umfang": "5–8",
-            "quellen": ["Hacker News", "TechCrunch", "The Verge", "Ars Technica",
+            "topic": "Artificial intelligence, software and technology in general",
+            "language": "English",
+            "scope": "5-8",
+            "sources": ["Hacker News", "TechCrunch", "The Verge", "Ars Technica",
                         "MIT Tech Review", "VentureBeat",
                         "OpenAI/Anthropic/Google/Meta/NVIDIA-Blogs", "arXiv"],
         },
@@ -76,7 +76,7 @@ JOB_TEMPLATES: dict[str, dict] = {
 def listing() -> list[dict]:
     """Templates for the selection (key, label, parameters with default values)."""
     return [{"key": k, "label": v["label"], "description": v["description"],
-             "params": deepcopy(v["params"]), "felder": deepcopy(v["felder"])}
+             "params": deepcopy(v["params"]), "fields": deepcopy(v["fields"])}
             for k, v in JOB_TEMPLATES.items()]
 
 
@@ -86,6 +86,6 @@ def apply(key: str, params: dict | None = None) -> dict:
     An unknown key raises a KeyError; the caller turns that into its own error message.
     """
     template = JOB_TEMPLATES[key]
-    fields = deepcopy(template["felder"])
+    fields = deepcopy(template["fields"])
     fields["args"] = {**deepcopy(template["params"]), **(params or {})}
     return fields

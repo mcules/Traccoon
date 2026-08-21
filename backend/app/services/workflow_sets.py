@@ -300,7 +300,7 @@ async def create_user_set(db: AsyncSession, user: User, name: str = "",
     s = WorkflowSet(
         scope=WorkflowSetScope.user, user_id=user.id, key=BUILTIN_SET_KEY,
         name=name or f"Prozesse von {user.display_name or user.username}",
-        description="Persönlicher Standard — gilt für alle Projekte, in denen ich Owner bin.",
+        description="A personal default — it applies to every project I own.",
         created_by=user.id,
     )
     db.add(s)

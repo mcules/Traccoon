@@ -10,7 +10,7 @@ that. What a person reckons with they say when creating the series; which storag
 dazu passt, schlaegt `services/stores/wahl.py` vor.
 
 The scope is that of the destinations: `project_id` set means this project only,
-`user_id` gesetzt heisst alle Projekte dieses Menschen, beides NULL heisst systemweit.
+`user_id` set means all the projects of this person, both NULL means system wide.
 """
 from __future__ import annotations
 
