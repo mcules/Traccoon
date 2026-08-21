@@ -57,6 +57,20 @@ services:
         aliases: [traccoon-backend]
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8800"]
 
+  # A mailbox for the pictures: GreenMail speaks IMAP and SMTP and creates accounts on the
+  # fly. Nothing here reaches the internet — it is a mail server that exists for the length
+  # of one screenshot.
+  mail:
+    image: greenmail/standalone:latest
+    environment:
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.all
+        -Dgreenmail.hostname=0.0.0.0
+        -Dgreenmail.auth.disabled
+        -Dgreenmail.verbose
+    ports:
+      - "3025:3025"   # SMTP, so the seed script can deliver from outside
+
   frontend:
     build: ../../frontend
     depends_on: [backend]

@@ -15,6 +15,8 @@ done
 
 python3 docs/demo/seed.py
 docker compose -f docs/demo/compose.yml exec -T backend python - < docs/demo/seed_metrics.py
+docker compose -f docs/demo/compose.yml exec -T backend python - < docs/demo/seed_assistant.py
+python3 docs/demo/seed_mail.py
 
 TOKEN=$(curl -s -X POST "$API/auth/login" -H 'Content-Type: application/json' \
   -d '{"email":"ada@example.org","password":"demo-demo-demo"}' \
@@ -33,6 +35,20 @@ async def main():
         u.display_name = 'Ada Lovelace'
         await db.commit()
 asyncio.run(main())" >/dev/null
+
+# The mailbox of the demo: GreenMail next door, an account with a house rule and a release
+# per tool — the same shape a real one has.
+curl -s -X POST "$API/mailbox/accounts" -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -d '{
+    "name":"Private","imap_host":"mail","imap_port":3143,"imap_ssl":false,
+    "imap_user":"ada@example.org","imap_password":"demo",
+    "smtp_host":"mail","smtp_port":3025,"smtp_security":"none",
+    "smtp_user":"ada@example.org","smtp_password":"demo",
+    "folder_sent":"Sent","folder_drafts":"Drafts","folder_trash":"Trash",
+    "folder_junk":"Junk","folder_archive":"Archive",
+    "archive_mode":"pattern","archive_pattern":"Archive/{jahr}/{monat}","mcp_enabled":true,
+    "mcp_tools":["imap_list_folders","imap_search","imap_get_message","imap_flag"],
+    "mcp_instructions":"Send nothing without asking. Invoices belong in the archive, not in the trash."}' >/dev/null
 
 # The map plugin, if the sibling repository is checked out next door.
 PLUGIN=../traccoon-plugins/build/map.zip
