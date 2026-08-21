@@ -51,13 +51,13 @@ async def anna(db):
     return user
 
 
-async def test_nur_die_eigenen_server_stehen_zur_wahl(db, anna, monkeypatch):
+async def test_only_ones_own_servers_are_on_offer(db, anna, monkeypatch):
     """A flow gets nowhere its owner is not allowed to go."""
     server = await workflow_tools._server_des_besitzers(db, anna.id)
     assert [s["name"] for s in server] == ["obsidian"]
 
 
-async def test_werkzeugliste_nennt_pflichtfelder(db, anna, monkeypatch):
+async def test_the_tool_list_names_the_required_fields(db, anna, monkeypatch):
     session = _Session("", [_Tool("obsidian__obsidian_append_to_note", "Anhängen\nmehr Text",
                                       {"properties": {"path": {}, "content": {}},
                                        "required": ["path"]})])
@@ -75,7 +75,7 @@ async def _done(value):
     return value
 
 
-async def test_call_landet_im_context(db, anna, monkeypatch):
+async def test_the_call_lands_in_the_context(db, anna, monkeypatch):
     session = _Session('{"ok": true, "path": "Notiz.md"}')
     monkeypatch.setattr(workflow_tools, "_session", lambda db_, owner: _done(session))
 
@@ -95,14 +95,14 @@ async def test_call_landet_im_context(db, anna, monkeypatch):
     assert inst.context["tool"]["json"] == {"ok": True, "path": "Notiz.md"}
 
 
-async def test_unbekannter_server_ist_ein_error_kein_text(db, anna):
+async def test_an_unknown_server_is_an_error_not_text(db, anna):
     """The MCP session answers an unknown server with a hint TEXT. If that passed as success,
     the flow would run on as if everything were fine."""
     r = await workflow_tools.call(db, anna.id, "gibtsnicht__tool", {})
     assert r["ok"] is False and "unknown MCP server" in r["error"]
 
 
-async def test_error_kann_den_step_abbrechen(db, anna, monkeypatch):
+async def test_an_error_can_abort_the_step(db, anna, monkeypatch):
     monkeypatch.setattr(workflow_tools, "_session",
                         lambda db_, owner: _done(_Session('{"error": "kaputt"}')))
     inst = WorkflowInstance(definition_id=1, version_id=1, context={}, started_by=anna.id)

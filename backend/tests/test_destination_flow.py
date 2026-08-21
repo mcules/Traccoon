@@ -29,7 +29,7 @@ def calls(monkeypatch):
     return aufzeichnung
 
 
-async def test_prozess_ruft_target_auf(db, calls):
+async def test_a_flow_calls_a_destination(db, calls):
     from app.core.security import encrypt_secret
     user = await make_user(db, "anna")
     proj = await make_project(db, "TST", "Test")

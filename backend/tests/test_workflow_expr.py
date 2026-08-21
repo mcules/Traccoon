@@ -18,7 +18,7 @@ CTX = {
 }
 
 
-async def test_reiner_path_verhaelt_sich_wie_frueher():
+async def test_a_plain_path_behaves_as_before():
     """All existing templates stay valid; otherwise this would be a break, not an extension."""
     assert fill("{{ mail.subject }}", CTX) == CTX["mail"]["subject"]
     assert fill("Betreff: {{mail.subject}}!", CTX).startswith("Betreff: Ihre")
@@ -26,25 +26,25 @@ async def test_reiner_path_verhaelt_sich_wie_frueher():
     assert fill("[{{ gibts.nicht }}]", CTX) == "[]"
 
 
-async def test_filterkette_wird_von_links_nach_rechts_angewendet():
+async def test_the_filter_chain_is_applied_left_to_right():
     assert fill("{{ spam.score | times:100 | round:1 }}", CTX) == "91.2"
     assert fill("{{ mail.subject | truncate:12 }}", CTX) == "Ihre Domain…"
     assert fill("{{ mail.subject | lower | truncate:11,\"\" }}", CTX) == "ihre domain"
 
 
-async def test_default_greift_nur_bei_leer():
+async def test_the_default_applies_only_when_empty():
     assert fill('{{ mail.from | default:"unbekannt" }}', CTX) == "unbekannt"
     assert fill('{{ leer.wert | default:"x" }}', CTX) == "x"
     assert fill('{{ mail.subject | default:"x" | truncate:4,"" }}', CTX) == "Ihre"
 
 
-async def test_listings_und_tiefe_pfade():
+async def test_lists_and_deep_paths():
     assert fill("{{ tool.json.items | count }}", CTX) == "2"
     assert fill("{{ tool.json.items.0.name }}", CTX) == "eins"
     assert fill('{{ tool.json.items | first | json }}', CTX) == '{"name": "eins"}'
 
 
-async def test_ts_rechnen_und_formatieren():
+async def test_computing_and_formatting_timestamps():
     heute = dt.datetime.now(tz=dt.timezone.utc)
     assert fill('{{ now | date:"%Y" }}', CTX) == str(heute.year)
     # Two hours later is another point in time: what is checked is the shift itself.
@@ -57,7 +57,7 @@ async def test_ts_rechnen_und_formatieren():
                    {"zeit": "2026-08-18T06:31:32+00:00"}) == "18.08.2026"
 
 
-async def test_schiefe_template_kippt_keinen_lauf():
+async def test_a_crooked_template_topples_no_run():
     """A typo in the filter, a text instead of a number: that may at most give an ugly result,
     never an abort in the middle of the flow."""
     assert fill("{{ mail.subject | gibtsnicht }}", CTX) == CTX["mail"]["subject"]
@@ -66,18 +66,18 @@ async def test_schiefe_template_kippt_keinen_lauf():
     assert fill("{{ tool.json | truncate:5 }}", CTX).endswith("…")
 
 
-async def test_boolesche_values_read_sich_wie_erwartet():
+async def test_boolean_values_read_as_expected():
     assert fill("{{ spam.aktiv }}", CTX) == "true"
 
 
-async def test_katalog_erklaert_jeden_filter():
+async def test_the_catalog_explains_every_filter():
     """The list feeds the help in the editor: a filter without an explanation is worthless there."""
     entries = katalog()
     assert {"truncate", "default", "date", "count", "times"} <= {e["name"] for e in entries}
     assert all(e["hilfe"] for e in entries)
 
 
-async def test_filterargument_may_aus_dem_context_kommen():
+async def test_a_filter_argument_may_come_from_the_context():
     """`default:event.type` should insert the value from there, not the word.
 
     Before, "event.type" stood literally in the Telegram message, and in the throttle key,
@@ -87,23 +87,23 @@ async def test_filterargument_may_aus_dem_context_kommen():
     assert fill("{{ event.attributes.alarm | default:event.type }}", ctx) == "deviceInactive"
 
 
-async def test_zitiertes_argument_bleibt_woertlich():
+async def test_a_quoted_argument_stays_literal():
     ctx = {"event": {"type": "alarm"}}
     assert fill('{{ fehlt | default:"event.type" }}', ctx) == "event.type"
 
 
-async def test_unbekannter_path_bleibt_as_text_stehen():
+async def test_an_unknown_path_stays_as_text():
     """A default like `default:unbekannt` behaves unchanged."""
     assert fill("{{ fehlt | default:unbekannt }}", {}) == "unbekannt"
 
 
-async def test_zahlen_bleiben_zahlen():
+async def test_numbers_stay_numbers():
     assert fill("{{ text | truncate:4 }}", {"text": "abcdefgh"}) == "abc…"
 
 
 # --- Listen und Pfade ------------------------------------------------------------------
 
-async def test_field_zieht_aus_einer_objektliste():
+async def test_field_pulls_from_a_list_of_objects():
     """Der Weg vom Suchtreffer zum Satz: ohne das bleibt eine Trefferliste unbenutzbar."""
     ctx = {"t": {"hits": [{"filename": "a/VW T5.md", "x": 1}, {"filename": "b/Corsa C.md"}]}}
     assert fill('{{ t.hits | field:"filename" | join:", " }}', ctx) == "a/VW T5.md, b/Corsa C.md"
@@ -111,18 +111,18 @@ async def test_field_zieht_aus_einer_objektliste():
     assert fill('{{ t | field:"hits" | count }}', ctx) == "2"
 
 
-async def test_field_ueberspringt_was_es_nicht_hat():
+async def test_field_skips_what_it_does_not_have():
     ctx = {"l": [{"a": 1}, {"b": 2}, "kein Objekt"]}
     assert fill('{{ l | field:"a" | join:"," }}', ctx) == "1"
 
 
-async def test_dateiname_macht_aus_pfaden_namen():
+async def test_basename_turns_paths_into_names():
     ctx = {"p": ["03 Bereiche/Fahrzeuge/VW T5 Multivan.md", "Opel Corsa C.md"]}
     assert fill('{{ p | basename | join:" und " }}', ctx) == "VW T5 Multivan und Opel Corsa C"
     assert fill("{{ p | first | basename }}", ctx) == "VW T5 Multivan"
 
 
-async def test_max_beantwortet_die_question_die_eine_weiche_nicht_stellen_kann():
+async def test_max_answers_the_question_a_decision_cannot_ask():
     """JSONLogic kennt hier kein `some`; „bringt irgendein Tag Schnee" wird deshalb erst zu
     einer Zahl gemacht und dann verglichen."""
     ctx = {"w": {"schnee": [0, 0, 1.4, 0.2], "leer": [], "text": ["0,5", "2"]}}
@@ -134,7 +134,7 @@ async def test_max_beantwortet_die_question_die_eine_weiche_nicht_stellen_kann()
     assert fill("{{ w.text | max }}", ctx) == "2.0"
 
 
-async def test_new_filter_stehen_im_katalog():
+async def test_new_filters_stand_in_the_catalog():
     """Was der Editor nicht anbietet, findet niemand."""
     namen = {e["name"] for e in katalog()}
     assert {"field", "basename", "max", "min"} <= namen

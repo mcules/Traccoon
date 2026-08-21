@@ -94,7 +94,7 @@ async def kosten(client, user, issue):
 
 # ── priced: the three states ─────────────────────────────────────────────────
 
-async def test_bepreister_posten_ist_vollstaendig(client, db):
+async def test_a_priced_item_is_complete(client, db):
     user, _proj, issue = await buehne(db)
     run = await lauf(db, issue)
     await posten(db, run, priced=True, cost=2.41, in_tok=1000, out_tok=200)
@@ -106,7 +106,7 @@ async def test_bepreister_posten_ist_vollstaendig(client, db):
     assert body["total"]["cost_usd_billed"] == 2.41
 
 
-async def test_altzeile_ohne_katalogeintrag_ist_eine_preisluecke(client, db):
+async def test_an_old_row_without_a_catalog_entry_is_a_price_gap(client, db):
     """`priced IS NULL` is the old row that never knew the distinction. It is resolved against
     the catalog at read time, and without an entry the 0.00 is a gap."""
     user, _proj, issue = await buehne(db)
@@ -119,7 +119,7 @@ async def test_altzeile_ohne_katalogeintrag_ist_eine_preisluecke(client, db):
     assert body["by_agent"][0]["unpriced_models"] == ["lokal/qwen3.6"]
 
 
-async def test_altzeile_mit_katalogeintrag_gilt_as_bepreist(client, db):
+async def test_an_old_row_with_a_catalog_entry_counts_as_priced(client, db):
     user, _proj, issue = await buehne(db)
     await katalog(db, "lokal", "qwen3.6", ein=0.1, aus=0.4)
     run = await lauf(db, issue)
@@ -130,7 +130,7 @@ async def test_altzeile_mit_katalogeintrag_gilt_as_bepreist(client, db):
     assert body["by_agent"][0]["unpriced"] is False
 
 
-async def test_katalogeintrag_mit_preis_null_ist_gratis_nicht_unbekannt(client, db):
+async def test_a_catalog_entry_priced_zero_is_free_not_unknown(client, db):
     """The case of the local model: all prices 0.00, but there IS an entry. Exactly this
     distinction Traccoon could not make until now."""
     user, _proj, issue = await buehne(db)
@@ -150,7 +150,7 @@ async def test_katalogeintrag_mit_preis_null_ist_gratis_nicht_unbekannt(client, 
 
 # ── Aggregation over the tree ────────────────────────────────────────────────
 
-async def test_by_agent_summiert_ueber_den_baum_inklusive_delegierter(client, db):
+async def test_by_agent_sums_over_the_tree_including_delegated_runs(client, db):
     """Two runs of the same agent (execution plus continuation) and one delegated sub-agent:
     all three belong to the same session and therefore in the same bill."""
     user, _proj, issue = await buehne(db)
@@ -171,7 +171,7 @@ async def test_by_agent_summiert_ueber_den_baum_inklusive_delegierter(client, db
     assert body["total"]["cost_usd_billed"] == 1.75
 
 
-async def test_by_model_gruppiert_nach_dem_modell_des_schritts(client, db):
+async def test_by_model_groups_by_the_model_of_the_step(client, db):
     """The run switched to the fallback provider in the middle. Grouped by `run.model` that
     would be ONE row, and the wrong one: it would attribute the tokens of one model to the
     other."""
@@ -191,7 +191,7 @@ async def test_by_model_gruppiert_nach_dem_modell_des_schritts(client, db):
     assert body["total"]["in_tokens"] == 3 * MIO
 
 
-async def test_abgerechnet_und_geschaetzt_stehen_nebeneinander(client, db):
+async def test_billed_and_estimated_stand_side_by_side(client, db):
     """The catalog price changed after the billing. Both numbers stay: one says what it cost,
     the other what it would cost today."""
     user, _proj, issue = await buehne(db)
@@ -208,7 +208,7 @@ async def test_abgerechnet_und_geschaetzt_stehen_nebeneinander(client, db):
     assert body["cost_partial"] is False
 
 
-async def test_altlauf_ohne_step_tokens_faellt_auf_die_laufzeile_zurueck(client, db):
+async def test_an_old_run_without_step_tokens_falls_back_to_the_run_row(client, db):
     """A run from before the instrumentation has no tokens on the steps but does have its sums
     on the run. Without this fallback the estimate would be 0 everywhere on the first day and
     the cost view useless."""
@@ -223,7 +223,7 @@ async def test_altlauf_ohne_step_tokens_faellt_auf_die_laufzeile_zurueck(client,
     assert body["by_model"][0]["unpriced"] is False
 
 
-async def test_fremder_bekommt_404_auf_die_kosten(client, db):
+async def test_a_stranger_gets_404_on_the_costs(client, db):
     """Costs are project internals: the permission comes from the session, not from the path,
     and a stranger does not even learn that the session exists."""
     _user, _proj, issue = await buehne(db)

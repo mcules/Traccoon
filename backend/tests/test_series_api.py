@@ -23,7 +23,7 @@ async def _token(client, user, key="handy") -> str:
 
 # ── Anlegen ──────────────────────────────────────────────────────────────────
 
-async def test_create_und_wiederfinden(client, db):
+async def test_creating_and_finding_again(client, db):
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy")
 
@@ -31,13 +31,13 @@ async def test_create_und_wiederfinden(client, db):
     assert (r["key"], r["kind"], r["own"], r["has_token"]) == ("handy", "location", True, False)
 
 
-async def test_unbekannte_kind_wird_abgewiesen(client, db):
+async def test_an_unknown_kind_is_rejected(client, db):
     ich = await make_user(db, "ich")
     r = await client.post("/series", headers=auth(ich), json={"key": "x", "kind": "bilder"})
     assert r.status_code == 400 and r.json()["key"] == "err.unknown_series_kind"
 
 
-async def test_zweimal_derselbe_key_geht_nicht(client, db):
+async def test_the_same_key_twice_does_not_work(client, db):
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy")
     r = await client.post("/series", headers=auth(ich),
@@ -45,7 +45,7 @@ async def test_zweimal_derselbe_key_geht_nicht(client, db):
     assert r.status_code == 409
 
 
-async def test_zwei_menschen_duerfen_denselben_key_haben(client, db):
+async def test_two_people_may_have_the_same_key(client, db):
     """Der Schluessel ist je Mensch eindeutig, nicht im ganzen Haus."""
     a = await make_user(db, "a")
     b = await make_user(db, "b")
@@ -55,7 +55,7 @@ async def test_zwei_menschen_duerfen_denselben_key_haben(client, db):
 
 # ── Aufnahme ─────────────────────────────────────────────────────────────────
 
-async def test_all_vier_formate_landen_in_derselben_series(client, db):
+async def test_all_four_formats_land_in_the_same_series(client, db):
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy", settings={"min_distance_m": 0, "min_interval_s": 0})
     tok = await _token(client, ich)
@@ -85,7 +85,7 @@ async def test_all_vier_formate_landen_in_derselben_series(client, db):
     assert {p["source"] for p in daten["points"]} == {"ha", "owntracks", "overland", "traccar"}
 
 
-async def test_notice_ohne_position_ist_kein_error(client, db):
+async def test_a_report_without_a_position_is_not_an_error(client, db):
     """Sonst schickt ein Geraet dieselbe Nachricht in einer Wiederholungsschleife."""
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy")
@@ -95,12 +95,12 @@ async def test_notice_ohne_position_ist_kein_error(client, db):
     assert r.status_code == 202 and r.json()["ignored"] is True
 
 
-async def test_unbekanntes_token_verraet_nichts(client, db):
+async def test_an_unknown_token_reveals_nothing(client, db):
     r = await client.post("/ingest/trk_ausgedacht", json={"lat": 1, "lon": 1})
     assert r.status_code == 404
 
 
-async def test_neues_token_macht_das_alte_wertlos(client, db):
+async def test_a_new_token_makes_the_old_one_worthless(client, db):
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy")
     alt = await _token(client, ich)
@@ -111,7 +111,7 @@ async def test_neues_token_macht_das_alte_wertlos(client, db):
     assert (await client.post(f"/ingest/{new}", json={"lat": 50, "lon": 10})).status_code == 202
 
 
-async def test_token_laesst_sich_wieder_ansehen(client, db):
+async def test_the_token_can_be_looked_at_again(client, db):
     """Man muss es in ein Telefon eintragen — einmal zeigen reicht da nicht."""
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy")
@@ -123,7 +123,7 @@ async def test_token_laesst_sich_wieder_ansehen(client, db):
 
 # ── Sehen und Teilen ─────────────────────────────────────────────────────────
 
-async def test_fremde_series_ist_unsichtbar(client, db):
+async def test_a_foreign_series_is_invisible(client, db):
     ich = await make_user(db, "ich")
     fremd = await make_user(db, "fremd")
     await _series(client, ich, "handy")
@@ -134,7 +134,7 @@ async def test_fremde_series_ist_unsichtbar(client, db):
     assert r.status_code == 404
 
 
-async def test_grant_macht_visible(client, db):
+async def test_a_grant_makes_it_visible(client, db):
     ich = await make_user(db, "ich")
     freund = await make_user(db, "freund")
     await _series(client, ich, "handy")
@@ -149,7 +149,7 @@ async def test_grant_macht_visible(client, db):
     assert (await client.get("/series/handy/points", headers=auth(freund))).status_code == 200
 
 
-async def test_read_reicht_nicht_zum_update(client, db):
+async def test_read_access_is_not_enough_to_change(client, db):
     ich = await make_user(db, "ich")
     freund = await make_user(db, "freund")
     await _series(client, ich, "handy")
@@ -162,7 +162,7 @@ async def test_read_reicht_nicht_zum_update(client, db):
     assert (await client.post("/series/handy/token", headers=auth(freund))).status_code == 403
 
 
-async def test_manage_may_update_aber_nicht_weiterverteilen(client, db):
+async def test_manage_may_change_but_not_redistribute(client, db):
     ich = await make_user(db, "ich")
     freund = await make_user(db, "freund")
     dritter = await make_user(db, "dritter")
@@ -177,7 +177,7 @@ async def test_manage_may_update_aber_nicht_weiterverteilen(client, db):
     assert r.status_code == 403
 
 
-async def test_grant_zuruecknehmen(client, db):
+async def test_withdrawing_a_grant(client, db):
     ich = await make_user(db, "ich")
     freund = await make_user(db, "freund")
     await _series(client, ich, "handy")
@@ -192,7 +192,7 @@ async def test_grant_zuruecknehmen(client, db):
 
 # ── Live und Orte ────────────────────────────────────────────────────────────
 
-async def test_live_zeigt_den_letzten_state(client, db):
+async def test_live_shows_the_latest_state(client, db):
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy")
     tok = await _token(client, ich)
@@ -202,7 +202,7 @@ async def test_live_zeigt_den_letzten_state(client, db):
     assert r["state"]["lat"] == 50.08 and r["state"]["battery"] == 42
 
 
-async def test_series_namens_live_verdraengt_den_endpunkt_nicht(client, db):
+async def test_a_series_called_live_does_not_displace_the_endpoint(client, db):
     """`{key:path}` ist gierig — deshalb liegt der Live-Stand auf einer eigenen Adresse."""
     ich = await make_user(db, "ich")
     await _series(client, ich, "live")
@@ -210,7 +210,7 @@ async def test_series_namens_live_verdraengt_den_endpunkt_nicht(client, db):
     assert r.status_code == 200 and isinstance(r.json(), list)
 
 
-async def test_orte_create_und_delete(client, db):
+async def test_creating_and_deleting_places(client, db):
     ich = await make_user(db, "ich")
     r = await client.post("/places", headers=auth(ich),
                           json={"key": "zuhause", "name": "Zuhause",
@@ -225,7 +225,7 @@ async def test_orte_create_und_delete(client, db):
     assert (await client.get("/places", headers=auth(ich))).json() == []
 
 
-async def test_fremde_orte_bleiben_fremd(client, db):
+async def test_foreign_places_stay_foreign(client, db):
     ich = await make_user(db, "ich")
     fremd = await make_user(db, "fremd")
     r = await client.post("/places", headers=auth(ich),
@@ -236,7 +236,7 @@ async def test_fremde_orte_bleiben_fremd(client, db):
     assert (await client.delete(f"/places/{pid}", headers=auth(fremd))).status_code == 404
 
 
-async def test_point_delete_zieht_den_counter_nach(client, db):
+async def test_deleting_a_point_updates_the_counter(client, db):
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy", settings={"min_distance_m": 0, "min_interval_s": 0})
     tok = await _token(client, ich)
@@ -253,7 +253,7 @@ async def test_point_delete_zieht_den_counter_nach(client, db):
     assert daten["series"]["points"] == 1
 
 
-async def test_umbenennen(client, db):
+async def test_renaming(client, db):
     """Namen aendern sich. Was dabei nicht geht, ist ein Schluessel, den es schon gibt."""
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy.alt")
@@ -270,7 +270,7 @@ async def test_umbenennen(client, db):
     assert r.status_code == 409
 
 
-async def test_umbenennen_behaelt_points_und_token(client, db):
+async def test_renaming_keeps_points_and_token(client, db):
     ich = await make_user(db, "ich")
     await _series(client, ich, "handy.alt", settings={"min_distance_m": 0, "min_interval_s": 0})
     tok = await _token(client, ich, "handy.alt")

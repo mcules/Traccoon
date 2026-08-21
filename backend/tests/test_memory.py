@@ -53,7 +53,7 @@ class FakeMcp:
 ROOT = "04 Traccoon/Gedächtnis"
 
 
-def test_pfade():
+def test_paths():
     """Every area has its note; areas that do not fit yield no path."""
     assert note_path(ROOT, "mensch") == f"{ROOT}/Mensch.md"
     assert note_path(ROOT, "agent", "developer") == f"{ROOT}/Agent-developer.md"
@@ -66,13 +66,13 @@ def test_pfade():
     assert note_path("  ", "mensch") is None
 
 
-def test_pfade_ohne_pfadwechsel():
+def test_paths_without_a_path_change():
     """Role and project key must not be able to leave the folder."""
     p = note_path(ROOT, "projekt", "", "../../etc")
     assert p is not None and ".." not in p and p.count("/") == ROOT.count("/") + 1
 
 
-async def test_abruf_sammelt_vom_allgemeinen_zum_besonderen():
+async def test_recall_collects_from_the_general_to_the_specific():
     """All three notes land in the block, the specific one last."""
     mcp = FakeMcp({
         f"{ROOT}/Mensch.md": "- Commit-Betreffe auf Deutsch.",
@@ -85,7 +85,7 @@ async def test_abruf_sammelt_vom_allgemeinen_zum_besonderen():
     assert "## Über deinen Menschen" in text and "## Für dieses Projekt" in text
 
 
-async def test_abruf_fehlende_notiz_ist_kein_error():
+async def test_a_missing_note_on_recall_is_not_an_error():
     """Only Mensch.md exists; the rest is simply missing, without an exception."""
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "- Eine Vorgabe."})
     text = await read_memory(mcp, ROOT, "developer", "TRA")
@@ -93,20 +93,20 @@ async def test_abruf_fehlende_notiz_ist_kein_error():
     assert "Für deine Rolle" not in text
 
 
-async def test_abruf_ohne_folder_ruft_nichts():
+async def test_recall_without_a_folder_recalls_nothing():
     """No memory configured means not a single MCP call."""
     mcp = FakeMcp()
     assert await read_memory(mcp, "", "developer", "TRA") == ""
     assert mcp.calls == []
 
 
-async def test_abruf_gekappt():
+async def test_recall_is_capped():
     """A vault that got out of hand does not bury the assignment."""
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "- Zeile\n" * 5000})
     assert len(await read_memory(mcp, ROOT, "", "")) <= 6000
 
 
-async def test_ohne_vault_sagt_es_dem_agenten(db):
+async def test_without_a_vault_it_tells_the_agent(db):
     """Without a folder set, the agent gets a clear refusal instead of an error."""
     u = await make_user(db, "ohnevault")
     mcp = FakeMcp()
@@ -116,7 +116,7 @@ async def test_ohne_vault_sagt_es_dem_agenten(db):
     assert mcp.calls == []
 
 
-async def test_erinnere_dich_baut_target_as_obj(db):
+async def test_remember_builds_the_target_as_an_object(db):
     """REGRESSION: `target` has to be an object; a string is `MCP error -32602`.
 
     Exactly on that older models fail when they call the obsidian MCP themselves. Because
@@ -136,7 +136,7 @@ async def test_erinnere_dich_baut_target_as_obj(db):
     assert "Commit-Betreffe auf Deutsch." in mcp.notes[f"{ROOT}/Mensch.md"]
 
 
-async def test_erinnere_dich_legt_fehlende_notiz_an(db):
+async def test_remember_creates_a_missing_note(db):
     """The first insight creates the note; appending alone fails on that."""
     u = await make_user(db, "erster")
     u.vault_memory_path = ROOT
@@ -150,7 +150,7 @@ async def test_erinnere_dich_legt_fehlende_notiz_an(db):
     assert "Tests mitliefern." in mcp.notes[f"{ROOT}/Agent-developer.md"]
 
 
-async def test_erinnere_dich_meldet_scheitern(db):
+async def test_remember_reports_failure(db):
     """If neither works, the agent learns that, instead of feeling safe."""
     u = await make_user(db, "pech")
     u.vault_memory_path = ROOT
@@ -161,7 +161,7 @@ async def test_erinnere_dich_meldet_scheitern(db):
     assert out.startswith("FEHLER")
 
 
-async def test_projekt_area_ohne_projekt(db):
+async def test_a_project_area_without_a_project(db):
     """In a project-less assistant run there is no project memory, and it says so."""
     u = await make_user(db, "projektlos")
     u.vault_memory_path = ROOT
@@ -173,7 +173,7 @@ async def test_projekt_area_ohne_projekt(db):
     assert mcp.calls == []
 
 
-async def test_vergiss_entfernt_nur_die_passende_line(db):
+async def test_forget_removes_only_the_matching_line(db):
     """What is outdated falls away, the rest stays."""
     u = await make_user(db, "vergesser")
     u.vault_memory_path = ROOT
@@ -188,7 +188,7 @@ async def test_vergiss_entfernt_nur_die_passende_line(db):
     assert "Englisch" not in remainder and "Keine Werbemails melden." in remainder
 
 
-async def test_vergiss_ohne_hits_aendert_nichts(db):
+async def test_forget_without_hits_changes_nothing(db):
     """No hit means: do not write, say so."""
     u = await make_user(db, "trefferlos")
     u.vault_memory_path = ROOT
@@ -200,7 +200,7 @@ async def test_vergiss_ohne_hits_aendert_nichts(db):
     assert "obsidian__obsidian_write_note" not in mcp.names()
 
 
-async def test_suche_bleibt_im_gedaechtnis_folder(db):
+async def test_search_stays_within_the_memory_folder(db):
     """The search must not rummage through the whole vault."""
     u = await make_user(db, "sucher")
     u.vault_memory_path = ROOT
@@ -213,14 +213,14 @@ async def test_suche_bleibt_im_gedaechtnis_folder(db):
     assert args["pathPrefix"] == ROOT and args["mode"] == "text"
 
 
-async def test_memory_root_leer_ohne_owner(db):
+async def test_the_memory_root_is_empty_without_an_owner(db):
     """A run without a user context has no memory."""
     assert await memory_root(db, None) == ""
 
 
 # ── Verdrahtung im Lauf ──────────────────────────────────────────────────────
 
-def test_gedaechtnis_tools_immer_allowed():
+def test_memory_tools_are_always_allowed():
     """`allowed_tools` is deny by default, and the memory tools have to get past it;
     otherwise a freshly created agent silently never learns anything."""
     from app.worker.runtime import AgentDef
@@ -237,7 +237,7 @@ def test_gedaechtnis_tools_immer_allowed():
     assert not a.tool_allowed("obsidian__obsidian_write_note")
 
 
-def test_lernschalter_kommt_aus_der_line():
+def test_the_learning_switch_comes_from_the_row():
     """`learns=false` on the agent switches lookup and review off."""
     from app.models.agents import AgentDefinition
     from app.worker.runtime import agent_def_from_row
@@ -250,7 +250,7 @@ def test_lernschalter_kommt_aus_der_line():
     assert agent_def_from_row(row, "execute").learns is False
 
 
-async def test_lernschalter_in_der_api(db, client):
+async def test_the_learning_switch_in_the_api(db, client):
     """The switch is settable over the agent API and is returned."""
     u = await make_user(db, "agentenchef")
     r = await client.post("/agents", headers=auth(u),
@@ -263,7 +263,7 @@ async def test_lernschalter_in_der_api(db, client):
     assert r.status_code == 200 and r.json()["learns"] is False
 
 
-async def test_gedaechtnis_folder_in_der_api(db, client):
+async def test_the_memory_folder_in_the_api(db, client):
     """Set the folder (with slashes), switch it off again.
 
     What is checked is the column, not `/me/flags`: the `redis_stub` of the test environment
@@ -283,7 +283,7 @@ async def test_gedaechtnis_folder_in_der_api(db, client):
 
 # ── Conversation history in the chat ─────────────────────────────────────────
 
-async def test_chat_verlauf(db):
+async def test_chat_history(db):
     """The chat carries the most recent exchanges along; old and foreign ones stay outside."""
     import datetime as dt
 
@@ -324,7 +324,7 @@ async def test_chat_verlauf(db):
     assert [v["role"] for v in verlauf] == ["user", "agent"]
 
 
-async def test_chat_verlauf_getrennt_je_agent(db):
+async def test_chat_history_kept_separate_per_agent(db):
     """A specialist agent has its own conversation, not that of the assistant."""
     from app.models.assistant import AssistantTask
     from app.worker.__main__ import _chat_history
@@ -364,7 +364,7 @@ class FakeCall:
         self.name, self.arguments, self.id = name, arguments, cid
 
 
-async def test_rueckschau_merkt_und_zaehlt_tokens(db, monkeypatch):
+async def test_the_review_remembers_and_counts_tokens(db, monkeypatch):
     """The review may remember, and its consumption lands on the counters of the run."""
     from app.worker import runtime
     from app.worker.runtime import AgentDef, _reflect
@@ -415,7 +415,7 @@ async def test_rueckschau_merkt_und_zaehlt_tokens(db, monkeypatch):
     assert last[1]["role"] == "user" and "Rückschau" in last[1]["content"]
 
 
-async def test_rueckschau_ohne_lehre_schreibt_nichts(db, monkeypatch):
+async def test_a_review_without_a_lesson_writes_nothing(db, monkeypatch):
     """The normal case: nothing learned, one short turn, no vault write access."""
     from app.worker import runtime
     from app.worker.runtime import AgentDef, _reflect
@@ -443,7 +443,7 @@ async def test_rueckschau_ohne_lehre_schreibt_nichts(db, monkeypatch):
     assert mcp.calls == []
 
 
-async def test_rueckschau_verweigert_fremde_tools(db, monkeypatch):
+async def test_the_review_refuses_foreign_tools(db, monkeypatch):
     """In the review nothing else may happen any more than learning."""
     from app.worker import runtime
     from app.worker.runtime import AgentDef, _reflect
@@ -477,7 +477,7 @@ async def test_rueckschau_verweigert_fremde_tools(db, monkeypatch):
 
 
 @pytest.mark.parametrize("area", ["quatsch", "", "MENSCH "])
-async def test_unbekannter_area(db, area):
+async def test_an_unknown_area(db, area):
     """An invented scope writes nowhere."""
     u = await make_user(db, f"bereich{abs(hash(area)) % 1000}")
     u.vault_memory_path = ROOT

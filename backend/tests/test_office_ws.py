@@ -84,7 +84,7 @@ async def projects_from_api(client, user) -> set[int]:
     return {p["id"] for p in r.json()}
 
 
-async def test_acl_gleich_projects_fuer_mitglied(client, db):
+async def test_acl_equals_projects_for_a_member(client, db):
     """Direct member: exactly their projects, and none of the foreign ones."""
     user = await make_user(db, "mitglied")
     mein = await make_project(db, "MEI", "Meins")
@@ -95,7 +95,7 @@ async def test_acl_gleich_projects_fuer_mitglied(client, db):
     assert acl == await projects_from_api(client, user) == {mein.id}
 
 
-async def test_acl_gleich_projects_fuer_geerbtes_unterprojekt(client, db):
+async def test_acl_equals_projects_for_an_inherited_subproject(client, db):
     """Member in the parent project: the sub-project comes along over the inheritance, and
     exactly there sits the branching a second ACL definition mapped wrongly."""
     user = await make_user(db, "erbe")
@@ -110,7 +110,7 @@ async def test_acl_gleich_projects_fuer_geerbtes_unterprojekt(client, db):
     assert dicht.id not in acl
 
 
-async def test_acl_gleich_projects_fuer_admin(client, db):
+async def test_acl_equals_projects_for_an_admin(client, db):
     """The admin sees everything, without a special branch in `compute_acl`; otherwise that
     would be exactly the place where the two definitions drifted apart."""
     admin = await make_user(db, "chef", admin=True)
@@ -140,7 +140,7 @@ async def test_acl_gleich_projects_fuer_admin(client, db):
         ("admin", "fremdes_projektlos", True),
     ],
 )
-def test_visible_matrix(wer, was, erwartet):
+def test_the_visibility_matrix(wer, was, erwartet):
     leute = {
         "mitglied": conn(7, allowed={27}),
         "fremd": conn(8, allowed=set()),
@@ -154,13 +154,13 @@ def test_visible_matrix(wer, was, erwartet):
     assert visible(ereignisse[was], leute[wer]) is erwartet
 
 
-def test_visible_ohne_projekt_und_ohne_owner_ist_niemandes_ereignis():
+def test_without_project_and_owner_it_is_nobodys_event():
     assert visible(ev(None, None), conn(7, allowed={27})) is False
 
 
 # ── The scope only narrows ───────────────────────────────────────────────────
 
-def test_scope_auf_fremdes_projekt_liefert_silence():
+def test_a_scope_on_a_foreign_project_yields_silence():
     """`scope={99}` on a project the user is not in: no event arrives. The narrowing of the
     client cannot open the server set up."""
     c = conn(7, allowed={27}, scope={99})
@@ -173,20 +173,20 @@ def test_scope_auf_fremdes_projekt_liefert_silence():
     assert in_scope(eigen, c) is False
 
 
-def test_scope_none_ist_alles_erlaubte():
+def test_scope_none_is_everything_permitted():
     c = conn(7, allowed={27})
     assert in_scope(ev(27, 3), c) is True
     assert in_scope(ev(None, 7), c) is True
 
 
-def test_scope_projekt_schliesst_projektlose_aus():
+def test_a_project_scope_excludes_project_less_ones():
     """A project subscription (the tab in the project) does not want the global job runs."""
     c = conn(7, allowed={27}, scope={27})
     assert in_scope(ev(27, 3), c) is True
     assert in_scope(ev(None, 7), c) is False
 
 
-def test_parse_scopes_faellt_eng_aus():
+def test_parsing_scopes_errs_on_the_narrow_side():
     assert parse_scopes({"type": "subscribe"}) is None                       # without it: global
     assert parse_scopes({"scopes": [{"kind": "global"}]}) is None
     assert parse_scopes({"scopes": [{"kind": "project", "id": 27}]}) == {27}
@@ -199,7 +199,7 @@ def test_parse_scopes_faellt_eng_aus():
 
 # ── Fan-out ──────────────────────────────────────────────────────────────────
 
-async def test_fanout_trifft_nur_berechtigte():
+async def test_the_fan_out_reaches_only_the_entitled():
     m = UserConnectionManager()
     mitglied = conn(7, allowed={27})
     fremd = conn(8, allowed={99})
@@ -215,7 +215,7 @@ async def test_fanout_trifft_nur_berechtigte():
     assert fremd.queue.empty()
 
 
-async def test_fanout_projektlos_nur_an_den_eigentuemer():
+async def test_a_project_less_fan_out_goes_only_to_the_owner():
     m = UserConnectionManager()
     eigner = conn(7, allowed=set())
     anderer = conn(8, allowed={27})
@@ -227,7 +227,7 @@ async def test_fanout_projektlos_nur_an_den_eigentuemer():
     assert anderer.queue.empty()
 
 
-async def test_langsamer_client_faellt_statt_die_bridge_zu_bremsen():
+async def test_a_slow_client_is_dropped_instead_of_slowing_the_bridge():
     """A full queue means the connection flies out. It then has a gap and has to come back
     over the snapshot; sending on would fake a gapless stream."""
     m = UserConnectionManager()
@@ -243,7 +243,7 @@ async def test_langsamer_client_faellt_statt_die_bridge_zu_bremsen():
     assert c.ws.closed == CLOSE_TOO_SLOW
 
 
-async def test_sweeper_frischt_nur_abgelaufene_acls_auf(db, monkeypatch):
+async def test_the_sweeper_refreshes_only_expired_acls(db, monkeypatch):
     """The ACL hangs off the connection and is refreshed by the sweeper, never per event. A
     fresh connection it does not touch at all."""
     use_test_db(monkeypatch, db)
@@ -264,7 +264,7 @@ async def test_sweeper_frischt_nur_abgelaufene_acls_auf(db, monkeypatch):
     assert frisch.allowed == set()
 
 
-async def test_sweeper_wirft_deaktivierte_user_out(db, monkeypatch):
+async def test_the_sweeper_throws_out_disabled_users(db, monkeypatch):
     use_test_db(monkeypatch, db)
     user = await make_user(db, "gesperrt")
     m = UserConnectionManager()
@@ -283,7 +283,7 @@ async def test_sweeper_wirft_deaktivierte_user_out(db, monkeypatch):
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
-async def test_socket_lehnt_kaputtes_token_ab(db, monkeypatch):
+async def test_the_socket_rejects_a_broken_token(db, monkeypatch):
     use_test_db(monkeypatch, db)
     ws = FakeWS()
     await office_ws(ws, token="kein.echtes.token")
@@ -291,7 +291,7 @@ async def test_socket_lehnt_kaputtes_token_ab(db, monkeypatch):
     assert ws.accepted is False
 
 
-async def test_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch):
+async def test_the_socket_rejects_a_token_from_before_the_password_change(db, monkeypatch):
     """A token issued before the last password change is dead; otherwise a stolen token would
     stay live despite the password change."""
     use_test_db(monkeypatch, db)
@@ -308,7 +308,7 @@ async def test_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch):
     assert ws.accepted is False
 
 
-async def test_projekt_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch):
+async def test_the_project_socket_rejects_a_token_from_before_the_password_change(db, monkeypatch):
     """Regression for `/api/projects/{id}/ws`: the same claim on the old socket. It did not
     do the check until this wave, and a revoked token got through."""
     use_test_db(monkeypatch, db)
@@ -325,7 +325,7 @@ async def test_projekt_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch
     assert ws.accepted is False
 
 
-async def test_socket_lehnt_inaktiven_user_ab(db, monkeypatch):
+async def test_the_socket_rejects_an_inactive_user(db, monkeypatch):
     use_test_db(monkeypatch, db)
     user = await make_user(db, "inaktiv")
     token = create_access_token(user.id)
@@ -337,7 +337,7 @@ async def test_socket_lehnt_inaktiven_user_ab(db, monkeypatch):
     assert ws.closed == CLOSE_FORBIDDEN
 
 
-async def test_projekt_socket_lehnt_inaktiven_user_ab(db, monkeypatch):
+async def test_the_project_socket_rejects_an_inactive_user(db, monkeypatch):
     use_test_db(monkeypatch, db)
     user = await make_user(db, "inaktiv2")
     proj = await make_project(db, "INA", "Inaktiv")
@@ -353,7 +353,7 @@ async def test_projekt_socket_lehnt_inaktiven_user_ab(db, monkeypatch):
 
 # ── Protokoll ────────────────────────────────────────────────────────────────
 
-async def test_hello_und_subscribe(db, monkeypatch):
+async def test_hello_and_subscribe(db, monkeypatch):
     """Connect, then `hello` with the server set; `subscribe` narrows and is confirmed. The
     confirmation runs through the same queue as the events: on a socket only the pump
     writes."""

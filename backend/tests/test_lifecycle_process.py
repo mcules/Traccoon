@@ -48,7 +48,7 @@ async def _steps(db, node_id: str) -> list[WorkflowStepRun]:
                                   .where(WorkflowStepRun.node_id == node_id))).scalars().all())
 
 
-async def test_planung_running_bis_zur_grant(db, seeded, redis_stub):
+async def test_planning_runs_until_the_approval(db, seeded, redis_stub):
     """Assign, the agent plans, the ticket waits for the plan approval (human sovereignty)."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "output": "Der Plan.", "summary": "Plan"}
@@ -66,7 +66,7 @@ async def test_planung_running_bis_zur_grant(db, seeded, redis_stub):
     assert [s.node_id for s in wartend] == ["approve_plan"]
 
 
-async def test_aufteilung_wird_as_solche_markiert(db, seeded, redis_stub):
+async def test_a_split_is_marked_as_such(db, seeded, redis_stub):
     """A plan with <subtickets> gives another approval (plan_split), otherwise the same way."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "summary": "Plan",
@@ -79,7 +79,7 @@ async def test_aufteilung_wird_as_solche_markiert(db, seeded, redis_stub):
     assert issue.hold_reason == HoldReason.plan_split
 
 
-async def test_fortsetzung_running_nicht_im_kreis(db, seeded, redis_stub):
+async def test_continuation_does_not_run_in_circles(db, seeded, redis_stub):
     """`loop_exhausted` leads over a back edge onto the same agent node.
 
     Without the `routed_at` stamp the engine would translate the finished step into an edge
@@ -105,7 +105,7 @@ async def test_fortsetzung_running_nicht_im_kreis(db, seeded, redis_stub):
     assert issue.continuation_count >= 1
 
 
-async def test_feststecker_haelt_an_statt_weiterzulaufen(db, seeded, redis_stub):
+async def test_a_stuck_run_halts_instead_of_carrying_on(db, seeded, redis_stub):
     """The same worktree fingerprint as before means stuck: halt, do not continue."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
@@ -126,7 +126,7 @@ async def test_feststecker_haelt_an_statt_weiterzulaufen(db, seeded, redis_stub)
     assert issue.hold_reason == HoldReason.stuck
 
 
-async def test_runaway_bremse_greift_auch_im_graphen(db, seeded, redis_stub):
+async def test_the_runaway_brake_applies_inside_the_graph_too(db, seeded, redis_stub):
     """Above the cap NO agent run may start any more, no matter what the process draws."""
     from app.services import agent_gate
 
@@ -152,7 +152,7 @@ async def test_runaway_bremse_greift_auch_im_graphen(db, seeded, redis_stub):
     assert all(s.status == WorkflowStepStatus.pending for s in await _steps(db, "exec"))
 
 
-async def test_kommentar_setzt_wartenden_prozess_fort(client, db, seeded, redis_stub):
+async def test_a_comment_continues_a_waiting_flow(client, db, seeded, redis_stub):
     """A question from the agent makes the ticket wait; a comment picks the process up again."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
     issue.plan = "Plan"
@@ -179,7 +179,7 @@ async def test_kommentar_setzt_wartenden_prozess_fort(client, db, seeded, redis_
     assert len(await _steps(db, "exec")) >= 2
 
 
-async def test_grant_bleibt_dem_menschen_vorbehalten(client, db, seeded, redis_stub):
+async def test_approval_stays_reserved_for_a_human(client, db, seeded, redis_stub):
     """A comment must NOT skip a waiting approval."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "output": "Plan", "summary": "Plan"}
@@ -199,7 +199,7 @@ async def test_grant_bleibt_dem_menschen_vorbehalten(client, db, seeded, redis_s
     assert [s.node_id for s in offen] == ["approve_plan"]
 
 
-async def test_planung_running_nicht_endlos_im_kreis(db, seeded, redis_stub):
+async def test_planning_does_not_run_in_endless_circles(db, seeded, redis_stub):
     """The planning has a continuation budget as well.
 
     The back edge "keep planning" led back to `plan` unbraked: an architect that tears its
@@ -226,7 +226,7 @@ async def test_planung_running_nicht_endlos_im_kreis(db, seeded, redis_stub):
     assert [s.node_id for s in wartend] == ["wait_plan"]
 
 
-async def test_grant_setzt_die_fortsetzungs_zaehlung_zurueck(db, seeded, redis_stub):
+async def test_an_approval_resets_the_continuation_count(db, seeded, redis_stub):
     """Planning and implementation share a counter: a tough planning must not eat the
     implementation's budget before it has written the first line."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)
@@ -248,7 +248,7 @@ async def test_grant_setzt_die_fortsetzungs_zaehlung_zurueck(db, seeded, redis_s
     assert (inst.context or {}).get("continuation") == 0
 
 
-async def test_zuweisen_ueber_den_assistenten_startet_den_prozess(db, seeded, redis_stub):
+async def test_assigning_through_the_assistant_starts_the_flow(db, seeded, redis_stub):
     """The assistant operates Traccoon over native tools, not over the API. If it only set
     fields, the ticket would lie there with an agent and a status without a process running,
     and only a backend restart would ever catch it again (ABC-32 on 2026-08-07)."""
@@ -269,7 +269,7 @@ async def test_zuweisen_ueber_den_assistenten_startet_den_prozess(db, seeded, re
     assert tok.state == WorkflowTokenState.active
 
 
-async def test_verwaistes_ticket_wird_im_tick_eingesammelt(db, seeded, redis_stub):
+async def test_an_orphaned_ticket_is_collected_on_the_tick(db, seeded, redis_stub):
     """The safety net: what stands there without an instance is fetched by the tick, not only by the restart."""
     from app.services.lifecycle_flow import adopt_orphans, live_instance
 
@@ -284,7 +284,7 @@ async def test_verwaistes_ticket_wird_im_tick_eingesammelt(db, seeded, redis_stu
     assert await live_instance(db, issue) is not None
 
 
-async def test_startender_agent_hebt_ueberholten_hold_auf(db, seeded, redis_stub):
+async def test_a_starting_agent_lifts_an_outdated_hold(db, seeded, redis_stub):
     """If an agent is running again, the old hold reason is history; otherwise the board
     shows "hold - merge" while work is going on."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.hold)

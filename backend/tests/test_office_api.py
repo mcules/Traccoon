@@ -79,7 +79,7 @@ def sids(payload: dict) -> set[str]:
 
 # ── Sessionliste je Projekt ──────────────────────────────────────────────────
 
-async def test_projektliste_zeigt_nur_dieses_projekt(client, db):
+async def test_the_project_listing_shows_only_this_project(client, db):
     """The tab of a project is the room of this project, even for somebody who would be
     allowed to see the neighbouring project just as well. The list filters by affiliation,
     not by permission."""
@@ -105,7 +105,7 @@ async def test_projektliste_zeigt_nur_dieses_projekt(client, db):
     assert r.json()["live_window_ms"] == 90_000
 
 
-async def test_nichtmitglied_bekommt_404_statt_403(client, db):
+async def test_a_non_member_gets_404_instead_of_403(client, db):
     """A foreign project does not exist for the stranger. A 403 would be the statement "the
     project exists", exactly the one `deps.build_access` refuses everywhere."""
     owner = await make_user(db, "owner")
@@ -119,7 +119,7 @@ async def test_nichtmitglied_bekommt_404_statt_403(client, db):
 
 # ── Globale Sessionliste ─────────────────────────────────────────────────────
 
-async def test_globale_listing_zeigt_eigene_projekte_und_eigene_projektlose_runs(client, db):
+async def test_the_global_listing_shows_own_projects_and_own_project_less_runs(client, db):
     """The full screen page shows both: what is visible over a project AND one's own runs
     without a project (assistant, job). The project-less run of somebody else stays outside:
     for it there is no project room over which it would ever become visible."""
@@ -140,7 +140,7 @@ async def test_globale_listing_zeigt_eigene_projekte_und_eigene_projektlose_runs
     assert f"run:{fremd.id}" not in sids(r.json())
 
 
-async def test_admin_sieht_alles(client, db):
+async def test_an_admin_sees_everything(client, db):
     admin = await make_user(db, "chef", admin=True)
     bert = await make_user(db, "bert")
     proj = await make_project(db, "AAA", "Alpha")
@@ -154,7 +154,7 @@ async def test_admin_sieht_alles(client, db):
     assert sids(r.json()) == {f"issue:{issue.id}", f"run:{b.id}"}
 
 
-async def test_project_id_verengt_und_autorisiert_nicht(client, db):
+async def test_project_id_narrows_and_does_not_authorise(client, db):
     """`?project_id=` is a filter, not a key: entering a foreign project yields silence, no access."""
     anna = await make_user(db, "anna")
     meins = await make_project(db, "AAA", "Alpha")
@@ -172,7 +172,7 @@ async def test_project_id_verengt_und_autorisiert_nicht(client, db):
 
 # ── Ereignisse ───────────────────────────────────────────────────────────────
 
-async def test_ereignisse_streng_nach_seq_und_after_seq_schliesst_aus(client, db):
+async def test_events_strictly_by_seq_and_after_seq_excludes(client, db):
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, anna, ProjectRole.member)
@@ -202,7 +202,7 @@ async def test_ereignisse_streng_nach_seq_und_after_seq_schliesst_aus(client, db
     assert "session_seen" not in [e["kind"] for e in r.json()["events"]]
 
 
-async def test_kappung_meldet_truncated_und_behaelt_den_roster(client, db):
+async def test_capping_reports_truncated_and_keeps_the_roster(client, db):
     """Truncation happens from the OLDEST end: the room should show the present. With that
     the `run_start` events fall away first, and that all agents still stand in the room is
     exactly the job of `agents[]`."""
@@ -233,7 +233,7 @@ async def test_kappung_meldet_truncated_und_behaelt_den_roster(client, db):
     assert {a["agent"] for a in body["agents"]} == {"developer", "reviewer"}
 
 
-async def test_run_session_eigentuemer_fremder_admin(client, db):
+async def test_run_session_for_owner_stranger_admin(client, db):
     """A project-less run belongs to its owner and to the admin, to nobody else, and for
     nobody else does it exist."""
     anna = await make_user(db, "anna")
@@ -248,7 +248,7 @@ async def test_run_session_eigentuemer_fremder_admin(client, db):
     assert (await client.get(path, headers=auth(chef))).status_code == 200
 
 
-async def test_kindlauf_ist_nicht_selbst_adressierbar(client, db):
+async def test_a_child_run_is_not_addressable_on_its_own(client, db):
     """Only roots are a `run:` address. If a child run had one of its own, there would be two
     rooms for the same tree and the link would decide what one sees."""
     anna = await make_user(db, "anna")
@@ -262,7 +262,7 @@ async def test_kindlauf_ist_nicht_selbst_adressierbar(client, db):
     assert {a["run_id"] for a in r.json()["agents"]} == {wurzel.id, kind.id}
 
 
-async def test_aufgeraeumte_session_meldet_purged(client, db):
+async def test_a_purged_session_reports_purged(client, db):
     """The ticket stands, the runs have fallen to the retention. A 404 would be a lie here:
     the room existed, and the UI should be allowed to say so."""
     anna = await make_user(db, "anna")
@@ -277,7 +277,7 @@ async def test_aufgeraeumte_session_meldet_purged(client, db):
     assert (await db.execute(select(Run))).scalars().all() == []
 
 
-async def test_issue_sid_enthaelt_delegierte_kindlaeufe(client, db):
+async def test_the_issue_sid_contains_delegated_child_runs(client, db):
     """The room of a ticket is the whole run tree: planning, execution AND every delegated
     sub-agent. An office of its own per sub-agent would be the wrong unit."""
     anna = await make_user(db, "anna")
@@ -303,7 +303,7 @@ async def test_issue_sid_enthaelt_delegierte_kindlaeufe(client, db):
 
 # ── Ereignisse ALLER Sitzungen (`GET /office/events`) ─────────────────────────
 
-async def test_all_ereignisse_mischen_sitzungen_in_ein_log(client, db):
+async def test_all_events_merge_sessions_into_one_log(client, db):
     """The room of the global page: several sessions, ONE log, strictly by `seq`.
 
     That only carries because `seq` comes from `run_steps.id`, a SERIAL column that is
@@ -355,7 +355,7 @@ async def test_all_ereignisse_mischen_sitzungen_in_ein_log(client, db):
     assert roster[eigen.id]["project_key"] == "" and roster[eigen.id]["project_id"] is None
 
 
-async def test_all_ereignisse_zeigen_nur_erlaubtes(client, db):
+async def test_all_events_show_only_what_is_permitted(client, db):
     """The same visibility set as `/office/sessions`: there is exactly one definition of "may
     see" (`_visible_runs`). The project-less run of somebody else stays outside, and the admin
     sees both."""
@@ -380,7 +380,7 @@ async def test_all_ereignisse_zeigen_nur_erlaubtes(client, db):
     assert {a_["run_id"] for a_ in alles["agents"]} == {r1.id, r2.id, r3.id}
 
 
-async def test_all_ereignisse_project_id_verengt_und_autorisiert_nicht(client, db):
+async def test_all_events_project_id_narrows_and_does_not_authorise(client, db):
     """`?project_id=` is a filter, not a key. A foreign project yields silence: no access and
     no 403 either, which would reveal its existence."""
     anna = await make_user(db, "anna")
@@ -405,7 +405,7 @@ async def test_all_ereignisse_project_id_verengt_und_autorisiert_nicht(client, d
     assert silence.json()["events"] == [] and silence.json()["agents"] == []
 
 
-async def test_all_ereignisse_klemmen_das_run_start_auf_den_fensteranfang(client, db):
+async def test_all_events_clamp_the_run_start_to_the_window_start(client, db):
     """A run that began BEFORE the window gets its `run_start` boundary with `run.started_at`,
     so with a timestamp from yesterday. Unclamped, the timeline would pull the whole room
     there, and that would look like an engine bug."""
@@ -424,7 +424,7 @@ async def test_all_ereignisse_klemmen_das_run_start_auf_den_fensteranfang(client
     assert geklemmt < NOW - dt.timedelta(hours=11)
 
 
-async def test_all_ereignisse_ohne_seq_kollision_am_laufuebergang(client, db):
+async def test_all_events_without_a_seq_collision_at_the_run_boundary(client, db):
     """Two runs with neighbouring row ids: the `run_end` of one (`letzte*4+3`) and the
     `run_start` of the next (`erste*4-1`) are THE SAME number. Across sessions that is the
     normal case, not the outlier, and `Recorder.push` would silently discard the second event.
@@ -452,7 +452,7 @@ async def test_all_ereignisse_ohne_seq_kollision_am_laufuebergang(client, db):
     assert grenzen.index(("run_end", erst.id)) < grenzen.index(("run_start", zweit.id))
 
 
-async def test_all_ereignisse_kappen_vom_aeltesten_ende_und_behalten_den_roster(client, db):
+async def test_all_events_cap_from_the_oldest_end_and_keep_the_roster(client, db):
     """Truncation happens from the OLDEST end: the room shows the present.
 
     With that the `run_start` falls away first, and without a countermeasure the figure would
@@ -497,7 +497,7 @@ async def test_all_ereignisse_kappen_vom_aeltesten_ende_und_behalten_den_roster(
     assert ganz_out.id not in {e["run_id"] for e in body["events"]}
 
 
-async def test_all_ereignisse_halten_sich_ans_window(client, db):
+async def test_all_events_respect_the_window(client, db):
     """`since_hours` is the whole statement: what is older does not belong in the room."""
     anna = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")

@@ -99,7 +99,7 @@ class RunLine:
     ("deploy", mk(40, kind="deploy", role="system", target="/opt/docker/stacks/traccoon",
                   content='{"deployment_id": 187, "state": "ok", "log_head": "gebaut"}')),
 ])
-def test_schluesselmenge_je_kind(kind, step):
+def test_the_key_set_per_kind(kind, step):
     events = step_events(step, ctx())
     haupt = [e for e in events if e["kind"] == kind]
     assert len(haupt) == 1, f"{kind}: exactly one main event expected, {events}"
@@ -107,14 +107,14 @@ def test_schluesselmenge_je_kind(kind, step):
     assert haupt[0]["v"] == EVENT_VERSION
 
 
-def test_session_seen_schluesselmenge():
+def test_session_seen_key_set():
     ev = session_seen_event(ctx(), title="Bug im Login", project_key="TRA",
                             started_at=TS, seq=0)
     assert set(ev) == keys_of("session_seen")
     assert ev["v"] == EVENT_VERSION
 
 
-def test_envelope_traegt_projekt_und_owner():
+def test_the_envelope_carries_project_and_owner():
     # The WS bridge authorises with that alone; if it is missing on an event, it has to look
     # up or (worse) let it through.
     for ev in step_events(mk(20, kind="system", role="system", content="x"), ctx()):
@@ -122,21 +122,21 @@ def test_envelope_traegt_projekt_und_owner():
         assert ev["agent_id"] == "run:8871" and ev["sid"] == "issue:412"
 
 
-def test_ts_ist_iso_mit_millisekunden():
+def test_ts_is_iso_with_milliseconds():
     ev = step_events(mk(21, kind="system", role="system", content="x"), ctx())[0]
     assert ev["ts"] == "2026-08-05T11:22:33.412Z"
 
 
 # ── seq-Formel ───────────────────────────────────────────────────────────────
 
-def test_seq_formel_id_mal_vier_plus_slot():
+def test_the_seq_formula_id_times_four_plus_slot():
     step = mk(1234, kind="tool_start", role="tool", tool_name="delegate",
               tool_use_id="tu-9", content='{"role": "reviewer", "task": "prüfen"}')
     events = step_events(step, ctx())
     assert [e["seq"] for e in events] == [1234 * 4 + 1, 1234 * 4 + 2]
 
 
-def test_seq_ueber_gemischte_lines_streng_monoton():
+def test_seq_over_mixed_rows_is_strictly_monotonic():
     lines = [
         mk(101, role="assistant", content="alt"),                      # Altzeile
         mk(102, role="tool", tool_name="fs_read", content="args={}\n→ ok"),
@@ -152,7 +152,7 @@ def test_seq_ueber_gemischte_lines_streng_monoton():
 
 # ── Altdaten ─────────────────────────────────────────────────────────────────
 
-def test_altzeile_tool_wird_gespalten():
+def test_an_old_tool_row_is_split():
     step = mk(777, role="tool", tool_name="fs_read",
               content='args={"path": "app/main.py"}\n→ Zeile 1\nZeile 2')
     events = step_events(step, ctx())
@@ -171,19 +171,19 @@ def test_altzeile_tool_wird_gespalten():
     assert result["ok"] is None
 
 
-def test_altzeile_tool_mit_error_ist_belegt_rot():
+def test_an_old_tool_row_with_an_error_is_provably_red():
     step = mk(778, role="tool", tool_name="fs_edit",
               content='args={"path": "a.py"}\n→ FEHLER: `old` ist leer.')
     _, result = step_events(step, ctx())
     assert result["ok"] is False and result["error"].startswith("FEHLER:")
 
 
-def test_altzeile_assistent_ohne_text_bleibt_stumm():
+def test_an_old_assistant_row_without_text_stays_silent():
     assert step_events(mk(779, role="assistant", content="(Tool-Call)"), ctx()) == []
     assert step_events(mk(780, role="assistant", content="   "), ctx()) == []
 
 
-def test_altzeile_system():
+def test_an_old_system_row():
     ev = step_events(mk(781, role="system", content="Provider-Fehler: 500"), ctx())[0]
     assert ev["kind"] == "system" and ev["text"] == "Provider-Fehler: 500"
 
@@ -191,11 +191,11 @@ def test_altzeile_system():
 # ── tool_ok / tool_target ────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("prefix", ERROR_PREFIXES)
-def test_tool_ok_erkennt_jedes_bekannte_fehlerpraefix(prefix):
+def test_tool_ok_recognises_every_known_error_prefix(prefix):
     assert tool_ok(f"{prefix} etwas ging schief") is False
 
 
-def test_tool_ok_raet_niemals_erfolg():
+def test_tool_ok_never_guesses_success():
     # No error mark means "not recognised as an error", not "succeeded".
     assert tool_ok("Datei geschrieben (42 Zeilen)") is None
     assert tool_ok("") is None
@@ -212,13 +212,13 @@ def test_tool_ok_raet_niemals_erfolg():
     ("obsidian__obsidian_get_note", {"target": {"path": "x.md"}}, None),
     ("fs_read", {}, None),
 ])
-def test_tool_target_tabelle(tool, args, erwartet):
+def test_the_tool_target_table(tool, args, erwartet):
     assert tool_target(tool, args) == erwartet
 
 
 # ── Begleiter ────────────────────────────────────────────────────────────────
 
-def test_file_edit_begleiter_nur_bei_belegtem_erfolg():
+def test_the_file_edit_companion_only_on_proven_success():
     for ok, erwartet in ((True, 1), (False, 0), (None, 0)):
         step = mk(30, kind="tool_result", role="tool", tool_name="fs_write",
                   target="a.py", ok=ok, content="…")
@@ -226,13 +226,13 @@ def test_file_edit_begleiter_nur_bei_belegtem_erfolg():
         assert len(begleiter) == erwartet, f"ok={ok}"
 
 
-def test_file_edit_begleiter_nur_bei_schreibenden_werkzeugen():
+def test_the_file_edit_companion_only_for_writing_tools():
     step = mk(31, kind="tool_result", role="tool", tool_name="fs_read",
               target="a.py", ok=True, content="…")
     assert [e["kind"] for e in step_events(step, ctx())] == ["tool_result"]
 
 
-def test_agent_spawn_begleiter_nur_bei_delegate():
+def test_the_agent_spawn_companion_only_on_delegate():
     step = mk(32, kind="tool_start", role="tool", tool_name="delegate", tool_use_id="tu-5",
               content='{"role": "reviewer", "task": "Bitte prüfen"}')
     events = step_events(step, ctx())
@@ -249,7 +249,7 @@ def test_agent_spawn_begleiter_nur_bei_delegate():
     assert [e["kind"] for e in step_events(andere, ctx())] == ["tool_start"]
 
 
-def test_usage_kommt_auch_ohne_text_und_agent_text_nicht_ohne():
+def test_usage_comes_even_without_text_and_agent_text_does_not():
     stumm = mk(34, kind="agent_text", role="assistant", content="(Tool-Call)",
                in_tokens=1200, out_tokens=80, cache_read_tokens=5000)
     events = step_events(stumm, ctx())
@@ -263,14 +263,14 @@ def test_usage_kommt_auch_ohne_text_und_agent_text_nicht_ohne():
     assert [e["kind"] for e in step_events(beides, ctx())] == ["agent_text", "usage"]
 
 
-def test_usage_ohne_tokens_erzeugt_nichts():
+def test_usage_without_tokens_produces_nothing():
     step = mk(37, kind="agent_text", role="assistant", content="Fertig.")
     assert [e["kind"] for e in step_events(step, ctx())] == ["agent_text"]
 
 
 # ── Lauf-Grenzen ─────────────────────────────────────────────────────────────
 
-def test_run_boundary_umklammert_die_steps():
+def test_the_run_boundary_brackets_the_steps():
     steps = [mk(200, role="assistant", content="los"),
                 mk(240, role="tool", tool_name="fs_read", content="args={}\n→ ok")]
     step_seqs = [e["seq"] for s in steps for e in step_events(s, ctx())]
@@ -287,18 +287,18 @@ def test_run_boundary_umklammert_die_steps():
     ("failed", False), ("loop_exhausted", False),
     ("blocked", None),
 ])
-def test_run_end_verdikt(status, ok):
+def test_the_run_end_verdict(status, ok):
     ende = run_boundary_events(RunLine(status=status), ctx(),
                                first_step_id=1, last_step_id=2)[-1]
     assert ende["kind"] == "run_end" and ende["ok"] is ok
 
 
-def test_laufender_lauf_verlaesst_den_raum_nicht():
+def test_a_running_run_does_not_leave_the_room():
     grenzen = run_boundary_events(RunLine(status="running", finished_at=None), ctx(),
                                   first_step_id=1, last_step_id=2)
     assert [e["kind"] for e in grenzen] == ["run_start"]
 
 
-def test_lauf_ohne_steps_hat_keine_grenzen():
+def test_a_run_without_steps_has_no_boundaries():
     assert run_boundary_events(RunLine(), ctx(),
                                first_step_id=None, last_step_id=None) == []

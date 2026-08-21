@@ -31,7 +31,7 @@ class FakeCq:
         self.message = message
 
 
-async def test_vermerk_ersetzt_die_tastatur():
+async def test_a_note_replaces_the_keyboard():
     msg = FakeMessage()
     await _erledigt(FakeCq(msg), "✅ Freigegeben")
     # edit_text without reply_markup removes the keyboard with it, and the outcome stands there.
@@ -40,19 +40,19 @@ async def test_vermerk_ersetzt_die_tastatur():
     assert "<i>" in msg.bearbeitet
 
 
-async def test_alte_message_verliert_wenigstens_die_knoepfe():
+async def test_an_old_message_at_least_loses_its_buttons():
     """Too old or unchanged means the text stays, but the buttons have to go."""
     msg = FakeMessage(edit_text_error=True)
     await _erledigt(FakeCq(msg), "✅ Freigegeben")
     assert msg.markup_entfernt
 
 
-async def test_ohne_message_kein_absturz():
+async def test_no_crash_without_a_message():
     await _erledigt(FakeCq(None), "✅ Freigegeben")
 
 
 @pytest.mark.parametrize("roh,erwartet", [("<b>böse</b>", "&lt;b&gt;"), ("A & B", "&amp;")])
-async def test_vermerk_wird_maskiert(roh, erwartet):
+async def test_the_note_is_escaped(roh, erwartet):
     """The note goes out as HTML: unescaped markup takes the message apart."""
     msg = FakeMessage()
     await _erledigt(FakeCq(msg), roh)

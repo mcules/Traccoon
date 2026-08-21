@@ -28,7 +28,7 @@ async def anna(db):
     return u
 
 
-async def test_denken_wird_abgeschaltet(db, anna, monkeypatch):
+async def test_thinking_is_switched_off(db, anna, monkeypatch):
     """Without switching it off, empty text comes back, and nobody notices."""
     seen = {}
 
@@ -47,7 +47,7 @@ async def test_denken_wird_abgeschaltet(db, anna, monkeypatch):
     assert out["redacted_summary"] == "Eine Rechnung liegt vor."
 
 
-async def test_leere_answer_faellt_sicher_zurueck(db, anna, monkeypatch):
+async def test_an_empty_answer_falls_back_safely(db, anna, monkeypatch):
     """The emergency default must give nothing outside: sensitive, without a summary."""
     async def fake_chat(self, **kw):
         return ChatResponse(text="")
@@ -62,7 +62,7 @@ async def test_leere_answer_faellt_sicher_zurueck(db, anna, monkeypatch):
 
 # --- Was das Modell zurückgibt ---------------------------------------------------------
 
-def test_der_string_false_ist_kein_ja():
+def test_the_string_false_is_not_a_yes():
     """`bool("false")` is True. Small models answer with exactly that string, and without
     this helper every one of them would carry a mail over the auto threshold."""
     from app.services.mail_classify import ja
@@ -72,7 +72,7 @@ def test_der_string_false_ist_kein_ja():
     assert ja(None) is False and ja("") is False and ja(0) is False
 
 
-def test_merkmale_werden_normalisiert_und_gedeckelt():
+def test_features_are_normalised_and_capped():
     """The key is counted later, so an invented spelling would become a category of its own."""
     from app.services.mail_classify import merkmale
 
@@ -88,7 +88,7 @@ def test_merkmale_werden_normalisiert_und_gedeckelt():
     assert all(k["kennung"] for k in aus)
 
 
-def test_merkmale_ohne_listing_bleiben_leer():
+def test_features_without_a_list_stay_empty():
     from app.services.mail_classify import merkmale
 
     assert merkmale(None) == [] and merkmale("phishing") == [] and merkmale({}) == []

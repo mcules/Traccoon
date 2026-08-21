@@ -21,7 +21,7 @@ class FakeResp:
         self.text = text
 
 
-async def test_ohne_setting_gilt_auto(db, monkeypatch):
+async def test_without_a_setting_auto_applies(db, monkeypatch):
     """No entry means the provider and model of the agent. Whoever sets nothing notices nothing."""
     seen = {}
 
@@ -36,7 +36,7 @@ async def test_ohne_setting_gilt_auto(db, monkeypatch):
     assert seen["provider"] == "claude_code" and seen["model"] == "claude-sonnet-5"
 
 
-async def test_eingestelltes_modell_wird_genommen(db, monkeypatch):
+async def test_the_configured_model_is_used(db, monkeypatch):
     await set_setting(db, "aux.compression", json.dumps(
         {"provider": "openai", "model": "qwen3.6-35b-q3", "base_url": "http://litellm:4000/v1"}))
     seen = {}
@@ -56,13 +56,13 @@ async def test_eingestelltes_modell_wird_genommen(db, monkeypatch):
     assert seen["base_urls"] == {"openai": "http://litellm:4000/v1"}
 
 
-async def test_kaputte_setting_faellt_auf_auto_zurueck(db, monkeypatch):
+async def test_a_broken_setting_falls_back_to_auto(db, monkeypatch):
     """A typo in the setting must not paralyse a run."""
     await set_setting(db, "aux.compression", "{kein json")
     assert await aux.aux_config(db, "compression") == {}
 
 
-async def test_fehlschlag_reisst_den_hauptlauf_nicht_mit(db, monkeypatch):
+async def test_a_failure_does_not_drag_the_main_run_down(db, monkeypatch):
     async def fake_chat(**kw):
         raise RuntimeError("Model not reachable")
 
@@ -71,7 +71,7 @@ async def test_fehlschlag_reisst_den_hauptlauf_nicht_mit(db, monkeypatch):
                               agent=FakeAgent()) is None
 
 
-async def test_zeitueberschreitung_liefert_nichts_statt_zu_haengen(db, monkeypatch):
+async def test_a_timeout_returns_nothing_instead_of_hanging(db, monkeypatch):
     await set_setting(db, "aux.compression", json.dumps(
         {"provider": "openai", "model": "langsam", "timeout": 10}))
 
@@ -93,7 +93,7 @@ async def test_zeitueberschreitung_liefert_nichts_statt_zu_haengen(db, monkeypat
             timeout=0.2)
 
 
-async def test_leere_answer_gilt_as_kein_result(db, monkeypatch):
+async def test_an_empty_answer_counts_as_no_result(db, monkeypatch):
     async def fake_chat(**kw):
         return FakeResp("   ")
 
@@ -102,7 +102,7 @@ async def test_leere_answer_gilt_as_kein_result(db, monkeypatch):
                               agent=FakeAgent()) is None
 
 
-async def test_admin_kann_nebenaufgaben_einstellen(client, db):
+async def test_an_admin_can_configure_side_tasks(client, db):
     admin = await make_user(db, "chef", admin=True)
     r = await client.get("/admin/aux-models", headers=auth(admin))
     assert r.status_code == 200
@@ -119,14 +119,14 @@ async def test_admin_kann_nebenaufgaben_einstellen(client, db):
     assert r.json()["config"] is None
 
 
-async def test_unbekannte_nebenaufgabe_wird_abgewiesen(client, db):
+async def test_an_unknown_side_task_is_rejected(client, db):
     admin = await make_user(db, "chef", admin=True)
     r = await client.put("/admin/aux-models/erfunden", headers=auth(admin),
                          json={"provider": "openai"})
     assert r.status_code == 404
 
 
-async def test_denkendes_modell_bekommt_das_denken_abgeschaltet(db, monkeypatch):
+async def test_a_thinking_model_gets_thinking_switched_off(db, monkeypatch):
     """qwen3.6 and company use their whole output budget on reasoning and then deliver EMPTY
     text: 231 completion tokens for an "OK", 229 of them thinking. For diligence work that is
     wasted, so it is off by default."""
@@ -147,7 +147,7 @@ async def test_denkendes_modell_bekommt_das_denken_abgeschaltet(db, monkeypatch)
     assert seen["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
-async def test_eigenes_extra_body_schlaegt_die_voreinstellung(db, monkeypatch):
+async def test_an_own_extra_body_beats_the_default(db, monkeypatch):
     await set_setting(db, "aux.compression", json.dumps(
         {"provider": "openai", "model": "qwen", "extra_body": {"top_k": 20}}))
     seen = {}
@@ -166,7 +166,7 @@ async def test_eigenes_extra_body_schlaegt_die_voreinstellung(db, monkeypatch):
     assert seen["extra_body"] == {"top_k": 20}
 
 
-async def test_auto_bekommt_kein_extra_body(db, monkeypatch):
+async def test_auto_gets_no_extra_body(db, monkeypatch):
     """The subscription providers do not know the field; there it would be a 400."""
     seen = {}
 

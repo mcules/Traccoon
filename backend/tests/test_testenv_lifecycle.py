@@ -39,7 +39,7 @@ async def _make_issue(db, project, type_id, status_id, agent_status=None):
     return i
 
 
-async def test_direkter_sprung_auf_done_wird_abgewiesen(client, db):
+async def test_jumping_straight_to_done_is_rejected(client, db):
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     await add_member(db, proj, owner, ProjectRole.owner)
@@ -53,7 +53,7 @@ async def test_direkter_sprung_auf_done_wird_abgewiesen(client, db):
     assert "set to done" in r.json()["detail"]
 
 
-async def test_move_in_andere_spalten_bleibt_allowed(client, db):
+async def test_moving_to_other_columns_stays_allowed(client, db):
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     await add_member(db, proj, owner, ProjectRole.owner)
@@ -66,7 +66,7 @@ async def test_move_in_andere_spalten_bleibt_allowed(client, db):
     assert r.status_code == 200
 
 
-async def test_ohne_testenv_flow_ist_done_frei(client, db):
+async def test_without_a_test_environment_flow_done_is_free(client, db):
     """The project toggle off means the old behaviour, and the board move to "done" stays open."""
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
@@ -92,7 +92,7 @@ async def _bis_zur_acceptance(db, issue, merge_result, redis_stub):
     assert issue.workflow_instance_id, "the ticket was not taken into the process"
 
 
-async def test_complete_setzt_kein_done_bei_merge_konflikt(client, db, seeded, redis_stub):
+async def test_complete_does_not_set_done_on_a_merge_conflict(client, db, seeded, redis_stub):
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     m = await add_member(db, proj, owner, ProjectRole.owner)
@@ -116,7 +116,7 @@ async def test_complete_setzt_kein_done_bei_merge_konflikt(client, db, seeded, r
     assert issue.status_id != stats["Fertig"].id   # no silent "done"
 
 
-async def test_complete_setzt_done_bei_sauberem_merge(client, db, seeded, redis_stub):
+async def test_complete_sets_done_on_a_clean_merge(client, db, seeded, redis_stub):
     owner = await make_user(db, "owner")
     proj = await make_project(db, "TST", "Test")
     m = await add_member(db, proj, owner, ProjectRole.owner)
@@ -139,7 +139,7 @@ async def test_complete_setzt_done_bei_sauberem_merge(client, db, seeded, redis_
     assert issue.status_id == stats["Fertig"].id
 
 
-async def test_neues_projekt_hat_testen_spalte(client, db):
+async def test_a_new_project_has_a_testing_column(client, db):
     owner = await make_user(db, "owner", admin=True)
     r = await client.post("/projects", json={"name": "Frisch"}, headers=auth(owner))
     assert r.status_code == 201, r.text

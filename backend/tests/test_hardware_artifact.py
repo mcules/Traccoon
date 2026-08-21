@@ -11,7 +11,7 @@ from sqlalchemy import select
 from conftest import auth, make_asset, make_project, make_user
 
 
-async def test_exemplar_bekommt_eine_artefakt_line(db):
+async def test_an_item_gets_an_artifact_row(db):
     await svc.ensure_builtin_types(db)
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
@@ -26,7 +26,7 @@ async def test_exemplar_bekommt_eine_artefakt_line(db):
     assert "Switch" in a.title
 
 
-async def test_state_steht_an_beiden_stellen_gleich(db):
+async def test_the_state_reads_the_same_in_both_places(db):
     await svc.ensure_builtin_types(db)
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Router", project=proj)
@@ -41,7 +41,7 @@ async def test_state_steht_an_beiden_stellen_gleich(db):
     assert a.status_key == "installed"          # authoritative, and congruent
 
 
-async def test_nachtragen_ist_idempotent(db):
+async def test_backfilling_is_idempotent(db):
     await svc.ensure_builtin_types(db)
     proj = await make_project(db, "TST", "Test")
     await make_asset(db, "Switch", project=proj)
@@ -54,7 +54,7 @@ async def test_nachtragen_ist_idempotent(db):
     assert offen == []
 
 
-async def test_neues_exemplar_ueber_die_api_ist_sofort_artefakt(client, db):
+async def test_a_new_item_via_the_api_is_an_artifact_at_once(client, db):
     await svc.ensure_builtin_types(db)
     from app.models.enums import ProjectRole
     from app.models.hardware import HardwareModel

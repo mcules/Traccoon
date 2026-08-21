@@ -75,7 +75,7 @@ async def deploy(db, *, projekt=None, issue=None, status="ok", log="",
 # ── Visibility: 404 instead of 403 ───────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_fremdes_projekt_ist_404_nicht_403(db, client):
+async def test_a_foreign_project_is_404_not_403(db, client):
     """A non-member gets a 404 on the project list. A 403 would be the statement "this
     project exists, you are only not allowed", exactly the statement a deployment list owes nobody.
     Deployment-Liste niemandem schuldet."""
@@ -90,7 +90,7 @@ async def test_fremdes_projekt_ist_404_nicht_403(db, client):
 
 
 @pytest.mark.asyncio
-async def test_viewer_genuegt(db, client):
+async def test_viewer_is_enough(db, client):
     """Whoever merged wants to know whether it is out there, and is not necessarily a
     `maintainer`. The lowest role is enough for the list and the detail."""
     seher = await make_user(db, "seher")
@@ -108,7 +108,7 @@ async def test_viewer_genuegt(db, client):
 
 
 @pytest.mark.asyncio
-async def test_detail_fuer_nichtmitglied_ist_404(db, client):
+async def test_detail_for_a_non_member_is_404(db, client):
     """The detail route carries no project id in the path; the permission comes from the
     loaded row. A non-member must not be able to read off the 404 whether the row exists:
     "is not yours" and "does not exist" answer identically."""
@@ -126,7 +126,7 @@ async def test_detail_fuer_nichtmitglied_ist_404(db, client):
 
 
 @pytest.mark.asyncio
-async def test_projektlose_line_nur_fuer_admin(db, client):
+async def test_a_project_less_line_is_admin_only(db, client):
     """`project_id IS NULL` is an admin matter. With a run one could anchor the visibility
     on the `owner_id`; the deployment has no such field (`requested_by` is filled on 0 of 186
     rows). An ownerless deployment therefore belongs to nobody."""
@@ -150,7 +150,7 @@ async def test_projektlose_line_nur_fuer_admin(db, client):
 
 
 @pytest.mark.asyncio
-async def test_project_id_filter_verengt_und_autorisiert_nicht(db, client):
+async def test_the_project_id_filter_narrows_and_does_not_authorise(db, client):
     """`?project_id=` stands as an additional AND beside the visibility condition, not in its
     place. Entering a foreign project yields an empty list: no access and explicitly no 403,
     which would be a proof of existence."""
@@ -177,7 +177,7 @@ async def test_project_id_filter_verengt_und_autorisiert_nicht(db, client):
 # ── Log: the head in the list, the full text only in the detail ─────────────
 
 @pytest.mark.asyncio
-async def test_log_nur_im_detail_header_exakt_gekappt(db, client):
+async def test_the_log_only_in_the_detail_header_capped_exactly(db, client):
     """All 56 `failed` of the existing data carry the same guard text; a list without
     `log_head` would show 56 different failures where there is one. The full text stays
     outside regardless: an `ok` log is around 1 kB, and with 200 rows the list would be
@@ -202,7 +202,7 @@ async def test_log_nur_im_detail_header_exakt_gekappt(db, client):
 
 
 @pytest.mark.asyncio
-async def test_kurzer_log_wird_nicht_aufgefuellt(db, client):
+async def test_a_short_log_is_not_padded(db, client):
     """The head is a truncation, not a fixed width: shorter than 240 stays shorter."""
     user = await make_user(db, "nutzer")
     projekt = await make_project(db, "TRA", "Traccoon")
@@ -222,7 +222,7 @@ async def test_kurzer_log_wird_nicht_aufgefuellt(db, client):
 
 @pytest.mark.parametrize("status,phase,ok", STATUS_ERWARTUNG)
 @pytest.mark.asyncio
-async def test_ok_ist_dreiwertig(db, client, status, phase, ok):
+async def test_ok_has_three_values(db, client, status, phase, ok):
     """The same rule as `services/office.tool_ok`: **never a guessed result**. Open and
     aborted are both `None`, but for different reasons, and the `phase` separates them.
     `cancelled` is the most important case here: it stands on 69 existing rows no code path
@@ -241,7 +241,7 @@ async def test_ok_ist_dreiwertig(db, client, status, phase, ok):
 
 
 @pytest.mark.asyncio
-async def test_unbekannter_status_gilt_as_abgebrochen(db, client):
+async def test_an_unknown_status_counts_as_aborted(db, client):
     """A status this file does not know is not a finished deploy but one about which nothing
     is known: `aborted`, not `done`."""
     user = await make_user(db, "nutzer")
@@ -258,7 +258,7 @@ async def test_unbekannter_status_gilt_as_abgebrochen(db, client):
 # ── Durations: `None` instead of a computed zero ────────────────────────────
 
 @pytest.mark.asyncio
-async def test_dauern_sind_none_ohne_zeitstempel(db, client):
+async def test_durations_are_none_without_timestamps(db, client):
     """71 of the 186 existing rows have no `finished_at`, 58 no `started_at`. A computed 0
     would claim a deploy that took no time instead of one whose time nobody wrote down.
     """
@@ -290,7 +290,7 @@ async def test_dauern_sind_none_ohne_zeitstempel(db, client):
 # ── Zeilenform ──────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_zeilenform_und_leere_herkunft(db, client):
+async def test_row_shape_and_empty_origin(db, client):
     """The row carries the project and ticket key along (the view should not have to ask per
     row), `source` is honestly `unbekannt` without an entry instead of guessed, and
     `requested_by`/`chat_id` turn up nowhere: they are filled on 0 of 186 rows.
@@ -314,7 +314,7 @@ async def test_zeilenform_und_leere_herkunft(db, client):
 
 
 @pytest.mark.asyncio
-async def test_kind_unterscheidet_self_check_stack(db, client):
+async def test_kind_tells_self_check_and_stack_apart(db, client):
     """`self` beats `check`: a self-deploy is never a mere check, and `check_only` alone says
     nothing about whose stack is meant."""
     admin = await make_user(db, "admin", admin=True)
@@ -328,7 +328,7 @@ async def test_kind_unterscheidet_self_check_stack(db, client):
 
 
 @pytest.mark.asyncio
-async def test_issue_filter_verengt(db, client):
+async def test_the_issue_filter_narrows(db, client):
     user = await make_user(db, "nutzer")
     projekt = await make_project(db, "TRA", "Traccoon")
     await add_member(db, projekt, user, ProjectRole.owner)
@@ -344,7 +344,7 @@ async def test_issue_filter_verengt(db, client):
 # ── Umschlag: Kappung, Fenster, `by_status` ─────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_limit_geklemmt_und_truncated_gemeldet(db, client):
+async def test_the_limit_is_clamped_and_truncation_reported(db, client):
     """Truncation happens at the newest end (`id DESC`), and the truncation is reported; a
     silent truncation would let the view believe it saw everything."""
     user = await make_user(db, "nutzer")
@@ -373,7 +373,7 @@ async def test_limit_geklemmt_und_truncated_gemeldet(db, client):
 
 
 @pytest.mark.asyncio
-async def test_since_hours_geklemmt(db, client):
+async def test_since_hours_is_clamped(db, client):
     """The window goes over `created_at`, not over `finished_at`; otherwise every row without
     an end (69 of 186) would fall out of every window and be reachable over no route any
     more. The upper bound is one year, even when more is requested."""
@@ -398,7 +398,7 @@ async def test_since_hours_geklemmt(db, client):
 
 
 @pytest.mark.asyncio
-async def test_by_status_zaehlt_das_window_nicht_die_listing(db, client):
+async def test_by_status_counts_the_window_not_the_listing(db, client):
     """`by_status` is the only place where the aborted rows can be explained honestly without
     poisoning the list. It therefore counts against the **window**, not against the filtered
     list; otherwise it would be a tautology with `?status=ok`."""
@@ -425,7 +425,7 @@ async def test_by_status_zaehlt_das_window_nicht_die_listing(db, client):
 
 
 @pytest.mark.asyncio
-async def test_statusfilter(db, client):
+async def test_status_filter(db, client):
     """`running` means "not decided yet" and takes the queue along: whoever wants to know
     whether something is under way right now does not care whether the sidecar has already
     picked the row up. `other` is the rest, today exactly the aborted ones.
@@ -468,7 +468,7 @@ async def mit_stack(db, projekt, path: str = STACK):
 
 
 @pytest.mark.asyncio
-async def test_button_braucht_maintainer(db, client):
+async def test_the_button_needs_a_maintainer(db, client):
     """Reading is allowed for every member ("is my merge out there?"), triggering is not: the
     button rebuilds and restarts a running stack. `viewer`/`member` get a 403, because they
     already know the project, so a 404 would be no discretion here but a lie. Only the
@@ -496,7 +496,7 @@ async def test_button_braucht_maintainer(db, client):
 
 
 @pytest.mark.asyncio
-async def test_ohne_stack_directory_400(db, client):
+async def test_400_without_a_stack_directory(db, client):
     """An empty `workspace_dir` aims at the host and maintenance project itself. The deployer
     rejects that anyway, but the row would come into being regardless, and in the auto-deploy
     path exactly that was a deploy storm once (ABC-19). The button must not lead there in the
@@ -515,7 +515,7 @@ async def test_ohne_stack_directory_400(db, client):
 
 
 @pytest.mark.asyncio
-async def test_zweiter_deploy_bei_offenem_ist_409(db, client):
+async def test_a_second_deploy_while_one_is_open_is_409(db, client):
     """Two `docker compose up` in the same directory are a data race. The lock is against the
     **open** statuses, not against "last built": a failure from earlier must not block the
     next attempt, because otherwise the button is dead after the first problem.
@@ -553,7 +553,7 @@ async def test_zweiter_deploy_bei_offenem_ist_409(db, client):
 
 
 @pytest.mark.asyncio
-async def test_eingereihte_line_ist_pending_und_manual(db, client):
+async def test_a_queued_line_is_pending_and_manual(db, client):
     """What lands in the row is the whole point of the route: `pending` (otherwise the sidecar
     never picks it up), `manual` as the fifth origin (not `agent`: the history should be able
     to tell the human from the automation) and the stack directory **from the project**, not
@@ -596,7 +596,7 @@ async def test_eingereihte_line_ist_pending_und_manual(db, client):
 
 
 @pytest.mark.asyncio
-async def test_issue_id_wird_uebernommen_fremdes_ticket_404(db, client):
+async def test_the_issue_id_is_taken_over_a_foreign_ticket_is_404(db, client):
     """With a ticket the deploy hangs off the process (as with the auto-deploy after a merge),
     without one it stays project wide. A ticket from **another** project is rejected;
     otherwise a row would stand in the list whose `issue_key` points at a project where it

@@ -21,7 +21,7 @@ APP = pathlib.Path(__file__).resolve().parent.parent / "app"
 ALLOWED = {"services/artifacts.py", "services/workflow_actions.py"}
 
 
-def test_niemand_setzt_den_state_an_der_zentrale_vorbei():
+def test_nobody_sets_the_state_bypassing_the_central_place():
     hits = []
     for file in APP.rglob("*.py"):
         rel = str(file.relative_to(APP))
@@ -59,7 +59,7 @@ async def _ticket(db, proj) -> Issue:
     return i
 
 
-async def test_ein_call_setzt_state_board_und_artefakt(db, register):
+async def test_one_call_sets_state_board_and_artifact(db, register):
     proj = await make_project(db, "TST", "Test")
     issue = await _ticket(db, proj)
 
@@ -74,7 +74,7 @@ async def test_ein_call_setzt_state_board_und_artefakt(db, register):
     assert spalte.name == "Warten"          # Board ebenso
 
 
-async def test_state_zuruecknehmen_laesst_das_board_stehen(db, register):
+async def test_taking_the_state_back_leaves_the_board_standing(db, register):
     """The agent was pulled off: no state any more, but the ticket does not jump back."""
     proj = await make_project(db, "TST", "Test")
     issue = await _ticket(db, proj)
@@ -90,7 +90,7 @@ async def test_state_zuruecknehmen_laesst_das_board_stehen(db, register):
     assert a.status_key == ""
 
 
-async def test_hardware_state_fuehrt_die_datumsfelder_mit(db, register):
+async def test_the_hardware_state_carries_the_date_fields_along(db, register):
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
     await kind.ensure_for_asset(db, asset)
@@ -104,7 +104,7 @@ async def test_hardware_state_fuehrt_die_datumsfelder_mit(db, register):
     assert a.status_key == "ordered"
 
 
-async def test_reconcile_findet_nichts_mehr_zu_tun(db, register):
+async def test_the_reconcile_finds_nothing_left_to_do(db, register):
     """When the one path is used, the reconciliation has nothing to catch up."""
     proj = await make_project(db, "TST", "Test")
     issue = await _ticket(db, proj)
@@ -114,7 +114,7 @@ async def test_reconcile_findet_nichts_mehr_zu_tun(db, register):
     assert (await kind.reconcile(db))["tickets_angeglichen"] == 0
 
 
-async def test_laufender_agent_steht_nie_auf_wait(db):
+async def test_a_running_agent_never_stands_on_wait(db):
     """The rule without an exception: if an agent is running for a ticket, it is "in progress".
 
     A run starts over several paths (process step, review round in the worker, follow-up of
@@ -140,7 +140,7 @@ async def test_laufender_agent_steht_nie_auf_wait(db):
     assert issue.agent_working is True
 
 
-async def test_planungslauf_steht_auf_planung(db):
+async def test_a_planning_run_stands_on_planning(db):
     """The plan run belongs on `planning`, not on `in_progress`: both land in the board under
     "in progress", but the state should name the phase."""
     from app.models.agents import Run
@@ -157,7 +157,7 @@ async def test_planungslauf_steht_auf_planung(db):
     assert issue.agent_status == TicketAgentStatus.planning
 
 
-async def test_beendeter_lauf_ruehrt_den_state_nicht_an(db):
+async def test_a_finished_run_does_not_touch_the_state(db):
     """The counter-check: a FINISHED run is no reason to touch a waiting ticket; otherwise the
     reconciliation would tear every completed ticket back into the work."""
     import datetime as dt
@@ -177,7 +177,7 @@ async def test_beendeter_lauf_ruehrt_den_state_nicht_an(db):
     assert issue.agent_status == TicketAgentStatus.hold
 
 
-async def test_stehengebliebene_spalte_wird_nachgezogen(db):
+async def test_a_stale_column_is_pulled_along(db):
     """The state can be right and the COLUMN still stand wrongly.
 
     ABC-32 on 2026-08-07: the ticket was continued out of the disturbance branch, the agent
@@ -202,7 +202,7 @@ async def test_stehengebliebene_spalte_wird_nachgezogen(db):
     assert issue.agent_working is True
 
 
-async def test_abgenommenes_ticket_bleibt_done(db):
+async def test_an_accepted_ticket_stays_done(db):
     """Counter-check: a manually accepted ticket is not pulled back into the work by the
     reconciliation, even when a run is still trailing."""
     from app.models.agents import Run

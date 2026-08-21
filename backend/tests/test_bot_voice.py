@@ -25,7 +25,7 @@ def _mock(aufzeichnung: list, antworten: list[dict]):
     return Client
 
 
-async def test_transkription_liefert_den_text(monkeypatch):
+async def test_transcription_delivers_the_text(monkeypatch):
     aufzeichnung: list[httpx.Request] = []
     monkeypatch.setattr(httpx, "AsyncClient",
                         _mock(aufzeichnung, [{"json": {"text": "was liegt heute an"}}]))
@@ -37,7 +37,7 @@ async def test_transkription_liefert_den_text(monkeypatch):
     assert aufzeichnung[0].url.params.get("language") == "de"
 
 
-async def test_leere_first_answer_versucht_auto_erkennung(monkeypatch):
+async def test_an_empty_first_answer_tries_auto_detection(monkeypatch):
     aufzeichnung: list[httpx.Request] = []
     monkeypatch.setattr(httpx, "AsyncClient", _mock(
         aufzeichnung, [{"json": {"text": ""}}, {"json": {"text": "hello there"}}]))
@@ -50,7 +50,7 @@ async def test_leere_first_answer_versucht_auto_erkennung(monkeypatch):
     assert "language" not in aufzeichnung[1].url.params
 
 
-async def test_kein_result_liefert_leeren_string(monkeypatch):
+async def test_no_result_yields_an_empty_string(monkeypatch):
     aufzeichnung: list[httpx.Request] = []
     monkeypatch.setattr(httpx, "AsyncClient",
                         _mock(aufzeichnung, [{"json": {"text": ""}}]))
@@ -60,7 +60,7 @@ async def test_kein_result_liefert_leeren_string(monkeypatch):
     assert text == ""
 
 
-async def test_serverfehler_wird_weitergereicht(monkeypatch):
+async def test_a_server_error_is_passed_on(monkeypatch):
     aufzeichnung: list[httpx.Request] = []
     monkeypatch.setattr(httpx, "AsyncClient",
                         _mock(aufzeichnung, [{"status": 500, "json": {}}]))
@@ -69,14 +69,14 @@ async def test_serverfehler_wird_weitergereicht(monkeypatch):
         await bot_main._transkribieren(b"fake-bytes")
 
 
-async def test_ohne_whisper_url_bricht_sofort_ab(monkeypatch):
+async def test_without_a_whisper_url_it_stops_at_once(monkeypatch):
     monkeypatch.setattr(bot_main, "WHISPER_URL", "")
 
     with pytest.raises(RuntimeError):
         await bot_main._transkribieren(b"fake-bytes")
 
 
-async def test_vocabulary_geht_as_initial_prompt_mit(monkeypatch):
+async def test_vocabulary_travels_as_the_initial_prompt(monkeypatch):
     """Proper names are the difference between usable and unusable.
 
     Measured on this host on 2026-08-07, the same sentence, the same model (large-v3-turbo):
@@ -119,7 +119,7 @@ async def test_vocabulary_geht_as_initial_prompt_mit(monkeypatch):
     assert seen[0]["initial_prompt"] == "Traccoon, GameProj, ABC-31."
 
 
-async def test_ohne_vocabulary_kein_field(monkeypatch):
+async def test_no_field_without_a_vocabulary(monkeypatch):
     """Empty means off: no empty `initial_prompt` that only confuses the recognition."""
     import app.bot.__main__ as bot
 
@@ -164,7 +164,7 @@ async def test_ohne_vocabulary_kein_field(monkeypatch):
     assert "initial_prompt" not in seen[0]
 
 
-async def test_vocabulary_landet_im_prompt(monkeypatch):
+async def test_vocabulary_lands_in_the_prompt(monkeypatch):
     """And the other way round: what stands in the list Whisper gets to see. Without that it
     hears "Trakon" instead of "Traccoon", which is the whole reason for the list."""
     import app.bot.__main__ as bot
@@ -205,7 +205,7 @@ async def test_vocabulary_landet_im_prompt(monkeypatch):
     assert seen[0]["initial_prompt"] == "Traccoon, Ticket ABC-31"
 
 
-def test_asr_text_schaelt_die_steuermarken():
+def test_asr_text_strips_the_control_markers():
     """Qwen3-ASR writes its marks into the text; without the cut, "language German
     <asr_text>…" would stand as "🎙 understood" in the chat and go on to the assistant that way."""
     import app.bot.__main__ as bot
@@ -215,7 +215,7 @@ def test_asr_text_schaelt_die_steuermarken():
     assert bot._asr_text("  schon sauber  ") == "schon sauber"
 
 
-async def test_qwen_ist_first_wahl_whisper_faengt_auf(monkeypatch):
+async def test_qwen_is_first_choice_whisper_catches_the_rest(monkeypatch):
     """The fallback is the point: losing a message would be more expensive than a slower
     recognition. If the GPU fails (container gone, model still loading), Whisper takes over."""
     import app.bot.__main__ as bot

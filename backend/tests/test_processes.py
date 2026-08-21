@@ -27,7 +27,7 @@ async def standard(db):
         WorkflowSet.key == sets.BUILTIN_SET_KEY))).scalars().first()
 
 
-async def test_slots_zeigen_den_ausgelieferten_preset(client, db, standard):
+async def test_slots_show_the_shipped_set(client, db, standard):
     admin = await make_user(db, "chef", admin=True)
     r = await client.get("/processes/slots", headers=auth(admin))
     assert r.status_code == 200, r.text
@@ -39,7 +39,7 @@ async def test_slots_zeigen_den_ausgelieferten_preset(client, db, standard):
     assert lz["abweichungen"] == []
 
 
-async def test_projekt_kopie_erscheint_as_deviation(client, db, standard):
+async def test_a_project_copy_appears_as_a_deviation(client, db, standard):
     admin = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "ABW", "Abweichler")
     await add_member(db, proj, admin, ProjectRole.owner)
@@ -51,7 +51,7 @@ async def test_projekt_kopie_erscheint_as_deviation(client, db, standard):
     assert [a["project_key"] for a in lz["abweichungen"]] == ["ABW"]
 
 
-async def test_fremde_projekte_bleiben_verborgen(client, db, standard):
+async def test_foreign_projects_stay_hidden(client, db, standard):
     """A deviation would otherwise reveal names of projects that are none of one's business."""
     owner = await make_user(db, "eigner", admin=True)
     fremder = await make_user(db, "fremd")
@@ -94,7 +94,7 @@ async def _instanz(db, proj, *, status, alter_hours=0.0) -> WorkflowInstance:
     return inst
 
 
-async def test_wartende_vorgaenge_gehoeren_in_die_betriebssicht(client, db):
+async def test_waiting_cases_belong_in_the_operations_view(client, db):
     """`waiting` is the normal case: if the default view left it out, it would be blind."""
     user = await make_user(db, "op", admin=True)
     proj = await make_project(db, "OPS", "Betrieb")
@@ -106,7 +106,7 @@ async def test_wartende_vorgaenge_gehoeren_in_die_betriebssicht(client, db):
     assert [x["status"] for x in r.json()] == ["waiting"]
 
 
-async def test_abgeschlossenes_bleibt_draussen_bis_man_es_will(client, db):
+async def test_finished_work_stays_out_until_asked_for(client, db):
     user = await make_user(db, "op", admin=True)
     proj = await make_project(db, "OPS", "Betrieb")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -117,7 +117,7 @@ async def test_abgeschlossenes_bleibt_draussen_bis_man_es_will(client, db):
     assert len(mit.json()) == 1
 
 
-async def test_langes_wait_gilt_as_hangs(client, db):
+async def test_a_long_wait_counts_as_hanging(client, db):
     user = await make_user(db, "op", admin=True)
     proj = await make_project(db, "OPS", "Betrieb")
     await add_member(db, proj, user, ProjectRole.owner)
@@ -130,7 +130,7 @@ async def test_langes_wait_gilt_as_hangs(client, db):
     assert len(nur) == 1 and nur[0]["hangs"] is True
 
 
-async def test_fremde_vorgaenge_sind_unsichtbar(client, db):
+async def test_foreign_cases_are_invisible(client, db):
     owner = await make_user(db, "eigner", admin=True)
     fremder = await make_user(db, "fremd")
     proj = await make_project(db, "GEH", "Geheim", inherit_members=False)
@@ -142,7 +142,7 @@ async def test_fremde_vorgaenge_sind_unsichtbar(client, db):
 
 # ── Triggers ─────────────────────────────────────────────────────────────────
 
-async def test_trigger_findet_unterprozess_und_manuelles(client, db, standard):
+async def test_the_trigger_finds_subflows_and_manual_starts(client, db, standard):
     """The acceptance flow is called by the lifecycle; otherwise it would look triggerless."""
     admin = await make_user(db, "chef", admin=True)
     r = await client.get("/processes/triggers", headers=auth(admin))
@@ -155,7 +155,7 @@ async def test_trigger_findet_unterprozess_und_manuelles(client, db, standard):
     assert {t["slot"] for t in daten} >= set(sets.SLOT_META)
 
 
-async def test_ereignisse_count_ihre_zuhoerer(client, db, standard):
+async def test_events_count_their_listeners(client, db, standard):
     admin = await make_user(db, "chef", admin=True)
     r = await client.get("/processes/events", headers=auth(admin))
     assert r.status_code == 200
@@ -170,7 +170,7 @@ async def test_ereignisse_count_ihre_zuhoerer(client, db, standard):
 
 # ── Rolling back ─────────────────────────────────────────────────────────────
 
-async def test_zurueckrollen_legt_eine_new_version_an(client, db, standard):
+async def test_rolling_back_creates_a_new_version(client, db, standard):
     """The history stays: rolling back happens by publishing, not by bending a pointer."""
     admin = await make_user(db, "chef", admin=True)
     d = await sets.set_definition(db, standard.id, "ticket_lifecycle")
@@ -197,7 +197,7 @@ async def test_zurueckrollen_legt_eine_new_version_an(client, db, standard):
     assert first.status == WorkflowVersionStatus.published
 
 
-async def test_zurueckrollen_auf_die_aktuelle_fassung_ist_ein_konflikt(client, db, standard):
+async def test_rolling_back_to_the_current_version_is_a_conflict(client, db, standard):
     admin = await make_user(db, "chef", admin=True)
     d = await sets.set_definition(db, standard.id, "ticket_lifecycle")
     r = await client.post(f"/workflows/{d.id}/versions/{d.current_version_id}/rollback",
@@ -205,7 +205,7 @@ async def test_zurueckrollen_auf_die_aktuelle_fassung_ist_ein_konflikt(client, d
     assert r.status_code == 409
 
 
-async def test_nur_ein_admin_may_den_standard_zurueckrollen(client, db, standard):
+async def test_only_an_admin_may_roll_back_the_default(client, db, standard):
     niemand = await make_user(db, "gast")
     d = await sets.set_definition(db, standard.id, "ticket_lifecycle")
     first = await db.get(WorkflowVersion, d.current_version_id)
@@ -213,7 +213,7 @@ async def test_nur_ein_admin_may_den_standard_zurueckrollen(client, db, standard
     assert r.status_code == 403
 
 
-async def test_kontextfelder_nennen_ihre_herkunft(client, db):
+async def test_context_fields_name_their_origin(client, db):
     """The editor needs the fields a flow really has; guessing went on long enough (a free
     text field, and a typo only stood out in operation)."""
     anna = await make_user(db, "anna")
@@ -234,7 +234,7 @@ async def test_kontextfelder_nennen_ihre_herkunft(client, db):
     assert all(f["description"] and f["type"] for f in k["base"])
 
 
-async def test_kontextfelder_decken_die_guards_des_standardsatzes(client, db):
+async def test_context_fields_cover_the_guards_of_the_default_set(client, db):
     """What the shipped flows read at their branches has to stand in the catalog; otherwise it
     describes something other than what runs."""
     from app.services.workflow_seed import BUILDERS

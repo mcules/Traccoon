@@ -45,7 +45,7 @@ async def _instanzen(db) -> list[WorkflowInstance]:
     return list((await db.execute(select(WorkflowInstance))).scalars().all())
 
 
-async def test_workflow_job_startet_bei_sofort_ausfuehren_eine_instanz(db, anna, monkeypatch):
+async def test_a_workflow_job_run_now_starts_an_instance(db, anna, monkeypatch):
     """The core of the bug: run_job must not give the job into the prompt path."""
     d = await _prozess(db)
     job = Job(user_id=anna.id, name="Preise", kind="workflow", workflow_definition_id=d.id,
@@ -70,7 +70,7 @@ async def test_workflow_job_startet_bei_sofort_ausfuehren_eine_instanz(db, anna,
     assert jr.status == "ok"
 
 
-async def test_agent_startet_prozess_und_sieht_nur_startbare(db, anna):
+async def test_the_agent_starts_a_flow_and_sees_only_startable_ones(db, anna):
     startbar = await _prozess(db, key="startbar")
     await _prozess(db, key="entwurf", published=False)
 
@@ -87,21 +87,21 @@ async def test_agent_startet_prozess_und_sieht_nur_startbare(db, anna):
     assert inst[0].source == f"agent:{anna.id}"
 
 
-async def test_prozess_auf_ticket_verlangt_ticket(db, anna):
+async def test_a_flow_on_a_ticket_demands_a_ticket(db, anna):
     d = await _prozess(db, key="ticket-prozess", subject=WorkflowSubjectKind.issue)
     out = await call_traccoon_tool(db, anna.id, "traccoon_start_workflow", {"workflow_id": d.id})
     assert "issue_key" in out
     assert await _instanzen(db) == []
 
 
-async def test_prozess_ohne_veroeffentlichung_startet_nicht(db, anna):
+async def test_an_unpublished_flow_does_not_start(db, anna):
     d = await _prozess(db, key="entwurf", published=False)
     out = await call_traccoon_tool(db, anna.id, "traccoon_start_workflow", {"workflow_id": d.id})
     assert "veröffentlichte" in out
     assert await _instanzen(db) == []
 
 
-async def test_prozess_start_braucht_grant(db):
+async def test_starting_a_flow_needs_a_grant(db):
     """A process can set off agent runs, approvals and calls to the outside."""
     assert "traccoon_start_workflow" in TRACCOON_GATED_TOOLS
     assert "traccoon_list_workflows" not in TRACCOON_GATED_TOOLS

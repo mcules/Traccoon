@@ -12,7 +12,7 @@ from conftest import auth, make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def test_ausgelieferte_sprachen_stehen_ohne_line_da(client, db):
+async def test_shipped_languages_are_there_without_a_row(client, db):
     """German and English exist because their catalog ships, not because of a database row."""
     anna = await make_user(db, "anna")
     r = await client.get("/i18n/locales", headers=auth(anna))
@@ -22,7 +22,7 @@ async def test_ausgelieferte_sprachen_stehen_ohne_line_da(client, db):
     assert nach["en"]["enabled"] is True
 
 
-async def test_language_create_umbenennen_abschalten_delete(client, db):
+async def test_create_rename_disable_delete_a_language(client, db):
     admin = await make_user(db, "chef", admin=True)
     h = auth(admin)
 
@@ -48,7 +48,7 @@ async def test_language_create_umbenennen_abschalten_delete(client, db):
     assert (await client.get("/i18n/fr", headers=h)).json()["texts"] == {}
 
 
-async def test_quellsprache_bleibt(client, db):
+async def test_the_source_language_stays(client, db):
     """German is the fallback for every missing text. Off or gone it would leave keys on
     the screen, so both are refused."""
     admin = await make_user(db, "chef", admin=True)
@@ -58,7 +58,7 @@ async def test_quellsprache_bleibt(client, db):
     assert (await client.delete("/i18n/locales/de", headers=h)).status_code == 400
 
 
-async def test_umbenennen_der_ausgelieferten_language_legt_erst_dann_eine_line_an(client, db):
+async def test_renaming_a_shipped_language_creates_a_row_only_then(client, db):
     admin = await make_user(db, "chef", admin=True)
     h = auth(admin)
     await client.put("/i18n/locales/en", json={"name": "British English"}, headers=h)
@@ -67,14 +67,14 @@ async def test_umbenennen_der_ausgelieferten_language_legt_erst_dann_eine_line_a
     assert nach["en"]["builtin"] is True       # stays shipped, only named differently
 
 
-async def test_nur_admin_may_sprachen_verwalten(client, db):
+async def test_only_an_admin_may_manage_languages(client, db):
     anna = await make_user(db, "anna")
     assert (await client.post("/i18n/locales", json={"locale": "it"},
                               headers=auth(anna))).status_code == 403
     assert (await client.delete("/i18n/locales/en", headers=auth(anna))).status_code == 403
 
 
-async def test_leerer_text_stellt_die_ausgelieferte_fassung_wieder_her(client, db):
+async def test_empty_text_restores_the_shipped_version(client, db):
     admin = await make_user(db, "chef", admin=True)
     h = auth(admin)
     await client.put("/i18n/en/menu.start", json={"text": "Home sweet home"}, headers=h)
@@ -83,7 +83,7 @@ async def test_leerer_text_stellt_die_ausgelieferte_fassung_wieder_her(client, d
     assert (await client.get("/i18n/en", headers=h)).json()["texts"] == {}
 
 
-async def test_server_katalog_steht_zur_uebersetzung(client, db):
+async def test_the_server_catalog_is_available_for_translation(client, db):
     """The server writes texts of its own (notifications, setup). Without this list the
     administration could not offer them, and they would stay German forever."""
     anna = await make_user(db, "anna")
@@ -94,7 +94,7 @@ async def test_server_katalog_steht_zur_uebersetzung(client, db):
     assert all(k.startswith("server.") for k in texte)
 
 
-async def test_servertext_in_der_language_des_lesers(db):
+async def test_server_text_in_the_readers_language(db):
     from app.services.i18n import tr, verwerfen
 
     verwerfen()
@@ -106,14 +106,14 @@ async def test_servertext_in_der_language_des_lesers(db):
     assert await tr(db, "gibt.es.nicht", "de") == "gibt.es.nicht"
 
 
-async def test_platzhalter_werden_gefuellt(db):
+async def test_placeholders_are_filled(db):
     from app.services.i18n import tr
 
     text = await tr(db, "server.notify.job", "de", name="Nachtlauf")
     assert text == "Job: Nachtlauf"
 
 
-async def test_admin_aenderung_schlaegt_den_ausgelieferten_text(client, db):
+async def test_an_admin_change_beats_the_shipped_text(client, db):
     from app.services.i18n import tr
 
     admin = await make_user(db, "chef", admin=True)
@@ -123,7 +123,7 @@ async def test_admin_aenderung_schlaegt_den_ausgelieferten_text(client, db):
     assert await tr(db, "server.onboarding.project", "en") == "Start a project"
 
 
-async def test_onboarding_folgt_der_language_des_nutzers(client, db):
+async def test_onboarding_follows_the_users_language(client, db):
     anna = await make_user(db, "anna")
     anna.locale = "en"
     await db.commit()
