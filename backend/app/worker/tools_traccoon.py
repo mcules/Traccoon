@@ -31,18 +31,18 @@ def _def(name: str, desc: str, props: dict, required: list[str]) -> dict:
 TRACCOON_TOOLS = [
     _def("traccoon_list_projects", "Projekte auflisten, auf die dein Mensch Zugriff hat "
          "(Key, Name, seine Rolle, ob KI-Zuweisung erlaubt).", {}, []),
-    _def("traccoon_list_issues", "Tickets eines Projekts auflisten (nur bei Zugriff). "
+    _def("traccoon_list_issues", "List the tickets of a project (only with access). "
          "Optional nach agent_status filtern.",
          {"project_key": {"type": "string"}, "agent_status": {"type": "string"},
           "limit": {"type": "integer"}}, ["project_key"]),
     _def("traccoon_get_issue", "Ein Ticket im Detail (Status, zugewiesener Agent, Plan, Beschreibung).",
          {"key": {"type": "string"}}, ["key"]),
-    _def("traccoon_create_issue", "Neues Ticket in einem Projekt anlegen (Mitgliedschaft nötig).",
+    _def("traccoon_create_issue", "Create a new ticket in a project (membership needed).",
          {"project_key": {"type": "string"}, "summary": {"type": "string"},
           "description": {"type": "string"}}, ["project_key", "summary"]),
     _def("traccoon_comment", "Kommentar an ein Ticket schreiben.",
          {"key": {"type": "string"}, "text": {"type": "string"}}, ["key", "text"]),
-    _def("traccoon_assign_agent", "Einem Ticket einen Agenten (Rolle) zuweisen (KI-Recht nötig).",
+    _def("traccoon_assign_agent", "Assign an agent (a role) to a ticket (the AI permission is needed).",
          {"key": {"type": "string"}, "role": {"type": "string"}}, ["key", "role"]),
     _def("traccoon_start_planning", "Planung eines Tickets starten (KI-Recht + zugewiesener Agent).",
          {"key": {"type": "string"}}, ["key"]),
@@ -51,10 +51,10 @@ TRACCOON_TOOLS = [
     _def("traccoon_issue_costs", "Kosten (USD, Tokens) eines Tickets.",
          {"key": {"type": "string"}}, ["key"]),
     _def("traccoon_notify_human",
-         "Melde deinem Menschen etwas, das er wissen MUSS oder ausdrücklich wissen WILL "
-         "(Frist, Geldbetrag, Entscheidung, Störung, etwas das er beantworten muss). "
-         "Ohne diesen Aufruf bleibt dein Lauf still — ein erledigtes „nichts zu tun\" oder "
-         "eine reine Ablage sind KEIN Grund zu melden. Sparsam einsetzen.",
+         "Report something to your person that they MUST know or explicitly WANT to know "
+         "(a deadline, an amount of money, a decision, a fault, something they have to answer). "
+         "Without this call your run stays silent — a finished \"nothing to do\" or "
+         "a pure filing job are NO reason to report. Use it sparingly.",
          {"title": {"type": "string", "description": "Eine Zeile, worum es geht"},
           "text": {"type": "string", "description": "Was der Mensch wissen muss"},
           "urgency": {"type": "string", "description": "normal (Standard) oder high"}},
@@ -64,58 +64,58 @@ TRACCOON_TOOLS = [
          "niemand — sie werden beim Aufruf serverseitig gesetzt.", {}, []),
     _def("traccoon_list_jobs",
          "Geplante Jobs deines Menschen auflisten (Nummer, Name, Zeitplan, Agent, an/aus, "
-         "letzter Lauf). Erst hier nachsehen, bevor du einen Job für nicht vorhanden hältst.",
+         "the last run). Look here first before you take a job for non-existent.",
          {}, []),
     _def("traccoon_get_job",
-         "Ein Job im Detail: Prompt, Parameter, Zeitplan, Meldeweg und die letzten Läufe.",
+         "One job in detail: prompt, parameters, schedule, the way it reports and the last runs.",
          {"job_id": {"type": "integer"}}, ["job_id"]),
     _def("traccoon_job_templates",
-         "Verfügbare Job-Vorlagen samt ihrer Parameter (z. B. 'recherche-digest' für einen "
-         "wiederkehrenden Themen-Rückblick).", {}, []),
+         "The available job templates including their parameters ('recherche-digest' for a "
+         "recurring topic review, say).", {}, []),
     _def("traccoon_create_job",
-         "Einen wiederkehrenden Job anlegen. Am besten über `template` + `params` — dann "
-         "kommen Prompt und Voreinstellungen aus der Vorlage. Zeitplan: type 'cron' "
+         "Create a recurring job. Best through `template` + `params` — then the prompt and the "
+         "defaults come out of the template. Schedule: type 'cron' "
          "(z. B. '0 6 * * *', UTC), 'interval' (Sekunden) oder 'once' (ISO-Zeit).",
          {"name": {"type": "string"},
-          "template": {"type": "string", "description": "Schlüssel einer Vorlage"},
-          "params": {"type": "object", "description": "Parameter der Vorlage bzw. Werte für "
+          "template": {"type": "string", "description": "The key of a template"},
+          "params": {"type": "object", "description": "Parameters of the template, or values for "
                      "die {{platzhalter}} im Prompt"},
-          "prompt": {"type": "string", "description": "nur ohne Vorlage"},
+          "prompt": {"type": "string", "description": "only without a template"},
           "agent": {"type": "string"}, "type": {"type": "string"},
           "schedule": {"type": "string"},
           "enabled": {"type": "boolean", "description": "Standard: an"}},
          ["name"]),
     _def("traccoon_update_job",
-         "Einen Job ändern — auch an-/abschalten (enabled) oder Parameter nachziehen. "
-         "Nur die übergebenen Felder werden angefasst.",
+         "Change a job — switching it on or off (enabled) or updating parameters included. "
+         "Only the fields handed over are touched.",
          {"job_id": {"type": "integer"}, "name": {"type": "string"},
           "prompt": {"type": "string"}, "params": {"type": "object"},
           "agent": {"type": "string"}, "type": {"type": "string"},
           "schedule": {"type": "string"}, "enabled": {"type": "boolean"},
           "notify_mode": {"type": "string", "description": "always|on_output|on_error|never"}},
          ["job_id"]),
-    _def("traccoon_run_job", "Einen Job sofort ausführen (zusätzlich zum Zeitplan).",
+    _def("traccoon_run_job", "Run a job right away (in addition to its schedule).",
          {"job_id": {"type": "integer"}}, ["job_id"]),
     _def("traccoon_list_workflows",
-         "Veröffentlichte Prozesse (Workflows) auflisten, die dein Mensch starten darf — "
-         "projektlose und die seiner Projekte. Liefert id, key, Name und Gegenstandsart.",
+         "List the published flows your person may start — the project-less ones and those of "
+         "their projects. Returns id, key, name and subject kind.",
          {"project_key": {"type": "string", "description": "optional: nur dieses Projekt"}}, []),
     _def("traccoon_start_workflow",
-         "Eine Instanz eines veröffentlichten Prozesses starten. `context` sind die "
+         "Start an instance of a published flow. `context` holds the "
          "Startwerte des Graphen (frei belegbares Objekt). Ein Prozess mit Gegenstand "
          "'issue' braucht `issue_key`.",
          {"workflow_id": {"type": "integer", "description": "id aus traccoon_list_workflows"},
-          "issue_key": {"type": "string", "description": "nur bei Prozessen auf Tickets"},
-          "context": {"type": "object", "description": "Startwerte für den Graphen"}},
+          "issue_key": {"type": "string", "description": "only for flows on tickets"},
+          "context": {"type": "object", "description": "Start values for the graph"}},
          ["workflow_id"]),
     _def("traccoon_http_call",
-         "Ein freigegebenes Ziel aufrufen. Basis-URL und Anmeldung kommen aus dem Ziel; du "
-         "gibst nur Methode, Pfad-Ergänzung, Query, Kopfzeilen und Body an.",
+         "Call a released destination. The base URL and the login come from the destination; you "
+         "only give the method, the path suffix, the query, the headers and the body.",
          {"destination": {"type": "string", "description": "Name des Ziels"},
           "method": {"type": "string", "description": "GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS"},
-          "path": {"type": "string", "description": "Ergänzung der Basis-URL, z. B. /api/v2/orders"},
+          "path": {"type": "string", "description": "A suffix to the base URL, /api/v2/orders say"},
           "query": {"type": "object", "description": "Query-Parameter"},
-          "headers": {"type": "object", "description": "zusätzliche Kopfzeilen"},
+          "headers": {"type": "object", "description": "additional headers"},
           "body": {"description": "JSON-Objekt/Liste oder Text"}},
          ["destination"]),
 ]
@@ -145,7 +145,7 @@ async def _issue_access(db: AsyncSession, user: User, key: str):
     try:
         acc = await build_access(project, user, db)
     except HTTPException:
-        return None, None, f"Kein Zugriff auf das Projekt von '{key}'."
+        return None, None, f"No access to the project of '{key}'."
     return iss, acc, project
 
 
@@ -198,7 +198,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
                 + (f"Offene Platzhalter (ohne Wert!): {', '.join(o)}\n"
                    if (o := open_placeholder(j.prompt, j.args)) else "")
                 + f"Prompt:\n{(j.prompt or '')[:2000]}\n"
-                + "Letzte Läufe: " + (", ".join(
+                + "Last runs: " + (", ".join(
                     f"{r.started_at:%Y-%m-%d %H:%M} {r.status}" for r in runs) or "keine"))
 
     if name == "traccoon_create_job":
@@ -207,7 +207,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
             try:
                 fields = apply(str(args["template"]), args.get("params") or {})
             except KeyError:
-                return (f"Vorlage '{args['template']}' gibt es nicht. Verfügbar: "
+                return (f"The template '{args['template']}' does not exist. Available: "
                         f"{', '.join(JOB_TEMPLATES)}.")
         elif args.get("params"):
             fields["args"] = dict(args["params"])
@@ -215,7 +215,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
             if args.get(f) is not None:
                 fields[f] = args[f]
         if not (fields.get("prompt") or "").strip():
-            return "Ohne Prompt (oder Vorlage) kein Job."
+            return "No job without a prompt (or a template)."
         fields.setdefault("kind", "prompt")
         fields.setdefault("type", "cron")
         fields.setdefault("schedule", "0 6 * * *")
@@ -247,11 +247,11 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
             j.args = {**parameter(j.args), **args["params"]}
             changed.append("params")
         if not changed:
-            return f"Job #{j.id}: nichts zu ändern."
+            return f"Job #{j.id}: nothing to change."
         if "enabled" in changed and j.enabled:
             j.paused = False
         await db.commit()
-        return f"Job #{j.id} geändert: {', '.join(changed)}."
+        return f"Job #{j.id} changed: {', '.join(changed)}."
 
     if name == "traccoon_run_job":
         j = await _job(args.get("job_id"))
@@ -265,7 +265,7 @@ async def _job_tool(db: AsyncSession, user: User, name: str, args: dict) -> str:
         from ..services.scheduler import run_job_kind
         await run_job_kind(db, j, jr)
         await db.commit()
-        return (f"Job #{j.id} '{j.name}' ({j.kind}) ausgeführt: {jr.status}"
+        return (f"Job #{j.id} '{j.name}' ({j.kind}) ran: {jr.status}"
                 + (f" — {jr.output[:500]}" if jr.output else "")
                 + (f" — ERROR: {jr.error[:500]}" if jr.error else ""))
 
@@ -331,7 +331,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
         if not d.enabled:
             return f"Prozess '{d.key}' ist abgeschaltet."
         if d.current_version_id is None:
-            return f"Prozess '{d.key}' hat keine veröffentlichte Version."
+            return f"The flow '{d.key}' has no published version."
         sk = d.subject_kind.value if hasattr(d.subject_kind, "value") else str(d.subject_kind)
         issue_id = None
         if args.get("issue_key"):
@@ -340,7 +340,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
                 return error
             issue_id = iss.id
         elif sk == "issue":
-            return f"Prozess '{d.key}' läuft auf einem Ticket — issue_key angeben."
+            return f"The flow '{d.key}' runs on a ticket — give an issue_key."
         context = args.get("context")
         try:
             inst = await start_workflow(
@@ -352,7 +352,7 @@ async def _workflow_tool(db: AsyncSession, user: User, name: str, args: dict) ->
             return f"ERROR: {e}"
         return (f"Prozess '{d.key}' gestartet — Instanz #{inst.id}, Status "
                 f"{inst.status.value if hasattr(inst.status, 'value') else inst.status}. "
-                "Wartende Schritte (Freigaben, Aufgaben) laufen ohne dich weiter.")
+                "Waiting steps (approvals, tasks) carry on without you.")
 
     return f"ERROR: unbekanntes Workflow-Tool '{name}'."
 
@@ -361,7 +361,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
                              assistant_task_id: int | None = None) -> str:
     user = await _user(db, owner_id)
     if user is None:
-        return "ERROR: kein Nutzerkontext — Steuerung nicht möglich."
+        return "ERROR: no user context — controlling is not possible."
 
     if name == "traccoon_list_projects":
         if user.global_role == "admin":
@@ -371,7 +371,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
                 ProjectMember, ProjectMember.project_id == Project.id).where(
                 ProjectMember.user_id == user.id).order_by(Project.key))).scalars().all()
         if not projs:
-            return "Keine zugänglichen Projekte."
+            return "No accessible projects."
         out = []
         for p in projs:
             try:
@@ -423,7 +423,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         counter = (await db.execute(select(IssueCounter).where(
             IssueCounter.project_id == p.id).with_for_update())).scalar_one_or_none()
         if t is None or s is None or counter is None:
-            return "Projekt ist nicht vollständig konfiguriert (Typ/Status/Zähler)."
+            return "The project is not fully configured (type/status/counter)."
         counter.last_number += 1
         n = counter.last_number
         iss = Issue(project_id=p.id, number=n, key=f"{p.key}-{n}"[:50], type_id=t.id, status_id=s.id,
@@ -446,7 +446,7 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         if iss is None:
             return err
         if not acc.ai_assign:
-            return f"Kein KI-Recht (ai_assign) im Projekt von {iss.key}."
+            return f"No AI permission (ai_assign) in the project of {iss.key}."
         iss.assigned_agent = (args.get("role") or "").strip()
         iss.assigned_by_user_id = user.id
         iss.assigned_at = _now()
@@ -459,15 +459,15 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         await db.commit()
         if inst is None:
             return (f"{iss.key}: Agent '{iss.assigned_agent}' zugewiesen — aber KEIN Prozess "
-                    "gestartet (kein veröffentlichter Lebenszyklus für dieses Projekt).")
-        return f"{iss.key}: Agent '{iss.assigned_agent}' zugewiesen, Lebenszyklus läuft an."
+                    "started (no published lifecycle for this project).")
+        return f"{iss.key}: agent '{iss.assigned_agent}' assigned, the lifecycle is starting."
 
     if name in ("traccoon_start_planning", "traccoon_approve_plan"):
         iss, acc, err = await _issue_access(db, user, args.get("key", ""))
         if iss is None:
             return err
         if not acc.ai_assign:
-            return f"Kein KI-Recht (ai_assign) im Projekt von {iss.key}."
+            return f"No AI permission (ai_assign) in the project of {iss.key}."
         from ..services.dispatcher import sync_board_status
         if name == "traccoon_start_planning":
             if iss.assigned_agent is None:
@@ -487,11 +487,11 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             await db.commit()
             if inst is None:
                 return (f"{iss.key}: Status auf Planung gesetzt, aber KEIN Prozess gestartet "
-                        "(kein veröffentlichter Lebenszyklus für dieses Projekt).")
+                        "(no published lifecycle for this project).")
             return f"{iss.key}: Planung gestartet (Prozess-Instanz {inst.id})."
         else:
             if iss.agent_status != TicketAgentStatus.plan_review or not iss.plan:
-                return f"{iss.key}: kein Plan zur Freigabe (Status {iss.agent_status})."
+                return f"{iss.key}: no plan to approve (status {iss.agent_status})."
             from ..services.artifacts import set_ticket_status
             await set_ticket_status(db, iss, TicketAgentStatus.approved)
             iss.hold_reason = None
@@ -506,8 +506,8 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
             await db.commit()
             if not decided:
                 return (f"{iss.key}: Status auf freigegeben gesetzt — im Prozess wartete "
-                        "aber keine Genehmigung (läuft dort gerade etwas anderes?).")
-            return f"{iss.key}: Plan freigegeben, der Prozess läuft weiter."
+                        "but no approval (is something else running there right now?).")
+            return f"{iss.key}: the plan is approved, the flow carries on."
 
     if name == "traccoon_notify_human":
         # An explicit message to the human. It is the ONLY regular way to trigger a Telegram
@@ -533,8 +533,8 @@ async def call_traccoon_tool(db: AsyncSession, owner_id: int | None, name: str, 
         from ..services import destinations as dests
         rows = await dests.visible(db, owner_id=user.id, agents_only=True)
         if not rows:
-            return ("Keine für KI-Agenten freigegebenen Ziele. Ein Mensch muss ein Ziel anlegen "
-                    "und dort „für Agenten freigeben\" setzen.")
+            return ("No destinations released to AI agents. A person has to create a destination "
+                    "and tick \"release to agents\" on it.")
         return "\n".join(
             f"- {d.name}: {d.label or d.description or '—'} → {d.base_url}" for d in rows)
 

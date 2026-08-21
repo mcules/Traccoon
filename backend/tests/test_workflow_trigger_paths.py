@@ -97,7 +97,7 @@ async def test_a_flow_on_a_ticket_demands_a_ticket(db, anna):
 async def test_an_unpublished_flow_does_not_start(db, anna):
     d = await _flow(db, key="entwurf", published=False)
     out = await call_traccoon_tool(db, anna.id, "traccoon_start_workflow", {"workflow_id": d.id})
-    assert "veröffentlichte" in out
+    assert "no published version" in out
     assert await _instances(db) == []
 
 
