@@ -119,7 +119,7 @@ async def stats(days: int = 30, user: User = Depends(get_current_user),
     from ..services.spam_report import balance, classifications
 
     data = await classifications(db, user.id, days=days)
-    data["betrieb"] = await balance(db, user.id)
+    data["operation"] = await balance(db, user.id)
     return data
 
 
