@@ -55,6 +55,7 @@ class UserOut(BaseModel):
     mail_last_account_id: int | None = None
     ticket_open_mode: str = "popup"
     ticket_layout: dict = {}
+    list_sort: dict = {}
     pm_chat_style: str = "bubbles"
     # Benachrichtigungswege dieser Person (Profil).
     locale: str = "de"

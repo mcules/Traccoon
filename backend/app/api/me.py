@@ -220,6 +220,39 @@ async def set_ticket_layout(d: TicketLayoutIn, u: User = Depends(get_current_use
     await db.commit()
 
 
+class ListSortIn(BaseModel):
+    """Which list, by which field, in which direction."""
+    list: str
+    by: str
+    dir: str = "asc"
+
+
+# Which lists may remember a sort order, and by what they may be sorted. A whitelist and not
+# free text: the value comes out of the browser and lands in the profile of the person, where
+# it stays until somebody changes it. A typo would sit there for good, and the list would
+# silently sort by nothing.
+SORTABLE: dict[str, tuple[str, ...]] = {
+    "processes.own": ("name", "key", "kind", "state"),
+    "processes.operations": ("flow", "state", "age"),
+    "processes.triggers": ("flow", "kind", "state"),
+}
+
+
+@router.put("/me/list-sort", status_code=204)
+async def set_list_sort(d: ListSortIn, u: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_session)):
+    """Remember the sort order of one list. Unknown list or field: nothing happens."""
+    fields = SORTABLE.get(d.list)
+    if not fields or d.by not in fields:
+        raise Error(status.HTTP_400_BAD_REQUEST, "err.unknown_sort",
+                     "This list cannot be sorted that way")
+    # A new dict, not a mutation in place: SQLAlchemy sees no change on a JSON column that was
+    # only modified inside, and the setting would be lost on the commit without a sound.
+    u.list_sort = {**(u.list_sort or {}),
+                   d.list: {"by": d.by, "dir": "desc" if d.dir == "desc" else "asc"}}
+    await db.commit()
+
+
 class McpReachIn(BaseModel):
     servers: list[str]
 

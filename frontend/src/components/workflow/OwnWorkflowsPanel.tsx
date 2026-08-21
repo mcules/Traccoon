@@ -6,13 +6,21 @@ import { ApiError, workflowApi } from "../../api";
 import type { WorkflowDefinition, WorkflowSubjectKind } from "./types";
 import {
   Actions, Area, Dialog, DialogFoot, Tag, Errorrow, ICON, IconButton, Listing,
-  ListingEmpty, ListRow, DeleteDialog, State, BUTTON } from "../ui";
+  ListingEmpty, ListRow, DeleteDialog, SortBar, State, BUTTON } from "../ui";
+import { useListSort } from "../useListSort";
 
 const EMPTY = { key: "", name: "", subject_kind: "standalone" as WorkflowSubjectKind,
                 description: "", template: "" };
 const inp = "rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
 /** Three columns: the flow itself, its state, the handgrips. */
 const COLUMNS = "sm:grid-cols-[minmax(0,1fr)_9rem_auto]";
+/** What a row answers by. `state` sorts by what one looks for: off, then draft, then live. */
+const SORTABLE = {
+  name: (d: WorkflowDefinition) => d.name,
+  key: (d: WorkflowDefinition) => d.key,
+  kind: (d: WorkflowDefinition) => d.subject_kind,
+  state: (d: WorkflowDefinition) => (!d.enabled ? 0 : d.current_version_id ? 2 : 1),
+};
 
 /**
  * Own, project-less processes: everything that belongs to no project and no slot.
@@ -39,12 +47,15 @@ export default function OwnWorkflowsPanel() {
   const [nameNew, setNameNew] = useState("");
   const [keyNew, setKeyNew] = useState("");
 
+  const sort = useListSort<WorkflowDefinition>("processes.own", { by: "name", dir: "asc" }, SORTABLE);
+
   const { data: all } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
   const { data: templates } = useQuery({
     queryKey: ["workflow-templates"], queryFn: workflowApi.templates, staleTime: 30 * 60_000 });
   const chosen = (templates || []).find((v) => v.key === f.template);
   // Slot flows stand at the top in the process set, project flows in the respective project.
-  const own = (all || []).filter((d) => d.project_id === null && !d.slot && !d.archived_at);
+  const own = sort.sorted(
+    (all || []).filter((d) => d.project_id === null && !d.slot && !d.archived_at));
 
   const open_it = (d: WorkflowDefinition) =>
     nav(`/workflows/${d.id}`, { state: { from: "/processes/own" } });
@@ -75,7 +86,11 @@ export default function OwnWorkflowsPanel() {
   });
 
   return (
-    <Area hint={tr("own_workflows_panel.own_flows_no_project")}>
+    <Area hint={tr("own_workflows_panel.own_flows_no_project")}
+      tools={own.length > 1 ? <SortBar by={sort.by} dir={sort.dir} onSort={sort.toggle}
+        fields={[{ key: "name", label: tr("sort.name") }, { key: "key", label: tr("sort.key") },
+                 { key: "kind", label: tr("sort.kind") }, { key: "state", label: tr("sort.state") }]}
+      /> : undefined}>
       <Errorrow text={err} />
 
       {own.length > 0 ? (

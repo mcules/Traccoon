@@ -134,6 +134,30 @@ tag). On the right the state, on the far right the handles.
 `ListHeader` exists for lists with many rows and real columns. With a handful of entries leave
 it out — a heading row above five rows of content is noise.
 
+### `SortBar` — the order of a list
+
+Sorting stands in the `tools` row of the `Area`, not as a heading row above the entries.
+Only a part of the lists really has columns; a run is a tag, a name, a state and a time in
+one line, and a heading above it would point at nothing. The bar reads the same in every
+list, whatever a row looks like inside.
+
+```tsx
+<Area hint={…} tools={<>
+  <div className="flex-1" />
+  <SortBar by={sort.by} dir={sort.dir} onSort={sort.toggle}
+    fields={[{ key: "name", label: tr("sort.name") }, { key: "state", label: tr("sort.state") }]} />
+</>}>
+```
+
+The active field carries the arrow, a click on it turns the direction round, a click on
+another sorts by that one ascending. Leave the bar out where there is nothing to sort (one
+entry) — a control that changes nothing is noise.
+
+The state comes from `useListSort(list, fallback, values)`: `values` says how a row answers
+per field, the hook holds the order in the profile of the person (`users.list_sort`) and
+saves quietly. A new list needs its fields in `api/me.py` (`SORTABLE`) as well — the value
+comes out of the browser and stays in the profile, so a typo would stay for good.
+
 ### `Tag` — a short, recurring value
 
 A kind, a mode, an origin, a count, a project key. The colour is a **role**, not a colour

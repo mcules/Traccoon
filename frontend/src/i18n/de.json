@@ -2724,5 +2724,14 @@
   "start_config.on_the_message": "an der Nachricht",
   "agent_task_node.planning": "Planung",
   "dry_run_panel.dry_run_n_steps": "Probelauf — {count} Schritt(e)",
-  "inspector.last_steps": "Letzte Schritte"
+  "inspector.last_steps": "Letzte Schritte",
+  "sort.by": "Sortieren nach",
+  "sort.ascending": "Aufsteigend sortieren",
+  "sort.descending": "Richtung umdrehen",
+  "sort.name": "Name",
+  "sort.key": "Schlüssel",
+  "sort.kind": "Art",
+  "sort.state": "Zustand",
+  "sort.flow": "Ablauf",
+  "sort.age": "Alter"
 }

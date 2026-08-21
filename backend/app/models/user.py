@@ -93,6 +93,10 @@ class User(TimestampMixin, Base):
     ticket_open_mode: Mapped[str] = mapped_column(String(10), default="popup")
     # User specific block arrangement of the full ticket page: {"left":[...keys], "right":[...keys]}.
     ticket_layout: Mapped[dict] = mapped_column(JSON, default=dict)
+    # How the person sorts the lists, per list: {"processes.own": {"by": "name", "dir": "asc"}}.
+    # One field instead of one column per list — a sort order is a view setting, and the next
+    # sortable list must not cost a migration.
+    list_sort: Mapped[dict] = mapped_column(JSON, default=dict)
     # Presentation of the PM chat: bubbles or cli (terminal look like the Claude Code CLI).
     # Applies globally to the user across all projects (TRA-21).
     pm_chat_style: Mapped[str] = mapped_column(String(10), default="bubbles")

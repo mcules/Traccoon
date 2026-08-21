@@ -158,6 +158,8 @@ export interface User {
   mail_last_account_id?: number | null;  // the mailbox opened last
   ticket_open_mode?: string;   // popup | page — how a ticket opens on a left click
   ticket_layout?: { left?: string[]; right?: string[] };  // nutzerspez. Block-Anordnung
+  // How this person sorts which list, e.g. {"processes.own": {by: "name", dir: "asc"}}.
+  list_sort?: Record<string, { by: string; dir: "asc" | "desc" }>;
   pm_chat_style?: string;      // bubbles | cli — Darstellung des PM-Chats
   locale?: string;             // language of the UI (source: de)
   notify_default?: string;     // telegram | email | destination — the way when the sender names none

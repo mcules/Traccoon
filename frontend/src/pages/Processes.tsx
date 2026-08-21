@@ -18,7 +18,8 @@ import StoresPanel from "../components/workflow/StoresPanel";
 import LocationsPanel from "../components/workflow/PlacesPanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 import VersionsDiff from "../components/workflow/VersionsDiff";
-import { ConfirmDialog, ICON, IconButton } from "../components/ui";
+import { ConfirmDialog, ICON, IconButton, SortBar } from "../components/ui";
+import { useListSort } from "../components/useListSort";
 
 /**
  * Process administration: the view across all flows.
@@ -241,6 +242,15 @@ const WAITS_ON: Record<string, string> = {
   subflow: "proc.subprocess",
 };
 
+/** What a run answers by. `state` groups what one looks for: stuck first, then running. */
+const RUN_ORDER: Record<ProcRun["status"], number> = {
+  failed: 0, waiting: 1, running: 2, completed: 3, cancelled: 4 };
+const RUN_SORTABLE = {
+  flow: (l: ProcRun) => l.definition_name,
+  state: (l: ProcRun) => (l.hangs ? -1 : RUN_ORDER[l.status] ?? 9),
+  age: (l: ProcRun) => l.hours,
+};
+
 function Operation() {
   const qc = useQueryClient();
   const nav = useNavigate();
@@ -251,7 +261,10 @@ function Operation() {
   // same question: what came back, and why did it then continue there?
   const [open, setOpen] = useState<number | null>(null);
 
-  const { data: runs } = useQuery({
+  const sort = useListSort<ProcRun>("processes.operations", { by: "age", dir: "desc" },
+                                    RUN_SORTABLE);
+
+  const { data: raw } = useQuery({
     queryKey: ["proc-running", onlyHangs, withFinish],
     queryFn: () => processApi.running({ onlyStuck: onlyHangs, includeDone: withFinish }),
     refetchInterval: 20000,
@@ -266,7 +279,8 @@ function Operation() {
     onError: (e) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
-  const hang = runs?.filter((l) => l.hangs).length ?? 0;
+  const runs = sort.sorted(raw);
+  const hang = runs.filter((l) => l.hangs).length;
 
   return (
     <Area
@@ -281,15 +295,18 @@ function Operation() {
           Abgeschlossene mitzeigen
         </label>
         <div className="flex-1" />
+        <SortBar by={sort.by} dir={sort.dir} onSort={sort.toggle}
+          fields={[{ key: "age", label: tr("sort.age") }, { key: "state", label: tr("sort.state") },
+                   { key: "flow", label: tr("sort.flow") }]} />
         <span className="text-xs text-muted">
-          {runs?.length ?? 0} {tr(runs?.length === 1 ? "proc.run" : "proc.runs")}
+          {runs.length} {tr(runs.length === 1 ? "proc.run" : "proc.runs")}
         </span>
       </>}
     >
       <Errorrow text={err} />
 
       <Listing>
-        {runs?.map((l) => (
+        {runs.map((l) => (
           <ListRow key={l.id}>
             <div className="flex flex-wrap items-center gap-2">
               <Tag color={STATUS_COLOR[l.status]}>{tr(STATUS_TEXT[l.status])}</Tag>
@@ -338,7 +355,7 @@ function Operation() {
             )}
           </ListRow>
         ))}
-        {runs?.length === 0 && (
+        {runs.length === 0 && (
           <ListingEmpty>{onlyHangs ? tr("proc.nothing_unusual_no_run") : tr("proc.no_run_going_right")}</ListingEmpty>
         )}
       </Listing>
@@ -356,18 +373,34 @@ const KIND: Record<ProcTrigger["kind"], { label: string; color: TagColor }> = {
   manual: { label: "processes.program", color: "neutral" },
 };
 
+/** What a trigger answers by. `state` puts what is switched off at the end. */
+const TRIGGER_SORTABLE = {
+  flow: (t: ProcTrigger) => t.definition_name,
+  kind: (t: ProcTrigger) => t.kind,
+  state: (t: ProcTrigger) => (t.enabled ? 0 : 1),
+};
+
 function Trigger() {
   const nav = useNavigate();
-  const { data: trigger } = useQuery({ queryKey: ["proc-triggers"], queryFn: processApi.triggers });
+  const sort = useListSort<ProcTrigger>("processes.triggers", { by: "flow", dir: "asc" },
+                                        TRIGGER_SORTABLE);
+  const { data: raw } = useQuery({ queryKey: ["proc-triggers"], queryFn: processApi.triggers });
+  const trigger = sort.sorted(raw);
   const { data: events } = useQuery({ queryKey: ["proc-events"], queryFn: processApi.events });
 
   const withoutListener = events?.filter((e) => e.listeners === 0).length ?? 0;
 
   return (
     <div className="space-y-4">
-      <Area hint={tr("proc.what_sets_flow_going")}>
+      <Area hint={tr("proc.what_sets_flow_going")}
+        tools={trigger.length > 1 ? <>
+          <div className="flex-1" />
+          <SortBar by={sort.by} dir={sort.dir} onSort={sort.toggle}
+            fields={[{ key: "flow", label: tr("sort.flow") }, { key: "kind", label: tr("sort.kind") },
+                     { key: "state", label: tr("sort.state") }]} />
+        </> : undefined}>
         <Listing>
-          {trigger?.map((t, i) => {
+          {trigger.map((t, i) => {
             const k = KIND[t.kind];
             return (
               <ListRow key={`${t.definition_id}-${t.kind}-${i}`} dimmed={!t.enabled}>
@@ -390,7 +423,7 @@ function Trigger() {
               </ListRow>
             );
           })}
-          {trigger?.length === 0 && <ListingEmpty>{tr("processes.no_version_yet")}</ListingEmpty>}
+          {trigger.length === 0 && <ListingEmpty>{tr("processes.no_version_yet")}</ListingEmpty>}
         </Listing>
       </Area>
 
