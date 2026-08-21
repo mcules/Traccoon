@@ -346,7 +346,7 @@ export const seriesApi = {
 
 /** What a plugin contributes: pages only so far, more is not needed yet. */
 export interface PluginContribution {
-  kind: "seite";
+  type: "page";
   path: string;
   label: string;
   icon?: string;

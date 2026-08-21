@@ -1,11 +1,11 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 
 export type ChromeTab = { key: string; label: string; to: string; icon?: string };
-/** How the sub-menu is drawn. "seite" = a narrow list beside the content — the normal case,
+/** How the sub-menu is drawn. "side" = a narrow list beside the content — the normal case,
  *  and what every page with tabs uses: one form for one movement. "oben" = the wrapping bar
  *  over the content, kept for a page that really needs its full width. Both fall back to one
  *  bar on a narrow screen. */
-export type ChromeLayout = "oben" | "seite";
+export type ChromeLayout = "top" | "side";
 /** `active` is the key of the active tab. The page knows it exactly; from the address it
  *  could only be guessed (`/settings` shows the same content as `/settings/secrets`, and
  *  then no tab looked active). */
@@ -32,7 +32,7 @@ export function useChrome(): ChromeCtx {
 // Assumption: tabs are taken into the effect deps over JSON.stringify so that an array
 // reference created anew on every render does not trigger an endless loop.
 export function usePageChrome(title: string, tabs: ChromeTab[], active?: string,
-                              layout: ChromeLayout = "oben"): void {
+                              layout: ChromeLayout = "top"): void {
   const { setChrome } = useChrome();
   const tabsKey = JSON.stringify(tabs);
   useEffect(() => {

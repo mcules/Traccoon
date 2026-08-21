@@ -24,8 +24,8 @@ export function pluginNav(plugins: PluginInfo[]): NavEntry[] {
   const out: NavEntry[] = [];
   for (const p of plugins) {
     for (const b of p.contributions || []) {
-      if (b.kind !== "seite") continue;
-      // Mehrere Seiten eines Plugins landen als Anker hinter derselben Adresse: Der Wirt
+      if (b.type !== "page") continue;
+      // Several pages of a plugin land as anchors behind the same address: the host
       // passes it on to the iframe, and the plugin decides itself what it shows.
       const anchor = (b.path || "").replace(/^\//, "");
       out.push({

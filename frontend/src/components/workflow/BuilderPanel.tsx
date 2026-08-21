@@ -69,7 +69,7 @@ export default function BuilderPanel({
       <div className="border-t border-line p-3">
         <button onClick={() => setOpen(true)}
           className={BUTTON_SMALL.secondary}>
-          ✍ Beschreiben statt bauen
+          {tr("builder_panel.describe_instead")}
         </button>
       </div>
     );

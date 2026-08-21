@@ -4,7 +4,7 @@ import { api, Project, ProjectCosts } from "../api";
 import { Area } from "./ui";
 import DeploymentsPanel from "./DeploymentsPanel";
 
-const CAT_LABEL: Record<string, string> = { todo: tr("common.open_state"), in_progress: tr("common.in_progress"), done: tr("common.done_state") };
+const CAT_KEY: Record<string, string> = { todo: "common.open_state", in_progress: "common.in_progress", done: "common.done_state" };
 const CAT_COLOR: Record<string, string> = { todo: "bg-slate-400", in_progress: "bg-sky-400", done: "bg-green-400" };
 
 export default function Dashboard({ project }: { project: Project }) {
@@ -41,14 +41,14 @@ export default function Dashboard({ project }: { project: Project }) {
             <div className="flex h-3 overflow-hidden rounded">
               {cats.map(([k, n]) => (
                 <div key={k} className={CAT_COLOR[k] || "bg-slate-500"}
-                  style={{ width: `${(n / t.total) * 100}%` }} title={`${CAT_LABEL[k] || k}: ${n}`} />
+                  style={{ width: `${(n / t.total) * 100}%` }} title={`${(CAT_KEY[k] ? tr(CAT_KEY[k]) : k)}: ${n}`} />
               ))}
             </div>
             <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted">
               {cats.map(([k, n]) => (
                 <span key={k} className="flex items-center gap-1.5">
                   <span className={`h-2 w-2 rounded-full ${CAT_COLOR[k] || "bg-slate-500"}`} />
-                  {CAT_LABEL[k] || k}: <b className="text-ink">{n}</b>
+                  {(CAT_KEY[k] ? tr(CAT_KEY[k]) : k)}: <b className="text-ink">{n}</b>
                 </span>
               ))}
               {t.failed_state > 0 && <span className="text-red-400">Fehlgeschlagen: {t.failed_state}</span>}

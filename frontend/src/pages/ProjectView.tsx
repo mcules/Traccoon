@@ -138,7 +138,7 @@ export default function ProjectView() {
     project?.name ?? "",
     projectChromeTabs(project, { tab, sub: view || under }),
     tab,
-    "seite",
+    "side",
   );
 
   if (!project) return <div className="text-muted">{tr("project_view.project_not_found")}</div>;

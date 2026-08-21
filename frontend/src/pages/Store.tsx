@@ -48,7 +48,7 @@ export default function StorePage() {
     onError: (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error")),
   });
 
-  usePageChrome(listing?.storage?.name || key, [], "", "seite");
+  usePageChrome(listing?.storage?.name || key, [], "", "side");
 
   return (
     <Area hint={tr("store.versions_left_selected_one")}>

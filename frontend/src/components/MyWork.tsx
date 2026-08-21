@@ -13,7 +13,7 @@ const PRIO_COLOR: Record<string, string> = {
   highest: "text-red-400", high: "text-orange-400", medium: "text-yellow-400",
   low: "text-sky-400", lowest: "text-slate-400",
 };
-const CAT_LABEL: Record<string, string> = { todo: tr("common.open_state"), in_progress: tr("common.in_progress"), done: tr("common.done_state") };
+const CAT_KEY: Record<string, string> = { todo: "common.open_state", in_progress: "common.in_progress", done: "common.done_state" };
 
 export default function MyWork() {
   const { data } = useQuery({
@@ -182,7 +182,7 @@ function TicketLine({ t }: { t: MyTicket }) {
       )}
       {t.assigned_agent && <span className="hidden shrink-0 text-xs text-muted sm:inline">🤖 {t.assigned_agent}</span>}
       <span className={`hidden shrink-0 text-xs sm:inline ${PRIO_COLOR[t.priority] || "text-muted"}`}>{t.priority}</span>
-      <span className="hidden shrink-0 text-xs text-muted md:inline">{CAT_LABEL[t.category] || t.category}</span>
+      <span className="hidden shrink-0 text-xs text-muted md:inline">{(CAT_KEY[t.category] ? tr(CAT_KEY[t.category]) : t.category)}</span>
       <span className="hidden shrink-0 text-xs text-muted lg:inline">{formatTime(t.updated_at)}</span>
     </Link>
   );
