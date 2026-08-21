@@ -56,7 +56,7 @@ body {
 
 /* Auf einem Handy zählt die Fläche, nicht die Dichte: ein Knopf mit 28 px Höhe ist am
    Bildschirm hübsch und unter dem Daumen ein Glücksspiel. Die Messung (tools/uitest/
-   bedienbarkeit.mjs) hat auf jeder Seite zwischen 8 und 44 solcher Ziele gefunden, die
+   usability.mjs) hat auf jeder Seite zwischen 8 und 44 solcher Ziele gefunden, die
    meisten davon in der Kopfzeile und in Listenzeilen.
 
    Die Regel greift nur bei grobem Zeigegerät, die Maus behält also die dichte Darstellung.

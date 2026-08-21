@@ -292,7 +292,7 @@ async def onboarding(u: User = Depends(get_current_user), db: AsyncSession = Dep
     steps = [
         {"key": k,
          "title": await tr(db, f"server.onboarding.{k}", u.locale),
-         "hint": await tr(db, f"server.onboarding.{k}_hinweis", u.locale),
+         "hint": await tr(db, f"server.onboarding.{k}_hint", u.locale),
          "done": done[k], "required": k in required}
         for k in ("claude_token", "runner", "project", "git", "verify", "telegram")
     ]

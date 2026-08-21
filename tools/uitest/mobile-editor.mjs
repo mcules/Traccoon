@@ -39,7 +39,7 @@ try {
   await page.waitForTimeout(1000);
   const konfigOffen = await page.getByText("Bausteine", { exact: true }).isVisible().catch(() => false);
   ok("Tippen auf einen Baustein öffnet seine Einstellungen", konfigOffen);
-  await page.screenshot({ path: "/w/31-handy-editor-baustein.png" });
+  await page.screenshot({ path: "/w/31-mobile-editor-block.png" });
 
   // Change the label, the header has to report unsaved work.
   const feld = page.locator('input[type="text"], input:not([type])').first();
@@ -58,7 +58,7 @@ try {
   const nachher = await knoten();
   ok("Baustein lässt sich antippen statt ziehen", nachher === vorher + 1,
      `${vorher} → ${nachher} Bausteine`);
-  await page.screenshot({ path: "/w/32-handy-editor-flaeche.png" });
+  await page.screenshot({ path: "/w/32-mobile-editor-canvas.png" });
 
   // Nothing stands past the edge.
   const ueber = await page.evaluate(
