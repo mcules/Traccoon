@@ -10,7 +10,7 @@ import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 import { BUTTON } from "./ui";
 
 const STATUS_LABEL: Record<string, string> = {
-  running: "instanz.running", waiting: "instanz.waiting", completed: "instanz.completed",
+  running: "instance.running", waiting: "instance.waiting", completed: "instance.completed",
   failed: "fehlgeschlagen", cancelled: "abgebrochen",
 };
 const STATUS_COLOR: Record<string, string> = {
@@ -54,11 +54,11 @@ export default function AssetWorkflow({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["asset-workflow", assetId] }),
   });
 
-  if (isLoading) return <div className="text-xs text-muted">{tr("asset_workflow.laedt")}</div>;
+  if (isLoading) return <div className="text-xs text-muted">{tr("asset_workflow.loading")}</div>;
   if (error) {
     return (
       <div className="text-xs text-red-400">
-        {error instanceof ApiError ? error.message : tr("asset_workflow.nicht_ladbar")}
+        {error instanceof ApiError ? error.message : tr("asset_workflow.process_not_loaded")}
       </div>
     );
   }
@@ -68,7 +68,7 @@ export default function AssetWorkflow({
     if (projectId == null) {
       return (
         <div className="rounded border border-line bg-surface p-2 text-xs text-muted">
-          {tr("asset_workflow.ohne_projekt")}
+          {tr("asset_workflow.stock_storage_without_project")}
         </div>
       );
     }
@@ -79,7 +79,7 @@ export default function AssetWorkflow({
           disabled={start.isPending}
           className={BUTTON.primary}
         >
-          🧭 {tr("asset_workflow.beschaffung_starten")}
+          🧭 {tr("asset_workflow.start_procurement_process")}
         </button>
         {start.error && (
           <div className="text-xs text-red-400">
@@ -87,7 +87,7 @@ export default function AssetWorkflow({
           </div>
         )}
         <p className="text-xs text-muted">
-          {tr("asset_workflow.startet_prozess")}
+          {tr("asset_workflow.starts_project_wide_procurement")}
           {assetLabel ? ` (${assetLabel})` : ""}.
         </p>
       </div>
@@ -156,7 +156,7 @@ function InstancePanel({
 
       {openSteps.length > 0 ? (
         <div className="space-y-2">
-          <div className="text-xs font-medium text-muted">{tr("asset_workflow.offene_schritte")}</div>
+          <div className="text-xs font-medium text-muted">{tr("asset_workflow.open_steps")}</div>
           {openSteps.map((s) => {
             const cfg = configByNode[s.node_id] ?? {};
             return (
@@ -179,7 +179,7 @@ function InstancePanel({
       ) : (
         instance.status !== "completed" &&
         instance.status !== "cancelled" && (
-          <div className="text-xs text-muted">{tr("asset_workflow.aktuell_kein_schritt_der_auf_dich_wartet")}</div>
+          <div className="text-xs text-muted">{tr("asset_workflow.no_step_is_waiting_for_you_right_now")}</div>
         )
       )}
     </div>

@@ -28,10 +28,10 @@ export default function AcceptInvite() {
   const [done, setDone] = useState<Project | null>(null);
 
   useEffect(() => {
-    if (!token) { setLoadErr(tr("accept_invite.kein_token")); return; }
+    if (!token) { setLoadErr(tr("accept_invite.no_invitation_token_address")); return; }
     api.get<Preview>(`/invitations/by-token/${token}`)
       .then(setPreview)
-      .catch((e) => setLoadErr(e instanceof ApiError ? e.message : tr("accept_invite.nicht_gefunden")));
+      .catch((e) => setLoadErr(e instanceof ApiError ? e.message : tr("accept_invite.invitation_not_found")));
   }, [token]);
 
   async function accept() {
@@ -81,14 +81,14 @@ export default function AcceptInvite() {
     );
   }
   if (!preview) {
-    return <div className="p-8 text-muted">{tr("accept_invite.laedt")}</div>;
+    return <div className="p-8 text-muted">{tr("accept_invite.loading")}</div>;
   }
   if (!preview.valid) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
         <div className="w-full max-w-sm rounded-lg border border-line bg-card p-6 text-center">
           <div className="mb-2 text-xl">🦝 Traccoon</div>
-          <div className="text-red-400">{preview.reason || tr("accept_invite.ungueltig")}</div>
+          <div className="text-red-400">{preview.reason || tr("accept_invite.invitation_not_valid")}</div>
         </div>
       </div>
     );
@@ -129,19 +129,19 @@ export default function AcceptInvite() {
           {mode === "register" && (
             <input
               className="w-full rounded border border-line bg-surface px-3 py-2 outline-none"
-              placeholder={tr("accept_invite.benutzername")} value={username} onChange={(e) => setUsername(e.target.value)} />
+              placeholder={tr("accept_invite.username")} value={username} onChange={(e) => setUsername(e.target.value)} />
           )}
           <input type="password"
             className="w-full rounded border border-line bg-surface px-3 py-2 outline-none"
-            placeholder={tr("accept_invite.passwort")} value={password} onChange={(e) => setPassword(e.target.value)} />
+            placeholder={tr("accept_invite.password")} value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         <button className={`mt-4 w-full ${BUTTON.primary}`}>
-          {tr(mode === "login" ? "accept_invite.anmelden_beitreten" : "accept_invite.registrieren_beitreten")}
+          {tr(mode === "login" ? "accept_invite.sign_join" : "accept_invite.register_join")}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
           className={BUTTON_TEXT.secondary}>
-          {tr(mode === "login" ? "accept_invite.neu_hier" : "accept_invite.bereits_registriert")}
+          {tr(mode === "login" ? "accept_invite.new_here_register" : "accept_invite.already_registered_sign")}
         </button>
       </form>
     </div>

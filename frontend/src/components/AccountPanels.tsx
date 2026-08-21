@@ -49,14 +49,14 @@ export function AgentsOperationPanel() {
 
   return (
     <div className={KARTE}>
-      <div className="mb-3 text-sm font-medium">{tr("preferences_panel.agenten_betrieb")}</div>
+      <div className="mb-3 text-sm font-medium">{tr("preferences_panel.agent_operation")}</div>
       <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
-        <label className="text-muted">{tr("preferences_panel.gleichzeitige_laeufe_max_20")}</label>
+        <label className="text-muted">{tr("preferences_panel.concurrent_runs_max_20")}</label>
         <input type="number" min={1} max={20} value={runners}
           onChange={(e) => setRunners(+e.target.value)} className={`w-20 ${FIELD}`} />
         <button onClick={async () => {
-          await api.put("/me/runner-limit", { value: runners }); inv(); flash(tr("konto.limit_gespeichert"));
-        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.speichern")}</button>
+          await api.put("/me/runner-limit", { value: runners }); inv(); flash(tr("account.limit_saved"));
+        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.save")}</button>
       </div>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>
@@ -71,19 +71,19 @@ export function AssistantNoticesPanel() {
 
   return (
     <div className={KARTE}>
-      <div className="mb-1 text-sm font-medium">{tr("preferences_panel.meldungen_des_assistenten")}</div>
-      <p className="mb-3 text-xs text-muted">{tr("konto.assistent_meldungen_hinweis")}</p>
+      <div className="mb-1 text-sm font-medium">{tr("preferences_panel.messages_assistant")}</div>
+      <p className="mb-3 text-xs text-muted">{tr("account.personal_assistant_works_through")}</p>
       <select value={notify} onChange={async (e) => {
         setNotify(e.target.value);
         await api.put("/me/assistant-notify", { value: e.target.value });
-        inv(); flash(tr("konto.gespeichert"));
+        inv(); flash(tr("account.saved"));
       }} className={`text-sm ${FIELD}`}>
-        <option value="needed">{tr("preferences_panel.nur_wenn_ich_etwas_wissen_muss_empfohlen")}</option>
-        <option value="always">{tr("preferences_panel.jeder_erledigte_eingang")}</option>
-        <option value="errors">{tr("preferences_panel.nur_pannen")}</option>
-        <option value="never">{tr("preferences_panel.gar_nicht")}</option>
+        <option value="needed">{tr("preferences_panel.only_when_i_need_to_know_recommended")}</option>
+        <option value="always">{tr("preferences_panel.every_finished_item")}</option>
+        <option value="errors">{tr("preferences_panel.failures_only")}</option>
+        <option value="never">{tr("preferences_panel.never")}</option>
       </select>
-      <p className="mt-2 text-[11px] text-muted">{tr("konto.assistent_fragen_hinweis")}</p>
+      <p className="mt-2 text-[11px] text-muted">{tr("account.questions_ask_chat_always")}</p>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>
   );
@@ -122,7 +122,7 @@ export function TimezonePanel() {
         <select value={zone} onChange={async (e) => {
           setZone(e.target.value);
           await api.put("/me/timezone", { value: e.target.value });
-          inv(); flash(tr("konto.gespeichert"));
+          inv(); flash(tr("account.saved"));
         }} className={`${FIELD} max-w-xs`}>
           {!zones && <option value={zone}>{zone || "…"}</option>}
           {zones?.map((z) => <option key={z} value={z}>{z}</option>)}
@@ -142,21 +142,21 @@ export function MemoryPanel() {
 
   return (
     <div className={KARTE}>
-      <div className="mb-1 text-sm font-medium">{tr("preferences_panel.gedaechtnis_der_agenten")}</div>
+      <div className="mb-1 text-sm font-medium">{tr("preferences_panel.memory_agents")}</div>
       <p className="mb-3 text-xs text-muted">
-        {tr("konto.gedaechtnis_erklaerung")} <code>{tr("preferences_panel.mensch_md")}</code>,{" "}
-        <code>{tr("preferences_panel.agent_lt_rolle_gt_md")}</code>{" "}
-        {tr("common.und")} <code>{tr("preferences_panel.projekt_lt_key_gt_md")}</code>.
+        {tr("account.folder_obsidian_vault_where")} <code>{tr("preferences_panel.human_md")}</code>,{" "}
+        <code>{tr("preferences_panel.agent_lt_role_gt_md")}</code>{" "}
+        {tr("common.text_2")} <code>{tr("preferences_panel.project_lt_key_gt_md")}</code>.
       </p>
       <div className="flex flex-wrap items-center gap-2 text-sm sm:gap-3">
         <input value={path} onChange={(e) => setPath(e.target.value)}
-          placeholder={tr("preferences_panel.z_b_04_traccoon_gedaechtnis")} className={`w-72 ${FIELD}`} />
+          placeholder={tr("preferences_panel.e_g_04_traccoon_memory")} className={`w-72 ${FIELD}`} />
         <button onClick={async () => {
           await api.put("/me/vault-memory-path", { value: path });
-          inv(); flash(tr(path ? "preferences_panel.gedaechtnis_gespeichert" : "preferences_panel.gedaechtnis_aus"));
-        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.speichern")}</button>
+          inv(); flash(tr(path ? "preferences_panel.memory_folder_saved" : "preferences_panel.memory_switched_off"));
+        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.save")}</button>
       </div>
-      <p className="mt-2 text-[11px] text-muted">{tr("preferences_panel.gedaechtnis_hinweis")}</p>
+      <p className="mt-2 text-[11px] text-muted">{tr("preferences_panel.empty_means_no_memory")}</p>
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
     </div>
   );
@@ -182,19 +182,19 @@ export function NightWindowPanel() {
 
   return (
     <div className={KARTE}>
-      <div className="mb-1 text-sm font-medium">{tr("preferences_panel.nacht_fenster")}</div>
-      <p className="mb-3 text-xs text-muted">{tr("preferences_panel.tickets_mit_der_markierung_nachtarbeit_s")}</p>
+      <div className="mb-1 text-sm font-medium">{tr("preferences_panel.night_window")}</div>
+      <p className="mb-3 text-xs text-muted">{tr("preferences_panel.tickets_marked_as_night_work_only_start_insid")}</p>
       <div className="mb-3 flex items-center gap-2 text-sm">
         <input type="number" min={0} max={23} value={start} onChange={(e) => setStart(+e.target.value)}
           className={`w-16 ${FIELD}`} />
-        <span className="text-muted">{tr("common.bis")}</span>
+        <span className="text-muted">{tr("common.text")}</span>
         <input type="number" min={0} max={23} value={ende} onChange={(e) => setEnde(+e.target.value)}
           className={`w-16 ${FIELD}`} />
         <span className="text-muted">{tr("preferences_panel.uhr")}</span>
         <button onClick={async () => {
           await api.put("/me/night-window", { start_hour: start, end_hour: ende, days: days });
-          inv(); flash(tr("preferences_panel.fenster_gespeichert"));
-        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.speichern")}</button>
+          inv(); flash(tr("preferences_panel.window_saved"));
+        }} className={BUTTON_SMALL.primary}>{tr("preferences_panel.save")}</button>
       </div>
       <div className="mb-3 flex gap-1">
         {DAYS.map((d, i) => (
@@ -203,7 +203,7 @@ export function NightWindowPanel() {
               ? "bg-brand text-white" : "border border-line text-muted"}`}>{tr(`common.tag_${d}`)}</button>
         ))}
       </div>
-      <Toggle label={tr("preferences_panel.fenster_ignorieren")} hint={tr("preferences_panel.nacht_tickets_jederzeit")}
+      <Toggle label={tr("preferences_panel.ignore_window")} hint={tr("preferences_panel.night_tickets_run_any")}
         on={!!flags?.night_override}
         onChange={async (v) => { await api.put("/me/night-override", { active: v }); inv(); }} />
       {msg && <div className="mt-2 text-sm text-green-400">{msg}</div>}
@@ -219,7 +219,7 @@ export function MySwitchPanel() {
   };
   return (
     <div className={KARTE}>
-      <div className="mb-3 text-sm font-medium">{tr("preferences_panel.meine_schalter")}</div>
+      <div className="mb-3 text-sm font-medium">{tr("preferences_panel.my_switches")}</div>
       <div className="space-y-2">
         {USER_FLAGS.map((key) => (
           <Toggle key={key} label={tr(`preferences_panel.flag_${key}`)}
@@ -241,7 +241,7 @@ export function SystemSwitchPanel() {
   };
   return (
     <div className="rounded-lg border border-yellow-500/40 bg-card p-4">
-      <div className="mb-3 text-sm font-medium text-yellow-400">{tr("preferences_panel.systemweit_administration")}</div>
+      <div className="mb-3 text-sm font-medium text-yellow-400">{tr("preferences_panel.system_wide_administration")}</div>
       <div className="space-y-2">
         {GLOBAL_FLAGS.map(([key, path]) => (
           <Toggle key={key} label={tr(`preferences_panel.flag_${key}`)}

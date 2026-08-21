@@ -37,10 +37,10 @@ export default function AssistantPolicies() {
   return (
     <div className="space-y-4">
       <ToolPermissions />
-      <Area title="📥 Eingangs-Regeln (Mail)" hint={tr("assistant_policies.einleitung")}>
+      <Area title="📥 Eingangs-Regeln (Mail)" hint={tr("assistant_policies.rules_assistant_learned_when")}>
       <Errorrow text={err} />
 
-      {isLoading && <div className="text-sm text-muted">{tr("assistant_policies.laedt")}</div>}
+      {isLoading && <div className="text-sm text-muted">{tr("assistant_policies.loading")}</div>}
 
       <Listing>
         {data.map((p) => (
@@ -49,9 +49,9 @@ export default function AssistantPolicies() {
               <Tag>{KIND_LABEL[p.match_kind] || p.match_kind}</Tag>
               <span className="font-medium text-ink">{p.match_value}</span>
               <span className={`rounded px-1.5 text-xs ${p.auto_approve ? "bg-green-600/15 text-green-400" : "bg-surface text-muted"}`}>
-                {tr(p.auto_approve ? "assistant_policies.auto_freigabe" : "assistant_policies.nur_vorgabe")}</span>
+                {tr(p.auto_approve ? "assistant_policies.auto_approve" : "assistant_policies.hint_only")}</span>
               <span className={`rounded px-1.5 text-xs ${p.redaction === "unredacted" ? "bg-amber-500/15 text-amber-400" : "bg-surface text-muted"}`}>
-                {tr(p.redaction === "unredacted" ? "assistant.ungeschwaerzt" : "assistant.geschwaerzt")}</span>
+                {tr(p.redaction === "unredacted" ? "assistant.unredacted" : "assistant.redacted")}</span>
               <span className="ml-auto text-xs text-muted">{p.hit_count}×</span>
             </div>
             {p.action_hint && <p className="mt-1 text-xs text-muted">↳ {p.action_hint}</p>}
@@ -59,20 +59,20 @@ export default function AssistantPolicies() {
               <div className="flex-1" />
               <Actions>
                 <IconButton icon={p.enabled ? "⏸" : "⏵"} onClick={() => save.mutate({ ...p, enabled: !p.enabled })}
-                  title={tr(p.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
-                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setDialog(p)} />
-                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteRule(p)} />
+                  title={tr(p.enabled ? "jobs_panel.switch_off" : "jobs_panel.switch")} />
+                <IconButton icon={ICON.edit} title={tr("common.edit")} onClick={() => setDialog(p)} />
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteRule(p)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
         {!isLoading && data.length === 0 && (
-          <ListingEmpty>{tr("assistant_policies.keine_regeln")}</ListingEmpty>
+          <ListingEmpty>{tr("assistant_policies.no_rules_yet_choose")}</ListingEmpty>
         )}
       </Listing>
 
       <button onClick={() => setDialog({})} className={BUTTON.primary}>
-        {ICON.fresh} {tr("assistant_policies.regel_anlegen")}
+        {ICON.fresh} {tr("assistant_policies.create_rule")}
       </button>
       </Area>
 
@@ -101,7 +101,7 @@ function ToolPermissions() {
   const A: Record<string, "green" | "red" | "neutral"> = { allow: "green", deny: "red", ask: "neutral" };
 
   return (
-    <Area title="🔐 Tool-Freigaben" hint={tr("assistant_policies.rechte_hinweis")}>
+    <Area title="🔐 Tool-Freigaben" hint={tr("assistant_policies.what_assistant_may_do")}>
       <Listing>
         {data.map((p) => (
           <ListenLine key={p.id}>
@@ -112,11 +112,11 @@ function ToolPermissions() {
             <div className="flex-1" />
             {p.action !== "allow" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "allow" })} className={BUTTON_TEXT.secondary}>→ allow</button>}
             {p.action !== "deny" && <button onClick={() => save.mutate({ tool: p.tool, resource: p.resource, action: "deny" })} className={BUTTON_TEXT.danger}>→ deny</button>}
-            <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => del.mutate(p.id)} />
+            <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => del.mutate(p.id)} />
             </div>
           </ListenLine>
         ))}
-        {data.length === 0 && <ListingEmpty>{tr("assistant_policies.keine_der_assistent_fragt_bei_jeder_heik")}</ListingEmpty>}
+        {data.length === 0 && <ListingEmpty>{tr("assistant_policies.none_the_assistant_asks_before_every_sensitiv")}</ListingEmpty>}
       </Listing>
       <div className="flex gap-2">
         <input value={tool} onChange={(e) => setTool(e.target.value)} placeholder={tr("assistant_policies.tool_glob_z_b_obsidian")}
@@ -150,42 +150,42 @@ function RuleDialog({ rule: rule, runs: running, onClose, onSave }: {
   const [enabled, setEnabled] = useState(rule ? rule.enabled : true);
 
   return (
-    <Dialog title={tr(rule ? "assistant_policies.regel_bearbeiten" : "assistant_policies.regel_anlegen")}
+    <Dialog title={tr(rule ? "assistant_policies.edit_rule" : "assistant_policies.create_rule")}
       onClose={onClose}
       foot={<DialogFoot onCancel={onClose} disabled={!value.trim()} runs={running}
-        saveText={rule ? undefined : tr("common.anlegen")}
+        saveText={rule ? undefined : tr("common.create")}
         onSave={() => onSave({
           ...(rule ? { id: rule.id } : {}),
           match_kind: kind, match_value: value.trim(), redaction, action_hint: hint,
           auto_approve: autoApprove, enabled,
         })} />}>
       <div className="space-y-3">
-        <Field label={tr("assistant_policies.trifft_auf")}>
+        <Field label={tr("assistant_policies.matches")}>
           <select value={kind} onChange={(e) => setKind(e.target.value)} className={INPUT_VALUE}>
-            <option value="sender">{tr("assistant_policies.absender")}</option>
+            <option value="sender">{tr("assistant_policies.sender")}</option>
             <option value="domain">{tr("assistant_policies.domain")}</option>
-            <option value="category">{tr("assistant_policies.kategorie")}</option>
+            <option value="category">{tr("assistant_policies.category")}</option>
           </select>
         </Field>
-        <Field label={tr("assistant_policies.wert_z_b_news_verband_de")}>
+        <Field label={tr("assistant_policies.value_e_g_news_verband_de")}>
           <input value={value} autoFocus onChange={(e) => setValue(e.target.value)} className={INPUT_VALUE} />
         </Field>
-        <Field label={tr("assistant_policies.verarbeitung")}>
+        <Field label={tr("assistant_policies.processing")}>
           <select value={redaction} onChange={(e) => setRedaction(e.target.value)} className={INPUT_VALUE}>
-            <option value="redacted">{tr("assistant.geschwaerzt")}</option>
-            <option value="unredacted">{tr("assistant.ungeschwaerzt")}</option>
+            <option value="redacted">{tr("assistant.redacted")}</option>
+            <option value="unredacted">{tr("assistant.unredacted")}</option>
           </select>
         </Field>
-        <Field label={tr("assistant_policies.gelernte_aktion_optional")}>
+        <Field label={tr("assistant_policies.learned_action_optional")}>
           <input value={hint} onChange={(e) => setHint(e.target.value)} className={INPUT_VALUE} />
         </Field>
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={autoApprove} onChange={(e) => setAutoApprove(e.target.checked)} />
-          {tr("assistant_policies.auto_freigabe")}
+          {tr("assistant_policies.auto_approve")}
         </label>
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
-          {tr("artifact_types_panel.aktiv")}
+          {tr("artifact_types_panel.active")}
         </label>
       </div>
     </Dialog>

@@ -111,7 +111,7 @@ export default function Board({
     const dragIssue = issues.find((x) => x.key === key);
     if (!dragIssue) return;
     if (inTestenvFlow(dragIssue) && statusMap.get(colId)?.category === "done") {
-      setMoveErr(tr("board.fertig_nur_ueber_knopf"));
+      setMoveErr(tr("board.to_done_only_through_set_to_done_on_the_ticke"));
       return;
     }
     let targetIdx = idx;
@@ -156,7 +156,7 @@ export default function Board({
           <div className="flex-1" />
           {project.my_ai_assign && i.assigned_agent && (
             <span className="rounded bg-brand/20 px-1 text-brand">
-              🤖 {i.agent_working ? tr("board.laeuft") : i.agent_status || i.assigned_agent}
+              🤖 {i.agent_working ? tr("board.running") : i.agent_status || i.assigned_agent}
             </span>
           )}
         </div>
@@ -199,7 +199,7 @@ export default function Board({
         <div className="space-y-2">
           {activeItems.length === 0 && (
             <div className="rounded border border-line bg-surface px-3 py-6 text-center text-sm text-muted">
-              {tr("board.keine_tickets_in", { column: activeName })}
+              {tr("board.no_tickets_column", { column: activeName })}
             </div>
           )}
           {activeItems.map((i) => (
@@ -213,7 +213,7 @@ export default function Board({
                 <div className="absolute right-2 top-2">
                   <select
                     value={i.status_id}
-                    title={tr("board.verschieben_nach")}
+                    title={tr("board.move")}
                     onChange={(e) => move.mutate({ key: i.key, status_id: Number(e.target.value), position: 0 })}
                     className="rounded border border-line bg-surface px-2 py-1 text-xs text-muted">
                     {movableCols(i).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}

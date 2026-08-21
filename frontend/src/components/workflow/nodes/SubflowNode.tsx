@@ -23,7 +23,7 @@ export default function SubflowNode({ id, data, selected }: FlowNodeProps) {
       from={!!data.config.disabled}
       sources={sources}
     >
-      <div>{data.config.slot ? tr(SLOT_LABELS[data.config.slot]) : tr("node.kein_ablauf_gewaehlt")}</div>
+      <div>{data.config.slot ? tr(SLOT_LABELS[data.config.slot]) : tr("node.no_flow_chosen")}</div>
     </BaseNode>
   );
 }

@@ -111,7 +111,7 @@ function FieldLine({ field: field, values: values, onSet }: {
               );
             })}
             {selectable.length === 0 && (
-              <span className="text-xs text-muted">{tr("artifact_fields.keine_werte_gepflegt")}</span>
+              <span className="text-xs text-muted">{tr("artifact_fields.no_values_maintained")}</span>
             )}
           </div>
         ) : (
@@ -178,7 +178,7 @@ function MultiText({ values: values, kind, onSet }: {
         <span key={`${w}-${i}`} className="flex items-center gap-1 rounded bg-surface px-1.5 py-0.5 text-xs">
           {String(w)}
           <button onClick={() => onSet(values.filter((_, j) => j !== i))}
-            className={BUTTON_TEXT.danger} title={tr("artifact_fields.entfernen")}>✕</button>
+            className={BUTTON_TEXT.danger} title={tr("artifact_fields.remove")}>✕</button>
         </span>
       ))}
       <input

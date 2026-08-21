@@ -15,8 +15,8 @@ import { BUTTON, BUTTON_SMALL } from "./ui";
 /** Raw status to label. Unknown values are passed through raw. */
 const ST_LABEL: Record<string, string> = {
   ok: "erfolgreich", failed: "fehlgeschlagen", cancelled: "abgebrochen",
-  building: "deploy.status.baut", pending: "deploy.status.wartet", "pending-check": "deploy.status.wartet_pruefung",
-  rolledback: "deploy.status.zurueckgerollt",
+  building: "deploy.building", pending: "deploy.waiting", "pending-check": "deploy.waiting_check",
+  rolledback: "deploy.rolled_back",
 };
 /** Text colours from the existing supply (AgentMonitor.ST_COLOR), no new colour language. */
 const ST_TEXT: Record<string, string> = {
@@ -31,26 +31,26 @@ const ST_BAR: Record<string, string> = {
   rolledback: "bg-orange-400", cancelled: "bg-slate-600",
 };
 const KIND_LABEL: Record<string, string> = {
-  self: "deploy.art.wartung", check: "deploy.art.pruefung", stack: "deploy.art.stack",
+  self: "deploy.maintenance_update", check: "deploy.check_only", stack: "deploy.stack",
 };
 const SOURCE_LABEL: Record<string, string> = {
-  agent: "deployments_panel.quelle_agent", merge: "deployments_panel.quelle_merge",
-  workflow: "deployments_panel.quelle_workflow", maintenance: "deployments_panel.quelle_maintenance",
+  agent: "deployments_panel.agent", merge: "deployments_panel.merge",
+  workflow: "deployments_panel.process", maintenance: "deployments_panel.maintenance",
   // The only value with a human behind it, the button below.
-  manual: "deployments_panel.quelle_manual",
+  manual: "deployments_panel.hand",
 };
 const FILTER: [DeploymentStatusFilter, string][] = [
   // Server side, `running` includes the queue ("not decided yet"), which is why it is
   // "open" and not "running".
-  ["all", "deployments_panel.filter_alle"], ["running", "deployments_panel.filter_offen"],
+  ["all", "deployments_panel.all"], ["running", "deployments_panel.open"],
   ["ok", "deployments_panel.filter_ok"], ["failed", "deployments_panel.filter_failed"],
   ["other", "deployments_panel.filter_other"],
 ];
 /** The API knows no "without a window": `since_hours` is mandatory with a default of 720 h
  *  and a maximum of 8760 h. An entry "everything" would therefore be a lie about 30 days. */
 const WINDOW: [number, string][] = [
-  [24, "deployments_panel.fenster_24h"], [168, "deployments_panel.fenster_7t"],
-  [720, "deployments_panel.fenster_30t"], [8760, "deployments_panel.fenster_1j"],
+  [24, "deployments_panel.24_hours"], [168, "deployments_panel.7_days"],
+  [720, "deployments_panel.30_days"], [8760, "deployments_panel.one_year"],
 ];
 const WINDOW_STANDARD = 720;
 /** `LIMIT_MAX` of the API. Loading more beyond that would bring nothing but the same excerpt. */
@@ -100,12 +100,12 @@ export default function DeploymentsPanel(
     const st = error instanceof ApiError ? error.status : 0;
     return (
       <div className="text-xs text-muted">
-        {st === 404 ? tr("deploy.liste_nicht_verfuegbar")
-          : tr("deploy.laden_fehlgeschlagen", { code: st || "?" })}
+        {st === 404 ? tr("deploy.deployment_list_not_available")
+          : tr("deploy.deployments_not_loaded_code", { code: st || "?" })}
       </div>
     );
   }
-  if (isLoading || !data) return <div className="text-xs text-muted">{tr("deployments_panel.laedt")}</div>;
+  if (isLoading || !data) return <div className="text-xs text-muted">{tr("deployments_panel.loading")}</div>;
 
   const items = data.items || [];
   // "Is one already running?" is answered from `by_status` and **not** from `items`: the
@@ -151,8 +151,8 @@ export default function DeploymentsPanel(
         // Empty because of the filter or empty because there is nothing: not the same message.
         <div className="text-xs text-muted">
           {Object.values(data.by_status || {}).some((n) => n > 0)
-            ? tr("deploy.kein_treffer_filter")
-            : tr("deployments_panel.nichts_deployt", { window: tr(windowText(since)) })}
+            ? tr("deploy.no_row_matches_chosen")
+            : tr("deployments_panel.nothing_deployed_window", { window: tr(windowText(since)) })}
         </div>
       ) : (
         <div className="divide-y divide-line">
@@ -197,12 +197,12 @@ function Trigger({ projectId, issueId, stackDir, allowed: allowed, running, catc
   // Order = urgency: no permission beats everything, then the missing target, then the
   // running deploy (which passes by itself).
   const reason = !allowed
-    ? tr("deploy.rolle_fehlt")
+    ? tr("deploy.deploying_needs_least_maintainer")
     : !folder
-      ? tr("deploy.kein_arbeitsverzeichnis")
+      ? tr("deploy.no_working_directory_configured")
 
       : running
-        ? tr("deploy.laeuft_bereits")
+        ? tr("deploy.deployment_project_already_running")
         : "";
 
   const fire = async () => {
@@ -213,7 +213,7 @@ function Trigger({ projectId, issueId, stackDir, allowed: allowed, running, catc
       setQuestion(false);
       catchup();
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : tr("deploy.einreihen_fehlgeschlagen"));
+      setError(e instanceof ApiError ? e.message : tr("deploy.deployment_not_queued"));
     } finally {
       setSendet(false);
     }
@@ -228,25 +228,25 @@ function Trigger({ projectId, issueId, stackDir, allowed: allowed, running, catc
           Jetzt deployen
         </button>
         <span className="text-xs text-muted">
-          {reason || tr("deploy.baut_neu", { folder: folder })}
+          {reason || tr("deploy.rebuilds_restarts_stack_folder", { folder: folder })}
         </span>
       </div>
 
       {question && (
         <div className="mt-3 space-y-2 rounded border border-yellow-400/40 bg-surface p-3">
-          <div className="text-sm text-ink">{tr("deployments_panel.diesen_stand_wirklich_ausrollen")}</div>
+          <div className="text-sm text-ink">{tr("deployments_panel.really_roll_out_this_state")}</div>
           <div className="text-xs text-muted">
-            {tr("deployments_panel.was_passiert", { folder: folder })}
+            {tr("deployments_panel.folder_deployer_fetches_current", { folder: folder })}
           </div>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted">
-            <li>{tr("deployments_panel.warnung_ausfall")}</li>
-            <li>{tr("deployments_panel.warnung_kein_rollback")}</li>
-            <li>{tr("deployments_panel.warnung_welcher_stand")}</li>
+            <li>{tr("deployments_panel.service_briefly_unreachable_while")}</li>
+            <li>{tr("deployments_panel.there_no_automatic_rollback")}</li>
+            <li>{tr("deployments_panel.what_gets_deployed_state")}</li>
           </ul>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button onClick={fire} disabled={sendet}
               className={BUTTON.primary}>
-              {tr(sendet ? "deployments_panel.wird_eingereiht" : "deployments_panel.ja_deployen")}
+              {tr(sendet ? "deployments_panel.queueing" : "deployments_panel.yes_deploy_now")}
             </button>
             <button onClick={() => setQuestion(false)} disabled={sendet}
               className={BUTTON.secondary}>
@@ -258,7 +258,7 @@ function Trigger({ projectId, issueId, stackDir, allowed: allowed, running, catc
 
       {queued !== null && (
         <div className="mt-2 text-xs text-green-400">
-          {tr("deployments_panel.eingereiht_als", { number: queued })}
+          {tr("deployments_panel.queued_number_deployer_picks", { number: queued })}
         </div>
       )}
       {error && <div className="mt-2 text-xs text-red-400">{error}</div>}
@@ -297,18 +297,18 @@ function Header({ by, count, truncated, compact, window: window }: {
           </span>
         ))}
         <span className="ml-auto">
-          {tr("deployments_panel.zusammenfassung", { sum: sum_total, window: tr(windowText(window)), count })}
-          {truncated ? ` ${tr("deployments_panel.gekuerzt")}` : ""}
+          {tr("deployments_panel.sum_window_count_shown", { sum: sum_total, window: tr(windowText(window)), count })}
+          {truncated ? ` ${tr("deployments_panel.shortened")}` : ""}
         </span>
       </div>
       {aborted > 0 && !compact && (
         <div className="mt-1.5 text-xs text-muted">
-          {tr("deployments_panel.abgebrochen_erklaerung", { count: aborted })}
+          {tr("deployments_panel.no_code_path_writes", { count: aborted })}
         </div>
       )}
       {aborted > 0 && compact && (
         <div className="mt-1.5 text-xs text-muted">
-          {tr("deployments_panel.abgebrochen_kurz")}
+          {tr("deployments_panel.cancelled_ones_come_one")}
         </div>
       )}
     </div>
@@ -342,13 +342,13 @@ function Line({ d, compact, on, toggle }: {
                   onClick={(e) => e.stopPropagation()}
                   className="text-xs text-brand hover:underline">{d.issue_key}</Link>
               ) : <span className="text-xs text-muted">{d.issue_key}</span>
-            ) : <span className="text-xs text-muted">{tr("deployments_panel.ohne_ticket")}</span>}
+            ) : <span className="text-xs text-muted">{tr("deployments_panel.no_ticket")}</span>}
             <span className="ml-auto shrink-0 text-xs text-muted">{formatTime(d.created_at) || "—"}</span>
           </div>
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted">
-            <span>{tr("deployments_panel.warteschlange")}: {durationText(d.wait_ms)}</span>
-            <span>{tr("deployments_panel.arbeit")}: {durationText(d.duration_ms)}</span>
-            {!compact && <span>{tr("deployments_panel.ausloeser")}: {tr(sourceText(d.source))}</span>}
+            <span>{tr("deployments_panel.queue")}: {durationText(d.wait_ms)}</span>
+            <span>{tr("deployments_panel.work")}: {durationText(d.duration_ms)}</span>
+            {!compact && <span>{tr("deployments_panel.trigger")}: {tr(sourceText(d.source))}</span>}
             {!compact && d.stack_dir && (
               <span className="truncate font-mono" title={d.stack_dir}>{d.stack_dir}</span>
             )}
@@ -370,10 +370,10 @@ function Line({ d, compact, on, toggle }: {
  *  its own, not the green tick. If it is running, the running mark wins. */
 function OkChars({ ok, runs: running }: { ok?: boolean | null; runs: boolean }) {
   if (running) {
-    return <span className="mt-0.5 animate-pulse text-yellow-400" title={tr("deployments_panel.laeuft_gerade")}>◐</span>;
+    return <span className="mt-0.5 animate-pulse text-yellow-400" title={tr("deployments_panel.running")}>◐</span>;
   }
   if (ok === true) return <span className="mt-0.5 text-green-400" title="erfolgreich">✓</span>;
-  if (ok === false) return <span className="mt-0.5 text-red-400" title={tr("deployments_panel.nicht_erfolgreich")}>✗</span>;
+  if (ok === false) return <span className="mt-0.5 text-red-400" title={tr("deployments_panel.not_successful")}>✗</span>;
   return <span className="mt-0.5 text-muted" title="unbekannt">•</span>;
 }
 
@@ -385,11 +385,11 @@ function LogExpander({ id, bytes }: { id: number; bytes?: number | null }) {
     staleTime: 60000,
     retry: false,
   });
-  if (isLoading) return <div className="pb-2 pl-6 text-xs text-muted">{tr("deployments_panel.log_wird_geladen")}</div>;
+  if (isLoading) return <div className="pb-2 pl-6 text-xs text-muted">{tr("deployments_panel.loading_log")}</div>;
   if (error) {
     return <div className="pb-2 pl-6 text-xs text-muted">
-      {tr("deployments_panel.log_nicht_abrufbar", {
-        reason: error instanceof ApiError ? String(error.status) : tr("common.fehler") })}
+      {tr("deployments_panel.log_not_available_reason", {
+        reason: error instanceof ApiError ? String(error.status) : tr("common.error") })}
     </div>;
   }
   const log = data?.log || "";
@@ -402,7 +402,7 @@ function LogExpander({ id, bytes }: { id: number; bytes?: number | null }) {
         <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded border border-line bg-surface p-2 font-mono text-[11px] text-muted">
           {log}
         </pre>
-      ) : <div className="text-xs text-muted">{tr("deployments_panel.kein_log_hinterlegt")}</div>}
+      ) : <div className="text-xs text-muted">{tr("deployments_panel.no_log_stored")}</div>}
     </div>
   );
 }
@@ -421,7 +421,7 @@ function durationText(ms: number | null | undefined): string {
 /** `requested_by`/`chat_id` are filled on not a single row; the trigger comes from `source`,
  *  and with old rows it simply does not exist. */
 function sourceText(source?: string | null): string {
-  if (!source) return "deployments_panel.quelle_unbekannt";
+  if (!source) return "deployments_panel.unknown";
   return SOURCE_LABEL[source] || source;
 }
 
@@ -429,13 +429,13 @@ function sourceText(source?: string | null): string {
  *  Returns a key, the caller translates. The odd windows fall back to a counted text, because
  *  a number plus a unit survives translation while a hand written case ending does not. */
 function windowText(hours: number): string {
-  if (hours === 24) return "deployments_panel.fenster_24h";
-  if (hours === 168) return "deployments_panel.fenster_7t";
-  if (hours === 720) return "deployments_panel.fenster_30t";
-  if (hours === 8760) return "deployments_panel.fenster_1j";
+  if (hours === 24) return "deployments_panel.24_hours";
+  if (hours === 168) return "deployments_panel.7_days";
+  if (hours === 720) return "deployments_panel.30_days";
+  if (hours === 8760) return "deployments_panel.one_year";
   return hours % 24 === 0
-    ? tr("deployments_panel.fenster_tage", { count: hours / 24 })
-    : tr("deployments_panel.fenster_stunden", { count: hours });
+    ? tr("deployments_panel.count_days", { count: hours / 24 })
+    : tr("deployments_panel.count_hours", { count: hours });
 }
 
 /** The log head contains line breaks; in a table row those are only a nuisance. */

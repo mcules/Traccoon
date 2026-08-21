@@ -22,7 +22,7 @@ export default function VersionsDiff({ defId, versionId, against, title: title, 
 
   return (
     <Dialog wide title={title} onClose={onClose}>
-      {isLoading && <p className="text-sm text-muted">{tr("common.laedt")}</p>}
+      {isLoading && <p className="text-sm text-muted">{tr("common.loading")}</p>}
       <Errorrow text={error ? String((error as Error).message || error) : ""} />
       {data && <DiffContent d={data} />}
     </Dialog>
@@ -33,7 +33,7 @@ function DiffContent({ d }: { d: WfDiff }) {
   if (d.identical) {
     return (
       <p className="text-sm text-muted">
-        {tr("diff.gleich")}
+        {tr("diff.both_versions_do_same")}
       </p>
     );
   }
@@ -41,17 +41,17 @@ function DiffContent({ d }: { d: WfDiff }) {
     <div className="space-y-4 text-sm">
       <p className="text-xs text-muted">
         {d.from_version === null
-          ? tr("diff.gegen_nichts", { to: d.to_version })
-          : tr("diff.von_bis", { from: d.from_version, to: d.to_version })}
+          ? tr("diff.v_first_version", { to: d.to_version })
+          : tr("diff.comparing_v_v", { from: d.from_version, to: d.to_version })}
       </p>
 
-      <Group title={tr("diff.knoten_neu")} entries={d.nodes_added} color="text-green-400" />
-      <Group title={tr("diff.knoten_weg")} entries={d.nodes_removed} color="text-red-400" />
+      <Group title={tr("diff.new_steps")} entries={d.nodes_added} color="text-green-400" />
+      <Group title={tr("diff.removed_steps")} entries={d.nodes_removed} color="text-red-400" />
 
       {d.nodes_changed.length > 0 && (
         <div>
           <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
-            {tr("diff.knoten_geaendert")}
+            {tr("diff.changed_steps")}
           </div>
           <div className="space-y-2">
             {d.nodes_changed.map((k) => (
@@ -81,8 +81,8 @@ function DiffContent({ d }: { d: WfDiff }) {
         </div>
       )}
 
-      <Edges title={tr("diff.kanten_neu")} texts={d.edges_added} color="text-green-400" />
-      <Edges title={tr("diff.kanten_weg")} texts={d.edges_removed} color="text-red-400" />
+      <Edges title={tr("diff.new_connections")} texts={d.edges_added} color="text-green-400" />
+      <Edges title={tr("diff.removed_connections")} texts={d.edges_removed} color="text-red-400" />
     </div>
   );
 }

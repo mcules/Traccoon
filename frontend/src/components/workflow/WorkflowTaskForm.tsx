@@ -66,7 +66,7 @@ export default function WorkflowTaskForm({
         <input
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder={tr(needReason ? "task_form.begruendung_pflicht" : "task_form.begruendung_optional")}
+          placeholder={tr(needReason ? "task_form.reason_required_rejection" : "task_form.reason_optional")}
           className={`w-full ${inp}`}
         />
         <div className="flex gap-2">
@@ -100,9 +100,9 @@ export default function WorkflowTaskForm({
       )}
       {config.handover && (
         <label className="block text-xs text-muted">
-          {tr("task_form.uebergabe_an")}
+          {tr("task_form.hand")}
           <select value={handover} onChange={(e) => setHandover(e.target.value)} className={`mt-1 w-full ${inp}`}>
-            <option value="">{tr("task_form.nicht_uebergeben")}</option>
+            <option value="">{tr("task_form.do_not_hand")}</option>
             {members.map((m) => (
               <option key={m.user_id} value={m.user_id}>
                 {m.display_name || m.username}

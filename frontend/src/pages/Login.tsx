@@ -22,7 +22,7 @@ export default function Login() {
         await login(email, password);
       } else {
         await api.post("/auth/register", { email, username, password });
-        setInfo(tr("login.registriert"));
+        setInfo(tr("login.registered_admin_may_still"));
         setMode("login");
       }
     } catch (e) {
@@ -41,11 +41,11 @@ export default function Login() {
           {mode === "register" && (
             <input
               className="w-full rounded border border-line bg-surface px-3 py-2 outline-none"
-              placeholder={tr("login.benutzername")} value={username} onChange={(e) => setUsername(e.target.value)} />
+              placeholder={tr("login.username")} value={username} onChange={(e) => setUsername(e.target.value)} />
           )}
           <input type="password"
             className="w-full rounded border border-line bg-surface px-3 py-2 outline-none"
-            placeholder={tr("login.passwort")} value={password} onChange={(e) => setPassword(e.target.value)} />
+            placeholder={tr("login.password")} value={password} onChange={(e) => setPassword(e.target.value)} />
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         {info && <div className="mt-3 text-sm text-green-400">{info}</div>}
@@ -54,7 +54,7 @@ export default function Login() {
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
           className={BUTTON_TEXT.secondary}>
-          {tr(mode === "login" ? "login.neu_hier" : "login.zurueck_zum_login")}
+          {tr(mode === "login" ? "login.new_here_register" : "login.back_sign")}
         </button>
       </form>
     </div>

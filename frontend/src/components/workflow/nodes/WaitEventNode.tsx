@@ -20,7 +20,7 @@ export default function WaitEventNode({ id, data, selected }: FlowNodeProps) {
   return (
     <BaseNode
       nodeId={id}
-      title={data.config.label || tr("wait_event_node.titel")}
+      title={data.config.label || tr("wait_event_node.wait_event")}
       icon="⏳"
       accent="border-t-cyan-500"
       selected={selected}

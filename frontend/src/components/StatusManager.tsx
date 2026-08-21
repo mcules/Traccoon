@@ -29,7 +29,7 @@ export default function StatusManager({ project }: { project: Project }) {
 
   useEffect(() => { if (meta) setRows([...meta.statuses].sort((a, b) => a.order - b.order)); }, [meta]);
   const inv = () => qc.invalidateQueries({ queryKey: ["meta", project.id] });
-  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
 
   const save = async (s: Status | null, name: string, category: string) => {
     setErr("");
@@ -57,25 +57,25 @@ export default function StatusManager({ project }: { project: Project }) {
 
   return (
     <div className="rounded-lg border border-line bg-card p-4">
-      <div className="mb-1 text-sm font-medium">{tr("status_manager.board_spalten_status")}</div>
-      <p className="mb-3 text-xs text-muted">{tr("status_manager.einleitung")}</p>
+      <div className="mb-1 text-sm font-medium">{tr("status_manager.board_columns_states")}</div>
+      <p className="mb-3 text-xs text-muted">{tr("status_manager.these_columns_make_up")}</p>
       <Errorrow text={err} />
       <div className="space-y-1.5">
         {rows.map((s, i) => (
           <div key={s.id} className="flex items-center gap-2 rounded border border-line px-2 py-1.5 text-sm">
             <div className="flex flex-col">
               <button onClick={() => move(i, -1)} disabled={i === 0}
-                title={tr("status_manager.nach_oben")} aria-label={tr("status_manager.nach_oben")}
+                title={tr("status_manager.move_up")} aria-label={tr("status_manager.move_up")}
                 className={BUTTON_TEXT.secondary}>▲</button>
               <button onClick={() => move(i, 1)} disabled={i === rows.length - 1}
-                title={tr("status_manager.nach_unten")} aria-label={tr("status_manager.nach_unten")}
+                title={tr("status_manager.move_down")} aria-label={tr("status_manager.move_down")}
                 className={BUTTON_TEXT.secondary}>▼</button>
             </div>
             <span className="flex-1">{s.name}</span>
             <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted">{catLabel(s.category)}</span>
             <Actions>
-              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setDialog(s)} />
-              <IconButton icon={ICON.remove} title={tr("status_manager.status_loeschen")} danger
+              <IconButton icon={ICON.edit} title={tr("common.edit")} onClick={() => setDialog(s)} />
+              <IconButton icon={ICON.remove} title={tr("status_manager.delete_state")} danger
                 onClick={() => setDeleteStatus(s)} />
             </Actions>
           </div>
@@ -83,9 +83,9 @@ export default function StatusManager({ project }: { project: Project }) {
       </div>
       <button onClick={() => setDialog({})}
         className={BUTTON.primary}>
-        {ICON.fresh} {tr("status_manager.neue_spalte")}
+        {ICON.fresh} {tr("status_manager.new_column")}
       </button>
-      <p className="mt-2 text-xs text-muted">{tr("status_manager.kategorie_hinweis")}</p>
+      <p className="mt-2 text-xs text-muted">{tr("status_manager.category_drives_statistics_throughput")}</p>
 
       {dialog && (
         <StatusDialog status={"id" in dialog ? (dialog as Status) : null}
@@ -93,7 +93,7 @@ export default function StatusManager({ project }: { project: Project }) {
           onSave={(name, cat) => save("id" in dialog ? (dialog as Status) : null, name, cat)} />
       )}
       {deleteStatus && (
-        <DeleteDialog was={deleteStatus.name} hint={tr("status_manager.loeschen_hinweis")}
+        <DeleteDialog was={deleteStatus.name} hint={tr("status_manager.status_holding_tickets_can")}
           onClose={() => setDeleteStatus(null)} onDelete={() => del(deleteStatus)} />
       )}
     </div>
@@ -107,15 +107,15 @@ function StatusDialog({ status, onClose, onSave }: {
   const [category, setCategory] = useState(status?.category || "todo");
 
   return (
-    <Dialog title={tr(status ? "status_manager.spalte_bearbeiten" : "status_manager.neue_spalte")} onClose={onClose}
+    <Dialog title={tr(status ? "status_manager.edit_column" : "status_manager.new_column")} onClose={onClose}
       foot={<DialogFoot onCancel={onClose} disabled={!name.trim()}
-        saveText={status ? undefined : tr("common.anlegen")}
+        saveText={status ? undefined : tr("common.create")}
         onSave={() => onSave(name.trim(), category)} />}>
       <div className="space-y-3">
         <Field label={tr("status_manager.name")}>
           <input value={name} autoFocus onChange={(e) => setName(e.target.value)} className={INPUT_VALUE} />
         </Field>
-        <Field label={tr("status_manager.kategorie")} hint={tr("status_manager.kategorie_hinweis")}>
+        <Field label={tr("status_manager.category")} hint={tr("status_manager.category_drives_statistics_throughput")}>
           <select value={category} onChange={(e) => setCategory(e.target.value)} className={INPUT_VALUE}>
             {CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>

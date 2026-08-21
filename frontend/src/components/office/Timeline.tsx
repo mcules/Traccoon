@@ -67,10 +67,10 @@ interface Series {
 
 /** Order of the **label**: "2 tool calls, 1 message". */
 const SERIES: readonly Series[] = [
-  { key: "tools", css: "bg-sky-400", inside: "timeline.tool_ein", many: "timeline.tool_viele" },
-  { key: "says", css: "bg-violet-400", inside: "timeline.says_ein", many: "timeline.says_viele" },
-  { key: "thinks", css: "bg-slate-400", inside: "timeline.thinks_ein", many: "timeline.thinks_viele" },
-  { key: "errors", css: "bg-red-400", inside: "timeline.errors_ein", many: "timeline.errors_viele" },
+  { key: "tools", css: "bg-sky-400", inside: "timeline.tool_call", many: "timeline.tool_calls" },
+  { key: "says", css: "bg-violet-400", inside: "timeline.message", many: "timeline.messages" },
+  { key: "thinks", css: "bg-slate-400", inside: "timeline.thinking_step", many: "timeline.thinking_steps" },
+  { key: "errors", css: "bg-red-400", inside: "timeline.error", many: "timeline.errors" },
 ];
 
 /** Order in the **stack**, from top to bottom. Errors lie on top: they are what one has to be
@@ -115,7 +115,7 @@ export function barLabel(b: Bucket): string {
     const n = l[r.key];
     if (n > 0) parts.push(`${n} ${tr(n === 1 ? r.inside : r.many)}`);
   }
-  return parts.length ? `${uhr} · ${parts.join(", ")}` : `${uhr} · ${tr("timeline.keine_ereignisse")}`;
+  return parts.length ? `${uhr} · ${parts.join(", ")}` : `${uhr} · ${tr("timeline.no_events")}`;
 }
 
 /** Only the clock time, for the edge label below the bar. */

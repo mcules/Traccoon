@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { FlowNode } from "./nodes/shared";
-import Steplog, { type Step } from "./Schrittprotokoll";
+import Steplog, { type Step } from "./StepLog";
 import { BUTTON_SMALL, BUTTON_TEXT} from "../ui";
 
 /**
@@ -37,7 +37,7 @@ export default function DryrunPanel(
       setSteps(r.steps);
       const plaintext: Record<string, string> = {
         completed: "durchgelaufen", failed: "abgebrochen", waiting: "wartet",
-        running: "probelauf.laeuft_noch", cancelled: "probelauf.abgebrochen",
+        running: "dry_run.still_running", cancelled: "dry_run.cancelled",
       };
       setResult(r.error ? `${plaintext[r.status] || r.status} — ${r.error}`
                           : (plaintext[r.status] || r.status));
@@ -56,14 +56,14 @@ export default function DryrunPanel(
           disabled={!defId || runs}
           className={BUTTON_SMALL.secondary}
         >
-          {tr(runs ? "probelauf.laeuft" : "probelauf.starten")}
+          {tr(runs ? "dry_run.running" : "dry_run.dry_run")}
         </button>
         {result && <span className="text-[11px]">Ergebnis: <b>{result}</b></span>}
       </div>
       <p className="text-[11px]">
         {hatProbe
-          ? tr("probelauf.hinweis_mit_nutzlast")
-          : tr("probelauf.ohne_beispiel")}
+          ? tr("dry_run.plays_draft_through_sample")
+          : tr("dry_run.without_sample_payload_start")}
       </p>
       {error && (
         <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-red-300">{error}</div>
@@ -76,10 +76,10 @@ export default function DryrunPanel(
               Probelauf — {steps.length} Schritt{steps.length === 1 ? "" : "e"}
             </span>
             <button onClick={() => setSteps(null)}
-              className={BUTTON_TEXT.secondary} title={tr("probelauf_panel.schliessen")}>✕</button>
+              className={BUTTON_TEXT.secondary} title={tr("dry_run_panel.close")}>✕</button>
           </div>
           <Steplog steps={steps} maxHeight="18rem"
-            emptyText={tr("probelauf.kein_schritt")} />
+            emptyText={tr("dry_run.no_step_ran_flow")} />
         </div>
       )}
     </div>

@@ -13,9 +13,9 @@ import {
 } from "../components/ui";
 import OwnWorkflowsPanel from "../components/workflow/OwnWorkflowsPanel";
 import { projectPath } from "../projectTabs";
-import MetricseriesPanel from "../components/workflow/MessreihenPanel";
-import StoresPanel from "../components/workflow/AblagenPanel";
-import LocationsPanel from "../components/workflow/StandortePanel";
+import MetricseriesPanel from "../components/workflow/MetricSeriesPanel";
+import StoresPanel from "../components/workflow/StoresPanel";
+import LocationsPanel from "../components/workflow/PlacesPanel";
 import WorkflowInstanceView from "../components/workflow/WorkflowInstanceView";
 import VersionsDiff from "../components/workflow/VersionsDiff";
 import { ConfirmDialog, ICON, IconButton } from "../components/ui";
@@ -34,10 +34,10 @@ import { ConfirmDialog, ICON, IconButton } from "../components/ui";
 type Tab = "own" | "default" | "operations" | "triggers" | "metrics" | "documents"
   | "locations";
 const TABS: [Tab, string][] = [
-  ["own", "processes.tabs.own"], ["default", "processes.tabs.default_set"],
-  ["operations", "processes.tabs.operations"], ["triggers", "processes.tabs.triggers"],
-  ["metrics", "processes.tabs.series"], ["documents", "processes.tabs.storage"],
-  ["locations", "processes.tabs.locations"],
+  ["own", "processes.own"], ["default", "processes.default_set"],
+  ["operations", "processes.operations"], ["triggers", "processes.triggers"],
+  ["metrics", "processes.series"], ["documents", "processes.storage"],
+  ["locations", "processes.locations"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 
@@ -79,8 +79,8 @@ function StandardPreset() {
 
   return (
     <Area hint={<>
-      {tr("proc.standard_hinweis")}{" "}
-      {tr(admin ? "processes.hinweis_admin" : "processes.hinweis_leser")}
+      {tr("proc.shipped_default_applies_every")}{" "}
+      {tr(admin ? "processes.running_instances_untouched_stay" : "processes.only_admin_can_change")}
     </>}>
       <Listing>
         {slots?.map((s) => (
@@ -91,7 +91,7 @@ function StandardPreset() {
             onEdit={() => s.definition_id && nav(`/workflows/${s.definition_id}`, { state: { from: "/processes/default" } })}
           />
         ))}
-        {slots?.length === 0 && <ListingEmpty>{tr("proc.kein_standard_satz")}</ListingEmpty>}
+        {slots?.length === 0 && <ListingEmpty>{tr("proc.no_default_set_available")}</ListingEmpty>}
       </Listing>
     </Area>
   );
@@ -107,9 +107,9 @@ function SlotLine({ s, admin, open: open, onToggle, onEdit }: {
         <span className="font-medium text-ink">{s.name}</span>
         {s.published
           ? <Tag>v{s.version}</Tag>
-          : <Tag color="yellow">{tr("proc.nicht_veroeffentlicht")}</Tag>}
+          : <Tag color="yellow">{tr("proc.not_published")}</Tag>}
         {s.deviations.length > 0 && (
-          <Tag color="yellow" title={tr("processes.diese_projekte_haben_eine_eigene_kopie_u")}>
+          <Tag color="yellow" title={tr("processes.these_projects_have_a_copy_of_their_own_and_n")}>
             {s.deviations.length} Abweichung{s.deviations.length === 1 ? "" : "en"}
           </Tag>
         )}
@@ -125,7 +125,7 @@ function SlotLine({ s, admin, open: open, onToggle, onEdit }: {
 
       {s.deviations.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
-          <span>{tr("processes.eigene_kopie")}</span>
+          <span>{tr("processes.own_copy")}</span>
           {s.deviations.map((a) => (
             <button
               key={a.project_id}
@@ -183,7 +183,7 @@ function Versions({ defId, mayWrite: mayWrite }: { defId: number; mayWrite: bool
               <span className={`rounded px-1.5 py-0.5 ${
                 v.status === "published" ? "bg-green-500/15 text-green-300" : "bg-surface text-muted"
               }`}>
-                {tr(v.status === "published" ? "proc.veroeffentlicht" : "proc.entwurf")}
+                {tr(v.status === "published" ? "proc.published" : "proc.draft")}
               </span>
               {current && (
                 <span className="rounded bg-brand/20 px-1.5 py-0.5 text-brand">aktuell</span>
@@ -194,29 +194,29 @@ function Versions({ defId, mayWrite: mayWrite }: { defId: number; mayWrite: bool
               <span className="shrink-0 text-muted">
                 {formatDate(v.published_at)}
               </span>
-              <IconButton icon="⇄" title={tr("proc.unterschiede")}
+              <IconButton icon="⇄" title={tr("proc.differences_previous_version")}
                 onClick={() => setDiffFrom({ id: v.id, version: v.version })} />
               {mayWrite && !current && v.status === "published" && (
-                <IconButton icon={ICON.back} title={tr("processes.diese_fassung_wieder_in_kraft_setzen_als")}
+                <IconButton icon={ICON.back} title={tr("processes.put_this_version_back_in_force_as_a_new_versi")}
                   onClick={() => setBack({ id: v.id, version: v.version })} />
               )}
             </div>
           );
         })}
-        {versions?.length === 0 && <div className="text-xs text-muted">{tr("processes.noch_keine_version")}</div>}
+        {versions?.length === 0 && <div className="text-xs text-muted">{tr("processes.no_version_yet")}</div>}
       </div>
 
       {diffFrom && (
         <VersionsDiff defId={defId} versionId={diffFrom.id}
-          title={tr("proc.unterschiede_zu_vorgaenger", { version: diffFrom.version })}
+          title={tr("proc.what_v_version_changed", { version: diffFrom.version })}
           onClose={() => setDiffFrom(null)} />
       )}
       {back && (
         <ConfirmDialog
-          title={tr("proc.zurueckrollen")}
-          text={tr("proc.zurueckrollen_frage", { version: back.version })}
-          hint={tr("proc.zurueckrollen_hinweis")}
-          confirmText={tr("proc.zurueckrollen")} danger={false}
+          title={tr("proc.roll_back")}
+          text={tr("proc.put_version_v_version", { version: back.version })}
+          hint={tr("proc.published_new_version_old")}
+          confirmText={tr("proc.roll_back")} danger={false}
           runs={rollback.isPending}
           onClose={() => setBack(null)}
           onConfirm={() => rollback.mutate(back.id)} />
@@ -232,13 +232,13 @@ const STATUS_COLOR: Record<ProcRun["status"], TagColor> = {
   running: "blue", waiting: "neutral", failed: "red", completed: "green", cancelled: "neutral",
 };
 const STATUS_TEXT: Record<ProcRun["status"], string> = {
-  running: "proc.status.laeuft", waiting: "proc.status.wartet", failed: "proc.status.gescheitert",
+  running: "proc.running", waiting: "proc.waiting", failed: "proc.failed",
   completed: "fertig", cancelled: "abgebrochen",
 };
 const WAITS_ON: Record<string, string> = {
-  human_task: "proc.wartet.person", approval: "proc.wartet.freigabe", agent: "proc.wartet.agent",
-  timer: "proc.wartet.zeitpunkt", event: "proc.wartet.ereignis", gate: "proc.wartet.fenster",
-  subflow: "proc.wartet.unterprozess",
+  human_task: "proc.person", approval: "proc.approval", agent: "proc.agent",
+  timer: "proc.point_time", event: "proc.event", gate: "proc.free_time_window",
+  subflow: "proc.subprocess",
 };
 
 function Operation() {
@@ -270,11 +270,11 @@ function Operation() {
 
   return (
     <Area
-      hint={tr("proc.betrieb_hinweis")}
+      hint={tr("proc.all_open_runs_across")}
       tools={<>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={onlyHangs} onChange={(e) => setOnlyHangs(e.target.checked)} />
-          {tr("proc.nur_auffaelliges")}{hang > 0 && !onlyHangs ? ` (${hang})` : ""}
+          {tr("proc.only_what_stands")}{hang > 0 && !onlyHangs ? ` (${hang})` : ""}
         </label>
         <label className="flex items-center gap-1.5">
           <input type="checkbox" checked={withFinish} onChange={(e) => setWithFinish(e.target.checked)} />
@@ -282,7 +282,7 @@ function Operation() {
         </label>
         <div className="flex-1" />
         <span className="text-xs text-muted">
-          {runs?.length ?? 0} {tr(runs?.length === 1 ? "proc.vorgang" : "proc.vorgaenge")}
+          {runs?.length ?? 0} {tr(runs?.length === 1 ? "proc.run" : "proc.runs")}
         </span>
       </>}
     >
@@ -314,20 +314,20 @@ function Operation() {
               )}
               <Rowbutton
                 onClick={() => setOpen(open === l.id ? null : l.id)}
-                title={tr("processes.verlauf_des_vorgangs")}
+                title={tr("processes.history_run")}
               >
-                {tr(open === l.id ? "processes.verlauf_zu" : "processes.verlauf")}
+                {tr(open === l.id ? "processes.close_history" : "processes.history")}
               </Rowbutton>
               {(l.status === "running" || l.status === "waiting") && (
                 <Rowbutton danger onClick={() => cancel.mutate(l.id)}
-                  title={tr("processes.vorgang_abbrechen")}>
-                  {tr("processes.abbrechen")}
+                  title={tr("processes.cancel_run")}>
+                  {tr("processes.cancel")}
                 </Rowbutton>
               )}
             </div>
             <div className="mt-1 text-xs text-muted">
-              {tr("processes.steht_bei")} <span className="text-ink">{l.node_label || "—"}</span>
-              {l.waiting_for && ` — ${tr("proc.wartet")} ${WAITS_ON[l.waiting_for] ? tr(WAITS_ON[l.waiting_for]) : l.waiting_for}`}
+              {tr("processes.stands")} <span className="text-ink">{l.node_label || "—"}</span>
+              {l.waiting_for && ` — ${tr("proc.waiting_2")} ${WAITS_ON[l.waiting_for] ? tr(WAITS_ON[l.waiting_for]) : l.waiting_for}`}
             </div>
             {l.error && <div className="mt-1 text-xs text-red-300">{l.error}</div>}
             {open === l.id && (
@@ -339,7 +339,7 @@ function Operation() {
           </ListenLine>
         ))}
         {runs?.length === 0 && (
-          <ListingEmpty>{onlyHangs ? tr("proc.nichts_auffaelliges") : tr("proc.kein_vorgang")}</ListingEmpty>
+          <ListingEmpty>{onlyHangs ? tr("proc.nothing_unusual_no_run") : tr("proc.no_run_going_right")}</ListingEmpty>
         )}
       </Listing>
     </Area>
@@ -349,11 +349,11 @@ function Operation() {
 // ── Triggers ─────────────────────────────────────────────────────────────────
 
 const KIND: Record<ProcTrigger["kind"], { label: string; color: TagColor }> = {
-  event: { label: "processes.ausloeser_event", color: "violet" },
-  webhook: { label: "processes.ausloeser_webhook", color: "blue" },
-  job: { label: "processes.ausloeser_job", color: "green" },
-  subflow: { label: "processes.ausloeser_subflow", color: "neutral" },
-  manual: { label: "processes.ausloeser_manual", color: "neutral" },
+  event: { label: "processes.event", color: "violet" },
+  webhook: { label: "processes.webhook", color: "blue" },
+  job: { label: "processes.schedule", color: "green" },
+  subflow: { label: "processes.subprocess", color: "neutral" },
+  manual: { label: "processes.program", color: "neutral" },
 };
 
 function Trigger() {
@@ -365,7 +365,7 @@ function Trigger() {
 
   return (
     <div className="space-y-4">
-      <Area hint={tr("proc.ausloeser_hinweis")}>
+      <Area hint={tr("proc.what_sets_flow_going")}>
         <Listing>
           {trigger?.map((t, i) => {
             const k = KIND[t.kind];
@@ -385,20 +385,20 @@ function Trigger() {
                 </div>
                 <div className="mt-1 text-xs text-muted">
                   {t.label}
-                  {t.only_project_id && ` ${tr("proc.nur_fuer_projekt")}`}
+                  {t.only_project_id && ` ${tr("proc.one_specific_project_only")}`}
                 </div>
               </ListenLine>
             );
           })}
-          {trigger?.length === 0 && <ListingEmpty>{tr("processes.noch_keine_version")}</ListingEmpty>}
+          {trigger?.length === 0 && <ListingEmpty>{tr("processes.no_version_yet")}</ListingEmpty>}
         </Listing>
       </Area>
 
       <Area hint={<>
-        <span className="font-medium text-ink">{tr("processes.ereignisse")}</span>{" — "}
-        {tr("processes.ereignisse_hinweis")}
+        <span className="font-medium text-ink">{tr("processes.events")}</span>{" — "}
+        {tr("processes.these_events_happen_during")}
         {withoutListener === events?.length && events.length > 0 && (
-          <> {tr("processes.ereignisse_niemand_hoert")}</>
+          <> {tr("processes.right_now_no_flow")}</>
         )}
       </>}>
         <Listing>

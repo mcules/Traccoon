@@ -10,10 +10,10 @@ import ProjectView from "./pages/ProjectView";
 import TicketView from "./pages/TicketView";
 import WorkflowEditor from "./pages/WorkflowEditor";
 import Processes from "./pages/Processes";
-import StorePage from "./pages/Ablage";
+import StorePage from "./pages/Store";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
-import Account from "./pages/Konto";
+import Account from "./pages/Account";
 import Inbox from "./pages/Inbox";
 import Mail from "./pages/Mail";
 import PluginHost from "./pages/PluginHost";
@@ -87,7 +87,7 @@ export default function App() {
   useLanguageFromUser(user?.locale);
   useLanguage();
 
-  if (loading) return <div className="p-8 text-muted">{tr("common.laedt")}</div>;
+  if (loading) return <div className="p-8 text-muted">{tr("common.loading")}</div>;
   if (!user) {
     return (
       <Routes>
@@ -132,7 +132,7 @@ export default function App() {
         <Route path="/projects/:key/:tab/:unter" element={<ProjectView />} />
         <Route path="/buero" element={<OldAddress to="/office" />} />
         <Route path="/office" element={
-          <Suspense fallback={<div className="p-4 text-sm text-muted">{tr("common.laedt")}</div>}>
+          <Suspense fallback={<div className="p-4 text-sm text-muted">{tr("common.loading")}</div>}>
             <Office />
           </Suspense>
         } />

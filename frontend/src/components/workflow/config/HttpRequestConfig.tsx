@@ -35,7 +35,7 @@ export default function HttpRequestConfig({
           list="ziele"
           value={params.destination || ""}
           onChange={(e) => set("destination", e.target.value)}
-          placeholder={tr("http_request_config.name_des_ziels")}
+          placeholder={tr("http_request_config.name_destination")}
           className={`mt-1 ${inp}`}
         />
         <datalist id="ziele">
@@ -47,8 +47,8 @@ export default function HttpRequestConfig({
         </datalist>
         <span className="mt-1 block text-[11px] text-muted">
           {chosen
-            ? `${chosen.base_url} · ${chosen.auth_type === "none" ? tr("http_request.ohne_anmeldung") : chosen.auth_type}`
-            : tr("http_request.ziele_pflegen")}
+            ? `${chosen.base_url} · ${chosen.auth_type === "none" ? tr("http_request.no_authentication") : chosen.auth_type}`
+            : tr("http_request.destinations_kept_administration_settings")}
         </span>
       </label>
 
@@ -61,19 +61,19 @@ export default function HttpRequestConfig({
           </select>
         </label>
         <label className="col-span-2 block text-xs font-medium text-muted">
-          {tr("http_config.pfad")}
+          {tr("http_config.path_appended_base_url")}
           <input value={params.path || ""} onChange={(e) => set("path", e.target.value)}
             placeholder="/api/v2/orders/{{created_ticket.key}}" className={`mt-1 ${inp}`} />
         </label>
       </div>
 
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">{tr("http_request_config.query_parameter_an_die_url")}</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("http_request_config.query_parameters_appended_to_the_url")}</div>
         <KeyValueEditor value={params.query || {}} onChange={(q) => set("query", q)} />
       </div>
 
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">{tr("http_request_config.zusaetzliche_kopfzeilen")}</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("http_request_config.additional_headers")}</div>
         <KeyValueEditor value={params.headers || {}} onChange={(h) => set("headers", h)} />
       </div>
 
@@ -97,7 +97,7 @@ export default function HttpRequestConfig({
 
       <div className="grid grid-cols-2 gap-2">
         <label className="block text-xs font-medium text-muted">
-          {tr("http_request.ergebnis_unter")}
+          {tr("http_request.result_context")}
           <input value={params.context_key || ""} onChange={(e) => set("context_key", e.target.value)}
             placeholder="http" className={`mt-1 ${inp}`} />
         </label>

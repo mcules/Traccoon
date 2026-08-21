@@ -4,7 +4,7 @@
 // catalog entry is not an outage (the English sentence from the server is still shown), but
 // it is a German screen with one English line in it, and nobody notices that in review.
 //
-// Run: node --experimental-strip-types tools/fehlertexte-check.mjs
+// Run: node --experimental-strip-types tools/error-texts-check.mjs
 // The backend has to be reachable at ../backend, in the container as /backend.
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +15,7 @@ const API = join(BACKEND, "app/api");
 const schluessel = new Set();
 for (const datei of readdirSync(API).filter((d) => d.endsWith(".py"))) {
   const quelle = readFileSync(join(API, datei), "utf8");
-  for (const treffer of quelle.matchAll(/\bFehler\(\s*[^,]+,\s*"(err\.[a-z0-9_]+)"/g)) {
+  for (const treffer of quelle.matchAll(/\bError\(\s*[^,]+,\s*"(err\.[a-z0-9_]+)"/g)) {
     schluessel.add(treffer[1]);
   }
 }
@@ -42,7 +42,7 @@ const melde = (was, liste) => {
   console.log(`FEHL ${was}: ${liste.join(", ")}`);
 };
 
-console.log(`${schluessel.size} Fehlertexte in der API`);
+console.log(`${schluessel.size} error texts in the API`);
 melde("jeder Schlüssel steht in de.json", fehlt(de));
 melde("jeder Schlüssel steht in en.json", fehlt(en));
 melde("keine verwaisten err.*-Einträge", ueberzaehlig);

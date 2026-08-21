@@ -36,21 +36,21 @@ export default function MyWork() {
   return (
     <div className="mb-6 space-y-4">
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-6">
-        <Tile label={tr("my_work.wartet_auf_dich")} value={s.action}
+        <Tile label={tr("my_work.waiting")} value={s.action}
           color={s.action ? "text-yellow-400" : undefined} />
-        <Tile label={tr("my_work.mir_zugewiesen")} value={s.assigned} />
-        <Tile label={tr("my_work.laeuft_gerade")} value={s.working}
+        <Tile label={tr("my_work.assigned_me")} value={s.assigned} />
+        <Tile label={tr("my_work.running_now")} value={s.working}
           color={s.working ? "text-sky-400" : undefined} />
-        <Tile label={tr("my_work.erledigt_7_t")} value={s.done_7d} color="text-green-400" />
-        <Tile label={tr("my_work.projekte")} value={s.projects} />
+        <Tile label={tr("my_work.done_7_d")} value={s.done_7d} color="text-green-400" />
+        <Tile label={tr("my_work.projects")} value={s.projects} />
         <Link to="/inbox" className="block">
-          <Tile label={tr("my_work.ungelesen")} value={s.unread}
+          <Tile label={tr("my_work.unread")} value={s.unread}
             color={s.unread ? "text-brand" : undefined} />
         </Link>
       </div>
 
       {(wfTasks?.length ?? 0) > 0 && (
-        <Section title={`🧭 ${tr("my_work.meine_schritte")}`} hint={tr("my_work.meine_schritte_hinweis")}>
+        <Section title={`🧭 ${tr("my_work.my_open_steps")}`} hint={tr("my_work.process_steps_waiting_tasks")}>
           <div className="space-y-1.5">
             {wfTasks!.map((t) => (
               <button
@@ -76,20 +76,20 @@ export default function MyWork() {
       )}
 
       {data.action.length > 0 && (
-        <Section title={`⚡ ${tr("my_work.braucht_dich")}`} hint={tr("my_work.braucht_dich_hinweis")}>
+        <Section title={`⚡ ${tr("my_work.needs")}`} hint={tr("my_work.agent_waiting_permission_review")}>
           <ProjectGroups tickets={data.action} />
         </Section>
       )}
 
       {data.assigned.length > 0 && (
-        <Section title={`📋 ${tr("my_work.mir_zugewiesen")}`} hint={tr("my_work.mir_zugewiesen_hinweis")}>
+        <Section title={`📋 ${tr("my_work.assigned_me")}`} hint={tr("my_work.open_tickets_responsible")}>
           <ProjectGroups tickets={data.assigned} />
         </Section>
       )}
 
       {empty && (
         <div className="rounded-lg border border-line bg-card p-4 text-sm text-muted">
-          🎉 {tr("my_work.nichts_offen")}
+          🎉 {tr("my_work.nothing_waiting_no_open")}
         </div>
       )}
 
@@ -174,7 +174,7 @@ function TicketLine({ t }: { t: MyTicket }) {
       className={`${LINE} flex items-center gap-3`}>
       <span className="font-mono text-xs text-muted" title={t.project_name}>{t.key}</span>
       <span className="min-w-0 flex-1 truncate text-sm">{t.summary}</span>
-      {t.agent_working && <span className="text-xs text-sky-400" title={tr("my_work.agent_arbeitet")}>{tr("my_work.laeuft")}</span>}
+      {t.agent_working && <span className="text-xs text-sky-400" title={tr("my_work.agent_working")}>{tr("my_work.running")}</span>}
       {wi && (
         <span className={`shrink-0 text-xs ${
           wi.kind === "error" ? "text-red-400" : wi.kind === "question" ? "text-yellow-400" : "text-muted"

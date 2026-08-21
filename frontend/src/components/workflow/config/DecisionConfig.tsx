@@ -57,7 +57,7 @@ export default function DecisionConfig({
   const inp = "rounded border border-line bg-card px-2 py-1 text-xs text-ink";
   return (
     <div className="space-y-3">
-      <div className="mb-1 text-xs font-medium text-muted">{tr("decision_config.zweige")}</div>
+      <div className="mb-1 text-xs font-medium text-muted">{tr("decision_config.branches")}</div>
       <div className="space-y-2">
         {branches.map((b, i) => {
           const s = parseGuard(b.guard);
@@ -68,10 +68,10 @@ export default function DecisionConfig({
                 <input
                   value={b.label}
                   onChange={(e) => patch(i, { label: e.target.value })}
-                  placeholder={tr("decision_config.beschriftung")}
+                  placeholder={tr("decision_config.label")}
                   className={`flex-1 ${inp}`}
                 />
-                <button onClick={() => remove(i)} className={BUTTON_TEXT.danger} title={tr("decision_config.zweig_entfernen")}>
+                <button onClick={() => remove(i)} className={BUTTON_TEXT.danger} title={tr("decision_config.remove_branch")}>
                   ✕
                 </button>
               </div>
@@ -82,7 +82,7 @@ export default function DecisionConfig({
                 <input
                   value={s.field}
                   onChange={(e) => upd({ field: e.target.value })}
-                  placeholder={tr("decision_config.kontext_feld")}
+                  placeholder={tr("decision_config.context_field")}
                   list={fields.length ? "wf-kontextfelder" : undefined}
                   className={`w-40 font-mono ${inp}`}
                 />
@@ -96,7 +96,7 @@ export default function DecisionConfig({
                 <input
                   value={s.value}
                   onChange={(e) => upd({ value: e.target.value })}
-                  placeholder={tr("decision_config.wert")}
+                  placeholder={tr("decision_config.value")}
                   className={`w-24 ${inp}`}
                 />
                 <span className="text-[11px] text-muted">

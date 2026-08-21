@@ -3,13 +3,13 @@ import { tr } from "../../../i18n";
 
 const PHASE_LABEL: Record<string, string> = {
   planning: "Planung",
-  execution: "agent.rolle.ausfuehrung",
+  execution: "agent.execution",
 };
 
 const ROLE_LABEL: Record<string, string> = {
   plan_agent: "agent_task_node.plan_agent",
-  exec_agent: "agent.rolle.exec",
-  review_agent: "agent.rolle.review",
+  exec_agent: "agent.executor_project",
+  review_agent: "agent.reviewer_project",
   assigned: "agent_task_node.assigned",
 };
 
@@ -22,7 +22,7 @@ function outcomes(phase?: string): SourceHandleDef[] {
   return [
     first,
     { id: "loop_exhausted", label: "Zwischenstand", color: "!bg-amber-500" },
-    { id: "blocked", label: tr("agent.ausgang.rueckfrage"), color: "!bg-yellow-500" },
+    { id: "blocked", label: tr("agent.question"), color: "!bg-yellow-500" },
     { id: "failed", label: "Fehler", color: "!bg-red-500" },
     // Safety net: unknown results land on "err" by the default mapping.
     { id: "err", label: "sonstiges", color: "!bg-red-500" },

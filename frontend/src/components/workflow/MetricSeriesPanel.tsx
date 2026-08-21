@@ -51,7 +51,7 @@ export default function MetricseriesPanel() {
   });
 
   return (
-    <Area hint={tr("messreihen_panel.einleitung")}>
+    <Area hint={tr("metric_series_panel.measurement_series_numbers_flows")}>
       <Errorrow text={err} />
 
       <Listing>
@@ -61,7 +61,7 @@ export default function MetricseriesPanel() {
             toggle={() => setOpen(open === r.key ? null : r.key)}
             remove={() => setDeleteSeries(r)} />
         ))}
-        {!series?.length && <ListingEmpty>{tr("messreihen_panel.keine_reihe")}</ListingEmpty>}
+        {!series?.length && <ListingEmpty>{tr("metric_series_panel.no_series_yet_one")}</ListingEmpty>}
       </Listing>
       {deleteSeries && (
         <DeleteDialog was={deleteSeries.key} runs={remove.isPending}
@@ -99,21 +99,21 @@ function SeriesLine({ series: series, open: open, toggle, remove: remove }: {
         )}
         {t?.days_left != null ? (
           <span className={knapp ? "text-amber-300" : ""}>
-            {tr("messreihen.noch_tage", { days: t.days_left, date: t.empty_at ?? "" })}
+            {tr("metric_series.days_days_left_empty", { days: t.days_left, date: t.empty_at ?? "" })}
           </span>
         ) : (
-          <span>{tr((t?.points ?? 0) < 3 ? "messreihen.zu_wenige_werte" : "messreihen.kein_ende")}</span>
+          <span>{tr((t?.points ?? 0) < 3 ? "metric_series.too_few_values_forecast" : "metric_series.no_end_sight")}</span>
         )}
-        {t?.fit != null && <span>{tr("messreihen.guete", { value: t.fit })}</span>}
+        {t?.fit != null && <span>{tr("metric_series.quality_value", { value: t.fit })}</span>}
         <span>{t?.points ?? 0} Werte</span>
         {old && t?.age_hours != null && (
           <span className="text-amber-300">
-            {tr("messreihen.kein_neuer_wert", { hours: Math.round(t.age_hours) })}
+            {tr("metric_series.no_new_value_hours", { hours: Math.round(t.age_hours) })}
           </span>
         )}
         {series.warned_at && (
           <span className="text-amber-300">
-            {tr("messreihen_panel.gewarnt_am", { date: formatDate(series.warned_at) })}
+            {tr("metric_series_panel.warned_date", { date: formatDate(series.warned_at) })}
           </span>
         )}
       </div>
@@ -152,7 +152,7 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
   return (
     <div className="mt-3 space-y-3 border-t border-line pt-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-muted">{tr("messreihen_panel.zeitraum")}</span>
+        <span className="text-muted">{tr("metric_series_panel.period")}</span>
         {TIMESPANS.map(([d, label]) => (
           <button key={d} onClick={() => setDays(d)}
             className={`rounded border px-2 py-0.5 ${
@@ -187,9 +187,9 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-card text-left text-[11px] uppercase text-muted">
             <tr>
-              <th className="px-2 py-1">{tr("messreihen_panel.zeitpunkt")}</th>
-              <th className="px-2 py-1">{tr("messreihen_panel.wert")}</th>
-              <th className="px-2 py-1">{tr("messreihen_panel.herkunft")}</th>
+              <th className="px-2 py-1">{tr("metric_series_panel.time")}</th>
+              <th className="px-2 py-1">{tr("metric_series_panel.value")}</th>
+              <th className="px-2 py-1">{tr("metric_series_panel.origin")}</th>
               <th className="px-2 py-1" />
             </tr>
           </thead>
@@ -207,7 +207,7 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
                 <td className="px-2 py-1 text-right">
                   <div className="flex justify-end">
                     <IconButton icon={ICON.remove} danger
-                      title={tr("messreihen_panel.diesen_wert_entfernen_z_b_einen_ausreiss")}
+                      title={tr("metric_series_panel.remove_this_value_an_outlier_that_bends_the_l")}
                       onClick={() => discard.mutate(p.id)} />
                   </div>
                 </td>
@@ -215,7 +215,7 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
             ))}
             {!points.length && !isFetching && (
               <tr><td colSpan={4} className="px-2 py-2 text-muted">
-                {tr("messreihen_panel.kein_wert_im_zeitraum")}
+                {tr("metric_series_panel.no_value_in_this_period")}
               </td></tr>
             )}
           </tbody>
@@ -223,11 +223,11 @@ function Detail({ series: series, remove: remove }: { series: Series; remove: ()
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-muted">{tr("messreihen_panel.werte_im_zeitraum", { count: points.length })}</span>
+        <span className="text-[11px] text-muted">{tr("metric_series_panel.count_values_period", { count: points.length })}</span>
         <div className="flex-1" />
         <button onClick={remove}
           className={BUTTON_SMALL.danger}>
-          {tr("messreihen_panel.ganze_reihe_loeschen")}
+          {tr("metric_series_panel.delete_whole_series")}
         </button>
       </div>
     </div>
@@ -245,7 +245,7 @@ function Historyimage({ points: points, unit: unit, trend, target: target }: {
   points: Point[]; unit: string; trend?: Trend | null; target: number;
 }) {
   if (points.length < 2) {
-    return <div className="text-[11px] text-muted">{tr("messreihen_panel.noch_keine_linie_dafuer_braucht_es_zwei_")}</div>;
+    return <div className="text-[11px] text-muted">{tr("metric_series_panel.no_line_yet_that_needs_two_values")}</div>;
   }
   const B = 900, H = 260, li = 46, re = 16, ob = 14, un = 26;
 

@@ -265,9 +265,9 @@ export const NODE_TYPE_LABELS: Record<WorkflowNodeType, string> = {
   auto_action: "node.auto_action",
   agent_task: "node.agent_task",
   wait_event: "node.wait_event",
-  subflow: "node.subflow",
+  subflow: "node.other_flow",
   loop: "node.loop",
-  timer: "node.timer",
+  timer: "node.wait",
 };
 
 export const SLOT_LABELS: Record<WorkflowSlot, string> = {

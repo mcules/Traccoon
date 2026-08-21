@@ -42,7 +42,7 @@ export default function BuilderPanel({
     try {
       const r = await workflowApi.draft(defId, text.trim(), rebuild ? old : undefined);
       if (!r.graph?.nodes?.length) {
-        setErr(tr("baumeister.kein_ablauf"));
+        setErr(tr("builder.no_flow_came_back"));
         return;
       }
       setBefore(old);
@@ -78,8 +78,8 @@ export default function BuilderPanel({
   return (
     <div className="space-y-2 border-t border-line p-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted">{tr("baumeister_panel.beschreiben_statt_bauen")}</span>
-        <button onClick={() => setOpen(false)} title={tr("baumeister_panel.schliessen")}
+        <span className="text-xs font-medium text-muted">{tr("builder_panel.describe_instead_build")}</span>
+        <button onClick={() => setOpen(false)} title={tr("builder_panel.close")}
           className={BUTTON_TEXT.secondary}>✕</button>
       </div>
 
@@ -88,14 +88,14 @@ export default function BuilderPanel({
         onChange={(e) => setText(e.target.value)}
         rows={4}
         placeholder={rebuild
-          ? tr("baumeister.platzhalter_umbau")
-          : tr("baumeister.platzhalter")}
+          ? tr("builder.what_change_example_put")
+          : tr("builder.what_flow_do_instance")}
         className="w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink"
       />
 
       <label className="flex items-center gap-2 text-[11px] text-muted">
         <input type="checkbox" checked={rebuild} onChange={(e) => setRebuild(e.target.checked)} />
-        {tr("baumeister.auf_bestand_bauen")}
+        {tr("builder.build_what_canvas")}
       </label>
 
       <div className="flex items-center gap-2">
@@ -106,7 +106,7 @@ export default function BuilderPanel({
         {before && (
           <button onClick={back}
             className={BUTTON_SMALL.secondary}>
-            {tr("baumeister.zurueck_zum_stand")}
+            {tr("builder.back_previous_state")}
           </button>
         )}
       </div>
@@ -116,13 +116,13 @@ export default function BuilderPanel({
         <div className="rounded border border-line bg-surface p-2 text-[11px] text-muted">
           {explanation}
           <div className="mt-1 opacity-70">
-            {tr("baumeister.auf_der_flaeche")}
+            {tr("builder.canvas_not_saved_yet")}
           </div>
         </div>
       )}
       {error.length > 0 && (
         <div className="text-[11px] text-amber-300">
-          {tr("baumeister.fehlende_stellen", { count: error.length })}
+          {tr("builder.count_spots_still_missing", { count: error.length })}
         </div>
       )}
     </div>

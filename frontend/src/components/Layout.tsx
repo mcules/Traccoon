@@ -42,7 +42,7 @@ function ProjectSwitcher() {
               )}
             </>
           ) : (
-            <span className="text-sm text-muted">{tr("layout.projekte")}</span>
+            <span className="text-sm text-muted">{tr("layout.projects")}</span>
           )}
         </div>
         <span className="shrink-0 text-xs text-muted">▾</span>
@@ -52,7 +52,7 @@ function ProjectSwitcher() {
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
           <div className="absolute left-0 z-30 mt-2 max-h-96 w-64 overflow-y-auto rounded-lg border border-line bg-card p-1 text-sm shadow-2xl">
             {(projects?.length ?? 0) === 0 && (
-              <div className="px-2 py-1.5 text-xs text-muted">{tr("layout.keine_projekte")}</div>
+              <div className="px-2 py-1.5 text-xs text-muted">{tr("layout.no_projects")}</div>
             )}
             {projects?.map((p) => (
               <button
@@ -213,7 +213,7 @@ function MobileMenu() {
 
   return (
     <div className="md:hidden">
-      <button onClick={() => setOpen((v) => !v)} aria-label={tr("layout.menue")} title={tr("layout.menue")}
+      <button onClick={() => setOpen((v) => !v)} aria-label={tr("layout.menu")} title={tr("layout.menu")}
         className="relative flex h-10 w-10 items-center justify-center rounded-md border border-line bg-surface text-lg leading-none text-ink hover:bg-card">
         ☰
         {waiting > 0 && <span className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-brand" />}
@@ -266,9 +266,9 @@ function UserMenu() {
             <div className="truncate px-2 py-1.5 text-xs text-muted">{name}</div>
             <div className="my-1 border-t border-line" />
             <Link to="/account" onClick={() => setOpen(false)}
-              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.konto")}</Link>
+              className="block rounded px-2 py-1.5 text-ink hover:bg-surface">{tr("layout.account")}</Link>
             <button onClick={logout}
-              className="block w-full rounded px-2 py-1.5 text-left text-ink hover:bg-surface">{tr("layout.abmelden")}</button>
+              className="block w-full rounded px-2 py-1.5 text-left text-ink hover:bg-surface">{tr("layout.log")}</button>
           </div>
         </>
       )}

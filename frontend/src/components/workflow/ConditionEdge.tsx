@@ -129,8 +129,8 @@ export default function ConditionEdge({
           {active && (
             <button
               type="button"
-              title={tr("condition_edge.verbindung_loeschen")}
-              aria-label={tr("condition_edge.verbindung_loeschen")}
+              title={tr("condition_edge.delete_connection")}
+              aria-label={tr("condition_edge.delete_connection")}
               // nodrag/nopan: otherwise React Flow pans the canvas on a click.
               className="nodrag nopan pointer-events-auto flex h-5 w-5 items-center justify-center
                          rounded-full border border-line bg-card text-[11px] leading-none text-muted

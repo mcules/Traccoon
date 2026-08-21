@@ -96,15 +96,15 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
       {note && <div className="mb-2 text-sm text-green-400">{note}</div>}
       <div className="mb-3 flex items-center gap-2">
         <p className="flex-1 text-sm text-muted">
-          {tr(projectId ? "agents_panel.einleitung_projekt" : "agents_panel.einleitung_eigene")}</p>
+          {tr(projectId ? "agents_panel.agents_project_provider_model" : "agents_panel.agent_roles_prompt_model")}</p>
         {!projectId && (!allAgents || allAgents.length === 0) && (
           <button onClick={() => seed.mutate()} className={BUTTON.secondary}>
-            {tr("agents_panel.standard_agenten_anlegen")}</button>
+            {tr("agents_panel.create_default_agents")}</button>
         )}
         <button onClick={() => fetchModels.mutate()} disabled={fetchModels.isPending}
-          title={tr("agents_panel.verfuegbare_modelle_live_bei_den_provide")}
+          title={tr("agents_panel.fetch_available_models_live_from_the_provider")}
           className={BUTTON.secondary}>
-          {fetchModels.isPending ? tr("common.laedt") : `↻ ${tr("agents_panel.modelle_abrufen")}`}</button>
+          {fetchModels.isPending ? tr("common.loading") : `↻ ${tr("agents_panel.fetch_models")}`}</button>
         <button onClick={newAgent} className={BUTTON.primary}>
           + Agent</button>
       </div>
@@ -125,17 +125,17 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
               {a.can_read_code && <span className="rounded bg-surface px-1 text-xs">read</span>}
               {a.can_delegate && <span className="rounded bg-surface px-1 text-xs">delegate</span>}
               {a.web_search && <span className="rounded bg-surface px-1 text-xs">web</span>}
-              {a.learns && <span className="rounded bg-surface px-1 text-xs" title={tr("agents_panel.liest_das_gedaechtnis_und_lernt_aus_jede")}>lernt</span>}
+              {a.learns && <span className="rounded bg-surface px-1 text-xs" title={tr("agents_panel.reads_the_memory_and_learns_from_every_run")}>lernt</span>}
             </div>
-            {a.origin_agent_id && <span className="rounded bg-surface px-1 text-xs">{tr(a.customized ? "agents_panel.bearbeitet" : "agents_panel.verknuepft")}</span>}
+            {a.origin_agent_id && <span className="rounded bg-surface px-1 text-xs">{tr(a.customized ? "agents_panel.edited" : "agents_panel.linked")}</span>}
             <div className="hidden flex-1 sm:block" />
             <Actions>
               {!projectId && (
-                <IconButton icon="🔗" title={tr("agents_panel.verknuepfte_projekt_kopien_aktualisieren")}
+                <IconButton icon="🔗" title={tr("agents_panel.update_linked_project_copies")}
                   onClick={() => syncLinked.mutate(a.id)} disabled={syncLinked.isPending} />
               )}
-              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setEdit(a)} />
-              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteAgent(a)} />
+              <IconButton icon={ICON.edit} title={tr("common.edit")} onClick={() => setEdit(a)} />
+              <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteAgent(a)} />
             </Actions>
             </div>
           </ListenLine>
@@ -147,45 +147,45 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
         <div key={`inh-${a.id}`} className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 rounded border border-dashed border-line px-2.5 py-1.5 text-sm text-muted">
           <span className="font-mono">{a.role}</span><span className="text-xs">geerbt (global)</span>
           <div className="flex-1" />
-          <button onClick={() => loadInto.mutate(a.id)} className={BUTTON_TEXT.secondary}>{tr("agents_panel.in_projekt_laden")}</button>
+          <button onClick={() => loadInto.mutate(a.id)} className={BUTTON_TEXT.secondary}>{tr("agents_panel.load_project")}</button>
         </div>
       ))}
 
       {edit && (
-        <Dialog wide title={tr(edit.id ? "agents_panel.agent_bearbeiten" : "agents_panel.agent_anlegen")}
+        <Dialog wide title={tr(edit.id ? "agents_panel.edit_agent" : "agents_panel.new_agent")}
           onClose={() => setEdit(null)}
           foot={<DialogFoot onCancel={() => setEdit(null)} runs={save.isPending}
             disabled={!edit.role?.trim()} onSave={() => save.mutate(edit)}
-            saveText={edit.id ? undefined : tr("common.anlegen")} />}>
+            saveText={edit.id ? undefined : tr("common.create")} />}>
           <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-2">
-                <F label={tr("agents_panel.rolle_kennung")}><input value={edit.role || ""} onChange={(e) => setEdit({ ...edit, role: e.target.value })} className={inp} /></F>
-                <F label={tr("agents_panel.anzeigename")}><input value={edit.display_name || ""} onChange={(e) => setEdit({ ...edit, display_name: e.target.value })} className={inp} /></F>
+                <F label={tr("agents_panel.role_key")}><input value={edit.role || ""} onChange={(e) => setEdit({ ...edit, role: e.target.value })} className={inp} /></F>
+                <F label={tr("agents_panel.display_name")}><input value={edit.display_name || ""} onChange={(e) => setEdit({ ...edit, display_name: e.target.value })} className={inp} /></F>
               </div>
 
-              <Sec title={tr("agents_panel.modell_token")}>
+              <Sec title={tr("agents_panel.model_token")}>
                 <div className="flex gap-2">
                   <F label={tr("agents_panel.provider")}><select value={edit.provider} onChange={(e) => setEdit({ ...edit, provider: e.target.value, model: "", token_name: "" })} className={inp}>{PROVIDERS.map((p) => <option key={p}>{p}</option>)}</select></F>
-                  <F label={tr("agents_panel.modell_leer_default")}>
+                  <F label={tr("agents_panel.model_empty_default")}>
                     <input list="models-primary" value={edit.model || ""} onChange={(e) => setEdit({ ...edit, model: e.target.value })} placeholder="claude-sonnet-4-5" className={inp} />
                     <datalist id="models-primary">{modelsFor(edit.provider).map((m) => <option key={m.model} value={m.model}>{modelLabel(m)}</option>)}</datalist>
                   </F>
                   <F label={tr("agents_panel.token")}><select value={edit.token_name || ""} onChange={(e) => setEdit({ ...edit, token_name: e.target.value })} className={inp}>
-                    <option value="">{tr("agents_panel.standard")}</option>
+                    <option value="">{tr("agents_panel.default")}</option>
                     {tokensFor(edit.provider).map((t) => <option key={t.id} value={t.name}>{t.name}{t.is_default ? " (Std.)" : ""}</option>)}
                   </select></F>
                 </div>
                 <div className="mt-2 flex gap-2">
                   <F label={tr("agents_panel.fallback_provider")}><select value={edit.fallback || ""} onChange={(e) => setEdit({ ...edit, fallback: e.target.value || null, fallback_model: "", fallback_token_name: "" })} className={inp}>
-                    <option value="">{tr("agents_panel.kein")}</option>
+                    <option value="">{tr("agents_panel.none")}</option>
                     {PROVIDERS.map((p) => <option key={p}>{p}</option>)}
                   </select></F>
-                  <F label={tr("agents_panel.fallback_modell")}>
+                  <F label={tr("agents_panel.fallback_model")}>
                     <input list="models-fallback" value={edit.fallback_model || ""} onChange={(e) => setEdit({ ...edit, fallback_model: e.target.value })} disabled={!edit.fallback} className={inp} />
                     <datalist id="models-fallback">{modelsFor(edit.fallback || "").map((m) => <option key={m.model} value={m.model}>{modelLabel(m)}</option>)}</datalist>
                   </F>
                   <F label={tr("agents_panel.fallback_token")}><select value={edit.fallback_token_name || ""} onChange={(e) => setEdit({ ...edit, fallback_token_name: e.target.value })} disabled={!edit.fallback} className={inp}>
-                    <option value="">{tr("agents_panel.standard")}</option>
+                    <option value="">{tr("agents_panel.default")}</option>
                     {tokensFor(edit.fallback || "").map((t) => <option key={t.id} value={t.name}>{t.name}</option>)}
                   </select></F>
                 </div>
@@ -204,7 +204,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
               <Sec title="MCP-Server">
                 {edit.id
                   ? <AgentMcp agentId={edit.id} servers={mcpServers || []} />
-                  : <div className="text-xs text-muted">{tr("agents_panel.erst_speichern_dann_mcp_server_freigeben")}</div>}
+                  : <div className="text-xs text-muted">{tr("agents_panel.save_first_then_grant_mcp_servers")}</div>}
               </Sec>
 
               <button onClick={() => setShowAdv(!showAdv)} className={BUTTON_TEXT.secondary}>
@@ -224,7 +224,7 @@ export default function AgentsPanel({ projectId }: { projectId?: number } = {}) 
                     <F label="max_turns Exec"><input type="number" value={edit.max_turns_execution} onChange={(e) => setEdit({ ...edit, max_turns_execution: +e.target.value })} className={inp} /></F>
                     <F label="max_tokens"><input type="number" value={edit.max_tokens} onChange={(e) => setEdit({ ...edit, max_tokens: +e.target.value })} className={inp} /></F>
                   </div>
-                  <F label={tr("agents_panel.denk_tiefe_leer_standard_low_medium_high")}>
+                  <F label={tr("agents_panel.reasoning_effort_empty_default_low_medium_hig")}>
                     <input value={edit.effort || ""} onChange={(e) => setEdit({ ...edit, effort: e.target.value })} placeholder="leer = Default" className={inp} />
                   </F>
                 </div>
@@ -270,9 +270,9 @@ function SkillPicker({ skills, allowed, autoload, onChange }: {
   };
   return (
     <div>
-      <div className="text-xs text-muted">{tr("agents_panel.skills_der_agent_bekommt_sie_auto_immer_")}</div>
+      <div className="text-xs text-muted">{tr("agents_panel.skills_the_agent_receives_them_auto_always_in")}</div>
       <div className="mt-1 max-h-40 space-y-1 overflow-y-auto rounded border border-line bg-surface p-2">
-        {skills.length === 0 && <div className="text-xs text-muted">{tr("agents_panel.keine_skills_angelegt")}</div>}
+        {skills.length === 0 && <div className="text-xs text-muted">{tr("agents_panel.no_skills_created")}</div>}
         {skills.map((s) => {
           const on = allowed.includes(s.key);
           return (
@@ -323,20 +323,20 @@ function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
             <span>{i.name}</span>
             {i.set_keys?.length > 0 && <span className="text-xs text-muted">({i.set_keys.length} Variable(n))</span>}
             <div className="flex-1" />
-            <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => del(i.id)} />
+            <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => del(i.id)} />
           </div>
         ))}
-        {instances?.length === 0 && <div className="text-xs text-muted">{tr("agents_panel.keine_mcp_server_freigegeben")}</div>}
+        {instances?.length === 0 && <div className="text-xs text-muted">{tr("agents_panel.no_mcp_servers_granted")}</div>}
       </div>
       <div className="mt-2 rounded border border-line bg-surface p-2">
         <select value={serverId} onChange={(e) => { setServerId(e.target.value ? +e.target.value : ""); setValues({}); }}
           className="w-full rounded border border-line bg-card px-2 py-1 text-sm text-ink">
-          <option value="">{tr("agents_panel.mcp_server_waehlen")}</option>
+          <option value="">{tr("agents_panel.choose_mcp_server")}</option>
           {servers.filter((s) => s.transport !== "stdio").map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         {server && (
           <div className="mt-2 space-y-1">
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("agents_panel.instanz_name_z_b_dkb")}
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("agents_panel.instance_name_for_example_dkb")}
               className="w-full rounded border border-line bg-card px-2 py-1 text-sm" />
             {(server.variables || []).map((v: any) => (
               <input key={v.key} type={v.secret ? "password" : "text"}
@@ -344,8 +344,8 @@ function AgentMcp({ agentId, servers }: { agentId: number; servers: any[] }) {
                 placeholder={`${v.label || v.key}${v.required ? " *" : ""}`}
                 className="w-full rounded border border-line bg-card px-2 py-1 text-sm" />
             ))}
-            {(server.variables || []).length === 0 && <div className="text-xs text-muted">{tr("agents_panel.dieser_server_braucht_keine_variablen")}</div>}
-            <button onClick={add} className={BUTTON_SMALL.primary}>{tr("agents_panel.instanz_hinzufuegen")}</button>
+            {(server.variables || []).length === 0 && <div className="text-xs text-muted">{tr("agents_panel.this_server_needs_no_variables")}</div>}
+            <button onClick={add} className={BUTTON_SMALL.primary}>{tr("agents_panel.add_instance")}</button>
           </div>
         )}
       </div>

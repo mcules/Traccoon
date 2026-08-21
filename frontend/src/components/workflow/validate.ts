@@ -13,13 +13,13 @@ export function validateGraph(graph: WorkflowGraph): string[] {
 
   const starts = nodes.filter((n) => n.type === "start");
   const ends = nodes.filter((n) => n.type === "end");
-  if (starts.length !== 1) errors.push(tr("validate.genau_ein_start", { count: starts.length }));
-  if (ends.length < 1) errors.push(tr("validate.mindestens_ein_ende"));
+  if (starts.length !== 1) errors.push(tr("validate.there_exactly_one_start", { count: starts.length }));
+  if (ends.length < 1) errors.push(tr("validate.there_least_one_end"));
 
   // Lose Kanten (Quelle/Ziel fehlt)
   for (const e of edges) {
     if (!ids.has(e.source) || !ids.has(e.target)) {
-      errors.push(tr("validate.lose_kante", { edge: e.id }));
+      errors.push(tr("validate.edge_edge_points_node", { edge: e.id }));
     }
   }
 
@@ -30,10 +30,10 @@ export function validateGraph(graph: WorkflowGraph): string[] {
     const label = n.data.config.label || n.id;
     // Unverbundene Knoten
     if (n.type !== "start" && !hasIn.has(n.id)) {
-      errors.push(tr("validate.kein_eingang", { node: label }));
+      errors.push(tr("validate.node_node_no_incoming", { node: label }));
     }
     if (n.type !== "end" && !hasOut.has(n.id)) {
-      errors.push(tr("validate.kein_ausgang", { node: label }));
+      errors.push(tr("validate.node_node_no_outgoing", { node: label }));
     }
     // Approval: both handles have to be served
     if (n.type === "approval") {
@@ -41,22 +41,22 @@ export function validateGraph(graph: WorkflowGraph): string[] {
         edges.filter((e) => e.source === n.id).map((e) => e.sourceHandle || "out")
       );
       if (!handles.has("approved"))
-        errors.push(tr("validate.freigabe_genehmigt", { node: label }));
+        errors.push(tr("validate.approval_node_approved_outlet", { node: label }));
       if (!handles.has("rejected"))
-        errors.push(tr("validate.freigabe_abgelehnt", { node: label }));
+        errors.push(tr("validate.approval_node_rejected_outlet", { node: label }));
     }
     // Branch: every path should have an edge
     if (n.type === "decision") {
       const branches = n.data.config.branches || [];
       if (branches.length === 0) {
-        errors.push(tr("validate.keine_zweige", { node: label }));
+        errors.push(tr("validate.decision_node_no_branches", { node: label }));
       }
       const served = new Set(
         edges.filter((e) => e.source === n.id).map((e) => e.sourceHandle || "out")
       );
       for (const b of branches) {
         if (!served.has(b.handle))
-          errors.push(tr("validate.zweig_offen", { node: label, branch: b.label || b.handle }));
+          errors.push(tr("validate.decision_node_branch_branch", { node: label, branch: b.label || b.handle }));
       }
     }
   }

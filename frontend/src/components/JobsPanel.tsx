@@ -29,7 +29,7 @@ export default function JobsPanel() {
   const [err, setErr] = useState("");
 
   const inv = () => qc.invalidateQueries({ queryKey: ["jobs"] });
-  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : tr("common.error"));
   const save = useMutation({
     mutationFn: ({ id, body }: { id: number | null; body: any }) =>
       id ? api.put(`/jobs/${id}`, body) : api.post("/jobs", body),
@@ -44,7 +44,7 @@ export default function JobsPanel() {
     onSuccess: () => { setDeleteJob(null); inv(); }, onError: fail });
 
   return (
-    <Area hint={tr("jobs_panel.einleitung")}>
+    <Area hint={tr("jobs_panel.scheduled_jobs_cron_e")}>
       <Errorrow text={err} />
       <Listing className="mb-4">
         {jobs?.map((j) => (
@@ -53,30 +53,30 @@ export default function JobsPanel() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span className="font-medium">{j.name}</span>
-                {!j.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.aus")}</span>}
-                {j.enabled && j.paused && <span className="rounded bg-surface px-1 text-xs text-amber-400">{tr("jobs_panel.pausiert")}</span>}
+                {!j.enabled && <span className="rounded bg-surface px-1 text-xs text-muted">{tr("jobs_panel.off")}</span>}
+                {j.enabled && j.paused && <span className="rounded bg-surface px-1 text-xs text-amber-400">{tr("jobs_panel.paused")}</span>}
                 <span className="font-mono text-xs text-muted">{j.type}:{j.schedule} · {j.kind}</span>
               </div>
               {j.last_run_at && (
-                <div className="text-xs text-muted">{tr("jobs_panel.zuletzt")} {formatDateTime(j.last_run_at)}</div>
+                <div className="text-xs text-muted">{tr("jobs_panel.last")} {formatDateTime(j.last_run_at)}</div>
               )}
             </div>
             <Actions>
               <IconButton icon={j.enabled ? "⏸" : "⏵"} onClick={() => toggle.mutate(j)}
-                title={tr(j.enabled ? "jobs_panel.deaktivieren" : "jobs_panel.aktivieren")} />
-              <IconButton icon={ICON.start} title={tr("jobs_panel.jetzt_ausfuehren")}
+                title={tr(j.enabled ? "jobs_panel.switch_off" : "jobs_panel.switch")} />
+              <IconButton icon={ICON.start} title={tr("jobs_panel.run_now")}
                 onClick={() => run.mutate(j.id)} disabled={run.isPending} />
-              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => { setErr(""); setDialog(j); }} />
-              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDeleteJob(j)} />
+              <IconButton icon={ICON.edit} title={tr("common.edit")} onClick={() => { setErr(""); setDialog(j); }} />
+              <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDeleteJob(j)} />
             </Actions>
             </div>
           </ListenLine>
         ))}
-        {jobs?.length === 0 && <ListingEmpty>{tr("jobs_panel.keine_jobs")}</ListingEmpty>}
+        {jobs?.length === 0 && <ListingEmpty>{tr("jobs_panel.no_jobs")}</ListingEmpty>}
       </Listing>
       <button onClick={() => { setErr(""); setDialog({}); }}
         className={BUTTON.primary}>
-        {ICON.fresh} {tr("jobs_panel.job_anlegen")}
+        {ICON.fresh} {tr("jobs_panel.new_job")}
       </button>
 
       {dialog && (
@@ -124,8 +124,8 @@ function JobDialog({ job, error: error, runs: running, onClose, onSave }: {
     if (!paramText.trim()) return "";
     try {
       const v = JSON.parse(paramText);
-      return v && typeof v === "object" && !Array.isArray(v) ? "" : tr("jobs_panel.objekt_erwartet");
-    } catch { return tr("jobs_panel.kein_gueltiges_json"); }
+      return v && typeof v === "object" && !Array.isArray(v) ? "" : tr("jobs_panel.object_expected_e_g");
+    } catch { return tr("jobs_panel.not_valid_json"); }
   })();
   const setParams = (text: string) => {
     setParamText(text);
@@ -143,15 +143,15 @@ function JobDialog({ job, error: error, runs: running, onClose, onSave }: {
   };
 
   return (
-    <Dialog wide title={job ? tr("jobs_panel.job_bearbeiten") : tr("jobs_panel.job_anlegen")} onClose={onClose}
+    <Dialog wide title={job ? tr("jobs_panel.edit_job") : tr("jobs_panel.new_job")} onClose={onClose}
       foot={<DialogFoot onCancel={onClose} disabled={!f.name.trim()} runs={running}
         onSave={() => onSave(f, job ? job.id : null)}
-        saveText={job ? undefined : tr("common.anlegen")} />}>
+        saveText={job ? undefined : tr("common.create")} />}>
       <Errorrow text={error} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {!job && !!templates?.length && (
           <div className="sm:col-span-2">
-            <Field label={tr("jobs_panel.aus_vorlage")} hint={tr("jobs_panel.fuellt_das_formular_vor")}>
+            <Field label={tr("jobs_panel.template")} hint={tr("jobs_panel.prefills_the_form")}>
               <select value="" onChange={(e) => e.target.value && useTemplate(e.target.value)} className={INPUT_VALUE}>
                 <option value="">—</option>
                 {templates.map((t) => <option key={t.key} value={t.key}>{t.label}: {t.description}</option>)}
@@ -166,22 +166,22 @@ function JobDialog({ job, error: error, runs: running, onClose, onSave }: {
           <input value={f.schedule} onChange={(e) => setF({ ...f, schedule: e.target.value })}
             className={`${INPUT_VALUE} font-mono`} />
         </Field>
-        <Field label={tr("jobs_panel.takt")}>
+        <Field label={tr("jobs_panel.schedule_type")}>
           <select value={f.type} onChange={(e) => setF({ ...f, type: e.target.value })} className={INPUT_VALUE}>
             <option value="cron">cron</option><option value="interval">interval</option><option value="once">once</option>
           </select>
         </Field>
         {/* Ein Job ist Zeitplan plus Ablauf. Fragen, Skript, Aufruf — das waren einmal
             eigene Arten, die je genau eins konnten; heute sind es Knoten IM Ablauf. */}
-        <Field label={tr("jobs_panel.art")}>
+        <Field label={tr("jobs_panel.kind")}>
           <select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} className={INPUT_VALUE}>
-            <option value="workflow">{tr("jobs_panel.art_ablauf")}</option>
-            <option value="film">{tr("jobs_panel.art_film")}</option>
+            <option value="workflow">{tr("jobs_panel.flow")}</option>
+            <option value="film">{tr("jobs_panel.end_day_film")}</option>
           </select>
         </Field>
 
         {f.kind === "workflow" && (
-          <Field label={tr("jobs_panel.prozess_waehlen")}>
+          <Field label={tr("jobs_panel.choose_process")}>
             <select value={f.workflow_definition_id ?? ""}
               onChange={(e) => setF({ ...f, workflow_definition_id: e.target.value ? Number(e.target.value) : null })}
               className={INPUT_VALUE}>
@@ -194,29 +194,29 @@ function JobDialog({ job, error: error, runs: running, onClose, onSave }: {
         )}
         {f.kind === "workflow" && (
           <div className="sm:col-span-2">
-            <Field label={tr("jobs_panel.startkontext")}>
+            <Field label={tr("jobs_panel.start_context")}>
               <textarea value={paramText} onChange={(e) => setParams(e.target.value)} rows={4}
-                placeholder={tr("jobs_panel.startkontext_platzhalter")}
+                placeholder={tr("jobs_panel.start_context_json_e")}
                 className={`${INPUT_VALUE} font-mono text-xs`} />
             </Field>
             <div className="mt-1 text-xs">
               {paramError
-                ? <span className="text-red-400">{paramError} — {tr("jobs_panel.parameter_nicht_uebernommen")}</span>
-                : <span className="text-muted">{tr("jobs_panel.startkontext_hinweis")}</span>}
+                ? <span className="text-red-400">{paramError} — {tr("jobs_panel.parameters_not_applied")}</span>
+                : <span className="text-muted">{tr("jobs_panel.available_flow_context_usable")}</span>}
             </div>
           </div>
         )}
         {f.kind === "film" && (
-          <Field label={tr("jobs_panel.meldung")}>
+          <Field label={tr("jobs_panel.notification")}>
             <select value={f.notify_mode} onChange={(e) => setF({ ...f, notify_mode: e.target.value })} className={INPUT_VALUE}>
-              <option value="always">{tr("jobs_panel.notify_immer")}</option>
-              <option value="never">{tr("jobs_panel.notify_nie")}</option>
+              <option value="always">{tr("jobs_panel.always")}</option>
+              <option value="never">{tr("jobs_panel.never")}</option>
             </select>
           </Field>
         )}
         {f.kind === "workflow" && (
           <p className="text-xs text-muted sm:col-span-2">
-            {tr("jobs_panel.meldung_im_ablauf")}
+            {tr("jobs_panel.what_gets_reported_stands")}
           </p>
         )}
       </div>

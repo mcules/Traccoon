@@ -46,7 +46,7 @@ export default function NodePalette({ onAdd, compact }: {
     <div className={compact ? "flex flex-wrap gap-1.5" : "space-y-1.5"}>
       {!compact && (
         <div className="mb-2 text-xs font-medium text-muted">
-          {tr("node_palette.bausteine_in_die_flaeche_ziehen")}
+          {tr("node_palette.building_blocks_drag_onto_the_canvas")}
         </div>
       )}
       {ORDER.map((t) => (
@@ -59,7 +59,7 @@ export default function NodePalette({ onAdd, compact }: {
             e.dataTransfer.effectAllowed = "move";
           }}
           onClick={() => onAdd?.(t)}
-          title={onAdd ? tr("node_palette.tippen_haengt_an") : undefined}
+          title={onAdd ? tr("node_palette.tap_attach_block_behind") : undefined}
           className={"flex cursor-grab items-center gap-2 rounded border border-line bg-surface"
             + " px-2 py-1.5 text-sm hover:border-brand active:cursor-grabbing"
             + (compact ? "" : " w-full")}

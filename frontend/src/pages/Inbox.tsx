@@ -52,14 +52,14 @@ export default function Inbox() {
   const [tab, setTab] = useState<Tab>("chat");
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-1 text-lg font-semibold">{tr("inbox.persoenlicher_assistent")}</h1>
-      <p className="mb-4 text-sm text-muted">{tr("inbox.einleitung")}</p>
+      <h1 className="mb-1 text-lg font-semibold">{tr("inbox.personal_assistant")}</h1>
+      <p className="mb-4 text-sm text-muted">{tr("inbox.incoming_mail_classified_redacted")}</p>
       <div className="mb-4">
         <Tab active={tab} onChoose={setTab} selection={[
-          ["chat", tr("inbox.reiter_chat")],
-          ["inbox", tr("inbox.reiter_eingaenge")],
-          ["rules", tr("inbox.reiter_regeln")],
-          ["statistik", tr("inbox.reiter_statistik")],
+          ["chat", tr("inbox.chat")],
+          ["inbox", tr("inbox.incoming")],
+          ["rules", tr("inbox.learned_rules")],
+          ["statistik", tr("inbox.statistics")],
         ]} />
       </div>
       {tab === "chat" ? <AssistantChat />
@@ -96,20 +96,20 @@ function Stats() {
   return (
     <div className="space-y-4">
       <Area
-        hint={tr("inbox.statistik_hinweis")}
+        hint={tr("inbox.what_mail_classified_counted")}
         tools={<Tab active={String(days)} onChoose={(w) => setDays(Number(w))} selection={[
           ["7", "7 Tage"], ["30", "30 Tage"], ["90", "90 Tage"], ["365", "1 Jahr"],
         ]} />}
       >
-        {kinds.length === 0 && <p className="text-sm text-muted">{tr("inbox.statistik_leer")}</p>}
+        {kinds.length === 0 && <p className="text-sm text-muted">{tr("inbox.nothing_classified_period")}</p>}
         <div className="space-y-2">
           {kinds.map(([art, w]) => (
             <div key={art}>
               <div className="mb-0.5 flex items-baseline gap-2 text-sm">
                 <span className="font-medium text-ink">{art}</span>
                 <span className="text-xs text-muted">
-                  {w.total}× · {tr("inbox.statistik_aussortiert", { count: w.sortedout })}
-                  {w.open > 0 && ` · ${tr("inbox.statistik_offen", { count: w.open })}`}
+                  {w.total}× · {tr("inbox.count_sorted", { count: w.sortedout })}
+                  {w.open > 0 && ` · ${tr("inbox.count_open", { count: w.open })}`}
                 </span>
               </div>
               {/* Zwei Abschnitte auf einem Balken: was weggeräumt wurde, was blieb. */}
@@ -123,17 +123,17 @@ function Stats() {
         </div>
       </Area>
 
-      <Area title={tr("inbox.statistik_modell")} hint={tr("inbox.statistik_modell_hinweis")}>
+      <Area title={tr("inbox.hit_rate_local_model")} hint={tr("inbox.how_often_model_judged")}>
         {data?.model.quote === null || data?.model.decided === 0 ? (
-          <p className="text-sm text-muted">{tr("inbox.statistik_modell_leer")}</p>
+          <p className="text-sm text-muted">{tr("inbox.nothing_decided_yet")}</p>
         ) : (
           <p className="text-sm text-ink">
             <span className="text-2xl font-semibold">
               {Math.round((data?.model.quote ?? 0) * 100)}%
             </span>{" "}
             <span className="text-muted">
-              {tr("inbox.statistik_modell_zahlen", {
-                treffer: data?.model.treffer ?? 0, total: data?.model.decided ?? 0,
+              {tr("inbox.hits_total_agreement", {
+                hits: data?.model.treffer ?? 0, total: data?.model.decided ?? 0,
               })}
             </span>
           </p>
@@ -173,7 +173,7 @@ function InboxList() {
         ]} />}
       >
       <Errorrow text={err} />
-      {isLoading && <div className="text-sm text-muted">{tr("inbox.laedt")}</div>}
+      {isLoading && <div className="text-sm text-muted">{tr("inbox.loading")}</div>}
       <Listing>
         {items.map((entry) => {
           const prio = PRIO[entry.priority] || PRIO.normal;
@@ -187,7 +187,7 @@ function InboxList() {
                 {entry.category && <Tag>{entry.category}</Tag>}
                 {entry.sensitive && <span title="sensibel — vertraulich behandeln">🔒</span>}
                 {entry.redaction === "unredacted" && (
-                  <Tag color="yellow" title={tr("inbox.volltext_freigegeben")}>ungeschwärzt</Tag>
+                  <Tag color="yellow" title={tr("inbox.full_text_released")}>ungeschwärzt</Tag>
                 )}
                 <span className="ml-auto text-xs text-muted">{formatTime(entry.created_at)}</span>
               </div>
@@ -195,7 +195,7 @@ function InboxList() {
               {entry.from && <div className="truncate text-xs text-muted">von {entry.from}</div>}
               {entry.redacted_summary && <p className="mt-1.5 break-words text-sm text-muted">{entry.redacted_summary}</p>}
               {entry.action_hint && (
-                <p className="mt-1.5 break-words text-xs text-brand">↳ {tr("inbox.gelernte_vorgabe")}: {entry.action_hint}</p>
+                <p className="mt-1.5 break-words text-xs text-brand">↳ {tr("inbox.learned_rule")}: {entry.action_hint}</p>
               )}
 
               <div className="mt-3 flex items-center gap-2">
@@ -211,7 +211,7 @@ function InboxList() {
                     </button>
                   </>
                 )}
-                {entry.status === "approved" && <span className="text-sm text-muted">{tr("inbox.wartet_auf_bearbeitung")}</span>}
+                {entry.status === "approved" && <span className="text-sm text-muted">{tr("inbox.waiting_processed")}</span>}
                 {entry.status === "running" && <span className="text-sm text-brand">🔄 Assistent arbeitet…</span>}
                 {(entry.result || entry.error) && (
                   <button onClick={() => setOpenId(expanded ? null : entry.id)}
@@ -260,12 +260,12 @@ function ApprovePanel({ item, onDone, onError }:
   return (
     <div className="mt-3 space-y-3 rounded border border-line bg-surface p-3 text-sm">
       <div>
-        <div className="mb-1 text-xs uppercase text-muted">{tr("inbox.umfang")}</div>
+        <div className="mb-1 text-xs uppercase text-muted">{tr("inbox.scope")}</div>
         <div className="flex flex-wrap gap-1">
           {([
-            ["once", tr("inbox.umfang_einmal")],
-            ["sender", tr("inbox.umfang_absender", { sender: mail || tr("inbox.absender") })],
-            ["category", tr("inbox.umfang_kategorie", { category: item.category || "?" })],
+            ["once", tr("inbox.time_only")],
+            ["sender", tr("inbox.always_sender", { sender: mail || tr("inbox.sender") })],
+            ["category", tr("inbox.always_category_category", { category: item.category || "?" })],
           ] as ["once" | "sender" | "category", string][]).map(([s, l]) => (
             <button key={s} onClick={() => setScope(s)}
               className={`rounded border px-2 py-1 text-xs ${scope === s ? "border-brand bg-brand/15 text-brand" : "border-line text-muted hover:text-ink"}`}>
@@ -274,30 +274,30 @@ function ApprovePanel({ item, onDone, onError }:
         </div>
       </div>
       <div>
-        <div className="mb-1 text-xs uppercase text-muted">{tr("inbox.verarbeitung")}</div>
+        <div className="mb-1 text-xs uppercase text-muted">{tr("inbox.processing")}</div>
         <div className="flex gap-1">
-          {([["redacted", tr("inbox.geschwaerzt")], ["unredacted", tr("inbox.ungeschwaerzt")]] as ["redacted" | "unredacted", string][]).map(([r, l]) => (
+          {([["redacted", tr("inbox.redacted")], ["unredacted", tr("inbox.unredacted")]] as ["redacted" | "unredacted", string][]).map(([r, l]) => (
             <button key={r} onClick={() => setRedaction(r)}
               className={`rounded border px-2 py-1 text-xs ${redaction === r ? "border-brand bg-brand/15 text-brand" : "border-line text-muted hover:text-ink"}`}>
               {l}</button>
           ))}
         </div>
         {redaction === "unredacted" && (
-          <p className="mt-1 text-xs text-amber-400">{tr("inbox.volltext_geht_ungeschwaerzt_an_den_assis")}</p>
+          <p className="mt-1 text-xs text-amber-400">{tr("inbox.the_full_text_goes_to_the_assistant_unredacte")}</p>
         )}
       </div>
       <div>
-        <div className="mb-1 text-xs uppercase text-muted">{tr("inbox.gelernte_aktion_optional")}</div>
+        <div className="mb-1 text-xs uppercase text-muted">{tr("inbox.learned_action_optional")}</div>
         <input value={note} onChange={(e) => setNote(e.target.value)}
-          placeholder={tr("inbox.z_b_in_paperless_ablegen_und_im_vault_do")}
+          placeholder={tr("inbox.e_g_file_it_in_the_archive_and_document_it_in")}
           className="w-full rounded border border-line bg-card px-2 py-1.5 text-ink outline-none" />
       </div>
       <div className="flex items-center gap-2">
         <button onClick={() => approve.mutate()} disabled={approve.isPending}
           className={BUTTON.primary}>
-          {tr(scope === "once" ? "inbox.freigeben" : "inbox.freigeben_merken")}
+          {tr(scope === "once" ? "inbox.approve" : "inbox.approve_remember")}
         </button>
-        {scope !== "once" && <span className="text-xs text-muted">{tr("inbox.legt_regel_an")}</span>}
+        {scope !== "once" && <span className="text-xs text-muted">{tr("inbox.creates_rule")}</span>}
       </div>
     </div>
   );

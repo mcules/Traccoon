@@ -27,15 +27,15 @@ import {
 type Tab = "secrets" | "destinations" | "agents" | "mcp" | "jobs" | "webhooks" | "skills"
   | "plugins";
 const TABS: [Tab, string, string][] = [
-  ["secrets", "settings.tabs.vault", "\u{1F510}"],
-  ["destinations", "settings.tabs.ziele", "\u{1F3AF}"],
-  ["agents", "settings.tabs.assistent", "\u{1F916}"],
-  ["mcp", "settings.tabs.mcp", "\u{1F9E9}"],
-  ["jobs", "settings.tabs.jobs", "\u{23F1}"],
-  ["webhooks", "settings.tabs.webhooks", "\u{1FA9D}"],
-  ["skills", "settings.tabs.skills", "\u{2728}"],
+  ["secrets", "settings.secret_vault_2", "\u{1F510}"],
+  ["destinations", "settings.destinations", "\u{1F3AF}"],
+  ["agents", "settings.my_assistant", "\u{1F916}"],
+  ["mcp", "settings.mcp_servers", "\u{1F9E9}"],
+  ["jobs", "settings.jobs", "\u{23F1}"],
+  ["webhooks", "settings.webhooks", "\u{1FA9D}"],
+  ["skills", "settings.skills", "\u{2728}"],
   // Nur für Admins: Wer ein Plugin einspielt, entscheidet auch, was es sehen darf.
-  ["plugins", "settings.tabs.plugins", "\u{1F9E9}"],
+  ["plugins", "settings.plugins", "\u{1F9E9}"],
 ];
 const TAB_KEYS = TABS.map(([k]) => k);
 const ONLY_ADMIN: Tab[] = ["plugins"];
@@ -71,12 +71,12 @@ const PROVIDER_LABEL: Record<string, string> = {
 function Secrets() {
   return (
     <div className="space-y-4">
-      <Area hint={tr("settings.keys_einleitung")}>
+      <Area hint={tr("settings.store_model_keys_pick")}>
         <ProviderTokens />
       </Area>
       <Area hint={<>
-        Allgemeiner <b>{tr("settings.secret_tresor")}</b>: beliebige Tokens/Geheimnisse (API-Keys,
-        {tr("settings.tresor_hinweis")}
+        Allgemeiner <b>{tr("settings.secret_vault")}</b>: beliebige Tokens/Geheimnisse (API-Keys,
+        {tr("settings.general_secret_vault_any")}
       </>}>
         <NamedSecrets />
       </Area>
@@ -102,7 +102,7 @@ function NamedSecrets() {
   const inv = () => qc.invalidateQueries({ queryKey: ["named-secrets"] });
   const guard = async (fn: () => Promise<any>) => {
     try { setErr(""); await fn(); inv(); return true; }
-    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.fehler")); return false; }
+    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.error")); return false; }
   };
   const vault: { name: string; description: string }[] = data?.vault || [];
 
@@ -117,19 +117,19 @@ function NamedSecrets() {
               {s.description && <span className="min-w-0 flex-1 truncate text-xs text-muted">{s.description}</span>}
               <div className="flex-1" />
               <Actions>
-                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+                <IconButton icon={ICON.edit} title={tr("common.edit")}
                   onClick={() => setDialog({ name: s.name, description: s.description })} />
-                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                   onClick={() => setDelete(s.name)} />
               </Actions>
             </div>
           </ListenLine>
         ))}
-        {vault.length === 0 && <ListingEmpty>{tr("settings.noch_keine_secrets_im_tresor")}</ListingEmpty>}
+        {vault.length === 0 && <ListingEmpty>{tr("settings.no_secrets_in_the_vault_yet")}</ListingEmpty>}
       </Listing>
       <button onClick={() => setDialog({ name: "", description: "" })}
         className={BUTTON.primary}>
-        {ICON.fresh} {tr("settings.secret_anlegen")}
+        {ICON.fresh} {tr("settings.new_secret")}
       </button>
 
       {dialog && (
@@ -142,7 +142,7 @@ function NamedSecrets() {
           }} />
       )}
       {remove && (
-        <DeleteDialog was={`secret:${remove}`} hint={tr("settings.secret_loeschen_hinweis")}
+        <DeleteDialog was={`secret:${remove}`} hint={tr("settings.flows_using_run_nothing")}
           onClose={() => setDelete(null)}
           onDelete={async () => {
             await guard(() => api.put(`/me/secrets/${encodeURIComponent(remove)}`,
@@ -166,22 +166,22 @@ function SecretDialog({ existing, start, onClose, onSave }: {
   const can = !!name.trim() && !!value.trim();
 
   return (
-    <Dialog title={existing ? tr("settings.secret_bearbeiten") : tr("settings.secret_anlegen")}
+    <Dialog title={existing ? tr("settings.edit_secret") : tr("settings.new_secret")}
       onClose={onClose}
       foot={<DialogFoot onCancel={onClose} disabled={!can}
         onSave={() => onSave(name.trim(), value.trim(), description.trim())} />}>
       <div className="space-y-3">
-        <Field label={tr("settings.name")} hint={tr("settings.secret_name_hinweis")}>
+        <Field label={tr("settings.name")} hint={tr("settings.referenced_flows_destinations_secret")}>
           <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!existing}
             autoFocus={!existing} placeholder={tr("settings.name_z_b_github_pat")}
             className={`${INPUT_VALUE} disabled:opacity-60`} />
         </Field>
-        <Field label={tr("settings.wert_token")}
-          hint={existing ? tr("settings.wert_ersetzt_hinweis") : undefined}>
+        <Field label={tr("settings.value_token")}
+          hint={existing ? tr("settings.stored_value_never_comes") : undefined}>
           <input type="password" value={value} onChange={(e) => setValue(e.target.value)}
-            autoFocus={!!existing} placeholder={tr("settings.wert_token")} className={INPUT_VALUE} />
+            autoFocus={!!existing} placeholder={tr("settings.value_token")} className={INPUT_VALUE} />
         </Field>
-        <Field label={tr("settings.beschreibung_optional")}>
+        <Field label={tr("settings.description_optional")}>
           <input value={description} onChange={(e) => setDescription(e.target.value)} className={INPUT_VALUE} />
         </Field>
       </div>
@@ -207,7 +207,7 @@ function ProviderTokens() {
   const inv = () => qc.invalidateQueries({ queryKey: ["provider-tokens"] });
   const guard = async (fn: () => Promise<any>) => {
     try { setErr(""); await fn(); inv(); return true; }
-    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.fehler")); return false; }
+    catch (e) { setErr(e instanceof ApiError ? e.message : tr("common.error")); return false; }
   };
 
   return (
@@ -221,25 +221,25 @@ function ProviderTokens() {
               <div className="flex flex-wrap items-center gap-x-2">
                 <span className="font-medium text-ink">{t.name}</span>
                 <span className="text-xs text-muted">{PROVIDER_LABEL[t.provider] || t.provider}</span>
-                {t.is_default && <Tag color="brand">{tr("settings.standard")}</Tag>}
+                {t.is_default && <Tag color="brand">{tr("settings.default")}</Tag>}
               </div>
               {t.base_url && <div className="truncate text-xs text-muted">→ {t.base_url}</div>}
             </div>
             <Actions>
               {!t.is_default && (
-                <IconButton icon={ICON.standard} title={tr("common.als_standard")}
+                <IconButton icon={ICON.standard} title={tr("common.make_default")}
                   onClick={() => guard(() => api.post(`/me/provider-tokens/${t.id}/default`))} />
               )}
-              <IconButton icon={ICON.edit} title={tr("common.bearbeiten")} onClick={() => setDialog(t)} />
-              <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger onClick={() => setDelete(t)} />
+              <IconButton icon={ICON.edit} title={tr("common.edit")} onClick={() => setDialog(t)} />
+              <IconButton icon={ICON.remove} title={tr("common.delete")} danger onClick={() => setDelete(t)} />
             </Actions>
             </div>
           </ListenLine>
         ))}
-        {toks?.length === 0 && <ListingEmpty>{tr("settings.noch_keine_keys_hinterlegt")}</ListingEmpty>}
+        {toks?.length === 0 && <ListingEmpty>{tr("settings.no_keys_stored_yet")}</ListingEmpty>}
       </Listing>
       <button onClick={() => setDialog({})} className={BUTTON.primary}>
-        {ICON.fresh} {tr("settings.token_anlegen")}
+        {ICON.fresh} {tr("settings.new_token")}
       </button>
 
       {dialog && (
@@ -286,7 +286,7 @@ function TokenDialog({ entry: entry, onClose, onSave }: {
   const can = !!entry || !!token.trim();
 
   return (
-    <Dialog title={entry ? tr("settings.token_bearbeiten") : tr("settings.token_anlegen")} onClose={onClose}
+    <Dialog title={entry ? tr("settings.edit_token") : tr("settings.new_token")} onClose={onClose}
       foot={<DialogFoot onCancel={onClose} disabled={!can}
         onSave={() => onSave({
           provider, name, token: token.trim(), base_url: baseUrl.trim(), is_default: isStandard,
@@ -302,10 +302,10 @@ function TokenDialog({ entry: entry, onClose, onSave }: {
           <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!entry}
             className={`${INPUT_VALUE} disabled:opacity-60`} />
         </Field>
-        <Field label={tr("settings.wert_token")}
-          hint={entry ? tr("settings.neuer_wert_leer_behalten") : undefined}>
+        <Field label={tr("settings.value_token")}
+          hint={entry ? tr("settings.new_value_empty_keeps_the_old_one") : undefined}>
           <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
-            autoFocus placeholder={tr("settings.token_platzhalter")} className={INPUT_VALUE} />
+            autoFocus placeholder={tr("settings.token_sk")} className={INPUT_VALUE} />
         </Field>
         {provider === "openai" && (
           <Field label={tr("settings.base_url_optional_z_b_http_litellm_4000_")}>
@@ -314,7 +314,7 @@ function TokenDialog({ entry: entry, onClose, onSave }: {
         )}
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={isStandard} onChange={(e) => setIsStandard(e.target.checked)} />
-          {tr("settings.standard")}
+          {tr("settings.default")}
         </label>
       </div>
     </Dialog>

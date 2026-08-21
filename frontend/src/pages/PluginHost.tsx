@@ -104,7 +104,7 @@ export default function PluginHost() {
   const [error, setError] = useState("");
 
   const plugin = useMemo(() => plugins.find((p) => p.slug === slug), [plugins, slug]);
-  usePageChrome(plugin?.name || tr("plugins.titel"), []);
+  usePageChrome(plugin?.name || tr("plugins.plugins"), []);
 
   // The grants in a ref: the listener is installed once but must always see the current
   // state — otherwise it would hang on whatever was true at the first render.
@@ -134,17 +134,17 @@ export default function PluginHost() {
       if (typeof d.id !== "number") return;
 
       const call = CALLS[String(d.call)];
-      if (!call) return answer(d.id, false, tr("plugins.ruf_unbekannt"));
+      if (!call) return answer(d.id, false, tr("plugins.unknown_call"));
       if (call.right) {
         const needed = call.right(d.args);
         if (!granted.current.includes(needed)) {
-          return answer(d.id, false, `${tr("plugins.recht_fehlt")}: ${needed}`);
+          return answer(d.id, false, `${tr("plugins.right_not_released")}: ${needed}`);
         }
       }
       try {
         answer(d.id, true, await call.fetch(d.args || {}, ctx));
       } catch (err) {
-        answer(d.id, false, err instanceof Error ? err.message : tr("common.fehler"));
+        answer(d.id, false, err instanceof Error ? err.message : tr("common.error"));
       }
     }
 
@@ -155,7 +155,7 @@ export default function PluginHost() {
   useEffect(() => setError(""), [slug]);
 
   if (plugins.length && !plugin) {
-    return <Area hint={tr("plugins.nicht_gefunden")}><div /></Area>;
+    return <Area hint={tr("plugins.plugin_does_not_exist")}><div /></Area>;
   }
 
   // The anchor decides which page of a plugin with several contributions is meant.
@@ -168,7 +168,7 @@ export default function PluginHost() {
         ref={frame}
         src={src}
         title={plugin?.name || slug}
-        onError={() => setError(tr("plugins.laedt_nicht"))}
+        onError={() => setError(tr("plugins.plugin_cannot_loaded"))}
         className="h-full w-full border-0"
         sandbox="allow-scripts allow-popups allow-forms"
       />

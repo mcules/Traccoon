@@ -41,8 +41,8 @@ export function canWrite(project: Project | undefined): boolean {
 /** The four ticket views of "Arbeit". */
 export function workViews(): [WorkView, string][] {
   return [
-    ["board", tr("projekt.ansicht_board")], ["list", tr("projekt.ansicht_liste")],
-    ["backlog", tr("projekt.ansicht_backlog")], ["archive", tr("projekt.ansicht_archiv")],
+    ["board", tr("project_page.board")], ["list", tr("project_page.list")],
+    ["backlog", tr("project_page.backlog")], ["archive", tr("project_page.archive")],
   ];
 }
 
@@ -55,11 +55,11 @@ export function workViews(): [WorkView, string][] {
 export function operationViews(project: Project | undefined): [OperationView, string][] {
   if (!project) return [];
   return [
-    ...(project.my_ai_assign ? ([["monitor", tr("projekt.ansicht_monitor")],
-                                 ["office", tr("projekt.ansicht_buero")]] as [OperationView, string][]) : []),
+    ...(project.my_ai_assign ? ([["monitor", tr("project_page.monitor")],
+                                 ["office", tr("project_page.office")]] as [OperationView, string][]) : []),
     ...(project.testenv_enabled !== false && canWrite(project)
-      ? ([["testenvs", tr("projekt.ansicht_testenvs")]] as [OperationView, string][]) : []),
-    ...(project.has_hardware ? ([["hardware", tr("projekt.ansicht_hardware")]] as [OperationView, string][]) : []),
+      ? ([["testenvs", tr("project_page.test_environments")]] as [OperationView, string][]) : []),
+    ...(project.has_hardware ? ([["hardware", tr("project_page.hardware")]] as [OperationView, string][]) : []),
   ];
 }
 
@@ -69,14 +69,14 @@ export function projectTabs(project: Project | undefined): [ProjectTab, string][
   if (!project) return [];
   return [
     ...(project.my_ai_assign && project.pm_chat_enabled
-      ? ([["pm", tr("projekt.tab_pm")]] as [ProjectTab, string][]) : []),
-    ["work", tr("projekt.tab_arbeit")],
+      ? ([["pm", tr("project_page.tab_pm")]] as [ProjectTab, string][]) : []),
+    ["work", tr("project_page.work")],
     ...(canManage(project) && project.git_enabled
-      ? ([["code", tr("projekt.tab_code")]] as [ProjectTab, string][]) : []),
+      ? ([["code", tr("project_page.tab_code")]] as [ProjectTab, string][]) : []),
     ...(operationViews(project).length
-      ? ([["operations", tr("projekt.tab_betrieb")]] as [ProjectTab, string][]) : []),
-    ["dashboard", tr("projekt.tab_dashboard")],
-    ...(canManage(project) ? ([["settings", tr("projekt.tab_einstellungen")]] as [ProjectTab, string][]) : []),
+      ? ([["operations", tr("project_page.operations")]] as [ProjectTab, string][]) : []),
+    ["dashboard", tr("project_page.tab_dashboard")],
+    ...(canManage(project) ? ([["settings", tr("project_page.settings")]] as [ProjectTab, string][]) : []),
   ];
 }
 

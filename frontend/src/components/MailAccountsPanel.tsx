@@ -80,9 +80,9 @@ export default function MailAccountsPanel() {
                 ? <State color="green" text="aktiv" />
                 : <State color="grey" text="aus" />}
               <Actions>
-                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+                <IconButton icon={ICON.edit} title={tr("common.edit")}
                   onClick={() => { setErr(""); setDialog({ ...EMPTY, ...k, imap_password: "", smtp_password: "" }); }} />
-                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                   onClick={() => setDeleteAccount(k)} />
               </Actions>
             </div>
@@ -608,9 +608,9 @@ function Identities({ accountId, onError: onError }: { accountId: number; onErro
               </span>
               {i.is_default && <Tag color="brand">Vorgabe</Tag>}
               <Actions>
-                <IconButton icon={ICON.edit} title={tr("common.bearbeiten")}
+                <IconButton icon={ICON.edit} title={tr("common.edit")}
                   onClick={() => setDialog(i)} />
-                <IconButton icon={ICON.remove} title={tr("common.loeschen")} danger
+                <IconButton icon={ICON.remove} title={tr("common.delete")} danger
                   onClick={() => remove.mutate(i.id)} />
               </Actions>
             </div>

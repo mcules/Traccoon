@@ -5,7 +5,7 @@ import { assigneeLabel } from "../assignee";
 const GATE_LABEL: Record<string, string> = {
   ai_assign: "KI-Recht (ai_assign)",
   role: "Rolle",
-  none: "approval.ohne_gate",
+  none: "approval.no_gate",
 };
 
 export default function ApprovalNode({ id, data, selected }: FlowNodeProps) {

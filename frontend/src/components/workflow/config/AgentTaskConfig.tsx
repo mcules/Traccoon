@@ -47,10 +47,10 @@ export default function AgentTaskConfig({
           className={`mt-1 ${inp}`}
         >
           <optgroup label="Aus den Projekt-Einstellungen">
-            <option value="plan_agent">{tr("agent_task_config.planer_des_projekts_standard_architekt")}</option>
-            <option value="exec_agent">{tr("agent_task_config.ausfuehrender_des_projekts_standard_deve")}</option>
-            <option value="review_agent">{tr("agent_task_config.pruefer_des_projekts")}</option>
-            <option value="assigned">{tr("agent_task_config.der_am_ticket_zugewiesene_agent")}</option>
+            <option value="plan_agent">{tr("agent_task_config.planner_of_the_project_default_architect")}</option>
+            <option value="exec_agent">{tr("agent_task_config.executor_of_the_project_default_developer")}</option>
+            <option value="review_agent">{tr("agent_task_config.reviewer_project")}</option>
+            <option value="assigned">{tr("agent_task_config.the_agent_assigned_to_the_ticket")}</option>
           </optgroup>
           <optgroup label="Fester Agent">
             {/* Konkrete Rollen mit Herkunft der Definition, die tatsächlich greift. */}
@@ -81,13 +81,13 @@ export default function AgentTaskConfig({
           onChange={(e) => onChange({ ...config, phase: e.target.value as NodeConfig["phase"] })}
           className={`mt-1 ${inp}`}
         >
-          <option value="planning">{tr("agent_task_config.planung")}</option>
-          <option value="execution">{tr("agent_task_config.ausfuehrung")}</option>
+          <option value="planning">{tr("agent_task_config.planning")}</option>
+          <option value="execution">{tr("agent_task_config.execution")}</option>
         </select>
       </label>
 
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">{tr("agent_task_config.ergebnis_zuordnung_outcomes_map")}</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("agent_task_config.outcome_mapping_outcomes_map")}</div>
         <KeyValueEditor
           value={config.outcomes_map || {}}
           onChange={(m) => onChange({ ...config, outcomes_map: m as Record<string, string> })}

@@ -23,12 +23,12 @@ export default function UpdateFooter() {
 
   let content: { cls: string; text: string; closable?: boolean } | null = null;
   if (data.update_in_progress) {
-    content = { cls: "bg-brand/15 text-brand", text: `🔄 ${tr("update_footer.laeuft")}` };
+    content = { cls: "bg-brand/15 text-brand", text: `🔄 ${tr("update_footer.update_running_stack_being")}` };
   } else if (data.update_pending) {
     content = {
       cls: "bg-yellow-500/15 text-yellow-300",
-      text: `⏳ ${tr("update_footer.eingereiht")}${
-        data.running_agents > 0 ? ` (${tr("agents_badge.noch_n", { count: data.running_agents })})` : ""}.`,
+      text: `⏳ ${tr("update_footer.update_queued_starts_once")}${
+        data.running_agents > 0 ? ` (${tr("agents_badge.count_left", { count: data.running_agents })})` : ""}.`,
     };
   } else if (completedRecent && dismissed !== data.last_update_completed_at) {
     content = { cls: "bg-green-500/15 text-green-300", text: "✅ Update abgeschlossen.", closable: true };

@@ -34,9 +34,9 @@ import { BUTTON_SMALL } from "../ui";
  *  (`ask_human`, `permission`, `assistant_perm`, `review`) is already condensed to these
  *  three kinds in `mapEvent`; here only their names stand. */
 export const GATE_TEXT: Record<GateKind, string> = {
-  question: "buero.gate_question",
-  permission: "buero.gate_permission",
-  plan: "buero.gate_plan",
+  question: "office_room.gate_question",
+  permission: "office_room.gate_permission",
+  plan: "office_room.gate_plan",
 };
 
 // ── Statusfarben ────────────────────────────────────────────────────────────────────────────
@@ -51,13 +51,13 @@ export const ST_COLOR: Record<string, string> = {
 
 /** The same states as keys; the translation happens in statusText(). */
 export const ST_TEXT: Record<string, string> = {
-  running: "buero.st_running", success: "buero.st_success", failed: "buero.st_failed",
-  blocked: "buero.st_blocked", planned: "buero.st_planned",
-  loop_exhausted: "buero.st_loop_exhausted",
+  running: "office_room.st_running", success: "office_room.st_success", failed: "office_room.st_failed",
+  blocked: "office_room.st_blocked", planned: "office_room.st_planned",
+  loop_exhausted: "office_room.st_loop_exhausted",
 };
 
 export function statusText(s: RunStatus | string | null | undefined): string {
-  if (!s) return tr("buero.st_unbekannt");
+  if (!s) return tr("office_room.unknown");
   return ST_TEXT[s] ? tr(ST_TEXT[s]) : s;
 }
 
@@ -212,11 +212,11 @@ export default function TopBar({
 }: TopBarProps) {
   const tab = tabFrom(scope, roster);
   const tokenSum_total = totals.in_tokens + totals.out_tokens;
-  const tokenTitle = tr("buero.token_titel", {
+  const tokenTitle = tr("office_room.input_output_off_cache", {
     inside: number(totals.in_tokens), from: number(totals.out_tokens),
     cache: number(totals.cache_read_tokens) });
-  const costTitle = tr(totals.cost_partial ? "buero.kosten_teilweise" : "buero.kosten_geschaetzt",
-    { abgerechnet: usdText(totals.cost_usd_billed) });
+  const costTitle = tr(totals.cost_partial ? "office_room.least_one_model_no" : "office_room.estimated_against_current_price",
+    { billed: usdText(totals.cost_usd_billed) });
 
   return (
     <div className="rounded border border-line bg-card px-3 py-2">
@@ -226,7 +226,7 @@ export default function TopBar({
         )}
 
         <span className="text-muted" title={tokenTitle}>
-          🔢 <b className="text-ink">{tokenText(tokenSum_total)}</b> {tr("buero.tokens")}
+          🔢 <b className="text-ink">{tokenText(tokenSum_total)}</b> {tr("office_room.tokens")}
         </span>
 
         <span className="text-muted" title={costTitle}>
@@ -234,9 +234,9 @@ export default function TopBar({
         </span>
 
         <span className="text-muted"
-          title={tr("buero.laufen_gerade", { running: totals.running, total: totals.runs })}>
-          🤖 <b className="text-ink">{totals.runs}</b> {tr(totals.runs === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}
-          {totals.running > 0 && <span className="text-yellow-400"> · {tr("buero.aktiv", { count: totals.running })}</span>}
+          title={tr("office_room.running_total_running_right", { running: totals.running, total: totals.runs })}>
+          🤖 <b className="text-ink">{totals.runs}</b> {tr(totals.runs === 1 ? "agent_monitor.run" : "agent_monitor.runs")}
+          {totals.running > 0 && <span className="text-yellow-400"> · {tr("office_room.count_active", { count: totals.running })}</span>}
         </span>
 
         <div className="flex-1" />
@@ -245,23 +245,23 @@ export default function TopBar({
         {seekTs !== null ? (
           <span className="flex items-center gap-2">
             <span className="rounded-full border border-orange-400/50 bg-orange-400/10 px-2 py-0.5 text-xs text-orange-400">
-              ⏪ {tr("buero.wiedergabe")} {uhrText(seekTs)}
+              ⏪ {tr("office_room.replay")} {uhrText(seekTs)}
             </span>
             {!kiosk && (
               <button type="button" onClick={onBackToLive}
                 className={BUTTON_SMALL.secondary}>
-                {tr("buero.zurueck_zu_live")}
+                {tr("office_room.back_live")}
               </button>
             )}
           </span>
         ) : live ? (
           <span className="rounded-full border border-green-400/50 bg-green-400/10 px-2 py-0.5 text-xs text-green-400"
-            title={tr("buero.strom_haengt")}>
+            title={tr("office_room.live_stream_stalled_history")}>
             ● Live
           </span>
         ) : (
           <span className="rounded-full border border-line px-2 py-0.5 text-xs text-muted"
-            title={tr("buero.kein_strom")}>
+            title={tr("office_room.no_live_stream_history")}>
             ○ Getrennt
           </span>
         )}
@@ -284,8 +284,8 @@ export default function TopBar({
         {!kiosk && onFullscreen && (
           <button type="button" onClick={onFullscreen}
             className={BUTTON_SMALL.secondary}
-            title={tr("buero.ganze_seite")}>
-            ⤢ {tr("buero.vollbild")}
+            title={tr("office_room.open_office_whole_page")}>
+            ⤢ {tr("office_room.full_screen")}
           </button>
         )}
       </div>
@@ -295,17 +295,17 @@ export default function TopBar({
           den Raum, keine Bedienung. */}
       {!kiosk && tab.length > 1 && (
         <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" role="group"
-          aria-label={tr(scope.kind === "project" ? "buero.tickets_ansicht" : "buero.projekte_ansicht")}>
+          aria-label={tr(scope.kind === "project" ? "office_room.tickets_view" : "office_room.projects_view")}>
           <TabButton active={filter === null} onClick={() => onFilterChange(null)}
-            title={tr("buero.alle_figuren")}>
-            {tr("buero.alle")}
+            title={tr("office_room.show_every_character")}>
+            {tr("office_room.all")}
           </TabButton>
           {tab.map((r) => (
             <TabButton key={r.key} active={filter === r.key}
               onClick={() => onFilterChange(filter === r.key ? null : r.key)}
-              title={`${r.count} ${tr(r.count === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}`
-                + (r.runs ? `, ${tr("buero.davon_laeuft_einer")}` : "")
-                + ` — ${tr("buero.andere_gedimmt")}`}>
+              title={`${r.count} ${tr(r.count === 1 ? "agent_monitor.run" : "agent_monitor.runs")}`
+                + (r.runs ? `, ${tr("office_room.one_running")}` : "")
+                + ` — ${tr("office_room.other_characters_dimmed_not")}`}>
               {r.runs && <span className="mr-1 text-yellow-400">●</span>}
               {r.key}
             </TabButton>

@@ -5,7 +5,7 @@ import { api, ApiError, fetchFile } from "../api";
 import { usePageChrome } from "../pageChrome";
 import { useAuth } from "../auth";
 import { formatDateTime } from "../lib/formatTime";
-import { AccountDialog, type MailAccount, type MailIdentity } from "../components/MailKontenPanel";
+import { AccountDialog, type MailAccount, type MailIdentity } from "../components/MailAccountsPanel";
 import {
   Area, ConfirmDialog, Dialog, DialogFoot, INPUT_VALUE, Tag, Field, Errorrow,
   IconButton, Button, BUTTON, Listing, ListingEmpty, ListenLine, Tab, Rowbutton, BUTTON_TEXT} from "../components/ui";
@@ -543,17 +543,17 @@ function AttachmentDialog({ path: path, attachment: attachment, onClose }: {
   return (
     <Dialog wide title={`📎 ${attachment.filename}`} onClose={onClose} foot={
       <>
-        <Button onClick={onClose}>{tr("common.schliessen")}</Button>
+        <Button onClick={onClose}>{tr("common.close")}</Button>
         {source && (
           <a href={source} download={attachment.filename} className={BUTTON.primary}>
-            {tr("mail.anhang_speichern")}
+            {tr("mail.save")}
           </a>
         )}
       </>
     }>
       <Errorrow text={error} />
       {!error && !source && !text && (
-        <div className="p-6 text-center text-sm text-muted">{tr("common.laedt")}</div>
+        <div className="p-6 text-center text-sm text-muted">{tr("common.loading")}</div>
       )}
       {image && source && (
         <img src={source} alt={attachment.filename} className="mx-auto max-h-[70vh] rounded" />
@@ -567,7 +567,7 @@ function AttachmentDialog({ path: path, attachment: attachment, onClose }: {
       )}
       {source && !image && !pdf && (
         <div className="p-6 text-center text-sm text-muted">
-          {tr("mail.anhang_keine_vorschau", { kind: kind })}
+          {tr("mail.no_preview_kind_here", { kind: kind })}
         </div>
       )}
     </Dialog>
@@ -729,8 +729,8 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
         {/* Im Spam-Ordner ist „als Spam markieren" keine Handlung, sondern eine
             Wiederholung. Was dort fehlt, ist der Widerspruch. */}
         {account?.folder_junk && (folder === account.folder_junk ? (
-          <Rowbutton onClick={() => noSpam.mutate()} title={tr("mail.kein_spam_titel")}>
-            ✅ {tr("mail.kein_spam")}
+          <Rowbutton onClick={() => noSpam.mutate()} title={tr("mail.back_inbox_detection_learns")}>
+            ✅ {tr("mail.not_spam")}
           </Rowbutton>
         ) : (
           <Rowbutton onClick={() => asSpam.mutate()}>🚫 Spam</Rowbutton>
@@ -775,8 +775,8 @@ function Readview({ accountId, account, folder: folder, uid, onBack: onBack, onR
                     <span className="min-w-0 flex-1 truncate">📎 {a.filename}</span>
                     <Tag>{Math.max(1, Math.round(a.size / 1024))} kB</Tag>
                     <Rowbutton onClick={() => setAttachmentOn(a)}
-                      title={tr("mail.anhang_ansehen")}>
-                      {tr("mail.anhang_ansehen")}
+                      title={tr("mail.view")}>
+                      {tr("mail.view")}
                     </Rowbutton>
                     {forAttachment.map((act) => (
                       <Rowbutton key={act.definition_id}

@@ -51,13 +51,13 @@ export default function TestenvsPanel({ project }: { project: Project }) {
     try {
       const r = await api.post<{ log: string }>(
         `/projects/${project.id}/testenvs/${e.container}/logs`, { service, tail: 500 });
-      setLogs({ ...logs, [e.container]: r.log || tr("testenvs.keine_ausgabe") });
+      setLogs({ ...logs, [e.container]: r.log || tr("testenvs.no_output") });
     } catch (ex) { error(ex); }
   };
 
   if (project.testenv_enabled === false) {
     return <div className="text-sm text-muted">
-      {tr("testenvs.ausgeschaltet")}
+      {tr("testenvs.test_environments_switched_off")}
     </div>;
   }
 
@@ -65,7 +65,7 @@ export default function TestenvsPanel({ project }: { project: Project }) {
     <div className="space-y-4">
       <Errorrow text={err} />
 
-      <Area title={tr("testenvs_panel.laufende_umgebungen")}>
+      <Area title={tr("testenvs_panel.running_environments")}>
         <Listing>
           {envs?.map((e) => (
             <ListenLine key={e.container}>
@@ -75,19 +75,19 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                 <span className="min-w-0 flex-1 truncate text-ink">{e.label}</span>
                 {e.url && (
                   <a href={e.url} target="_blank" rel="noreferrer"
-                    className={BUTTON_TEXT.secondary}>{tr("testenvs_panel.oeffnen")}</a>
+                    className={BUTTON_TEXT.secondary}>{tr("testenvs_panel.open")}</a>
                 )}
                 <Rowbutton onClick={() => setOpen(open === e.container ? null : e.container)}>
                   {open === e.container ? "▾ Details" : "▸ Details"}
                 </Rowbutton>
                 {can && (
-                  <IconButton icon="⏹" title={tr("testenvs_panel.stoppen")} danger onClick={() => stop.mutate(e)} />
+                  <IconButton icon="⏹" title={tr("testenvs_panel.stop")} danger onClick={() => stop.mutate(e)} />
                 )}
               </div>
               {open === e.container && (
                 <div className="mt-2 space-y-2 border-t border-line pt-2.5">
                   <div className="text-xs text-muted">
-                    {tr("testenvs.container_praefix")} <span className="font-mono">{e.container}</span>
+                    {tr("testenvs.container_prefix")} <span className="font-mono">{e.container}</span>
                     {e.port ? ` · Port ${e.port}` : ""}
                   </div>
                   {e.error && (
@@ -99,13 +99,13 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                       <Tag key={s.container}>{s.service} · {s.status}</Tag>
                     ))}
                     {e.services.length === 0 && (
-                      <span className="text-xs text-muted">{tr("testenvs_panel.kein_container_beim_runner_sichtbar")}</span>
+                      <span className="text-xs text-muted">{tr("testenvs_panel.no_container_visible_on_the_runner")}</span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <button onClick={() => fetchLogs(e)}
                       className={BUTTON_SMALL.secondary}>
-                      {tr("testenvs.logs_alle")}</button>
+                      {tr("testenvs.logs_all")}</button>
                     {e.services.map((s) => (
                       <button key={s.container} onClick={() => fetchLogs(e, s.service)}
                         className={BUTTON_SMALL.secondary}>
@@ -120,16 +120,16 @@ export default function TestenvsPanel({ project }: { project: Project }) {
               )}
             </ListenLine>
           ))}
-          {envs?.length === 0 && <ListingEmpty>{tr("testenvs_panel.keine_laufende_testumgebung")}</ListingEmpty>}
+          {envs?.length === 0 && <ListingEmpty>{tr("testenvs_panel.no_running_test_environment")}</ListingEmpty>}
         </Listing>
       </Area>
 
       {can && (
-        <Area title={tr("testenvs_panel.branch_testumgebung_starten")} hint={tr("testenvs.baut_branch")}>
+        <Area title={tr("testenvs_panel.start_branch_test_environment")} hint={tr("testenvs.builds_chosen_branch_own")}>
           <div className="flex flex-wrap items-center gap-2">
             <select value={branch} onChange={(e) => setBranch(e.target.value)}
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
-              <option value="">{tr("testenvs.branch_waehlen")}</option>
+              <option value="">{tr("testenvs.choose_branch")}</option>
               {branches?.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
             <button onClick={() => branch && start.mutate()} disabled={!branch || start.isPending}

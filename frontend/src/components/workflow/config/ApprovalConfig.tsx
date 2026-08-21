@@ -16,7 +16,7 @@ export default function ApprovalConfig({
   return (
     <div className="space-y-3">
       <div>
-        <div className="mb-1 text-xs font-medium text-muted">{tr("approval_config.freigeber")}</div>
+        <div className="mb-1 text-xs font-medium text-muted">{tr("approval_config.approver")}</div>
         <AssigneeEditor
           value={config.approvers}
           members={members}
@@ -32,8 +32,8 @@ export default function ApprovalConfig({
           className={`mt-1 ${inp}`}
         >
           <option value="ai_assign">KI-Recht (ai_assign)</option>
-          <option value="role">{tr("approval_config.projektrolle")}</option>
-          <option value="none">{tr("approval.ohne_gate")}</option>
+          <option value="role">{tr("approval_config.project_role")}</option>
+          <option value="none">{tr("approval.no_gate")}</option>
         </select>
       </label>
 
@@ -43,7 +43,7 @@ export default function ApprovalConfig({
           checked={!!config.reason_required_on_reject}
           onChange={(e) => onChange({ ...config, reason_required_on_reject: e.target.checked })}
         />
-        {tr("approval_config.begruendung_pflicht")}
+        {tr("approval_config.reason_required_rejection")}
       </label>
     </div>
   );

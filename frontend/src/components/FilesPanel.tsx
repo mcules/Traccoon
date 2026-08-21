@@ -141,7 +141,7 @@ export default function FilesPanel({ project }: { project: Project }) {
   });
 
   if (status.isError) {
-    const m = status.error instanceof ApiError ? status.error.message : tr("files_panel.repo_nicht_verfuegbar");
+    const m = status.error instanceof ApiError ? status.error.message : tr("files_panel.repository_not_available");
     return <div className="rounded border border-line bg-card p-4 text-sm text-muted">{m}</div>;
   }
   const st = status.data;
@@ -176,19 +176,19 @@ export default function FilesPanel({ project }: { project: Project }) {
       <div className="flex gap-3" style={{ height: "72vh" }}>
         {/* Verzeichnisbaum */}
         <div className="flex w-64 shrink-0 flex-col rounded-lg border border-line bg-card">
-          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={tr("files_panel.dateien_filtern")}
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={tr("files_panel.filter_files")}
             className="m-2 rounded border border-line bg-surface px-2 py-1 text-xs" />
           <div className="flex-1 overflow-y-auto px-1 pb-2">
             {nodes.length > 0
               ? <Tree nodes={nodes} sel={sel} onSelect={setSel} expanded={expanded} toggle={toggle} dirty={st?.dirty || []} />
-              : <div className="px-2 py-2 text-xs text-muted">{tr("files_panel.keine_dateien")}</div>}
+              : <div className="px-2 py-2 text-xs text-muted">{tr("files_panel.no_files")}</div>}
           </div>
         </div>
 
         {/* Editor / Vorschau */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-line bg-card">
           {!sel ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted">{tr("files_panel.datei_links_auswaehlen")}</div>
+            <div className="flex h-full items-center justify-center text-sm text-muted">{tr("files_panel.pick_file_left")}</div>
           ) : (
             <>
               <div className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-xs">
@@ -211,11 +211,11 @@ export default function FilesPanel({ project }: { project: Project }) {
                     ? <div className="flex h-full items-center justify-center overflow-auto p-4">
                         <img src={imgUrl} alt={sel} className="max-h-full max-w-full object-contain" />
                       </div>
-                    : <div className="p-3 text-sm text-muted">{tr("files_panel.bild_laedt")}</div>
+                    : <div className="p-3 text-sm text-muted">{tr("files_panel.loading_image")}</div>
                 ) : file.isLoading ? (
-                  <div className="p-3 text-sm text-muted">{tr("files_panel.laedt")}</div>
+                  <div className="p-3 text-sm text-muted">{tr("files_panel.loading")}</div>
                 ) : file.isError ? (
-                  <div className="p-3 text-sm text-red-400">{file.error instanceof ApiError ? file.error.message : tr("files_panel.datei_nicht_lesbar")}</div>
+                  <div className="p-3 text-sm text-red-400">{file.error instanceof ApiError ? file.error.message : tr("files_panel.file_not_readable")}</div>
                 ) : isMarkdown(sel) && preview ? (
                   <div className="h-full overflow-auto p-4"><Markdown text={value} /></div>
                 ) : (
@@ -263,18 +263,18 @@ function CommitModal({ pid, onClose, onDone }: { pid: number; onClose: () => voi
           <button onClick={onClose} className={BUTTON_TEXT.secondary}>✕</button>
         </div>
         <div className="mb-2 flex items-center gap-2">
-          <label className="text-xs text-muted">{tr("files_panel.titel")}</label>
+          <label className="text-xs text-muted">{tr("files_panel.title")}</label>
           <button onClick={() => gen.mutate()} disabled={gen.isPending}
             className={BUTTON_TEXT.secondary}>{gen.isPending ? "generiert…" : "↻ neu generieren"}</button>
         </div>
         <input value={title} onChange={(e) => setTitle(e.target.value)}
           className="mb-3 w-full rounded border border-line bg-surface px-3 py-2 text-sm" />
-        <label className="text-xs text-muted">{tr("files_panel.beschreibung")}</label>
+        <label className="text-xs text-muted">{tr("files_panel.description")}</label>
         <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={6}
           className="mb-3 mt-1 w-full rounded border border-line bg-surface px-3 py-2 text-sm" />
         {err && <div className="mb-2 text-sm text-red-400">{err}</div>}
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className={BUTTON.secondary}>{tr("files_panel.abbrechen")}</button>
+          <button onClick={onClose} className={BUTTON.secondary}>{tr("files_panel.cancel")}</button>
           <button onClick={() => title.trim() && commit.mutate()} disabled={!title.trim() || commit.isPending}
             className={BUTTON.primary}>{commit.isPending ? "Committet…" : "Committen"}</button>
         </div>

@@ -51,22 +51,22 @@ export default function StorePage() {
   usePageChrome(listing?.storage?.name || key, [], "", "seite");
 
   return (
-    <Area hint={tr("ablage.einleitung")}>
+    <Area hint={tr("store.versions_left_selected_one")}>
       <Errorrow text={err} />
       <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <Listing>
-          {(listing?.entries || []).length === 0 && <ListingEmpty>{tr("ablage.leer")}</ListingEmpty>}
+          {(listing?.entries || []).length === 0 && <ListingEmpty>{tr("store.storage_still_empty")}</ListingEmpty>}
           {(listing?.entries || []).map((e) => (
             <ListenLine key={e.id} columns="sm:grid-cols-[minmax(0,1fr)_auto]" dense
               onClick={() => nav(`/documents/${encodeURIComponent(key)}/${e.id}`)}>
               <div className="min-w-0">
                 <div className={`truncate text-sm ${e.id === chosen ? "font-medium text-ink" : "text-muted"}`}>
-                  {e.title || tr("ablage.ohne_titel")}
+                  {e.title || tr("store.no_heading")}
                 </div>
                 <div className="text-xs text-muted">{e.ts ? formatDateTime(e.ts) : ""}</div>
               </div>
               <div onClick={(ev) => ev.stopPropagation()}>
-                <IconButton icon={ICON.remove} danger title={tr("common.loeschen")}
+                <IconButton icon={ICON.remove} danger title={tr("common.delete")}
                   onClick={() => remove.mutate(e.id)} />
               </div>
             </ListenLine>
@@ -78,7 +78,7 @@ export default function StorePage() {
             ? entry.entry.format === "markdown"
               ? <Markdown text={entry.entry.body || ""} />
               : <pre className="whitespace-pre-wrap text-sm text-ink">{entry.entry.body}</pre>
-            : <div className="text-sm text-muted">{tr("ablage.nichts_gewaehlt")}</div>}
+            : <div className="text-sm text-muted">{tr("store.no_version_selected")}</div>}
         </div>
       </div>
     </Area>

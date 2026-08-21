@@ -44,7 +44,7 @@ export default function Members({ project }: { project: Project }) {
     onSuccess: (res) => {
       setEmail(""); setErr("");
       setInfo(res.status === "added"
-        ? tr("members.direkt_zugeordnet")
+        ? tr("members.already_registered_user_added")
         : "Einladung per E-Mail versendet.");
       setTimeout(() => setInfo(""), 4000);
       inv(); invInv();
@@ -70,7 +70,7 @@ export default function Members({ project }: { project: Project }) {
   const addExisting = useMutation({
     mutationFn: (user_id: number) => api.post(`/projects/${project.id}/members`, { user_id, role }),
     onSuccess: () => {
-      setErr(""); setInfo(tr("members.hinzugefuegt")); setTimeout(() => setInfo(""), 3000); setQ(""); inv();
+      setErr(""); setInfo(tr("members.user_added")); setTimeout(() => setInfo(""), 3000); setQ(""); inv();
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
@@ -85,8 +85,8 @@ export default function Members({ project }: { project: Project }) {
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-line text-left text-xs uppercase text-muted">
-            <th className="py-2">{tr("members.mitglied")}</th><th>{tr("members.rolle")}</th>
-            <th title={tr("members.darf_ki_nutzen_tickets_zuweisen")}>KI-Recht</th><th></th>
+            <th className="py-2">{tr("members.member")}</th><th>{tr("members.role_2")}</th>
+            <th title={tr("members.may_use_ai_and_assign_tickets")}>KI-Recht</th><th></th>
           </tr>
         </thead>
         <tbody>
@@ -107,7 +107,7 @@ export default function Members({ project }: { project: Project }) {
               <td className="py-1 text-right">
                 <div className="flex justify-end">
                   <Actions>
-                    <IconButton icon={ICON.remove} title={tr("members.entfernen")} danger
+                    <IconButton icon={ICON.remove} title={tr("members.remove")} danger
                       onClick={() => setRemoveTarget(m)} />
                   </Actions>
                 </div>
@@ -119,15 +119,15 @@ export default function Members({ project }: { project: Project }) {
 
       {/* Bestehenden Nutzer per Benutzername/Anzeigename suchen und direkt hinzufügen */}
       <div className="mt-5">
-        <label className="text-xs text-muted">{tr("members.bestehenden_hinzufuegen")}
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("members.name_eingeben")}
+        <label className="text-xs text-muted">{tr("members.add_existing_user_user")}
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("members.enter_name")}
             className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1" />
         </label>
         {q.trim().length >= 1 && (
           <div className="mt-1 divide-y divide-line rounded border border-line bg-card">
             {matches.length === 0 && (
               <div className="px-2 py-1.5 text-xs text-muted">
-                {tr(search.isFetching ? "members.suche" : "members.keine_treffer")}
+                {tr(search.isFetching ? "members.searching" : "members.no_matching_users")}
               </div>
             )}
             {matches.map((u) => (
@@ -137,7 +137,7 @@ export default function Members({ project }: { project: Project }) {
                   {u.status !== "active" && <span className="ml-1 text-xs text-muted">({u.status})</span>}
                 </span>
                 <button onClick={() => addExisting.mutate(u.id)}
-                  className={BUTTON.primary}>{tr("members.als_rolle", { role: role })}</button>
+                  className={BUTTON.primary}>{tr("members.role", { role: role })}</button>
               </div>
             ))}
           </div>
@@ -145,7 +145,7 @@ export default function Members({ project }: { project: Project }) {
       </div>
 
       <div className="mt-4 flex items-end gap-2">
-        <label className="flex-1 text-xs text-muted">{tr("members.per_mail_einladen")}
+        <label className="flex-1 text-xs text-muted">{tr("members.invite_email")}
           <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com"
             className="mt-1 block w-full rounded border border-line bg-surface px-2 py-1" />
         </label>
@@ -163,16 +163,16 @@ export default function Members({ project }: { project: Project }) {
       </div>
       {info && <div className="mt-2 text-sm text-green-400">{info}</div>}
       <p className="mt-3 text-xs text-muted">
-        {tr("members.hinweis")}
+        {tr("members.address_already_registered_user")}
       </p>
 
       {pending.length > 0 && (
         <div className="mt-6">
-          <div className="mb-2 text-xs font-medium uppercase text-muted">{tr("members.offene_einladungen")}</div>
+          <div className="mb-2 text-xs font-medium uppercase text-muted">{tr("members.open_invitations")}</div>
           <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase text-muted">
-                <th className="py-2">E-Mail</th><th>{tr("members.rolle")}</th><th>{tr("members.laeuft_ab")}</th><th></th>
+                <th className="py-2">E-Mail</th><th>{tr("members.role_2")}</th><th>{tr("members.expires")}</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -184,7 +184,7 @@ export default function Members({ project }: { project: Project }) {
                   <td className="py-1 text-right">
                     <div className="flex justify-end">
                       <Actions>
-                        <IconButton icon={ICON.remove} title={tr("members.widerrufen")} danger
+                        <IconButton icon={ICON.remove} title={tr("members.revoke_invitation")} danger
                           onClick={() => setRevokeTarget(i)} />
                       </Actions>
                     </div>
@@ -197,12 +197,12 @@ export default function Members({ project }: { project: Project }) {
       )}
       {removeTarget && (
         <DeleteDialog was={removeTarget.display_name || removeTarget.username}
-          hint={tr("members.entfernen_hinweis")}
+          hint={tr("members.person_loses_access_project")}
           onClose={() => setRemoveTarget(null)}
           onDelete={() => { remove.mutate(removeTarget.user_id); setRemoveTarget(null); }} />
       )}
       {revokeTarget && (
-        <DeleteDialog was={revokeTarget.email} hint={tr("members.widerrufen_hinweis")}
+        <DeleteDialog was={revokeTarget.email} hint={tr("members.invitation_link_becomes_invalid")}
           onClose={() => setRevokeTarget(null)}
           onDelete={() => { revoke.mutate(revokeTarget.id); setRevokeTarget(null); }} />
       )}

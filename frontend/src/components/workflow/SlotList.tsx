@@ -13,16 +13,16 @@ import { projectPath } from "../../projectTabs";
 // would fix the language of the first call.
 type TagColor = "neutral" | "green" | "yellow" | "red" | "blue" | "violet" | "brand";
 const ORIGIN: Record<WorkflowSlotInfo["origin"], { label: string; color: TagColor; hint: string }> = {
-  builtin: { label: "slot_list.herkunft_builtin", color: "neutral",
-             hint: "slot_list.herkunft_builtin_hinweis" },
-  global: { label: "slot_list.herkunft_global", color: "blue",
-            hint: "slot_list.herkunft_global_hinweis" },
-  user: { label: "slot_list.herkunft_user", color: "violet",
-          hint: "slot_list.herkunft_user_hinweis" },
-  project: { label: "slot_list.herkunft_project", color: "yellow",
-             hint: "slot_list.herkunft_project_hinweis" },
-  none: { label: "slot_list.herkunft_none", color: "red",
-          hint: "slot_list.herkunft_none_hinweis" },
+  builtin: { label: "slot_list.default", color: "neutral",
+             hint: "slot_list.shipped_flow_changes_default" },
+  global: { label: "slot_list.global_set", color: "blue",
+            hint: "slot_list.system_wide_set" },
+  user: { label: "slot_list.my_set", color: "violet",
+          hint: "slot_list.personal_set_project_owner" },
+  project: { label: "slot_list.adapted", color: "yellow",
+             hint: "slot_list.copy_project_no_longer" },
+  none: { label: "slot_list.missing", color: "red",
+          hint: "slot_list.no_flow_assigned" },
 };
 
 /**
@@ -88,16 +88,16 @@ export default function SlotList({ project }: { project: Project }) {
   const currentPreset = slots?.find((s) => s.origin !== "project")?.set_id ?? null;
 
   return (
-    <Area hint={tr("slot_list.einleitung")}>
+    <Area hint={tr("slot_list.these_flows_drive_work")}>
       {sets && sets.length > 1 && (
         <label className="block text-xs font-medium text-muted">
-          {tr("slot_list.prozess_satz")}
+          {tr("slot_list.process_set_project")}
           <select
             value={currentPreset ?? ""}
             onChange={(e) => chooseSet.mutate(e.target.value ? Number(e.target.value) : null)}
             className="mt-1 w-full max-w-md rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink"
           >
-            <option value="">{tr("slot_list.automatisch_satz_eines_eigentuemers_sons")}</option>
+            <option value="">{tr("slot_list.automatic_an_owner_s_set_otherwise_the_defaul")}</option>
             {sets.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -119,22 +119,22 @@ export default function SlotList({ project }: { project: Project }) {
                 <span className="font-medium text-ink">{s.name}</span>
                 <Tag color={o.color} title={tr(o.hint)}>{tr(o.label)}</Tag>
                 {!s.published && (
-                  <Tag color="yellow">{tr("slot_list.nicht_veroeffentlicht")}</Tag>
+                  <Tag color="yellow">{tr("slot_list.not_published")}</Tag>
                 )}
                 <div className="flex-1" />
                 {s.definition_id && (
                   <Rowbutton onClick={() => nav(`/projects/${project.key}/workflows/${s.definition_id}`,
                     { state: { from: projectPath(project.key, "settings", "processes") } })}>
-                    {tr(s.origin === "project" ? "slot_list.bearbeiten" : "slot_list.ansehen")}
+                    {tr(s.origin === "project" ? "slot_list.edit" : "slot_list.view")}
                   </Rowbutton>
                 )}
                 {s.origin === "project" ? (
-                  <Rowbutton danger title={tr("slot_list.eigene_kopie_verwerfen_es_gilt_wieder_de")}
+                  <Rowbutton danger title={tr("slot_list.drop_the_copy_the_set_applies_again")}
                     onClick={() => { setBusy(s.slot); reset.mutate({ slot: s.slot }); }}>
-                    {tr("slot_list.zuruecksetzen")}
+                    {tr("slot_list.reset")}
                   </Rowbutton>
                 ) : (
-                  <Rowbutton title={tr("slot_list.kopie_fuer_dieses_projekt_anlegen_und_be")}
+                  <Rowbutton title={tr("slot_list.create_a_copy_for_this_project_and_edit_it")}
                     onClick={() => { setBusy(s.slot); customize.mutate({ slot: s.slot }); }}>
                     Anpassen
                   </Rowbutton>
@@ -147,16 +147,16 @@ export default function SlotList({ project }: { project: Project }) {
                   dem Satz. */}
               {s.subject_kind === "issue" && (meta?.types?.length ?? 0) > 0 && (
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line pt-2">
-                  <span className="text-[11px] text-muted">{tr("slot_list.je_vorgangsart")}</span>
+                  <span className="text-[11px] text-muted">{tr("slot_list.per_issue_type")}</span>
                   {(s.per_issue_type || []).map((v) => (
                     <span key={v.issue_type_id}
                           className="flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-300">
                       <button onClick={() => nav(`/projects/${project.key}/workflows/${v.definition_id}`, { state: { from: projectPath(project.key, "settings", "processes") } })}
-                              title={tr("slot_list.eigenen_ablauf_dieser_vorgangsart_bearbe")}>
+                              title={tr("slot_list.edit_the_own_flow_of_this_issue_type")}>
                         {v.issue_type_name}
                       </button>
                       <button onClick={() => reset.mutate({ slot: s.slot, art: v.issue_type_id })}
-                              title={tr("slot_list.eigenen_ablauf_verwerfen_die_vorgangsart")}
+                              title={tr("slot_list.drop_the_own_flow_the_issue_type_follows_the")}
                               className={BUTTON_TEXT.danger}>✕</button>
                     </span>
                   ))}
@@ -166,7 +166,7 @@ export default function SlotList({ project }: { project: Project }) {
                       && customize.mutate({ slot: s.slot, art: Number(e.target.value) })}
                     className="rounded border border-line bg-surface px-1.5 py-0.5 text-[11px] text-muted"
                   >
-                    <option value="">{tr("slot_list.eigener_ablauf_fuer")}</option>
+                    <option value="">{tr("slot_list.own_flow")}</option>
                     {(meta?.types || [])
                       .filter((t) => !(s.per_issue_type || []).some((v) => v.issue_type_id === t.id))
                       .map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}

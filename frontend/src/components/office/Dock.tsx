@@ -53,9 +53,9 @@ export type DockTab = "chat" | "agents" | "tools" | "akte";
 
 export const DOCK_TABS: readonly { key: DockTab; label: string; icon: string }[] = [
   { key: "chat", label: "dock.chat", icon: "💬" },
-  { key: "agents", label: "dock.agenten", icon: "🤖" },
-  { key: "tools", label: "dock.werkzeuge", icon: "🔧" },
-  { key: "akte", label: "dock.akte", icon: "📇" },
+  { key: "agents", label: "dock.agents", icon: "🤖" },
+  { key: "tools", label: "dock.tools", icon: "🔧" },
+  { key: "akte", label: "dock.personnel_file", icon: "📇" },
 ];
 
 export interface DockProps {
@@ -95,7 +95,7 @@ function chatFrom(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], to: 
       const key = `${e.seq}:${i}`;
       if (c.k === "say") out.push({ key, ts: e.ts, id: c.id, icon: "💬", text: c.text });
       else if (c.k === "think") out.push({ key, ts: e.ts, id: c.id, icon: "💭", text: c.text, css: "italic text-muted" });
-      else if (c.k === "deliver") out.push({ key, ts: e.ts, id: c.id, icon: "📨", text: c.text || tr("dock.uebergibt_ergebnis") });
+      else if (c.k === "deliver") out.push({ key, ts: e.ts, id: c.id, icon: "📨", text: c.text || tr("dock.hands_result") });
       else if (c.k === "gate") out.push({ key, ts: e.ts, id: c.id, icon: "⏸", text: c.text || tr(GATE_TEXT[c.kind]), css: "text-orange-400" });
       else if (c.k === "done") {
         out.push({
@@ -235,8 +235,8 @@ export default function Dock({
             nennt ihr eigenes Fenster in der eigenen Überschrift. */}
         {seekTs !== null && tab !== "akte" && (
           <span className="self-center pb-1 text-[11px] text-orange-400"
-            title={tr("dock.selber_moment")}>
-            {tr("dock.eingefroren_auf")} {uhrText(seekTs)}
+            title={tr("dock.dock_shows_same_moment")}>
+            {tr("dock.frozen")} {uhrText(seekTs)}
           </span>
         )}
       </div>
@@ -269,7 +269,7 @@ function Capped({ n }: { n: number }) {
   if (n <= 0) return null;
   return (
     <div className="mb-1 border-b border-dashed border-line pb-1 text-[11px] text-muted">
-      {tr("dock.gekappt", { count: number(n) })}
+      {tr("dock.count_older_entries_hidden", { count: number(n) })}
     </div>
   );
 }
@@ -286,7 +286,7 @@ function ChatListing({ rows: lines, name, dimmed, onSelect }: {
   dimmed: (id: string) => boolean;
   onSelect: (id: string) => void;
 }) {
-  if (lines.length === 0) return <Empty text={tr("dock.nichts_gesagt")} />;
+  if (lines.length === 0) return <Empty text={tr("dock.nothing_said_yet")} />;
   const show = lines.slice(-CHAT_CAP);
   return (
     <div className="space-y-1">
@@ -297,7 +297,7 @@ function ChatListing({ rows: lines, name, dimmed, onSelect }: {
           <span className="shrink-0">{z.icon}</span>
           <button type="button" onClick={() => onSelect(z.id)}
             className="shrink-0 max-w-[9rem] truncate text-left text-muted hover:text-brand"
-            title={tr("dock.figur_waehlen", { name: name(z.id) })}>
+            title={tr("dock.select_character_name", { name: name(z.id) })}>
             {name(z.id)}
           </button>
           <span className={`min-w-0 flex-1 break-words ${z.css ?? ""}`}>{z.text}</span>
@@ -316,7 +316,7 @@ function AgentListing({ entries: entries, scope, filter, selectedId, onSelect }:
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  if (entries.length === 0) return <Empty text={tr("dock.niemand_im_raum")} />;
+  if (entries.length === 0) return <Empty text={tr("dock.nobody_room")} />;
   const show = entries.slice(0, AGENT_CAP);
   const now = Date.now();
   return (
@@ -333,7 +333,7 @@ function AgentListing({ entries: entries, scope, filter, selectedId, onSelect }:
               + (selectedId === r.agent_id ? "border-brand bg-brand/5" : "border-transparent hover:border-line")
               + (from ? " opacity-40" : "")}>
             <span className="font-medium">{r.agent || `Lauf ${r.run_id}`}</span>
-            {r.phase && <span className="text-muted">{tr(r.phase === "plan" ? "dock.planung" : "dock.ausfuehrung")}</span>}
+            {r.phase && <span className="text-muted">{tr(r.phase === "plan" ? "dock.planning" : "dock.execution")}</span>}
             <span className={statusColor(r.status)}>{statusText(r.status)}</span>
             {r.issue_key && <span className="font-mono text-[11px] text-brand">{r.issue_key}</span>}
             <div className="flex-1" />
@@ -358,10 +358,10 @@ function AgentListing({ entries: entries, scope, filter, selectedId, onSelect }:
 /** `ok === null` is **unknown**, not green: with old data nobody measured whether the call went
  *  through. A tick on that would be a claim about data that does not exist. */
 function result(ok: boolean | null | undefined): { symbol: string; css: string; title: string } {
-  if (ok === undefined) return { symbol: "…", css: "text-muted", title: tr("dock.laeuft_noch") };
-  if (ok === true) return { symbol: "✓", css: "text-green-400", title: tr("buero.st_success") };
-  if (ok === false) return { symbol: "✕", css: "text-red-400", title: tr("buero.st_failed") };
-  return { symbol: "?", css: "text-muted", title: tr("dock.unbekannt_altdaten") };
+  if (ok === undefined) return { symbol: "…", css: "text-muted", title: tr("dock.still_running") };
+  if (ok === true) return { symbol: "✓", css: "text-green-400", title: tr("office_room.st_success") };
+  if (ok === false) return { symbol: "✕", css: "text-red-400", title: tr("office_room.st_failed") };
+  return { symbol: "?", css: "text-muted", title: tr("dock.unknown_old_data_without") };
 }
 
 function ToolListing({ rows: lines, name, dimmed, onSelect }: {
@@ -370,7 +370,7 @@ function ToolListing({ rows: lines, name, dimmed, onSelect }: {
   dimmed: (id: string) => boolean;
   onSelect: (id: string) => void;
 }) {
-  if (lines.length === 0) return <Empty text={tr("dock.kein_werkzeug")} />;
+  if (lines.length === 0) return <Empty text={tr("dock.no_tool_used_yet")} />;
   const show = lines.slice(-TOOL_CAP);
   return (
     <div className="space-y-1">
@@ -383,7 +383,7 @@ function ToolListing({ rows: lines, name, dimmed, onSelect }: {
             <span className={`shrink-0 ${e.css}`} title={e.title}>{e.symbol}</span>
             <button type="button" onClick={() => onSelect(z.id)}
               className="shrink-0 max-w-[8rem] truncate text-left text-muted hover:text-brand"
-              title={tr("dock.figur_waehlen", { name: name(z.id) })}>
+              title={tr("dock.select_character_name", { name: name(z.id) })}>
               {name(z.id)}
             </button>
             <span className="shrink-0 font-mono">{z.tool}</span>

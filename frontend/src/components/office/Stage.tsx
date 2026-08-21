@@ -856,8 +856,8 @@ export default function Stage(props: StageProps): JSX.Element {
       tabIndex={kiosk === true ? -1 : 0}
       role="group"
       aria-label={kiosk === true
-        ? tr("stage.kiosk_beschreibung")
-        : tr("stage.beschreibung")}
+        ? tr("stage.office_stage_wall_screen")
+        : tr("stage.office_stage_alt_arrow")}
       onKeyDown={onKeyDown}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
@@ -874,8 +874,8 @@ export default function Stage(props: StageProps): JSX.Element {
         role="img"
         aria-label={
           empty
-            ? tr("stage.leer")
-            : tr("stage.mit_agenten", { count: roomCount })
+            ? tr("stage.empty_office_no_agent")
+            : tr("stage.pixel_office_count_agents", { count: roomCount })
         }
       />
 
@@ -925,7 +925,7 @@ export default function Stage(props: StageProps): JSX.Element {
             {/* Bewusst ohne „in diesem Projekt": die Bühne steht auch auf der
                 projektübergreifenden Seite, und leer heißt hier nur „im geladenen
                 Fenster ist nichts passiert" — nicht „es gab hier nie einen Agenten". */}
-            {tr("stage.kein_lauf")}
+            {tr("stage.no_agent_run_see")}
           </p>
         </div>
       )}

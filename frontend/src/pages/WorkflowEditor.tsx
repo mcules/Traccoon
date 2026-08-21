@@ -25,8 +25,8 @@ import WorkflowCanvas from "../components/workflow/WorkflowCanvas";
 import NodePalette from "../components/workflow/NodePalette";
 import NodeConfigPanel from "../components/workflow/NodeConfigPanel";
 import { availableFields } from "../components/workflow/contextFields";
-import DryrunPanel from "../components/workflow/ProbelaufPanel";
-import BuilderPanel from "../components/workflow/BaumeisterPanel";
+import DryrunPanel from "../components/workflow/DryRunPanel";
+import BuilderPanel from "../components/workflow/BuilderPanel";
 import {
   graphToFlow, flowToGraph, graphSignature, contentSignature,
 } from "../components/workflow/convert";
@@ -127,7 +127,7 @@ export default function WorkflowEditor() {
       const path = changes.filter((c) => c.type === "remove").map((c) => c.id);
       if (path.length) {
         setEdges((eds) => eds.filter((e) => !path.includes(e.source) && !path.includes(e.target)));
-        setMsg(tr("editor.schritte_geloescht", { count: path.length }));
+        setMsg(tr("editor.count_step_s_deleted", { count: path.length }));
       }
       onNodesChange(changes);
     },
@@ -138,7 +138,7 @@ export default function WorkflowEditor() {
   const handleEdgesChange = useCallback(
     (changes: Parameters<typeof onEdgesChange>[0]) => {
       const path = changes.filter((c) => c.type === "remove").length;
-      if (path) setMsg(tr("editor.verbindungen_geloescht", { count: path }));
+      if (path) setMsg(tr("editor.count_connection_s_deleted", { count: path }));
       onEdgesChange(changes);
     },
     [onEdgesChange],
@@ -309,7 +309,7 @@ export default function WorkflowEditor() {
       const width = sizes.get(start!.id)?.width ?? 220;
       setFocus({ x: target.x + width / 2, y: target.y, token: Date.now() });
     }
-    setMsg(tr("editor.neu_angeordnet"));
+    setMsg(tr("editor.rearranged_not_saved_yet"));
   }, [nodes, edges, setNodes, gap]);
 
   const clientErrors = useMemo(() => validateGraph(flowToGraph(nodes, edges)), [nodes, edges]);
@@ -398,13 +398,13 @@ export default function WorkflowEditor() {
       secured.current = graphSignature(graph);
       setState((n) => n + 1);
       setErrors([]);
-      setMsg(tr("editor.veroeffentlicht_meldung"));
+      setMsg(tr("editor.published"));
       qc.invalidateQueries({ queryKey: ["workflow-versions", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow", wfId] });
       qc.invalidateQueries({ queryKey: ["workflow-editable", wfId] });
       if (project) qc.invalidateQueries({ queryKey: ["workflows", project.id] });
     } catch (e) {
-      setMsg(e instanceof ApiError ? `Veröffentlichen abgelehnt: ${e.message}` : tr("editor.veroeffentlichen_fehlgeschlagen"));
+      setMsg(e instanceof ApiError ? `Veröffentlichen abgelehnt: ${e.message}` : tr("editor.publishing_failed"));
     }
   };
 
@@ -428,13 +428,13 @@ export default function WorkflowEditor() {
     () => contentSignature(flowToGraph(nodes, edges)), [nodes, edges]);
   const sameAsLive = !!liveVersion && contentNow === contentSignature(liveVersion.graph);
   const publication = !def?.current_version_id
-    ? { text: tr("editor.nie_veroeffentlicht"), style: "text-muted",
-        title: tr("editor.nie_veroeffentlicht_titel") }
+    ? { text: tr("editor.never_published"), style: "text-muted",
+        title: tr("editor.flow_runs_nowhere_yet") }
     : sameAsLive
       ? { text: `veröffentlicht (v${liveVersion?.version ?? "?"})`, style: "text-green-400",
-          title: tr("editor.live_titel") }
+          title: tr("editor.what_canvas_here_also") }
       : { text: `weicht von v${liveVersion?.version ?? "?"} ab`, style: "text-amber-300",
-          title: tr("editor.abweichung_titel") };
+          title: tr("editor.outside_published_version_runs") };
 
   // Ask when leaving the window with unsaved work: the browser only allows its own text, but
   // the question itself is the point.
@@ -466,29 +466,29 @@ export default function WorkflowEditor() {
           // free flow to one's own processes. Before, a slot flow landed in the settings,
           // where it does not stand at all.
           onClick={() => {
-            if (changed && !confirm(tr("editor.zurueck_trotz_aenderungen"))) return;
+            if (changed && !confirm(tr("editor.unsaved_changes_go_back"))) return;
             nav(origin);
           }}
           className={BUTTON.secondary}
         >
           <span className="sm:hidden">←</span>
-          <span className="hidden sm:inline">{tr("editor.zurueck")}</span>
+          <span className="hidden sm:inline">{tr("editor.back_flows")}</span>
         </button>
         <span className="hidden font-mono text-xs text-muted sm:inline">{def?.key}</span>
         <h1 className="text-sm font-semibold">{def?.name || "Prozess"}</h1>
         {onlyRead && (
           <span className="rounded bg-surface px-1.5 py-0.5 text-xs text-muted"
-            title={tr("workflow_editor.dieser_ablauf_gehoert_zu_einem_prozess_s")}>
-            {tr("editor.nur_ansehen")}
+            title={tr("workflow_editor.this_flow_belongs_to_a_process_set_to_change")}>
+            {tr("editor.view_only")}
           </span>
         )}
         {!onlyRead && (
           <span className={`rounded px-1.5 py-0.5 text-xs ${
             changed ? "bg-amber-500/15 text-amber-300" : "text-muted"}`}
             title={changed
-              ? tr("editor.ungespeichert_titel")
-              : tr("editor.alles_gesichert")}>
-            {tr(changed ? "editor.ungespeichert" : "editor.gespeichert")}
+              ? tr("editor.canvas_differs_saved_version")
+              : tr("editor.everything_saved")}>
+            {tr(changed ? "editor.unsaved" : "editor.saved")}
           </span>
         )}
         {/* Die Abweichung ist anklickbar: „weicht von v7 ab" beantwortet nicht, WAS abweicht,
@@ -496,7 +496,7 @@ export default function WorkflowEditor() {
         {!sameAsLive && liveVersion && version?.id && version.id !== liveVersion.id ? (
           <button onClick={() => setShowDiff(true)}
             className={`rounded px-1.5 py-0.5 text-xs underline decoration-dotted ${publication.style}`}
-            title={tr("editor.unterschied_ansehen")}>
+            title={tr("editor.look_difference_running_version")}>
             {publication.text}
           </button>
         ) : (
@@ -510,8 +510,8 @@ export default function WorkflowEditor() {
         {!onlyRead && version?.status === "draft" && version.id > 0 && (
           <button onClick={() => setQuestionDiscard(true)}
             className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-red-400 hover:text-red-300"
-            title={tr("editor.entwurf_verwerfen_titel")}>
-            {tr("editor.entwurf_verwerfen")}
+            title={tr("editor.back_version_running")}>
+            {tr("editor.discard_draft")}
           </button>
         )}
         <div className="flex-1" />
@@ -522,20 +522,20 @@ export default function WorkflowEditor() {
               <button key={a} type="button" onClick={() => setColumn(a)}
                 className={`px-2 py-1 text-xs ${column === a
                   ? "bg-brand text-white" : "text-muted hover:text-ink"}`}>
-                {tr(a === "flaeche" ? "editor.ansicht_flaeche" : "editor.ansicht_baustein")}
+                {tr(a === "flaeche" ? "editor.canvas" : "editor.block")}
               </button>
             ))}
           </div>
         )}
         <Button onClick={autoLayout} disabled={nodes.length === 0 || onlyRead} symbol="⇅"
-          title={tr("editor.anordnen_titel", { distance: gap })}>
-          {tr("editor.anordnen")}
+          title={tr("editor.arrange_blocks_top_bottom", { distance: gap })}>
+          {tr("editor.arrange")}
         </Button>
         {/* Speichern kann nur, was sich geändert hat — sonst ist der Knopf ein Versprechen,
             das er nicht einlöst. */}
         <Button onClick={save} disabled={!changed || saving || !version || onlyRead}
-          symbol="💾" title={changed ? undefined : tr("editor.nichts_zu_speichern")}>
-          {tr(saving ? "editor.speichert" : "common.speichern")}
+          symbol="💾" title={changed ? undefined : tr("editor.nothing_changed")}>
+          {tr(saving ? "editor.saving" : "common.save")}
         </Button>
         {/* Das Ergebnis bleibt am Knopf stehen: Wer geprüft hat, will es später noch sehen,
             ohne noch einmal zu prüfen. Nach der nächsten Änderung ist es wieder offen. */}
@@ -543,18 +543,18 @@ export default function WorkflowEditor() {
           state={checked && checked.signature === now
             ? (checked.ok ? "good" : "bad") : "open"}
           title={checked && checked.signature === now
-            ? (checked.ok ? tr("editor.geprueft_ok") : tr("editor.geprueft_fehler"))
-            : tr("editor.noch_nicht_geprueft")}>
-          {tr("editor.validieren")}
+            ? (checked.ok ? tr("editor.checked_no_problems") : tr("editor.checked_there_problems"))
+            : tr("editor.version_not_been_checked")}>
+          {tr("editor.check")}
         </Button>
         {/* Nichts Neues, nichts zu veröffentlichen. Vorher lud der Knopf dazu ein und
             antwortete danach „nur die Anordnung war anders". */}
         <Button variant="primary" onClick={publish} symbol="⬆"
           disabled={!version || clientErrors.length > 0 || sameAsLive || onlyRead}
-          title={clientErrors.length ? tr("editor.erst_fehler_beheben")
-            : sameAsLive ? tr("editor.nichts_zu_veroeffentlichen")
-              : tr("editor.veroeffentlichen")}>
-          {tr("editor.veroeffentlichen")}
+          title={clientErrors.length ? tr("editor.fix_errors_first")
+            : sameAsLive ? tr("editor.published_version_already_one")
+              : tr("editor.publish")}>
+          {tr("editor.publish")}
         </Button>
       </div>
 
@@ -564,8 +564,8 @@ export default function WorkflowEditor() {
           <div className="w-52 shrink-0 overflow-y-auto border-r border-line bg-card p-3">
             <NodePalette onAdd={append} />
             <p className="mt-4 border-t border-line pt-3 text-[11px] leading-relaxed text-muted">
-              {tr("editor.hilfe_verbinden")}<br />
-              {tr("editor.hilfe_loeschen")}
+              {tr("editor.draw_connection_outlet_onto")}<br />
+              {tr("editor.delete_connection_hover_line")}
             </p>
           </div>
         )}
@@ -591,15 +591,15 @@ export default function WorkflowEditor() {
               keinen neuen Baustein, und die Fläche hat für eine Leiste keinen Platz. */}
           {narrow && !onlyRead && (
             <div className="border-b border-line p-2">
-              <div className="mb-1.5 text-xs font-medium text-muted">{tr("node_palette.bausteine")}</div>
+              <div className="mb-1.5 text-xs font-medium text-muted">{tr("node_palette.blocks")}</div>
               <NodePalette onAdd={append} compact />
             </div>
           )}
-          <div className="border-b border-line px-3 py-2 text-xs font-medium text-muted">{tr("workflow_editor.konfiguration")}</div>
+          <div className="border-b border-line px-3 py-2 text-xs font-medium text-muted">{tr("workflow_editor.configuration")}</div>
           {onlyRead ? (
             <p className="p-3 text-sm text-muted">
               Dieser Ablauf gehört zu einem Prozess-Satz und wird hier nur angezeigt. Zum Ändern
-              im Projekt unter <b>{tr("workflow_editor.prozesse")}</b> auf <b>{tr("workflow_editor.anpassen")}</b> gehen — das legt eine Kopie
+              im Projekt unter <b>{tr("workflow_editor.flows")}</b> auf <b>{tr("workflow_editor.customize")}</b> gehen — das legt eine Kopie
               für dieses Projekt an.
             </p>
           ) : (
@@ -621,7 +621,7 @@ export default function WorkflowEditor() {
                 setNodes(flow.nodes);
                 setEdges(flow.edges);
                 setSelectedId(null);
-                setMsg(tr("editor.entwurf_uebernommen"));
+                setMsg(tr("editor.draft_taken_not_saved"));
               }} />}
 
           {allErrors.length > 0 && (
@@ -642,15 +642,15 @@ export default function WorkflowEditor() {
       </div>
       {showDiff && liveVersion && version && (
         <VersionsDiff defId={wfId} versionId={version.id} against={liveVersion.id}
-          title={tr("editor.unterschied_titel", { version: liveVersion.version })}
+          title={tr("editor.difference_v_version_currently", { version: liveVersion.version })}
           onClose={() => setShowDiff(false)} />
       )}
       {questionDiscard && (
         <ConfirmDialog
-          title={tr("editor.entwurf_verwerfen")}
-          text={tr("editor.entwurf_verwerfen_frage")}
-          hint={tr("editor.entwurf_verwerfen_hinweis")}
-          confirmText={tr("editor.entwurf_verwerfen")}
+          title={tr("editor.discard_draft")}
+          text={tr("editor.throw_away_open_draft")}
+          hint={tr("editor.editor_shows_published_version")}
+          confirmText={tr("editor.discard_draft")}
           onClose={() => setQuestionDiscard(false)}
           onConfirm={() => { setQuestionDiscard(false); void discard(); }} />
       )}

@@ -73,10 +73,10 @@ function stepText(c: Cmd): { text: string; css?: string } | null {
         : c.ok === false ? { text: "↩ Werkzeug fehlgeschlagen", css: "text-red-400" }
           : { text: "↩ Werkzeug beendet, Ergebnis unbekannt", css: "text-muted" };
     case "edit": return { text: `📝 ${c.path}` };
-    case "spawn": return { text: `🌱 ${tr("inspector.als_unteragent")}` };
-    case "deliver": return { text: `📨 ${tr("inspector.uebergabe")}${c.text ? `: ${c.text}` : ""}` };
+    case "spawn": return { text: `🌱 ${tr("inspector.started_subagent")}` };
+    case "deliver": return { text: `📨 ${tr("inspector.handover")}${c.text ? `: ${c.text}` : ""}` };
     case "gate": return { text: `⏸ ${tr(GATE_TEXT[c.kind])}`, css: "text-orange-400" };
-    case "resume": return { text: `▶ ${tr("inspector.antwort_da")}` };
+    case "resume": return { text: `▶ ${tr("inspector.answer_received_carrying")}` };
     case "status": return { text: `● ${statusText(c.status)}`, css: statusColor(c.status) };
     case "done": return c.ok ? { text: "✅ fertig", css: "text-green-400" }
       : { text: "❌ abgebrochen", css: "text-red-400" };
@@ -84,10 +84,10 @@ function stepText(c: Cmd): { text: string; css?: string } | null {
     // healed is the only good news in the error case, and the list is the place where one can
     // read it in plain text.
     case "deploy":
-      return c.state === "start" ? { text: `🖥 ${tr("inspector.deploy_laeuft")} · ${c.label}` }
+      return c.state === "start" ? { text: `🖥 ${tr("inspector.deployment_running")} · ${c.label}` }
         : c.state === "ok" ? { text: `🖥 Deployment live · ${c.label}`, css: "text-green-400" }
           : c.state === "fail" ? { text: `🖥 Deployment fehlgeschlagen · ${c.label}`, css: "text-red-400" }
-            : { text: `🖥 ${tr("inspector.deploy_zurueckgerollt")} · ${c.label}`, css: "text-orange-400" };
+            : { text: `🖥 ${tr("inspector.deployment_rolled_back")} · ${c.label}`, css: "text-orange-400" };
   }
 }
 
@@ -142,7 +142,7 @@ export default function Inspector({
   if (!entry || !excerpt) {
     return (
       <div className={`rounded border border-line bg-card px-3 py-4 text-center text-xs text-muted ${className ?? ""}`}>
-        {tr("inspector.keine_figur")}
+        {tr("inspector.no_character_selected_click")}
       </div>
     );
   }
@@ -163,7 +163,7 @@ export default function Inspector({
   const projectKey = entry.project_key ?? (scope.kind === "project" ? scope.projectKey : null);
 
   const blockText = entry.status === "blocked"
-    ? (excerpt.gate ? tr(GATE_TEXT[excerpt.gate]) : tr("inspector.grund_nicht_im_fenster"))
+    ? (excerpt.gate ? tr(GATE_TEXT[excerpt.gate]) : tr("inspector.reason_outside_the_window"))
     : (entry.status === "planned" ? GATE_TEXT.plan : null);
 
   return (
@@ -174,7 +174,7 @@ export default function Inspector({
         <div className="flex-1" />
         <span className="font-mono text-[11px] text-muted">#{entry.run_id}</span>
         {onClose && (
-          <button type="button" onClick={onClose} title={tr("inspector.schliessen")}
+          <button type="button" onClick={onClose} title={tr("inspector.close_inspector")}
             className={BUTTON_SMALL.secondary}>✕</button>
         )}
       </div>
@@ -187,31 +187,31 @@ export default function Inspector({
         )}
 
         <dl className="grid grid-cols-[8.5rem_1fr] gap-x-2 gap-y-1">
-          <Field label={tr("inspector.lauf_id")}>
+          <Field label={tr("inspector.run_id")}>
             <span className="font-mono">{entry.agent_id}</span>
           </Field>
-          <Field label={tr("inspector.rolle")}>{entry.agent || "—"}</Field>
+          <Field label={tr("inspector.role")}>{entry.agent || "—"}</Field>
           <Field label={tr("inspector.phase")}>
-            {entry.phase === "plan" ? tr("dock.planung") : entry.phase === "execute" ? tr("dock.ausfuehrung") : (entry.phase || "—")}
+            {entry.phase === "plan" ? tr("dock.planning") : entry.phase === "execute" ? tr("dock.execution") : (entry.phase || "—")}
           </Field>
-          <Field label={tr("inspector.provider_modell")}>
+          <Field label={tr("inspector.provider_model")}>
             {entry.provider || "—"} / <span className="font-mono">{entry.model || "—"}</span>
           </Field>
-          <Field label={tr("buero.tokens")}>
+          <Field label={tr("office_room.tokens")}>
             <span title={`Cache gelesen ${number(entry.cache_read_tokens)}`}>
-              {number(entry.in_tokens)} {tr("akte.ein")} · {number(entry.out_tokens)} {tr("akte.aus")}
+              {number(entry.in_tokens)} {tr("personnel_file.text_2")} · {number(entry.out_tokens)} {tr("personnel_file.text")}
             </span>
           </Field>
-          <Field label={tr("akte.kosten")}>
-            <span title={tr(unpriced ? "inspector.kosten_teilweise" : "inspector.kosten_voll")}>
+          <Field label={tr("personnel_file.cost")}>
+            <span title={tr(unpriced ? "inspector.model_no_price_catalog" : "inspector.priced_against_catalog")}>
               {usdText(entry.cost_usd, unpriced)}
             </span>
           </Field>
           <Field label={tr("inspector.start")}>{Number.isFinite(start) ? uhrText(start) : "—"}</Field>
-          <Field label={tr("akte.dauer")}>{durationText(duration)}{entry.status === "running" && ` (${tr("buero.st_running")})`}</Field>
-          <Field label={tr("akte.runden")}>{entry.iterations || 0}</Field>
-          <Field label={tr("inspector.bearbeitungen")}>{excerpt.edits}</Field>
-          <Field label={tr("inspector.elternlauf")}>
+          <Field label={tr("personnel_file.duration")}>{durationText(duration)}{entry.status === "running" && ` (${tr("office_room.st_running")})`}</Field>
+          <Field label={tr("personnel_file.rounds")}>{entry.iterations || 0}</Field>
+          <Field label={tr("inspector.edits")}>{excerpt.edits}</Field>
+          <Field label={tr("inspector.parent_run")}>
             {parentId === null ? (
               <span className="text-muted">— (Wurzellauf)</span>
             ) : onSelect ? (
@@ -231,7 +231,7 @@ export default function Inspector({
                 {excerpt.tool.target && <span className="text-muted"> · {excerpt.tool.target}</span>}
                 <span className="text-muted">
                   {" · "}
-                  {excerpt.tool.ok === undefined ? tr("buero.st_running")
+                  {excerpt.tool.ok === undefined ? tr("office_room.st_running")
                     : excerpt.tool.ok === true ? "erfolgreich"
                       : excerpt.tool.ok === false ? "fehlgeschlagen"
                         : "Ergebnis unbekannt"}
@@ -245,7 +245,7 @@ export default function Inspector({
         <div>
           <div className="mb-1 font-medium">Letzte Schritte</div>
           {excerpt.steps.length === 0 ? (
-            <div className="text-muted">{tr("inspector.nichts_im_fenster")}</div>
+            <div className="text-muted">{tr("inspector.nothing_window")}</div>
           ) : (
             <div className="space-y-0.5">
               {excerpt.steps.map((s) => (
@@ -261,7 +261,7 @@ export default function Inspector({
         <div className="flex flex-wrap gap-2 border-t border-line pt-2">
           {onOpenFile && entry.agent && (
             <button type="button" onClick={() => onOpenFile(entry.agent)}
-              title={tr("inspector.alle_laeufe", { role: entry.agent })}
+              title={tr("inspector.all_runs_role_role", { role: entry.agent })}
               className={BUTTON_SMALL.secondary}>
               📇 Personalakte: {entry.agent}
             </button>

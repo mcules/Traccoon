@@ -22,7 +22,7 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
     ["notify", "action.notify"],
     ["webhook", "action.webhook"],
     ["create_ticket", "action.create_ticket"],
-    ["refresh_facts", "action.refresh_facts"],
+    ["refresh_facts", "action.read_project_facts"],
     ["assistant_task", "action.assistant_task"],
     ["agent_run", "action.agent_run"],
     ["script", "action.script"],
@@ -31,7 +31,7 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
     ["document_read", "action.document_read"],
     ["answer", "action.answer"],
     ["mail_attachment", "action.mail_attachment"],
-    ["mail_flag", "action.mail_flag"],
+    ["mail_flag", "action.mark_mail_read_flagged"],
     ["mail_move", "action.mail_move"],
   ]],
   ["Ticket", [
@@ -43,7 +43,7 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
   ]],
   ["Mail-Eingang", [
     ["mail_classify", "action.mail_classify"],
-    ["spam_evaluate", "action.spam_evaluate"],
+    ["spam_evaluate", "action.judge_spam"],
     ["spam_card", "action.spam_card"],
     ["spam_apply", "action.spam_apply"],
     ["mail_assistant_task", "action.mail_assistant_task"],
@@ -51,8 +51,8 @@ const GROUPS: [string, [AutoActionName, string][]][] = [
     ["mail_assistant_run", "action.mail_assistant_run"],
   ]],
   ["Auslieferung", [
-    ["start_testenv", "action.start_testenv"],
-    ["stop_testenv", "action.stop_testenv"],
+    ["start_testenv", "action.start_test_environment"],
+    ["stop_testenv", "action.stop_test_environment"],
     ["accept_merge", "action.accept_merge"],
     ["deploy", "action.deploy"],
   ]],
@@ -64,7 +64,7 @@ function Errorbehaviour({ config, onChange }: { config: NodeConfig; onChange: (c
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
   return (
     <div className="space-y-2 rounded border border-line bg-surface p-2">
-      <div className="text-xs font-medium text-muted">{tr("auto_action_config.wenn_es_schiefgeht")}</div>
+      <div className="text-xs font-medium text-muted">{tr("auto_action_config.when_goes_wrong")}</div>
       <div className="flex gap-2">
         <label className="flex-1 text-[11px] text-muted">
           Wiederholungen
@@ -90,7 +90,7 @@ function Errorbehaviour({ config, onChange }: { config: NodeConfig; onChange: (c
         </label>
       </div>
       <p className="text-[11px] text-muted">
-        {tr("auto_action_config.wiederholung_hinweis")}
+        {tr("auto_action_config.call_outside_usually_fails")}
       </p>
     </div>
   );
