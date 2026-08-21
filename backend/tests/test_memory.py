@@ -85,7 +85,7 @@ async def test_abruf_sammelt_vom_allgemeinen_zum_besonderen():
     assert "## Über deinen Menschen" in text and "## Für dieses Projekt" in text
 
 
-async def test_abruf_fehlende_notiz_ist_kein_fehler():
+async def test_abruf_fehlende_notiz_ist_kein_error():
     """Only Mensch.md exists; the rest is simply missing, without an exception."""
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "- Eine Vorgabe."})
     text = await read_memory(mcp, ROOT, "developer", "TRA")
@@ -93,7 +93,7 @@ async def test_abruf_fehlende_notiz_ist_kein_fehler():
     assert "Für deine Rolle" not in text
 
 
-async def test_abruf_ohne_ordner_ruft_nichts():
+async def test_abruf_ohne_folder_ruft_nichts():
     """No memory configured means not a single MCP call."""
     mcp = FakeMcp()
     assert await read_memory(mcp, "", "developer", "TRA") == ""
@@ -116,7 +116,7 @@ async def test_ohne_vault_sagt_es_dem_agenten(db):
     assert mcp.calls == []
 
 
-async def test_erinnere_dich_baut_target_als_objekt(db):
+async def test_erinnere_dich_baut_target_as_obj(db):
     """REGRESSION: `target` has to be an object; a string is `MCP error -32602`.
 
     Exactly on that older models fail when they call the obsidian MCP themselves. Because
@@ -161,7 +161,7 @@ async def test_erinnere_dich_meldet_scheitern(db):
     assert out.startswith("FEHLER")
 
 
-async def test_projekt_bereich_ohne_projekt(db):
+async def test_projekt_area_ohne_projekt(db):
     """In a project-less assistant run there is no project memory, and it says so."""
     u = await make_user(db, "projektlos")
     u.vault_memory_path = ROOT
@@ -173,7 +173,7 @@ async def test_projekt_bereich_ohne_projekt(db):
     assert mcp.calls == []
 
 
-async def test_vergiss_entfernt_nur_die_passende_zeile(db):
+async def test_vergiss_entfernt_nur_die_passende_line(db):
     """What is outdated falls away, the rest stays."""
     u = await make_user(db, "vergesser")
     u.vault_memory_path = ROOT
@@ -184,11 +184,11 @@ async def test_vergiss_entfernt_nur_die_passende_zeile(db):
     out = await call_memory_tool(db, mcp, u.id, "vergiss",
                                  {"bereich": "mensch", "textfragment": "Englisch"})
     assert "1 Zeile" in out
-    rest = mcp.notes[f"{ROOT}/Mensch.md"]
-    assert "Englisch" not in rest and "Keine Werbemails melden." in rest
+    remainder = mcp.notes[f"{ROOT}/Mensch.md"]
+    assert "Englisch" not in remainder and "Keine Werbemails melden." in remainder
 
 
-async def test_vergiss_ohne_treffer_aendert_nichts(db):
+async def test_vergiss_ohne_hits_aendert_nichts(db):
     """No hit means: do not write, say so."""
     u = await make_user(db, "trefferlos")
     u.vault_memory_path = ROOT
@@ -200,7 +200,7 @@ async def test_vergiss_ohne_treffer_aendert_nichts(db):
     assert "obsidian__obsidian_write_note" not in mcp.names()
 
 
-async def test_suche_bleibt_im_gedaechtnis_ordner(db):
+async def test_suche_bleibt_im_gedaechtnis_folder(db):
     """The search must not rummage through the whole vault."""
     u = await make_user(db, "sucher")
     u.vault_memory_path = ROOT
@@ -220,7 +220,7 @@ async def test_memory_root_leer_ohne_owner(db):
 
 # ── Verdrahtung im Lauf ──────────────────────────────────────────────────────
 
-def test_gedaechtnis_tools_immer_erlaubt():
+def test_gedaechtnis_tools_immer_allowed():
     """`allowed_tools` is deny by default, and the memory tools have to get past it;
     otherwise a freshly created agent silently never learns anything."""
     from app.worker.runtime import AgentDef
@@ -237,7 +237,7 @@ def test_gedaechtnis_tools_immer_erlaubt():
     assert not a.tool_allowed("obsidian__obsidian_write_note")
 
 
-def test_lernschalter_kommt_aus_der_zeile():
+def test_lernschalter_kommt_aus_der_line():
     """`learns=false` on the agent switches lookup and review off."""
     from app.models.agents import AgentDefinition
     from app.worker.runtime import agent_def_from_row
@@ -263,7 +263,7 @@ async def test_lernschalter_in_der_api(db, client):
     assert r.status_code == 200 and r.json()["learns"] is False
 
 
-async def test_gedaechtnis_ordner_in_der_api(db, client):
+async def test_gedaechtnis_folder_in_der_api(db, client):
     """Set the folder (with slashes), switch it off again.
 
     What is checked is the column, not `/me/flags`: the `redis_stub` of the test environment
@@ -292,10 +292,10 @@ async def test_chat_verlauf(db):
 
     u = await make_user(db, "plauderer")
     fremd = await make_user(db, "fremder")
-    jetzt = dt.datetime.now(tz=dt.timezone.utc)
+    now = dt.datetime.now(tz=dt.timezone.utc)
 
     def task(**kw):
-        d = dict(owner_user_id=u.id, kind="chat", status="done", created_at=jetzt)
+        d = dict(owner_user_id=u.id, kind="chat", status="done", created_at=now)
         d.update(kw)
         return AssistantTask(**d)
 
@@ -303,7 +303,7 @@ async def test_chat_verlauf(db):
         # Too old is now a question of weeks, not of hours: since the conversation memory,
         # older material wanders into the summary instead of falling away without replacement.
         task(title="alt", meta={"chat_text": "Uraltes"}, result="Uralte Antwort",
-             created_at=jetzt - dt.timedelta(days=30)),
+             created_at=now - dt.timedelta(days=30)),
         task(title="fremd", meta={"chat_text": "Fremdes"}, result="A", owner_user_id=fremd.id),
         task(title="anderer", meta={"chat_text": "GameProj", "agent": "gameproj-operator"}, result="A"),
         task(title="laufend", meta={"chat_text": "Noch offen"}, status="running"),
@@ -311,12 +311,12 @@ async def test_chat_verlauf(db):
              result="Auf Deutsch mit TRA-Nummer."),
     ])
     await db.commit()
-    aktuell = task(title="jetzt", meta={"chat_text": "Und die Betreffzeile?"}, status="approved")
-    db.add(aktuell)
+    current = task(title="jetzt", meta={"chat_text": "Und die Betreffzeile?"}, status="approved")
+    db.add(current)
     await db.commit()
-    await db.refresh(aktuell)
+    await db.refresh(current)
 
-    verlauf = await _chat_history(db, aktuell)
+    verlauf = await _chat_history(db, current)
     texte = " | ".join(v["body"] for v in verlauf)
     assert "Wie schreibe ich Commits?" in texte and "Auf Deutsch mit TRA-Nummer." in texte
     for draussen in ("Uraltes", "Fremdes", "GameProj", "Noch offen", "Und die Betreffzeile?"):
@@ -379,12 +379,12 @@ async def test_rueckschau_merkt_und_zaehlt_tokens(db, monkeypatch):
                                       {"bereich": "mensch", "text": "Deutsche Commits."})]),
         FakeResp(text="nichts"),
     ]
-    gesehen: list[list[dict]] = []
+    seen: list[list[dict]] = []
 
     async def fake_chat(**kw):
         assert {t["function"]["name"] for t in kw["tools"]} == {
             "erinnere_dich", "vergiss", "gedaechtnis_suchen"}, "only memory tools"
-        gesehen.append(list(kw["messages"]))
+        seen.append(list(kw["messages"]))
         return antworten.pop(0)
 
     monkeypatch.setattr(runtime.router, "chat", fake_chat)
@@ -410,9 +410,9 @@ async def test_rueckschau_merkt_und_zaehlt_tokens(db, monkeypatch):
     # The assignment has to stand as a user turn at the end: role=system would be rebuilt
     # into a system block at Anthropic and would no longer stand at the end of the
     # conversation. And the closing summary of the run belongs before it: it is its result.
-    letzte = gesehen[0][-2:]
-    assert letzte[0] == {"role": "assistant", "content": "Habe alles erledigt."}
-    assert letzte[1]["role"] == "user" and "Rückschau" in letzte[1]["content"]
+    last = seen[0][-2:]
+    assert last[0] == {"role": "assistant", "content": "Habe alles erledigt."}
+    assert last[1]["role"] == "user" and "Rückschau" in last[1]["content"]
 
 
 async def test_rueckschau_ohne_lehre_schreibt_nichts(db, monkeypatch):
@@ -476,16 +476,16 @@ async def test_rueckschau_verweigert_fremde_tools(db, monkeypatch):
     assert mcp.calls == []
 
 
-@pytest.mark.parametrize("bereich", ["quatsch", "", "MENSCH "])
-async def test_unbekannter_bereich(db, bereich):
+@pytest.mark.parametrize("area", ["quatsch", "", "MENSCH "])
+async def test_unbekannter_area(db, area):
     """An invented scope writes nowhere."""
-    u = await make_user(db, f"bereich{abs(hash(bereich)) % 1000}")
+    u = await make_user(db, f"bereich{abs(hash(area)) % 1000}")
     u.vault_memory_path = ROOT
     await db.commit()
     mcp = FakeMcp({f"{ROOT}/Mensch.md": "x"})
     out = await call_memory_tool(db, mcp, u.id, "erinnere_dich",
-                                 {"bereich": bereich, "text": "y"})
-    if bereich.strip().lower() == "mensch":
+                                 {"bereich": area, "text": "y"})
+    if area.strip().lower() == "mensch":
         assert "Gemerkt" in out          # case and spaces are forgivable
     else:
         assert out.startswith("FEHLER")

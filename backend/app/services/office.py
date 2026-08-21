@@ -698,14 +698,14 @@ async def open_room(db: AsyncSession, ctx: RunCtx, *, agent, mode: str, issue: d
         ctx.agent = getattr(agent, "name", "") or getattr(agent, "role", "") or ""
     start = await add_step(db, ctx, role="system", kind="run_start", content=mode,
                            provider=ctx.provider, model=ctx.model, commit=False)
-    auftrag = "\n\n".join(p for p in (
+    task = "\n\n".join(p for p in (
         str(issue.get("summary") or ""), str(issue.get("description") or "")[:2000]) if p)
-    auftrag_step = await add_step(db, ctx, role="user", kind="user_message", target="ticket",
-                                  content=auftrag, commit=False)
+    task_step = await add_step(db, ctx, role="user", kind="user_message", target="ticket",
+                                  content=task, commit=False)
     await db.commit()
     # Send only after the commit: before it the row has no `id` and therefore no `seq`.
     await publish_step(ctx, start)
-    await publish_step(ctx, auftrag_step)
+    await publish_step(ctx, task_step)
 
 
 # ── Preise ──────────────────────────────────────────────────────────────────

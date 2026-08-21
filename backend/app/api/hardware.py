@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.hardware import (
     HardwareAsset, HardwareAssetStep, HardwareModel, HardwareWorkflow,
@@ -211,7 +211,7 @@ async def delete_model(
         HardwareAsset.model_id == model_id))).scalar() or 0
     if n:
         raise Fehler(409, "err.model_still_has_units",
-                     "{anzahl} unit(s) use this model, remove them first", anzahl=n)
+                     "{count} unit(s) use this model, remove them first", count=n)
     await db.delete(m)
     await db.commit()
 

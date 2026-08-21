@@ -16,12 +16,12 @@ class _Ctx:
     main = "main"
 
 
-def _diff(dateien: int, zeilen_je: int) -> str:
-    teile = []
-    for i in range(dateien):
-        teile.append(f"diff --git a/datei_{i}.py b/datei_{i}.py\n--- a/datei_{i}.py\n+++ b/datei_{i}.py\n")
-        teile += [f"+zeile {n} in datei {i} mit etwas Text\n" for n in range(zeilen_je)]
-    return "".join(teile)
+def _diff(files: int, lines_je: int) -> str:
+    parts = []
+    for i in range(files):
+        parts.append(f"diff --git a/datei_{i}.py b/datei_{i}.py\n--- a/datei_{i}.py\n+++ b/datei_{i}.py\n")
+        parts += [f"+zeile {n} in datei {i} mit etwas Text\n" for n in range(lines_je)]
+    return "".join(parts)
 
 
 async def _text(monkeypatch, roh: str, max_chars: int) -> str:
@@ -47,11 +47,11 @@ async def test_kappung_sagt_es_und_endet_auf_einer_zeilengrenze(monkeypatch):
 
     assert "Diff gekappt" in text
     assert "KEIN unvollständiger Code" in text
-    kopf = text.split("\n[... Diff gekappt")[0]
-    assert kopf.endswith("\n") or kopf == "", "cut in the middle of the row"
+    header = text.split("\n[... Diff gekappt")[0]
+    assert header.endswith("\n") or header == "", "cut in the middle of the row"
 
 
-async def test_fehlende_dateien_werden_benannt(monkeypatch):
+async def test_fehlende_files_werden_benannt(monkeypatch):
     """So that the reviewer knows where to look itself, instead of guessing."""
     text = await _text(monkeypatch, _diff(4, 60), 1000)
 

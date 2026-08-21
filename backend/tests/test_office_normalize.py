@@ -66,7 +66,7 @@ def keys_of(kind: str) -> set[str]:
     return BASE_KEYS | FIELD_KEYS[kind]
 
 
-class RunZeile:
+class RunLine:
     """A minimal `runs` stub for the run boundaries."""
 
     def __init__(self, **kw):
@@ -114,7 +114,7 @@ def test_session_seen_schluesselmenge():
     assert ev["v"] == EVENT_VERSION
 
 
-def test_umschlag_traegt_projekt_und_owner():
+def test_envelope_traegt_projekt_und_owner():
     # The WS bridge authorises with that alone; if it is missing on an event, it has to look
     # up or (worse) let it through.
     for ev in step_events(mk(20, kind="system", role="system", content="x"), ctx()):
@@ -136,8 +136,8 @@ def test_seq_formel_id_mal_vier_plus_slot():
     assert [e["seq"] for e in events] == [1234 * 4 + 1, 1234 * 4 + 2]
 
 
-def test_seq_ueber_gemischte_zeilen_streng_monoton():
-    zeilen = [
+def test_seq_ueber_gemischte_lines_streng_monoton():
+    lines = [
         mk(101, role="assistant", content="alt"),                      # Altzeile
         mk(102, role="tool", tool_name="fs_read", content="args={}\n→ ok"),
         mk(103, kind="agent_text", role="assistant", content="neu", in_tokens=10),
@@ -146,36 +146,36 @@ def test_seq_ueber_gemischte_zeilen_streng_monoton():
         mk(105, kind="tool_result", role="tool", tool_name="fs_edit", ok=True,
            target="a.py", content="ok"),
     ]
-    seqs = [e["seq"] for z in zeilen for e in step_events(z, ctx())]
+    seqs = [e["seq"] for z in lines for e in step_events(z, ctx())]
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
 
 
 # ── Altdaten ─────────────────────────────────────────────────────────────────
 
-def test_altzeile_werkzeug_wird_gespalten():
+def test_altzeile_tool_wird_gespalten():
     step = mk(777, role="tool", tool_name="fs_read",
               content='args={"path": "app/main.py"}\n→ Zeile 1\nZeile 2')
     events = step_events(step, ctx())
     assert len(events) == 2
-    start, ergebnis = events
-    assert start["kind"] == "tool_start" and ergebnis["kind"] == "tool_result"
-    assert start["seq"] < ergebnis["seq"] == 777 * 4 + 1
+    start, result = events
+    assert start["kind"] == "tool_start" and result["kind"] == "tool_result"
+    assert start["seq"] < result["seq"] == 777 * 4 + 1
     # The same timestamp: the duration was not measured back then, and estimating it would
     # mean inventing time.
-    assert start["ts"] == ergebnis["ts"]
-    assert ergebnis["duration_ms"] is None
-    assert start["tool_use_id"] == ergebnis["tool_use_id"] == "legacy:777"
+    assert start["ts"] == result["ts"]
+    assert result["duration_ms"] is None
+    assert start["tool_use_id"] == result["tool_use_id"] == "legacy:777"
     assert start["args_preview"] == '{"path": "app/main.py"}'
     assert start["target"] == "app/main.py"
-    assert ergebnis["result_preview"] == "Zeile 1\nZeile 2"
-    assert ergebnis["ok"] is None
+    assert result["result_preview"] == "Zeile 1\nZeile 2"
+    assert result["ok"] is None
 
 
-def test_altzeile_werkzeug_mit_fehler_ist_belegt_rot():
+def test_altzeile_tool_mit_error_ist_belegt_rot():
     step = mk(778, role="tool", tool_name="fs_edit",
               content='args={"path": "a.py"}\n→ FEHLER: `old` ist leer.')
-    _, ergebnis = step_events(step, ctx())
-    assert ergebnis["ok"] is False and ergebnis["error"].startswith("FEHLER:")
+    _, result = step_events(step, ctx())
+    assert result["ok"] is False and result["error"].startswith("FEHLER:")
 
 
 def test_altzeile_assistent_ohne_text_bleibt_stumm():
@@ -270,15 +270,15 @@ def test_usage_ohne_tokens_erzeugt_nichts():
 
 # ── Lauf-Grenzen ─────────────────────────────────────────────────────────────
 
-def test_run_boundary_umklammert_die_schritte():
-    schritte = [mk(200, role="assistant", content="los"),
+def test_run_boundary_umklammert_die_steps():
+    steps = [mk(200, role="assistant", content="los"),
                 mk(240, role="tool", tool_name="fs_read", content="args={}\n→ ok")]
-    schritt_seqs = [e["seq"] for s in schritte for e in step_events(s, ctx())]
-    grenzen = run_boundary_events(RunZeile(), ctx(), first_step_id=200, last_step_id=240)
+    step_seqs = [e["seq"] for s in steps for e in step_events(s, ctx())]
+    grenzen = run_boundary_events(RunLine(), ctx(), first_step_id=200, last_step_id=240)
     start, ende = grenzen
     assert start["kind"] == "run_start" and ende["kind"] == "run_end"
-    assert start["seq"] < min(schritt_seqs)
-    assert ende["seq"] > max(schritt_seqs)
+    assert start["seq"] < min(step_seqs)
+    assert ende["seq"] > max(step_seqs)
     assert set(start) == keys_of("run_start") and set(ende) == keys_of("run_end")
 
 
@@ -288,17 +288,17 @@ def test_run_boundary_umklammert_die_schritte():
     ("blocked", None),
 ])
 def test_run_end_verdikt(status, ok):
-    ende = run_boundary_events(RunZeile(status=status), ctx(),
+    ende = run_boundary_events(RunLine(status=status), ctx(),
                                first_step_id=1, last_step_id=2)[-1]
     assert ende["kind"] == "run_end" and ende["ok"] is ok
 
 
 def test_laufender_lauf_verlaesst_den_raum_nicht():
-    grenzen = run_boundary_events(RunZeile(status="running", finished_at=None), ctx(),
+    grenzen = run_boundary_events(RunLine(status="running", finished_at=None), ctx(),
                                   first_step_id=1, last_step_id=2)
     assert [e["kind"] for e in grenzen] == ["run_start"]
 
 
-def test_lauf_ohne_schritte_hat_keine_grenzen():
-    assert run_boundary_events(RunZeile(), ctx(),
+def test_lauf_ohne_steps_hat_keine_grenzen():
+    assert run_boundary_events(RunLine(), ctx(),
                                first_step_id=None, last_step_id=None) == []

@@ -15,55 +15,55 @@ from conftest import auth, make_user, make_webhook
 
 pytestmark = pytest.mark.asyncio
 
-NUTZLAST = {
+PAYLOAD = {
     "event": {"id": 1891, "type": "alarm", "attributes": {"alarm": "vibration"}},
     "position": {"latitude": 50.08, "address": "29 Regiomontanusstraße, Unfinden"},
     "device": {"id": 3, "name": "Shelter"},
 }
 
 
-async def _hook(db, besitzer, **felder) -> WebhookSub:
+async def _hook(db, owner, **fields) -> WebhookSub:
     """Ein Melder, wie man ihn früher als `mode=notify` angelegt hat.
 
     Die Meldung selbst macht heute ein Melde-Knoten im Ablauf; was hier geprüft wird, ist die
     Arbeit des Auslösers davor — filtern, tiefe Felder finden, nicht doppelt melden. Der Weg
     dahin führt über die Umstellung, damit auch sie unter Beobachtung steht.
     """
-    return await make_webhook(db, besitzer, felder.pop("route", "r"), mode="notify",
+    return await make_webhook(db, owner, fields.pop("route", "r"), mode="notify",
                               body_template="{device.name}: {event.attributes.alarm}",
-                              **felder)
+                              **fields)
 
 
-async def _melden(client, w, nutzlast=NUTZLAST):
-    return await client.post(f"/hooks/{w.public_id}", json=nutzlast)
+async def _report(client, w, payload=PAYLOAD):
+    return await client.post(f"/hooks/{w.public_id}", json=payload)
 
 
-async def _letzte(db) -> list[Notification]:
+async def _last(db) -> list[Notification]:
     return list((await db.execute(select(Notification).order_by(Notification.id))).scalars().all())
 
 
-async def test_tiefe_felder_werden_eingesetzt(client, db):
+async def test_tiefe_fields_werden_eingesetzt(client, db):
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker1")
-    r = await _melden(client, w)
+    r = await _report(client, w)
     assert r.status_code == 202
-    (n,) = await _letzte(db)
+    (n,) = await _last(db)
     assert n.body == "Shelter: vibration"
 
 
-async def test_filter_aus_der_nutzlast(client, db):
+async def test_filter_aus_der_payload(client, db):
     """Without a header: the event type stands in the payload; otherwise everything comes through."""
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker2",
                     event_header="payload:event.attributes.alarm", event_filter="vibration")
     zuendung = {"event": {"id": 7, "type": "ignitionOn", "attributes": {}},
                 "device": {"name": "Shelter"}}
-    r = await _melden(client, w, zuendung)
+    r = await _report(client, w, zuendung)
     assert r.json()["ignored"] is True
-    assert await _letzte(db) == []
+    assert await _last(db) == []
 
-    assert (await _melden(client, w)).status_code == 202
-    assert len(await _letzte(db)) == 1
+    assert (await _report(client, w)).status_code == 202
+    assert len(await _last(db)) == 1
 
 
 async def test_kopfzeilen_filter_bleibt(client, db):
@@ -75,29 +75,29 @@ async def test_kopfzeilen_filter_bleibt(client, db):
     assert r.json()["ignored"] is True
     r = await client.post(f"/hooks/{w.public_id}", json={"a": 1},
                           headers={"X-GitHub-Event": "push"})
-    assert r.status_code == 202 and len(await _letzte(db)) == 1
+    assert r.status_code == 202 and len(await _last(db)) == 1
 
 
-async def test_dieselbe_meldung_nur_einmal(client, db):
+async def test_dieselbe_notice_nur_einmal(client, db):
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker3", ref_field="event.id")
-    assert (await _melden(client, w)).status_code == 202
-    zweite = await _melden(client, w)
+    assert (await _report(client, w)).status_code == 202
+    zweite = await _report(client, w)
     assert zweite.json().get("duplicate") is True
-    assert len(await _letzte(db)) == 1
+    assert len(await _last(db)) == 1
 
     # Another event is not a repetition.
-    anders = {**NUTZLAST, "event": {**NUTZLAST["event"], "id": 1892}}
-    assert (await _melden(client, w, anders)).status_code == 202
-    assert len(await _letzte(db)) == 2
+    anders = {**PAYLOAD, "event": {**PAYLOAD["event"], "id": 1892}}
+    assert (await _report(client, w, anders)).status_code == 202
+    assert len(await _last(db)) == 2
 
 
 async def test_ohne_bezugsfeld_kein_unterdruecken(client, db):
     anna = await make_user(db, "anna")
     w = await _hook(db, anna, route="tracker4")
-    await _melden(client, w)
-    await _melden(client, w)
-    assert len(await _letzte(db)) == 2
+    await _report(client, w)
+    await _report(client, w)
+    assert len(await _last(db)) == 2
 
 
 async def test_workflow_modus_erkennt_wiederholungen(client, db):
@@ -125,17 +125,17 @@ async def test_workflow_modus_erkennt_wiederholungen(client, db):
     db.add(w)
     await db.commit()
 
-    erste = await _melden(client, w)
-    assert erste.status_code == 202 and not erste.json().get("duplicate")
-    zweite = await _melden(client, w)
+    first = await _report(client, w)
+    assert first.status_code == 202 and not first.json().get("duplicate")
+    zweite = await _report(client, w)
     assert zweite.json().get("duplicate") is True
-    laeufe = (await db.execute(select(WorkflowInstance))).scalars().all()
-    assert len(laeufe) == 1
+    runs = (await db.execute(select(WorkflowInstance))).scalars().all()
+    assert len(runs) == 1
 
 
 # ── Bearbeiten darf nichts verlieren ─────────────────────────────────────────
 
-async def test_bearbeiten_behaelt_den_kontext(client, db):
+async def test_bearbeiten_behaelt_den_context(client, db):
     """The answer did not carry the templates: the form filled them with defaults, and saving
     silently reset the entered text. Dieselbe Falle steht heute beim Kontext offen."""
     anna = await make_user(db, "anna")
@@ -175,9 +175,9 @@ async def test_sammelfenster_ueberlebt_doppelte_routennamen(db):
 
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
-    for besitzer in (anna, bert):
-        db.add(WebhookSub(public_id=f"doppelt-{besitzer.id}", route="gleich",
-                          owner_user_id=besitzer.id, mode="notify", notify_chat="1"))
+    for owner in (anna, bert):
+        db.add(WebhookSub(public_id=f"doppelt-{owner.id}", route="gleich",
+                          owner_user_id=owner.id, mode="notify", notify_chat="1"))
     db.add(WebhookCoalesce(route="gleich", event_key="x", payloads=[{"a": 1}],
                            window_until=dt.datetime.now(tz=dt.timezone.utc)
                            - dt.timedelta(minutes=1)))

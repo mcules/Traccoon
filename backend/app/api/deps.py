@@ -9,7 +9,7 @@ from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..core.security import decode_access_token
 from ..db import get_session
 from ..models.enums import GlobalRole, ProjectRole, UserStatus

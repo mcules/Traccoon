@@ -9,7 +9,7 @@ from pydantic import BaseModel, field_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.enums import ProjectRole
 from ..models.ops import Job, JobRun, PermAction, Permission, WebhookCoalesce, WebhookSub
@@ -156,14 +156,14 @@ async def delete_webhook(wid: int, user: User = Depends(get_current_user),
         await db.commit()
 
 
-def _dig_payload(data, pfad: str):
+def _dig_payload(data, path: str):
     """Resolve a dot path in the payload (`event.attributes.alarm`, `posten.0.name`)."""
     cur = data
-    for teil in str(pfad).split("."):
-        if isinstance(cur, dict) and teil in cur:
-            cur = cur[teil]
-        elif isinstance(cur, list) and teil.isdigit() and int(teil) < len(cur):
-            cur = cur[int(teil)]
+    for part in str(path).split("."):
+        if isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        elif isinstance(cur, list) and part.isdigit() and int(part) < len(cur):
+            cur = cur[int(part)]
         else:
             return None
     return cur
@@ -171,10 +171,10 @@ def _dig_payload(data, pfad: str):
 
 # Hard ceiling for a held-open request. Whoever waits here occupies a connection, and a
 # sender that runs into ITS own timeout meanwhile gets nothing out of a longer wait.
-ANTWORT_MAX_SEK = 120
+ANSWER_MAX_SEK = 120
 
 
-async def _warte_auf_antwort(instance_id: int, sub: WebhookSub) -> dict:
+async def _warte_auf_answer(instance_id: int, sub: WebhookSub) -> dict:
     """Hold the answer of a flow open for the caller (mode 'workflow').
 
     A webhook is a trigger, and a trigger may have an answer: the flow writes it (action
@@ -191,12 +191,12 @@ async def _warte_auf_antwort(instance_id: int, sub: WebhookSub) -> dict:
     from ..models.enums import WorkflowInstanceStatus as IStatus
     from ..models.workflow import WorkflowInstance
 
-    grenze = max(0, min(int(sub.response_timeout or 0), ANTWORT_MAX_SEK))
+    limit = max(0, min(int(sub.response_timeout or 0), ANSWER_MAX_SEK))
     uhr = asyncio.get_running_loop().time
-    ende = uhr() + grenze
+    ende = uhr() + limit
     karte = sub.response_map or {}
     ctx: dict = {}
-    status, fertig = "weg", False
+    status, done = "weg", False
     while True:
         # A session of its own per look: the answer is written by another task in another
         # transaction, and a session that keeps its snapshot would never see it.
@@ -206,55 +206,55 @@ async def _warte_auf_antwort(instance_id: int, sub: WebhookSub) -> dict:
                 break
             ctx = dict(inst.context or {})
             status = inst.status.value
-            fertig = inst.status not in (IStatus.running, IStatus.waiting)
+            done = inst.status not in (IStatus.running, IStatus.waiting)
         # An answer that already stands does not need the end of the flow: answering first
         # and tidying up afterwards is a perfectly good order.
         if karte:
-            bereit = fertig or all(_dig_payload(ctx, pfad) is not None for pfad in karte.values())
+            bereit = done or all(_dig_payload(ctx, path) is not None for path in karte.values())
         else:
-            bereit = fertig or "answer" in ctx
+            bereit = done or "answer" in ctx
         if bereit or uhr() >= ende:
             break
         await asyncio.sleep(0.4)
 
     if karte:
-        antwort = {schluessel: _dig_payload(ctx, pfad) for schluessel, pfad in karte.items()}
+        answer = {key: _dig_payload(ctx, path) for key, path in karte.items()}
     else:
-        antwort = ctx.get("answer")
-    return {"instance_id": instance_id, "status": status, "done": fertig,
-            "answer": antwort}
+        answer = ctx.get("answer")
+    return {"instance_id": instance_id, "status": status, "done": done,
+            "answer": answer}
 
 
-def _fuellen(tpl: str, nutzlast) -> str:
+def _fill(tpl: str, payload) -> str:
     """Füllt `{feld}` aus der Nutzlast, `{a.b.c}` auch tief.
 
     Verschachtelte Nutzlasten sind der Normalfall, sobald der Absender nicht Traccoon ist:
     `{position.address}` oder `{event.attributes.alarm}` waren früher nicht adressierbar.
     """
     out = tpl
-    for treffer in set(re.findall(r"\{([A-Za-z0-9_.]+)\}", tpl)):
-        wert = _dig_payload(nutzlast, treffer)
-        if wert is not None:
-            out = out.replace("{" + treffer + "}", str(wert))
+    for hits in set(re.findall(r"\{([A-Za-z0-9_.]+)\}", tpl)):
+        value = _dig_payload(payload, hits)
+        if value is not None:
+            out = out.replace("{" + hits + "}", str(value))
     return out
 
 
-def _setze_tief(ziel: dict, pfad: str, wert) -> None:
+def _setze_tief(target: dict, path: str, value) -> None:
     """`intake.agent` legt {"intake": {"agent": …}} an — ein Punkt im ZIEL verschachtelt."""
-    teile = [t for t in str(pfad).split(".") if t]
-    if not teile:
+    parts = [t for t in str(path).split(".") if t]
+    if not parts:
         return
-    knoten = ziel
-    for t in teile[:-1]:
-        naechster = knoten.get(t)
+    node = target
+    for t in parts[:-1]:
+        naechster = node.get(t)
         if not isinstance(naechster, dict):
             naechster = {}
-            knoten[t] = naechster
-        knoten = naechster
-    knoten[teile[-1]] = wert
+            node[t] = naechster
+        node = naechster
+    node[parts[-1]] = value
 
 
-def _kontext(sub: WebhookSub, nutzlast) -> dict:
+def _context(sub: WebhookSub, payload) -> dict:
     """Der Kontext des Laufs — an einer Stelle, für jede Art der Zustellung.
 
     `context_map` holt Werte aus der Nutzlast (Punktpfad; **leerer** Pfad = die ganze
@@ -262,32 +262,32 @@ def _kontext(sub: WebhookSub, nutzlast) -> dict:
     `context_fixed` setzt feste Werte, in deren Text `{feld}` aus der Nutzlast gefüllt wird.
     Ohne beides ist die Nutzlast der Kontext, wie vorher.
     """
-    nutz = nutzlast if isinstance(nutzlast, dict) else {"payload": nutzlast}
+    nutz = payload if isinstance(payload, dict) else {"payload": payload}
     cmap = sub.context_map or {}
     fest = sub.context_fixed or {}
     if not cmap and not fest:
         return nutz
     ctx: dict = {}
-    for ziel, pfad in cmap.items():
-        _setze_tief(ctx, str(ziel), nutz if not pfad else _dig_payload(nutz, str(pfad)))
-    for ziel, wert in fest.items():
-        _setze_tief(ctx, str(ziel), _fuellen(wert, nutz) if isinstance(wert, str) else wert)
+    for target, path in cmap.items():
+        _setze_tief(ctx, str(target), nutz if not path else _dig_payload(nutz, str(path)))
+    for target, value in fest.items():
+        _setze_tief(ctx, str(target), _fill(value, nutz) if isinstance(value, str) else value)
     return ctx
 
 
-def _referenz(sub: WebhookSub, nutzlast) -> str | None:
+def _referenz(sub: WebhookSub, payload) -> str | None:
     """Der Schlüssel gegen Doppel-Zustellung: ein Feld der Nutzlast oder eine Vorlage.
 
     Ein Schlüssel aus mehreren Feldern (`{account}:{uid}`) ist der Normalfall, sobald das
     fremde System keine eigene Id mitschickt — früher stand genau diese Zusammensetzung fest
     im Mail-Eingang und war für keinen anderen Auslöser zu haben.
     """
-    feld = (sub.ref_field or "").strip()
-    nutz = nutzlast if isinstance(nutzlast, dict) else {}
-    if not feld:
+    field = (sub.ref_field or "").strip()
+    nutz = payload if isinstance(payload, dict) else {}
+    if not field:
         return None
-    wert = _fuellen(feld, nutz) if "{" in feld else _dig_payload(nutz, feld)
-    return str(wert) if wert not in (None, "") else None
+    value = _fill(field, nutz) if "{" in field else _dig_payload(nutz, field)
+    return str(value) if value not in (None, "") else None
 
 
 @router.post("/hooks/{public_id}", status_code=202)
@@ -354,7 +354,7 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
     # Webhook (`agent`, `prompt_tmpl`, `auto_run`, `notify_chat`, `title_template` …) — sie
     # sind heute Knoten und damit für JEDEN Auslöser zu haben, nicht nur für Webhooks.
     # Bestehende Webhooks stellt `services/webhook_modes.py` beim Start um.
-    ctx = _kontext(sub, payload)
+    ctx = _context(sub, payload)
     src_ref = _referenz(sub, payload)
 
     if sub.mode == "event":
@@ -387,12 +387,12 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
     # artifact stands in (ticket key, ticket id, unit id). Without this binding a flow
     # with a ticket subject would run into nothing: its actions (setting a state,
     # commenting, assigning) would find nothing to act on.
-    from ..services.workflow_subject import subjekt_aus_nutzlast
-    issue_id, asset_id, fehler = await subjekt_aus_nutzlast(
+    from ..services.workflow_subject import subjekt_aus_payload
+    issue_id, asset_id, error = await subjekt_aus_payload(
         db, definition, payload if isinstance(payload, dict) else {}, ctx,
-        besitzer_id=sub.owner_user_id)
-    if fehler:
-        raise HTTPException(400, fehler)
+        owner_id=sub.owner_user_id)
+    if error:
+        raise HTTPException(400, error)
     inst = await start_workflow(
         db, definition, subject_kind=definition.subject_kind, context=ctx,
         issue_id=issue_id, hardware_asset_id=asset_id,
@@ -403,17 +403,17 @@ async def inbound_webhook(public_id: str, request: Request, db: AsyncSession = D
         # is what the flow wrote: a dict answer IS the body (so the far side sees exactly
         # the fields it was promised), anything else is wrapped.
         from fastapi.responses import JSONResponse
-        ergebnis = await _warte_auf_antwort(inst.id, sub)
-        antwort = ergebnis["answer"]
-        if isinstance(antwort, dict):
-            rumpf = antwort
-        elif antwort is None:
+        result = await _warte_auf_answer(inst.id, sub)
+        answer = result["answer"]
+        if isinstance(answer, dict):
+            rumpf = answer
+        elif answer is None:
             rumpf = {"accepted": True, "mode": "workflow", "answer": None,
-                     "instance_id": inst.id, "status": ergebnis["status"],
-                     "done": ergebnis["done"]}
+                     "instance_id": inst.id, "status": result["status"],
+                     "done": result["done"]}
         else:
-            rumpf = {"answer": antwort}
-        return JSONResponse(rumpf, status_code=200 if antwort is not None else 202)
+            rumpf = {"answer": answer}
+        return JSONResponse(rumpf, status_code=200 if answer is not None else 202)
     return {"accepted": True, "mode": "workflow", "instance_id": inst.id,
             "status": inst.status.value,
             **({"issue_id": issue_id} if issue_id else {}),
@@ -456,13 +456,13 @@ class JobIn(BaseModel):
 
     @field_validator("type")
     @classmethod
-    def _zeitplan_pruefen(cls, wert: str) -> str:
-        from ..services.scheduler import ZEITPLAN_ARTEN
-        if wert not in ZEITPLAN_ARTEN:
+    def _zeitplan_check(cls, value: str) -> str:
+        from ..services.scheduler import ZEITPLAN_KINDS
+        if value not in ZEITPLAN_KINDS:
             raise ValueError(
-                f"'{wert}' ist kein Zeitplan. Erlaubt: {', '.join(ZEITPLAN_ARTEN)}. "
+                f"'{value}' ist kein Zeitplan. Erlaubt: {', '.join(ZEITPLAN_KINDS)}. "
                 f"Die Art der Arbeit (prompt, workflow, film …) gehoert in `kind`.")
-        return wert
+        return value
 
 
 class JobOut(BaseModel):
@@ -488,8 +488,8 @@ async def list_jobs(user: User = Depends(get_current_user), db: AsyncSession = D
 async def job_templates(user: User = Depends(get_current_user)):
     """Templates for new jobs. They prefill the form; a created job then carries its own
     fields and parameters, with no binding to the template."""
-    from ..services.job_templates import liste
-    return liste()
+    from ..services.job_templates import listing
+    return listing()
 
 
 @router.post("/jobs", response_model=JobOut, status_code=201)
@@ -501,9 +501,9 @@ async def create_job(data: JobIn, user: User = Depends(get_current_user),
     # Wer noch eine alte Art einträgt (Vorlage, Agenten-Werkzeug, altes Skript), bekommt
     # gleich einen Ablauf. Sonst stünde hier ein Weg offen, den ein späterer Neustart erst
     # wieder einsammeln müsste — und bis dahin liefe der Job anders als angezeigt.
-    from ..services.job_modes import ALTE_ARTEN, als_ablauf
-    if job.kind in ALTE_ARTEN:
-        await als_ablauf(db, job)
+    from ..services.job_modes import ALTE_KINDS, as_flow
+    if job.kind in ALTE_KINDS:
+        await as_flow(db, job)
     await db.commit()
     await db.refresh(job)
     return job
@@ -517,9 +517,9 @@ async def update_job(jid: int, data: JobIn, user: User = Depends(get_current_use
         raise Fehler(404, "err.job_not_found", "Job not found")
     for field, value in data.model_dump().items():
         setattr(job, field, value)
-    from ..services.job_modes import ALTE_ARTEN, als_ablauf
-    if job.kind in ALTE_ARTEN:
-        await als_ablauf(db, job)
+    from ..services.job_modes import ALTE_KINDS, as_flow
+    if job.kind in ALTE_KINDS:
+        await as_flow(db, job)
     await db.commit()
     await db.refresh(job)
     return job

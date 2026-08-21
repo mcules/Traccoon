@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..core.security import encrypt_secret
 from ..db import get_session
 from ..models.destination import Destination
@@ -81,10 +81,10 @@ async def _get(db: AsyncSession, did: int) -> Destination:
 
 def _apply_secret(d: Destination, data: dict) -> None:
     """Take over a set secret; an empty value leaves the old one untouched."""
-    for feld in SECRET_FIELDS:
-        wert = data.get(feld)
-        if wert:
-            d.secret_enc = encrypt_secret(str(wert))
+    for field in SECRET_FIELDS:
+        value = data.get(field)
+        if value:
+            d.secret_enc = encrypt_secret(str(value))
             # The login changed, so discard the cached OAuth token.
             d.oauth_token_enc = ""
             d.oauth_expires_at = None
@@ -128,8 +128,8 @@ async def create_destination(
                                                                         data.project_id):
         raise Fehler(status.HTTP_409_CONFLICT, "err.destination_already_exists_scope",
                      "The destination '{name}' already exists in this scope", name=data.name)
-    werte = data.model_dump(exclude={"user_id", "project_id", *SECRET_FIELDS})
-    d = Destination(**werte, user_id=data.user_id, project_id=data.project_id,
+    values = data.model_dump(exclude={"user_id", "project_id", *SECRET_FIELDS})
+    d = Destination(**values, user_id=data.user_id, project_id=data.project_id,
                     created_by=user.id)
     _apply_secret(d, data.model_dump())
     db.add(d)
@@ -145,12 +145,12 @@ async def update_destination(
 ):
     d = await _get(db, did)
     await _require_write(db, user, user_id=d.user_id, project_id=d.project_id)
-    werte = data.model_dump(exclude_unset=True, exclude={*SECRET_FIELDS})
-    if "auth_type" in werte and werte["auth_type"] not in svc.AUTH_TYPES:
+    values = data.model_dump(exclude_unset=True, exclude={*SECRET_FIELDS})
+    if "auth_type" in values and values["auth_type"] not in svc.AUTH_TYPES:
         raise Fehler(status.HTTP_400_BAD_REQUEST, "err.unknown_method", "Unknown method")
-    for feld, wert in werte.items():
-        setattr(d, feld, wert)
-    if "auth_type" in werte:
+    for field, value in values.items():
+        setattr(d, field, value)
+    if "auth_type" in values:
         d.oauth_token_enc, d.oauth_expires_at = "", None
     _apply_secret(d, data.model_dump(exclude_unset=True))
     await db.commit()
@@ -186,6 +186,6 @@ async def test_destination(
                               body=data.body, timeout=data.timeout_sec)
     except Exception as e:  # noqa: BLE001 - network and auth errors belong in the answer
         raise Fehler(status.HTTP_502_BAD_GATEWAY, "err.call_failed",
-                     "The call failed: {grund}", grund=e)
+                     "The call failed: {reason}", reason=e)
     finally:
         await db.commit()   # last_used_at / OAuth-Token-Cache festschreiben

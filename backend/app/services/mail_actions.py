@@ -31,13 +31,13 @@ def _mail(ctx: dict) -> dict:
     return m if isinstance(m, dict) else {}
 
 
-def _eingang(ctx: dict) -> dict:
+def _intake(ctx: dict) -> dict:
     e = ctx.get("intake")
     return e if isinstance(e, dict) else {}
 
 
 def _owner(inst: WorkflowInstance, ctx: dict) -> int | None:
-    roh = _eingang(ctx).get("owner_id")
+    roh = _intake(ctx).get("owner_id")
     try:
         return int(roh) if roh is not None else inst.started_by
     except (TypeError, ValueError):
@@ -54,30 +54,30 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     the model as hints; it should assess the text, not read headers it does not see anyway.
     """
     from . import spam_learn
-    from .assistant_policy import agent_laeuft_lokal, match_policy, note_hit, parse_sender
+    from .assistant_policy import agent_running_lokal, match_policy, note_hit, parse_sender
     from .mail_classify import classify_email
     from .spam_rules import evaluate, mail_text
-    from .spam_review import geschaeftsfreie_domains, meine_adressen
+    from .spam_review import nonbusiness_domains, meine_adressen
     from .vault_contacts import bekannte_domains
 
     payload = _mail(ctx)
-    eingang = _eingang(ctx)
+    intake = _intake(ctx)
     owner_id = _owner(inst, ctx)
     account = str(payload.get("account") or "")
     sender = str(payload.get("from") or "")
     subject = str(payload.get("subject") or "")
     body = mail_text(payload)
 
-    classify_agent = str(params.get("classify_agent") or eingang.get("classify_agent") or "")
+    classify_agent = str(params.get("classify_agent") or intake.get("classify_agent") or "")
     if classify_agent:
-        regel = evaluate(payload, meine_adressen=await meine_adressen(db),
+        rule = evaluate(payload, meine_adressen=await meine_adressen(db),
                          bekannte_domains=await bekannte_domains(db, owner_id),
-                         geschaeftsfreie_domains=await geschaeftsfreie_domains(db),
+                         nonbusiness_domains=await nonbusiness_domains(db),
                          body=body)
         klasse = await classify_email(db, owner_id, account=account, sender=sender,
                                       subject=subject, body=body,
                                       classify_agent=classify_agent,
-                                      spam_hints=regel.reasons,
+                                      spam_hints=rule.reasons,
                                       spam_beispiele=await spam_learn.beispiele(db, owner_id))
     else:
         klasse = {"category": "", "priority": "normal", "sensitive": False,
@@ -95,10 +95,10 @@ async def klassifizieren(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     # processes the mail, nothing leaves the house, and then the redaction is no longer a
     # protection but only a loss of information (and a detour over the IMAP tools that
     # fetches the same text back anyway).
-    agent = str(eingang.get("agent") or "assistent")
-    if await agent_laeuft_lokal(db, owner_id, agent):
+    agent = str(intake.get("agent") or "assistent")
+    if await agent_running_lokal(db, owner_id, agent):
         redaction = "unredacted"
-    if eingang.get("auto_run"):  # the trigger enforces a chatless immediate run.
+    if intake.get("auto_run"):  # the trigger enforces a chatless immediate run.
         auto = True
 
     inst.context = {**ctx, "classification": klasse,
@@ -145,38 +145,38 @@ async def spam_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dic
     `spam.karte_faellig`), and the sending is done by a notify node behind it. That way
     switching off the message does not switch off the sorting.
     """
-    from .spam_review import anlegen, karte, melden
+    from .spam_review import create, karte, report
 
     owner_id = _owner(inst, ctx)
     urteil = dict(ctx.get("spam") or {})
     task = ctx.get("task") or {}
-    vorentschieden = bool(params.get("vorentschieden"))
-    rueckholbar = bool(params.get("rueckholbar"))
+    predecided = bool(params.get("predecided"))
+    recoverable = bool(params.get("recoverable"))
     # Ob gemeldet wird, entscheidet der Ablauf. `melden=false` heißt: Urteil anlegen, Text
     # bereitstellen — verschickt wird es von einem Melde-Knoten dahinter, den man abschalten
     # kann, ohne die Aussortierung mit abzuschalten. Vorgabe bleibt `true`, damit
     # veröffentlichte Fassungen ohne solchen Knoten weiter melden.
-    selbst_melden = params.get("melden")
-    selbst_melden = True if selbst_melden is None else bool(selbst_melden)
-    verdict = await anlegen(db, owner_id, urteil,
+    selbst_report = params.get("report")
+    selbst_report = True if selbst_report is None else bool(selbst_report)
+    verdict = await create(db, owner_id, urteil,
                             task_id=task.get("id") if isinstance(task, dict) else None,
                             instance_id=inst.id)
-    sofort = vorentschieden or rueckholbar or float(urteil.get("score") or 0.0) >= float(
+    sofort = predecided or recoverable or float(urteil.get("score") or 0.0) >= float(
         urteil.get("sofort_ab") or 0.9)
-    if sofort and selbst_melden:
-        await melden(db, owner_id, verdict, sofort=True, vorentschieden=vorentschieden,
-                     rueckholbar=rueckholbar)
-    art = "rueckholbar" if rueckholbar else ("sofort" if sofort else "sammel")
+    if sofort and selbst_report:
+        await report(db, owner_id, verdict, sofort=True, predecided=predecided,
+                     recoverable=recoverable)
+    kind = "rueckholbar" if recoverable else ("sofort" if sofort else "sammel")
     # Der Text gehört zum Spam-Wissen, nicht in den Graphen: welche Gründe genannt werden und
     # wie ein Rückholhinweis lautet, ändert sich mit der Erkennung. Der Melde-Knoten nimmt
     # ihn als `{{ spam.karte_titel }}` / `{{ spam.karte_text }}` und bleibt selbst allgemein.
-    titel, text = karte(verdict, vorentschieden=vorentschieden, rueckholbar=rueckholbar)
-    inst.context = {**ctx, "spam": {**urteil, "verdict_id": verdict.id, "karte": art,
-                                    "karte_titel": titel, "karte_text": text,
+    title, text = karte(verdict, predecided=predecided, recoverable=recoverable)
+    inst.context = {**ctx, "spam": {**urteil, "verdict_id": verdict.id, "karte": kind,
+                                    "karte_titel": title, "karte_text": text,
                                     "karte_faellig": bool(sofort),
-                                    "karte_art": "spam_auto" if rueckholbar else "spam_review"}}
-    return {"action": "spam_card", "verdict_id": verdict.id, "karte": art,
-            "vorentschieden": vorentschieden, "selbst_gemeldet": bool(sofort and selbst_melden)}
+                                    "karte_art": "spam_auto" if recoverable else "spam_review"}}
+    return {"action": "spam_card", "verdict_id": verdict.id, "karte": kind,
+            "vorentschieden": predecided, "selbst_gemeldet": bool(sofort and selbst_report)}
 
 
 async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:
@@ -188,11 +188,11 @@ async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -
     on the verdict and in the context.
     """
     from ..models.assistant import SpamVerdict
-    from .spam_review import festschreiben, imap_aktion
+    from .spam_review import festschreiben, imap_action
 
     urteil = dict(ctx.get("spam") or {})
-    wert = str(params.get("entscheidung") or urteil.get("entschieden") or "spam").strip().lower()
-    ist_spam = wert not in ("ham", "kein_spam", "no", "false")
+    value = str(params.get("entscheidung") or urteil.get("entschieden") or "spam").strip().lower()
+    ist_spam = value not in ("ham", "kein_spam", "no", "false")
     vid = urteil.get("verdict_id")
     verdict = await db.get(SpamVerdict, int(vid)) if vid else None
     if verdict is None:
@@ -201,12 +201,12 @@ async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -
     await festschreiben(db, verdict, ist_spam,
                         decided_by=str(params.get("decided_by")
                                        or urteil.get("entschieden_von") or "auto"))
-    ergebnis = await imap_aktion(verdict, ist_spam)
-    verdict.action_result = ergebnis[:2000]
+    result = await imap_action(verdict, ist_spam)
+    verdict.action_result = result[:2000]
     inst.context = {**ctx, "spam": {**urteil, "entschieden": "spam" if ist_spam else "ham",
-                                    "ergebnis": ergebnis}}
+                                    "ergebnis": result}}
     return {"action": "spam_apply", "verdict_id": verdict.id,
-            "entscheidung": "spam" if ist_spam else "ham", "ergebnis": ergebnis}
+            "entscheidung": "spam" if ist_spam else "ham", "ergebnis": result}
 
 
 # ── Assistent: nur noch die Übersetzung, nicht mehr die Arbeit ───────────────
@@ -215,7 +215,7 @@ async def spam_ausfuehren(db, inst: WorkflowInstance, params: dict, ctx: dict) -
 # legt den Eingang an (und startet ihn, wenn keine Freigabe nötig ist), `notify` schickt die
 # Karte. Was der Mail-Eingang beisteuert, sind seine Werte — und die stehen hier als
 # Parametersatz, damit Vorlage und Altnamen dieselben benutzen.
-AUFTRAG_PARAMS: dict = {
+TASK_PARAMS: dict = {
     "kind": "email",
     "source": "{{ intake.source }}",
     "reference": "{{ intake.source_ref }}",
@@ -254,8 +254,8 @@ async def assistent_item(db, inst: WorkflowInstance, params: dict, ctx: dict) ->
     Er steht in veröffentlichten Fassungen, und die sind unveränderlich — laufende Instanzen
     hängen daran. Deshalb umgeleitet statt zweimal gepflegt, wie bei `_ALT_AKTIONEN`.
     """
-    from .workflow_actions import _assistent_auftrag
-    return await _assistent_auftrag(db, inst, {**AUFTRAG_PARAMS, **params}, ctx, "item")
+    from .workflow_actions import _assistent_task
+    return await _assistent_task(db, inst, {**TASK_PARAMS, **params}, ctx, "item")
 
 
 async def assistent_karte(db, inst: WorkflowInstance, params: dict, ctx: dict) -> dict:

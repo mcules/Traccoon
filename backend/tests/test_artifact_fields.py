@@ -9,15 +9,15 @@ import pytest
 from app.models.artifact import ArtifactField, ArtifactFieldOption
 from app.models.enums import ProjectRole, StatusCategory, TicketAgentStatus
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
-from app.services import artifact_fields as felder
-from app.services import artifacts as art
+from app.services import artifact_fields as fields
+from app.services import artifacts as svc
 from conftest import add_member, auth, make_asset, make_project, make_user
 from sqlalchemy import select
 
 
 @pytest.fixture
 async def register(db):
-    await art.ensure_builtin_types(db)
+    await svc.ensure_builtin_types(db)
 
 
 async def _ticket(db, proj, nummer=1) -> Issue:
@@ -36,14 +36,14 @@ async def _ticket(db, proj, nummer=1) -> Issue:
     return i
 
 
-async def _feld(db, type_key: str, key: str, *, kind="text", multi=False, required=False,
-                werte: list[str] | None = None) -> ArtifactField:
-    typ = await art.type_by_key(db, type_key)
-    f = ArtifactField(type_id=typ.id, key=key, label=key.capitalize(), kind=kind,
+async def _field(db, type_key: str, key: str, *, kind="text", multi=False, required=False,
+                values: list[str] | None = None) -> ArtifactField:
+    field_kind = await svc.type_by_key(db, type_key)
+    f = ArtifactField(type_id=field_kind.id, key=key, label=key.capitalize(), kind=kind,
                       multi=multi, required=required)
     db.add(f)
     await db.flush()
-    for i, w in enumerate(werte or []):
+    for i, w in enumerate(values or []):
         db.add(ArtifactFieldOption(field_id=f.id, value=w, order=i))
     await db.commit()
     return f
@@ -51,17 +51,17 @@ async def _feld(db, type_key: str, key: str, *, kind="text", multi=False, requir
 
 # ── Kern: Feld anlegen, Werte zuordnen ───────────────────────────────────────
 
-async def test_ticket_traegt_mehrere_werte_eines_feldes(client, db, register):
+async def test_ticket_traegt_mehrere_values_eines_feldes(client, db, register):
     """The core case: a choice field with multiple selection on a real ticket."""
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id   # after a rollback in the endpoint a.id would no longer be readable
-    await _feld(db, "ticket", "komponente", kind="select", multi=True,
-                werte=["Backend", "Frontend", "DB"])
+    await _field(db, "ticket", "komponente", kind="select", multi=True,
+                values=["Backend", "Frontend", "DB"])
 
     r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                          json={"values": {"komponente": ["Backend", "DB"]}})
@@ -75,15 +75,15 @@ async def test_ticket_traegt_mehrere_werte_eines_feldes(client, db, register):
     assert "komponente" in keys and "status" in keys and "prioritaet" in keys
 
 
-async def test_einzelwert_feld_lehnt_zwei_werte_ab(client, db, register):
+async def test_einzelwert_field_lehnt_zwei_values_ab(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id   # after a rollback in the endpoint a.id would no longer be readable
-    await _feld(db, "ticket", "prio", kind="select", multi=False, werte=["hoch", "niedrig"])
+    await _field(db, "ticket", "prio", kind="select", multi=False, values=["hoch", "niedrig"])
 
     r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                          json={"values": {"prio": ["hoch", "niedrig"]}})
@@ -94,15 +94,15 @@ async def test_einzelwert_feld_lehnt_zwei_werte_ab(client, db, register):
     assert "prio" not in leer.json()["values"]
 
 
-async def test_wert_ausserhalb_der_liste_wird_abgelehnt(client, db, register):
+async def test_value_ausserhalb_der_listing_wird_abgelehnt(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id   # after a rollback in the endpoint a.id would no longer be readable
-    await _feld(db, "ticket", "komponente", kind="select", werte=["Backend"])
+    await _field(db, "ticket", "komponente", kind="select", values=["Backend"])
 
     r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                          json={"values": {"komponente": ["Kaffeemaschine"]}})
@@ -111,18 +111,18 @@ async def test_wert_ausserhalb_der_liste_wird_abgelehnt(client, db, register):
     assert "Backend" in r.json()["detail"]
 
 
-async def test_feld_darf_jederzeit_dazukommen(client, db, register):
+async def test_field_may_jederzeit_dazukommen(client, db, register):
     """The "at any time" case: a new field does not break existing artifacts."""
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     alt = await _ticket(db, proj, 1)
-    a_alt = await art.ensure_for_issue(db, alt)
+    a_alt = await svc.ensure_for_issue(db, alt)
     await db.commit()
     aid = a_alt.id
 
     # Only now does the field come into being; the old ticket does not know it.
-    await _feld(db, "ticket", "kunde", kind="text")
+    await _field(db, "ticket", "kunde", kind="text")
 
     gelesen = await client.get(f"/artifacts/{aid}/values", headers=auth(user))
     assert gelesen.status_code == 200
@@ -142,36 +142,36 @@ async def test_zahl_und_datum_werden_geprueft(client, db, register):
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id   # after a rollback in the endpoint a.id would no longer be readable
-    await _feld(db, "ticket", "aufwand", kind="number")
-    await _feld(db, "ticket", "termin", kind="date")
-    await _feld(db, "ticket", "extern", kind="boolean")
+    await _field(db, "ticket", "aufwand", kind="number")
+    await _field(db, "ticket", "termin", kind="date")
+    await _field(db, "ticket", "extern", kind="boolean")
 
     ok = await client.put(f"/artifacts/{aid}/values", headers=auth(user), json={"values": {
         "aufwand": [3], "termin": ["2026-08-01"], "extern": [True]}})
     assert ok.status_code == 200, ok.text
-    werte = ok.json()["values"]
-    assert werte["aufwand"] == [3] and werte["extern"] == [True]
+    values = ok.json()["values"]
+    assert values["aufwand"] == [3] and values["extern"] == [True]
 
-    for feld, mist in (("aufwand", "viel"), ("termin", "irgendwann"), ("extern", "vielleicht")):
+    for field, mist in (("aufwand", "viel"), ("termin", "irgendwann"), ("extern", "vielleicht")):
         r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
-                             json={"values": {feld: [mist]}})
-        assert r.status_code == 400, f"{feld}={mist} should have been rejected"
+                             json={"values": {field: [mist]}})
+        assert r.status_code == 400, f"{field}={mist} should have been rejected"
 
 
 # ── Nichts verschwindet still ────────────────────────────────────────────────
 
-async def test_benutzter_listenwert_laesst_sich_nicht_loeschen(client, db, register):
+async def test_benutzter_listenwert_laesst_sich_nicht_delete(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id   # after a rollback in the endpoint a.id would no longer be readable
-    f = await _feld(db, "ticket", "komponente", kind="select", werte=["DB"])
+    f = await _field(db, "ticket", "komponente", kind="select", values=["DB"])
     option = (await db.execute(select(ArtifactFieldOption).where(
         ArtifactFieldOption.field_id == f.id))).scalars().first()
     await client.put(f"/artifacts/{aid}/values", headers=auth(user),
@@ -182,15 +182,15 @@ async def test_benutzter_listenwert_laesst_sich_nicht_loeschen(client, db, regis
     assert "1 artifact(s)" in r.json()["detail"]
 
 
-async def test_benutztes_feld_braucht_force(client, db, register):
+async def test_benutztes_field_braucht_force(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id   # after a rollback in the endpoint a.id would no longer be readable
-    f = await _feld(db, "ticket", "kunde", kind="text")
+    f = await _field(db, "ticket", "kunde", kind="text")
     await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                      json={"values": {"kunde": ["Beispielkunde"]}})
 
@@ -205,10 +205,10 @@ async def test_mehrfach_zurueckstellen_nur_wenn_es_passt(client, db, register):
     proj = await make_project(db, "FLD", "Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id   # after a rollback in the endpoint a.id would no longer be readable
-    f = await _feld(db, "ticket", "komponente", kind="select", multi=True, werte=["A", "B"])
+    f = await _field(db, "ticket", "komponente", kind="select", multi=True, values=["A", "B"])
     await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                      json={"values": {"komponente": ["A", "B"]}})
 
@@ -226,15 +226,15 @@ async def test_mehrfach_zurueckstellen_nur_wenn_es_passt(client, db, register):
 # ── Rechte ───────────────────────────────────────────────────────────────────
 
 async def test_fremdes_projekt_bleibt_verschlossen(client, db, register):
-    besitzer = await make_user(db, "eigner", admin=True)
+    owner = await make_user(db, "eigner", admin=True)
     fremder = await make_user(db, "fremd")
     proj = await make_project(db, "GEH", "Geheim", inherit_members=False)
-    await add_member(db, proj, besitzer, ProjectRole.owner)
+    await add_member(db, proj, owner, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id   # after a rollback in the endpoint a.id would no longer be readable
-    await _feld(db, "ticket", "kunde", kind="text")
+    await _field(db, "ticket", "kunde", kind="text")
 
     assert (await client.get(f"/artifacts/{aid}/values",
                              headers=auth(fremder))).status_code in (403, 404)
@@ -244,23 +244,23 @@ async def test_fremdes_projekt_bleibt_verschlossen(client, db, register):
 
 async def test_nur_admin_pflegt_das_register(client, db, register):
     niemand = await make_user(db, "gast")
-    typ = await art.type_by_key(db, "ticket")
-    r = await client.post(f"/artifact-types/{typ.id}/fields", headers=auth(niemand),
+    kind = await svc.type_by_key(db, "ticket")
+    r = await client.post(f"/artifact-types/{kind.id}/fields", headers=auth(niemand),
                           json={"key": "x", "label": "X"})
     assert r.status_code == 403
 
 
 # ── Hardware carries fields the same way ─────────────────────────────────────
 
-async def test_hardware_traegt_felder_genauso(client, db, register):
+async def test_hardware_traegt_fields_genauso(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "HWF", "HW-Felder")
     await add_member(db, proj, user, ProjectRole.owner)
     asset = await make_asset(db, "Switch", project=proj)
-    a = await art.ensure_for_asset(db, asset)
+    a = await svc.ensure_for_asset(db, asset)
     await db.commit()
     aid = a.id
-    await _feld(db, "hardware", "inventarnummer", kind="text")
+    await _field(db, "hardware", "inventarnummer", kind="text")
 
     r = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                          json={"values": {"inventarnummer": ["SN-4711"]}})
@@ -275,14 +275,14 @@ async def test_sammelabfrage_liefert_je_artefakt(db, register):
     proj = await make_project(db, "SAM", "Sammel")
     a1 = await _ticket(db, proj, 1)
     a2 = await _ticket(db, proj, 2)
-    art1 = await art.ensure_for_issue(db, a1)
-    art2 = await art.ensure_for_issue(db, a2)
+    art1 = await svc.ensure_for_issue(db, a1)
+    art2 = await svc.ensure_for_issue(db, a2)
     await db.commit()
-    f = await _feld(db, "ticket", "kunde", kind="text")
-    await felder.set_values(db, art1.id, f, ["Beispielkunde"])
+    f = await _field(db, "ticket", "kunde", kind="text")
+    await fields.set_values(db, art1.id, f, ["Beispielkunde"])
     await db.commit()
 
-    alle = await felder.values_for(db, [art1.id, art2.id])
+    alle = await fields.values_for(db, [art1.id, art2.id])
     assert alle[art1.id]["kunde"] == ["Beispielkunde"]
     # The second ticket has set no free field, only its built-in columns.
     assert "kunde" not in alle.get(art2.id, {})
@@ -310,7 +310,7 @@ async def _instanz(db, proj, issue):
     return inst
 
 
-def _knoten(**params):
+def _node(**params):
     return {"type": "auto_action",
             "data": {"config": {"action": {"action": "set_field", "params": params}}}}
 
@@ -320,56 +320,56 @@ async def test_prozess_setzt_ergaenzt_und_entfernt(db, register):
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
     issue = await _ticket(db, proj)
-    await art.ensure_for_issue(db, issue)
+    await svc.ensure_for_issue(db, issue)
     await db.commit()
-    await _feld(db, "ticket", "komponente", kind="select", multi=True,
-                werte=["Backend", "Frontend", "DB"])
+    await _field(db, "ticket", "komponente", kind="select", multi=True,
+                values=["Backend", "Frontend", "DB"])
     inst = await _instanz(db, proj, issue)
 
-    r = await run_action(db, inst, _knoten(field="komponente", values="Backend"))
+    r = await run_action(db, inst, _node(field="komponente", values="Backend"))
     assert r["values"] == ["Backend"]
     # The set values stand in the context immediately, so conditions afterwards can read them.
     assert inst.context["fields"]["komponente"] == ["Backend"]
 
-    r = await run_action(db, inst, _knoten(field="komponente", values="DB", mode="add"))
+    r = await run_action(db, inst, _node(field="komponente", values="DB", mode="add"))
     assert r["values"] == ["Backend", "DB"]
-    r = await run_action(db, inst, _knoten(field="komponente", values="Backend", mode="remove"))
+    r = await run_action(db, inst, _node(field="komponente", values="Backend", mode="remove"))
     assert r["values"] == ["DB"]
 
 
-async def test_prozess_versteht_komma_und_vorlagen(db, register):
+async def test_prozess_versteht_komma_und_templates(db, register):
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
     issue = await _ticket(db, proj)
-    await art.ensure_for_issue(db, issue)
+    await svc.ensure_for_issue(db, issue)
     await db.commit()
-    await _feld(db, "ticket", "komponente", kind="select", multi=True, werte=["Backend", "DB"])
+    await _field(db, "ticket", "komponente", kind="select", multi=True, values=["Backend", "DB"])
     inst = await _instanz(db, proj, issue)
     inst.context = {"agent": {"bereich": "DB"}}
 
-    r = await run_action(db, inst, _knoten(field="komponente", values="Backend, {{agent.bereich}}"))
+    r = await run_action(db, inst, _node(field="komponente", values="Backend, {{agent.bereich}}"))
     assert r["values"] == ["Backend", "DB"]
 
 
-async def test_prozess_meldet_unbekanntes_feld(db, register):
+async def test_prozess_meldet_unbekanntes_field(db, register):
     """A typo in the graph must not quietly run into nothing."""
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
     issue = await _ticket(db, proj)
-    await art.ensure_for_issue(db, issue)
+    await svc.ensure_for_issue(db, issue)
     await db.commit()
     inst = await _instanz(db, proj, issue)
 
     with pytest.raises(ValueError, match="does not exist on this artifact"):
-        await run_action(db, inst, _knoten(field="gibtsnicht", values="x"))
+        await run_action(db, inst, _node(field="gibtsnicht", values="x"))
 
 
 # ── Built-in fields: the register shows what a ticket really has ────────────
 
-async def test_ticket_hat_seine_echten_felder(db, register):
+async def test_ticket_hat_seine_echten_fields(db, register):
     """Priority, issue type, sprint and company are no second truth any more."""
-    typ = await art.type_by_key(db, "ticket")
-    keys = {f.key: f for f in await felder.fields_of(db, typ.id)}
+    kind = await svc.type_by_key(db, "ticket")
+    keys = {f.key: f for f in await fields.fields_of(db, kind.id)}
     for erwartet in ("status", "vorgangsart", "board", "prioritaet", "zustaendig",
                      "sprint", "story_points", "faellig"):
         assert erwartet in keys, erwartet
@@ -378,24 +378,24 @@ async def test_ticket_hat_seine_echten_felder(db, register):
     assert keys["status"].source == "agent_status"
 
 
-async def test_zustand_ist_nur_ein_feld(db, register):
+async def test_state_ist_nur_ein_field(db, register):
     """The state has no model of its own any more: it is the value list of `status`."""
-    typ = await art.type_by_key(db, "ticket")
-    feld = await felder.status_field(db, typ.id)
-    assert feld is not None and feld.kind == "select" and feld.builtin
-    werte = {o.value for o in await felder.options_of(db, feld.id)}
-    assert werte == {s.value for s in TicketAgentStatus}
+    kind = await svc.type_by_key(db, "ticket")
+    field = await fields.status_field(db, kind.id)
+    assert field is not None and field.kind == "select" and field.builtin
+    values = {o.value for o in await fields.options_of(db, field.id)}
+    assert values == {s.value for s in TicketAgentStatus}
     # The category and "waiting" hang off the value, not off a special model.
-    wartend = {o.value for o in await felder.options_of(db, feld.id) if o.waiting}
+    wartend = {o.value for o in await fields.options_of(db, field.id) if o.waiting}
     assert "plan_review" in wartend and "done" not in wartend
 
 
-async def test_eingebautes_feld_schreibt_in_die_echte_spalte(client, db, register):
+async def test_eingebautes_field_schreibt_in_die_echte_spalte(client, db, register):
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "SPA", "Spalten")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid, iid = a.id, issue.id
 
@@ -411,7 +411,7 @@ async def test_eingebautes_feld_schreibt_in_die_echte_spalte(client, db, registe
     assert gelesen.json()["values"]["prioritaet"] == ["high"]
 
 
-async def test_zustand_ueber_das_feld_zieht_die_board_spalte_nach(client, db, register):
+async def test_state_ueber_das_field_zieht_die_board_spalte_nach(client, db, register):
     """The state field has to have the same consequences as the earlier special path."""
     from app.models.enums import StatusCategory
     user = await make_user(db, "chef", admin=True)
@@ -420,7 +420,7 @@ async def test_zustand_ueber_das_feld_zieht_die_board_spalte_nach(client, db, re
     issue = await _ticket(db, proj)
     db.add(WorkflowStatus(project_id=proj.id, name="Warten",
                           category=StatusCategory.in_progress, order=1))
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid, iid = a.id, issue.id
 
@@ -434,37 +434,37 @@ async def test_zustand_ueber_das_feld_zieht_die_board_spalte_nach(client, db, re
     assert spalte.name == "Warten"        # the board came along
 
 
-async def test_projektabhaengige_auswahl_wird_geprueft(client, db, register):
+async def test_projektabhaengige_selection_wird_geprueft(client, db, register):
     """Issue type and sprint take their values from the project; nonsense flies out."""
     user = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "DYN", "Dynamisch")
     await add_member(db, proj, user, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
     aid = a.id
-    art_id = (await db.execute(select(IssueType).where(
+    kind_id = (await db.execute(select(IssueType).where(
         IssueType.project_id == proj.id))).scalars().first().id
 
     ok = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
-                          json={"values": {"vorgangsart": [str(art_id)]}})
+                          json={"values": {"vorgangsart": [str(kind_id)]}})
     assert ok.status_code == 200, ok.text
     schlecht = await client.put(f"/artifacts/{aid}/values", headers=auth(user),
                                 json={"values": {"vorgangsart": ["999999"]}})
     assert schlecht.status_code == 400
 
 
-async def test_prozess_setzt_auch_eingebaute_felder(db, register):
+async def test_prozess_setzt_auch_eingebaute_fields(db, register):
     """"Set a field" must not stop at the free fields."""
     from app.services.workflow_actions import run_action
     proj = await make_project(db, "PRZ", "Prozess")
     issue = await _ticket(db, proj)
-    await art.ensure_for_issue(db, issue)
+    await svc.ensure_for_issue(db, issue)
     await db.commit()
     iid = issue.id
     inst = await _instanz(db, proj, issue)
 
-    r = await run_action(db, inst, _knoten(field="prioritaet", values="highest"))
+    r = await run_action(db, inst, _node(field="prioritaet", values="highest"))
     assert r["values"] == ["highest"]
     frisch = await db.get(Issue, iid)
     await db.refresh(frisch)
@@ -473,7 +473,7 @@ async def test_prozess_setzt_auch_eingebaute_felder(db, register):
 
 # ── A project extends its artifacts itself ───────────────────────────────────
 
-async def test_projekt_feld_gilt_nur_dort(client, db, register):
+async def test_projekt_field_gilt_nur_dort(client, db, register):
     """The core: the owner extends THEIR tickets, not those of everybody else."""
     chef = await make_user(db, "chef", admin=True)
     meins = await make_project(db, "MEI", "Meins", inherit_members=False)
@@ -481,16 +481,16 @@ async def test_projekt_feld_gilt_nur_dort(client, db, register):
     await add_member(db, meins, chef, ProjectRole.owner)
     await add_member(db, fremd, chef, ProjectRole.owner)
     await db.commit()
-    typ = await art.type_by_key(db, "ticket")
-    tid, mid, fid = typ.id, meins.id, fremd.id
+    kind = await svc.type_by_key(db, "ticket")
+    tid, mid, fid = kind.id, meins.id, fremd.id
 
     r = await client.post(f"/artifact-types/{tid}/fields?project_id={mid}", headers=auth(chef),
                           json={"key": "kunde", "label": "Kunde", "kind": "text"})
     assert r.status_code == 201, r.text
 
-    meine = [f.key for f in await felder.fields_of(db, tid, mid)]
-    fremde = [f.key for f in await felder.fields_of(db, tid, fid)]
-    allgemein = [f.key for f in await felder.fields_of(db, tid)]
+    meine = [f.key for f in await fields.fields_of(db, tid, mid)]
+    fremde = [f.key for f in await fields.fields_of(db, tid, fid)]
+    allgemein = [f.key for f in await fields.fields_of(db, tid)]
     assert "kunde" in meine
     assert "kunde" not in fremde        # another project does not see it
     assert "kunde" not in allgemein     # and it is not valid everywhere
@@ -498,15 +498,15 @@ async def test_projekt_feld_gilt_nur_dort(client, db, register):
     assert "status" in meine and "prioritaet" in meine
 
 
-async def test_projekt_feld_erscheint_am_ticket(client, db, register):
+async def test_projekt_field_erscheint_am_ticket(client, db, register):
     """Extended fields have to appear in the ticket view."""
     chef = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "TKT", "Ticketansicht")
     await add_member(db, proj, chef, ProjectRole.owner)
     issue = await _ticket(db, proj)
-    a = await art.ensure_for_issue(db, issue)
+    a = await svc.ensure_for_issue(db, issue)
     await db.commit()
-    aid, tid, pid = a.id, (await art.type_by_key(db, "ticket")).id, proj.id
+    aid, tid, pid = a.id, (await svc.type_by_key(db, "ticket")).id, proj.id
 
     await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(chef),
                       json={"key": "kunde", "label": "Kunde", "kind": "text"})
@@ -519,13 +519,13 @@ async def test_projekt_feld_erscheint_am_ticket(client, db, register):
     assert r.json()["values"]["kunde"] == ["Beispielkunde"]
 
 
-async def test_fremder_darf_kein_feld_anlegen(client, db, register):
+async def test_fremder_may_kein_field_create(client, db, register):
     chef = await make_user(db, "chef", admin=True)
     fremder = await make_user(db, "fremd")
     proj = await make_project(db, "ZU", "Zu", inherit_members=False)
     await add_member(db, proj, chef, ProjectRole.owner)
     await db.commit()
-    tid, pid = (await art.type_by_key(db, "ticket")).id, proj.id
+    tid, pid = (await svc.type_by_key(db, "ticket")).id, proj.id
 
     r = await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(fremder),
                           json={"key": "x", "label": "X"})
@@ -538,18 +538,18 @@ async def test_ohne_projekt_bleibt_es_admin_sache(client, db, register):
     proj = await make_project(db, "OW", "Owner")
     await add_member(db, proj, owner, ProjectRole.owner)
     await db.commit()
-    tid = (await art.type_by_key(db, "ticket")).id
+    tid = (await svc.type_by_key(db, "ticket")).id
 
     r = await client.post(f"/artifact-types/{tid}/fields", headers=auth(owner),
                           json={"key": "global", "label": "Global"})
     assert r.status_code == 403
 
 
-async def test_ausgeliefertes_feld_laesst_sich_nicht_entfernen(client, db, register):
+async def test_ausgeliefertes_field_laesst_sich_nicht_entfernen(client, db, register):
     """The fields needed so far cannot be removed."""
     chef = await make_user(db, "chef", admin=True)
-    typ = await art.type_by_key(db, "ticket")
-    status = await felder.status_field(db, typ.id)
+    kind = await svc.type_by_key(db, "ticket")
+    status = await fields.status_field(db, kind.id)
 
     r = await client.delete(f"/artifact-fields/{status.id}?force=true", headers=auth(chef))
     assert r.status_code == 409
@@ -559,13 +559,13 @@ async def test_ausgeliefertes_feld_laesst_sich_nicht_entfernen(client, db, regis
                              json={"enabled": False})).status_code == 200
 
 
-async def test_projekt_feld_darf_ausgeliefertes_nicht_verdecken(client, db, register):
+async def test_projekt_field_may_ausgeliefertes_nicht_verdecken(client, db, register):
     """Two fields with the same key: nobody would know which one is meant any more."""
     chef = await make_user(db, "chef", admin=True)
     proj = await make_project(db, "VD", "Verdecken")
     await add_member(db, proj, chef, ProjectRole.owner)
     await db.commit()
-    tid, pid = (await art.type_by_key(db, "ticket")).id, proj.id
+    tid, pid = (await svc.type_by_key(db, "ticket")).id, proj.id
 
     r = await client.post(f"/artifact-types/{tid}/fields?project_id={pid}", headers=auth(chef),
                           json={"key": "status", "label": "Mein Status"})

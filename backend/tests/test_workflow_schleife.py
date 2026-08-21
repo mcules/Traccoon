@@ -18,9 +18,9 @@ from conftest import make_user
 pytestmark = pytest.mark.asyncio
 
 
-def _graph(*, liste="posten", max_=None, sammle=None) -> dict:
+def _graph(*, listing="posten", max_=None, sammle=None) -> dict:
     """start, loop, (per element: set the context), back; when finished, end."""
-    cfg = {"label": "Für jedes", "liste": liste, "element": "posten_eins", "index": "nr"}
+    cfg = {"label": "Für jedes", "liste": listing, "element": "posten_eins", "index": "nr"}
     if max_ is not None:
         cfg["max"] = max_
     if sammle:
@@ -46,8 +46,8 @@ def _graph(*, liste="posten", max_=None, sammle=None) -> dict:
     }
 
 
-async def _lauf(db, graph: dict, kontext: dict) -> WorkflowInstance:
-    user = await make_user(db, f"u{abs(hash(str(kontext))) % 10000}")
+async def _lauf(db, graph: dict, context: dict) -> WorkflowInstance:
+    user = await make_user(db, f"u{abs(hash(str(context))) % 10000}")
     d = WorkflowDefinition(project_id=None, key=f"schleife{abs(hash(str(graph))) % 10000}",
                            name="Schleife", subject_kind=WorkflowSubjectKind.standalone,
                            created_by=user.id)
@@ -60,7 +60,7 @@ async def _lauf(db, graph: dict, kontext: dict) -> WorkflowInstance:
     d.current_version_id = v.id
     await db.commit()
     return await start_workflow(db, d, subject_kind=WorkflowSubjectKind.standalone,
-                                context=kontext, actor_id=user.id)
+                                context=context, actor_id=user.id)
 
 
 async def test_jedes_element_kommt_einmal_dran(db):
@@ -73,21 +73,21 @@ async def test_jedes_element_kommt_einmal_dran(db):
     assert "posten_eins" not in inst.context
 
 
-async def test_leere_liste_geht_gar_nicht_erst_hinein(db):
+async def test_leere_listing_geht_gar_nicht_erst_hinein(db):
     inst = await _lauf(db, _graph(), {"posten": []})
     assert inst.status == WorkflowInstanceStatus.completed
     assert "gesehen" not in inst.context
 
 
-async def test_fehlende_liste_ist_kein_absturz(db):
+async def test_fehlende_listing_ist_kein_absturz(db):
     """A path that does not exist is the normal case in operation (the counterpart delivers
     nothing), and it must not topple the run."""
-    inst = await _lauf(db, _graph(liste="gibts.nicht"), {"posten": ["x"]})
+    inst = await _lauf(db, _graph(listing="gibts.nicht"), {"posten": ["x"]})
     assert inst.status == WorkflowInstanceStatus.completed
     assert "gesehen" not in inst.context
 
 
-async def test_einzelwert_wird_wie_eine_liste_mit_einem_element_behandelt(db):
+async def test_einzelwert_wird_wie_eine_listing_mit_einem_element_behandelt(db):
     """Many counterparts deliver no array with exactly one hit, and that is no error of the
     human who built the flow."""
     inst = await _lauf(db, _graph(), {"posten": "allein"})
@@ -100,7 +100,7 @@ async def test_sammeln_haelt_die_ergebnisse_fest(db):
     assert inst.context["nr_gesamt"] == 2
 
 
-async def test_lange_liste_wird_gedeckelt(db):
+async def test_lange_listing_wird_gedeckelt(db):
     """Against the list that accidentally has 100 000 rows: the node has a measure of its own,
     independently of the cycle brake of the engine."""
     inst = await _lauf(db, _graph(max_=3), {"posten": list("abcdefgh")})
@@ -113,24 +113,24 @@ async def test_zwei_durchlaeufe_beginnen_wieder_von_vorn(db):
     """If the same flow runs a second time (or an outer loop), no counter from yesterday may
     be left."""
     graph = _graph()
-    erste = await _lauf(db, graph, {"posten": ["a", "b"]})
-    assert erste.context["gesehen"] == "b"
+    first = await _lauf(db, graph, {"posten": ["a", "b"]})
+    assert first.context["gesehen"] == "b"
 
-    d = await db.get(WorkflowDefinition, erste.definition_id)
+    d = await db.get(WorkflowDefinition, first.definition_id)
     zweite = await start_workflow(db, d, subject_kind=WorkflowSubjectKind.standalone,
-                                  context={"posten": ["x"]}, actor_id=erste.started_by)
+                                  context={"posten": ["x"]}, actor_id=first.started_by)
     assert zweite.context["gesehen"] == "x"
     assert zweite.context.get("_schleifen") == {}
 
 
-async def test_validierung_verlangt_beide_ausgaenge_und_eine_liste():
+async def test_validierung_verlangt_beide_ausgaenge_und_eine_listing():
     graph = _graph()
     assert validate_graph("standalone", graph) == []
 
-    ohne_fertig = _graph()
-    ohne_fertig["edges"] = [e for e in ohne_fertig["edges"] if e.get("sourceHandle") != "fertig"]
-    assert any("fertig" in f for f in validate_graph("standalone", ohne_fertig))
+    ohne_done = _graph()
+    ohne_done["edges"] = [e for e in ohne_done["edges"] if e.get("sourceHandle") != "fertig"]
+    assert any("fertig" in f for f in validate_graph("standalone", ohne_done))
 
-    ohne_liste = _graph()
-    del ohne_liste["nodes"][1]["data"]["config"]["liste"]
-    assert any("keine Liste" in f for f in validate_graph("standalone", ohne_liste))
+    ohne_listing = _graph()
+    del ohne_listing["nodes"][1]["data"]["config"]["liste"]
+    assert any("keine Liste" in f for f in validate_graph("standalone", ohne_listing))

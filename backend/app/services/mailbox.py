@@ -66,8 +66,8 @@ def _aus_pool(account: MailAccount) -> IMAPClient | None:
     with _pool_lock:
         vorrat = _pool.get(account.id) or []
         while vorrat:
-            client, zuletzt = vorrat.pop()
-            if time.monotonic() - zuletzt > LEERLAUF_S:
+            client, latest = vorrat.pop()
+            if time.monotonic() - latest > LEERLAUF_S:
                 _schliessen(client)
                 continue
             _pool[account.id] = vorrat
@@ -134,15 +134,15 @@ def _text_aus(msg: email.message.Message) -> tuple[str, str]:
     """(Text, HTML) einer Nachricht — beides, soweit vorhanden."""
     text, html = "", ""
     if msg.is_multipart():
-        for teil in msg.walk():
-            if teil.get_content_maintype() == "multipart":
+        for part in msg.walk():
+            if part.get_content_maintype() == "multipart":
                 continue
-            if teil.get_filename():          # Anhänge gehören nicht in den Fließtext
+            if part.get_filename():          # Anhänge gehören nicht in den Fließtext
                 continue
-            inhalt = teil.get_content_type()
+            inhalt = part.get_content_type()
             try:
-                roh = teil.get_payload(decode=True) or b""
-                stueck = roh.decode(teil.get_content_charset() or "utf-8", errors="replace")
+                roh = part.get_payload(decode=True) or b""
+                stueck = roh.decode(part.get_content_charset() or "utf-8", errors="replace")
             except Exception:  # noqa: BLE001 — eine kaputte Kodierung darf die Mail nicht verschlucken
                 continue
             if inhalt == "text/plain" and not text:
@@ -201,33 +201,33 @@ def saeubern(html: str) -> tuple[str, bool]:
                        link_rel="noopener noreferrer nofollow")
     fern = False
 
-    def um(treffer):
+    def um(hits):
         nonlocal fern
-        adresse = treffer.group(2)
+        adresse = hits.group(2)
         if adresse.startswith("data:"):
-            return treffer.group(0)
+            return hits.group(0)
         fern = True
-        return f'{treffer.group(1)}data-fern="{adresse}"'
+        return f'{hits.group(1)}data-fern="{adresse}"'
 
     sauber = re.sub(r'(<img\b[^>]*?)src="([^"]*)"', um, sauber, flags=re.I)
     return sauber, fern
 
 
-def _anhaenge(msg: email.message.Message) -> list[dict]:
+def _attachments(msg: email.message.Message) -> list[dict]:
     """Index der Anhänge — Name, Typ, Größe. Der Inhalt wird erst auf Abruf geholt: eine
     Liste von zwanzig Mails soll keine zwanzig PDF durchs Netz ziehen."""
     out = []
-    for i, teil in enumerate(msg.walk()):
-        name = teil.get_filename()
+    for i, part in enumerate(msg.walk()):
+        name = part.get_filename()
         if not name:
             continue
-        roh = teil.get_payload(decode=True) or b""
-        out.append({"index": i, "filename": _kopf(name),
-                    "content_type": teil.get_content_type(), "size": len(roh)})
+        roh = part.get_payload(decode=True) or b""
+        out.append({"index": i, "filename": _header(name),
+                    "content_type": part.get_content_type(), "size": len(roh)})
     return out
 
 
-def _kopf(roh) -> str:
+def _header(roh) -> str:
     """Kopfzeile lesbar machen (=?utf-8?B?…?= und Konsorten)."""
     from email.header import decode_header, make_header
 
@@ -239,12 +239,12 @@ def _kopf(roh) -> str:
         return str(roh)
 
 
-def _kopfzeile_adressen(roh) -> list[dict]:
+def _header_line_adressen(roh) -> list[dict]:
     out = []
-    for teil in str(roh or "").split(","):
-        name, addr = parseaddr(teil.strip())
+    for part in str(roh or "").split(","):
+        name, addr = parseaddr(part.strip())
         if addr:
-            out.append({"name": _kopf(name), "addr": addr})
+            out.append({"name": _header(name), "addr": addr})
     return out
 
 
@@ -252,10 +252,10 @@ def _kopfzeile_adressen(roh) -> list[dict]:
 
 # Reihenfolge der Sonderordner, wie sie jedes Mail-Programm zeigt: was man täglich braucht,
 # steht oben, der Rest alphabetisch darunter.
-_SONDER_REIHE = ["inbox", "drafts", "sent", "junk", "trash", "archive"]
+_SONDER_SERIES = ["inbox", "drafts", "sent", "junk", "trash", "archive"]
 
 
-def baum_sortieren(eintraege: list[dict]) -> list[dict]:
+def baum_sortieren(entries: list[dict]) -> list[dict]:
     """Ordner in Anzeigereihenfolge: jedes Kind direkt unter seinem Elternteil.
 
     Nach dem vollen Namen zu sortieren sieht aus wie ein Baum und ist keiner: `Archives`
@@ -267,24 +267,24 @@ def baum_sortieren(eintraege: list[dict]) -> list[dict]:
     im Namen: ein Ordner, dessen Elternteil der Server gar nicht auflistet, ist eine Wurzel
     und darf nicht eingerückt ins Leere zeigen.
     """
-    nach_name = {e["name"]: e for e in eintraege}
+    nach_name = {e["name"]: e for e in entries}
     kinder: dict[str, list[dict]] = {}
     wurzeln: list[dict] = []
-    for e in eintraege:
+    for e in entries:
         eltern = e.get("parent") or ""
         if eltern and eltern in nach_name:
             kinder.setdefault(eltern, []).append(e)
         else:
             wurzeln.append(e)
 
-    def schluessel(e: dict) -> tuple:
-        rang = _SONDER_REIHE.index(e["special"]) if e["special"] in _SONDER_REIHE else 99
+    def key(e: dict) -> tuple:
+        rang = _SONDER_SERIES.index(e["special"]) if e["special"] in _SONDER_SERIES else 99
         return (rang, (e.get("display") or e["name"]).lower())
 
     out: list[dict] = []
 
-    def absteigen(knoten: list[dict], ebene: int) -> None:
-        for e in sorted(knoten, key=schluessel):
+    def absteigen(node: list[dict], ebene: int) -> None:
+        for e in sorted(node, key=key):
             e["level"] = ebene
             out.append(e)
             absteigen(kinder.get(e["name"], []), ebene + 1)
@@ -293,7 +293,7 @@ def baum_sortieren(eintraege: list[dict]) -> list[dict]:
     return out
 
 
-def _ordner_sync(account: MailAccount, zaehlen: bool) -> list[dict]:
+def _folder_sync(account: MailAccount, count: bool) -> list[dict]:
     """Die Ordner als Baum: Name, Anzeigename, Ebene, Elternordner — und auf Wunsch die Zahl
     der ungelesenen Nachrichten.
 
@@ -317,37 +317,37 @@ def _ordner_sync(account: MailAccount, zaehlen: bool) -> list[dict]:
                 # Nicht jeder Server kennzeichnet seine Sonderordner (RFC 6154). Dann
                 # entscheidet, was am Konto eingetragen ist — die Person weiß es besser als
                 # eine Namensliste im Code.
-                zuordnung = {account.folder_sent: "sent", account.folder_drafts: "drafts",
+                mapping = {account.folder_sent: "sent", account.folder_drafts: "drafts",
                              account.folder_trash: "trash", account.folder_junk: "junk",
                              account.folder_archive: "archive"}
-                besonders = zuordnung.get(name, "")
+                besonders = mapping.get(name, "")
             if name.upper() == "INBOX":
                 besonders = "inbox"
             trennzeichen = trenner.decode() if isinstance(trenner, bytes) else (trenner or "/")
-            teile = name.split(trennzeichen) if trennzeichen else [name]
+            parts = name.split(trennzeichen) if trennzeichen else [name]
             roh.append({
                 "name": name,
-                "display": teile[-1] if teile else name,
-                "level": max(0, len(teile) - 1),
-                "parent": trennzeichen.join(teile[:-1]) if len(teile) > 1 else "",
+                "display": parts[-1] if parts else name,
+                "level": max(0, len(parts) - 1),
+                "parent": trennzeichen.join(parts[:-1]) if len(parts) > 1 else "",
                 "delimiter": trennzeichen,
                 "special": besonders,
                 "unseen": 0, "total": 0,
             })
 
-        if zaehlen:
-            for eintrag in roh:
+        if count:
+            for entry in roh:
                 try:
-                    stand = client.folder_status(eintrag["name"], ["UNSEEN", "MESSAGES"])
-                    eintrag["unseen"] = int(stand.get(b"UNSEEN", 0))
-                    eintrag["total"] = int(stand.get(b"MESSAGES", 0))
+                    state = client.folder_status(entry["name"], ["UNSEEN", "MESSAGES"])
+                    entry["unseen"] = int(state.get(b"UNSEEN", 0))
+                    entry["total"] = int(state.get(b"MESSAGES", 0))
                 except Exception:  # noqa: BLE001 — ein Ordner ohne Auskunft ist kein Fehler
-                    log.debug("Kein Status für %s", eintrag["name"])
+                    log.debug("Kein Status für %s", entry["name"])
 
         return baum_sortieren(roh)
 
 
-def _hat_anhang(struktur) -> bool:
+def _hat_attachment(struktur) -> bool:
     """Hat diese Nachricht einen Anhang? — beantwortet aus der BODYSTRUCTURE.
 
     Der ganze Sinn der Frage ist, sie zu beantworten, OHNE die Mail zu laden: eine Liste von
@@ -358,10 +358,10 @@ def _hat_anhang(struktur) -> bool:
     Nur `attachment` zählt. Ein eingebettetes Logo im HTML (`inline`) ist kein Anhang, und
     eine Büroklammer an jeder Werbemail wäre keine Auskunft mehr.
     """
-    def durchsuchen(teil) -> bool:
-        if not isinstance(teil, (list, tuple)):
+    def durchsuchen(part) -> bool:
+        if not isinstance(part, (list, tuple)):
             return False
-        for element in teil:
+        for element in part:
             if isinstance(element, bytes) and element.lower() == b"attachment":
                 return True
             if durchsuchen(element):
@@ -371,11 +371,11 @@ def _hat_anhang(struktur) -> bool:
     return durchsuchen(struktur)
 
 
-def _liste_sync(account: MailAccount, ordner: str, suche: str, offset: int,
+def _listing_sync(account: MailAccount, folder: str, suche: str, offset: int,
                 limit: int) -> dict:
     with _imap(account) as client:
-        stand = client.select_folder(ordner, readonly=True)
-        gesamt = stand.get(b"EXISTS", 0)
+        state = client.select_folder(folder, readonly=True)
+        gesamt = state.get(b"EXISTS", 0)
         kriterium = ["TEXT", suche] if suche else ["ALL"]
         uids = client.search(kriterium)
         uids = list(reversed(uids))          # neueste zuerst, wie in jedem Postfach
@@ -384,95 +384,95 @@ def _liste_sync(account: MailAccount, ordner: str, suche: str, offset: int,
             return {"total": len(uids), "exists": gesamt, "messages": []}
         roh = client.fetch(ausschnitt, ["ENVELOPE", "FLAGS", "RFC822.SIZE", "INTERNALDATE",
                                         "BODYSTRUCTURE"])
-        nachrichten = []
+        messages = []
         for uid in ausschnitt:
-            eintrag = roh.get(uid) or {}
-            umschlag = eintrag.get(b"ENVELOPE")
-            flags = {f.decode().lower() for f in eintrag.get(b"FLAGS", ())}
+            entry = roh.get(uid) or {}
+            envelope = entry.get(b"ENVELOPE")
+            flags = {f.decode().lower() for f in entry.get(b"FLAGS", ())}
             absender = ""
-            if umschlag is not None and umschlag.from_:
-                erster = umschlag.from_[0]
-                name = _kopf(erster.name.decode() if erster.name else "")
+            if envelope is not None and envelope.from_:
+                erster = envelope.from_[0]
+                name = _header(erster.name.decode() if erster.name else "")
                 adresse = f"{(erster.mailbox or b'').decode()}@{(erster.host or b'').decode()}"
                 absender = formataddr((name, adresse))
-            nachrichten.append({
+            messages.append({
                 "uid": uid,
-                "subject": _kopf(umschlag.subject.decode("utf-8", "replace")
-                                 if umschlag is not None and umschlag.subject else ""),
+                "subject": _header(envelope.subject.decode("utf-8", "replace")
+                                 if envelope is not None and envelope.subject else ""),
                 "from": absender,
-                "date": (eintrag.get(b"INTERNALDATE") or dt.datetime.now(dt.timezone.utc)).isoformat(),
-                "size": eintrag.get(b"RFC822.SIZE", 0),
+                "date": (entry.get(b"INTERNALDATE") or dt.datetime.now(dt.timezone.utc)).isoformat(),
+                "size": entry.get(b"RFC822.SIZE", 0),
                 "seen": "\\seen" in flags,
                 "flagged": "\\flagged" in flags,
                 "answered": "\\answered" in flags,
-                "has_attachment": _hat_anhang(eintrag.get(b"BODYSTRUCTURE")),
+                "has_attachment": _hat_attachment(entry.get(b"BODYSTRUCTURE")),
             })
-        return {"total": len(uids), "exists": gesamt, "messages": nachrichten}
+        return {"total": len(uids), "exists": gesamt, "messages": messages}
 
 
-def _nachricht_sync(account: MailAccount, ordner: str, uid: int) -> dict:
+def _message_sync(account: MailAccount, folder: str, uid: int) -> dict:
     with _imap(account) as client:
-        client.select_folder(ordner)
+        client.select_folder(folder)
         roh = client.fetch([uid], ["RFC822", "FLAGS"])
-        eintrag = roh.get(uid)
-        if not eintrag:
+        entry = roh.get(uid)
+        if not entry:
             raise LookupError("Nachricht nicht gefunden")
-        msg = email.message_from_bytes(eintrag[b"RFC822"], policy=email.policy.default)
+        msg = email.message_from_bytes(entry[b"RFC822"], policy=email.policy.default)
         text, html = _text_aus(msg)
         html_sauber, fernbilder = saeubern(html) if html else ("", False)
-        flags = {f.decode().lower() for f in eintrag.get(b"FLAGS", ())}
+        flags = {f.decode().lower() for f in entry.get(b"FLAGS", ())}
         return {
-            "uid": uid, "folder": ordner,
-            "subject": _kopf(msg.get("Subject")),
-            "from": _kopfzeile_adressen(msg.get("From")),
-            "to": _kopfzeile_adressen(msg.get("To")),
-            "cc": _kopfzeile_adressen(msg.get("Cc")),
-            "reply_to": _kopfzeile_adressen(msg.get("Reply-To")),
-            "date": _kopf(msg.get("Date")),
+            "uid": uid, "folder": folder,
+            "subject": _header(msg.get("Subject")),
+            "from": _header_line_adressen(msg.get("From")),
+            "to": _header_line_adressen(msg.get("To")),
+            "cc": _header_line_adressen(msg.get("Cc")),
+            "reply_to": _header_line_adressen(msg.get("Reply-To")),
+            "date": _header(msg.get("Date")),
             "message_id": str(msg.get("Message-ID") or ""),
             "text": text, "html": html_sauber, "remote_images": fernbilder,
-            "attachments": _anhaenge(msg),
+            "attachments": _attachments(msg),
             "seen": "\\seen" in flags, "flagged": "\\flagged" in flags,
         }
 
 
-def _anhang_sync(account: MailAccount, ordner: str, uid: int, index: int) -> tuple[str, str, bytes]:
+def _attachment_sync(account: MailAccount, folder: str, uid: int, index: int) -> tuple[str, str, bytes]:
     with _imap(account) as client:
-        client.select_folder(ordner, readonly=True)
+        client.select_folder(folder, readonly=True)
         roh = client.fetch([uid], ["RFC822"])
-        eintrag = roh.get(uid)
-        if not eintrag:
+        entry = roh.get(uid)
+        if not entry:
             raise LookupError("Nachricht nicht gefunden")
-        msg = email.message_from_bytes(eintrag[b"RFC822"], policy=email.policy.default)
-        for i, teil in enumerate(msg.walk()):
+        msg = email.message_from_bytes(entry[b"RFC822"], policy=email.policy.default)
+        for i, part in enumerate(msg.walk()):
             if i != index:
                 continue
-            name = teil.get_filename()
+            name = part.get_filename()
             if not name:
                 break
-            return (_kopf(name), teil.get_content_type(), teil.get_payload(decode=True) or b"")
+            return (_header(name), part.get_content_type(), part.get_payload(decode=True) or b"")
     raise LookupError("Anhang nicht gefunden")
 
 
 # ── Ändern ──────────────────────────────────────────────────────────────────
 
-def _flag_sync(account: MailAccount, ordner: str, uid: int, flag: str, an: bool) -> None:
+def _flag_sync(account: MailAccount, folder: str, uid: int, flag: str, an: bool) -> None:
     with _imap(account) as client:
-        client.select_folder(ordner)
+        client.select_folder(folder)
         if an:
             client.add_flags([uid], [flag])
         else:
             client.remove_flags([uid], [flag])
 
 
-def _verschieben_sync(account: MailAccount, ordner: str, uid: int, ziel: str) -> None:
+def _move_sync(account: MailAccount, folder: str, uid: int, target: str) -> None:
     with _imap(account) as client:
-        client.select_folder(ordner)
+        client.select_folder(folder)
         # MOVE, wo der Server es kann; sonst der alte Weg (kopieren, löschen, aufräumen).
         if client.has_capability("MOVE"):
-            client.move([uid], ziel)
+            client.move([uid], target)
         else:
-            client.copy([uid], ziel)
+            client.copy([uid], target)
             client.add_flags([uid], [b"\\Deleted"])
             client.expunge()
 
@@ -490,7 +490,7 @@ PLATZHALTER = {
 }
 
 
-def archiv_ziel(account: MailAccount, nachricht_datum, absender: str = "",
+def archiv_target(account: MailAccount, message_datum, absender: str = "",
                 trenner: str = "") -> str:
     """Der Ordner, in den diese Nachricht archiviert gehört.
 
@@ -508,7 +508,7 @@ def archiv_ziel(account: MailAccount, nachricht_datum, absender: str = "",
     if account.archive_mode != "pattern" or not account.archive_pattern:
         return account.folder_archive
 
-    wann = nachricht_datum or _dt.datetime.now(_dt.timezone.utc)
+    wann = message_datum or _dt.datetime.now(_dt.timezone.utc)
     if isinstance(wann, str):
         try:
             from email.utils import parsedate_to_datetime
@@ -517,23 +517,23 @@ def archiv_ziel(account: MailAccount, nachricht_datum, absender: str = "",
             wann = _dt.datetime.now(_dt.timezone.utc)
 
     absender = (absender or "").strip()
-    werte = {name: wann.strftime(muster) for name, muster in PLATZHALTER.items()}
-    werte["quartal"] = f"Q{(wann.month - 1) // 3 + 1}"
-    werte["absender"] = absender
-    werte["absender_domain"] = absender.rpartition("@")[2] if "@" in absender else absender
+    values = {name: wann.strftime(pattern) for name, pattern in PLATZHALTER.items()}
+    values["quartal"] = f"Q{(wann.month - 1) // 3 + 1}"
+    values["absender"] = absender
+    values["absender_domain"] = absender.rpartition("@")[2] if "@" in absender else absender
 
-    ziel = account.archive_pattern
-    for name, wert in werte.items():
-        ziel = ziel.replace("{" + name + "}", str(wert))
+    target = account.archive_pattern
+    for name, value in values.items():
+        target = target.replace("{" + name + "}", str(value))
     # Was übrig bleibt, ist ein Tippfehler im Muster. Er soll auffallen, aber keinen Ordner
     # mit geschweiften Klammern im Namen anlegen.
-    ziel = re.sub(r"\{[^}]*\}", "", ziel).strip("/ ")
+    target = re.sub(r"\{[^}]*\}", "", target).strip("/ ")
     if trenner and trenner != "/":
-        ziel = ziel.replace("/", trenner)
-    return ziel or account.folder_archive
+        target = target.replace("/", trenner)
+    return target or account.folder_archive
 
 
-def _archivieren_sync(account: MailAccount, ordner: str, uid: int) -> str:
+def _archivieren_sync(account: MailAccount, folder: str, uid: int) -> str:
     """Archiviert und legt den Zielordner an, falls es ihn noch nicht gibt.
 
     Ohne das Anlegen wäre ein Jahresarchiv genau einmal im Jahr kaputt — beim ersten Klick
@@ -545,33 +545,33 @@ def _archivieren_sync(account: MailAccount, ordner: str, uid: int) -> str:
             if roh_trenner:
                 trenner = roh_trenner.decode() if isinstance(roh_trenner, bytes) else roh_trenner
                 break
-        client.select_folder(ordner)
-        eintrag = (client.fetch([uid], ["ENVELOPE", "INTERNALDATE"]) or {}).get(uid) or {}
-        umschlag = eintrag.get(b"ENVELOPE")
+        client.select_folder(folder)
+        entry = (client.fetch([uid], ["ENVELOPE", "INTERNALDATE"]) or {}).get(uid) or {}
+        envelope = entry.get(b"ENVELOPE")
         absender = ""
-        if umschlag is not None and umschlag.from_:
-            erster = umschlag.from_[0]
+        if envelope is not None and envelope.from_:
+            erster = envelope.from_[0]
             absender = f"{(erster.mailbox or b'').decode()}@{(erster.host or b'').decode()}"
-        wann = (umschlag.date if umschlag is not None and umschlag.date
-                else eintrag.get(b"INTERNALDATE"))
+        wann = (envelope.date if envelope is not None and envelope.date
+                else entry.get(b"INTERNALDATE"))
 
-        ziel = archiv_ziel(account, wann, absender, trenner)
-        if not client.folder_exists(ziel):
-            client.create_folder(ziel)
+        target = archiv_target(account, wann, absender, trenner)
+        if not client.folder_exists(target):
+            client.create_folder(target)
             try:
-                client.subscribe_folder(ziel)
+                client.subscribe_folder(target)
             except Exception:  # noqa: BLE001 — nicht jeder Server kennt Abonnements
-                log.debug("Kein Abonnement für %s", ziel)
+                log.debug("Kein Abonnement für %s", target)
         if client.has_capability("MOVE"):
-            client.move([uid], ziel)
+            client.move([uid], target)
         else:
-            client.copy([uid], ziel)
+            client.copy([uid], target)
             client.add_flags([uid], [b"\\Deleted"])
             client.expunge()
-        return ziel
+        return target
 
 
-def _ungelesen_sync(account: MailAccount, ordner: str = "INBOX") -> int:
+def _ungelesen_sync(account: MailAccount, folder: str = "INBOX") -> int:
     """Wieviel Ungelesenes liegt im Posteingang? — eine Frage, eine Antwort.
 
     Bewusst nur der Posteingang und nicht die Summe über alle Ordner: „neue Post" meint das,
@@ -579,11 +579,11 @@ def _ungelesen_sync(account: MailAccount, ordner: str = "INBOX") -> int:
     ist ein Aufruf statt vierzig.
     """
     with _imap(account) as client:
-        stand = client.folder_status(ordner, ["UNSEEN"])
-        return int(stand.get(b"UNSEEN", 0))
+        state = client.folder_status(folder, ["UNSEEN"])
+        return int(state.get(b"UNSEEN", 0))
 
 
-def _alle_gelesen_sync(account: MailAccount, ordner: str) -> int:
+def _all_gelesen_sync(account: MailAccount, folder: str) -> int:
     """Setzt \\Seen auf alles Ungelesene und sagt, wie viele es waren.
 
     Nur die Ungelesenen anzufassen ist kein Geiz, sondern Rücksicht: Ein Server, der jedes
@@ -591,25 +591,25 @@ def _alle_gelesen_sync(account: MailAccount, ordner: str) -> int:
     Zahl in der Rückmeldung ist ohnehin die, die den Menschen interessiert.
     """
     with _imap(account) as client:
-        client.select_folder(ordner)
+        client.select_folder(folder)
         offen = client.search(["UNSEEN"])
         if offen:
             client.add_flags(offen, [b"\\Seen"])
         return len(offen)
 
 
-def _ordner_loeschen_sync(account: MailAccount, ordner: str) -> None:
+def _folder_delete_sync(account: MailAccount, folder: str) -> None:
     with _imap(account) as client:
         # Erst wegschalten: manche Server verweigern das Löschen des gewählten Ordners.
         client.select_folder("INBOX", readonly=True)
-        client.delete_folder(ordner)
+        client.delete_folder(folder)
 
 
-def _endgueltig_sync(account: MailAccount, ordner: str, uid: int) -> None:
+def _endgueltig_sync(account: MailAccount, folder: str, uid: int) -> None:
     """Wirklich weg. Nur für den Papierkorb gedacht — überall sonst wird verschoben, damit
     ein Fehlgriff eine Bewegung bleibt und kein Verlust."""
     with _imap(account) as client:
-        client.select_folder(ordner)
+        client.select_folder(folder)
         client.add_flags([uid], [b"\\Deleted"])
         client.expunge()
 
@@ -619,70 +619,70 @@ def _entwurf_sync(account: MailAccount, roh: bytes) -> None:
         client.append(account.folder_drafts, roh, flags=[b"\\Draft"])
 
 
-def _ablegen_sync(account: MailAccount, ordner: str, roh: bytes) -> None:
+def _ablegen_sync(account: MailAccount, folder: str, roh: bytes) -> None:
     with _imap(account) as client:
-        client.append(ordner, roh, flags=[b"\\Seen"])
+        client.append(folder, roh, flags=[b"\\Seen"])
 
 
 # ── Bauen und Senden ────────────────────────────────────────────────────────
 
-def baue_nachricht(identitaet: MailIdentity, felder: dict) -> EmailMessage:
+def baue_message(identity: MailIdentity, fields: dict) -> EmailMessage:
     """Aus den Feldern des Formulars eine Nachricht — eine Stelle für Entwurf und Versand."""
     msg = EmailMessage()
-    msg["From"] = formataddr((identitaet.display_name or "", identitaet.email))
-    msg["To"] = ", ".join(felder.get("to") or [])
-    if felder.get("cc"):
-        msg["Cc"] = ", ".join(felder["cc"])
-    if felder.get("bcc"):
-        msg["Bcc"] = ", ".join(felder["bcc"])
-    if identitaet.reply_to:
-        msg["Reply-To"] = identitaet.reply_to
-    msg["Subject"] = felder.get("subject") or ""
-    if felder.get("in_reply_to"):
-        msg["In-Reply-To"] = felder["in_reply_to"]
-        msg["References"] = felder["in_reply_to"]
-    koerper = felder.get("text") or ""
-    if identitaet.signature:
-        koerper = f"{koerper}\n\n-- \n{identitaet.signature}"
+    msg["From"] = formataddr((identity.display_name or "", identity.email))
+    msg["To"] = ", ".join(fields.get("to") or [])
+    if fields.get("cc"):
+        msg["Cc"] = ", ".join(fields["cc"])
+    if fields.get("bcc"):
+        msg["Bcc"] = ", ".join(fields["bcc"])
+    if identity.reply_to:
+        msg["Reply-To"] = identity.reply_to
+    msg["Subject"] = fields.get("subject") or ""
+    if fields.get("in_reply_to"):
+        msg["In-Reply-To"] = fields["in_reply_to"]
+        msg["References"] = fields["in_reply_to"]
+    koerper = fields.get("text") or ""
+    if identity.signature:
+        koerper = f"{koerper}\n\n-- \n{identity.signature}"
     msg.set_content(koerper)
-    for anhang in felder.get("attachments") or []:
-        haupt, _, unter = (anhang.get("content_type") or "application/octet-stream").partition("/")
-        msg.add_attachment(anhang["data"], maintype=haupt, subtype=unter or "octet-stream",
-                           filename=anhang.get("filename") or "anhang")
+    for attachment in fields.get("attachments") or []:
+        haupt, _, unter = (attachment.get("content_type") or "application/octet-stream").partition("/")
+        msg.add_attachment(attachment["data"], maintype=haupt, subtype=unter or "octet-stream",
+                           filename=attachment.get("filename") or "anhang")
     return msg
 
 
 def _senden_sync(account: MailAccount, msg: EmailMessage) -> None:
     passwort = decrypt_secret(account.smtp_password_enc)
-    kontext = ssl.create_default_context()
+    context = ssl.create_default_context()
     if account.smtp_security == "ssl":
         server = smtplib.SMTP_SSL(account.smtp_host, account.smtp_port, timeout=30,
-                                  context=kontext)
+                                  context=context)
     else:
         server = smtplib.SMTP(account.smtp_host, account.smtp_port, timeout=30)
     with server:
         if account.smtp_security == "starttls":
-            server.starttls(context=kontext)
+            server.starttls(context=context)
         if account.smtp_user:
             server.login(account.smtp_user, passwort)
         server.send_message(msg)
 
 
-def _deutlicher(fehler: Exception, account: MailAccount, smtp: bool) -> str:
+def _deutlicher(error: Exception, account: MailAccount, smtp: bool) -> str:
     """Die Meldung der Bibliothek um den Satz ergänzen, der weiterhilft.
 
     `WRONG_VERSION_NUMBER` heißt fast immer dasselbe: verschlüsselt angeklopft, wo der Server
     erst im Klartext grüßt und dann aufrüstet (STARTTLS) — oder umgekehrt. Wer das nicht
     schon weiß, liest sonst eine Zeile aus `_ssl.c` und ist keinen Schritt weiter.
     """
-    text = str(fehler)
+    text = str(error)
     if "WRONG_VERSION_NUMBER" in text or "record layer failure" in text:
         port = account.smtp_port if smtp else account.imap_port
-        art = account.smtp_security if smtp else ("ssl" if account.imap_ssl else "none")
+        kind = account.smtp_security if smtp else ("ssl" if account.imap_ssl else "none")
         rat = ("Port 587 spricht STARTTLS, Port 465 ist von Anfang an verschlüsselt"
                if smtp else
                "Port 993 ist von Anfang an verschlüsselt, Port 143 rüstet erst auf")
-        return (f"{text} — Port {port} und Verschlüsselung „{art}\" passen nicht zusammen. "
+        return (f"{text} — Port {port} und Verschlüsselung „{kind}\" passen nicht zusammen. "
                 f"{rat}.")
     if "CERTIFICATE_VERIFY_FAILED" in text:
         return f"{text} — das Zertifikat des Servers ist nicht überprüfbar."
@@ -691,92 +691,92 @@ def _deutlicher(fehler: Exception, account: MailAccount, smtp: bool) -> str:
     return text
 
 
-def _pruefen_sync(account: MailAccount) -> dict:
+def _check_sync(account: MailAccount) -> dict:
     """Ein Verbindungstest, der beide Wege anfasst — sonst merkt man den Tippfehler im
     SMTP-Kennwort erst, wenn eine Antwort nicht rausgeht."""
-    ergebnis: dict = {"imap": "", "smtp": ""}
+    result: dict = {"imap": "", "smtp": ""}
     try:
         with _imap(account) as client:
             client.select_folder("INBOX", readonly=True)
-        ergebnis["imap"] = "ok"
+        result["imap"] = "ok"
     except Exception as exc:  # noqa: BLE001
-        ergebnis["imap"] = _deutlicher(exc, account, smtp=False)[:300]
+        result["imap"] = _deutlicher(exc, account, smtp=False)[:300]
     if account.smtp_host:
         try:
-            kontext = ssl.create_default_context()
+            context = ssl.create_default_context()
             if account.smtp_security == "ssl":
                 server = smtplib.SMTP_SSL(account.smtp_host, account.smtp_port, timeout=20,
-                                          context=kontext)
+                                          context=context)
             else:
                 server = smtplib.SMTP(account.smtp_host, account.smtp_port, timeout=20)
             with server:
                 if account.smtp_security == "starttls":
-                    server.starttls(context=kontext)
+                    server.starttls(context=context)
                 if account.smtp_user:
                     server.login(account.smtp_user, decrypt_secret(account.smtp_password_enc))
-            ergebnis["smtp"] = "ok"
+            result["smtp"] = "ok"
         except Exception as exc:  # noqa: BLE001
-            ergebnis["smtp"] = _deutlicher(exc, account, smtp=True)[:300]
-    return ergebnis
+            result["smtp"] = _deutlicher(exc, account, smtp=True)[:300]
+    return result
 
 
 # ── Async-Hüllen (die API ruft nur diese) ────────────────────────────────────
 
-async def ordner(account: MailAccount, zaehlen: bool = False) -> list[dict]:
-    return await asyncio.to_thread(_ordner_sync, account, zaehlen)
+async def folder(account: MailAccount, count: bool = False) -> list[dict]:
+    return await asyncio.to_thread(_folder_sync, account, count)
 
 
-async def liste(account: MailAccount, ordner_name: str, suche: str = "", offset: int = 0,
+async def listing(account: MailAccount, folder_name: str, suche: str = "", offset: int = 0,
                 limit: int = 50) -> dict:
-    return await asyncio.to_thread(_liste_sync, account, ordner_name, suche, offset, limit)
+    return await asyncio.to_thread(_listing_sync, account, folder_name, suche, offset, limit)
 
 
-async def nachricht(account: MailAccount, ordner_name: str, uid: int) -> dict:
-    return await asyncio.to_thread(_nachricht_sync, account, ordner_name, uid)
+async def message(account: MailAccount, folder_name: str, uid: int) -> dict:
+    return await asyncio.to_thread(_message_sync, account, folder_name, uid)
 
 
-async def anhang(account: MailAccount, ordner_name: str, uid: int,
+async def attachment(account: MailAccount, folder_name: str, uid: int,
                  index: int) -> tuple[str, str, bytes]:
-    return await asyncio.to_thread(_anhang_sync, account, ordner_name, uid, index)
+    return await asyncio.to_thread(_attachment_sync, account, folder_name, uid, index)
 
 
-async def flag(account: MailAccount, ordner_name: str, uid: int, name: str, an: bool) -> None:
-    await asyncio.to_thread(_flag_sync, account, ordner_name, uid, name, an)
+async def flag(account: MailAccount, folder_name: str, uid: int, name: str, an: bool) -> None:
+    await asyncio.to_thread(_flag_sync, account, folder_name, uid, name, an)
 
 
-async def verschieben(account: MailAccount, ordner_name: str, uid: int, ziel: str) -> None:
-    await asyncio.to_thread(_verschieben_sync, account, ordner_name, uid, ziel)
+async def move(account: MailAccount, folder_name: str, uid: int, target: str) -> None:
+    await asyncio.to_thread(_move_sync, account, folder_name, uid, target)
 
 
-async def ungelesen(account: MailAccount, ordner_name: str = "INBOX") -> int:
-    return await asyncio.to_thread(_ungelesen_sync, account, ordner_name)
+async def ungelesen(account: MailAccount, folder_name: str = "INBOX") -> int:
+    return await asyncio.to_thread(_ungelesen_sync, account, folder_name)
 
 
-async def alle_gelesen(account: MailAccount, ordner_name: str) -> int:
-    return await asyncio.to_thread(_alle_gelesen_sync, account, ordner_name)
+async def all_gelesen(account: MailAccount, folder_name: str) -> int:
+    return await asyncio.to_thread(_all_gelesen_sync, account, folder_name)
 
 
-async def ordner_loeschen(account: MailAccount, ordner_name: str) -> None:
-    await asyncio.to_thread(_ordner_loeschen_sync, account, ordner_name)
+async def folder_delete(account: MailAccount, folder_name: str) -> None:
+    await asyncio.to_thread(_folder_delete_sync, account, folder_name)
 
 
-async def archivieren(account: MailAccount, ordner_name: str, uid: int) -> str:
+async def archivieren(account: MailAccount, folder_name: str, uid: int) -> str:
     """Archiviert die Nachricht und gibt zurück, wo sie gelandet ist."""
-    return await asyncio.to_thread(_archivieren_sync, account, ordner_name, uid)
+    return await asyncio.to_thread(_archivieren_sync, account, folder_name, uid)
 
 
-async def endgueltig_loeschen(account: MailAccount, ordner_name: str, uid: int) -> None:
-    await asyncio.to_thread(_endgueltig_sync, account, ordner_name, uid)
+async def endgueltig_delete(account: MailAccount, folder_name: str, uid: int) -> None:
+    await asyncio.to_thread(_endgueltig_sync, account, folder_name, uid)
 
 
-async def entwurf_speichern(account: MailAccount, identitaet: MailIdentity,
-                            felder: dict) -> None:
-    msg = baue_nachricht(identitaet, felder)
+async def entwurf_speichern(account: MailAccount, identity: MailIdentity,
+                            fields: dict) -> None:
+    msg = baue_message(identity, fields)
     await asyncio.to_thread(_entwurf_sync, account, msg.as_bytes())
 
 
-async def senden(account: MailAccount, identitaet: MailIdentity, felder: dict) -> None:
-    msg = baue_nachricht(identitaet, felder)
+async def senden(account: MailAccount, identity: MailIdentity, fields: dict) -> None:
+    msg = baue_message(identity, fields)
     await asyncio.to_thread(_senden_sync, account, msg)
     # Eine gesendete Mail, die im eigenen Postfach fehlt, ist eine verlorene: das Gespräch
     # steht danach nur noch auf der Gegenseite.
@@ -787,5 +787,5 @@ async def senden(account: MailAccount, identitaet: MailIdentity, felder: dict) -
                       account.folder_sent)
 
 
-async def pruefen(account: MailAccount) -> dict:
-    return await asyncio.to_thread(_pruefen_sync, account)
+async def check(account: MailAccount) -> dict:
+    return await asyncio.to_thread(_check_sync, account)

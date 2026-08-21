@@ -157,16 +157,16 @@ async def diff_text(ctx: GitCtx, max_chars: int = 20000) -> str:
         rc, out = await _git(wd, "diff", "HEAD")  # last fallback: only the working state
     if len(out) <= max_chars:
         return out
-    kopf = out[:max_chars]
-    kopf = kopf[:kopf.rfind("\n") + 1] or kopf      # nie mitten in einer Zeile enden
-    fehlt = sorted({z.split(" b/", 1)[1].strip() for z in out[len(kopf):].splitlines()
+    header = out[:max_chars]
+    header = header[:header.rfind("\n") + 1] or header      # nie mitten in einer Zeile enden
+    missing = sorted({z.split(" b/", 1)[1].strip() for z in out[len(header):].splitlines()
                     if z.startswith("diff --git ") and " b/" in z})
-    hinweis = (f"\n[... Diff gekappt: {len(kopf)} von {len(out)} Zeichen gezeigt. Der Rest "
+    hint = (f"\n[... Diff gekappt: {len(header)} von {len(out)} Zeichen gezeigt. Der Rest "
                "fehlt hier — das ist eine Grenze der Anzeige, KEIN unvollständiger Code.")
-    if fehlt:
-        hinweis += (" Nicht enthaltene Dateien (bei Bedarf mit `fs_read` selbst ansehen): "
-                    + ", ".join(fehlt[:25]) + (", …" if len(fehlt) > 25 else ""))
-    return kopf + hinweis + "]\n"
+    if missing:
+        hint += (" Nicht enthaltene Dateien (bei Bedarf mit `fs_read` selbst ansehen): "
+                    + ", ".join(missing[:25]) + (", …" if len(missing) > 25 else ""))
+    return header + hint + "]\n"
 
 
 async def file_changes(ctx: GitCtx) -> list[dict]:

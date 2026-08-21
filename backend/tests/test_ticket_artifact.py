@@ -7,7 +7,7 @@ the start and in the 30 second tick of the process engine.
 from app.models.artifact import Artifact
 from app.models.enums import StatusCategory, TicketAgentStatus, WorkflowSubjectKind
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
-from app.services import artifacts as art
+from app.services import artifacts as kind
 from sqlalchemy import select
 from conftest import make_asset, make_project, make_user
 import pytest
@@ -31,62 +31,62 @@ async def _ticket(db, proj, summary="Ein Ticket", nummer=1, status=None) -> Issu
 
 @pytest.fixture
 async def register(db):
-    await art.ensure_builtin_types(db)
+    await kind.ensure_builtin_types(db)
 
 
-async def test_abgleich_legt_fehlende_zeilen_an(db, register):
+async def test_reconcile_legt_fehlende_lines_an(db, register):
     proj = await make_project(db, "TST", "Test")
     a = await _ticket(db, proj, "Erstes", 1)
     b = await _ticket(db, proj, "Zweites", 2, TicketAgentStatus.plan_review)
 
-    ergebnis = await art.reconcile(db)
-    assert ergebnis["tickets_neu"] == 2
+    result = await kind.reconcile(db)
+    assert result["tickets_neu"] == 2
     await db.refresh(a); await db.refresh(b)
     assert a.artifact_id and b.artifact_id and a.artifact_id != b.artifact_id
 
-    art_b = await db.get(Artifact, b.artifact_id)
-    assert art_b.title == "Zweites"
-    assert art_b.status_key == "plan_review"
-    assert art_b.project_id == proj.id
+    kind_b = await db.get(Artifact, b.artifact_id)
+    assert kind_b.title == "Zweites"
+    assert kind_b.status_key == "plan_review"
+    assert kind_b.project_id == proj.id
 
 
-async def test_abgleich_holt_beliebige_schreibstellen_nach(db, register):
+async def test_reconcile_holt_beliebige_schreibstellen_nach(db, register):
     """The actual purpose: a place sets agent_status directly (as the bot, the PM chat or the
     worker do), and the reconciliation pulls the artifact row along."""
     proj = await make_project(db, "TST", "Test")
     i = await _ticket(db, proj, "Alt", 1)
-    await art.reconcile(db)
+    await kind.reconcile(db)
     await db.refresh(i)
 
     i.agent_status = TicketAgentStatus.hold        # directly, without apply_status
     i.summary = "Neu benannt"
     await db.commit()
 
-    ergebnis = await art.reconcile(db)
-    assert ergebnis["tickets_angeglichen"] == 1
+    result = await kind.reconcile(db)
+    assert result["tickets_angeglichen"] == 1
     a = await db.get(Artifact, i.artifact_id)
     await db.refresh(a)
     assert a.status_key == "hold" and a.title == "Neu benannt"
 
 
-async def test_abgleich_ist_idempotent(db, register):
+async def test_reconcile_ist_idempotent(db, register):
     proj = await make_project(db, "TST", "Test")
     await _ticket(db, proj, "Eins", 1)
     await make_asset(db, "Switch", project=proj)
-    await art.reconcile(db)
+    await kind.reconcile(db)
 
-    zweiter = await art.reconcile(db)
+    zweiter = await kind.reconcile(db)
     assert not any(zweiter.values()), zweiter
 
 
-async def test_zustand_setzen_schreibt_sofort_mit(db, register):
+async def test_state_set_schreibt_sofort_mit(db, register):
     """The common path does not wait for the reconciliation."""
     proj = await make_project(db, "TST", "Test")
     i = await _ticket(db, proj, "Sofort", 1)
-    await art.reconcile(db)
+    await kind.reconcile(db)
     await db.refresh(i)
 
-    await art.apply_status(db, subject_kind=WorkflowSubjectKind.issue, issue=i,
+    await kind.apply_status(db, subject_kind=WorkflowSubjectKind.issue, issue=i,
                            status_key="to_test")
     await db.commit()
     a = await db.get(Artifact, i.artifact_id)
@@ -98,13 +98,13 @@ async def test_hardware_und_ticket_teilen_dieselbe_ablage(db, register):
     proj = await make_project(db, "TST", "Test")
     await _ticket(db, proj, "Ticket", 1)
     asset = await make_asset(db, "Switch", project=proj)
-    await art.ensure_for_asset(db, asset)
+    await kind.ensure_for_asset(db, asset)
     await db.commit()
-    await art.reconcile(db)
+    await kind.reconcile(db)
 
-    zeilen = (await db.execute(select(Artifact))).scalars().all()
+    lines = (await db.execute(select(Artifact))).scalars().all()
     typen = {}
-    for z in zeilen:
-        t = await db.get(type(await art.type_by_key(db, "ticket")), z.type_id)
+    for z in lines:
+        t = await db.get(type(await kind.type_by_key(db, "ticket")), z.type_id)
         typen[t.key] = typen.get(t.key, 0) + 1
     assert typen == {"ticket": 1, "hardware": 1}

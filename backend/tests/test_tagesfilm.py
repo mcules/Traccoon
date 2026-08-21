@@ -38,13 +38,13 @@ MITTAG = dt.datetime(2026, 8, 5, 12, 0, tzinfo=dt.timezone.utc)
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
 async def ticket(db, projekt, nummer: int, summary: str = "Tu was") -> Issue:
-    typ = IssueType(project_id=projekt.id, name=f"Aufgabe {nummer}")
+    kind = IssueType(project_id=projekt.id, name=f"Aufgabe {nummer}")
     status = WorkflowStatus(project_id=projekt.id, name=f"To Do {nummer}",
                             category=StatusCategory.todo)
-    db.add_all([typ, status])
+    db.add_all([kind, status])
     await db.commit()
     i = Issue(project_id=projekt.id, number=nummer, key=f"{projekt.key}-{nummer}",
-              type_id=typ.id, status_id=status.id, summary=summary, reporter_id=1, rank="1")
+              type_id=kind.id, status_id=status.id, summary=summary, reporter_id=1, rank="1")
     db.add(i)
     await db.commit()
     return i
@@ -63,7 +63,7 @@ async def lauf(db, *, issue=None, projekt=None, agent="developer", status="succe
     return r
 
 
-async def schritt(db, run: Run, *, kind: str = "agent_text", wann=None, text="hallo") -> RunStep:
+async def step(db, run: Run, *, kind: str = "agent_text", wann=None, text="hallo") -> RunStep:
     s = RunStep(run_id=run.id, seq=1, role="assistant", kind=kind, content=text,
                 created_at=wann or MITTAG)
     db.add(s)
@@ -71,13 +71,13 @@ async def schritt(db, run: Run, *, kind: str = "agent_text", wann=None, text="ha
     return s
 
 
-def arten(ereignisse: list[dict], art: str) -> list[dict]:
-    return [e for e in ereignisse if e["kind"] == art]
+def kinds(ereignisse: list[dict], kind: str) -> list[dict]:
+    return [e for e in ereignisse if e["kind"] == kind]
 
 
 # ── The window ───────────────────────────────────────────────────────────────
 
-async def test_zwei_sitzungen_ergeben_eine_aufsteigende_folge(db):
+async def test_zwei_sitzungen_ergeben_eine_aufsteigende_sequence(db):
     """The room with twelve seats IS the day: two tickets, one film, one sequence.
 
     The steps are deliberately written interleaved here (A, B, A, B), exactly as they come
@@ -88,7 +88,7 @@ async def test_zwei_sitzungen_ergeben_eine_aufsteigende_folge(db):
     a = await lauf(db, issue=await ticket(db, p, 1, "Erstes"))
     b = await lauf(db, issue=await ticket(db, p, 2, "Zweites"))
     for i, run in enumerate((a, b, a, b)):
-        await schritt(db, run, wann=MITTAG + dt.timedelta(seconds=i))
+        await step(db, run, wann=MITTAG + dt.timedelta(seconds=i))
 
     ereignisse, roster, bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
 
@@ -96,14 +96,14 @@ async def test_zwei_sitzungen_ergeben_eine_aufsteigende_folge(db):
     assert seqs == sorted(seqs)
     assert len(set(seqs)) == len(seqs)          # no two events on the same step
     assert len({e["sid"] for e in ereignisse}) == 2
-    assert bilanz.laeufe == 2 and bilanz.sitzungen == 2
+    assert bilanz.runs == 2 and bilanz.sitzungen == 2
     assert len(roster) == 2
     # Trap 3: the read API sets one header per room. Twenty of them would be twenty titles
     # for one day, so the film carries chapter cards.
-    assert arten(ereignisse, "session_seen") == []
+    assert kinds(ereignisse, "session_seen") == []
 
 
-async def test_aufeinanderfolgende_laeufe_kollidieren_nicht_auf_derselben_seq(db):
+async def test_aufeinanderfolgende_runs_kollidieren_nicht_auf_derselben_seq(db):
     """The transition from run to run is the place where the day film breaks.
 
     `run_end` sits on `letzte*4 + 3`, `run_start` on `erste*4 - 1`: the same number as soon
@@ -113,13 +113,13 @@ async def test_aufeinanderfolgende_laeufe_kollidieren_nicht_auf_derselben_seq(db
     never come in or never leave, without a single error message.
     """
     p = await make_project(db, "TRA", "Traccoon")
-    letzte = None
+    last = None
     for n in range(1, 6):
         r = await lauf(db, issue=await ticket(db, p, n),
                        start=MITTAG + dt.timedelta(minutes=n),
                        ende=MITTAG + dt.timedelta(minutes=n, seconds=30))
-        letzte = await schritt(db, r, wann=MITTAG + dt.timedelta(minutes=n))
-        assert letzte is not None
+        last = await step(db, r, wann=MITTAG + dt.timedelta(minutes=n))
+        assert last is not None
 
     ereignisse, _r, _b = await of.tages_ereignisse(db, von=VON, bis=BIS)
 
@@ -127,14 +127,14 @@ async def test_aufeinanderfolgende_laeufe_kollidieren_nicht_auf_derselben_seq(db
     assert len(set(seqs)) == len(seqs), "duplicate seq, the recorder discards the second one"
     assert seqs == sorted(seqs)
     # All five agents come in AND leave again.
-    assert len(arten(ereignisse, "run_start")) == 5
-    assert len(arten(ereignisse, "run_end")) == 5
+    assert len(kinds(ereignisse, "run_start")) == 5
+    assert len(kinds(ereignisse, "run_end")) == 5
     # And on a tie the end goes before the start: first the seat becomes free.
     reihe = [e["kind"] for e in ereignisse if e["kind"] in ("run_start", "run_end")]
     assert reihe[1:3] == ["run_end", "run_start"]
 
 
-async def test_lauf_vor_dem_fenster_klemmt_den_start_auf_den_fensteranfang(db):
+async def test_lauf_vor_dem_window_klemmt_den_start_auf_den_fensteranfang(db):
     """The 36.5 hour session, first half: the run began yesterday.
 
     `run_boundary_events` adds the missing `run_start`, with `run.started_at`. Unclamped,
@@ -144,28 +144,28 @@ async def test_lauf_vor_dem_fenster_klemmt_den_start_auf_den_fensteranfang(db):
     p = await make_project(db, "TRA", "Traccoon")
     r = await lauf(db, issue=await ticket(db, p, 1),
                    start=VON - dt.timedelta(hours=4), ende=MITTAG)
-    await schritt(db, r, wann=MITTAG)
+    await step(db, r, wann=MITTAG)
 
     ereignisse, _roster, _bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
 
-    starts = arten(ereignisse, "run_start")
+    starts = kinds(ereignisse, "run_start")
     assert len(starts) == 1
     assert starts[0]["ts"] == of._iso_ms(VON)
     # And the boundary stays at the front: the agent comes in before it speaks.
-    assert starts[0]["seq"] < min(e["seq"] for e in arten(ereignisse, "agent_text"))
+    assert starts[0]["seq"] < min(e["seq"] for e in kinds(ereignisse, "agent_text"))
 
 
-async def test_start_im_fenster_bleibt_unangetastet(db):
+async def test_start_im_window_bleibt_unangetastet(db):
     """Only what lies outside is clamped; otherwise every run would begin at midnight."""
     p = await make_project(db, "TRA", "Traccoon")
     r = await lauf(db, issue=await ticket(db, p, 1), start=MITTAG, ende=MITTAG + dt.timedelta(minutes=5))
-    await schritt(db, r, wann=MITTAG + dt.timedelta(minutes=1))
+    await step(db, r, wann=MITTAG + dt.timedelta(minutes=1))
 
     ereignisse, _r, _b = await of.tages_ereignisse(db, von=VON, bis=BIS)
-    assert arten(ereignisse, "run_start")[0]["ts"] == of._iso_ms(MITTAG)
+    assert kinds(ereignisse, "run_start")[0]["ts"] == of._iso_ms(MITTAG)
 
 
-async def test_lauf_nach_dem_fenster_verliert_sein_ende(db):
+async def test_lauf_nach_dem_window_verliert_sein_ende(db):
     """The 36.5 hour session, second half: the run only ends tomorrow.
 
     Its `run_end` would carry a timestamp from tomorrow. Filtering happens **after**
@@ -177,27 +177,27 @@ async def test_lauf_nach_dem_fenster_verliert_sein_ende(db):
                        ende=BIS + dt.timedelta(hours=9))
     drin = await lauf(db, issue=await ticket(db, p, 2), start=MITTAG,
                       ende=MITTAG + dt.timedelta(minutes=5))
-    await schritt(db, ueber, wann=MITTAG)
-    await schritt(db, drin, wann=MITTAG)
+    await step(db, ueber, wann=MITTAG)
+    await step(db, drin, wann=MITTAG)
 
     ereignisse, _roster, _bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
 
-    enden = arten(ereignisse, "run_end")
+    enden = kinds(ereignisse, "run_end")
     assert [e["run_id"] for e in enden] == [drin.id]
     # The run is in the film regardless: it did work, it only does not stop today.
     assert ueber.id in {e["run_id"] for e in ereignisse}
 
 
-async def test_schritte_ausserhalb_des_fensters_fehlen(db):
+async def test_steps_ausserhalb_des_fensters_fehlen(db):
     """The window cuts the steps, not the runs."""
     p = await make_project(db, "TRA", "Traccoon")
     r = await lauf(db, issue=await ticket(db, p, 1), start=VON - dt.timedelta(days=1),
                    ende=MITTAG)
-    await schritt(db, r, wann=VON - dt.timedelta(hours=2), text="gestern")
-    await schritt(db, r, wann=MITTAG, text="heute")
+    await step(db, r, wann=VON - dt.timedelta(hours=2), text="gestern")
+    await step(db, r, wann=MITTAG, text="heute")
 
     ereignisse, _r, bilanz = await of.tages_ereignisse(db, von=VON, bis=BIS)
-    texte = [e["text"] for e in arten(ereignisse, "agent_text")]
+    texte = [e["text"] for e in kinds(ereignisse, "agent_text")]
     assert texte == ["heute"]
     assert bilanz.ereignisse == len(ereignisse)
 
@@ -206,10 +206,10 @@ async def test_bilanz_zaehlt_fehlschlaege_rueckfragen_und_kosten(db):
     """Failure and question are two things: an open question is not a failure."""
     p = await make_project(db, "TRA", "Traccoon")
     schlecht = await lauf(db, issue=await ticket(db, p, 1), status="failed")
-    frage = await lauf(db, issue=await ticket(db, p, 2), status="blocked")
+    question = await lauf(db, issue=await ticket(db, p, 2), status="blocked")
     gut = await lauf(db, issue=await ticket(db, p, 3), status="success")
-    for r in (schlecht, frage, gut):
-        await schritt(db, r)
+    for r in (schlecht, question, gut):
+        await step(db, r)
     # `priced=None` is the existing data: 411 of 411 cost entries. Without a catalog entry
     # the sum stays a lower bound, hence the "≥".
     db.add(CostEntry(run_id=gut.id, provider="claude_code", model="sonnet",
@@ -224,16 +224,16 @@ async def test_bilanz_zaehlt_fehlschlaege_rueckfragen_und_kosten(db):
 
 # ── Bildunterschrift ─────────────────────────────────────────────────────────
 
-def bilanz(**felder) -> of.Tagesbilanz:
-    return of.Tagesbilanz(datum="Mi 05.08.", **felder)
+def bilanz(**fields) -> of.Tagesbilanz:
+    return of.Tagesbilanz(datum="Mi 05.08.", **fields)
 
 
 def test_bildunterschrift_voller_tag():
     text = of.bildunterschrift(
-        bilanz(laeufe=19, sitzungen=19, ereignisse=609, fehlschlaege=2, rueckfragen=1,
+        bilanz(runs=19, sitzungen=19, ereignisse=609, fehlschlaege=2, rueckfragen=1,
                kosten_usd=1.83, kosten_partial=True,
                laengster={"key": "ABC-412", "titel": "Büro aufräumen", "minuten": 47}),
-        kapitel=8, inseln=67, sekunden=24, gekappt=False)
+        kapitel=8, inseln=67, seconds=24, gekappt=False)
     assert text == ("🎬 Feierabend · Mi 05.08.\n"
                     "19 Läufe in 19 Sitzungen · 609 Ereignisse\n"
                     "2 Fehlschläge · 1 Rückfrage · ≥ 1,83 $\n"
@@ -244,8 +244,8 @@ def test_bildunterschrift_voller_tag():
 def test_bildunterschrift_singular():
     """One run, one session, one event, one failure, one scene."""
     text = of.bildunterschrift(
-        bilanz(laeufe=1, sitzungen=1, ereignisse=1, fehlschlaege=1, rueckfragen=1),
-        kapitel=1, inseln=1, sekunden=3, gekappt=False)
+        bilanz(runs=1, sitzungen=1, ereignisse=1, fehlschlaege=1, rueckfragen=1),
+        kapitel=1, inseln=1, seconds=3, gekappt=False)
     assert "1 Lauf in 1 Sitzung · 1 Ereignis" in text
     assert "1 Fehlschlag · 1 Rückfrage" in text
     assert "1 von 1 Szene · 3 s" in text
@@ -255,7 +255,7 @@ def test_bildunterschrift_laesst_leere_aussagen_weg():
     """0 failures, $0.00 and no longest run: then nothing of that stands there either.
     "0 failures · $0.00" is not news but noise."""
     text = of.bildunterschrift(
-        bilanz(laeufe=3, sitzungen=2, ereignisse=40), kapitel=2, inseln=5, sekunden=10,
+        bilanz(runs=3, sitzungen=2, ereignisse=40), kapitel=2, inseln=5, seconds=10,
         gekappt=False)
     assert text.splitlines() == ["🎬 Feierabend · Mi 05.08.",
                                  "3 Läufe in 2 Sitzungen · 40 Ereignisse",
@@ -265,9 +265,9 @@ def test_bildunterschrift_laesst_leere_aussagen_weg():
 
 def test_bildunterschrift_meldet_kappung_und_bleibt_unter_1024():
     lang = {"key": "ABC-1", "titel": "x" * 400, "minuten": 2190}
-    text = of.bildunterschrift(bilanz(laeufe=900, sitzungen=900, ereignisse=99999,
+    text = of.bildunterschrift(bilanz(runs=900, sitzungen=900, ereignisse=99999,
                                       laengster=lang),
-                               kapitel=8, inseln=140, sekunden=25, gekappt=True)
+                               kapitel=8, inseln=140, seconds=25, gekappt=True)
     assert text.endswith("· gekappt")
     assert len(text) <= of.UNTERTITEL_MAX
     assert "36,5 h" in text          # 2190 min liest niemand
@@ -275,7 +275,7 @@ def test_bildunterschrift_meldet_kappung_und_bleibt_unter_1024():
 
 # ── The job ──────────────────────────────────────────────────────────────────
 
-class FakeAntwort:
+class FakeAnswer:
     def __init__(self, status_code: int, content: bytes, headers: dict):
         self.status_code, self.content, self.headers = status_code, content, headers
 
@@ -290,7 +290,7 @@ def filmer(monkeypatch):
     # The headers come LOWER CASED, exactly as `httpx` returns them, while the renderer sets
     # them as "X-Film-Kapitel". With the constants as keys the test would run green and
     # reality would read 0 everywhere.
-    zustand = {"aufrufe": [], "antwort": FakeAntwort(200, b"GIF89a-film", {
+    state = {"aufrufe": [], "antwort": FakeAnswer(200, b"GIF89a-film", {
         "content-type": "image/gif", "x-film-kapitel": "8", "x-film-inseln": "67",
         # 293 frames at 12 fps = 24.4 s of playing time. `x-film-dauer-ms` is the BUILD time
         # of the renderer (`film.mjs`: `Date.now() - t0`) and is no good for that.
@@ -299,7 +299,7 @@ def filmer(monkeypatch):
 
     class FakeClient:
         def __init__(self, *a, **k):
-            zustand["timeout"] = k.get("timeout")
+            state["timeout"] = k.get("timeout")
 
         async def __aenter__(self):
             return self
@@ -308,13 +308,13 @@ def filmer(monkeypatch):
             return False
 
         async def post(self, url, json=None):
-            zustand["aufrufe"].append((url, json))
-            if zustand["fehler"] is not None:
-                raise zustand["fehler"]
-            return zustand["antwort"]
+            state["aufrufe"].append((url, json))
+            if state["fehler"] is not None:
+                raise state["fehler"]
+            return state["antwort"]
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
-    return zustand
+    return state
 
 
 async def film_job(db, *, notify_chat="4711") -> tuple[Job, JobRun]:
@@ -352,16 +352,16 @@ async def test_stiller_tag_ohne_medium_und_ohne_http(db, filmer, monkeypatch, tm
     assert getattr(n, "media_path", None) is None
 
 
-async def test_film_wird_gebaut_und_als_medium_hinterlegt(db, filmer, monkeypatch, tmp_path):
+async def test_film_wird_gebaut_und_as_medium_hinterlegt(db, filmer, monkeypatch, tmp_path):
     """The good case: a GIF on disk, the caption on the notification, media kind `animation`
     (not `video`, not `photo`: Telegram shows only those as an animation)."""
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
     p = await make_project(db, "TRA", "Traccoon")
     r = await lauf(db, issue=await ticket(db, p, 412, "Büro aufräumen"))
-    await schritt(db, r)
+    await step(db, r)
     job, jr = await film_job(db)
 
-    monkeypatch.setattr(of, "_fenster", lambda opt: (VON, BIS))
+    monkeypatch.setattr(of, "_window", lambda opt: (VON, BIS))
     await of.run_film_job(db, job, jr)
     await db.commit()
 
@@ -393,10 +393,10 @@ async def test_filmer_nicht_erreichbar_kippt_den_tick_nicht(db, filmer, monkeypa
     on. If the exception flew out, all other due jobs of the same round would drop out with
     it, for one film."""
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
-    monkeypatch.setattr(of, "_fenster", lambda opt: (VON, BIS))
+    monkeypatch.setattr(of, "_window", lambda opt: (VON, BIS))
     filmer["fehler"] = httpx.ConnectError("Verbindung abgelehnt")
     p = await make_project(db, "TRA", "Traccoon")
-    await schritt(db, await lauf(db, issue=await ticket(db, p, 1)))
+    await step(db, await lauf(db, issue=await ticket(db, p, 1)))
     await film_job(db)
 
     # The whole tick, not only the branch: that is the place where it would hurt.
@@ -409,7 +409,7 @@ async def test_filmer_nicht_erreichbar_kippt_den_tick_nicht(db, filmer, monkeypa
     assert list(tmp_path.iterdir()) == []
 
 
-async def test_film_bleibt_eine_eigene_art(db, filmer, monkeypatch, tmp_path):
+async def test_film_bleibt_eine_eigene_kind(db, filmer, monkeypatch, tmp_path):
     """`run_job_kind` ist die einzige Stelle, an der `kind` verzweigt — und von den fünf
     Arten sind nur der Film und der Ablauf übrig. Ohne den Zweig liefe der Job ins Leere."""
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
@@ -418,20 +418,20 @@ async def test_film_bleibt_eine_eigene_art(db, filmer, monkeypatch, tmp_path):
     assert jr.finished_at is not None and jr.status in ("ok", "error")
 
 
-async def test_aufraeumen_loescht_nur_alte_filme(monkeypatch, tmp_path):
+async def test_prune_loescht_nur_alte_filme(monkeypatch, tmp_path):
     """Cleaning up belongs in THIS job: a second one for the same directory would be a second
     schedule that stands differently at some point."""
     import os
     monkeypatch.setattr(of, "FILM_DIR", str(tmp_path))
-    alt, neu, fremd = (tmp_path / "buero-2026-07-01.gif", tmp_path / "buero-2026-08-05.gif",
+    alt, new, fremd = (tmp_path / "buero-2026-07-01.gif", tmp_path / "buero-2026-08-05.gif",
                        tmp_path / "notizen.txt")
-    for f in (alt, neu, fremd):
+    for f in (alt, new, fremd):
         f.write_bytes(b"x")
     vorgestern = dt.datetime.now().timestamp() - 30 * 86400
     os.utime(alt, (vorgestern, vorgestern))
     os.utime(fremd, (vorgestern, vorgestern))
 
-    assert of._aufraeumen(14) == 1
-    assert not alt.exists() and neu.exists() and fremd.exists()
+    assert of._prune(14) == 1
+    assert not alt.exists() and new.exists() and fremd.exists()
     # 0 days = never delete, the same reading as `run_retention_days`.
-    assert of._aufraeumen(0) == 0
+    assert of._prune(0) == 0

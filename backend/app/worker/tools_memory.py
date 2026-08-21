@@ -45,7 +45,7 @@ def _def(name: str, desc: str, props: dict, required: list[str]) -> dict:
         "parameters": {"type": "object", "properties": props, "required": required}}}
 
 
-_BEREICH_DESC = ("Wohin die Erkenntnis gehört: 'mensch' = gilt immer und überall (Vorlieben, "
+_AREA_DESC = ("Wohin die Erkenntnis gehört: 'mensch' = gilt immer und überall (Vorlieben, "
                  "Arbeitsweise, feste Vorgaben) · 'agent' = nur für deine Rolle · "
                  "'projekt' = nur für dieses Projekt.")
 
@@ -54,7 +54,7 @@ MEMORY_TOOLS = [
          "Merke dir etwas DAUERHAFT für künftige Läufe — eine Vorgabe, Korrektur oder Vorliebe "
          "deines Menschen, die auch morgen noch gilt. Nicht für Tagesdetails, Ticket-Fakten oder "
          "Dinge, die schon im Gedächtnis stehen. Ein Satz pro Aufruf.",
-         {"bereich": {"type": "string", "enum": list(BEREICHE), "description": _BEREICH_DESC},
+         {"bereich": {"type": "string", "enum": list(BEREICHE), "description": _AREA_DESC},
           "text": {"type": "string", "description": "Die Erkenntnis als ein klarer Satz, so "
                                                     "formuliert, dass sie ohne den heutigen "
                                                     "Zusammenhang verständlich bleibt."}},
@@ -62,7 +62,7 @@ MEMORY_TOOLS = [
     _def("vergiss",
          "Entferne eine Erinnerung, die überholt oder falsch ist. Nutze das auch, wenn dein "
          "Mensch eine frühere Vorgabe ändert: erst `vergiss`, dann `erinnere_dich` mit der neuen.",
-         {"bereich": {"type": "string", "enum": list(BEREICHE), "description": _BEREICH_DESC},
+         {"bereich": {"type": "string", "enum": list(BEREICHE), "description": _AREA_DESC},
           "textfragment": {"type": "string", "description": "Ein Stück der zu löschenden Zeile; "
                                                             "alle passenden Zeilen fallen weg."}},
          ["bereich", "textfragment"]),
@@ -92,16 +92,16 @@ def _safe(part: str) -> str:
     return "".join(keep).strip() or "unbenannt"
 
 
-def note_path(root: str, bereich: str, agent_role: str = "", project_key: str = "") -> str | None:
+def note_path(root: str, area: str, agent_role: str = "", project_key: str = "") -> str | None:
     """Note path for an area, or None when the area makes no sense here."""
     root = (root or "").strip().rstrip("/")
     if not root:
         return None
-    if bereich == "mensch":
+    if area == "mensch":
         return f"{root}/Mensch.md"
-    if bereich == "agent":
+    if area == "agent":
         return f"{root}/Agent-{_safe(agent_role)}.md" if agent_role else None
-    if bereich == "projekt":
+    if area == "projekt":
         return f"{root}/Projekt-{_safe(project_key)}.md" if project_key else None
     return None
 
@@ -117,13 +117,13 @@ async def memory_root(db: AsyncSession, owner_id: int | None) -> str:
 # MCP errors do NOT come as an exception: `mcp_client.call` discards `isError` and returns
 # the error text of the server (mcp_client.py:97-103). A missing call success is therefore
 # recognisable by the text here, and a "the note does not exist yet" is the normal case, not an error.
-_FEHLER_MARKER = ("mcp error", "kein mcp konfiguriert", "not found", "does not exist",
+_ERROR_MARKER = ("mcp error", "kein mcp konfiguriert", "not found", "does not exist",
                   "file_exists", "error:", "\"code\":")
 
 
 def _failed(text: str) -> bool:
     low = (text or "").lower()
-    return not text or any(m in low for m in _FEHLER_MARKER)
+    return not text or any(m in low for m in _ERROR_MARKER)
 
 
 async def _read_note(mcp, path: str) -> str:
@@ -145,17 +145,17 @@ async def read_memory(mcp, root: str, agent_role: str = "", project_key: str = "
     """
     if not root:
         return ""
-    stuecke: list[str] = []
-    for bereich, titel in (("mensch", "Über deinen Menschen"),
+    chunks: list[str] = []
+    for area, title in (("mensch", "Über deinen Menschen"),
                            ("agent", "Für deine Rolle"),
                            ("projekt", "Für dieses Projekt")):
-        path = note_path(root, bereich, agent_role, project_key)
+        path = note_path(root, area, agent_role, project_key)
         if not path:
             continue
         body = (await _read_note(mcp, path)).strip()
         if body:
-            stuecke.append(f"## {titel}\n{body}")
-    return "\n\n".join(stuecke)[:MAX_MEMORY_CHARS]
+            chunks.append(f"## {title}\n{body}")
+    return "\n\n".join(chunks)[:MAX_MEMORY_CHARS]
 
 
 async def _append_line(mcp, path: str, line: str) -> str:
@@ -169,13 +169,13 @@ async def _append_line(mcp, path: str, line: str) -> str:
         out = str(exc)
     # Second attempt: create the note. `overwrite` stays off; if it does exist after all, the
     # call had better fail than overwrite existing memory.
-    kopf = f"# {path.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
+    header = f"# {path.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
     try:
-        neu = await mcp.call("obsidian__obsidian_write_note",
-                             {"target": _note_target(path), "content": kopf + line + "\n"})
-        if not _failed(neu):
+        new = await mcp.call("obsidian__obsidian_write_note",
+                             {"target": _note_target(path), "content": header + line + "\n"})
+        if not _failed(new):
             return ""
-        return neu
+        return new
     except Exception as exc:  # noqa: BLE001
         return f"{out} / {exc}"
 
@@ -198,13 +198,13 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
             return f"FEHLER bei der Suche: {exc}"
         return (out or "Nichts gefunden.")[:4000]
 
-    bereich = (args.get("bereich") or "").strip().lower()
-    if bereich not in BEREICHE:
+    area = (args.get("bereich") or "").strip().lower()
+    if area not in BEREICHE:
         return f"FEHLER: `bereich` muss {' | '.join(BEREICHE)} sein."
-    path = note_path(root, bereich, agent_role, project_key)
+    path = note_path(root, area, agent_role, project_key)
     if not path:
-        fehlt = "Projekt" if bereich == "projekt" else "Rolle"
-        return (f"FEHLER: Bereich '{bereich}' geht in diesem Lauf nicht — es gibt kein {fehlt}. "
+        missing = "Projekt" if area == "projekt" else "Rolle"
+        return (f"FEHLER: Bereich '{area}' geht in diesem Lauf nicht — es gibt kein {missing}. "
                 "Nimm 'mensch'.")
 
     if name == "erinnere_dich":
@@ -212,9 +212,9 @@ async def call_memory_tool(db: AsyncSession, mcp, owner_id: int | None, name: st
         if not text:
             return "FEHLER: `text` fehlt."
         heute = dt.datetime.now().strftime("%Y-%m-%d")
-        fehler = await _append_line(mcp, path, f"- [{heute}] {text}")
-        if fehler:
-            return f"FEHLER beim Merken: {fehler}"
+        error = await _append_line(mcp, path, f"- [{heute}] {text}")
+        if error:
+            return f"FEHLER beim Merken: {error}"
         return f"Gemerkt in {path}."
 
     if name == "vergiss":

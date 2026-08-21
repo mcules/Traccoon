@@ -44,7 +44,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.enums import GlobalRole, ProjectRole
 from ..models.ops import Deployment
@@ -291,7 +291,7 @@ async def _payload(db: AsyncSession, *, where, limit: int, since_hours: int,
     """
     if status not in STATUS_FILTER:
         raise Fehler(400, "err.status_one_of",
-                     "status has to be one of {erlaubt}", erlaubt=', '.join(STATUS_FILTER))
+                     "status has to be one of {allowed}", allowed=', '.join(STATUS_FILTER))
     limit = _clamp(limit, 1, LIMIT_MAX)
     since_hours = _clamp(since_hours, 1, SINCE_HOURS_MAX)
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(hours=since_hours)

@@ -15,16 +15,16 @@ from sqlalchemy import select
 
 
 async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
-                status: str = "done", meldet: bool = False, titel: str = "Bestellung 123",
+                status: str = "done", meldet: bool = False, title: str = "Bestellung 123",
                 blocker_kind: str | None = None):
     """Let an assistant item run through; `meldet` = the agent calls notify_human."""
-    t = AssistantTask(owner_user_id=owner.id, kind=kind, title=titel, status="approved",
+    t = AssistantTask(owner_user_id=owner.id, kind=kind, title=title, status="approved",
                       redacted_summary="Zusammenfassung", meta={"chat_text": "Wie spät?"})
     db.add(t)
     await db.commit()
     await db.refresh(t)
 
-    class Ergebnis:
+    class Result:
         def __init__(self):
             self.status = {"done": "done", "error": "failed"}.get(status, status)
             # ask_human delivers the question as `text`, without a summary.
@@ -42,7 +42,7 @@ async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
             obj = await db.get(AssistantTask, t.id)
             obj.notified = True
             await db.commit()
-        return Ergebnis()
+        return Result()
 
     async def fake_load_agent(*a, **kw):
         class A:
@@ -65,7 +65,7 @@ async def _lauf(db, monkeypatch, *, owner: User, kind: str = "email",
     return t
 
 
-async def _nachrichten(db) -> list[Notification]:
+async def _messages(db) -> list[Notification]:
     return list((await db.execute(select(Notification))).scalars().all())
 
 
@@ -80,21 +80,21 @@ async def owner(db):
 async def test_erledigtes_ohne_handlungsbedarf_bleibt_still(db, owner, monkeypatch):
     """The case from practice: filed, nothing to do, so no message."""
     await _lauf(db, monkeypatch, owner=owner)
-    assert await _nachrichten(db) == []
+    assert await _messages(db) == []
 
 
-async def test_ausdrueckliche_meldung_kommt_an_und_zwar_einmal(db, owner, monkeypatch):
+async def test_ausdrueckliche_notice_kommt_an_und_zwar_einmal(db, owner, monkeypatch):
     """If the assistant reports itself, EXACTLY its message goes out, not the closing report
     in addition (because otherwise the same thing would come twice)."""
     await _lauf(db, monkeypatch, owner=owner, meldet=True)
-    n = await _nachrichten(db)
+    n = await _messages(db)
     assert len(n) == 1
     assert n[0].title == "Frist am Freitag"
 
 
 async def test_panne_meldet_sich_immer(db, owner, monkeypatch):
     await _lauf(db, monkeypatch, owner=owner, status="error")
-    n = await _nachrichten(db)
+    n = await _messages(db)
     assert len(n) == 1 and "Fehler" in n[0].title
 
 
@@ -103,7 +103,7 @@ async def test_chat_wird_immer_beantwortet(db, owner, monkeypatch):
     owner.assistant_notify = "never"
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner, kind="chat")
-    n = await _nachrichten(db)
+    n = await _messages(db)
     assert len(n) == 1 and n[0].title.startswith("🤖 Assistent")
 
 
@@ -111,48 +111,48 @@ async def test_modus_immer_meldet_auch_erledigtes(db, owner, monkeypatch):
     owner.assistant_notify = "always"
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner)
-    assert len(await _nachrichten(db)) == 1
+    assert len(await _messages(db)) == 1
 
 
 async def test_modus_gar_nicht_schweigt_auch_bei_pannen(db, owner, monkeypatch):
     owner.assistant_notify = "never"
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner, status="error")
-    assert await _nachrichten(db) == []
+    assert await _messages(db) == []
 
 
-async def test_rueckfrage_im_chat_kommt_an(db, owner, monkeypatch):
+async def test_callback_im_chat_kommt_an(db, owner, monkeypatch):
     """The occasion: `ask_human` ended as 'blocked' and was misread as a tool gate; the
     question disappeared silently and the human saw only an eternal 'running'."""
     t = await _lauf(db, monkeypatch, owner=owner, kind="chat", status="blocked",
                     blocker_kind="ask_human")
-    n = await _nachrichten(db)
+    n = await _messages(db)
     assert len(n) == 1 and "Ticket oder API-Freigabe?" in n[0].body
     await db.refresh(t)
     # Finished, not 'running'; otherwise the exchange is missing in the history later.
     assert t.status == "done" and t.result == "Ticket oder API-Freigabe?"
 
 
-async def test_rueckfrage_ohne_chat_meldet_trotz_modus_bedarf(db, owner, monkeypatch):
+async def test_callback_ohne_chat_meldet_trotz_modus_bedarf(db, owner, monkeypatch):
     """Outside the chat as well (mail inbox): a question without a recipient is pointless."""
     owner.assistant_notify = "needed"
     await db.commit()
     await _lauf(db, monkeypatch, owner=owner, status="blocked", blocker_kind="ask_human")
-    n = await _nachrichten(db)
+    n = await _messages(db)
     assert len(n) == 1 and "Rückfrage" in n[0].title
 
 
-async def test_tool_freigabe_bleibt_still_und_offen(db, owner, monkeypatch):
+async def test_tool_grant_bleibt_still_und_open(db, owner, monkeypatch):
     """The counterpart: with the tool gate the item waits for the approval card; it must be
     neither finalised nor reported twice."""
     t = await _lauf(db, monkeypatch, owner=owner, status="blocked",
                     blocker_kind="assistant_perm")
-    assert await _nachrichten(db) == []
+    assert await _messages(db) == []
     await db.refresh(t)
     assert t.status == "running"
 
 
-async def test_meldewerkzeug_braucht_keine_freigabe(db, owner):
+async def test_meldewerkzeug_braucht_keine_grant(db, owner):
     """Without this exception a missing allowlist approval would mean "never reports", and
     then important things would stay mute as well."""
     from app.worker.runtime import _ALWAYS_ALLOWED

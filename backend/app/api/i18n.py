@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.i18n import UiLocale, UiTranslation
 from ..models.user import User
@@ -34,7 +34,7 @@ class TextIn(BaseModel):
 class ImportIn(BaseModel):
     """A whole catalog at once, as it comes out of the export."""
     texte: dict[str, str]
-    ersetzen: bool = False   # true wipes what is not in the payload
+    replace: bool = False   # true wipes what is not in the payload
 
 
 def _locale(roh: str) -> str:
@@ -70,7 +70,7 @@ async def list_locales(user: User = Depends(get_current_user),
     rows = (await db.execute(
         select(UiTranslation.locale, func.count(UiTranslation.id))
         .group_by(UiTranslation.locale))).all()
-    gezaehlt = {locale: anzahl for locale, anzahl in rows}
+    gezaehlt = {locale: count for locale, count in rows}
     eigene = {r.locale: r for r in (await db.execute(select(UiLocale))).scalars().all()}
     alle = sorted(set(EINGEBAUT) | set(gezaehlt) | set(eigene))
     return [{"locale": l,
@@ -100,17 +100,17 @@ async def update_locale(locale: str, data: LocaleUpdate, _: User = Depends(requi
     """Rename a language or switch it off. Switching off hides it from the picker; the
     texts stay, so turning it back on loses nothing."""
     lc = _locale(locale)
-    zeile = (await db.execute(select(UiLocale).where(UiLocale.locale == lc))).scalar_one_or_none()
-    if zeile is None:
-        zeile = UiLocale(locale=lc, name=NAMEN.get(lc, lc.upper()))
-        db.add(zeile)
+    line = (await db.execute(select(UiLocale).where(UiLocale.locale == lc))).scalar_one_or_none()
+    if line is None:
+        line = UiLocale(locale=lc, name=NAMEN.get(lc, lc.upper()))
+        db.add(line)
     if data.name is not None:
-        zeile.name = data.name.strip() or NAMEN.get(lc, lc.upper())
+        line.name = data.name.strip() or NAMEN.get(lc, lc.upper())
     if data.enabled is not None:
         if lc == "de" and not data.enabled:
             raise Fehler(status.HTTP_400_BAD_REQUEST, "err.source_language_cannot_switched_off",
                          "The source language cannot be switched off")
-        zeile.enabled = data.enabled
+        line.enabled = data.enabled
     await db.commit()
 
 
@@ -124,7 +124,7 @@ async def server_katalog(locale: str = "", _: User = Depends(get_current_user)):
     admin area would count every one of these texts as untranslated.
     """
     lc = _locale(locale) if locale else ""
-    return {"texts": server_texte.quelle(),
+    return {"texts": server_texte.source(),
             "shipped": dict(server_texte.KATALOG.get(lc, {})) if lc else {}}
 
 
@@ -165,11 +165,11 @@ async def import_texts(locale: str, data: ImportIn, _: User = Depends(require_ad
                        db: AsyncSession = Depends(get_session)):
     """Take a whole catalog. Meant for the round trip through a translation tool."""
     lc = _locale(locale)
-    if data.ersetzen:
+    if data.replace:
         await db.execute(delete(UiTranslation).where(UiTranslation.locale == lc))
     vorhanden = {r.key: r for r in (await db.execute(select(UiTranslation).where(
         UiTranslation.locale == lc))).scalars().all()}
-    geschrieben = 0
+    written = 0
     for key, text in (data.texte or {}).items():
         if not isinstance(text, str) or not text.strip():
             continue
@@ -177,9 +177,9 @@ async def import_texts(locale: str, data: ImportIn, _: User = Depends(require_ad
             vorhanden[key].text = text
         else:
             db.add(UiTranslation(locale=lc, key=str(key)[:200], text=text[:4000]))
-        geschrieben += 1
+        written += 1
     await db.commit()
-    return {"locale": lc, "imported": geschrieben}
+    return {"locale": lc, "imported": written}
 
 
 @router.delete("/locales/{locale}", status_code=204)

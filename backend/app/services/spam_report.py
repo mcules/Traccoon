@@ -23,10 +23,10 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .mcp_client import McpError, call_tool, ergebnis_json
-from .spam_rules import evaluate, ist_faelschungsverdacht, mail_text
-from .spam_review import geschaeftsfreie_domains, meine_adressen
-from .vault_contacts import bekannte_domains, kontakt_treffer
+from .mcp_client import McpError, call_tool, result_json
+from .spam_rules import evaluate, ist_forgery_suspicion, mail_text
+from .spam_review import nonbusiness_domains, meine_adressen
+from .vault_contacts import bekannte_domains, kontakt_hits
 
 log = logging.getLogger("traccoon.spam")
 
@@ -34,12 +34,12 @@ IMAP_MCP_URL = os.getenv("IMAP_MCP_URL", "http://imap-mcp:3010/mcp")
 
 
 @dataclass
-class Messung:
+class Measurement:
     """Result of a review: the scores per class plus the recommendation."""
     spam: list[float] = field(default_factory=list)
     ham: list[float] = field(default_factory=list)
     freispruch: int = 0          # known senders that are not assessed in the first place
-    fehler: list[str] = field(default_factory=list)
+    error: list[str] = field(default_factory=list)
     # The most conspicuous messages from the inbox: they decide the threshold all by
     # themselves and should be looked at before being believed, because often it is not a
     # false positive but rubbish that was never sorted in.
@@ -65,21 +65,21 @@ class Messung:
             "ausreisser": sorted(self.ausreisser, key=lambda a: -a["score"])[:5],
             "davon_erkannt": erwischt,
             "trefferquote": round(erwischt / len(spam), 2) if spam else None,
-            "fehler": self.fehler[:5],
+            "fehler": self.error[:5],
         }
 
 
-async def _mail_holen(account: str, folder: str, uid: int) -> dict | None:
+async def _mail_fetch(account: str, folder: str, uid: int) -> dict | None:
     """Prepare a message the way the watcher would deliver it."""
     try:
-        antwort = await call_tool(IMAP_MCP_URL, "get_email", {
+        answer = await call_tool(IMAP_MCP_URL, "get_email", {
             "account": account, "folder": folder, "uid": uid, "body_format": "both",
             "max_body_bytes": 20000})
     except McpError as exc:
         log.debug("Review: %s/%s/%s not readable (%s)", account, folder, uid, exc)
         return None
-    daten = ergebnis_json(antwort) or {}
-    kopf = daten.get("headers") or {}
+    daten = result_json(answer) or {}
+    header = daten.get("headers") or {}
     text = ((daten.get("body") or {}).get("text") or {}).get("content") or ""
     html = ((daten.get("body") or {}).get("html") or {}).get("content") or ""
     # The watcher delivers the links along; whoever assesses afterwards has to get them out
@@ -90,27 +90,27 @@ async def _mail_holen(account: str, folder: str, uid: int) -> dict | None:
                  re.IGNORECASE | re.DOTALL)]
     return {
         "account": account, "folder": folder, "uid": uid,
-        "from": kopf.get("from") or [], "to": kopf.get("to") or [],
-        "cc": kopf.get("cc") or [], "reply_to": kopf.get("reply_to") or [],
-        "subject": kopf.get("subject") or "", "message_id": kopf.get("message_id") or "",
-        "date": kopf.get("date") or "",
-        "headers": kopf.get("spam") or {},
+        "from": header.get("from") or [], "to": header.get("to") or [],
+        "cc": header.get("cc") or [], "reply_to": header.get("reply_to") or [],
+        "subject": header.get("subject") or "", "message_id": header.get("message_id") or "",
+        "date": header.get("date") or "",
+        "headers": header.get("spam") or {},
         "body_text": text, "body_html": html, "links": links,
         "attachments": daten.get("attachments") or [],
     }
 
 
 async def rueckschau(db: AsyncSession, owner_id: int | None, *, stichprobe: int = 40,
-                     konten: list[dict] | None = None) -> Messung:
+                     konten: list[dict] | None = None) -> Measurement:
     """Assess a sample from the spam folder and the inbox. Returns the measurement."""
-    from .spam_bootstrap import konten as alle_konten
+    from .spam_bootstrap import konten as all_konten
 
-    messung = Messung()
+    measurement = Measurement()
     meine = await meine_adressen(db)
     domains = await bekannte_domains(db, owner_id)
-    ohne_geschaeft = await geschaeftsfreie_domains(db)
+    ohne_geschaeft = await nonbusiness_domains(db)
 
-    for konto in (konten if konten is not None else await alle_konten(db)):
+    for konto in (konten if konten is not None else await all_konten(db)):
         alias = konto["alias"]
         aufgaben = [(konto.get("spam_folder"), True),
                     (konto.get("inbox_folder") or "INBOX", False)]
@@ -118,37 +118,37 @@ async def rueckschau(db: AsyncSession, owner_id: int | None, *, stichprobe: int 
             if not folder:
                 continue
             try:
-                antwort = await call_tool(IMAP_MCP_URL, "search_emails", {
+                answer = await call_tool(IMAP_MCP_URL, "search_emails", {
                     "account": alias, "folder": folder, "limit": stichprobe})
             except McpError as exc:
-                messung.fehler.append(f"{alias}/{folder}: {exc}")
+                measurement.error.append(f"{alias}/{folder}: {exc}")
                 continue
-            for treffer in ((ergebnis_json(antwort) or {}).get("results") or []):
-                payload = await _mail_holen(alias, folder, int(treffer["uid"]))
+            for hits in ((result_json(answer) or {}).get("results") or []):
+                payload = await _mail_fetch(alias, folder, int(hits["uid"]))
                 if payload is None:
                     continue
-                regel = evaluate(payload, meine_adressen=meine, bekannte_domains=domains,
-                                 geschaeftsfreie_domains=ohne_geschaeft,
+                rule = evaluate(payload, meine_adressen=meine, bekannte_domains=domains,
+                                 nonbusiness_domains=ohne_geschaeft,
                                  body=mail_text(payload))
                 # Known senders are not assessed at all in live operation: they do not belong
                 # in the distribution but are counted separately.
                 if not ist_spam:
-                    treffer_art = await kontakt_treffer(
-                        db, owner_id, regel.sender_email, regel.sender_domain)
-                    if treffer_art in ("frontmatter", "sent") and not ist_faelschungsverdacht(
-                            regel.signals):
-                        messung.freispruch += 1
+                    hits_kind = await kontakt_hits(
+                        db, owner_id, rule.sender_email, rule.sender_domain)
+                    if hits_kind in ("frontmatter", "sent") and not ist_forgery_suspicion(
+                            rule.signals):
+                        measurement.freispruch += 1
                         continue
-                (messung.spam if ist_spam else messung.ham).append(regel.score)
-                if not ist_spam and regel.score >= 0.45:
-                    messung.ausreisser.append({
-                        "score": regel.score, "konto": alias,
-                        "von": regel.sender_email, "betreff": payload["subject"][:70],
-                        "gruende": regel.reasons[:3]})
-    return messung
+                (measurement.spam if ist_spam else measurement.ham).append(rule.score)
+                if not ist_spam and rule.score >= 0.45:
+                    measurement.ausreisser.append({
+                        "score": rule.score, "konto": alias,
+                        "von": rule.sender_email, "betreff": payload["subject"][:70],
+                        "gruende": rule.reasons[:3]})
+    return measurement
 
 
-async def einstufungen(db: AsyncSession, owner_id: int | None, *, tage: int = 30) -> dict:
+async def einstufungen(db: AsyncSession, owner_id: int | None, *, days: int = 30) -> dict:
     """As what mail was classified, counted at query time.
 
     No second stock of data: the rows carry it already, so the answer covers everything that
@@ -165,36 +165,36 @@ async def einstufungen(db: AsyncSession, owner_id: int | None, *, tage: int = 30
 
     from ..models.assistant import AssistantTask, SpamVerdict
 
-    seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=max(1, tage))
+    seit = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(days=max(1, days))
 
     verdachte = (await db.execute(
-        select(SpamVerdict.art, SpamVerdict.status, func.count())
+        select(SpamVerdict.kind, SpamVerdict.status, func.count())
         .where(SpamVerdict.owner_user_id == owner_id, SpamVerdict.created_at >= seit)
-        .group_by(SpamVerdict.art, SpamVerdict.status))).all()
+        .group_by(SpamVerdict.kind, SpamVerdict.status))).all()
     durchgelassen = (await db.execute(
         select(AssistantTask.category, func.count())
         .where(AssistantTask.owner_user_id == owner_id, AssistantTask.kind != "chat",
                AssistantTask.created_at >= seit)
         .group_by(AssistantTask.category))).all()
 
-    arten: dict[str, dict] = {}
-    for art, status, n in verdachte:
-        eintrag = arten.setdefault(art or "unbekannt",
+    kinds: dict[str, dict] = {}
+    for kind, status, n in verdachte:
+        entry = kinds.setdefault(kind or "unbekannt",
                                    {"gesamt": 0, "aussortiert": 0, "durchgelassen": 0,
                                     "offen": 0})
-        eintrag["gesamt"] += n
+        entry["gesamt"] += n
         if status == "spam":
-            eintrag["aussortiert"] += n
+            entry["aussortiert"] += n
         elif status == "pending":
-            eintrag["offen"] += n
+            entry["offen"] += n
         else:
-            eintrag["durchgelassen"] += n
+            entry["durchgelassen"] += n
     for kategorie, n in durchgelassen:
-        eintrag = arten.setdefault(kategorie or "unbekannt",
+        entry = kinds.setdefault(kategorie or "unbekannt",
                                    {"gesamt": 0, "aussortiert": 0, "durchgelassen": 0,
                                     "offen": 0})
-        eintrag["gesamt"] += n
-        eintrag["durchgelassen"] += n
+        entry["gesamt"] += n
+        entry["durchgelassen"] += n
 
     # How well the model judged, measured against what the human decided. Only rows that were
     # decided count: a pending question says nothing about anybody being right.
@@ -202,13 +202,13 @@ async def einstufungen(db: AsyncSession, owner_id: int | None, *, tage: int = 30
         select(SpamVerdict.model_score, SpamVerdict.status)
         .where(SpamVerdict.owner_user_id == owner_id, SpamVerdict.created_at >= seit,
                SpamVerdict.status.in_(("spam", "ham"))))).all()
-    treffer = sum(1 for score, status in entschieden
+    hits = sum(1 for score, status in entschieden
                   if (score >= 0.5) == (status == "spam"))
     return {
-        "tage": tage,
-        "arten": dict(sorted(arten.items(), key=lambda p: -p[1]["gesamt"])),
-        "modell": {"entschieden": len(entschieden), "treffer": treffer,
-                   "quote": round(treffer / len(entschieden), 3) if entschieden else None},
+        "tage": days,
+        "arten": dict(sorted(kinds.items(), key=lambda p: -p[1]["gesamt"])),
+        "modell": {"entschieden": len(entschieden), "treffer": hits,
+                   "quote": round(hits / len(entschieden), 3) if entschieden else None},
     }
 
 
@@ -218,7 +218,7 @@ async def bilanz(db: AsyncSession, owner_id: int | None) -> dict:
 
     from ..models.assistant import SpamFeatureStat, SpamVerdict
 
-    zeilen = (await db.execute(
+    lines = (await db.execute(
         select(SpamVerdict.status, SpamVerdict.decided_by, func.count())
         .where(SpamVerdict.owner_user_id == owner_id)
         .group_by(SpamVerdict.status, SpamVerdict.decided_by))).all()
@@ -229,6 +229,6 @@ async def bilanz(db: AsyncSession, owner_id: int | None) -> dict:
             ((SpamFeatureStat.spam_count >= 3) & (SpamFeatureStat.ham_count == 0))
             | ((SpamFeatureStat.ham_count >= 3) & (SpamFeatureStat.spam_count == 0))))).scalar()
     return {
-        "urteile": {f"{st}/{by or '—'}": n for st, by, n in zeilen},
+        "urteile": {f"{st}/{by or '—'}": n for st, by, n in lines},
         "geklaerte_absender": int(geklaert or 0),
     }

@@ -160,7 +160,7 @@ def test_visible_ohne_projekt_und_ohne_owner_ist_niemandes_ereignis():
 
 # ── The scope only narrows ───────────────────────────────────────────────────
 
-def test_scope_auf_fremdes_projekt_liefert_stille():
+def test_scope_auf_fremdes_projekt_liefert_silence():
     """`scope={99}` on a project the user is not in: no event arrives. The narrowing of the
     client cannot open the server set up."""
     c = conn(7, allowed={27}, scope={99})
@@ -227,7 +227,7 @@ async def test_fanout_projektlos_nur_an_den_eigentuemer():
     assert anderer.queue.empty()
 
 
-async def test_langsamer_client_faellt_statt_die_bruecke_zu_bremsen():
+async def test_langsamer_client_faellt_statt_die_bridge_zu_bremsen():
     """A full queue means the connection flies out. It then has a gap and has to come back
     over the snapshot; sending on would fake a gapless stream."""
     m = UserConnectionManager()
@@ -264,7 +264,7 @@ async def test_sweeper_frischt_nur_abgelaufene_acls_auf(db, monkeypatch):
     assert frisch.allowed == set()
 
 
-async def test_sweeper_wirft_deaktivierte_nutzer_raus(db, monkeypatch):
+async def test_sweeper_wirft_deaktivierte_user_out(db, monkeypatch):
     use_test_db(monkeypatch, db)
     user = await make_user(db, "gesperrt")
     m = UserConnectionManager()
@@ -325,7 +325,7 @@ async def test_projekt_socket_lehnt_token_vor_passwortwechsel_ab(db, monkeypatch
     assert ws.accepted is False
 
 
-async def test_socket_lehnt_inaktiven_nutzer_ab(db, monkeypatch):
+async def test_socket_lehnt_inaktiven_user_ab(db, monkeypatch):
     use_test_db(monkeypatch, db)
     user = await make_user(db, "inaktiv")
     token = create_access_token(user.id)
@@ -337,7 +337,7 @@ async def test_socket_lehnt_inaktiven_nutzer_ab(db, monkeypatch):
     assert ws.closed == CLOSE_FORBIDDEN
 
 
-async def test_projekt_socket_lehnt_inaktiven_nutzer_ab(db, monkeypatch):
+async def test_projekt_socket_lehnt_inaktiven_user_ab(db, monkeypatch):
     use_test_db(monkeypatch, db)
     user = await make_user(db, "inaktiv2")
     proj = await make_project(db, "INA", "Inaktiv")
@@ -365,17 +365,17 @@ async def test_hello_und_subscribe(db, monkeypatch):
     token = create_access_token(user.id)
 
     ws = FakeWS(['{"type":"subscribe","scopes":[{"kind":"project","id":%d}]}' % proj.id])
-    gesehen: list[_Conn] = []
+    seen: list[_Conn] = []
     echtes_add = rtws.manager.add
     monkeypatch.setattr(rtws.manager, "add",
-                        lambda c: (gesehen.append(c), echtes_add(c))[1])
+                        lambda c: (seen.append(c), echtes_add(c))[1])
 
     await office_ws(ws, token=token)   # ends with WebSocketDisconnect
 
     assert ws.accepted is True
     assert ws.sent[0]["type"] == "hello"
     assert ws.sent[0]["projects"] == [proj.id]
-    assert gesehen and gesehen[0].scope == {proj.id}
+    assert seen and seen[0].scope == {proj.id}
     # The confirmation lies in the queue (the pump was stopped while tearing down).
-    assert gesehen[0].queue.get_nowait() == {"type": "subscribed", "scope": [proj.id]}
-    assert gesehen[0] not in rtws.manager.conns   # sauber abgemeldet
+    assert seen[0].queue.get_nowait() == {"type": "subscribed", "scope": [proj.id]}
+    assert seen[0] not in rtws.manager.conns   # sauber abgemeldet

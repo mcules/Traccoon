@@ -6,34 +6,34 @@ lie in `artifacts`, which processes and references point at as well.
 from app.models.artifact import Artifact
 from app.models.enums import PurchaseStatus, WorkflowSubjectKind
 from app.models.hardware import HardwareAsset
-from app.services import artifacts as art
+from app.services import artifacts as svc
 from sqlalchemy import select
 from conftest import auth, make_asset, make_project, make_user
 
 
-async def test_exemplar_bekommt_eine_artefakt_zeile(db):
-    await art.ensure_builtin_types(db)
+async def test_exemplar_bekommt_eine_artefakt_line(db):
+    await svc.ensure_builtin_types(db)
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
 
-    a = await art.ensure_for_asset(db, asset)
+    a = await svc.ensure_for_asset(db, asset)
     await db.commit()
     assert asset.artifact_id == a.id
     assert a.project_id == proj.id
     assert a.status_key == asset.purchase_status.value
-    typ = await art.type_by_key(db, "hardware")
-    assert a.type_id == typ.id
+    kind = await svc.type_by_key(db, "hardware")
+    assert a.type_id == kind.id
     assert "Switch" in a.title
 
 
-async def test_zustand_steht_an_beiden_stellen_gleich(db):
-    await art.ensure_builtin_types(db)
+async def test_state_steht_an_beiden_stellen_gleich(db):
+    await svc.ensure_builtin_types(db)
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Router", project=proj)
-    await art.ensure_for_asset(db, asset)
+    await svc.ensure_for_asset(db, asset)
     await db.commit()
 
-    await art.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset, asset=asset,
+    await svc.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset, asset=asset,
                            status_key="installed")
     await db.commit()
     a = await db.get(Artifact, asset.artifact_id)
@@ -42,20 +42,20 @@ async def test_zustand_steht_an_beiden_stellen_gleich(db):
 
 
 async def test_nachtragen_ist_idempotent(db):
-    await art.ensure_builtin_types(db)
+    await svc.ensure_builtin_types(db)
     proj = await make_project(db, "TST", "Test")
     await make_asset(db, "Switch", project=proj)
     await make_asset(db, "Router", project=proj)
 
-    assert await art.backfill_hardware_artifacts(db) == 2
-    assert await art.backfill_hardware_artifacts(db) == 0
+    assert await svc.backfill_hardware_artifacts(db) == 2
+    assert await svc.backfill_hardware_artifacts(db) == 0
     offen = (await db.execute(select(HardwareAsset).where(
         HardwareAsset.artifact_id.is_(None)))).scalars().all()
     assert offen == []
 
 
 async def test_neues_exemplar_ueber_die_api_ist_sofort_artefakt(client, db):
-    await art.ensure_builtin_types(db)
+    await svc.ensure_builtin_types(db)
     from app.models.enums import ProjectRole
     from app.models.hardware import HardwareModel
     from conftest import add_member

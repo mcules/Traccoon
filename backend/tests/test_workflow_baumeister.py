@@ -43,37 +43,37 @@ KAPUTT = {
 }
 
 
-class _Antwort:
+class _Answer:
     def __init__(self, text): self.text = text
 
 
 def _modell(monkeypatch, *antworten):
     """Replaces the LLM call by fixed answers; counts the rounds."""
-    zaehler = {"n": 0}
+    counter = {"n": 0}
 
     async def chat(**kwargs):
-        i = min(zaehler["n"], len(antworten) - 1)
-        zaehler["n"] += 1
-        chat.letzte = kwargs
-        return _Antwort(antworten[i])
+        i = min(counter["n"], len(antworten) - 1)
+        counter["n"] += 1
+        chat.last = kwargs
+        return _Answer(antworten[i])
 
-    chat.letzte = {}
+    chat.last = {}
     monkeypatch.setattr(autor.llm_router, "chat", chat)
     monkeypatch.setattr(autor, "resolve_provider_token",
-                        lambda *a, **k: _fertig("tok"))
-    monkeypatch.setattr(autor, "_werkzeugliste", lambda *a, **k: _fertig(""))
-    return zaehler, chat
+                        lambda *a, **k: _done("tok"))
+    monkeypatch.setattr(autor, "_werkzeugliste", lambda *a, **k: _done(""))
+    return counter, chat
 
 
-def _fertig(wert):
-    async def _f(): return wert
+def _done(value):
+    async def _f(): return value
     return _f()
 
 
 async def test_sauberer_entwurf(db, monkeypatch):
     anna = await make_user(db, "anna")
     _modell(monkeypatch, json.dumps(GUT))
-    r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="melde Störungen",
+    r = await autor.entwerfen(db, owner_id=anna.id, description="melde Störungen",
                               subject_kind=WorkflowSubjectKind.standalone)
     assert r["fehler"] == []
     assert r["erklaerung"].startswith("Meldet")
@@ -91,7 +91,7 @@ async def test_konfiguration_wird_auch_flach_gefunden(db, monkeypatch):
          "data": {"label": "Melden", "action": {"action": "notify", "params": {}}}},
         {"id": "ende", "type": "end", "data": {"config": {"outcome": "completed"}}}]}
     _modell(monkeypatch, json.dumps(flach))
-    r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
+    r = await autor.entwerfen(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
     cfgs = {n["id"]: n["data"]["config"] for n in r["graph"]["nodes"]}
     assert cfgs["start"]["label"] == "Start"
@@ -111,50 +111,50 @@ async def test_vergessener_standardzweig_wird_gesetzt(db, monkeypatch):
         "edges": [{"id": "k1", "source": "start", "target": "w"},
                   {"id": "k2", "source": "w", "target": "e1", "sourceHandle": "ja"},
                   {"id": "k3", "source": "w", "target": "e2", "sourceHandle": "nein"}]}
-    zaehler, _ = _modell(monkeypatch, json.dumps(ohne))
-    r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
+    counter, _ = _modell(monkeypatch, json.dumps(ohne))
+    r = await autor.entwerfen(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
-    assert r["fehler"] == [] and zaehler["n"] == 1, "no rework round needed"
+    assert r["fehler"] == [] and counter["n"] == 1, "no rework round needed"
     weiche = next(n for n in r["graph"]["nodes"] if n["id"] == "w")
     assert weiche["data"]["config"]["default_handle"] == "nein"
     assert all(n["data"]["config"]["outcome"] == "completed"
                for n in r["graph"]["nodes"] if n["type"] == "end")
 
 
-async def test_code_zaeune_und_vorrede_stoeren_nicht(db, monkeypatch):
+async def test_code_fences_und_vorrede_stoeren_nicht(db, monkeypatch):
     anna = await make_user(db, "anna")
     _modell(monkeypatch, "Klar, hier:\n```json\n" + json.dumps(GUT) + "\n```\nViel Spaß!")
-    r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
+    r = await autor.entwerfen(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
     assert r["fehler"] == [] and len(r["graph"]["nodes"]) == 3
 
 
-async def test_fehler_werden_zurueckgegeben_und_einmal_nachgebessert(db, monkeypatch):
+async def test_error_werden_zurueckgegeben_und_einmal_nachgebessert(db, monkeypatch):
     anna = await make_user(db, "anna")
-    zaehler, chat = _modell(monkeypatch, json.dumps(KAPUTT), json.dumps(GUT))
-    r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
+    counter, chat = _modell(monkeypatch, json.dumps(KAPUTT), json.dumps(GUT))
+    r = await autor.entwerfen(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
-    assert zaehler["n"] == 2, "exactly one rework round"
+    assert counter["n"] == 2, "exactly one rework round"
     assert r["fehler"] == []
     # The correction gets the real validation sentences to see.
-    nachricht = chat.letzte["messages"][-1]["content"]
-    assert "Kante für Ausgang 'ja' fehlt" in nachricht
+    message = chat.last["messages"][-1]["content"]
+    assert "Kante für Ausgang 'ja' fehlt" in message
 
 
 async def test_hartnaeckig_kaputt_kommt_trotzdem_an(db, monkeypatch):
     """An almost finished graph is worth more than an error message."""
     anna = await make_user(db, "anna")
-    zaehler, _ = _modell(monkeypatch, json.dumps(KAPUTT))
-    r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
+    counter, _ = _modell(monkeypatch, json.dumps(KAPUTT))
+    r = await autor.entwerfen(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
-    assert zaehler["n"] == 2
+    assert counter["n"] == 2
     assert r["graph"]["nodes"] and r["fehler"]
 
 
 async def test_kein_json_kein_absturz(db, monkeypatch):
     anna = await make_user(db, "anna")
     _modell(monkeypatch, "Tut mir leid, das kann ich nicht.")
-    r = await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
+    r = await autor.entwerfen(db, owner_id=anna.id, description="x",
                               subject_kind=WorkflowSubjectKind.standalone)
     assert r["graph"] == {"nodes": [], "edges": []}
     assert r["fehler"]
@@ -163,19 +163,19 @@ async def test_kein_json_kein_absturz(db, monkeypatch):
 async def test_umbau_bekommt_den_bestand_mit(db, monkeypatch):
     anna = await make_user(db, "anna")
     _, chat = _modell(monkeypatch, json.dumps(GUT))
-    await autor.entwerfen(db, owner_id=anna.id, beschreibung="häng eine Freigabe davor",
+    await autor.entwerfen(db, owner_id=anna.id, description="häng eine Freigabe davor",
                           subject_kind=WorkflowSubjectKind.standalone,
                           vorhanden={"nodes": GUT["nodes"], "edges": GUT["edges"]})
-    auftrag = chat.letzte["messages"][-1]["content"]
-    assert "bestehende Ablauf" in auftrag and "melden" in auftrag
+    task = chat.last["messages"][-1]["content"]
+    assert "bestehende Ablauf" in task and "melden" in task
 
 
-async def test_ohne_ticket_werden_ticket_aktionen_ausgeschlossen(db, monkeypatch):
+async def test_ohne_ticket_werden_ticket_actions_ausgeschlossen(db, monkeypatch):
     anna = await make_user(db, "anna")
     _, chat = _modell(monkeypatch, json.dumps(GUT))
-    await autor.entwerfen(db, owner_id=anna.id, beschreibung="x",
+    await autor.entwerfen(db, owner_id=anna.id, description="x",
                           subject_kind=WorkflowSubjectKind.standalone)
-    system = chat.letzte["messages"][0]["content"]
+    system = chat.last["messages"][0]["content"]
     assert "agent_task" in system and "NICHT zur Verfügung" in system
 
 
@@ -192,7 +192,7 @@ async def test_endpunkt_speichert_nichts(client, db, monkeypatch):
 
     _modell(monkeypatch, json.dumps(GUT))
     r = await client.post(f"/workflows/{d.id}/draft", headers=auth(anna),
-                          json={"beschreibung": "melde Störungen"})
+                          json={"description": "melde Störungen"})
     assert r.status_code == 200, r.text
     assert len(r.json()["graph"]["nodes"]) == 3
 
@@ -200,7 +200,7 @@ async def test_endpunkt_speichert_nichts(client, db, monkeypatch):
     assert v.graph == {"nodes": [], "edges": []}, "the draft must not overwrite anything"
 
 
-async def test_fremder_darf_nicht_bauen(client, db, monkeypatch):
+async def test_fremder_may_nicht_bauen(client, db, monkeypatch):
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
     d = WorkflowDefinition(project_id=None, key="privat", name="Privat", created_by=anna.id,
@@ -209,18 +209,18 @@ async def test_fremder_darf_nicht_bauen(client, db, monkeypatch):
     await db.commit()
     _modell(monkeypatch, json.dumps(GUT))
     r = await client.post(f"/workflows/{d.id}/draft", headers=auth(bert),
-                          json={"beschreibung": "irgendwas"})
+                          json={"description": "irgendwas"})
     assert r.status_code == 403
 
 
-async def test_ohne_zugang_klare_ansage(client, db, monkeypatch):
+async def test_ohne_access_klare_ansage(client, db, monkeypatch):
     anna = await make_user(db, "anna")
     d = WorkflowDefinition(project_id=None, key="ohnezugang", name="Ohne", created_by=anna.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
     await db.commit()
-    monkeypatch.setattr(autor, "resolve_provider_token", lambda *a, **k: _fertig(""))
+    monkeypatch.setattr(autor, "resolve_provider_token", lambda *a, **k: _done(""))
     r = await client.post(f"/workflows/{d.id}/draft", headers=auth(anna),
-                          json={"beschreibung": "melde Störungen"})
+                          json={"description": "melde Störungen"})
     assert r.status_code == 409
     assert "Claude access" in r.json()["detail"]

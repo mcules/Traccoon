@@ -37,7 +37,7 @@ def _graph(x: int = 0, label: str = "Start", tool: str = "a") -> dict:
     }
 
 
-async def _ablauf(db, user, graph=None) -> WorkflowDefinition:
+async def _flow(db, user, graph=None) -> WorkflowDefinition:
     d = WorkflowDefinition(project_id=None, key="probe", name="Probe", created_by=user.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
@@ -58,43 +58,43 @@ async def _fassungen(db, def_id: int) -> list[WorkflowVersion]:
 
 # ── Der Schnitt: Inhalt gegen Anordnung ──────────────────────────────────────
 
-async def test_verschieben_ist_keine_aenderung():
+async def test_move_ist_keine_aenderung():
     """Drei Zentimeter nach links sind keine Aussage über das Verhalten."""
     a = _graph(x=0)
     b = _graph(x=750)
     assert graf.gleicher_inhalt(a, b)
-    assert graf.unterschiede(a, b)["gleich"] is True
+    assert graf.unterschiede(a, b)["identical"] is True
 
 
 async def test_ein_anderer_parameter_ist_eine_aenderung():
     assert not graf.gleicher_inhalt(_graph(tool="a"), _graph(tool="b"))
 
 
-async def test_reihenfolge_der_knoten_zaehlt_nicht():
+async def test_reihenfolge_der_node_zaehlt_nicht():
     """Der Editor liefert Knoten in wechselnder Reihenfolge; das ist kein Unterschied."""
     a = _graph()
     b = {"nodes": list(reversed(a["nodes"])), "edges": list(reversed(a["edges"]))}
     assert graf.gleicher_inhalt(a, b)
 
 
-async def test_unterschiede_nennen_das_feld_nicht_den_klotz():
+async def test_unterschiede_nennen_das_field_nicht_den_klotz():
     """„Die Aktion hat sich geändert" ist keine Antwort, wenn die Aktion zwei Seiten JSON ist."""
     u = graf.unterschiede(_graph(tool="alt"), _graph(tool="neu"))
-    (knoten,) = u["knoten_geaendert"]
-    assert knoten["id"] == "tun"
-    felder = {f["feld"] for f in knoten["felder"]}
-    assert felder == {"action.params.wert"}, felder
+    (node,) = u["nodes_changed"]
+    assert node["id"] == "tun"
+    fields = {f["field"] for f in node["fields"]}
+    assert fields == {"action.params.wert"}, fields
 
 
-async def test_neue_und_entfernte_knoten_und_kanten():
+async def test_new_und_entfernte_node_und_edges():
     a = _graph()
     b = _graph()
     b["nodes"] = [n for n in b["nodes"] if n["id"] != "ende"]
     b["edges"] = [e for e in b["edges"] if e["target"] != "ende"]
     u = graf.unterschiede(a, b)
-    assert [k["id"] for k in u["knoten_weg"]] == ["ende"]
-    assert u["kanten_weg"] == ["tun → ende"]
-    assert u["knoten_neu"] == [] and u["kanten_neu"] == []
+    assert [k["id"] for k in u["nodes_removed"]] == ["ende"]
+    assert u["edges_removed"] == ["tun → ende"]
+    assert u["nodes_added"] == [] and u["edges_added"] == []
 
 
 # ── Was der Editor daraus macht ──────────────────────────────────────────────
@@ -102,7 +102,7 @@ async def test_neue_und_entfernte_knoten_und_kanten():
 async def test_ansehen_legt_nichts_an(db, client):
     """Der eigentliche Anlass: Hinsehen darf keine Fassung kosten."""
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
 
     r = await client.get(f"/workflows/{d.id}/editable", headers=auth(anna))
 
@@ -111,14 +111,14 @@ async def test_ansehen_legt_nichts_an(db, client):
     assert len(await _fassungen(db, d.id)) == 1
 
 
-async def test_anordnen_speichert_ohne_neue_fassung(db, client):
+async def test_anordnen_speichert_ohne_new_fassung(db, client):
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
 
     r = await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                          json={"graph": _graph(x=900)})
 
-    assert r.status_code == 200 and r.json()["ergebnis"] == "layout"
+    assert r.status_code == 200 and r.json()["result"] == "layout"
     fassungen = await _fassungen(db, d.id)
     assert len(fassungen) == 1 and fassungen[0].status == WorkflowVersionStatus.published
     # Die Anordnung ist trotzdem da, sonst wäre das Speichern eine Lüge.
@@ -128,16 +128,16 @@ async def test_anordnen_speichert_ohne_neue_fassung(db, client):
 
 async def test_inhaltliche_aenderung_legt_genau_einen_entwurf_an(db, client):
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
 
     erst = await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                             json={"graph": _graph(tool="neu")})
-    assert erst.json()["ergebnis"] == "neuer_entwurf"
+    assert erst.json()["result"] == "neuer_entwurf"
 
     # Zweites Speichern schreibt in denselben Entwurf, statt Nummern zu verbrauchen.
     zweit = await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                              json={"graph": _graph(tool="noch neuer")})
-    assert zweit.json()["ergebnis"] == "entwurf"
+    assert zweit.json()["result"] == "entwurf"
     assert zweit.json()["version"]["id"] == erst.json()["version"]["id"]
 
     fassungen = await _fassungen(db, d.id)
@@ -148,14 +148,14 @@ async def test_inhaltliche_aenderung_legt_genau_einen_entwurf_an(db, client):
 async def test_anordnen_im_entwurf_bleibt_im_entwurf(db, client):
     """Wer schon einen Entwurf offen hat, ordnet darin an und nicht in der Live-Fassung."""
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                      json={"graph": _graph(tool="neu")})
 
     r = await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                          json={"graph": _graph(x=500, tool="neu")})
 
-    assert r.json()["ergebnis"] == "layout"
+    assert r.json()["result"] == "layout"
     fassungen = await _fassungen(db, d.id)
     assert len(fassungen) == 2
     assert graf.positionen(fassungen[0].graph)["start"]["x"] == 0, "die Live-Fassung bleibt"
@@ -163,7 +163,7 @@ async def test_anordnen_im_entwurf_bleibt_im_entwurf(db, client):
 
 async def test_editor_bekommt_den_offenen_entwurf(db, client):
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                      json={"graph": _graph(tool="neu")})
 
@@ -174,7 +174,7 @@ async def test_editor_bekommt_den_offenen_entwurf(db, client):
 async def test_entwurf_verwerfen_laesst_nichts_zurueck(db, client):
     """Ohne diesen Weg musste man einen verfahrenen Graphen von Hand zurückbauen."""
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     await client.put(f"/workflows/{d.id}/graph", headers=auth(anna),
                      json={"graph": _graph(tool="neu")})
 
@@ -188,9 +188,9 @@ async def test_entwurf_verwerfen_laesst_nichts_zurueck(db, client):
                              headers=auth(anna))).json()["status"] == "published"
 
 
-async def test_verwerfen_ohne_entwurf_ist_kein_fehler(db, client):
+async def test_verwerfen_ohne_entwurf_ist_kein_error(db, client):
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     assert (await client.delete(f"/workflows/{d.id}/draft", headers=auth(anna))).status_code == 204
 
 
@@ -198,7 +198,7 @@ async def test_verwerfen_ohne_entwurf_ist_kein_fehler(db, client):
 
 async def test_diff_vergleicht_ohne_angabe_mit_dem_vorgaenger(db, client):
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     zweite = WorkflowVersion(definition_id=d.id, version=2, graph=_graph(tool="neu"),
                              status=WorkflowVersionStatus.published, created_by=anna.id)
     db.add(zweite)
@@ -207,25 +207,25 @@ async def test_diff_vergleicht_ohne_angabe_mit_dem_vorgaenger(db, client):
     r = await client.get(f"/workflows/{d.id}/versions/{zweite.id}/diff", headers=auth(anna))
 
     daten = r.json()
-    assert daten["von"] == 1 and daten["bis"] == 2 and daten["gleich"] is False
-    assert daten["knoten_geaendert"][0]["felder"][0]["feld"] == "action.params.wert"
+    assert daten["from_version"] == 1 and daten["to_version"] == 2 and daten["identical"] is False
+    assert daten["nodes_changed"][0]["fields"][0]["field"] == "action.params.wert"
 
 
 async def test_diff_gegen_eine_bestimmte_fassung(db, client):
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     v1 = (await _fassungen(db, d.id))[0]
 
     r = await client.get(f"/workflows/{d.id}/versions/{v1.id}/diff?against={v1.id}",
                          headers=auth(anna))
-    assert r.json()["gleich"] is True
+    assert r.json()["identical"] is True
 
 
-async def test_zurueckrollen_legt_eine_neue_fassung_an(db, client):
+async def test_zurueckrollen_legt_eine_new_fassung_an(db, client):
     """Nicht den Zeiger biegen: laufende Instanzen hängen an ihrer Fassung, und die
     Geschichte soll zeigen, dass zurückgerollt wurde."""
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     v1 = (await _fassungen(db, d.id))[0]
     zweite = WorkflowVersion(definition_id=d.id, version=2, graph=_graph(tool="neu"),
                              status=WorkflowVersionStatus.published, created_by=anna.id)

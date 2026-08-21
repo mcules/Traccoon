@@ -23,27 +23,27 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
 
-def einsetzen(text: str, werte: dict[str, str]) -> str:
+def insert(text: str, values: dict[str, str]) -> str:
     """Fill `{name}` placeholders. Unknown ones stay as they are: a text with a stray brace
     reads oddly, but no error message dies on the way to the person who needs it."""
-    for name, wert in werte.items():
-        text = text.replace("{" + name + "}", wert)
+    for name, value in values.items():
+        text = text.replace("{" + name + "}", value)
     return text
 
 
 class Fehler(HTTPException):
     """An HTTPException that names its text."""
 
-    def __init__(self, status_code: int, key: str, text: str, **werte: Any) -> None:
+    def __init__(self, status_code: int, key: str, text: str, **values: Any) -> None:
         self.key = key
-        self.werte = {name: str(wert) for name, wert in werte.items()}
-        super().__init__(status_code, einsetzen(text, self.werte))
+        self.values = {name: str(value) for name, value in values.items()}
+        super().__init__(status_code, insert(text, self.values))
 
 
-async def fehler_handler(_request: Request, exc: Fehler) -> JSONResponse:
+async def error_handler(_request: Request, exc: Fehler) -> JSONResponse:
     """Put the key beside the text. Everything else stays as FastAPI would send it."""
     inhalt: dict[str, Any] = {"detail": exc.detail, "key": exc.key}
-    if exc.werte:
-        inhalt["werte"] = exc.werte
+    if exc.values:
+        inhalt["werte"] = exc.values
     return JSONResponse(status_code=exc.status_code, content=inhalt,
                         headers=getattr(exc, "headers", None))

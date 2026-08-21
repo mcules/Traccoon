@@ -105,14 +105,14 @@ class Router:
                     # `extra_body` is known only to the OpenAI-compatible provider
                     # (endpoint-owned fields like `chat_template_kwargs`). The subscription
                     # providers do NOT get it: there it would be an unknown field and a 400.
-                    zusatz = {"extra_body": extra_body} if extra_body and prov in _OPENAI else {}
+                    extra = {"extra_body": extra_body} if extra_body and prov in _OPENAI else {}
                     # Thinking depth is understood only by Anthropic (`output_config.effort`).
                     # On a fallback to codex or openai it drops out instead of causing a 400.
                     if effort and prov in _ANTHROPIC:
-                        zusatz["effort"] = effort
+                        extra["effort"] = effort
                     resp = await impl.chat(model=use_model, messages=messages, tools=tools,
                                            temperature=temperature, max_tokens=max_tokens,
-                                           web_search=web_search, auth_token=token, **zusatz)
+                                           web_search=web_search, auth_token=token, **extra)
                     # Only here is it settled WHO answered: after a fallback that is neither
                     # the configured provider nor its model. Without these lines the caller
                     # prices the whole run with the primary model.

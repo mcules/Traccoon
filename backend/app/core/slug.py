@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-UMSCHRIFT = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss",
+TRANSLITERATION = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss",
                            "Ä": "ae", "Ö": "oe", "Ü": "ue",
                            "á": "a", "à": "a", "â": "a", "é": "e", "è": "e", "ê": "e",
                            "í": "i", "ì": "i", "ó": "o", "ò": "o", "ô": "o",
@@ -17,5 +17,5 @@ UMSCHRIFT = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss",
 
 def slug(text: str, laenge: int = 100) -> str:
     """Kleinbuchstaben, Ziffern, Bindestriche — leer, wenn nichts davon übrig bleibt."""
-    roh = (text or "").lower().translate(UMSCHRIFT)
+    roh = (text or "").lower().translate(TRANSLITERATION)
     return re.sub(r"[^a-z0-9]+", "-", roh).strip("-")[:laenge]

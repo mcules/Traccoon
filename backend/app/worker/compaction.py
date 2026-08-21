@@ -34,29 +34,29 @@ log = logging.getLogger("traccoon.compaction")
 
 # From which share of the permitted context compaction happens. Not only at 100 %: the
 # summary itself and the next answer need room as well.
-SCHWELLE = 0.8
+THRESHOLD = 0.8
 # This many messages at the end stay untouched, the immediate working context.
 BEHALTEN = 6
 # Less than that is not worth it: then the history is so short that the summary would be
 # about as long as the original.
-MINDEST_BLOCK = 4
+MIN_BLOCK = 4
 # How much text goes into ONE summarisation assignment at most. The aux model is
 # deliberately small (local, 32k context); sending it the whole history of a large model
 # makes it refuse, and the compaction would always run into the hard cut. If the block does
 # not fit, only its oldest part is caught; the rest comes next time.
-MAX_AUX_ZEICHEN = 50_000
+MAX_AUX_CHARS = 50_000
 # This many pieces per compaction at most. Each is an aux call of its own; without a cap a
 # very long history could spend a large part of the runtime summarising. What does not get
 # its turn stays verbatim and is caught next time: nothing is lost, it only takes one round
 # longer.
-MAX_STUECKE = 12
+MAX_CHUNKS = 12
 # How many pieces go to the aux model at once. One after another, twelve calls of up to two
 # minutes each would be half the runtime of an agent run; all at once would overwhelm the
 # small local endpoint.
 AUX_PARALLEL = 3
 
 
-def _kopf_ende(messages: list[dict]) -> int:
+def _header_ende(messages: list[dict]) -> int:
     """Index behind the untouchable beginning (leading system messages plus first assignment)."""
     i = 0
     while i < len(messages) and messages[i].get("role") == "system":
@@ -83,7 +83,7 @@ def _schnittfaehig(m: dict) -> bool:
     return m.get("role") != "tool" and not m.get("tool_call_id")
 
 
-def _sichere_grenze(messages: list[dict], ab: int) -> int:
+def _sichere_limit(messages: list[dict], ab: int) -> int:
     """Next index from `ab` at which a cut may be made.
 
     Safe is the beginning of every message that is not a `tool` answer: that one hangs off a
@@ -95,7 +95,7 @@ def _sichere_grenze(messages: list[dict], ab: int) -> int:
     return len(messages)
 
 
-def _sichere_grenze_rueckwaerts(messages: list[dict], bis_hoechstens: int) -> int | None:
+def _sichere_limit_rueckwaerts(messages: list[dict], bis_hoechstens: int) -> int | None:
     """Largest permitted cut that does NOT lie behind `bis_hoechstens`, or None.
 
     Needed because the forward search can never make a block smaller: if there is no seam
@@ -108,19 +108,19 @@ def _sichere_grenze_rueckwaerts(messages: list[dict], bis_hoechstens: int) -> in
     return None
 
 
-def plan(messages: list[dict], grenze_tokens: int, gemessen: int) -> tuple[int, int] | None:
+def plan(messages: list[dict], limit_tokens: int, gemessen: int) -> tuple[int, int] | None:
     """(from, to) of the block to be summarised, or None when there is nothing to do."""
-    if not grenze_tokens or gemessen < grenze_tokens * SCHWELLE:
+    if not limit_tokens or gemessen < limit_tokens * THRESHOLD:
         return None
-    von = _kopf_ende(messages)
-    bis = _sichere_grenze(messages, max(von, len(messages) - BEHALTEN))
-    if bis - von < MINDEST_BLOCK:
+    von = _header_ende(messages)
+    bis = _sichere_limit(messages, max(von, len(messages) - BEHALTEN))
+    if bis - von < MIN_BLOCK:
         return None
     return von, bis
 
 
-def _als_text(messages: list[dict]) -> str:
-    teile = []
+def _as_text(messages: list[dict]) -> str:
+    parts = []
     for m in messages:
         rolle = m.get("role", "?")
         inhalt = m.get("content")
@@ -131,11 +131,11 @@ def _als_text(messages: list[dict]) -> str:
             inhalt = "(ruft Werkzeuge auf: " + ", ".join(
                 (c.get("function") or {}).get("name", "?") for c in m["tool_calls"]) + ")"
         if inhalt:
-            teile.append(f"[{rolle}] {inhalt[:4000]}")
-    return "\n\n".join(teile)
+            parts.append(f"[{rolle}] {inhalt[:4000]}")
+    return "\n\n".join(parts)
 
 
-AUFTRAG = (
+TASK = (
     "Fasse den folgenden Ausschnitt eines Agenten-Laufs zusammen. Die Zusammenfassung ERSETZT "
     "den Ausschnitt — was hier fehlt, ist für den weiteren Lauf verloren.\n\n"
     "Nimm auf: erledigte Schritte und ihr Ergebnis, getroffene Entscheidungen samt Begründung, "
@@ -145,7 +145,7 @@ AUFTRAG = (
 )
 
 
-UEBERGABE_AUFTRAG = (
+HANDOVER_TASK = (
     "Der folgende Agenten-Lauf wurde an einer Grenze beendet (Zeit, Iterationen oder Tokens) "
     "und wird gleich in einem FRISCHEN Lauf fortgesetzt — der weiß nichts außer dem, was du "
     "jetzt aufschreibst. Schreib die Übergabe an ihn, in genau diesen drei Abschnitten:\n\n"
@@ -159,7 +159,7 @@ UEBERGABE_AUFTRAG = (
 )
 
 
-async def uebergabe(db, *, messages: list[dict], grund: str, letzter_text: str,
+async def handover(db, *, messages: list[dict], reason: str, last_text: str,
                     owner_id, agent, tokens: dict, base_urls: dict) -> str:
     """Handover to the continuation run: what was learned, what was done, what comes next.
 
@@ -173,27 +173,27 @@ async def uebergabe(db, *, messages: list[dict], grund: str, letzter_text: str,
     """
     from .aux import aux_chat
 
-    notloesung = f"{grund}\n\nLetzter Stand:\n{letzter_text or '(kein Text)'}"
-    von = _kopf_ende(messages)
-    if len(messages) - von < MINDEST_BLOCK:
+    notloesung = f"{reason}\n\nLetzter Stand:\n{last_text or '(kein Text)'}"
+    von = _header_ende(messages)
+    if len(messages) - von < MIN_BLOCK:
         return notloesung
-    stuecke = _haeppchen(messages, von, len(messages))[:MAX_STUECKE]
-    roh = await _zusammenfassen(db, messages, stuecke, owner_id=owner_id, agent=agent,
+    chunks = _haeppchen(messages, von, len(messages))[:MAX_CHUNKS]
+    roh = await _zusammenfassen(db, messages, chunks, owner_id=owner_id, agent=agent,
                                 tokens=tokens, base_urls=base_urls)
     if not roh.strip():
         return notloesung
     # Second pass: the actual handover is made from the piece summaries. With a single piece
     # that would be a summary of the summary, and then it is better to work on the history
     # directly instead.
-    quelle = roh if len(stuecke) > 1 else _als_text(messages[von:])[:MAX_AUX_ZEICHEN]
+    source = roh if len(chunks) > 1 else _as_text(messages[von:])[:MAX_AUX_CHARS]
     text = await aux_chat(
         db, owner_id=owner_id, task="compression",
-        messages=[{"role": "user", "content": UEBERGABE_AUFTRAG + quelle}],
+        messages=[{"role": "user", "content": HANDOVER_TASK + source}],
         agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1500)
     if not text:
         log.warning("Handover without an aux model, the last state stays")
-        return f"{grund}\n\nStand aus dem Verlauf:\n{roh}"
-    return f"{grund}\n\n{text.strip()}"
+        return f"{reason}\n\nStand aus dem Verlauf:\n{roh}"
+    return f"{reason}\n\n{text.strip()}"
 
 
 def _haeppchen(messages: list[dict], von: int, bis: int) -> list[tuple[int, int]]:
@@ -202,22 +202,22 @@ def _haeppchen(messages: list[dict], von: int, bis: int) -> list[tuple[int, int]
     Always at permitted seams and always with progress: if need be a piece is a single
     message (whose text `_als_text` truncates at 4000 characters anyway).
     """
-    stuecke: list[tuple[int, int]] = []
+    chunks: list[tuple[int, int]] = []
     start = von
     while start < bis:
         ende = bis
-        while ende > start + 1 and len(_als_text(messages[start:ende])) > MAX_AUX_ZEICHEN:
-            kleiner = _sichere_grenze_rueckwaerts(messages, start + (ende - start) // 2)
+        while ende > start + 1 and len(_as_text(messages[start:ende])) > MAX_AUX_CHARS:
+            kleiner = _sichere_limit_rueckwaerts(messages, start + (ende - start) // 2)
             if kleiner is None or kleiner <= start or kleiner >= ende:
                 ende = start + 1        # no seam left: one message, but progress
                 break
             ende = kleiner
-        stuecke.append((start, ende))
+        chunks.append((start, ende))
         start = ende
-    return stuecke
+    return chunks
 
 
-async def _zusammenfassen(db, messages: list[dict], stuecke: list[tuple[int, int]], *,
+async def _zusammenfassen(db, messages: list[dict], chunks: list[tuple[int, int]], *,
                           owner_id, agent, tokens, base_urls) -> str:
     """Summarise every piece on its own and append the parts to each other.
 
@@ -228,57 +228,57 @@ async def _zusammenfassen(db, messages: list[dict], stuecke: list[tuple[int, int
     a history of 500k characters.
     """
     from .aux import aux_chat
-    zaehler = asyncio.Semaphore(AUX_PARALLEL)
+    counter = asyncio.Semaphore(AUX_PARALLEL)
 
     async def _stueck(nr: int, a: int, b: int) -> str:
-        von_wo = f"(Teil {nr} von {len(stuecke)})\n\n" if len(stuecke) > 1 else ""
-        async with zaehler:
+        von_wo = f"(Teil {nr} von {len(chunks)})\n\n" if len(chunks) > 1 else ""
+        async with counter:
             try:
                 text = await aux_chat(
                     db, owner_id=owner_id, task="compression",
                     messages=[{"role": "user",
-                               "content": AUFTRAG + von_wo + _als_text(messages[a:b])}],
+                               "content": TASK + von_wo + _as_text(messages[a:b])}],
                     agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1024)
             except Exception:  # noqa: BLE001 - one outage must not cost the run
-                log.exception("Compaction: piece %d/%d failed", nr, len(stuecke))
+                log.exception("Compaction: piece %d/%d failed", nr, len(chunks))
                 text = None
         if text:
             return text.strip()
         log.warning("Compaction: piece %d/%d without a summary (aux not available)",
-                    nr, len(stuecke))
+                    nr, len(chunks))
         return (f"- (Teil {nr}: {b - a} Nachrichten, Zusammenfassung nicht möglich — "
                 "dieser Abschnitt ist verloren, im Zweifel nachprüfen.)")
 
-    teile = await asyncio.gather(*[_stueck(nr, a, b)
-                                   for nr, (a, b) in enumerate(stuecke, 1)])
-    return "\n".join(teile)
+    parts = await asyncio.gather(*[_stueck(nr, a, b)
+                                   for nr, (a, b) in enumerate(chunks, 1)])
+    return "\n".join(parts)
 
 
-async def kompaktiere(db, *, messages: list[dict], grenze_tokens: int, gemessen: int,
+async def kompaktiere(db, *, messages: list[dict], limit_tokens: int, gemessen: int,
                       owner_id: int | None, agent, tokens: dict, base_urls: dict) -> list[dict] | None:
     """Truncate the history. Returns the new message list, or None when there was nothing to do."""
-    bereich = plan(messages, grenze_tokens, gemessen)
-    if bereich is None:
+    area = plan(messages, limit_tokens, gemessen)
+    if area is None:
         return None
-    von, bis = bereich
+    von, bis = area
     # The whole block is summarised, but in pieces the (small, local) aux model accepts as
     # well. On 2026-07-31 the worker stood at 100 % CPU for 8 hours at this place because the
     # shrinking ran over the FORWARD search and always returned the same limit on a pure tool
     # history; that is why `_haeppchen` searches backwards and forces progress in every
     # round.
-    stuecke = _haeppchen(messages, von, bis)
-    if len(stuecke) > MAX_STUECKE:
+    chunks = _haeppchen(messages, von, bis)
+    if len(chunks) > MAX_CHUNKS:
         # Catch only the oldest part; the rest stays verbatim and comes next time.
-        stuecke = stuecke[:MAX_STUECKE]
-        bis = stuecke[-1][1]
-    zusammenfassung = await _zusammenfassen(db, messages, stuecke, owner_id=owner_id,
+        chunks = chunks[:MAX_CHUNKS]
+        bis = chunks[-1][1]
+    zusammenfassung = await _zusammenfassen(db, messages, chunks, owner_id=owner_id,
                                             agent=agent, tokens=tokens, base_urls=base_urls)
     log.info("Compaction: %d messages summarised in %d piece(s)",
-             bis - von, len(stuecke))
+             bis - von, len(chunks))
 
-    ersatz = ("# Zusammenfassung des bisherigen Verlaufs\n"
+    replacement = ("# Zusammenfassung des bisherigen Verlaufs\n"
               "(Der ausführliche Verlauf wurde gekürzt, um im Kontextfenster zu bleiben. "
               "Was hier steht, ist alles, was davon bleibt — arbeite damit weiter, statt "
               "noch einmal von vorn zu beginnen.)\n\n" + zusammenfassung)
 
-    return messages[:von] + [{"role": "system", "content": ersatz}] + messages[bis:]
+    return messages[:von] + [{"role": "system", "content": replacement}] + messages[bis:]

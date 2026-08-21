@@ -27,19 +27,19 @@ def test_agentdef_traegt_kontextgrenze():
 
 def test_lauf_liest_nur_vorhandene_agentfelder():
     """Every `agent.<field>` in runtime.py has to exist on the AgentDef."""
-    quelle = Path(inspect.getfile(runtime)).read_text()
-    felder = set(AgentDef.__dataclass_fields__) | {
+    source = Path(inspect.getfile(runtime)).read_text()
+    fields = set(AgentDef.__dataclass_fields__) | {
         n for n, _ in inspect.getmembers(AgentDef, predicate=inspect.isfunction)}
     gelesen = {
         node.attr
-        for node in ast.walk(ast.parse(quelle))
+        for node in ast.walk(ast.parse(source))
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
         and node.value.id == "agent"
     }
-    assert gelesen <= felder, f"AgentDef is missing: {sorted(gelesen - felder)}"
+    assert gelesen <= fields, f"AgentDef is missing: {sorted(gelesen - fields)}"
 
 
-def test_fehlerzweig_meldet_den_echten_fehler(caplog):
+def test_fehlerzweig_meldet_den_echten_error(caplog):
     """`log` in the run has to be the logger; otherwise the handler swallows the cause."""
     assert isinstance(runtime.log, logging.Logger)
     with caplog.at_level(logging.ERROR):
@@ -58,23 +58,23 @@ async def test_watchdog_meldet_stillstand_genau_einmal(monkeypatch, caplog):
     dumps = []
     monkeypatch.setattr(worker.faulthandler, "dump_traceback", lambda: dumps.append(1))
     monkeypatch.setattr(worker, "LOOP_STALL_SEC", 10.0)
-    monkeypatch.setattr(worker, "_LETZTER_TICK", worker.time.monotonic() - 60)
+    monkeypatch.setattr(worker, "_LAST_TICK", worker.time.monotonic() - 60)
 
     with caplog.at_level(logging.ERROR):
-        gemeldet = worker.watchdog_pruefe(False)
+        gemeldet = worker.watchdog_check(False)
     assert gemeldet and dumps == [1]
     assert "has not ticked" in caplog.text
 
     # Second pass with a persisting standstill: no second dump (no log flooding).
-    assert worker.watchdog_pruefe(True) is True
+    assert worker.watchdog_check(True) is True
     assert dumps == [1]
 
     # The loop runs again, so the all-clear, and the state goes back.
     worker._loop_tick()
-    assert worker.watchdog_pruefe(True) is False
+    assert worker.watchdog_check(True) is False
 
 
-async def test_modellkatalog_traegt_kontext_und_tempo(db):
+async def test_modellkatalog_traegt_context_und_tempo(db):
     """With local models the price is 0: the choice is decided by the window and the speed."""
     from app.api.cost import PriceIn, list_models, upsert_model
     from app.models.user import User as _User

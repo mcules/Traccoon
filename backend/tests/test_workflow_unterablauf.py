@@ -17,8 +17,8 @@ from conftest import auth, make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def _ablauf(db, besitzer, key: str, graph: dict, *, veroeffentlicht=True):
-    d = WorkflowDefinition(project_id=None, key=key, name=key, created_by=besitzer.id,
+async def _flow(db, owner, key: str, graph: dict, *, veroeffentlicht=True):
+    d = WorkflowDefinition(project_id=None, key=key, name=key, created_by=owner.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
     await db.flush()
@@ -33,7 +33,7 @@ async def _ablauf(db, besitzer, key: str, graph: dict, *, veroeffentlicht=True):
     return d
 
 
-def _gerade(*, extra_node=None, extra_edges=()):
+def _line_fit(*, extra_node=None, extra_edges=()):
     nodes = [{"id": "s", "type": "start", "position": {"x": 0, "y": 0}, "data": {"config": {}}},
              {"id": "e", "type": "end", "position": {"x": 0, "y": 2},
               "data": {"config": {"outcome": "completed"}}}]
@@ -44,10 +44,10 @@ def _gerade(*, extra_node=None, extra_edges=()):
     return {"nodes": nodes, "edges": edges}
 
 
-async def test_unterablauf_ruft_einen_benannten_ablauf(client, db):
+async def test_unterablauf_ruft_einen_benannten_flow(client, db):
     anna = await make_user(db, "anna")
-    kind = await _ablauf(db, anna, "kind", _gerade())
-    eltern = await _ablauf(db, anna, "eltern", _gerade(
+    kind = await _flow(db, anna, "kind", _line_fit())
+    eltern = await _flow(db, anna, "eltern", _line_fit(
         extra_node={"id": "unter", "type": "subflow", "position": {"x": 0, "y": 1},
                     "data": {"config": {"definition_id": kind.id}}},
         extra_edges=[{"id": "a", "source": "s", "target": "unter"},
@@ -63,18 +63,18 @@ async def test_unterablauf_ruft_einen_benannten_ablauf(client, db):
     assert len(kinder) == 1, "the named flow has to have run as a child instance"
 
 
-async def test_ohne_ablauf_meckert_die_pruefung():
-    graph = _gerade(
+async def test_ohne_flow_meckert_die_check():
+    graph = _line_fit(
         extra_node={"id": "unter", "type": "subflow", "position": {"x": 0, "y": 1},
                     "data": {"config": {}}},
         extra_edges=[{"id": "a", "source": "s", "target": "unter"},
                      {"id": "b", "source": "unter", "target": "e", "sourceHandle": "completed"}])
-    fehler = engine.validate_graph(WorkflowSubjectKind.standalone, graph)
-    assert any("kein Ablauf gewählt" in f for f in fehler)
+    error = engine.validate_graph(WorkflowSubjectKind.standalone, graph)
+    assert any("kein Ablauf gewählt" in f for f in error)
 
 
-async def test_benannter_ablauf_genuegt_der_pruefung():
-    graph = _gerade(
+async def test_benannter_flow_genuegt_der_check():
+    graph = _line_fit(
         extra_node={"id": "unter", "type": "subflow", "position": {"x": 0, "y": 1},
                     "data": {"config": {"definition_id": 7}}},
         extra_edges=[{"id": "a", "source": "s", "target": "unter"},
@@ -85,8 +85,8 @@ async def test_benannter_ablauf_genuegt_der_pruefung():
 async def test_selbstaufruf_wird_verweigert(client, db):
     """A flow that enters itself as a sub-flow would run endlessly."""
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna, "ich", _gerade())
-    graph = _gerade(
+    d = await _flow(db, anna, "ich", _line_fit())
+    graph = _line_fit(
         extra_node={"id": "unter", "type": "subflow", "position": {"x": 0, "y": 1},
                     "data": {"config": {"definition_id": d.id}}},
         extra_edges=[{"id": "a", "source": "s", "target": "unter"},

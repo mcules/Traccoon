@@ -6,36 +6,36 @@ reminder in the run came at round 78 of 80, long after the time was gone. These 
 when and how following up happens earlier.
 """
 from app.worker.runtime import (
-    ERGEBNIS_TOOLS, ERMAHNUNG_BEI, ermahnung_text, ermahnungen_faellig,
+    RESULT_TOOLS, REMINDER_BEI, reminder_text, ermahnungen_due,
 )
 
 
 def test_am_anfang_wird_nicht_genoergelt():
-    assert ermahnungen_faellig(0.0, 0) == 0
-    assert ermahnungen_faellig(ERMAHNUNG_BEI[0] - 0.01, 0) == 0
+    assert ermahnungen_due(0.0, 0) == 0
+    assert ermahnungen_due(REMINDER_BEI[0] - 0.01, 0) == 0
 
 
-def test_erste_ermahnung_deutlich_vor_schluss():
+def test_first_reminder_deutlich_vor_schluss():
     """The point of the exercise: early enough for the run to still do something with it."""
-    assert ERMAHNUNG_BEI[0] <= 0.5
-    assert ermahnungen_faellig(ERMAHNUNG_BEI[0], 0) == 1
+    assert REMINDER_BEI[0] <= 0.5
+    assert ermahnungen_due(REMINDER_BEI[0], 0) == 1
 
 
-def test_jede_schwelle_nur_einmal():
+def test_jede_threshold_nur_einmal():
     """Following up twice is guidance, on every round it is noise."""
-    assert ermahnungen_faellig(0.9, 1) == 2
-    assert ermahnungen_faellig(0.99, 2) == 2      # nothing due any more
-    assert ermahnungen_faellig(1.0, 2) == len(ERMAHNUNG_BEI)
+    assert ermahnungen_due(0.9, 1) == 2
+    assert ermahnungen_due(0.99, 2) == 2      # nothing due any more
+    assert ermahnungen_due(1.0, 2) == len(REMINDER_BEI)
 
 
 def test_sprung_ueber_beide_schwellen_holt_beide_nach():
     """A single very long tool call must not swallow a threshold."""
-    assert ermahnungen_faellig(0.9, 0) == 2
+    assert ermahnungen_due(0.9, 0) == 2
 
 
-def test_entwickler_wird_zum_schreiben_geschickt():
-    weich = ermahnung_text("execute", 0.35, scharf=False)
-    hart = ermahnung_text("execute", 0.65, scharf=True)
+def test_entwickler_wird_zum_write_geschickt():
+    weich = reminder_text("execute", 0.35, scharf=False)
+    hart = reminder_text("execute", 0.65, scharf=True)
     assert "35 %" in weich and "noch keine Änderung geschrieben" in weich
     assert "JETZT" in hart and "kleinsten sinnvollen Änderung" in hart
     assert "continue_later" in hart and "ask_human" in hart
@@ -43,16 +43,16 @@ def test_entwickler_wird_zum_schreiben_geschickt():
 
 
 def test_architekt_wird_zum_plan_geschickt():
-    hart = ermahnung_text("plan", 0.65, scharf=True)
+    hart = reminder_text("plan", 0.65, scharf=True)
     assert "submit_plan" in hart
     assert "Änderung" not in hart                 # er schreibt keinen Code
     assert "offen" in hart                        # better a plan with uncertainties
 
 
-def test_ergebnis_ist_je_modus_etwas_anderes():
-    assert ERGEBNIS_TOOLS["execute"] == {"fs_write", "fs_edit"}
-    assert ERGEBNIS_TOOLS["plan"] == {"submit_plan"}
+def test_result_ist_je_modus_etwas_anderes():
+    assert RESULT_TOOLS["execute"] == {"fs_write", "fs_edit"}
+    assert RESULT_TOOLS["plan"] == {"submit_plan"}
     # An agent without write permission gets no reminder at all: the intersection with the
     # offered tools is empty, and whoever may not write should not either.
     angeboten = {"fs_read", "fs_list", "codegraph"}
-    assert not (ERGEBNIS_TOOLS["execute"] & angeboten)
+    assert not (RESULT_TOOLS["execute"] & angeboten)

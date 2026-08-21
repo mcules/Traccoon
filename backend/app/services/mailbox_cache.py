@@ -25,15 +25,15 @@ log = logging.getLogger("traccoon.mailbox")
 
 PREFIX = "traccoon:mailbox"
 # Ordner ändern sich selten, Listen dauernd. Beides überlebt einen Klick, keines eine Pause.
-TTL_ORDNER = 120
-TTL_LISTE = 45
+TTL_FOLDER = 120
+TTL_LISTING = 45
 TTL_UNGELESEN = 60
 
 
 async def _generation(konto_id: int) -> int:
     try:
-        wert = await get_redis().get(f"{PREFIX}:{konto_id}:gen")
-        return int(wert) if wert else 0
+        value = await get_redis().get(f"{PREFIX}:{konto_id}:gen")
+        return int(value) if value else 0
     except Exception:  # noqa: BLE001 — ohne Redis läuft alles wie vorher, nur langsamer
         return -1
 
@@ -46,38 +46,38 @@ async def entwerten(konto_id: int) -> None:
         log.debug("Cache für Konto %s nicht entwertet", konto_id)
 
 
-async def hole(konto_id: int, teil: str):
+async def hole(konto_id: int, part: str):
     gen = await _generation(konto_id)
     if gen < 0:
         return None
     try:
-        roh = await get_redis().get(f"{PREFIX}:{konto_id}:{gen}:{teil}")
+        roh = await get_redis().get(f"{PREFIX}:{konto_id}:{gen}:{part}")
         return json.loads(roh) if roh else None
     except Exception:  # noqa: BLE001
         return None
 
 
-async def lege(konto_id: int, teil: str, wert, ttl: int) -> None:
+async def lege(konto_id: int, part: str, value, ttl: int) -> None:
     gen = await _generation(konto_id)
     if gen < 0:
         return
     try:
-        await get_redis().set(f"{PREFIX}:{konto_id}:{gen}:{teil}",
-                              json.dumps(wert, ensure_ascii=False), ex=ttl)
+        await get_redis().set(f"{PREFIX}:{konto_id}:{gen}:{part}",
+                              json.dumps(value, ensure_ascii=False), ex=ttl)
     except Exception:  # noqa: BLE001
-        log.debug("Cache für Konto %s nicht geschrieben (%s)", konto_id, teil)
+        log.debug("Cache für Konto %s nicht geschrieben (%s)", konto_id, part)
 
 
-async def gecacht(konto_id: int, teil: str, ttl: int, holen):
+async def gecacht(konto_id: int, part: str, ttl: int, fetch):
     """Aus dem Cache, sonst holen und hinlegen.
 
     `holen` ist die teure Frage ans Postfach; sie läuft nur, wenn der Cache nichts hat.
     """
-    vorhanden = await hole(konto_id, teil)
+    vorhanden = await hole(konto_id, part)
     if vorhanden is not None:
         return vorhanden
-    frisch = await holen()
-    await lege(konto_id, teil, frisch, ttl)
+    frisch = await fetch()
+    await lege(konto_id, part, frisch, ttl)
     return frisch
 
 
@@ -95,14 +95,14 @@ async def vorwaermen(konto) -> None:
 
     from . import mailbox
 
-    async def eins(teil: str, ttl: int, holen):
+    async def eins(part: str, ttl: int, fetch):
         try:
-            await lege(konto.id, teil, await holen(), ttl)
+            await lege(konto.id, part, await fetch(), ttl)
         except Exception:  # noqa: BLE001
-            log.debug("Vorwärmen (%s) für Konto %s ging nicht", teil, konto.id)
+            log.debug("Vorwärmen (%s) für Konto %s ging nicht", part, konto.id)
 
     await asyncio.gather(
-        eins("folders:1", TTL_ORDNER, lambda: mailbox.ordner(konto, True)),
-        eins("list:INBOX:0:50", TTL_LISTE, lambda: mailbox.liste(konto, "INBOX", "", 0, 50)),
+        eins("folders:1", TTL_FOLDER, lambda: mailbox.folder(konto, True)),
+        eins("list:INBOX:0:50", TTL_LISTING, lambda: mailbox.listing(konto, "INBOX", "", 0, 50)),
         eins("unread", TTL_UNGELESEN, lambda: mailbox.ungelesen(konto)),
     )

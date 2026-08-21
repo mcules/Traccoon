@@ -10,8 +10,8 @@ from ..models.assistant import AssistantTask
 from .assistant_policy import parse_sender, upsert_policy
 
 
-async def _finde_quelle(db: AsyncSession, owner_user_id: int | None, chat_id: str,
-                        bezug: str) -> int | None:
+async def _finde_source(db: AsyncSession, owner_user_id: int | None, chat_id: str,
+                        reference: str) -> int | None:
     """Which inbox item does the quoted message belong to? Returns assistant_task_id or None.
 
     Telegram messages of the assistant come into being from notification rows
@@ -20,20 +20,20 @@ async def _finde_quelle(db: AsyncSession, owner_user_id: int | None, chat_id: st
     from sqlalchemy import select
 
     from ..models.notification import Notification
-    titel = (bezug.strip().splitlines() or [""])[0].strip()
-    if not titel:
+    title = (reference.strip().splitlines() or [""])[0].strip()
+    if not title:
         return None
     row = (await db.execute(
         select(Notification).where(
             Notification.chat_id == str(chat_id),
             Notification.assistant_task_id.isnot(None),
-            Notification.title == titel,
+            Notification.title == title,
         ).order_by(Notification.id.desc()).limit(1))).scalars().first()
     return row.assistant_task_id if row else None
 
 
 async def create_chat_task(db: AsyncSession, owner_user_id: int | None, text: str,
-                           chat_id: str, agent: str = "", bezug: str = "") -> AssistantTask:
+                           chat_id: str, agent: str = "", reference: str = "") -> AssistantTask:
     """Hand a chat message to the assistant (created plus queued).
 
     Shared so that every entry does the same. In the bot it hung off a single handler, and an
@@ -47,11 +47,11 @@ async def create_chat_task(db: AsyncSession, owner_user_id: int | None, text: st
     meta = {"chat_text": text, "chat_id": str(chat_id)}
     if agent:
         meta["agent"] = agent        # otherwise the run falls back to 'assistent'
-    if bezug.strip():
-        meta["bezug_text"] = bezug.strip()[:2000]
-        quelle = await _finde_quelle(db, owner_user_id, str(chat_id), bezug)
-        if quelle is not None:
-            meta["bezug_task_id"] = quelle
+    if reference.strip():
+        meta["bezug_text"] = reference.strip()[:2000]
+        source = await _finde_source(db, owner_user_id, str(chat_id), reference)
+        if source is not None:
+            meta["bezug_task_id"] = source
     task = AssistantTask(owner_user_id=owner_user_id, kind="chat", source="telegram",
                          title=text[:200], status="approved", meta=meta)
     db.add(task)

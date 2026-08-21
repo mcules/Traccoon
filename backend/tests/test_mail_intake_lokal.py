@@ -21,7 +21,7 @@ from conftest import make_user, make_webhook, melde
 @pytest.fixture
 async def anna(db):
     user = await make_user(db, "anna")
-    await workflow_templates.anlegen(db, "mail-eingang", besitzer_id=user.id)
+    await workflow_templates.create(db, "mail-eingang", owner_id=user.id)
     await db.commit()
     return user
 
@@ -81,11 +81,11 @@ async def test_dieselbe_mail_zweimal_bleibt_ein_item(db, anna):
     Mail-Eingangs — damit hat ihn jeder Webhook, nicht nur dieser eine.
     """
     sub = await make_webhook(db, anna, "mail-test", mode="assistant", agent="assistent")
-    nutzlast = {"account": "privat", "uid": 4, "from": "rechnung@beispiel.de",
+    payload = {"account": "privat", "uid": 4, "from": "rechnung@beispiel.de",
                 "subject": "Rechnung 4711", "body": "IBAN DE12 3456 7890, 129,90 EUR"}
-    assert await melde(db, sub, nutzlast), "die erste Zustellung muss laufen"
+    assert await melde(db, sub, payload), "die erste Zustellung muss laufen"
 
-    ids = await melde(db, sub, {**nutzlast, "body": "egal"})
+    ids = await melde(db, sub, {**payload, "body": "egal"})
     assert ids == []
     items = (await db.execute(select(AssistantTask).where(
         AssistantTask.source_ref == "privat:4"))).scalars().all()

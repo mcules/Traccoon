@@ -52,9 +52,9 @@ def _graph() -> dict:
     }
 
 
-async def _ablauf(db, besitzer, graph=None, veroeffentlicht=False):
-    d = WorkflowDefinition(project_id=None, key=f"probe{besitzer.id}", name="Probe",
-                           created_by=besitzer.id, subject_kind=WorkflowSubjectKind.standalone)
+async def _flow(db, owner, graph=None, veroeffentlicht=False):
+    d = WorkflowDefinition(project_id=None, key=f"probe{owner.id}", name="Probe",
+                           created_by=owner.id, subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
     await db.flush()
     v = WorkflowVersion(definition_id=d.id, version=1, graph=graph or _graph(),
@@ -68,13 +68,13 @@ async def _ablauf(db, besitzer, graph=None, veroeffentlicht=False):
     return d
 
 
-async def test_probelauf_laeuft_durch_und_zeigt_was_er_taete(client, db, monkeypatch):
+async def test_probelauf_running_durch_und_zeigt_was_er_taete(client, db, monkeypatch):
     gerufen = []
-    monkeypatch.setattr(workflow_tools, "aufrufen",
+    monkeypatch.setattr(workflow_tools, "call",
                         lambda *a, **k: gerufen.append(a) or {"ok": True, "text": ""})
 
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna),
                           json={"context": {"vorgang": {"titel": "Störung in der Halle",
                                                         "stufe": 5}}})
@@ -82,34 +82,34 @@ async def test_probelauf_laeuft_durch_und_zeigt_was_er_taete(client, db, monkeyp
     daten = r.json()
     assert daten["status"] == WorkflowInstanceStatus.completed.value
 
-    schritte = {s["node_id"]: s for s in daten["steps"]}
+    steps = {s["node_id"]: s for s in daten["steps"]}
     # The tool was NOT called: it only says what it would do.
     assert gerufen == []
-    assert "würde ausführen: tool_call" in schritte["werkzeug"]["result"]["probe"]
-    assert "obsidian__obsidian_append_to_note" in schritte["werkzeug"]["result"]["probe"]
+    assert "würde ausführen: tool_call" in steps["werkzeug"]["result"]["probe"]
+    assert "obsidian__obsidian_append_to_note" in steps["werkzeug"]["result"]["probe"]
     # The branch really computed: level 5 >= 3, so the important path.
-    assert "ticket" in schritte and "warten" not in schritte
-    assert "würde ausführen: create_ticket" in schritte["ticket"]["result"]["probe"]
+    assert "ticket" in steps and "warten" not in steps
+    assert "würde ausführen: create_ticket" in steps["ticket"]["result"]["probe"]
     # And no ticket has come into being.
     assert (await db.execute(select(Issue))).scalars().all() == []
 
 
-async def test_die_andere_seite_der_weiche_laesst_sich_genauso_pruefen(client, db):
+async def test_die_andere_page_der_weiche_laesst_sich_genauso_check(client, db):
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna),
                           json={"context": {"vorgang": {"titel": "Kleinkram", "stufe": 1}}})
-    schritte = {s["node_id"]: s for s in r.json()["steps"]}
-    assert "warten" in schritte and "ticket" not in schritte
+    steps = {s["node_id"]: s for s in r.json()["steps"]}
+    assert "warten" in steps and "ticket" not in steps
     # The timer does not stop the trial run; otherwise one would never see the end.
-    assert "würde warten: 2 h" in schritte["warten"]["result"]["probe"]
+    assert "würde warten: 2 h" in steps["warten"]["result"]["probe"]
     assert r.json()["status"] == WorkflowInstanceStatus.completed.value
 
 
 async def test_probelauf_nimmt_den_entwurf_nicht_das_veroeffentlichte(client, db):
     """What gets checked is what you just built."""
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna, veroeffentlicht=True)
+    d = await _flow(db, anna, veroeffentlicht=True)
     entwurf = _graph()
     entwurf["nodes"][1]["data"]["config"]["action"]["params"]["tool"] = "neues__werkzeug"
     db.add(WorkflowVersion(definition_id=d.id, version=2, graph=entwurf,
@@ -118,38 +118,38 @@ async def test_probelauf_nimmt_den_entwurf_nicht_das_veroeffentlichte(client, db
 
     r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna),
                           json={"context": {"vorgang": {"titel": "x", "stufe": 9}}})
-    schritte = {s["node_id"]: s for s in r.json()["steps"]}
-    assert "neues__werkzeug" in schritte["werkzeug"]["result"]["probe"]
+    steps = {s["node_id"]: s for s in r.json()["steps"]}
+    assert "neues__werkzeug" in steps["werkzeug"]["result"]["probe"]
     # The published version stays the one real runs point at.
     await db.refresh(d)
     assert (await db.get(WorkflowVersion, d.current_version_id)).version == 1
 
 
-async def test_unschluessiger_ablauf_wird_nicht_durchgespielt(client, db):
+async def test_unschluessiger_flow_wird_nicht_durchgespielt(client, db):
     """A trial run over a broken graph only creates confusion; better to say what is missing."""
     anna = await make_user(db, "anna")
     kaputt = _graph()
     kaputt["edges"] = [e for e in kaputt["edges"] if e.get("sourceHandle") != "ja"]
-    d = await _ablauf(db, anna, graph=kaputt)
+    d = await _flow(db, anna, graph=kaputt)
     r = await client.post(f"/workflows/{d.id}/dry-run", headers=auth(anna), json={})
     assert r.status_code == 422 and "ja" in r.text
 
 
-async def test_fremder_darf_nicht_proben(client, db):
+async def test_fremder_may_nicht_proben(client, db):
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
-    d = await _ablauf(db, anna)
+    d = await _flow(db, anna)
     assert (await client.post(f"/workflows/{d.id}/dry-run", headers=auth(bert),
                               json={})).status_code == 403
 
 
-async def test_probelauf_prueft_den_stand_aus_dem_editor(client, db):
+async def test_probelauf_prueft_den_state_aus_dem_editor(client, db):
     """While building one changes things constantly without saving: what should be checked is
     what one sees in front of one, not what landed in the database last."""
     from app.models.workflow import WorkflowInstance
 
     anna = await make_user(db, "anna")
-    d = await _ablauf(db, anna, veroeffentlicht=True)
+    d = await _flow(db, anna, veroeffentlicht=True)
 
     editor = _graph()
     editor["nodes"][1]["data"]["config"]["action"]["params"]["tool"] = "gerade__gebaut"
@@ -157,8 +157,8 @@ async def test_probelauf_prueft_den_stand_aus_dem_editor(client, db):
                           json={"context": {"vorgang": {"titel": "x", "stufe": 9}},
                                 "graph": editor})
     assert r.status_code == 201, r.text
-    schritte = {s["node_id"]: s for s in r.json()["steps"]}
-    assert "gerade__gebaut" in schritte["werkzeug"]["result"]["probe"]
+    steps = {s["node_id"]: s for s in r.json()["steps"]}
+    assert "gerade__gebaut" in steps["werkzeug"]["result"]["probe"]
 
     # The trial leaves nothing behind: no instance, no additional version.
     assert (await db.execute(select(WorkflowInstance))).scalars().all() == []

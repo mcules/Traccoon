@@ -13,66 +13,66 @@ import datetime as dt
 import pytest
 
 from app.models.ops import Job
-from app.services.scheduler import ZEITPLAN_ARTEN, _due, _sekunden
+from app.services.scheduler import ZEITPLAN_KINDS, _due, _seconds
 from conftest import auth, make_user
 
 
-def _job(**felder) -> Job:
-    grund = {"name": "Probe", "type": "interval", "schedule": "60", "kind": "workflow",
+def _job(**fields) -> Job:
+    reason = {"name": "Probe", "type": "interval", "schedule": "60", "kind": "workflow",
              "enabled": True, "last_run_at": None}
-    return Job(**{**grund, "id": 1, **felder})
+    return Job(**{**reason, "id": 1, **fields})
 
 
-JETZT = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
+NOW = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.timezone.utc)
 
 
 # ── Fällig oder nicht ────────────────────────────────────────────────────────
 
-def test_intervall_laeuft_nach_der_wartezeit():
+def test_intervall_running_nach_der_wartezeit():
     job = _job(type="interval", schedule="900",
-               last_run_at=JETZT - dt.timedelta(seconds=899))
-    assert _due(job, JETZT) is False
-    job.last_run_at = JETZT - dt.timedelta(seconds=901)
-    assert _due(job, JETZT) is True
+               last_run_at=NOW - dt.timedelta(seconds=899))
+    assert _due(job, NOW) is False
+    job.last_run_at = NOW - dt.timedelta(seconds=901)
+    assert _due(job, NOW) is True
 
 
 def test_intervall_mit_praefix_wird_verstanden():
     """`interval:900` steht in älteren Jobs und meint dasselbe wie `900`."""
-    assert _sekunden("interval:900") == 900
-    assert _sekunden("900") == 900
-    assert _sekunden(" interval:900 ") == 900
+    assert _seconds("interval:900") == 900
+    assert _seconds("900") == 900
+    assert _seconds(" interval:900 ") == 900
     # Unlesbares ergibt eine Minute: lieber zu oft als nie.
-    assert _sekunden("alle 15 min") == 60
-    assert _sekunden("") == 60
-    assert _sekunden("0") == 60
+    assert _seconds("alle 15 min") == 60
+    assert _seconds("") == 60
+    assert _seconds("0") == 60
 
 
-def test_neuer_job_ohne_lauf_ist_sofort_faellig():
-    assert _due(_job(type="interval", schedule="900"), JETZT) is True
+def test_neuer_job_ohne_lauf_ist_sofort_due():
+    assert _due(_job(type="interval", schedule="900"), NOW) is True
 
 
 def test_falscher_zeitplan_macht_den_job_still(caplog):
     """Der Fall, um den es geht: In `type` steht eine Art statt eines Zeitplans."""
     job = _job(type="prompt", schedule="interval:900",
-               last_run_at=JETZT - dt.timedelta(days=13))
+               last_run_at=NOW - dt.timedelta(days=13))
     with caplog.at_level("WARNING"):
-        assert _due(job, JETZT) is False
+        assert _due(job, NOW) is False
     # Still bleibt er — aber nicht mehr unbemerkt.
     assert "prompt" in caplog.text and "nie" in caplog.text
 
 
 def test_cron_bleibt_unberuehrt():
     job = _job(type="cron", schedule="0 6 * * *",
-               last_run_at=JETZT - dt.timedelta(days=1))
-    assert _due(job, JETZT) is True
-    assert _due(_job(type="cron", schedule="kein cron"), JETZT) is False
+               last_run_at=NOW - dt.timedelta(days=1))
+    assert _due(job, NOW) is True
+    assert _due(_job(type="cron", schedule="kein cron"), NOW) is False
 
 
 # ── Es soll gar nicht erst entstehen ─────────────────────────────────────────
 
-async def test_job_mit_art_statt_zeitplan_wird_abgewiesen(client, db):
-    nutzer = await make_user(db, "chef")
-    r = await client.post("/jobs", headers=auth(nutzer), json={
+async def test_job_mit_kind_statt_zeitplan_wird_abgewiesen(client, db):
+    user = await make_user(db, "chef")
+    r = await client.post("/jobs", headers=auth(user), json={
         "name": "Posteingang", "type": "prompt", "schedule": "interval:900",
         "kind": "workflow"})
     assert r.status_code == 422
@@ -80,10 +80,10 @@ async def test_job_mit_art_statt_zeitplan_wird_abgewiesen(client, db):
 
 
 async def test_richtiger_zeitplan_geht_durch(client, db):
-    nutzer = await make_user(db, "chef")
-    for art in ZEITPLAN_ARTEN:
+    user = await make_user(db, "chef")
+    for kind in ZEITPLAN_KINDS:
         plan = {"cron": "0 6 * * *", "interval": "900",
-                "once": "2026-12-24T18:00:00"}[art]
-        r = await client.post("/jobs", headers=auth(nutzer), json={
-            "name": f"Probe {art}", "type": art, "schedule": plan, "kind": "workflow"})
+                "once": "2026-12-24T18:00:00"}[kind]
+        r = await client.post("/jobs", headers=auth(user), json={
+            "name": f"Probe {kind}", "type": kind, "schedule": plan, "kind": "workflow"})
         assert r.status_code in (200, 201), r.text

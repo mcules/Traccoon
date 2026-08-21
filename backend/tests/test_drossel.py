@@ -23,57 +23,57 @@ from conftest import make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def _zeilen(db) -> list[Notification]:
+async def _lines(db) -> list[Notification]:
     return list((await db.execute(select(Notification).order_by(Notification.id)))
                 .scalars().all())
 
 
-async def test_zweite_meldung_im_fenster_bleibt_aus(db):
+async def test_zweite_notice_im_window_bleibt_aus(db):
     anna = await make_user(db, "anna")
-    erste = await zustellen(db, user=anna, kind="test", title="Alarm",
-                            drossel_key="shelter.diebstahl", drossel_minuten=15)
+    first = await zustellen(db, user=anna, kind="test", title="Alarm",
+                            drossel_key="shelter.diebstahl", drossel_minutes=15)
     zweite = await zustellen(db, user=anna, kind="test", title="Alarm",
-                             drossel_key="shelter.diebstahl", drossel_minuten=15)
+                             drossel_key="shelter.diebstahl", drossel_minutes=15)
     await db.commit()
-    assert erste["kanal"] != "gedrosselt"
+    assert first["kanal"] != "gedrosselt"
     assert zweite["unterdrueckt"] is True and zweite["wieder_ab"]
-    assert len(await _zeilen(db)) == 1, "no bell row either, otherwise the noise only moves elsewhere"
+    assert len(await _lines(db)) == 1, "no bell row either, otherwise the noise only moves elsewhere"
 
 
-async def test_nach_dem_fenster_geht_wieder_eine_raus(db):
+async def test_nach_dem_window_geht_wieder_eine_out(db):
     anna = await make_user(db, "anna")
     await zustellen(db, user=anna, kind="test", title="Alarm",
-                    drossel_key="k", drossel_minuten=15)
+                    drossel_key="k", drossel_minutes=15)
     await db.commit()
-    (alt,) = await _zeilen(db)
+    (alt,) = await _lines(db)
     alt.created_at = dt.datetime.now(tz=dt.timezone.utc) - dt.timedelta(minutes=16)
     await db.commit()
 
     weg = await zustellen(db, user=anna, kind="test", title="Alarm",
-                          drossel_key="k", drossel_minuten=15)
+                          drossel_key="k", drossel_minutes=15)
     await db.commit()
     assert weg.get("unterdrueckt") is not True
-    assert len(await _zeilen(db)) == 2
+    assert len(await _lines(db)) == 2
 
 
-async def test_verschiedene_schluessel_stoeren_sich_nicht(db):
+async def test_verschiedene_key_stoeren_sich_nicht(db):
     anna = await make_user(db, "anna")
-    await zustellen(db, user=anna, kind="test", title="A", drossel_key="a", drossel_minuten=60)
-    await zustellen(db, user=anna, kind="test", title="B", drossel_key="b", drossel_minuten=60)
+    await zustellen(db, user=anna, kind="test", title="A", drossel_key="a", drossel_minutes=60)
+    await zustellen(db, user=anna, kind="test", title="B", drossel_key="b", drossel_minutes=60)
     await db.commit()
-    assert len(await _zeilen(db)) == 2
+    assert len(await _lines(db)) == 2
 
 
 async def test_zwei_menschen_schalten_sich_nicht_gegenseitig_stumm(db):
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
     await zustellen(db, user=anna, kind="test", title="A", drossel_key="gleich",
-                    drossel_minuten=60)
+                    drossel_minutes=60)
     weg = await zustellen(db, user=bert, kind="test", title="A", drossel_key="gleich",
-                          drossel_minuten=60)
+                          drossel_minutes=60)
     await db.commit()
     assert weg.get("unterdrueckt") is not True
-    assert len(await _zeilen(db)) == 2
+    assert len(await _lines(db)) == 2
 
 
 async def test_ohne_drossel_bleibt_alles_wie_bisher(db):
@@ -82,7 +82,7 @@ async def test_ohne_drossel_bleibt_alles_wie_bisher(db):
     for _ in range(3):
         await zustellen(db, user=anna, kind="test", title="Immer wieder")
     await db.commit()
-    assert len(await _zeilen(db)) == 3
+    assert len(await _lines(db)) == 3
 
 
 async def _instanz(db, anna) -> WorkflowInstance:
@@ -102,39 +102,39 @@ async def _instanz(db, anna) -> WorkflowInstance:
     return inst
 
 
-def _knoten(params: dict) -> dict:
+def _node(params: dict) -> dict:
     return {"id": "melden", "type": "auto_action",
             "data": {"config": {"action": {"action": "notify", "params": params}}}}
 
 
-async def test_knoten_drosselt_sich_selbst(db):
+async def test_node_drosselt_sich_selbst(db):
     """A number should be enough; nobody would think up the key otherwise."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna)
     p = {"to": {"mode": "user", "user_id": anna.id}, "title": "Alarm", "drossel_minuten": 15}
-    erste = await run_action(db, inst, _knoten(p))
-    zweite = await run_action(db, inst, _knoten(p))
+    first = await run_action(db, inst, _node(p))
+    zweite = await run_action(db, inst, _node(p))
     await db.commit()
-    assert erste.get("unterdrueckt") is not True
+    assert first.get("unterdrueckt") is not True
     assert zweite["unterdrueckt"] is True
-    assert len(await _zeilen(db)) == 1
+    assert len(await _lines(db)) == 1
 
 
-async def test_schluessel_aus_dem_kontext_trennt_die_faelle(db):
+async def test_key_aus_dem_context_trennt_die_cases(db):
     """Two kinds of alarm on the same node must not swallow each other."""
     anna = await make_user(db, "anna")
     inst = await _instanz(db, anna)
 
-    def p(art):
-        return {"to": {"mode": "user", "user_id": anna.id}, "title": art,
-                "drossel_key": "{{ geraet }}." + art, "drossel_minuten": 60}
+    def p(kind):
+        return {"to": {"mode": "user", "user_id": anna.id}, "title": kind,
+                "drossel_key": "{{ geraet }}." + kind, "drossel_minuten": 60}
 
-    await run_action(db, inst, _knoten(p("vibration")))
-    zweite_art = await run_action(db, inst, _knoten(p("lowBattery")))
-    wiederholung = await run_action(db, inst, _knoten(p("vibration")))
+    await run_action(db, inst, _node(p("vibration")))
+    zweite_kind = await run_action(db, inst, _node(p("lowBattery")))
+    wiederholung = await run_action(db, inst, _node(p("vibration")))
     await db.commit()
-    assert zweite_art.get("unterdrueckt") is not True
+    assert zweite_kind.get("unterdrueckt") is not True
     assert wiederholung["unterdrueckt"] is True
-    zeilen = await _zeilen(db)
-    assert len(zeilen) == 2
-    assert {z.drossel_key for z in zeilen} == {"shelter.vibration", "shelter.lowBattery"}
+    lines = await _lines(db)
+    assert len(lines) == 2
+    assert {z.drossel_key for z in lines} == {"shelter.vibration", "shelter.lowBattery"}

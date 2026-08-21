@@ -67,56 +67,56 @@ async def detailzeile(db: AsyncSession, artefakt):
     return None
 
 
-def _aus_spalte(feld: ArtifactField, row) -> list:
+def _aus_spalte(field: ArtifactField, row) -> list:
     """Bring a column value into the list shape free fields are delivered in as well."""
-    wert = getattr(row, feld.source, None)
-    if wert is None or wert == "":
+    value = getattr(row, field.source, None)
+    if value is None or value == "":
         return []
-    wert = getattr(wert, "value", wert)          # Enum → Wert
-    if feld.kind == "boolean":
-        return [bool(wert)]
-    if feld.kind == "number":
-        zahl = float(wert)
+    value = getattr(value, "value", value)          # Enum → Wert
+    if field.kind == "boolean":
+        return [bool(value)]
+    if field.kind == "number":
+        zahl = float(value)
         return [int(zahl) if zahl.is_integer() else zahl]
-    if feld.kind == "date":
-        return [wert.date().isoformat() if hasattr(wert, "date") else str(wert)[:10]]
-    return [str(wert)]
+    if field.kind == "date":
+        return [value.date().isoformat() if hasattr(value, "date") else str(value)[:10]]
+    return [str(value)]
 
 
-async def _in_spalte(db: AsyncSession, feld: ArtifactField, row, werte: list) -> list:
+async def _in_spalte(db: AsyncSession, field: ArtifactField, row, values: list) -> list:
     """Write a checked value into the real column. The state takes the way over
     `services.artifacts` so that board column, message and artifact row are pulled along."""
-    wert = werte[0] if werte else None
-    if feld.key == STATUS_KEY:
-        from . import artifacts as art
+    value = values[0] if values else None
+    if field.key == STATUS_KEY:
+        from . import artifacts as svc
         from ..models.hardware import HardwareAsset
         if isinstance(row, HardwareAsset):
-            await art.set_asset_status(db, row, wert)
+            await kind.set_asset_status(db, row, value)
         else:
-            await art.set_ticket_status(db, row, wert)
-        return _aus_spalte(feld, row)
+            await svc.set_ticket_status(db, row, value)
+        return _aus_spalte(field, row)
 
-    if wert is None:
-        neu_wert = None
-    elif feld.kind == "number":
-        zahl = float(wert)
-        neu_wert = int(zahl) if float(zahl).is_integer() else zahl
-    elif feld.kind == "boolean":
-        neu_wert = bool(wert)
-    elif feld.kind == "date":
-        neu_wert = dt.date.fromisoformat(str(wert)[:10])
-    elif feld.options_source in ("issue_type", "board_status", "sprint", "member", "location"):
-        neu_wert = int(wert)          # these fields hold foreign keys
+    if value is None:
+        new_value = None
+    elif field.kind == "number":
+        zahl = float(value)
+        new_value = int(zahl) if float(zahl).is_integer() else zahl
+    elif field.kind == "boolean":
+        new_value = bool(value)
+    elif field.kind == "date":
+        new_value = dt.date.fromisoformat(str(value)[:10])
+    elif field.options_source in ("issue_type", "board_status", "sprint", "member", "location"):
+        new_value = int(value)          # these fields hold foreign keys
     else:
-        neu_wert = str(wert)
+        new_value = str(value)
     # Columns with an enum type tolerate the plain value (SQLAlchemy converts); with date
     # columns that have a time part we add midnight UTC.
-    ziel = getattr(type(row), feld.source).type
-    if feld.kind == "date" and neu_wert is not None and hasattr(ziel, "timezone"):
-        neu_wert = dt.datetime.combine(neu_wert, dt.time(0, 0), tzinfo=dt.timezone.utc)
-    setattr(row, feld.source, neu_wert)
+    target = getattr(type(row), field.source).type
+    if field.kind == "date" and new_value is not None and hasattr(target, "timezone"):
+        new_value = dt.datetime.combine(new_value, dt.time(0, 0), tzinfo=dt.timezone.utc)
+    setattr(row, field.source, new_value)
     await db.flush()
-    return _aus_spalte(feld, row)
+    return _aus_spalte(field, row)
 
 
 # ── Lesen ────────────────────────────────────────────────────────────────────
@@ -136,9 +136,9 @@ async def values_for(db: AsyncSession, artifact_ids: list[int]) -> dict[int, dic
         .order_by(ArtifactValue.artifact_id, ArtifactField.order, ArtifactValue.order,
                   ArtifactValue.id))).all()
     out: dict[int, dict[str, list]] = {}
-    for wert, feld in rows:
-        out.setdefault(wert.artifact_id, {}).setdefault(feld.key, []).append(
-            _lesbar(feld, wert.value_text))
+    for value, field in rows:
+        out.setdefault(value.artifact_id, {}).setdefault(field.key, []).append(
+            _lesbar(field, value.value_text))
 
     # Built-in fields: fetch the detail row once per artifact.
     from ..models.artifact import Artifact
@@ -152,9 +152,9 @@ async def values_for(db: AsyncSession, artifact_ids: list[int]) -> dict[int, dic
         if row is None:
             continue
         for f in gebunden:
-            werte = _aus_spalte(f, row)
-            if werte:
-                out.setdefault(a.id, {})[f.key] = werte
+            values = _aus_spalte(f, row)
+            if values:
+                out.setdefault(a.id, {})[f.key] = values
     return out
 
 
@@ -162,48 +162,48 @@ async def values_of(db: AsyncSession, artifact_id: int) -> dict[str, list]:
     return (await values_for(db, [artifact_id])).get(artifact_id, {})
 
 
-def _lesbar(feld: ArtifactField, text: str):
+def _lesbar(field: ArtifactField, text: str):
     """Turn the stored text back into the type of the field."""
-    if feld.kind == "number":
+    if field.kind == "number":
         try:
             zahl = float(text)
             return int(zahl) if zahl.is_integer() else zahl
         except ValueError:
             return text
-    if feld.kind == "boolean":
+    if field.kind == "boolean":
         return text == "true"
     return text
 
 
 # ── Schreiben ────────────────────────────────────────────────────────────────
 
-def _als_text(feld: ArtifactField, wert) -> str:
+def _as_text(field: ArtifactField, value) -> str:
     """Check one input value and bring it into its stored form."""
-    if wert is None:
+    if value is None:
         return ""
-    if feld.kind == "boolean":
-        if isinstance(wert, bool):
-            return "true" if wert else "false"
-        if str(wert).strip().lower() in ("true", "1", "ja", "yes"):
+    if field.kind == "boolean":
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if str(value).strip().lower() in ("true", "1", "ja", "yes"):
             return "true"
-        if str(wert).strip().lower() in ("false", "0", "nein", "no"):
+        if str(value).strip().lower() in ("false", "0", "nein", "no"):
             return "false"
-        raise FieldError(f'"{feld.label}" expects yes or no, not "{wert}"')
-    text = str(wert).strip()
-    if feld.kind == "number":
+        raise FieldError(f'"{field.label}" expects yes or no, not "{value}"')
+    text = str(value).strip()
+    if field.kind == "number":
         try:
             float(text)
         except ValueError:
-            raise FieldError(f'"{feld.label}" expects a number, not "{text}"')
-    elif feld.kind == "date":
+            raise FieldError(f'"{field.label}" expects a number, not "{text}"')
+    elif field.kind == "date":
         try:
             dt.date.fromisoformat(text[:10])
         except ValueError:
-            raise FieldError(f'"{feld.label}" expects a date (YYYY-MM-DD), not "{text}"')
+            raise FieldError(f'"{field.label}" expects a date (YYYY-MM-DD), not "{text}"')
     return text
 
 
-async def pruefe(db: AsyncSession, feld: ArtifactField, werte: list,
+async def check(db: AsyncSession, field: ArtifactField, values: list,
                  project_id: int | None = None) -> list[tuple[str, int | None]]:
     """Check inputs and bring them into their stored form, without writing anything.
 
@@ -211,67 +211,67 @@ async def pruefe(db: AsyncSession, feld: ArtifactField, werte: list,
     and applied afterwards. Otherwise half the change would already stand in the database
     after the error in the third field, and it would need a rollback of the whole session.
     """
-    sauber = [w for w in (werte or []) if not (w is None or str(w).strip() == "")]
-    if not feld.multi and len(sauber) > 1:
-        raise FieldError(f'"{feld.label}" takes only one value, {len(sauber)} arrived')
-    if feld.required and not sauber:
-        raise FieldError(f'"{feld.label}" is a required field')
+    sauber = [w for w in (values or []) if not (w is None or str(w).strip() == "")]
+    if not field.multi and len(sauber) > 1:
+        raise FieldError(f'"{field.label}" takes only one value, {len(sauber)} arrived')
+    if field.required and not sauber:
+        raise FieldError(f'"{field.label}" is a required field')
 
-    if feld.kind != "select":
-        return [(_als_text(feld, w), None) for w in sauber]
+    if field.kind != "select":
+        return [(_as_text(field, w), None) for w in sauber]
 
-    if feld.options_source:
+    if field.options_source:
         # Issue type, sprint, board column, person, location: the list hangs off the project.
-        erlaubte = dict(await dynamic_options(db, feld, project_id))
+        erlaubte = dict(await dynamic_options(db, field, project_id))
         for w in sauber:
             if str(w) not in erlaubte:
                 namen = ", ".join(erlaubte.values()) or "— nichts im Projekt vorhanden"
                 raise FieldError(
-                    f'"{w}" is not a valid value for "{feld.label}" ({namen})')
+                    f'"{w}" is not a valid value for "{field.label}" ({namen})')
         return [(str(w), None) for w in sauber]
 
-    moeglich = {o.value: o for o in await options_of(db, feld.id)}
-    zuordnung: list[tuple[str, int | None]] = []
+    moeglich = {o.value: o for o in await options_of(db, field.id)}
+    mapping: list[tuple[str, int | None]] = []
     for w in sauber:
         text = str(w).strip()
-        treffer = moeglich.get(text)
-        if treffer is None:
-            erlaubt = ", ".join(moeglich) or "— die Werteliste ist leer"
+        hits = moeglich.get(text)
+        if hits is None:
+            allowed = ", ".join(moeglich) or "— die Werteliste ist leer"
             raise FieldError(
-                f'"{text}" is not in the value list of "{feld.label}" ({erlaubt})')
-        zuordnung.append((treffer.value, treffer.id))
-    return zuordnung
+                f'"{text}" is not in the value list of "{field.label}" ({allowed})')
+        mapping.append((hits.value, hits.id))
+    return mapping
 
 
-async def schreibe(db: AsyncSession, artifact_id: int, feld: ArtifactField,
-                   zuordnung: list[tuple[str, int | None]]) -> list:
+async def schreibe(db: AsyncSession, artifact_id: int, field: ArtifactField,
+                   mapping: list[tuple[str, int | None]]) -> list:
     """Commit checked values, replacing the previous ones of this field completely.
 
     A built-in field lands in its real column (board, sprints and the AI lifecycle read there
     unchanged), a free one in `artifact_values`.
     """
-    if feld.source:
+    if field.source:
         from ..models.artifact import Artifact
         artefakt = await db.get(Artifact, artifact_id)
         row = await detailzeile(db, artefakt) if artefakt else None
         if row is None:
-            raise FieldError(f'"{feld.label}" belongs to a detail table that does not exist here')
-        return await _in_spalte(db, feld, row, [t for t, _ in zuordnung])
+            raise FieldError(f'"{field.label}" belongs to a detail table that does not exist here')
+        return await _in_spalte(db, field, row, [t for t, _ in mapping])
 
     await db.execute(delete(ArtifactValue).where(
-        ArtifactValue.artifact_id == artifact_id, ArtifactValue.field_id == feld.id))
-    for i, (text, option_id) in enumerate(zuordnung):
-        db.add(ArtifactValue(artifact_id=artifact_id, field_id=feld.id,
+        ArtifactValue.artifact_id == artifact_id, ArtifactValue.field_id == field.id))
+    for i, (text, option_id) in enumerate(mapping):
+        db.add(ArtifactValue(artifact_id=artifact_id, field_id=field.id,
                              option_id=option_id, value_text=text, order=i))
     await db.flush()
-    return [_lesbar(feld, text) for text, _ in zuordnung]
+    return [_lesbar(field, text) for text, _ in mapping]
 
 
-async def set_values(db: AsyncSession, artifact_id: int, feld: ArtifactField, werte: list,
+async def set_values(db: AsyncSession, artifact_id: int, field: ArtifactField, values: list,
                      project_id: int | None = None) -> list:
     """The ONE way for a single field: check it and write it."""
-    return await schreibe(db, artifact_id, feld,
-                          await pruefe(db, feld, werte, project_id))
+    return await schreibe(db, artifact_id, field,
+                          await check(db, field, values, project_id))
 
 
 async def option_usage(db: AsyncSession, option_id: int) -> int:
@@ -294,40 +294,40 @@ async def ensure_builtin_fields(db: AsyncSession) -> None:
     label, which the admin may change. The same applies to the selectable values: missing ones
     are added, existing ones keep label, category and "waiting".
     """
-    from . import artifacts as art
+    from . import artifacts as svc
 
-    for typ_key, felder_spec in BUILTIN_FIELDS.items():
-        typ = await art.type_by_key(db, typ_key)
-        if typ is None:
+    for kind_key, fields_spec in BUILTIN_FIELDS.items():
+        kind = await svc.type_by_key(db, kind_key)
+        if kind is None:
             continue
-        vorhanden = {f.key: f for f in await fields_of(db, typ.id, nur_aktive=False)}
-        for i, spec in enumerate(felder_spec):
-            feld = vorhanden.get(spec["key"])
-            if feld is None:
-                feld = ArtifactField(
-                    type_id=typ.id, key=spec["key"], label=spec["label"], kind=spec["kind"],
+        vorhanden = {f.key: f for f in await fields_of(db, kind.id, nur_aktive=False)}
+        for i, spec in enumerate(fields_spec):
+            field = vorhanden.get(spec["key"])
+            if field is None:
+                field = ArtifactField(
+                    type_id=kind.id, key=spec["key"], label=spec["label"], kind=spec["kind"],
                     multi=spec["multi"], order=i, source=spec["source"],
                     options_source=spec["options_source"], builtin=True)
-                db.add(feld)
+                db.add(field)
                 await db.flush()
             else:
                 # Origin and type belong to the program, the label to the admin.
-                feld.source = spec["source"]
-                feld.options_source = spec["options_source"]
-                feld.kind = spec["kind"]
-                feld.builtin = True
+                field.source = spec["source"]
+                field.options_source = spec["options_source"]
+                field.kind = spec["kind"]
+                field.builtin = True
             if spec["options"]:
-                await _ensure_options(db, feld, spec["options"])
+                await _ensure_options(db, field, spec["options"])
     await db.commit()
 
 
-async def _ensure_options(db: AsyncSession, feld: ArtifactField,
+async def _ensure_options(db: AsyncSession, field: ArtifactField,
                           spec: list[tuple[str, str, str, bool]]) -> None:
-    da = {o.value: o for o in await options_of(db, feld.id, nur_aktive=False)}
-    for i, (wert, label, kategorie, wartet) in enumerate(spec):
-        if wert in da:
+    da = {o.value: o for o in await options_of(db, field.id, nur_aktive=False)}
+    for i, (value, label, kategorie, wartet) in enumerate(spec):
+        if value in da:
             continue
-        db.add(ArtifactFieldOption(field_id=feld.id, value=wert, label=label, order=i,
+        db.add(ArtifactFieldOption(field_id=field.id, value=value, label=label, order=i,
                                    category=kategorie, waiting=wartet))
     await db.flush()
 
@@ -340,34 +340,34 @@ async def status_field(db: AsyncSession, type_id: int) -> ArtifactField | None:
 
 
 async def status_options(db: AsyncSession, type_id: int) -> list[ArtifactFieldOption]:
-    feld = await status_field(db, type_id)
-    return await options_of(db, feld.id, nur_aktive=False) if feld else []
+    field = await status_field(db, type_id)
+    return await options_of(db, field.id, nur_aktive=False) if field else []
 
 
 # ── Selectable values that depend on the project ─────────────────────────────
 
-async def dynamic_options(db: AsyncSession, feld: ArtifactField,
+async def dynamic_options(db: AsyncSession, field: ArtifactField,
                           project_id: int | None) -> list[tuple[str, str]]:
     """Selectable values that do not stand in the register but hang off the project:
     issue types, board columns, sprints, members, locations."""
-    if not feld.options_source or project_id is None:
+    if not field.options_source or project_id is None:
         return []
     from ..models.hardware import Location
     from ..models.project import ProjectMember
     from ..models.ticket import IssueType, Sprint, WorkflowStatus
     from ..models.user import User
 
-    quelle = feld.options_source
-    if quelle == "issue_type":
+    source = field.options_source
+    if source == "issue_type":
         rows = (await db.execute(select(IssueType).where(IssueType.project_id == project_id)
                                  .order_by(IssueType.order))).scalars().all()
         return [(str(r.id), r.name) for r in rows]
-    if quelle == "board_status":
+    if source == "board_status":
         rows = (await db.execute(select(WorkflowStatus)
                                  .where(WorkflowStatus.project_id == project_id)
                                  .order_by(WorkflowStatus.order))).scalars().all()
         return [(str(r.id), r.name) for r in rows]
-    if quelle == "sprint":
+    if source == "sprint":
         # Sprints hang off the board, not directly off the project.
         from ..models.ticket import Board
         rows = (await db.execute(
@@ -375,12 +375,12 @@ async def dynamic_options(db: AsyncSession, feld: ArtifactField,
             .where(Board.project_id == project_id)
             .order_by(Sprint.id.desc()))).scalars().all()
         return [(str(r.id), r.name) for r in rows]
-    if quelle == "member":
+    if source == "member":
         rows = (await db.execute(
             select(User, ProjectMember).join(ProjectMember, ProjectMember.user_id == User.id)
             .where(ProjectMember.project_id == project_id))).all()
         return [(str(u.id), u.display_name or u.username) for u, _ in rows]
-    if quelle == "location":
+    if source == "location":
         rows = (await db.execute(select(Location).order_by(Location.full_path))).scalars().all()
         return [(str(r.id), r.full_path or r.name) for r in rows]
     return []
@@ -415,23 +415,23 @@ async def uebernimm_alte_zustaende(db: AsyncSession) -> int:
 
     uebernommen = 0
     for type_id, key, label, kategorie, reihenfolge, wartet in rows:
-        typ = await db.get(ArtifactType, type_id)
-        if typ is None:
+        kind = await db.get(ArtifactType, type_id)
+        if kind is None:
             continue
-        feld = await status_field(db, type_id)
-        if feld is None:
-            spec = next((f for f in BUILTIN_FIELDS.get(typ.key, []) if f["key"] == STATUS_KEY),
+        field = await status_field(db, type_id)
+        if field is None:
+            spec = next((f for f in BUILTIN_FIELDS.get(kind.key, []) if f["key"] == STATUS_KEY),
                         None)
             if spec is None:
                 continue
-            feld = ArtifactField(type_id=type_id, key=STATUS_KEY, label=spec["label"],
+            field = ArtifactField(type_id=type_id, key=STATUS_KEY, label=spec["label"],
                                  kind="select", source=spec["source"], builtin=True, order=0)
-            db.add(feld)
+            db.add(field)
             await db.flush()
-        da = {o.value for o in await options_of(db, feld.id, nur_aktive=False)}
+        da = {o.value for o in await options_of(db, field.id, nur_aktive=False)}
         if key in da:
             continue
-        db.add(ArtifactFieldOption(field_id=feld.id, value=key, label=label or key,
+        db.add(ArtifactFieldOption(field_id=field.id, value=key, label=label or key,
                                    category=kategorie or "", order=reihenfolge or 0,
                                    waiting=bool(wartet)))
         uebernommen += 1

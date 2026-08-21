@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.agents import CostEntry
 from ..core.security import decrypt_secret
@@ -202,7 +202,7 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
         if not isinstance(cost, dict):
             unknown.append(f"{row.provider}/{row.model}")
             continue
-        neu = (float(cost.get("input") or 0.0), float(cost.get("output") or 0.0),
+        new = (float(cost.get("input") or 0.0), float(cost.get("output") or 0.0),
                float(cost.get("cache_read") or 0.0))
         alt = (row.price_input, row.price_output, row.price_cache_read)
         if not row.display_name and entry.get("name"):
@@ -210,17 +210,17 @@ async def fetch_prices(_: User = Depends(require_admin), db: AsyncSession = Depe
         # Only set the context window when it is still missing or has changed: a value
         # maintained by hand (a local model with a smaller window) is not overwritten, as
         # long as models.dev does not know the model at all (then we never get here).
-        kontext = ((entry.get("limit") or {}).get("context")) if isinstance(entry.get("limit"), dict) else None
-        if kontext and row.context_tokens != int(kontext):
-            row.context_tokens = int(kontext)
+        context = ((entry.get("limit") or {}).get("context")) if isinstance(entry.get("limit"), dict) else None
+        if context and row.context_tokens != int(context):
+            row.context_tokens = int(context)
             kontexte += 1
-        if alt == neu:
+        if alt == new:
             unchanged += 1
             continue
-        row.price_input, row.price_output, row.price_cache_read = neu
+        row.price_input, row.price_output, row.price_cache_read = new
         changed.append({"provider": row.provider, "model": row.model,
                         "from": {"input": alt[0], "output": alt[1], "cache_read": alt[2]},
-                        "to": {"input": neu[0], "output": neu[1], "cache_read": neu[2]}})
+                        "to": {"input": new[0], "output": new[1], "cache_read": new[2]}})
     await db.commit()
     return {"source": "models.dev", "updated": changed, "unchanged": unchanged,
             "context_set": kontexte, "unknown": unknown}

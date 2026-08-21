@@ -27,14 +27,14 @@ from ..models.workflow import WorkflowDefinition, WorkflowVersion
 
 log = logging.getLogger("traccoon.jobs")
 
-ALTE_ARTEN = ("prompt", "script", "http", "")
+ALTE_KINDS = ("prompt", "script", "http", "")
 
 # Was jeder wiederkehrende Ablauf mitbekommt, ohne dass es im Parametersatz steht
 # (`scheduler._start_workflow_job` legt es in den Startkontext).
 ZEITWERTE = ("today", "now", "since", "window")
 
 
-def _auftrag(job: Job) -> str:
+def _task(job: Job) -> str:
     """Der Prompt, wie ihn die Ablauf-Sprache versteht.
 
     Beide kennen `{{name}}`, aber eine Liste setzte die Job-Welt als Aufzählung ein und die
@@ -45,17 +45,17 @@ def _auftrag(job: Job) -> str:
 
     from .job_params import parameter
 
-    werte = parameter(job.args)
+    values = parameter(job.args)
     text = job.prompt or ""
-    for name, wert in werte.items():
-        if isinstance(wert, (list, tuple)):
+    for name, value in values.items():
+        if isinstance(value, (list, tuple)):
             text = re.sub(r"\{\{\s*" + re.escape(name) + r"\s*\}\}",
                           "{{ " + name + ' | join:", " }}', text)
     # Ein Platzhalter ohne Wert blieb in der Job-Welt wörtlich stehen — sichtbar falsch statt
     # lautlos leer. Die Ablauf-Sprache füllt ihn mit nichts, also wird er hier gesagt: Wer
     # ihn braucht, trägt den Wert in den Startkontext nach.
     offen = sorted({m for m in re.findall(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}", text)}
-                   - set(werte) - set(ZEITWERTE))
+                   - set(values) - set(ZEITWERTE))
     if offen:
         log.warning("Job %s: %s ohne Wert im Parametersatz — im Ablauf bleiben sie leer",
                     job.name, ", ".join(offen))
@@ -64,70 +64,70 @@ def _auftrag(job: Job) -> str:
 _COL, _ROW = 260, 130
 
 
-def _n(node_id: str, ntype: str, zeile: int, config: dict, spalte: int = 0) -> dict:
+def _n(node_id: str, ntype: str, line: int, config: dict, spalte: int = 0) -> dict:
     return {"id": node_id, "type": ntype,
-            "position": {"x": spalte * _COL, "y": zeile * _ROW},
+            "position": {"x": spalte * _COL, "y": line * _ROW},
             "data": {"config": config}}
 
 
-def _e(quelle: str, ziel: str, handle: str | None = None, label: str = "") -> dict:
-    kante = {"id": f"e-{quelle}-{handle or 'out'}-{ziel}", "source": quelle, "target": ziel}
+def _e(source: str, target: str, handle: str | None = None, label: str = "") -> dict:
+    edge = {"id": f"e-{source}-{handle or 'out'}-{target}", "source": source, "target": target}
     if handle:
-        kante["sourceHandle"] = handle
+        edge["sourceHandle"] = handle
     if label:
-        kante["label"] = label
-    return kante
+        edge["label"] = label
+    return edge
 
 
-def _aktion(_name: str, _label: str, **params) -> dict:
+def _action(_name: str, _label: str, **params) -> dict:
     """Unterstrich vorn, damit ein Aktionsparameter `name` heißen darf (die Ablage hat einen)."""
     return {"label": _label, "action": {"action": _name, "params": params}}
 
 
-def _arbeitsschritt(job: Job, ziel_name: str = "") -> tuple[dict, str, dict]:
+def _arbeitsschritt(job: Job, target_name: str = "") -> tuple[dict, str, dict]:
     """Der Schritt, der die eigentliche Arbeit macht.
 
     Zurück kommen der Knoten, der Ausdruck für sein Ergebnis und die Bedingung, an der man
     einen Fehlschlag erkennt — jede Art meldet ihn anders (`status`, `ok`).
     """
     if job.kind == "script":
-        return (_n("arbeit", "auto_action", 1, _aktion(
+        return (_n("arbeit", "auto_action", 1, _action(
             "script", "Skript ausführen", command=job.command or "",
             args=job.args if isinstance(job.args, list) else [],
             timeout_sec=int(job.run_timeout or 600), context_key="result")),
             "{{ result.output }}", {"==": [{"var": "result.ok"}, False]})
     if job.kind == "http":
-        aufruf = dict(job.http_request or {})
-        return (_n("arbeit", "auto_action", 1, _aktion(
-            "http_request", "Ziel aufrufen", destination=ziel_name,
-            method=aufruf.get("method") or "GET", path=aufruf.get("path") or "",
-            query=aufruf.get("query") or {}, headers=aufruf.get("headers") or {},
-            body=aufruf.get("body"), context_key="result")),
+        call = dict(job.http_request or {})
+        return (_n("arbeit", "auto_action", 1, _action(
+            "http_request", "Ziel aufrufen", destination=target_name,
+            method=call.get("method") or "GET", path=call.get("path") or "",
+            query=call.get("query") or {}, headers=call.get("headers") or {},
+            body=call.get("body"), context_key="result")),
             "{{ result.response | json }}", {"==": [{"var": "result.ok"}, False]})
     # prompt (und die leere Altform)
-    return (_n("arbeit", "auto_action", 1, _aktion(
+    return (_n("arbeit", "auto_action", 1, _action(
         "agent_run", "Agenten arbeiten lassen", agent=job.agent or "assistent",
-        task=_auftrag(job), title=job.name,
+        task=_task(job), title=job.name,
         timeout_sec=int(job.run_timeout or 600), context_key="result")),
         "{{ result.output }}", {"==": [{"var": "result.status"}, "failed"]})
 
 
-def _schluessel(name: str) -> str:
+def _key(name: str) -> str:
     """Aus dem Job-Namen ein Ablagen-Schlüssel: `KI- & Tech-News` → `ki-tech-news`."""
     from ..core.slug import slug
 
     return slug(name) or "ablage"
 
 
-def _graph(job: Job, ziel_name: str = "") -> dict:
-    arbeit, ergebnis_text, fehler_bedingung = _arbeitsschritt(job, ziel_name)
+def _graph(job: Job, target_name: str = "") -> dict:
+    arbeit, result_text, error_bedingung = _arbeitsschritt(job, target_name)
     nodes = [
         _n("start", "start", 0, {"label": job.name, "trigger": {"kind": "job"}}),
         arbeit,
         # Die Antwort ist das Ergebnis des Jobs: Der Lauf trägt sie in seine Historie zurück,
         # genau wie ein wartender Webhook sie an seinen Aufrufer zurückgibt.
-        _n("answer", "auto_action", 2, _aktion(
-            "answer", "Ergebnis festhalten", text=ergebnis_text)),
+        _n("answer", "auto_action", 2, _action(
+            "answer", "Ergebnis festhalten", text=result_text)),
     ]
     edges = [_e("start", "arbeit"), _e("arbeit", "answer")]
 
@@ -137,29 +137,29 @@ def _graph(job: Job, ziel_name: str = "") -> dict:
     # (wie ein Messwert in seiner Reihe), und gemeldet wird der Verweis darauf. Das steht vor
     # der Melde-Frage, denn auch ein stiller Job soll behalten, was er erarbeitet hat.
     if job.result_html:
-        nodes.insert(2, _n("ablegen", "auto_action", 2, _aktion(
-            "document", "In die Ablage legen", storage=_schluessel(job.name), name=job.name,
-            text=ergebnis_text, format="markdown"), spalte=1))
+        nodes.insert(2, _n("ablegen", "auto_action", 2, _action(
+            "document", "In die Ablage legen", storage=_key(job.name), name=job.name,
+            text=result_text, format="markdown"), spalte=1))
         edges = [_e("start", "arbeit"), _e("arbeit", "ablegen"), _e("ablegen", "answer")]
 
-    melden = job.notify_mode or "always"
-    if melden == "never":
+    report = job.notify_mode or "always"
+    if report == "never":
         nodes.append(_n("fertig", "end", 3, {"label": "Fertig", "outcome": "completed"}))
         edges.append(_e("answer", "fertig"))
         return {"nodes": nodes, "edges": edges}
 
-    text = "{{ document.title }}\n{{ document.url }}" if job.result_html else ergebnis_text
-    melde_knoten = _n("melden", "auto_action", 4, _aktion(
+    text = "{{ document.title }}\n{{ document.url }}" if job.result_html else result_text
+    melde_node = _n("melden", "auto_action", 4, _action(
         "notify", "Bescheid geben", kind="job", title=f"Job: {job.name}", text=text), spalte=-1)
 
-    if melden == "always":
-        nodes += [melde_knoten, _n("fertig", "end", 5, {"label": "Gemeldet", "outcome": "completed"})]
+    if report == "always":
+        nodes += [melde_node, _n("fertig", "end", 5, {"label": "Gemeldet", "outcome": "completed"})]
         edges += [_e("answer", "melden"), _e("melden", "fertig")]
         return {"nodes": nodes, "edges": edges}
 
     # on_output / on_error: erst hinsehen, dann melden.
-    if melden == "on_error":
-        bedingung, label = fehler_bedingung, "fehlgeschlagen"
+    if report == "on_error":
+        bedingung, label = error_bedingung, "fehlgeschlagen"
     else:
         bedingung, label = {"!=": [{"var": "answer"}, ""]}, "hat etwas gesagt"
     nodes += [
@@ -168,7 +168,7 @@ def _graph(job: Job, ziel_name: str = "") -> dict:
             "branches": [{"handle": "melden", "label": label, "guard": bedingung},
                          {"handle": "still", "label": "still bleiben"}],
             "default_handle": "still"}),
-        melde_knoten,
+        melde_node,
         _n("fertig", "end", 5, {"label": "Fertig", "outcome": "completed"}),
     ]
     edges += [_e("answer", "melden_wenn"), _e("melden_wenn", "melden", "melden"),
@@ -176,7 +176,7 @@ def _graph(job: Job, ziel_name: str = "") -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-async def als_ablauf(db: AsyncSession, job: Job) -> None:
+async def as_flow(db: AsyncSession, job: Job) -> None:
     """Diesen einen Job auf einen Ablauf umstellen (ohne commit).
 
     Auch beim Anlegen benutzt: Wer einen Job über die API, das Agenten-Werkzeug oder eine
@@ -185,25 +185,25 @@ async def als_ablauf(db: AsyncSession, job: Job) -> None:
     """
     import datetime as dt
 
-    ziel_name = ""
+    target_name = ""
     if job.kind == "http" and job.destination_id:
         # Der Aufruf im Ablauf nennt den Namen, nicht die Nummer — Ziele werden über den
         # Namen aufgelöst (Projekt, dann Nutzer, dann systemweit).
         from ..models.destination import Destination
-        ziel = await db.get(Destination, job.destination_id)
-        ziel_name = ziel.name if ziel else ""
+        target = await db.get(Destination, job.destination_id)
+        target_name = target.name if target else ""
     # Name und Schlüssel beschreiben die Sache, nicht den Auslöser: Der Job heißt schon so,
     # wie das gemeint ist, was er tut — „KI- & Tech-News“, nicht „Job: 3“.
-    from .workflow_templates import freier_schluessel
+    from .workflow_templates import freier_key
     d = WorkflowDefinition(
         project_id=job.project_id,
-        key=await freier_schluessel(db, job.name, job.project_id), name=job.name,
+        key=await freier_key(db, job.name, job.project_id), name=job.name,
         description=f"Aus der Job-Art „{job.kind or 'prompt'}“ umgestellt.",
         subject_kind=WorkflowSubjectKind.standalone, enabled=True, created_by=job.user_id)
     db.add(d)
     await db.flush()
     version = WorkflowVersion(
-        definition_id=d.id, version=1, graph=_graph(job, ziel_name), created_by=job.user_id,
+        definition_id=d.id, version=1, graph=_graph(job, target_name), created_by=job.user_id,
         status=WorkflowVersionStatus.published,
         published_at=dt.datetime.now(tz=dt.timezone.utc),
         notes="Umstellung der Job-Arten auf Abläufe")
@@ -215,11 +215,11 @@ async def als_ablauf(db: AsyncSession, job: Job) -> None:
     job.workflow_definition_id = d.id
 
 
-async def umstellen(db: AsyncSession) -> int:
+async def convert(db: AsyncSession) -> int:
     """Stellt jeden Job um, der noch eine alte Art trägt. Gibt die Anzahl zurück."""
-    jobs = (await db.execute(select(Job).where(Job.kind.in_(ALTE_ARTEN)))).scalars().all()
+    jobs = (await db.execute(select(Job).where(Job.kind.in_(ALTE_KINDS)))).scalars().all()
     for job in jobs:
-        await als_ablauf(db, job)
+        await as_flow(db, job)
     if jobs:
         await db.commit()
     return len(jobs)

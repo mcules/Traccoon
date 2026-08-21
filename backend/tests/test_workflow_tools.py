@@ -15,11 +15,11 @@ from conftest import make_user
 pytestmark = pytest.mark.asyncio
 
 
-class _Sitzung:
+class _Session:
     """MCP session as a dummy: what the real server would answer."""
 
-    def __init__(self, antwort: str, tools: list | None = None):
-        self.antwort, self.tools, self.aufrufe = antwort, tools or [], []
+    def __init__(self, answer: str, tools: list | None = None):
+        self.answer, self.tools, self.aufrufe = answer, tools or [], []
 
     async def __aenter__(self):
         return self
@@ -32,12 +32,12 @@ class _Sitzung:
 
     async def call(self, name, arguments):
         self.aufrufe.append((name, arguments))
-        return self.antwort
+        return self.answer
 
 
-class _Werkzeug:
-    def __init__(self, name, beschreibung="", schema=None):
-        self.name, self.description, self.schema = name, beschreibung, schema or {}
+class _Tool:
+    def __init__(self, name, description="", schema=None):
+        self.name, self.description, self.schema = name, description, schema or {}
 
 
 @pytest.fixture
@@ -58,26 +58,26 @@ async def test_nur_die_eigenen_server_stehen_zur_wahl(db, anna, monkeypatch):
 
 
 async def test_werkzeugliste_nennt_pflichtfelder(db, anna, monkeypatch):
-    sitzung = _Sitzung("", [_Werkzeug("obsidian__obsidian_append_to_note", "Anhängen\nmehr Text",
+    session = _Session("", [_Tool("obsidian__obsidian_append_to_note", "Anhängen\nmehr Text",
                                       {"properties": {"path": {}, "content": {}},
                                        "required": ["path"]})])
-    monkeypatch.setattr(workflow_tools, "_sitzung",
-                        lambda db_, owner: _fertig(sitzung))
-    liste = await workflow_tools.werkzeuge(db, anna.id)
-    assert liste[0]["name"] == "obsidian__obsidian_append_to_note"
-    assert liste[0]["pflicht"] == ["path"]
-    assert liste[0]["felder"] == ["path", "content"]
+    monkeypatch.setattr(workflow_tools, "_session",
+                        lambda db_, owner: _done(session))
+    listing = await workflow_tools.tools(db, anna.id)
+    assert listing[0]["name"] == "obsidian__obsidian_append_to_note"
+    assert listing[0]["pflicht"] == ["path"]
+    assert listing[0]["felder"] == ["path", "content"]
     # Only the first line of the description: the rest blows up every selection list.
-    assert liste[0]["beschreibung"] == "Anhängen"
+    assert listing[0]["beschreibung"] == "Anhängen"
 
 
-async def _fertig(wert):
-    return wert
+async def _done(value):
+    return value
 
 
-async def test_aufruf_landet_im_kontext(db, anna, monkeypatch):
-    sitzung = _Sitzung('{"ok": true, "path": "Notiz.md"}')
-    monkeypatch.setattr(workflow_tools, "_sitzung", lambda db_, owner: _fertig(sitzung))
+async def test_call_landet_im_context(db, anna, monkeypatch):
+    session = _Session('{"ok": true, "path": "Notiz.md"}')
+    monkeypatch.setattr(workflow_tools, "_session", lambda db_, owner: _done(session))
 
     inst = WorkflowInstance(definition_id=1, version_id=1, context={"mail": {"subject": "Rechnung"}},
                             started_by=anna.id)
@@ -85,26 +85,26 @@ async def test_aufruf_landet_im_kontext(db, anna, monkeypatch):
         "action": "tool_call",
         "params": {"tool": "obsidian__obsidian_append_to_note",
                    "arguments": {"path": "{{mail.subject}}.md", "content": "Test"}}}}}}
-    ergebnis = await run_action(db, inst, node)
+    result = await run_action(db, inst, node)
 
-    assert ergebnis["ok"] is True
+    assert result["ok"] is True
     # Templates in the arguments are filled; otherwise {{mail.subject}} would stand there literally.
-    assert sitzung.aufrufe == [("obsidian__obsidian_append_to_note",
+    assert session.aufrufe == [("obsidian__obsidian_append_to_note",
                                 {"path": "Rechnung.md", "content": "Test"})]
     assert inst.context["tool"]["ok"] is True
     assert inst.context["tool"]["json"] == {"ok": True, "path": "Notiz.md"}
 
 
-async def test_unbekannter_server_ist_ein_fehler_kein_text(db, anna):
+async def test_unbekannter_server_ist_ein_error_kein_text(db, anna):
     """The MCP session answers an unknown server with a hint TEXT. If that passed as success,
     the flow would run on as if everything were fine."""
-    r = await workflow_tools.aufrufen(db, anna.id, "gibtsnicht__tool", {})
+    r = await workflow_tools.call(db, anna.id, "gibtsnicht__tool", {})
     assert r["ok"] is False and "unknown MCP server" in r["error"]
 
 
-async def test_fehler_kann_den_schritt_abbrechen(db, anna, monkeypatch):
-    monkeypatch.setattr(workflow_tools, "_sitzung",
-                        lambda db_, owner: _fertig(_Sitzung('{"error": "kaputt"}')))
+async def test_error_kann_den_step_abbrechen(db, anna, monkeypatch):
+    monkeypatch.setattr(workflow_tools, "_session",
+                        lambda db_, owner: _done(_Session('{"error": "kaputt"}')))
     inst = WorkflowInstance(definition_id=1, version_id=1, context={}, started_by=anna.id)
 
     node = {"id": "n1", "type": "auto_action", "data": {"config": {"action": {
@@ -114,5 +114,5 @@ async def test_fehler_kann_den_schritt_abbrechen(db, anna, monkeypatch):
 
     # Without the switch the flow decides itself, over tool.ok at a branch.
     node["data"]["config"]["action"]["params"]["fail_on_error"] = False
-    ergebnis = await run_action(db, inst, node)
-    assert ergebnis["ok"] is False and inst.context["tool"]["ok"] is False
+    result = await run_action(db, inst, node)
+    assert result["ok"] is False and inst.context["tool"]["ok"] is False

@@ -25,7 +25,7 @@ from ..db import Base
 from .base import TimestampMixin
 
 # Die Arten, die es gibt. Eine neue kostet eine Zeile hier plus die Spalten, die sie fuellt.
-ARTEN = ("number", "location", "text")
+KINDS = ("number", "location", "text")
 
 
 class Series(TimestampMixin, Base):

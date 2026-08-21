@@ -11,7 +11,7 @@ from app.models.notification import Notification
 from app.models.ops import Job, JobRun
 from app.models.workflow import WorkflowDefinition, WorkflowVersion
 from app.services import workflow_engine
-from app.services.job_modes import umstellen
+from app.services.job_modes import convert
 from app.services.scheduler import _start_workflow_job, run_job_kind
 from sqlalchemy import select
 
@@ -20,17 +20,17 @@ from conftest import make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def _job(db, anna, **felder) -> Job:
-    grund = {"name": "Prüfer", "type": "cron", "schedule": "0 8 * * *", "kind": "prompt",
+async def _job(db, anna, **fields) -> Job:
+    reason = {"name": "Prüfer", "type": "cron", "schedule": "0 8 * * *", "kind": "prompt",
              "user_id": anna.id, "notify_mode": "always"}
-    job = Job(**{**grund, **felder})
+    job = Job(**{**reason, **fields})
     db.add(job)
     await db.commit()
     await db.refresh(job)
     return job
 
 
-def _knoten(graph: dict) -> dict:
+def _node(graph: dict) -> dict:
     return {n["id"]: n["data"]["config"] for n in graph["nodes"]}
 
 
@@ -40,44 +40,44 @@ async def _graph_von(db, job: Job) -> dict:
     return v.graph
 
 
-async def test_prompt_job_wird_ein_ablauf(db):
+async def test_prompt_job_wird_ein_flow(db):
     anna = await make_user(db, "anna")
     job = await _job(db, anna, agent="news", prompt="Fasse die Woche zusammen.")
 
-    assert await umstellen(db) == 1
+    assert await convert(db) == 1
     await db.refresh(job)
     assert job.kind == "workflow" and job.workflow_definition_id
 
-    knoten = _knoten(await _graph_von(db, job))
-    arbeit = knoten["arbeit"]["action"]
+    node = _node(await _graph_von(db, job))
+    arbeit = node["arbeit"]["action"]
     assert arbeit["action"] == "agent_run"
     assert arbeit["params"]["agent"] == "news"
     assert arbeit["params"]["task"] == "Fasse die Woche zusammen."
     # Das Ergebnis des Laufs ist die Antwort des Ablaufs — daran hängt die Job-Historie.
-    assert knoten["answer"]["action"]["params"]["text"] == "{{ result.output }}"
+    assert node["answer"]["action"]["params"]["text"] == "{{ result.output }}"
 
 
-async def test_skript_job_wird_ein_ablauf(db):
+async def test_skript_job_wird_ein_flow(db):
     anna = await make_user(db, "anna")
     job = await _job(db, anna, kind="script", command="pruefe.sh", args=["-x", "42"],
                      notify_mode="never")
-    await umstellen(db)
-    knoten = _knoten(await _graph_von(db, job))
-    assert knoten["arbeit"]["action"]["params"] == {
+    await convert(db)
+    node = _node(await _graph_von(db, job))
+    assert node["arbeit"]["action"]["params"] == {
         "command": "pruefe.sh", "args": ["-x", "42"], "timeout_sec": 600,
         "context_key": "result"}
     # `never` heißt: kein Melde-Knoten, nicht etwa eine Weiche, die nie greift.
-    assert "melden" not in knoten
+    assert "melden" not in node
 
 
 async def test_meldemodus_wird_zur_weiche(db):
     anna = await make_user(db, "anna")
     job = await _job(db, anna, prompt="Sieh nach.", notify_mode="on_error")
-    await umstellen(db)
-    knoten = _knoten(await _graph_von(db, job))
-    weiche = knoten["melden_wenn"]["branches"][0]
+    await convert(db)
+    node = _node(await _graph_von(db, job))
+    weiche = node["melden_wenn"]["branches"][0]
     assert weiche["guard"] == {"==": [{"var": "result.status"}, "failed"]}
-    assert knoten["melden"]["action"]["params"]["title"] == "Job: Prüfer"
+    assert node["melden"]["action"]["params"]["title"] == "Job: Prüfer"
 
 
 async def test_langer_text_kommt_in_eine_ablage(db):
@@ -85,43 +85,43 @@ async def test_langer_text_kommt_in_eine_ablage(db):
     lag abgeschnitten im Ausgabefeld eines Laufs. Jetzt wird er hingelegt wie ein Messwert."""
     anna = await make_user(db, "anna")
     job = await _job(db, anna, prompt="Digest", result_html=True)
-    await umstellen(db)
+    await convert(db)
     graph = await _graph_von(db, job)
-    knoten = _knoten(graph)
-    ablegen = knoten["ablegen"]["action"]
+    node = _node(graph)
+    ablegen = node["ablegen"]["action"]
     assert ablegen["action"] == "document"
     assert ablegen["params"]["storage"] == "pruefer" and ablegen["params"]["name"] == "Prüfer"
     # Gemeldet wird der Verweis, nicht der Text.
-    assert knoten["melden"]["action"]["params"]["text"] == "{{ document.title }}\n{{ document.url }}"
+    assert node["melden"]["action"]["params"]["text"] == "{{ document.title }}\n{{ document.url }}"
     # Und das Ablegen steht VOR der Melde-Frage: auch ein stiller Job behält seinen Text.
-    kanten = {(e["source"], e["target"]) for e in graph["edges"]}
-    assert ("arbeit", "ablegen") in kanten and ("ablegen", "answer") in kanten
+    edges = {(e["source"], e["target"]) for e in graph["edges"]}
+    assert ("arbeit", "ablegen") in edges and ("ablegen", "answer") in edges
 
 
 async def test_umstellung_fasst_umgestellte_nicht_wieder_an(db):
     anna = await make_user(db, "anna")
     job = await _job(db, anna, prompt="Einmal")
-    assert await umstellen(db) == 1
-    erste = job.workflow_definition_id
-    assert await umstellen(db) == 0
+    assert await convert(db) == 1
+    first = job.workflow_definition_id
+    assert await convert(db) == 0
     await db.refresh(job)
-    assert job.workflow_definition_id == erste
+    assert job.workflow_definition_id == first
 
 
-async def test_film_bleibt_eine_eigene_art(db):
+async def test_film_bleibt_eine_eigene_kind(db):
     """Er tut nichts weiter als sich selbst — ein Ablauf drumherum brächte nichts."""
     anna = await make_user(db, "anna")
     job = await _job(db, anna, kind="film")
-    assert await umstellen(db) == 0
+    assert await convert(db) == 0
     await db.refresh(job)
     assert job.kind == "film"
 
 
-async def test_ergebnis_landet_in_der_job_historie(db, redis_stub):
+async def test_result_landet_in_der_job_historie(db, redis_stub):
     """Vorher stand dort „Instanz #N gestartet“ — das Ergebnis musste man sich suchen."""
     anna = await make_user(db, "anna")
     job = await _job(db, anna, prompt="Sag Hallo", notify_mode="never")
-    await umstellen(db)
+    await convert(db)
     # Statt eines echten Agentenlaufs: der Ablauf hält gleich eine Antwort fest.
     d = await db.get(WorkflowDefinition, job.workflow_definition_id)
     v = await db.get(WorkflowVersion, d.current_version_id)
@@ -146,15 +146,15 @@ async def test_ergebnis_landet_in_der_job_historie(db, redis_stub):
     assert jr.workflow_instance_id is not None
 
 
-async def test_freier_agentenlauf_wartet_auf_sein_ergebnis(db, redis_stub, monkeypatch):
+async def test_freier_agentenlauf_wartet_auf_sein_result(db, redis_stub, monkeypatch):
     """Der freie Lauf steckte in der Job-Art fest; als Knoten kann ihn jeder Ablauf haben."""
     from app.models.enums import WorkflowSubjectKind, WorkflowVersionStatus
     from app.services.workflow_actions import run_action
 
-    auftraege: list[dict] = []
+    tasks: list[dict] = []
 
     async def enqueue_task(payload):
-        auftraege.append(payload)
+        tasks.append(payload)
 
     import app.services.workflow_actions as wa
     monkeypatch.setattr("app.core.redis.enqueue_task", enqueue_task)
@@ -180,15 +180,15 @@ async def test_freier_agentenlauf_wartet_auf_sein_ergebnis(db, redis_stub, monke
                                 context={"was": "die Lage"}, actor_id=anna.id)
     await db.commit()
 
-    ergebnis = await run_action(db, inst, {"id": "frage", "data": {"config": {"action": {
+    result = await run_action(db, inst, {"id": "frage", "data": {"config": {"action": {
         "action": "agent_run",
         "params": {"agent": "news", "task": "Berichte über {{ was }}"}}}}})
-    assert ergebnis["started"] is True and ergebnis["agent"] == "news"
+    assert result["started"] is True and result["agent"] == "news"
     # Ohne das Warten liefe der Ablauf weiter, bevor die Antwort da ist.
-    assert ergebnis["_wait"]["context_key"] == "run"
-    (auftrag,) = [t for t in auftraege if t.get("kind") == "agent_frei"]
-    assert auftrag["prompt"] == "Berichte über die Lage"
-    assert auftrag["owner_id"] == anna.id
+    assert result["_wait"]["context_key"] == "run"
+    (task,) = [t for t in tasks if t.get("kind") == "agent_frei"]
+    assert task["prompt"] == "Berichte über die Lage"
+    assert task["owner_id"] == anna.id
 
 
 # ── Ablagen: wohin ein Ablauf seinen Text legt ───────────────────────────────
@@ -221,17 +221,17 @@ async def test_der_text_landet_in_der_ablage(db, redis_stub):
                                 actor_id=anna.id)
     await db.commit()
 
-    ergebnis = await run_action(db, inst, {"id": "ablegen", "data": {"config": {"action": {
+    result = await run_action(db, inst, {"id": "ablegen", "data": {"config": {"action": {
         "action": "document",
         "params": {"storage": "rueckblick", "name": "Rückblick",
                    "text": "{{ result.output }}"}}}}})
     await db.commit()
-    assert ergebnis["stored"] is True
+    assert result["stored"] is True
 
-    eintrag = (await db.execute(select(DocEntry))).scalars().one()
-    assert eintrag.body.startswith("# Montag")
+    entry = (await db.execute(select(DocEntry))).scalars().one()
+    assert entry.body.startswith("# Montag")
     # Die Überschrift kommt aus dem Text, wenn keine genannt wurde.
-    assert eintrag.title == "Montag"
+    assert entry.title == "Montag"
     ablage = (await db.execute(select(DocSeries))).scalars().one()
     assert ablage.key == "rueckblick" and ablage.last_title == "Montag"
     # Der Verweis gehört in die Meldung — er ist der Grund, warum überhaupt abgelegt wird.
@@ -265,9 +265,9 @@ async def test_leerer_text_legt_nichts_ab(db, redis_stub):
                                 context={}, actor_id=anna.id)
     await db.commit()
 
-    ergebnis = await run_action(db, inst, {"id": "ablegen", "data": {"config": {"action": {
+    result = await run_action(db, inst, {"id": "ablegen", "data": {"config": {"action": {
         "action": "document", "params": {"storage": "leer", "text": "{{ fehlt }}"}}}}})
-    assert ergebnis["stored"] is False
+    assert result["stored"] is False
     assert (await db.execute(select(DocEntry))).scalars().all() == []
 
 
@@ -278,7 +278,7 @@ async def test_alte_fassungen_werden_vergessen(db):
 
     anna = await make_user(db, "anna")
     for n in range(5):
-        await documents.hinlegen(db, anna.id, "kurz", titel=f"Nr {n}", text=f"Text {n}",
+        await documents.hinlegen(db, anna.id, "kurz", title=f"Nr {n}", text=f"Text {n}",
                                  behalten=3)
     await db.commit()
     uebrig = (await db.execute(select(DocEntry.title))).scalars().all()

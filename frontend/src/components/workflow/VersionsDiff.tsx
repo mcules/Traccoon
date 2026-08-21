@@ -30,7 +30,7 @@ export default function VersionsDiff({ defId, versionId, gegen, titel, onClose }
 }
 
 function DiffInhalt({ d }: { d: WfDiff }) {
-  if (d.gleich) {
+  if (d.identical) {
     return (
       <p className="text-sm text-muted">
         {tr("diff.gleich")}
@@ -40,28 +40,28 @@ function DiffInhalt({ d }: { d: WfDiff }) {
   return (
     <div className="space-y-4 text-sm">
       <p className="text-xs text-muted">
-        {d.von === null
-          ? tr("diff.gegen_nichts", { bis: d.bis })
-          : tr("diff.von_bis", { von: d.von, bis: d.bis })}
+        {d.from_version === null
+          ? tr("diff.gegen_nichts", { bis: d.to_version })
+          : tr("diff.von_bis", { von: d.from_version, bis: d.to_version })}
       </p>
 
-      <Gruppe titel={tr("diff.knoten_neu")} eintraege={d.knoten_neu} farbe="text-green-400" />
-      <Gruppe titel={tr("diff.knoten_weg")} eintraege={d.knoten_weg} farbe="text-red-400" />
+      <Gruppe titel={tr("diff.knoten_neu")} eintraege={d.nodes_added} farbe="text-green-400" />
+      <Gruppe titel={tr("diff.knoten_weg")} eintraege={d.nodes_removed} farbe="text-red-400" />
 
-      {d.knoten_geaendert.length > 0 && (
+      {d.nodes_changed.length > 0 && (
         <div>
           <div className="mb-1 text-xs font-medium uppercase tracking-wide text-muted">
             {tr("diff.knoten_geaendert")}
           </div>
           <div className="space-y-2">
-            {d.knoten_geaendert.map((k) => (
+            {d.nodes_changed.map((k) => (
               <div key={k.id} className="rounded border border-line bg-surface p-2">
                 <div className="mb-1 flex flex-wrap items-baseline gap-2">
                   <span className="font-medium text-ink">{k.label || k.id}</span>
                   <span className="font-mono text-xs text-muted">{k.id}</span>
                 </div>
                 <div className="space-y-1.5">
-                  {k.felder.map((f) => (
+                  {k.fields.map((f) => (
                     <div key={f.feld}>
                       <div className="font-mono text-[11px] text-muted">{f.feld}</div>
                       {/* Zwei Zeilen statt einer: bei langen Werten sucht man sonst die
@@ -81,8 +81,8 @@ function DiffInhalt({ d }: { d: WfDiff }) {
         </div>
       )}
 
-      <Kanten titel={tr("diff.kanten_neu")} texte={d.kanten_neu} farbe="text-green-400" />
-      <Kanten titel={tr("diff.kanten_weg")} texte={d.kanten_weg} farbe="text-red-400" />
+      <Kanten titel={tr("diff.kanten_neu")} texte={d.edges_added} farbe="text-green-400" />
+      <Kanten titel={tr("diff.kanten_weg")} texte={d.edges_removed} farbe="text-red-400" />
     </div>
   );
 }

@@ -218,7 +218,7 @@ async def start_hardware_instance(db, asset: HardwareAsset, actor_id: int | None
     )
 
 
-_ALT_AKTION = {"set_purchase_status": "set_status"}
+_ALT_ACTION = {"set_purchase_status": "set_status"}
 
 
 def _vergleichsform(graph: dict) -> dict:
@@ -229,27 +229,27 @@ def _vergleichsform(graph: dict) -> dict:
     two identical chains different. Everything else (order, labels, responsible people, form
     fields) stays in: that is how a real adjustment is recognised.
     """
-    def aktion(cfg: dict) -> dict:
+    def action(cfg: dict) -> dict:
         roh = cfg.get("action")
         if isinstance(roh, str):
             # Flat form: everything except name and label is a parameter.
             name = roh
             params = {k: v for k, v in cfg.items()
                       if k not in ("action", "kind", "label", "group")}
-            rest = {k: v for k, v in cfg.items() if k in ("label", "group")}
+            remainder = {k: v for k, v in cfg.items() if k in ("label", "group")}
         elif isinstance(roh, dict):
             name, params = roh.get("action", ""), dict(roh.get("params") or {})
-            rest = {k: v for k, v in cfg.items() if k not in ("action", "kind")}
+            remainder = {k: v for k, v in cfg.items() if k not in ("action", "kind")}
         else:
             return cfg
-        return {**rest, "action": {"action": _ALT_AKTION.get(name, name), "params": params}}
+        return {**remainder, "action": {"action": _ALT_ACTION.get(name, name), "params": params}}
 
     nodes = []
     for n in graph.get("nodes") or []:
         cfg = (n.get("data") or {}).get("config") or {}
         nodes.append({"id": n.get("id"), "type": n.get("type"),
                       "position": n.get("position"),
-                      "config": aktion(cfg) if n.get("type") == "auto_action" else cfg})
+                      "config": action(cfg) if n.get("type") == "auto_action" else cfg})
     edges = [{k: e.get(k) for k in ("id", "source", "target", "sourceHandle")}
              for e in graph.get("edges") or []]
     return {"nodes": nodes, "edges": edges}
@@ -275,16 +275,16 @@ async def refresh_generated_definitions(db) -> int:
                    if d.current_version_id else None)
         if current is None:
             continue
-        neu = build_hardware_graph(await _project_steps(db, d.project_id))
-        if neu == current.graph:
+        new = build_hardware_graph(await _project_steps(db, d.project_id))
+        if new == current.graph:
             continue
-        if _vergleichsform(current.graph or {}) != _vergleichsform(neu):
+        if _vergleichsform(current.graph or {}) != _vergleichsform(new):
             continue  # adjusted in substance: do not touch
         last = (await db.execute(
             select(WorkflowVersion).where(WorkflowVersion.definition_id == d.id)
             .order_by(WorkflowVersion.version.desc()))).scalars().first()
         version = WorkflowVersion(
-            definition_id=d.id, version=(last.version + 1) if last else 1, graph=neu,
+            definition_id=d.id, version=(last.version + 1) if last else 1, graph=new,
             status=WorkflowVersionStatus.published,
             published_at=dt.datetime.now(tz=dt.timezone.utc),
             notes="Auf die aktuelle Bauform gehoben (unangetastete Kette)",

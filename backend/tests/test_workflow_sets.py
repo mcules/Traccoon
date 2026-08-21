@@ -11,7 +11,7 @@ from conftest import add_member, auth, make_project, make_user
 LIFECYCLE = WorkflowSlot.ticket_lifecycle.value
 
 
-async def test_standard_satz_gilt_ohne_zutun(db, seeded):
+async def test_standard_preset_gilt_ohne_zutun(db, seeded):
     proj = await make_project(db, "TST", "Test")
     d = await sets.resolve_definition(db, proj.id, LIFECYCLE)
     assert d is not None and d.set_id == seeded.id
@@ -19,7 +19,7 @@ async def test_standard_satz_gilt_ohne_zutun(db, seeded):
     assert info["origin"] == "builtin"
 
 
-async def test_eigener_satz_gilt_fuer_meine_owner_projekte(db, seeded):
+async def test_eigener_preset_gilt_fuer_meine_owner_projekte(db, seeded):
     owner = await make_user(db, "owner")
     fremd = await make_user(db, "fremd")
     meins = await make_project(db, "MEIN", "Meins")
@@ -76,7 +76,7 @@ async def test_zuruecksetzen_laesst_laufende_instanz_unberuehrt(db, seeded, clie
     assert await db.get(WorkflowDefinition, kopie.id) is not None
 
 
-async def test_slot_uebersicht_zeigt_herkunft(client, db, seeded):
+async def test_slot_overview_zeigt_herkunft(client, db, seeded):
     owner = await make_user(db, "owner", admin=True)
     proj = await make_project(db, "TST", "Test")
     m = await add_member(db, proj, owner, ProjectRole.owner)
@@ -114,19 +114,19 @@ async def test_seed_ist_idempotent(db, seeded):
     assert (await db.execute(select(func.count()).select_from(WorkflowVersion))).scalar() == vorher
 
 
-async def test_fremder_persoenlicher_satz_ist_tabu(client, db, seeded):
+async def test_fremder_persoenlicher_preset_ist_tabu(client, db, seeded):
     a = await make_user(db, "anna")
     b = await make_user(db, "bert")
-    satz = await sets.create_user_set(db, a)
+    preset = await sets.create_user_set(db, a)
     from sqlalchemy import select
     d = (await db.execute(select(WorkflowDefinition).where(
-        WorkflowDefinition.set_id == satz.id))).scalars().first()
+        WorkflowDefinition.set_id == preset.id))).scalars().first()
 
     r = await client.put(f"/workflows/{d.id}", json={"name": "geklaut"}, headers=auth(b))
     assert r.status_code == 403
 
 
-async def test_instanz_kennt_projekt_auch_bei_satz_vorlage(db, seeded):
+async def test_instanz_kennt_projekt_auch_bei_preset_template(db, seeded):
     """Templates are project-less; the instance still has to hang off the project, because
     otherwise the rights check and the live events do not work."""
     from app.models.enums import TicketAgentStatus

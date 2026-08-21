@@ -73,7 +73,7 @@ JOB_TEMPLATES: dict[str, dict] = {
 }
 
 
-def liste() -> list[dict]:
+def listing() -> list[dict]:
     """Templates for the selection (key, label, parameters with default values)."""
     return [{"key": k, "label": v["label"], "beschreibung": v["beschreibung"],
              "params": deepcopy(v["params"]), "felder": deepcopy(v["felder"])}
@@ -85,7 +85,7 @@ def anwenden(key: str, params: dict | None = None) -> dict:
 
     An unknown key raises a KeyError; the caller turns that into its own error message.
     """
-    vorlage = JOB_TEMPLATES[key]
-    felder = deepcopy(vorlage["felder"])
-    felder["args"] = {**deepcopy(vorlage["params"]), **(params or {})}
-    return felder
+    template = JOB_TEMPLATES[key]
+    fields = deepcopy(template["felder"])
+    fields["args"] = {**deepcopy(template["params"]), **(params or {})}
+    return fields

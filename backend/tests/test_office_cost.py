@@ -39,11 +39,11 @@ async def buehne(db):
     user = await make_user(db, "anna")
     proj = await make_project(db, "AAA", "Alpha")
     await add_member(db, proj, user, ProjectRole.member)
-    typ = IssueType(project_id=proj.id, name="Aufgabe")
+    kind = IssueType(project_id=proj.id, name="Aufgabe")
     status = WorkflowStatus(project_id=proj.id, name="To Do", category=StatusCategory.todo)
-    db.add_all([typ, status, IssueCounter(project_id=proj.id, last_number=0)])
+    db.add_all([kind, status, IssueCounter(project_id=proj.id, last_number=0)])
     await db.commit()
-    issue = Issue(project_id=proj.id, number=1, key="AAA-1", type_id=typ.id,
+    issue = Issue(project_id=proj.id, number=1, key="AAA-1", type_id=kind.id,
                   status_id=status.id, summary="Tu was", reporter_id=user.id, rank="1")
     db.add(issue)
     await db.commit()
@@ -119,7 +119,7 @@ async def test_altzeile_ohne_katalogeintrag_ist_eine_preisluecke(client, db):
     assert body["by_agent"][0]["unpriced_models"] == ["lokal/qwen3.6"]
 
 
-async def test_altzeile_mit_katalogeintrag_gilt_als_bepreist(client, db):
+async def test_altzeile_mit_katalogeintrag_gilt_as_bepreist(client, db):
     user, _proj, issue = await buehne(db)
     await katalog(db, "lokal", "qwen3.6", ein=0.1, aus=0.4)
     run = await lauf(db, issue)
@@ -183,10 +183,10 @@ async def test_by_model_gruppiert_nach_dem_modell_des_schritts(client, db):
     await zug(db, run, provider="openai", model="gpt-x", in_tok=2 * MIO, seq=2)
 
     body = await kosten(client, user, issue)
-    zeilen = {(r["provider"], r["model"]): r for r in body["by_model"]}
-    assert set(zeilen) == {("claude_code", "sonnet"), ("openai", "gpt-x")}
-    assert zeilen[("claude_code", "sonnet")]["cost_usd"] == 3.0
-    assert zeilen[("openai", "gpt-x")]["cost_usd"] == 2.0
+    lines = {(r["provider"], r["model"]): r for r in body["by_model"]}
+    assert set(lines) == {("claude_code", "sonnet"), ("openai", "gpt-x")}
+    assert lines[("claude_code", "sonnet")]["cost_usd"] == 3.0
+    assert lines[("openai", "gpt-x")]["cost_usd"] == 2.0
     assert body["total"]["cost_usd_estimated"] == 5.0
     assert body["total"]["in_tokens"] == 3 * MIO
 
@@ -203,12 +203,12 @@ async def test_abgerechnet_und_geschaetzt_stehen_nebeneinander(client, db):
     body = await kosten(client, user, issue)
     assert body["total"]["cost_usd_billed"] == 1.0
     assert body["total"]["cost_usd_estimated"] == 3.0
-    zeile = body["by_agent"][0]
-    assert zeile["cost_usd_billed"] == 1.0 and zeile["cost_usd_estimated"] == 3.0
+    line = body["by_agent"][0]
+    assert line["cost_usd_billed"] == 1.0 and line["cost_usd_estimated"] == 3.0
     assert body["cost_partial"] is False
 
 
-async def test_altlauf_ohne_schritt_tokens_faellt_auf_die_laufzeile_zurueck(client, db):
+async def test_altlauf_ohne_step_tokens_faellt_auf_die_laufzeile_zurueck(client, db):
     """A run from before the instrumentation has no tokens on the steps but does have its sums
     on the run. Without this fallback the estimate would be 0 everywhere on the first day and
     the cost view useless."""

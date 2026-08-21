@@ -14,7 +14,7 @@ from app.models.workflow import WorkflowStepRun
 from app.services import workflow_engine as we
 
 
-async def _schritt(db, inst, token, *, task_id="wf-1-1-exec-a") -> WorkflowStepRun:
+async def _step(db, inst, token, *, task_id="wf-1-1-exec-a") -> WorkflowStepRun:
     step = WorkflowStepRun(instance_id=inst.id, token_id=token.id, node_id="exec",
                            node_type=we.NType.agent_task, status=SStatus.running,
                            result={"task_id": task_id})
@@ -24,16 +24,16 @@ async def _schritt(db, inst, token, *, task_id="wf-1-1-exec-a") -> WorkflowStepR
     return step
 
 
-async def test_verwaister_schritt_bekommt_wieder_einen_waechter(db, monkeypatch, prozess):
+async def test_verwaister_step_bekommt_wieder_einen_watchdog(db, monkeypatch, prozess):
     inst, token = prozess
-    step = await _schritt(db, inst, token)
+    step = await _step(db, inst, token)
     gestartet: list[int] = []
 
     async def fake_await_agent(instance_id, token_id, step_id, task_id, omap, timeout):
         gestartet.append(step_id)
 
     monkeypatch.setattr(we, "_await_agent", fake_await_agent)
-    we._WAECHTER.clear()
+    we._WATCHDOG.clear()
 
     await we.recover_workflow_agents()
     await we.drain()
@@ -41,29 +41,29 @@ async def test_verwaister_schritt_bekommt_wieder_einen_waechter(db, monkeypatch,
     assert gestartet == [step.id]
 
 
-async def test_kein_zweiter_waechter_auf_dasselbe_ergebnis(db, monkeypatch, prozess):
+async def test_kein_zweiter_watchdog_auf_dasselbe_result(db, monkeypatch, prozess):
     """Two watchers on one result would both switch, and the step would run twice."""
     inst, token = prozess
-    step = await _schritt(db, inst, token)
+    step = await _step(db, inst, token)
     gestartet: list[int] = []
 
     async def fake_await_agent(instance_id, token_id, step_id, task_id, omap, timeout):
         gestartet.append(step_id)
 
     monkeypatch.setattr(we, "_await_agent", fake_await_agent)
-    we._WAECHTER.clear()
-    we._WAECHTER.add(step.id)          # one is already waiting here
+    we._WATCHDOG.clear()
+    we._WATCHDOG.add(step.id)          # one is already waiting here
     try:
         await we.recover_workflow_agents()
         await we.drain()
         assert gestartet == []
     finally:
-        we._WAECHTER.clear()
+        we._WATCHDOG.clear()
 
 
-async def test_beendeter_schritt_bekommt_keinen(db, monkeypatch, prozess):
+async def test_beendeter_step_bekommt_keinen(db, monkeypatch, prozess):
     inst, token = prozess
-    step = await _schritt(db, inst, token)
+    step = await _step(db, inst, token)
     step.status = SStatus.done
     await db.commit()
     gestartet: list[int] = []
@@ -72,7 +72,7 @@ async def test_beendeter_schritt_bekommt_keinen(db, monkeypatch, prozess):
         gestartet.append(1)
 
     monkeypatch.setattr(we, "_await_agent", fake_await_agent)
-    we._WAECHTER.clear()
+    we._WATCHDOG.clear()
 
     await we.recover_workflow_agents()
     await we.drain()

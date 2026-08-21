@@ -18,7 +18,7 @@ from conftest import add_member, auth, make_project, make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def _freier_ablauf(db, besitzer, key: str, *, trigger: dict | None = None,
+async def _freier_flow(db, owner, key: str, *, trigger: dict | None = None,
                          veroeffentlicht: bool = True) -> WorkflowDefinition:
     start_cfg: dict = {"label": "Start"}
     if trigger:
@@ -28,7 +28,7 @@ async def _freier_ablauf(db, besitzer, key: str, *, trigger: dict | None = None,
                        {"id": "e", "type": "end", "position": {"x": 0, "y": 1},
                         "data": {"config": {"outcome": "completed"}}}],
              "edges": [{"id": "e1", "source": "s", "target": "e"}]}
-    d = WorkflowDefinition(project_id=None, key=key, name=key, created_by=besitzer.id,
+    d = WorkflowDefinition(project_id=None, key=key, name=key, created_by=owner.id,
                            subject_kind=WorkflowSubjectKind.standalone)
     db.add(d)
     await db.flush()
@@ -43,7 +43,7 @@ async def _freier_ablauf(db, besitzer, key: str, *, trigger: dict | None = None,
     return d
 
 
-async def test_jeder_darf_einen_eigenen_ablauf_anlegen(client, db):
+async def test_jeder_may_einen_eigenen_flow_create(client, db):
     """An own flow is not an admin right; otherwise nobody but the admin has one."""
     anna = await make_user(db, "anna")
     r = await client.post("/workflows", headers=auth(anna), json={
@@ -53,13 +53,13 @@ async def test_jeder_darf_einen_eigenen_ablauf_anlegen(client, db):
     assert r.json()["created_by"] == anna.id or True   # Feld optional im Schema
 
 
-async def test_fremder_ablauf_ist_unsichtbar_und_unantastbar(client, db):
+async def test_fremder_flow_ist_unsichtbar_und_unantastbar(client, db):
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
-    d = await _freier_ablauf(db, anna, "annas-ablauf")
+    d = await _freier_flow(db, anna, "annas-ablauf")
 
-    sichtbar = [w["id"] for w in (await client.get("/workflows", headers=auth(bert))).json()]
-    assert d.id not in sichtbar
+    visible = [w["id"] for w in (await client.get("/workflows", headers=auth(bert))).json()]
+    assert d.id not in visible
     assert d.id in [w["id"] for w in (await client.get("/workflows", headers=auth(anna))).json()]
 
     assert (await client.put(f"/workflows/{d.id}", headers=auth(bert),
@@ -70,10 +70,10 @@ async def test_fremder_ablauf_ist_unsichtbar_und_unantastbar(client, db):
                               json={"subject_kind": "standalone"})).status_code == 201
 
 
-async def test_admin_sieht_und_darf_alles(client, db):
+async def test_admin_sieht_und_may_alles(client, db):
     anna = await make_user(db, "anna")
     chef = await make_user(db, "chef", admin=True)
-    d = await _freier_ablauf(db, anna, "annas-ablauf")
+    d = await _freier_flow(db, anna, "annas-ablauf")
     assert d.id in [w["id"] for w in (await client.get("/workflows", headers=auth(chef))).json()]
     assert (await client.put(f"/workflows/{d.id}", headers=auth(chef),
                              json={"name": "umbenannt"})).status_code == 200
@@ -87,16 +87,16 @@ async def test_start_verlangt_rechte_am_artefakt(client, db):
     chef = await make_user(db, "chef", admin=True)
     projekt = await make_project(db, "GEH", "Geheim")
     await add_member(db, projekt, chef, ProjectRole.owner)
-    typ = IssueType(project_id=projekt.id, name="Aufgabe", order=0)
+    kind = IssueType(project_id=projekt.id, name="Aufgabe", order=0)
     status_ = WorkflowStatus(project_id=projekt.id, name="Offen", order=0)
-    db.add_all([typ, status_])
+    db.add_all([kind, status_])
     await db.flush()
-    issue = Issue(project_id=projekt.id, number=1, key="GEH-1", type_id=typ.id,
+    issue = Issue(project_id=projekt.id, number=1, key="GEH-1", type_id=kind.id,
                   status_id=status_.id, summary="Fremd", reporter_id=chef.id, rank="1")
     db.add(issue)
     await db.commit()
 
-    d = await _freier_ablauf(db, anna, "annas-ablauf")
+    d = await _freier_flow(db, anna, "annas-ablauf")
     r = await client.post(f"/workflows/{d.id}/instances", headers=auth(anna),
                           json={"subject_kind": "issue", "issue_id": issue.id})
     assert r.status_code in (403, 404), r.text
@@ -112,7 +112,7 @@ async def test_ereignis_startet_nur_bei_eigenen_projekten(db):
     fremd = await make_project(db, "FRD", "Fremdes Projekt")
     await add_member(db, fremd, chef, ProjectRole.owner)
 
-    await _freier_ablauf(db, anna, "annas-lauscher", trigger={"event": "issue.created"})
+    await _freier_flow(db, anna, "annas-lauscher", trigger={"event": "issue.created"})
 
     assert len(await emit(db, "issue.created", project_id=fremd.id)) == 0
     assert len(await emit(db, "issue.created", project_id=ihrs.id)) == 1
@@ -123,20 +123,20 @@ async def test_ereignis_startet_nur_bei_eigenen_projekten(db):
     assert lauf.context["event"]["project_id"] == ihrs.id
 
 
-async def test_admin_ablauf_hoert_ueberall(db):
+async def test_admin_flow_hoert_ueberall(db):
     chef = await make_user(db, "chef", admin=True)
     fremd = await make_project(db, "FRD", "Fremdes Projekt")
-    await _freier_ablauf(db, chef, "chef-lauscher", trigger={"event": "issue.created"})
+    await _freier_flow(db, chef, "chef-lauscher", trigger={"event": "issue.created"})
     assert len(await emit(db, "issue.created", project_id=fremd.id)) == 1
 
 
 # ── The webhook as a source ──────────────────────────────────────────────────
 
-async def test_ablauf_bekommt_eine_eigene_adresse(client, db):
+async def test_flow_bekommt_eine_eigene_adresse(client, db):
     """Not every system speaks MCP or knows Traccoon's events; almost every one sends a
     webhook. The address now comes into being in the flow, not at the other end."""
     anna = await make_user(db, "anna")
-    d = await _freier_ablauf(db, anna, "stoerungsmelder")
+    d = await _freier_flow(db, anna, "stoerungsmelder")
 
     assert (await client.get(f"/workflows/{d.id}/webhook", headers=auth(anna))).json() is None
 
@@ -152,15 +152,15 @@ async def test_ablauf_bekommt_eine_eigene_adresse(client, db):
     assert wieder.json()["public_id"] == hook["public_id"]
 
 
-async def test_fremder_gibt_keinem_ablauf_eine_adresse(client, db):
+async def test_fremder_gibt_keinem_flow_eine_adresse(client, db):
     anna = await make_user(db, "anna")
     bert = await make_user(db, "bert")
-    d = await _freier_ablauf(db, anna, "annas-ablauf")
+    d = await _freier_flow(db, anna, "annas-ablauf")
     assert (await client.post(f"/workflows/{d.id}/webhook",
                               headers=auth(bert))).status_code == 403
 
 
-async def test_webhook_startet_den_ablauf_wirklich(client, db):
+async def test_webhook_startet_den_flow_wirklich(client, db):
     """The proof that the address carries: a call in, an instance out, with the payload in
     the context so that the branches have something to read."""
     import hashlib
@@ -170,11 +170,11 @@ async def test_webhook_startet_den_ablauf_wirklich(client, db):
     from app.models.workflow import WorkflowInstance
 
     anna = await make_user(db, "anna")
-    d = await _freier_ablauf(db, anna, "stoerungsmelder")
+    d = await _freier_flow(db, anna, "stoerungsmelder")
     hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(anna))).json()
 
-    nutzlast = {"quelle": "Zabbix", "vorgang": {"id": 42, "titel": "Störung"}}
-    roh = _json.dumps(nutzlast).encode()
+    payload = {"quelle": "Zabbix", "vorgang": {"id": 42, "titel": "Störung"}}
+    roh = _json.dumps(payload).encode()
     sig = hmac.new(hook["secret"].encode(), roh, hashlib.sha256).hexdigest()
     r = await client.post(f"/hooks/{hook['public_id']}", content=roh,
                           headers={"content-type": "application/json",
@@ -194,29 +194,29 @@ async def _ticket(db, chef, key="ABC-1"):
 
     projekt = await make_project(db, key.split("-")[0], "Projekt")
     await add_member(db, projekt, chef, ProjectRole.owner)
-    typ = IssueType(project_id=projekt.id, name="Aufgabe", order=0)
+    kind = IssueType(project_id=projekt.id, name="Aufgabe", order=0)
     stat = WorkflowStatus(project_id=projekt.id, name="Offen", order=0)
-    db.add_all([typ, stat])
+    db.add_all([kind, stat])
     await db.flush()
     issue = Issue(project_id=projekt.id, number=int(key.split("-")[1]), key=key,
-                  type_id=typ.id, status_id=stat.id, summary="Zielticket",
+                  type_id=kind.id, status_id=stat.id, summary="Zielticket",
                   reporter_id=chef.id, rank="1")
     db.add(issue)
     await db.commit()
     return projekt, issue
 
 
-async def _mit_subjektfeld(db, besitzer, feld: str | None, subject=WorkflowSubjectKind.issue):
+async def _mit_subjektfeld(db, owner, field: str | None, subject=WorkflowSubjectKind.issue):
     start_cfg = {"label": "Start", "trigger": {"kind": "webhook"}}
-    if feld:
-        start_cfg["trigger"]["subjekt_feld"] = feld
+    if field:
+        start_cfg["trigger"]["subjekt_feld"] = field
     graph = {"nodes": [{"id": "s", "type": "start", "position": {"x": 0, "y": 0},
                         "data": {"config": start_cfg}},
                        {"id": "e", "type": "end", "position": {"x": 0, "y": 1},
                         "data": {"config": {"outcome": "completed"}}}],
              "edges": [{"id": "e1", "source": "s", "target": "e"}]}
-    d = WorkflowDefinition(project_id=None, key=f"mitsubjekt{feld or 'ohne'}",
-                           name="Mit Subjekt", created_by=besitzer.id, subject_kind=subject)
+    d = WorkflowDefinition(project_id=None, key=f"mitsubjekt{field or 'ohne'}",
+                           name="Mit Subjekt", created_by=owner.id, subject_kind=subject)
     db.add(d)
     await db.flush()
     v = WorkflowVersion(definition_id=d.id, version=1, graph=graph,
@@ -228,19 +228,19 @@ async def _mit_subjektfeld(db, besitzer, feld: str | None, subject=WorkflowSubje
     return d
 
 
-async def _rufen(client, hook, nutzlast: dict):
+async def _rufen(client, hook, payload: dict):
     import hashlib
     import hmac
     import json as _json
 
-    roh = _json.dumps(nutzlast).encode()
+    roh = _json.dumps(payload).encode()
     sig = hmac.new(hook["secret"].encode(), roh, hashlib.sha256).hexdigest()
     return await client.post(f"/hooks/{hook['public_id']}", content=roh,
                              headers={"content-type": "application/json",
                                       "X-Webhook-Signature": sig})
 
 
-async def test_webhook_bindet_das_ticket_aus_der_nutzlast(client, db):
+async def test_webhook_bindet_das_ticket_aus_der_payload(client, db):
     """The foreign system does not know Traccoon's numbers; it names the identifier it knows.
     Without this binding all ticket actions of the flow would run into nothing."""
     chef = await make_user(db, "chef", admin=True)
@@ -268,7 +268,7 @@ async def test_auch_die_nummer_geht(client, db):
     assert r.json()["issue_id"] == issue.id
 
 
-async def test_fehlendes_feld_sagt_es_deutlich(client, db):
+async def test_fehlendes_field_sagt_es_deutlich(client, db):
     """A flow that needs an artifact but gets none must not start mutely into nothing."""
     chef = await make_user(db, "chef", admin=True)
     await _ticket(db, chef, "ABC-3")
@@ -297,7 +297,7 @@ async def test_fremdes_ticket_bleibt_fremd(client, db):
     assert r.status_code == 400 and "Rechte" in r.text
 
 
-async def test_ablauf_ohne_artefakt_braucht_kein_feld(client, db):
+async def test_flow_ohne_artefakt_braucht_kein_field(client, db):
     chef = await make_user(db, "chef", admin=True)
     d = await _mit_subjektfeld(db, chef, None, subject=WorkflowSubjectKind.standalone)
     hook = (await client.post(f"/workflows/{d.id}/webhook", headers=auth(chef))).json()

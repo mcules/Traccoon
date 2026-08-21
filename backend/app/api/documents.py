@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.documents import DocEntry, DocSeries
 from ..models.user import User
@@ -19,14 +19,14 @@ from .deps import get_current_user
 router = APIRouter(tags=["documents"])
 
 
-def _ablage_out(a: DocSeries, anzahl: int | None = None) -> dict:
+def _ablage_out(a: DocSeries, count: int | None = None) -> dict:
     return {"id": a.id, "key": a.key, "name": a.name or a.key, "description": a.description,
             "keep": a.keep, "last_title": a.last_title,
             "last_at": metrics._mit_zone(a.last_at).isoformat() if a.last_at else None,
-            "count": anzahl}
+            "count": count}
 
 
-def _eintrag_out(e: DocEntry, mit_text: bool = True) -> dict:
+def _entry_out(e: DocEntry, mit_text: bool = True) -> dict:
     return {"id": e.id, "title": e.title, "format": e.format,
             "ts": metrics._mit_zone(e.ts).isoformat() if e.ts else None,
             "context": e.context or {},
@@ -47,14 +47,14 @@ async def list_ablagen(user: User = Depends(get_current_user),
                              .order_by(DocSeries.key))).scalars().all()
     aus = []
     for a in rows:
-        anzahl = len((await db.execute(select(DocEntry.id)
+        count = len((await db.execute(select(DocEntry.id)
                                        .where(DocEntry.series_id == a.id))).scalars().all())
-        aus.append(_ablage_out(a, anzahl))
+        aus.append(_ablage_out(a, count))
     return aus
 
 
 @router.get("/documents/{key:path}/entries")
-async def list_eintraege(key: str, limit: int = Query(30, ge=1, le=200),
+async def list_entries(key: str, limit: int = Query(30, ge=1, le=200),
                          user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
     """Die Fassungen, neueste zuerst — ohne Text, sonst hinge die Liste an einem Rückblick
@@ -62,35 +62,35 @@ async def list_eintraege(key: str, limit: int = Query(30, ge=1, le=200),
     a = await _meine(db, user, key)
     rows = (await db.execute(select(DocEntry).where(DocEntry.series_id == a.id)
                              .order_by(DocEntry.id.desc()).limit(limit))).scalars().all()
-    return {"storage": _ablage_out(a), "entries": [_eintrag_out(e, mit_text=False) for e in rows]}
+    return {"storage": _ablage_out(a), "entries": [_entry_out(e, mit_text=False) for e in rows]}
 
 
-@router.get("/documents/{key:path}/entries/{eintrag_id}")
-async def get_eintrag(key: str, eintrag_id: int, user: User = Depends(get_current_user),
+@router.get("/documents/{key:path}/entries/{entry_id}")
+async def get_entry(key: str, entry_id: int, user: User = Depends(get_current_user),
                       db: AsyncSession = Depends(get_session)):
     a = await _meine(db, user, key)
-    e = await db.get(DocEntry, eintrag_id)
+    e = await db.get(DocEntry, entry_id)
     if e is None or e.series_id != a.id:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.entry_not_found", "Fassung nicht gefunden")
-    return {"storage": _ablage_out(a), "entry": _eintrag_out(e)}
+    return {"storage": _ablage_out(a), "entry": _entry_out(e)}
 
 
 @router.get("/documents/{key:path}/latest")
-async def get_letzte(key: str, user: User = Depends(get_current_user),
+async def get_last(key: str, user: User = Depends(get_current_user),
                      db: AsyncSession = Depends(get_session)):
     """Der aktuelle Stand — darauf zeigt der Link in einer Meldung."""
     a = await _meine(db, user, key)
-    e = await documents.letzte(db, user.id, key)
+    e = await documents.last(db, user.id, key)
     if e is None:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.storage_empty", "Die Ablage ist noch leer")
-    return {"storage": _ablage_out(a), "entry": _eintrag_out(e)}
+    return {"storage": _ablage_out(a), "entry": _entry_out(e)}
 
 
-@router.delete("/documents/{key:path}/entries/{eintrag_id}", status_code=204)
-async def delete_eintrag(key: str, eintrag_id: int, user: User = Depends(get_current_user),
+@router.delete("/documents/{key:path}/entries/{entry_id}", status_code=204)
+async def delete_entry(key: str, entry_id: int, user: User = Depends(get_current_user),
                          db: AsyncSession = Depends(get_session)):
     a = await _meine(db, user, key)
-    e = await db.get(DocEntry, eintrag_id)
+    e = await db.get(DocEntry, entry_id)
     if e is None or e.series_id != a.id:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.entry_not_found", "Fassung nicht gefunden")
     await db.delete(e)

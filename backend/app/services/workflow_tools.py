@@ -47,7 +47,7 @@ async def _server_des_besitzers(db: AsyncSession, owner_id: int | None) -> list[
     return out
 
 
-async def _sitzung(db: AsyncSession, owner_id: int | None):
+async def _session(db: AsyncSession, owner_id: int | None):
     """Context manager for the owner's MCP session, or None when they have none.
 
     Two sources, both tied to the person behind the run: their registry servers and, when
@@ -63,17 +63,17 @@ async def _sitzung(db: AsyncSession, owner_id: int | None):
     return mcp_session(gateway_url=url, gateway_token=token, servers=server)
 
 
-async def werkzeuge(db: AsyncSession, owner_id: int | None) -> list[dict]:
+async def tools(db: AsyncSession, owner_id: int | None) -> list[dict]:
     """Which tools this person has: name, description, required fields.
 
     Feeds the picker in the editor. When the gateway is down the list is empty instead of
     broken: a flow can still be built by typing the tool name.
     """
-    sitzung = await _sitzung(db, owner_id)
-    if sitzung is None:
+    session = await _session(db, owner_id)
+    if session is None:
         return []
     try:
-        async with sitzung as mcp:
+        async with session as mcp:
             roh = await mcp.list_tools()
     except Exception:  # noqa: BLE001, the tool list is convenience, not infrastructure
         log.warning("MCP tool list for user %s not fetchable", owner_id, exc_info=True)
@@ -81,18 +81,18 @@ async def werkzeuge(db: AsyncSession, owner_id: int | None) -> list[dict]:
     out = []
     for t in roh:
         schema = t.schema if isinstance(t.schema, dict) else {}
-        felder = list((schema.get("properties") or {}).keys())
+        fields = list((schema.get("properties") or {}).keys())
         out.append({
             "name": t.name,
             "server": t.name.split("__", 1)[0] if "__" in t.name else "",
             "beschreibung": (t.description or "").strip().split("\n")[0][:300],
-            "felder": felder[:20],
+            "felder": fields[:20],
             "pflicht": list(schema.get("required") or [])[:20],
         })
     return sorted(out, key=lambda w: w["name"])
 
 
-async def aufrufen(db: AsyncSession, owner_id: int | None, name: str,
+async def call(db: AsyncSession, owner_id: int | None, name: str,
                    arguments: dict) -> dict:
     """Call a tool, returns {ok, text, json?, error?}.
 
@@ -101,8 +101,8 @@ async def aufrufen(db: AsyncSession, owner_id: int | None, name: str,
     """
     if not name:
         return {"ok": False, "text": "", "error": "kein Werkzeug angegeben"}
-    sitzung = await _sitzung(db, owner_id)
-    if sitzung is None:
+    session = await _session(db, owner_id)
+    if session is None:
         return {"ok": False, "text": "",
                 "error": "no MCP access for the owner of this flow"}
     # Unknown server in the name (`server__tool`) and no gateway to catch it: the session
@@ -118,14 +118,14 @@ async def aufrufen(db: AsyncSession, owner_id: int | None, name: str,
                     "error": f"unknown MCP server {server!r}, register it in the settings "
                              f"or check the name"}
     try:
-        async with sitzung as mcp:
+        async with session as mcp:
             text = await mcp.call(name, arguments or {})
     except Exception as exc:  # noqa: BLE001
         log.warning("tool %s failed: %s", name, exc)
         return {"ok": False, "text": "", "error": str(exc)[:500]}
 
     text = text if isinstance(text, str) else str(text)
-    ergebnis: dict = {"ok": True, "text": text[:20000]}
+    result: dict = {"ok": True, "text": text[:20000]}
     # Anyone computing with the result needs it parsed, and most tools answer in JSON
     # anyway.
     try:
@@ -133,10 +133,10 @@ async def aufrufen(db: AsyncSession, owner_id: int | None, name: str,
     except (ValueError, TypeError):
         daten = None
     if isinstance(daten, (dict, list)):
-        ergebnis["json"] = daten
+        result["json"] = daten
     # Tools often report their own failure inside the text. That is not a transport
     # error, but the flow should be able to branch on it.
     if isinstance(daten, dict) and daten.get("error"):
-        ergebnis["ok"] = False
-        ergebnis["error"] = str(daten["error"])[:500]
-    return ergebnis
+        result["ok"] = False
+        result["error"] = str(daten["error"])[:500]
+    return result

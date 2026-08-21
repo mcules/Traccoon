@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..core.security import encrypt_secret
 from ..db import get_session
 from ..models.agents import AgentDefinition
@@ -41,7 +41,7 @@ async def add_provider_token(data: ProviderTokenIn, user: User = Depends(get_cur
                              db: AsyncSession = Depends(get_session)):
     if data.provider not in PROVIDERS:
         raise Fehler(400, "err.unknown_provider_allowed",
-                     "Unknown provider (allowed: {erlaubt})", erlaubt=', '.join(PROVIDERS))
+                     "Unknown provider (allowed: {allowed})", allowed=', '.join(PROVIDERS))
     if not data.token.strip():
         raise Fehler(400, "err.token_required", "A token is required")
     name = data.name.strip() or "Standard"   # the name is optional

@@ -27,12 +27,12 @@ from .tools_memory import _note_target, _read_note, memory_root, note_path
 log = logging.getLogger("traccoon.curator")
 
 # Only from this length on is tidying up worth it; below it the list is manageable anyway.
-MINDEST_ZEICHEN = 1500
+MIN_CHARS = 1500
 # How often per note tidying up happens at most.
-ABSTAND_STUNDEN = 24
+DISTANCE_HOURS = 24
 PIN = "📌"
 
-AUFTRAG = (
+TASK = (
     "Du räumst die Gedächtnis-Notiz eines Assistenten auf. Sie ist eine Liste gelernter "
     "Vorgaben seines Menschen.\n\n"
     "REGELN:\n"
@@ -52,15 +52,15 @@ AUFTRAG = (
 )
 
 
-def _teile(antwort: str) -> tuple[str, str] | None:
+def _parts(answer: str) -> tuple[str, str] | None:
     """(keep, archive) from the model answer; None when it does not follow the format."""
-    if "### BEHALTEN" not in antwort:
+    if "### BEHALTEN" not in answer:
         return None
-    rest = antwort.split("### BEHALTEN", 1)[1]
-    if "### ARCHIV" in rest:
-        behalten, archiv = rest.split("### ARCHIV", 1)
+    remainder = answer.split("### BEHALTEN", 1)[1]
+    if "### ARCHIV" in remainder:
+        behalten, archiv = remainder.split("### ARCHIV", 1)
     else:
-        behalten, archiv = rest, ""
+        behalten, archiv = remainder, ""
     behalten = behalten.strip()
     archiv = archiv.strip()
     if archiv.lower() in ("keine", "keine.", "-", ""):
@@ -68,86 +68,86 @@ def _teile(antwort: str) -> tuple[str, str] | None:
     return (behalten, archiv) if behalten else None
 
 
-def _zeilen(text: str) -> list[str]:
+def _lines(text: str) -> list[str]:
     return [z.strip() for z in text.splitlines() if z.strip().startswith(("-", "*"))]
 
 
-async def _zuletzt_key(owner_id: int, pfad: str) -> str:
-    return f"curator_last:{owner_id}:{pfad}"
+async def _latest_key(owner_id: int, path: str) -> str:
+    return f"curator_last:{owner_id}:{path}"
 
 
-async def faellig(db, owner_id: int, pfad: str, *, jetzt: dt.datetime | None = None) -> bool:
-    jetzt = jetzt or dt.datetime.now(tz=dt.timezone.utc)
-    roh = await get_setting(db, await _zuletzt_key(owner_id, pfad), "")
+async def due(db, owner_id: int, path: str, *, now: dt.datetime | None = None) -> bool:
+    now = now or dt.datetime.now(tz=dt.timezone.utc)
+    roh = await get_setting(db, await _latest_key(owner_id, path), "")
     if not roh:
         return True
     try:
-        return (jetzt - dt.datetime.fromisoformat(roh)).total_seconds() >= ABSTAND_STUNDEN * 3600
+        return (now - dt.datetime.fromisoformat(roh)).total_seconds() >= DISTANCE_HOURS * 3600
     except ValueError:
         return True
 
 
-async def kuratiere_notiz(db, mcp, *, owner_id: int, pfad: str, agent, tokens: dict,
+async def kuratiere_notiz(db, mcp, *, owner_id: int, path: str, agent, tokens: dict,
                           base_urls: dict) -> str | None:
     """Tidy up one memory note. The return value is a short report, None = nothing done."""
-    inhalt = (await _read_note(mcp, pfad)).strip()
-    if len(inhalt) < MINDEST_ZEICHEN:
+    inhalt = (await _read_note(mcp, path)).strip()
+    if len(inhalt) < MIN_CHARS:
         return None
 
-    angepinnt = [z for z in _zeilen(inhalt) if PIN in z]
+    angepinnt = [z for z in _lines(inhalt) if PIN in z]
 
     from .aux import aux_chat
-    antwort = await aux_chat(db, owner_id=owner_id, task="curator",
-                             messages=[{"role": "user", "content": AUFTRAG + inhalt}],
+    answer = await aux_chat(db, owner_id=owner_id, task="curator",
+                             messages=[{"role": "user", "content": TASK + inhalt}],
                              agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=3000)
-    if not antwort:
+    if not answer:
         return None
-    geteilt = _teile(antwort)
+    geteilt = _parts(answer)
     if geteilt is None:
-        log.warning("Curator: the answer does not follow the format, %s stays unchanged", pfad)
+        log.warning("Curator: the answer does not follow the format, %s stays unchanged", path)
         return None
     behalten, archiv = geteilt
 
     # Safety nets against an overeager model. They take hold BEFORE writing, because an
     # overwritten memory could only be rescued from the archive.
-    if not _zeilen(behalten):
-        log.warning("Curator: the result has no entries, %s stays unchanged", pfad)
+    if not _lines(behalten):
+        log.warning("Curator: the result has no entries, %s stays unchanged", path)
         return None
     fehlend = [z for z in angepinnt if z not in behalten]
     if fehlend:
         log.warning("Curator: %d pinned line(s) were missing in the result, %s stays unchanged",
-                    len(fehlend), pfad)
+                    len(fehlend), path)
         return None
-    if len(_zeilen(behalten)) < len(_zeilen(inhalt)) / 3:
-        log.warning("Curator: the result throws more than two thirds away, %s stays unchanged", pfad)
+    if len(_lines(behalten)) < len(_lines(inhalt)) / 3:
+        log.warning("Curator: the result throws more than two thirds away, %s stays unchanged", path)
         return None
 
-    kopf = f"# {pfad.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
+    header = f"# {path.rsplit('/', 1)[-1].removesuffix('.md')}\n\n"
     if archiv:
         # Archive FIRST, truncate AFTERWARDS: if the second step breaks off, nothing is lost.
-        arch_pfad = pfad.rsplit("/", 1)[0] + "/Archiv-" + pfad.rsplit("/", 1)[-1]
+        arch_path = path.rsplit("/", 1)[0] + "/Archiv-" + path.rsplit("/", 1)[-1]
         stempel = dt.datetime.now(tz=dt.timezone.utc).strftime("%Y-%m-%d")
         try:
             await mcp.call("obsidian__obsidian_append_to_note",
-                           {"target": _note_target(arch_pfad),
+                           {"target": _note_target(arch_path),
                             "content": f"\n## Aussortiert am {stempel}\n{archiv}\n"})
         except Exception as exc:  # noqa: BLE001
             log.warning("Curator: archive %s not writable (%s), %s stays unchanged",
-                        arch_pfad, exc, pfad)
+                        arch_path, exc, path)
             return None
 
     try:
         await mcp.call("obsidian__obsidian_write_note",
-                       {"target": _note_target(pfad), "content": kopf + behalten + "\n",
+                       {"target": _note_target(path), "content": header + behalten + "\n",
                         "overwrite": True})
     except Exception as exc:  # noqa: BLE001
-        log.warning("Curator: %s not writable (%s)", pfad, exc)
+        log.warning("Curator: %s not writable (%s)", path, exc)
         return None
 
-    await set_setting(db, await _zuletzt_key(owner_id, pfad),
+    await set_setting(db, await _latest_key(owner_id, path),
                       dt.datetime.now(tz=dt.timezone.utc).isoformat())
-    vorher, nachher = len(_zeilen(inhalt)), len(_zeilen(behalten))
-    return f"{pfad}: {vorher} → {nachher} Einträge, {len(_zeilen(archiv))} archiviert"
+    vorher, nachher = len(_lines(inhalt)), len(_lines(behalten))
+    return f"{path}: {vorher} → {nachher} Einträge, {len(_lines(archiv))} archiviert"
 
 
 async def kuratiere(db, mcp, *, owner_id: int, agent_role: str = "", project_key: str = "",
@@ -157,11 +157,11 @@ async def kuratiere(db, mcp, *, owner_id: int, agent_role: str = "", project_key
     if not root:
         return []
     berichte = []
-    for bereich in ("mensch", "agent", "projekt"):
-        pfad = note_path(root, bereich, agent_role, project_key)
-        if not pfad or not await faellig(db, owner_id, pfad):
+    for area in ("mensch", "agent", "projekt"):
+        path = note_path(root, area, agent_role, project_key)
+        if not path or not await due(db, owner_id, path):
             continue
-        bericht = await kuratiere_notiz(db, mcp, owner_id=owner_id, pfad=pfad, agent=agent,
+        bericht = await kuratiere_notiz(db, mcp, owner_id=owner_id, path=path, agent=agent,
                                         tokens=tokens or {}, base_urls=base_urls or {})
         if bericht:
             berichte.append(bericht)

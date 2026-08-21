@@ -16,13 +16,13 @@ import zipfile
 from conftest import auth, make_user
 
 
-def _zip(manifest: dict, dateien: dict[str, str] | None = None) -> bytes:
+def _zip(manifest: dict, files: dict[str, str] | None = None) -> bytes:
     """Ein Plugin-Zip im Speicher."""
     puffer = io.BytesIO()
     with zipfile.ZipFile(puffer, "w") as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
-        for pfad, inhalt in (dateien or {"index.html": "<h1>hi</h1>"}).items():
-            zf.writestr(pfad, inhalt)
+        for path, inhalt in (files or {"index.html": "<h1>hi</h1>"}).items():
+            zf.writestr(path, inhalt)
     return puffer.getvalue()
 
 
@@ -33,10 +33,10 @@ MANIFEST = {
 }
 
 
-async def _einspielen(client, admin, manifest=None, dateien=None):
+async def _einspielen(client, admin, manifest=None, files=None):
     return await client.post(
         "/plugins", headers=auth(admin),
-        files={"file": ("p.zip", _zip(manifest or MANIFEST, dateien), "application/zip")})
+        files={"file": ("p.zip", _zip(manifest or MANIFEST, files), "application/zip")})
 
 
 # ── Einspielen und Fordern ───────────────────────────────────────────────────
@@ -60,7 +60,7 @@ async def test_nur_admins_spielen_ein(client, db):
 
 # ── Freigeben ────────────────────────────────────────────────────────────────
 
-async def test_freigabe_gilt_und_laesst_sich_zuruecknehmen(client, db):
+async def test_grant_gilt_und_laesst_sich_zuruecknehmen(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _einspielen(client, admin)
 
@@ -86,7 +86,7 @@ async def test_ungefordertes_recht_laesst_sich_nicht_erlauben(client, db):
     assert r.json()["key"] == "err.right_not_requested"
 
 
-async def test_neue_fassung_darf_sich_nicht_selbst_mehr_erlauben(client, db):
+async def test_new_fassung_may_sich_nicht_selbst_mehr_erlauben(client, db):
     """Der gefaehrlichste Weg: ein harmloses Plugin einspielen, freigeben lassen und in der
     naechsten Fassung stillschweigend mehr fordern."""
     admin = await make_user(db, "chef", admin=True)
@@ -104,7 +104,7 @@ async def test_neue_fassung_darf_sich_nicht_selbst_mehr_erlauben(client, db):
     assert p["reads_granted"] == ["series:number"]
 
 
-async def test_weggefallenes_recht_verschwindet_auch_aus_der_freigabe(client, db):
+async def test_weggefallenes_recht_verschwindet_auch_aus_der_grant(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _einspielen(client, admin)
     await client.put("/plugins/probe/rechte", headers=auth(admin),
@@ -119,7 +119,7 @@ async def test_weggefallenes_recht_verschwindet_auch_aus_der_freigabe(client, db
 
 # ── Sichtbarkeit ─────────────────────────────────────────────────────────────
 
-async def test_abgeschaltetes_plugin_ist_weder_sichtbar_noch_abrufbar(client, db):
+async def test_abgeschaltetes_plugin_ist_weder_visible_noch_abrufbar(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _einspielen(client, admin)
     await client.put("/plugins/probe/rechte", headers=auth(admin), json={"enabled": False})
@@ -146,7 +146,7 @@ async def test_nur_freigegebene_personen_sehen_es(client, db):
 
 # ── Der Zaun um die Seite ────────────────────────────────────────────────────
 
-async def test_ausgelieferte_seite_traegt_ihren_zaun(client, db):
+async def test_ausgelieferte_page_traegt_ihren_fence(client, db):
     admin = await make_user(db, "chef", admin=True)
     await _einspielen(client, admin)
 
@@ -175,11 +175,11 @@ async def test_manifest_oeffnet_nur_die_gemeldete_richtung(client, db):
 async def test_dateitypen_stimmen(client, db):
     """Mit `nosniff` wendet der Browser ein Stylesheet nur an, wenn der Typ stimmt."""
     admin = await make_user(db, "chef", admin=True)
-    await _einspielen(client, admin, dateien={
+    await _einspielen(client, admin, files={
         "index.html": "<h1>hi</h1>", "stil.css": "body{}", "app.js": "1",
         "bild.svg": "<svg/>"})
 
-    for pfad, typ in (("stil.css", "text/css"), ("app.js", "application/javascript"),
+    for path, kind in (("stil.css", "text/css"), ("app.js", "application/javascript"),
                       ("bild.svg", "image/svg+xml")):
-        r = await client.get(f"/plugins/probe/app/{pfad}")
-        assert r.headers["content-type"].startswith(typ), pfad
+        r = await client.get(f"/plugins/probe/app/{path}")
+        assert r.headers["content-type"].startswith(kind), path

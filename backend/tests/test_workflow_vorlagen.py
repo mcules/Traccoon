@@ -8,49 +8,49 @@ import pytest
 
 from conftest import auth, make_user
 from app.models.enums import WorkflowSubjectKind
-from app.services import workflow_templates as vorlagen
+from app.services import workflow_templates as templates
 from app.services.workflow_engine import validate_graph
 
 
-def test_liste_ohne_graphen():
-    liste = vorlagen.liste()
-    assert len(liste) >= 4
-    for v in liste:
+def test_listing_ohne_graphen():
+    listing = templates.listing()
+    assert len(listing) >= 4
+    for v in listing:
         assert "build" not in v      # the graph does not belong in the overview
         assert v["key"] and v["name"] and v["description"] and v["hinweis"]
 
 
-@pytest.mark.parametrize("key", [v["key"] for v in vorlagen.VORLAGEN])
-def test_vorlage_ist_gueltig(key):
-    v = vorlagen.vorlage(key)
-    graph = vorlagen.graph(key)
-    fehler = validate_graph(v["subject_kind"], graph)
-    assert fehler == [], f"{key}: {fehler}"
+@pytest.mark.parametrize("key", [v["key"] for v in templates.TEMPLATES])
+def test_template_ist_gueltig(key):
+    v = templates.template(key)
+    graph = templates.graph(key)
+    error = validate_graph(v["subject_kind"], graph)
+    assert error == [], f"{key}: {error}"
 
 
-@pytest.mark.parametrize("key", [v["key"] for v in vorlagen.VORLAGEN])
+@pytest.mark.parametrize("key", [v["key"] for v in templates.TEMPLATES])
 def test_graph_ist_frisch(key):
     """Two calls must not share the same dict; otherwise a rebuild bleeds through."""
-    a, b = vorlagen.graph(key), vorlagen.graph(key)
+    a, b = templates.graph(key), templates.graph(key)
     assert a == b and a is not b
     a["nodes"][0]["data"]["config"]["label"] = "verbogen"
-    assert vorlagen.graph(key)["nodes"][0]["data"]["config"]["label"] != "verbogen"
+    assert templates.graph(key)["nodes"][0]["data"]["config"]["label"] != "verbogen"
 
 
-def test_unbekannte_vorlage():
-    assert vorlagen.graph("gibt-es-nicht") is None
-    assert vorlagen.vorlage("gibt-es-nicht") is None
+def test_unbekannte_template():
+    assert templates.graph("gibt-es-nicht") is None
+    assert templates.template("gibt-es-nicht") is None
 
 
-def test_alle_standalone():
+def test_all_standalone():
     """Without a ticket behind it: the templates should be creatable project-less as well."""
-    assert all(v["subject_kind"] == WorkflowSubjectKind.standalone for v in vorlagen.VORLAGEN)
+    assert all(v["subject_kind"] == WorkflowSubjectKind.standalone for v in templates.TEMPLATES)
 
 
 # ── Creating from a template (API) ───────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_anlegen_aus_vorlage_bringt_den_ganzen_ablauf(client, db):
+async def test_create_aus_template_bringt_den_ganzen_flow(client, db):
     """Whoever takes a template gets not an empty draft but the graph."""
     anna = await make_user(db, "anna")
     r = await client.post("/workflows", headers=auth(anna), json={
@@ -69,7 +69,7 @@ async def test_anlegen_aus_vorlage_bringt_den_ganzen_ablauf(client, db):
 
 
 @pytest.mark.asyncio
-async def test_ohne_vorlage_bleibt_es_beim_geruest(client, db):
+async def test_ohne_template_bleibt_es_beim_geruest(client, db):
     anna = await make_user(db, "anna")
     r = await client.post("/workflows", headers=auth(anna), json={
         "project_id": None, "key": "leer", "name": "Leer"})
@@ -79,7 +79,7 @@ async def test_ohne_vorlage_bleibt_es_beim_geruest(client, db):
 
 
 @pytest.mark.asyncio
-async def test_unbekannte_vorlage_wird_abgewiesen(client, db):
+async def test_unbekannte_template_wird_abgewiesen(client, db):
     anna = await make_user(db, "anna")
     r = await client.post("/workflows", headers=auth(anna), json={
         "project_id": None, "key": "quatsch", "name": "Quatsch", "template": "gibt-es-nicht"})
@@ -87,7 +87,7 @@ async def test_unbekannte_vorlage_wird_abgewiesen(client, db):
 
 
 @pytest.mark.asyncio
-async def test_uebersicht_wird_ausgeliefert(client, db):
+async def test_overview_wird_ausgeliefert(client, db):
     anna = await make_user(db, "anna")
     r = await client.get("/workflow-templates", headers=auth(anna))
     assert r.status_code == 200

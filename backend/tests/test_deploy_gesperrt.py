@@ -11,10 +11,10 @@ import pytest
 from app.worker.runtime import deploy_gesperrt
 
 
-def test_ohne_stack_verzeichnis_gesperrt():
-    grund = deploy_gesperrt("")
-    assert "kein eigenes Stack-Verzeichnis" in grund
-    assert "check" in grund          # the agent learns what to do instead
+def test_ohne_stack_directory_gesperrt():
+    reason = deploy_gesperrt("")
+    assert "kein eigenes Stack-Verzeichnis" in reason
+    assert "check" in reason          # the agent learns what to do instead
 
 
 def test_traccoon_selbst_gesperrt(monkeypatch):
@@ -22,7 +22,7 @@ def test_traccoon_selbst_gesperrt(monkeypatch):
     assert "Wartungs-Update" in deploy_gesperrt("/opt/docker/stacks/traccoon/")
 
 
-def test_fremdes_projekt_darf(monkeypatch):
+def test_fremdes_projekt_may(monkeypatch):
     monkeypatch.setenv("SELF_STACK_DIR", "/opt/docker/stacks/traccoon")
     assert deploy_gesperrt("/opt/docker/stacks/gameproj") == ""
 

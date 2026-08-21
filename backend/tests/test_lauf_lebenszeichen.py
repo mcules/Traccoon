@@ -24,9 +24,9 @@ from test_lifecycle_process import _projekt_mit_ticket
 class FakeRedis:
     """Only as much Redis as `wait_result` and `lauf_lebt` touch."""
 
-    def __init__(self, ergebnis_ab=None, puls=False, queue=None):
-        self.werte = {}
-        self.ergebnis_ab = ergebnis_ab      # from which fetch on a result lies there
+    def __init__(self, result_ab=None, puls=False, queue=None):
+        self.values = {}
+        self.result_ab = result_ab      # from which fetch on a result lies there
         self.abrufe = 0
         self.puls = puls
         self.queue = queue or []
@@ -35,14 +35,14 @@ class FakeRedis:
         if key.endswith("alive:t1"):
             return "1" if self.puls else None
         self.abrufe += 1
-        if self.ergebnis_ab is not None and self.abrufe >= self.ergebnis_ab:
+        if self.result_ab is not None and self.abrufe >= self.result_ab:
             return '{"status": "done", "output": "fertig"}'
         return None
 
     async def delete(self, *keys):
         return None
 
-    async def lrange(self, liste, a, b):
+    async def lrange(self, listing, a, b):
         return self.queue
 
     async def hvals(self, key):
@@ -51,7 +51,7 @@ class FakeRedis:
 
 async def test_lebender_lauf_wird_nicht_abgeschnitten(monkeypatch):
     """As long as the run lives it is waited for: the old 30 minute limit does not exist any more."""
-    fake = FakeRedis(ergebnis_ab=25, puls=True)
+    fake = FakeRedis(result_ab=25, puls=True)
     monkeypatch.setattr(redismod, "get_redis", lambda: fake)
     monkeypatch.setattr(redismod, "lauf_lebt", echtes_lauf_lebt)
     monkeypatch.setattr(redismod, "PRUEF_TAKT", 0.0)
@@ -62,7 +62,7 @@ async def test_lebender_lauf_wird_nicht_abgeschnitten(monkeypatch):
 
 async def test_verschwundener_lauf_wird_aufgegeben(monkeypatch):
     """No pulse, not in the queue: after the grace period it stops."""
-    fake = FakeRedis(ergebnis_ab=None, puls=False)
+    fake = FakeRedis(result_ab=None, puls=False)
     monkeypatch.setattr(redismod, "get_redis", lambda: fake)
     monkeypatch.setattr(redismod, "lauf_lebt", echtes_lauf_lebt)
     monkeypatch.setattr(redismod, "PRUEF_TAKT", 0.0)
@@ -70,9 +70,9 @@ async def test_verschwundener_lauf_wird_aufgegeben(monkeypatch):
     assert await echtes_wait_result("t1", poll=0.001, gnadenfrist=0.0) is None
 
 
-async def test_auftrag_in_der_warteschlange_zaehlt_als_lebend(monkeypatch):
+async def test_task_in_der_warteschlange_zaehlt_as_lebend(monkeypatch):
     """Not started yet is not the same as disappeared."""
-    fake = FakeRedis(ergebnis_ab=25, puls=False, queue=['{"task_id": "t1"}'])
+    fake = FakeRedis(result_ab=25, puls=False, queue=['{"task_id": "t1"}'])
     monkeypatch.setattr(redismod, "get_redis", lambda: fake)
     monkeypatch.setattr(redismod, "lauf_lebt", echtes_lauf_lebt)
     monkeypatch.setattr(redismod, "PRUEF_TAKT", 0.0)
@@ -83,7 +83,7 @@ async def test_auftrag_in_der_warteschlange_zaehlt_als_lebend(monkeypatch):
 
 async def test_harter_deckel_greift_wenn_gesetzt(monkeypatch):
     """Whoever deliberately sets a limit for a node gets it."""
-    fake = FakeRedis(ergebnis_ab=None, puls=True)
+    fake = FakeRedis(result_ab=None, puls=True)
     monkeypatch.setattr(redismod, "get_redis", lambda: fake)
     monkeypatch.setattr(redismod, "lauf_lebt", echtes_lauf_lebt)
     monkeypatch.setattr(redismod, "PRUEF_TAKT", 0.0)
@@ -100,12 +100,12 @@ async def test_verlorener_lauf_wird_beim_namen_genannt(db, seeded, redis_stub):
     await start_lifecycle(db, issue, owner.id)
     await enginemod.drain()
 
-    schritt = (await db.execute(select(WorkflowStepRun).where(
+    step = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.node_id == "plan"))).scalars().first()
-    assert schritt.status == WorkflowStepStatus.done
-    assert schritt.result["verloren"] is True
-    assert schritt.result["task_id"]
-    assert "verschwunden" in schritt.result["output"]
+    assert step.status == WorkflowStepStatus.done
+    assert step.result["verloren"] is True
+    assert step.result["task_id"]
+    assert "verschwunden" in step.result["output"]
 
     texte = [c.body for c in (await db.execute(select(Comment).where(
         Comment.issue_id == issue.id))).scalars().all()]
@@ -124,9 +124,9 @@ async def test_nachzuegler_wird_verbucht(db, seeded, redis_stub):
     assert issue.agent_status == TicketAgentStatus.failed
 
     # The worker was only away, not dead: its result now lies in Redis.
-    schritt = (await db.execute(select(WorkflowStepRun).where(
+    step = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.node_id == "plan"))).scalars().first()
-    redis_stub[schritt.result["task_id"]] = {"status": "planned", "output": "Der Plan.",
+    redis_stub[step.result["task_id"]] = {"status": "planned", "output": "Der Plan.",
                                              "summary": "Plan"}
     await enginemod.nachzuegler_einsammeln()
     await enginemod.drain()

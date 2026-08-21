@@ -20,29 +20,29 @@ from conftest import auth, make_user
 pytestmark = pytest.mark.asyncio
 
 
-async def _chat(db, user, anzahl: int, status: str = "done") -> list[AssistantTask]:
-    zeilen = [AssistantTask(owner_user_id=user.id, kind="chat", source="web", status=status,
+async def _chat(db, user, count: int, status: str = "done") -> list[AssistantTask]:
+    lines = [AssistantTask(owner_user_id=user.id, kind="chat", source="web", status=status,
                             title=f"Frage {i}", meta={"chat_text": f"Frage {i}"},
                             result=f"Antwort {i}")
-              for i in range(anzahl)]
-    db.add_all(zeilen)
+              for i in range(count)]
+    db.add_all(lines)
     await db.commit()
-    for z in zeilen:
+    for z in lines:
         await db.refresh(z)
-    return zeilen
+    return lines
 
 
-async def test_seite_haelt_ihre_groesse_und_meldet_aeltere(db, client):
+async def test_page_haelt_ihre_groesse_und_meldet_aeltere(db, client):
     anna = await make_user(db, "anna")
     await _chat(db, anna, 25)
 
     r = await client.get("/assistant/chat?limit=10", headers=auth(anna))
-    seite = r.json()
-    assert [n["text"] for n in seite["messages"]] == [f"Frage {i}" for i in range(15, 25)], \
+    page = r.json()
+    assert [n["text"] for n in page["messages"]] == [f"Frage {i}" for i in range(15, 25)], \
         "newest last, so that the conversation reads from top to bottom"
-    assert seite["more"] is True
+    assert page["more"] is True
 
-    aelteste = seite["messages"][0]["id"]
+    aelteste = page["messages"][0]["id"]
     davor = (await client.get(f"/assistant/chat?limit=10&vor={aelteste}", headers=auth(anna))).json()
     assert [n["text"] for n in davor["messages"]] == [f"Frage {i}" for i in range(5, 15)]
     assert davor["more"] is True
@@ -53,7 +53,7 @@ async def test_seite_haelt_ihre_groesse_und_meldet_aeltere(db, client):
     assert anfang["more"] is False, "nothing lies before the first message"
 
 
-async def test_archivierte_nachricht_verschwindet_aus_dem_verlauf(db, client):
+async def test_archivierte_message_verschwindet_aus_dem_verlauf(db, client):
     anna = await make_user(db, "anna")
     (eine, andere) = await _chat(db, anna, 2)
 
@@ -70,22 +70,22 @@ async def test_archivierte_nachricht_verschwindet_aus_dem_verlauf(db, client):
     assert {n["id"] for n in verlauf["messages"]} == {eine.id, andere.id}
 
 
-async def test_laufende_nachricht_bleibt_stehen(db, client):
+async def test_laufende_message_bleibt_stehen(db, client):
     anna = await make_user(db, "anna")
-    (laeuft,) = await _chat(db, anna, 1, status="running")
-    (fertig,) = await _chat(db, anna, 1)
+    (running,) = await _chat(db, anna, 1, status="running")
+    (done,) = await _chat(db, anna, 1)
 
-    r = await client.post(f"/assistant/chat/{laeuft.id}/archive", headers=auth(anna))
+    r = await client.post(f"/assistant/chat/{running.id}/archive", headers=auth(anna))
     assert r.status_code == 409
 
     r = await client.post("/assistant/chat/archive-all", headers=auth(anna))
     assert r.json()["archived"] == 1
     verlauf = (await client.get("/assistant/chat", headers=auth(anna))).json()
-    assert [n["id"] for n in verlauf["messages"]] == [laeuft.id]
-    assert fertig.id not in [n["id"] for n in verlauf["messages"]]
+    assert [n["id"] for n in verlauf["messages"]] == [running.id]
+    assert done.id not in [n["id"] for n in verlauf["messages"]]
 
 
-async def test_eingaenge_zeigen_keine_chat_nachrichten(db, client):
+async def test_eingaenge_zeigen_keine_chat_messages(db, client):
     """The inbox says "incoming"; a message somebody typed here is not one."""
     anna = await make_user(db, "anna")
     await _chat(db, anna, 3)
@@ -95,8 +95,8 @@ async def test_eingaenge_zeigen_keine_chat_nachrichten(db, client):
     await db.commit()
     await db.refresh(mail)
 
-    liste = (await client.get("/assistant/inbox", headers=auth(anna))).json()
-    assert [e["id"] for e in liste] == [mail.id]
+    listing = (await client.get("/assistant/inbox", headers=auth(anna))).json()
+    assert [e["id"] for e in listing] == [mail.id]
 
     # Archived items are gone from the list as well, and only there.
     mail.archived_at = dt.datetime.now(tz=dt.timezone.utc)

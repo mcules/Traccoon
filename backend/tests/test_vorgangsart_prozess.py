@@ -16,7 +16,7 @@ from sqlalchemy import select
 SLOT = "ticket_lifecycle"
 
 
-async def _projekt_mit_arten(db, key="VGA"):
+async def _projekt_mit_kinds(db, key="VGA"):
     proj = await make_project(db, key, "Vorgangsarten")
     aufgabe = IssueType(project_id=proj.id, name="Aufgabe", order=0)
     bug = IssueType(project_id=proj.id, name="Bug", order=1)
@@ -27,9 +27,9 @@ async def _projekt_mit_arten(db, key="VGA"):
     return proj, aufgabe, bug
 
 
-async def test_ohne_eigene_kopie_gilt_fuer_alle_dasselbe(db):
+async def test_ohne_eigene_kopie_gilt_fuer_all_dasselbe(db):
     await ensure_builtin_set(db)
-    proj, aufgabe, bug = await _projekt_mit_arten(db)
+    proj, aufgabe, bug = await _projekt_mit_kinds(db)
 
     fuer_aufgabe = await sets.resolve_definition(db, proj.id, SLOT, aufgabe.id)
     fuer_bug = await sets.resolve_definition(db, proj.id, SLOT, bug.id)
@@ -40,7 +40,7 @@ async def test_ohne_eigene_kopie_gilt_fuer_alle_dasselbe(db):
 async def test_kopie_fuer_eine_vorgangsart_gilt_nur_dort(db):
     """The core: an own flow for bugs leaves all the others untouched."""
     await ensure_builtin_set(db)
-    proj, aufgabe, bug = await _projekt_mit_arten(db)
+    proj, aufgabe, bug = await _projekt_mit_kinds(db)
     standard = await sets.resolve_definition(db, proj.id, SLOT)
 
     eigen = await sets.customize(db, proj, SLOT, actor_id=None, issue_type_id=bug.id)
@@ -54,7 +54,7 @@ async def test_kopie_fuer_eine_vorgangsart_gilt_nur_dort(db):
 
 async def test_allgemeine_kopie_greift_wo_keine_besondere_steht(db):
     await ensure_builtin_set(db)
-    proj, aufgabe, bug = await _projekt_mit_arten(db)
+    proj, aufgabe, bug = await _projekt_mit_kinds(db)
     allgemein = await sets.customize(db, proj, SLOT, actor_id=None)
     fuer_bug = await sets.customize(db, proj, SLOT, actor_id=None, issue_type_id=bug.id)
 
@@ -65,17 +65,17 @@ async def test_allgemeine_kopie_greift_wo_keine_besondere_steht(db):
 async def test_zweimal_anpassen_liefert_dieselbe_kopie(db):
     """Otherwise silent duplicates would arise; the index forbids them anyway."""
     await ensure_builtin_set(db)
-    proj, _, bug = await _projekt_mit_arten(db)
+    proj, _, bug = await _projekt_mit_kinds(db)
     a = await sets.customize(db, proj, SLOT, actor_id=None, issue_type_id=bug.id)
     b = await sets.customize(db, proj, SLOT, actor_id=None, issue_type_id=bug.id)
     assert a.id == b.id
 
 
-async def test_lebenszyklus_startet_den_ablauf_der_vorgangsart(db):
+async def test_lebenszyklus_startet_den_flow_der_vorgangsart(db):
     """Not only the resolution: the real start has to take the issue type into account."""
     from app.services.lifecycle_flow import start_lifecycle
     await ensure_builtin_set(db)
-    proj, aufgabe, bug = await _projekt_mit_arten(db)
+    proj, aufgabe, bug = await _projekt_mit_kinds(db)
     eigen = await sets.customize(db, proj, SLOT, actor_id=None, issue_type_id=bug.id)
 
     spalte = (await db.execute(select(WorkflowStatus).where(
@@ -94,7 +94,7 @@ async def test_lebenszyklus_startet_den_ablauf_der_vorgangsart(db):
 async def test_api_legt_kopie_je_vorgangsart_an(client, db):
     await ensure_builtin_set(db)
     chef = await make_user(db, "chef", admin=True)
-    proj, aufgabe, bug = await _projekt_mit_arten(db)
+    proj, aufgabe, bug = await _projekt_mit_kinds(db)
     await add_member(db, proj, chef, ProjectRole.owner)
     await db.commit()
     pid, bug_id, aufgabe_id = proj.id, bug.id, aufgabe.id

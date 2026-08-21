@@ -33,7 +33,7 @@ def token_mit(user_id: int, *, iat: dt.datetime, exp: dt.datetime) -> str:
     )
 
 
-def kopf(token: str) -> dict[str, str]:
+def header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -42,13 +42,13 @@ async def test_gueltiges_token_wird_verlaengert(client, db):
     user = await make_user(db, "wandschirm")
     alt = create_access_token(user.id)
 
-    r = await client.post("/auth/refresh", headers=kopf(alt))
+    r = await client.post("/auth/refresh", headers=header(alt))
     assert r.status_code == 200, r.text
-    neu = r.json()["access_token"]
+    new = r.json()["access_token"]
     assert r.json()["token_type"] == "bearer"
 
     # The proof that it is a real token is not its shape but a call with it.
-    me = await client.get("/auth/me", headers=kopf(neu))
+    me = await client.get("/auth/me", headers=header(new))
     assert me.status_code == 200
     assert me.json()["id"] == user.id
 
@@ -56,10 +56,10 @@ async def test_gueltiges_token_wird_verlaengert(client, db):
 async def test_abgelaufenes_token_wird_abgelehnt(client, db):
     """A refresh extends a living session; it does not wake a dead one."""
     user = await make_user(db, "spaet")
-    jetzt = dt.datetime.now(tz=dt.timezone.utc)
-    tot = token_mit(user.id, iat=jetzt - dt.timedelta(days=2), exp=jetzt - dt.timedelta(hours=1))
+    now = dt.datetime.now(tz=dt.timezone.utc)
+    tot = token_mit(user.id, iat=now - dt.timedelta(days=2), exp=now - dt.timedelta(hours=1))
 
-    r = await client.post("/auth/refresh", headers=kopf(tot))
+    r = await client.post("/auth/refresh", headers=header(tot))
     assert r.status_code == 401
 
 
@@ -70,15 +70,15 @@ async def test_token_von_vor_dem_passwortwechsel(client, db):
     for: a foreign tab that keeps running.
     """
     user = await make_user(db, "passwortwechsler")
-    jetzt = dt.datetime.now(tz=dt.timezone.utc)
+    now = dt.datetime.now(tz=dt.timezone.utc)
     # Two days of distance: under SQLite `password_changed_at` comes back naive and is read
     # as local time in `deps.py`. The test should hang off the check, not off the time zone
     # of the container.
-    alt = token_mit(user.id, iat=jetzt - dt.timedelta(days=2), exp=jetzt + dt.timedelta(hours=1))
-    user.password_changed_at = jetzt
+    alt = token_mit(user.id, iat=now - dt.timedelta(days=2), exp=now + dt.timedelta(hours=1))
+    user.password_changed_at = now
     await db.commit()
 
-    r = await client.post("/auth/refresh", headers=kopf(alt))
+    r = await client.post("/auth/refresh", headers=header(alt))
     assert r.status_code == 401
 
 
@@ -93,7 +93,7 @@ async def test_deaktiviertes_konto(client, db):
     user.status = UserStatus.disabled
     await db.commit()
 
-    r = await client.post("/auth/refresh", headers=kopf(token))
+    r = await client.post("/auth/refresh", headers=header(token))
     assert r.status_code in (401, 403)
 
 
@@ -111,20 +111,20 @@ async def test_kein_rechtezuwachs(client, db):
     user = await make_user(db, "einfach")          # global_role = user, no admin
     assert user.global_role == GlobalRole.user
 
-    r = await client.post("/auth/refresh", headers=kopf(create_access_token(user.id)))
+    r = await client.post("/auth/refresh", headers=header(create_access_token(user.id)))
     assert r.status_code == 200
-    neu = r.json()["access_token"]
+    new = r.json()["access_token"]
 
-    payload = jwt.decode(neu, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    payload = jwt.decode(new, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     assert payload["sub"] == str(user.id)
     # No additional claims: roles come from the database on every call, never from the token.
     # If this set grows, the attack surface grows.
     assert set(payload) == {"sub", "iat", "exp"}
 
-    me = await client.get("/auth/me", headers=kopf(neu))
+    me = await client.get("/auth/me", headers=header(new))
     assert me.status_code == 200
     assert me.json()["global_role"] == GlobalRole.user.value
 
     # And the admin area stays closed, which is the actual point behind the set of claims.
-    admin = await client.get("/admin/run-retention", headers=kopf(neu))
+    admin = await client.get("/admin/run-retention", headers=header(new))
     assert admin.status_code == 403

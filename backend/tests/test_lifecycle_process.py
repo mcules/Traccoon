@@ -43,12 +43,12 @@ async def _projekt_mit_ticket(db, agent_status=TicketAgentStatus.planning):
     return owner, proj, issue, stats
 
 
-async def _schritte(db, node_id: str) -> list[WorkflowStepRun]:
+async def _steps(db, node_id: str) -> list[WorkflowStepRun]:
     return list((await db.execute(select(WorkflowStepRun)
                                   .where(WorkflowStepRun.node_id == node_id))).scalars().all())
 
 
-async def test_planung_laeuft_bis_zur_freigabe(db, seeded, redis_stub):
+async def test_planung_running_bis_zur_grant(db, seeded, redis_stub):
     """Assign, the agent plans, the ticket waits for the plan approval (human sovereignty)."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "output": "Der Plan.", "summary": "Plan"}
@@ -66,7 +66,7 @@ async def test_planung_laeuft_bis_zur_freigabe(db, seeded, redis_stub):
     assert [s.node_id for s in wartend] == ["approve_plan"]
 
 
-async def test_aufteilung_wird_als_solche_markiert(db, seeded, redis_stub):
+async def test_aufteilung_wird_as_solche_markiert(db, seeded, redis_stub):
     """A plan with <subtickets> gives another approval (plan_split), otherwise the same way."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "summary": "Plan",
@@ -79,7 +79,7 @@ async def test_aufteilung_wird_als_solche_markiert(db, seeded, redis_stub):
     assert issue.hold_reason == HoldReason.plan_split
 
 
-async def test_fortsetzung_laeuft_nicht_im_kreis(db, seeded, redis_stub):
+async def test_fortsetzung_running_nicht_im_kreis(db, seeded, redis_stub):
     """`loop_exhausted` leads over a back edge onto the same agent node.
 
     Without the `routed_at` stamp the engine would translate the finished step into an edge
@@ -98,9 +98,9 @@ async def test_fortsetzung_laeuft_nicht_im_kreis(db, seeded, redis_stub):
     await start_lifecycle(db, issue, owner.id, entry="exec")
     await enginemod.drain()
 
-    exec_schritte = await _schritte(db, "exec")
-    assert len(exec_schritte) >= 2, "not a real continuation, the node was not executed again"
-    assert all(s.routed_at is not None for s in exec_schritte[:-1])
+    exec_steps = await _steps(db, "exec")
+    assert len(exec_steps) >= 2, "not a real continuation, the node was not executed again"
+    assert all(s.routed_at is not None for s in exec_steps[:-1])
     await db.refresh(issue)
     assert issue.continuation_count >= 1
 
@@ -149,7 +149,7 @@ async def test_runaway_bremse_greift_auch_im_graphen(db, seeded, redis_stub):
         WorkflowToken.state == WorkflowTokenState.waiting))).scalars().first()
     assert token is not None and token.waiting_for == "gate"
     # No step has ever run: the run was stopped before it was queued.
-    assert all(s.status == WorkflowStepStatus.pending for s in await _schritte(db, "exec"))
+    assert all(s.status == WorkflowStepStatus.pending for s in await _steps(db, "exec"))
 
 
 async def test_kommentar_setzt_wartenden_prozess_fort(client, db, seeded, redis_stub):
@@ -174,12 +174,12 @@ async def test_kommentar_setzt_wartenden_prozess_fort(client, db, seeded, redis_
     assert r.status_code in (200, 201), r.text
     await enginemod.drain()
 
-    ereignis = await _schritte(db, "wait_exec")
+    ereignis = await _steps(db, "wait_exec")
     assert ereignis and ereignis[0].decision == "comment"
-    assert len(await _schritte(db, "exec")) >= 2
+    assert len(await _steps(db, "exec")) >= 2
 
 
-async def test_freigabe_bleibt_dem_menschen_vorbehalten(client, db, seeded, redis_stub):
+async def test_grant_bleibt_dem_menschen_vorbehalten(client, db, seeded, redis_stub):
     """A comment must NOT skip a waiting approval."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "planned", "output": "Plan", "summary": "Plan"}
@@ -199,7 +199,7 @@ async def test_freigabe_bleibt_dem_menschen_vorbehalten(client, db, seeded, redi
     assert [s.node_id for s in offen] == ["approve_plan"]
 
 
-async def test_planung_laeuft_nicht_endlos_im_kreis(db, seeded, redis_stub):
+async def test_planung_running_nicht_endlos_im_kreis(db, seeded, redis_stub):
     """The planning has a continuation budget as well.
 
     The back edge "keep planning" led back to `plan` unbraked: an architect that tears its
@@ -207,7 +207,7 @@ async def test_planung_laeuft_nicht_endlos_im_kreis(db, seeded, redis_stub):
     that (ABC-31 on 2026-08-07). After `PLAN_FORTSETZUNGEN` attempts it stops, and then a
     human is needed, not the eleventh attempt.
     """
-    from app.services.workflow_seed import PLAN_FORTSETZUNGEN
+    from app.services.workflow_seed import PLAN_CONTINUATIONS
 
     owner, proj, issue, _ = await _projekt_mit_ticket(db)
     redis_stub["*"] = {"status": "loop_exhausted", "summary": "komme nicht weiter"}
@@ -217,16 +217,16 @@ async def test_planung_laeuft_nicht_endlos_im_kreis(db, seeded, redis_stub):
     await enginemod.drain()
     await db.refresh(issue)
 
-    plan_schritte = await _schritte(db, "plan")
-    assert len(plan_schritte) <= PLAN_FORTSETZUNGEN + 1, "the planning turns unbraked"
-    assert issue.continuation_count >= PLAN_FORTSETZUNGEN
+    plan_steps = await _steps(db, "plan")
+    assert len(plan_steps) <= PLAN_CONTINUATIONS + 1, "the planning turns unbraked"
+    assert issue.continuation_count >= PLAN_CONTINUATIONS
     assert issue.agent_status == TicketAgentStatus.hold      # waits for a human
     wartend = (await db.execute(select(WorkflowStepRun).where(
         WorkflowStepRun.status == WorkflowStepStatus.waiting))).scalars().all()
     assert [s.node_id for s in wartend] == ["wait_plan"]
 
 
-async def test_freigabe_setzt_die_fortsetzungs_zaehlung_zurueck(db, seeded, redis_stub):
+async def test_grant_setzt_die_fortsetzungs_zaehlung_zurueck(db, seeded, redis_stub):
     """Planning and implementation share a counter: a tough planning must not eat the
     implementation's budget before it has written the first line."""
     owner, proj, issue, _ = await _projekt_mit_ticket(db, TicketAgentStatus.approved)

@@ -7,7 +7,7 @@ Werten, verschachtelt) und dass die Umstellung nichts von dem verliert, was die 
 konnten.
 """
 import pytest
-from app.api.ops import _kontext, _referenz
+from app.api.ops import _context, _referenz
 from app.models.assistant import AssistantTask
 from app.models.notification import Notification
 from app.models.ops import WebhookSub
@@ -23,31 +23,31 @@ async def owner(db):
     return await make_user(db, "owner")
 
 
-def _sub(**felder) -> WebhookSub:
-    return WebhookSub(public_id="x", route="test", **felder)
+def _sub(**fields) -> WebhookSub:
+    return WebhookSub(public_id="x", route="test", **fields)
 
 
 # ── Kontextaufbau ────────────────────────────────────────────────────────────
 
-def test_ohne_abbildung_ist_die_nutzlast_der_kontext():
-    assert _kontext(_sub(), {"a": 1}) == {"a": 1}
+def test_ohne_abbildung_ist_die_payload_der_context():
+    assert _context(_sub(), {"a": 1}) == {"a": 1}
 
 
-def test_leerer_pfad_legt_die_ganze_nutzlast_unter_einen_schluessel():
+def test_leerer_path_legt_die_ganze_payload_unter_einen_key():
     """So kommt die Mail unter `mail`, statt ihre Felder flach im Kontext zu verstreuen."""
-    ctx = _kontext(_sub(context_map={"mail": ""}), {"uid": 7, "subject": "Hallo"})
+    ctx = _context(_sub(context_map={"mail": ""}), {"uid": 7, "subject": "Hallo"})
     assert ctx == {"mail": {"uid": 7, "subject": "Hallo"}}
 
 
-def test_punkte_im_ziel_verschachteln():
-    ctx = _kontext(_sub(context_map={"post.absender": "from.addr"},
+def test_points_im_target_verschachteln():
+    ctx = _context(_sub(context_map={"post.absender": "from.addr"},
                         context_fixed={"post.kanal": "imap", "post.zahl": 3}),
                    {"from": {"addr": "a@b.de"}})
     assert ctx == {"post": {"absender": "a@b.de", "kanal": "imap", "zahl": 3}}
 
 
-def test_feste_werte_duerfen_aus_der_nutzlast_fuellen():
-    ctx = _kontext(_sub(context_fixed={"quelle": "Konto {account}, Nachricht {uid}"}),
+def test_feste_values_duerfen_aus_der_payload_fill():
+    ctx = _context(_sub(context_fixed={"quelle": "Konto {account}, Nachricht {uid}"}),
                    {"account": "privat", "uid": 4})
     assert ctx["quelle"] == "Konto privat, Nachricht 4"
 
@@ -63,7 +63,7 @@ def test_referenz_aus_mehreren_feldern():
 
 # ── Umstellung der alten Modi ────────────────────────────────────────────────
 
-async def test_assistent_wird_ein_ablauf(db, owner, redis_stub):
+async def test_assistent_wird_ein_flow(db, owner, redis_stub):
     sub = await make_webhook(db, owner, "batterie", mode="assistant", agent="hausmeister",
                              auto_run=True, prompt_tmpl="Sensor {entity_id} ist leer.")
     assert sub.mode == "workflow" and sub.workflow_definition_id
@@ -77,7 +77,7 @@ async def test_assistent_wird_ein_ablauf(db, owner, redis_stub):
     assert task.status == "approved"
 
 
-async def test_ohne_auto_run_wartet_der_auftrag(db, owner, redis_stub):
+async def test_ohne_auto_run_wartet_der_task(db, owner, redis_stub):
     sub = await make_webhook(db, owner, "post", mode="assistant", agent="assistent",
                              auto_run=False, prompt_tmpl="Schau dir {sache} an.")
     await melde(db, sub, {"sache": "das Paket"})
@@ -85,7 +85,7 @@ async def test_ohne_auto_run_wartet_der_auftrag(db, owner, redis_stub):
     assert task.status == "new"
 
 
-async def test_meldung_wird_ein_ablauf(db, owner):
+async def test_notice_wird_ein_flow(db, owner):
     sub = await make_webhook(db, owner, "alarm", mode="notify",
                              title_template="Alarm {ort}", body_template="{text}")
     assert sub.mode == "workflow"
@@ -96,7 +96,7 @@ async def test_meldung_wird_ein_ablauf(db, owner):
     assert karte.user_id == owner.id
 
 
-async def test_ticket_wird_ein_ablauf(db, owner):
+async def test_ticket_wird_ein_flow(db, owner):
     from app.models.enums import StatusCategory
     from app.models.ticket import IssueCounter, IssueType, WorkflowStatus
 
@@ -126,7 +126,7 @@ async def test_mail_meldet_ein_ereignis_statt_zu_handeln(db, owner):
     assert sub.mode == "event" and sub.event_name == "mail.received"
     assert sub.ref_field == "{account}:{uid}"
 
-    ctx = _kontext(sub, {"account": "privat", "uid": 9, "subject": "Rechnung"})
+    ctx = _context(sub, {"account": "privat", "uid": 9, "subject": "Rechnung"})
     assert ctx["mail"]["subject"] == "Rechnung"
     assert ctx["intake"]["agent"] == "assistent"
     assert ctx["intake"]["classify_agent"] == "mail_classifier"
@@ -135,14 +135,14 @@ async def test_mail_meldet_ein_ereignis_statt_zu_handeln(db, owner):
 
 
 async def test_umstellung_fasst_umgestellte_nicht_wieder_an(db, owner):
-    from app.services.webhook_modes import umstellen
+    from app.services.webhook_modes import convert
 
     sub = await make_webhook(db, owner, "einmal", mode="notify", body_template="hallo")
-    erste_definition = sub.workflow_definition_id
+    first_definition = sub.workflow_definition_id
 
-    assert await umstellen(db) == 0
+    assert await convert(db) == 0
     await db.refresh(sub)
-    assert sub.workflow_definition_id == erste_definition
+    assert sub.workflow_definition_id == first_definition
     assert len((await db.execute(select(WorkflowDefinition))).scalars().all()) == 1
 
 
@@ -157,11 +157,11 @@ async def test_name_beschreibt_die_sache_nicht_den_auslöser(db, owner, redis_st
     assert d.key == "ha-battery-low"
 
 
-async def test_schluessel_weicht_einer_kollision_aus(db, owner, redis_stub):
-    erste = await make_webhook(db, owner, "alarm", mode="notify", body_template="a")
+async def test_key_weicht_einer_kollision_aus(db, owner, redis_stub):
+    first = await make_webhook(db, owner, "alarm", mode="notify", body_template="a")
     zweite = await make_webhook(db, owner, "alarm", mode="notify", body_template="b")
     keys = {(await db.get(WorkflowDefinition, s.workflow_definition_id)).key
-            for s in (erste, zweite)}
+            for s in (first, zweite)}
     assert keys == {"alarm", "alarm-2"}
 
 
@@ -176,18 +176,18 @@ async def test_umbenennen_geht_ueber_die_api(client, db, owner):
     assert r.json()["key"] == "post-sortieren" and r.json()["name"] == "Post sortieren"
 
 
-async def test_belegter_schluessel_wird_abgelehnt(client, db, owner):
+async def test_belegter_key_wird_abgelehnt(client, db, owner):
     from conftest import auth
 
-    erste = await make_webhook(db, owner, "eins", mode="notify", body_template="x")
+    first = await make_webhook(db, owner, "eins", mode="notify", body_template="x")
     zweite = await make_webhook(db, owner, "zwei", mode="notify", body_template="x")
     r = await client.put(f"/workflows/{zweite.workflow_definition_id}", headers=auth(owner),
                          json={"key": "eins"})
     assert r.status_code == 400
-    await db.refresh(await db.get(WorkflowDefinition, erste.workflow_definition_id))
+    await db.refresh(await db.get(WorkflowDefinition, first.workflow_definition_id))
 
 
-async def test_ein_satz_ablauf_behaelt_seinen_schluessel(client, db, owner):
+async def test_ein_preset_flow_behaelt_seinen_key(client, db, owner):
     """Dort ist der Schlüssel die Verbindung, nicht die Beschriftung."""
     from app.models.enums import WorkflowSubjectKind
     from conftest import auth

@@ -9,7 +9,7 @@ from app.services.workflow_engine import node_config, node_type
 from app.services.workflow_seed import BUILDERS
 
 # What a node type can offer as exits (a mirror of the node components).
-ERLAUBT = {
+ALLOWED = {
     "start": {"out"},
     "human_task": {"out"},
     "approval": {"approved", "rejected"},
@@ -26,40 +26,40 @@ ERLAUBT = {
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_ausgaenge_sind_am_knoten_vorhanden(slot):
+def test_ausgaenge_sind_am_node_vorhanden(slot):
     graph = BUILDERS[slot]()
-    knoten = {n["id"]: n for n in graph["nodes"]}
+    node = {n["id"]: n for n in graph["nodes"]}
     for e in graph["edges"]:
-        quelle = knoten[e["source"]]
-        typ = node_type(quelle)
-        cfg = node_config(quelle)
-        erlaubt = set(ERLAUBT.get(typ, {"out"}))
-        if typ == "decision":
-            erlaubt |= {b.get("handle") for b in (cfg.get("branches") or [])}
-            erlaubt.add(cfg.get("default_handle", "default"))
-        if typ == "wait_event":
-            erlaubt |= set(cfg.get("events") or ["comment", "manual"])
+        source = node[e["source"]]
+        kind = node_type(source)
+        cfg = node_config(source)
+        allowed = set(ALLOWED.get(kind, {"out"}))
+        if kind == "decision":
+            allowed |= {b.get("handle") for b in (cfg.get("branches") or [])}
+            allowed.add(cfg.get("default_handle", "default"))
+        if kind == "wait_event":
+            allowed |= set(cfg.get("events") or ["comment", "manual"])
         handle = e.get("sourceHandle") or "out"
-        assert handle in erlaubt, (
+        assert handle in allowed, (
             f"{slot}: edge {e['id']} uses the output '{handle}' on a "
-            f"{typ} node, and the interface does not draw that one there.")
+            f"{kind} node, and the interface does not draw that one there.")
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_kein_schritt_haengt_in_der_luft(slot):
+def test_kein_step_hangs_in_der_luft(slot):
     graph = BUILDERS[slot]()
     ein = {e["target"] for e in graph["edges"]}
     aus = {e["source"] for e in graph["edges"]}
     for n in graph["nodes"]:
-        typ = node_type(n)
-        if typ != "start":
+        kind = node_type(n)
+        if kind != "start":
             assert n["id"] in ein, f"{slot}: '{n['id']}' hat keinen Eingang"
-        if typ != "end":
+        if kind != "end":
             assert n["id"] in aus, f"{slot}: '{n['id']}' hat keinen Ausgang"
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_standard_zweig_ist_ein_zweig(slot):
+def test_standard_branch_ist_ein_branch(slot):
     """The default branch has to stand in the branch list.
 
     Otherwise the node shows an exit the configuration does not know: the panel presents it
@@ -71,16 +71,16 @@ def test_standard_zweig_ist_ein_zweig(slot):
         if node_type(n) != "decision":
             continue
         cfg = node_config(n)
-        zweige = {b.get("handle") for b in (cfg.get("branches") or [])}
-        if not zweige:
+        branches = {b.get("handle") for b in (cfg.get("branches") or [])}
+        if not branches:
             continue
         std = cfg.get("default_handle")
-        assert std in zweige, (
-            f"{slot}/{n['id']}: the default branch '{std}' is none of the branches {sorted(zweige)}")
+        assert std in branches, (
+            f"{slot}/{n['id']}: the default branch '{std}' is none of the branches {sorted(branches)}")
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_aktionen_in_einheitlicher_form(slot):
+def test_actions_in_einheitlicher_form(slot):
     """Action nodes have to use the nested form.
 
     In the flat form (`{"action": "name", "status": …}`) the editor shows neither the action
@@ -90,14 +90,14 @@ def test_aktionen_in_einheitlicher_form(slot):
     for n in BUILDERS[slot]()["nodes"]:
         if node_type(n) != "auto_action":
             continue
-        aktion = node_config(n).get("action")
-        assert isinstance(aktion, dict) and aktion.get("action"), (
-            f"{slot}/{n['id']}: Aktion in flacher Form ({aktion!r}) — bitte "
+        action = node_config(n).get("action")
+        assert isinstance(action, dict) and action.get("action"), (
+            f"{slot}/{n['id']}: Aktion in flacher Form ({action!r}) — bitte "
             f'{{"action": {{"action": …, "params": {{…}}}}}} verwenden')
 
 
 @pytest.mark.parametrize("slot", sorted(BUILDERS))
-def test_keine_zwei_knoten_auf_derselben_stelle(slot):
+def test_keine_zwei_node_auf_derselben_stelle(slot):
     """Two nodes at the same position cover each other, and with them the edge that hangs
     there. In the mail inbox exactly that stood out only in the picture."""
     if slot == "ticket_lifecycle":

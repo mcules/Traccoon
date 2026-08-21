@@ -36,8 +36,8 @@ from .workflow_engine import validate_graph
 log = logging.getLogger("workflow_author")
 
 DEFAULT_MODEL = os.getenv("DEFAULT_CLAUDE_MODEL", "claude-sonnet-4-5")
-MAX_WERKZEUGE = 220          # prompt cap, the picker in the editor stays complete
-SPALTE, ZEILE = 260, 130     # same grid the shipped graphs use
+MAX_TOOLS = 220          # prompt cap, the picker in the editor stays complete
+SPALTE, LINE = 260, 130     # same grid the shipped graphs use
 
 KONTRAKT = """\
 Du zeichnest Abläufe für Traccoon als gerichteten Graphen. Antworte AUSSCHLIESSLICH mit
@@ -157,7 +157,7 @@ def anordnen(graph: dict) -> dict:
         t = tiefe.get(n.get("id"), 0)
         spalte = belegt.get(t, 0)
         belegt[t] = spalte + 1
-        n["position"] = {"x": spalte * SPALTE, "y": t * ZEILE}
+        n["position"] = {"x": spalte * SPALTE, "y": t * LINE}
     return {"nodes": nodes, "edges": edges}
 
 
@@ -186,9 +186,9 @@ def _nachbessern(nodes: list[dict]) -> None:
     for n in nodes:
         cfg = n["data"]["config"]
         if n["type"] == "decision" and cfg.get("branches") and not cfg.get("default_handle"):
-            zweige = [b for b in cfg["branches"] if isinstance(b, dict) and b.get("handle")]
-            if zweige:
-                ohne_guard = next((b for b in zweige if not b.get("guard")), zweige[-1])
+            branches = [b for b in cfg["branches"] if isinstance(b, dict) and b.get("handle")]
+            if branches:
+                ohne_guard = next((b for b in branches if not b.get("guard")), branches[-1])
                 cfg["default_handle"] = ohne_guard["handle"]
         if n["type"] == "end" and not cfg.get("outcome"):
             cfg["outcome"] = "completed"
@@ -206,33 +206,33 @@ def _saeubern(roh: dict) -> dict:
     for i, e in enumerate(roh.get("edges") or []):
         if not isinstance(e, dict) or not e.get("source") or not e.get("target"):
             continue
-        kante = {"id": str(e.get("id") or f"e{i}"),
+        edge = {"id": str(e.get("id") or f"e{i}"),
                  "source": str(e["source"]), "target": str(e["target"])}
         if e.get("sourceHandle"):
-            kante["sourceHandle"] = str(e["sourceHandle"])
+            edge["sourceHandle"] = str(e["sourceHandle"])
         if e.get("label"):
-            kante["label"] = str(e["label"])[:60]
-        edges.append(kante)
+            edge["label"] = str(e["label"])[:60]
+        edges.append(edge)
     return {"nodes": nodes, "edges": edges}
 
 
 async def _werkzeugliste(db: AsyncSession, owner_id: int | None) -> str:
-    from .workflow_tools import werkzeuge
+    from .workflow_tools import tools
     try:
-        alle = await werkzeuge(db, owner_id)
+        alle = await tools(db, owner_id)
     except Exception:  # noqa: BLE001, drawing works without the tool list too
         return ""
-    zeilen = [f"- {w['name']}({', '.join(w['pflicht'][:6])}) — {w['beschreibung'][:90]}"
-              for w in alle[:MAX_WERKZEUGE]]
-    if not zeilen:
+    lines = [f"- {w['name']}({', '.join(w['pflicht'][:6])}) — {w['beschreibung'][:90]}"
+              for w in alle[:MAX_TOOLS]]
+    if not lines:
         return ""
-    rest = max(0, len(alle) - MAX_WERKZEUGE)
-    kopf = f"Verfügbare Werkzeuge ({len(alle)}"
-    kopf += f", davon {rest} hier nicht aufgeführt" if rest else ""
-    return kopf + "):\n" + "\n".join(zeilen)
+    remainder = max(0, len(alle) - MAX_TOOLS)
+    header = f"Verfügbare Werkzeuge ({len(alle)}"
+    header += f", davon {remainder} hier nicht aufgeführt" if remainder else ""
+    return header + "):\n" + "\n".join(lines)
 
 
-async def entwerfen(db: AsyncSession, *, owner_id: int, beschreibung: str,
+async def entwerfen(db: AsyncSession, *, owner_id: int, description: str,
                     subject_kind: WorkflowSubjectKind, vorhanden: dict | None = None,
                     token_name: str = "") -> dict:
     """Returns {"graph": {...}, "fehler": [...], "erklaerung": "..."}.
@@ -249,28 +249,28 @@ async def entwerfen(db: AsyncSession, *, owner_id: int, beschreibung: str,
 
     filter_text = "Filter für {{ … | filter:arg }}:\n" + "\n".join(
         f"- {f['name']}: {f['hilfe']}" for f in filter_katalog())
-    teile = [KONTRAKT, "\n" + filter_text,
+    parts = [KONTRAKT, "\n" + filter_text,
              f"\nGegenstand des Ablaufs: subject_kind={subject_kind.value}."]
     if subject_kind != WorkflowSubjectKind.issue:
-        teile.append("Kein Ticket im Rücken: agent_task, comment und die Ticket-Status-"
+        parts.append("Kein Ticket im Rücken: agent_task, comment und die Ticket-Status-"
                      "Aktionen stehen NICHT zur Verfügung.")
-    werkzeuge_text = await _werkzeugliste(db, owner_id)
-    if werkzeuge_text:
-        teile.append("\n" + werkzeuge_text)
-    system = "\n".join(teile)
+    tools_text = await _werkzeugliste(db, owner_id)
+    if tools_text:
+        parts.append("\n" + tools_text)
+    system = "\n".join(parts)
 
     if vorhanden and (vorhanden.get("nodes") or []):
-        auftrag = ("Hier ist der bestehende Ablauf:\n"
+        task = ("Hier ist der bestehende Ablauf:\n"
                    f"{json.dumps(_saeubern(vorhanden), ensure_ascii=False)}\n\n"
-                   f"Baue ihn nach diesem Wunsch um: {beschreibung}\n"
+                   f"Baue ihn nach diesem Wunsch um: {description}\n"
                    "Behalte, was nicht betroffen ist — inklusive der Knoten-IDs.")
     else:
-        auftrag = f"Zeichne einen Ablauf für: {beschreibung}"
+        task = f"Zeichne einen Ablauf für: {description}"
 
-    verlauf = [{"role": "user", "content": auftrag}]
+    verlauf = [{"role": "user", "content": task}]
     graph: dict = {"nodes": [], "edges": []}
     erklaerung = ""
-    fehler: list[str] = []
+    error: list[str] = []
 
     for runde in range(2):
         resp = await llm_router.chat(
@@ -279,20 +279,20 @@ async def entwerfen(db: AsyncSession, *, owner_id: int, beschreibung: str,
             temperature=0.2, max_tokens=8000, tokens={"claude_code": token})
         roh = _json_aus(resp.text or "")
         if not roh.get("nodes"):
-            fehler = ["Das Modell hat keinen Graphen geliefert."]
+            error = ["Das Modell hat keinen Graphen geliefert."]
             break
         erklaerung = str(roh.get("erklaerung") or "")[:500]
         graph = anordnen(_saeubern(roh))
-        fehler = validate_graph(subject_kind, graph)
-        if not fehler or runde == 1:
+        error = validate_graph(subject_kind, graph)
+        if not error or runde == 1:
             break
         # Fix-up round with the very sentences the editor would show.
-        log.info("The draft has %d errors, so one correction", len(fehler))
+        log.info("The draft has %d errors, so one correction", len(error))
         verlauf += [
             {"role": "assistant", "content": resp.text or ""},
             {"role": "user", "content":
-             "Die Prüfung meldet:\n" + "\n".join(f"- {f}" for f in fehler)
+             "Die Prüfung meldet:\n" + "\n".join(f"- {f}" for f in error)
              + "\nGib den vollständigen, korrigierten Graphen erneut als JSON aus."},
         ]
 
-    return {"graph": graph, "fehler": fehler, "erklaerung": erklaerung}
+    return {"graph": graph, "fehler": error, "erklaerung": erklaerung}

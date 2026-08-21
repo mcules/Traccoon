@@ -23,23 +23,23 @@ from ..models.i18n import UiTranslation
 
 log = logging.getLogger("traccoon.i18n")
 
-_ORDNER = Path(__file__).resolve().parent.parent / "i18n"
+_FOLDER = Path(__file__).resolve().parent.parent / "i18n"
 QUELLSPRACHE = "de"
 
 # The bundled catalogs, read once at import. They are part of the code and change only with
 # a deployment, so there is nothing to invalidate here.
 KATALOG: dict[str, dict[str, str]] = {}
-for _datei in sorted(_ORDNER.glob("*.json")):
+for _file in sorted(_FOLDER.glob("*.json")):
     try:
-        KATALOG[_datei.stem] = json.loads(_datei.read_text(encoding="utf-8"))
+        KATALOG[_file.stem] = json.loads(_file.read_text(encoding="utf-8"))
     except Exception:                                        # pragma: no cover - Startfehler
-        log.exception("catalog %s is not readable", _datei)
+        log.exception("catalog %s is not readable", _file)
 
 # Overrides from the database. They are read for every language at once and kept for a short
 # while: a text lookup happens per notification, a query per notification would be absurd.
 _UEBERSCHREIBUNGEN: dict[str, dict[str, str]] = {}
 _GELADEN: dt.datetime | None = None
-FRISCHE_SEKUNDEN = 30.0
+FRESHNESS_SECONDS = 30.0
 
 
 def verwerfen() -> None:
@@ -50,28 +50,28 @@ def verwerfen() -> None:
 
 async def _ueberschreibungen(db: AsyncSession) -> dict[str, dict[str, str]]:
     global _GELADEN, _UEBERSCHREIBUNGEN
-    jetzt = dt.datetime.now(tz=dt.timezone.utc)
-    if _GELADEN is not None and (jetzt - _GELADEN).total_seconds() < FRISCHE_SEKUNDEN:
+    now = dt.datetime.now(tz=dt.timezone.utc)
+    if _GELADEN is not None and (now - _GELADEN).total_seconds() < FRESHNESS_SECONDS:
         return _UEBERSCHREIBUNGEN
     rows = (await db.execute(select(UiTranslation))).scalars().all()
-    neu: dict[str, dict[str, str]] = {}
+    new: dict[str, dict[str, str]] = {}
     for r in rows:
         if r.text:
-            neu.setdefault(r.locale, {})[r.key] = r.text
-    _UEBERSCHREIBUNGEN = neu
-    _GELADEN = jetzt
-    return neu
+            new.setdefault(r.locale, {})[r.key] = r.text
+    _UEBERSCHREIBUNGEN = new
+    _GELADEN = now
+    return new
 
 
-def _einsetzen(text: str, werte: dict[str, object]) -> str:
+def _insert(text: str, values: dict[str, object]) -> str:
     """Replace {name} placeholders. Unknown ones stay as they are, so a text with a stray
     brace looks odd but nothing blows up in the middle of a notification."""
-    for name, wert in werte.items():
-        text = text.replace("{" + name + "}", str(wert))
+    for name, value in values.items():
+        text = text.replace("{" + name + "}", str(value))
     return text
 
 
-async def tr(db: AsyncSession, key: str, locale: str | None = None, **werte: object) -> str:
+async def tr(db: AsyncSession, key: str, locale: str | None = None, **values: object) -> str:
     """One text, in `locale`, with placeholders filled in."""
     lc = (locale or QUELLSPRACHE).lower()
     ueber = await _ueberschreibungen(db)
@@ -80,9 +80,9 @@ async def tr(db: AsyncSession, key: str, locale: str | None = None, **werte: obj
             or ueber.get(QUELLSPRACHE, {}).get(key)
             or KATALOG.get(QUELLSPRACHE, {}).get(key)
             or key)
-    return _einsetzen(text, werte) if werte else text
+    return _insert(text, values) if values else text
 
 
-def quelle() -> dict[str, str]:
+def source() -> dict[str, str]:
     """The German catalog, the list of texts the admin area offers for translation."""
     return dict(KATALOG.get(QUELLSPRACHE, {}))

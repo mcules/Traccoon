@@ -100,7 +100,7 @@ WORKER_STILL_SEC = 180
 _puls_gemeldet = False
 
 
-async def _pruefe_worker_puls() -> None:
+async def _check_worker_puls() -> None:
     global _puls_gemeldet
     from ..core.redis import PREFIX, QUEUE, get_redis
     from ..models.notification import Notification
@@ -136,7 +136,7 @@ async def _tick() -> None:
     """Maintenance update: as soon as the last agent is finished, self-deploy the maintenance
     project over the deployer sidecar. During the update `agent_gate` starts no new runs
     anyway."""
-    await _pruefe_worker_puls()
+    await _check_worker_puls()
     if not await get_flag("update_pending"):
         return
     from ..models.ops import Deployment

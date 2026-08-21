@@ -11,7 +11,7 @@ from conftest import add_member, auth, make_asset, make_location, make_project, 
 
 # ── Vergeben / Entziehen ─────────────────────────────────────────────────────
 
-async def test_maintainer_darf_grant_vergeben_und_entziehen(client, db):
+async def test_maintainer_may_grant_vergeben_und_entziehen(client, db):
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     proj = await make_project(db, "WRT", "Wart")
@@ -37,7 +37,7 @@ async def test_maintainer_darf_grant_vergeben_und_entziehen(client, db):
     assert listed.json() == []
 
 
-async def test_member_darf_keine_grants_vergeben(client, db):
+async def test_member_may_keine_grants_vergeben(client, db):
     owner = await make_user(db, "owner")
     plain = await make_user(db, "plain")
     guest = await make_user(db, "guest")
@@ -56,7 +56,7 @@ async def test_member_darf_keine_grants_vergeben(client, db):
 
 # ── Validierung ──────────────────────────────────────────────────────────────
 
-async def test_unbekannter_user_und_objekt_werden_abgewiesen(client, db):
+async def test_unbekannter_user_und_obj_werden_abgewiesen(client, db):
     owner = await make_user(db, "owner")
     proj = await make_project(db, "WRT", "Wart")
     await add_member(db, proj, owner, ProjectRole.owner)
@@ -77,7 +77,7 @@ async def test_unbekannter_user_und_objekt_werden_abgewiesen(client, db):
     assert r.status_code == 400
 
 
-async def test_objekt_aus_fremdem_projekt_wird_abgewiesen(client, db):
+async def test_obj_aus_fremdem_projekt_wird_abgewiesen(client, db):
     owner = await make_user(db, "owner")
     guest = await make_user(db, "guest")
     mine = await make_project(db, "WRT", "Wart")
@@ -146,7 +146,7 @@ async def test_grant_user_sieht_nur_freigegebenes_asset(client, db):
     assert mast.id in ids and haus.id not in ids
 
 
-async def test_ohne_grant_und_ohne_mitgliedschaft_nichts_sichtbar(client, db):
+async def test_ohne_grant_und_ohne_mitgliedschaft_nichts_visible(client, db):
     owner = await make_user(db, "owner")
     outsider = await make_user(db, "outsider")
     proj = await make_project(db, "WRT", "Wart")
@@ -192,7 +192,7 @@ async def test_location_grant_ohne_rekursion_deckt_kind_ort_nicht(client, db):
     assert haus.id in ids and mast.id not in ids
 
 
-async def test_view_grant_erlaubt_kein_schreiben_manage_schon(client, db):
+async def test_view_grant_allowed_kein_write_manage_schon(client, db):
     owner = await make_user(db, "owner")
     viewer = await make_user(db, "viewer")
     manager = await make_user(db, "manager")
@@ -216,7 +216,7 @@ async def test_view_grant_erlaubt_kein_schreiben_manage_schon(client, db):
     assert r.status_code == 200
 
 
-async def test_manage_grant_auf_ort_erlaubt_asset_verwaltung(client, db):
+async def test_manage_grant_auf_ort_allowed_asset_verwaltung(client, db):
     owner = await make_user(db, "owner")
     manager = await make_user(db, "manager")
     proj = await make_project(db, "WRT", "Wart")
@@ -295,7 +295,7 @@ async def test_list_projects_enthaelt_geerbte_subprojekte(client, db):
 
 # ── Cycle protection while rehanging ─────────────────────────────────────────
 
-async def test_parent_darf_kein_nachfahre_sein(client, db):
+async def test_parent_may_kein_nachfahre_sein(client, db):
     owner = await make_user(db, "owner")
     top = await make_project(db, "FFB", "Freifunk Haßberge")
     sub = await make_project(db, "WRT", "Wart", parent_id=top.id)

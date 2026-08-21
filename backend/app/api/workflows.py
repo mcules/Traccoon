@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.fehler import Fehler
+from ..core.error import Fehler
 from ..db import get_session
 from ..models.enums import (
     ProjectRole, WorkflowNodeType, WorkflowStepStatus, WorkflowVersionStatus,
@@ -207,7 +207,7 @@ async def workflow_context_fields(user: User = Depends(get_current_user)):
 
 
 @router.get("/workflows/{def_id}/webhook")
-async def workflow_webhook_lesen(
+async def workflow_webhook_read(
     def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
     """The incoming address of this flow (or `null` when it has none)."""
@@ -217,7 +217,7 @@ async def workflow_webhook_lesen(
 
 
 @router.post("/workflows/{def_id}/webhook", status_code=201)
-async def workflow_webhook_anlegen(
+async def workflow_webhook_create(
     def_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_session),
 ):
     """Give this flow an address of its own under which a foreign system triggers it.
@@ -282,8 +282,8 @@ async def workflow_tools(user: User = Depends(get_current_user),
     Deliberately their own: a flow later calls through the MCPJungle access of its owner, not
     through a global one. What is not listed here it cannot call either.
     """
-    from ..services.workflow_tools import werkzeuge
-    return await werkzeuge(db, user.id)
+    from ..services.workflow_tools import tools
+    return await tools(db, user.id)
 
 
 @router.get("/workflow-templates")
@@ -294,7 +294,7 @@ async def workflow_templates_list(user: User = Depends(get_current_user)):
     template gets it as their own version 1 anyway (`POST /workflows` with `template`).
     """
     from ..services import workflow_templates
-    return workflow_templates.liste()
+    return workflow_templates.listing()
 
 
 # ── Process sets ─────────────────────────────────────────────────────────────
@@ -485,14 +485,14 @@ async def create_workflow(
         raise Fehler(status.HTTP_409_CONFLICT, "err.key_already_taken_project",
                      "The key is already taken in the project")
     from ..services import workflow_templates
-    vorlage = workflow_templates.vorlage(data.template) if data.template else None
-    if data.template and vorlage is None:
+    template = workflow_templates.template(data.template) if data.template else None
+    if data.template and template is None:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.unknown_template",
                      "Unknown template '{name}'", name=data.template)
     d = WorkflowDefinition(
         project_id=data.project_id, key=data.key, name=data.name,
-        description=data.description or (vorlage["description"] if vorlage else ""),
-        subject_kind=vorlage["subject_kind"] if vorlage else data.subject_kind,
+        description=data.description or (template["description"] if template else ""),
+        subject_kind=template["subject_kind"] if template else data.subject_kind,
         created_by=user.id,
     )
     db.add(d)
@@ -502,7 +502,7 @@ async def create_workflow(
     # while clicking through: a fresh flow had not a single node, not even a start.)
     v1 = WorkflowVersion(
         definition_id=d.id, version=1, status=WorkflowVersionStatus.draft, created_by=user.id,
-        graph=workflow_templates.graph(data.template) if vorlage else {
+        graph=workflow_templates.graph(data.template) if template else {
             "nodes": [
                 {"id": "start", "type": "start", "position": {"x": 0, "y": 0},
                  "data": {"config": {"label": "Auslöser"}}},
@@ -526,7 +526,7 @@ async def get_workflow(
     return d
 
 
-async def _schluessel_setzen(db: AsyncSession, d: WorkflowDefinition, roh: str) -> None:
+async def _key_set(db: AsyncSession, d: WorkflowDefinition, roh: str) -> None:
     """Den Schlüssel eines Ablaufs ändern — mit den drei Regeln, die daran hängen.
 
     Er ist mehr als eine Beschriftung: Ein Slot findet seinen Ablauf darüber, und ein
@@ -535,11 +535,11 @@ async def _schluessel_setzen(db: AsyncSession, d: WorkflowDefinition, roh: str) 
     """
     from ..core.slug import slug
 
-    schluessel = slug(roh, 60)
-    if not schluessel:
+    key = slug(roh, 60)
+    if not key:
         raise Fehler(400, "err.key_invalid",
                      "Der Schlüssel braucht Buchstaben oder Ziffern")
-    if schluessel == d.key:
+    if key == d.key:
         return
     if d.slot or d.set_id:
         raise Fehler(400, "err.key_fixed",
@@ -548,11 +548,11 @@ async def _schluessel_setzen(db: AsyncSession, d: WorkflowDefinition, roh: str) 
     schon = (await db.execute(select(WorkflowDefinition).where(
         WorkflowDefinition.project_id.is_(None) if d.project_id is None
         else WorkflowDefinition.project_id == d.project_id,
-        WorkflowDefinition.key == schluessel,
+        WorkflowDefinition.key == key,
         WorkflowDefinition.id != d.id))).scalars().first()
     if schon is not None:
         raise Fehler(400, "err.key_taken", "Diesen Schlüssel gibt es hier schon")
-    d.key = schluessel
+    d.key = key
 
 
 @router.put("/workflows/{def_id}", response_model=WorkflowDefinitionOut)
@@ -568,7 +568,7 @@ async def update_workflow(
             raise Fehler(400, "err.name_required", "Der Ablauf braucht einen Namen")
         d.name = name
     if data.key is not None:
-        await _schluessel_setzen(db, d, data.key)
+        await _key_set(db, d, data.key)
     if data.description is not None:
         d.description = data.description
     if data.enabled is not None:
@@ -662,12 +662,12 @@ async def save_graph(
     live = await db.get(WorkflowVersion, d.current_version_id) if d.current_version_id else None
 
     # Layout only: write the positions where they belong and keep quiet about it.
-    ziel = draft or live
-    if ziel is not None and graf.gleicher_inhalt(ziel.graph, graph):
-        ziel.graph = graf.mit_positionen(ziel.graph, graf.positionen(graph))
+    target = draft or live
+    if target is not None and graf.gleicher_inhalt(target.graph, graph):
+        target.graph = graf.mit_positionen(target.graph, graf.positionen(graph))
         await db.commit()
-        await db.refresh(ziel)
-        return GraphSaveOut(ergebnis="layout", version=ziel, hinweis="Anordnung gespeichert")
+        await db.refresh(target)
+        return GraphSaveOut(result="layout", version=target, hint="Anordnung gespeichert")
 
     if draft is not None:
         draft.graph = graph
@@ -675,7 +675,7 @@ async def save_graph(
             draft.notes = data.notes
         await db.commit()
         await db.refresh(draft)
-        return GraphSaveOut(ergebnis="entwurf", version=draft, hinweis="Entwurf gespeichert")
+        return GraphSaveOut(result="entwurf", version=draft, hint="Entwurf gespeichert")
 
     draft = WorkflowVersion(
         definition_id=def_id, version=await _next_version_number(db, def_id),
@@ -686,8 +686,8 @@ async def save_graph(
     db.add(draft)
     await db.commit()
     await db.refresh(draft)
-    return GraphSaveOut(ergebnis="neuer_entwurf", version=draft,
-                        hinweis="Entwurf angelegt (der Inhalt weicht ab)")
+    return GraphSaveOut(result="neuer_entwurf", version=draft,
+                        hint="Entwurf angelegt (der Inhalt weicht ab)")
 
 
 @router.delete("/workflows/{def_id}/draft", status_code=204)
@@ -729,8 +729,8 @@ async def version_diff(
     """
     d = await _get_def(db, def_id)
     await _require_project_read(db, user, d.project_id)
-    neu = await db.get(WorkflowVersion, vid)
-    if neu is None or neu.definition_id != def_id:
+    new = await db.get(WorkflowVersion, vid)
+    if new is None or new.definition_id != def_id:
         raise Fehler(status.HTTP_404_NOT_FOUND, "err.version_not_found", "Version not found")
     if against is not None:
         alt = await db.get(WorkflowVersion, against)
@@ -739,10 +739,10 @@ async def version_diff(
     else:
         alt = (await db.execute(
             select(WorkflowVersion).where(WorkflowVersion.definition_id == def_id,
-                                          WorkflowVersion.version < neu.version)
+                                          WorkflowVersion.version < new.version)
             .order_by(WorkflowVersion.version.desc()))).scalars().first()
-    return DiffOut(von=alt.version if alt else None, bis=neu.version,
-                   **graf.unterschiede(alt.graph if alt else None, neu.graph))
+    return DiffOut(from_version=alt.version if alt else None, to_version=new.version,
+                   **graf.unterschiede(alt.graph if alt else None, new.graph))
 
 
 async def _get_draft(db: AsyncSession, def_id: int, vid: int) -> WorkflowVersion:
@@ -831,18 +831,18 @@ async def rollback_version(
         raise HTTPException(status.HTTP_400_BAD_REQUEST,
                             {"message": "This version no longer satisfies today's rules",
                              "errors": errors})
-    neu = WorkflowVersion(
+    new = WorkflowVersion(
         definition_id=def_id, version=await _next_version_number(db, def_id),
         graph=alt.graph, status=WorkflowVersionStatus.published,
         published_at=dt.datetime.now(tz=dt.timezone.utc), created_by=user.id,
         notes=f"Zurückgerollt auf Fassung {alt.version}",
     )
-    db.add(neu)
+    db.add(new)
     await db.flush()
-    d.current_version_id = neu.id
+    d.current_version_id = new.id
     await db.commit()
-    await db.refresh(neu)
-    return neu
+    await db.refresh(new)
+    return new
 
 
 # ── Instanzen ────────────────────────────────────────────────────────────────
@@ -929,7 +929,7 @@ class EntwurfIn(BaseModel):
     If a graph is enclosed it is a rebuild ("put an approval in front of it"), otherwise a
     fresh drawing. Nothing is saved in either case: the draft lands in the editor.
     """
-    beschreibung: str = Field(min_length=3, max_length=2000)
+    description: str = Field(min_length=3, max_length=2000)
     graph: dict | None = None
 
 
@@ -950,13 +950,13 @@ async def workflow_entwurf(
     await _require_write(db, user, d)
     try:
         return await workflow_author.entwerfen(
-            db, owner_id=user.id, beschreibung=data.beschreibung,
+            db, owner_id=user.id, description=data.description,
             subject_kind=d.subject_kind, vorhanden=data.graph)
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)[:300])
     except Exception as exc:  # noqa: BLE001
         raise Fehler(status.HTTP_502_BAD_GATEWAY, "err.draft_failed",
-                     "The draft failed: {grund}", grund=str(exc)[:270])
+                     "The draft failed: {reason}", reason=str(exc)[:270])
 
 
 @router.post("/workflows/{def_id}/dry-run", response_model=InstanceOut, status_code=201)
@@ -988,20 +988,20 @@ async def probelauf(
             raise Fehler(status.HTTP_409_CONFLICT, "err.flow_has_no_version_yet",
                          "The flow has no version yet")
         graph = version.graph or {}
-    fehler = engine.validate_graph(d.subject_kind, graph)
-    if fehler:
+    error = engine.validate_graph(d.subject_kind, graph)
+    if error:
         raise Fehler(status.HTTP_422_UNPROCESSABLE_ENTITY, "err.flow_not_coherent",
-                     "The flow is not coherent yet: {fehler}",
-                     fehler="; ".join(fehler[:3]))
+                     "The flow is not coherent yet: {error}",
+                     error="; ".join(error[:3]))
 
     if data.graph is not None:
         # A version for this moment only: the engine hangs every instance off a version, and
         # the editor state is not one yet. It disappears again after the run, because a trial
         # should leave no version history behind.
-        letzte = (await db.execute(
+        last = (await db.execute(
             select(WorkflowVersion.version).where(WorkflowVersion.definition_id == d.id)
             .order_by(WorkflowVersion.version.desc()))).scalars().first() or 0
-        fluechtig = WorkflowVersion(definition_id=d.id, version=letzte + 1, graph=graph,
+        fluechtig = WorkflowVersion(definition_id=d.id, version=last + 1, graph=graph,
                                     status=WorkflowVersionStatus.draft, notes="Probelauf",
                                     created_by=user.id)
         db.add(fluechtig)
@@ -1018,7 +1018,7 @@ async def probelauf(
             db, d, subject_kind=d.subject_kind,
             context={**(data.context or {}), engine.PROBE_KEY: True},
             actor_id=user.id, source="probelauf")
-        ergebnis = await _load_instance_out(db, await db.get(WorkflowInstance, inst.id))
+        result = await _load_instance_out(db, await db.get(WorkflowInstance, inst.id))
     finally:
         d.current_version_id = echte_version
         await db.commit()
@@ -1031,7 +1031,7 @@ async def probelauf(
         await db.flush()
         await db.delete(fluechtig)
         await db.commit()
-    return ergebnis
+    return result
 
 
 @router.get("/workflow-instances/tasks", response_model=list[WorkflowTaskLite])

@@ -9,37 +9,37 @@ from app.models.enums import (
     PurchaseStatus, StatusCategory, TicketAgentStatus, WorkflowSubjectKind,
 )
 from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
-from app.services import artifact_fields as felder
-from app.services import artifacts as art
+from app.services import artifact_fields as fields
+from app.services import artifacts as kind
 from sqlalchemy import select
 from conftest import auth, make_asset, make_project, make_user
 
 
 @pytest.fixture
 async def register(db):
-    await art.ensure_builtin_types(db)
+    await kind.ensure_builtin_types(db)
     return db
 
 
 async def test_eingebaute_typen_decken_die_echten_zustaende_ab(db, register):
     """The keys MUST correspond to the enum values: they are stored that way."""
-    ticket = await art.type_by_key(db, "ticket")
-    hardware = await art.type_by_key(db, "hardware")
-    ticket_keys = {s.value for s in await art.statuses(db, ticket.id)}
-    hw_keys = {s.value for s in await art.statuses(db, hardware.id)}
+    ticket = await kind.type_by_key(db, "ticket")
+    hardware = await kind.type_by_key(db, "hardware")
+    ticket_keys = {s.value for s in await kind.statuses(db, ticket.id)}
+    hw_keys = {s.value for s in await kind.statuses(db, hardware.id)}
 
     assert ticket_keys == {s.value for s in TicketAgentStatus}
     assert hw_keys == {s.value for s in PurchaseStatus}
     assert ticket.backing == "issue" and hardware.backing == "hardware_asset"
 
 
-async def test_subjekt_findet_seinen_typ(db, register):
-    assert (await art.type_for_subject(db, WorkflowSubjectKind.issue)).key == "ticket"
-    assert (await art.type_for_subject(db, "hardware_asset")).key == "hardware"
-    assert await art.type_for_subject(db, WorkflowSubjectKind.standalone) is None
+async def test_subjekt_findet_seinen_kind(db, register):
+    assert (await kind.type_for_subject(db, WorkflowSubjectKind.issue)).key == "ticket"
+    assert (await kind.type_for_subject(db, "hardware_asset")).key == "hardware"
+    assert await kind.type_for_subject(db, WorkflowSubjectKind.standalone) is None
 
 
-async def test_zustand_setzen_wirkt_auf_das_ticket(db, register):
+async def test_state_set_wirkt_auf_das_ticket(db, register):
     proj = await make_project(db, "TST", "Test")
     t = IssueType(project_id=proj.id, name="Aufgabe")
     for i, (name, kat) in enumerate([("To Do", StatusCategory.todo),
@@ -54,43 +54,43 @@ async def test_zustand_setzen_wirkt_auf_das_ticket(db, register):
     db.add(issue)
     await db.commit()
 
-    await art.apply_status(db, subject_kind=WorkflowSubjectKind.issue, issue=issue,
+    await kind.apply_status(db, subject_kind=WorkflowSubjectKind.issue, issue=issue,
                            status_key="hold", reason="merge")
     assert issue.agent_status == TicketAgentStatus.hold
     assert issue.hold_reason.value == "merge"
     assert issue.status_id == spalten["Warten"].id      # the board column follows
 
 
-async def test_zustand_setzen_wirkt_auf_die_hardware(db, register):
+async def test_state_set_wirkt_auf_die_hardware(db, register):
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
-    await art.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset, asset=asset,
+    await kind.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset, asset=asset,
                            status_key="delivered")
     assert asset.purchase_status == PurchaseStatus.delivered
     assert asset.delivery_date is not None       # the date is carried along
 
 
-async def test_unbekannter_zustand_wird_abgewiesen(db, register):
+async def test_unbekannter_state_wird_abgewiesen(db, register):
     proj = await make_project(db, "TST", "Test")
     asset = await make_asset(db, "Switch", project=proj)
     with pytest.raises(ValueError, match="is not a state"):
-        await art.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset,
+        await kind.apply_status(db, subject_kind=WorkflowSubjectKind.hardware_asset,
                                asset=asset, status_key="gibtsnicht")
 
 
 async def test_seed_ist_idempotent_und_behaelt_beschriftungen(db, register):
-    ticket = await art.type_by_key(db, "ticket")
-    feld = await felder.status_field(db, ticket.id)
+    ticket = await kind.type_by_key(db, "ticket")
+    field = await fields.status_field(db, ticket.id)
     s = (await db.execute(select(ArtifactFieldOption).where(
-        ArtifactFieldOption.field_id == feld.id,
+        ArtifactFieldOption.field_id == field.id,
         ArtifactFieldOption.value == "hold"))).scalar_one()
     s.label = "Wartet auf mich"
     await db.commit()
 
-    await art.ensure_builtin_types(db)
+    await kind.ensure_builtin_types(db)
     await db.refresh(s)
     assert s.label == "Wartet auf mich"
-    assert len(await art.statuses(db, ticket.id)) == len(TicketAgentStatus)
+    assert len(await kind.statuses(db, ticket.id)) == len(TicketAgentStatus)
 
 
 async def test_nur_admin_pflegt_typen(client, db, register):
@@ -110,9 +110,9 @@ async def test_nur_admin_pflegt_typen(client, db, register):
     assert r.json()["backing"] == "generic" and r.json()["builtin"] is False
 
 
-async def test_eingebauter_typ_laesst_sich_nicht_loeschen(client, db, register):
+async def test_eingebauter_kind_laesst_sich_nicht_delete(client, db, register):
     chef = await make_user(db, "chef", admin=True)
-    ticket = await art.type_by_key(db, "ticket")
+    ticket = await kind.type_by_key(db, "ticket")
     r = await client.delete(f"/artifact-types/{ticket.id}", headers=auth(chef))
     assert r.status_code == 409
     assert "cannot be deleted" in r.json()["detail"]
@@ -121,8 +121,8 @@ async def test_eingebauter_typ_laesst_sich_nicht_loeschen(client, db, register):
 async def test_beschriftung_eines_eingebauten_zustands_ist_aenderbar(client, db, register):
     """The key stays (it IS the stored value), the label does not."""
     chef = await make_user(db, "chef", admin=True)
-    ticket = await art.type_by_key(db, "ticket")
-    s = next(x for x in await art.statuses(db, ticket.id) if x.value == "to_test")
+    ticket = await kind.type_by_key(db, "ticket")
+    s = next(x for x in await kind.statuses(db, ticket.id) if x.value == "to_test")
     r = await client.put(f"/artifact-field-options/{s.id}", headers=auth(chef),
                          json={"key": "GEAENDERT", "label": "Warte auf Abnahme",
                                "category": "in_progress", "order": 5, "waiting": True})
@@ -131,7 +131,7 @@ async def test_beschriftung_eines_eingebauten_zustands_ist_aenderbar(client, db,
     assert r.json()["value"] == "to_test"        # unchanged
 
 
-async def test_uebergreifende_liste_zeigt_ticket_und_hardware(client, db, register):
+async def test_uebergreifende_listing_zeigt_ticket_und_hardware(client, db, register):
     """The actual gain: "what is pending?" over both worlds in one query."""
     from app.models.enums import ProjectRole, StatusCategory
     from app.models.ticket import Issue, IssueCounter, IssueType, WorkflowStatus
@@ -150,8 +150,8 @@ async def test_uebergreifende_liste_zeigt_ticket_und_hardware(client, db, regist
     db.add(issue)
     asset = await make_asset(db, "Switch", project=proj)
     await db.commit()
-    await art.reconcile(db)
-    await art.ensure_for_asset(db, asset)
+    await kind.reconcile(db)
+    await kind.ensure_for_asset(db, asset)
     await db.commit()
 
     r = await client.get("/artifacts", headers=auth(owner))
@@ -180,7 +180,7 @@ async def test_fremde_projekte_bleiben_unsichtbar(client, db, register):
     db.add(Issue(project_id=fremd.id, number=1, key="FRD-1", type_id=t.id, status_id=s.id,
                  summary="Geheim", reporter_id=1, rank="0001"))
     await db.commit()
-    await art.reconcile(db)
+    await kind.reconcile(db)
 
     meins = await make_project(db, "MIN", "Meins")
     await add_member(db, meins, ich, ProjectRole.owner)

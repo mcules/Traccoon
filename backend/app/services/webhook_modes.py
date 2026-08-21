@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.ops import WebhookSub
 from ..models.user import User
-from . import workflow_templates as vorlagen
+from . import workflow_templates as templates
 
 log = logging.getLogger("traccoon.webhooks")
 
@@ -37,7 +37,7 @@ def _tpl(text: str | None) -> str:
     return re.sub(r"\{([A-Za-z0-9_.]+)\}", r"{{ \1 }}", text or "")
 
 
-def _eigener_titel(sub: WebhookSub) -> str:
+def _eigener_title(sub: WebhookSub) -> str:
     """Der Titel, sofern er einer ist.
 
     „{title}“ ist die unangetastete Voreinstellung: Der Assistenten-Weg hat sie nie benutzt
@@ -48,7 +48,7 @@ def _eigener_titel(sub: WebhookSub) -> str:
     return "" if roh in ("", "{title}") else _tpl(roh)
 
 
-def _knoten(graph: dict, node_id: str) -> dict:
+def _node(graph: dict, node_id: str) -> dict:
     for n in graph.get("nodes") or []:
         if n.get("id") == node_id:
             return n
@@ -56,7 +56,7 @@ def _knoten(graph: dict, node_id: str) -> dict:
 
 
 def _setze_params(graph: dict, node_id: str, params: dict) -> None:
-    cfg = _knoten(graph, node_id)["data"]["config"]
+    cfg = _node(graph, node_id)["data"]["config"]
     cfg["action"]["params"] = params
 
 
@@ -71,7 +71,7 @@ def _ist_mail(sub: WebhookSub) -> bool:
     return bool(sub.classify_agent) or bool(re.search(r"mail|email", sub.route or "", re.I))
 
 
-async def _empfaenger(db: AsyncSession, sub: WebhookSub) -> int | None:
+async def _recipient(db: AsyncSession, sub: WebhookSub) -> int | None:
     """Wer die Nachricht bekommt: der Mensch hinter dem Chat, sonst der Besitzer."""
     if sub.notify_chat:
         wer = (await db.execute(select(User).where(
@@ -94,12 +94,12 @@ def _sachname(route: str) -> str:
     return text[:1].upper() + text[1:] if text else "Ablauf"
 
 
-async def _als_ablauf(db: AsyncSession, sub: WebhookSub, key: str, graph: dict,
+async def _as_flow(db: AsyncSession, sub: WebhookSub, key: str, graph: dict,
                       projekt_id: int | None = None) -> None:
     name = _sachname(sub.route)
-    d = await vorlagen.anlegen(
-        db, key, besitzer_id=sub.owner_user_id,
-        def_key=await vorlagen.freier_schluessel(db, name, projekt_id),
+    d = await templates.create(
+        db, key, owner_id=sub.owner_user_id,
+        def_key=await templates.freier_key(db, name, projekt_id),
         name=name, graph=graph, projekt_id=projekt_id)
     await db.flush()
     sub.mode = "workflow"
@@ -107,7 +107,7 @@ async def _als_ablauf(db: AsyncSession, sub: WebhookSub, key: str, graph: dict,
     log.info("Webhook %s (%s) läuft jetzt über den Ablauf %s", sub.route, key, d.key)
 
 
-async def umstellen(db: AsyncSession) -> int:
+async def convert(db: AsyncSession) -> int:
     """Stellt alles um, was noch einen alten Modus trägt. Gibt die Anzahl zurück."""
     subs = (await db.execute(select(WebhookSub).where(
         WebhookSub.mode.in_(ALTE_MODI)))).scalars().all()
@@ -137,34 +137,34 @@ async def umstellen(db: AsyncSession) -> int:
             continue
 
         if sub.mode == "assistant":
-            graph = vorlagen.graph("webhook-assistent")
-            auftrag = _tpl(sub.prompt_tmpl) or (
-                f"{_eigener_titel(sub)}\n\n{_tpl(sub.body_template)}".strip())
+            graph = templates.graph("webhook-assistent")
+            task = _tpl(sub.prompt_tmpl) or (
+                f"{_eigener_title(sub)}\n\n{_tpl(sub.body_template)}".strip())
             _setze_params(graph, "auftrag", {
                 "agent": sub.agent or "assistent",
-                "titel": _eigener_titel(sub),
-                "task": auftrag,
+                "titel": _eigener_title(sub),
+                "task": task,
                 # `auto_run` hieß „ohne Rückfrage laufen“ — der Schalter am Knoten fragt
                 # andersherum, deshalb die Umkehrung.
                 "freigabe": not bool(sub.auto_run),
             })
-            await _als_ablauf(db, sub, "webhook-assistent", graph)
+            await _as_flow(db, sub, "webhook-assistent", graph)
             continue
 
         if sub.mode == "notify":
-            graph = vorlagen.graph("webhook-melden")
+            graph = templates.graph("webhook-melden")
             _setze_params(graph, "melden", {
-                "to": {"mode": "user", "user_id": await _empfaenger(db, sub)},
-                "title": _eigener_titel(sub) or sub.route,
+                "to": {"mode": "user", "user_id": await _recipient(db, sub)},
+                "title": _eigener_title(sub) or sub.route,
                 "text": _tpl(sub.body_template),
             })
-            await _als_ablauf(db, sub, "webhook-melden", graph)
+            await _as_flow(db, sub, "webhook-melden", graph)
             continue
 
         # mode == "task"
-        graph = vorlagen.graph("webhook-ticket")
+        graph = templates.graph("webhook-ticket")
         params = {"project_id": sub.project_id,
-                  "summary": _eigener_titel(sub) or f"Webhook {sub.route}",
+                  "summary": _eigener_title(sub) or f"Webhook {sub.route}",
                   "description": _tpl(sub.body_template)}
         if sub.agent:
             params["assigned_agent"] = sub.agent
@@ -173,7 +173,7 @@ async def umstellen(db: AsyncSession) -> int:
         # Der Ablauf gehört in das Projekt, in dem er anlegt. Sonst wäre das Zielprojekt für
         # ihn ein fremdes, und `create_ticket` verlangte vom Besitzer eine Mitgliedschaft,
         # die der Webhook nie gebraucht hat.
-        await _als_ablauf(db, sub, "webhook-ticket", graph, projekt_id=sub.project_id)
+        await _as_flow(db, sub, "webhook-ticket", graph, projekt_id=sub.project_id)
 
     await db.commit()
     return len(subs)

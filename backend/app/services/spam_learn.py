@@ -57,7 +57,7 @@ _SICHER_AB = 3
 # und wird zur selbsterfüllenden Regel. Fall vom 2026-08-20: Ein PayPal-Beleg an einen
 # frischen Alias (`to:` 4:0 Spam) wurde weggeräumt, obwohl derselbe Absender 282-mal als
 # erwünscht gelernt war — `to:` löste „sicher" aus und übersprang alles andere.
-_STARKE_ARTEN = ("from:", "dom:")
+_STARKE_KINDS = ("from:", "dom:")
 
 # Als Merkmal darf die Empfängeradresse mitzählen (ein Wegwerf-Alias, der wirklich nur
 # Werbung bekommt, sagt etwas), aber sie entscheidet nichts allein.
@@ -73,7 +73,7 @@ def _mindestens(feature: str) -> int:
     """
     if (feature or "").startswith(_SCHWACHE_STARKE):
         return _MIN_EVIDENZ_STARK * 4
-    return (_MIN_EVIDENZ_STARK if (feature or "").startswith(_STARKE_ARTEN)
+    return (_MIN_EVIDENZ_STARK if (feature or "").startswith(_STARKE_KINDS)
             else _MIN_EVIDENZ_SCHWACH)
 
 
@@ -119,7 +119,7 @@ async def bewerten(db: AsyncSession, owner_id: int | None,
     if not rows:
         return basis, [], False
 
-    summe = math.log(basis / (1 - basis))
+    sum_total = math.log(basis / (1 - basis))
     beitraege: list[tuple[float, str]] = []
     sicher = False
     einig: list[SpamFeatureStat] = []
@@ -128,11 +128,11 @@ async def bewerten(db: AsyncSession, owner_id: int | None,
         if gesamt < _mindestens(row.feature):
             continue
         gewicht = _logodds(row.spam_count or 0, row.ham_count or 0, basis)
-        summe += gewicht
+        sum_total += gewicht
         if abs(gewicht) > 0.2:
             beitraege.append((gewicht, _erklaerung(row)))
         # Unanimous verdict about a strong feature means settled.
-        if row.feature.startswith(_STARKE_ARTEN) and gesamt >= _SICHER_AB:
+        if row.feature.startswith(_STARKE_KINDS) and gesamt >= _SICHER_AB:
             if row.ham_count == 0 or row.spam_count == 0:
                 sicher = True
                 einig.append(row)
@@ -141,21 +141,21 @@ async def bewerten(db: AsyncSession, owner_id: int | None,
     # zweites starkes Merkmal in die Gegenrichtung (derselbe Absender 282-mal erwünscht,
     # während ein anderes Merkmal dreimal auf Spam steht), ist die Sache eben nicht klar.
     if sicher and len(einig) > 1:
-        richtungen = {r.spam_count == 0 for r in einig}
-        if len(richtungen) > 1:
+        directions = {r.spam_count == 0 for r in einig}
+        if len(directions) > 1:
             sicher = False
-    score = 1 / (1 + math.exp(-summe))
+    score = 1 / (1 + math.exp(-sum_total))
     beitraege.sort(key=lambda b: abs(b[0]), reverse=True)
     return round(score, 3), [text for _, text in beitraege[:4]], sicher
 
 
 def _erklaerung(row: SpamFeatureStat) -> str:
     """Feature counters turned into a sentence that can stand in the Telegram card."""
-    art, _, wert = (row.feature or "").partition(":")
+    kind, _, value = (row.feature or "").partition(":")
     label = {
-        "from": f"Absender {wert}", "dom": f"Domain {wert}", "to": f"Alias {wert}",
-        "sig": f"Merkmal {wert}", "wort": f"Betreff-Wort „{wert}“",
-    }.get(art, row.feature)
+        "from": f"Absender {value}", "dom": f"Domain {value}", "to": f"Alias {value}",
+        "sig": f"Merkmal {value}", "wort": f"Betreff-Wort „{value}“",
+    }.get(kind, row.feature)
     s, h = row.spam_count or 0, row.ham_count or 0
     if s and not h:
         return f"{label}: bisher {s}× Spam"
@@ -209,7 +209,7 @@ async def schon_widersprochen(db: AsyncSession, owner_id: int | None, absender: 
     return row is not None
 
 
-async def merkmale_zaehlen(db: AsyncSession, owner_id: int | None, merkmale: list[str],
+async def merkmale_count(db: AsyncSession, owner_id: int | None, merkmale: list[str],
                            ist_spam: bool, *, vorher: str = "") -> int:
     """Take features into the counters. Does NOT commit. Returns the number of counted features.
 
@@ -220,7 +220,7 @@ async def merkmale_zaehlen(db: AsyncSession, owner_id: int | None, merkmale: lis
     merkmale = [m for m in merkmale if isinstance(m, str) and m]
     if not merkmale:
         return 0
-    jetzt = dt.datetime.now(tz=dt.timezone.utc)
+    now = dt.datetime.now(tz=dt.timezone.utc)
     vorhanden = {
         row.feature: row for row in (await db.execute(select(SpamFeatureStat).where(
             SpamFeatureStat.owner_user_id == owner_id,
@@ -240,7 +240,7 @@ async def merkmale_zaehlen(db: AsyncSession, owner_id: int | None, merkmale: lis
             row.spam_count = (row.spam_count or 0) + 1
         else:
             row.ham_count = (row.ham_count or 0) + 1
-        row.last_seen_at = jetzt
+        row.last_seen_at = now
     return len(merkmale)
 
 
@@ -252,11 +252,11 @@ async def merken(db: AsyncSession, verdict: SpamVerdict, ist_spam: bool,
     their mind, the old counting is taken back; otherwise the error would stay in the memory
     forever and have a say with every future mail.
     """
-    anzahl = await merkmale_zaehlen(db, verdict.owner_user_id, list(verdict.features or []),
+    count = await merkmale_count(db, verdict.owner_user_id, list(verdict.features or []),
                                     ist_spam, vorher=vorher)
-    if anzahl:
+    if count:
         log.info("Spam memory: %d features from verdict #%s (%s)",
-                 anzahl, verdict.id, "spam" if ist_spam else "ham")
+                 count, verdict.id, "spam" if ist_spam else "ham")
 
 
 async def beispiele(db: AsyncSession, owner_id: int | None, limit: int = 6) -> list[str]:

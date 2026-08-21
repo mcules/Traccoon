@@ -16,7 +16,7 @@ import math
 ERDRADIUS_M = 6_371_008.8
 
 
-def abstand_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Entfernung zweier Punkte in Metern."""
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp = p2 - p1

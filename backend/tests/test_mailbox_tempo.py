@@ -38,21 +38,21 @@ def leerer_pool():
     mailbox.pool_leeren()
 
 
-def test_die_verbindung_wird_wiederverwendet(monkeypatch):
+def test_die_connection_wird_wiederverwendet(monkeypatch):
     """Anmelden kostet einen TLS-Handschlag; bei jedem Aufruf wäre das die halbe Wartezeit."""
     gebaut = []
     monkeypatch.setattr(mailbox, "_verbinden", lambda a: gebaut.append(FakeClient()) or gebaut[-1])
 
-    with mailbox._imap(Konto()) as erste:
+    with mailbox._imap(Konto()) as first:
         pass
     with mailbox._imap(Konto()) as zweite:
         pass
 
-    assert len(gebaut) == 1 and erste is zweite
-    assert erste.noops == 1, "die liegende Verbindung wird angetippt, bevor sie jemand bekommt"
+    assert len(gebaut) == 1 and first is zweite
+    assert first.noops == 1, "die liegende Verbindung wird angetippt, bevor sie jemand bekommt"
 
 
-def test_eine_tote_verbindung_wird_ersetzt(monkeypatch):
+def test_eine_tote_connection_wird_ersetzt(monkeypatch):
     """Server trennen nach ein paar Minuten Ruhe. Das darf niemand mitten in einer Antwort
     erfahren."""
     gebaut = []
@@ -73,7 +73,7 @@ def test_eine_tote_verbindung_wird_ersetzt(monkeypatch):
     assert zweite is gebaut[1]
 
 
-def test_nach_einem_fehler_wird_nicht_zurueckgelegt(monkeypatch):
+def test_nach_einem_error_wird_nicht_zurueckgelegt(monkeypatch):
     """Nach einem Abbruch ist der Zustand unklar (halb gelesene Antwort). Eine solche
     zurückzulegen hieße, den Fehler an den nächsten Aufruf weiterzureichen."""
     gebaut = []
@@ -95,34 +95,34 @@ def test_nach_einem_fehler_wird_nicht_zurueckgelegt(monkeypatch):
 async def test_gefragt_wird_nur_einmal(redis_stub_echt):
     fragen = []
 
-    async def holen():
+    async def fetch():
         fragen.append(1)
         return {"stand": len(fragen)}
 
-    erste = await cache.gecacht(1, "folders:1", 60, holen)
-    zweite = await cache.gecacht(1, "folders:1", 60, holen)
-    assert erste == zweite == {"stand": 1}
+    first = await cache.gecacht(1, "folders:1", 60, fetch)
+    zweite = await cache.gecacht(1, "folders:1", 60, fetch)
+    assert first == zweite == {"stand": 1}
     assert len(fragen) == 1
 
 
 @pytest.mark.asyncio
-async def test_was_sich_geaendert_hat_kommt_nicht_aus_dem_cache(redis_stub_echt):
+async def test_was_sich_changed_hat_kommt_nicht_aus_dem_cache(redis_stub_echt):
     """Eine gelesene Mail, eine verschobene, eine neue: danach ist der alte Stand falsch."""
     fragen = []
 
-    async def holen():
+    async def fetch():
         fragen.append(1)
         return {"stand": len(fragen)}
 
-    await cache.gecacht(1, "unread", 60, holen)
+    await cache.gecacht(1, "unread", 60, fetch)
     await cache.entwerten(1)
-    zweite = await cache.gecacht(1, "unread", 60, holen)
+    zweite = await cache.gecacht(1, "unread", 60, fetch)
 
     assert zweite == {"stand": 2}, "nach dem Entwerten wird wieder gefragt"
 
 
 @pytest.mark.asyncio
-async def test_ohne_redis_laeuft_alles_wie_vorher(monkeypatch):
+async def test_ohne_redis_running_alles_wie_vorher(monkeypatch):
     """Der Cache ist eine Bequemlichkeit, keine Bedingung."""
     def kaputt():
         raise OSError("kein Redis")
@@ -130,10 +130,10 @@ async def test_ohne_redis_laeuft_alles_wie_vorher(monkeypatch):
     monkeypatch.setattr("app.services.mailbox_cache.get_redis", kaputt)
     fragen = []
 
-    async def holen():
+    async def fetch():
         fragen.append(1)
         return "frisch"
 
-    assert await cache.gecacht(1, "x", 60, holen) == "frisch"
-    assert await cache.gecacht(1, "x", 60, holen) == "frisch"
+    assert await cache.gecacht(1, "x", 60, fetch) == "frisch"
+    assert await cache.gecacht(1, "x", 60, fetch) == "frisch"
     assert len(fragen) == 2, "ohne Cache wird eben jedes Mal gefragt"

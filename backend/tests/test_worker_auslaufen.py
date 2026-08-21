@@ -16,17 +16,17 @@ import app.worker.__main__ as worker
 
 async def test_auslaufen_wartet_auf_den_laufenden_agenten(monkeypatch):
     monkeypatch.setattr(worker, "DRAIN_SEC", 5)
-    fertig = asyncio.Event()
+    done = asyncio.Event()
 
     async def agent():
         await asyncio.sleep(0.05)
-        fertig.set()
+        done.set()
 
     worker.RUNNING.clear()
     worker.RUNNING["TST-1"] = asyncio.create_task(agent())
     try:
         await worker._auslaufen()
-        assert fertig.is_set(), "the running agent was not brought to an end"
+        assert done.is_set(), "the running agent was not brought to an end"
     finally:
         worker.RUNNING.clear()
 
@@ -51,7 +51,7 @@ async def test_auslaufen_gibt_nach_der_frist_auf(monkeypatch):
         worker.RUNNING.clear()
 
 
-async def test_ohne_laufende_agenten_sofort_fertig(monkeypatch):
+async def test_ohne_laufende_agenten_sofort_done(monkeypatch):
     monkeypatch.setattr(worker, "DRAIN_SEC", 30)
     worker.RUNNING.clear()
     await asyncio.wait_for(worker._auslaufen(), timeout=1)     # must not sit out the deadline

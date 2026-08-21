@@ -46,12 +46,12 @@ def kein_redis(monkeypatch):
 # ── Testdaten ────────────────────────────────────────────────────────────────
 
 async def ticket(db, projekt, nummer: int = 1) -> Issue:
-    typ = IssueType(project_id=projekt.id, name="Aufgabe")
+    kind = IssueType(project_id=projekt.id, name="Aufgabe")
     status = WorkflowStatus(project_id=projekt.id, name="To Do", category=StatusCategory.todo)
-    db.add_all([typ, status, IssueCounter(project_id=projekt.id, last_number=0)])
+    db.add_all([kind, status, IssueCounter(project_id=projekt.id, last_number=0)])
     await db.commit()
     i = Issue(project_id=projekt.id, number=nummer, key=f"{projekt.key}-{nummer}",
-              type_id=typ.id, status_id=status.id, summary="Tu was", reporter_id=1, rank="1")
+              type_id=kind.id, status_id=status.id, summary="Tu was", reporter_id=1, rank="1")
     db.add(i)
     await db.commit()
     return i
@@ -68,11 +68,11 @@ async def lauf(db, *, issue=None, projekt=None, status="success", agent="develop
     return r
 
 
-async def schritte(db, run: Run, anzahl: int, *, ab_sekunden: int = 300) -> list[RunStep]:
+async def steps(db, run: Run, count: int, *, ab_seconds: int = 300) -> list[RunStep]:
     """Legacy rows (`kind=''`) with an ascending timestamp: one event per row."""
     rows = [RunStep(run_id=run.id, seq=i + 1, role="assistant", content=f"Schritt {i + 1}",
-                    created_at=NOW - dt.timedelta(seconds=ab_sekunden - i * 10))
-            for i in range(anzahl)]
+                    created_at=NOW - dt.timedelta(seconds=ab_seconds - i * 10))
+            for i in range(count)]
     db.add_all(rows)
     await db.commit()
     return rows
@@ -86,7 +86,7 @@ async def deployment(db, **kw) -> Deployment:
     return dep
 
 
-async def deploy_schritte(db, run_id: int) -> list[RunStep]:
+async def deploy_steps(db, run_id: int) -> list[RunStep]:
     rows = (await db.execute(
         select(RunStep).where(RunStep.run_id == run_id, RunStep.kind == "deploy")
         .order_by(RunStep.id))).scalars().all()
@@ -105,7 +105,7 @@ async def test_zweimal_watchen_erzaehlt_einmal(db):
     assert await dw.tick(db) == 0
     await db.refresh(dep)
     assert dep.announced_status == "building"
-    assert [s.content for s in await deploy_schritte(db, run.id)] == [
+    assert [s.content for s in await deploy_steps(db, run.id)] == [
         '{"deployment_id": %d, "state": "start", "log_head": ""}' % dep.id]
 
     # The outcome is a new state, and it is told only once as well.
@@ -114,9 +114,9 @@ async def test_zweimal_watchen_erzaehlt_einmal(db):
     await db.commit()
     assert await dw.tick(db) == 1
     assert await dw.tick(db) == 0
-    schritte_ = await deploy_schritte(db, run.id)
-    assert [s.ok for s in schritte_] == [None, True]
-    assert "fertig gebaut" in schritte_[-1].content
+    steps_ = await deploy_steps(db, run.id)
+    assert [s.ok for s in steps_] == [None, True]
+    assert "fertig gebaut" in steps_[-1].content
 
 
 @pytest.mark.parametrize("announced,status,erwartet", [
@@ -150,8 +150,8 @@ async def test_anker_agentenwerkzeug_ist_der_wartende_lauf(db):
     await deployment(db, issue_id=issue.id, project_id=projekt.id,
                      worktree="/workspace/tra-1", status="building")
     await dw.tick(db)
-    assert len(await deploy_schritte(db, wartend.id)) == 1
-    assert await deploy_schritte(db, juenger.id) == []
+    assert len(await deploy_steps(db, wartend.id)) == 1
+    assert await deploy_steps(db, juenger.id) == []
 
 
 async def test_anker_merge_ist_der_juengste_lauf(db):
@@ -165,8 +165,8 @@ async def test_anker_merge_ist_der_juengste_lauf(db):
     await deployment(db, issue_id=issue.id, project_id=projekt.id, worktree="",
                      source="merge", status="building")
     await dw.tick(db)
-    assert len(await deploy_schritte(db, juenger.id)) == 1
-    assert await deploy_schritte(db, aelter.id) == []
+    assert len(await deploy_steps(db, juenger.id)) == 1
+    assert await deploy_steps(db, aelter.id) == []
 
 
 async def test_wartungsupdate_erzeugt_kein_ereignis(db, kein_redis):
@@ -180,7 +180,7 @@ async def test_wartungsupdate_erzeugt_kein_ereignis(db, kein_redis):
                            source="maintenance", status="building")
 
     assert await dw.tick(db) == 0
-    assert await deploy_schritte(db, run.id) == []
+    assert await deploy_steps(db, run.id) == []
     assert kein_redis == []
     # Acknowledging happens regardless; otherwise the row would lie on the table every beat.
     await db.refresh(dep)
@@ -205,7 +205,7 @@ async def test_altbestand_bleibt_stumm(db):
     await deployment(db, issue_id=issue.id, project_id=projekt.id, status="ok",
                      created_at=NOW - dt.timedelta(days=12))
     assert await dw.tick(db) == 0
-    assert await deploy_schritte(db, run.id) == []
+    assert await deploy_steps(db, run.id) == []
 
 
 async def test_angefangene_geschichte_wird_zu_ende_erzaehlt(db):
@@ -218,7 +218,7 @@ async def test_angefangene_geschichte_wird_zu_ende_erzaehlt(db):
                      announced_status="building",
                      created_at=NOW - dt.timedelta(days=2))
     assert await dw.tick(db) == 1
-    assert [s.ok for s in await deploy_schritte(db, run.id)] == [True]
+    assert [s.ok for s in await deploy_steps(db, run.id)] == [True]
 
 
 # ── Freier Anschluss: deployment.finished ────────────────────────────────────
@@ -226,10 +226,10 @@ async def test_angefangene_geschichte_wird_zu_ende_erzaehlt(db):
 async def test_deployment_finished_feuert_einmal(db, monkeypatch):
     """The trigger name has been in `BUILTIN_EVENTS` all along and has never fired."""
     import app.services.events as eventsmod
-    gesehen: list[tuple[str, dict]] = []
+    seen: list[tuple[str, dict]] = []
 
     async def fake_emit(_db, event, **kw):
-        gesehen.append((event, kw))
+        seen.append((event, kw))
         return []
 
     monkeypatch.setattr(eventsmod, "emit", fake_emit)
@@ -240,28 +240,28 @@ async def test_deployment_finished_feuert_einmal(db, monkeypatch):
     dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="building")
 
     await dw.tick(db)
-    assert gesehen == []                       # `building` is no conclusion
+    assert seen == []                       # `building` is no conclusion
 
     dep.status = "ok"
     await db.commit()
     await dw.tick(db)
-    assert [e for e, _ in gesehen] == ["deployment.finished"]
-    kw = gesehen[0][1]
+    assert [e for e, _ in seen] == ["deployment.finished"]
+    kw = seen[0][1]
     assert kw["issue_id"] == issue.id and kw["source_ref"] == f"deployment:{dep.id}"
     assert kw["payload"]["deployment"]["ok"] is True
 
     await dw.tick(db)
-    assert len(gesehen) == 1                   # acknowledged is acknowledged
+    assert len(seen) == 1                   # acknowledged is acknowledged
 
 
 async def test_deployment_finished_auch_ohne_buehne(db, monkeypatch):
     """The maintenance update gets no stage event, but the process trigger hangs off the
     conclusion, not off the stage."""
     import app.services.events as eventsmod
-    gesehen: list[str] = []
+    seen: list[str] = []
 
     async def fake_emit(_db, event, **kw):
-        gesehen.append(event)
+        seen.append(event)
         return []
 
     monkeypatch.setattr(eventsmod, "emit", fake_emit)
@@ -270,17 +270,17 @@ async def test_deployment_finished_auch_ohne_buehne(db, monkeypatch):
     await deployment(db, project_id=projekt.id, self_deploy=True, stack_dir="",
                      source="maintenance", status="ok")
     await dw.tick(db)
-    assert gesehen == ["deployment.finished"]
+    assert seen == ["deployment.finished"]
 
 
 # ── Geliehene `seq` (Bestand) ────────────────────────────────────────────────
 
-class _Zeile:
+class _Line:
     """Minimal `run_steps` dummy: `deploy_anchor_step_id` reads only two fields."""
 
-    def __init__(self, step_id: int, sekunden: int):
+    def __init__(self, step_id: int, seconds: int):
         self.id = step_id
-        self.created_at = NOW - dt.timedelta(seconds=sekunden)
+        self.created_at = NOW - dt.timedelta(seconds=seconds)
 
 
 class _Dep:
@@ -295,9 +295,9 @@ def ctx() -> RunCtx:
     return RunCtx(run_id=8871, project_id=27, owner_id=3, sid="issue:412", agent="dev")
 
 
-def test_bestand_haengt_an_der_letzten_zeile_davor():
-    zeilen = [_Zeile(100, 60), _Zeile(101, 40), _Zeile(102, 10)]
-    anker = deploy_anchor_step_id(zeilen, _Dep().created_at)
+def test_bestand_hangs_an_der_letzten_line_davor():
+    lines = [_Line(100, 60), _Line(101, 40), _Line(102, 10)]
+    anker = deploy_anchor_step_id(lines, _Dep().created_at)
     assert anker == 101
     ev = deployment_events(_Dep(), ctx(), anchor_step_id=anker)[0]
     assert ev["kind"] == "deploy" and ev["seq"] == 101 * SEQ_SLOTS + 3
@@ -309,20 +309,20 @@ def test_slot3_kollision_weicht_auf_die_vorgaengerzeile():
     """The `run_end` boundary sits on `last*4+3`, exactly the place the deployment wanted to
     borrow. It has precedence (it ends a run, while the deployment illustrates one), so the
     deployment slips back one row."""
-    zeilen = [_Zeile(100, 60), _Zeile(101, 40), _Zeile(102, 10)]
-    anker = deploy_anchor_step_id(zeilen, _Dep().created_at, blocked={101})
+    lines = [_Line(100, 60), _Line(101, 40), _Line(102, 10)]
+    anker = deploy_anchor_step_id(lines, _Dep().created_at, blocked={101})
     assert anker == 100
     ev = deployment_events(_Dep(), ctx(), anchor_step_id=anker)[0]
     assert ev["seq"] == 100 * SEQ_SLOTS + 3
     # And when the preceding row is taken as well, it goes further back.
-    assert deploy_anchor_step_id(zeilen, _Dep().created_at, blocked={100, 101}) is None
+    assert deploy_anchor_step_id(lines, _Dep().created_at, blocked={100, 101}) is None
 
 
-def test_bestand_ohne_zeile_davor_bekommt_nichts():
+def test_bestand_ohne_line_davor_bekommt_nichts():
     """A deploy lying before the first loaded row has no honest place: hung in at the front
     it would stand before its own trigger."""
-    zeilen = [_Zeile(100, 5)]
-    assert deploy_anchor_step_id(zeilen, _Dep().created_at) is None
+    lines = [_Line(100, 5)]
+    assert deploy_anchor_step_id(lines, _Dep().created_at) is None
     assert deployment_events(_Dep(), ctx(), anchor_step_id=None) == []
 
 
@@ -338,10 +338,10 @@ async def test_api_zeigt_bestandsdeployment_an_seiner_stelle(client, db):
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     run = await lauf(db, issue=issue)
-    zeilen = await schritte(db, run, 3)
+    lines = await steps(db, run, 3)
     dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="failed",
                            log="❌ Wächter: Tests rot",
-                           created_at=zeilen[1].created_at + dt.timedelta(seconds=2))
+                           created_at=lines[1].created_at + dt.timedelta(seconds=2))
 
     r = await client.get(f"/office/sessions/issue/{issue.id}/events", headers=auth(user))
     assert r.status_code == 200, r.text
@@ -350,7 +350,7 @@ async def test_api_zeigt_bestandsdeployment_an_seiner_stelle(client, db):
     assert len(deploys) == 1
     assert deploys[0]["deployment_id"] == dep.id and deploys[0]["state"] == "fail"
     # Between the second and the third row, and the order stays monotonic.
-    assert deploys[0]["seq"] == zeilen[1].id * SEQ_SLOTS + 3
+    assert deploys[0]["seq"] == lines[1].id * SEQ_SLOTS + 3
     assert [e["seq"] for e in events] == sorted(e["seq"] for e in events)
     # The synthesised `run_end` boundary still stands behind everything.
     ende = [e for e in events if e["kind"] == "run_end"][0]
@@ -363,7 +363,7 @@ async def test_api_erzaehlt_nicht_doppelt(client, db):
     projekt = await make_project(db, "TRA", "Traccoon")
     issue = await ticket(db, projekt)
     run = await lauf(db, issue=issue, status="running")
-    await schritte(db, run, 2)
+    await steps(db, run, 2)
     dep = await deployment(db, issue_id=issue.id, project_id=projekt.id, status="ok")
     await dw.tick(db)   # writes start plus ok as real rows
 
@@ -400,7 +400,7 @@ async def test_publish_step_schluckt_redis_ausfall(db, monkeypatch):
     await deployment(db, issue_id=issue.id, project_id=projekt.id, status="building")
 
     assert await dw.tick(db) == 1               # no error upwards
-    assert len(await deploy_schritte(db, run.id)) == 1   # and the row stands
+    assert len(await deploy_steps(db, run.id)) == 1   # and the row stands
 
-    step = (await deploy_schritte(db, run.id))[0]
+    step = (await deploy_steps(db, run.id))[0]
     await publish_step(RunCtx(run_id=run.id), step)      # called directly as well: silent

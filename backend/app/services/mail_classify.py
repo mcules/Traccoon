@@ -133,15 +133,15 @@ async def classify_email(db: AsyncSession, owner_id: int | None, *, account: str
 
     impl = OpenAIProvider(base_url=base_url)
     # Limit the raw text defensively (the local context need not be the whole mail).
-    teile = [f"Konto: {account}", f"Von: {sender}", f"Betreff: {subject}"]
+    parts = [f"Konto: {account}", f"Von: {sender}", f"Betreff: {subject}"]
     if spam_hints:
-        teile.append("\nTechnische Befunde zu dieser Mail:\n"
+        parts.append("\nTechnische Befunde zu dieser Mail:\n"
                      + "\n".join(f"- {h}" for h in spam_hints[:8]))
     if spam_beispiele:
-        teile.append("\nFrühere Entscheidungen des Empfängers (daran ausrichten):\n"
+        parts.append("\nFrühere Entscheidungen des Empfängers (daran ausrichten):\n"
                      + "\n".join(spam_beispiele[:6]))
-    teile.append(f"\n--- Mailtext ---\n{(body or '')[:8000]}")
-    user_msg = "\n".join(teile)
+    parts.append(f"\n--- Mailtext ---\n{(body or '')[:8000]}")
+    user_msg = "\n".join(parts)
     try:
         resp = await impl.chat(
             model=model,
@@ -199,16 +199,16 @@ def merkmale(roh) -> list[dict]:
     if not isinstance(roh, list):
         return []
     out: list[dict] = []
-    gesehen: set[str] = set()
-    for eintrag in roh:
-        if not isinstance(eintrag, dict):
+    seen: set[str] = set()
+    for entry in roh:
+        if not isinstance(entry, dict):
             continue
-        kennung = re.sub(r"[^a-z0-9_]+", "_", str(eintrag.get("kennung") or "").strip().lower())
+        kennung = re.sub(r"[^a-z0-9_]+", "_", str(entry.get("kennung") or "").strip().lower())
         kennung = kennung.strip("_")[:40]
-        text = str(eintrag.get("text") or "").strip()[:160]
-        if not kennung or kennung in gesehen:
+        text = str(entry.get("text") or "").strip()[:160]
+        if not kennung or kennung in seen:
             continue
-        gesehen.add(kennung)
+        seen.add(kennung)
         out.append({"kennung": kennung, "text": text})
         if len(out) >= 5:
             break
@@ -221,9 +221,9 @@ def _spam_score(roh) -> float:
     if roh is None or roh == "":
         return 0.0
     try:
-        wert = float(str(roh).replace(",", ".").strip().rstrip("%"))
+        value = float(str(roh).replace(",", ".").strip().rstrip("%"))
     except ValueError:
         return 0.0
-    if wert > 1.0:
-        wert = wert / 100.0
-    return round(min(1.0, max(0.0, wert)), 3)
+    if value > 1.0:
+        value = value / 100.0
+    return round(min(1.0, max(0.0, value)), 3)

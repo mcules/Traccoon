@@ -8,7 +8,7 @@ no longer use them.
 """
 from app.models.enums import PurchaseStatus, TicketAgentStatus, WorkflowSubjectKind
 from app.models.workflow import WorkflowInstance
-from app.services import artifacts as art
+from app.services import artifacts as kind
 from app.services.hardware_workflow import (
     build_hardware_graph, refresh_generated_definitions,
 )
@@ -20,7 +20,7 @@ from app.services.workflow_seed import (
 from conftest import make_asset, make_project
 
 
-def _knoten(action: str, **params) -> dict:
+def _node(action: str, **params) -> dict:
     return {"type": "auto_action",
             "data": {"config": {"action": {"action": action, "params": params}}}}
 
@@ -57,7 +57,7 @@ async def _ticket(db, proj):
     return i
 
 
-async def test_ausgelieferte_ablaeufe_kennen_keine_altnamen():
+async def test_ausgelieferte_flows_kennen_keine_altnamen():
     """The default set must not make the transition permanent."""
     for name, graph in (
         ("ticket_lifecycle", build_ticket_lifecycle()),
@@ -70,37 +70,37 @@ async def test_ausgelieferte_ablaeufe_kennen_keine_altnamen():
         assert "set_purchase_status" not in text, name
 
 
-async def test_alter_ticket_name_setzt_weiter_den_zustand(db):
+async def test_alter_ticket_name_setzt_weiter_den_state(db):
     """`set_agent_status` from a published version acts like `set_status`."""
-    await art.ensure_builtin_types(db)
+    await kind.ensure_builtin_types(db)
     proj = await make_project(db, "ALT", "Alt")
     issue = await _ticket(db, proj)
     inst = await _instanz(db, proj, WorkflowSubjectKind.issue, issue_id=issue.id)
 
-    await run_action(db, inst, _knoten("set_agent_status", status="plan_review",
+    await run_action(db, inst, _node("set_agent_status", status="plan_review",
                                        hold_reason="plan_split", notify=False))
     await db.commit()
     await db.refresh(issue)
     assert issue.agent_status == TicketAgentStatus.plan_review
     # `hold_reason` was called that in the predecessor; the new way calls it `reason`.
     assert issue.hold_reason.value == "plan_split"
-    a = await art.ensure_for_issue(db, issue)
+    a = await kind.ensure_for_issue(db, issue)
     assert a.status_key == "plan_review"
 
 
-async def test_alter_hardware_name_setzt_weiter_den_zustand(db):
-    await art.ensure_builtin_types(db)
+async def test_alter_hardware_name_setzt_weiter_den_state(db):
+    await kind.ensure_builtin_types(db)
     proj = await make_project(db, "ALTH", "AltH")
     asset = await make_asset(db, "Switch", project=proj)
     inst = await _instanz(db, proj, WorkflowSubjectKind.hardware_asset,
                           hardware_asset_id=asset.id)
 
-    await run_action(db, inst, _knoten("set_purchase_status", status="ordered"))
+    await run_action(db, inst, _node("set_purchase_status", status="ordered"))
     await db.commit()
     await db.refresh(asset)
     assert asset.purchase_status == PurchaseStatus.ordered
     assert asset.order_date is not None
-    a = await art.ensure_for_asset(db, asset)
+    a = await kind.ensure_for_asset(db, asset)
     assert a.status_key == "ordered"
 
 
@@ -142,8 +142,8 @@ async def test_alte_kette_wird_gehoben(db):
 
     assert await refresh_generated_definitions(db) == 1
     await db.refresh(d)
-    neu = await db.get(WorkflowVersion, d.current_version_id)
-    text = str(neu.graph)
+    new = await db.get(WorkflowVersion, d.current_version_id)
+    text = str(new.graph)
     assert "set_purchase_status" not in text
     assert "set_status" in text
 

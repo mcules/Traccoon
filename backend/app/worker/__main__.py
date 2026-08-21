@@ -21,7 +21,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 from sqlalchemy import or_, select
 
 from ..config import settings
-from ..core.redis import (ACTIVE, ERGEBNIS_TTL, PREFIX, PROCESSING, PULS_TAKT, PULS_TTL,
+from ..core.redis import (ACTIVE, RESULT_TTL, PREFIX, PROCESSING, PULS_TAKT, PULS_TTL,
                           QUEUE, get_flag, puls_key)
 from ..db import SessionLocal
 from ..models.agents import AgentDefinition
@@ -170,7 +170,7 @@ async def handle(job: dict, redis: Redis) -> None:
         except Exception as exc:  # noqa: BLE001
             log.exception("accept failed")
             res = {"status": "failed", "error": str(exc)[:500]}
-        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(res or {"status": "failed"}), ex=ERGEBNIS_TTL)
+        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(res or {"status": "failed"}), ex=RESULT_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
         return
     if kind == "assistant":
@@ -184,7 +184,7 @@ async def handle(job: dict, redis: Redis) -> None:
         return
     if kind:  # infrastructure task (testenv_start and so on), later
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps({"status": "failed",
-                        "output": f"Infra-Task {kind} noch nicht implementiert"}), ex=ERGEBNIS_TTL)
+                        "output": f"Infra-Task {kind} noch nicht implementiert"}), ex=RESULT_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
         return
 
@@ -201,9 +201,9 @@ async def handle(job: dict, redis: Redis) -> None:
         # otherwise run under a "waiting" label (2026-08-07).
         from ..models.enums import TicketAgentStatus as _TS
         from ..services.artifacts import set_ticket_status as _set_status
-        _ziel = _TS.planning if mode == "plan" else _TS.in_progress
-        if issue.agent_status not in (_TS.done, _ziel):
-            await _set_status(db, issue, _ziel)
+        _target = _TS.planning if mode == "plan" else _TS.in_progress
+        if issue.agent_status not in (_TS.done, _target):
+            await _set_status(db, issue, _target)
         issue.agent_working = True
         await db.commit()
         owner_id = issue.assigned_by_user_id or issue.reporter_id or project.lead_user_id
@@ -333,7 +333,7 @@ async def handle(job: dict, redis: Redis) -> None:
             "blocker": {"kind": result.blocker_kind} if result.blocker_kind else None,
             "merge_status": merge_status,
         }
-        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(payload), ex=ERGEBNIS_TTL)
+        await redis.set(f"{PREFIX}result:{task_id}", json.dumps(payload), ex=RESULT_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
         await redis.publish(f"{PREFIX}events:{project.id}",
                             json.dumps({"type": "issue_update", "issue_key": issue.key}))
@@ -599,7 +599,7 @@ async def _handle_agent_frei(job: dict, redis: Redis) -> None:
     async def melde(status: str, text: str) -> None:
         await redis.set(f"{PREFIX}result:{task_id}", json.dumps(
             {"status": status, "success": status == "done", "output": text[:20000],
-             "summary": text[:2000]}), ex=ERGEBNIS_TTL)
+             "summary": text[:2000]}), ex=RESULT_TTL)
         await redis.publish(f"{PREFIX}results", task_id)
 
     owner_id = job.get("owner_id")
@@ -677,12 +677,12 @@ async def _chat_history(db, t) -> list[dict]:
 
     def wortwechsel(r) -> list[dict]:
         meta = r.meta or {}
-        raus = []
-        if (frage := (meta.get("chat_text") or r.title or "").strip()):
-            raus.append({"label": "Dein Mensch", "role": "user", "body": frage[:2000]})
-        if (antwort := (r.result or "").strip()):
-            raus.append({"label": "Du", "role": "agent", "body": antwort[:2000]})
-        return raus
+        out = []
+        if (question := (meta.get("chat_text") or r.title or "").strip()):
+            out.append({"label": "Dein Mensch", "role": "user", "body": question[:2000]})
+        if (answer := (r.result or "").strip()):
+            out.append({"label": "Du", "role": "agent", "body": answer[:2000]})
+        return out
 
     summary = (await db.execute(select(ChatSummary).where(
         ChatSummary.owner_user_id == t.owner_user_id,
@@ -692,14 +692,14 @@ async def _chat_history(db, t) -> list[dict]:
     # blocks, not on every message moving up: otherwise an auxiliary run would happen on EVERY
     # message once the conversation passes eight exchanges.
     offen = [r for r in alle if r.id > (summary.bis_task_id if summary else 0)]
-    neu_zu_fassen: list = []
+    new_zu_fassen: list = []
     if len(offen) > CHAT_HISTORY_MAX + CHAT_SUMMARY_BLOCK:
-        neu_zu_fassen = offen[:-CHAT_HISTORY_MAX]
-    jung = offen[-CHAT_HISTORY_MAX:] if neu_zu_fassen else offen
-    if neu_zu_fassen:
+        new_zu_fassen = offen[:-CHAT_HISTORY_MAX]
+    jung = offen[-CHAT_HISTORY_MAX:] if new_zu_fassen else offen
+    if new_zu_fassen:
         bisher = (summary.text if summary else "").strip()
-        roh = "\n".join(f"{w['label']}: {w['body']}" for r in neu_zu_fassen for w in wortwechsel(r))
-        auftrag = (_ZUSAMMENFASSEN
+        roh = "\n".join(f"{w['label']}: {w['body']}" for r in new_zu_fassen for w in wortwechsel(r))
+        task = (_ZUSAMMENFASSEN
                    + ("\n\n--- Bisheriges Gedächtnis (fortschreiben, nichts verlieren) ---\n" + bisher
                       if bisher else "")
                    + "\n\n--- Neue Wortwechsel ---\n" + roh)
@@ -707,14 +707,14 @@ async def _chat_history(db, t) -> list[dict]:
         agent = await _load_agent(db, agent_name, 0, "execute", t.owner_user_id)
         tokens, base_urls = await _build_tokens(db, t.owner_user_id, agent)
         text = await aux_chat(db, owner_id=t.owner_user_id, task="compression",
-                              messages=[{"role": "user", "content": auftrag}],
+                              messages=[{"role": "user", "content": task}],
                               agent=agent, tokens=tokens, base_urls=base_urls, max_tokens=1500)
         if text:
             if summary is None:
                 summary = ChatSummary(owner_user_id=t.owner_user_id, agent=agent_name)
                 db.add(summary)
             summary.text = text
-            summary.bis_task_id = neu_zu_fassen[-1].id
+            summary.bis_task_id = new_zu_fassen[-1].id
             await db.commit()
         # No result (the auxiliary run is unreachable): the old summary still applies. A
         # slightly stale memory is better than none, and the thread does not tear.
@@ -729,7 +729,7 @@ async def _chat_history(db, t) -> list[dict]:
 
 
 # The rule for reporting: the run itself is not worth a message.
-MELDE_REGEL = (
+MELDE_RULE = (
     "WICHTIG — Melden: Deine Abschluss-Zusammenfassung geht NICHT an deinen Menschen, sie "
     "landet nur still im Posteingang. Soll er etwas erfahren (Frist, Geldbetrag, "
     "Entscheidung, Störung, etwas das er beantworten muss), rufe `traccoon_notify_human` "
@@ -738,19 +738,19 @@ MELDE_REGEL = (
 )
 
 
-async def _bezug_quelle(db, task_id) -> str:
+async def _reference_source(db, task_id) -> str:
     """Extra context for the quoted message: what was the original mail about?"""
     if not task_id:
         return ""
     from ..models.assistant import AssistantTask
-    quelle = await db.get(AssistantTask, int(task_id))
-    if quelle is None:
+    source = await db.get(AssistantTask, int(task_id))
+    if source is None:
         return ""
-    teile = [f"Diese Nachricht gehört zu deinem Vorgang „{quelle.title}\" "
-             f"({quelle.kind}, Stand {quelle.status})."]
-    if quelle.result:
-        teile.append(f"Was du dort zuletzt berichtet hast:\n{quelle.result[:1500]}")
-    return "\n".join(teile) + "\n\n"
+    parts = [f"Diese Nachricht gehört zu deinem Vorgang „{source.title}\" "
+             f"({source.kind}, Stand {source.status})."]
+    if source.result:
+        parts.append(f"Was du dort zuletzt berichtet hast:\n{source.result[:1500]}")
+    return "\n".join(parts) + "\n\n"
 
 
 async def _handle_assistant_task(job: dict, redis: Redis) -> None:
@@ -776,7 +776,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         try:
             await redis.set(f"{PREFIX}result:{job['task_id']}", json.dumps(
                 {"status": status, "success": status == "done", "output": text[:20000],
-                 "summary": text[:2000]}), ex=ERGEBNIS_TTL)
+                 "summary": text[:2000]}), ex=RESULT_TTL)
             await redis.publish(f"{PREFIX}results", job["task_id"])
         except Exception:  # noqa: BLE001
             log.exception("assistant task %s: result could not be published", tid)
@@ -833,29 +833,29 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
             # conversation in general. Without it "do that" would have no object, and the
             # earlier item (mail, approval) would only exist as a scrap of memory.
             if meta.get("bezug_text"):
-                quelle = await _bezug_quelle(db, meta.get("bezug_task_id"))
+                source = await _reference_source(db, meta.get("bezug_task_id"))
                 prompt = (
                     "Dein Mensch antwortet DIREKT auf diese deine Nachricht:\n"
                     f"---\n{meta['bezug_text']}\n---\n"
-                    + quelle +
+                    + source +
                     "Seine Antwort darauf ist dein Auftrag — arbeite an genau dieser Sache "
                     "weiter, statt sie nur zur Kenntnis zu nehmen:\n\n" + prompt
                 )
         elif meta.get("prompt"):
             # The full task prompt from the webhook (ported knowledge about handling mail).
-            prompt = meta["prompt"] + (learned if t.action_hint else "") + "\n\n" + MELDE_REGEL
+            prompt = meta["prompt"] + (learned if t.action_hint else "") + "\n\n" + MELDE_RULE
         else:
             prompt = (
                 "Eingang für deinen Menschen (lokal vorklassifiziert).\n" + head + content + learned +
                 "Entscheide eigenständig und im Sinne deines Menschen, was zu tun ist (im Vault "
                 "vermerken, einen Entwurf vorbereiten, einen Termin anlegen, ablegen …) und führe es "
-                "aus. Fasse am Ende knapp zusammen, was du getan hast.\n\n" + MELDE_REGEL
+                "aus. Fasse am Ende knapp zusammen, was du getan hast.\n\n" + MELDE_RULE
             )
         # In chat the run carries the conversation so far, otherwise a person would have to
         # repeat every reference in every message.
         verlauf = await _chat_history(db, t) if is_chat else []
         out, status, err, run_id = "", "done", "", None
-        frage_offen = False
+        question_open = False
         try:
             # The handling agent comes from the item (webhook config), default 'assistent'. No env.
             agent = await _load_agent(db, meta.get("agent") or "assistent",
@@ -882,7 +882,7 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
                 # A question (ask_human): without a project there is no ticket it could hang
                 # on. In a conversation the question IS the answer: report done so it reaches
                 # the person and stays in the history (`_chat_history`).
-                frage_offen = True
+                question_open = True
             elif result.status not in ("done",):
                 status, err = "error", (result.text or result.status)
         except Exception as exc:  # noqa: BLE001
@@ -899,28 +899,28 @@ async def _handle_assistant_task(job: dict, redis: Redis) -> None:
         # filed advertising mail would be a chat ping.
         modus = (owner.assistant_notify if owner else "needed") or "needed"
         if is_chat:
-            melden = True          # a question that was asked is always answered
-        elif frage_offen:
-            melden = True          # the assistant asks back, otherwise it waits for nobody
+            report = True          # a question that was asked is always answered
+        elif question_open:
+            report = True          # the assistant asks back, otherwise it waits for nobody
         elif modus == "never":
-            melden = False
+            report = False
         elif status == "error":
-            melden = True          # a mishap has to be known
+            report = True          # a mishap has to be known
         elif modus == "always":
-            melden = True
+            report = True
         else:
             # needed/errors: the assistant reports on its own when there is something to know
             # (`traccoon_notify_human`), and the closing report stays silent, otherwise the
             # dieselbe Sache zweimal an.
-            melden = False
-        if melden:
+            report = False
+        if report:
             # Who answered belongs in the title, otherwise answers from the personal assistant
             # and from a specialised agent (gameproj-operator, say) cannot be told apart.
             label = "🤖 Assistent" if (meta.get("agent") or "assistent") == "assistent" \
                 else f"🛰 {meta['agent']}"
             title = (label if is_chat else f"{label}: {t.title}") + (
                 " — Fehler" if status == "error"
-                else " — Rückfrage" if frage_offen and not is_chat else "")
+                else " — Rückfrage" if question_open and not is_chat else "")
             db.add(Notification(kind="assistant", title=title[:200],
                                 body=(err if status == "error" else out)[:4000],
                                 chat_id=owner.telegram_chat_id if owner else None))
@@ -1016,7 +1016,7 @@ async def _puls(redis: Redis, task_id: str) -> None:
 # report it any more, so a real thread watches here and writes the stacks of all threads into
 # the log as soon as the loop stops ticking. That makes the next case diagnosable instead of
 # leaving silence behind again.
-_LETZTER_TICK = time.monotonic()
+_LAST_TICK = time.monotonic()
 LOOP_STALL_SEC = float(os.getenv("WORKER_STALL_SEC", "60"))
 # On 2026-07-31 the watchdog did its job and still helped nothing: stacks in the log, then
 # eight hours of standstill at 100 % CPU (an endless loop in the compaction), no answer in
@@ -1027,13 +1027,13 @@ LOOP_KILL_SEC = float(os.getenv("WORKER_STALL_KILL_SEC", "300"))
 
 
 def _loop_tick() -> None:
-    global _LETZTER_TICK
-    _LETZTER_TICK = time.monotonic()
+    global _LAST_TICK
+    _LAST_TICK = time.monotonic()
 
 
-def watchdog_pruefe(gemeldet: bool) -> bool:
+def watchdog_check(gemeldet: bool) -> bool:
     """One pass of the watchdog. Returns whether the standstill is (still) reported."""
-    steht_seit = time.monotonic() - _LETZTER_TICK
+    steht_seit = time.monotonic() - _LAST_TICK
     if steht_seit > LOOP_STALL_SEC:
         if not gemeldet:
             log.error("The event loop has not ticked for %.0fs, thread stacks follow", steht_seit)
@@ -1055,7 +1055,7 @@ def start_loop_watchdog() -> None:
         gemeldet = False
         while True:
             time.sleep(5)
-            gemeldet = watchdog_pruefe(gemeldet)
+            gemeldet = watchdog_check(gemeldet)
 
     threading.Thread(target=lauf, name="loop-watchdog", daemon=True).start()
 
@@ -1072,7 +1072,7 @@ def start_loop_watchdog() -> None:
 STALE_GRACE_SEC = 60
 
 
-async def _lauf_abschliessen(task_id: str, grund: str) -> None:
+async def _lauf_abschliessen(task_id: str, reason: str) -> None:
     """Close the run row of an aborted task, with the real cause.
 
     Whoever aborts knows why. If the row stays on "running", the watchdog for dead runs finds
@@ -1091,7 +1091,7 @@ async def _lauf_abschliessen(task_id: str, grund: str) -> None:
             if run is None:
                 return
             run.status, run.finished_at = "failed", _now_dt()
-            run.error = ((run.error or "") + grund).strip()
+            run.error = ((run.error or "") + reason).strip()
             await db.commit()
     except Exception:  # noqa: BLE001 — the cleanup must not make the abort worse
         log.exception("Run row not closed after the abort (task %s)", task_id)
@@ -1103,18 +1103,18 @@ async def raeume_leichen_und_melde() -> None:
     from ..models.assistant import AssistantTask
     from ..models.notification import Notification
     import datetime as _dt
-    grenze = _now_dt() - _dt.timedelta(seconds=STALE_GRACE_SEC)
-    hinweis = "Worker-Neustart: der Lauf war beim Abbruch nicht zu Ende und wird nicht fortgesetzt."
+    limit = _now_dt() - _dt.timedelta(seconds=STALE_GRACE_SEC)
+    hint = "Worker-Neustart: der Lauf war beim Abbruch nicht zu Ende und wird nicht fortgesetzt."
     async with SessionLocal() as db:
         runs = (await db.execute(select(Run).where(
-            Run.status == "running", Run.started_at < grenze))).scalars().all()
+            Run.status == "running", Run.started_at < limit))).scalars().all()
         for r in runs:
-            r.status, r.error, r.finished_at = "failed", (r.error or "") + hinweis, _now_dt()
+            r.status, r.error, r.finished_at = "failed", (r.error or "") + hint, _now_dt()
 
         tasks = (await db.execute(select(AssistantTask).where(
-            AssistantTask.status == "running", AssistantTask.updated_at < grenze))).scalars().all()
+            AssistantTask.status == "running", AssistantTask.updated_at < limit))).scalars().all()
         for t in tasks:
-            t.status, t.error, t.finished_at = "error", (t.error or "") + hinweis, _now_dt()
+            t.status, t.error, t.finished_at = "error", (t.error or "") + hint, _now_dt()
 
         if not runs and not tasks:
             await db.commit()
@@ -1123,20 +1123,20 @@ async def raeume_leichen_und_melde() -> None:
         # Recipients: whoever owns the tasks, plus the admins (runs carry no owner). Only
         # accounts with chat: an outage nobody reads is not one outage less, and burying
         # dormant admin accounts under unread bells helps nobody.
-        empfaenger = {t.owner_user_id for t in tasks if t.owner_user_id}
+        recipient = {t.owner_user_id for t in tasks if t.owner_user_id}
         admins = (await db.execute(select(User).where(
             User.global_role == GlobalRole.admin))).scalars().all()
-        empfaenger |= {u.id for u in admins}
+        recipient |= {u.id for u in admins}
         users = [u for u in (await db.execute(select(User).where(
-            User.id.in_(empfaenger)))).scalars().all() if (u.telegram_chat_id or "").strip()]
+            User.id.in_(recipient)))).scalars().all() if (u.telegram_chat_id or "").strip()]
 
-        def _liste(ids: list[int]) -> str:
+        def _listing(ids: list[int]) -> str:
             return ", ".join(str(i) for i in ids[:10]) + (" …" if len(ids) > 10 else "")
 
         body = (f"Der Worker wurde neu gestartet. Abgebrochen: {len(runs)} Lauf/Läufe"
-                f"{' (' + _liste([r.id for r in runs]) + ')' if runs else ''}"
+                f"{' (' + _listing([r.id for r in runs]) + ')' if runs else ''}"
                 f", {len(tasks)} Assistent-Aufgabe(n)"
-                f"{' (' + _liste([t.id for t in tasks]) + ')' if tasks else ''}.\n\n"
+                f"{' (' + _listing([t.id for t in tasks]) + ')' if tasks else ''}.\n\n"
                 "Diese Arbeit wird NICHT automatisch wiederholt — wenn sie noch gebraucht wird, "
                 "schick sie bitte erneut.")
         for u in users:
@@ -1281,7 +1281,7 @@ async def main() -> None:
                 log.info("Run %s aborted (kill)", key)
                 await redis.set(f"{PREFIX}result:{job['task_id']}", json.dumps(
                     {"status": "failed", "success": False,
-                     "output": "Abgebrochen (Stopp durch Nutzer)"}), ex=ERGEBNIS_TTL)
+                     "output": "Abgebrochen (Stopp durch Nutzer)"}), ex=RESULT_TTL)
                 await redis.publish(f"{PREFIX}results", job["task_id"])
                 # Close the run row here. Without that it stayed on "running", and the
                 # watchdog for dead runs later found a corpse whose cause it did not know:
@@ -1301,7 +1301,7 @@ async def main() -> None:
                 if tid:
                     await redis.set(f"{PREFIX}result:{tid}", json.dumps(
                         {"status": "failed", "success": False,
-                         "output": f"Interner Worker-Fehler: {exc}"[:500]}), ex=ERGEBNIS_TTL)
+                         "output": f"Interner Worker-Fehler: {exc}"[:500]}), ex=RESULT_TTL)
                     await redis.publish(f"{PREFIX}results", tid)
                 # No ACK: the entry stays in PROCESSING, so recovery brings it back into QUEUE
                 # at the next worker start instead of losing it silently here.
@@ -1380,7 +1380,7 @@ async def _auslaufen() -> None:
         return
     log.info("The worker shuts down: %d run(s) active, waiting up to %d s "
              "(new assignments are no longer accepted)", len(laufend), DRAIN_SEC)
-    _fertig, offen = await asyncio.wait(laufend, timeout=DRAIN_SEC)
+    _done, offen = await asyncio.wait(laufend, timeout=DRAIN_SEC)
     if offen:
         # No abort by hand: the tasks still stand in PROCESSING, the recovery of the next
         # worker fetches them back, and the successor builds its handover from the step rows.
