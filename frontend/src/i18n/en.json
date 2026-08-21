@@ -2724,5 +2724,14 @@
   "start_config.on_the_message": "on the message",
   "agent_task_node.planning": "Planning",
   "dry_run_panel.dry_run_n_steps": "Dry run — {count} step(s)",
-  "inspector.last_steps": "The last steps"
+  "inspector.last_steps": "The last steps",
+  "sort.by": "Sort by",
+  "sort.ascending": "Sort ascending",
+  "sort.descending": "Turn the direction round",
+  "sort.name": "Name",
+  "sort.key": "Key",
+  "sort.kind": "Kind",
+  "sort.state": "State",
+  "sort.flow": "Flow",
+  "sort.age": "Age"
 }

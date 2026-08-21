@@ -127,6 +127,7 @@ async def lifespan(app: FastAPI):
                 "DEFAULT 'popup' NOT NULL",
                 # User specific block arrangement of the ticket page.
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS ticket_layout JSON DEFAULT '{}'::json NOT NULL",
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS list_sort JSON DEFAULT '{}'::json NOT NULL",
                 # PM-Chat-Darstellung je Nutzer (ABC-21).
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS pm_chat_style VARCHAR(10) "
                 "DEFAULT 'bubbles' NOT NULL",

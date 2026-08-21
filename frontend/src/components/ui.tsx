@@ -452,6 +452,40 @@ export function Rowbutton({ onClick, title: title, danger = false, children }: {
   );
 }
 
+/**
+ * Sort control of a list — belongs in the `tools` row of its `Area`.
+ *
+ * Not a heading row: two of the three flow lists have no columns at all (a run is a tag, a
+ * name, a state and a time in one line), and a heading above a row that does not line up
+ * would point at nothing. The bar says the same thing for every list, whatever a row looks
+ * like inside.
+ *
+ * The active field carries the arrow; clicking it again turns the direction round. Clicking
+ * a different one sorts by that, ascending.
+ */
+export function SortBar({ fields, by, dir, onSort }: {
+  fields: readonly { key: string; label: string }[];
+  by: string; dir: "asc" | "desc"; onSort: (key: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      <span className="text-xs text-muted">{tr("sort.by")}</span>
+      {fields.map((f) => {
+        const active = f.key === by;
+        return (
+          <button key={f.key} onClick={() => onSort(f.key)}
+            title={tr(active && dir === "asc" ? "sort.descending" : "sort.ascending")}
+            className={active
+              ? "rounded bg-surface px-1.5 py-0.5 text-xs font-medium text-brand"
+              : "rounded px-1.5 py-0.5 text-xs text-muted transition-colors hover:text-ink"}>
+            {f.label}{active && (dir === "asc" ? " ▲" : " ▼")}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** State of an entry: a dot plus a word. Colour carries the urgency, the word the meaning. */
 export function State({ color, text }: { color: "green" | "yellow" | "grey" | "red"; text: string }) {
   const point = { green: "bg-emerald-400", yellow: "bg-amber-400", grey: "bg-muted",
