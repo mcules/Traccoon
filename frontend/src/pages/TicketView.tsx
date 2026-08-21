@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { api, Issue, Project, ProjectMeta } from "../api";
 import { usePageChrome } from "../pageChrome";
-import { projectChromeTabs, projektPfad } from "../projectTabs";
+import { projectChromeTabs, projektPath } from "../projectTabs";
 import TicketDrawer from "../components/TicketDrawer";
 
 // Full ticket page (route /projects/:key/tickets/:ticketKey). Uses the TicketDrawer in
@@ -43,7 +43,7 @@ export default function TicketView() {
       meta={meta}
       issues={issues || []}
       onOpen={(k) => navigate(`/projects/${project.key}/tickets/${k}`)}
-      onClose={() => navigate(projektPfad(project.key, "work", "board"))}
+      onClose={() => navigate(projektPath(project.key, "work", "board"))}
     />
   );
 }

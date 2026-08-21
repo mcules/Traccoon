@@ -1,6 +1,6 @@
 /** Simple key/value editor (for auto_action.params and outcomes_map). */
 import { tr } from "../../i18n";
-import { KNOPF_KLEIN, KNOPF_TEXT} from "../ui";
+import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
 export function KeyValueEditor({
   value,
   onChange,
@@ -45,12 +45,12 @@ export function KeyValueEditor({
             placeholder={valuePlaceholder}
             className={`flex-1 ${inp}`}
           />
-          <button onClick={() => remove(k)} className={KNOPF_TEXT.gefahr} title={tr("kv.entfernen")}>
+          <button onClick={() => remove(k)} className={BUTTON_TEXT.gefahr} title={tr("kv.entfernen")}>
             ✕
           </button>
         </div>
       ))}
-      <button onClick={add} className={KNOPF_KLEIN.neben}>
+      <button onClick={add} className={BUTTON_KLEIN.neben}>
         + Eintrag
       </button>
     </div>

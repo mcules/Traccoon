@@ -3,7 +3,7 @@ import { formatDate } from "../lib/formatTime";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
-import { Aktionen, ICON, IconKnopf, LoeschDialog, KNOPF} from "./ui";
+import { Actions, ICON, IconButton, LoeschDialog, BUTTON} from "./ui";
 
 interface Member {
   id: number; user_id: number; username: string; display_name: string;
@@ -106,10 +106,10 @@ export default function Members({ project }: { project: Project }) {
               </td>
               <td className="py-1 text-right">
                 <div className="flex justify-end">
-                  <Aktionen>
-                    <IconKnopf icon={ICON.loeschen} titel={tr("members.entfernen")} gefahr
+                  <Actions>
+                    <IconButton icon={ICON.loeschen} titel={tr("members.entfernen")} gefahr
                       onClick={() => setEntfernen(m)} />
-                  </Aktionen>
+                  </Actions>
                 </div>
               </td>
             </tr>
@@ -137,7 +137,7 @@ export default function Members({ project }: { project: Project }) {
                   {u.status !== "active" && <span className="ml-1 text-xs text-muted">({u.status})</span>}
                 </span>
                 <button onClick={() => addExisting.mutate(u.id)}
-                  className={KNOPF.haupt}>{tr("members.als_rolle", { rolle: role })}</button>
+                  className={BUTTON.haupt}>{tr("members.als_rolle", { rolle: role })}</button>
               </div>
             ))}
           </div>
@@ -156,7 +156,7 @@ export default function Members({ project }: { project: Project }) {
           </select>
         </label>
         <button disabled={!emailValid} onClick={() => emailValid && invite.mutate()}
-          className={KNOPF.haupt}>
+          className={BUTTON.haupt}>
           Einladen
         </button>
         {err && <span className="text-sm text-red-400">{err}</span>}
@@ -183,10 +183,10 @@ export default function Members({ project }: { project: Project }) {
                   <td className="text-muted">{i.expires_at ? formatDate(i.expires_at) : "—"}</td>
                   <td className="py-1 text-right">
                     <div className="flex justify-end">
-                      <Aktionen>
-                        <IconKnopf icon={ICON.loeschen} titel={tr("members.widerrufen")} gefahr
+                      <Actions>
+                        <IconButton icon={ICON.loeschen} titel={tr("members.widerrufen")} gefahr
                           onClick={() => setWiderrufen(i)} />
-                      </Aktionen>
+                      </Actions>
                     </div>
                   </td>
                 </tr>

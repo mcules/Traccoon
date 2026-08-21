@@ -17,11 +17,11 @@
 // Afterwards the message stays: failing visibly is better than circling silently.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { KNOPF_KLEIN } from "./ui";
+import { BUTTON_KLEIN } from "./ui";
 
 /** Prefix of the keys in the `sessionStorage`. Deliberately `session`, not `local`: a brake
  *  should brake a running tab, not the machine for tomorrow. */
-const SPEICHER_PRAEFIX = "traccoon_reload:";
+const STORE_PRAEFIX = "traccoon_reload:";
 
 /**
  * Reloads the page, at most once per `grund` within `mindestAbstandMs`.
@@ -29,22 +29,22 @@ const SPEICHER_PRAEFIX = "traccoon_reload:";
  * It lies here and not with the watchdog because both need the same discipline and two
  * reload rules are guaranteed to drift apart. `true` = a reload happened.
  */
-export function sicheresNeuladen(grund: string, mindestAbstandMs: number): boolean {
-  const key = SPEICHER_PRAEFIX + grund;
+export function sicheresNeuladen(reason: string, minDistanceMs: number): boolean {
+  const key = STORE_PRAEFIX + reason;
   try {
     const vorher = Number(sessionStorage.getItem(key) ?? "0");
-    const jetzt = Date.now();
-    if (Number.isFinite(vorher) && jetzt - vorher < mindestAbstandMs) {
-      console.warn(`[traccoon] Neuladen (${grund}) unterdrückt — zuletzt vor `
-        + `${Math.round((jetzt - vorher) / 1000)} s.`);
+    const now = Date.now();
+    if (Number.isFinite(vorher) && now - vorher < minDistanceMs) {
+      console.warn(`[traccoon] Neuladen (${reason}) unterdrückt — zuletzt vor `
+        + `${Math.round((now - vorher) / 1000)} s.`);
       return false;
     }
-    sessionStorage.setItem(key, String(jetzt));
+    sessionStorage.setItem(key, String(now));
   } catch {
     // No storage (private mode, cookies switched off): then unthrottled. Without reloading
     // the screen would surely stay dead; with it there is at least a chance.
   }
-  console.warn(`[traccoon] Seite wird neu geladen (${grund}).`);
+  console.warn(`[traccoon] Seite wird neu geladen (${reason}).`);
   location.reload();
   return true;
 }
@@ -68,13 +68,13 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
   state: State = { fehler: null };
   private timer: number | null = null;
 
-  static getDerivedStateFromError(fehler: Error): State {
-    return { fehler };
+  static getDerivedStateFromError(error: Error): State {
+    return { fehler: error };
   }
 
-  componentDidCatch(fehler: Error, info: ErrorInfo): void {
+  componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error(`[traccoon] Renderfehler in ${this.props.label ?? "der Ansicht"}:`,
-      fehler, info.componentStack);
+      error, info.componentStack);
     const nach = this.props.reloadAfterMs;
     if (nach === undefined || this.timer !== null) return;
     this.timer = window.setTimeout(() => {
@@ -88,11 +88,11 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
     if (this.timer !== null) window.clearTimeout(this.timer);
   }
 
-  private jetztNeuladen = () => location.reload();
+  private reloadNow = () => location.reload();
 
   render(): ReactNode {
-    const { fehler } = this.state;
-    if (!fehler) return this.props.children;
+    const { fehler: error } = this.state;
+    if (!error) return this.props.children;
     return (
       <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 p-6 text-center">
         <div className="text-2xl">🛠️</div>
@@ -100,7 +100,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
           Diese Ansicht ist ausgestiegen.
         </div>
         <div className="max-w-lg break-words text-xs text-muted">
-          {fehler.message || String(fehler)}
+          {error.message || String(error)}
         </div>
         {this.props.reloadAfterMs !== undefined && (
           <div className="text-xs text-muted">
@@ -109,8 +109,8 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, State> 
         )}
         <button
           type="button"
-          onClick={this.jetztNeuladen}
-          className={KNOPF_KLEIN.neben}
+          onClick={this.reloadNow}
+          className={BUTTON_KLEIN.neben}
         >
           Jetzt neu laden
         </button>

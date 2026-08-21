@@ -3,8 +3,8 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import {
-  Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "./ui";
+  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton, Listing,
+  ListingLeer, ListenLine, LoeschDialog, BUTTON } from "./ui";
 
 /**
  * Skills: reusable prompt blocks, versioned.
@@ -32,11 +32,11 @@ export default function SkillsPanel() {
     onSuccess: () => { setLoeschSkill(null); inv(); }, onError: fail });
 
   return (
-    <Bereich hinweis={tr("skills_panel.wiederverwendbare_prompt_bausteine_versi")}>
+    <Area hinweis={tr("skills_panel.wiederverwendbare_prompt_bausteine_versi")}>
       <Fehlerzeile text={err} />
-      <Liste className="mb-4">
+      <Listing className="mb-4">
         {skills?.map((s) => (
-          <ListenZeile key={s.id}>
+          <ListenLine key={s.id}>
             <div className="flex items-center gap-2">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2">
               <span className="font-mono">{s.key}</span>
@@ -44,18 +44,18 @@ export default function SkillsPanel() {
               <span>{s.name}</span>
               {s.autostart && <span className="rounded bg-surface px-1 text-xs">auto</span>}
             </div>
-            <Aktionen>
-              <IconKnopf icon={ICON.bearbeiten} titel={tr("skills_panel.neue_version")}
+            <Actions>
+              <IconButton icon={ICON.bearbeiten} titel={tr("skills_panel.neue_version")}
                 onClick={() => { setErr(""); setDialog(s); }} />
-              <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschSkill(s)} />
-            </Aktionen>
+              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschSkill(s)} />
+            </Actions>
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
-        {skills?.length === 0 && <ListeLeer>{tr("skills_panel.keine_skills")}</ListeLeer>}
-      </Liste>
+        {skills?.length === 0 && <ListingLeer>{tr("skills_panel.keine_skills")}</ListingLeer>}
+      </Listing>
       <button onClick={() => { setErr(""); setDialog({}); }}
-        className={KNOPF.haupt}>
+        className={BUTTON.haupt}>
         {ICON.neu} {tr("skills_panel.skill_anlegen")}
       </button>
 
@@ -68,11 +68,11 @@ export default function SkillsPanel() {
         <LoeschDialog was={loeschSkill.name} laeuft={del.isPending}
           onClose={() => setLoeschSkill(null)} onLoeschen={() => del.mutate(loeschSkill.id)} />
       )}
-    </Bereich>
+    </Area>
   );
 }
 
-function SkillDialog({ skill, fehler, laeuft, onClose, onSpeichern }: {
+function SkillDialog({ skill, fehler: error, laeuft: running, onClose, onSpeichern }: {
   skill: any | null; fehler: string; laeuft: boolean;
   onClose: () => void;
   onSpeichern: (f: { name: string; body: string; autostart: boolean }) => void;
@@ -85,19 +85,19 @@ function SkillDialog({ skill, fehler, laeuft, onClose, onSpeichern }: {
 
   return (
     <Dialog breit titel={skill ? tr("skills_panel.neue_version") : tr("skills_panel.skill_anlegen")} onClose={onClose}
-      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!name.trim() || !body.trim()} laeuft={laeuft}
+      fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!name.trim() || !body.trim()} laeuft={running}
         onSpeichern={() => onSpeichern({ name: name.trim(), body, autostart })}
         speichernText={skill ? tr("skills_panel.version_speichern") : tr("common.anlegen")} />}>
-      <Fehlerzeile text={fehler} />
+      <Fehlerzeile text={error} />
       <div className="space-y-3">
-        <Feld label={tr("skills_panel.name_z_b_test_driven_development")}
+        <Field label={tr("skills_panel.name_z_b_test_driven_development")}
           hinweis={keyVorschau ? tr("skills_panel.key_automatisch", { key: keyVorschau }) : undefined}>
-          <input value={name} autoFocus onChange={(e) => setName(e.target.value)} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("skills_panel.skill_text_markdown")}>
+          <input value={name} autoFocus onChange={(e) => setName(e.target.value)} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("skills_panel.skill_text_markdown")}>
           <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12}
-            className={`${EINGABE} font-mono text-xs`} />
-        </Feld>
+            className={`${INPUT_VALUE} font-mono text-xs`} />
+        </Field>
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={autostart} onChange={(e) => setAutostart(e.target.checked)} />
           {tr("skills_panel.auto")}

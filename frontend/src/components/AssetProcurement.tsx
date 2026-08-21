@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
-import { KNOPF_KLEIN } from "./ui";
+import { BUTTON_KLEIN } from "./ui";
 
 type Step = {
   id: number; name: string; order: number; assignee_id: number | null;
@@ -42,14 +42,14 @@ export default function AssetProcurement({
   });
 
   if (!steps) return <div className="text-xs text-muted">{tr("asset_procurement.laedt")}</div>;
-  const naechsterOffen = steps.find((s) => s.status !== "DONE");
+  const naechsterOpen = steps.find((s) => s.status !== "DONE");
 
   return (
     <div className="space-y-2">
       <ol className="space-y-1.5">
         {steps.map((s) => {
           const done = s.status === "DONE";
-          const aktiv = naechsterOffen?.id === s.id;
+          const aktiv = naechsterOpen?.id === s.id;
           return (
             <li key={s.id} className="flex items-start gap-2 text-xs">
               <span className={done ? "text-green-400" : aktiv ? "text-yellow-400" : "text-muted"}>
@@ -72,9 +72,9 @@ export default function AssetProcurement({
         })}
       </ol>
 
-      {naechsterOffen ? (
+      {naechsterOpen ? (
         <div className="rounded border border-line bg-surface p-2">
-          <div className="mb-1 text-xs text-muted">{tr("asset_procurement.naechster_schritt")}: <b className="text-ink">{naechsterOffen.name}</b></div>
+          <div className="mb-1 text-xs text-muted">{tr("asset_procurement.naechster_schritt")}: <b className="text-ink">{naechsterOpen.name}</b></div>
           <div className="flex flex-wrap items-center gap-2">
             <input value={note} onChange={(e) => setNote(e.target.value)} placeholder={tr("asset_procurement.notiz_optional")}
               className="flex-1 rounded border border-line bg-card px-2 py-1 text-xs" />
@@ -83,8 +83,8 @@ export default function AssetProcurement({
               <option value="">{tr("asset_procurement.uebergabe_an_optional")}</option>
               {members.map((m) => <option key={m.user_id} value={m.user_id}>{m.display_name || m.username}</option>)}
             </select>
-            <button onClick={() => complete.mutate(naechsterOffen.id)}
-              className={KNOPF_KLEIN.haupt}>✓ {naechsterOffen.name} erledigt</button>
+            <button onClick={() => complete.mutate(naechsterOpen.id)}
+              className={BUTTON_KLEIN.haupt}>✓ {naechsterOpen.name} erledigt</button>
           </div>
         </div>
       ) : (

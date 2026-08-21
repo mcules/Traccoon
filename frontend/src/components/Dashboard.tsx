@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { tr } from "../i18n";
 import { api, Project, ProjectCosts } from "../api";
-import { Bereich } from "./ui";
+import { Area } from "./ui";
 import DeploymentsPanel from "./DeploymentsPanel";
 
 const KAT_LABEL: Record<string, string> = { todo: "Offen", in_progress: "In Arbeit", done: "Erledigt" };
@@ -61,12 +61,12 @@ export default function Dashboard({ project }: { project: Project }) {
         <Karte titel={tr("dashboard.agentenlaeufe", { tage: data.window_days })}>
           {r.total > 0 ? (
             <div className="space-y-2 text-sm">
-              <Zeile label={tr("dashboard.laeufe_gesamt")} wert={r.total} />
-              <Zeile label={tr("dashboard.erfolgsquote")}
+              <Line label={tr("dashboard.laeufe_gesamt")} wert={r.total} />
+              <Line label={tr("dashboard.erfolgsquote")}
                 wert={r.success_rate === null ? "—" : `${r.success_rate}%`}
                 farbe={r.success_rate === null ? "" : r.success_rate >= 66 ? "text-green-400"
                   : r.success_rate >= 33 ? "text-yellow-400" : "text-red-400"} />
-              <Zeile label={tr("dashboard.kosten")} wert={`$${r.cost_usd.toFixed(4)}`} />
+              <Line label={tr("dashboard.kosten")} wert={`$${r.cost_usd.toFixed(4)}`} />
               <div className="border-t border-line pt-2 text-xs text-muted">
                 {Object.entries(r.by_status).map(([s, v]: any) => (
                   <span key={s} className="mr-3">{s}: <b className="text-ink">{v.count}</b></span>
@@ -145,24 +145,24 @@ export default function Dashboard({ project }: { project: Project }) {
   );
 }
 
-function Kachel({ label, wert, farbe }: { label: string; wert: number; farbe?: string }) {
+function Kachel({ label, wert: value, farbe }: { label: string; wert: number; farbe?: string }) {
   return (
     <div className="rounded-lg border border-line bg-card p-3">
-      <div className={`text-2xl font-semibold ${farbe || "text-ink"}`}>{wert}</div>
+      <div className={`text-2xl font-semibold ${farbe || "text-ink"}`}>{value}</div>
       <div className="text-xs text-muted">{label}</div>
     </div>
   );
 }
 
-function Karte({ titel, children }: { titel: string; children: React.ReactNode }) {
-  return <Bereich titel={titel}>{children}</Bereich>;
+function Karte({ titel: title, children }: { titel: string; children: React.ReactNode }) {
+  return <Area titel={title}>{children}</Area>;
 }
 
-function Zeile({ label, wert, farbe }: { label: string; wert: string | number; farbe?: string }) {
+function Line({ label, wert: value, farbe }: { label: string; wert: string | number; farbe?: string }) {
   return (
     <div className="flex items-center justify-between">
       <span className="text-muted">{label}</span>
-      <span className={farbe || "text-ink"}>{wert}</span>
+      <span className={farbe || "text-ink"}>{value}</span>
     </div>
   );
 }

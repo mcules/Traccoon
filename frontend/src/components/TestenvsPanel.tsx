@@ -3,7 +3,7 @@ import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
 import {
-  Bereich, Etikett, Fehlerzeile, ICON, IconKnopf, Liste, ListeLeer, ListenZeile, Zeilenknopf, KNOPF_KLEIN, KNOPF_TEXT, KNOPF} from "./ui";
+  Area, Etikett, Fehlerzeile, ICON, IconButton, Listing, ListingLeer, ListenLine, Zeilenknopf, BUTTON_KLEIN, BUTTON_TEXT, BUTTON} from "./ui";
 
 interface Svc { service: string; container: string; status: string }
 interface Env {
@@ -31,28 +31,28 @@ export default function TestenvsPanel({ project }: { project: Project }) {
   });
 
   const [branch, setBranch] = useState("");
-  const [offen, setOffen] = useState<string | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const [logs, setLogs] = useState<Record<string, string>>({});
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["testenvs", project.id] });
-  const fehler = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
+  const error = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
   const start = useMutation({
     mutationFn: () => api.post(`/projects/${project.id}/branch-testenvs`, { branch }),
-    onSuccess: () => { setErr(""); inv(); }, onError: fehler,
+    onSuccess: () => { setErr(""); inv(); }, onError: error,
   });
   const stop = useMutation({
     mutationFn: (e: Env) => e.kind === "ticket"
       ? api.post(`/issues/${e.ref}/testenv/stop`)
       : api.post(`/projects/${project.id}/branch-testenvs/${e.ref}/stop`),
-    onSuccess: inv, onError: fehler,
+    onSuccess: inv, onError: error,
   });
   const holeLogs = async (e: Env, service?: string) => {
     try {
       const r = await api.post<{ log: string }>(
         `/projects/${project.id}/testenvs/${e.container}/logs`, { service, tail: 500 });
       setLogs({ ...logs, [e.container]: r.log || tr("testenvs.keine_ausgabe") });
-    } catch (ex) { fehler(ex); }
+    } catch (ex) { error(ex); }
   };
 
   if (project.testenv_enabled === false) {
@@ -65,26 +65,26 @@ export default function TestenvsPanel({ project }: { project: Project }) {
     <div className="space-y-4">
       <Fehlerzeile text={err} />
 
-      <Bereich titel={tr("testenvs_panel.laufende_umgebungen")}>
-        <Liste>
+      <Area titel={tr("testenvs_panel.laufende_umgebungen")}>
+        <Listing>
           {envs?.map((e) => (
-            <ListenZeile key={e.container}>
+            <ListenLine key={e.container}>
               <div className="flex flex-wrap items-center gap-2">
                 <Etikett farbe={BADGE[e.status] || "neutral"}>{e.status || "—"}</Etikett>
                 <Etikett>{e.kind === "ticket" ? "Ticket" : "Branch"}</Etikett>
                 <span className="min-w-0 flex-1 truncate text-ink">{e.label}</span>
                 {e.url && (
                   <a href={e.url} target="_blank" rel="noreferrer"
-                    className={KNOPF_TEXT.neben}>{tr("testenvs_panel.oeffnen")}</a>
+                    className={BUTTON_TEXT.neben}>{tr("testenvs_panel.oeffnen")}</a>
                 )}
-                <Zeilenknopf onClick={() => setOffen(offen === e.container ? null : e.container)}>
-                  {offen === e.container ? "▾ Details" : "▸ Details"}
+                <Zeilenknopf onClick={() => setOpen(open === e.container ? null : e.container)}>
+                  {open === e.container ? "▾ Details" : "▸ Details"}
                 </Zeilenknopf>
                 {kann && (
-                  <IconKnopf icon="⏹" titel={tr("testenvs_panel.stoppen")} gefahr onClick={() => stop.mutate(e)} />
+                  <IconButton icon="⏹" titel={tr("testenvs_panel.stoppen")} gefahr onClick={() => stop.mutate(e)} />
                 )}
               </div>
-              {offen === e.container && (
+              {open === e.container && (
                 <div className="mt-2 space-y-2 border-t border-line pt-2.5">
                   <div className="text-xs text-muted">
                     {tr("testenvs.container_praefix")} <span className="font-mono">{e.container}</span>
@@ -104,11 +104,11 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                   </div>
                   <div className="flex flex-wrap gap-1">
                     <button onClick={() => holeLogs(e)}
-                      className={KNOPF_KLEIN.neben}>
+                      className={BUTTON_KLEIN.neben}>
                       {tr("testenvs.logs_alle")}</button>
                     {e.services.map((s) => (
                       <button key={s.container} onClick={() => holeLogs(e, s.service)}
-                        className={KNOPF_KLEIN.neben}>
+                        className={BUTTON_KLEIN.neben}>
                         Logs {s.service}</button>
                     ))}
                   </div>
@@ -118,14 +118,14 @@ export default function TestenvsPanel({ project }: { project: Project }) {
                   )}
                 </div>
               )}
-            </ListenZeile>
+            </ListenLine>
           ))}
-          {envs?.length === 0 && <ListeLeer>{tr("testenvs_panel.keine_laufende_testumgebung")}</ListeLeer>}
-        </Liste>
-      </Bereich>
+          {envs?.length === 0 && <ListingLeer>{tr("testenvs_panel.keine_laufende_testumgebung")}</ListingLeer>}
+        </Listing>
+      </Area>
 
       {kann && (
-        <Bereich titel={tr("testenvs_panel.branch_testumgebung_starten")} hinweis={tr("testenvs.baut_branch")}>
+        <Area titel={tr("testenvs_panel.branch_testumgebung_starten")} hinweis={tr("testenvs.baut_branch")}>
           <div className="flex flex-wrap items-center gap-2">
             <select value={branch} onChange={(e) => setBranch(e.target.value)}
               className="rounded border border-line bg-surface px-2 py-1 text-sm">
@@ -133,10 +133,10 @@ export default function TestenvsPanel({ project }: { project: Project }) {
               {branches?.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
             <button onClick={() => branch && start.mutate()} disabled={!branch || start.isPending}
-              className={KNOPF.haupt}>
+              className={BUTTON.haupt}>
               {start.isPending ? "startet…" : "Starten"}</button>
           </div>
-        </Bereich>
+        </Area>
       )}
     </div>
   );

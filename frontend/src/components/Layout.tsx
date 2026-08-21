@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, getToken, Project } from "../api";
 import { useAuth } from "../auth";
 import { useChrome, type ChromeTab } from "../pageChrome";
-import { hauptNavigation, istBereich, SCHIENE_BREITE, type NavEintrag } from "../nav";
+import { hauptNavigation, istArea, SCHIENE_BREITE, type NavEntry } from "../nav";
 import { pluginNav, usePlugins } from "../plugins";
 import NotificationBell from "./NotificationBell";
 import AgentsBadge from "./AgentsBadge";
@@ -74,7 +74,7 @@ function ProjectSwitcher() {
 }
 
 /** Waiting items of the assistant inbox, as a number on the navigation entry. */
-function useInboxZaehler(): number {
+function useInboxCounter(): number {
   const { data = [] } = useQuery({
     queryKey: ["inbox"], queryFn: () => api.get<{ status: string }[]>("/assistant/inbox"),
     refetchInterval: 15000,
@@ -100,7 +100,7 @@ function useMailPush(): void {
     const adresse = `${location.origin.replace(/^http/, "ws")}/api/ws/me`
       + `?token=${encodeURIComponent(token)}`;
     let ws: WebSocket | null = null;
-    let wiederholen: number | undefined;
+    let retry: number | undefined;
     let zu = false;
 
     const verbinden = () => {
@@ -117,13 +117,13 @@ function useMailPush(): void {
       // Ein abgerissener Kanal ist der Normalfall (Schlaf, Netzwechsel, Neustart des
       // Backends). Ohne Wiederaufbau wäre die Oberfläche danach still und niemand wüsste,
       // warum nichts mehr kommt.
-      ws.onclose = () => { if (!zu) wiederholen = window.setTimeout(verbinden, 5000); };
+      ws.onclose = () => { if (!zu) retry = window.setTimeout(verbinden, 5000); };
     };
     verbinden();
 
     return () => {
       zu = true;
-      window.clearTimeout(wiederholen);
+      window.clearTimeout(retry);
       ws?.close();
     };
   }, [qc]);
@@ -136,7 +136,7 @@ function useMailPush(): void {
  * IMAP-Verbindung, und wer neue Post auf die Sekunde sehen will, hat den Reiter ohnehin
  * offen.
  */
-function useMailZaehler(): number {
+function useMailCounter(): number {
   const { data } = useQuery({
     queryKey: ["mail-unread"],
     queryFn: () => api.get<{ total: number }>("/mailbox/unread"),
@@ -158,38 +158,38 @@ function useMailZaehler(): number {
 function BereichsSchiene() {
   const { user } = useAuth();
   const loc = useLocation();
-  const wartend = useInboxZaehler();
-  const neueMails = useMailZaehler();
+  const wartend = useInboxCounter();
+  const newMails = useMailCounter();
   useMailPush();
-  const eintraege = hauptNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
+  const entries = hauptNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
 
   return (
     <nav className={`sticky top-0 hidden h-screen ${SCHIENE_BREITE} shrink-0 flex-col items-center gap-1 border-r border-line bg-card py-3 md:flex`}>
       <Link to="/" title={tr("layout.traccoon_start")} className="mb-2 text-2xl">🦝</Link>
-      {eintraege.map((e) => (
-        <SchienenKnopf key={e.key} eintrag={e} aktiv={istBereich(loc.pathname + loc.hash, e.to)}
-          zaehler={e.zaehler === "inbox" ? wartend : e.zaehler === "mail" ? neueMails : 0} />
+      {entries.map((e) => (
+        <SchienenButton key={e.key} eintrag={e} aktiv={istArea(loc.pathname + loc.hash, e.to)}
+          zaehler={e.zaehler === "inbox" ? wartend : e.zaehler === "mail" ? newMails : 0} />
       ))}
     </nav>
   );
 }
 
-function SchienenKnopf({ eintrag, aktiv, zaehler }: {
-  eintrag: NavEintrag; aktiv: boolean; zaehler: number;
+function SchienenButton({ eintrag: entry, aktiv, zaehler: counter }: {
+  eintrag: NavEntry; aktiv: boolean; zaehler: number;
 }) {
   return (
     <Link
-      to={eintrag.to}
-      title={eintrag.label}
+      to={entry.to}
+      title={entry.label}
       className={`relative flex w-[60px] flex-col items-center gap-0.5 rounded-lg px-1 py-2 ${
         aktiv ? "bg-surface text-ink" : "text-muted hover:bg-surface hover:text-ink"
       }`}
     >
-      <span className="text-lg leading-none">{eintrag.icon}</span>
-      <span className="w-full truncate text-center text-[10px] leading-tight">{eintrag.label}</span>
-      {zaehler > 0 && (
+      <span className="text-lg leading-none">{entry.icon}</span>
+      <span className="w-full truncate text-center text-[10px] leading-tight">{entry.label}</span>
+      {counter > 0 && (
         <span className="absolute right-1 top-1 rounded-full bg-brand px-1 text-[10px] font-medium text-white tabular-nums">
-          {zaehler}
+          {counter}
         </span>
       )}
     </Link>
@@ -206,9 +206,9 @@ function MobileMenu() {
   const [open, setOpen] = useState(false);
   const { user } = useAuth();
   const loc = useLocation();
-  const wartend = useInboxZaehler();
-  const neueMails = useMailZaehler();
-  const eintraege = hauptNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
+  const wartend = useInboxCounter();
+  const newMails = useMailCounter();
+  const entries = hauptNavigation(user?.global_role === "admin", pluginNav(usePlugins()));
   const close = () => setOpen(false);
 
   return (
@@ -222,16 +222,16 @@ function MobileMenu() {
         <>
           <div className="fixed inset-0 z-30" onClick={close} />
           <div className="absolute inset-x-2 top-full z-40 mt-1 max-h-[80vh] overflow-y-auto rounded-lg border border-line bg-card p-2 shadow-2xl">
-            {eintraege.map((e) => (
+            {entries.map((e) => (
               <Link key={e.key} to={e.to} onClick={close}
                 className={`flex items-center gap-2 rounded px-2 py-2 text-sm ${
-                  istBereich(loc.pathname + loc.hash, e.to) ? "bg-surface text-ink" : "text-ink hover:bg-surface"
+                  istArea(loc.pathname + loc.hash, e.to) ? "bg-surface text-ink" : "text-ink hover:bg-surface"
                 }`}>
                 <span>{e.icon}</span>
                 <span className="flex-1">{e.label}</span>
-                {((e.zaehler === "inbox" && wartend > 0) || (e.zaehler === "mail" && neueMails > 0)) && (
+                {((e.zaehler === "inbox" && wartend > 0) || (e.zaehler === "mail" && newMails > 0)) && (
                   <span className="rounded-full bg-brand px-1.5 text-xs text-white tabular-nums">
-                    {e.zaehler === "inbox" ? wartend : neueMails}
+                    {e.zaehler === "inbox" ? wartend : newMails}
                   </span>
                 )}
               </Link>
@@ -315,12 +315,12 @@ export default function Layout({ children }: { children: ReactNode }) {
         <main className="mx-auto w-full max-w-[1400px] flex-1 p-3 [&>*]:mx-auto sm:p-5">
           {seitlich ? (
             <div className="flex flex-col gap-4 md:flex-row md:gap-6">
-              <SeitenNavigation tabs={chrome.tabs} aktiv={isActive} seitlich />
+              <PagesNavigation tabs={chrome.tabs} aktiv={isActive} seitlich />
               <div className="min-w-0 flex-1">{children}</div>
             </div>
           ) : (
             <>
-              <SeitenNavigation tabs={chrome.tabs} aktiv={isActive} />
+              <PagesNavigation tabs={chrome.tabs} aktiv={isActive} />
               {children}
             </>
           )}
@@ -344,7 +344,7 @@ export default function Layout({ children }: { children: ReactNode }) {
  * for five, but at nine the bar takes two lines and reads like a word cloud. Below `md`
  * both look the same, because there is no room for a column beside the content.
  */
-function SeitenNavigation({ tabs, aktiv, seitlich = false }: {
+function PagesNavigation({ tabs, aktiv, seitlich = false }: {
   tabs: ChromeTab[]; aktiv: (t: ChromeTab) => boolean; seitlich?: boolean;
 }) {
   if (tabs.length === 0) return null;

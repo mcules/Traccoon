@@ -25,20 +25,20 @@ export default function SubflowConfig({
   defId?: number;
 }) {
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
-  const { data: alle } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
+  const { data: all } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
   // Callable is what is published: a draft has no version a child instance could point at.
   // And the own flow drops out (an endless loop).
-  const abläufe = (alle || []).filter(
+  const abläufe = (all || []).filter(
     (d) => d.current_version_id && !d.archived_at && d.id !== defId && !d.slot);
 
-  const wert = config.definition_id ? `def:${config.definition_id}`
+  const value = config.definition_id ? `def:${config.definition_id}`
     : config.slot ? `slot:${config.slot}` : "";
-  const setzen = (v: string) => {
-    const [art, rest] = v.split(":");
+  const set = (v: string) => {
+    const [art, remainder] = v.split(":");
     onChange({
       ...config,
-      slot: art === "slot" ? (rest as WorkflowSlot) : undefined,
-      definition_id: art === "def" ? Number(rest) : undefined,
+      slot: art === "slot" ? (remainder as WorkflowSlot) : undefined,
+      definition_id: art === "def" ? Number(remainder) : undefined,
     });
   };
 
@@ -46,7 +46,7 @@ export default function SubflowConfig({
     <div className="space-y-3">
       <label className="block text-xs font-medium text-muted">
         Aufzurufender Ablauf
-        <select value={wert} onChange={(e) => setzen(e.target.value)} className={`mt-1 ${inp}`}>
+        <select value={value} onChange={(e) => set(e.target.value)} className={`mt-1 ${inp}`}>
           <option value="">— wählen —</option>
           <optgroup label={tr("subflow_config.fest_benannte_ablaeufe_je_projekt_aufgel")}>
             {SLOTS.map((s) => (

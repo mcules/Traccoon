@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { tr, setzeSprache } from "../i18n";
+import { tr, setzeLanguage } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 import MailKontenPanel from "../components/MailKontenPanel";
 import {
-  AgentenBetriebPanel, AssistentMeldungenPanel, GedaechtnisPanel, MeineSchalterPanel, ZeitzonePanel,
-  NachtFensterPanel,
+  AgentenBetriebPanel, AssistantNoticesPanel, GedaechtnisPanel, MeineSchalterPanel, ZeitzonePanel,
+  NachtWindowPanel,
 } from "../components/KontoPanels";
-import { KNOPF } from "../components/ui";
+import { BUTTON } from "../components/ui";
 
 /**
  * Everything that belongs to the person, on one page.
@@ -45,12 +45,12 @@ export default function Konto() {
     <div className="max-w-2xl space-y-4">
       {/* Die Zeitzone gehört zur Person, nicht zu den Agenten: sie entscheidet, was auf
           dieser Oberfläche „8 Uhr" heißt — und damit auch im Nachtfenster und im Zeitplan. */}
-      {tab === "person" && <><SprachePanel /><ZeitzonePanel /><EmailPanel /><PasswordPanel /></>}
+      {tab === "person" && <><LanguagePanel /><ZeitzonePanel /><EmailPanel /><PasswordPanel /></>}
       {tab === "appearance" && <><ThemePanel /><TicketOpenPanel /><PmChatStylePanel /></>}
-      {tab === "notifications" && <><BenachrichtigungenPanel /><AssistentMeldungenPanel /></>}
+      {tab === "notifications" && <><BenachrichtigungenPanel /><AssistantNoticesPanel /></>}
       {tab === "mail" && <MailKontenPanel />}
       {tab === "agents" && (
-        <><AgentenBetriebPanel /><NachtFensterPanel /><GedaechtnisPanel /><MeineSchalterPanel /></>
+        <><AgentenBetriebPanel /><NachtWindowPanel /><GedaechtnisPanel /><MeineSchalterPanel /></>
       )}
     </div>
   );
@@ -139,7 +139,7 @@ function TicketOpenPanel() {
  * of ending in raw keys. Which languages exist is said by the server: a new one comes into
  * being in the administration without anybody having to touch code.
  */
-function SprachePanel() {
+function LanguagePanel() {
   const { user, refresh } = useAuth();
   const [locale, setLocale] = useState(user?.locale || "de");
   const [ok, setOk] = useState("");
@@ -153,7 +153,7 @@ function SprachePanel() {
     setErr(""); setOk("");
     try {
       await api.put("/me/locale", { value: locale });
-      await setzeSprache(locale);
+      await setzeLanguage(locale);
       await refresh();
       setOk(tr("profile.gespeichert"));
     } catch (e) {
@@ -173,7 +173,7 @@ function SprachePanel() {
             .filter((s) => s.enabled)
             .map((s) => <option key={s.locale} value={s.locale}>{s.name}</option>)}
         </select>
-        <button onClick={save} className={KNOPF.haupt}>
+        <button onClick={save} className={BUTTON.haupt}>
           {tr("profile.speichern")}
         </button>
       </div>
@@ -208,7 +208,7 @@ function EmailPanel() {
       <div className="flex flex-wrap items-center gap-2">
         <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com"
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className={KNOPF.haupt}>{tr("profile.speichern")}</button>
+        <button onClick={save} className={BUTTON.haupt}>{tr("profile.speichern")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
@@ -229,12 +229,12 @@ function BenachrichtigungenPanel() {
   const [standard, setStandard] = useState(user?.notify_default ?? "telegram");
   const [chat, setChat] = useState(user?.telegram_chat_id ?? "");
   const [mail, setMail] = useState(user?.notify_email ?? "");
-  const [zielId, setZielId] = useState(String(user?.notify_destination_id ?? ""));
+  const [targetId, setTargetId] = useState(String(user?.notify_destination_id ?? ""));
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   // Ziele tragen Basis-URL und Anmeldung schon; was dahinter steckt (ntfy, Matrix, Gotify,
   // ein eigener Bot), muss Traccoon nicht wissen.
-  const { data: ziele } = useQuery({
+  const { data: targets } = useQuery({
     queryKey: ["destinations"],
     queryFn: () => api.get<{ id: number; name: string }[]>("/destinations"),
   });
@@ -244,7 +244,7 @@ function BenachrichtigungenPanel() {
     try {
       await api.put("/me/notify", {
         notify_default: standard, telegram_chat_id: chat.trim(), notify_email: mail.trim(),
-        notify_destination_id: zielId ? +zielId : 0,
+        notify_destination_id: targetId ? +targetId : 0,
       });
       await refresh();
       setOk("Gespeichert.");
@@ -253,9 +253,9 @@ function BenachrichtigungenPanel() {
     }
   };
 
-  const feld = "w-full rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
-  const fehlt = standard === "telegram" ? !chat.trim()
-    : standard === "ziel" ? !zielId
+  const field = "w-full rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink";
+  const missing = standard === "telegram" ? !chat.trim()
+    : standard === "ziel" ? !targetId
     : !(mail.trim() || user?.email);
 
   return (
@@ -267,7 +267,7 @@ function BenachrichtigungenPanel() {
 
       <label className="block text-xs font-medium text-muted">
         Standard-Weg
-        <select value={standard} onChange={(e) => setStandard(e.target.value)} className={`mt-1 ${feld}`}>
+        <select value={standard} onChange={(e) => setStandard(e.target.value)} className={`mt-1 ${field}`}>
           <option value="telegram">{tr("profile.telegram")}</option>
           <option value="email">E-Mail</option>
           <option value="ziel">Ziel (eigener Dienst)</option>
@@ -276,9 +276,9 @@ function BenachrichtigungenPanel() {
 
       <label className="block text-xs font-medium text-muted">
         Ziel
-        <select value={zielId} onChange={(e) => setZielId(e.target.value)} className={`mt-1 ${feld}`}>
+        <select value={targetId} onChange={(e) => setTargetId(e.target.value)} className={`mt-1 ${field}`}>
           <option value="">—</option>
-          {ziele?.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+          {targets?.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
         </select>
         <span className="mt-1 block text-[11px] text-muted">
           Bekommt die Nachricht als JSON (art, titel, text). Ziele stehen unter Einstellungen → Ziele.
@@ -288,24 +288,24 @@ function BenachrichtigungenPanel() {
       <label className="block text-xs font-medium text-muted">
         Telegram-Chat-ID
         <input value={chat} onChange={(e) => setChat(e.target.value)} placeholder="z. B. 277928204"
-          className={`mt-1 ${feld}`} />
+          className={`mt-1 ${field}`} />
       </label>
 
       <label className="block text-xs font-medium text-muted">
         {tr("profile.email_fuer_benachrichtigungen")}
         <input value={mail} onChange={(e) => setMail(e.target.value)}
-          placeholder={user?.email || "name@example.com"} className={`mt-1 ${feld}`} />
+          placeholder={user?.email || "name@example.com"} className={`mt-1 ${field}`} />
         <span className="mt-1 block text-[11px] text-muted">
           {tr("profile.leer_lassen_anmelde_adresse")}{user?.email ? ` (${user.email})` : ""}.
         </span>
       </label>
 
-      {fehlt && (
+      {missing && (
         <div className="text-xs text-amber-300">
           {tr("profile.kein_weg_hinterlegt")}
         </div>
       )}
-      <button onClick={save} className={KNOPF.haupt}>{tr("profile.speichern")}</button>
+      <button onClick={save} className={BUTTON.haupt}>{tr("profile.speichern")}</button>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}
     </section>
@@ -338,7 +338,7 @@ function PasswordPanel() {
         <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
           placeholder={tr("profile.neues_passwort_8_zeichen")}
           className="flex-1 rounded border border-line bg-surface px-2 py-1.5 text-sm text-ink" />
-        <button onClick={save} className={KNOPF.haupt}>{tr("profile.aendern")}</button>
+        <button onClick={save} className={BUTTON.haupt}>{tr("profile.aendern")}</button>
       </div>
       {err && <div className="text-sm text-red-400">{err}</div>}
       {ok && <div className="text-sm text-green-400">{ok}</div>}

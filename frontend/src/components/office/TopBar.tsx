@@ -26,7 +26,7 @@ import { tr } from "../../i18n";
 import type { Scope } from "./api.ts";
 import type { GateKind, Roster, RosterEntry, RunStatus } from "./types.ts";
 import type { FeedTotals } from "./useOfficeFeed.ts";
-import { KNOPF_KLEIN } from "../ui";
+import { BUTTON_KLEIN } from "../ui";
 
 // ── Gates ───────────────────────────────────────────────────────────────────────────────────
 
@@ -99,7 +99,7 @@ export function usdText(v: number, unvollstaendig?: boolean): string {
 }
 
 /** Duration in the notation of `AgentMonitor.fmtDauer`. `null` = unknown. */
-export function dauerText(ms: number | null | undefined): string {
+export function durationText(ms: number | null | undefined): string {
   if (ms === null || ms === undefined || !Number.isFinite(ms)) return "—";
   // Below one second in milliseconds: tool calls are often faster than that, and "0s" hides
   // the difference between "very fast" and "not measured at all".
@@ -130,7 +130,7 @@ export const OHNE_TICKET = "(ohne Ticket)";   // Gruppierungsschlüssel, kein An
 export const OHNE_PROJEKT = "(ohne Projekt)";
 
 /** Which tab a run belongs to: its ticket in the project scope, its project globally. */
-export function sitzungsSchluessel(scope: Scope, r: RosterEntry): string {
+export function sitzungsKey(scope: Scope, r: RosterEntry): string {
   return scope.kind === "project"
     ? (r.issue_key || OHNE_TICKET)
     : (r.project_key || OHNE_PROJEKT);
@@ -139,7 +139,7 @@ export function sitzungsSchluessel(scope: Scope, r: RosterEntry): string {
 /** `null` = "all". Used by stage, dock and inspector as well, so that "dimmed" means the same
  *  everywhere. */
 export function passtZumFilter(scope: Scope, r: RosterEntry, filter: string | null): boolean {
-  return filter === null || sitzungsSchluessel(scope, r) === filter;
+  return filter === null || sitzungsKey(scope, r) === filter;
 }
 
 interface Reiter {
@@ -152,7 +152,7 @@ interface Reiter {
 function reiterAus(scope: Scope, roster: Roster): Reiter[] {
   const map = new Map<string, Reiter>();
   for (const r of roster) {
-    const key = sitzungsSchluessel(scope, r);
+    const key = sitzungsKey(scope, r);
     const seit = r.started_at ? Date.parse(r.started_at) : 0;
     const vorhanden = map.get(key);
     if (!vorhanden) {
@@ -206,30 +206,30 @@ export interface TopBarProps {
 // ── The component ───────────────────────────────────────────────────────────────────────────
 
 export default function TopBar({
-  scope, titel, roster, totals, live, seekTs, onBackToLive,
+  scope, titel: title, roster, totals, live, seekTs, onBackToLive,
   speed, onSpeedChange, filter, onFilterChange,
   onFullscreen, error, kiosk,
 }: TopBarProps) {
   const reiter = reiterAus(scope, roster);
-  const tokenSumme = totals.in_tokens + totals.out_tokens;
-  const tokenTitel = tr("buero.token_titel", {
+  const tokenSum_total = totals.in_tokens + totals.out_tokens;
+  const tokenTitle = tr("buero.token_titel", {
     ein: zahl(totals.in_tokens), aus: zahl(totals.out_tokens),
     cache: zahl(totals.cache_read_tokens) });
-  const kostenTitel = tr(totals.cost_partial ? "buero.kosten_teilweise" : "buero.kosten_geschaetzt",
+  const kostenTitle = tr(totals.cost_partial ? "buero.kosten_teilweise" : "buero.kosten_geschaetzt",
     { abgerechnet: usdText(totals.cost_usd_billed) });
 
   return (
     <div className="rounded border border-line bg-card px-3 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
-        {titel && (
-          <span className="max-w-[22rem] truncate font-medium" title={titel}>🏢 {titel}</span>
+        {title && (
+          <span className="max-w-[22rem] truncate font-medium" title={title}>🏢 {title}</span>
         )}
 
-        <span className="text-muted" title={tokenTitel}>
-          🔢 <b className="text-ink">{tokenText(tokenSumme)}</b> {tr("buero.tokens")}
+        <span className="text-muted" title={tokenTitle}>
+          🔢 <b className="text-ink">{tokenText(tokenSum_total)}</b> {tr("buero.tokens")}
         </span>
 
-        <span className="text-muted" title={kostenTitel}>
+        <span className="text-muted" title={kostenTitle}>
           💵 <b className="text-ink">{usdText(totals.cost_usd_estimated, totals.cost_partial)}</b>
         </span>
 
@@ -249,7 +249,7 @@ export default function TopBar({
             </span>
             {!kiosk && (
               <button type="button" onClick={onBackToLive}
-                className={KNOPF_KLEIN.neben}>
+                className={BUTTON_KLEIN.neben}>
                 {tr("buero.zurueck_zu_live")}
               </button>
             )}
@@ -283,7 +283,7 @@ export default function TopBar({
 
         {!kiosk && onFullscreen && (
           <button type="button" onClick={onFullscreen}
-            className={KNOPF_KLEIN.neben}
+            className={BUTTON_KLEIN.neben}
             title={tr("buero.ganze_seite")}>
             ⤢ {tr("buero.vollbild")}
           </button>
@@ -296,19 +296,19 @@ export default function TopBar({
       {!kiosk && reiter.length > 1 && (
         <div className="mt-2 flex gap-1 overflow-x-auto pb-0.5" role="group"
           aria-label={tr(scope.kind === "project" ? "buero.tickets_ansicht" : "buero.projekte_ansicht")}>
-          <ReiterKnopf aktiv={filter === null} onClick={() => onFilterChange(null)}
+          <ReiterButton aktiv={filter === null} onClick={() => onFilterChange(null)}
             titel={tr("buero.alle_figuren")}>
             {tr("buero.alle")}
-          </ReiterKnopf>
+          </ReiterButton>
           {reiter.map((r) => (
-            <ReiterKnopf key={r.key} aktiv={filter === r.key}
+            <ReiterButton key={r.key} aktiv={filter === r.key}
               onClick={() => onFilterChange(filter === r.key ? null : r.key)}
               titel={`${r.anzahl} ${tr(r.anzahl === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}`
                 + (r.laeuft ? `, ${tr("buero.davon_laeuft_einer")}` : "")
                 + ` — ${tr("buero.andere_gedimmt")}`}>
               {r.laeuft && <span className="mr-1 text-yellow-400">●</span>}
               {r.key}
-            </ReiterKnopf>
+            </ReiterButton>
           ))}
         </div>
       )}
@@ -322,11 +322,11 @@ export default function TopBar({
   );
 }
 
-function ReiterKnopf({ aktiv, onClick, titel, children }: {
+function ReiterButton({ aktiv, onClick, titel: title, children }: {
   aktiv: boolean; onClick: () => void; titel: string; children: React.ReactNode;
 }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={aktiv} title={titel}
+    <button type="button" onClick={onClick} aria-pressed={aktiv} title={title}
       className={"shrink-0 whitespace-nowrap rounded border px-2 py-0.5 font-mono text-xs "
         + (aktiv ? "border-brand bg-brand/10 text-brand" : "border-line text-muted hover:border-brand")}>
       {children}

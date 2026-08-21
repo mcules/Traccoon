@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, Project } from "../api";
-import { ICON, IconKnopf, KNOPF} from "./ui";
+import { ICON, IconButton, BUTTON} from "./ui";
 
 interface Grant {
   id: number; project_id: number; user_id: number; username: string; display_name: string;
@@ -82,7 +82,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
               <td>{g.level}</td>
               <td>{g.resource_type === "location" ? (g.recursive ? "ja" : "nein") : "—"}</td>
               <td className="text-right">
-                <IconKnopf icon={ICON.loeschen} titel={tr("resource_grants.entziehen")} gefahr
+                <IconButton icon={ICON.loeschen} titel={tr("resource_grants.entziehen")} gefahr
                   onClick={() => remove.mutate(g.id)} />
               </td>
             </tr>
@@ -141,7 +141,7 @@ export default function ResourceGrants({ project }: { project: Project }) {
             {tr("resource_grants.auch_kind_orte")}
           </label>
         )}
-        <button onClick={() => uid && rid && add.mutate()} className={KNOPF.haupt}>
+        <button onClick={() => uid && rid && add.mutate()} className={BUTTON.haupt}>
           Freigeben
         </button>
         {err && <span className="text-sm text-red-400">{err}</span>}

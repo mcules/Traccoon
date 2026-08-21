@@ -457,7 +457,7 @@ const TORSOS: readonly Art[] = [TORSO_PLAIN_HD, TORSO_SHIRT_HD, TORSO_HOOD_HD];
 // mirrored. Four states are enough, because an arm at 4×6 can only say three things: it hangs,
 // it rests on the keyboard, it reaches forward.
 
-const ARM_REST = defineArt([
+const ARM_REMAINDER = defineArt([
   "TTt.",
   "TTt.",
   "TTt.",
@@ -501,7 +501,7 @@ const ARM_REACH = defineArt([
 
 const ARM_MAP = { T: "T", t: "t", S: "S", s: "s" } as const;
 
-const ARM_REST_HD = defineArt([
+const ARM_REMAINDER_HD = defineArt([
   "TTTtt...",
   "TTTtt...",
   "TTTtt...",
@@ -561,9 +561,9 @@ const ARM_REACH_HD = defineArt([
   "........",
 ], ARM_MAP);
 
-const ARMS: readonly Art[] = [ARM_REST_HD, ARM_TYPE_A_HD, ARM_TYPE_B_HD, ARM_REACH_HD];
+const ARMS: readonly Art[] = [ARM_REMAINDER_HD, ARM_TYPE_A_HD, ARM_TYPE_B_HD, ARM_REACH_HD];
 
-const ARM_REST_I = 0;
+const ARM_REMAINDER_I = 0;
 const ARM_TYPE_A_I = 1;
 const ARM_TYPE_B_I = 2;
 const ARM_REACH_I = 3;
@@ -601,7 +601,7 @@ const LEGS_SIT = defineArt([
   "....iiii",
 ], { P: "P", i: "ink" });
 
-const LEGS_STAND = defineArt([
+const LEGS_STATE = defineArt([
   "PPPPPPPP",
   "PPPPPPPP",
   "PPP..PPP",
@@ -635,10 +635,10 @@ const LEGS_WALK_B = defineArt([
   ".ii...ii",
 ], { P: "P", i: "ink" });
 
-const LEGS: readonly Art[] = [LEGS_SIT, LEGS_STAND, LEGS_WALK_A, LEGS_WALK_B].map(verdoppelt);
+const LEGS: readonly Art[] = [LEGS_SIT, LEGS_STATE, LEGS_WALK_A, LEGS_WALK_B].map(verdoppelt);
 
 const LEGS_SIT_I = 0;
-const LEGS_STAND_I = 1;
+const LEGS_STATE_I = 1;
 const LEGS_WALK_A_I = 2;
 const LEGS_WALK_B_I = 3;
 
@@ -754,9 +754,9 @@ function stanceOf(
 
   const s: Stance = {
     dir: sitting ? DIR_SIDE : DIR_FRONT,
-    legs: sitting ? LEGS_SIT_I : LEGS_STAND_I,
-    armNear: ARM_REST_I,
-    armFar: ARM_REST_I,
+    legs: sitting ? LEGS_SIT_I : LEGS_STATE_I,
+    armNear: ARM_REMAINDER_I,
+    armFar: ARM_REMAINDER_I,
     drop: sitting ? SIT_DROP : 0,
     lift: breath,
     leanX: 0,
@@ -773,8 +773,8 @@ function stanceOf(
     // Leading foot from the look, otherwise all twelve start with the same leg.
     const lead = (look.legs & 1) === 0;
     const strideFrames: readonly number[] = lead
-      ? [LEGS_STAND_I, LEGS_WALK_A_I, LEGS_STAND_I, LEGS_WALK_B_I]
-      : [LEGS_STAND_I, LEGS_WALK_B_I, LEGS_STAND_I, LEGS_WALK_A_I];
+      ? [LEGS_STATE_I, LEGS_WALK_A_I, LEGS_STATE_I, LEGS_WALK_B_I]
+      : [LEGS_STATE_I, LEGS_WALK_B_I, LEGS_STATE_I, LEGS_WALK_A_I];
     s.dir = DIR_SIDE;
     s.legs = strideFrames[f];
     // Bob: high in the passing position, low in the full stride. `bob` is 0.35..1.
@@ -783,8 +783,8 @@ function stanceOf(
     s.shoe = f % 2 === 1 ? gait.stride - 2 : 0;
     const af = phase(t, ms, 4, Math.round(gait.armPhase * 4));
     s.armX = af === 1 ? gait.swing : af === 3 ? -gait.swing : 0;
-    s.armNear = ARM_REST_I;
-    s.armFar = ARM_REST_I;
+    s.armNear = ARM_REMAINDER_I;
+    s.armFar = ARM_REMAINDER_I;
     return s;
   }
 
@@ -813,7 +813,7 @@ function stanceOf(
 
   if (act === "talk") {
     const f = phase(t, TALK_FRAME_MS, 2, 0);
-    s.armNear = f === 0 ? ARM_REACH_I : ARM_REST_I;
+    s.armNear = f === 0 ? ARM_REACH_I : ARM_REMAINDER_I;
     return s;
   }
 

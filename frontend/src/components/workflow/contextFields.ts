@@ -12,22 +12,22 @@ import { tr } from "../../i18n";
  * depends on the path taken, not on the drawing. Better to offer one field too many than to
  * conceal one that exists.
  */
-export interface KontextFeld {
+export interface ContextField {
   path: string;
   type: string;
   description: string;
   source: string;
 }
 
-export interface KontextFilter { name: string; hilfe: string }
+export interface ContextFilter { name: string; hilfe: string }
 
-export interface KontextKatalog {
+export interface ContextKatalog {
   /** Filter for templates: {{ path | filter:argument }} */
-  filter?: KontextFilter[];
-  base: Omit<KontextFeld, "source">[];
-  triggers: Record<string, Omit<KontextFeld, "source">[]>;
-  actions: Record<string, Omit<KontextFeld, "source">[]>;
-  nodes: Record<string, Omit<KontextFeld, "source">[]>;
+  filter?: ContextFilter[];
+  base: Omit<ContextField, "source">[];
+  triggers: Record<string, Omit<ContextField, "source">[]>;
+  actions: Record<string, Omit<ContextField, "source">[]>;
+  nodes: Record<string, Omit<ContextField, "source">[]>;
 }
 
 const cfgOf = (n: FlowNode) => (n.data?.config || {}) as Record<string, any>;
@@ -40,18 +40,18 @@ function aktionsName(n: FlowNode): string | null {
   return a ? String(a) : null;
 }
 
-export function verfuegbareFelder(
+export function verfuegbareFields(
   nodes: FlowNode[],
-  katalog: KontextKatalog | undefined,
-): KontextFeld[] {
+  katalog: ContextKatalog | undefined,
+): ContextField[] {
   if (!katalog) return [];
-  const out: KontextFeld[] = [];
-  const gesehen = new Set<string>();
-  const nimm = (felder: Omit<KontextFeld, "source">[] | undefined, quelle: string) => {
-    for (const f of felder || []) {
-      if (gesehen.has(f.path)) continue;
-      gesehen.add(f.path);
-      out.push({ ...f, source: quelle });
+  const out: ContextField[] = [];
+  const seen = new Set<string>();
+  const nimm = (fields: Omit<ContextField, "source">[] | undefined, source: string) => {
+    for (const f of fields || []) {
+      if (seen.has(f.path)) continue;
+      seen.add(f.path);
+      out.push({ ...f, source: source });
     }
   };
 
@@ -66,25 +66,25 @@ export function verfuegbareFelder(
   // inserted, the editor knows the fields, nested ones included.
   const probe = start ? cfgOf(start).trigger?.sample : undefined;
   if (probe && typeof probe === "object") {
-    const wandern = (wert: any, pfad: string, tiefe: number) => {
-      if (tiefe > 4 || wert === null || wert === undefined) return;
-      if (Array.isArray(wert)) {
-        nimm([{ path: pfad, type: "list",
-                description: tr("context_fields.eintraege_im_beispiel", { anzahl: wert.length }) }],
+    const walk = (value: any, path: string, tiefe: number) => {
+      if (tiefe > 4 || value === null || value === undefined) return;
+      if (Array.isArray(value)) {
+        nimm([{ path: path, type: "list",
+                description: tr("context_fields.eintraege_im_beispiel", { anzahl: value.length }) }],
              "Beispiel-Nutzlast");
-        if (wert.length) wandern(wert[0], `${pfad}.0`, tiefe + 1);
+        if (value.length) walk(value[0], `${path}.0`, tiefe + 1);
         return;
       }
-      if (typeof wert === "object") {
-        for (const [k, v] of Object.entries(wert)) wandern(v, pfad ? `${pfad}.${k}` : k, tiefe + 1);
+      if (typeof value === "object") {
+        for (const [k, v] of Object.entries(value)) walk(v, path ? `${path}.${k}` : k, tiefe + 1);
         return;
       }
-      const typ = typeof wert === "number" ? "number"
-        : typeof wert === "boolean" ? "boolean" : "text";
-      nimm([{ path: pfad, type: typ, description: `Beispiel: ${String(wert).slice(0, 40)}` }],
+      const kind = typeof value === "number" ? "number"
+        : typeof value === "boolean" ? "boolean" : "text";
+      nimm([{ path: path, type: kind, description: `Beispiel: ${String(value).slice(0, 40)}` }],
            "Beispiel-Nutzlast");
     };
-    wandern(probe, "", 0);
+    walk(probe, "", 0);
   }
   if (ev && katalog.triggers[ev]) nimm(katalog.triggers[ev], tr("context_fields.ausloeser", { name: ev }));
   if (!ev && katalog.triggers["(Webhook/Job)"]) {
@@ -92,16 +92,16 @@ export function verfuegbareFelder(
   }
 
   for (const n of nodes) {
-    const aktion = aktionsName(n);
-    if (aktion && katalog.actions[aktion]) nimm(katalog.actions[aktion], `Schritt „${aktion}“`);
+    const action = aktionsName(n);
+    if (action && katalog.actions[action]) nimm(katalog.actions[action], `Schritt „${action}“`);
     if (n.type && katalog.nodes[n.type]) nimm(katalog.nodes[n.type], `Knoten ${n.type}`);
     // Keys put down by the flow itself: only this graph knows those.
-    if (aktion === "set_context") {
+    if (action === "set_context") {
       const roh = cfgOf(n).action?.params ?? cfgOf(n);
       const zuweisungen = (roh?.set && typeof roh.set === "object" ? roh.set : roh) || {};
       for (const k of Object.keys(zuweisungen)) {
-        if (["action", "kind", "label", "set", "group"].includes(k) || gesehen.has(k)) continue;
-        gesehen.add(k);
+        if (["action", "kind", "label", "set", "group"].includes(k) || seen.has(k)) continue;
+        seen.add(k);
         out.push({ path: k, type: "text", description: "selbst gesetzt",
                   source: "Schritt „Kontext setzen“" });
       }

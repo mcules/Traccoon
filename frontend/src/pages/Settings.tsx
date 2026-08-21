@@ -6,15 +6,15 @@ import { api, ApiError } from "../api";
 import AgentsPanel from "../components/AgentsPanel";
 import SkillsPanel from "../components/SkillsPanel";
 import McpPanel from "../components/McpPanel";
-import { DestinationsBereich } from "../components/DestinationsPanel";
+import { DestinationsArea } from "../components/DestinationsPanel";
 import WebhooksPanel from "../components/WebhooksPanel";
 import PluginsPanel from "../components/PluginsPanel";
 import JobsPanel from "../components/JobsPanel";
 import { useAuth } from "../auth";
 import { usePageChrome } from "../pageChrome";
 import {
-  Aktionen, Bereich, Dialog, DialogFuss, EINGABE, Feld, Fehlerzeile, ICON, IconKnopf,
-  Etikett, Liste, ListeLeer, ListenZeile, LoeschDialog, KNOPF } from "../components/ui";
+  Actions, Area, Dialog, DialogFuss, INPUT_VALUE, Field, Fehlerzeile, ICON, IconButton,
+  Etikett, Listing, ListingLeer, ListenLine, LoeschDialog, BUTTON } from "../components/ui";
 
 /**
  * The settings hold resources, not a person.
@@ -46,14 +46,14 @@ export default function Settings() {
   const tab: Tab = (TAB_KEYS.includes(tabParam as Tab) ? tabParam : "secrets") as Tab;
   const { user } = useAuth();
   const istAdmin = user?.global_role === "admin";
-  const sichtbar = TABS.filter(([key]) => istAdmin || !NUR_ADMIN.includes(key));
-  usePageChrome(tr("nav.settings"), sichtbar.map(([key, label, icon]) => ({
+  const visible = TABS.filter(([key]) => istAdmin || !NUR_ADMIN.includes(key));
+  usePageChrome(tr("nav.settings"), visible.map(([key, label, icon]) => ({
     key, label: tr(label), to: `/settings/${key}`, icon,
   })), tab, "seite");
   return (
     <div className="max-w-3xl">
       {tab === "secrets" && <Secrets />}
-      {tab === "destinations" && <DestinationsBereich />}
+      {tab === "destinations" && <DestinationsArea />}
       {tab === "agents" && <AgentsPanel />}
       {tab === "mcp" && <McpPanel />}
       {tab === "jobs" && <JobsPanel />}
@@ -71,15 +71,15 @@ const PROVIDER_LABEL: Record<string, string> = {
 function Secrets() {
   return (
     <div className="space-y-4">
-      <Bereich hinweis={tr("settings.keys_einleitung")}>
+      <Area hinweis={tr("settings.keys_einleitung")}>
         <ProviderTokens />
-      </Bereich>
-      <Bereich hinweis={<>
+      </Area>
+      <Area hinweis={<>
         Allgemeiner <b>{tr("settings.secret_tresor")}</b>: beliebige Tokens/Geheimnisse (API-Keys,
         {tr("settings.tresor_hinweis")}
       </>}>
         <NamedSecrets />
-      </Bereich>
+      </Area>
     </div>
   );
 }
@@ -97,7 +97,7 @@ function NamedSecrets() {
     queryKey: ["named-secrets"], queryFn: () => api.get<any>("/me/secrets"),
   });
   const [dialog, setDialog] = useState<{ name: string; description: string } | null>(null);
-  const [loeschen, setLoeschen] = useState<string | null>(null);
+  const [remove, setDelete] = useState<string | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["named-secrets"] });
   const guard = async (fn: () => Promise<any>) => {
@@ -109,45 +109,45 @@ function NamedSecrets() {
   return (
     <div>
       <Fehlerzeile text={err} />
-      <Liste className="mb-3">
+      <Listing className="mb-3">
         {vault.map((s) => (
-          <ListenZeile key={s.name}>
+          <ListenLine key={s.name}>
             <div className="flex items-center gap-2">
               <code className="shrink-0 font-mono text-xs text-brand">secret:{s.name}</code>
               {s.description && <span className="min-w-0 flex-1 truncate text-xs text-muted">{s.description}</span>}
               <div className="flex-1" />
-              <Aktionen>
-                <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
+              <Actions>
+                <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")}
                   onClick={() => setDialog({ name: s.name, description: s.description })} />
-                <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                  onClick={() => setLoeschen(s.name)} />
-              </Aktionen>
+                <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+                  onClick={() => setDelete(s.name)} />
+              </Actions>
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
-        {vault.length === 0 && <ListeLeer>{tr("settings.noch_keine_secrets_im_tresor")}</ListeLeer>}
-      </Liste>
+        {vault.length === 0 && <ListingLeer>{tr("settings.noch_keine_secrets_im_tresor")}</ListingLeer>}
+      </Listing>
       <button onClick={() => setDialog({ name: "", description: "" })}
-        className={KNOPF.haupt}>
+        className={BUTTON.haupt}>
         {ICON.neu} {tr("settings.secret_anlegen")}
       </button>
 
       {dialog && (
         <SecretDialog vorhanden={dialog.name ? dialog : null} start={dialog}
           onClose={() => setDialog(null)}
-          onSpeichern={async (name, wert, beschreibung) => {
+          onSpeichern={async (name, value, description) => {
             const ok = await guard(() => api.put(`/me/secrets/${encodeURIComponent(name)}`,
-              { value: wert, description: beschreibung }));
+              { value: value, description: description }));
             if (ok) setDialog(null);
           }} />
       )}
-      {loeschen && (
-        <LoeschDialog was={`secret:${loeschen}`} hinweis={tr("settings.secret_loeschen_hinweis")}
-          onClose={() => setLoeschen(null)}
+      {remove && (
+        <LoeschDialog was={`secret:${remove}`} hinweis={tr("settings.secret_loeschen_hinweis")}
+          onClose={() => setDelete(null)}
           onLoeschen={async () => {
-            await guard(() => api.put(`/me/secrets/${encodeURIComponent(loeschen)}`,
+            await guard(() => api.put(`/me/secrets/${encodeURIComponent(remove)}`,
               { value: "", description: "" }));
-            setLoeschen(null);
+            setDelete(null);
           }} />
       )}
     </div>
@@ -158,32 +158,32 @@ function SecretDialog({ vorhanden, start, onClose, onSpeichern }: {
   vorhanden: { name: string } | null;
   start: { name: string; description: string };
   onClose: () => void;
-  onSpeichern: (name: string, wert: string, beschreibung: string) => void;
+  onSpeichern: (name: string, value: string, description: string) => void;
 }) {
   const [name, setName] = useState(start.name);
-  const [wert, setWert] = useState("");
-  const [beschreibung, setBeschreibung] = useState(start.description);
-  const kann = !!name.trim() && !!wert.trim();
+  const [value, setValue] = useState("");
+  const [description, setDescription] = useState(start.description);
+  const kann = !!name.trim() && !!value.trim();
 
   return (
     <Dialog titel={vorhanden ? tr("settings.secret_bearbeiten") : tr("settings.secret_anlegen")}
       onClose={onClose}
       fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!kann}
-        onSpeichern={() => onSpeichern(name.trim(), wert.trim(), beschreibung.trim())} />}>
+        onSpeichern={() => onSpeichern(name.trim(), value.trim(), description.trim())} />}>
       <div className="space-y-3">
-        <Feld label={tr("settings.name")} hinweis={tr("settings.secret_name_hinweis")}>
+        <Field label={tr("settings.name")} hinweis={tr("settings.secret_name_hinweis")}>
           <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!vorhanden}
             autoFocus={!vorhanden} placeholder={tr("settings.name_z_b_github_pat")}
-            className={`${EINGABE} disabled:opacity-60`} />
-        </Feld>
-        <Feld label={tr("settings.wert_token")}
+            className={`${INPUT_VALUE} disabled:opacity-60`} />
+        </Field>
+        <Field label={tr("settings.wert_token")}
           hinweis={vorhanden ? tr("settings.wert_ersetzt_hinweis") : undefined}>
-          <input type="password" value={wert} onChange={(e) => setWert(e.target.value)}
-            autoFocus={!!vorhanden} placeholder={tr("settings.wert_token")} className={EINGABE} />
-        </Feld>
-        <Feld label={tr("settings.beschreibung_optional")}>
-          <input value={beschreibung} onChange={(e) => setBeschreibung(e.target.value)} className={EINGABE} />
-        </Feld>
+          <input type="password" value={value} onChange={(e) => setValue(e.target.value)}
+            autoFocus={!!vorhanden} placeholder={tr("settings.wert_token")} className={INPUT_VALUE} />
+        </Field>
+        <Field label={tr("settings.beschreibung_optional")}>
+          <input value={description} onChange={(e) => setDescription(e.target.value)} className={INPUT_VALUE} />
+        </Field>
       </div>
     </Dialog>
   );
@@ -202,7 +202,7 @@ function ProviderTokens() {
     queryKey: ["provider-tokens"], queryFn: () => api.get<any[]>("/me/provider-tokens"),
   });
   const [dialog, setDialog] = useState<any | null>(null);   // null = zu, {} = neu
-  const [loeschen, setLoeschen] = useState<any | null>(null);
+  const [remove, setDelete] = useState<any | null>(null);
   const [err, setErr] = useState("");
   const inv = () => qc.invalidateQueries({ queryKey: ["provider-tokens"] });
   const guard = async (fn: () => Promise<any>) => {
@@ -213,9 +213,9 @@ function ProviderTokens() {
   return (
     <div>
       <Fehlerzeile text={err} />
-      <Liste className="mb-3">
+      <Listing className="mb-3">
         {toks?.map((t) => (
-          <ListenZeile key={t.id}>
+          <ListenLine key={t.id}>
             <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-x-2">
@@ -225,92 +225,92 @@ function ProviderTokens() {
               </div>
               {t.base_url && <div className="truncate text-xs text-muted">→ {t.base_url}</div>}
             </div>
-            <Aktionen>
+            <Actions>
               {!t.is_default && (
-                <IconKnopf icon={ICON.standard} titel={tr("common.als_standard")}
+                <IconButton icon={ICON.standard} titel={tr("common.als_standard")}
                   onClick={() => guard(() => api.post(`/me/provider-tokens/${t.id}/default`))} />
               )}
-              <IconKnopf icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(t)} />
-              <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setLoeschen(t)} />
-            </Aktionen>
+              <IconButton icon={ICON.bearbeiten} titel={tr("common.bearbeiten")} onClick={() => setDialog(t)} />
+              <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr onClick={() => setDelete(t)} />
+            </Actions>
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
-        {toks?.length === 0 && <ListeLeer>{tr("settings.noch_keine_keys_hinterlegt")}</ListeLeer>}
-      </Liste>
-      <button onClick={() => setDialog({})} className={KNOPF.haupt}>
+        {toks?.length === 0 && <ListingLeer>{tr("settings.noch_keine_keys_hinterlegt")}</ListingLeer>}
+      </Listing>
+      <button onClick={() => setDialog({})} className={BUTTON.haupt}>
         {ICON.neu} {tr("settings.token_anlegen")}
       </button>
 
       {dialog && (
         <TokenDialog eintrag={dialog.id ? dialog : null} onClose={() => setDialog(null)}
-          onSpeichern={async (werte) => {
+          onSpeichern={async (values) => {
             const ok = dialog.id
               ? await guard(() => api.patch(`/me/provider-tokens/${dialog.id}`, {
-                  token: werte.token || undefined,
-                  base_url: werte.provider === "openai" ? werte.base_url || null : null,
-                  is_default: werte.is_default,
+                  token: values.token || undefined,
+                  base_url: values.provider === "openai" ? values.base_url || null : null,
+                  is_default: values.is_default,
                 }))
               : await guard(() => api.post("/me/provider-tokens", {
-                  provider: werte.provider, name: werte.name, token: werte.token,
-                  is_default: werte.is_default,
-                  base_url: werte.provider === "openai" ? werte.base_url || null : null,
+                  provider: values.provider, name: values.name, token: values.token,
+                  is_default: values.is_default,
+                  base_url: values.provider === "openai" ? values.base_url || null : null,
                 }));
             if (ok) setDialog(null);
           }} />
       )}
-      {loeschen && (
-        <LoeschDialog was={loeschen.name} onClose={() => setLoeschen(null)}
+      {remove && (
+        <LoeschDialog was={remove.name} onClose={() => setDelete(null)}
           onLoeschen={async () => {
-            await guard(() => api.del(`/me/provider-tokens/${loeschen.id}`));
-            setLoeschen(null);
+            await guard(() => api.del(`/me/provider-tokens/${remove.id}`));
+            setDelete(null);
           }} />
       )}
     </div>
   );
 }
 
-function TokenDialog({ eintrag, onClose, onSpeichern }: {
+function TokenDialog({ eintrag: entry, onClose, onSpeichern }: {
   eintrag: any | null;
   onClose: () => void;
-  onSpeichern: (werte: {
+  onSpeichern: (values: {
     provider: string; name: string; token: string; base_url: string; is_default: boolean;
   }) => void;
 }) {
-  const [provider, setProvider] = useState(eintrag?.provider || "claude_code");
-  const [name, setName] = useState(eintrag && eintrag.name !== "Standard" ? eintrag.name : "");
+  const [provider, setProvider] = useState(entry?.provider || "claude_code");
+  const [name, setName] = useState(entry && entry.name !== "Standard" ? entry.name : "");
   const [token, setToken] = useState("");
-  const [baseUrl, setBaseUrl] = useState(eintrag?.base_url || "");
-  const [istStandard, setIstStandard] = useState(!!eintrag?.is_default);
+  const [baseUrl, setBaseUrl] = useState(entry?.base_url || "");
+  const [istStandard, setIstStandard] = useState(!!entry?.is_default);
   // A new entry without a token would be an empty box; an existing one keeps its stored value.
-  const kann = !!eintrag || !!token.trim();
+  const kann = !!entry || !!token.trim();
 
   return (
-    <Dialog titel={eintrag ? tr("settings.token_bearbeiten") : tr("settings.token_anlegen")} onClose={onClose}
+    <Dialog titel={entry ? tr("settings.token_bearbeiten") : tr("settings.token_anlegen")} onClose={onClose}
       fuss={<DialogFuss onAbbrechen={onClose} deaktiviert={!kann}
         onSpeichern={() => onSpeichern({
           provider, name, token: token.trim(), base_url: baseUrl.trim(), is_default: istStandard,
         })} />}>
       <div className="space-y-3">
-        <Feld label={tr("settings.provider")}>
-          <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={!!eintrag}
-            className={`${EINGABE} disabled:opacity-60`}>
+        <Field label={tr("settings.provider")}>
+          <select value={provider} onChange={(e) => setProvider(e.target.value)} disabled={!!entry}
+            className={`${INPUT_VALUE} disabled:opacity-60`}>
             {Object.entries(PROVIDER_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
-        </Feld>
-        <Feld label={tr("settings.name_optional")}>
-          <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!eintrag}
-            className={`${EINGABE} disabled:opacity-60`} />
-        </Feld>
-        <Feld label={tr("settings.wert_token")}
-          hinweis={eintrag ? tr("settings.neuer_wert_leer_behalten") : undefined}>
+        </Field>
+        <Field label={tr("settings.name_optional")}>
+          <input value={name} onChange={(e) => setName(e.target.value)} disabled={!!entry}
+            className={`${INPUT_VALUE} disabled:opacity-60`} />
+        </Field>
+        <Field label={tr("settings.wert_token")}
+          hinweis={entry ? tr("settings.neuer_wert_leer_behalten") : undefined}>
           <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
-            autoFocus placeholder={tr("settings.token_platzhalter")} className={EINGABE} />
-        </Feld>
+            autoFocus placeholder={tr("settings.token_platzhalter")} className={INPUT_VALUE} />
+        </Field>
         {provider === "openai" && (
-          <Feld label={tr("settings.base_url_optional_z_b_http_litellm_4000_")}>
-            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={EINGABE} />
-          </Feld>
+          <Field label={tr("settings.base_url_optional_z_b_http_litellm_4000_")}>
+            <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className={INPUT_VALUE} />
+          </Field>
         )}
         <label className="flex items-center gap-2 text-sm text-ink">
           <input type="checkbox" checked={istStandard} onChange={(e) => setIstStandard(e.target.checked)} />

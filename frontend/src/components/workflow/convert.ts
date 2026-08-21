@@ -21,13 +21,13 @@ function edgeLabel(e: WorkflowGraph["edges"][number]): string | undefined {
  * immutable). Renaming them here while loading keeps the interface single-named, and whoever
  * touches such a node saves it under the new name anyway.
  */
-const ALT_AKTION: Record<string, string> = {
+const ALT_ACTION: Record<string, string> = {
   set_agent_status: "set_status",
   set_purchase_status: "set_status",
 };
 
 function neuerName(a: string): string {
-  return ALT_AKTION[a] || a;
+  return ALT_ACTION[a] || a;
 }
 
 /**
@@ -39,11 +39,11 @@ function neuerName(a: string): string {
  * the interface showed neither the action nor the parameters, and the first edit would have
  * overwritten them. That is why it is rewritten here while loading; what is saved is then the uniform form.
  */
-function normalisiereAktion(config: any): any {
+function normaliseAction(config: any): any {
   const roh = config?.action;
   if (roh && typeof roh === "object" && typeof roh.action === "string") {
     const { hold_reason, ...params } = roh.params || {};
-    if (!ALT_AKTION[roh.action] && hold_reason === undefined) return config;
+    if (!ALT_ACTION[roh.action] && hold_reason === undefined) return config;
     return {
       ...config,
       // `hold_reason` was called that in the predecessor; `set_status` calls it `reason`.
@@ -51,8 +51,8 @@ function normalisiereAktion(config: any): any {
     };
   }
   if (typeof roh !== "string") return config;
-  const { action, kind, label, group, hold_reason, ...rest } = config;
-  const params = hold_reason !== undefined ? { ...rest, reason: hold_reason } : rest;
+  const { action, kind, label, group, hold_reason, ...remainder } = config;
+  const params = hold_reason !== undefined ? { ...remainder, reason: hold_reason } : remainder;
   return { label, group, action: { action: neuerName(roh || kind || "noop"), params } };
 }
 
@@ -69,7 +69,7 @@ export function graphToFlow(
     // (the configuration area hides the wastebasket there as well).
     deletable: n.type !== "start",
     data: {
-      config: n.type === "auto_action" ? normalisiereAktion(n.data.config) : n.data.config,
+      config: n.type === "auto_action" ? normaliseAction(n.data.config) : n.data.config,
       runtimeState: rs?.[n.id],
     },
   }));
@@ -129,15 +129,15 @@ export function flowToGraph(nodes: FlowNode[], edges: Edge[]): WorkflowGraph {
  */
 export function inhaltsSignatur(graph: WorkflowGraph | null | undefined): string {
   if (!graph) return "";
-  const sortiert = (wert: any): any => {
-    if (Array.isArray(wert)) return wert.map(sortiert);
-    if (wert && typeof wert === "object") {
-      return Object.keys(wert).sort().reduce((acc: any, k) => {
-        if (wert[k] !== undefined && wert[k] !== null) acc[k] = sortiert(wert[k]);
+  const sortiert = (value: any): any => {
+    if (Array.isArray(value)) return value.map(sortiert);
+    if (value && typeof value === "object") {
+      return Object.keys(value).sort().reduce((acc: any, k) => {
+        if (value[k] !== undefined && value[k] !== null) acc[k] = sortiert(value[k]);
         return acc;
       }, {});
     }
-    return wert;
+    return value;
   };
   const nachId = (a: any, b: any) => String(a.id).localeCompare(String(b.id));
   return JSON.stringify({
@@ -153,15 +153,15 @@ export function inhaltsSignatur(graph: WorkflowGraph | null | undefined): string
 
 export function graphSignatur(graph: WorkflowGraph | null | undefined): string {
   if (!graph) return "";
-  const sortiert = (wert: any): any => {
-    if (Array.isArray(wert)) return wert.map(sortiert);
-    if (wert && typeof wert === "object") {
-      return Object.keys(wert).sort().reduce((acc: any, k) => {
-        if (wert[k] !== undefined && wert[k] !== null) acc[k] = sortiert(wert[k]);
+  const sortiert = (value: any): any => {
+    if (Array.isArray(value)) return value.map(sortiert);
+    if (value && typeof value === "object") {
+      return Object.keys(value).sort().reduce((acc: any, k) => {
+        if (value[k] !== undefined && value[k] !== null) acc[k] = sortiert(value[k]);
         return acc;
       }, {});
     }
-    return wert;
+    return value;
   };
   const nachId = (a: any, b: any) => String(a.id).localeCompare(String(b.id));
   return JSON.stringify({

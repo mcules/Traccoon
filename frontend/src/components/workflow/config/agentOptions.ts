@@ -36,20 +36,20 @@ export function agentOptions(
   const rang = (a: AgentLite) =>
     (a.user_id == null ? 2 : 0) + (a.project_id == null ? 1 : 0);
 
-  const zeilen: [string, string][] = [];
-  for (const [rolle, liste] of [...proRolle.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-    const [gewinner] = [...liste].sort((a, b) => rang(a) - rang(b));
+  const lines: [string, string][] = [];
+  for (const [rolle, listing] of [...proRolle.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const [gewinner] = [...listing].sort((a, b) => rang(a) - rang(b));
     const herkunft =
       gewinner.project_id != null ? "Projekt"
         : gewinner.user_id != null ? tr("agent_options.persoenlich")
           : "Ausgeliefert";
-    const zusatz = [
+    const extra = [
       herkunft,
       gewinner.customized ? "angepasst" : "",
-      liste.length > 1 ? `${liste.length} Definitionen` : "",
+      listing.length > 1 ? `${listing.length} Definitionen` : "",
     ].filter(Boolean).join(" · ");
     const name = gewinner.display_name || rolle;
-    zeilen.push([rolle, `${name} (${rolle}) — ${zusatz}`]);
+    lines.push([rolle, `${name} (${rolle}) — ${extra}`]);
   }
-  return opts.empty ? [["", opts.empty], ...zeilen] : zeilen;
+  return opts.empty ? [["", opts.empty], ...lines] : lines;
 }

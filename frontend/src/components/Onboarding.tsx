@@ -2,13 +2,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tr } from "../i18n";
 import { Link } from "react-router-dom";
 import { api } from "../api";
-import { KNOPF_TEXT } from "./ui";
+import { BUTTON_TEXT } from "./ui";
 
 type Step = { key: string; title: string; hint: string; done: boolean; required: boolean };
 type Status = { steps: Step[]; ready: boolean; projects: number; dismissed: boolean };
 
 /** Target place per step; otherwise nobody knows where to click. */
-const ZIEL: Record<string, { to: string; label: string }> = {
+const TARGET: Record<string, { to: string; label: string }> = {
   claude_token: { to: "/settings", label: "onboarding.ziel_tresor" },
   project: { to: "/", label: "onboarding.ziel_projekt_anlegen" },
   git: { to: "/", label: "onboarding.ziel_projekt_oeffnen" },
@@ -24,9 +24,9 @@ export default function Onboarding() {
   });
   if (!data || data.dismissed) return null;
 
-  const offenPflicht = data.steps.filter((s) => !s.done && s.required);
-  const offenOptional = data.steps.filter((s) => !s.done && !s.required);
-  if (!offenPflicht.length && !offenOptional.length) return null;
+  const openPflicht = data.steps.filter((s) => !s.done && s.required);
+  const openOptional = data.steps.filter((s) => !s.done && !s.required);
+  if (!openPflicht.length && !openOptional.length) return null;
 
   const dismiss = async () => {
     await api.post("/me/onboarding/dismiss");
@@ -44,7 +44,7 @@ export default function Onboarding() {
             {tr(data.ready ? "onboarding.rest_optional" : "onboarding.pflicht_offen")}
           </p>
         </div>
-        <button onClick={dismiss} className={KNOPF_TEXT.neben}>{tr("onboarding.ausblenden")}</button>
+        <button onClick={dismiss} className={BUTTON_TEXT.neben}>{tr("onboarding.ausblenden")}</button>
       </div>
 
       <div className="mt-3 space-y-2">
@@ -58,9 +58,9 @@ export default function Onboarding() {
               {!s.required && !s.done && <span className="ml-1 text-xs text-muted">(optional)</span>}
               {!s.done && <div className="text-xs text-muted">{s.hint}</div>}
             </div>
-            {!s.done && ZIEL[s.key] && (
-              <Link to={ZIEL[s.key].to} className="whitespace-nowrap text-xs text-brand hover:underline">
-                {tr(ZIEL[s.key].label)} →
+            {!s.done && TARGET[s.key] && (
+              <Link to={TARGET[s.key].to} className="whitespace-nowrap text-xs text-brand hover:underline">
+                {tr(TARGET[s.key].label)} →
               </Link>
             )}
           </div>

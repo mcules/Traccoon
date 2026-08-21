@@ -1,4 +1,4 @@
-import { trBekannt } from "./i18n";
+import { trKnown } from "./i18n";
 
 const TOKEN_KEY = "traccoon_token";
 
@@ -29,7 +29,7 @@ export class ApiError extends Error {
  * im Speicher der Anwendung. Genau deshalb kam beim Klick auf einen Anhang „Not
  * authenticated" statt der Datei.
  */
-export async function holeDatei(path: string): Promise<{ blob: Blob; typ: string }> {
+export async function holeFile(path: string): Promise<{ blob: Blob; typ: string }> {
   const token = getToken();
   const res = await fetch(`/api${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
@@ -69,7 +69,7 @@ export async function request<T = any>(
       // a key this language does not carry.
       if (typeof j.key === "string") {
         key = j.key;
-        detail = trBekannt(j.key, j.werte) ?? detail;
+        detail = trKnown(j.key, j.werte) ?? detail;
       }
     } catch {
       /* ignore */
@@ -88,7 +88,7 @@ async function upload<T = any>(path: string, file: File): Promise<T> {
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`/api${path}`, { method: "POST", headers, body: fd });
-  if (!res.ok) throw await fehlerAus(res);
+  if (!res.ok) throw await errorAus(res);
   return res.json();
 }
 
@@ -98,7 +98,7 @@ async function upload<T = any>(path: string, file: File): Promise<T> {
  * Ohne das stand beim Hochladen nur "Bad Request" — die Auskunft, welche Datei im Zip fehlt,
  * blieb im Rumpf liegen.
  */
-async function fehlerAus(res: Response): Promise<ApiError> {
+async function errorAus(res: Response): Promise<ApiError> {
   let detail = res.statusText;
   let key: string | undefined;
   try {
@@ -106,7 +106,7 @@ async function fehlerAus(res: Response): Promise<ApiError> {
     if (typeof j.detail === "string") detail = j.detail;
     if (typeof j.key === "string") {
       key = j.key;
-      detail = trBekannt(j.key, j.werte) ?? detail;
+      detail = trKnown(j.key, j.werte) ?? detail;
     }
   } catch {
     /* keine JSON-Antwort */
@@ -275,7 +275,7 @@ export const destinationApi = {
 
 // ---------- Datenreihen ----------
 
-export interface Reihe {
+export interface Series {
   id: number;
   key: string;
   kind: "number" | "location" | "text";
@@ -310,7 +310,7 @@ export interface Ort {
   series_key: string;
 }
 
-export interface Freigabe {
+export interface Grant {
   id: number;
   user_id: number;
   username: string;
@@ -318,22 +318,22 @@ export interface Freigabe {
 }
 
 export const seriesApi = {
-  list: (kind?: string) => api.get<Reihe[]>(`/series${kind ? `?kind=${kind}` : ""}`),
-  live: (kind = "location") => api.get<Reihe[]>(`/series-live?kind=${kind}`),
-  create: (body: Record<string, any>) => api.post<Reihe>("/series", body),
+  list: (kind?: string) => api.get<Series[]>(`/series${kind ? `?kind=${kind}` : ""}`),
+  live: (kind = "location") => api.get<Series[]>(`/series-live?kind=${kind}`),
+  create: (body: Record<string, any>) => api.post<Series>("/series", body),
   update: (key: string, body: Record<string, any>) =>
-    api.put<Reihe>(`/series/${encodeURIComponent(key)}`, body),
+    api.put<Series>(`/series/${encodeURIComponent(key)}`, body),
   del: (key: string) => api.del(`/series/${encodeURIComponent(key)}`),
   points: (key: string, q = "") =>
-    api.get<{ series: Reihe; points: any[] }>(`/series/${encodeURIComponent(key)}/points${q}`),
+    api.get<{ series: Series; points: any[] }>(`/series/${encodeURIComponent(key)}/points${q}`),
   /** Ein frisches Token — das alte gilt danach nicht mehr. */
   neuesToken: (key: string) =>
     api.post<{ token: string; path: string }>(`/series/${encodeURIComponent(key)}/token`, {}),
   token: (key: string) =>
     api.get<{ token: string; path: string }>(`/series/${encodeURIComponent(key)}/token`),
-  shares: (key: string) => api.get<Freigabe[]>(`/series/${encodeURIComponent(key)}/shares`),
+  shares: (key: string) => api.get<Grant[]>(`/series/${encodeURIComponent(key)}/shares`),
   share: (key: string, body: { user_id: number; level: string }) =>
-    api.post<Freigabe>(`/series/${encodeURIComponent(key)}/shares`, body),
+    api.post<Grant>(`/series/${encodeURIComponent(key)}/shares`, body),
   unshare: (key: string, id: number) =>
     api.del(`/series/${encodeURIComponent(key)}/shares/${id}`),
   orte: () => api.get<Ort[]>("/places"),
@@ -384,7 +384,7 @@ export const pluginApi = {
   }) => api.put<PluginVerwaltung>(`/plugins/${slug}/rechte`, body),
   del: (slug: string) => api.del(`/plugins/${slug}`),
   /** Zip hochladen; Manifest und Dateien wertet der Server aus. */
-  hochladen: (datei: File) => upload<{ slug: string; files: number }>("/plugins", datei),
+  hochladen: (file: File) => upload<{ slug: string; files: number }>("/plugins", file),
 };
 
 // ---------- Deployments ----------
@@ -399,11 +399,11 @@ export type GraphSave = {
   version: WfVer;
 };
 
-export type WfDiffFeld = { field: string; before: string; after: string };
-export type WfDiffKnoten = { id: string; label: string; fields: WfDiffFeld[] };
+export type WfDiffField = { field: string; before: string; after: string };
+export type WfDiffNode = { id: string; label: string; fields: WfDiffField[] };
 export type WfDiff = {
   from_version: number | null; to_version: number; identical: boolean;
-  nodes_added: WfDiffKnoten[]; nodes_removed: WfDiffKnoten[]; nodes_changed: WfDiffKnoten[];
+  nodes_added: WfDiffNode[]; nodes_removed: WfDiffNode[]; nodes_changed: WfDiffNode[];
   edges_added: string[]; edges_removed: string[];
 };
 
@@ -437,7 +437,7 @@ export interface DeploymentRow {
   log_head?: string | null;
 }
 
-export interface DeploymentListe {
+export interface DeploymentListing {
   items: DeploymentRow[];
   count: number;
   truncated?: boolean;
@@ -461,9 +461,9 @@ export const deploymentApi = {
     if (opts.status && opts.status !== "all") q.set("status", opts.status);
     // By contract only the project bound route knows `issue_id`; globally it has no effect.
     if (opts.issueId) q.set("issue_id", String(opts.issueId));
-    const pfad = opts.projectId != null ? `/projects/${opts.projectId}/deployments` : "/deployments";
+    const path = opts.projectId != null ? `/projects/${opts.projectId}/deployments` : "/deployments";
     const s = q.toString();
-    return api.get<DeploymentListe>(`${pfad}${s ? `?${s}` : ""}`);
+    return api.get<DeploymentListing>(`${path}${s ? `?${s}` : ""}`);
   },
   get: (id: number) => api.get<DeploymentDetail>(`/deployments/${id}`),
   /** Queue by hand (the button under Settings → Deployment). Only project bound, because a
@@ -493,11 +493,11 @@ export const workflowApi = {
                         decision?: string | null; result?: Record<string, any> | null;
                         error?: string | null }[] }>(`/workflows/${id}/dry-run`, { context, graph }),
   /** Have a flow drawn from a description (saves nothing). */
-  entwurf: (id: number, beschreibung: string, graph?: unknown) =>
+  entwurf: (id: number, description: string, graph?: unknown) =>
     api.post<{ graph: { nodes: any[]; edges: any[] }; fehler: string[]; erklaerung: string }>(
-      `/workflows/${id}/draft`, { beschreibung, graph }),
+      `/workflows/${id}/draft`, { beschreibung: description, graph }),
   /** Which context fields exist, per trigger, action and node type (for the editor). */
-  contextFields: () => api.get<import("./components/workflow/contextFields").KontextKatalog>(
+  contextFields: () => api.get<import("./components/workflow/contextFields").ContextKatalog>(
     "/workflow-context-fields"),
   /** Finished flows to copy (the description, not the graph). */
   templates: () => api.get<{ key: string; name: string; description: string;
@@ -569,7 +569,7 @@ export const workflowApi = {
 
 // ── Process administration (cross-cutting) ───────────────────────────────────
 
-export interface ProcAbweichung {
+export interface ProcDeviation {
   project_id: number; project_key: string; project_name: string;
   definition_id: number; published: boolean;
 }
@@ -578,7 +578,7 @@ export interface ProcSlot {
   slot: string; name: string; description: string; subject_kind: WfSubject;
   definition_id: number | null; definition_name: string | null;
   version: number | null; published: boolean; updated_at: string | null;
-  abweichungen: ProcAbweichung[];
+  abweichungen: ProcDeviation[];
 }
 
 export interface ProcLauf {
@@ -591,7 +591,7 @@ export interface ProcLauf {
   error: string | null; started_at: string;
 }
 
-export interface ProcAusloeser {
+export interface ProcTrigger {
   definition_id: number; definition_name: string; slot: string | null;
   project_id: number | null; project_key: string | null;
   kind: "event" | "webhook" | "job" | "subflow" | "manual";
@@ -610,6 +610,6 @@ export const processApi = {
     const s = q.toString();
     return api.get<ProcLauf[]>(`/processes/running${s ? `?${s}` : ""}`);
   },
-  triggers: () => api.get<ProcAusloeser[]>("/processes/triggers"),
+  triggers: () => api.get<ProcTrigger[]>("/processes/triggers"),
   events: () => api.get<ProcEreignis[]>("/processes/events"),
 };

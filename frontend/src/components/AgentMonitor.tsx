@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Project } from "../api";
-import { KNOPF_KLEIN } from "./ui";
+import { BUTTON_KLEIN } from "./ui";
 
 const ST_COLOR: Record<string, string> = {
   running: "text-yellow-400", success: "text-green-400", done: "text-green-400",
@@ -63,10 +63,10 @@ export default function AgentMonitor({ project }: { project: Project }) {
                 <span className="font-mono">{a.issue_key}</span>
                 <span className="rounded bg-surface px-1.5 py-0.5 text-xs">🤖 {a.role}</span>
                 <span className="text-xs text-muted">{a.phase === "planning" ? "plant" : "arbeitet"}</span>
-                <span className="text-xs text-muted">seit {fmtDauer(a.running_seconds)}</span>
+                <span className="text-xs text-muted">seit {fmtDuration(a.running_seconds)}</span>
                 <div className="flex-1" />
                 <button onClick={() => stop.mutate(a.issue_key)}
-                  className={KNOPF_KLEIN.gefahr}>
+                  className={BUTTON_KLEIN.gefahr}>
                   ⏹ Stoppen</button>
               </div>
             ))}
@@ -87,7 +87,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
                 <div className="flex-1" />
                 {["once", "always", "never"].map((d) => (
                   <button key={d} onClick={() => decide.mutate({ id: p.id, decision: d })}
-                    className={KNOPF_KLEIN.neben}>
+                    className={BUTTON_KLEIN.neben}>
                     {tr(d === "once" ? "agent_monitor.einmal" : d === "always" ? "agent_monitor.immer" : "agent_monitor.nie")}</button>
                 ))}
               </div>
@@ -155,7 +155,7 @@ export default function AgentMonitor({ project }: { project: Project }) {
   );
 }
 
-function fmtDauer(s: number): string {
+function fmtDuration(s: number): string {
   if (s < 60) return `${s}s`;
   if (s < 3600) return `${Math.floor(s / 60)}m ${s % 60}s`;
   return `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m`;

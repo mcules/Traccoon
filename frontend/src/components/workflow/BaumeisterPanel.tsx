@@ -2,7 +2,7 @@ import { useState } from "react";
 import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { WorkflowGraph } from "./types";
-import { KNOPF_KLEIN, KNOPF_TEXT} from "../ui";
+import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
 
 /**
  * "Describe it, I draw it": the entry for everybody who has no graph in their head.
@@ -15,29 +15,29 @@ export default function BaumeisterPanel({
   defId,
   graph,
   uebernehmen,
-  knotenZahl,
+  knotenZahl: nodeZahl,
 }: {
   defId?: number;
   graph: () => WorkflowGraph;
   uebernehmen: (g: WorkflowGraph) => void;
   knotenZahl: number;
 }) {
-  const [offen, setOffen] = useState(false);
+  const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   // More than a start and an end on the canvas? Then a rebuild is usually meant.
-  const [umbauen, setUmbauen] = useState(knotenZahl > 2);
-  const [laeuft, setLaeuft] = useState(false);
+  const [umbauen, setUmbauen] = useState(nodeZahl > 2);
+  const [running, setRunning] = useState(false);
   const [erklaerung, setErklaerung] = useState("");
-  const [fehler, setFehler] = useState<string[]>([]);
+  const [error, setError] = useState<string[]>([]);
   const [err, setErr] = useState("");
   const [vorher, setVorher] = useState<WorkflowGraph | null>(null);
 
   const bauen = async () => {
     if (!defId || !text.trim()) return;
-    setLaeuft(true);
+    setRunning(true);
     setErr("");
     setErklaerung("");
-    setFehler([]);
+    setError([]);
     const alt = graph();
     try {
       const r = await workflowApi.entwurf(defId, text.trim(), umbauen ? alt : undefined);
@@ -48,27 +48,27 @@ export default function BaumeisterPanel({
       setVorher(alt);
       uebernehmen(r.graph as WorkflowGraph);
       setErklaerung(r.erklaerung || "");
-      setFehler(r.fehler || []);
+      setError(r.fehler || []);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : "Fehler");
     } finally {
-      setLaeuft(false);
+      setRunning(false);
     }
   };
 
-  const zurueck = () => {
+  const back = () => {
     if (!vorher) return;
     uebernehmen(vorher);
     setVorher(null);
     setErklaerung("");
-    setFehler([]);
+    setError([]);
   };
 
-  if (!offen) {
+  if (!open) {
     return (
       <div className="border-t border-line p-3">
-        <button onClick={() => setOffen(true)}
-          className={KNOPF_KLEIN.neben}>
+        <button onClick={() => setOpen(true)}
+          className={BUTTON_KLEIN.neben}>
           ✍ Beschreiben statt bauen
         </button>
       </div>
@@ -79,8 +79,8 @@ export default function BaumeisterPanel({
     <div className="space-y-2 border-t border-line p-3">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted">{tr("baumeister_panel.beschreiben_statt_bauen")}</span>
-        <button onClick={() => setOffen(false)} title={tr("baumeister_panel.schliessen")}
-          className={KNOPF_TEXT.neben}>✕</button>
+        <button onClick={() => setOpen(false)} title={tr("baumeister_panel.schliessen")}
+          className={BUTTON_TEXT.neben}>✕</button>
       </div>
 
       <textarea
@@ -99,13 +99,13 @@ export default function BaumeisterPanel({
       </label>
 
       <div className="flex items-center gap-2">
-        <button onClick={bauen} disabled={laeuft || !text.trim() || !defId}
-          className={KNOPF_KLEIN.haupt}>
-          {laeuft ? "zeichnet…" : "Zeichnen lassen"}
+        <button onClick={bauen} disabled={running || !text.trim() || !defId}
+          className={BUTTON_KLEIN.haupt}>
+          {running ? "zeichnet…" : "Zeichnen lassen"}
         </button>
         {vorher && (
-          <button onClick={zurueck}
-            className={KNOPF_KLEIN.neben}>
+          <button onClick={back}
+            className={BUTTON_KLEIN.neben}>
             {tr("baumeister.zurueck_zum_stand")}
           </button>
         )}
@@ -120,9 +120,9 @@ export default function BaumeisterPanel({
           </div>
         </div>
       )}
-      {fehler.length > 0 && (
+      {error.length > 0 && (
         <div className="text-[11px] text-amber-300">
-          {tr("baumeister.fehlende_stellen", { anzahl: fehler.length })}
+          {tr("baumeister.fehlende_stellen", { anzahl: error.length })}
         </div>
       )}
     </div>

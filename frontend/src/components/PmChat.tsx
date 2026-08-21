@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, getToken, Project } from "../api";
 import { useAuth } from "../auth";
 import { formatTime } from "../lib/formatTime";
-import { KNOPF } from "./ui";
+import { BUTTON } from "./ui";
 
 interface Msg { id?: number; role: string; author?: string; content: string; created_at?: string; }
 
@@ -79,7 +79,7 @@ function BubbleChat({ messages, text, setText, send, boxRef }: ViewProps) {
         <input value={text} onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder={tr("pm_chat.nachricht_an_den_pm")} className="flex-1 rounded border border-line bg-surface px-3 py-2" />
-        <button onClick={send} className={KNOPF.haupt}>{tr("pm_chat.senden")}</button>
+        <button onClick={send} className={BUTTON.haupt}>{tr("pm_chat.senden")}</button>
       </div>
     </div>
   );

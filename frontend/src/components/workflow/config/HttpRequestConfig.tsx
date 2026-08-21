@@ -19,13 +19,13 @@ export default function HttpRequestConfig({
   onChange: (p: Record<string, any>) => void;
   projectId?: number;
 }) {
-  const { data: ziele } = useQuery({
+  const { data: targets } = useQuery({
     queryKey: ["destinations-usable", projectId ?? null],
     queryFn: () => destinationApi.list(projectId, true),
   });
   const set = (k: string, v: any) => onChange({ ...params, [k]: v });
   const inp = "w-full rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
-  const gewaehlt = ziele?.find((d) => d.name === params.destination);
+  const gewaehlt = targets?.find((d) => d.name === params.destination);
 
   return (
     <div className="space-y-3">
@@ -39,7 +39,7 @@ export default function HttpRequestConfig({
           className={`mt-1 ${inp}`}
         />
         <datalist id="ziele">
-          {ziele?.map((d) => (
+          {targets?.map((d) => (
             <option key={d.id} value={d.name}>
               {d.label || d.base_url}
             </option>

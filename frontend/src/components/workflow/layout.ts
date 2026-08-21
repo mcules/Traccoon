@@ -30,40 +30,40 @@ export interface LayoutOptions {
  * arrangement itself treats them normally.
  */
 export function feedbackEdges(graph: WorkflowGraph): Set<string> {
-  const raus = new Map<string, { id: string; target: string }[]>();
+  const out = new Map<string, { id: string; target: string }[]>();
   for (const e of graph.edges) {
-    raus.set(e.source, [...(raus.get(e.source) || []), { id: e.id, target: e.target }]);
+    out.set(e.source, [...(out.get(e.source) || []), { id: e.id, target: e.target }]);
   }
   const start = graph.nodes.find((n) => n.type === "start")?.id
     ?? graph.nodes[0]?.id;
   const rueck = new Set<string>();
-  const OFFEN = 1, FERTIG = 2;
-  const zustand = new Map<string, number>();
+  const OPEN = 1, DONE = 2;
+  const state = new Map<string, number>();
 
   // Depth first search with colours: an edge onto a node that is still OPEN closes a cycle.
   const lauf = (startId: string) => {
     const stapel: { id: string; i: number }[] = [{ id: startId, i: 0 }];
-    zustand.set(startId, OFFEN);
+    state.set(startId, OPEN);
     while (stapel.length) {
       const oben = stapel[stapel.length - 1];
-      const kanten = raus.get(oben.id) || [];
-      if (oben.i >= kanten.length) {
-        zustand.set(oben.id, FERTIG);
+      const edges = out.get(oben.id) || [];
+      if (oben.i >= edges.length) {
+        state.set(oben.id, DONE);
         stapel.pop();
         continue;
       }
-      const k = kanten[oben.i++];
-      const z = zustand.get(k.target);
-      if (z === OFFEN) rueck.add(k.id);          // zurück auf einen Knoten im aktuellen Pfad
+      const k = edges[oben.i++];
+      const z = state.get(k.target);
+      if (z === OPEN) rueck.add(k.id);          // zurück auf einen Knoten im aktuellen Pfad
       else if (z === undefined) {
-        zustand.set(k.target, OFFEN);
+        state.set(k.target, OPEN);
         stapel.push({ id: k.target, i: 0 });
       }
     }
   };
   if (start) lauf(start);
   // Sort in nodes that are not reachable from the start as well.
-  for (const n of graph.nodes) if (!zustand.has(n.id)) lauf(n.id);
+  for (const n of graph.nodes) if (!state.has(n.id)) lauf(n.id);
   return rueck;
 }
 
@@ -173,27 +173,27 @@ function ausrichten(
     hoch.set(e.target, [...(hoch.get(e.target) || []), e.source]);
     runter.set(e.source, [...(runter.get(e.source) || []), e.target]);
   }
-  const median = (werte: number[]) => {
-    if (!werte.length) return undefined;
-    const s = [...werte].sort((a, b) => a - b);
+  const median = (values: number[]) => {
+    if (!values.length) return undefined;
+    const s = [...values].sort((a, b) => a - b);
     const m = Math.floor(s.length / 2);
     return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
   };
 
   // Record the order per row once (the one dagre chose, with few crossings).
-  const reihen = rows.map((row) =>
+  const series = rows.map((row) =>
     [...row.items].sort((a, b) => a.p.x - b.p.x).map((it) => it.node.id));
 
   for (let runde = 0; runde < 12; runde++) {
     const abwaerts = runde % 2 === 0;
-    const folge = abwaerts ? reihen : [...reihen].reverse();
-    for (const zeile of folge) {
-      const wunsch = zeile.map((id) => {
+    const sequence = abwaerts ? series : [...series].reverse();
+    for (const line of sequence) {
+      const wunsch = line.map((id) => {
         const nachbarn = (abwaerts ? hoch : runter).get(id) || [];
         return median(nachbarn.map((n) => x.get(n)!)) ?? x.get(id)!;
       });
-      const platziert = isoton(wunsch, zeile.map((id) => breite.get(id)!), gap);
-      zeile.forEach((id, i) => x.set(id, platziert[i]));
+      const platziert = isoton(wunsch, line.map((id) => breite.get(id)!), gap);
+      line.forEach((id, i) => x.set(id, platziert[i]));
     }
   }
   return x;
@@ -215,14 +215,14 @@ function isoton(wunsch: number[], breiten: number[], gap: number): number[] {
   const z = wunsch.map((w, i) => w - versatz[i]);
 
   const bloecke: { summe: number; anzahl: number; wert: number }[] = [];
-  for (const wert of z) {
-    bloecke.push({ summe: wert, anzahl: 1, wert });
+  for (const value of z) {
+    bloecke.push({ summe: value, anzahl: 1, wert: value });
     while (bloecke.length > 1 && bloecke[bloecke.length - 2].wert > bloecke[bloecke.length - 1].wert) {
       const b = bloecke.pop()!;
       const a = bloecke.pop()!;
-      const summe = a.summe + b.summe;
-      const anzahl = a.anzahl + b.anzahl;
-      bloecke.push({ summe, anzahl, wert: summe / anzahl });
+      const sum_total = a.summe + b.summe;
+      const count = a.anzahl + b.anzahl;
+      bloecke.push({ summe: sum_total, anzahl: count, wert: sum_total / count });
     }
   }
   const out: number[] = [];

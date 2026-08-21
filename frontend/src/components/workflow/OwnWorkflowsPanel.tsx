@@ -5,8 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, workflowApi } from "../../api";
 import type { WorkflowDefinition, WorkflowSubjectKind } from "./types";
 import {
-  Aktionen, Bereich, Dialog, DialogFuss, Etikett, Fehlerzeile, ICON, IconKnopf, Liste,
-  ListeLeer, ListenZeile, LoeschDialog, Zustand, KNOPF } from "../ui";
+  Actions, Area, Dialog, DialogFuss, Etikett, Fehlerzeile, ICON, IconButton, Listing,
+  ListingLeer, ListenLine, LoeschDialog, State, BUTTON } from "../ui";
 
 const EMPTY = { key: "", name: "", subject_kind: "standalone" as WorkflowSubjectKind,
                 description: "", template: "" };
@@ -31,33 +31,33 @@ export default function OwnWorkflowsPanel() {
   const nav = useNavigate();
   const [f, setF] = useState(EMPTY);
   const [err, setErr] = useState("");
-  const [neuDialog, setNeuDialog] = useState(false);
-  const [loeschAblauf, setLoeschAblauf] = useState<WorkflowDefinition | null>(null);
+  const [newDialog, setNewDialog] = useState(false);
+  const [loeschFlow, setLoeschFlow] = useState<WorkflowDefinition | null>(null);
   // Umbenennen: Name und Schlüssel entstehen oft nebenbei (aus einer Route, aus einem
   // Job-Namen) und beschreiben dann den Auslöser statt der Sache.
   const [umbenennen, setUmbenennen] = useState<WorkflowDefinition | null>(null);
-  const [nameNeu, setNameNeu] = useState("");
-  const [keyNeu, setKeyNeu] = useState("");
+  const [nameNew, setNameNew] = useState("");
+  const [keyNew, setKeyNew] = useState("");
 
-  const { data: alle } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
-  const { data: vorlagen } = useQuery({
+  const { data: all } = useQuery({ queryKey: ["workflows-all"], queryFn: workflowApi.listAll });
+  const { data: templates } = useQuery({
     queryKey: ["workflow-templates"], queryFn: workflowApi.templates, staleTime: 30 * 60_000 });
-  const gewaehlt = (vorlagen || []).find((v) => v.key === f.template);
+  const gewaehlt = (templates || []).find((v) => v.key === f.template);
   // Slot flows stand at the top in the process set, project flows in the respective project.
-  const eigene = (alle || []).filter((d) => d.project_id === null && !d.slot && !d.archived_at);
+  const eigene = (all || []).filter((d) => d.project_id === null && !d.slot && !d.archived_at);
 
-  const oeffnen = (d: WorkflowDefinition) =>
+  const open_it = (d: WorkflowDefinition) =>
     nav(`/workflows/${d.id}`, { state: { from: "/processes/own" } });
   const inv = () => qc.invalidateQueries({ queryKey: ["workflows-all"] });
   const fail = (e: unknown) => setErr(e instanceof ApiError ? e.message : "Fehler");
 
-  const anlegen = useMutation({
+  const create = useMutation({
     mutationFn: () => workflowApi.create({
       project_id: null, key: f.key.trim(), name: f.name.trim(),
       subject_kind: f.subject_kind, description: f.description.trim() || undefined,
       template: f.template || undefined,
     }),
-    onSuccess: (d) => { setF(EMPTY); setErr(""); setNeuDialog(false); inv(); nav(`/workflows/${d.id}`, { state: { from: "/processes/own" } }); },
+    onSuccess: (d) => { setF(EMPTY); setErr(""); setNewDialog(false); inv(); nav(`/workflows/${d.id}`, { state: { from: "/processes/own" } }); },
     onError: fail,
   });
   const umschalten = useMutation({
@@ -66,26 +66,26 @@ export default function OwnWorkflowsPanel() {
   });
   const speichern = useMutation({
     mutationFn: () => workflowApi.update(umbenennen!.id,
-      { name: nameNeu.trim(), key: keyNeu.trim() }),
+      { name: nameNew.trim(), key: keyNew.trim() }),
     onSuccess: () => { setErr(""); setUmbenennen(null); inv(); }, onError: fail,
   });
-  const loeschen = useMutation({
+  const remove = useMutation({
     mutationFn: (id: number) => workflowApi.del(id),
-    onSuccess: () => { setErr(""); setLoeschAblauf(null); inv(); }, onError: fail,
+    onSuccess: () => { setErr(""); setLoeschFlow(null); inv(); }, onError: fail,
   });
 
   return (
-    <Bereich hinweis={tr("own_workflows_panel.einleitung")}>
+    <Area hinweis={tr("own_workflows_panel.einleitung")}>
       <Fehlerzeile text={err} />
 
       {eigene.length > 0 ? (
         /* Ohne Spaltenköpfe: bei einer Handvoll Einträgen erklären sich Name, Schlüssel und
            Zustand von selbst, und eine Überschriftenzeile wäre eine Zeile Rauschen über
            fünf Zeilen Inhalt. */
-        <Liste>
+        <Listing>
           {eigene.map((d) => (
-            <ListenZeile key={d.id} spalten={SPALTEN} gedimmt={!d.enabled}
-              onClick={() => oeffnen(d)}>
+            <ListenLine key={d.id} spalten={SPALTEN} gedimmt={!d.enabled}
+              onClick={() => open_it(d)}>
               {/* Zwei Zeilen statt fünf Spalten: der Name trägt den Eintrag, alles
                   Technische steht eine Etage tiefer und leiser. Das hält die Liste auch
                   dann ausgerichtet, wenn ein Name lang und der nächste kurz ist. */}
@@ -98,46 +98,46 @@ export default function OwnWorkflowsPanel() {
                 </div>
               </div>
               {!d.enabled
-                ? <Zustand farbe="grau" text={tr("own_workflows_panel.aus")} />
+                ? <State farbe="grau" text={tr("own_workflows_panel.aus")} />
                 : d.current_version_id
-                  ? <Zustand farbe="gruen" text={tr("proc.veroeffentlicht")} />
-                  : <Zustand farbe="gelb" text={tr("own_workflows.nur_entwurf")} />}
+                  ? <State farbe="gruen" text={tr("proc.veroeffentlicht")} />
+                  : <State farbe="gelb" text={tr("own_workflows.nur_entwurf")} />}
               {/* Klicks auf die Knöpfe gehören den Knöpfen — sonst öffnete sich hinter dem
                   Löschdialog auch noch der Editor. */}
               <div className="ml-auto shrink-0 sm:ml-0 sm:justify-self-end"
                 onClick={(e) => e.stopPropagation()}>
-                <Aktionen>
-                  <IconKnopf icon={ICON.bearbeiten} titel={tr("own_workflows_panel.editor")}
-                    onClick={() => oeffnen(d)} />
-                  <IconKnopf icon="🏷" titel={tr("own_workflows_panel.umbenennen")}
-                    onClick={() => { setErr(""); setNameNeu(d.name); setKeyNeu(d.key); setUmbenennen(d); }} />
-                  <IconKnopf icon={d.enabled ? "⏸" : "⏵"} onClick={() => umschalten.mutate(d)}
+                <Actions>
+                  <IconButton icon={ICON.bearbeiten} titel={tr("own_workflows_panel.editor")}
+                    onClick={() => open_it(d)} />
+                  <IconButton icon="🏷" titel={tr("own_workflows_panel.umbenennen")}
+                    onClick={() => { setErr(""); setNameNew(d.name); setKeyNew(d.key); setUmbenennen(d); }} />
+                  <IconButton icon={d.enabled ? "⏸" : "⏵"} onClick={() => umschalten.mutate(d)}
                     titel={tr(d.enabled ? "own_workflows_panel.aus" : "own_workflows_panel.an")} />
-                  <IconKnopf icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
-                    onClick={() => setLoeschAblauf(d)} />
-                </Aktionen>
+                  <IconButton icon={ICON.loeschen} titel={tr("common.loeschen")} gefahr
+                    onClick={() => setLoeschFlow(d)} />
+                </Actions>
               </div>
-            </ListenZeile>
+            </ListenLine>
           ))}
-        </Liste>
+        </Listing>
       ) : (
-        <Liste><ListeLeer>{tr("own_workflows_panel.noch_keine_eigenen_prozesse")}</ListeLeer></Liste>
+        <Listing><ListingLeer>{tr("own_workflows_panel.noch_keine_eigenen_prozesse")}</ListingLeer></Listing>
       )}
 
       {umbenennen && (
         <Dialog titel={tr("own_workflows_panel.umbenennen")} onClose={() => setUmbenennen(null)}
           fuss={<DialogFuss onAbbrechen={() => setUmbenennen(null)}
-            deaktiviert={!nameNeu.trim() || !keyNeu.trim()} laeuft={speichern.isPending}
+            deaktiviert={!nameNew.trim() || !keyNew.trim()} laeuft={speichern.isPending}
             onSpeichern={() => speichern.mutate()} />}>
           <div className="space-y-3">
             <label className="block text-xs font-medium text-muted">
               {tr("own_workflows_panel.name")}
-              <input value={nameNeu} autoFocus onChange={(e) => setNameNeu(e.target.value)}
+              <input value={nameNew} autoFocus onChange={(e) => setNameNew(e.target.value)}
                 className={`mt-1 w-full ${inp}`} />
             </label>
             <label className="block text-xs font-medium text-muted">
               {tr("own_workflows_panel.schluessel")}
-              <input value={keyNeu} onChange={(e) => setKeyNeu(e.target.value)}
+              <input value={keyNew} onChange={(e) => setKeyNew(e.target.value)}
                 className={`mt-1 w-full font-mono ${inp}`} />
               <span className="mt-1 block text-[11px] text-muted">
                 {tr("own_workflows_panel.schluessel_hinweis")}
@@ -147,16 +147,16 @@ export default function OwnWorkflowsPanel() {
         </Dialog>
       )}
 
-      <button onClick={() => { setErr(""); setNeuDialog(true); }}
-        className={KNOPF.haupt}>
+      <button onClick={() => { setErr(""); setNewDialog(true); }}
+        className={BUTTON.haupt}>
         {ICON.neu} {tr("own_workflows_panel.ablauf_anlegen")}
       </button>
 
-      {neuDialog && (
-        <Dialog breit titel={tr("own_workflows_panel.ablauf_anlegen")} onClose={() => setNeuDialog(false)}
-          fuss={<DialogFuss onAbbrechen={() => setNeuDialog(false)} laeuft={anlegen.isPending}
+      {newDialog && (
+        <Dialog breit titel={tr("own_workflows_panel.ablauf_anlegen")} onClose={() => setNewDialog(false)}
+          fuss={<DialogFuss onAbbrechen={() => setNewDialog(false)} laeuft={create.isPending}
             deaktiviert={!f.key.trim() || !f.name.trim()} speichernText={tr("common.anlegen")}
-            onSpeichern={() => anlegen.mutate()} />}>
+            onSpeichern={() => create.mutate()} />}>
           <div className="space-y-3">
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <input value={f.key} onChange={(e) => setF({ ...f, key: e.target.value })}
@@ -166,7 +166,7 @@ export default function OwnWorkflowsPanel() {
           <select value={f.template} className={inp}
             onChange={(e) => setF({ ...f, template: e.target.value })}>
             <option value="">{tr("own_workflows.leeres_geruest")}</option>
-            {(vorlagen || []).map((v) => (
+            {(templates || []).map((v) => (
               <option key={v.key} value={v.key}>Vorlage: {v.name}</option>
             ))}
           </select>
@@ -190,10 +190,10 @@ export default function OwnWorkflowsPanel() {
           </div>
         </Dialog>
       )}
-      {loeschAblauf && (
-        <LoeschDialog was={loeschAblauf.key} laeuft={loeschen.isPending}
-          onClose={() => setLoeschAblauf(null)} onLoeschen={() => loeschen.mutate(loeschAblauf.id)} />
+      {loeschFlow && (
+        <LoeschDialog was={loeschFlow.key} laeuft={remove.isPending}
+          onClose={() => setLoeschFlow(null)} onLoeschen={() => remove.mutate(loeschFlow.id)} />
       )}
-    </Bereich>
+    </Area>
   );
 }

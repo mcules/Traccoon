@@ -11,7 +11,7 @@
  */
 import { tr } from "../../i18n";
 import { zeitzone } from "../../lib/formatTime";
-export interface Schritt {
+export interface Step {
   node_id: string;
   node_type: string;
   status?: string;
@@ -31,16 +31,16 @@ const STATUS_FARBE: Record<string, string> = {
 };
 
 /** The essentials of a result in one line; the rest stands in the expander. */
-function kurzfassung(s: Schritt): string {
+function kurzfassung(s: Step): string {
   if (s.error) return s.error;
   const r = s.result || {};
   if (r.probe) return String(r.probe);
   // Actions report their name and the necessary minimum; everything else would be noise here.
-  const teile = Object.entries(r)
+  const parts = Object.entries(r)
     .filter(([k]) => !["action", "probe"].includes(k))
     .map(([k, v]) => `${k}: ${typeof v === "object" ? JSON.stringify(v) : String(v)}`);
-  const kopf = r.action ? String(r.action) : "";
-  return [kopf, teile.join(" · ")].filter(Boolean).join(" — ").slice(0, 300);
+  const header = r.action ? String(r.action) : "";
+  return [header, parts.join(" · ")].filter(Boolean).join(" — ").slice(0, 300);
 }
 
 function uhrzeit(iso?: string | null): string {
@@ -51,21 +51,21 @@ function uhrzeit(iso?: string | null): string {
 }
 
 export default function Schrittprotokoll({
-  schritte,
+  schritte: steps,
   leerText = tr("instanz.kein_schritt"),
   maxHoehe = "18rem",
 }: {
-  schritte: Schritt[];
+  schritte: Step[];
   leerText?: string;
   maxHoehe?: string;
 }) {
-  if (!schritte.length) {
+  if (!steps.length) {
     return <div className="text-[11px] text-muted">{leerText}</div>;
   }
   return (
     <ul className="overflow-auto rounded border border-line bg-surface p-2 text-xs text-muted"
         style={{ maxHeight: maxHoehe }}>
-      {schritte.map((s, i) => {
+      {steps.map((s, i) => {
         const text = kurzfassung(s);
         const voll = s.result && Object.keys(s.result).length > 1;
         return (

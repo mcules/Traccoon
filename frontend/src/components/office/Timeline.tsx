@@ -33,14 +33,14 @@ import type { Bucket, LogEntry } from "./types.ts";
  *  reference to the class itself would be narrower than necessary and would force a type
  *  assertion; `bounds()` is deliberately loose here (nullable, `dropped` optional), because
  *  that is exactly where the two versions differ. */
-export interface LogQuelle {
+export interface LogSource {
   entries(): readonly LogEntry[];
   bounds(): { t0: number; t1: number; dropped?: boolean } | null;
 }
 
 export interface TimelineProps {
   /** The log. Only read. */
-  recorder: LogQuelle;
+  recorder: LogSource;
   /** The only recomputation signal, raised throttled in the feed. */
   revision: number;
   /** Angesprungene Position in Epoch-ms, `null` = Gegenwart/Live. */
@@ -56,17 +56,17 @@ export interface TimelineProps {
 // violet, blue and grey are deliberately **not** status colours, because a message is not a
 // success and a tool call is not waiting.
 
-type ReihenKey = "tools" | "says" | "thinks" | "errors";
+type SeriesKey = "tools" | "says" | "thinks" | "errors";
 
-interface Reihe {
-  key: ReihenKey;
+interface Series {
+  key: SeriesKey;
   css: string;
   ein: string;
   viele: string;
 }
 
 /** Order of the **label**: "2 tool calls, 1 message". */
-const REIHEN: readonly Reihe[] = [
+const SERIES: readonly Series[] = [
   { key: "tools", css: "bg-sky-400", ein: "timeline.tool_ein", viele: "timeline.tool_viele" },
   { key: "says", css: "bg-violet-400", ein: "timeline.says_ein", viele: "timeline.says_viele" },
   { key: "thinks", css: "bg-slate-400", ein: "timeline.thinks_ein", viele: "timeline.thinks_viele" },
@@ -75,7 +75,7 @@ const REIHEN: readonly Reihe[] = [
 
 /** Order in the **stack**, from top to bottom. Errors lie on top: they are what one has to be
  *  able to recognise in passing. */
-const STAPEL: readonly ReihenKey[] = ["errors", "says", "tools", "thinks"];
+const STAPEL: readonly SeriesKey[] = ["errors", "says", "tools", "thinks"];
 
 // ── Geometrie ───────────────────────────────────────────────────────────────────────────────
 
@@ -110,12 +110,12 @@ function ortsZahlen(b: Bucket): ReturnType<typeof labelOf> {
 export function balkenLabel(b: Bucket): string {
   const l = ortsZahlen(b);
   const uhr = `${zwei(l.h)}:${zwei(l.m)}:${zwei(l.s)}`;
-  const teile: string[] = [];
-  for (const r of REIHEN) {
+  const parts: string[] = [];
+  for (const r of SERIES) {
     const n = l[r.key];
-    if (n > 0) teile.push(`${n} ${tr(n === 1 ? r.ein : r.viele)}`);
+    if (n > 0) parts.push(`${n} ${tr(n === 1 ? r.ein : r.viele)}`);
   }
-  return teile.length ? `${uhr} · ${teile.join(", ")}` : `${uhr} · ${tr("timeline.keine_ereignisse")}`;
+  return parts.length ? `${uhr} · ${parts.join(", ")}` : `${uhr} · ${tr("timeline.keine_ereignisse")}`;
 }
 
 /** Only the clock time, for the edge label below the bar. */
@@ -135,7 +135,7 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
 
   // Summarise the log into seconds again as soon as something has changed. `revision` is the
   // signal; `recorder` itself only changes identity on a session change.
-  const alle = useMemo(() => bucketize(recorder.entries()), [recorder, revision]);
+  const all = useMemo(() => bucketize(recorder.entries()), [recorder, revision]);
   const grenzen = recorder.bounds();
   const gekappt = grenzen?.dropped === true;
 
@@ -151,8 +151,8 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
     boxRef.current = el;
     if (!el) return;
     setBreite(el.clientWidth);
-    const ro = new ResizeObserver((eintraege) => {
-      for (const e of eintraege) setBreite(e.contentRect.width);
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setBreite(e.contentRect.width);
     });
     ro.observe(el);
     beobachterRef.current = ro;
@@ -162,30 +162,30 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
     ? Math.floor((breite + LUECKE_PX) / (SPALTE_PX + LUECKE_PX))
     : TIMELINE_COLUMNS;
   const spalten = Math.max(MIN_SPALTEN, Math.min(TIMELINE_COLUMNS, passen));
-  const sichtbar = alle.length > spalten ? alle.slice(-spalten) : alle;
-  const versteckt = alle.length - sichtbar.length;
+  const visible = all.length > spalten ? all.slice(-spalten) : all;
+  const versteckt = all.length - visible.length;
 
   // Peak of the **visible** window: the bar answers "how full was this second compared to what
   // I am looking at right now", and an outlier from three hours ago that has long slid out of
   // the window must not determine the picture any more.
   let peak = 0;
-  for (const b of sichtbar) {
+  for (const b of visible) {
     const t = b.tools + b.says + b.thinks + b.errors;
     if (t > peak) peak = t;
   }
 
-  const zielT = seekTs === null ? null : Math.floor(seekTs / TIMELINE_BUCKET_MS) * TIMELINE_BUCKET_MS;
-  const aktuellIdx = zielT === null ? -1 : sichtbar.findIndex((b) => b.t === zielT);
-  const tabIdx = fokus !== null && fokus < sichtbar.length
+  const targetT = seekTs === null ? null : Math.floor(seekTs / TIMELINE_BUCKET_MS) * TIMELINE_BUCKET_MS;
+  const currentIdx = targetT === null ? -1 : visible.findIndex((b) => b.t === targetT);
+  const tabIdx = fokus !== null && fokus < visible.length
     ? fokus
-    : (aktuellIdx >= 0 ? aktuellIdx : sichtbar.length - 1);
+    : (currentIdx >= 0 ? currentIdx : visible.length - 1);
 
   /** Move the focus **without** jumping. Every jump rebuilds the engine and replays the log
    *  from the start; with a held arrow key that would be two hundred rebuilds in one second.
    *  Triggering therefore happens on enter or space, so with the button itself. */
   const bewege = (zu: number) => {
-    if (sichtbar.length === 0) return;
-    const i = Math.max(0, Math.min(sichtbar.length - 1, zu));
+    if (visible.length === 0) return;
+    const i = Math.max(0, Math.min(visible.length - 1, zu));
     setFokus(i);
     boxRef.current?.querySelector<HTMLElement>(`[data-spalte="${i}"]`)?.focus();
   };
@@ -195,10 +195,10 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
     if (e.key === "ArrowLeft") { e.preventDefault(); bewege(i - 1); }
     else if (e.key === "ArrowRight") { e.preventDefault(); bewege(i + 1); }
     else if (e.key === "Home") { e.preventDefault(); bewege(0); }
-    else if (e.key === "End") { e.preventDefault(); bewege(sichtbar.length - 1); }
+    else if (e.key === "End") { e.preventDefault(); bewege(visible.length - 1); }
   };
 
-  if (alle.length === 0) {
+  if (all.length === 0) {
     return (
       <div className={`rounded border border-line bg-card px-3 py-2 text-xs text-muted ${className ?? ""}`}>
         Noch keine Ereignisse in dieser Sitzung.
@@ -206,7 +206,7 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
     );
   }
 
-  const kappTitel = gekappt
+  const kappTitle = gekappt
     ? `Der Anfang der Sitzung ist nicht mehr im Speicher: das Büro hält höchstens `
       + `${REPLAY_CAP.toLocaleString("de-DE")} Ereignisse und verwirft die ältesten.`
       + (versteckt > 0 ? ` Zusätzlich liegen ${versteckt} Sekunden links außerhalb des Fensters.` : "")
@@ -225,13 +225,13 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
       >
         {(gekappt || versteckt > 0) && (
           <div
-            title={kappTitel}
-            aria-label={kappTitel}
+            title={kappTitle}
+            aria-label={kappTitle}
             className={`h-full shrink-0 rounded-sm ${gekappt ? "bg-line" : "bg-line/50"}`}
             style={{ width: `${SPALTE_PX}px` }}
           />
         )}
-        {sichtbar.map((b, i) => {
+        {visible.map((b, i) => {
           const gesamt = b.tools + b.says + b.thinks + b.errors;
           // Square-root scaling against the peak. `gesamt === 0` explicitly gives 0 and not the
           // minimum height; otherwise every empty second would claim something had happened.
@@ -239,7 +239,7 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
             ? 0
             : Math.max(6, Math.round((Math.sqrt(gesamt) / Math.sqrt(peak)) * 100));
           const label = balkenLabel(b);
-          const ist = i === aktuellIdx;
+          const ist = i === currentIdx;
           return (
             <button
               key={b.t}
@@ -264,7 +264,7 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
                   {STAPEL.map((key) => {
                     const n = b[key];
                     if (n === 0) return null;
-                    const r = REIHEN.find((x) => x.key === key)!;
+                    const r = SERIES.find((x) => x.key === key)!;
                     return (
                       <span
                         key={key}
@@ -284,12 +284,12 @@ export default function Timeline({ recorder, revision, seekTs, onSeek, className
         })}
       </div>
       <div className="mt-1 flex items-center justify-between text-[11px] text-muted">
-        <span>{uhrzeit(sichtbar[0])}</span>
+        <span>{uhrzeit(visible[0])}</span>
         <span>
-          {gekappt && <span className="mr-2" title={kappTitel}>⚠ Anfang verworfen</span>}
-          {sichtbar.length} {sichtbar.length === 1 ? "Sekunde" : "Sekunden"}
+          {gekappt && <span className="mr-2" title={kappTitle}>⚠ Anfang verworfen</span>}
+          {visible.length} {visible.length === 1 ? "Sekunde" : "Sekunden"}
         </span>
-        <span>{uhrzeit(sichtbar[sichtbar.length - 1])}</span>
+        <span>{uhrzeit(visible[visible.length - 1])}</span>
       </div>
     </div>
   );

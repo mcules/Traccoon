@@ -2,7 +2,7 @@ import { FormEvent, useState } from "react";
 import { tr } from "../i18n";
 import { api, ApiError } from "../api";
 import { useAuth } from "../auth";
-import { KNOPF, KNOPF_TEXT} from "../components/ui";
+import { BUTTON, BUTTON_TEXT} from "../components/ui";
 
 export default function Login() {
   const { login } = useAuth();
@@ -49,11 +49,11 @@ export default function Login() {
         </div>
         {err && <div className="mt-3 text-sm text-red-400">{err}</div>}
         {info && <div className="mt-3 text-sm text-green-400">{info}</div>}
-        <button className={`mt-4 w-full ${KNOPF.haupt}`}>
+        <button className={`mt-4 w-full ${BUTTON.haupt}`}>
           {mode === "login" ? "Anmelden" : "Registrieren"}
         </button>
         <button type="button" onClick={() => setMode(mode === "login" ? "register" : "login")}
-          className={KNOPF_TEXT.neben}>
+          className={BUTTON_TEXT.neben}>
           {tr(mode === "login" ? "login.neu_hier" : "login.zurueck_zum_login")}
         </button>
       </form>

@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
-import { Aktionen, ICON, IconKnopf, LoeschDialog, Bereich, Fehlerzeile, Liste, ListeLeer, ListenZeile, KNOPF_KLEIN} from "./ui";
-import { alleSchluessel, ausgeliefert, QUELLSPRACHE, setzeSprache, sprache, tr } from "../i18n";
+import { Actions, ICON, IconButton, LoeschDialog, Area, Fehlerzeile, Listing, ListingLeer, ListenLine, BUTTON_KLEIN} from "./ui";
+import { allKey, ausgeliefert, QUELLSPRACHE, setzeLanguage, language, tr } from "../i18n";
 
-interface SpracheInfo {
+interface LanguageInfo {
   locale: string; name: string; own_texts: number; builtin: boolean; enabled: boolean;
 }
 
@@ -35,14 +35,14 @@ export default function TranslationsPanel() {
     queryFn: () => api.get<{ texts: Record<string, string>; shipped: Record<string, string> }>(
       `/i18n/server-catalog?locale=${locale}`),
   });
-  const quelle = { ...alleSchluessel(), ...(serverTexte?.texts || {}) };
+  const source = { ...allKey(), ...(serverTexte?.texts || {}) };
   // The shipped translation comes from the server as well; otherwise its texts would count
   // as open here although they have long been translated.
-  const geliefertAlle = (l: string) => (
+  const geliefertAll = (l: string) => (
     l === locale ? { ...ausgeliefert(l), ...(serverTexte?.shipped || {}) } : ausgeliefert(l));
   const { data: sprachen } = useQuery({
     queryKey: ["i18n-locales"],
-    queryFn: () => api.get<SpracheInfo[]>("/i18n/locales"),
+    queryFn: () => api.get<LanguageInfo[]>("/i18n/locales"),
   });
   const { data: overrides } = useQuery({
     queryKey: ["i18n", locale],
@@ -56,7 +56,7 @@ export default function TranslationsPanel() {
       setErr("");
       qc.invalidateQueries({ queryKey: ["i18n", locale] });
       qc.invalidateQueries({ queryKey: ["i18n-locales"] });
-      if (locale === sprache()) void setzeSprache(locale);
+      if (locale === language()) void setzeLanguage(locale);
     },
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Fehler"),
   });
@@ -71,10 +71,10 @@ export default function TranslationsPanel() {
     onError: (e) => setErr(e instanceof ApiError ? e.message : "Import fehlgeschlagen"),
   });
 
-  const zeilen = useMemo(() => {
-    const geliefert = geliefertAlle(locale);
+  const lines = useMemo(() => {
+    const geliefert = geliefertAll(locale);
     const eigene = overrides?.texts || {};
-    return Object.entries(quelle)
+    return Object.entries(source)
       .map(([key, deutsch]) => ({
         key, deutsch,
         wert: eigene[key] ?? geliefert[key] ?? "",
@@ -84,19 +84,19 @@ export default function TranslationsPanel() {
       .filter((z) => !suche.trim()
         || z.key.toLowerCase().includes(suche.toLowerCase())
         || z.deutsch.toLowerCase().includes(suche.toLowerCase()));
-  }, [quelle, overrides, locale, nurOffene, suche]);
+  }, [source, overrides, locale, nurOffene, suche]);
 
-  const offen = useMemo(() => {
-    const geliefert = geliefertAlle(locale);
+  const open = useMemo(() => {
+    const geliefert = geliefertAll(locale);
     const eigene = overrides?.texts || {};
-    return Object.keys(quelle).filter((k) => !(eigene[k] ?? geliefert[k])).length;
-  }, [quelle, overrides, locale]);
+    return Object.keys(source).filter((k) => !(eigene[k] ?? geliefert[k])).length;
+  }, [source, overrides, locale]);
 
   const exportieren = () => {
-    const geliefert = geliefertAlle(locale);
+    const geliefert = geliefertAll(locale);
     const eigene = overrides?.texts || {};
     const alles: Record<string, string> = {};
-    Object.keys(quelle).forEach((k) => { alles[k] = eigene[k] ?? geliefert[k] ?? ""; });
+    Object.keys(source).forEach((k) => { alles[k] = eigene[k] ?? geliefert[k] ?? ""; });
     const blob = new Blob([JSON.stringify(alles, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -105,9 +105,9 @@ export default function TranslationsPanel() {
     URL.revokeObjectURL(a.href);
   };
 
-  const importieren = async (datei: File) => {
+  const importieren = async (file: File) => {
     try {
-      const daten = JSON.parse(await datei.text());
+      const daten = JSON.parse(await file.text());
       if (daten && typeof daten === "object") einspielen.mutate(daten);
     } catch {
       setErr(tr("translations_panel.kein_json"));
@@ -117,7 +117,7 @@ export default function TranslationsPanel() {
   const inp = "rounded border border-line bg-surface px-2 py-1 text-sm text-ink";
 
   return (
-    <Bereich hinweis={tr("translations_panel.einleitung")} werkzeuge={<>
+    <Area hinweis={tr("translations_panel.einleitung")} werkzeuge={<>
         <select value={locale} onChange={(e) => setLocale(e.target.value)} className={inp}>
           {(sprachen || []).filter((s) => s.locale !== QUELLSPRACHE).map((s) => (
             <option key={s.locale} value={s.locale}>
@@ -132,11 +132,11 @@ export default function TranslationsPanel() {
           {tr("translations_panel.nur_offene")}
         </label>
         <span className="text-xs text-muted">
-          {tr("translations_panel.offen_von", { offen, gesamt: Object.keys(quelle).length })}
+          {tr("translations_panel.offen_von", { offen: open, gesamt: Object.keys(source).length })}
         </span>
         <div className="flex-1" />
         <button onClick={exportieren}
-          className={KNOPF_KLEIN.neben}>
+          className={BUTTON_KLEIN.neben}>
           Export
         </button>
         <label className="cursor-pointer rounded border border-line px-2 py-1 text-xs text-ink hover:bg-surface">
@@ -155,9 +155,9 @@ export default function TranslationsPanel() {
           Handy nicht zu halten — der Schlüssel allein ist breiter als der Bildschirm. Ab sm
           stehen Quelle und Feld nebeneinander, darunter untereinander. */}
       <div className="max-h-[60vh] overflow-auto">
-      <Liste>
-        {zeilen.map((z) => (
-          <ListenZeile key={z.key}>
+      <Listing>
+        {lines.map((z) => (
+          <ListenLine key={z.key}>
             <div className="break-all font-mono text-[11px] text-muted">{z.key}</div>
             <div className="mt-1 gap-2 sm:flex">
               <div className="min-w-0 flex-1 text-ink">{z.deutsch}</div>
@@ -172,16 +172,16 @@ export default function TranslationsPanel() {
                 className={`mt-1 w-full rounded border bg-card px-1.5 py-1 text-ink sm:mt-0 sm:flex-1 ${
                   z.geaendert ? "border-brand" : "border-line"}`} />
             </div>
-          </ListenZeile>
+          </ListenLine>
         ))}
-        {!zeilen.length && (
-          <ListeLeer>
+        {!lines.length && (
+          <ListingLeer>
             {tr(nurOffene ? "translations_panel.nichts_offen" : "translations_panel.kein_treffer")}
-          </ListeLeer>
+          </ListingLeer>
         )}
-      </Liste>
+      </Listing>
       </div>
-    </Bereich>
+    </Area>
   );
 }
 
@@ -197,35 +197,35 @@ export default function TranslationsPanel() {
  * The shipped languages cannot be thrown away: their catalog belongs to the application.
  * Deleting there only takes back what was changed here.
  */
-function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
-  sprachen: SpracheInfo[]; gewaehlt: string; onWaehlen: (l: string) => void;
+function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler: onError, onOk }: {
+  sprachen: LanguageInfo[]; gewaehlt: string; onWaehlen: (l: string) => void;
   onFehler: (t: string) => void; onOk: (t: string) => void;
 }) {
   const qc = useQueryClient();
   const [kennung, setKennung] = useState("");
   const [name, setName] = useState("");
-  const [loeschSprache, setLoeschSprache] = useState<SpracheInfo | null>(null);
+  const [loeschLanguage, setLoeschLanguage] = useState<LanguageInfo | null>(null);
   const inp = "rounded border border-line bg-surface px-2 py-1 text-xs text-ink";
   const frisch = () => qc.invalidateQueries({ queryKey: ["i18n-locales"] });
-  const fehler = (e: unknown) => onFehler(e instanceof ApiError ? e.message : tr("common.fehler"));
+  const error = (e: unknown) => onError(e instanceof ApiError ? e.message : tr("common.fehler"));
 
-  const anlegen = useMutation({
+  const create = useMutation({
     mutationFn: () => api.post("/i18n/locales", { locale: kennung.trim().toLowerCase(), name: name.trim() }),
     onSuccess: () => {
       onOk(tr("translations_panel.sprache_angelegt", { sprache: kennung.trim().toLowerCase() }));
       onWaehlen(kennung.trim().toLowerCase());
       setKennung(""); setName(""); frisch();
     },
-    onError: fehler,
+    onError: error,
   });
-  const aendern = useMutation({
+  const update = useMutation({
     mutationFn: ({ locale, body }: { locale: string; body: Record<string, unknown> }) =>
       api.put(`/i18n/locales/${locale}`, body),
-    onSuccess: () => { onFehler(""); frisch(); }, onError: fehler,
+    onSuccess: () => { onError(""); frisch(); }, onError: error,
   });
-  const loeschen = useMutation({
+  const remove = useMutation({
     mutationFn: (locale: string) => api.del(`/i18n/locales/${locale}`),
-    onSuccess: () => { onFehler(""); onWaehlen("en"); frisch(); }, onError: fehler,
+    onSuccess: () => { onError(""); onWaehlen("en"); frisch(); }, onError: error,
   });
 
   return (
@@ -237,7 +237,7 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
               <span className="font-mono text-[11px] text-muted">{s.locale}</span>
               <input defaultValue={s.name}
                 onBlur={(e) => e.target.value !== s.name
-                  && aendern.mutate({ locale: s.locale, body: { name: e.target.value } })}
+                  && update.mutate({ locale: s.locale, body: { name: e.target.value } })}
                 className={`${inp} w-36`} />
               <span className="text-muted">
                 {s.builtin ? tr("translations_panel.ausgeliefert") : tr("translations_panel.eigene")}
@@ -247,20 +247,20 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
               {s.locale !== QUELLSPRACHE && (
                 <label className="flex items-center gap-1 text-muted">
                   <input type="checkbox" checked={s.enabled}
-                    onChange={(e) => aendern.mutate({ locale: s.locale, body: { enabled: e.target.checked } })} />
+                    onChange={(e) => update.mutate({ locale: s.locale, body: { enabled: e.target.checked } })} />
                   {tr("translations_panel.waehlbar")}
                 </label>
               )}
               <div className="ml-auto">
-                <Aktionen>
-                  <IconKnopf icon={ICON.bearbeiten} aktiv={s.locale === gewaehlt}
+                <Actions>
+                  <IconButton icon={ICON.bearbeiten} aktiv={s.locale === gewaehlt}
                     titel={s.locale === gewaehlt ? tr("translations_panel.in_bearbeitung") : tr("translations_panel.bearbeiten")}
                     disabled={s.locale === QUELLSPRACHE} onClick={() => onWaehlen(s.locale)} />
                   {s.locale !== QUELLSPRACHE && (
-                    <IconKnopf icon={ICON.loeschen} titel={tr("translations_panel.loeschen_titel")} gefahr
-                      onClick={() => setLoeschSprache(s)} />
+                    <IconButton icon={ICON.loeschen} titel={tr("translations_panel.loeschen_titel")} gefahr
+                      onClick={() => setLoeschLanguage(s)} />
                   )}
-                </Aktionen>
+                </Actions>
               </div>
             </div>
           ))}
@@ -272,16 +272,16 @@ function Sprachverwaltung({ sprachen, gewaehlt, onWaehlen, onFehler, onOk }: {
           placeholder={tr("translations_panel.kennung_platzhalter")} className={`${inp} w-24`} />
         <input value={name} onChange={(e) => setName(e.target.value)}
           placeholder={tr("translations_panel.name_platzhalter")} className={`${inp} w-40`} />
-        <button onClick={() => kennung.trim() && anlegen.mutate()}
-          className={KNOPF_KLEIN.neben}>
+        <button onClick={() => kennung.trim() && create.mutate()}
+          className={BUTTON_KLEIN.neben}>
           {tr("translations_panel.anlegen")}
         </button>
       </div>
-      {loeschSprache && (
-        <LoeschDialog was={loeschSprache.name} hinweis={tr("translations_panel.loeschen_titel")}
-          laeuft={loeschen.isPending}
-          onClose={() => setLoeschSprache(null)}
-          onLoeschen={() => { loeschen.mutate(loeschSprache.locale); setLoeschSprache(null); }} />
+      {loeschLanguage && (
+        <LoeschDialog was={loeschLanguage.name} hinweis={tr("translations_panel.loeschen_titel")}
+          laeuft={remove.isPending}
+          onClose={() => setLoeschLanguage(null)}
+          onLoeschen={() => { remove.mutate(loeschLanguage.locale); setLoeschLanguage(null); }} />
       )}
     </div>
   );

@@ -33,9 +33,9 @@ import { useEffect, useMemo, useRef } from "react";
 import Personalakte from "./Personalakte.tsx";
 import type { Scope } from "./api.ts";
 import type { Cmd, Roster, RosterEntry } from "./types.ts";
-import type { LogQuelle } from "./Timeline.tsx";
+import type { LogSource } from "./Timeline.tsx";
 import {
-  GATE_TEXT, dauerText, passtZumFilter, statusFarbe, statusText, tokenText, uhrText, usdText, zahl,
+  GATE_TEXT, durationText, passtZumFilter, statusFarbe, statusText, tokenText, uhrText, usdText, zahl,
 } from "./TopBar.tsx";
 
 // ── Kappung ─────────────────────────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ import {
 // same direction as log and event window, and it is stated that truncation happened.
 
 const CHAT_CAP = 200;
-const WERKZEUG_CAP = 200;
+const TOOL_CAP = 200;
 const AGENT_CAP = 80;
 
 // ── Interface ───────────────────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ export interface DockProps {
   scope: Scope;
   tab: DockTab;
   onTabChange: (t: DockTab) => void;
-  recorder: LogQuelle;
+  recorder: LogSource;
   /** Recomputation signal of the feed. */
   revision: number;
   roster: Roster;
@@ -77,7 +77,7 @@ export interface DockProps {
 
 // ── Abgeleitete Zeilen ──────────────────────────────────────────────────────────────────────
 
-interface ChatZeile {
+interface ChatLine {
   key: string;
   ts: number;
   id: string;
@@ -87,8 +87,8 @@ interface ChatZeile {
   css?: string;
 }
 
-function chatAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: number | null): ChatZeile[] {
-  const out: ChatZeile[] = [];
+function chatAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: number | null): ChatLine[] {
+  const out: ChatLine[] = [];
   for (const e of log) {
     if (bis !== null && e.ts > bis) continue;
     e.cmds.forEach((c, i) => {
@@ -109,7 +109,7 @@ function chatAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: 
   return out;
 }
 
-interface WerkzeugZeile {
+interface ToolLine {
   key: string;
   ts: number;
   id: string;
@@ -129,25 +129,25 @@ interface WerkzeugZeile {
  *  clock times, which on the legacy path (both synthesised from **one** row) correctly gives
  *  0 and not the substitute duration of the stage: that one is a display decision and not a
  *  measurement, and an invented duration in a list showing durations would be a lie. */
-function werkzeugeAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: number | null): WerkzeugZeile[] {
-  const offen = new Map<string, WerkzeugZeile>();
-  const out: WerkzeugZeile[] = [];
+function toolsAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], bis: number | null): ToolLine[] {
+  const open = new Map<string, ToolLine>();
+  const out: ToolLine[] = [];
   for (const e of log) {
     if (bis !== null && e.ts > bis) continue;
     e.cmds.forEach((c, i) => {
       if (c.k === "tool") {
-        const z: WerkzeugZeile = {
+        const z: ToolLine = {
           key: `${e.seq}:${i}`, ts: e.ts, id: c.id, tool: c.tool,
           target: c.target, dauer: null, ok: undefined,
         };
         // A second start without an end only displaces the first from the pairing; in the
         // list it stays (it did run) and keeps its "still running".
-        offen.set(c.id, z);
+        open.set(c.id, z);
         out.push(z);
       } else if (c.k === "toolEnd") {
-        const z = offen.get(c.id);
+        const z = open.get(c.id);
         if (!z) return;
-        offen.delete(c.id);
+        open.delete(c.id);
         z.ok = c.ok;
         z.dauer = Math.max(0, e.ts - z.ts);
       }
@@ -165,7 +165,7 @@ export default function Dock({
 }: DockProps) {
   const log = useMemo(() => recorder.entries(), [recorder, revision]);
   const chat = useMemo(() => chatAus(log, seekTs), [log, seekTs]);
-  const werkzeuge = useMemo(() => werkzeugeAus(log, seekTs), [log, seekTs]);
+  const tools = useMemo(() => toolsAus(log, seekTs), [log, seekTs]);
 
   const nachId = useMemo(() => {
     const m = new Map<string, RosterEntry>();
@@ -225,7 +225,7 @@ export default function Dock({
                 Aussehen. */}
             {t.key !== "akte" && (
               <span className="ml-1 text-[11px] text-muted">
-                {t.key === "chat" ? chat.length : t.key === "agents" ? roster.length : werkzeuge.length}
+                {t.key === "chat" ? chat.length : t.key === "agents" ? roster.length : tools.length}
               </span>
             )}
           </button>
@@ -243,14 +243,14 @@ export default function Dock({
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
         {tab === "chat" && (
-          <ChatListe zeilen={chat} name={name} gedimmt={gedimmt} onSelect={onSelect} />
+          <ChatListing zeilen={chat} name={name} gedimmt={gedimmt} onSelect={onSelect} />
         )}
         {tab === "agents" && (
-          <AgentListe eintraege={agenten} scope={scope} filter={filter}
+          <AgentListing eintraege={agenten} scope={scope} filter={filter}
             selectedId={selectedId} onSelect={onSelect} />
         )}
         {tab === "tools" && (
-          <WerkzeugListe zeilen={werkzeuge} name={name} gedimmt={gedimmt} onSelect={onSelect} />
+          <ToolListing zeilen={tools} name={name} gedimmt={gedimmt} onSelect={onSelect} />
         )}
         {tab === "akte" && (
           // The role of the selected figure, not the figure itself: the inspector below keeps
@@ -280,17 +280,17 @@ function Leer({ text }: { text: string }) {
 
 // ── Chat ────────────────────────────────────────────────────────────────────────────────────
 
-function ChatListe({ zeilen, name, gedimmt, onSelect }: {
-  zeilen: ChatZeile[];
+function ChatListing({ zeilen: lines, name, gedimmt, onSelect }: {
+  zeilen: ChatLine[];
   name: (id: string) => string;
   gedimmt: (id: string) => boolean;
   onSelect: (id: string) => void;
 }) {
-  if (zeilen.length === 0) return <Leer text={tr("dock.nichts_gesagt")} />;
-  const zeige = zeilen.slice(-CHAT_CAP);
+  if (lines.length === 0) return <Leer text={tr("dock.nichts_gesagt")} />;
+  const zeige = lines.slice(-CHAT_CAP);
   return (
     <div className="space-y-1">
-      <Gekappt n={zeilen.length - zeige.length} />
+      <Gekappt n={lines.length - zeige.length} />
       {zeige.map((z) => (
         <div key={z.key} className={`flex gap-2 text-xs ${gedimmt(z.id) ? "opacity-40" : ""}`}>
           <span className="shrink-0 font-mono text-[11px] text-muted">{uhrText(z.ts)}</span>
@@ -309,22 +309,22 @@ function ChatListe({ zeilen, name, gedimmt, onSelect }: {
 
 // ── Agenten ─────────────────────────────────────────────────────────────────────────────────
 
-function AgentListe({ eintraege, scope, filter, selectedId, onSelect }: {
+function AgentListing({ eintraege: entries, scope, filter, selectedId, onSelect }: {
   eintraege: RosterEntry[];
   scope: Scope;
   filter: string | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
 }) {
-  if (eintraege.length === 0) return <Leer text={tr("dock.niemand_im_raum")} />;
-  const zeige = eintraege.slice(0, AGENT_CAP);
-  const jetzt = Date.now();
+  if (entries.length === 0) return <Leer text={tr("dock.niemand_im_raum")} />;
+  const zeige = entries.slice(0, AGENT_CAP);
+  const now = Date.now();
   return (
     <div className="space-y-1">
       {zeige.map((r) => {
         const start = r.started_at ? Date.parse(r.started_at) : NaN;
-        const ende = r.ended_at ? Date.parse(r.ended_at) : (r.status === "running" ? jetzt : NaN);
-        const dauer = Number.isFinite(start) && Number.isFinite(ende) ? ende - start : null;
+        const ende = r.ended_at ? Date.parse(r.ended_at) : (r.status === "running" ? now : NaN);
+        const duration = Number.isFinite(start) && Number.isFinite(ende) ? ende - start : null;
         const aus = !passtZumFilter(scope, r, filter);
         return (
           <button key={r.agent_id} type="button" onClick={() => onSelect(r.agent_id)}
@@ -344,11 +344,11 @@ function AgentListe({ eintraege, scope, filter, selectedId, onSelect }: {
               {tokenText(r.in_tokens + r.out_tokens)}tok
             </span>
             <span className="text-muted">{usdText(r.cost_usd, r.cost_priced !== true)}</span>
-            <span className="text-muted">{dauerText(dauer)}</span>
+            <span className="text-muted">{durationText(duration)}</span>
           </button>
         );
       })}
-      <Gekappt n={eintraege.length - zeige.length} />
+      <Gekappt n={entries.length - zeige.length} />
     </div>
   );
 }
@@ -357,26 +357,26 @@ function AgentListe({ eintraege, scope, filter, selectedId, onSelect }: {
 
 /** `ok === null` is **unknown**, not green: with old data nobody measured whether the call went
  *  through. A tick on that would be a claim about data that does not exist. */
-function ergebnis(ok: boolean | null | undefined): { zeichen: string; css: string; titel: string } {
+function result(ok: boolean | null | undefined): { zeichen: string; css: string; titel: string } {
   if (ok === undefined) return { zeichen: "…", css: "text-muted", titel: tr("dock.laeuft_noch") };
   if (ok === true) return { zeichen: "✓", css: "text-green-400", titel: tr("buero.st_success") };
   if (ok === false) return { zeichen: "✕", css: "text-red-400", titel: tr("buero.st_failed") };
   return { zeichen: "?", css: "text-muted", titel: tr("dock.unbekannt_altdaten") };
 }
 
-function WerkzeugListe({ zeilen, name, gedimmt, onSelect }: {
-  zeilen: WerkzeugZeile[];
+function ToolListing({ zeilen: lines, name, gedimmt, onSelect }: {
+  zeilen: ToolLine[];
   name: (id: string) => string;
   gedimmt: (id: string) => boolean;
   onSelect: (id: string) => void;
 }) {
-  if (zeilen.length === 0) return <Leer text={tr("dock.kein_werkzeug")} />;
-  const zeige = zeilen.slice(-WERKZEUG_CAP);
+  if (lines.length === 0) return <Leer text={tr("dock.kein_werkzeug")} />;
+  const zeige = lines.slice(-TOOL_CAP);
   return (
     <div className="space-y-1">
-      <Gekappt n={zeilen.length - zeige.length} />
+      <Gekappt n={lines.length - zeige.length} />
       {zeige.map((z) => {
-        const e = ergebnis(z.ok);
+        const e = result(z.ok);
         return (
           <div key={z.key} className={`flex items-center gap-2 text-xs ${gedimmt(z.id) ? "opacity-40" : ""}`}>
             <span className="shrink-0 font-mono text-[11px] text-muted">{uhrText(z.ts)}</span>
@@ -388,7 +388,7 @@ function WerkzeugListe({ zeilen, name, gedimmt, onSelect }: {
             </button>
             <span className="shrink-0 font-mono">{z.tool}</span>
             <span className="min-w-0 flex-1 truncate text-muted" title={z.target}>{z.target ?? ""}</span>
-            <span className="shrink-0 text-muted">{z.ok === undefined ? "—" : dauerText(z.dauer)}</span>
+            <span className="shrink-0 text-muted">{z.ok === undefined ? "—" : durationText(z.dauer)}</span>
           </div>
         );
       })}

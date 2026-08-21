@@ -73,16 +73,16 @@ import Dock, { DOCK_TABS, type DockTab } from "./Dock.tsx";
 import Inspector from "./Inspector.tsx";
 import TopBar, { passtZumFilter, type Tempo } from "./TopBar.tsx";
 import { officeApi, parseSid, sidKey, type Scope, type SessionSummary } from "./api.ts";
-import { ALLE_FENSTER_H, useOfficeFeed } from "./useOfficeFeed.ts";
+import { ALL_WINDOW_H, useOfficeFeed } from "./useOfficeFeed.ts";
 import { useTheme } from "./useTheme.ts";
-import { KNOPF, KNOPF_KLEIN} from "../ui";
+import { BUTTON, BUTTON_KLEIN} from "../ui";
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
 
 /** The value of the picker for "all sessions". Deliberately not a valid `Sid`: `parseSid`
  *  returns `null` for it, and exactly by that the feed recognises the mode. It also stands in
  *  the URL (`?sid=alle`), so a shared link shows the same room. */
-const ALLE = "alle";
+const ALL = "alle";
 
 /** One arrow key press seeks this far, ten times as far with shift. */
 const STEP_MS = 1000;
@@ -118,7 +118,7 @@ const KIOSK_SESSION_REFETCH_MS = 15_000;
 
 /** After this long without pointer movement the ⛶ button disappears. It is the only control the
  *  kiosk needs (full screen demands a user gesture) and the only one that disturbs. */
-const KIOSK_KNOPF_MS = 5000;
+const KIOSK_BUTTON_MS = 5000;
 
 // ── Interface ───────────────────────────────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ export interface OfficeViewProps {
   onClose?: () => void;
   /** Reports the current error message (or `undefined`) outwards. The watchdog of the kiosk
    *  page hangs on it: it can only reload what it also sees. */
-  onErrorChange?: (fehler: string | undefined) => void;
+  onErrorChange?: (error: string | undefined) => void;
   /** Preselected session (`"issue:412"`), from the URL for instance. Read on mount only. */
   initialSid?: string | null;
   /** Reports the change of room: the full page writes it into the URL so that a shared link
@@ -173,10 +173,10 @@ export default function OfficeView({
   /** Is there an "all sessions" here at all? Globally yes, in the project tab no (a ticket is
    *  the room there), and on the wall screen no either: that one rotates through the running
    *  rooms itself and needs a concrete one for that. */
-  const alleMoeglich = scope.kind === "global" && !kiosk;
+  const allMoeglich = scope.kind === "global" && !kiosk;
   const [sidStr, setSidStr] = useState<string | null>(
-    initialSid ?? (alleMoeglich ? ALLE : null));
-  const alleModus = alleMoeglich && sidStr === ALLE;
+    initialSid ?? (allMoeglich ? ALL : null));
+  const allModus = allMoeglich && sidStr === ALL;
 
   const grade = useTheme();
 
@@ -206,28 +206,28 @@ export default function OfficeView({
     staleTime: kiosk ? 5000 : 10_000,
     retry: 1,
   });
-  const liste: SessionSummary[] = sessions.data?.sessions ?? [];
+  const listing: SessionSummary[] = sessions.data?.sessions ?? [];
 
   // Without a choice the top one: the list arrives sorted by the last event, descending, so a
   // running room stands at the top by itself. When the chosen session drops out of the window
   // (`since_hours`) it follows up as well instead of pointing at a dead room.
   useEffect(() => {
     // "All" is a choice, not a missing value: nothing follows up here.
-    if (alleModus) return;
+    if (allModus) return;
     // …unless the scope cannot do it at all: `?sid=alle` in the project tab (or on the wall
     // screen) has to fall onto a real room, otherwise the stage would stay empty.
-    if (!liste.length) return;
-    if (sidStr && sidStr !== ALLE && liste.some((s) => s.sid === sidStr)) return;
-    const naechste = liste.find((s) => s.live) ?? liste[0];
+    if (!listing.length) return;
+    if (sidStr && sidStr !== ALL && listing.some((s) => s.sid === sidStr)) return;
+    const naechste = listing.find((s) => s.live) ?? listing[0];
     setSidStr(naechste.sid);
     onSidChangeRef.current?.(naechste.sid);
-  }, [liste, sidStr, alleModus]);
+  }, [listing, sidStr, allModus]);
 
   const sid = useMemo(() => parseSid(sidStr) ?? undefined, [sidStr]);
-  const gewaehlt = liste.find((s) => s.sid === sidStr) ?? null;
+  const gewaehlt = listing.find((s) => s.sid === sidStr) ?? null;
 
   const { recorder, revision, roster, totals, live, error } = useOfficeFeed(
-    scope, sid, { alleSitzungen: alleModus, sinceHours: ALLE_FENSTER_H });
+    scope, sid, { alleSitzungen: allModus, sinceHours: ALL_WINDOW_H });
 
   // ── Sprungpunkt ───────────────────────────────────────────────────────────────────────────
   //
@@ -245,7 +245,7 @@ export default function OfficeView({
     onAtChangeRef.current?.(ts);
   }, []);
 
-  const waehleSitzung = useCallback((s: string) => {
+  const waehleSession = useCallback((s: string) => {
     setSidStr(s);
     onSidChangeRef.current?.(s);
     // Another room has other characters and another time axis: reset both, otherwise the
@@ -265,22 +265,22 @@ export default function OfficeView({
   // something runs elsewhere. Without the second half the wall would dance between dead rooms
   // at night.
   useEffect(() => {
-    if (!kiosk || liste.length < 2) return;
+    if (!kiosk || listing.length < 2) return;
     const tick = () => {
-      const jetzt = Date.now();
-      const aktuell = liste.find((s) => s.sid === sidStr);
-      const zuletzt = aktuell?.last_event_at ? Date.parse(aktuell.last_event_at) : NaN;
+      const now = Date.now();
+      const current = listing.find((s) => s.sid === sidStr);
+      const latest = current?.last_event_at ? Date.parse(current.last_event_at) : NaN;
       // No timestamp means no proof of life. Then the room counts as quiet.
-      const still = !Number.isFinite(zuletzt) || jetzt - zuletzt > KIOSK_SWITCH_AFTER_MS;
+      const still = !Number.isFinite(latest) || now - latest > KIOSK_SWITCH_AFTER_MS;
       if (!still) return;
       // The list arrives sorted by the last event, descending, so the first hit is the
       // frischeste laufende Raum.
-      const naechster = liste.find((s) => s.live && s.sid !== sidStr);
-      if (naechster) waehleSitzung(naechster.sid);
+      const naechster = listing.find((s) => s.live && s.sid !== sidStr);
+      if (naechster) waehleSession(naechster.sid);
     };
     const timer = window.setInterval(tick, KIOSK_ROTATE_TICK_MS);
     return () => window.clearInterval(timer);
-  }, [kiosk, liste, sidStr, waehleSitzung]);
+  }, [kiosk, listing, sidStr, waehleSession]);
 
   // ── The ⛶ button (kiosk only) ─────────────────────────────────────────────────────────────
   //
@@ -288,20 +288,20 @@ export default function OfficeView({
   // it automatically is not an option but only one that never works. The button is the gesture;
   // after `KIOSK_KNOPF_MS` without pointer movement it disappears again. In practice the wall
   // starts as `chromium --kiosk` anyway and never needs it.
-  const [knopfSichtbar, setKnopfSichtbar] = useState(true);
-  const knopfRef = useRef(true);
+  const [buttonVisible, setButtonVisible] = useState(true);
+  const buttonRef = useRef(true);
   useEffect(() => {
     if (!kiosk) return;
     let timer: number | null = null;
     const zeigen = (v: boolean) => {
-      if (knopfRef.current === v) return;   // je Mausbewegung ein Renderdurchlauf wäre absurd
-      knopfRef.current = v;
-      setKnopfSichtbar(v);
+      if (buttonRef.current === v) return;   // je Mausbewegung ein Renderdurchlauf wäre absurd
+      buttonRef.current = v;
+      setButtonVisible(v);
     };
     const wach = () => {
       zeigen(true);
       if (timer !== null) window.clearTimeout(timer);
-      timer = window.setTimeout(() => zeigen(false), KIOSK_KNOPF_MS);
+      timer = window.setTimeout(() => zeigen(false), KIOSK_BUTTON_MS);
     };
     wach();
     window.addEventListener("pointermove", wach, { passive: true });
@@ -327,24 +327,24 @@ export default function OfficeView({
   //
   // The listener is registered **once**. Everything it needs to know it reads from a mirror
   // ref, otherwise it would have to be re-registered on every hover over a character.
-  const stand = useRef({
+  const state = useRef({
     voll, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose,
   });
-  stand.current = { voll, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose };
+  state.current = { voll, kiosk, dockOpen, helpOpen, seekTs, selectedId, recorder, onClose };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Already consumed: the stage (Alt plus arrows, +/-/0/Home) and the timeline (travelling focus).
       if (e.defaultPrevented) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const ziel = e.target as HTMLElement | null;
-      if (ziel) {
-        const tag = ziel.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || ziel.isContentEditable) return;
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable) return;
         // The space bar activates focused buttons, and then it belongs to the button, not to us.
-        if (e.key === " " && ziel.closest("button, a, [role='button']")) return;
+        if (e.key === " " && target.closest("button, a, [role='button']")) return;
       }
-      const s = stand.current;
+      const s = state.current;
 
       // Kiosk: exactly one key. Everything else (dock, speed, seeking, help) controls something
       // that is not visible there at all, so it would be an invisible control, and that leaves
@@ -391,9 +391,9 @@ export default function OfficeView({
         case "ArrowLeft": case "ArrowRight": {
           const b = s.recorder.bounds();
           if (!b || b.t1 === 0) return;
-          const schritt = (e.shiftKey ? STEP_GROSS_MS : STEP_MS) * (e.key === "ArrowLeft" ? -1 : 1);
+          const step = (e.shiftKey ? STEP_GROSS_MS : STEP_MS) * (e.key === "ArrowLeft" ? -1 : 1);
           const basis = s.seekTs ?? b.t1;
-          const ziel2 = basis + schritt;
+          const ziel2 = basis + step;
           // Beyond the newest event there is only one sensible place: the present.
           setSeek(ziel2 >= b.t1 ? null : Math.max(b.t0, ziel2));
           e.preventDefault();
@@ -428,16 +428,18 @@ export default function OfficeView({
     return out;
   }, [roster, scope, sessionFilter]);
 
-  const eintrag = useMemo(
+  const entry = useMemo(
     () => (selectedId === null ? null : roster.find((r) => r.agent_id === selectedId) ?? null),
     [roster, selectedId],
   );
   // The window belongs in the heading, not in a footnote: the room shows an excerpt, and an
   // unnamed excerpt would look like "there was nothing more going on".
-  const titel = alleModus
-    ? tr("office_view.alle_sitzungen_fenster", { stunden: ALLE_FENSTER_H })
+  const title = allModus
+    ? tr("office_view.alle_sitzungen_fenster", { stunden: ALL_WINDOW_H })
     : (gewaehlt ? [gewaehlt.issue_key, gewaehlt.title].filter(Boolean).join(" · ") : undefined);
-  const fehler = error
+  // `error` is already taken by the destructuring above — this is the text shown, not the
+  // error object itself.
+  const errorText = error
     ?? (sessions.error ? tr("office_view.sitzungen_nicht_ladbar", { fehler: (sessions.error as Error).message }) : undefined);
 
   // The watchdog of the kiosk page lives outside this component (it reloads the page, which is
@@ -445,12 +447,12 @@ export default function OfficeView({
   // not to the identity of the callback.
   const onErrorChangeRef = useRef(onErrorChange);
   onErrorChangeRef.current = onErrorChange;
-  useEffect(() => { onErrorChangeRef.current?.(fehler); }, [fehler]);
+  useEffect(() => { onErrorChangeRef.current?.(error); }, [error]);
 
-  const kopf = (
+  const header = (
     <TopBar
       scope={scope}
-      titel={titel || undefined}
+      titel={title || undefined}
       roster={roster}
       totals={totals}
       // The pill says something about the **stream**, not about playback: paused does not mean
@@ -463,27 +465,27 @@ export default function OfficeView({
       filter={sessionFilter}
       onFilterChange={setSessionFilter}
       onFullscreen={voll ? undefined : onFullscreen}
-      error={fehler}
+      error={error}
       kiosk={kiosk}
     />
   );
 
   const werkzeugleiste = (
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      {(alleMoeglich || liste.length > 1) && (
+      {(allMoeglich || listing.length > 1) && (
         <label className="flex min-w-0 items-center gap-1.5 text-muted">
           <span className="shrink-0">Sitzung</span>
           <select
             value={sidStr ?? ""}
-            onChange={(e) => waehleSitzung(e.target.value)}
+            onChange={(e) => waehleSession(e.target.value)}
             title={tr("office_view.welcher_raum")}
             className="max-w-[22rem] truncate rounded border border-line bg-surface px-2 py-1 text-ink"
           >
             {/* Erste Option und Vorgabe: der ganze Betrieb in einem Raum. */}
-            {alleMoeglich && (
-              <option value={ALLE}>{tr("office_view.alle_sitzungen_option", { stunden: ALLE_FENSTER_H })}</option>
+            {allMoeglich && (
+              <option value={ALL}>{tr("office_view.alle_sitzungen_option", { stunden: ALL_WINDOW_H })}</option>
             )}
-            {liste.map((s) => (
+            {listing.map((s) => (
               <option key={s.sid} value={s.sid}>
                 {(s.live ? "● " : "") + [s.issue_key, s.title].filter(Boolean).join(" · ")}
               </option>
@@ -497,7 +499,7 @@ export default function OfficeView({
         onClick={() => setPaused((v) => !v)}
         aria-pressed={paused}
         title={paused ? "Wiedergabe fortsetzen (Leertaste)" : "Wiedergabe anhalten (Leertaste)"}
-        className={KNOPF_KLEIN.neben}
+        className={BUTTON_KLEIN.neben}
       >
         {paused ? "▶ Fortsetzen" : "⏸ Anhalten"}
       </button>
@@ -508,7 +510,7 @@ export default function OfficeView({
           onClick={() => setDockOpen((v) => !v)}
           aria-pressed={dockOpen}
           title={tr("office_view.dock_umschalten")}
-          className={KNOPF_KLEIN.neben}
+          className={BUTTON_KLEIN.neben}
         >
           {dockOpen ? "▸ Dock ausblenden" : "◂ Dock einblenden"}
         </button>
@@ -522,7 +524,7 @@ export default function OfficeView({
         type="button"
         onClick={() => setHelpOpen(true)}
         title={tr("office_view.tastenkuerzel")}
-        className={KNOPF_KLEIN.neben}
+        className={BUTTON_KLEIN.neben}
       >
         ? Tasten
       </button>
@@ -566,7 +568,7 @@ export default function OfficeView({
   if (kiosk) {
     return (
       <div className={`relative flex min-h-0 flex-col gap-2 ${className ?? ""}`}>
-        {kopf}
+        {header}
         {buehne}
         <button
           type="button"
@@ -575,7 +577,7 @@ export default function OfficeView({
           aria-label="Vollbild umschalten"
           className={"absolute right-3 top-3 z-10 rounded border border-line bg-card/80 px-2 py-1 "
             + "text-sm text-muted transition-opacity hover:border-brand hover:text-ink "
-            + (knopfSichtbar ? "opacity-80" : "pointer-events-none opacity-0")}
+            + (buttonVisible ? "opacity-80" : "pointer-events-none opacity-0")}
         >
           ⛶
         </button>
@@ -585,7 +587,7 @@ export default function OfficeView({
 
   return (
     <div className={`flex min-h-0 flex-col gap-2 ${className ?? ""}`}>
-      {kopf}
+      {header}
       {werkzeugleiste}
 
       {voll ? (
@@ -611,7 +613,7 @@ export default function OfficeView({
               />
               <Inspector
                 scope={scope}
-                entry={eintrag}
+                entry={entry}
                 roster={roster}
                 recorder={recorder}
                 revision={revision}
@@ -644,7 +646,7 @@ export default function OfficeView({
 
 /** The same table that stands in the header of this file, only where one looks for it. */
 function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.Element {
-  const zeilen: [string, string][] = [
+  const lines: [string, string][] = [
     ["?", tr("office_view.hilfe_umschalten")],
     ...(voll ? ([
       ["1 2 3 4", "Dock: Chat, Agenten, Werkzeuge, Personalakte"],
@@ -675,12 +677,12 @@ function Hilfe({ voll, onClose }: { voll: boolean; onClose: () => void }): JSX.E
           <h2 className="text-sm font-semibold">🏢 {tr("office_view.tastenkuerzel_titel")}</h2>
           <div className="flex-1" />
           <button type="button" onClick={onClose} autoFocus
-            className={KNOPF_KLEIN.neben}>
+            className={BUTTON_KLEIN.neben}>
             {tr("office_view.schliessen")}
           </button>
         </div>
         <dl className="grid grid-cols-[9rem_1fr] gap-x-3 gap-y-1.5 text-xs">
-          {zeilen.map(([taste, text]) => (
+          {lines.map(([taste, text]) => (
             <div key={taste} className="contents">
               <dt className="font-mono text-ink">{taste}</dt>
               <dd className="text-muted">{text}</dd>

@@ -21,15 +21,15 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { Scope } from "./api.ts";
 import type { Cmd, GateKind, Roster, RosterEntry } from "./types.ts";
-import type { LogQuelle } from "./Timeline.tsx";
-import { projektPfad } from "../../projectTabs";
+import type { LogSource } from "./Timeline.tsx";
+import { projektPath } from "../../projectTabs";
 import {
-  GATE_TEXT, dauerText, statusFarbe, statusText, uhrText, usdText, zahl,
+  GATE_TEXT, durationText, statusFarbe, statusText, uhrText, usdText, zahl,
 } from "./TopBar.tsx";
-import { KNOPF_KLEIN, KNOPF_TEXT} from "../ui";
+import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
 
 /** This many steps back the inspector shows. More is the job of the dock. */
-const SCHRITTE = 10;
+const STEPS = 10;
 
 export interface InspectorProps {
   scope: Scope;
@@ -37,7 +37,7 @@ export interface InspectorProps {
   entry: RosterEntry | null;
   /** For the parent run: its name is taken from it. */
   roster: Roster;
-  recorder: LogQuelle;
+  recorder: LogSource;
   revision: number;
   /** `null` = present, otherwise epoch ms: the inspector shows the same moment as the room. */
   seekTs: number | null;
@@ -53,14 +53,14 @@ export interface InspectorProps {
 
 // ── Derivations from the log ────────────────────────────────────────────────────────────────
 
-interface Schritt {
+interface Step {
   key: string;
   ts: number;
   text: string;
   css?: string;
 }
 
-function schrittText(c: Cmd): { text: string; css?: string } | null {
+function stepText(c: Cmd): { text: string; css?: string } | null {
   switch (c.k) {
     // By contract it stands before **every** command and is pure bookkeeping; in a list of
     // the last steps it would only be noise displacing the real steps.
@@ -92,7 +92,7 @@ function schrittText(c: Cmd): { text: string; css?: string } | null {
 }
 
 interface Auszug {
-  schritte: Schritt[];
+  schritte: Step[];
   /** Zuletzt begonnenes Werkzeug samt Ergebnis, falls es im Fenster endete. */
   werkzeug: { tool: string; target?: string; ts: number; dauer: number | null; ok: boolean | null | undefined } | null;
   gate: GateKind | null;
@@ -100,8 +100,8 @@ interface Auszug {
 }
 
 function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id: string, bis: number | null): Auszug {
-  const schritte: Schritt[] = [];
-  let werkzeug: Auszug["werkzeug"] = null;
+  const steps: Step[] = [];
+  let tool: Auszug["werkzeug"] = null;
   let gate: GateKind | null = null;
   let edits = 0;
   for (const e of log) {
@@ -111,9 +111,9 @@ function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id:
       // figure. The triggering figure stands in `by`, the same affiliation for the inspector.
       if ((c.k === "deploy" ? c.by : c.id) !== id) return;
       if (c.k === "tool") {
-        werkzeug = { tool: c.tool, target: c.target, ts: e.ts, dauer: null, ok: undefined };
-      } else if (c.k === "toolEnd" && werkzeug && werkzeug.ok === undefined) {
-        werkzeug = { ...werkzeug, ok: c.ok, dauer: Math.max(0, e.ts - werkzeug.ts) };
+        tool = { tool: c.tool, target: c.target, ts: e.ts, dauer: null, ok: undefined };
+      } else if (c.k === "toolEnd" && tool && tool.ok === undefined) {
+        tool = { ...tool, ok: c.ok, dauer: Math.max(0, e.ts - tool.ts) };
       } else if (c.k === "edit") {
         edits++;
       } else if (c.k === "gate") {
@@ -121,11 +121,11 @@ function auszugAus(log: readonly { ts: number; seq: number; cmds: Cmd[] }[], id:
       } else if (c.k === "resume") {
         gate = null;
       }
-      const t = schrittText(c);
-      if (t) schritte.push({ key: `${e.seq}:${i}`, ts: e.ts, text: t.text, css: t.css });
+      const t = stepText(c);
+      if (t) steps.push({ key: `${e.seq}:${i}`, ts: e.ts, text: t.text, css: t.css });
     });
   }
-  return { schritte: schritte.slice(-SCHRITTE), werkzeug, gate, edits };
+  return { schritte: steps.slice(-STEPS), werkzeug: tool, gate, edits };
 }
 
 // ── The component ───────────────────────────────────────────────────────────────────────────
@@ -150,7 +150,7 @@ export default function Inspector({
   const start = entry.started_at ? Date.parse(entry.started_at) : NaN;
   const ende = entry.ended_at ? Date.parse(entry.ended_at)
     : (entry.status === "running" ? Date.now() : NaN);
-  const dauer = Number.isFinite(start) && Number.isFinite(ende) ? ende - start : null;
+  const duration = Number.isFinite(start) && Number.isFinite(ende) ? ende - start : null;
   const unbepreist = entry.cost_priced !== true;
 
   const eltern = entry.parent_run_id === null
@@ -175,7 +175,7 @@ export default function Inspector({
         <span className="font-mono text-[11px] text-muted">#{entry.run_id}</span>
         {onClose && (
           <button type="button" onClick={onClose} title={tr("inspector.schliessen")}
-            className={KNOPF_KLEIN.neben}>✕</button>
+            className={BUTTON_KLEIN.neben}>✕</button>
         )}
       </div>
 
@@ -187,44 +187,44 @@ export default function Inspector({
         )}
 
         <dl className="grid grid-cols-[8.5rem_1fr] gap-x-2 gap-y-1">
-          <Feld label={tr("inspector.lauf_id")}>
+          <Field label={tr("inspector.lauf_id")}>
             <span className="font-mono">{entry.agent_id}</span>
-          </Feld>
-          <Feld label={tr("inspector.rolle")}>{entry.agent || "—"}</Feld>
-          <Feld label={tr("inspector.phase")}>
+          </Field>
+          <Field label={tr("inspector.rolle")}>{entry.agent || "—"}</Field>
+          <Field label={tr("inspector.phase")}>
             {entry.phase === "plan" ? tr("dock.planung") : entry.phase === "execute" ? tr("dock.ausfuehrung") : (entry.phase || "—")}
-          </Feld>
-          <Feld label={tr("inspector.provider_modell")}>
+          </Field>
+          <Field label={tr("inspector.provider_modell")}>
             {entry.provider || "—"} / <span className="font-mono">{entry.model || "—"}</span>
-          </Feld>
-          <Feld label={tr("buero.tokens")}>
+          </Field>
+          <Field label={tr("buero.tokens")}>
             <span title={`Cache gelesen ${zahl(entry.cache_read_tokens)}`}>
               {zahl(entry.in_tokens)} {tr("akte.ein")} · {zahl(entry.out_tokens)} {tr("akte.aus")}
             </span>
-          </Feld>
-          <Feld label={tr("akte.kosten")}>
+          </Field>
+          <Field label={tr("akte.kosten")}>
             <span title={tr(unbepreist ? "inspector.kosten_teilweise" : "inspector.kosten_voll")}>
               {usdText(entry.cost_usd, unbepreist)}
             </span>
-          </Feld>
-          <Feld label={tr("inspector.start")}>{Number.isFinite(start) ? uhrText(start) : "—"}</Feld>
-          <Feld label={tr("akte.dauer")}>{dauerText(dauer)}{entry.status === "running" && ` (${tr("buero.st_running")})`}</Feld>
-          <Feld label={tr("akte.runden")}>{entry.iterations || 0}</Feld>
-          <Feld label={tr("inspector.bearbeitungen")}>{auszug.edits}</Feld>
-          <Feld label={tr("inspector.elternlauf")}>
+          </Field>
+          <Field label={tr("inspector.start")}>{Number.isFinite(start) ? uhrText(start) : "—"}</Field>
+          <Field label={tr("akte.dauer")}>{durationText(duration)}{entry.status === "running" && ` (${tr("buero.st_running")})`}</Field>
+          <Field label={tr("akte.runden")}>{entry.iterations || 0}</Field>
+          <Field label={tr("inspector.bearbeitungen")}>{auszug.edits}</Field>
+          <Field label={tr("inspector.elternlauf")}>
             {elternId === null ? (
               <span className="text-muted">— (Wurzellauf)</span>
             ) : onSelect ? (
               <button type="button" onClick={() => onSelect(elternId)}
-                className={KNOPF_TEXT.neben}>
+                className={BUTTON_TEXT.neben}>
                 {eltern?.agent || elternId}
               </button>
             ) : (
               <span>{eltern?.agent || elternId}</span>
             )}
-          </Feld>
-          <Feld label="Verschachtelung">{entry.spawn_depth}</Feld>
-          <Feld label="Letztes Werkzeug">
+          </Field>
+          <Field label="Verschachtelung">{entry.spawn_depth}</Field>
+          <Field label="Letztes Werkzeug">
             {auszug.werkzeug ? (
               <span>
                 <span className="font-mono">{auszug.werkzeug.tool}</span>
@@ -235,11 +235,11 @@ export default function Inspector({
                     : auszug.werkzeug.ok === true ? "erfolgreich"
                       : auszug.werkzeug.ok === false ? "fehlgeschlagen"
                         : "Ergebnis unbekannt"}
-                  {auszug.werkzeug.ok !== undefined && ` · ${dauerText(auszug.werkzeug.dauer)}`}
+                  {auszug.werkzeug.ok !== undefined && ` · ${durationText(auszug.werkzeug.dauer)}`}
                 </span>
               </span>
             ) : <span className="text-muted">—</span>}
-          </Feld>
+          </Field>
         </dl>
 
         <div>
@@ -262,7 +262,7 @@ export default function Inspector({
           {onOpenAkte && entry.agent && (
             <button type="button" onClick={() => onOpenAkte(entry.agent)}
               title={tr("inspector.alle_laeufe", { rolle: entry.agent })}
-              className={KNOPF_KLEIN.neben}>
+              className={BUTTON_KLEIN.neben}>
               📇 Personalakte: {entry.agent}
             </button>
           )}
@@ -273,7 +273,7 @@ export default function Inspector({
             </Link>
           )}
           {projektKey && (
-            <Link to={projektPfad(projektKey, "operations", "monitor")}
+            <Link to={projektPath(projektKey, "operations", "monitor")}
               className="rounded border border-line px-2 py-0.5 hover:border-brand">
               📈 Agenten-Monitor
             </Link>
@@ -284,7 +284,7 @@ export default function Inspector({
   );
 }
 
-function Feld({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
       <dt className="text-muted">{label}</dt>

@@ -151,7 +151,7 @@ export interface FeedTotals {
  *  runs in it, at 24 h there are 23, and `office/const.ts` allows `MAX_ACTORS = 24` characters
  *  at once, so the room would permanently sit at the edge and evict a character with every new
  *  run. */
-export const ALLE_FENSTER_H = 12;
+export const ALL_WINDOW_H = 12;
 
 /** Extra switches of the feed. */
 export interface OfficeFeedOpts {
@@ -253,15 +253,15 @@ function rosterFromRunEnd(prev: RosterEntry | undefined, ev: EvRunEnd): RosterEn
 
 export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): OfficeFeed {
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
-  const sinceHours = opts?.sinceHours ?? ALLE_FENSTER_H;
+  const sinceHours = opts?.sinceHours ?? ALL_WINDOW_H;
   /** "All sessions": no room chosen **and** the caller wants this mode. The second part is not
    *  decoration: without a `sid` the project tab is in the same state while its session list is
    *  still on the way, and it should not show the
    *  ganze Projekt laden, um es sofort wieder wegzuwerfen. */
-  const alle = !sid && !!opts?.alleSitzungen;
+  const all = !sid && !!opts?.alleSitzungen;
   // The identity of the log. It changes on a change of room **and** on a change of window:
   // both are a different log, and the recorder has to be empty in between.
-  const key = sid ? sidKey(sid) : (alle ? `alle:${scopeKey}:${sinceHours}` : null);
+  const key = sid ? sidKey(sid) : (all ? `alle:${scopeKey}:${sinceHours}` : null);
 
   // ── Refs: everything touched per event but not allowed to trigger a render ────────────────
   const recorderRef = useRef<RecorderApi | null>(null);
@@ -278,8 +278,8 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
   sidRef.current = sid ? sidKey(sid) : null;
   /** Mirror for `accept`: the receiver hangs on the socket effect and must not be
    *  re-registered on every change of mode. */
-  const alleRef = useRef(alle);
-  alleRef.current = alle;
+  const allRef = useRef(all);
+  allRef.current = all;
 
   const wsRef = useRef<WebSocket | null>(null);
   const bumpTimerRef = useRef<number | null>(null);
@@ -315,21 +315,21 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     const prev = map.get(ev.agent_id);
     if (ev.kind === "run_start") {
       if (prev) return;                       // der Schnappschuss kennt ihn schon
-      const neu = rosterFromRunStart(ev);
+      const fresh = rosterFromRunStart(ev);
       // The event carries the project **id**, not the key, which only the snapshot knows. If
       // somebody from the same project already stands in the room, the key is
       // taken from there and not guessed; otherwise it stays empty and the character sits under
       // "(no project)" until the next snapshot. That is visible in the "all sessions" mode,
       // because the tabs group by project there.
-      if (neu.project_id !== null) {
+      if (fresh.project_id !== null) {
         for (const r of map.values()) {
-          if (r.project_id === neu.project_id && r.project_key) {
-            neu.project_key = r.project_key;
+          if (r.project_id === fresh.project_id && r.project_key) {
+            fresh.project_key = r.project_key;
             break;
           }
         }
       }
-      map.set(ev.agent_id, neu);
+      map.set(ev.agent_id, fresh);
     } else {
       map.set(ev.agent_id, rosterFromRunEnd(prev, ev));
     }
@@ -345,7 +345,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
     // exactly what this user may see (`api/office_ws.py::visible`), and the room shows it
     // together. Throwing it away here anyway was the one line that made the overview
     // impossible until now.
-    if (!alleRef.current && (!sidRef.current || ev.sid !== sidRef.current)) return;
+    if (!allRef.current && (!sidRef.current || ev.sid !== sidRef.current)) return;
     if (!liveRef.current) {
       const buf = bufferRef.current;
       buf.push(ev);
@@ -479,7 +479,7 @@ export function useOfficeFeed(scope: Scope, sid?: Sid, opts?: OfficeFeedOpts): O
         limit: EVENT_PAGE_LIMIT, afterSeq, sinceHours,
         ...(scope.kind === "project" ? { projectId: scope.projectId } : {}),
       })),
-    enabled: (!!sid || alle) && generation > 0,
+    enabled: (!!sid || all) && generation > 0,
     staleTime: Infinity,
     gcTime: 5 * 60_000,
     refetchOnWindowFocus: false,

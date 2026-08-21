@@ -91,10 +91,10 @@ function Inner(props: WorkflowCanvasProps) {
       // `.react-flow__edge-interaction`).
       let edgeId: string | undefined;
       for (const [dx, dy] of [[0, 0], [0, -6], [0, 6], [-6, 0], [6, 0]]) {
-        const treffer = document.elementFromPoint(ev.clientX + dx, ev.clientY + dy);
-        const kante = treffer?.closest?.(".react-flow__edge");
-        if (kante) {
-          edgeId = kante.getAttribute("data-id") || undefined;
+        const hits = document.elementFromPoint(ev.clientX + dx, ev.clientY + dy);
+        const edge = hits?.closest?.(".react-flow__edge");
+        if (edge) {
+          edgeId = edge.getAttribute("data-id") || undefined;
           break;
         }
       }

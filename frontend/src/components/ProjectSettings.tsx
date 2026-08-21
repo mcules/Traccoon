@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { api, ApiError, Project } from "../api";
 import StatusManager from "./StatusManager";
-import { DestinationsBereich } from "./DestinationsPanel";
+import { DestinationsArea } from "./DestinationsPanel";
 import ProjectFields from "./ProjectFields";
 import AgentsPanel from "./AgentsPanel";
 import Members from "./Members";
@@ -12,8 +12,8 @@ import ResourceGrants from "./ResourceGrants";
 import DeploymentsPanel from "./DeploymentsPanel";
 import SlotList from "./workflow/SlotList";
 import WorkflowList from "./workflow/WorkflowList";
-import { projektPfad } from "../projectTabs";
-import { KNOPF_KLEIN, KNOPF} from "./ui";
+import { projektPath } from "../projectTabs";
+import { BUTTON_KLEIN, BUTTON} from "./ui";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PROVIDER_LABEL: Record<string, string> = {
@@ -56,7 +56,7 @@ type Settings = {
   git_token_set: boolean; testenv_env_set: boolean;
 };
 
-export default function ProjectSettings({ project, bereich }: { project: Project; bereich?: string }) {
+export default function ProjectSettings({ project, bereich: area }: { project: Project; bereich?: string }) {
   const qc = useQueryClient();
   const { data, refetch } = useQuery({
     queryKey: ["project-settings", project.id],
@@ -67,7 +67,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
     queryFn: () => api.get<{ id: number; provider: string; name: string; is_default: boolean }[]>("/me/provider-tokens"),
   });
   const [s, setS] = useState<Settings | null>(null);
-  const tab: Tab = (TAB_KEYS.includes(bereich as Tab) ? bereich : "general") as Tab;
+  const tab: Tab = (TAB_KEYS.includes(area as Tab) ? area : "general") as Tab;
   const [token, setToken] = useState("");
   const [envText, setEnvText] = useState("");
   const [msg, setMsg] = useState("");
@@ -130,7 +130,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
       {/* Ten sections wrapped into three lines of pills; as a column they simply stand there. */}
       <nav className="flex shrink-0 flex-wrap gap-1 rounded-lg border border-line bg-card p-1 md:w-48 md:flex-col md:flex-nowrap">
         {TABS.map(([t, label, icon]) => (
-          <Link key={t} to={projektPfad(project.key, "settings", t)}
+          <Link key={t} to={projektPath(project.key, "settings", t)}
             className={`flex min-h-[36px] items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm md:min-h-0 ${
               tab === t ? "bg-surface font-medium text-ink" : "text-muted hover:bg-surface hover:text-ink"}`}>
             <span className="text-base leading-none">{icon}</span>
@@ -197,7 +197,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
             <input value={delConfirm} onChange={(e) => setDelConfirm(e.target.value)} placeholder={project.key}
               className="w-40 rounded border border-line bg-surface px-2 py-1.5 text-sm" />
             <button onClick={delProject} disabled={delConfirm !== project.key}
-              className={KNOPF.gefahr}>
+              className={BUTTON.gefahr}>
               {tr("project_settings.projekt_loeschen")}</button>
           </div>
         </div>
@@ -233,7 +233,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
                 {tr("project_settings.subscription_hinweis")}
               </div>
             </div>
-            <button onClick={save} className={KNOPF.haupt}>{tr("project_settings.zuordnung_speichern")}</button>
+            <button onClick={save} className={BUTTON.haupt}>{tr("project_settings.zuordnung_speichern")}</button>
             {msg && <span className="ml-2 text-sm text-green-400">{msg}</span>}
           </Section>
           <div className="rounded-lg border border-line bg-card p-4">
@@ -245,7 +245,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
       {tab === "board" && <StatusManager project={project} />}
       {tab === "fields" && <ProjectFields project={project} />}
 
-      {tab === "destinations" && <DestinationsBereich projectId={project.id} />}
+      {tab === "destinations" && <DestinationsArea projectId={project.id} />}
       {/* Slots and own flows of the project: which graph runs on which occasion. */}
       {tab === "processes" && (
         <div className="space-y-8">
@@ -273,7 +273,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
             <div className="mt-1 flex gap-1">
               <input type="password" value={token} onChange={(e) => setToken(e.target.value)}
                 placeholder="ghp_…" className="w-full rounded border border-line bg-surface px-2 py-1.5" />
-              <button onClick={saveToken} className={KNOPF_KLEIN.neben}>OK</button>
+              <button onClick={saveToken} className={BUTTON_KLEIN.neben}>OK</button>
             </div>
           </div>
         </div>
@@ -331,7 +331,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
             placeholder={"KEY=wert\nANDERER=wert"}
             className="mt-1 w-full rounded border border-line bg-surface px-2 py-1.5 font-mono text-xs" />
           <div className="mt-1 flex items-center gap-2">
-            <button onClick={saveEnv} className={KNOPF_KLEIN.neben}>
+            <button onClick={saveEnv} className={BUTTON_KLEIN.neben}>
               {tr("project_settings.verschluesselt_speichern")}</button>
             <span className="text-xs text-muted">{tr("project_settings.wird_nach_dem_speichern_nicht_mehr_angez")}</span>
           </div>
@@ -368,7 +368,7 @@ export default function ProjectSettings({ project, bereich }: { project: Project
 
       {showSave && (
         <div className="mt-4 flex items-center gap-3">
-          <button onClick={save} className={KNOPF.haupt}>{tr("project_settings.speichern")}</button>
+          <button onClick={save} className={BUTTON.haupt}>{tr("project_settings.speichern")}</button>
           {msg && <span className="text-sm text-green-400">{msg}</span>}
           {err && <span className="text-sm text-red-400">{err}</span>}
         </div>

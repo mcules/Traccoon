@@ -40,7 +40,7 @@ import { tr } from "../../i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { officeApi, type AgentRecord, type Scope } from "./api.ts";
-import { dauerText, statusFarbe, statusText, tokenText, usdText, zahl } from "./TopBar.tsx";
+import { durationText, statusFarbe, statusText, tokenText, usdText, zahl } from "./TopBar.tsx";
 
 // ── Stellschrauben ──────────────────────────────────────────────────────────────────────────
 
@@ -48,18 +48,18 @@ import { dauerText, statusFarbe, statusText, tokenText, usdText, zahl } from "./
  *  key figure without its window is not a key figure. 30 days is the default value of
  *  `run_retention_days`; beyond that there simply are no runs any more, and a window that
  *  promises more than the retention delivers would be an empty promise. */
-const FENSTER: readonly { h: number; kurz: string; lang: string }[] = [
+const WINDOW: readonly { h: number; kurz: string; lang: string }[] = [
   { h: 24, kurz: "akte.fenster_24h_kurz", lang: "akte.fenster_24h" },
   { h: 24 * 7, kurz: "akte.fenster_7t_kurz", lang: "akte.fenster_7t" },
   { h: 24 * 30, kurz: "akte.fenster_30t_kurz", lang: "akte.fenster_30t" },
 ];
 
 /** Default: the whole retention window. The file is a review, not an alarm clock. */
-const FENSTER_STD = 24 * 30;
+const WINDOW_STD = 24 * 30;
 
 /** This many tools per role are fetched and shown by the ranking. Below that the long tail of
  *  one-off calls begins, which nobody reads. */
-const WERKZEUG_LIMIT = 8;
+const TOOL_LIMIT = 8;
 
 /** An aggregate over weeks does not change every second. */
 const AKTE_REFETCH_MS = 60_000;
@@ -122,16 +122,16 @@ function komma1(v: number): string {
   return v.toFixed(1).replace(".", ",");
 }
 
-function prozent(teil: number, ganzes: number): number {
-  return ganzes > 0 ? (teil / ganzes) * 100 : 0;
+function prozent(part: number, ganzes: number): number {
+  return ganzes > 0 ? (part / ganzes) * 100 : 0;
 }
 
 /** How long ago, roughly. The exact moment stands in the `title`. */
-function herText(iso: string | null | undefined, jetzt: number): string {
+function herText(iso: string | null | undefined, now: number): string {
   if (!iso) return "—";
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return "—";
-  const d = Math.max(0, jetzt - t);
+  const d = Math.max(0, now - t);
   const min = Math.round(d / 60_000);
   if (min < 1) return "gerade eben";
   if (min < 60) return tr("akte.vor_min", { anzahl: min });
@@ -144,9 +144,9 @@ function herText(iso: string | null | undefined, jetzt: number): string {
  *  open bucket at the top. */
 function eimerText(lt: number | null | undefined, vorher: number | null): string {
   if (lt === null || lt === undefined || !Number.isFinite(lt)) {
-    return vorher !== null ? `> ${dauerText(vorher)}` : tr("akte.darueber");
+    return vorher !== null ? `> ${durationText(vorher)}` : tr("akte.darueber");
   }
-  return vorher !== null ? `${dauerText(vorher)} – ${dauerText(lt)}` : `< ${dauerText(lt)}`;
+  return vorher !== null ? `${durationText(vorher)} – ${durationText(lt)}` : `< ${durationText(lt)}`;
 }
 
 // ── Interface ───────────────────────────────────────────────────────────────────────────────
@@ -167,14 +167,14 @@ export interface PersonalakteProps {
 export default function Personalakte({
   scope, focusAgent, initialSinceHours, className,
 }: PersonalakteProps): JSX.Element {
-  const [stunden, setStunden] = useState<number>(initialSinceHours ?? FENSTER_STD);
-  const [offen, setOffen] = useState<string | null>(focusAgent ?? null);
+  const [hours, setHours] = useState<number>(initialSinceHours ?? WINDOW_STD);
+  const [open, setOpen] = useState<string | null>(focusAgent ?? null);
   const boxRef = useRef<HTMLDivElement | null>(null);
 
   const scopeKey = scope.kind === "project" ? `project:${scope.projectId}` : "global";
   const akte = useQuery({
-    queryKey: ["office", "agents", scopeKey, stunden],
-    queryFn: () => officeApi.agents(scope, { sinceHours: stunden, toolLimit: WERKZEUG_LIMIT }),
+    queryKey: ["office", "agents", scopeKey, hours],
+    queryFn: () => officeApi.agents(scope, { sinceHours: hours, toolLimit: TOOL_LIMIT }),
     refetchInterval: AKTE_REFETCH_MS,
     refetchOnWindowFocus: false,
     staleTime: 30_000,
@@ -185,15 +185,15 @@ export default function Personalakte({
   // scrolling the file would show the right role of twelve, but below the edge.
   useEffect(() => {
     if (!focusAgent) return;
-    setOffen(focusAgent);
+    setOpen(focusAgent);
     boxRef.current
       ?.querySelector<HTMLElement>(`[data-rolle="${CSS.escape(focusAgent)}"]`)
       ?.scrollIntoView({ block: "nearest" });
   }, [focusAgent]);
 
-  const gemessen = akte.data?.since_hours ?? stunden;
-  const treffer = FENSTER.find((f) => f.h === gemessen);
-  const fensterText = treffer ? tr(treffer.lang)
+  const gemessen = akte.data?.since_hours ?? hours;
+  const hits = WINDOW.find((f) => f.h === gemessen);
+  const windowText = hits ? tr(hits.lang)
     : tr("akte.fenster_tage", { anzahl: Math.round(gemessen / 24) });
 
   // Order: the busiest role first, on a tie the most recently active one. That is the order in
@@ -212,22 +212,22 @@ export default function Personalakte({
     return kopie;
   }, [akte.data]);
 
-  const jetzt = Date.now();
+  const now = Date.now();
 
   return (
     <div ref={boxRef} className={`space-y-2 ${className ?? ""}`}>
       {/* Kopf: das Fenster ist Teil der Aussage, also steht es ganz oben und ist umstellbar. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-line pb-1.5 text-[11px]">
         <span className="text-muted">
-          📇 Kennzahlen je Rolle, <b className="text-ink">{fensterText}</b>
+          📇 Kennzahlen je Rolle, <b className="text-ink">{windowText}</b>
         </span>
         <div className="flex-1" />
         <span role="group" aria-label="Zeitfenster" className="flex overflow-hidden rounded border border-line">
-          {FENSTER.map((f) => (
-            <button key={f.h} type="button" onClick={() => setStunden(f.h)}
-              aria-pressed={stunden === f.h}
+          {WINDOW.map((f) => (
+            <button key={f.h} type="button" onClick={() => setHours(f.h)}
+              aria-pressed={hours === f.h}
               title={`Kennzahlen ${f.lang}`}
-              className={"px-1.5 py-0.5 " + (stunden === f.h ? "bg-brand text-white" : "text-muted hover:bg-surface")}>
+              className={"px-1.5 py-0.5 " + (hours === f.h ? "bg-brand text-white" : "text-muted hover:bg-surface")}>
               {f.kurz}
             </button>
           ))}
@@ -248,14 +248,14 @@ export default function Personalakte({
 
       {!akte.isLoading && !akte.error && rollen.length === 0 && (
         <div className="py-4 text-center text-xs text-muted">
-          {tr("akte.kein_lauf", { fenster: fensterText })}
+          {tr("akte.kein_lauf", { fenster: windowText })}
         </div>
       )}
 
       {rollen.map((r) => (
-        <Rollenkarte key={r.agent} r={r} jetzt={jetzt}
-          offen={offen === r.agent}
-          onToggle={() => setOffen((v) => (v === r.agent ? null : r.agent))} />
+        <Rollenkarte key={r.agent} r={r} jetzt={now}
+          offen={open === r.agent}
+          onToggle={() => setOpen((v) => (v === r.agent ? null : r.agent))} />
       ))}
     </div>
   );
@@ -263,31 +263,31 @@ export default function Personalakte({
 
 // ── One role ────────────────────────────────────────────────────────────────────────────────
 
-function Rollenkarte({ r, jetzt, offen, onToggle }: {
+function Rollenkarte({ r, jetzt: now, offen: open, onToggle }: {
   r: AgentRecord;
   jetzt: number;
   offen: boolean;
   onToggle: () => void;
 }) {
   const runs = r.runs ?? 0;
-  const werte: Record<BalkenArt["key"], number> = {
+  const values: Record<BalkenArt["key"], number> = {
     delivered: r.delivered ?? 0,
     waiting: r.waiting ?? 0,
     aborted: r.aborted ?? 0,
   };
-  const beurteilt = werte.delivered + werte.waiting + werte.aborted;
+  const beurteilt = values.delivered + values.waiting + values.aborted;
   // What is left over is still running (or has a status the server assigns to none of the
   // three groups). It gets a grey remainder of its own; distributing it among the three would
   // be exactly the kind of silent arithmetic this view is meant to avoid.
-  const rest = Math.max(0, runs - beurteilt);
-  const basis = beurteilt + rest;
+  const remainder = Math.max(0, runs - beurteilt);
+  const basis = beurteilt + remainder;
 
   return (
     <div data-rolle={r.agent}
-      className={"rounded border px-2 py-1.5 " + (offen ? "border-brand bg-brand/5" : "border-line")}>
-      <button type="button" onClick={onToggle} aria-expanded={offen}
+      className={"rounded border px-2 py-1.5 " + (open ? "border-brand bg-brand/5" : "border-line")}>
+      <button type="button" onClick={onToggle} aria-expanded={open}
         className="flex w-full flex-wrap items-center gap-x-2 gap-y-0.5 text-left text-xs">
-        <span className="shrink-0 text-[11px] text-muted">{offen ? "▾" : "▸"}</span>
+        <span className="shrink-0 text-[11px] text-muted">{open ? "▾" : "▸"}</span>
         <span className="font-medium">{r.agent}</span>
         <span className="text-muted">{zahl(runs)} {tr(runs === 1 ? "agent_monitor.lauf" : "agent_monitor.laeufe")}</span>
         {(r.running ?? 0) > 0 && (
@@ -297,13 +297,13 @@ function Rollenkarte({ r, jetzt, offen, onToggle }: {
         )}
         <div className="flex-1" />
         <span className="text-muted" title={tr("akte.letzter_lauf")}>
-          {herText(r.last_run_at, jetzt)}
+          {herText(r.last_run_at, now)}
         </span>
       </button>
 
-      <Balkenband werte={werte} rest={rest} basis={basis} />
+      <Balkenband werte={values} rest={remainder} basis={basis} />
 
-      {offen && <Details r={r} basis={basis} werte={werte} rest={rest} />}
+      {open && <Details r={r} basis={basis} werte={values} rest={remainder} />}
     </div>
   );
 }
@@ -314,7 +314,7 @@ function Rollenkarte({ r, jetzt, offen, onToggle }: {
 // stand beside it: a bar alone says "about a third", and about is too little with twelve
 // runs.
 
-function Balkenband({ werte, rest, basis }: {
+function Balkenband({ werte: values, rest: remainder, basis }: {
   werte: Record<BalkenArt["key"], number>;
   rest: number;
   basis: number;
@@ -323,7 +323,7 @@ function Balkenband({ werte, rest, basis }: {
     <div className="mt-1">
       <div className="flex h-2 w-full overflow-hidden rounded-sm bg-line/40">
         {BALKEN.map((b) => {
-          const n = werte[b.key];
+          const n = values[b.key];
           if (n <= 0) return null;
           return (
             <div key={b.key} className={flaeche(b.status)}
@@ -331,22 +331,22 @@ function Balkenband({ werte, rest, basis }: {
               title={`${tr(b.label)}: ${zahl(n)} ${tr("akte.von")} ${zahl(basis)}`} />
           );
         })}
-        {rest > 0 && (
-          <div className="bg-line" style={{ width: `${prozent(rest, basis)}%` }}
-            title={`${tr("akte.ohne_urteil")}: ${zahl(rest)} ${tr("akte.von")} ${zahl(basis)}`} />
+        {remainder > 0 && (
+          <div className="bg-line" style={{ width: `${prozent(remainder, basis)}%` }}
+            title={`${tr("akte.ohne_urteil")}: ${zahl(remainder)} ${tr("akte.von")} ${zahl(basis)}`} />
         )}
       </div>
       <div className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0 text-[11px]">
         {BALKEN.map((b) => (
-          <span key={b.key} className={werte[b.key] > 0 ? statusFarbe(b.status) : "text-muted"}
+          <span key={b.key} className={values[b.key] > 0 ? statusFarbe(b.status) : "text-muted"}
             title={b.titel}>
-            {b.label} {zahl(werte[b.key])}
-            <span className="text-muted"> ({Math.round(prozent(werte[b.key], basis))} %)</span>
+            {b.label} {zahl(values[b.key])}
+            <span className="text-muted"> ({Math.round(prozent(values[b.key], basis))} %)</span>
           </span>
         ))}
-        {rest > 0 && (
+        {remainder > 0 && (
           <span className="text-muted" title={tr("akte.ohne_urteil_titel")}>
-            {tr("dock.laeuft_noch")} {zahl(rest)}
+            {tr("dock.laeuft_noch")} {zahl(remainder)}
           </span>
         )}
       </div>
@@ -356,19 +356,19 @@ function Balkenband({ werte, rest, basis }: {
 
 // ── The expanded part ───────────────────────────────────────────────────────────────────────
 
-function Details({ r, basis, werte, rest }: {
+function Details({ r, basis, werte: values, rest: remainder }: {
   r: AgentRecord;
   basis: number;
   werte: Record<BalkenArt["key"], number>;
   rest: number;
 }) {
   const status = r.by_status ?? {};
-  const statusZeilen = Object.entries(status).filter(([, n]) => n > 0);
-  const dauer = r.duration ?? {};
-  const eimer = dauer.buckets ?? [];
+  const statusLines = Object.entries(status).filter(([, n]) => n > 0);
+  const duration = r.duration ?? {};
+  const eimer = duration.buckets ?? [];
   const eimerMax = eimer.reduce((m, b) => Math.max(m, b.n ?? 0), 0);
-  const werkzeuge = r.tools ?? [];
-  const werkzeugMax = werkzeuge.reduce((m, t) => Math.max(m, t.n ?? 0), 0);
+  const tools = r.tools ?? [];
+  const toolMax = tools.reduce((m, t) => Math.max(m, t.n ?? 0), 0);
   // `!== false` and not `=== true`: if the field is missing it is unknown whether everything
   // was priced, and unknown belongs on the side of the lower bound. An amount without "≥"
   // would be a precision claim nobody checked.
@@ -377,10 +377,10 @@ function Details({ r, basis, werte, rest }: {
   return (
     <div className="mt-2 space-y-2 border-t border-line pt-2 text-[11px]">
       {/* Woher die drei Balken kommen — roh, unverdichtet, zum Nachrechnen. */}
-      {statusZeilen.length > 0 && (
+      {statusLines.length > 0 && (
         <div className="flex flex-wrap gap-x-2 gap-y-0.5"
           title={tr("akte.rohe_status")}>
-          {statusZeilen.map(([s, n]) => (
+          {statusLines.map(([s, n]) => (
             <span key={s} className={statusFarbe(s)}>
               {statusText(s)} <b className="text-ink">{zahl(n)}</b>
             </span>
@@ -390,32 +390,32 @@ function Details({ r, basis, werte, rest }: {
 
       {/* Runden und Schritte — getrennt beschriftet, weil es zwei verschiedene Dinge sind. */}
       <dl className="grid grid-cols-[7.5rem_1fr] gap-x-2 gap-y-1">
-        <Feld label={tr("akte.runden")} titel={tr("akte.runden_titel")}>
+        <Field label={tr("akte.runden")} titel={tr("akte.runden_titel")}>
           Ø {komma1(r.iterations_avg ?? 0)} · max {zahl(r.iterations_max ?? 0)}
-        </Feld>
-        <Feld label={tr("akte.schritte")} titel={tr("akte.schritte_titel")}>
+        </Field>
+        <Field label={tr("akte.schritte")} titel={tr("akte.schritte_titel")}>
           Ø {komma1(r.steps_avg ?? 0)} · max {zahl(r.steps_max ?? 0)}
-        </Feld>
-        <Feld label={tr("buero.tokens")}
+        </Field>
+        <Field label={tr("buero.tokens")}
           titel={tr("akte.cache_gelesen", { anzahl: zahl(r.cache_read_tokens ?? 0) })}>
           {tokenText((r.in_tokens ?? 0) + (r.out_tokens ?? 0))}
           <span className="text-muted">
             {" "}({zahl(r.in_tokens ?? 0)} {tr("akte.ein")} · {zahl(r.out_tokens ?? 0)} {tr("akte.aus")})
           </span>
-        </Feld>
-        <Feld label={tr("akte.kosten")}
+        </Field>
+        <Field label={tr("akte.kosten")}
           titel={unbepreist
             ? tr("akte.kosten_teilweise")
             : tr("akte.kosten_voll")}>
           {usdText(r.cost_usd ?? 0, unbepreist)}
-        </Feld>
-        <Feld label={tr("agent_monitor.laeufe")} titel={tr("akte.laeufe_titel")}>
+        </Field>
+        <Field label={tr("agent_monitor.laeufe")} titel={tr("akte.laeufe_titel")}>
           {zahl(basis)}
           <span className="text-muted">
-            {" "}({zahl(werte.delivered)} + {zahl(werte.waiting)} + {zahl(werte.aborted)}
-            {rest > 0 ? ` + ${zahl(rest)} ${tr("akte.laufend")}` : ""})
+            {" "}({zahl(values.delivered)} + {zahl(values.waiting)} + {zahl(values.aborted)}
+            {remainder > 0 ? ` + ${zahl(remainder)} ${tr("akte.laufend")}` : ""})
           </span>
-        </Feld>
+        </Field>
       </dl>
 
       {/* Dauer: Median, p90, Maximum — und die Verteilung darunter. */}
@@ -423,13 +423,13 @@ function Details({ r, basis, werte, rest }: {
         <div className="mb-0.5 flex flex-wrap items-baseline gap-x-2">
           <span className="font-medium">{tr("akte.dauer")}</span>
           <span className="text-muted" title={tr("akte.median_titel")}>
-            {tr("akte.median")} <b className="text-ink">{dauerText(dauer.p50_ms)}</b>
+            {tr("akte.median")} <b className="text-ink">{durationText(duration.p50_ms)}</b>
           </span>
           <span className="text-muted" title={tr("akte.p90_titel")}>
-            p90 <b className="text-ink">{dauerText(dauer.p90_ms)}</b>
+            p90 <b className="text-ink">{durationText(duration.p90_ms)}</b>
           </span>
           <span className="text-muted" title={tr("akte.max_titel")}>
-            max <b className="text-ink">{dauerText(dauer.max_ms)}</b>
+            max <b className="text-ink">{durationText(duration.max_ms)}</b>
           </span>
         </div>
         <p className="mb-1 text-[11px] text-muted">
@@ -460,18 +460,18 @@ function Details({ r, basis, werte, rest }: {
       {/* Werkzeuge: Rangliste mit Anzahl und Fehlschlägen. */}
       <div>
         <div className="mb-0.5 font-medium">{tr("dock.werkzeuge")}</div>
-        {werkzeuge.length === 0 ? (
+        {tools.length === 0 ? (
           <div className="text-muted">{tr("akte.kein_werkzeugaufruf")}</div>
         ) : (
           <div className="space-y-0.5">
-            {werkzeuge.map((t) => (
+            {tools.map((t) => (
               <div key={t.tool} className="flex items-center gap-1.5">
                 <span className="w-[8rem] shrink-0 truncate font-mono text-[11px]" title={t.tool}>
                   {t.tool}
                 </span>
                 <span className="h-2 min-w-0 flex-1 rounded-sm bg-line/40">
                   <span className="block h-2 rounded-sm bg-sky-400"
-                    style={{ width: `${prozent(t.n ?? 0, werkzeugMax)}%` }} />
+                    style={{ width: `${prozent(t.n ?? 0, toolMax)}%` }} />
                 </span>
                 <span className="w-8 shrink-0 text-right text-muted">{zahl(t.n ?? 0)}</span>
                 <span className={"w-14 shrink-0 text-right " + ((t.failed ?? 0) > 0 ? "text-red-400" : "text-muted")}
@@ -489,14 +489,14 @@ function Details({ r, basis, werte, rest }: {
   );
 }
 
-function Feld({ label, titel, children }: {
+function Field({ label, titel: title, children }: {
   label: string;
   titel?: string;
   children: React.ReactNode;
 }) {
   return (
     <>
-      <dt className="text-muted" title={titel}>{label}</dt>
+      <dt className="text-muted" title={title}>{label}</dt>
       <dd className="min-w-0 break-words">{children}</dd>
     </>
   );

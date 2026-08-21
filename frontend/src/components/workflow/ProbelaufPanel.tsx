@@ -2,8 +2,8 @@ import { useState } from "react";
 import { tr } from "../../i18n";
 import { ApiError, workflowApi } from "../../api";
 import type { FlowNode } from "./nodes/shared";
-import Schrittprotokoll, { type Schritt } from "./Schrittprotokoll";
-import { KNOPF_KLEIN, KNOPF_TEXT} from "../ui";
+import Schrittprotokoll, { type Step } from "./Schrittprotokoll";
+import { BUTTON_KLEIN, BUTTON_TEXT} from "../ui";
 
 /**
  * Play the flow through before it runs for real.
@@ -20,9 +20,9 @@ export default function ProbelaufPanel(
   { defId, nodes, graph }: { defId?: number; nodes: FlowNode[]; graph: () => unknown },
 ) {
   const [läuft, setLäuft] = useState(false);
-  const [fehler, setFehler] = useState("");
-  const [schritte, setSchritte] = useState<Schritt[] | null>(null);
-  const [ergebnis, setErgebnis] = useState("");
+  const [error, setError] = useState("");
+  const [steps, setSteps] = useState<Step[] | null>(null);
+  const [result, setResult] = useState("");
 
   const start = nodes.find((n) => n.type === "start");
   const probe = (start?.data.config.trigger?.sample ?? {}) as Record<string, unknown>;
@@ -30,19 +30,19 @@ export default function ProbelaufPanel(
 
   const los = async () => {
     if (!defId) return;
-    setLäuft(true); setFehler(""); setSchritte(null);
+    setLäuft(true); setError(""); setSteps(null);
     try {
       // The state from the editor, not the saved one; otherwise one checks yesterday's.
       const r = await workflowApi.probelauf(defId, probe, graph());
-      setSchritte(r.steps);
+      setSteps(r.steps);
       const klartext: Record<string, string> = {
         completed: "durchgelaufen", failed: "abgebrochen", waiting: "wartet",
         running: "probelauf.laeuft_noch", cancelled: "probelauf.abgebrochen",
       };
-      setErgebnis(r.error ? `${klartext[r.status] || r.status} — ${r.error}`
+      setResult(r.error ? `${klartext[r.status] || r.status} — ${r.error}`
                           : (klartext[r.status] || r.status));
     } catch (e) {
-      setFehler(e instanceof ApiError ? e.message : "Probelauf fehlgeschlagen");
+      setError(e instanceof ApiError ? e.message : "Probelauf fehlgeschlagen");
     } finally {
       setLäuft(false);
     }
@@ -54,31 +54,31 @@ export default function ProbelaufPanel(
         <button
           onClick={los}
           disabled={!defId || läuft}
-          className={KNOPF_KLEIN.neben}
+          className={BUTTON_KLEIN.neben}
         >
           {tr(läuft ? "probelauf.laeuft" : "probelauf.starten")}
         </button>
-        {ergebnis && <span className="text-[11px]">Ergebnis: <b>{ergebnis}</b></span>}
+        {result && <span className="text-[11px]">Ergebnis: <b>{result}</b></span>}
       </div>
       <p className="text-[11px]">
         {hatProbe
           ? tr("probelauf.hinweis_mit_nutzlast")
           : tr("probelauf.ohne_beispiel")}
       </p>
-      {fehler && (
-        <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-red-300">{fehler}</div>
+      {error && (
+        <div className="rounded border border-red-500/40 bg-red-500/10 p-2 text-red-300">{error}</div>
       )}
-      {schritte && (
+      {steps && (
         <div className="fixed bottom-4 left-[220px] z-40 w-[440px] rounded-lg border border-line
                         bg-card p-2 shadow-xl">
           <div className="mb-1 flex items-center justify-between">
             <span className="text-xs font-medium text-ink">
-              Probelauf — {schritte.length} Schritt{schritte.length === 1 ? "" : "e"}
+              Probelauf — {steps.length} Schritt{steps.length === 1 ? "" : "e"}
             </span>
-            <button onClick={() => setSchritte(null)}
-              className={KNOPF_TEXT.neben} title={tr("probelauf_panel.schliessen")}>✕</button>
+            <button onClick={() => setSteps(null)}
+              className={BUTTON_TEXT.neben} title={tr("probelauf_panel.schliessen")}>✕</button>
           </div>
-          <Schrittprotokoll schritte={schritte} maxHoehe="18rem"
+          <Schrittprotokoll schritte={steps} maxHoehe="18rem"
             leerText={tr("probelauf.kein_schritt")} />
         </div>
       )}

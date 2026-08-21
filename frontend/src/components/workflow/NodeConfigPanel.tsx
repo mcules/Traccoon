@@ -6,14 +6,14 @@ import HumanTaskConfig from "./config/HumanTaskConfig";
 import DecisionConfig from "./config/DecisionConfig";
 import LoopConfig from "./config/LoopConfig";
 import TimerConfig from "./config/TimerConfig";
-import type { KontextFeld } from "./contextFields";
+import type { ContextField } from "./contextFields";
 import ApprovalConfig from "./config/ApprovalConfig";
 import AutoActionConfig from "./config/AutoActionConfig";
 import AgentTaskConfig from "./config/AgentTaskConfig";
 import WaitEventConfig from "./config/WaitEventConfig";
 import SubflowConfig from "./config/SubflowConfig";
 import StartConfig from "./config/StartConfig";
-import { KNOPF_TEXT } from "../ui";
+import { BUTTON_TEXT } from "../ui";
 
 const OUTCOMES: [WorkflowInstanceStatus, string][] = [
   ["completed", "abgeschlossen"],
@@ -28,8 +28,8 @@ export default function NodeConfigPanel({
   onDelete,
   projectId,
   subjectKind,
-  kontextFelder,
-  kontextFilter,
+  kontextFelder: contextFields,
+  kontextFilter: contextFilter,
   defId,
 }: {
   node: FlowNode | null;
@@ -40,9 +40,9 @@ export default function NodeConfigPanel({
   /** Subject of the flow (issue|hardware_asset|standalone); controls actions and states. */
   subjectKind?: string;
   /** Context fields of this flow; the branch offers them for selection. */
-  kontextFelder?: KontextFeld[];
+  kontextFelder?: ContextField[];
   /** Vorlagen-Filter (Hilfe im Verzweigungs-Editor). */
-  kontextFilter?: import("./contextFields").KontextFilter[];
+  kontextFilter?: import("./contextFields").ContextFilter[];
   /** Definition of this flow; the start node needs it for its own address. */
   defId?: number;
 }) {
@@ -61,7 +61,7 @@ export default function NodeConfigPanel({
         {node.type !== "start" && (
           <button
             onClick={() => onDelete(node.id)}
-            className={KNOPF_TEXT.gefahr}
+            className={BUTTON_TEXT.gefahr}
             title={tr("node_config_panel.knoten_loeschen")}
           >
             🗑
@@ -82,11 +82,11 @@ export default function NodeConfigPanel({
       {node.type === "human_task" && <HumanTaskConfig config={config} onChange={set} members={members} />}
       {node.type === "timer" && <TimerConfig config={config} onChange={set} />}
       {node.type === "loop" && (
-        <LoopConfig config={config} onChange={set} felder={kontextFelder} />
+        <LoopConfig config={config} onChange={set} felder={contextFields} />
       )}
       {node.type === "decision" && (
-        <DecisionConfig config={config} onChange={set} felder={kontextFelder}
-          filter={kontextFilter} />
+        <DecisionConfig config={config} onChange={set} felder={contextFields}
+          filter={contextFilter} />
       )}
       {node.type === "approval" && <ApprovalConfig config={config} onChange={set} members={members} />}
       {node.type === "auto_action" && (

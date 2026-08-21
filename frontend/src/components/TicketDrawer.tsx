@@ -11,7 +11,7 @@ import WorkflowInstanceView from "./workflow/WorkflowInstanceView";
 import LifecycleView from "./workflow/LifecycleView";
 import WorkflowTaskForm from "./workflow/WorkflowTaskForm";
 import { NODE_TYPE_LABELS } from "./workflow/types";
-import { KNOPF, KNOPF_KLEIN, KNOPF_TEXT} from "./ui";
+import { BUTTON, BUTTON_KLEIN, BUTTON_TEXT} from "./ui";
 
 const AGENTS = ["project_manager", "architect", "developer", "code_reviewer", "tester", "devops"];
 const PRIOS = ["lowest", "low", "medium", "high", "highest"];
@@ -309,9 +309,9 @@ export default function TicketDrawer({
       {kannVerwalten && (confirmDel ? (
         <span className="flex items-center gap-1 text-sm">
           <span className="text-red-400">{tr("ticket_drawer.loeschen")}</span>
-          <button onClick={() => del.mutate()} className={KNOPF_KLEIN.gefahr}>{tr("ticket_drawer.ja")}</button>
+          <button onClick={() => del.mutate()} className={BUTTON_KLEIN.gefahr}>{tr("ticket_drawer.ja")}</button>
           <button onClick={() => setConfirmDel(false)}
-            className={KNOPF_KLEIN.neben}>{tr("ticket_drawer.nein")}</button>
+            className={BUTTON_KLEIN.neben}>{tr("ticket_drawer.nein")}</button>
         </span>
       ) : (
         <button onClick={() => setConfirmDel(true)} title={tr("ticket_drawer.ticket_loeschen")}
@@ -332,7 +332,7 @@ export default function TicketDrawer({
           {editLayout ? "✓ Layout fertig" : "⤢ Layout bearbeiten"}
         </button>
       )}
-      <button onClick={onClose} className={KNOPF_TEXT.neben}>
+      <button onClick={onClose} className={BUTTON_TEXT.neben}>
         {asPage ? `← ${tr("common.zurueck")}` : "✕"}
       </button>
     </div>
@@ -397,7 +397,7 @@ export default function TicketDrawer({
       </button>
       {dirty && (
         <button onClick={() => setDraft(seed(issue))}
-          className={KNOPF.neben}>{tr("ticket_drawer.verwerfen")}</button>
+          className={BUTTON.neben}>{tr("ticket_drawer.verwerfen")}</button>
       )}
       {dirty && <span className="text-xs text-yellow-400">{tr("ticket_drawer.ungespeicherte_aenderungen")}</span>}
     </div>
@@ -481,7 +481,7 @@ export default function TicketDrawer({
         <div className="flex-1" />
         {fileChanges && fileChanges.length > 0 && (
           <button onClick={() => setShowDiff((v) => !v)}
-            className={KNOPF_KLEIN.neben}>
+            className={BUTTON_KLEIN.neben}>
             {showDiff ? "Diff ausblenden" : "Diff ansehen"}</button>
         )}
       </div>
@@ -528,15 +528,15 @@ export default function TicketDrawer({
           {issue.testenv_status === "running" && issue.testenv_url ? (
             <>
               <a href={issue.testenv_url} target="_blank" rel="noreferrer"
-                className={KNOPF_TEXT.neben}>🖥 {issue.testenv_url}</a>
+                className={BUTTON_TEXT.neben}>🖥 {issue.testenv_url}</a>
               <button onClick={() => life.mutate("testenv/stop")}
-                className={KNOPF_KLEIN.gefahr}>{tr("ticket_drawer.stoppen")}</button>
+                className={BUTTON_KLEIN.gefahr}>{tr("ticket_drawer.stoppen")}</button>
             </>
           ) : issue.testenv_status === "starting" ? (
             <span className="text-muted">{tr("ticket_drawer.testumgebung_startet")}</span>
           ) : (
             <button onClick={() => life.mutate("testenv/start")}
-              className={KNOPF_KLEIN.neben}>🖥 Starten</button>
+              className={BUTTON_KLEIN.neben}>🖥 Starten</button>
           )}
           {issue.testenv_status === "error" && (
             <span className="text-red-400">Fehler{issue.testenv_error ? `: ${issue.testenv_error.slice(0, 120)}` : ""}</span>
@@ -551,7 +551,7 @@ export default function TicketDrawer({
               className="flex-1 truncate text-left text-brand hover:underline">📎 {a.filename}</button>
             <span className="text-muted">{Math.round(a.size / 1024)} KB</span>
             <button onClick={() => delAttachment.mutate(a.id)}
-              className={KNOPF_TEXT.gefahr}>✕</button>
+              className={BUTTON_TEXT.gefahr}>✕</button>
           </div>
         ))}
       </div>
@@ -571,7 +571,7 @@ export default function TicketDrawer({
         <input value={comment} onChange={(e) => setComment(e.target.value)}
           placeholder={tr("ticket_drawer.kommentar")} className="flex-1 rounded border border-line bg-surface px-2 py-1.5" />
         <button onClick={() => comment.trim() && addComment.mutate()}
-          className={KNOPF.haupt}>{tr("ticket_drawer.senden")}</button>
+          className={BUTTON.haupt}>{tr("ticket_drawer.senden")}</button>
       </div>
       <div className="space-y-2">
         {[...(comments || [])].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((c) => (
@@ -687,12 +687,12 @@ export default function TicketDrawer({
             <div className="flex-1" />
             {issue.agent_working ? (
               <button onClick={() => life.mutate("stop")}
-                className={KNOPF_KLEIN.gefahr}>
+                className={BUTTON_KLEIN.gefahr}>
                 ⏹ Stoppen
               </button>
             ) : (
               <button onClick={() => unassign.mutate()}
-                className={KNOPF_KLEIN.neben}>
+                className={BUTTON_KLEIN.neben}>
                 aufheben
               </button>
             )}
@@ -701,7 +701,7 @@ export default function TicketDrawer({
           {!issue.agent_working && (issue.agent_status === null || issue.agent_status === "open"
             || issue.agent_status === "failed") && (
             <button onClick={() => life.mutate("plan")}
-              className={KNOPF_KLEIN.haupt}>
+              className={BUTTON_KLEIN.haupt}>
               🧭 {issue.agent_status === "failed" ? "Erneut planen" : "Planung starten"}
             </button>
           )}
@@ -713,7 +713,7 @@ export default function TicketDrawer({
             {AGENTS.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
           <button onClick={() => assign.mutate()}
-            className={KNOPF_KLEIN.haupt}>{tr("ticket_drawer.zur_planung_uebergeben")}</button>
+            className={BUTTON_KLEIN.haupt}>{tr("ticket_drawer.zur_planung_uebergeben")}</button>
           <span className="text-xs text-muted">{tr("ticket_drawer.startet_die_planung_standard_pm_entschei")}</span>
         </div>
       )}
@@ -722,13 +722,13 @@ export default function TicketDrawer({
         <div className="mt-3 flex gap-2">
           {issue.hold_reason === "plan_split" ? (
             <button onClick={() => life.mutate("approve-split")}
-              className={KNOPF.zusage}>✅ Aufteilung freigeben (Sub-Tickets anlegen)</button>
+              className={BUTTON.zusage}>✅ Aufteilung freigeben (Sub-Tickets anlegen)</button>
           ) : (
             <button onClick={() => life.mutate("approve-plan")}
-              className={KNOPF.zusage}>✅ Plan freigeben</button>
+              className={BUTTON.zusage}>✅ Plan freigeben</button>
           )}
           <button onClick={() => life.mutate("reject-plan")}
-            className={KNOPF.neben}>
+            className={BUTTON.neben}>
             {issue.hold_reason === "plan_split" ? "Verwerfen" : "Ablehnen"}
           </button>
         </div>
@@ -743,15 +743,15 @@ export default function TicketDrawer({
               ) : issue.testenv_status === "running" && issue.testenv_url ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <a href={issue.testenv_url} target="_blank" rel="noreferrer"
-                    className={KNOPF.haupt}>{tr("ticket_drawer.testumgebung_oeffnen")}</a>
+                    className={BUTTON.haupt}>{tr("ticket_drawer.testumgebung_oeffnen")}</a>
                   <button onClick={() => life.mutate("testenv/stop")}
-                    className={KNOPF.gefahr}>
+                    className={BUTTON.gefahr}>
                     Stoppen</button>
                   <span className="text-xs text-muted">{issue.testenv_url}</span>
                 </div>
               ) : (
                 <button onClick={() => life.mutate("testenv/start")}
-                  className={KNOPF.neben}>
+                  className={BUTTON.neben}>
                   🖥 Testumgebung starten</button>
               )}
               {issue.testenv_status === "error" && issue.testenv_error && (
@@ -762,7 +762,7 @@ export default function TicketDrawer({
           )}
           <div className="flex flex-wrap items-center gap-2">
             <button onClick={() => life.mutate("complete")} disabled={life.isPending}
-              className={KNOPF.zusage}>
+              className={BUTTON.zusage}>
               ✅ Auf Fertig setzen</button>
             <span className="text-xs text-muted">
               stoppt die Testumgebung, mergt den Branch und setzt erst dann „Fertig".
@@ -781,7 +781,7 @@ export default function TicketDrawer({
                   if (e.key === "Enter" && v.trim()) { answerBlocker.mutate(v); (e.target as HTMLInputElement).value = ""; } }} />
               <button onClick={() => { const el = document.getElementById("ans") as HTMLInputElement;
                 if (el?.value.trim()) { answerBlocker.mutate(el.value); el.value = ""; } }}
-                className={KNOPF.haupt}>{tr("ticket_drawer.antworten")}</button>
+                className={BUTTON.haupt}>{tr("ticket_drawer.antworten")}</button>
             </div>
           ) : issue.hold_reason === "permission" ? (
             <div className="mt-1 text-muted">{tr("ticket_drawer.berechtigung_entscheiden")}</div>
@@ -789,11 +789,11 @@ export default function TicketDrawer({
             <div className="mt-2 space-y-2">
               <div className="text-muted">{tr("ticket_drawer.review_befunde_offen_pruefe_den_diff_unt")}</div>
               <button onClick={() => life.mutate("complete")}
-                className={KNOPF.zusage}>✅ Abnehmen</button>
+                className={BUTTON.zusage}>✅ Abnehmen</button>
             </div>
           ) : (
             <button onClick={() => life.mutate("plan")}
-              className={KNOPF_KLEIN.haupt}>↻ Neu planen</button>
+              className={BUTTON_KLEIN.haupt}>↻ Neu planen</button>
           )}
         </div>
       )}
@@ -849,7 +849,7 @@ export default function TicketDrawer({
 
   // Free fields of the artifact (Administration → Artifacts). Without maintained fields the
   // component renders nothing and the block stays empty.
-  const bFelder = issue.artifact_id ? (
+  const bFields = issue.artifact_id ? (
     <div className="rounded-lg border border-line p-3">
       <div className="mb-2 text-xs font-medium text-muted">{tr("ticket_drawer.felder")}</div>
       <ArtifactFields artifactId={issue.artifact_id} />
@@ -865,7 +865,7 @@ export default function TicketDrawer({
     summary: bSummary,
     meta: <div className="rounded-lg border border-line p-3">{bMeta}</div>,
     person: <div className="rounded-lg border border-line p-3">{bPerson}</div>,
-    felder: bFelder,
+    felder: bFields,
     hardware: bHardware,
     description: bDescription,
     save: bSave,
@@ -956,7 +956,7 @@ export default function TicketDrawer({
             {bSummary}
             {bMeta}
             {bPerson}
-            {bFelder}
+            {bFields}
             {bDescription}
             {bSave}
             {bSplit}

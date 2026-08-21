@@ -1,7 +1,7 @@
 import type { NodeConfig, DecisionBranch, JsonLogic } from "../types";
 import { tr } from "../../../i18n";
-import type { KontextFeld, KontextFilter } from "../contextFields";
-import { KNOPF_KLEIN, KNOPF_TEXT} from "../../ui";
+import type { ContextField, ContextFilter } from "../contextFields";
+import { BUTTON_KLEIN, BUTTON_TEXT} from "../../ui";
 
 const OPS = ["==", "!=", ">", ">=", "<", "<="];
 
@@ -31,16 +31,16 @@ let handleSeq = 0;
 export default function DecisionConfig({
   config,
   onChange,
-  felder = [],
+  felder: fields = [],
   filter = [],
 }: {
   config: NodeConfig;
   onChange: (c: NodeConfig) => void;
   /** Filter for templates; here only as a help, the conditions themselves compute without it. */
-  filter?: KontextFilter[];
+  filter?: ContextFilter[];
   /** Context fields this flow really has: from the trigger, the steps and keys set by
    *  itself (see `contextFields.ts`). */
-  felder?: KontextFeld[];
+  felder?: ContextField[];
 }) {
   const branches = config.branches || [];
   const setBranches = (b: DecisionBranch[]) => onChange({ ...config, branches: b });
@@ -71,7 +71,7 @@ export default function DecisionConfig({
                   placeholder={tr("decision_config.beschriftung")}
                   className={`flex-1 ${inp}`}
                 />
-                <button onClick={() => remove(i)} className={KNOPF_TEXT.gefahr} title={tr("decision_config.zweig_entfernen")}>
+                <button onClick={() => remove(i)} className={BUTTON_TEXT.gefahr} title={tr("decision_config.zweig_entfernen")}>
                   ✕
                 </button>
               </div>
@@ -83,7 +83,7 @@ export default function DecisionConfig({
                   value={s.field}
                   onChange={(e) => upd({ field: e.target.value })}
                   placeholder={tr("decision_config.kontext_feld")}
-                  list={felder.length ? "wf-kontextfelder" : undefined}
+                  list={fields.length ? "wf-kontextfelder" : undefined}
                   className={`w-40 font-mono ${inp}`}
                 />
                 <select value={s.op} onChange={(e) => upd({ op: e.target.value })} className={inp}>
@@ -107,15 +107,15 @@ export default function DecisionConfig({
           );
         })}
       </div>
-      {felder.length > 0 && (
+      {fields.length > 0 && (
         <datalist id="wf-kontextfelder">
-          {felder.map((f) => (
+          {fields.map((f) => (
             <option key={f.path} value={f.path}>{`${tr(f.description)} · ${f.source}`}</option>
           ))}
         </datalist>
       )}
 
-      <button onClick={add} className={KNOPF_KLEIN.neben}>
+      <button onClick={add} className={BUTTON_KLEIN.neben}>
         + Zweig
       </button>
 
@@ -142,13 +142,13 @@ export default function DecisionConfig({
         </details>
       )}
 
-      {felder.length > 0 && (
+      {fields.length > 0 && (
         <details className="rounded border border-line bg-surface p-2 text-xs text-muted">
-          <summary className="cursor-pointer">Verfügbare Kontext-Felder ({felder.length})</summary>
+          <summary className="cursor-pointer">Verfügbare Kontext-Felder ({fields.length})</summary>
           {/* Untereinander statt vier Spalten: im schmalen Panel lief die Herkunft
               rechts aus dem Bild — sie ist aber genau das, was man wissen will. */}
           <ul className="mt-2 space-y-1.5">
-            {felder.map((f) => (
+            {fields.map((f) => (
               <li key={f.path}>
                 <div className="flex items-baseline gap-1.5">
                   <code className="break-all font-mono text-ink">{f.path}</code>

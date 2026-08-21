@@ -22,7 +22,7 @@ import { tr } from "./i18n";
 export const SCHIENE_BREITE = "w-[76px]";
 export const SCHIENE_FREILASSEN = "md:left-[76px]";
 
-export type NavEintrag = {
+export type NavEntry = {
   key: string;
   label: string;
   icon: string;
@@ -31,7 +31,7 @@ export type NavEintrag = {
   zaehler?: "inbox" | "mail";
 };
 
-export function hauptNavigation(istAdmin: boolean, plugins: NavEintrag[] = []): NavEintrag[] {
+export function hauptNavigation(istAdmin: boolean, plugins: NavEntry[] = []): NavEntry[] {
   return [
     { key: "projekte", label: tr("layout.projekte"), icon: "🗂️", to: "/" },
     { key: "inbox", label: tr("layout.inbox"), icon: "📥", to: "/inbox", zaehler: "inbox" },
@@ -53,7 +53,7 @@ export function hauptNavigation(istAdmin: boolean, plugins: NavEintrag[] = []): 
  * area just as much as the bare path. The start page is the exception, otherwise it would
  * be active everywhere.
  */
-export function istBereich(pfad: string, to: string): boolean {
-  if (to === "/") return pfad === "/" || pfad.startsWith("/projects");
-  return pfad === to || pfad.startsWith(to + "/");
+export function istArea(path: string, to: string): boolean {
+  if (to === "/") return path === "/" || path.startsWith("/projects");
+  return path === to || path.startsWith(to + "/");
 }
