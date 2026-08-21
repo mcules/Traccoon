@@ -1,37 +1,38 @@
 // Layer 1, the people.
 //
-// Scale (rule 1 of the pixel contract): a character is **16×24 buffer pixels**, not 16×24
-// scene pixels. `POS_SCALE` appears here exactly once, to bring in the scene coordinate of an
-// actor. For no dimension at all.
+// Scale (rule 1 of the pixel contract): a character occupies **16×24 art units**, which is
+// 32×48 buffer pixels, and it is drawn natively in the fine grid. `POS_SCALE` appears here
+// exactly once, to bring in the scene coordinate of an actor. For no dimension at all.
 //
-// The character is assembled from 19 parts instead of drawn as 8 finished poses:
+// The character is assembled from 20 parts instead of drawn as finished poses:
 //
-//   head   3 × 10×9   front · side · back
-//   hair   5 × 12×11  overlay, the lever for distinguishable silhouettes
-//   Torso  3 ×  8×10
-//   arms   4 ×  4×6   overlay: resting · typing A · typing B · reaching or carrying
-//   Beine  4 ×  8×6   sitzen · stehen · gehen-A · gehen-B
+//   head   3 × 20×18   front · side · back
+//   hair   5 × 24×24   overlay, the largest single area of the figure
+//   torso  3 × 18×12   short and narrower than the head on purpose, see there
+//   arms   4 ×  4×10   overlay: resting · typing A · typing B · reaching or carrying
+//   legs   4 × 14× 7   sitting · standing · stride A · stride B
 //
-// 19 parts instead of 8×12 finished sprites: eight poses times twelve people would be 96
-// images of 384 pixels, four times the entire art budget. Assembled, the same variety costs 19
-// parts, and every new pose afterwards costs one part, not twelve images.
+// 20 parts instead of finished sprites: eight poses times twelve people would be 96 images and
+// four times the entire art budget. Assembled, the same variety costs 20 parts, and every new
+// pose afterwards costs one part, not twelve images.
 //
-// The build from bottom to top (the order is the occlusion):
+// The build from the ground up (the order is the occlusion):
 //
-//   yBase-1  … yBase-6    Beine        (8 breit, mittig)
-//   yBase-6  … yBase-15   torso        (8 wide, overlaps the legs by one row)
-//   yBase-9  … yBase-14   arms         (4 wide each, left and right of the torso)
-//   yBase-16 … yBase-24   Kopf         (10 breit)
-//   yBase-14 … yBase-24   hair         (12 wide, over head **and** shoulders)
+//   yBase-13 … yBase-1    legs    (20 wide, centred)
+//   yBase-25 … yBase-12   torso   (14 wide, two rows over the hips)
+//   yBase-37 … yBase-24   arms    (5 each, left and right of the trunk)
+//   yBase-43 … yBase-24   head    (22 wide, no neck: the jaw sits on the shoulders)
+//   yBase-43 … yBase-18   hair    (26 wide, over head **and** shoulders)
 //
-// That makes 24 rows. The head takes 9 of them, deliberately too large for an adult: at 24
-// pixels of total height the head is the only thing that reads as "human" at a glance.
+// That makes 43 of the 48 rows available. The head takes 20 of them, deliberately far too many
+// for an adult: at this size it is the only part with enough area to carry a face, and a face
+// is what the eye looks for first.
 
 import type { ActorState, Ctx, Gait, Look, Pose } from "../types.ts";
 import { GATE_PULSE_MS, POS_SCALE } from "../const.ts";
 import { mix } from "../ids.ts";
 import type { Art } from "./art.ts";
-import { defineArt, drawArt, fill, fillA, doubled } from "./art.ts";
+import { defineArt, drawArt, fill, fillA } from "./art.ts";
 import type { Pal } from "./palette.ts";
 import { gaitOf, lookOf, rolesSeed } from "./palette.ts";
 
@@ -52,590 +53,305 @@ export const FIG_H = 24;
  *  doubles those two shifts every speech bubble and every click. */
 const HD = 2;
 
-/** How far the upper body sinks when sitting. Three pixels are few and enough: together with
- *  the sitting legs (thighs horizontal) the character reads as seated at once, and more would
- *  make the head disappear behind the desktop. */
+/** How far the upper body sinks when sitting, in **art units** (the stance computes in those,
+ *  `drawBody` converts). Three are few and enough: together with the sitting legs (thighs
+ *  forward) the character reads as seated at once, and more would make the head disappear
+ *  behind the desktop. */
 const SIT_DROP = 3;
 
 // ═══ The art ═════════════════════════════════════════════════════════════════
+
+// ── The build ────────────────────────────────────────────────────────────────
 //
-// Legend: `S`/`s` skin and skin shadow · `H`/`h` hair and hair shadow · `T`/`t` top and its
-// shadow · `P` trousers. These seven characters are **reserved** for the figure and are only
-// filled from `palFor(grade, look)` while drawing, so the same 19 parts make twelve different
-// people without a single pixel appearing twice in the source.
-// `i` (= `ink`) is not a reserved character but real ink: eyes and shoes are dark on every
-// person and must not travel with the skin colour.
+// The figure is **measured off the reference sprite**, not designed. A WOKA is 32×32 with the
+// character 23 wide and 31 high in it, and the row widths of its silhouette are the table
+// below. Guessing them is what went wrong three times in a row: every attempt looked like a
+// pixel character and none looked like *that* pixel character.
+//
+// What the measurement says, and what none of the guesses had:
+//
+//   · **Head and body are one continuous shape.** No neck, no gap, no separate oval sitting on
+//     a box. The silhouette narrows at the jaw (17 of 23) and widens again at the shoulders.
+//   · **The head is 17 of 31 rows**, so well over half.
+//   · **The hair is a helmet with a face window.** It covers the whole skull and hangs down the
+//     sides to the shoulders; what is left of the face is a hole 12 wide.
+//   · **The eyes are 4×4 each** and fill most of that hole. Two dots in a wide face, which is
+//     what the earlier attempts drew, is a different character entirely.
+//   · **The arms are stubs** that show only over the lower half of the body, and the legs are
+//     two nubs three rows high.
+//
+// Everything is scaled by `SCALE`: the reference is drawn for a 32 pixel tile seen from close
+// up, ours is seen from further away and needs the extra size to stay readable.
 
-// ── Kopf ─────────────────────────────────────────────────────────────────────
-// The eyes lie in **row 4**, not higher up. That is not anatomy but space management: the hair
-// covers rows 0 to 3, and a fringe that overwrites an eye row turns every second hairstyle into
-// a blind face.
+/** Row widths of the reference silhouette, from top. Odd numbers throughout, so every row is
+ *  centred on the same column. */
+const REF_HEAD: readonly number[] = [5, 11, 15, 17, 19, 21, 21, 23, 23, 23, 23, 23, 23, 23, 21, 21, 19];
+/** The torso **without** the arms; the arms are drawn separately so they can move. */
+const REF_TORSO: readonly number[] = [15, 15, 15, 15, 15, 15, 15, 13, 13, 13, 11];
+const REF_LEGS: readonly number[] = [11, 11, 9];
 
-const HEAD_FRONT = defineArt([
-  "..SSSSSS..",
-  ".SSSSSSSS.",
-  "SSSSSSSSSS",
-  "SSSSSSSSSS",
-  "SSiSSSSiSS",
-  "SSSSSSSSSS",
-  ".SSSSSSSS.",
-  "..sSSSSs..",
-  "...sSSs...",
-], { S: "S", s: "s", i: "ink" });
-
-/** Facing right; facing left is mirrored. Two features separate the side view from the front
- *  view: the ear (`s`, row 4) and the nose, which sticks out one column further in row 5.
- *  Without the nose the head in profile looks like a front head that is too narrow. */
-const HEAD_SIDE = defineArt([
-  "..SSSSSS..",
-  ".SSSSSSSS.",
-  ".SSSSSSSS.",
-  ".SSSSSSSS.",
-  ".SsSSSiSS.",
-  ".SSSSSSSSS",
-  ".SSSSSSSs.",
-  "..sSSSSs..",
-  "...sSSs...",
-], { S: "S", s: "s", i: "ink" });
-
-const HEAD_BACK = defineArt([
-  "..SSSSSS..",
-  ".SSSSSSSS.",
-  "SSSSSSSSSS",
-  "SSSSSSSSSS",
-  "SSSSSSSSSS",
-  "sSSSSSSSSs",
-  ".SSSSSSSS.",
-  "..ssssss..",
-  "...sSSs...",
-], { S: "S", s: "s" });
-
-
-/**
- * The head from the front, the first part drawn by hand in the **fine grid** (stage 2).
+/** How much bigger than the reference. **One**, so exactly the size of a WOKA: 23 by 31 buffer
+ *  pixels, and a carpet tile is 32. A figure is therefore one tile, which is the proportion the
+ *  reference is built on and the reason it reads as a person rather than as a mascot.
  *
- * Doubling the old 10×9 head gives the same area in larger blocks: two black dots in an oval.
- * Only in the 20×18 grid is there room for what a face is recognised by: white of the eye next
- * to the pupil, a nose, a mouth, ears, and an edge that separates the head from the wooden
- * floor. That is exactly what distinguishes "pixel character" from "block".
- *
- * The edge is `s` (skin shadow), not `ink`: a deep black outline around a head 20 pixels wide
- * eats half the face and makes every character look like a cartoon mask. The same colour
- * shades nose and chin as well: one tone, three jobs.
- */
-const HEAD_FRONT_HD = defineArt([
-  "......ssssssss......",
-  "....ssSSSSSSSSss....",
-  "...sSSSSSSSSSSSSs...",
-  "..sSSSSSSSSSSSSSSs..",
-  "..sSSSSSSSSSSSSSSs..",
-  ".sSSSSSSSSSSSSSSSSs.",
-  ".sSSSSSSSSSSSSSSSSs.",
-  ".sSSSSSSSSSSSSSSSSs.",
-  ".sSSppiiSSSSiippSSs.",
-  "ssSSSSiiSSSSiiSSSSss",
-  "ssSSSSSSSssSSSSSSSss",
-  ".sSSSSSSSssSSSSSSSs.",
-  ".sSSSSSSSSSSSSSSSSs.",
-  ".sSSSSSSssssSSSSSSs.",
-  ".sSSSSSSSSSSSSSSSSs.",
-  "..sSSSSSSSSSSSSSSs..",
-  "...ssSSSSSSSSSSss...",
-  ".....ssssssssss.....",
-], { S: "S", s: "s", i: "ink", p: "paper" });
+ *  It stood at 4/3 for a while, on the argument that this room is seen from further away and
+ *  the figure needs the extra size. That argument is wrong: bigger does not make it more
+ *  readable, it makes it a different character. Whoever wants it larger zooms (the stage has
+ *  1x / 2x / 4x), and then everything grows together instead of the people alone. */
+const SCALE = 1;
 
-// Front by hand and fine, side and back doubled for now: the front view is the one seen almost
-// always (standing, typing, speaking), and only the boss seat shows a back.
-const HEADS: readonly Art[] = [HEAD_FRONT_HD, doubled(HEAD_SIDE), doubled(HEAD_BACK)];
+/** Total width of a person art. All parts share it, so they stack without any offset
+ *  arithmetic at the call site. */
+const FIG_ART_W = 23;
+
+function up(n: number): number {
+  return Math.max(1, Math.round(n * SCALE) | 1);
+}
+
+/** Stretches a list of row widths by `SCALE`, in rows as well as in width.
+ *
+ *  Interpolated, not repeated: taking the nearest reference row makes the dome of the head a
+ *  staircase, because the widths jump by six between the first rows and the step is a third
+ *  bigger after scaling. At 1x the reference reads as a curve; blown up it has to be one. */
+function stretch(ws: readonly number[]): number[] {
+  const rows = Math.round(ws.length * SCALE);
+  const out: number[] = [];
+  for (let i = 0; i < rows; i++) {
+    const f = (i / (rows - 1)) * (ws.length - 1);
+    const a = Math.floor(f), c = Math.min(ws.length - 1, a + 1);
+    out.push(up(ws[a] + (ws[c] - ws[a]) * (f - a)));
+  }
+  return out;
+}
+
+/** One centred run inside a row `FIG_ART_W` wide. */
+function band(n: number, ch: string): string {
+  const pad = (FIG_ART_W - n) >> 1;
+  return ".".repeat(pad) + ch.repeat(n) + ".".repeat(FIG_ART_W - n - pad);
+}
+
+/** A silhouette out of row widths, with the outermost pixel of every row in the shadow tone.
+ *  That one row is what replaces a contour: it holds the edge without cutting a black line
+ *  into a face 12 pixels wide (rule 2.5). */
+function body(ws: readonly number[], fill: string, edge: string): string[] {
+  return ws.map((n) => {
+    const row = band(n, fill).split("");
+    const pad = (FIG_ART_W - n) >> 1;
+    row[pad] = edge;
+    row[pad + n - 1] = edge;
+    return row.join("");
+  });
+}
+
+/** Overwrites a run in a row. The arts are computed, so patching them is a string operation
+ *  and not a hand counted redraw. */
+function put(rows: string[], y: number, x: number, s: string): void {
+  if (y < 0 || y >= rows.length) return;
+  rows[y] = rows[y].slice(0, x) + s + rows[y].slice(x + s.length);
+}
+
+const SKIN_MAP = { S: "S", s: "s", i: "ink", w: "paper" } as const;
+
+const HEAD_W = stretch(REF_HEAD);
+const HEAD_H = HEAD_W.length;
+/** Centre column of every part. */
+const MID = FIG_ART_W >> 1;
+
+/** The eyes, measured: 4×4 each with a gap of 5 between them, in the lower third of the head.
+ *  Scaled they are 5×5 with a gap of 7. */
+// The eyes keep their measured size exactly; they are placed at an explicit x, so unlike the
+// row widths they need no odd number to stay centred.
+const EYE_W = Math.max(2, Math.round(4 * SCALE));
+const EYE_H = Math.max(2, Math.round(4 * SCALE));
+const EYE_GAP = Math.max(2, Math.round(5 * SCALE));
+const EYE_Y = Math.round(13 * SCALE);
+
+function headArt(dir: number): Art {
+  const rows = body(HEAD_W, "S", "s");
+  if (dir !== 2) {
+    const halfGap = EYE_GAP >> 1;
+    const leftX = MID - halfGap - EYE_W;
+    const rightX = MID + halfGap + 1;
+    // In profile both eyes move towards the front edge and the far one falls away.
+    // In profile there is **one** eye, and it sits where a profile has one: a little in front
+    // of the middle, not at the temple. Two eyes shifted sideways read as a squint.
+    const lx = leftX;
+    const rx = dir === 1 ? MID + 1 : rightX;
+    for (let k = 0; k < EYE_H; k++) {
+      // A row of white at the top, pupil below: the bright row is what turns a dark block into
+      // a look. Without it the face has two holes in it.
+      const ch = k === 0 ? "w" : "i";
+      if (dir !== 1) put(rows, EYE_Y + k, lx, ch.repeat(EYE_W));
+      put(rows, EYE_Y + k, rx, ch.repeat(EYE_W));
+    }
+  }
+  return defineArt(rows, SKIN_MAP);
+}
+
+const HEADS: readonly Art[] = [headArt(0), headArt(1), headArt(2)];
 
 /** Head direction. Numbers instead of strings, because they index into `HEADS` directly. */
 const DIR_FRONT = 0;
 const DIR_SIDE = 1;
 const DIR_BACK = 2;
 
-// ── Haar ─────────────────────────────────────────────────────────────────────
-// Twelve characters differ at 16 pixels of width **only** through their silhouette. The skin
-// colour cannot be seen from two metres, the shirt barely, the shape of the head at once. That
-// is why the hair is the only part allowed to stick out past the head (12 instead of 10 wide)
-// and to reach down to the shoulders (rows 9 and 10 already lie on the torso).
+// ── Hair ─────────────────────────────────────────────────────────────────────
 //
-// Rows 0 to 8 coincide with the head, column n of the hair is column n-1 of the head.
-
-const HAIR_SHORT = defineArt([
-  "...HHHHHH...",
-  "..HHHHHHHH..",
-  ".HHHHHHHHHH.",
-  ".HHHHHHHHHH.",
-  ".HH......HH.",
-  ".H........H.",
-  "............",
-  "............",
-  "............",
-  "............",
-  "............",
-], { H: "H", h: "h" });
-
-const HAIR_PART = defineArt([
-  "...HHHHHH...",
-  "..HHHHHHHH..",
-  ".HHHHHHHHHH.",
-  ".HhHHHHHHHH.",
-  ".HH.....HHH.",
-  ".H.......HH.",
-  "..........H.",
-  "............",
-  "............",
-  "............",
-  "............",
-], { H: "H", h: "h" });
-
-const HAIR_LONG = defineArt([
-  "...HHHHHH...",
-  "..HHHHHHHH..",
-  ".HHHHHHHHHH.",
-  ".HHHHHHHHHH.",
-  "HHH......HHH",
-  "HHh......hHH",
-  "HHH......HHH",
-  ".HH......HH.",
-  ".HH......HH.",
-  ".Hh......hH.",
-  "............",
-], { H: "H", h: "h" });
-
-const HAIR_TAIL = defineArt([
-  "...HHHHHH...",
-  "..HHHHHHHH..",
-  ".HHHHHHHHHH.",
-  ".HHHHHHHHHHH",
-  ".HH......HHH",
-  ".H.......Hhh",
-  "..........HH",
-  "..........hH",
-  "...........H",
-  "............",
-  "............",
-], { H: "H", h: "h" });
-
-const HAIR_CURL = defineArt([
-  "..HHHHHHHH..",
-  ".HHHHHHHHHH.",
-  "HHHHHHHHHHHH",
-  "HHHHHHHHHHHH",
-  "HHH......HHH",
-  "HHh......hHH",
-  ".H........H.",
-  "............",
-  "............",
-  "............",
-  "............",
-], { H: "H", h: "h" });
-
-
-// ── Haar, fein gezeichnet ────────────────────────────────────────────────────
-// The doubled headwear sat as an angular cap on the round skull: the old silhouette did not
-// know the curve the fine grid now has. What is followed is therefore the EDGE, row by row the
-// same curve as the head below it, plus one row of `h` at the lower edge of the fringe. That
-// single row of shadow turns an area into a strand of hair: without it the hair sticks to the
-// forehead like a painted patch.
-//
-// 24 wide against 20 of the head (hair may stick out, column n is head column n-2), 22 high.
-
-/** A row without hair: the lower rows are empty or nearly empty in every hairstyle. */
-const H_EMPTY = "........................";
-
-/** The curve every hairstyle shares: it follows the skull of HEAD_FRONT_HD. */
-const H_CAP: readonly string[] = [
-  "........HHHHHHHH........",
-  "......HHHHHHHHHHHH......",
-  ".....HHHHHHHHHHHHHH.....",
-  "....HHHHHHHHHHHHHHHH....",
-  "....HHHHHHHHHHHHHHHH....",
-  "...HHHHHHHHHHHHHHHHHH...",
-  "...HHHHHHHHHHHHHHHHHH...",
-];
+// A helmet with a face window, exactly as measured: full cover down to about half the head,
+// then a hole opens and only the side strands are left, and those run past the jaw onto the
+// shoulders. The window is 12 reference units wide; everything outside it is hair.
 
 const HAIR_MAP = { H: "H", h: "h" } as const;
 
-const HAIR_SHORT_HD = defineArt([
-  ...H_CAP,
-  "...HHhhhhhhhhhhhhhhHH...",
-  "...HH..............HH...",
-  "...HH..............HH...",
-  "...H................H...",
-  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
-], HAIR_MAP);
+/** How far down the hair reaches at all: past the head onto the shoulders. */
+const HAIR_H = Math.round(20 * SCALE);
+/** From which row the face window is open. */
+const FACE_TOP = Math.round(9 * SCALE);
+/** Width of the face window. */
+const FACE_W = up(12);
 
-/** Parting: a groove of shadow on the left, and on the right the top hair falls lower. */
-const HAIR_PART_HD = defineArt([
-  ...H_CAP.map((r, i) => (i >= 2 ? r.slice(0, 7) + "h" + r.slice(8) : r)),
-  "...HHhhhhhhhhhhhhhhHH...",
-  "...HH.............HHH...",
-  "...HH..............HH...",
-  "...H................HH..",
-  "....................H...",
-  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
-], HAIR_MAP);
-
-/** Long: falls to the shoulders on both sides. */
-const HAIR_LONG_HD = defineArt([
-  ...H_CAP,
-  "...HHhhhhhhhhhhhhhhHH...",
-  "..HHH..............HHH..",
-  "..HHH..............HHH..",
-  "..HHH..............HHH..",
-  "..HHh..............hHH..",
-  "..HHh..............hHH..",
-  "...Hh..............hH...",
-  "...h................h...",
-  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
-], HAIR_MAP);
-
-/** Ponytail: short at the sides, a bundle at the back that falls over the shoulder. */
-const HAIR_TAIL_HD = defineArt([
-  ...H_CAP,
-  "...HHhhhhhhhhhhhhhhHH...",
-  "...HH..............HHHH.",
-  "...HH...............HHHH",
-  "...H.................HHH",
-  "......................HH",
-  ".......................h",
-  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
-], HAIR_MAP);
-
-/** Curls: the edge frays instead of running smooth. */
-const HAIR_CURL_HD = defineArt([
-  "........HHHHHHHH........",
-  "......HHHHHHHHHHHH......",
-  ".....HHHHhHHHHhHHHHH....",
-  "....HHHHHHHHHHHHHHHHH...",
-  "...HHHhHHHHHHHHhHHHHHH..",
-  "...HHHHHHHHHHHHHHHHHHH..",
-  "..HHHHHHHHHHHHHHHHHHHH..",
-  "..HHhhhhhhhhhhhhhhhhHH..",
-  "..HHH..............HHH..",
-  "..HHh..............hHH..",
-  "...H................H...",
-  H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY, H_EMPTY,
-], HAIR_MAP);
+/** Builds a hairstyle. `sideTo` is the row down to which the side strands hang, `bump` adds a
+ *  ponytail on the right, `frayed` breaks the top edge for curls. */
+function hairArt(sideTo: number, bump: boolean, frayed: boolean): Art {
+  const rows: string[] = [];
+  for (let y = 0; y < HAIR_H; y++) {
+    const w = y < HEAD_H ? HEAD_W[y] : HEAD_W[HEAD_H - 1] - (y - HEAD_H + 1) * 2;
+    if (w <= 0 || y > sideTo) { rows.push(".".repeat(FIG_ART_W)); continue; }
+    const r = band(Math.max(1, w), "H").split("");
+    const pad = (FIG_ART_W - Math.max(1, w)) >> 1;
+    if (y >= FACE_TOP) {
+      // The window: everything between the strands becomes free again.
+      const from = MID - (FACE_W >> 1);
+      for (let x = from; x < from + FACE_W; x++) if (x >= 0 && x < FIG_ART_W) r[x] = ".";
+    }
+    if (y === FACE_TOP - 1 || y === sideTo) {
+      // One row of shadow at the fringe and at the tip: that single row turns an area into a
+      // strand of hair.
+      for (let x = 0; x < FIG_ART_W; x++) if (r[x] === "H") r[x] = "h";
+    }
+    if (frayed && y > 0 && y < FACE_TOP - 1 && (y & 1) === 0) {
+      r[pad] = "."; r[pad + Math.max(1, w) - 1] = ".";
+    }
+    rows.push(r.join(""));
+  }
+  if (bump) {
+    for (let y = FACE_TOP; y < Math.min(HAIR_H, sideTo + 4); y++) {
+      put(rows, y, FIG_ART_W - 3, "HH");
+    }
+  }
+  return defineArt(rows, HAIR_MAP);
+}
 
 const HAIRS: readonly Art[] = [
-  HAIR_SHORT_HD, HAIR_PART_HD, HAIR_LONG_HD, HAIR_TAIL_HD, HAIR_CURL_HD,
+  hairArt(Math.round(15 * SCALE), false, false),   // short
+  hairArt(Math.round(17 * SCALE), false, false),   // longer at the sides
+  hairArt(HAIR_H - 1, false, false),               // long, down to the shoulders
+  hairArt(Math.round(16 * SCALE), true, false),    // ponytail
+  hairArt(Math.round(16 * SCALE), false, true),    // curls
 ];
 
-// ── Torso ────────────────────────────────────────────────────────────────────
-// The lowest row is trousers (`P`) and not the top: it is the waistband the legs sit on.
-// Without it a gap gapes between shirt hem and leg while walking.
-
-const TORSO_PLAIN = defineArt([
-  ".TTTTTT.",
-  "TTTTTTTT",
-  "TTTTTTTT",
-  "TTTTTTTT",
-  "TTTTTTTT",
-  "TTTTTTTT",
-  "TTTTTTTT",
-  "tTTTTTTt",
-  "tttttttt",
-  "PPPPPPPP",
-], { T: "T", t: "t", P: "P" });
-
-/** Shirt: collar (two skin pixels at the neckline) and a vertical button placket. */
-const TORSO_SHIRT = defineArt([
-  ".TTTTTT.",
-  "TTtSStTT",
-  "TTTtsTTT",
-  "TTTtTTTT",
-  "TTTtTTTT",
-  "TTTtTTTT",
-  "TTTtTTTT",
-  "tTTtTTTt",
-  "tttttttt",
-  "PPPPPPPP",
-], { T: "T", t: "t", P: "P", S: "S", s: "s" });
-
-/** Kapuzenpulli: breitere Schulter, Kapuzenkante, Bauchtasche. */
-const TORSO_HOOD = defineArt([
-  "tTTTTTTt",
-  "TtTTTTtT",
-  "TTTTTTTT",
-  "TTTTTTTT",
-  "TTTTTTTT",
-  "TTtttttT",
-  "TTtTTTtT",
-  "TTtttttT",
-  "tttttttt",
-  "PPPPPPPP",
-], { T: "T", t: "t", P: "P" });
-
-
-// ── Upper body, finely drawn ─────────────────────────────────────────────────
-// Doubled, the button placket of the shirt read as braces: two buffer pixels wide on a torso
-// 16 pixels wide is a strap, not a seam. In the fine grid it is a line. Added to that is what
-// turns an area of colour into a body: a column of shadow on the side away from the light (the
-// windows are on the left), a hem and a waistband.
-//
-// 16 wide by 20 high, the same area as the old 8×10, only at twice the resolution.
+// ── Upper body ───────────────────────────────────────────────────────────────
+// The torso without arms. It begins where the head ends, and the two shapes are built from the
+// same table, so the silhouette runs through without a step.
 
 const TORSO_MAP = { T: "T", t: "t", P: "P", S: "S", s: "s" } as const;
 
-const TORSO_PLAIN_HD = defineArt([
-  "...tTTTTTTTTt...",
-  ".tTTTTTTTTTTTTt.",
-  "tTTTTTTTTTTTTTTt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "ttTTTTTTTTTTTttt",
-  "tttttttttttttttt",
-  "PPPPPPPPPPPPPPPP",
-], TORSO_MAP);
+const TORSO_W = stretch(REF_TORSO);
 
-/** Shirt: collar (skin at the neckline) and a button placket ONE unit wide. */
-const TORSO_SHIRT_HD = defineArt([
-  "...tTTTTTTTTt...",
-  ".tTTTtSSSStTTTt.",
-  "tTTTTtsSSstTTTTt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "tTTTTTTtTTTTTTtt",
-  "ttTTTTTtTTTTTttt",
-  "tttttttttttttttt",
-  "PPPPPPPPPPPPPPPP",
-], TORSO_MAP);
+function torsoArt(kind: number): Art {
+  const rows = body(TORSO_W, "T", "t");
+  const last = rows.length - 1;
+  // The lowest two rows are trousers: without them a gap gapes between the hem and the leg.
+  for (let k = 0; k < 2; k++) {
+    rows[last - k] = rows[last - k].replace(/[Tt]/g, "P");
+  }
+  if (kind === 1) {
+    // Shirt: a collar of skin at the neckline.
+    put(rows, 0, MID - 2, "SSSS");
+    put(rows, 1, MID - 1, "ss");
+  } else if (kind === 2) {
+    // Hoodie: a hood edge at the neck and a pocket.
+    put(rows, 1, MID - 5, "tttttttttt");
+    const py = rows.length - 6;
+    put(rows, py, MID - 4, "tttttttt");
+    put(rows, py + 2, MID - 4, "tttttttt");
+  }
+  return defineArt(rows, TORSO_MAP);
+}
 
-/** Kapuzenpulli: breitere Schulter, Kapuzenkante, Bauchtasche. */
-const TORSO_HOOD_HD = defineArt([
-  "..tTTTTTTTTTTt..",
-  ".tTTTTTTTTTTTTt.",
-  "tTTTTTTTTTTTTTTt",
-  "tTTttttttttTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "tTTttttttttTTTtt",
-  "tTTtTTTTTTttTTtt",
-  "tTTtTTTTTTttTTtt",
-  "tTTttttttttTTTtt",
-  "tTTTTTTTTTTTTTtt",
-  "ttTTTTTTTTTTTttt",
-  "tttttttttttttttt",
-  "PPPPPPPPPPPPPPPP",
-], TORSO_MAP);
+const TORSOS: readonly Art[] = [torsoArt(0), torsoArt(1), torsoArt(2)];
 
-const TORSOS: readonly Art[] = [TORSO_PLAIN_HD, TORSO_SHIRT_HD, TORSO_HOOD_HD];
-
-// ── Arme ─────────────────────────────────────────────────────────────────────
-// Drawn as the **right** arm (column 0 lies against the torso); the left one is the same art,
-// mirrored. Four states are enough, because an arm at 4×6 can only say three things: it hangs,
-// it rests on the keyboard, it reaches forward.
-
-const ARM_REMAINDER = defineArt([
-  "TTt.",
-  "TTt.",
-  "TTt.",
-  ".Tt.",
-  ".SS.",
-  ".Ss.",
-], { T: "T", t: "t", S: "S", s: "s" });
-
-const ARM_TYPE_A = defineArt([
-  "TTt.",
-  "TTt.",
-  ".TTt",
-  "..Tt",
-  "..SS",
-  "....",
-], { T: "T", t: "t", S: "S" });
-
-const ARM_TYPE_B = defineArt([
-  "TTt.",
-  "TTt.",
-  ".TTt",
-  "..SS",
-  "....",
-  "....",
-], { T: "T", t: "t", S: "S" });
-
-const ARM_REACH = defineArt([
-  "TTt.",
-  "TTTt",
-  ".TTS",
-  "..SS",
-  "....",
-  "....",
-], { T: "T", t: "t", S: "S" });
-
-
-// ── Arme, fein gezeichnet ────────────────────────────────────────────────────
-// Doubled, the arm was a skin coloured block without a hand. In the fine grid (8×12) there is
-// room for a sleeve, a wrist and a hand with a shadow edge, and it is exactly the hand that
-// turns "block with an outrigger" into a character that DOES something.
+// ── Arms ─────────────────────────────────────────────────────────────────────
+// Stubs. In the reference an arm shows only over the lower half of the body and ends in a
+// hand; there is no upper arm to see, because the sleeve and the trunk are the same colour and
+// the same silhouette.
 
 const ARM_MAP = { T: "T", t: "t", S: "S", s: "s" } as const;
 
-const ARM_REMAINDER_HD = defineArt([
-  "TTTtt...",
-  "TTTtt...",
-  "TTTtt...",
-  "TTTtt...",
-  "TTTtt...",
-  "TTTtt...",
-  ".TTtt...",
-  ".TTtt...",
-  ".SSSs...",
-  ".SSSs...",
-  "..sSs...",
-  "........",
-], ARM_MAP);
+const ARM_W = up(5);
+const ARM_ROWS = Math.round(8 * SCALE);
 
-const ARM_TYPE_A_HD = defineArt([
-  "TTTtt...",
-  "TTTtt...",
-  "TTTtt...",
-  "TTTtt...",
-  ".TTTtt..",
-  ".TTTtt..",
-  "..TTTtt.",
-  "..TTtt..",
-  "..SSSs..",
-  "..SSSs..",
-  "...ss...",
-  "........",
-], ARM_MAP);
+/** `reach` shifts the hand forward by that many rows: 0 hanging, 2 on the keyboard, 4 held out. */
+function armArt(reach: number): Art {
+  const rows: string[] = [];
+  for (let y = 0; y < ARM_ROWS; y++) {
+    const skin = y >= ARM_ROWS - 3 - reach && y < ARM_ROWS - reach;
+    const gone = y >= ARM_ROWS - reach;
+    if (gone) { rows.push(".".repeat(ARM_W)); continue; }
+    const ch = skin ? "S" : "T";
+    const edge = skin ? "s" : "t";
+    rows.push(edge + ch.repeat(ARM_W - 2) + edge);
+  }
+  return defineArt(rows, ARM_MAP);
+}
 
-const ARM_TYPE_B_HD = defineArt([
-  "TTTtt...",
-  "TTTtt...",
-  "TTTtt...",
-  "TTTtt...",
-  ".TTTtt..",
-  ".TTTtt..",
-  "..TTTtt.",
-  "..SSSs..",
-  "..SSSs..",
-  "...ss...",
-  "........",
-  "........",
-], ARM_MAP);
-
-const ARM_REACH_HD = defineArt([
-  "TTTtt...",
-  "TTTTtt..",
-  "TTTTTtt.",
-  ".TTTTSs.",
-  "..SSSSs.",
-  "...sSs..",
-  "........",
-  "........",
-  "........",
-  "........",
-  "........",
-  "........",
-], ARM_MAP);
-
-const ARMS: readonly Art[] = [ARM_REMAINDER_HD, ARM_TYPE_A_HD, ARM_TYPE_B_HD, ARM_REACH_HD];
+const ARMS: readonly Art[] = [armArt(0), armArt(2), armArt(3), armArt(4)];
 
 const ARM_REMAINDER_I = 0;
 const ARM_TYPE_A_I = 1;
 const ARM_TYPE_B_I = 2;
 const ARM_REACH_I = 3;
 
-/** From which row of an arm art the forearm begins.
- *
- *  With it a "short sleeve" costs **no** extra art: the lower part of the same sprite is drawn
- *  a second time, this time entirely in skin colour (`tint`). Four more arms would be
- *  affordable too, but they would have to be maintained on every change of shape, and that is
- *  exactly what gets forgotten. */
-/** From which HD row the forearm begins (a short sleeve shows skin from here). */
-const ARM_CUFF: readonly number[] = [6, 6, 6, 4];
+/** The short sleeve: from this row the arm is drawn a second time in skin (`tint`). */
+const ARM_CUFF: readonly number[] = ARMS.map(() => Math.round(4 * SCALE));
 
-/** The forearm part of every arm, cut once at load time. That is allowed because `drawArt`
- *  anchors at the **foot point**: an art shortened from the top lands in the same place as the
- *  original. */
 const ARM_FORE: readonly Art[] = ARMS.map((a, i) => ({
   rows: a.rows.slice(ARM_CUFF[i]), map: a.map,
 }));
 
-// ── Beine ────────────────────────────────────────────────────────────────────
-// The walk cycle has four frames but only three pieces of art: `stand · walk A · stand · walk B`.
-// The passing position is the same pose twice, and that it looks the same both times is right:
-// real legs look the same in both passes.
+// ── Legs ─────────────────────────────────────────────────────────────────────
+// Two nubs. In the reference the legs are three rows of the thirty-one and carry no
+// information at all; they are what the eye reads last.
 
-/** Sitting, from the side: thighs horizontal to the front, lower legs vertical. Together with
- *  `SIT_DROP` that is the whole difference between "stands at the desk" and "sits at the
- *  desk", and without it half the room would look as if it worked standing up. */
-const LEGS_SIT = defineArt([
-  "PPPPPPPP",
-  "PPPPPPPP",
-  "...PPPPP",
-  "......PP",
-  "......PP",
-  "....iiii",
-], { P: "P", i: "ink" });
+const LEG_MAP = { P: "P", i: "ink" } as const;
 
-const LEGS_STATE = defineArt([
-  "PPPPPPPP",
-  "PPPPPPPP",
-  "PPP..PPP",
-  "PPP..PPP",
-  "PPP..PPP",
-  "iii..iii",
-], { P: "P", i: "ink" });
+const LEG_ROWS = Math.round(REF_LEGS.length * SCALE);
+const LEG_SPAN = up(11);
 
-// The full stride is deliberately **wide**: the first version put the feet only two pixels
-// apart, and in the golden image a walking character could not be told from a standing one. At
-// 8 pixels of leg width the swing has to reach the edge, otherwise it is smaller than the line
-// weight.
+/** `spread` pushes the two feet apart: the stride. */
+function legsArt(spread: number, sit: boolean): Art {
+  const rows: string[] = [];
+  const foot = up(5);
+  for (let y = 0; y < LEG_ROWS; y++) {
+    const r = ".".repeat(FIG_ART_W).split("");
+    if (sit) {
+      // Sitting: the thighs go forward, and under a desk almost nothing of them is visible.
+      for (let x = MID - 2; x <= MID + (LEG_SPAN >> 1); x++) r[x] = y < LEG_ROWS - 2 ? "P" : "i";
+    } else {
+      const gap = 1 + spread;
+      const left = MID - (gap >> 1) - foot;
+      const right = MID + (gap >> 1) + (gap & 1);
+      for (let x = left; x < left + foot; x++) if (x >= 0) r[x] = y >= LEG_ROWS - 2 ? "i" : "P";
+      for (let x = right; x < right + foot; x++) if (x < FIG_ART_W) r[x] = y >= LEG_ROWS - 2 ? "i" : "P";
+    }
+    rows.push(r.join(""));
+  }
+  return defineArt(rows, LEG_MAP);
+}
 
-const LEGS_WALK_A = defineArt([
-  "PPPPPPPP",
-  "PPPPPPPP",
-  ".PPPPPP.",
-  ".PP..PP.",
-  "PP....PP",
-  "ii....ii",
-], { P: "P", i: "ink" });
-
-/** The counter step. Not the mirror of A, because then both half steps would look the same and
- *  the gait would be a hop. B lands narrower and offset one pixel forward. */
-const LEGS_WALK_B = defineArt([
-  "PPPPPPPP",
-  "PPPPPPPP",
-  ".PPPPPP.",
-  "..PP.PP.",
-  ".PP...PP",
-  ".ii...ii",
-], { P: "P", i: "ink" });
-
-const LEGS: readonly Art[] = [LEGS_SIT, LEGS_STATE, LEGS_WALK_A, LEGS_WALK_B].map(doubled);
+const LEGS: readonly Art[] = [
+  legsArt(0, true), legsArt(2, false), legsArt(8, false), legsArt(5, false),
+];
 
 const LEGS_SIT_I = 0;
 const LEGS_STATE_I = 1;
@@ -865,18 +581,20 @@ export function drawShadow(ctx: Ctx, cx: number, yBase: number, pal: Pal, w: num
  *  seed. Mouth and beard cost two `fillRect` and give every second character its own face. */
 function face(ctx: Ctx, pal: Pal, cx: number, headTop: number, variant: number, dir: number): void {
   if (dir === DIR_BACK) return;
-  const hx = cx - 5 * HD;
+  // The head is 22 wide, so its left edge lies 11 to the left of the centre. Everything below
+  // is counted from there in buffer pixels, the same grid the head art is drawn in.
+  const hx = cx - MID;
   if (variant === 1) {
-    // The finely drawn front head already has its mouth in the art; a second one here would
-    // come out one row above it, a moustache from two metres away. The variant therefore shows
-    // only where the head is still coarse (side view).
-    if (dir === DIR_FRONT) return;
-    fill(ctx, pal, "s", hx + 4 * HD, headTop + 6 * HD, 2 * HD, HD);
+    // Glasses: one bar over each eye, one row above it. The face is 13 pixels wide between the
+    // strands of hair; anything drawn twice across it is a blindfold, and a frame around an eye
+    // 4 pixels wide is a frame around nothing.
+    fill(ctx, pal, "lineSoft", hx + MID - 7, headTop + EYE_Y - 1, EYE_W + 2, 1);
+    fill(ctx, pal, "lineSoft", hx + MID + 1, headTop + EYE_Y - 1, EYE_W + 2, 1);
   } else if (variant === 2) {
-    // Chin beard: **one** row at the chin, four pixels wide. Two rows over six columns (the
-    // first version) read from a distance as a black bar across the face: on a head 10 pixels
-    // wide every second column is a third of the face.
-    fill(ctx, pal, "h", hx + 3 * HD, headTop + 7 * HD, 4 * HD, HD);
+    // A hair band. There is no room for a beard: the face window is four rows tall and the
+    // eyes fill it, so anything below them lands on the shoulders. What is left is the hair,
+    // and a band across it is visible from three metres and belongs to the person.
+    fill(ctx, pal, "h", hx + 2, headTop + 6, FIG_ART_W - 4, 2);
   }
 }
 
@@ -904,21 +622,36 @@ function drawBody(
   ctx: Ctx, cx: number, yBase: number, pal: Pal, look: Look, s: Stance,
   flip: boolean, alpha: number,
 ): void {
-  // `cx`/`yBase` kommen in HD-Einheiten herein; `Stance` rechnet weiter in Kunsteinheiten
-  // (it describes a pose, not pixels). The conversion therefore happens exactly here, at the
-  // seam between the two, and not scattered through `stanceOf`.
+  // `cx`/`yBase` come in in HD units; `Stance` keeps computing in art units (it describes a
+  // pose, not pixels). The conversion therefore happens exactly here, at the seam between the
+  // two, and not scattered through `stanceOf`.
+  //
+  // The stack from the ground up, all of it in buffer pixels:
+  //
+  //   legs    7 rows, foot at `yBase`
+  //   torso  12 rows, foot at `yBase-5`   (two rows of it are the hips)
+  //   head   18 rows, foot at `torsoY-11` (the jaw sits on the shoulders, there is no neck)
+  //   hair   24 rows, foot 6 below the head, so it lies over head **and** shoulders
+  //
+  // Together that is 34 of the 48 rows a figure is allowed (`FIG_H = 24` art units). Squat on
+  // purpose: the reference figure is about one tile tall, and a tile is 32 buffer pixels.
   const dirSign = flip ? -1 : 1;
   const bodyY = yBase + (s.drop + s.lift) * HD;
   const legsY = yBase;
 
-  const torsoY = bodyY - 5 * HD;
-  const headY = torsoY - 10 * HD;
-  const armY = torsoY - 3 * HD;
-  const hairY = headY + 2 * HD;
+  const torsoY = bodyY - LEG_ROWS + 1;
+  const headY = torsoY - TORSO_W.length + 1;
+  const armY = torsoY - 2;
+  const hairY = headY + (HAIR_H - HEAD_H);
 
   const bodyX = cx + s.leanX * HD * dirSign;
-  const armXNear = bodyX + (5 + s.armX) * HD * dirSign;
-  const armXFar = bodyX - (5 - s.armX) * HD * dirSign;
+  // The torso is 18 wide, an arm 4: at ±9 the arm sits on the edge of the trunk, where a
+  // shoulder is.
+  // The arm sits on the edge of the trunk: half the torso plus half an arm, less one pixel of
+  // overlap so that the shoulder is a joint and not a butt seam.
+  const armOff = ((TORSO_W[0] + ARM_W) >> 1) - 2;
+  const armXNear = bodyX + (armOff + s.armX * HD) * dirSign;
+  const armXFar = bodyX - (armOff - s.armX * HD) * dirSign;
 
   // Legs: the leading shoe is lengthened by `shoe` pixels, the stride from the seed, without
   // needing a second leg art for it.
@@ -927,26 +660,27 @@ function drawBody(
     // Walking left the shoe grows to the left: a width multiplied by `dirSign` would be
     // negative, and `fill` silently discards negative widths, so the stride of the half of the
     // room walking left would simply be shorter.
-    const sx = flip ? cx - (4 + s.shoe) * HD : cx + 4 * HD;
+    const sx = flip ? cx - (5 + s.shoe) * HD : cx + 5 * HD;
     if (alpha < 1) ctx.globalAlpha = alpha;
-    fill(ctx, pal, "ink", sx, legsY - HD, s.shoe * HD, HD);
+    fill(ctx, pal, "ink", sx, legsY - 3, s.shoe * HD, 2);
     if (alpha < 1) ctx.globalAlpha = 1;
   }
 
   drawArt(ctx, TORSOS[look.torso], bodyX, torsoY, pal, { flip, alpha });
   arm(ctx, pal, s.armFar, armXFar, armY, !flip, look.arms, alpha);
   drawArt(ctx, HEADS[s.dir], bodyX, headY, pal, { flip, alpha });
-  if (alpha >= 1) face(ctx, pal, bodyX, headY - 9 * HD, look.head, s.dir);
+  if (alpha >= 1) face(ctx, pal, bodyX, headY - HEAD_H, look.head, s.dir);
 
   if (s.paper) {
     // The sheet in the hand. A single bright rectangle in front of the chest is enough:
     // otherwise "reads" cannot be told from "types", because both arms point forward. In front
     // of the body, not on it: on the chest it would read as a name badge.
-    const px = bodyX + (dirSign * 5 - 2) * HD;
+    const px = bodyX + dirSign * 9 - 4;
     if (alpha < 1) ctx.globalAlpha = alpha;
-    fill(ctx, pal, "paper", px, torsoY - 8 * HD, 5 * HD, 5 * HD);
-    fill(ctx, pal, "ink", px + HD, torsoY - 7 * HD, 3 * HD, HD);
-    fill(ctx, pal, "ink", px + HD, torsoY - 5 * HD, 2 * HD, HD);
+    fill(ctx, pal, "lineSoft", px - 1, torsoY - 11, 10, 10);
+    fill(ctx, pal, "paper", px, torsoY - 10, 8, 8);
+    fill(ctx, pal, "ink", px + 2, torsoY - 8, 4, 1);
+    fill(ctx, pal, "ink", px + 2, torsoY - 6, 3, 1);
     if (alpha < 1) ctx.globalAlpha = 1;
   }
 
@@ -988,7 +722,7 @@ export function drawActor(ctx: Ctx, a: ActorState, t: number, pal: Pal): void {
   // stylistic decision but the geometry of the room.
   if (a.pose === "sit" && a.deskIndex === -1) s.dir = DIR_BACK;
 
-  drawShadow(ctx, cx, yBase, pal, (a.pose === "sit" ? 10 : 12) * HD);
+  drawShadow(ctx, cx, yBase, pal, (a.pose === "sit" ? 9 : 10) * HD);
   drawBody(ctx, cx, yBase, pal, look, s, a.flip, 1);
 }
 

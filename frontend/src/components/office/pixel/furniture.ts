@@ -21,7 +21,7 @@
 // stretched to arbitrary room widths.
 
 import type { Ctx, RackState } from "../types.ts";
-import { ART } from "../const.ts";
+import { ART, PARTITIONS, WALLS } from "../const.ts";
 import { mix } from "../ids.ts";
 import type { Pal, PalKey } from "./palette.ts";
 import { artH, artLeft, artW, defineArt, drawArt, fill, fillA, doubled } from "./art.ts";
@@ -51,20 +51,38 @@ export const WINDOW_STEP = 28;
 // Top, front edge, modesty panel, two metal sides. 26×12: narrow enough that a character 16
 // pixels wide stands in front of it without the desk framing them.
 
-const DESK = defineArt([
-  "DDDDDDDDDDDDDDDDDDDDDDDDDD",
-  "DDDDDDDDDDDDDDDDDDDDDDDDDD",
-  "dddddddddddddddddddddddddd",
-  ".MMddddddddddddddddddddMM.",
-  ".MMddddddddddddddddddddMM.",
-  ".MMddddddddddddddddddddMM.",
-  ".MMddddddddddddddddddddMM.",
-  ".MMddddddddddddddddddddMM.",
-  ".MM....................MM.",
-  ".MM....................MM.",
-  ".MM....................MM.",
-  ".MM....................MM.",
-], { D: "desk", d: "deskLo", M: "metal" });
+// **The desk is a surface, not a table.** It used to be drawn from the front: a top, a front
+// edge, two legs, and a monitor floating above it. In a room seen from straight above that is
+// the wrong projection, and it is the reason the office read as a stage set rather than as a
+// floor plan. Now the desk is what one actually sees from above: the desktop, the thickness of
+// the top as two darker rows at the near edge, and **on** it a keyboard, a mouse and a screen
+// at the far edge. That single change does more for the look than any colour.
+//
+// Everything in this file carries a **contour** (`L` = `line`). That is the single change that
+// turns a set of coloured blocks into a drawn room: a silhouette holds against any floor
+// underneath it, and twelve objects with the same contour read as one drawing instead of as
+// twelve pasted clip arts. The contour is drawn into the art by hand and not painted around it
+// afterwards, because an outline pass would be four extra draws per object and would put a line
+// where the object touches the ground, exactly where there must be none.
+
+/** The desk in art units. Written as numbers and built by a loop instead of as 14 hand counted
+ *  strings: a desktop is a rectangle, and a rectangle whose width somebody has to count is the
+ *  place where the next change puts a column out of line. */
+const DESK_W = 34;
+const DESK_H = 14;
+
+function deskRows(): string[] {
+  const inner = DESK_W - 2;
+  const rows = ["L".repeat(DESK_W), "L" + "H".repeat(inner) + "L"];
+  for (let i = 0; i < DESK_H - 5; i++) rows.push("L" + "D".repeat(inner) + "L");
+  // Two darker rows at the near edge: that is the **thickness** of the top, the only thing that
+  // says at what height the surface lies. Without them the desk is a sticker on the floor.
+  rows.push("L" + "d".repeat(inner) + "L", "L" + "d".repeat(inner) + "L");
+  rows.push("L".repeat(DESK_W));
+  return rows;
+}
+
+const DESK = defineArt(deskRows(), { D: "desk", d: "deskLo", H: "wallHi", M: "metal", L: "line" });
 
 // ── Office chair ─────────────────────────────────────────────────────────────
 // Two versions. The occupied one leaves the seat free: the character sits there, and a chair
@@ -72,41 +90,55 @@ const DESK = defineArt([
 // versions: it sticks out sideways under the character and is the detail that makes "sitting at
 // the desk" recognisable at all.
 
-const CHAIR_LEGS = [
-  "....MM....",
-  "....MM....",
-  "...MMMM...",
-  "..MMMMMM..",
-  ".M.M..M.M.",
+// The chair from **above**, like the desk: a backrest at the far edge, the seat, the column and
+// the star base. The person sitting on it covers the seat, so the occupied version leaves it
+// out; what stays visible around them is exactly what one sees of a real office chair from
+// above, the backrest behind the shoulders and the feet of the base beside the shoes.
+
+const CHAIR_MAP = { C: "chair", c: "chairLo", M: "metal", L: "line" } as const;
+
+// The office chair, taken from the reference: a **tall rounded backrest** with a lighter mesh
+// panel, two armrest nubs at mid height, the seat, a column and a star base. That silhouette is
+// what says "office" at a glance; a plain rounded box says "pouffe".
+//
+// It is 13 wide, so a little wider than a head (11): the armrests are exactly the part that may
+// stick out past the person sitting on it, and they are what makes the chair readable when
+// somebody is in it.
+
+const CHAIR_BACKREST = [
+  "...LLLLLLL...",
+  "..LcccccccL..",
+  ".LcCCCCCCCcL.",
+  ".LcCMMMMMCcL.",
+  "LLcCMMMMMCcLL",
+  "LcccCMMMCcccL",
+  "LcccccccccccL",
+  ".LLcccccccLL.",
+  "...LLLLLLL...",
+];
+
+const CHAIR_FOOT = [
+  "....LLLLL....",
+  "...LMMMMML...",
+  "..LML...LML..",
+  ".LL.......LL.",
 ];
 
 const CHAIR_FREE = defineArt([
-  "..CCCCCC..",
-  ".CCCCCCCC.",
-  ".CCCCCCCC.",
-  ".CCCCCCCC.",
-  ".CCCCCCCC.",
-  ".cccccccc.",
-  "....MM....",
-  "..CCCCCC..",
-  ".CCCCCCCC.",
-  ".cccccccc.",
-  ...CHAIR_LEGS,
-], { C: "chair", c: "chairLo", M: "metal" });
+  ...CHAIR_BACKREST,
+  "..LCCCCCCCL..",
+  "..LCCCCCCCL..",
+  "..LLLLLLLLL..",
+  ...CHAIR_FOOT,
+], CHAIR_MAP);
 
 const CHAIR_TAKEN = defineArt([
-  "..CCCCCC..",
-  ".CCCCCCCC.",
-  ".CCCCCCCC.",
-  ".CCCCCCCC.",
-  ".CCCCCCCC.",
-  ".cccccccc.",
-  "....MM....",
-  "..........",
-  "..........",
-  ".cccccccc.",
-  ...CHAIR_LEGS,
-], { C: "chair", c: "chairLo", M: "metal" });
+  ...CHAIR_BACKREST,
+  ".............",
+  ".............",
+  "..LLLLLLLLL..",
+  ...CHAIR_FOOT,
+], CHAIR_MAP);
 
 // ── Monitor ──────────────────────────────────────────────────────────────────
 // Only the case and an empty area. The content is drawn procedurally (`drawMonitor`), because
@@ -114,20 +146,20 @@ const CHAIR_TAKEN = defineArt([
 // because the same strokes at a different length immediately look like a different tool.
 
 const MONITOR = defineArt([
-  "NNNNNNNNNNNNNNNN",
-  "NggggggggggggggN",
-  "NggggggggggggggN",
-  "NggggggggggggggN",
-  "NggggggggggggggN",
-  "NggggggggggggggN",
-  "NggggggggggggggN",
-  "NggggggggggggggN",
-  "NNNNNNNNNNNNNNNN",
-  "......MMMM......",
-  "......MMMM......",
-  "....MMMMMMMM....",
-  "...MMMMMMMMMM...",
-], { N: "screen", g: "screenLit", M: "metal" });
+  "LLLLLLLLLLLLLLLL",
+  "LggggggggggggggL",
+  "LggggggggggggggL",
+  "LggggggggggggggL",
+  "LggggggggggggggL",
+  "LggggggggggggggL",
+  "LggggggggggggggL",
+  "LggggggggggggggL",
+  "LLLLLLLLLLLLLLLL",
+  "......LMML......",
+  "......LMML......",
+  "....LMMMMMML....",
+  "..LMMMMMMMMMML..",
+], { N: "screen", g: "screenLit", M: "metal", L: "line" });
 
 /** Inner area of the monitor, relative to the top left corner of the art. */
 const MON_IN = { x: 1, y: 1, w: 14, h: 7 } as const;
@@ -143,22 +175,32 @@ function band(w: number, n: number, ch: string): string {
   return ".".repeat(pad) + ch.repeat(n) + ".".repeat(w - n - pad);
 }
 
+/** A centred run of `inner` inside a centred run of `outer`: the outline ring of an ellipse
+ *  row. Written as a helper because an ellipse with a contour is otherwise 13 hand counted
+ *  strings, and a single miscount shifts the whole tabletop. */
+function ring(w: number, outer: number, inner: number, chOut: string, chIn: string): string {
+  const padO = (w - outer) >> 1;
+  const left = (outer - inner) >> 1;
+  return ".".repeat(padO) + chOut.repeat(left) + chIn.repeat(inner)
+    + chOut.repeat(outer - inner - left) + ".".repeat(w - outer - padO);
+}
+
 const TABLE_W = 52;
 const OFFICE = defineArt([
-  band(TABLE_W, 32, "D"),
-  band(TABLE_W, 44, "D"),
-  band(TABLE_W, 50, "D"),
-  band(TABLE_W, 52, "D"),
-  band(TABLE_W, 50, "d"),
-  band(TABLE_W, 44, "d"),
-  band(TABLE_W, 32, "d"),
-  band(TABLE_W, 8, "M"),
-  band(TABLE_W, 8, "M"),
-  band(TABLE_W, 8, "M"),
-  band(TABLE_W, 8, "M"),
-  band(TABLE_W, 18, "M"),
-  band(TABLE_W, 24, "M"),
-], { D: "desk", d: "deskLo", M: "metal" });
+  band(TABLE_W, 32, "L"),
+  ring(TABLE_W, 44, 40, "L", "H"),
+  ring(TABLE_W, 50, 46, "L", "D"),
+  ring(TABLE_W, 52, 48, "L", "D"),
+  ring(TABLE_W, 50, 46, "L", "d"),
+  ring(TABLE_W, 44, 40, "L", "d"),
+  band(TABLE_W, 32, "L"),
+  ring(TABLE_W, 8, 4, "L", "M"),
+  ring(TABLE_W, 8, 4, "L", "M"),
+  ring(TABLE_W, 8, 4, "L", "M"),
+  ring(TABLE_W, 8, 4, "L", "M"),
+  ring(TABLE_W, 18, 14, "L", "M"),
+  band(TABLE_W, 24, "L"),
+], { D: "desk", d: "deskLo", H: "wallHi", M: "metal", L: "line" });
 
 // ── Stuhl am runden Tisch ────────────────────────────────────────────────────
 // Narrower than the office chair (8 instead of 10) and without castors: the meeting chair
@@ -166,65 +208,67 @@ const OFFICE = defineArt([
 // from "meeting", and that is exactly what the huddle should show.
 
 const TABLE_CHAIR = defineArt([
-  "..CCCC..",
-  ".CCCCCC.",
-  ".CCCCCC.",
-  ".cccccc.",
-  "........",
-  "CCCCCCCC",
-  "cccccccc",
-  ".M....M.",
-  ".M....M.",
-  ".M....M.",
-  ".M....M.",
-  "M......M",
-], { C: "chair", c: "chairLo", M: "metal" });
+  "..LLLL..",
+  ".LCCCCL.",
+  ".LCCCCL.",
+  ".LccccL.",
+  ".LLLLLL.",
+  "LLLLLLLL",
+  "LCCCCCCL",
+  "LLLLLLLL",
+  ".L....L.",
+  ".L....L.",
+  ".L....L.",
+  "LL....LL",
+], { C: "chair", c: "chairLo", M: "metal", L: "line" });
 
 // ── Pflanzen ─────────────────────────────────────────────────────────────────
 // Two sizes. The large one stands in corners and breaks the edge of the wall, the small one
 // stands on cabinets and window sills. Both are deliberately asymmetric: a plant with an axis
 // of symmetry reads as an ornament, not as a plant.
 
+const PLANT_MAP = { G: "plant", g: "plantLo", O: "soil", K: "clay", L: "line" } as const;
+
 const PLANT_TALL = defineArt([
-  "....G......",
-  "..G.G.G....",
-  ".GGGGGGG...",
-  "GGGGGGGGGG.",
-  ".gGGGGGGGGG",
-  "..GGGGGGGg.",
-  "GGGGGGGGGG.",
-  ".gGGGGGGg..",
-  "..GGGGGG...",
-  "...gGGg....",
-  "....GG.....",
-  "....gG.....",
-  "....GG.....",
-  "....gG.....",
-  "..OOOOOOO..",
-  ".KKKKKKKKK.",
-  ".KKKKKKKKK.",
-  "..KKKKKKK..",
-  "..KKKKKKK..",
-  "..KKKKKKK..",
-  "...KKKKK...",
-  "...KKKKK...",
-], { G: "plant", g: "plantLo", O: "soil", K: "clay" });
+  "....LLLL.......",
+  "..LLGGGGLL.....",
+  ".LGGGGGGGGL....",
+  "LGGGGGGGGGGL...",
+  "LGGGgGGGGGGGL..",
+  "LGGGGGGGGGGGGL.",
+  "LGGGgGGGGgGGGL.",
+  ".LGGGGGGGGGGGL.",
+  ".LGGGGGgGGGGGL.",
+  "..LGGGGGGGGGL..",
+  "..LLGGGGGGGL...",
+  "....LGGGGL.....",
+  ".....LGGL......",
+  "......LGL......",
+  "......LGL......",
+  "....LLLLLLL....",
+  "...LOOOOOOOL...",
+  "...LKKKKKKKL...",
+  "...LKKKKKKKL...",
+  "....LKKKKKL....",
+  "....LKKKKKL....",
+  ".....LLLLL.....",
+], PLANT_MAP);
 
 const PLANT_SMALL = defineArt([
-  "..G.G.G..",
-  ".GGGGGGG.",
-  "GGGGGGGGG",
-  ".GGGGGGG.",
-  "..GgGgG..",
-  "...GGG...",
-  "...gG....",
-  "..OOOOO..",
-  ".KKKKKKK.",
-  ".KKKKKKK.",
-  "..KKKKK..",
-  "..KKKKK..",
-  "..KKKKK..",
-], { G: "plant", g: "plantLo", O: "soil", K: "clay" });
+  "...LLL...",
+  "..LGGGL..",
+  ".LGGGGGL.",
+  "LGGGgGGGL",
+  "LGGGGGGGL",
+  ".LGGgGGL.",
+  "..LGGGL..",
+  "..LLLLL..",
+  ".LOOOOOL.",
+  ".LKKKKKL.",
+  ".LKKKKKL.",
+  "..LKKKL..",
+  "..LLLL...",
+], PLANT_MAP);
 
 // ── Aktenschrank ─────────────────────────────────────────────────────────────
 // 16×15, hip high next to a character 24 pixels tall: three drawers with recessed handles, a
@@ -562,7 +606,13 @@ function contactShadowHD(ctx: Ctx, pal: Pal, cx: number, yBase: number, w: numbe
   fillA(ctx, pal, "shadow", 0.04, cx - half + 8, yBase + 3, w - 16, 1);
 }
 
-export function drawDesk(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
+export interface DeskOpts {
+  /** Which way the person sitting at this half of the bench is: `-1` left, `+1` right. The
+   *  keyboard belongs in front of **them**, not in the middle of the desk. */
+  toward?: number;
+}
+
+export function drawDesk(ctx: Ctx, cx: number, yBase: number, pal: Pal, o?: DeskOpts): void {
   // Finely drawn (stage 4). `cx`/`yBase` stay art units: the scene still places furniture in
   // its own grid, only the drawing is twice as fine.
   const X = cx * HD, Y = yBase * HD;
@@ -570,18 +620,82 @@ export function drawDesk(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
   const x0 = X - (w >> 1);
   contactShadowHD(ctx, pal, X, Y, w);
   drawArt(ctx, DESK_HD, X, Y, pal);
-  // Front edge: a HAIRLINE of light with a line of shadow below it. Two buffer pixels thick
-  // made the edge a bar; only a line with its own shadow reads as the rim of a top you could
-  // touch.
-  fillA(ctx, pal, "wallHi", 0.22, x0, Y - h, w, 1);
-  fillA(ctx, pal, "shadow", 0.16, x0, Y - h + 1, w, 1);
-  // The modesty panel lies in the shadow of the top. Without that grip it has almost exactly
-  // the tone of the plank floor and vanishes into it, and the desk then looks like a board on
-  // two wires.
-  fillA(ctx, pal, "shadow", 0.30, x0 + 6, Y - h + 6, w - 12, 10);
-  // And a hint of light on the upper side to the left, where the windows are.
-  fillA(ctx, pal, "wallHi", 0.10, x0 + 2, Y - h + 2, (w >> 1) - 4, 3);
+
+  // A hint of light on the top towards the windows, so the surface is not a flat area.
+  fillA(ctx, pal, "wallHi", 0.12, x0 + 2, Y - h + 3, (w >> 1) - 4, 6);
+
+  // What lies **on** the desk. This is the part that makes a surface read as a workplace: an
+  // empty rectangle is a table, a rectangle with a keyboard on it is a desk. All of it is
+  // measured from the near edge, because that is where a person reaches.
+  const seat = X + (o?.toward ?? 0) * 12;
+  const kbW = 30, kbH = 8;
+  const kbX = seat - (kbW >> 1), kbY = Y - 13;
+  fill(ctx, pal, "line", kbX, kbY, kbW, kbH);
+  fill(ctx, pal, "metal", kbX + 1, kbY + 1, kbW - 2, kbH - 2);
+  fillA(ctx, pal, "wallHi", 0.40, kbX + 1, kbY + 1, kbW - 2, 1);
+  // Three rows of keys as hairlines. More would be noise at this size, fewer would be a lid.
+  for (let r = 0; r < 3; r++) {
+    fillA(ctx, pal, "line", 0.30, kbX + 3, kbY + 2 + r * 2, kbW - 6, 1);
+  }
+  // The mouse, on the side the hand is on.
+  const mx = seat - (o?.toward ?? -1) * 20;
+  fill(ctx, pal, "line", mx - 3, kbY + 1, 6, 7);
+  fill(ctx, pal, "metal", mx - 2, kbY + 2, 4, 5);
+
+  // One thing lying on the far half of the desk, chosen from the position of the desk itself.
+  // In the reference every desk carries something: papers, a mug, a plant. That is what makes
+  // twelve identical workplaces read as twelve **used** workplaces instead of as a showroom,
+  // and it costs four rectangles.
+  //
+  // The choice comes out of `mix(...)` over the position, so the same desk carries the same
+  // thing in every frame and in the replay (rule 3.2). A `Math.random` here would make the mug
+  // dance across the desk while rewinding.
+  // The drawer unit under the desk, on the side away from the seat. In the reference there is
+  // one at every workplace and they carry most of the colour in that part of the picture:
+  // twelve tan tops and twelve grey chairs are a lot of nothing without them.
+  const TONES: readonly PalKey[] = ["chair", "rug", "clay", "plant", "metal"];
+  const dx = (o?.toward ?? -1) * -20;
+  const dw = 14, dh = 18;
+  fill(ctx, pal, "line", X + dx - (dw >> 1), Y - dh, dw, dh);
+  fill(ctx, pal, TONES[mix(cx * 17 + yBase, SALT_DRAWER) % TONES.length],
+       X + dx - (dw >> 1) + 1, Y - dh + 1, dw - 2, dh - 2);
+  for (let k = 0; k < 3; k++) {
+    fillA(ctx, pal, "line", 0.35, X + dx - (dw >> 1) + 2, Y - dh + 4 + k * 5, dw - 4, 1);
+  }
+
+  const px = X + (o?.toward ?? -1) * -18;
+  const py = Y - 20;
+  switch (mix(cx * 131 + yBase, SALT_CLUTTER) % 4) {
+    case 0:  // a stack of paper
+      fill(ctx, pal, "line", px - 5, py, 10, 8);
+      fill(ctx, pal, "paper", px - 4, py + 1, 8, 6);
+      fillA(ctx, pal, "line", 0.30, px - 3, py + 3, 6, 1);
+      fillA(ctx, pal, "line", 0.30, px - 3, py + 5, 4, 1);
+      break;
+    case 1: {  // a mug
+      fill(ctx, pal, "line", px - 3, py + 1, 7, 7);
+      fill(ctx, pal, "paper", px - 2, py + 2, 4, 5);
+      fill(ctx, pal, "clay", px - 2, py + 2, 4, 2);
+      break;
+    }
+    case 2:  // a small plant in a pot
+      fill(ctx, pal, "line", px - 4, py, 8, 5);
+      fill(ctx, pal, "plant", px - 3, py + 1, 6, 3);
+      fillA(ctx, pal, "plantLo", 0.55, px - 3, py + 3, 6, 1);
+      fill(ctx, pal, "line", px - 3, py + 5, 6, 4);
+      fill(ctx, pal, "clay", px - 2, py + 6, 4, 2);
+      break;
+    default:  // nothing: an empty desk among eleven full ones is the one that looks used
+      break;
+  }
 }
+
+/** The salt of the drawer unit. */
+const SALT_DRAWER = 0x524f4c4c;  // "ROLL"
+
+/** The salt of what lies on a desk. Its own, so the clutter does not correlate with the floor
+ *  or with the books in the shelves. */
+const SALT_CLUTTER = 0x4b52414d;  // "KRAM"
 
 export interface ChairOpts {
   /** Somebody is sitting on it: the seat stays free, the character fills it. */
@@ -596,9 +710,9 @@ export function drawChair(ctx: Ctx, cx: number, yBase: number, pal: Pal, opts?: 
   const w = SIZE.chair.w * HD, h = SIZE.chair.h * HD;
   contactShadowHD(ctx, pal, X, Y, w - 4);
   drawArt(ctx, art, X, Y, pal, { flip: opts?.flip });
-  // A light edge on the top of the backrest: it separates the backrest from the seat behind it,
-  // which has the same tone, otherwise the chair is a blob.
-  fillA(ctx, pal, "wallHi", 0.20, X - (w >> 1) + 4, Y - h, w - 8, 1);
+  // A light edge along the backrest: from above it is the part furthest from the floor and
+  // therefore the part that catches the light. Without it seat and backrest are one blob.
+  fillA(ctx, pal, "wallHi", 0.22, X - (w >> 1) + 4, Y - h + 2, w - 8, 1);
 }
 
 // ── Monitor: kind of image and mood ──────────────────────────────────────────
@@ -859,20 +973,9 @@ export function drawClock(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
 
 // ═══ Kulisse (prozedural) ════════════════════════════════════════════════════
 
-const SALT_PLANK = 0x4449454c;  // "DIEL"
+/** The tint of a parquet block comes from its coordinates through this salt. Its own salt (rule
+ *  3.2), so the floor does not correlate with anything else that varies. */
 const SALT_SHADE = 0x53434841;  // "SCHA"
-
-/** Length of a floorboard and height of a row of boards.
- *
- *  The ratio of the lengths is the whole secret: at 46×7 (the first attempt) the floor looks
- *  like a brick wall, because a board is then only six times as long as it is high. Real boards
- *  are 15:1 and above, hence 92×6. */
-const PLANK_W = 92;
-const PLANK_H = 10;
-/** Minimum offset of two neighbouring rows. Without this bound the joints occasionally fall
- *  under one another and the floor gets a continuous seam, which a laid floor never has, and
- *  the eye sees the row at once. */
-const MIN_STAGGER = 26;
 
 /**
  * The back wall: surface, ceiling edge, a slight fall towards the bottom, skirting board.
@@ -882,28 +985,42 @@ const MIN_STAGGER = 26;
  */
 export function drawWall(ctx: Ctx, pal: Pal): void {
   // Finely drawn (stage 3): `ctx` is the HD view and the computation is in buffer pixels.
-  // What that gives shows in the joints: one art unit wide they were bars, one
-  // HD unit wide they are lines. The same wall, half as coarse.
+  //
+  // The wall is built the way a real one is: plaster on top, a panelled dado below, a rail
+  // between them and a skirting board at the bottom. That horizontal division is the single
+  // biggest reason a top-down room reads as a **room** and not as a coloured strip: it gives
+  // the eye two edges at known heights, and everything standing in front of it inherits that
+  // scale.
   const W = ART.w * HD, H = WALL_H * HD;
+  /** Where the dado ends and the plaster begins. Roughly the lower third, as in a real one. */
+  const RAIL = H - 22;
+
   fill(ctx, pal, "wall", 0, 0, W, H);
   fill(ctx, pal, "wallHi", 0, 0, W, 3);
-  // The fall towards the bottom in six steps instead of three bands: in the fine grid every
-  // step is half as high, and stripes become a gradient one no longer reads as steps.
-  for (let i = 0; i < 6; i++) {
-    fillA(ctx, pal, "wallLo", 0.06 + i * 0.05, 0, H - 26 + i * 4, W, 4);
+  // The plaster darkens very slightly towards the rail: without it the upper half is a flat
+  // area, and a flat area of 480 units wide looks like a missing texture.
+  for (let i = 0; i < 5; i++) {
+    fillA(ctx, pal, "wallLo", 0.03 + i * 0.02, 0, RAIL - 12 + i * 3, W, 3);
   }
-  // Skirting board: shadow gap, board, bright top edge. Three rows that put the wall onto the
-  // floor instead of butting it against it.
-  fillA(ctx, pal, "wallLo", 0.55, 0, H - 9, W, 1);
-  fill(ctx, pal, "wallLo", 0, H - 8, W, 8);
-  fillA(ctx, pal, "wallHi", 0.30, 0, H - 8, W, 1);
-  fillA(ctx, pal, "shadow", 0.18, 0, H - 2, W, 2);
-  // Panel joints of the wall cladding: a HAIRLINE every 80 art units with a bright edge next to
-  // it, so it reads as the joint of two panels instead of a scratch.
-  for (let x = 40 * HD; x < W; x += 80 * HD) {
-    fillA(ctx, pal, "wallLo", 0.28, x, 3, 1, H - 12);
-    fillA(ctx, pal, "wallHi", 0.16, x + 1, 3, 1, H - 12);
+
+  // The dado: a shade darker than the plaster, with vertical panel divisions every 40 art
+  // units. Two lines per division (dark plus bright) so it reads as an edge between two
+  // panels, not as a scratch.
+  fillA(ctx, pal, "wallLo", 0.42, 0, RAIL, W, H - RAIL - 7);
+  for (let x = 20 * HD; x < W; x += 40 * HD) {
+    fillA(ctx, pal, "line", 0.16, x, RAIL + 3, 1, H - RAIL - 12);
+    fillA(ctx, pal, "wallHi", 0.22, x + 1, RAIL + 3, 1, H - RAIL - 12);
   }
+  // The chair rail on top of the dado: bright board, dark underside. Three rows, and they are
+  // what makes the dado look applied instead of painted on.
+  fill(ctx, pal, "wallHi", 0, RAIL - 3, W, 3);
+  fillA(ctx, pal, "line", 0.22, 0, RAIL, W, 1);
+
+  // Skirting board: bright board on the floor line with a dark shadow gap under it.
+  fill(ctx, pal, "wallHi", 0, H - 7, W, 6);
+  fillA(ctx, pal, "line", 0.20, 0, H - 8, W, 1);
+  fillA(ctx, pal, "line", 0.55, 0, H - 1, W, 1);
+  fillA(ctx, pal, "shadow", 0.16, 0, H, W, 2);
 }
 
 /**
@@ -912,59 +1029,114 @@ export function drawWall(ctx: Ctx, pal: Pal): void {
  * one colour looks like linoleum.
  */
 export function drawFloor(ctx: Ctx, pal: Pal): void {
-  // Finely drawn (stage 3), in buffer pixels. The floor is seventy percent of the image and
-  // decides whether the room looks like planks or like masonry. In the coarse grid both were
-  // equally wide: joint and grain were two buffer pixels thick, like the board itself.
+  // Finely drawn (stage 3), in buffer pixels.
+  //
+  // **Carpet tiles.** Not planks, not parquet: a grid of squares, laid quarter turned so that
+  // neighbours differ slightly in tone. That is what an office floor actually is, and it is the
+  // one floor texture that stays quiet under twelve figures. Wood everywhere had the opposite
+  // effect: a warm surface over 70 % of the picture pulls all the attention downwards, and
+  // whatever stands on it has to fight the ground it stands on.
+  //
+  // The wood is not gone, it moved: it now marks the **zones** (`drawZone`), the meeting area
+  // and the lounge. A floor that is the same everywhere says nothing about the room; a floor
+  // that changes says "this part is for something else", and that is the whole job of a floor
+  // in a top-down room.
   const W = ART.w * HD, H = ART.h * HD, TOP = WALL_H * HD;
-  const PW = PLANK_W * HD, PH = PLANK_H * HD;
+  /** Edge length of a carpet tile in buffer pixels. 32 is the tile size of the games this is
+   *  modelled on, and a figure is about one tile wide: that is what sets the scale of the room
+   *  for the eye. */
+  const T = 32;
+
   fill(ctx, pal, "floor", 0, TOP, W, H - TOP);
 
-  let prev = -1000;
-  let r = 0;
-  for (let y = TOP; y < H; y += PH, r++) {
-    const rowH = Math.min(PH, H - y);
-    const raw = (mix(r, SALT_PLANK) % PLANK_W) * HD;
-    let off = raw;
-    if (prev >= 0) {
-      const d = Math.abs(off - prev);
-      // The distance is cyclic: 1 and 45 lie next to each other at `PLANK_W = 46`.
-      if (Math.min(d, PW - d) < MIN_STAGGER * HD) {
-        off = (prev + MIN_STAGGER * HD + (raw % (PW - 2 * MIN_STAGGER * HD))) % PW;
-      }
+  // The chequerboard: only every second tile is touched at all, so half the calls.
+  for (let by = 0, ty = 0; by < H - TOP; by += T, ty++) {
+    const y = TOP + by;
+    const th = Math.min(T, H - y);
+    for (let bx = ((ty & 1) === 0 ? 0 : T), tx = 0; bx < W; bx += T * 2, tx++) {
+      fillA(ctx, pal, "floorHi", 0.28, bx, y, Math.min(T, W - bx), th);
     }
-    prev = off;
-
-    // Board tint, grain and vertical joints in one pass.
-    let p = 0;
-    for (let x = off - PW; x < W; x += PW, p++) {
-      const v = mix(r * 131 + p, SALT_SHADE) % 4;
-      // Faint: a board should stand out from its neighbour, not clash with it.
-      if (v === 1) fillA(ctx, pal, "floorHi", 0.11, x, y, PW, rowH - 1);
-      else if (v === 2) fillA(ctx, pal, "floorLo", 0.09, x, y, PW, rowH - 1);
-      // Two grain lines per board instead of one, both only one buffer pixel high: the single
-      // thick line read as a joint in the middle of the board.
-      else if (v === 3) {
-        fillA(ctx, pal, "floorLo", 0.10, x + 12, y + 4, PW - 36, 1);
-        fillA(ctx, pal, "floorLo", 0.07, x + 24, y + rowH - 6, PW - 60, 1);
-      }
-      // The joint: a hairline plus a bright edge right next to it. Together that reads as the
-      // edge of two boards; the bare dark line read as a mortar joint.
-      if (x >= 0) {
-        fillA(ctx, pal, "floorLo", 0.60, x, y, 1, rowH - 1);
-        fillA(ctx, pal, "floorHi", 0.18, x + 1, y, 1, rowH - 1);
-      }
-    }
-    // Horizontal joint at the lower edge of the row, clearly fainter than the vertical one,
-    // otherwise the row wins visually over the board and the floor tips into masonry.
-    if (rowH === PH) fillA(ctx, pal, "floorLo", 0.20, 0, y + rowH - 1, W, 1);
   }
 
-  // A band of shadow under the wall: the floor catches no grazing light there. Four rows are
-  // enough to seat the wall on the floor instead of gluing it against it.
+  // The seams, as whole lines across the picture: 45 calls instead of one border per tile.
+  for (let y = TOP; y < H; y += T) fillA(ctx, pal, "floorLo", 0.45, 0, y, W, 1);
+  for (let x = 0; x < W; x += T) fillA(ctx, pal, "floorLo", 0.45, x, TOP, 1, H - TOP);
+
+  // A band of shadow under the back wall: the floor catches no grazing light there.
   for (let i = 0; i < 7; i++) {
-    fillA(ctx, pal, "shadow", 0.20 - i * 0.026, 0, TOP + i, W, 1);
+    fillA(ctx, pal, "shadow", 0.22 - i * 0.028, 0, TOP + i, W, 1);
   }
 }
+
+/**
+ * A floor zone in wood. `cx`/`yBase` are the centre and the **front edge**.
+ *
+ * Planks with a contour: what marks a zone is the edge, not the texture. Without the contour a
+ * wooden area on carpet reads as a stain; with it, it reads as a platform somebody laid there
+ * on purpose.
+ */
+export function drawZone(
+  ctx: Ctx, cx: number, yBase: number, w: number, h: number, pal: Pal,
+): void {
+  const X = (cx - (w >> 1)) * HD, Y = (yBase - h) * HD;
+  const W = w * HD, H = h * HD;
+  fill(ctx, pal, "line", X, Y, W, H);
+  fill(ctx, pal, "rug", X + 1, Y + 1, W - 2, H - 2);
+  // **Long** boards, running the whole width of the zone, with one seam every 14 rows and no
+  // butt joints at all. Short staggered boards were tried and gave the room a brick wall lying
+  // on the ground for the second time: a board six times as long as it is high is a brick, and
+  // the eye reads the row rather than the board. A real board is 15:1 and above.
+  for (let y = Y + 14; y < Y + H - 1; y += 14) {
+    fillA(ctx, pal, "rugLo", 0.38, X + 1, y, W - 2, 1);
+    fillA(ctx, pal, "wallHi", 0.14, X + 1, y + 1, W - 2, 1);
+  }
+  fillA(ctx, pal, "wallHi", 0.22, X + 1, Y + 1, W - 2, 1);
+  fillA(ctx, pal, "shadow", 0.14, X, Y + H, W, 1);
+}
+
+/**
+ * The three walls that are not the back wall: left, right and the front edge.
+ *
+ * Without them the floor ran off all four sides of the picture, and a floor without an edge is
+ * not a room but a texture. The frame is what turns the picture into a **place**: the eye reads
+ * an enclosed area at once and stops looking for what lies beyond the edge.
+ *
+ * They are drawn as a top surface with a dark inner edge, not as a perspective wall. At twelve
+ * pixels wide a perspective would need a vanishing point, and there is none: the room is seen
+ * from straight above, and only the back wall stands up because a door and windows have to be
+ * in it.
+ */
+export function drawRoomEdges(ctx: Ctx, pal: Pal): void {
+  const W = ART.w * HD, H = ART.h * HD, TOP = WALL_H * HD;
+  const S = SIDE_W * HD;
+
+  // Plaster, a skirting board along the inner edge, a dark line where it meets the floor: the
+  // same three parts as the back wall, only turned. That is why the frame reads as walls and
+  // not as a border drawn around the picture.
+  fill(ctx, pal, "wall", 0, TOP, S, H - TOP);
+  fill(ctx, pal, "wallHi", S - 6, TOP, 5, H - TOP);
+  fill(ctx, pal, "line", S - 1, TOP, 1, H - TOP);
+
+  fill(ctx, pal, "wall", W - S, TOP, S, H - TOP);
+  fill(ctx, pal, "wallHi", W - S + 1, TOP, 5, H - TOP);
+  fill(ctx, pal, "line", W - S, TOP, 1, H - TOP);
+
+  fill(ctx, pal, "wall", 0, H - S, W, S);
+  fill(ctx, pal, "wallHi", 0, H - S + 1, W, 5);
+  fill(ctx, pal, "line", 0, H - S, W, 1);
+
+  // The shadow the walls throw onto the floor. Three rows are enough to lift the frame off the
+  // ground instead of gluing it on.
+  for (let i = 0; i < 3; i++) {
+    const a = 0.16 - i * 0.05;
+    fillA(ctx, pal, "shadow", a, S + i, TOP, 1, H - TOP - S);
+    fillA(ctx, pal, "shadow", a, W - S - 1 - i, TOP, 1, H - TOP - S);
+    fillA(ctx, pal, "shadow", a, S, H - S - 1 - i, W - 2 * S, 1);
+  }
+}
+
+/** Width of the side and front walls in art units. */
+export const SIDE_W = 8;
 
 /**
  * Fields of light on the floor, what makes a room look lit instead of painted.
@@ -1039,4 +1211,221 @@ export function drawWindowLight(
     fillA(ctx, pal, "lamp", alpha, x, y0 + i, half, 1);
     fillA(ctx, pal, "lamp", alpha, x + half + gap, y0 + i, rowW - half - gap, 1);
   }
+}
+
+// ═══ Lounge and storage (procedural) ═════════════════════════════════════════
+//
+// These four pieces are drawn with `fill` instead of as an art, and that is a decision, not
+// laziness: they are **boxes**. A box with a contour is three calls; as a string art it is
+// twenty hand counted rows in which a single missing character shifts everything below it. The
+// motifs of this room (a face, a plant, a rack front) stay art, the boxes become code.
+//
+// They exist because the room was empty. Twelve workplaces along the walls and one table in the
+// middle leave two thirds of the floor bare, and a bare floor reads as an unfinished level, not
+// as an office. What fills it has to be furniture nobody has to interpret: seating, shelves,
+// water, pictures.
+
+/** A body with a contour: the shape almost everything in here has. `top` gets a light edge, so
+ *  the object catches the light of the windows and stands instead of lying. */
+function slab(
+  ctx: Ctx, pal: Pal, x: number, y: number, w: number, h: number, body: PalKey,
+): void {
+  if (w < 2 || h < 2) return;
+  fill(ctx, pal, "line", x, y, w, h);
+  fill(ctx, pal, body, x + 1, y + 1, w - 2, h - 2);
+  fillA(ctx, pal, "wallHi", 0.30, x + 1, y + 1, w - 2, 1);
+}
+
+export const LOUNGE = { sofa: { w: 30, h: 15 }, table: { w: 18, h: 8 } } as const;
+
+/**
+ * A two seater. `cx` is the centre, `yBase` the row it stands on.
+ *
+ * Backrest, seat, two armrests, four feet: five boxes. The seat is drawn **after** the
+ * backrest and one row lower, so the shadow line between them says which is in front. That one
+ * row is the difference between a sofa and a coloured rectangle.
+ */
+export function drawSofa(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
+  const w = LOUNGE.sofa.w, h = LOUNGE.sofa.h;
+  const x = cx - (w >> 1), y = yBase - h;
+  contactShadow(ctx, pal, cx, yBase, w - 4);
+  slab(ctx, pal, x + 2, y, w - 4, 7, "chair");             // backrest
+  slab(ctx, pal, x, y + 5, 5, 8, "chair");                 // armrest left
+  slab(ctx, pal, x + w - 5, y + 5, 5, 8, "chair");         // armrest right
+  slab(ctx, pal, x + 4, y + 6, w - 8, 6, "chairLo");       // seat
+  // The seam between the two cushions: a single line, otherwise it is a bench.
+  fillA(ctx, pal, "line", 0.35, cx, y + 7, 1, 4);
+  fill(ctx, pal, "line", x + 2, y + 12, 3, 3);
+  fill(ctx, pal, "line", x + w - 5, y + 12, 3, 3);
+}
+
+/** The low table in front of the sofa. A top and four legs; the magazine on it is one bright
+ *  rectangle, and it is what makes the table look used instead of delivered. */
+export function drawLowTable(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
+  const w = LOUNGE.table.w, h = LOUNGE.table.h;
+  const x = cx - (w >> 1), y = yBase - h;
+  contactShadow(ctx, pal, cx, yBase, w - 2);
+  slab(ctx, pal, x, y, w, 5, "desk");
+  fill(ctx, pal, "paper", x + 4, y + 1, 6, 2);
+  fill(ctx, pal, "line", x + 1, y + 5, 2, 3);
+  fill(ctx, pal, "line", x + w - 3, y + 5, 2, 3);
+}
+
+export const SHELF = { w: 30, h: 22 } as const;
+
+/**
+ * A shelf with books. `cx` is the centre, `yBase` the row it stands on.
+ *
+ * The books are the point: three shelves of plain boxes are a cupboard, and a cupboard says
+ * nothing. Their colours come from `mix(...)` over their position, so the same shelf carries
+ * the same books in every frame and in the replay (rule 3.2), and no two neighbours are
+ * certain to match.
+ */
+export function drawShelf(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
+  const w = SHELF.w, h = SHELF.h;
+  const x = cx - (w >> 1), y = yBase - h;
+  const TONES: readonly PalKey[] = ["clay", "chair", "plant", "acc", "desk", "rug"];
+  contactShadow(ctx, pal, cx, yBase, w - 4);
+  slab(ctx, pal, x, y, w, h, "deskLo");
+  for (let row = 0; row < 3; row++) {
+    const sy = y + 2 + row * 7;
+    fill(ctx, pal, "line", x + 1, sy + 5, w - 2, 1);
+    // Books, from the left, of unequal height: a shelf filled to the brim reads as a wall.
+    let bx = x + 2;
+    let k = 0;
+    while (bx < x + w - 4) {
+      const r = mix(row * 61 + k, SALT_SHELF);
+      const bw = 2 + (r % 3);
+      const gap = (r >> 3) % 5 === 0;
+      if (!gap) {
+        const top = sy + ((r >> 5) % 2);
+        fill(ctx, pal, "line", bx, top, bw, sy + 5 - top);
+        fill(ctx, pal, TONES[(r >> 7) % TONES.length], bx, top + 1, bw - 1, sy + 4 - top);
+      }
+      bx += bw + 1;
+      k++;
+    }
+  }
+}
+
+/** The salt of the books. Its own, so the shelf does not correlate with the floor. */
+const SALT_SHELF = 0x4255434b;  // "BUCK"
+
+export const COOLER = { w: 11, h: 22 } as const;
+
+/** Water cooler: a bottle on a body. The bottle is the recognisable part, so it gets the light
+ *  edge and the body does not. */
+export function drawCooler(ctx: Ctx, cx: number, yBase: number, pal: Pal): void {
+  const w = COOLER.w, h = COOLER.h;
+  const x = cx - (w >> 1), y = yBase - h;
+  contactShadow(ctx, pal, cx, yBase, w - 2);
+  slab(ctx, pal, x + 1, y + 8, w - 2, h - 8, "metal");
+  fill(ctx, pal, "line", x + 3, y + 15, w - 6, 2);          // the tap
+  // The bottle: narrower at the neck, so it is not a second box.
+  fill(ctx, pal, "line", x + 3, y, w - 6, 3);
+  fill(ctx, pal, "line", x + 1, y + 2, w - 2, 7);
+  fill(ctx, pal, "glass", x + 2, y + 3, w - 4, 5);
+  fillA(ctx, pal, "wallHi", 0.45, x + 3, y + 3, 2, 4);
+}
+
+/** A framed picture on the wall. `yBase` is its lower edge. Two of them are enough to take the
+ *  emptiness out of a long wall; a third would start to look like a gallery. */
+export function drawPicture(
+  ctx: Ctx, cx: number, yBase: number, pal: Pal, tone: PalKey,
+): void {
+  const w = 15, h = 12;
+  const x = cx - (w >> 1), y = yBase - h;
+  fill(ctx, pal, "line", x, y, w, h);
+  fill(ctx, pal, "paper", x + 1, y + 1, w - 2, h - 2);
+  fill(ctx, pal, tone, x + 2, y + 2, w - 4, h - 5);
+  fillA(ctx, pal, "line", 0.35, x + 2, y + h - 5, w - 4, 1);
+  fillA(ctx, pal, "shadow", 0.18, x + 1, y + h, w, 1);
+}
+
+/**
+ * The interior walls. `WALLS` comes out of `const.ts`, so from the same place the route finding
+ * takes them: there is no second list that could drift.
+ *
+ * Drawn like the outer frame and for the same reason: the wall surface, a bright skirting board
+ * along both long sides, and a dark line where it meets the floor. A wall without a skirting
+ * board reads as a bar lying on the floor; with one it stands.
+ *
+ * The doorways draw themselves, because they are the gaps between two segments. What is drawn
+ * on top of them is the **reveal**: the two dark ends where a segment stops, which is what makes
+ * an opening read as a door and not as a wall somebody forgot to finish.
+ */
+export function drawWalls(ctx: Ctx, pal: Pal): void {
+  for (const w of WALLS) {
+    const x = w.x * HD, y = w.y * HD, ww = w.w * HD, wh = w.h * HD;
+    fill(ctx, pal, "wall", x, y, ww, wh);
+    fill(ctx, pal, "wallHi", x, y, ww, 2);
+    fill(ctx, pal, "wallHi", x, y + wh - 3, ww, 3);
+    fill(ctx, pal, "line", x, y, ww, 1);
+    fill(ctx, pal, "line", x, y + wh - 1, ww, 1);
+    // The ends: a dark edge, so a doorway has a jamb.
+    fill(ctx, pal, "line", x, y, 1, wh);
+    fill(ctx, pal, "line", x + ww - 1, y, 1, wh);
+    // The shadow the wall throws onto the floor, on the side away from the windows.
+    for (let i = 0; i < 3; i++) {
+      fillA(ctx, pal, "shadow", 0.16 - i * 0.05, x, y + wh + i, ww, 1);
+    }
+  }
+}
+
+/**
+ * The cubicle screens. Lower and thinner than a wall, and in fabric rather than plaster: a
+ * bright top edge, a darker face, a shadow on the floor. That is enough for the eye to file it
+ * as furniture and not as architecture, which is exactly the difference between the two.
+ */
+export function drawPartitions(ctx: Ctx, pal: Pal): void {
+  for (const w of PARTITIONS) {
+    const x = w.x * HD, y = w.y * HD, ww = w.w * HD, wh = w.h * HD;
+    fill(ctx, pal, "line", x, y, ww, wh);
+    fill(ctx, pal, "metal", x + 1, y + 1, ww - 2, wh - 2);
+    fillA(ctx, pal, "wallHi", 0.35, x + 1, y + 1, ww - 2, 1);
+    fillA(ctx, pal, "shadow", 0.14, x + ww, y + 2, 2, wh - 2);
+  }
+}
+
+/**
+ * A continuous window front. `x0`/`x1` are its ends in art units, `yBase` its lower edge.
+ *
+ * The wall used to carry eight separate windows in two groups, each one a little art with its
+ * own frame, and it read as a row of picture frames. A modern office has a **band**: one
+ * opening over the whole length, divided by mullions, with a transom near the top and a sill
+ * that steps out below. That is what the reference has, and it is the one thing on this wall
+ * that says which decade the building is from.
+ *
+ * Everything is drawn, nothing is an art: a band has to stretch to any length, and an art
+ * cannot.
+ */
+export function drawWindowFront(
+  ctx: Ctx, pal: Pal, x0: number, x1: number, yTop: number, h: number,
+): void {
+  const X = x0 * HD, W = (x1 - x0) * HD, Y = yTop * HD, H = h * HD;
+  // The reveal: the opening sits **in** the wall, so it needs a dark edge all round, otherwise
+  // the glass looks stuck onto the plaster.
+  fill(ctx, pal, "line", X, Y, W, H);
+  fill(ctx, pal, "out", X + 2, Y + 2, W - 4, H - 4);
+  // The sky: three bands, brightest at the top. A gradient is forbidden (rule 2.1) and would be
+  // mush at this height anyway.
+  fillA(ctx, pal, "wallHi", 0.30, X + 2, Y + 2, W - 4, 3);
+  fillA(ctx, pal, "wallHi", 0.16, X + 2, Y + 5, W - 4, 3);
+  // The transom, a third down: without it the band is a slot, with it it is a window.
+  const ty = Y + Math.round(H * 0.34);
+  fill(ctx, pal, "metal", X + 2, ty, W - 4, 2);
+  fillA(ctx, pal, "line", 0.35, X + 2, ty + 2, W - 4, 1);
+  // Mullions every 28 art units, the same rhythm the old single windows had.
+  for (let x = X + 28 * HD; x < X + W - 4; x += 28 * HD) {
+    fill(ctx, pal, "metal", x, Y + 2, 3, H - 4);
+    fillA(ctx, pal, "line", 0.30, x + 3, Y + 2, 1, H - 4);
+  }
+  // One diagonal of reflection per pane, so the glass is glass and not a hole.
+  for (let x = X + 6; x < X + W - 6; x += 28 * HD) {
+    for (let k = 0; k < 5; k++) fillA(ctx, pal, "wallHi", 0.22, x + k, Y + 5 + k, 2, 1);
+  }
+  // The sill: a bright board sticking out below, with its shadow on the parapet.
+  fill(ctx, pal, "wallHi", X - 2, Y + H, W + 4, 3);
+  fill(ctx, pal, "line", X - 2, Y + H + 3, W + 4, 1);
+  fillA(ctx, pal, "shadow", 0.18, X - 2, Y + H + 4, W + 4, 2);
 }

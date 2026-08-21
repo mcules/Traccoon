@@ -150,3 +150,62 @@ export const TIMELINE_BUCKET_MS = 1000;
 export const TIMELINE_CAP = 1200;
 /** This many columns are what the display summarises to. */
 export const TIMELINE_COLUMNS = 220;
+
+// ═══ The floor plan ══════════════════════════════════════════════════════════
+//
+// The office is not one hall any more, it is **rooms**. A corridor along the entrance, an open
+// plan area for the desks, a meeting room and an archive behind a partition wall.
+//
+// That this is possible at all is new: until the route finding existed (`room.route`), every
+// figure walked a straight line from where it stood to where it wanted to go, and any interior
+// wall would have been walked straight through. Walls and route finding are the same feature;
+// one without the other is either a hall or a bug.
+//
+// The segments stand **here** and not in `room.ts`, because both layers need them: layer 0
+// makes obstacles out of them, layer 1 draws them, and layer 1 must not see `room.ts` (rule 4).
+// `const.ts` is the one file both may import, which is exactly what it is for. Every other
+// piece of geometry in this room is held twice and kept in step by a check; this one is not
+// held twice at all, which is better.
+
+/** A piece of wall, in **art units**, given by its top left corner. Doorways are not marked:
+ *  a doorway is the gap between two segments, and a gap needs no data. */
+export interface Wall { x: number; y: number; w: number; h: number }
+
+/** Thickness of an interior wall. Six art units is what reads as a wall rather than as a line
+ *  at this scale, and it leaves the rooms their floor. */
+export const WALL_T = 6;
+
+export const WALLS: readonly Wall[] = [
+  // The corridor along the entrance, closed off towards the open plan area. The doorway lies
+  // between x 150 and 190, and that is **measured, not chosen**: it has to open onto the aisle
+  // between the desk clusters. The first attempt put it at 240 to 280, straight onto the desks
+  // of the middle cluster, and the route finding then found no way at all from the corridor
+  // into the open plan area and fell back to the straight line, so everybody walked through the
+  // wall. The check `routes avoid the furniture` is what showed it.
+  { x: 8, y: 80, w: 142, h: WALL_T },
+  { x: 190, y: 80, w: 282, h: WALL_T },
+  // The partition wall between the open plan area and the two rooms on the east side. Its
+  // doorway is the gap between y 150 and 190.
+  { x: 356, y: 86, w: WALL_T, h: 64 },
+  { x: 356, y: 190, w: WALL_T, h: 72 },
+  // Meeting room above, archive below; one gets into the archive through the meeting room.
+  // That is not elegant and it is what a floor plan grown over time looks like.
+  { x: 362, y: 180, w: 78, h: WALL_T },
+];
+
+/** Cubicle screens. Low partitions **between the two columns** of a cluster, which is what
+ *  turns four desks into four workplaces.
+ *
+ *  Only vertical ones, and that is a constraint of the room, not a taste: a horizontal screen
+ *  would sit between the seats of the back row and the desks of the front row, so exactly in
+ *  the way somebody walking to the back row has to come from. The route finding would then have
+ *  to go round the whole cluster, and with the aisles this narrow it would not get through at
+ *  all. The check `routes avoid the furniture` says so within a second.
+ *
+ *  They are obstacles like the walls: whoever draws a screen and does not block it gets a
+ *  colleague walking through it, which is the complaint this whole feature started with. */
+export const PARTITIONS: readonly Wall[] = [
+  { x: 88, y: 88, w: 5, h: 74 },
+  { x: 248, y: 88, w: 5, h: 74 },
+  { x: 168, y: 170, w: 5, h: 74 },
+];

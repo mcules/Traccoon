@@ -69,13 +69,13 @@
       "seed": 1262586480,
       "status": "running",
       "sub": {
-       "x": 0.6617653276139208,
-       "y": 0.004595005361835547
+       "x": 0.2449674812696685,
+       "y": 0.947515656080526
       },
       "verdict": null,
       "waiting": false,
-      "x": 1034,
-      "y": 247
+      "x": 1002,
+      "y": 182
      }
     ],
     "fx": [],
@@ -124,7 +124,7 @@
       "deskIndex": -1,
       "edits": 0,
       "fails": 1,
-      "flip": true,
+      "flip": false,
       "id": "run:8871",
       "issue": "ABC-412",
       "lastOk": false,
@@ -134,7 +134,7 @@
       },
       "model": "sonnet",
       "phase": "execute",
-      "pose": "sit",
+      "pose": "walk",
       "resolved": 1,
       "role": "exec_agent",
       "say": "Ich schaue mir zuerst den Login-Handler an.",
@@ -142,15 +142,15 @@
       "seed": 1262586480,
       "status": "running",
       "sub": {
-       "x": 0,
-       "y": 0
+       "x": 0.004519911480656447,
+       "y": 0.7386626038859276
       },
       "target": "review_agent",
       "tool": "delegate",
       "verdict": null,
       "waiting": false,
-      "x": 976,
-      "y": 302
+      "x": 905,
+      "y": 545
      }
     ],
     "fx": [
@@ -159,8 +159,8 @@
       "seed": 1262586480,
       "t0": 7000,
       "until": 8400,
-      "x": 976,
-      "y": 302
+      "x": 877,
+      "y": 559
      },
      {
       "kind": "link",
@@ -171,8 +171,8 @@
        "y": 122
       },
       "until": 9400,
-      "x": 976,
-      "y": 302
+      "x": 905,
+      "y": 545
      }
     ],
     "rack": {
@@ -210,8 +210,8 @@
       },
       "verdict": null,
       "waiting": false,
-      "x": 976,
-      "y": 302
+      "x": 1067,
+      "y": 433
      },
      {
       "away": false,
@@ -229,7 +229,7 @@
       "model": "gpt-5-codex",
       "parent": "run:8871",
       "phase": "execute",
-      "pose": "sit",
+      "pose": "walk",
       "resolved": 1,
       "role": "review_agent",
       "say": "Switched the encoding to utf-8, added a test case.",
@@ -237,13 +237,13 @@
       "seed": 3175676331,
       "status": "success",
       "sub": {
-       "x": 0,
-       "y": 0
+       "x": 0.9263396932486216,
+       "y": 0.2695436893391161
       },
       "verdict": "ok",
       "waiting": false,
-      "x": 460,
-      "y": 536
+      "x": 479,
+      "y": 452
      }
     ],
     "fx": [
@@ -252,8 +252,8 @@
       "seed": 3175676331,
       "t0": 10900,
       "until": 13100,
-      "x": 617,
-      "y": 444
+      "x": 579,
+      "y": 290
      },
      {
       "kind": "emote",
@@ -261,8 +261,8 @@
       "t0": 12000,
       "text": "✓",
       "until": 14200,
-      "x": 460,
-      "y": 536
+      "x": 479,
+      "y": 452
      }
     ],
     "rack": {
@@ -284,25 +284,24 @@
       "edits": 0,
       "fails": 1,
       "flip": true,
-      "heard": 18808.814662835524,
       "id": "run:8871",
       "issue": "ABC-412",
       "lastOk": true,
       "model": "sonnet",
       "phase": "execute",
-      "pose": "stand",
+      "pose": "walk",
       "resolved": 2,
       "role": "exec_agent",
       "seed": 1262586480,
       "status": "running",
       "sub": {
-       "x": 0,
+       "x": 0.5658894599710038,
        "y": 0
       },
       "verdict": null,
       "waiting": false,
-      "x": 807,
-      "y": 227
+      "x": 803,
+      "y": 564
      },
      {
       "away": false,
@@ -317,44 +316,27 @@
       "id": "run:8872",
       "issue": "ABC-412",
       "lastOk": true,
-      "link": {
-       "to": "run:8871",
-       "until": 17008.814662835524
-      },
       "model": "gpt-5-codex",
       "parent": "run:8871",
       "phase": "execute",
-      "pose": "stand",
+      "pose": "walk",
       "resolved": 1,
       "role": "review_agent",
       "say": "Switched the encoding to utf-8, added a test case.",
-      "sayAt": 14808.814662835523,
+      "sayAt": 12000,
       "seed": 3175676331,
       "status": "success",
       "sub": {
-       "x": 0,
+       "x": 0.4048145290755656,
        "y": 0
       },
       "verdict": "ok",
       "waiting": false,
-      "x": 884,
-      "y": 302
+      "x": 809,
+      "y": 564
      }
     ],
-    "fx": [
-     {
-      "kind": "link",
-      "seed": 3175676331,
-      "t0": 14808.814662835523,
-      "to": {
-       "x": 976,
-       "y": 302
-      },
-      "until": 17008.814662835524,
-      "x": 884,
-      "y": 302
-     }
-    ],
+    "fx": [],
     "rack": {
      "label": "/opt/docker/stacks/traccoon",
      "since": 13500,
@@ -368,9 +350,9 @@
    "frame": {
     "actors": [
      {
-      "away": true,
+      "away": false,
       "busy": 0,
-      "deskIndex": -2,
+      "deskIndex": 3,
       "done": 12000,
       "doneOk": true,
       "edit": "backend/app/api/auth.py",
@@ -385,18 +367,17 @@
       "phase": "execute",
       "pose": "walk",
       "resolved": 1,
-      "retired": true,
       "role": "review_agent",
       "seed": 3175676331,
       "status": "success",
       "sub": {
-       "x": 0,
-       "y": 0
+       "x": 0.6975983130331542,
+       "y": 0.4569416995473148
       },
       "verdict": "ok",
       "waiting": false,
-      "x": 1168,
-      "y": 122
+      "x": 539,
+      "y": 355
      },
      {
       "away": false,
@@ -404,25 +385,25 @@
       "deskIndex": -1,
       "edits": 0,
       "fails": 1,
-      "flip": true,
+      "flip": false,
       "id": "run:8871",
       "issue": "ABC-412",
       "lastOk": true,
       "model": "sonnet",
       "phase": "execute",
-      "pose": "sit",
+      "pose": "walk",
       "resolved": 2,
       "role": "exec_agent",
       "seed": 1262586480,
       "status": "running",
       "sub": {
-       "x": 0,
-       "y": 0
+       "x": 0.3188086342927363,
+       "y": 0.799089920154529
       },
       "verdict": null,
       "waiting": false,
-      "x": 976,
-      "y": 302
+      "x": 695,
+      "y": 513
      }
     ],
     "fx": [],
@@ -472,6 +453,35 @@
      {
       "away": false,
       "busy": 0,
+      "deskIndex": 6,
+      "edits": 0,
+      "fails": 0,
+      "flip": true,
+      "gate": "question",
+      "id": "run:8873",
+      "issue": "ABC-412",
+      "lastOk": null,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "walk",
+      "resolved": 0,
+      "role": "assistant",
+      "say": "Should ABC-418 be finished along with it?",
+      "sayAt": 36500,
+      "seed": 2537979714,
+      "status": "blocked",
+      "sub": {
+       "x": 0.3429303483519561,
+       "y": 0.6962264937864688
+      },
+      "verdict": "blocked",
+      "waiting": true,
+      "x": 699,
+      "y": 235
+     },
+     {
+      "away": false,
+      "busy": 0,
       "deskIndex": -1,
       "edits": 0,
       "fails": 1,
@@ -492,37 +502,8 @@
       },
       "verdict": null,
       "waiting": false,
-      "x": 976,
-      "y": 302
-     },
-     {
-      "away": false,
-      "busy": 0,
-      "deskIndex": 6,
-      "edits": 0,
-      "fails": 0,
-      "flip": false,
-      "gate": "question",
-      "id": "run:8873",
-      "issue": "ABC-412",
-      "lastOk": null,
-      "model": "sonnet",
-      "phase": "execute",
-      "pose": "stand",
-      "resolved": 0,
-      "role": "assistant",
-      "say": "Should ABC-418 be finished along with it?",
-      "sayAt": 36500,
-      "seed": 2537979714,
-      "status": "blocked",
-      "sub": {
-       "x": 0,
-       "y": 0
-      },
-      "verdict": "blocked",
-      "waiting": true,
-      "x": 1172,
-      "y": 347
+      "x": 1067,
+      "y": 433
      }
     ],
     "fx": [
@@ -532,8 +513,8 @@
       "t0": 36500,
       "text": "!",
       "until": 40100,
-      "x": 1172,
-      "y": 347
+      "x": 699,
+      "y": 235
      }
     ],
     "rack": {
@@ -582,36 +563,6 @@
      {
       "away": false,
       "busy": 0,
-      "deskIndex": -1,
-      "done": 42500,
-      "doneOk": true,
-      "edits": 0,
-      "fails": 1,
-      "flip": true,
-      "id": "run:8871",
-      "issue": "ABC-412",
-      "lastOk": true,
-      "model": "sonnet",
-      "phase": "execute",
-      "pose": "walk",
-      "resolved": 2,
-      "role": "exec_agent",
-      "say": "The login accepts accented characters now; a regression test was added.",
-      "sayAt": 42500,
-      "seed": 1262586480,
-      "status": "success",
-      "sub": {
-       "x": 0,
-       "y": 0
-      },
-      "verdict": "ok",
-      "waiting": false,
-      "x": 807,
-      "y": 227
-     },
-     {
-      "away": false,
-      "busy": 0,
       "deskIndex": 6,
       "edits": 0,
       "fails": 0,
@@ -633,8 +584,38 @@
       },
       "verdict": "blocked",
       "waiting": true,
-      "x": 1172,
-      "y": 347
+      "x": 770,
+      "y": 540
+     },
+     {
+      "away": false,
+      "busy": 0,
+      "deskIndex": -1,
+      "done": 42500,
+      "doneOk": true,
+      "edits": 0,
+      "fails": 1,
+      "flip": true,
+      "id": "run:8871",
+      "issue": "ABC-412",
+      "lastOk": true,
+      "model": "sonnet",
+      "phase": "execute",
+      "pose": "walk",
+      "resolved": 2,
+      "role": "exec_agent",
+      "say": "The login accepts accented characters now; a regression test was added.",
+      "sayAt": 42500,
+      "seed": 1262586480,
+      "status": "success",
+      "sub": {
+       "x": 0.47985543105119177,
+       "y": 0.5966554465330773
+      },
+      "verdict": "ok",
+      "waiting": false,
+      "x": 878,
+      "y": 558
      }
     ],
     "fx": [
@@ -653,8 +634,8 @@
       "t0": 42500,
       "text": "✓",
       "until": 44700,
-      "x": 807,
-      "y": 227
+      "x": 878,
+      "y": 558
      }
     ],
     "rack": {
@@ -670,89 +651,89 @@
   {
    "at": 0,
    "day": {
-    "n": 4379,
-    "hash": "c14bdf44"
+    "n": 5459,
+    "hash": "0e8c9857"
    },
    "night": {
-    "n": 4147,
-    "hash": "a6544ab6"
+    "n": 5227,
+    "hash": "23df6c43"
    }
   },
   {
    "at": 1200,
    "day": {
-    "n": 4368,
-    "hash": "8fc44f4e"
+    "n": 5418,
+    "hash": "e0e1cbd6"
    },
    "night": {
-    "n": 4136,
-    "hash": "e2b21557"
+    "n": 5186,
+    "hash": "7545803c"
    }
   },
   {
    "at": 7200,
    "day": {
-    "n": 4918,
-    "hash": "06aafed9"
+    "n": 6060,
+    "hash": "f3c0f063"
    },
    "night": {
-    "n": 4688,
-    "hash": "8da6864e"
+    "n": 5828,
+    "hash": "15255e3f"
    }
   },
   {
    "at": 12000,
    "day": {
-    "n": 4588,
-    "hash": "0d944fec"
+    "n": 5683,
+    "hash": "35cff926"
    },
    "night": {
-    "n": 4360,
-    "hash": "64f0d68d"
+    "n": 5453,
+    "hash": "95da9721"
    }
   },
   {
    "at": 15500,
    "day": {
-    "n": 4843,
-    "hash": "2b8ac58e"
+    "n": 5964,
+    "hash": "dd38cc02"
    },
    "night": {
-    "n": 4611,
-    "hash": "bd2b2525"
+    "n": 5732,
+    "hash": "f76fac65"
    }
   },
   {
    "at": 25200,
    "day": {
-    "n": 4331,
-    "hash": "6d6d0094"
+    "n": 5688,
+    "hash": "16232407"
    },
    "night": {
-    "n": 4101,
-    "hash": "35d0ff54"
+    "n": 5456,
+    "hash": "cb606434"
    }
   },
   {
    "at": 48000,
    "day": {
-    "n": 4630,
-    "hash": "901f886b"
+    "n": 5694,
+    "hash": "a2e762c0"
    },
    "night": {
-    "n": 4400,
-    "hash": "69b23a8e"
+    "n": 5464,
+    "hash": "9486eec5"
    }
   },
   {
    "at": 54000,
    "day": {
-    "n": 4649,
-    "hash": "c9b698e2"
+    "n": 5732,
+    "hash": "0dc4d42a"
    },
    "night": {
-    "n": 4419,
-    "hash": "57d57bb5"
+    "n": 5502,
+    "hash": "5cdd6454"
    }
   }
  ]

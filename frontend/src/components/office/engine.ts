@@ -28,7 +28,7 @@ import type {
   ActorState, Cmd, Frame, Fx, Pt, Rack, Room, RunStatus, Seat, Verdict,
 } from "./types.ts";
 import { hash32, mix, rnd01 } from "./ids.ts";
-import { POD_SEATS, ROOM, SEAT_DX, seatOf } from "./room.ts";
+import { BLOCKED, POD_SEATS, ROOM, SEAT_DX, route, seatOf } from "./room.ts";
 import {
   ARRIVE_STAGGER_MS, BUBBLE_MS, COFFEE_HOLD_MS, DONE_LINGER_MS, DONE_LINGER_SPREAD_MS,
   GATE_PULSE_MS, HEARD_MS, HUDDLE_HOLD_MS, HUDDLE_MIN, HUDDLE_WINDOW_MS, IDLE_COFFEE_MS,
@@ -78,6 +78,13 @@ interface Trip {
   to: Pt;
   /** Target of the way back; unused on `exit`. */
   home: Pt;
+  /** The way there as a polyline **without** the starting point, so at least `[to]`. Computed
+   *  once in `startTrip` out of the fixed obstacles (`room.route`), never per tick: a route
+   *  recomputed while walking would depend on the tick size and the replay would come apart
+   *  (rule 3.4). */
+  path: Pt[];
+  /** The way back, likewise, from `to` to `home`. Empty when `back === false`. */
+  pathBack: Pt[];
   t0: number;
   tArrive: number;
   holdUntil: number;
@@ -126,6 +133,14 @@ function dist(a: Pt, b: Pt): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+/** Length of a polyline that begins at `from`. */
+function pathLen(from: Pt, path: readonly Pt[]): number {
+  let sum = 0;
+  let prev = from;
+  for (const q of path) { sum += dist(prev, q); prev = q; }
+  return sum;
 }
 
 // ── The engine ───────────────────────────────────────────────────────────────
@@ -256,7 +271,7 @@ export class Engine {
         this.enqueue(a, {
           kind: "deliver", work: true, queuedAt: this._t,
           from: { x: 0, y: 0 }, to: { x: to.x + side, y: to.y }, home: { x: 0, y: 0 },
-          t0: 0, tArrive: 0, holdUntil: 0, tBack: 0, back: true,
+          t0: 0, tArrive: 0, holdUntil: 0, tBack: 0, back: true, path: [], pathBack: [],
           targetId: to.id, text: cmd.text, fired: false,
         });
         this.touch(a);
@@ -334,6 +349,7 @@ export class Engine {
             kind: "deliver", work: true, queuedAt: this._t,
             from: { x: 0, y: 0 }, to: { x: rack.x, y: rack.y }, home: { x: 0, y: 0 },
             t0: 0, tArrive: 0, holdUntil: 0, tBack: 0, back: true, fired: false,
+      path: [], pathBack: [],
           });
           this.touch(a);
         }
@@ -502,6 +518,7 @@ export class Engine {
       kind: "arrive", work: true, queuedAt: at,
       from: { x: door.x, y: door.y }, to: this.home(a), home: this.home(a),
       t0: 0, tArrive: 0, holdUntil: 0, tBack: 0, back: false, fired: false,
+      path: [], pathBack: [],
     });
   }
 
@@ -592,6 +609,7 @@ export class Engine {
         kind: "huddle", work: false, queuedAt: this._t,
         from: { x: 0, y: 0 }, to: { x: spot.x, y: spot.y }, home: { x: 0, y: 0 },
         t0: 0, tArrive: 0, holdUntil: 0, tBack: 0, back: true, fired: false,
+      path: [], pathBack: [],
       });
     }
     this.huddleUntil = this._t + HUDDLE_HOLD_MS;
@@ -622,13 +640,20 @@ export class Engine {
     tr.from = { x: p.fx, y: p.fy };
     tr.home = tr.kind === "exit" ? { x: p.fx, y: p.fy } : this.home(a);
     tr.t0 = t0;
-    tr.tArrive = t0 + (dist(tr.from, tr.to) / speed) * 1000;
+    // The route around the furniture, and the duration out of its **real** length. Taking the
+    // straight line as the duration would make a figure walking around a desk faster than one
+    // walking past it, and the arrival would no longer be where the effect is triggered.
+    tr.path = route(tr.from, tr.to, BLOCKED);
+    tr.tArrive = t0 + (pathLen(tr.from, tr.path) / speed) * 1000;
     const hold =
       tr.kind === "deliver" ? SPEAK_HOLD_MS :
       tr.kind === "coffee" ? COFFEE_HOLD_MS :
       tr.kind === "huddle" ? HUDDLE_HOLD_MS : 0;
     tr.holdUntil = tr.tArrive + hold;
-    tr.tBack = tr.back ? tr.holdUntil + (dist(tr.to, tr.home) / speed) * 1000 : tr.holdUntil;
+    tr.pathBack = tr.back ? route(tr.to, tr.home, BLOCKED) : [];
+    tr.tBack = tr.back
+      ? tr.holdUntil + (pathLen(tr.to, tr.pathBack) / speed) * 1000
+      : tr.holdUntil;
     tr.fired = false;
     p.trip = tr;
   }
@@ -639,6 +664,7 @@ export class Engine {
       kind: "coffee", work: false, queuedAt: at,
       from: { x: 0, y: 0 }, to: { x: c.x, y: c.y }, home: { x: 0, y: 0 },
       t0: 0, tArrive: 0, holdUntil: 0, tBack: 0, back: true, fired: false,
+      path: [], pathBack: [],
     };
   }
 
@@ -648,6 +674,7 @@ export class Engine {
       kind: "exit", work: true, queuedAt: at,
       from: { x: 0, y: 0 }, to: { x: d.x, y: d.y }, home: { x: 0, y: 0 },
       t0: 0, tArrive: 0, holdUntil: 0, tBack: 0, back: false, fired: false,
+      path: [], pathBack: [],
     };
   }
 
@@ -735,7 +762,7 @@ export class Engine {
       // The way there. Before `t0` the character still stands at the starting point: that is the
       // staggered arrival waiting in front of the door until it is its turn.
       if (t < tr.tArrive) {
-        this.place(a, p, tr.from, tr.to, tr.t0, tr.tArrive);
+        this.place(a, p, tr.from, tr.path, tr.t0, tr.tArrive);
         a.pose = t < tr.t0 ? "stand" : "walk";
         return;
       }
@@ -763,7 +790,7 @@ export class Engine {
       }
       // The way back.
       if (tr.back && t < tr.tBack) {
-        this.place(a, p, tr.to, tr.home, tr.holdUntil, tr.tBack);
+        this.place(a, p, tr.to, tr.pathBack, tr.holdUntil, tr.tBack);
         a.pose = "walk";
         return;
       }
@@ -780,12 +807,31 @@ export class Engine {
     }
   }
 
-  private place(a: ActorState, p: Priv, from: Pt, to: Pt, t0: number, t1: number): void {
+  private place(a: ActorState, p: Priv, from: Pt, path: readonly Pt[], t0: number, t1: number): void {
     const u = t1 <= t0 ? 1 : Math.min(1, Math.max(0, (this._t - t0) / (t1 - t0)));
-    p.fx = from.x + (to.x - from.x) * u;
-    p.fy = from.y + (to.y - from.y) * u;
-    this.sync(a, p);
-    if (to.x !== from.x) a.flip = to.x < from.x;
+    if (path.length === 0) { p.fx = from.x; p.fy = from.y; this.sync(a, p); return; }
+    // Walk the polyline by arc length. `u` is the fraction of the **whole** way, so a figure
+    // keeps its speed across a corner instead of accelerating on the shorter leg.
+    const want = pathLen(from, path) * u;
+    let prev = from;
+    let done = 0;
+    for (let i = 0; i < path.length; i++) {
+      const nxt = path[i];
+      const leg = dist(prev, nxt);
+      if (done + leg >= want || i === path.length - 1) {
+        const v = leg <= 0 ? 1 : Math.min(1, (want - done) / leg);
+        p.fx = prev.x + (nxt.x - prev.x) * v;
+        p.fy = prev.y + (nxt.y - prev.y) * v;
+        // The facing direction comes from the **current** leg, not from the whole way: a
+        // figure walking around a desk turns at the corner, and that turn is what makes the
+        // detour readable as a detour instead of as a drawing error.
+        if (nxt.x !== prev.x) a.flip = nxt.x < prev.x;
+        this.sync(a, p);
+        return;
+      }
+      done += leg;
+      prev = nxt;
+    }
   }
 
   /** The effect of the arrival, triggered at the **planned** arrival moment `tr.tArrive` and not

@@ -76,8 +76,10 @@ export interface DrawOpts {
   /** Opacity. It is **always** reset to 1 after drawing (rule 2.1: there is no `restore`, and
    *  resetting is the duty of the drawer). */
   alpha?: number;
-  /** All visible pixels in one colour, for shadow and outline passes. Transparent pixels
-   *  stay transparent. */
+  /** All visible pixels in one colour, for shadow and skin passes. Transparent pixels stay
+   *  transparent, and so does the **contour**: a tint replaces the fill of a sprite, never its
+   *  outline. Without that exception a short sleeve would take the arm out of its silhouette,
+   *  and the forearm would hang on the body as a blob without an edge. */
   tint?: PalKey;
 }
 
@@ -119,7 +121,9 @@ export function drawArt(
     // closing code behind the loop.
     for (let rx = 0; rx <= w; rx++) {
       const ch = rx < w ? row[flip ? w - 1 - rx : rx] : ".";
-      const next: PalKey | "" = transparent(ch) ? "" : (tint ?? art.map[ch]);
+      const key0 = transparent(ch) ? "" : art.map[ch];
+      const next: PalKey | "" =
+        key0 === "" || tint === undefined || key0 === "line" ? key0 : tint;
       if (next !== key) {
         if (key !== "") {
           const col = pal[key];

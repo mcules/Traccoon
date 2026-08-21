@@ -1,0 +1,4 @@
+
+# Rendered office shots: they are a look-at-it artefact of tools/office-shot.mjs,
+# reproducible in one command and not worth a diff.
+tools/shots/

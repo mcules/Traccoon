@@ -33,6 +33,14 @@ export type PalKey =
   | "wall" | "wallLo" | "wallHi"
   | "floor" | "floorLo" | "floorHi"
   | "rug" | "rugLo"
+  /** The outline every object and every character carries. One tone for the whole room, so
+   *  that a desk, a plant and a colleague read as parts of the same drawing instead of as
+   *  three pieces of clip art pasted next to one another. Deliberately not black: a pure
+   *  `#000` on a light floor cuts holes into the picture, a dark blue-grey binds. */
+  | "line"
+  /** The soft inner edge: seams, folds, the second line inside a silhouette. Half a step from
+   *  `line` towards the object colour, so a detail does not weigh as much as the contour. */
+  | "lineSoft"
   /** What can be seen through the window: sky respectively night city. */
   | "out"
   // Furniture
@@ -67,32 +75,40 @@ type EnvKey = Exclude<PalKey, "S" | "s" | "H" | "h" | "T" | "t" | "P">;
 // office they are exactly the light source that makes everything else visible in the first
 // place. Hence two tables in which `screenLit` and `lamp` grow **brighter** while the rest falls.
 
+// The day tones are **measured**, not invented: they are the colours of the reference this
+// room is built against (`the-office`, a WorkAdventure map), read out of its own picture. A
+// palette that is guessed at is the reason two pixel rooms never look like one another even
+// when every shape matches.
 const DAY_ENV: Record<EnvKey, string> = {
-  wall: "#e6e0d3", wallLo: "#c4bba7", wallHi: "#f4f0e7",
-  floor: "#c49a67", floorLo: "#a37c4e", floorHi: "#d7b184",
-  rug: "#8496ad", rugLo: "#6a7c94",
-  out: "#bfdcef",
-  desk: "#d9bd8e", deskLo: "#a8814f",
-  chair: "#4d5a6b", chairLo: "#333e4c",
-  metal: "#a9b1bb", glass: "#eaf3fa", clay: "#b9694a",
-  screen: "#2e343d", screenLit: "#dbe6f0", ink: "#3a4350", paper: "#f7f5ef",
-  plant: "#559159", plantLo: "#3a6b41", soil: "#5d4632",
-  lamp: "#f3e2b4", shadow: "#5d4f3c",
+  wall: "#cac6ad", wallLo: "#a8a48c", wallHi: "#f2efdd",
+  floor: "#b9b9be", floorLo: "#a3a3aa", floorHi: "#c9c9ce",
+  rug: "#c6b89d", rugLo: "#8b7a5c",
+  out: "#a7d8f0",
+  desk: "#c6b89d", deskLo: "#8b7a5c",
+  chair: "#64677c", chairLo: "#4e4e60",
+  metal: "#8f8fa9", glass: "#dcecf8", clay: "#c96f4c",
+  screen: "#3a5878", screenLit: "#4a7fc1", ink: "#2b2b3a", paper: "#f2efdd",
+  plant: "#5aa06a", plantLo: "#3a7048", soil: "#6b4b33",
+  lamp: "#f7e6ba", shadow: "#3c3c52",
+  line: "#4e4e60", lineSoft: "#76778b",
   acc: "#38bdf8", ok: "#4ade80", err: "#f87171", blocked: "#fb923c",
 };
 
 const NIGHT_ENV: Record<EnvKey, string> = {
-  wall: "#2b3040", wallLo: "#1e2331", wallHi: "#3a4154",
-  floor: "#4a3b2e", floorLo: "#372b21", floorHi: "#5d4a39",
-  rug: "#3b4557", rugLo: "#2c3442",
+  wall: "#28304a", wallLo: "#181f33", wallHi: "#3b4566",
+  floor: "#38494f", floorLo: "#26363c", floorHi: "#4a5f66",
+  rug: "#6b563a", rugLo: "#4a3a26",
   out: "#0e1a33",
-  desk: "#6b563a", deskLo: "#4a3a26",
-  chair: "#2b333f", chairLo: "#1b212a",
-  metal: "#5a636e", glass: "#7f96a8", clay: "#7c4633",
+  desk: "#4a5266", deskLo: "#333a4b",
+  chair: "#2b4568", chairLo: "#1c2f49",
+  metal: "#5a636e", glass: "#7f96a8", clay: "#8a4d36",
   // Deliberately **not** darker than during the day: in the evening office the monitors are the lamps.
-  screen: "#161b22", screenLit: "#cfe3f5", ink: "#2b3444", paper: "#cfc9bb",
-  plant: "#2f5c3a", plantLo: "#20402a", soil: "#33261b",
+  screen: "#161b22", screenLit: "#cfe3f5", ink: "#212838", paper: "#cfc9bb",
+  plant: "#2f7047", plantLo: "#1d4b30", soil: "#3b2c1f",
   lamp: "#ffd88a", shadow: "#080c14",
+  // The outline stays dark at night as well: it is the contour, not a shadow, and a contour
+  // that fades with the light dissolves exactly the silhouette the room is read by.
+  line: "#12172a", lineSoft: "#2c3448",
   // Status colours stay **identical** in both grades: they are the same four colours as in the
   // dock (AgentMonitor: yellow/green/red/orange). Two views of the same run must not
   // contradict each other just because one of them plays in the evening.
