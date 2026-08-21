@@ -1910,7 +1910,6 @@
   "skills_panel.reusable_prompt_building_blocks_versioned_age": "Reusable prompt building blocks (versioned). Agents load them through allowed_skills, autostart means permanently active.",
   "slot.acceptance": "Review and delivery",
   "slot.hardware_procurement": "Hardware procurement",
-  "slot.mail_intake": "Mail intake",
   "slot.ticket_intake": "Ticket intake",
   "slot.ticket_lifecycle": "AI ticket lifecycle",
   "slot_list.view": "View",
