@@ -1174,7 +1174,7 @@ async def test_a_learned_ham_sender_is_no_shield_against_fraud(db):
     await db.commit()
     verdict = await spam_review.judge(db, user.id, _mail(), cls={
         "spam_score": 0.95, "category": "sonstiges", "betrug": True})
-    assert verdict["geklaert"] is False
+    assert verdict["settled"] is False
     assert verdict["score"] >= 0.95
 
 
@@ -1188,7 +1188,7 @@ async def test_a_learned_spam_sender_stays_settled(db):
     await db.commit()
     verdict = await spam_review.judge(db, user.id, _mail(), cls={
         "spam_score": 0.95, "category": "sonstiges", "betrug": True})
-    assert verdict["geklaert"] is True and verdict["geklaert_urteil"] == "spam"
+    assert verdict["settled"] is True and verdict["settled_verdict"] == "spam"
 
 
 # --- The case of 2026-08-20: the PayPal receipt in the spam folder --------------------
@@ -1246,7 +1246,7 @@ async def test_a_known_sender_against_a_fraud_suspicion_gets_asked(db):
 
     assert verdict["score"] < 1.0
     assert verdict["score"] >= verdict["frage_ab"], "gezeigt wird sie trotzdem"
-    assert verdict["geklaert"] is False, "nichts ist geklärt, solange man sich streitet"
+    assert verdict["settled"] is False, "nichts ist geklärt, solange man sich streitet"
     assert any("erwünscht" in g for g in verdict["reasons"])
 
 

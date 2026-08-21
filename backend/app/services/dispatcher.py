@@ -38,18 +38,33 @@ def _now() -> dt.datetime:
 # Agent status to board column (by name). Error, question, approval gate and to-test become
 # "waiting", active work "in progress", finished "done"; open/None leaves the column untouched.
 _AGENT_STATUS_TO_BOARD = {
-    TicketAgentStatus.failed: "Warten",
-    TicketAgentStatus.hold: "Warten",
-    TicketAgentStatus.plan_review: "Warten",
+    TicketAgentStatus.failed: "waiting",
+    TicketAgentStatus.hold: "waiting",
+    TicketAgentStatus.plan_review: "waiting",
     # Test environment flow (TRA-18): a column of its own between "in progress" and "done".
     # If it is missing in the project, the fallback to "waiting" applies (see sync_board_status).
-    TicketAgentStatus.to_test: "Testen",
-    TicketAgentStatus.testing: "Testen",
-    TicketAgentStatus.planning: "In Arbeit",
-    TicketAgentStatus.approved: "In Arbeit",
-    TicketAgentStatus.in_progress: "In Arbeit",
-    TicketAgentStatus.done: "Fertig",
+    TicketAgentStatus.to_test: "testing",
+    TicketAgentStatus.testing: "testing",
+    TicketAgentStatus.planning: "in_progress",
+    TicketAgentStatus.approved: "in_progress",
+    TicketAgentStatus.in_progress: "in_progress",
+    TicketAgentStatus.done: "done",
 }
+
+# The names a column of that role carries. English is what a fresh project gets; the German
+# ones stand in every project created before the rename, and those names are user data — a
+# board column is what somebody typed, not a key we may rewrite.
+_BOARD_NAMES = {
+    "waiting": ("Waiting", "Warten"),
+    "testing": ("Testing", "Testen"),
+    "in_progress": ("In Progress", "In Arbeit"),
+    "done": ("Done", "Fertig"),
+}
+
+
+def _has_role(status, role: str) -> bool:
+    return status.name.strip().lower() in {n.lower() for n in _BOARD_NAMES[role]}
+
 
 
 async def sync_board_status(db, issue: Issue) -> None:
@@ -63,10 +78,10 @@ async def sync_board_status(db, issue: Issue) -> None:
     stats = (await db.execute(select(WorkflowStatus).where(
         WorkflowStatus.project_id == issue.project_id))).scalars().all()
     cur = next((s for s in stats if s.id == issue.status_id), None)
-    if cur and cur.category == StatusCategory.done and target != "Fertig":
+    if cur and cur.category == StatusCategory.done and target != "done":
         return  # already accepted (manually): do not pull back to "waiting"
-    st = next((s for s in stats if s.name == target), None)
-    if st is None and target == "Testen":
+    st = next((s for s in stats if _has_role(s, target)), None)
+    if st is None and target == "testing":
         # Existing project without a "testing" column: create it once (before "done");
         # otherwise fall back to "waiting", because the transition must never fail.
         st = await _ensure_testing_status(db, issue.project_id, stats)
@@ -79,7 +94,7 @@ async def _ensure_testing_status(db, project_id: int, stats: list[WorkflowStatus
     from ..models.ticket import Board, BoardColumn
     done = next((s for s in stats if s.category == StatusCategory.done), None)
     order = (done.order if done else max([s.order for s in stats], default=0) + 1)
-    st = WorkflowStatus(project_id=project_id, name="Testen",
+    st = WorkflowStatus(project_id=project_id, name="Testing",
                         category=StatusCategory.in_progress, order=order)
     db.add(st)
     if done is not None:

@@ -170,7 +170,7 @@ async def run_pm_chat(db: AsyncSession, project_id: int, user_id: int, text: str
         for op in ops:
             try:
                 if op.get("op") == "create":
-                    iss = await _create_ticket(db, project, op.get("summary", "Aufgabe"),
+                    iss = await _create_ticket(db, project, op.get("summary", "Task"),
                                                op.get("description", ""), op.get("assign"), user_id)
                     created_keys.append(iss.key)
                 elif op.get("op") == "assign":

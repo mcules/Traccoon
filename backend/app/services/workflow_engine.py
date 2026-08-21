@@ -256,7 +256,7 @@ async def _notify_assignee(db, inst: WorkflowInstance, node: dict, ntype: str, a
     if cfg.get("notify") is False:
         return
     label = cfg.get("label") or cfg.get("title") or node.get("id")
-    verb = "Genehmigung" if ntype == "approval" else "Aufgabe"
+    verb = "Approval" if ntype == "approval" else "Task"
     title = f"Workflow: {verb} „{label}“ wartet"
     body = cfg.get("description") or cfg.get("instructions") or ""
     if assignee is not None:

@@ -377,11 +377,11 @@ export const pluginApi = {
   /** What this person may see (enabled and released for them). */
   my: () => api.get<PluginInfo[]>("/plugins"),
   /** Everything, disabled ones included — the administrator's view. */
-  all: () => api.get<PluginAdmin[]>("/plugins/alle"),
+  all: () => api.get<PluginAdmin[]>("/plugins/all"),
   rights: (slug: string, body: {
     reads_granted?: string[]; enabled?: boolean;
     all_users?: boolean; allowed_user_ids?: number[];
-  }) => api.put<PluginAdmin>(`/plugins/${slug}/rechte`, body),
+  }) => api.put<PluginAdmin>(`/plugins/${slug}/rights`, body),
   del: (slug: string) => api.del(`/plugins/${slug}`),
   /** Upload a zip; the server evaluates the manifest and the files. */
   upload: (file: File) => upload<{ slug: string; files: number }>("/plugins", file),

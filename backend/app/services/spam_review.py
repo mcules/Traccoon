@@ -314,7 +314,7 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
         "rule_score": rule.score,
         "model_score": model,
         "learned_score": learned_score if has_memory else 0.0,
-        "geklaert": settled,
+        "settled": settled,
         "serverurteil": serververdict,
         "modellurteil": fraud,
         # What the mail was classified as. Comes from the model, and a named fraud is at
@@ -326,8 +326,8 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
                 str(cls.get("category") or "").strip().lower() or "unbekannt"),
         "befunde": findings,
         # Ready made line for a note or a card: the plain texts, in reading order.
-        "befunde_text": " · ".join(b["text"] for b in findings if b["text"])[:600],
-        "geklaert_urteil": ("spam" if learned_score >= 0.5 else "ham") if settled else "",
+        "findings_text": " · ".join(b["text"] for b in findings if b["text"])[:600],
+        "settled_verdict": ("spam" if learned_score >= 0.5 else "ham") if settled else "",
         "bekannter_kontakt": known_contact,
         "faelschungsverdacht": forgery_suspicion,
         "reasons": reasons[:12],
@@ -352,7 +352,7 @@ async def judge(db: AsyncSession, owner_id: int | None, payload: dict, *,
     }
     log.info("Spam verdict (%.2f: rule=%.2f model=%.2f learnt=%.2f, resolved=%s, fraud=%s, "
              "kind=%s) from %s",
-             score, rule.score, model, learned_score, verdict_row["geklaert_urteil"] or "nein",
+             score, rule.score, model, learned_score, verdict_row["settled_verdict"] or "nein",
              fraud, verdict_row["art"], rule.sender_email)
     return verdict_row
 

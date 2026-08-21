@@ -130,7 +130,7 @@ async def set_notify(d: NotifyIn, u: User = Depends(get_current_user),
     if d.notify_default is not None:
         if d.notify_default not in CHANNELS:
             raise Error(status.HTTP_400_BAD_REQUEST, "err.unknown_channel_possible",
-                         "Unknown channel, possible: {moeglich}", possible=', '.join(CHANNELS))
+                         "Unknown channel, possible: {possible}", possible=', '.join(CHANNELS))
         u.notify_default = d.notify_default
     if d.notify_email is not None:
         raw = d.notify_email.strip()

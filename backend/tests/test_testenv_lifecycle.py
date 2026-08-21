@@ -146,5 +146,5 @@ async def test_a_new_project_has_a_testing_column(client, db):
     pid = r.json()["id"]
     meta = await client.get(f"/projects/{pid}/meta", headers=auth(owner))
     names = [s["name"] for s in meta.json()["statuses"]]
-    assert "Testen" in names
-    assert names.index("Testen") < names.index("Fertig")
+    assert "Testing" in names
+    assert names.index("Testing") < names.index("Done")

@@ -232,7 +232,7 @@ def require_role(minimum: ProjectRole):
     async def _dep(access: Access = Depends(get_project_access)) -> Access:
         if not access.has_role(minimum):
             raise Error(status.HTTP_403_FORBIDDEN, "err.role_required",
-                         "Role {rolle} is required", role=minimum.value)
+                         "Role {role} is required", role=minimum.value)
         return access
     return _dep
 

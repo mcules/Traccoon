@@ -110,7 +110,7 @@ async def _my(db: AsyncSession, user: User, key: str) -> Series:
     series = (await db.execute(select(Series).where(
         Series.key == key, service.visible(user.id, _is_admin(user))))).scalar_one_or_none()
     if series is None:
-        raise Error(404, "err.series_not_found", "Series '{reihe}' not found", series=key)
+        raise Error(404, "err.series_not_found", "Series '{series}' not found", series=key)
     return series
 
 
@@ -146,7 +146,7 @@ async def create_series(data: SeriesIn, user: User = Depends(get_current_user),
     duplicate = (await db.execute(select(Series).where(
         Series.owner_user_id == user.id, Series.key == key))).scalar_one_or_none()
     if duplicate is not None:
-        raise Error(409, "err.series_exists", "Series '{reihe}' already exists",
+        raise Error(409, "err.series_exists", "Series '{series}' already exists",
                      series=key)
 
     series = Series(owner_user_id=user.id, key=key, kind=data.kind, name=data.name,
@@ -175,7 +175,7 @@ async def update_series(key: str, data: SeriesPatch, user: User = Depends(get_cu
             Series.owner_user_id == series.owner_user_id,
             Series.key == new))).scalar_one_or_none()
         if taken is not None:
-            raise Error(409, "err.series_exists", "Series '{reihe}' already exists",
+            raise Error(409, "err.series_exists", "Series '{series}' already exists",
                          series=new)
         series.key = new
 
@@ -316,7 +316,7 @@ async def create_place(data: PlaceIn, user: User = Depends(get_current_user),
         SeriesPlace.owner_user_id == user.id,
         SeriesPlace.key == data.key))).scalar_one_or_none()
     if duplicate is not None:
-        raise Error(409, "err.place_exists", "Place '{ort}' already exists", place=data.key)
+        raise Error(409, "err.place_exists", "Place '{place}' already exists", place=data.key)
     place = SeriesPlace(owner_user_id=user.id, series_id=series_id, key=data.key, name=data.name,
                       lat=data.lat, lon=data.lon, radius_m=data.radius_m, color=data.color,
                       notify=data.notify)
